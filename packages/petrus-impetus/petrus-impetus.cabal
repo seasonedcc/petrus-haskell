@@ -1,0 +1,73 @@
+cabal-version:      3.4
+name:               petrus-impetus
+version:            0.1.0.0
+synopsis:           The Impetus kernel: colored Petri nets with an event-sourced history
+description:
+  A Haskell port of the Petrus Impetus kernel: net structure and validation,
+  markings, enabledness, firing, the canonical schema-5 History and its replay
+  folds, the single-writer Instance, scheduling, and the net definition v3 and
+  net document v1 wire formats. Every wire format is byte-identical to the
+  reference implementation; CEL is a seam, never a dependency.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Impetus.Activity
+                    Petrus.Impetus.Internal.OMap
+                    Petrus.Impetus.Internal.Repr
+                    Petrus.Impetus.Petrinet
+                    Petrus.Impetus.Petrinet.Dot
+                    Petrus.Impetus.Petrinet.Enabledness
+                    Petrus.Impetus.Petrinet.Firing
+                    Petrus.Impetus.Petrinet.Marking
+                    Petrus.Impetus.Petrinet.Routing
+                    Petrus.Impetus.Petrinet.Schema
+                    Petrus.Impetus.Scope
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , deepseq >=1.4
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , petrus-json
+                  , process >=1.6
+                  , text >=2.0
+                  , transformers >=0.6
+  ghc-options:      -O2
+
+test-suite petrus-impetus-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Impetus.SchemaSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , QuickCheck >=2.14
+                  , petrus-impetus
+                  , petrus-json
+                  , text
+  ghc-options:      -threaded -rtsopts
