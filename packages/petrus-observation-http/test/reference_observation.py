@@ -7,6 +7,8 @@ MODE is one of:
 - ``fresh``: the upstream test's ``make_engine()``;
 - ``advanced``: the same Engine after one ``advance()``;
 - ``closed``: the same Engine, closed;
+- ``busy``: the same Net with its move looping back to ``a``, advanced 100
+  times (the benchmark's Engine);
 - ``broken``: read doors that fail with a ``KeyError`` (snapshot), a
   ``RecursionError`` (document) and a ``TypeError`` (history).
 
@@ -35,6 +37,19 @@ def make_engine() -> Engine:
     )
 
 
+def make_busy_engine() -> Engine:
+    engine = Engine.create(
+        Net([Place(A)], [Transition(MOVE)], [Arc(A, MOVE), Arc(MOVE, A)], name="http-observation"),
+        "http-instance",
+        history=InMemoryHistoryStore(),
+        dispatch=InMemoryDispatch(),
+        marking=Marking({A: (Token("value", {"n": 1}),)}),
+    )
+    for _ in range(100):
+        engine.advance()
+    return engine
+
+
 class Broken:
     def snapshot(self):
         raise KeyError("snapshot")
@@ -50,6 +65,8 @@ def main() -> None:
     mode = sys.argv[1]
     if mode == "broken":
         engine = Broken()
+    elif mode == "busy":
+        engine = make_busy_engine()
     else:
         engine = make_engine()
         if mode == "advanced":

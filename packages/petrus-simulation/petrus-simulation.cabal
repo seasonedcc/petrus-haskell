@@ -93,7 +93,8 @@ benchmark petrus-simulation-bench
   type:             exitcode-stdio-1.0
   hs-source-dirs:   bench test
   main-is:          Main.hs
-  other-modules:    Support
+  other-modules:    Load
+                    Support
   build-depends:    base
                   , bytestring
                   , containers
@@ -107,6 +108,7 @@ benchmark petrus-simulation-bench
                   , petrus-json
                   , petrus-observation
                   , petrus-simulation
+                  , petrus-test-support
                   , stm
                   , tasty >=1.4
                   , tasty-bench >=0.3

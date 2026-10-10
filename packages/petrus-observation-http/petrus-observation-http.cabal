@@ -78,7 +78,8 @@ benchmark petrus-observation-http-bench
   type:             exitcode-stdio-1.0
   hs-source-dirs:   bench test
   main-is:          Main.hs
-  other-modules:    Support
+  other-modules:    Load
+                    Support
   build-depends:    base
                   , bytestring
                   , containers
@@ -90,7 +91,7 @@ benchmark petrus-observation-http-bench
                   , petrus-motus
                   , petrus-observation
                   , petrus-observation-http
-                  , hspec
+                  , petrus-test-support
                   , tasty >=1.4
                   , tasty-bench >=0.3
                   , text
