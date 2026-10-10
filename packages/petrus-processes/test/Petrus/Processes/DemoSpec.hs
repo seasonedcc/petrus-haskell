@@ -61,24 +61,43 @@ engineChecks =
 -- | The lines a passing run prints (the reference test's assertions plus
 -- the remaining fixed lines).
 lifecycleLines :: [Text]
-lifecycleLines =
-  [ "spawn retry: claims=1 ensure_calls=2 prior_claim=true"
-  , "child history before host open: 0"
-  , "offline call: pending=1 parent=awaiting"
-  , "unrelated correlation: parent=awaiting"
-  , "correlated result: parent=completed child=completed"
-  , "correlated error: parent=completed outcome=error"
-  , "replay: parent appends=0 dispatches=0; child appends=0 dispatches=0"
-  , "credential absent from outcomes/envelopes/history: true"
-  , "overall: PASS"
+lifecycleLines = map (\(_, _, line) -> line) lineChecks
+
+-- | Each printed line with the check it evidences. The demo asserts each
+-- condition before printing its line and exits nonzero otherwise.
+lineChecks :: [(String, String, Text)]
+lineChecks =
+  [ ("P-077", "a lost spawn completion re-dispatches: 1 claim, 2 ensure calls, prior_claim recorded", "spawn retry: claims=1 ensure_calls=2 prior_claim=true")
+  , ("P-076", "after a spawn and before any host opens, the child's History is empty", "child history before host open: 0")
+  , ("P-032", "with the callee host down the request is pending and the caller AWAITING", "offline call: pending=1 parent=awaiting")
+  , ("P-033", "a reply for an unrelated call_id is accepted and the caller stays AWAITING", "unrelated correlation: parent=awaiting")
+  , ("P-034 P-078", "a correlated result completes caller and callee once the child host opens", "correlated result: parent=completed child=completed")
+  , ("P-035", "a correlated error completes the caller with outcome error", "correlated error: parent=completed outcome=error")
+  , ("P-036", "reopening both Engines after completion appends and dispatches nothing", "replay: parent appends=0 dispatches=0; child appends=0 dispatches=0")
+  , ("P-075", "child credentials appear in no outcome, envelope, or History record", "credential absent from outcomes/envelopes/history: true")
+  , ("demo", "the run passes as a whole", "overall: PASS")
   ]
 
-passes :: FilePath -> [String] -> Expectation
-passes exe arguments = do
-  (code, out, err) <- readCreateProcessWithExitCode (proc exe arguments) ""
-  if code == ExitSuccess && T.lines (T.pack out) == lifecycleLines
-    then pure ()
-    else expectationFailure (show code <> "\n" <> out <> "\n--- stderr ---\n" <> err)
+type Run = (ExitCode, String, String)
+
+runDemo :: FilePath -> [String] -> IO Run
+runDemo exe arguments = readCreateProcessWithExitCode (proc exe arguments) ""
+
+-- | One run of a configuration, then one example per check its output
+-- evidences.
+checksOf :: SpecWith Run
+checksOf = do
+  it "exits 0 and prints exactly the reference's lines" $ \run@(code, out, _) ->
+    if code == ExitSuccess && T.lines (T.pack out) == lifecycleLines then pure () else evidence run
+  mapM_
+    ( \(index, (ids, what, line)) -> it (ids <> " " <> what) $ \run@(_, out, _) ->
+        if drop index (T.lines (T.pack out)) `startsWith` line then pure () else evidence run
+    )
+    (zip [0 :: Int ..] lineChecks)
+  where
+    startsWith (x : _) line = x == line
+    startsWith [] _ = False
+    evidence (code, out, err) = expectationFailure (show code <> "\n" <> out <> "\n--- stderr ---\n" <> err)
 
 mixedRuns :: Spec
 mixedRuns = do
@@ -102,18 +121,19 @@ mixedRuns = do
             python <- pythonExecutable
             script <- inRepo ("packages" </> "petrus-processes" </> "test" </> "interop" </> "lifecycle_demo_mixed.py")
             exe <- haskellExe
-            passes python (["-B", script, "--dsn", dsn target] <> concatMap (\flag -> [flag, exe]) extra)
-      it "the Haskell executable alone" $ \target -> do
+            runDemo python (["-B", script, "--dsn", dsn target] <> concatMap (\flag -> [flag, exe]) extra)
+          configuration name start = describe name (beforeAllWith start checksOf)
+      configuration "the Haskell executable alone" $ \target -> do
         exe <- haskellExe
-        passes exe ["--dsn", dsn target]
-      it "Haskell parent, Python child host" $ \target -> do
+        runDemo exe ["--dsn", dsn target]
+      configuration "P-038 Haskell parent, Python child host" $ \target -> do
         exe <- haskellExe
         child <- pythonChild
-        passes exe ["--dsn", dsn target, "--child-command", child]
-      it "Haskell parent Engine, process.spawn executed by the Python worker" $ \target -> do
+        runDemo exe ["--dsn", dsn target, "--child-command", child]
+      configuration "P-079 Haskell parent Engine, process.spawn executed by the Python worker" $ \target -> do
         exe <- haskellExe
         worker <- pythonWorker
-        passes exe ["--dsn", dsn target, "--spawn-worker-command", worker]
-      it "Python parent, Haskell child host" $ mixed ["--haskell-child"]
-      it "Python parent Engine, process.spawn executed by the Haskell worker" $ mixed ["--haskell-spawn-worker"]
-      it "Python parent with both a Haskell child host and a Haskell spawn worker" $ mixed ["--haskell-child", "--haskell-spawn-worker"]
+        runDemo exe ["--dsn", dsn target, "--spawn-worker-command", worker]
+      configuration "P-038 Python parent, Haskell child host" (mixed ["--haskell-child"])
+      configuration "P-079 Python parent Engine, process.spawn executed by the Haskell worker" (mixed ["--haskell-spawn-worker"])
+      configuration "P-038 P-079 Python parent with a Haskell child host and a Haskell spawn worker" (mixed ["--haskell-child", "--haskell-spawn-worker"])

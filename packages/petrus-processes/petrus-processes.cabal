@@ -119,6 +119,7 @@ test-suite petrus-processes-test
                     Petrus.Processes.InteropSpec
                     Petrus.Processes.Conformance.Lifecycle
                     Petrus.Processes.DemoSpec
+                    Petrus.Processes.TypedSpec
   build-depends:    base
                   , async >=2.2
                   , base16-bytestring >=1.0
