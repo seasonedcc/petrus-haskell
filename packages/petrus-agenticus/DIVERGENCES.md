@@ -63,9 +63,58 @@ package's DIVERGENCES.md.
    the Haskell tests override `providerDestroy` and `providerAttach` on a
    copy of the real local provider.
 
+## Hands workspace (`Petrus.Agenticus.Hands.Workspace`)
+
+9. **The adapter is a value, not a class.** `MotusWorkspaceAdapter` holds the
+   provider, the attachment, its lease and an `IORef` of registered stage
+   tokens.
+   `workspaceHandsAdapter` turns it into the gateway's `HandsAdapter` record.
+   The reference's `HandsAdapter` is a structural `Protocol` that the class
+   satisfies.
+
+## Episode attachment (`Petrus.Agenticus.Attachment.Episode`)
+
+10. **The epoch is an `Integer`.** The reference refuses `bool` epochs at run
+    time, because Python's `bool` is an `int`. In Haskell, `True` cannot reach
+    the constructor, so only the `0` and negative refusals exist.
+
+## Territory retention (`Petrus.Agenticus.Attachment.Retention`)
+
+11. **SQLite through `direct-sqlite`, behind `Petrus.Agenticus.Internal.Sqlite`.**
+    `petrus-sqlite` is not on `main` yet, so the ledger talks to SQLite
+    through that small internal module (swap point). The DDL strings,
+    including their whitespace, and the column order are the reference's, so
+    either implementation can open the other's file. The differential corpus
+    proves this in both directions.
+
+12. **`timeout=5` becomes `PRAGMA busy_timeout = 5000`.** Python's
+    `sqlite3.connect(timeout=5)` installs a 5-second busy handler.
+    `setBusyTimeout` installs the same handler through the pragma.
+    `inTransaction` is `not (sqlite3_get_autocommit)`, which is how CPython
+    computes `Connection.in_transaction`.
+
+13. **The writer fence uses `flock` directly through the FFI.** The reference
+    calls `fcntl.flock(LOCK_EX | LOCK_NB)` on `.<name>.writer.lock`. The
+    Haskell ledger calls the same `flock(2)` with the same flags. It does not
+    use `fcntl` record locks, which would not exclude a second open in the
+    same process.
+
+14. **The clock is an `IO Double`.** `openTerritoryCustodyWith path clock`
+    takes the reference's `clock=` callable. `openTerritoryCustody` uses
+    `getPOSIXTime`, which is `time.time()`.
+
+15. **Test fault injection without monkeypatching.** The reference's tests
+    patch `provider.create`, `provider.lookup`, `provider.export`,
+    `provider.destroy` and the private `custody._write`. The provider patches
+    become record overrides. The `_write` crash is reproduced by a real lock
+    conflict, so the failure the ledger sees is `OperationalError`
+    ("database is locked"), not `OSError("crash")`. The behaviour under test
+    is the same: the lease is destroyed but the tombstone is not committed,
+    and a retry still reaches `retired`.
+
 ## Packaging
 
-9. **Boundary tests check cabal dependency graphs.** Haskell imports have no
+16. **Boundary tests check cabal dependency graphs.** Haskell imports have no
    side effects, so `test_root_import_has_no_facade_or_optional_provider_side_effects`
    cannot observe import-time behaviour. `BoundariesSpec` asserts the
    equivalent structural fact instead: `petrus-agenticus-core` depends on no

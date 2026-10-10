@@ -110,8 +110,8 @@ withTemp :: (FilePath -> IO a) -> IO a
 withTemp = withSystemTempDirectory "retention"
 
 spec :: Spec
-spec = describe "attachment._retention (test_retention.py)" $ do
-  it "retained lease reclaims into a distinct episode and retires exactly" $ withTemp $ \tmp -> do
+spec = describe "attachment/test_retention.py" $ do
+  it "test_retained_lease_reclaims_into_a_distinct_episode_and_retires_exactly" $ withTemp $ \tmp -> do
     provider <- localEnvironment
     (attachment, oldBinding) <- attachmentIn tmp provider
     let path' = tmp </> "custody" </> "territories.db"
@@ -140,7 +140,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
     bytes <- B.readFile path'
     ("retained" `B.isInfixOf` bytes) `shouldBe` False
 
-  it "recovery retires an incomplete release instead of reusing it" $ withTemp $ \tmp -> do
+  it "test_recovery_retires_incomplete_release_instead_of_reusing_it" $ withTemp $ \tmp -> do
     provider <- localEnvironment
     (attachment, _) <- attachmentIn tmp provider
     let path' = tmp </> "custody" </> "territories.db"
@@ -155,7 +155,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
     (isNothing <$> providerLookup provider (leaseOperationId record.lease)) `shouldReturn` True
     closeTerritoryCustody recovered
 
-  it "a corrupt archive never reclaims and preserves the exact cleanup obligation" $ withTemp $ \tmp -> do
+  it "test_corrupt_archive_never_reclaims_and_preserves_exact_cleanup_obligation" $ withTemp $ \tmp -> do
     provider <- localEnvironment
     (attachment, _) <- attachmentIn tmp provider
     let path' = tmp </> "custody" </> "territories.db"
@@ -171,7 +171,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
     (isNothing <$> providerLookup provider (identityOperationId released.territory)) `shouldReturn` True
     closeTerritoryCustody recovered
 
-  it "a missing retained lease never falls through to creation" $ withTemp $ \tmp -> do
+  it "test_missing_retained_lease_never_falls_through_to_creation" $ withTemp $ \tmp -> do
     provider <- localEnvironment
     (attachment, _) <- attachmentIn tmp provider
     custody <- custodyAt (tmp </> "custody" </> "territories.db") 10
@@ -184,7 +184,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
     ((.phase) <$> retire custody "custody-missing" "host-one" noCreate) `shouldReturn` Retired
     closeTerritoryCustody custody
 
-  it "a foreign lookup remains retryable until exact retirement is verified" $ withTemp $ \tmp -> do
+  it "test_foreign_lookup_remains_retryable_until_exact_retirement_is_verified" $ withTemp $ \tmp -> do
     provider <- localEnvironment
     (attachment, _) <- attachmentIn tmp provider
     custody <- custodyAt (tmp </> "custody" </> "territories.db") 10
@@ -200,7 +200,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
     (isNothing <$> providerLookup provider (leaseOperationId l)) `shouldReturn` True
     closeTerritoryCustody custody
 
-  it "expired custody moves to exact retirement instead of reclaim" $ withTemp $ \tmp -> do
+  it "test_expired_custody_moves_to_exact_retirement_instead_of_reclaim" $ withTemp $ \tmp -> do
     now <- newIORef (10 :: Double)
     provider <- localEnvironment
     (attachment, _) <- attachmentIn tmp provider
@@ -211,7 +211,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
     ((.phase) <$> retire custody "custody-expired" "host-one" provider) `shouldReturn` Retired
     closeTerritoryCustody custody
 
-  it "expiry during export never acknowledges retention" $ withTemp $ \tmp -> do
+  it "test_expiry_during_export_never_acknowledges_retention" $ withTemp $ \tmp -> do
     now <- newIORef (10 :: Double)
     base <- localEnvironment
     let provider = base {providerExport = \execution -> providerExport base execution <* writeIORef now 20}
@@ -222,13 +222,13 @@ spec = describe "attachment._retention (test_retention.py)" $ do
     ((.phase) <$> retire custody "custody-export-expired" "host-one" provider) `shouldReturn` Retired
     closeTerritoryCustody custody
 
-  it "the custody database has one live writer" $ withTemp $ \tmp -> do
+  it "test_custody_database_has_one_live_writer" $ withTemp $ \tmp -> do
     let path' = tmp </> "custody" </> "territories.db"
     first <- openTerritoryCustody path'
     raises (openTerritoryCustody path') StorageError "live writer"
     closeTerritoryCustody first
 
-  it "release closes operation admission and waits before export" $ withTemp $ \tmp -> do
+  it "test_release_closes_operation_admission_and_waits_before_export" $ withTemp $ \tmp -> do
     exported <- newEmptyMVar
     base <- localEnvironment
     let provider = base {providerExport = \execution -> void (tryPutMVar exported ()) >> providerExport base execution}
@@ -253,7 +253,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
     closeTerritoryCustody custody
     identityOperationId released.territory `shouldBe` "territory-operation"
 
-  it "one provider operation cannot have two live custody ids" $ withTemp $ \tmp -> do
+  it "test_one_provider_operation_cannot_have_two_live_custody_ids" $ withTemp $ \tmp -> do
     provider <- localEnvironment
     (attachment, _) <- attachmentIn tmp provider
     custody <- custodyAt (tmp </> "custody" </> "territories.db") 10
@@ -265,7 +265,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
     closeTerritoryCustody custody
 
   forM_ ["episode", "attachment" :: Text] $ \reuse ->
-    it ("reclaim refuses source identities without changing retained custody (" <> T.unpack reuse <> ")") $ withTemp $ \tmp -> do
+    it ("test_reclaim_refuses_source_identities_without_changing_retained_custody[" <> T.unpack reuse <> "]") $ withTemp $ \tmp -> do
       provider <- localEnvironment
       (attachment, _) <- attachmentIn tmp provider
       custody <- custodyAt (tmp </> "custody" </> "territories.db") 10
@@ -280,7 +280,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
       void (retire custody "custody-distinct" "host-one" provider)
       closeTerritoryCustody custody
 
-  it "malformed non-identity state becomes retirable but a malformed identity quarantines" $ withTemp $ \tmp -> do
+  it "test_malformed_nonidentity_state_becomes_retirable_but_malformed_identity_quarantines" $ withTemp $ \tmp -> do
     provider <- localEnvironment
     (attachment, _) <- attachmentIn tmp provider
     let path' = tmp </> "custody" </> "territories.db"
@@ -308,7 +308,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
     closeTerritoryCustody quarantined
 
   forM_ ["operation_id", "provider", "lease_id" :: Text] $ \column ->
-    it ("non-text destruction identity quarantines without provider cleanup (" <> T.unpack column <> ")") $ withTemp $ \tmp -> do
+    it ("test_nontext_destruction_identity_quarantines_without_provider_cleanup[" <> T.unpack column <> "]") $ withTemp $ \tmp -> do
       base <- localEnvironment
       (attachment, _) <- attachmentIn tmp base
       let path' = tmp </> "custody" </> "territories.db"
@@ -333,7 +333,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
       rawPhase path' "custody-binary-identity" `shouldReturn` Just [SQLText "quarantined"]
       closeTerritoryCustody recovered
 
-  it "recovery fences an attached lease instead of reconstructing active work" $ withTemp $ \tmp -> do
+  it "test_recovery_fences_an_attached_lease_instead_of_reconstructing_active_work" $ withTemp $ \tmp -> do
     provider <- localEnvironment
     (attachment, binding) <- attachmentIn tmp provider
     let path' = tmp </> "custody" </> "territories.db"
@@ -349,7 +349,7 @@ spec = describe "attachment._retention (test_retention.py)" $ do
     ((.phase) <$> retire recovered "custody-attached-crash" "host-one" provider) `shouldReturn` Retired
     closeTerritoryCustody recovered
 
-  it "retirement retries unverified cleanup and a destroy before commit" $ withTemp $ \tmp -> do
+  it "test_retirement_retries_unverified_cleanup_and_destroy_before_commit" $ withTemp $ \tmp -> do
     provider <- localEnvironment
     (attachment, _) <- attachmentIn tmp provider
     let path' = tmp </> "custody" </> "territories.db"
