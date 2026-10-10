@@ -6,6 +6,7 @@ import StartupSpec qualified
 import CiSpec qualified
 import ConversationSpec qualified
 import DashboardSpec qualified
+import EscalationSpec qualified
 import Test.Hspec (hspec)
 import TopologySpec qualified
 
@@ -18,3 +19,4 @@ main = hspec $ do
   CiSpec.spec
   ConversationSpec.spec
   DashboardSpec.spec
+  EscalationSpec.spec
