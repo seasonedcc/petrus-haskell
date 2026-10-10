@@ -138,6 +138,12 @@ module Petrus.Agenticus.Runtime.Pi
   , startFrame
   , maxPrompt
   , maxKey
+    -- * Process pieces shared with the sibling Pi runtimes
+  , waitExit
+  , exitInt
+  , removeRoot
+  , runBounded
+  , micros
   ) where
 
 import Control.Concurrent (ThreadId, forkIO, killThread, threadDelay)

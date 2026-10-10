@@ -47,6 +47,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Runtime.AgentNetRunner
                     Petrus.Agenticus.Runtime.Pi
+                    Petrus.Agenticus.Runtime.PiModelPhase
                     Petrus.Agenticus.Runtime.PiRecovery
   other-modules:    Paths_petrus_agenticus_runtime
   autogen-modules:  Paths_petrus_agenticus_runtime
@@ -79,6 +80,7 @@ test-suite petrus-agenticus-runtime-test
   main-is:          Main.hs
   other-modules:    Petrus.Agenticus.Runtime.AgentNetRunnerSpec
                     Petrus.Agenticus.Runtime.PiDifferentialSpec
+                    Petrus.Agenticus.Runtime.PiModelPhaseSpec
                     Petrus.Agenticus.Runtime.PiSpec
                     Petrus.Agenticus.Runtime.PiSupport
                     Petrus.Agenticus.Runtime.RunnerDifferentialSpec
@@ -97,6 +99,8 @@ test-suite petrus-agenticus-runtime-test
                   , petrus-execution
                   , petrus-impetus
                   , petrus-json
+                  , petrus-motus
+                  , process
                   , ram >=0.20
                   , temporary
                   , text

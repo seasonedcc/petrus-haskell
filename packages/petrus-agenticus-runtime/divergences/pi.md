@@ -116,3 +116,41 @@ sides of each one. Its single accepted difference is item 6.
       another operation id, which the adapter refuses in the same way.
     - `test_import_has_no_node_or_npm_dependency` becomes a structural check
       (see `parity/pi.md`).
+
+## Pi model phase (`Petrus.Agenticus.Runtime.PiModelPhase`)
+
+1. **Protocols are records.** `PiModelPhaseOperations`,
+   `PiModelPhaseCustody`, `PhaseClient` and `PhaseFactory` replace the
+   structural protocols. `piModelPhaseCustody` adapts a
+   `PiConnectionCustody`. Because the types are fixed, the reference's
+   `isinstance` refusals cannot occur and have no port:
+   - `TypeError("... exact configuration and connection")`;
+   - `TypeError("... exact collaborators")`;
+   - a non-`Materialization` or non-`AttachmentFence` custody answer;
+   - a non-`PiModelPhasePublication` answer (`publication-mismatch`).
+2. **Adapter attributes are explicit state.** The reference's tests assign
+   `adapter.node`, `adapter.sdk_entrypoint`, `adapter.factory` and
+   `adapter.config`. The port provides `setModelPhaseNode`,
+   `setModelPhaseSdkEntrypoint`, `setModelPhaseFactory` and
+   `modifyModelPhaseConfig`. `isinstance(self.factory, _SubprocessFactory)`
+   becomes the factory's `isSubprocess` flag.
+3. **Payload refusal messages.** `_payload` lets the strict parser's own
+   exception escape: `JSONDecodeError`, a bare `ValueError` for a constant or
+   a duplicate name, or `UnicodeDecodeError`. The port raises `ValueError`
+   with the reference's own shape message ("Pi model phase transcript is
+   invalid" or "Pi model phase assistant is invalid") for every refusal.
+   Every caller inside the module maps these to one protocol code anyway.
+4. **The helper process.** A writer thread and a reader thread replace the
+   `selectors` loop over non-blocking pipes. They keep the same 20 ms poll,
+   heartbeat cadence, wall deadline, frame bounds and post-exit `stdin`
+   close. `close` kills the process group, waits one second for the exit,
+   and reports whether the stderr drain finished within one more second, as
+   `thread.join(1)` does. If `wait(timeout=0.1)` expires, the reference
+   raises `TimeoutExpired`, which `_execute` turns into `runtime-failed`. The
+   port raises `OtherError "TimeoutExpired"`, which ends the same way.
+5. **Cleanup in `finally`.** If closing the client or releasing the
+   materialization raises during cleanup, the reference lets the exception
+   escape from `close()`, or records `clean = False` for release. The port
+   records `clean = False` for both, so the outcome is `cleanup-unverified`.
+6. **`probe` fails closed on any synchronous exception**, as item 8 above
+   describes for `pi.py`.

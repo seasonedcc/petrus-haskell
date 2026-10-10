@@ -161,3 +161,56 @@ See `bench/results-pi.md`:
 - Session validation and the fingerprint are on par.
 - `start`-frame encoding is half the reference's speed, because of
   `petrus-json`'s encoder.
+
+## `tests/petrus/agenticus/runtime/test_pi_model_phase.py` (25 functions, 45 cases)
+
+Module: `Petrus.Agenticus.Runtime.PiModelPhase` (`pi_model_phase.py`), with
+the verbatim `data/pi_model_phase_helper.mjs`. Spec:
+`test/Petrus/Agenticus/Runtime/PiModelPhaseSpec.hs`.
+
+Every pytest id is an `it` label, parameters included. 44 cases pass.
+`test_exact_installed_model_phase_probe` is pending, because it needs the
+exact Pi packages under `/tmp/petrus-pi-a2-probe`. The reference skips it for
+the same reason. When those packages are present, the case runs in full.
+
+**Fixtures.**
+
+- `Custody`, `Operations`, the scripted `Client` and `Factory`, and the `Rig`
+  are ported one to one. The custody and operation flags are `IORef`s.
+- `test/fixtures/pi/extract_model_phase.py` extracts `write_fake_coding`'s
+  fake SDK verbatim, as `test/fixtures/pi/model_phase_coding.mjs`.
+- The subprocess cases run the system `node` over the reference's inline
+  helper scripts, which are written to a temporary directory.
+- `RealFactory` is `subprocessPhaseFactory {isSubprocess = False}`, so the
+  adapter does not require a probe. The reference gets the same effect
+  because its `RealFactory` is not an instance of `_SubprocessFactory`.
+
+**Notes on individual tests.**
+
+| Function | Cases | Notes |
+| --- | ---: | --- |
+| `test_payloads_publication_and_config_are_strict_and_bounded` | 1 | The reference passes `timeout=True`. The `Double` field cannot hold a bool, so 0, -1, NaN and infinity are refused with the same message instead. |
+| `test_candidate_preserves_stop_optional_private_fields_and_source_order` | 5 | |
+| `test_candidate_rejects_unsupported_terminal_stops` | 3 | |
+| `test_success_cleans_and_releases_before_atomic_private_publication` | 1 | |
+| `test_phase_one_resume_adds_observation_after_prior_continuation` | 1 | |
+| `test_phase_two_injects_exact_ordered_results_without_observation` | 1 | |
+| `test_result_identity_mismatch_fails_before_authority_use` | 1 | |
+| `test_failures_release_authority_and_publish_nothing` | 6 | |
+| `test_materialization_fence_mismatch_releases_without_provider_use` | 3 | |
+| `test_not_ready_connection_is_rejected_at_construction` | 2 | |
+| `test_private_load_failure_and_state_mismatch_are_sanitized_pre_authority` | 1 | `object.__setattr__(rig.config, ...)` becomes `modifyModelPhaseConfig`. |
+| `test_stale_activity_claim_rejects_before_authority` | 1 | |
+| `test_malformed_candidate_and_proposal_overflow_publish_nothing` | 1 | |
+| `test_candidate_rejects_malformed_public_assistant` | 5 | |
+| `test_duplicate_tool_call_identity_is_rejected_before_publication` | 1 | |
+| `test_subprocess_rejects_duplicate_post_terminal_and_noncanonical_frames` | 3 | Real `node`. |
+| `test_subprocess_rejects_a_relative_node_before_launch` | 1 | |
+| `test_subprocess_deadline_kills_the_helper_group_and_discards_stderr` | 1 | Real `node`. |
+| `test_subprocess_heartbeat_refusal_stops_before_the_wall_deadline` | 1 | Real `node`. |
+| `test_real_helper_runs_one_public_stream_with_declarations_and_no_tool_executor` | 1 | Real `node`, the verbatim helper and the fake SDK. The adapter attributes are set with `setModelPhaseNode`, `setModelPhaseSdkEntrypoint` and `setModelPhaseFactory`. |
+| `test_real_helper_accepts_bounded_multiline_observation` | 1 | Same as the previous row. |
+| `test_real_subprocess_requires_the_exact_installed_probe_before_authority` | 1 | |
+| `test_activity_adapter_drives_the_real_static_net_to_completion` | 1 | `Petrus.Engine` with `agentNet`, an in-memory history store and the inline dispatch. |
+| `test_helper_syntax_and_exact_hands_bounds` | 1 | `node --check` over the shipped helper. |
+| `test_exact_installed_model_phase_probe` | 1 | Pending unless the qualification packages are installed. |
