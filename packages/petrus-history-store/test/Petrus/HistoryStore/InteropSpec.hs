@@ -2,8 +2,9 @@
 -- implementation load in the other value-equal and byte-stable, and an
 -- Instance begun in one resumes and completes in the other.
 --
--- Runs @test/interop/jsonl_interop.py@ under @upstream/petrus/.venv@; the
--- examples are pending when that environment is not synced.
+-- Runs @test/interop/jsonl_interop.py@ under @upstream/petrus/.venv@, provisioned
+-- by @scripts/upstream-python@ on first use; the examples fail, never skip,
+-- when that environment cannot be provisioned.
 module Petrus.HistoryStore.InteropSpec (spec) where
 
 import Data.ByteString qualified as BS
@@ -70,20 +71,20 @@ reencoded = BS.concat . map (\r -> either (error . T.unpack) (<> "\n") (encodeLi
 
 spec :: Spec
 spec = describe "JSONL interop with the reference" $ do
-  it "a file the reference wrote loads value-equal and re-encodes byte-identical" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "a file the reference wrote loads value-equal and re-encodes byte-identical" $ withReference $ \python -> withScratch $ \dir -> do
     let path = dir </> "history.jsonl"
     _ <- runPython python script ["write-every", path]
     loaded <- openJsonlHistoryStore path >>= Store.records
     loaded `shouldBe` everyRecordCategory
     BS.readFile path `shouldReturn` reencoded loaded
 
-  it "a file Haskell wrote loads value-equal in the reference and re-encodes byte-identical" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "a file Haskell wrote loads value-equal in the reference and re-encodes byte-identical" $ withReference $ \python -> withScratch $ \dir -> do
     let path = dir </> "history.jsonl"
     openJsonlHistoryStore path >>= \s -> s.extend everyRecordCategory
     _ <- runPython python script ["verify-every", path]
     pure ()
 
-  it "an Instance the reference began resumes in Haskell and the reference reads the result" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "an Instance the reference began resumes in Haskell and the reference reads the result" $ withReference $ \python -> withScratch $ \dir -> do
     let path = dir </> "history.jsonl"
     _ <- runPython python script ["begin", path]
     store <- openJsonlHistoryStore path
@@ -98,7 +99,7 @@ spec = describe "JSONL interop with the reference" $ do
     _ <- runPython python script ["verify-bytes", path]
     pure ()
 
-  it "an Instance Haskell began resumes in the reference and Haskell reads the result" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "an Instance Haskell began resumes in the reference and Haskell reads the result" $ withReference $ \python -> withScratch $ \dir -> do
     let path = dir </> "history.jsonl"
     store <- openJsonlHistoryStore path
     inst <- newInstance activityNet (config True) {historyStore = Just store, suppliedIdentity = Just "interop-1"} >>= expectRight

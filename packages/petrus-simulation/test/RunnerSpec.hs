@@ -25,6 +25,7 @@ import Petrus.Motus.Dispatch (Dispatch (..))
 import Petrus.Motus.Dispatch.Inline (inlineDispatch, newInlineDispatch)
 import Petrus.Simulation
 import Petrus.Simulation qualified as Sim
+import Petrus.TestSupport.Repo (repoRoot)
 import Support
 import System.Directory (createDirectoryIfMissing, listDirectory, removeDirectoryRecursive)
 import System.FilePath ((</>))
@@ -288,8 +289,11 @@ spec = describe "test_simulation.py" $ do
           sort <$> listDirectory directory `shouldReturn` ["result.petrus-simulation.json"]
   where
     withTemporaryDirectory label action = do
-      root <- specPath "../../bench-results/tmp"
-      let directory = root </> ("petrus-simulation-test-" <> label)
+      -- bench-results/tmp is ignored by version control and absent from a
+      -- fresh checkout, so build the path from the repository root instead
+      -- of requiring it to exist (createDirectoryIfMissing makes it).
+      root <- repoRoot
+      let directory = root </> "bench-results" </> "tmp" </> ("petrus-simulation-test-" <> label)
       createDirectoryIfMissing True directory
       result <- action directory
       removeDirectoryRecursive directory

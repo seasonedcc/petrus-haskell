@@ -113,6 +113,7 @@ test-suite petrus-agenticus-core-test
                   , hspec >=2.10
                   , petrus-agenticus-core
                   , petrus-json
+                  , petrus-test-support
                   , process
                   , QuickCheck >=2.14
                   , ram

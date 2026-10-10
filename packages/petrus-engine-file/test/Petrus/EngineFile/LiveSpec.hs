@@ -1,5 +1,5 @@
--- | The differential against a live petrus-engine (pending unless
--- @upstream/petrus-engine/.venv@ is synced):
+-- | The differential against a live petrus-engine (its environment,
+-- @upstream/petrus-engine/.venv@, is provisioned on first use):
 --
 -- * the committed corpus is current: @reference.py@ reproduces every
 --   recorded verdict;
@@ -18,7 +18,9 @@ import Petrus.EngineFile.Corpus
 import Petrus.EngineFile.CorpusSpec (checkCase, corpusPath)
 import Petrus.Json.Parse (parseJson, pythonLoads)
 import Petrus.Json.Value qualified as J
-import System.Directory (doesDirectoryExist, doesFileExist, getCurrentDirectory, makeAbsolute)
+import Petrus.TestSupport.Python (upstreamPythonExecutable)
+import Petrus.TestSupport.Repo qualified as TestSupport
+import System.Directory (doesDirectoryExist, getCurrentDirectory, makeAbsolute)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
@@ -38,21 +40,18 @@ repoRoot = getCurrentDirectory >>= go
           let parent = takeDirectory dir
            in if parent == dir then pure Nothing else go parent
 
--- | The synced reference interpreter and the repository root.
-referencePython :: IO (Maybe (FilePath, FilePath))
+-- | The pinned reference interpreter (@upstream/petrus-engine/.venv@,
+-- provisioned by @scripts/upstream-python petrus-engine@ on first use) and
+-- the repository root. Fails loudly, never skips, when the reference cannot
+-- be provisioned.
+referencePython :: IO (FilePath, FilePath)
 referencePython = do
-  root <- repoRoot
-  case root of
-    Nothing -> pure Nothing
-    Just r -> do
-      let python = r </> "upstream" </> "petrus-engine" </> ".venv" </> "bin" </> "python"
-      present <- doesFileExist python
-      pure (if present then Just (python, r) else Nothing)
+  python <- upstreamPythonExecutable "petrus-engine"
+  root <- TestSupport.repoRoot
+  pure (python, root)
 
 withReference :: ((FilePath, FilePath) -> Expectation) -> Expectation
-withReference body =
-  referencePython
-    >>= maybe (pendingWith "upstream/petrus-engine is not synced (uv sync --frozen --project upstream/petrus-engine)") body
+withReference body = referencePython >>= body
 
 spec :: Spec
 spec = describe "live differential against petrus-engine" $ do

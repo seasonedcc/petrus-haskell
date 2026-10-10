@@ -6,9 +6,8 @@ module Petrus.HistoryStore.Support
   , transition'
   , token'
   , storeErrorContaining
-  , upstreamPython
   , runPython
-  , pythonOrPending
+  , withReference
   ) where
 
 import Control.Exception (bracket)
@@ -19,6 +18,8 @@ import Petrus.Impetus.HistoryStore (HistoryStore)
 import Petrus.Impetus.Petrinet (NetPath, Token)
 import Petrus.Impetus.TestSupport (np, tokD)
 import Petrus.Json (Json (..))
+import Petrus.TestSupport.Python (pythonExecutable)
+import Petrus.TestSupport.Repo (upstreamPetrus)
 import System.Directory
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -59,15 +60,6 @@ token' = tokD "issue" (Object [("id", String "goose"), ("passed", Bool True)])
 storeErrorContaining :: Text -> Selector HistoryStoreError
 storeErrorContaining fragment (HistoryStoreError message) = fragment `T.isInfixOf` message
 
--- | The pinned reference's virtual environment interpreter and its root,
--- when synced (@cd upstream/petrus && uv sync@).
-upstreamPython :: IO (Maybe (FilePath, FilePath))
-upstreamPython = do
-  root <- makeAbsolute ("../.." </> "upstream" </> "petrus")
-  let python = root </> ".venv" </> "bin" </> "python"
-  present <- doesFileExist python
-  pure (if present then Just (python, root) else Nothing)
-
 -- | Run a script under the reference (cwd = the upstream root); fail the
 -- example on a non-zero exit and return its stdout.
 runPython :: (FilePath, FilePath) -> FilePath -> [String] -> IO String
@@ -80,10 +72,11 @@ runPython (python, root) script arguments = do
       expectationFailure ("python " <> script <> " exited " <> show n <> ":\n" <> out <> err)
       pure out
 
--- | Run the example against the reference, or mark it pending when the
--- reference's environment is not synced.
-pythonOrPending :: ((FilePath, FilePath) -> IO ()) -> IO ()
-pythonOrPending body =
-  upstreamPython >>= \case
-    Just python -> body python
-    Nothing -> pendingWith "upstream/petrus is not synced (cd upstream/petrus && uv sync)"
+-- | Run the example against the pinned reference: its interpreter
+-- (provisioned by @scripts/upstream-python@ on first use) and the upstream
+-- root. Fails loudly, never skips, when the reference cannot be provisioned.
+withReference :: ((FilePath, FilePath) -> IO a) -> IO a
+withReference body = do
+  python <- pythonExecutable
+  root <- upstreamPetrus
+  body (python, root)

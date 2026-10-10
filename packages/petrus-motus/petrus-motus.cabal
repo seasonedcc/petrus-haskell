@@ -79,6 +79,7 @@ test-suite petrus-motus-test
                   , petrus-json
                   , petrus-motus
                   , petrus-telemetry
+                  , petrus-test-support
                   , process >=1.6
                   , text
                   , time >=1.12

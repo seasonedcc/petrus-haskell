@@ -47,7 +47,7 @@ module Petrus.Motus.Transport.ZeroMQ.Support
   , matches
     -- * The reference
   , Python
-  , pythonOrPending
+  , withReference
   , runInterop
   , startInterop
   ) where
@@ -73,6 +73,8 @@ import Petrus.Motus.Dispatch (ActivityAttempt (..), WorkerDispatch (..))
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchOptions (..), LocalWorkerOptions (..), defaultLocalDispatchOptions, defaultLocalWorkerOptions, openLocalDispatch, openLocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Transport.ZeroMQ.Native qualified as N
+import Petrus.TestSupport.Python (pythonExecutable)
+import Petrus.TestSupport.Repo (upstreamPetrus)
 import Petrus.Motus.Transport.ZeroMQ (ConnectionError (..), RuntimeError (..), ValueError (..), ZeroMQDispatchServer, createCertificates, serveForever, stopServer, waitReady)
 import System.Directory (copyFile, createDirectory, doesFileExist, getTemporaryDirectory, makeAbsolute, removeDirectoryRecursive, removeFile)
 import System.Environment (getEnvironment, getExecutablePath)
@@ -378,14 +380,14 @@ uncertainMatching fragment = \case
 -- | The reference interpreter and the upstream root it runs in.
 type Python = (FilePath, FilePath)
 
--- | Run the example against the reference, or mark it pending when
--- @upstream/petrus/.venv@ is not synced.
-pythonOrPending :: (Python -> IO ()) -> IO ()
-pythonOrPending body = do
-  root <- makeAbsolute ("../.." </> "upstream" </> "petrus")
-  let python = root </> ".venv" </> "bin" </> "python"
-  present <- doesFileExist python
-  if present then body (python, root) else pendingWith "upstream/petrus is not synced (cd upstream/petrus && uv sync)"
+-- | Run the example against the pinned reference: its interpreter
+-- (provisioned by @scripts/upstream-python@ on first use) and the upstream
+-- root. Fails loudly, never skips, when the reference cannot be provisioned.
+withReference :: (Python -> IO ()) -> IO ()
+withReference body = do
+  python <- pythonExecutable
+  root <- upstreamPetrus
+  body (python, root)
 
 interopScript :: IO FilePath
 interopScript = makeAbsolute ("test" </> "interop" </> "zeromq_interop.py")
