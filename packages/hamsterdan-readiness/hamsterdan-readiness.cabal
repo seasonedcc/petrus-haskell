@@ -48,6 +48,10 @@ library
                     Hamsterdan.Readiness.NetV5.Readiness
                     Hamsterdan.Readiness.NetV5.Startup
                     Hamsterdan.Readiness.NetV5.Topology
+                    Hamsterdan.Readiness.NetV5.Gating
+                    Hamsterdan.Readiness.NetV5.Board
+                    Hamsterdan.Readiness.NetV5
+                    Hamsterdan.Readiness.Payloads
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
