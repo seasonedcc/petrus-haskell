@@ -1,36 +1,55 @@
 #!/usr/bin/env bash
-# Provision the pinned upstream Python environment and print its interpreter.
+# Provision a pinned upstream Python environment and print its interpreter.
 #
-#   scripts/upstream-python      # prints .../upstream/petrus/.venv/bin/python
+#   scripts/upstream-python                 # upstream/petrus (the default)
+#   scripts/upstream-python petrus-engine   # upstream/petrus-engine
 #
-# The environment is upstream/petrus/.venv, synced from upstream's own frozen
-# uv.lock with the postgres extra. It is reused when it already runs the pinned
-# Python and imports petrus and psycopg; otherwise it is (re)synced with uv.
+# Each environment is upstream/<project>/.venv, synced from that project's own
+# frozen uv.lock (upstream/petrus with the postgres extra). It is reused when
+# it already runs the pinned Python and imports what the suites need;
+# otherwise it is (re)synced with uv.
 #
 # The Python version is pinned here, exactly, the single place for it (the
-# test suites, scripts/check-all and scripts/bench all provision through this
-# script). Upstream only says requires-python >= 3.14, so without a pin uv
-# picks whatever is newest: on a machine without a 3.14 interpreter that is a
-# freshly downloaded CPython 3.15, for which the locked psycopg-binary 3.3.4
-# has no wheel, and the sync fails. The patch level matters too: several
-# ports are differential against the standard library itself (http.server,
-# tarfile, json), and CPython 3.14.8 changed how http.server answers a
-# malformed request line, so "3.14" would make the reference drift with
-# whatever patch release the machine happens to have. 3.14.6 is the release
-# the ports and the committed fixtures were made against; moving it is a
-# deliberate act that reruns every differential suite.
+# test suites, scripts/check-all, scripts/bench and CI all provision through
+# this script). Upstream only says requires-python >= 3.14 (petrus) or
+# >= 3.12 (petrus-engine), so without a pin uv picks whatever is newest: on a
+# machine without a 3.14 interpreter that is a freshly downloaded CPython
+# 3.15, for which upstream/petrus's locked psycopg-binary 3.3.4 has no wheel,
+# and the sync fails. The patch level matters too: several ports are
+# differential against the standard library itself (http.server, tarfile,
+# json), and CPython 3.14.8 changed how http.server answers a malformed
+# request line, so "3.14" would make the reference drift with whatever patch
+# release the machine happens to have. 3.14.6 is the release the ports and
+# the committed fixtures were made against; moving it is a deliberate act
+# that reruns every differential suite.
 #
 # Progress goes to stderr; stdout carries only the interpreter path.
 set -euo pipefail
 
 PYTHON_VERSION=3.14.6
 
+project=${1:-petrus}
+case "$project" in
+  petrus)
+    sync_args=(--extra postgres)
+    imports="petrus, psycopg"
+    ;;
+  petrus-engine)
+    sync_args=()
+    imports="petrus.cli.format_json"
+    ;;
+  *)
+    echo "unknown upstream project: $project (petrus or petrus-engine)" >&2
+    exit 2
+    ;;
+esac
+
 root=$(cd "$(dirname "$0")/.." && pwd)
-upstream="$root/upstream/petrus"
+upstream="$root/upstream/$project"
 python="$upstream/.venv/bin/python"
 
 if [[ ! -f "$upstream/pyproject.toml" ]]; then
-  echo "upstream/petrus is empty; run \`git submodule update --init upstream/petrus\` in $root" >&2
+  echo "upstream/$project is empty; run \`git submodule update --init upstream/$project\` in $root" >&2
   exit 1
 fi
 
@@ -38,19 +57,19 @@ usable() {
   [[ -x "$python" ]] || return 1
   (cd "$upstream" && "$python" -I -c "
 import sys
-import petrus, psycopg
+import $imports
 sys.exit(0 if '%d.%d.%d' % sys.version_info[:3] == '$PYTHON_VERSION' else 1)
 ") >/dev/null 2>&1
 }
 
 if ! usable; then
   if ! command -v uv >/dev/null 2>&1; then
-    echo "the upstream Python environment is missing or stale and \`uv\` is not on PATH; install uv, or run \`uv sync --frozen --extra postgres --python $PYTHON_VERSION\` in upstream/petrus" >&2
+    echo "the upstream/$project Python environment is missing or stale and \`uv\` is not on PATH; install uv, or run \`uv sync --frozen ${sync_args[*]+${sync_args[*]} }--python $PYTHON_VERSION\` in upstream/$project" >&2
     exit 1
   fi
-  (cd "$upstream" && uv sync --frozen --extra postgres --python "$PYTHON_VERSION") >&2
+  (cd "$upstream" && uv sync --frozen ${sync_args[@]+"${sync_args[@]}"} --python "$PYTHON_VERSION") >&2
   if ! usable; then
-    echo "after uv sync, $python still does not run Python $PYTHON_VERSION with petrus and psycopg importable" >&2
+    echo "after uv sync, $python still does not run Python $PYTHON_VERSION with $imports importable" >&2
     exit 1
   fi
 fi

@@ -32,12 +32,15 @@ scripts/check-pins
 
 step "Upstream Python environment"
 if ! command -v uv >/dev/null 2>&1; then
-  echo "uv is not on PATH; the interop suites need it to provision upstream/petrus/.venv" >&2
+  echo "uv is not on PATH; the interop suites need it to provision the upstream Python environments" >&2
   exit 1
 fi
-# Provision it once, before the suites run in parallel and each would.
-scripts/upstream-python
-upstream/petrus/.venv/bin/python -I -c 'import sys; print(sys.version)'
+# Provision both references once, before the suites run in parallel and
+# each would.
+for project in petrus petrus-engine; do
+  python=$(scripts/upstream-python "$project")
+  echo "upstream/$project: $("$python" -I -c 'import sys; print(sys.version)')"
+done
 
 # In CI the PostgreSQL suites must run, never skip as pending.
 if [[ -n "${CI:-}" && -z "${PETRUS_TEST_POSTGRES:-}" ]]; then

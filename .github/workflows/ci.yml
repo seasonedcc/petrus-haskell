@@ -35,10 +35,13 @@ jobs:
           ghc-version: "9.10.3"
           cabal-version: "3.16.1.0"
       - uses: astral-sh/setup-uv@v6
-      # petrus-engine-file: the live differential and format-CLI specs run
-      # against the pinned petrus-engine on CPython 3.14 (pending without it).
-      - name: Sync the petrus-engine reference
-        run: uv sync --frozen --python 3.14 --project upstream/petrus-engine
+      # The upstream Python references (upstream/petrus for most interop
+      # suites, upstream/petrus-engine for petrus-engine-file's live
+      # differential and format-CLI specs), on the exact CPython that
+      # scripts/upstream-python pins. scripts/check-all provisions them too;
+      # doing it here first surfaces a provisioning failure as its own step.
+      - name: Sync the upstream Python references
+        run: scripts/upstream-python petrus && scripts/upstream-python petrus-engine
       - name: Install system libraries
         run: sudo apt-get update && sudo apt-get install -y libzmq3-dev libpq-dev libsqlite3-dev graphviz
       - name: Resolve dependencies

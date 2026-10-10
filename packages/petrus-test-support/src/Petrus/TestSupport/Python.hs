@@ -15,6 +15,7 @@
 module Petrus.TestSupport.Python
   ( -- * The interpreter
     pythonExecutable
+  , upstreamPythonExecutable
   , PythonFailure (..)
 
     -- * One-shot snippets
@@ -66,27 +67,38 @@ instance Show PythonFailure where
 
 instance Exception PythonFailure
 
--- The interpreter path, resolved once per process.
-interpreter :: MVar (Maybe FilePath)
-interpreter = unsafePerformIO (newMVar Nothing)
-{-# NOINLINE interpreter #-}
+-- The interpreter paths, resolved once per process and upstream project.
+interpreters :: MVar [(String, FilePath)]
+interpreters = unsafePerformIO (newMVar [])
+{-# NOINLINE interpreters #-}
 
--- | The upstream virtual environment's interpreter, provisioned by
+-- | The @upstream/petrus@ virtual environment's interpreter, provisioned by
 -- @scripts/upstream-python@ (the single place that pins the reference's
 -- Python version) the first time a process asks for it. Fails loudly, never
 -- skips, when the environment cannot be provisioned.
 pythonExecutable :: IO FilePath
-pythonExecutable = modifyMVar interpreter $ \case
-  Just path -> pure (Just path, path)
-  Nothing -> do
-    _ <- upstreamPetrus
-    root <- repoRoot
-    let script = root </> "scripts" </> "upstream-python"
-    (code, out, err) <- readProcess (setStdin nullStream (proc script []))
-    let path = BC.unpack (BC.strip (BL.toStrict out))
-    unless (code == ExitSuccess && not (null path)) $
-      throwIO (PythonFailure "scripts/upstream-python could not provision the upstream Python environment" (BL.toStrict out) (BL.toStrict err))
-    pure (Just path, path)
+pythonExecutable = upstreamPythonExecutable "petrus"
+
+-- | The interpreter of another pinned upstream project's environment
+-- (@"petrus"@ or @"petrus-engine"@), provisioned the same way as
+-- 'pythonExecutable'.
+upstreamPythonExecutable :: String -> IO FilePath
+upstreamPythonExecutable project = modifyMVar interpreters $ \known ->
+  case lookup project known of
+    Just path -> pure (known, path)
+    Nothing -> do
+      root <- repoRoot
+      let script = root </> "scripts" </> "upstream-python"
+      (code, out, err) <- readProcess (setStdin nullStream (proc script [project]))
+      let path = BC.unpack (BC.strip (BL.toStrict out))
+      unless (code == ExitSuccess && not (null path)) $
+        throwIO
+          ( PythonFailure
+              ("scripts/upstream-python " ++ project ++ " could not provision the upstream Python environment")
+              (BL.toStrict out)
+              (BL.toStrict err)
+          )
+      pure ((project, path) : known, path)
 
 -- | The outcome of a one-shot snippet.
 data PythonResult = PythonResult

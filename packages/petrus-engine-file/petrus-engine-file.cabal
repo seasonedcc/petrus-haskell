@@ -87,6 +87,7 @@ test-suite petrus-engine-file-test
                   , petrus-engine-file
                   , petrus-impetus
                   , petrus-json
+                  , petrus-test-support
                   , process
                   , QuickCheck >=2.14
                   , temporary
