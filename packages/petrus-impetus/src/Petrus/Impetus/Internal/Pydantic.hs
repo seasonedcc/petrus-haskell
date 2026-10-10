@@ -29,6 +29,7 @@ module Petrus.Impetus.Internal.Pydantic
   , Validated
   , renderValidationError
   , valueError
+  , fatalError
     -- * Validators
   , Collect (..)
   , collect
@@ -49,13 +50,12 @@ module Petrus.Impetus.Internal.Pydantic
 
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
-import Data.Char (GeneralCategory (..), generalCategory, ord)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Numeric (showHex)
 import Petrus.Impetus.Internal.PyJson (Raw (..), rawText)
 import Petrus.Json (Json (..), pythonFloatRepr)
+import Petrus.Json.PythonText (pythonStringRepr)
 
 -- ---------------------------------------------------------------------------
 -- Python values
@@ -143,51 +143,7 @@ pyStrRepr = pyStringRepr . T.unpack
 -- | CPython's @repr(str)@ over code points, which may include lone
 -- surrogates (a scanned key can).
 pyStringRepr :: String -> Text
-pyStringRepr chars =
-  let quote = if '\'' `elem` chars && '"' `notElem` chars then '"' else '\''
-      escape c
-        | c == quote || c == '\\' = ['\\', c]
-        | c == '\t' = "\\t"
-        | c == '\n' = "\\n"
-        | c == '\r' = "\\r"
-        | ord c < 0x20 || ord c == 0x7F = "\\x" ++ pad 2 (ord c)
-        | ord c < 0x7F = [c]
-        | isPrintable c = [c]
-        | ord c < 0x100 = "\\x" ++ pad 2 (ord c)
-        | ord c < 0x10000 = "\\u" ++ pad 4 (ord c)
-        | otherwise = "\\U" ++ pad 8 (ord c)
-      pad width n = let digits = showHex n "" in replicate (width - length digits) '0' ++ digits
-   in T.pack ([quote] ++ concatMap escape chars ++ [quote])
-
--- | CPython's @str.isprintable@ for one non-ASCII character. GHC's Unicode
--- tables are one version behind CPython 3.14's (Unicode 16.0), so the
--- characters Unicode 16.0 assigned are listed explicitly.
-isPrintable :: Char -> Bool
-isPrintable c = case generalCategory c of
-  Control -> False
-  Format -> False
-  Surrogate -> False
-  PrivateUse -> False
-  LineSeparator -> False
-  ParagraphSeparator -> False
-  Space -> False
-  NotAssigned -> any (\(low, high) -> ord c >= low && ord c <= high) unicode16Assigned
-  _ -> True
-
--- | Printable code points Unicode 16.0 assigned after GHC's tables.
-unicode16Assigned :: [(Int, Int)]
-unicode16Assigned =
-  [ (2199, 2199), (6990, 6991), (7039, 7039), (7305, 7306), (9255, 9257), (12772, 12773)
-  , (42955, 42957), (42970, 42972), (67008, 67059), (68928, 68965), (68969, 68997)
-  , (69006, 69007), (69314, 69316), (69372, 69372), (70528, 70537), (70539, 70539)
-  , (70542, 70542), (70544, 70581), (70583, 70592), (70594, 70594), (70597, 70597)
-  , (70599, 70602), (70604, 70613), (70615, 70616), (70625, 70626), (71376, 71395)
-  , (72640, 72673), (72688, 72697), (73562, 73562), (78944, 82938), (90368, 90425)
-  , (93504, 93561), (101631, 101631), (117760, 118009), (118016, 118451), (124368, 124410)
-  , (124415, 124415), (129202, 129211), (129216, 129217), (129673, 129673), (129679, 129679)
-  , (129726, 129726), (129734, 129734), (129756, 129756), (129759, 129759), (129769, 129769)
-  , (129995, 130031)
-  ]
+pyStringRepr = pythonStringRepr
 
 -- ---------------------------------------------------------------------------
 -- Errors
@@ -209,10 +165,22 @@ type Validated a = Either [LineError] a
 valueError :: Text -> PV -> LineError
 valueError text = LineError [] ("Value error, " <> text) "value_error"
 
--- | @str(ValidationError)@ for a model title and its errors.
+-- | An exception other than a validation error raised inside a validator
+-- (the reference's @RecursionError@): it aborts the whole validation, so
+-- the errors collected before it are discarded and nothing after it runs.
+-- Its text is the exception's own.
+fatalError :: Text -> LineError
+fatalError text = LineError [] text fatalType PNone
+
+fatalType :: Text
+fatalType = "<fatal>"
+
+-- | @str(ValidationError)@ for a model title and its errors, or the text of
+-- the exception that aborted the validation.
 renderValidationError :: Text -> [LineError] -> Text
-renderValidationError title errors =
-  T.intercalate "\n" (header : concatMap line errors)
+renderValidationError title errors = case [err.message | err <- errors, err.errorType == fatalType] of
+  fatal : _ -> fatal
+  [] -> T.intercalate "\n" (header : concatMap line errors)
   where
     count = length errors
     header =

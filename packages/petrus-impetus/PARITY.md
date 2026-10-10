@@ -17,6 +17,8 @@ Statuses:
   `CelCompilers` that recognises the test's exact expressions. The kernel's
   side of the seam (scopes, free-place checks, refusals) is what gets tested.
 - **enforced by types**: the case cannot be represented in Haskell.
+- **ported elsewhere**: the test's subject lives in another package of this
+  repository, and that package ports it (the ledger row names the example).
 - **not at parity**: not reproduced. Each case is listed below with its reason.
 
 Per-test ledgers, one row per upstream test function:
@@ -32,27 +34,27 @@ spec modules' comments.
 Counts are upstream test functions. A parametrized test counts once; its
 parameters are separate Hspec examples where they are ported.
 
-| upstream file | Haskell spec(s) | ported | via CEL stub | by types | not at parity |
-| --- | --- | ---: | ---: | ---: | ---: |
-| petrinet/test_schema.py (45) | SchemaSpec | 42 | | 3 | |
-| petrinet/test_marking.py (15) | MarkingSpec | 15 | | | |
-| petrinet/test_token_queue.py (19) | MarkingSpec | 19 | | | |
-| petrinet/test_enabledness.py (23) | EnablednessSpec | 23 | | | |
-| petrinet/test_arc_filters.py (29) | ArcFiltersSpec, FiringSpec, FiringHistorySpec | 24 | 3 | 2 | |
-| petrinet/test_arc_weights.py (4) | EnablednessSpec, FiringSpec | 4 | | | |
-| petrinet/test_inhibitor_arc.py (3) | EnablednessSpec, FiringSpec | 3 | | | |
-| petrinet/test_read_arc.py (8) | EnablednessSpec, FiringSpec, FiringHistorySpec | 8 | | | |
-| petrinet/test_petrinet_dot.py (16) | DotSpec | 14 | | 2 | |
-| petrinet/test_golden_replay.py (3) | GoldenTracesSpec | 3 | | | |
-| instance/test_fifo_queue.py (2) | FifoQueueSpec | 2 | | | |
-| instance/test_passthrough_chain.py (1) | GoldenTracesSpec | 1 | | | |
-| instance/ — 10 files (135) | see `parity-instance-a.md` | 104 | 20 | 4 | 7 |
-| instance/ — 6 files (158) | see `parity-instance-b.md` | 148 | 3 | 7 | 0 |
-| selection, history, history_store (in-memory), petrinet History halves | see `parity-history.md` | 61 | 3 | 3 | 11 |
-| integration/test_activity_seam.py + binding/test_typed_bindings.py | see `parity-activity-seam.md` | 94 | 0 | 9 | 8 |
-| test_net_definition.py (14) | NetDefinitionSpec, SpecFixturesSpec | 11 | | 3 | |
-| test_net_document.py (8) | NetDocumentSpec, SpecFixturesSpec | 8 | | | |
-| test_net_document_lineage.py (9) | NetDocumentLineageSpec | 9 | | | |
+| upstream file | Haskell spec(s) | ported | via CEL stub | by types | elsewhere | not at parity |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| petrinet/test_schema.py (45) | SchemaSpec | 42 | | 3 | | |
+| petrinet/test_marking.py (15) | MarkingSpec | 15 | | | | |
+| petrinet/test_token_queue.py (19) | MarkingSpec | 19 | | | | |
+| petrinet/test_enabledness.py (23) | EnablednessSpec | 23 | | | | |
+| petrinet/test_arc_filters.py (29) | ArcFiltersSpec, FiringSpec, FiringHistorySpec | 24 | 3 | 2 | | |
+| petrinet/test_arc_weights.py (4) | EnablednessSpec, FiringSpec | 4 | | | | |
+| petrinet/test_inhibitor_arc.py (3) | EnablednessSpec, FiringSpec | 3 | | | | |
+| petrinet/test_read_arc.py (8) | EnablednessSpec, FiringSpec, FiringHistorySpec | 8 | | | | |
+| petrinet/test_petrinet_dot.py (16) | DotSpec | 14 | | 2 | | |
+| petrinet/test_golden_replay.py (3) | GoldenTracesSpec | 3 | | | | |
+| instance/test_fifo_queue.py (2) | FifoQueueSpec | 2 | | | | |
+| instance/test_passthrough_chain.py (1) | GoldenTracesSpec | 1 | | | | |
+| instance/ — 10 files (135) | see `parity-instance-a.md` | 104 | 20 | 4 | 5 | 2 |
+| instance/ — 6 files (158) | see `parity-instance-b.md` | 148 | 3 | 7 | | 0 |
+| selection, history, history_store (in-memory), petrinet History halves | see `parity-history.md` | 61 | 3 | 3 | 11 | |
+| integration/test_activity_seam.py + binding/test_typed_bindings.py | see `parity-activity-seam.md` | 94 | 0 | 9 | 8 | |
+| test_net_definition.py (14) | NetDefinitionSpec, SpecFixturesSpec | 11 | | 3 | | |
+| test_net_document.py (8) | NetDocumentSpec, SpecFixturesSpec | 8 | | | | |
+| test_net_document_lineage.py (9) | NetDocumentLineageSpec | 9 | | | | |
 
 Notes on the table:
 
@@ -73,80 +75,75 @@ Notes on the table:
 
 | upstream file | reason |
 | --- | --- |
-| dsl/test_petrinet_dsl.py (42) | the DSL is out of scope |
+| dsl/test_petrinet_dsl.py (42) | the DSL is its own package: ported in `petrus-dsl` (`packages/petrus-dsl/PARITY.md`) |
 | binding/test_cel.py (19) | CEL itself is the separate `petrus-cel` package; all 19 are ported there, in `packages/petrus-cel/test/Impetus.hs` |
 | history_store/test_sqlite_history.py (11) | durable stores other than in-memory are out of scope |
 | history_store/test_postgres_history.py (21) | same |
 
-## Not at parity (26 upstream test functions)
+## Ported in other packages (24 upstream test functions)
 
-**Engine and Dispatch belong to other packages (8)**, all in
-`test_activity_seam.py::TestInlineDispatch`. The kernel side of each one
-(begin, record, complete over an inline driver) is ported elsewhere in the
-same file. The Dispatch side is ported in `petrus-motus`: 7 tests, plus the
-dataclass-reflection one, which does not apply (see
+These tests were listed here as not at parity while their subjects had no
+Haskell home. Each one is now ported by the package that owns its subject,
+under the same test name.
+
+**Dispatch (8)**, all in `test_activity_seam.py::TestInlineDispatch`. The
+kernel side of each one (begin, record, complete over an inline driver) is
+ported in this package too. The Dispatch side is in
+`packages/petrus-motus/test/Main.hs`, `describe "TestInlineDispatch
+(activity seam)"`: 7 ported, plus
+`test_value_shape_preserves_the_prior_dataclass_contract`, which asserts
+dataclass reflection and does not apply to a record of functions (see
 `packages/petrus-motus/PARITY.md`).
 
-- `test_registry_is_snapshotted_and_the_adapter_remains_frozen`
-- `test_classified_retries_are_immediate_and_never_sleep`
-- `test_generic_exception_keeps_precise_retryable_metadata_when_budget_exhausts`
-- `test_value_shape_preserves_the_prior_dataclass_contract`
-- `test_executes_the_named_activity_with_the_whole_invocation`
-- `test_an_unknown_activity_fails_loud`
-- `test_the_conservative_policy_makes_an_exception_terminal`
-- `test_a_declared_attempts_policy_is_honored`
+**The JSONL store (11)**, from `test_persistence.py` and
+`test_history_backends.py`: `TestDurableAppend` (2) and
+`TestJsonlHistoryStore` (8) are in
+`packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs`, and the
+`reopen` fixture's jsonl parameter is `BackendContractSpec.hs` there. The
+fixture's sqlite and postgres parameters wait for those backends, which are
+out of scope like `test_sqlite_history.py` and `test_postgres_history.py`.
+See `packages/petrus-history-store/PARITY.md`.
 
-**JSONL, SQLite, and Postgres file mechanics (11)**, from `test_persistence.py`
-and `test_history_backends.py`. Only the in-memory store is in scope. The
-store contract these tests rely on is ported over `mirroredHistoryStore` with
-a JSON-lines round trip.
+**CEL semantics (5)**: the CEL environment and macro-bound variable
+analysis, in `packages/petrus-cel/test/Impetus.hs`, on real Instances built
+with `Petrus.Cel.Impetus.celCompilers`.
 
-- the `reopen` fixture's jsonl/sqlite/postgres parameterization
-- `TestDurableAppend.test_appends_accumulate_across_calls`
-- `TestDurableAppend.test_makes_the_parent_directory_once_needed`
-- `TestJsonlHistoryStore.test_every_append_is_durable_immediately`
-- `TestJsonlHistoryStore.test_loading_then_appending_continues_the_file`
-- `TestJsonlHistoryStore.test_a_missing_file_is_an_empty_history`
-- `TestJsonlHistoryStore.test_a_v1_encoded_line_fails_loud_at_load_naming_the_migration`
-- `TestJsonlHistoryStore.test_a_schema_2_line_fails_through_the_actual_jsonl_load`
-- `TestJsonlHistoryStore.test_a_torn_tail_fails_loud_naming_the_line`
-- `TestJsonlHistoryStore.test_unencodable_data_fails_loud_and_appends_nothing`
-- `TestJsonlHistoryStore.test_a_mid_batch_encoding_failure_writes_nothing`
+The per-test rows are in `parity-activity-seam.md`, `parity-history.md`, and
+`parity-instance-a.md`.
 
-The v1 and schema-2 refusal messages themselves are ported at the codec level.
-All 11 are ported against the real JSONL store in `petrus-history-store`
-(`packages/petrus-history-store/PARITY.md`). Its backend-contract suite runs
-`test_history_backends.py` with `reopen` set to jsonl.
+## Not at parity (2 upstream test functions)
 
-**Private Instance helpers that are not exported (2)**, in `test_firing.py`.
-The same records and outcomes are asserted through the public `begin` and
+**Private Instance helpers that are not exported**, in `test_firing.py`. The
+same records and outcomes are asserted through the public `begin` and
 `complete` doors.
 
 - `TestBeginEndFiring.test_instance_begin_firing_retains_its_record_authoring_contract`
 - `TestBeginEndFiring.test_instance_complete_firing_retains_its_outcome_and_registration_contract`
 
-**CEL semantics, which live in `petrus-cel` (5).** These cover the CEL
-environment and macro-bound variable analysis. They are ported in
-`packages/petrus-cel/test/Impetus.hs`, on real Instances built with
-`Petrus.Cel.Impetus.celCompilers`.
+## Net definition and document edge cases
 
-- `test_completion.py::TestCelEnvironment.test_place_variables_bind_token_color_and_data`
-- `test_completion.py::TestCelEnvironment.test_a_black_token_reads_as_null_color_and_data`
-- `test_completion.py::TestCelEnvironment.test_an_empty_place_binds_to_the_empty_list`
-- `test_completion.py::TestCompletionValidation.test_macro_bound_variables_are_not_place_references`
-- `test_cel_guards.py::TestCelGuardValidation.test_macro_bound_variables_are_not_place_references`
+The edge cases that used to be listed here are now at parity, and
+`differential/hand_built_corpus.json` pins them (`HandBuiltCorpusSpec`):
 
-## Behaviour known not to be at parity
+- **Hand-built records.** A record built with its constructor is the
+  reference's `Model.model_construct(...)`, and the `mk*` functions are the
+  reference's validating `Model(...)` calls, with its `ValidationError` text.
+  `compileNetDefinition`, `serializeNetDefinition`, `serializeNetDocument`,
+  and `projectNetDocument` run the reference's steps on whatever a record
+  holds, in the reference's order.
+- **Depth refusals.** Token data and metadata hit CPython's recursion limit
+  at the reference's depth for a top-level call, and that refusal wins over
+  every other validation error, as the reference's `RecursionError` does.
+  Serializing a document refuses token data or a metadata value nested 256
+  deep with Pydantic's `Circular reference detected (depth exceeded)`.
+- **Printability.** `repr` text uses CPython 3.14's `str.isprintable` for
+  every code point (`Petrus.Json.PythonText`), checked against a committed
+  vector of all 1,114,112 verdicts.
 
-These are the Net-definition edge cases listed in `DIVERGENCES.md` (items 20,
-24, and 25):
-
-- when hand-built Haskell records are validated;
-- the order in which a nesting-depth refusal is found among other refusals on
-  serialize or project;
-- character data outside the embedded Unicode 16 printability table.
-
-`FiringFailed.error` for an exception raised inside user code is item 11.
+`FiringFailed.error` for an exception raised by user code is exact for a
+`PythonException` and for any Haskell exception whose Python twin is raised
+with no argument or one string (`differential/failure_text_corpus.json`,
+`FailureTextSpec`). DIVERGENCES item 11 says what remains.
 
 ## Beyond upstream
 
@@ -161,6 +158,14 @@ These are the Net-definition edge cases listed in `DIVERGENCES.md` (items 20,
   - `net_definition_corpus.json` has 1763 cases. It covers parse, serialize,
     compile, and project of the Net definition and document, with exact
     bytes or their SHA-256, and exact error text.
+  - `hand_built_corpus.json` has 1996 cases (`HandBuiltCorpusSpec`, 2443
+    examples): validating constructors, compile and serialize of hand-built
+    definitions, serialize of hand-built documents (including token data and
+    metadata nested around both depth limits, mixed with other errors),
+    project with hand-built positions and lineage, and parse-then-serialize
+    of deep documents.
+  - `failure_text_corpus.json` has 452 `firing_failure_text` cases
+    (`FailureTextSpec`).
   - `kernel_corpus.json` has 240 seeded random nets and action scripts. For
     every action it records the candidate bindings, the firing outcome or
     refusal (class and message), the marking, status, watermark, and next
@@ -168,7 +173,9 @@ These are the Net-definition edge cases listed in `DIVERGENCES.md` (items 20,
 - **Properties (QuickCheck).**
   - `KernelPropertiesSpec`: the marking is the replay of History; resume is
     equivalent; the History round-trips the codec through JSON text; tokens
-    are conserved.
+    are conserved. A run stops once a place holds more than 8 tokens, which
+    keeps the combinatorial candidate sets (and memory) small for every
+    seed.
   - The history slice's 6 properties.
   - The 4 Net-definition properties.
   - The port of `test_instance_replay_properties.py`, with 300 examples.

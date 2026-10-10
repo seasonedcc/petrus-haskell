@@ -63,11 +63,19 @@ differences are in how the API is spelled and in what the types rule out.
    reference's `RLock`, and it is re-entrant for the holding thread. A
    sensor or hook that calls a read door (for example `Engine.status`) from
    inside `advance` works as in the reference.
-9. **An empty exception message.** When a handler throws an exception whose
-   message is empty, the recorded text is `Name('')`, where the reference
-   writes `Name()`. This comes from the kernel's `exceptionFailureText`,
-   which has no zero-argument form. Handlers that report failures as `Left`
-   text control the spelling exactly, and the ported tests do this.
+9. **A thrown exception is spelled by the kernel's `exceptionFailureText`.**
+   It is now exact wherever the Python text is predictable: an exception
+   with an empty message is `Name()` and one with a message is
+   `Name('message')` (Python's `repr` quoting), as the reference records for
+   a Python exception of that class raised with no argument or one string.
+   A handler that needs any other spelling (several arguments, numbers,
+   bytes, objects) throws `Petrus.Impetus.Instance.PythonException`, whose
+   text is the reference's for every argument shape. The evidence is the
+   kernel's `FailureTextSpec` over `differential/failure_text_corpus.json`
+   (452 reference-produced texts; see `packages/petrus-impetus/DIVERGENCES.md`
+   item 11). What remains is the class name: a Haskell exception is named by
+   its `Typeable` type name, so it matches the reference only when the
+   Haskell type is named like the Python class.
 10. **The joined-transaction pairing is not inspected.** As in the
     reference, the Engine commits at its commit points exactly when the
     provider's `EngineResources` supply a `commit`. It does not check the

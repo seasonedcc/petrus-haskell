@@ -42,6 +42,18 @@ module Petrus.Impetus.NetDefinition
   , CelBehavior (..)
   , AnonymousBehavior (..)
   , TimerDefinition (..)
+    -- * Validating constructors
+    -- $construction
+  , mkSymbolExpression
+  , mkCelExpression
+  , mkSymbolBehavior
+  , mkCelBehavior
+  , mkDelayDefinition
+  , mkUntilDefinition
+  , mkPlaceDefinition
+  , mkTransitionDefinition
+  , mkArcDefinition
+  , mkNetDefinitionBody
     -- * Interoperable integers
   , jsonSafeIntegerMin
   , jsonSafeIntegerMax
@@ -74,7 +86,8 @@ import Data.Text qualified as T
 import Petrus.Activity.Number (reprNumber)
 import Petrus.Impetus.Internal.PyJson
 import Petrus.Impetus.Internal.Pydantic
-import Petrus.Impetus.Petrinet.Schema
+import Petrus.Impetus.Petrinet.Schema hiding (validatePlace, validateTransition)
+import Petrus.Impetus.Petrinet.Schema qualified as Schema
 import Petrus.Json (Json (..), defaultDumps, dumps, dumpsText, indented, safeIntegerMax, safeIntegerMin)
 
 -- ---------------------------------------------------------------------------
@@ -472,6 +485,148 @@ canonicalPathError value
   | otherwise = Nothing
 
 -- ---------------------------------------------------------------------------
+-- Validating constructors
+
+-- $construction
+-- The record constructors check nothing: a record built with them is the
+-- reference's @Model.model_construct(...)@, and the operations treat it
+-- exactly as the reference treats such an instance. The functions below are
+-- the reference's validating constructors, @Model(field=..., ...)@ with the
+-- fields as keyword arguments in declaration order and the nested models
+-- (the record arguments) as already-built instances, which Pydantic accepts
+-- as they are. They refuse with the reference's @ValidationError@ text.
+
+construct :: Text -> Collect a -> Either Text a
+construct title = first (renderValidationError title) . collect
+
+field :: Text -> (PV -> Validated a) -> PV -> Collect a
+field key validate value = Collect (at (Key key) (validate value))
+
+-- | @SymbolExpression(kind="symbol", name=...)@.
+mkSymbolExpression :: Text -> Either Text PureExpression
+mkSymbolExpression n = construct "SymbolExpression" (SymbolExpression <$> field "name" (checked symbolName strictStr) (PStr n))
+
+-- | @CelExpression(kind="cel", expression=...)@.
+mkCelExpression :: Text -> Either Text PureExpression
+mkCelExpression e = construct "CelExpression" (CelExpression <$> field "expression" (checked celText strictStr) (PStr e))
+
+-- | @SymbolBehavior(kind="symbol", name=..., uri=...)@.
+mkSymbolBehavior :: Text -> Text -> Either Text SymbolBehavior
+mkSymbolBehavior n u = construct "SymbolBehavior" (SymbolBehavior <$> field "name" (checked symbolName strictStr) (PStr n) <*> pure u)
+
+-- | @CelBehavior(kind="cel", expression=..., uri=...)@.
+mkCelBehavior :: Text -> Text -> Either Text CelBehavior
+mkCelBehavior e u = construct "CelBehavior" (CelBehavior <$> field "expression" (checked celText strictStr) (PStr e) <*> pure u)
+
+-- | @DelayDefinition(kind="delay", duration=...)@.
+mkDelayDefinition :: Integer -> Either Text TimerDefinition
+mkDelayDefinition d = construct "DelayDefinition" (DelayDefinition <$> field "duration" (intRange jsonSafeIntegerMin jsonSafeIntegerMax) (PInt d))
+
+-- | @UntilDefinition(kind="until", instant=...)@.
+mkUntilDefinition :: Integer -> Either Text TimerDefinition
+mkUntilDefinition i = construct "UntilDefinition" (UntilDefinition <$> field "instant" (intRange jsonSafeIntegerMin jsonSafeIntegerMax) (PInt i))
+
+-- | @PlaceDefinition(path=..., color=...)@.
+mkPlaceDefinition :: Text -> Maybe Text -> Either Text PlaceDefinition
+mkPlaceDefinition p c =
+  construct "PlaceDefinition" $
+    PlaceDefinition
+      <$> field "path" (checked canonicalPathError strictStr) (PStr p)
+      <*> field "color" (checked (nonEmptyOrNull "place color must be non-empty or null") (optional strictStr)) (optStr c)
+
+-- | @TransitionDefinition(path=..., handler=..., guards=..., timers=...)@.
+mkTransitionDefinition :: Text -> Maybe HandlerDefinition -> [GuardDefinition] -> [TimerDefinition] -> Either Text TransitionDefinition
+mkTransitionDefinition p h gs ts =
+  construct "TransitionDefinition" $
+    (\p' -> TransitionDefinition p' h gs ts) <$> field "path" (checked canonicalPathError strictStr) (PStr p)
+
+-- | @ArcDefinition(position=..., source=..., target=..., mode=..., weight=...,
+-- color=..., filter=...)@.
+mkArcDefinition :: Integer -> Text -> Text -> ArcMode -> Integer -> Maybe Text -> Maybe PureExpression -> Either Text ArcDefinition
+mkArcDefinition position' from to m w c f =
+  construct "ArcDefinition" $
+    (\p s' t' w' c' -> ArcDefinition p s' t' m w' c' f)
+      <$> field "position" (intRange 0 jsonSafeIntegerMax) (PInt position')
+      <*> field "source" (checked canonicalPathError strictStr) (PStr from)
+      <*> field "target" (checked canonicalPathError strictStr) (PStr to)
+      <*> field "weight" (intRange 1 jsonSafeIntegerMax) (PInt w)
+      <*> field "color" (checked (nonEmptyOrNull "arc color must be non-empty or null") (optional strictStr)) (optStr c)
+
+-- | @NetDefinitionBody(name=..., time_domain="integer", places=(...),
+-- transitions=(...), arcs=(...), completion=...)@, the collections passed
+-- as tuples.
+mkNetDefinitionBody :: Maybe Text -> [PlaceDefinition] -> [TransitionDefinition] -> [ArcDefinition] -> Maybe PureExpression -> Either Text NetDefinitionBody
+mkNetDefinitionBody n ps ts as c =
+  first (renderValidationError "NetDefinitionBody") $
+    afterModel canonicalCollections whole $
+      collect ((\n' -> NetDefinitionBody n' IntegerTimeDomain ps ts as c) <$> field "name" (checked netName' (optional strictStr)) (optStr n))
+  where
+    netName' = \case
+      Just "" -> Just "Net name must be non-empty or null"
+      _ -> Nothing
+    whole =
+      PDict
+        [ ("name", optStr n)
+        , ("time_domain", PStr "integer")
+        , ("places", PTuple (map placeInstance ps))
+        , ("transitions", PTuple (map transitionInstance ts))
+        , ("arcs", PTuple (map arcInstance as))
+        , ("completion", maybe PNone pureInstance c)
+        ]
+
+optStr :: Maybe Text -> PV
+optStr = maybe PNone PStr
+
+-- | A model instance as Python spells it: @Name(field=repr, ...)@.
+instanceOf :: Text -> [(Text, PV)] -> PV
+instanceOf className fields =
+  PInstance className (className <> "(" <> T.intercalate ", " [k <> "=" <> pyRepr v | (k, v) <- fields] <> ")")
+
+placeInstance :: PlaceDefinition -> PV
+placeInstance p = instanceOf "PlaceDefinition" [("path", PStr p.path), ("color", optStr p.color)]
+
+transitionInstance :: TransitionDefinition -> PV
+transitionInstance t =
+  instanceOf
+    "TransitionDefinition"
+    [ ("path", PStr t.path)
+    , ("handler", maybe PNone handlerInstance t.handler)
+    , ("guards", PTuple (map guardInstance t.guards))
+    , ("timers", PTuple (map timerInstance t.timers))
+    ]
+  where
+    handlerInstance = \case
+      SymbolHandler b -> symbolInstance b
+      AnonymousHandler b -> anonymousInstance b
+    guardInstance = \case
+      SymbolGuard b -> symbolInstance b
+      CelGuard b -> instanceOf "CelBehavior" [("kind", PStr "cel"), ("expression", PStr b.expression), ("uri", PStr b.uri)]
+      AnonymousGuard b -> anonymousInstance b
+    symbolInstance b = instanceOf "SymbolBehavior" [("kind", PStr "symbol"), ("name", PStr b.name), ("uri", PStr b.uri)]
+    anonymousInstance (AnonymousBehavior u) = instanceOf "AnonymousBehavior" [("kind", PStr "anonymous"), ("uri", PStr u)]
+    timerInstance = \case
+      DelayDefinition d -> instanceOf "DelayDefinition" [("kind", PStr "delay"), ("duration", PInt d)]
+      UntilDefinition i -> instanceOf "UntilDefinition" [("kind", PStr "until"), ("instant", PInt i)]
+
+arcInstance :: ArcDefinition -> PV
+arcInstance a =
+  instanceOf
+    "ArcDefinition"
+    [ ("position", PInt a.position)
+    , ("source", PStr a.source)
+    , ("target", PStr a.target)
+    , ("mode", PStr (arcModeText a.mode))
+    , ("weight", PInt a.weight)
+    , ("color", optStr a.color)
+    , ("filter", maybe PNone pureInstance a.filter)
+    ]
+
+pureInstance :: PureExpression -> PV
+pureInstance = \case
+  SymbolExpression n -> instanceOf "SymbolExpression" [("kind", PStr "symbol"), ("name", PStr n)]
+  CelExpression e -> instanceOf "CelExpression" [("kind", PStr "cel"), ("expression", PStr e)]
+
+-- ---------------------------------------------------------------------------
 -- Model dumps
 
 -- | @model_dump(mode="json")@: the document as the JSON value the writer
@@ -500,7 +655,6 @@ dumpDefinition tuples document =
   where
     body = document.definition
     seqOf = if tuples then PTuple else PList
-    optStr = maybe PNone PStr
     transitionPV t =
       PDict
         [ ("path", PStr t.path)
@@ -566,51 +720,97 @@ serializeNetDefinition document = do
 -- | @compile_net_definition@: build the runtime 'Net' and require the
 -- document to be exactly the net's projection.
 --
--- The reference validates every model field when a document is
--- constructed, so it never compiles a document with, say, a weight of zero
--- or an unsorted place list. A Haskell record carries no such guarantee, so
--- compilation first revalidates the document's Python-mode dump and refuses
--- it as parsing would (@invalid Petrus Net-definition v3: ...@).
+-- The reference never revalidates a document here: a model it compiles was
+-- validated when it was built (or deliberately built unvalidated with
+-- @model_construct@). A Haskell record is the latter: its constructor
+-- checks nothing, and the smart constructors ('mkPlaceDefinition' and
+-- friends) are the reference's validating constructors. So compilation runs
+-- exactly the reference's steps on whatever the record holds, in the
+-- reference's order: the @Net(...)@ call evaluates the completion first,
+-- then @Net.__init__@ consumes the place and transition generators (each
+-- part built and checked as it is drawn), checks the node paths, and draws
+-- each arc only while resolving arc colors. A 'ValueError' from any of
+-- that is refused as @invalid Petrus Net-definition v3 semantics: ...@;
+-- the projection's own refusals and the canonical-form refusal follow.
 compileNetDefinition :: NetDefinitionV3 -> Either Text Net
 compileNetDefinition document = do
-  admitted <-
-    first (invalid . renderValidationError "NetDefinitionV3") (validateDefinitionModel (dumpDefinition True document))
-  compileAdmitted admitted
-
--- | Compile a document whose fields are already admitted.
-compileAdmitted :: NetDefinitionV3 -> Either Text Net
-compileAdmitted document = do
-  net <- first ("invalid Petrus Net-definition v3 semantics: " <>) (buildSpec document.definition >>= mkNet)
-  projected <- projectNetDefinition net
+  net <- first ("invalid Petrus Net-definition v3 semantics: " <>) (constructNet document.definition)
+  projected <- projectNet (Just [a.weight | a <- document.definition.arcs]) net
   unless (projected == document) $
     Left "Petrus Net-definition v3 must already be canonical and exactly projectable"
   Right net
 
-buildSpec :: NetDefinitionBody -> Either Text NetSpec
-buildSpec body = do
-  ps <- forM body.places $ \p -> do
+-- | 'compileNetDefinition' (kept for "Petrus.Impetus.NetDocument").
+compileAdmitted :: NetDefinitionV3 -> Either Text Net
+compileAdmitted = compileNetDefinition
+
+-- | The reference's @Net(places=(...), transitions=(...), arcs=(...),
+-- completion=_pure(...), name=...)@ call over generator arguments.
+--
+-- Every check 'orderedNet' runs before 'mkNet' is one 'mkNet' runs too, so
+-- a body 'mkNet' admits is admitted in either order. Only a refused body
+-- needs the reference's lazy order, to find which refusal comes first.
+constructNet :: NetDefinitionBody -> Either Text Net
+constructNet body = either (const (orderedNet body)) Right $ do
+  completion' <- traverse pureCompletion body.completion
+  places' <- forM body.places $ \p -> (\at' -> Place {path = at', color = p.color}) <$> netPath p.path
+  transitions' <- forM body.transitions transitionPart
+  arcs' <- forM body.arcs arcPart
+  mkNet NetSpec {places = places', transitions = transitions', arcs = arcs', completion = completion', name = body.name}
+
+-- | 'constructNet' in the reference's order.
+orderedNet :: NetDefinitionBody -> Either Text Net
+orderedNet body = do
+  -- Call arguments are evaluated first: only the completion does any work.
+  completion' <- traverse pureCompletion body.completion
+  -- Net.__init__'s own prologue.
+  forM_ completion' $ \case
+    CompletionSymbol symbol
+      | T.null symbol || "$" `T.isPrefixOf` symbol ->
+          Left ("completion symbol must be non-empty and cannot start with '$', got " <> pyStrRepr symbol)
+    _ -> Right ()
+  when (body.name == Just "") $ Left "net name must be a non-empty string, got ''"
+  -- tuple(places), then tuple(transitions): each part is built as drawn.
+  places' <- forM body.places $ \p -> do
     at' <- netPath p.path
-    Right Place {path = at', color = p.color}
-  ts <- forM body.transitions $ \t -> do
-    at' <- netPath t.path
-    gs <- forM t.guards $ \case
-      SymbolGuard b -> Right (GuardSymbol b.name)
-      CelGuard b -> GuardCel <$> cel b.expression
-      AnonymousGuard _ -> Right (GuardAnonymous anonymous)
-    Right
-      Transition
-        { path = at'
-        , handler = fmap handlerDeclaration t.handler
-        , guards = gs
-        , timers = map timer t.timers
-        }
+    let part = Place {path = at', color = p.color}
+    Schema.validatePlace part
+    Right part
+  transitions' <- forM body.transitions $ \t -> do
+    part <- transitionPart t
+    Schema.validateTransition part
+    Right part
+  checkDistinctNodes places' transitions'
+  -- _resolve_place_colors draws each arc, builds it, and resolves it before
+  -- drawing the next.
+  let placeMap = Map.fromList [(p.path, p) | p <- places']
+      transitionMap = Map.fromList [(t.path, t) | t <- transitions']
   arcs' <- forM body.arcs $ \a -> do
-    from <- netPath a.source
-    to <- netPath a.target
-    f <- traverse pureFilter a.filter
-    Right Arc {source = from, target = to, mode = a.mode, weight = fromInteger a.weight, color = a.color, filter = f}
-  c <- traverse pureCompletion body.completion
-  Right NetSpec {places = ps, transitions = ts, arcs = arcs', completion = c, name = body.name}
+    part <- arcPart a
+    let at' = reprArc part
+    when (a.weight < 1) $
+      Left ("arc weight must be an integer >= 1, got " <> tshow a.weight <> ": " <> at')
+    when (a.color == Just "") $
+      Left ("arc color must be a non-empty nominal color name or None, got '': " <> at')
+    case part.filter of
+      Just (FilterSymbol symbol)
+        | T.null symbol || "$" `T.isPrefixOf` symbol ->
+            Left ("filter symbol must be non-empty and cannot start with '$', got " <> pyStrRepr symbol <> ": " <> at')
+      _ -> Right ()
+    _ <- resolveColor placeMap transitionMap part
+    Right part
+  mkNet NetSpec {places = places', transitions = transitions', arcs = arcs', completion = completion', name = body.name}
+
+-- | @Transition(NetPath(path), handler=..., guards=..., timers=...)@,
+-- before its own checks.
+transitionPart :: TransitionDefinition -> Either Text Transition
+transitionPart t = do
+  at' <- netPath t.path
+  gs <- forM t.guards $ \case
+    SymbolGuard b -> Right (GuardSymbol b.name)
+    CelGuard b -> GuardCel <$> cel b.expression
+    AnonymousGuard _ -> Right (GuardAnonymous anonymous)
+  Right Transition {path = at', handler = fmap handlerDeclaration t.handler, guards = gs, timers = map timer t.timers}
   where
     handlerDeclaration = \case
       SymbolHandler b -> HandlerSymbol b.name
@@ -618,17 +818,40 @@ buildSpec body = do
     timer = \case
       DelayDefinition d -> Delay (IntNumber d)
       UntilDefinition i -> Until (IntNumber i)
+
+-- | @Arc(NetPath(source), NetPath(target), mode, weight, color, filter)@,
+-- before its own checks.
+--
+-- A runtime arc weight is an 'Int'. A weight beyond it is out of the
+-- interoperable range too, and the reference refuses it only when
+-- projecting, which 'projectNet' does with the document's own weight.
+arcPart :: ArcDefinition -> Either Text Arc
+arcPart a = do
+  from <- netPath a.source
+  to <- netPath a.target
+  f <- traverse pureFilter a.filter
+  Right Arc {source = from, target = to, mode = a.mode, weight = clampInt a.weight, color = a.color, filter = f}
+  where
     pureFilter = \case
       SymbolExpression n -> Right (FilterSymbol n)
       CelExpression e -> FilterCel <$> cel e
-    pureCompletion = \case
-      SymbolExpression n -> Right (CompletionSymbol n)
-      CelExpression e -> CompletionCel <$> cel e
+    clampInt w = fromInteger (max (toInteger (minBound :: Int)) (min (toInteger (maxBound :: Int)) w))
+
+-- | @_pure(completion)@.
+pureCompletion :: PureExpression -> Either Text CompletionDeclaration
+pureCompletion = \case
+  SymbolExpression n -> Right (CompletionSymbol n)
+  CelExpression e -> CompletionCel <$> cel e
 
 -- | @project_net_definition@: the net's exact v3 document. Refuses a timer
 -- or weight the integer time domain cannot hold exactly.
 projectNetDefinition :: Net -> Either Text NetDefinitionV3
-projectNetDefinition net = do
+projectNetDefinition = projectNet Nothing
+
+-- | The projection, optionally with the arc weights a compiled document
+-- declared (which may exceed the runtime 'Int').
+projectNet :: Maybe [Integer] -> Net -> Either Text NetDefinitionV3
+projectNet declaredWeights net = do
   let ps = [PlaceDefinition (netPathText at') p.color | (at', p) <- Map.toAscList (netPlaces net)]
   ts <- forM (Map.toAscList (netTransitions net)) $ \(at', t) -> do
     h <- forM t.handler $ \declaration -> case handlerUri net at' of
@@ -647,9 +870,10 @@ projectNetDefinition net = do
       Delay duration -> DelayDefinition <$> integer duration "Delay duration"
       Until instant -> UntilDefinition <$> integer instant "Until instant"
     Right (TransitionDefinition (netPathText at') h gs tms)
-  arcs' <- forM (zip [0 :: Integer ..] (netArcs net)) $ \(position', a) -> do
+  let weights = maybe (map (\a -> toInteger a.weight) (netArcs net)) id declaredWeights
+  arcs' <- forM (zip3 [0 :: Integer ..] (netArcs net) weights) $ \(position', a, weight') -> do
     p <- integer (IntNumber position') "arc position"
-    w <- integer (IntNumber (toInteger a.weight)) "arc weight"
+    w <- integer (IntNumber weight') "arc weight"
     Right
       ArcDefinition
         { position = p

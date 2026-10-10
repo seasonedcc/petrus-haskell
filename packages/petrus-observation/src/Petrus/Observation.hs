@@ -79,8 +79,8 @@ import Petrus.Impetus.Instance qualified as Instance
 import Petrus.Impetus.Internal.Pydantic (fromJson, pyRepr)
 import Petrus.Impetus.NetDefinition (netDefinitionToJson, projectNetDefinition)
 import Petrus.Impetus.NetDocument
-  ( ExecutionLineage (..)
-  , LineageEntry (..)
+  ( mkExecutionLineage
+  , mkLineageEntry
   , Provenance (Observed)
   , netDocumentToJson
   , placeMarkingFromJson
@@ -376,19 +376,19 @@ netDocument o = do
     places <- case placed of
       Array items -> traverse (first ObservationError . placeMarkingFromJson) items
       _ -> Right []
-    Right
-      LineageEntry
-        { id = toInteger index
-        , parent = if index == 0 then Nothing else Just (toInteger index - 1)
-        , provenance = Observed
-        , marking = places
-        , metadata =
-            [("instance", String o.observed.identity) | index == 0]
-              ++ [("observation", observation) | index == count - 1]
-              ++ [("history_record", encodeRecord r)]
-        }
+    first ObservationError $
+      mkLineageEntry
+        (toInteger index)
+        (if index == 0 then Nothing else Just (toInteger index - 1))
+        Observed
+        places
+        ( [("instance", String o.observed.identity) | index == 0]
+            ++ [("observation", observation) | index == count - 1]
+            ++ [("history_record", encodeRecord r)]
+        )
   first ObservationError $ do
-    document <- projectNetDocument o.observed.net Nothing (Just (ExecutionLineage (toInteger count - 1) entries))
+    lineage <- mkExecutionLineage (toInteger count - 1) entries
+    document <- projectNetDocument o.observed.net Nothing (Just lineage)
     _ <- serializeNetDocument document
     Right (netDocumentToJson document)
 

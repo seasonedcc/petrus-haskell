@@ -14,29 +14,15 @@ module Petrus.Impetus.Internal.Repr
   , pyInt
   ) where
 
-import Data.Char (isPrint, ord)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Numeric (showHex)
 import Petrus.Json (Json (..), pythonFloatRepr)
+import Petrus.Json.PythonText (pythonStrRepr)
 
--- | CPython's @repr(str)@.
+-- | CPython's @repr(str)@ (CPython 3.14's printability, for every code
+-- point: "Petrus.Json.PythonText").
 pyStr :: Text -> Text
-pyStr text =
-  let useDouble = T.any (== '\'') text && not (T.any (== '"') text)
-      quote = if useDouble then '"' else '\''
-      escape c
-        | c == quote = T.pack ['\\', c]
-        | c == '\\' = "\\\\"
-        | c == '\n' = "\\n"
-        | c == '\r' = "\\r"
-        | c == '\t' = "\\t"
-        | isPrint c && c /= '\x7f' = T.singleton c
-        | ord c < 0x100 = "\\x" <> pad 2 (ord c)
-        | ord c < 0x10000 = "\\u" <> pad 4 (ord c)
-        | otherwise = "\\U" <> pad 8 (ord c)
-      pad width n = let digits = showHex n "" in T.pack (replicate (width - length digits) '0' ++ digits)
-   in T.singleton quote <> T.concatMap escape text <> T.singleton quote
+pyStr = pythonStrRepr
 
 -- | @repr@ of @str | None@.
 pyOptStr :: Maybe Text -> Text

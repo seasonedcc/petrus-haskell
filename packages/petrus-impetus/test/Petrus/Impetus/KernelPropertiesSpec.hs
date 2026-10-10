@@ -60,23 +60,20 @@ genScenario = do
           , description = show (netArcs built) <> " / " <> show (markingToList (markingFromList tokens))
           }
 
--- | Run a fresh Instance to quiescence, bounded twice over:
---
--- * at most 40 firings, because the nets can cycle;
--- * at most 'tokenCap' tokens in the marking, because a transition that
---   reads its inputs and writes two outputs grows the marking on every firing.
---   Without the cap, 'candidates' (every binding: a product of combinations
---   over up to three weight-2 arcs) grows combinatorially, and about half of
---   the random seeds exhausted the heap.
+-- | Run a fresh Instance to quiescence (bounded: the nets can cycle).
 runBounded :: Scenario -> IO (Instance, [FiringOutcome])
 runBounded scenario = do
   inst <- newInstance scenario.net defaultInstanceConfig {initialMarking = scenario.initial, suppliedIdentity = Just "property"} >>= either (fail . show) pure
   let go :: Int -> [FiringOutcome] -> IO [FiringOutcome]
       go 0 acc = pure (reverse acc)
       go n acc = do
-        size <- tokenCount <$> marking inst
-        if size > tokenCap then pure (reverse acc) else fire n acc
-      fire n acc = do
+        -- A cycling net can pile tokens up, and the candidate bindings of a
+        -- transition grow combinatorially with them (three weight-2 inputs
+        -- on 30 tokens each are 10^8 bindings): stop while every place is
+        -- still small, so each property stays within modest memory.
+        held <- markingToList <$> marking inst
+        if any ((> maxTokensPerPlace) . length . snd) held then pure (reverse acc) else continue n acc
+      continue n acc = do
         firstCandidate <- take 1 <$> candidates inst
         step inst Nothing >>= \case
           Left e -> fail (T.unpack (renderInstanceError e))
@@ -90,12 +87,9 @@ runBounded scenario = do
   outcomes <- go 40 []
   pure (inst, outcomes)
 
--- | Above the generator's largest initial marking (5 places × 4 tokens).
-tokenCap :: Int
-tokenCap = 24
-
-tokenCount :: Marking -> Int
-tokenCount m = sum [length ts | (_, ts) <- markingToList m]
+-- | The most tokens a place may hold before 'runBounded' stops stepping.
+maxTokensPerPlace :: Int
+maxTokensPerPlace = 8
 
 spec :: Spec
 spec = describe "kernel properties" $ do
@@ -134,7 +128,9 @@ spec = describe "kernel properties" $ do
     property $ forAll genConserving $ \scenario -> monadicIO $ do
       (inst, _) <- M.run (runBounded scenario)
       current <- M.run (marking inst)
-      assert (tokenCount current == tokenCount scenario.initial)
+      assert (count current == count scenario.initial)
+  where
+    count m = sum [length ts | (_, ts) <- markingToList m]
 
 -- | Nets whose every transition consumes exactly one token and produces
 -- exactly one, so the total token count is invariant.
