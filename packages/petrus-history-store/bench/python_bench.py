@@ -20,12 +20,20 @@ import sys
 import tempfile
 import time
 
-from petrus.impetus.history_store import InMemoryHistoryStore, JsonlHistoryStore
+from petrus.impetus.history import FiringCompleted
+from petrus.impetus.history_store import InMemoryHistoryStore, JsonlHistoryStore, SqliteHistoryStore
 from petrus.impetus.instance import Instance
 from petrus.impetus.petrinet import Arc, Marking, Net, NetPath, Place, Token, Transition
 
 HISTORY_FIFO_TOKENS = 4_000
 PER_RECORD_APPENDS = 2_000
+TERMINAL_RESENDS = 1_000
+
+
+def remove_database(path: str) -> None:
+    for suffix in ("", "-wal", "-shm"):
+        if os.path.exists(path + suffix):
+            os.remove(path + suffix)
 
 
 def fifo(tokens: int) -> tuple[Net, Marking]:
@@ -90,6 +98,48 @@ def main() -> None:
     timed("jsonl/append-per-record", append_per_record, 5)
     timed("jsonl/load", lambda: len(JsonlHistoryStore(existing)), 5)
     timed("jsonl/resume", resume, 3)
+    existing_sqlite = os.path.join(directory, "existing.sqlite3")
+    fresh_sqlite = os.path.join(directory, "fresh.sqlite3")
+    SqliteHistoryStore(existing_sqlite, "bench").extend(history)
+
+    def sqlite_append(chunks) -> int:
+        store = SqliteHistoryStore(fresh_sqlite, "bench")
+        for chunk in chunks:
+            store.extend(chunk)
+        n = len(store)
+        store.close()
+        remove_database(fresh_sqlite)
+        return n
+
+    def sqlite_load() -> int:
+        store = SqliteHistoryStore(existing_sqlite, "bench")
+        n = len(store)
+        store.close()
+        return n
+
+    def sqlite_resume() -> int:
+        store = SqliteHistoryStore(existing_sqlite, "bench")
+        resumed = Instance.resume(net, store)
+        n = len(list(resumed.marking))
+        store.close()
+        return n
+
+    first = history[:PER_RECORD_APPENDS]
+    terminal = next(record for record in history if isinstance(record, FiringCompleted))
+    resent = SqliteHistoryStore(existing_sqlite, "bench")
+
+    def terminal_resend_ack() -> int:
+        for _ in range(TERMINAL_RESENDS):
+            resent.extend([terminal])
+        return len(resent)
+
+    timed("sqlite/append-one-batch", lambda: sqlite_append([history]), 5)
+    timed("sqlite/append-per-record", lambda: sqlite_append([[record] for record in first]), 3)
+    timed("sqlite/append-batches-of-8", lambda: sqlite_append([first[i : i + 8] for i in range(0, len(first), 8)]), 3)
+    timed("sqlite/load", sqlite_load, 5)
+    timed("sqlite/resume", sqlite_resume, 3)
+    timed("sqlite/terminal-resend-ack", terminal_resend_ack, 3)
+    resent.close()
     timed("store/in-memory-append", in_memory_append, 20)
     timed("store/in-memory-records", lambda: len(memory.records), 20)
     timed("store/jsonl-records", lambda: len(loaded.records), 20)

@@ -1,0 +1,101 @@
+cabal-version:      3.4
+name:               petrus-history-postgres
+version:            0.1.0.0
+synopsis:           The PostgreSQL History Store for the Petrus Impetus kernel
+description:
+  A port of @petrus.impetus.history_store.postgres@: the event History in
+  @impetus.semantic_events@, provisioned by @ensureSchema@ with the
+  reference's DDL, written through a caller's connection — one owned
+  transaction per batch on an autocommit connection, the caller's
+  transaction in join mode — with verify-on-conflict acceptance. Python and
+  Haskell processes share the same table, rows, and payloads. Kept out of
+  @petrus-postgres@, which stays kernel-free.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Database
+build-type:         Simple
+extra-doc-files:    NOTICE
+                    PARITY.md
+                    DIVERGENCES.md
+                    bench/RESULTS.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.HistoryStore.Postgres
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-telemetry
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-history-postgres-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  -- The kernel's and the JSONL store's shared test fixtures (the
+  -- backend-contract suite among them) are compiled in from their test
+  -- trees rather than copied.
+  hs-source-dirs:   test ../petrus-impetus/test ../petrus-history-store/test
+  main-is:          Main.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Impetus.HistorySupport
+                    Petrus.HistoryStore.Support
+                    Petrus.HistoryStore.BackendContractSpec
+                    Petrus.HistoryStore.Postgres.Support
+                    Petrus.HistoryStore.PostgresSpec
+                    Petrus.HistoryStore.Postgres.InteropSpec
+                    Petrus.HistoryStore.Postgres.BoundarySpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-history-postgres
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-telemetry
+                  , petrus-test-support
+                  , process >=1.6
+                  , unix
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-history-postgres-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , petrus-history-postgres
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-test-support
+                  , tasty >=1.4
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -threaded -O2 -rtsopts "-with-rtsopts=-A32m"
