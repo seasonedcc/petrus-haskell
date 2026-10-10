@@ -531,6 +531,8 @@ def line(payload: dict) -> str:
 
 def pinned_lines() -> list[dict]:
     payloads = [
+        # The overhead benchmark's payload (bench/Main.hs, bench/python_bench.py).
+        {"event": "impetus_firing_completed", "instance": "i-1", "net": "n", "transition": "t", "occurrence": 1, "instant": 7, "records": 3, "impure": False, "source": "s"},
         {"event": "impetus_firing_completed", "instance": "i-1", "net": "n", "transition": "t", "occurrence": 1, "instant": 7, "records": 3},
         {"event": "impetus_x", "instance": "é \U0001f600", "ratio": 0.1, "big": 10**20, "huge": 1e300, "neg": -0.0, "ok": True, "none": None},
         {"event": "impetus_x", "nan": float("nan"), "inf": float("inf"), "ninf": float("-inf"), "ts": 3, "list": [1, "a"]},

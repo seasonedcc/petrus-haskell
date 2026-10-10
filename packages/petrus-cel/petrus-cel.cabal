@@ -77,6 +77,7 @@ test-suite petrus-cel-test
                   , petrus-impetus
                   , petrus-json
                   , text
+  ghc-options:      -rtsopts
 
 benchmark petrus-cel-bench
   import:           warnings

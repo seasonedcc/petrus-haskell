@@ -13,7 +13,7 @@
 -- positive float (then 0.0), @current_rss_mb@ a float or null (then null).
 -- One documented divergence is mapped: the Engine's failed-drive
 -- @error_type@ is the Haskell exception type @EngineError@ where the
--- reference names Python's @RuntimeError@ (DIVERGENCES.md, 1).
+-- reference names Python's @RuntimeError@ (petrus-telemetry/DIVERGENCES.md, 15).
 module Petrus.Telemetry.DifferentialSpec (spec) where
 
 import Control.Monad (forM_, unless, zipWithM_)

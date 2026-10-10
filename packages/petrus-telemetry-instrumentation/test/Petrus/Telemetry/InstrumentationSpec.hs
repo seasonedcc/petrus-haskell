@@ -15,7 +15,7 @@
 -- (@RuntimeError('handler broke')@), so @firing_failed.error@ is
 -- comparable verbatim. The Engine rethrows it as an 'Engine.EngineError',
 -- so a halted drive's @error_type@ is @EngineError@, not @RuntimeError@
--- (DIVERGENCES.md, 1).
+-- (petrus-telemetry/DIVERGENCES.md, 15).
 module Petrus.Telemetry.InstrumentationSpec (spec) where
 
 import Control.Exception (SomeException, try)
