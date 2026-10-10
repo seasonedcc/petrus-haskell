@@ -1,5 +1,5 @@
--- | @petrus-format-json@ against @python -m petrus.cli.format_json@ (pending
--- unless @upstream/petrus-engine/.venv@ is synced): the same arguments,
+-- | @petrus-format-json@ against @python -m petrus.cli.format_json@ (in
+-- @upstream/petrus-engine/.venv@, provisioned on first use): the same arguments,
 -- stdin and files give the same exit status, stdout, files afterwards, and
 -- error (the traceback's exception line, or argparse's @error:@ line).
 module Petrus.EngineFile.CliSpec (spec) where
@@ -97,11 +97,11 @@ spec :: Spec
 spec = describe "petrus-format-json against python -m petrus.cli.format_json" $ do
   ours <- runIO findOurs
   forM_ scenarios $ \s -> it s.title $ do
-    reference <- referencePython
-    case (reference, ours) of
-      (Nothing, _) -> pendingWith "upstream/petrus-engine is not synced"
-      (_, Nothing) -> pendingWith "petrus-format-json is not on PATH (set PETRUS_FORMAT_JSON)"
-      (Just (python, _), Just exe) -> do
+    (python, _) <- referencePython
+    -- cabal test puts petrus-format-json on PATH (build-tool-depends).
+    case ours of
+      Nothing -> expectationFailure "petrus-format-json is not on PATH (set PETRUS_FORMAT_JSON)"
+      Just exe -> do
         want <- runIn s python ["-m", "petrus.cli.format_json"]
         got <- runIn s exe []
         got.code `shouldBe` want.code

@@ -2,6 +2,11 @@
 -- produced by CPython's @tarfile@ and upstream Petrus
 -- (@test/fixtures/generate_archive_fixtures.py@), plus ports of the
 -- upstream archive tests.
+--
+-- The reference's output depends on the host (symlink modes, filesystem
+-- name rules, errno numbers), so the generator writes one fixture file per
+-- platform and the suite compares against the file for the platform it runs
+-- on: @archive_fixtures-darwin.json@ or @archive_fixtures-linux.json@.
 module ArchiveSpec (spec) where
 
 import Control.Exception (try)
@@ -35,7 +40,7 @@ import Test.Hspec
 
 spec :: Spec
 spec = do
-  fixtures <- runIO (loadFixture "archive_fixtures.json")
+  fixtures <- runIO (loadFixture ("archive_fixtures-" <> os <> ".json"))
   describe "workspace_archive (differential, CPython tarfile)" $
     forM_ (listField "workspaces" fixtures) $ \fixture ->
       it (T.unpack (textField "name" fixture)) $ withTempDir $ \tmp -> do
@@ -104,27 +109,19 @@ spec = do
         destRaw <- toRawPath destination
         result <- try (extractWorkspaceArchive bytes destination)
         resolved <- either (const destRaw) id <$> realpath NonStrict destRaw
-        let platformSpecific = name == "pax-binary" && os /= "darwin"
-        if platformSpecific
-          then do
-            -- Linux accepts non-UTF-8 names that APFS rejects (EILSEQ).
-            result `shouldSatisfy` either (const False) (const True)
+        case (result, fieldMaybe "error" expected) of
+          (Right (), Nothing) -> pure ()
+          (Left err, Just expectedError) ->
+            checkError name (normalizeDest [resolved, destRaw] err) expectedError
+          (Right (), Just expectedError) -> expectationFailure ("expected " <> show expectedError)
+          (Left err, Nothing) -> expectationFailure ("unexpected " <> show err)
+        exists <- PFB.fileExist destRaw
+        case fieldMaybe "tree" expected of
+          Nothing -> exists `shouldBe` False
+          Just (Array items) -> do
             listing <- treeOf destRaw
-            Map.keys listing `shouldBe` ["bin\xffname"]
-          else do
-            case (result, fieldMaybe "error" expected) of
-              (Right (), Nothing) -> pure ()
-              (Left err, Just expectedError) ->
-                checkError name (normalizeDest [resolved, destRaw] err) expectedError
-              (Right (), Just expectedError) -> expectationFailure ("expected " <> show expectedError)
-              (Left err, Nothing) -> expectationFailure ("unexpected " <> show err)
-            exists <- PFB.fileExist destRaw
-            case fieldMaybe "tree" expected of
-              Nothing -> exists `shouldBe` False
-              Just (Array items) -> do
-                listing <- treeOf destRaw
-                listing `shouldBe` Map.fromList [(bytesB64 "path_b64" item, normalizeItem item) | item <- items]
-              Just other -> expectationFailure ("bad tree fixture " <> show other)
+            listing `shouldBe` Map.fromList [(bytesB64 "path_b64" item, normalizeItem item) | item <- items]
+          Just other -> expectationFailure ("bad tree fixture " <> show other)
 
   describe "upstream archive tests" $ do
     it "test_tar_rejects_escape_links_and_special_files" $ withTempDir $ \tmp -> do
@@ -234,22 +231,14 @@ content seed size =
 checkError :: Text -> ExecutionError -> Json -> Expectation
 checkError name err expected = do
   let kind = pythonClassKind (textField "class" expected)
-      message = normalizeErrno (textField "message" expected)
+      message = textField "message" expected
   errorKind err `shouldBe` kind
   when (name `notElem` knownMessageDivergences) $
-    normalizeErrno (errorMessage err) `shouldBe` message
+    errorMessage err `shouldBe` message
 
 -- | Fixtures whose error message intentionally differs (DIVERGENCES.md).
 knownMessageDivergences :: [Text]
 knownMessageDivergences = ["bz2-magic"]
-
-normalizeErrno :: Text -> Text
-normalizeErrno text = case T.breakOn "[Errno " text of
-  (prefix, rest)
-    | T.null rest -> text
-    | otherwise ->
-        let afterNumber = T.dropWhile (`elem` ['0' .. '9']) (T.drop 7 rest)
-         in prefix <> "[Errno *" <> normalizeErrno afterNumber
 
 normalizeDest :: [ByteString] -> ExecutionError -> ExecutionError
 normalizeDest prefixes err =

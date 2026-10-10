@@ -6,8 +6,9 @@
 -- reference processes with Haskell threads, and the reference's
 -- @SqliteHistoryStore@ co-resides untouched.
 --
--- Runs @test/interop/local_interop.py@ under @upstream/petrus/.venv@; the
--- examples are pending when that environment is not synced.
+-- Runs @test/interop/local_interop.py@ under @upstream/petrus/.venv@, provisioned
+-- by @scripts/upstream-python@ on first use; the examples fail, never skip,
+-- when that environment cannot be provisioned.
 module Petrus.Motus.Dispatch.LocalInteropSpec (spec) where
 
 import Control.Concurrent (forkIO)
@@ -176,13 +177,13 @@ completedBy who count =
 
 spec :: Spec
 spec = describe "Local Dispatch interop with the reference" $ do
-  it "the reference publishes, a Haskell worker claims and completes, the reference collects" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "the reference publishes, a Haskell worker claims and completes, the reference collects" $ withReference $ \python -> withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
     void (runPython python ["publish", path, "one", "5"])
     workAll path "haskell" `shouldReturn` [1 .. 5]
     parsedJson <$> runPython python ["collect", path, "one", "5"] `shouldReturn` completedBy "haskell" 5
 
-  it "Haskell publishes, a reference worker claims and completes, Haskell collects" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "Haskell publishes, a reference worker claims and completes, Haskell collects" $ withReference $ \python -> withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
     published <- openLocalDispatch path "one" defaultLocalDispatchOptions
     forM_ [1 .. 5] $ \i -> Local.dispatch published i (work (toInteger i))
@@ -208,7 +209,7 @@ spec = describe "Local Dispatch interop with the reference" $ do
     forM_ [1 .. 5] $ \i -> Local.dispatch fresh i (work (toInteger i))
     outcomesJson <$> Local.collect fresh `shouldReturn` completedBy "python" 5
 
-  it "the provider-clock scenario yields identical telemetry, results, and rows in both implementations" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "the provider-clock scenario yields identical telemetry, results, and rows in both implementations" $ withReference $ \python -> withScratch $ \dir -> do
     let reference = dir </> "reference.db"
         ours = dir </> "haskell.db"
     expected <- parsedJson <$> runPython python ["scenario", reference]
@@ -216,7 +217,7 @@ spec = describe "Local Dispatch interop with the reference" $ do
     referenceRows <- runPython python ["dump", reference]
     runPython python ["dump", ours] `shouldReturn` referenceRows
 
-  it "a v1 file migrates to identical rows in both implementations" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "a v1 file migrates to identical rows in both implementations" $ withReference $ \python -> withScratch $ \dir -> do
     let reference = dir </> "reference.db"
         ours = dir </> "haskell.db"
     writeV1 reference "100000"
@@ -227,7 +228,7 @@ spec = describe "Local Dispatch interop with the reference" $ do
     referenceRows <- runPython python ["dump", reference]
     runPython python ["dump", ours] `shouldReturn` referenceRows
 
-  it "a file Haskell created and the reference opens (and the converse) have identical schema rows" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "a file Haskell created and the reference opens (and the converse) have identical schema rows" $ withReference $ \python -> withScratch $ \dir -> do
     let reference = dir </> "reference.db"
         ours = dir </> "haskell.db"
     void (runPython python ["open", reference, "one"])
@@ -238,7 +239,7 @@ spec = describe "Local Dispatch interop with the reference" $ do
     void (runPython python ["open", ours, "two"])
     void (openLocalDispatch reference "two" defaultLocalDispatchOptions)
 
-  it "schema initialization is atomic under mixed reference-process and Haskell-thread startup" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "schema initialization is atomic under mixed reference-process and Haskell-thread startup" $ withReference $ \python -> withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
         arguments n = ["open", path, "python-" <> show n]
     processes <- forM [0 :: Int .. 3] $ \n -> (,) (arguments n) <$> startPython python (arguments n)
@@ -253,7 +254,7 @@ spec = describe "Local Dispatch interop with the reference" $ do
     void (openLocalDispatch path "reopened" defaultLocalDispatchOptions)
     rawScalar path "SELECT version FROM impetus_local_dispatch_schema" `shouldReturn` SQLInteger 3
 
-  it "claim contention between reference processes and Haskell threads distributes distinct work once" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "claim contention between reference processes and Haskell threads distributes distinct work once" $ withReference $ \python -> withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
     published <- openLocalDispatch path "one" defaultLocalDispatchOptions
     forM_ [1 .. 24] $ \i -> Local.dispatch published i (work (toInteger i))
@@ -272,7 +273,7 @@ spec = describe "Local Dispatch interop with the reference" $ do
     outcomes <- Local.collect published
     map fst outcomes `shouldMatchList` [1 .. 24]
 
-  it "sqlite history tables coexist untouched" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "sqlite history tables coexist untouched" $ withReference $ \python -> withScratch $ \dir -> do
     -- The reference's SqliteHistoryStore owns the History tables; the
     -- Haskell Local Dispatch shares the file and leaves them untouched.
     let path = dir </> "application.db"

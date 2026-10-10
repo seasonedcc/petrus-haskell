@@ -14,8 +14,8 @@
 --   threads succeeds for every instance;
 -- * an Instance begun on one side resumes and completes on the other.
 --
--- Runs @test/interop/sqlite_interop.py@ under @upstream/petrus/.venv@ (synced
--- with @uv@ on first use by @petrus-test-support@).
+-- Runs @test/interop/sqlite_interop.py@ under @upstream/petrus/.venv@ (provisioned
+-- by @scripts/upstream-python@ on first use, through @petrus-test-support@).
 module Petrus.HistoryStore.SqliteInteropSpec (spec) where
 
 import Control.Concurrent (forkIO)

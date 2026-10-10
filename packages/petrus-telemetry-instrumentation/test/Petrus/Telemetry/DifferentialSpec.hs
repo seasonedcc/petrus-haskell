@@ -22,7 +22,7 @@ import Data.IORef
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.HistoryStore.Support (pythonOrPending, runPython, withScratch)
+import Petrus.HistoryStore.Support (withReference, runPython, withScratch)
 import Petrus.Json (Json (..), exactEq, lookupMember, parseJson, pythonLoads)
 import Petrus.Telemetry
 import Petrus.Telemetry.Scenarios (scenarios)
@@ -129,7 +129,7 @@ spec = do
         info sink' (object (member "payload" pinned))
         readIORef lines' `shouldReturn` [TE.encodeUtf8 (text (member "line" pinned))]
 
-  it "the committed reference events are what the pinned reference emits today" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "the committed reference events are what the pinned reference emits today" $ withReference $ \python -> withScratch $ \dir -> do
     let fresh = dir </> "telemetry_scenarios.json"
     _ <- runPython python generator [fresh]
     regenerated <- loadFixture fresh

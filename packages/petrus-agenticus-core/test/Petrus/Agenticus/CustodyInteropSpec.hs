@@ -1,8 +1,8 @@
 -- | One custody installation shared by both implementations: a corpus
 -- session runs its first steps under one implementation and the rest under
 -- the other, over the same SQLite file and materialization root, and every
--- record must still match the reference corpus.  Pending when the pinned
--- reference environment is not synced.
+-- record must still match the reference corpus.  The reference environment
+-- is provisioned by @scripts/upstream-python@; the examples never skip.
 module Petrus.Agenticus.CustodyInteropSpec (spec) where
 
 import Control.Monad (forM_)
@@ -12,9 +12,10 @@ import Petrus.Agenticus.CustodyScript
 import Petrus.Agenticus.Support (loadJson, packageFile)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
-import System.Directory (doesFileExist, makeAbsolute)
+import Petrus.TestSupport.Python (pythonExecutable)
+import Petrus.TestSupport.Repo (upstreamPetrus)
+import System.Directory (makeAbsolute)
 import System.Exit (ExitCode (..))
-import System.FilePath ((</>))
 import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
 import Test.Hspec
 
@@ -31,13 +32,13 @@ spec = describe "interop: custody sessions across implementations" $ do
         total = length steps
     forM_ [17, 33] $ \split -> do
       it ("seed " <> show seed <> ": Haskell steps [0," <> show split <> "), Python the rest") $
-        pythonOrPending $ \python -> withScratch $ \scratch -> do
+        withReference $ \python -> withScratch $ \scratch -> do
           prefix <- runSteps scratch steps 0 split
           compareRecords steps 0 (take split expected) prefix
           rest <- continueInPython python seed scratch split total
           compareRecords steps split (drop split expected) (map canonical rest)
       it ("seed " <> show seed <> ": Python steps [0," <> show split <> "), Haskell the rest") $
-        pythonOrPending $ \python -> withScratch $ \scratch -> do
+        withReference $ \python -> withScratch $ \scratch -> do
           prefix <- continueInPython python seed scratch 0 split
           compareRecords steps 0 (take split expected) (map canonical prefix)
           rest <- runSteps scratch steps split total
@@ -54,12 +55,11 @@ continueInPython (python, root) seed workdir start stop = do
     ExitSuccess -> either fail (pure . members) (J.parseJson J.pythonLoads (BC.pack out))
     ExitFailure n -> fail ("custody_interop.py exited " <> show n <> ":\n" <> out <> err)
 
--- | The pinned reference's interpreter and root, when synced.
-pythonOrPending :: ((FilePath, FilePath) -> IO ()) -> IO ()
-pythonOrPending body = do
-  root <- makeAbsolute ("../.." </> "upstream" </> "petrus")
-  let python = root </> ".venv" </> "bin" </> "python"
-  present <- doesFileExist python
-  if present
-    then body (python, root)
-    else pendingWith "upstream/petrus is not synced (cd upstream/petrus && uv sync)"
+-- | Run the example against the pinned reference: its interpreter
+-- (provisioned by @scripts/upstream-python@ on first use) and the upstream
+-- root. Fails loudly, never skips, when the reference cannot be provisioned.
+withReference :: ((FilePath, FilePath) -> IO ()) -> IO ()
+withReference body = do
+  python <- pythonExecutable
+  root <- upstreamPetrus
+  body (python, root)
