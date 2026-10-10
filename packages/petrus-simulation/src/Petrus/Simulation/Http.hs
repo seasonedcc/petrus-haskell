@@ -72,6 +72,7 @@ import Petrus.Http.Core
   , requestHeaderValues
   , requestMethod
   , requestRawTarget
+  , requestSimple
   , response
   , sendResponse
   , serveForever
@@ -250,6 +251,9 @@ dispatch :: Pending -> Request -> IO ()
 dispatch state request = do
   let method = requestMethod request
       target = requestRawTarget request
+  -- A simple HTTP/0.9 request's @self.headers@ is a plain dict upstream,
+  -- whose missing @get_all@ fails the origin check as an unexpected error.
+  when (requestSimple request) $ throwIO (userError "'dict' object has no attribute 'get_all'")
   case requestHeaderValues "Origin" request of
     [value] | value == TE.encodeUtf8 state.origin -> pure ()
     _ -> refusal 403 "origin_not_allowed" "origin is not allowed"
