@@ -31,6 +31,7 @@ import Petrus.Json (Json (..))
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.Delayed qualified as Delayed
 import Petrus.Testing.Dst.Engine.Delivery qualified as Delivery
+import Petrus.Testing.Dst.Engine.Lifecycle qualified as Lifecycle
 import Petrus.Testing.Dst.Engine.Projection qualified as Projection
 import Petrus.Testing.Dst.Engine.Timer qualified as Timer
 import Spec.Support
@@ -95,6 +96,8 @@ replayCases =
     <> [ ReplayCase "delayed-terminal-recovery-world-v3.json" delayedRegistry
        , ReplayCase "identified-delivery-redelivery-world-v3.json" deliveryRegistry
        , ReplayCase "timer-crash-recovery-world-v3.json" timerRegistry
+       , ReplayCase "lifecycle-reset-late-terminal-world-v3.json" lifecycleRegistry
+       , ReplayCase "lifecycle-cancellation-refusal-world-v3.json" cancellationRegistry
        ]
 
 delayedRegistry :: Fresh
@@ -106,6 +109,16 @@ deliveryRegistry :: Fresh
 deliveryRegistry dir = do
   p <- Delivery.deliveryEngineProfile (dir </> "history.jsonl")
   pure (registryOf [SomeProfile p.profile] [Delivery.deliveryAuthorityChecker])
+
+lifecycleRegistry :: Fresh
+lifecycleRegistry dir = do
+  p <- Lifecycle.lifecycleEngineProfile (dir </> "history.jsonl")
+  pure (registryOf [SomeProfile p.profile] [Lifecycle.lifecycleAuthorityChecker])
+
+cancellationRegistry :: Fresh
+cancellationRegistry dir = do
+  p <- Lifecycle.lifecycleCancellationRefusalProfile (dir </> "history.jsonl")
+  pure (registryOf [SomeProfile p.profile] [Lifecycle.cancellationAuthorityChecker])
 
 timerRegistry :: Fresh
 timerRegistry dir = do
@@ -133,6 +146,8 @@ authorCases =
   , AuthorCase "delayed_world.build_delayed_artifact" (oneHistory Delayed.buildDelayedArtifact) delayedRegistry
   , AuthorCase "delivery_world.build_delivery_artifact" (oneHistory Delivery.buildDeliveryArtifact) deliveryRegistry
   , AuthorCase "timer_world.build_timer_artifact" (oneHistory Timer.buildTimerArtifact) timerRegistry
+  , AuthorCase "lifecycle_world.build_lifecycle_artifact" (oneHistory Lifecycle.buildLifecycleArtifact) lifecycleRegistry
+  , AuthorCase "lifecycle_world.build_lifecycle_cancellation_artifact" (oneHistory Lifecycle.buildLifecycleCancellationArtifact) cancellationRegistry
   ]
 
 fixtureBytes :: FilePath -> IO BS.ByteString
