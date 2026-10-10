@@ -15,6 +15,7 @@ import BoardSpec qualified
 import BoardCorpusSpec qualified
 import GatingSpec qualified
 import InlineRecoverySpec qualified
+import PayloadsSpec qualified
 import Test.Hspec (hspec)
 import TopologySpec qualified
 
@@ -36,3 +37,4 @@ main = hspec $ do
   BoardCorpusSpec.spec
   GatingSpec.spec
   InlineRecoverySpec.spec
+  PayloadsSpec.spec
