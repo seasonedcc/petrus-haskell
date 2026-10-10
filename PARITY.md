@@ -126,4 +126,4 @@ Hamsterdan depends on differs** (docs/hamsterdan.md §2.3).
 
 | Component | Upstream | Haskell package | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| `fileVersion: "2"` net loading | `src/petrus/loader.py`, `net_file_schema.json` | | not started | |
+| `fileVersion: "2"` net loading | `src/petrus/schema.py`, `loader.py`, `json_formatter.py`, `cli/format_json.py`, `net_file_schema.json` | `petrus-engine-file` | at parity | [tests](packages/petrus-engine-file/PARITY.md); [differential corpus: 911 cases, 4618 operations](packages/petrus-engine-file/differential/corpus.json) (every upstream loader/resolution/formatter fixture, 157 viewer re-saves, edge and fuzz cases): same bytes written, same refusal class and text; live fuzzing against the pinned engine; `petrus-format-json` against `python -m petrus.cli.format_json` (40 scenarios); loaded nets convert to kernel `Net`s; [bench](packages/petrus-engine-file/bench/RESULTS.md) (parse 1.6–2×, write 3–5×, load 1.4–2.3×); lone surrogates in `json.loads` input are refused ([DIVERGENCES](packages/petrus-engine-file/DIVERGENCES.md)) |

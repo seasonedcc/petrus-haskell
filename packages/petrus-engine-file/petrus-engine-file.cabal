@@ -1,0 +1,109 @@
+cabal-version:      3.4
+name:               petrus-engine-file
+version:            0.1.0.0
+synopsis:           petrus-engine fileVersion 2 net files: load, resolve, write
+description:
+  Reads, validates, resolves and canonically writes Petrus net files in
+  petrus-engine's @fileVersion: "2"@ format (the format petrus-viewer saves),
+  with the reference implementation's acceptance, refusals, error texts and
+  byte-identical canonical spelling.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Data
+build-type:         Simple
+extra-doc-files:    README.md
+                    PARITY.md
+                    DIVERGENCES.md
+                    NOTICE
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.EngineFile
+                    Petrus.EngineFile.Duration
+                    Petrus.EngineFile.Encode
+                    Petrus.EngineFile.Jiter
+                    Petrus.EngineFile.Kernel
+                    Petrus.EngineFile.Loader
+                    Petrus.EngineFile.Number
+                    Petrus.EngineFile.PyJson
+                    Petrus.EngineFile.PyText
+                    Petrus.EngineFile.Types
+                    Petrus.EngineFile.Validate
+                    Petrus.EngineFile.Value
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , deepseq >=1.4
+                  , petrus-impetus
+                  , petrus-json
+                  , text >=2.0
+                  , unix >=2.8
+  ghc-options:      -O2
+
+executable petrus-format-json
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , petrus-engine-file
+                  , petrus-json
+                  , text
+  ghc-options:      -rtsopts
+
+test-suite petrus-engine-file-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.EngineFile.Corpus
+                    Petrus.EngineFile.CorpusSpec
+                    Petrus.EngineFile.KernelSpec
+                    Petrus.EngineFile.LiveSpec
+                    Petrus.EngineFile.CliSpec
+                    Petrus.EngineFile.UpstreamSpec
+  build-depends:    base
+                  , base64-bytestring
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-engine-file
+                  , petrus-impetus
+                  , petrus-json
+                  , process
+                  , QuickCheck >=2.14
+                  , temporary
+                  , text
+  build-tool-depends: petrus-engine-file:petrus-format-json
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-engine-file-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , filepath
+                  , petrus-engine-file
+                  , tasty-bench >=0.3
+                  , temporary
+                  , text
+  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"
