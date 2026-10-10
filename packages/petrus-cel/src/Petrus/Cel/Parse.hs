@@ -45,6 +45,8 @@ data ParseError = ParseError
   { parseErrorLine :: Maybe Int
   , parseErrorColumn :: Maybe Int
   , parseErrorMessage :: Text
+  -- ^ @str()@ of cel-python's @CELParseError@: lark's @get_context@, the
+  -- source line around the error and a caret under it.
   }
   deriving stock (Eq, Show)
 
@@ -339,22 +341,31 @@ advance t = P $ \_ _ -> Right ((), St (tokEnd t) (Just (tokStart t, tokNoPositio
 -- | Fail at a token, positioned the way lark reports it.
 unexpected :: Tok -> P a
 unexpected t = P $ \input st ->
-  let position = case tokKind t of
+  let (position, offset) = case tokKind t of
         TEnd -> case stLast st of
-          Nothing -> Just (1, 1)
-          Just (_, True) -> Nothing
-          Just (start, False) -> Just (lineColumn input start)
+          Nothing -> (Just (1, 1), 0)
+          Just (_, True) -> (Nothing, 0)
+          Just (start, False) -> (Just (lineColumn input start), start)
         _
-          | tokNoPosition t -> Nothing
-          | otherwise -> Just (lineColumn input (tokStart t))
-      what = case tokKind t of
-        TEnd -> "Unexpected end of input"
-        TBad -> "No terminal matches " <> T.pack (show (maybe "" pure (charAt input (tokStart t)) :: String)) <> " in the current parser context"
-        _ -> "Unexpected token " <> T.pack (show (slice input (tokStart t) (tokEnd t)))
-      located = case position of
-        Just (l, c) -> what <> " at line " <> T.pack (show l) <> " col " <> T.pack (show c)
-        Nothing -> what
-   in Left (ParseError (fst <$> position) (snd <$> position) located)
+          | tokNoPosition t -> (Nothing, 0)
+          | otherwise -> (Just (lineColumn input (tokStart t)), tokStart t)
+   in Left (ParseError (fst <$> position) (snd <$> position) (errorContext input offset))
+
+-- | lark's @UnexpectedInput.get_context(text)@ (span 40): up to 40
+-- characters either side of the error on its line, and a caret below.
+errorContext :: Input -> Int -> Text
+errorContext input pos =
+  let before = T.takeWhileEnd (/= '\n') (slice input (max 0 (pos - 40)) pos)
+      after = T.takeWhile (/= '\n') (slice input pos (pos + 40))
+   in before <> after <> "\n" <> T.replicate (expandedLength before) " " <> "^\n"
+  where
+    -- @len(before.expandtabs())@: tabs to multiples of 8, @\\r@ restarts
+    -- the column (and still counts as a character).
+    expandedLength = snd . T.foldl' step (0 :: Int, 0 :: Int)
+    step (column, total) = \case
+      '\t' -> let w = 8 - column `mod` 8 in (column + w, total + w)
+      '\r' -> (0, total + 1)
+      _ -> (column + 1, total + 1)
 
 lineColumn :: Input -> Int -> (Int, Int)
 lineColumn input offset =

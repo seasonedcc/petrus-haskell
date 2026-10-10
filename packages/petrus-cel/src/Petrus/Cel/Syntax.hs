@@ -37,6 +37,17 @@ module Petrus.Cel.Syntax
   , larkRepr
   , treeDump
   , findIdents
+    -- * Node projections
+  , exprNode
+  , orNode
+  , andNode
+  , relNode
+  , addNode
+  , mulNode
+  , unaryNode
+  , memberNode
+  , primaryNode
+  , literalNode
   , relOpRule
   , addOpRule
   , mulOpRule
@@ -191,6 +202,52 @@ node rule children = LarkNode (LarkTree rule children)
 
 ident :: Text -> LarkChild
 ident = LarkToken "IDENT"
+
+asTree :: LarkChild -> LarkTree
+asTree = \case
+  LarkNode t -> t
+  LarkToken ty _ -> LarkTree ty []
+
+-- | The lark node of an @expr@.
+exprNode :: Expr -> LarkTree
+exprNode = asTree . exprL
+
+-- | The lark node of a @conditionalor@.
+orNode :: ConditionalOr -> LarkTree
+orNode = asTree . orL
+
+-- | The lark node of a @conditionaland@.
+andNode :: ConditionalAnd -> LarkTree
+andNode = asTree . andL
+
+-- | The lark node of a @relation@.
+relNode :: Relation -> LarkTree
+relNode = asTree . relL
+
+-- | The lark node of an @addition@.
+addNode :: Addition -> LarkTree
+addNode = asTree . addL
+
+-- | The lark node of a @multiplication@.
+mulNode :: Multiplication -> LarkTree
+mulNode = asTree . mulL
+
+-- | The lark node of a @unary@.
+unaryNode :: Unary -> LarkTree
+unaryNode = asTree . unaryL
+
+-- | The lark node of a member form (@member_dot@, @member_index@, ...; a
+-- 'MemberPrimary' gives its @primary@ node).
+memberNode :: Member -> LarkTree
+memberNode = asTree . memberInner
+
+-- | The lark node of a @primary@.
+primaryNode :: Primary -> LarkTree
+primaryNode = asTree . primaryL
+
+-- | The lark @literal@ node of a literal.
+literalNode :: Literal -> LarkTree
+literalNode lit = LarkTree "literal" [LarkToken (literalTokenType (literalKind lit)) (literalText lit)]
 
 -- | The lark tree cel-python's parser builds for an expression.
 toLark :: Expr -> LarkTree

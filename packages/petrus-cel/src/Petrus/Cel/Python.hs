@@ -158,15 +158,16 @@ parseFloatAscii :: String -> Maybe Double
 parseFloatAscii input = do
   let trimmed = dropWhileEnd' isAsciiSpace (dropWhile isAsciiSpace input)
   cleaned <- underscores trimmed
-  let (sign, unsigned) = case cleaned of
-        '+' : rest -> (1, rest)
-        '-' : rest -> (-1, rest)
-        rest -> (1 :: Double, rest)
-  case map toLower unsigned of
-    "inf" -> Just (sign * (1 / 0))
-    "infinity" -> Just (sign * (1 / 0))
-    "nan" -> Just (sign * (0 / 0))
-    _ -> (* sign) <$> decimal unsigned
+  let (negative, unsigned) = case cleaned of
+        '+' : rest -> (False, rest)
+        '-' : rest -> (True, rest)
+        rest -> (False, rest)
+      signed v = if negative then negate v else v
+  signed <$> case map toLower unsigned of
+    "inf" -> Just (1 / 0)
+    "infinity" -> Just (1 / 0)
+    "nan" -> Just (0 / 0)
+    _ -> decimal unsigned
   where
     underscores s = go Nothing s
       where
@@ -245,6 +246,8 @@ data ExcClass
   | AssertionError
   | UnicodeDecodeError
   | RecursionError
+  | MemoryError
+  | UnicodeEncodeError
   | -- | @celpy.evaluation.CELSyntaxError@
     CELSyntaxError
   | -- | @pendulum.parsing.exceptions.ParserError@ (a 'ValueError')
@@ -266,6 +269,8 @@ excClassName = \case
   AssertionError -> "AssertionError"
   UnicodeDecodeError -> "UnicodeDecodeError"
   RecursionError -> "RecursionError"
+  MemoryError -> "MemoryError"
+  UnicodeEncodeError -> "UnicodeEncodeError"
   CELSyntaxError -> "CELSyntaxError"
   ParserError -> "ParserError"
   Re2Error -> "Error"
@@ -282,7 +287,7 @@ excClassRepr cls = "<class '" <> qualified <> "'>"
 
 -- | Does an @except ValueError@ clause catch this class?
 isValueError :: ExcClass -> Bool
-isValueError = (`elem` [ValueError, UnicodeDecodeError, ParserError])
+isValueError = (`elem` [ValueError, UnicodeDecodeError, UnicodeEncodeError, ParserError])
 
 -- | A raised Python exception whose only argument is a message.
 data PyErr = PyErr ExcClass Text
