@@ -20,6 +20,9 @@ module Hamsterdan.Readiness.NetV5.Readiness
   , ready
   , announceViable
   , authorize
+  , applyState
+  , applyMutationPending
+  , applyMutationSettled
   , foldState
   , foldChecks
   , foldReview
