@@ -68,3 +68,37 @@ library postgres
                   , petrus-telemetry
                   , text >=2.0
   ghc-options:      -O2
+
+test-suite petrus-processes-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test ../petrus-fabric/test
+  main-is:          Main.hs
+  other-modules:    Petrus.Fabric.Conformance.Impl
+                    Petrus.Fabric.Conformance.Haskell
+                    Petrus.Fabric.Conformance.Setup
+                    Petrus.Processes.Conformance.Haskell
+                    Petrus.Processes.ConformanceSpec
+  build-depends:    base
+                  , async >=2.2
+                  , base16-bytestring >=1.0
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-fabric
+                  , petrus-fabric:engine
+                  , petrus-fabric:postgres
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-processes
+                  , petrus-processes:postgres
+                  , petrus-test-support
+                  , process >=1.6
+                  , text
+                  , time
+  ghc-options:      -threaded -rtsopts

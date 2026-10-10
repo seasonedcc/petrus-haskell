@@ -198,31 +198,50 @@ class FakeRegistry:
 
 class FakeProvisioner:
     """"record" records each Provisioning; "fail-first" raises RuntimeError on
-    its first call; "live" returns a live object."""
+    its first call; "live" returns a live object; "observe" records whether
+    the claim row is visible from an independent connection to ``dsn``;
+    "reference" also runs the lifecycle demo's DemoProvisioner (the §13.2
+    reference profile) with the given parent credential and workspace key."""
 
-    def __init__(self, kind: str, events: list, seen: list):
+    def __init__(self, kind: str, events: list, seen: list, options: dict | None = None):
         self.kind = kind
         self.events = events
         self.seen = seen
+        self.options = options or {}
+        self.reference = None
+        if kind == "reference":
+            self.reference = lifecycle_module().DemoProvisioner(
+                self.options["dsn"],
+                None,
+                self.options["parent_credential"],
+                bytes.fromhex(self.options["workspace_key"]),
+            )
 
     def ensure(self, value):
         self.events.append("ensure")
-        self.seen.append(
-            {
-                "parent": value.parent,
-                "spawn_id": value.spawn_id,
-                "child": value.child,
-                "process_kind": value.process_kind,
-                "endpoint": value.endpoint.to_data(),
-                "config": _thaw(value.config),
-                "reply_route": None if value.reply_route is None else value.reply_route.to_data(),
-                "has_credential": hasattr(value, "credential"),
-            }
-        )
+        record = {
+            "parent": value.parent,
+            "spawn_id": value.spawn_id,
+            "child": value.child,
+            "process_kind": value.process_kind,
+            "endpoint": value.endpoint.to_data(),
+            "config": _thaw(value.config),
+            "reply_route": None if value.reply_route is None else value.reply_route.to_data(),
+            "has_credential": hasattr(value, "credential"),
+        }
+        if self.kind == "observe":
+            with psycopg.connect(self.options["dsn"], autocommit=True) as independent:
+                record["claim_visible"] = independent.execute(
+                    "SELECT count(*) FROM impetus_lifecycle.spawns WHERE parent = %s AND spawn_id = %s",
+                    (value.parent, value.spawn_id),
+                ).fetchone()[0]
+        self.seen.append(record)
         if self.kind == "fail-first" and len(self.seen) == 1:
             raise RuntimeError("lost after claim")
         if self.kind == "live":
             return object()
+        if self.reference is not None:
+            self.reference.ensure(value)
         return None
 
 
@@ -264,6 +283,23 @@ def demo_module():
         sys.modules["cv5_fabric_demo"] = _DEMO  # dataclasses resolve their module through sys.modules
         spec.loader.exec_module(_DEMO)
     return _DEMO
+
+
+_LIFECYCLE = None
+
+
+def lifecycle_module():
+    global _LIFECYCLE
+    if _LIFECYCLE is None:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "cv5_lifecycle_demo", os.path.join(os.getcwd(), "scripts", "cv5-lifecycle-demo.py")
+        )
+        _LIFECYCLE = importlib.util.module_from_spec(spec)
+        sys.modules["cv5_lifecycle_demo"] = _LIFECYCLE
+        spec.loader.exec_module(_LIFECYCLE)
+    return _LIFECYCLE
 
 
 def _thaw(value):
@@ -435,6 +471,9 @@ def run(op: str, args: dict):  # noqa: C901 - one flat dispatch table
     if op == "reply_from_envelope":
         return reply_out(reply_from_envelope(Envelope.from_data(args["envelope"]), request=Envelope.from_data(args["request"])))
     # -- spawn values ------------------------------------------------------
+    if op == "child_credential":
+        provisioner = lifecycle_module().DemoProvisioner(None, None, None, bytes.fromhex(args["workspace_key"]))
+        return provisioner.child_credential(args["child"])
     if op == "child_identity":
         return child_identity(args["parent"], args["spawn_id"])
     if op == "spawn_idempotency":
@@ -503,7 +542,7 @@ def run(op: str, args: dict):  # noqa: C901 - one flat dispatch table
     if op == "parent_of":
         return lineage_out(registry.parent_of(args["child"]))
     if op == "spawn":
-        provisioner = FakeProvisioner(args.get("provisioner", "record"), [], [])
+        provisioner = FakeProvisioner(args.get("provisioner", "record"), [], [], args.get("options"))
         activity = SpawnActivity(registry, provisioner)
         attempts = []
         for _ in range(args.get("times", 1)):
