@@ -1,0 +1,70 @@
+cabal-version:      3.4
+name:               petrus-processes
+version:            0.1.0.0
+synopsis:           Process lifecycle for Petrus: correlated calls and retry-safe spawn
+description:
+  A port of @petrus.processes@: call request, result, and error payloads
+  over Fabric envelopes with their derived delivery identities and strict
+  validation; spawn specs, child identities, and the @process.spawn@
+  Activity with its registry and provisioner ports; and — in the
+  @postgres@ sublibrary — the authenticated lineage registry sharing the
+  reference's @impetus_lifecycle@ schema, plus the reference provisioning
+  profile. Python and Haskell processes call and spawn each other through
+  one database.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Distributed Computing
+build-type:         Simple
+extra-doc-files:    NOTICE
+                    PARITY.md
+                    DIVERGENCES.md
+                    bench/RESULTS.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Processes
+                    Petrus.Processes.Call
+                    Petrus.Processes.Model
+                    Petrus.Processes.Spawn
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , petrus-activity
+                  , petrus-fabric
+                  , petrus-json
+                  , text >=2.0
+  ghc-options:      -O2
+
+-- The PostgreSQL lineage registry (petrus.processes.postgres).
+library postgres
+  import:           warnings
+  visibility:       public
+  hs-source-dirs:   postgres
+  exposed-modules:  Petrus.Processes.Postgres
+  build-depends:    base >=4.18 && <5
+                  , base64-bytestring >=1.2
+                  , bytestring >=0.11
+                  , cryptohash-sha256 >=0.11
+                  , petrus-fabric
+                  , petrus-fabric:postgres
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-processes
+                  , petrus-telemetry
+                  , text >=2.0
+  ghc-options:      -O2

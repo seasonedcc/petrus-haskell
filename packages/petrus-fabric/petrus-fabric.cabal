@@ -1,0 +1,116 @@
+cabal-version:      3.4
+name:               petrus-fabric
+version:            0.1.0.0
+synopsis:           Fabric: authenticated inter-process delivery for Petrus Instances
+description:
+  A port of @petrus.fabric@: the version-1 Envelope and its canonical
+  digest and ingress identity, the kernel ingress bridge (@FabricInbox@)
+  against an abstract delivery door, the interoperable @fabric.send@
+  Activity profile, and — in the @postgres@ sublibrary — the
+  trusted-workspace PostgreSQL store sharing the reference's
+  @impetus_fabric@ schema, so Python and Haskell processes message each
+  other through one database. The @engine@ sublibrary adapts an Engine as
+  the delivery door.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Distributed Computing
+build-type:         Simple
+extra-doc-files:    NOTICE
+                    PARITY.md
+                    DIVERGENCES.md
+                    bench/RESULTS.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Fabric
+                    Petrus.Fabric.Error
+                    Petrus.Fabric.Model
+                    Petrus.Fabric.Ingress
+                    Petrus.Fabric.Send
+  build-depends:    base >=4.18 && <5
+                  , base16-bytestring >=1.0
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , cryptohash-sha256 >=0.11
+                  , petrus-activity
+                  , petrus-impetus
+                  , petrus-json
+                  , text >=2.0
+                  , time >=1.12
+  ghc-options:      -O2
+
+-- The PostgreSQL store (petrus.fabric.postgres).
+library postgres
+  import:           warnings
+  visibility:       public
+  hs-source-dirs:   postgres
+  exposed-modules:  Petrus.Fabric.Postgres
+  build-depends:    base >=4.18 && <5
+                  , base64-bytestring >=1.2
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , crypton >=1.0
+                  , petrus-fabric
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-telemetry
+                  , text >=2.0
+                  , time >=1.12
+  ghc-options:      -O2
+
+-- An Engine as the delivery door.
+library engine
+  import:           warnings
+  visibility:       public
+  hs-source-dirs:   engine
+  exposed-modules:  Petrus.Fabric.Engine
+  build-depends:    base >=4.18 && <5
+                  , petrus-engine
+                  , petrus-fabric
+                  , petrus-impetus
+  ghc-options:      -O2
+
+test-suite petrus-fabric-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.Fabric.Conformance.Impl
+                    Petrus.Fabric.Conformance.Haskell
+                    Petrus.Fabric.Conformance.Setup
+                    Petrus.Fabric.ConformanceSpec
+  build-depends:    base
+                  , async >=2.2
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-fabric
+                  , petrus-fabric:engine
+                  , petrus-fabric:postgres
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-test-support
+                  , process >=1.6
+                  , text
+                  , time
+  ghc-options:      -threaded -rtsopts
