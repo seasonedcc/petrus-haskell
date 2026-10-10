@@ -1,0 +1,88 @@
+cabal-version:      3.4
+name:               petrus-motus-absurd
+version:            0.1.0.0
+synopsis:           The Absurd Dispatch for the Petrus port: durable Activity custody over PostgreSQL
+description:
+  A port of @petrus.motus.dispatch.absurd@: the optional durable Dispatch
+  over Absurd 0.4.0, hash-pinned and never forked. The exact release schema
+  (absurd_schema/absurd-0.4.0.sql) is vendored verbatim, compiled in, and
+  re-verified by sha256 at every apply. AbsurdDispatch spawns each
+  invocation's task inside the authority's joined transaction (with the
+  impetus_dispatch doorbell), recovers custody lookup-first under the
+  occurrence's idempotency key, cancels with durable tombstones, and
+  collects terminal outcomes in completion order; GuardedDispatch and
+  AbsurdWorkerDispatch are the lease-fenced Worker side. Built on
+  petrus-motus and petrus-postgres; it does not depend on the kernel.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Workflow
+build-type:         Simple
+extra-source-files: absurd_schema/absurd-0.4.0.sql
+extra-doc-files:    NOTICE
+                    PARITY.md
+                    DIVERGENCES.md
+                    bench/RESULTS.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Motus.Dispatch.Absurd
+                    Petrus.Motus.Dispatch.Absurd.Schema
+  other-modules:    Petrus.Motus.Dispatch.Absurd.Embed
+  build-depends:    base >=4.18 && <5
+                  , base16-bytestring >=1.0
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , cryptohash-sha256 >=0.11
+                  , petrus-activity
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-postgres
+                  , petrus-telemetry
+                  , template-haskell >=2.20
+                  , text >=2.0
+                  , time >=1.12
+                  , unix >=2.8
+  ghc-options:      -O2
+
+test-suite petrus-motus-absurd-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.Motus.Dispatch.Absurd.Driver
+                    Petrus.Motus.Dispatch.Absurd.HeartbeatSpec
+                    Petrus.Motus.Dispatch.Absurd.InteropSpec
+                    Petrus.Motus.Dispatch.Absurd.Support
+                    Petrus.Motus.Dispatch.AbsurdSpec
+  build-depends:    base
+                  , base16-bytestring
+                  , bytestring
+                  , cryptohash-sha256
+                  , directory
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-motus-absurd
+                  , petrus-postgres
+                  , petrus-test-support
+                  , process >=1.6
+                  , random
+                  , text
+                  , unix
+  ghc-options:      -threaded -rtsopts
