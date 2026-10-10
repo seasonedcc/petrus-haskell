@@ -16,7 +16,7 @@
 --   operation consumed.
 --
 -- Pending without @PETRUS_TEST_POSTGRES@.
-module Spec.JoinedWorlds (spec, JoinedCase (..), joinedCases) where
+module Spec.JoinedWorlds (spec, JoinedCase (..), joinedCases, isolated, fixtureBytes) where
 
 import Control.Exception (bracket)
 import Control.Monad (forM_)

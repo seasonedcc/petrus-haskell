@@ -2,28 +2,27 @@
 
 Port of `petrus.testing.dst` (`upstream/petrus/src/petrus/testing/dst.py`) at the pin `3f85fc2`.
 
-**Status: at parity, except the 33 joined Postgres worlds.** At parity, with the evidence below:
+**Status: at parity.** With the evidence below:
 
 - the World interpreter, Timeline and choice streams;
 - artifacts v1 to v4, replay and the registry;
 - the process runner, including the complete public-Engine resource world in a child;
-- every non-joined Engine-backed world, on the real Haskell Engine. That means the profiles,
-  the checkers, the authoring stories, and replay of all 18 non-joined fixtures through those
-  profiles with the reference's exact result bytes.
-
-What remains is listed in [What remains](#what-remains): the 33 `joined-*` fixtures. They need
-the Postgres History store and the Absurd joined Engine and Dispatch, none of which is ported
-yet. Their replay half is still checked against the reference through recorded door transcripts
-(see [the Engine seam](#the-engine-seam)).
+- every Engine-backed world on the real Haskell Engine, including the 33 joined
+  History/Dispatch worlds over PostgreSQL History, the Absurd Engine and real Absurd Workers.
+  That means the profiles, the checkers, the authoring stories, and replay of all 51 fixtures
+  through those profiles with the reference's exact result bytes.
 
 API differences are in [DIVERGENCES.md](DIVERGENCES.md). Wire formats do not diverge.
-Benchmarks are in [bench/RESULTS.md](bench/RESULTS.md): Haskell is faster on every workload.
+Benchmarks are in [bench/RESULTS.md](bench/RESULTS.md): Haskell is faster on every workload,
+including the joined worlds, where PostgreSQL does most of the work and the margin is small.
 
 ## Evidence
 
-`cabal build petrus-dst && cabal test petrus-dst` runs 112 hspec examples. Each one compares
-against vectors produced by the pinned Python. The eight generator scripts are committed under
-`scripts/`, and their output under `test/data/`.
+`cabal build petrus-dst && cabal test petrus-dst` runs 216 hspec examples with
+`PETRUS_TEST_POSTGRES` set (the 66 joined examples are pending without it). Each one compares
+against vectors produced by the pinned Python. The ten generator scripts are committed under
+`scripts/`, and their output under `test/data/` (and, for the generated identities module,
+under `joined/`).
 
 | Vectors | Script | What it pins | Spec |
 | --- | --- | --- | --- |
@@ -35,10 +34,12 @@ against vectors produced by the pinned Python. The eight generator scripts are c
 | `generated-stories.json` | `generated_stories.py` | 400 seeded random toy scripts: refusals, settling, disposition, artifact bytes, replay result | `Spec.Properties` |
 | `engine-authored.json` | `engine_authored.py` | the artifact bytes of all 18 non-joined `build_*_artifact` builders (engine ×9, delayed, delivery, timer, lifecycle ×2, retry ×3, generated runtime) | `Spec.EngineWorlds` authoring |
 | `engine-checkers.json` | `engine_checker_vectors.py` | 26 full checker verdicts (`passed` and every `detail` field): the 13 upstream `*_checker_*` unit tests; the 10 cases of the generated-runtime divergence test, including its stateful frozen-execution check; 3 extra passing and refusing cases | `Spec.EngineCheckers` |
+| `joined-checkers.json` | `joined_checker_vectors.py` | 35 full joined checker verdicts: every observation the 21 upstream joined `test_*checker*` functions hand to a checker, recorded with the whole verdict, plus one close-vocabulary vector per recorded reset-checker observation | `Spec.EngineCheckers` |
+| `joined/Petrus/Testing/Dst/Joined/Identities.hs` | `joined_identities.py` | every joined Profile and Checker identity definition, evaluated by the reference module itself (never transcribed by hand) | every joined authoring and replay test (an identity mismatch fails closed) |
 
 The Engine worlds are also checked without vectors. `Spec.EngineWorlds` replays every non-joined
-fixture through fresh real profiles and compares the replay result bytes with the
-reference's (`transcripts.json` `outcome`).
+fixture, and `Spec.JoinedWorlds` every joined fixture, through fresh real profiles and compares
+the replay result bytes with the reference's (`transcripts.json` `outcome`).
 
 The Haskell tests also include properties:
 
@@ -59,6 +60,15 @@ PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/generated_
 PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/transcript_vectors.py postgres://USER@HOST:PORT/postgres ../../packages/petrus-dst/test/data/transcripts.json
 PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/engine_authored.py ../../packages/petrus-dst/test/data/engine-authored.json
 PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/engine_checker_vectors.py ../../packages/petrus-dst/test/data/engine-checkers.json
+PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/joined_checker_vectors.py ../../packages/petrus-dst/test/data/joined-checkers.json
+PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/joined_identities.py ../../packages/petrus-dst/joined/Petrus/Testing/Dst/Joined/Identities.hs
+```
+
+To run the joined worlds, point `PETRUS_TEST_POSTGRES` at a server where the role may create
+databases (each joined example makes and drops its own):
+
+```sh
+PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@localhost:5432/postgres cabal test petrus-dst
 ```
 
 `transcript_vectors.py` replays the joined fixtures against real Postgres, as the reference
@@ -74,8 +84,8 @@ The DST interpreter never sees the Engine. It sees two records:
 - `Checker`, the pure invariants.
 
 The Engine-backed profiles (`tests/dst/engine_world.py`, the joined worlds) are Python classes
-over the production Engine. Until the Haskell Engine exists, `Petrus.Testing.Dst.Transcript`
-stands in for them. `transcript_vectors.py` wraps every profile and checker the reference
+over the production Engine. Their Haskell twins are below; `Petrus.Testing.Dst.Transcript`
+also checks the interpreter on its own, without any Engine. `transcript_vectors.py` wraps every profile and checker the reference
 registers while it replays a fixture, and records:
 
 - each door call, with its arguments and outcome;
@@ -122,10 +132,35 @@ story on a fresh History. Two checks follow:
 The transcripts stay as an independent cross-check of every door call, including for the joined
 worlds.
 
+### Joined profiles
+
+The internal library `petrus-dst:joined-worlds` (`joined/`) ports the four joined world modules.
+Each profile hosts the real Absurd Engine (`petrus-engine-absurd`) over the real PostgreSQL
+History store (`petrus-history-postgres`) and the real Absurd Dispatch, with
+`AbsurdWorkerDispatch` Workers (`petrus-motus-absurd`) completing the Activities. The fault
+doors wrap the same sessions the reference wraps (History commit refusal and acknowledgement
+loss, Dispatch refusal).
+
+| Reference module | Haskell module | Fixtures replayed | Builders authored |
+| --- | --- | --- | --- |
+| `joined_world.py` | `Petrus.Testing.Dst.Joined.World` (profile), `…Joined.Stories` (25 builders) | 25 | 25 |
+| `joined_creation_world.py` | `…Joined.Creation` (profile and its 4 builders) | 4 | 4 |
+| `joined_registration_world.py` | `…Joined.World`, `…Joined.Stories` | 2 | 2 |
+| `joined_seal_world.py` | `…Joined.World`, `…Joined.Stories` | 2 | 2 |
+| every module's checkers | `…Joined.Checkers` (26 checkers) | | |
+| shared fixture plumbing | `…Joined.Support` | | |
+| every identity constant | `…Joined.Identities` (generated) | | |
+
+`Spec.JoinedWorlds` runs each of the 33 fixtures twice, each time in a fresh scratch database:
+
+- replay: the fixture through a fresh profile, ending with the reference's replay result bytes;
+- authoring: the Haskell story must produce exactly the fixture's bytes, and the authored
+  artifact must replay through a fresh profile in another fresh database with outcome `pass`,
+  the story's disposition, and every operation consumed.
+
 ## Upstream test map
 
-Every test in `upstream/petrus/tests/dst/`. Tests marked *remaining (joined)* need the
-Postgres History store and the Absurd joined Engine and Dispatch.
+Every test in `upstream/petrus/tests/dst/`.
 
 ### `test_world.py`
 
@@ -195,10 +230,15 @@ Their tests map by kind:
 
 | Kind of test | Non-joined worlds | Joined worlds |
 | --- | --- | --- |
-| `*_is_exact_and_replayable` | `Spec.EngineWorlds`: the authored bytes equal the reference builder's, the artifact replays to `pass`, and the fixture replays through fresh real profiles to the reference's result bytes | replay half: `Spec.Transcript`; authoring: remaining (joined) |
-| `test_retained_*_replays_*` | `Spec.EngineWorlds` | `Spec.Transcript` |
-| `*_manual_replay_route_is_deterministic` | Python CLI tooling; the replay result bytes are compared in `Spec.EngineWorlds` | `Spec.Transcript` |
-| `*_checker_*` (checker unit tests over Engine observations) | `Spec.EngineCheckers` | remaining (joined) |
+| `*_is_exact_and_replayable` | `Spec.EngineWorlds`: the authored bytes equal the reference builder's, the artifact replays to `pass`, and the fixture replays through fresh real profiles to the reference's result bytes | `Spec.JoinedWorlds` authoring (33 tests: 25, 4, 2, 2), the same three checks over PostgreSQL |
+| `test_retained_*_replays_*` | `Spec.EngineWorlds` | `Spec.JoinedWorlds` replay (33 tests: 25, 4, 2, 2); also `Spec.Transcript` |
+| `*_manual_replay_route_is_deterministic` | Python CLI tooling; the replay result bytes are compared in `Spec.EngineWorlds` | (none upstream) |
+| `*_checker_*` (checker unit tests over Engine observations) | `Spec.EngineCheckers` | `Spec.EngineCheckers` over `joined-checkers.json` (21 tests: 17, 2, 1, 1) |
+
+Upstream test counts of the joined files: `test_joined_world.py` 67, `test_joined_creation_world.py`
+10, `test_joined_registration_world.py` 5, `test_joined_seal_world.py` 5. Upstream skips the 66
+PostgreSQL tests without `PETRUS_TEST_POSTGRES`; `Spec.JoinedWorlds` marks them pending, saying
+so.
 
 The non-joined files are:
 
@@ -242,51 +282,9 @@ A reference quirk: a budget refusal after the World has ended records a second f
 operation, so the World can no longer produce its artifact. The port reproduces it, and the
 `failure-after-end` story pins it (see DIVERGENCES.md).
 
-## What remains
+## Not ported
 
-The 33 joined fixtures remain. Their profiles come from four modules:
-
-- `tests/dst/joined_world.py`;
-- `joined_creation_world.py`;
-- `joined_registration_world.py`;
-- `joined_seal_world.py`.
-
-These profiles drive `petrus.engine.absurd.create_engine` and `load_engine` over
-`PostgresHistoryStore` and `AbsurdWorkerDispatch`, on a real Postgres. None of these has a
-Haskell port yet.
-
-Until then, `Spec.Transcript` checks each fixture's replay half through its recorded door
-transcript, with the reference's calls and result bytes. Three things remain:
-
-- authoring;
-- real-profile replay;
-- the joined checker unit tests.
-
-The 33 fixtures:
-
-- `joined-begin-ack-loss-world-v3.json`, `joined-begin-commit-refusal-world-v3.json`
-- `joined-cancellation-ack-loss-world-v3.json`, `joined-cancellation-commit-refusal-world-v3.json`
-- `joined-close-ack-loss-world-v3.json`, `joined-close-commit-refusal-world-v3.json`
-- `joined-creation-ack-loss-world-v3.json`, `joined-creation-commit-refusal-world-v3.json`
-- `joined-delivery-ack-loss-world-v3.json`, `joined-delivery-commit-refusal-world-v3.json`
-- `joined-dispatch-refusal-world-v3.json`
-- `joined-failure-ack-loss-world-v3.json`, `joined-failure-commit-refusal-world-v3.json`
-- `joined-failure-projection-ack-loss-world-v3.json`,
-  `joined-failure-projection-commit-refusal-world-v3.json`
-- `joined-open-ack-loss-world-v3.json`, `joined-open-commit-refusal-world-v3.json`
-- `joined-projection-ack-loss-world-v3.json`, `joined-projection-commit-refusal-world-v3.json`
-- `joined-registration-projection-ack-loss-world-v3.json`,
-  `joined-registration-projection-commit-refusal-world-v3.json`
-- `joined-reset-ack-loss-world-v3.json`, `joined-reset-commit-refusal-world-v3.json`
-- `joined-scoped-drop-ack-loss-world-v3.json`, `joined-scoped-drop-commit-refusal-world-v3.json`
-- `joined-scoped-quarantine-ack-loss-world-v3.json`,
-  `joined-scoped-quarantine-commit-refusal-world-v3.json`
-- `joined-seal-ack-loss-world-v3.json`, `joined-seal-commit-refusal-world-v3.json`
-- `joined-source-creation-ack-loss-world-v3.json`,
-  `joined-source-creation-commit-refusal-world-v3.json`
-- `joined-terminal-ack-loss-world-v3.json`, `joined-terminal-commit-refusal-world-v3.json`
-
-Together, the 18 non-joined fixtures and these 33 make up the 51 world fixtures.
-
-Also not ported: the reference's `LivelockMutationProfile`, a qualification mutant in
-`generated_runtime_qualification.py`. No committed fixture uses it.
+The reference's `LivelockMutationProfile` lives in `tests/dst/generated_runtime_qualification.py`,
+a qualification mutant of the generated-runtime world. Only the hypothesis campaign
+`test_generated_runtime_qualification.py` uses it (out of scope, above), and no committed
+fixture names it. It is not a joined or Absurd profile.

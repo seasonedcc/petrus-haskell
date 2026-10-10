@@ -4,13 +4,21 @@ Run from upstream/petrus:
 
     PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/bench.py
 
+With PETRUS_TEST_POSTGRES set (a role that may create databases) it also
+times the 33 joined worlds, each replay and each authoring in a fresh
+isolated database, as Spec.JoinedWorlds and the reference's tests do. An
+optional argument keeps only the workloads whose name contains it (for
+example ``joined/``).
+
 Each workload is timed as the median, over 7 rounds, of the mean time per
 iteration within a round of at least 0.5 s (``timeit``'s autorange shape).
 """
 
 from __future__ import annotations
 
+import inspect
 import json
+import os
 import statistics
 import sys
 import tempfile
@@ -21,7 +29,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from engine_authored import ONE_PATH, TWO_PATHS  # noqa: E402
 from generated_stories import author  # noqa: E402
+from tests.dst.postgres_support import isolated_absurd_database  # noqa: E402
 from tests.dst.replay_world import replay_path  # noqa: E402
+from transcript_vectors import JOINED_MODULES, joined_replay  # noqa: E402
 
 from petrus.testing.dst import (  # noqa: E402
     ChoiceAuthority,
@@ -78,13 +88,42 @@ def author_engine_worlds() -> list[bytes]:
     return authored
 
 
-def measure(name: str, call) -> None:
+def canonical(result) -> str:
+    return json.dumps(result.model_dump(mode="json"), allow_nan=False, separators=(",", ":"), sort_keys=True)
+
+
+def joined_workloads(server_dsn: str):
+    fixtures = sorted(path for path in FIXTURES.glob("joined-*.json"))
+    replays = [joined_replay(path, server_dsn) for path in fixtures]
+    builders = [
+        function
+        for module in JOINED_MODULES
+        for name, function in inspect.getmembers(module, inspect.isfunction)
+        if name.startswith("build_") and name.endswith("_artifact") and function.__module__ == module.__name__
+    ]
+
+    def replay_all() -> list[str]:
+        return [canonical(run()) for run in replays]
+
+    def author_all() -> list[bytes]:
+        authored = []
+        for build in builders:
+            with isolated_absurd_database(server_dsn) as dsn:
+                authored.append(encode_artifact(build(dsn)))
+        return authored
+
+    return len(fixtures), replay_all, len(builders), author_all
+
+
+def measure(name: str, call, rounds_count: int = 7) -> None:
+    if len(sys.argv) > 1 and sys.argv[1] not in name:
+        return
     timer = timeit.Timer(call)
     number, elapsed = timer.autorange()
     while elapsed < 0.5:
         number *= 2
         elapsed = timer.timeit(number)
-    rounds = [timer.timeit(number) / number for _ in range(7)]
+    rounds = [timer.timeit(number) / number for _ in range(rounds_count)]
     median = statistics.median(rounds)
     spread = statistics.pstdev(rounds)
     unit, scale = ("ms", 1e3) if median >= 1e-3 else ("us", 1e6)
@@ -132,6 +171,16 @@ def main() -> int:
         ],
     )
     measure(f"engine/author {len(ENGINE_BUILDERS)} Engine worlds", author_engine_worlds)
+    server_dsn = os.environ.get("PETRUS_TEST_POSTGRES")
+    if server_dsn:
+        replay_count, replay_all, author_count, author_all = joined_workloads(server_dsn)
+        def one_isolated_database() -> None:
+            with isolated_absurd_database(server_dsn):
+                pass
+
+        measure("joined/one isolated database", one_isolated_database)
+        measure(f"joined/replay {replay_count} joined fixtures", replay_all, 5)
+        measure(f"joined/author {author_count} joined worlds", author_all, 5)
     directory.cleanup()
     return 0
 
