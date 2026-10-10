@@ -83,7 +83,9 @@ Notes on the table:
 **Engine and Dispatch belong to other packages (8)**, all in
 `test_activity_seam.py::TestInlineDispatch`. The kernel side of each one
 (begin, record, complete over an inline driver) is ported elsewhere in the
-same file.
+same file. The Dispatch side is ported in `petrus-motus`: 7 tests, plus the
+dataclass-reflection one, which does not apply (see
+`packages/petrus-motus/PARITY.md`).
 
 - `test_registry_is_snapshotted_and_the_adapter_remains_frozen`
 - `test_classified_retries_are_immediate_and_never_sleep`
@@ -112,6 +114,9 @@ a JSON-lines round trip.
 - `TestJsonlHistoryStore.test_a_mid_batch_encoding_failure_writes_nothing`
 
 The v1 and schema-2 refusal messages themselves are ported at the codec level.
+All 11 are ported against the real JSONL store in `petrus-history-store`
+(`packages/petrus-history-store/PARITY.md`). Its backend-contract suite runs
+`test_history_backends.py` with `reopen` set to jsonl.
 
 **Private Instance helpers that are not exported (2)**, in `test_firing.py`.
 The same records and outcomes are asserted through the public `begin` and

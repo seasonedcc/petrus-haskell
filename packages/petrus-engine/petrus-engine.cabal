@@ -1,0 +1,107 @@
+cabal-version:      3.4
+name:               petrus-engine
+version:            0.1.0.0
+synopsis:           The Petrus Engine: one live composition around one durable Instance
+description:
+  A port of @petrus.engine@: the Engine and its asynchronous coordinator —
+  driving policies, clocks, sensors, read doors, crash recovery on the
+  first advance, joined-transaction commit points, and poisoning on
+  writing-door failures. Durable providers compose through
+  "Petrus.Engine.Provider"; protocol views build on
+  "Petrus.Engine.Observation".
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Workflow
+build-type:         Simple
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Engine
+                    Petrus.Engine.Coordinator
+                    Petrus.Engine.Internal
+                    Petrus.Engine.Observation
+                    Petrus.Engine.Provider
+                    Petrus.Engine.Vocabulary
+  build-depends:    base >=4.18 && <5
+                  , containers >=0.6
+                  , deepseq >=1.4
+                  , petrus-activity
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-telemetry
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-engine-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  -- The kernel's and the History store's shared test fixtures are compiled
+  -- in from their test trees rather than copied.
+  hs-source-dirs:   test ../petrus-impetus/test ../petrus-history-store/test
+  main-is:          Main.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.HistoryStore.Support
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.Scenario
+                    Petrus.Engine.EngineSpec
+                    Petrus.Engine.CoordinatorSpec
+                    Petrus.Engine.ExecutionSpec
+                    Petrus.Engine.DeliveryPhasesASpec
+                    Petrus.Engine.DeliveryPhasesBSpec
+                    Petrus.Engine.DeliveryPhasesCSpec
+                    Petrus.Engine.InteropSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-telemetry
+                  , process >=1.6
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-engine-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench test ../petrus-impetus/test
+  main-is:          Main.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.Scenario
+  build-depends:    base
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"

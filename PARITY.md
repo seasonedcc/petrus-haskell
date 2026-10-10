@@ -31,15 +31,18 @@ the tests, conformance suites, and benchmark results that justify the status.
 | Net document v1 | `impetus/net_document.py` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
 | Golden traces | `spec/traces` | `petrus-impetus` | at parity | [GoldenTracesSpec](packages/petrus-impetus/test), `cabal run petrus-golden-traces` |
 | History stores: memory | `impetus/history_store/memory.py` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
-| History stores: JSONL, SQLite, Postgres | `impetus/history_store/{jsonl,sqlite,postgres}.py` | | not started | |
+| History stores: JSONL | `impetus/history_store/jsonl.py` | `petrus-history-store` | at parity | [PARITY](packages/petrus-history-store/PARITY.md), [DIVERGENCES](packages/petrus-history-store/DIVERGENCES.md), byte-identical interop both ways (`test/Petrus/HistoryStore/InteropSpec.hs`), [bench](packages/petrus-history-store/bench/RESULTS.md) |
+| History stores: SQLite, Postgres | `impetus/history_store/{sqlite,postgres}.py` | `petrus-history-store` (SQLite place reserved) | not started | |
 | Observation | `impetus/observation.py`, `engine/observation_http.py` | `petrus-observation` | in progress | `observation.py` at parity (fixtures byte for byte); Engine-locking tests and the HTTP adapter wait for the Engine; [tests](packages/petrus-observation/PARITY.md), [differential](packages/petrus-observation/differential), [bench](packages/petrus-observation/bench/RESULTS.md) |
 | Net DSL | `impetus/dsl.py` | `petrus-dsl` | at parity | 68-net differential corpus (v3 bytes, order, URIs, refusals); [tests](packages/petrus-dsl/PARITY.md), [differential](packages/petrus-dsl/differential), [bench](packages/petrus-dsl/bench/RESULTS.md), [divergences](packages/petrus-dsl/DIVERGENCES.md) |
 | Activities | `motus/activity` | | in progress | value types in `petrus-activity` |
+| Dispatch port, InlineDispatch, InMemoryDispatch | `motus/dispatch/{__init__,inline,memory}.py` | `petrus-motus` | at parity | [PARITY](packages/petrus-motus/PARITY.md), [DIVERGENCES](packages/petrus-motus/DIVERGENCES.md); exercised end to end by the [Engine bench](packages/petrus-engine/bench/RESULTS.md) |
 | Dispatch: local, Absurd | `motus/dispatch` | | not started | |
 | Execution, Gondolin | `motus/execution`, `motus/_execution` | | not started | |
 | Workers | `motus/worker` | | not started | |
 | Transport: ZeroMQ | `motus/transport` | | not started | |
-| Engine: SQLite, Postgres, Absurd, coordination | `engine/` | | not started | |
+| Engine (provider-neutral) and coordination | `engine/__init__.py`, `engine/_coordination.py` | `petrus-engine` | at parity | [PARITY](packages/petrus-engine/PARITY.md), [DIVERGENCES](packages/petrus-engine/DIVERGENCES.md), JSONL interop with crash/resume both ways (`test/Petrus/Engine/InteropSpec.hs`), [bench](packages/petrus-engine/bench/RESULTS.md) |
+| Engine: SQLite, Postgres, Absurd | `engine/{sqlite,postgres,absurd}.py` | `petrus-engine` provider seam (`Petrus.Engine.Provider`) | not started | |
 | Simulation + HTTP | `simulation.py`, `simulation_http.py` | | not started | |
 | Telemetry | `telemetry.py` | | in progress | `petrus-telemetry`; Engine instrumentation pending |
 | Deterministic simulation testing | `testing/dst.py` | `petrus-dst` | in progress | [`packages/petrus-dst/PARITY.md`](packages/petrus-dst/PARITY.md) (Engine-independent behavior at parity; Engine-backed authoring awaits the Engine), [`bench/RESULTS.md`](packages/petrus-dst/bench/RESULTS.md) |

@@ -1,0 +1,57 @@
+cabal-version:      3.4
+name:               petrus-motus
+version:            0.1.0.0
+synopsis:           Petri-agnostic Activity custody: the Dispatch port and its in-process adapters
+description:
+  The core of a port of @petrus.motus.dispatch@: the Dispatch port the Engine
+  drives (dispatch, collect, and the optional recoverable cancellation
+  extension), the cancellation values, the provider-neutral Activity Attempt
+  and Worker custody surface, and the two in-process adapters,
+  InlineDispatch and InMemoryDispatch. Durable providers (local SQLite,
+  ZeroMQ, Absurd) and Workers build on these values in their own modules.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Motus.Dispatch
+                    Petrus.Motus.Dispatch.Inline
+                    Petrus.Motus.Dispatch.InMemory
+                    Petrus.Motus.Internal.Repr
+  build-depends:    base >=4.18 && <5
+                  , containers >=0.6
+                  , petrus-activity
+                  , petrus-json
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-motus-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  build-depends:    base
+                  , containers
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-json
+                  , petrus-motus
+                  , text
+  ghc-options:      -threaded -rtsopts
