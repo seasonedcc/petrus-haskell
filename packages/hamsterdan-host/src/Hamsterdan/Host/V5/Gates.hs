@@ -51,13 +51,11 @@ import Hamsterdan.GitHub.Effects qualified as Effects
 import Hamsterdan.GitHub.Models (FailureClass (..), FindingPublication (..), GitHubBoundaryError (..), PublicationResult (..))
 import Hamsterdan.GitHub.Python qualified as Py
 import Hamsterdan.Host.Errors (Caught (..), UnstagedCustodyError (..), catchGate)
-import Hamsterdan.Host.Python (TypeError (..), ValueError (..), sha256HexText)
+import Hamsterdan.Host.Python (TypeError (..), ValueError (..), raiseFailureText, sha256HexText)
 import Hamsterdan.Host.V5.Claim (ClaimReader, CurrentClaim (..))
 import Hamsterdan.Readiness.NetV5.Board (renderBoard)
 import Hamsterdan.Readiness.NetV5.Gating (Variant, markerOperation, variantOf)
-import Hamsterdan.PyLiteral (literalEval)
-import Hamsterdan.PyLiteral qualified as PyLit
-import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
+import Petrus.Impetus.Instance.FailureText (PythonException (..))
 import Petrus.Json (Json (..), jsonTypeName)
 import Petrus.Json.PythonText (pythonStrRepr)
 
@@ -463,13 +461,4 @@ dashGate g work = do
 -- | The board renderer's recorded failure text, raised as the exception
 -- the reference's @render_board@ raises.
 renderFailure :: Text -> IO a
-renderFailure text =
-  let (name, rest) = T.breakOn "(" text
-      message = case literalEval (T.dropEnd 1 (T.drop 1 rest)) of
-        Right (PyLit.PyStr m) -> Just m
-        _ -> Nothing
-   in case (name, message) of
-        ("TypeError", Just m) -> throwIO (TypeError m)
-        ("ValueError", Just m) -> throwIO (ValueError m)
-        (_, Just m) -> throwIO (PythonException name [PyStr m])
-        _ -> throwIO (PythonException name [])
+renderFailure = raiseFailureText

@@ -1,10 +1,28 @@
--- | @tests/unit/host/test_binding.py@ (state ownership; the inactive
--- adapter cases live in "ApplicationSpec").
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
+-- | @tests/unit/host/test_binding.py@: state ownership and the inactive
+-- publication adapter.
 module BindingSpec (spec) where
 
+import Control.Exception (throwIO)
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
+import Data.Text (Text)
+import Data.Typeable (Typeable)
+import Hamsterdan.Contracts.Codec (Contract, dump)
+import Hamsterdan.Contracts.ReadinessV5
+  ( ABlocked (..)
+  , AnnounceReq (..)
+  , DashBlocked (..)
+  , DashReq (..)
+  , ReplyBlocked (..)
+  , ReplyReq (..)
+  )
 import Hamsterdan.Host.Binding
+import Hamsterdan.Host.V5.Application (inactiveActivityResult)
+import Hamsterdan.Readiness.NetV5.Gating (GateDefinition (..), annotation, variantPayloadConverter)
+import Petrus.Activity (ActivityDefinition (..), ActivityInvocation (..), activityDeclaration, declarationName, defaultExecutionPolicy)
+import Petrus.Impetus.Instance.FailureText (PythonException (..))
 import Petrus.Json (Json (..), parseJson, pythonLoads)
 import System.Directory (createDirectory, createDirectoryIfMissing, createDirectoryLink, createFileLink)
 import System.FilePath ((</>))
@@ -14,8 +32,73 @@ import TestSupport
 instance' :: Json
 instance' = String "github:44:31:pr:7"
 
+-- | @@activity(name=..., converter=VariantPayloadConverter())@ over a
+-- forbidden provider gate: @def forbidden(work: Request) -> Blocked@.
+forbidden :: forall request. (Contract request, Typeable request) => Text -> Text -> GateDefinition
+forbidden name blocked =
+  GateDefinition
+    { activity =
+        ActivityDefinition
+          (either (error . show) id (activityDeclaration name Nothing))
+          variantPayloadConverter
+          ["work"]
+          (\_ _ -> throwIO (PythonException "AssertionError" []))
+    , parameters = [("work", annotation @request)]
+    , result = [blocked]
+    }
+
+inactiveCases :: [(Text, GateDefinition, Json, Json)]
+inactiveCases =
+  [ ( "forbidden_reply"
+    , forbidden @ReplyReq "reply_gate" "ReplyBlocked"
+    , dump ReplyReq {id = "comment-7", text = "safe reply"}
+    , dump ReplyBlocked {id = "comment-7", text = "safe reply"}
+    )
+  , ( "forbidden_dash"
+    , forbidden @DashReq "dash_gate" "DashBlocked"
+    , dump
+        DashReq
+          { entries = ["one"]
+          , digest = "d1"
+          , desiredEntries = ["one", "two"]
+          , desiredDigest = "d2"
+          , landed = ""
+          , blocked = []
+          , faulted = []
+          }
+    , dump DashBlocked {entries = ["one"], digest = "d1", desiredEntries = ["one", "two"], desiredDigest = "d2"}
+    )
+  , ( "forbidden_announce"
+    , forbidden @AnnounceReq "announce_gate" "ABlocked"
+    , dump
+        AnnounceReq
+          { op = "ready:h1:i3"
+          , incarnation = 3
+          , head = "h1"
+          , base = "b1"
+          , policy = "p1"
+          , strictBase = True
+          , baseCurrent = False
+          }
+    , dump ABlocked {incarnation = 3, head = "h1", base = "b1", policy = "p1"}
+    )
+  ]
+
 spec :: Spec
 spec = describe "test_binding" $ do
+  forM_ inactiveCases $ \(label, definition, work, expected) ->
+    it ("test_inactive_adapter_returns_exact_typed_blocked_terminal_without_provider_call[" <> show label <> "]") $ do
+      let name = declarationName definition.activity.declaration
+          invocation =
+            ActivityInvocation
+              { activity = name
+              , input = Object [("work", work)]
+              , policy = defaultExecutionPolicy
+              , correlation = Nothing
+              , idempotency = Nothing
+              }
+      inactiveActivityResult name invocation (Just definition) `shouldReturn` expected
+
   it "test_new_bindings_are_always_explicit_v5_and_identity_mismatches_fail_closed" . withTempRoot $ \tmp -> do
     let root = tmp </> "application"
     _ <- ensureInstanceBinding root "github:44:31:pr:7" "owner/repo" 7

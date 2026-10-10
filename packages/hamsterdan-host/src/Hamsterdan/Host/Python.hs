@@ -9,6 +9,7 @@ module Hamsterdan.Host.Python
   , ValueError (..)
   , TypeError (..)
   , LookupError (..)
+  , raiseFailureText
 
     -- * JSON
   , dumpsSorted
@@ -38,6 +39,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.GitHub.Sqlite (Connection, SQLData (..))
+import Hamsterdan.PyLiteral (literalEval)
+import Hamsterdan.PyLiteral qualified as PyLit
+import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
 import Hamsterdan.GitHub.Sqlite qualified as Sql
 import Petrus.Json (EncodeOptions (..), Json, compact, defaultDumps, dumps, dumpsText, encodeErrorMessage)
 import Petrus.Motus.Worker (LookupError (..), RuntimeError (..), ValueError (..))
@@ -49,6 +53,23 @@ import System.Posix.Directory qualified as PosixDir
 newtype TypeError = TypeError Text deriving stock (Eq, Show)
 
 instance Exception TypeError where displayException (TypeError m) = T.unpack m
+
+-- | Raise a recorded Python failure text (@Name('message')@, the
+-- 'Petrus.Impetus.Instance.FailureText' spelling a pure fold returns) as
+-- the exception the reference raises: the host's own type for the
+-- built-in classes it raises, 'PythonException' for any other class.
+raiseFailureText :: Text -> IO a
+raiseFailureText text =
+  let (name, rest) = T.breakOn "(" text
+      message = case literalEval (T.dropEnd 1 (T.drop 1 rest)) of
+        Right (PyLit.PyStr m) -> Just m
+        _ -> Nothing
+   in case (name, message) of
+        ("TypeError", Just m) -> throwIO (TypeError m)
+        ("ValueError", Just m) -> throwIO (ValueError m)
+        ("RuntimeError", Just m) -> throwIO (RuntimeError m)
+        (_, Just m) -> throwIO (PythonException name [PyStr m])
+        _ -> throwIO (PythonException name [])
 
 sortedAscii :: EncodeOptions
 sortedAscii = defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortKeys = True}
