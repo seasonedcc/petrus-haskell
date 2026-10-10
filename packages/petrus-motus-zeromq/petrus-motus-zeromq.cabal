@@ -87,6 +87,7 @@ test-suite petrus-motus-zeromq-test
                   , petrus-json
                   , petrus-motus
                   , petrus-motus-zeromq
+                  , petrus-test-support
                   , process >=1.6
                   , text
                   , unix

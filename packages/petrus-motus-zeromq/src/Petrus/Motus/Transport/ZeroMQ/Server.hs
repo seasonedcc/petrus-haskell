@@ -8,6 +8,10 @@
 -- optional drain deadline during which claims are answered with no Attempt,
 -- and nothing else. A reply that cannot be delivered is dropped: custody,
 -- not delivery, decides whether an operation happened.
+--
+-- The Local providers of one server share a few open connections to the
+-- dispatch file ("Petrus.Motus.Dispatch.Local"'s 'LocalConnections'), which
+-- 'serveForever' closes when it ends.
 module Petrus.Motus.Transport.ZeroMQ.Server
   ( -- * Servers
     ZeroMQDispatchServer
@@ -18,6 +22,7 @@ module Petrus.Motus.Transport.ZeroMQ.Server
   , localServerWith
   , fromFactory
   , localFactory
+  , localFactoryOn
     -- * Running
   , serveForever
   , waitReady
@@ -49,7 +54,14 @@ import Foreign.C.Types (CInt (..))
 import GHC.Clock (getMonotonicTime)
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..), DispatchError (..), WorkerDispatch (..))
-import Petrus.Motus.Dispatch.Local (LocalWorkerOptions (..), defaultLocalWorkerOptions, openLocalWorkerDispatch)
+import Petrus.Motus.Dispatch.Local
+  ( LocalConnections
+  , LocalWorkerOptions (..)
+  , closeLocalConnections
+  , defaultLocalWorkerOptions
+  , newLocalConnections
+  , openLocalWorkerDispatchOn
+  )
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Internal.Repr (exceptionMessage, exceptionTypeName, pyRepr, pyStr, pyStrList)
 import Petrus.Motus.Transport.ZeroMQ.Curve
@@ -89,6 +101,9 @@ data ZeroMQDispatchServer = ZeroMQDispatchServer
   , startupError :: IORef (Maybe SomeException)
   , stopping :: TVar Bool
   , drainDeadline :: TVar (Maybe Double)
+  , releaseFactory :: IO ()
+  -- ^ Run once 'serveForever' ends: closes the connections the Local
+  -- providers share.
   }
 
 -- | @ZeroMQDispatchServer.local(endpoint, path, allowed_queues=..., ...)@.
@@ -100,32 +115,39 @@ localServer endpoint' path allowed server clients =
 -- max_message_bytes=...)@.
 localServerWith :: Text -> FilePath -> [Text] -> ServerOptions -> IO ZeroMQDispatchServer
 localServerWith endpoint' path allowed options = do
-  factory <- localFactory path allowed
-  initialize endpoint' factory options
+  connections <- newLocalConnections path
+  factory <- localFactoryOn connections allowed
+  initialize endpoint' factory (closeLocalConnections connections) options
 
 -- | @ZeroMQDispatchServer._from_factory(endpoint, factory,
 -- max_message_bytes=...)@: the private fault-injection door (no CURVE).
 fromFactory :: Text -> ProviderFactory -> Int -> IO ZeroMQDispatchServer
-fromFactory endpoint' factory limit = initialize endpoint' factory defaultServerOptions {maxMessageBytes = limit}
+fromFactory endpoint' factory limit = initialize endpoint' factory (pure ()) defaultServerOptions {maxMessageBytes = limit}
 
 -- | @_local_factory(path, allowed_queues)@: Local custody for a client's
 -- queues when they are all allowed.
 localFactory :: FilePath -> [Text] -> IO ProviderFactory
-localFactory path allowed = do
+localFactory path allowed = newLocalConnections path >>= (`localFactoryOn` allowed)
+
+-- | 'localFactory' over connections to the file that every provider it
+-- makes shares, so the providers cached for many clients keep only a few
+-- connections open between them. The caller closes the connections.
+localFactoryOn :: LocalConnections -> [Text] -> IO ProviderFactory
+localFactoryOn connections allowed = do
   permitted <- Set.fromList <$> mapM (fromWire . nameText "allowed queue") allowed
   when (Set.null permitted) $ throwIO (ValueError "ZeroMQ Local Dispatch server requires at least one allowed queue")
   pure $ \queues workerId -> do
     let requested = dedupe queues
     when (null requested || not (all (`Set.member` permitted) requested)) $
       throwIO (ValueError ("Worker requested queues outside the server allowlist: " <> tupleRepr requested))
-    Local.toWorkerDispatch <$> openLocalWorkerDispatch path defaultLocalWorkerOptions {workerQueues = requested, workerId = Just workerId}
+    Local.toWorkerDispatch <$> openLocalWorkerDispatchOn connections defaultLocalWorkerOptions {workerQueues = requested, workerId = Just workerId}
   where
     tupleRepr = \case
       [single] -> "(" <> pyStr single <> ",)"
       items -> "(" <> T.intercalate ", " (map pyStr items) <> ")"
 
-initialize :: Text -> ProviderFactory -> ServerOptions -> IO ZeroMQDispatchServer
-initialize endpoint' factory options = do
+initialize :: Text -> ProviderFactory -> IO () -> ServerOptions -> IO ZeroMQDispatchServer
+initialize endpoint' factory releaseFactory options = do
   endpoint <- fromWire (endpointName True endpoint')
   keys <- serverSecurity endpoint options.serverSecretCertificate options.allowedClientKeys
   unless (options.maxMessageBytes >= 1 && options.maxMessageBytes <= Petrus.Motus.Transport.ZeroMQ.Wire.maxMessageBytes) $
@@ -147,6 +169,7 @@ initialize endpoint' factory options = do
       , startupError
       , stopping
       , drainDeadline
+      , releaseFactory
       }
 
 endpointOf :: ZeroMQDispatchServer -> Text
@@ -173,6 +196,7 @@ serveForever server = do
         atomically (writeTVar server.readyFlag True)
       cleanup = do
         closeProviders providers
+        void (try @SomeException server.releaseFactory)
         readIORef resources >>= mapM_ (\(lock, authenticator, socket) -> do
           Z.closeSocket socket
           mapM_ stopAuthenticator authenticator

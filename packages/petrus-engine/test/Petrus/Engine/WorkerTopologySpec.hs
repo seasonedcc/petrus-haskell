@@ -40,7 +40,7 @@ import Petrus.Engine qualified as Engine
 import Petrus.Engine.Scenario
 import Petrus.Engine.TestSupport (advanceUntilRest, inlineOf)
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.HistoryStore.Support (pythonOrPending, runPython, withScratch)
+import Petrus.HistoryStore.Support (withReference, runPython, withScratch)
 import Petrus.Impetus.History.Records (ActivityCompleted (..), ActivityRequested (..), Record (..))
 import Petrus.Impetus.Instance (Status (Awaiting))
 import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
@@ -393,7 +393,7 @@ spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
 
   describe "lock-step Engine and Worker pairings write byte-identical History" $
     forM_ [(Haskell, Reference), (Reference, Haskell), (Reference, Reference)] $ \(engineSide, workerSide) ->
-      it (show engineSide <> " Engine, " <> show workerSide <> " Worker") $ pythonOrPending $ \python -> withScratch $ \dir -> do
+      it (show engineSide <> " Engine, " <> show workerSide <> " Worker") $ withReference $ \python -> withScratch $ \dir -> do
         ours <- lockStep Nothing (dir </> "") Haskell Haskell
         theirs <- withScratch $ \other -> lockStep (Just python) other engineSide workerSide
         theirs `shouldBe` ours

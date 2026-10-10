@@ -35,6 +35,8 @@ import Petrus.Impetus.Petrinet hiding (route, token)
 import Petrus.Impetus.TestSupport (netOf, np, tokD)
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch)
+import Petrus.TestSupport.Python (pythonExecutable)
+import Petrus.TestSupport.Repo (upstreamPetrus)
 import System.Directory
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -123,13 +125,14 @@ withScratch action = do
     removeDirectoryRecursive
     action
 
--- | The pinned reference's interpreter and root, or a pending example.
-pythonOrPending :: ((FilePath, FilePath) -> IO ()) -> IO ()
-pythonOrPending body = do
-  root <- makeAbsolute ("../.." </> "upstream" </> "petrus")
-  let python = root </> ".venv" </> "bin" </> "python"
-  present <- doesFileExist python
-  if present then body (python, root) else pendingWith "upstream/petrus is not synced (cd upstream/petrus && uv sync)"
+-- | The pinned reference's interpreter and root, provisioned by
+-- @scripts/upstream-python@ on first use; fails loudly, never skips, when the
+-- reference cannot be provisioned.
+withReference :: ((FilePath, FilePath) -> IO ()) -> IO ()
+withReference body = do
+  python <- pythonExecutable
+  root <- upstreamPetrus
+  body (python, root)
 
 isDelivered :: Record -> Bool
 isDelivered = \case RExternalEventDelivered _ -> True; _ -> False
@@ -454,7 +457,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
     length (filter isDelivered recorded) `shouldBe` 1
     Engine.inFlight loaded `shouldReturn` []
 
-  it "process interruption after acceptance resumes only that occurrence" $ pythonOrPending $ \(python, root) -> withScratch $ \dir -> do
+  it "process interruption after acceptance resumes only that occurrence" $ withReference $ \(python, root) -> withScratch $ \dir -> do
     -- Cross-process: the reference process accepts and dies with os._exit;
     -- this Engine resumes its JSONL History.
     let path = dir </> "interrupted.jsonl"

@@ -23,7 +23,7 @@ import Petrus.Motus.Dispatch.Local
   , LocalWorkerOptions (..)
   , defaultLocalDispatchOptions
   , defaultLocalWorkerOptions
-  , openLocalDispatch
+  , withLocalDispatch
   )
 import Petrus.Motus.Dispatch (ActivityAttempt, WorkerDispatch (..), activityAttempt)
 import Petrus.Motus.Dispatch.Local qualified as Local
@@ -63,19 +63,20 @@ discard path = forM_ ["", "-wal", "-shm"] $ \suffix -> do
   present <- doesFileExist (path <> suffix)
   when present (removeFile (path <> suffix))
 
--- | Create a fresh file (schema initialization) and discard it.
+-- | Create a fresh file (schema initialization), close the session, and
+-- discard the file.
 openFresh :: FilePath -> IO Int
 openFresh path = do
-  _ <- openLocalDispatch path "bench" defaultLocalDispatchOptions
+  withLocalDispatch path "bench" defaultLocalDispatchOptions (\_ -> pure ())
   discard path
   pure 0
 
 -- | 'roundTrip' while a co-resident connection (an application's own, say)
--- holds the file open, so closing each per-operation connection is never
--- the last close and never checkpoints the WAL.
+-- holds the file open, so no close during the round trips is the last close
+-- and none checkpoints the WAL.
 heldRoundTrip :: Int -> FilePath -> IO Int
 heldRoundTrip n path = do
-  _ <- openLocalDispatch path "bench" defaultLocalDispatchOptions
+  withLocalDispatch path "bench" defaultLocalDispatchOptions (\_ -> pure ())
   collected <- bracket (Sql.open (T.pack path)) Sql.close $ \held -> do
     Sql.exec held "SELECT count(*) FROM impetus_local_dispatch_tasks"
     cycles False n path
@@ -83,7 +84,8 @@ heldRoundTrip n path = do
   pure collected
 
 -- | Over a fresh file: dispatch n occurrences, claim and complete each with
--- one worker, collect them all; answer how many outcomes were collected.
+-- one worker, collect them all, and close the session; answer how many
+-- outcomes were collected.
 roundTrip :: Bool -> Int -> FilePath -> IO Int
 roundTrip provider n path = do
   collected <- cycles provider n path
@@ -98,15 +100,15 @@ cycles provider n path = do
         at <- newIORef (1000 :: Integer)
         pure (Just (LocalDispatchClock (atomicModifyIORef' at (\t -> (t + 1, t)))))
       else pure Nothing
-  dispatch <- openLocalDispatch path "bench" defaultLocalDispatchOptions {clock = source}
-  forM_ [1 .. n] $ \occurrence -> Local.dispatch dispatch occurrence (work occurrence)
-  worker <- Local.workerWith dispatch defaultLocalWorkerOptions {explicitClaimant = Just "bench-worker"}
-  let drain = do
-        Local.claim worker >>= \case
-          Nothing -> pure ()
-          Just attempt -> Local.complete worker attempt (Object [("ok", Bool True)]) >> drain
-  drain
-  length <$> Local.collect dispatch
+  withLocalDispatch path "bench" defaultLocalDispatchOptions {clock = source} $ \dispatch -> do
+    forM_ [1 .. n] $ \occurrence -> Local.dispatch dispatch occurrence (work occurrence)
+    worker <- Local.workerWith dispatch defaultLocalWorkerOptions {explicitClaimant = Just "bench-worker"}
+    let drain = do
+          Local.claim worker >>= \case
+            Nothing -> pure ()
+            Just attempt -> Local.complete worker attempt (Object [("ok", Bool True)]) >> drain
+    drain
+    length <$> Local.collect dispatch
 
 -- ---------------------------------------------------------------------------
 -- Workers
@@ -116,19 +118,18 @@ quiet = defaultWorkerOptions {output = \_ -> pure ()}
 
 -- | The Worker's own Local round trips: dispatch n, a Worker over a
 -- 'Local.LocalWorkerDispatch' runs every available Attempt, collect. With
--- @held@, a co-resident connection holds the file open (equal IO with the
--- reference; see RESULTS.md).
+-- @held@, a co-resident connection holds the file open, as in the
+-- reference bench's held-open row.
 workerLocal :: Bool -> Int -> FilePath -> IO Int
 workerLocal held n path = do
-  dispatch <- openLocalDispatch path "bench" defaultLocalDispatchOptions
-  let body = do
-        forM_ [1 .. n] $ \occurrence -> Local.dispatch dispatch occurrence (work occurrence)
-        custody <- Local.workerWith dispatch defaultLocalWorkerOptions {explicitClaimant = Just "bench-worker"}
-        worker <- newWorker (Local.toWorkerDispatch custody) (Map.fromList [("work", \_ _ -> pure (Object [("ok", Bool True)]))]) quiet
-        void (runAvailable worker (2 * n))
-        closeWorker worker
-        length <$> Local.collect dispatch
-  collected <-
+  collected <- withLocalDispatch path "bench" defaultLocalDispatchOptions $ \dispatch -> do
+    let body = do
+          forM_ [1 .. n] $ \occurrence -> Local.dispatch dispatch occurrence (work occurrence)
+          custody <- Local.workerWith dispatch defaultLocalWorkerOptions {explicitClaimant = Just "bench-worker"}
+          worker <- newWorker (Local.toWorkerDispatch custody) (Map.fromList [("work", \_ _ -> pure (Object [("ok", Bool True)]))]) quiet
+          void (runAvailable worker (2 * n))
+          closeWorker worker
+          length <$> Local.collect dispatch
     if held
       then bracket (Sql.open (T.pack path)) Sql.close $ \connection -> do
         Sql.exec connection "SELECT count(*) FROM impetus_local_dispatch_tasks"

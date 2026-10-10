@@ -10,7 +10,8 @@
 -- * 'historyStoreProfile': the SQLite History store
 --   (@petrus.impetus.history_store.sqlite@).
 -- * 'localDispatchProfile': Local Dispatch (@petrus.motus.dispatch.local@,
---   @_connect@), which opens a new connection per operation.
+--   @_connect@). Upstream opens a new connection per operation; the port
+--   keeps a few of them open between operations ("Petrus.Sqlite.Pool").
 -- * 'ledgerProfile' / 'secureLedgerProfile': the agenticus ledgers
 --   (connection storage, Pi recovery and A2 host; attachment retention adds
 --   @secure_delete@), which use a rollback journal.

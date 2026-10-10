@@ -1,0 +1,168 @@
+cabal-version:      3.4
+name:               petrus-processes
+version:            0.1.0.0
+synopsis:           Process lifecycle for Petrus: correlated calls and retry-safe spawn
+description:
+  A port of @petrus.processes@: call request, result, and error payloads
+  over Fabric envelopes with their derived delivery identities and strict
+  validation; spawn specs, child identities, and the @process.spawn@
+  Activity with its registry and provisioner ports; and — in the
+  @postgres@ sublibrary — the authenticated lineage registry sharing the
+  reference's @impetus_lifecycle@ schema, plus the reference provisioning
+  profile. Python and Haskell processes call and spawn each other through
+  one database.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Distributed Computing
+build-type:         Simple
+extra-doc-files:    NOTICE
+                    PARITY.md
+                    DIVERGENCES.md
+                    bench/RESULTS.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Processes
+                    Petrus.Processes.Call
+                    Petrus.Processes.Model
+                    Petrus.Processes.Spawn
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , petrus-activity
+                  , petrus-fabric
+                  , petrus-json
+                  , text >=2.0
+  ghc-options:      -O2
+
+-- The PostgreSQL lineage registry (petrus.processes.postgres).
+library postgres
+  import:           warnings
+  visibility:       public
+  hs-source-dirs:   postgres
+  exposed-modules:  Petrus.Processes.Postgres
+  build-depends:    base >=4.18 && <5
+                  , base64-bytestring >=1.2
+                  , bytestring >=0.11
+                  , cryptohash-sha256 >=0.11
+                  , petrus-fabric
+                  , petrus-fabric:postgres
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-processes
+                  , petrus-telemetry
+                  , text >=2.0
+  ghc-options:      -O2
+
+-- The CV5.DS2 acceptance demo (scripts/cv5-lifecycle-demo.py) as a library,
+-- so the executable and the test suite share it.
+library demo
+  import:           warnings
+  visibility:       public
+  hs-source-dirs:   demo
+  exposed-modules:  Petrus.Processes.Demo
+  build-depends:    base >=4.18 && <5
+                  , base16-bytestring >=1.0
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , crypton >=1.0
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-engine-postgres
+                  , petrus-fabric
+                  , petrus-fabric:engine
+                  , petrus-fabric:postgres
+                  , petrus-history-postgres
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-postgres
+                  , petrus-processes
+                  , petrus-processes:postgres
+                  , process >=1.6
+                  , text >=2.0
+  ghc-options:      -O2
+
+executable cv5-lifecycle-demo
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          LifecycleDemo.hs
+  build-depends:    base >=4.18 && <5
+                  , petrus-processes:demo
+  ghc-options:      -threaded -rtsopts
+
+test-suite petrus-processes-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test ../petrus-fabric/test
+  main-is:          Main.hs
+  other-modules:    Petrus.Fabric.Conformance.Impl
+                    Petrus.Fabric.Conformance.Haskell
+                    Petrus.Fabric.Conformance.Setup
+                    Petrus.Processes.Conformance.Haskell
+                    Petrus.Processes.ConformanceSpec
+                    Petrus.Processes.InteropSpec
+                    Petrus.Processes.Conformance.Lifecycle
+                    Petrus.Processes.DemoSpec
+                    Petrus.Processes.TypedSpec
+                    Petrus.Processes.ReferenceSpec
+  build-depends:    base
+                  , async >=2.2
+                  , base16-bytestring >=1.0
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-fabric
+                  , petrus-fabric:engine
+                  , petrus-fabric:postgres
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-processes
+                  , petrus-processes:demo
+                  , petrus-processes:postgres
+                  , petrus-test-support
+                  , process >=1.6
+                  , text
+                  , time
+  build-tool-depends: petrus-processes:cv5-lifecycle-demo
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-processes-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , petrus-activity
+                  , petrus-fabric
+                  , petrus-fabric:postgres
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-processes
+                  , petrus-processes:postgres
+                  , petrus-test-support
+                  , tasty >=1.4
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -threaded -O2 -rtsopts "-with-rtsopts=-A32m"
