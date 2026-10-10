@@ -8,12 +8,11 @@
 -- compact, key-sorted, ASCII-escaped JSON). Nothing here performs I/O except
 -- 'captureInstance' and 'capture', which read one Instance's current state.
 --
--- __The Engine seam.__ Observation, like the reference, depends on the
--- kernel and never on an Engine. An Engine's three read doors are:
---
--- > snapshot     = capture inst >>= either throw pure . Observation.snapshot
--- > history_page = capture inst >>= \o -> historyPage o.observed.identity o.records after limit
--- > net_document = capture inst >>= either throw pure . Observation.netDocument
+-- __The Engine seam.__ These projections, like the reference's, depend on
+-- the kernel and never on an Engine. The Engine's three read doors
+-- (@Engine.snapshot()@, @Engine.history_page()@, @Engine.net_document()@)
+-- are "Petrus.Observation.Engine": each runs 'capture' under the Engine's
+-- monitor ('Petrus.Engine.Observation.observeEngine'), then projects.
 --
 -- 'capture' must run while no writing door is active (the reference holds
 -- its Engine lock for the whole door, so a reader that arrives mid-door sees

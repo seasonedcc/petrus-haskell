@@ -6,7 +6,6 @@
 -- poisoning are listed in PARITY.md as deferred to the Engine.
 module Petrus.Observation.ObservationSpec (spec) where
 
-import Data.ByteString qualified as BS
 import Data.IntMap.Strict qualified as IntMap
 import Data.List (nub)
 import Data.Sequence qualified as Seq
@@ -17,7 +16,7 @@ import Petrus.Impetus.History (Record)
 import Petrus.Impetus.HistoryStore qualified as Store
 import Petrus.Impetus.Instance
 import Petrus.Impetus.Petrinet hiding (candidates)
-import Petrus.Json (Json (..), dumps, dumpsText, indented)
+import Petrus.Json (Json (..), dumpsText, indented)
 import Petrus.Observation
 import Petrus.Observation.Support
 import Test.Hspec
@@ -118,13 +117,6 @@ inspectionNet =
       }
   where
     review = "review.correctness.review"
-
--- | The fixture's own bytes are the reference writer's spelling of the
--- projected value (two-space indentation, insertion order, one newline).
-shouldSpellFixture :: HasCallStack => Json -> FilePath -> Expectation
-shouldSpellFixture value path = do
-  expected <- BS.readFile path
-  fmap (<> "\n") (dumps indented value) `shouldBe` Right expected
 
 spec :: Spec
 spec = describe "observation (test_observation.py)" $ do

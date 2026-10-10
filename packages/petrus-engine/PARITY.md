@@ -162,7 +162,7 @@ In `TestEngineRefusesABrokenSensor`:
 
 | upstream file | reason |
 | --- | --- |
-| engine/test_observation.py (19), engine/test_observation_http.py (7) | `petrus-observation`. The Engine exposes the seam (`Petrus.Engine.Observation.observeEngine`). |
+| engine/test_observation.py (19), engine/test_observation_http.py (7) | `petrus-observation`, which builds the Engine's read doors (`Petrus.Observation.Engine`) on this package's seam (`Petrus.Engine.Observation.observeEngine`) and ports the Engine lock, re-entry and commit-poisoning tests against a real Engine (`petrus-observation/PARITY.md`). The re-entry test calls `Petrus.Engine.Internal.guarded`, exported for it. |
 | engine/test_simulation.py (19), engine/test_simulation_http.py (24) | `petrus.simulation`, built on the DSL |
 | engine/test_sqlite_engine.py (5), engine/test_postgres_engine.py (12) | the durable provider compositions. They plug into `Petrus.Engine.Provider`. |
 
