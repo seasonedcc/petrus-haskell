@@ -178,7 +178,14 @@ removeIfPresent path =
 -- leaf gets @mode@; an existing directory is accepted, an existing
 -- non-directory raises @EEXIST@.
 makeDirectories :: FilePath -> FileMode -> IO ()
-makeDirectories path mode =
+makeDirectories path mode = do
+  -- Fast path: an existing directory is accepted without attempting mkdir
+  -- (the outcome Python reaches through mkdir's EEXIST and is_dir()).
+  existing <- (isDirectory <$> statAt Nothing path FollowLinks) `catchIOError` \_ -> pure False
+  unless existing (makeDirectoriesSlow path mode)
+
+makeDirectoriesSlow :: FilePath -> FileMode -> IO ()
+makeDirectoriesSlow path mode =
   createDirectory path mode `catchIOError` \err ->
     if
       | isDoesNotExistError err -> do
