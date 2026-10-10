@@ -159,8 +159,8 @@ None of these change behavior.
 
 - `Petrus.Testing.Dst.Transcript` replays an artifact against a recorded system under test. It
   was the stand-in for the Engine before the Haskell Engine existed. It now cross-checks every
-  door call, and it is still the only check of the joined Postgres worlds (see the Engine seam
-  in [PARITY.md](PARITY.md)).
+  door call, including for the joined Postgres worlds, independently of the real profiles (see
+  the Engine seam in [PARITY.md](PARITY.md)).
 - `Petrus.Testing.Dst.Internal.Canonical` is a specialized encoder for the canonical
   `json.dumps` spelling. It produces exactly petrus-json's bytes, which a QuickCheck property
   and every corpus check. It exists for speed (`bench/RESULTS.md`).
@@ -208,6 +208,29 @@ fixtures are older versions than what the builders now author:
 
 Those fixtures are replay-only in both runtimes, and replay through the real profiles in
 `Spec.EngineWorlds`.
+
+## Joined worlds (`petrus-dst:joined-worlds`)
+
+The ported `tests/dst/joined_*world.py` modules are test code too. Their artifacts, replay
+results and checker verdicts are byte-identical to the reference's. Everything said above for
+the Engine worlds applies (records instead of class hierarchies, `unsafePerformIO` bridge
+counters, Python class names for exceptions). They differ in two more ways.
+
+- **The fault connection wraps session seams, not a DB-API connection.** The reference's
+  `JoinedFaultConnection` subclasses the psycopg connection and intercepts `execute`, `commit`
+  and `rollback`. The Haskell Engine talks to PostgreSQL through an `AbsurdSession` record
+  (`petrus-engine-absurd`), so `faultSession` wraps its fields instead: the Dispatch statements
+  (`run`), the History store's batches (`observeHistory`, which names the semantic records each
+  batch inserts), and the transaction's fate (`commit`, `rollback`). The cut points are the same:
+  a refusal fires before the delegate commits, an acknowledgement loss after it, and each fires
+  for exactly one armed boundary. The recorded attempts (`accepted`, `record_types`, `dispatched`)
+  are identical, which every authored journal proves.
+- **Checkers fail closed on malformed evidence.** The reference's checkers index observation
+  members and compare numbers directly, so a missing member or a non-numeric counter raises
+  `KeyError` or `TypeError` out of `check`. The Haskell checkers are total: such evidence fails
+  the comparison it appears in and the verdict is `passed = false`. Observations the profiles
+  produce are always well formed, so no artifact or replay can tell the difference; it shows
+  only for hand-built observations, and the 35 recorded checker vectors contain none.
 
 ## A reference quirk, reproduced
 

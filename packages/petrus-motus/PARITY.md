@@ -46,7 +46,7 @@ when `upstream/petrus/.venv` is not synced.
 | test_async_worker.py, 23 of 26 tests (29 collected) | `test_async_worker.py` / same names (`AsyncWorkerSpec`, 24 examples) | 22 ported, 1 renamed; 2 parameter cases enforced by types |
 | test_async_worker.py `test_sync_and_async_workers_cross_reject_before_custody` | `sync and async workers validate the registry before custody` | renamed: there is no colour to cross-reject, so it checks the shared registry validation still precedes custody |
 | test_async_worker.py `test_async_decorator_rejects_sync_and_untyped_signatures`, `test_cli_rejects_wrong_mode_registry_before_provider_factory` | none | not applicable (see below) |
-| test_worker_topology.py, 6 of 36 tests | `packages/petrus-engine/test/Petrus/Engine/WorkerTopologySpec.hs` (4), `WorkerSpec` (1), `WorkerCliSpec` (1) | ported over Local Dispatch; the other 30 belong to the Absurd Dispatch port (see below) |
+| test_worker_topology.py, 36 tests (40 cases) | over Absurd custody, as upstream runs it: `packages/petrus-engine-absurd/test/Petrus/Engine/AbsurdSpec.hs` (27 cases) and `packages/petrus-engine-absurd/test/Petrus/Engine/Absurd/WorkerTopologySpec.hs` (13 cases); over Local custody: `packages/petrus-engine/test/Petrus/Engine/WorkerTopologySpec.hs` (4), `WorkerSpec` (1), `WorkerCliSpec` (1) | all ported; every Worker-backed case runs against the reference's Worker process and a Haskell one (see below) |
 | test_package_boundaries.py `test_worker_package_public_contract_and_module_cli` | `Worker CLI` / `test_package_boundaries.py` / worker package public contract and module cli | ported |
 
 There is one test that is not applicable:
@@ -125,7 +125,8 @@ reference.
 The rest of `test_attempt_heartbeats.py` is out of scope here. That covers
 the attempt state model and the detail normalization that live in
 `petrus-activity`, and the reconnectable heartbeat over a psycopg connection,
-which belongs to the Absurd Dispatch port.
+which is ported with the Absurd Dispatch
+(`packages/petrus-motus-absurd/test/Petrus/Motus/Dispatch/Absurd/HeartbeatSpec.hs`).
 
 ### Workers: how the reference's tests are ported
 
@@ -192,74 +193,49 @@ no key order.
 ### test_worker_topology.py
 
 The reference runs this file over PostgreSQL History, Absurd Dispatch and
-real Worker processes. This repository has no Absurd Dispatch yet, so the
-port is partial.
+real Worker processes. All 40 cases are ported over that same substrate in
+petrus-engine-absurd (which depends on this package, so the specs live
+there):
 
-The Worker cases are ported in petrus-engine's `WorkerTopologySpec`, with
-the same topology over the substrate that exists here: an Engine over JSONL
-History and the durable Local Dispatch, served by real Worker processes.
-That is the test executable re-executed as the Worker CLI.
+- `Petrus.Engine.AbsurdSpec` (27 cases): `TestEndToEnd`,
+  `TestLifecycleScopeCancellation`, `TestWorkerKill`, `TestAuthorityKill`
+  and every `TestAbsurdProviderEngineConstruction` test.
+- `Petrus.Engine.Absurd.WorkerTopologySpec` (13 cases): every
+  `TestActivityRegistry` and `TestDispatchDoorbell` test.
+
+Every Worker-backed case runs twice: against the reference's own process
+(`python -m petrus.motus.worker --provider absurd`) and against a Haskell
+Worker process, which is the test executable re-run as `workerMain` with
+the Absurd provider in the `ProviderPlugins` slot
+(`Petrus.Motus.Worker.Absurd.absurdPlugins` in petrus-motus-absurd). Both
+are killed by exact PID with real SIGKILL and SIGTERM.
+
+Two cases are partly enforced by the types:
+
+- `test_worker_refuses_invalid_activity_registries`: `{}` and `{"": ...}`
+  are ported; a non-string name and a non-callable implementation are
+  unrepresentable in a `Map Text Activity`.
+- `test_worker_and_loader_snapshot_mutable_registries`: a registry is an
+  immutable `Map`, and registries are compiled into the worker executable
+  rather than imported by name, so there is nothing to mutate.
+
+`test_main_defaults_queue_and_preserves_deduplicated_flag_order` drives the
+real entry point (`workerMainWith`) with a fake Absurd provider in the
+plugin slot, as the reference monkeypatches `AbsurdWorkerDispatch`.
+
+Over the Local custody this package has, petrus-engine's
+`WorkerTopologySpec` keeps the same topology with an Engine over JSONL
+History and real Worker processes:
 - `TestEndToEnd.test_the_activity_executes_on_the_worker_and_completes_through_server_side_projection`;
 - `TestWorkerKill.test_sigkill_mid_activity_redispatches_on_lease_expiry_with_exactly_one_effect`;
 - `TestWorkerKill.test_sigterm_drains_gracefully_the_in_flight_activity_completes`;
 - `TestActivityRegistry.test_the_worker_refuses_an_unregistered_activity`.
 
-Further cases are ported in this package:
-- `TestActivityRegistry.test_worker_refuses_invalid_activity_registries`
-  (`WorkerSpec`). The cases `{}` and `{"": ...}` are ported. A non-string
-  name and a non-callable implementation are unrepresentable in a
-  `Map Text Activity`.
-- `TestActivityRegistry.test_main_defaults_queue_and_preserves_deduplicated_flag_order`
-  (`WorkerCliSpec`). Both parameter cases are ported, against the parsed
-  arguments rather than a fake Absurd provider.
-
-The suite adds a cross-implementation check: every pairing of a Haskell or
+It adds a cross-implementation check: every pairing of a Haskell or
 reference Engine with a Haskell or reference Worker, taking turns in
-lock-step, writes byte-identical JSONL History.
-
-These cases need Absurd Dispatch, the Postgres History, or the joined Engine
-session, and belong to the Absurd Dispatch port:
-- `TestLifecycleScopeCancellation.test_engine_close_commits_history_then_absurd_tombstone_and_restart_repairs`
-- `TestWorkerKill.test_two_workers_do_not_replace_a_long_activity_that_heartbeats`
-- `TestWorkerKill.test_replacement_process_receives_durable_details_and_resumes`.
-  The Local analogue is ported as `test_worker_runtime.py`'s
-  `killed local worker reassigns with recovered heartbeat details`.
-- `TestAuthorityKill.test_killed_after_the_dispatch_commit_resumes_without_a_double_spawn`
-- `TestAuthorityKill.test_a_crash_before_the_begin_transaction_commits_leaves_nothing_anywhere`
-- every `TestAbsurdProviderEngineConstruction` test:
-  `test_resolves_default_and_declared_timeout_into_history_and_dispatch_and_snapshots_inputs`,
-  `test_load_under_changed_timeout_keeps_recorded_in_flight_invocation_without_reprepare`,
-  `test_provider_returns_the_concrete_engine_with_only_universal_doors`,
-  `test_create_and_load_are_explicit_and_close_appends_no_semantic_fact`,
-  `test_invalid_provider_option_closes_both_connections`,
-  `test_wrong_autocommit_listener_leaves_create_empty_and_retriable`,
-  `test_load_refuses_recorded_identity_that_differs_from_storage_key`,
-  `test_two_engines_keep_independent_instance_views`,
-  `test_load_refuses_incompatible_canonical_data`,
-  `test_the_session_requires_a_join_mode_connection`,
-  `test_the_session_requires_a_dedicated_listen_connection`,
-  `test_close_is_idempotent_and_every_door_and_observation_refuses_after_close`,
-  `test_a_second_live_authority_for_one_instance_is_fenced_out`,
-  `test_the_session_hands_out_no_writer_and_its_accessors_are_read_only`,
-  `test_joined_dispatch_failure_rolls_back_selection_before_fresh_load`,
-  `test_real_recovery_lock_contention_poisons_preserves_old_creates_no_target_and_releases_fence`,
-  `test_a_projection_crash_never_rolls_back_the_frozen_result`,
-  `test_a_terminal_activity_failure_halts_loud_with_its_facts_durable`,
-  `test_a_failed_door_poisons_the_session_whole`
-- `TestActivityRegistry.test_claimant_is_reused_by_one_process_definition_and_new_for_a_new_one`
-  (the Absurd provider's claimant)
-- `TestActivityRegistry.test_worker_snapshots_mutable_queue_sequence` and
-  `TestActivityRegistry.test_worker_refuses_an_empty_queue_subscription`
-  (the `AbsurdWorkerDispatch` constructor). Local's equivalents are covered
-  by `test_local_dispatch.py`.
-- `TestActivityRegistry.test_worker_and_loader_snapshot_mutable_registries`.
-  The Worker half is enforced by the types: a registry is an immutable
-  `Map`. The loader half is not applicable: registries are compiled into
-  the worker executable, not imported by name.
-- `TestDispatchDoorbell.test_the_doorbell_wakes_a_worker_whose_poll_could_not_have`
-  and `TestDispatchDoorbell.test_with_the_doorbell_suppressed_the_poll_safety_net_still_dispatches`
-  (Absurd's LISTEN/NOTIFY doorbell; Local custody has no doorbell, and the
-  Worker's `wait` is the custody's own)
+lock-step, writes byte-identical JSONL History. `WorkerSpec` and
+`WorkerCliSpec` also cover the invalid-registry and queue-default cases
+without a database.
 
 ## Beyond upstream
 

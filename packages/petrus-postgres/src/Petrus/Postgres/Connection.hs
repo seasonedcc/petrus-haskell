@@ -35,6 +35,7 @@ module Petrus.Postgres.Connection
   , connectWith
   , close
   , withConnection
+  , sameConnection
   , isClosed
   , isBroken
   , backendPid
@@ -143,6 +144,11 @@ close connection = mask $ \_ -> do
 -- | 'connect', run, 'close'.
 withConnection :: ByteString -> Bool -> (Connection -> IO a) -> IO a
 withConnection dsn mode = bracket (connect dsn mode) close
+
+-- | Python's @a is b@ for connections: the same connection object, not
+-- merely one to the same server.
+sameConnection :: Connection -> Connection -> Bool
+sameConnection a b = connectionLock a == connectionLock b
 
 -- | psycopg's @connection.closed@.
 isClosed :: Connection -> IO Bool

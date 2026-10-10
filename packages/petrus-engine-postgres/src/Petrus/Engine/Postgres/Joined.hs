@@ -82,11 +82,20 @@ data JoinedProvider = JoinedProvider
   -- connections like any other construction failure).
   , commit :: IO ()
   -- ^ The commit point ('Pg.commit' on the joined connection).
+  , rollback :: IO ()
+  -- ^ @connection.rollback()@ ('Pg.rollback' on the joined connection).
+  -- The composition swallows its 'PostgresError', as the reference's
+  -- @_rollback@ does; a provider can wrap it (to observe the transaction's
+  -- end) as the reference's tests wrap the connection.
   , closeConnections :: IO ()
   -- ^ Close every connection the provider was handed.
   , compose :: HistoryStore -> IO (Dispatch, Maybe (Double -> IO Bool))
   -- ^ Build the Dispatch once the fence is held and History is loaded,
   -- with an optional wake hint for 'Petrus.Engine.wait'.
+  , observeHistory :: HistoryStore -> HistoryStore
+  -- ^ Applied to the loaded store before 'compose' and the Engine see it
+  -- ('id' by default): the seam the reference's tests reach by wrapping
+  -- the connection that carries the store's statements.
   }
 
 -- | A provider over one joined connection with a caller-supplied Dispatch:
@@ -98,8 +107,10 @@ joinedProvider connection port =
     { connection
     , validate = pure ()
     , commit = Pg.commit connection
+    , rollback = Pg.rollback connection
     , closeConnections = Pg.close connection
     , compose = \_ -> pure (port, Nothing)
+    , observeHistory = id
     }
 
 -- | @connection.rollback()@, a database error swallowed (a dead connection
@@ -110,7 +121,16 @@ rollbackQuietly connection = void (try @PostgresError (Pg.rollback connection))
 -- | Unlock the fence (its own database error swallowed), then roll back,
 -- even when the unlock throws.
 releaseFenceThenRollback :: AuthorityFence -> Connection -> IO ()
-releaseFenceThenRollback fence connection = releaseAuthorityFence fence `finally` rollbackQuietly connection
+releaseFenceThenRollback fence connection = releaseFenceThen fence (rollbackQuietly connection)
+
+-- | Unlock the fence, then run the given rollback, even when the unlock
+-- throws.
+releaseFenceThen :: AuthorityFence -> IO () -> IO ()
+releaseFenceThen fence rollingBack = releaseAuthorityFence fence `finally` rollingBack
+
+-- | A provider's rollback with its database error swallowed.
+quietly :: IO () -> IO ()
+quietly action = void (try @PostgresError action)
 
 -- | Close the listen connection, then the joined one (even when the first
 -- close throws).
@@ -130,24 +150,25 @@ openJoinedEngine provider mode net instanceId options = mask $ \restore -> do
         readIORef handedOver >>= \case
           True -> pure ()
           False -> do
-            rollbackQuietly provider.connection
-            readIORef fenceRef >>= mapM_ (`releaseFenceThenRollback` provider.connection)
+            quietly provider.rollback
+            readIORef fenceRef >>= mapM_ (`releaseFenceThen` quietly provider.rollback)
             provider.closeConnections
       construct = do
         provider.validate
         fence <- acquireAuthorityFence provider.connection instanceId
         writeIORef fenceRef (Just fence)
         history <-
-          openPostgresHistoryStoreWith
-            defaultPostgresHistoryOptions {telemetry = options.telemetrySink}
-            provider.connection
-            instanceId
+          provider.observeHistory
+            <$> openPostgresHistoryStoreWith
+              defaultPostgresHistoryOptions {telemetry = options.telemetrySink}
+              provider.connection
+              instanceId
         (port, hint) <- provider.compose history
         let resources =
               defaultResources
                 { commit = Just provider.commit
-                , rollback = rollbackQuietly provider.connection
-                , release = releaseFenceThenRollback fence provider.connection
+                , rollback = quietly provider.rollback
+                , release = releaseFenceThen fence (quietly provider.rollback)
                 , close = provider.closeConnections
                 , wait = hint
                 }

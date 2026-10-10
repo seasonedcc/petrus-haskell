@@ -9,7 +9,7 @@ module Petrus.Motus.WorkerCliSpec (spec) where
 import Control.Monad (forM_)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Motus.Dispatch.LocalSupport (pythonOrPending, withScratch)
+import Petrus.Motus.Dispatch.LocalSupport (withReference, withScratch)
 import Petrus.Motus.Internal.Argparse
 import Petrus.Motus.Worker.Cli
 import Petrus.Motus.WorkerSupport (workerModeVariable)
@@ -114,7 +114,7 @@ spec = do
       (code, err) `shouldBe` (ExitFailure 1, "--registry must be 'module:attribute', got 'nocolon'\n")
 
   describe "against the reference" $ do
-    let compareWith extraEnvironment argv = pythonOrPending $ \python -> do
+    let compareWith extraEnvironment argv = withReference $ \python -> do
           ours <- runWorkerCli extraEnvironment argv
           theirs <- runReference python extraEnvironment argv
           ours `shouldBe` theirs
