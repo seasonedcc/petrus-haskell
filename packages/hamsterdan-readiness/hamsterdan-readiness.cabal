@@ -113,3 +113,22 @@ test-suite hamsterdan-readiness-test
                   , filepath
                   , text
   ghc-options:      -threaded -rtsopts
+
+benchmark hamsterdan-readiness-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  default-extensions: DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , hamsterdan-readiness
+                  , petrus-dsl
+                  , petrus-impetus
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts

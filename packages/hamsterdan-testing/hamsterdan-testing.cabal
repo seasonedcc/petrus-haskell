@@ -59,3 +59,16 @@ test-suite hamsterdan-testing-test
                   , petrus-json
                   , text
   ghc-options:      -threaded -rtsopts
+
+benchmark hamsterdan-testing-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , hamsterdan-testing
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts
