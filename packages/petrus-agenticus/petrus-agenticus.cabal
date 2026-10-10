@@ -59,7 +59,7 @@ test-suite petrus-agenticus-test
   other-modules:    Petrus.Agenticus.TestSupport
                     Petrus.Agenticus.AgentNetSpec
                     Petrus.Agenticus.BindingSpec
-                   Petrus.Agenticus.BoundariesSpec
+                    Petrus.Agenticus.BoundariesSpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -79,3 +79,21 @@ test-suite petrus-agenticus-test
                   , stm
                   , temporary
                   , text
+
+benchmark petrus-agenticus-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  other-modules:    Bench.AgentNet
+  build-depends:    base
+                  , containers
+                  , petrus-activity
+                  , petrus-agenticus
+                  , petrus-engine
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A32m"
