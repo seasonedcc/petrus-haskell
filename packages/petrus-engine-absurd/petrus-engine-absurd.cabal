@@ -1,0 +1,82 @@
+cabal-version:      3.4
+name:               petrus-engine-absurd
+version:            0.1.0.0
+synopsis:           The Absurd Engine provider for the Petrus port: PostgreSQL History plus Absurd Dispatch
+description:
+  A port of @petrus.engine.absurd@: Engine construction doors over a
+  join-mode PostgreSQL connection and a dedicated autocommit listen
+  connection. The composition is the joined PostgreSQL one
+  ("Petrus.Engine.Postgres.Joined"): the authority fence before any History
+  is read, the PostgreSQL History store and the Absurd Dispatch on one
+  transaction (begin, spawn and doorbell commit or vanish together), and
+  the Dispatch's @wait_for_results@ as the Engine's wait, blocking only on
+  the listen connection.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Workflow
+build-type:         Simple
+extra-doc-files:    NOTICE
+                    PARITY.md
+                    DIVERGENCES.md
+                    bench/RESULTS.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Engine.Absurd
+  build-depends:    base >=4.18 && <5
+                  , petrus-engine
+                  , petrus-engine-postgres
+                  , petrus-impetus
+                  , petrus-motus
+                  , petrus-motus-absurd
+                  , petrus-postgres
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-engine-absurd-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.Engine.Absurd.ConstructionSpec
+                    Petrus.Engine.Absurd.Helpers
+                    Petrus.Engine.Absurd.InteropSpec
+                    Petrus.Engine.Absurd.Support
+                    Petrus.Engine.AbsurdSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-cel
+                  , petrus-engine
+                  , petrus-engine-absurd
+                  , petrus-history-postgres
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-motus-absurd
+                  , petrus-postgres
+                  , petrus-test-support
+                  , process >=1.6
+                  , temporary >=1.3
+                  , text
+                  , unix
+  ghc-options:      -threaded -rtsopts
