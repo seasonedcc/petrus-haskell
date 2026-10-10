@@ -18,6 +18,7 @@ module Petrus.Cel.Unicode
   , re2Category
   , re2Script
   , re2Orbit
+  , re2Orbits
   ) where
 
 import Data.Array.Unboxed (UArray, bounds, listArray, (!))
@@ -151,9 +152,14 @@ orbitMap =
   foldl'
     (\m orbit -> foldl' (\acc c -> IntMap.insert c orbit acc) m orbit)
     IntMap.empty
-    [map hex (words entry) | entry <- splitOn ';' Tables.re2CaseOrbits]
+    re2Orbits
 {-# NOINLINE orbitMap #-}
 
 -- | The RE2 case-folding orbit of a character (itself when it has none).
 re2Orbit :: Int -> [Int]
 re2Orbit c = IntMap.findWithDefault [c] c orbitMap
+
+-- | Every RE2 case-folding orbit with more than one member.
+re2Orbits :: [[Int]]
+re2Orbits = [map hex (words entry) | entry <- splitOn ';' Tables.re2CaseOrbits]
+{-# NOINLINE re2Orbits #-}

@@ -16,6 +16,14 @@ module Petrus.Cel.Python
   , hashInteger
   , hashRational
   , hashDouble
+    -- * Exceptions
+  , ExcClass (..)
+  , excClassName
+  , excClassRepr
+  , isValueError
+  , PyErr (..)
+    -- * Number formatting
+  , roundHalfEven
   ) where
 
 import Data.ByteString (ByteString)
@@ -224,3 +232,63 @@ hashDouble d
   | isNaN d = Nothing
   | isInfinite d = Just (if d > 0 then 314159 else -314159)
   | otherwise = Just (hashRational (toRational d))
+
+-- | The Python exception classes cel-python's behaviour can surface.
+data ExcClass
+  = TypeError
+  | ValueError
+  | KeyError
+  | IndexError
+  | ZeroDivisionError
+  | OverflowError
+  | AttributeError
+  | AssertionError
+  | UnicodeDecodeError
+  | RecursionError
+  | -- | @celpy.evaluation.CELSyntaxError@
+    CELSyntaxError
+  | -- | @pendulum.parsing.exceptions.ParserError@ (a 'ValueError')
+    ParserError
+  | -- | @re2._re2.Error@ (google-re2's @re2.error@)
+    Re2Error
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+-- | The class's @__name__@.
+excClassName :: ExcClass -> Text
+excClassName = \case
+  TypeError -> "TypeError"
+  ValueError -> "ValueError"
+  KeyError -> "KeyError"
+  IndexError -> "IndexError"
+  ZeroDivisionError -> "ZeroDivisionError"
+  OverflowError -> "OverflowError"
+  AttributeError -> "AttributeError"
+  AssertionError -> "AssertionError"
+  UnicodeDecodeError -> "UnicodeDecodeError"
+  RecursionError -> "RecursionError"
+  CELSyntaxError -> "CELSyntaxError"
+  ParserError -> "ParserError"
+  Re2Error -> "Error"
+
+-- | The class's @repr()@, e.g. @<class 'TypeError'>@.
+excClassRepr :: ExcClass -> Text
+excClassRepr cls = "<class '" <> qualified <> "'>"
+  where
+    qualified = case cls of
+      CELSyntaxError -> "celpy.evaluation.CELSyntaxError"
+      ParserError -> "pendulum.parsing.exceptions.ParserError"
+      Re2Error -> "re2._re2.Error"
+      _ -> excClassName cls
+
+-- | Does an @except ValueError@ clause catch this class?
+isValueError :: ExcClass -> Bool
+isValueError = (`elem` [ValueError, UnicodeDecodeError, ParserError])
+
+-- | A raised Python exception whose only argument is a message.
+data PyErr = PyErr ExcClass Text
+  deriving stock (Eq, Show)
+
+-- | Round a rational to the nearest integer, ties to even (Python's
+-- @round()@ and the @datetime@ module's rounding).
+roundHalfEven :: Rational -> Integer
+roundHalfEven = round

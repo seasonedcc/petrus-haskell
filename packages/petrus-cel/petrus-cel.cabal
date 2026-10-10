@@ -39,7 +39,9 @@ library
   exposed-modules:  Petrus.Cel.Literal
                     Petrus.Cel.Parse
                     Petrus.Cel.Python
+                    Petrus.Cel.Regex
                     Petrus.Cel.Syntax
+                    Petrus.Cel.Time
   other-modules:    Petrus.Cel.Unicode
                     Petrus.Cel.Unicode.Tables
   build-depends:    base >=4.18 && <5
@@ -48,6 +50,7 @@ library
                   , containers >=0.6
                   , petrus-json
                   , text >=2.0
+                  , time >=1.12
   ghc-options:      -O2
 
 test-suite petrus-cel-test
