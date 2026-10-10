@@ -5,7 +5,10 @@
 -- world test files): every hand-built observation runs through the Haskell
 -- twin of its checker class, and the whole verdict (@passed@ and every
 -- @detail@ field) must equal the reference's, recorded by
--- @scripts/engine_checker_vectors.py@ in @test/data/engine-checkers.json@.
+-- @scripts/engine_checker_vectors.py@ in @test/data/engine-checkers.json@,
+-- and likewise every joined-world checker test (@test_joined_*world.py@),
+-- recorded by @scripts/joined_checker_vectors.py@ in
+-- @test/data/joined-checkers.json@.
 module Spec.EngineCheckers (spec, engineCheckers) where
 
 import Control.Monad (forM_)
@@ -20,6 +23,7 @@ import Petrus.Testing.Dst.Engine.Lifecycle qualified as Lifecycle
 import Petrus.Testing.Dst.Engine.Projection qualified as Projection
 import Petrus.Testing.Dst.Engine.Retry qualified as Retry
 import Petrus.Testing.Dst.Engine.Timer qualified as Timer
+import Petrus.Testing.Dst.Joined.Checkers qualified as Joined
 import Spec.Support
 import Test.Hspec
 
@@ -66,11 +70,22 @@ observationOf o =
     }
 
 spec :: Spec
-spec = describe "Engine checker classes (Python-recorded verdicts)" $ do
-  vectors <- runIO (memberList "vectors" <$> readJson (dataFile "engine-checkers.json"))
+spec = do
+  describe "Engine checker classes (Python-recorded verdicts)" $
+    vectorSpec "engine-checkers.json" checkerNamed
+  describe "Joined checker classes (Python-recorded verdicts)" $
+    vectorSpec "joined-checkers.json" $ \name ->
+      pure (case [c | c <- Joined.joinedCheckers, c.identity.name == name] of
+        c : _ -> Just c
+        [] -> Nothing)
+
+-- | Every recorded vector of one file, checked by its named checker.
+vectorSpec :: FilePath -> (Text -> IO (Maybe Checker)) -> Spec
+vectorSpec file named = do
+  vectors <- runIO (memberList "vectors" <$> readJson (dataFile file))
   forM_ vectors $ \vector ->
     it (T.unpack (memberText "name" vector)) $ do
-      checker <- checkerNamed (memberText "checker" vector) >>= maybe (fail "unknown checker") pure
+      checker <- named (memberText "checker" vector) >>= maybe (fail "unknown checker") pure
       let prior = case lookupMember "prior" vector of
             Just (Array xs) -> xs
             _ -> []

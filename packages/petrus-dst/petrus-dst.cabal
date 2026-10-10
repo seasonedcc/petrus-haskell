@@ -95,6 +95,36 @@ library engine-worlds
                   , petrus-observation
                   , text >=2.0
 
+-- The joined History/Dispatch transaction-fault worlds: the Haskell twins
+-- of the reference's tests/dst/joined_*world.py, driving the real Absurd
+-- Engine over PostgreSQL History and Absurd Workers.
+library joined-worlds
+  import:           warnings
+  visibility:       public
+  hs-source-dirs:   joined
+  exposed-modules:  Petrus.Testing.Dst.Joined.Identities
+                    Petrus.Testing.Dst.Joined.Checkers
+                    Petrus.Testing.Dst.Joined.Support
+                    Petrus.Testing.Dst.Joined.World
+                    Petrus.Testing.Dst.Joined.Stories
+                    Petrus.Testing.Dst.Joined.Creation
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , mtl >=2.3
+                  , petrus-activity
+                  , petrus-dst
+                  , petrus-dst:engine-worlds
+                  , petrus-engine
+                  , petrus-engine-absurd
+                  , petrus-history-postgres
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-motus-absurd
+                  , petrus-postgres
+                  , text >=2.0
+
 test-suite petrus-dst-test
   import:           warnings
   type:             exitcode-stdio-1.0
@@ -105,6 +135,7 @@ test-suite petrus-dst-test
                     Spec.Codec
                     Spec.EngineCheckers
                     Spec.EngineWorlds
+                    Spec.JoinedWorlds
                     Spec.Properties
                     Spec.Runner
                     Spec.Stories
@@ -122,7 +153,12 @@ test-suite petrus-dst-test
                   , mtl
                   , petrus-dst
                   , petrus-dst:engine-worlds
+                  , petrus-dst:joined-worlds
+                  , petrus-history-postgres
                   , petrus-json
+                  , petrus-motus-absurd
+                  , petrus-postgres
+                  , petrus-test-support
                   , process
                   , QuickCheck >=2.14
                   , temporary >=1.3
