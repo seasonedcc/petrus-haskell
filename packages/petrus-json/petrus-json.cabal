@@ -31,6 +31,7 @@ library
                     Petrus.Json.Parse
                     Petrus.Json.Value
   build-depends:    base >=4.18 && <5
+                  , array >=0.5
                   , bytestring >=0.11
                   , containers >=0.6
                   , text >=2.0

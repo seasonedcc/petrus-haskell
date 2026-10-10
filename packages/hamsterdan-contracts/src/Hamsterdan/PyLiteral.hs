@@ -1,0 +1,963 @@
+{-# LANGUAGE MultiWayIf #-}
+
+-- | Python literals: CPython's @repr()@ and @ast.literal_eval@ for the values
+-- Hamsterdan stores as text.
+--
+-- Hamsterdan's dashboard keeps its entry log as @f"{kind}:{body}"@ (a dict's
+-- @repr@) and its projection digest as
+-- @f"{kind}:{sorted(body.items())!r}"@; the board parses entries back with
+-- @ast.literal_eval@. Both directions must agree with CPython character for
+-- character, or durable digests drift and the board misreads its own log.
+--
+-- The modeled values are exactly what those bodies can hold: @None@, @bool@,
+-- @int@, @float@, @str@, @list@, @tuple@, and @dict@. The parser accepts the
+-- full literal syntax of those types (string prefixes, triple quotes, every
+-- escape except @\\N{...}@, implicit concatenation, all integer bases,
+-- underscores, comments, line continuations, trailing commas) and reports
+-- 'Unsupported' for literals CPython would accept but whose values are not
+-- modeled (@bytes@, @complex@, @set@, @Ellipsis@, lone surrogates,
+-- @\\N{...}@ escapes).
+module Hamsterdan.PyLiteral
+  ( -- * Values
+    PyValue (..)
+  , pyEq
+  , fromJson
+  , toJson
+
+    -- * Printing (@repr@)
+  , repr
+  , strRepr
+  , dictEntry
+  , sortedItemsDigest
+
+    -- * Parsing (@ast.literal_eval@)
+  , literalEval
+  , LiteralError (..)
+  , LiteralErrorKind (..)
+  ) where
+
+import Control.Monad (when)
+import Control.Monad.ST (ST, runST)
+import Data.Char (chr, isAlpha, isAlphaNum, isDigit, isHexDigit, isOctDigit, ord, toLower)
+import Data.Array (Array, listArray, (!))
+import Data.List (sortOn)
+import Data.Set qualified as Set
+import Data.Text (Text)
+import Data.Text qualified as T
+import Data.Text.Array qualified as TA
+import Data.Text.Internal qualified as TI
+import Hamsterdan.Contracts.Codec (pythonDict)
+import Hamsterdan.PyLiteral.Printable (isPrintableNonAscii)
+import Numeric (showHex)
+import Petrus.Json (Json)
+import Petrus.Json qualified as Json
+
+-- | A Python value of a modeled type. 'PyDict' keeps insertion order and
+-- never holds two Python-equal keys.
+data PyValue
+  = PyNone
+  | PyBool Bool
+  | PyInt Integer
+  | PyFloat Double
+  | PyStr Text
+  | PyList [PyValue]
+  | PyTuple [PyValue]
+  | PyDict [(PyValue, PyValue)]
+  deriving stock (Eq, Show)
+
+-- | Python's @==@: numbers compare by value across @bool@, @int@, and
+-- @float@ (exactly, as CPython does); NaN equals nothing; lists and tuples
+-- never equal each other; dicts compare as mappings.
+pyEq :: PyValue -> PyValue -> Bool
+pyEq left right = case (numeric left, numeric right) of
+  (Just a, Just b) -> numericEq a b
+  (Just _, Nothing) -> False
+  (Nothing, Just _) -> False
+  (Nothing, Nothing) -> case (left, right) of
+    (PyNone, PyNone) -> True
+    (PyStr a, PyStr b) -> a == b
+    (PyList a, PyList b) -> sameLength a b && and (zipWith pyEq a b)
+    (PyTuple a, PyTuple b) -> sameLength a b && and (zipWith pyEq a b)
+    (PyDict a, PyDict b) ->
+      sameLength a b
+        && all (\(key, value) -> maybe False (pyEq value) (lookupKey key b)) a
+    _ -> False
+  where
+    sameLength a b = length a == length b
+
+data Number = Exact Integer | Inexact Double
+
+numeric :: PyValue -> Maybe Number
+numeric = \case
+  PyBool value -> Just (Exact (if value then 1 else 0))
+  PyInt value -> Just (Exact value)
+  PyFloat value -> Just (Inexact value)
+  _ -> Nothing
+
+numericEq :: Number -> Number -> Bool
+numericEq (Exact a) (Exact b) = a == b
+numericEq (Inexact a) (Inexact b) = a == b
+numericEq (Exact a) (Inexact b) = exactFloatEq a b
+numericEq (Inexact a) (Exact b) = exactFloatEq b a
+
+exactFloatEq :: Integer -> Double -> Bool
+exactFloatEq integral floating
+  | isNaN floating || isInfinite floating = False
+  | otherwise = toRational floating == fromInteger integral
+
+lookupKey :: PyValue -> [(PyValue, PyValue)] -> Maybe PyValue
+lookupKey key = fmap snd . findFirst (pyEq key . fst)
+  where
+    findFirst predicate = foldr (\item rest -> if predicate item then Just item else rest) Nothing
+
+-- | A JSON value as Python's @json.loads@ returns it.
+fromJson :: Json -> PyValue
+fromJson = \case
+  Json.Null -> PyNone
+  Json.Bool value -> PyBool value
+  Json.Int value -> PyInt value
+  Json.Float value -> PyFloat value
+  Json.String value -> PyStr value
+  Json.Array values -> PyList (map fromJson values)
+  Json.Object members -> PyDict [(PyStr key, fromJson value) | (key, value) <- pythonDict members]
+
+-- | The JSON value @json.dumps@ would write, when every dict key is a
+-- string (tuples become arrays, as in @json.dumps@).
+toJson :: PyValue -> Maybe Json
+toJson = \case
+  PyNone -> Just Json.Null
+  PyBool value -> Just (Json.Bool value)
+  PyInt value -> Just (Json.Int value)
+  PyFloat value -> Just (Json.Float value)
+  PyStr value -> Just (Json.String value)
+  PyList values -> Json.Array <$> traverse toJson values
+  PyTuple values -> Json.Array <$> traverse toJson values
+  PyDict members -> Json.Object <$> traverse member members
+  where
+    member (PyStr key, value) = (key,) <$> toJson value
+    member _ = Nothing
+
+-- * Printing -----------------------------------------------------------------
+
+-- The printer emits a difference list of text chunks that one 'T.concat'
+-- (a single allocation and copy) joins; plain runs of a string are emitted as
+-- slices of the original text, never character by character.
+type Chunks = [Text] -> [Text]
+
+-- | CPython's @repr(value)@.
+repr :: PyValue -> Text
+repr value = T.concat (reprChunks value [])
+
+reprChunks :: PyValue -> Chunks
+reprChunks = \case
+  PyNone -> ("None" :)
+  PyBool True -> ("True" :)
+  PyBool False -> ("False" :)
+  PyInt value -> (intText value :)
+  PyFloat value -> (T.pack (floatRepr value) :)
+  PyStr value -> strChunks value
+  PyList values -> ("[" :) . commaSeparated (map reprChunks values) . ("]" :)
+  PyTuple [single] -> ("(" :) . reprChunks single . (",)" :)
+  PyTuple values -> ("(" :) . commaSeparated (map reprChunks values) . (")" :)
+  PyDict members -> dictChunks [(reprChunks key, reprChunks value) | (key, value) <- members]
+
+dictChunks :: [(Chunks, Chunks)] -> Chunks
+dictChunks members = ("{" :) . commaSeparated [key . (": " :) . value | (key, value) <- members] . ("}" :)
+
+commaSeparated :: [Chunks] -> Chunks
+commaSeparated = \case
+  [] -> id
+  first : rest -> first . foldr (\item more -> (", " :) . item . more) id rest
+
+intText :: Integer -> Text
+intText value
+  | value >= 0 && value < smallIntCount = smallInts ! fromInteger value
+  | otherwise = T.pack (show value)
+
+-- | The spellings of the small non-negative integers (counts, flags, run
+-- attempts), computed once.
+smallInts :: Array Int Text
+smallInts = listArray (0, fromInteger smallIntCount - 1) [T.pack (show i) | i <- [0 .. smallIntCount - 1]]
+
+smallIntCount :: Integer
+smallIntCount = 1024
+
+floatRepr :: Double -> String
+floatRepr value
+  | isNaN value = "nan"
+  | isInfinite value = if value > 0 then "inf" else "-inf"
+  | otherwise = Json.pythonFloatRepr value
+
+-- | CPython's @repr(str)@: single quotes unless the text contains a single
+-- quote and no double quote; @\\\\@, the chosen quote, @\\t@, @\\n@, @\\r@
+-- escaped; other C0 controls and DEL as @\\xhh@; non-printable non-ASCII
+-- as @\\xhh@, @\\uhhhh@, or @\\Uhhhhhhhh@.
+strRepr :: Text -> Text
+strRepr value = T.concat (strChunks value [])
+
+strChunks :: Text -> Chunks
+strChunks value rest
+  -- Fast path (one pass): printable ASCII without quotes or backslashes.
+  | simpleAscii value = "'" : value : "'" : rest
+  | T.all plain value = quoteText : value : quoteText : rest
+  | otherwise = quoteText : runs value
+  where
+    doubleQuoted = T.any (== '\'') value && not (T.any (== '"') value)
+    quote = if doubleQuoted then '"' else '\''
+    quoteText = if doubleQuoted then "\"" else "'"
+    plain c
+      | c < '\DEL' = c >= ' ' && c /= quote && c /= '\\'
+      | otherwise = c /= '\DEL' && isPrintableNonAscii (ord c)
+    runs remaining =
+      let (run, after) = T.span plain remaining
+       in run : case T.uncons after of
+            Nothing -> quoteText : rest
+            Just (c, more) -> escape c : runs more
+    escape c
+      | c == quote = if doubleQuoted then "\\\"" else "\\'"
+      | c == '\\' = "\\\\"
+      | c == '\t' = "\\t"
+      | c == '\n' = "\\n"
+      | c == '\r' = "\\r"
+      | ord c <= 0xff = "\\x" <> hex 2 c
+      | ord c <= 0xffff = "\\u" <> hex 4 c
+      | otherwise = "\\U" <> hex 8 c
+    hex width c =
+      let digits = showHex (ord c) ""
+       in T.pack (replicate (width - length digits) '0' ++ digits)
+
+-- | Whether a text is printable ASCII without quotes or backslashes (its
+-- @repr@ is the text in single quotes), tested on the UTF-8 bytes.
+simpleAscii :: Text -> Bool
+simpleAscii (TI.Text array offset size) = go offset
+  where
+    end = offset + size
+    go i
+      | i >= end = True
+      | otherwise =
+          let w = TA.unsafeIndex array i
+           in w >= 0x20 && w < 0x7F && w /= 0x27 && w /= 0x22 && w /= 0x5C && go (i + 1)
+
+-- | A dashboard entry: @f"{kind}:{body}"@ for a JSON object body.
+dictEntry :: Text -> [(Text, Json)] -> Text
+dictEntry kind body =
+  written (utf8Length kind + 1 + bound (Json.Object body)) $ \array -> do
+    afterKind <- writeText array 0 kind
+    TA.unsafeWrite array afterKind 0x3A
+    writeJson array (afterKind + 1) (Json.Object body)
+
+-- | A dashboard digest: @f"{kind}:{sorted(body.items())!r}"@. Keys of a
+-- JSON object are distinct strings, so the sort is by key alone (code point
+-- order, which UTF-8 byte order preserves).
+sortedItemsDigest :: Text -> [(Text, Json)] -> Text
+sortedItemsDigest kind body =
+  written (utf8Length kind + 3 + sum [stringBound key + bound value + 6 | (key, value) <- sortedItems]) $ \array -> do
+    afterKind <- writeText array 0 kind
+    TA.unsafeWrite array afterKind 0x3A
+    TA.unsafeWrite array (afterKind + 1) 0x5B
+    end <- separated array (afterKind + 2) item sortedItems
+    TA.unsafeWrite array end 0x5D
+    pure (end + 1)
+  where
+    sortedItems = sortOn fst (pythonDict body)
+    item array offset (key, value) = do
+      TA.unsafeWrite array offset 0x28
+      afterKey <- writeString array (offset + 1) key
+      TA.unsafeWrite array afterKey 0x2C
+      TA.unsafeWrite array (afterKey + 1) 0x20
+      afterValue <- writeJson array (afterKey + 2) value
+      TA.unsafeWrite array afterValue 0x29
+      pure (afterValue + 1)
+
+-- The JSON-body printer writes straight into one buffer sized by an upper
+-- bound of the output ('bound'), then shrinks it: no intermediate pieces.
+-- Its output is exactly 'repr' of 'fromJson' (the corpus and a property
+-- test check both against CPython and each other).
+
+-- | Run a writer over a buffer of at least the given size.
+written :: Int -> (forall s. TA.MArray s -> ST s Int) -> Text
+written size write = runST $ do
+  array <- TA.new size
+  end <- write array
+  TA.shrinkM array end
+  frozen <- TA.unsafeFreeze array
+  pure (TI.text frozen 0 end)
+
+-- | The UTF-8 length of a text, in bytes.
+utf8Length :: Text -> Int
+utf8Length (TI.Text _ _ size) = size
+
+-- | An upper bound of the UTF-8 length of a JSON value's @repr@.
+bound :: Json -> Int
+bound = \case
+  Json.Null -> 4
+  Json.Bool _ -> 5
+  Json.Int value -> utf8Length (intText value)
+  Json.Float _ -> 32
+  Json.String value -> stringBound value
+  Json.Array values -> 2 + sum [bound value + 2 | value <- values]
+  Json.Object members -> 2 + sum [stringBound key + bound value + 4 | (key, value) <- members]
+
+-- | No character's escape is longer than four times its UTF-8 length
+-- (a C0 control becomes @\\xhh@), plus the quotes.
+stringBound :: Text -> Int
+stringBound value = 4 * utf8Length value + 2
+
+writeJson :: TA.MArray s -> Int -> Json -> ST s Int
+writeJson array offset = \case
+  Json.Null -> writeText array offset "None"
+  Json.Bool True -> writeText array offset "True"
+  Json.Bool False -> writeText array offset "False"
+  Json.Int value -> writeText array offset (intText value)
+  Json.Float value -> writeText array offset (T.pack (floatRepr value))
+  Json.String value -> writeString array offset value
+  Json.Array values -> do
+    TA.unsafeWrite array offset 0x5B
+    end <- separated array (offset + 1) (\target at value -> writeJson target at value) values
+    TA.unsafeWrite array end 0x5D
+    pure (end + 1)
+  Json.Object members -> do
+    TA.unsafeWrite array offset 0x7B
+    end <- separated array (offset + 1) member (pythonDict members)
+    TA.unsafeWrite array end 0x7D
+    pure (end + 1)
+  where
+    member target at (key, value) = do
+      afterKey <- writeString target at key
+      TA.unsafeWrite target afterKey 0x3A
+      TA.unsafeWrite target (afterKey + 1) 0x20
+      writeJson target (afterKey + 2) value
+
+-- | Write items separated by @", "@.
+separated :: TA.MArray s -> Int -> (TA.MArray s -> Int -> a -> ST s Int) -> [a] -> ST s Int
+separated array offset writeItem = \case
+  [] -> pure offset
+  first : rest -> writeItem array offset first >>= go rest
+  where
+    go [] at = pure at
+    go (next : more) at = do
+      TA.unsafeWrite array at 0x2C
+      TA.unsafeWrite array (at + 1) 0x20
+      writeItem array (at + 2) next >>= go more
+
+writeText :: TA.MArray s -> Int -> Text -> ST s Int
+writeText array offset (TI.Text source from size) = do
+  TA.copyI size array offset source from
+  pure (offset + size)
+
+-- | Write @repr(str)@.
+writeString :: TA.MArray s -> Int -> Text -> ST s Int
+writeString array offset value
+  | simpleAscii value = do
+      TA.unsafeWrite array offset 0x27
+      end <- writeText array (offset + 1) value
+      TA.unsafeWrite array end 0x27
+      pure (end + 1)
+  | otherwise = writeText array offset (strRepr value)
+
+-- * Parsing ------------------------------------------------------------------
+
+-- | How @ast.literal_eval@ would end.
+data LiteralErrorKind
+  = -- | CPython raises @SyntaxError@ or @ValueError@ (malformed node).
+    Malformed
+  | -- | CPython raises @TypeError@: an unhashable dict key.
+    Unhashable
+  | -- | CPython returns a value of a type this module does not model.
+    Unsupported
+  deriving stock (Eq, Show)
+
+-- | Why a text is not a modeled literal.
+data LiteralError = LiteralError
+  { errorKind :: LiteralErrorKind
+  , errorMessage :: Text
+  }
+  deriving stock (Eq, Show)
+
+-- | The syntax tree of the literal subset, before conversion.
+data Expr
+  = EConst PyValue
+  | ETuple [Expr]
+  | EList [Expr]
+  | EDict [(Expr, Expr)]
+  | ESigned Bool Expr
+  | -- | A real number plus or minus an imaginary one (a complex literal).
+    EBinary Expr Expr
+  | EImaginary
+  | ESet [Expr]
+  | -- | A node CPython's @_convert@ refuses (a name, an f-string, ...).
+    EName Text
+  | -- | A literal of a type this module does not model.
+    EUnsupported Text
+
+-- | @ast.literal_eval(source)@.
+literalEval :: Text -> Either LiteralError PyValue
+literalEval source = do
+  when (T.any (== '\0') source) $ malformed "source code string cannot contain null bytes"
+  let prepared = translateNewlines (T.dropWhile (\c -> c == ' ' || c == '\t') source)
+  (expr, rest) <- runP topLevel prepared
+  if T.null rest then convert expr else malformed "invalid syntax"
+
+-- CPython's string tokenizer reads @\\r\\n@ and lone @\\r@ as @\\n@.
+translateNewlines :: Text -> Text
+translateNewlines text
+  | T.any (== '\r') text = T.replace "\r" "\n" (T.replace "\r\n" "\n" text)
+  | otherwise = text
+
+malformed :: Text -> Either LiteralError a
+malformed = Left . LiteralError Malformed
+
+unsupported :: Text -> Either LiteralError a
+unsupported = Left . LiteralError Unsupported
+
+-- ** Conversion (the @_convert@ walk)
+
+convert :: Expr -> Either LiteralError PyValue
+convert = \case
+  EConst value -> Right value
+  ETuple elements -> PyTuple <$> traverse convert elements
+  EList elements -> PyList <$> traverse convert elements
+  EDict members -> PyDict <$> insertAll ([], Set.empty) members
+  ESigned negative operand -> case operand of
+    EConst (PyInt value) -> Right (PyInt (if negative then negate value else value))
+    EConst (PyFloat value) -> Right (PyFloat (if negative then negate value else value))
+    EImaginary -> unsupported "complex is not a modeled value"
+    _ -> malformed "malformed node or string"
+  EBinary left right
+    | realNumber left, EImaginary <- right -> unsupported "complex is not a modeled value"
+    | otherwise -> malformed "malformed node or string"
+  EImaginary -> unsupported "complex is not a modeled value"
+  -- set(map(_convert, elts)): each element is converted, then hashed.
+  ESet elements -> do
+    mapM_ (\element -> convert element >>= \value -> when (not (hashable value)) (Left (LiteralError Unhashable "unhashable type"))) elements
+    unsupported "set is not a modeled value"
+  EName _ -> malformed "malformed node or string"
+  EUnsupported what -> unsupported (what <> " is not a modeled value")
+  where
+    realNumber = \case
+      EConst (PyInt _) -> True
+      EConst (PyFloat _) -> True
+      ESigned _ (EConst (PyInt _)) -> True
+      ESigned _ (EConst (PyFloat _)) -> True
+      _ -> False
+    -- dict(zip(map(_convert, keys), map(_convert, values))): key, value,
+    -- insert (hashing the key), in source order.
+    insertAll (acc, _) [] = Right (reverse acc)
+    insertAll state ((keyExpr, valueExpr) : rest) = do
+      key <- convert keyExpr
+      value <- convert valueExpr
+      when (not (hashable key)) $ Left (LiteralError Unhashable "unhashable type")
+      insertAll (insert key value state) rest
+    -- String keys (the common case) are found through a set; other keys
+    -- by Python equality.
+    insert key value (acc, strings)
+      | present = ([if pyEq key existing then (existing, value) else pair | pair@(existing, _) <- acc], strings)
+      | PyStr text <- key = ((key, value) : acc, Set.insert text strings)
+      | otherwise = ((key, value) : acc, strings)
+      where
+        present = case key of
+          PyStr text -> Set.member text strings
+          _ -> any (pyEq key . fst) acc
+
+hashable :: PyValue -> Bool
+hashable = \case
+  PyList _ -> False
+  PyDict _ -> False
+  PyTuple elements -> all hashable elements
+  _ -> True
+
+-- ** Parser
+
+newtype P a = P {runP :: Text -> Either LiteralError (a, Text)}
+
+instance Functor P where
+  fmap f (P run) = P (fmap (\(a, rest) -> (f a, rest)) . run)
+
+instance Applicative P where
+  pure value = P (\input -> Right (value, input))
+  P runF <*> P runA = P $ \input -> do
+    (f, rest) <- runF input
+    (a, rest') <- runA rest
+    Right (f a, rest')
+
+instance Monad P where
+  P run >>= next = P $ \input -> do
+    (a, rest) <- run input
+    runP (next a) rest
+
+failP :: LiteralErrorKind -> Text -> P a
+failP kind message = P (const (Left (LiteralError kind message)))
+
+syntax :: Text -> P a
+syntax = failP Malformed
+
+peekP :: P Text
+peekP = P (\input -> Right (input, input))
+
+setP :: Text -> P ()
+setP rest = P (const (Right ((), rest)))
+
+-- | Bracket nesting deeper than this is a tokenizer error in CPython.
+maxNesting :: Int
+maxNesting = 200
+
+-- Whitespace between tokens. Inside brackets newlines are insignificant;
+-- at the top level they end the logical line.
+skipSpace :: Int -> P ()
+skipSpace depth = peekP >>= setP . go
+  where
+    go text = case T.uncons text of
+      Just (c, rest)
+        | c == ' ' || c == '\t' || c == '\f' -> go rest
+        | c == '#' -> go (T.dropWhile (/= '\n') rest)
+        | c == '\\', Just ('\n', after) <- T.uncons rest -> go after
+        | c == '\n' && depth > 0 -> go rest
+      _ -> text
+
+-- Leading blank lines and comments; an indented first token is an
+-- IndentationError.
+skipLeading :: P ()
+skipLeading = peekP >>= either (P . const . Left) setP . go False
+  where
+    go afterNewline text =
+      let line = T.dropWhile (\c -> c == ' ' || c == '\t' || c == '\f') text
+          indented = afterNewline && T.length (T.takeWhile (\c -> c == ' ' || c == '\t') text) > 0
+       in case T.uncons line of
+            Nothing -> Right line
+            Just ('#', _) -> case T.uncons (T.dropWhile (/= '\n') line) of
+              Just (_, rest) -> go True rest
+              Nothing -> Right T.empty
+            Just ('\n', rest) -> go True rest
+            _
+              | indented -> Left (LiteralError Malformed "unexpected indent")
+              | otherwise -> Right line
+
+-- Trailing newlines, blank lines, and comments after the expression.
+skipTrailing :: P ()
+skipTrailing = do
+  skipSpace 0
+  rest <- peekP
+  case T.uncons rest of
+    Just ('\n', after) -> setP after >> skipTrailing
+    _ -> pure ()
+
+topLevel :: P Expr
+topLevel = do
+  skipLeading
+  rest <- peekP
+  when (T.null rest) $ syntax "invalid syntax"
+  expr <- expressionList 0
+  skipTrailing
+  pure expr
+
+-- @a@, or a parenthesis-free tuple @a, b,@.
+expressionList :: Int -> P Expr
+expressionList depth = do
+  first <- expression depth
+  skipSpace depth
+  rest <- peekP
+  case T.uncons rest of
+    Just (',', after) -> setP after >> (ETuple . (first :) <$> tupleTail)
+    _ -> pure first
+  where
+    tupleTail = do
+      skipSpace depth
+      rest <- peekP
+      if startsExpression rest
+        then do
+          item <- expression depth
+          skipSpace depth
+          next <- peekP
+          case T.uncons next of
+            Just (',', after) -> setP after >> ((item :) <$> tupleTail)
+            _ -> pure [item]
+        else pure []
+
+startsExpression :: Text -> Bool
+startsExpression text = case T.uncons text of
+  Just (c, rest) ->
+    c `elem` ("([{'\"+-" :: String)
+      || isDigit c
+      || (c == '.' && maybe False (isDigit . fst) (T.uncons rest))
+      || isAlpha c
+      || c == '_'
+  Nothing -> False
+
+-- An operand, optionally followed by @+@/@-@ chains (only a real number
+-- plus or minus an imaginary one converts; any other chain is a malformed
+-- node, as in CPython).
+expression :: Int -> P Expr
+expression depth = do
+  left <- unary depth
+  chain left
+  where
+    chain left = do
+      skipSpace depth
+      rest <- peekP
+      case T.uncons rest of
+        Just (c, after) | c == '+' || c == '-' -> do
+          setP after
+          right <- unary depth
+          case left of
+            EBinary {} -> chain (EName "binary operation")
+            EName "binary operation" -> chain left
+            _ -> chain (EBinary left right)
+        _ -> pure left
+
+unary :: Int -> P Expr
+unary depth = do
+  skipSpace depth
+  rest <- peekP
+  case T.uncons rest of
+    Just (c, after)
+      | c == '-' || c == '+' -> do
+          setP after
+          ESigned (c == '-') <$> unary depth
+    _ -> primary depth
+
+primary :: Int -> P Expr
+primary depth = do
+  skipSpace depth
+  rest <- peekP
+  case T.uncons rest of
+    Nothing -> syntax "unexpected EOF"
+    Just (c, after)
+      | c == '(' -> open after >> parenthesized (depth + 1)
+      | c == '[' -> open after >> (EList <$> items (depth + 1) ']')
+      | c == '{' -> open after >> braced (depth + 1)
+      | isDigit c -> number
+      | c == '.' -> case T.uncons after of
+          Just (d, _) | isDigit d -> number
+          Just ('.', more) | Just ('.', afterDots) <- T.uncons more -> setP afterDots >> pure (EUnsupported "Ellipsis")
+          _ -> syntax "invalid syntax"
+      | c == '\'' || c == '"' -> stringLiterals depth
+      | isAlpha c || c == '_' -> word depth
+      | otherwise -> syntax "invalid character"
+  where
+    open after = do
+      when (depth >= maxNesting) $ syntax "too many nested parentheses"
+      setP after
+
+parenthesized :: Int -> P Expr
+parenthesized depth = do
+  skipSpace depth
+  rest <- peekP
+  case T.uncons rest of
+    Just (')', after) -> setP after >> pure (ETuple [])
+    _ -> do
+      first <- expression depth
+      skipSpace depth
+      next <- peekP
+      case T.uncons next of
+        Just (')', after) -> setP after >> pure first
+        Just (',', after) -> setP after >> (ETuple . (first :) <$> items depth ')')
+        _ -> syntax "invalid syntax"
+
+-- Comma-separated items up to the closing bracket, trailing comma allowed.
+items :: Int -> Char -> P [Expr]
+items depth close = do
+  skipSpace depth
+  rest <- peekP
+  case T.uncons rest of
+    Just (c, after) | c == close -> setP after >> pure []
+    _ -> do
+      item <- expression depth
+      skipSpace depth
+      next <- peekP
+      case T.uncons next of
+        Just (c, after)
+          | c == close -> setP after >> pure [item]
+          | c == ',' -> setP after >> ((item :) <$> items depth close)
+        _ -> syntax "invalid syntax"
+
+braced :: Int -> P Expr
+braced depth = do
+  skipSpace depth
+  rest <- peekP
+  case T.uncons rest of
+    Just ('}', after) -> setP after >> pure (EDict [])
+    _ -> do
+      key <- expression depth
+      skipSpace depth
+      next <- peekP
+      case T.uncons next of
+        Just (':', after) -> do
+          setP after
+          value <- expression depth
+          EDict . ((key, value) :) <$> members
+        Just (c, after)
+          | c == '}' -> setP after >> pure (ESet [key])
+          | c == ',' -> setP after >> (ESet . (key :) <$> items depth '}')
+        _ -> syntax "invalid syntax"
+  where
+    members = do
+      skipSpace depth
+      rest <- peekP
+      case T.uncons rest of
+        Just ('}', after) -> setP after >> pure []
+        Just (',', after) -> do
+          setP after
+          skipSpace depth
+          more <- peekP
+          case T.uncons more of
+            Just ('}', after') -> setP after' >> pure []
+            _ -> do
+              key <- expression depth
+              skipSpace depth
+              colon <- peekP
+              case T.uncons colon of
+                Just (':', after') -> do
+                  setP after'
+                  value <- expression depth
+                  ((key, value) :) <$> members
+                _ -> syntax "invalid syntax"
+        _ -> syntax "invalid syntax"
+
+-- Names, keywords, and string prefixes.
+word :: Int -> P Expr
+word depth = do
+  rest <- peekP
+  let (name, after) = T.span (\c -> isAlphaNum c || c == '_') rest
+  case T.uncons after of
+    Just (q, _) | q == '\'' || q == '"', isPrefix name -> stringLiterals depth
+    _ -> do
+      setP after
+      case name of
+        "True" -> pure (EConst (PyBool True))
+        "False" -> pure (EConst (PyBool False))
+        "None" -> pure (EConst PyNone)
+        _ -> do
+          skipSpace depth
+          next <- peekP
+          case T.uncons next of
+            Just ('(', call) -> do
+              let inner = T.dropWhile (`elem` (" \t\n\f" :: String)) call
+              case (name, T.uncons inner) of
+                ("set", Just (')', afterCall)) -> setP afterCall >> pure (EUnsupported "set")
+                _ -> syntax "malformed node or string"
+            _ -> pure (EName name)
+
+isPrefix :: Text -> Bool
+isPrefix name = T.toLower name `elem` ["r", "u", "b", "br", "rb", "f", "fr", "rf", "t", "tr", "rt"]
+
+-- One or more adjacent string literals, concatenated.
+stringLiterals :: Int -> P Expr
+stringLiterals depth = do
+  first <- stringLiteral
+  rest <- more
+  let pieces = first : rest
+      bytes = [() | PieceBytes <- pieces]
+  if
+    | not (null bytes) && length bytes /= length pieces -> syntax "cannot mix bytes and nonbytes literals"
+    | not (null bytes) -> pure (EUnsupported "bytes")
+    | or [True | PieceFormat <- pieces] -> pure (EName "f-string")
+    | (what : _) <- [what | PieceUnsupported what <- pieces] -> pure (EUnsupported what)
+    | otherwise -> pure (EConst (PyStr (T.concat [text | PieceText text <- pieces])))
+  where
+    more = do
+      skipSpace depth
+      next <- peekP
+      if startsString next then (:) <$> stringLiteral <*> more else pure []
+
+startsString :: Text -> Bool
+startsString text =
+  let (name, after) = T.span (\c -> isAlphaNum c || c == '_') text
+   in case T.uncons after of
+        Just (q, _) | q == '\'' || q == '"' -> T.null name || isPrefix name
+        _ -> False
+
+-- One literal of a concatenation.
+data Piece = PieceText Text | PieceBytes | PieceFormat | PieceUnsupported Text
+
+-- A single literal. Bytes and f/t-strings are only refused after the whole
+-- concatenation is read, as in CPython.
+stringLiteral :: P Piece
+stringLiteral = do
+  rest <- peekP
+  let (prefix, afterPrefix) = T.span isAlpha rest
+      lowered = T.map toLower prefix
+      raw = T.any (== 'r') lowered
+  case T.uncons afterPrefix of
+    Just (q, _) -> do
+      let triple = T.replicate 3 (T.singleton q)
+          isTriple = triple `T.isPrefixOf` afterPrefix
+          delimiter = if isTriple then triple else T.singleton q
+      (body, after) <- either (P . const . Left) pure (scanString isTriple delimiter (T.drop (T.length delimiter) afterPrefix))
+      setP after
+      if
+        | T.any (`elem` ("ft" :: String)) lowered -> pure PieceFormat
+        | T.any (== 'b') lowered -> pure PieceBytes
+        | raw -> pure (PieceText body)
+        | otherwise -> case unescape body of
+            Right decoded -> pure (PieceText decoded)
+            Left (LiteralError Unsupported what) -> pure (PieceUnsupported what)
+            Left problem -> P (const (Left problem))
+    Nothing -> syntax "invalid syntax"
+
+-- The raw body of a string up to its closing delimiter: a backslash always
+-- takes the next character with it.
+scanString :: Bool -> Text -> Text -> Either LiteralError (Text, Text)
+scanString isTriple delimiter = go []
+  where
+    go acc text
+      | delimiter `T.isPrefixOf` text = Right (T.concat (reverse acc), T.drop (T.length delimiter) text)
+      | otherwise =
+          let (chunk, rest) = T.break stop text
+           in case T.uncons rest of
+                Nothing -> malformed "unterminated string literal"
+                Just ('\\', after) -> case T.uncons after of
+                  Just (escaped, after') -> go (T.pack ['\\', escaped] : chunk : acc) after'
+                  Nothing -> malformed "unterminated string literal"
+                Just ('\n', after)
+                  | isTriple -> go ("\n" : chunk : acc) after
+                  | otherwise -> malformed "unterminated string literal"
+                Just (c, after)
+                  | delimiter `T.isPrefixOf` rest -> go (chunk : acc) rest
+                  | otherwise -> go (T.singleton c : chunk : acc) after
+    first = T.head delimiter
+    stop c = c == '\\' || c == '\n' || c == first
+
+-- Escape processing for a non-raw @str@ literal.
+unescape :: Text -> Either LiteralError Text
+unescape body
+  | not (T.any (== '\\') body) = Right body
+  | otherwise = T.pack <$> go (T.unpack body)
+  where
+    go [] = Right []
+    go ('\\' : rest) = escape rest
+    go (c : rest) = (c :) <$> go rest
+    escape = \case
+      '\n' : rest -> go rest
+      '\\' : rest -> ('\\' :) <$> go rest
+      '\'' : rest -> ('\'' :) <$> go rest
+      '"' : rest -> ('"' :) <$> go rest
+      'a' : rest -> ('\a' :) <$> go rest
+      'b' : rest -> ('\b' :) <$> go rest
+      'f' : rest -> ('\f' :) <$> go rest
+      'n' : rest -> ('\n' :) <$> go rest
+      'r' : rest -> ('\r' :) <$> go rest
+      't' : rest -> ('\t' :) <$> go rest
+      'v' : rest -> ('\v' :) <$> go rest
+      'x' : rest -> fixed 2 "\\xXX" rest
+      'u' : rest -> fixed 4 "\\uXXXX" rest
+      'U' : rest -> fixed 8 "\\UXXXXXXXX" rest
+      -- A well-formed \N{name}: CPython resolves the name in its Unicode
+      -- database, which this module does not carry.
+      'N' : '{' : rest
+        | (name, '}' : _) <- break (== '}') rest, not (null name), all (\c -> isAlphaNum c || c `elem` (" -" :: String)) name ->
+            unsupported "\\N{...} escape"
+      'N' : _ -> malformed "malformed \\N character escape"
+      rest@(c : _) | isOctDigit c ->
+        let (digits, after) = span isOctDigit (take 3 rest)
+            value = foldl (\acc d -> acc * 8 + digitValue d) 0 digits
+         in (chr value :) <$> go (after ++ drop 3 rest)
+      rest -> ('\\' :) <$> go rest
+    fixed width name rest =
+      let digits = takeWhile isHexDigit (take width rest)
+       in if length digits < width
+            then malformed ("truncated " <> name <> " escape")
+            else
+              let value = foldl (\acc d -> acc * 16 + digitValue d) 0 digits
+               in if
+                    | value > 0x10FFFF -> malformed "illegal Unicode character"
+                    | value >= 0xD800 && value <= 0xDFFF -> unsupported "lone surrogate"
+                    | otherwise -> (chr value :) <$> go (drop width rest)
+    digitValue d
+      | isDigit d = ord d - ord '0'
+      | otherwise = ord (toLower d) - ord 'a' + 10
+
+-- ** Numbers
+
+number :: P Expr
+number = do
+  rest <- peekP
+  case T.unpack (T.take 2 rest) of
+    ['0', base] | toLower base `elem` ("xob" :: String) -> radix (toLower base) (T.drop 2 rest)
+    _ -> decimal rest
+  where
+    radix base text = do
+      let valid = case base of
+            'x' -> isHexDigit
+            'o' -> isOctDigit
+            _ -> (`elem` ("01" :: String))
+          radixValue = case base of
+            'x' -> 16
+            'o' -> 8
+            _ -> 2
+          (token, after) = T.span (\c -> valid c || c == '_') text
+      digits <- either (P . const . Left) pure (underscored True valid token)
+      when (T.null digits) $ syntax "invalid literal"
+      endOfNumber after
+      setP after
+      pure (EConst (PyInt (T.foldl' (\acc d -> acc * radixValue + toInteger (hexValue d)) 0 digits)))
+    hexValue d
+      | isDigit d = ord d - ord '0'
+      | otherwise = ord (toLower d) - ord 'a' + 10
+    decimal text = do
+      let (whole, afterWhole) = T.span (\c -> isDigit c || c == '_') text
+      wholeDigits <- either (P . const . Left) pure (underscored False isDigit whole)
+      (fraction, afterFraction, hasPoint) <- case T.uncons afterWhole of
+        Just ('.', more) -> do
+          let (frac, afterFrac) = T.span (\c -> isDigit c || c == '_') more
+          fracDigits <- if T.null frac then pure "" else either (P . const . Left) pure (underscored False isDigit frac)
+          pure (fracDigits, afterFrac, True)
+        _ -> pure ("", afterWhole, False)
+      when (T.null wholeDigits && T.null fraction) $ syntax "invalid syntax"
+      (power, afterExponent, hasExponent) <- case T.uncons afterFraction of
+        Just (e, more) | e == 'e' || e == 'E' -> do
+          let (sign, unsigned) = case T.uncons more of
+                Just (s, digits) | s == '+' || s == '-' -> (if s == '-' then -1 else 1, digits)
+                _ -> (1 :: Integer, more)
+              (expDigits, afterExp) = T.span (\c -> isDigit c || c == '_') unsigned
+          cleaned <- either (P . const . Left) pure (underscored False isDigit expDigits)
+          when (T.null cleaned) $ syntax "invalid decimal literal"
+          pure (sign * read (T.unpack cleaned), afterExp, True)
+        _ -> pure (0, afterFraction, False)
+      case T.uncons afterExponent of
+        Just (j, afterImaginary) | j == 'j' || j == 'J' -> do
+          endOfNumber afterImaginary
+          setP afterImaginary
+          pure EImaginary
+        _ -> do
+          endOfNumber afterExponent
+          setP afterExponent
+          real hasPoint hasExponent wholeDigits fraction power
+    real hasPoint hasExponent wholeDigits fraction power =
+      if hasPoint || hasExponent
+        then pure (EConst (PyFloat (decimalToDouble wholeDigits fraction power)))
+        else do
+          when (T.length wholeDigits > 1 && T.head wholeDigits == '0' && T.any (/= '0') wholeDigits) $
+            syntax "leading zeros in decimal integer literals are not permitted"
+          -- CPython counts the digits of the value, not leading zeros.
+          when (T.length (T.dropWhile (== '0') wholeDigits) > intMaxStrDigits) $
+            syntax "Exceeds the limit (4300 digits) for integer string conversion"
+          pure (EConst (PyInt (read (T.unpack wholeDigits))))
+    endOfNumber after = case T.uncons after of
+      Just (c, _) | isAlphaNum c || c == '_' -> syntax "invalid decimal literal"
+      _ -> pure ()
+
+-- | @sys.get_int_max_str_digits()@ default.
+intMaxStrDigits :: Int
+intMaxStrDigits = 4300
+
+-- Digits with single underscores between them; returns the digits alone.
+-- A radix literal may put an underscore right after its @0x@/@0o@/@0b@.
+underscored :: Bool -> (Char -> Bool) -> Text -> Either LiteralError Text
+underscored leadingAllowed _ token
+  | T.null token = Right token
+  | T.head token == '_' && not leadingAllowed = malformed "invalid literal"
+  | "__" `T.isInfixOf` token || T.last token == '_' = malformed "invalid literal"
+  | otherwise = Right (T.filter (/= '_') token)
+
+-- Correctly rounded decimal-to-double conversion (as CPython's @float()@),
+-- deciding far-out-of-range magnitudes without building huge rationals.
+decimalToDouble :: Text -> Text -> Integer -> Double
+decimalToDouble whole fraction power =
+  let digits = T.dropWhile (== '0') (whole <> fraction)
+      scale = power - toInteger (T.length fraction)
+      magnitude = toInteger (T.length digits) + scale
+   in if
+        | T.null digits -> 0
+        | magnitude > 400 -> 1 / 0
+        | magnitude < -400 -> 0
+        | otherwise -> fromRational (fromInteger (read (T.unpack digits)) * (10 ^^ scale))

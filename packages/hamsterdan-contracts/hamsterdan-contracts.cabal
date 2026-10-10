@@ -1,0 +1,82 @@
+cabal-version:      3.4
+name:               hamsterdan-contracts
+version:            0.1.0.0
+synopsis:           Hamsterdan's workflow contracts with pydantic-identical JSON codecs
+description:
+  The data model of Hamsterdan (@src/hamsterdan/contracts@): every strict,
+  frozen, @extra="forbid"@ pydantic dataclass as a Haskell record whose codec
+  spells and admits exactly what pydantic does, plus a printer and parser for
+  the Python literals (@repr@ / @ast.literal_eval@) that Hamsterdan stores.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Data
+build-type:         Simple
+extra-doc-files:    README.md
+                    PARITY.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Hamsterdan.Agents.Protocol
+                    Hamsterdan.Contracts
+                    Hamsterdan.Contracts.Codec
+                    Hamsterdan.Contracts.Readiness
+                    Hamsterdan.Contracts.ReadinessProjection
+                    Hamsterdan.Contracts.ReadinessV5
+                    Hamsterdan.PyLiteral
+                    Hamsterdan.PyLiteral.Printable
+  build-depends:    base >=4.18 && <5
+                  , array >=0.5
+                  , base16-bytestring >=1.0
+                  , bytestring >=0.11
+                  , cryptohash-sha256 >=0.11
+                  , containers >=0.6
+                  , petrus-json
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite hamsterdan-contracts-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    CorpusSpec
+                    CodecSpec
+                    ProtocolSpec
+                    PyLiteralSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hamsterdan-contracts
+                  , hspec >=2.10
+                  , petrus-json
+                  , QuickCheck >=2.14
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+benchmark hamsterdan-contracts-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , hamsterdan-contracts
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts

@@ -62,8 +62,8 @@ Hamsterdan depends on differs** (docs/hamsterdan.md §2.3).
 
 | Component | Upstream | Haskell package | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| Contracts (V5 workflow models, agent protocol types) | `src/hamsterdan/contracts`, `src/hamsterdan/agents/protocol.py` (types) | `hamsterdan-contracts` | not started | |
-| Python-literal repr/parse for dashboard entries and digests | `readiness/net_v5/dashboard.py`, `board.py` (`repr`, `ast.literal_eval`) | `hamsterdan-contracts` | not started | |
+| Contracts (V5 workflow models, agent protocol types) | `src/hamsterdan/contracts`, `src/hamsterdan/agents/protocol.py` (types) | `hamsterdan-contracts` | at parity | [PARITY](packages/hamsterdan-contracts/PARITY.md), `packages/hamsterdan-contracts/test/corpus/{contracts,projection,protocol}.jsonl`, [bench](packages/hamsterdan-contracts/bench/RESULTS.md) |
+| Python-literal repr/parse for dashboard entries and digests | `readiness/net_v5/dashboard.py`, `board.py` (`repr`, `ast.literal_eval`) | `hamsterdan-contracts` | at parity | [PARITY](packages/hamsterdan-contracts/PARITY.md), `packages/hamsterdan-contracts/test/corpus/{repr,literal_eval}.jsonl`, [bench](packages/hamsterdan-contracts/bench/RESULTS.md) |
 | Readiness net V5 (topology, nine loops, startup, folding) | `src/hamsterdan/readiness/net_v5`, `readiness/payloads.py` | `hamsterdan-readiness` | not started | |
 | Gate handlers and `$variant` converter | `readiness/net_v5/gating.py` | `hamsterdan-readiness` | not started | |
 | Summary board rendering | `readiness/net_v5/board.py` | `hamsterdan-readiness` | not started | |
