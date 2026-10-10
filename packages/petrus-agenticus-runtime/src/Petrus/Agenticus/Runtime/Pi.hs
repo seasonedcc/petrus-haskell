@@ -131,6 +131,7 @@ module Petrus.Agenticus.Runtime.Pi
   , validateSession
   , workingBinding
   , pyB64DecodeStrict
+  , pyB64DecodeText
   , b64Encode
   , frameBytes
   , startFrame
@@ -258,6 +259,7 @@ import Petrus.Agenticus.Thread.Continuation
   )
 import Petrus.Agenticus.Thread.Identity (EpisodeId, LifecycleId (..), TurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
+import Petrus.Impetus.Internal.PyJson qualified as Py
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import Petrus.Motus.Execution
@@ -472,8 +474,38 @@ canonicalUuid value = case T.splitOn "-" value of
 -- | @_strict_load@: strict UTF-8 JSON without @NaN@/@Infinity@ constants
 -- or duplicate members at any depth. 'Left' is the reference's
 -- @ValueError@ (including @UnicodeDecodeError@ and @JSONDecodeError@).
+--
+-- CPython's scanner admits lone surrogate escapes (@"\\ud800"@) into a
+-- @str@; so does this one, but 'Text' cannot hold a surrogate, so each
+-- decodes to U+FFFD. The session and credential validators only inspect
+-- structure, so they accept exactly what the reference accepts.
 strictLoad :: ByteString -> Either () Json
-strictLoad bytes = case TE.decodeUtf8' bytes of
+strictLoad bytes = do
+  text <- either (const (Left ())) Right (TE.decodeUtf8' bytes)
+  either (const (Left ())) (Right . fromRaw) (Py.loads hooks text)
+  where
+    hooks =
+      Py.Hooks
+        { parseInt = either (const (Left ())) Right . Py.defaultInt
+        , parseFloat = Right . Py.defaultFloat
+        , parseConstant = const (Left ())
+        , objectPairs = \pairs ->
+            if Set.size (Set.fromList (map fst pairs)) == length pairs then Right () else Left ()
+        }
+    fromRaw = \case
+      Py.RNull -> Null
+      Py.RBool b -> Bool b
+      Py.RInt n -> Int n
+      Py.RFloat d -> Float d
+      Py.RStr t -> String (T.pack t)
+      Py.RList xs -> Array (map fromRaw xs)
+      Py.RDict members -> Object [(T.pack k, fromRaw v) | (k, v) <- members]
+
+-- | 'strictLoad' for helper frames, refusing lone surrogate escapes outright
+-- (a 'malformed-frame'): the reference admits them and fails later, or
+-- passes them on, depending on the member.
+strictFrameLoad :: ByteString -> Either () Json
+strictFrameLoad bytes = case TE.decodeUtf8' bytes of
   Left _ -> Left ()
   Right _ -> either (const (Left ())) Right (J.parseJson strictOptions bytes)
   where
@@ -487,7 +519,7 @@ bare = valueError ""
 validateNativeAuth :: ByteString -> Text -> Int -> Either AgenticusError ByteString
 validateNativeAuth value provider bound = do
   when (B.null value || B.length value > bound) (Left bare)
-  _ <- either (const (Left (agenticusError (OtherError "UnicodeDecodeError") "invalid utf-8"))) Right (TE.decodeUtf8' value)
+  _ <- either (Left . agenticusError (OtherError "UnicodeDecodeError")) Right (Py.decodeUtf8Python value)
   stored <- either (const (Left bare)) Right (strictLoad value)
   credential <- case stored of
     Object [(key, credential)] | key == provider -> Right credential
@@ -522,10 +554,17 @@ validateNativeAuth value provider bound = do
 decodeNativeAuth :: Json -> Text -> Int -> Either AgenticusError ByteString
 decodeNativeAuth value provider bound = case value of
   String encoded -> do
-    body <- pyB64DecodeStrict (TE.encodeUtf8 encoded)
+    body <- pyB64DecodeText encoded
     when (b64Encode body /= encoded) (Left bare)
     validateNativeAuth body provider bound
   _ -> Left bare
+
+-- | @base64.b64decode(value, validate=True)@ for a @str@: non-ASCII text is
+-- a @ValueError@ before any base64 rule applies.
+pyB64DecodeText :: Text -> Either AgenticusError ByteString
+pyB64DecodeText value
+  | T.any (> '\x7f') value = Left (valueError "string argument should contain only ASCII characters")
+  | otherwise = pyB64DecodeStrict (TE.encodeUtf8 value)
 
 -- | @base64.b64decode(value, validate=True)@ on CPython 3.14: only the
 -- standard alphabet with exact trailing padding; non-zero trailing bits are
@@ -1258,7 +1297,7 @@ runSubprocess c gateway' invocation current deadline = do
       Just i -> do
         let raw = B.take i s.buffer
             rest = B.drop (i + 1) s.buffer
-        fields <- case strictLoad raw of
+        fields <- case strictFrameLoad raw of
           Right (Object members) -> pure members
           _ -> protocol "malformed-frame"
         let events = s.events + 1
@@ -1321,7 +1360,7 @@ runSubprocess c gateway' invocation current deadline = do
                 String value | utf8Length value <= cfg.maxOutputBytes -> Right value
                 _ -> Left bare
               body <- case member "session" of
-                String value -> pyB64DecodeStrict (TE.encodeUtf8 value)
+                String value -> pyB64DecodeText value
                 _ -> Left bare
               _ <- validateSession body sid cfg.maxSessionBytes cfg.maxEvents
               auth <-
@@ -1821,7 +1860,7 @@ probeInstalled a paths cli node = do
           { env = Just environment
           }
   (code, out, err) <- runBounded command >>= maybe invalid pure
-  frame <- either (const invalid) pure (strictLoad (fst (BC.spanEnd (== '\n') out)))
+  frame <- either (const invalid) pure (strictFrameLoad (fst (BC.spanEnd (== '\n') out)))
   when (code /= ExitSuccess || not (B.null err) || BC.count '\n' out /= 1 || frame /= Object [("type", String "probe"), ("ok", Bool True)]) invalid
   system <- getSystemID
   components <-

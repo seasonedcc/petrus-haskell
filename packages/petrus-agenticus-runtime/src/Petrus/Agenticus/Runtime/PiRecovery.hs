@@ -57,10 +57,13 @@ import Data.Char (GeneralCategory (..), generalCategory, isHexDigit, isSpace)
 import Data.IORef
 import Data.Int (Int64)
 import Data.Maybe (fromMaybe, isJust)
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as B
 import Data.Text (Text)
 import Data.Text qualified as T
 import Foreign.C.Error (eACCES, eAGAIN, eWOULDBLOCK, getErrno)
 import Foreign.C.Types (CInt (..))
+import Numeric (showHex)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
 import Petrus.Agenticus.Internal.Sqlite
@@ -485,7 +488,20 @@ pyStr = \case
   SQLInteger n -> T.pack (show n)
   SQLFloat x -> T.pack (show x)
   SQLNull -> "None"
-  SQLBlob _ -> "b''"
+  SQLBlob b -> pyBytesRepr b
+
+-- | @repr(value)@ of a @bytes@ value.
+pyBytesRepr :: ByteString -> Text
+pyBytesRepr bytes = "b" <> T.singleton quote <> T.concat (map escape (B.unpack bytes)) <> T.singleton quote
+  where
+    quote = if B.elem 39 bytes && not (B.elem 34 bytes) then '"' else '\''
+    escape w
+      | w == fromIntegral (fromEnum quote) || w == 92 = T.pack ['\\', toEnum (fromIntegral w)]
+      | w == 9 = "\\t"
+      | w == 10 = "\\n"
+      | w == 13 = "\\r"
+      | w < 32 || w >= 127 = T.pack ('\\' : 'x' : (if w < 16 then ('0' :) else id) (showHex w ""))
+      | otherwise = T.singleton (toEnum (fromIntegral w))
 
 -- | @_decode(row)@.
 decode :: [SqlValue] -> IO PiOperationRecord
@@ -501,6 +517,12 @@ decode row = case row of
     sequence <- integer "sequence" sequence'
     acceptedAppends <- case appends of
       SQLNull -> pure Nothing
+      -- A REAL cell reaches the reference's record as a float: an integral
+      -- one compares equal to that integer, and any other fails the
+      -- record's own checks exactly as an out-of-range integer does.
+      SQLFloat x
+        | not (isNaN x) && x == fromInteger (round x) -> pure (Just (round x))
+        | otherwise -> pure (Just (-1))
       value -> Just <$> integer "accepted_appends" value
     throwLeft . mkPiOperationRecord $
       PiOperationRecord

@@ -24,6 +24,7 @@ extra-doc-files:    PARITY.md
 data-files:         data/*.mjs
 extra-source-files: differential/*.json
                     differential/*.py
+                    differential/*.sqlite3
                     bench/*.py
                     test/fixtures/pi/*.mjs
                     test/fixtures/pi/*.py
@@ -77,6 +78,7 @@ test-suite petrus-agenticus-runtime-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    Petrus.Agenticus.Runtime.AgentNetRunnerSpec
+                    Petrus.Agenticus.Runtime.PiDifferentialSpec
                     Petrus.Agenticus.Runtime.PiSpec
                     Petrus.Agenticus.Runtime.PiSupport
                     Petrus.Agenticus.Runtime.RunnerDifferentialSpec
