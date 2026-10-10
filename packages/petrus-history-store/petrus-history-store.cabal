@@ -1,0 +1,92 @@
+cabal-version:      3.4
+name:               petrus-history-store
+version:            0.1.0.0
+synopsis:           Durable History Store backends for the Petrus Impetus kernel
+description:
+  Durable spellings of the one event History behind the kernel's
+  HistoryStore contract (a port of @petrus.impetus.history_store@'s durable
+  backends). This release carries the JSONL store, byte-compatible with the
+  reference's @JsonlHistoryStore@: Haskell and Python processes read each
+  other's files and resume each other's Instances. The SQLite store joins as
+  @Petrus.HistoryStore.Sqlite@ (see "Petrus.HistoryStore").
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Database
+build-type:         Simple
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  -- Petrus.HistoryStore.Sqlite (the SQLite backend) belongs in this list.
+  exposed-modules:  Petrus.HistoryStore
+                    Petrus.HistoryStore.Jsonl
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-telemetry
+                  , text >=2.0
+                  , unix >=2.8
+  ghc-options:      -O2
+
+test-suite petrus-history-store-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  -- The kernel's shared test fixtures (every_record_category and friends)
+  -- are compiled in from its test tree rather than copied.
+  hs-source-dirs:   test ../petrus-impetus/test
+  main-is:          Main.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Impetus.HistorySupport
+                    Petrus.HistoryStore.Support
+                    Petrus.HistoryStore.JsonlSpec
+                    Petrus.HistoryStore.BackendContractSpec
+                    Petrus.HistoryStore.InteropSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-telemetry
+                  , process >=1.6
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-history-store-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"

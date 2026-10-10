@@ -1,0 +1,592 @@
+{
+ "action-timer-logical": {
+  "action": {
+   "message": "DST budget 'actions' exhausted at limit 1",
+   "type": "BudgetExhausted"
+  },
+  "artifact": "{\"api\":\"petrus.testing.dst/v3\",\"budget\":{\"actions\":1,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":1,\"queued_commands\":2,\"reloads\":0,\"timer_advances\":1},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"budget_exhausted\",\"failure\":{\"bound\":\"actions\",\"error\":\"DST budget 'actions' exhausted at limit 1\",\"kind\":\"budget_exhausted\",\"limit\":1},\"journal_digest\":\"sha256:5bdacf03864d9ac635d49a2380f9c8be164d6210e1f059d4874a2ed2d62934b3\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":0,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"accepted_operations\":0,\"attempt\":{\"kind\":\"step\"},\"failure\":{\"bound\":\"actions\",\"error\":\"DST budget 'actions' exhausted at limit 1\",\"kind\":\"budget_exhausted\",\"limit\":1},\"generation\":1,\"instant\":5,\"kind\":\"failure\",\"position\":1}],\"origin\":null,\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1},\"scenario_id\":\"budget-exhaustion\",\"version\":3}",
+  "logical": {
+   "message": "DST budget 'logical_instant' exhausted at limit 4",
+   "type": "BudgetExhausted"
+  },
+  "logical_closes": 1,
+  "replay": {
+   "result": "{\"disposition\":\"budget_exhausted\",\"failure\":{\"bound\":\"actions\",\"error\":\"DST budget 'actions' exhausted at limit 1\",\"kind\":\"budget_exhausted\",\"limit\":1},\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:5bdacf03864d9ac635d49a2380f9c8be164d6210e1f059d4874a2ed2d62934b3\",\"journal_entries\":4,\"operations\":2,\"outcome\":\"pass\",\"scenario_id\":\"budget-exhaustion\",\"version\":2}"
+  },
+  "timer": {
+   "message": "DST budget 'timer_advances' exhausted at limit 0",
+   "type": "BudgetExhausted"
+  }
+ },
+ "authored-checker-failure": {
+  "artifact": "{\"api\":\"petrus.testing.dst/v3\",\"budget\":{\"actions\":4,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":1,\"queued_commands\":2,\"reloads\":0,\"timer_advances\":1},\"checkers\":[{\"digest\":\"sha256:5ad03388639f5ba746613da0880625557b59558926251ee0e9566d72233ae980\",\"name\":\"petrus.testing.reject-bad-value\",\"version\":1}],\"expected\":{\"checks\":[{\"generation\":1,\"instant\":0,\"kind\":\"check\",\"name\":\"petrus.testing.reject-bad-value\",\"position\":1,\"value\":{\"checker\":{\"digest\":\"sha256:5ad03388639f5ba746613da0880625557b59558926251ee0e9566d72233ae980\",\"name\":\"petrus.testing.reject-bad-value\",\"version\":1},\"observation\":{\"generation\":1,\"instant\":0,\"name\":\"queue.state\",\"sequence\":0,\"value\":{\"values\":[]}},\"result\":{\"detail\":{\"values\":[]},\"passed\":true},\"trigger\":\"create\"}},{\"generation\":1,\"instant\":5,\"kind\":\"check\",\"name\":\"petrus.testing.reject-bad-value\",\"position\":3,\"value\":{\"checker\":{\"digest\":\"sha256:5ad03388639f5ba746613da0880625557b59558926251ee0e9566d72233ae980\",\"name\":\"petrus.testing.reject-bad-value\",\"version\":1},\"observation\":{\"generation\":1,\"instant\":5,\"name\":\"queue.state\",\"sequence\":0,\"value\":{\"values\":[\"queue-00000001\"]}},\"result\":{\"detail\":{\"values\":[\"queue-00000001\"]},\"passed\":true},\"trigger\":\"queue.record\"}},{\"generation\":1,\"instant\":5,\"kind\":\"check\",\"name\":\"petrus.testing.reject-bad-value\",\"position\":5,\"value\":{\"checker\":{\"digest\":\"sha256:5ad03388639f5ba746613da0880625557b59558926251ee0e9566d72233ae980\",\"name\":\"petrus.testing.reject-bad-value\",\"version\":1},\"observation\":{\"generation\":1,\"instant\":5,\"name\":\"queue.state\",\"sequence\":1,\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"result\":{\"detail\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]},\"passed\":true},\"trigger\":\"queue.record\"}},{\"generation\":1,\"instant\":5,\"kind\":\"check\",\"name\":\"petrus.testing.reject-bad-value\",\"position\":7,\"value\":{\"checker\":{\"digest\":\"sha256:5ad03388639f5ba746613da0880625557b59558926251ee0e9566d72233ae980\",\"name\":\"petrus.testing.reject-bad-value\",\"version\":1},\"observation\":{\"generation\":1,\"instant\":5,\"name\":\"queue.state\",\"sequence\":2,\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\",\"bad\"]}},\"result\":{\"detail\":{\"values\":[\"queue-00000001\",\"queue-00000002\",\"bad\"]},\"passed\":false},\"trigger\":\"queue.record\"}}],\"disposition\":\"invariant_failure\",\"failure\":{\"error\":\"DST checker failure after atomic boundary: ['petrus.testing.reject-bad-value']\",\"kind\":\"invariant_failure\"},\"journal_digest\":\"sha256:68944e792dd7f62fffe71827d8d8f425d1423ae4c36b898d205021792b1780ae\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":0,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000002\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":1,\"queue_order\":1,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"source\":\"profile\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"bad\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":2,\"queue_order\":2,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\",\"bad\"]}},\"source\":\"authored\"},{\"accepted_operations\":1,\"attempt\":{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"bad\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"kind\":\"submit\"},\"failure\":{\"error\":\"DST checker failure after atomic boundary: ['petrus.testing.reject-bad-value']\",\"kind\":\"invariant_failure\"},\"generation\":1,\"instant\":5,\"kind\":\"failure\",\"position\":3}],\"origin\":null,\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1},\"scenario_id\":\"authored-checker-failure\",\"version\":3}",
+  "error": {
+   "message": "DST checker failure after atomic boundary: ['petrus.testing.reject-bad-value']",
+   "type": "InvariantViolation"
+  },
+  "passing_replay": {
+   "error": {
+    "message": "DST operation 2 did not reproduce its terminal failed attempt",
+    "type": "ReplayMismatch"
+   }
+  },
+  "passing_values": [
+   "queue-00000001",
+   "queue-00000002",
+   "bad"
+  ],
+  "replay": {
+   "result": "{\"disposition\":\"invariant_failure\",\"failure\":{\"error\":\"DST checker failure after atomic boundary: ['petrus.testing.reject-bad-value']\",\"kind\":\"invariant_failure\"},\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:68944e792dd7f62fffe71827d8d8f425d1423ae4c36b898d205021792b1780ae\",\"journal_entries\":9,\"operations\":4,\"outcome\":\"pass\",\"scenario_id\":\"authored-checker-failure\",\"version\":2}"
+  }
+ },
+ "constructor-checker-refusal": {
+  "closes": 1,
+  "error": {
+   "message": "DST checker failure after atomic boundary: ['petrus.testing.rejecting-checker']",
+   "type": "InvariantViolation"
+  }
+ },
+ "failure-after-end": {
+  "artifact_error": {
+   "message": "1 validation error for ScenarioArtifactV3\n  Value error, a failed DST artifact must end with exactly one failure operation [type=value_error, input_value={'format': 'petrus-dst-wo...153dbbcf24728e3863a4d')}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error",
+   "type": "ValidationError"
+  },
+  "disposition": "budget_exhausted",
+  "errors": [
+   {
+    "message": "DST budget 'queued_commands' exhausted at limit 2",
+    "type": "BudgetExhausted"
+   },
+   {
+    "message": "DST budget 'queued_commands' exhausted at limit 2",
+    "type": "BudgetExhausted"
+   }
+  ],
+  "operations": [
+   {
+    "accepted_operations": 0,
+    "attempt": {
+     "command": {
+      "name": "queue.record",
+      "payload": {
+       "id": "b"
+      },
+      "profile": {
+       "digest": "sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da",
+       "name": "petrus.testing.queue-proof",
+       "version": 1
+      }
+     },
+     "generation": 1,
+     "kind": "submit"
+    },
+    "failure": {
+     "bound": "queued_commands",
+     "error": "DST budget 'queued_commands' exhausted at limit 2",
+     "kind": "budget_exhausted",
+     "limit": 2
+    },
+    "generation": 1,
+    "instant": 0,
+    "kind": "failure",
+    "position": 0
+   },
+   {
+    "accepted_operations": 0,
+    "attempt": {
+     "command": {
+      "name": "queue.record",
+      "payload": {
+       "id": "a"
+      },
+      "profile": {
+       "digest": "sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da",
+       "name": "petrus.testing.queue-proof",
+       "version": 1
+      }
+     },
+     "generation": 1,
+     "kind": "submit"
+    },
+    "failure": {
+     "bound": "queued_commands",
+     "error": "DST budget 'queued_commands' exhausted at limit 2",
+     "kind": "budget_exhausted",
+     "limit": 2
+    },
+    "generation": 1,
+    "instant": 0,
+    "kind": "failure",
+    "position": 1
+   }
+  ]
+ },
+ "fair-phase": {
+  "artifact": "{\"api\":\"petrus.testing.dst/v3\",\"budget\":{\"actions\":8,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":1,\"queued_commands\":2,\"reloads\":0,\"timer_advances\":1},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"quiescent\",\"failure\":null,\"journal_digest\":\"sha256:2b534cba72dd08327479ca0fcf10ff8d4295b6d9fefaeb1c5310d2729bdaa226\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":0,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000002\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":1,\"queue_order\":1,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"source\":\"profile\"},{\"generation\":1,\"instant\":5,\"kind\":\"begin_fair\",\"position\":2},{\"disposition\":\"quiescent\",\"generation\":1,\"instant\":5,\"kind\":\"finish\",\"position\":3}],\"origin\":null,\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1},\"scenario_id\":\"fair-phase-v3\",\"version\":3}",
+  "errors": [
+   {
+    "message": "authored commands cannot enter an active DST fair phase",
+    "type": "DstError"
+   },
+   {
+    "message": "faults cannot enter an active DST fair phase",
+    "type": "DstError"
+   },
+   {
+    "message": "process crashes cannot enter an active DST fair phase",
+    "type": "DstError"
+   },
+   {
+    "message": "DST fair phase has already begun",
+    "type": "DstError"
+   },
+   {
+    "message": "an active DST fair phase cannot end as an external wait",
+    "type": "DstError"
+   }
+  ],
+  "replay": {
+   "result": "{\"disposition\":\"quiescent\",\"failure\":null,\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:2b534cba72dd08327479ca0fcf10ff8d4295b6d9fefaeb1c5310d2729bdaa226\",\"journal_entries\":5,\"operations\":4,\"outcome\":\"pass\",\"scenario_id\":\"fair-phase-v3\",\"version\":2}"
+  }
+ },
+ "fault-story": {
+  "artifact": "{\"api\":\"petrus.testing.dst/v3\",\"budget\":{\"actions\":8,\"artifact_bytes\":65536,\"logical_instant\":6,\"predicate_polls\":1,\"queued_commands\":3,\"reloads\":0,\"timer_advances\":2},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"quiescent\",\"failure\":null,\"journal_digest\":\"sha256:0ee559592289db42010b0fd86f95d69b734fc8b88bd99fed70cffe33830301a4\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"fault\":{\"disposition\":\"refuse\",\"name\":\"refuse-second\",\"occurrence\":2,\"payload\":null,\"profile\":{\"digest\":\"sha256:1b4fd8b087bb5d6cb35b1f97427e2ae77b8d764b263669aab061a3285d6f026b\",\"name\":\"petrus.testing.fault-queue-proof\",\"version\":1},\"target\":\"queue.apply\"},\"generation\":1,\"instant\":0,\"kind\":\"activate_fault\",\"position\":0},{\"fault\":{\"disposition\":\"duplicate\",\"name\":\"duplicate-first\",\"occurrence\":1,\"payload\":{\"n\":1},\"profile\":{\"digest\":\"sha256:1b4fd8b087bb5d6cb35b1f97427e2ae77b8d764b263669aab061a3285d6f026b\",\"name\":\"petrus.testing.fault-queue-proof\",\"version\":1},\"target\":\"queue.apply\"},\"generation\":1,\"instant\":0,\"kind\":\"activate_fault\",\"position\":1},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:1b4fd8b087bb5d6cb35b1f97427e2ae77b8d764b263669aab061a3285d6f026b\",\"name\":\"petrus.testing.fault-queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":2,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001-again\"},\"profile\":{\"digest\":\"sha256:1b4fd8b087bb5d6cb35b1f97427e2ae77b8d764b263669aab061a3285d6f026b\",\"name\":\"petrus.testing.fault-queue-proof\",\"version\":1}},\"instant\":6}],\"value\":{\"at\":5,\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000002\"},\"profile\":{\"digest\":\"sha256:1b4fd8b087bb5d6cb35b1f97427e2ae77b8d764b263669aab061a3285d6f026b\",\"name\":\"petrus.testing.fault-queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":3,\"queue_order\":1,\"result\":{\"disposition\":\"refused_expected\",\"scheduled\":[],\"value\":{\"at\":5,\"refused\":\"queue-00000002\"}},\"source\":\"profile\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001-again\"},\"profile\":{\"digest\":\"sha256:1b4fd8b087bb5d6cb35b1f97427e2ae77b8d764b263669aab061a3285d6f026b\",\"name\":\"petrus.testing.fault-queue-proof\",\"version\":1}},\"generation\":1,\"instant\":6,\"kind\":\"execute\",\"position\":4,\"queue_order\":2,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"at\":6,\"values\":[\"queue-00000001\",\"queue-00000001-again\"]}},\"source\":\"profile\"},{\"kind\":\"observe\",\"observation\":{\"generation\":1,\"instant\":6,\"name\":\"queue.state\",\"sequence\":5,\"value\":{\"values\":[\"queue-00000001\",\"queue-00000001-again\"]}},\"poll\":false,\"position\":5,\"request\":{\"name\":\"queue.state\",\"payload\":null}},{\"disposition\":\"quiescent\",\"generation\":1,\"instant\":6,\"kind\":\"finish\",\"position\":6}],\"origin\":null,\"profile\":{\"digest\":\"sha256:1b4fd8b087bb5d6cb35b1f97427e2ae77b8d764b263669aab061a3285d6f026b\",\"name\":\"petrus.testing.fault-queue-proof\",\"version\":1},\"scenario_id\":\"fault-queue-v3\",\"version\":3}",
+  "observation": {
+   "generation": 1,
+   "instant": 6,
+   "name": "queue.state",
+   "sequence": 5,
+   "value": {
+    "values": [
+     "queue-00000001",
+     "queue-00000001-again"
+    ]
+   }
+  },
+  "replay": {
+   "result": "{\"disposition\":\"quiescent\",\"failure\":null,\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:0ee559592289db42010b0fd86f95d69b734fc8b88bd99fed70cffe33830301a4\",\"journal_entries\":8,\"operations\":7,\"outcome\":\"pass\",\"scenario_id\":\"fault-queue-v3\",\"version\":2}"
+  },
+  "steps": [
+   {
+    "command": {
+     "name": "queue.record",
+     "payload": {
+      "id": "queue-00000001"
+     },
+     "profile": {
+      "digest": "sha256:1b4fd8b087bb5d6cb35b1f97427e2ae77b8d764b263669aab061a3285d6f026b",
+      "name": "petrus.testing.fault-queue-proof",
+      "version": 1
+     }
+    },
+    "generation": 1,
+    "instant": 5,
+    "kind": "execute",
+    "position": 2,
+    "queue_order": 0,
+    "result": {
+     "disposition": "applied",
+     "scheduled": [
+      {
+       "command": {
+        "name": "queue.record",
+        "payload": {
+         "id": "queue-00000001-again"
+        },
+        "profile": {
+         "digest": "sha256:1b4fd8b087bb5d6cb35b1f97427e2ae77b8d764b263669aab061a3285d6f026b",
+         "name": "petrus.testing.fault-queue-proof",
+         "version": 1
+        }
+       },
+       "instant": 6
+      }
+     ],
+     "value": {
+      "at": 5,
+      "values": [
+       "queue-00000001"
+      ]
+     }
+    },
+    "source": "profile"
+   },
+   {
+    "command": {
+     "name": "queue.record",
+     "payload": {
+      "id": "queue-00000002"
+     },
+     "profile": {
+      "digest": "sha256:1b4fd8b087bb5d6cb35b1f97427e2ae77b8d764b263669aab061a3285d6f026b",
+      "name": "petrus.testing.fault-queue-proof",
+      "version": 1
+     }
+    },
+    "generation": 1,
+    "instant": 5,
+    "kind": "execute",
+    "position": 3,
+    "queue_order": 1,
+    "result": {
+     "disposition": "refused_expected",
+     "scheduled": [],
+     "value": {
+      "at": 5,
+      "refused": "queue-00000002"
+     }
+    },
+    "source": "profile"
+   },
+   {
+    "command": {
+     "name": "queue.record",
+     "payload": {
+      "id": "queue-00000001-again"
+     },
+     "profile": {
+      "digest": "sha256:1b4fd8b087bb5d6cb35b1f97427e2ae77b8d764b263669aab061a3285d6f026b",
+      "name": "petrus.testing.fault-queue-proof",
+      "version": 1
+     }
+    },
+    "generation": 1,
+    "instant": 6,
+    "kind": "execute",
+    "position": 4,
+    "queue_order": 2,
+    "result": {
+     "disposition": "applied",
+     "scheduled": [],
+     "value": {
+      "at": 6,
+      "values": [
+       "queue-00000001",
+       "queue-00000001-again"
+      ]
+     }
+    },
+    "source": "profile"
+   }
+  ],
+  "wrong": {
+   "message": "fault queue proof faults only target queue.apply",
+   "type": "ValueError"
+  }
+ },
+ "fault-validation": {
+  "error": {
+   "message": "queue proof does not accept faults",
+   "type": "ValueError"
+  },
+  "kinds": []
+ },
+ "finish-pending": {
+  "converged": {
+   "message": "cannot finish converged while scheduled work remains",
+   "type": "PendingWork"
+  },
+  "external_wait": {
+   "message": "cannot finish external_wait while scheduled work remains",
+   "type": "PendingWork"
+  },
+  "quarantined": {
+   "message": "cannot finish quarantined while scheduled work remains",
+   "type": "PendingWork"
+  },
+  "quiescent": {
+   "message": "cannot finish quiescent while scheduled work remains",
+   "type": "PendingWork"
+  }
+ },
+ "foreign-profile": {
+  "command": {
+   "message": "DST command profile does not match this World",
+   "type": "ValueError"
+  },
+  "fault": {
+   "message": "DST fault profile does not match this World",
+   "type": "ValueError"
+  },
+  "operations": 0
+ },
+ "no-choices": {
+  "error": {
+   "message": "DST World has no seeded choice authorities",
+   "type": "DstError"
+  }
+ },
+ "not-reclassified": {
+  "checker_error": {
+   "message": "checker implementation raised the reserved exception",
+   "type": "InvariantViolation"
+  },
+  "checker_state": [
+   null,
+   [
+    "execute"
+   ],
+   [
+    "created",
+    "check",
+    "command"
+   ]
+  ],
+  "profile_error": {
+   "message": "DST budget 'profile-owned' exhausted at limit 1",
+   "type": "BudgetExhausted"
+  },
+  "profile_state": [
+   null,
+   [],
+   [
+    "created"
+   ]
+  ]
+ },
+ "poll-budget": {
+  "artifact": "{\"api\":\"petrus.testing.dst/v3\",\"budget\":{\"actions\":8,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":1,\"queued_commands\":2,\"reloads\":0,\"timer_advances\":1},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"budget_exhausted\",\"failure\":{\"bound\":\"predicate_polls\",\"error\":\"DST budget 'predicate_polls' exhausted at limit 1\",\"kind\":\"budget_exhausted\",\"limit\":1},\"journal_digest\":\"sha256:55d213ea052cb09e2d8f29552a4e1d9fa82a195578b53ce326da685252a7ce95\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"kind\":\"observe\",\"observation\":{\"generation\":1,\"instant\":0,\"name\":\"queue.state\",\"sequence\":0,\"value\":{\"values\":[]}},\"poll\":true,\"position\":0,\"request\":{\"name\":\"queue.state\",\"payload\":null}},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":1,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"accepted_operations\":0,\"attempt\":{\"generation\":1,\"kind\":\"observe\",\"poll\":true,\"request\":{\"name\":\"queue.state\",\"payload\":null}},\"failure\":{\"bound\":\"predicate_polls\",\"error\":\"DST budget 'predicate_polls' exhausted at limit 1\",\"kind\":\"budget_exhausted\",\"limit\":1},\"generation\":1,\"instant\":5,\"kind\":\"failure\",\"position\":2}],\"origin\":null,\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1},\"scenario_id\":\"poll-budget-exhaustion\",\"version\":3}",
+  "disposition": "budget_exhausted",
+  "error": {
+   "message": "DST budget 'predicate_polls' exhausted at limit 1",
+   "type": "BudgetExhausted"
+  },
+  "replay": {
+   "result": "{\"disposition\":\"budget_exhausted\",\"failure\":{\"bound\":\"predicate_polls\",\"error\":\"DST budget 'predicate_polls' exhausted at limit 1\",\"kind\":\"budget_exhausted\",\"limit\":1},\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:55d213ea052cb09e2d8f29552a4e1d9fa82a195578b53ce326da685252a7ce95\",\"journal_entries\":5,\"operations\":3,\"outcome\":\"pass\",\"scenario_id\":\"poll-budget-exhaustion\",\"version\":2}"
+  }
+ },
+ "queue-reload-bytes": {
+  "artifact_bytes": {
+   "message": "DST artifact has 10891 bytes; limit is 1",
+   "type": "ValueError"
+  },
+  "queued": {
+   "message": "DST budget 'queued_commands' exhausted at limit 1",
+   "type": "BudgetExhausted"
+  },
+  "queued_closes": 1,
+  "reloads": {
+   "message": "DST budget 'reloads' exhausted at limit 0",
+   "type": "BudgetExhausted"
+  }
+ },
+ "refusals": {
+  "artifact": "{\"api\":\"petrus.testing.dst/v3\",\"budget\":{\"actions\":4,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":1,\"queued_commands\":2,\"reloads\":0,\"timer_advances\":1},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"quiescent\",\"failure\":null,\"journal_digest\":\"sha256:c87774db9ff6ae030f78f2b8ff36278f790c2482155413e34c04b898ffcf340a\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":0,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000002\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":1,\"queue_order\":1,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"source\":\"profile\"},{\"disposition\":\"quiescent\",\"generation\":1,\"instant\":5,\"kind\":\"finish\",\"position\":2}],\"origin\":null,\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1},\"scenario_id\":\"refusals-v3\",\"version\":3}",
+  "duplicate_checker": {
+   "message": "DST checker identity is already registered: name='petrus.testing.rejecting-checker' version=1 digest='sha256:eb4ba82eee32c2d914a48bcccee76433e0d2d8387e1cce892ee78f5e24121da0'",
+   "type": "ValueError"
+  },
+  "duplicate_profile": {
+   "message": "DST profile identity is already registered: name='petrus.testing.queue-proof' version=1 digest='sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da'",
+   "type": "ValueError"
+  },
+  "duplicate_world_checkers": {
+   "message": "DST World checker identities must be unique",
+   "type": "ValueError"
+  },
+  "early": {
+   "message": "finish the DST World before producing an artifact",
+   "type": "DstError"
+  },
+  "invalid": {
+   "message": "queue proof accepts only queue.record objects",
+   "type": "ValueError"
+  },
+  "late": {
+   "message": "DST World already ended as quiescent",
+   "type": "DstError"
+  },
+  "missing_profile": {
+   "error": {
+    "message": "DST artifact profile is not registered exactly: name='petrus.testing.queue-proof' version=1 digest='sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da'",
+    "type": "ValueError"
+   }
+  },
+  "replay": {
+   "result": "{\"disposition\":\"quiescent\",\"failure\":null,\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:c87774db9ff6ae030f78f2b8ff36278f790c2482155413e34c04b898ffcf340a\",\"journal_entries\":4,\"operations\":3,\"outcome\":\"pass\",\"scenario_id\":\"refusals-v3\",\"version\":2}"
+  },
+  "restart_live": {
+   "message": "DST restart requires an abruptly dropped generation",
+   "type": "DstError"
+  },
+  "twice": {
+   "message": "DST World already ended as quiescent",
+   "type": "DstError"
+  },
+  "unknown": {
+   "message": "unknown queue proof observation",
+   "type": "ValueError"
+  }
+ },
+ "resource-exhaustion-v4": {
+  "artifact": "{\"api\":\"petrus.testing.dst/v4\",\"budget\":{\"actions\":8,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":2,\"profile_resources\":{\"retained.values\":1},\"queued_commands\":2,\"reloads\":0,\"timer_advances\":1},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"budget_exhausted\",\"failure\":{\"bound\":\"profile_resources:retained.values\",\"error\":\"DST budget 'profile_resources:retained.values' exhausted at limit 1\",\"kind\":\"budget_exhausted\",\"limit\":1},\"journal_digest\":\"sha256:04cfe2d4bfbc0b5fb138f9cfb2bc8807568560c110683d93ef575c482eb1ba88\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:f6fcc3c98f3de20c550381f5937ba2702ddced72fb555b44ee2abb6e366118ef\",\"name\":\"petrus.testing.resource-queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":0,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000002\"},\"profile\":{\"digest\":\"sha256:f6fcc3c98f3de20c550381f5937ba2702ddced72fb555b44ee2abb6e366118ef\",\"name\":\"petrus.testing.resource-queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":1,\"queue_order\":1,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"source\":\"profile\"},{\"accepted_operations\":1,\"attempt\":{\"kind\":\"step\"},\"failure\":{\"bound\":\"profile_resources:retained.values\",\"error\":\"DST budget 'profile_resources:retained.values' exhausted at limit 1\",\"kind\":\"budget_exhausted\",\"limit\":1},\"generation\":1,\"instant\":5,\"kind\":\"failure\",\"position\":2}],\"origin\":null,\"profile\":{\"digest\":\"sha256:f6fcc3c98f3de20c550381f5937ba2702ddced72fb555b44ee2abb6e366118ef\",\"name\":\"petrus.testing.resource-queue-proof\",\"version\":1},\"scenario_id\":\"resource-budget-exhaustion-v4\",\"version\":4}",
+  "error": {
+   "message": "DST budget 'profile_resources:retained.values' exhausted at limit 1",
+   "type": "BudgetExhausted"
+  },
+  "replay": {
+   "result": "{\"disposition\":\"budget_exhausted\",\"failure\":{\"bound\":\"profile_resources:retained.values\",\"error\":\"DST budget 'profile_resources:retained.values' exhausted at limit 1\",\"kind\":\"budget_exhausted\",\"limit\":1},\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:04cfe2d4bfbc0b5fb138f9cfb2bc8807568560c110683d93ef575c482eb1ba88\",\"journal_entries\":9,\"operations\":3,\"outcome\":\"pass\",\"scenario_id\":\"resource-budget-exhaustion-v4\",\"version\":2}"
+  }
+ },
+ "resource-keyset": {
+  "error": {
+   "message": "profile resource usage keys must exactly match its budget; missing=['retained.values'], additional=['retained.other']",
+   "type": "ValueError"
+  }
+ },
+ "resource-v4": {
+  "artifact": "{\"api\":\"petrus.testing.dst/v4\",\"budget\":{\"actions\":8,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":2,\"profile_resources\":{\"retained.values\":2},\"queued_commands\":2,\"reloads\":0,\"timer_advances\":1},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"quiescent\",\"failure\":null,\"journal_digest\":\"sha256:fe42fa2ffe8ce879af1014578d2acea815d644c56200d431617c85fa5600872b\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:f6fcc3c98f3de20c550381f5937ba2702ddced72fb555b44ee2abb6e366118ef\",\"name\":\"petrus.testing.resource-queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":0,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000002\"},\"profile\":{\"digest\":\"sha256:f6fcc3c98f3de20c550381f5937ba2702ddced72fb555b44ee2abb6e366118ef\",\"name\":\"petrus.testing.resource-queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":1,\"queue_order\":1,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"source\":\"profile\"},{\"kind\":\"observe\",\"observation\":{\"generation\":1,\"instant\":5,\"name\":\"queue.state\",\"sequence\":2,\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"poll\":false,\"position\":2,\"request\":{\"name\":\"queue.state\",\"payload\":null}},{\"disposition\":\"quiescent\",\"generation\":1,\"instant\":5,\"kind\":\"finish\",\"position\":3}],\"origin\":null,\"profile\":{\"digest\":\"sha256:f6fcc3c98f3de20c550381f5937ba2702ddced72fb555b44ee2abb6e366118ef\",\"name\":\"petrus.testing.resource-queue-proof\",\"version\":1},\"scenario_id\":\"resource-bounded-queue-v4\",\"version\":4}",
+  "replay": {
+   "result": "{\"disposition\":\"quiescent\",\"failure\":null,\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:fe42fa2ffe8ce879af1014578d2acea815d644c56200d431617c85fa5600872b\",\"journal_entries\":11,\"operations\":4,\"outcome\":\"pass\",\"scenario_id\":\"resource-bounded-queue-v4\",\"version\":2}"
+  },
+  "resources": [
+   "before_create",
+   "create",
+   "queue.record",
+   "queue.record",
+   "observe:queue.state",
+   "finish:quiescent"
+  ]
+ },
+ "run-until-failed": {
+  "artifact": "{\"api\":\"petrus.testing.dst/v3\",\"budget\":{\"actions\":8,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":4,\"queued_commands\":2,\"reloads\":0,\"timer_advances\":1},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"external_wait\",\"failure\":null,\"journal_digest\":\"sha256:0ee3b321a39f07979cc13ebf86517bf78891c3d517fc7e868ddd7310ccda94f6\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"kind\":\"observe\",\"observation\":{\"generation\":1,\"instant\":0,\"name\":\"queue.state\",\"sequence\":0,\"value\":{\"values\":[]}},\"poll\":true,\"position\":0,\"request\":{\"name\":\"queue.state\",\"payload\":null}},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":1,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"kind\":\"observe\",\"observation\":{\"generation\":1,\"instant\":5,\"name\":\"queue.state\",\"sequence\":2,\"value\":{\"values\":[\"queue-00000001\"]}},\"poll\":true,\"position\":2,\"request\":{\"name\":\"queue.state\",\"payload\":null}},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000002\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":3,\"queue_order\":1,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"source\":\"profile\"},{\"kind\":\"observe\",\"observation\":{\"generation\":1,\"instant\":5,\"name\":\"queue.state\",\"sequence\":4,\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"poll\":true,\"position\":4,\"request\":{\"name\":\"queue.state\",\"payload\":null}},{\"disposition\":\"external_wait\",\"generation\":1,\"instant\":5,\"kind\":\"finish\",\"position\":5}],\"origin\":null,\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1},\"scenario_id\":\"run-until-external-wait\",\"version\":3}",
+  "disposition": null,
+  "error": {
+   "message": "DST run_until 'queue.state' ended as external_wait; last={'name': 'queue.state', 'value': {'values': ['queue-00000001', 'queue-00000002']}, 'instant': 5, 'generation': 1, 'sequence': 4}; pending=[]; journal_tail=[{'position': 0, 'instant': 0, 'generation': 1, 'kind': 'created', 'name': 'petrus.testing.queue-proof', 'value': {'scheduled': [{'instant': 5, 'command': {'profile': {'name': 'petrus.testing.queue-proof', 'version': 1, 'digest': 'sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da'}, 'name': 'queue.record', 'payload': {'id': 'queue-00000001'}}}, {'instant': 5, 'command': {'profile': {'name': 'petrus.testing.queue-proof', 'version': 1, 'digest': 'sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da'}, 'name': 'queue.record', 'payload': {'id': 'queue-00000002'}}}]}}, {'position': 1, 'instant': 0, 'generation': 1, 'kind': 'observation', 'name': 'queue.state', 'value': {'kind': 'observe', 'position': 0, 'poll': True, 'observation': {'name': 'queue.state', 'value': {'values': []}, 'instant': 0, 'generation': 1, 'sequence': 0}, 'request': {'name': 'queue.state', 'payload': None}}}, {'position': 2, 'instant': 5, 'generation': 1, 'kind': 'command', 'name': 'queue.record', 'value': {'kind': 'execute', 'position': 1, 'source': 'profile', 'queue_order': 0, 'instant': 5, 'generation': 1, 'command': {'profile': {'name': 'petrus.testing.queue-proof', 'version': 1, 'digest': 'sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da'}, 'name': 'queue.record', 'payload': {'id': 'queue-00000001'}}, 'result': {'disposition': 'applied', 'value': {'values': ['queue-00000001']}, 'scheduled': []}}}, {'position': 3, 'instant': 5, 'generation': 1, 'kind': 'observation', 'name': 'queue.state', 'value': {'kind': 'observe', 'position': 2, 'poll': True, 'observation': {'name': 'queue.state', 'value': {'values': ['queue-00000001']}, 'instant': 5, 'generation': 1, 'sequence': 2}, 'request': {'name': 'queue.state', 'payload': None}}}, {'position': 4, 'instant': 5, 'generation': 1, 'kind': 'command', 'name': 'queue.record', 'value': {'kind': 'execute', 'position': 3, 'source': 'profile', 'queue_order': 1, 'instant': 5, 'generation': 1, 'command': {'profile': {'name': 'petrus.testing.queue-proof', 'version': 1, 'digest': 'sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da'}, 'name': 'queue.record', 'payload': {'id': 'queue-00000002'}}, 'result': {'disposition': 'applied', 'value': {'values': ['queue-00000001', 'queue-00000002']}, 'scheduled': []}}}, {'position': 5, 'instant': 5, 'generation': 1, 'kind': 'observation', 'name': 'queue.state', 'value': {'kind': 'observe', 'position': 4, 'poll': True, 'observation': {'name': 'queue.state', 'value': {'values': ['queue-00000001', 'queue-00000002']}, 'instant': 5, 'generation': 1, 'sequence': 4}, 'request': {'name': 'queue.state', 'payload': None}}}]",
+   "type": "RunUntilFailed"
+  },
+  "replay": {
+   "result": "{\"disposition\":\"external_wait\",\"failure\":null,\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:0ee3b321a39f07979cc13ebf86517bf78891c3d517fc7e868ddd7310ccda94f6\",\"journal_entries\":7,\"operations\":6,\"outcome\":\"pass\",\"scenario_id\":\"run-until-external-wait\",\"version\":2}"
+  }
+ },
+ "seeded-v3": {
+  "applied": {
+   "disposition": "applied",
+   "scheduled": [],
+   "value": {
+    "values": [
+     "queue-2f31724e8089fc639b277b53f1e9210f"
+    ]
+   }
+  },
+  "artifact": "{\"api\":\"petrus.testing.dst/v3\",\"budget\":{\"actions\":8,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":2,\"queued_commands\":3,\"reloads\":1,\"timer_advances\":1},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"quiescent\",\"failure\":null,\"journal_digest\":\"sha256:f615217e2f4226490d7582b54a47ea4230cd41da221e9273291539a409f2b299\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-2f31724e8089fc639b277b53f1e9210f\",\"n\":4},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":0,\"kind\":\"execute\",\"position\":0,\"queue_order\":2,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-2f31724e8089fc639b277b53f1e9210f\"]}},\"source\":\"authored\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":1,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-2f31724e8089fc639b277b53f1e9210f\",\"queue-00000001\"]}},\"source\":\"profile\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000002\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":2,\"queue_order\":1,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-2f31724e8089fc639b277b53f1e9210f\",\"queue-00000001\",\"queue-00000002\"]}},\"source\":\"profile\"},{\"cut\":\"cut\",\"discarded_commands\":0,\"generation\":1,\"instant\":5,\"kind\":\"crash\",\"position\":3},{\"generation\":2,\"instant\":5,\"kind\":\"restart\",\"position\":4},{\"kind\":\"observe\",\"observation\":{\"generation\":2,\"instant\":5,\"name\":\"queue.state\",\"sequence\":5,\"value\":{\"values\":[\"queue-2f31724e8089fc639b277b53f1e9210f\",\"queue-00000001\",\"queue-00000002\"]}},\"poll\":false,\"position\":5,\"request\":{\"name\":\"queue.state\",\"payload\":null}},{\"disposition\":\"quiescent\",\"generation\":2,\"instant\":5,\"kind\":\"finish\",\"position\":6}],\"origin\":{\"algorithm\":\"sha256-counter-v1\",\"draws\":{\"identifier:queue\":1,\"workload\":1},\"seed\":1729},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1},\"scenario_id\":\"seeded-queue-v3\",\"version\":3}",
+  "generation": 2,
+  "identifier": "queue-2f31724e8089fc639b277b53f1e9210f",
+  "index": 4,
+  "observation": {
+   "generation": 2,
+   "instant": 5,
+   "name": "queue.state",
+   "sequence": 5,
+   "value": {
+    "values": [
+     "queue-2f31724e8089fc639b277b53f1e9210f",
+     "queue-00000001",
+     "queue-00000002"
+    ]
+   }
+  },
+  "replay": {
+   "result": "{\"disposition\":\"quiescent\",\"failure\":null,\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:f615217e2f4226490d7582b54a47ea4230cd41da221e9273291539a409f2b299\",\"journal_entries\":8,\"operations\":7,\"outcome\":\"pass\",\"scenario_id\":\"seeded-queue-v3\",\"version\":2}"
+  },
+  "stale": {
+   "message": "DST generation 1 is stale; live generation is None",
+   "type": "StaleGeneration"
+  }
+ },
+ "seeded-v4": {
+  "artifact": "{\"api\":\"petrus.testing.dst/v4\",\"budget\":{\"actions\":8,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":4,\"profile_resources\":{\"retained.values\":3},\"queued_commands\":2,\"reloads\":0,\"timer_advances\":1},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"converged\",\"failure\":null,\"journal_digest\":\"sha256:b184608883cd9eed09575b7821fb6dc7bc0ae6659171f28a26a798310cbd2edf\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"kind\":\"observe\",\"observation\":{\"generation\":1,\"instant\":0,\"name\":\"queue.state\",\"sequence\":0,\"value\":{\"values\":[]}},\"poll\":true,\"position\":0,\"request\":{\"name\":\"queue.state\",\"payload\":{\"fault\":1,\"order\":2}}},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:f6fcc3c98f3de20c550381f5937ba2702ddced72fb555b44ee2abb6e366118ef\",\"name\":\"petrus.testing.resource-queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":1,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"kind\":\"observe\",\"observation\":{\"generation\":1,\"instant\":5,\"name\":\"queue.state\",\"sequence\":2,\"value\":{\"values\":[\"queue-00000001\"]}},\"poll\":true,\"position\":2,\"request\":{\"name\":\"queue.state\",\"payload\":{\"fault\":1,\"order\":2}}},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000002\"},\"profile\":{\"digest\":\"sha256:f6fcc3c98f3de20c550381f5937ba2702ddced72fb555b44ee2abb6e366118ef\",\"name\":\"petrus.testing.resource-queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":3,\"queue_order\":1,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"source\":\"profile\"},{\"kind\":\"observe\",\"observation\":{\"generation\":1,\"instant\":5,\"name\":\"queue.state\",\"sequence\":4,\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"poll\":true,\"position\":4,\"request\":{\"name\":\"queue.state\",\"payload\":{\"fault\":1,\"order\":2}}},{\"disposition\":\"converged\",\"generation\":1,\"instant\":5,\"kind\":\"finish\",\"position\":5}],\"origin\":{\"algorithm\":\"sha256-counter-v1\",\"draws\":{\"event_order\":1,\"fault\":1},\"seed\":7},\"profile\":{\"digest\":\"sha256:f6fcc3c98f3de20c550381f5937ba2702ddced72fb555b44ee2abb6e366118ef\",\"name\":\"petrus.testing.resource-queue-proof\",\"version\":1},\"scenario_id\":\"seeded-queue-v4\",\"version\":4}",
+  "observation": {
+   "generation": 1,
+   "instant": 5,
+   "name": "queue.state",
+   "sequence": 4,
+   "value": {
+    "values": [
+     "queue-00000001",
+     "queue-00000002"
+    ]
+   }
+  },
+  "replay": {
+   "result": "{\"disposition\":\"converged\",\"failure\":null,\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:b184608883cd9eed09575b7821fb6dc7bc0ae6659171f28a26a798310cbd2edf\",\"journal_entries\":15,\"operations\":6,\"outcome\":\"pass\",\"scenario_id\":\"seeded-queue-v4\",\"version\":2}"
+  }
+ },
+ "stable-order": {
+  "artifact": "{\"api\":\"petrus.testing.dst/v3\",\"budget\":{\"actions\":4,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":1,\"queued_commands\":2,\"reloads\":0,\"timer_advances\":1},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"quiescent\",\"failure\":null,\"journal_digest\":\"sha256:57c5d28205ab740da103dca517b11f6c4ed2c02a066c647b5e2b18a1d8a957e9\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":0,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000002\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":1,\"queue_order\":1,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"source\":\"profile\"},{\"kind\":\"observe\",\"observation\":{\"generation\":1,\"instant\":5,\"name\":\"queue.state\",\"sequence\":2,\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"poll\":false,\"position\":2,\"request\":{\"name\":\"queue.state\",\"payload\":null}},{\"disposition\":\"quiescent\",\"generation\":1,\"instant\":5,\"kind\":\"finish\",\"position\":3}],\"origin\":null,\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1},\"scenario_id\":\"stable-order-v1\",\"version\":3}",
+  "observation": {
+   "generation": 1,
+   "instant": 5,
+   "name": "queue.state",
+   "sequence": 2,
+   "value": {
+    "values": [
+     "queue-00000001",
+     "queue-00000002"
+    ]
+   }
+  },
+  "replay": {
+   "result": "{\"disposition\":\"quiescent\",\"failure\":null,\"format\":\"petrus-dst-world-replay-result\",\"journal_digest\":\"sha256:57c5d28205ab740da103dca517b11f6c4ed2c02a066c647b5e2b18a1d8a957e9\",\"journal_entries\":5,\"operations\":4,\"outcome\":\"pass\",\"scenario_id\":\"stable-order-v1\",\"version\":2}"
+  },
+  "steps": [
+   {
+    "command": {
+     "name": "queue.record",
+     "payload": {
+      "id": "queue-00000001"
+     },
+     "profile": {
+      "digest": "sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da",
+      "name": "petrus.testing.queue-proof",
+      "version": 1
+     }
+    },
+    "generation": 1,
+    "instant": 5,
+    "kind": "execute",
+    "position": 0,
+    "queue_order": 0,
+    "result": {
+     "disposition": "applied",
+     "scheduled": [],
+     "value": {
+      "values": [
+       "queue-00000001"
+      ]
+     }
+    },
+    "source": "profile"
+   },
+   {
+    "command": {
+     "name": "queue.record",
+     "payload": {
+      "id": "queue-00000002"
+     },
+     "profile": {
+      "digest": "sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da",
+      "name": "petrus.testing.queue-proof",
+      "version": 1
+     }
+    },
+    "generation": 1,
+    "instant": 5,
+    "kind": "execute",
+    "position": 1,
+    "queue_order": 1,
+    "result": {
+     "disposition": "applied",
+     "scheduled": [],
+     "value": {
+      "values": [
+       "queue-00000001",
+       "queue-00000002"
+      ]
+     }
+    },
+    "source": "profile"
+   }
+  ]
+ }
+}

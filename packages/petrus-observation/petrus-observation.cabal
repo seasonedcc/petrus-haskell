@@ -1,0 +1,87 @@
+cabal-version:      3.4
+name:               petrus-observation
+version:            0.1.0.0
+synopsis:           Read-only observation projections of a Petrus Instance (protocol v1)
+description:
+  A Haskell port of @petrus.impetus.observation@: the protocol-v1 snapshot,
+  the History page cursor, the observed Net document, and the definition-only
+  inspection document, projected from one captured Instance state and its
+  canonical History. Every projection is a pure function over immutable
+  values, byte-identical to the reference implementation, and depends on the
+  kernel only. "Petrus.Observation.Engine" adds the Engine's three read
+  doors on the Engine's observation seam.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Observation
+                    Petrus.Observation.Engine
+  build-depends:    base >=4.18 && <5
+                  , containers >=0.6
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-impetus
+                  , petrus-json
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-observation-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.Observation.Support
+                    Petrus.Observation.ObservationSpec
+                    Petrus.Observation.CorpusSpec
+                    Petrus.Observation.EngineSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-observation
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-observation-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , cryptohash-sha256 >=0.11
+                  , deepseq
+                  , petrus-engine
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-observation
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"

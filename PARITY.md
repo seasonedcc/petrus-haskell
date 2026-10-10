@@ -22,30 +22,34 @@ the tests, conformance suites, and benchmark results that justify the status.
 | Component | Upstream | Haskell package | Status | Evidence |
 | --- | --- | --- | --- | --- |
 | JSON fidelity (foundation) | CPython `json` as used by every format | `petrus-json` | in progress | `packages/petrus-json/test` |
-| Petri net kernel | `impetus/petrinet`, `impetus/scope` | `petrus-impetus` | in progress | |
-| Event history + schema-5 codec | `impetus/history` | `petrus-impetus` | in progress | |
-| Bindings, handlers, selection | `impetus/binding`, `impetus/selection` | `petrus-impetus` | in progress | |
-| CEL | `impetus/binding/cel.py` (cel-python 0.5.0) | `petrus-cel` | in progress | |
-| Instance | `impetus/instance` | `petrus-impetus` | in progress | |
-| Net definition v3 | `impetus/net_definition.py` | `petrus-impetus` | in progress | |
-| Net document v1 | `impetus/net_document.py` | `petrus-impetus` | in progress | |
-| Golden traces | `spec/traces` | `petrus-impetus` | in progress | |
-| History stores: memory | `impetus/history_store/memory.py` | `petrus-impetus` | in progress | |
-| History stores: JSONL, SQLite, Postgres | `impetus/history_store/{jsonl,sqlite,postgres}.py` | | not started | |
-| Observation | `impetus/observation.py`, `engine/observation_http.py` | | not started | |
-| Net DSL | `impetus/dsl.py` | | not started | |
-| Activities | `motus/activity` | | not started | |
-| Dispatch: local, Absurd | `motus/dispatch` | | not started | |
-| Execution, Gondolin | `motus/execution`, `motus/_execution` | | not started | |
+| Petri net kernel | `impetus/petrinet`, `impetus/scope` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| Event history + schema-5 codec | `impetus/history` | `petrus-impetus` | at parity | decode 2.5× faster than Python, canonical-spelling refusals checked against the pre-optimization codec; [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| Bindings, handlers, selection | `impetus/binding`, `impetus/selection` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), CEL via `Petrus.Cel.Impetus.celCompilers` |
+| CEL | `impetus/binding/cel.py` (cel-python 0.5.0) | `petrus-cel` | at parity | [corpus: 1978 expressions, 17850 operator cases](packages/petrus-cel/test/corpus), [test_cel.py port + Instance end-to-end](packages/petrus-cel/test), [bench](packages/petrus-cel/bench/RESULTS.md) |
+| Instance | `impetus/instance` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md); `FiringFailed.error` matches 452 reference texts ([failure_text_corpus](packages/petrus-impetus/differential/failure_text_corpus.json), `FailureTextSpec`); only a non-`PythonException`'s class name is its Haskell type name ([DIVERGENCES 11](packages/petrus-impetus/DIVERGENCES.md)) |
+| Net definition v3 | `impetus/net_definition.py` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md); differential corpora: [1763 parse/serialize cases](packages/petrus-impetus/differential/net_definition_corpus.json) and [1996 hand-built cases](packages/petrus-impetus/differential/hand_built_corpus.json) (validating constructors, `model_construct` compile/serialize/project, depth limits); [printability vector](packages/petrus-json/test/python-printable.txt) for every code point; [bench](packages/petrus-impetus/bench/RESULTS.md) (serialize 4.2×, parse 2.2×) |
+| Net document v1 | `impetus/net_document.py` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| Golden traces | `spec/traces` | `petrus-impetus` | at parity | [GoldenTracesSpec](packages/petrus-impetus/test), `cabal run petrus-golden-traces` |
+| History stores: memory | `impetus/history_store/memory.py` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| History stores: JSONL | `impetus/history_store/jsonl.py` | `petrus-history-store` | at parity | [PARITY](packages/petrus-history-store/PARITY.md), [DIVERGENCES](packages/petrus-history-store/DIVERGENCES.md), byte-identical interop both ways (`test/Petrus/HistoryStore/InteropSpec.hs`), [bench](packages/petrus-history-store/bench/RESULTS.md) |
+| History stores: SQLite, Postgres | `impetus/history_store/{sqlite,postgres}.py` | `petrus-history-store` (SQLite place reserved) | not started | |
+| Observation | `impetus/observation.py`, `engine/observation_http.py` | `petrus-observation` | in progress | `observation.py` and the Engine's read doors (`Petrus.Observation.Engine`) at parity: all 19 `test_observation.py` tests accounted for, the Engine lock, re-entry and commit-poisoning tests ported against a real Engine, fixtures byte for byte through Instance doors and through the Engine ([tests](packages/petrus-observation/PARITY.md), [EngineSpec](packages/petrus-observation/test/Petrus/Observation/EngineSpec.hs), [differential](packages/petrus-observation/differential), [bench](packages/petrus-observation/bench/RESULTS.md), [divergences](packages/petrus-observation/DIVERGENCES.md)). Remaining: the HTTP adapter `engine/observation_http.py` (7 tests in `test_observation_http.py`), which needs an HTTP core this repository does not have yet |
+| Net DSL | `impetus/dsl.py` | `petrus-dsl` | at parity | 68-net differential corpus (v3 bytes, order, URIs, refusals); [tests](packages/petrus-dsl/PARITY.md), [differential](packages/petrus-dsl/differential), [bench](packages/petrus-dsl/bench/RESULTS.md), [divergences](packages/petrus-dsl/DIVERGENCES.md) |
+| Activities | `motus/activity` | | in progress | value types in `petrus-activity` |
+| Dispatch port, InlineDispatch, InMemoryDispatch | `motus/dispatch/{__init__,inline,memory}.py` | `petrus-motus` | at parity | [PARITY](packages/petrus-motus/PARITY.md), [DIVERGENCES](packages/petrus-motus/DIVERGENCES.md); exercised end to end by the [Engine bench](packages/petrus-engine/bench/RESULTS.md) |
+| Dispatch: local (SQLite) | `motus/dispatch/local.py` | `petrus-motus` (`Petrus.Motus.Dispatch.Local`) | at parity | all 36 upstream tests ported ([PARITY](packages/petrus-motus/PARITY.md); Engine-level tests in [LocalDispatchSpec](packages/petrus-engine/test/Petrus/Engine/LocalDispatchSpec.hs)), [DIVERGENCES](packages/petrus-motus/DIVERGENCES.md), shared-file interop both ways with identical rows and telemetry ([LocalInteropSpec](packages/petrus-motus/test/Petrus/Motus/Dispatch/LocalInteropSpec.hs)), [bench](packages/petrus-motus/bench/RESULTS.md) (1.3–1.9× faster at equal IO) |
+| Dispatch: Absurd | `motus/dispatch` | | not started | |
+| Execution, Gondolin | `motus/execution`, `motus/_execution` | `petrus-execution` | in progress (all upstream tests ported; real-Gondolin acceptance run pending) | [PARITY](packages/petrus-execution/PARITY.md), [divergences](packages/petrus-execution/DIVERGENCES.md), [bench](packages/petrus-execution/bench/RESULTS.md) |
 | Workers | `motus/worker` | | not started | |
 | Transport: ZeroMQ | `motus/transport` | | not started | |
-| Engine: SQLite, Postgres, Absurd, coordination | `engine/` | | not started | |
+| Engine (provider-neutral) and coordination | `engine/__init__.py`, `engine/_coordination.py` | `petrus-engine` | at parity | [PARITY](packages/petrus-engine/PARITY.md), [DIVERGENCES](packages/petrus-engine/DIVERGENCES.md), JSONL interop with crash/resume both ways (`test/Petrus/Engine/InteropSpec.hs`), [bench](packages/petrus-engine/bench/RESULTS.md) |
+| Engine: SQLite, Postgres, Absurd | `engine/{sqlite,postgres,absurd}.py` | `petrus-engine` provider seam (`Petrus.Engine.Provider`) | not started | |
 | Simulation + HTTP | `simulation.py`, `simulation_http.py` | | not started | |
-| Telemetry | `telemetry.py` | | not started | |
-| Deterministic simulation testing | `testing/dst.py` | | not started | |
+| Telemetry | `telemetry.py`; the `impetus_*` events of `impetus/instance`, `engine/_coordination.py`, `impetus/history_store/jsonl.py` | `petrus-telemetry`, `petrus-telemetry-instrumentation` | at parity | all 29 + 22 upstream tests ported ([PARITY](packages/petrus-telemetry/PARITY.md), [DIVERGENCES](packages/petrus-telemetry/DIVERGENCES.md)); [differential](packages/petrus-telemetry-instrumentation/differential): 23 scenarios, 282 events exact and routed lines byte-identical; [bench](packages/petrus-telemetry-instrumentation/bench/RESULTS.md): routed emit 3× cheaper than Python. Events of unported components (workers, local/Absurd dispatch, Postgres stores, fabric) belong to those components' rows |
+| Deterministic simulation testing | `testing/dst.py`, `tests/dst/*_world.py` | `petrus-dst` | in progress | everything except the joined Postgres worlds is at parity. That covers the interpreter, artifacts v1 to v4, replay, the process runner (including the real public-Engine resource world in a child), and all 18 non-joined Engine worlds on the real Haskell Engine and the SQLite LocalDispatch. Every one of those fixtures replays through real profiles to the reference's result bytes, all 18 reference builders are authored byte for byte, and 26 checker verdicts match in full ([PARITY](packages/petrus-dst/PARITY.md), [EngineWorlds](packages/petrus-dst/test/Spec/EngineWorlds.hs), [EngineCheckers](packages/petrus-dst/test/Spec/EngineCheckers.hs), [divergences](packages/petrus-dst/DIVERGENCES.md)). Bench: Engine-world replay 2.0× and authoring 2.1× faster than Python over 18 fixtures and 18 stories ([RESULTS](packages/petrus-dst/bench/RESULTS.md)). Remaining: the 33 `joined-*` fixtures, which need the Postgres History store and the Absurd joined Engine and Dispatch. Their replay half is checked through recorded transcripts |
 | Agenticus | `agenticus/` | | not started | |
-| Fabric | `fabric/` | | in progress (spec) | |
-| Processes (call/spawn) | `processes/` | | in progress (spec) | |
+| Fabric | `fabric/` | | in progress (spec written) | [spec/fabric.md](spec/fabric.md), [108 checks](spec/fabric-conformance.md) |
+| Processes (call/spawn) | `processes/` | | in progress (spec written) | [spec/processes.md](spec/processes.md), [80 checks](spec/processes-conformance.md) |
 
 ## hamsterdan
 
@@ -95,12 +99,12 @@ Hamsterdan depends on differs** (docs/hamsterdan.md §2.3).
 
 | Component | Upstream | Haskell package | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| `petrus` CLI | `bin/petrus.mjs` | | not started | |
-| MCP server | `server/mcp.mjs` | | not started | |
-| Agent WebSocket protocol | `src/agent/protocol.ts`, bridge | | not started | |
-| Collaboration relay | `server/collab.mjs` | | not started | |
-| File and URL endpoints | `server/openFileEndpoint.mjs`, `server/urlCache.mjs` | | not started | |
-| Simulation and history replay | `src/` | | not started | |
+| `petrus` CLI | `bin/petrus.mjs` | `petrus-viewer-server` | at parity | `packages/petrus-viewer-server/test/CliSpec.hs`; upstream `cli` 5/5 and `playwright` 4/4 against `petrus` (`packages/petrus-viewer-server/upstream-tests/run.mjs`). Serves the built UI instead of running Vite (`packages/petrus-viewer-server/DIVERGENCES.md`) |
+| MCP server | `server/mcp.mjs` | `petrus-viewer-server` | at parity | `packages/petrus-viewer-server/test/McpSpec.hs` (upstream transcript byte for byte); upstream `mcp` 7/7, `mcp-haskell-relay` 7/7, `live` 12/12 (every tool through `petrus-mcp`, `petrus`, and a headless browser) |
+| Agent WebSocket protocol | `src/agent/protocol.ts`, bridge | `petrus-viewer-server` | in progress | Tests and interop: `packages/petrus-viewer-server/test/RelaySpec.hs`, `ProtocolSpec.hs`; upstream `relay` 5/5, `differential` 4/4, `live` 12/12. Performance: at or above the Vite relay that `bin/petrus.mjs` runs; the 16-pair round trip is 0.81–0.98x of a bare-`ws` Node relay on a shared machine (`packages/petrus-viewer-server/bench/RESULTS.md`) |
+| Collaboration relay | `server/collab.mjs` | `petrus-viewer-server` | at parity | `packages/petrus-viewer-server/test/CollabSpec.hs`; upstream `collab` 6/6; fan-out 3.2–4.5x Node (`packages/petrus-viewer-server/bench/RESULTS.md`) |
+| File and URL endpoints | `server/openFileEndpoint.mjs`, `server/urlCache.mjs` | `petrus-viewer-server` | in progress | Tests and interop: `packages/petrus-viewer-server/test/EndpointsSpec.hs`, `UrlSpec.hs`; upstream `endpoints` 14/14, `url-cache` 9/9, `differential` 4/4. Performance: open-file 1.05–1.27x Node; resolve-ref at parity within the noise of a shared machine (0.69–1.10x across runs, `packages/petrus-viewer-server/bench/RESULTS.md`) |
+| Simulation and history replay | `src/` | `petrus-viewer-server` | in progress | Simulation stays in the TypeScript UI (upstream `playwright` 4/4 against `petrus`). Replay and live watching of Petrus engines through `/temporal` from `observation-protocol-v1` producers: `packages/petrus-viewer-server/test/ObservationSpec.hs` and the upstream `live` replay case; real producers need the engine packages (`packages/petrus-viewer-server/README.md`) |
 
 ## petrus-engine
 

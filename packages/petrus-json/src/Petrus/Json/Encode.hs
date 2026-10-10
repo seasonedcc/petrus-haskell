@@ -102,8 +102,9 @@ dumpsText options value = TE.decodeUtf8 <$> dumps options value
 -- | Serialize to a builder.
 dumpsBuilder :: EncodeOptions -> Json -> Either EncodeError B.Builder
 dumpsBuilder options value
-  -- The only failure is a refused non-finite number; find it first, so the
-  -- builder itself is pure.
+  -- The only failure is a refused non-finite number. It is found up front,
+  -- in the same depth-first order the writer visits values, so the builder
+  -- itself is a plain fold with no 'Either' threaded through every node.
   | not (allowNan options), Just bad <- firstNonFinite (sortKeys options) value = Left (NonFiniteNumber bad)
   | otherwise = Right (go 0 value)
   where
@@ -143,6 +144,7 @@ dumpsBuilder options value
             first : rest -> item first <> foldr (\next more -> separator <> item next <> more) mempty rest
        in B.char7 open <> inner <> body <> newline level <> B.char7 close
 
+    -- Non-finite values reach here only when 'allowNan' admits them.
     floatB d
       | isNaN d = B.string7 "NaN"
       | isInfinite d = B.string7 (if d > 0 then "Infinity" else "-Infinity")
@@ -381,12 +383,19 @@ firstNonFinite sorted = \case
 -- | CPython's JSON string encoding (@py_encode_basestring@ /
 -- @py_encode_basestring_ascii@).
 stringB :: Bool -> Text -> B.Builder
-stringB asciiOnly text
-  -- Fast path: nothing to escape, so the UTF-8 bytes are the spelling.
-  | T.all plain text = B.char7 '"' <> TE.encodeUtf8Builder text <> B.char7 '"'
-  | otherwise = B.char7 '"' <> T.foldr (\c rest -> escape c <> rest) mempty text <> B.char7 '"'
+stringB asciiOnly text = B.char7 '"' <> chunks text <> B.char7 '"'
   where
-    plain c = c >= ' ' && c /= '"' && c /= '\\' && (not asciiOnly || c < '\DEL')
+    -- Runs of characters that need no escape are copied as one UTF-8 slice;
+    -- only the characters between runs go through 'escape'. The output is
+    -- the same as escaping character by character, several times faster.
+    plain c = c >= ' ' && c /= '"' && c /= '\\' && (not asciiOnly || c <= '~')
+    chunks t
+      | T.null t = mempty
+      | otherwise =
+          let (run, rest) = T.span plain t
+           in TE.encodeUtf8Builder run <> case T.uncons rest of
+                Nothing -> mempty
+                Just (c, rest') -> escape c <> chunks rest'
     escape c = case c of
       '"' -> B.string7 "\\\""
       '\\' -> B.string7 "\\\\"

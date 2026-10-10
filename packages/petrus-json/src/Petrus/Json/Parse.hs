@@ -117,13 +117,13 @@ failureMessage = \case
   _ -> "invalid JSON"
 
 expecting :: String -> Int -> Step
-expecting what i = failed ("Expecting " ++ what ++ " at byte " ++ show i)
+expecting what i = failed (expectingMessage what i)
 
 skipSpace :: ByteString -> Int -> Int
 skipSpace input = go
   where
     len = BS.length input
-    go i
+    go !i
       | i < len, isSpace (BU.unsafeIndex input i) = go (i + 1)
       | otherwise = i
     isSpace w = w == 0x20 || w == 0x09 || w == 0x0A || w == 0x0D
@@ -140,13 +140,16 @@ byteAt :: ByteString -> Int -> Maybe Word8
 byteAt input i
   | i < BS.length input = Just (BU.unsafeIndex input i)
   | otherwise = Nothing
+{-# INLINE byteAt #-}
+
+expectingMessage :: String -> Int -> String
+expectingMessage what i = "Expecting " ++ what ++ " at byte " ++ show i
 
 valueAt :: ParseOptions -> ByteString -> Int -> Step
 valueAt options input i = case at input i of
+  -- A failed string carries its message as the text, which 'failed' also does.
   0x22 -> case stringAt input (i + 1) of
-    TextStep text end
-      | end < 0 -> Step (String text) end
-      | otherwise -> Step (String text) end
+    TextStep text end -> Step (String text) end
   0x7B -> objectAt options input (i + 1)
   0x5B -> arrayAt options input (i + 1)
   0x6E
@@ -178,29 +181,34 @@ objectAt options input start = case at input first of
     members !i acc !count = case at input i of
       0x22 -> case stringAt input (i + 1) of
         TextStep name afterKey
-          | afterKey < 0 -> Step (String name) afterKey
+          | afterKey < 0 -> refuse count acc (Step (String name) afterKey)
           | otherwise ->
               let colon = skipSpace input afterKey
                in case at input colon of
                     0x3A -> case valueAt options input (skipSpace input (colon + 1)) of
                       failure@(Step value afterValue)
-                        | afterValue < 0 -> failure
+                        | afterValue < 0 -> refuse count acc failure
                         | otherwise ->
                             let acc' = (name, value) : acc
                                 next = skipSpace input afterValue
                              in case at input next of
                                   0x2C -> members (skipSpace input (next + 1)) acc' (count + 1)
                                   0x7D -> finish (count + 1) (reverse acc') (next + 1)
-                                  _ -> expecting "',' delimiter" next
-                    _ -> expecting "':' delimiter" colon
-      _ -> expecting "property name enclosed in double quotes" i
-    -- Duplicates are resolved once the object is complete, as CPython's
-    -- object_pairs_hook sees them.
+                                  _ -> refuse (count + 1) acc' (expecting "',' delimiter" next)
+                    _ -> refuse count acc (expecting "':' delimiter" colon)
+      _ -> refuse count acc (expecting "property name enclosed in double quotes" i)
+    -- Duplicates are resolved once the object is complete. The reference
+    -- refuses a repeated member as soon as it reads the member's value, so
+    -- when a later member fails, an earlier repeat is reported instead.
+    refuse count reversed failure = case duplicateMembers options of
+      RejectDuplicates | hasDuplicates count reversed -> duplicateFailure (reverse reversed)
+      _ -> failure
     finish count found end
       | not (hasDuplicates count found) = Step (Object found) end
       | otherwise = case duplicateMembers options of
-          RejectDuplicates -> failed ("duplicate JSON member " ++ show (T.unpack (firstDuplicate Set.empty found)))
+          RejectDuplicates -> duplicateFailure found
           LastWins -> Step (Object (lastWins found)) end
+    duplicateFailure found = failed ("duplicate JSON member " ++ show (T.unpack (firstDuplicate Set.empty found)))
     hasDuplicates count found
       | count <= 8 = quadratic found
       -- Distinct hashes prove distinct keys; only a collision needs the
@@ -208,6 +216,7 @@ objectAt options input start = case at input first of
       | otherwise = hashesCollide count found && Set.size (Set.fromList (map fst found)) /= count
     quadratic [] = False
     quadratic ((key, _) : rest) = any ((== key) . fst) rest || quadratic rest
+    -- The first member whose name an earlier member already used.
     firstDuplicate seen = \case
       [] -> T.empty
       (key, _) : rest
@@ -462,9 +471,15 @@ numberSlow options input start = do
       spelling = map (chr . fromIntegral) (BS.unpack token)
   if fractionEnd == integerEnd && exponentEnd == fractionEnd
     then do
-      let value = case BS.uncons token of
-            Just (0x2D, digits) -> negate (digitsValue digits)
-            _ -> digitsValue token
+      let !value
+            -- Up to 18 digits fit an 'Int' exactly: accumulate the bytes
+            -- directly instead of going through 'read'.
+            | integerEnd - afterSign <= 18 =
+                let magnitude = digitsValue afterSign integerEnd
+                 in toInteger (if afterSign == start then magnitude else negate magnitude)
+            | otherwise =
+                let magnitude = bigDigitsValue (BU.unsafeDrop afterSign (BU.unsafeTake integerEnd input))
+                 in if afterSign == start then magnitude else negate magnitude
       case integerRange options of
         Just (low, high)
           | value < low || value > high ->
@@ -480,15 +495,74 @@ numberSlow options input start = do
         _ -> Right (Int value, exponentEnd)
     else do
       when (integerTokensOnly options) (Left ("v3 JSON numbers must use integer token spelling, got " ++ spelling))
-      let value = readDouble token
+      let !value = case fastDouble input (afterSign /= start) afterSign integerEnd fractionEnd exponentEnd of
+            Just d -> d
+            Nothing -> readDouble token
       when (finiteFloatsOnly options && (isInfinite value || isNaN value)) (Left ("non-finite JSON number " ++ spelling))
       Right (Float value, exponentEnd)
   where
     isDigit w = w >= 0x30 && w <= 0x39
-    digitsValue = BS.foldl' (\acc w -> acc * 10 + toInteger (w - 0x30)) 0
+    bigDigitsValue = BS.foldl' (\acc w -> acc * 10 + toInteger (w - 0x30)) (0 :: Integer)
     digitsFrom i = case byteAt input i of
       Just w | isDigit w -> digitsFrom (i + 1)
       _ -> i
+    digitsValue :: Int -> Int -> Int
+    digitsValue from to = go from 0
+      where
+        go i !acc
+          | i < to = go (i + 1) (acc * 10 + fromIntegral (BU.unsafeIndex input i) - 0x30)
+          | otherwise = acc
+
+-- | Clinger's fast path: a decimal whose significant digits fit in 15 digits
+-- (so below 2^53) scaled by at most 10^22 is one correctly rounded IEEE
+-- multiplication or division of two exactly representable doubles, which is
+-- the same double the exact rational conversion in 'readDouble' rounds to.
+-- 'Nothing' sends every other spelling to 'readDouble'.
+--
+-- The arguments are the byte offsets 'numberAt' found: the first integer
+-- digit, the end of the integer part, the end of the fraction (the
+-- fraction digits start one past the dot), and the end of the token.
+fastDouble :: ByteString -> Bool -> Int -> Int -> Int -> Int -> Maybe Double
+fastDouble input negative integerStart integerEnd fractionEnd exponentEnd
+  | exponentDigits > 4 = Nothing
+  | significant > 15 = Nothing
+  | mantissa == 0 = Just (signed 0)
+  | scale >= 0 && scale <= 22 = Just (signed (fromIntegral mantissa * powerOfTen scale))
+  | scale < 0 && scale >= -22 = Just (signed (fromIntegral mantissa / powerOfTen (negate scale)))
+  | otherwise = Nothing
+  where
+    hasFraction = fractionEnd > integerEnd
+    fractionStart = integerEnd + 1
+    fractionLength = if hasFraction then fractionEnd - fractionStart else 0
+    -- Digits of the integer part then the fraction, as one digit stream.
+    digitAt k
+      | k < integerEnd - integerStart = BU.unsafeIndex input (integerStart + k)
+      | otherwise = BU.unsafeIndex input (fractionStart + k - (integerEnd - integerStart))
+    totalDigits = integerEnd - integerStart + fractionLength
+    leadingZeros = length (takeWhile (\k -> digitAt k == 0x30) [0 .. totalDigits - 1])
+    significant = totalDigits - leadingZeros
+    mantissa :: Int
+    mantissa = foldl (\acc k -> acc * 10 + fromIntegral (digitAt k) - 0x30) 0 [leadingZeros .. totalDigits - 1]
+    -- The exponent part, when present: [eE][+-]?digits.
+    exponentStart = fractionEnd + 1
+    exponentSign = if exponentEnd > fractionEnd then BU.unsafeIndex input exponentStart else 0x30
+    exponentDigitsStart
+      | exponentEnd <= fractionEnd = exponentEnd
+      | exponentSign == 0x2B || exponentSign == 0x2D = exponentStart + 1
+      | otherwise = exponentStart
+    exponentDigits = exponentEnd - exponentDigitsStart
+    exponentMagnitude :: Int
+    exponentMagnitude = foldl (\acc i -> acc * 10 + fromIntegral (BU.unsafeIndex input i) - 0x30) 0 [exponentDigitsStart .. exponentEnd - 1]
+    exponentValue = if exponentSign == 0x2D then negate exponentMagnitude else exponentMagnitude
+    scale = exponentValue - fractionLength
+    signed d = if negative then negate d else d
+
+-- | Exact powers of ten up to 10^22 (every one is a representable double).
+powerOfTen :: Int -> Double
+powerOfTen k = powersOfTen !! k
+
+powersOfTen :: [Double]
+powersOfTen = [fromInteger (10 ^ k) | k <- [0 .. 22 :: Int]]
 
 -- | Correctly rounded decimal-to-double conversion with an overflow guard.
 readDouble :: ByteString -> Double

@@ -1,0 +1,165 @@
+cabal-version:      3.4
+name:               petrus-impetus
+version:            0.1.0.0
+synopsis:           The Impetus kernel: colored Petri nets with an event-sourced history
+description:
+  A Haskell port of the Petrus Impetus kernel: net structure and validation,
+  markings, enabledness, firing, the canonical schema-5 History and its replay
+  folds, the single-writer Instance, scheduling, and the net definition v3 and
+  net document v1 wire formats. Every wire format is byte-identical to the
+  reference implementation; CEL is a seam, never a dependency.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Impetus.Binding
+                    Petrus.Impetus.GoldenTraces
+                    Petrus.Impetus.History
+                    Petrus.Impetus.HistoryStore
+                    Petrus.Impetus.Instance
+                    Petrus.Impetus.Instance.FailureText
+                    Petrus.Impetus.Instance.Firing
+                    Petrus.Impetus.Selection
+                    Petrus.Impetus.History.Codec
+                    Petrus.Impetus.History.Records
+                    Petrus.Impetus.History.Replay
+                    Petrus.Impetus.Internal.OMap
+                    Petrus.Impetus.Internal.Pydantic
+                    Petrus.Impetus.Internal.PyJson
+                    Petrus.Impetus.Internal.Repr
+                    Petrus.Impetus.Internal.Uuid
+                    Petrus.Impetus.NetDefinition
+                    Petrus.Impetus.NetDocument
+                    Petrus.Impetus.Petrinet
+                    Petrus.Impetus.Petrinet.Dot
+                    Petrus.Impetus.Petrinet.Enabledness
+                    Petrus.Impetus.Petrinet.Firing
+                    Petrus.Impetus.Petrinet.Marking
+                    Petrus.Impetus.Petrinet.Routing
+                    Petrus.Impetus.Petrinet.Schema
+                    Petrus.Impetus.Scope
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , cryptohash-sha256 >=0.11
+                  , deepseq >=1.4
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , petrus-activity
+                  , petrus-json
+                  , petrus-telemetry
+                  , process >=1.6
+                  , text >=2.0
+                  , time >=1.12
+                  , transformers >=0.6
+  ghc-options:      -O2
+
+executable petrus-golden-traces
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          GoldenTraces.hs
+  build-depends:    base
+                  , bytestring
+                  , directory
+                  , filepath
+                  , petrus-impetus
+                  , text
+
+test-suite petrus-impetus-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Impetus.WireSupport
+                    Petrus.Impetus.SchemaSpec
+                    Petrus.Impetus.MarkingSpec
+                    Petrus.Impetus.EnablednessSpec
+                    Petrus.Impetus.ArcFiltersSpec
+                    Petrus.Impetus.FiringSpec
+                    Petrus.Impetus.DotSpec
+                    Petrus.Impetus.FifoQueueSpec
+                    Petrus.Impetus.ActivitySeamSpec
+                    Petrus.Impetus.TypedBindingsSpec
+                    Petrus.Impetus.HistorySupport
+                    Petrus.Impetus.SelectionSpec
+                    Petrus.Impetus.HistorySpec
+                    Petrus.Impetus.HistoryCodecSpec
+                    Petrus.Impetus.ReferenceCodec
+                    Petrus.Impetus.HistoryStoreSpec
+                    Petrus.Impetus.FiringHistorySpec
+                    Petrus.Impetus.InstanceSupport
+                    Petrus.Impetus.CelStub
+                    Petrus.Impetus.InstanceFiringSpec
+                    Petrus.Impetus.FiringOccurrencesSpec
+                    Petrus.Impetus.HandlersSpec
+                    Petrus.Impetus.RuntimeSpec
+                    Petrus.Impetus.AwaitingTerminationSpec
+                    Petrus.Impetus.EnvironmentSignalSpec
+                    Petrus.Impetus.InstanceIdentitySpec
+                    Petrus.Impetus.CompletionSpec
+                    Petrus.Impetus.GuardBranchSpec
+                    Petrus.Impetus.CelGuardsSpec
+                    Petrus.Impetus.DoorSupport
+                    Petrus.Impetus.IngressSpec
+                    Petrus.Impetus.RegistrationsSpec
+                    Petrus.Impetus.LifecycleScopesSpec
+                    Petrus.Impetus.TimersSpec
+                    Petrus.Impetus.ResumeSpec
+                    Petrus.Impetus.InstanceReplayPropertiesSpec
+                    Petrus.Impetus.NetDefinitionSpec
+                    Petrus.Impetus.NetDocumentSpec
+                    Petrus.Impetus.NetDocumentLineageSpec
+                    Petrus.Impetus.SpecFixturesSpec
+                    Petrus.Impetus.NetDefinitionPropertiesSpec
+                    Petrus.Impetus.NetDefinitionCorpusSpec
+                    Petrus.Impetus.GoldenTracesSpec
+                    Petrus.Impetus.KernelDifferentialSpec
+                    Petrus.Impetus.KernelPropertiesSpec
+                    Petrus.Impetus.FailureTextSpec
+                    Petrus.Impetus.HandBuiltCorpusSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , cryptohash-sha256
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , QuickCheck >=2.14
+                  , petrus-activity
+                  , petrus-impetus
+                  , petrus-json
+                  , text
+                  , transformers
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-impetus-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , petrus-impetus
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"
