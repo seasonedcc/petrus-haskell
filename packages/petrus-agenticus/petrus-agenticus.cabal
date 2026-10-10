@@ -36,6 +36,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Attachment.Binding
+                    Petrus.Agenticus.Internal.PyText
                     Petrus.Agenticus.Program.AgentNet
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
@@ -60,6 +61,7 @@ test-suite petrus-agenticus-test
                     Petrus.Agenticus.AgentNetSpec
                     Petrus.Agenticus.BindingSpec
                     Petrus.Agenticus.BoundariesSpec
+                    Petrus.Agenticus.PyTextSpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -79,6 +81,7 @@ test-suite petrus-agenticus-test
                   , stm
                   , temporary
                   , text
+  ghc-options:      -threaded -rtsopts
 
 benchmark petrus-agenticus-bench
   import:           warnings
