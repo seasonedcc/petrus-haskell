@@ -1,10 +1,33 @@
 # Benchmark summary
 
-- Date: 2026-10-10 17:01 UTC
-- Commit: `6a76d5a`
+- Date: 2026-10-10 17:30 UTC
+- Commit: `70622a0`
 - Machine: Darwin arm64, Apple M4
 - Haskell: GHC 9.10.3 (-O2), tasty-bench mean
 - Python: CPython 3.14.6 (upstream venv), median of timed batches (scripts/bench_timing.py)
+
+## petrus-http-core
+
+| Benchmark | Haskell | Python | Python / Haskell |
+|---|---:|---:|---:|
+| `roundtrip.get-snapshot` | 37.5 µs | 104 µs | 2.77× |
+| `roundtrip.post-1k` | 45 µs | 105 µs | 2.32× |
+| `roundtrip.refused-version` | 35.7 µs | 96.1 µs | 2.69× |
+| `parse.request-head` | 729 ns | 14.1 µs | 19.33× |
+| `render.send-error` | 1.92 µs | 4.51 µs | 2.35× |
+| `render.response` | 882 ns | 3.56 µs | 4.03× |
+
+## petrus-posix
+
+| Benchmark | Haskell | Python | Python / Haskell |
+|---|---:|---:|---:|
+| `flock.tryLock-unlock` | 619 ns | 652 ns | 1.05× |
+| `flock.open-tryLock-close` | 15.2 µs | 14.8 µs | 0.97× |
+| `path.resolve-symlinked` | 14.1 µs | 17.8 µs | 1.26× |
+| `path.expanduser-resolve` | 13.2 µs | 17.8 µs | 1.35× |
+| `at.stat-nofollow` | 875 ns | 996 ns | 1.14× |
+| `atomic.write-1KiB-fsync` | 139 µs | 153 µs | 1.10× |
+| `resource.max_rss_mb` | 243 ns | 466 ns | 1.92× |
 
 ## petrus-postgres
 
@@ -18,18 +41,6 @@
 | `fence.acquire-release` | 30.5 µs | 165 µs | 5.42× |
 | `notify.roundtrip` | 33.8 µs | 114 µs | 3.36× |
 | `params.convert-placeholders` | 448 ns | 4.5 µs | 10.03× |
-
-## petrus-posix
-
-| Benchmark | Haskell | Python | Python / Haskell |
-|---|---:|---:|---:|
-| `flock.tryLock-unlock` | 619 ns | 652 ns | 1.05× |
-| `flock.open-tryLock-close` | 15.2 µs | 14.8 µs | 0.97× |
-| `path.resolve-symlinked` | 14.1 µs | 17.8 µs | 1.26× |
-| `path.expanduser-resolve` | 13.2 µs | 17.8 µs | 1.35× |
-| `at.stat-nofollow` | 875 ns | 996 ns | 1.14× |
-| `atomic.write-1KiB-fsync` | 139 µs | 153 µs | 1.10× |
-| `resource.max_rss_mb` | 243 ns | 466 ns | 1.92× |
 
 ## petrus-sqlite
 
