@@ -22,26 +22,26 @@ the tests, conformance suites, and benchmark results that justify the status.
 | Component | Upstream | Haskell package | Status | Evidence |
 | --- | --- | --- | --- | --- |
 | JSON fidelity (foundation) | CPython `json` as used by every format | `petrus-json` | in progress | `packages/petrus-json/test` |
-| Petri net kernel | `impetus/petrinet`, `impetus/scope` | `petrus-impetus` | in progress | |
-| Event history + schema-5 codec | `impetus/history` | `petrus-impetus` | in progress | |
-| Bindings, handlers, selection | `impetus/binding`, `impetus/selection` | `petrus-impetus` | in progress | |
+| Petri net kernel | `impetus/petrinet`, `impetus/scope` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| Event history + schema-5 codec | `impetus/history` | `petrus-impetus` | in progress | decode slower than Python (fix in progress); [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| Bindings, handlers, selection | `impetus/binding`, `impetus/selection` | `petrus-impetus` | in progress | CEL integration pending; [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
 | CEL | `impetus/binding/cel.py` (cel-python 0.5.0) | `petrus-cel` | in progress | |
-| Instance | `impetus/instance` | `petrus-impetus` | in progress | |
-| Net definition v3 | `impetus/net_definition.py` | `petrus-impetus` | in progress | |
-| Net document v1 | `impetus/net_document.py` | `petrus-impetus` | in progress | |
-| Golden traces | `spec/traces` | `petrus-impetus` | in progress | |
-| History stores: memory | `impetus/history_store/memory.py` | `petrus-impetus` | in progress | |
+| Instance | `impetus/instance` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md); `FiringFailed.error` text for Haskell exceptions is a [documented divergence](packages/petrus-impetus/DIVERGENCES.md) |
+| Net definition v3 | `impetus/net_definition.py` | `petrus-impetus` | in progress | edge cases listed in [PARITY](packages/petrus-impetus/PARITY.md); [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| Net document v1 | `impetus/net_document.py` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| Golden traces | `spec/traces` | `petrus-impetus` | at parity | [GoldenTracesSpec](packages/petrus-impetus/test), `cabal run petrus-golden-traces` |
+| History stores: memory | `impetus/history_store/memory.py` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
 | History stores: JSONL, SQLite, Postgres | `impetus/history_store/{jsonl,sqlite,postgres}.py` | | not started | |
 | Observation | `impetus/observation.py`, `engine/observation_http.py` | | not started | |
 | Net DSL | `impetus/dsl.py` | | not started | |
-| Activities | `motus/activity` | | not started | |
+| Activities | `motus/activity` | | in progress | value types in `petrus-activity` |
 | Dispatch: local, Absurd | `motus/dispatch` | | not started | |
 | Execution, Gondolin | `motus/execution`, `motus/_execution` | | not started | |
 | Workers | `motus/worker` | | not started | |
 | Transport: ZeroMQ | `motus/transport` | | not started | |
 | Engine: SQLite, Postgres, Absurd, coordination | `engine/` | | not started | |
 | Simulation + HTTP | `simulation.py`, `simulation_http.py` | | not started | |
-| Telemetry | `telemetry.py` | | not started | |
+| Telemetry | `telemetry.py` | | in progress | `petrus-telemetry`; Engine instrumentation pending |
 | Deterministic simulation testing | `testing/dst.py` | | not started | |
 | Agenticus | `agenticus/` | | not started | |
 | Fabric | `fabric/` | | in progress (spec written) | [spec/fabric.md](spec/fabric.md), [108 checks](spec/fabric-conformance.md) |
