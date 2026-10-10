@@ -70,3 +70,19 @@ test-suite petrus-agenticus-core-test
                   , QuickCheck >=2.14
                   , text
   ghc-options:      -threaded -rtsopts
+
+benchmark petrus-agenticus-core-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  other-modules:    Bench.Catalog
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , deepseq
+                  , petrus-agenticus-core
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A32m"
