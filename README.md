@@ -25,6 +25,7 @@ The port aims to be:
 | Path | Contents |
 | --- | --- |
 | `packages/` | Haskell packages (one cabal package each). |
+| `docs/` | Plans of record, such as [docs/runtime.md](docs/runtime.md) for everything outside the kernel. |
 | `spec/` | Language-neutral contracts this repo adds (Fabric, processes). The upstream specs live in `upstream/petrus/spec/`. |
 | `upstream/` | Git submodules of the pinned upstream projects (the Python reference). |
 | `scripts/` | `check-all` and helpers. |
