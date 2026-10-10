@@ -47,3 +47,78 @@ library
                   , petrus-telemetry
                   , text >=2.0
   ghc-options:      -O2
+
+common engine-tests
+  import:           warnings
+  -- The kernel's shared test fixtures are compiled in from its test tree.
+  hs-source-dirs:   test ../petrus-impetus/test
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-telemetry
+                  , process >=1.6
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+-- Porting stanza: test_engine.py (all 28 tests).
+test-suite petrus-engine-engine
+  import:           engine-tests
+  type:             exitcode-stdio-1.0
+  main-is:          EngineMain.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.EngineSpec
+
+-- Porting stanza: test_coordinator.py (42 tests, minus the 7 TestInMemoryDispatch/TestInlineDispatch ones already in petrus-motus).
+test-suite petrus-engine-coordinator
+  import:           engine-tests
+  type:             exitcode-stdio-1.0
+  main-is:          CoordinatorMain.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.CoordinatorSpec
+
+-- Porting stanza: test_execution.py outside TestIdentifiedDeliveryPhases.
+test-suite petrus-engine-execution
+  import:           engine-tests
+  type:             exitcode-stdio-1.0
+  main-is:          ExecutionMain.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.ExecutionSpec
+
+-- Porting stanza: test_execution.py TestIdentifiedDeliveryPhases, source lines 392-1485.
+test-suite petrus-engine-phases-a
+  import:           engine-tests
+  type:             exitcode-stdio-1.0
+  main-is:          DeliveryPhasesAMain.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.DeliveryPhasesASpec
+
+-- Porting stanza: test_execution.py TestIdentifiedDeliveryPhases, source lines 1486-2769.
+test-suite petrus-engine-phases-b
+  import:           engine-tests
+  type:             exitcode-stdio-1.0
+  main-is:          DeliveryPhasesBMain.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.DeliveryPhasesBSpec
+
+-- Porting stanza: test_execution.py TestIdentifiedDeliveryPhases, source lines 2770-3580.
+test-suite petrus-engine-phases-c
+  import:           engine-tests
+  type:             exitcode-stdio-1.0
+  main-is:          DeliveryPhasesCMain.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.DeliveryPhasesCSpec
