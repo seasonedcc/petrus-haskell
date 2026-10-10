@@ -30,11 +30,20 @@ common warnings
 library
   import:           warnings
   hs-source-dirs:   src
-  exposed-modules:  Hamsterdan.GitHub.Config
+  exposed-modules:  Hamsterdan.GitHub.Auth
+                    Hamsterdan.GitHub.Cache
+                    Hamsterdan.GitHub.Client
+                    Hamsterdan.GitHub.Config
+                    Hamsterdan.GitHub.Effects
+                    Hamsterdan.GitHub.Gateway
+                    Hamsterdan.GitHub.Http
+                    Hamsterdan.GitHub.Jwt
                     Hamsterdan.GitHub.Models
                     Hamsterdan.GitHub.Python
                     Hamsterdan.GitHub.Routing
                     Hamsterdan.GitHub.Sqlite
+                    Hamsterdan.GitHub.Transport
+                    Hamsterdan.GitHub.Url
                     Hamsterdan.GitHub.Webhooks
   build-depends:    base >=4.18 && <5
                   , base64-bytestring >=1.2
