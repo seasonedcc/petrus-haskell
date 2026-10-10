@@ -29,6 +29,9 @@ module Hamsterdan.GitHub.Webhooks
     -- * Signatures
   , sign
   , verify
+  , Verifier
+  , verifier
+  , verifyWith
 
     -- * The inbox
   , WebhookCustody
@@ -60,7 +63,7 @@ module Hamsterdan.GitHub.Webhooks
 import Control.Exception (Exception, throwIO)
 import Control.Monad (forM, unless, when)
 import Crypto.Hash.Algorithms (SHA256)
-import Crypto.MAC.HMAC (HMAC, hmac)
+import Crypto.MAC.HMAC (Context, HMAC, finalize, hmac, initialize, update)
 import Data.ByteArray (constEq)
 import Data.ByteArray.Encoding (Base (Base16), convertToBase)
 import Data.ByteString (ByteString)
@@ -298,10 +301,25 @@ sign secretText body =
   let digest = hmac (TE.encodeUtf8 secretText) body :: HMAC SHA256
    in "sha256=" <> TE.decodeLatin1 (convertToBase Base16 digest)
 
--- | Constant-time verification of an @X-Hub-Signature-256@ value.
+-- | Constant-time verification of an @X-Hub-Signature-256@ value
+-- (githubkit's @verify(secret, payload, signature)@).
 verify :: Text -> ByteString -> Text -> Bool
-verify secretText body signature =
-  constEq (TE.encodeUtf8 (sign secretText body)) (TE.encodeUtf8 signature)
+verify = verifyWith . verifier
+
+-- | The HMAC state after absorbing the keyed inner and outer pads: the
+-- part of every verification that depends only on the secret, computed
+-- once per custody instead of once per delivery.
+newtype Verifier = Verifier (Context SHA256)
+
+verifier :: Text -> Verifier
+verifier secretText = Verifier (initialize (TE.encodeUtf8 secretText))
+
+-- | 'verify' with the secret's keyed state precomputed.
+verifyWith :: Verifier -> ByteString -> Text -> Bool
+verifyWith (Verifier keyed) body signature =
+  let digest = finalize (update keyed body) :: HMAC SHA256
+      expected = "sha256=" <> convertToBase Base16 digest :: ByteString
+   in constEq expected (TE.encodeUtf8 signature)
 
 -- | The project of @receive@'s headers: lowercase names, stripped values;
 -- duplicate security headers and any transfer encoding are refused.
@@ -340,7 +358,7 @@ defaultCustodyOptions = CustodyOptions Nothing maxBodyBytes
 
 -- | @WebhookCustody@.
 data WebhookCustody = WebhookCustody
-  { secret :: Text
+  { verifier :: Verifier
   , options :: CustodyOptions
   , connection :: Connection
   }
@@ -361,7 +379,7 @@ openCustody path secretText options = do
   unless ("next_attempt_at" `elem` names) $
     Db.transaction connection $
       () <$ Db.execute connection "ALTER TABLE inbox ADD COLUMN next_attempt_at REAL NOT NULL DEFAULT 0" []
-  pure WebhookCustody {secret = secretText, options, connection}
+  pure WebhookCustody {verifier = verifier secretText, options, connection}
 
 closeCustody :: WebhookCustody -> IO ()
 closeCustody custody = Db.close custody.connection
@@ -393,7 +411,7 @@ receive custody headers body = do
   event <- case header "x-github-event" of
     Just value | not (T.null delivery), Set.member value supportedEvents -> pure value
     _ -> reject "delivery or event is missing or unsupported"
-  unless (verify custody.secret body signature) $ reject "signature verification failed"
+  unless (verifyWith custody.verifier body signature) $ reject "signature verification failed"
   item <- case parseObservation delivery event body of
     Left (Left ()) -> reject "webhook envelope is malformed"
     Left (Right (PyFailure cls detail)) -> throwIO (PythonFault (pyClassName cls) detail)
