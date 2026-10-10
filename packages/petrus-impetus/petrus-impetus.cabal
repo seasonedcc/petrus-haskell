@@ -96,6 +96,8 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.FiringSpec
                     Petrus.Impetus.DotSpec
                     Petrus.Impetus.FifoQueueSpec
+                    Petrus.Impetus.ActivitySeamSpec
+                    Petrus.Impetus.TypedBindingsSpec
                     Petrus.Impetus.NetDefinitionSpec
                     Petrus.Impetus.NetDocumentSpec
                     Petrus.Impetus.NetDocumentLineageSpec

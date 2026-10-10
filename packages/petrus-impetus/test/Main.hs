@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Petrus.Impetus.ActivitySeamSpec qualified as ActivitySeamSpec
 import Petrus.Impetus.ArcFiltersSpec qualified as ArcFiltersSpec
 import Petrus.Impetus.DotSpec qualified as DotSpec
 import Petrus.Impetus.EnablednessSpec qualified as EnablednessSpec
@@ -15,6 +16,7 @@ import Petrus.Impetus.NetDocumentLineageSpec qualified as NetDocumentLineageSpec
 import Petrus.Impetus.NetDocumentSpec qualified as NetDocumentSpec
 import Petrus.Impetus.SchemaSpec qualified as SchemaSpec
 import Petrus.Impetus.SpecFixturesSpec qualified as SpecFixturesSpec
+import Petrus.Impetus.TypedBindingsSpec qualified as TypedBindingsSpec
 import Test.Hspec
 
 main :: IO ()
@@ -26,6 +28,8 @@ main = hspec $ do
   FiringSpec.spec
   DotSpec.spec
   FifoQueueSpec.spec
+  ActivitySeamSpec.spec
+  TypedBindingsSpec.spec
   NetDefinitionSpec.spec
   NetDocumentSpec.spec
   NetDocumentLineageSpec.spec
