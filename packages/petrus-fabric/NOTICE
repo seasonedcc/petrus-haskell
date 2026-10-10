@@ -1,0 +1,27 @@
+petrus-fabric
+Copyright 2026 Seasoned
+
+This package is an independent Haskell implementation that reproduces the
+observable behaviour of the pinned Petrus Python reference (see UPSTREAM.md
+at the repository root). Its schema text, SQL statements, wire format,
+identity derivations and error messages are reproduced from that reference
+so that both implementations share one PostgreSQL database and exchange
+each other's envelopes. The acceptance demo reproduces the reference's
+scripts/cv5-fabric-demo.py. The driver scripts in test/interop and bench run
+the reference itself from the pinned upstream virtual environment.
+
+Petrus
+  Copyright Seasoned
+  Licensed under the Apache License, Version 2.0
+
+Ryu (the shortest round-trip float digits in Petrus.Fabric.Canonical are a
+port of the reference d2s algorithm)
+  Copyright 2018 Ulf Adams
+  Licensed under the Apache License, Version 2.0
+  https://github.com/ulfjack/ryu
+
+psycopg 3 (driven by the reference; its transaction semantics are
+reproduced through petrus-postgres)
+  Copyright The Psycopg Team
+  Licensed under the GNU Lesser General Public License v3.0
+  https://www.psycopg.org

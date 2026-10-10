@@ -8,10 +8,10 @@
 -- Three server set-ups:
 --
 -- * @local@: the server CLI over a fresh Local SQLite Dispatch, as
---   deployed. Each operation opens and closes its own connection.
+--   deployed.
 -- * @local-held-open@: the same, while the bench holds a co-resident
---   connection to the file, so closing a per-operation connection is never
---   the last close (equal IO with the reference; see RESULTS.md).
+--   connection to the file, so no close during the run is the last close of
+--   the file (see RESULTS.md).
 -- * @memory@: the server over in-memory custody (the private factory
 --   door), which leaves only the transport: framing, JSON, routing, and
 --   the IPC hops. Worker @empty@ never gets an Attempt; any other Worker
@@ -32,7 +32,7 @@ import GHC.Clock (getMonotonicTime)
 import Petrus.Activity
 import Petrus.Json (Json (..), defaultDumps, dumps, lookupMember, parseJson, pythonLoads)
 import Petrus.Motus.Dispatch (ActivityAttempt, WorkerDispatch (..), activityAttempt)
-import Petrus.Motus.Dispatch.Local (defaultLocalDispatchOptions, openLocalDispatch)
+import Petrus.Motus.Dispatch.Local (defaultLocalDispatchOptions, withLocalDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Transport.ZeroMQ
   ( ClientOptions (..)
@@ -213,20 +213,20 @@ benchmarks csv = do
   removeFile base
   createDirectory base
   let localRows label held =
-        withLocal base label $ \path bind -> do
-          dispatch <- openLocalDispatch path "bench" defaultLocalDispatchOptions
-          let hold body
-                | held = bracket (Sql.open (T.pack path)) Sql.close $ \connection -> do
-                    Sql.exec connection "SELECT count(*) FROM impetus_local_dispatch_tasks"
-                    body
-                | otherwise = body
-          hold . withServer "local" ["--path", path, "--bind", bind, "--drain-timeout", "0.1"] $ \endpoint -> do
-            occurrences <- newIORef 0
-            let roundTrips n = do
-                  offset <- atomicModifyIORef' occurrences (\o -> (o + n, o))
-                  roundTrip dispatch endpoint offset n
-            timed csv ("zeromq/" <> label <> "/claim-empty-100") 10 (claimEmpty endpoint 100)
-            timed csv ("zeromq/" <> label <> "/roundtrip-20") 10 (roundTrips 20)
+        withLocal base label $ \path bind ->
+          withLocalDispatch path "bench" defaultLocalDispatchOptions $ \dispatch -> do
+            let hold body
+                  | held = bracket (Sql.open (T.pack path)) Sql.close $ \connection -> do
+                      Sql.exec connection "SELECT count(*) FROM impetus_local_dispatch_tasks"
+                      body
+                  | otherwise = body
+            hold . withServer "local" ["--path", path, "--bind", bind, "--drain-timeout", "0.1"] $ \endpoint -> do
+              occurrences <- newIORef 0
+              let roundTrips n = do
+                    offset <- atomicModifyIORef' occurrences (\o -> (o + n, o))
+                    roundTrip dispatch endpoint offset n
+              timed csv ("zeromq/" <> label <> "/claim-empty-100") 10 (claimEmpty endpoint 100)
+              timed csv ("zeromq/" <> label <> "/roundtrip-20") 10 (roundTrips 20)
   ( do
       localRows "local" False
       localRows "local-held-open" True

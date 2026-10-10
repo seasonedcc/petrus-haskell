@@ -11,11 +11,21 @@ Each Python line prints a result size (the number of collected outcomes). The
 Haskell bench prints the same sizes on start-up: `sizes: roundtrip-db-clock
 50, roundtrip-provider-clock 50, roundtrip-held-open 50`.
 
-Every operation opens its own connection on both sides and sets the
-reference's pragmas: `busy_timeout=5000`, `foreign_keys=ON`,
-`synchronous=FULL` and `journal_mode=WAL`. Every write is one
-`BEGIN IMMEDIATE` transaction. So these rows mostly time SQLite file IO
-(open, lock, WAL append, fsync), not the adapter code.
+Both sides set the reference's pragmas on every connection they open:
+`busy_timeout=5000`, `foreign_keys=ON`, `synchronous=FULL` and
+`journal_mode=WAL`. Every write is one `BEGIN IMMEDIATE` transaction. So
+these rows mostly time SQLite file IO (lock, WAL append, fsync), not the
+adapter code.
+
+The two sides differ in how long a connection lives (DIVERGENCES.md (15)):
+- the reference opens a connection per operation and closes its writing
+  connections at once, while its read-only `with _connect(path)` blocks
+  leave theirs open until the garbage collector reaches them;
+- the Haskell session keeps up to four idle connections in a pool
+  (`Petrus.Sqlite.Pool`) and reuses them, with their prepared statements,
+  until the session closes (`withLocalDispatch` / `closeLocalDispatch`).
+  The bench closes the session at the end of every workload, so the WAL
+  checkpoint and deletion happen once per workload inside the timing.
 
 The workloads:
 
@@ -37,88 +47,83 @@ The workloads:
 
 From the repository root:
 
-    cabal bench petrus-motus
+    cabal bench petrus-motus --benchmark-options '+RTS -M2G -RTS'
 
 Python, from the pinned reference checkout with its virtual environment:
 
     cd upstream/petrus
     uv sync    # once
-    .venv/bin/python ../../packages/petrus-motus/bench/python_bench.py
+    .venv/bin/python -I -B ../../packages/petrus-motus/bench/python_bench.py
 
-Haskell numbers are tasty-bench means (± 2σ). Python numbers are the median of
+Haskell numbers are tasty-bench means. Python numbers are the median of
 10–20 runs after one warm-up.
 
-Both sides ran back to back on 2026-10-10 on an Apple M4 with 24 GB of memory:
+The runs took place on 2026-10-10 on an Apple M4 with 24 GB of memory:
 - GHC 9.10.3 (`-O2`, `-A32m`) with direct-sqlite 2.3.29, which bundles SQLite
   3.45.0;
 - CPython 3.14.6 with SQLite 3.53.4;
 - the reference pinned at `upstream/petrus` 3f85fc2.
 
-The machine was shared and heavily loaded (load average 12–14 during the
-recorded run), and fsync-bound rows are noisy under load. Repeated runs moved
-individual rows by up to ±30 %, but never changed which side was faster in
-the equal-IO comparisons.
+Three rounds ran interleaved: the Haskell bench before the connection pool
+(commit f80e0c3), the Haskell bench with it, then the reference, three
+times over. Other work shared the machine, with a load average of 3.2–5.8.
+Each figure below is the median of the three rounds.
 
 ## Results
 
-The table below is from one back-to-back run. Each row has a closing
-variant: the reference runs with its read-only connections closed at the end
-of their `with` block, as the Haskell port closes them (see the first note).
-The closing variants are the equal-IO comparisons, and so the parity
-evidence. The plain rows are shown as the reference behaves out of the box.
+| workload | size | Haskell before | Haskell | Python | Python / Haskell before | Python / Haskell |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| open-fresh | 0 | 0.607 ms | 0.616 ms | 0.792 ms | 1.30× | 1.29× |
+| roundtrip-1 | 1 | 3.19 ms | 1.57 ms | 2.64 ms | 0.83× | 1.68× |
+| roundtrip-50-db-clock | 50 | 71.3 ms | 15.4 ms | 55.8 ms | 0.78× | 3.6× |
+| roundtrip-50-provider-clock | 50 | 71.4 ms | 15.3 ms | 55.7 ms | 0.78× | 3.6× |
+| roundtrip-50-held-open | 50 | 30.9 ms | 16.3 ms | 40.1 ms | 1.30× | 2.5× |
 
-| workload | size | Python | Python, closing | Haskell | Haskell vs Python, closing |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| open-fresh | 0 | 1.55 ms | 1.61 ms | 1.28 ms | 1.3× faster |
-| roundtrip-1 | 1 | 8.93 ms | 10.1 ms | 6.41 ms | 1.6× faster |
-| roundtrip-50-db-clock | 50 | 157 ms | 217 ms | 134 ms | 1.6× faster |
-| roundtrip-50-provider-clock | 50 | 123 ms | 309 ms | 161 ms | 1.9× faster |
-| roundtrip-50-held-open | 50 | 82.5 ms | (already equal IO) | 60.1 ms | 1.4× faster |
+The rounds (Haskell, then Python):
+- open-fresh: 0.610, 0.627, 0.616 ms against 0.684, 0.792, 0.853 ms;
+- roundtrip-1: 1.57, 1.60, 1.49 ms against 2.64, 2.64, 2.81 ms;
+- roundtrip-50-db-clock: 15.4, 16.0, 15.2 ms against 50.1, 55.8, 63.3 ms;
+- roundtrip-50-provider-clock: 15.5, 15.3, 14.8 ms against 50.8, 55.7,
+  65.6 ms;
+- roundtrip-50-held-open: 15.6, 16.3, 16.9 ms against 37.2, 40.1, 45.6 ms.
 
-Against the plain reference rows the Haskell adapter is faster in four of
-five. The exception is `roundtrip-50-provider-clock`, at 0.8×: there the
-reference's lingering connection spares it the WAL's last-close checkpoint
-on most of the 150 operations.
-
-An earlier run on a less loaded machine (load average 4–7) gave the same
-picture, with Haskell / Python times as follows:
-- open-fresh: 1.00 / 1.07 ms;
-- roundtrip-50-held-open: 44.2 / 49.2 ms;
-- Haskell roundtrip-50-db-clock: 122 ms, against 199 ms for the closing
-  reference.
+The Python bench also prints `*-closing` variants, in which the
+reference's read-only connections close at the end of their `with` block.
+They are the reference with every connection closed deterministically, and
+so the worst case for WAL checkpoints. They took 0.77 ms (open-fresh),
+3.96 ms (roundtrip-1), 94.2 ms (db-clock) and 92.8 ms (provider-clock).
+They are no longer the equal-IO comparison: the Haskell rows above now beat
+the reference's plain rows.
 
 ## Notes
 
-- **The reference keeps connections open until garbage collection.** Its
-  read-only `with _connect(path) as connection:` blocks only commit on exit;
-  a Python `sqlite3` context manager does not close the connection. Schema
-  initialization is one of these blocks.
+- **Sessions keep their connections open.** Before the pool, the Haskell
+  port opened and closed a connection for every operation. With nothing
+  else holding the file open, every close was the last one, so SQLite
+  checkpointed the WAL and deleted it, at the cost of several fsyncs per
+  operation. The reference mostly escapes this by accident: its read-only
+  `with _connect(path)` blocks only commit on exit, and those connections
+  linger until the cyclic garbage collector reaches them.
 
-  The connection therefore stays open until the cyclic garbage collector
-  reaches it. A probe of 20 dispatches after opening found 2 live
-  connections, and 0 after `gc.collect()`.
+  The pool goes further than the reference's lingering connections. It also
+  saves the open itself, the four pragmas, and the statement preparation,
+  since `Petrus.Sqlite.Connection` caches prepared statements per
+  connection. That is why the Haskell rows are now faster than the
+  reference's `held-open` row too.
 
-  While such a connection lives, it holds the WAL open. Closing each
-  per-operation connection is then never the *last* close, so SQLite skips
-  the last-close checkpoint and WAL deletion, which cost several fsyncs.
-
-  The Haskell port closes every connection when its operation ends. That
-  makes plain round trips pay the checkpoint whenever no other connection is
-  open. The probe made the effect explicit: 20 claim + complete pairs took
-  11.8 ms with the reference's lingering connections and 37.4 ms once they
-  closed deterministically.
-
-  The `held-open` and `closing` rows remove the difference. They show the
-  Haskell adapter 1.3–1.9× faster at equal IO.
-
-  The difference is in resource lifetime only. Rows, statements and
-  transactions are identical, and the interop suite checks this
-  (`test/Petrus/Motus/Dispatch/LocalInteropSpec.hs`). See also
-  `DIVERGENCES.md`.
+  Rows, statements and transactions are identical: every write is still one
+  `BEGIN IMMEDIATE`, lease expiry still sweeps at claim time, and other
+  processes (the reference among them) see the same file. The interop suite
+  checks this (`test/Petrus/Motus/Dispatch/LocalInteropSpec.hs`). Only the
+  moment of the WAL checkpoint differs. See DIVERGENCES.md (15).
+- **open-fresh does not change.** Creating a schema needs one connection
+  without WAL mode and one with it, and the bench then closes the session;
+  the pool saves nothing there.
 - **The two sides link different SQLite builds.** direct-sqlite bundles SQLite
   3.45.0, while the reference's CPython links 3.53.4. Both builds default to
   `synchronous=2` and `wal_synchronous=2`, and both set `synchronous=FULL`
-  explicitly. Neither enables `fullfsync`.
+  explicitly. Neither enables `fullfsync`. With per-open cost off the hot
+  path, the port did not need a newer SQLite.
 
 # Worker runtime benchmarks
 
@@ -134,7 +139,7 @@ nowhere; on the Python side `_say` is patched to a no-op.
   (`runAvailable` / `run_available`), and one `collect` returns the 50
   outcomes.
 - **worker/local-50-held-open.** The same, while a co-resident connection
-  holds the file open. This is the equal-IO comparison; see the notes above.
+  holds the file open.
 - **worker/memory-1000.** A `Worker` runs 1000 ready Attempts from
   in-memory custody. This is the runtime's own cost per Attempt: claim,
   resolve, execute, normalize the result, and complete.
@@ -158,51 +163,47 @@ Python bench's format. Every other Haskell row is a tasty-bench mean
 
 ## Results
 
-The runs took place on 2026-10-10 on the same machine and toolchains as
-above. Haskell and Python ran interleaved (H, P, H, P). Other work shared the
-machine, and the load average rose from 2.2 to 5.2 during the runs. Each
-cell gives the two rounds.
+These rows come from the same three interleaved rounds as the Local
+Dispatch rows above, on the same machine and toolchains, at a load average
+of 3.2–5.8. Each figure is the median of the three rounds. "Haskell before"
+is the bench before the connection pool (commit f80e0c3).
 
-| workload | size | Haskell | Python | Python / Haskell |
-| --- | ---: | --- | --- | ---: |
-| worker/local-50 | 50 | 69.2, 81.0 ms | 58.0, 60.4 ms | 0.72–0.84× |
-| worker/local-50-held-open | 50 | 34.5, 33.8 ms | 37.2, 41.1 ms | 1.1–1.2× |
-| worker/memory-1000 | 1000 | 1.49, 1.52 ms | 13.9, 15.9 ms | 9.3–10× |
-| async-worker/memory-1000-c1 | 1000 | 3.17, 3.57 ms | 214, 280 ms | 67–78× |
-| async-worker/memory-1000-c8 | 1000 | 3.20, 3.46 ms | 121, 111 ms | 32–38× |
-| async-worker/memory-1000-c64 | 1000 | 3.11, 3.55 ms | 126, 120 ms | 34–41× |
-| async-worker/sleep-1ms-200-c1 | 200 | 263, 256 ms | 341, 301 ms | 1.2–1.3× |
-| async-worker/sleep-1ms-200-c8 | 200 | 34.5, 33.1 ms | 46.8, 36.3 ms | 1.1–1.4× |
-| async-worker/sleep-1ms-200-c64 | 200 | 8.23, 5.87 ms | 53.5, 31.4 ms | 5.4–6.5× |
+| workload | size | Haskell before | Haskell | Python | Python / Haskell before | Python / Haskell |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| worker/local-50 | 50 | 71.9 ms | 16.2 ms | 55.7 ms | 0.77× | 3.4× |
+| worker/local-50-held-open | 50 | 31.6 ms | 16.5 ms | 41.8 ms | 1.32× | 2.5× |
+| worker/memory-1000 | 1000 | 1.47 ms | 1.42 ms | 14.5 ms | 9.9× | 10× |
+| async-worker/memory-1000-c1 | 1000 | 3.10 ms | 3.10 ms | 271 ms | 87× | 87× |
+| async-worker/memory-1000-c8 | 1000 | 3.08 ms | 3.05 ms | 142 ms | 46× | 47× |
+| async-worker/memory-1000-c64 | 1000 | 3.09 ms | 3.22 ms | 140 ms | 45× | 43× |
+| async-worker/sleep-1ms-200-c1 | 200 | 255 ms | 254 ms | 312 ms | 1.22× | 1.23× |
+| async-worker/sleep-1ms-200-c8 | 200 | 32.5 ms | 32.3 ms | 37.2 ms | 1.15× | 1.15× |
+| async-worker/sleep-1ms-200-c64 | 200 | 5.61 ms | 5.58 ms | 34.9 ms | 6.2× | 6.3× |
 
-The Local Dispatch rows from the same rounds give the same picture as the
-table at the top (Haskell, then Python):
-- `roundtrip-50-held-open`: 31.7 and 34.8 ms, against 39.9 and 39.0 ms;
-- `roundtrip-50-db-clock`: 71.0 and 86.0 ms, against 53.4 and 54.8 ms. The
-  reference's closing variant of that row took 87.4 and 90.6 ms.
+The rounds of the two Local rows (Haskell, then Python):
+- worker/local-50: 16.1, 16.7, 16.2 ms against 54.4, 63.1, 55.7 ms;
+- worker/local-50-held-open: 16.4, 16.5, 17.2 ms against 37.4, 42.7,
+  41.8 ms.
 
 ## Worker notes
 
-- **`worker/local-50` measures the Local Dispatch's connection lifetime,
-  not the Worker.** The Worker adds only one extra claim, which finds the
-  queue empty, to the Local round trip. Without a co-resident connection,
-  the Haskell adapter pays SQLite's last-close checkpoint on every
-  operation, and the reference's lingering connections avoid it. This is the
-  first note above and DIVERGENCES.md (15).
-
-  At equal IO (`local-50-held-open`) the Haskell Worker is 1.1–1.2× faster.
+- **`worker/local-50` follows the Local Dispatch.** The Worker adds only
+  one extra claim, which finds the queue empty, to the Local round trip.
+  Its `LocalWorkerDispatch` shares the session's connection pool, so it no
+  longer pays SQLite's last-close checkpoint on every operation (the first
+  note above, and DIVERGENCES.md (15)). The row went from 0.77× to 3.4×.
 - **The runtime's own cost is an order of magnitude lower.** The memory rows
-  take SQLite out of the picture. The synchronous Worker spends about 1.5 µs
-  per Attempt, against 14–16 µs in Python.
+  take SQLite out of the picture. The synchronous Worker spends about 1.4 µs
+  per Attempt, against about 14.5 µs in Python.
 
   The AsyncWorker's sync bridge hands every custody call to the slot's lane
   thread. In Haskell that hop is a few microseconds between GHC threads. In
-  Python, the thread-to-event-loop round trips cost 110–280 µs per Attempt.
+  Python, the thread-to-event-loop round trips cost 140–270 µs per Attempt.
 - **Sleep-driven concurrency.** 200 Activities of 1 ms each cannot finish in
   less than 200 ms at concurrency 1, or 25 ms at concurrency 8.
 
-  At concurrency 1 the Haskell AsyncWorker spends about 1.3 ms per Activity
-  end to end, against 1.5–1.7 ms in Python.
+  At concurrency 1 the Haskell AsyncWorker spends about 1.27 ms per Activity
+  end to end, against about 1.56 ms in Python.
 
-  At concurrency 64 the floor is about 3.1 ms. Haskell takes 6–8 ms, while
-  Python takes 31–54 ms to schedule 64 lanes through its event loop.
+  At concurrency 64 the floor is about 3.1 ms. Haskell takes about 5.6 ms,
+  while Python takes 32–37 ms to schedule 64 lanes through its event loop.

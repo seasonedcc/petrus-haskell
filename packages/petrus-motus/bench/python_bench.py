@@ -111,8 +111,10 @@ class _Closing:
     (schema initialization among them) only commit on exit; the connection
     closes when the garbage collector reaches it, and until then it holds the
     WAL open, which spares every later per-operation connection the
-    last-close checkpoint. This wrapper closes on exit, as the Haskell port
-    does, so the ``*-closing`` rows time the same file IO.
+    last-close checkpoint. This wrapper closes on exit, so the ``*-closing``
+    rows time the reference with deterministic per-operation closes, the
+    worst case for WAL checkpoints. (The Haskell port now keeps a small pool
+    of connections open per session; see bench/RESULTS.md.)
     """
 
     def __init__(self, connection):
