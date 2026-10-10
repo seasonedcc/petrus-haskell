@@ -75,6 +75,7 @@ test-suite hamsterdan-github-test
   other-modules:    AppFoundationSpec
                     ConfigCorpusSpec
                     Corpus
+                    EffectsCorpusSpec
                     WebhookCorpusSpec
   build-depends:    base
                   , base64-bytestring
