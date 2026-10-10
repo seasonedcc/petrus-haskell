@@ -76,11 +76,13 @@ test-suite hamsterdan-github-test
                     ConfigCorpusSpec
                     Corpus
                     EffectsCorpusSpec
+                    HttpCorpusSpec
                     WebhookCorpusSpec
   build-depends:    base
                   , base64-bytestring
                   , bytestring
                   , containers
+                  , crypton
                   , directory
                   , filepath
                   , hamsterdan-contracts

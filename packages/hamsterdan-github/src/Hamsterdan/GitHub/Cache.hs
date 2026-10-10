@@ -198,31 +198,37 @@ cachedSend store clock send request continue = do
                 [("if-none-match", etag) | Just etag <- [headerGet "etag" newest.storedHeaders]]
                   <> [("if-modified-since", modified) | Just modified <- [headerGet "last-modified" newest.storedHeaders], not (T.null modified)]
               conditional = request {requestHeaders = foldl (\hs (k, v) -> setHeader k v hs) request.requestHeaders conditions}
-          send conditional $ \response -> revalidated store key request revalidating response >>= continue
+          send conditional $ \response ->
+            revalidated store key request revalidating response >>= \case
+              Just answer -> continue answer
+              -- No stored response matched the 304: a cache miss that
+              -- sends the original request again.
+              Nothing -> send request (\again -> cacheMiss store key request request again >>= continue)
 
 setHeader :: Text -> Text -> Headers -> Headers
 setHeader name value headers = case break ((== name) . fst) headers of
   (before, _ : after) -> before <> ((name, value) : after)
   _ -> headers <> [(name, value)]
 
--- | @NeedRevalidation.next@.
-revalidated :: CacheStore -> Text -> CacheRequest -> [(Int, Entry)] -> CacheResponse -> IO CacheResponse
+-- | @NeedRevalidation.next@; 'Nothing' is the @CacheMiss@ that follows a
+-- 304 matching no stored response.
+revalidated :: CacheStore -> Text -> CacheRequest -> [(Int, Entry)] -> CacheResponse -> IO (Maybe CacheResponse)
 revalidated store key original revalidating response
-  | response.status == 304 = freshen store key original revalidating response
+  | response.status == 304 = freshen store key revalidating response
   | response.status `div` 100 == 2 || response.status `div` 100 == 5 = do
       let decision = missDecision original response
       invalidate store (map fst (init revalidating))
-      apply store key original decision response
+      Just <$> apply store key original decision response
   | otherwise =
       let (_, lastEntry) = last revalidating
-       in apply store key original (missDecision lastEntry.storedRequest response) response
+       in Just <$> apply store key original (missDecision lastEntry.storedRequest response) response
 
 invalidate :: CacheStore -> [Int] -> IO ()
 invalidate store ids = forM_ ids $ \entryId -> modifyEntry store entryId (\entry -> entry {deleted = True})
 
 -- | @NeedRevalidation.freshening_stored_responses@.
-freshen :: CacheStore -> Text -> CacheRequest -> [(Int, Entry)] -> CacheResponse -> IO CacheResponse
-freshen store key original revalidating response = do
+freshen :: CacheStore -> Text -> [(Int, Entry)] -> CacheResponse -> IO (Maybe CacheResponse)
+freshen store _ revalidating response = do
   let partitionBy p = (filter (p . snd) revalidating, filter (not . p . snd) revalidating)
       (matched, unmatched) = case headerGet "etag" response.responseHeaders of
         Just etag
@@ -240,12 +246,12 @@ freshen store key original revalidating response = do
     pure (entryId, entry {storedHeaders = merged})
   invalidate store (map fst unmatched)
   case refreshed of
-    [] -> apply store key original (missDecision original response) response
+    [] -> pure Nothing
     _ -> do
       forM_ refreshed $ \(entryId, entry) -> modifyEntry store entryId (\current -> current {storedHeaders = entry.storedHeaders})
       let (_, chosen) = last refreshed
       reader <- replay chosen.content
-      pure CacheResponse {status = chosen.storedStatus, responseHeaders = chosen.storedHeaders, chunks = reader}
+      pure (Just CacheResponse {status = chosen.storedStatus, responseHeaders = chosen.storedHeaders, chunks = reader})
   where
     opaque value =
       let stripped = Py.strip value
@@ -336,8 +342,8 @@ parseDate :: Text -> Either ClientError (Maybe Integer)
 parseDate value = case parsedateTz value of
   Nothing -> Right Nothing
   Just (year, month, day, hour, minute, second) ->
-    case fromGregorianValid year month 1 of
-      Nothing -> Left (valueFailure "ValueError" ("year " <> T.pack (show year) <> " is out of range"))
+    case if year < 1 || year > 9999 then Nothing else fromGregorianValid year month 1 of
+      Nothing -> Left (valueFailure "ValueError" ("year must be in 1..9999, not " <> T.pack (show year)))
       Just first ->
         let days = toModifiedJulianDay first - 40587 + day - 1
          in Right (Just (((days * 24 + hour) * 60 + minute) * 60 + second))

@@ -446,8 +446,8 @@ checkRateLimit response content = do
 
 -- | Pydantic's validation of GitHubKit's @InstallationToken@ model from
 -- JSON: the token and @expires_at@ strings, and the optional members'
--- types (each may be @null@). Repository objects inside @repositories@
--- are not validated (see DIVERGENCES.md). 'Left' describes the failure.
+-- types (each may be @null@). Items of @repositories@ must be objects,
+-- but their members are not validated (see DIVERGENCES.md). 'Left' describes the failure.
 validateInstallationToken :: ByteString -> Either Text (Text, Text)
 validateInstallationToken content = do
   document <- either (Left . ("Invalid JSON: " <>) . T.pack) Right (parseJson pythonLoads content)
@@ -463,7 +463,7 @@ validateInstallationToken content = do
     _ -> Left "expires_at: Input should be a valid string"
   optional "permissions" (field "permissions") permissions
   optional "repository_selection" (field "repository_selection") (\case String s -> s `elem` ["all", "selected"]; _ -> False)
-  optional "repositories" (field "repositories") (\case Array _ -> True; _ -> False)
+  optional "repositories" (field "repositories") (\case Array items -> all (\case Object _ -> True; _ -> False) items; _ -> False)
   optional "single_file" (field "single_file") (\case String _ -> True; _ -> False)
   optional "has_multiple_single_files" (field "has_multiple_single_files") laxBool
   optional "single_file_paths" (field "single_file_paths") (\case Array items -> all (\case String _ -> True; _ -> False) items; _ -> False)

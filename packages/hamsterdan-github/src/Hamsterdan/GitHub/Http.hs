@@ -212,7 +212,9 @@ zlibStage :: Z.Format -> Bool -> IO Stage
 zlibStage format fallback = do
   state <- newIORef . Running =<< pure (Z.decompressIO format Z.defaultDecompressParams)
   firstAttempt <- newIORef True
-  let feedChunk chunk = do
+  let feedChunk chunk
+        | BS.null chunk = pure ""
+        | otherwise = do
         wasFirst <- readIORef firstAttempt
         writeIORef firstAttempt False
         current <- readIORef state
