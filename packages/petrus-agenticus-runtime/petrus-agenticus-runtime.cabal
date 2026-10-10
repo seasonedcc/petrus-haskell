@@ -22,12 +22,15 @@ extra-doc-files:    PARITY.md
                     divergences/pi.md
                     bench/results-pi.md
 data-files:         data/*.mjs
+                    data/*.py
 extra-source-files: differential/*.json
                     differential/*.py
                     differential/*.sqlite3
                     bench/*.py
                     test/fixtures/pi/*.mjs
                     test/fixtures/pi/*.py
+                    test/fixtures/amp/amp_sdk/*.py
+                    test/fixtures/amp/amp_sdk-0.1.20260729121202.dist-info/METADATA
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -46,6 +49,8 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Runtime.AgentNetRunner
+                    Petrus.Agenticus.Runtime.Amp
+                    Petrus.Agenticus.Runtime.HostSupport
                     Petrus.Agenticus.Runtime.Pi
                     Petrus.Agenticus.Runtime.PiA2Host
                     Petrus.Agenticus.Runtime.PiApplication
@@ -81,6 +86,7 @@ test-suite petrus-agenticus-runtime-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    Petrus.Agenticus.Runtime.AgentNetRunnerSpec
+                    Petrus.Agenticus.Runtime.AmpSpec
                     Petrus.Agenticus.Runtime.PiA2HostSpec
                     Petrus.Agenticus.Runtime.PiApplicationSpec
                     Petrus.Agenticus.Runtime.PiDifferentialSpec

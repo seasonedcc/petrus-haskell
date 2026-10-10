@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Petrus.Agenticus.Runtime.AgentNetRunnerSpec qualified
+import Petrus.Agenticus.Runtime.AmpSpec qualified
 import Petrus.Agenticus.Runtime.PiA2HostSpec qualified
 import Petrus.Agenticus.Runtime.PiApplicationSpec qualified
 import Petrus.Agenticus.Runtime.PiDifferentialSpec qualified
@@ -23,3 +24,4 @@ main =
       Petrus.Agenticus.Runtime.PiModelPhaseSpec.spec
       Petrus.Agenticus.Runtime.PiApplicationSpec.spec
       Petrus.Agenticus.Runtime.PiA2HostSpec.spec
+      Petrus.Agenticus.Runtime.AmpSpec.spec
