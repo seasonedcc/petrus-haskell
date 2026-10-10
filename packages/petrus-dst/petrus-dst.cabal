@@ -69,6 +69,7 @@ test-suite petrus-dst-test
   main-is:          Main.hs
   other-modules:    Spec.Choice
                     Spec.Codec
+                    Spec.Runner
                     Spec.Stories
                     Spec.Support
                     Toy
