@@ -48,6 +48,7 @@ import Network.HTTP.Types qualified as H
 import Network.HTTP.Types.URI (urlDecode)
 import Network.Wai qualified as W
 import Petrus.Viewer.Json
+import Petrus.Viewer.Http (lbsResponse)
 
 -- | Configured observation base URLs and the instance → URL map learned
 -- from their snapshots.
@@ -84,7 +85,7 @@ observationApp src mgr prefix req =
         | W.requestMethod req == "POST" && q `elem` ["get_state", "get_schema"] -> Just (query wf q)
       _ -> Nothing
   where
-    json st v = W.responseLBS st [("Content-Type", "application/json")] (encodeJsLazy v)
+    json st v = lbsResponse st [("Content-Type", "application/json")] (encodeJsLazy v)
     temporalError st code msg = json st (obj [("code", int code), ("message", str msg), ("details", arr [])])
 
     listWorkflows = do

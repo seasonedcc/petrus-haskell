@@ -38,6 +38,7 @@ library
                     Petrus.Viewer.Json.Number
                     Petrus.Viewer.Url
                     Petrus.Viewer.UrlCache
+                    Petrus.Viewer.Http
                     Petrus.Viewer.Relay
                     Petrus.Viewer.Endpoints
                     Petrus.Viewer.Static
@@ -68,6 +69,7 @@ library
                   , stm >=2.5
                   , text >=2.0
                   , time >=1.12
+                  , unix >=2.8
                   , wai >=3.2
                   , wai-websockets >=3.0
                   , warp >=3.3
@@ -154,6 +156,8 @@ benchmark petrus-viewer-bench
                   , async
                   , bytestring
                   , containers
+                  , directory
+                  , filepath
                   , http-client
                   , http-types
                   , petrus-viewer-server

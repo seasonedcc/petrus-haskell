@@ -14,12 +14,13 @@ import Data.Text qualified as T
 import Network.HTTP.Types qualified as H
 import Network.Wai qualified as W
 import System.Directory (doesFileExist)
+import Petrus.Viewer.Http (lbsResponse)
 import System.FilePath (takeExtension, (</>))
 
 staticApp :: FilePath -> W.Application
 staticApp root req respond
   | W.requestMethod req `notElem` ["GET", "HEAD"] =
-      respond (W.responseLBS H.status404 [("Content-Type", "text/plain")] "Not Found")
+      respond (lbsResponse H.status404 [("Content-Type", "text/plain")] "Not Found")
   | any unsafeSegment segs = notFound
   | otherwise = do
       let rel = if null segs || segs == [""] then "index.html" else foldr1 (</>) (map T.unpack segs)
@@ -37,7 +38,7 @@ staticApp root req respond
   where
     segs = W.pathInfo req
     unsafeSegment s = s == ".." || s == "." || T.any (\c -> c == '/' || c == '\\' || c == '\0') s
-    notFound = respond (W.responseLBS H.status404 [("Content-Type", "text/plain")] "Not Found")
+    notFound = respond (lbsResponse H.status404 [("Content-Type", "text/plain")] "Not Found")
     acceptsHtml = case lookup "Accept" (W.requestHeaders req) of
       Just a -> "text/html" `BC.isInfixOf` a || "*/*" `BC.isInfixOf` a
       Nothing -> True

@@ -72,10 +72,15 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Builder qualified as BB
 import Data.ByteString.Builder.Prim qualified as BP
+import Data.ByteString.Internal qualified as BI
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Unsafe qualified as BU
+import Control.Monad (foldM, void)
 import Data.Char (chr, ord)
+import Foreign.Marshal.Utils (copyBytes)
+import Foreign.Ptr (Ptr, castPtr, plusPtr)
+import Foreign.Storable (poke)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -127,27 +132,28 @@ data JsValue
 jsString :: Text -> JsString
 jsString t
   | T.all plain t = JsString (TE.encodeUtf8 t)
-  | otherwise = JsString (BL.toStrict (BB.toLazyByteString (T.foldr (\c b -> escapeChar c <> b) mempty t)))
+  | otherwise = JsString (BL.toStrict (BB.toLazyByteString (BP.primMapByteStringBounded escapeByte (TE.encodeUtf8 t))))
   where
     plain c = c >= ' ' && c /= '"' && c /= '\\'
 
-escapeChar :: Char -> BB.Builder
-escapeChar = \case
-  '"' -> "\\\""
-  '\\' -> "\\\\"
-  '\b' -> "\\b"
-  '\f' -> "\\f"
-  '\n' -> "\\n"
-  '\r' -> "\\r"
-  '\t' -> "\\t"
-  c
-    | c < ' ' -> "\\u" <> hex4 (fromIntegral (ord c))
-    | otherwise -> BB.charUtf8 c
-
-hex4 :: Word16 -> BB.Builder
-hex4 w = BB.string7 (replicate (4 - length h) '0' ++ h)
+-- | One UTF-8 byte of a 'Text' as @JSON.stringify@ writes it (a 'Text'
+-- holds no lone surrogates, so only ASCII needs escaping).
+escapeByte :: BP.BoundedPrim Word8
+escapeByte =
+  BP.condB (\w -> w >= 0x20 && w /= 0x22 && w /= 0x5c) (BP.liftFixedToBounded BP.word8) $
+    BP.condB (== 0x22) (two 0x22) $
+      BP.condB (== 0x5c) (two 0x5c) $
+        BP.condB (== 0x0a) (two 0x6e) $
+          BP.condB (== 0x0d) (two 0x72) $
+            BP.condB (== 0x09) (two 0x74) $
+              BP.condB (== 0x08) (two 0x62) $
+                BP.condB (== 0x0c) (two 0x66) $
+                  BP.liftFixedToBounded ((\w -> (0x5c, (0x75, (0x30, (0x30, (nibble (w `shiftR` 4), nibble (w .&. 0xf))))))) BP.>$< fixed6)
   where
-    h = showHex w ""
+    two c = BP.liftFixedToBounded ((\_ -> (0x5c, c)) BP.>$< (BP.word8 BP.>*< BP.word8))
+    fixed6 = BP.word8 BP.>*< BP.word8 BP.>*< BP.word8 BP.>*< BP.word8 BP.>*< BP.word8 BP.>*< BP.word8
+    nibble :: Word8 -> Word8
+    nibble d = if d < 10 then 0x30 + d else 0x57 + d
 
 -- | Wrap bytes already in canonical escaped form (callers must guarantee it).
 unsafeJsStringFromCanonical :: ByteString -> JsString
@@ -383,11 +389,60 @@ quoted :: ByteString -> BB.Builder
 quoted s = BB.char7 '"' <> BB.byteString s <> BB.char7 '"'
 {-# INLINE quoted #-}
 
+-- | @JSON.stringify(v)@. Every piece is already in its final spelling, so
+-- encoding is one pass to size the output and one pass of copies into a
+-- single buffer.
 encodeJs :: JsValue -> ByteString
-encodeJs = BL.toStrict . encodeJsLazy
+encodeJs v = BI.unsafeCreate (encodedSize v) (\p -> void (writeJs v p))
 
 encodeJsLazy :: JsValue -> BL.ByteString
-encodeJsLazy = BB.toLazyByteString . encodeJsBuilder
+encodeJsLazy = BL.fromStrict . encodeJs
+
+encodedSize :: JsValue -> Int
+encodedSize = \case
+  JsNull -> 4
+  JsBool True -> 4
+  JsBool False -> 5
+  JsNum n -> B.length (numText n)
+  JsStr (JsString s) -> B.length s + 2
+  JsArr xs -> foldl' (\acc x -> acc + encodedSize x + 1) 1 xs + (if null xs then 1 else 0)
+  JsObj (JsObject kvs) ->
+    foldl' (\acc (JsString k, x) -> acc + B.length k + 4 + encodedSize x) 1 kvs + (if null kvs then 1 else 0)
+
+writeJs :: JsValue -> Ptr Word8 -> IO (Ptr Word8)
+writeJs v p = case v of
+  JsNull -> bytes "null"
+  JsBool True -> bytes "true"
+  JsBool False -> bytes "false"
+  JsNum n -> bytes (numText n)
+  JsStr (JsString s) -> quotedAt s p
+  JsArr [] -> bytes "[]"
+  JsArr (x : xs) -> do
+    q <- writeJs x =<< byteAt 0x5b p
+    end <- foldM (\q' y -> writeJs y =<< byteAt 0x2c q') q xs
+    byteAt 0x5d end
+  JsObj (JsObject []) -> bytes "{}"
+  JsObj (JsObject (kv : kvs)) -> do
+    q <- member kv =<< byteAt 0x7b p
+    end <- foldM (\q' m -> member m =<< byteAt 0x2c q') q kvs
+    byteAt 0x7d end
+  where
+    bytes b = copyAt b p
+    member (JsString k, x) q = writeJs x =<< byteAt 0x3a =<< quotedAt k q
+
+byteAt :: Word8 -> Ptr Word8 -> IO (Ptr Word8)
+byteAt w p = poke p w >> pure (p `plusPtr` 1)
+{-# INLINE byteAt #-}
+
+copyAt :: ByteString -> Ptr Word8 -> IO (Ptr Word8)
+copyAt b p = BU.unsafeUseAsCStringLen b $ \(src, n) -> do
+  copyBytes p (castPtr src) n
+  pure (p `plusPtr` n)
+{-# INLINE copyAt #-}
+
+quotedAt :: ByteString -> Ptr Word8 -> IO (Ptr Word8)
+quotedAt b p = byteAt 0x22 =<< copyAt b =<< byteAt 0x22 p
+{-# INLINE quotedAt #-}
 
 -- | @JSON.stringify(v, null, 2)@.
 encodePretty :: JsValue -> ByteString

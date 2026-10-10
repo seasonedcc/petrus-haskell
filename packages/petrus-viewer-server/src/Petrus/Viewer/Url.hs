@@ -64,21 +64,20 @@ isSpecial = isJust . specialPort
 
 -- | @new URL(input)@.
 parseUrl :: Text -> Maybe Url
-parseUrl t = basicParse Nothing (prepare (T.unpack t))
+parseUrl t = basicParse Nothing (prepare t)
 
 -- | @new URL(input, base)@.
 resolveUrl :: Text -> Text -> Maybe Url
 resolveUrl input base = do
   b <- parseUrl base
-  basicParse (Just b) (prepare (T.unpack input))
+  basicParse (Just b) (prepare input)
 
 -- | Strip leading and trailing C0 controls and spaces, remove tabs and
 -- newlines.
-prepare :: String -> String
-prepare = filter (`notElem` ['\t', '\n', '\r']) . dropWhileEnd' c0space . dropWhile c0space
+prepare :: Text -> String
+prepare = T.unpack . T.filter (\c -> c /= '\t' && c /= '\n' && c /= '\r') . T.dropAround c0space
   where
-    c0space c = ord c <= 0x20
-    dropWhileEnd' p = reverse . dropWhile p . reverse
+    c0space c = c <= '\x20'
 
 emptyUrl :: Url
 emptyUrl = Url "" "" "" Nothing Nothing (Right []) Nothing Nothing
@@ -109,7 +108,8 @@ data State
 -- buffer, and the authority/host flags.
 data P = P
   { pUrl :: Url
-  , pBuf :: String
+  , pRevBuf :: String
+  -- ^ the spec's buffer, reversed (appending is a cons)
   , pAtSign :: Bool
   , pPasswordToken :: Bool
   , pBrackets :: Bool
@@ -129,7 +129,8 @@ basicParse base input0 = run SchemeStart (P emptyUrl "" False False False) input
           rest = drop 1 input
           remaining = rest
           url = pUrl p
-          buf = pBuf p
+          revBuf = pRevBuf p
+          buf = reverse revBuf
           special = isSpecial (urlScheme url)
           -- consume c and continue in state s (EOF ends the parse)
           next s p' = case input of
@@ -144,15 +145,15 @@ basicParse base input0 = run SchemeStart (P emptyUrl "" False False False) input
        in case state of
             SchemeStart -> case c of
               Just x
-                | isAsciiAlpha x -> next Scheme p {pBuf = [toLower x]}
+                | isAsciiAlpha x -> next Scheme p {pRevBuf = [toLower x]}
               _ -> again NoScheme p
             Scheme -> case c of
               Just x
                 | isAsciiAlpha x || isDigit x || x `elem` ("+-." :: String) ->
-                    next Scheme p {pBuf = buf ++ [toLower x]}
+                    next Scheme p {pRevBuf = toLower x : revBuf}
               Just ':' ->
                 let u = url {urlScheme = buf}
-                    p' = p {pUrl = u, pBuf = ""}
+                    p' = p {pUrl = u, pRevBuf = ""}
                  in if buf == "file"
                       then next File p'
                       else
@@ -165,7 +166,7 @@ basicParse base input0 = run SchemeStart (P emptyUrl "" False False False) input
                             if take 1 remaining == "/"
                               then run PathOrAuthority p' (drop 1 remaining)
                               else next OpaquePath p' {pUrl = u {urlPath = Left ""}}
-              _ -> run NoScheme p {pBuf = ""} input0
+              _ -> run NoScheme p {pRevBuf = ""} input0
             NoScheme -> case base of
               Nothing -> Nothing
               Just b -> case urlPath b of
@@ -234,33 +235,33 @@ basicParse base input0 = run SchemeStart (P emptyUrl "" False False False) input
               | c == Just '@' ->
                   let buf' = if pAtSign p then "%40" ++ buf else buf
                       (u', pw') = foldl' credential (url, pPasswordToken p) buf'
-                   in next Authority p {pUrl = u', pBuf = "", pAtSign = True, pPasswordToken = pw'}
+                   in next Authority p {pUrl = u', pRevBuf = "", pAtSign = True, pPasswordToken = pw'}
               | endOfAuthority ->
                   if pAtSign p && null buf
                     then Nothing
-                    else run Host p {pBuf = ""} (buf ++ input)
-              | otherwise -> next Authority p {pBuf = buf ++ maybe "" pure c}
+                    else run Host p {pRevBuf = ""} (buf ++ input)
+              | otherwise -> next Authority p {pRevBuf = maybe revBuf (: revBuf) c}
             Host
               | c == Just ':' && not (pBrackets p) ->
                   if null buf
                     then Nothing
                     else do
                       h <- parseHost (not special) buf
-                      next Port p {pUrl = url {urlHost = Just h}, pBuf = ""}
+                      next Port p {pUrl = url {urlHost = Just h}, pRevBuf = ""}
               | endOfAuthority ->
                   if special && null buf
                     then Nothing
                     else do
                       h <- parseHost (not special) buf
-                      again PathStart p {pUrl = url {urlHost = Just h}, pBuf = ""}
+                      again PathStart p {pUrl = url {urlHost = Just h}, pRevBuf = ""}
               | otherwise ->
                   let br = case c of
                         Just '[' -> True
                         Just ']' -> False
                         _ -> pBrackets p
-                   in next Host p {pBuf = buf ++ maybe "" pure c, pBrackets = br}
+                   in next Host p {pRevBuf = maybe revBuf (: revBuf) c, pBrackets = br}
             Port -> case c of
-              Just x | isDigit x -> next Port p {pBuf = buf ++ [x]}
+              Just x | isDigit x -> next Port p {pRevBuf = x : revBuf}
               _
                 | endOfAuthority ->
                     if null buf
@@ -272,7 +273,7 @@ basicParse base input0 = run SchemeStart (P emptyUrl "" False False False) input
                               else
                                 let port = fromInteger n
                                     port' = if specialPort (urlScheme url) == Just (Just port) then Nothing else Just port
-                                 in again PathStart p {pUrl = url {urlPort = port'}, pBuf = ""}
+                                 in again PathStart p {pUrl = url {urlPort = port'}, pRevBuf = ""}
                 | otherwise -> Nothing
             File ->
               let u0 = url {urlScheme = "file", urlHost = Just ""}
@@ -317,8 +318,8 @@ basicParse base input0 = run SchemeStart (P emptyUrl "" False False False) input
                         else do
                           h <- parseHost False buf
                           let h' = if h == "localhost" then "" else h
-                          again PathStart p {pUrl = url {urlHost = Just h'}, pBuf = ""}
-              | otherwise -> next FileHost p {pBuf = buf ++ maybe "" pure c}
+                          again PathStart p {pUrl = url {urlHost = Just h'}, pRevBuf = ""}
+              | otherwise -> next FileHost p {pRevBuf = maybe revBuf (: revBuf) c}
             PathStart
               | special ->
                   if c == Just '/' || c == Just '\\' then next Path p else again Path p
@@ -346,12 +347,15 @@ basicParse base input0 = run SchemeStart (P emptyUrl "" False False False) input
                                     then take 1 buf ++ ":"
                                     else buf
                              in url {urlPath = Right (pathList url ++ [seg])}
-                      p' = p {pUrl = u1, pBuf = ""}
+                      p' = p {pUrl = u1, pRevBuf = ""}
                    in case c of
                         Just '?' -> next Query p' {pUrl = u1 {urlQuery = Just ""}}
                         Just '#' -> next Fragment p' {pUrl = u1 {urlFragment = Just ""}}
                         _ -> next Path p'
-              | otherwise -> next Path p {pBuf = buf ++ maybe "" (encodeChar pathSet) c}
+              | otherwise -> case span plainPathChar input of
+                  -- a run of code points the path state only buffers
+                  (plain@(_ : _), rest') -> run Path p {pRevBuf = reverse plain ++ revBuf} rest'
+                  _ -> next Path p {pRevBuf = maybe revBuf (\x -> reverse (encodeChar pathSet x) ++ revBuf) c}
             OpaquePath -> case c of
               Just '?' -> next Query (setUrl url {urlQuery = Just ""})
               Just '#' -> next Fragment (setUrl url {urlFragment = Just ""})
@@ -363,9 +367,9 @@ basicParse base input0 = run SchemeStart (P emptyUrl "" False False False) input
                       q = fromMaybe "" (urlQuery url) ++ concatMap (encodeChar set) buf
                       u1 = url {urlQuery = Just q}
                    in if c == Just '#'
-                        then next Fragment p {pUrl = u1 {urlFragment = Just ""}, pBuf = ""}
+                        then next Fragment p {pUrl = u1 {urlFragment = Just ""}, pRevBuf = ""}
                         else Just u1
-              | otherwise -> next Query p {pBuf = buf ++ maybe "" pure c}
+              | otherwise -> next Query p {pRevBuf = maybe revBuf (: revBuf) c}
             Fragment -> case c of
               Just x -> next Fragment (setUrl url {urlFragment = Just (fromMaybe "" (urlFragment url) ++ encodeChar fragmentSet x)})
               Nothing -> Just url
@@ -660,6 +664,14 @@ querySet c = c0Set c || c `elem` (" \"#<>" :: String)
 specialQuerySet c = querySet c || c == '\''
 pathSet c = querySet c || c `elem` ("?`{}" :: String)
 userinfoSet c = pathSet c || c `elem` ("/:;=@[\\]^|" :: String)
+
+-- | Path-state code points that are neither delimiters nor percent-encoded.
+plainPathChar :: Char -> Bool
+plainPathChar ch
+  | ch >= 'a' && ch <= 'z' = True
+  | ch >= 'A' && ch <= 'Z' = True
+  | ch >= '-' && ch <= '9' = ch /= '/'
+  | otherwise = ch /= '/' && ch /= '\\' && ch /= '?' && ch /= '#' && not (pathSet ch)
 
 encodeChar :: (Char -> Bool) -> Char -> String
 encodeChar inSet c

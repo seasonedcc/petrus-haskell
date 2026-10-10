@@ -17,8 +17,9 @@ module Petrus.Viewer.Endpoints
   , readFileNode
   ) where
 
-import Control.Exception (IOException, try)
+import Control.Exception (IOException, bracket, try)
 import Data.ByteString qualified as B
+import Data.ByteString.Internal qualified as BI
 import Data.ByteString.Lazy qualified as BL
 import Data.IORef
 import Data.Text (Text)
@@ -29,10 +30,13 @@ import Network.HTTP.Client qualified as HC
 import Network.HTTP.Types qualified as H
 import Network.Wai qualified as W
 import Petrus.Viewer.Json
+import Petrus.Viewer.Http (lbsResponse)
 import Petrus.Viewer.Url
 import Petrus.Viewer.UrlCache
 import System.Directory (doesPathExist)
 import System.IO.Error (isDoesNotExistError, isPermissionError)
+import System.Posix.Files (fileSize, getFdStatus)
+import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, fdReadBuf, openFd)
 
 -- | The pending file (consumed by the next GET) and its source URL.
 data OpenFileState = OpenFileState (IORef (Maybe FilePath, Maybe Text))
@@ -51,7 +55,7 @@ corsHeaders methods =
   ]
 
 jsonResponse :: H.Status -> H.ResponseHeaders -> JsValue -> W.Response
-jsonResponse st hs v = W.responseLBS st (hs ++ [("Content-Type", "application/json")]) (encodeJsLazy v)
+jsonResponse st hs v = lbsResponse st (hs ++ [("Content-Type", "application/json")]) (encodeJsLazy v)
 
 errorBody :: Text -> JsValue
 errorBody msg = obj [("error", str msg)]
@@ -60,7 +64,7 @@ endpointsMiddleware :: OpenFileState -> HC.Manager -> W.Middleware
 endpointsMiddleware st mgr app req respond
   | url == "/__petrus/open-file" = openFile st req respond
   | url == "/__petrus/resolve-ref" && method == "OPTIONS" =
-      respond (W.responseLBS H.status204 (corsHeaders "POST, OPTIONS") "")
+      respond (lbsResponse H.status204 (corsHeaders "POST, OPTIONS") "")
   | url == "/__petrus/resolve-ref" && method == "POST" = do
       body <- readBody req
       result <- resolveRefBody mgr body
@@ -76,11 +80,11 @@ readBody req = decodeLenient . BL.toStrict <$> W.strictRequestBody req
 
 openFile :: OpenFileState -> W.Application
 openFile (OpenFileState ref) req respond = case W.requestMethod req of
-  "OPTIONS" -> respond (W.responseLBS H.status204 cors "")
+  "OPTIONS" -> respond (lbsResponse H.status204 cors "")
   "GET" -> do
     (pending, src) <- readIORef ref
     case pending of
-      Nothing -> respond (W.responseLBS H.status204 cors "")
+      Nothing -> respond (lbsResponse H.status204 cors "")
       Just path -> do
         r <- readFileNode path
         case r of
@@ -106,14 +110,14 @@ openFile (OpenFileState ref) req respond = case W.requestMethod req of
             modifyIORef' ref (\(_, u) -> (Just (T.unpack (jsStringText s)), u))
             respond (jsonResponse H.status200 cors (obj [("ok", JsBool True), ("path", JsStr s)]))
           _ -> respond (jsonResponse H.status400 cors (errorBody "File not found"))
-  _ -> respond (W.responseLBS H.status405 cors "")
+  _ -> respond (lbsResponse H.status405 cors "")
   where
     cors = corsHeaders "GET, POST, OPTIONS"
 
 -- | @fs.readFileSync(path, "utf-8")@ with Node's error messages.
 readFileNode :: FilePath -> IO (Either Text Text)
 readFileNode path = do
-  r <- try @IOException (B.readFile path)
+  r <- try @IOException (readFileBytes path)
   pure $ case r of
     Right bytes -> Right (TE.decodeUtf8With TE.lenientDecode bytes)
     Left e
@@ -122,6 +126,18 @@ readFileNode path = do
       | "is a directory" `T.isInfixOf` T.toLower (T.pack (show e)) || "inappropriate type" `T.isInfixOf` T.toLower (T.pack (show e)) ->
           Left "EISDIR: illegal operation on a directory, read"
       | otherwise -> Left (T.pack (show e))
+
+-- | The whole file: open, fstat, read to EOF, close, without the 'Handle'
+-- machinery (buffers, locking) that dominates small reads.
+readFileBytes :: FilePath -> IO B.ByteString
+readFileBytes path = bracket (openFd path ReadOnly defaultFileFlags) closeFd $ \fd -> do
+  size <- fromIntegral . fileSize <$> getFdStatus fd
+  let chunkSize = max 4096 (size + 1) :: Int
+      readChunk = BI.createAndTrim chunkSize $ \p -> fromIntegral <$> fdReadBuf fd p (fromIntegral chunkSize)
+      go acc = do
+        chunk <- readChunk
+        if B.null chunk then pure (B.concat (reverse acc)) else go (chunk : acc)
+  go []
 
 data ResolveResult
   = Resolved JsValue

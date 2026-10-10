@@ -154,6 +154,8 @@ runCli argv = case parseCliArgs argv of
           argObservation args
             ++ [T.strip u | Just v <- [obsEnv], u <- T.splitOn "," (T.pack v), not (T.null (T.strip u))]
     temporalEnv <- lookupEnv "PETRUS_TEMPORAL_TARGET"
+    -- like PETRUS_PERF=0 for the MCP server: silence the relay timing log
+    relayPerfEnv <- lookupEnv "PETRUS_RELAY_PERF"
     let cfg =
           defaultServerConfig
             { serverHost = fromMaybe "localhost" (argHost args)
@@ -164,6 +166,7 @@ runCli argv = case parseCliArgs argv of
             , serverObservation = observation
             , serverOpenFile = pendingFile
             , serverSourceUrl = sourceUrl
+            , serverRelayPerf = relayPerfEnv /= Just "0"
             }
     hSetBuffering stdout LineBuffering
     runServer cfg $ \port -> do

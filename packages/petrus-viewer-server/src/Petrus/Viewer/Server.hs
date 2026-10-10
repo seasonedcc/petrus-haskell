@@ -42,6 +42,7 @@ import Petrus.Viewer.Log
 import Petrus.Viewer.Proxy
 import Petrus.Viewer.Relay
 import Petrus.Viewer.Static
+import Petrus.Viewer.Http (lbsResponse)
 import Petrus.Viewer.UrlCache (newFetchManager)
 import System.IO (BufferMode (..), hSetBuffering, stdout)
 import System.IO.Error (isAlreadyInUseError)
@@ -165,7 +166,7 @@ viewerApp cfg mgr agent collab openState observation req respond
   where
     url = W.rawPathInfo req <> W.rawQueryString req
     rest r k
-      | "/collab-ws" `B.isPrefixOf` W.rawPathInfo r = k (W.responseLBS H.status426 [("Content-Type", "text/plain")] "Upgrade Required")
+      | "/collab-ws" `B.isPrefixOf` W.rawPathInfo r = k (lbsResponse H.status426 [("Content-Type", "text/plain")] "Upgrade Required")
       | "/temporal" `B.isPrefixOf` W.rawPathInfo r =
           case observation >>= \src -> observationApp src mgr "/temporal" r of
             Just handler -> handler >>= k
@@ -174,19 +175,19 @@ viewerApp cfg mgr agent collab openState observation req respond
           Just dir -> staticApp dir r k
           Nothing ->
             k
-              ( W.responseLBS
+              ( lbsResponse
                   H.status404
                   [("Content-Type", "text/plain")]
                   "Petrus UI not configured: build the viewer (pnpm build) and pass --ui-dir or set PETRUS_UI_DIR."
               )
-    notFound _ k = k (W.responseLBS H.status404 [("Content-Type", "text/plain")] "Not Found")
+    notFound _ k = k (lbsResponse H.status404 [("Content-Type", "text/plain")] "Not Found")
 
 -- | @server/collab.mjs@: a collaboration relay on every path; plain HTTP
 -- requests get @426 Upgrade Required@.
 collabApp :: Relay -> W.Application
 collabApp relay =
   WaiWS.websocketsOr wsOptions (wsApp relay) $ \_ k ->
-    k (W.responseLBS H.status426 [("Content-Type", "text/plain")] "Upgrade Required")
+    k (lbsResponse H.status426 [("Content-Type", "text/plain")] "Upgrade Required")
 
 warpSettings :: Warp.Settings
 warpSettings =
@@ -197,7 +198,7 @@ warpSettings =
 withServer :: ServerConfig -> (ServerHandle -> IO a) -> IO a
 withServer cfg action = do
   mgr <- newFetchManager
-  logger <- if serverRelayPerf cfg then Just <$> newLogger stdout else pure Nothing
+  logger <- if serverRelayPerf cfg then Just <$> newAsyncLogger stdout else pure Nothing
   agent <- newRelay AgentRelay logger
   collab <- newRelay CollabRelay Nothing
   openState <- newOpenFileState (serverOpenFile cfg) (serverSourceUrl cfg)

@@ -214,7 +214,7 @@ serveConnection relay conn = do
             case (kindV, reqId) of
               (Just k, Just rid)
                 | k == str "request" -> do
-                    modifyIORef' (timings relay) (Map.insert rid now)
+                    atomicModifyIORef' (timings relay) (\m -> (Map.insert rid now m, ()))
                     perfLine lg "relay-forward-request" $
                       [("requestId", JsStr rid)] ++ opt "action" (lookupKey "action" o) ++ [("from", JsStr (clientIdStr me))]
                 | k == str "response" -> do
