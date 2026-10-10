@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Rebuild and verify everything from a clean checkout: build, unit tests,
+# conformance, interop against the pinned Python upstream, and the parity table.
+#
+#   scripts/check-all            # everything except benchmarks
+#   scripts/check-all --bench    # also run benchmarks against Python
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export PATH="$HOME/.ghcup/bin:$PATH"
+
+run_bench=0
+for arg in "$@"; do
+  case "$arg" in
+    --bench) run_bench=1 ;;
+    *) echo "unknown argument: $arg" >&2; exit 2 ;;
+  esac
+done
+
+step() { printf '\n==> %s\n' "$*"; }
+
+step "Upstream pins"
+scripts/check-pins
+
+step "Build (all packages, -Werror)"
+cabal build all
+
+step "Tests (unit, conformance, interop)"
+cabal test all --test-show-details=direct
+
+if [[ -x scripts/interop ]]; then
+  step "Interop with pinned Python"
+  scripts/interop
+fi
+
+if [[ "$run_bench" == 1 ]]; then
+  step "Benchmarks"
+  scripts/bench
+fi
+
+step "Parity table"
+scripts/check-parity

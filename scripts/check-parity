@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Fail if PARITY.md claims "at parity" for a component without evidence links.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+bad=$(awk -F'|' '/^\|/ && $5 ~ /at parity/ && $6 ~ /^ *$/ {print $2}' PARITY.md)
+if [[ -n "$bad" ]]; then
+  echo "components marked at parity without evidence:" >&2
+  echo "$bad" >&2
+  exit 1
+fi
+total=$(awk -F'|' '/^\|/ && $5 ~ /^ *(not started|in progress|at parity)/ {n++} END {print n+0}' PARITY.md)
+done_=$(awk -F'|' '/^\|/ && $5 ~ /^ *at parity/ {n++} END {print n+0}' PARITY.md)
+echo "$done_ of $total components at parity"
