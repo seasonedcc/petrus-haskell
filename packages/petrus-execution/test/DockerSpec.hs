@@ -16,9 +16,11 @@ import Data.Text qualified as T
 import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
+import Petrus.Motus.Execution.Artifacts
+import Petrus.Motus.Execution.Providers.Local (localProvider, newLocalProcessEnvironment)
 import Petrus.Motus.Execution.Providers.Docker
 import Support
-import System.Directory (createDirectory, makeAbsolute)
+import System.Directory (createDirectory, doesDirectoryExist, makeAbsolute)
 import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.Exit (ExitCode (..))
 import System.Posix.Process (getProcessID)
@@ -187,6 +189,45 @@ sharedSpec withBackend = do
           `shouldThrowMessage` (ValueError, "attachment lease is not a current ready Docker territory")
       )
       `finally` providerDestroy provider lease
+
+  it "test_cross_provider_workspace_handoff_has_no_shared_path" $ withBackend $ \backend -> withTempDir $ \tmp -> do
+    pid <- T.pack . show <$> getProcessID
+    let source = tmp <> "/source"
+    createDirectory source
+    B.writeFile (source <> "/history") "source"
+    initial <- workspaceArchive source
+    local <- localProvider <$> newLocalProcessEnvironment
+    localLease <- providerCreate local ("handoff-local-" <> uniqueSuffix tmp <> "-" <> pid) (rightOr (mkEnvironmentSpec Nothing []))
+    localAttachment <- providerAttach local localLease initial "source"
+    _ <- providerExecute local localAttachment (cmd ["/bin/sh", "-c", "printf -- '-local' >> history"])
+    let localWorkspace = attachmentWorkspace localAttachment
+    store <- newArtifactStore (tmp <> "/store")
+    exported <- providerExport local localAttachment
+    ref <-
+      putArtifact store exported "application/x-tar" "handoff" $
+        ProducerCorrelation (leaseOperationId localLease) (leaseProvider localLease) (leaseId localLease)
+    _ <- providerDestroy local localLease
+    doesDirectoryExist localWorkspace `shouldReturn` False
+
+    (_, docker) <- newProvider backend
+    dockerLease <- providerCreate docker ("handoff-docker-" <> uniqueSuffix tmp <> "-" <> pid) (imageSpec (backendImage backend) [])
+    final <-
+      ( do
+          payload <- readArtifact store ref
+          dockerAttachment <- providerAttach docker dockerLease payload (artifactDigest ref)
+          attachmentWorkspace dockerAttachment `shouldNotBe` localWorkspace
+          result <- providerExecute docker dockerAttachment (cmd ["/bin/sh", "-c", "cat history; printf -- '-docker' >> history"])
+          resultStdout result `shouldBe` "source-local"
+          archive <- providerExport docker dockerAttachment
+          info <- cli backend ["inspect", T.unpack (leaseId dockerLease)]
+          bindMounts info `shouldBe` 0
+          pure archive
+      )
+        `finally` providerDestroy docker dockerLease
+    providerLookup docker (leaseOperationId dockerLease) `shouldReturn` Nothing
+    let restored = tmp <> "/restored"
+    extractWorkspaceArchive final restored
+    B.readFile (restored <> "/history") `shouldReturn` "source-local-docker"
 
 waitFor :: IO Bool -> IO ()
 waitFor condition = go (50 :: Int)

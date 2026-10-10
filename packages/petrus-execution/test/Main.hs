@@ -6,6 +6,7 @@ import DockerSpec qualified
 import E2bSpec qualified
 import GondolinSpec qualified
 import LocalSpec qualified
+import SubstrateSpec qualified
 import System.Posix.Files (setFileCreationMask)
 import Test.Hspec
 
@@ -20,3 +21,4 @@ main = do
     DockerSpec.spec
     E2bSpec.spec
     GondolinSpec.spec
+    SubstrateSpec.spec

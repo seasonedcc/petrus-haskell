@@ -33,6 +33,7 @@ library
   exposed-modules:  Petrus.Motus.Execution
                     Petrus.Motus.Execution.Archive
                     Petrus.Motus.Execution.Archive.Tar
+                    Petrus.Motus.Execution.Artifacts
                     Petrus.Motus.Execution.Error
                     Petrus.Motus.Execution.Internal.Common
                     Petrus.Motus.Execution.Internal.Posix
@@ -43,6 +44,7 @@ library
                     Petrus.Motus.Execution.Providers.E2b
                     Petrus.Motus.Execution.Providers.Gondolin
                     Petrus.Motus.Execution.Providers.Local
+                    Petrus.Motus.Execution.Timeline
   include-dirs:     cbits
   c-sources:        cbits/petrus_posix.c
   build-depends:    base >=4.18 && <5
@@ -75,6 +77,7 @@ test-suite petrus-execution-test
                     E2bSpec
                     GondolinSpec
                     LocalSpec
+                    SubstrateSpec
                     Support
   build-depends:    base
                   , base64-bytestring
@@ -92,6 +95,7 @@ test-suite petrus-execution-test
                   , QuickCheck >=2.14
                   , temporary >=1.3
                   , text
+                  , time
                   , unix
                   , zlib
   ghc-options:      -threaded -rtsopts

@@ -9,7 +9,7 @@ so the Haskell suite drives the verbatim sidecar with the verbatim fake.
 
 Run from the repository root:
 
-    upstream/petrus/.venv/bin/python packages/petrus-execution/test/fixtures/gen_fake_gondolin.py
+    upstream/petrus/.venv/bin/python packages/petrus-execution/test/fixtures/generate_fake_gondolin.py
 """
 
 from __future__ import annotations
