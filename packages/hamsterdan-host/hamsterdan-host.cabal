@@ -38,6 +38,7 @@ library
                     Hamsterdan.Host.Python
                     Hamsterdan.Host.Runnable
                     Hamsterdan.Host.V5.Timers
+                    Hamsterdan.Host.GitPublish
                     Hamsterdan.Host.V5.Review
                     Hamsterdan.Host.V5.Rerun
                     Hamsterdan.Host.V5.Gates
@@ -60,6 +61,8 @@ library
                   , petrus-json
                   , petrus-motus
                   , petrus-posix
+                  , process >=1.6
+                  , temporary >=1.3
                   , text >=2.0
                   , time >=1.12
                   , unix >=2.8
@@ -74,11 +77,13 @@ test-suite hamsterdan-host-test
                     RunnableSpec
                     TestSupport
                     TimersSpec
+                    GitPublishSpec
                     ReviewSpec
                     RerunSpec
                     GatesSpec
                     IngressSpec
   build-depends:    base
+                  , base64-bytestring
                   , bytestring
                   , containers
                   , direct-sqlite
@@ -94,6 +99,7 @@ test-suite hamsterdan-host-test
                   , petrus-json
                   , petrus-motus
                   , petrus-posix
+                  , process
                   , temporary >=1.3
                   , text
                   , unix
