@@ -107,6 +107,18 @@ tokenCount m = sum [length ts | (_, ts) <- markingToList m]
 definitionSize :: NetDefinitionV3 -> Int
 definitionSize d = length d.definition.places + length d.definition.transitions + length d.definition.arcs
 
+-- | Visit every node of a parsed value (numbers and strings included), so
+-- the parse-only row pays for every value it produces.
+jsonWeight :: Json -> Int
+jsonWeight = \case
+  Null -> 1
+  Bool b -> if b then 1 else 2
+  Int i -> if i == 0 then 1 else 2
+  Float d -> if d == 0 then 1 else 2
+  String s -> if T.null s then 1 else 2
+  Array xs -> foldr (\x acc -> jsonWeight x + acc) 1 xs
+  Object ms -> foldr (\(k, v) acc -> (if T.null k then 1 else 2) + jsonWeight v + acc) 1 ms
+
 main :: IO ()
 main = do
   history <- drainedHistory historyFifoTokens
@@ -133,8 +145,9 @@ main = do
         "history"
         [ bench "encode" (nf (\h -> either (error "encode") BS.length (dumps defaultDumps (Array (encodeHistory h)))) history)
         , bench "dumps-only" (nf (either (error "encode") BS.length . dumps defaultDumps) recordValues)
-        , bench "parse-only" (nf (either error (const ()) . parseJson pythonLoads) encoded)
+        , bench "parse-only" (nf (either error jsonWeight . parseJson pythonLoads) encoded)
         , bench "decode" (nf decodeAll encoded)
+        , bench "records-only" (nf (either (error . T.unpack) length . traverse decodeRecord) (encodeHistory history))
         , bench "replay-marking" (nf (either (error . T.unpack) tokenCount . replayMarking) history)
         ]
     , bgroup

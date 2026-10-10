@@ -26,24 +26,36 @@ was pinned at `upstream/petrus` 3f85fc2.
 
 | workload | size | Python | Haskell | speed-up |
 | --- | --- | ---: | ---: | ---: |
-| candidates / wide fan-in (6 places × 3 tokens) | 729 bindings | 0.683 ms | 21.6 µs | 32× |
-| candidates / long FIFO (10 000 tokens) | 10 000 bindings | 14.7 ms | 1.51 ms | 9.7× |
-| candidates / weight-3 arc (30 tokens) | 4 060 bindings | 5.14 ms | 0.283 ms | 18× |
-| Instance run / wide fan-out (200 tokens → 50 places) | 200 firings, 10 000 tokens | 2 153 ms | 23.0 ms | 94× |
-| Instance run / long FIFO (1 000 tokens) | 1 000 firings | 1 184 ms | 67.9 ms | 17× |
-| History encode (records → JSON text) | 20 002 records, 2.8 MB | 47.1 ms | 28.3 ms | 1.7× |
-| History decode (JSON text → records) | 20 002 records | 110.5 ms | 138 ms | 0.80× |
-| History replay → marking | 20 002 records | 3 921 ms | 216 ms | 18× |
-| Net definition v3 serialize (200-place chain) | 110 kB | 9.96 ms | 2.14 ms | 4.7× |
-| Net definition v3 parse (200-place chain) | 200 places | 11.2 ms | 4.48 ms | 2.5× |
+| candidates / wide fan-in (6 places × 3 tokens) | 729 bindings | 0.698 ms | 23.4 µs | 30× |
+| candidates / long FIFO (10 000 tokens) | 10 000 bindings | 15.9 ms | 1.51 ms | 10.5× |
+| candidates / weight-3 arc (30 tokens) | 4 060 bindings | 5.19 ms | 0.279 ms | 19× |
+| Instance run / wide fan-out (200 tokens → 50 places) | 200 firings, 10 000 tokens | 2 433 ms | 25.0 ms | 97× |
+| Instance run / long FIFO (1 000 tokens) | 1 000 firings | 1 282 ms | 71.4 ms | 18× |
+| History encode (records → JSON text) | 20 002 records, 2.8 MB | 47.2 ms | 29.3 ms | 1.6× |
+| History decode (JSON text → records) | 20 002 records | 119.3 ms | 47.9 ms | 2.5× |
+| History replay → marking | 20 002 records | 4 079 ms | 237 ms | 17× |
+| Net definition v3 serialize (200-place chain) | 110 kB | 10.5 ms | 2.49 ms | 4.2× |
+| Net definition v3 parse (200-place chain) | 200 places | 11.8 ms | 5.30 ms | 2.2× |
 
-There are also two Haskell-only diagnostic rows:
+These numbers are from a rerun on 2026-10-10, after the History decode work
+described in the notes. The machine was busy during the rerun (load average
+5–8 on 10 cores), so both sides came out a few percent slower than in the
+first run. Only the decode row changed because of code: it was **138 ms**
+(Python 110.5 ms, 0.80×) before. Across three Haskell runs it measured
+42.9–47.9 ms; the table shows the slowest.
 
-- `history / dumps-only` (28.5 ms) is the JSON writer alone, over
+There are also three Haskell-only diagnostic rows:
+
+- `history / dumps-only` (28.4 ms) is the JSON writer alone, over
   already-encoded record values.
-- `history / parse-only` (38.6 ms) is the JSON reader alone.
+- `history / parse-only` (28.2 ms) is the JSON reader alone. It now forces
+  every node of the parsed document. The old row (38.6 ms) forced only the
+  outer structure, so number tokens were never converted and its time was
+  understated.
+- `history / records-only` (14.0 ms) is the record decoder alone, over
+  already-parsed values.
 
-They split the encode and decode rows into their parts.
+The decode row is roughly parse-only plus records-only.
 
 ## Notes
 
@@ -55,17 +67,42 @@ They split the encode and decode rows into their parts.
   door.
 - **History replay.** The reference replays the whole History through its
   validating queue fold. The Haskell fold applies the same validations over
-  `OMap` queues and is about 18× faster.
-- **History decode is about 1.25× slower than Python.** About 39 ms of the
-  138 ms is the pure-Haskell JSON reader; CPython's `json.loads` is C. The
-  rest is the strict decoder, which matches the reference step for step:
-  - it converts each field by name, then runs the constructor's argument
-    checks and record invariants;
-  - it re-encodes the record and compares it with the payload, to refuse any
-    non-canonical spelling.
+  `OMap` queues and is about 17–18× faster.
+- **History decode was 138 ms (0.80× Python) before the 2026-10-10 change.**
+  It is now about 48 ms (2.5×). The same records are accepted and refused,
+  with the same error texts. In `petrus-json`'s reader:
+  - Each step returns an unboxed `Done value offset | Failed message`
+    instead of `Either String (value, offset)`.
+  - Integer tokens of up to 18 digits are summed directly from the bytes.
+  - Short decimals (at most 15 significant digits, |scale| ≤ 22) take
+    Clinger's fast path: one exact multiplication or division, which rounds
+    to the same double as the exact conversion. Every other float takes the
+    old exact path.
+  - Escape-free all-ASCII strings are sliced without UTF-8 validation.
+  - Objects under 16 members check duplicates with a list scan instead of
+    building a `Set`.
 
-  This is the one workload where the port is slower. It is a candidate for a
-  fused reader.
+  In the schema-5 codec:
+  - Each record layout's field converters and builder are looked up once
+    per record, not by name per field.
+  - A payload whose members are in the canonical order skips the
+    unexpected/missing-argument scan. That scan cannot fail on such a
+    payload.
+  - The canonical-spelling check still requires the re-encoded record to
+    equal the payload under the reference's value equality. It now compares
+    member by member when the keys line up. Both sides have unique keys
+    there, so this is the same as the mapping comparison. Any misaligned
+    key falls back to the full comparison.
+
+  The old reader and the old codec are kept as test oracles:
+  - `petrus-json/test/Petrus/Json/ReferenceParse.hs` checks the reader on
+    encoder output, on mutated documents, on number spellings, and on byte
+    soup, under four option sets.
+  - `petrus-impetus/test/Petrus/Impetus/ReferenceCodec.hs` checks the
+    codec on 20 000 mutated payloads per run.
+
+  Property tests require identical values or identical refusal texts from
+  both versions.
 - **History encode was 134 ms before this package's change to
   `petrus-json`.** The writer now copies runs of characters that need no
   escaping as whole UTF-8 slices, and decides the non-finite refusal before
