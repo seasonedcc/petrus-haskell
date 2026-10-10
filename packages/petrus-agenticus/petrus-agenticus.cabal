@@ -36,11 +36,13 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Attachment.Binding
+                    Petrus.Agenticus.Hands.Workspace
                     Petrus.Agenticus.Internal.PyText
                     Petrus.Agenticus.Program.AgentNet
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
+                  , crypton >=1.0
                   , petrus-activity
                   , petrus-agenticus-core
                   , petrus-cel
@@ -62,9 +64,11 @@ test-suite petrus-agenticus-test
                     Petrus.Agenticus.BindingSpec
                     Petrus.Agenticus.BoundariesSpec
                     Petrus.Agenticus.PyTextSpec
+                    Petrus.Agenticus.WorkspaceSpec
   build-depends:    base
                   , bytestring
                   , containers
+                  , crypton
                   , directory
                   , filepath
                   , hspec >=2.10

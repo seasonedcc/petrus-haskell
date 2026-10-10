@@ -122,6 +122,7 @@ import Data.Text qualified as T
 import Petrus.Activity (invocation)
 import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorIdentity, DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Error
+import Petrus.Agenticus.Hands.Contract (allRejectionCategories, rejectionCategoryText)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor, ProgramOwnership (..), agentProgramDescriptor, continuationRequirement)
 import Petrus.Agenticus.Thread.Continuation (ContinuationDescriptor, continuationDescriptor)
 import Petrus.Agenticus.Internal.Validate (hasDuplicates, isTrimmed, sortedUnique, utf8Length)
@@ -263,22 +264,7 @@ enumFrom' cls render value = case [c | c <- [minBound .. maxBound], String (rend
 -- | The model-visible error vocabulary: exactly the Hands contract's
 -- rejection categories (@RejectionCategory@ values).
 errorCategories :: Set.Set Text
-errorCategories =
-  Set.fromList
-    [ "capability"
-    , "path"
-    , "argv"
-    , "write"
-    , "unknown"
-    , "deadline"
-    , "aborted"
-    , "stale_epoch"
-    , "post_fence"
-    , "provider"
-    , "schema"
-    , "authority"
-    , "budget"
-    ]
+errorCategories = Set.fromList (map rejectionCategoryText allRejectionCategories)
 
 -- ---------------------------------------------------------------------------
 -- Shared rules
