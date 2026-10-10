@@ -23,9 +23,11 @@ netIsSource at =
 spec :: Spec
 spec = describe "Petrinet.Schema" $ do
   describe "NetPath" $ do
+    -- TestNetPath.test_dotted_string_splits_into_segments
     it "splits a dotted path into segments" $ do
       netPathSegments (np "review.start") `shouldBe` ["review", "start"]
       netPathText (np "review.start") `shouldBe` "review.start"
+    -- TestNetPath.test_empty_address_is_rejected
     it "rejects an empty path" $
       netPath "" `shouldFailWith` "NetPath requires a non-empty dotted string or a NetPath, got ''"
     it "rejects empty segments" $

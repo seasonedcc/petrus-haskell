@@ -106,9 +106,9 @@ kill-and-reload move and the real JSON round trip.
 | TestCelFilterSelection.test_invalid_cel_fails_at_construction_and_never_evaluates | Petrinet.Firing through the Instance / CEL filter selection / invalid CEL fails at construction and never evaluates | ported via CEL stub | The stub returns the CEL package's compile error text. |
 | TestCelFilterSelection.test_exact_override_of_inline_cel_filter_is_refused | Petrinet.Firing through the Instance / CEL filter selection / an exact override of an inline CEL filter is refused | ported via CEL stub | The refusal is the kernel's and comes before compilation. |
 | **petrinet/test_golden_replay.py** | | | |
-| test_manifest_hashes_every_normative_fixture | — | not at parity | Checks the `spec/traces` golden corpus manifest. The corpus and its harness are not in this package. |
-| test_migration_contracts_are_visible_in_raw_fixtures | — | not at parity | It reads the raw golden fixtures, which are not in this package. |
-| test_normative_fixture_replays | — | not at parity | The harness compiles `NetDefinitionV3` via `compile_net_definition`. The net-definition compiler and the golden corpus are not in this package. |
+| test_manifest_hashes_every_normative_fixture | Impetus golden traces / the manifest hashes every normative fixture | ported | Ported after this slice, with the golden-trace generator (`GoldenTracesSpec`). |
+| test_migration_contracts_are_visible_in_raw_fixtures | Impetus golden traces / migration contracts are visible in raw fixtures | ported | `GoldenTracesSpec`. |
+| test_normative_fixture_replays | Impetus golden traces / normative fixtures replay / (one per fixture) | ported | `GoldenTracesSpec` ports `tests/harness.py::replay` over the Net-definition compiler. |
 
 ## Extra properties (not upstream; no Hypothesis in these files)
 
@@ -118,5 +118,6 @@ kill-and-reload move and the real JSON round trip.
 
 ## Counts
 
-81 rows: 61 ported, 3 ported via CEL stub, 3 enforced by types, 14 not at parity.
+81 rows: 64 ported, 3 ported via CEL stub, 3 enforced by types, 11 not at parity
+(the three golden-replay rows were ported after the slice, in `GoldenTracesSpec`).
 No kernel (`src/`) changes were needed.
