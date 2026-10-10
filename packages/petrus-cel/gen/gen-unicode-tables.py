@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""
+Generate ``src/Petrus/Cel/Unicode/Tables.hs`` for ``petrus-cel``.
+
+Two Unicode versions are involved, because the reference behaviour mixes two
+runtimes:
+
+* CPython 3.14 (Unicode 16.0.0) decides ``str.isprintable`` (``repr`` of
+  strings), ``str.isspace`` and decimal digits (``int()``/``float()`` parsing
+  and the ``\\d`` of the lark lexer's regexes). These tables come from the
+  running interpreter's ``unicodedata``, so run this script with the pinned
+  upstream interpreter.
+* RE2 as bundled by google-re2 1.1.20251105 (Unicode 15.1.0) decides regex
+  ``\\p{..}`` classes and ``(?i)`` case folding. These tables come from the UCD
+  15.1.0 files, passed on the command line, folded exactly like RE2's own
+  ``make_unicode_groups.py``/``make_unicode_casefold.py`` do.
+
+Usage, from the repository root::
+
+    mkdir /tmp/ucd && cd /tmp/ucd && for f in UnicodeData.txt Scripts.txt CaseFolding.txt; do \\
+        curl -sSfLO https://www.unicode.org/Public/15.1.0/ucd/$f; done
+    upstream/petrus/.venv/bin/python packages/petrus-cel/gen/gen-unicode-tables.py /tmp/ucd
+
+Every table is written as a compact string literal (hexadecimal ranges) that
+the Haskell side decodes once at first use, which keeps GHC compile times low.
+"""
+
+from __future__ import annotations
+
+import sys
+import unicodedata
+from pathlib import Path
+
+OUT = Path(__file__).resolve().parent.parent / "src" / "Petrus" / "Cel" / "Unicode" / "Tables.hs"
+MAX = 0x10FFFF
+
+
+def ranges(codes):
+    """Sorted code points as inclusive ``(lo, hi)`` runs."""
+    out = []
+    for c in sorted(codes):
+        if out and out[-1][1] + 1 == c:
+            out[-1][1] = c
+        else:
+            out.append([c, c])
+    return out
+
+
+def encode(runs) -> str:
+    return " ".join(f"{lo:x}" if lo == hi else f"{lo:x}-{hi:x}" for lo, hi in runs)
+
+
+def python_tables():
+    assert unicodedata.unidata_version == "16.0.0", unicodedata.unidata_version
+    printable = [c for c in range(MAX + 1) if chr(c).isprintable()]
+    space = [c for c in range(MAX + 1) if chr(c).isspace()]
+    decimal_runs = []  # (lo, length, first value)
+    for c in range(MAX + 1):
+        value = unicodedata.decimal(chr(c), None)
+        if value is None:
+            continue
+        if decimal_runs:
+            lo, length, first = decimal_runs[-1]
+            if lo + length == c and first + length == value:
+                decimal_runs[-1] = (lo, length + 1, first)
+                continue
+        decimal_runs.append((c, 1, value))
+    decimals = " ".join(f"{lo:x}:{length:x}:{first:x}" for lo, length, first in decimal_runs)
+    return encode(ranges(printable)), encode(ranges(space)), decimals
+
+
+def ucd_rows(path: Path, fields: int):
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split(";")]
+        yield parts[:fields]
+
+
+def re2_tables(ucd: Path):
+    categories: dict[str, list[int]] = {}
+    first = None
+    for code, name, category, *_ in ucd_rows(ucd / "UnicodeData.txt", 3):
+        value = int(code, 16)
+        if name.endswith(", First>"):
+            first = value
+            continue
+        if name.endswith(", Last>"):
+            span = range(first, value + 1)
+        else:
+            span = range(value, value + 1)
+        categories.setdefault(category, []).extend(span)
+    scripts: dict[str, list[int]] = {}
+    for codes, script in ucd_rows(ucd / "Scripts.txt", 2):
+        if ".." in codes:
+            lo, hi = (int(x, 16) for x in codes.split(".."))
+        else:
+            lo = hi = int(codes, 16)
+        scripts.setdefault(script, []).extend(range(lo, hi + 1))
+    togroup: dict[int, list[int]] = {}
+    for code, status, mapping in ucd_rows(ucd / "CaseFolding.txt", 3):
+        if status not in ("C", "S"):
+            continue
+        lower = int(mapping, 16)
+        togroup.setdefault(lower, [lower]).append(int(code, 16))
+    orbits = sorted(sorted(set(group)) for group in togroup.values())
+    cat_text = ";".join(f"{name}={encode(ranges(codes))}" for name, codes in sorted(categories.items()))
+    script_text = ";".join(f"{name}={encode(ranges(codes))}" for name, codes in sorted(scripts.items()))
+    orbit_text = ";".join(" ".join(f"{c:x}" for c in orbit) for orbit in orbits)
+    return cat_text, script_text, orbit_text
+
+
+def literal(name: str, doc: str, text: str) -> str:
+    chunks = [text[i : i + 96] for i in range(0, len(text), 96)] or [""]
+    body = "\\\n    \\".join(chunks)
+    return f"-- | {doc}\n{name} :: String\n{name} =\n  \"{body}\"\n{{-# NOINLINE {name} #-}}\n"
+
+
+def main() -> None:
+    if len(sys.argv) != 2:
+        raise SystemExit(__doc__)
+    printable, space, decimals = python_tables()
+    categories, scripts, orbits = re2_tables(Path(sys.argv[1]))
+    parts = [
+        "-- | GENERATED by gen/gen-unicode-tables.py -- do not edit.\n"
+        "--\n"
+        "-- Compact Unicode tables: CPython 3.14 (Unicode 16.0.0) string predicates and\n"
+        "-- RE2 (Unicode 15.1.0) regex classes. Ranges are hexadecimal @lo-hi@ runs.\n"
+        "module Petrus.Cel.Unicode.Tables\n"
+        "  ( pythonPrintable\n  , pythonSpace\n  , pythonDecimal\n"
+        "  , re2Categories\n  , re2Scripts\n  , re2CaseOrbits\n  ) where\n",
+        literal("pythonPrintable", "Code points for which CPython's @str.isprintable@ holds.", printable),
+        literal("pythonSpace", "Code points for which CPython's @str.isspace@ holds.", space),
+        literal("pythonDecimal", "Decimal digits as @lo:length:firstValue@ runs (CPython @unicodedata.decimal@).", decimals),
+        literal("re2Categories", "RE2 general categories as @Name=ranges@ entries (UCD 15.1.0).", categories),
+        literal("re2Scripts", "RE2 scripts as @Name=ranges@ entries (UCD 15.1.0).", scripts),
+        literal("re2CaseOrbits", "RE2 simple case-folding orbits (CaseFolding.txt C+S, UCD 15.1.0).", orbits),
+    ]
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text("\n".join(parts))
+    print(f"wrote {OUT}")
+
+
+if __name__ == "__main__":
+    main()

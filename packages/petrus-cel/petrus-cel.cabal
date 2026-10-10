@@ -1,0 +1,78 @@
+cabal-version:      3.4
+name:               petrus-cel
+version:            0.1.0.0
+synopsis:           CEL evaluation bit-for-bit compatible with cel-python 0.5.0
+description:
+  A pure parser and evaluator for the Common Expression Language that
+  reproduces cel-python (@celpy@ 0.5.0) exactly for every way Petrus uses CEL:
+  token filters, transition guards, and completion conditions. Results, error
+  texts, and error categories match the reference implementation, including
+  its deviations from the CEL specification (Python numeric dispatch, error
+  absorption rules, RE2 regex dialect, lark parse-error positions), which are
+  documented where they are reproduced. A differential corpus generated from
+  the pinned cel-python checks every behaviour.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Language
+build-type:         Simple
+extra-doc-files:    NOTICE
+extra-source-files: test/corpus/*.json
+                    test/*.py
+                    gen/*.py
+                    bench/*.py
+                    bench/RESULTS.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Cel.Literal
+                    Petrus.Cel.Parse
+                    Petrus.Cel.Python
+                    Petrus.Cel.Syntax
+  other-modules:    Petrus.Cel.Unicode
+                    Petrus.Cel.Unicode.Tables
+  build-depends:    base >=4.18 && <5
+                  , array >=0.5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , petrus-json
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-cel-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Corpus
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , hspec >=2.10
+                  , QuickCheck >=2.14
+                  , petrus-cel
+                  , petrus-json
+                  , text
+
+benchmark petrus-cel-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , petrus-cel
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"
