@@ -32,7 +32,9 @@ import Hamsterdan.GitHub.Models
   , PublicationRejected (..)
   , RerunRefused (..)
   )
+import Hamsterdan.Agents.Protocol (AgentProtocolError (..))
 import Hamsterdan.GitHub.Python (PythonFault (..))
+import Hamsterdan.Host.GitPublish (GitPublishError (..))
 import Hamsterdan.Host.Python (RuntimeError (..), ValueError (..))
 
 -- | @UnstagedCustodyError(blocker)@: one exact same-PR custody row has not
@@ -71,6 +73,8 @@ caught err
   | Just (RuntimeError m) <- fromException err = Just (CaughtFault (orRepr "RuntimeError" m))
   | Just (ValueError m) <- fromException err = Just (CaughtFault (orRepr "ValueError" m))
   | Just (ContractRefused m) <- fromException err = Just (CaughtFault (orRepr "RuntimeError" m))
+  | Just (e :: GitPublishError) <- fromException err = Just (CaughtFault (orRepr "GitPublishError" e.reason))
+  | Just (e :: AgentProtocolError) <- fromException err = Just (CaughtFault (orRepr "AgentProtocolError" e.reason))
   | Just (InvalidRequest m) <- fromException err = Just (CaughtFault (orRepr "ValueError" m))
   | Just PublicationCollision <- fromException err =
       Just (CaughtFault "stable publication operation collided with a different payload")

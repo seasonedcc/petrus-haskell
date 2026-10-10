@@ -38,6 +38,7 @@ library
                     Hamsterdan.Host.Python
                     Hamsterdan.Host.Runnable
                     Hamsterdan.Host.V5.Timers
+                    Hamsterdan.Host.V5.Mutation
                     Hamsterdan.Host.GitPublish
                     Hamsterdan.Host.V5.Review
                     Hamsterdan.Host.V5.Rerun
@@ -77,6 +78,7 @@ test-suite hamsterdan-host-test
                     RunnableSpec
                     TestSupport
                     TimersSpec
+                    MutationSpec
                     GitPublishSpec
                     ReviewSpec
                     RerunSpec
