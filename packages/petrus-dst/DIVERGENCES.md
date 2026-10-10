@@ -158,11 +158,56 @@ The raw-bytes corpus pins exactly which inputs this affects. No committed fixtur
 None of these change behavior.
 
 - `Petrus.Testing.Dst.Transcript` replays an artifact against a recorded system under test. It
-  is the stand-in for the Engine until the Haskell Engine exists (see the Engine seam in
-  [PARITY.md](PARITY.md)).
+  was the stand-in for the Engine before the Haskell Engine existed. It now cross-checks every
+  door call, and it is still the only check of the joined Postgres worlds (see the Engine seam
+  in [PARITY.md](PARITY.md)).
 - `Petrus.Testing.Dst.Internal.Canonical` is a specialized encoder for the canonical
   `json.dumps` spelling. It produces exactly petrus-json's bytes, which a QuickCheck property
   and every corpus check. It exists for speed (`bench/RESULTS.md`).
+
+## Engine worlds (`petrus-dst:engine-worlds`)
+
+The ported `tests/dst/*_world.py` modules are test code, not library API. Their artifacts,
+replay results and checker verdicts are byte-identical to the reference's. Their shape differs
+in four ways.
+
+- **Class hierarchies become records.** A reference subclass such as
+  `HistoryRefusalEngineProfile(EngineProfile)` overrides protected hooks (`_history`,
+  `_dispatch`, `_bridge`, `_configure_faults`, `_observation_state`) and some public doors. In
+  the port:
+  - the hooks are fields of a `Base` record;
+  - a subclass is a `Base` value plus record updates on the `Profile` that `baseProfile`
+    builds.
+
+  The retry family (`RetryEngineProfile` and its two subclasses) is one constructor with a
+  `RetryKind`.
+- **Handlers are pure, so bridge counters use `unsafePerformIO`.** The Engine calls an
+  `ActivityHandler`'s `prepare` and `project` as pure functions. The reference's bridges count
+  their calls, and some read an armed fault. The port runs those effects with `unsafePerformIO`
+  when the Engine forces the handler's result, which happens exactly once per call. The modules
+  build with `-fno-full-laziness -fno-cse` so that GHC cannot share or float those effects.
+  The authored journals, which record `prepared` and `projected` at every observation, prove the
+  counts equal the reference's.
+- **The stateful generated-runtime checker owns a cell.** `GeneratedRuntimeAuthorityChecker`
+  keeps `_frozen_execution_counts` across the checks of one instance. `Checker.check` is pure,
+  so `newGeneratedRuntimeChecker :: IO Checker` allocates the cell, and `check` reads and
+  updates it through `unsafePerformIO`. A fresh registry or World gets a fresh checker, just as
+  the reference constructs a fresh instance.
+- **Exceptions map to Python class names.** A door's exception becomes the reference's
+  `(type(error).__name__, str(error))`, which the profiles compare for expected faults:
+  - profile adapters raise `PyException "OSError" message`;
+  - Engine refusals map from `EngineError`;
+  - LocalDispatch refusals map from `DispatchError`, as `ValueError`.
+
+The authoring tests compare the Haskell stories with the reference builders' current output, in
+`test/data/engine-authored.json`, rather than with the committed fixtures. Three retained
+fixtures are older versions than what the builders now author:
+
+- `projection-crash-recovery-world-v1.json`;
+- the two v2 failure fixtures.
+
+Those fixtures are replay-only in both runtimes, and replay through the real profiles in
+`Spec.EngineWorlds`.
 
 ## A reference quirk, reproduced
 

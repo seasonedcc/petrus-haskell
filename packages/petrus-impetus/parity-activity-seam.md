@@ -16,8 +16,8 @@ Translation conventions (also in each module header):
   live in other packages. Tests that drive the Instance seam through them are ported with
   `advanceUntilRest`, a test-local inline driver over the Instance doors (`begin`, run the activity in
   Haskell, `recordActivityCompletion` / `failFiring`, `complete`). Tests whose subject is Dispatch
-  itself are not at parity.
-- **JSONL emulated by a codec round trip.** `JsonlHistoryStore` is out of scope. Kill-window and
+  itself are ported in `petrus-motus` (`packages/petrus-motus/PARITY.md`).
+- **JSONL emulated by a codec round trip.** `JsonlHistoryStore` lives in `petrus-history-store`. Kill-window and
   resume cases run over `reloaded`: every record encoded to wire bytes, parsed, decoded
   (`Petrus.Impetus.History.Codec`), and loaded into a fresh `mirroredHistoryStore`. That is the same
   durable round trip a restart over a JSONL file performs.
@@ -90,14 +90,14 @@ Translation conventions (also in each module header):
 | TestFail::test_a_pure_firing_rejects_activity_failure_freeze | fail: exhausted execution / a pure firing rejects activity failure freeze | ported | Exact message. |
 | TestFail::test_fail_refuses_a_completed_activity | fail: exhausted execution / fail refuses a completed activity | ported | Exact message. |
 | TestStepRefusesActivityTransitions::test_step_fails_loud_naming_the_adapter_it_lacks | the inline drivers refuse what they cannot run / step fails loud naming the adapter it lacks | ported | Exact message. |
-| TestInlineDispatch::test_registry_is_snapshotted_and_the_adapter_remains_frozen | — | not at parity | Engine/Dispatch live in other packages. |
-| TestInlineDispatch::test_classified_retries_are_immediate_and_never_sleep | — | not at parity | Engine/Dispatch live in other packages. |
-| TestInlineDispatch::test_generic_exception_keeps_precise_retryable_metadata_when_budget_exhausts | — | not at parity | Engine/Dispatch live in other packages. |
-| TestInlineDispatch::test_value_shape_preserves_the_prior_dataclass_contract | — | not at parity | Engine/Dispatch live in other packages. |
-| TestInlineDispatch::test_executes_the_named_activity_with_the_whole_invocation | — | not at parity | Engine/Dispatch live in other packages. |
-| TestInlineDispatch::test_an_unknown_activity_fails_loud | — | not at parity | Engine/Dispatch live in other packages. |
-| TestInlineDispatch::test_the_conservative_policy_makes_an_exception_terminal | — | not at parity | Engine/Dispatch live in other packages. |
-| TestInlineDispatch::test_a_declared_attempts_policy_is_honored | — | not at parity | Engine/Dispatch live in other packages. |
+| TestInlineDispatch::test_registry_is_snapshotted_and_the_adapter_remains_frozen | — | ported in petrus-motus | `packages/petrus-motus/test/Main.hs`, `TestInlineDispatch (activity seam)` / "registry is snapshotted and the adapter remains frozen". |
+| TestInlineDispatch::test_classified_retries_are_immediate_and_never_sleep | — | ported in petrus-motus | `packages/petrus-motus/test/Main.hs`, `TestInlineDispatch (activity seam)` / "classified retries are immediate and never sleep". |
+| TestInlineDispatch::test_generic_exception_keeps_precise_retryable_metadata_when_budget_exhausts | — | ported in petrus-motus | `packages/petrus-motus/test/Main.hs`, `TestInlineDispatch (activity seam)` / "generic exception keeps precise retryable metadata when budget exhausts". |
+| TestInlineDispatch::test_value_shape_preserves_the_prior_dataclass_contract | — | not applicable (petrus-motus) | Dataclass reflection of the adapter; a Haskell `Dispatch` is a record of functions with no fields, `Show`, or `Eq`. See `packages/petrus-motus/PARITY.md`. |
+| TestInlineDispatch::test_executes_the_named_activity_with_the_whole_invocation | — | ported in petrus-motus | `packages/petrus-motus/test/Main.hs`, `TestInlineDispatch (activity seam)` / "executes the named activity with the whole invocation". |
+| TestInlineDispatch::test_an_unknown_activity_fails_loud | — | ported in petrus-motus | `packages/petrus-motus/test/Main.hs`, `TestInlineDispatch (activity seam)` / "an unknown activity fails loud". |
+| TestInlineDispatch::test_the_conservative_policy_makes_an_exception_terminal | — | ported in petrus-motus | `packages/petrus-motus/test/Main.hs`, `TestInlineDispatch (activity seam)` / "the conservative policy makes an exception terminal". |
+| TestInlineDispatch::test_a_declared_attempts_policy_is_honored | — | ported in petrus-motus | `packages/petrus-motus/test/Main.hs`, `TestInlineDispatch (activity seam)` / "a declared attempts policy is honored". |
 | TestEngineDrivesActivities::test_an_activity_firing_records_the_canonical_lifecycle | an inline driver drives the whole seam (Engine emulated) / an activity firing records the canonical lifecycle | ported | (Instance doors; Engine/Dispatch emulated inline) |
 | TestEngineDrivesActivities::test_a_typed_decline_is_a_business_result_never_a_firing_failure | an inline driver drives the whole seam (Engine emulated) / a typed decline is a business result, never a firing failure | ported | (Instance doors; Engine/Dispatch emulated inline) |
 | TestEngineDrivesActivities::test_an_exhausted_adapter_is_activity_failed_plus_firing_failed_and_no_business_token | an inline driver drives the whole seam (Engine emulated) / an exhausted adapter is ActivityFailed plus FiringFailed and no business token | ported | (Instance doors; Engine/Dispatch emulated inline). The Engine's `RuntimeError("... failed terminally")` belongs to the Engine. The test-local driver reproduces it as `RuntimeRefused`; the seam assertions (records, `replay_in_flight == ()`) are the kernel's. |
@@ -150,7 +150,9 @@ Translation conventions (also in each module header):
 | ported | 86 (9 with Engine/Dispatch emulated inline) | 8 | 94 |
 | ported via CEL stub | 0 | 0 | 0 |
 | enforced by types | 6 | 3 | 9 |
-| not at parity | 8 | 0 | 8 |
+| ported in petrus-motus | 7 | 0 | 7 |
+| not applicable (petrus-motus) | 1 | 0 | 1 |
+| not at parity | 0 | 0 | 0 |
 | **total** | 100 | 11 | 111 |
 
 Kernel changes: none. Every ported case passes against the kernel as it stands, with exact message

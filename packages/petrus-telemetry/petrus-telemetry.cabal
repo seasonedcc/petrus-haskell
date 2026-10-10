@@ -14,6 +14,8 @@ author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           System
 build-type:         Simple
+extra-doc-files:    PARITY.md
+                    DIVERGENCES.md
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -47,3 +49,4 @@ test-suite petrus-telemetry-test
                   , petrus-json
                   , petrus-telemetry
                   , text
+  ghc-options:      -rtsopts

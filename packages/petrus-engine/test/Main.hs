@@ -7,6 +7,7 @@ import Petrus.Engine.DeliveryPhasesCSpec qualified as DeliveryPhasesC
 import Petrus.Engine.EngineSpec qualified as Engine
 import Petrus.Engine.ExecutionSpec qualified as Execution
 import Petrus.Engine.InteropSpec qualified as Interop
+import Petrus.Engine.LocalDispatchSpec qualified as LocalDispatch
 import Test.Hspec
 
 main :: IO ()
@@ -18,4 +19,5 @@ main = hspec $ do
     DeliveryPhasesA.spec
     DeliveryPhasesB.spec
     DeliveryPhasesC.spec
+  describe "test_local_dispatch.py (Engine)" LocalDispatch.spec
   Interop.spec

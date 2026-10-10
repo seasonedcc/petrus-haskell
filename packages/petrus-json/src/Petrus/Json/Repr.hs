@@ -10,41 +10,16 @@ module Petrus.Json.Repr
 
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Char (GeneralCategory (..), chr, generalCategory, ord)
+import Data.Char (chr)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Numeric (showHex)
 import Petrus.Json.Encode (pythonFloatRepr)
+import Petrus.Json.PythonText (pythonStrRepr)
 
--- | @repr(str)@: single quotes unless the text contains a single quote and
--- no double quote; backslash, the quote, @\\t@, @\\n@, @\\r@ escaped; other
--- control characters and non-printable code points as @\\xhh@, @\\uhhhh@ or
--- @\\Uhhhhhhhh@; printable non-ASCII characters kept.
+-- | @repr(str)@, exact for every code point ('pythonStrRepr').
 pythonReprText :: Text -> String
-pythonReprText text = quote : T.foldr escape [quote] text
-  where
-    quote = if T.any (== '\'') text && not (T.any (== '"') text) then '"' else '\''
-    escape c rest
-      | c == quote || c == '\\' = '\\' : c : rest
-      | c == '\t' = '\\' : 't' : rest
-      | c == '\n' = '\\' : 'n' : rest
-      | c == '\r' = '\\' : 'r' : rest
-      | c < ' ' || c == '\DEL' = hex 'x' 2 (ord c) ++ rest
-      | c < '\DEL' = c : rest
-      | printable c = c : rest
-      | ord c <= 0xff = hex 'x' 2 (ord c) ++ rest
-      | ord c <= 0xffff = hex 'u' 4 (ord c) ++ rest
-      | otherwise = hex 'U' 8 (ord c) ++ rest
-    printable c = case generalCategory c of
-      Control -> False
-      Format -> False
-      Surrogate -> False
-      PrivateUse -> False
-      NotAssigned -> False
-      LineSeparator -> False
-      ParagraphSeparator -> False
-      Space -> False
-      _ -> True
+pythonReprText = T.unpack . pythonStrRepr
 
 hex :: Char -> Int -> Int -> String
 hex marker width n = '\\' : marker : replicate (width - length digits) '0' ++ digits

@@ -67,6 +67,13 @@ runBounded scenario = do
   let go :: Int -> [FiringOutcome] -> IO [FiringOutcome]
       go 0 acc = pure (reverse acc)
       go n acc = do
+        -- A cycling net can pile tokens up, and the candidate bindings of a
+        -- transition grow combinatorially with them (three weight-2 inputs
+        -- on 30 tokens each are 10^8 bindings): stop while every place is
+        -- still small, so each property stays within modest memory.
+        held <- markingToList <$> marking inst
+        if any ((> maxTokensPerPlace) . length . snd) held then pure (reverse acc) else continue n acc
+      continue n acc = do
         firstCandidate <- take 1 <$> candidates inst
         step inst Nothing >>= \case
           Left e -> fail (T.unpack (renderInstanceError e))
@@ -79,6 +86,10 @@ runBounded scenario = do
             go (n - 1) (outcome : acc)
   outcomes <- go 40 []
   pure (inst, outcomes)
+
+-- | The most tokens a place may hold before 'runBounded' stops stepping.
+maxTokensPerPlace :: Int
+maxTokensPerPlace = 8
 
 spec :: Spec
 spec = describe "kernel properties" $ do

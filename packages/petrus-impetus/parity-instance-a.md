@@ -10,8 +10,8 @@ RuntimeSpec, AwaitingTerminationSpec, CompletionSpec, EnvironmentSignalSpec, Ins
 GuardBranchSpec, CelGuardsSpec}.hs`, with helpers in `InstanceSupport.hs` and the test-local CEL
 compiler in `CelStub.hs`.
 
-Totals: 135 upstream tests — 104 ported, 20 ported via CEL stub, 4 enforced by types, 7 not at
-parity. 126 Hspec examples (the 124 ported cases plus 2 door-level equivalents of not-at-parity
+Totals: 135 upstream tests — 104 ported, 20 ported via CEL stub, 4 enforced by types, 5 ported
+in `petrus-cel`, 2 not at parity. 126 Hspec examples (the 124 ported cases plus 2 door-level equivalents of not-at-parity
 cases).
 
 Kernel fix made for parity: `src/Petrus/Impetus/Internal/Uuid.hs` minted UUIDv7 ids with random
@@ -155,14 +155,14 @@ that advances within a millisecond, process-wide.
 | TestStatusResolution.test_running_while_enabled_even_when_the_condition_already_holds | Instance completion / status resolution / is running while enabled even when the condition already holds | ported via CEL stub | `size(a) == 1` |
 | TestStatusResolution.test_the_condition_never_affects_enabledness_or_firing | Instance completion / status resolution / never affects enabledness or firing | ported via CEL stub | |
 | TestStatusResolution.test_status_is_a_pure_projection_of_the_marking | Instance completion / status resolution / is a pure projection of the marking | ported via CEL stub | |
-| TestCelEnvironment.test_place_variables_bind_token_color_and_data | — | not at parity | CEL is a separate package: the `{color, data}` expression environment is the CEL adapter's (`binding/cel.py`), not the kernel's |
-| TestCelEnvironment.test_a_black_token_reads_as_null_color_and_data | — | not at parity | CEL is a separate package (environment encoding) |
-| TestCelEnvironment.test_an_empty_place_binds_to_the_empty_list | — | not at parity | CEL is a separate package (environment encoding) |
+| TestCelEnvironment.test_place_variables_bind_token_color_and_data | — | ported in petrus-cel | `packages/petrus-cel/test/Impetus.hs`, on real Instances built with `Petrus.Cel.Impetus.celCompilers` (the example carries this test name). |
+| TestCelEnvironment.test_a_black_token_reads_as_null_color_and_data | — | ported in petrus-cel | `packages/petrus-cel/test/Impetus.hs`, on real Instances built with `Petrus.Cel.Impetus.celCompilers` (the example carries this test name). |
+| TestCelEnvironment.test_an_empty_place_binds_to_the_empty_list | — | ported in petrus-cel | `packages/petrus-cel/test/Impetus.hs`, on real Instances built with `Petrus.Cel.Impetus.celCompilers` (the example carries this test name). |
 | TestNamedCompletion.test_named_symbol_binds_and_sees_the_marking | Instance completion / named completion / binds a named symbol that sees the marking | ported | |
 | TestNamedCompletion.test_missing_implementation_fails_at_construction | Instance completion / named completion / fails at construction on a missing implementation | ported | exact message |
 | TestCompletionValidation.test_invalid_cel_fails_at_construction_and_never_evaluates | Instance completion / completion validation / fails at construction on invalid CEL and never evaluates | ported via CEL stub | the stub answers the reference adapter's exact message; the kernel propagates it verbatim |
 | TestCompletionValidation.test_unknown_place_reference_fails_at_construction | Instance completion / completion validation / fails at construction on an unknown place reference | ported via CEL stub | the stub checks free names against the place list the kernel passes |
-| TestCompletionValidation.test_macro_bound_variables_are_not_place_references | — | not at parity | CEL is a separate package: free-variable/macro analysis is the CEL adapter's |
+| TestCompletionValidation.test_macro_bound_variables_are_not_place_references | — | ported in petrus-cel | `packages/petrus-cel/test/Impetus.hs`, on real Instances built with `Petrus.Cel.Impetus.celCompilers` (the example carries this test name). |
 | TestCompletionValidation.test_a_non_symbol_non_cel_completion_is_rejected_at_build | — | enforced by types | `CompletionDeclaration` has only the symbol and `Cel` encodings |
 | TestCompletionEvaluationErrors.test_a_raising_condition_reads_as_stuck_with_a_diagnostic | Instance completion / completion evaluation errors / reads a raising condition as stuck, with a diagnostic | ported | the warning is `statusWithDiagnostics`'s diagnostic; full text asserted |
 | TestCompletionEvaluationErrors.test_unencodable_token_data_reads_as_stuck_with_a_diagnostic | — | enforced by types | token data is `Json`; an unencodable `object()` payload cannot exist |
@@ -200,7 +200,7 @@ that advances within a millisecond, process-wide.
 | TestCelGuardValidation.test_an_inhibit_only_place_is_outside_the_guard_scope | Instance CEL guards / CEL guard validation / keeps an inhibit-only place outside the guard scope | ported via CEL stub | kernel scope excludes inhibit arcs |
 | TestCelGuardValidation.test_a_shared_expression_is_validated_against_each_declaring_transitions_scope | Instance CEL guards / CEL guard validation / validates a shared expression against each declaring transition's scope | ported via CEL stub | kernel compiles per declaration |
 | TestCelGuardValidation.test_a_read_place_is_inside_the_guard_scope | Instance CEL guards / CEL guard validation / keeps a read place inside the guard scope | ported via CEL stub | kernel scope includes read arcs |
-| TestCelGuardValidation.test_macro_bound_variables_are_not_place_references | — | not at parity | CEL is a separate package: free-variable/macro analysis is the CEL adapter's |
+| TestCelGuardValidation.test_macro_bound_variables_are_not_place_references | — | ported in petrus-cel | `packages/petrus-cel/test/Impetus.hs`, on real Instances built with `Petrus.Cel.Impetus.celCompilers` (the example carries this test name). |
 | TestCelGuardValidation.test_a_non_symbol_non_cel_guard_is_rejected_at_declaration | — | enforced by types | `GuardDeclaration` has only the symbol, `Cel`, and anonymous encodings |
 | TestCelGuardEvaluationErrors.test_a_raising_cel_guard_skips_the_binding_and_enablement_continues | Instance CEL guards / CEL guard evaluation errors / skips the binding of a raising CEL guard and enablement continues | ported via CEL stub | |
 | TestCelGuardEvaluationErrors.test_the_diagnostic_carries_expression_transition_error_and_tokens | Instance CEL guards / CEL guard evaluation errors / carries the expression, transition, error, and tokens in the diagnostic | ported via CEL stub | the stub raises the reference's `CELEvalError(...)` spelling; the full warning text is asserted |

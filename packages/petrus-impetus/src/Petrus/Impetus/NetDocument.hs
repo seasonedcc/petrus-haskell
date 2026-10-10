@@ -32,8 +32,14 @@ module Petrus.Impetus.NetDocument
   , provenanceText
   , PlaceMarking (..)
   , MarkingToken (..)
+    -- * Validating constructors
+    -- $construction
+  , mkNodePosition
+  , mkPortableViewV1
   , mkMarkingToken
+  , mkPlaceMarking
   , mkLineageEntry
+  , mkExecutionLineage
   , placeMarkingFromJson
     -- * Wire format
   , parseNetDocument
@@ -155,19 +161,73 @@ data MarkingToken = MarkingToken
   }
   deriving stock (Eq, Show)
 
+-- $construction
+-- The record constructors check nothing: a record built with them is the
+-- reference's @Model.model_construct(...)@, and 'serializeNetDocument' and
+-- 'projectNetDocument' treat it exactly as the reference treats such an
+-- instance. The functions below are the reference's validating
+-- constructors, @Model(field=..., ...)@ with the fields as keyword
+-- arguments in declaration order and nested models (the record arguments)
+-- as already-built instances, which Pydantic accepts as they are. They
+-- refuse with the reference's @ValidationError@ text. Token data and
+-- metadata are checked by a recursive walk, which fails with the
+-- reference's @RecursionError@ text (@maximum recursion depth exceeded@)
+-- at the depth it does when the constructor is called from a module's top
+-- level.
+
+-- | The Python frame depth at which a model built from a module's top level
+-- runs its field validators (@Model.__init__@ or @Model.model_validate@
+-- sits at depth 2).
+topLevelFrames :: Int
+topLevelFrames = 2
+
+construct :: Text -> Collect a -> Either Text a
+construct title = first (renderValidationError title) . collect
+
+field :: Text -> (PV -> Validated a) -> PV -> Collect a
+field key validate value = Collect (at (Key key) (validate value))
+
+-- | @NodePosition(node=..., x=..., y=...)@.
+mkNodePosition :: Text -> Number -> Number -> Either Text NodePosition
+mkNodePosition n px py =
+  construct "NodePosition" $
+    NodePosition
+      <$> field "node" (checked canonicalPathError strictStr) (PStr n)
+      <*> field "x" coordinate (numberPV px)
+      <*> field "y" coordinate (numberPV py)
+
+-- | @PortableViewV1(version=1, nodes=(...))@.
+mkPortableViewV1 :: [NodePosition] -> Either Text PortableViewV1
+mkPortableViewV1 ns =
+  first (renderValidationError "PortableViewV1") $
+    afterModel canonicalNodes (PDict [("version", PInt 1), ("nodes", PTuple (map nodeInstance ns))]) (Right (PortableViewV1 ns))
+
 -- | @MarkingToken(color=..., data=...)@: the token data must already be
 -- strict JSON (finite numbers, integral numbers in the safe range).
 mkMarkingToken :: Maybe Text -> Json -> Either Text MarkingToken
 mkMarkingToken c value =
-  first (renderValidationError "MarkingToken") $
-    validateToken (PDict [("color", maybe PNone PStr c), ("data", fromJson value)])
+  construct "MarkingToken" $
+    MarkingToken
+      <$> field "color" (optional strictStr) (maybe PNone PStr c)
+      <*> field "data" (strictData topLevelFrames) (fromJson value)
 
--- | @LineageEntry(id=..., parent=..., provenance=..., marking=...,
--- metadata=...)@: every field validated as the reference's model does.
+-- | @PlaceMarking(place=..., tokens=(...))@.
+mkPlaceMarking :: Text -> [MarkingToken] -> Either Text PlaceMarking
+mkPlaceMarking p ts = construct "PlaceMarking" ((`PlaceMarking` ts) <$> field "place" (checked canonicalPathError strictStr) (PStr p))
+
+-- | @LineageEntry(id=..., parent=..., provenance=..., marking=(...),
+-- metadata=...)@.
 mkLineageEntry :: Integer -> Maybe Integer -> Provenance -> [PlaceMarking] -> [(Text, Json)] -> Either Text LineageEntry
 mkLineageEntry i p prov m meta =
-  first (renderValidationError "LineageEntry") $
-    validateEntry (dumpEntry True (LineageEntry i p prov m meta))
+  construct "LineageEntry" $
+    (\i' p' meta' -> LineageEntry i' p' prov m meta')
+      <$> field "id" (intRange 0 safeIntegerMax) (PInt i)
+      <*> field "parent" (optional (intRange 0 safeIntegerMax)) (maybe PNone PInt p)
+      <*> field "metadata" (validateMetadata topLevelFrames) (PDict [(k, fromJson v) | (k, v) <- meta])
+
+-- | @ExecutionLineage(head=..., entries=(...))@.
+mkExecutionLineage :: Integer -> [LineageEntry] -> Either Text ExecutionLineage
+mkExecutionLineage h es = construct "ExecutionLineage" ((`ExecutionLineage` es) <$> field "head" (intRange 0 safeIntegerMax) (PInt h))
 
 -- | @PlaceMarking.model_validate(value, strict=True)@: one place's marking
 -- from its JSON shape (@{"place": ..., "tokens": [{"color", "data"}]}@),
@@ -175,7 +235,11 @@ mkLineageEntry i p prov m meta =
 -- pydantic-formatted error.
 placeMarkingFromJson :: Json -> Either Text PlaceMarking
 placeMarkingFromJson value =
-  first (renderValidationError "PlaceMarking") (validatePlaceMarking (fromJson value))
+  first (renderValidationError "PlaceMarking") (validatePlaceMarking topLevelFrames (fromJson value))
+
+nodeInstance :: NodePosition -> PV
+nodeInstance n =
+  PInstance "NodePosition" ("NodePosition(node=" <> pyStrRepr n.node <> ", x=" <> reprNumber n.x <> ", y=" <> reprNumber n.y <> ")")
 
 -- ---------------------------------------------------------------------------
 -- Parsing
@@ -198,14 +262,14 @@ parseNetDocumentText text = do
     Left (DecodeError message position) -> Left (invalid (decodeErrorText text message position))
     Left (HookError (Protocol message)) -> Left message
     Left (HookError (Wrapped message)) -> Left (invalid message)
-  first invalid (strictJson (Just 3) (rawNode raw))
+  first (invalid . strictFailureText) (strictJson (Just 3) (rawNode raw))
   case raw of
     RDict members -> forM_ ["view", "lineage"] $ \component ->
       case lookup (T.unpack component) members of
         Just RNull -> Left (component <> " must be absent or an object, not null")
         _ -> Right ()
     _ -> Right ()
-  document <- first (invalid . renderValidationError "NetDocumentV1") (validateDocumentModel (fromRaw raw))
+  document <- first (invalid . renderValidationError "NetDocumentV1") (validateDocumentModel 3 (fromRaw raw))
   first (refusal invalid) (validateDocument document)
   Right document
 
@@ -270,17 +334,29 @@ pvNode = \case
   PDict members -> NDict [(False, pvNode v) | (_, v) <- members]
   PInstance name _ -> NOther name
 
+-- | How the @_strict_json@ walk failed: a @ValueError@ (its message), or a
+-- @RecursionError@.
+data StrictFailure = NotStrict Text | TooDeep
+
+strictFailureText :: StrictFailure -> Text
+strictFailureText = \case
+  NotStrict message -> message
+  TooDeep -> recursionText
+
+recursionText :: Text
+recursionText = "maximum recursion depth exceeded"
+
 -- | @_strict_json@: strings are Unicode scalar values, numbers are finite,
 -- and integral numbers are JavaScript-safe. Given the root call's frame
 -- depth, the walk also fails exactly where the reference's recursive walk
 -- exceeds CPython's default recursion limit (each container costs two
 -- frames, each string or number check one more).
-strictJson :: Maybe Int -> Node -> Either Text ()
+strictJson :: Maybe Int -> Node -> Either StrictFailure ()
 strictJson root = go root
   where
     deeper = fmap (+ 1)
     enter = \case
-      Just depth | depth > 1000 -> Left "maximum recursion depth exceeded"
+      Just depth | depth > 1000 -> Left TooDeep
       _ -> Right ()
     go depth node = do
       enter depth
@@ -290,12 +366,12 @@ strictJson root = go root
         NInt i -> enter (deeper depth) >> safe (toRational i)
         NFloat d -> do
           enter (deeper depth)
-          when (isNaN d || isInfinite d) (Left "JSON numbers must be finite")
+          when (isNaN d || isInfinite d) (Left (NotStrict "JSON numbers must be finite"))
           let r = toRational d
           when (fromInteger (truncate r) == r) (safe r)
         NStr bad -> do
           enter (deeper depth)
-          when bad (Left "JSON strings must contain Unicode scalar values")
+          when bad (Left (NotStrict "JSON strings must contain Unicode scalar values"))
         NList items -> do
           enter (deeper depth)
           mapM_ (go (deeper (deeper depth))) items
@@ -304,27 +380,47 @@ strictJson root = go root
           forM_ members $ \(badKey, item) -> do
             go (deeper (deeper depth)) (NStr badKey)
             go (deeper (deeper depth)) item
-        NOther name -> Left ("value of type " <> name <> " is not strict JSON")
+        NOther name -> Left (NotStrict ("value of type " <> name <> " is not strict JSON"))
     safe r =
       unless (r >= fromInteger safeIntegerMin && r <= fromInteger safeIntegerMax) $
-        Left "integral JSON numbers must be within the JavaScript safe-integer range"
+        Left (NotStrict "integral JSON numbers must be within the JavaScript safe-integer range")
+
+-- | A strict-JSON field validator: a @ValueError@ is the field's error, a
+-- @RecursionError@ aborts the whole validation.
+strictField :: Maybe Int -> PV -> Validated ()
+strictField root value = case strictJson root (pvNode value) of
+  Right () -> Right ()
+  Left (NotStrict message) -> Left [valueError message value]
+  Left TooDeep -> Left [fatalError recursionText]
+
+-- | The number of nested values on the deepest path through a value, as
+-- Pydantic's JSON-mode serializer counts them for an untyped field (a
+-- scalar or an empty container counts one).
+height :: Json -> Int
+height = \case
+  Array items -> 1 + maximum (0 : map height items)
+  Object members -> 1 + maximum (0 : map (height . snd) members)
+  _ -> 1
 
 -- ---------------------------------------------------------------------------
 -- Model validation
 
 -- | @NetDocumentV1.model_validate(value, strict=True)@.
 netDocumentFromJson :: Json -> Either Text NetDocumentV1
-netDocumentFromJson = first (renderValidationError "NetDocumentV1") . validateDocumentModel . fromJson
+netDocumentFromJson = first (renderValidationError "NetDocumentV1") . validateDocumentModel topLevelFrames . fromJson
 
-validateDocumentModel :: PV -> Validated NetDocumentV1
-validateDocumentModel =
+-- | The model validation, given the Python frame depth of the validating
+-- call (which decides where a deep token or metadata value hits CPython's
+-- recursion limit).
+validateDocumentModel :: Int -> PV -> Validated NetDocumentV1
+validateDocumentModel frames =
   model "NetDocumentV1" ["format", "version", "definition", "view", "lineage"] $ \members whole ->
     (\_ _ d v l -> NetDocumentV1 d v l)
       <$> required members whole "format" (literalStr ["petrus-net-document"])
       <*> required members whole "version" versionOne
       <*> required members whole "definition" validateDefinitionModel
       <*> defaulted members "view" Nothing (optional validateView)
-      <*> defaulted members "lineage" Nothing (optional validateLineage)
+      <*> defaulted members "lineage" Nothing (optional (validateLineage frames))
 
 -- | @_version_one@: exactly the integer @1@ (never @True@ or @1.0@).
 versionOne :: PV -> Validated Integer
@@ -378,53 +474,57 @@ coordinate = \case
     finite d = not (isNaN d || isInfinite d)
     notFinite value = Left [valueError "coordinate must be a finite interoperable JSON number" value]
 
-validateLineage :: PV -> Validated ExecutionLineage
-validateLineage =
+validateLineage :: Int -> PV -> Validated ExecutionLineage
+validateLineage frames =
   model "ExecutionLineage" ["head", "entries"] $ \members whole ->
     ExecutionLineage
       <$> required members whole "head" (intRange 0 safeIntegerMax)
-      <*> required members whole "entries" (tupleOf validateEntry)
+      <*> required members whole "entries" (tupleOf (validateEntry frames))
 
-validateEntry :: PV -> Validated LineageEntry
-validateEntry =
+validateEntry :: Int -> PV -> Validated LineageEntry
+validateEntry frames =
   model "LineageEntry" ["id", "parent", "provenance", "marking", "metadata"] $ \members whole ->
     LineageEntry
       <$> required members whole "id" (intRange 0 safeIntegerMax)
       <*> required members whole "parent" (optional (intRange 0 safeIntegerMax))
       <*> required members whole "provenance" (fmap toProvenance . literalStr ["observed", "simulated", "manual"])
-      <*> required members whole "marking" (tupleOf validatePlaceMarking)
-      <*> required members whole "metadata" validateMetadata
+      <*> required members whole "marking" (tupleOf (validatePlaceMarking frames))
+      <*> required members whole "metadata" (validateMetadata frames)
   where
     toProvenance = \case
       "observed" -> Observed
       "simulated" -> Simulated
       _ -> Manual
 
--- | @_metadata@: an object of strict JSON.
-validateMetadata :: PV -> Validated [(Text, Json)]
-validateMetadata = \case
-  value@(PDict members) -> case strictJson Nothing (pvNode value) of
-    Left message -> Left [valueError message value]
-    Right () -> Right [(k, pvJson v) | (k, v) <- members]
+-- | @_metadata@: an object of strict JSON (the validator runs one frame
+-- above the validating call, and @_strict_json@ one above that).
+validateMetadata :: Int -> PV -> Validated [(Text, Json)]
+validateMetadata frames = \case
+  value@(PDict members) -> do
+    strictField (Just (frames + 2)) value
+    Right [(k, pvJson v) | (k, v) <- members]
   other -> Left [valueError "metadata must be an object" other]
 
-validatePlaceMarking :: PV -> Validated PlaceMarking
-validatePlaceMarking =
+validatePlaceMarking :: Int -> PV -> Validated PlaceMarking
+validatePlaceMarking frames =
   model "PlaceMarking" ["place", "tokens"] $ \members whole ->
     PlaceMarking
       <$> required members whole "place" (checked canonicalPathError strictStr)
-      <*> required members whole "tokens" (tupleOf validateToken)
+      <*> required members whole "tokens" (tupleOf (validateToken frames))
 
-validateToken :: PV -> Validated MarkingToken
-validateToken =
+validateToken :: Int -> PV -> Validated MarkingToken
+validateToken frames =
   model "MarkingToken" ["color", "data"] $ \members whole ->
     MarkingToken
       <$> required members whole "color" (optional strictStr)
-      <*> required members whole "data" strictData
-  where
-    strictData value = case strictJson Nothing (pvNode value) of
-      Left message -> Left [valueError message value]
-      Right () -> Right (pvJson value)
+      <*> required members whole "data" (strictData frames)
+
+-- | The token data's @_strict_json@ \"before\" validator, one frame above
+-- the validating call.
+strictData :: Int -> PV -> Validated Json
+strictData frames value = do
+  strictField (Just (frames + 1)) value
+  Right (pvJson value)
 
 -- ---------------------------------------------------------------------------
 -- Semantic admission
@@ -568,12 +668,22 @@ writerValue document = case dumpDocument False document of
 
 -- | @serialize_net_document@: revalidate, admit, and write the canonical
 -- bytes (two-space indentation, one final newline).
+--
+-- The reference revalidates the document's Python-mode dump (called from a
+-- module's top level, the validation runs at frame depth 3), admits it,
+-- and dumps it in JSON mode. That dump refuses any token data or metadata
+-- value nested 256 levels deep with Pydantic's @Circular reference
+-- detected (depth exceeded)@, before the final strict-JSON walk could.
 serializeNetDocument :: NetDocumentV1 -> Either Text ByteString
 serializeNetDocument document = do
-  validated <- first (cannot . renderValidationError "NetDocumentV1") (validateDocumentModel (dumpDocument True document))
+  validated <- first (cannot . renderValidationError "NetDocumentV1") (validateDocumentModel 3 (dumpDocument True document))
   first (refusal cannot) (validateDocument validated)
+  forM_ validated.lineage $ \l ->
+    forM_ l.entries $ \entry ->
+      when (any ((>= 256) . height . snd) entry.metadata || any ((>= 256) . height . (.payload)) (concatMap (.tokens) entry.marking)) $
+        Left (cannot "Circular reference detected (depth exceeded)")
   let value = writerValue validated
-  first cannot (strictJson (Just 3) (pvNode value))
+  first (cannot . strictFailureText) (strictJson (Just 3) (pvNode value))
   case dumps indented (pvJson value) of
     Right bytes -> Right (bytes <> "\n")
     Left _ -> Left (cannot "Out of range float values are not JSON compliant")
@@ -587,29 +697,20 @@ serializeNetDocument document = do
 -- net with optional node positions (keyed by dotted path; any order) and an
 -- optional lineage.
 --
--- The reference validates a lineage when it is constructed; a Haskell
--- record is unchecked, so the lineage is validated here first, as an
--- @ExecutionLineage@ model.
+-- As in the reference, the lineage is taken as the instance it is: only
+-- the document's semantic admission inspects it ('mkExecutionLineage' and
+-- 'mkLineageEntry' are the validating constructors).
 projectNetDocument :: Net -> Maybe [(Text, (Number, Number))] -> Maybe ExecutionLineage -> Either Text NetDocumentV1
 projectNetDocument net positions lineage' = do
-  checkedLineage <- forM lineage' $ \l ->
-    first (cannot . renderValidationError "ExecutionLineage") (validateLineage (dumpLineage True l))
   view' <- forM positions $ \ps -> do
-    ns <- forM (sortOn fst ps) $ \(n, (px, py)) ->
-      first (cannot . renderValidationError "NodePosition") $
-        validateNode (PDict [("node", PStr n), ("x", numberPV px), ("y", numberPV py)])
-    let input' = PDict [("version", PInt 1), ("nodes", PTuple (map instancePV ns))]
-    first (cannot . renderValidationError "PortableViewV1") (afterModel canonicalNodes input' (Right (PortableViewV1 ns)))
+    ns <- forM (sortOn fst ps) $ \(n, (px, py)) -> first cannot (mkNodePosition n px py)
+    first cannot (mkPortableViewV1 ns)
   definition' <- first cannot (projectNetDefinition net)
-  let document = NetDocumentV1 definition' view' checkedLineage
+  let document = NetDocumentV1 definition' view' lineage'
   first (refusal cannot) (validateDocument document)
   Right document
   where
     cannot = ("cannot project Petrus Net document v1: " <>)
-    instancePV n =
-      PInstance
-        "NodePosition"
-        ("NodePosition(node=" <> pyStrRepr n.node <> ", x=" <> reprNumber n.x <> ", y=" <> reprNumber n.y <> ")")
 
 -- | @definition_identity@: the lowercase SHA-256 of the embedded
 -- definition's canonical bytes. View and lineage never enter it.

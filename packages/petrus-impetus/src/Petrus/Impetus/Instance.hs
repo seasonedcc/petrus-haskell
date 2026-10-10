@@ -42,6 +42,9 @@ module Petrus.Impetus.Instance
   , renderInstanceError
   , firingFailureText
   , exceptionFailureText
+  , pythonFailureText
+  , PythonException (..)
+  , PythonArg (..)
     -- * Delivery and terminal values
   , AcceptedDelivery (instanceId, source, identity, occurrence)
   , acceptedDelivery
@@ -115,7 +118,6 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Typeable (typeOf)
 import Petrus.Activity
   ( ActivityFailure
   , ActivityFailureFields (..)
@@ -130,6 +132,7 @@ import Petrus.Impetus.History.Records
 import Petrus.Impetus.History.Replay
 import Petrus.Impetus.HistoryStore (HistoryStore (..), inMemoryHistoryStore)
 import Petrus.Impetus.HistoryStore qualified as Store
+import Petrus.Impetus.Instance.FailureText
 import Petrus.Impetus.Instance.Firing
 import Petrus.Impetus.Internal.OMap (OMap)
 import Petrus.Impetus.Internal.OMap qualified as OMap
@@ -186,14 +189,6 @@ firingFailureText err = T.take 4096 $ case err of
   RuntimeRefused m -> "RuntimeError(" <> pyStr m <> ")"
   HandlerRaised m -> if T.null m then "Exception" else m
   CommitRefused e -> exceptionFailureText e
-
--- | A Haskell exception spelled like the reference's exception repr: its type
--- name and its message (without a call stack), bounded.
-exceptionFailureText :: SomeException -> Text
-exceptionFailureText (SomeException e) =
-  T.take 4096 (T.pack (show (typeOf e)) <> "(" <> pyStr message <> ")")
-  where
-    message = fst (T.breakOn "\nCallStack (from" (T.pack (displayException e)))
 
 -- ---------------------------------------------------------------------------
 -- Values

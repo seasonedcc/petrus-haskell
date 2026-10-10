@@ -3,6 +3,8 @@ module Main (main) where
 import Petrus.Testing.Dst.Runner (processChildHook)
 import Spec.Choice qualified
 import Spec.Codec qualified
+import Spec.EngineCheckers qualified
+import Spec.EngineWorlds qualified
 import Spec.Properties qualified
 import Spec.Runner qualified
 import Spec.Stories qualified
@@ -18,4 +20,6 @@ main = do
     Spec.Stories.spec
     Spec.Runner.spec
     Spec.Transcript.spec
+    Spec.EngineWorlds.spec
+    Spec.EngineCheckers.spec
     Spec.Properties.spec

@@ -8,12 +8,11 @@
 -- compact, key-sorted, ASCII-escaped JSON). Nothing here performs I/O except
 -- 'captureInstance' and 'capture', which read one Instance's current state.
 --
--- __The Engine seam.__ Observation, like the reference, depends on the
--- kernel and never on an Engine. An Engine's three read doors are:
---
--- > snapshot     = capture inst >>= either throw pure . Observation.snapshot
--- > history_page = capture inst >>= \o -> historyPage o.observed.identity o.records after limit
--- > net_document = capture inst >>= either throw pure . Observation.netDocument
+-- __The Engine seam.__ These projections, like the reference's, depend on
+-- the kernel and never on an Engine. The Engine's three read doors
+-- (@Engine.snapshot()@, @Engine.history_page()@, @Engine.net_document()@)
+-- are "Petrus.Observation.Engine": each runs 'capture' under the Engine's
+-- monitor ('Petrus.Engine.Observation.observeEngine'), then projects.
 --
 -- 'capture' must run while no writing door is active (the reference holds
 -- its Engine lock for the whole door, so a reader that arrives mid-door sees
@@ -80,8 +79,8 @@ import Petrus.Impetus.Instance qualified as Instance
 import Petrus.Impetus.Internal.Pydantic (fromJson, pyRepr)
 import Petrus.Impetus.NetDefinition (netDefinitionToJson, projectNetDefinition)
 import Petrus.Impetus.NetDocument
-  ( ExecutionLineage (..)
-  , LineageEntry (..)
+  ( mkExecutionLineage
+  , mkLineageEntry
   , Provenance (Observed)
   , netDocumentToJson
   , placeMarkingFromJson
@@ -377,19 +376,19 @@ netDocument o = do
     places <- case placed of
       Array items -> traverse (first ObservationError . placeMarkingFromJson) items
       _ -> Right []
-    Right
-      LineageEntry
-        { id = toInteger index
-        , parent = if index == 0 then Nothing else Just (toInteger index - 1)
-        , provenance = Observed
-        , marking = places
-        , metadata =
-            [("instance", String o.observed.identity) | index == 0]
-              ++ [("observation", observation) | index == count - 1]
-              ++ [("history_record", encodeRecord r)]
-        }
+    first ObservationError $
+      mkLineageEntry
+        (toInteger index)
+        (if index == 0 then Nothing else Just (toInteger index - 1))
+        Observed
+        places
+        ( [("instance", String o.observed.identity) | index == 0]
+            ++ [("observation", observation) | index == count - 1]
+            ++ [("history_record", encodeRecord r)]
+        )
   first ObservationError $ do
-    document <- projectNetDocument o.observed.net Nothing (Just (ExecutionLineage (toInteger count - 1) entries))
+    lineage <- mkExecutionLineage (toInteger count - 1) entries
+    document <- projectNetDocument o.observed.net Nothing (Just lineage)
     _ <- serializeNetDocument document
     Right (netDocumentToJson document)
 

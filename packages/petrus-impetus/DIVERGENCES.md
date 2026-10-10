@@ -79,17 +79,32 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
     - Upstream tests that count calls to a pure function (`prepared == 0`, or
       "the strategy was never called") are replaced by stand-ins that refuse
       if they are ever consulted.
-11. **`FiringFailed.error` text cannot always match the reference.**
-    - The reference records `repr(exception)` of whatever Python raised.
-    - A kernel refusal here records the same spelling: `ValueError('msg')`,
+11. **`FiringFailed.error` for a Haskell exception is named by its type.**
+    The reference records `firing_failure_text(error)`: the class name and
+    each of `error.args` (`None`, `bool`, `int`, `float`, `str`, and `bytes`
+    by `repr`, anything else as `<module.qualname>`), bounded to 4096
+    characters. Here:
+    - A kernel refusal records the same spelling: `ValueError('msg')`,
       `TypeError('msg')`, or `RuntimeError('msg')`.
     - A handler's `Left text` is recorded as given.
-    - A Haskell exception is recorded as its `Typeable` name and message, for
-      example `ErrorCall('boom')`, without the call stack.
-    - All of these are truncated to 4096 characters, as upstream truncates.
-    - A Python `KeyError('amount')` raised by user code therefore has no
-      automatic twin. The golden-trace guards return that spelling
-      themselves.
+    - A thrown `PythonException name args` is recorded exactly as the
+      reference records a Python exception of that class and those args,
+      for every argument shape above (huge ints, non-finite floats, quotes,
+      unprintable characters, bytes, objects).
+    - Any other Haskell exception is recorded as `Name()` when its message is
+      empty and `Name('message')` otherwise, with the message's GHC call
+      stack removed: exactly what the reference records for a Python
+      exception of that class raised with no argument or one string.
+
+    `FailureTextSpec` checks 452 texts produced by the reference
+    (`differential/failure_text_corpus.json`): every one through
+    `PythonException`, and each zero- or one-string-argument case also
+    thrown as a Haskell exception of that name.
+
+    What cannot match is the name of an exception that is not a
+    `PythonException`: it is the Haskell type's `Typeable` name (`ErrorCall`,
+    `IOException`), which is a Python class name only when the Haskell type
+    is named like one.
 12. **Typed bindings are an applicative,** `Typed`/`param`, with
     `deriveTypedTransform`/`deriveTypedGuard`/`derivedActivityHandler`.
     Signature introspection does not exist here. Python's "unresolved
@@ -135,70 +150,81 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
 
 19. **`format` and `version` are type constants,** not fields, and
     `time_domain` is the `TimeDomain` type.
-20. **Haskell records are validated when they are used, not when they are
-    built.** `compileNetDefinition`, `serializeNet*`, and
-    `projectNetDocument` revalidate hand-built records. The error prefixes
-    are:
-    - compile: `invalid Petrus Net-definition v3: <ValidationError>`;
-    - serialize: `cannot serialize Petrus Net document v1: …`.
+20. **A record built with its constructor is `model_construct`.** The
+    record constructors check nothing, like the reference's
+    `Model.model_construct(...)`. The `mk*` functions
+    (`mkPlaceDefinition`, `mkArcDefinition`, `mkNetDefinitionBody`,
+    `mkLineageEntry`, and the rest, one per model) are the reference's
+    validating `Model(field=..., ...)` calls, with nested models passed as
+    already-built instances and the reference's `ValidationError` text.
+    `compileNetDefinition`, `serializeNetDefinition`, `serializeNetDocument`,
+    and `projectNetDocument` then do exactly what the reference does with
+    such an instance: compilation builds the net in the reference's lazy
+    order and compares the projection; serialization of a document
+    revalidates its dump; projection takes the lineage as it is.
+    `differential/hand_built_corpus.json` pins all of this
+    (`HandBuiltCorpusSpec`, 1996 cases).
 
-    A lineage passed to `projectNetDocument` is validated as an
-    `ExecutionLineage`, and positions as `NodePosition`/`PortableViewV1`.
-    Python validates a model when it is constructed, so an invalid
-    hand-built record fails later here, with the prefix of the operation
-    that caught it.
+    What a Haskell record cannot hold, and so is not covered:
+    - a value of the wrong Python type in a field (a `bool` for an `int`, a
+      non-string path, a list where the reference keeps a tuple), an
+      unknown `kind`, `mode`, or `provenance` literal, a `format` or
+      `version` other than the constant, extra fields, and non-string
+      metadata keys: the types rule them out;
+    - strings with lone surrogates: `Text` holds Unicode scalar values only.
+
+    The recursion-depth checks are calibrated to a call from a module's top
+    level (item 24). A caller deeper in the Python stack hits the limit
+    sooner; the depth of the Haskell call does not matter.
 21. **View positions are a list of pairs,** not a dict. Duplicates are
     representable, and they are refused as "view node paths must be unique".
-22. **`mkMarkingToken` and `mkLineageEntry` are smart constructors.** They
-    return pydantic-formatted errors (`1 validation error for
-    MarkingToken/LineageEntry …`).
+22. **The `mk*` constructors validate only their own fields.** As in the
+    reference, nested models passed to them are not revalidated (item 20).
+    `petrus-observation` builds its lineage with `mkLineageEntry` and
+    `mkExecutionLineage`, as the reference's `net_document` builds
+    `LineageEntry(...)` and `ExecutionLineage(...)`.
 23. **`netDocumentToJson` omits an absent view or lineage,** matching the
-    writer's value. `parse*Json v` means `parse(json.dumps(v))`.
-24. **Recursion-depth refusals are ordered by depth.** When a hand-built
-    value is serialized or projected, a nesting-depth refusal can be found in
-    a different order from the other validator refusals than in Python.
-    Parsing is calibrated to the reference's top-level call: definitions are
-    refused at 997 nested empty lists under a depth-4 caller, documents at
-    499.
-25. **Printability uses Python's Unicode 16 tables,** through an embedded
-    table of 47 ranges, because GHC ships Unicode 15.1. Character data
-    outside that table could still render differently in error text.
+    writer's value. `parse*Json v` means `parse(json.dumps(v))`. It is
+    total: the reference's `model_dump(mode="json")` raises Pydantic's
+    `Circular reference detected (depth exceeded)` for token data or a
+    metadata value nested 256 deep, and here only `serializeNetDocument`
+    refuses that, with the reference's text.
+24. **Depth limits are the reference's for a top-level call.** These are
+    at parity; the entry records the calibration. Token data and metadata
+    are walked as the reference's recursive `_strict_json` validator walks
+    them, and fail where CPython's default limit of 1000 frames does when
+    the validating call is made from a module's top level (a constructor,
+    `serialize_net_document`, or `parse_net_document`). That
+    `RecursionError` aborts the whole validation, so it wins over every
+    other validation error, as in the reference. Parsing walks the whole
+    payload first: definitions are refused at 997 nested empty lists, and
+    documents at 499. `HandBuiltCorpusSpec` pins the thresholds (494 to 501
+    levels, lists and objects, numeric, string, and null leaves) with and
+    without other errors in the same value.
+25. **Printability is CPython 3.14's.** `Petrus.Json.PythonText` (used by
+    every `repr` in this package, `petrus-telemetry`, and the failure texts)
+    decides `str.isprintable` from a table of 736 ranges generated from
+    CPython 3.14 (Unicode 16) by `packages/petrus-json/gen/gen_python_printable.py`.
+    `PythonTextSpec` checks all 1,114,112 code points against the committed
+    vector `packages/petrus-json/test/python-printable.txt`. This is at
+    parity; GHC's own `isPrint` (Unicode 15.1, and it admits space
+    separators such as U+00A0) is no longer used for it. Other packages'
+    own `repr` helpers (`petrus-motus`, `petrus-execution`, `petrus-dst`)
+    still use GHC's tables.
 
 ## Telemetry (`petrus-telemetry`)
 
 26. `impetus_*` events are emitted after the durable append and stamped with
-    the record's virtual instant, as in the reference. The telemetry package
-    has its own divergences:
-    1. **`IMPETUS_TELEMETRY_LEVEL` is read when first used,** not at import
-       (Haskell has no import-time effects). An invalid value throws
-       `UnknownTelemetryLevel` at that first use, and again at every later
-       use.
-    2. **`setLevel` and `atLevel` take a typed `Level`.** Only `parseLevel`
-       can see a bad spelling, so upstream's quirk where `capture(level="bad")`
-       leaves the sink swapped cannot happen.
-    3. **`error_type` is the Haskell exception's `Typeable` name**
-       (`ErrorCall`, `IOException`), not the Python class name. Spans also
-       observe async exceptions, as `__exit__` sees `KeyboardInterrupt`.
-    4. **A duplicate field in `emit` throws `DuplicateTelemetryFields`;**
-       `bind` returns `Either Text`.
-    5. **A sink swallows only synchronous exceptions.**
-    6. **With no route, the default sink formats nothing.** Routing is
-       `setRoute` with a ByteString callback, not stdlib logging handlers.
-    7. **There is no `default=str`.** Values are already `Json`;
-       `exceptionJson` stringifies exceptions.
-    8. **The monotonic clock is a per-logger field,** injected in tests.
-    9. **A `Payload` has dict semantics:** a duplicate key replaces the value
-       in its first position.
-    10. **`milestone` overwrites an `elapsed_ms` field,** where upstream
-        raises a `TypeError`.
-    11. **`increment` and `accumulateTime` on a non-numeric field throw
-        `NonNumericTelemetryField`.**
-    12. **statm parsing accepts ASCII digits only.**
-    13. **`newSpan` and `runSpan` let a span exist before it starts.**
-    14. **The `TelemetryLogger` constructor is exported.**
+    the record's virtual instant, as in the reference. The
+    [telemetry differential](../petrus-telemetry-instrumentation/PARITY.md)
+    checks every event against the reference: names, fields, field order,
+    and routed bytes. The telemetry package's own divergences, formerly
+    listed here, are in
+    [`petrus-telemetry/DIVERGENCES.md`](../petrus-telemetry/DIVERGENCES.md).
 
 ## Out of scope
 
 The DSL (`dsl.py`), observation (`observation.py`), CEL evaluation, and the
-durable stores other than the in-memory one are not ported here. Their tests
+durable stores are not ported in this package. They live in `petrus-dsl`,
+`petrus-observation`, `petrus-cel`, and `petrus-history-store`; their tests
 are listed in `PARITY.md`.

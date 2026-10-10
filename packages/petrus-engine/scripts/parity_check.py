@@ -28,8 +28,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 UPSTREAM = ROOT / "upstream" / "petrus" / "tests"
 
-# package -> [(upstream file, classes in scope or None for all, tests in scope or None for all)]
-SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | None]]] = {
+
+class Excluding(frozenset):
+    """A scope's tests named by exclusion: every test but these."""
+
+
+# The Engine-level tests of test_local_dispatch.py live in petrus-engine.
+LOCAL_ENGINE_TESTS = {
+    "test_engine_reconciles_canonical_request_missing_from_local_custody",
+    "test_engine_close_fences_claimed_local_attempt_and_canonically_quarantines_its_late_result",
+    "test_engine_recollects_terminal_result_after_canonical_acceptance_refusal",
+}
+
+# package -> [(upstream file, classes in scope or None for all,
+#              tests in scope or None for all, or Excluding(tests out of scope))]
+SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | Excluding | None]]] = {
     "petrus-motus": [
         ("petrus/engine/test_coordinator.py", {"TestInMemoryDispatch", "TestInlineDispatch"}, None),
         ("integration/test_activity_seam.py", {"TestInlineDispatch"}, None),
@@ -38,6 +51,7 @@ SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | None]]] = {
             None,
             {"test_inline_context_has_synthetic_identity_and_detached_omitted_null_details"},
         ),
+        ("petrus/motus/dispatch/test_local_dispatch.py", None, Excluding(LOCAL_ENGINE_TESTS)),
     ],
     "petrus-history-store": [
         ("petrus/impetus/history_store/test_persistence.py", {"TestDurableAppend", "TestJsonlHistoryStore"}, None),
@@ -61,6 +75,7 @@ SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | None]]] = {
             None,
         ),
         ("petrus/engine/test_execution.py", None, None),
+        ("petrus/motus/dispatch/test_local_dispatch.py", None, LOCAL_ENGINE_TESTS),
     ],
 }
 
@@ -69,7 +84,9 @@ def words(text: str) -> tuple[str, ...]:
     return tuple(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
 
 
-def upstream_tests(relative: str, classes: set[str] | None, names: set[str] | None) -> list[tuple[str, str]]:
+def upstream_tests(
+    relative: str, classes: set[str] | None, names: set[str] | Excluding | None
+) -> list[tuple[str, str]]:
     tree = ast.parse((UPSTREAM / relative).read_text())
     found: list[tuple[str, str]] = []
     for node in tree.body:
@@ -82,7 +99,8 @@ def upstream_tests(relative: str, classes: set[str] | None, names: set[str] | No
     return [
         (cls, name)
         for cls, name in found
-        if (classes is None or cls in classes) and (names is None or name in names)
+        if (classes is None or cls in classes)
+        and (names is None or (name not in names if isinstance(names, Excluding) else name in names))
     ]
 
 
@@ -119,6 +137,10 @@ def main() -> int:
             total += len(tests)
             missing += len(absent)
             label = relative + (f" [{', '.join(sorted(classes))}]" if classes else "")
+            if isinstance(names, Excluding):
+                label += f" [all but {len(names)}]"
+            elif names is not None and classes is None:
+                label += f" [{len(names)} named]"
             in_ledger = len(tests) - by_name - len(absent)
             print(f"  {len(tests):4}  {label}: {by_name} by example name, {in_ledger} in PARITY.md")
             for name in absent:
