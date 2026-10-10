@@ -49,3 +49,4 @@ test-suite petrus-json-test
                   , containers
                   , petrus-json
                   , text
+  ghc-options:      -rtsopts

@@ -167,35 +167,12 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
 ## Telemetry (`petrus-telemetry`)
 
 26. `impetus_*` events are emitted after the durable append and stamped with
-    the record's virtual instant, as in the reference. The telemetry package
-    has its own divergences:
-    1. **`IMPETUS_TELEMETRY_LEVEL` is read when first used,** not at import
-       (Haskell has no import-time effects). An invalid value throws
-       `UnknownTelemetryLevel` at that first use, and again at every later
-       use.
-    2. **`setLevel` and `atLevel` take a typed `Level`.** Only `parseLevel`
-       can see a bad spelling, so upstream's quirk where `capture(level="bad")`
-       leaves the sink swapped cannot happen.
-    3. **`error_type` is the Haskell exception's `Typeable` name**
-       (`ErrorCall`, `IOException`), not the Python class name. Spans also
-       observe async exceptions, as `__exit__` sees `KeyboardInterrupt`.
-    4. **A duplicate field in `emit` throws `DuplicateTelemetryFields`;**
-       `bind` returns `Either Text`.
-    5. **A sink swallows only synchronous exceptions.**
-    6. **With no route, the default sink formats nothing.** Routing is
-       `setRoute` with a ByteString callback, not stdlib logging handlers.
-    7. **There is no `default=str`.** Values are already `Json`;
-       `exceptionJson` stringifies exceptions.
-    8. **The monotonic clock is a per-logger field,** injected in tests.
-    9. **A `Payload` has dict semantics:** a duplicate key replaces the value
-       in its first position.
-    10. **`milestone` overwrites an `elapsed_ms` field,** where upstream
-        raises a `TypeError`.
-    11. **`increment` and `accumulateTime` on a non-numeric field throw
-        `NonNumericTelemetryField`.**
-    12. **statm parsing accepts ASCII digits only.**
-    13. **`newSpan` and `runSpan` let a span exist before it starts.**
-    14. **The `TelemetryLogger` constructor is exported.**
+    the record's virtual instant, as in the reference. The
+    [telemetry differential](../petrus-telemetry-instrumentation/PARITY.md)
+    checks every event against the reference: names, fields, field order,
+    and routed bytes. The telemetry package's own divergences, formerly
+    listed here, are in
+    [`petrus-telemetry/DIVERGENCES.md`](../petrus-telemetry/DIVERGENCES.md).
 
 ## Out of scope
 

@@ -2696,6 +2696,20 @@
     "transition": "t",
     "occurrence": 1,
     "instant": 7,
+    "records": 3,
+    "impure": false,
+    "source": "s"
+   },
+   "line": "{\"event\": \"impetus_firing_completed\", \"instance\": \"i-1\", \"net\": \"n\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 7, \"records\": 3, \"impure\": false, \"source\": \"s\", \"ts\": 1700000000123}"
+  },
+  {
+   "payload": {
+    "event": "impetus_firing_completed",
+    "instance": "i-1",
+    "net": "n",
+    "transition": "t",
+    "occurrence": 1,
+    "instant": 7,
     "records": 3
    },
    "line": "{\"event\": \"impetus_firing_completed\", \"instance\": \"i-1\", \"net\": \"n\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 7, \"records\": 3, \"ts\": 1700000000123}"
