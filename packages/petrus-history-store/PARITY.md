@@ -59,14 +59,15 @@ upstream names:
 | `TestRoundTrip.test_an_unencodable_record_fails_loud_and_enters_nothing` | — | enforced by types. Token data is `Json`, and the only unencodable `Json` is a non-finite number, which is the NaN case. |
 
 The `reopen` fixture's sqlite parameter runs the same 13 examples through
-`SqliteHistoryStore`. Its postgres parameter waits for that backend.
+`SqliteHistoryStore`. Its postgres parameter runs in
+`petrus-history-postgres`, which instantiates the same `backendContract`.
 
 ## Covered elsewhere or out of scope
 
 - The other `test_persistence.py` classes are kernel tests, ported in
   `petrus-impetus`: `TestRecordCodec`, `TestInstanceDurableHistory`, and
   `TestARaisingAppendMovesNothingElse`.
-- `test_postgres_history.py` (21) is out of scope for this milestone.
+- `test_postgres_history.py` (21) is ported in `petrus-history-postgres`.
 - The SQLite writer fence's own tests are in petrus-sqlite, and the fenced
   Engine's (`test_sqlite_engine.py`) are in petrus-engine-sqlite.
 

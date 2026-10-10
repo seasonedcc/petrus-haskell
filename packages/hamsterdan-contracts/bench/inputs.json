@@ -1,0 +1,5 @@
+{
+ "snapshot": "{\"incarnation\": 3, \"phase\": \"running\", \"head\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"base\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"policy\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"mergeable\": true, \"checks\": \"success\", \"review\": \"clear\", \"findings_blocking\": 0, \"approval\": true, \"changes_requested\": false, \"unresolved\": 0, \"pending\": [\"review:1\", \"ci:2\"], \"faults\": {}, \"announced\": [1, 2], \"candidate\": true, \"announcing\": {}, \"blocked\": {}, \"strict_base\": true, \"base_current\": true, \"closing\": null}",
+ "gate_fact": "{\"kind\": \"review\", \"incarnation\": 3, \"body\": {\"head\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"status\": \"blocking\", \"category\": \"\", \"findings\": 3, \"blocking\": 1, \"note\": \"it's \\\"quoted\\\" — é\"}}",
+ "entry_kind": "review"
+}
