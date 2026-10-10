@@ -44,6 +44,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Runtime.AgentNetRunner
                     Petrus.Agenticus.Runtime.Pi
+                    Petrus.Agenticus.Runtime.PiRecovery
   other-modules:    Paths_petrus_agenticus_runtime
   autogen-modules:  Paths_petrus_agenticus_runtime
   build-depends:    base >=4.18 && <5
