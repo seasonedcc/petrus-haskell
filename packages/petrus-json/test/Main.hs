@@ -86,6 +86,83 @@ main = hspec $ do
       Int (2 ^ (53 :: Int) + 1) `shouldNotBe` Float (2 ^ (53 :: Int))
     it "compares objects as mappings" $
       Object [("a", Int 1), ("b", Int 2)] `shouldBe` Object [("b", Int 2), ("a", Int 1)]
+
+  describe "CPython integer string-conversion limit" $ do
+    let digits n = BC.replicate n '7'
+        tooMany :: Int -> Either String a
+        tooMany n =
+          Left
+            ( "Exceeds the limit (4300 digits) for integer string conversion: value has "
+                ++ show n
+                ++ " digits; use sys.set_int_max_str_digits() to increase the limit"
+            )
+    it "parses 4300 digits" $
+      fmap (\case Int i -> length (show i); _ -> 0) (parseJson pythonLoads (digits 4300)) `shouldBe` Right 4300
+    it "refuses 4301 digits with CPython's message, sign excluded" $ do
+      parseJson pythonLoads (digits 4301) `shouldBe` tooMany 4301
+      parseJson pythonLoads ("-" <> digits 4301) `shouldBe` tooMany 4301
+      parseJson strictLoads ("[" <> digits 4400 <> "]") `shouldBe` tooMany 4400
+    it "does not limit float tokens" $ do
+      parseJson pythonLoads (digits 5000 <> ".0") `shouldBe` Right (Float (1 / 0))
+      parseJson pythonLoads (digits 5000 <> "e1") `shouldBe` Right (Float (1 / 0))
+    it "can be lifted" $
+      parseJson pythonLoads {maxIntegerDigits = Nothing} (digits 5000) `shouldSatisfy` either (const False) (const True)
+    it "refuses to print more than 4300 digits, sign excluded" $ do
+      fmap BC.length (dumps defaultDumps (Int (10 ^ (4300 :: Int) - 1))) `shouldBe` Right 4300
+      fmap BC.length (dumps defaultDumps (Int (negate (10 ^ (4300 :: Int) - 1)))) `shouldBe` Right 4301
+      dumps defaultDumps (Array [Int (10 ^ (4300 :: Int))]) `shouldBe` Left (IntegerTooLarge 4300)
+      dumps indented (Int (negate (10 ^ (4300 :: Int)))) `shouldBe` Left (IntegerTooLarge 4300)
+      either (Left . encodeErrorMessage) Right (dumps compact (Int (10 ^ (4300 :: Int))))
+        `shouldBe` Left "Exceeds the limit (4300 digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit"
+    it "converts decimal digit strings like int()" $ do
+      decimalInteger "0042" `shouldBe` Right 42
+      decimalInteger (BC.replicate 4301 '0') `shouldBe` tooMany 4301
+      decimalInteger (BC.replicate 4300 '0') `shouldBe` Right 0
+      decimalInteger "+1" `shouldSatisfy` isLeft
+
+  describe "nesting-depth guard" $ do
+    let arrays n = BC.replicate n '[' <> BC.replicate n ']'
+        objects n = mconcat (replicate n "{\"a\":") <> "1" <> BC.replicate n '}'
+    it "accepts the depths upstream exercises" $
+      parseJson strictLoads (arrays 1200) `shouldSatisfy` either (const False) (const True)
+    it "accepts exactly the limit" $
+      parseJson pythonLoads (arrays defaultNestingLimit) `shouldSatisfy` either (const False) (const True)
+    it "refuses one level deeper, naming the container" $ do
+      parseJson pythonLoads (arrays (defaultNestingLimit + 1))
+        `shouldBe` Left "maximum nesting depth (100000) exceeded while decoding a JSON array from a unicode string"
+      parseJson pythonLoads {maxNestingDepth = Just 3} (objects 4)
+        `shouldBe` Left "maximum nesting depth (3) exceeded while decoding a JSON object from a unicode string"
+    it "survives input far deeper than any stack" $
+      parseJson pythonLoads (arrays 1000000) `shouldSatisfy` isLeft
+    it "bounds the encoder too, where empty containers do not recurse (as in CPython)" $ do
+      let nested n = iterate (Array . pure) (Array []) !! (n - 1)
+          len = fmap BC.length . dumps compact
+      len (nested (defaultNestingLimit + 1)) `shouldBe` Right (2 * defaultNestingLimit + 2)
+      len (nested (defaultNestingLimit + 2)) `shouldBe` Left (NestingTooDeep defaultNestingLimit)
+
+  describe "encodeErrorMessage" $
+    it "matches CPython's allow_nan=False text" $
+      map (encodeErrorMessage . NonFiniteNumber) [0 / 0, 1 / 0, -1 / 0]
+        `shouldBe` [ "Out of range float values are not JSON compliant: nan"
+                   , "Out of range float values are not JSON compliant: inf"
+                   , "Out of range float values are not JSON compliant: -inf"
+                   ]
+
+  describe "typeExactEq" $ do
+    it "ignores member order" $
+      Object [("a", Int 1), ("b", Array [Null])] `typeExactEq` Object [("b", Array [Null]), ("a", Int 1)] `shouldBe` True
+    it "treats 0.0 and -0.0 as equal" $
+      Float 0 `typeExactEq` Float (-0.0) `shouldBe` True
+    it "distinguishes int, float and bool at every depth" $ do
+      Int 1 `typeExactEq` Float 1 `shouldBe` False
+      Int 1 `typeExactEq` Bool True `shouldBe` False
+      Object [("weight", Int 1)] `typeExactEq` Object [("weight", Float 1)] `shouldBe` False
+      Object [("weight", Int 1)] `typeExactEq` Object [("weight", Bool True)] `shouldBe` False
+    it "compares arrays in order and keys as sets" $ do
+      Array [Int 1, Int 2] `typeExactEq` Array [Int 2, Int 1] `shouldBe` False
+      Object [("a", Int 1)] `typeExactEq` Object [("a", Int 1), ("b", Int 1)] `shouldBe` False
+    it "never equates NaN" $
+      Float (0 / 0) `typeExactEq` Float (0 / 0) `shouldBe` False
   where
     exactEq' = \case
       Array items -> items

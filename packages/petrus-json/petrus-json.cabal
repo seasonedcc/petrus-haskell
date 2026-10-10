@@ -28,6 +28,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Json
                     Petrus.Json.Encode
+                    Petrus.Json.Limits
                     Petrus.Json.Parse
                     Petrus.Json.Value
   build-depends:    base >=4.18 && <5

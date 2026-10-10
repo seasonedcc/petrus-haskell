@@ -6,6 +6,11 @@
 -- @object_pairs_hook@, @parse_int@, @parse_float@, and @parse_constant@ hooks
 -- do: refuse duplicate members, non-finite constants, decimal or exponent
 -- number spellings, or integers outside the interoperable range.
+--
+-- Both presets also apply CPython's resource limits (see "Petrus.Json.Limits"):
+-- integer tokens longer than 4300 digits are refused with CPython's exact
+-- message, and documents nested deeper than 'defaultNestingLimit' are refused
+-- instead of exhausting memory.
 module Petrus.Json.Parse
   ( ParseOptions (..)
   , DuplicateMembers (..)
@@ -27,6 +32,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
+import Petrus.Json.Limits (defaultNestingLimit, intStrDigitsError, maxIntStrDigits)
 import Petrus.Json.Value
 
 -- | How to treat a repeated object member.
@@ -48,6 +54,11 @@ data ParseOptions = ParseOptions
   -- ^ Inclusive bounds every integer token must satisfy.
   , finiteFloatsOnly :: Bool
   -- ^ Refuse float tokens that overflow to infinity.
+  , maxIntegerDigits :: Maybe Int
+  -- ^ Refuse integer tokens with more digits (sign excluded) than this, with
+  -- CPython's @ValueError@ text. CPython's default is 'maxIntStrDigits'.
+  , maxNestingDepth :: Maybe Int
+  -- ^ Refuse documents with more nested arrays and objects than this.
   }
   deriving stock (Eq, Show)
 
@@ -60,6 +71,8 @@ pythonLoads =
     , integerTokensOnly = False
     , integerRange = Nothing
     , finiteFloatsOnly = False
+    , maxIntegerDigits = Just maxIntStrDigits
+    , maxNestingDepth = Just defaultNestingLimit
     }
 
 -- | Duplicate-free, finite JSON: the common strict admission of Petrus formats.
@@ -81,7 +94,7 @@ parseJson :: ParseOptions -> ByteString -> Either String Json
 parseJson options input
   | BS.isPrefixOf "\xEF\xBB\xBF" input = Left "Unexpected UTF-8 BOM (decode using utf-8-sig)"
   | otherwise = do
-      (value, end) <- valueAt options input (skipSpace input 0)
+      (value, end) <- valueAt options input 0 (skipSpace input 0)
       let rest = skipSpace input end
       when (rest < BS.length input) (Left ("Extra data at byte " ++ show rest))
       Right value
@@ -102,15 +115,16 @@ byteAt input i
 expecting :: String -> Int -> Either String a
 expecting what i = Left ("Expecting " ++ what ++ " at byte " ++ show i)
 
-valueAt :: ParseOptions -> ByteString -> Int -> Either String (Json, Int)
-valueAt options input i = case byteAt input i of
+-- | Parse the value at a byte offset, @depth@ containers deep.
+valueAt :: ParseOptions -> ByteString -> Int -> Int -> Either String (Json, Int)
+valueAt options input depth i = case byteAt input i of
   Nothing -> expecting "value" i
   Just w -> case w of
     0x22 -> do
       (text, end) <- stringAt input (i + 1)
       Right (String text, end)
-    0x7B -> objectAt options input (i + 1)
-    0x5B -> arrayAt options input (i + 1)
+    0x7B -> nested "object" (objectAt options input (depth + 1) (i + 1))
+    0x5B -> nested "array" (arrayAt options input (depth + 1) (i + 1))
     0x6E -> literal "null" Null
     0x74 -> literal "true" (Bool True)
     0x66 -> literal "false" (Bool False)
@@ -122,6 +136,17 @@ valueAt options input i = case byteAt input i of
       | w == 0x2D || (w >= 0x30 && w <= 0x39) -> numberAt options input i
       | otherwise -> expecting "value" i
   where
+    nested kind parse = case maxNestingDepth options of
+      Just limit
+        | depth >= limit ->
+            Left
+              ( "maximum nesting depth ("
+                  ++ show limit
+                  ++ ") exceeded while decoding a JSON "
+                  ++ kind
+                  ++ " from a unicode string"
+              )
+      _ -> parse
     literal spelling value
       | BS.isPrefixOf spelling (BS.drop i input) = Right (value, i + BS.length spelling)
       | otherwise = expecting "value" i
@@ -130,8 +155,8 @@ valueAt options input i = case byteAt input i of
       | allowNonFiniteConstants options = Right (Float value, i + BS.length spelling)
       | otherwise = Left ("non-finite JSON number " ++ show spelling)
 
-objectAt :: ParseOptions -> ByteString -> Int -> Either String (Json, Int)
-objectAt options input start = case byteAt input first of
+objectAt :: ParseOptions -> ByteString -> Int -> Int -> Either String (Json, Int)
+objectAt options input depth start = case byteAt input first of
   Just 0x7D -> Right (Object [], first + 1)
   _ -> members first [] Set.empty
   where
@@ -145,7 +170,7 @@ objectAt options input start = case byteAt input first of
       case byteAt input colon of
         Just 0x3A -> Right ()
         _ -> expecting "':' delimiter" colon
-      (value, afterValue) <- valueAt options input (skipSpace input (colon + 1))
+      (value, afterValue) <- valueAt options input depth (skipSpace input (colon + 1))
       (acc', seen') <-
         if Set.member name seen
           then case duplicateMembers options of
@@ -159,14 +184,14 @@ objectAt options input start = case byteAt input first of
         _ -> expecting "',' delimiter" next
     replaceMember name value = map (\member@(k, _) -> if k == name then (k, value) else member)
 
-arrayAt :: ParseOptions -> ByteString -> Int -> Either String (Json, Int)
-arrayAt options input start = case byteAt input first of
+arrayAt :: ParseOptions -> ByteString -> Int -> Int -> Either String (Json, Int)
+arrayAt options input depth start = case byteAt input first of
   Just 0x5D -> Right (Array [], first + 1)
   _ -> items first []
   where
     first = skipSpace input start
     items i acc = do
-      (value, afterValue) <- valueAt options input i
+      (value, afterValue) <- valueAt options input depth i
       let next = skipSpace input afterValue
       case byteAt input next of
         Just 0x2C -> items (skipSpace input (next + 1)) (value : acc)
@@ -272,6 +297,10 @@ numberAt options input start = do
       spelling = map (chr . fromIntegral) (BS.unpack token)
   if fractionEnd == integerEnd && exponentEnd == fractionEnd
     then do
+      let digitCount = exponentEnd - afterSign
+      case maxIntegerDigits options of
+        Just limit | digitCount > limit -> Left (intStrDigitsError limit digitCount)
+        _ -> Right ()
       let value = read spelling :: Integer
       case integerRange options of
         Just (low, high)

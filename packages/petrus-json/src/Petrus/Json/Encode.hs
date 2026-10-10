@@ -5,6 +5,11 @@
 -- payload spellings, identity digests), so this module mirrors the encoder in
 -- CPython's @Lib/json/encoder.py@: separators, indentation, key sorting,
 -- ASCII escaping, and @float.__repr__@ number spelling.
+--
+-- It also applies CPython's resource limits ("Petrus.Json.Limits"): an
+-- integer of more than 4300 digits is refused ('IntegerTooLarge', as
+-- @int.__repr__@ refuses it), and so is a value nested deeper than
+-- 'nestingLimit'.
 module Petrus.Json.Encode
   ( EncodeOptions (..)
   , defaultDumps
@@ -16,6 +21,7 @@ module Petrus.Json.Encode
   , dumpsText
   , pythonFloatRepr
   , EncodeError (..)
+  , encodeErrorMessage
   ) where
 
 import Data.ByteString qualified as BS
@@ -27,6 +33,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Numeric (floatToDigits, showHex)
+import Petrus.Json.Limits (defaultNestingLimit, intReprDigitsError, maxIntStrDigits)
 import Petrus.Json.Value
 
 -- | The subset of @json.dumps@ keyword arguments Petrus uses.
@@ -39,6 +46,12 @@ data EncodeOptions = EncodeOptions
   , sortKeys :: Bool
   , ensureAscii :: Bool
   , allowNan :: Bool
+  , reprDigitLimit :: Maybe Int
+  -- ^ Refuse integers with more decimal digits (sign excluded) than this;
+  -- CPython's default is 4300.
+  , nestingLimit :: Maybe Int
+  -- ^ Refuse values with more nested non-empty arrays and objects than this
+  -- (CPython's encoder writes @[]@ and @{}@ without recursing).
   }
   deriving stock (Eq, Show)
 
@@ -52,6 +65,8 @@ defaultDumps =
     , sortKeys = False
     , ensureAscii = True
     , allowNan = True
+    , reprDigitLimit = Just maxIntStrDigits
+    , nestingLimit = Just defaultNestingLimit
     }
 
 -- | @json.dumps(value, ensure_ascii=False, allow_nan=False, indent=2)@, the
@@ -70,8 +85,29 @@ canonicalText :: Json -> Either EncodeError Text
 canonicalText = dumpsText compact {sortKeys = True}
 
 -- | A value @json.dumps@ refuses.
-newtype EncodeError = NonFiniteNumber Double
+data EncodeError
+  = -- | NaN or an infinity under @allow_nan=False@.
+    NonFiniteNumber Double
+  | -- | An integer with more decimal digits than the limit (which it carries).
+    IntegerTooLarge Int
+  | -- | A value nested deeper than the limit (which it carries).
+    NestingTooDeep Int
   deriving stock (Eq, Show)
+
+-- | The text of the exception CPython raises for the same refusal (for
+-- 'NestingTooDeep', a fixed-depth analogue of CPython's stack-dependent
+-- @RecursionError@).
+--
+-- >>> encodeErrorMessage (NonFiniteNumber (-1 / 0))
+-- "Out of range float values are not JSON compliant: -inf"
+encodeErrorMessage :: EncodeError -> String
+encodeErrorMessage = \case
+  NonFiniteNumber d
+    | isNaN d -> "Out of range float values are not JSON compliant: nan"
+    | d > 0 -> "Out of range float values are not JSON compliant: inf"
+    | otherwise -> "Out of range float values are not JSON compliant: -inf"
+  IntegerTooLarge limit -> intReprDigitsError limit
+  NestingTooDeep limit -> "maximum nesting depth (" ++ show limit ++ ") exceeded while encoding a JSON object"
 
 -- | Serialize to UTF-8 bytes.
 dumps :: EncodeOptions -> Json -> Either EncodeError BS.ByteString
@@ -100,13 +136,13 @@ dumpsBuilder options = go 0
       Null -> Right (B.string7 "null")
       Bool True -> Right (B.string7 "true")
       Bool False -> Right (B.string7 "false")
-      Int i -> Right (B.integerDec i)
+      Int i -> intB i
       Float d -> floatB d
       String s -> Right (stringB (ensureAscii options) s)
       Array [] -> Right (B.string7 "[]")
-      Array items -> container '[' ']' level (map (go (level + 1)) items)
+      Array items -> deeper level (container '[' ']' level (map (go (level + 1)) items))
       Object [] -> Right (B.string7 "{}")
-      Object members ->
+      Object members -> deeper level $
         let ordered = if sortKeys options then sortOn fst members else members
             member (key, value) = do
               encoded <- go (level + 1) value
@@ -120,6 +156,18 @@ dumpsBuilder options = go 0
           separator = itemSepB <> maybe mempty id inner
           body = mconcat (intersperseB separator items)
       Right (B.char7 open <> maybe mempty id inner <> body <> maybe mempty id outer <> B.char7 close)
+
+    deeper level encoded = case nestingLimit options of
+      Just limit | level >= limit -> Left (NestingTooDeep limit)
+      _ -> encoded
+
+    intB i = case reprDigitLimit options of
+      Just limit | tooManyDigits limit i -> Left (IntegerTooLarge limit)
+      _ -> Right (B.integerDec i)
+
+    tooManyDigits limit i
+      | limit == maxIntStrDigits = abs i >= intDigitBound
+      | otherwise = abs i >= 10 ^ max 0 limit
 
     floatB d
       | isNaN d = nonFinite "NaN"
@@ -185,3 +233,8 @@ pythonFloatRepr d
       | decpt <= 0 = "0." ++ replicate (negate decpt) '0' ++ ds
       | decpt >= length ds = ds ++ replicate (decpt - length ds) '0' ++ ".0"
       | otherwise = let (whole, fraction) = splitAt decpt ds in whole ++ "." ++ fraction
+
+-- | The smallest integer with more than 'maxIntStrDigits' digits.
+intDigitBound :: Integer
+intDigitBound = 10 ^ maxIntStrDigits
+{-# NOINLINE intDigitBound #-}
