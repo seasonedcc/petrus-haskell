@@ -29,9 +29,9 @@
 module Petrus.Impetus.Instance
   ( -- * Instances
     Instance
-  , netOf
-  , identityOf
-  , historyOf
+  , instanceNet
+  , instanceIdentity
+  , instanceHistory
   , ImplementationRef (..)
   , InstanceConfig (..)
   , defaultInstanceConfig
@@ -372,15 +372,15 @@ data Instance = Instance
   , iLock :: MVar ()
   }
 
-netOf :: Instance -> Net
-netOf inst = inst.iNet
+instanceNet :: Instance -> Net
+instanceNet inst = inst.iNet
 
 -- | The durable instance identity (recorded by @InstanceCreated@).
-identityOf :: Instance -> Text
-identityOf inst = inst.iIdentity
+instanceIdentity :: Instance -> Text
+instanceIdentity inst = inst.iIdentity
 
-historyOf :: Instance -> HistoryStore
-historyOf inst = inst.iStore
+instanceHistory :: Instance -> HistoryStore
+instanceHistory inst = inst.iStore
 
 type Door = ExceptT InstanceError IO
 

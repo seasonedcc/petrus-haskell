@@ -77,6 +77,7 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.ArcFiltersSpec
                     Petrus.Impetus.FiringSpec
                     Petrus.Impetus.DotSpec
+                    Petrus.Impetus.FifoQueueSpec
   build-depends:    base
                   , bytestring
                   , containers
