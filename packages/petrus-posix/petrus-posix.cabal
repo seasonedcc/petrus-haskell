@@ -1,0 +1,80 @@
+cabal-version:      3.4
+name:               petrus-posix
+version:            0.1.0.0
+synopsis:           POSIX primitives with Python-identical behavior for the Petrus port
+description:
+  BSD @flock(2)@ locks that exclude (and are excluded by) Python's
+  @fcntl.flock@; openat-family file operations; ports of CPython's
+  @Path.resolve@, @Path.expanduser@ and @os.path.realpath@; fsync and the
+  upstream atomic-replace pattern; and @getrusage@/@sysconf@ figures as
+  upstream telemetry reports them.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           System
+build-type:         Simple
+extra-source-files: cbits/petrus_posix.h
+extra-doc-files:    bench/RESULTS.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Posix
+                    Petrus.Posix.At
+                    Petrus.Posix.File
+                    Petrus.Posix.Flock
+                    Petrus.Posix.Path
+                    Petrus.Posix.Resource
+  other-modules:    Petrus.Posix.Internal
+  c-sources:        cbits/petrus_posix.c
+  include-dirs:     cbits
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , directory >=1.3.8
+                  , filepath >=1.4
+                  , random >=1.2.1
+                  , unix >=2.8
+
+test-suite petrus-posix-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  ghc-options:      -threaded
+  build-depends:    base
+                  , bytestring
+                  , directory
+                  , filepath
+                  , hspec
+                  , petrus-json
+                  , petrus-posix
+                  , petrus-test-support
+                  , temporary
+                  , text
+                  , unix
+
+benchmark petrus-posix-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  ghc-options:      -threaded -O2
+  build-depends:    base
+                  , bytestring
+                  , directory
+                  , filepath
+                  , petrus-posix
+                  , tasty-bench >=0.3
+                  , temporary
+                  , unix
