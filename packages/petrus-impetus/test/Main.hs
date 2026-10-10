@@ -9,7 +9,13 @@ import Petrus.Impetus.EnvironmentSignalSpec qualified as EnvironmentSignalSpec
 import Petrus.Impetus.FiringOccurrencesSpec qualified as FiringOccurrencesSpec
 import Petrus.Impetus.GuardBranchSpec qualified as GuardBranchSpec
 import Petrus.Impetus.HandlersSpec qualified as HandlersSpec
+import Petrus.Impetus.IngressSpec qualified as IngressSpec
 import Petrus.Impetus.InstanceFiringSpec qualified as InstanceFiringSpec
+import Petrus.Impetus.InstanceReplayPropertiesSpec qualified as InstanceReplayPropertiesSpec
+import Petrus.Impetus.LifecycleScopesSpec qualified as LifecycleScopesSpec
+import Petrus.Impetus.RegistrationsSpec qualified as RegistrationsSpec
+import Petrus.Impetus.ResumeSpec qualified as ResumeSpec
+import Petrus.Impetus.TimersSpec qualified as TimersSpec
 import Petrus.Impetus.InstanceIdentitySpec qualified as InstanceIdentitySpec
 import Petrus.Impetus.RuntimeSpec qualified as RuntimeSpec
 import Petrus.Impetus.DotSpec qualified as DotSpec
@@ -23,6 +29,7 @@ import Petrus.Impetus.HistoryStoreSpec qualified as HistoryStoreSpec
 import Petrus.Impetus.SelectionSpec qualified as SelectionSpec
 import Petrus.Impetus.GoldenTracesSpec qualified as GoldenTracesSpec
 import Petrus.Impetus.KernelDifferentialSpec qualified as KernelDifferentialSpec
+import Petrus.Impetus.KernelPropertiesSpec qualified as KernelPropertiesSpec
 import Petrus.Impetus.MarkingSpec qualified as MarkingSpec
 import Petrus.Impetus.NetDefinitionCorpusSpec qualified as NetDefinitionCorpusSpec
 import Petrus.Impetus.NetDefinitionPropertiesSpec qualified as NetDefinitionPropertiesSpec
@@ -53,6 +60,12 @@ main = hspec $ do
   CompletionSpec.spec
   GuardBranchSpec.spec
   CelGuardsSpec.spec
+  IngressSpec.spec
+  RegistrationsSpec.spec
+  LifecycleScopesSpec.spec
+  TimersSpec.spec
+  ResumeSpec.spec
+  InstanceReplayPropertiesSpec.spec
   ActivitySeamSpec.spec
   TypedBindingsSpec.spec
   SelectionSpec.spec
@@ -68,3 +81,4 @@ main = hspec $ do
   NetDefinitionCorpusSpec.spec
   GoldenTracesSpec.spec
   KernelDifferentialSpec.spec
+  KernelPropertiesSpec.spec

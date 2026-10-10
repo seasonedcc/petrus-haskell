@@ -116,6 +116,13 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.CompletionSpec
                     Petrus.Impetus.GuardBranchSpec
                     Petrus.Impetus.CelGuardsSpec
+                    Petrus.Impetus.DoorSupport
+                    Petrus.Impetus.IngressSpec
+                    Petrus.Impetus.RegistrationsSpec
+                    Petrus.Impetus.LifecycleScopesSpec
+                    Petrus.Impetus.TimersSpec
+                    Petrus.Impetus.ResumeSpec
+                    Petrus.Impetus.InstanceReplayPropertiesSpec
                     Petrus.Impetus.NetDefinitionSpec
                     Petrus.Impetus.NetDocumentSpec
                     Petrus.Impetus.NetDocumentLineageSpec
@@ -124,6 +131,7 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.NetDefinitionCorpusSpec
                     Petrus.Impetus.GoldenTracesSpec
                     Petrus.Impetus.KernelDifferentialSpec
+                    Petrus.Impetus.KernelPropertiesSpec
   build-depends:    base
                   , bytestring
                   , containers
