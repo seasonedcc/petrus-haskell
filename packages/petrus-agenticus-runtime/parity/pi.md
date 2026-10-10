@@ -214,3 +214,75 @@ the same reason. When those packages are present, the case runs in full.
 | `test_activity_adapter_drives_the_real_static_net_to_completion` | 1 | `Petrus.Engine` with `agentNet`, an in-memory history store and the inline dispatch. |
 | `test_helper_syntax_and_exact_hands_bounds` | 1 | `node --check` over the shipped helper. |
 | `test_exact_installed_model_phase_probe` | 1 | Pending unless the qualification packages are installed. |
+
+## `tests/petrus/agenticus/runtime/test_pi_application.py` (25 functions, 41 cases)
+
+Module: `Petrus.Agenticus.Runtime.PiApplication` (`pi_application.py`), with
+the verbatim `data/pi_application_helper.mjs`. Spec:
+`test/Petrus/Agenticus/Runtime/PiApplicationSpec.hs`.
+
+Every pytest id is an `it` label, parameters included. 39 cases pass. Two are
+pending for the same reason the reference skips them:
+
+- `test_exact_helper_core_loop_fake_stream_is_one_turn_delta_only_and_authority_free`
+  needs the exact Pi packages under `/tmp/petrus-pi-a2-probe`;
+- `test_exact_installed_application_package_probe` needs them too, and also
+  `PETRUS_CV16_PI_APPLICATION_QUALIFY=1`.
+
+**Fixtures.**
+
+- `Continuations`, `Turns`, `Plan`, `Client`, `Factory`, `snapshot`, `Rig`
+  and `claimed` are ported one to one. The custody is the shared
+  `PiSupport.FakeCustody` (api-key, `anthropic`), seen through
+  `applicationCustody`. Its `beforeAdmit` cell plays the reference's `admit`
+  flag and its stalled `admit_result`.
+- The rig relabels a local process provider to `gondolin` or `e2b` with
+  `PiSupport.newTerritory`. As in the reference, it keeps one Episode
+  attachment, the production Motus workspace adapter (test command
+  `/bin/sh verify.sh`) and the real gateway.
+- The reference's `object.__setattr__(lease, "provider", "e2b")` becomes the
+  territory's `drift` cell, which makes the provider lookup report `e2b`.
+  Either way `_binding_current` turns false. The wrapped `Client.run` is
+  `Factory.afterRun`. The monkeypatched `_binding_current` is
+  `ApplicationAdapterHooks.bindingCurrent`.
+- `test/fixtures/pi/extract_application.py` extracts the seven JavaScript
+  fixtures verbatim. Two of them are f-strings over
+  `delta = base64.b64encode(b"[]")` and are rendered with that value.
+- Upstream, the three framed-protocol tests (`test_real_*`) need
+  `/tmp/petrus-pi-a2-probe/node_modules/node/bin/node` and skip without it.
+  The port runs them under the system `node` (v22.22.0 here) with the
+  verbatim helper, so they run by default.
+
+**Notes on individual tests.**
+
+| Function | Cases | Notes |
+| --- | ---: | --- |
+| `test_exact_identities_capabilities_ownership_and_snapshots` | 1 | |
+| `test_api_key_direct_catalog_is_exact` | 3 | |
+| `test_subscription_and_codex_profiles_are_rejected` | 3 | |
+| `test_seven_separate_operations_drive_policy_and_real_gateway` | 1 | `Petrus.Agenticus.Hands.Conformance.SevenStepEpisodePolicy` over the real gateway. |
+| `test_gondolin_settles_before_e2b_and_continuation_crosses_without_authority_leak` | 1 | `dataclasses.replace(e2.adapter._config, ...)` becomes `setApplicationAdapterConfig`. |
+| `test_closed_write_is_synthetic_and_crossing_flat` | 1 | |
+| `test_shared_model_tool_result_projection_excludes_attachment_custody` | 1 | |
+| `test_real_framed_helper_blocks_write_and_round_trips_permitted_read` | 1 | System `node`. The monkeypatched `to_model_data` becomes `ApplicationSubprocessOptions {modelData = toolResultToData}`. |
+| `test_real_framed_tool_projection_preserves_prefix_without_attachment_custody` | 1 | System `node`. |
+| `test_real_protocol_rejects_post_terminal_and_post_abort_frames_before_gateway` | 1 | System `node`. |
+| `test_immutable_prior_transcript_plus_delta_and_payload_bounds` | 1 | `is raw` becomes byte equality. |
+| `test_foreign_continuation_project_binding_and_claim_state_rejected` | 1 | |
+| `test_resolution_grant_runtime_and_connection_bindings_reject_stale` | 1 | |
+| `test_application_a5_post_run_lease_drift_releases_authority_without_publication` | 1 | |
+| `test_helper_failures_do_not_publish` | 5 | |
+| `test_cancellation_deadline_and_cleanup_failure_prevent_publication` | 1 | |
+| `test_application_a5_cancellation_wins_while_remote_publication_lookup_is_stalled` | 2 | |
+| `test_application_a5_rechecks_publication_admission_after_remote_lookup` | 4 | `adapter._clock` becomes `setApplicationAdapterClock`. |
+| `test_application_a5_publication_claim_makes_later_cancellation_too_late` | 1 | |
+| `test_publication_failures_return_no_references_and_release_authority` | 3 | |
+| `test_idempotent_redelivery_and_operation_conflict` | 1 | `is first` becomes the operation's identity equality. |
+| `test_unsupported_provider_model_or_territory` | 3 | |
+| `test_package_source_versions_node_syntax_and_credential_free_probe_shape` | 1 | Runs `node --check` over the shipped helper. |
+| `test_exact_helper_core_loop_fake_stream_is_one_turn_delta_only_and_authority_free` | 1 | Pending unless the qualification packages are installed. |
+| `test_exact_installed_application_package_probe` | 1 | Pending, as upstream, unless the packages and the opt-in variable are present. |
+
+No differential corpus or benchmark covers the application runtime. Its pure
+pieces (the strict loader, base64 and the transcript bound) are the ones the
+`test_pi.py` corpus already pins.

@@ -154,3 +154,51 @@ sides of each one. Its single accepted difference is item 6.
    records `clean = False` for both, so the outcome is `cleanup-unverified`.
 6. **`probe` fails closed on any synchronous exception**, as item 8 above
    describes for `pi.py`.
+
+## Pi application (`Petrus.Agenticus.Runtime.PiApplication`)
+
+1. **Protocols are records.** `PiApplicationContinuationOperations`,
+   `PiApplicationTurnOperations`, `PiApplicationConnectionCustody`,
+   `ApplicationClient` and `ApplicationFactory` replace the structural
+   protocols. `applicationCustody` adapts a `PiConnectionCustody`, and through
+   it the real `AgentConnectionCustody`. Because the types are fixed, the
+   reference's `isinstance` refusals cannot occur and have no port:
+   - `TypeError("Pi application codec requires exact operations")`;
+   - `TypeError("Pi application custody returned a foreign payload")`;
+   - `TypeError("Pi application adapter requires exact collaborators")`;
+   - `TypeError("Pi application step results must be ToolResult values")`;
+   - the invocation's type checks on the identities, the `HandsGateway` and
+     the `Continuation`;
+   - a custody answer that is not a `Materialization`, `AttachmentFence`,
+     `AdmissionResult` or `ReleaseResult`. The checks on the values (mode,
+     fence, admission and release) remain.
+2. **Adapter attributes are explicit state.** The reference's tests assign
+   `_installation`, `_node`, `_coding`, `_core`, `_ai`, `_config` and
+   `_clock`, and they monkeypatch `_binding_current`. The port provides:
+   - `modifyApplicationAdapterRuntime`;
+   - `setApplicationAdapterConfig`, which validates, as `dataclasses.replace`
+     does;
+   - `setApplicationAdapterClock`;
+   - `ApplicationAdapterHooks.bindingCurrent`.
+
+   `isinstance(self._factory, _SubprocessFactory)` becomes the
+   `subprocessFactoryInstalled` flag.
+3. **The helper process.** A reader thread feeds a queue that is polled every
+   50 ms, in place of the `selectors` loop. The abort, grace, frame, event and
+   tool bounds are unchanged. When the helper does not exit within the grace,
+   the reference raises `subprocess.TimeoutExpired`, and `_execute` turns it
+   into `runtime-failed`. The port reports `helper-exit-inconsistent`, as the
+   native port does. Neither one publishes.
+4. **Frames.**
+   - As in the native port, a lone surrogate escape in a helper frame is a
+     `malformed-frame`.
+   - A `tool_call` whose `method` is an array or an object makes the
+     reference's `method not in _METHODS` raise `TypeError`, so the run ends
+     as `runtime-failed`. The port reports `malformed-tool-call`. Neither one
+     reaches the gateway.
+5. **Configuration numbers.** The three durations are `Double`s, so a bool
+   cannot be passed. `repr` also differs for an integral duration: the
+   reference renders the `int` it was given (`1`), and the port renders `1.0`.
+6. **`probe` fails closed on any synchronous exception.** When `package.json`
+   is not an object, the reference lets an `AttributeError` escape. The port
+   reports `protocol-unavailable`.

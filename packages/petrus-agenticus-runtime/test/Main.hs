@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Petrus.Agenticus.Runtime.AgentNetRunnerSpec qualified
+import Petrus.Agenticus.Runtime.PiApplicationSpec qualified
 import Petrus.Agenticus.Runtime.PiDifferentialSpec qualified
 import Petrus.Agenticus.Runtime.PiModelPhaseSpec qualified
 import Petrus.Agenticus.Runtime.PiSpec qualified
@@ -14,3 +15,4 @@ main = hspec $ do
   Petrus.Agenticus.Runtime.PiSpec.spec
   Petrus.Agenticus.Runtime.PiDifferentialSpec.spec
   Petrus.Agenticus.Runtime.PiModelPhaseSpec.spec
+  Petrus.Agenticus.Runtime.PiApplicationSpec.spec
