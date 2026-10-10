@@ -122,3 +122,14 @@ test-suite petrus-engine-phases-c
   other-modules:    Petrus.Impetus.TestSupport
                     Petrus.Engine.TestSupport
                     Petrus.Engine.DeliveryPhasesCSpec
+
+-- Differential and cross-resume interop against the pinned reference.
+test-suite petrus-engine-interop
+  import:           engine-tests
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   ../petrus-history-store/test
+  main-is:          InteropMain.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.HistoryStore.Support
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.InteropSpec
