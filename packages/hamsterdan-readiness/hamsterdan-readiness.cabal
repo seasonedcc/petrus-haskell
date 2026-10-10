@@ -74,6 +74,7 @@ test-suite hamsterdan-readiness-test
                       OverloadedRecordDot
                       NoFieldSelectors
   other-modules:    Corpus
+                    DashboardSpec
                     ConversationSpec
                     CiSpec
                     FoldCorpusSpec

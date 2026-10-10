@@ -5,6 +5,7 @@ import LifecycleSpec qualified
 import StartupSpec qualified
 import CiSpec qualified
 import ConversationSpec qualified
+import DashboardSpec qualified
 import Test.Hspec (hspec)
 import TopologySpec qualified
 
@@ -16,3 +17,4 @@ main = hspec $ do
   FoldCorpusSpec.spec
   CiSpec.spec
   ConversationSpec.spec
+  DashboardSpec.spec
