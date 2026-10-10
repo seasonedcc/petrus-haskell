@@ -21,6 +21,7 @@ import Petrus.Motus.Dispatch.Local (LocalDispatchClock (..), LocalDispatchOption
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Dispatch.LocalSupport
 import Petrus.Telemetry (capture, recorded)
+import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 import Test.Hspec
 import Data.Text.Encoding qualified as TE
@@ -212,6 +213,30 @@ spec = do
     ((.instance') <$> requireClaim cpu) `shouldReturn` Just "one"
     ((.instance') <$> requireClaim general) `shouldReturn` Just "two"
     Local.claim cpu `shouldReturn` Nothing
+
+  it "keeps connections open between operations until the session or an independent worker closes" $ withScratch $ \dir -> do
+    let path = dir </> "dispatch.db"
+        wal = path <> "-wal"
+    session <- openLocalDispatch path "one" defaultLocalDispatchOptions
+    Local.dispatch session 1 call
+    borrowing <- Local.worker session ["default"] (Just "worker")
+    attempt <- requireClaim borrowing
+    Local.complete borrowing attempt (Int 1)
+    -- A worker constructed from the session borrows its connections.
+    Local.close borrowing
+    doesFileExist wal `shouldReturn` True
+    independent <- fixedWorker path "solo"
+    Local.claim independent `shouldReturn` Nothing
+    Local.close independent
+    doesFileExist wal `shouldReturn` True
+    -- The session's connections were the last ones open: closing them
+    -- checkpointed the WAL and removed it.
+    Local.closeLocalDispatch session
+    doesFileExist wal `shouldReturn` False
+    -- Both stay usable, each later operation on a connection of its own.
+    (map fst <$> Local.collect session) `shouldReturn` [1]
+    Local.claim borrowing `shouldReturn` Nothing
+    doesFileExist wal `shouldReturn` False
 
   it "exact publication route recovery and live route preservation" $ withScratch $ \dir -> do
     let path = dir </> "dispatch.db"

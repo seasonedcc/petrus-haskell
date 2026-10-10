@@ -3,7 +3,8 @@ module Main (main) where
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar, tryReadMVar)
 import Control.Exception (ErrorCall (..), SomeException, bracket, throwIO, try)
-import Control.Monad (forM_, void)
+import Control.Monad (forM_, void, when)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.ByteString.Char8 qualified as BC
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -14,7 +15,8 @@ import Petrus.Json (Json (..), defaultDumps, dumps, encodeErrorMessage, pythonFl
 import Petrus.Posix (FileStat (..), Follow (..), permissionBits, realpath, statAt)
 import Petrus.Sqlite
 import Petrus.TestSupport
-import System.Directory (createDirectory, createDirectoryLink, doesFileExist)
+import Database.SQLite3 (Database)
+import System.Directory (createDirectory, createDirectoryLink, doesFileExist, removeFile)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Timeout (timeout)
@@ -24,6 +26,7 @@ main :: IO ()
 main = hspec $ do
   profileSpec
   transactionSpec
+  poolSpec
   schemaSpec
   reprSpec
   fenceSpec
@@ -283,6 +286,92 @@ transactionSpec = describe "Transactions" $ do
   it "keeps a path that looks like a URI literal, as sqlite3.connect(uri=False) does" $ withTemp $ \dir -> do
     withConnection ledgerProfile (dir </> "file:odd.sqlite3?mode=ro") $ \connection -> execute_ connection "CREATE TABLE t (x)"
     doesFileExist (dir </> "file:odd.sqlite3?mode=ro") `shouldReturn` True
+
+-- | A pool over the Local Dispatch profile whose opener counts the
+-- connections it opens.
+countingPool :: Int -> FilePath -> IO (Pool, IORef Int)
+countingPool = countingPoolWith localDispatchProfile
+
+countingPoolWith :: Profile -> Int -> FilePath -> IO (Pool, IORef Int)
+countingPoolWith profile capacity path = do
+  opened <- newIORef 0
+  pool <- newPool capacity path (modifyIORef' opened (+ 1) >> open profile path)
+  pure (pool, opened)
+
+handle :: Pool -> IO Database
+handle pool = withPooledConnection pool (pure . connectionDatabase)
+
+poolSpec :: Spec
+poolSpec = describe "Pool" $ do
+  it "reuses one connection for sequential operations and keeps the WAL until it closes" $ withTemp $ \dir -> do
+    let path = dir </> "pool.sqlite3"
+    (pool, opened) <- countingPool 4 path
+    withPooledConnection pool $ \c -> withImmediateTransaction c (execute_ c "CREATE TABLE t (x)")
+    first <- handle pool
+    forM_ [1 .. 5 :: Int] $ \n ->
+      withPooledConnection pool $ \c -> withImmediateTransaction c (void (execute c "INSERT INTO t VALUES (?)" [SQLInteger (fromIntegral n)]))
+    handle pool `shouldReturn` first
+    readIORef opened `shouldReturn` 1
+    doesFileExist (path <> "-wal") `shouldReturn` True
+    closePool pool
+    -- The pool's connection was the last one: closing it checkpointed the
+    -- WAL and deleted it.
+    doesFileExist (path <> "-wal") `shouldReturn` False
+    withConnection localDispatchProfile path $ \c -> query c "SELECT count(*) FROM t" [] `shouldReturn` [[SQLInteger 5]]
+
+  it "gives concurrent operations connections of their own and keeps at most its capacity idle" $ withTemp $ \dir -> do
+    (pool, opened) <- countingPool 1 (dir </> "pool.sqlite3")
+    (outer, inner) <- withPooledConnection pool $ \a -> (connectionDatabase a,) <$> handle pool
+    outer `shouldNotBe` inner
+    readIORef opened `shouldReturn` 2
+    -- One of the two stayed idle, the other was closed.
+    _ <- withPooledConnection pool $ \_ -> handle pool
+    readIORef opened `shouldReturn` 3
+    closePool pool
+
+  it "reopens when the path names another file" $ withTemp $ \dir -> do
+    let path = dir </> "pool.sqlite3"
+    (pool, opened) <- countingPool 4 path
+    withPooledConnection pool $ \c -> execute_ c "CREATE TABLE t (x)"
+    forM_ ["", "-wal", "-shm"] $ \suffix -> do
+      present <- doesFileExist (path <> suffix)
+      when present (removeFile (path <> suffix))
+    rows <- withPooledConnection pool $ \c -> query c "SELECT name FROM sqlite_master" []
+    rows `shouldBe` []
+    readIORef opened `shouldReturn` 2
+    doesFileExist path `shouldReturn` True
+    closePool pool
+
+  it "closes a connection after a SQLite error or with a transaction left open, and reuses it otherwise" $ withTemp $ \dir -> do
+    (pool, opened) <- countingPool 4 (dir </> "pool.sqlite3")
+    withPooledConnection pool $ \c -> execute_ c "CREATE TABLE t (x)"
+    Left (ErrorCall _) <- try (withPooledConnection pool (\_ -> throwIO (ErrorCall "boom")))
+    readIORef opened `shouldReturn` 1
+    Left (_ :: SQLError) <- try (withPooledConnection pool (\c -> execute_ c "INSERT INTO missing VALUES (1)"))
+    _ <- handle pool
+    readIORef opened `shouldReturn` 2
+    withPooledConnection pool begin
+    open' <- withPooledConnection pool inTransaction
+    open' `shouldBe` False
+    readIORef opened `shouldReturn` 3
+    closePool pool
+
+  it "stays usable once closed, with a connection per operation" $ withTemp $ \dir -> do
+    (pool, opened) <- countingPool 4 (dir </> "pool.sqlite3")
+    _ <- handle pool
+    closePool pool
+    closePool pool
+    _ <- handle pool
+    _ <- handle pool
+    readIORef opened `shouldReturn` 3
+
+  it "never reuses an in-memory connection" $ do
+    (pool, opened) <- countingPoolWith ledgerProfile 4 ":memory:"
+    withPooledConnection pool $ \c -> execute_ c "CREATE TABLE t (x)"
+    rows <- withPooledConnection pool $ \c -> query c "SELECT name FROM sqlite_master" []
+    rows `shouldBe` []
+    readIORef opened `shouldReturn` 2
+    closePool pool
 
 schemaSpec :: Spec
 schemaSpec = describe "Schema" $ do
