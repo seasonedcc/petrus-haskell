@@ -98,17 +98,27 @@ test-suite petrus-agenticus-core-test
                     Petrus.Agenticus.HandsSpec
                     Petrus.Agenticus.Hands.ConformanceSpec
                     Petrus.Agenticus.Hands.DifferentialSpec
+                    Petrus.Agenticus.ConnectionSupport
+                    Petrus.Agenticus.ConnectionSpec
+                    Petrus.Agenticus.CustodyScript
+                    Petrus.Agenticus.CustodyCorpusSpec
+                    Petrus.Agenticus.CustodyInteropSpec
   build-depends:    base
                   , async >=2.2
                   , bytestring
                   , containers
+                  , crypton
                   , directory
                   , filepath
                   , hspec >=2.10
                   , petrus-agenticus-core
                   , petrus-json
+                  , process
                   , QuickCheck >=2.14
+                  , ram
+                  , stm
                   , text
+                  , unix
   ghc-options:      -threaded -rtsopts
 
 benchmark petrus-agenticus-core-bench
@@ -120,11 +130,16 @@ benchmark petrus-agenticus-core-bench
                     Bench.Effect
                     Bench.Thread
                     Bench.Hands
+                    Bench.Custody
   build-depends:    base
                   , async >=2.2
                   , bytestring
                   , containers
+                  , crypton
                   , deepseq
+                  , directory
+                  , filepath
+                  , ram
                   , petrus-agenticus-core
                   , petrus-json
                   , tasty-bench >=0.3

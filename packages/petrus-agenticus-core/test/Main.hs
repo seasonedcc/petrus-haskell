@@ -1,6 +1,9 @@
 module Main (main) where
 
 import Petrus.Agenticus.CatalogSpec qualified
+import Petrus.Agenticus.ConnectionSpec qualified
+import Petrus.Agenticus.CustodyCorpusSpec qualified
+import Petrus.Agenticus.CustodyInteropSpec qualified
 import Petrus.Agenticus.EffectSpec qualified
 import Petrus.Agenticus.ProgramSpec qualified
 import Petrus.Agenticus.RuntimeFoundationSpec qualified
@@ -22,3 +25,6 @@ main = hspec $ do
   Petrus.Agenticus.HandsSpec.spec
   Petrus.Agenticus.Hands.ConformanceSpec.spec
   Petrus.Agenticus.Hands.DifferentialSpec.spec
+  Petrus.Agenticus.ConnectionSpec.spec
+  Petrus.Agenticus.CustodyCorpusSpec.spec
+  Petrus.Agenticus.CustodyInteropSpec.spec
