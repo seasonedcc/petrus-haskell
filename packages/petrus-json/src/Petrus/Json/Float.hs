@@ -24,6 +24,7 @@ module Petrus.Json.Float
   , floatReprBuilder
   , writeFloatRepr
   , maxFloatReprLength
+  , shortestDigits
   ) where
 
 import Data.Array.Base (unsafeAt)
@@ -54,6 +55,15 @@ pythonFloatReprBytes d = BI.unsafeCreateUptoN maxFloatReprLength (\p -> (`minusP
 floatReprBuilder :: Double -> B.Builder
 floatReprBuilder = BP.primBounded (boundedPrim maxFloatReprLength writeFloatRepr)
 {-# INLINE floatReprBuilder #-}
+
+-- | The digits behind 'pythonFloatRepr' without its layout: for a finite,
+-- nonzero double, @(digits, exponent)@ with @abs d@ spelled as
+-- @digits * 10^exponent@ (@digits@ may end in zeros). ECMAScript's
+-- @Number::toString@ picks the same digits, so other layouts can reuse them.
+shortestDigits :: Double -> (Word, Int)
+shortestDigits d = decimal (fromIntegral (bits .&. 0xFFFFFFFFFFFFF)) (fromIntegral ((bits `unsafeShiftR` 52) .&. 0x7FF))
+  where
+    bits = castDoubleToWord64 (abs d)
 
 -- | The longest spelling 'writeFloatRepr' writes
 -- (@-2.2250738585072014e-308@).
