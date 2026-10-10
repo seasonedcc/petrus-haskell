@@ -5,11 +5,8 @@
 -- @Engine.history_page(after, limit)@ each run one protocol view
 -- (@petrus.impetus.observation@) under the Engine's monitor. This package
 -- does not depend on the Haskell observation package; that package builds
--- the three views on 'observeEngine':
---
--- > snapshot e = observeEngine e (\inst history -> Observation.snapshot inst history)
--- > netDocument e = observeEngine e Observation.netDocument
--- > historyPage e after limit = observeEngine e (\inst history -> Observation.historyPage (instanceIdentity inst) history after limit)
+-- the three views on 'observeEngine' ("Petrus.Observation.Engine" in
+-- @petrus-observation@).
 --
 -- The read refuses from inside a writing door (the reference's
 -- non-reentrant reads) and on a poisoned or closed Engine.

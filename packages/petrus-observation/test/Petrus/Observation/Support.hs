@@ -31,6 +31,7 @@ module Petrus.Observation.Support
     -- * Assertions
   , expectRight
   , shouldBeExactly
+  , shouldSpellFixture
   , member
   , members
   , items
@@ -47,7 +48,7 @@ import Petrus.Activity (ActivityInvocation (..), invocation)
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), CelCompilers (..), handlerTokens)
 import Petrus.Impetus.Instance
 import Petrus.Impetus.Petrinet hiding (candidates)
-import Petrus.Json (Json (..), exactEq, parseJson, pythonLoads)
+import Petrus.Json (Json (..), dumps, exactEq, indented, parseJson, pythonLoads)
 import System.Directory (doesDirectoryExist, doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
@@ -145,6 +146,13 @@ shouldBeExactly actual expected =
   if exactEq actual expected
     then pure ()
     else expectationFailure ("expected exactly\n" <> show expected <> "\nbut got\n" <> show actual)
+
+-- | The fixture's own bytes are the reference writer's spelling of the
+-- projected value (two-space indentation, insertion order, one newline).
+shouldSpellFixture :: HasCallStack => Json -> FilePath -> Expectation
+shouldSpellFixture value path = do
+  expected <- BS.readFile path
+  fmap (<> "\n") (dumps indented value) `shouldBe` Right expected
 
 member :: HasCallStack => Text -> Json -> Json
 member key = \case

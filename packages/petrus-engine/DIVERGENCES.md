@@ -29,8 +29,9 @@ differences are in how the API is spelled and in what the types rule out.
    reference's `snapshot()`, `net_document()` and `history_page()` belong to
    `petrus-observation`. `Petrus.Engine.Observation.observeEngine` gives
    that package the Instance and a History snapshot, coherently and under
-   the Engine's monitor. That is everything those views read, so they can be
-   built there without the Engine depending on them.
+   the Engine's monitor. That is everything those views read, so they are
+   built there (`Petrus.Observation.Engine.snapshot`, `netDocument`,
+   `historyPage`) without the Engine depending on them.
 4. **The type system replaces the reference's run-time type checks.** The
    reference spends many guards on values that pose as something else:
    `str`/`int`/`NetPath`/`LifecycleScope`/record subclasses, a bool posing as
