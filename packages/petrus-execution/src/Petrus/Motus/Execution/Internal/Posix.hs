@@ -36,6 +36,18 @@ module Petrus.Motus.Execution.Internal.Posix
   , fsyncFd
   , atomicWriteFile
   , mkdirP
+    -- * Descriptor-relative primitives
+  , StatInfo (..)
+  , isRegularMode
+  , isDirectoryMode
+  , permissionBits
+  , fstatInfo
+  , statAtNoFollow
+  , dirEntryCount
+  , mkdirAt
+  , unlinkAt
+  , rmdirAt
+  , openDirectoryAt
   ) where
 
 import Control.Exception (IOException, bracket, bracketOnError, try)
@@ -47,8 +59,15 @@ import Data.ByteString.Unsafe qualified as BU
 import Data.IORef
 import Data.Map.Strict qualified as Map
 import Foreign.C.Error (Errno (..), eNOENT, eNOTDIR, eLOOP, throwErrnoIfMinus1Retry_, getErrno)
+import Data.Bits ((.&.))
+import Data.Int (Int64)
+import Foreign.C.Error (throwErrnoIfMinus1_, throwErrnoPathIfMinus1_)
+import Foreign.C.String (CString)
 import Foreign.C.Types (CInt (..))
-import Foreign.Ptr (castPtr)
+import Foreign.Marshal.Alloc (allocaBytes)
+import Foreign.Ptr (Ptr, castPtr, nullPtr)
+import Foreign.Storable (peekElemOff)
+import System.Posix.Types (CMode (..))
 import GHC.Foreign qualified as GHC
 import GHC.IO.Encoding (getFileSystemEncoding)
 import GHC.IO.Exception (IOException (..))
@@ -71,6 +90,7 @@ import System.Posix.IO.ByteString
   , defaultFileFlags
   , fdWriteBuf
   , openFd
+  , openFdAt
   )
 import System.Posix.Types (Fd (..))
 
@@ -314,3 +334,83 @@ mkdirP path = do
           case now of
             Just status | isDirectory status -> pure ()
             _ -> ioError e
+
+-- ---------------------------------------------------------------------------
+-- Descriptor-relative primitives (@dir_fd=@ in Python's @os@ module)
+
+-- | The @os.stat_result@ fields Petrus compares.
+data StatInfo = StatInfo
+  { stDev :: Int64
+  , stIno :: Int64
+  , stMode :: Int64
+  , stUid :: Int64
+  , stNlink :: Int64
+  , stSize :: Int64
+  , stMtimeNs :: Int64
+  , stCtimeNs :: Int64
+  }
+  deriving stock (Eq, Show)
+
+isRegularMode :: StatInfo -> Bool
+isRegularMode info = stMode info .&. 0o170000 == 0o100000
+
+isDirectoryMode :: StatInfo -> Bool
+isDirectoryMode info = stMode info .&. 0o170000 == 0o040000
+
+-- | @stat.S_IMODE@.
+permissionBits :: StatInfo -> Int64
+permissionBits info = stMode info .&. 0o7777
+
+foreign import capi safe "petrus_posix.h petrus_stat_at"
+  c_petrus_stat_at :: CInt -> CString -> CInt -> Ptr Int64 -> IO CInt
+
+foreign import capi safe "petrus_posix.h petrus_dir_entry_count"
+  c_petrus_dir_entry_count :: CInt -> IO CInt
+
+foreign import capi safe "sys/stat.h mkdirat" c_mkdirat :: CInt -> CString -> CMode -> IO CInt
+
+foreign import capi safe "unistd.h unlinkat" c_unlinkat :: CInt -> CString -> CInt -> IO CInt
+
+foreign import capi "fcntl.h value AT_REMOVEDIR" atRemovedir :: CInt
+
+statWith :: (Ptr Int64 -> IO CInt) -> String -> IO StatInfo
+statWith call label = allocaBytes (8 * 8) $ \buffer -> do
+  throwErrnoIfMinus1_ label (call buffer)
+  let at = peekElemOff buffer
+  StatInfo <$> at 0 <*> at 1 <*> at 2 <*> at 3 <*> at 4 <*> at 5 <*> at 6 <*> at 7
+
+-- | @os.fstat(fd)@.
+fstatInfo :: Fd -> IO StatInfo
+fstatInfo (Fd fd) = statWith (c_petrus_stat_at fd nullPtr 0) "fstat"
+
+-- | @os.stat(name, dir_fd=fd, follow_symlinks=False)@.
+statAtNoFollow :: Fd -> RawFilePath -> IO StatInfo
+statAtNoFollow (Fd fd) name =
+  B.useAsCString name $ \cname -> statWith (c_petrus_stat_at fd cname 1) "fstatat"
+
+-- | @len(os.listdir(fd))@.
+dirEntryCount :: Fd -> IO Int
+dirEntryCount (Fd fd) = do
+  count <- c_petrus_dir_entry_count fd
+  when (count < 0) (throwErrnoIfMinus1_ "listdir" (pure count))
+  pure (fromIntegral count)
+
+-- | @os.mkdir(name, mode, dir_fd=fd)@.
+mkdirAt :: Fd -> RawFilePath -> CMode -> IO ()
+mkdirAt (Fd fd) name mode =
+  B.useAsCString name $ \cname -> throwErrnoPathIfMinus1_ "mkdirat" (BC.unpack name) (c_mkdirat fd cname mode)
+
+-- | @os.unlink(name, dir_fd=fd)@.
+unlinkAt :: Fd -> RawFilePath -> IO ()
+unlinkAt (Fd fd) name =
+  B.useAsCString name $ \cname -> throwErrnoPathIfMinus1_ "unlinkat" (BC.unpack name) (c_unlinkat fd cname 0)
+
+-- | @os.rmdir(name, dir_fd=fd)@.
+rmdirAt :: Fd -> RawFilePath -> IO ()
+rmdirAt (Fd fd) name =
+  B.useAsCString name $ \cname -> throwErrnoPathIfMinus1_ "unlinkat" (BC.unpack name) (c_unlinkat fd cname atRemovedir)
+
+-- | @os.open(name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW, dir_fd=fd)@.
+openDirectoryAt :: Maybe Fd -> RawFilePath -> IO Fd
+openDirectoryAt directory name =
+  openFdAt directory name ReadOnly defaultFileFlags {directory = True, nofollow = True, cloexec = True}

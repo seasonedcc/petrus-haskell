@@ -13,6 +13,7 @@ maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           System
 build-type:         Simple
 extra-source-files: data/gondolin_sidecar.mjs
+                    cbits/*.h
                     test/fixtures/*.json
                     test/fixtures/*.py
                     test/fixtures/*.mjs
@@ -35,12 +36,20 @@ library
                     Petrus.Motus.Execution.Error
                     Petrus.Motus.Execution.Internal.Common
                     Petrus.Motus.Execution.Internal.Posix
+                    Petrus.Motus.Execution.Internal.Process
                     Petrus.Motus.Execution.Internal.PyText
+                    Petrus.Motus.Execution.Providers.Local
+  include-dirs:     cbits
+  c-sources:        cbits/petrus_posix.c
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
                   , crypton >=1.0
+                  , directory >=1.3
                   , petrus-json
+                  , process >=1.6.18
+                  , stm >=2.5
+                  , temporary >=1.3
                   , text >=2.0
                   , time >=1.12
                   , unix >=2.8
@@ -54,6 +63,7 @@ test-suite petrus-execution-test
   main-is:          Main.hs
   other-modules:    ArchiveSpec
                     ContractSpec
+                    LocalSpec
                     Support
   build-depends:    base
                   , base64-bytestring
