@@ -36,6 +36,7 @@ import Petrus.TestSupport.Python (readLine, runPython, withPython, PythonResult 
 import Petrus.TestSupport.Repo (repoRoot)
 import System.Timeout (timeout)
 import Test.Hspec
+import UrlSpec (urlSpec)
 
 main :: IO ()
 main = do
@@ -48,6 +49,7 @@ main = do
         withEcho reports (Just 0.2) $ \haskellTimed ->
           hspec $ do
             pureSpec
+            urlSpec
             wireSpec python haskell
             timeoutSpec pythonTimed haskellTimed
             exceptionSpec reports python haskell

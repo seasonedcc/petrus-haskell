@@ -1,0 +1,18 @@
+petrus-observation-http
+Copyright 2026 Seasoned
+
+This package is a Haskell port of the observation HTTP adapter of Petrus
+(petrus.engine.observation_http, by Henrique Bastos), pinned under
+upstream/petrus and licensed under the Apache License, Version 2.0. It
+follows the adapter's behavior and the HTTP profile of
+spec/observation-protocol-v1.md, and its test suite ports the upstream tests
+in tests/petrus/engine/test_observation_http.py. The package itself is
+licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The test and benchmark scripts in test/ and bench/ run the upstream Petrus
+code from its pinned virtual environment to record the reference behavior;
+no upstream source is included in the library.
+
+Through petrus-http-core, the server reproduces the observable behavior of
+CPython's http.server and urllib.parse (the Python Software Foundation
+License); no CPython source code is included.
