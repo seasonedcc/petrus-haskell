@@ -91,3 +91,22 @@ test-suite petrus-motus-zeromq-test
                   , text
                   , unix
   ghc-options:      -threaded -rtsopts
+
+benchmark petrus-motus-zeromq-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , direct-sqlite
+                  , petrus-activity
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-motus-zeromq
+                  , process >=1.6
+                  , directory
+                  , filepath
+                  , text
+                  , unix
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A32m"

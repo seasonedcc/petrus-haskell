@@ -95,6 +95,7 @@ benchmark petrus-motus-bench
                   , filepath
                   , petrus-activity
                   , petrus-json
+                  , containers
                   , petrus-motus
                   , tasty-bench >=0.3
                   , text

@@ -1,4 +1,4 @@
-"""Time the reference Local Dispatch on the same workloads as ``bench/Main.hs``.
+"""Time the reference Local Dispatch and Workers on the same workloads as ``bench/Main.hs``.
 
 Run from the pinned upstream checkout with its virtual environment:
 
@@ -9,7 +9,11 @@ Every workload runs over a fresh SQLite file (created, then deleted with its
 WAL side files): ``open-fresh`` is schema initialization alone; each
 ``roundtrip`` dispatches n occurrences, claims and completes each with one
 worker, and collects them all, under the database clock or a provider
-clock. Every timing is the median of several runs after one warm-up, in
+clock. The ``worker`` rows drain Local custody with a ``Worker``
+(``run_available``), and run the ``Worker`` and the ``AsyncWorker`` (sync
+bridge) over in-memory custody: per-Attempt runtime cost, and concurrency
+with an Activity that sleeps 1 ms. Event lines are silenced on both sides.
+Every timing is the median of several runs after one warm-up, in
 milliseconds, with a result size the Haskell side computes too.
 """
 
@@ -21,11 +25,18 @@ import sqlite3
 import statistics
 import sys
 import tempfile
+import asyncio
+import threading
 import time
 
 from petrus.motus.activity import ActivityInvocation, ExecutionPolicy
 import petrus.motus.dispatch.local as local
-from petrus.motus.dispatch import LocalDispatch, LocalWorkerDispatch
+from petrus.motus.dispatch import ActivityAttempt, LocalDispatch, LocalWorkerDispatch
+from petrus.motus.worker import AsyncWorker, Worker
+
+# Event lines are silenced, as the Haskell bench's Workers write to nowhere.
+Worker._say = staticmethod(lambda **event: None)
+AsyncWorker._say = staticmethod(lambda **event: None)
 
 ROUND_TRIPS = 50
 
@@ -133,6 +144,96 @@ def closing_connections(action):
     return run
 
 
+def ok(invocation, *, context):
+    return {"ok": True}
+
+
+def worker_local(path: str, n: int, *, held: bool) -> int:
+    dispatch = LocalDispatch(path, instance="bench")
+    connection = sqlite3.connect(path) if held else None
+    try:
+        if connection is not None:
+            connection.execute("SELECT count(*) FROM impetus_local_dispatch_tasks").fetchone()
+        for occurrence in range(1, n + 1):
+            dispatch.dispatch(occurrence, work(occurrence))
+        custody = LocalWorkerDispatch(path, _claimant="bench-worker", _clock_reader=dispatch._clock)
+        worker = Worker(custody, {"work": ok})
+        worker.run_available(limit=2 * n)
+        worker.close()
+        collected = len(dispatch.collect())
+    finally:
+        if connection is not None:
+            connection.close()
+    discard(path)
+    return collected
+
+
+def ready_attempts(n: int) -> list[ActivityAttempt]:
+    return [ActivityAttempt(f"a{i}", "1", "bench", "default", work(i)) for i in range(1, n + 1)]
+
+
+class MemoryProvider:
+    """In-memory custody over a shared pool: claim pops (calling on_empty once empty), complete counts."""
+
+    def __init__(self, pool: list, done: list, on_empty):
+        self.pool, self.done, self.on_empty = pool, done, on_empty
+
+    def claim(self):
+        try:
+            return self.pool.pop()
+        except IndexError:
+            self.on_empty()
+            return None
+
+    def heartbeat(self, attempt, *, details=None):
+        return details
+
+    def complete(self, attempt, result):
+        self.done.append(1)
+
+    def fail(self, attempt, error):
+        raise AssertionError(error)
+
+    def wait(self, timeout):
+        return False
+
+    def close(self):
+        pass
+
+
+def worker_memory(n: int) -> int:
+    pool, done = ready_attempts(n)[::-1], []
+    worker = Worker(MemoryProvider(pool, done, lambda: None), {"work": ok})
+    worker.run_available(limit=n + 1)
+    worker.close()
+    return len(done)
+
+
+def async_memory(concurrency: int, seconds: float, n: int) -> int:
+    pool, done = ready_attempts(n)[::-1], []
+    lock = threading.Lock()
+
+    class Locked(MemoryProvider):
+        def claim(self):
+            with lock:
+                return super().claim()
+
+    async def activity(invocation, *, context):
+        if seconds:
+            await asyncio.sleep(seconds)
+        return {"ok": True}
+
+    worker: AsyncWorker | None = None
+
+    def stop() -> None:
+        assert worker is not None
+        worker.stop()
+
+    worker = AsyncWorker(lambda: Locked(pool, done, stop), {"work": activity}, concurrency=concurrency)
+    asyncio.run(worker.run(poll_interval=0.001))
+    return len(done)
+
+
 def timed(name: str, action, repeats: int) -> None:
     size = action()
     samples = []
@@ -164,6 +265,13 @@ def main() -> None:
         closing_connections(lambda: round_trip(path, ROUND_TRIPS, provider=True)),
         10,
     )
+    timed("worker/local-50", lambda: worker_local(path, ROUND_TRIPS, held=False), 10)
+    timed("worker/local-50-held-open", lambda: worker_local(path, ROUND_TRIPS, held=True), 10)
+    timed("worker/memory-1000", lambda: worker_memory(1000), 20)
+    for concurrency in (1, 8, 64):
+        timed(f"async-worker/memory-1000-c{concurrency}", lambda c=concurrency: async_memory(c, 0, 1000), 10)
+    for concurrency in (1, 8, 64):
+        timed(f"async-worker/sleep-1ms-200-c{concurrency}", lambda c=concurrency: async_memory(c, 0.001, 200), 10)
     shutil.rmtree(directory)
 
 
