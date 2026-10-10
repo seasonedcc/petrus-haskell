@@ -31,6 +31,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.Impetus.Binding
+                    Petrus.Impetus.GoldenTraces
                     Petrus.Impetus.History
                     Petrus.Impetus.HistoryStore
                     Petrus.Impetus.Instance
@@ -40,8 +41,12 @@ library
                     Petrus.Impetus.History.Records
                     Petrus.Impetus.History.Replay
                     Petrus.Impetus.Internal.OMap
+                    Petrus.Impetus.Internal.Pydantic
+                    Petrus.Impetus.Internal.PyJson
                     Petrus.Impetus.Internal.Repr
                     Petrus.Impetus.Internal.Uuid
+                    Petrus.Impetus.NetDefinition
+                    Petrus.Impetus.NetDocument
                     Petrus.Impetus.Petrinet
                     Petrus.Impetus.Petrinet.Dot
                     Petrus.Impetus.Petrinet.Enabledness
@@ -53,6 +58,7 @@ library
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
+                  , cryptohash-sha256 >=0.11
                   , deepseq >=1.4
                   , directory >=1.3
                   , filepath >=1.4
@@ -65,12 +71,24 @@ library
                   , transformers >=0.6
   ghc-options:      -O2
 
+executable petrus-golden-traces
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          GoldenTraces.hs
+  build-depends:    base
+                  , bytestring
+                  , directory
+                  , filepath
+                  , petrus-impetus
+                  , text
+
 test-suite petrus-impetus-test
   import:           warnings
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Impetus.WireSupport
                     Petrus.Impetus.SchemaSpec
                     Petrus.Impetus.MarkingSpec
                     Petrus.Impetus.EnablednessSpec
@@ -78,9 +96,18 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.FiringSpec
                     Petrus.Impetus.DotSpec
                     Petrus.Impetus.FifoQueueSpec
+                    Petrus.Impetus.NetDefinitionSpec
+                    Petrus.Impetus.NetDocumentSpec
+                    Petrus.Impetus.NetDocumentLineageSpec
+                    Petrus.Impetus.SpecFixturesSpec
+                    Petrus.Impetus.NetDefinitionPropertiesSpec
+                    Petrus.Impetus.NetDefinitionCorpusSpec
+                    Petrus.Impetus.GoldenTracesSpec
+                    Petrus.Impetus.KernelDifferentialSpec
   build-depends:    base
                   , bytestring
                   , containers
+                  , cryptohash-sha256
                   , directory
                   , filepath
                   , hspec >=2.10
@@ -91,3 +118,16 @@ test-suite petrus-impetus-test
                   , text
                   , transformers
   ghc-options:      -threaded -rtsopts
+
+benchmark petrus-impetus-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , petrus-impetus
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"
