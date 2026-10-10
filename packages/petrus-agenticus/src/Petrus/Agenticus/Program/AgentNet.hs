@@ -284,10 +284,7 @@ faithful :: Text -> Json -> Either AgenticusError Json
 faithful name value = case J.dumps J.compact {J.ensureAscii = True} value of
   Left (J.NonFiniteNumber d) ->
     Left (valueError (name <> " must be JSON-faithful: Out of range float values are not JSON compliant: " <> pyJson (Float d)))
-  -- json.dumps's other refusals (an integer past the digit limit, nesting
-  -- past the depth limit), worded as Local Dispatch words them.
-  Left refusal ->
-    Left (valueError (name <> " must be JSON-faithful: " <> T.pack (J.encodeErrorMessage refusal)))
+  Left err -> Left (valueError (name <> " must be JSON-faithful: " <> T.pack (J.encodeErrorMessage err)))
   Right bytes
     | toInteger (BS.length bytes) > maxJsonBytes ->
         Left (valueError (name <> " exceeds the " <> showT maxJsonBytes <> "-byte bound"))
