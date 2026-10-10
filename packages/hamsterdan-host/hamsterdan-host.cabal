@@ -38,6 +38,8 @@ library
                     Hamsterdan.Host.Python
                     Hamsterdan.Host.Runnable
                     Hamsterdan.Host.V5.Timers
+                    Hamsterdan.Host.V5.Review
+                    Hamsterdan.Host.V5.Rerun
                     Hamsterdan.Host.V5.Gates
                     Hamsterdan.Host.Errors
                     Hamsterdan.Host.V5.Ingress
@@ -72,6 +74,8 @@ test-suite hamsterdan-host-test
                     RunnableSpec
                     TestSupport
                     TimersSpec
+                    ReviewSpec
+                    RerunSpec
                     GatesSpec
                     IngressSpec
   build-depends:    base

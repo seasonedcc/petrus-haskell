@@ -24,10 +24,13 @@ module Hamsterdan.Host.Python
     -- * SQLite
   , immediate
   , rowValue
+
+    -- * Files
+  , mkdirPrivate
   ) where
 
-import Control.Exception (Exception (..), SomeException, mask, onException, try)
-import Control.Monad (void)
+import Control.Exception (Exception (..), IOException, SomeException, catch, mask, onException, throwIO, try)
+import Control.Monad (unless, void)
 import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
 import Data.ByteString.Base16 qualified as Base16
@@ -38,6 +41,9 @@ import Hamsterdan.GitHub.Sqlite (Connection, SQLData (..))
 import Hamsterdan.GitHub.Sqlite qualified as Sql
 import Petrus.Json (EncodeOptions (..), Json, compact, defaultDumps, dumps, dumpsText, encodeErrorMessage)
 import Petrus.Motus.Worker (LookupError (..), RuntimeError (..), ValueError (..))
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
+import System.FilePath (takeDirectory)
+import System.Posix.Directory qualified as PosixDir
 
 -- | The reference's @TypeError@.
 newtype TypeError = TypeError Text deriving stock (Eq, Show)
@@ -92,3 +98,14 @@ rowValue :: [[SQLData]] -> Maybe SQLData
 rowValue = \case
   (value : _) : _ -> Just value
   _ -> Nothing
+
+-- | @path.mkdir(mode=0o700, parents=True, exist_ok=True)@: only the leaf
+-- gets @0700@; created parents get the default mode, as @pathlib@ does.
+mkdirPrivate :: FilePath -> IO ()
+mkdirPrivate directory = do
+  exists <- doesDirectoryExist directory
+  unless exists $ do
+    createDirectoryIfMissing True (takeDirectory directory)
+    PosixDir.createDirectory directory 0o700 `catch` \(e :: IOException) -> do
+      again <- doesDirectoryExist directory
+      unless again (throwIO e)

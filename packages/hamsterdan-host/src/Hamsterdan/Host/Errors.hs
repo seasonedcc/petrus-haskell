@@ -14,10 +14,14 @@ module Hamsterdan.Host.Errors
   , unstagedMessage
   , Caught (..)
   , caught
+  , caughtReason
   , catchGate
+  , isBoundary
+  , catchBoundary
   ) where
 
-import Control.Exception (Exception (..), SomeException, fromException, throwIO, try)
+import Control.Exception (Exception (..), SomeException, catch, fromException, throwIO, try)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.GitHub.Models
@@ -79,6 +83,14 @@ caught err
     valueFamily = ["ValueError", "UnicodeError", "UnicodeDecodeError", "UnicodeEncodeError", "JSONDecodeError"]
     runtimeFamily = ["RuntimeError", "NotImplementedError", "RecursionError"]
 
+-- | @str(error) or repr(error)@ of a caught exception.
+caughtReason :: Caught -> Text
+caughtReason = \case
+  CaughtUnstaged _ -> unstagedMessage
+  CaughtBoundary e -> orRepr "GitHubBoundaryError" e.message
+  CaughtRerunRefused reason -> reason
+  CaughtFault reason -> reason
+
 -- | Run an action, handing a caught exception to the classifier and
 -- rethrowing anything the reference would not catch.
 catchGate :: IO a -> (Caught -> IO a) -> IO a
@@ -86,3 +98,14 @@ catchGate action handler =
   try action >>= \case
     Right value -> pure value
     Left err -> maybe (throwIO err) handler (caught err)
+
+-- | Whether the reference's @except GitHubBoundaryError@ catches this
+-- exception (the boundary error itself or @UnstagedCustodyError@).
+isBoundary :: SomeException -> Bool
+isBoundary err = isJust (fromException @GitHubBoundaryError err) || isJust (fromException @UnstagedCustodyError err)
+
+-- | @try: action except GitHubBoundaryError: handler@, the handler given
+-- the action that rethrows the original.
+catchBoundary :: IO a -> (IO a -> IO a) -> IO a
+catchBoundary action handler =
+  action `catch` \err -> if isBoundary err then handler (throwIO err) else throwIO err
