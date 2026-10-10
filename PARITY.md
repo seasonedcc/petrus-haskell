@@ -36,7 +36,7 @@ the tests, conformance suites, and benchmark results that justify the status.
 | Net DSL | `impetus/dsl.py` | | not started | |
 | Activities | `motus/activity` | | not started | |
 | Dispatch: local, Absurd | `motus/dispatch` | | not started | |
-| Execution, Gondolin | `motus/execution`, `motus/_execution` | | not started | |
+| Execution, Gondolin | `motus/execution`, `motus/_execution` | `petrus-execution` | in progress (all upstream tests ported; real-Gondolin acceptance run pending) | [PARITY](packages/petrus-execution/PARITY.md), [divergences](packages/petrus-execution/DIVERGENCES.md), [bench](packages/petrus-execution/bench/RESULTS.md) |
 | Workers | `motus/worker` | | not started | |
 | Transport: ZeroMQ | `motus/transport` | | not started | |
 | Engine: SQLite, Postgres, Absurd, coordination | `engine/` | | not started | |

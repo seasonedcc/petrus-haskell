@@ -8,7 +8,7 @@
 module Main (main) where
 
 import Control.Exception (evaluate, finally)
-import Control.Monad (forM, forM_, replicateM, void)
+import Control.Monad (forM, forM_, mfilter, replicateM, void)
 import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -68,7 +68,7 @@ report name samples runs =
 
 archiveBenchmarks :: FilePath -> IO ()
 archiveBenchmarks workdir = do
-  only <- lookupEnv "PETRUS_BENCH_ONLY"
+  only <- mfilter (not . null) <$> lookupEnv "PETRUS_BENCH_ONLY"
   forM_ [w | w@(name, _) <- workloads, maybe True (== name) only] $ \(name, runs) -> do
     let source = workdir </> name
         label phase = T.pack ("archive/" <> name <> "/" <> phase)

@@ -48,9 +48,9 @@ import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word32, Word64, Word8)
 import Codec.Compression.Zlib.Internal qualified as Z
-import Foreign.C.Error (Errno (..), eEXIST, eNOENT, errnoToIOError, getErrno)
+import Foreign.C.Error (Errno (..), eEXIST, eNOENT, errnoToIOError, getErrno, throwErrnoIfMinus1Retry)
 import Foreign.C.String (CString)
-import Foreign.C.Types (CInt (..))
+import Foreign.C.Types (CInt (..), CSize (..))
 import Foreign.Marshal.Utils (copyBytes, fillBytes)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import GHC.IO.Exception (IOException (..))
@@ -81,11 +81,10 @@ import System.Posix.IO.ByteString
   , defaultFileFlags
   , fdReadBuf
   , fdSeek
-  , fdWriteBuf
   , openFd
   )
 import System.IO (SeekMode (..))
-import System.Posix.Types (Fd (..), FileOffset)
+import System.Posix.Types (CSsize (..), Fd (..), FileOffset)
 import Control.Exception (bracket)
 
 -- | @MAX_ARCHIVE_BYTES@ (512 MiB): the transfer bound.
@@ -697,10 +696,19 @@ makeFile payload member targetpath = do
             throwExecution TarError "unexpected end of data"
           writeAll fd (B.take (fromIntegral size) (B.drop (fromIntegral position) payload))
 
+-- | Write all bytes in 64 KiB @write(2)@ calls (the size that measured
+-- fastest for large extractions).  The call is @unsafe@: a 64 KiB write to
+-- a regular file takes microseconds, and a @safe@ call per chunk cost ~10%
+-- of a 256 MiB extraction.
 writeAll :: Fd -> ByteString -> IO ()
-writeAll fd bytes = unless (B.null bytes) $ do
-  written <- BU.unsafeUseAsCStringLen bytes $ \(ptr, len) -> fdWriteBuf fd (castPtr ptr) (fromIntegral (min len (1024 * 1024)))
-  writeAll fd (B.drop (fromIntegral written) bytes)
+writeAll (Fd fd) bytes = unless (B.null bytes) $ do
+  written <-
+    BU.unsafeUseAsCStringLen bytes $ \(ptr, len) ->
+      throwErrnoIfMinus1Retry "write" (c_write fd (castPtr ptr) (fromIntegral (min len (64 * 1024))))
+  writeAll (Fd fd) (B.drop (fromIntegral written) bytes)
+
+foreign import capi unsafe "unistd.h write"
+  c_write :: CInt -> Ptr Word8 -> CSize -> IO CSsize
 
 foreign import capi unsafe "unistd.h linkat"
   c_linkat :: CInt -> CString -> CInt -> CString -> CInt -> IO CInt
