@@ -25,6 +25,8 @@ data-files:         data/*.mjs
 extra-source-files: differential/*.json
                     differential/*.py
                     bench/*.py
+                    test/fixtures/pi/*.mjs
+                    test/fixtures/pi/*.py
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -75,10 +77,13 @@ test-suite petrus-agenticus-runtime-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    Petrus.Agenticus.Runtime.AgentNetRunnerSpec
+                    Petrus.Agenticus.Runtime.PiSpec
+                    Petrus.Agenticus.Runtime.PiSupport
                     Petrus.Agenticus.Runtime.RunnerDifferentialSpec
   build-depends:    base
                   , bytestring
                   , containers
+                  , crypton >=1.0
                   , directory
                   , filepath
                   , hspec >=2.10
@@ -87,10 +92,13 @@ test-suite petrus-agenticus-runtime-test
                   , petrus-agenticus-core
                   , petrus-agenticus-runtime
                   , petrus-engine
+                  , petrus-execution
                   , petrus-impetus
                   , petrus-json
+                  , ram >=0.20
                   , temporary
                   , text
+                  , unix
   ghc-options:      -threaded -rtsopts
 
 benchmark petrus-agenticus-runtime-bench
