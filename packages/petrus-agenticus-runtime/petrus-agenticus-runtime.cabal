@@ -17,6 +17,10 @@ category:           Control
 build-type:         Simple
 extra-doc-files:    PARITY.md
                     DIVERGENCES.md
+                    bench/RESULTS.md
+extra-source-files: differential/*.json
+                    differential/*.py
+                    bench/*.py
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -58,6 +62,7 @@ test-suite petrus-agenticus-runtime-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    Petrus.Agenticus.Runtime.AgentNetRunnerSpec
+                    Petrus.Agenticus.Runtime.RunnerDifferentialSpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -74,3 +79,21 @@ test-suite petrus-agenticus-runtime-test
                   , temporary
                   , text
   ghc-options:      -threaded -rtsopts
+
+benchmark petrus-agenticus-runtime-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , filepath
+                  , petrus-activity
+                  , petrus-agenticus
+                  , petrus-agenticus-core
+                  , petrus-agenticus-runtime
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , temporary
+                  , text
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A32m"

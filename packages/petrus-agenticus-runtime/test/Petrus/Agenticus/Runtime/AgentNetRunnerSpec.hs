@@ -2,7 +2,7 @@
 --
 -- The reference replaces @runner.repository@ with a failing object; here
 -- 'setRunnerRepository' installs the same wrapper.
-module Petrus.Agenticus.Runtime.AgentNetRunnerSpec (spec) where
+module Petrus.Agenticus.Runtime.AgentNetRunnerSpec (spec, scriptedBinding, workspace) where
 
 import Control.Exception (throwIO, try)
 import Control.Monad (void)
