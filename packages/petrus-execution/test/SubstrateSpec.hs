@@ -84,7 +84,7 @@ spec = describe "execution substrate" $ do
   fixtures <- runIO (loadFixture "substrate_fixtures.json")
 
   describe "ArtifactStore" $ do
-    it "is host-custodied, integrity-checked and provider-neutral (test_artifacts_are_host_custodied...)" $ withTempDir $ \tmp -> do
+    it "is host-custodied, integrity-checked and provider-neutral (test_artifacts_are_host_custodied_integrity_checked_and_provider_neutral)" $ withTempDir $ \tmp -> do
       let root = tmp </> "artifacts"
           producer = ProducerCorrelation "operation" "local-process" "opaque"
       reference <- newArtifactStore root >>= \store -> putArtifact store "portable result" "text/plain" "evidence" producer
@@ -96,7 +96,7 @@ spec = describe "execution substrate" $ do
       store <- newArtifactStore root
       errorMatching (readArtifact store reference) ValueError "integrity"
 
-    it "prunes the oldest blobs without removing current authority (test_artifact_retention_prunes_oldest...)" $ withTempDir $ \tmp -> do
+    it "prunes the oldest blobs without removing current authority (test_artifact_retention_prunes_oldest_without_removing_current_authority)" $ withTempDir $ \tmp -> do
       store <- newArtifactStore (tmp </> "artifacts")
       let producer = ProducerCorrelation "operation" "provider" "lease"
       references <-
@@ -134,7 +134,7 @@ spec = describe "execution substrate" $ do
           `shouldReturn` TE.encodeUtf8 (textField "metadata" case_)
 
   describe "Timeline" $ do
-    it "redacts recursively, correlates, and has no authority (test_timeline_redacts_recursively...)" $ withTempDir $ \tmp -> do
+    it "redacts recursively, correlates, and has no authority (test_timeline_redacts_recursively_correlates_and_has_no_authority)" $ withTempDir $ \tmp -> do
       store <- newArtifactStore (tmp </> "artifacts")
       reference <- putArtifact store "result" "text/plain" "result" (ProducerCorrelation "op" "docker" "id")
       let path = tmp </> "timeline.jsonl"
@@ -160,7 +160,7 @@ spec = describe "execution substrate" $ do
       doesFileExist path `shouldReturn` False
       readArtifact store reference `shouldReturn` "result"
 
-    it "mints sequences across restart; retention is sink policy (test_timeline_mints_sequences...)" $ withTempDir $ \tmp -> do
+    it "mints sequences across restart; retention is sink policy (test_timeline_mints_sequences_across_restart_and_retention_is_sink_policy)" $ withTempDir $ \tmp -> do
       let path = tmp </> "timeline.jsonl"
       timeline <- newTimeline path (Just 2)
       first <- observe timeline "environment.provisioned" (observeSpec "motus.worker-1" "provision" "ready" [("operation_id", "operation")])
@@ -228,7 +228,7 @@ spec = describe "execution substrate" $ do
       forM_ (objectMembers (field "phases" fixtures)) $ \(kind, expected) -> String (phaseOf kind) `shouldBe` expected
 
   describe "TelemetryTimelineHandler" $ do
-    it "builds one redacted, correlated, non-canonical stream (test_telemetry_handler_builds_one...)" $ withTempDir $ \tmp -> do
+    it "builds one redacted, correlated, non-canonical stream (test_telemetry_handler_builds_one_redacted_correlated_noncanonical_stream)" $ withTempDir $ \tmp -> do
       let path = tmp </> "timeline.jsonl"
       timeline <- newTimeline path Nothing
       emitTelemetry (telemetryTimelineHandler timeline) $

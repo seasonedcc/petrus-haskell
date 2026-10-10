@@ -6,6 +6,7 @@ import DockerSpec qualified
 import E2bSpec qualified
 import GondolinSpec qualified
 import LocalSpec qualified
+import ProvidersSpec qualified
 import SubstrateSpec qualified
 import System.Posix.Files (setFileCreationMask)
 import Test.Hspec
@@ -17,6 +18,7 @@ main = do
   hspec $ do
     ArchiveSpec.spec
     ContractSpec.spec
+    ProvidersSpec.spec
     LocalSpec.spec
     DockerSpec.spec
     E2bSpec.spec

@@ -220,14 +220,14 @@ spec = describe "Gondolin provider" $ do
       _ <- newGondolinEnvironment (tmp </> "d" </> "nested") (gondolinConfig "sdk.mjs")
       modeOf (tmp </> "d" </> "nested") `shouldReturn` 0o700
 
-    it "discovers the Gondolin capabilities and private-file transfer (capability discovery)" $ withTempDir $ \tmp -> do
+    it "discovers the Gondolin capabilities and private-file transfer (capability discovery) (test_provider_capability_discovery_is_semantic_and_provider_differences_are_explicit[gondolin])" $ withTempDir $ \tmp -> do
       (_, provider) <- newEnv (tmp </> "gondolin") (gondolinConfig "unused.mjs")
       providerName provider `shouldBe` "gondolin"
       providerCapabilities provider
         `shouldBe` Set.fromList [capExplicitEnvironment, capMicrovm, capPrivateFileTransfer, capRecreatableLookup, capTerritoryCancellation, capVm, capWorkspace]
       isNothing (providerPrivateFiles provider) `shouldBe` False
 
-    it "never verifies absence for a foreign provider (destroy foreign)" $ withTempDir $ \tmp -> do
+    it "never verifies absence for a foreign provider (destroy foreign) (test_destroy_never_verifies_absence_for_a_foreign_provider[gondolin])" $ withTempDir $ \tmp -> do
       (_, provider) <- newEnv (tmp </> "gondolin") (gondolinConfig "unused.mjs")
       let foreignLease = rightOr (mkEnvironmentLease "foreign-cleanup" "foreign-provider" "foreign-lease" Set.empty Ready)
       result <- providerDestroy provider foreignLease
@@ -253,7 +253,7 @@ spec = describe "Gondolin provider" $ do
       identity <- processIdentity 1
       identityState identity `shouldSatisfy` (`elem` ["present", "uninspectable"])
 
-    it "ignores a member that exited after enumeration (group identity snapshot)" $ do
+    it "ignores a member that exited after enumeration (group identity snapshot) (test_group_identity_snapshot_ignores_member_that_exited_after_enumeration)" $ do
       (processes, _) <-
         scriptedInspector
           [[GroupMember 41 "node sidecar", GroupMember 99 "finished-helper"]]
@@ -262,7 +262,7 @@ spec = describe "Gondolin provider" $ do
       groupIdentities processes (unitRecord "/tmp/petrus-g-x" (present "leader-start") Nothing)
         `shouldReturn` Map.fromList [("41", "leader-start")]
 
-    it "fails closed on a foreign reused process group without signalling" $ do
+    it "fails closed on a foreign reused process group without signalling (test_foreign_reused_process_group_fails_closed_without_signal)" $ do
       (processes, signalled) <- scriptedInspector [[GroupMember 99 "unrelated"]] True (const missing)
       errorMatching
         (cleanupGroup processes (unitRecord "/private/token" (Identity "present" Nothing Nothing) Nothing))
@@ -270,13 +270,13 @@ spec = describe "Gondolin provider" $ do
         "uncertain"
       readIORef signalled `shouldReturn` []
 
-    it "allows zombie-leader cleanup with the same process marker" $ do
+    it "allows zombie-leader cleanup with the same process marker (test_same_process_marker_allows_zombie_leader_cleanup)" $ do
       (processes, signalled) <-
         scriptedInspector [[GroupMember 41 "<defunct>"], []] False (const (Identity "present" (Just "boot:100") (Just "")))
       cleanupGroup processes (unitRecord "/tmp/petrus-g-token" (Identity "present" (Just "boot:100") (Just "node sidecar")) Nothing)
       readIORef signalled `shouldReturn` [(41, fromIntegral sigTERM)]
 
-    it "allows orphan process-group cleanup by recorded member identity" $ do
+    it "allows orphan process-group cleanup by recorded member identity (test_recorded_member_identity_allows_orphan_process_group_cleanup)" $ do
       (processes, signalled) <-
         scriptedInspector
           [[GroupMember 99 "qemu-system-aarch64"], []]
@@ -285,7 +285,7 @@ spec = describe "Gondolin provider" $ do
       cleanupGroup processes (unitRecord "/tmp/petrus-g-token" (present "leader-start") (Just [("41", "leader-start"), ("99", "member-start")]))
       readIORef signalled `shouldReturn` [(41, fromIntegral sigTERM)]
 
-    it "fails closed without signalling when a recorded member identity changed" $ do
+    it "fails closed without signalling when a recorded member identity changed (test_changed_recorded_member_identity_fails_closed_without_signal)" $ do
       (processes, signalled) <-
         scriptedInspector
           [[GroupMember 99 "qemu-system-aarch64"]]
@@ -365,7 +365,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
       isEmptyDirectory root `shouldReturn` True
 
   forM_ ["GONDOLIN_IMAGE_STORE", "XDG_CACHE_HOME"] $ \variable ->
-    it ("resolves a custom image store from " <> variable <> " before VM creation") $ withTempDir $ \tmp -> do
+    it ("resolves a custom image store from " <> variable <> " before VM creation (test_sidecar_resolves_a_custom_image_store_locally_before_vm_creation[" <> variable <> "])") $ withTempDir $ \tmp -> do
       let store = tmp </> "image-store"
           other = if variable == "GONDOLIN_IMAGE_STORE" then "XDG_CACHE_HOME" else "GONDOLIN_IMAGE_STORE"
       createDirectory store
@@ -378,7 +378,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
         void (pure env)
         isEmptyDirectory root `shouldReturn` True
 
-  it "sanitizes a missing local image store path" $ withTempDir $ \tmp -> do
+  it "sanitizes a missing local image store path (test_sidecar_sanitizes_a_missing_local_image_store_path)" $ withTempDir $ \tmp -> do
     let store = tmp </> "private-image-store"
     withEnvironment [("GONDOLIN_IMAGE_STORE", Just store)] $ do
       let root = tmp </> "g"
@@ -434,7 +434,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
       )
       `finally` (providerDestroy provider lease >>= (`shouldBe` True) . cleanupVerified)
 
-  it "does not grant private transfer without the requirement" $ withTempDir $ \tmp -> do
+  it "does not grant private transfer without the requirement (test_gondolin_lease_without_requirement_does_not_gain_private_transfer)" $ withTempDir $ \tmp -> do
     (_, provider) <- newEnv (tmp </> "g") (fakeConfig sdk)
     lease <- providerCreate provider "ordinary" (imageSpec "fake-image" [])
     ( do
@@ -450,13 +450,13 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
       )
       `finally` void (providerDestroy provider lease)
 
-  it "never lets an existing non-capable lease satisfy a later private requirement" $ withTempDir $ \tmp -> do
+  it "never lets an existing non-capable lease satisfy a later private requirement (test_existing_noncapable_lease_cannot_satisfy_later_private_requirement)" $ withTempDir $ \tmp -> do
     (_, provider) <- newEnv (tmp </> "g") (fakeConfig sdk)
     lease <- providerCreate provider "fixed-grant" (imageSpec "fake-image" [])
     errorMatching (providerCreate provider "fixed-grant" (privateSpec "fake-image")) RuntimeError "lacks required capabilities"
       `finally` (providerDestroy provider lease >>= (`shouldBe` True) . cleanupVerified)
 
-  it "rolls back a failed private probe without relocking or residue" $ withTempDir $ \tmp -> do
+  it "rolls back a failed private probe without relocking or residue (test_private_probe_failure_rolls_back_without_relocking_or_residue)" $ withTempDir $ \tmp -> do
     let root = tmp </> "g"
     created <- newIORef []
     let hooks =
@@ -478,7 +478,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
     runtimes `shouldNotBe` []
     mapM doesPathExist runtimes `shouldReturn` map (const False) runtimes
 
-  it "keeps symlink replacement unverified and never touches its target" $ withTempDir $ \tmp -> do
+  it "keeps symlink replacement unverified and never touches its target (test_private_symlink_replacement_is_unverified_and_never_touches_target)" $ withTempDir $ \tmp -> do
     (_, provider) <- newEnv (tmp </> "g") (fakeConfig sdk)
     let files = transfer provider
     lease <- providerCreate provider "private-symlink" (privateSpec "fake-image")
@@ -507,7 +507,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
       )
       `finally` (providerDestroy provider lease >>= (`shouldBe` True) . cleanupVerified)
 
-  it "reports private cleanup as unverified while a command is active" $ withTempDir $ \tmp -> do
+  it "reports private cleanup as unverified while a command is active (test_private_cleanup_is_unverified_while_command_is_active)" $ withTempDir $ \tmp -> do
     (env, provider) <- newEnv (tmp </> "g") (fakeConfig sdk)
     let files = transfer provider
     lease <- providerCreate provider "private-active" (privateSpec "fake-image")
@@ -526,7 +526,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
       )
       `finally` (providerDestroy provider lease >>= (`shouldBe` True) . cleanupVerified)
 
-  it "requires territory destroy for verified cleanup after private sidecar death" $ withTempDir $ \tmp -> do
+  it "requires territory destroy for verified cleanup after private sidecar death (test_private_sidecar_death_requires_territory_destroy_for_verified_cleanup)" $ withTempDir $ \tmp -> do
     (env, provider) <- newEnv (tmp </> "g") (fakeConfig sdk)
     let files = transfer provider
     lease <- providerCreate provider "private-death" (privateSpec "fake-image")
@@ -539,7 +539,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
     (cleanupVerified <$> providerDestroy provider lease) `shouldReturn` True
     doesPathExist (T.unpack (registryRuntime record)) `shouldReturn` False
 
-  it "closes the lease when a command times out" $ withTempDir $ \tmp -> do
+  it "closes the lease when a command times out (test_gondolin_timeout_destroys_lease)" $ withTempDir $ \tmp -> do
     (env, provider) <- newEnv (tmp </> "g") (fakeConfig sdk)
     lease <- provision env "timeout-op" (imageSpec "fake-image" [])
     ( do
@@ -550,7 +550,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
       )
       `finally` void (providerDestroy provider lease)
 
-  it "closes on output overflow and destroy is idempotent" $ withTempDir $ \tmp -> do
+  it "closes on output overflow and destroy is idempotent (test_gondolin_output_overflow_closes_and_destroy_is_idempotent)" $ withTempDir $ \tmp -> do
     let root = tmp </> "g"
     (env, provider) <- newEnv root (fakeConfig sdk)
     lease <- provision env "overflow" (imageSpec "fake-image" [])
@@ -561,7 +561,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
     (cleanupDisposition <$> providerDestroy provider lease) `shouldReturn` NotCreated
     isEmptyDirectory root `shouldReturn` True
 
-  it "keeps the command cwd guest-lexical and inside the workspace" $ withTempDir $ \tmp -> do
+  it "keeps the command cwd guest-lexical and inside the workspace (test_command_cwd_is_guest_lexical_and_cannot_escape_workspace)" $ withTempDir $ \tmp -> do
     (env, provider) <- newEnv (tmp </> "g") (fakeConfig sdk)
     lease <- provision env "cwd" (imageSpec "fake-image" [])
     ( do
@@ -571,7 +571,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
       )
       `finally` void (providerDestroy provider lease)
 
-  it "creates one lease and one sidecar under concurrent provision" $ withTempDir $ \tmp -> do
+  it "creates one lease and one sidecar under concurrent provision (test_concurrent_provision_creates_one_lease_and_sidecar)" $ withTempDir $ \tmp -> do
     let root = tmp </> "g"
     environments <- mapM (const (newGondolinEnvironment root (fakeConfig sdk))) [1 :: Int, 2]
     boxes <- mapM (\env -> background (provision env "concurrent" (imageSpec "fake-image" []))) environments
@@ -585,7 +585,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
         void (providerDestroy (gondolinProvider (head' environments)) first)
       _ -> expectationFailure "expected two leases"
 
-  it "removes the runtime and operation directory on spawn failure" $ withTempDir $ \tmp -> do
+  it "removes the runtime and operation directory on spawn failure (test_spawn_failure_removes_runtime_and_operation_directory)" $ withTempDir $ \tmp -> do
     let root = tmp </> "g"
     runtimesBefore <- runtimeDirectories
     (_, provider) <- newEnv root (gondolinConfig sdk) {gondolinNode = "/missing/petrus-node"}
@@ -597,7 +597,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
     runtimesAfter <- runtimeDirectories
     runtimesAfter `shouldSatisfy` (`Set.isSubsetOf` runtimesBefore)
 
-  it "stops the unregistered sidecar when the registry write fails" $ withTempDir $ \tmp -> do
+  it "stops the unregistered sidecar when the registry write fails (test_registry_write_failure_stops_unregistered_sidecar)" $ withTempDir $ \tmp -> do
     let root = tmp </> "g"
     runtimesBefore <- runtimeDirectories
     let hooks = noHooks {hookWriteRegistry = throwExecution OSError "disk"}
@@ -607,7 +607,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
     runtimesAfter <- runtimeDirectories
     runtimesAfter `shouldSatisfy` (`Set.isSubsetOf` runtimesBefore)
 
-  it "fails closed on an unregistered workspace before creating a runtime" $ withTempDir $ \tmp -> do
+  it "fails closed on an unregistered workspace before creating a runtime (test_unregistered_workspace_fails_closed_before_runtime_creation)" $ withTempDir $ \tmp -> do
     let root = tmp </> "g"
     (env, provider) <- newEnv root (fakeConfig sdk)
     createDirectoryIfMissing True (operationDirectory env "orphan" </> "workspace")
@@ -620,7 +620,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
     runtimesAfter <- runtimeDirectories
     runtimesAfter `shouldSatisfy` (`Set.isSubsetOf` runtimesBefore)
 
-  it "re-validates the lock after destroy unlinks a waiter's inode" $ withTempDir $ \tmp -> do
+  it "re-validates the lock after destroy unlinks a waiter's inode (test_lock_revalidates_after_destroy_unlinks_a_waiters_inode)" $ withTempDir $ \tmp -> do
     waiter <- newEmptyMVar
     opened <- newEmptyMVar
     let hooks =
@@ -647,7 +647,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
       removeDirectoryRecursive directory
     timeout 1000000 (readMVar observed) `shouldReturn` Just True
 
-  it "enforces single-flight commands" $ withTempDir $ \tmp -> do
+  it "enforces single-flight commands (test_sidecar_enforces_single_flight_commands)" $ withTempDir $ \tmp -> do
     (env, provider) <- newEnv (tmp </> "g") (fakeConfig sdk)
     lease <- provision env "single-flight" (imageSpec "fake-image" [])
     ( do
@@ -661,7 +661,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
       )
       `finally` void (providerDestroy provider lease)
 
-  it "closes the active lease when the currency check fails" $ withTempDir $ \tmp -> do
+  it "closes the active lease when the currency check fails (test_currency_check_failure_closes_active_lease)" $ withTempDir $ \tmp -> do
     (env, provider) <- newEnv (tmp </> "g") (fakeConfig sdk)
     lease <- provision env "currency-error" (imageSpec "fake-image" [])
     ( do
@@ -679,7 +679,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
       )
       `finally` void (providerDestroy provider lease)
 
-  it "closes a fresh lease on supersession" $ withTempDir $ \tmp -> do
+  it "closes a fresh lease on supersession (test_supersession_closes_fresh_lease)" $ withTempDir $ \tmp -> do
     (env, provider) <- newEnv (tmp </> "g") (fakeConfig sdk)
     lease <- provision env "superseded" (imageSpec "fake-image" [])
     checks <- newIORef [True, True, False]
@@ -690,7 +690,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
     _ <- providerDestroy provider lease
     void (providerDestroy provider lease)
 
-  it "expires by TTL and is destroyed without residue" $ withTempDir $ \tmp -> do
+  it "expires by TTL and is destroyed without residue (test_ttl_expires_and_can_be_destroyed_without_residue)" $ withTempDir $ \tmp -> do
     let root = tmp </> "g"
     (env, provider) <- newEnv root (gondolinConfig sdk) {gondolinLeaseTtl = 0.1}
     lease <- provision env "ttl" (imageSpec "fake-image" [])
@@ -699,7 +699,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
     _ <- providerDestroy provider lease
     isEmptyDirectory root `shouldReturn` True
 
-  it "gives the private security probe startup grace before a short TTL" $ withTempDir $ \tmp -> do
+  it "gives the private security probe startup grace before a short TTL (test_private_security_probe_gets_startup_grace_before_short_ttl)" $ withTempDir $ \tmp -> do
     let root = tmp </> "g"
     (env, provider) <- newEnv root (gondolinConfig sdk) {gondolinLeaseTtl = 0.05}
     lease <- providerCreate provider "private-ttl" (privateSpec "fake-image-slow-probe")
@@ -709,7 +709,7 @@ fakeSuite sdk = describe "against the verbatim sidecar and fake SDK" $ do
     (cleanupVerified <$> providerDestroy provider lease) `shouldReturn` True
     isEmptyDirectory root `shouldReturn` True
 
-  it "verifies cleanup after hard sidecar death" $ withTempDir $ \tmp -> do
+  it "verifies cleanup after hard sidecar death (test_hard_sidecar_death_has_verified_cleanup)" $ withTempDir $ \tmp -> do
     let root = tmp </> "g"
     (env, provider) <- newEnv root (fakeConfig sdk)
     lease <- provision env "hard-death" (imageSpec "fake-image" [])
@@ -733,11 +733,11 @@ realSuite = do
   image <- runIO (lookupEnv "PETRUS_REAL_GONDOLIN_IMAGE")
   describe "against real Gondolin" $ case (sdkModule, image) of
     (Just sdkText, Just imageText) | not (null sdkText) && not (null imageText) ->
-      it "runs the real lifecycle (opt-in)" $ withSystemTempDirectory "petrus-real-gondolin" $ \tmp ->
+      it "runs the real lifecycle (opt-in) (test_real_gondolin_lifecycle_is_explicitly_opt_in)" $ withSystemTempDirectory "petrus-real-gondolin" $ \tmp ->
         withEnvironment [("GITHUB_TOKEN", Just "must-remain-on-host")] $
           realLifecycle tmp (T.pack sdkText) (T.pack imageText)
     _ ->
-      it "runs the real lifecycle (opt-in)" $
+      it "runs the real lifecycle (opt-in) (test_real_gondolin_lifecycle_is_explicitly_opt_in)" $
         pendingWith "set PETRUS_REAL_GONDOLIN_SDK_MODULE and PETRUS_REAL_GONDOLIN_IMAGE"
 
 realLifecycle :: FilePath -> Text -> Text -> IO ()
