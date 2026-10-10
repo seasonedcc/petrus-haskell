@@ -135,6 +135,7 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.KernelDifferentialSpec
                     Petrus.Impetus.KernelPropertiesSpec
                     Petrus.Impetus.FailureTextSpec
+                    Petrus.Impetus.HandBuiltCorpusSpec
   build-depends:    base
                   , bytestring
                   , containers

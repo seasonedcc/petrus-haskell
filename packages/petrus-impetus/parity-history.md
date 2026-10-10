@@ -43,7 +43,7 @@ kill-and-reload move and the real JSON round trip.
 | TestReplayMarking.test_tokens_read_is_a_movement_category_record_yet_replay_inert | History / replayMarking / TokensRead is a movement-category record, yet replay-inert | ported | |
 | TestReplayMarking.test_a_diverging_consume_record_fails_loud | History / replayMarking / a diverging consume record fails loud | ported | exact message |
 | **history_store/test_history_backends.py** | | | |
-| `reopen` fixture params jsonl / sqlite / postgres | — | not at parity | The durable backend lives in another package. Every case below runs over the `newReopen` double. |
+| `reopen` fixture params jsonl / sqlite / postgres | — | ported in petrus-history-store (jsonl) | The jsonl parameter: `packages/petrus-history-store/test/Petrus/HistoryStore/BackendContractSpec.hs` runs `test_history_backends.py` over the real JSONL store. The sqlite and postgres parameters wait for those backends, which are out of scope as `test_sqlite_history.py` and `test_postgres_history.py` are. |
 | TestRoundTrip.test_a_store_contains_history_without_being_history | HistoryStore contract / round trip / a store contains history | ported | The `isinstance` half is enforced by types: a store is one record of operations. |
 | TestRoundTrip.test_every_record_category_round_trips_value_equal | HistoryStore contract / round trip / every record category round-trips value-equal | ported | |
 | TestRoundTrip.test_append_and_extend_accumulate_and_a_reload_continues | HistoryStore contract / round trip / append and extend accumulate, and a reload continues | ported | |
@@ -74,18 +74,18 @@ kill-and-reload move and the real JSON round trip.
 | TestRecordCodec.test_schema_2_is_refused_before_record_interpretation | History codec / record codec / schema 2 is refused before record interpretation | ported | |
 | TestRecordCodec.test_schema_3_is_refused_before_record_interpretation | History codec / record codec / schema 3 is refused before record interpretation | ported | |
 | TestRecordCodec.test_unversioned_old_discriminators_are_refused_before_interpretation | History codec / record codec / unversioned old discriminators are refused before interpretation | ported | |
-| TestDurableAppend.test_appends_accumulate_across_calls | — | not at parity | JSONL file mechanics: the durable backend lives in another package. |
-| TestDurableAppend.test_makes_the_parent_directory_once_needed | — | not at parity | JSONL file mechanics: the durable backend lives in another package. |
+| TestDurableAppend.test_appends_accumulate_across_calls | — | ported in petrus-history-store | `packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs` / "TestDurableAppend / appends accumulate across calls", against the real JSONL store. |
+| TestDurableAppend.test_makes_the_parent_directory_once_needed | — | ported in petrus-history-store | `packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs` / "TestDurableAppend / makes the parent directory once needed", against the real JSONL store. |
 | TestJsonlHistoryStore.test_the_durable_spelling_is_byte_stable | History codec / durable line spelling / the durable spelling is byte-stable | ported | Each line is pinned byte for byte in both directions (`json.dumps` spelling). Writing the file is the backend's job. |
 | TestJsonlHistoryStore.test_direct_firing_lifecycle_jsonl_bytes_are_stable | History codec / durable line spelling / the direct firing lifecycle's lines are byte-stable | ported | lines, not the file |
-| TestJsonlHistoryStore.test_every_append_is_durable_immediately | — | not at parity | JSONL file mechanics. The generic contract is covered by "round trip / is durable before in memory". |
-| TestJsonlHistoryStore.test_loading_then_appending_continues_the_file | — | not at parity | JSONL file mechanics. The generic contract is covered by "append and extend accumulate, and a reload continues". |
-| TestJsonlHistoryStore.test_a_missing_file_is_an_empty_history | — | not at parity | JSONL file mechanics |
-| TestJsonlHistoryStore.test_a_v1_encoded_line_fails_loud_at_load_naming_the_migration | — | not at parity | The JSONL loader's line-numbered wrapping. The codec half is covered by "unversioned old discriminators". |
-| TestJsonlHistoryStore.test_a_schema_2_line_fails_through_the_actual_jsonl_load | — | not at parity | The JSONL loader. The codec half is covered by "schema 2 is refused". |
-| TestJsonlHistoryStore.test_a_torn_tail_fails_loud_naming_the_line | — | not at parity | JSONL file mechanics |
-| TestJsonlHistoryStore.test_unencodable_data_fails_loud_and_appends_nothing | — | not at parity | JSONL file mechanics. The `object()` payload is also enforced by types. |
-| TestJsonlHistoryStore.test_a_mid_batch_encoding_failure_writes_nothing | — | not at parity | JSONL file mechanics. The generic contract is covered by "round trip / a mid-batch encode failure writes nothing". |
+| TestJsonlHistoryStore.test_every_append_is_durable_immediately | — | ported in petrus-history-store | `packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs` / "TestJsonlHistoryStore / every append is durable immediately", against the real JSONL store. |
+| TestJsonlHistoryStore.test_loading_then_appending_continues_the_file | — | ported in petrus-history-store | `packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs` / "TestJsonlHistoryStore / loading then appending continues the file", against the real JSONL store. |
+| TestJsonlHistoryStore.test_a_missing_file_is_an_empty_history | — | ported in petrus-history-store | `packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs` / "TestJsonlHistoryStore / a missing file is an empty history", against the real JSONL store. |
+| TestJsonlHistoryStore.test_a_v1_encoded_line_fails_loud_at_load_naming_the_migration | — | ported in petrus-history-store | `packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs` / "TestJsonlHistoryStore / a v1-encoded line fails loud at load naming the migration", against the real JSONL store. |
+| TestJsonlHistoryStore.test_a_schema_2_line_fails_through_the_actual_jsonl_load | — | ported in petrus-history-store | `packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs` / "TestJsonlHistoryStore / a schema-2 line fails through the actual JSONL load", against the real JSONL store. |
+| TestJsonlHistoryStore.test_a_torn_tail_fails_loud_naming_the_line | — | ported in petrus-history-store | `packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs` / "TestJsonlHistoryStore / a torn tail fails loud naming the line", against the real JSONL store. |
+| TestJsonlHistoryStore.test_unencodable_data_fails_loud_and_appends_nothing | — | ported in petrus-history-store | `packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs` / "TestJsonlHistoryStore / unencodable data fails loud and appends nothing", against the real JSONL store. |
+| TestJsonlHistoryStore.test_a_mid_batch_encoding_failure_writes_nothing | — | ported in petrus-history-store | `packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs` / "TestJsonlHistoryStore / a mid-batch encoding failure writes nothing", against the real JSONL store. |
 | TestInstanceDurableHistory.test_construction_records_are_durable_at_construction | History codec / Instance over an injected history / construction records are durable at construction | ported | over `newReopen` |
 | TestInstanceDurableHistory.test_every_appending_door_writes_through | History codec / Instance over an injected history / every appending door writes through | ported | over `newReopen` |
 | TestInstanceDurableHistory.test_a_refused_delivery_payload_leaves_the_instance_unchanged | History codec / Instance over an injected history / a refused delivery payload leaves the instance unchanged | ported | NaN stands in for `object()`; exact Python NaN message |
@@ -118,6 +118,7 @@ kill-and-reload move and the real JSON round trip.
 
 ## Counts
 
-81 rows: 64 ported, 3 ported via CEL stub, 3 enforced by types, 11 not at parity
+81 rows: 64 ported, 3 ported via CEL stub, 3 enforced by types, 11 ported in
+`petrus-history-store` (the JSONL store and its `reopen` parameter)
 (the three golden-replay rows were ported after the slice, in `GoldenTracesSpec`).
 No kernel (`src/`) changes were needed.

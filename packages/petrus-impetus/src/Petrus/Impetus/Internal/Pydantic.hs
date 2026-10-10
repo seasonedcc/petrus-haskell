@@ -29,6 +29,7 @@ module Petrus.Impetus.Internal.Pydantic
   , Validated
   , renderValidationError
   , valueError
+  , fatalError
     -- * Validators
   , Collect (..)
   , collect
@@ -164,10 +165,22 @@ type Validated a = Either [LineError] a
 valueError :: Text -> PV -> LineError
 valueError text = LineError [] ("Value error, " <> text) "value_error"
 
--- | @str(ValidationError)@ for a model title and its errors.
+-- | An exception other than a validation error raised inside a validator
+-- (the reference's @RecursionError@): it aborts the whole validation, so
+-- the errors collected before it are discarded and nothing after it runs.
+-- Its text is the exception's own.
+fatalError :: Text -> LineError
+fatalError text = LineError [] text fatalType PNone
+
+fatalType :: Text
+fatalType = "<fatal>"
+
+-- | @str(ValidationError)@ for a model title and its errors, or the text of
+-- the exception that aborted the validation.
 renderValidationError :: Text -> [LineError] -> Text
-renderValidationError title errors =
-  T.intercalate "\n" (header : concatMap line errors)
+renderValidationError title errors = case [err.message | err <- errors, err.errorType == fatalType] of
+  fatal : _ -> fatal
+  [] -> T.intercalate "\n" (header : concatMap line errors)
   where
     count = length errors
     header =
