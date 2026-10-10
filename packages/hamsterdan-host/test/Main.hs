@@ -4,6 +4,7 @@ import BindingSpec qualified
 import RunnableSpec qualified
 import TimersSpec qualified
 import IngressSpec qualified
+import GatesSpec qualified
 import Test.Hspec
 
 main :: IO ()
@@ -12,3 +13,4 @@ main = hspec $ do
   RunnableSpec.spec
   TimersSpec.spec
   IngressSpec.spec
+  GatesSpec.spec

@@ -38,6 +38,8 @@ library
                     Hamsterdan.Host.Python
                     Hamsterdan.Host.Runnable
                     Hamsterdan.Host.V5.Timers
+                    Hamsterdan.Host.V5.Gates
+                    Hamsterdan.Host.Errors
                     Hamsterdan.Host.V5.Ingress
                     Hamsterdan.Host.V5.Claim
   build-depends:    base >=4.18 && <5
@@ -52,6 +54,7 @@ library
                   , directory >=1.3
                   , filepath >=1.4
                   , hamsterdan-github
+                  , hamsterdan-readiness
                   , petrus-json
                   , petrus-motus
                   , petrus-posix
@@ -69,6 +72,7 @@ test-suite hamsterdan-host-test
                     RunnableSpec
                     TestSupport
                     TimersSpec
+                    GatesSpec
                     IngressSpec
   build-depends:    base
                   , bytestring
@@ -79,6 +83,7 @@ test-suite hamsterdan-host-test
                   , hamsterdan-github
                   , hamsterdan-contracts
                   , hamsterdan-host
+                  , hamsterdan-readiness
                   , petrus-activity
                   , petrus-impetus
                   , hspec >=2.10
