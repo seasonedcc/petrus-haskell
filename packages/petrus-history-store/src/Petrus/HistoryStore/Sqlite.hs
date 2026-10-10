@@ -46,6 +46,7 @@ module Petrus.HistoryStore.Sqlite
   , historySchemaVersion
   , historyDdl
   , encodeRow
+  , encodeRows
   , EncodedRow (..)
     -- * Errors
   , HistoryStoreError (..)
@@ -66,7 +67,7 @@ module Petrus.HistoryStore.Sqlite
 
 import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, withMVar)
 import Control.Exception (Exception (..), bracket, mask, onException, throwIO, try)
-import Control.Monad (forM, unless, when)
+import Control.Monad (foldM, unless, when)
 import Data.ByteString (ByteString)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Int (Int64)
@@ -152,8 +153,9 @@ activityTerminals = ("ActivityCompleted", "ActivityFailed")
 -- | One record's row values, encoded before any IO.
 data EncodedRow = EncodedRow
   { record :: Record
-  , value :: Json
-  -- ^ @encode_record(record)@.
+  , value :: ~Json
+  -- ^ @encode_record(record)@, recomputed on demand: only a conflicting
+  -- insert compares it, so a batch does not keep every record's tree alive.
   , recordType :: Text
   , occurrence :: SQLData
   -- ^ @encoded.get("occurrence")@: an integer or @NULL@.
@@ -168,22 +170,31 @@ payloadOptions = compact {ensureAscii = True}
 
 -- | Encode one record's row, or the reference's refusal text.
 encodeRow :: Record -> Either Text EncodedRow
-encodeRow r = case dumps payloadOptions json of
-  Left problem ->
-    Left
-      ( "cannot durably encode "
-          <> name
-          <> ": "
-          <> T.pack (encodeErrorMessage problem)
-          <> " — durable instants, token data, and activity input/result must be JSON-faithful values"
-      )
-  Right bytes -> Right (EncodedRow r json name occurrence' bytes)
+encodeRow r = encodeRows [r] >>= \case
+  [row] -> Right row
+  _ -> Left "cannot durably encode: no row"
+
+-- | Encode a batch's rows before any IO (@_commit@'s @batch = [...]@): the
+-- first refused record's text, in batch order, or every row.
+encodeRows :: [Record] -> Either Text [EncodedRow]
+encodeRows = traverse encodeOne
   where
-    json = encodeRecord r
-    name = recordName r
-    occurrence' = case lookupMember "occurrence" json of
-      Just (Int n) -> SQLInteger (fromInteger n)
-      _ -> SQLNull
+    encodeOne r =
+      let json = encodeRecord r
+          name = recordName r
+          occurrence' = case lookupMember "occurrence" json of
+            Just (Int n) -> SQLInteger (fromInteger n)
+            _ -> SQLNull
+       in case dumps payloadOptions json of
+            Left problem ->
+              Left
+                ( "cannot durably encode "
+                    <> name
+                    <> ": "
+                    <> T.pack (encodeErrorMessage problem)
+                    <> " — durable instants, token data, and activity input/result must be JSON-faithful values"
+                )
+            Right bytes -> Right (EncodedRow r (encodeRecord r) name occurrence' bytes)
 
 -- ---------------------------------------------------------------------------
 -- Errors
@@ -356,30 +367,33 @@ loadRows shown instanceId connection = do
       connection
       "SELECT position, event_id, record_type, occurrence, payload FROM impetus_history_events WHERE instance = ? ORDER BY position"
       [SQLText instanceId]
-  loaded <- forM (zip [0 :: Integer ..] rows) $ \(expected, row) -> case row of
-    [position, eventId, recordType, occurrence', payload'] -> do
-      let expectedId = instanceId <> ":" <> T.pack (show expected)
-      unless (sameInteger position expected && eventId == SQLText expectedId) $
-        refuse
-          ( shown
-              <> ": history for "
-              <> T.pack (pythonReprText instanceId)
-              <> " is non-dense or has corrupt event identity at position "
-              <> T.pack (show expected)
-          )
-      let undecodable :: Text -> IO a
-          undecodable err = refuse ("event " <> expectedId <> " does not decode as an event history record: " <> err)
-      json <- either undecodable pure (loadsColumn payload')
-      record <- either undecodable pure (decodeStored json)
-      -- @encoded.get("occurrence")@ on a list that @dict()@ converted
-      case json of
-        Object _ -> pure ()
-        other -> refuse ("'" <> jsonTypeName other <> "' object has no attribute 'get'")
-      unless (recordType == SQLText (recordName record) && sameOccurrence (lookupMember "occurrence" json) occurrence') $
-        refuse ("event " <> expectedId <> " has corrupt indexing metadata")
-      pure record
-    _ -> refuse (shown <> ": unexpected impetus_history_events row shape")
-  pure (Seq.fromList loaded)
+  -- a strict left fold: a long History must not build a deep stack
+  let step !acc (expected, row) = (acc Seq.|>) <$> loadRow expected row
+      loadRow :: Integer -> [SQLData] -> IO Record
+      loadRow expected = \case
+        [position, eventId, recordType, occurrence', payload'] -> do
+          let expectedId = instanceId <> ":" <> T.pack (show expected)
+          unless (sameInteger position expected && eventId == SQLText expectedId) $
+            refuse
+              ( shown
+                  <> ": history for "
+                  <> T.pack (pythonReprText instanceId)
+                  <> " is non-dense or has corrupt event identity at position "
+                  <> T.pack (show expected)
+              )
+          let undecodable :: Text -> IO a
+              undecodable err = refuse ("event " <> expectedId <> " does not decode as an event history record: " <> err)
+          json <- either undecodable pure (loadsColumn payload')
+          record <- either undecodable pure (decodeStored json)
+          -- @encoded.get("occurrence")@ on a list that @dict()@ converted
+          case json of
+            Object _ -> pure ()
+            other -> refuse ("'" <> jsonTypeName other <> "' object has no attribute 'get'")
+          unless (recordType == SQLText (recordName record) && sameOccurrence (lookupMember "occurrence" json) occurrence') $
+            refuse ("event " <> expectedId <> " has corrupt indexing metadata")
+          pure record
+        _ -> refuse (shown <> ": unexpected impetus_history_events row shape")
+  foldM step Seq.empty (zip [0 :: Integer ..] rows)
 
 -- | @column == n@ for an integer @n@ under Python equality.
 sameInteger :: SQLData -> Integer -> Bool
@@ -437,13 +451,15 @@ insertStatement =
 -- transaction inserting each record at the mirror's next position.
 commitBatch :: Text -> MVar (Maybe Connection) -> IO Int -> [Record] -> IO [Admission]
 commitBatch instanceId guard' mirrorSize batch = do
-  rows <- either refuse pure (traverse encodeRow batch)
+  rows <- either refuse pure (encodeRows batch)
   withMVar guard' $ \case
     Nothing -> throwIO ClosedDatabase
     Just connection -> Sql.withImmediateTransaction connection $ do
       start <- mirrorSize
-      let go _ [] = pure []
-          go position (row : rest) = do
+      -- tail recursive: the admissions accumulate in reverse (a 20 000-row
+      -- batch would otherwise build as deep a stack)
+      let go !_ admitted [] = pure (reverse admitted)
+          go position admitted (row : rest) = do
             let eventId = instanceId <> ":" <> T.pack (show position)
             changed <-
               Sql.execute
@@ -458,9 +474,9 @@ commitBatch instanceId guard' mirrorSize batch = do
                 ]
             entered <- if changed /= 0 then pure True else verifyInsert connection instanceId eventId row
             if entered
-              then (Entered :) <$> go (position + 1) rest
-              else (AcknowledgedElsewhere :) <$> go position rest
-      go start rows
+              then go (position + 1) (Entered : admitted) rest
+              else go position (AcknowledgedElsewhere : admitted) rest
+      go start [] rows
 
 -- | @_verify_conflict@: 'True' when an equal fact holds this event identity
 -- (the record fills the position), 'False' when an equal terminal is held
