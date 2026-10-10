@@ -103,7 +103,7 @@ spec :: Spec
 spec = do
   describe "the reference's clients against this server" $
     forM_ [False, True] $ \curve ->
-      it (if curve then "CURVE TCP, certificates written here" else "IPC") $ pythonOrPending $ \python -> withScratch $ \tmp -> do
+      it (if curve then "CURVE TCP, certificates written here" else "IPC") $ withReference $ \python -> withScratch $ \tmp -> do
         let path = tmp </> "dispatch.sqlite3"
         dispatch <- prepare path
         certificates <- if curve then Just <$> curveCertificates tmp else pure Nothing
@@ -139,7 +139,7 @@ spec = do
 
   describe "this package's clients against the reference's server" $
     forM_ [False, True] $ \curve ->
-      it (if curve then "CURVE TCP, certificates written by zmq.auth" else "IPC") $ pythonOrPending $ \python -> withScratch $ \tmp -> do
+      it (if curve then "CURVE TCP, certificates written by zmq.auth" else "IPC") $ withReference $ \python -> withScratch $ \tmp -> do
         let path = tmp </> "dispatch.sqlite3"
         dispatch <- prepare path
         certificates <-
@@ -195,7 +195,7 @@ spec = do
           )
           `finally` (stopServerProcess server.handle >>= (`shouldBe` ExitSuccess))
 
-  it "both servers answer a raw request corpus byte for byte alike" $ pythonOrPending $ \python -> withScratch $ \tmp -> do
+  it "both servers answer a raw request corpus byte for byte alike" $ withReference $ \python -> withScratch $ \tmp -> do
     let ours = ipcEndpoint tmp "ours.sock"
         theirs = ipcEndpoint tmp "theirs.sock"
     reference <-
@@ -227,7 +227,7 @@ spec = do
           let ours = (proc self arguments) {env = Just ((serverModeVariable, "server") : filter ((/= serverModeVariable) . fst) environment)}
               theirs = (proc (fst python) ("-m" : "petrus.motus.transport.zeromq" : arguments)) {cwd = Just (snd python)}
           (,) <$> readCreateProcessWithExitCode ours "" <*> readCreateProcessWithExitCode theirs ""
-        same arguments = pythonOrPending $ \python -> do
+        same arguments = withReference $ \python -> do
           (ours, theirs) <- both python arguments
           ours `shouldBe` theirs
     it "help" $ same ["--help"]
@@ -235,7 +235,7 @@ spec = do
     it "an invalid float" $ same ["--path", "x.db", "--bind", "ipc:///tmp/x", "--drain-timeout", "soon"]
     it "an unrecognized argument" $ same ["--path", "x.db", "--bind", "ipc:///tmp/x", "--bogus"]
     it "an ambiguous or abbreviated option" $ same ["--pa", "x.db", "--bi"]
-    it "a refused configuration exits 1 with the same final line" $ pythonOrPending $ \python -> withScratch $ \tmp -> do
+    it "a refused configuration exits 1 with the same final line" $ withReference $ \python -> withScratch $ \tmp -> do
       let arguments = ["--path", tmp </> "d.sqlite3", "--bind", "tcp://127.0.0.1:0"]
       ((ourCode, ourOut, ourErr), (theirCode, theirOut, theirErr)) <- both python arguments
       (ourCode, ourOut, lastLine ourErr) `shouldBe` (theirCode, theirOut, lastLine theirErr)

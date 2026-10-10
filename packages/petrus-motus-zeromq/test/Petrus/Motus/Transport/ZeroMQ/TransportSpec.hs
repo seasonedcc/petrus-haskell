@@ -107,7 +107,7 @@ withJsonDealer endpoint body =
 -- when asked and synced, the reference's server module.
 serverImpl :: Bool -> String -> (Either String Python -> IO ()) -> IO ()
 serverImpl reference mode body
-  | reference = pythonOrPending (body . Right)
+  | reference = withReference (body . Right)
   | otherwise = body (Left mode)
 
 spec :: Spec
