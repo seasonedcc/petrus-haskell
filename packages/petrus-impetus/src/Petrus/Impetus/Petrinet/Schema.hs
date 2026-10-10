@@ -74,6 +74,13 @@ module Petrus.Impetus.Petrinet.Schema
   , netSpec
   , Net
   , mkNet
+    -- * Construction steps
+    -- | The checks 'mkNet' runs, one part at a time, for callers that build
+    -- a net in the reference's lazy order (the Net-definition compiler).
+  , validatePlace
+  , validateTransition
+  , checkDistinctNodes
+  , resolveColor
   , netName
   , netCompletion
   , netPlaces
@@ -616,15 +623,11 @@ mkNet spec = do
   mapM_ validatePlace spec.places
   mapM_ validateTransition spec.transitions
   mapM_ validateArc spec.arcs
+  checkDistinctNodes spec.places spec.transitions
   let placeList = [(p.path, p) | p <- spec.places]
       transitionList = [(t.path, t) | t <- spec.transitions]
       placeMap = Map.fromList placeList
       transitionMap = Map.fromList transitionList
-  when (Map.size placeMap /= length placeList) $ Left "duplicate place path"
-  when (Map.size transitionMap /= length transitionList) $ Left "duplicate transition path"
-  let collisions = Map.keys (Map.intersection placeMap transitionMap)
-  unless (null collisions) $
-    Left ("place/transition name collision: " <> pyList (map (pyStr . netPathText) (sort collisions)))
   -- Behavior declaration identities, in transition order.
   handlerPairs <- fmap concat . mapM (\t -> case t.handler of
       Nothing -> Right []
@@ -739,6 +742,18 @@ mkNet spec = do
           | otherwise = (k, v) : go (Set.insert k seen) rest
     dedupeKeys = map fst . dedupe . map (\k -> (k, ()))
 
+-- | @Net.__init__@'s node checks: unique place paths, unique transition
+-- paths, and no path naming both a place and a transition.
+checkDistinctNodes :: [Place] -> [Transition] -> Either Text ()
+checkDistinctNodes places transitions = do
+  let placeMap = Map.fromList [(p.path, p) | p <- places]
+      transitionMap = Map.fromList [(t.path, t) | t <- transitions]
+  when (Map.size placeMap /= length places) $ Left "duplicate place path"
+  when (Map.size transitionMap /= length transitions) $ Left "duplicate transition path"
+  let collisions = Map.keys (Map.intersection placeMap transitionMap)
+  unless (null collisions) $
+    Left ("place/transition name collision: " <> pyList (map (pyStr . netPathText) (sort collisions)))
+
 -- | Compile a place color default onto an otherwise untyped incident arc.
 resolveColor :: Map NetPath Place -> Map NetPath Transition -> Arc -> Either Text Arc
 resolveColor placeMap transitionMap value = do
@@ -765,10 +780,12 @@ resolveColor placeMap transitionMap value = do
     (Just placeColor, Nothing) -> Right (withArcColor (Just placeColor) value)
     _ -> Right value
 
+-- | @Place.__post_init__@.
 validatePlace :: Place -> Either Text ()
 validatePlace value = when (value.color == Just "") $
   Left ("place color must be a non-empty nominal color name or None, got '': " <> netPathText value.path)
 
+-- | @Transition.__post_init__@ (and the anonymous display-name rule).
 validateTransition :: Transition -> Either Text ()
 validateTransition value = do
   let at = netPathText value.path

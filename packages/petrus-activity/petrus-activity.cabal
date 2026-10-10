@@ -49,3 +49,4 @@ test-suite petrus-activity-test
                   , petrus-activity
                   , petrus-json
                   , text
+  ghc-options:      -rtsopts

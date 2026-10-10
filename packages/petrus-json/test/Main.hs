@@ -7,12 +7,14 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import Petrus.Json
+import Petrus.Json.PythonTextSpec qualified as PythonTextSpec
 import Petrus.Json.ReferenceParse (referenceParseJson)
 import Test.Hspec
 import Test.QuickCheck
 
 main :: IO ()
 main = hspec $ do
+  PythonTextSpec.spec
   describe "pythonFloatRepr" $ do
     let cases =
           [ (1e16, "1e+16")

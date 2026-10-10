@@ -13,10 +13,10 @@ cross-check that every in-scope upstream test is accounted for, run:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-It reports 239 in-scope upstream tests across the three runtime packages,
+It reports 275 in-scope upstream tests across the three runtime packages,
 with 0 unaccounted.
 
-`cabal test petrus-engine` runs 197 examples, with 0 failures and 0 pending.
+`cabal test petrus-engine` runs 201 examples, with 0 failures and 0 pending.
 That count includes 3 Engine interop examples against the reference process.
 Those are pending only when `upstream/petrus/.venv` is not synced.
 
@@ -27,6 +27,7 @@ Those are pending only when `upstream/petrus/.venv` is not synced.
 | engine/test_engine.py (28) | EngineSpec (30 examples) | 23 | 5 | 0 |
 | engine/test_coordinator.py, 35 of 42 | CoordinatorSpec (37 examples) | 35 | 0 | 0 |
 | engine/test_execution.py (134) | ExecutionSpec, DeliveryPhasesA/B/CSpec (127 examples) | 98 | 10 | 26 |
+| motus/dispatch/test_local_dispatch.py, the 3 Engine-level tests | LocalDispatchSpec (4 examples) | 3 | 0 | 0 |
 
 `TestInMemoryDispatch` (5) and `TestInlineDispatch` (2) from
 test_coordinator.py are ported in `petrus-motus`.
@@ -162,12 +163,24 @@ In `TestEngineRefusesABrokenSensor`:
 
 | upstream file | reason |
 | --- | --- |
-| engine/test_observation.py (19), engine/test_observation_http.py (7) | `petrus-observation`. The Engine exposes the seam (`Petrus.Engine.Observation.observeEngine`). |
+| engine/test_observation.py (19), engine/test_observation_http.py (7) | `petrus-observation`, which builds the Engine's read doors (`Petrus.Observation.Engine`) on this package's seam (`Petrus.Engine.Observation.observeEngine`) and ports the Engine lock, re-entry and commit-poisoning tests against a real Engine (`petrus-observation/PARITY.md`). The re-entry test calls `Petrus.Engine.Internal.guarded`, exported for it. |
 | engine/test_simulation.py (19), engine/test_simulation_http.py (24) | `petrus.simulation`, built on the DSL |
 | engine/test_sqlite_engine.py (5), engine/test_postgres_engine.py (12) | the durable provider compositions. They plug into `Petrus.Engine.Provider`. |
 
 ## Beyond upstream
 
+- **The DST worlds' Local Dispatch consumer shape** (LocalDispatchSpec, 1
+  example). This is the shape `tests/dst/retry_world.py` and
+  `generated_runtime_world.py` drive:
+  - a world provider clock;
+  - a wrapped dispatch door whose one-shot refusal poisons the Engine;
+  - a reloaded generation that reconciles through the same door;
+  - a fresh labelled worker per claim, a zero-delay retry, and the next
+    `advance` collecting the terminal.
+
+  The outcome matches the reference running the same script. The other 33
+  tests of `test_local_dispatch.py` are `petrus-motus`'s (see its
+  PARITY.md).
 - **Engine interop with the reference process** (InteropSpec, 3 examples).
   They use the order scenario (`test/interop/engine_interop.py`):
   identified deliveries, a pure handler, an Activity charge, and a `Delay 5`

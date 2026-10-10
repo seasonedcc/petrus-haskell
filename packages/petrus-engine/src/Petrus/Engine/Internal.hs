@@ -37,6 +37,7 @@ module Petrus.Engine.Internal
   , records
   , observeEngine
     -- * Test access
+  , guarded
   , selectionState
   , engineInstance
   ) where

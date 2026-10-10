@@ -22,6 +22,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Json (Json (..), lookupMember)
 import Petrus.Testing.Dst
+import Petrus.Testing.Dst.Engine.Projection qualified as Projection
 import Petrus.Testing.Dst.Runner
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
@@ -49,6 +50,7 @@ entrypoints =
     , ("process_vectors:two_worlds_story", twoWorldsStory)
     , ("process_vectors:tiny_progress_story", tinyProgressStory)
     , ("tests.dst.process_world:hang_during_command", hangDuringCommand)
+    , ("tests.dst.process_world:resource_recovery", resourceRecovery)
     ]
 
 storyBudget :: SomeBudget
@@ -173,6 +175,25 @@ hangProfile =
     refuse :: Text -> Door IO a
     refuse message = throwError (ProfileError "ValueError" message)
 
+-- | @resource_recovery@ of @tests/dst/process_world.py@: the complete
+-- public-Engine resource-bounded world, run inside the child.
+resourceRecovery :: Entrypoint
+resourceRecovery session payload = do
+  historyPath <- case lookupMember "history_path" payload of
+    Just (String p) -> pure (T.unpack p)
+    _ -> gaveUp "resource recovery requires one history_path"
+  p <- Projection.resourceBoundedEngineProfile historyPath
+  sessionWorld
+    session
+    WorldConfig
+      { profile = p.profile
+      , budget = Projection.resourceWorldBudget 16
+      , checkers = [Projection.engineHistoryChecker]
+      , seed = Nothing
+      , progress = Nothing
+      }
+    (Projection.executeResourceBoundedStory >> World.artifact Projection.resourceScenarioId)
+
 hangDuringCommand :: Entrypoint
 hangDuringCommand session payload = do
   when (payload /= Null) (gaveUp "watchdog hang scenario payload must be null")
@@ -276,6 +297,37 @@ spec = describe "process runner" $ do
         member "outcome" value `shouldBeJson` String "pass"
         member "disposition" value `shouldBeJson` String "converged"
       other -> expectationFailure (show other)
+
+  it "runs the complete public-Engine world in a child and replays it from a fresh process" $ do
+    command <- selfChildCommand
+    withScratch $ \dir -> do
+      let spec' =
+            ProcessRunSpec
+              { scenarioId = Projection.resourceScenarioId
+              , entrypoint = "tests.dst.process_world:resource_recovery"
+              , payload = Object [("history_path", String (T.pack (dir </> "process-author.jsonl")))]
+              , budget = ProcessBudget {wallClockMs = 30000, terminationGraceMs = 500, inputBytes = 64000, progressBytes = 4194304}
+              }
+      outcome <- runProcessScenario command spec'
+      result <- either (fail . show) pure outcome
+      result.outcome `shouldBe` Completed
+      result.termination `shouldBe` Exited
+      result.failure `shouldBe` Nothing
+      result.unfinishedAttempt `shouldBe` Nothing
+      result.prefix.disposition `shouldBe` Just DConverged
+      length result.prefix.operations `shouldBe` 14
+      length result.prefix.journal `shouldBe` 39
+      fmap (\e -> e.kind) (lastResource result.prefix) `shouldBe` Just JResource
+      fmap (\e -> e.kind) (lastCheck result.prefix) `shouldBe` Just JCheck
+      artifact <- maybe (fail "no artifact") pure result.artifact
+      fresh <- Projection.resourceBoundedEngineProfile (dir </> "process-replay.jsonl")
+      replayed <- replay (registryOf [SomeProfile fresh.profile] [Projection.engineHistoryChecker]) artifact
+      case replayJson replayed of
+        Object [("result", String encoded)] -> do
+          value <- either (fail . T.unpack) pure (loadStrictJson (textBytes encoded))
+          member "outcome" value `shouldBeJson` String "pass"
+          member "disposition" value `shouldBeJson` String "converged"
+        other -> expectationFailure (show other)
 
   it "refuses a spec over its input budget before launch" $ do
     refusal <- member "refusal" <$> vectors

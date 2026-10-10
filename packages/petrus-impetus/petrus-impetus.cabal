@@ -35,6 +35,7 @@ library
                     Petrus.Impetus.History
                     Petrus.Impetus.HistoryStore
                     Petrus.Impetus.Instance
+                    Petrus.Impetus.Instance.FailureText
                     Petrus.Impetus.Instance.Firing
                     Petrus.Impetus.Selection
                     Petrus.Impetus.History.Codec
@@ -133,6 +134,8 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.GoldenTracesSpec
                     Petrus.Impetus.KernelDifferentialSpec
                     Petrus.Impetus.KernelPropertiesSpec
+                    Petrus.Impetus.FailureTextSpec
+                    Petrus.Impetus.HandBuiltCorpusSpec
   build-depends:    base
                   , bytestring
                   , containers

@@ -18,9 +18,11 @@ import Data.Text qualified as T
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Runner
 import Generated
+import Spec.EngineWorlds (AuthorCase (..), authorCases, replayCases, replayFixture)
 import Spec.Support
 import System.Directory (listDirectory)
 import System.FilePath (takeFileName, (</>))
+import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty.Bench
 
 foreignFixtures :: [FilePath]
@@ -50,6 +52,19 @@ authorAll scripts = forM scripts $ \s -> do
       replayed <- replayFresh s artifact
       pure (either (const Nothing) Just (encodeArtifact artifact), canonText (replayJson replayed))
     other -> pure (Nothing, T.pack (show (fmap (const ()) other)))
+
+-- | Replay every supported non-joined fixture through fresh real Engine
+-- profiles (a fresh scratch directory and History per fixture); the replay
+-- result bytes.
+replayEngineFixtures :: IO [Text]
+replayEngineFixtures = forM replayCases (fmap (canonText . replayJson) . replayFixture)
+
+-- | Author every Engine world the reference's builders author, in a fresh
+-- scratch directory each; the artifact bytes.
+authorEngineWorlds :: IO [ByteString]
+authorEngineWorlds = forM authorCases $ \c -> do
+  authored <- withSystemTempDirectory "petrus-dst-bench" c.build
+  pure (either (error . show) (either (error . T.unpack) id . encodeArtifact) authored)
 
 draws :: Int -> Integer
 draws n = go n (either (error . show) id (choiceStreams 1729)) 0
@@ -87,4 +102,9 @@ main = do
     , bench "author+replay 400 generated scripts" $ nfIO (authorAll scripts)
     , bench "fold queue-story progress" $
         nf (\bytes -> encodeProcessRunResult (processResult runSpec 0 Exited False (Just bytes))) progress
+    , bgroup
+        "engine"
+        [ bench "replay the Engine-world fixtures" $ nfIO replayEngineFixtures
+        , bench "author the Engine worlds" $ nfIO authorEngineWorlds
+        ]
     ]

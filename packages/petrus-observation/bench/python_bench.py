@@ -13,6 +13,11 @@ Every timing is the median of several runs after one warm-up, in
 milliseconds. Before the timings the script prints one SHA-256 per measured
 output (compact, key-sorted, ASCII JSON); the Haskell benchmark prints the
 same digests.
+
+The ``engine ...`` rows time the Engine's own read doors (``Engine.snapshot()``,
+``Engine.history_page()``, ``Engine.net_document()``) on an Engine loaded over
+the same History: the projection plus the Engine's lock and its re-entry and
+poison checks.
 """
 
 from __future__ import annotations
@@ -22,14 +27,18 @@ import json
 import statistics
 import time
 
+from petrus.engine import Engine
+from petrus.impetus.history_store import InMemoryHistoryStore
 from petrus.impetus.instance import Instance
 from petrus.impetus.observation import history_page, net_document, snapshot
 from petrus.impetus.petrinet import Arc, Marking, Net, NetPath, Place, Token, Transition
+from petrus.motus.dispatch import InMemoryDispatch
 
 A, B, T1, T2 = NetPath("a"), NetPath("b"), NetPath("t1"), NetPath("t2")
 SNAPSHOT_WORKLOADS = [(n, m) for n in (1_000, 10_000) for m in (10, 1_000)]
 DOCUMENT_WORKLOADS = [(1_000, 10), (10_000, 10), (1_000, 1_000)]
 HISTORY_WORKLOADS = [(1_000, 10), (10_000, 10)]
+ENGINE_DOCUMENT_WORKLOADS = [(1_000, 10), (10_000, 10)]
 
 
 def loop_net() -> Net:
@@ -44,11 +53,31 @@ def item(n: int) -> Token:
     return Token("Item", {"i": n, "label": f"token-{n}"})
 
 
-def built(records: int, tokens: int) -> Instance:
-    instance = Instance(loop_net(), Marking({A: tuple(item(n) for n in range(tokens))}), instance_id="bench")
+def built(records: int, tokens: int, history: InMemoryHistoryStore | None = None) -> Instance:
+    instance = Instance(
+        loop_net(),
+        Marking({A: tuple(item(n) for n in range(tokens))}),
+        instance_id="bench",
+        history=history,
+    )
     while len(instance.history) < records:
         instance.step()
     return instance
+
+
+def built_engine(records: int, tokens: int) -> Engine:
+    """The same History, built by the Instance, then hosted by an Engine."""
+    history = InMemoryHistoryStore()
+    built(records, tokens, history)
+    return Engine.load(loop_net(), "bench", history=history, dispatch=InMemoryDispatch())
+
+
+def engine_scan(engine: Engine) -> list[dict[str, object]]:
+    """A client's complete paged read: follow ``next`` until it reaches the page's ``frontier``."""
+    pages = [engine.history_page(0, 1000)]
+    while pages[-1]["next"] != pages[-1]["frontier"]:
+        pages.append(engine.history_page(pages[-1]["next"], 1000))
+    return pages
 
 
 def scan(instance: Instance) -> list[dict[str, object]]:
@@ -90,6 +119,17 @@ def main() -> None:
         print(f"digest full_scan {label(n, m)} pages={len(pages)} {digest(pages)}")
     for (n, m), instance in documents.items():
         print(f"digest net_document {label(n, m)} {digest(net_document(instance, instance.history.records))}")
+    engine_snapshots = {(n, m): built_engine(n, m) for n, m in SNAPSHOT_WORKLOADS}
+    engine_histories = {(n, m): built_engine(n, m) for n, m in HISTORY_WORKLOADS}
+    engine_documents = {(n, m): built_engine(n, m) for n, m in ENGINE_DOCUMENT_WORKLOADS}
+    for (n, m), engine in engine_snapshots.items():
+        print(f"digest engine.snapshot {label(n, m)} {digest(engine.snapshot())}")
+    for (n, m), engine in engine_histories.items():
+        print(f"digest engine.history_page(0,1000) {label(n, m)} {digest(engine.history_page(0, 1000))}")
+        pages = engine_scan(engine)
+        print(f"digest engine.full_scan {label(n, m)} pages={len(pages)} {digest(pages)}")
+    for (n, m), engine in engine_documents.items():
+        print(f"digest engine.net_document {label(n, m)} {digest(engine.net_document())}")
     for (n, m), instance in snapshots.items():
         timed(f"snapshot {label(n, m)}", lambda i=instance: snapshot(i, i.history.records), 20)
     for (n, m), instance in histories.items():
@@ -102,6 +142,14 @@ def main() -> None:
         timed(f"full-scan {label(n, m)}", lambda i=instance: scan(i), 5)
     for (n, m), instance in documents.items():
         timed(f"net_document {label(n, m)}", lambda i=instance: net_document(i, i.history.records), 5)
+    for (n, m), engine in engine_snapshots.items():
+        timed(f"engine snapshot {label(n, m)}", engine.snapshot, 20)
+    for (n, m), engine in engine_histories.items():
+        timed(f"engine history_page(0,1000) {label(n, m)}", lambda e=engine: e.history_page(0, 1000), 20)
+    for (n, m), engine in engine_histories.items():
+        timed(f"engine full-scan {label(n, m)}", lambda e=engine: engine_scan(e), 5)
+    for (n, m), engine in engine_documents.items():
+        timed(f"engine net_document {label(n, m)}", engine.net_document, 5)
 
 
 if __name__ == "__main__":
