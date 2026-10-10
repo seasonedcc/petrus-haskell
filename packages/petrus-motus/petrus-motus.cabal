@@ -37,7 +37,10 @@ library
                     Petrus.Motus.Dispatch.Inline
                     Petrus.Motus.Dispatch.InMemory
                     Petrus.Motus.Dispatch.Local
+                    Petrus.Motus.Internal.Argparse
                     Petrus.Motus.Internal.Repr
+                    Petrus.Motus.Worker
+                    Petrus.Motus.Worker.Cli
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
@@ -46,8 +49,11 @@ library
                   , filepath >=1.4
                   , petrus-activity
                   , petrus-json
+                  , petrus-sqlite
                   , petrus-telemetry
+                  , stm >=2.5
                   , text >=2.0
+                  , unix >=2.8
   ghc-options:      -O2
 
 test-suite petrus-motus-test
@@ -58,6 +64,10 @@ test-suite petrus-motus-test
   other-modules:    Petrus.Motus.Dispatch.LocalSupport
                     Petrus.Motus.Dispatch.LocalSpec
                     Petrus.Motus.Dispatch.LocalInteropSpec
+                    Petrus.Motus.WorkerSupport
+                    Petrus.Motus.WorkerSpec
+                    Petrus.Motus.AsyncWorkerSpec
+                    Petrus.Motus.WorkerCliSpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -72,6 +82,7 @@ test-suite petrus-motus-test
                   , process >=1.6
                   , text
                   , time >=1.12
+                  , unix
   ghc-options:      -threaded -rtsopts
 
 benchmark petrus-motus-bench
@@ -85,6 +96,7 @@ benchmark petrus-motus-bench
                   , filepath
                   , petrus-activity
                   , petrus-json
+                  , containers
                   , petrus-motus
                   , tasty-bench >=0.3
                   , text

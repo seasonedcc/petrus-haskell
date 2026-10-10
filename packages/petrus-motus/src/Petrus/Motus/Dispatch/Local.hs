@@ -13,12 +13,26 @@
 -- = Shared file
 --
 -- The database is the default clock and always the serialization
--- authority. Every operation opens its own connection with the reference's
--- pragmas and finishes its short @BEGIN IMMEDIATE@ transaction before any
--- Activity code runs. The DDL, every statement, the pragmas, the JSON
--- encodings (sorted keys, compact separators, no ASCII escaping), and the
--- telemetry events are the reference's, byte for byte, so Haskell and Python
--- engines and workers can share one database file in any combination.
+-- authority. Every operation runs on a connection of its own, configured
+-- with the reference's pragmas, and finishes its short @BEGIN IMMEDIATE@
+-- transaction before any Activity code runs. The DDL, every statement, the
+-- pragmas, the JSON encodings (sorted keys, compact separators, no ASCII
+-- escaping), and the telemetry events are the reference's, byte for byte, so
+-- Haskell and Python engines and workers can share one database file in any
+-- combination.
+--
+-- = Connections
+--
+-- The reference opens a new connection for every operation. A session keeps
+-- a few of those connections open between operations instead
+-- ("Petrus.Sqlite.Pool"), shared with the workers constructed from it, so
+-- that closing an operation's connection is never the last close of the
+-- file, which would checkpoint the WAL. 'closeLocalDispatch' (or
+-- 'withLocalDispatch') closes them, and a worker opened on its own closes
+-- its connections in 'close'. A session that is dropped without being closed
+-- closes them when it is garbage collected, as the reference's lingering
+-- connections close. 'LocalConnections' shares one set of connections among
+-- independent workers.
 --
 -- = Sessions and workers
 --
@@ -47,6 +61,8 @@ module Petrus.Motus.Dispatch.Local
   , LocalDispatchOptions (..)
   , defaultLocalDispatchOptions
   , openLocalDispatch
+  , closeLocalDispatch
+  , withLocalDispatch
   , toDispatch
   , dispatch
   , cancel
@@ -62,6 +78,10 @@ module Petrus.Motus.Dispatch.Local
   , LocalWorkerOptions (..)
   , defaultLocalWorkerOptions
   , openLocalWorkerDispatch
+  , LocalConnections
+  , newLocalConnections
+  , closeLocalConnections
+  , openLocalWorkerDispatchOn
   , toWorkerDispatch
   , claim
   , heartbeat
@@ -81,9 +101,8 @@ module Petrus.Motus.Dispatch.Local
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
-import Control.Exception (SomeException, bracket, catch, onException, throw, throwIO, try)
-import Control.Monad (forM, forM_, unless, when)
-import Data.Bits ((.&.), (.|.))
+import Control.Exception (bracket, catch, onException, throw)
+import Control.Monad (forM, forM_, unless, void, when)
 import Data.ByteString qualified as BS
 import Data.Char (isDigit)
 import Data.IORef
@@ -97,10 +116,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Database.SQLite3 (Database, SQLData (..), SQLError (..), SQLOpenFlag (..), SQLVFS (..), StepResult (..))
-import Database.SQLite3 qualified as Sql
+import Database.SQLite3 (SQLData (..))
 import GHC.Clock (getMonotonicTime)
-import Numeric (showHex)
 import Petrus.Activity hiding (ActivityExecutionContext (..))
 import Petrus.Json
 import Petrus.Motus.Dispatch
@@ -116,12 +133,14 @@ import Petrus.Motus.Dispatch
   , dispositionText
   )
 import Petrus.Motus.Dispatch qualified as Port
-import Petrus.Motus.Internal.Repr (exceptionMessage, exceptionTypeName, pyStr)
+import Petrus.Motus.Internal.Repr (exceptionRepr, exceptionTypeName, pyRepr, pyStr, uuid4)
+import Petrus.Sqlite.Connection (Connection)
+import Petrus.Sqlite.Connection qualified as C
+import Petrus.Sqlite.Pool (Pool, closePool, newPool, poolPath, withPooledConnection)
 import Petrus.Telemetry (TelemetryLogger, getLogger)
 import Petrus.Telemetry qualified as Telemetry
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeDirectory)
-import System.IO (IOMode (..), withBinaryFile)
 import Prelude hiding (fail)
 
 -- ---------------------------------------------------------------------------
@@ -214,6 +233,8 @@ data LocalDispatch = LocalDispatch
   , clockReader :: Maybe ClockReader
   , published :: IORef (Set Int)
   , collected :: IORef (Set Int)
+  , connections :: Pool
+  -- ^ Shared with the workers constructed from this session.
   }
 
 -- | The keyword arguments of @LocalDispatch(path, *, instance, ...)@ other
@@ -245,7 +266,8 @@ openLocalDispatch given inst options = do
   publishedRef <- newIORef Set.empty
   collectedRef <- newIORef Set.empty
   createDirectoryIfMissing True (takeDirectory file)
-  initialize file reader
+  pool <- connectionPool file
+  initialize pool file reader `onException` closePool pool
   pure
     LocalDispatch
       { path = file
@@ -255,7 +277,20 @@ openLocalDispatch given inst options = do
       , clockReader = reader
       , published = publishedRef
       , collected = collectedRef
+      , connections = pool
       }
+
+-- | Close the session's idle connections, and with them those of the
+-- workers constructed from it ('worker'). The last connection to the file
+-- to close checkpoints the WAL. The session stays usable: each later
+-- operation opens and closes a connection of its own, as the reference's
+-- operations do. Closing twice is harmless.
+closeLocalDispatch :: LocalDispatch -> IO ()
+closeLocalDispatch d = closePool d.connections
+
+-- | 'openLocalDispatch', run the action, 'closeLocalDispatch'.
+withLocalDispatch :: FilePath -> Text -> LocalDispatchOptions -> (LocalDispatch -> IO a) -> IO a
+withLocalDispatch file inst options = bracket (openLocalDispatch file inst options) closeLocalDispatch
 
 -- | The session's default queue.
 defaultQueueOf :: LocalDispatch -> Text
@@ -285,7 +320,7 @@ dispatch d occurrence inv = do
   encoded <- orRefuse (encodeInvocation inv)
   let key = [SQLText d.instance', intData occurrence]
       conflict = dispatchError ("Local Dispatch publication conflict for occurrence " <> showT occurrence)
-  fenced <- withTransaction d.path $ \db -> do
+  fenced <- withTransaction d.connections $ \db -> do
     cancelled <-
       query db "SELECT history_position,invocation FROM impetus_local_dispatch_cancellations WHERE instance=? AND occurrence=?" key
     case cancelled of
@@ -324,12 +359,12 @@ cancel d instruction = do
   let occurrence = instruction.occurrence
       key = [SQLText d.instance', intData occurrence]
       conflict = dispatchError ("Local Dispatch cancellation conflict for occurrence " <> showT occurrence)
-  disposition <- withTransaction d.path $ \db -> do
+  disposition <- withTransaction d.connections $ \db -> do
     execute
       db
       "INSERT INTO impetus_local_dispatch_cancellations(instance,occurrence,history_position,invocation) VALUES(?,?,?,?) ON CONFLICT(instance,occurrence) DO NOTHING"
       (key <> [intData instruction.historyPosition, SQLText encoded])
-    inserted <- Sql.changes db
+    inserted <- C.changes db
     cancellation <-
       query db "SELECT history_position,invocation FROM impetus_local_dispatch_cancellations WHERE instance=? AND occurrence=?" key
     unless (map (map pyData) cancellation `takeFirstIs` [PyInt (toInteger instruction.historyPosition), PyText encoded]) conflict
@@ -363,7 +398,7 @@ collect d = do
     then pure []
     else do
       rows <-
-        withConnection d.path $ \db ->
+        withConnection d.connections $ \db ->
           query
             db
             ( "SELECT occurrence,outcome FROM impetus_local_dispatch_terminals WHERE instance=? AND occurrence IN ("
@@ -402,8 +437,8 @@ worker d queues' label = workerWith d defaultLocalWorkerOptions {workerQueues = 
 workerWith :: LocalDispatch -> LocalWorkerOptions -> IO LocalWorkerDispatch
 workerWith d options = case (options.workerClock, d.clockReader) of
   (Just _, Just _) -> dispatchError "Local Worker Dispatch accepts either clock or its dispatch clock reader"
-  (Just source, Nothing) -> newClockReader source >>= openWorker d.path options . Just
-  (Nothing, reader) -> openWorker d.path options reader
+  (Just source, Nothing) -> newClockReader source >>= openWorker (Borrowed d.connections) d.path options . Just
+  (Nothing, reader) -> openWorker (Borrowed d.connections) d.path options reader
 
 -- | Wait up to the timeout (seconds) for a collectable terminal, polling
 -- every 50 ms.
@@ -427,7 +462,7 @@ terminalReady d = do
   eligible <- eligibleOccurrences d
   if null eligible
     then pure False
-    else withConnection d.path $ \db ->
+    else withConnection d.connections $ \db ->
       not . null
         <$> query
           db
@@ -443,6 +478,10 @@ data LocalWorkerDispatch = LocalWorkerDispatch
   , queues :: [Text]
   , claimant :: Text
   , workerReader :: Maybe ClockReader
+  , connections :: Pool
+  , ownsConnections :: Bool
+  -- ^ Whether 'close' closes the connections: a worker constructed from a
+  -- session ('worker') or over shared 'LocalConnections' borrows them.
   }
 
 -- | The keyword arguments of @LocalWorkerDispatch(path, ...)@.
@@ -468,10 +507,34 @@ defaultLocalWorkerOptions =
 openLocalWorkerDispatch :: FilePath -> LocalWorkerOptions -> IO LocalWorkerDispatch
 openLocalWorkerDispatch file options = do
   reader <- traverse newClockReader options.workerClock
-  openWorker file options reader
+  openWorker Owned file options reader
 
-openWorker :: FilePath -> LocalWorkerOptions -> Maybe ClockReader -> IO LocalWorkerDispatch
-openWorker given options reader = do
+-- | Connections to one Local Dispatch file that several workers share, such
+-- as the providers a ZeroMQ Dispatch server keeps for its clients. Whoever
+-- creates them closes them ('closeLocalConnections'); closing a worker
+-- opened over them ('openLocalWorkerDispatchOn') leaves them open.
+newtype LocalConnections = LocalConnections Pool
+
+-- | Connections to the file, none open yet.
+newLocalConnections :: FilePath -> IO LocalConnections
+newLocalConnections file = LocalConnections <$> connectionPool (T.unpack (pathText file))
+
+-- | Close the idle connections. Workers opened over them stay usable, each
+-- later operation on a connection of its own. Closing twice is harmless.
+closeLocalConnections :: LocalConnections -> IO ()
+closeLocalConnections (LocalConnections pool) = closePool pool
+
+-- | @LocalWorkerDispatch(path, ...)@ over shared connections to @path@.
+openLocalWorkerDispatchOn :: LocalConnections -> LocalWorkerOptions -> IO LocalWorkerDispatch
+openLocalWorkerDispatchOn (LocalConnections pool) options = do
+  reader <- traverse newClockReader options.workerClock
+  openWorker (Borrowed pool) (poolPath pool) options reader
+
+-- | Where a worker's connections come from.
+data Connections = Owned | Borrowed Pool
+
+openWorker :: Connections -> FilePath -> LocalWorkerOptions -> Maybe ClockReader -> IO LocalWorkerDispatch
+openWorker connections' given options reader = do
   let file = T.unpack (pathText given)
   validated <- mapM (`name` "queue") options.workerQueues
   let deduplicated = nub validated
@@ -481,8 +544,19 @@ openWorker given options reader = do
     Just fixed | not (T.null fixed) -> pure fixed
     _ -> ((label <> ":") <>) <$> uuid4
   createDirectoryIfMissing True (takeDirectory file)
-  initialize file reader
-  pure LocalWorkerDispatch {path = file, queues = deduplicated, claimant = who, workerReader = reader}
+  (pool, owned) <- case connections' of
+    Owned -> (,True) <$> connectionPool file
+    Borrowed shared -> pure (shared, False)
+  initialize pool file reader `onException` when owned (closePool pool)
+  pure
+    LocalWorkerDispatch
+      { path = file
+      , queues = deduplicated
+      , claimant = who
+      , workerReader = reader
+      , connections = pool
+      , ownsConnections = owned
+      }
 
 -- | The provider-neutral 'WorkerDispatch' surface over this provider.
 toWorkerDispatch :: LocalWorkerDispatch -> WorkerDispatch
@@ -507,7 +581,7 @@ claimableFilter =
 -- leases. 'Nothing' when nothing is claimable now.
 claim :: LocalWorkerDispatch -> IO (Maybe ActivityAttempt)
 claim w = do
-  (expired, attempt) <- withTransaction w.path $ \db -> do
+  (expired, attempt) <- withTransaction w.connections $ \db -> do
     now <- currentTime db w.workerReader
     expired <- terminalizeExhausted db now w.queues
     rows <-
@@ -569,7 +643,7 @@ heartbeat w attempt details = do
   encoded <- forM details $ \value -> do
     snapshot <- orRefuse (snapshotHeartbeatDetails value)
     orRefuse (encodeJson "heartbeat details" snapshot)
-  latest <- withTransaction w.path $ \db -> do
+  latest <- withTransaction w.connections $ \db -> do
     now <- currentTime db w.workerReader
     row <- active db attempt now
     inv <- case row of
@@ -618,7 +692,7 @@ fail w attempt report = do
     FailureException err ->
       orRefuse (activityFailure (ActivityFailureFields (exceptionRepr err) (exceptionTypeName err) Null True Nothing))
   let outcome = failedOutcome failure
-  disposition <- withTransaction w.path $ \db -> do
+  disposition <- withTransaction w.connections $ \db -> do
     acknowledged <- acknowledgeTerminalRetry db attempt outcome
     if acknowledged
       then pure "terminal-retry"
@@ -664,7 +738,7 @@ fail w attempt report = do
 
 terminalReport :: LocalWorkerDispatch -> ActivityAttempt -> Json -> IO ()
 terminalReport w attempt outcome = do
-  disposition <- withTransaction w.path $ \db -> do
+  disposition <- withTransaction w.connections $ \db -> do
     acknowledged <- acknowledgeTerminalRetry db attempt outcome
     if acknowledged
       then pure "terminal-retry"
@@ -679,7 +753,7 @@ terminalReport w attempt outcome = do
             pure "terminal"
   emitAttempt "dispatch_completed" attempt [("outcome", String disposition)]
 
-insertTerminal :: Database -> ActivityAttempt -> Json -> IO ()
+insertTerminal :: Connection -> ActivityAttempt -> Json -> IO ()
 insertTerminal db attempt outcome = do
   (inst, occurrence) <- attemptKey attempt
   epoch <- orRefuse (pyInt attempt.epoch)
@@ -697,7 +771,7 @@ wait w timeout = do
   start <- getMonotonicTime
   let deadline = start + seconds
       loop = do
-        (expired, ready) <- withTransaction w.path $ \db -> do
+        (expired, ready) <- withTransaction w.connections $ \db -> do
           now <- currentTime db w.workerReader
           expired <- terminalizeExhausted db now w.queues
           rows <-
@@ -720,16 +794,18 @@ wait w timeout = do
             if remaining <= 0 then pure False else sleepSeconds (min 0.05 remaining) >> loop
   loop
 
--- | Operation-scoped SQLite connections leave no persistent resource to
--- close.
+-- | Close the worker's idle connections, unless it borrows them from a
+-- session or from shared 'LocalConnections'. The worker stays usable, as
+-- the reference's does after @close()@: each later operation opens and
+-- closes a connection of its own.
 close :: LocalWorkerDispatch -> IO ()
-close _ = pure ()
+close w = when w.ownsConnections (closePool w.connections)
 
 -- ---------------------------------------------------------------------------
 -- Fences
 
 -- | @_active@: the exact live lease, or "stale Activity attempt".
-active :: Database -> ActivityAttempt -> Integer -> IO [SQLData]
+active :: Connection -> ActivityAttempt -> Integer -> IO [SQLData]
 active db attempt now = do
   (inst, occurrence) <- attemptKey attempt
   let key = [SQLText inst, intData occurrence]
@@ -757,7 +833,7 @@ active db attempt now = do
 -- | @_cancelled_attempt@: validate the exact fenced claimant before
 -- accepting its report for canonical quarantine (lease expiry is not
 -- checked).
-cancelledAttempt :: Database -> ActivityAttempt -> IO Bool
+cancelledAttempt :: Connection -> ActivityAttempt -> IO Bool
 cancelledAttempt db attempt = do
   (inst, occurrence) <- attemptKey attempt
   let key = [SQLText inst, intData occurrence]
@@ -775,7 +851,7 @@ cancelledAttempt db attempt = do
         _ -> stale attempt
 
 -- | @_acknowledge_terminal_retry@.
-acknowledgeTerminalRetry :: Database -> ActivityAttempt -> Json -> IO Bool
+acknowledgeTerminalRetry :: Connection -> ActivityAttempt -> Json -> IO Bool
 acknowledgeTerminalRetry db attempt outcome = do
   (inst, occurrence) <- attemptKey attempt
   rows <-
@@ -817,7 +893,7 @@ attemptKey attempt =
 -- An expired retryable lease becomes delayed work (backoff anchored at the
 -- durable lease expiry) before another claimant can see it; an exhausted or
 -- schedule-expired task becomes a @DeadlineExceeded@ terminal.
-terminalizeExhausted :: Database -> Integer -> [Text] -> IO [(Text, Int64, Int64, Maybe Text)]
+terminalizeExhausted :: Connection -> Integer -> [Text] -> IO [(Text, Int64, Int64, Maybe Text)]
 terminalizeExhausted db now queues' = do
   let queueParams = map SQLText queues'
   retryable <-
@@ -872,13 +948,17 @@ terminalizeExhausted db now queues' = do
 -- ---------------------------------------------------------------------------
 -- Opening, migration, shape validation
 
-initialize :: FilePath -> Maybe ClockReader -> IO ()
-initialize file reader = do
+-- | @_initialize@: create, migrate, or validate the schema on a raw
+-- connection, then make sure the file is in WAL mode (@with _connect(path)@),
+-- leaving that connection in the pool. As in the reference, the raw
+-- connection is still open while the WAL connection opens, so closing it is
+-- not the last close of the file.
+initialize :: Pool -> FilePath -> Maybe ClockReader -> IO ()
+initialize pool file reader = do
   createDirectoryIfMissing True (takeDirectory file)
-  bracket (rawConnect file) Sql.close $ \db -> do
-    Sql.exec db "BEGIN IMMEDIATE"
-    (opening db >> Sql.exec db "COMMIT") `onException` rollbackQuietly db
-  connect file >>= Sql.close
+  C.withConnection rawProfile file $ \db -> do
+    C.withImmediateTransaction db (opening db)
+    withConnection pool (\_ -> pure ())
   where
     shown = pathText file
     refuse message = dispatchError (shown <> ": " <> message)
@@ -920,7 +1000,7 @@ initialize file reader = do
             refuse ("unsupported Local Dispatch schema " <> reprRows rows2 <> "; migration is not supported")
           validateShape db shown
 
-validateShape :: Database -> Text -> IO ()
+validateShape :: Connection -> Text -> IO ()
 validateShape db shown = do
   let expectedSql =
         Map.fromList
@@ -996,7 +1076,7 @@ validateShape db shown = do
 
 -- | @_migrate_v1@: transactionally rebuild the real v1 column order into
 -- the exact v2 DDL.
-migrateV1 :: Database -> Maybe ClockReader -> IO ()
+migrateV1 :: Connection -> Maybe ClockReader -> IO ()
 migrateV1 db reader = do
   now <- currentTime db reader
   tasks <-
@@ -1057,74 +1137,47 @@ migrateV1 db reader = do
 -- Connections
 
 -- | @_raw_connect@: a connection with the reference's pragmas, before WAL.
-rawConnect :: FilePath -> IO Database
-rawConnect file = do
-  db <- Sql.open2 (T.pack file) [SQLOpenReadWrite, SQLOpenCreate] SQLVFSDefault
-  ( do
-      Sql.exec db "PRAGMA busy_timeout=5000"
-      Sql.exec db "PRAGMA foreign_keys=ON"
-      Sql.exec db "PRAGMA synchronous=FULL"
-    )
-    `onException` Sql.close db
-  pure db
+rawProfile :: C.Profile
+rawProfile = C.localDispatchProfile {C.setup = [step | step@(C.Pragma _) <- C.localDispatchProfile.setup]}
 
 -- | @_connect@: a raw connection switched to WAL, retrying a locked
 -- database every 10 ms for up to 5 s.
-connect :: FilePath -> IO Database
-connect file = do
-  db <- rawConnect file
-  start <- getMonotonicTime
-  let attempt = do
-        result <- try (query db "PRAGMA journal_mode=WAL" [])
-        case result of
-          Right rows -> pure rows
-          Left (err :: SQLError) -> do
-            now <- getMonotonicTime
-            if "locked" `T.isInfixOf` T.toLower err.sqlErrorDetails && now < start + 5
-              then threadDelay 10000 >> attempt
-              else Sql.close db >> throwIO err
-  rows <- attempt
-  case rows of
-    [SQLText mode] : _ | T.toLower mode == "wal" -> pure db
-    _ -> do
-      Sql.close db
-      dispatchError (pathText file <> ": SQLite refused WAL mode")
+connect :: FilePath -> IO Connection
+connect file =
+  C.open C.localDispatchProfile file `catch` \(_ :: C.WalRefused) ->
+    dispatchError (pathText file <> ": SQLite refused WAL mode")
 
-withConnection :: FilePath -> (Database -> IO a) -> IO a
-withConnection file = bracket (connect file) Sql.close
+-- | How many idle connections a session keeps open between operations.
+idleConnections :: Int
+idleConnections = 4
 
--- | @_transaction@: one @BEGIN IMMEDIATE@ transaction on a fresh
+-- | A pool of '_connect' connections to the file.
+connectionPool :: FilePath -> IO Pool
+connectionPool file = newPool idleConnections file (connect file)
+
+-- | One operation's connection: a pooled @_connect@ connection with the
+-- reference's pragmas, used by this operation alone.
+withConnection :: Pool -> (Connection -> IO a) -> IO a
+withConnection = withPooledConnection
+
+-- | @_transaction@: one @BEGIN IMMEDIATE@ transaction on the operation's
 -- connection, committed on success and rolled back on any exception.
-withTransaction :: FilePath -> (Database -> IO a) -> IO a
-withTransaction file body =
-  withConnection file $ \db -> do
-    Sql.exec db "BEGIN IMMEDIATE"
-    result <- body db `onException` rollbackQuietly db
-    Sql.exec db "COMMIT" `onException` rollbackQuietly db
-    pure result
+withTransaction :: Pool -> (Connection -> IO a) -> IO a
+withTransaction pool body =
+  withConnection pool $ \db -> C.withImmediateTransaction db (body db)
 
-rollbackQuietly :: Database -> IO ()
-rollbackQuietly db = Sql.exec db "ROLLBACK" `catch` \(_ :: SomeException) -> pure ()
+query :: Connection -> Text -> [SQLData] -> IO [[SQLData]]
+query = C.query
 
-query :: Database -> Text -> [SQLData] -> IO [[SQLData]]
-query db sql params =
-  bracket (Sql.prepare db sql) Sql.finalize $ \statement -> do
-    Sql.bind statement params
-    let loop acc =
-          Sql.step statement >>= \case
-            Row -> Sql.columns statement >>= \row -> loop (row : acc)
-            Done -> pure (reverse acc)
-    loop []
-
-execute :: Database -> Text -> [SQLData] -> IO ()
-execute db sql params = () <$ query db sql params
+execute :: Connection -> Text -> [SQLData] -> IO ()
+execute db sql params = void (C.execute db sql params)
 
 marks :: [a] -> Text
 marks items = T.intercalate "," (map (const "?") items)
 
 -- | @_now@: the provider clock when one is configured, else the database
 -- clock, sampled inside the transaction.
-currentTime :: Database -> Maybe ClockReader -> IO Integer
+currentTime :: Connection -> Maybe ClockReader -> IO Integer
 currentTime db = \case
   Just reader -> sampleClock reader
   Nothing ->
@@ -1381,21 +1434,6 @@ reprRows rows = "[" <> T.intercalate ", " (map tuple rows) <> "]"
       SQLBlob b -> "b" <> pyStr (TE.decodeLatin1 b)
       SQLNull -> "None"
 
--- | @repr@ of a JSON-decoded Python value.
-pyRepr :: Json -> Text
-pyRepr = \case
-  Null -> "None"
-  Bool True -> "True"
-  Bool False -> "False"
-  Int i -> showT i
-  Float d
-    | isNaN d -> "nan"
-    | isInfinite d -> if d > 0 then "inf" else "-inf"
-    | otherwise -> T.pack (pythonFloatRepr d)
-  String s -> pyStr s
-  Array items -> "[" <> T.intercalate ", " (map pyRepr items) <> "]"
-  Object members -> "{" <> T.intercalate ", " [pyStr k <> ": " <> pyRepr v | (k, v) <- members] <> "}"
-
 -- | The integer value of a column, if it holds one.
 integerOf :: SQLData -> Maybe Integer
 integerOf = \case
@@ -1438,25 +1476,6 @@ pathText file =
         | "/" `T.isPrefixOf` raw = "/"
         | otherwise = ""
    in if T.null root && T.null body then "." else root <> body
-
--- | The @repr@ of a caught exception, Python style: @Type('message')@.
-exceptionRepr :: SomeException -> Text
-exceptionRepr err =
-  let message = exceptionMessage err
-   in exceptionTypeName err <> "(" <> (if T.null message then "" else pyStr message) <> ")"
-
--- | A random (version 4) UUID, spelled as @str(uuid.uuid4())@.
-uuid4 :: IO Text
-uuid4 = do
-  bytes <- withBinaryFile "/dev/urandom" ReadMode (`BS.hGet` 16)
-  let octets = zipWith adjust [0 :: Int ..] (BS.unpack bytes)
-      adjust i b
-        | i == 6 = (b .&. 0x0f) .|. 0x40
-        | i == 8 = (b .&. 0x3f) .|. 0x80
-        | otherwise = b
-      hex b = let s = showHex b "" in T.pack (if length s == 1 then '0' : s else s)
-      chunk from count = T.concat (map hex (take count (drop from octets)))
-  pure (T.intercalate "-" [chunk 0 4, chunk 4 2, chunk 6 2, chunk 8 2, chunk 10 6])
 
 sleepSeconds :: Double -> IO ()
 sleepSeconds seconds = threadDelay (max 0 (round (seconds * 1000000)))

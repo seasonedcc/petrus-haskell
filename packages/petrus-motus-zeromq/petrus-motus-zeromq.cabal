@@ -1,0 +1,112 @@
+cabal-version:      3.4
+name:               petrus-motus-zeromq
+version:            0.1.0.0
+synopsis:           ZeroMQ Dispatch transport (protocol v2) for remote Petrus Workers
+description:
+  A port of @petrus.motus.transport.zeromq@: a ROUTER server exposing Local
+  SQLite Dispatch custody to remote Workers over IPC or CURVE-authenticated
+  TCP, a synchronous Worker client, a native asynchronous Worker access, the
+  server's process entry point, and the Worker CLI's ZeroMQ provider plugins.
+  Wire-compatible with the Python reference in both directions. Binds libzmq
+  4.x directly (see README.md).
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Network
+build-type:         Simple
+extra-doc-files:    README.md
+                    NOTICE
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:            warnings
+  hs-source-dirs:    src
+  exposed-modules:   Petrus.Motus.Transport.ZeroMQ
+                     Petrus.Motus.Transport.ZeroMQ.Cli
+                     Petrus.Motus.Transport.ZeroMQ.Client
+                     Petrus.Motus.Transport.ZeroMQ.Curve
+                     Petrus.Motus.Transport.ZeroMQ.Errors
+                     Petrus.Motus.Transport.ZeroMQ.Native
+                     Petrus.Motus.Transport.ZeroMQ.PythonDecode
+                     Petrus.Motus.Transport.ZeroMQ.Server
+                     Petrus.Motus.Transport.ZeroMQ.Socket
+                     Petrus.Motus.Transport.ZeroMQ.Wire
+  pkgconfig-depends: libzmq >=4.1
+  build-depends:     base >=4.18 && <5
+                   , array >=0.5
+                   , bytestring >=0.11
+                   , containers >=0.6
+                   , direct-sqlite >=2.3.29 && <2.4
+                   , directory >=1.3
+                   , filepath >=1.4
+                   , petrus-activity
+                   , petrus-json
+                   , petrus-motus
+                   , stm >=2.5
+                   , text >=2.0
+                   , time >=1.12
+                   , unix >=2.8
+  ghc-options:       -O2
+
+executable petrus-zeromq-dispatch
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  build-depends:    base
+                  , petrus-motus-zeromq
+  ghc-options:      -O2 -threaded -rtsopts
+
+test-suite petrus-motus-zeromq-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.Motus.Transport.ZeroMQ.Support
+                    Petrus.Motus.Transport.ZeroMQ.TransportSpec
+                    Petrus.Motus.Transport.ZeroMQ.InteropSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , direct-sqlite
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-motus-zeromq
+                  , process >=1.6
+                  , text
+                  , unix
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-motus-zeromq-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , direct-sqlite
+                  , petrus-activity
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-motus-zeromq
+                  , process >=1.6
+                  , directory
+                  , filepath
+                  , text
+                  , unix
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A32m"

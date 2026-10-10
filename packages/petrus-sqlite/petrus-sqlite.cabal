@@ -34,6 +34,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Sqlite
                     Petrus.Sqlite.Connection
+                    Petrus.Sqlite.Pool
                     Petrus.Sqlite.PythonRepr
                     Petrus.Sqlite.Schema
                     Petrus.Sqlite.WriterFence
@@ -57,6 +58,7 @@ test-suite petrus-sqlite-test
   build-depends:    base
                   , bytestring
                   , containers
+                  , direct-sqlite
                   , directory
                   , filepath
                   , hspec

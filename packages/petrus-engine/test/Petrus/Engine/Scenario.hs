@@ -10,7 +10,9 @@ module Petrus.Engine.Scenario
     orderIdentity
   , orderNet
   , orderOptions
+  , orderOptionsWith
   , orderActivities
+  , chargeReceipt
   , deliverOrders
   , settledMarking
     -- * Chain
@@ -82,15 +84,17 @@ settleHandler b _ = do
   status <- member "status" receipt
   Right (handlerTokens [(done, [tokD "Settled" (Object [("id", orderId), ("status", status)])])])
 
--- | The reference's @Charge@ ActivityHandler; @prepared@ counts prepares.
-chargeHandler :: IORef Int -> ActivityHandler
-chargeHandler prepared =
+-- | The reference's @Charge@ ActivityHandler; @prepared@ counts prepares,
+-- and the prepared invocation is adjusted (a policy, for the Worker
+-- topology's lease tests).
+chargeHandler :: (ActivityInvocation -> ActivityInvocation) -> IORef Int -> ActivityHandler
+chargeHandler adjust prepared =
   ActivityHandler
     { prepare = counting prepared $ \b -> do
         valid <- firstData b
         orderId <- member "id" valid
         cents <- member "amount" valid
-        Right (invocation "charge_card" (Object [("id", orderId), ("cents", cents)]))
+        Right (adjust (invocation "charge_card" (Object [("id", orderId), ("cents", cents)])))
     , project = \_ result -> Right (handlerTokens [(charged, [tokD "Receipt" result])])
     , projectFailure = Nothing
     }
@@ -98,26 +102,29 @@ chargeHandler prepared =
 -- | The scenario's Engine options (handlers bound by symbol); the counter
 -- counts the charge's prepares.
 orderOptions :: IORef Int -> Engine.EngineOptions
-orderOptions prepared =
+orderOptions = orderOptionsWith id
+
+-- | 'orderOptions' with the charge's prepared invocation adjusted.
+orderOptionsWith :: (ActivityInvocation -> ActivityInvocation) -> IORef Int -> Engine.EngineOptions
+orderOptionsWith adjust prepared =
   Engine.defaultEngineOptions
     { Engine.handlers =
         symbols
           [ ("validate", PureHandler validateHandler)
-          , ("charge", ActivityBound (chargeHandler prepared))
+          , ("charge", ActivityBound (chargeHandler adjust prepared))
           , ("settle", PureHandler settleHandler)
           ]
     }
 
 -- | The reference's @charge_card@ activity, inline.
 orderActivities :: IO Dispatch
-orderActivities =
-  inlineOf
-    [ ( "charge_card"
-      , \inv _ -> pure $ case (lookupMember "id" inv.input, lookupMember "cents" inv.input) of
-          (Just orderId, Just cents) -> Object [("id", orderId), ("status", String "captured"), ("cents", cents)]
-          _ -> Null
-      )
-    ]
+orderActivities = inlineOf [("charge_card", \inv _ -> pure (chargeReceipt inv))]
+
+-- | @charge_card@'s result.
+chargeReceipt :: ActivityInvocation -> Json
+chargeReceipt inv = case (lookupMember "id" inv.input, lookupMember "cents" inv.input) of
+  (Just orderId, Just cents) -> Object [("id", orderId), ("status", String "captured"), ("cents", cents)]
+  _ -> Null
 
 -- | Deliver orders @o-1@ … @o-n@ with identities @evt_k@.
 deliverOrders :: Engine.Engine -> Int -> IO ()
