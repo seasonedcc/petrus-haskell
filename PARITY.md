@@ -81,17 +81,18 @@ Hamsterdan depends on differs** (docs/hamsterdan.md §2.3).
 
 | Component | Upstream | Haskell package | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| Contracts (V5 workflow models, agent protocol types) | `src/hamsterdan/contracts`, `src/hamsterdan/agents/protocol.py` (types) | `hamsterdan-contracts` | not started | |
-| Python-literal repr/parse for dashboard entries and digests | `readiness/net_v5/dashboard.py`, `board.py` (`repr`, `ast.literal_eval`) | `hamsterdan-contracts` | not started | |
+| Contracts (V5 workflow models, agent protocol types) | `src/hamsterdan/contracts`, `src/hamsterdan/agents/protocol.py` (types) | `hamsterdan-contracts` | at parity | [PARITY](packages/hamsterdan-contracts/PARITY.md), `packages/hamsterdan-contracts/test/corpus/{contracts,projection,protocol}.jsonl`, [bench](packages/hamsterdan-contracts/bench/RESULTS.md) |
+| Python-literal repr/parse for dashboard entries and digests | `readiness/net_v5/dashboard.py`, `board.py` (`repr`, `ast.literal_eval`) | `hamsterdan-contracts` | at parity | [PARITY](packages/hamsterdan-contracts/PARITY.md), `packages/hamsterdan-contracts/test/corpus/{repr,literal_eval}.jsonl`, [bench](packages/hamsterdan-contracts/bench/RESULTS.md) |
 | Readiness net V5 (topology, nine loops, startup, folding) | `src/hamsterdan/readiness/net_v5`, `readiness/payloads.py` | `hamsterdan-readiness` | not started | |
 | Gate handlers and `$variant` converter | `readiness/net_v5/gating.py` | `hamsterdan-readiness` | not started | |
 | Summary board rendering | `readiness/net_v5/board.py` | `hamsterdan-readiness` | not started | |
-| GitHub App config and installations TOML | `github_app/config.py` | `hamsterdan-github` | not started | |
-| Webhook verification and durable inbox | `github_app/webhooks.py`, `host/api.py` | `hamsterdan-github`, `hamsterdan-host` | not started | |
-| Installation and repository routing | `github_app/routing.py` | `hamsterdan-github` | not started | |
-| App auth (JWT, installation tokens) and bounded transport | `github_app/auth.py`, `github_app/transport.py` | `hamsterdan-github` | not started | |
-| Provider reads (REST and GraphQL) | `github_app/gateway.py` | `hamsterdan-github` | not started | |
-| Effects (comments, reviews, thread resolution, rerun marker) | `github_app/effects.py` | `hamsterdan-github` | not started | |
+| GitHub App config and installations TOML | `github_app/config.py` | `hamsterdan-github` | at parity | [PARITY](packages/hamsterdan-github/PARITY.md), `packages/hamsterdan-github/test/corpus/config.jsonl`, [bench](packages/hamsterdan-github/bench/RESULTS.md) |
+| Webhook verification and durable inbox | `github_app/webhooks.py` | `hamsterdan-github` | at parity | [PARITY](packages/hamsterdan-github/PARITY.md), `packages/hamsterdan-github/test/corpus/webhooks.jsonl`, [bench](packages/hamsterdan-github/bench/RESULTS.md) |
+| Webhook HTTP endpoint (`POST /github/webhooks`, `GET /healthz`) | `host/api.py` | `hamsterdan-host` | not started | |
+| Installation and repository routing | `github_app/routing.py` | `hamsterdan-github` | at parity | [PARITY](packages/hamsterdan-github/PARITY.md), `packages/hamsterdan-github/test/corpus/webhooks.jsonl`, [bench](packages/hamsterdan-github/bench/RESULTS.md) |
+| App auth (JWT, installation tokens, startup permission check) and bounded transport, with the githubkit/httpx/hishel client stack | `github_app/auth.py`, `github_app/transport.py` | `hamsterdan-github` | at parity | [PARITY](packages/hamsterdan-github/PARITY.md), `packages/hamsterdan-github/test/corpus/http.jsonl`, [bench](packages/hamsterdan-github/bench/RESULTS.md) |
+| Provider reads (REST and GraphQL), Git object writes, GraphQL ref compare-and-swap | `github_app/gateway.py`, `github_app/transport.py` (`GitHubGraphQL`) | `hamsterdan-github` | at parity | [PARITY](packages/hamsterdan-github/PARITY.md), `packages/hamsterdan-github/test/corpus/effects.jsonl`, [bench](packages/hamsterdan-github/bench/RESULTS.md) |
+| Effects (comments, reviews, thread resolution, rerun marker) | `github_app/effects.py` | `hamsterdan-github` | at parity | [PARITY](packages/hamsterdan-github/PARITY.md), `packages/hamsterdan-github/test/corpus/effects.jsonl`, [bench](packages/hamsterdan-github/bench/RESULTS.md) |
 | Host service (custody, pump, sweep, runnable index, bindings) | `host/service.py`, `host/runnable.py`, `host/binding.py` | `hamsterdan-host` | not started | |
 | Host CLI (`serve`, `validate`, `inbox`, `requeue`, `inspect-instance`) | `host/__main__.py` | `hamsterdan-host` | not started | |
 | V5 runtime (Engine wiring, ingress manifests, authority grants, claims) | `host/v5/{runtime,application,ingress,claim}.py` | `hamsterdan-host` | not started | |

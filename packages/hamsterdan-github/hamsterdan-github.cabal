@@ -1,0 +1,113 @@
+cabal-version:      3.4
+name:               hamsterdan-github
+version:            0.1.0.0
+synopsis:           Hamsterdan's GitHub App boundary: config, webhooks, auth and a typed client
+description:
+  The port of Hamsterdan's @src/hamsterdan/github_app@: strict host
+  configuration and the installations TOML, webhook verification and the
+  durable SQLite inbox, the installation routing registry, App JWT and
+  installation tokens, the bounded REST and GraphQL transport, the
+  exact-repository reads, and the lookup-first comment, review and Git
+  publication effects. Every request path, query string and JSON body is
+  byte-identical to the Python reference.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Network
+build-type:         Simple
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      MultiWayIf
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Hamsterdan.GitHub
+                    Hamsterdan.GitHub.Auth
+                    Hamsterdan.GitHub.Cache
+                    Hamsterdan.GitHub.Client
+                    Hamsterdan.GitHub.Config
+                    Hamsterdan.GitHub.Effects
+                    Hamsterdan.GitHub.Gateway
+                    Hamsterdan.GitHub.Http
+                    Hamsterdan.GitHub.Jwt
+                    Hamsterdan.GitHub.Models
+                    Hamsterdan.GitHub.Python
+                    Hamsterdan.GitHub.Routing
+                    Hamsterdan.GitHub.Sqlite
+                    Hamsterdan.GitHub.Transport
+                    Hamsterdan.GitHub.Url
+                    Hamsterdan.GitHub.Webhooks
+  build-depends:    base >=4.18 && <5
+                  , base64-bytestring >=1.2
+                  , bytestring >=0.11
+                  , case-insensitive >=1.2
+                  , containers >=0.6
+                  , crypton >=1.0
+                  , crypton-x509 >=1.7
+                  , crypton-x509-store >=1.6
+                  , direct-sqlite >=2.3.27
+                  , hamsterdan-contracts
+                  , http-client >=0.7.14
+                  , http-client-tls >=0.3.6
+                  , http-types >=0.12
+                  , petrus-json
+                  , ram >=0.21
+                  , text >=2.0
+                  , time >=1.12
+                  , toml-parser ==2.0.1.2
+                  , unix >=2.8
+                  , zlib >=0.6
+  ghc-options:      -O2
+
+test-suite hamsterdan-github-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    AppFoundationSpec
+                    ConfigCorpusSpec
+                    Corpus
+                    EffectsCorpusSpec
+                    GitHubSpec
+                    HttpCorpusSpec
+                    WebhookCorpusSpec
+  build-depends:    base
+                  , base64-bytestring
+                  , bytestring
+                  , containers
+                  , crypton
+                  , directory
+                  , filepath
+                  , hamsterdan-contracts
+                  , hamsterdan-github
+                  , hspec >=2.10
+                  , petrus-json
+                  , temporary >=1.3
+                  , text
+                  , time
+                  , unix
+  ghc-options:      -threaded -rtsopts
+
+benchmark hamsterdan-github-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , hamsterdan-github
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , temporary >=1.3
+                  , text
+  ghc-options:      -O2 -threaded -rtsopts

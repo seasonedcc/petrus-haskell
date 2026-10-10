@@ -53,7 +53,7 @@ test-suite petrus-postgres-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  ghc-options:      -threaded
+  ghc-options:      -threaded -rtsopts
   build-depends:    base
                   , bytestring
                   , hspec

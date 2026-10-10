@@ -55,6 +55,22 @@ main = hspec $ do
       dumps indented (Float (1 / 0)) `shouldSatisfy` isLeft
     it "escapes control characters" $
       render indented (String "\x01\x7f") `shouldBe` "\"\\u0001\x7f\""
+    it "writes the same bytes directly as through the builder, for every option" $
+      property $ \(AnyJson value) ->
+        let viaBuilder options = BL.toStrict . B.toLazyByteString <$> dumpsBuilder options value
+            agree options = counterexample (show options) (show (dumps options value) === show (viaBuilder options))
+         in conjoin
+              ( map
+                  agree
+                  [ defaultDumps
+                  , indented
+                  , compact
+                  , compact {sortKeys = True}
+                  , defaultDumps {indent = Just 0}
+                  , defaultDumps {indent = Just 3, itemSeparator = Just " ;", keySeparator = " = ", ensureAscii = True}
+                  , indented {ensureAscii = True, sortKeys = True}
+                  ]
+              )
 
   describe "parseJson" $ do
     let parse = parseJson pythonLoads . BC.pack
@@ -85,6 +101,29 @@ main = hspec $ do
       parseJson opts "-9007199254740991" `shouldBe` Right (Int (-9007199254740991))
     it "overflows huge exponents to infinity" $
       parse "1e999999999999999999" `shouldBe` Right (Float (1 / 0))
+    it "round-trips strings through every escaping mode" $
+      property $ \(StringChars chars) ->
+        let value = String (T.pack chars)
+            roundTrip options = (parseJson pythonLoads =<< either (Left . show) Right (dumps options value)) == Right value
+         in roundTrip defaultDumps && roundTrip compact
+    it "round-trips strings at every offset (word-at-a-time scan)" $
+      property $ \(StringChars chars) (Small pad) ->
+        let value = Array [Int (abs pad), String (T.pack chars)]
+            spelled = BC.replicate (fromInteger (abs pad `mod` 9)) ' ' <> either (error . show) id (dumps compact value)
+         in fmap show (parseJson pythonLoads spelled) == Right (show value)
+    it "round-trips integers of every size" $
+      property $ \(Large small) wide ->
+        let check i = parseJson pythonLoads (BC.pack (show i)) `exactlyIs` Int i
+         in check (toInteger (small :: Int)) .&&. check (wide :: Integer) .&&. check (wide * 10 ^ (17 :: Int)) .&&. check (wide * 10 ^ (19 :: Int))
+    it "keeps the first position and last value of repeated members" $
+      property $ \(KeyedMembers members) ->
+        let spelled = "{" <> BC.intercalate "," [either (error . show) id (dumps compact (String (T.pack key))) <> ":" <> BC.pack (show value) | (key, value) <- members] <> "}"
+            expected = Object [(T.pack key, Int (toInteger (lastValue key))) | key <- firstPositions members]
+            lastValue key = last [value | (k, value) <- members, k == key]
+            firstPositions = foldl (\seen (key, _) -> if key `elem` seen then seen else seen ++ [key]) []
+            distinct = length (firstPositions members) == length members
+         in fmap show (parseJson pythonLoads spelled) == Right (show expected)
+              .&&. (if distinct then parseJson strictLoads spelled `exactlyIs'` expected else property (isLeft (parseJson strictLoads spelled)))
 
   describe "parseJson against the pre-optimization reader" $ do
     -- The reader was rewritten for speed (an unboxed result type, direct
@@ -104,6 +143,26 @@ main = hspec $ do
     it "agrees on byte soup (property)" $
       withNumTests 5000 $
         forAll (BS.pack <$> listOf (elements soup)) agreesEverywhere
+    -- The reader resolves duplicates once an object is complete; the
+    -- reference refuses a repeat as soon as it reads its value. A failure
+    -- after a repeat must still report the repeat.
+    it "reports an earlier repeated member before a later failure" $ do
+      let strictly = parseJson strictLoads
+      strictly "{\"a\": 1, \"a\": 2," `shouldBe` Left "duplicate JSON member \"a\""
+      strictly "{\"a\": 1, \"a\": 2 3" `shouldBe` Left "duplicate JSON member \"a\""
+      strictly "{\"a\": 1, \"a\": [}" `shouldBe` Left "Expecting value at byte 15"
+      strictly "{\"a\": 1, \"a\": 2, \"b\": {\"c\": 1, \"c\": 2}}" `shouldBe` Left "duplicate JSON member \"a\""
+      strictly "{\"b\": {\"c\": 1, \"c\": 2}, \"a\": 1, \"a\": 2}" `shouldBe` Left "duplicate JSON member \"c\""
+      mapM_
+        (\text -> parseJson strictLoads text `shouldBe` referenceParseJson strictLoads text)
+        ["{\"a\": 1, \"a\": 2,", "{\"a\": 1, \"a\": [}", "{\"a\": 1, \"a\": 2, \"b\": {\"c\": 1, \"c\": 2}}"]
+    it "agrees on cut or extended objects with repeated members (property)" $
+      withNumTests 3000 $
+        forAll arbitrary $ \(KeyedMembers members) ->
+          let spelled = "{" <> BC.intercalate "," [BC.pack (show key) <> ":" <> BC.pack (show value) | (key, value) <- members, all (< '\x80') key] <> "}"
+           in forAll (choose (0, BS.length spelled)) $ \cut ->
+                forAll (elements ["", "]", ",", "x", ",\"z\":[", "}"]) $ \tailText ->
+                  agreesEverywhere (BS.take cut spelled <> BC.pack tailText)
 
   describe "Eq Json" $ do
     it "compares numbers like Python" $ do
@@ -214,6 +273,69 @@ main = hspec $ do
     exactEq' = \case
       Array items -> items
       other -> [other]
+    exactlyIs result expected = counterexample (show result) (either (const False) (exactEq expected) result)
+    exactlyIs' result expected = exactlyIs result expected
+
+-- | Strings rich in what the scanner must stop at: quotes, backslashes,
+-- control characters, and non-ASCII (including astral) characters.
+newtype StringChars = StringChars String
+  deriving stock (Show)
+
+instance Arbitrary StringChars where
+  arbitrary =
+    StringChars
+      <$> listOf
+        ( frequency
+            [ (12, choose ('a', 'z'))
+            , (2, elements "\"\\/ ")
+            , (1, choose ('\0', '\x1f'))
+            , (1, elements "\x7f\x80\xe9\x2028\xfffd\x1F600")
+            ]
+        )
+  shrink (StringChars chars) = StringChars <$> shrink chars
+
+-- | Any JSON value, including non-finite floats, huge integers, and strings
+-- that need every kind of escape.
+newtype AnyJson = AnyJson Json
+  deriving stock (Show)
+
+instance Arbitrary AnyJson where
+  arbitrary = AnyJson <$> sized value
+    where
+      value n
+        | n <= 1 = scalar
+        | otherwise =
+            frequency
+              [ (3, scalar)
+              , (1, Array <$> small (value (n `div` 3)))
+              , (1, Object <$> small ((,) <$> text <*> value (n `div` 3)))
+              ]
+      small gen = chooseInt (0, 4) >>= \count -> vectorOf count gen
+      text = (\(StringChars chars) -> T.pack chars) <$> arbitrary
+      scalar =
+        oneof
+          [ pure Null
+          , Bool <$> arbitrary
+          , Int <$> arbitrary
+          , Int . (* (10 ^ (25 :: Int))) <$> arbitrary
+          , Int <$> elements [999999999999999999, 1000000000000000000, -1000000000000000000, -999999999999999999]
+          , Float <$> arbitrary
+          , Float <$> elements [0 / 0, 1 / 0, -1 / 0, -0.0, 1e300, 5e-324]
+          , String <$> text
+          ]
+
+-- | Object members over a small key alphabet, so repeats are common, and
+-- often more than eight members (the hashed duplicate check).
+newtype KeyedMembers = KeyedMembers [(String, Int)]
+  deriving stock (Show)
+
+instance Arbitrary KeyedMembers where
+  arbitrary = do
+    count <- choose (1, 40)
+    KeyedMembers <$> vectorOf count ((,) <$> elements keys <*> arbitrary)
+    where
+      keys = ["k" <> show i | i <- [0 :: Int .. 30]] <> ["", "\xe9", "long_key_with_shared_prefix_a", "long_key_with_shared_prefix_b"]
+
 
 parserOptions :: [ParseOptions]
 parserOptions =
