@@ -32,11 +32,17 @@ module Harness
   , pump
   , pumpHolding
   , releaseOne
+  , pendingWork
+  , pendingAll
+  , without
   , deliver
   , deliverHeld
     -- * Observation
   , tokens
   , one
+  , oneAt
+  , commentKeys
+  , factsOf
   , projection
   , markingOf
   , recordsOf
@@ -126,6 +132,12 @@ at value key = case value of
 
 atPath :: Json -> [Text] -> Json
 atPath = foldl at
+
+-- | The object without the named members.
+without :: [Text] -> Json -> Json
+without names = \case
+  Object members -> Object [m | m@(k, _) <- members, k `notElem` names]
+  other -> other
 
 keys :: Json -> [Text]
 keys = \case
@@ -863,6 +875,19 @@ releaseOne h activity = do
       pump h
     other -> throwIO (ErrorCall ("expected exactly one pending " <> T.unpack activity <> ", got " <> show (length other)))
 
+-- | The pending invocations of @activity@ in a held engine's pool.
+pendingWork :: H -> Text -> IO [ActivityInvocation]
+pendingWork h activity = do
+  let pool = maybe (error "pendingWork requires spawnHeld") id h.held
+  work <- InMemory.pending pool
+  pure [i | (_, i) <- work, i.activity == activity]
+
+-- | Every pending invocation in a held engine's pool, in occurrence order.
+pendingAll :: H -> IO [ActivityInvocation]
+pendingAll h = do
+  let pool = maybe (error "pendingAll requires spawnHeld") id h.held
+  map snd <$> InMemory.pending pool
+
 admit :: H -> Text -> Text -> Json -> IO ()
 admit h door color payload0 = do
   n <- atomicModifyIORef' h.counter (\c -> (c + 1, c + 1))
@@ -907,6 +932,18 @@ one h place =
     [x] -> pure x
     other -> throwIO (ErrorCall ("expected one token at " <> T.unpack place <> ", got " <> show (length other)))
 
+-- | @one(engine, place)[key]@.
+oneAt :: H -> Text -> Text -> IO Json
+oneAt h place key = (`at` key) <$> one h place
+
+-- | The provider's comment keys, in posting order.
+commentKeys :: H -> IO [Text]
+commentKeys h = map (.key) . (.comments) <$> worldOf h
+
+-- | The facts of one kind the dashboard projection holds.
+factsOf :: H -> Text -> IO [Json]
+factsOf h kind = map snd . filter ((== kind) . fst) <$> projection h
+
 -- | Every fact the dashboard loop accumulated, parsed back into
 -- @(kind, body)@.
 projection :: H -> IO [(Text, Json)]
@@ -925,15 +962,15 @@ projection h = do
 -- Shorthand
 
 data HeadArgs = HeadArgs
-  { base :: Text
-  , mergeable :: Bool
-  , policy :: Text
-  , strictBase :: Bool
-  , baseCurrent :: Bool
+  { seenBase :: Text
+  , seenMergeable :: Bool
+  , seenPolicy :: Text
+  , seenStrictBase :: Bool
+  , seenBaseCurrent :: Bool
   }
 
 headArgs :: HeadArgs
-headArgs = HeadArgs {base = "b1", mergeable = True, policy = "p1", strictBase = True, baseCurrent = True}
+headArgs = HeadArgs {seenBase = "b1", seenMergeable = True, seenPolicy = "p1", seenStrictBase = True, seenBaseCurrent = True}
 
 seeHead :: H -> Text -> IO ()
 seeHead h headSha = seeHeadWith h headSha headArgs
@@ -946,24 +983,24 @@ seeHeadWith h headSha a =
     "HeadSeen"
     ( obj
         [ ("head", str headSha)
-        , ("base", str a.base)
-        , ("mergeable", Bool a.mergeable)
-        , ("policy", str a.policy)
-        , ("strict_base", Bool a.strictBase)
-        , ("base_current", Bool a.baseCurrent)
+        , ("base", str a.seenBase)
+        , ("mergeable", Bool a.seenMergeable)
+        , ("policy", str a.seenPolicy)
+        , ("strict_base", Bool a.seenStrictBase)
+        , ("base_current", Bool a.seenBaseCurrent)
         ]
     )
 
 data RunArgs = RunArgs
-  { head :: Text
+  { runHead :: Text
   , runId :: Integer
-  , attempt :: Integer
-  , conclusion :: Text
-  , fingerprint :: Text
+  , runAttempt :: Integer
+  , runConclusion :: Text
+  , runFingerprint :: Text
   }
 
 runArgs :: RunArgs
-runArgs = RunArgs {head = "h1", runId = 1, attempt = 1, conclusion = "success", fingerprint = ""}
+runArgs = RunArgs {runHead = "h1", runId = 1, runAttempt = 1, runConclusion = "success", runFingerprint = ""}
 
 seeRun :: H -> IO ()
 seeRun h = seeRunWith h runArgs
@@ -975,11 +1012,11 @@ seeRunWith h a =
     "on_runs"
     "RunSeen"
     ( obj
-        [ ("head", str a.head)
+        [ ("head", str a.runHead)
         , ("run_id", int a.runId)
-        , ("attempt", int a.attempt)
-        , ("conclusion", str a.conclusion)
-        , ("fingerprint", str a.fingerprint)
+        , ("attempt", int a.runAttempt)
+        , ("conclusion", str a.runConclusion)
+        , ("fingerprint", str a.runFingerprint)
         ]
     )
 
