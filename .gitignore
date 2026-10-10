@@ -1,0 +1,8 @@
+dist-newstyle/
+.ghc.environment.*
+*.hi
+*.o
+*.dyn_hi
+*.dyn_o
+.DS_Store
+/bench-results/tmp/

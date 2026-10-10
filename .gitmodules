@@ -1,0 +1,12 @@
+[submodule "upstream/petrus"]
+	path = upstream/petrus
+	url = https://github.com/henriquebastos/petrus
+[submodule "upstream/hamsterdan"]
+	path = upstream/hamsterdan
+	url = https://github.com/henriquebastos/hamsterdan
+[submodule "upstream/petrus-engine"]
+	path = upstream/petrus-engine
+	url = https://github.com/henriquebastos/petrus-engine
+[submodule "upstream/petrus-viewer"]
+	path = upstream/petrus-viewer
+	url = https://github.com/henriquebastos/petrus-viewer

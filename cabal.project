@@ -1,0 +1,8 @@
+packages:
+  packages/*/
+
+tests: True
+benchmarks: True
+
+package *
+  ghc-options: -fhide-source-paths
