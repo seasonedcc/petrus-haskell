@@ -10,6 +10,7 @@ module Hamsterdan.Host.V5.Runtime
     GateImplementation (..)
   , gateImplementation
   , hostGateDefinition
+  , asActivity
   , gateMembers
   , DurableActivityResolver
 
