@@ -11,6 +11,7 @@ import MutationSpec qualified
 import RemindersSpec qualified
 import ReviewSpec qualified
 import ReadinessSpec qualified
+import BoardSpec qualified
 import Test.Hspec (hspec)
 import TopologySpec qualified
 
@@ -28,3 +29,4 @@ main = hspec $ do
   RemindersSpec.spec
   ReviewSpec.spec
   ReadinessSpec.spec
+  BoardSpec.spec
