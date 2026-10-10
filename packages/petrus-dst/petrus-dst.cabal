@@ -41,6 +41,7 @@ library
                     Petrus.Testing.Dst.Profile
                     Petrus.Testing.Dst.PyRepr
                     Petrus.Testing.Dst.Replay
+                    Petrus.Testing.Dst.Runner
                     Petrus.Testing.Dst.Timeline
                     Petrus.Testing.Dst.Types
                     Petrus.Testing.Dst.World
