@@ -35,6 +35,10 @@ jobs:
           ghc-version: "9.10.3"
           cabal-version: "3.16.1.0"
       - uses: astral-sh/setup-uv@v6
+      # petrus-engine-file: the live differential and format-CLI specs run
+      # against the pinned petrus-engine on CPython 3.14 (pending without it).
+      - name: Sync the petrus-engine reference
+        run: uv sync --frozen --python 3.14 --project upstream/petrus-engine
       - name: Install system libraries
         run: sudo apt-get update && sudo apt-get install -y libzmq3-dev libpq-dev libsqlite3-dev graphviz
       - name: Resolve dependencies

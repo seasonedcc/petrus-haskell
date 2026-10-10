@@ -11,7 +11,7 @@ server set-ups:
 - ``local``: ``python -m petrus.motus.transport.zeromq`` over a fresh Local SQLite
   Dispatch, as deployed;
 - ``local-held-open``: the same, while this process holds a co-resident connection
-  to the file (equal IO with the Haskell port; see RESULTS.md);
+  to the file (see RESULTS.md);
 - ``memory``: the server over in-memory custody (the private ``_from_factory``
   door), which leaves only the transport. Worker ``empty`` never gets an Attempt;
   any other Worker always gets the same one.

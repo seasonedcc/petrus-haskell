@@ -79,8 +79,9 @@ surface:
     quoting) after the Haskell exception's type name and `displayException`.
     An exception declared as `ValueError` therefore stores exactly the
     reference's `ValueError('…')`.
-13. **The generated claimant's UUID** reads 16 bytes from `/dev/urandom` and
-    formats a version-4 UUID as `str(uuid.uuid4())` does.
+13. **The generated claimant's UUID** takes 16 bytes from the operating
+    system's random source through `getentropy`, which `os.urandom` also
+    uses, and formats a version-4 UUID as `str(uuid.uuid4())` does.
 14. **Corrupt-row messages from the JSON parser.** A durable row that fails
     the reference's *validation* is refused with the reference's exact
     text, prefixed `corrupt durable Activity invocation: ` and so on. A row
@@ -88,14 +89,38 @@ surface:
     prefix, where the reference carries `json.JSONDecodeError`'s text. Such
     a row cannot be written through either implementation, since every
     column has a `json_valid` CHECK.
-15. **Connections close when their operation ends.** Both implementations
-    open one connection per operation. The reference's read-only
-    `with _connect(path) as connection:` blocks, schema initialization among
-    them, commit on exit but do not close, because a Python `sqlite3`
-    context manager never closes. The connection closes when the cyclic
-    garbage collector reaches it. The port closes every connection
-    deterministically. Rows and transactions are identical; only the WAL's
-    last-close checkpoint timing differs. See `bench/RESULTS.md`.
+15. **Sessions keep their connections open between operations.** Both
+    implementations run every operation on a connection of its own, with
+    the reference's pragmas, statements and transactions. The reference
+    opens a new connection for each operation. Its read-only
+    `with _connect(path) as connection:` blocks, schema initialization
+    among them, commit on exit but do not close, because a Python `sqlite3`
+    context manager never closes. Those connections linger until the cyclic
+    garbage collector reaches them.
+
+    The port keeps up to four idle connections per session in a pool
+    (`Petrus.Sqlite.Pool`) and reuses them for later operations. The
+    workers a session constructs (`worker`, `workerWith`) share its pool.
+    The pool closes deterministically:
+    - `closeLocalDispatch` or `withLocalDispatch` closes a session's pool;
+    - `close` closes the pool of a worker opened on its own, where the
+      reference's `close()` does nothing;
+    - `LocalConnections` lets independent workers share one pool, which its
+      creator closes. The ZeroMQ server's Local providers share one this
+      way, closed when the server stops;
+    - a session dropped without closing closes its pool when it is garbage
+      collected.
+
+    Everything stays usable after a close: each later operation opens and
+    closes a connection of its own, as in the reference. A pooled
+    connection is reused only while the path still names the file it was
+    opened on, and a connection that saw a SQLite error is not reused.
+
+    Rows, statements and transactions are identical, and the interop suite
+    checks this. What differs is when connections open and close, and so
+    when the WAL's last-close checkpoint runs. In the port it runs when the
+    last pool closes. In the reference it runs whenever an operation's
+    connection happens to be the only one open. See `bench/RESULTS.md`.
 16. **Spawn-based tests run as threads.** See PARITY.md. The cross-process
     behavior they guard is covered by the interop suite, with reference
     processes and Haskell threads contending on one file.
