@@ -29,7 +29,7 @@ module Petrus.Motus.Dispatch.LocalSupport
   , writeV1
     -- * The reference
   , Python
-  , pythonOrPending
+  , withReference
   , runPython
   , startPython
   , finishPython
@@ -50,7 +50,9 @@ import Petrus.Motus.Dispatch.Local (LocalDispatchClock (..), LocalWorkerDispatch
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Data.ByteString qualified as BS
 import Petrus.Json (parseJson, pythonLoads)
-import System.Directory (createDirectory, doesFileExist, getTemporaryDirectory, makeAbsolute, removeDirectoryRecursive, removeFile)
+import Petrus.TestSupport.Python (pythonExecutable)
+import Petrus.TestSupport.Repo (upstreamPetrus)
+import System.Directory (createDirectory, getTemporaryDirectory, makeAbsolute, removeDirectoryRecursive, removeFile)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO (Handle, hClose, hSetBinaryMode, openTempFile)
@@ -222,14 +224,14 @@ writeV1 path deadline = do
 -- | The reference interpreter and the upstream root it runs in.
 type Python = (FilePath, FilePath)
 
--- | Run the example against the reference, or mark it pending when
--- @upstream/petrus/.venv@ is not synced.
-pythonOrPending :: (Python -> IO ()) -> IO ()
-pythonOrPending body = do
-  root <- makeAbsolute ("../.." </> "upstream" </> "petrus")
-  let python = root </> ".venv" </> "bin" </> "python"
-  present <- doesFileExist python
-  if present then body (python, root) else pendingWith "upstream/petrus is not synced (cd upstream/petrus && uv sync)"
+-- | Run the example against the pinned reference: its interpreter
+-- (provisioned by @scripts/upstream-python@ on first use) and the upstream
+-- root. Fails loudly, never skips, when the reference cannot be provisioned.
+withReference :: (Python -> IO ()) -> IO ()
+withReference body = do
+  python <- pythonExecutable
+  root <- upstreamPetrus
+  body (python, root)
 
 -- | The interop script's absolute path (the suite runs from the package).
 interopScript :: IO FilePath

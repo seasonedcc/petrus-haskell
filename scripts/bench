@@ -9,8 +9,8 @@
 For each package with a ``benchmark`` stanza this runs ``cabal bench`` with
 tasty-bench's ``--csv`` output and, when ``packages/<pkg>/bench/python_bench.py``
 exists, that script in the pinned upstream environment
-(``upstream/petrus/.venv``, created with ``uv sync --frozen --extra postgres``
-when missing). The Python script prints ``name,nanoseconds`` lines named like
+(``upstream/petrus/.venv``, provisioned by ``scripts/upstream-python``, which
+pins the Python version). The Python script prints ``name,nanoseconds`` lines named like
 the Haskell benchmarks (groups joined with dots; see scripts/bench_timing.py).
 
 Outputs:
@@ -69,11 +69,9 @@ def requires_postgres(package: str) -> bool:
 
 
 def upstream_python() -> str:
-    upstream = ROOT / "upstream" / "petrus"
-    interpreter = upstream / ".venv" / "bin" / "python"
-    if not interpreter.exists():
-        run(["uv", "sync", "--frozen", "--extra", "postgres"], cwd=upstream)
-    return str(interpreter)
+    """The pinned upstream interpreter, provisioned by scripts/upstream-python."""
+    script = ROOT / "scripts" / "upstream-python"
+    return run([str(script)], stdout=subprocess.PIPE, text=True).stdout.strip()
 
 
 def haskell_results(package: str, quick: bool) -> dict[str, float]:

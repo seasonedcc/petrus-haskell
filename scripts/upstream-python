@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Provision the pinned upstream Python environment and print its interpreter.
+#
+#   scripts/upstream-python      # prints .../upstream/petrus/.venv/bin/python
+#
+# The environment is upstream/petrus/.venv, synced from upstream's own frozen
+# uv.lock with the postgres extra. It is reused when it already runs the pinned
+# Python and imports petrus and psycopg; otherwise it is (re)synced with uv.
+#
+# The Python version is pinned here, the single place for it (the test
+# suites, scripts/check-all and scripts/bench all provision through this
+# script). Upstream only says requires-python >= 3.14, so without a pin uv
+# picks whatever is newest: on a machine without a 3.14 interpreter that is a
+# freshly downloaded CPython 3.15, for which the locked psycopg-binary 3.3.4
+# has no wheel, and the sync fails.
+#
+# Progress goes to stderr; stdout carries only the interpreter path.
+set -euo pipefail
+
+PYTHON_VERSION=3.14
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+upstream="$root/upstream/petrus"
+python="$upstream/.venv/bin/python"
+
+if [[ ! -f "$upstream/pyproject.toml" ]]; then
+  echo "upstream/petrus is empty; run \`git submodule update --init upstream/petrus\` in $root" >&2
+  exit 1
+fi
+
+usable() {
+  [[ -x "$python" ]] || return 1
+  (cd "$upstream" && "$python" -I -c "
+import sys
+import petrus, psycopg
+sys.exit(0 if '%d.%d' % sys.version_info[:2] == '$PYTHON_VERSION' else 1)
+") >/dev/null 2>&1
+}
+
+if ! usable; then
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "the upstream Python environment is missing or stale and \`uv\` is not on PATH; install uv, or run \`uv sync --frozen --extra postgres --python $PYTHON_VERSION\` in upstream/petrus" >&2
+    exit 1
+  fi
+  (cd "$upstream" && uv sync --frozen --extra postgres --python "$PYTHON_VERSION") >&2
+  if ! usable; then
+    echo "after uv sync, $python still does not run Python $PYTHON_VERSION with petrus and psycopg importable" >&2
+    exit 1
+  fi
+fi
+
+echo "$python"

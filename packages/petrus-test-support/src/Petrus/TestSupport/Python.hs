@@ -1,9 +1,10 @@
 -- | Running Python reference snippets for differential tests.
 --
 -- The Python side is always the pinned upstream: its own virtual environment
--- (@upstream/petrus/.venv@, created by @uv sync --frozen --extra postgres@ on
--- first use when missing), with the pinned @petrus@ package and @psycopg@
--- importable. Snippets run with @python -I -c@ from @upstream/petrus@, so the
+-- (@upstream/petrus/.venv@, provisioned by @scripts/upstream-python@ on first
+-- use, which pins the Python version and runs
+-- @uv sync --frozen --extra postgres@ when the environment is missing or
+-- stale), with the pinned @petrus@ package and @psycopg@ importable. Snippets run with @python -I -c@ from @upstream/petrus@, so the
 -- interpreter ignores user site-packages and @PYTHON*@ variables, and relative
 -- fixture paths resolve as they do in the upstream test suite.
 --
@@ -41,8 +42,7 @@ import Data.ByteString.Lazy qualified as BL
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json (Json, parseJson, pythonLoads)
-import Petrus.TestSupport.Repo (upstreamPetrus)
-import System.Directory (doesFileExist, findExecutable)
+import Petrus.TestSupport.Repo (repoRoot, upstreamPetrus)
 import System.FilePath ((</>))
 import System.IO (Handle, hClose, hFlush, hSetBuffering, BufferMode (..))
 import System.IO.Unsafe (unsafePerformIO)
@@ -71,43 +71,22 @@ interpreter :: MVar (Maybe FilePath)
 interpreter = unsafePerformIO (newMVar Nothing)
 {-# NOINLINE interpreter #-}
 
--- | The upstream virtual environment's interpreter, synchronizing the
--- environment with @uv@ first when it is missing or incomplete.
+-- | The upstream virtual environment's interpreter, provisioned by
+-- @scripts/upstream-python@ (the single place that pins the reference's
+-- Python version) the first time a process asks for it. Fails loudly, never
+-- skips, when the environment cannot be provisioned.
 pythonExecutable :: IO FilePath
 pythonExecutable = modifyMVar interpreter $ \case
   Just path -> pure (Just path, path)
   Nothing -> do
-    dir <- upstreamPetrus
-    let path = dir </> ".venv" </> "bin" </> "python"
-    ready <- usable path dir
-    unless ready (sync dir)
-    readyNow <- usable path dir
-    unless readyNow $
-      throwIO (PythonFailure ("the upstream environment at " ++ dir ++ "/.venv cannot import petrus and psycopg") "" "")
+    _ <- upstreamPetrus
+    root <- repoRoot
+    let script = root </> "scripts" </> "upstream-python"
+    (code, out, err) <- readProcess (setStdin nullStream (proc script []))
+    let path = BC.unpack (BC.strip (BL.toStrict out))
+    unless (code == ExitSuccess && not (null path)) $
+      throwIO (PythonFailure "scripts/upstream-python could not provision the upstream Python environment" (BL.toStrict out) (BL.toStrict err))
     pure (Just path, path)
-  where
-    usable path dir = do
-      exists <- doesFileExist path
-      if not exists
-        then pure False
-        else do
-          code <- runProcess (setWorkingDir dir (silenced (proc path ["-I", "-c", "import petrus, psycopg"])))
-          pure (code == ExitSuccess)
-    sync dir = do
-      uv <- findExecutable "uv"
-      case uv of
-        Nothing ->
-          throwIO
-            ( PythonFailure
-                "the upstream Python environment is missing and `uv` is not on PATH; install uv or run `uv sync --frozen --extra postgres` in upstream/petrus"
-                ""
-                ""
-            )
-        Just exe -> do
-          (code, out, err) <- readProcess (setWorkingDir dir (proc exe ["sync", "--frozen", "--extra", "postgres"]))
-          unless (code == ExitSuccess) $
-            throwIO (PythonFailure "uv sync --frozen --extra postgres failed in upstream/petrus" (BL.toStrict out) (BL.toStrict err))
-    silenced = setStdin nullStream . setStdout nullStream . setStderr nullStream
 
 -- | The outcome of a one-shot snippet.
 data PythonResult = PythonResult

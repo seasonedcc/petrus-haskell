@@ -57,6 +57,7 @@ test-suite petrus-telemetry-instrumentation-test
                   , petrus-json
                   , petrus-motus
                   , petrus-telemetry
+                  , petrus-test-support
                   , process >=1.6
                   , text
   ghc-options:      -threaded -rtsopts

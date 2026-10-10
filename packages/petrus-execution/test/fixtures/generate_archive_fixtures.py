@@ -2,13 +2,28 @@
 
 Run from the repository root (needs the pinned upstream checkout):
 
-    uv run --project upstream/petrus python \
+    uv run --frozen --python 3.14 --project upstream/petrus python \
         packages/petrus-execution/test/fixtures/generate_archive_fixtures.py
 
-It writes ``archive_fixtures.json`` next to this script.  Everything is
-produced by upstream Petrus and CPython's ``tarfile`` so the Haskell tests can
-assert byte-identical archives, identical member parsing, identical
-validation outcomes, and identical extracted trees.
+It writes ``archive_fixtures-<platform>.json`` next to this script, where
+``<platform>`` is ``platform.system().lower()`` (``darwin`` or ``linux``).
+Everything is produced by upstream Petrus and CPython's ``tarfile`` so the
+Haskell tests can assert byte-identical archives, identical member parsing,
+identical validation outcomes, and identical extracted trees.
+
+The reference's output depends on the host: CPython archives a symlink with
+its ``lstat`` mode, which is ``0o777`` on Linux but follows the umask on macOS
+(``0o755`` here), and extraction inherits the host filesystem's rules (APFS
+refuses non-UTF-8 names).  So the fixtures are generated once per platform
+and the Haskell suite compares against the file for the platform it runs on.
+Regenerate the Linux file in a container, for example:
+
+    docker run --rm -v "$PWD:/repo" -w /repo ubuntu:24.04 sh -c '
+        apt-get update && apt-get install -y curl ca-certificates &&
+        curl -LsSf https://astral.sh/uv/install.sh | sh &&
+        UV_PROJECT_ENVIRONMENT=/tmp/venv ~/.local/bin/uv run --frozen \
+            --python 3.14 --project upstream/petrus python \
+            packages/petrus-execution/test/fixtures/generate_archive_fixtures.py'
 """
 
 from __future__ import annotations
@@ -575,7 +590,7 @@ def main() -> None:
         "headers": header_fixtures(),
         "readers": reader_fixtures(),
     }
-    output = HERE / "archive_fixtures.json"
+    output = HERE / f"archive_fixtures-{platform.system().lower()}.json"
     output.write_text(json.dumps(document, indent=1, sort_keys=True, ensure_ascii=True) + "\n")
     print(f"wrote {output}")
 

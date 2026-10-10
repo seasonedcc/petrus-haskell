@@ -4,8 +4,9 @@
 -- Activity outstanding) resumes in the other — reconcile redispatches the
 -- recorded outbox, prepare never re-runs — to the same bytes.
 --
--- Runs @test/interop/engine_interop.py@ under @upstream/petrus/.venv@; the
--- examples are pending when that environment is not synced.
+-- Runs @test/interop/engine_interop.py@ under @upstream/petrus/.venv@, provisioned
+-- by @scripts/upstream-python@ on first use; the examples fail, never skip,
+-- when that environment cannot be provisioned.
 module Petrus.Engine.InteropSpec (spec) where
 
 import Control.Monad (void)
@@ -15,7 +16,7 @@ import Petrus.Engine qualified as Engine
 import Petrus.Engine.Scenario
 import Petrus.Engine.TestSupport (advanceUntilRest)
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.HistoryStore.Support (pythonOrPending, runPython, withScratch)
+import Petrus.HistoryStore.Support (withReference, runPython, withScratch)
 import Petrus.Impetus.Petrinet (Marking)
 import Petrus.Motus.Dispatch (Dispatch)
 import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch)
@@ -76,7 +77,7 @@ loadedMarking path = do
 
 spec :: Spec
 spec = describe "Engine interop with the reference" $ do
-  it "the same scenario writes byte-identical JSONL History in both implementations" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "the same scenario writes byte-identical JSONL History in both implementations" $ withReference $ \python -> withScratch $ \dir -> do
     let reference = dir </> "reference.jsonl"
         ours = dir </> "haskell.jsonl"
     _ <- runPython python script ["run", reference]
@@ -86,7 +87,7 @@ spec = describe "Engine interop with the reference" $ do
     loadedMarking ours `shouldReturn` settledMarking 3
     runPython python script ["inspect", ours] `shouldReturn` inspected
 
-  it "an Instance the reference left mid-flight resumes in Haskell to the reference's own resumed bytes" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "an Instance the reference left mid-flight resumes in Haskell to the reference's own resumed bytes" $ withReference $ \python -> withScratch $ \dir -> do
     let ours = dir </> "haskell-resumed.jsonl"
         reference = dir </> "reference-resumed.jsonl"
     _ <- runPython python script ["crash", ours]
@@ -98,7 +99,7 @@ spec = describe "Engine interop with the reference" $ do
     BS.readFile ours `shouldReturn` expected
     runPython python script ["inspect", ours] `shouldReturn` inspected
 
-  it "an Instance Haskell left mid-flight resumes in the reference to Haskell's own resumed bytes" $ pythonOrPending $ \python -> withScratch $ \dir -> do
+  it "an Instance Haskell left mid-flight resumes in the reference to Haskell's own resumed bytes" $ withReference $ \python -> withScratch $ \dir -> do
     let theirs = dir </> "reference-resumed.jsonl"
         ours = dir </> "haskell-resumed.jsonl"
         referenceCrash = dir </> "reference-crash.jsonl"

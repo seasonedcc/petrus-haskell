@@ -3,15 +3,24 @@
 # conformance, interop against the pinned Python upstream, and the parity table.
 #
 #   scripts/check-all            # everything except benchmarks
+#   scripts/check-all -j2        # limit cabal's parallelism (passed to cabal)
 #   scripts/check-all --bench    # also run benchmarks against Python
+#
+# Every test binary runs with a 2 GiB heap cap (+RTS -M2G -RTS), as locally.
+# Any build or test failure fails the script; cabal keeps going past a failing
+# suite so one run reports every failure.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export PATH="$HOME/.ghcup/bin:$PATH"
+# ghcup's toolchain, and uv's default install location (the interop suites
+# provision the pinned Python upstream with uv).
+export PATH="$HOME/.ghcup/bin:$HOME/.local/bin:$PATH"
 
 run_bench=0
+cabal_flags=()
 for arg in "$@"; do
   case "$arg" in
     --bench) run_bench=1 ;;
+    -j*) cabal_flags+=("$arg") ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -21,16 +30,27 @@ step() { printf '\n==> %s\n' "$*"; }
 step "Upstream pins"
 scripts/check-pins
 
+step "Upstream Python environment"
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is not on PATH; the interop suites need it to provision upstream/petrus/.venv" >&2
+  exit 1
+fi
+# Provision it once, before the suites run in parallel and each would.
+scripts/upstream-python
+upstream/petrus/.venv/bin/python -I -c 'import sys; print(sys.version)'
+
+# In CI the PostgreSQL suites must run, never skip as pending.
+if [[ -n "${CI:-}" && -z "${PETRUS_TEST_POSTGRES:-}" ]]; then
+  echo "CI is set but PETRUS_TEST_POSTGRES is not: the PostgreSQL suites would be skipped" >&2
+  exit 1
+fi
+
 step "Build (all packages, -Werror)"
-cabal build all
+cabal build all ${cabal_flags[@]+"${cabal_flags[@]}"}
 
 step "Tests (unit, conformance, interop)"
-cabal test all --test-show-details=direct
-
-if [[ -x scripts/interop ]]; then
-  step "Interop with pinned Python"
-  scripts/interop
-fi
+cabal test all ${cabal_flags[@]+"${cabal_flags[@]}"} --keep-going \
+  --test-show-details=direct --test-options='+RTS -M2G -RTS'
 
 if [[ "$run_bench" == 1 ]]; then
   step "Benchmarks"
