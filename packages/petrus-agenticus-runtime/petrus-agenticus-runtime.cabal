@@ -50,6 +50,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Runtime.AgentNetRunner
                     Petrus.Agenticus.Runtime.Amp
+                    Petrus.Agenticus.Runtime.Claude
                     Petrus.Agenticus.Runtime.HostSupport
                     Petrus.Agenticus.Runtime.Pi
                     Petrus.Agenticus.Runtime.PiA2Host

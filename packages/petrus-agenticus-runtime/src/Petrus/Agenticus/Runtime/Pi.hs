@@ -125,6 +125,7 @@ module Petrus.Agenticus.Runtime.Pi
     -- * Pure protocol pieces (exposed for the differential corpus)
   , piText
   , piUuid
+  , canonicalUuid
   , strictLoad
   , strictFrameLoad
   , validateNativeAuth
