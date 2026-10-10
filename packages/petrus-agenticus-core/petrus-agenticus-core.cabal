@@ -43,6 +43,8 @@ library
                     Petrus.Agenticus.Catalog.Result
                     Petrus.Agenticus.Catalog.Resolution
                     Petrus.Agenticus.Runtime.Profiles
+                    Petrus.Agenticus.Effect.Model
+                    Petrus.Agenticus.Effect.Gateway
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
@@ -59,6 +61,7 @@ test-suite petrus-agenticus-core-test
   main-is:          Main.hs
   other-modules:    Petrus.Agenticus.Support
                     Petrus.Agenticus.CatalogSpec
+                    Petrus.Agenticus.EffectSpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -77,6 +80,7 @@ benchmark petrus-agenticus-core-bench
   hs-source-dirs:   bench
   main-is:          Main.hs
   other-modules:    Bench.Catalog
+                    Bench.Effect
   build-depends:    base
                   , bytestring
                   , containers

@@ -4,10 +4,12 @@
 module Main (main) where
 
 import Bench.Catalog qualified
+import Bench.Effect qualified
 import Test.Tasty.Bench
 
 main :: IO ()
 main =
   defaultMain
     [ Bench.Catalog.benchmarks
+    , Bench.Effect.benchmarks
     ]
