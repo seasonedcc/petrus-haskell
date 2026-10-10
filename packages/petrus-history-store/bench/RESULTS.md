@@ -144,6 +144,16 @@ The individual rounds, Python / Haskell:
 - resume: 7 310 / 465, 7 208 / 461, 7 249 / 470 ms;
 - terminal-resend-ack: 1 216 / 8.34, 1 139 / 8.45, 1 133 / 8.42 ms.
 
+Two more interleaved rounds after merging `main`, which brought petrus-json's
+encoder speed work, were run at load average 2.9–4.5. Haskell's
+append-one-batch dropped to 91.7 and 89.6 ms, against Python's 115.1 and
+114.1 ms. Every other row stayed within noise of the table:
+- append-per-record: 105.5 / 70.0 and 94.3 / 69.0 ms;
+- append-batches-of-8: 33.4 / 25.6 and 35.0 / 26.2 ms;
+- load: 110.3 / 46.4 and 110.0 / 46.8 ms;
+- resume: 7 356 / 481 and 7 391 / 497 ms;
+- terminal-resend-ack: 1 158 / 7.88 and 1 204 / 7.88 ms.
+
 ### Notes
 
 - **append-one-batch is the closest row.** It is about half encoding and half
