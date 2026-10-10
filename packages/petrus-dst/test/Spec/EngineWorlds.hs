@@ -29,7 +29,10 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json (Json (..))
 import Petrus.Testing.Dst
+import Petrus.Testing.Dst.Engine.Delayed qualified as Delayed
+import Petrus.Testing.Dst.Engine.Delivery qualified as Delivery
 import Petrus.Testing.Dst.Engine.Projection qualified as Projection
+import Petrus.Testing.Dst.Engine.Timer qualified as Timer
 import Spec.Support
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -89,6 +92,25 @@ replayCases =
       , "dispatch-refusal-crash-recovery-world-v3.json"
       ]
   ]
+    <> [ ReplayCase "delayed-terminal-recovery-world-v3.json" delayedRegistry
+       , ReplayCase "identified-delivery-redelivery-world-v3.json" deliveryRegistry
+       , ReplayCase "timer-crash-recovery-world-v3.json" timerRegistry
+       ]
+
+delayedRegistry :: Fresh
+delayedRegistry dir = do
+  p <- Delayed.delayedEngineProfile (dir </> "history.jsonl")
+  pure (registryOf [SomeProfile p.engine.profile] [Delayed.delayedAuthorityChecker])
+
+deliveryRegistry :: Fresh
+deliveryRegistry dir = do
+  p <- Delivery.deliveryEngineProfile (dir </> "history.jsonl")
+  pure (registryOf [SomeProfile p.profile] [Delivery.deliveryAuthorityChecker])
+
+timerRegistry :: Fresh
+timerRegistry dir = do
+  p <- Timer.timerEngineProfile (dir </> "history.jsonl")
+  pure (registryOf [SomeProfile p.profile] [Timer.timerAuthorityChecker])
 
 oneHistory :: (FilePath -> IO (Either DstFailure AnyArtifact)) -> FilePath -> IO (Either DstFailure AnyArtifact)
 oneHistory b dir = b (dir </> "history.jsonl")
@@ -108,6 +130,9 @@ authorCases =
   , AuthorCase "engine_world.build_dispatch_refusal_artifact" (oneHistory Projection.buildDispatchRefusalArtifact) projectionRegistry
   , AuthorCase "engine_world.build_invariant_failure_artifact" (oneHistory Projection.buildInvariantFailureArtifact) projectionRegistry
   , AuthorCase "engine_world.build_budget_failure_artifact" (oneHistory Projection.buildBudgetFailureArtifact) projectionRegistry
+  , AuthorCase "delayed_world.build_delayed_artifact" (oneHistory Delayed.buildDelayedArtifact) delayedRegistry
+  , AuthorCase "delivery_world.build_delivery_artifact" (oneHistory Delivery.buildDeliveryArtifact) deliveryRegistry
+  , AuthorCase "timer_world.build_timer_artifact" (oneHistory Timer.buildTimerArtifact) timerRegistry
   ]
 
 fixtureBytes :: FilePath -> IO BS.ByteString
