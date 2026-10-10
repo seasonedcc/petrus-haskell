@@ -39,6 +39,7 @@ library
                     Petrus.Motus.Execution.Internal.Process
                     Petrus.Motus.Execution.Internal.PyText
                     Petrus.Motus.Execution.Providers.Docker
+                    Petrus.Motus.Execution.Providers.E2b
                     Petrus.Motus.Execution.Providers.Local
   include-dirs:     cbits
   c-sources:        cbits/petrus_posix.c
@@ -65,6 +66,7 @@ test-suite petrus-execution-test
   other-modules:    ArchiveSpec
                     ContractSpec
                     DockerSpec
+                    E2bSpec
                     LocalSpec
                     Support
   build-depends:    base

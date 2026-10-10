@@ -3,6 +3,7 @@ module Main (main) where
 import ArchiveSpec qualified
 import ContractSpec qualified
 import DockerSpec qualified
+import E2bSpec qualified
 import LocalSpec qualified
 import System.Posix.Files (setFileCreationMask)
 import Test.Hspec
@@ -16,3 +17,4 @@ main = do
     ContractSpec.spec
     LocalSpec.spec
     DockerSpec.spec
+    E2bSpec.spec
