@@ -7,17 +7,23 @@
 # uv.lock with the postgres extra. It is reused when it already runs the pinned
 # Python and imports petrus and psycopg; otherwise it is (re)synced with uv.
 #
-# The Python version is pinned here, the single place for it (the test
-# suites, scripts/check-all and scripts/bench all provision through this
+# The Python version is pinned here, exactly, the single place for it (the
+# test suites, scripts/check-all and scripts/bench all provision through this
 # script). Upstream only says requires-python >= 3.14, so without a pin uv
 # picks whatever is newest: on a machine without a 3.14 interpreter that is a
 # freshly downloaded CPython 3.15, for which the locked psycopg-binary 3.3.4
-# has no wheel, and the sync fails.
+# has no wheel, and the sync fails. The patch level matters too: several
+# ports are differential against the standard library itself (http.server,
+# tarfile, json), and CPython 3.14.8 changed how http.server answers a
+# malformed request line, so "3.14" would make the reference drift with
+# whatever patch release the machine happens to have. 3.14.6 is the release
+# the ports and the committed fixtures were made against; moving it is a
+# deliberate act that reruns every differential suite.
 #
 # Progress goes to stderr; stdout carries only the interpreter path.
 set -euo pipefail
 
-PYTHON_VERSION=3.14
+PYTHON_VERSION=3.14.6
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 upstream="$root/upstream/petrus"
@@ -33,7 +39,7 @@ usable() {
   (cd "$upstream" && "$python" -I -c "
 import sys
 import petrus, psycopg
-sys.exit(0 if '%d.%d' % sys.version_info[:2] == '$PYTHON_VERSION' else 1)
+sys.exit(0 if '%d.%d.%d' % sys.version_info[:3] == '$PYTHON_VERSION' else 1)
 ") >/dev/null 2>&1
 }
 

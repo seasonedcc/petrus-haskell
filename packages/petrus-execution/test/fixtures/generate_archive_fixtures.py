@@ -2,7 +2,7 @@
 
 Run from the repository root (needs the pinned upstream checkout):
 
-    uv run --frozen --python 3.14 --project upstream/petrus python \
+    uv run --frozen --python 3.14.6 --project upstream/petrus python \
         packages/petrus-execution/test/fixtures/generate_archive_fixtures.py
 
 It writes ``archive_fixtures-<platform>.json`` next to this script, where
@@ -22,7 +22,7 @@ Regenerate the Linux file in a container, for example:
         apt-get update && apt-get install -y curl ca-certificates &&
         curl -LsSf https://astral.sh/uv/install.sh | sh &&
         UV_PROJECT_ENVIRONMENT=/tmp/venv ~/.local/bin/uv run --frozen \
-            --python 3.14 --project upstream/petrus python \
+            --python 3.14.6 --project upstream/petrus python \
             packages/petrus-execution/test/fixtures/generate_archive_fixtures.py'
 """
 
