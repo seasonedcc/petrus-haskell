@@ -1,5 +1,9 @@
 # petrus-agenticus-runtime benchmark results
 
+The Pi benchmarks (frame codec, session validation, fingerprints, the
+operation ledger and a scripted A2 turn) are in [results-pi.md](results-pi.md).
+This file covers the Local Agent-as-a-Net runner.
+
 These are twin workloads: `bench/Main.hs` (tasty-bench) and
 `bench/python_runner.py`, which runs the pinned reference
 (`upstream/petrus` @ 3f85fc2).

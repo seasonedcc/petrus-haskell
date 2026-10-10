@@ -3,6 +3,9 @@
 These choices are deliberate. None of them changes a `thread.json` byte, a
 History byte or a refusal; `differential/runner_corpus.json` pins all three.
 
+The Pi hosts (native, recovery, model phase, application and A2 host) are
+covered in [divergences/pi.md](divergences/pi.md).
+
 ## Local Agent-as-a-Net runner (`Petrus.Agenticus.Runtime.AgentNetRunner`)
 
 1. **The repository is a record of two actions.** `AgentNetThreadRepository`
