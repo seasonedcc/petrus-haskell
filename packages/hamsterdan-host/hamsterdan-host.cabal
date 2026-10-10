@@ -38,6 +38,7 @@ library
                     Hamsterdan.Host.Python
                     Hamsterdan.Host.Runnable
                     Hamsterdan.Host.V5.Timers
+                    Hamsterdan.Host.Service
                     Hamsterdan.Host.V5.Application
                     Hamsterdan.Host.V5.Runtime
                     Hamsterdan.Host.V5.Mutation
@@ -69,6 +70,7 @@ library
                   , petrus-motus
                   , petrus-posix
                   , process >=1.6
+                  , stm >=2.5
                   , temporary >=1.3
                   , text >=2.0
                   , time >=1.12

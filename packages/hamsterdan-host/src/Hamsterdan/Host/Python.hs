@@ -11,6 +11,15 @@ module Hamsterdan.Host.Python
   , LookupError (..)
   , raiseFailureText
 
+    -- * @except Exception@
+  , BaseException (..)
+  , baseExceptionToException
+  , baseExceptionFromException
+  , isPythonException
+  , catchPython
+  , tryPython
+  , exceptionClass
+
     -- * JSON
   , dumpsSorted
   , dumpsSortedText
@@ -30,7 +39,26 @@ module Hamsterdan.Host.Python
   , mkdirPrivate
   ) where
 
-import Control.Exception (Exception (..), IOException, SomeException, catch, mask, onException, throwIO, try)
+import Control.Exception
+  ( ArithException
+  , ArrayException
+  , ErrorCall
+  , Exception (..)
+  , IOException
+  , SomeAsyncException
+  , SomeException (..)
+  , catch
+  , mask
+  , onException
+  , throwIO
+  , try
+  )
+import Data.Maybe (isJust)
+import Data.Typeable (cast, typeOf)
+import Hamsterdan.GitHub.Models (GitHubBoundaryError (..))
+import Hamsterdan.GitHub.Python (PythonFault (..))
+import Petrus.Activity (ActivityError)
+import System.Exit (ExitCode)
 import Control.Monad (unless, void)
 import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
@@ -70,6 +98,61 @@ raiseFailureText text =
         ("RuntimeError", Just m) -> throwIO (RuntimeError m)
         (_, Just m) -> throwIO (PythonException name [PyStr m])
         _ -> throwIO (PythonException name [])
+
+-- ---------------------------------------------------------------------------
+-- @except Exception@
+
+-- | The root of the exceptions an @except Exception@ clause does not catch
+-- (Python's @BaseException@-only classes, such as a test's simulated
+-- process death). Give an exception this parent with
+-- 'baseExceptionToException' and 'baseExceptionFromException'.
+data BaseException = forall e. (Exception e) => BaseException e
+
+instance Show BaseException where
+  showsPrec p (BaseException e) = showsPrec p e
+
+instance Exception BaseException where
+  displayException (BaseException e) = displayException e
+
+baseExceptionToException :: (Exception e) => e -> SomeException
+baseExceptionToException = toException . BaseException
+
+baseExceptionFromException :: (Exception e) => SomeException -> Maybe e
+baseExceptionFromException x = do
+  BaseException a <- fromException x
+  cast a
+
+-- | Whether @except Exception@ catches it: not an asynchronous exception
+-- (a cancellation or interrupt), not a process exit, and not a
+-- 'BaseException'.
+isPythonException :: SomeException -> Bool
+isPythonException e =
+  not
+    ( isJust (fromException @SomeAsyncException e)
+        || isJust (fromException @ExitCode e)
+        || isJust (fromException @BaseException e)
+    )
+
+-- | @try: ... except Exception as error: ...@.
+catchPython :: IO a -> (SomeException -> IO a) -> IO a
+catchPython action handler = action `catch` \e -> if isPythonException e then handler e else throwIO e
+
+tryPython :: IO a -> IO (Either SomeException a)
+tryPython action = (Right <$> action) `catchPython` (pure . Left)
+
+-- | @type(error).__name__@: the reference class a caught exception stands
+-- for.
+exceptionClass :: SomeException -> Text
+exceptionClass e
+  | Just (PythonException name _) <- fromException e = name
+  | Just (fault :: PythonFault) <- fromException e = fault.pythonClass
+  | Just (_ :: GitHubBoundaryError) <- fromException e = "GitHubBoundaryError"
+  | Just (_ :: ActivityError) <- fromException e = "ActivityError"
+  | Just (_ :: IOException) <- fromException e = "OSError"
+  | Just (_ :: ErrorCall) <- fromException e = "RuntimeError"
+  | Just (_ :: ArithException) <- fromException e = "ArithmeticError"
+  | Just (_ :: ArrayException) <- fromException e = "IndexError"
+  | SomeException inner <- e = T.pack (show (typeOf inner))
 
 sortedAscii :: EncodeOptions
 sortedAscii = defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortKeys = True}
