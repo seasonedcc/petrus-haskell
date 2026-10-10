@@ -4,6 +4,7 @@ import Test.Hspec
 
 import Corpus qualified
 import Impetus qualified
+import Properties qualified
 
 main :: IO ()
 main = do
@@ -11,3 +12,4 @@ main = do
   hspec $ do
     Corpus.spec corpus
     Impetus.spec
+    Properties.spec

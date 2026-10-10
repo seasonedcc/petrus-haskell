@@ -1163,9 +1163,11 @@ operatorIn item container = case (item, container) of
 -- ---------------------------------------------------------------------------
 -- Calls
 
--- | The names cel-python's function table binds (operators aside).
+-- | The names cel-python's function table binds that are identifiers:
+-- the operators aside, only @_in_@ (@operator_in@) spells as one.
 resolveFunction :: Text -> Maybe Value
 resolveFunction name = case name of
+  "_in_" -> Just (VFunction "operator_in")
   "size" -> fn
   "contains" -> fn
   "type" -> cls CTypeType
@@ -1253,6 +1255,9 @@ checkNewArity name params required args =
 
 callFunction :: Text -> [Value] -> Either Exc Value
 callFunction name args = case name of
+  "operator_in" -> withArgs ["item", "container"] 2 $ \case
+    [item, container] -> operatorIn item container
+    _ -> Right VNone
   "function_size" -> withArgs ["container"] 1 $ \case
     [VNone] -> Right (VInt 0)
     [c] -> VInt <$> pyLen c

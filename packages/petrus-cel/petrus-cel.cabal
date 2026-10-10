@@ -68,6 +68,7 @@ test-suite petrus-cel-test
   main-is:          Main.hs
   other-modules:    Corpus
                     Impetus
+                    Properties
   build-depends:    base
                   , bytestring
                   , containers

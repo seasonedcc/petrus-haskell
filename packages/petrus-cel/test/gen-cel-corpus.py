@@ -656,6 +656,14 @@ add("quirks.lex", [
     "a?b:c", "a ?b :c", "a?:b", "a??b:c", "a ? b : c ? d : e", "(a ? b : c) ? d : e",
 ], {"x": {"y": 1}, "f": 1, "a": True, "b": 1, "c": 2, "d": 3, "e": 4})
 
+# ``_in_`` is the one operator in the function table spelled as an identifier:
+# it resolves to ``operator_in`` and is callable by name. After an operand the
+# contextual lexer only accepts ``in``, so ``x int`` reads as ``x in t``.
+add("quirks.operator_in", [
+    "_in_(1, [1])", "_in_(2, [1])", "_in_(1, {1: 2})", "_in_('b', 'abc')", "_in_(1, 2)", "_in_(1)",
+    "_in_(1, 2, 3)", "_in_", "size(_in_)", "_in_ == _in_", "type(_in_)", "x int", "true int", "1 inx",
+    "x.exists(_in_, _in_ > 1)",
+], {"x": [1, 2], "t": [1], "x2": 1})
 
 # ---------------------------------------------------------------------------
 # Petrus adapter cases
