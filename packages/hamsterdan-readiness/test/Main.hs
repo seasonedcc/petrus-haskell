@@ -7,6 +7,7 @@ import CiSpec qualified
 import ConversationSpec qualified
 import DashboardSpec qualified
 import EscalationSpec qualified
+import MutationSpec qualified
 import Test.Hspec (hspec)
 import TopologySpec qualified
 
@@ -20,3 +21,4 @@ main = hspec $ do
   ConversationSpec.spec
   DashboardSpec.spec
   EscalationSpec.spec
+  MutationSpec.spec
