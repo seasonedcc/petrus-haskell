@@ -49,15 +49,46 @@ the tests, conformance suites, and benchmark results that justify the status.
 
 ## hamsterdan
 
+The port plan is [docs/hamsterdan.md](docs/hamsterdan.md). The target is the V5
+runtime in `src/hamsterdan`; `src/hamsterdan2` (non-selectable CV21 rebuild) is
+deferred.
+
+Petrus pin reconciliation: Hamsterdan pins Petrus `89baf78` (production runs
+`913acb0`); this repo pins `3f85fc2`. Upstream rewrote Petrus history on
+2026-09-12, so the old commits must be fetched by SHA. Across all three, `src/`
+differs only in ImportError text (`petrus[x]` became `petrus-runtime[x]`) in
+modules Hamsterdan does not import, plus a telemetry docstring. **No behavior
+Hamsterdan depends on differs** (docs/hamsterdan.md §2.3).
+
 | Component | Upstream | Haskell package | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| Contracts | `src/hamsterdan/contracts` | | not started | |
-| Readiness nets | `src/hamsterdan/readiness` | | not started | |
-| Host | `src/hamsterdan/host` | | not started | |
-| GitHub App | `src/hamsterdan/github_app` | | not started | |
-| Agents | `src/hamsterdan/agents` | | not started | |
-| Operator | `src/hamsterdan/operator.py` | | not started | |
-| End-to-end against a real GitHub App | — | | not started | |
+| Contracts (V5 workflow models, agent protocol types) | `src/hamsterdan/contracts`, `src/hamsterdan/agents/protocol.py` (types) | `hamsterdan-contracts` | not started | |
+| Python-literal repr/parse for dashboard entries and digests | `readiness/net_v5/dashboard.py`, `board.py` (`repr`, `ast.literal_eval`) | `hamsterdan-contracts` | not started | |
+| Readiness net V5 (topology, nine loops, startup, folding) | `src/hamsterdan/readiness/net_v5`, `readiness/payloads.py` | `hamsterdan-readiness` | not started | |
+| Gate handlers and `$variant` converter | `readiness/net_v5/gating.py` | `hamsterdan-readiness` | not started | |
+| Summary board rendering | `readiness/net_v5/board.py` | `hamsterdan-readiness` | not started | |
+| GitHub App config and installations TOML | `github_app/config.py` | `hamsterdan-github` | not started | |
+| Webhook verification and durable inbox | `github_app/webhooks.py`, `host/api.py` | `hamsterdan-github`, `hamsterdan-host` | not started | |
+| Installation and repository routing | `github_app/routing.py` | `hamsterdan-github` | not started | |
+| App auth (JWT, installation tokens) and bounded transport | `github_app/auth.py`, `github_app/transport.py` | `hamsterdan-github` | not started | |
+| Provider reads (REST and GraphQL) | `github_app/gateway.py` | `hamsterdan-github` | not started | |
+| Effects (comments, reviews, thread resolution, rerun marker) | `github_app/effects.py` | `hamsterdan-github` | not started | |
+| Host service (custody, pump, sweep, runnable index, bindings) | `host/service.py`, `host/runnable.py`, `host/binding.py` | `hamsterdan-host` | not started | |
+| Host CLI (`serve`, `validate`, `inbox`, `requeue`, `inspect-instance`) | `host/__main__.py` | `hamsterdan-host` | not started | |
+| V5 runtime (Engine wiring, ingress manifests, authority grants, claims) | `host/v5/{runtime,application,ingress,claim}.py` | `hamsterdan-host` | not started | |
+| V5 gates (publication, rerun, review, mutation) | `host/v5/{gates,rerun,review,mutation}.py` | `hamsterdan-host` | not started | |
+| V5 timers | `host/v5/timers.py` | `hamsterdan-host` | not started | |
+| Host Git publication (Git objects, ref CAS, reconcile) | `host/git_publish.py` | `hamsterdan-host` | not started | |
+| Agents (Pi runner, prompts, result validation) | `src/hamsterdan/agents` | `hamsterdan-agents` | not started | |
+| Agent routes, Pi A2 composition, workspaces | `host/agenticus.py`, `host/pi_a2.py`, `host/pi_workspace.py` | `hamsterdan-agents` | not started | |
+| Evidence export | `host/export.py` | `hamsterdan-export` | not started | |
+| Readiness model oracle | `src/hamsterdan/testing/readiness.py` | `hamsterdan-testing` | not started | |
+| Deterministic World and campaigns | `src/hamsterdan/host/testing` | `hamsterdan-testing` | not started | |
+| Deterministic journeys (11 scenarios, byte-exact against Python) | `tests/integration/host/test_readiness_scenarios.py` | `hamsterdan-testing` | not started | |
+| Operator CLI | `src/hamsterdan/operator.py`, `host/publication_qualification.py` | `hamsterdan-operator` | not started | |
+| Container runtime contract | `deployment/Containerfile`, `deployment/config`, `scripts/with-runtime-secrets` | | not started | |
+| Replacement outer system (deferred until upstream CV22 cutover) | `src/hamsterdan2` | | not started | |
+| End-to-end against a real GitHub App | — (docs/hamsterdan.md §5) | | not started | |
 
 ## petrus-viewer
 
