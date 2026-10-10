@@ -18,9 +18,16 @@ build-type:         Simple
 extra-doc-files:    PARITY.md
                     DIVERGENCES.md
                     bench/RESULTS.md
+                    parity/pi.md
+                    divergences/pi.md
+                    bench/results-pi.md
+data-files:         data/*.mjs
 extra-source-files: differential/*.json
                     differential/*.py
+                    differential/*.sqlite3
                     bench/*.py
+                    test/fixtures/pi/*.mjs
+                    test/fixtures/pi/*.py
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -39,20 +46,32 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Runtime.AgentNetRunner
+                    Petrus.Agenticus.Runtime.Pi
+                    Petrus.Agenticus.Runtime.PiA2Host
+                    Petrus.Agenticus.Runtime.PiApplication
+                    Petrus.Agenticus.Runtime.PiModelPhase
+                    Petrus.Agenticus.Runtime.PiRecovery
+  other-modules:    Paths_petrus_agenticus_runtime
+  autogen-modules:  Paths_petrus_agenticus_runtime
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
                   , crypton >=1.0
                   , directory >=1.3
                   , filepath >=1.4
+                  , ram >=0.20
                   , petrus-activity
                   , petrus-agenticus
                   , petrus-agenticus-core
                   , petrus-engine
+                  , petrus-execution
                   , petrus-history-store
                   , petrus-impetus
                   , petrus-json
                   , petrus-motus
+                  , process
+                  , stm
+                  , temporary
                   , text >=2.0
                   , unix >=2.8
 
@@ -62,10 +81,17 @@ test-suite petrus-agenticus-runtime-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    Petrus.Agenticus.Runtime.AgentNetRunnerSpec
+                    Petrus.Agenticus.Runtime.PiA2HostSpec
+                    Petrus.Agenticus.Runtime.PiApplicationSpec
+                    Petrus.Agenticus.Runtime.PiDifferentialSpec
+                    Petrus.Agenticus.Runtime.PiModelPhaseSpec
+                    Petrus.Agenticus.Runtime.PiSpec
+                    Petrus.Agenticus.Runtime.PiSupport
                     Petrus.Agenticus.Runtime.RunnerDifferentialSpec
   build-depends:    base
                   , bytestring
                   , containers
+                  , crypton >=1.0
                   , directory
                   , filepath
                   , hspec >=2.10
@@ -74,10 +100,15 @@ test-suite petrus-agenticus-runtime-test
                   , petrus-agenticus-core
                   , petrus-agenticus-runtime
                   , petrus-engine
+                  , petrus-execution
                   , petrus-impetus
                   , petrus-json
+                  , petrus-motus
+                  , process
+                  , ram >=0.20
                   , temporary
                   , text
+                  , unix
   ghc-options:      -threaded -rtsopts
 
 benchmark petrus-agenticus-runtime-bench
@@ -85,14 +116,20 @@ benchmark petrus-agenticus-runtime-bench
   type:             exitcode-stdio-1.0
   hs-source-dirs:   bench
   main-is:          Main.hs
+  other-modules:    PiA2Bench
+                    PiBench
   build-depends:    base
                   , bytestring
+                  , containers
+                  , directory
                   , filepath
                   , petrus-activity
                   , petrus-agenticus
                   , petrus-agenticus-core
                   , petrus-agenticus-runtime
+                  , petrus-execution
                   , petrus-json
+                  , ram >=0.20
                   , tasty-bench >=0.3
                   , temporary
                   , text

@@ -1,8 +1,15 @@
 # petrus-agenticus-runtime parity
 
 This package ports the host runtimes of `petrus.agenticus.runtime`, as pinned
-at `upstream/petrus` 3f85fc2. So far only the Local Agent-as-a-Net runner is
-ported. The runtime value modules (`profiles.py`, `result.py`, `operation.py`,
+at `upstream/petrus` 3f85fc2. So far these are ported:
+
+- the Local Agent-as-a-Net runner;
+- the Pi native runtime (`pi.py`, `pi_recovery.py`);
+- the Pi A2 model phase (`pi_model_phase.py`);
+- the application-owned Pi A5 runtime (`pi_application.py`);
+- the Pi A2 host (`pi_a2_host.py`).
+
+`parity/pi.md` maps the Pi tests, corpus and benchmarks. The runtime value modules (`profiles.py`, `result.py`, `operation.py`,
 `installation.py`) live in `petrus-agenticus-core`, which maps their tests
 (`test_profiles.py` and `test_foundation.py`).
 
@@ -79,11 +86,6 @@ These upstream modules and tests have no Haskell counterpart yet:
 
 | Upstream module | Tests | Plan |
 | --- | --- | --- |
-| `pi.py`, `pi_helper.mjs` | `test_pi.py` (61), `test_pi_real.py` (2) | The Pi A2 scripted host comes next. Keep the `.mjs` helpers verbatim and drive them through a fake Pi SDK. |
-| `pi_a2_host.py` | `test_pi_a2_host.py` (24) | |
-| `pi_application.py`, `pi_application_helper.mjs` | `test_pi_application.py` (25) | |
-| `pi_model_phase.py`, `pi_model_phase_helper.mjs` | `test_pi_model_phase.py` (25) | |
-| `pi_recovery.py` | covered by `test_pi*.py` | |
 | `codex.py`, `_codex_gondolin_service.py` | `test_codex.py` (41), `test_codex_real.py` (2) | After Pi. Use the fake Codex CLI only. |
 | `claude.py` | `test_claude.py` (32), `test_claude_real.py` (2) | Through a Python sidecar around the Claude SDK, tested against a fake SDK. |
 | `amp.py` | `test_amp.py` (15), `test_amp_real.py` (1) | Through a Python sidecar, tested against a fake SDK. |

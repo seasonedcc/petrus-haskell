@@ -9,7 +9,7 @@
 --   and back to compact sorted JSON, over that run's final @thread.json@.
 module Main (main) where
 
-import Control.Exception (throwIO)
+import Control.Exception (finally, throwIO)
 import Control.Monad (void)
 import Data.ByteString qualified as B
 import Data.IORef
@@ -32,6 +32,8 @@ import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
+import PiA2Bench (piA2Benchmarks)
+import PiBench (piBenchmarks)
 import Test.Tasty.Bench
 
 ok :: (Show e) => Either e a -> a
@@ -111,9 +113,15 @@ roundtrip bytes =
     )
 
 main :: IO ()
-main = do
+main = withSystemTempDirectory "pi-bench" $ \tmp -> do
   final <- runOnce
+  pi' <- piBenchmarks tmp
+  (a2, closeA2) <- piA2Benchmarks (tmp </> "a2")
   defaultMain
-    [ bench "runner-3-phases-3-reads" (whnfIO runOnce)
-    , bench "projection-roundtrip" (nf roundtrip final)
-    ]
+    ( [ bench "runner-3-phases-3-reads" (whnfIO runOnce)
+      , bench "projection-roundtrip" (nf roundtrip final)
+      ]
+        <> pi'
+        <> a2
+    )
+    `finally` closeA2
