@@ -1,0 +1,164 @@
+cabal-version:      3.4
+name:               petrus-viewer-server
+version:            0.1.0.0
+synopsis:           Haskell backend for the Petrus viewer: CLI, MCP server, relays, endpoints
+description:
+  Every non-UI capability of petrus-viewer served by Haskell: the @petrus@
+  CLI and production server (static UI, agent WebSocket relay, collaboration
+  relay, open-file and resolve-ref endpoints, Temporal proxy, Petrus
+  observation history source), the @petrus-mcp@ stdio MCP server, the
+  standalone @petrus-collab@ relay, and a typed port of the agent protocol.
+  JSON on every relayed path is re-serialized with JavaScript semantics so
+  the bytes on the wire are identical to the Node implementation.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Network
+build-type:         Simple
+extra-doc-files:    NOTICE
+                    README.md
+                    DIVERGENCES.md
+data-files:         test/fixtures/*.txt
+                    test/fixtures/*.json
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Viewer.Json
+                    Petrus.Viewer.Json.Number
+                    Petrus.Viewer.Url
+                    Petrus.Viewer.UrlCache
+                    Petrus.Viewer.Relay
+                    Petrus.Viewer.Endpoints
+                    Petrus.Viewer.Static
+                    Petrus.Viewer.Proxy
+                    Petrus.Viewer.History.Observation
+                    Petrus.Viewer.Server
+                    Petrus.Viewer.Cli
+                    Petrus.Viewer.Agent.Protocol
+                    Petrus.Viewer.Mcp.Schema
+                    Petrus.Viewer.Mcp.Bridge
+                    Petrus.Viewer.Mcp.History
+                    Petrus.Viewer.Mcp.Server
+                    Petrus.Viewer.WsUrl
+                    Petrus.Viewer.Log
+  build-depends:    base >=4.18 && <5
+                  , async >=2.2
+                  , base64-bytestring >=1.2
+                  , bytestring >=0.11.2
+                  , case-insensitive >=1.2
+                  , containers >=0.6
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , http-client >=0.7
+                  , http-client-tls >=0.3
+                  , http-types >=0.12
+                  , network >=3.1
+                  , process >=1.6
+                  , stm >=2.5
+                  , text >=2.0
+                  , time >=1.12
+                  , wai >=3.2
+                  , wai-websockets >=3.0
+                  , warp >=3.3
+                  , websockets >=0.12.7
+  ghc-options:      -O2
+
+executable petrus
+  import:           warnings
+  hs-source-dirs:   app/petrus
+  main-is:          Main.hs
+  build-depends:    base, petrus-viewer-server
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N -A16m"
+
+executable petrus-mcp
+  import:           warnings
+  hs-source-dirs:   app/petrus-mcp
+  main-is:          Main.hs
+  build-depends:    base, petrus-viewer-server
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N2"
+
+executable petrus-collab
+  import:           warnings
+  hs-source-dirs:   app/petrus-collab
+  main-is:          Main.hs
+  build-depends:    base, petrus-viewer-server
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N -A16m"
+
+
+-- Test oracle used by upstream-tests/ (upstream Node tests and
+-- differential fuzzing call the Haskell ports through it).
+executable petrus-viewer-oracle
+  import:           warnings
+  hs-source-dirs:   app/petrus-viewer-oracle
+  main-is:          Main.hs
+  build-depends:    base, bytestring, text, petrus-viewer-server
+  ghc-options:      -O2
+
+test-suite petrus-viewer-server-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    JsonSpec
+                    UrlSpec
+                    ProtocolSpec
+                    RelaySpec
+                    CollabSpec
+                    EndpointsSpec
+                    CliSpec
+                    McpSpec
+                    ObservationSpec
+                    ServerSpec
+                    TestSupport
+  build-depends:    base
+                  , async
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , http-client
+                  , http-types
+                  , network
+                  , petrus-viewer-server
+                  , process
+                  , QuickCheck >=2.14
+                  , stm
+                  , temporary >=1.3
+                  , text
+                  , wai
+                  , warp
+                  , websockets
+  build-tool-depends: petrus-viewer-server:petrus
+                    , petrus-viewer-server:petrus-mcp
+                    , petrus-viewer-server:petrus-collab
+  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+
+benchmark petrus-viewer-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , async
+                  , bytestring
+                  , containers
+                  , http-client
+                  , http-types
+                  , petrus-viewer-server
+                  , stm
+                  , text
+                  , time
+                  , websockets
+  ghc-options:      -O2 -threaded -rtsopts -with-rtsopts=-N
