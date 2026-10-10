@@ -1,0 +1,145 @@
+{
+  "protocol": 1,
+  "instance": "canonical-instance",
+  "definition": {
+    "name": "canonical-observation",
+    "time_domain": "integer",
+    "places": [
+      {
+        "path": "a",
+        "color": "Input"
+      },
+      {
+        "path": "b",
+        "color": "Done"
+      },
+      {
+        "path": "c",
+        "color": null
+      }
+    ],
+    "transitions": [
+      {
+        "path": "source",
+        "handler": null,
+        "guards": [],
+        "timers": []
+      },
+      {
+        "path": "work",
+        "handler": {
+          "kind": "symbol",
+          "name": "bridge",
+          "uri": "transition:/work#handler"
+        },
+        "guards": [],
+        "timers": []
+      }
+    ],
+    "arcs": [
+      {
+        "position": 0,
+        "source": "source",
+        "target": "c",
+        "mode": "consume",
+        "weight": 1,
+        "color": null,
+        "filter": null
+      },
+      {
+        "position": 1,
+        "source": "a",
+        "target": "work",
+        "mode": "consume",
+        "weight": 1,
+        "color": "Input",
+        "filter": null
+      },
+      {
+        "position": 2,
+        "source": "work",
+        "target": "b",
+        "mode": "consume",
+        "weight": 1,
+        "color": "Done",
+        "filter": null
+      }
+    ],
+    "completion": {
+      "kind": "cel",
+      "expression": "size(b) > 0"
+    }
+  },
+  "frontier": 7,
+  "current": {
+    "marking": [
+      {
+        "place": "a",
+        "tokens": [
+          {
+            "color": "Input",
+            "data": {
+              "ordinal": 2
+            }
+          }
+        ]
+      }
+    ],
+    "status": "running",
+    "watermark": 7,
+    "in_flight": [
+      {
+        "occurrence": 1,
+        "transition": "work",
+        "phase": "activity_pending",
+        "binding": {
+          "consumed": [
+            {
+              "place": "a",
+              "tokens": [
+                {
+                  "color": "Input",
+                  "data": {
+                    "ordinal": 1
+                  }
+                }
+              ]
+            }
+          ],
+          "read": [],
+          "delivered": []
+        },
+        "invocation": {
+          "activity": "canonical.activity",
+          "input": {
+            "nested": [
+              {
+                "ordinal": 1
+              }
+            ]
+          },
+          "policy": {
+            "attempts": 1,
+            "heartbeat_timeout": 30,
+            "initial_interval": 0,
+            "coefficient": 2,
+            "max_interval": 60,
+            "jitter": 0,
+            "start_to_close": null,
+            "schedule_to_close": null
+          },
+          "correlation": "canonical-correlation",
+          "idempotency": "canonical-idempotency"
+        },
+        "result": null
+      }
+    ],
+    "armed": [
+      {
+        "source": "source",
+        "key": "default"
+      }
+    ],
+    "next_maturation": null
+  }
+}
