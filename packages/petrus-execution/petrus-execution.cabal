@@ -29,15 +29,18 @@ common warnings
 library
   import:           warnings
   hs-source-dirs:   src
-  exposed-modules:  Petrus.Motus.Execution.Archive
+  exposed-modules:  Petrus.Motus.Execution
+                    Petrus.Motus.Execution.Archive
                     Petrus.Motus.Execution.Archive.Tar
                     Petrus.Motus.Execution.Error
+                    Petrus.Motus.Execution.Internal.Common
                     Petrus.Motus.Execution.Internal.Posix
                     Petrus.Motus.Execution.Internal.PyText
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
                   , crypton >=1.0
+                  , petrus-json
                   , text >=2.0
                   , time >=1.12
                   , unix >=2.8
@@ -50,6 +53,7 @@ test-suite petrus-execution-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    ArchiveSpec
+                    ContractSpec
                     Support
   build-depends:    base
                   , base64-bytestring

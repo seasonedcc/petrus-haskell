@@ -1,6 +1,7 @@
 module Main (main) where
 
 import ArchiveSpec qualified
+import ContractSpec qualified
 import System.Posix.Files (setFileCreationMask)
 import Test.Hspec
 
@@ -10,3 +11,4 @@ main = do
   _ <- setFileCreationMask 0o022
   hspec $ do
     ArchiveSpec.spec
+    ContractSpec.spec
