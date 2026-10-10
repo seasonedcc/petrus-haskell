@@ -1,0 +1,76 @@
+cabal-version:      3.4
+name:               petrus-postgres
+version:            0.1.0.0
+synopsis:           PostgreSQL connections, transactions, LISTEN/NOTIFY and the authority fence for the Petrus port
+description:
+  The PostgreSQL layer every Petrus PostgreSQL component shares, built on
+  libpq and shaped after the psycopg 3 behavior upstream relies on:
+  connections in join mode (@autocommit=False@, an implicit @BEGIN@ before
+  the first statement, READ COMMITTED) or owning one transaction per batch
+  (@autocommit=True@), psycopg-compatible @%s@ placeholders and parameter
+  types, SQLSTATE-carrying errors with psycopg's message text, LISTEN/NOTIFY
+  with upstream's 0.25 s poll cadence, and the session advisory-lock
+  authority fence with keys identical to upstream's @_fence_key@.
+  Kernel-free: nothing here knows about nets, histories or dispatch.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Database
+build-type:         Simple
+extra-doc-files:    bench/RESULTS.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Postgres
+                    Petrus.Postgres.Connection
+                    Petrus.Postgres.Fence
+                    Petrus.Postgres.Notify
+                    Petrus.Postgres.Param
+                    Petrus.Postgres.Value
+  other-modules:    Petrus.Postgres.Internal
+  c-sources:        cbits/petrus_postgres.c
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , cryptohash-sha256 >=0.11
+                  , petrus-json
+                  , postgresql-libpq >=0.10
+                  , text >=2.0
+
+test-suite petrus-postgres-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  ghc-options:      -threaded
+  build-depends:    base
+                  , bytestring
+                  , hspec
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-test-support
+                  , text
+
+benchmark petrus-postgres-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  ghc-options:      -threaded -O2
+  build-depends:    base
+                  , bytestring
+                  , petrus-postgres
+                  , tasty >=1.4
+                  , tasty-bench >=0.3
+                  , text

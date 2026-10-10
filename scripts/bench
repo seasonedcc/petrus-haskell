@@ -62,6 +62,12 @@ def benchmark_packages() -> list[str]:
     return found
 
 
+def requires_postgres(package: str) -> bool:
+    """A benchmark that reads PETRUS_TEST_POSTGRES needs a server."""
+    main = ROOT / "packages" / package / "bench" / "Main.hs"
+    return main.exists() and "PETRUS_TEST_POSTGRES" in main.read_text()
+
+
 def upstream_python() -> str:
     upstream = ROOT / "upstream" / "petrus"
     interpreter = upstream / ".venv" / "bin" / "python"
@@ -173,7 +179,12 @@ def main() -> int:
 
     header = environment()
     summary = ["# Benchmark summary", "", *header, ""]
+    ran = []
     for package in packages:
+        if requires_postgres(package) and not os.environ.get("PETRUS_TEST_POSTGRES"):
+            print(f"skipping {package}: PETRUS_TEST_POSTGRES is unset (its results are kept)", file=sys.stderr)
+            continue
+        ran.append(package)
         haskell = haskell_results(package, args.quick)
         python = {} if args.no_python else python_results(package, args.quick)
         rows = table(haskell, python)
@@ -196,11 +207,11 @@ def main() -> int:
         )
         summary += [f"## {package}", "", *rows, ""]
     summary_path = ROOT / "bench-results" / "summary.md"
-    if args.packages and summary_path.exists():
+    if (args.packages or len(ran) < len(packages)) and summary_path.exists():
         # A partial run updates only its packages' sections.
         previous = summary_path.read_text()
         sections = dict(re.findall(r"^## (\S+)\n(.*?)(?=^## |\Z)", previous, re.MULTILINE | re.DOTALL))
-        for package in packages:
+        for package in ran:
             sections.pop(package, None)
         for package, body in sorted(sections.items()):
             summary += [f"## {package}", body.rstrip("\n"), ""]
