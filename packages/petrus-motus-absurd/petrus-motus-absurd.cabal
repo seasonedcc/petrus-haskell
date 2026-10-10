@@ -65,7 +65,8 @@ test-suite petrus-motus-absurd-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    Petrus.Motus.Dispatch.Absurd.Driver
+  other-modules:    Petrus.Motus.Dispatch.Absurd.BoundarySpec
+                    Petrus.Motus.Dispatch.Absurd.Driver
                     Petrus.Motus.Dispatch.Absurd.HeartbeatSpec
                     Petrus.Motus.Dispatch.Absurd.InteropSpec
                     Petrus.Motus.Dispatch.Absurd.Support
@@ -75,6 +76,7 @@ test-suite petrus-motus-absurd-test
                   , bytestring
                   , cryptohash-sha256
                   , directory
+                  , filepath
                   , hspec >=2.10
                   , petrus-activity
                   , petrus-json
@@ -87,3 +89,21 @@ test-suite petrus-motus-absurd-test
                   , text
                   , unix
   ghc-options:      -threaded -rtsopts
+
+benchmark petrus-motus-absurd-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , petrus-activity
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-motus-absurd
+                  , petrus-postgres
+                  , petrus-test-support
+                  , tasty >=1.4
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -threaded -O2 -rtsopts "-with-rtsopts=-A32m"

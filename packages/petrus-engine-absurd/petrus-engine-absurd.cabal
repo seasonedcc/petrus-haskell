@@ -81,3 +81,33 @@ test-suite petrus-engine-absurd-test
                   , text
                   , unix
   ghc-options:      -threaded -rtsopts
+
+benchmark petrus-engine-absurd-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench test
+  main-is:          Main.hs
+  other-modules:    Petrus.Engine.Absurd.Support
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-cel
+                  , petrus-engine
+                  , petrus-engine-absurd
+                  , petrus-history-postgres
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-motus-absurd
+                  , petrus-postgres
+                  , petrus-test-support
+                  , process >=1.6
+                  , tasty >=1.4
+                  , tasty-bench >=0.3
+                  , text
+                  , unix
+  ghc-options:      -threaded -O2 -rtsopts "-with-rtsopts=-A32m"
