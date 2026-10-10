@@ -46,6 +46,81 @@
    "type": "InvariantViolation"
   }
  },
+ "failure-after-end": {
+  "artifact_error": {
+   "message": "1 validation error for ScenarioArtifactV3\n  Value error, a failed DST artifact must end with exactly one failure operation [type=value_error, input_value={'format': 'petrus-dst-wo...153dbbcf24728e3863a4d')}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error",
+   "type": "ValidationError"
+  },
+  "disposition": "budget_exhausted",
+  "errors": [
+   {
+    "message": "DST budget 'queued_commands' exhausted at limit 2",
+    "type": "BudgetExhausted"
+   },
+   {
+    "message": "DST budget 'queued_commands' exhausted at limit 2",
+    "type": "BudgetExhausted"
+   }
+  ],
+  "operations": [
+   {
+    "accepted_operations": 0,
+    "attempt": {
+     "command": {
+      "name": "queue.record",
+      "payload": {
+       "id": "b"
+      },
+      "profile": {
+       "digest": "sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da",
+       "name": "petrus.testing.queue-proof",
+       "version": 1
+      }
+     },
+     "generation": 1,
+     "kind": "submit"
+    },
+    "failure": {
+     "bound": "queued_commands",
+     "error": "DST budget 'queued_commands' exhausted at limit 2",
+     "kind": "budget_exhausted",
+     "limit": 2
+    },
+    "generation": 1,
+    "instant": 0,
+    "kind": "failure",
+    "position": 0
+   },
+   {
+    "accepted_operations": 0,
+    "attempt": {
+     "command": {
+      "name": "queue.record",
+      "payload": {
+       "id": "a"
+      },
+      "profile": {
+       "digest": "sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da",
+       "name": "petrus.testing.queue-proof",
+       "version": 1
+      }
+     },
+     "generation": 1,
+     "kind": "submit"
+    },
+    "failure": {
+     "bound": "queued_commands",
+     "error": "DST budget 'queued_commands' exhausted at limit 2",
+     "kind": "budget_exhausted",
+     "limit": 2
+    },
+    "generation": 1,
+    "instant": 0,
+    "kind": "failure",
+    "position": 1
+   }
+  ]
+ },
  "fair-phase": {
   "artifact": "{\"api\":\"petrus.testing.dst/v3\",\"budget\":{\"actions\":8,\"artifact_bytes\":65536,\"logical_instant\":5,\"predicate_polls\":1,\"queued_commands\":2,\"reloads\":0,\"timer_advances\":1},\"checkers\":[],\"expected\":{\"checks\":[],\"disposition\":\"quiescent\",\"failure\":null,\"journal_digest\":\"sha256:2b534cba72dd08327479ca0fcf10ff8d4295b6d9fefaeb1c5310d2729bdaa226\"},\"format\":\"petrus-dst-world\",\"operations\":[{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000001\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":0,\"queue_order\":0,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\"]}},\"source\":\"profile\"},{\"command\":{\"name\":\"queue.record\",\"payload\":{\"id\":\"queue-00000002\"},\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1}},\"generation\":1,\"instant\":5,\"kind\":\"execute\",\"position\":1,\"queue_order\":1,\"result\":{\"disposition\":\"applied\",\"scheduled\":[],\"value\":{\"values\":[\"queue-00000001\",\"queue-00000002\"]}},\"source\":\"profile\"},{\"generation\":1,\"instant\":5,\"kind\":\"begin_fair\",\"position\":2},{\"disposition\":\"quiescent\",\"generation\":1,\"instant\":5,\"kind\":\"finish\",\"position\":3}],\"origin\":null,\"profile\":{\"digest\":\"sha256:8b4a9145222d911686e08170031cec74abe36f92b04ccd289bbf4bb27bfb97da\",\"name\":\"petrus.testing.queue-proof\",\"version\":1},\"scenario_id\":\"fair-phase-v3\",\"version\":3}",
   "errors": [

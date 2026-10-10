@@ -10,6 +10,7 @@ module Spec.Stories (spec) where
 
 import Control.Monad.IO.Class (liftIO)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Petrus.Json (Json (..))
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Timeline qualified as Timeline
@@ -369,3 +370,25 @@ spec = describe "toy World stories (Python-authored vectors)" $ do
       _ <- World.step
       liftIO (queueValues q)
     observed `shouldBe` ["queue-00000001"]
+
+  it "records a budget refusal after the World ended, then refuses the artifact (failure-after-end)" $ do
+    -- A reference quirk the generated-story property found: reproduced
+    -- exactly, not fixed (see PARITY.md).
+    s <- story "failure-after-end"
+    q <- newQueue
+    (errors, ended, operations, refused) <- withToy (config (queueProfile q) (budget 8 2 0 5 0 3) [] Nothing) $ do
+      t <- World.timeline
+      first <- attempt (Timeline.command t "queue.record" (Object [("id", String "b")]))
+      t' <- World.timeline
+      second <- attempt (Timeline.command t' "queue.record" (Object [("id", String "a")]))
+      ended <- World.disposition
+      operations <- World.operations
+      refused <- World.tryWorld (World.artifact "failure-after-end")
+      pure ([first, second], ended, operations, refused)
+    Array errors `shouldBeJson` member "errors" s
+    dispositionJson ended `shouldBeJson` member "disposition" s
+    Array (map toJson operations) `shouldBeJson` member "operations" s
+    let expected = member "artifact_error" s
+        beforeReport = fst . T.breakOn "[type="
+    either failureClass (const "") refused `shouldBe` memberText "type" expected
+    either (beforeReport . failureMessage) (const "") refused `shouldBe` beforeReport (memberText "message" expected)

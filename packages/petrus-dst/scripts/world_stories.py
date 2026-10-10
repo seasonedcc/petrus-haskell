@@ -511,6 +511,24 @@ def refusals() -> dict:
     }
 
 
+def failure_after_end() -> dict:
+    # Found by the Haskell port's generated-story property: a budget
+    # refusal after the World already ended records a second failure
+    # operation, and the World then refuses to produce its artifact.
+    world = World(QueueProfile(), budget(8, 2, 0, 5, 0, 3))
+    try:
+        errors = [
+            error(lambda: world.timeline().command("queue.record", {"id": "b"})),
+            error(lambda: world.timeline().command("queue.record", {"id": "a"})),
+        ]
+        disposition = None if world.disposition is None else world.disposition.value
+        operations = [dump(operation) for operation in world.operations]
+        refused = error(lambda: world.artifact("failure-after-end"))
+    finally:
+        world.close()
+    return {"errors": errors, "disposition": disposition, "operations": operations, "artifact_error": refused}
+
+
 STORIES = {
     "stable-order": stable_order,
     "resource-v4": resource_v4,
@@ -531,6 +549,7 @@ STORIES = {
     "poll-budget": poll_budget,
     "fault-story": fault_story,
     "refusals": refusals,
+    "failure-after-end": failure_after_end,
 }
 
 
