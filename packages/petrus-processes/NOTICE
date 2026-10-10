@@ -1,0 +1,21 @@
+petrus-processes
+Copyright 2026 Seasoned
+
+This package is an independent Haskell implementation that reproduces the
+observable behaviour of the pinned Petrus Python reference (see UPSTREAM.md
+at the repository root). Its schema text, SQL statements, payload formats,
+identity derivations and error messages are reproduced from that reference
+so that both implementations share one PostgreSQL database and call and
+spawn each other. The acceptance demo reproduces the reference's
+scripts/cv5-lifecycle-demo.py. The driver scripts in test/interop and bench
+run the reference itself from the pinned upstream virtual environment.
+
+Petrus
+  Copyright Seasoned
+  Licensed under the Apache License, Version 2.0
+
+psycopg 3 (driven by the reference; its transaction semantics are
+reproduced through petrus-postgres)
+  Copyright The Psycopg Team
+  Licensed under the GNU Lesser General Public License v3.0
+  https://www.psycopg.org

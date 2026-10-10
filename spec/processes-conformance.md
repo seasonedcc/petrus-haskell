@@ -142,7 +142,9 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
   records and dispatches 0 Activities. *(demo "replay: parent appends=0 dispatches=0; child appends=0 dispatches=0")*
 - **P-037** `engine` §7. A reply delivered to a reply source with no armed
   registration is refused by the caller's door, stays pending, and blocks the
-  caller's inbox. *(derived)*
+  caller's inbox. The refusal poisons the refusing Engine. Each later attempt
+  goes through a freshly loaded Engine, is refused the same way, and appends
+  nothing ([fabric.md §9.3](fabric.md)). *(derived)*
 - **P-038** `interop` §3–6. A Python caller with a Haskell callee, and a
   Haskell caller with a Python callee, each complete both a result round trip
   and an error round trip. Each side validates the other's envelopes with

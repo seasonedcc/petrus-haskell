@@ -55,6 +55,22 @@ API-level credentials prevent *accidental* cross-Instance use. They do not
 protect against a hostile SQL principal that can reach the shared database:
 any such principal can read and write every Fabric table directly.
 
+### 1.1 Revisions
+
+These are changes made after the Haskell port ran every check against the
+pinned reference. Each change makes this document say what the pinned
+reference does. None of them changes the wire format or the schema.
+
+- §3.3 item 6 now states how `float.__repr__` chooses among several shortest
+  digit strings: the nearest one, ties to even, and interval ends admitted for
+  even significands. The earlier wording ("the shortest round-tripping decimal
+  digit string") did not identify one string. F-014 gains the two
+  distinguishing values `1e+23` and `2.9802322387695312e-08`.
+- §9.3 now states that a refusal by a reference Engine door poisons that
+  Engine, and that the host recovers through a fresh load. The earlier
+  wording left open whether a host may keep using the same Engine. The
+  pinned reference does not allow it.
+
 ## 2 Terminology
 
 - **Process (identity)**: the stable Fabric address of one independently
@@ -164,8 +180,23 @@ Python's
 4. Integers are written as an optional `-` followed by decimal digits, with no
    leading zeros, no `+`, and any magnitude.
 5. `true`, `false`, and `null` are written literally.
-6. Floats use Python `float.__repr__`. Let the shortest round-tripping decimal
-   digit string be `d₁d₂…dₙ` with decimal-point position `p`, so that
+6. Floats use Python `float.__repr__`. Its digit string `d₁d₂…dₙ` is
+   chosen as follows. Among the decimal strings that read back as the same
+   double, take the shortest. Among those, take the one nearest the exact
+   binary value. An exact tie between two of them goes to the one whose last
+   digit is even. Reading back is round-half-even, so the ends of a double's
+   rounding interval read back as that double exactly when its binary
+   significand is even. Two examples follow from this:
+   - The double nearest 10²³ lies just below it and has an even
+     significand, so it is spelled `1e+23` and not `9.999999999999999e+22`.
+   - 2⁻²⁵ is exactly 2.98023223876953125e-08. Both 17-digit neighbours are
+     equally near, so it is spelled `2.9802322387695312e-08` and not
+     `…313e-08`.
+
+   This is David Gay's shortest mode, as CPython uses, and Ryu with interval
+   ends accepted for even significands. GHC's `floatToDigits` and some Ryu
+   ports exclude the ends and round ties up, so they differ on both
+   examples. Let `p` be the decimal-point position, so that
    value = `0.d₁…dₙ × 10^p`, which is `d₁.d₂… × 10^(p−1)`:
    - If `-4 < p ≤ 16`, use fixed notation. If the value is integral, append
      `.0`. Examples: `0.0`, `-0.0`, `2.0`, `0.1`, `0.0001`, `12345.678`,
@@ -858,6 +889,16 @@ are:
 The same applies to a door result of any other type (`TypeError`). Hosts
 SHOULD keep a source armed for as long as any sender may still deliver to it,
 or accept that late deliveries block the inbox.
+
+When the door is a reference Engine, a refusal is a failure inside a writing
+door. It therefore also **poisons that Engine**. Every later operation on that
+Engine object, including reads such as `records` and `status`, raises
+`RuntimeError("this Engine is poisoned after a writing door failed …")`. The
+host continues through a fresh load (`load_engine`), and the fresh Engine
+refuses the same pending delivery in the same way. Nothing is appended to the
+recipient's History by the refused attempts. An implementation whose door is
+an Engine MUST behave the same way, so that a host written against either
+implementation recovers the same way.
 
 ## 10 Delivery guarantees summary
 
