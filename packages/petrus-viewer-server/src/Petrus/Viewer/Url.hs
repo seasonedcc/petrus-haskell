@@ -15,6 +15,7 @@ module Petrus.Viewer.Url
   ( Url (..)
   , parseUrl
   , resolveUrl
+  , resolveUrlSpec
   , serializeUrl
   , urlPathname
   , urlHostname
@@ -68,9 +69,52 @@ parseUrl t = basicParse Nothing (prepare t)
 
 -- | @new URL(input, base)@.
 resolveUrl :: Text -> Text -> Maybe Url
-resolveUrl input base = do
+resolveUrl input base = case resolveFilePath input base of
+  Just u -> Just u
+  Nothing -> resolveUrlSpec input base
+
+-- | @new URL(input, base)@ through the full state machine.
+resolveUrlSpec :: Text -> Text -> Maybe Url
+resolveUrlSpec input base = do
   b <- parseUrl base
   basicParse (Just b) (prepare input)
+
+-- | The common case of @/__petrus/resolve-ref@ without the state machine:
+-- a relative path (@./sub.json@, @../x/y.json@) against a @file:///@ base,
+-- both made only of characters that the parser copies unchanged and that
+-- play no special role (no percent signs, drive-letter colons, backslashes,
+-- queries, fragments, spaces, or non-ASCII). For those inputs the parser
+-- reduces to splitting on @/@ and the dot-segment rules of the path state,
+-- which is all this does; a property test checks it against
+-- 'resolveUrlSpec'. Anything else returns 'Nothing'.
+resolveFilePath :: Text -> Text -> Maybe Url
+resolveFilePath input base = do
+  rest <- T.stripPrefix "file:///" base
+  if T.all plain rest && T.all plain input && not (T.null input) && T.head input /= '/'
+    then
+      let basePath = walk [] (T.splitOn "/" rest)
+          dir = drop 1 basePath -- shorten: the base's last segment goes
+       in Just
+            emptyUrl
+              { urlScheme = "file"
+              , urlHost = Just ""
+              , urlPath = Right (map T.unpack (reverse (walk dir (T.splitOn "/" input))))
+              }
+    else Nothing
+  where
+    plain c =
+      isAsciiLower c || isAsciiUpper c || isDigit c || c == '/' || T.any (== c) "-._~!$&'()*+,;=@"
+    -- the path state over '/'-separated segments; the path is reversed
+    walk path = \case
+      [] -> path
+      [s]
+        | s == ".." -> "" : drop 1 path
+        | s == "." -> "" : path
+        | otherwise -> s : path
+      (s : more)
+        | s == ".." -> walk (drop 1 path) more
+        | s == "." -> walk path more
+        | otherwise -> walk (s : path) more
 
 -- | Strip leading and trailing C0 controls and spaces, remove tabs and
 -- newlines.
@@ -734,7 +778,9 @@ percentDecodeString s = T.unpack (TE.decodeUtf8Lenient (B.pack (go (B.unpack (TE
 
 -- | JavaScript @decodeURIComponent@: 'Left' carries the @URIError@ message.
 decodeURIComponent :: Text -> Either Text Text
-decodeURIComponent t = T.pack <$> go (T.unpack t)
+decodeURIComponent t
+  | T.all (/= '%') t = Right t -- nothing to decode
+  | otherwise = T.pack <$> go (T.unpack t)
   where
     go [] = Right []
     go ('%' : rest) = do

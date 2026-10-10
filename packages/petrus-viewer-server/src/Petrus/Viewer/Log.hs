@@ -10,7 +10,7 @@ module Petrus.Viewer.Log
   , logLine
   ) where
 
-import Control.Concurrent (forkOn)
+import Control.Concurrent (forkOn, yield)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Concurrent.STM
 import Control.Exception (SomeException, try)
@@ -88,6 +88,8 @@ newAsyncLogger :: Int -> Handle -> IO Logger
 newAsyncLogger cap h = do
   q <- newTQueueIO
   void . forkOn cap . forever $ do
+    -- let the threads that woke us (and are doing the real work) go first
+    yield
     ls <- atomically $ do
       x <- readTQueue q
       xs <- flushTQueue q

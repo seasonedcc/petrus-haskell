@@ -169,6 +169,7 @@ fs.rmSync(scratch, { recursive: true, force: true });
 // ratio of the best Haskell server to the best Node server
 const names = TARGETS.map((t) => t.name);
 const find = (t, s) => results.find((x) => x.target === t && x.scenario === s);
+const peak = (r) => Math.max(...r.allOpsPerSec);
 let md = `| scenario | ${names.join(" | ")} | Haskell / Node |\n|---|${names.map(() => "---:").join("|")}|---:|\n`;
 for (const s of SCENARIOS) {
   const cells = names.map((t) => {
@@ -180,6 +181,14 @@ for (const s of SCENARIOS) {
 }
 md += `| server RSS after run (MiB) | ${names.map((t) => rss[t] ?? "").join(" | ")} | |\n`;
 md += `\nCells: median ops/s over ${reps} interleaved runs (p50 / p99 latency in us).\n`;
+// on a shared machine the medians move with outside load; the best run of
+// each target is what it can do when the machine lets it
+md += `\n| scenario (best of ${reps}) | ${names.join(" | ")} | Haskell / Node |\n|---|${names.map(() => "---:").join("|")}|---:|\n`;
+for (const s of SCENARIOS) {
+  const vals = names.map((t) => (find(t, s.name) ? peak(find(t, s.name)) : null));
+  const best = (prefix) => Math.max(0, ...names.map((t, i) => (t.startsWith(prefix) ? vals[i] ?? 0 : 0)));
+  md += `| ${s.name} | ${vals.map((v) => v ?? "").join(" | ")} | ${(best("haskell") / best("node")).toFixed(2)}x |\n`;
+}
 console.log(md);
 if (jsonOut) {
   const machine = `${os.cpus()[0].model} x${os.cpus().length}, ${os.platform()} ${os.release()}, node ${process.version}`;

@@ -11,6 +11,7 @@ import Petrus.Viewer.Url
 import Petrus.Viewer.UrlCache
 import System.Directory (doesFileExist, removeDirectoryRecursive)
 import Test.Hspec
+import Test.QuickCheck
 import TestSupport (fixturePath)
 
 resolve :: Text -> Text -> Either Text Text
@@ -18,6 +19,22 @@ resolve ref base = maybe (Left "Invalid URL") (Right . serializeUrl) (resolveUrl
 
 parse :: Text -> Either Text Text
 parse u = maybe (Left "Invalid URL") (Right . serializeUrl) (parseUrl u)
+
+-- | Path-like text: dot segments, empty segments, plain names, and now and
+-- then a character with a special role in URLs.
+newtype PathText = PathText Text
+  deriving stock (Show)
+
+instance Arbitrary PathText where
+  arbitrary =
+    PathText . T.intercalate "/"
+      <$> listOf
+        ( frequency
+            [ (3, elements [".", "..", "", "a", "b.json", "x-y_z~", "$&'()*+,;=@!"])
+            , (1, T.pack <$> listOf1 (elements "aZ09.-_~"))
+            , (1, T.pack <$> listOf1 (elements "a.%2e%2E:|\\?# \t\233/C"))
+            ]
+        )
 
 spec :: Spec
 spec = do
@@ -43,6 +60,13 @@ spec = do
             ]
       length cases `shouldSatisfy` (> 2000)
       take 5 mismatches `shouldBe` []
+
+    it "resolves file paths on the fast path exactly like the state machine" $
+      property $ \(PathText ref) (PathText base) ->
+        let full = "file:///" <> base
+         in classify (resolveUrl ref full /= Nothing && T.all (`notElem` ("%:\\?# |\233" :: String)) (ref <> base)) "fast path" $
+              (resolveUrl ref full === resolveUrlSpec ref full)
+                .&&. (resolveUrl ref ("file://" <> base) === resolveUrlSpec ref ("file://" <> base))
 
     it "parses hosts: IPv4 forms, IPv6 compression, IDNA, opaque hosts" $ do
       parse "http://0x7f.1/" `shouldBe` Right "http://127.0.0.1/"

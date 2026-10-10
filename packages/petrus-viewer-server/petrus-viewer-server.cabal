@@ -36,6 +36,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Viewer.Json
                     Petrus.Viewer.Json.Number
+                    Petrus.Viewer.Json.Canonical
                     Petrus.Viewer.Url
                     Petrus.Viewer.UrlCache
                     Petrus.Viewer.Http

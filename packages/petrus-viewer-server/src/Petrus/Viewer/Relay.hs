@@ -31,6 +31,7 @@ module Petrus.Viewer.Relay
   , serveConnection
   , wsApp
   , relayMessage
+  , routeRaw
   , Routed (..)
   ) where
 
@@ -41,6 +42,7 @@ import Control.Monad (forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Lazy qualified as BL
+import Data.ByteString.Unsafe qualified as BU
 import Data.IORef
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -48,6 +50,7 @@ import Data.Maybe (listToMaybe)
 import Data.Text qualified as T
 import Network.WebSockets qualified as WS
 import Petrus.Viewer.Json
+import Petrus.Viewer.Json.Canonical (Member (..), canonicalObject)
 import Petrus.Viewer.Log
 
 data RelayKind
@@ -191,14 +194,15 @@ serveHere relay conn = do
             WS.Binary bytes -> handleRaw me (decodeLenient (BL.toStrict bytes)) >> pure True
           when continue (receiveLoop me)
 
-    handleRaw me raw = case parseJs raw of
-      Left _ -> pure ()
-      Right v -> do
+    handleRaw me raw = do
         now <- maybe (pure 0) (const monotonicMs) (perfLogger relay)
-        case relayMessage (kind relay) (clientIdStr me) v of
+        case routeRaw (kind relay) (clientIdStr me) raw of
           Nothing -> pure ()
           Just routed -> do
-            forM_ (perfLogger relay) $ \lg -> logTiming lg me now routed
+            -- Vite logs before sending. Here the request/response timing is
+            -- recorded first, but the line is written after the frame is
+            -- queued, so that the frame's writer runs before the logger
+            emit <- maybe (pure (pure ())) (\lg -> logTiming lg me now routed) (perfLogger relay)
             let frame = Frame (routedBytes routed)
             atomically $ do
               cs <- readTVar (clients relay)
@@ -210,6 +214,7 @@ serveHere relay conn = do
                 Nothing
                   | routedTargeted routed -> pure ()
                   | otherwise -> forM_ cs $ \c -> unless (clientNumber c == clientNumber me) (writeTQueue (outbox c) frame)
+            emit
 
     leave me = atomically $ do
       modifyTVar' (clients relay) (Map.delete (clientNumber me))
@@ -219,30 +224,32 @@ serveHere relay conn = do
       forM_ cs $ \c -> writeTQueue (outbox c) (Frame out)
       broadcastCount
 
-    logTiming lg me now routed = case routedObject routed of
-      Just o
-        | lookupKey "protocol" o == Just (str "petrus-agent") -> do
-            let kindV = lookupKey "kind" o
-                reqId = case lookupKey "requestId" o of
+    logTiming lg me now routed = case look "protocol" of
+      Just protocol
+        | protocol == str "petrus-agent" -> do
+            let kindV = look "kind"
+                reqId = case look "requestId" of
                   Just (JsStr s) -> Just s
                   _ -> Nothing
             case (kindV, reqId) of
               (Just k, Just rid)
                 | k == str "request" -> do
                     atomicModifyIORef' (timings relay) (\m -> (Map.insert rid now m, ()))
-                    perfLine lg "relay-forward-request" $
-                      [("requestId", JsStr rid)] ++ opt "action" (lookupKey "action" o) ++ [("from", JsStr (clientIdStr me))]
+                    pure . perfLine lg "relay-forward-request" $
+                      [("requestId", JsStr rid)] ++ opt "action" (look "action") ++ [("from", JsStr (clientIdStr me))]
                 | k == str "response" -> do
                     start <- atomicModifyIORef' (timings relay) (\m -> (Map.delete rid m, Map.lookup rid m))
-                    forM_ start $ \s ->
+                    pure . forM_ start $ \s ->
                       perfLine lg "relay-forward-response" $
                         [("requestId", JsStr rid)]
-                          ++ opt "action" (lookupKey "action" o)
-                          ++ opt "ok" (lookupKey "ok" o)
+                          ++ opt "action" (look "action")
+                          ++ opt "ok" (look "ok")
                           ++ [("relayRoundtripMs", num (fixed1 (now - s))), ("from", JsStr (clientIdStr me))]
-                          ++ opt "to" (lookupKey "targetClientId" o)
-              _ -> pure ()
-      _ -> pure ()
+                          ++ opt "to" (look "targetClientId")
+              _ -> pure (pure ())
+      _ -> pure (pure ())
+      where
+        look = routedLookup routed . jsString
     opt k = maybe [] (\v -> [(k, v)])
     perfLine lg label fields = do
       ts <- isoTimestamp
@@ -256,8 +263,42 @@ data Routed = Routed
   -- ^ the target field was truthy (deliver to at most one client)
   , routedTarget :: Maybe JsValue
   -- ^ the target value when it can match a client id (a string)
-  , routedObject :: Maybe JsObject
+  , routedLookup :: JsString -> Maybe JsValue
+  -- ^ a member of the relayed object (as relayed, id included)
   }
+
+-- | Route one text message from the wire. Text already in
+-- @JSON.stringify@ form (what every known client sends) is relayed by
+-- splicing the id member into its bytes, without building the value
+-- ("Petrus.Viewer.Json.Canonical"); any other text takes the full
+-- @JSON.parse@ / @JSON.stringify@ round trip of 'relayMessage'. Both give
+-- the same result (a property test checks it).
+routeRaw :: RelayKind -> JsString -> ByteString -> Maybe Routed
+routeRaw k sender raw = case canonicalObject raw of
+  Nothing -> either (const Nothing) (relayMessage k sender) (parseJs raw)
+  Just members ->
+    let idK = jsStringBytes (idKey k)
+        idV = "\"" <> jsStringBytes sender <> "\""
+        bytes = case [m | m <- members, memberKey m == idK] of
+          -- an existing id keeps its position
+          (m : _) -> B.concat [BU.unsafeTake (memberStart m) raw, idV, BU.unsafeDrop (memberEnd m) raw]
+          []
+            | null members -> B.concat ["{\"", idK, "\":", idV, "}"]
+            | otherwise -> B.concat [BU.unsafeTake (B.length raw - 1) raw, ",\"", idK, "\":", idV, "}"]
+        look key
+          | jsStringBytes key == idK = Just (JsStr sender)
+          | otherwise = case [m | m <- members, memberKey m == jsStringBytes key] of
+              (m : _) -> either (const Nothing) Just (parseJs (BU.unsafeTake (memberEnd m - memberStart m) (BU.unsafeDrop (memberStart m) raw)))
+              [] -> Nothing
+        target = look (targetKey k)
+        targeted = maybe False truthy target
+     in Just
+          Routed
+            { routedBytes = BL.fromStrict bytes
+            , routedTargeted = targeted
+            , routedTarget = if targeted then target else Nothing
+            , routedLookup = look
+            }
 
 -- | Pure routing decision for one message from the client with the given
 -- id; 'Nothing' means the message is dropped.
@@ -272,10 +313,10 @@ relayMessage k sender = \case
             { routedBytes = encodeJsLazy (JsObj o')
             , routedTargeted = targeted
             , routedTarget = if targeted then target else Nothing
-            , routedObject = Just o'
+            , routedLookup = \key -> lookupKeyS key o'
             }
   JsArr xs
     | k == CollabRelay ->
         -- assigning a property to an array is invisible to JSON.stringify
-        Just (Routed (encodeJsLazy (JsArr xs)) False Nothing Nothing)
+        Just (Routed (encodeJsLazy (JsArr xs)) False Nothing (const Nothing))
   _ -> Nothing
