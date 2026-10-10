@@ -1,0 +1,75 @@
+cabal-version:      3.4
+name:               hamsterdan-host
+version:            0.1.0.0
+synopsis:           Hamsterdan's durable PR-readiness host
+description:
+  The Hamsterdan host (@src/hamsterdan/host@): webhook ingress into durable
+  V5 readiness Instances, authority fencing, the publication, rerun,
+  review, and mutation gates, durable timers, the runnable index, the
+  HTTP surface, and the operator CLI. Every on-disk format is the
+  reference's, byte for byte, so the Haskell and Python hosts can resume
+  each other's state directories.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    README.md
+                    PARITY.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Hamsterdan.Host.Binding
+                    Hamsterdan.Host.Runnable
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , hamsterdan-github
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-posix
+                  , text >=2.0
+                  , time >=1.12
+                  , unix >=2.8
+  ghc-options:      -O2
+
+test-suite hamsterdan-host-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    BindingSpec
+                    RunnableSpec
+                    TestSupport
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , direct-sqlite
+                  , directory
+                  , filepath
+                  , hamsterdan-github
+                  , hamsterdan-host
+                  , hspec >=2.10
+                  , petrus-json
+                  , petrus-motus
+                  , temporary >=1.3
+                  , text
+                  , unix
+  ghc-options:      -threaded -rtsopts
