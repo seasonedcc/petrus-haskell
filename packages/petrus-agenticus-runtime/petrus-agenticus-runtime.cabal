@@ -18,6 +18,10 @@ build-type:         Simple
 extra-doc-files:    PARITY.md
                     DIVERGENCES.md
                     bench/RESULTS.md
+                    parity/pi.md
+                    divergences/pi.md
+                    bench/results-pi.md
+data-files:         data/*.mjs
 extra-source-files: differential/*.json
                     differential/*.py
                     bench/*.py
@@ -39,20 +43,28 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Runtime.AgentNetRunner
+                    Petrus.Agenticus.Runtime.Pi
+  other-modules:    Paths_petrus_agenticus_runtime
+  autogen-modules:  Paths_petrus_agenticus_runtime
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
                   , crypton >=1.0
                   , directory >=1.3
                   , filepath >=1.4
+                  , ram >=0.20
                   , petrus-activity
                   , petrus-agenticus
                   , petrus-agenticus-core
                   , petrus-engine
+                  , petrus-execution
                   , petrus-history-store
                   , petrus-impetus
                   , petrus-json
                   , petrus-motus
+                  , process
+                  , stm
+                  , temporary
                   , text >=2.0
                   , unix >=2.8
 
