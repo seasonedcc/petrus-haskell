@@ -1,6 +1,6 @@
 """Python side of the hamsterdan-testing benchmarks (same inputs as Main.hs).
 
-    PYTHONDONTWRITEBYTECODE=1 upstream/hamsterdan/.venv/bin/python -I \
+    upstream/hamsterdan/.venv/bin/python -I -B \
         packages/hamsterdan-testing/bench/bench.py
 
 Reads test/corpus/oracle.jsonl next to this package, so it can run from any

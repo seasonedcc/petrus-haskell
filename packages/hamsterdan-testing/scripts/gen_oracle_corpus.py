@@ -2,7 +2,7 @@
 
 Run from the repository root against the pinned upstream environment:
 
-    PYTHONDONTWRITEBYTECODE=1 upstream/hamsterdan/.venv/bin/python -I \
+    upstream/hamsterdan/.venv/bin/python -I -B \
         packages/hamsterdan-testing/scripts/gen_oracle_corpus.py
 
 Writes test/corpus/oracle.jsonl, one row per encoded facts document:

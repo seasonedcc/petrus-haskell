@@ -56,7 +56,7 @@ From the repository root, alternating the two sides:
 
 ```sh
 cabal bench hamsterdan-readiness -j2 --benchmark-options='+RTS -M2G -RTS'
-PYTHONDONTWRITEBYTECODE=1 upstream/hamsterdan/.venv/bin/python -I packages/hamsterdan-readiness/bench/bench.py
+upstream/hamsterdan/.venv/bin/python -I -B packages/hamsterdan-readiness/bench/bench.py
 ```
 
 `cabal bench` runs in the package directory. `bench.py` finds the corpora

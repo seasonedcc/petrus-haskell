@@ -2,7 +2,7 @@
 
 Run from the repository root against the pinned upstream environment:
 
-    PYTHONDONTWRITEBYTECODE=1 upstream/hamsterdan/.venv/bin/python -I \
+    upstream/hamsterdan/.venv/bin/python -I -B \
         packages/hamsterdan-readiness/scripts/gen_fold_corpus.py
 
 It runs the upstream net_v5 test suite (tests/unit/readiness/net_v5, in file

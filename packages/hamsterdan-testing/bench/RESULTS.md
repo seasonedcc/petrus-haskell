@@ -42,7 +42,7 @@ From the repository root, alternating the two sides:
 
 ```sh
 cabal bench hamsterdan-testing -j2 --benchmark-options='+RTS -M2G -RTS'
-PYTHONDONTWRITEBYTECODE=1 upstream/hamsterdan/.venv/bin/python -I packages/hamsterdan-testing/bench/bench.py
+upstream/hamsterdan/.venv/bin/python -I -B packages/hamsterdan-testing/bench/bench.py
 ```
 
 Note `uptime` before and after each run.

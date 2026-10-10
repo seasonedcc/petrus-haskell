@@ -1,6 +1,6 @@
 """Python side of the hamsterdan-readiness benchmarks (same inputs as Main.hs).
 
-    PYTHONDONTWRITEBYTECODE=1 upstream/hamsterdan/.venv/bin/python -I \
+    upstream/hamsterdan/.venv/bin/python -I -B \
         packages/hamsterdan-readiness/bench/bench.py
 
 Reads the test corpora next to this package (test/corpus/folds.jsonl and
