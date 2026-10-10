@@ -1,0 +1,73 @@
+cabal-version:      3.4
+name:               petrus-agenticus
+version:            0.1.0.0
+synopsis:           Petrus Agenticus over the Engine: Agent-as-a-Net, Episode attachment, Hands workspace
+description:
+  A Haskell port of the kernel-composed layers of @petrus.agenticus@:
+  Agent-as-a-Net (the bounded agent loop as a static Net authored with the
+  Petrus DSL and driven by the Engine), the Motus attachment binding, the
+  Episode attachment with its territory custody ledger and retention, and
+  the Hands workspace adapter over a Motus execution environment. Every
+  wire and storage format is byte-identical to the reference.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    PARITY.md
+                    DIVERGENCES.md
+extra-source-files: differential/*.py
+                    differential/*.json
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Agenticus.Program.AgentNet
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , petrus-activity
+                  , petrus-agenticus-core
+                  , petrus-cel
+                  , petrus-dsl
+                  , petrus-engine
+                  , petrus-impetus
+                  , petrus-json
+                  , text >=2.0
+
+test-suite petrus-agenticus-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.Agenticus.TestSupport
+                    Petrus.Agenticus.AgentNetSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-agenticus
+                  , petrus-agenticus-core
+                  , petrus-engine
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , QuickCheck
+                  , text
