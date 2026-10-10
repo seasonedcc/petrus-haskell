@@ -4,9 +4,11 @@
 module Main (main) where
 
 import Bench.AgentNet qualified
+import Bench.Retention qualified
 import Test.Tasty.Bench
 
 main :: IO ()
 main = do
   Bench.AgentNet.checkWorkload
-  defaultMain [Bench.AgentNet.benchmarks]
+  Bench.Retention.withLedger $ \ledger ->
+    defaultMain [Bench.AgentNet.benchmarks, Bench.Retention.benchmarks ledger]

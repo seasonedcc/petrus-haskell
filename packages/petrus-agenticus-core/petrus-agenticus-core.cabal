@@ -47,6 +47,12 @@ library
                     Petrus.Agenticus.Catalog.Result
                     Petrus.Agenticus.Catalog.Resolution
                     Petrus.Agenticus.Runtime.Profiles
+                    Petrus.Agenticus.Internal.PyRepr
+                    Petrus.Agenticus.Internal.Sqlite
+                    Petrus.Agenticus.Connection.Key
+                    Petrus.Agenticus.Connection.Materialization
+                    Petrus.Agenticus.Connection.Storage
+                    Petrus.Agenticus.Connection.Custody
                     Petrus.Agenticus.Effect.Model
                     Petrus.Agenticus.Effect.Gateway
                     Petrus.Agenticus.Internal.Shape
@@ -70,6 +76,10 @@ library
                   , petrus-json
                   , stm >=2.5
                   , text >=2.0
+                  , unix >=2.8
+                  , filepath >=1.4
+                  , directory >=1.3
+                  , direct-sqlite >=2.3.29
   ghc-options:      -O2
 
 test-suite petrus-agenticus-core-test
