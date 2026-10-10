@@ -73,3 +73,20 @@ test-suite petrus-history-store-test
                   , process >=1.6
                   , text
   ghc-options:      -threaded -rtsopts
+
+benchmark petrus-history-store-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"

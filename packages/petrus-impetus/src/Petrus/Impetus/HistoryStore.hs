@@ -39,6 +39,7 @@ module Petrus.Impetus.HistoryStore
 
 import Data.Foldable (toList)
 import Data.IORef
+import GHC.IORef (atomicModifyIORef'_)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Petrus.Impetus.History.Records (Record)
@@ -78,7 +79,17 @@ size store = store.count
 -- | @InMemoryHistoryStore()@: an append-only sequence of records, per net
 -- instance. Its "durable write" is the mirror itself.
 inMemoryHistoryStore :: IO HistoryStore
-inMemoryHistoryStore = mirroredHistoryStore BackendOwned Seq.empty (pure . map (const Entered))
+inMemoryHistoryStore = do
+  -- 'mirroredHistoryStore' with a write that admits everything, without
+  -- the admission bookkeeping: every batch simply joins the sequence.
+  mirror <- newIORef Seq.empty
+  pure
+    HistoryStore
+      { snapshot = readIORef mirror
+      , count = Seq.length <$> readIORef mirror
+      , extend = \batch -> () <$ atomicModifyIORef'_ mirror (\held -> foldl' (Seq.|>) held batch)
+      , mode = BackendOwned
+      }
 
 -- | How the backend placed one record of a batch.
 data Admission
@@ -98,8 +109,10 @@ mirroredHistoryStore commitMode loaded durable = do
   mirror <- newIORef loaded
   let extend' batch = do
         admissions <- durable batch
-        let entered = [r | (r, Entered) <- zip batch (admissions ++ repeat Entered)]
-        atomicModifyIORef' mirror (\held -> (held <> Seq.fromList entered, ()))
+        let entered
+              | all (== Entered) admissions = batch
+              | otherwise = [r | (r, Entered) <- zip batch (admissions ++ repeat Entered)]
+        atomicModifyIORef' mirror (\held -> (foldl' (Seq.|>) held entered, ()))
   pure
     HistoryStore
       { snapshot = readIORef mirror

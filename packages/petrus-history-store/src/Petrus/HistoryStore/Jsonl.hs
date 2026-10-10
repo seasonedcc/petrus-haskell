@@ -46,9 +46,11 @@ module Petrus.HistoryStore.Jsonl
   , DurableAppend
   , durableAppend
   , appendLines
+  , appendPayload
     -- * The format
   , encodeLine
   , encodeBatch
+  , encodePayload
   , loadJsonlHistory
   , decodeLines
     -- * Errors
@@ -59,6 +61,8 @@ import Control.Exception (Exception (..), bracket, throwIO)
 import Control.Monad (unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.ByteString.Builder qualified as B
+import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Unsafe qualified as BU
 import Data.Sequence (Seq)
@@ -70,7 +74,7 @@ import Petrus.Impetus.History.Codec (decodeRecord, encodeRecord)
 import Petrus.Impetus.History.Records (Record, recordName)
 import Petrus.Impetus.HistoryStore
 import Petrus.Impetus.Internal.PyJson qualified as Py
-import Petrus.Json (EncodeError (..), EncodeOptions (..), Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsBuilder, parseJson, pythonLoads)
 import Petrus.Telemetry (EventSink, emit, getLogger)
 import Petrus.Telemetry qualified as Telemetry
 import System.Directory (createDirectoryIfMissing, doesFileExist)
@@ -137,12 +141,15 @@ durableAppend durability path = DurableAppend {path, durability}
 -- descriptor opened for appending (created @0666@ before the umask, as
 -- Python's @open(path, "a")@).
 appendLines :: DurableAppend -> [ByteString] -> IO ()
-appendLines policy lines' = do
+appendLines policy lines' = appendPayload policy (BS.concat (concatMap (\line -> [line, "\n"]) lines'))
+
+-- | Append already-terminated lines as one write.
+appendPayload :: DurableAppend -> ByteString -> IO ()
+appendPayload policy payload = do
   let directory = takeDirectory policy.path
   createDirectoryIfMissing True directory
   existed <- if policy.durability == PowerFailure then doesFileExist policy.path else pure True
-  let payload = BS.concat (concatMap (\line -> [line, "\n"]) lines')
-      flags = defaultFileFlags {append = True, creat = Just 0o666}
+  let flags = defaultFileFlags {append = True, creat = Just 0o666}
   bracket (openFd policy.path WriteOnly flags) closeFd $ \fd -> do
     writeAll fd payload
     when (policy.durability == PowerFailure) (fileSynchronise fd)
@@ -162,9 +169,14 @@ writeAll fd bytes = BU.unsafeUseAsCStringLen bytes $ \(start, total) ->
 -- | @json.dumps(encode_record(record), allow_nan=False)@, or the reference's
 -- refusal text.
 encodeLine :: Record -> Either Text ByteString
-encodeLine record = case dumps defaultDumps {allowNan = False} (encodeRecord record) of
-  Right line -> Right line
-  Left (NonFiniteNumber value) ->
+encodeLine record = encodeRefusal record >> Right (BL.toStrict (B.toLazyByteString (lineBuilder record)))
+
+-- | The reference's refusal for a record that is not JSON-faithful: the
+-- first non-finite float, in the order @json.dumps@ visits values.
+encodeRefusal :: Record -> Either Text ()
+encodeRefusal record = case firstNonFinite (encodeRecord record) of
+  Nothing -> Right ()
+  Just value ->
     Left
       ( "cannot durably encode "
           <> recordName record
@@ -178,9 +190,34 @@ encodeLine record = case dumps defaultDumps {allowNan = False} (encodeRecord rec
       | value > 0 = "inf"
       | otherwise = "-inf"
 
+firstNonFinite :: Json -> Maybe Double
+firstNonFinite = \case
+  Float d | isNaN d || isInfinite d -> Just d
+  Array items -> firstJust (map firstNonFinite items)
+  Object members -> firstJust (map (firstNonFinite . snd) members)
+  _ -> Nothing
+  where
+    firstJust = \case
+      [] -> Nothing
+      Just d : _ -> Just d
+      Nothing : rest -> firstJust rest
+
+-- | One already-checked record's line, unterminated. (The check runs as a
+-- separate streaming pass so no batch's values are held all at once.)
+lineBuilder :: Record -> B.Builder
+lineBuilder record = either (const mempty) id (dumpsBuilder defaultDumps {allowNan = True} (encodeRecord record))
+
 -- | Encode a whole batch before any IO.
 encodeBatch :: [Record] -> Either Text [ByteString]
 encodeBatch = traverse encodeLine
+
+-- | Encode a whole batch before any IO, as the one terminated payload the
+-- append writes: every record is checked first, then the batch is written
+-- through one builder run.
+encodePayload :: [Record] -> Either Text ByteString
+encodePayload batch = do
+  mapM_ encodeRefusal batch
+  Right (BL.toStrict (B.toLazyByteString (foldMap (\record -> lineBuilder record <> B.char7 '\n') batch)))
 
 -- | Decode a file's bytes: universal newlines, one record per line, all or
 -- nothing. The 'FilePath' only names the file in the refusal.
@@ -275,14 +312,14 @@ openJsonlHistoryStoreWith options path = do
       logger = getLogger "impetus" options.telemetry
       write batch = do
         started <- Telemetry.monotonicClock
-        encoded <- either (throwIO . HistoryStoreError) pure (encodeBatch batch)
-        appendLines policy encoded
+        payload <- either (throwIO . HistoryStoreError) pure (encodePayload batch)
+        appendPayload policy payload
         elapsed <- Telemetry.elapsedMs Telemetry.monotonicClock started
         emit
           logger
           "jsonl_commit"
           [ ("records", Int (fromIntegral (length batch)))
-          , ("bytes", Int (fromIntegral (foldl' (\total line -> total + BS.length line + 1) 0 encoded)))
+          , ("bytes", Int (fromIntegral (BS.length payload)))
           , ("elapsed_ms", Int elapsed)
           ]
         pure (map (const Entered) batch)
