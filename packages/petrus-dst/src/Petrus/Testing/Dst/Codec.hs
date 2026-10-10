@@ -31,8 +31,9 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (EncodeError (..), EncodeOptions (..), Json (..), compact, dumps, lookupMember)
+import Petrus.Json (EncodeOptions (..), Json (..), compact, lookupMember)
 import Petrus.Testing.Dst.Decode
+import Petrus.Testing.Dst.Internal.Canonical (canonicalStrict)
 import Petrus.Testing.Dst.Internal.StrictJson (loadStrictJson)
 import Petrus.Testing.Dst.PyRepr (jsonToPy, pyRepr)
 import Petrus.Testing.Dst.Types
@@ -45,9 +46,9 @@ canonicalOptions = compact {sortKeys = True, ensureAscii = True}
 -- | Canonical bytes of strict JSON data; refuses non-finite numbers with
 -- CPython's message.
 canonicalBytes :: Json -> Either Text ByteString
-canonicalBytes value = case dumps canonicalOptions value of
+canonicalBytes value = case canonicalStrict value of
   Right bytes -> Right bytes
-  Left (NonFiniteNumber d) -> Left ("Out of range float values are not JSON compliant: " <> floatName d)
+  Left d -> Left ("Out of range float values are not JSON compliant: " <> floatName d)
   where
     floatName d
       | isNaN d = "nan"

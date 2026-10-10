@@ -36,6 +36,7 @@ library
                     Petrus.Testing.Dst.Choice
                     Petrus.Testing.Dst.Codec
                     Petrus.Testing.Dst.Decode
+                    Petrus.Testing.Dst.Internal.Canonical
                     Petrus.Testing.Dst.Internal.StrictJson
                     Petrus.Testing.Dst.Internal.World
                     Petrus.Testing.Dst.Profile
@@ -68,7 +69,8 @@ test-suite petrus-dst-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    Spec.Choice
+  other-modules:    Generated
+                    Spec.Choice
                     Spec.Codec
                     Spec.Properties
                     Spec.Runner
@@ -99,16 +101,19 @@ benchmark petrus-dst-bench
   type:             exitcode-stdio-1.0
   hs-source-dirs:   bench test
   main-is:          Bench.hs
-  other-modules:    Toy
+  other-modules:    Generated
+                    Spec.Support
+                    Toy
   build-depends:    base
                   , bytestring
                   , containers
-                  , deepseq
                   , directory
                   , filepath
+                  , hspec
                   , mtl
                   , petrus-dst
                   , petrus-json
+                  , QuickCheck
                   , tasty-bench >=0.3
                   , text
   ghc-options:      -O2 -rtsopts
