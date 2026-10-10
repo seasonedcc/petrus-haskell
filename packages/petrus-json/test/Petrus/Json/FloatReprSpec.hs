@@ -25,7 +25,7 @@ import GHC.Float (castDoubleToWord64, castWord64ToDouble)
 import Petrus.Json
 import Petrus.Json.Float (floatReprBuilder, pythonFloatReprBytes)
 import Petrus.Json.Repr (pythonReprFloat)
-import System.Directory (doesDirectoryExist, doesFileExist, getCurrentDirectory, makeAbsolute)
+import System.Directory (doesFileExist, getCurrentDirectory, makeAbsolute)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
 import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
@@ -73,44 +73,42 @@ corpus = edgeDoubles <> map negate edgeDoubles <> doublesFrom 4242 70000 <> larg
         <> [fromIntegral i * 1.0e14 | i <- [1 .. 2000 :: Int]]
     powers = filter (\d -> d /= 0 && not (isInfinite d)) ([10 ^^ k | k <- [-330 .. 310 :: Int]] <> [2 ^^ k | k <- [-1080 .. 1023 :: Int]])
 
--- | The pinned upstream interpreter, if this checkout has one.
-upstreamPython :: IO (Maybe (FilePath, FilePath))
-upstreamPython = getCurrentDirectory >>= makeAbsolute >>= go
+-- | The pinned reference interpreter and its checkout, provisioned by
+-- @scripts/upstream-python@ as every differential suite's is. (petrus-json
+-- cannot use petrus-test-support, which depends on it.) Fails, never skips,
+-- when the environment cannot be provisioned.
+upstreamPython :: IO (FilePath, FilePath)
+upstreamPython = getCurrentDirectory >>= makeAbsolute >>= root >>= provision
   where
-    go dir = do
-      project <- doesFileExist (dir </> "cabal.project")
-      upstream <- doesDirectoryExist (dir </> "upstream")
-      let parent = takeDirectory dir
-      if project && upstream
-        then do
-          let checkout = dir </> "upstream" </> "petrus"
-              exe = checkout </> ".venv" </> "bin" </> "python"
-          present <- doesFileExist exe
-          pure (if present then Just (exe, checkout) else Nothing)
-        else if parent == dir then pure Nothing else go parent
+    root dir = do
+      found <- doesFileExist (dir </> "scripts" </> "upstream-python")
+      if found
+        then pure dir
+        else if takeDirectory dir == dir then fail "no scripts/upstream-python above the test's directory" else root (takeDirectory dir)
+    provision dir = do
+      (code, out, err) <- readCreateProcessWithExitCode (proc (dir </> "scripts" </> "upstream-python") ["petrus"]) ""
+      case (code, lines out) of
+        (ExitSuccess, exe : _) -> pure (exe, dir </> "upstream" </> "petrus")
+        _ -> fail ("scripts/upstream-python could not provision the reference: " ++ err)
 
 -- | CPython's @json.dumps@ and @repr@ of every double, one per line, after
 -- the compact array: @(dumps, [repr])@.
-cpython :: [Double] -> IO (Maybe (BS.ByteString, [BS.ByteString]))
-cpython doubles =
-  upstreamPython >>= \case
-    Nothing -> pure Nothing
-    Just (exe, checkout) -> do
-      let code =
-            unlines
-              [ "import json, struct, sys"
-              , "doubles = [struct.unpack('<d', int(b).to_bytes(8, 'little'))[0] for b in sys.stdin.read().split(',')]"
-              , "out = sys.stdout"
-              , "out.write(json.dumps(doubles, separators=(',', ':')) + '\\n')"
-              , "out.write('\\n'.join(repr(d) for d in doubles))"
-              ]
-          bits = intercalateComma (map (show . castDoubleToWord64) doubles)
-      (code', out, err) <- readCreateProcessWithExitCode (proc exe ["-I", "-B", "-c", code]) {cwd = Just checkout} bits
-      case (code', BC.lines (BC.pack out)) of
-        (ExitSuccess, encoded : reprs) -> pure (Just (encoded, reprs))
-        _ -> fail ("CPython failed: " ++ err)
-  where
-    intercalateComma = foldr1 (\a b -> a ++ "," ++ b)
+cpython :: [Double] -> IO (BS.ByteString, [BS.ByteString])
+cpython doubles = do
+  (exe, checkout) <- upstreamPython
+  let code =
+        unlines
+          [ "import json, struct, sys"
+          , "doubles = [struct.unpack('<d', int(b).to_bytes(8, 'little'))[0] for b in sys.stdin.read().split(',')]"
+          , "out = sys.stdout"
+          , "out.write(json.dumps(doubles, separators=(',', ':')) + '\\n')"
+          , "out.write('\\n'.join(repr(d) for d in doubles))"
+          ]
+      bits = foldr1 (\a b -> a ++ "," ++ b) (map (show . castDoubleToWord64) doubles)
+  (code', out, err) <- readCreateProcessWithExitCode (proc exe ["-I", "-B", "-c", code]) {cwd = Just checkout} bits
+  case (code', BC.lines (BC.pack out)) of
+    (ExitSuccess, encoded : reprs) -> pure (encoded, reprs)
+    _ -> fail ("CPython failed: " ++ err)
 
 spec :: Spec
 spec = describe "pythonFloatRepr (CPython's float.__repr__)" $ do
@@ -132,11 +130,9 @@ spec = describe "pythonFloatRepr (CPython's float.__repr__)" $ do
   it "matches CPython's json.dumps and repr byte for byte on over 100 000 doubles" $ do
     let doubles = corpus
     length doubles `shouldSatisfy` (> 100000)
-    cpython doubles >>= \case
-      Nothing -> pendingWith "upstream/petrus/.venv is not available"
-      Just (encoded, reprs) -> do
-        length reprs `shouldBe` length doubles
-        dumps compact (Array (map Float doubles)) `shouldBe` Right encoded
-        fmap (BL.toStrict . B.toLazyByteString) (dumpsBuilder compact (Array (map Float doubles))) `shouldBe` Right encoded
-        let mismatches = [(d, mine, theirs) | (d, theirs) <- zip doubles reprs, let mine = pythonFloatReprBytes d, mine /= theirs]
-        take 5 mismatches `shouldBe` []
+    (encoded, reprs) <- cpython doubles
+    length reprs `shouldBe` length doubles
+    dumps compact (Array (map Float doubles)) `shouldBe` Right encoded
+    fmap (BL.toStrict . B.toLazyByteString) (dumpsBuilder compact (Array (map Float doubles))) `shouldBe` Right encoded
+    let mismatches = [(d, mine, theirs) | (d, theirs) <- zip doubles reprs, let mine = pythonFloatReprBytes d, mine /= theirs]
+    take 5 mismatches `shouldBe` []
