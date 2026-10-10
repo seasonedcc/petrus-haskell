@@ -135,6 +135,7 @@ benchmark petrus-dst-bench
   hs-source-dirs:   bench test
   main-is:          Bench.hs
   other-modules:    Generated
+                    Spec.EngineWorlds
                     Spec.Support
                     Toy
   build-depends:    base
@@ -149,5 +150,6 @@ benchmark petrus-dst-bench
                   , petrus-json
                   , QuickCheck
                   , tasty-bench >=0.3
+                  , temporary >=1.3
                   , text
   ghc-options:      -O2 -rtsopts

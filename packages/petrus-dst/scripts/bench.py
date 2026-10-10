@@ -19,7 +19,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from engine_authored import ONE_PATH, TWO_PATHS  # noqa: E402
 from generated_stories import author  # noqa: E402
+from tests.dst.replay_world import replay_path  # noqa: E402
 
 from petrus.testing.dst import (  # noqa: E402
     ChoiceAuthority,
@@ -34,6 +36,42 @@ from petrus.testing.dst import (  # noqa: E402
 FIXTURES = Path("tests/dst/fixtures")
 FOREIGN = {"generated-runtime-semantic-coverage-v1.json", "projection-crash-recovery-v1.json"}
 DATA = Path(__file__).resolve().parent.parent / "test" / "data"
+
+# The non-joined fixtures Spec.EngineWorlds.replayCases replays through real
+# Haskell Engine profiles, in the same order.
+ENGINE_FIXTURES = [
+    "projection-crash-recovery-world-v1.json",
+    "seeded-projection-crash-recovery-world-v3.json",
+    "terminal-checker-failure-world-v2.json",
+    "action-budget-exhaustion-world-v2.json",
+    "resource-bounded-recovery-world-v4.json",
+    "history-record-budget-exhaustion-world-v4.json",
+    "history-refusal-crash-recovery-world-v3.json",
+    "history-ack-loss-recovery-world-v3.json",
+    "dispatch-refusal-crash-recovery-world-v3.json",
+    "delayed-terminal-recovery-world-v3.json",
+    "identified-delivery-redelivery-world-v3.json",
+    "timer-crash-recovery-world-v3.json",
+    "lifecycle-reset-late-terminal-world-v3.json",
+    "lifecycle-cancellation-refusal-world-v3.json",
+]
+
+# The builders Spec.EngineWorlds.authorCases authors, in the same order.
+ENGINE_BUILDERS = ONE_PATH
+
+
+def author_engine_worlds() -> list[bytes]:
+    authored = []
+    for module, name in ENGINE_BUILDERS:
+        with tempfile.TemporaryDirectory(prefix="petrus-dst-bench-") as raw:
+            directory = Path(raw)
+            build = getattr(module, name)
+            if (module, name) in TWO_PATHS:
+                artifact = build(directory / "history.jsonl", directory / "dispatch.sqlite3")
+            else:
+                artifact = build(directory / "history.jsonl")
+            authored.append(encode_artifact(artifact))
+    return authored
 
 
 def measure(name: str, call) -> None:
@@ -77,6 +115,19 @@ def main() -> int:
         "fold queue-story progress",
         lambda: _process_result(spec, 0, "exited", False, progress).model_dump_json(),
     )
+    measure(
+        f"engine/replay {len(ENGINE_FIXTURES)} Engine-world fixtures",
+        lambda: [
+            json.dumps(
+                replay_path(FIXTURES / name).model_dump(mode="json"),
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            for name in ENGINE_FIXTURES
+        ],
+    )
+    measure(f"engine/author {len(ENGINE_BUILDERS)} Engine worlds", author_engine_worlds)
     directory.cleanup()
     return 0
 

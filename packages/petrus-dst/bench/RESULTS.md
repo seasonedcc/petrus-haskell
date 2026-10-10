@@ -17,8 +17,15 @@ and in the pinned Python reference (`scripts/bench.py`, `timeit`).
 | 1000 workload choice draws (`sha256-counter-v1`) | 1.89 ms | 1.29 ms | 1.5× |
 | author and replay the 400 generated toy scripts | 255 ms | 87.3 ms | 2.9× |
 | fold the queue-story process progress into its result | 557 µs | 256 µs | 2.2× |
+| replay the 14 Engine-world fixtures through real Engine profiles | 61.4 ms | 23.2 ms | 2.6× |
+| author the 14 Engine worlds (the reference's `build_*_artifact`) | 62.7 ms | 21.3 ms | 2.9× |
 
 Haskell is faster on every workload.
+
+The two Engine rows were measured later the same day, with other builds running on the
+machine, so their absolute times are noisier than the rows above. Both sides were measured
+back to back under the same load. During that run Python's `decode + encode` row measured
+48.5 ms, against 30.7 ms quiet.
 
 What each workload covers:
 
@@ -35,6 +42,17 @@ What each workload covers:
   are trivial.
 - **fold**: `_process_result` over the 15-frame queue-story progress file, including result
   encoding. Python reads the progress from a file. Haskell takes the bytes.
+- **Engine replay**: each fixture of `Spec.EngineWorlds.replayCases` is strictly decoded and
+  replayed through fresh profiles over a fresh scratch directory. It runs on the real Engine
+  over a real JSONL History: create, load after every crash, apply, observe, and the checkers.
+  The run ends with the canonical replay-result bytes.
+  - Python uses the reference's own `tests.dst.replay_world.replay_path`. It registers every
+    Engine profile per fixture, constructors only: History and Dispatch files open lazily.
+  - Haskell registers the profiles of that fixture's world module.
+- **Engine authoring**: every `Spec.EngineWorlds.authorCases` story runs on a fresh History.
+  This covers the executable, seeded, and failure stories of `engine_world`, `delayed_world`,
+  `delivery_world`, `timer_world` and `lifecycle_world`. Each produces and encodes its
+  artifact. The Python side calls the reference's `build_*_artifact` functions.
 
 The first measurement had Haskell slower on encoding: 24.2 ms against 11.4 ms, and 1.05 ms
 against 571 µs for the digest. petrus-json's general `dumps` builds every string one character
