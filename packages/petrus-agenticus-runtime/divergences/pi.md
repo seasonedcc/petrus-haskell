@@ -1,0 +1,118 @@
+## Pi native runtime (`Petrus.Agenticus.Runtime.Pi`, `Petrus.Agenticus.Runtime.PiRecovery`)
+
+These choices are deliberate. `differential/pi_corpus.json` pins the wire
+bytes, validator results, fingerprints, records and ledger files on both
+sides of each one. Its single accepted difference is item 6.
+
+1. **Protocols are records of operations.** The reference's structural
+   protocols are records here, whose fields are the protocol's methods:
+   - continuation and Turn storage: `PiContinuationOperations`,
+     `PiTurnOperations`;
+   - connection custody: `PiConnectionCustody`;
+   - helper clients and factories: `PiHelperClient`, `PiHelperFactory`;
+   - the operation ledger: `PiOperationLedger`.
+
+   `piConnectionCustody` adapts the real `AgentConnectionCustody`, and
+   `sqlitePiOperationLedger` adapts the SQLite ledger.
+
+2. **Private attributes are explicit state with named setters.** The
+   reference's tests assign private adapter attributes or monkeypatch private
+   methods (`_binding_current`, `_start`, `_receipt`, `_thread_start` and
+   others). The port keeps that state in `PiAdapterRuntime`, which is
+   changed only through these functions:
+   - `modifyAdapterRuntime`, `setAdapterConfig`, `setAdapterClock`;
+   - `setAdapterHooks`, which takes `PiAdapterHooks`;
+   - `setSubprocessStartFrame`.
+
+   The recovered runtime takes a `PiAdapterSurface`
+   (`newPiRecoveredRuntimeWith`) in place of a patched adapter. Each hook
+   defaults to the reference's own behaviour.
+
+3. **Python exception classes without a Haskell type.** The port raises
+   `AgenticusError`. Exceptions the reference raises from library code keep
+   their Python class name as `OtherError`:
+   - `binascii.Error` (strict base64) becomes `OtherError "Error"`;
+   - `UnicodeDecodeError` becomes `OtherError "UnicodeDecodeError"`, with
+     CPython's exact message (from `Petrus.Impetus.Internal.PyJson`);
+   - `OverflowError` becomes `OtherError "OverflowError"`.
+
+   Both `binascii.Error` and `UnicodeDecodeError` are `ValueError`
+   subclasses upstream. The tests' `pytest.raises(ValueError)` therefore
+   accepts all three names (`raisesValueLike`).
+
+4. **`_strict_load` refusals carry no message.** The reference's
+   `_strict_load` raises `ValueError`, `UnicodeDecodeError` or
+   `JSONDecodeError`. Every caller maps all three to one protocol code
+   (`malformed-frame`, `malformed-complete`, a bare `ValueError`, or a
+   session message). The port's `strictLoad` therefore returns `Left ()`.
+   The corpus compares acceptance and the decoded value, not
+   `JSONDecodeError` text.
+
+5. **Non-ASCII base64 text is refused before decoding.**
+   `base64.b64decode(str, validate=True)` raises `ValueError: string
+   argument should contain only ASCII characters` before it applies any
+   base64 rule. `pyB64DecodeText` checks in the same order.
+
+6. **Lone surrogate escapes decode to U+FFFD.** CPython's scanner admits
+   `"\ud800"` into a `str`, which `Data.Text` cannot hold. Two cases follow:
+   - **Sessions and credentials.** `strictLoad` runs the CPython-faithful
+     scanner and accepts the same documents. Each lone surrogate becomes
+     U+FFFD. `_validate_session` and `_validate_native_auth` inspect only
+     structure, so they accept exactly what the reference accepts. The
+     session bytes themselves are stored and resent untouched.
+   - **Helper frames.** `strictFrameLoad` refuses a frame with a lone
+     surrogate escape as `malformed-frame`. The reference admits such a
+     frame. It then either fails later on that member (`text.encode()` in a
+     `complete` frame gives `malformed-complete`) or forwards the string to
+     the Hands gateway. The port does not invent a replacement character
+     inside model output or tool parameters.
+
+   This is the one corpus case recorded as a known divergence
+   (`strictLoadDivergences` in `PiDifferentialSpec`).
+
+7. **Ledger rows with foreign column types.** `_decode` passes raw SQLite
+   values into `PiOperationRecord`. The port mirrors the values a tampered
+   file can hold:
+   - A `BLOB` text column renders as `str(bytes)`, for example `b'op-a'`.
+   - A `REAL` `accepted_appends` behaves as its integer when it is integral.
+     Otherwise it fails the record's own checks with the reference's
+     message.
+   - Any other non-integer `accepted_appends` or `sequence` is refused as
+     `ValueError` ("must be an integer column"). The reference would build a
+     record around the foreign value. The corpus's text `'1'` case stores an
+     integer under the column's affinity and agrees.
+
+8. **`probe` fails closed on any synchronous exception.** The reference
+   catches `OSError`, `ValueError`, `KeyError`, `JSONDecodeError` and
+   `SubprocessError`, and reports `protocol-unavailable`. The port reports
+   the same issue for every non-asynchronous exception and rethrows
+   asynchronous ones.
+
+9. **Reprs.** `renderPiRuntimeConfig`, `renderPiRuntimeInvocation` and
+   `renderPiRuntimeAdapter` reproduce the reference's dataclass reprs, with
+   the same `repr=False` omissions. There is one exception. Inside the
+   invocation, the `connection=` member uses the derived `Show` of
+   `petrus-agenticus-core`'s `ConnectionView`
+   (`ConnectionView {identity = ..., ...}`), not the reference's
+   `ConnectionView(identity=ConnectionIdentity(...), ...)`. Both carry only
+   nonsecret identity, status, epochs and digest. No secret, prompt or
+   session byte reaches any render; the canary test pins this.
+
+10. **Fresh session identities.** A fresh `session_id` is a uuid4 drawn from
+    crypton's random generator, not `uuid.uuid4()`. Both are canonical,
+    lowercase RFC 4122 version-4 identities. The corpus takes the fresh
+    value from the reference's frame, and the bytes then agree.
+
+11. **No logging.** The reference logs nothing secret, and its
+    `test_canaries_never_render_log_or_error` checks `caplog`. The port does
+    not log, so only the renders and refusals are checked.
+
+12. **Test-only substitutions** (`test/Petrus/Agenticus/Runtime/PiSupport.hs`):
+    - The reference mutates a frozen lease with `object.__setattr__`. The
+      test Territory instead wraps the local Motus provider, relabels its
+      leases, attachments, provenance and cleanup, and can drift its lookup.
+    - The reference passes `object()` as a malformed checkpoint. The port's
+      checkpoint is typed, so the malformed case returns a publication for
+      another operation id, which the adapter refuses in the same way.
+    - `test_import_has_no_node_or_npm_dependency` becomes a structural check
+      (see `parity/pi.md`).

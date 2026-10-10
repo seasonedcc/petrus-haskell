@@ -108,6 +108,7 @@ benchmark petrus-agenticus-runtime-bench
   type:             exitcode-stdio-1.0
   hs-source-dirs:   bench
   main-is:          Main.hs
+  other-modules:    PiBench
   build-depends:    base
                   , bytestring
                   , filepath

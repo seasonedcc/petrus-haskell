@@ -126,6 +126,7 @@ module Petrus.Agenticus.Runtime.Pi
   , piText
   , piUuid
   , strictLoad
+  , strictFrameLoad
   , validateNativeAuth
   , decodeNativeAuth
   , validateSession

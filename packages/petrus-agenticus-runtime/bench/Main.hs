@@ -32,6 +32,7 @@ import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
+import PiBench (piBenchmarks)
 import Test.Tasty.Bench
 
 ok :: (Show e) => Either e a -> a
@@ -111,9 +112,12 @@ roundtrip bytes =
     )
 
 main :: IO ()
-main = do
+main = withSystemTempDirectory "pi-bench" $ \tmp -> do
   final <- runOnce
+  pi' <- piBenchmarks tmp
   defaultMain
-    [ bench "runner-3-phases-3-reads" (whnfIO runOnce)
-    , bench "projection-roundtrip" (nf roundtrip final)
-    ]
+    ( [ bench "runner-3-phases-3-reads" (whnfIO runOnce)
+      , bench "projection-roundtrip" (nf roundtrip final)
+      ]
+        <> pi'
+    )
