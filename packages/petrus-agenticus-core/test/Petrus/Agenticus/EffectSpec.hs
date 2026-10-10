@@ -16,7 +16,7 @@ import Petrus.Agenticus.Effect.Gateway
 import Petrus.Agenticus.Effect.Model
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Validate (canonicalBytes)
-import Petrus.Agenticus.Support
+import Petrus.Agenticus.Support hiding (shouldRaiseMatchingIO)
 import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
 import Petrus.Json qualified as J
 import Test.Hspec

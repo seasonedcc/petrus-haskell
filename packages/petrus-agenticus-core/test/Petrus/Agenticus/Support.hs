@@ -5,6 +5,7 @@ module Petrus.Agenticus.Support
   , parseJsonText
   , shouldRaise
   , shouldRaiseIO
+  , shouldRaiseMatchingIO
   , shouldRaiseMatching
   , expectRight
   , expectRightIO
@@ -70,6 +71,16 @@ shouldRaiseIO action cls = do
     Left e
       | e `isInstanceOf` cls -> pure ()
       | otherwise -> expectationFailure ("expected " <> show cls <> ", got " <> show e)
+    Right _ -> expectationFailure ("expected " <> show cls <> ", got success")
+
+-- | Like 'shouldRaiseIO', also requiring the message to contain the text.
+shouldRaiseMatchingIO :: IO a -> ErrorClass -> Text -> Expectation
+shouldRaiseMatchingIO action cls needle = do
+  outcome <- try action
+  case outcome of
+    Left e
+      | e `isInstanceOf` cls && needle `T.isInfixOf` errorMessage e -> pure ()
+      | otherwise -> expectationFailure ("expected " <> show cls <> " matching " <> show needle <> ", got " <> show e)
     Right _ -> expectationFailure ("expected " <> show cls <> ", got success")
 
 expectRight :: Either AgenticusError a -> a

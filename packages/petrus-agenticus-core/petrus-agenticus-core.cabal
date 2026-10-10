@@ -39,6 +39,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Error
                     Petrus.Agenticus.Internal.Validate
+                    Petrus.Agenticus.Internal.Atomic
                     Petrus.Agenticus.Catalog.Descriptor
                     Petrus.Agenticus.Catalog.Result
                     Petrus.Agenticus.Catalog.Resolution
@@ -54,12 +55,17 @@ library
                     Petrus.Agenticus.Runtime.Installation
                     Petrus.Agenticus.Runtime.Result
                     Petrus.Agenticus.Runtime.Operation
+                    Petrus.Agenticus.Hands.Contract
+                    Petrus.Agenticus.Hands.Grants
+                    Petrus.Agenticus.Hands.Gateway
+                    Petrus.Agenticus.Hands.Conformance
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
                   , crypton >=1.0
                   , ram >=0.20
                   , petrus-json
+                  , stm >=2.5
                   , text >=2.0
   ghc-options:      -O2
 
@@ -75,7 +81,12 @@ test-suite petrus-agenticus-core-test
                     Petrus.Agenticus.ProgramSpec
                     Petrus.Agenticus.RuntimeFoundationSpec
                     Petrus.Agenticus.ThreadDifferentialSpec
+                    Petrus.Agenticus.Hands.Fixtures
+                    Petrus.Agenticus.HandsSpec
+                    Petrus.Agenticus.Hands.ConformanceSpec
+                    Petrus.Agenticus.Hands.DifferentialSpec
   build-depends:    base
+                  , async >=2.2
                   , bytestring
                   , containers
                   , directory
@@ -95,7 +106,9 @@ benchmark petrus-agenticus-core-bench
   other-modules:    Bench.Catalog
                     Bench.Effect
                     Bench.Thread
+                    Bench.Hands
   build-depends:    base
+                  , async >=2.2
                   , bytestring
                   , containers
                   , deepseq
