@@ -13,6 +13,7 @@ import ReviewSpec qualified
 import ReadinessSpec qualified
 import BoardSpec qualified
 import BoardCorpusSpec qualified
+import GatingSpec qualified
 import Test.Hspec (hspec)
 import TopologySpec qualified
 
@@ -32,3 +33,4 @@ main = hspec $ do
   ReadinessSpec.spec
   BoardSpec.spec
   BoardCorpusSpec.spec
+  GatingSpec.spec

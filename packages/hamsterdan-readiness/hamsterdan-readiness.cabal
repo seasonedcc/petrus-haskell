@@ -74,6 +74,7 @@ test-suite hamsterdan-readiness-test
                       OverloadedRecordDot
                       NoFieldSelectors
   other-modules:    Corpus
+                    GatingSpec
                     BoardCorpusSpec
                     BoardSpec
                     ReadinessSpec
@@ -103,6 +104,10 @@ test-suite hamsterdan-readiness-test
                   , petrus-engine
                   , petrus-impetus
                   , petrus-json
+                  , petrus-history-store
                   , petrus-motus
+                  , direct-sqlite
+                  , temporary
+                  , filepath
                   , text
   ghc-options:      -threaded -rtsopts

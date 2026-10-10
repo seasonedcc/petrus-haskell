@@ -72,6 +72,8 @@ module Harness
   , keys
   , dummyContext
   , callDefinition
+  , builtNet
+  , engineOptions
   ) where
 
 import Control.Exception (ErrorCall (..), throwIO)
@@ -793,7 +795,7 @@ spawnWith instanceId world0 initialMail = do
       instanceId
       store
       port
-      (options definitions marking') {Engine.policy = Engine.conservativePolicy}
+      (engineOptions definitions marking') {Engine.policy = Engine.conservativePolicy}
   H engine ref Nothing definitions builtNet <$> newIORef 0
 
 -- | Spawn with an explicit worker pool so a test can HOLD a gate's
@@ -814,11 +816,11 @@ spawnHeldWith instanceId world0 = do
       instanceId
       store
       (InMemory.inMemoryDispatch pool)
-      (options definitions seeded) {Engine.policy = Engine.throughputPolicy}
+      (engineOptions definitions seeded) {Engine.policy = Engine.throughputPolicy}
   H engine ref (Just pool) definitions builtNet <$> newIORef 0
 
-options :: Map Text GateDefinition -> Marking -> Engine.EngineOptions
-options definitions marking' =
+engineOptions :: Map Text GateDefinition -> Marking -> Engine.EngineOptions
+engineOptions definitions marking' =
   Engine.defaultEngineOptions
     { Engine.marking = marking'
     , Engine.handlers = handlersOf builtNet definitions
