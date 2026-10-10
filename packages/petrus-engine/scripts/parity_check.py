@@ -4,7 +4,7 @@ Run from the repository root:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-Covers petrus-motus, petrus-history-store, and petrus-engine. Every Hspec example
+Covers petrus-motus, petrus-history-store, petrus-engine, and petrus-engine-sqlite. Every Hspec example
 is named after the upstream test it ports (``test_a_b_c`` becomes ``it "a b c"``,
 under ``describe "TestClass"``; a parametrized test becomes ``describe "a b c"``
 with one example per case), so a test is accounted for when:
@@ -56,6 +56,7 @@ SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | Excluding | None]]
     "petrus-history-store": [
         ("petrus/impetus/history_store/test_persistence.py", {"TestDurableAppend", "TestJsonlHistoryStore"}, None),
         ("petrus/impetus/history_store/test_history_backends.py", None, None),
+        ("petrus/impetus/history_store/test_sqlite_history.py", None, None),
     ],
     "petrus-engine": [
         ("petrus/engine/test_engine.py", None, None),
@@ -76,6 +77,9 @@ SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | Excluding | None]]
         ),
         ("petrus/engine/test_execution.py", None, None),
         ("petrus/motus/dispatch/test_local_dispatch.py", None, LOCAL_ENGINE_TESTS),
+    ],
+    "petrus-engine-sqlite": [
+        ("petrus/engine/test_sqlite_engine.py", None, None),
     ],
 }
 

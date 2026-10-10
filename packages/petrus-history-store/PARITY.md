@@ -1,19 +1,29 @@
 # petrus-history-store: parity with the Python reference
 
 This package holds the durable History store backends behind the kernel's
-`HistoryStore` contract. At this milestone that is the JSONL store
-(`Petrus.HistoryStore.Jsonl`, the reference's `JsonlHistoryStore`). The
-SQLite store has a reserved place and a written recipe in the
-`Petrus.HistoryStore` module header.
+`HistoryStore` contract:
+- the JSONL store (`Petrus.HistoryStore.Jsonl`, the reference's
+  `JsonlHistoryStore`);
+- the SQLite store (`Petrus.HistoryStore.Sqlite`, the reference's
+  `SqliteHistoryStore`), with the SQLite writer fence re-exported from
+  petrus-sqlite.
 
 Every Hspec example is named after the upstream test it ports. To cross-check
 that every in-scope upstream test is accounted for, run:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-`cabal test petrus-history-store` runs 37 examples, with 0 failures and 0
+`cabal test petrus-history-store` runs 124 examples, with 0 failures and 0
 pending. The interop examples are pending only when
-`upstream/petrus/.venv` is not synced.
+`upstream/petrus/.venv` is not synced. By file:
+
+| spec | examples |
+| --- | ---: |
+| JsonlSpec (JSONL, upstream and beyond) | 26 |
+| BackendContractSpec (jsonl and sqlite, 13 each) | 26 |
+| InteropSpec (JSONL interop) | 4 |
+| SqliteSpec (`test_sqlite_history.py` 14, beyond upstream 5) | 19 |
+| SqliteInteropSpec (SQLite interop) | 49 |
 
 ## Ledger
 
@@ -21,7 +31,22 @@ pending. The interop examples are pending only when
 | --- | --- | --- |
 | test_persistence.py `TestDurableAppend` (2) | JsonlSpec / `TestDurableAppend` | ported |
 | test_persistence.py `TestJsonlHistoryStore` (10) | JsonlSpec / `TestJsonlHistoryStore` | ported |
-| test_history_backends.py (14), with `reopen` = jsonl | BackendContractSpec | 13 ported, 1 enforced by types |
+| test_history_backends.py (14), with `reopen` = jsonl | BackendContractSpec / `backend contract (jsonl)` | 13 ported, 1 enforced by types |
+| test_history_backends.py (14), with `reopen` = sqlite | BackendContractSpec / `backend contract (sqlite)` | 13 ported, 1 enforced by types |
+| test_sqlite_history.py (11 tests, 14 cases) | SqliteSpec / `test_sqlite_history.py` | 11/11 ported |
+
+The rows of `test_sqlite_history.py` keep the upstream names, with
+underscores read as spaces. Its two parametrized tests are `describe` blocks
+with one example per parameter:
+- `test_unsupported_schema_refuses_without_mutation` has `version 0` and
+  `version 2`;
+- `test_fresh_constructor_refuses_corrupt_durable_rows` has `gap`,
+  `payload` and `metadata`.
+
+`test_concurrent_first_initialization_for_distinct_instances` starts
+threads in the reference. Here it starts Haskell threads, and
+SqliteInteropSpec repeats it with three reference processes racing three
+Haskell threads on one fresh file.
 
 The rows of `test_history_backends.py` whose example names differ from the
 upstream names:
@@ -33,18 +58,17 @@ upstream names:
 | `TestRoundTrip.test_nan_token_data_is_refused_loud_on_both_backends` | round trip / a refused (NaN) record fails loud and enters nothing | ported. The refusal text is asserted in JsonlSpec's "unencodable data fails loud and appends nothing". |
 | `TestRoundTrip.test_an_unencodable_record_fails_loud_and_enters_nothing` | — | enforced by types. Token data is `Json`, and the only unencodable `Json` is a non-finite number, which is the NaN case. |
 
-The `reopen` fixture's sqlite and postgres parameters wait for those
-backends. When the SQLite store lands, it joins the same factory in
-BackendContractSpec.
+The `reopen` fixture's sqlite parameter runs the same 13 examples through
+`SqliteHistoryStore`. Its postgres parameter waits for that backend.
 
 ## Covered elsewhere or out of scope
 
 - The other `test_persistence.py` classes are kernel tests, ported in
   `petrus-impetus`: `TestRecordCodec`, `TestInstanceDurableHistory`, and
   `TestARaisingAppendMovesNothingElse`.
-- `test_sqlite_history.py` (11) and `test_postgres_history.py` (21) are out of
-  scope for this milestone. The SQLite store goes in this package; see the
-  `Petrus.HistoryStore` module header.
+- `test_postgres_history.py` (21) is out of scope for this milestone.
+- The SQLite writer fence's own tests are in petrus-sqlite, and the fenced
+  Engine's (`test_sqlite_engine.py`) are in petrus-engine-sqlite.
 
 ## Beyond upstream
 
@@ -72,3 +96,32 @@ BackendContractSpec.
   difference.
 - **The kernel contract through the file.** An Instance's every appending door
   is driven through a JSONL store.
+
+### SQLite
+
+- **SqliteSpec, beyond upstream** (5 examples):
+  - closing is idempotent, a closed store refuses appends, and the mirror
+    stays readable;
+  - an empty batch commits and enters nothing;
+  - an equal terminal held elsewhere is acknowledged and later positions
+    stay dense;
+  - a conflict no stored row explains is the `RuntimeError` case;
+  - the exotic record's payload is the compact ASCII spelling.
+- **Interop with the reference process** (SqliteInteropSpec, 49 examples).
+  These run `test/interop/sqlite_interop.py` under `upstream/petrus/.venv`.
+  - Every record category, both ways: rows written by one side load
+    value-equal in the other, with byte-identical payloads.
+  - Fresh files created by each side dump identically: DDL text in
+    `sqlite_master`, schema rows, and event rows apart from `recorded_at`.
+  - Interleaved appends from both sides to one file stay dense and agree.
+  - Verify-on-conflict gives the same answer on copies of one file (4
+    cases), and a stale writer is refused with the same text on both
+    sides.
+  - Refusals of foreign, unsupported and corrupt files have the same type
+    and text (36 cases). These include 17 stored payloads that are not
+    objects, refused with CPython's `dict()` texts.
+  - The empty instance id has the same refusal text.
+  - First initialization under three reference processes and three Haskell
+    threads racing on one file.
+  - Crash and resume in both directions: an Instance begun by one side
+    resumes in the other, which then reads the result.
