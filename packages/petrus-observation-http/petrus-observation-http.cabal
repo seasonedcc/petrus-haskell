@@ -1,0 +1,97 @@
+cabal-version:      3.4
+name:               petrus-observation-http
+version:            0.1.0.0
+synopsis:           The host-owned HTTP binding for Petrus observation protocol 1
+description:
+  A Haskell port of @petrus.engine.observation_http@: an HTTP/1.0 server
+  bound to one Engine that serves its three protocol-1 read doors
+  (@/v1/snapshot@, @/v1/document@, @/v1/history@) as compact, key-sorted
+  JSON with the reference's CORS headers, status codes and error bodies,
+  byte for byte. It runs on "Petrus.Http.Core" (petrus-http-core), reads
+  through "Petrus.Observation.Engine" (petrus-observation), and never owns
+  the Engine's lifecycle.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Network, Web
+build-type:         Simple
+extra-doc-files:    bench/RESULTS.md
+                    DIVERGENCES.md
+                    PARITY.md
+                    NOTICE
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Observation.Http
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , petrus-engine
+                  , petrus-http-core
+                  , petrus-json
+                  , petrus-observation
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-observation-http-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Support
+                    UpstreamSpec
+                    WireSpec
+                    PythonClientSpec
+                    ViewerSpec
+  build-tool-depends: petrus-viewer-server:petrus
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , network
+                  , petrus-engine
+                  , petrus-http-core
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-observation
+                  , petrus-observation-http
+                  , petrus-test-support
+                  , hspec >=2.10
+                  , process
+                  , text
+                  , typed-process
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-observation-http-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench test
+  main-is:          Main.hs
+  other-modules:    Support
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , network
+                  , petrus-engine
+                  , petrus-http-core
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-observation
+                  , petrus-observation-http
+                  , hspec
+                  , tasty >=1.4
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -threaded -O2 -rtsopts
