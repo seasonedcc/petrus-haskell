@@ -57,7 +57,7 @@ module Petrus.HistoryStore.Jsonl
   , HistoryStoreError (..)
   ) where
 
-import Control.Exception (Exception (..), bracket, throwIO)
+import Control.Exception (bracket, throwIO)
 import Control.Monad (unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -70,10 +70,10 @@ import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as T
 import Foreign.Ptr (plusPtr)
-import Petrus.Impetus.History.Codec (decodeRecord, encodeRecord)
+import Petrus.Impetus.History.Codec (encodeRecord)
 import Petrus.Impetus.History.Records (Record, recordName)
 import Petrus.Impetus.HistoryStore
-import Petrus.Impetus.Internal.PyJson qualified as Py
+import Petrus.HistoryStore.Internal (HistoryStoreError (..), decodeStored, pythonDiagnostic)
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsBuilder, parseJson, pythonLoads)
 import Petrus.Telemetry (EventSink, emit, getLogger)
 import Petrus.Telemetry qualified as Telemetry
@@ -89,17 +89,6 @@ import System.Posix.IO
   )
 import System.Posix.Types (Fd)
 import System.Posix.Unistd (fileSynchronise)
-
--- ---------------------------------------------------------------------------
--- Errors
-
--- | A refusal by the store: the reference's @ValueError@ (an unencodable
--- record, an undecodable line).
-newtype HistoryStoreError = HistoryStoreError Text
-  deriving stock (Eq, Show)
-
-instance Exception HistoryStoreError where
-  displayException (HistoryStoreError message) = T.unpack message
 
 -- ---------------------------------------------------------------------------
 -- Options
@@ -242,29 +231,8 @@ decodeLines path content = go 1 Seq.empty (splitLines content)
 -- reference's diagnostic text.
 decodeLine :: ByteString -> Bool -> Either Text Record
 decodeLine line terminated = case parseJson pythonLoads line of
-  Right value -> decodeRecord value
+  Right value -> decodeStored value
   Left fallback -> Left (pythonDiagnostic (if terminated then line <> "\n" else line) (T.pack fallback))
-
--- | CPython's @json.loads@ diagnostic for a refused line (as @str@ after
--- decoding the line as UTF-8).
-pythonDiagnostic :: ByteString -> Text -> Text
-pythonDiagnostic bytes fallback = case Py.decodeUtf8Python bytes of
-  Left utf8Error -> utf8Error
-  Right text -> case Py.loads hooks text of
-    Left (Py.DecodeError message position) -> Py.decodeErrorText text message position
-    Left (Py.HookError message) -> message
-    Right _ -> fallback
-  where
-    hooks =
-      Py.Hooks
-        { parseInt = Py.defaultInt
-        , parseFloat = Right . Py.defaultFloat
-        , parseConstant = \case
-            "NaN" -> Right (Py.RFloat (0 / 0))
-            "Infinity" -> Right (Py.RFloat (1 / 0))
-            _ -> Right (Py.RFloat (-1 / 0))
-        , objectPairs = const (Right ())
-        }
 
 -- | Split on universal newlines (@\\r\\n@, @\\r@, @\\n@), keeping whether each
 -- line was terminated; a file's final terminator ends the last line rather
