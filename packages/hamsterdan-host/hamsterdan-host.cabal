@@ -84,6 +84,7 @@ test-suite hamsterdan-host-test
                     RunnableSpec
                     TestSupport
                     TimersSpec
+                    InlineRecoverySpec
                     IngressApplicationSpec
                     MutationSpec
                     GitPublishSpec
@@ -103,7 +104,10 @@ test-suite hamsterdan-host-test
                   , hamsterdan-host
                   , hamsterdan-readiness
                   , petrus-activity
+                  , petrus-cel
+                  , petrus-dsl
                   , petrus-engine
+                  , petrus-history-store
                   , petrus-impetus
                   , hspec >=2.10
                   , petrus-json

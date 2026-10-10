@@ -10,6 +10,7 @@ import ReviewSpec qualified
 import GitPublishSpec qualified
 import MutationSpec qualified
 import IngressApplicationSpec qualified
+import InlineRecoverySpec qualified
 import Test.Hspec
 
 main :: IO ()
@@ -24,3 +25,4 @@ main = hspec $ do
   GitPublishSpec.spec
   MutationSpec.spec
   IngressApplicationSpec.spec
+  InlineRecoverySpec.spec
