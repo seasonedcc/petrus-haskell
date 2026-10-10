@@ -8,10 +8,11 @@
 -- conservative scheduler takes the head candidate, @begin_firing@ applies
 -- it, the default passthrough handler @route@s the binding's tokens through
 -- the output arcs, and @complete_firing@ deposits them. 'stepNet' and
--- 'runNet' compose exactly those kernel transforms. History records
--- (@FiringBegun@, @TokensConsumed@, ...) and @replay_marking@ are not
--- ported yet; the movement effects 'beginFiring' and 'completeFiring'
--- return are the kernel half of those records and are asserted instead.
+-- 'runNet' compose exactly those kernel transforms. The movement effects
+-- 'beginFiring' and 'completeFiring' return are the kernel half of the
+-- History records and are asserted here; the records themselves
+-- (@FiringBegun@, @TokensConsumed@, ...) and @replay_marking@ are asserted
+-- through the Instance in "Petrus.Impetus.FiringHistorySpec".
 module Petrus.Impetus.FiringSpec (spec) where
 
 import Data.Foldable (toList)
@@ -102,7 +103,7 @@ spec = describe "Petrinet.Firing" $ do
       fired <- step net noImplementations seeded
       toList (placeTokens done fired.after) `shouldBe` [black]
     -- test_begin_records_the_read_selection_in_the_begin_batch (the begin
-    -- effects; FiringBegun and occurrence numbering are History's)
+    -- effects; the records: FiringHistorySpec)
     it "begins with the consumes, then the read selection" $ do
       [b] <- expectRight (candidates net seeded noImplementations Nothing)
       (effects, _) <- expectRight (beginFiring seeded b)
@@ -119,8 +120,8 @@ spec = describe "Petrinet.Firing" $ do
       (effects, begun) <- expectRight (beginFiring marking b)
       effects `shouldBe` [ConsumedTokens a [tok "X"], ReadTokens a [tok "X"]]
       begun `shouldBe` markingFromList [(a, [tok "X"])]
-    -- not translated: test_tokens_read_is_replay_inert_for_the_marking
-    -- (needs History and replay_marking, which are not ported yet).
+    -- test_tokens_read_is_replay_inert_for_the_marking: see
+    -- "Petrus.Impetus.FiringHistorySpec" (it needs History).
 
   describe "colored consume selection" $ do
     let pending = np "pending"
@@ -132,7 +133,7 @@ spec = describe "Petrinet.Firing" $ do
       fired <- step net noImplementations (markingFromList [(pending, [invoice, big])])
       fired.after `shouldBe` markingFromList [(pending, [invoice]), (out, [big])]
     -- test_movement_records_carry_the_selected_token_and_replay (movement
-    -- effects; the replay half needs History)
+    -- effects; the records and replay: FiringHistorySpec)
     it "carries the selected token through the movement effects" $ do
       fired <- step net noImplementations (markingFromList [(pending, [invoice, big])])
       fired.begun `shouldBe` [ConsumedTokens pending [big]]
@@ -187,7 +188,7 @@ spec = describe "Petrinet.Firing" $ do
     it "selects by bare data fields" $
       runTo net compiled (markingFromList [(pending, [small, big])]) `shouldReturn` markingFromList [(pending, [small]), (out, [big])]
     -- test_cel_selection_consumes_and_replays_like_any_other (movement
-    -- effects; the replay half needs History)
+    -- effects; the records and replay: FiringHistorySpec)
     it "consumes like any other selection" $ do
       fired <- step net compiled (markingFromList [(pending, [small, big])])
       bindingTokens fired.binding `shouldBe` [big]

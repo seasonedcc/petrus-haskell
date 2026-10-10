@@ -5,7 +5,12 @@ import Petrus.Impetus.ArcFiltersSpec qualified as ArcFiltersSpec
 import Petrus.Impetus.DotSpec qualified as DotSpec
 import Petrus.Impetus.EnablednessSpec qualified as EnablednessSpec
 import Petrus.Impetus.FifoQueueSpec qualified as FifoQueueSpec
+import Petrus.Impetus.FiringHistorySpec qualified as FiringHistorySpec
 import Petrus.Impetus.FiringSpec qualified as FiringSpec
+import Petrus.Impetus.HistoryCodecSpec qualified as HistoryCodecSpec
+import Petrus.Impetus.HistorySpec qualified as HistorySpec
+import Petrus.Impetus.HistoryStoreSpec qualified as HistoryStoreSpec
+import Petrus.Impetus.SelectionSpec qualified as SelectionSpec
 import Petrus.Impetus.GoldenTracesSpec qualified as GoldenTracesSpec
 import Petrus.Impetus.KernelDifferentialSpec qualified as KernelDifferentialSpec
 import Petrus.Impetus.MarkingSpec qualified as MarkingSpec
@@ -30,6 +35,11 @@ main = hspec $ do
   FifoQueueSpec.spec
   ActivitySeamSpec.spec
   TypedBindingsSpec.spec
+  SelectionSpec.spec
+  HistorySpec.spec
+  HistoryCodecSpec.spec
+  HistoryStoreSpec.spec
+  FiringHistorySpec.spec
   NetDefinitionSpec.spec
   NetDocumentSpec.spec
   NetDocumentLineageSpec.spec

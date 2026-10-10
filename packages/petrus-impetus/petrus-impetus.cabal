@@ -98,6 +98,12 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.FifoQueueSpec
                     Petrus.Impetus.ActivitySeamSpec
                     Petrus.Impetus.TypedBindingsSpec
+                    Petrus.Impetus.HistorySupport
+                    Petrus.Impetus.SelectionSpec
+                    Petrus.Impetus.HistorySpec
+                    Petrus.Impetus.HistoryCodecSpec
+                    Petrus.Impetus.HistoryStoreSpec
+                    Petrus.Impetus.FiringHistorySpec
                     Petrus.Impetus.NetDefinitionSpec
                     Petrus.Impetus.NetDocumentSpec
                     Petrus.Impetus.NetDocumentLineageSpec

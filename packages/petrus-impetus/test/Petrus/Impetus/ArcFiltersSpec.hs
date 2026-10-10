@@ -131,9 +131,9 @@ spec = describe "Petrinet arc filters" $ do
       bindings <- expectRight (candidates (parallelNet "choice" "choice") (markingFromList [(pending, [small, big])]) (impls [("choice", \t -> Right (t == big))] []) Nothing)
       map (.consumed) bindings `shouldBe` [[(pending, [big])]]
       map (.read) bindings `shouldBe` [[(pending, [big])]]
-    -- not translated: test_exact_and_bare_filter_binding_is_ambiguous
-    -- (Instance construction validates the implementation mapping; there is
-    -- no Instance yet).
+    -- test_exact_and_bare_filter_binding_is_ambiguous: see
+    -- "Petrus.Impetus.FiringHistorySpec" (Instance construction validates
+    -- the implementation mapping).
 
   describe "read and inhibit filters" $ do
     -- test_inhibit_gates_on_a_matching_token
@@ -167,10 +167,10 @@ spec = describe "Petrinet arc filters" $ do
             Right (amount >= 100 && currency == String "USD")
       bindings <- expectRight (candidates (celNet expression (Just "Payment")) (markingFromList [(pending, [small, big])]) (byCel expression evaluate) Nothing)
       map bindingTokens bindings `shouldBe` [[big]]
-    -- not translated: test_invalid_cel_fails_at_construction_and_never_evaluates
-    -- (CEL compilation is the instance-level seam, absent from the kernel).
-    -- not translated: test_exact_override_of_inline_cel_filter_is_refused
-    -- (Instance construction).
+    -- test_invalid_cel_fails_at_construction_and_never_evaluates and
+    -- test_exact_override_of_inline_cel_filter_is_refused: see
+    -- "Petrus.Impetus.FiringHistorySpec" (CEL compilation is the
+    -- Instance-construction seam).
     -- test_empty_cel_expression_is_rejected
     it "rejects an empty expression" $
       cel "" `shouldFailWith` "Cel requires a non-empty expression string, got ''"
