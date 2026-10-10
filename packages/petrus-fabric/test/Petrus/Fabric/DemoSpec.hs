@@ -173,9 +173,9 @@ demoRun :: FilePath -> [String] -> IO Text
 demoRun exe arguments = do
   (code, out, err) <- readCreateProcessWithExitCode (proc exe arguments) ""
   let evidence = out <> "\n--- stderr ---\n" <> err
-  code `shouldBe` ExitSuccess
-  mapM_ (\l -> (l `T.isInfixOf` T.pack out) `shouldBe` True) demoLines
-  pure (T.pack evidence)
+  if code == ExitSuccess && all (`T.isInfixOf` T.pack out) demoLines
+    then pure (T.pack evidence)
+    else expectationFailure (show code <> "\n" <> evidence) >> pure (T.pack evidence)
 
 splitRoles :: Spec
 splitRoles = do

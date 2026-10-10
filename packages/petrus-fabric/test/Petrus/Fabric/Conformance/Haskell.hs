@@ -8,6 +8,7 @@ module Petrus.Fabric.Conformance.Haskell
   , receiptOut
   , connectionOps
   , invocationIn
+  , errorOut
   ) where
 
 import Control.Exception (SomeException, fromException, throwIO, try)

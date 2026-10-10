@@ -457,6 +457,8 @@ def run(op: str, args: dict):  # noqa: C901 - one flat dispatch table
     if op == "demo_close":
         live.close()
         return None
+    if op == "lifecycle_unarmed_reply":
+        return unarmed_reply(args["dsn"], args["suffix"])
     # -- calls -------------------------------------------------------------
     if op == "call_request":
         return CallRequest(args["call_id"], args["operation"], args["input"]).to_data()
@@ -588,6 +590,63 @@ def run(op: str, args: dict):  # noqa: C901 - one flat dispatch table
                 attempts.append({"error": error_out(error)})
         return {"attempts": attempts, "provisionings": provisioner.seen}
     return UNSUPPORTED
+
+
+def unarmed_reply(dsn: str, suffix: str) -> dict:
+    """P-037 on the lifecycle demo's parent net: a reply arriving on the
+    sealed reply source before the call armed a registration is refused by
+    the caller's door, stays pending, and blocks the inbox."""
+    demo = lifecycle_module()
+    parent, child = f"unarmed-parent-{suffix}", f"unarmed-child-{suffix}"
+    parent_credential, child_credential = issue_credential(), issue_credential()
+    demo.bootstrap(dsn, (parent, parent_credential), (child, child_credential))
+    with psycopg.connect(dsn, autocommit=True) as connection:
+        parent_fabric = PostgresFabric(connection, parent, parent_credential)
+        child_fabric = PostgresFabric(connection, child, child_credential)
+        parent_fabric.expose_source("reply")
+        parent_fabric.grant(child, "reply")
+        child_fabric.expose_source("request")
+        child_fabric.grant(parent, "request")
+        envelope = demo.call_envelope(parent, child)
+        child_fabric.submit(result_envelope(result=CallResult(demo.CALL_ID, {"answer": 42}), request=envelope, sender=child))
+    placeholder = SpawnSpec(parent, "unused", "call-only", "request", {}, {})
+
+    def open_live(create: bool):
+        send = demo.SendActivity(dsn, parent, parent_credential)
+        dispatch = demo.DemoInlineDispatch({"fabric.send": send})
+        return demo.open_parent(dsn, parent, parent_credential, placeholder, envelope, dispatch, send,
+                                create=create, with_spawn=False)
+
+    def attempt(live) -> dict | None:
+        try:
+            live.drain()
+            return None
+        except Exception as error:  # noqa: BLE001 - reported
+            return error_out(error)
+
+    # A refused door poisons its Engine (records and status then raise), so
+    # the second attempt runs on a fresh load, and the durable outcome is
+    # read through a third one.
+    attempts = []
+    live = open_live(create=True)
+    try:
+        before = len(live.engine.records)
+        attempts.append(attempt(live))
+    finally:
+        live.close()
+    live = open_live(create=False)
+    try:
+        attempts.append(attempt(live))
+    finally:
+        live.close()
+    with psycopg.connect(dsn, autocommit=True) as connection:
+        pending = len(PostgresFabric(connection, parent, parent_credential).pending())
+    live = open_live(create=False)
+    try:
+        return {"attempts": attempts, "pending": pending, "appended": len(live.engine.records) - before,
+                "status": live.engine.status.value}
+    finally:
+        live.close()
 
 
 def error_out(error: BaseException) -> dict:
