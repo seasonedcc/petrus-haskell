@@ -6,9 +6,11 @@ description:
   The core of a port of @petrus.motus.dispatch@: the Dispatch port the Engine
   drives (dispatch, collect, and the optional recoverable cancellation
   extension), the cancellation values, the provider-neutral Activity Attempt
-  and Worker custody surface, and the two in-process adapters,
-  InlineDispatch and InMemoryDispatch. Durable providers (local SQLite,
-  ZeroMQ, Absurd) and Workers build on these values in their own modules.
+  and Worker custody surface, the two in-process adapters, InlineDispatch
+  and InMemoryDispatch, and the durable local SQLite Dispatch
+  (LocalDispatch and LocalWorkerDispatch), which shares its file format with
+  the reference. Other providers (ZeroMQ, Absurd) and Workers build on these
+  values in their own packages.
 license:            Apache-2.0
 license-file:       LICENSE
 author:             Seasoned
@@ -34,11 +36,17 @@ library
   exposed-modules:  Petrus.Motus.Dispatch
                     Petrus.Motus.Dispatch.Inline
                     Petrus.Motus.Dispatch.InMemory
+                    Petrus.Motus.Dispatch.Local
                     Petrus.Motus.Internal.Repr
   build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
                   , containers >=0.6
+                  , direct-sqlite >=2.3.29 && <2.4
+                  , directory >=1.3
+                  , filepath >=1.4
                   , petrus-activity
                   , petrus-json
+                  , petrus-telemetry
                   , text >=2.0
   ghc-options:      -O2
 
@@ -47,11 +55,37 @@ test-suite petrus-motus-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    Petrus.Motus.Dispatch.LocalSupport
+                    Petrus.Motus.Dispatch.LocalSpec
+                    Petrus.Motus.Dispatch.LocalInteropSpec
   build-depends:    base
+                  , bytestring
                   , containers
+                  , direct-sqlite
+                  , directory
+                  , filepath
                   , hspec >=2.10
                   , petrus-activity
                   , petrus-json
                   , petrus-motus
+                  , petrus-telemetry
+                  , process >=1.6
                   , text
+                  , time >=1.12
   ghc-options:      -threaded -rtsopts
+
+benchmark petrus-motus-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , direct-sqlite
+                  , directory
+                  , filepath
+                  , petrus-activity
+                  , petrus-json
+                  , petrus-motus
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A32m"

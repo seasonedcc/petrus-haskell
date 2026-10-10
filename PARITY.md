@@ -37,7 +37,8 @@ the tests, conformance suites, and benchmark results that justify the status.
 | Net DSL | `impetus/dsl.py` | `petrus-dsl` | at parity | 68-net differential corpus (v3 bytes, order, URIs, refusals); [tests](packages/petrus-dsl/PARITY.md), [differential](packages/petrus-dsl/differential), [bench](packages/petrus-dsl/bench/RESULTS.md), [divergences](packages/petrus-dsl/DIVERGENCES.md) |
 | Activities | `motus/activity` | | in progress | value types in `petrus-activity` |
 | Dispatch port, InlineDispatch, InMemoryDispatch | `motus/dispatch/{__init__,inline,memory}.py` | `petrus-motus` | at parity | [PARITY](packages/petrus-motus/PARITY.md), [DIVERGENCES](packages/petrus-motus/DIVERGENCES.md); exercised end to end by the [Engine bench](packages/petrus-engine/bench/RESULTS.md) |
-| Dispatch: local, Absurd | `motus/dispatch` | | not started | |
+| Dispatch: local (SQLite) | `motus/dispatch/local.py` | `petrus-motus` (`Petrus.Motus.Dispatch.Local`) | at parity | all 36 upstream tests ported ([PARITY](packages/petrus-motus/PARITY.md); Engine-level tests in [LocalDispatchSpec](packages/petrus-engine/test/Petrus/Engine/LocalDispatchSpec.hs)), [DIVERGENCES](packages/petrus-motus/DIVERGENCES.md), shared-file interop both ways with identical rows and telemetry ([LocalInteropSpec](packages/petrus-motus/test/Petrus/Motus/Dispatch/LocalInteropSpec.hs)), [bench](packages/petrus-motus/bench/RESULTS.md) (1.3–1.9× faster at equal IO) |
+| Dispatch: Absurd | `motus/dispatch` | | not started | |
 | Execution, Gondolin | `motus/execution`, `motus/_execution` | `petrus-execution` | in progress (all upstream tests ported; real-Gondolin acceptance run pending) | [PARITY](packages/petrus-execution/PARITY.md), [divergences](packages/petrus-execution/DIVERGENCES.md), [bench](packages/petrus-execution/bench/RESULTS.md) |
 | Workers | `motus/worker` | | not started | |
 | Transport: ZeroMQ | `motus/transport` | | not started | |

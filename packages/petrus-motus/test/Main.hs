@@ -17,6 +17,8 @@ import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch.InMemory
 import Petrus.Motus.Dispatch.Inline
+import Petrus.Motus.Dispatch.LocalInteropSpec qualified as LocalInteropSpec
+import Petrus.Motus.Dispatch.LocalSpec qualified as LocalSpec
 import Test.Hspec hiding (context, pending)
 
 -- Python's built-in exception types, so classification names them alike.
@@ -59,6 +61,8 @@ dispatchErrorWith fragment (DispatchError message) = fragment `T.isInfixOf` mess
 
 main :: IO ()
 main = hspec $ do
+  describe "test_local_dispatch.py" LocalSpec.spec
+  LocalInteropSpec.spec
   describe "TestInMemoryDispatch" $ do
     it "dispatch acknowledges and the invocation waits in the pool" $ do
       pool <- newInMemoryDispatch

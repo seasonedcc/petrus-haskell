@@ -53,10 +53,11 @@ test-suite petrus-engine-test
   type:             exitcode-stdio-1.0
   -- The kernel's and the History store's shared test fixtures are compiled
   -- in from their test trees rather than copied.
-  hs-source-dirs:   test ../petrus-impetus/test ../petrus-history-store/test
+  hs-source-dirs:   test ../petrus-impetus/test ../petrus-history-store/test ../petrus-motus/test
   main-is:          Main.hs
   other-modules:    Petrus.Impetus.TestSupport
                     Petrus.HistoryStore.Support
+                    Petrus.Motus.Dispatch.LocalSupport
                     Petrus.Engine.TestSupport
                     Petrus.Engine.Scenario
                     Petrus.Engine.EngineSpec
@@ -66,9 +67,11 @@ test-suite petrus-engine-test
                     Petrus.Engine.DeliveryPhasesBSpec
                     Petrus.Engine.DeliveryPhasesCSpec
                     Petrus.Engine.InteropSpec
+                    Petrus.Engine.LocalDispatchSpec
   build-depends:    base
                   , bytestring
                   , containers
+                  , direct-sqlite
                   , directory
                   , filepath
                   , hspec >=2.10
