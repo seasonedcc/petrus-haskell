@@ -146,3 +146,23 @@ test-suite petrus-processes-test
                   , time
   build-tool-depends: petrus-processes:cv5-lifecycle-demo
   ghc-options:      -threaded -rtsopts
+
+benchmark petrus-processes-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , petrus-activity
+                  , petrus-fabric
+                  , petrus-fabric:postgres
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-processes
+                  , petrus-processes:postgres
+                  , petrus-test-support
+                  , tasty >=1.4
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -threaded -O2 -rtsopts "-with-rtsopts=-A32m"

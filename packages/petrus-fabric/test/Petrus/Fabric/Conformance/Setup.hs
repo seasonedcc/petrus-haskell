@@ -36,6 +36,7 @@ module Petrus.Fabric.Conformance.Setup
   , registerOn
   , refusal
   , neutralLibrary
+  , publicEngineDoorsOnly
   ) where
 
 import Control.Exception (bracket, try)
@@ -273,3 +274,42 @@ neutralLibrary package = do
   mainLibrary `shouldSatisfy` (not . null)
   forM_ ["petrus-postgres", "postgresql-libpq", "petrus-engine-postgres", ":postgres"] $ \forbidden ->
     (forbidden, forbidden `T.isInfixOf` depends) `shouldBe` (forbidden, False)
+
+-- | @test_cv5_demos_host_only_through_public_engine_doors@ for one demo
+-- module (a path from the repository root). The reference parses each demo
+-- script's imports and calls; the port's equivalent reads the demo module's
+-- imports and qualified uses. A demo must import the public 'Engine' type
+-- and the PostgreSQL provider's @createEngine@ and @loadEngine@ doors, and
+-- reach neither the coordinator, the Engine's internals, nor the authority
+-- fence, nor construct or move an Instance itself.
+publicEngineDoorsOnly :: FilePath -> Expectation
+publicEngineDoorsOnly relative = do
+  root <- repoRoot
+  source <- TE.decodeUtf8 <$> BS.readFile (root </> relative)
+  let code = [line | line <- T.lines source, not ("--" `T.isPrefixOf` T.stripStart line)]
+      imports = [(moduleOf line, namesOf line) | line <- code, "import " `T.isPrefixOf` line]
+      moduleOf line = case T.words line of
+        _ : name : _ -> name
+        _ -> ""
+      namesOf line = T.words (T.map (\c -> if c `elem` ("(),." :: String) then ' ' else c) (T.drop 1 (T.dropWhile (/= '(') line)))
+      importsNaming name = [m | (m, names) <- imports, name `elem` names]
+      forbiddenModules = ["Petrus.Engine.Coordinator", "Petrus.Engine.Internal", "Petrus.Postgres.Fence"]
+      forbiddenNames = ["Coordinator", "newInstance", "resume", "begin", "candidates"]
+      forbidden name = name `elem` forbiddenNames || "Fence" `T.isInfixOf` name
+      -- Qualified uses such as @Pg.acquireFence@ or @Instance.begin@.
+      qualifiedUses =
+        [ used
+        | line <- code
+        , not ("import " `T.isPrefixOf` line)
+        , word <- T.split (\c -> not (c `elem` ("._'" :: String) || ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z') || ('0' <= c && c <= '9'))) line
+        , let parts = T.splitOn "." word
+        , length parts > 1
+        , let used = last parts
+        , forbidden used
+        ]
+  (relative, [m | (m, _) <- imports, m `elem` forbiddenModules]) `shouldBe` (relative, [])
+  (relative, [name | (_, names) <- imports, name <- names, forbidden name]) `shouldBe` (relative, [])
+  (relative, qualifiedUses) `shouldBe` (relative, [])
+  (relative, importsNaming "Engine") `shouldSatisfy` (elem "Petrus.Engine" . snd)
+  (relative, importsNaming "createEngine", importsNaming "loadEngine")
+    `shouldBe` (relative, ["Petrus.Engine.Postgres"], ["Petrus.Engine.Postgres"])

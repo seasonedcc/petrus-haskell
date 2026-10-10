@@ -16,7 +16,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Activity (ActivityInvocation (..), defaultExecutionPolicy)
 import Petrus.Fabric
-import Petrus.Fabric.Conformance.Setup (neutralLibrary, refusal)
+import Petrus.Fabric.Conformance.Setup (neutralLibrary, publicEngineDoorsOnly, refusal)
 import Petrus.Fabric.Postgres (ensureFabricSchema, exposeSource, grant, issueCredential, postgresFabric, registerProcess, submit)
 import Petrus.Json (Json (..))
 import Petrus.Postgres qualified as Pg
@@ -31,7 +31,13 @@ import System.Process (proc, readCreateProcessWithExitCode)
 import Test.Hspec
 
 spec :: Spec
-spec = describe "upstream tests/petrus/processes/test_processes.py" $ do
+spec = do
+  testFile
+  describe "upstream tests/project/test_package_boundaries.py" $
+    it "test_cv5_demos_host_only_through_public_engine_doors (cv5-lifecycle-demo)" (publicEngineDoorsOnly "packages/petrus-processes/demo/Petrus/Processes/Demo.hs")
+
+testFile :: Spec
+testFile = describe "upstream tests/petrus/processes/test_processes.py" $ do
   it "test_neutral_process_import_attempts_neither_psycopg_nor_runtime_layers" (neutralLibrary "petrus-processes")
   it "test_spawn_spec_is_exact_detached_strict_and_fully_digested" spawnSpecContract
   it "test_child_identity_is_stable_parent_scoped_and_not_spec_scoped" childIdentityContract

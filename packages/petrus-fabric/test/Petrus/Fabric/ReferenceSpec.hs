@@ -16,7 +16,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time (addUTCTime, getCurrentTime)
 import Petrus.Fabric
-import Petrus.Fabric.Conformance.Setup (neutralLibrary, refusal)
+import Petrus.Fabric.Conformance.Setup (neutralLibrary, publicEngineDoorsOnly, refusal)
 import Petrus.Fabric.DemoSpec (demoRun)
 import Petrus.Fabric.Postgres
 import Petrus.Impetus.Instance (PriorAcknowledgement (..))
@@ -29,7 +29,13 @@ import System.Directory (findExecutable)
 import Test.Hspec hiding (pending)
 
 spec :: Spec
-spec = describe "upstream tests/petrus/fabric/test_fabric.py" $ do
+spec = do
+  testFile
+  describe "upstream tests/project/test_package_boundaries.py" $
+    it "test_cv5_demos_host_only_through_public_engine_doors (cv5-fabric-demo)" (publicEngineDoorsOnly "packages/petrus-fabric/demo/Petrus/Fabric/Demo.hs")
+
+testFile :: Spec
+testFile = describe "upstream tests/petrus/fabric/test_fabric.py" $ do
   it "test_neutral_fabric_import_does_not_attempt_psycopg" (neutralLibrary "petrus-fabric")
   it "test_envelope_is_exact_versioned_detached_strict_json_and_bounded" envelopeContract
   postgresSpec $ do

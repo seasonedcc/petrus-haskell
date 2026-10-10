@@ -60,6 +60,18 @@ Exact decoding is what keeps these values provider-neutral and
 credential-free. Extra members such as `"provider"` or `"credential"` are
 refused (**CONTRACT**).
 
+### 1.1 Revisions
+
+These are changes made after the Haskell port ran every check against the
+pinned reference. Each change makes this document say what the pinned
+reference does.
+
+- §7, the row "Reply arrives while no registration is armed": the refusal
+  also poisons the refusing Engine, and the host continues through a fresh
+  load ([fabric.md §9.3](fabric.md)). P-037 now says so. As first written,
+  the check could not pass against the reference: reading the refusing
+  Engine's records after the refusal raises.
+
 ## 2 Process identity and net Instances
 
 A *process* is addressed by its Fabric process identity
@@ -295,7 +307,7 @@ is an exact Fabric duplicate.
 | Callee reports failure | an ordinary `process.call.error` reply; the caller's net decides its meaning |
 | Callee sends a second, different terminal reply | Fabric **conflict** at the callee's submit, so its `fabric.send` Activity fails; the caller sees only the first reply |
 | Reply for another call reaches an armed reply source | accepted into the caller's History. The application routes it (reference: "unrelated" place). It does not complete the awaited call. |
-| Reply arrives while no registration is armed on the reply source (sealed, or already closed) | the caller's delivery door refuses it, so it stays pending and blocks the caller's inbox ([fabric.md §9.3](fabric.md)) |
+| Reply arrives while no registration is armed on the reply source (sealed, or already closed) | the caller's delivery door refuses it, so it stays pending and blocks the caller's inbox ([fabric.md §9.3](fabric.md)). The refusal also poisons the refusing Engine. The host continues through a fresh load, which refuses the same reply again and appends nothing. |
 | Reply fails §5.2 inside the caller's handler | a firing failure in the caller, under [handler-contract.md](../upstream/petrus/spec/handler-contract.md). The drain attempt raises, and the delivery stays unacknowledged. Later redelivery is answered by the Engine's delivery door. The reference kernel removes the failed occurrence from in-flight, so it answers `PriorAcknowledgement` and Fabric then acknowledges. An Engine that halted on the failure refuses instead, which blocks the inbox. **OPEN:** whether a halted Engine should still acknowledge ended deliveries. |
 | Request to an unexposed or ungranted source | Fabric **denied** at the caller's submit, so the `fabric.send` Activity fails |
 | Callee not running | the request waits in Fabric as pending; it is delivered once a host drains the callee's inbox ("offline call: pending=1 parent=awaiting") |
