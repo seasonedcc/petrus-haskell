@@ -78,7 +78,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json (Json (..))
 import Petrus.Testing.Dst.Choice (validProvenanceDraws)
-import Petrus.Testing.Dst.PyRepr (pyRepr, PyObj (..))
+import Petrus.Testing.Dst.PyRepr (PyObj (..), jsonToPy, pyRepr)
 import Petrus.Testing.Dst.Types
 
 -- ---------------------------------------------------------------------------
@@ -251,14 +251,10 @@ tagged alternatives path v = case v of
         )
   _ -> failAt path "model_attributes_type" "Input should be a valid dictionary or object to extract fields from"
   where
+    -- pydantic quotes @str(tag)@.
     tagRepr = \case
       String s -> pyRepr (PyStr s)
-      other -> pyRepr (jsonPy other)
-    jsonPy = \case
-      Int i -> PyInt i
-      Bool b -> PyBool b
-      Float d -> PyFloat d
-      _ -> PyNone
+      other -> pyRepr (PyStr (pyRepr (jsonToPy other)))
 
 -- ---------------------------------------------------------------------------
 -- Components

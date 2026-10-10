@@ -67,7 +67,9 @@ test-suite petrus-dst-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    Spec.Stories
+  other-modules:    Spec.Choice
+                    Spec.Codec
+                    Spec.Stories
                     Spec.Support
                     Toy
   build-depends:    base
