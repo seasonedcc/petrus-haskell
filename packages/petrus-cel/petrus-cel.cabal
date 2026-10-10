@@ -39,6 +39,7 @@ library
   exposed-modules:  Petrus.Cel
                     Petrus.Cel.Binding
                     Petrus.Cel.Eval
+                    Petrus.Cel.Impetus
                     Petrus.Cel.Literal
                     Petrus.Cel.Ops
                     Petrus.Cel.Parse
@@ -53,6 +54,8 @@ library
                   , array >=0.5
                   , bytestring >=0.11
                   , containers >=0.6
+                  , petrus-impetus
+                  , petrus-impetus
                   , petrus-json
                   , text >=2.0
                   , time >=1.12
@@ -64,12 +67,14 @@ test-suite petrus-cel-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    Corpus
+                    Impetus
   build-depends:    base
                   , bytestring
                   , containers
                   , hspec >=2.10
                   , QuickCheck >=2.14
                   , petrus-cel
+                  , petrus-impetus
                   , petrus-json
                   , text
 
@@ -80,6 +85,7 @@ benchmark petrus-cel-bench
   main-is:          Main.hs
   build-depends:    base
                   , petrus-cel
+                  , petrus-impetus
                   , petrus-json
                   , tasty-bench >=0.3
                   , text
