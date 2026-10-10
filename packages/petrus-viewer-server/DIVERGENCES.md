@@ -80,11 +80,13 @@ listed here.
   `Cache-Control: no-cache`.
 - **`wss://` bridge URLs.** `petrus-mcp` connects to `ws://` relays only;
   a `wss://` `PETRUS_AGENT_URL` fails like an unreachable bridge.
-- **Relay timing log.** Vite's relay calls `console.log` inline; `petrus`
-  queues the same lines and a background thread writes them in batches, in
-  order. The lines and their timestamps are identical, but they can reach
-  stdout a moment after the message was forwarded, and lines still queued
-  when the process is killed are lost.
+- **Relay timing log.** Vite's relay calls `console.log` inline, before
+  forwarding the message; `petrus` measures at the same point but queues
+  the line after the message is queued for delivery, and a background
+  thread writes the lines in batches, in order. The lines are the same
+  (their `toISOString` timestamps can differ by microseconds), but they
+  can reach stdout a moment after the message was forwarded, and lines
+  still queued when the process is killed are lost.
 - **Response framing.** JSON responses carry `Content-Length` (as Node's
   `res.end(body)` does) but not Node's `Connection: keep-alive` /
   `Keep-Alive: timeout=5` headers; HTTP/1.1 keep-alive is the default

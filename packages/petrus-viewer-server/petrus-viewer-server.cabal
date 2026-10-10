@@ -77,6 +77,8 @@ library
                   , warp >=3.3
                   , websockets >=0.12.7
   ghc-options:      -O2
+  c-sources:        cbits/json_escape.c
+  cc-options:       -O3 -Wall
 
 executable petrus
   import:           warnings

@@ -1,5 +1,3 @@
-{-# LANGUAGE MagicHash #-}
-
 -- | JSON values with JavaScript (V8) semantics.
 --
 -- The Node backend of the viewer never forwards bytes verbatim: every relay
@@ -81,10 +79,10 @@ import Data.ByteString.Unsafe qualified as BU
 import Control.Monad (foldM, void)
 import Data.Char (chr, ord)
 import Foreign.Marshal.Utils (copyBytes)
-import Foreign.Ptr (castPtr, plusPtr)
-import GHC.Exts (Ptr (..))
+import Foreign.Ptr (Ptr, castPtr, plusPtr)
+import Foreign.C.Types (CSize (..))
 import System.IO.Unsafe (unsafeDupablePerformIO)
-import Foreign.Storable (peekByteOff, poke, pokeByteOff)
+import Foreign.Storable (poke)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -137,63 +135,21 @@ jsString :: Text -> JsString
 jsString t = JsString (escapeUtf8 (TE.encodeUtf8 t))
 
 -- | UTF-8 bytes of a 'Text' as @JSON.stringify@ writes them inside quotes.
--- A 'Text' holds no lone surrogates, so only ASCII needs escaping. Two
--- passes over the bytes with a lookup table (no data-dependent branches
--- while counting): count the extra bytes, then write into one buffer.
+-- A 'Text' holds no lone surrogates, so only ASCII needs escaping. One pass
+-- sizes the output, one pass writes it (@cbits/json_escape.c@: the hot
+-- path of every string sent to a browser, such as a whole net file).
 escapeUtf8 :: ByteString -> ByteString
-escapeUtf8 b = unsafeDupablePerformIO $ BU.unsafeUseAsCString b $ \src0 -> do
-  let src = castPtr src0 :: Ptr Word8
-      len = B.length b
-      count !i !acc
-        | i >= len = pure acc
-        | otherwise = do
-            w <- peekByteOff src i
-            e <- escapeExtra w
-            count (i + 1) (acc + e)
-  extra <- count 0 0
+escapeUtf8 b = unsafeDupablePerformIO $ BU.unsafeUseAsCStringLen b $ \(src, len) -> do
+  extra <- fromIntegral <$> c_escapeExtra (castPtr src) (fromIntegral len)
   if extra == 0
     then pure b
-    else BI.create (len + extra) $ \dst -> do
-      let go !i !o
-            | i >= len = pure ()
-            | otherwise = do
-                w <- peekByteOff src i :: IO Word8
-                e <- escapeExtra w
-                if e == 0
-                  then pokeByteOff dst o w >> go (i + 1) (o + 1)
-                  else do
-                    pokeByteOff dst o (0x5c :: Word8)
-                    if e == 1
-                      then pokeByteOff dst (o + 1) (shortEscape w) >> go (i + 1) (o + 2)
-                      else do
-                        pokeByteOff dst (o + 1) (0x75 :: Word8)
-                        pokeByteOff dst (o + 2) (0x30 :: Word8)
-                        pokeByteOff dst (o + 3) (0x30 :: Word8)
-                        pokeByteOff dst (o + 4) (nibble (w `shiftR` 4))
-                        pokeByteOff dst (o + 5) (nibble (w .&. 0xf))
-                        go (i + 1) (o + 6)
-      go 0 0
-  where
-    -- the letter after the backslash (quote and backslash escape themselves)
-    shortEscape :: Word8 -> Word8
-    shortEscape = \case
-      0x0a -> 0x6e
-      0x0d -> 0x72
-      0x09 -> 0x74
-      0x08 -> 0x62
-      0x0c -> 0x66
-      w -> w
-    nibble :: Word8 -> Word8
-    nibble d = if d < 10 then 0x30 + d else 0x57 + d
+    else BI.create (len + extra) $ \dst -> c_escapeWrite (castPtr src) (fromIntegral len) dst (fromIntegral (len + extra))
 
--- | How many bytes 'escapeUtf8' adds for one byte: 0 (plain), 1 (@\\n@ and
--- the like), or 5 (@\\u00XX@).
-escapeExtra :: Word8 -> IO Int
-escapeExtra w = fromIntegral <$> (peekByteOff escapeTable (fromIntegral w) :: IO Word8)
-{-# INLINE escapeExtra #-}
+foreign import ccall unsafe "petrus_json_escape_extra"
+  c_escapeExtra :: Ptr Word8 -> CSize -> IO CSize
 
-escapeTable :: Ptr Word8
-escapeTable = Ptr "\x05\x05\x05\x05\x05\x05\x05\x05\x01\x01\x01\x05\x01\x01\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\0\0\x01\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"#
+foreign import ccall unsafe "petrus_json_escape_write"
+  c_escapeWrite :: Ptr Word8 -> CSize -> Ptr Word8 -> CSize -> IO ()
 
 -- | Wrap bytes already in canonical escaped form (callers must guarantee it).
 unsafeJsStringFromCanonical :: ByteString -> JsString

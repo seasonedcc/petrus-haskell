@@ -128,6 +128,7 @@ client (`petrus-viewer-bench`); results and commands are in
 | `Petrus.Viewer.Agent.Protocol` | `src/agent/protocol.ts` (the typed petrus-agent envelope) |
 | `Petrus.Viewer.History.Observation` | none: Temporal history API from observation producers |
 | `Petrus.Viewer.Json`, `Json.Number` | V8 `JSON.parse` / `JSON.stringify` / `Number#toString` |
+| `Petrus.Viewer.Json.Canonical` | none: recognizes text already in `JSON.stringify` form, so the relays can splice the sender id into the bytes instead of re-serializing |
 | `Petrus.Viewer.Url`, `WsUrl` | WHATWG `URL` (Node's ada), `decodeURIComponent`, `ws` URL handling |
 | `Petrus.Viewer.Log` | `console.log` timing lines (`toISOString`, `toFixed(1)`) |
 

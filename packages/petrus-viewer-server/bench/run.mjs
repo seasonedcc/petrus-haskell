@@ -5,6 +5,8 @@
  *
  * Targets (each started on its own non-default port, stopped by PID):
  *   haskell     petrus --no-open --strict-port --port P   (relay perf log on, like Vite)
+ *   haskell     the same with PETRUS_RELAY_PERF=0 (relay scenarios only; no
+ *               log, like the bare baseline)
  *   node-vite   upstream `vite --port P --strictPort` (what bin/petrus.mjs runs)
  *   node-bare   bench/node-baseline.mjs: upstream endpoint + relay on bare
  *               node:http, no perf log (Node's best case)
@@ -91,9 +93,9 @@ function waitPort(port, ms = 30000) {
   });
 }
 
-async function start(cmd, argv, cwd) {
+async function start(cmd, argv, cwd, env = {}) {
   const port = nextPort++;
-  const child = spawn(cmd, argv(port), { cwd, stdio: ["ignore", "ignore", "inherit"] });
+  const child = spawn(cmd, argv(port), { cwd, stdio: ["ignore", "ignore", "inherit"], env: { ...process.env, ...env } });
   children.add(child);
   const host = await waitPort(port);
   await new Promise((r) => setTimeout(r, 500));
@@ -132,20 +134,23 @@ const SCENARIOS = [
   { name: "collab fan-out, 200 peers x 200 msgs", group: "collab", argv: (t) => ["fanout", "--path", t.wsPath, "--receivers", "200", "--messages", n(200, 50)] },
 ].filter((s) => !only || s.name.includes(only));
 
+const runsOn = (t, s) => t.groups.includes(s.group) && (!t.match || s.name.includes(t.match));
 const TARGETS = [
   { name: "haskell (petrus)", groups: ["viewer", "collab"], wsPath: "/collab-ws", start: () => start(PETRUS, (p) => ["--no-open", "--strict-port", "--port", String(p), ...rtsArgs], scratch) },
+  // like for like with the bare Node baseline, which prints no relay lines
+  { name: "haskell (petrus, relay log off)", groups: ["viewer"], match: "relay", start: () => start(PETRUS, (p) => ["--no-open", "--strict-port", "--port", String(p), ...rtsArgs], scratch, { PETRUS_RELAY_PERF: "0" }) },
   { name: "node (vite dev server)", groups: ["viewer"], start: () => start(process.execPath, (p) => [path.join(VIEWER, "node_modules/vite/bin/vite.js"), "--port", String(p), "--strictPort"], VIEWER) },
   { name: "node (bare baseline)", groups: ["viewer"], start: () => start(process.execPath, (p) => [path.join(HERE, "node-baseline.mjs"), VIEWER, String(p)], scratch) },
   { name: "haskell (petrus-collab)", groups: ["collab"], wsPath: "/", start: () => start(PETRUS_COLLAB, (p) => [String(p), ...rtsArgs], scratch) },
   { name: "node (server/collab.mjs)", groups: ["collab"], wsPath: "/", start: () => start(process.execPath, (p) => [path.join(VIEWER, "server/collab.mjs"), String(p)], VIEWER) },
-].filter((t) => SCENARIOS.some((s) => t.groups.includes(s.group)));
+].filter((t) => SCENARIOS.some((s) => runsOn(t, s)));
 
 const servers = new Map();
 for (const t of TARGETS) servers.set(t.name, await t.start());
 
 const results = [];
 for (const scenario of SCENARIOS) {
-  const targets = TARGETS.filter((t) => t.groups.includes(scenario.group));
+  const targets = TARGETS.filter((t) => runsOn(t, scenario));
   const runs = new Map(targets.map((t) => [t.name, []]));
   for (let rep = 0; rep < reps; rep++) {
     for (let k = 0; k < targets.length; k++) {
