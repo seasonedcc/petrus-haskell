@@ -9,7 +9,7 @@ and their tests under `tests/petrus/agenticus/hands/`.
 | `hands/grants.py` | `Petrus.Agenticus.Hands.Grants` |
 | `hands/gateway.py` | `Petrus.Agenticus.Hands.Gateway` (+ `Petrus.Agenticus.Internal.Atomic`) |
 | `hands/conformance.py` | `Petrus.Agenticus.Hands.Conformance` |
-| `hands/workspace.py` | **deferred** to `petrus-agenticus` (it spawns processes and Docker; not core) |
+| `hands/workspace.py` | ported in `petrus-agenticus` as `Petrus.Agenticus.Hands.Workspace` (it spawns processes and Docker, so it is not core) |
 
 ## Unit tests
 
@@ -66,13 +66,14 @@ publishes; and the adapter was entered exactly once.
 
 The ES-049 report is compared exactly: the trace, counters and evidence.
 
-### `test_workspace.py`: 3 functions, deferred
+### `test_workspace.py`: 3 functions, ported in `petrus-agenticus`
 
 `test_local_workspace_adapter_runs_complete_public_motus_route`,
 `test_binary_output_preserves_the_public_utf8_byte_bound` and
 `test_docker_workspace_adapter_and_binding_run_the_same_public_hands_route`
-exercise `hands/workspace.py`, which is out of scope for this core package.
-They move with `workspace.py` to `petrus-agenticus`.
+exercise `hands/workspace.py`, which needs the Motus execution layer. It
+lives in `petrus-agenticus` as `Petrus.Agenticus.Hands.Workspace`. The
+mapping and its differential corpus are in that package's PARITY.md.
 
 ## Differential corpus
 
@@ -112,6 +113,6 @@ cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-core/diff
 
 ## Gaps
 
-- `workspace.py` and `test_workspace.py` are deferred (see above).
+- `workspace.py` and `test_workspace.py` are ported in `petrus-agenticus` (see above).
 - Upstream `isinstance` checks on already-typed arguments have no Haskell
   equivalent; see `divergences/hands.md`.
