@@ -43,7 +43,7 @@ parameters are separate Hspec examples where they are ported.
 | upstream file | ported | partly by types | by types | deferred |
 | --- | ---: | ---: | ---: | ---: |
 | engine/test_observation.py (19) | 15 | 3 | 1 | 0 |
-| engine/test_observation_http.py (7) | | | | 7 |
+| engine/test_observation_http.py (7) | 7 (in `petrus-observation-http`) | | | 0 |
 
 `cabal test petrus-observation` runs 74 examples, with 0 failures:
 
@@ -91,7 +91,12 @@ result or failure) the port uses `Petrus.Engine.Provider.engineInstance`.
 The reference forces a boolean watermark into the Instance; the Engine twin
 creates the Engine at the float instant 7.5 instead (same refusal).
 
-## engine/test_observation_http.py: deferred to the HTTP adapter
+## engine/test_observation_http.py: ported in petrus-observation-http
+
+The HTTP adapter is the package `petrus-observation-http` (on
+`petrus-http-core`); its [PARITY.md](../petrus-observation-http/PARITY.md)
+maps these 7 tests to their Hspec ports. What follows is what the adapter
+needed from this package.
 
 All 7 functions test the observation HTTP adapter (routes, headers, query
 grammar, 405/404/OPTIONS, and transport shutdown) over a live Engine:
@@ -104,8 +109,7 @@ grammar, 405/404/OPTIONS, and transport shutdown) over a live Engine:
 - test_unknown_route_options_and_closed_engine
 - test_transport_shutdown_does_not_close_engine_and_engine_keeps_executing
 
-What they need that does not exist yet is an HTTP core (no package here
-serves HTTP): `create_observation_server(engine, host, port)` binding a
+They need an HTTP core: `create_observation_server(engine, host, port)` binding a
 threaded server to one Engine without starting a thread or owning the
 Engine's lifecycle (the caller runs `serve_forever` and `shutdown`); the
 routes `GET /v1/snapshot`, `/v1/document` (both refuse any query) and
