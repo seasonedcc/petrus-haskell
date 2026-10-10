@@ -104,6 +104,18 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.HistoryCodecSpec
                     Petrus.Impetus.HistoryStoreSpec
                     Petrus.Impetus.FiringHistorySpec
+                    Petrus.Impetus.InstanceSupport
+                    Petrus.Impetus.CelStub
+                    Petrus.Impetus.InstanceFiringSpec
+                    Petrus.Impetus.FiringOccurrencesSpec
+                    Petrus.Impetus.HandlersSpec
+                    Petrus.Impetus.RuntimeSpec
+                    Petrus.Impetus.AwaitingTerminationSpec
+                    Petrus.Impetus.EnvironmentSignalSpec
+                    Petrus.Impetus.InstanceIdentitySpec
+                    Petrus.Impetus.CompletionSpec
+                    Petrus.Impetus.GuardBranchSpec
+                    Petrus.Impetus.CelGuardsSpec
                     Petrus.Impetus.NetDefinitionSpec
                     Petrus.Impetus.NetDocumentSpec
                     Petrus.Impetus.NetDocumentLineageSpec

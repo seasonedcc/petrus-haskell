@@ -2,6 +2,16 @@ module Main (main) where
 
 import Petrus.Impetus.ActivitySeamSpec qualified as ActivitySeamSpec
 import Petrus.Impetus.ArcFiltersSpec qualified as ArcFiltersSpec
+import Petrus.Impetus.AwaitingTerminationSpec qualified as AwaitingTerminationSpec
+import Petrus.Impetus.CelGuardsSpec qualified as CelGuardsSpec
+import Petrus.Impetus.CompletionSpec qualified as CompletionSpec
+import Petrus.Impetus.EnvironmentSignalSpec qualified as EnvironmentSignalSpec
+import Petrus.Impetus.FiringOccurrencesSpec qualified as FiringOccurrencesSpec
+import Petrus.Impetus.GuardBranchSpec qualified as GuardBranchSpec
+import Petrus.Impetus.HandlersSpec qualified as HandlersSpec
+import Petrus.Impetus.InstanceFiringSpec qualified as InstanceFiringSpec
+import Petrus.Impetus.InstanceIdentitySpec qualified as InstanceIdentitySpec
+import Petrus.Impetus.RuntimeSpec qualified as RuntimeSpec
 import Petrus.Impetus.DotSpec qualified as DotSpec
 import Petrus.Impetus.EnablednessSpec qualified as EnablednessSpec
 import Petrus.Impetus.FifoQueueSpec qualified as FifoQueueSpec
@@ -33,6 +43,16 @@ main = hspec $ do
   FiringSpec.spec
   DotSpec.spec
   FifoQueueSpec.spec
+  InstanceFiringSpec.spec
+  FiringOccurrencesSpec.spec
+  HandlersSpec.spec
+  RuntimeSpec.spec
+  AwaitingTerminationSpec.spec
+  EnvironmentSignalSpec.spec
+  InstanceIdentitySpec.spec
+  CompletionSpec.spec
+  GuardBranchSpec.spec
+  CelGuardsSpec.spec
   ActivitySeamSpec.spec
   TypedBindingsSpec.spec
   SelectionSpec.spec
