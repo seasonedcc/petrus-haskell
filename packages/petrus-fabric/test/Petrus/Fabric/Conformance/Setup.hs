@@ -34,22 +34,29 @@ module Petrus.Fabric.Conformance.Setup
   , interopGroup
   , both
   , registerOn
+  , refusal
+  , neutralLibrary
   ) where
 
-import Control.Exception (bracket)
+import Control.Exception (bracket, try)
+import Control.Monad (forM_)
+import Data.ByteString qualified as BS
 import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as BC
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time (NominalDiffTime, UTCTime, addUTCTime)
 import Petrus.Fabric.Conformance.Impl
+import Petrus.Fabric (Category, FabricError, errorCategory, errorMessage)
 import Petrus.Fabric.Postgres (parseTimestamptz)
 import Petrus.Json (Json (..), parseJson, pythonLoads)
 import Petrus.Postgres (Param, Sql)
 import Petrus.Postgres qualified as Pg
-import Petrus.TestSupport (PostgresTarget (..), lookupPostgresUrl, skipMessage, withScratchDatabase)
+import Petrus.TestSupport (PostgresTarget (..), lookupPostgresUrl, repoRoot, skipMessage, withScratchDatabase)
+import System.FilePath ((</>))
 import Test.Hspec
 
 -- | Starts an implementation for the duration of an action.
@@ -235,3 +242,34 @@ dbNow c =
 -- | An offset-carrying ISO time some seconds after the given one.
 isoPlus :: NominalDiffTime -> UTCTime -> Json
 isoPlus seconds time = String (stampText (addUTCTime seconds time))
+
+-- | The reference tests' @pytest.raises(..., match=...)@: the action is
+-- refused with this category and a message containing each fragment in
+-- order.
+refusal :: Category -> [Text] -> IO a -> Expectation
+refusal category fragments action =
+  try action >>= \case
+    Right _ -> expectationFailure ("expected a " <> show category <> " refusal, got success")
+    Left (e :: FabricError)
+      | errorCategory e == category && inOrder fragments (errorMessage e) -> pure ()
+      | otherwise -> expectationFailure ("expected a " <> show category <> " refusal matching " <> show fragments <> ", got " <> show e)
+  where
+    inOrder [] _ = True
+    inOrder (f : fs) message = case T.breakOn f message of
+      (_, rest) | T.null rest -> False
+      (_, rest) -> inOrder fs (T.drop (T.length f) rest)
+
+-- | The reference's neutral-import tests guard Python's import hook against
+-- psycopg; the port's equivalent is the package boundary: the package's
+-- main library depends on none of the PostgreSQL packages, so importing it
+-- cannot reach a database driver.
+neutralLibrary :: FilePath -> Expectation
+neutralLibrary package = do
+  root <- repoRoot
+  cabal <- TE.decodeUtf8 <$> BS.readFile (root </> "packages" </> package </> (package <> ".cabal"))
+  let mainLibrary = takeWhile (not . isStanza) (drop 1 (dropWhile (/= "library") (T.lines cabal)))
+      isStanza line = any (`T.isPrefixOf` line) ["library ", "executable ", "test-suite ", "benchmark ", "common "]
+      depends = T.unwords mainLibrary
+  mainLibrary `shouldSatisfy` (not . null)
+  forM_ ["petrus-postgres", "postgresql-libpq", "petrus-engine-postgres", ":postgres"] $ \forbidden ->
+    (forbidden, forbidden `T.isInfixOf` depends) `shouldBe` (forbidden, False)

@@ -3,6 +3,7 @@ module Main (main) where
 import Petrus.Processes.ConformanceSpec qualified as Conformance
 import Petrus.Processes.DemoSpec qualified as Demo
 import Petrus.Processes.InteropSpec qualified as Interop
+import Petrus.Processes.ReferenceSpec qualified as Reference
 import Petrus.Processes.TypedSpec qualified as Typed
 import Test.Hspec
 
@@ -12,3 +13,4 @@ main = hspec $ do
   Interop.spec
   Demo.spec
   Typed.spec
+  Reference.spec

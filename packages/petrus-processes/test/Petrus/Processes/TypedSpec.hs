@@ -4,7 +4,7 @@
 -- types enforce (DIVERGENCES.md, "Type-enforced refusals"): this module
 -- compiles with deferred type errors, and the example passes only when
 -- using the ill-typed value raises a 'TypeError'.
-module Petrus.Processes.TypedSpec (spec) where
+module Petrus.Processes.TypedSpec (spec, liveProvisioner) where
 
 import Control.Exception (TypeError (..))
 import Petrus.Json (Json (..))

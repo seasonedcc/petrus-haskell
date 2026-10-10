@@ -134,6 +134,7 @@ test-suite petrus-fabric-test
                     Petrus.Fabric.ConformanceSpec
                     Petrus.Fabric.InteropSpec
                     Petrus.Fabric.TypedSpec
+                    Petrus.Fabric.ReferenceSpec
   build-depends:    base
                   , async >=2.2
                   , bytestring
