@@ -38,11 +38,13 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.Fabric
+                    Petrus.Fabric.Canonical
                     Petrus.Fabric.Error
                     Petrus.Fabric.Model
                     Petrus.Fabric.Ingress
                     Petrus.Fabric.Send
-  build-depends:    base >=4.18 && <5
+  build-depends:    array >=0.5
+                  , base >=4.18 && <5
                   , base16-bytestring >=1.0
                   , bytestring >=0.11
                   , containers >=0.6
@@ -135,6 +137,7 @@ test-suite petrus-fabric-test
                     Petrus.Fabric.InteropSpec
                     Petrus.Fabric.TypedSpec
                     Petrus.Fabric.ReferenceSpec
+                    Petrus.Fabric.CanonicalSpec
   build-depends:    base
                   , async >=2.2
                   , bytestring
@@ -152,8 +155,26 @@ test-suite petrus-fabric-test
                   , petrus-json
                   , petrus-postgres
                   , petrus-test-support
+                  , QuickCheck >=2.14
                   , process >=1.6
                   , text
                   , time
   build-tool-depends: petrus-fabric:cv5-fabric-demo
   ghc-options:      -threaded -rtsopts
+
+benchmark petrus-fabric-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , petrus-fabric
+                  , petrus-fabric:postgres
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-postgres
+                  , petrus-test-support
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -threaded -O2 -rtsopts "-with-rtsopts=-A32m"

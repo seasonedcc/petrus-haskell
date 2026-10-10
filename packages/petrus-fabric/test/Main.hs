@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Petrus.Fabric.CanonicalSpec qualified as Canonical
 import Petrus.Fabric.ConformanceSpec qualified as Conformance
 import Petrus.Fabric.DemoSpec qualified as Demo
 import Petrus.Fabric.InteropSpec qualified as Interop
@@ -14,3 +15,4 @@ main = hspec $ do
   Demo.spec
   Typed.spec
   Reference.spec
+  Canonical.spec

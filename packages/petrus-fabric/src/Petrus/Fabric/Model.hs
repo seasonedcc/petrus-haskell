@@ -59,6 +59,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe qualified as TU
 import Data.Time (UTCTime)
 import GHC.Records (HasField (..))
+import Petrus.Fabric.Canonical (canonicalFast, stringBuilder)
 import Petrus.Fabric.Error
 import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, encodeErrorMessage)
 import Petrus.Json.Encode (EncodeError (..))
@@ -139,9 +140,12 @@ jsonObject name = \case
 -- | @_canonical(value)@: sorted keys, compact separators, raw UTF-8, no NaN
 -- (§3.3).
 canonicalBytes :: Json -> Either FabricError ByteString
-canonicalBytes value = case dumps canonicalOptions value of
-  Left problem -> Left (InvalidValue (T.pack (encodeErrorMessage problem)))
-  Right bytes -> Right bytes
+canonicalBytes value = case canonicalFast value of
+  Just bytes -> Right bytes
+  -- A refused value: the general encoder names the refusal exactly.
+  Nothing -> case dumps canonicalOptions value of
+    Left problem -> Left (InvalidValue (T.pack (encodeErrorMessage problem)))
+    Right bytes -> Right bytes
 
 canonicalOptions :: EncodeOptions
 canonicalOptions = compact {sortKeys = True}
@@ -152,9 +156,7 @@ sha256Hex = TE.decodeLatin1 . Base16.encode . SHA256.hash
 
 -- | The canonical (and only) spelling of a string.
 canonicalString :: Text -> B.Builder
-canonicalString text = case dumps canonicalOptions (String text) of
-  Right bytes -> B.byteString bytes
-  Left problem -> error ("a JSON string cannot be refused: " <> show problem)
+canonicalString = stringBuilder
 
 -- | @exact_object@: the members of an object whose key set is exactly the
 -- given one, or the message.
