@@ -41,6 +41,7 @@ module Petrus.Sqlite.Connection
   , connectionDatabase
   , open
   , connect
+  , configure
   , close
   , withConnection
 
@@ -252,6 +253,13 @@ open profile path = mask $ \restore -> do
   connection <- connect path (busyTimeoutMs profile) (isolationLevel profile)
   restore (mapM_ (runSetup connection) (setup profile)) `onException` close connection
   pure connection
+
+-- | Run a profile's setup statements on an already connected database, in
+-- order (a refused WAL switch raises 'WalRefused'). For openers that must
+-- inspect the file between @sqlite3.connect@ and their PRAGMAs, as the
+-- History store's preflight does; 'open' is 'connect' followed by this.
+configure :: Connection -> Profile -> IO ()
+configure connection profile = mapM_ (runSetup connection) (setup profile)
 
 runSetup :: Connection -> Setup -> IO ()
 runSetup connection = \case
