@@ -22,6 +22,8 @@ module Petrus.Impetus.History.Codec
   ) where
 
 import Control.Monad (forM_, unless)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -140,8 +142,8 @@ decodeRecord payload = do
             <> pyJson schema
             <> ", and this kernel reads schema 5 only — no migration or converter exists"
         )
-  (typeName, params) <- case nameValue of
-    String n | Just ps <- lookup n layouts -> Right (n, ps)
+  (typeName, layout) <- case nameValue of
+    String n | Just l <- Map.lookup n layoutIndex -> Right (n, l)
     String n
       | Just successor <- lookup n v1Successors ->
           Left
@@ -157,31 +159,88 @@ decodeRecord payload = do
             <> pyJson other
             <> " — not a record type the kernel emits"
         )
-  let fields = [(k, v) | (k, v) <- members, k /= "record", k /= "schema"]
-  -- The reference converts each present field by its name first, in
-  -- payload order, before the constructor sees any argument.
-  forM_ fields (uncurry preconvert)
-  checkArguments typeName params fields
-  record <- build typeName fields
+  fields <- case members of
+    -- The canonical payload: the discriminators first, then exactly the
+    -- constructor's parameters in field order. Every argument is present
+    -- and none is unexpected, so the constructor's argument check cannot
+    -- refuse; only the name-driven conversions run, in payload order.
+    ("record", _) : ("schema", _) : rest
+      | alignedParams layout.params rest -> do
+          sequence_ (zipWith ($) layout.converters (map snd rest))
+          Right rest
+    _ -> do
+      let fields = [(k, v) | (k, v) <- members, k /= "record", k /= "schema"]
+      -- The reference converts each present field by its name first, in
+      -- payload order, before the constructor sees any argument.
+      forM_ fields (uncurry preconvert)
+      checkArguments typeName layout.params fields
+      Right fields
+  record <- layout.build (Reader typeName fields)
   recordInvariants record
-  unless (encodeRecord record == payload) $
+  unless (isCanonicalSpelling record payload) $
     Left ("cannot decode event history record " <> pyStr typeName <> ": payload is not its exact canonical schema-5 spelling")
   Right record
+
+-- | Whether the payload is the record's canonical spelling: exactly
+-- @encodeRecord record == payload@ (the reference's mapping equality), but
+-- decided without building the encoding when, as on every canonical
+-- payload, the members arrive in the canonical order.
+--
+-- Both sides have unique keys (the canonical encoding by construction, a
+-- payload because a parsed object has unique members). So while the keys
+-- line up position by position, a value that differs at an aligned key
+-- decides the mapping comparison (the same key holds a different value on
+-- each side), and keys that line up to the end with equal values are the
+-- same mapping. The first misaligned key (another order, a missing or an
+-- extra member) hands the whole decision to the full comparison.
+isCanonicalSpelling :: Record -> Json -> Bool
+isCanonicalSpelling record payload = case payload of
+  Object (("record", String name) : ("schema", Int 5) : members)
+    | name == recordName record -> aligned (recordFields record) members
+  _ -> fullComparison
+  where
+    fullComparison = encodeRecord record == payload
+    aligned ((key, value) : fields) ((key', value') : members)
+      | key == key' = encodeFieldValue value == value' && aligned fields members
+    aligned [] [] = True
+    aligned _ _ = fullComparison
+
+-- | What decoding needs to know about one record type, indexed by its
+-- discriminator: its constructor parameters, the name-driven conversion of
+-- each parameter, and its builder. The conversions and the builder are
+-- selected by name once, here, not once per decoded record.
+data Layout = Layout
+  { params :: [Param]
+  , converters :: [Json -> Either Text ()]
+  , build :: Reader -> Either Text Record
+  }
+
+layoutIndex :: Map Text Layout
+layoutIndex =
+  Map.fromList
+    [(name, Layout ps [preconvert key | Param key _ <- ps] (builderFor name)) | (name, ps) <- layouts]
+
+-- | Whether a payload's members are exactly the constructor's parameters in
+-- order (the canonical spelling).
+alignedParams :: [Param] -> [(Text, Json)] -> Bool
+alignedParams (Param name _ : ps) ((key, _) : members) = name == key && alignedParams ps members
+alignedParams [] [] = True
+alignedParams _ _ = False
 
 -- | The reference's name-driven conversions (@_decoded@), run for their
 -- errors.
 preconvert :: Text -> Json -> Either Text ()
-preconvert name value
-  | name `elem` ["place", "transition", "source"] = () <$ pathValue value
-  | name == "tokens" = () <$ tokensValue value
-  | name `elem` ["entries", "discarded", "cancelled"] = () <$ idsValue name value
-  | name == "scope" = case value of
+preconvert name
+  | name `elem` ["place", "transition", "source"] = \value -> () <$ pathValue value
+  | name == "tokens" = \value -> () <$ tokensValue value
+  | name `elem` ["entries", "discarded", "cancelled"] = \value -> () <$ idsValue name value
+  | name == "scope" = \case
       Null -> Right ()
       String _ -> Right ()
-      _ -> () <$ scopeValue value
-  | name `elem` ["closed", "opened"] = () <$ scopeValue value
-  | name == "policy" = () <$ policyValue value
-  | otherwise = Right ()
+      value -> () <$ scopeValue value
+  | name `elem` ["closed", "opened"] = \value -> () <$ scopeValue value
+  | name == "policy" = \value -> () <$ policyValue value
+  | otherwise = \_ -> Right ()
 
 -- | The constructor's argument check: unexpected and missing arguments.
 checkArguments :: Text -> [Param] -> [(Text, Json)] -> Either Text ()
@@ -380,51 +439,51 @@ requiredScope r@(Reader typeName _) n = case raw r n of
 json :: Reader -> Text -> Json
 json r n = maybe Null id (raw r n)
 
-build :: Text -> [(Text, Json)] -> Either Text Record
-build typeName fields = case typeName of
-  "InstanceCreated" -> do
+builderFor :: Text -> Reader -> Either Text Record
+builderFor typeName = case typeName of
+  "InstanceCreated" -> \r -> do
     identity <- text r "instance" ""
     name <- optionalText r "name"
     RInstanceCreated . InstanceCreated identity name <$> instant r "instant"
-  "TokensInitialized" -> do
+  "TokensInitialized" -> \r -> do
     p <- path r "place"
     ts <- tokens r
     i <- instant r "instant"
     es <- ids r "entries"
     s <- optionalScope r
     Right (RTokensInitialized (TokensInitialized p ts i es s))
-  "ScopeOpened" -> do
+  "ScopeOpened" -> \r -> do
     s <- requiredScope r "scope"
     RScopeOpened . ScopeOpened s <$> instant r "instant"
-  "ScopeClosed" -> do
+  "ScopeClosed" -> \r -> do
     s <- requiredScope r "scope"
     d <- ids r "discarded"
     c <- ids r "cancelled"
     RScopeClosed . ScopeClosed s d c <$> instant r "instant"
-  "ScopeReset" -> do
+  "ScopeReset" -> \r -> do
     c <- requiredScope r "closed"
     o <- requiredScope r "opened"
     d <- ids r "discarded"
     x <- ids r "cancelled"
     RScopeReset . ScopeReset c o d x <$> instant r "instant"
-  "CandidateSelected" -> do
+  "CandidateSelected" -> \r -> do
     t <- path r "transition"
     o <- occurrenceValue r
     RCandidateSelected . CandidateSelected t o <$> instant r "instant"
-  "ExternalEventDelivered" -> do
+  "ExternalEventDelivered" -> \r -> do
     s <- path r "source"
     ts <- tokens r
     identity <- text r "identity" ""
     o <- occurrenceValue r
     sc <- optionalScope r
     RExternalEventDelivered . ExternalEventDelivered s ts identity o sc <$> instant r "instant"
-  "ScopedDeliveryDropped" -> do
+  "ScopedDeliveryDropped" -> \r -> do
     s <- path r "source"
     ts <- tokens r
     identity <- text r "identity" ""
     sc <- requiredScope r "scope"
     RScopedDeliveryDropped . ScopedDeliveryDropped s ts identity sc <$> instant r "instant"
-  "ScopedDeliveryQuarantined" -> do
+  "ScopedDeliveryQuarantined" -> \r -> do
     s <- path r "source"
     ts <- tokens r
     identity <- text r "identity" ""
@@ -434,20 +493,20 @@ build typeName fields = case typeName of
       Just other -> QuarantineGeneration <$> scopeValue other
       Nothing -> Left "ScopedDeliveryQuarantined requires a non-empty scope name without NUL"
     RScopedDeliveryQuarantined . ScopedDeliveryQuarantined s ts identity sc <$> instant r "instant"
-  "DeliveryRegistrationOpened" -> do
+  "DeliveryRegistrationOpened" -> \r -> do
     s <- path r "source"
     k <- text r "key" ""
     o <- optionalOccurrence r
     RDeliveryRegistrationOpened . DeliveryRegistrationOpened s k o <$> instant r "instant"
-  "DeliveryRegistrationClosed" -> do
+  "DeliveryRegistrationClosed" -> \r -> do
     s <- path r "source"
     k <- text r "key" ""
     o <- optionalOccurrence r
     RDeliveryRegistrationClosed . DeliveryRegistrationClosed s k o <$> instant r "instant"
-  "TimerMatured" -> do
+  "TimerMatured" -> \r -> do
     m <- instant r "maturation_instant"
     RTimerMatured . TimerMatured m <$> instant r "instant"
-  "FiringBegun" -> do
+  "FiringBegun" -> \r -> do
     t <- path r "transition"
     o <- occurrenceValue r
     sc <- optionalScope r
@@ -455,7 +514,7 @@ build typeName fields = case typeName of
   "TokensConsumed" -> movement (\p ts o es sc i -> RTokensConsumed (TokensConsumed p ts o es sc i))
   "TokensRead" -> movement (\p ts o es sc i -> RTokensRead (TokensRead p ts o es sc i))
   "TokensProduced" -> movement (\p ts o es sc i -> RTokensProduced (TokensProduced p ts o es sc i))
-  "ActivityRequested" -> do
+  "ActivityRequested" -> \r -> do
     t <- path r "transition"
     a <- text r "activity" ""
     p <- policyValue (json r "policy")
@@ -464,20 +523,20 @@ build typeName fields = case typeName of
     o <- occurrenceValue r
     sc <- optionalScope r
     RActivityRequested . ActivityRequested t a (json r "input") p c k o sc <$> instant r "instant"
-  "ActivityCompleted" -> do
+  "ActivityCompleted" -> \r -> do
     t <- path r "transition"
     o <- occurrenceValue r
     RActivityCompleted . ActivityCompleted t (json r "result") o <$> instant r "instant"
-  "ActivityTerminalQuarantined" -> do
+  "ActivityTerminalQuarantined" -> \r -> do
     t <- path r "transition"
     sc <- requiredScope r "scope"
     o <- occurrenceValue r
     RActivityTerminalQuarantined . ActivityTerminalQuarantined t (json r "outcome") sc o <$> instant r "instant"
-  "FiringCompleted" -> do
+  "FiringCompleted" -> \r -> do
     t <- path r "transition"
     o <- occurrenceValue r
     RFiringCompleted . FiringCompleted t o <$> instant r "instant"
-  "ActivityFailed" -> do
+  "ActivityFailed" -> \r -> do
     t <- path r "transition"
     e <- text r "error" ""
     k <- text r "kind" "ActivityError"
@@ -491,15 +550,14 @@ build typeName fields = case typeName of
       Just other -> maybe (Left (noun r "retry_after" <> " must use an exact built-in number or None")) (Right . Just) (numberFromJson other)
     o <- occurrenceValue r
     RActivityFailed . ActivityFailed t e k (json r "details") retryable retryAfter o <$> instant r "instant"
-  "FiringFailed" -> do
+  "FiringFailed" -> \r -> do
     t <- path r "transition"
     e <- text r "error" ""
     o <- occurrenceValue r
     RFiringFailed . FiringFailed t e o <$> instant r "instant"
-  other -> Left ("cannot decode event history record: unknown 'record' discriminator " <> pyStr other <> " — not a record type the kernel emits")
+  other -> \_ -> Left ("cannot decode event history record: unknown 'record' discriminator " <> pyStr other <> " — not a record type the kernel emits")
   where
-    r = Reader typeName fields
-    movement mk = do
+    movement mk r = do
       p <- path r "place"
       ts <- tokens r
       o <- occurrenceValue r

@@ -34,6 +34,7 @@ module Petrus.Impetus.NetDocument
   , MarkingToken (..)
   , mkMarkingToken
   , mkLineageEntry
+  , placeMarkingFromJson
     -- * Wire format
   , parseNetDocument
   , parseNetDocumentText
@@ -167,6 +168,14 @@ mkLineageEntry :: Integer -> Maybe Integer -> Provenance -> [PlaceMarking] -> [(
 mkLineageEntry i p prov m meta =
   first (renderValidationError "LineageEntry") $
     validateEntry (dumpEntry True (LineageEntry i p prov m meta))
+
+-- | @PlaceMarking.model_validate(value, strict=True)@: one place's marking
+-- from its JSON shape (@{"place": ..., "tokens": [{"color", "data"}]}@),
+-- every field validated as the reference's model does, with the reference's
+-- pydantic-formatted error.
+placeMarkingFromJson :: Json -> Either Text PlaceMarking
+placeMarkingFromJson value =
+  first (renderValidationError "PlaceMarking") (validatePlaceMarking (fromJson value))
 
 -- ---------------------------------------------------------------------------
 -- Parsing
