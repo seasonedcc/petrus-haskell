@@ -24,6 +24,7 @@ module Petrus.Json.Encode
   , encodeErrorMessage
   ) where
 
+import Control.Exception (Exception, evaluate, throw, try)
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as B
 import Data.ByteString.Lazy qualified as BL
@@ -32,9 +33,11 @@ import Data.List (sortOn)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import GHC.Num (Integer (IS))
 import Numeric (floatToDigits, showHex)
 import Petrus.Json.Limits (defaultNestingLimit, intReprDigitsError, maxIntStrDigits)
 import Petrus.Json.Value
+import System.IO.Unsafe (unsafePerformIO)
 
 -- | The subset of @json.dumps@ keyword arguments Petrus uses.
 data EncodeOptions = EncodeOptions
@@ -110,42 +113,91 @@ encodeErrorMessage = \case
   NestingTooDeep limit -> "maximum nesting depth (" ++ show limit ++ ") exceeded while encoding a JSON object"
 
 -- | Serialize to UTF-8 bytes.
+--
+-- One pass: the writer itself checks every value as it reaches it and
+-- abandons the output at the first refusal (the same one 'dumpsBuilder'
+-- reports), so a large document is never walked twice or held in memory
+-- whole for a separate check.
 dumps :: EncodeOptions -> Json -> Either EncodeError BS.ByteString
-dumps options value = BL.toStrict . B.toLazyByteString <$> dumpsBuilder options value
+dumps options value =
+  unsafePerformIO $
+    either (\(Refused problem) -> Left problem) Right
+      <$> try (evaluate (BL.toStrict (B.toLazyByteString (writer options value))))
+{-# NOINLINE dumps #-}
 
 -- | Serialize to text.
 dumpsText :: EncodeOptions -> Json -> Either EncodeError Text
 dumpsText options value = TE.decodeUtf8 <$> dumps options value
 
+-- | A refusal met by the writer, which abandons the output ('dumps').
+newtype Refused = Refused EncodeError
+  deriving stock (Show)
+
+instance Exception Refused
+
 -- | Serialize to a builder.
+--
+-- A lazy builder cannot take back what it has written, so refusals are
+-- decided up front here: a cheap scan in document order settles the common
+-- case, and only a refused value pays for the search in writer order (which
+-- sorts keys under 'sortKeys').
 dumpsBuilder :: EncodeOptions -> Json -> Either EncodeError B.Builder
 dumpsBuilder options value
-  | checked, Just problem <- firstProblem 0 value = Left problem
-  | otherwise = Right (go 0 value)
+  | checked options, not (clean 0 value), Just problem <- firstProblem 0 value = Left problem
+  | otherwise = Right (writer options value)
   where
-    -- Refusals are decided up front, in the same depth-first order the
-    -- writer visits values, so the builder itself is a plain fold with no
-    -- 'Either' threaded through every node.
-    checked = not (allowNan options) || hasLimit (reprDigitLimit options) || hasLimit (nestingLimit options)
-    hasLimit = maybe False (const True)
+    clean :: Int -> Json -> Bool
+    clean level = \case
+      Float d -> allowNan options || not (isNaN d || isInfinite d)
+      Int i -> maybe True (\limit -> not (tooManyDigits limit i)) (reprDigitLimit options)
+      Array items@(_ : _) -> shallow level && all (clean (level + 1)) items
+      Object members@(_ : _) -> shallow level && all (clean (level + 1) . snd) members
+      _ -> True
+    shallow level = maybe True (level <) (nestingLimit options)
     firstProblem :: Int -> Json -> Maybe EncodeError
     firstProblem level = \case
       Float d | not (allowNan options), isNaN d || isInfinite d -> Just (NonFiniteNumber d)
       Int i | Just limit <- reprDigitLimit options, tooManyDigits limit i -> Just (IntegerTooLarge limit)
       Array items@(_ : _) -> deeper level (firstJust (map (firstProblem (level + 1)) items))
-      Object members@(_ : _) -> deeper level (firstJust (map (firstProblem (level + 1) . snd) (ordered members)))
+      Object members@(_ : _) -> deeper level (firstJust (map (firstProblem (level + 1) . snd) (ordered options members)))
       _ -> Nothing
     deeper level rest = case nestingLimit options of
       Just limit | level >= limit -> Just (NestingTooDeep limit)
       _ -> rest
-    tooManyDigits limit i
-      | limit == maxIntStrDigits = abs i >= intDigitBound
-      | otherwise = abs i >= 10 ^ max 0 limit
-    ordered members = if sortKeys options then sortOn fst members else members
     firstJust = \case
       [] -> Nothing
       Just problem : _ -> Just problem
       Nothing : rest -> firstJust rest
+
+-- | Whether the options refuse anything at all.
+checked :: EncodeOptions -> Bool
+checked options = not (allowNan options) || hasLimit (reprDigitLimit options) || hasLimit (nestingLimit options)
+  where
+    hasLimit = maybe False (const True)
+
+-- | Whether an integer has more decimal digits than the limit.
+tooManyDigits :: Int -> Integer -> Bool
+tooManyDigits limit i
+  | IS _ <- i, limit >= 19 = False
+  | limit == maxIntStrDigits = abs i >= intDigitBound
+  | otherwise = abs i >= 10 ^ max 0 limit
+
+ordered :: EncodeOptions -> [(Text, Json)] -> [(Text, Json)]
+ordered options members = if sortKeys options then sortOn fst members else members
+
+-- | The writer: a plain 'B.Builder' fold with no 'Either' threaded through
+-- it. It throws 'Refused' (caught by 'dumps') at the first value the
+-- options refuse, in writer order: a container before its items, keys
+-- sorted under 'sortKeys'.
+writer :: EncodeOptions -> Json -> B.Builder
+writer options = go 0
+  where
+    refuse = throw . Refused
+    digitLimit = reprDigitLimit options
+    depthLimit = nestingLimit options
+    enter level = case depthLimit of
+      Just limit | level >= limit -> refuse (NestingTooDeep limit)
+      _ -> ()
     itemSep = case (itemSeparator options, indent options) of
       (Just separator, _) -> separator
       (Nothing, Just _) -> ","
@@ -162,15 +214,19 @@ dumpsBuilder options value
       Null -> B.string7 "null"
       Bool True -> B.string7 "true"
       Bool False -> B.string7 "false"
-      Int i -> B.integerDec i
-      Float d -> floatB d
+      Int i
+        | Just limit <- digitLimit, tooManyDigits limit i -> refuse (IntegerTooLarge limit)
+        | otherwise -> B.integerDec i
+      Float d
+        | not (allowNan options), isNaN d || isInfinite d -> refuse (NonFiniteNumber d)
+        | otherwise -> floatB d
       String s -> string s
       Array [] -> B.string7 "[]"
-      Array items -> container '[' ']' level (map (go (level + 1)) items)
+      Array items -> enter level `seq` container '[' ']' level (map (go (level + 1)) items)
       Object [] -> B.string7 "{}"
       Object members ->
         let member (key, v) = string key <> keySep <> go (level + 1) v
-         in container '{' '}' level (map member (ordered members))
+         in enter level `seq` container '{' '}' level (map member (ordered options members))
 
     container open close level items =
       let inner = newline (level + 1)

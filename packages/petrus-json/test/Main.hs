@@ -1,7 +1,9 @@
 module Main (main) where
 
 import Data.ByteString qualified as BS
+import Data.ByteString.Builder qualified as B
 import Data.ByteString.Char8 qualified as BC
+import Data.ByteString.Lazy qualified as BL
 import Data.Either (isLeft)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -161,6 +163,21 @@ main = hspec $ do
           len = fmap BC.length . dumps compact
       len (nested (defaultNestingLimit + 1)) `shouldBe` Right (2 * defaultNestingLimit + 2)
       len (nested (defaultNestingLimit + 2)) `shouldBe` Left (NestingTooDeep defaultNestingLimit)
+
+  describe "one-pass dumps" $
+    it "refuses exactly what dumpsBuilder refuses, at the same first value (property)" $
+      property $ \(Refusable value) sorted nanAllowed depth ->
+        let options =
+              compact
+                { sortKeys = sorted
+                , allowNan = nanAllowed
+                , reprDigitLimit = Just 30
+                , nestingLimit = Just (getSmall (getNonNegative depth))
+                }
+            built = BL.toStrict . B.toLazyByteString <$> dumpsBuilder options value
+            -- Compare refusals by message: NonFiniteNumber NaN /= itself.
+            message = either (Left . encodeErrorMessage) Right
+         in message (dumps options value) === message built
 
   describe "encodeErrorMessage" $
     it "matches CPython's allow_nan=False text" $
@@ -325,3 +342,28 @@ numberSpelling = do
     digitRun low high = do
       n <- choose (low, high)
       vectorOf n (frequency [(1, pure '0'), (4, elements ['1' .. '9'])])
+
+-- | Small documents dense in what an encoder may refuse: non-finite floats,
+-- long integers, nesting, and keys out of order.
+newtype Refusable = Refusable Json
+  deriving stock (Show)
+
+instance Arbitrary Refusable where
+  arbitrary = Refusable <$> sized go
+    where
+      go :: Int -> Gen Json
+      go n
+        | n <= 1 = leaf
+        | otherwise =
+            frequency
+              [ (3, leaf)
+              , (2, Array <$> (choose (0, 3) >>= \k -> vectorOf k (go (n `div` 2))))
+              , (2, Object <$> (choose (0, 3) >>= \k -> vectorOf k ((,) <$> elements ["b", "a", "c", "aa"] <*> go (n `div` 2))))
+              ]
+      leaf =
+        oneof
+          [ pure Null
+          , Int <$> elements [0, -7, 10 ^ (29 :: Int), 10 ^ (30 :: Int), negate (10 ^ (31 :: Int))]
+          , Float <$> elements [1.5, 0 / 0, 1 / 0, -1 / 0]
+          , pure (String "s")
+          ]
