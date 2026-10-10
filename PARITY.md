@@ -42,7 +42,7 @@ the tests, conformance suites, and benchmark results that justify the status.
 | Engine: SQLite, Postgres, Absurd, coordination | `engine/` | | not started | |
 | Simulation + HTTP | `simulation.py`, `simulation_http.py` | | not started | |
 | Telemetry | `telemetry.py` | | in progress | `petrus-telemetry`; Engine instrumentation pending |
-| Deterministic simulation testing | `testing/dst.py` | | not started | |
+| Deterministic simulation testing | `testing/dst.py` | `petrus-dst` | in progress | [`packages/petrus-dst/PARITY.md`](packages/petrus-dst/PARITY.md) (Engine-independent behavior at parity; Engine-backed authoring awaits the Engine), [`bench/RESULTS.md`](packages/petrus-dst/bench/RESULTS.md) |
 | Agenticus | `agenticus/` | | not started | |
 | Fabric | `fabric/` | | in progress (spec written) | [spec/fabric.md](spec/fabric.md), [108 checks](spec/fabric-conformance.md) |
 | Processes (call/spawn) | `processes/` | | in progress (spec written) | [spec/processes.md](spec/processes.md), [80 checks](spec/processes-conformance.md) |

@@ -1,0 +1,119 @@
+cabal-version:      3.4
+name:               petrus-dst
+version:            0.1.0.0
+synopsis:           Deterministic simulation testing kit for Petrus (petrus.testing.dst/v4)
+description:
+  A Haskell port of Petrus's @petrus.testing.dst@: the deterministic World
+  interpreter, strict @petrus-dst-world@ artifacts (versions 1 to 4) with
+  codecs byte-identical to the Python reference, exact replay, the
+  @sha256-counter-v1@ choice streams, and the outer process runner
+  (@petrus-dst-process-runner@ protocol version 1).
+  .
+  The kit is runtime-neutral: it depends on no Petrus runtime package. The
+  system under test plugs in through the 'Petrus.Testing.Dst.Profile' record.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Testing
+build-type:         Simple
+extra-doc-files:    PARITY.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Testing.Dst
+                    Petrus.Testing.Dst.Choice
+                    Petrus.Testing.Dst.Codec
+                    Petrus.Testing.Dst.Decode
+                    Petrus.Testing.Dst.Internal.Canonical
+                    Petrus.Testing.Dst.Internal.StrictJson
+                    Petrus.Testing.Dst.Internal.World
+                    Petrus.Testing.Dst.Profile
+                    Petrus.Testing.Dst.PyRepr
+                    Petrus.Testing.Dst.Replay
+                    Petrus.Testing.Dst.Runner
+                    Petrus.Testing.Dst.Timeline
+                    Petrus.Testing.Dst.Transcript
+                    Petrus.Testing.Dst.Types
+                    Petrus.Testing.Dst.World
+  build-depends:    base >=4.18 && <5
+                  , array >=0.5
+                  , base16-bytestring >=1.0
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , crypton >=1.0
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , mtl >=2.3
+                  , petrus-json
+                  , process >=1.6.12
+                  , ram >=0.20
+                  , text >=2.0
+                  , transformers >=0.6
+                  , unix >=2.8
+  ghc-options:      -O2
+
+test-suite petrus-dst-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Generated
+                    Spec.Choice
+                    Spec.Codec
+                    Spec.Properties
+                    Spec.Runner
+                    Spec.Stories
+                    Spec.Support
+                    Spec.Transcript
+                    Toy
+  build-depends:    base
+                  , base16-bytestring
+                  , bytestring
+                  , containers
+                  , crypton
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , mtl
+                  , petrus-dst
+                  , petrus-json
+                  , process
+                  , QuickCheck >=2.14
+                  , ram
+                  , text
+                  , unix
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-dst-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench test
+  main-is:          Bench.hs
+  other-modules:    Generated
+                    Spec.Support
+                    Toy
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec
+                  , mtl
+                  , petrus-dst
+                  , petrus-json
+                  , QuickCheck
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts
