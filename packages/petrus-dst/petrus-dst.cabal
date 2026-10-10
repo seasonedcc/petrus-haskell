@@ -101,6 +101,7 @@ test-suite petrus-dst-test
   other-modules:    Generated
                     Spec.Choice
                     Spec.Codec
+                    Spec.EngineCheckers
                     Spec.EngineWorlds
                     Spec.Properties
                     Spec.Runner

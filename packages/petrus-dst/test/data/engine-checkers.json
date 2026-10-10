@@ -1,0 +1,481 @@
+{
+ "vectors": [
+  {
+   "checker": "petrus.engine.commit-authority",
+   "name": "test_world.test_commit_authority_checker_refuses_a_terminal_above_external_acceptance",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.commit-authority",
+    "sequence": 0,
+    "value": {
+     "record_types": [
+      "ActivityCompleted",
+      "FiringCompleted"
+     ],
+     "terminal_deliveries": 1,
+     "terminal_refusals": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_terminal_limit": 0,
+     "activity_terminals": 1,
+     "authored_terminal_deliveries": 1,
+     "firing_completed": 1,
+     "history_refusals": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.accepted-commit-authority",
+   "name": "test_history_ack_loss_world.test_accepted_commit_checker_refuses_missing_durable_terminal",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.accepted-commit-authority",
+    "sequence": 0,
+    "value": {
+     "record_types": [
+      "ActivityRequested"
+     ],
+     "terminal_ack_losses": 1,
+     "terminal_deliveries": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "durable_activity_terminals": 0,
+     "firing_completed": 0,
+     "terminal_ack_losses": 1,
+     "terminal_deliveries": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.delivery-authority",
+   "name": "test_delivery_world.test_delivery_checker_refuses_duplicate_canonical_identity",
+   "observation": {
+    "generation": 2,
+    "instant": 0,
+    "name": "engine.delivery-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_deliveries": [
+      {
+       "identity": "event-3",
+       "occurrence": 1,
+       "value": 3
+      },
+      {
+       "identity": "event-3",
+       "occurrence": 2,
+       "value": 3
+      }
+     ],
+     "delivery_attempts": [
+      {
+       "disposition": "applied",
+       "identity": "event-3",
+       "value": 3
+      },
+      {
+       "disposition": "idempotent",
+       "identity": "event-3",
+       "value": 3
+      }
+     ],
+     "firing_completed": 2,
+     "marking_values": [
+      3,
+      3
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "actual_deliveries": [
+      {
+       "identity": "event-3",
+       "value": 3
+      },
+      {
+       "identity": "event-3",
+       "value": 3
+      }
+     ],
+     "expected_deliveries": [
+      {
+       "identity": "event-3",
+       "value": 3
+      }
+     ],
+     "expected_dispositions": [
+      "applied",
+      "idempotent"
+     ],
+     "firing_completed": 2,
+     "marking_values": [
+      3,
+      3
+     ],
+     "reported_dispositions": [
+      "applied",
+      "idempotent"
+     ]
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.cancellation-authority",
+   "name": "test_lifecycle_cancellation_world.test_cancellation_checker_refuses_a_changed_repair_instruction",
+   "observation": {
+    "generation": 2,
+    "instant": 0,
+    "name": "engine.cancellation-authority",
+    "sequence": 0,
+    "value": {
+     "active_scopes": {
+      "draft": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "authored_source_deliveries": 1,
+     "authored_terminal_deliveries": 0,
+     "cancellation_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "disposition": null,
+       "history_position": 9,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {}
+      },
+      {
+       "accepted": true,
+       "activity": "different",
+       "correlation": "occurrence-2",
+       "disposition": "tombstoned",
+       "history_position": 9,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {}
+      }
+     ],
+     "record_types": [
+      "ScopeOpened",
+      "FiringCompleted",
+      "ActivityRequested",
+      "ScopeReset"
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_cancellations": 1,
+     "cancellation_acceptances": [
+      false,
+      true
+     ],
+     "cancellation_dispositions": [
+      null,
+      "tombstoned"
+     ],
+     "canonical_scope_resets": 1,
+     "instruction_stable": false,
+     "lifecycle_authority": true,
+     "terminal_quarantined": 0
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.cancellation-authority",
+   "name": "test_lifecycle_cancellation_world.test_cancellation_checker_keeps_reset_as_late_terminal_authority",
+   "observation": {
+    "generation": 2,
+    "instant": 0,
+    "name": "engine.cancellation-authority",
+    "sequence": 0,
+    "value": {
+     "active_scopes": {
+      "draft": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "authored_source_deliveries": 1,
+     "authored_terminal_deliveries": 1,
+     "cancellation_attempts": [],
+     "record_types": [
+      "ScopeOpened",
+      "FiringCompleted",
+      "ActivityRequested",
+      "ScopeReset",
+      "ActivityTerminalQuarantined"
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_cancellations": 0,
+     "cancellation_acceptances": [],
+     "cancellation_dispositions": [],
+     "canonical_scope_resets": 1,
+     "instruction_stable": true,
+     "lifecycle_authority": true,
+     "terminal_quarantined": 1
+    },
+    "passed": true
+   }
+  },
+  {
+   "checker": "petrus.engine.delayed-terminal-authority",
+   "name": "test_delayed_world.test_delayed_checker_refuses_terminal_before_authored_instant",
+   "observation": {
+    "generation": 2,
+    "instant": 4,
+    "name": "engine.delayed-authority",
+    "sequence": 0,
+    "value": {
+     "record_types": [
+      "ActivityRequested",
+      "ActivityCompleted",
+      "FiringCompleted"
+     ],
+     "scheduled_terminal": {
+      "instant": 5,
+      "occurrence": 1,
+      "result": {
+       "value": 3
+      }
+     },
+     "terminal_deliveries": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "activity_completed": 1,
+     "activity_failed": 0,
+     "firing_completed": 1,
+     "scheduled_instant": 5,
+     "terminal_deliveries": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.timer-authority",
+   "name": "test_timer_world.test_timer_checker_refuses_early_maturation",
+   "observation": {
+    "generation": 1,
+    "instant": 4,
+    "name": "engine.timer-authority",
+    "sequence": 0,
+    "value": {
+     "authored_maturation_instant": 5,
+     "current_instant": 4,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "TimerMatured"
+     ],
+     "timer_maturations": [
+      {
+       "instant": 4,
+       "maturation_instant": 5
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "authored_maturation_instant": 5,
+     "current_instant": 4,
+     "firing_completed": 0,
+     "timer_maturations": [
+      {
+       "instant": 4,
+       "maturation_instant": 5
+      }
+     ]
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.dispatch-authority",
+   "name": "test_dispatch_refusal_world.test_dispatch_checker_refuses_repreparation_or_changed_redispatch",
+   "observation": {
+    "generation": 2,
+    "instant": 0,
+    "name": "engine.dispatch-authority",
+    "sequence": 0,
+    "value": {
+     "dispatch_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-1",
+       "idempotency": "occurrence-1",
+       "input": 3,
+       "occurrence": 1,
+       "policy": {}
+      },
+      {
+       "accepted": true,
+       "activity": "different",
+       "correlation": "occurrence-1",
+       "idempotency": "occurrence-1",
+       "input": 3,
+       "occurrence": 1,
+       "policy": {}
+      }
+     ],
+     "prepare_calls": 2,
+     "record_types": [
+      "ActivityRequested",
+      "ActivityCompleted",
+      "FiringCompleted"
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_dispatches": 1,
+     "activity_requested": 1,
+     "activity_terminals": 1,
+     "dispatch_acceptances": [
+      false,
+      true
+     ],
+     "firing_completed": 1,
+     "invocation_stable": false,
+     "prepare_calls": 2
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.lifecycle-authority",
+   "name": "test_lifecycle_world.test_lifecycle_checker_refuses_projection_of_cancelled_work",
+   "observation": {
+    "generation": 2,
+    "instant": 0,
+    "name": "engine.lifecycle-authority",
+    "sequence": 0,
+    "value": {
+     "active_scopes": {
+      "draft": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "authored_source_deliveries": 1,
+     "authored_terminal_deliveries": 1,
+     "record_types": [
+      "ScopeOpened",
+      "FiringCompleted",
+      "ScopeReset",
+      "ActivityCompleted",
+      "FiringCompleted"
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "activity_terminals": 1,
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "authored_source_deliveries": 1,
+     "authored_terminal_deliveries": 1,
+     "canonical_scope_opens": 1,
+     "canonical_scope_resets": 1,
+     "firing_completed": 2,
+     "terminal_quarantined": 0
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.history-order",
+   "name": "extra.history-order-terminal-after-projection",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.safety",
+    "sequence": 0,
+    "value": {
+     "record_types": [
+      "ActivityRequested",
+      "FiringCompleted",
+      "ActivityCompleted"
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "activity_completed": 1,
+     "activity_requested": 1,
+     "firing_completed": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.history-order",
+   "name": "extra.history-order-passes",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.safety",
+    "sequence": 0,
+    "value": {
+     "record_types": [
+      "ActivityRequested",
+      "ActivityCompleted",
+      "FiringCompleted"
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "activity_completed": 1,
+     "activity_requested": 1,
+     "firing_completed": 1
+    },
+    "passed": true
+   }
+  },
+  {
+   "checker": "petrus.engine.deliberate-terminal-refusal",
+   "name": "extra.terminal-refusal",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.safety",
+    "sequence": 0,
+    "value": {
+     "record_types": [
+      "FiringCompleted"
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "terminal_firing": true
+    },
+    "passed": false
+   }
+  }
+ ]
+}
