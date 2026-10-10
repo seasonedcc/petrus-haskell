@@ -22,11 +22,11 @@ module Petrus.Viewer.Server
   , wsOptions
   ) where
 
-import Control.Concurrent.Async (forConcurrently_, withAsync)
+import Control.Concurrent.Async (mapConcurrently_, withAsync)
 import Control.Exception (IOException, bracket, bracketOnError, throwIO, try)
-import Control.Concurrent (getNumCapabilities, threadDelay)
-import Control.Concurrent.Async qualified as Async
-import Control.Monad (forM, forever)
+import Control.Concurrent (forkOnWithUnmask, getNumCapabilities, threadDelay)
+import Control.Monad (forM, forever, void)
+import Data.IORef (atomicModifyIORef', newIORef)
 import Data.ByteString qualified as B
 import Data.List (nub)
 import Data.Text (Text)
@@ -190,20 +190,20 @@ collabApp relay =
   WaiWS.websocketsOr wsOptions (wsApp relay) $ \_ k ->
     k (lbsResponse H.status426 [("Content-Type", "text/plain")] "Upgrade Required")
 
-warpSettings :: Warp.Settings
-warpSettings =
-  Warp.setOnException (\_ _ -> pure ()) $
+-- | Warp settings. Each connection's thread is pinned to a capability,
+-- round robin: a request then runs start to finish on one capability (with
+-- that capability's I/O manager), instead of being woken on whichever
+-- capability is free, and connections still spread over all of them.
+newWarpSettings :: IO Warp.Settings
+newWarpSettings = do
+  counter <- newIORef (0 :: Int)
+  let spread :: ((forall a. IO a -> IO a) -> IO ()) -> IO ()
+      spread io = do
+        caps <- getNumCapabilities
+        n <- atomicModifyIORef' counter (\c -> (c + 1, c))
+        void (forkOnWithUnmask (n `mod` caps) io)
+  pure . Warp.setFork spread . Warp.setOnException (\_ _ -> pure ()) $
     Warp.setServerName "" Warp.defaultSettings
-
--- | Accept on every listening socket from every capability. A connection's
--- thread starts on the capability that accepted it and stays there (the
--- executables run with @-qm@, no thread migration), so connections spread
--- over the capabilities without a request ever hopping between them.
-acceptEverywhere :: (S.Socket -> IO ()) -> [S.Socket] -> IO ()
-acceptEverywhere serve socks = do
-  caps <- getNumCapabilities
-  forConcurrently_ [(c, s) | c <- [0 .. caps - 1], s <- socks] $ \(c, s) ->
-    Async.withAsyncOn c (serve s) Async.wait
 
 -- | Start the server, run the action with it, stop it afterwards.
 withServer :: ServerConfig -> (ServerHandle -> IO a) -> IO a
@@ -218,8 +218,9 @@ withServer cfg action = do
     urls -> Just <$> newObservationSources (nub urls)
   bracket (bindListeners (serverHost cfg) (serverPort cfg) (serverStrictPort cfg)) (mapM_ S.close . snd) $ \(port, socks) -> do
     let app = viewerApp cfg mgr agent collab openState observation
-        serve s = Warp.runSettingsSocket (Warp.setPort port warpSettings) s app
-    withAsync (acceptEverywhere serve socks) $ \_ ->
+    settings <- newWarpSettings
+    let serve s = Warp.runSettingsSocket (Warp.setPort port settings) s app
+    withAsync (mapConcurrently_ serve socks) $ \_ ->
       action (ServerHandle port agent collab openState)
 
 -- | Serve until interrupted; @onReady@ runs once the sockets listen.
@@ -236,4 +237,5 @@ runCollabServer port = do
   bracket (bindListeners "::" port True) (mapM_ S.close . snd) $ \(_, socks) -> do
     hSetBuffering stdout LineBuffering
     putStrLn ("Collab relay listening on ws://localhost:" <> show port)
-    acceptEverywhere (\s -> Warp.runSettingsSocket warpSettings s (collabApp relay)) socks
+    settings <- newWarpSettings
+    mapConcurrently_ (\s -> Warp.runSettingsSocket settings s (collabApp relay)) socks

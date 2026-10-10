@@ -336,6 +336,11 @@ microBench o = do
   timeIt "relayMessage parse+route+encode" $ \i -> pure $! i + case parseJs relayIn of
     Right v | Just r <- relayMessage AgentRelay (jsString "2") v -> fromIntegral (BL.length (routedBytes r))
     _ -> 0
+  -- a screenshot response: a 2 MB data URL in one string
+  let screenshotIn = encodeJs (obj [("protocol", str "petrus-agent"), ("kind", str "response"), ("requestId", str "r1"), ("ok", JsBool True), ("result", obj [("dataUrl", str ("data:image/png;base64," <> T.replicate 500000 "iVB+"))])])
+  timeIt "relayMessage 2 MB screenshot" $ \i -> pure $! i + case parseJs (if i < 0 then B.empty else screenshotIn) of
+    Right v | Just r <- relayMessage AgentRelay (jsString "2") v -> fromIntegral (BL.length (routedBytes r))
+    _ -> 0
   let filePath = takeDirectory file </> "B.json"
   timeIt "decodeURIComponent path" $ \i -> pure $! i + either T.length T.length (decodeURIComponent (T.pack file))
   timeIt "doesPathExist" $ \i -> (\b -> if b then i else 0) <$> doesPathExist filePath

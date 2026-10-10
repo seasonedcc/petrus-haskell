@@ -28,7 +28,14 @@ listed here.
   then the server options.
 - Environment: `PETRUS_UI_DIR`, `PETRUS_TEMPORAL_TARGET`,
   `PETRUS_OBSERVATION_URLS` (comma separated), `PETRUS_MCP_DEV_COMMAND`,
-  `PETRUS_HISTORY_URL` / `PETRUS_HISTORY_NAMESPACE` (see below).
+  `PETRUS_HISTORY_URL` / `PETRUS_HISTORY_NAMESPACE` (see below), and
+  `PETRUS_RELAY_PERF=0`, which turns off the `[petrus-relay-perf]` lines
+  the agent relay prints for every petrus-agent request and response
+  (always on in Vite).
+- GHC runtime options: the executables accept `+RTS … -RTS`. `petrus` and
+  `petrus-collab` default to `-N2 -qg -qm -A16m` (two capabilities, no
+  parallel GC, no thread migration); see [bench/RESULTS.md](bench/RESULTS.md)
+  for why.
 - **History from Petrus observation producers.** With `--observation`,
   `/temporal/api/v1/namespaces/{ns}/workflows` and
   `…/workflows/{id}/query/get_state|get_schema` are answered from Petrus
@@ -73,6 +80,11 @@ listed here.
   `Cache-Control: no-cache`.
 - **`wss://` bridge URLs.** `petrus-mcp` connects to `ws://` relays only;
   a `wss://` `PETRUS_AGENT_URL` fails like an unreachable bridge.
+- **Relay timing log.** Vite's relay calls `console.log` inline; `petrus`
+  queues the same lines and a background thread writes them in batches, in
+  order. The lines and their timestamps are identical, but they can reach
+  stdout a moment after the message was forwarded, and lines still queued
+  when the process is killed are lost.
 - **Response framing.** JSON responses carry `Content-Length` (as Node's
   `res.end(body)` does) but not Node's `Connection: keep-alive` /
   `Keep-Alive: timeout=5` headers; HTTP/1.1 keep-alive is the default
