@@ -1,0 +1,136 @@
+cabal-version:      3.4
+name:               petrus-agenticus-runtime
+version:            0.1.0.0
+synopsis:           Petrus Agenticus runtime hosts: the Local Agent-as-a-Net runner
+description:
+  A Haskell port of host runtimes from @petrus.agenticus.runtime@. The
+  first is the durable Local Agent-as-a-Net runner: Engine History alone
+  schedules the loop, and every committed fact is projected exactly once
+  into Thread accounting through a compare-and-save JSON repository, with
+  the Episode Attachment settled before the Thread outcome is recorded.
+  Provider hosts (Pi, Codex, Claude, Amp) are tracked in PARITY.md.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    PARITY.md
+                    DIVERGENCES.md
+                    bench/RESULTS.md
+                    parity/pi.md
+                    divergences/pi.md
+                    bench/results-pi.md
+data-files:         data/*.mjs
+extra-source-files: differential/*.json
+                    differential/*.py
+                    differential/*.sqlite3
+                    bench/*.py
+                    test/fixtures/pi/*.mjs
+                    test/fixtures/pi/*.py
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+                      MultiWayIf
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Agenticus.Runtime.AgentNetRunner
+                    Petrus.Agenticus.Runtime.Pi
+                    Petrus.Agenticus.Runtime.PiA2Host
+                    Petrus.Agenticus.Runtime.PiApplication
+                    Petrus.Agenticus.Runtime.PiModelPhase
+                    Petrus.Agenticus.Runtime.PiRecovery
+  other-modules:    Paths_petrus_agenticus_runtime
+  autogen-modules:  Paths_petrus_agenticus_runtime
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , crypton >=1.0
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , ram >=0.20
+                  , petrus-activity
+                  , petrus-agenticus
+                  , petrus-agenticus-core
+                  , petrus-engine
+                  , petrus-execution
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , process
+                  , stm
+                  , temporary
+                  , text >=2.0
+                  , unix >=2.8
+
+test-suite petrus-agenticus-runtime-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.Agenticus.Runtime.AgentNetRunnerSpec
+                    Petrus.Agenticus.Runtime.PiA2HostSpec
+                    Petrus.Agenticus.Runtime.PiApplicationSpec
+                    Petrus.Agenticus.Runtime.PiDifferentialSpec
+                    Petrus.Agenticus.Runtime.PiModelPhaseSpec
+                    Petrus.Agenticus.Runtime.PiSpec
+                    Petrus.Agenticus.Runtime.PiSupport
+                    Petrus.Agenticus.Runtime.RunnerDifferentialSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , crypton >=1.0
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-agenticus
+                  , petrus-agenticus-core
+                  , petrus-agenticus-runtime
+                  , petrus-engine
+                  , petrus-execution
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , process
+                  , ram >=0.20
+                  , temporary
+                  , text
+                  , unix
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-agenticus-runtime-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  other-modules:    PiA2Bench
+                    PiBench
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , petrus-activity
+                  , petrus-agenticus
+                  , petrus-agenticus-core
+                  , petrus-agenticus-runtime
+                  , petrus-execution
+                  , petrus-json
+                  , ram >=0.20
+                  , tasty-bench >=0.3
+                  , temporary
+                  , text
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A32m"
