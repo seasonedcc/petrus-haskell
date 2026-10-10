@@ -14,7 +14,7 @@ import Control.Exception (IOException, finally, throwIO)
 import Control.Monad (when)
 import Data.Foldable (toList)
 import Data.IORef
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, isPrefixOf)
 import Data.Text (Text)
 import Petrus.Engine (DeliveryAnswer (..), Engine)
 import Petrus.Engine qualified as Engine
@@ -34,7 +34,8 @@ import Petrus.Motus.Dispatch (Dispatch)
 import Petrus.Postgres (Connection, FenceError (..), isClosed)
 import Petrus.Postgres qualified as Pg
 import Petrus.Telemetry (newRecorder, recorded, recorderSink)
-import Petrus.TestSupport (PostgresTarget, postgresSpec)
+import Petrus.TestSupport (PostgresTarget, postgresSpec, repoRoot)
+import System.FilePath ((</>))
 import Test.Hspec
 
 source', output :: NetPath
@@ -131,17 +132,33 @@ fenceHeld :: Selector FenceError
 fenceHeld = \case FenceHeld _ -> True; _ -> False
 
 spec :: Spec
-spec = postgresSpec $ do
-  aroundWith (\action target -> withPgConnection target (\_ -> action target)) $ do
-    providerSpec
-    beyondUpstreamSpec
+spec = do
+  postgresSpec $
+    aroundWith (\action target -> withPgConnection target (\_ -> action target)) $ do
+      providerSpec
+      beyondUpstreamSpec
+  boundarySpec
+
+-- | Parity: @tests/project/test_package_boundaries.py@'s PostgreSQL provider
+-- row. The doors' return type is the neutral 'Engine' (checked by the
+-- compiler below); the fence stays out of the provider's export list.
+boundarySpec :: Spec
+boundarySpec = describe "package boundaries" $
+  it "postgres history provider returns only the neutral engine" $ do
+    let doors :: [Connection -> Net -> Text -> Dispatch -> Engine.EngineOptions -> IO Engine]
+        doors = [createEngine, loadEngine]
+    length doors `shouldBe` 2
+    root <- repoRoot
+    source <- readFile (root </> "packages/petrus-engine-postgres/src/Petrus/Engine/Postgres.hs")
+    let exports = takeWhile (not . ("  ) where" `isPrefixOf`)) (dropWhile (not . ("module Petrus.Engine.Postgres" `isPrefixOf`)) (lines source))
+    filter (\w -> "Fence" `isInfixOf` w || w `elem` ["PostgresEngine", "Coordinator"]) (concatMap (words . map (\c -> if c `elem` ("(),." :: String) then ' ' else c)) exports) `shouldBe` []
 
 -- ---------------------------------------------------------------------------
 -- TestPostgresEngineProvider
 
 providerSpec :: SpecWith PostgresTarget
 providerSpec = describe "TestPostgresEngineProvider" $ do
-  it "test_sensed_projection_failure_commits_terminal_failure_and_acknowledges_exactly" $ \target -> do
+  it "sensed_projection_failure_commits_terminal_failure_and_acknowledges_exactly" $ \target -> do
     instanceId <- freshInstance "pg-only"
     sensor <- scripted [[mkDelivery source' [eventToken] "event-7"]]
     connection <- joined target
@@ -164,7 +181,7 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
     outputTokens resumed `shouldReturn` []
     Engine.close resumed
 
-  it "test_direct_projection_failure_commits_terminal_failure_and_acknowledges_exactly" $ \target -> do
+  it "direct_projection_failure_commits_terminal_failure_and_acknowledges_exactly" $ \target -> do
     -- Upstream's ProjectionError.__repr__ raising proves the durable text is
     -- not rendered through repr; a Haskell handler returns its rendered
     -- failure text itself, so the recorded text is checked verbatim.
@@ -182,7 +199,7 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
       `shouldReturn` DeliveryPrior (PriorAcknowledgement "event-7" 1)
     Engine.close resumed
 
-  it "test_exact_redelivery_does_not_commit_an_empty_joined_transaction" $ \target -> do
+  it "exact_redelivery_does_not_commit_an_empty_joined_transaction" $ \target -> do
     instanceId <- freshInstance "pg-only"
     (session, commits) <- joined target >>= countingSession
     port <- inline
@@ -201,7 +218,7 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
     readIORef commits `shouldReturn` afterCompletion
     Engine.close engine
 
-  it "test_sensed_exact_redelivery_does_not_commit_an_empty_joined_transaction" $ \target -> do
+  it "sensed_exact_redelivery_does_not_commit_an_empty_joined_transaction" $ \target -> do
     instanceId <- freshInstance "pg-only"
     let d = mkDelivery source' [eventToken] "event-7"
     sensor <- scripted [[d], [d]]
@@ -216,10 +233,10 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
     readIORef commits `shouldReturn` afterFirstDelivery
     Engine.close engine
 
-  describe "test_projection_failure_commit_fault_propagates_storage_fate_and_fresh_load_decides" $
+  describe "projection_failure_commit_fault_propagates_storage_fate_and_fresh_load_decides" $
     mapM_ commitFaultCase ["refused", "acknowledgement-lost"]
 
-  it "test_joined_completion_commit_refusal_leaves_acceptance_unfinished_for_exact_retry" $ \target -> do
+  it "joined_completion_commit_refusal_leaves_acceptance_unfinished_for_exact_retry" $ \target -> do
     instanceId <- freshInstance "pg-only"
     connection <- joined target
     refuse <- newIORef False
@@ -252,7 +269,7 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
     outcome.occurrence `shouldBe` accepted.occurrence
     Engine.close resumed
 
-  it "test_create_load_and_idempotent_close_own_the_joined_connection" $ \target -> do
+  it "create_load_and_idempotent_close_own_the_joined_connection" $ \target -> do
     -- @type(created) is Engine@ holds by the door's type.
     instanceId <- freshInstance "pg-only"
     writer <- joined target
@@ -270,7 +287,7 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
     Engine.close resumed
     isClosed resumedWriter `shouldReturn` True
 
-  it "test_autocommit_and_invalid_options_close_the_supplied_connection" $ \target -> do
+  it "autocommit_and_invalid_options_close_the_supplied_connection" $ \target -> do
     instanceId <- freshInstance "pg-only"
     autocommit' <- connectTo target True
     createOn autocommit' providerNet instanceId Engine.defaultEngineOptions `shouldThrow` valueError "autocommit=False"
@@ -283,7 +300,7 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
       `shouldThrow` valueError "default_heartbeat_timeout"
     isClosed invalid `shouldReturn` True
 
-  it "test_create_and_load_preconditions_close_without_changing_history" $ \target -> do
+  it "create_and_load_preconditions_close_without_changing_history" $ \target -> do
     instanceId <- freshInstance "pg-only"
     first <- joined target
     created <- createOn first providerNet instanceId Engine.defaultEngineOptions
@@ -300,7 +317,7 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
 
     probeRecords target instanceId `shouldReturn` recs
 
-  it "test_held_fence_refuses_before_history_load_and_closes_the_second_writer" $ \target -> do
+  it "held_fence_refuses_before_history_load_and_closes_the_second_writer" $ \target -> do
     instanceId <- freshInstance "pg-only"
     firstWriter <- joined target
     first <- createOn firstWriter providerNet instanceId Engine.defaultEngineOptions
@@ -313,7 +330,7 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
     resumed <- loadOn resumedWriter providerNet instanceId Engine.defaultEngineOptions
     Engine.close resumed
 
-  it "test_missing_schema_releases_fence_closes_and_allows_retry" $ \target ->
+  it "missing_schema_releases_fence_closes_and_allows_retry" $ \target ->
     withPg target True $ \pgConnection -> do
       instanceId <- freshInstance "pg-only"
       Pg.execute_ pgConnection "DROP SCHEMA impetus CASCADE" []
@@ -328,7 +345,7 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
       retried <- createOn retriedWriter providerNet instanceId Engine.defaultEngineOptions
       Engine.close retried
 
-  it "test_writing_failure_poison_releases_fence_for_fresh_load" $ \target -> do
+  it "writing_failure_poison_releases_fence_for_fresh_load" $ \target -> do
     instanceId <- freshInstance "pg-only"
     poisonedWriter <- joined target
     poisoned <- createOn poisonedWriter providerNet instanceId Engine.defaultEngineOptions

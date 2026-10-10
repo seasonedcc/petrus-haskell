@@ -88,7 +88,7 @@ postgresBackendContract = do
 
 ensureSchemaSpec :: SpecWith PostgresTarget
 ensureSchemaSpec = describe "TestEnsureSchema" $ do
-  it "test_ensure_schema_is_idempotent_and_survives_existing_rows" $ \target ->
+  it "ensure_schema_is_idempotent_and_survives_existing_rows" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       ensureSchema pg
@@ -96,7 +96,7 @@ ensureSchemaSpec = describe "TestEnsureSchema" $ do
       ensureSchema pg
       (open' pg instanceId >>= Store.size) `shouldReturn` 1
 
-  it "test_an_unprovisioned_database_fails_loud_naming_ensure_schema" $ \target ->
+  it "an_unprovisioned_database_fails_loud_naming_ensure_schema" $ \target ->
     withPg target True $ \connection -> do
       instanceId <- freshInstance "pg-only"
       execute_ connection "DROP SCHEMA IF EXISTS impetus CASCADE" []
@@ -109,11 +109,11 @@ ensureSchemaSpec = describe "TestEnsureSchema" $ do
 backendShapeSpec :: SpecWith PostgresTarget
 backendShapeSpec = describe "TestBackendShape" $ do
   -- The non-string half (instance=7) is enforced by types.
-  it "test_the_instance_id_must_be_a_non_empty_string" $ \target ->
+  it "the_instance_id_must_be_a_non_empty_string" $ \target ->
     withPgConnection target $ \pg ->
       open' pg "" `shouldThrow` valueErrorMatching ["non-empty string instance"]
 
-  it "test_one_table_holds_many_instances_apart" $ \target ->
+  it "one_table_holds_many_instances_apart" $ \target ->
     withPgConnection target $ \pg -> do
       first <- freshInstance "pg-only"
       second <- freshInstance "pg-only"
@@ -122,7 +122,7 @@ backendShapeSpec = describe "TestBackendShape" $ do
       recordsAt pg first `shouldReturn` [initialized]
       recordsAt pg second `shouldReturn` [begun 1 1]
 
-  it "test_the_stored_row_speaks_the_ratified_payload" $ \target ->
+  it "the_stored_row_speaks_the_ratified_payload" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       let record = completed 7 3
@@ -133,7 +133,7 @@ backendShapeSpec = describe "TestBackendShape" $ do
       occurrence `shouldBe` Just 7
       payload `shouldBe` encodeRecord record
 
-  it "test_schema_2_is_refused_through_the_actual_postgresql_history_load" $ \target ->
+  it "schema_2_is_refused_through_the_actual_postgresql_history_load" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       execute_
@@ -153,7 +153,7 @@ backendShapeSpec = describe "TestBackendShape" $ do
 
 transactionalBatchesSpec :: SpecWith PostgresTarget
 transactionalBatchesSpec = describe "TestTransactionalBatches" $
-  it "test_a_batch_that_fails_mid_transaction_leaves_nothing" $ \target ->
+  it "a_batch_that_fails_mid_transaction_leaves_nothing" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       history <- open' pg instanceId
@@ -170,7 +170,7 @@ transactionalBatchesSpec = describe "TestTransactionalBatches" $
 
 verifyOnConflictSpec :: SpecWith PostgresTarget
 verifyOnConflictSpec = describe "TestVerifyOnConflict" $ do
-  it "test_a_duplicate_identical_append_is_acknowledged_without_a_second_row" $ \target ->
+  it "a_duplicate_identical_append_is_acknowledged_without_a_second_row" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       let record = completed 1 2
@@ -182,7 +182,7 @@ verifyOnConflictSpec = describe "TestVerifyOnConflict" $ do
       Store.records twin `shouldReturn` [record]
       Store.records first `shouldReturn` [record]
 
-  it "test_a_conflicting_different_append_fails_loud_naming_the_event" $ \target ->
+  it "a_conflicting_different_append_fails_loud_naming_the_event" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       first <- open' pg instanceId
@@ -192,7 +192,7 @@ verifyOnConflictSpec = describe "TestVerifyOnConflict" $ do
         `shouldThrow` valueErrorMatching [instanceId <> ":0", "FiringCompleted", "FiringFailed"]
       length <$> rows pg instanceId `shouldReturn` 1
 
-  it "test_a_second_terminal_fact_conflicts_at_the_index_and_verifies" $ \target ->
+  it "a_second_terminal_fact_conflicts_at_the_index_and_verifies" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       history <- open' pg instanceId
@@ -205,7 +205,7 @@ verifyOnConflictSpec = describe "TestVerifyOnConflict" $ do
       Store.append history (failed "diverging" 1 3)
         `shouldThrow` valueErrorMatching ["terminal", "FiringCompleted", "FiringFailed"]
 
-  it "test_the_history_continues_past_a_terminal_index_acknowledgement" $ \target ->
+  it "the_history_continues_past_a_terminal_index_acknowledgement" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       history <- open' pg instanceId
@@ -221,7 +221,7 @@ verifyOnConflictSpec = describe "TestVerifyOnConflict" $ do
       reloadedRecords <- Store.records reloaded
       recordsAt pg instanceId `shouldReturn` reloadedRecords
 
-  it "test_two_connections_identical_terminal_at_divergent_positions_acknowledges" $ \target ->
+  it "two_connections_identical_terminal_at_divergent_positions_acknowledges" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       let terminal = completed 1 2
@@ -234,7 +234,7 @@ verifyOnConflictSpec = describe "TestVerifyOnConflict" $ do
         length <$> rows pg instanceId `shouldReturn` 3
       length . filter (== "FiringCompleted") . map (.rowType) <$> rows pg instanceId `shouldReturn` 1
 
-  it "test_two_connections_different_terminal_at_divergent_positions_fails_loud" $ \target ->
+  it "two_connections_different_terminal_at_divergent_positions_fails_loud" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       writerA <- open' pg instanceId
@@ -246,7 +246,7 @@ verifyOnConflictSpec = describe "TestVerifyOnConflict" $ do
         Store.size writerB `shouldReturn` 3
       map (.rowType) <$> rows pg instanceId `shouldReturn` ["FiringBegun", "TokensProduced", "FiringCompleted"]
 
-  it "test_the_one_terminal_activity_fact_index_holds_the_same_discipline" $ \target ->
+  it "the_one_terminal_activity_fact_index_holds_the_same_discipline" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       history <- open' pg instanceId
@@ -257,7 +257,7 @@ verifyOnConflictSpec = describe "TestVerifyOnConflict" $ do
       Store.append history (RActivityFailed (ActivityFailed transition' "late failure" "ActivityError" Null False Nothing 1 3))
         `shouldThrow` valueErrorMatching ["terminal", "ActivityCompleted", "ActivityFailed"]
 
-  it "test_concurrent_duplicate_terminal_appends_one_wins_the_other_acknowledges" $ \target ->
+  it "concurrent_duplicate_terminal_appends_one_wins_the_other_acknowledges" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-race"
       let record = completed 1 2
@@ -269,7 +269,7 @@ verifyOnConflictSpec = describe "TestVerifyOnConflict" $ do
       map (either (Just . show) (const Nothing)) outcomes `shouldBe` [Nothing, Nothing]
       recordsAt pg instanceId `shouldReturn` [record]
 
-  it "test_concurrent_different_terminal_appends_exactly_one_is_refused" $ \target ->
+  it "concurrent_different_terminal_appends_exactly_one_is_refused" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-race"
       barrier <- newBarrier 2
@@ -300,7 +300,7 @@ race n racer = do
 
 callerTransactionSpec :: SpecWith PostgresTarget
 callerTransactionSpec = describe "TestCallerTransactionJoin" $ do
-  it "test_appends_join_the_callers_transaction_and_land_at_its_commit" $ \target ->
+  it "appends_join_the_callers_transaction_and_land_at_its_commit" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       mirror <- withPg target False $ \caller -> do
@@ -314,7 +314,7 @@ callerTransactionSpec = describe "TestCallerTransactionJoin" $ do
       length <$> rows pg instanceId `shouldReturn` 3
       recordsAt pg instanceId `shouldReturn` mirror
 
-  it "test_a_rolled_back_caller_transaction_takes_the_appends_with_it" $ \target ->
+  it "a_rolled_back_caller_transaction_takes_the_appends_with_it" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       withPg target False $ \caller -> do
@@ -324,7 +324,7 @@ callerTransactionSpec = describe "TestCallerTransactionJoin" $ do
       rows pg instanceId `shouldReturn` []
       recordsAt pg instanceId `shouldReturn` []
 
-  it "test_loading_inside_the_callers_transaction_sees_its_own_appends" $ \target ->
+  it "loading_inside_the_callers_transaction_sees_its_own_appends" $ \target ->
     withPgConnection target $ \_ -> do
       instanceId <- freshInstance "pg-only"
       withPg target False $ \caller -> do
@@ -332,7 +332,7 @@ callerTransactionSpec = describe "TestCallerTransactionJoin" $ do
         recordsAt caller instanceId `shouldReturn` [initialized]
         rollback caller
 
-  it "test_a_rollback_discards_the_whole_runtime_derived_over_the_backend" $ \target ->
+  it "a_rollback_discards_the_whole_runtime_derived_over_the_backend" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       let intake = np "intake"
@@ -365,7 +365,7 @@ callerTransactionSpec = describe "TestCallerTransactionJoin" $ do
 
 decodeSpec :: SpecWith PostgresTarget
 decodeSpec = describe "TestDecodeFailsLoudAtLoad" $
-  it "test_a_row_that_does_not_decode_names_its_event" $ \target ->
+  it "a_row_that_does_not_decode_names_its_event" $ \target ->
     withPgConnection target $ \pg -> do
       instanceId <- freshInstance "pg-only"
       execute_

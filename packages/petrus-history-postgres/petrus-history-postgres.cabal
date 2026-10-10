@@ -63,6 +63,7 @@ test-suite petrus-history-postgres-test
                     Petrus.HistoryStore.Postgres.Support
                     Petrus.HistoryStore.PostgresSpec
                     Petrus.HistoryStore.Postgres.InteropSpec
+                    Petrus.HistoryStore.Postgres.BoundarySpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -85,18 +86,16 @@ test-suite petrus-history-postgres-test
 benchmark petrus-history-postgres-bench
   import:           warnings
   type:             exitcode-stdio-1.0
-  hs-source-dirs:   bench ../petrus-impetus/test
+  hs-source-dirs:   bench
   main-is:          Main.hs
-  other-modules:    Petrus.Impetus.TestSupport
-                    Petrus.Impetus.HistorySupport
   build-depends:    base
                   , bytestring
-                  , containers
-                  , hspec >=2.10
-                  , petrus-activity
                   , petrus-history-postgres
                   , petrus-impetus
                   , petrus-json
                   , petrus-postgres
+                  , petrus-test-support
+                  , tasty >=1.4
+                  , tasty-bench >=0.3
                   , text
   ghc-options:      -threaded -O2 -rtsopts "-with-rtsopts=-A32m"
