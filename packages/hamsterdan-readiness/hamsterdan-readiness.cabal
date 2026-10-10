@@ -74,6 +74,9 @@ test-suite hamsterdan-readiness-test
                       OverloadedRecordDot
                       NoFieldSelectors
   other-modules:    Corpus
+                    FoldCorpusSpec
+                    Harness
+                    StartupSpec
                     TopologySpec
   build-depends:    base
                   , base16-bytestring
@@ -83,8 +86,12 @@ test-suite hamsterdan-readiness-test
                   , hamsterdan-contracts
                   , hamsterdan-readiness
                   , hspec >=2.10
+                  , petrus-activity
+                  , petrus-cel
                   , petrus-dsl
+                  , petrus-engine
                   , petrus-impetus
                   , petrus-json
+                  , petrus-motus
                   , text
   ghc-options:      -threaded -rtsopts
