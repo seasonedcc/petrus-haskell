@@ -242,3 +242,16 @@ spec = do
       terminateProcess process
       waitForProcess process `shouldReturn` ExitSuccess
       Local.collect dispatch `shouldReturn` [(1, Succeeded (Object [("cursor", Null)]))]
+
+  -- test_worker_topology.py's TestActivityRegistry case, over the strict
+  -- provider instead of Absurd custody: the refusal is the Worker's own.
+  -- The reference's other two cases (a non-string name, a non-callable
+  -- implementation) are unrepresentable in a Map Text Activity.
+  describe "worker refuses invalid activity registries" $ do
+    let refuses registry message = do
+          provider <- newStrictProvider []
+          events <- newEventLog
+          void (newWorker (strictDispatch provider) registry (quietOptions events))
+            `shouldThrow` (\(ValueError m) -> m == message)
+    it "{}" $ refuses Map.empty "Worker requires default Activities or a scoped resolver"
+    it "{\"\": activity}" $ refuses (Map.fromList [("", \_ _ -> pure Null)]) "Worker activities must map non-empty string names to callables"

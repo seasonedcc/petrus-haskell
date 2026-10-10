@@ -37,8 +37,10 @@ import Petrus.Motus.Transport.ZeroMQ qualified as Z
 import Petrus.Motus.Transport.ZeroMQ.Support
 import Petrus.Motus.Transport.ZeroMQ.Wire (encodeAttempt)
 import Petrus.Motus.Worker qualified as W
+import System.Environment (getEnvironment, getExecutablePath)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
+import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
 import Test.Hspec hiding (context)
 
 -- | The driver's @scenario_call()@.
@@ -214,7 +216,32 @@ spec = do
           `shouldBe` [("ok", 2), ("protocol", 70), ("refused", 7), ("service", 1)]
       )
       `finally` (stopServerProcess reference.handle >>= (`shouldBe` ExitSuccess))
+
+  -- The server CLI under the reference's program name: help and usage
+  -- errors byte for byte (exit 2); a refused configuration exits 1 with
+  -- the last line of the reference's traceback (DIVERGENCES.md 6).
+  describe "the server CLI answers as python -m petrus.motus.transport.zeromq" $ do
+    let both python arguments = do
+          self <- getExecutablePath
+          environment <- getEnvironment
+          let ours = (proc self arguments) {env = Just ((serverModeVariable, "server") : filter ((/= serverModeVariable) . fst) environment)}
+              theirs = (proc (fst python) ("-m" : "petrus.motus.transport.zeromq" : arguments)) {cwd = Just (snd python)}
+          (,) <$> readCreateProcessWithExitCode ours "" <*> readCreateProcessWithExitCode theirs ""
+        same arguments = pythonOrPending $ \python -> do
+          (ours, theirs) <- both python arguments
+          ours `shouldBe` theirs
+    it "help" $ same ["--help"]
+    it "missing required options" $ same []
+    it "an invalid float" $ same ["--path", "x.db", "--bind", "ipc:///tmp/x", "--drain-timeout", "soon"]
+    it "an unrecognized argument" $ same ["--path", "x.db", "--bind", "ipc:///tmp/x", "--bogus"]
+    it "an ambiguous or abbreviated option" $ same ["--pa", "x.db", "--bi"]
+    it "a refused configuration exits 1 with the same final line" $ pythonOrPending $ \python -> withScratch $ \tmp -> do
+      let arguments = ["--path", tmp </> "d.sqlite3", "--bind", "tcp://127.0.0.1:0"]
+      ((ourCode, ourOut, ourErr), (theirCode, theirOut, theirErr)) <- both python arguments
+      (ourCode, ourOut, lastLine ourErr) `shouldBe` (theirCode, theirOut, lastLine theirErr)
+      ourCode `shouldBe` ExitFailure 1
   where
+    lastLine = reverse . takeWhile (/= '\n') . dropWhile (== '\n') . reverse
     progress = obj [("progress", Array [Int 1, Int 2]), ("note", String "\233")]
     isText = \case
       String _ -> True

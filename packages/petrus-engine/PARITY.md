@@ -16,8 +16,9 @@ cross-check that every in-scope upstream test is accounted for, run:
 It reports 275 in-scope upstream tests across the three runtime packages,
 with 0 unaccounted.
 
-`cabal test petrus-engine` runs 201 examples, with 0 failures and 0 pending.
-That count includes 3 Engine interop examples against the reference process.
+`cabal test petrus-engine` runs 209 examples, with 0 failures and 0 pending.
+That count includes 3 Engine interop examples against the reference process,
+and 3 Worker topology pairings with reference Engines and Workers.
 Those are pending only when `upstream/petrus/.venv` is not synced.
 
 ## Summary by upstream file
@@ -28,6 +29,8 @@ Those are pending only when `upstream/petrus/.venv` is not synced.
 | engine/test_coordinator.py, 35 of 42 | CoordinatorSpec (37 examples) | 35 | 0 | 0 |
 | engine/test_execution.py (134) | ExecutionSpec, DeliveryPhasesA/B/CSpec (127 examples) | 98 | 10 | 26 |
 | motus/dispatch/test_local_dispatch.py, the 3 Engine-level tests | LocalDispatchSpec (4 examples) | 3 | 0 | 0 |
+| motus/worker/test_worker_runtime.py, the Engine-level test (byte-identical inline and Local History) | WorkerTopologySpec (1 example, over the order net) | 0 | 1 | 0 |
+| motus/worker/test_worker_topology.py, 4 Worker cases of 36 | WorkerTopologySpec (4 examples, over Local Dispatch; the rest are ledgered in `petrus-motus/PARITY.md`) | 0 | 4 | 0 |
 
 `TestInMemoryDispatch` (5) and `TestInlineDispatch` (2) from
 test_coordinator.py are ported in `petrus-motus`.
@@ -181,6 +184,13 @@ In `TestEngineRefusesABrokenSensor`:
   The outcome matches the reference running the same script. The other 33
   tests of `test_local_dispatch.py` are `petrus-motus`'s (see its
   PARITY.md).
+- **Engine and Worker interop** (WorkerTopologySpec, 3 examples,
+  `test/interop/worker_topology_interop.py`). The order scenario's charge
+  goes through a durable Local Dispatch to a Worker. The Engine and the
+  Worker take turns, so the History is deterministic. The pairings
+  Haskell/Python, Python/Haskell and Python/Python (Engine/Worker) each
+  write the same JSONL bytes as Haskell/Haskell, and the reference loads
+  that History to the settled marking.
 - **Engine interop with the reference process** (InteropSpec, 3 examples).
   They use the order scenario (`test/interop/engine_interop.py`):
   identified deliveries, a pure handler, an Activity charge, and a `Delay 5`

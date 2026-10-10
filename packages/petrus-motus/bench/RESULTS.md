@@ -119,3 +119,90 @@ picture, with Haskell / Python times as follows:
   3.45.0, while the reference's CPython links 3.53.4. Both builds default to
   `synchronous=2` and `wal_synchronous=2`, and both set `synchronous=FULL`
   explicitly. Neither enables `fullfsync`.
+
+# Worker runtime benchmarks
+
+The `worker` and `async-worker` rows of the same two benches time the
+Worker runtime (`Petrus.Motus.Worker` / `petrus.motus.worker`). Event lines
+are silenced on both sides. On the Haskell side the Workers' `output` writes
+nowhere; on the Python side `_say` is patched to a no-op.
+
+## Workloads
+
+- **worker/local-50.** Dispatch 50 occurrences into a fresh Local file. A
+  `Worker` over a `LocalWorkerDispatch` runs every available Attempt
+  (`runAvailable` / `run_available`), and one `collect` returns the 50
+  outcomes.
+- **worker/local-50-held-open.** The same, while a co-resident connection
+  holds the file open. This is the equal-IO comparison; see the notes above.
+- **worker/memory-1000.** A `Worker` runs 1000 ready Attempts from
+  in-memory custody. This is the runtime's own cost per Attempt: claim,
+  resolve, execute, normalize the result, and complete.
+- **async-worker/memory-1000-c{1,8,64}.** The `AsyncWorker` runs 1000
+  in-memory Attempts at concurrency 1, 8 and 64. It uses the sync bridge, so
+  each slot has one lane thread. It stops once custody is empty and the
+  admitted Activities have drained.
+- **async-worker/sleep-1ms-200-c{1,8,64}.** The same with 200 Attempts whose
+  Activity sleeps 1 ms (`threadDelay` / `asyncio.sleep`). These rows show
+  the concurrency actually achieved.
+
+## How to rerun
+
+These rows are part of the commands above.
+
+tasty-bench cannot settle on sleep-driven work, so the Haskell bench times
+the three `sleep` rows itself and prints them before the tasty-bench groups
+start. Each of those rows is the median of 10 runs after one warm-up, in the
+Python bench's format. Every other Haskell row is a tasty-bench mean
+(± 2σ). Python rows are medians of 10–20 runs after one warm-up.
+
+## Results
+
+The runs took place on 2026-10-10 on the same machine and toolchains as
+above. Haskell and Python ran interleaved (H, P, H, P). Other work shared the
+machine, and the load average rose from 2.2 to 5.2 during the runs. Each
+cell gives the two rounds.
+
+| workload | size | Haskell | Python | Python / Haskell |
+| --- | ---: | --- | --- | ---: |
+| worker/local-50 | 50 | 69.2, 81.0 ms | 58.0, 60.4 ms | 0.72–0.84× |
+| worker/local-50-held-open | 50 | 34.5, 33.8 ms | 37.2, 41.1 ms | 1.1–1.2× |
+| worker/memory-1000 | 1000 | 1.49, 1.52 ms | 13.9, 15.9 ms | 9.3–10× |
+| async-worker/memory-1000-c1 | 1000 | 3.17, 3.57 ms | 214, 280 ms | 67–78× |
+| async-worker/memory-1000-c8 | 1000 | 3.20, 3.46 ms | 121, 111 ms | 32–38× |
+| async-worker/memory-1000-c64 | 1000 | 3.11, 3.55 ms | 126, 120 ms | 34–41× |
+| async-worker/sleep-1ms-200-c1 | 200 | 263, 256 ms | 341, 301 ms | 1.2–1.3× |
+| async-worker/sleep-1ms-200-c8 | 200 | 34.5, 33.1 ms | 46.8, 36.3 ms | 1.1–1.4× |
+| async-worker/sleep-1ms-200-c64 | 200 | 8.23, 5.87 ms | 53.5, 31.4 ms | 5.4–6.5× |
+
+The Local Dispatch rows from the same rounds give the same picture as the
+table at the top (Haskell, then Python):
+- `roundtrip-50-held-open`: 31.7 and 34.8 ms, against 39.9 and 39.0 ms;
+- `roundtrip-50-db-clock`: 71.0 and 86.0 ms, against 53.4 and 54.8 ms. The
+  reference's closing variant of that row took 87.4 and 90.6 ms.
+
+## Worker notes
+
+- **`worker/local-50` measures the Local Dispatch's connection lifetime,
+  not the Worker.** The Worker adds only one extra claim, which finds the
+  queue empty, to the Local round trip. Without a co-resident connection,
+  the Haskell adapter pays SQLite's last-close checkpoint on every
+  operation, and the reference's lingering connections avoid it. This is the
+  first note above and DIVERGENCES.md (15).
+
+  At equal IO (`local-50-held-open`) the Haskell Worker is 1.1–1.2× faster.
+- **The runtime's own cost is an order of magnitude lower.** The memory rows
+  take SQLite out of the picture. The synchronous Worker spends about 1.5 µs
+  per Attempt, against 14–16 µs in Python.
+
+  The AsyncWorker's sync bridge hands every custody call to the slot's lane
+  thread. In Haskell that hop is a few microseconds between GHC threads. In
+  Python, the thread-to-event-loop round trips cost 110–280 µs per Attempt.
+- **Sleep-driven concurrency.** 200 Activities of 1 ms each cannot finish in
+  less than 200 ms at concurrency 1, or 25 ms at concurrency 8.
+
+  At concurrency 1 the Haskell AsyncWorker spends about 1.3 ms per Activity
+  end to end, against 1.5–1.7 ms in Python.
+
+  At concurrency 64 the floor is about 3.1 ms. Haskell takes 6–8 ms, while
+  Python takes 31–54 ms to schedule 64 lanes through its event loop.

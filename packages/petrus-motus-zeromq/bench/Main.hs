@@ -69,9 +69,10 @@ work value =
     , idempotency = Just "idempotency"
     }
 
--- | Print the median wall time of the runs after one warm-up.
-timed :: String -> Int -> IO Int -> IO ()
-timed name repeats action = do
+-- | Print the median wall time of the runs after one warm-up, and append
+-- it to the CSV sink (@scripts/bench@'s @--csv@ file) when there is one.
+timed :: Csv -> String -> Int -> IO Int -> IO ()
+timed csv name repeats action = do
   size <- action
   samples <- forM [1 .. repeats] $ \_ -> do
     start <- getMonotonicTime
@@ -83,6 +84,16 @@ timed name repeats action = do
       median = if even repeats then (sorted !! (middle - 1) + sorted !! middle) / 2 else sorted !! middle
   printf "%-42s %12.3f ms   (size %d, n=%d)\n" name (median * 1000) size repeats
   hFlush stdout
+  mapM_ (\path -> appendFile path (name <> "," <> show (round (median * 1e12) :: Integer) <> "\n")) csv
+
+-- | Where @--csv PATH@ asked the rows to go, in tasty-bench's columns.
+type Csv = Maybe FilePath
+
+csvSink :: [String] -> IO Csv
+csvSink = \case
+  "--csv" : path : _ -> writeFile path "Name,Mean (ps)\n" >> pure (Just path)
+  _ : rest -> csvSink rest
+  [] -> pure Nothing
 
 client :: Text -> Text -> IO Z.ZeroMQWorkerDispatch
 client endpoint worker = newZeroMQWorkerDispatch endpoint defaultClientOptions {Z.workerId = Just worker}
@@ -163,7 +174,7 @@ main =
   lookupEnv serverMode >>= \case
     Just "memory" -> getArgs >>= memoryServer
     Just _ -> getArgs >>= serverMainWith "petrus-zeromq-dispatch"
-    Nothing -> benchmarks
+    Nothing -> getArgs >>= csvSink >>= benchmarks
 
 -- | Start this executable as a server in the mode, run the action with its
 -- endpoint, then stop it (SIGTERM) and wait for it.
@@ -194,8 +205,8 @@ withLocal base name action = do
   createDirectory directory
   action (directory </> "dispatch.db") ("ipc://" <> directory </> "dispatch.sock")
 
-benchmarks :: IO ()
-benchmarks = do
+benchmarks :: Csv -> IO ()
+benchmarks csv = do
   temporary <- getTemporaryDirectory
   (base, handle) <- openTempFile temporary "pzb"
   hClose handle
@@ -214,15 +225,15 @@ benchmarks = do
             let roundTrips n = do
                   offset <- atomicModifyIORef' occurrences (\o -> (o + n, o))
                   roundTrip dispatch endpoint offset n
-            timed ("zeromq/" <> label <> "/claim-empty-100") 10 (claimEmpty endpoint 100)
-            timed ("zeromq/" <> label <> "/roundtrip-20") 10 (roundTrips 20)
+            timed csv ("zeromq/" <> label <> "/claim-empty-100") 10 (claimEmpty endpoint 100)
+            timed csv ("zeromq/" <> label <> "/roundtrip-20") 10 (roundTrips 20)
   ( do
       localRows "local" False
       localRows "local-held-open" True
       withServer "memory" ["ipc://" <> base </> "memory.sock"] $ \endpoint -> do
-        timed "zeromq/memory/claim-empty-100" 10 (claimEmpty endpoint 100)
-        timed "zeromq/memory/custody-20" 10 (memoryCustody endpoint 20)
+        timed csv "zeromq/memory/claim-empty-100" 10 (claimEmpty endpoint 100)
+        timed csv "zeromq/memory/custody-20" 10 (memoryCustody endpoint 20)
         forM_ [1, 8] $ \c ->
-          timed ("zeromq/memory/async-claim-empty-100-c" <> show c) 10 (asyncClaimEmpty endpoint c 100)
+          timed csv ("zeromq/memory/async-claim-empty-100-c" <> show c) 10 (asyncClaimEmpty endpoint c 100)
     )
     `finally` removeDirectoryRecursive base

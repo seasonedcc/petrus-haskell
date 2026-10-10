@@ -4,8 +4,8 @@ Run from the repository root:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-Covers petrus-motus, petrus-history-store, petrus-engine, petrus-engine-sqlite,
-petrus-history-postgres, and petrus-engine-postgres. Every Hspec example
+Covers petrus-motus, petrus-motus-zeromq, petrus-history-store, petrus-engine,
+petrus-engine-sqlite, petrus-history-postgres, and petrus-engine-postgres. Every Hspec example
 is named after the upstream test it ports (``test_a_b_c`` becomes ``it "a b c"``,
 under ``describe "TestClass"``; a parametrized test becomes ``describe "a b c"``
 with one example per case), so a test is accounted for when:
@@ -41,6 +41,17 @@ LOCAL_ENGINE_TESTS = {
     "test_engine_recollects_terminal_result_after_canonical_acceptance_refusal",
 }
 
+# The Engine-level Worker tests live in petrus-engine (WorkerTopologySpec).
+WORKER_ENGINE_TESTS = {
+    "test_controlled_sequential_local_execution_is_byte_identical_to_inline_history",
+}
+TOPOLOGY_ENGINE_TESTS = {
+    "test_the_activity_executes_on_the_worker_and_completes_through_server_side_projection",
+    "test_sigkill_mid_activity_redispatches_on_lease_expiry_with_exactly_one_effect",
+    "test_sigterm_drains_gracefully_the_in_flight_activity_completes",
+    "test_the_worker_refuses_an_unregistered_activity",
+}
+
 # package -> [(upstream file, classes in scope or None for all,
 #              tests in scope or None for all, or Excluding(tests out of scope))]
 SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | Excluding | None]]] = {
@@ -53,6 +64,12 @@ SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | Excluding | None]]
             {"test_inline_context_has_synthetic_identity_and_detached_omitted_null_details"},
         ),
         ("petrus/motus/dispatch/test_local_dispatch.py", None, Excluding(LOCAL_ENGINE_TESTS)),
+        ("petrus/motus/worker/test_worker_runtime.py", None, Excluding(WORKER_ENGINE_TESTS)),
+        ("petrus/motus/worker/test_async_worker.py", None, None),
+        ("petrus/motus/worker/test_worker_topology.py", None, Excluding(TOPOLOGY_ENGINE_TESTS)),
+    ],
+    "petrus-motus-zeromq": [
+        ("petrus/motus/transport/test_zeromq_dispatch_transport.py", None, None),
     ],
     "petrus-history-store": [
         ("petrus/impetus/history_store/test_persistence.py", {"TestDurableAppend", "TestJsonlHistoryStore"}, None),
@@ -78,6 +95,8 @@ SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | Excluding | None]]
         ),
         ("petrus/engine/test_execution.py", None, None),
         ("petrus/motus/dispatch/test_local_dispatch.py", None, LOCAL_ENGINE_TESTS),
+        ("petrus/motus/worker/test_worker_runtime.py", None, WORKER_ENGINE_TESTS),
+        ("petrus/motus/worker/test_worker_topology.py", None, TOPOLOGY_ENGINE_TESTS),
     ],
     "petrus-engine-sqlite": [
         ("petrus/engine/test_sqlite_engine.py", None, None),

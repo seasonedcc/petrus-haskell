@@ -29,6 +29,7 @@ import Control.Monad (forM_, unless, void, when)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.IORef
+import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -37,7 +38,7 @@ import GHC.Clock (getMonotonicTime)
 import Petrus.Activity (ActivityFailureFields (..), failureFields, ActivityInvocation (..), ExecutionPolicyFields (..), executionPolicy, invocation, policyFields)
 import Petrus.Engine qualified as Engine
 import Petrus.Engine.Scenario
-import Petrus.Engine.TestSupport (advanceUntilRest)
+import Petrus.Engine.TestSupport (advanceUntilRest, inlineOf)
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
 import Petrus.HistoryStore.Support (pythonOrPending, runPython, withScratch)
 import Petrus.Impetus.History.Records (ActivityCompleted (..), ActivityRequested (..), Record (..))
@@ -280,7 +281,7 @@ lockStep python dir engineSide workerSide = do
 
 spec :: Spec
 spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
-  it "the activity executes on the worker and completes through engine-side projection" $ withScratch $ \dir -> withWorkers $ \started -> do
+  it "the activity executes on the worker and completes through server side projection" $ withScratch $ \dir -> withWorkers $ \started -> do
     let control = dir
     worker <- spawnWorker started (dir </> "dispatch.db") control "tests.worker_topology:activities" "remote"
     engine <- orderEngine dir id 30
@@ -357,6 +358,38 @@ spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
     Local.collect dispatch >>= \case
       [(1, Failed f)] -> (failureFields f).failureError `shouldSatisfy` T.isInfixOf "no activity implementation"
       other -> expectationFailure ("unexpected outcomes " <> show other)
+
+  -- test_worker_runtime.py's Engine-level case. The reference runs it over
+  -- tests.absurd_support's topology net; the order net carries the same
+  -- property: changing only the custody topology (inline, or Local custody
+  -- drained by a Worker) does not change a sequential canonical trace.
+  it "controlled sequential local execution is byte identical to inline history (test_worker_runtime.py)" $ withScratch $ \dir -> do
+    let arrangement name dispatch drain = do
+          prepared <- newIORef 0
+          store <- openJsonlHistoryStore (dir </> (name <> ".jsonl"))
+          engine <- Engine.create orderNet orderIdentity store dispatch (orderOptions prepared)
+          deliverOrders engine 1
+          void (advanceUntilRest engine)
+          drain
+          void (advanceUntilRest engine)
+          marking <- Engine.marking engine
+          Engine.close engine
+          history <- BS.readFile (dir </> (name <> ".jsonl"))
+          pure (history, marking)
+    -- Local custody stores a result as canonical JSON (sorted keys), as the
+    -- reference's does, while inline custody hands the object over as
+    -- built; the reference's case returns a string, so the inline receipt
+    -- here is built with its keys already in canonical order.
+    let canonicalReceipt inv = case chargeReceipt inv of
+          Object members -> Object (sortOn fst members)
+          other -> other
+    inline <- inlineOf [("charge_card", \inv _ -> pure (canonicalReceipt inv))] >>= \dispatch -> arrangement "inline" dispatch (pure ())
+    let db = dir </> "dispatch.db"
+    local <- do
+      dispatch <- toDispatch <$> openLocalDispatch db orderIdentity defaultLocalDispatchOptions
+      arrangement "local" dispatch (drainWith Nothing Haskell db)
+    snd local `shouldBe` settledMarking 1
+    local `shouldBe` inline
 
   describe "lock-step Engine and Worker pairings write byte-identical History" $
     forM_ [(Haskell, Reference), (Reference, Haskell), (Reference, Reference)] $ \(engineSide, workerSide) ->
