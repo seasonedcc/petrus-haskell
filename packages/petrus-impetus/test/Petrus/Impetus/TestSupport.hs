@@ -13,6 +13,14 @@ module Petrus.Impetus.TestSupport
   , filtersBySymbol
   , guardsBySymbol
   , impls
+  , obj
+  , field
+  , numberField
+  , enabledTransitions
+  , Fired (..)
+  , fireHead
+  , stepNet
+  , runNet
   ) where
 
 import Data.Map.Strict qualified as Map
@@ -21,6 +29,7 @@ import Data.Text qualified as T
 import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..))
 import Test.Hspec
+import Data.List (nub)
 
 -- | A literal path.
 np :: Text -> NetPath
@@ -76,3 +85,70 @@ guardsBySymbol xs = Map.fromList [(BySymbol k, g) | (k, g) <- xs]
 -- | Implementations from symbol-keyed filters and guards.
 impls :: [(Text, Filter)] -> [(Text, Guard)] -> Implementations
 impls fs gs = Implementations (filtersBySymbol fs) (guardsBySymbol gs)
+
+-- | A JSON object literal.
+obj :: [(Text, Json)] -> Json
+obj = Object
+
+-- | Python's @token.data[key]@: a missing key or a non-mapping payload is an
+-- evaluation error spelled the way the reference's exception reprs are.
+field :: Text -> Token -> Either Text Json
+field key t = case t.payload of
+  Object members -> maybe (Left ("KeyError(" <> pyRepr key <> ")")) Right (lookup key members)
+  Null -> Left "TypeError(\"'NoneType' object is not subscriptable\")"
+  _ -> Left "TypeError('object is not subscriptable')"
+  where
+    pyRepr k = "'" <> k <> "'"
+
+-- | A numeric data field (@token.data[key]@ used in arithmetic).
+numberField :: Text -> Token -> Either Text Integer
+numberField key t =
+  field key t >>= \case
+    Int n -> Right n
+    other -> Left ("TypeError(" <> T.pack (show other) <> ")")
+
+-- | The reference's @Instance.enabled_transitions()@: distinct enabled
+-- transitions in candidate (stable) order.
+enabledTransitions :: HasCallStack => Net -> Marking -> Implementations -> [NetPath]
+enabledTransitions net marking implementations =
+  case candidates net marking implementations Nothing of
+    Right bindings -> nub (map (.transition) bindings)
+    Left err -> error ("candidates failed: " <> show err)
+
+-- | One conservative firing (the reference's @Instance.step()@ with the
+-- default passthrough handler): the head binding begins, its forwarded
+-- tokens route through the transition's output arcs, and the firing
+-- completes.
+data Fired = Fired
+  { binding :: Binding
+  , begun :: [BeginEffect]
+  , produced :: [ProducedTokens]
+  , after :: Marking
+  }
+  deriving stock (Show)
+
+-- | Fire one given binding.
+fireHead :: Net -> Marking -> Binding -> Either Text Fired
+fireHead net marking b = do
+  (effects, begunMarking) <- beginFiring marking b
+  let projected = route (bindingTokens b) (outputs net b.transition)
+      (producedEffects, completed) = completeFiring net begunMarking b.transition projected
+  Right (Fired b effects producedEffects completed)
+
+-- | Fire the first candidate, if any.
+stepNet :: Net -> Implementations -> Marking -> Either Text (Maybe Fired)
+stepNet net implementations marking =
+  case candidates net marking implementations Nothing of
+    Left err -> Left (T.pack (show err))
+    Right [] -> Right Nothing
+    Right (b : _) -> Just <$> fireHead net marking b
+
+-- | Step until quiescent (bounded), returning the final marking.
+runNet :: Net -> Implementations -> Marking -> Either Text Marking
+runNet net implementations = go (1000 :: Int)
+  where
+    go 0 _ = Left "runNet: step bound exceeded"
+    go n marking =
+      stepNet net implementations marking >>= \case
+        Nothing -> Right marking
+        Just fired -> go (n - 1) fired.after

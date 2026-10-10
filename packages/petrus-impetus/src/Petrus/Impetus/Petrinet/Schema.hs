@@ -41,6 +41,7 @@ module Petrus.Impetus.Petrinet.Schema
   , Color
   , Instant
   , Duration
+  , Number (..)
   , ArcMode (..)
   , arcModeText
   , Cel
@@ -49,6 +50,7 @@ module Petrus.Impetus.Petrinet.Schema
   , celExpression
   , AnonymousDeclaration (..)
   , anonymous
+  , anonymousNamed
   , FilterDeclaration (..)
   , GuardDeclaration (..)
   , HandlerDeclaration (..)
@@ -118,6 +120,7 @@ import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Petrus.Activity.Number (Number (..))
 import Petrus.Impetus.Internal.Repr
 
 -- ---------------------------------------------------------------------------
@@ -279,12 +282,14 @@ quote safe text = T.concatMap encode text
 type Color = Text
 
 -- | An instant on the instance's virtual clock. The reference admits any
--- totally ordered value; every durable spelling (History, the v3 integer
--- time domain) is an integer, so the Haskell kernel fixes the integer clock.
-type Instant = Integer
+-- totally ordered value; every durable spelling (History, the v3 time domain)
+-- is a JSON number, and History keeps the int/float distinction (@10@ stays
+-- integral, @0.5@ round-trips), so the Haskell clock is a 'Number'.
+type Instant = Number
 
--- | A duration a 'Delay' adds to an instant.
-type Duration = Integer
+-- | A duration a 'Delay' adds to an instant (Python's @int + float@
+-- promotion applies).
+type Duration = Number
 
 -- | How an input arc participates in enablement: consume removes tokens,
 -- read peeks, inhibit gates on absence.
@@ -333,6 +338,12 @@ instance Show AnonymousDeclaration where
 -- | @ANONYMOUS@.
 anonymous :: AnonymousDeclaration
 anonymous = AnonymousDeclaration Nothing
+
+-- | @AnonymousDeclaration(display_name)@: the display name must be non-empty.
+anonymousNamed :: Text -> Either Text AnonymousDeclaration
+anonymousNamed name
+  | T.null name = Left "anonymous declaration display name must be a non-empty string or None, got ''"
+  | otherwise = Right (AnonymousDeclaration (Just name))
 
 -- | An arc filter: a named symbol or an inline expression over one token.
 data FilterDeclaration = FilterSymbol Text | FilterCel Cel
@@ -761,6 +772,12 @@ validatePlace value = when (value.color == Just "") $
 validateTransition :: Transition -> Either Text ()
 validateTransition value = do
   let at = netPathText value.path
+  -- The reference refuses an empty display name in
+  -- @AnonymousDeclaration.__post_init__@; the constructor is open here, so
+  -- the net boundary runs the same rule over every anonymous declaration.
+  forM_ ([a | Just (HandlerAnonymous a) <- [value.handler]] ++ [a | GuardAnonymous a <- value.guards]) $ \a ->
+    when (a.displayName == Just "") $
+      Left "anonymous declaration display name must be a non-empty string or None, got ''"
   case value.handler of
     Just (HandlerSymbol symbol)
       | T.null symbol || "$" `T.isPrefixOf` symbol ->
