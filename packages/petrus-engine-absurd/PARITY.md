@@ -39,8 +39,9 @@ The suite provisions one scratch database with both schemas and the fixture tabl
 Worker processes are killed by exact PID.
 
 The reference's Worker process (`python -m petrus.motus.worker --provider absurd`) and the
-interop driver run under the pinned reference's environment (`upstream/petrus/.venv`,
-`uv sync --frozen --extra postgres`).
+interop driver run under the pinned reference's environment (`upstream/petrus/.venv` on
+CPython 3.14.6), which `scripts/upstream-python` provisions on first use. An example that needs
+it fails, never skips, when it cannot be provisioned.
 
 ### The Haskell Worker process
 

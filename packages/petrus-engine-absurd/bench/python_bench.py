@@ -8,7 +8,7 @@ PETRUS_TEST_POSTGRES and dropped afterwards. Prints ``name,nanoseconds``
 lines (scripts/bench_timing.py).
 
     cd upstream/petrus
-    PETRUS_TEST_POSTGRES=... .venv/bin/python ../../packages/petrus-engine-absurd/bench/python_bench.py
+    PETRUS_TEST_POSTGRES=... "$(../../scripts/upstream-python)" ../../packages/petrus-engine-absurd/bench/python_bench.py
 
 The rows' cost depends on how much Absurd state has accumulated (the claim
 sweeps scan the queue's tables, and the catalog grows with every queue

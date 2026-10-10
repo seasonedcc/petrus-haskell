@@ -28,8 +28,9 @@ PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@localhost:5432/postgres \
 `cabal test petrus-motus-absurd` runs 127 examples. With `PETRUS_TEST_POSTGRES` set (CI sets
 it), all 127 pass. Without it, the 98 examples that need a server are pending and say why, the
 way upstream's `postgres` marker skips. The suite provisions one scratch database with the
-pinned schema and drops it afterwards. The interop examples also need the pinned reference's
-environment (`upstream/petrus/.venv`, `uv sync --frozen --extra postgres`).
+pinned schema and drops it afterwards. The interop examples run the pinned reference's
+environment (`upstream/petrus/.venv` on CPython 3.14.6), which `scripts/upstream-python`
+provisions on first use; they fail, never skip, when it cannot be provisioned.
 
 ## Ledger
 

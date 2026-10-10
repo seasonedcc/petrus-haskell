@@ -8,7 +8,8 @@
 -- never collected, a worker killed mid-lease — is recovered by the other.
 --
 -- Runs @test/interop/absurd_dispatch_interop.py@ under the pinned
--- @upstream/petrus/.venv@; pending without @PETRUS_TEST_POSTGRES@.
+-- @upstream/petrus/.venv@ (provisioned by @scripts/upstream-python@; a
+-- missing reference fails, never skips); pending without @PETRUS_TEST_POSTGRES@.
 module Petrus.Motus.Dispatch.Absurd.InteropSpec (spec) where
 
 import Control.Exception (finally)

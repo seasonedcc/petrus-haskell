@@ -85,7 +85,7 @@ export PETRUS_TEST_POSTGRES=postgresql://postgres@127.0.0.1:5432/postgres
 cabal build -j2 petrus-engine-absurd:bench:petrus-engine-absurd-bench
 (cd packages/petrus-engine-absurd && \
   $(cabal list-bin petrus-engine-absurd:bench:petrus-engine-absurd-bench) --stdev 5 --timeout 300 +RTS -M2G -RTS)
-(cd upstream/petrus && .venv/bin/python ../../packages/petrus-engine-absurd/bench/python_bench.py)
+(cd upstream/petrus && "$(../../scripts/upstream-python)" ../../packages/petrus-engine-absurd/bench/python_bench.py)
 # or both in one go, which regenerates this file in scripts/bench's standard layout:
 # scripts/bench petrus-engine-absurd
 ```
