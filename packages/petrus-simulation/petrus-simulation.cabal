@@ -1,0 +1,115 @@
+cabal-version:      3.4
+name:               petrus-simulation
+version:            0.1.0.0
+synopsis:           Bounded implementation-free Petrus simulation and its HTTP service
+description:
+  A Haskell port of @petrus.simulation@ (the bounded simulation runner,
+  profile @implementation-free-v1@) and @petrus.simulation_http@ (Simulation
+  HTTP profile 1). "Petrus.Simulation" admits a fixed build and an initial
+  marking under the profile's bounds, runs one fresh Engine, and returns the
+  portable Net document byte for byte as the reference does.
+  "Petrus.Simulation.Http" serves one fixed build over HTTP/1.0 on
+  petrus-http-core with the reference's framing, CORS, status codes and
+  error bodies.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control, Network
+build-type:         Simple
+extra-doc-files:    bench/RESULTS.md
+                    DIVERGENCES.md
+                    PARITY.md
+                    NOTICE
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Simulation
+                    Petrus.Simulation.Http
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , petrus-activity
+                  , petrus-cel
+                  , petrus-dsl
+                  , petrus-engine
+                  , petrus-http-core
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-observation
+                  , stm >=2.5
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-simulation-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Support
+                    RunnerSpec
+                    HttpSpec
+                    WireSpec
+                    CorpusSpec
+                    PythonClientSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , network
+                  , petrus-activity
+                  , petrus-dsl
+                  , petrus-engine
+                  , petrus-http-core
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-observation
+                  , petrus-simulation
+                  , petrus-test-support
+                  , stm
+                  , text
+                  , unix
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-simulation-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench test
+  main-is:          Main.hs
+  other-modules:    Support
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , network
+                  , petrus-dsl
+                  , petrus-engine
+                  , petrus-http-core
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-observation
+                  , petrus-simulation
+                  , stm
+                  , tasty >=1.4
+                  , tasty-bench >=0.3
+                  , text
+                  , unix
+  ghc-options:      -threaded -O2 -rtsopts
