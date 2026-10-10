@@ -79,6 +79,7 @@ test-suite petrus-processes-test
                     Petrus.Fabric.Conformance.Setup
                     Petrus.Processes.Conformance.Haskell
                     Petrus.Processes.ConformanceSpec
+                    Petrus.Processes.InteropSpec
   build-depends:    base
                   , async >=2.2
                   , base16-bytestring >=1.0

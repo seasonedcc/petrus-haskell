@@ -8,6 +8,10 @@ module Petrus.Processes.ConformanceSpec
   , haskell
   , specArgs
   , spec15
+  , child1
+  , dataArgs
+  , spawnInvocation
+  , requestData
   ) where
 
 import Control.Concurrent.Async (concurrently)

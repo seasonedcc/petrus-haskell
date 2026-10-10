@@ -29,6 +29,11 @@ module Petrus.Fabric.Conformance.Setup
   , exec
   , dbNow
   , isoPlus
+  , Pair (..)
+  , Side (..)
+  , interopGroup
+  , both
+  , registerOn
   ) where
 
 import Control.Exception (bracket)
@@ -103,7 +108,53 @@ withBare ctx action =
 withFreshDatabase :: Ctx -> (Ctx -> Pg.Connection -> IO a) -> IO a
 withFreshDatabase ctx action =
   withScratchDatabase ctx.target.adminUrl $ \fresh ->
-    bracket (Pg.connect fresh.targetUrl True) Pg.close (action ctx {target = fresh})
+    bracket (Pg.connect fresh.targetUrl True) Pg.close (action (Ctx ctx.impl fresh ctx.launcher))
+
+-- | Interop checks: one scratch database shared by the Haskell port and the
+-- pinned Python reference.
+data Pair = Pair {haskell :: Impl, python :: Impl, target :: PostgresTarget}
+
+-- | One implementation's side of an interop check, with its own autocommit
+-- connection to the shared database.
+data Side = Side {impl :: Impl, conn :: Json}
+
+interopGroup :: Launcher -> SpecWith Pair -> Spec
+interopGroup (Launcher with) body = do
+  url <- runIO lookupPostgresUrl
+  case url of
+    Nothing -> around (\_ -> pendingWith skipMessage) body
+    Just configured ->
+      aroundAll (\k -> withScratchDatabase configured (\t -> with (\h -> withPythonImpl (\p -> k (Pair h p t))))) body
+
+-- | An interop check in both directions: Python first then Haskell, and
+-- Haskell first then Python. Both schemas are dropped before each run.
+both :: String -> (Pg.Connection -> Side -> Side -> IO ()) -> SpecWith Pair
+both label check = do
+  it (label <> " [Python, then Haskell]") $ \pair -> run pair pair.python pair.haskell
+  it (label <> " [Haskell, then Python]") $ \pair -> run pair pair.haskell pair.python
+  where
+    run pair first second =
+      bracket (Pg.connect pair.target.targetUrl True) Pg.close $ \admin -> do
+        exec admin "DROP SCHEMA IF EXISTS impetus_fabric CASCADE" []
+        exec admin "DROP SCHEMA IF EXISTS impetus_lifecycle CASCADE" []
+        let open i = ok i "connect" [("dsn", String (TE.decodeUtf8 pair.target.targetUrl)), ("autocommit", Bool True)]
+        a <- open first
+        b <- open second
+        check admin (Side first a) (Side second b)
+        _ <- first.call "close" [("conn", a)]
+        _ <- second.call "close" [("conn", b)]
+        pure ()
+
+-- | Register a process through one side; answers its credential and client.
+registerOn :: Side -> Text -> IO (Text, Json)
+registerOn side n = do
+  credential <-
+    ok side.impl "issue_credential" [] >>= \case
+      String c -> pure c
+      other -> error ("issue_credential answered " <> show other)
+  _ <- ok side.impl "register" [("conn", side.conn), ("instance", String n), ("credential", String credential)]
+  client <- ok side.impl "client" [("conn", side.conn), ("instance", String n), ("credential", String credential)]
+  pure (credential, client)
 
 -- | A registered process and its client handle.
 data Party = Party {name :: Text, credential :: Text, client :: Json}

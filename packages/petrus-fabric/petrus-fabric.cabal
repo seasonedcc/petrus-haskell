@@ -94,6 +94,7 @@ test-suite petrus-fabric-test
                     Petrus.Fabric.Conformance.Haskell
                     Petrus.Fabric.Conformance.Setup
                     Petrus.Fabric.ConformanceSpec
+                    Petrus.Fabric.InteropSpec
   build-depends:    base
                   , async >=2.2
                   , bytestring
