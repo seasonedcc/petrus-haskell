@@ -1,0 +1,26 @@
+module Main (main) where
+
+import ArchiveSpec qualified
+import ContractSpec qualified
+import DockerSpec qualified
+import E2bSpec qualified
+import GondolinSpec qualified
+import LocalSpec qualified
+import ProvidersSpec qualified
+import SubstrateSpec qualified
+import System.Posix.Files (setFileCreationMask)
+import Test.Hspec
+
+main :: IO ()
+main = do
+  -- Extraction fixtures were generated under umask 022.
+  _ <- setFileCreationMask 0o022
+  hspec $ do
+    ArchiveSpec.spec
+    ContractSpec.spec
+    ProvidersSpec.spec
+    LocalSpec.spec
+    DockerSpec.spec
+    E2bSpec.spec
+    GondolinSpec.spec
+    SubstrateSpec.spec

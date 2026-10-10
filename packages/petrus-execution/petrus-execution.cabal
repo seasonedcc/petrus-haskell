@@ -1,0 +1,117 @@
+cabal-version:      3.4
+name:               petrus-execution
+version:            0.1.0.0
+synopsis:           Provider-neutral execution territories for Petrus (motus.execution)
+description:
+  The execution-territory contract, a CPython-tarfile-identical workspace
+  archive codec, the Local, Docker, E2B and Gondolin providers, and the
+  private host artifact store and timeline used as execution evidence.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           System
+build-type:         Simple
+extra-source-files: data/gondolin_sidecar.mjs
+                    cbits/*.h
+                    test/fixtures/*.json
+                    test/fixtures/*.py
+                    test/fixtures/*.mjs
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Motus.Execution
+                    Petrus.Motus.Execution.Archive
+                    Petrus.Motus.Execution.Archive.Tar
+                    Petrus.Motus.Execution.Artifacts
+                    Petrus.Motus.Execution.Error
+                    Petrus.Motus.Execution.Internal.Common
+                    Petrus.Motus.Execution.Internal.Posix
+                    Petrus.Motus.Execution.Internal.Process
+                    Petrus.Motus.Execution.Internal.PyText
+                    Petrus.Motus.Execution.Internal.Sidecar
+                    Petrus.Motus.Execution.Providers.Docker
+                    Petrus.Motus.Execution.Providers.E2b
+                    Petrus.Motus.Execution.Providers.Gondolin
+                    Petrus.Motus.Execution.Providers.Local
+                    Petrus.Motus.Execution.Timeline
+  include-dirs:     cbits
+  c-sources:        cbits/petrus_posix.c
+                    cbits/petrus_spawn.c
+  build-depends:    base >=4.18 && <5
+                  , base64-bytestring >=1.2
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , crypton >=1.0
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , network >=3.1
+                  , petrus-json
+                  , process >=1.6.18
+                  , stm >=2.5
+                  , template-haskell >=2.20
+                  , temporary >=1.3
+                  , text >=2.0
+                  , time >=1.12
+                  , unix >=2.8
+                  , zlib >=0.7
+  ghc-options:      -O2
+
+test-suite petrus-execution-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    ArchiveSpec
+                    ContractSpec
+                    DockerSpec
+                    E2bSpec
+                    GondolinSpec
+                    LocalSpec
+                    ProvidersSpec
+                    SubstrateSpec
+                    Support
+  build-depends:    base
+                  , base64-bytestring
+                  , bytestring
+                  , crypton
+                  , ram
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , network
+                  , petrus-execution
+                  , petrus-json
+                  , process
+                  , QuickCheck >=2.14
+                  , temporary >=1.3
+                  , text
+                  , time
+                  , unix
+                  , zlib
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-execution-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , directory
+                  , filepath
+                  , petrus-execution
+                  , petrus-json
+                  , temporary
+                  , text
+  ghc-options:      -O2 -threaded -rtsopts

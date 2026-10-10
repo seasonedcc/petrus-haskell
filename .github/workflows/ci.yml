@@ -22,6 +22,8 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       PETRUS_TEST_POSTGRES: postgresql://postgres:postgres@localhost:5432/postgres
+      # petrus-execution: also run the shared Docker provider tests against the runner's daemon.
+      PETRUS_TEST_DOCKER: "1"
     steps:
       - uses: actions/checkout@v4
         with:
