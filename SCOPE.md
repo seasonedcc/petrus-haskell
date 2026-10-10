@@ -29,7 +29,7 @@ status lives in [PARITY.md](PARITY.md).
 
 The port interoperates with, but does not reimplement, external systems the
 upstream relies on: PostgreSQL, SQLite, the Absurd durable-execution schema,
-ZeroMQ, GitHub's APIs, OpenTelemetry collectors, and the third-party agent
+ZeroMQ, GitHub's APIs, and the third-party agent
 runtimes `agenticus` drives (Claude, Codex, Pi, Amp). Where upstream embeds a
 non-Python helper (for example the Gondolin sidecar), the port keeps using it
 over the same protocol.
