@@ -1,0 +1,15 @@
+petrus-engine-sqlite
+Copyright 2026 Seasoned
+
+This package is a Haskell port of petrus.engine.sqlite, the fenced local
+SQLite Engine composition of Petrus (https://github.com/henriquebastos/petrus),
+pinned under upstream/petrus (see UPSTREAM.md at the repository root).
+
+Ported from henriquebastos/petrus
+  Copyright 2026 Henrique Bastos
+  Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The test suite ports tests/petrus/engine/test_sqlite_engine.py. The interop
+driver in test/interop/ and the benchmark in bench/python_bench.py run the
+pinned reference from its virtual environment; no upstream source code is
+included in this package.

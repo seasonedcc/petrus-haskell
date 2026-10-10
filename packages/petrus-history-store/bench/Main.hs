@@ -7,27 +7,46 @@
 -- Instance's validating replay), and the in-memory store's appends and
 -- reads. Two Haskell-only diagnostic rows split the JSONL write and read
 -- into their in-memory halves (no file IO).
+--
+-- The SQLite store's rows: one batch (one @BEGIN IMMEDIATE@ transaction),
+-- one record per transaction, batches of eight, load, resume, and a resent
+-- terminal acknowledged through the verify-on-conflict path (an insert that
+-- conflicts on the terminal index and verifies the stored fact).
 module Main (main) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, replicateM_, when)
 import Data.ByteString qualified as BS
 import Data.Sequence qualified as Seq
 import Data.Text qualified as T
 import Petrus.HistoryStore.Jsonl (decodeLines, encodePayload, openJsonlHistoryStore)
-import Petrus.Impetus.History (Record)
+import Petrus.HistoryStore.Sqlite (SqliteHistoryStore (..), openSqliteHistoryStore, withSqliteHistoryStore)
+import Petrus.Impetus.History (Record (..))
 import Petrus.Impetus.HistoryStore (HistoryStore (..), inMemoryHistoryStore)
 import Petrus.Impetus.HistoryStore qualified as Store
 import Petrus.Impetus.Instance
 import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..))
-import System.Directory (createDirectory, getTemporaryDirectory, removeDirectoryRecursive, removeFile)
+import System.Directory (createDirectory, doesFileExist, getTemporaryDirectory, removeDirectoryRecursive, removeFile)
 import System.FilePath ((</>))
 import System.IO (hClose, openTempFile)
 import Test.Tasty.Bench
 
-historyFifoTokens, perRecordAppends :: Int
+historyFifoTokens, perRecordAppends, terminalResends :: Int
 historyFifoTokens = 4000
 perRecordAppends = 2000
+terminalResends = 1000
+
+-- | Remove a SQLite database and its WAL sidecars.
+removeDatabase :: FilePath -> IO ()
+removeDatabase file = forM_ ["", "-wal", "-shm"] $ \suffix -> do
+  present <- doesFileExist (file <> suffix)
+  when present (removeFile (file <> suffix))
+
+-- | Consecutive batches of a size.
+batchesOf :: Int -> [a] -> [[a]]
+batchesOf size = \case
+  [] -> []
+  items -> let (batch, rest) = splitAt size items in batch : batchesOf size rest
 
 path :: String -> NetPath
 path = either (error . T.unpack) id . netPath . T.pack
@@ -73,6 +92,21 @@ main = do
   loaded <- openJsonlHistoryStore existing
   content <- BS.readFile existing
   let firstRecords = take perRecordAppends history
+      existingSqlite = dir </> "existing.sqlite3"
+      freshSqlite = dir </> "fresh.sqlite3"
+      sqliteAppend chunks = do
+        store <- openSqliteHistoryStore freshSqlite "bench"
+        forM_ chunks store.history.extend
+        n <- store.history.count
+        store.close
+        removeDatabase freshSqlite
+        pure n
+      terminal = head' [r | r@(RFiringCompleted _) <- history]
+      head' = \case
+        r : _ -> r
+        [] -> error "no FiringCompleted in the bench History"
+  withSqliteHistoryStore existingSqlite "bench" $ \store -> store.history.extend history
+  resent <- openSqliteHistoryStore existingSqlite "bench"
   defaultMain
     [ bgroup
         "jsonl"
@@ -95,6 +129,19 @@ main = do
             length . markingToList <$> marking inst
         ]
     , bgroup
+        "sqlite"
+        [ bench "append-one-batch" $ whnfIO $ sqliteAppend [history]
+        , bench "append-per-record" $ whnfIO $ sqliteAppend (map pure firstRecords)
+        , bench "append-batches-of-8" $ whnfIO $ sqliteAppend (batchesOf 8 firstRecords)
+        , bench "load" $ whnfIO $ withSqliteHistoryStore existingSqlite "bench" (\s -> s.history.count)
+        , bench "resume" $ whnfIO $ withSqliteHistoryStore existingSqlite "bench" $ \s -> do
+            inst <- resume net s.history defaultInstanceConfig >>= either (error . show) pure
+            length . markingToList <$> marking inst
+        , bench "terminal-resend-ack" $ whnfIO $ do
+            replicateM_ terminalResends (resent.history.extend [terminal])
+            resent.history.count
+        ]
+    , bgroup
         "diagnostic"
         [ bench "encode-payload" $ nf (fmap BS.length . encodePayload) history
         , bench "decode-lines" $ whnf (either (error . T.unpack) Seq.length . decodeLines "x") content
@@ -111,4 +158,5 @@ main = do
         , bench "in-memory-records-list" $ whnfIO $ length <$> Store.records memory
         ]
     ]
+  resent.close
   removeDirectoryRecursive dir
