@@ -13,7 +13,7 @@
 -- @TypeError@; 'decodeRecord' returns 'Left' with the same text either way.
 module Petrus.Impetus.HistoryCodecSpec (spec) where
 
-import Control.Monad (forM_, when)
+import Control.Monad (foldM, forM_, when)
 import Data.IORef
 import Data.List (nub, sort)
 import Data.Sequence qualified as Seq
@@ -28,6 +28,7 @@ import Petrus.Impetus.HistorySupport (everyRecordCategory, jsonLine, newReopen)
 import Petrus.Impetus.Binding
 import Petrus.Impetus.Instance
 import Petrus.Impetus.Petrinet hiding (candidates)
+import Petrus.Impetus.ReferenceCodec qualified as Reference
 import Petrus.Impetus.Scope (LifecycleScope, lifecycleScope)
 import Petrus.Impetus.TestSupport hiding (enabledTransitions)
 import Petrus.Json
@@ -95,7 +96,94 @@ withoutMember key = \case
   Object members -> Object [(k, v) | (k, v) <- members, k /= key]
   other -> other
 
-draft :: Integer -> LifecycleScope
+-- | The canonical payload of some category, put through zero to three
+-- random edits anywhere in its tree: members reordered, dropped,
+-- duplicated, renamed, or added; array items reordered, dropped, or
+-- duplicated; values swapped for numeric twins (@1@ / @1.0@ / @true@),
+-- other categories' names, NaN, or other shapes.
+mutatedPayload :: Gen Json
+mutatedPayload = do
+  record <- elements everyRecordCategory
+  edits <- frequency [(1, pure 0), (4, choose (1, 3 :: Int))]
+  foldM (\payload _ -> mutateSomewhere payload) (encodeRecord record) [1 .. edits]
+
+mutateSomewhere :: Json -> Gen Json
+mutateSomewhere = \case
+  Object members
+    | not (null members) ->
+        frequency
+          [ (2, mutateHere (Object members))
+          , (3, Object <$> descend (\(k, v) -> (k,) <$> mutateSomewhere v) members)
+          ]
+  Array items
+    | not (null items) ->
+        frequency [(2, mutateHere (Array items)), (3, Array <$> descend mutateSomewhere items)]
+  other -> mutateHere other
+  where
+    descend edit xs = do
+      i <- choose (0, length xs - 1)
+      x' <- edit (xs !! i)
+      pure (take i xs ++ [x'] ++ drop (i + 1) xs)
+
+mutateHere :: Json -> Gen Json
+mutateHere = \case
+  Object members ->
+    oneof
+      [ Object <$> shuffle members
+      , Object <$> dropOne members
+      , Object <$> duplicateOne members
+      , (\k v -> Object (members ++ [(k, v)])) <$> elements keyPool <*> elements valuePool
+      , (\k v -> Object ((k, v) : members)) <$> elements keyPool <*> elements valuePool
+      , Object <$> renameOne members
+      , elements valuePool
+      ]
+  Array items ->
+    oneof [Array <$> shuffle items, Array <$> dropOne items, Array <$> duplicateOne items, elements valuePool]
+  value -> frequency [(2, numericTwin value), (3, elements valuePool)]
+  where
+    dropOne xs
+      | null xs = pure xs
+      | otherwise = (\i -> take i xs ++ drop (i + 1) xs) <$> choose (0, length xs - 1)
+    duplicateOne xs
+      | null xs = pure xs
+      | otherwise = (\i -> take (i + 1) xs ++ drop i xs) <$> choose (0, length xs - 1)
+    renameOne xs
+      | null xs = pure xs
+      | otherwise = do
+          i <- choose (0, length xs - 1)
+          k <- elements keyPool
+          pure (take i xs ++ [(k, snd (xs !! i))] ++ drop (i + 1) xs)
+    numericTwin = \case
+      Int i -> elements [Float (fromInteger i), Bool (i /= 0), Int (i + 1), String (T.pack (show i))]
+      Float d -> elements [Int (truncate d), Float (d + 0.5), Float (0 / 0)]
+      Bool b -> elements [Int (if b then 1 else 0), Float (if b then 1 else 0), Bool (not b)]
+      String s -> elements [String (s <> "x"), String (T.toUpper s), String "", Null]
+      _ -> elements valuePool
+    keyPool =
+      ["record", "schema", "instance", "name", "instant", "place", "tokens", "entries", "scope", "generation", "color", "data", "occurrence", "transition", "attempts", "extra"]
+    valuePool =
+      [ Null
+      , Bool True
+      , Bool False
+      , Int 0
+      , Int 1
+      , Int 2
+      , Int 5
+      , Int (-1)
+      , Float 0.5
+      , Float 2
+      , Float (0 / 0)
+      , Float (1 / 0)
+      , String ""
+      , String "draft"
+      , String "p"
+      , Array []
+      , Object []
+      , Object [("name", String "draft"), ("generation", Int 1)]
+      ]
+        ++ [String (recordName r) | r <- everyRecordCategory]
+
+draft ::Integer -> LifecycleScope
 draft = either (error . show) id . lifecycleScope "draft"
 
 firingBegunPayload :: Json -> Json
@@ -368,6 +456,21 @@ spec = describe "History codec" $ do
       it "every decoded category re-encodes to its payload (property)" $
         property $ forAll (elements everyRecordCategory) $ \record ->
           fmap encodeRecord (decodeRecord (encodeRecord record)) === Right (encodeRecord record)
+      -- Not upstream: 'decodeRecord' was optimized (per-layout converters,
+      -- a member-by-member canonical check that falls back to the full
+      -- mapping comparison). The pre-optimization codec is kept as an
+      -- oracle; on canonical and mutated payloads alike, both must accept
+      -- the same record or refuse with the same text.
+      it "decodes every mutated payload exactly as the pre-optimization codec (property)" $
+        withNumTests 20000 $
+          forAll mutatedPayload $ \payload ->
+            counterexample (show payload) $
+              case (decodeRecord payload, Reference.decodeRecord payload) of
+                (Left err, Left err') -> err === err'
+                (Right record, Right record') ->
+                  counterexample "decoded records differ" (exactEq (encodeRecord record) (encodeRecord record'))
+                (outcome, outcome') ->
+                  counterexample (show (fmap encodeRecord outcome) <> " /= " <> show (fmap encodeRecord outcome')) False
 
   describe "durable line spelling" $ do
     -- TestJsonlHistoryStore.test_the_durable_spelling_is_byte_stable (the

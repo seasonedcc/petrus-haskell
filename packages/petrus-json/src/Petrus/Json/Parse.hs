@@ -80,35 +80,53 @@ safeIntegerMax = 2 ^ (53 :: Int) - 1
 parseJson :: ParseOptions -> ByteString -> Either String Json
 parseJson options input
   | BS.isPrefixOf "\xEF\xBB\xBF" input = Left "Unexpected UTF-8 BOM (decode using utf-8-sig)"
-  | otherwise = do
-      (value, end) <- valueAt options input (skipSpace input 0)
-      let rest = skipSpace input end
-      when (rest < BS.length input) (Left ("Extra data at byte " ++ show rest))
-      Right value
+  | otherwise = case valueAt options input (skipSpace input 0) of
+      Failed message -> Left message
+      Done value end ->
+        let rest = skipSpace input end
+         in if rest < BS.length input then Left ("Extra data at byte " ++ show rest) else Right value
+
+-- | One step of the scanner: a value and the offset just past it, or the
+-- refusal. A dedicated type (rather than @Either String (a, Int)@) lets the
+-- offset stay unboxed and saves a tuple and an 'Either' per scanned value.
+data Step a = Done !a {-# UNPACK #-} !Int | Failed String
+
+-- | Lift an 'Either' leaf scanner into a 'Step'.
+fromEither :: Either String (a, Int) -> Step a
+fromEither = \case
+  Right (value, end) -> Done value end
+  Left message -> Failed message
+{-# INLINE fromEither #-}
 
 skipSpace :: ByteString -> Int -> Int
 skipSpace input = go
   where
-    go i
-      | i < BS.length input, isSpace (BU.unsafeIndex input i) = go (i + 1)
+    len = BS.length input
+    go !i
+      | i < len, isSpace (BU.unsafeIndex input i) = go (i + 1)
       | otherwise = i
     isSpace w = w == 0x20 || w == 0x09 || w == 0x0A || w == 0x0D
+{-# INLINE skipSpace #-}
 
 byteAt :: ByteString -> Int -> Maybe Word8
 byteAt input i
   | i < BS.length input = Just (BU.unsafeIndex input i)
   | otherwise = Nothing
+{-# INLINE byteAt #-}
+
+expectingMessage :: String -> Int -> String
+expectingMessage what i = "Expecting " ++ what ++ " at byte " ++ show i
 
 expecting :: String -> Int -> Either String a
-expecting what i = Left ("Expecting " ++ what ++ " at byte " ++ show i)
+expecting what i = Left (expectingMessage what i)
 
-valueAt :: ParseOptions -> ByteString -> Int -> Either String (Json, Int)
+valueAt :: ParseOptions -> ByteString -> Int -> Step Json
 valueAt options input i = case byteAt input i of
-  Nothing -> expecting "value" i
+  Nothing -> Failed (expectingMessage "value" i)
   Just w -> case w of
-    0x22 -> do
-      (text, end) <- stringAt input (i + 1)
-      Right (String text, end)
+    0x22 -> case stringAt input (i + 1) of
+      Done text end -> Done (String text) end
+      Failed message -> Failed message
     0x7B -> objectAt options input (i + 1)
     0x5B -> arrayAt options input (i + 1)
     0x6E -> literal "null" Null
@@ -119,77 +137,95 @@ valueAt options input i = case byteAt input i of
     0x2D
       | BS.isPrefixOf "-Infinity" (BS.drop i input) -> constant "-Infinity" (-1 / 0)
     _
-      | w == 0x2D || (w >= 0x30 && w <= 0x39) -> numberAt options input i
-      | otherwise -> expecting "value" i
+      | w == 0x2D || (w >= 0x30 && w <= 0x39) -> fromEither (numberAt options input i)
+      | otherwise -> Failed (expectingMessage "value" i)
   where
     literal spelling value
-      | BS.isPrefixOf spelling (BS.drop i input) = Right (value, i + BS.length spelling)
-      | otherwise = expecting "value" i
+      | BS.isPrefixOf spelling (BS.drop i input) = Done value (i + BS.length spelling)
+      | otherwise = Failed (expectingMessage "value" i)
     constant spelling value
-      | not (BS.isPrefixOf spelling (BS.drop i input)) = expecting "value" i
-      | allowNonFiniteConstants options = Right (Float value, i + BS.length spelling)
-      | otherwise = Left ("non-finite JSON number " ++ show spelling)
+      | not (BS.isPrefixOf spelling (BS.drop i input)) = Failed (expectingMessage "value" i)
+      | allowNonFiniteConstants options = Done (Float value) (i + BS.length spelling)
+      | otherwise = Failed ("non-finite JSON number " ++ show spelling)
 
-objectAt :: ParseOptions -> ByteString -> Int -> Either String (Json, Int)
+objectAt :: ParseOptions -> ByteString -> Int -> Step Json
 objectAt options input start = case byteAt input first of
-  Just 0x7D -> Right (Object [], first + 1)
-  _ -> members first [] Set.empty
+  Just 0x7D -> Done (Object []) (first + 1)
+  _ -> members first [] (0 :: Int) Set.empty
   where
     first = skipSpace input start
-    members i acc seen = do
-      key <- case byteAt input i of
-        Just 0x22 -> stringAt input (i + 1)
-        _ -> expecting "property name enclosed in double quotes" i
-      let (name, afterKey) = key
-          colon = skipSpace input afterKey
-      case byteAt input colon of
-        Just 0x3A -> Right ()
-        _ -> expecting "':' delimiter" colon
-      (value, afterValue) <- valueAt options input (skipSpace input (colon + 1))
-      (acc', seen') <-
-        if Set.member name seen
-          then case duplicateMembers options of
-            RejectDuplicates -> Left ("duplicate JSON member " ++ show (T.unpack name))
-            LastWins -> Right (replaceMember name value acc, seen)
-          else Right ((name, value) : acc, Set.insert name seen)
-      let next = skipSpace input afterValue
-      case byteAt input next of
-        Just 0x2C -> members (skipSpace input (next + 1)) acc' seen'
-        Just 0x7D -> Right (Object (reverse acc'), next + 1)
-        _ -> expecting "',' delimiter" next
+    -- Duplicate detection scans the (short) member list until an object
+    -- grows past 'smallObject' members, and only then pays for a 'Set'.
+    smallObject = 16
+    members !i acc !count seen = case byteAt input i of
+      Just 0x22 -> case stringAt input (i + 1) of
+        Failed message -> Failed message
+        Done name afterKey ->
+          let colon = skipSpace input afterKey
+           in case byteAt input colon of
+                Just 0x3A -> case valueAt options input (skipSpace input (colon + 1)) of
+                  Failed message -> Failed message
+                  Done value afterValue ->
+                    let duplicate
+                          | count < smallObject = any ((== name) . fst) acc
+                          | otherwise = Set.member name seen
+                        next = skipSpace input afterValue
+                        continue acc' count' seen' = case byteAt input next of
+                          Just 0x2C -> members (skipSpace input (next + 1)) acc' count' seen'
+                          Just 0x7D -> Done (Object (reverse acc')) (next + 1)
+                          _ -> Failed (expectingMessage "',' delimiter" next)
+                     in if duplicate
+                          then case duplicateMembers options of
+                            RejectDuplicates -> Failed ("duplicate JSON member " ++ show (T.unpack name))
+                            LastWins -> continue (replaceMember name value acc) count seen
+                          else
+                            let grown = count + 1
+                                seenNext
+                                  | grown < smallObject = seen
+                                  | grown == smallObject = Set.fromList (name : map fst acc)
+                                  | otherwise = Set.insert name seen
+                             in continue ((name, value) : acc) grown seenNext
+                _ -> Failed (expectingMessage "':' delimiter" colon)
+      _ -> Failed (expectingMessage "property name enclosed in double quotes" i)
     replaceMember name value = map (\member@(k, _) -> if k == name then (k, value) else member)
 
-arrayAt :: ParseOptions -> ByteString -> Int -> Either String (Json, Int)
+arrayAt :: ParseOptions -> ByteString -> Int -> Step Json
 arrayAt options input start = case byteAt input first of
-  Just 0x5D -> Right (Array [], first + 1)
+  Just 0x5D -> Done (Array []) (first + 1)
   _ -> items first []
   where
     first = skipSpace input start
-    items i acc = do
-      (value, afterValue) <- valueAt options input i
-      let next = skipSpace input afterValue
-      case byteAt input next of
-        Just 0x2C -> items (skipSpace input (next + 1)) (value : acc)
-        Just 0x5D -> Right (Array (reverse (value : acc)), next + 1)
-        _ -> expecting "',' delimiter" next
+    items !i acc = case valueAt options input i of
+      Failed message -> Failed message
+      Done value afterValue ->
+        let next = skipSpace input afterValue
+         in case byteAt input next of
+              Just 0x2C -> items (skipSpace input (next + 1)) (value : acc)
+              Just 0x5D -> Done (Array (reverse (value : acc))) (next + 1)
+              _ -> Failed (expectingMessage "',' delimiter" next)
 
 -- | Parse a string body starting just after the opening quote.
-stringAt :: ByteString -> Int -> Either String (Text, Int)
-stringAt input start = scan start
+stringAt :: ByteString -> Int -> Step Text
+stringAt input start = scan start 0
   where
     len = BS.length input
-    -- Fast path: a run with no escapes decodes as one slice.
-    scan i
-      | i >= len = Left ("Unterminated string starting at byte " ++ show (start - 1))
+    -- Fast path: a run with no escapes decodes as one slice. @high@
+    -- collects the bits of every byte, so an all-ASCII run (the common case)
+    -- skips UTF-8 validation: ASCII bytes are their own code points.
+    scan !i !high
+      | i >= len = Failed ("Unterminated string starting at byte " ++ show (start - 1))
       | otherwise = case BU.unsafeIndex input i of
-          0x22 -> do
-            text <- decodeSlice start i
-            Right (text, i + 1)
-          0x5C -> slow start i []
+          0x22
+            | high < 0x80 -> Done (TE.decodeLatin1 (slice start i)) (i + 1)
+            | otherwise -> case decodeSlice start i of
+                Right text -> Done text (i + 1)
+                Left message -> Failed message
+          0x5C -> fromEither (slow start i [])
           w
-            | w < 0x20 -> Left ("Invalid control character at byte " ++ show i)
-            | otherwise -> scan (i + 1)
-    decodeSlice from to = case TE.decodeUtf8' (BS.take (to - from) (BS.drop from input)) of
+            | w < 0x20 -> Failed ("Invalid control character at byte " ++ show i)
+            | otherwise -> scan (i + 1) (high .|. w)
+    slice from to = BU.unsafeTake (to - from) (BU.unsafeDrop from input)
+    decodeSlice from to = case TE.decodeUtf8' (slice from to) of
       Right text -> Right text
       Left _ -> Left "invalid UTF-8 in string"
     -- Slow path with escapes: accumulate decoded chunks.
@@ -272,7 +308,13 @@ numberAt options input start = do
       spelling = map (chr . fromIntegral) (BS.unpack token)
   if fractionEnd == integerEnd && exponentEnd == fractionEnd
     then do
-      let value = read spelling :: Integer
+      let !value
+            -- Up to 18 digits fit an 'Int' exactly: accumulate the bytes
+            -- directly instead of going through 'read'.
+            | integerEnd - afterSign <= 18 =
+                let magnitude = digitsValue afterSign integerEnd
+                 in toInteger (if afterSign == start then magnitude else negate magnitude)
+            | otherwise = read spelling :: Integer
       case integerRange options of
         Just (low, high)
           | value < low || value > high ->
@@ -288,7 +330,9 @@ numberAt options input start = do
         _ -> Right (Int value, exponentEnd)
     else do
       when (integerTokensOnly options) (Left ("v3 JSON numbers must use integer token spelling, got " ++ spelling))
-      let value = readDouble token
+      let !value = case fastDouble input (afterSign /= start) afterSign integerEnd fractionEnd exponentEnd of
+            Just d -> d
+            Nothing -> readDouble token
       when (finiteFloatsOnly options && (isInfinite value || isNaN value)) (Left ("non-finite JSON number " ++ spelling))
       Right (Float value, exponentEnd)
   where
@@ -296,6 +340,63 @@ numberAt options input start = do
     digitsFrom i = case byteAt input i of
       Just w | isDigit w -> digitsFrom (i + 1)
       _ -> i
+    digitsValue :: Int -> Int -> Int
+    digitsValue from to = go from 0
+      where
+        go i !acc
+          | i < to = go (i + 1) (acc * 10 + fromIntegral (BU.unsafeIndex input i) - 0x30)
+          | otherwise = acc
+
+-- | Clinger's fast path: a decimal whose significant digits fit in 15 digits
+-- (so below 2^53) scaled by at most 10^22 is one correctly rounded IEEE
+-- multiplication or division of two exactly representable doubles, which is
+-- the same double the exact rational conversion in 'readDouble' rounds to.
+-- 'Nothing' sends every other spelling to 'readDouble'.
+--
+-- The arguments are the byte offsets 'numberAt' found: the first integer
+-- digit, the end of the integer part, the end of the fraction (the
+-- fraction digits start one past the dot), and the end of the token.
+fastDouble :: ByteString -> Bool -> Int -> Int -> Int -> Int -> Maybe Double
+fastDouble input negative integerStart integerEnd fractionEnd exponentEnd
+  | exponentDigits > 4 = Nothing
+  | significant > 15 = Nothing
+  | mantissa == 0 = Just (signed 0)
+  | scale >= 0 && scale <= 22 = Just (signed (fromIntegral mantissa * powerOfTen scale))
+  | scale < 0 && scale >= -22 = Just (signed (fromIntegral mantissa / powerOfTen (negate scale)))
+  | otherwise = Nothing
+  where
+    hasFraction = fractionEnd > integerEnd
+    fractionStart = integerEnd + 1
+    fractionLength = if hasFraction then fractionEnd - fractionStart else 0
+    -- Digits of the integer part then the fraction, as one digit stream.
+    digitAt k
+      | k < integerEnd - integerStart = BU.unsafeIndex input (integerStart + k)
+      | otherwise = BU.unsafeIndex input (fractionStart + k - (integerEnd - integerStart))
+    totalDigits = integerEnd - integerStart + fractionLength
+    leadingZeros = length (takeWhile (\k -> digitAt k == 0x30) [0 .. totalDigits - 1])
+    significant = totalDigits - leadingZeros
+    mantissa :: Int
+    mantissa = foldl (\acc k -> acc * 10 + fromIntegral (digitAt k) - 0x30) 0 [leadingZeros .. totalDigits - 1]
+    -- The exponent part, when present: [eE][+-]?digits.
+    exponentStart = fractionEnd + 1
+    exponentSign = if exponentEnd > fractionEnd then BU.unsafeIndex input exponentStart else 0x30
+    exponentDigitsStart
+      | exponentEnd <= fractionEnd = exponentEnd
+      | exponentSign == 0x2B || exponentSign == 0x2D = exponentStart + 1
+      | otherwise = exponentStart
+    exponentDigits = exponentEnd - exponentDigitsStart
+    exponentMagnitude :: Int
+    exponentMagnitude = foldl (\acc i -> acc * 10 + fromIntegral (BU.unsafeIndex input i) - 0x30) 0 [exponentDigitsStart .. exponentEnd - 1]
+    exponentValue = if exponentSign == 0x2D then negate exponentMagnitude else exponentMagnitude
+    scale = exponentValue - fractionLength
+    signed d = if negative then negate d else d
+
+-- | Exact powers of ten up to 10^22 (every one is a representable double).
+powerOfTen :: Int -> Double
+powerOfTen k = powersOfTen !! k
+
+powersOfTen :: [Double]
+powersOfTen = [fromInteger (10 ^ k) | k <- [0 .. 22 :: Int]]
 
 -- | Correctly rounded decimal-to-double conversion with an overflow guard.
 readDouble :: ByteString -> Double

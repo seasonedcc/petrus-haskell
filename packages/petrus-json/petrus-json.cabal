@@ -41,9 +41,11 @@ test-suite petrus-json-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    Petrus.Json.ReferenceParse
   build-depends:    base
                   , bytestring
                   , hspec >=2.10
                   , QuickCheck >=2.14
+                  , containers
                   , petrus-json
                   , text
