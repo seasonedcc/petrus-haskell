@@ -59,6 +59,7 @@ test-suite petrus-agenticus-test
   other-modules:    Petrus.Agenticus.TestSupport
                     Petrus.Agenticus.AgentNetSpec
                     Petrus.Agenticus.BindingSpec
+                   Petrus.Agenticus.BoundariesSpec
   build-depends:    base
                   , bytestring
                   , containers
