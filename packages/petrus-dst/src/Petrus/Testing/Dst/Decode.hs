@@ -33,6 +33,9 @@ module Petrus.Testing.Dst.Decode
   , pNullable
   , pLiteral
   , pJsonValue
+  , pJsonValueIn
+  , recursionGuardLimit
+  , jsonValueRecursion
   , pIntDict
   , tagged
   , valueError
@@ -208,12 +211,56 @@ pLiteral choices path v = case [a | (j, a) <- choices, j == v] of
       Int i -> PyInt i
       _ -> PyNone
 
--- | A @JsonValue@ field with the reference's @_strict_json@ before-validator:
--- every number must be finite.
+-- | A @JsonValue@ field of a model validated on its own: 'pJsonValueIn' 0.
 pJsonValue :: Text -> Path -> Json -> Parser Json
-pJsonValue subject path v = case strictJsonPath v of
-  Nothing -> Right v
+pJsonValue = pJsonValueIn 0
+
+-- | A @JsonValue@ field with the reference's @_strict_json@ before-validator
+-- (every number must be finite), then pydantic's own validation of the
+-- value, which can trip pydantic-core's recursion guard
+-- ('jsonValueRecursion'). @refs@ counts the pydantic definition references
+-- the validator has already entered above this field: 1 inside an
+-- @ExpandedOperationV1@ of a version-2+ artifact or boundary frame (pydantic
+-- keeps that union as a shared definition), 0 everywhere else.
+pJsonValueIn :: Int -> Text -> Path -> Json -> Parser Json
+pJsonValueIn refs subject path v = case strictJsonPath v of
   Just at -> valueError path (subject <> " has a non-finite number at " <> at)
+  Nothing -> maybe (Right v) Left (jsonValueRecursion refs path v)
+
+-- | pydantic-core's @RECURSION_GUARD_LIMIT@ (outside WebAssembly and PyPy
+-- on Windows).
+recursionGuardLimit :: Int
+recursionGuardLimit = 255
+
+-- | Where pydantic refuses a @JsonValue@ as too deeply nested, if it does.
+--
+-- @JsonValue@ is a recursive definition, so pydantic-core enters its
+-- recursion guard once per value: the field's value, and every item and
+-- member below it, leaves included. A value @j@ containers below the field
+-- is entered at guard depth @refs + j + 1@, and the guard refuses any entry
+-- beyond 'recursionGuardLimit' with @recursion_loop@. The first such value
+-- in validation order (items in order, members in document order) is
+-- reported, located through the union tags pydantic adds (@list@, @dict@).
+-- With @refs = 0@ a payload may nest 254 containers around its leaves,
+-- whatever their kind; the 255th is refused.
+jsonValueRecursion :: Int -> Path -> Json -> Maybe SchemaError
+jsonValueRecursion refs path value
+  | fits allowed value = Nothing
+  | otherwise = locate allowed path value
+  where
+    allowed = recursionGuardLimit - refs
+    -- whether every value on every path stays within @n@ guard entries
+    fits n = \case
+      _ | n <= 0 -> False
+      Array items -> all (fits (n - 1)) items
+      Object members -> all (fits (n - 1) . snd) members
+      _ -> True
+    locate n at = \case
+      _ | n <= 0 -> Just (SchemaError (reverse at) "recursion_loop" "Recursion error - cyclic reference detected")
+      Array items -> firstJust [locate (n - 1) (LIndex i : LKey "list" : at) item | (i, item) <- zip [0 ..] items]
+      Object members -> firstJust [locate (n - 1) (LKey k : LKey "dict" : at) item | (k, item) <- members]
+      _ -> Nothing
+    firstJust = foldr (\x acc -> maybe acc Just x) Nothing
 
 -- | The @_strict_json@ path of the first non-finite number (@$@, @$[0]@,
 -- @$.key@), if any.
@@ -280,7 +327,12 @@ pCheckerIdentity :: Path -> Json -> Parser CheckerIdentity
 pCheckerIdentity = pIdentity "CheckerIdentity"
 
 pCommand :: Path -> Json -> Parser Command
-pCommand path v = do
+pCommand = pCommandIn 0
+
+-- | A @Command@ whose payload sits below @refs@ pydantic definition
+-- references ('pJsonValueIn').
+pCommandIn :: Int -> Path -> Json -> Parser Command
+pCommandIn refs path v = do
   f <- model "Command" ["profile", "name", "payload"] path v
   profile <- field f "profile" pProfileIdentity
   name <- field f "name" $ \p x -> do
@@ -288,11 +340,14 @@ pCommand path v = do
     unless (isName s && not ("dst." `T.isPrefixOf` s)) $
       valueError p "command name must be non-empty, normalized, and outside the reserved 'dst.' namespace"
     Right s
-  payload <- field f "payload" (pJsonValue "command payload")
+  payload <- field f "payload" (pJsonValueIn refs "command payload")
   Right Command {profile, name, payload}
 
 pFault :: Path -> Json -> Parser Fault
-pFault path v = do
+pFault = pFaultIn 0
+
+pFaultIn :: Int -> Path -> Json -> Parser Fault
+pFaultIn refs path v = do
   f <- model "Fault" ["profile", "name", "target", "occurrence", "disposition", "payload"] path v
   profile <- field f "profile" pProfileIdentity
   let faultName p x = do
@@ -303,7 +358,7 @@ pFault path v = do
   target <- field f "target" faultName
   occurrence <- field f "occurrence" (pIntRange (Just 1) Nothing)
   disposition <- field f "disposition" (pLiteral [(String (faultDispositionText d), d) | d <- [minBound .. maxBound]])
-  payload <- field f "payload" (pJsonValue "fault payload")
+  payload <- field f "payload" (pJsonValueIn refs "fault payload")
   Right Fault {profile, name, target, occurrence, disposition, payload}
 
 budgetKeys :: [Text]
@@ -363,35 +418,47 @@ pResourceUsage path v = do
   Right (ResourceUsage (Map.fromList values))
 
 pScheduledCommand :: Path -> Json -> Parser ScheduledCommand
-pScheduledCommand path v = do
+pScheduledCommand = pScheduledCommandIn 0
+
+pScheduledCommandIn :: Int -> Path -> Json -> Parser ScheduledCommand
+pScheduledCommandIn refs path v = do
   f <- model "ScheduledCommand" ["instant", "command"] path v
   instant <- field f "instant" (pIntRange (Just 0) (Just maxPortableInteger))
-  command <- field f "command" pCommand
+  command <- field f "command" (pCommandIn refs)
   Right ScheduledCommand {instant, command}
 
 pApplyResult :: Path -> Json -> Parser ApplyResult
-pApplyResult path v = do
+pApplyResult = pApplyResultIn 0
+
+pApplyResultIn :: Int -> Path -> Json -> Parser ApplyResult
+pApplyResultIn refs path v = do
   f <- model "ApplyResult" ["disposition", "value", "scheduled"] path v
   disposition <- field f "disposition" (pLiteral [(String (actionDispositionText d), d) | d <- [minBound .. maxBound]])
-  value <- field f "value" (pJsonValue "apply result")
-  scheduled <- field f "scheduled" (pList pScheduledCommand)
+  value <- field f "value" (pJsonValueIn refs "apply result")
+  scheduled <- field f "scheduled" (pList (pScheduledCommandIn refs))
   Right ApplyResult {disposition, value, scheduled}
 
 pObservationRequest :: Path -> Json -> Parser ObservationRequest
-pObservationRequest path v = do
+pObservationRequest = pObservationRequestIn 0
+
+pObservationRequestIn :: Int -> Path -> Json -> Parser ObservationRequest
+pObservationRequestIn refs path v = do
   f <- model "ObservationRequest" ["name", "payload"] path v
   name <- field f "name" $ \p x -> do
     s <- pStr p x
     unless (isName s) (valueError p "observation name must be normalized and non-empty")
     Right s
-  payload <- field f "payload" (pJsonValue "observation payload")
+  payload <- field f "payload" (pJsonValueIn refs "observation payload")
   Right ObservationRequest {name, payload}
 
 pObservation :: Path -> Json -> Parser Observation
-pObservation path v = do
+pObservation = pObservationIn 0
+
+pObservationIn :: Int -> Path -> Json -> Parser Observation
+pObservationIn refs path v = do
   f <- model "Observation" ["name", "value", "instant", "generation", "sequence"] path v
   name <- field f "name" pStr
-  value <- field f "value" (pJsonValue "observation value")
+  value <- field f "value" (pJsonValueIn refs "observation value")
   instant <- field f "instant" (pIntRange (Just 0) (Just maxPortableInteger))
   generation <- field f "generation" (pIntRange (Just 1) Nothing)
   sequence' <- field f "sequence" (pIntRange (Just 0) Nothing)
@@ -494,8 +561,10 @@ pFailureDetail =
           Right (FInvariant InvariantFailure {error = err}))
     ]
 
-acceptedAlternatives :: [(Text, Path -> Json -> Parser AcceptedOperation)]
-acceptedAlternatives =
+-- | The accepted operations, their @JsonValue@ fields below @refs@ pydantic
+-- definition references.
+acceptedAlternatives :: Int -> [(Text, Path -> Json -> Parser AcceptedOperation)]
+acceptedAlternatives refs =
   [ ("execute", \p v -> do
         f <- model "ExecuteOperation" ["kind", "position", "source", "queue_order", "instant", "generation", "command", "result"] p v
         position <- positionField f
@@ -503,22 +572,22 @@ acceptedAlternatives =
         queueOrder <- field f "queue_order" (pIntRange (Just 0) Nothing)
         instant <- instantField f
         generation <- generationField f
-        command <- field f "command" pCommand
-        result <- field f "result" pApplyResult
+        command <- field f "command" (pCommandIn refs)
+        result <- field f "result" (pApplyResultIn refs)
         Right (OpExecute ExecuteOperation {position, source, queueOrder, instant, generation, command, result}))
   , ("activate_fault", \p v -> do
         f <- model "FaultOperation" ["kind", "position", "instant", "generation", "fault"] p v
         position <- positionField f
         instant <- instantField f
         generation <- generationField f
-        fault <- field f "fault" pFault
+        fault <- field f "fault" (pFaultIn refs)
         Right (OpFault FaultOperation {position, instant, generation, fault}))
   , ("observe", \p v -> do
         f <- model "ObserveOperation" ["kind", "position", "poll", "observation", "request"] p v
         position <- positionField f
         poll <- field f "poll" pBool
-        observation <- field f "observation" pObservation
-        request <- field f "request" pObservationRequest
+        observation <- field f "observation" (pObservationIn refs)
+        request <- field f "request" (pObservationRequestIn refs)
         Right (OpObserve ObserveOperation {position, poll, observation, request}))
   , ("crash", \p v -> do
         f <- model "CrashOperation" ["kind", "position", "instant", "generation", "cut", "discarded_commands"] p v
@@ -551,7 +620,7 @@ acceptedAlternatives =
 
 -- | @ExpandedOperationV1@.
 pAcceptedOperation :: Path -> Json -> Parser AcceptedOperation
-pAcceptedOperation = tagged acceptedAlternatives
+pAcceptedOperation = tagged (acceptedAlternatives 0)
 
 pFailureOperation :: Path -> Json -> Parser FailureOperation
 pFailureOperation p v = do
@@ -566,11 +635,13 @@ pFailureOperation p v = do
 
 -- | @ExpandedOperation@: a union whose first member is itself the
 -- discriminated V1 union, so accepted operations carry their tag twice in
--- pydantic locations.
+-- pydantic locations. pydantic keeps that inner union as a definition of
+-- its own (@ExpandedOperationV1@), one recursion-guard level that its
+-- @JsonValue@ fields sit below ('pJsonValueIn').
 pExpandedOperation :: Path -> Json -> Parser ExpandedOperation
 pExpandedOperation =
   tagged
-    ( [(t, \p v -> Accepted <$> tagged acceptedAlternatives p v) | (t, _) <- acceptedAlternatives]
+    ( [(t, \p v -> Accepted <$> tagged (acceptedAlternatives 1) p v) | (t, _) <- acceptedAlternatives 0]
         ++ [("failure", \p v -> Failed <$> pFailureOperation p v)]
     )
 

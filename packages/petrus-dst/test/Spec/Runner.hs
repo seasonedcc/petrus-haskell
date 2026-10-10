@@ -22,6 +22,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Json (Json (..), lookupMember)
 import Petrus.Testing.Dst
+import Petrus.Testing.Dst.Decode (LocPart (..), SchemaError (..))
 import Petrus.Testing.Dst.Runner
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
@@ -282,6 +283,23 @@ spec = describe "process runner" $ do
     command <- selfChildCommand
     outcome <- runProcessScenario command (specOf refusal)
     pyErrorOf outcome `shouldBeJson` Object [("message", member "message" refusal), ("type", member "type" refusal)]
+
+  it "refuses a spec payload nested past pydantic's recursion guard" $ do
+    -- The reference's ProcessRunSpec.model_validate admits a leaf inside
+    -- 254 lists and refuses one inside 255, at the leaf.
+    let runSpec depth =
+          Object
+            [ ("scenario_id", String "s")
+            , ("entrypoint", String "a.b:c")
+            , ("payload", iterate (\v -> Array [v]) (Int 0) !! depth)
+            , ("budget", Object [("wall_clock_ms", Int 1000), ("termination_grace_ms", Int 100), ("input_bytes", Int 10), ("progress_bytes", Int 10)])
+            ]
+    either (Left . show) (const (Right ())) (pProcessRunSpec [] (runSpec 254)) `shouldBe` Right ()
+    case pProcessRunSpec [] (runSpec 255) of
+      Left e -> do
+        e.errorType `shouldBe` "recursion_loop"
+        e.loc `shouldBe` LKey "payload" : concat (replicate 255 [LKey "list", LIndex 0])
+      Right _ -> expectationFailure "admitted a payload nested 255 lists deep"
 
   it "terminates and reaps a hung profile, keeping its acknowledged prefix" $ do
     command <- selfChildCommand

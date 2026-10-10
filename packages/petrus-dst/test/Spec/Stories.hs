@@ -408,3 +408,73 @@ spec = describe "toy World stories (Python-authored vectors)" $ do
     refusedCommand `shouldBeJson` member "command" s
     refusedFault `shouldBeJson` member "fault" s
     Int (toInteger count) `shouldBeJson` member "operations" s
+
+  it "refuses JSON values nested past pydantic's recursion guard, alone or inside a journal entry (nesting)" $ do
+    -- pydantic enters its recursion guard once per JsonValue value and
+    -- refuses the 256th entry: a command payload or observation value is
+    -- refused when its own model is built or, a few containers deeper,
+    -- when the World builds the journal entry that embeds it.
+    s <- story "nesting"
+    q <- newQueue
+    let record identifier depth = Object [("id", String identifier), ("deep", nested depth)]
+        deepRequest depth = Object [("depth", Int depth)]
+    (errors, operationCount, entryCount, built) <- withToy (config (deepObservationProfile q) (budget 16 4 1 10 0 4) [] Nothing) $ do
+      t <- World.timeline
+      commandRefused <- attempt (Timeline.command t "queue.record" (record "a" 254))
+      commandJournalRefused <- attempt (Timeline.command t "queue.record" (record "b" 252))
+      commandAccepted <- attempt (Timeline.command t "queue.record" (record "c" 251))
+      observationRefused <- attempt (Timeline.observeWith t "queue.deep" (deepRequest 255))
+      observationJournalRefused <- attempt (Timeline.observeWith t "queue.deep" (deepRequest 253))
+      observationAccepted <- attempt (Timeline.observeWith t "queue.deep" (deepRequest 252))
+      requestRefused <- attempt (Timeline.observeWith t "queue.deep" (Object [("depth", Int 0), ("deep", nested 254)]))
+      _ <- World.step
+      _ <- World.step
+      Timeline.finish t Quiescent
+      operations <- World.operations
+      entries <- World.journal
+      built <- World.tryWorld (World.artifact "nesting-v3")
+      pure
+        ( [ ("command_refused", commandRefused)
+          , ("command_journal_refused", commandJournalRefused)
+          , ("command_accepted", commandAccepted)
+          , ("observation_refused", observationRefused)
+          , ("observation_journal_refused", observationJournalRefused)
+          , ("observation_accepted", observationAccepted)
+          , ("request_refused", requestRefused)
+          ]
+        , length operations
+        , length entries
+        , built
+        )
+    mapM_ (\(key, observed) -> (key :: Text, firstError observed) `shouldBe` (key, firstError (member key s))) errors
+    Int (toInteger operationCount) `shouldBeJson` member "operations" s
+    Int (toInteger entryCount) `shouldBeJson` member "journal" s
+    artifact <- either (fail . T.unpack . failureMessage) pure built
+    artifactText artifact `shouldBe` memberText "artifact" s
+    replayed <- fresh deepObservationProfile [] artifact
+    firstError (member "error" replayed) `shouldBe` firstError (member "error" (member "replay" s))
+  where
+    nested :: Int -> Json
+    nested depth = iterate (\v -> Array [v]) (Int 0) !! depth
+    deepObservationProfile q =
+      let base = queueProfile q
+       in base
+            { observe = \g request -> case (request.name, request.payload) of
+                ("queue.deep", Object members) | Just (Int depth) <- lookup "depth" members -> pure (nested (fromInteger depth))
+                _ -> base.observe g request
+            }
+
+-- | A refusal reduced to its first pydantic error (model, location, message
+-- and type). The reference reports every error, and once its recursion
+-- guard trips, pydantic-core also refuses later values it has seen by
+-- identity (small integers, for one); the port reports the first error only
+-- (DIVERGENCES.md).
+firstError :: Json -> Json
+firstError = \case
+  Object [("message", String m), ("type", t)]
+    | header : location : detail : _ <- T.lines m ->
+        let modelName = snd (T.breakOnEnd " for " header)
+            (text, rest) = T.breakOn " [type=" detail
+            errorType = T.takeWhile (\c -> c /= ',' && c /= ']') (T.drop 7 rest)
+         in Object [("message", String (T.intercalate "\n" [modelName, location, text, errorType])), ("type", t)]
+  other -> other

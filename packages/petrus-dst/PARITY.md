@@ -22,8 +22,8 @@ against vectors produced by the pinned Python. The six generator scripts are com
 
 | Vectors | Script | What it pins | Spec |
 | --- | --- | --- | --- |
-| `codec-vectors.json` | `codec_vectors.py` | 53 fixture verdicts, 5523 structural mutations, 65 raw-byte loader cases | `Spec.Codec` |
-| `world-stories.json` | `world_stories.py` | 21 toy World stories: artifacts, replays, observations, exception classes and messages | `Spec.Stories` |
+| `codec-vectors.json` | `codec_vectors.py` | 53 fixture verdicts, 5523 structural mutations, 65 raw-byte loader cases, 150 recursion-guard boundaries (each JSON value location nested in lists, objects, or both, at the deepest admitted and first refused depth) | `Spec.Codec` |
+| `world-stories.json` | `world_stories.py` | 22 toy World stories: artifacts, replays, observations, exception classes and messages | `Spec.Stories` |
 | `choice-vectors.json` | `choice_vectors.py` | 6 golden draw scripts, plus refusals and provenance validation | `Spec.Choice` |
 | `process-vectors.json` | `process_vectors.py` | 8 child runs (progress bytes, exit status, result), 36 crafted progress folds, 1 input-budget refusal | `Spec.Runner` |
 | `transcripts.json` | `transcript_vectors.py` | the 51 Engine world fixtures replayed by the reference, with every door call recorded (1456 door calls, 362 context events, 447 checks), plus 5 replay mutations | `Spec.Transcript` |
