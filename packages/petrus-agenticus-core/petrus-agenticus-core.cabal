@@ -45,6 +45,15 @@ library
                     Petrus.Agenticus.Runtime.Profiles
                     Petrus.Agenticus.Effect.Model
                     Petrus.Agenticus.Effect.Gateway
+                    Petrus.Agenticus.Internal.Shape
+                    Petrus.Agenticus.Thread.Identity
+                    Petrus.Agenticus.Thread.Continuation
+                    Petrus.Agenticus.Thread.Lifecycle
+                    Petrus.Agenticus.Program.Descriptor
+                    Petrus.Agenticus.Program.Seam
+                    Petrus.Agenticus.Runtime.Installation
+                    Petrus.Agenticus.Runtime.Result
+                    Petrus.Agenticus.Runtime.Operation
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
@@ -62,6 +71,10 @@ test-suite petrus-agenticus-core-test
   other-modules:    Petrus.Agenticus.Support
                     Petrus.Agenticus.CatalogSpec
                     Petrus.Agenticus.EffectSpec
+                    Petrus.Agenticus.ThreadSpec
+                    Petrus.Agenticus.ProgramSpec
+                    Petrus.Agenticus.RuntimeFoundationSpec
+                    Petrus.Agenticus.ThreadDifferentialSpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -81,6 +94,7 @@ benchmark petrus-agenticus-core-bench
   main-is:          Main.hs
   other-modules:    Bench.Catalog
                     Bench.Effect
+                    Bench.Thread
   build-depends:    base
                   , bytestring
                   , containers
