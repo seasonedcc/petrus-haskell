@@ -410,11 +410,15 @@ profileModel :: (Monad m) => Text -> (Path -> Json -> Parser a) -> Json -> World
 profileModel modelName parser value =
   either (throwWorld . ProfileRaised . ProfileError "ValidationError") pure (checkModel modelName parser value)
 
--- | @_strict_json(value, subject)@ applied by the World itself.
+-- | @Observation(value=_strict_json(value, subject), ...)@ built by the World
+-- itself: the non-finite refusal, then pydantic's recursion guard on the
+-- value ('jsonValueRecursion').
 strictValue :: (Monad m) => Text -> Json -> WorldT m g Json
 strictValue subject value = case strictJsonPath value of
-  Nothing -> pure value
   Just at -> throwWorld (ContractViolation "ValueError" (subject <> " has a non-finite number at " <> at))
+  Nothing -> case jsonValueRecursion 0 [LKey "value"] value of
+    Just e -> throwWorld (ContractViolation "ValidationError" (renderSchemaError "Observation" e))
+    Nothing -> pure value
 
 positiveGeneration :: (Monad m) => Text -> Integer -> WorldT m g ()
 positiveGeneration modelName g =
@@ -991,8 +995,19 @@ sampleResources sampled trigger = do
 
 data RecordGeneration = CurrentGeneration | ExplicitGeneration (Maybe Integer)
 
+-- | @World._record@. The reference validates every entry as it builds it,
+-- so a journal value that embeds a command payload, result, observation or
+-- detail a few containers down can trip pydantic's recursion guard although
+-- the embedded value alone did not ('jsonValueRecursion'); the entry is then
+-- refused before it is appended.
 record :: (Monad m) => JournalKind -> Text -> Json -> RecordGeneration -> WorldT m g ()
-record kind name value which = modifyW $ \s ->
+record kind name value which = do
+  forM_ (jsonValueRecursion 0 [LKey "value"] value) $ \e ->
+    throwWorld (ContractViolation "ValidationError" (renderSchemaError "JournalEntry" e))
+  appendEntry kind name value which
+
+appendEntry :: (Monad m) => JournalKind -> Text -> Json -> RecordGeneration -> WorldT m g ()
+appendEntry kind name value which = modifyW $ \s ->
   let entry =
         JournalEntry
           { position = toInteger (Seq.length s.entries)

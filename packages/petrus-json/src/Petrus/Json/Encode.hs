@@ -5,6 +5,11 @@
 -- payload spellings, identity digests), so this module mirrors the encoder in
 -- CPython's @Lib/json/encoder.py@: separators, indentation, key sorting,
 -- ASCII escaping, and @float.__repr__@ number spelling.
+--
+-- It also applies CPython's resource limits ("Petrus.Json.Limits"): an
+-- integer of more than 4300 digits is refused ('IntegerTooLarge', as
+-- @int.__repr__@ refuses it), and so is a value nested deeper than
+-- 'nestingLimit'.
 module Petrus.Json.Encode
   ( EncodeOptions (..)
   , defaultDumps
@@ -16,12 +21,14 @@ module Petrus.Json.Encode
   , dumpsText
   , pythonFloatRepr
   , EncodeError (..)
+  , encodeErrorMessage
   ) where
 
-import Data.ByteString qualified as BS
-import Data.ByteString.Builder qualified as B
+import Control.Exception (Exception, evaluate, throw, try)
 import Control.Monad.ST (stToIO)
 import Data.Bits (shiftR, (.&.))
+import Data.ByteString qualified as BS
+import Data.ByteString.Builder qualified as B
 import Data.ByteString.Internal qualified as BI
 import Data.ByteString.Unsafe qualified as BU
 import Data.Char (intToDigit, ord)
@@ -36,8 +43,11 @@ import Data.Word (Word8)
 import Foreign.Marshal.Utils (copyBytes, fillBytes)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import Foreign.Storable (pokeByteOff)
+import GHC.Num (Integer (IS))
 import Numeric (floatToDigits, showHex)
+import Petrus.Json.Limits (defaultNestingLimit, intReprDigitsError, maxIntStrDigits)
 import Petrus.Json.Value
+import System.IO.Unsafe (unsafePerformIO)
 
 -- | The subset of @json.dumps@ keyword arguments Petrus uses.
 data EncodeOptions = EncodeOptions
@@ -49,6 +59,12 @@ data EncodeOptions = EncodeOptions
   , sortKeys :: Bool
   , ensureAscii :: Bool
   , allowNan :: Bool
+  , reprDigitLimit :: Maybe Int
+  -- ^ Refuse integers with more decimal digits (sign excluded) than this;
+  -- CPython's default is 4300.
+  , nestingLimit :: Maybe Int
+  -- ^ Refuse values with more nested non-empty arrays and objects than this
+  -- (CPython's encoder writes @[]@ and @{}@ without recursing).
   }
   deriving stock (Eq, Show)
 
@@ -62,6 +78,8 @@ defaultDumps =
     , sortKeys = False
     , ensureAscii = True
     , allowNan = True
+    , reprDigitLimit = Just maxIntStrDigits
+    , nestingLimit = Just defaultNestingLimit
     }
 
 -- | @json.dumps(value, ensure_ascii=False, allow_nan=False, indent=2)@, the
@@ -80,60 +98,160 @@ canonicalText :: Json -> Either EncodeError Text
 canonicalText = dumpsText compact {sortKeys = True}
 
 -- | A value @json.dumps@ refuses.
-newtype EncodeError = NonFiniteNumber Double
+data EncodeError
+  = -- | NaN or an infinity under @allow_nan=False@.
+    NonFiniteNumber Double
+  | -- | An integer with more decimal digits than the limit (which it carries).
+    IntegerTooLarge Int
+  | -- | A value nested deeper than the limit (which it carries).
+    NestingTooDeep Int
   deriving stock (Eq, Show)
+
+-- | The text of the exception CPython raises for the same refusal (for
+-- 'NestingTooDeep', a fixed-depth analogue of CPython's stack-dependent
+-- @RecursionError@).
+--
+-- >>> encodeErrorMessage (NonFiniteNumber (-1 / 0))
+-- "Out of range float values are not JSON compliant: -inf"
+encodeErrorMessage :: EncodeError -> String
+encodeErrorMessage = \case
+  NonFiniteNumber d
+    | isNaN d -> "Out of range float values are not JSON compliant: nan"
+    | d > 0 -> "Out of range float values are not JSON compliant: inf"
+    | otherwise -> "Out of range float values are not JSON compliant: -inf"
+  IntegerTooLarge limit -> intReprDigitsError limit
+  NestingTooDeep limit -> "maximum nesting depth (" ++ show limit ++ ") exceeded while encoding a JSON object"
 
 -- | Serialize to UTF-8 bytes.
 --
 -- The document is measured exactly ('sized') and then written into one
 -- buffer of that size ('written'); 'dumpsBuilder' is the streaming
--- equivalent and spells the same bytes.
+-- equivalent and spells the same bytes. The measuring pass also checks
+-- every value and abandons at the first refusal, so an accepted document is
+-- walked only to measure and to write. A refused one then pays for the
+-- search in writer order ('firstProblem'), which sorts keys under
+-- 'sortKeys', so both entry points report the same refusal.
 dumps :: EncodeOptions -> Json -> Either EncodeError BS.ByteString
-dumps options value
-  | not (allowNan options), Just bad <- firstNonFinite (sortKeys options) value = Left (NonFiniteNumber bad)
-  | otherwise =
-      let layout = layoutOf options
-       in Right (BI.unsafeCreate (sized layout 0 value) (\pointer -> () <$ written layout pointer 0 0 value))
+dumps options value = case measured layout value of
+  Left problem -> Left (maybe problem id (firstProblem options 0 value))
+  Right size -> Right (BI.unsafeCreate size (\pointer -> () <$ written layout pointer 0 0 value))
+  where
+    layout = layoutOf options
+
+-- | The exact size of a value's spelling, or the refusal 'sized' met first.
+measured :: Layout -> Json -> Either EncodeError Int
+measured layout value =
+  unsafePerformIO $
+    either (\(Refused problem) -> Left problem) Right <$> try (evaluate (sized layout 0 value))
+{-# NOINLINE measured #-}
 
 -- | Serialize to text.
 dumpsText :: EncodeOptions -> Json -> Either EncodeError Text
 dumpsText options value = TE.decodeUtf8 <$> dumps options value
 
+-- | A refusal met by the writer, which abandons the output ('dumps').
+newtype Refused = Refused EncodeError
+  deriving stock (Show)
+
+instance Exception Refused
+
 -- | Serialize to a builder.
+--
+-- A lazy builder cannot take back what it has written, so refusals are
+-- decided up front here: a cheap scan in document order settles the common
+-- case, and only a refused value pays for the search in writer order (which
+-- sorts keys under 'sortKeys').
 dumpsBuilder :: EncodeOptions -> Json -> Either EncodeError B.Builder
 dumpsBuilder options value
-  -- The only failure is a refused non-finite number. It is found up front,
-  -- in the same depth-first order the writer visits values, so the builder
-  -- itself is a plain fold with no 'Either' threaded through every node.
-  | not (allowNan options), Just bad <- firstNonFinite (sortKeys options) value = Left (NonFiniteNumber bad)
-  | otherwise = Right (go 0 value)
+  | checked options, not (clean 0 value), Just problem <- firstProblem options 0 value = Left problem
+  | otherwise = Right (writer options value)
   where
+    clean :: Int -> Json -> Bool
+    clean level = \case
+      Float d -> allowNan options || not (isNaN d || isInfinite d)
+      Int i -> maybe True (\limit -> not (tooManyDigits limit i)) (reprDigitLimit options)
+      Array items@(_ : _) -> shallow level && all (clean (level + 1)) items
+      Object members@(_ : _) -> shallow level && all (clean (level + 1) . snd) members
+      _ -> True
+    shallow level = maybe True (level <) (nestingLimit options)
+
+-- | The first value the options refuse, in writer order: a container before
+-- its items, keys sorted under 'sortKeys'.
+firstProblem :: EncodeOptions -> Int -> Json -> Maybe EncodeError
+firstProblem options = search
+  where
+    search level = \case
+      Float d | not (allowNan options), isNaN d || isInfinite d -> Just (NonFiniteNumber d)
+      Int i | Just limit <- reprDigitLimit options, tooManyDigits limit i -> Just (IntegerTooLarge limit)
+      Array items@(_ : _) -> deeper level (firstJust (map (search (level + 1)) items))
+      Object members@(_ : _) -> deeper level (firstJust (map (search (level + 1) . snd) (ordered options members)))
+      _ -> Nothing
+    deeper level rest = case nestingLimit options of
+      Just limit | level >= limit -> Just (NestingTooDeep limit)
+      _ -> rest
+    firstJust = \case
+      [] -> Nothing
+      Just problem : _ -> Just problem
+      Nothing : rest -> firstJust rest
+
+-- | Whether the options refuse anything at all.
+checked :: EncodeOptions -> Bool
+checked options = not (allowNan options) || hasLimit (reprDigitLimit options) || hasLimit (nestingLimit options)
+  where
+    hasLimit = maybe False (const True)
+
+-- | Whether an integer has more decimal digits than the limit.
+tooManyDigits :: Int -> Integer -> Bool
+tooManyDigits limit i
+  | IS _ <- i, limit >= 19 = False
+  | limit == maxIntStrDigits = abs i >= intDigitBound
+  | otherwise = abs i >= 10 ^ max 0 limit
+
+ordered :: EncodeOptions -> [(Text, Json)] -> [(Text, Json)]
+ordered options members = if sortKeys options then sortOn fst members else members
+
+-- | The writer: a plain 'B.Builder' fold with no 'Either' threaded through
+-- it. It throws 'Refused' (caught by 'dumps') at the first value the
+-- options refuse, in writer order: a container before its items, keys
+-- sorted under 'sortKeys'.
+writer :: EncodeOptions -> Json -> B.Builder
+writer options = go 0
+  where
+    refuse = throw . Refused
+    digitLimit = reprDigitLimit options
+    depthLimit = nestingLimit options
+    enter level = case depthLimit of
+      Just limit | level >= limit -> refuse (NestingTooDeep limit)
+      _ -> ()
     itemSep = case (itemSeparator options, indent options) of
       (Just separator, _) -> separator
       (Nothing, Just _) -> ","
       (Nothing, Nothing) -> ", "
     keySep = TE.encodeUtf8Builder (keySeparator options)
     itemSepB = TE.encodeUtf8Builder itemSep
-    asciiOnly = ensureAscii options
     newline level = case indent options of
       Nothing -> mempty
       Just width -> B.char7 '\n' <> B.string7 (replicate (width * level) ' ')
+    string = stringB (ensureAscii options)
 
     go :: Int -> Json -> B.Builder
     go level = \case
       Null -> B.string7 "null"
       Bool True -> B.string7 "true"
       Bool False -> B.string7 "false"
-      Int i -> B.integerDec i
-      Float d -> floatB d
-      String s -> stringB asciiOnly s
+      Int i
+        | Just limit <- digitLimit, tooManyDigits limit i -> refuse (IntegerTooLarge limit)
+        | otherwise -> B.integerDec i
+      Float d
+        | not (allowNan options), isNaN d || isInfinite d -> refuse (NonFiniteNumber d)
+        | otherwise -> floatB d
+      String s -> string s
       Array [] -> B.string7 "[]"
-      Array items -> container '[' ']' level (go (level + 1)) items
+      Array items -> enter level `seq` container '[' ']' level (go (level + 1)) items
       Object [] -> B.string7 "{}"
       Object members ->
-        let ordered = if sortKeys options then sortOn fst members else members
-            member (key, item) = stringB asciiOnly key <> keySep <> go (level + 1) item
-         in container '{' '}' level member ordered
+        let member (key, v) = string key <> keySep <> go (level + 1) v
+         in enter level `seq` container '{' '}' level member (ordered options members)
 
     container :: Char -> Char -> Int -> (a -> B.Builder) -> [a] -> B.Builder
     container open close level item items =
@@ -158,6 +276,9 @@ data Layout = Layout
   , layoutIndent :: Maybe Int
   , layoutItemSep :: BS.ByteString
   , layoutKeySep :: BS.ByteString
+  , layoutAllowNan :: Bool
+  , layoutDigitLimit :: Maybe Int
+  , layoutDepthLimit :: Maybe Int
   }
 
 layoutOf :: EncodeOptions -> Layout
@@ -171,6 +292,9 @@ layoutOf options =
         (Nothing, Just _) -> ","
         (Nothing, Nothing) -> ", "
     , layoutKeySep = TE.encodeUtf8 (keySeparator options)
+    , layoutAllowNan = allowNan options
+    , layoutDigitLimit = reprDigitLimit options
+    , layoutDepthLimit = nestingLimit options
     }
 
 orderedMembers :: Layout -> [(Text, Json)] -> [(Text, Json)]
@@ -179,24 +303,33 @@ orderedMembers layout members = if layoutSorted layout then sortOn fst members e
 newlineSize :: Layout -> Int -> Int
 newlineSize layout level = maybe 0 (\width -> 1 + width * level) (layoutIndent layout)
 
--- | The exact length of a value's spelling at a nesting level.
+-- | The exact length of a value's spelling at a nesting level. It throws
+-- 'Refused' (caught by 'measured') at the first value the options refuse,
+-- in document order.
 sized :: Layout -> Int -> Json -> Int
 sized layout level = \case
   Null -> 4
   Bool True -> 4
   Bool False -> 5
-  Int i -> integerSize i
-  Float d -> length (floatSpelling d)
+  Int i
+    | Just limit <- layoutDigitLimit layout, tooManyDigits limit i -> throw (Refused (IntegerTooLarge limit))
+    | otherwise -> integerSize i
+  Float d
+    | not (layoutAllowNan layout), isNaN d || isInfinite d -> throw (Refused (NonFiniteNumber d))
+    | otherwise -> length (floatSpelling d)
   String s -> stringSize (layoutAscii layout) s
   Array [] -> 2
   Object [] -> 2
-  Array items -> containerSize (map (sized layout (level + 1)) items)
+  Array items -> enter `seq` containerSize (map (sized layout (level + 1)) items)
   Object members ->
-    containerSize
+    enter `seq` containerSize
       [ stringSize (layoutAscii layout) key + BS.length (layoutKeySep layout) + sized layout (level + 1) item
       | (key, item) <- members
       ]
   where
+    enter = case layoutDepthLimit layout of
+      Just limit | level >= limit -> throw (Refused (NestingTooDeep limit))
+      _ -> ()
     containerSize sizes =
       let count = length sizes
        in 2
@@ -370,16 +503,6 @@ writeString asciiOnly pointer offset text@(TI.Text array from size) = do
       pokeByteOff pointer (at + 5) (digit 0)
       pure (at + 6)
 
--- | The first NaN or infinity in a value, in document order.
-firstNonFinite :: Bool -> Json -> Maybe Double
-firstNonFinite sorted = \case
-  Float d | isNaN d || isInfinite d -> Just d
-  Array items -> firstJust (map (firstNonFinite sorted) items)
-  Object members -> firstJust (map (firstNonFinite sorted . snd) (if sorted then sortOn fst members else members))
-  _ -> Nothing
-  where
-    firstJust = foldr (\candidate rest -> maybe rest Just candidate) Nothing
-
 -- | CPython's JSON string encoding (@py_encode_basestring@ /
 -- @py_encode_basestring_ascii@).
 stringB :: Bool -> Text -> B.Builder
@@ -442,3 +565,8 @@ pythonFloatRepr d
       | decpt <= 0 = "0." ++ replicate (negate decpt) '0' ++ ds
       | decpt >= length ds = ds ++ replicate (decpt - length ds) '0' ++ ".0"
       | otherwise = let (whole, fraction) = splitAt decpt ds in whole ++ "." ++ fraction
+
+-- | The smallest integer with more than 'maxIntStrDigits' digits.
+intDigitBound :: Integer
+intDigitBound = 10 ^ maxIntStrDigits
+{-# NOINLINE intDigitBound #-}

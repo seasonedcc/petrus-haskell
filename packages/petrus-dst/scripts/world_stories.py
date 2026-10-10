@@ -551,7 +551,62 @@ def failure_after_end() -> dict:
     return {"errors": errors, "disposition": disposition, "operations": operations, "artifact_error": refused}
 
 
+def nested(depth: int) -> object:
+    value: object = 0
+    for _ in range(depth):
+        value = [value]
+    return value
+
+
+class DeepObservationProfile(QueueProfile):
+    """A queue toy whose ``queue.deep`` observation nests a leaf in as many lists as asked."""
+
+    def observe(self, generation, request: ObservationRequest, context: ScenarioContext):
+        if request.name == "queue.deep":
+            return nested(request.payload["depth"])
+        return super().observe(generation, request, context)
+
+
+def nesting() -> dict:
+    # pydantic's recursion guard: 255 entries per validation, one per
+    # JsonValue value. A command payload or observation value is refused
+    # when its own model is built or, a few containers deeper, when the
+    # World builds the journal entry that embeds it.
+    world = World(DeepObservationProfile(), budget(16, 4, 1, 10, 0, 4))
+    timeline = world.timeline()
+    try:
+        out = {
+            "command_refused": error(lambda: timeline.command("queue.record", {"id": "a", "deep": nested(254)})),
+            "command_journal_refused": error(
+                lambda: timeline.command("queue.record", {"id": "b", "deep": nested(252)})
+            ),
+            "command_accepted": error(lambda: timeline.command("queue.record", {"id": "c", "deep": nested(251)})),
+            "observation_refused": error(lambda: timeline.observe("queue.deep", {"depth": 255})),
+            "observation_journal_refused": error(lambda: timeline.observe("queue.deep", {"depth": 253})),
+            "observation_accepted": error(lambda: timeline.observe("queue.deep", {"depth": 252})),
+            "request_refused": error(lambda: timeline.observe("queue.deep", {"depth": 0, "deep": nested(254)})),
+        }
+        world.step()
+        world.step()
+        timeline.finish(Disposition.QUIESCENT)
+        out["operations"] = len(world.operations)
+        out["journal"] = len(world.journal)
+        try:
+            artifact = world.artifact("nesting-v3")
+        except Exception as caught:  # noqa: BLE001 - the class and message are the vector
+            out["artifact"] = None
+            out["artifact_error"] = {"type": type(caught).__name__, "message": str(caught)}
+            return out
+    finally:
+        world.close()
+    out["artifact"] = encode_artifact(artifact).decode()
+    out["artifact_error"] = None
+    out["replay"] = replayed(artifact, [DeepObservationProfile()])
+    return out
+
+
 STORIES = {
+    "nesting": nesting,
     "stable-order": stable_order,
     "resource-v4": resource_v4,
     "resource-exhaustion-v4": resource_exhaustion_v4,

@@ -39,7 +39,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import Numeric (showHex)
-import Petrus.Json (DuplicateMembers (..), Json (..), ParseOptions (..), parseJson, pythonLoads)
+import Petrus.Json (DuplicateMembers (..), Json (..), ParseOptions (..), maxIntStrDigits, parseJson, pythonLoads)
 import Petrus.Testing.Dst.PyRepr (pyStrRepr)
 
 -- | Load one strict DST JSON document. A refusal carries the text of the
@@ -51,10 +51,10 @@ loadStrictJson payload = case pythonDecodeBytes payload of
   Right (Utf8Direct body) -> admit (parseJson options body) (lazyText body)
   Right (Decoded text) -> admit (parseJson options (TE.encodeUtf8 text)) (const text)
   where
+    -- petrus-json's Python profile already refuses integer tokens past
+    -- CPython's 4300-digit limit; the diagnostic scanner words the refusal.
     admit parsed text = case parsed of
-      Right value
-        | not (hasHugeInteger value) -> Right value
-      Right _ -> Left (diagnoseOr "integer conversion limit" (text ()))
+      Right value -> Right value
       Left message -> Left (diagnoseOr (T.pack message) (text ()))
     lazyText body () = TE.decodeUtf8 body
     diagnoseOr fallback text = maybe fallback id (diagnose text)
@@ -65,17 +65,6 @@ options =
     { duplicateMembers = RejectDuplicates
     , allowNonFiniteConstants = False
     }
-
--- | CPython's @sys.get_int_max_str_digits()@ default.
-maxIntDigits :: Int
-maxIntDigits = 4300
-
-hasHugeInteger :: Json -> Bool
-hasHugeInteger = \case
-  Int i -> abs i >= 10 ^ maxIntDigits
-  Array items -> any hasHugeInteger items
-  Object members -> any (hasHugeInteger . snd) members
-  _ -> False
 
 -- ---------------------------------------------------------------------------
 -- Byte decoding: json.detect_encoding plus the codec, with surrogatepass.
@@ -287,13 +276,13 @@ diagnose text = case document of
                         _ -> fracEnd
             _ -> fracEnd
           digits = intEnd - afterSign
-      if fracEnd == intEnd && expEnd == fracEnd && digits > maxIntDigits
+      if fracEnd == intEnd && expEnd == fracEnd && digits > maxIntStrDigits
         then
           Left
             ( Right
                 ( Plain
                     ( "Exceeds the limit ("
-                        <> tshow maxIntDigits
+                        <> tshow maxIntStrDigits
                         <> " digits) for integer string conversion: value has "
                         <> tshow digits
                         <> " digits; use sys.set_int_max_str_digits() to increase the limit"

@@ -6,6 +6,11 @@
 -- @object_pairs_hook@, @parse_int@, @parse_float@, and @parse_constant@ hooks
 -- do: refuse duplicate members, non-finite constants, decimal or exponent
 -- number spellings, or integers outside the interoperable range.
+--
+-- Both presets also apply CPython's resource limits (see "Petrus.Json.Limits"):
+-- integer tokens longer than 4300 digits are refused with CPython's exact
+-- message, and documents nested deeper than 'defaultNestingLimit' are refused
+-- instead of exhausting memory.
 module Petrus.Json.Parse
   ( ParseOptions (..)
   , DuplicateMembers (..)
@@ -38,6 +43,7 @@ import Foreign.Storable (peekByteOff)
 import GHC.ByteOrder (ByteOrder (..), targetByteOrder)
 import System.IO.Unsafe (unsafeDupablePerformIO)
 import Data.Word (Word64, Word8)
+import Petrus.Json.Limits (defaultNestingLimit, intStrDigitsError, maxIntStrDigits)
 import Petrus.Json.Value
 
 -- | How to treat a repeated object member.
@@ -59,6 +65,11 @@ data ParseOptions = ParseOptions
   -- ^ Inclusive bounds every integer token must satisfy.
   , finiteFloatsOnly :: Bool
   -- ^ Refuse float tokens that overflow to infinity.
+  , maxIntegerDigits :: Maybe Int
+  -- ^ Refuse integer tokens with more digits (sign excluded) than this, with
+  -- CPython's @ValueError@ text. CPython's default is 'maxIntStrDigits'.
+  , maxNestingDepth :: Maybe Int
+  -- ^ Refuse documents with more nested arrays and objects than this.
   }
   deriving stock (Eq, Show)
 
@@ -71,6 +82,8 @@ pythonLoads =
     , integerTokensOnly = False
     , integerRange = Nothing
     , finiteFloatsOnly = False
+    , maxIntegerDigits = Just maxIntStrDigits
+    , maxNestingDepth = Just defaultNestingLimit
     }
 
 -- | Duplicate-free, finite JSON: the common strict admission of Petrus formats.
@@ -91,7 +104,7 @@ safeIntegerMax = 2 ^ (53 :: Int) - 1
 parseJson :: ParseOptions -> ByteString -> Either String Json
 parseJson options input
   | BS.isPrefixOf "\xEF\xBB\xBF" input = Left "Unexpected UTF-8 BOM (decode using utf-8-sig)"
-  | otherwise = case valueAt options input (skipSpace input 0) of
+  | otherwise = case valueAt options input 0 (skipSpace input 0) of
       Step value end
         | end < 0 -> Left (failureMessage value)
         | otherwise ->
@@ -145,13 +158,14 @@ byteAt input i
 expectingMessage :: String -> Int -> String
 expectingMessage what i = "Expecting " ++ what ++ " at byte " ++ show i
 
-valueAt :: ParseOptions -> ByteString -> Int -> Step
-valueAt options input i = case at input i of
+-- | Parse the value at a byte offset, @depth@ containers deep.
+valueAt :: ParseOptions -> ByteString -> Int -> Int -> Step
+valueAt options input !depth i = case at input i of
   -- A failed string carries its message as the text, which 'failed' also does.
   0x22 -> case stringAt input (i + 1) of
     TextStep text end -> Step (String text) end
-  0x7B -> objectAt options input (i + 1)
-  0x5B -> arrayAt options input (i + 1)
+  0x7B -> nested "object" (objectAt options input (depth + 1) (i + 1))
+  0x5B -> nested "array" (arrayAt options input (depth + 1) (i + 1))
   0x6E
     | at input (i + 1) == 0x75 && at input (i + 2) == 0x6C && at input (i + 3) == 0x6C -> Step Null (i + 4)
   0x74
@@ -166,13 +180,24 @@ valueAt options input i = case at input i of
     | w == 0x2D || (w >= 0x30 && w <= 0x39) -> numberAt options input i
     | otherwise -> expecting "value" i
   where
+    nested kind parse = case maxNestingDepth options of
+      Just limit
+        | depth >= limit ->
+            failed
+              ( "maximum nesting depth ("
+                  ++ show limit
+                  ++ ") exceeded while decoding a JSON "
+                  ++ kind
+                  ++ " from a unicode string"
+              )
+      _ -> parse
     constant spelling value
       | not (BS.isPrefixOf spelling (BU.unsafeDrop i input)) = expecting "value" i
       | allowNonFiniteConstants options = Step (Float value) (i + BS.length spelling)
       | otherwise = failed ("non-finite JSON number " ++ show spelling)
 
-objectAt :: ParseOptions -> ByteString -> Int -> Step
-objectAt options input start = case at input first of
+objectAt :: ParseOptions -> ByteString -> Int -> Int -> Step
+objectAt options input depth start = case at input first of
   0x7D -> Step (Object []) (first + 1)
   _ -> members first [] 0
   where
@@ -185,7 +210,7 @@ objectAt options input start = case at input first of
           | otherwise ->
               let colon = skipSpace input afterKey
                in case at input colon of
-                    0x3A -> case valueAt options input (skipSpace input (colon + 1)) of
+                    0x3A -> case valueAt options input depth (skipSpace input (colon + 1)) of
                       failure@(Step value afterValue)
                         | afterValue < 0 -> refuse count acc failure
                         | otherwise ->
@@ -231,14 +256,14 @@ objectAt options input start = case at input first of
             | otherwise = (key, final Map.! key) : go (Set.insert key seen) rest
        in go Set.empty found
 
-arrayAt :: ParseOptions -> ByteString -> Int -> Step
-arrayAt options input start = case at input first of
+arrayAt :: ParseOptions -> ByteString -> Int -> Int -> Step
+arrayAt options input depth start = case at input first of
   0x5D -> Step (Array []) (first + 1)
   _ -> items first []
   where
     first = skipSpace input start
     items :: Int -> [Json] -> Step
-    items !i acc = case valueAt options input i of
+    items !i acc = case valueAt options input depth i of
       failure@(Step value afterValue)
         | afterValue < 0 -> failure
         | otherwise ->
@@ -421,7 +446,7 @@ numberAt options input start
   , digitsStart < len
   , isDigitByte leading =
       let digitsEnd = if leading == 0x30 then digitsStart + 1 else scanDigits (digitsStart + 1)
-       in if digitsEnd - digitsStart <= 18 && not (continues digitsEnd)
+       in if digitsEnd - digitsStart <= 18 && withinDigitLimit (digitsEnd - digitsStart) && not (continues digitsEnd)
             then
               let magnitude = smallDigits digitsStart digitsEnd 0
                in Step (Int (toInteger (if negative then negate magnitude else magnitude))) digitsEnd
@@ -446,6 +471,7 @@ numberAt options input start
       | i >= end = acc
       | otherwise = smallDigits (i + 1) end (acc * 10 + fromIntegral (BU.unsafeIndex input i) - 0x30)
     isDigitByte w = w >= 0x30 && w <= 0x39
+    withinDigitLimit count = maybe True (count <=) (maxIntegerDigits options)
 
 numberSlow :: ParseOptions -> ByteString -> Int -> Either String (Json, Int)
 numberSlow options input start = do
@@ -471,6 +497,10 @@ numberSlow options input start = do
       spelling = map (chr . fromIntegral) (BS.unpack token)
   if fractionEnd == integerEnd && exponentEnd == fractionEnd
     then do
+      case maxIntegerDigits options of
+        Just limit
+          | integerEnd - afterSign > limit -> Left (intStrDigitsError limit (integerEnd - afterSign))
+        _ -> Right ()
       let !value
             -- Up to 18 digits fit an 'Int' exactly: accumulate the bytes
             -- directly instead of going through 'read'.

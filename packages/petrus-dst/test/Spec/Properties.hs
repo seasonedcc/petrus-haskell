@@ -97,7 +97,10 @@ spec = describe "properties" $ do
   modifyMaxSuccess (const 2000) $
     it "writes canonical bytes exactly as petrus-json's general encoder does" $
       property $ \(Canonical value) ->
-        let general = either (\(NonFiniteNumber d) -> Left (show d)) Right (dumps canonicalOptions value)
+        let general = either (Left . errorText) Right (dumps canonicalOptions value)
+            errorText = \case
+              NonFiniteNumber d -> show d
+              other -> show other
          in either (Left . show) Right (canonicalStrict value) === general
 
   it "keeps each choice authority's stream independent of the others' draws" $

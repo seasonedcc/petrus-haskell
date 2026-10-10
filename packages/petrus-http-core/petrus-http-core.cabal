@@ -1,0 +1,80 @@
+cabal-version:      3.4
+name:               petrus-http-core
+version:            0.1.0.0
+synopsis:           A CPython-compatible HTTP/1.0 server core for the Petrus port
+description:
+  The HTTP server both Petrus services (observation and simulation) run on
+  upstream is CPython 3.14's @http.server.ThreadingHTTPServer@ with a
+  @BaseHTTPRequestHandler@ speaking HTTP/1.0. This package reproduces it
+  byte for byte on @network@: request-line and header parsing (the @email@
+  compat32 parser), line and header-count limits, @send_error@ pages,
+  status phrases, header order, one request per connection, per-operation
+  socket timeouts, and the bind/serve/shutdown/close lifecycle. warp/wai
+  normalize targets, answer HTTP/1.1, send @100 Continue@ and use other
+  status phrases, so they cannot stand in. Kernel-free.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Network, Web
+build-type:         Simple
+extra-doc-files:    bench/RESULTS.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Http.Core
+                    Petrus.Http.Core.Parse
+                    Petrus.Http.Core.Response
+                    Petrus.Http.Core.Server
+                    Petrus.Http.Core.Status
+  other-modules:    Paths_petrus_http_core
+  autogen-modules:  Paths_petrus_http_core
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , network >=3.1.2
+                  , petrus-json
+                  , stm >=2.5
+                  , text >=2.0
+                  , time >=1.12
+
+test-suite petrus-http-core-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  ghc-options:      -threaded -rtsopts
+  build-depends:    base
+                  , bytestring
+                  , hspec
+                  , network
+                  , petrus-http-core
+                  , petrus-json
+                  , petrus-test-support
+                  , text
+                  , time
+
+benchmark petrus-http-core-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  ghc-options:      -threaded -O2
+  build-depends:    base
+                  , bytestring
+                  , network
+                  , petrus-http-core
+                  , tasty >=1.4
+                  , tasty-bench >=0.3
+                  , time

@@ -51,6 +51,19 @@ the tests, conformance suites, and benchmark results that justify the status.
 | Fabric | `fabric/` | | in progress (spec written) | [spec/fabric.md](spec/fabric.md), [108 checks](spec/fabric-conformance.md) |
 | Processes (call/spawn) | `processes/` | | in progress (spec written) | [spec/processes.md](spec/processes.md), [80 checks](spec/processes-conformance.md) |
 
+### Shared platform layers
+
+These kernel-free layers sit under the components above. Each one mirrors the
+Python facility upstream uses and is checked differentially against it. Each
+reaches parity together with the components that use it.
+
+| Component | Upstream | Haskell package | Status | Evidence |
+| --- | --- | --- | --- | --- |
+| POSIX: `flock`, `openat`, `Path.resolve`, atomic replace, rusage | `fcntl`, `os`, `pathlib`, `resource` as used by the stores and workers | `petrus-posix` | in progress | `packages/petrus-posix/test`, [benchmarks](packages/petrus-posix/bench/RESULTS.md), [divergences](packages/petrus-posix/DIVERGENCES.md) |
+| SQLite connections, `BEGIN IMMEDIATE`, writer fence | `sqlite3` as used by the SQLite store and Engine | `petrus-sqlite` | in progress | `packages/petrus-sqlite/test`, [benchmarks](packages/petrus-sqlite/bench/RESULTS.md), [divergences](packages/petrus-sqlite/DIVERGENCES.md) |
+| PostgreSQL connections, transactions, LISTEN/NOTIFY, authority fence | psycopg 3 as used by the Postgres store, Engine and Absurd dispatch | `petrus-postgres` | in progress | `packages/petrus-postgres/test`, [benchmarks](packages/petrus-postgres/bench/RESULTS.md), [divergences](packages/petrus-postgres/DIVERGENCES.md) |
+| HTTP/1.0 server core | `http.server` (`ThreadingHTTPServer`, `BaseHTTPRequestHandler`) under the observation and simulation services | `petrus-http-core` | in progress | `packages/petrus-http-core/test`, [benchmarks](packages/petrus-http-core/bench/RESULTS.md), [divergences](packages/petrus-http-core/DIVERGENCES.md) |
+
 ## hamsterdan
 
 The port plan is [docs/hamsterdan.md](docs/hamsterdan.md). The target is the V5

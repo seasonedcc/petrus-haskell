@@ -190,20 +190,54 @@ spec = describe "artifact codec" $ do
         fmap (<> "\n") (encodeArtifact artifact) `shouldBe` Right payload
       other -> expectationFailure (show (fmap artifactScenarioId other))
 
-  it "admits JSON values nested past pydantic's recursion guard (a documented divergence)" $ do
-    -- The reference refuses a command payload {"x": [[...]]} from 255
-    -- nested lists (recursion_loop) and raises RecursionError from 993;
-    -- this port has no such limit (DIVERGENCES.md).
+  it "agrees with the reference's recursion guard on the nesting corpus" $ do
+    v <- vectors
+    let cases = memberList "nesting" v
+    fixtures <- mapM (\name -> (name,) <$> readJson (fixturesDir </> T.unpack name)) (unique (map (memberText "fixture") cases))
+    let problems =
+          mapMaybe
+            ( \c ->
+                let base = maybe Null id (lookup (memberText "fixture" c) fixtures)
+                    depth = case member "depth" c of
+                      Int d -> fromInteger d
+                      other -> error (show other)
+                    mutated = applyMutation (memberList "path" c) "replace" (nestedJson (memberText "kind" c) depth) base
+                 in fmap
+                      (\m -> memberText "fixture" c <> " " <> canonText (member "path" c) <> " " <> memberText "kind" c <> " " <> T.pack (show depth) <> ": " <> m)
+                      (mismatch (canon mutated) (member "verdict" c))
+            )
+            cases
+    length cases `shouldSatisfy` (> 100)
+    report problems
+
+  it "refuses JSON values nested past pydantic's recursion guard, however deep" $ do
+    -- A command payload {"x": [[...]]} of a version-1 artifact: 254 nested
+    -- lists inside the object are the most pydantic admits there. From
+    -- about 993 levels the reference's own recursive _strict_json raises
+    -- RecursionError instead (DIVERGENCES.md); either way it refuses.
     payload <- fixturePayload "projection-crash-recovery-world-v1.json"
-    forM_ [255, 993, 5000] $ \depth -> do
-      let nested = BS.replicate depth 91 <> BS.replicate depth 93
-          (prefix, suffix) = BS.breakSubstring "\"payload\":{}" payload
-          deep = prefix <> "\"payload\":{\"x\":" <> nested <> "}" <> BS.drop 12 suffix
-      BS.length deep `shouldBe` BS.length payload + 2 * depth + 4
-      case decodeArtifact deep of
-        Right artifact -> fmap (<> "\n") (encodeArtifact artifact) `shouldBe` Right deep
-        Left e -> expectationFailure (T.unpack (decodeErrorMessage e))
+    let deep depth =
+          let (prefix, suffix) = BS.breakSubstring "\"payload\":{}" payload
+           in prefix <> "\"payload\":{\"x\":" <> BS.replicate depth 91 <> BS.replicate depth 93 <> "}" <> BS.drop 12 suffix
+    case decodeArtifact (deep 254) of
+      Right artifact -> fmap (<> "\n") (encodeArtifact artifact) `shouldBe` Right (deep 254)
+      Left e -> expectationFailure (T.unpack (decodeErrorMessage e))
+    forM_ [255, 993, 5000] $ \depth -> case decodeArtifact (deep depth) of
+      Left (DecodeInvalid "ScenarioArtifactV1" e) -> do
+        e.errorType `shouldBe` "recursion_loop"
+        e.message `shouldBe` "Recursion error - cyclic reference detected"
+        e.loc
+          `shouldBe` [LKey "operations", LIndex 1, LKey "execute", LKey "command", LKey "payload", LKey "dict", LKey "x"]
+            ++ concat (replicate 254 [LKey "list", LIndex 0])
+      other -> expectationFailure (show (fmap artifactScenarioId other))
   where
+    nestedJson :: Text -> Int -> Json
+    nestedJson kind depth = go 0
+      where
+        go level
+          | level >= depth = Int 0
+          | kind == "list" || (kind == "mixed" && even level) = Array [go (level + 1)]
+          | otherwise = Object [("k", go (level + 1))]
     unique =foldr (\x acc -> if x `elem` acc then acc else x : acc) []
     refusedWith needle = \case
       Left e -> needle `T.isInfixOf` decodeErrorMessage e

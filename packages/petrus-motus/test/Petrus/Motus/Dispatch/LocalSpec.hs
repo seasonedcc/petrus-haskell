@@ -575,6 +575,8 @@ spec = do
       attempt <- requireClaim custody
       Local.complete custody attempt (Float (0 / 0))
         `shouldThrow` refusal "Activity result must be JSON-faithful: Out of range float values are not JSON compliant: nan"
+      Local.complete custody attempt (Int (10 ^ (4300 :: Int)))
+        `shouldThrow` refusal "Activity result must be JSON-faithful: Exceeds the limit (4300 digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit"
       Local.fail custody attempt (FailureMessage "")
         `shouldThrow` refusal "ActivityFailure error must be a non-empty string of at most 4096 characters"
       Local.heartbeat custody attempt Nothing `shouldReturn` Null

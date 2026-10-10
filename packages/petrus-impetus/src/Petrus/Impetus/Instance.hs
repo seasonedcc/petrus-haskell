@@ -145,7 +145,7 @@ import Petrus.Impetus.Petrinet.Marking (Marking, Token (..), emptyMarking, empty
 import Petrus.Impetus.Petrinet.Routing (route)
 import Petrus.Impetus.Petrinet.Schema
 import Petrus.Impetus.Scope
-import Petrus.Json (EncodeError (..), Json (..), canonicalText, compact, dumps)
+import Petrus.Json (Json (..), canonicalText, compact, dumps, encodeErrorMessage)
 import Petrus.Telemetry (EventSink, Payload, TelemetryLogger, bind, emit, getLogger)
 
 -- ---------------------------------------------------------------------------
@@ -438,23 +438,17 @@ orRuntime = either (throwE . RuntimeRefused) pure
 -- ---------------------------------------------------------------------------
 -- Canonical payloads
 
--- | Python's @float.__repr__@ of a non-finite value.
-nonFinite :: Double -> Text
-nonFinite d
-  | isNaN d = "nan"
-  | d > 0 = "inf"
-  | otherwise = "-inf"
-
 -- | @_canonical_payload@: the JSON round trip of a payload whose durable
 -- equality is load-bearing. A 'Json' value is already JSON; the round trip
--- refuses exactly the non-finite numbers @allow_nan=False@ refuses.
+-- refuses what @json.dumps(value, allow_nan=False)@ refuses (non-finite
+-- numbers, integers past CPython's 4300-digit limit), with CPython's text.
 canonicalPayload :: Json -> Text -> Either Text Json
 canonicalPayload value rejection = case dumps compact value of
-  Left (NonFiniteNumber d) ->
+  Left refusal ->
     Left
       ( rejection
-          <> ": the payload must be JSON-faithful — objects, arrays, strings, numbers, booleans, null — and never net state; Out of range float values are not JSON compliant: "
-          <> nonFinite d
+          <> ": the payload must be JSON-faithful — objects, arrays, strings, numbers, booleans, null — and never net state; "
+          <> T.pack (encodeErrorMessage refusal)
       )
   Right _ -> Right value
 

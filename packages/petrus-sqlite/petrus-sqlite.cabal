@@ -1,0 +1,83 @@
+cabal-version:      3.4
+name:               petrus-sqlite
+version:            0.1.0.0
+synopsis:           SQLite connection profiles, schema checks and the writer fence for the Petrus port
+description:
+  The SQLite layer every Petrus SQLite store shares: connections opened with
+  exactly the PRAGMAs upstream sets (WAL with the locked-retry loop,
+  @synchronous=FULL@, @busy_timeout=5000@, @foreign_keys=ON@, or the
+  rollback-journal ledger profiles), @BEGIN IMMEDIATE@ transactions,
+  verbatim DDL creation with upstream's @sqlite_master.sql@ text check and
+  @PRAGMA table_info@/@index_info@/@foreign_key_list@ readers, and the
+  SQLite Engine's @flock@ writer fence with Python-identical lock paths and
+  messages.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Database
+build-type:         Simple
+extra-doc-files:    bench/RESULTS.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Sqlite
+                    Petrus.Sqlite.Connection
+                    Petrus.Sqlite.PythonRepr
+                    Petrus.Sqlite.Schema
+                    Petrus.Sqlite.WriterFence
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , cryptohash-sha256 >=0.11
+                  , direct-sqlite >=2.3.27
+                  , filepath >=1.4
+                  , petrus-json
+                  , petrus-posix
+                  , text >=2.0
+                  , unix >=2.8
+
+test-suite petrus-sqlite-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  ghc-options:      -threaded -rtsopts
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec
+                  , petrus-json
+                  , petrus-posix
+                  , petrus-sqlite
+                  , petrus-test-support
+                  , temporary
+                  , text
+
+benchmark petrus-sqlite-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  ghc-options:      -threaded -O2
+  build-depends:    base
+                  , directory
+                  , filepath
+                  , petrus-posix
+                  , petrus-sqlite
+                  , tasty-bench >=0.3
+                  , temporary
+                  , text

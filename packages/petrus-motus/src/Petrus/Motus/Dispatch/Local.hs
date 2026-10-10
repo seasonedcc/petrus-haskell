@@ -1135,18 +1135,13 @@ currentTime db = \case
 -- ---------------------------------------------------------------------------
 -- Encodings
 
--- | @_encode_json@: sorted keys, compact separators, no ASCII escaping,
--- non-finite numbers refused with the reference's message.
+-- | @_encode_json@: sorted keys, compact separators, no ASCII escaping;
+-- what @json.dumps@ refuses (non-finite numbers, integers past CPython's
+-- 4300-digit limit) is refused with the reference's message.
 encodeJson :: Text -> Json -> Either Text Text
 encodeJson noun value = case canonicalText value of
   Right text -> Right text
-  Left (NonFiniteNumber d) ->
-    Left (noun <> " must be JSON-faithful: Out of range float values are not JSON compliant: " <> nonFinite d)
-  where
-    nonFinite d
-      | isNaN d = "nan"
-      | d > 0 = "inf"
-      | otherwise = "-inf"
+  Left refusal -> Left (noun <> " must be JSON-faithful: " <> T.pack (encodeErrorMessage refusal))
 
 -- | @_faithful@: the value as it round-trips through its canonical text.
 faithfulJson :: Text -> Json -> Either Text Json

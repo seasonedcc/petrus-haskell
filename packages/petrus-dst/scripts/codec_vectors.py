@@ -16,6 +16,13 @@ Three corpora:
   result. A refusal records every pydantic error (location, type, message)
   or the ``ValueError`` message.
 * ``raw``: hand-written byte strings for the strict JSON loader.
+* ``nesting``: every ``JsonValue`` location of the mutated fixtures (and
+  locations inside them) replaced by a value nested in lists, objects, or
+  both, at the deepest admitted depth and the first refused one, so the
+  port must find pydantic's recursion-guard boundary exactly. A refusal
+  records pydantic's first error only: once the guard trips, pydantic-core
+  also refuses later values it has seen by identity (small integers, for
+  one), which the port does not reproduce.
 """
 
 from __future__ import annotations
@@ -121,6 +128,58 @@ def mutations() -> list:
     return out
 
 
+NESTED_KEYS = ("payload", "value", "detail")
+NESTED_KINDS = ("list", "dict", "mixed")
+
+
+def nested(kind: str, depth: int) -> object:
+    """A leaf 0 inside ``depth`` containers, outermost first in the kind."""
+
+    value: object = 0
+    for level in reversed(range(depth)):
+        if kind == "list" or (kind == "mixed" and level % 2 == 0):
+            value = [value]
+        else:
+            value = {"k": value}
+    return value
+
+
+def admitted(payload: bytes) -> bool:
+    try:
+        decode_artifact(payload)
+    except ValueError:
+        return False
+    return True
+
+
+def nesting() -> list:
+    out = []
+    for name in MUTATED:
+        base = json.loads((FIXTURES / name).read_bytes())
+        shapes = set()
+        for path in paths(base):
+            shape = tuple("#" if isinstance(step, int) else step for step in path)
+            if not path or path[-1] not in NESTED_KEYS or shape in shapes:
+                continue
+            shapes.add(shape)
+            if not admitted(canonical(mutate(base, path, "replace", 0))):
+                continue
+            for kind in NESTED_KINDS:
+                low, high = 0, 600
+                while low < high:
+                    middle = (low + high) // 2
+                    if admitted(canonical(mutate(base, path, "replace", nested(kind, middle)))):
+                        low = middle + 1
+                    else:
+                        high = middle
+                for depth in (low - 1, low):
+                    result = verdict(canonical(mutate(base, path, "replace", nested(kind, depth))))
+                    if "validation" in result:
+                        result["validation"] = result["validation"][:1]
+                    out.append({"fixture": name, "path": list(path), "kind": kind, "depth": depth, "verdict": result})
+    return out
+
+
 def raw_cases() -> list[bytes]:
     legacy = (FIXTURES / "projection-crash-recovery-world-v1.json").read_bytes()
     seeded = (FIXTURES / "seeded-projection-crash-recovery-world-v3.json").read_bytes().rstrip(b"\n")
@@ -199,7 +258,7 @@ def main() -> int:
     for path in sorted(FIXTURES.glob("*.json")):
         fixtures[path.name] = verdict(path.read_bytes())
     raw = [{"hex": case.hex(), "verdict": verdict(case)} for case in raw_cases()]
-    out = {"fixtures": fixtures, "mutations": mutations(), "raw": raw}
+    out = {"fixtures": fixtures, "mutations": mutations(), "raw": raw, "nesting": nesting()}
     Path(sys.argv[1]).write_text(json.dumps(out, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n")
     return 0
 

@@ -119,6 +119,28 @@ A refused artifact or spec raises `ContractViolation "ValidationError"`. Its mes
 - pydantic may report several errors at once. It also appends `input_value=…, input_type=…` and
   a documentation URL. The port reproduces neither.
 - Union-tag errors quote the tag the way pydantic does (`'None'`, `'True'`, `'[]'`, …).
+- After pydantic's recursion guard refuses a too-deeply nested JSON value (`recursion_loop`),
+  pydantic-core also refuses later values of the same validation that are the same Python
+  object (small integers, for one), so the reference may report spurious extra errors. The port
+  reports the first error, which is the guard's.
+
+### Very deep JSON is refused as `recursion_loop`
+
+Acceptance of nested JSON values matches the reference exactly. Every JSON value field
+(`JsonValue`) is refused once pydantic's recursion guard would trip: 255 guard entries, one per
+value, counting the definitions above the field. The guard applies to artifacts, run specs,
+progress frames, and the models the World builds, including its journal entries. See
+`jsonValueRecursion` in `Petrus.Testing.Dst.Decode`.
+
+Deeper still, the reference fails differently. For values nested past about 993 levels, its
+recursive `_strict_json` raises `RecursionError` before pydantic runs. The exact depth depends
+on the Python stack at the call. Past CPython's C stack limit, `json.loads` raises
+`RecursionError` too. The port has no stack-dependent limits:
+
+- it refuses such a value with the same `recursion_loop` validation error it reports from 255
+  levels;
+- it refuses a document nested past petrus-json's 100000-level parser limit as invalid strict
+  DST JSON.
 
 ## Input limits
 
@@ -130,21 +152,6 @@ Haskell `Text` cannot hold them. The strict loader refuses such input with
 represent`.
 
 The raw-bytes corpus pins exactly which inputs this affects. No committed fixture contains one.
-
-### No recursion limit on nested JSON values
-
-The reference refuses JSON values nested past its validators' recursion guard. A command
-payload of nested lists is refused:
-
-- from 255 levels, with pydantic `recursion_loop`;
-- from 993 levels, with `RecursionError`.
-
-Nested objects hit the guard one level earlier. The exact depth depends on where the value sits
-and on what kind of containers it holds.
-
-These limits come from the Python implementation, not the format. The port admits any depth and
-re-encodes it byte for byte, which the codec spec tests up to depth 5000. No fixture comes
-within two orders of magnitude of the limit.
 
 ## Additions
 

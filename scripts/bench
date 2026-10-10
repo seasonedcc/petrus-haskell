@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+"""Run every package's benchmarks next to their Python counterparts.
+
+    scripts/bench                    # every package with a benchmark stanza
+    scripts/bench petrus-posix ...   # only these packages
+    scripts/bench --quick            # looser tasty-bench precision, fewer Python batches
+    scripts/bench --no-python        # Haskell only
+
+For each package with a ``benchmark`` stanza this runs ``cabal bench`` with
+tasty-bench's ``--csv`` output and, when ``packages/<pkg>/bench/python_bench.py``
+exists, that script in the pinned upstream environment
+(``upstream/petrus/.venv``, created with ``uv sync --frozen --extra postgres``
+when missing). The Python script prints ``name,nanoseconds`` lines named like
+the Haskell benchmarks (groups joined with dots; see scripts/bench_timing.py).
+
+Outputs:
+  packages/<pkg>/bench/RESULTS.md   committed per-package table
+  bench-results/summary.md          committed summary of the latest run
+  bench-results/tmp/                raw CSV files (ignored by git)
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import datetime
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+TMP = ROOT / "bench-results" / "tmp"
+
+
+def tool_path() -> dict[str, str]:
+    env = dict(os.environ)
+    extra = [str(Path.home() / ".ghcup" / "bin")]
+    postgres_app = Path("/Applications/Postgres.app/Contents/Versions/17/bin")
+    if postgres_app.is_dir():
+        extra.append(str(postgres_app))
+    env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")])
+    return env
+
+
+ENV = tool_path()
+
+
+def run(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
+    print("+ " + " ".join(argv), file=sys.stderr, flush=True)
+    return subprocess.run(argv, env=ENV, check=True, **kwargs)
+
+
+def benchmark_packages() -> list[str]:
+    found = []
+    for cabal in sorted(ROOT.glob("packages/*/*.cabal")):
+        if re.search(r"^benchmark\s+\S+", cabal.read_text(), re.MULTILINE):
+            found.append(cabal.parent.name)
+    return found
+
+
+def requires_postgres(package: str) -> bool:
+    """A benchmark that reads PETRUS_TEST_POSTGRES needs a server."""
+    main = ROOT / "packages" / package / "bench" / "Main.hs"
+    return main.exists() and "PETRUS_TEST_POSTGRES" in main.read_text()
+
+
+def upstream_python() -> str:
+    upstream = ROOT / "upstream" / "petrus"
+    interpreter = upstream / ".venv" / "bin" / "python"
+    if not interpreter.exists():
+        run(["uv", "sync", "--frozen", "--extra", "postgres"], cwd=upstream)
+    return str(interpreter)
+
+
+def haskell_results(package: str, quick: bool) -> dict[str, float]:
+    output = TMP / f"{package}.haskell.csv"
+    if output.exists():
+        output.unlink()
+    options = f"--csv {output} --timeout 300" + (" --stdev 20" if quick else " --stdev 5")
+    run(["cabal", "bench", package, "--benchmark-options", options], cwd=ROOT)
+    results = {}
+    with output.open(newline="") as stream:
+        for row in csv.DictReader(stream):
+            name = row["Name"]
+            if name.startswith("All."):
+                name = name[len("All.") :]
+            results[name] = float(row["Mean (ps)"]) / 1000.0
+    return results
+
+
+def python_results(package: str, quick: bool) -> dict[str, float]:
+    script = ROOT / "packages" / package / "bench" / "python_bench.py"
+    if not script.exists():
+        return {}
+    env = dict(ENV)
+    if quick:
+        env["PETRUS_BENCH_BATCHES"] = "5"
+    print(f"+ python {script.relative_to(ROOT)}", file=sys.stderr, flush=True)
+    completed = subprocess.run(
+        [upstream_python(), str(script)],
+        cwd=ROOT / "upstream" / "petrus",
+        env=env,
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    (TMP / f"{package}.python.csv").write_text(completed.stdout)
+    results = {}
+    for line in completed.stdout.splitlines():
+        name, _, value = line.rpartition(",")
+        if name:
+            results[name] = float(value)
+    return results
+
+
+def human(ns: float | None) -> str:
+    if ns is None:
+        return "—"
+    for unit, scale in (("s", 1e9), ("ms", 1e6), ("µs", 1e3)):
+        if ns >= scale:
+            return f"{ns / scale:.3g} {unit}"
+    return f"{ns:.3g} ns"
+
+
+def environment() -> list[str]:
+    def capture(argv: list[str]) -> str:
+        try:
+            return subprocess.run(argv, env=ENV, capture_output=True, text=True, check=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            return "unknown"
+
+    cpu = platform.processor() or platform.machine()
+    if sys.platform == "darwin":
+        cpu = capture(["sysctl", "-n", "machdep.cpu.brand_string"])
+    elif Path("/proc/cpuinfo").exists():
+        match = re.search(r"model name\s*:\s*(.*)", Path("/proc/cpuinfo").read_text())
+        cpu = match.group(1) if match else cpu
+    commit = capture(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"])
+    python = capture([upstream_python(), "-c", "import sys; print(sys.version.split()[0])"])
+    return [
+        f"- Date: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        f"- Commit: `{commit}`",
+        f"- Machine: {platform.system()} {platform.machine()}, {cpu}",
+        f"- Haskell: GHC {capture(['ghc', '--numeric-version'])} (-O2), tasty-bench mean",
+        f"- Python: CPython {python} (upstream venv), median of timed batches (scripts/bench_timing.py)",
+    ]
+
+
+def table(haskell: dict[str, float], python: dict[str, float]) -> list[str]:
+    lines = [
+        "| Benchmark | Haskell | Python | Python / Haskell |",
+        "|---|---:|---:|---:|",
+    ]
+    for name in list(haskell) + [n for n in python if n not in haskell]:
+        h, p = haskell.get(name), python.get(name)
+        ratio = f"{p / h:.2f}×" if h and p else "—"
+        lines.append(f"| `{name}` | {human(h)} | {human(p)} | {ratio} |")
+    return lines
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("packages", nargs="*")
+    parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--no-python", action="store_true")
+    args = parser.parse_args()
+
+    available = benchmark_packages()
+    packages = args.packages or available
+    unknown = [p for p in packages if p not in available]
+    if unknown:
+        print(f"no benchmark stanza in: {', '.join(unknown)}", file=sys.stderr)
+        return 2
+    TMP.mkdir(parents=True, exist_ok=True)
+
+    header = environment()
+    summary = ["# Benchmark summary", "", *header, ""]
+    ran = []
+    for package in packages:
+        if requires_postgres(package) and not os.environ.get("PETRUS_TEST_POSTGRES"):
+            print(f"skipping {package}: PETRUS_TEST_POSTGRES is unset (its results are kept)", file=sys.stderr)
+            continue
+        ran.append(package)
+        haskell = haskell_results(package, args.quick)
+        python = {} if args.no_python else python_results(package, args.quick)
+        rows = table(haskell, python)
+        results = ROOT / "packages" / package / "bench" / "RESULTS.md"
+        results.parent.mkdir(parents=True, exist_ok=True)
+        results.write_text(
+            "\n".join(
+                [
+                    f"# {package} benchmarks",
+                    "",
+                    "Generated by `scripts/bench`; Python figures time the upstream code path",
+                    "named in `bench/python_bench.py`. Ratios above 1 mean Haskell is faster.",
+                    "",
+                    *header,
+                    "",
+                    *rows,
+                    "",
+                ]
+            )
+        )
+        summary += [f"## {package}", "", *rows, ""]
+    summary_path = ROOT / "bench-results" / "summary.md"
+    if (args.packages or len(ran) < len(packages)) and summary_path.exists():
+        # A partial run updates only its packages' sections.
+        previous = summary_path.read_text()
+        sections = dict(re.findall(r"^## (\S+)\n(.*?)(?=^## |\Z)", previous, re.MULTILINE | re.DOTALL))
+        for package in ran:
+            sections.pop(package, None)
+        for package, body in sorted(sections.items()):
+            summary += [f"## {package}", body.rstrip("\n"), ""]
+    summary_path.write_text("\n".join(summary))
+    print(summary_path.read_text())
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

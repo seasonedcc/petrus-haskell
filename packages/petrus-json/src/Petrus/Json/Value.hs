@@ -11,16 +11,19 @@
 -- (@1 == 1.0 == True@), and objects compare as mappings regardless of member
 -- order. Token identity in a marking is defined by that equality, so replay
 -- and interop depend on it. Use 'exactEq' where the reference compares
--- canonical spellings instead.
+-- canonical spellings instead, and 'typeExactEq' where it compares Python
+-- types node by node but ignores member order.
 module Petrus.Json.Value
   ( Json (..)
   , exactEq
+  , typeExactEq
   , lookupMember
   , isFiniteNumber
   , allFinite
   , jsonTypeName
   ) where
 
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 
 -- | A JSON value with CPython-compatible number and object semantics.
@@ -84,6 +87,32 @@ exactEq (Array as) (Array bs) = length as == length bs && and (zipWith exactEq a
 exactEq (Object as) (Object bs) =
   length as == length bs && and (zipWith (\(k, v) (k', v') -> k == k' && exactEq v v') as bs)
 exactEq _ _ = False
+
+-- | Type-exact, member-order-insensitive equality: the reference's
+-- @_exact_json_equal@ (simulation HTTP's definition-mismatch check).
+--
+-- Every node must have the same Python type (@int@, @float@ and @bool@ never
+-- equal each other), objects compare as key sets with each member compared
+-- recursively, arrays compare in order, and scalars compare with Python @==@,
+-- so @0.0@ equals @-0.0@ and NaN equals nothing. Unlike 'exactEq', member
+-- order and the sign of zero do not matter; unlike '==', @1@, @1.0@ and
+-- @true@ differ.
+--
+-- Objects are compared by key /set/, as CPython dicts are: a repeated key in an
+-- 'Object' (which no parser preset produces) counts once, with its last value.
+typeExactEq :: Json -> Json -> Bool
+typeExactEq Null Null = True
+typeExactEq (Bool a) (Bool b) = a == b
+typeExactEq (Int a) (Int b) = a == b
+typeExactEq (Float a) (Float b) = a == b
+typeExactEq (String a) (String b) = a == b
+typeExactEq (Array as) (Array bs) = length as == length bs && and (zipWith typeExactEq as bs)
+typeExactEq (Object as) (Object bs) =
+  let left = Map.fromList as
+      right = Map.fromList bs
+   in Map.keysSet left == Map.keysSet right
+        && and (Map.intersectionWith typeExactEq left right)
+typeExactEq _ _ = False
 
 -- | The value of an object member, if present.
 lookupMember :: Text -> Json -> Maybe Json
