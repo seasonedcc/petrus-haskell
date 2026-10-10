@@ -121,7 +121,6 @@ import Control.Monad (unless)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
-import Data.Char (GeneralCategory (..), generalCategory, ord)
 import Data.Foldable (for_, traverse_)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.List (nub, sort)
@@ -135,8 +134,8 @@ import Data.Typeable (tyConName, typeOf, typeRepTyCon)
 import Foreign.C.Error (throwErrnoIfMinus1)
 import Foreign.C.Types (CLong (..))
 import GHC.Clock (getMonotonicTimeNSec)
-import Numeric (showHex)
 import Petrus.Json (Json (..), defaultDumps, dumps)
+import Petrus.Json.PythonText (pythonStrRepr)
 import System.Environment (lookupEnv)
 import System.IO (stderr)
 import System.IO.Unsafe (unsafePerformIO)
@@ -638,23 +637,7 @@ telemetryErrorMessage = \case
 duplicateMessage :: [Text] -> Text
 duplicateMessage names = "Telemetry context already has field(s): " <> T.intercalate ", " names <> "."
 
--- | CPython's @repr(str)@, so the level refusal quotes the value identically.
+-- | CPython's @repr(str)@, so the level refusal quotes the value identically
+-- (CPython 3.14's printability for every code point: "Petrus.Json.PythonText").
 pythonRepr :: Text -> Text
-pythonRepr raw = T.singleton quote <> T.concatMap escape raw <> T.singleton quote
-  where
-    quote = if T.elem '\'' raw && not (T.elem '"' raw) then '"' else '\''
-    escape c
-      | c == quote || c == '\\' = T.pack ['\\', c]
-      | c == '\t' = "\\t"
-      | c == '\n' = "\\n"
-      | c == '\r' = "\\r"
-      | c < ' ' || c == '\DEL' = hex "\\x" 2 c
-      | c < '\DEL' = T.singleton c
-      | printable c = T.singleton c
-      | ord c <= 0xff = hex "\\x" 2 c
-      | ord c <= 0xffff = hex "\\u" 4 c
-      | otherwise = hex "\\U" 8 c
-    hex prefix width c = prefix <> T.justifyRight width '0' (T.pack (showHex (ord c) ""))
-    printable c =
-      generalCategory c
-        `notElem` [Control, Format, Surrogate, PrivateUse, NotAssigned, LineSeparator, ParagraphSeparator, Space]
+pythonRepr = pythonStrRepr
