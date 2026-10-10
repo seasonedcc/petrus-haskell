@@ -5,6 +5,7 @@ import Spec.Choice qualified
 import Spec.Codec qualified
 import Spec.Runner qualified
 import Spec.Stories qualified
+import Spec.Transcript qualified
 import Test.Hspec
 
 main :: IO ()
@@ -15,3 +16,4 @@ main = do
     Spec.Codec.spec
     Spec.Stories.spec
     Spec.Runner.spec
+    Spec.Transcript.spec
