@@ -117,6 +117,41 @@ lastBody fake =
       (_, _, Just body) | Just (String text) <- lookup "body" body -> pure text
       _ -> pure ""
 
+publisherDelays :: Transport -> Fence -> Maybe EffectFault -> IORef [Double] -> CommentPublisher
+publisherDelays transport fence fault delays =
+  either (error . show) id (E.commentPublisher transport "owner/repo" 7 "hamsterdan[bot]" fence fault (\s -> modifyIORef' delays (<> [s])))
+
+-- | @FindingPublication@ with a location.
+anchored :: Text -> Text -> Text -> Integer -> FindingPublication
+anchored = finding
+
+inlineRoot, reviewsRoot :: Text
+inlineRoot = "/repos/owner/repo/pulls/7/comments"
+reviewsRoot = "/repos/owner/repo/pulls/7/reviews"
+
+-- | Empty inline-comment and issue-comment pages.
+noComments :: Fake -> IO ()
+noComments fake = do
+  setPages fake (inlineRoot <> "?per_page=100") []
+  setPages fake issuePages []
+
+postsTo :: Fake -> Text -> IO Int
+postsTo fake path = length . filter (\(kind, target, _) -> kind == "POST" && target == path) <$> readIORef fake.calls
+
+concernIn :: CommentPublisher -> IO PublicationResult
+concernIn publisher = E.publishFinding publisher (anchored "finding-activity:finding-id" "Conceptual concern." "src/one.py" 4) 3 headSha Nothing
+
+recordingFence :: IORef [(Text, Integer, Integer, Text, Text)] -> Fence
+recordingFence fences repository number epoch head' operation = modifyIORef' fences (<> [(repository, number, epoch, head', operation)])
+
+-- | A fault hook that raises once in the given phase.
+faultOnce :: IORef Bool -> Text -> EffectFault
+faultOnce spent wanted phase _ _ _ _ = do
+  already <- readIORef spent
+  when (phase == wanted && not already) $ do
+    writeIORef spent True
+    throwIO (boundary ("qualified " <> wanted <> " failure"))
+
 authority :: Transport -> GitHubAuthority
 authority transport = either (error . show) id (G.githubAuthority transport "owner/repo" 7 Nothing)
 
@@ -433,6 +468,23 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
       j "{'total_count':1,'jobs':[{'id':8,'name':'lint','status':'in_progress','conclusion':null}]}"
     observed <- G.jobs (authority (transportOf fake)) (snapshot 5 headSha 2 "in_progress" Nothing) ["lint", "unit"]
     (G.runResult observed).conclusion `shouldBe` "pending"
+
+  forM_ [("queued", Queued), ("in_progress", InProgress)] $ \(status, conclusion) ->
+    it ("normalizes the pending provider state " <> T.unpack status <> " in actions evidence") $ do
+      fake <- newFake
+      respond fake "GET" "/repos/owner/repo/actions/runs/5/attempts/2/jobs?per_page=100" 200 $
+        Object [("total_count", Int 1), ("jobs", Array [Object [("id", Int 8), ("name", String "lint"), ("status", String status), ("conclusion", Null)]])]
+      evidence <- G.actionsEvidence (authority (transportOf fake)) (snapshot 5 headSha 2 status Nothing) ["lint"]
+      evidence.run `shouldBe` (snapshot 5 headSha 2 status Nothing) {jobs = [ActionsJobSnapshot 8 "lint" status Nothing True]}
+      evidence.conclusion `shouldBe` conclusion
+      evidence.failedRequiredJobs `shouldBe` [("lint", Nothing)]
+
+  it "rejects an unsupported terminal conclusion in actions evidence" $ do
+    fake <- newFake
+    respond fake "GET" "/repos/owner/repo/actions/runs/5/attempts/2/jobs?per_page=100" 200 $
+      j "{'total_count':1,'jobs':[{'id':8,'name':'lint','status':'completed','conclusion':'success'}]}"
+    G.actionsEvidence (authority (transportOf fake)) (snapshot 5 headSha 2 "completed" (Just "neutral")) ["lint"]
+      `shouldThrow` boundaryMatching "conclusion is unsupported"
 
   it "counts only human unresolved threads" $ do
     fake <- newFake
@@ -777,6 +829,208 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
       [] -> expectationFailure "no inline review request"
     readIORef fences `shouldReturn` [("owner/repo", 7, 3, headSha, "finding-activity")]
 
+  it "publishes anchored findings as one native review batch" $ do
+    fake <- newFake
+    fences <- newIORef []
+    noComments fake
+    respond fake "POST" reviewsRoot 200 (j "{'id':8,'html_url':'review-url'}")
+    let items =
+          [ (anchored "finding-activity:f1" "First finding" "src/one.py" 4) {suggestion = "fixed_one()"}
+          , anchored "finding-activity:f2" "Second finding" "src/two.py" 9
+          , anchored "finding-activity:f3" "Third finding" "src/three.py" 12
+          ]
+    results <- E.publishFindings (publisherWith (transportOf fake) (recordingFence fences) Nothing) 3 headSha items "finding-activity"
+    results `shouldSatisfy` all (\result -> result.status == "created" && result.inline)
+    sent <- readIORef fake.calls
+    case [body | ("POST", path, Just body) <- sent, path == reviewsRoot] of
+      [body] -> do
+        (lookup "commit_id" body, lookup "event" body) `shouldBe` (Just (String headSha), Just (String "COMMENT"))
+        let comments' = case lookup "comments" body of
+              Just (Array values) -> map members values
+              _ -> []
+        [(lookup "path" c, lookup "line" c, lookup "side" c) | c <- comments']
+          `shouldBe` [ (Just (String path), Just (Int line), Just (String "RIGHT"))
+                     | (path, line) <- [("src/one.py", 4), ("src/two.py", 9), ("src/three.py", 12)]
+                     ]
+        let texts = [text | c <- comments', Just (String text) <- [lookup "body" c]]
+        texts `shouldSatisfy` all (T.isInfixOf "<!-- hamsterdan:finding")
+        take 1 texts `shouldSatisfy` all (T.isInfixOf "```suggestion\nfixed_one()\n```")
+      other -> expectationFailure ("expected one review request, got " <> show (length other))
+    readIORef fences `shouldReturn` [("owner/repo", 7, 3, headSha, "finding-activity")]
+
+  it "reconciles every finding of an ambiguous accepted review batch without reposting" $ do
+    fake <- newFake
+    noComments fake
+    let transport = transportWith fake $ \method path body -> case (method, body) of
+          ("POST", Just payload) | path == reviewsRoot -> Just $ do
+            let posted = case lookup "comments" payload of
+                  Just (Array values) -> values
+                  _ -> []
+            setPages
+              fake
+              (inlineRoot <> "?per_page=100")
+              [ Object [("id", Int index), ("html_url", String ("inline-" <> tshow index)), ("body", maybe Null id (at "body" item)), ("user", j "{'login':'hamsterdan[bot]'}")]
+              | (index, item) <- zip [10 ..] posted
+              ]
+            throwIO (boundary "qualified ambiguous outcome")
+          _ -> Nothing
+        items = [anchored "finding-activity:f1" "First finding" "src/one.py" 4, anchored "finding-activity:f2" "Second finding" "src/two.py" 9]
+    results <- E.publishFindings (publisherWith transport noFence Nothing) 3 headSha items "finding-activity"
+    results `shouldSatisfy` all (\result -> result.status == "existing" && result.inline)
+    postsTo fake reviewsRoot `shouldReturn` 1
+
+  it "falls back to one immutable issue comment after a definitive inline denial" $ do
+    fake <- newFake
+    fences <- newIORef []
+    noComments fake
+    respond fake "POST" inlineRoot 422 (j "{'message':'line is not in diff'}")
+    respond fake "POST" issueComments 201 (j "{'id':9,'html_url':'issue-url'}")
+    result <- E.publishFinding (publisherWith (transportOf fake) (recordingFence fences) Nothing) (anchored "finding-activity:finding-id" "Conceptual concern." "src/one.py" 4) 3 headSha (Just "finding-activity")
+    (result.status, result.inline) `shouldBe` ("created", False)
+    fmap (.url) result.reference `shouldBe` Just "issue-url"
+    postsTo fake inlineRoot `shouldReturn` 1
+    postsTo fake issueComments `shouldReturn` 1
+    readIORef fences `shouldReturn` replicate 2 ("owner/repo", 7, 3, headSha, "finding-activity")
+
+  forM_
+    [ (403, "{'message':'Resource not accessible by integration'}")
+    , (404, "{'message':'Not Found'}")
+    , (422, "{'message':'Validation Failed','errors':[{'field':'body','code':'invalid'}]}")
+    , (422, "{'message':'Validation Failed','errors':[{'field':'line','code':'invalid'}]}")
+    ]
+    $ \(status, body) ->
+      it ("does not fall back after an inline authorization or payload failure (" <> show status <> " " <> T.unpack body <> ")") $ do
+        fake <- newFake
+        noComments fake
+        respond fake "POST" inlineRoot status (j body)
+        result <- try (concernIn (publisherWith (transportOf fake) noFence Nothing))
+        case result of
+          Left (failure :: GitHubBoundaryError) -> do
+            failure.message `shouldSatisfy` T.isInfixOf "did not prove inline"
+            failure.failureClass `shouldBe` (if status `elem` [403, 404] then CapabilityDenial else PayloadRejection)
+            failure.providerStatus `shouldBe` Just status
+            failure.providerDetail `shouldSatisfy` (not . T.isInfixOf "Validation Failed")
+          Right value -> expectationFailure ("expected a boundary failure, got " <> show value)
+        postsTo fake issueComments `shouldReturn` 0
+        postsTo fake inlineRoot `shouldReturn` 1
+
+  it "keeps provider-controlled atoms out of the inline failure diagnostic" $ do
+    fake <- newFake
+    noComments fake
+    respond fake "POST" inlineRoot 422 (j "{'message':'credential-bearing message','errors':[{'field':'github_pat_secret','code':'secret'}]}")
+    result <- try (concernIn (publisherWith (transportOf fake) noFence Nothing))
+    case result of
+      Left (failure :: GitHubBoundaryError) -> failure.providerDetail `shouldBe` "unknown_field:unknown_code"
+      Right value -> expectationFailure ("expected a boundary failure, got " <> show value)
+
+  it "recovers an ambiguous accepted inline finding without a second mutation" $ do
+    fake <- newFake
+    spent <- newIORef False
+    noComments fake
+    let transport = transportWith fake $ \method path body -> case (method, body) of
+          ("POST", Just payload) | path == inlineRoot -> Just $ do
+            let item = Object [("id", Int 10), ("html_url", String "inline-url"), ("body", maybe Null id (lookup "body" payload)), ("user", j "{'login':'hamsterdan[bot]'}")]
+            setPages fake (inlineRoot <> "?per_page=100") [item]
+            pure (WireResponse 201 item Nothing)
+          _ -> Nothing
+    result <- concernIn (publisherWith transport noFence (Just (faultOnce spent "after_call")))
+    (result.status, result.inline) `shouldBe` ("existing", True)
+    postsTo fake inlineRoot `shouldReturn` 1
+
+  it "retries an inline finding after a before-call fault only behind a fresh fence" $ do
+    fake <- newFake
+    fences <- newIORef []
+    delays <- newIORef []
+    spent <- newIORef False
+    noComments fake
+    respond fake "POST" inlineRoot 201 (j "{'id':11,'html_url':'inline-url'}")
+    result <- concernIn (publisherDelays (transportOf fake) (recordingFence fences) (Just (faultOnce spent "before_call")) delays)
+    (result.status, result.inline) `shouldBe` ("created", True)
+    length <$> readIORef fences `shouldReturn` 2
+    readIORef delays `shouldReturn` [60]
+    postsTo fake inlineRoot `shouldReturn` 1
+
+  forM_
+    [ (403, "{'message':'You have exceeded a secondary rate limit'}")
+    , (422, "{'message':'Validation Failed'}")
+    , (429, "{'message':'Too Many Requests'}")
+    , (500, "{'message':'Server Error'}")
+    ]
+    $ \(status, body) ->
+      it ("retries a transient inline rejection after a lookup and a fresh fence (" <> show status <> ")") $ do
+        fake <- newFake
+        attempts <- newIORef (0 :: Int)
+        fences <- newIORef (0 :: Int)
+        delays <- newIORef []
+        noComments fake
+        let transport = transportWith fake $ \method path _ ->
+              if method == "POST" && path == inlineRoot
+                then Just $ do
+                  attempt <- atomicModifyIORef' attempts (\n -> (n + 1, n + 1))
+                  pure $
+                    if attempt == 1
+                      then WireResponse status (j body) Nothing
+                      else WireResponse 201 (j "{'id':12,'html_url':'inline-url'}") Nothing
+                else Nothing
+        result <- concernIn (publisherDelays transport (countingFence fences) Nothing delays)
+        (result.status, result.inline) `shouldBe` ("created", True)
+        readIORef attempts `shouldReturn` 2
+        readIORef fences `shouldReturn` 2
+        readIORef delays `shouldReturn` [60]
+
+  it "exhausts transient inline rejections with bounded exponential backoff" $ do
+    fake <- newFake
+    fences <- newIORef (0 :: Int)
+    delays <- newIORef []
+    noComments fake
+    respond fake "POST" inlineRoot 429 (j "{'message':'Too Many Requests'}")
+    result <- try (concernIn (publisherDelays (transportOf fake) (countingFence fences) Nothing delays))
+    case result of
+      Left (failure :: GitHubBoundaryError) -> (failure.failureClass, failure.providerStatus) `shouldBe` (TransientHttpRejection, Just 429)
+      Right value -> expectationFailure ("expected a boundary failure, got " <> show value)
+    postsTo fake inlineRoot `shouldReturn` 3
+    readIORef fences `shouldReturn` 3
+    readIORef delays `shouldReturn` [60, 120]
+
+  it "stops the inline retry when the fresh second fence rejects authority" $ do
+    fake <- newFake
+    fences <- newIORef (0 :: Int)
+    spent <- newIORef False
+    noComments fake
+    let fence _ _ _ _ _ = do
+          count <- atomicModifyIORef' fences (\n -> (n + 1, n + 1))
+          when (count == 2) (throwIO (ContractRefused "stale head"))
+    concernIn (publisherWith (transportOf fake) fence (Just (faultOnce spent "before_call")))
+      `shouldThrow` (== ContractRefused "stale head")
+    readIORef fences `shouldReturn` 2
+    postsTo fake inlineRoot `shouldReturn` 0
+
+  it "recovers legacy issue finding and reminder payloads exactly" $ do
+    fake <- newFake
+    setPages fake (inlineRoot <> "?per_page=100") []
+    setPages
+      fake
+      issuePages
+      [ Object
+          [ ("id", Int 12)
+          , ("html_url", String "finding-url")
+          , ("body", String ("Finding body\nLocation: src/one.py:4\n\n" <> markerOf "finding" "finding-activity:finding-id" headSha))
+          , ("user", j "{'login':'hamsterdan[bot]'}")
+          ]
+      , Object
+          [ ("id", Int 13)
+          , ("html_url", String "reminder-url")
+          , ("body", String ("@reviewer, please review this PR.\n\n" <> markerOf "reminder" "reminder-operation" headSha))
+          , ("user", j "{'login':'hamsterdan[bot]'}")
+          ]
+      ]
+    let publisher = publisherWith (transportOf fake) noFence Nothing
+    found <- E.publishFinding publisher (anchored "finding-activity:finding-id" "Finding body" "src/one.py" 4) 3 headSha Nothing
+    (found.status, found.inline) `shouldBe` ("existing", False)
+    reminded <- E.reminder publisher "reminder-operation" 3 headSha (Just "reviewer") "author" Nothing
+    reminded.status `shouldBe` "existing"
+    posts fake `shouldReturn` 0
+
   it "requires the unique final marker line for a lookup" $ do
     fake <- newFake
     let wanted = markerOf "finding" "finding-operation" headSha
@@ -1051,6 +1305,22 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
     response <- Transport.request client "GET" "/repos/owner/one/missing" Nothing
     (response.status, response.body) `shouldBe` (404, j "{'message':'missing'}")
     Transport.download client "/repos/owner/one/actions/runs/1/logs" maxLogBytes `shouldReturn` "bounded log"
+
+  it "normalizes network failures without exposing the provider error" $ withConfig $ \config -> do
+    let handler request
+          | "/access_tokens" `T.isSuffixOf` pathOf request = tokenReply "installation-secret" "2099-01-01T00:00:00Z"
+          | otherwise = throwIO (transportFailure "ReadError" "credential-bearing-provider-error")
+    clients <- githubAppClients config (optionsFor handler)
+    let client = installation' clients 44 [31]
+    requestOutcome <- try (Transport.request client "GET" "/repos/owner/one" Nothing)
+    downloadOutcome <- try (Transport.download client "/repos/owner/one/actions/runs/1/logs" maxLogBytes)
+    case (requestOutcome, downloadOutcome) of
+      (Left (requestFailure :: GitHubBoundaryError), Left (downloadFailure :: GitHubBoundaryError)) -> do
+        forM_ [requestFailure, downloadFailure] $ \failure -> do
+          failure.message `shouldSatisfy` T.isInfixOf "without a proven outcome"
+          T.pack (show failure) `shouldSatisfy` (not . T.isInfixOf "credential-bearing-provider-error")
+        requestFailure.providerDetail `shouldBe` "http_transport"
+      _ -> expectationFailure "expected boundary failures from both the request and the download"
 
   it "reads a streamed body before the exchange releases it" $ withConfig $ \config -> do
     closed <- newIORef False
