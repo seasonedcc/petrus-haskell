@@ -1,0 +1,2249 @@
+{
+ "generator": "packages/petrus-cel/test/gen-cel-instance.py",
+ "celpy": "0.5.0",
+ "cases": [
+  {
+   "name": "routing",
+   "definition": "{\n  \"format\": \"petrus-net-definition\",\n  \"version\": 3,\n  \"definition\": {\n    \"name\": null,\n    \"time_domain\": \"integer\",\n    \"places\": [\n      {\n        \"path\": \"accepted\",\n        \"color\": null\n      },\n      {\n        \"path\": \"pending\",\n        \"color\": null\n      },\n      {\n        \"path\": \"rejected\",\n        \"color\": null\n      }\n    ],\n    \"transitions\": [\n      {\n        \"path\": \"accept\",\n        \"handler\": null,\n        \"guards\": [\n          {\n            \"kind\": \"cel\",\n            \"expression\": \"pending[0].data.amount >= 100\",\n            \"uri\": \"transition:/accept#guard:$0\"\n          }\n        ],\n        \"timers\": []\n      },\n      {\n        \"path\": \"reject\",\n        \"handler\": null,\n        \"guards\": [\n          {\n            \"kind\": \"cel\",\n            \"expression\": \"pending[0].data.amount < 100\",\n            \"uri\": \"transition:/reject#guard:$0\"\n          }\n        ],\n        \"timers\": []\n      }\n    ],\n    \"arcs\": [\n      {\n        \"position\": 0,\n        \"source\": \"pending\",\n        \"target\": \"accept\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": {\n          \"kind\": \"cel\",\n          \"expression\": \"currency == \\\"USD\\\"\"\n        }\n      },\n      {\n        \"position\": 1,\n        \"source\": \"pending\",\n        \"target\": \"reject\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      },\n      {\n        \"position\": 2,\n        \"source\": \"accept\",\n        \"target\": \"accepted\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      },\n      {\n        \"position\": 3,\n        \"source\": \"reject\",\n        \"target\": \"rejected\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      }\n    ],\n    \"completion\": {\n      \"kind\": \"cel\",\n      \"expression\": \"size(pending) == 0 && accepted.all(t, t.data.amount >= 100)\"\n    }\n  }\n}\n",
+   "initialMarking": [
+    {
+     "place": "pending",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 150,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 40,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 250,
+        "currency": "EUR"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 100,
+        "currency": "USD"
+       }
+      }
+     ]
+    }
+   ],
+   "steps": [
+    {
+     "candidatesBefore": [
+      {
+       "transition": "accept",
+       "consumed": [
+        {
+         "place": "pending",
+         "tokens": [
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 150,
+            "currency": "USD"
+           }
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      },
+      {
+       "transition": "accept",
+       "consumed": [
+        {
+         "place": "pending",
+         "tokens": [
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 100,
+            "currency": "USD"
+           }
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      },
+      {
+       "transition": "reject",
+       "consumed": [
+        {
+         "place": "pending",
+         "tokens": [
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 40,
+            "currency": "USD"
+           }
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      }
+     ],
+     "diagnosticsBefore": [],
+     "outcome": {
+      "occurrence": 1,
+      "transition": "accept",
+      "consumed": [
+       {
+        "color": "Payment",
+        "data": {
+         "amount": 150,
+         "currency": "USD"
+        }
+       }
+      ],
+      "produced": [
+       {
+        "place": "accepted",
+        "token": {
+         "color": "Payment",
+         "data": {
+          "amount": 150,
+          "currency": "USD"
+         }
+        }
+       }
+      ]
+     },
+     "markingAfter": [
+      {
+       "place": "accepted",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 150,
+          "currency": "USD"
+         }
+        }
+       ]
+      },
+      {
+       "place": "pending",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 40,
+          "currency": "USD"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 250,
+          "currency": "EUR"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 100,
+          "currency": "USD"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "candidatesBefore": [
+      {
+       "transition": "accept",
+       "consumed": [
+        {
+         "place": "pending",
+         "tokens": [
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 100,
+            "currency": "USD"
+           }
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      },
+      {
+       "transition": "reject",
+       "consumed": [
+        {
+         "place": "pending",
+         "tokens": [
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 40,
+            "currency": "USD"
+           }
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      }
+     ],
+     "diagnosticsBefore": [],
+     "outcome": {
+      "occurrence": 2,
+      "transition": "accept",
+      "consumed": [
+       {
+        "color": "Payment",
+        "data": {
+         "amount": 100,
+         "currency": "USD"
+        }
+       }
+      ],
+      "produced": [
+       {
+        "place": "accepted",
+        "token": {
+         "color": "Payment",
+         "data": {
+          "amount": 100,
+          "currency": "USD"
+         }
+        }
+       }
+      ]
+     },
+     "markingAfter": [
+      {
+       "place": "accepted",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 150,
+          "currency": "USD"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 100,
+          "currency": "USD"
+         }
+        }
+       ]
+      },
+      {
+       "place": "pending",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 40,
+          "currency": "USD"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 250,
+          "currency": "EUR"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "candidatesBefore": [
+      {
+       "transition": "reject",
+       "consumed": [
+        {
+         "place": "pending",
+         "tokens": [
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 40,
+            "currency": "USD"
+           }
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      }
+     ],
+     "diagnosticsBefore": [],
+     "outcome": {
+      "occurrence": 3,
+      "transition": "reject",
+      "consumed": [
+       {
+        "color": "Payment",
+        "data": {
+         "amount": 40,
+         "currency": "USD"
+        }
+       }
+      ],
+      "produced": [
+       {
+        "place": "rejected",
+        "token": {
+         "color": "Payment",
+         "data": {
+          "amount": 40,
+          "currency": "USD"
+         }
+        }
+       }
+      ]
+     },
+     "markingAfter": [
+      {
+       "place": "accepted",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 150,
+          "currency": "USD"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 100,
+          "currency": "USD"
+         }
+        }
+       ]
+      },
+      {
+       "place": "pending",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 250,
+          "currency": "EUR"
+         }
+        }
+       ]
+      },
+      {
+       "place": "rejected",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 40,
+          "currency": "USD"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "candidatesBefore": [],
+     "diagnosticsBefore": [],
+     "outcome": null,
+     "markingAfter": [
+      {
+       "place": "accepted",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 150,
+          "currency": "USD"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 100,
+          "currency": "USD"
+         }
+        }
+       ]
+      },
+      {
+       "place": "pending",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 250,
+          "currency": "EUR"
+         }
+        }
+       ]
+      },
+      {
+       "place": "rejected",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 40,
+          "currency": "USD"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "status": "stuck",
+   "statusDiagnostics": [],
+   "history": [
+    {
+     "record": "InstanceCreated",
+     "schema": 5,
+     "instance": "cel-routing",
+     "name": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensInitialized",
+     "schema": 5,
+     "place": "pending",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 150,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 40,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 250,
+        "currency": "EUR"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 100,
+        "currency": "USD"
+       }
+      }
+     ],
+     "instant": 0,
+     "entries": [],
+     "scope": null
+    },
+    {
+     "record": "CandidateSelected",
+     "schema": 5,
+     "transition": "accept",
+     "occurrence": 1,
+     "instant": 0
+    },
+    {
+     "record": "FiringBegun",
+     "schema": 5,
+     "transition": "accept",
+     "occurrence": 1,
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensConsumed",
+     "schema": 5,
+     "place": "pending",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 150,
+        "currency": "USD"
+       }
+      }
+     ],
+     "occurrence": 1,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensProduced",
+     "schema": 5,
+     "place": "accepted",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 150,
+        "currency": "USD"
+       }
+      }
+     ],
+     "occurrence": 1,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "FiringCompleted",
+     "schema": 5,
+     "transition": "accept",
+     "occurrence": 1,
+     "instant": 0
+    },
+    {
+     "record": "CandidateSelected",
+     "schema": 5,
+     "transition": "accept",
+     "occurrence": 2,
+     "instant": 0
+    },
+    {
+     "record": "FiringBegun",
+     "schema": 5,
+     "transition": "accept",
+     "occurrence": 2,
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensConsumed",
+     "schema": 5,
+     "place": "pending",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 100,
+        "currency": "USD"
+       }
+      }
+     ],
+     "occurrence": 2,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensProduced",
+     "schema": 5,
+     "place": "accepted",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 100,
+        "currency": "USD"
+       }
+      }
+     ],
+     "occurrence": 2,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "FiringCompleted",
+     "schema": 5,
+     "transition": "accept",
+     "occurrence": 2,
+     "instant": 0
+    },
+    {
+     "record": "CandidateSelected",
+     "schema": 5,
+     "transition": "reject",
+     "occurrence": 3,
+     "instant": 0
+    },
+    {
+     "record": "FiringBegun",
+     "schema": 5,
+     "transition": "reject",
+     "occurrence": 3,
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensConsumed",
+     "schema": 5,
+     "place": "pending",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 40,
+        "currency": "USD"
+       }
+      }
+     ],
+     "occurrence": 3,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensProduced",
+     "schema": 5,
+     "place": "rejected",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 40,
+        "currency": "USD"
+       }
+      }
+     ],
+     "occurrence": 3,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "FiringCompleted",
+     "schema": 5,
+     "transition": "reject",
+     "occurrence": 3,
+     "instant": 0
+    }
+   ]
+  },
+  {
+   "name": "errors",
+   "definition": "{\n  \"format\": \"petrus-net-definition\",\n  \"version\": 3,\n  \"definition\": {\n    \"name\": null,\n    \"time_domain\": \"integer\",\n    \"places\": [\n      {\n        \"path\": \"inbox\",\n        \"color\": null\n      },\n      {\n        \"path\": \"kept\",\n        \"color\": null\n      },\n      {\n        \"path\": \"out\",\n        \"color\": null\n      }\n    ],\n    \"transitions\": [\n      {\n        \"path\": \"keep\",\n        \"handler\": null,\n        \"guards\": [],\n        \"timers\": []\n      },\n      {\n        \"path\": \"take\",\n        \"handler\": null,\n        \"guards\": [\n          {\n            \"kind\": \"cel\",\n            \"expression\": \"inbox[0].data.n / inbox[0].data.d > 1\",\n            \"uri\": \"transition:/take#guard:$0\"\n          }\n        ],\n        \"timers\": []\n      }\n    ],\n    \"arcs\": [\n      {\n        \"position\": 0,\n        \"source\": \"inbox\",\n        \"target\": \"take\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": {\n          \"kind\": \"cel\",\n          \"expression\": \"n > 0\"\n        }\n      },\n      {\n        \"position\": 1,\n        \"source\": \"inbox\",\n        \"target\": \"keep\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": {\n          \"kind\": \"cel\",\n          \"expression\": \"has(keep) && keep\"\n        }\n      },\n      {\n        \"position\": 2,\n        \"source\": \"take\",\n        \"target\": \"out\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      },\n      {\n        \"position\": 3,\n        \"source\": \"keep\",\n        \"target\": \"kept\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      }\n    ],\n    \"completion\": {\n      \"kind\": \"cel\",\n      \"expression\": \"out[0].data.n > 0\"\n    }\n  }\n}\n",
+   "initialMarking": [
+    {
+     "place": "inbox",
+     "tokens": [
+      {
+       "color": null,
+       "data": null
+      },
+      {
+       "color": "Item",
+       "data": [
+        1,
+        2
+       ]
+      },
+      {
+       "color": "Item",
+       "data": {
+        "m": 1
+       }
+      },
+      {
+       "color": "Item",
+       "data": {
+        "n": "x",
+        "d": 1
+       }
+      },
+      {
+       "color": "Item",
+       "data": {
+        "n": 4,
+        "d": 0
+       }
+      },
+      {
+       "color": "Item",
+       "data": {
+        "n": 5,
+        "d": 2,
+        "keep": true
+       }
+      },
+      {
+       "color": "Item",
+       "data": {
+        "n": 9,
+        "d": 3
+       }
+      }
+     ]
+    }
+   ],
+   "steps": [
+    {
+     "candidatesBefore": [
+      {
+       "transition": "keep",
+       "consumed": [
+        {
+         "place": "inbox",
+         "tokens": [
+          {
+           "color": "Item",
+           "data": {
+            "n": 5,
+            "d": 2,
+            "keep": true
+           }
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      },
+      {
+       "transition": "take",
+       "consumed": [
+        {
+         "place": "inbox",
+         "tokens": [
+          {
+           "color": "Item",
+           "data": {
+            "n": 5,
+            "d": 2,
+            "keep": true
+           }
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      },
+      {
+       "transition": "take",
+       "consumed": [
+        {
+         "place": "inbox",
+         "tokens": [
+          {
+           "color": "Item",
+           "data": {
+            "n": 9,
+            "d": 3
+           }
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      }
+     ],
+     "diagnosticsBefore": [
+      "filter Cel(expression='has(keep) && keep') at NetUri('arc:/inbox->/keep#filter') raised TypeError('CEL filters read data fields; token data is NoneType, not a mapping') evaluating Token.black(); token not admitted",
+      "filter Cel(expression='has(keep) && keep') at NetUri('arc:/inbox->/keep#filter') raised TypeError('CEL filters read data fields; token data is list, not a mapping') evaluating Token('Item', [1, 2]); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised TypeError('CEL filters read data fields; token data is NoneType, not a mapping') evaluating Token.black(); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised TypeError('CEL filters read data fields; token data is list, not a mapping') evaluating Token('Item', [1, 2]); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised CELEvalError(*(\"undeclared reference to 'n' (in activation '<Activation>')\", <class 'KeyError'>, ('n',)), tree='n') evaluating Token('Item', {'m': 1}); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised CELEvalError(*(\"found no matching overload for Token('RULE', 'relation_gt') applied to '(<class 'celpy.celtypes.StringType'>, <class 'celpy.celtypes.IntType'>)'\", <class 'TypeError'>, (\"no such overload: IntType(0) <class 'celpy.celtypes.IntType'> != StringType('x') <class 'celpy.celtypes.StringType'>\",)), tree='n >  0') evaluating Token('Item', {'n': 'x', 'd': 1}); token not admitted",
+      "guard Cel(expression='inbox[0].data.n / inbox[0].data.d > 1') at NetUri('transition:/take#guard:$0') on transition take raised CELEvalError(*('modulus or divide by zero', <class 'ZeroDivisionError'>, ('division by zero',)), tree='inbox[0].data.n /  inbox[0].data.d') over peeked tokens (Token('Item', {'n': 4, 'd': 0}),); binding skipped"
+     ],
+     "outcome": {
+      "occurrence": 1,
+      "transition": "keep",
+      "consumed": [
+       {
+        "color": "Item",
+        "data": {
+         "n": 5,
+         "d": 2,
+         "keep": true
+        }
+       }
+      ],
+      "produced": [
+       {
+        "place": "kept",
+        "token": {
+         "color": "Item",
+         "data": {
+          "n": 5,
+          "d": 2,
+          "keep": true
+         }
+        }
+       }
+      ]
+     },
+     "markingAfter": [
+      {
+       "place": "inbox",
+       "tokens": [
+        {
+         "color": null,
+         "data": null
+        },
+        {
+         "color": "Item",
+         "data": [
+          1,
+          2
+         ]
+        },
+        {
+         "color": "Item",
+         "data": {
+          "m": 1
+         }
+        },
+        {
+         "color": "Item",
+         "data": {
+          "n": "x",
+          "d": 1
+         }
+        },
+        {
+         "color": "Item",
+         "data": {
+          "n": 4,
+          "d": 0
+         }
+        },
+        {
+         "color": "Item",
+         "data": {
+          "n": 9,
+          "d": 3
+         }
+        }
+       ]
+      },
+      {
+       "place": "kept",
+       "tokens": [
+        {
+         "color": "Item",
+         "data": {
+          "n": 5,
+          "d": 2,
+          "keep": true
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "candidatesBefore": [
+      {
+       "transition": "take",
+       "consumed": [
+        {
+         "place": "inbox",
+         "tokens": [
+          {
+           "color": "Item",
+           "data": {
+            "n": 9,
+            "d": 3
+           }
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      }
+     ],
+     "diagnosticsBefore": [
+      "filter Cel(expression='has(keep) && keep') at NetUri('arc:/inbox->/keep#filter') raised TypeError('CEL filters read data fields; token data is NoneType, not a mapping') evaluating Token.black(); token not admitted",
+      "filter Cel(expression='has(keep) && keep') at NetUri('arc:/inbox->/keep#filter') raised TypeError('CEL filters read data fields; token data is list, not a mapping') evaluating Token('Item', [1, 2]); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised TypeError('CEL filters read data fields; token data is NoneType, not a mapping') evaluating Token.black(); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised TypeError('CEL filters read data fields; token data is list, not a mapping') evaluating Token('Item', [1, 2]); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised CELEvalError(*(\"undeclared reference to 'n' (in activation '<Activation>')\", <class 'KeyError'>, ('n',)), tree='n') evaluating Token('Item', {'m': 1}); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised CELEvalError(*(\"found no matching overload for Token('RULE', 'relation_gt') applied to '(<class 'celpy.celtypes.StringType'>, <class 'celpy.celtypes.IntType'>)'\", <class 'TypeError'>, (\"no such overload: IntType(0) <class 'celpy.celtypes.IntType'> != StringType('x') <class 'celpy.celtypes.StringType'>\",)), tree='n >  0') evaluating Token('Item', {'n': 'x', 'd': 1}); token not admitted",
+      "guard Cel(expression='inbox[0].data.n / inbox[0].data.d > 1') at NetUri('transition:/take#guard:$0') on transition take raised CELEvalError(*('modulus or divide by zero', <class 'ZeroDivisionError'>, ('division by zero',)), tree='inbox[0].data.n /  inbox[0].data.d') over peeked tokens (Token('Item', {'n': 4, 'd': 0}),); binding skipped"
+     ],
+     "outcome": {
+      "occurrence": 2,
+      "transition": "take",
+      "consumed": [
+       {
+        "color": "Item",
+        "data": {
+         "n": 9,
+         "d": 3
+        }
+       }
+      ],
+      "produced": [
+       {
+        "place": "out",
+        "token": {
+         "color": "Item",
+         "data": {
+          "n": 9,
+          "d": 3
+         }
+        }
+       }
+      ]
+     },
+     "markingAfter": [
+      {
+       "place": "inbox",
+       "tokens": [
+        {
+         "color": null,
+         "data": null
+        },
+        {
+         "color": "Item",
+         "data": [
+          1,
+          2
+         ]
+        },
+        {
+         "color": "Item",
+         "data": {
+          "m": 1
+         }
+        },
+        {
+         "color": "Item",
+         "data": {
+          "n": "x",
+          "d": 1
+         }
+        },
+        {
+         "color": "Item",
+         "data": {
+          "n": 4,
+          "d": 0
+         }
+        }
+       ]
+      },
+      {
+       "place": "kept",
+       "tokens": [
+        {
+         "color": "Item",
+         "data": {
+          "n": 5,
+          "d": 2,
+          "keep": true
+         }
+        }
+       ]
+      },
+      {
+       "place": "out",
+       "tokens": [
+        {
+         "color": "Item",
+         "data": {
+          "n": 9,
+          "d": 3
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "candidatesBefore": [],
+     "diagnosticsBefore": [
+      "filter Cel(expression='has(keep) && keep') at NetUri('arc:/inbox->/keep#filter') raised TypeError('CEL filters read data fields; token data is NoneType, not a mapping') evaluating Token.black(); token not admitted",
+      "filter Cel(expression='has(keep) && keep') at NetUri('arc:/inbox->/keep#filter') raised TypeError('CEL filters read data fields; token data is list, not a mapping') evaluating Token('Item', [1, 2]); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised TypeError('CEL filters read data fields; token data is NoneType, not a mapping') evaluating Token.black(); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised TypeError('CEL filters read data fields; token data is list, not a mapping') evaluating Token('Item', [1, 2]); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised CELEvalError(*(\"undeclared reference to 'n' (in activation '<Activation>')\", <class 'KeyError'>, ('n',)), tree='n') evaluating Token('Item', {'m': 1}); token not admitted",
+      "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised CELEvalError(*(\"found no matching overload for Token('RULE', 'relation_gt') applied to '(<class 'celpy.celtypes.StringType'>, <class 'celpy.celtypes.IntType'>)'\", <class 'TypeError'>, (\"no such overload: IntType(0) <class 'celpy.celtypes.IntType'> != StringType('x') <class 'celpy.celtypes.StringType'>\",)), tree='n >  0') evaluating Token('Item', {'n': 'x', 'd': 1}); token not admitted",
+      "guard Cel(expression='inbox[0].data.n / inbox[0].data.d > 1') at NetUri('transition:/take#guard:$0') on transition take raised CELEvalError(*('modulus or divide by zero', <class 'ZeroDivisionError'>, ('division by zero',)), tree='inbox[0].data.n /  inbox[0].data.d') over peeked tokens (Token('Item', {'n': 4, 'd': 0}),); binding skipped"
+     ],
+     "outcome": null,
+     "markingAfter": [
+      {
+       "place": "inbox",
+       "tokens": [
+        {
+         "color": null,
+         "data": null
+        },
+        {
+         "color": "Item",
+         "data": [
+          1,
+          2
+         ]
+        },
+        {
+         "color": "Item",
+         "data": {
+          "m": 1
+         }
+        },
+        {
+         "color": "Item",
+         "data": {
+          "n": "x",
+          "d": 1
+         }
+        },
+        {
+         "color": "Item",
+         "data": {
+          "n": 4,
+          "d": 0
+         }
+        }
+       ]
+      },
+      {
+       "place": "kept",
+       "tokens": [
+        {
+         "color": "Item",
+         "data": {
+          "n": 5,
+          "d": 2,
+          "keep": true
+         }
+        }
+       ]
+      },
+      {
+       "place": "out",
+       "tokens": [
+        {
+         "color": "Item",
+         "data": {
+          "n": 9,
+          "d": 3
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "status": "completed",
+   "statusDiagnostics": [
+    "filter Cel(expression='has(keep) && keep') at NetUri('arc:/inbox->/keep#filter') raised TypeError('CEL filters read data fields; token data is NoneType, not a mapping') evaluating Token.black(); token not admitted",
+    "filter Cel(expression='has(keep) && keep') at NetUri('arc:/inbox->/keep#filter') raised TypeError('CEL filters read data fields; token data is list, not a mapping') evaluating Token('Item', [1, 2]); token not admitted",
+    "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised TypeError('CEL filters read data fields; token data is NoneType, not a mapping') evaluating Token.black(); token not admitted",
+    "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised TypeError('CEL filters read data fields; token data is list, not a mapping') evaluating Token('Item', [1, 2]); token not admitted",
+    "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised CELEvalError(*(\"undeclared reference to 'n' (in activation '<Activation>')\", <class 'KeyError'>, ('n',)), tree='n') evaluating Token('Item', {'m': 1}); token not admitted",
+    "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised CELEvalError(*(\"found no matching overload for Token('RULE', 'relation_gt') applied to '(<class 'celpy.celtypes.StringType'>, <class 'celpy.celtypes.IntType'>)'\", <class 'TypeError'>, (\"no such overload: IntType(0) <class 'celpy.celtypes.IntType'> != StringType('x') <class 'celpy.celtypes.StringType'>\",)), tree='n >  0') evaluating Token('Item', {'n': 'x', 'd': 1}); token not admitted",
+    "guard Cel(expression='inbox[0].data.n / inbox[0].data.d > 1') at NetUri('transition:/take#guard:$0') on transition take raised CELEvalError(*('modulus or divide by zero', <class 'ZeroDivisionError'>, ('division by zero',)), tree='inbox[0].data.n /  inbox[0].data.d') over peeked tokens (Token('Item', {'n': 4, 'd': 0}),); binding skipped",
+    "filter Cel(expression='has(keep) && keep') at NetUri('arc:/inbox->/keep#filter') raised TypeError('CEL filters read data fields; token data is NoneType, not a mapping') evaluating Token.black(); token not admitted",
+    "filter Cel(expression='has(keep) && keep') at NetUri('arc:/inbox->/keep#filter') raised TypeError('CEL filters read data fields; token data is list, not a mapping') evaluating Token('Item', [1, 2]); token not admitted",
+    "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised TypeError('CEL filters read data fields; token data is NoneType, not a mapping') evaluating Token.black(); token not admitted",
+    "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised TypeError('CEL filters read data fields; token data is list, not a mapping') evaluating Token('Item', [1, 2]); token not admitted",
+    "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised CELEvalError(*(\"undeclared reference to 'n' (in activation '<Activation>')\", <class 'KeyError'>, ('n',)), tree='n') evaluating Token('Item', {'m': 1}); token not admitted",
+    "filter Cel(expression='n > 0') at NetUri('arc:/inbox->/take#filter') raised CELEvalError(*(\"found no matching overload for Token('RULE', 'relation_gt') applied to '(<class 'celpy.celtypes.StringType'>, <class 'celpy.celtypes.IntType'>)'\", <class 'TypeError'>, (\"no such overload: IntType(0) <class 'celpy.celtypes.IntType'> != StringType('x') <class 'celpy.celtypes.StringType'>\",)), tree='n >  0') evaluating Token('Item', {'n': 'x', 'd': 1}); token not admitted",
+    "guard Cel(expression='inbox[0].data.n / inbox[0].data.d > 1') at NetUri('transition:/take#guard:$0') on transition take raised CELEvalError(*('modulus or divide by zero', <class 'ZeroDivisionError'>, ('division by zero',)), tree='inbox[0].data.n /  inbox[0].data.d') over peeked tokens (Token('Item', {'n': 4, 'd': 0}),); binding skipped"
+   ],
+   "history": [
+    {
+     "record": "InstanceCreated",
+     "schema": 5,
+     "instance": "cel-errors",
+     "name": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensInitialized",
+     "schema": 5,
+     "place": "inbox",
+     "tokens": [
+      {
+       "color": null,
+       "data": null
+      },
+      {
+       "color": "Item",
+       "data": [
+        1,
+        2
+       ]
+      },
+      {
+       "color": "Item",
+       "data": {
+        "m": 1
+       }
+      },
+      {
+       "color": "Item",
+       "data": {
+        "n": "x",
+        "d": 1
+       }
+      },
+      {
+       "color": "Item",
+       "data": {
+        "n": 4,
+        "d": 0
+       }
+      },
+      {
+       "color": "Item",
+       "data": {
+        "n": 5,
+        "d": 2,
+        "keep": true
+       }
+      },
+      {
+       "color": "Item",
+       "data": {
+        "n": 9,
+        "d": 3
+       }
+      }
+     ],
+     "instant": 0,
+     "entries": [],
+     "scope": null
+    },
+    {
+     "record": "CandidateSelected",
+     "schema": 5,
+     "transition": "keep",
+     "occurrence": 1,
+     "instant": 0
+    },
+    {
+     "record": "FiringBegun",
+     "schema": 5,
+     "transition": "keep",
+     "occurrence": 1,
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensConsumed",
+     "schema": 5,
+     "place": "inbox",
+     "tokens": [
+      {
+       "color": "Item",
+       "data": {
+        "n": 5,
+        "d": 2,
+        "keep": true
+       }
+      }
+     ],
+     "occurrence": 1,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensProduced",
+     "schema": 5,
+     "place": "kept",
+     "tokens": [
+      {
+       "color": "Item",
+       "data": {
+        "n": 5,
+        "d": 2,
+        "keep": true
+       }
+      }
+     ],
+     "occurrence": 1,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "FiringCompleted",
+     "schema": 5,
+     "transition": "keep",
+     "occurrence": 1,
+     "instant": 0
+    },
+    {
+     "record": "CandidateSelected",
+     "schema": 5,
+     "transition": "take",
+     "occurrence": 2,
+     "instant": 0
+    },
+    {
+     "record": "FiringBegun",
+     "schema": 5,
+     "transition": "take",
+     "occurrence": 2,
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensConsumed",
+     "schema": 5,
+     "place": "inbox",
+     "tokens": [
+      {
+       "color": "Item",
+       "data": {
+        "n": 9,
+        "d": 3
+       }
+      }
+     ],
+     "occurrence": 2,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensProduced",
+     "schema": 5,
+     "place": "out",
+     "tokens": [
+      {
+       "color": "Item",
+       "data": {
+        "n": 9,
+        "d": 3
+       }
+      }
+     ],
+     "occurrence": 2,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "FiringCompleted",
+     "schema": 5,
+     "transition": "take",
+     "occurrence": 2,
+     "instant": 0
+    }
+   ]
+  },
+  {
+   "name": "correlation",
+   "definition": "{\n  \"format\": \"petrus-net-definition\",\n  \"version\": 3,\n  \"definition\": {\n    \"name\": null,\n    \"time_domain\": \"integer\",\n    \"places\": [\n      {\n        \"path\": \"config\",\n        \"color\": null\n      },\n      {\n        \"path\": \"out\",\n        \"color\": null\n      },\n      {\n        \"path\": \"pending\",\n        \"color\": null\n      }\n    ],\n    \"transitions\": [\n      {\n        \"path\": \"approve\",\n        \"handler\": null,\n        \"guards\": [\n          {\n            \"kind\": \"cel\",\n            \"expression\": \"pending.all(t, t.data.amount <= config[0].data.limit)\",\n            \"uri\": \"transition:/approve#guard:$0\"\n          },\n          {\n            \"kind\": \"cel\",\n            \"expression\": \"size(pending.filter(t, t.data.amount > 0)) == 2\",\n            \"uri\": \"transition:/approve#guard:$1\"\n          }\n        ],\n        \"timers\": []\n      }\n    ],\n    \"arcs\": [\n      {\n        \"position\": 0,\n        \"source\": \"config\",\n        \"target\": \"approve\",\n        \"mode\": \"read\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      },\n      {\n        \"position\": 1,\n        \"source\": \"pending\",\n        \"target\": \"approve\",\n        \"mode\": \"consume\",\n        \"weight\": 2,\n        \"color\": null,\n        \"filter\": null\n      },\n      {\n        \"position\": 2,\n        \"source\": \"approve\",\n        \"target\": \"out\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      }\n    ],\n    \"completion\": {\n      \"kind\": \"cel\",\n      \"expression\": \"size(out) == 2 && out.exists_one(t, t.data.amount == 70) && config.map(c, c.data.limit) == [100]\"\n    }\n  }\n}\n",
+   "initialMarking": [
+    {
+     "place": "config",
+     "tokens": [
+      {
+       "color": "Config",
+       "data": {
+        "limit": 100
+       }
+      }
+     ]
+    },
+    {
+     "place": "pending",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 150,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 30,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 70,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": -5,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 20,
+        "currency": "USD"
+       }
+      }
+     ]
+    }
+   ],
+   "steps": [
+    {
+     "candidatesBefore": [
+      {
+       "transition": "approve",
+       "consumed": [
+        {
+         "place": "pending",
+         "tokens": [
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 30,
+            "currency": "USD"
+           }
+          },
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 70,
+            "currency": "USD"
+           }
+          }
+         ]
+        }
+       ],
+       "read": [
+        {
+         "place": "config",
+         "tokens": [
+          {
+           "color": "Config",
+           "data": {
+            "limit": 100
+           }
+          }
+         ]
+        }
+       ],
+       "delivered": []
+      },
+      {
+       "transition": "approve",
+       "consumed": [
+        {
+         "place": "pending",
+         "tokens": [
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 30,
+            "currency": "USD"
+           }
+          },
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 20,
+            "currency": "USD"
+           }
+          }
+         ]
+        }
+       ],
+       "read": [
+        {
+         "place": "config",
+         "tokens": [
+          {
+           "color": "Config",
+           "data": {
+            "limit": 100
+           }
+          }
+         ]
+        }
+       ],
+       "delivered": []
+      },
+      {
+       "transition": "approve",
+       "consumed": [
+        {
+         "place": "pending",
+         "tokens": [
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 70,
+            "currency": "USD"
+           }
+          },
+          {
+           "color": "Payment",
+           "data": {
+            "amount": 20,
+            "currency": "USD"
+           }
+          }
+         ]
+        }
+       ],
+       "read": [
+        {
+         "place": "config",
+         "tokens": [
+          {
+           "color": "Config",
+           "data": {
+            "limit": 100
+           }
+          }
+         ]
+        }
+       ],
+       "delivered": []
+      }
+     ],
+     "diagnosticsBefore": [],
+     "outcome": {
+      "occurrence": 1,
+      "transition": "approve",
+      "consumed": [
+       {
+        "color": "Payment",
+        "data": {
+         "amount": 30,
+         "currency": "USD"
+        }
+       },
+       {
+        "color": "Payment",
+        "data": {
+         "amount": 70,
+         "currency": "USD"
+        }
+       }
+      ],
+      "produced": [
+       {
+        "place": "out",
+        "token": {
+         "color": "Payment",
+         "data": {
+          "amount": 30,
+          "currency": "USD"
+         }
+        }
+       },
+       {
+        "place": "out",
+        "token": {
+         "color": "Payment",
+         "data": {
+          "amount": 70,
+          "currency": "USD"
+         }
+        }
+       }
+      ]
+     },
+     "markingAfter": [
+      {
+       "place": "config",
+       "tokens": [
+        {
+         "color": "Config",
+         "data": {
+          "limit": 100
+         }
+        }
+       ]
+      },
+      {
+       "place": "out",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 30,
+          "currency": "USD"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 70,
+          "currency": "USD"
+         }
+        }
+       ]
+      },
+      {
+       "place": "pending",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 150,
+          "currency": "USD"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": -5,
+          "currency": "USD"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 20,
+          "currency": "USD"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "candidatesBefore": [],
+     "diagnosticsBefore": [],
+     "outcome": null,
+     "markingAfter": [
+      {
+       "place": "config",
+       "tokens": [
+        {
+         "color": "Config",
+         "data": {
+          "limit": 100
+         }
+        }
+       ]
+      },
+      {
+       "place": "out",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 30,
+          "currency": "USD"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 70,
+          "currency": "USD"
+         }
+        }
+       ]
+      },
+      {
+       "place": "pending",
+       "tokens": [
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 150,
+          "currency": "USD"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": -5,
+          "currency": "USD"
+         }
+        },
+        {
+         "color": "Payment",
+         "data": {
+          "amount": 20,
+          "currency": "USD"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "status": "completed",
+   "statusDiagnostics": [],
+   "history": [
+    {
+     "record": "InstanceCreated",
+     "schema": 5,
+     "instance": "cel-correlation",
+     "name": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensInitialized",
+     "schema": 5,
+     "place": "config",
+     "tokens": [
+      {
+       "color": "Config",
+       "data": {
+        "limit": 100
+       }
+      }
+     ],
+     "instant": 0,
+     "entries": [],
+     "scope": null
+    },
+    {
+     "record": "TokensInitialized",
+     "schema": 5,
+     "place": "pending",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 150,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 30,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 70,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": -5,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 20,
+        "currency": "USD"
+       }
+      }
+     ],
+     "instant": 0,
+     "entries": [],
+     "scope": null
+    },
+    {
+     "record": "CandidateSelected",
+     "schema": 5,
+     "transition": "approve",
+     "occurrence": 1,
+     "instant": 0
+    },
+    {
+     "record": "FiringBegun",
+     "schema": 5,
+     "transition": "approve",
+     "occurrence": 1,
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensConsumed",
+     "schema": 5,
+     "place": "pending",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 30,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 70,
+        "currency": "USD"
+       }
+      }
+     ],
+     "occurrence": 1,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensRead",
+     "schema": 5,
+     "place": "config",
+     "tokens": [
+      {
+       "color": "Config",
+       "data": {
+        "limit": 100
+       }
+      }
+     ],
+     "occurrence": 1,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensProduced",
+     "schema": 5,
+     "place": "out",
+     "tokens": [
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 30,
+        "currency": "USD"
+       }
+      },
+      {
+       "color": "Payment",
+       "data": {
+        "amount": 70,
+        "currency": "USD"
+       }
+      }
+     ],
+     "occurrence": 1,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "FiringCompleted",
+     "schema": 5,
+     "transition": "approve",
+     "occurrence": 1,
+     "instant": 0
+    }
+   ]
+  },
+  {
+   "name": "inhibit-and-black",
+   "definition": "{\n  \"format\": \"petrus-net-definition\",\n  \"version\": 3,\n  \"definition\": {\n    \"name\": null,\n    \"time_domain\": \"integer\",\n    \"places\": [\n      {\n        \"path\": \"a\",\n        \"color\": null\n      },\n      {\n        \"path\": \"b\",\n        \"color\": null\n      },\n      {\n        \"path\": \"block\",\n        \"color\": null\n      }\n    ],\n    \"transitions\": [\n      {\n        \"path\": \"t\",\n        \"handler\": null,\n        \"guards\": [\n          {\n            \"kind\": \"cel\",\n            \"expression\": \"a[0].color == null && a[0].data == null && size(a) == 1\",\n            \"uri\": \"transition:/t#guard:$0\"\n          }\n        ],\n        \"timers\": []\n      }\n    ],\n    \"arcs\": [\n      {\n        \"position\": 0,\n        \"source\": \"a\",\n        \"target\": \"t\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      },\n      {\n        \"position\": 1,\n        \"source\": \"block\",\n        \"target\": \"t\",\n        \"mode\": \"inhibit\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      },\n      {\n        \"position\": 2,\n        \"source\": \"t\",\n        \"target\": \"b\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      }\n    ],\n    \"completion\": {\n      \"kind\": \"cel\",\n      \"expression\": \"size(a) == 0 && b.exists(x, x.color == \\\"Payment\\\") || size(b) >= 2\"\n    }\n  }\n}\n",
+   "initialMarking": [
+    {
+     "place": "a",
+     "tokens": [
+      {
+       "color": null,
+       "data": null
+      },
+      {
+       "color": null,
+       "data": null
+      }
+     ]
+    }
+   ],
+   "steps": [
+    {
+     "candidatesBefore": [
+      {
+       "transition": "t",
+       "consumed": [
+        {
+         "place": "a",
+         "tokens": [
+          {
+           "color": null,
+           "data": null
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      },
+      {
+       "transition": "t",
+       "consumed": [
+        {
+         "place": "a",
+         "tokens": [
+          {
+           "color": null,
+           "data": null
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      }
+     ],
+     "diagnosticsBefore": [],
+     "outcome": {
+      "occurrence": 1,
+      "transition": "t",
+      "consumed": [
+       {
+        "color": null,
+        "data": null
+       }
+      ],
+      "produced": [
+       {
+        "place": "b",
+        "token": {
+         "color": null,
+         "data": null
+        }
+       }
+      ]
+     },
+     "markingAfter": [
+      {
+       "place": "a",
+       "tokens": [
+        {
+         "color": null,
+         "data": null
+        }
+       ]
+      },
+      {
+       "place": "b",
+       "tokens": [
+        {
+         "color": null,
+         "data": null
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "candidatesBefore": [
+      {
+       "transition": "t",
+       "consumed": [
+        {
+         "place": "a",
+         "tokens": [
+          {
+           "color": null,
+           "data": null
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      }
+     ],
+     "diagnosticsBefore": [],
+     "outcome": {
+      "occurrence": 2,
+      "transition": "t",
+      "consumed": [
+       {
+        "color": null,
+        "data": null
+       }
+      ],
+      "produced": [
+       {
+        "place": "b",
+        "token": {
+         "color": null,
+         "data": null
+        }
+       }
+      ]
+     },
+     "markingAfter": [
+      {
+       "place": "b",
+       "tokens": [
+        {
+         "color": null,
+         "data": null
+        },
+        {
+         "color": null,
+         "data": null
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "candidatesBefore": [],
+     "diagnosticsBefore": [],
+     "outcome": null,
+     "markingAfter": [
+      {
+       "place": "b",
+       "tokens": [
+        {
+         "color": null,
+         "data": null
+        },
+        {
+         "color": null,
+         "data": null
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "status": "completed",
+   "statusDiagnostics": [],
+   "history": [
+    {
+     "record": "InstanceCreated",
+     "schema": 5,
+     "instance": "cel-inhibit-and-black",
+     "name": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensInitialized",
+     "schema": 5,
+     "place": "a",
+     "tokens": [
+      {
+       "color": null,
+       "data": null
+      },
+      {
+       "color": null,
+       "data": null
+      }
+     ],
+     "instant": 0,
+     "entries": [],
+     "scope": null
+    },
+    {
+     "record": "CandidateSelected",
+     "schema": 5,
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0
+    },
+    {
+     "record": "FiringBegun",
+     "schema": 5,
+     "transition": "t",
+     "occurrence": 1,
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensConsumed",
+     "schema": 5,
+     "place": "a",
+     "tokens": [
+      {
+       "color": null,
+       "data": null
+      }
+     ],
+     "occurrence": 1,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensProduced",
+     "schema": 5,
+     "place": "b",
+     "tokens": [
+      {
+       "color": null,
+       "data": null
+      }
+     ],
+     "occurrence": 1,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "FiringCompleted",
+     "schema": 5,
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0
+    },
+    {
+     "record": "CandidateSelected",
+     "schema": 5,
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 0
+    },
+    {
+     "record": "FiringBegun",
+     "schema": 5,
+     "transition": "t",
+     "occurrence": 2,
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensConsumed",
+     "schema": 5,
+     "place": "a",
+     "tokens": [
+      {
+       "color": null,
+       "data": null
+      }
+     ],
+     "occurrence": 2,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensProduced",
+     "schema": 5,
+     "place": "b",
+     "tokens": [
+      {
+       "color": null,
+       "data": null
+      }
+     ],
+     "occurrence": 2,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "FiringCompleted",
+     "schema": 5,
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 0
+    }
+   ]
+  },
+  {
+   "name": "completion-errors",
+   "definition": "{\n  \"format\": \"petrus-net-definition\",\n  \"version\": 3,\n  \"definition\": {\n    \"name\": null,\n    \"time_domain\": \"integer\",\n    \"places\": [\n      {\n        \"path\": \"a\",\n        \"color\": null\n      },\n      {\n        \"path\": \"b\",\n        \"color\": null\n      }\n    ],\n    \"transitions\": [\n      {\n        \"path\": \"t\",\n        \"handler\": null,\n        \"guards\": [],\n        \"timers\": []\n      }\n    ],\n    \"arcs\": [\n      {\n        \"position\": 0,\n        \"source\": \"a\",\n        \"target\": \"t\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      },\n      {\n        \"position\": 1,\n        \"source\": \"t\",\n        \"target\": \"b\",\n        \"mode\": \"consume\",\n        \"weight\": 1,\n        \"color\": null,\n        \"filter\": null\n      }\n    ],\n    \"completion\": {\n      \"kind\": \"cel\",\n      \"expression\": \"b[0].data.missing == 1 || a[0].data > 0\"\n    }\n  }\n}\n",
+   "initialMarking": [
+    {
+     "place": "a",
+     "tokens": [
+      {
+       "color": "X",
+       "data": {
+        "k": 1
+       }
+      }
+     ]
+    }
+   ],
+   "steps": [
+    {
+     "candidatesBefore": [
+      {
+       "transition": "t",
+       "consumed": [
+        {
+         "place": "a",
+         "tokens": [
+          {
+           "color": "X",
+           "data": {
+            "k": 1
+           }
+          }
+         ]
+        }
+       ],
+       "read": [],
+       "delivered": []
+      }
+     ],
+     "diagnosticsBefore": [],
+     "outcome": {
+      "occurrence": 1,
+      "transition": "t",
+      "consumed": [
+       {
+        "color": "X",
+        "data": {
+         "k": 1
+        }
+       }
+      ],
+      "produced": [
+       {
+        "place": "b",
+        "token": {
+         "color": "X",
+         "data": {
+          "k": 1
+         }
+        }
+       }
+      ]
+     },
+     "markingAfter": [
+      {
+       "place": "b",
+       "tokens": [
+        {
+         "color": "X",
+         "data": {
+          "k": 1
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "candidatesBefore": [],
+     "diagnosticsBefore": [],
+     "outcome": null,
+     "markingAfter": [
+      {
+       "place": "b",
+       "tokens": [
+        {
+         "color": "X",
+         "data": {
+          "k": 1
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "status": "stuck",
+   "statusDiagnostics": [
+    "completion condition Cel(expression='b[0].data.missing == 1 || a[0].data > 0') raised CELEvalError(*(\"found no matching overload for _||_ applied to '(<class 'celpy.evaluation.CELEvalError'>, <class 'celpy.evaluation.CELEvalError'>)'\", <class 'TypeError'>, ('<class \\'celpy.evaluation.CELEvalError\\'> CELEvalError(*(\"no such member in mapping: \\'missing\\'\", <class \\'KeyError\\'>, None), tree=\\'b[0].data.missing\\') or <class \\'celpy.evaluation.CELEvalError\\'> CELEvalError(*(\\'invalid_argument\\', <class \\'IndexError\\'>, (\\'list index out of range\\',)), tree=\\'a[0]\\')',)), tree='b[0].data.missing ==  1 || a[0].data >  0') evaluating Marking({b: 1}); read as not holding"
+   ],
+   "history": [
+    {
+     "record": "InstanceCreated",
+     "schema": 5,
+     "instance": "cel-completion-errors",
+     "name": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensInitialized",
+     "schema": 5,
+     "place": "a",
+     "tokens": [
+      {
+       "color": "X",
+       "data": {
+        "k": 1
+       }
+      }
+     ],
+     "instant": 0,
+     "entries": [],
+     "scope": null
+    },
+    {
+     "record": "CandidateSelected",
+     "schema": 5,
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0
+    },
+    {
+     "record": "FiringBegun",
+     "schema": 5,
+     "transition": "t",
+     "occurrence": 1,
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensConsumed",
+     "schema": 5,
+     "place": "a",
+     "tokens": [
+      {
+       "color": "X",
+       "data": {
+        "k": 1
+       }
+      }
+     ],
+     "occurrence": 1,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "TokensProduced",
+     "schema": 5,
+     "place": "b",
+     "tokens": [
+      {
+       "color": "X",
+       "data": {
+        "k": 1
+       }
+      }
+     ],
+     "occurrence": 1,
+     "entries": [],
+     "scope": null,
+     "instant": 0
+    },
+    {
+     "record": "FiringCompleted",
+     "schema": 5,
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0
+    }
+   ]
+  }
+ ]
+}

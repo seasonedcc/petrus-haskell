@@ -1,0 +1,430 @@
+{
+ "artifacts": [
+  {
+   "data_hex": "706f727461626c6520726573756c74",
+   "digest": "94165f5a97fe349562afbfa9bfc3761cf5188d7e54df32ea171b794216aebe6f",
+   "media_type": "text/plain",
+   "metadata": "{\"digest\": \"94165f5a97fe349562afbfa9bfc3761cf5188d7e54df32ea171b794216aebe6f\", \"media_type\": \"text/plain\", \"producer\": {\"lease_id\": \"opaque\", \"operation_id\": \"operation\", \"provider\": \"local-process\"}, \"retention_class\": \"evidence\", \"size\": 15}",
+   "producer": [
+    "operation",
+    "local-process",
+    "opaque"
+   ],
+   "retention_class": "evidence"
+  },
+  {
+   "data_hex": "",
+   "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "media_type": "application/x-tar",
+   "metadata": "{\"digest\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"media_type\": \"application/x-tar\", \"producer\": {\"lease_id\": \"id\", \"operation_id\": \"op\", \"provider\": \"docker\"}, \"retention_class\": \"handoff\", \"size\": 0}",
+   "producer": [
+    "op",
+    "docker",
+    "id"
+   ],
+   "retention_class": "handoff"
+  },
+  {
+   "data_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+   "digest": "40aff2e9d2d8922e47afd4648e6967497158785fbd1da870e7110266bf944880",
+   "media_type": "application/octet-stream; q=\"1\"",
+   "metadata": "{\"digest\": \"40aff2e9d2d8922e47afd4648e6967497158785fbd1da870e7110266bf944880\", \"media_type\": \"application/octet-stream; q=\\\"1\\\"\", \"producer\": {\"lease_id\": \"lease\\\\id\", \"operation_id\": \"op\\u00e9\", \"provider\": \"gondolin\"}, \"retention_class\": \"caf\\u00e9 \\ud83d\\ude00\", \"size\": 256}",
+   "producer": [
+    "op\u00e9",
+    "gondolin",
+    "lease\\id"
+   ],
+   "retention_class": "caf\u00e9 \ud83d\ude00"
+  }
+ ],
+ "events": [
+  {
+   "event_id": "event-0",
+   "line": "{\"causal_refs\":[\"cause\",\"caf\\u00e9\"],\"correlation\":{\"note\":\"[REDACTED]\",\"operation_id\":\"op\",\"token\":\"[REDACTED]\"},\"event_id\":\"event-0\",\"event_kind\":\"execution.finished\",\"metadata\":{\"auth_headers\":\"[REDACTED]\",\"nested\":{\"password\":\"[REDACTED]\",\"safe\":\"visible\"}},\"observed_at\":\"2026-10-10T12:34:56.123456+00:00\",\"outcome\":\"succeeded\",\"phase\":\"execute\",\"producer\":\"worker\",\"producer_sequence\":1,\"retention_policy\":\"short-lived\",\"schema_version\":1}\n",
+   "metadata": {
+    "auth_headers": {
+     "Authorization": "Bearer raw"
+    },
+    "nested": {
+     "password": "raw",
+     "safe": "visible"
+    }
+   },
+   "observed_at": "2026-10-10T12:34:56.123456+00:00"
+  },
+  {
+   "event_id": "event-1",
+   "line": "{\"causal_refs\":[\"cause\",\"caf\\u00e9\"],\"correlation\":{\"note\":\"[REDACTED]\",\"operation_id\":\"op\",\"token\":\"[REDACTED]\"},\"event_id\":\"event-1\",\"event_kind\":\"execution.finished\",\"metadata\":{\"count\":3,\"list\":[\"[REDACTED]\",{\"token\":\"[REDACTED]\"},[null,true,1.5,\"[REDACTED]\"]],\"ratio\":0.1},\"observed_at\":\"2026-01-02T03:04:05+00:00\",\"outcome\":\"succeeded\",\"phase\":\"execute\",\"producer\":\"worker\",\"producer_sequence\":1,\"retention_policy\":\"short-lived\",\"schema_version\":1}\n",
+   "metadata": {
+    "count": 3,
+    "list": [
+     "Bearer abc",
+     {
+      "token": 1
+     },
+     [
+      null,
+      true,
+      1.5,
+      "ghp_12345678"
+     ]
+    ],
+    "ratio": 0.1
+   },
+   "observed_at": "2026-01-02T03:04:05+00:00"
+  },
+  {
+   "event_id": "event-2",
+   "line": "{\"causal_refs\":[\"cause\",\"caf\\u00e9\"],\"correlation\":{\"note\":\"[REDACTED]\",\"operation_id\":\"op\",\"token\":\"[REDACTED]\"},\"event_id\":\"event-2\",\"event_kind\":\"execution.finished\",\"metadata\":{\"big\":1000000000000000000000000000000,\"empty\":{},\"none\":null,\"unicode\":\"caf\\u00e9 \\ud83d\\ude00 \\u2028\"},\"observed_at\":\"0999-12-31T23:59:59.000001+00:00\",\"outcome\":\"succeeded\",\"phase\":\"execute\",\"producer\":\"worker\",\"producer_sequence\":1,\"retention_policy\":\"short-lived\",\"schema_version\":1}\n",
+   "metadata": {
+    "big": 1000000000000000000000000000000,
+    "empty": {},
+    "none": null,
+    "unicode": "caf\u00e9 \ud83d\ude00 \u2028"
+   },
+   "observed_at": "0999-12-31T23:59:59.000001+00:00"
+  }
+ ],
+ "phases": {
+  "": "observe",
+  "a_accepted": "accept",
+  "a_claimed": "claim",
+  "a_completed": "complete",
+  "a_destroyed": "destroy",
+  "a_failed": "fail",
+  "a_finished": "finish",
+  "a_heartbeat": "heartbeat",
+  "a_started": "start",
+  "a_started_x": "observe",
+  "started": "observe"
+ },
+ "secret_keys": [
+  {
+   "key": "",
+   "secret": false
+  },
+  {
+   "key": "secret",
+   "secret": true
+  },
+  {
+   "key": "SECRET_KEY",
+   "secret": true
+  },
+  {
+   "key": "github_token",
+   "secret": true
+  },
+  {
+   "key": "Password",
+   "secret": true
+  },
+  {
+   "key": "credentials",
+   "secret": true
+  },
+  {
+   "key": "Authorization",
+   "secret": true
+  },
+  {
+   "key": "auth_headers",
+   "secret": true
+  },
+  {
+   "key": "authheader",
+   "secret": true
+  },
+  {
+   "key": "auth-Headers",
+   "secret": true
+  },
+  {
+   "key": "auth\nheaders",
+   "secret": false
+  },
+  {
+   "key": "auth__headers",
+   "secret": false
+  },
+  {
+   "key": "cookie",
+   "secret": true
+  },
+  {
+   "key": "private_key",
+   "secret": true
+  },
+  {
+   "key": "privatekey",
+   "secret": true
+  },
+  {
+   "key": "private--key",
+   "secret": false
+  },
+  {
+   "key": "process_env",
+   "secret": true
+  },
+  {
+   "key": "process.env",
+   "secret": true
+  },
+  {
+   "key": "reasoning",
+   "secret": true
+  },
+  {
+   "key": "safe",
+   "secret": false
+  },
+  {
+   "key": "note",
+   "secret": false
+  },
+  {
+   "key": "tok",
+   "secret": false
+  },
+  {
+   "key": "\u0131d_token",
+   "secret": true
+  },
+  {
+   "key": "pa\u017f\u017fword",
+   "secret": true
+  },
+  {
+   "key": "\u212aEY",
+   "secret": false
+  },
+  {
+   "key": "private\u212aey",
+   "secret": true
+  }
+ ],
+ "secret_values": [
+  {
+   "redacted": "plain text",
+   "value": "plain text"
+  },
+  {
+   "redacted": "[REDACTED]",
+   "value": "Bearer raw"
+  },
+  {
+   "redacted": "[REDACTED] tail",
+   "value": "bearer   abc.def~ghi+jkl/mno=pqr-stu tail"
+  },
+  {
+   "redacted": "[REDACTED]",
+   "value": "BEARER\tTOKEN123"
+  },
+  {
+   "redacted": "Bearer ",
+   "value": "Bearer "
+  },
+  {
+   "redacted": "Bearer\n",
+   "value": "Bearer\n"
+  },
+  {
+   "redacted": "x[REDACTED]",
+   "value": "xbearer token"
+  },
+  {
+   "redacted": "credential [REDACTED] must not survive",
+   "value": "credential sk-or-secretvalue must not survive"
+  },
+  {
+   "redacted": "sk-or-abc",
+   "value": "sk-or-abc"
+  },
+  {
+   "redacted": "[REDACTED]",
+   "value": "sk-abcdefgh"
+  },
+  {
+   "redacted": "sk-abcdefg",
+   "value": "sk-abcdefg"
+  },
+  {
+   "redacted": "[REDACTED]",
+   "value": "sk-or-abcdefg"
+  },
+  {
+   "redacted": "[REDACTED]",
+   "value": "ghp_12345678"
+  },
+  {
+   "redacted": "[REDACTED] more",
+   "value": "GHS_ABCDEFGHIJ more"
+  },
+  {
+   "redacted": "gho_short",
+   "value": "gho_short"
+  },
+  {
+   "redacted": "ghx_12345678",
+   "value": "ghx_12345678"
+  },
+  {
+   "redacted": "[REDACTED]",
+   "value": "github_pat_ABCDEFGH_12345"
+  },
+  {
+   "redacted": "[REDACTED]",
+   "value": "GitHub_PAT_abcdefgh"
+  },
+  {
+   "redacted": "two [REDACTED] and [REDACTED] secrets",
+   "value": "two sk-11111111 and ghu_22222222 secrets"
+  },
+  {
+   "redacted": "[REDACTED]",
+   "value": "Bearer\u00a0abc"
+  },
+  {
+   "redacted": "[REDACTED]",
+   "value": "Bearer \u017f\u212a"
+  },
+  {
+   "redacted": "[REDACTED]",
+   "value": "sk-\u017f\u017f\u017f\u017f\u017f\u017f\u017f\u017f"
+  },
+  {
+   "redacted": "caf\u00e9 \ud83d\ude00",
+   "value": "caf\u00e9 \ud83d\ude00"
+  }
+ ],
+ "telemetry": [
+  {
+   "message": "{\"event\": \"impetus_worker_activity_finished\", \"instance\": \"instance-1\", \"occurrence\": 9, \"attempt\": \"attempt-1\", \"epoch\": 2, \"worker\": \"worker-1\", \"outcome\": \"completed\", \"authorization\": \"Bearer secret-value\", \"note\": \"credential sk-or-secretvalue must not survive\", \"ts\": 1}",
+   "record": {
+    "causal_refs": [],
+    "correlation": {
+     "attempt": "attempt-1",
+     "epoch": "2",
+     "instance": "instance-1",
+     "occurrence": "9",
+     "worker": "worker-1"
+    },
+    "event_kind": "impetus_worker_activity_finished",
+    "metadata": {
+     "authorization": "[REDACTED]",
+     "note": "credential [REDACTED] must not survive",
+     "outcome": "completed"
+    },
+    "outcome": "completed",
+    "phase": "finish",
+    "producer": "petrus.telemetry",
+    "producer_sequence": 1,
+    "retention_policy": "bounded-operational",
+    "schema_version": 1
+   }
+  },
+  {
+   "message": "{\"event\": \"safe\"}",
+   "record": {
+    "causal_refs": [],
+    "correlation": {},
+    "event_kind": "safe",
+    "metadata": {},
+    "outcome": "observed",
+    "phase": "observe",
+    "producer": "petrus.telemetry",
+    "producer_sequence": 1,
+    "retention_policy": "bounded-operational",
+    "schema_version": 1
+   }
+  },
+  {
+   "message": "{\"event\": \"x_started\", \"status\": \"running\", \"run_id\": null, \"queue\": \"\", \"net\": true, \"head\": 1.5}",
+   "record": {
+    "causal_refs": [],
+    "correlation": {
+     "head": "1.5",
+     "net": "True"
+    },
+    "event_kind": "x_started",
+    "metadata": {
+     "status": "running"
+    },
+    "outcome": "running",
+    "phase": "start",
+    "producer": "petrus.telemetry",
+    "producer_sequence": 1,
+    "retention_policy": "bounded-operational",
+    "schema_version": 1
+   }
+  },
+  {
+   "message": "{\"event\": \"x_failed\", \"outcome\": null, \"operation\": {\"a\": [1, \"b\"]}, \"repository\": [1, 2]}",
+   "record": {
+    "causal_refs": [],
+    "correlation": {
+     "operation": "{'a': [1, 'b']}",
+     "repository": "[1, 2]"
+    },
+    "event_kind": "x_failed",
+    "metadata": {
+     "outcome": null
+    },
+    "outcome": "None",
+    "phase": "fail",
+    "producer": "petrus.telemetry",
+    "producer_sequence": 1,
+    "retention_policy": "bounded-operational",
+    "schema_version": 1
+   }
+  },
+  {
+   "message": "{\"event\": \"x_heartbeat\", \"ts\": \"t\", \"lease_id\": \"l\", \"metadata_only\": {\"cookie\": \"c\"}}",
+   "record": {
+    "causal_refs": [],
+    "correlation": {
+     "lease_id": "l"
+    },
+    "event_kind": "x_heartbeat",
+    "metadata": {
+     "metadata_only": {
+      "cookie": "[REDACTED]"
+     }
+    },
+    "outcome": "observed",
+    "phase": "heartbeat",
+    "producer": "petrus.telemetry",
+    "producer_sequence": 1,
+    "retention_policy": "bounded-operational",
+    "schema_version": 1
+   }
+  },
+  {
+   "message": "{\"event\": \"x_claimed\", \"outcome\": 3, \"event_extra\": \"e\"}",
+   "record": {
+    "causal_refs": [],
+    "correlation": {},
+    "event_kind": "x_claimed",
+    "metadata": {
+     "event_extra": "e",
+     "outcome": 3
+    },
+    "outcome": "3",
+    "phase": "claim",
+    "producer": "petrus.telemetry",
+    "producer_sequence": 1,
+    "retention_policy": "bounded-operational",
+    "schema_version": 1
+   }
+  },
+  {
+   "message": "{\"event\": 5}",
+   "record": null
+  },
+  {
+   "message": "[\"event\", \"list\"]",
+   "record": null
+  }
+ ]
+}

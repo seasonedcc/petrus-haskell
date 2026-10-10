@@ -1,0 +1,49 @@
+cabal-version:      3.4
+name:               petrus-telemetry
+version:            0.1.0.0
+synopsis:           Operational telemetry: the wall-clock shadow of the Petrus semantic trace
+description:
+  Structured JSON events emitted beside the semantic history: namespaced
+  loggers with bound context, timed spans, a process-wide verbosity ladder, and
+  a swappable process-default sink. Each routed line is byte-for-byte the
+  reference implementation's @json.dumps({**payload, "ts": ms}, default=str)@.
+  Telemetry is never consulted by semantics, and a failing sink never breaks a run.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           System
+build-type:         Simple
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Telemetry
+  c-sources:        cbits/petrus_telemetry.c
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , petrus-json
+                  , text >=2.0
+                  , time >=1.12
+  ghc-options:      -O2
+
+test-suite petrus-telemetry-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , hspec >=2.10
+                  , petrus-json
+                  , petrus-telemetry
+                  , text

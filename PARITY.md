@@ -22,27 +22,30 @@ the tests, conformance suites, and benchmark results that justify the status.
 | Component | Upstream | Haskell package | Status | Evidence |
 | --- | --- | --- | --- | --- |
 | JSON fidelity (foundation) | CPython `json` as used by every format | `petrus-json` | in progress | `packages/petrus-json/test` |
-| Petri net kernel | `impetus/petrinet`, `impetus/scope` | `petrus-impetus` | in progress | |
-| Event history + schema-5 codec | `impetus/history` | `petrus-impetus` | in progress | |
-| Bindings, handlers, selection | `impetus/binding`, `impetus/selection` | `petrus-impetus` | in progress | |
-| CEL | `impetus/binding/cel.py` (cel-python 0.5.0) | `petrus-cel` | in progress | |
-| Instance | `impetus/instance` | `petrus-impetus` | in progress | |
-| Net definition v3 | `impetus/net_definition.py` | `petrus-impetus` | in progress | |
-| Net document v1 | `impetus/net_document.py` | `petrus-impetus` | in progress | |
-| Golden traces | `spec/traces` | `petrus-impetus` | in progress | |
-| History stores: memory | `impetus/history_store/memory.py` | `petrus-impetus` | in progress | |
-| History stores: JSONL, SQLite, Postgres | `impetus/history_store/{jsonl,sqlite,postgres}.py` | | not started | |
-| Observation | `impetus/observation.py`, `engine/observation_http.py` | | not started | |
-| Net DSL | `impetus/dsl.py` | | not started | |
-| Activities | `motus/activity` | | not started | |
+| Petri net kernel | `impetus/petrinet`, `impetus/scope` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| Event history + schema-5 codec | `impetus/history` | `petrus-impetus` | at parity | decode 2.5× faster than Python, canonical-spelling refusals checked against the pre-optimization codec; [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| Bindings, handlers, selection | `impetus/binding`, `impetus/selection` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), CEL via `Petrus.Cel.Impetus.celCompilers` |
+| CEL | `impetus/binding/cel.py` (cel-python 0.5.0) | `petrus-cel` | at parity | [corpus: 1978 expressions, 17850 operator cases](packages/petrus-cel/test/corpus), [test_cel.py port + Instance end-to-end](packages/petrus-cel/test), [bench](packages/petrus-cel/bench/RESULTS.md) |
+| Instance | `impetus/instance` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md); `FiringFailed.error` text for Haskell exceptions is a [documented divergence](packages/petrus-impetus/DIVERGENCES.md) |
+| Net definition v3 | `impetus/net_definition.py` | `petrus-impetus` | in progress | edge cases listed in [PARITY](packages/petrus-impetus/PARITY.md); [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| Net document v1 | `impetus/net_document.py` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| Golden traces | `spec/traces` | `petrus-impetus` | at parity | [GoldenTracesSpec](packages/petrus-impetus/test), `cabal run petrus-golden-traces` |
+| History stores: memory | `impetus/history_store/memory.py` | `petrus-impetus` | at parity | [tests](packages/petrus-impetus/PARITY.md), [differential](packages/petrus-impetus/differential), [bench](packages/petrus-impetus/bench/RESULTS.md) |
+| History stores: JSONL | `impetus/history_store/jsonl.py` | `petrus-history-store` | at parity | [PARITY](packages/petrus-history-store/PARITY.md), [DIVERGENCES](packages/petrus-history-store/DIVERGENCES.md), byte-identical interop both ways (`test/Petrus/HistoryStore/InteropSpec.hs`), [bench](packages/petrus-history-store/bench/RESULTS.md) |
+| History stores: SQLite, Postgres | `impetus/history_store/{sqlite,postgres}.py` | `petrus-history-store` (SQLite place reserved) | not started | |
+| Observation | `impetus/observation.py`, `engine/observation_http.py` | `petrus-observation` | in progress | `observation.py` at parity (fixtures byte for byte); Engine-locking tests and the HTTP adapter wait for the Engine; [tests](packages/petrus-observation/PARITY.md), [differential](packages/petrus-observation/differential), [bench](packages/petrus-observation/bench/RESULTS.md) |
+| Net DSL | `impetus/dsl.py` | `petrus-dsl` | at parity | 68-net differential corpus (v3 bytes, order, URIs, refusals); [tests](packages/petrus-dsl/PARITY.md), [differential](packages/petrus-dsl/differential), [bench](packages/petrus-dsl/bench/RESULTS.md), [divergences](packages/petrus-dsl/DIVERGENCES.md) |
+| Activities | `motus/activity` | | in progress | value types in `petrus-activity` |
+| Dispatch port, InlineDispatch, InMemoryDispatch | `motus/dispatch/{__init__,inline,memory}.py` | `petrus-motus` | at parity | [PARITY](packages/petrus-motus/PARITY.md), [DIVERGENCES](packages/petrus-motus/DIVERGENCES.md); exercised end to end by the [Engine bench](packages/petrus-engine/bench/RESULTS.md) |
 | Dispatch: local, Absurd | `motus/dispatch` | | not started | |
-| Execution, Gondolin | `motus/execution`, `motus/_execution` | | not started | |
+| Execution, Gondolin | `motus/execution`, `motus/_execution` | `petrus-execution` | in progress (all upstream tests ported; real-Gondolin acceptance run pending) | [PARITY](packages/petrus-execution/PARITY.md), [divergences](packages/petrus-execution/DIVERGENCES.md), [bench](packages/petrus-execution/bench/RESULTS.md) |
 | Workers | `motus/worker` | | not started | |
 | Transport: ZeroMQ | `motus/transport` | | not started | |
-| Engine: SQLite, Postgres, Absurd, coordination | `engine/` | | not started | |
+| Engine (provider-neutral) and coordination | `engine/__init__.py`, `engine/_coordination.py` | `petrus-engine` | at parity | [PARITY](packages/petrus-engine/PARITY.md), [DIVERGENCES](packages/petrus-engine/DIVERGENCES.md), JSONL interop with crash/resume both ways (`test/Petrus/Engine/InteropSpec.hs`), [bench](packages/petrus-engine/bench/RESULTS.md) |
+| Engine: SQLite, Postgres, Absurd | `engine/{sqlite,postgres,absurd}.py` | `petrus-engine` provider seam (`Petrus.Engine.Provider`) | not started | |
 | Simulation + HTTP | `simulation.py`, `simulation_http.py` | | not started | |
-| Telemetry | `telemetry.py` | | not started | |
-| Deterministic simulation testing | `testing/dst.py` | | not started | |
+| Telemetry | `telemetry.py` | | in progress | `petrus-telemetry`; Engine instrumentation pending |
+| Deterministic simulation testing | `testing/dst.py` | `petrus-dst` | in progress | [`packages/petrus-dst/PARITY.md`](packages/petrus-dst/PARITY.md) (Engine-independent behavior at parity; Engine-backed authoring awaits the Engine), [`bench/RESULTS.md`](packages/petrus-dst/bench/RESULTS.md) |
 | Agenticus | `agenticus/` | | not started | |
 | Fabric | `fabric/` | | in progress (spec written) | [spec/fabric.md](spec/fabric.md), [108 checks](spec/fabric-conformance.md) |
 | Processes (call/spawn) | `processes/` | | in progress (spec written) | [spec/processes.md](spec/processes.md), [80 checks](spec/processes-conformance.md) |

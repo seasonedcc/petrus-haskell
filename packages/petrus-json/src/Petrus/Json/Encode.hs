@@ -119,8 +119,33 @@ dumpsText options value = TE.decodeUtf8 <$> dumps options value
 
 -- | Serialize to a builder.
 dumpsBuilder :: EncodeOptions -> Json -> Either EncodeError B.Builder
-dumpsBuilder options = go 0
+dumpsBuilder options value
+  | checked, Just problem <- firstProblem 0 value = Left problem
+  | otherwise = Right (go 0 value)
   where
+    -- Refusals are decided up front, in the same depth-first order the
+    -- writer visits values, so the builder itself is a plain fold with no
+    -- 'Either' threaded through every node.
+    checked = not (allowNan options) || hasLimit (reprDigitLimit options) || hasLimit (nestingLimit options)
+    hasLimit = maybe False (const True)
+    firstProblem :: Int -> Json -> Maybe EncodeError
+    firstProblem level = \case
+      Float d | not (allowNan options), isNaN d || isInfinite d -> Just (NonFiniteNumber d)
+      Int i | Just limit <- reprDigitLimit options, tooManyDigits limit i -> Just (IntegerTooLarge limit)
+      Array items@(_ : _) -> deeper level (firstJust (map (firstProblem (level + 1)) items))
+      Object members@(_ : _) -> deeper level (firstJust (map (firstProblem (level + 1) . snd) (ordered members)))
+      _ -> Nothing
+    deeper level rest = case nestingLimit options of
+      Just limit | level >= limit -> Just (NestingTooDeep limit)
+      _ -> rest
+    tooManyDigits limit i
+      | limit == maxIntStrDigits = abs i >= intDigitBound
+      | otherwise = abs i >= 10 ^ max 0 limit
+    ordered members = if sortKeys options then sortOn fst members else members
+    firstJust = \case
+      [] -> Nothing
+      Just problem : _ -> Just problem
+      Nothing : rest -> firstJust rest
     itemSep = case (itemSeparator options, indent options) of
       (Just separator, _) -> separator
       (Nothing, Just _) -> ","
@@ -130,53 +155,35 @@ dumpsBuilder options = go 0
     newline level = case indent options of
       Nothing -> Nothing
       Just width -> Just (B.char7 '\n' <> B.string7 (replicate (width * level) ' '))
+    string = stringB (ensureAscii options)
 
-    go :: Int -> Json -> Either EncodeError B.Builder
+    go :: Int -> Json -> B.Builder
     go level = \case
-      Null -> Right (B.string7 "null")
-      Bool True -> Right (B.string7 "true")
-      Bool False -> Right (B.string7 "false")
-      Int i -> intB i
+      Null -> B.string7 "null"
+      Bool True -> B.string7 "true"
+      Bool False -> B.string7 "false"
+      Int i -> B.integerDec i
       Float d -> floatB d
-      String s -> Right (stringB (ensureAscii options) s)
-      Array [] -> Right (B.string7 "[]")
-      Array items -> deeper level (container '[' ']' level (map (go (level + 1)) items))
-      Object [] -> Right (B.string7 "{}")
-      Object members -> deeper level $
-        let ordered = if sortKeys options then sortOn fst members else members
-            member (key, value) = do
-              encoded <- go (level + 1) value
-              Right (stringB (ensureAscii options) key <> keySep <> encoded)
-         in container '{' '}' level (map member ordered)
+      String s -> string s
+      Array [] -> B.string7 "[]"
+      Array items -> container '[' ']' level (map (go (level + 1)) items)
+      Object [] -> B.string7 "{}"
+      Object members ->
+        let member (key, v) = string key <> keySep <> go (level + 1) v
+         in container '{' '}' level (map member (ordered members))
 
-    container open close level encodedItems = do
-      items <- sequence encodedItems
+    container open close level items =
       let inner = newline (level + 1)
           outer = newline level
           separator = itemSepB <> maybe mempty id inner
-          body = mconcat (intersperseB separator items)
-      Right (B.char7 open <> maybe mempty id inner <> body <> maybe mempty id outer <> B.char7 close)
+       in B.char7 open <> maybe mempty id inner <> mconcat (intersperseB separator items) <> maybe mempty id outer <> B.char7 close
 
-    deeper level encoded = case nestingLimit options of
-      Just limit | level >= limit -> Left (NestingTooDeep limit)
-      _ -> encoded
-
-    intB i = case reprDigitLimit options of
-      Just limit | tooManyDigits limit i -> Left (IntegerTooLarge limit)
-      _ -> Right (B.integerDec i)
-
-    tooManyDigits limit i
-      | limit == maxIntStrDigits = abs i >= intDigitBound
-      | otherwise = abs i >= 10 ^ max 0 limit
-
+    -- Non-finite values reach here only when 'allowNan' admits them.
     floatB d
-      | isNaN d = nonFinite "NaN"
-      | isInfinite d = nonFinite (if d > 0 then "Infinity" else "-Infinity")
-      | otherwise = Right (B.string7 (pythonFloatRepr d))
-      where
-        nonFinite spelling
-          | allowNan options = Right (B.string7 spelling)
-          | otherwise = Left (NonFiniteNumber d)
+      | isNaN d = B.string7 "NaN"
+      | isInfinite d = B.string7 (if d > 0 then "Infinity" else "-Infinity")
+      | otherwise = B.string7 (pythonFloatRepr d)
+
 
 intersperseB :: B.Builder -> [B.Builder] -> [B.Builder]
 intersperseB _ [] = []
@@ -185,8 +192,19 @@ intersperseB separator (first : rest) = first : concatMap (\item -> [separator, 
 -- | CPython's JSON string encoding (@py_encode_basestring@ /
 -- @py_encode_basestring_ascii@).
 stringB :: Bool -> Text -> B.Builder
-stringB asciiOnly text = B.char7 '"' <> T.foldr (\c rest -> escape c <> rest) mempty text <> B.char7 '"'
+stringB asciiOnly text = B.char7 '"' <> chunks text <> B.char7 '"'
   where
+    -- Runs of characters that need no escape are copied as one UTF-8 slice;
+    -- only the characters between runs go through 'escape'. The output is
+    -- the same as escaping character by character, several times faster.
+    plain c = c >= ' ' && c /= '"' && c /= '\\' && (not asciiOnly || c <= '~')
+    chunks t
+      | T.null t = mempty
+      | otherwise =
+          let (run, rest) = T.span plain t
+           in TE.encodeUtf8Builder run <> case T.uncons rest of
+                Nothing -> mempty
+                Just (c, rest') -> escape c <> chunks rest'
     escape c = case c of
       '"' -> B.string7 "\\\""
       '\\' -> B.string7 "\\\\"
