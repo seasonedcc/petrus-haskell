@@ -5,14 +5,15 @@
 -- @TestLifecycleScopeCancellation@ (1), @TestWorkerKill@ (4),
 -- @TestAuthorityKill@ (2) and @TestAbsurdProviderEngineConstruction@ (19);
 -- 27 of the file's 40 cases. The other 13 (@TestActivityRegistry@ and
--- @TestDispatchDoorbell@) test the Worker process and its registry, and
--- belong to the Worker component.
+-- @TestDispatchDoorbell@) test the Worker process and its registry; they
+-- are "Petrus.Engine.Absurd.WorkerTopologySpec".
 --
 -- Every example that runs a Worker runs twice: once against the
 -- reference's own Worker process (@python -m petrus.motus.worker
 -- --provider absurd@, as upstream starts it — a Haskell Engine with a
--- Python Worker), and once against an in-process lane over this port's
--- 'AbsurdWorkerDispatch' (a Haskell Engine with a Haskell Worker).
+-- Python Worker), and once against this port's Worker process (this
+-- suite's executable as 'workerMain' with the Absurd provider slot — a
+-- Haskell Engine with a Haskell Worker), both killed by exact PID.
 --
 -- Without @PETRUS_TEST_POSTGRES@ every example is pending, saying so
 -- (upstream's @postgres@ marker).
@@ -57,7 +58,7 @@ spec = absurdEngineSpec $ do
 workerLabel :: WorkerKind -> String
 workerLabel = \case
   PythonWorker -> "reference Worker process (python -m petrus.motus.worker)"
-  HaskellWorker -> "Haskell Worker lane (AbsurdWorkerDispatch)"
+  HaskellWorker -> "Haskell Worker process (workerMain with the Absurd provider slot)"
 
 startOn :: Fixture -> WorkerKind -> WorkerOptions -> IO Worker
 startOn = startWorker

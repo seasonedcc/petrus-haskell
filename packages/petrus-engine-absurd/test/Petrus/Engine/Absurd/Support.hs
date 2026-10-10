@@ -11,12 +11,12 @@
 --   @python -m petrus.motus.worker --provider absurd --registry
 --   tests.absurd_support:activities@, exactly as upstream starts it (killed
 --   by exact PID);
--- * 'HaskellWorker' — an in-process lane over this port's
---   'AbsurdWorkerDispatch' running the same registry ('sparkWork', a
---   Haskell twin of @activities()@), with the reference Worker's claim
---   loop and its stdout events. Killing it stops its thread mid-Activity
---   and drops its connection without reporting, which is what a SIGKILL
---   leaves on the database: a live lease on a dead claimant.
+-- * 'HaskellWorker' — this port's Worker process: this suite's own
+--   executable re-run as the Worker entry point
+--   ("Petrus.Motus.Worker.Cli" 'workerMain' with the Absurd provider slot
+--   'absurdPlugins'), with the same command line and the same registry
+--   ('sparkWorkActivity', a Haskell twin of @activities()@). It is killed
+--   by exact PID, as the reference's is.
 module Petrus.Engine.Absurd.Support
   ( -- * The topology net
     inbox
@@ -44,6 +44,7 @@ module Petrus.Engine.Absurd.Support
   , closeSession
   , engineOptionsFor
   , absurdOptionsFor
+  , fresh
   , freshTopo
   , freshIssue
 
@@ -80,7 +81,10 @@ module Petrus.Engine.Absurd.Support
   , terminateWorker
   , waitWorker
   , workerAlive
-  , sparkWork
+  , sparkWorkActivity
+  , workerModeVariable
+  , topologyRegistries
+  , workerArguments
 
     -- * Selectors
   , engineRuntimeMatching
@@ -88,10 +92,8 @@ module Petrus.Engine.Absurd.Support
   , engineAnyMatching
   ) where
 
-import Control.Concurrent (ThreadId, forkIO, forkIOWithUnmask, killThread, threadDelay)
-import Control.Concurrent.Chan (Chan, newChan, readChan, writeChan)
-import Control.Concurrent.MVar
-import Control.Exception (SomeAsyncException, SomeException, bracket, finally, fromException, mask_, throwIO, try)
+import Control.Concurrent (forkIO, threadDelay)
+import Control.Exception (SomeException, bracket, finally, throwIO, try)
 import Control.Monad (forM_, forever, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -107,9 +109,7 @@ import GHC.Clock (getMonotonicTime)
 import Numeric (showHex)
 import Petrus.Activity
   ( ActivityDeclaration
-  , ActivityFailureFields (..)
   , ActivityInvocation (..)
-  , activityFailure
   , defaultExecutionPolicy
   , executionPolicy
   , policyFields
@@ -126,18 +126,12 @@ import Petrus.Impetus.History.Records
 import Petrus.Impetus.Instance (ImplementationRef (..))
 import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..), dumps, defaultDumps, lookupMember, parseJson, pythonLoads)
-import Petrus.Motus.Dispatch (ActivityAttempt (..), AttemptFailure (..), WorkerDispatch (..))
-import Petrus.Motus.Dispatch.Absurd
-  ( defaultAbsurdWorkerOptions
-  , ensureAbsurdSchema
-  , openAbsurdWorkerDispatch
-  , toWorkerDispatch
-  )
-import Petrus.Motus.Dispatch.Absurd qualified as Absurd
+import Petrus.Motus.Dispatch.Absurd (ensureAbsurdSchema)
 import Petrus.Postgres (Connection, query, textParam)
 import Petrus.Postgres qualified as Pg
 import Petrus.TestSupport (PostgresTarget (..), postgresSpec, pythonExecutable, upstreamPetrus)
-import System.Environment (getEnvironment)
+import Petrus.Motus.Worker (Activity, ValueError (..))
+import System.Environment (getEnvironment, getExecutablePath, lookupEnv)
 import System.Exit (ExitCode (..))
 import System.IO (BufferMode (..), Handle, hClose, hSetBinaryMode, hSetBuffering)
 import System.IO.Unsafe (unsafePerformIO)
@@ -450,6 +444,10 @@ doneTokens engine = toList . placeTokens done <$> Engine.marking engine
 -- ---------------------------------------------------------------------------
 -- Workers
 
+-- | Which Worker process serves an example: the reference's own
+-- (@python -m petrus.motus.worker@) or this port's (this suite's
+-- executable re-run as the Worker entry point: 'workerMain' with the
+-- 'absurdPlugins' provider slot).
 data WorkerKind = PythonWorker | HaskellWorker
   deriving stock (Eq, Show)
 
@@ -465,55 +463,66 @@ data WorkerOptions = WorkerOptions
 workerOptions :: WorkerOptions
 workerOptions = WorkerOptions {queues = [capability], claimTimeout = 30, pollInterval = 0.1, workerId = Nothing}
 
--- | A started Worker of either kind.
-data Worker
-  = PyWorker Handle ProcessHandle (IORef [ByteString])
-  | HsWorker HsLane
-
-data HsLane = HsLane
-  { thread :: ThreadId
-  , events :: Chan Json
-  , stopping :: IORef Bool
-  , finished :: MVar ExitCode
-  , custody :: Absurd.AbsurdWorkerDispatch
+-- | A started Worker process of either implementation.
+data Worker = Worker
+  { out :: Handle
+  , handle :: ProcessHandle
+  , diagnostics :: IORef [ByteString]
   }
+
+-- | Set, this suite's executable is the Worker process entry point over
+-- 'topologyRegistries'.
+workerModeVariable :: String
+workerModeVariable = "PETRUS_ENGINE_ABSURD_TEST_WORKER"
+
+-- | The registries a Haskell Worker process can load:
+-- @tests.absurd_support:activities@ ('sparkWorkActivity' over
+-- @$IMPETUS_TEST_DSN@).
+topologyRegistries :: Map.Map Text (IO (Map.Map Text Activity))
+topologyRegistries =
+  Map.fromList
+    [ ( "tests.absurd_support:activities"
+      , do
+          dsn' <- maybe (fail "IMPETUS_TEST_DSN is unset") pure =<< lookupEnv "IMPETUS_TEST_DSN"
+          pure (Map.fromList [("spark_work", sparkWorkActivity (BC.pack dsn'))])
+      )
+    ]
+
+-- | The command line of @worker_factory@'s process, after the program.
+workerArguments :: ByteString -> WorkerOptions -> [String]
+workerArguments dsn' o =
+  ["--provider", "absurd", "--dsn", BC.unpack dsn', "--registry", "tests.absurd_support:activities", "--claim-timeout", show o.claimTimeout, "--poll-interval", show o.pollInterval]
+    <> concat [["--queue", T.unpack q] | q <- o.queues]
+    <> maybe [] (\w -> ["--worker-id", T.unpack w]) o.workerId
 
 -- | Start a Worker, barrier on its ready event, and register it for
 -- teardown.
 startWorker :: Fixture -> WorkerKind -> WorkerOptions -> IO Worker
 startWorker fixture kind o = do
-  worker <- case kind of
-    PythonWorker -> startPython fixture o
-    HaskellWorker -> startHaskell fixture o
-  modifyIORef' fixture.workers (worker :)
-  _ <- awaitEvent worker (\event -> lookupMember "ready" event == Just (Bool True))
-  pure worker
-
-startPython :: Fixture -> WorkerOptions -> IO Worker
-startPython fixture o = do
-  exe <- pythonExecutable
-  root <- upstreamPetrus
   environment <- getEnvironment
   let dsnText = BC.unpack fixture.dsn
-      arguments =
-        ["-m", "petrus.motus.worker", "--provider", "absurd", "--dsn", dsnText, "--registry", "tests.absurd_support:activities", "--claim-timeout", show o.claimTimeout, "--poll-interval", show o.pollInterval]
-          <> concat [["--queue", T.unpack q] | q <- o.queues]
-          <> maybe [] (\w -> ["--worker-id", T.unpack w]) o.workerId
-  (_, Just out, Just err, handle) <-
-    createProcess
-      (proc exe arguments)
-        { cwd = Just root
-        , env = Just (("IMPETUS_TEST_DSN", dsnText) : filter ((/= "IMPETUS_TEST_DSN") . fst) environment)
-        , std_out = CreatePipe
-        , std_err = CreatePipe
-        }
+      arguments = workerArguments fixture.dsn o
+      variables = ("IMPETUS_TEST_DSN", dsnText) : [(workerModeVariable, "1") | kind == HaskellWorker]
+      environment' = variables <> filter ((`notElem` map fst variables) . fst) environment
+  command <- case kind of
+    PythonWorker -> do
+      exe <- pythonExecutable
+      root <- upstreamPetrus
+      pure (proc exe (["-m", "petrus.motus.worker"] <> arguments)) {cwd = Just root}
+    HaskellWorker -> do
+      self <- getExecutablePath
+      pure (proc self (arguments <> ["+RTS", "-M2G", "-RTS"]))
+  (_, Just out, Just err, handle) <- createProcess command {env = Just environment', std_out = CreatePipe, std_err = CreatePipe}
   hSetBinaryMode out True
   hSetBuffering out LineBuffering
   diagnostics <- newIORef []
   -- Drain stderr so a chatty Worker never blocks on a full pipe; keep it
   -- for failure messages.
   _ <- forkIO (drainInto err diagnostics)
-  pure (PyWorker out handle diagnostics)
+  let worker = Worker {out, handle, diagnostics}
+  modifyIORef' fixture.workers (worker :)
+  _ <- awaitEvent worker (\event -> lookupMember "ready" event == Just (Bool True))
+  pure worker
 
 drainInto :: Handle -> IORef [ByteString] -> IO ()
 drainInto h sink = do
@@ -521,53 +530,6 @@ drainInto h sink = do
   case r of
     Right chunk | not (BS.null chunk) -> modifyIORef' sink (chunk :) >> drainInto h sink
     _ -> hClose h
-
-startHaskell :: Fixture -> WorkerOptions -> IO Worker
-startHaskell fixture o = do
-  custody <-
-    openAbsurdWorkerDispatch
-      fixture.dsn
-      defaultAbsurdWorkerOptions {Absurd.queues = o.queues, Absurd.workerId = o.workerId, Absurd.claimTimeout = fromInteger o.claimTimeout}
-  events <- newChan
-  stopping <- newIORef False
-  finished <- newEmptyMVar
-  let w = toWorkerDispatch custody
-      say = writeChan events
-      label = maybe Null String o.workerId
-      execute attempt = do
-        outcome <- trySync (sparkWork fixture.dsn w attempt)
-        reported <- trySync $ case outcome of
-          Right (Right result) -> w.complete attempt result >> pure "completed"
-          Right (Left failure) -> w.fail attempt failure >> pure "failed"
-          Left raised -> w.fail attempt (FailureException raised) >> pure "failed"
-        case reported of
-          Left refused -> say (Object [("worker", label), ("refused", String attempt.attemptId), ("error", String (T.strip (T.pack (show refused))))])
-          Right outcome' ->
-            say (Object [("worker", label), ("processed", String attempt.attemptId), ("activity", String attempt.invocation.activity), ("outcome", String outcome')])
-      drain =
-        readIORef stopping >>= \case
-          True -> pure ()
-          False ->
-            w.claim >>= \case
-              Nothing -> pure ()
-              Just attempt -> execute attempt >> drain
-      loop = do
-        drain
-        stop <- readIORef stopping
-        unless stop $ void (w.wait o.pollInterval) >> loop
-  thread <- mask_ $ forkIOWithUnmask $ \unmask -> do
-    r <- try @SomeException (unmask (say (Object [("ready", Bool True), ("worker", label)]) >> loop))
-    _ <- try @SomeException (Absurd.close custody)
-    putMVar finished (either (const (ExitFailure 1)) (const ExitSuccess) r)
-  pure (HsWorker HsLane {thread, events, stopping, finished, custody})
-
--- | @try@ for synchronous exceptions only: a kill (an asynchronous
--- exception) must never be reported as the Activity's failure.
-trySync :: IO a -> IO (Either SomeException a)
-trySync action =
-  try action >>= \case
-    Left raised | Just (_ :: SomeAsyncException) <- fromException raised -> throwIO raised
-    other -> pure other
 
 -- | @await_event(process, predicate)@ (30 s).
 awaitEvent :: Worker -> (Json -> Bool) -> IO Json
@@ -600,8 +562,8 @@ tryAwaitEvent seconds worker predicate = do
             pure (Left ("worker barrier timeout; saw " <> show (reverse saw)))
           Just Nothing -> do
             saw <- readIORef seen
-            diagnostics <- workerDiagnostics worker
-            pure (Left ("worker exited early; saw " <> show (reverse saw) <> "; stderr " <> diagnostics))
+            stderr' <- workerDiagnostics worker
+            pure (Left ("worker exited early; saw " <> show (reverse saw) <> "; stderr " <> stderr'))
           Just (Just (line, event)) -> do
             modifyIORef' seen (line :)
             case event of
@@ -610,69 +572,47 @@ tryAwaitEvent seconds worker predicate = do
   loop
 
 nextEvent :: Worker -> IO (Maybe (ByteString, Maybe Json))
-nextEvent = \case
-  PyWorker out _ _ -> do
-    r <- try @SomeException (BC.hGetLine out)
-    pure $ case r of
-      Left _ -> Nothing
-      Right line -> Just (line, either (const Nothing) Just (parseJson pythonLoads line))
-  HsWorker lane -> do
-    event <- readChan lane.events
-    pure (Just (either (const "?") id (dumps defaultDumps event), Just event))
+nextEvent worker = do
+  r <- try @SomeException (BC.hGetLine worker.out)
+  pure $ case r of
+    Left _ -> Nothing
+    Right line -> Just (line, either (const Nothing) Just (parseJson pythonLoads line))
 
 workerDiagnostics :: Worker -> IO String
-workerDiagnostics = \case
-  PyWorker _ _ sink -> BC.unpack . BS.concat . reverse <$> readIORef sink
-  HsWorker _ -> pure ""
+workerDiagnostics worker = BC.unpack . BS.concat . reverse <$> readIORef worker.diagnostics
 
--- | @process.kill(); process.wait()@ — idempotent. A Python Worker gets
--- SIGKILL by exact PID; a Haskell lane's thread is stopped mid-Activity
--- and its connection dropped without any report.
+-- | @process.kill(); process.wait()@ — idempotent; SIGKILL by exact PID.
 killWorker :: Worker -> IO ()
-killWorker = \case
-  PyWorker _ handle _ ->
-    getProcessExitCode handle >>= \case
-      Just _ -> pure ()
-      Nothing -> do
-        getPid handle >>= mapM_ (\pid -> void (try @SomeException (signalProcess sigKILL pid)))
-        void (waitForProcess handle)
-  HsWorker lane -> do
-    alive <- isEmptyMVar lane.finished
-    when alive $ do
-      killThread lane.thread
-      _ <- try @SomeException (Absurd.workerConnection lane.custody >>= Pg.close)
-      void (readMVar lane.finished)
+killWorker worker =
+  getProcessExitCode worker.handle >>= \case
+    Just _ -> pure ()
+    Nothing -> do
+      getPid worker.handle >>= mapM_ (\pid -> void (try @SomeException (signalProcess sigKILL pid)))
+      void (waitForProcess worker.handle)
 
 -- | @process.send_signal(SIGTERM)@: drain, don't drop — the in-flight
 -- Activity completes, then the Worker exits.
 terminateWorker :: Worker -> IO ()
-terminateWorker = \case
-  PyWorker _ handle _ -> getPid handle >>= mapM_ (signalProcess sigTERM)
-  HsWorker lane -> writeIORef lane.stopping True
+terminateWorker worker = getPid worker.handle >>= mapM_ (signalProcess sigTERM)
 
 -- | @process.wait(timeout)@.
 waitWorker :: Double -> Worker -> IO (Maybe ExitCode)
-waitWorker seconds = \case
-  PyWorker _ handle _ -> timeout (round (seconds * 1e6)) (waitForProcess handle)
-  HsWorker lane -> timeout (round (seconds * 1e6)) (readMVar lane.finished)
+waitWorker seconds worker = timeout (round (seconds * 1e6)) (waitForProcess worker.handle)
 
 -- | @process.poll() is None@.
 workerAlive :: Worker -> IO Bool
-workerAlive = \case
-  PyWorker _ handle _ -> (== Nothing) <$> getProcessExitCode handle
-  HsWorker lane -> isEmptyMVar lane.finished
+workerAlive worker = (== Nothing) <$> getProcessExitCode worker.handle
 
 -- | The Haskell twin of @tests.absurd_support.activities()["spark_work"]@:
 -- the Activity whose world is the fixture database. Its external effect is
 -- idempotent by the invocation's idempotency identity; @nap@ holds the
--- delivery open; @boom@ raises before any effect (a @ValueError@, spelled
--- as the reference Worker spells an exception: retryable, its type name as
--- the kind); an armed kill switch blocks the first delivery forever after
--- the effect committed. @heartbeat-long@ and @checkpoint-crash@ are the
--- heartbeat and checkpoint modes.
-sparkWork :: ByteString -> WorkerDispatch -> ActivityAttempt -> IO (Either AttemptFailure Json)
-sparkWork dsnBytes w attempt = do
-  let input = attempt.invocation.input
+-- delivery open; @boom@ raises a @ValueError@ before any effect; an armed
+-- kill switch blocks the first delivery forever after the effect
+-- committed. @heartbeat-long@ and @checkpoint-crash@ are the heartbeat and
+-- checkpoint modes.
+sparkWorkActivity :: ByteString -> Activity
+sparkWorkActivity dsnBytes inv ctx = do
+  let input = inv.input
       member key = fromMaybe Null (lookupMember key input)
       textOf = \case
         String s -> s
@@ -688,58 +628,51 @@ sparkWork dsnBytes w attempt = do
       barrier = case member "barrier" of
         String p | not (T.null p) -> Just (T.unpack p)
         _ -> Nothing
-      mode = member "mode"
-      continue = do
+      continue =
         bracket (Pg.connect dsnBytes True) Pg.close $ \connection -> do
           case member "nap" of
             nap | truthy nap -> threadDelay (round (napSeconds nap * 1e6))
             _ -> pure ()
-          if truthy (member "boom")
-            then pure (Left (valueError "boom requested"))
-            else do
-              _ <-
-                Pg.execute_
-                  connection
-                  "INSERT INTO impetus_test.effects (idempotency) VALUES (%s) ON CONFLICT DO NOTHING"
-                  [maybe Pg.nullParam textParam attempt.invocation.idempotency]
-              took <- query connection "UPDATE impetus_test.kill_switch SET armed = FALSE WHERE armed RETURNING 1" []
-              unless (null took) $ forever (threadDelay 1000000000)
-              pure (Right (String ("sparked " <> textOf (member "id"))))
-  case mode of
+          when (truthy (member "boom")) $ throwIO (ValueError "boom requested")
+          _ <-
+            Pg.execute_
+              connection
+              "INSERT INTO impetus_test.effects (idempotency) VALUES (%s) ON CONFLICT DO NOTHING"
+              [maybe Pg.nullParam textParam inv.idempotency]
+          took <- query connection "UPDATE impetus_test.kill_switch SET armed = FALSE WHERE armed RETURNING 1" []
+          unless (null took) $ forever (threadDelay 1000000000)
+          pure (String ("sparked " <> textOf (member "id")))
+  case member "mode" of
     String "heartbeat-long" -> do
       start <- getMonotonicTime
       let beat n = do
             now <- getMonotonicTime
             when (now < start + 2.5) $ do
-              _ <- w.heartbeat attempt (Just (Object [("beats", Int n)]))
+              _ <- ctx.heartbeat (Just (Object [("beats", Int n)]))
               threadDelay 200000
               beat (n + 1)
-      beat 1
+      beat (1 :: Integer)
       continue
-    String "checkpoint-crash" -> case attempt.latestDetails of
-      Null -> do
-        _ <- w.heartbeat attempt (Just (Object [("cursor", Int 7), ("first_claimant", String attempt.claimant)]))
-        forM_ barrier $ \p -> writeJson p (Object [("claimant", String attempt.claimant)])
-        forever (threadDelay 1000000000)
-      details -> do
-        forM_ barrier $ \p -> writeJson (resumedPath p) (Object [("claimant", String attempt.claimant), ("details", details)])
-        pure (Right (String ("resumed " <> textOf (fromMaybe Null (lookupMember "cursor" details)))))
+    String "checkpoint-crash" ->
+      ctx.latestDetails >>= \case
+        Null -> do
+          _ <- ctx.heartbeat (Just (Object [("cursor", Int 7), ("first_claimant", String ctx.claimant)]))
+          forM_ barrier $ \p -> writeJson p (Object [("claimant", String ctx.claimant)])
+          forever (threadDelay 1000000000)
+        details -> do
+          forM_ barrier $ \p -> writeJson (resumedPath p) (Object [("claimant", String ctx.claimant), ("details", details)])
+          pure (String ("resumed " <> textOf (fromMaybe Null (lookupMember "cursor" details))))
     _ -> continue
   where
     napSeconds = \case
       Int n -> fromInteger n
       Float n -> n
       String s -> read (T.unpack s)
-      _ -> 0
+      _ -> 0 :: Double
     writeJson p value = BS.writeFile p (either (const "{}") id (dumps defaultDumps value))
     resumedPath p = case break (== '.') (reverse p) of
       (_, '.' : stem) -> reverse stem <> ".resumed"
       _ -> p <> ".resumed"
-    valueError message =
-      either
-        (FailureMessage . const message)
-        FailureClassified
-        (activityFailure ActivityFailureFields {failureError = message, failureKind = "ValueError", failureDetails = Null, failureRetryable = True, failureRetryAfter = Nothing})
 
 -- ---------------------------------------------------------------------------
 -- Selectors

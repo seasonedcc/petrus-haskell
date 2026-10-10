@@ -5,9 +5,13 @@
 -- as @python -m petrus.motus.worker --provider local@).
 --
 -- The reference's file runs the same topology over PostgreSQL History and
--- Absurd Dispatch; its Absurd-only cases (the Engine's Absurd doors,
--- fencing, recovery locks, the doorbell) belong to the Absurd Dispatch
--- port and are listed in PARITY.md. The cases here keep the reference's
+-- Absurd Dispatch. All of its 40 cases are ported over that substrate in
+-- petrus-engine-absurd ("Petrus.Engine.AbsurdSpec" for the Engine side,
+-- "Petrus.Engine.Absurd.WorkerTopologySpec" for the Worker process and its
+-- registry), each Worker-backed case against both the reference's Worker
+-- process and a Haskell one (the Worker entry point with the
+-- 'ProviderPlugins' Absurd slot); they live there because the Absurd
+-- Engine depends on this package. The cases here keep the reference's
 -- shape: the Activity executes out of process and completes through the
 -- Engine's projection; a Worker SIGKILLed mid-Activity is replaced after
 -- lease expiry with exactly one effect; SIGTERM drains the in-flight

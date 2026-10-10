@@ -42,6 +42,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Motus.Dispatch.Absurd
                     Petrus.Motus.Dispatch.Absurd.Schema
+                    Petrus.Motus.Worker.Absurd
   other-modules:    Petrus.Motus.Dispatch.Absurd.Embed
   build-depends:    base >=4.18 && <5
                   , base16-bytestring >=1.0
