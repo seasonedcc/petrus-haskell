@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# List what changed upstream between two commits, grouped the way PARITY.md is.
+#   scripts/upstream-diff <name> <old-sha> <new-sha>
+set -euo pipefail
+cd "$(dirname "$0")/.."
+name=$1 old=$2 new=$3
+repo="upstream/$name"
+git -C "$repo" fetch --quiet origin
+git -C "$repo" diff --stat "$old" "$new" -- src spec tests scripts server bin 2>/dev/null | tail -n +1
+echo
+echo "Changed top-level components:"
+git -C "$repo" diff --name-only "$old" "$new" -- src spec tests server bin \
+  | awk -F/ '{ if ($1 == "src") print $2 "/" $3 "/" $4; else print $1 "/" $2 }' | sort | uniq -c

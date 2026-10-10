@@ -6,3 +6,4 @@ dist-newstyle/
 *.dyn_o
 .DS_Store
 /bench-results/tmp/
+/.claude/
