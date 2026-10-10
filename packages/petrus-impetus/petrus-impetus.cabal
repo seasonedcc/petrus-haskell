@@ -30,12 +30,18 @@ common warnings
 library
   import:           warnings
   hs-source-dirs:   src
-  exposed-modules:  Petrus.Impetus.History
+  exposed-modules:  Petrus.Impetus.Binding
+                    Petrus.Impetus.History
+                    Petrus.Impetus.HistoryStore
+                    Petrus.Impetus.Instance
+                    Petrus.Impetus.Instance.Firing
+                    Petrus.Impetus.Selection
                     Petrus.Impetus.History.Codec
                     Petrus.Impetus.History.Records
                     Petrus.Impetus.History.Replay
                     Petrus.Impetus.Internal.OMap
                     Petrus.Impetus.Internal.Repr
+                    Petrus.Impetus.Internal.Uuid
                     Petrus.Impetus.Petrinet
                     Petrus.Impetus.Petrinet.Dot
                     Petrus.Impetus.Petrinet.Enabledness
@@ -52,8 +58,10 @@ library
                   , filepath >=1.4
                   , petrus-activity
                   , petrus-json
+                  , petrus-telemetry
                   , process >=1.6
                   , text >=2.0
+                  , time >=1.12
                   , transformers >=0.6
   ghc-options:      -O2
 
