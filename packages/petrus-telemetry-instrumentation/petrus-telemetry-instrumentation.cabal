@@ -1,0 +1,62 @@
+cabal-version:      3.4
+name:               petrus-telemetry-instrumentation
+version:            0.1.0.0
+synopsis:           Parity evidence for the impetus_* telemetry the runtime emits
+description:
+  No library: the test suite and benchmark that check the telemetry the
+  Instance, the Engine, and the JSONL History store emit against the pinned
+  reference. @petrus-telemetry@ is layer zero and cannot depend on what it
+  instruments, so the evidence lives here: the port of
+  @test_telemetry_instrumentation.py@, a differential against events the
+  reference records over the same scenarios, and the telemetry overhead
+  benchmark.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           System
+build-type:         Simple
+extra-doc-files:    PARITY.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+
+test-suite petrus-telemetry-instrumentation-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  -- The Engine's, the kernel's, and the History store's shared test fixtures
+  -- (the order scenario, Engine and kernel helpers, scratch directories,
+  -- the reference runner) are compiled in from their test trees.
+  hs-source-dirs:   test ../petrus-engine/test ../petrus-impetus/test ../petrus-history-store/test
+  main-is:          Main.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.HistoryStore.Support
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.Scenario
+                    Petrus.Telemetry.Scenarios
+                    Petrus.Telemetry.InstrumentationSpec
+                    Petrus.Telemetry.DifferentialSpec
+  build-depends:    base >=4.18 && <5
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-telemetry
+                  , process >=1.6
+                  , text
+  ghc-options:      -threaded -rtsopts

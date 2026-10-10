@@ -1,0 +1,2731 @@
+{
+ "ts": 1700000000123,
+ "scenarios": [
+  {
+   "name": "instance_created",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "i-1",
+     "places": 3,
+     "transitions": 1,
+     "records": 2,
+     "instant": 5
+    },
+    {
+     "event": "impetus_instance_created",
+     "instance": "i-2",
+     "net": "order-fulfillment",
+     "places": 3,
+     "transitions": 1,
+     "records": 1,
+     "instant": 2.5
+    },
+    {
+     "event": "impetus_instance_created",
+     "instance": "i-3",
+     "places": 1,
+     "transitions": 1,
+     "records": 3,
+     "instant": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"i-1\", \"places\": 3, \"transitions\": 1, \"records\": 2, \"instant\": 5, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"i-2\", \"net\": \"order-fulfillment\", \"places\": 3, \"transitions\": 1, \"records\": 1, \"instant\": 2.5, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"i-3\", \"places\": 1, \"transitions\": 1, \"records\": 3, \"instant\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "step_and_run",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "i-1",
+     "places": 3,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 7,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 7,
+     "records": 3
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 7.5,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 7.5,
+     "records": 3
+    },
+    {
+     "event": "impetus_instance_created",
+     "instance": "chain-1",
+     "places": 4,
+     "transitions": 3,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "chain-1",
+     "transition": "t0",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "chain-1",
+     "transition": "t0",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "chain-1",
+     "transition": "t0",
+     "occurrence": 2,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "chain-1",
+     "transition": "t0",
+     "occurrence": 2,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "chain-1",
+     "transition": "t1",
+     "occurrence": 3,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "chain-1",
+     "transition": "t1",
+     "occurrence": 3,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "chain-1",
+     "transition": "t1",
+     "occurrence": 4,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "chain-1",
+     "transition": "t1",
+     "occurrence": 4,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "chain-1",
+     "transition": "t2",
+     "occurrence": 5,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "chain-1",
+     "transition": "t2",
+     "occurrence": 5,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "chain-1",
+     "transition": "t2",
+     "occurrence": 6,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "chain-1",
+     "transition": "t2",
+     "occurrence": 6,
+     "instant": 0,
+     "records": 2
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"i-1\", \"places\": 3, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 7, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 7, \"records\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 7.5, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 7.5, \"records\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"chain-1\", \"places\": 4, \"transitions\": 3, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"chain-1\", \"transition\": \"t0\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"chain-1\", \"transition\": \"t0\", \"occurrence\": 1, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"chain-1\", \"transition\": \"t0\", \"occurrence\": 2, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"chain-1\", \"transition\": \"t0\", \"occurrence\": 2, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"chain-1\", \"transition\": \"t1\", \"occurrence\": 3, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"chain-1\", \"transition\": \"t1\", \"occurrence\": 3, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"chain-1\", \"transition\": \"t1\", \"occurrence\": 4, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"chain-1\", \"transition\": \"t1\", \"occurrence\": 4, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"chain-1\", \"transition\": \"t2\", \"occurrence\": 5, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"chain-1\", \"transition\": \"t2\", \"occurrence\": 5, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"chain-1\", \"transition\": \"t2\", \"occurrence\": 6, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"chain-1\", \"transition\": \"t2\", \"occurrence\": 6, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "failing_handler",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "i-1",
+     "places": 2,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 3,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_failed",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 3,
+     "error": "RuntimeError('handler broke')"
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"i-1\", \"places\": 2, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 3, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_failed\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 3, \"error\": \"RuntimeError('handler broke')\", \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "delivery_lifecycle",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "i-1",
+     "places": 1,
+     "transitions": 2,
+     "records": 3,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-1",
+     "transition": "s",
+     "occurrence": 1,
+     "instant": 1,
+     "impure": false
+    },
+    {
+     "event": "impetus_delivery_accepted",
+     "instance": "i-1",
+     "source": "s",
+     "identity": "evt-1",
+     "occurrence": 1,
+     "tokens": 1
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "i-1",
+     "transition": "s",
+     "occurrence": 1,
+     "instant": 2,
+     "records": 2
+    },
+    {
+     "event": "impetus_delivery_redelivered",
+     "instance": "i-1",
+     "source": "s",
+     "identity": "evt-1",
+     "occurrence": 1
+    },
+    {
+     "event": "impetus_delivery_conflicted",
+     "instance": "i-1",
+     "source": "s",
+     "identity": "evt-1",
+     "occurrence": 1
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-1",
+     "transition": "u",
+     "occurrence": 2,
+     "instant": 4,
+     "impure": false
+    },
+    {
+     "event": "impetus_delivery_accepted",
+     "instance": "i-1",
+     "source": "u",
+     "identity": "evt-2",
+     "occurrence": 2,
+     "tokens": 2
+    },
+    {
+     "event": "impetus_delivery_redelivered",
+     "instance": "i-1",
+     "source": "u",
+     "identity": "evt-2",
+     "occurrence": 2
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "i-1",
+     "transition": "u",
+     "occurrence": 2,
+     "instant": 4,
+     "records": 2
+    },
+    {
+     "event": "impetus_delivery_redelivered",
+     "instance": "i-1",
+     "source": "u",
+     "identity": "evt-3",
+     "occurrence": null
+    },
+    {
+     "event": "impetus_delivery_conflicted",
+     "instance": "i-1",
+     "source": "s",
+     "identity": "evt-3",
+     "occurrence": null
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"i-1\", \"places\": 1, \"transitions\": 2, \"records\": 3, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-1\", \"transition\": \"s\", \"occurrence\": 1, \"instant\": 1, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_accepted\", \"instance\": \"i-1\", \"source\": \"s\", \"identity\": \"evt-1\", \"occurrence\": 1, \"tokens\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"i-1\", \"transition\": \"s\", \"occurrence\": 1, \"instant\": 2, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_redelivered\", \"instance\": \"i-1\", \"source\": \"s\", \"identity\": \"evt-1\", \"occurrence\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_conflicted\", \"instance\": \"i-1\", \"source\": \"s\", \"identity\": \"evt-1\", \"occurrence\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-1\", \"transition\": \"u\", \"occurrence\": 2, \"instant\": 4, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_accepted\", \"instance\": \"i-1\", \"source\": \"u\", \"identity\": \"evt-2\", \"occurrence\": 2, \"tokens\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_redelivered\", \"instance\": \"i-1\", \"source\": \"u\", \"identity\": \"evt-2\", \"occurrence\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"i-1\", \"transition\": \"u\", \"occurrence\": 2, \"instant\": 4, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_redelivered\", \"instance\": \"i-1\", \"source\": \"u\", \"identity\": \"evt-3\", \"occurrence\": null, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_conflicted\", \"instance\": \"i-1\", \"source\": \"s\", \"identity\": \"evt-3\", \"occurrence\": null, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "seal_and_wake",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "i-1",
+     "places": 1,
+     "transitions": 2,
+     "records": 3,
+     "instant": 0
+    },
+    {
+     "event": "impetus_registrations_sealed",
+     "instance": "i-1",
+     "source": "s",
+     "closed": 1,
+     "instant": 3
+    },
+    {
+     "event": "impetus_registrations_sealed",
+     "instance": "i-1",
+     "source": "u",
+     "closed": 1,
+     "instant": 3
+    },
+    {
+     "event": "impetus_instance_created",
+     "instance": "i-2",
+     "places": 2,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_timer_matured",
+     "instance": "i-2",
+     "maturation": 10,
+     "instant": 10
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-2",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 10,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "i-2",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 10,
+     "records": 2
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"i-1\", \"places\": 1, \"transitions\": 2, \"records\": 3, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_registrations_sealed\", \"instance\": \"i-1\", \"source\": \"s\", \"closed\": 1, \"instant\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_registrations_sealed\", \"instance\": \"i-1\", \"source\": \"u\", \"closed\": 1, \"instant\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"i-2\", \"places\": 2, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_timer_matured\", \"instance\": \"i-2\", \"maturation\": 10, \"instant\": 10, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-2\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 10, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"i-2\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 10, \"records\": 2, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "resume",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "i-1",
+     "places": 3,
+     "transitions": 1,
+     "records": 2,
+     "instant": 4
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 4,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 4,
+     "records": 3
+    },
+    {
+     "event": "impetus_instance_resumed",
+     "instance": "i-1",
+     "records": 8,
+     "watermark": 4,
+     "in_flight": 0
+    },
+    {
+     "event": "impetus_instance_created",
+     "instance": "i-2",
+     "places": 2,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-2",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 6,
+     "impure": true
+    },
+    {
+     "event": "impetus_instance_resumed",
+     "instance": "i-2",
+     "records": 6,
+     "watermark": 6,
+     "in_flight": 1
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-2",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 8,
+     "impure": true
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"i-1\", \"places\": 3, \"transitions\": 1, \"records\": 2, \"instant\": 4, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 4, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 4, \"records\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_resumed\", \"instance\": \"i-1\", \"records\": 8, \"watermark\": 4, \"in_flight\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"i-2\", \"places\": 2, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-2\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 6, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_resumed\", \"instance\": \"i-2\", \"records\": 6, \"watermark\": 6, \"in_flight\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-2\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 8, \"impure\": true, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "activity_seam",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "i-1",
+     "places": 2,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 1,
+     "impure": true
+    },
+    {
+     "event": "impetus_activity_result_recorded",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 2
+    },
+    {
+     "event": "impetus_activity_redelivery_acknowledged",
+     "instance": "i-1",
+     "occurrence": 1
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 4,
+     "records": 2
+    },
+    {
+     "event": "impetus_activity_redelivery_acknowledged",
+     "instance": "i-1",
+     "occurrence": 1
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 4,
+     "impure": true
+    },
+    {
+     "event": "impetus_firing_failed",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 5,
+     "error": "card declined"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 3,
+     "instant": 5,
+     "impure": true
+    },
+    {
+     "event": "impetus_firing_failed",
+     "instance": "i-1",
+     "transition": "t",
+     "occurrence": 3,
+     "instant": 7,
+     "error": "gateway down"
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"i-1\", \"places\": 2, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 1, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_activity_result_recorded\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_activity_redelivery_acknowledged\", \"instance\": \"i-1\", \"occurrence\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 4, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_activity_redelivery_acknowledged\", \"instance\": \"i-1\", \"occurrence\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 4, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_failed\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 5, \"error\": \"card declined\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 3, \"instant\": 5, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_failed\", \"instance\": \"i-1\", \"transition\": \"t\", \"occurrence\": 3, \"instant\": 7, \"error\": \"gateway down\", \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "jsonl_commits",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 2,
+     "bytes": 293,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_instance_created",
+     "instance": "jsonl-1",
+     "places": 3,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 3,
+     "bytes": 382,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "jsonl-1",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 3,
+     "bytes": 459,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "jsonl-1",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 3
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 3,
+     "bytes": 358,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "jsonl-1",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 3,
+     "bytes": 411,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "jsonl-1",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 0,
+     "records": 3
+    },
+    {
+     "event": "impetus_instance_resumed",
+     "instance": "jsonl-1",
+     "records": 14,
+     "watermark": 0,
+     "in_flight": 0
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 2,
+     "bytes": 215,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_instance_created",
+     "instance": "jsonl-2",
+     "places": 1,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 2,
+     "bytes": 297,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "jsonl-2",
+     "transition": "s",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_delivery_accepted",
+     "instance": "jsonl-2",
+     "source": "s",
+     "identity": "e-1",
+     "occurrence": 1,
+     "tokens": 1
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 2,
+     "bytes": 273,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "jsonl-2",
+     "transition": "s",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 1,
+     "bytes": 121,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_registrations_sealed",
+     "instance": "jsonl-2",
+     "source": "s",
+     "closed": 1,
+     "instant": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 2, \"bytes\": 293, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"jsonl-1\", \"places\": 3, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 3, \"bytes\": 382, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"jsonl-1\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 3, \"bytes\": 459, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"jsonl-1\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"records\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 3, \"bytes\": 358, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"jsonl-1\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 3, \"bytes\": 411, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"jsonl-1\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 0, \"records\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_resumed\", \"instance\": \"jsonl-1\", \"records\": 14, \"watermark\": 0, \"in_flight\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 2, \"bytes\": 215, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"jsonl-2\", \"places\": 1, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 2, \"bytes\": 297, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"jsonl-2\", \"transition\": \"s\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_accepted\", \"instance\": \"jsonl-2\", \"source\": \"s\", \"identity\": \"e-1\", \"occurrence\": 1, \"tokens\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 2, \"bytes\": 273, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"jsonl-2\", \"transition\": \"s\", \"occurrence\": 1, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 1, \"bytes\": 121, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_registrations_sealed\", \"instance\": \"jsonl-2\", \"source\": \"s\", \"closed\": 1, \"instant\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_advance",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "span",
+     "places": 3,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "span"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "span",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "span",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 3
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "span",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "commit_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "span"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "span",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_instance_created",
+     "instance": "order-7",
+     "net": "order-fulfillment",
+     "places": 3,
+     "transitions": 1,
+     "records": 2,
+     "instant": 3
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-7",
+     "net": "order-fulfillment"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "order-7",
+     "net": "order-fulfillment",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 3,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "order-7",
+     "net": "order-fulfillment",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 3,
+     "records": 3
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-7",
+     "net": "order-fulfillment",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "commit_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-7",
+     "net": "order-fulfillment"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "order-7",
+     "net": "order-fulfillment",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 3,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "order-7",
+     "net": "order-fulfillment",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 3,
+     "records": 3
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-7",
+     "net": "order-fulfillment",
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "commit_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-7",
+     "net": "order-fulfillment"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-7",
+     "net": "order-fulfillment",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"span\", \"places\": 3, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"span\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"span\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"span\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"records\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"span\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"commit_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"span\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"span\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"order-7\", \"net\": \"order-fulfillment\", \"places\": 3, \"transitions\": 1, \"records\": 2, \"instant\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-7\", \"net\": \"order-fulfillment\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"order-7\", \"net\": \"order-fulfillment\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 3, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"order-7\", \"net\": \"order-fulfillment\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 3, \"records\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-7\", \"net\": \"order-fulfillment\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"commit_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-7\", \"net\": \"order-fulfillment\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"order-7\", \"net\": \"order-fulfillment\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 3, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"order-7\", \"net\": \"order-fulfillment\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 3, \"records\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-7\", \"net\": \"order-fulfillment\", \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"commit_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-7\", \"net\": \"order-fulfillment\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-7\", \"net\": \"order-fulfillment\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_failing_handler",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "failed-span",
+     "places": 2,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "failed-span"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "failed-span",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_failed",
+     "instance": "failed-span",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "error": "RuntimeError('handler broke')"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "failed-span",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "apply_ms": 0,
+     "status": "failed",
+     "elapsed_ms": 0,
+     "error_type": "RuntimeError"
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"failed-span\", \"places\": 2, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"failed-span\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"failed-span\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_failed\", \"instance\": \"failed-span\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"error\": \"RuntimeError('handler broke')\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"failed-span\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"apply_ms\": 0, \"status\": \"failed\", \"elapsed_ms\": 0, \"error_type\": \"RuntimeError\", \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_gauges",
+   "level": "profile",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "gauges",
+     "places": 3,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "gauges"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "gauges",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "gauges",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 3
+    },
+    {
+     "event": "impetus_gauges",
+     "instance": "gauges",
+     "history_records": 8,
+     "places_occupied": 3,
+     "tokens_total": 3,
+     "in_flight": 0,
+     "current_rss_mb": null,
+     "max_rss_mb": 0.0
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "gauges",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "commit_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "gauges"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "gauges",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "gauges",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 0,
+     "records": 3
+    },
+    {
+     "event": "impetus_gauges",
+     "instance": "gauges",
+     "history_records": 14,
+     "places_occupied": 2,
+     "tokens_total": 4,
+     "in_flight": 0,
+     "current_rss_mb": null,
+     "max_rss_mb": 0.0
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "gauges",
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "commit_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "gauges"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "gauges",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"gauges\", \"places\": 3, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"gauges\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"gauges\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"gauges\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"records\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_gauges\", \"instance\": \"gauges\", \"history_records\": 8, \"places_occupied\": 3, \"tokens_total\": 3, \"in_flight\": 0, \"current_rss_mb\": null, \"max_rss_mb\": 0.0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"gauges\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"commit_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"gauges\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"gauges\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"gauges\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 0, \"records\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_gauges\", \"instance\": \"gauges\", \"history_records\": 14, \"places_occupied\": 2, \"tokens_total\": 4, \"in_flight\": 0, \"current_rss_mb\": null, \"max_rss_mb\": 0.0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"gauges\", \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"commit_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"gauges\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"gauges\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_declined",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "declined",
+     "places": 3,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "declined"
+    },
+    {
+     "event": "impetus_candidate_selection_declined",
+     "instance": "declined",
+     "enabled": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "declined",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"declined\", \"places\": 3, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"declined\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_candidate_selection_declined\", \"instance\": \"declined\", \"enabled\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"declined\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_orders",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "order-interop",
+     "places": 4,
+     "transitions": 4,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "order-interop",
+     "transition": "intake",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_delivery_accepted",
+     "instance": "order-interop",
+     "source": "intake",
+     "identity": "evt_1",
+     "occurrence": 1,
+     "tokens": 1
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "order-interop",
+     "transition": "intake",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "order-interop",
+     "transition": "intake",
+     "occurrence": 2,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_delivery_accepted",
+     "instance": "order-interop",
+     "source": "intake",
+     "identity": "evt_2",
+     "occurrence": 2,
+     "tokens": 1
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "order-interop",
+     "transition": "intake",
+     "occurrence": 2,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_delivery_redelivered",
+     "instance": "order-interop",
+     "source": "intake",
+     "identity": "evt_1",
+     "occurrence": 1
+    },
+    {
+     "event": "impetus_registrations_sealed",
+     "instance": "order-interop",
+     "source": "intake",
+     "closed": 1,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-interop"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "order-interop",
+     "transition": "validate",
+     "occurrence": 3,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "order-interop",
+     "transition": "validate",
+     "occurrence": 3,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-interop",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "commit_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-interop"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "order-interop",
+     "transition": "charge",
+     "occurrence": 4,
+     "instant": 0,
+     "impure": true
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-interop",
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 0,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-interop"
+    },
+    {
+     "event": "impetus_activity_result_recorded",
+     "instance": "order-interop",
+     "transition": "charge",
+     "occurrence": 4,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "order-interop",
+     "transition": "charge",
+     "occurrence": 4,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-interop",
+     "observe_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-interop"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "order-interop",
+     "transition": "validate",
+     "occurrence": 5,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "order-interop",
+     "transition": "validate",
+     "occurrence": 5,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-interop",
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "commit_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-interop"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "order-interop",
+     "transition": "charge",
+     "occurrence": 6,
+     "instant": 0,
+     "impure": true
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-interop",
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 0,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-interop"
+    },
+    {
+     "event": "impetus_activity_result_recorded",
+     "instance": "order-interop",
+     "transition": "charge",
+     "occurrence": 6,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "order-interop",
+     "transition": "charge",
+     "occurrence": 6,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-interop",
+     "observe_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-interop"
+    },
+    {
+     "event": "impetus_timer_matured",
+     "instance": "order-interop",
+     "maturation": 5,
+     "instant": 5
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-interop",
+     "observe_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 0,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-interop"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "order-interop",
+     "transition": "settle",
+     "occurrence": 7,
+     "instant": 5,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "order-interop",
+     "transition": "settle",
+     "occurrence": 7,
+     "instant": 5,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-interop",
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "commit_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-interop"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "order-interop",
+     "transition": "settle",
+     "occurrence": 8,
+     "instant": 5,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "order-interop",
+     "transition": "settle",
+     "occurrence": 8,
+     "instant": 5,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-interop",
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "commit_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "order-interop"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "order-interop",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"order-interop\", \"places\": 4, \"transitions\": 4, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"order-interop\", \"transition\": \"intake\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_accepted\", \"instance\": \"order-interop\", \"source\": \"intake\", \"identity\": \"evt_1\", \"occurrence\": 1, \"tokens\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"order-interop\", \"transition\": \"intake\", \"occurrence\": 1, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"order-interop\", \"transition\": \"intake\", \"occurrence\": 2, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_accepted\", \"instance\": \"order-interop\", \"source\": \"intake\", \"identity\": \"evt_2\", \"occurrence\": 2, \"tokens\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"order-interop\", \"transition\": \"intake\", \"occurrence\": 2, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_redelivered\", \"instance\": \"order-interop\", \"source\": \"intake\", \"identity\": \"evt_1\", \"occurrence\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_registrations_sealed\", \"instance\": \"order-interop\", \"source\": \"intake\", \"closed\": 1, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-interop\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"order-interop\", \"transition\": \"validate\", \"occurrence\": 3, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"order-interop\", \"transition\": \"validate\", \"occurrence\": 3, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-interop\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"commit_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-interop\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"order-interop\", \"transition\": \"charge\", \"occurrence\": 4, \"instant\": 0, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-interop\", \"observe_ms\": 0, \"begin_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 0, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-interop\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_activity_result_recorded\", \"instance\": \"order-interop\", \"transition\": \"charge\", \"occurrence\": 4, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"order-interop\", \"transition\": \"charge\", \"occurrence\": 4, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-interop\", \"observe_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-interop\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"order-interop\", \"transition\": \"validate\", \"occurrence\": 5, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"order-interop\", \"transition\": \"validate\", \"occurrence\": 5, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-interop\", \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"commit_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-interop\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"order-interop\", \"transition\": \"charge\", \"occurrence\": 6, \"instant\": 0, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-interop\", \"observe_ms\": 0, \"begin_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 0, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-interop\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_activity_result_recorded\", \"instance\": \"order-interop\", \"transition\": \"charge\", \"occurrence\": 6, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"order-interop\", \"transition\": \"charge\", \"occurrence\": 6, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-interop\", \"observe_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-interop\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_timer_matured\", \"instance\": \"order-interop\", \"maturation\": 5, \"instant\": 5, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-interop\", \"observe_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 0, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-interop\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"order-interop\", \"transition\": \"settle\", \"occurrence\": 7, \"instant\": 5, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"order-interop\", \"transition\": \"settle\", \"occurrence\": 7, \"instant\": 5, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-interop\", \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"commit_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-interop\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"order-interop\", \"transition\": \"settle\", \"occurrence\": 8, \"instant\": 5, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"order-interop\", \"transition\": \"settle\", \"occurrence\": 8, \"instant\": 5, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-interop\", \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"commit_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"order-interop\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"order-interop\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_sensor",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "sensed",
+     "places": 1,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "sensed"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "sensed",
+     "transition": "s",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_delivery_accepted",
+     "instance": "sensed",
+     "source": "s",
+     "identity": "sensed-1",
+     "occurrence": 1,
+     "tokens": 1
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "sensed",
+     "transition": "s",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "sensed",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "sensed"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "sensed",
+     "transition": "s",
+     "occurrence": 2,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_delivery_accepted",
+     "instance": "sensed",
+     "source": "s",
+     "identity": "sensed-2",
+     "occurrence": 2,
+     "tokens": 1
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "sensed",
+     "transition": "s",
+     "occurrence": 2,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "sensed",
+     "observe_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "sensed"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "sensed",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"sensed\", \"places\": 1, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"sensed\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"sensed\", \"transition\": \"s\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_accepted\", \"instance\": \"sensed\", \"source\": \"s\", \"identity\": \"sensed-1\", \"occurrence\": 1, \"tokens\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"sensed\", \"transition\": \"s\", \"occurrence\": 1, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"sensed\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"sensed\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"sensed\", \"transition\": \"s\", \"occurrence\": 2, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_accepted\", \"instance\": \"sensed\", \"source\": \"s\", \"identity\": \"sensed-2\", \"occurrence\": 2, \"tokens\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"sensed\", \"transition\": \"s\", \"occurrence\": 2, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"sensed\", \"observe_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"sensed\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"sensed\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_activities",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "acts",
+     "places": 2,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "acts"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "acts",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": true
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "acts",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 0,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "acts"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "acts",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": true,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "acts"
+    },
+    {
+     "event": "impetus_activity_result_recorded",
+     "instance": "acts",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "acts",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "acts",
+     "observe_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "acts"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "acts",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 0,
+     "impure": true
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "acts",
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 0,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "acts"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "acts",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": true,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "acts"
+    },
+    {
+     "event": "impetus_firing_failed",
+     "instance": "acts",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 0,
+     "error": "card declined"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "acts",
+     "observe_ms": 0,
+     "apply_ms": 0,
+     "status": "failed",
+     "elapsed_ms": 0,
+     "error_type": "RuntimeError"
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"acts\", \"places\": 2, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"acts\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"acts\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"acts\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"begin_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 0, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"acts\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"acts\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": true, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"acts\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_activity_result_recorded\", \"instance\": \"acts\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"acts\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"acts\", \"observe_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"acts\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"acts\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 0, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"acts\", \"observe_ms\": 0, \"begin_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 0, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"acts\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"acts\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": true, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"acts\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_failed\", \"instance\": \"acts\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 0, \"error\": \"card declined\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"acts\", \"observe_ms\": 0, \"apply_ms\": 0, \"status\": \"failed\", \"elapsed_ms\": 0, \"error_type\": \"RuntimeError\", \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_reconcile",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 2,
+     "bytes": 241,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_instance_created",
+     "instance": "reconcile",
+     "places": 2,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "reconcile"
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 4,
+     "bytes": 760,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "reconcile",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": true
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "reconcile",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 0,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "reconcile"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "reconcile",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": true,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_instance_resumed",
+     "instance": "reconcile",
+     "records": 6,
+     "watermark": 0,
+     "in_flight": 1
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "reconcile"
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 1,
+     "bytes": 129,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_activity_result_recorded",
+     "instance": "reconcile",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 2,
+     "bytes": 276,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "reconcile",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "reconcile",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "reconcile"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "reconcile",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 2, \"bytes\": 241, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"reconcile\", \"places\": 2, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"reconcile\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 4, \"bytes\": 760, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"reconcile\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"reconcile\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"begin_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 0, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"reconcile\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"reconcile\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": true, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_resumed\", \"instance\": \"reconcile\", \"records\": 6, \"watermark\": 0, \"in_flight\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"reconcile\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 1, \"bytes\": 129, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_activity_result_recorded\", \"instance\": \"reconcile\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 2, \"bytes\": 276, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"reconcile\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"reconcile\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"reconcile\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"reconcile\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_cancellation",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "scoped",
+     "places": 2,
+     "transitions": 2,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "scoped",
+     "transition": "s",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_delivery_accepted",
+     "instance": "scoped",
+     "source": "s",
+     "identity": "job-1",
+     "occurrence": 1,
+     "tokens": 1
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "scoped",
+     "transition": "s",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "scoped"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "scoped",
+     "transition": "work",
+     "occurrence": 2,
+     "instant": 0,
+     "impure": true
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "scoped",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 0,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "scoped"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "scoped",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": true,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_activity_cancelled",
+     "instance": "scoped",
+     "occurrence": 2,
+     "history_position": 12,
+     "disposition": "retired"
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "scoped"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "scoped",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "scoped"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "scoped",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "scoped",
+     "transition": "s",
+     "occurrence": 3,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_delivery_accepted",
+     "instance": "scoped",
+     "source": "s",
+     "identity": "job-2",
+     "occurrence": 3,
+     "tokens": 1
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "scoped",
+     "transition": "s",
+     "occurrence": 3,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "scoped"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "scoped",
+     "transition": "work",
+     "occurrence": 4,
+     "instant": 0,
+     "impure": true
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "scoped",
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 0,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "scoped"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "scoped",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": true,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_activity_cancelled",
+     "instance": "scoped",
+     "occurrence": 4,
+     "history_position": 23,
+     "disposition": "retired"
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "scoped"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "scoped",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"scoped\", \"places\": 2, \"transitions\": 2, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"scoped\", \"transition\": \"s\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_accepted\", \"instance\": \"scoped\", \"source\": \"s\", \"identity\": \"job-1\", \"occurrence\": 1, \"tokens\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"scoped\", \"transition\": \"s\", \"occurrence\": 1, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"scoped\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"scoped\", \"transition\": \"work\", \"occurrence\": 2, \"instant\": 0, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"scoped\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"begin_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 0, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"scoped\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"scoped\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": true, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_activity_cancelled\", \"instance\": \"scoped\", \"occurrence\": 2, \"history_position\": 12, \"disposition\": \"retired\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"scoped\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"scoped\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"scoped\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"scoped\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"scoped\", \"transition\": \"s\", \"occurrence\": 3, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_accepted\", \"instance\": \"scoped\", \"source\": \"s\", \"identity\": \"job-2\", \"occurrence\": 3, \"tokens\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"scoped\", \"transition\": \"s\", \"occurrence\": 3, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"scoped\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"scoped\", \"transition\": \"work\", \"occurrence\": 4, \"instant\": 0, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"scoped\", \"observe_ms\": 0, \"begin_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 0, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"scoped\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"scoped\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": true, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_activity_cancelled\", \"instance\": \"scoped\", \"occurrence\": 4, \"history_position\": 23, \"disposition\": \"retired\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"scoped\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"scoped\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_reconcile_pure",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "pure",
+     "places": 2,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "pure",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 2,
+     "impure": false
+    },
+    {
+     "event": "impetus_instance_resumed",
+     "instance": "pure",
+     "records": 5,
+     "watermark": 2,
+     "in_flight": 1
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "pure"
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "pure",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 2,
+     "records": 2
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "pure",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 2,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "pure",
+     "transition": "t",
+     "occurrence": 2,
+     "instant": 2,
+     "records": 2
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "pure",
+     "handler_ms": 0,
+     "commit_ms": 0,
+     "reconciled_firings": 1,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 2,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "pure"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "pure",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"pure\", \"places\": 2, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"pure\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 2, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_resumed\", \"instance\": \"pure\", \"records\": 5, \"watermark\": 2, \"in_flight\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"pure\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"pure\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 2, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"pure\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 2, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"pure\", \"transition\": \"t\", \"occurrence\": 2, \"instant\": 2, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"pure\", \"handler_ms\": 0, \"commit_ms\": 0, \"reconciled_firings\": 1, \"observe_ms\": 0, \"begin_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 2, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"pure\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"pure\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_clock_not_due",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "not-due",
+     "places": 2,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "not-due"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "not-due",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "apply_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "not-due"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "not-due",
+     "observe_ms": 0,
+     "apply_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"not-due\", \"places\": 2, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"not-due\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"not-due\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"apply_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"not-due\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"not-due\", \"observe_ms\": 0, \"apply_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_failure_projection",
+   "level": "profile",
+   "events": [
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 2,
+     "bytes": 240,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_instance_created",
+     "instance": "projects",
+     "places": 2,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "projects"
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 4,
+     "bytes": 760,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "projects",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": true
+    },
+    {
+     "event": "impetus_gauges",
+     "instance": "projects",
+     "history_records": 6,
+     "places_occupied": 0,
+     "tokens_total": 0,
+     "in_flight": 1,
+     "current_rss_mb": null,
+     "max_rss_mb": 0.0
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "projects",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 0,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "projects"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "projects",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": true,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "projects"
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 1,
+     "bytes": 201,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_jsonl_commit",
+     "records": 2,
+     "bytes": 281,
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "projects",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 2
+    },
+    {
+     "event": "impetus_gauges",
+     "instance": "projects",
+     "history_records": 9,
+     "places_occupied": 1,
+     "tokens_total": 1,
+     "in_flight": 0,
+     "current_rss_mb": null,
+     "max_rss_mb": 0.0
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "projects",
+     "observe_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "projects"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "projects",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 2, \"bytes\": 240, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"projects\", \"places\": 2, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"projects\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 4, \"bytes\": 760, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"projects\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"impure\": true, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_gauges\", \"instance\": \"projects\", \"history_records\": 6, \"places_occupied\": 0, \"tokens_total\": 0, \"in_flight\": 1, \"current_rss_mb\": null, \"max_rss_mb\": 0.0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"projects\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"begin_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 0, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"projects\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"projects\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": true, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"projects\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 1, \"bytes\": 201, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_jsonl_commit\", \"records\": 2, \"bytes\": 281, \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"projects\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"records\": 2, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_gauges\", \"instance\": \"projects\", \"history_records\": 9, \"places_occupied\": 1, \"tokens_total\": 1, \"in_flight\": 0, \"current_rss_mb\": null, \"max_rss_mb\": 0.0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"projects\", \"observe_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"projects\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"projects\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_failing_source_projection",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "bad-source",
+     "places": 1,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "bad-source",
+     "transition": "s",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_delivery_accepted",
+     "instance": "bad-source",
+     "source": "s",
+     "identity": "evt-1",
+     "occurrence": 1,
+     "tokens": 1
+    },
+    {
+     "event": "impetus_firing_failed",
+     "instance": "bad-source",
+     "transition": "s",
+     "occurrence": 1,
+     "instant": 0,
+     "error": "RuntimeError('handler broke')"
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"bad-source\", \"places\": 1, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"bad-source\", \"transition\": \"s\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_delivery_accepted\", \"instance\": \"bad-source\", \"source\": \"s\", \"identity\": \"evt-1\", \"occurrence\": 1, \"tokens\": 1, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_failed\", \"instance\": \"bad-source\", \"transition\": \"s\", \"occurrence\": 1, \"instant\": 0, \"error\": \"RuntimeError('handler broke')\", \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_debug_level",
+   "level": "debug",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "debug",
+     "places": 3,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "debug"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "debug",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_completed",
+     "instance": "debug",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "records": 3
+    },
+    {
+     "event": "impetus_gauges",
+     "instance": "debug",
+     "history_records": 8,
+     "places_occupied": 2,
+     "tokens_total": 2,
+     "in_flight": 0,
+     "current_rss_mb": null,
+     "max_rss_mb": 0.0
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "debug",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "commit_ms": 0,
+     "apply_ms": 0,
+     "actions": 1,
+     "firings": 1,
+     "waiting": false,
+     "ready": true,
+     "status": "success",
+     "elapsed_ms": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "debug"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "debug",
+     "observe_ms": 0,
+     "firings": 0,
+     "waiting": false,
+     "ready": false,
+     "status": "success",
+     "elapsed_ms": 0
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"debug\", \"places\": 3, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"debug\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"debug\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_completed\", \"instance\": \"debug\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"records\": 3, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_gauges\", \"instance\": \"debug\", \"history_records\": 8, \"places_occupied\": 2, \"tokens_total\": 2, \"in_flight\": 0, \"current_rss_mb\": null, \"max_rss_mb\": 0.0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"debug\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"commit_ms\": 0, \"apply_ms\": 0, \"actions\": 1, \"firings\": 1, \"waiting\": false, \"ready\": true, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"debug\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"debug\", \"observe_ms\": 0, \"firings\": 0, \"waiting\": false, \"ready\": false, \"status\": \"success\", \"elapsed_ms\": 0, \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "level_off",
+   "level": "off",
+   "events": [],
+   "lines": []
+  }
+ ],
+ "pinned": [
+  {
+   "payload": {
+    "event": "impetus_firing_completed",
+    "instance": "i-1",
+    "net": "n",
+    "transition": "t",
+    "occurrence": 1,
+    "instant": 7,
+    "records": 3
+   },
+   "line": "{\"event\": \"impetus_firing_completed\", \"instance\": \"i-1\", \"net\": \"n\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 7, \"records\": 3, \"ts\": 1700000000123}"
+  },
+  {
+   "payload": {
+    "event": "impetus_x",
+    "instance": "é 😀",
+    "ratio": 0.1,
+    "big": 100000000000000000000,
+    "huge": 1e+300,
+    "neg": -0.0,
+    "ok": true,
+    "none": null
+   },
+   "line": "{\"event\": \"impetus_x\", \"instance\": \"\\u00e9\\u2028\\ud83d\\ude00\", \"ratio\": 0.1, \"big\": 100000000000000000000, \"huge\": 1e+300, \"neg\": -0.0, \"ok\": true, \"none\": null, \"ts\": 1700000000123}"
+  },
+  {
+   "payload": {
+    "event": "impetus_x",
+    "nan": NaN,
+    "inf": Infinity,
+    "ninf": -Infinity,
+    "ts": 3,
+    "list": [
+     1,
+     "a"
+    ]
+   },
+   "line": "{\"event\": \"impetus_x\", \"nan\": NaN, \"inf\": Infinity, \"ninf\": -Infinity, \"ts\": 1700000000123, \"list\": [1, \"a\"]}"
+  }
+ ]
+}
