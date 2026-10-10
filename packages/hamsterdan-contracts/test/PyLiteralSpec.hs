@@ -58,6 +58,12 @@ spec = describe "Hamsterdan.PyLiteral" $ do
       kindOf "{1, 2}" `shouldBe` Just Unsupported
       kindOf "'\\N{BULLET}'" `shouldBe` Just Unsupported
       kindOf "'\\ud800'" `shouldBe` Just Unsupported
+    it "spells unhashable refusals as CPython 3.14 does" $ do
+      let messageOf source = either (\(LiteralError _ message) -> Just message) (const Nothing) (literalEval source)
+      messageOf "{[1]: 2}" `shouldBe` Just "cannot use 'list' as a dict key (unhashable type: 'list')"
+      messageOf "{{}: 1}" `shouldBe` Just "cannot use 'dict' as a dict key (unhashable type: 'dict')"
+      messageOf "{((1, [2]),): 3}" `shouldBe` Just "cannot use 'tuple' as a dict key (unhashable type: 'list')"
+      messageOf "{(1, {})}" `shouldBe` Just "cannot use 'tuple' as a set element (unhashable type: 'dict')"
     it "round trips repr for finite values" $
       property $ \(Finite value) -> fmap repr (literalEval (repr value)) === Right (repr value)
     it "agrees with JSON for JSON-shaped values" $

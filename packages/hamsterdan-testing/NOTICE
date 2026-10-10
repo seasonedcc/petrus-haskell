@@ -1,0 +1,19 @@
+hamsterdan-testing
+Copyright 2026 Seasoned
+
+This package is a Haskell port of the ReadinessModel oracle of Hamsterdan
+(https://github.com/henriquebastos/hamsterdan), pinned under
+upstream/hamsterdan. It follows the behavior of
+src/hamsterdan/testing/readiness.py, and its test suite ports the upstream
+tests in tests/unit/testing/test_readiness_model.py. The committed corpus
+under test/corpus was produced by running the upstream code with the script
+in scripts/.
+
+The package itself is licensed under the Apache License, Version 2.0 (see
+LICENSE). The upstream project it ports is also distributed under the
+Apache License, Version 2.0:
+
+  hamsterdan
+  Copyright Henrique Bastos and contributors
+  Licensed under the Apache License, Version 2.0
+  https://github.com/henriquebastos/hamsterdan

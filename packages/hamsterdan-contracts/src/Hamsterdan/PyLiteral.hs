@@ -429,7 +429,7 @@ convert = \case
   EImaginary -> unsupported "complex is not a modeled value"
   -- set(map(_convert, elts)): each element is converted, then hashed.
   ESet elements -> do
-    mapM_ (\element -> convert element >>= \value -> when (not (hashable value)) (Left (LiteralError Unhashable "unhashable type"))) elements
+    mapM_ (\element -> convert element >>= \value -> when (not (hashable value)) (Left (unhashableError "a set element" value))) elements
     unsupported "set is not a modeled value"
   EName _ -> malformed "malformed node or string"
   EUnsupported what -> unsupported (what <> " is not a modeled value")
@@ -446,7 +446,7 @@ convert = \case
     insertAll state ((keyExpr, valueExpr) : rest) = do
       key <- convert keyExpr
       value <- convert valueExpr
-      when (not (hashable key)) $ Left (LiteralError Unhashable "unhashable type")
+      when (not (hashable key)) $ Left (unhashableError "a dict key" key)
       insertAll (insert key value state) rest
     -- String keys (the common case) are found through a set; other keys
     -- by Python equality.
@@ -458,6 +458,22 @@ convert = \case
         present = case key of
           PyStr text -> Set.member text strings
           _ -> any (pyEq key . fst) acc
+
+-- | CPython 3.14's text: @cannot use 'tuple' as a dict key (unhashable
+-- type: 'list')@ names the rejected value's type, then the first
+-- unhashable type its hash reached.
+unhashableError :: Text -> PyValue -> LiteralError
+unhashableError role value =
+  LiteralError Unhashable ("cannot use '" <> typeName value <> "' as " <> role <> " (unhashable type: '" <> typeName (culprit value) <> "')")
+  where
+    culprit = \case
+      PyTuple elements | (bad : _) <- filter (not . hashable) elements -> culprit bad
+      other -> other
+    typeName = \case
+      PyList _ -> "list"
+      PyDict _ -> "dict"
+      PyTuple _ -> "tuple"
+      _ -> "object"
 
 hashable :: PyValue -> Bool
 hashable = \case

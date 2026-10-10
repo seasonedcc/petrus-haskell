@@ -1,27 +1,34 @@
 # petrus-motus: parity with the Python reference
 
-This package holds the Dispatch port (`Petrus.Motus.Dispatch`) and three
-adapters:
+This package holds the Dispatch port (`Petrus.Motus.Dispatch`), three
+adapters, and the Worker runtime:
 
 - `InlineDispatch` (`Petrus.Motus.Dispatch.Inline`) and `InMemoryDispatch`
   (`Petrus.Motus.Dispatch.InMemory`), both in-process;
 - the durable local SQLite Dispatch, `LocalDispatch` and
   `LocalWorkerDispatch` (`Petrus.Motus.Dispatch.Local`), a port of
-  `petrus/motus/dispatch/local.py`.
+  `petrus/motus/dispatch/local.py`;
+- the Worker runtime (`Petrus.Motus.Worker`): the synchronous `Worker`, the
+  `AsyncWorker` with its sync bridge and native-access seam, a port of
+  `petrus/motus/worker/{__init__,_runtime,_async}.py`;
+- the Worker process entry point (`Petrus.Motus.Worker.Cli`), a port of
+  `petrus/motus/worker/_cli.py` (`python -m petrus.motus.worker`).
 
-The ZeroMQ transport, Workers and Absurd are not covered here. They are
-separate packages built on this port.
+The ZeroMQ transport (`petrus-motus-zeromq`) and Absurd custody are
+separate packages built on this port. They plug into the Worker CLI as
+`ProviderPlugins`.
 
 Every Hspec example is named after the upstream test it ports. To cross-check
 that every in-scope upstream test is accounted for, run:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-The script covers this package, `petrus-history-store`, and `petrus-engine`.
+The script covers this package, `petrus-motus-zeromq`, the History stores,
+and the Engines.
 
-`cabal test petrus-motus` runs 80 examples, with 0 failures and 0 pending. The
-8 interop examples are marked pending when `upstream/petrus/.venv` is not
-synced.
+`cabal test petrus-motus` runs 138 examples, with 0 failures and 0 pending.
+The interop examples (8 Local Dispatch, 9 Worker CLI) are marked pending
+when `upstream/petrus/.venv` is not synced.
 
 ## Ledger
 
@@ -34,6 +41,13 @@ synced.
 | test_local_dispatch.py, the 32 non-Engine tests (37 collected) | `test_local_dispatch.py` / same names (34 examples) | 32 ported; 3 parameter cases enforced by types |
 | test_local_dispatch.py `test_sqlite_history_tables_coexist_untouched` | `Local Dispatch interop with the reference` / sqlite history tables coexist untouched | ported, against the reference's `SqliteHistoryStore` |
 | test_local_dispatch.py, the 3 Engine-level tests (`test_engine_*`) | `packages/petrus-engine/test/Petrus/Engine/LocalDispatchSpec.hs` / same names | ported in petrus-engine |
+| test_worker_runtime.py, 11 of 12 tests | `test_worker_runtime.py` / same names (`WorkerSpec`) | ported |
+| test_worker_runtime.py `test_controlled_sequential_local_execution_is_byte_identical_to_inline_history` | `packages/petrus-engine/test/Petrus/Engine/WorkerTopologySpec.hs` / same name | ported in petrus-engine (over the order net; see below) |
+| test_async_worker.py, 23 of 26 tests (29 collected) | `test_async_worker.py` / same names (`AsyncWorkerSpec`, 24 examples) | 22 ported, 1 renamed; 2 parameter cases enforced by types |
+| test_async_worker.py `test_sync_and_async_workers_cross_reject_before_custody` | `sync and async workers validate the registry before custody` | renamed: there is no colour to cross-reject, so it checks the shared registry validation still precedes custody |
+| test_async_worker.py `test_async_decorator_rejects_sync_and_untyped_signatures`, `test_cli_rejects_wrong_mode_registry_before_provider_factory` | none | not applicable (see below) |
+| test_worker_topology.py, 6 of 36 tests | `packages/petrus-engine/test/Petrus/Engine/WorkerTopologySpec.hs` (4), `WorkerSpec` (1), `WorkerCliSpec` (1) | ported over Local Dispatch; the other 30 belong to the Absurd Dispatch port (see below) |
+| test_package_boundaries.py `test_worker_package_public_contract_and_module_cli` | `Worker CLI` / `test_package_boundaries.py` / worker package public contract and module cli | ported |
 
 There is one test that is not applicable:
 
@@ -69,9 +83,11 @@ behavioral equality on that file, checked in both directions.
   connections. The interop suite then repeats both scenarios with reference
   processes and Haskell threads contending on one file.
 - **The Worker test.** `test_running_cancellation_..._quarantine` drives a
-  reference `Worker` thread. Workers are not ported yet, so the example's
-  thread performs the same custody sequence over `dispatch.worker(...)`:
-  claim, block inside the Activity, then complete after the fence.
+  reference `Worker` thread. The example was ported before the Worker
+  runtime and still performs the same custody sequence by hand over
+  `dispatch.worker(...)`: claim, block inside the Activity, then complete
+  after the fence. The Worker's own behavior around a fenced terminal is
+  covered by the Worker specs below.
 - **`sqlite3.connect` mutations** (expiring a lease, corrupting an
   invocation, dropping a table) are made by the same SQL on a raw
   direct-sqlite connection.
@@ -107,9 +123,143 @@ reference.
    `test_sqlite_history_tables_coexist_untouched`.
 
 The rest of `test_attempt_heartbeats.py` is out of scope here. That covers
-the attempt state model, the detail normalization that lives in
-`petrus-activity`, and the reconnectable ZeroMQ heartbeat. It belongs to the
-worker and transport packages.
+the attempt state model and the detail normalization that live in
+`petrus-activity`, and the reconnectable heartbeat over a psycopg connection,
+which belongs to the Absurd Dispatch port.
+
+### Workers: how the reference's tests are ported
+
+`test/Petrus/Motus/WorkerSpec.hs` ports `test_worker_runtime.py`,
+`AsyncWorkerSpec.hs` ports `test_async_worker.py`, and `WorkerCliSpec.hs`
+covers `_cli.py`.
+
+- **Python task cancellation is an asynchronous exception.** The reference
+  cancels the task running `AsyncWorker.run` (or an Activity's task) and
+  expects `CancelledError` after the drain. The ports throw an asynchronous
+  exception at the thread running `runAsyncWorker` (or at the Activity's
+  helper thread). The runtime absorbs it, drains, closes custody, and then
+  rethrows it. The "repeated cancellation" tests throw it repeatedly.
+- **Event loops become threads.** "On the event loop" assertions, such as
+  `test_async_worker_runs_exact_concurrency_on_event_loop_...`, check that
+  Activities run concurrently on their own threads. Lane ownership checks
+  record the `ThreadId` that touched each provider, as the reference
+  records thread idents.
+- **Subprocess tests run a real Worker process.** The test executable
+  re-executes itself as the Worker CLI (`PETRUS_MOTUS_TEST_WORKER`) over the
+  reference's own subprocess registry spelling
+  (`tests.petrus.motus.worker.test_worker_runtime:subprocess_activities`).
+  The SIGKILL and SIGTERM tests use it.
+- **`monkeypatch` becomes a seam.** `partial_thread_start_failure_...`
+  patches `threading.Thread.start`; the port passes a `LaneSpawner` that
+  fails on the chosen lane.
+- **Two parameter cases are enforced by the types.**
+  `test_async_worker_requires_positive_integer_concurrency` has the cases
+  `0`, `-1`, `True` and `1.5`. Concurrency is an `Int`, so `True` and `1.5`
+  are unrepresentable. `0` and `-1` are refused with the reference's
+  message.
+- **The Worker CLI against the reference.** The `against the reference`
+  examples run `python -m petrus.motus.worker` and this package's CLI on the
+  same argument vectors. Help text, usage errors (exit status 2), provider
+  refusals (exit status 1), abbreviations and `=` values must be
+  byte-identical.
+
+Two tests are not applicable, because Haskell has no function colours: one
+`Activity` type serves both Workers.
+
+- `test_async_decorator_rejects_sync_and_untyped_signatures` refuses a
+  synchronous function given to `@async_activity`, an untyped parameter,
+  and an `async def` given to `@activity`. A Haskell definition
+  (`Petrus.Activity.defineActivity`) is typed by construction, and has no
+  sync/async distinction to get wrong.
+- `test_cli_rejects_wrong_mode_registry_before_provider_factory` refuses a
+  synchronous registry under `--execution-mode async`. Every registry is
+  valid in both modes. `workerMainWith` still loads and validates the
+  registry before it builds any provider, and
+  `exits 1 on a malformed registry spelling` exercises that path.
+
+`test_worker_runtime.py`'s
+`test_controlled_sequential_local_execution_is_byte_identical_to_inline_history`
+needs an Engine, so it lives in petrus-engine. The reference runs it over
+`tests.absurd_support.topology_net`. The port runs it over the Engine
+scenario's order net, which has the same shape: one Activity between pure
+transitions. The checked property is the same: inline custody and Local
+custody drained by a Worker write byte-identical History and the same
+marking. The inline Activity returns its receipt with keys in canonical
+order, because Local custody stores results as canonical JSON, exactly as
+the reference does. The reference's Activity returns a string, which has
+no key order.
+
+### test_worker_topology.py
+
+The reference runs this file over PostgreSQL History, Absurd Dispatch and
+real Worker processes. This repository has no Absurd Dispatch yet, so the
+port is partial.
+
+The Worker cases are ported in petrus-engine's `WorkerTopologySpec`, with
+the same topology over the substrate that exists here: an Engine over JSONL
+History and the durable Local Dispatch, served by real Worker processes.
+That is the test executable re-executed as the Worker CLI.
+- `TestEndToEnd.test_the_activity_executes_on_the_worker_and_completes_through_server_side_projection`;
+- `TestWorkerKill.test_sigkill_mid_activity_redispatches_on_lease_expiry_with_exactly_one_effect`;
+- `TestWorkerKill.test_sigterm_drains_gracefully_the_in_flight_activity_completes`;
+- `TestActivityRegistry.test_the_worker_refuses_an_unregistered_activity`.
+
+Further cases are ported in this package:
+- `TestActivityRegistry.test_worker_refuses_invalid_activity_registries`
+  (`WorkerSpec`). The cases `{}` and `{"": ...}` are ported. A non-string
+  name and a non-callable implementation are unrepresentable in a
+  `Map Text Activity`.
+- `TestActivityRegistry.test_main_defaults_queue_and_preserves_deduplicated_flag_order`
+  (`WorkerCliSpec`). Both parameter cases are ported, against the parsed
+  arguments rather than a fake Absurd provider.
+
+The suite adds a cross-implementation check: every pairing of a Haskell or
+reference Engine with a Haskell or reference Worker, taking turns in
+lock-step, writes byte-identical JSONL History.
+
+These cases need Absurd Dispatch, the Postgres History, or the joined Engine
+session, and belong to the Absurd Dispatch port:
+- `TestLifecycleScopeCancellation.test_engine_close_commits_history_then_absurd_tombstone_and_restart_repairs`
+- `TestWorkerKill.test_two_workers_do_not_replace_a_long_activity_that_heartbeats`
+- `TestWorkerKill.test_replacement_process_receives_durable_details_and_resumes`.
+  The Local analogue is ported as `test_worker_runtime.py`'s
+  `killed local worker reassigns with recovered heartbeat details`.
+- `TestAuthorityKill.test_killed_after_the_dispatch_commit_resumes_without_a_double_spawn`
+- `TestAuthorityKill.test_a_crash_before_the_begin_transaction_commits_leaves_nothing_anywhere`
+- every `TestAbsurdProviderEngineConstruction` test:
+  `test_resolves_default_and_declared_timeout_into_history_and_dispatch_and_snapshots_inputs`,
+  `test_load_under_changed_timeout_keeps_recorded_in_flight_invocation_without_reprepare`,
+  `test_provider_returns_the_concrete_engine_with_only_universal_doors`,
+  `test_create_and_load_are_explicit_and_close_appends_no_semantic_fact`,
+  `test_invalid_provider_option_closes_both_connections`,
+  `test_wrong_autocommit_listener_leaves_create_empty_and_retriable`,
+  `test_load_refuses_recorded_identity_that_differs_from_storage_key`,
+  `test_two_engines_keep_independent_instance_views`,
+  `test_load_refuses_incompatible_canonical_data`,
+  `test_the_session_requires_a_join_mode_connection`,
+  `test_the_session_requires_a_dedicated_listen_connection`,
+  `test_close_is_idempotent_and_every_door_and_observation_refuses_after_close`,
+  `test_a_second_live_authority_for_one_instance_is_fenced_out`,
+  `test_the_session_hands_out_no_writer_and_its_accessors_are_read_only`,
+  `test_joined_dispatch_failure_rolls_back_selection_before_fresh_load`,
+  `test_real_recovery_lock_contention_poisons_preserves_old_creates_no_target_and_releases_fence`,
+  `test_a_projection_crash_never_rolls_back_the_frozen_result`,
+  `test_a_terminal_activity_failure_halts_loud_with_its_facts_durable`,
+  `test_a_failed_door_poisons_the_session_whole`
+- `TestActivityRegistry.test_claimant_is_reused_by_one_process_definition_and_new_for_a_new_one`
+  (the Absurd provider's claimant)
+- `TestActivityRegistry.test_worker_snapshots_mutable_queue_sequence` and
+  `TestActivityRegistry.test_worker_refuses_an_empty_queue_subscription`
+  (the `AbsurdWorkerDispatch` constructor). Local's equivalents are covered
+  by `test_local_dispatch.py`.
+- `TestActivityRegistry.test_worker_and_loader_snapshot_mutable_registries`.
+  The Worker half is enforced by the types: a registry is an immutable
+  `Map`. The loader half is not applicable: registries are compiled into
+  the worker executable, not imported by name.
+- `TestDispatchDoorbell.test_the_doorbell_wakes_a_worker_whose_poll_could_not_have`
+  and `TestDispatchDoorbell.test_with_the_doorbell_suppressed_the_poll_safety_net_still_dispatches`
+  (Absurd's LISTEN/NOTIFY doorbell; Local custody has no doorbell, and the
+  Worker's `wait` is the custody's own)
 
 ## Beyond upstream
 
@@ -148,6 +298,21 @@ test.
     including lease expiry with an integer epoch, recorded through
     `Petrus.Telemetry.capture`.
   - A generated claimant is the worker label plus a version-4 UUID.
+
+- **The Worker CLI** (`WorkerCliSpec`, 17 examples beyond the boundary and
+  queue-defaulting tests):
+  - every provider's argument validation, with the reference's messages;
+  - `int()` and `float()` argument conversions;
+  - the process entry point's exit statuses;
+  - nine byte-for-byte comparisons with `python -m petrus.motus.worker`
+    (help, usage errors, abbreviations, refusals).
+
+Worker interop:
+- a Haskell Worker and a reference Worker each drain Local custody written
+  by either implementation's Engine, and all four pairings write
+  byte-identical History (petrus-engine `WorkerTopologySpec`);
+- this package's Worker CLI, re-executed as a process, serves the Engine
+  topology tests, and is killed and drained there.
 
 The Engine's suite exercises the adapters end to end:
 - cross-process resume against the reference

@@ -19,6 +19,12 @@ import Petrus.Motus.Dispatch.InMemory
 import Petrus.Motus.Dispatch.Inline
 import Petrus.Motus.Dispatch.LocalInteropSpec qualified as LocalInteropSpec
 import Petrus.Motus.Dispatch.LocalSpec qualified as LocalSpec
+import Petrus.Motus.AsyncWorkerSpec qualified as AsyncWorkerSpec
+import Petrus.Motus.Worker.Cli (noPlugins, workerMain)
+import Petrus.Motus.WorkerCliSpec qualified as WorkerCliSpec
+import Petrus.Motus.WorkerSpec qualified as WorkerSpec
+import Petrus.Motus.WorkerSupport (subprocessRegistries, workerModeVariable)
+import System.Environment (lookupEnv)
 import Test.Hspec hiding (context, pending)
 
 -- Python's built-in exception types, so classification names them alike.
@@ -59,8 +65,19 @@ cancelOf port = maybe (\_ -> error "not cancellable") id port.cancel
 dispatchErrorWith :: Text -> Selector DispatchError
 dispatchErrorWith fragment (DispatchError message) = fragment `T.isInfixOf` message
 
+-- | The suite, or (re-executed with 'workerModeVariable' set) the Worker
+-- process entry point over the reference test module's registry.
 main :: IO ()
-main = hspec $ do
+main =
+  lookupEnv workerModeVariable >>= \case
+    Just _ -> workerMain "python -m petrus.motus.worker" subprocessRegistries noPlugins
+    Nothing -> suite
+
+suite :: IO ()
+suite = hspec $ do
+  describe "test_worker_runtime.py" WorkerSpec.spec
+  describe "test_async_worker.py" AsyncWorkerSpec.spec
+  describe "Worker CLI" WorkerCliSpec.spec
   describe "test_local_dispatch.py" LocalSpec.spec
   LocalInteropSpec.spec
   describe "TestInMemoryDispatch" $ do
