@@ -60,31 +60,38 @@ run url = do
         _ -> Left "unexpected row shape"
   flip finally (mapM_ close [auto, joined, listener, sender]) $
     defaultMain
-      [ bgroup
-          "roundtrip"
-          [ bench "select-1" (nfIO (query auto "SELECT 1" []))
-          , bench "select-param" (nfIO (query auto "SELECT %s::int8 + 1" [intParam 41]))
-          ]
-      , bgroup
-          "query"
-          [ bench "select-1000-decoded" (nfIO (either error length . traverse decodeRow <$> query auto "SELECT n, label, payload FROM bench_rows ORDER BY n" []))
-          ]
-      , bgroup
-          "tx"
-          [ bench "join-insert-commit" (whnfIO (event joined "j" >> commit joined))
-          , bench "owned-insert-10" (whnfIO (withTransaction auto (forM_ [1 .. 10 :: Int] (\_ -> event auto "o"))))
-          ]
-      , bgroup
-          "fence"
-          [ bench "acquire-release" (whnfIO (acquireAuthorityFence auto "petrus-bench-fence" >>= releaseAuthorityFence))
-          ]
-      , -- A notification crosses two server processes and the scheduler of
-        -- a loaded machine: allow a wider spread than the global --stdev.
+      [ -- Everything that crosses to the server rides on the scheduler of a
+        -- possibly loaded machine, and commits wait for the WAL flush: allow
+        -- a wider spread than the global --stdev, or a busy machine never
+        -- converges.
+        localOption (RelStDev 0.2) $
+          bgroup
+            "roundtrip"
+            [ bench "select-1" (nfIO (query auto "SELECT 1" []))
+            , bench "select-param" (nfIO (query auto "SELECT %s::int8 + 1" [intParam 41]))
+            ]
+      , localOption (RelStDev 0.2) $
+          bgroup
+            "query"
+            [ bench "select-1000-decoded" (nfIO (either error length . traverse decodeRow <$> query auto "SELECT n, label, payload FROM bench_rows ORDER BY n" []))
+            ]
+      , localOption (RelStDev 0.2) $
+          bgroup
+            "tx"
+            [ bench "join-insert-commit" (whnfIO (event joined "j" >> commit joined))
+            , bench "owned-insert-10" (whnfIO (withTransaction auto (forM_ [1 .. 10 :: Int] (\_ -> event auto "o"))))
+            ]
+      , localOption (RelStDev 0.2) $
+          bgroup
+            "fence"
+            [ bench "acquire-release" (whnfIO (acquireAuthorityFence auto "petrus-bench-fence" >>= releaseAuthorityFence))
+            ]
+      , -- A notification crosses two server processes: wider still.
         localOption (RelStDev 0.25) $
           bgroup
-          "notify"
-          [ bench "roundtrip" (nfIO (notify sender "petrus_bench" "q" >> fmap notificationPayload <$> waitForNotification listener 5))
-          ]
+            "notify"
+            [ bench "roundtrip" (nfIO (notify sender "petrus_bench" "q" >> fmap notificationPayload <$> waitForNotification listener 5))
+            ]
       , bgroup
           "params"
           [ bench "convert-placeholders" (nf (fmap fst . convertPlaceholders) (sqlSource insertEvent))
