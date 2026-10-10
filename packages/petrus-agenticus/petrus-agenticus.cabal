@@ -35,7 +35,8 @@ common warnings
 library
   import:           warnings
   hs-source-dirs:   src
-  exposed-modules:  Petrus.Agenticus.Program.AgentNet
+  exposed-modules:  Petrus.Agenticus.Attachment.Binding
+                    Petrus.Agenticus.Program.AgentNet
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
@@ -44,8 +45,10 @@ library
                   , petrus-cel
                   , petrus-dsl
                   , petrus-engine
+                  , petrus-execution
                   , petrus-impetus
                   , petrus-json
+                  , stm >=2.5
                   , text >=2.0
 
 test-suite petrus-agenticus-test
@@ -55,6 +58,7 @@ test-suite petrus-agenticus-test
   main-is:          Main.hs
   other-modules:    Petrus.Agenticus.TestSupport
                     Petrus.Agenticus.AgentNetSpec
+                    Petrus.Agenticus.BindingSpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -65,9 +69,12 @@ test-suite petrus-agenticus-test
                   , petrus-agenticus
                   , petrus-agenticus-core
                   , petrus-engine
+                  , petrus-execution
                   , petrus-history-store
                   , petrus-impetus
                   , petrus-json
                   , petrus-motus
                   , QuickCheck
+                  , stm
+                  , temporary
                   , text
