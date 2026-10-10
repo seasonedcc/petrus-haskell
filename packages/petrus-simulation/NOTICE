@@ -1,0 +1,20 @@
+petrus-simulation
+Copyright 2026 Seasoned
+
+This package is a Haskell port of the bounded simulation runner and the
+simulation HTTP service of Petrus (petrus.simulation and
+petrus.simulation_http, by Henrique Bastos), pinned under upstream/petrus and
+licensed under the Apache License, Version 2.0. It follows the runner's
+implementation-free-v1 profile and spec/simulation-http-v1.md, and its test
+suite ports the upstream tests in tests/petrus/engine/test_simulation.py and
+tests/petrus/engine/test_simulation_http.py together with the fixture
+scenario of tests/simulation_support.py. The package itself is licensed under
+the Apache License, Version 2.0 (see LICENSE).
+
+The test and benchmark scripts in test/ and bench/ run the upstream Petrus
+code from its pinned virtual environment to record the reference behavior;
+no upstream source is included in the library.
+
+Through petrus-http-core, the service reproduces the observable behavior of
+CPython's http.server, urllib.parse and ipaddress (the Python Software
+Foundation License); no CPython source code is included.

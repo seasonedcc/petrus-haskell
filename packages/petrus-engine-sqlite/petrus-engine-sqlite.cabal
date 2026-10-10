@@ -1,0 +1,101 @@
+cabal-version:      3.4
+name:               petrus-engine-sqlite
+version:            0.1.0.0
+synopsis:           The fenced local SQLite Engine
+description:
+  A port of @petrus.engine.sqlite@: 'createEngine' / 'loadEngine' host one
+  Instance per database file behind the SQLite writer fence, over the SQLite
+  History store, composed through "Petrus.Engine.Provider". Python and
+  Haskell Engines on the same file exclude each other and read and write the
+  same History rows.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Workflow
+build-type:         Simple
+extra-doc-files:    NOTICE
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Engine.Sqlite
+  build-depends:    base >=4.18 && <5
+                  , petrus-engine
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-motus
+                  , petrus-sqlite
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-engine-sqlite-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  -- The kernel's, the Engine's and the Local Dispatch's shared test fixtures
+  -- are compiled in from their test trees rather than copied.
+  hs-source-dirs:   test ../petrus-impetus/test ../petrus-engine/test ../petrus-motus/test
+  main-is:          Main.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.Scenario
+                    Petrus.Motus.Dispatch.LocalSupport
+                    Petrus.Engine.SqliteSupport
+                    Petrus.Engine.SqliteSpec
+                    Petrus.Engine.SqliteInteropSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , direct-sqlite
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-engine-sqlite
+                  , petrus-history-store
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-sqlite
+                  , petrus-test-support
+                  , process >=1.6
+                  , text
+                  , unix >=2.8
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-engine-sqlite-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench test ../petrus-impetus/test ../petrus-engine/test
+  main-is:          Main.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.Scenario
+  build-depends:    base
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-engine
+                  , petrus-engine-sqlite
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-sqlite
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"

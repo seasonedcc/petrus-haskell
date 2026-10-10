@@ -201,6 +201,22 @@ spec = do
       let path = dir </> "h.jsonl"
       BS.writeFile path "{\"schema\": 5}\n"
       openJsonlHistoryStore path `shouldThrow` storeErrorContaining (T.pack path <> ": line 1 does not decode as an event history record: ")
+    -- decode_record begins with dict(payload): a line that is not a JSON
+    -- object is refused with dict's own text (captured from the reference)
+    let refusedLine json message = withScratch $ \dir -> do
+          let path = dir </> "h.jsonl"
+          BS.writeFile path (json <> "\n")
+          openJsonlHistoryStore path
+            `shouldThrow` \(HistoryStoreError m) -> m == T.pack path <> ": line 1 does not decode as an event history record: " <> message
+    it "a line that is a number refuses as dict(5) does" $ refusedLine "5" "'int' object is not iterable"
+    it "a line that is null refuses as dict(None) does" $ refusedLine "null" "'NoneType' object is not iterable"
+    it "a line that is a string refuses as dict('ab') does" $ refusedLine "\"ab\"" "dictionary update sequence element #0 has length 1; 2 is required"
+    it "a line that is an empty list is an empty mapping" $ refusedLine "[]" "cannot decode event history record: payload has no 'record' discriminator"
+    it "a list of pairs with an unhashable key refuses as dict() does" $ refusedLine "[[[1], 2]]" "cannot use 'list' as a dict key (unhashable type: 'list')"
+    it "a list of pairs is decoded as the mapping dict() builds (the last repeated key wins)" $ withScratch $ \dir -> do
+      let path = dir </> "h.jsonl"
+      BS.writeFile path "[[\"record\", \"CandidateSelected\"], [\"schema\", 5], [\"transition\", \"t\"], [\"occurrence\", 1], [\"instant\", 2], [\"instant\", 3]]\n"
+      (openJsonlHistoryStore path >>= Store.records) `shouldReturn` [RCandidateSelected (CandidateSelected transition' 1 3)]
 
   describe "jsonl_commit telemetry" $ do
     it "emits one event per durable commit with its batch size and bytes" $ withScratch $ \dir -> do
