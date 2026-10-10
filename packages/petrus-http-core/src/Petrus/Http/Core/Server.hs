@@ -46,6 +46,7 @@ module Petrus.Http.Core.Server
   , requestRawTarget
   , requestVersion
   , requestLine
+  , requestSimple
   , requestHeaders
   , requestPeer
   , requestHeader
@@ -385,6 +386,7 @@ handleOneRequest server conn peer = do
                       , requestRawTarget = lineRawTarget line
                       , requestVersion = lineVersion line
                       , requestLine = lineText line
+                      , requestSimple = lineSimple line
                       , requestHeaders = headers
                       , requestPeer = peer
                       , requestConn = conn
@@ -430,6 +432,10 @@ data Request = Request
   -- are written without status line and headers.
   , requestLine :: ByteString
   -- ^ The request line without its line ending.
+  , requestSimple :: Bool
+  -- ^ A two-word (HTTP/0.9 simple) request line, for which CPython sets
+  -- @self.headers@ to a plain @{}@ rather than a message (so a handler's
+  -- @self.headers.get_all@ raises @AttributeError@).
   , requestHeaders :: Headers
   -- ^ Header fields in order, as parsed by the @email@ compat32 parser
   -- (empty for a two-word HTTP/0.9 request).

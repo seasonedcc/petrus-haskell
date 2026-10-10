@@ -7,34 +7,26 @@
 --
 -- * "Petrus.HistoryStore.Jsonl" — one JSON line per record, byte-identical
 --   to the reference's @JsonlHistoryStore@; 'BackendOwned' commits.
+-- * "Petrus.HistoryStore.Sqlite" — the reference's @SqliteHistoryStore@:
+--   one short @BEGIN IMMEDIATE@ transaction per batch over the same DDL,
+--   rows and payload spelling, with verify-on-conflict
+--   ('verifyConflict'); 'BackendOwned' commits. It also re-exports the
+--   SQLite writer fence that production hosts take before loading (the
+--   SQLite Engine provider, @petrus-engine-sqlite@).
 --
--- = Adding a backend (the SQLite store goes here)
+-- = Adding a backend
 --
--- The SQLite store (@SqliteHistoryStore(path, instance=...)@ upstream) lands
--- as @Petrus.HistoryStore.Sqlite@ in this package, next to the JSONL module,
--- and re-exported below. Its shape is fixed by the kernel contract:
---
--- 1. Load the instance's rows in position order and decode each with
+-- 1. Load the instance's records in order and decode each with
 --    'Petrus.Impetus.History.Codec.decodeRecord' (refusing loud on a bad
---    row, as JSONL refuses a bad line).
--- 2. Build the store with
---    @'mirroredHistoryStore' mode loaded write@, where @write@ encodes the
---    whole batch first ('Petrus.Impetus.History.Codec.encodeRecord'), then
---    inserts it keyed by position and reports each record's 'Admission'
---    (verify-on-conflict through 'verifyConflict': an equal terminal held
---    elsewhere is 'AcknowledgedElsewhere').
+--    one).
+-- 2. Build the store with @'mirroredHistoryStore' mode loaded write@, where
+--    @write@ encodes the whole batch first, then writes it and reports each
+--    record's 'Admission' ('AcknowledgedElsewhere' for an equal terminal
+--    held elsewhere).
 -- 3. Choose the 'CommitMode': 'BackendOwned' when the store commits its own
 --    transaction; 'JoinedTransaction' when it writes inside a connection the
---    Engine's provider commits. A joined store must then be paired with an
---    Engine provider whose resources carry the commit
---    (@Petrus.Engine.Provider@). As in the reference, the pairing is the
---    provider's to keep: the Engine commits at its commit points exactly
---    when the resources supply a 'commit', and does not inspect the mode.
--- 4. Locking: when a backend needs an advisory file lock, use the shared
---    @petrus-posix@ package once it lands on main; until then keep a small
---    internal module and note it for replacement. JSONL needs none.
--- 5. Port @tests/petrus/impetus/history_store/test_sqlite_history.py@ and add
---    the backend to this package's backend-contract suite
+--    Engine's provider commits (@Petrus.Engine.Provider@).
+-- 4. Add the backend to this package's backend-contract suite
 --    (@test/Petrus/HistoryStore/BackendContractSpec.hs@), which runs every
 --    backend through the same @reopen@ factory.
 module Petrus.HistoryStore
@@ -42,6 +34,8 @@ module Petrus.HistoryStore
     HistoryStore (..)
   , CommitMode (..)
   , Admission (..)
+  , ConflictVerdict (..)
+  , verifyConflict
   , append
   , records
   , size
@@ -49,7 +43,10 @@ module Petrus.HistoryStore
   , mirroredHistoryStore
     -- * JSONL
   , module Petrus.HistoryStore.Jsonl
+    -- * SQLite
+  , module Petrus.HistoryStore.Sqlite
   ) where
 
 import Petrus.HistoryStore.Jsonl
+import Petrus.HistoryStore.Sqlite
 import Petrus.Impetus.HistoryStore

@@ -10,7 +10,8 @@
 -- * 'historyStoreProfile': the SQLite History store
 --   (@petrus.impetus.history_store.sqlite@).
 -- * 'localDispatchProfile': Local Dispatch (@petrus.motus.dispatch.local@,
---   @_connect@), which opens a new connection per operation.
+--   @_connect@). Upstream opens a new connection per operation; the port
+--   keeps a few of them open between operations ("Petrus.Sqlite.Pool").
 -- * 'ledgerProfile' / 'secureLedgerProfile': the agenticus ledgers
 --   (connection storage, Pi recovery and A2 host; attachment retention adds
 --   @secure_delete@), which use a rollback journal.
@@ -41,6 +42,7 @@ module Petrus.Sqlite.Connection
   , connectionDatabase
   , open
   , connect
+  , configure
   , close
   , withConnection
 
@@ -252,6 +254,13 @@ open profile path = mask $ \restore -> do
   connection <- connect path (busyTimeoutMs profile) (isolationLevel profile)
   restore (mapM_ (runSetup connection) (setup profile)) `onException` close connection
   pure connection
+
+-- | Run a profile's setup statements on an already connected database, in
+-- order (a refused WAL switch raises 'WalRefused'). For openers that must
+-- inspect the file between @sqlite3.connect@ and their PRAGMAs, as the
+-- History store's preflight does; 'open' is 'connect' followed by this.
+configure :: Connection -> Profile -> IO ()
+configure connection profile = mapM_ (runSetup connection) (setup profile)
 
 runSetup :: Connection -> Setup -> IO ()
 runSetup connection = \case

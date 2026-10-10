@@ -5,10 +5,11 @@ synopsis:           Durable History Store backends for the Petrus Impetus kernel
 description:
   Durable spellings of the one event History behind the kernel's
   HistoryStore contract (a port of @petrus.impetus.history_store@'s durable
-  backends). This release carries the JSONL store, byte-compatible with the
-  reference's @JsonlHistoryStore@: Haskell and Python processes read each
-  other's files and resume each other's Instances. The SQLite store joins as
-  @Petrus.HistoryStore.Sqlite@ (see "Petrus.HistoryStore").
+  backends): the JSONL store, byte-compatible with the reference's
+  @JsonlHistoryStore@, and the SQLite store with the same DDL text, rows and
+  payload spelling as the reference's @SqliteHistoryStore@, plus the SQLite
+  writer fence. Haskell and Python processes read and append to each other's
+  files and resume each other's Instances.
 license:            Apache-2.0
 license-file:       LICENSE
 author:             Seasoned
@@ -31,9 +32,10 @@ common warnings
 library
   import:           warnings
   hs-source-dirs:   src
-  -- Petrus.HistoryStore.Sqlite (the SQLite backend) belongs in this list.
   exposed-modules:  Petrus.HistoryStore
+                    Petrus.HistoryStore.Internal
                     Petrus.HistoryStore.Jsonl
+                    Petrus.HistoryStore.Sqlite
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
@@ -41,6 +43,8 @@ library
                   , filepath >=1.4
                   , petrus-impetus
                   , petrus-json
+                  , petrus-posix
+                  , petrus-sqlite
                   , petrus-telemetry
                   , text >=2.0
                   , unix >=2.8
@@ -59,6 +63,9 @@ test-suite petrus-history-store-test
                     Petrus.HistoryStore.JsonlSpec
                     Petrus.HistoryStore.BackendContractSpec
                     Petrus.HistoryStore.InteropSpec
+                    Petrus.HistoryStore.SqliteSupport
+                    Petrus.HistoryStore.SqliteSpec
+                    Petrus.HistoryStore.SqliteInteropSpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -69,7 +76,10 @@ test-suite petrus-history-store-test
                   , petrus-history-store
                   , petrus-impetus
                   , petrus-json
+                  , petrus-posix
+                  , petrus-sqlite
                   , petrus-telemetry
+                  , petrus-test-support
                   , process >=1.6
                   , text
   ghc-options:      -threaded -rtsopts
