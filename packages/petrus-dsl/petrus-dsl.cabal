@@ -1,0 +1,76 @@
+cabal-version:      3.4
+name:               petrus-dsl
+version:            0.1.0.0
+synopsis:           A typed authoring DSL for Petrus nets
+description:
+  A Haskell port of the Petrus net authoring DSL (@petrus.impetus.dsl@):
+  author nets with scopes, reusable stamped specifications, typed
+  connections, and typed handler and guard implementations, and lower them
+  to the kernel's canonical @Net@. The produced nets, and therefore their
+  Net-definition v3 projections, are byte-identical to the reference DSL's.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    PARITY.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Impetus.Dsl
+  build-depends:    base >=4.18 && <5
+                  , containers >=0.6
+                  , petrus-impetus
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-dsl-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.Impetus.Dsl.Support
+                    Petrus.Impetus.Dsl.Corpus
+                    Petrus.Impetus.DslSpec
+                    Petrus.Impetus.DslCorpusSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-dsl
+                  , petrus-impetus
+                  , petrus-json
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+benchmark petrus-dsl-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , deepseq
+                  , petrus-dsl
+                  , petrus-impetus
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"
