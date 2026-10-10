@@ -110,7 +110,8 @@ definitionSize d = length d.definition.places + length d.definition.transitions 
 main :: IO ()
 main = do
   history <- drainedHistory historyFifoTokens
-  let encoded = fromRight (error "encode") (dumps defaultDumps (Array (encodeHistory history)))
+  let recordValues = Array (encodeHistory history)
+      encoded = fromRight (error "encode") (dumps defaultDumps (Array (encodeHistory history)))
       definition = fromRight (error "project") (projectNetDefinition chain)
       payload = fromRight (error "serialize") (serializeNetDefinition definition)
       decodeAll raw = case parseJson pythonLoads raw of
@@ -131,6 +132,8 @@ main = do
     , bgroup
         "history"
         [ bench "encode" (nf (\h -> either (error "encode") BS.length (dumps defaultDumps (Array (encodeHistory h)))) history)
+        , bench "dumps-only" (nf (either (error "encode") BS.length . dumps defaultDumps) recordValues)
+        , bench "parse-only" (nf (either error (const ()) . parseJson pythonLoads) encoded)
         , bench "decode" (nf decodeAll encoded)
         , bench "replay-marking" (nf (either (error . T.unpack) tokenCount . replayMarking) history)
         ]
