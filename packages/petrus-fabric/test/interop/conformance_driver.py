@@ -421,6 +421,42 @@ def run(op: str, args: dict):  # noqa: C901 - one flat dispatch table
             return activity(invocation_in(args["invocation"]), context=None)
         finally:
             activity.close()
+    # -- the CV5 demo's roles (Engine-level checks) -------------------------
+    if op == "demo_bootstrap":
+        demo_module().bootstrap(args["dsn"], args["parent"], args["child"], args["credentials"])
+        return None
+    if op == "demo_open":
+        demo = demo_module()
+        dispatch = demo.CustodyDroppingDispatch() if args.get("drop_custody") else None
+        return handle(
+            demo.open_role(
+                args["dsn"], args["role"], args["authority"], args["parent"], args["child"], args["credential"],
+                dispatch=dispatch,
+            )
+        )
+    live = HANDLES.get(args.get("live")) if "live" in args else None
+    if op == "demo_drive":
+        outcome = live.drive()
+        return {"waiting": outcome.waiting, "status": live.engine.status.value}
+    if op == "demo_drain":
+        return live.drain()
+    if op == "demo_deliver":
+        from petrus.fabric.ingress import FABRIC_ENVELOPE
+        from petrus.impetus.petrinet import Token
+
+        item = Envelope.from_data(args["envelope"])
+        answer = live.engine.deliver(NetPath(item.source), (Token(FABRIC_ENVELOPE, item.to_data()),), identity=item.ingress_identity)
+        kind = "prior" if isinstance(answer, PriorAcknowledgement) else "fired"
+        return {"kind": kind, "occurrence": answer.occurrence}
+    if op == "demo_records":
+        return [[type(record).__name__, getattr(record, "identity", None)] for record in live.engine.records]
+    if op == "demo_invocations":
+        return live.activity.invocations
+    if op == "demo_in_flight":
+        return [[item.id, str(item.binding.transition)] for item in live.engine.in_flight]
+    if op == "demo_close":
+        live.close()
+        return None
     # -- calls -------------------------------------------------------------
     if op == "call_request":
         return CallRequest(args["call_id"], args["operation"], args["input"]).to_data()

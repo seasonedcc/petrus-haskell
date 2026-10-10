@@ -85,6 +85,42 @@ library engine
                   , petrus-impetus
   ghc-options:      -O2
 
+-- The CV5 acceptance demo (scripts/cv5-fabric-demo.py) as a library, so the
+-- executable and the test suites share it.
+library demo
+  import:           warnings
+  visibility:       public
+  hs-source-dirs:   demo
+  exposed-modules:  Petrus.Fabric.Demo
+  build-depends:    base >=4.18 && <5
+                  , base16-bytestring >=1.0
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , crypton >=1.0
+                  , petrus-activity
+                  , petrus-cel
+                  , petrus-engine
+                  , petrus-engine-postgres
+                  , petrus-fabric
+                  , petrus-fabric:engine
+                  , petrus-fabric:postgres
+                  , petrus-history-postgres
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-postgres
+                  , process >=1.6
+                  , text >=2.0
+  ghc-options:      -O2
+
+executable cv5-fabric-demo
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          FabricDemo.hs
+  build-depends:    base >=4.18 && <5
+                  , petrus-fabric:demo
+  ghc-options:      -threaded -rtsopts
+
 test-suite petrus-fabric-test
   import:           warnings
   type:             exitcode-stdio-1.0
@@ -93,6 +129,8 @@ test-suite petrus-fabric-test
   other-modules:    Petrus.Fabric.Conformance.Impl
                     Petrus.Fabric.Conformance.Haskell
                     Petrus.Fabric.Conformance.Setup
+                    Petrus.Fabric.Conformance.Demo
+                    Petrus.Fabric.DemoSpec
                     Petrus.Fabric.ConformanceSpec
                     Petrus.Fabric.InteropSpec
   build-depends:    base
@@ -105,6 +143,7 @@ test-suite petrus-fabric-test
                   , petrus-activity
                   , petrus-engine
                   , petrus-fabric
+                  , petrus-fabric:demo
                   , petrus-fabric:engine
                   , petrus-fabric:postgres
                   , petrus-impetus
@@ -114,4 +153,5 @@ test-suite petrus-fabric-test
                   , process >=1.6
                   , text
                   , time
+  build-tool-depends: petrus-fabric:cv5-fabric-demo
   ghc-options:      -threaded -rtsopts

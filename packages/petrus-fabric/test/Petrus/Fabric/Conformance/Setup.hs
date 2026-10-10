@@ -116,7 +116,7 @@ data Pair = Pair {haskell :: Impl, python :: Impl, target :: PostgresTarget}
 
 -- | One implementation's side of an interop check, with its own autocommit
 -- connection to the shared database.
-data Side = Side {impl :: Impl, conn :: Json}
+data Side = Side {impl :: Impl, conn :: Json, dsn :: Text}
 
 interopGroup :: Launcher -> SpecWith Pair -> Spec
 interopGroup (Launcher with) body = do
@@ -140,7 +140,8 @@ both label check = do
         let open i = ok i "connect" [("dsn", String (TE.decodeUtf8 pair.target.targetUrl)), ("autocommit", Bool True)]
         a <- open first
         b <- open second
-        check admin (Side first a) (Side second b)
+        let url = TE.decodeUtf8 pair.target.targetUrl
+        check admin (Side first a url) (Side second b url)
         _ <- first.call "close" [("conn", a)]
         _ <- second.call "close" [("conn", b)]
         pure ()
