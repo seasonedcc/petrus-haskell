@@ -55,7 +55,6 @@ library
                   , bytestring >=0.11
                   , containers >=0.6
                   , petrus-impetus
-                  , petrus-impetus
                   , petrus-json
                   , text >=2.0
                   , time >=1.12
@@ -85,6 +84,7 @@ benchmark petrus-cel-bench
   hs-source-dirs:   bench
   main-is:          Main.hs
   build-depends:    base
+                  , containers
                   , petrus-cel
                   , petrus-impetus
                   , petrus-json

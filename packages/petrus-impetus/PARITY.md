@@ -74,7 +74,7 @@ Notes on the table:
 | upstream file | reason |
 | --- | --- |
 | dsl/test_petrinet_dsl.py (42) | the DSL is out of scope |
-| binding/test_cel.py (19) | CEL itself is the separate `petrus-cel` package |
+| binding/test_cel.py (19) | CEL itself is the separate `petrus-cel` package; all 19 are ported there, in `packages/petrus-cel/test/Impetus.hs` |
 | history_store/test_sqlite_history.py (11) | durable stores other than in-memory are out of scope |
 | history_store/test_postgres_history.py (21) | same |
 
@@ -121,7 +121,9 @@ The same records and outcomes are asserted through the public `begin` and
 - `TestBeginEndFiring.test_instance_complete_firing_retains_its_outcome_and_registration_contract`
 
 **CEL semantics, which live in `petrus-cel` (5).** These cover the CEL
-environment and macro-bound variable analysis.
+environment and macro-bound variable analysis. They are ported in
+`packages/petrus-cel/test/Impetus.hs`, on real Instances built with
+`Petrus.Cel.Impetus.celCompilers`.
 
 - `test_completion.py::TestCelEnvironment.test_place_variables_bind_token_color_and_data`
 - `test_completion.py::TestCelEnvironment.test_a_black_token_reads_as_null_color_and_data`
