@@ -31,15 +31,18 @@ the tests, conformance suites, and benchmark results that justify the status.
 | Net document v1 | `impetus/net_document.py` | `petrus-impetus` | in progress | |
 | Golden traces | `spec/traces` | `petrus-impetus` | in progress | |
 | History stores: memory | `impetus/history_store/memory.py` | `petrus-impetus` | in progress | |
-| History stores: JSONL, SQLite, Postgres | `impetus/history_store/{jsonl,sqlite,postgres}.py` | | not started | |
+| History stores: JSONL | `impetus/history_store/jsonl.py` | `petrus-history-store` | at parity | [PARITY](packages/petrus-history-store/PARITY.md), [DIVERGENCES](packages/petrus-history-store/DIVERGENCES.md), byte-identical interop both ways (`test/Petrus/HistoryStore/InteropSpec.hs`), [bench](packages/petrus-history-store/bench/RESULTS.md) |
+| History stores: SQLite, Postgres | `impetus/history_store/{sqlite,postgres}.py` | `petrus-history-store` (SQLite place reserved) | not started | |
 | Observation | `impetus/observation.py`, `engine/observation_http.py` | | not started | |
 | Net DSL | `impetus/dsl.py` | | not started | |
 | Activities | `motus/activity` | | not started | |
+| Dispatch port, InlineDispatch, InMemoryDispatch | `motus/dispatch/{__init__,inline,memory}.py` | `petrus-motus` | at parity | [PARITY](packages/petrus-motus/PARITY.md), [DIVERGENCES](packages/petrus-motus/DIVERGENCES.md); exercised end to end by the [Engine bench](packages/petrus-engine/bench/RESULTS.md) |
 | Dispatch: local, Absurd | `motus/dispatch` | | not started | |
 | Execution, Gondolin | `motus/execution`, `motus/_execution` | | not started | |
 | Workers | `motus/worker` | | not started | |
 | Transport: ZeroMQ | `motus/transport` | | not started | |
-| Engine: SQLite, Postgres, Absurd, coordination | `engine/` | | not started | |
+| Engine (provider-neutral) and coordination | `engine/__init__.py`, `engine/_coordination.py` | `petrus-engine` | at parity | [PARITY](packages/petrus-engine/PARITY.md), [DIVERGENCES](packages/petrus-engine/DIVERGENCES.md), JSONL interop with crash/resume both ways (`test/Petrus/Engine/InteropSpec.hs`), [bench](packages/petrus-engine/bench/RESULTS.md) |
+| Engine: SQLite, Postgres, Absurd | `engine/{sqlite,postgres,absurd}.py` | `petrus-engine` provider seam (`Petrus.Engine.Provider`) | not started | |
 | Simulation + HTTP | `simulation.py`, `simulation_http.py` | | not started | |
 | Telemetry | `telemetry.py` | | not started | |
 | Deterministic simulation testing | `testing/dst.py` | | not started | |

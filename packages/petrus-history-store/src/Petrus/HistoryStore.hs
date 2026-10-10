@@ -27,7 +27,9 @@
 --    transaction; 'JoinedTransaction' when it writes inside a connection the
 --    Engine's provider commits. A joined store must then be paired with an
 --    Engine provider whose resources carry the commit
---    (@Petrus.Engine.Provider@); the Engine refuses a mismatch.
+--    (@Petrus.Engine.Provider@). As in the reference, the pairing is the
+--    provider's to keep: the Engine commits at its commit points exactly
+--    when the resources supply a 'commit', and does not inspect the mode.
 -- 4. Locking: when a backend needs an advisory file lock, use the shared
 --    @petrus-posix@ package once it lands on main; until then keep a small
 --    internal module and note it for replacement. JSONL needs none.

@@ -33,6 +33,9 @@ module Petrus.Engine
   , Delivered (..)
   , deliver
   , acceptDelivery
+  , DeliveryAnswer (..)
+  , AcceptedDelivery (..)
+  , acceptedDelivery
   , completeDelivery
   , openScope
   , closeScope
@@ -69,4 +72,5 @@ module Petrus.Engine
   ) where
 
 import Petrus.Engine.Internal
+import Petrus.Impetus.Instance (AcceptedDelivery (..), DeliveryAnswer (..), acceptedDelivery)
 import Petrus.Engine.Vocabulary

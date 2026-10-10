@@ -87,7 +87,9 @@ inMemoryHistoryStore = do
     HistoryStore
       { snapshot = readIORef mirror
       , count = Seq.length <$> readIORef mirror
-      , extend = \batch -> () <$ atomicModifyIORef'_ mirror (\held -> foldl' (Seq.|>) held batch)
+      , extend = \case
+          [record] -> () <$ atomicModifyIORef'_ mirror (Seq.|> record)
+          batch -> () <$ atomicModifyIORef'_ mirror (\held -> foldl' (Seq.|>) held batch)
       , mode = BackendOwned
       }
 

@@ -100,7 +100,7 @@ spec = do
       clock.now `shouldReturn` 10
 
   describe "TestEngineDrivesTheSeam" $ do
-    it "typed place rejects an incompatible initial xToken before history is written" $ do
+    it "typed place rejects an incompatible initial token before history is written" $ do
       history <- inMemoryHistoryStore
       createIn (netOf [coloredPlace a "Expected"] [] []) "invalid-initial-marking" history
         opts {Engine.marking = markingFromList [(a, [tok "Other"])]}

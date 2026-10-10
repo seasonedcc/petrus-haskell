@@ -12,9 +12,8 @@ module Main (main) where
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.Sequence qualified as Seq
-import Petrus.HistoryStore.Jsonl (decodeLines, encodePayload)
 import Data.Text qualified as T
-import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
+import Petrus.HistoryStore.Jsonl (decodeLines, encodePayload, openJsonlHistoryStore)
 import Petrus.Impetus.History (Record)
 import Petrus.Impetus.HistoryStore (HistoryStore (..), inMemoryHistoryStore)
 import Petrus.Impetus.HistoryStore qualified as Store

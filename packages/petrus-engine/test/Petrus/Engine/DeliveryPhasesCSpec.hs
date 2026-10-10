@@ -274,10 +274,9 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
 
     Store.records history `shouldReturn` completedRecords
 
-  it "completion refuses a non acceptance carrier before mutation" $
-    -- N/A by construction: 'Engine.completeDelivery' takes an
-    -- 'AcceptedDelivery'; any other carrier does not type-check.
-    byConstruction
+  -- test_completion_refuses_a_non_acceptance_carrier_before_mutation: not ported.
+  -- N/A by construction: 'Engine.completeDelivery' takes an
+  -- 'AcceptedDelivery'; any other carrier does not type-check.
 
   describe "projection exception text is nonempty bounded and the original propagates" $
     sequence_
@@ -289,19 +288,16 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
           ]
       ]
 
-  it "projection failure replaces object identity with a stable type marker" $
-    -- N/A by construction: a Haskell handler failure carries text, never an
-    -- object whose identity could leak into the recorded failure.
-    byConstruction
+  -- test_projection_failure_replaces_object_identity_with_a_stable_type_marker: not ported.
+  -- N/A by construction: a Haskell handler failure carries text, never an
+  -- object whose identity could leak into the recorded failure.
 
-  it "projection refuses a registration key subclass without corrupting durable authority" $
-    -- N/A by construction: a registration key is exact 'Text' (no str
-    -- subclass can impersonate @"default"@).
-    byConstruction
+  -- test_projection_refuses_a_registration_key_subclass_without_corrupting_durable_authority: not ported.
+  -- N/A by construction: a registration key is exact 'Text' (no str
+  -- subclass can impersonate @"default"@).
 
-  it "projection refuses a registration subclass before reading its fields" $
-    -- N/A by construction: 'DeliveryRegistration' is a closed record type.
-    byConstruction
+  -- test_projection_refuses_a_registration_subclass_before_reading_its_fields: not ported.
+  -- N/A by construction: 'DeliveryRegistration' is a closed record type.
 
   it "completion refuses a foreign acceptance before mutation" $ do
     let token = tokD "X" (Int 7)
@@ -353,15 +349,13 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
     resumed <- loadWith (sourceNet Nothing) "mutated-acceptance-carrier" history plain
     map (.occurrence) <$> Engine.inFlight resumed `shouldReturn` [1, 2]
 
-  it "completion refuses an acceptance subclass before it can redirect the occurrence" $
-    -- N/A by construction: 'AcceptedDelivery' is a closed record type with no
-    -- overridable field access.
-    byConstruction
+  -- test_completion_refuses_an_acceptance_subclass_before_it_can_redirect_the_occurrence: not ported.
+  -- N/A by construction: 'AcceptedDelivery' is a closed record type with no
+  -- overridable field access.
 
-  it "acceptance carrier refuses a boolean occurrence before completion" $
-    -- N/A by construction: the occurrence is an 'Int'; a boolean does not
-    -- type-check.
-    byConstruction
+  -- test_acceptance_carrier_refuses_a_boolean_occurrence_before_completion: not ported.
+  -- N/A by construction: the occurrence is an 'Int'; a boolean does not
+  -- type-check.
 
   it "acceptance carrier refuses a non string identity before completion" $ do
     -- The list identity is unspellable ('Text'); the empty identity is the
@@ -553,6 +547,3 @@ failureFor recorded
   | recorded == "ProjectionError()" = recorded
   | otherwise = "ProjectionError('" <> T.replicate 5000 "x" <> "')"
 
--- | An example whose upstream subject the Haskell types rule out.
-byConstruction :: Expectation
-byConstruction = pure ()
