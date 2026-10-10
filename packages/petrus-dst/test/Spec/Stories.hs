@@ -392,3 +392,19 @@ spec = describe "toy World stories (Python-authored vectors)" $ do
         beforeReport = fst . T.breakOn "[type="
     either failureClass (const "") refused `shouldBe` memberText "type" expected
     either (beforeReport . failureMessage) (const "") refused `shouldBe` beforeReport (memberText "message" expected)
+
+  it "refuses a command or fault for another profile identity (foreign-profile)" $ do
+    -- The Engine-independent half of the reference's
+    -- test_registry_fails_closed_on_profile_or_checker_identity_mismatch.
+    s <- story "foreign-profile"
+    q <- newQueue
+    let other = Identity {name = queueIdentity.name, version = 2, digest = queueIdentity.digest}
+    (refusedCommand, refusedFault, count) <- withToy (config (queueProfile q) (budget 8 2 1 5 0 1) [] Nothing) $ do
+      t <- Timeline.timeline
+      c <- attempt (World.submit Command {profile = other, name = "queue.record", payload = Object [("id", String "x")]} t.generation)
+      f <- attempt (World.activateFault Fault {profile = other, name = "f", target = "queue.apply", occurrence = 1, disposition = Refuse, payload = Null} t.generation)
+      operations <- World.operations
+      pure (c, f, length operations)
+    refusedCommand `shouldBeJson` member "command" s
+    refusedFault `shouldBeJson` member "fault" s
+    Int (toInteger count) `shouldBeJson` member "operations" s

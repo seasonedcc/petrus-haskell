@@ -299,6 +299,17 @@
    "type": "PendingWork"
   }
  },
+ "foreign-profile": {
+  "command": {
+   "message": "DST command profile does not match this World",
+   "type": "ValueError"
+  },
+  "fault": {
+   "message": "DST fault profile does not match this World",
+   "type": "ValueError"
+  },
+  "operations": 0
+ },
  "no-choices": {
   "error": {
    "message": "DST World has no seeded choice authorities",

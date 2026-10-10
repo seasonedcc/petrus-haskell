@@ -7,6 +7,7 @@
 -- Engine-independent codec tests of @tests/dst/test_world.py@.
 module Spec.Codec (spec) where
 
+import Control.Monad (forM_)
 import Crypto.Hash (Digest, SHA256, hash)
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as B16
@@ -188,8 +189,22 @@ spec = describe "artifact codec" $ do
         a.scenarioId `shouldBe` "projection-crash-recovery-world-v1"
         fmap (<> "\n") (encodeArtifact artifact) `shouldBe` Right payload
       other -> expectationFailure (show (fmap artifactScenarioId other))
+
+  it "admits JSON values nested past pydantic's recursion guard (a documented divergence)" $ do
+    -- The reference refuses a command payload {"x": [[...]]} from 255
+    -- nested lists (recursion_loop) and raises RecursionError from 993;
+    -- this port has no such limit (DIVERGENCES.md).
+    payload <- fixturePayload "projection-crash-recovery-world-v1.json"
+    forM_ [255, 993, 5000] $ \depth -> do
+      let nested = BS.replicate depth 91 <> BS.replicate depth 93
+          (prefix, suffix) = BS.breakSubstring "\"payload\":{}" payload
+          deep = prefix <> "\"payload\":{\"x\":" <> nested <> "}" <> BS.drop 12 suffix
+      BS.length deep `shouldBe` BS.length payload + 2 * depth + 4
+      case decodeArtifact deep of
+        Right artifact -> fmap (<> "\n") (encodeArtifact artifact) `shouldBe` Right deep
+        Left e -> expectationFailure (T.unpack (decodeErrorMessage e))
   where
-    unique = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
+    unique =foldr (\x acc -> if x `elem` acc then acc else x : acc) []
     refusedWith needle = \case
       Left e -> needle `T.isInfixOf` decodeErrorMessage e
       Right _ -> False

@@ -511,6 +511,28 @@ def refusals() -> dict:
     }
 
 
+def foreign_profile() -> dict:
+    # The Engine-independent half of test_registry_fails_closed_on_profile_or_checker_identity_mismatch:
+    # a command or fault for another profile identity is refused.
+    other = ProfileIdentity(name=QueueProfile.identity.name, version=2, digest=QueueProfile.identity.digest)
+    world = World(QueueProfile(), budget(8, 2, 1, 5, 0, 1))
+    try:
+        generation = world.timeline().generation
+        command = error(
+            lambda: world.submit(Command(profile=other, name="queue.record", payload={"id": "x"}), generation=generation)
+        )
+        fault = error(
+            lambda: world.activate_fault(
+                Fault(profile=other, name="f", target="queue.apply", occurrence=1, disposition="refuse", payload=None),
+                generation=generation,
+            )
+        )
+        operations = len(world.operations)
+    finally:
+        world.close()
+    return {"command": command, "fault": fault, "operations": operations}
+
+
 def failure_after_end() -> dict:
     # Found by the Haskell port's generated-story property: a budget
     # refusal after the World already ended records a second failure
@@ -550,6 +572,7 @@ STORIES = {
     "fault-story": fault_story,
     "refusals": refusals,
     "failure-after-end": failure_after_end,
+    "foreign-profile": foreign_profile,
 }
 
 
