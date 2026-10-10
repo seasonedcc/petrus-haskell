@@ -31,8 +31,10 @@ import Petrus.Json (Json (..))
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.Delayed qualified as Delayed
 import Petrus.Testing.Dst.Engine.Delivery qualified as Delivery
+import Petrus.Testing.Dst.Engine.GeneratedRuntime qualified as GeneratedRuntime
 import Petrus.Testing.Dst.Engine.Lifecycle qualified as Lifecycle
 import Petrus.Testing.Dst.Engine.Projection qualified as Projection
+import Petrus.Testing.Dst.Engine.Retry qualified as Retry
 import Petrus.Testing.Dst.Engine.Timer qualified as Timer
 import Spec.Support
 import System.FilePath ((</>))
@@ -98,7 +100,39 @@ replayCases =
        , ReplayCase "timer-crash-recovery-world-v3.json" timerRegistry
        , ReplayCase "lifecycle-reset-late-terminal-world-v3.json" lifecycleRegistry
        , ReplayCase "lifecycle-cancellation-refusal-world-v3.json" cancellationRegistry
+       , ReplayCase "retry-crash-exhaustion-world-v3.json" retryRegistry
+       , ReplayCase "delayed-retry-crash-recovery-world-v3.json" delayedRetryRegistry
+       , ReplayCase "local-terminal-redelivery-world-v3.json" terminalRegistry
+       , ReplayCase "generated-runtime-minimized-fair-regression-v4.json" generatedRuntimeRegistry
        ]
+
+-- | The History and LocalDispatch database of a two-path world.
+twoPaths :: FilePath -> (FilePath, FilePath)
+twoPaths dir = (dir </> "history.jsonl", dir </> "dispatch.sqlite3")
+
+retryRegistry :: Fresh
+retryRegistry dir = do
+  p <- uncurry Retry.retryEngineProfile (twoPaths dir)
+  pure (registryOf [SomeProfile p.profile] [Retry.retryAuthorityChecker])
+
+delayedRetryRegistry :: Fresh
+delayedRetryRegistry dir = do
+  p <- uncurry Retry.delayedRetryEngineProfile (twoPaths dir)
+  pure (registryOf [SomeProfile p.profile] [Retry.delayedRetryAuthorityChecker])
+
+terminalRegistry :: Fresh
+terminalRegistry dir = do
+  p <- uncurry Retry.terminalEngineProfile (twoPaths dir)
+  pure (registryOf [SomeProfile p.profile] [Retry.terminalAuthorityChecker])
+
+generatedRuntimeRegistry :: Fresh
+generatedRuntimeRegistry dir = do
+  p <- uncurry GeneratedRuntime.generatedRuntimeProfile (twoPaths dir)
+  checker <- GeneratedRuntime.newGeneratedRuntimeChecker
+  pure (registryOf [SomeProfile p.profile] [checker])
+
+twoHistories :: (FilePath -> FilePath -> IO (Either DstFailure AnyArtifact)) -> FilePath -> IO (Either DstFailure AnyArtifact)
+twoHistories b = uncurry b . twoPaths
 
 delayedRegistry :: Fresh
 delayedRegistry dir = do
@@ -148,6 +182,13 @@ authorCases =
   , AuthorCase "timer_world.build_timer_artifact" (oneHistory Timer.buildTimerArtifact) timerRegistry
   , AuthorCase "lifecycle_world.build_lifecycle_artifact" (oneHistory Lifecycle.buildLifecycleArtifact) lifecycleRegistry
   , AuthorCase "lifecycle_world.build_lifecycle_cancellation_artifact" (oneHistory Lifecycle.buildLifecycleCancellationArtifact) cancellationRegistry
+  , AuthorCase "retry_world.build_retry_artifact" (twoHistories Retry.buildRetryArtifact) retryRegistry
+  , AuthorCase "retry_world.build_delayed_retry_artifact" (twoHistories Retry.buildDelayedRetryArtifact) delayedRetryRegistry
+  , AuthorCase "retry_world.build_terminal_artifact" (twoHistories Retry.buildTerminalArtifact) terminalRegistry
+  , AuthorCase
+      "generated_runtime_world.build_generated_runtime_artifact"
+      (twoHistories GeneratedRuntime.buildGeneratedRuntimeArtifact)
+      generatedRuntimeRegistry
   ]
 
 fixtureBytes :: FilePath -> IO BS.ByteString

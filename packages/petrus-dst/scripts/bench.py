@@ -54,10 +54,14 @@ ENGINE_FIXTURES = [
     "timer-crash-recovery-world-v3.json",
     "lifecycle-reset-late-terminal-world-v3.json",
     "lifecycle-cancellation-refusal-world-v3.json",
+    "retry-crash-exhaustion-world-v3.json",
+    "delayed-retry-crash-recovery-world-v3.json",
+    "local-terminal-redelivery-world-v3.json",
+    "generated-runtime-minimized-fair-regression-v4.json",
 ]
 
 # The builders Spec.EngineWorlds.authorCases authors, in the same order.
-ENGINE_BUILDERS = ONE_PATH
+ENGINE_BUILDERS = ONE_PATH + TWO_PATHS
 
 
 def author_engine_worlds() -> list[bytes]:

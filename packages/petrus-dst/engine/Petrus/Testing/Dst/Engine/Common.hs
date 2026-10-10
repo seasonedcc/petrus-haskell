@@ -69,6 +69,7 @@ import Petrus.Engine.Observation (observeEngine)
 import Petrus.Impetus.History.Records (FieldValue (FPolicy), encodeFieldValue, recordName)
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
 import Petrus.Json (Json (..), lookupMember)
+import Petrus.Motus.Dispatch (DispatchError (..))
 import Petrus.Observation qualified as Observation
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.PyRepr (pyStrRepr)
@@ -130,6 +131,7 @@ pythonError e
       EngineRuntimeError m -> ("RuntimeError", m)
       EngineHandlerFailed t -> handlerText t
   | Just failure <- fromException e = (failureClass failure, failureMessage failure)
+  | Just (DispatchError message) <- fromException e = ("ValueError", message)
   | otherwise = (T.pack (takeWhile (/= ' ') (show e)), T.pack (displayException e))
 
 -- | Split @Class('message')@ (a single-argument Python repr whose argument

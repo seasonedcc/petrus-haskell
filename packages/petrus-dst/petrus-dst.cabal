@@ -74,8 +74,10 @@ library engine-worlds
   exposed-modules:  Petrus.Testing.Dst.Engine.Common
                     Petrus.Testing.Dst.Engine.Delayed
                     Petrus.Testing.Dst.Engine.Delivery
+                    Petrus.Testing.Dst.Engine.GeneratedRuntime
                     Petrus.Testing.Dst.Engine.Lifecycle
                     Petrus.Testing.Dst.Engine.Projection
+                    Petrus.Testing.Dst.Engine.Retry
                     Petrus.Testing.Dst.Engine.Timer
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11

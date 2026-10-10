@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
+from copy import deepcopy
 from pathlib import Path
 
 from petrus.testing.dst import Observation
@@ -29,7 +31,18 @@ from tests.dst.engine_world import (
     EngineHistoryChecker,
     TerminalRefusalChecker,
 )
+from tests.dst.generated_runtime_world import (
+    SCOPE_NAME,
+    GeneratedRuntimeAuthorityChecker,
+    execute_generated_runtime_story,
+)
 from tests.dst.lifecycle_world import CancellationAuthorityChecker, LifecycleAuthorityChecker
+from tests.dst.retry_world import (
+    RETRY_AVAILABLE_INSTANT,
+    DelayedRetryAuthorityChecker,
+    RetryAuthorityChecker,
+    TerminalAuthorityChecker,
+)
 from tests.dst.timer_world import MATURATION_INSTANT, TimerAuthorityChecker
 
 
@@ -222,19 +235,180 @@ CASES = [
 ]
 
 
+RETRY_ATTEMPT = {
+    "activity": "work",
+    "correlation": "occurrence-1",
+    "idempotency": "occurrence-1",
+    "input": 3,
+    "instance": "dst-world-retry-recovery",
+    "policy": {"initial_interval": RETRY_AVAILABLE_INSTANT},
+    "queue": "default",
+}
+
+CASES += [
+    (
+        "test_retry_world.test_retry_checker_refuses_terminal_before_exhaustion",
+        RetryAuthorityChecker(),
+        observation(
+            "engine.retry-authority",
+            {
+                "attempts": [
+                    {
+                        "activity": "work",
+                        "correlation": "occurrence-1",
+                        "epoch": 1,
+                        "idempotency": "occurrence-1",
+                        "input": 3,
+                        "instance": "dst-world-retry-recovery",
+                        "policy": {},
+                        "queue": "default",
+                    }
+                ],
+                "failures_delivered": 1,
+                "record_types": ["InstanceCreated", "ActivityRequested", "ActivityFailed", "FiringFailed"],
+            },
+        ),
+    ),
+    (
+        "test_retry_world.test_delayed_retry_checker_refuses_an_early_second_claim",
+        DelayedRetryAuthorityChecker(),
+        observation(
+            "engine.delayed-retry-authority",
+            {
+                "attempts": [{**RETRY_ATTEMPT, "epoch": 1}, {**RETRY_ATTEMPT, "epoch": 2}],
+                "claim_checks": [
+                    {"available": True, "epoch": 1, "instant": 0},
+                    {"available": True, "epoch": 2, "instant": RETRY_AVAILABLE_INSTANT - 1},
+                ],
+                "current_instant": RETRY_AVAILABLE_INSTANT - 1,
+                "failures_delivered": 1,
+                "record_types": ["InstanceCreated", "ActivityRequested"],
+            },
+            instant=RETRY_AVAILABLE_INSTANT - 1,
+            generation=2,
+        ),
+    ),
+    (
+        "extra.delayed-retry-exact-prefix-passes",
+        DelayedRetryAuthorityChecker(),
+        observation(
+            "engine.delayed-retry-authority",
+            {
+                "attempts": [{**RETRY_ATTEMPT, "epoch": 1}, {**RETRY_ATTEMPT, "epoch": 2}],
+                "claim_checks": [
+                    {"available": True, "epoch": 1, "instant": 0},
+                    {"available": False, "epoch": None, "instant": RETRY_AVAILABLE_INSTANT - 1},
+                    {"available": True, "epoch": 2, "instant": RETRY_AVAILABLE_INSTANT},
+                ],
+                "current_instant": RETRY_AVAILABLE_INSTANT,
+                "failures_delivered": 2,
+                "record_types": ["InstanceCreated", "ActivityRequested", "ActivityFailed", "FiringFailed"],
+            },
+            instant=RETRY_AVAILABLE_INSTANT,
+            generation=2,
+        ),
+    ),
+    (
+        "test_local_terminal_world.test_local_terminal_checker_refuses_conflicting_projection",
+        TerminalAuthorityChecker(),
+        observation(
+            "engine.local-terminal-authority",
+            {
+                "accepted_results": [{"value": 6}],
+                "attempts": [{"epoch": 1}],
+                "bridge": {"prepared": 0, "projected": 1},
+                "marking": [{"place": "done", "tokens": [{"color": "Done", "data": {"value": 7}}]}],
+                "record_types": ["InstanceCreated", "ActivityRequested", "ActivityCompleted", "FiringCompleted"],
+                "status": "completed",
+                "terminal_reports": [
+                    {"disposition": "applied", "result": {"value": 6}},
+                    {"disposition": "idempotent", "result": {"value": 6}},
+                    {"disposition": "refused_expected", "result": {"value": 7}},
+                ],
+            },
+            generation=2,
+        ),
+    ),
+]
+
+
+def generated_runtime_cases() -> list[tuple[str, object, Observation, list[Observation]]]:
+    """test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence."""
+
+    with tempfile.TemporaryDirectory() as raw:
+        directory = Path(raw)
+        world, _ = execute_generated_runtime_story(
+            directory / "runtime-checker.jsonl", directory / "runtime-checker.db", finish=False
+        )
+        try:
+            base = world.timeline().observe("generated-runtime-state")
+        finally:
+            world.close()
+    value = base.value
+    mutations = {
+        "replay_exact": lambda changed: changed.update(live_marking=[]),
+        "in_flight_exact": lambda changed: changed.update(
+            live_in_flight=[{"occurrence": 99, "phase": "activity_pending"}]
+        ),
+        "history_writer_valid": lambda changed: changed["record_occurrences"].append(
+            {"kind": "Phantom", "occurrence": 99}
+        ),
+        "invocation_stable": lambda changed: changed["dispatch_attempts"][0].update(idempotency="changed-invocation"),
+        "delivery_acknowledgements": lambda changed: changed["delivery_attempts"][1].update(disposition="applied"),
+        "lifecycle_exact": lambda changed: changed.update(live_scopes={SCOPE_NAME: 99}),
+        "projection_exact": lambda changed: changed["projection_attempts"].append(
+            {"accepted": True, "record_types": ["FiringCompleted"]}
+        ),
+        "timer_exact": lambda changed: changed.update(timer_maturations=[]),
+    }
+    prefix = "test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence"
+    cases = [(f"{prefix}.passes", GeneratedRuntimeAuthorityChecker(), base, [])]
+    for property_name, mutate in mutations.items():
+        changed = deepcopy(value)
+        mutate(changed)
+        cases.append(
+            (
+                f"{prefix}.{property_name}",
+                GeneratedRuntimeAuthorityChecker(),
+                base.model_copy(update={"value": changed}),
+                [],
+            )
+        )
+    changed = deepcopy(value)
+    first_occurrence = changed["completed_occurrences"][0]
+    attempts = changed["worker_attempts"]
+    attempts.append(deepcopy(next(attempt for attempt in attempts if attempt["occurrence"] == first_occurrence)))
+    cases.append(
+        (
+            f"{prefix}.frozen_execution",
+            GeneratedRuntimeAuthorityChecker(),
+            base.model_copy(update={"value": changed}),
+            [base],
+        )
+    )
+    return cases
+
+
+def dump(value) -> object:
+    return value.model_dump(mode="json") if hasattr(value, "model_dump") else value.__dict__
+
+
 def main() -> None:
     out = Path(sys.argv[1])
     vectors = []
-    for name, checker, value in CASES:
+    for name, checker, value, prior in [(n, c, v, []) for n, c, v in CASES] + generated_runtime_cases():
+        for earlier in prior:
+            checker.check(earlier)
         result = checker.check(value)
-        vectors.append(
-            {
-                "checker": checker.identity.name,
-                "name": name,
-                "observation": value.model_dump(mode="json") if hasattr(value, "model_dump") else value.__dict__,
-                "result": {"detail": result.detail, "passed": result.passed},
-            }
-        )
+        vector = {
+            "checker": checker.identity.name,
+            "name": name,
+            "observation": dump(value),
+            "result": {"detail": result.detail, "passed": result.passed},
+        }
+        if prior:
+            vector["prior"] = [dump(earlier) for earlier in prior]
+        vectors.append(vector)
     out.write_text(json.dumps({"vectors": vectors}, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 
 

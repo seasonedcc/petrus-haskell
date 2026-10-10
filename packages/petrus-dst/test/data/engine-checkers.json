@@ -476,6 +476,5913 @@
     },
     "passed": false
    }
+  },
+  {
+   "checker": "petrus.engine.retry-authority",
+   "name": "test_retry_world.test_retry_checker_refuses_terminal_before_exhaustion",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.retry-authority",
+    "sequence": 0,
+    "value": {
+     "attempts": [
+      {
+       "activity": "work",
+       "correlation": "occurrence-1",
+       "epoch": 1,
+       "idempotency": "occurrence-1",
+       "input": 3,
+       "instance": "dst-world-retry-recovery",
+       "policy": {},
+       "queue": "default"
+      }
+     ],
+     "failures_delivered": 1,
+     "record_types": [
+      "InstanceCreated",
+      "ActivityRequested",
+      "ActivityFailed",
+      "FiringFailed"
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_terminal_limit": 0,
+     "activity_failed": 1,
+     "activity_requested": 1,
+     "attempt_epochs": [
+      1
+     ],
+     "failures_delivered": 1,
+     "firing_completed": 0,
+     "firing_failed": 1,
+     "invocation_stable": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.delayed-retry-authority",
+   "name": "test_retry_world.test_delayed_retry_checker_refuses_an_early_second_claim",
+   "observation": {
+    "generation": 2,
+    "instant": 4,
+    "name": "engine.delayed-retry-authority",
+    "sequence": 0,
+    "value": {
+     "attempts": [
+      {
+       "activity": "work",
+       "correlation": "occurrence-1",
+       "epoch": 1,
+       "idempotency": "occurrence-1",
+       "input": 3,
+       "instance": "dst-world-retry-recovery",
+       "policy": {
+        "initial_interval": 5
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "work",
+       "correlation": "occurrence-1",
+       "epoch": 2,
+       "idempotency": "occurrence-1",
+       "input": 3,
+       "instance": "dst-world-retry-recovery",
+       "policy": {
+        "initial_interval": 5
+       },
+       "queue": "default"
+      }
+     ],
+     "claim_checks": [
+      {
+       "available": true,
+       "epoch": 1,
+       "instant": 0
+      },
+      {
+       "available": true,
+       "epoch": 2,
+       "instant": 4
+      }
+     ],
+     "current_instant": 4,
+     "failures_delivered": 1,
+     "record_types": [
+      "InstanceCreated",
+      "ActivityRequested"
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_terminal_limit": 0,
+     "activity_failed": 0,
+     "activity_requested": 1,
+     "attempt_epochs": [
+      1,
+      2
+     ],
+     "claim_checks": [
+      {
+       "available": true,
+       "epoch": 1,
+       "instant": 0
+      },
+      {
+       "available": true,
+       "epoch": 2,
+       "instant": 4
+      }
+     ],
+     "current_instant": 4,
+     "exact_deadline": 5,
+     "exact_prefix": false,
+     "failures_delivered": 1,
+     "firing_completed": 0,
+     "firing_failed": 0,
+     "invocation_stable": true,
+     "no_early_retry": false
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.delayed-retry-authority",
+   "name": "extra.delayed-retry-exact-prefix-passes",
+   "observation": {
+    "generation": 2,
+    "instant": 5,
+    "name": "engine.delayed-retry-authority",
+    "sequence": 0,
+    "value": {
+     "attempts": [
+      {
+       "activity": "work",
+       "correlation": "occurrence-1",
+       "epoch": 1,
+       "idempotency": "occurrence-1",
+       "input": 3,
+       "instance": "dst-world-retry-recovery",
+       "policy": {
+        "initial_interval": 5
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "work",
+       "correlation": "occurrence-1",
+       "epoch": 2,
+       "idempotency": "occurrence-1",
+       "input": 3,
+       "instance": "dst-world-retry-recovery",
+       "policy": {
+        "initial_interval": 5
+       },
+       "queue": "default"
+      }
+     ],
+     "claim_checks": [
+      {
+       "available": true,
+       "epoch": 1,
+       "instant": 0
+      },
+      {
+       "available": false,
+       "epoch": null,
+       "instant": 4
+      },
+      {
+       "available": true,
+       "epoch": 2,
+       "instant": 5
+      }
+     ],
+     "current_instant": 5,
+     "failures_delivered": 2,
+     "record_types": [
+      "InstanceCreated",
+      "ActivityRequested",
+      "ActivityFailed",
+      "FiringFailed"
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_terminal_limit": 1,
+     "activity_failed": 1,
+     "activity_requested": 1,
+     "attempt_epochs": [
+      1,
+      2
+     ],
+     "claim_checks": [
+      {
+       "available": true,
+       "epoch": 1,
+       "instant": 0
+      },
+      {
+       "available": false,
+       "epoch": null,
+       "instant": 4
+      },
+      {
+       "available": true,
+       "epoch": 2,
+       "instant": 5
+      }
+     ],
+     "current_instant": 5,
+     "exact_deadline": 5,
+     "exact_prefix": true,
+     "failures_delivered": 2,
+     "firing_completed": 0,
+     "firing_failed": 1,
+     "invocation_stable": true,
+     "no_early_retry": true
+    },
+    "passed": true
+   }
+  },
+  {
+   "checker": "petrus.engine.local-terminal-authority",
+   "name": "test_local_terminal_world.test_local_terminal_checker_refuses_conflicting_projection",
+   "observation": {
+    "generation": 2,
+    "instant": 0,
+    "name": "engine.local-terminal-authority",
+    "sequence": 0,
+    "value": {
+     "accepted_results": [
+      {
+       "value": 6
+      }
+     ],
+     "attempts": [
+      {
+       "epoch": 1
+      }
+     ],
+     "bridge": {
+      "prepared": 0,
+      "projected": 1
+     },
+     "marking": [
+      {
+       "place": "done",
+       "tokens": [
+        {
+         "color": "Done",
+         "data": {
+          "value": 7
+         }
+        }
+       ]
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "FiringCompleted"
+     ],
+     "status": "completed",
+     "terminal_reports": [
+      {
+       "disposition": "applied",
+       "result": {
+        "value": 6
+       }
+      },
+      {
+       "disposition": "idempotent",
+       "result": {
+        "value": 6
+       }
+      },
+      {
+       "disposition": "refused_expected",
+       "result": {
+        "value": 7
+       }
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_results": [
+      {
+       "value": 6
+      }
+     ],
+     "activity_completed": 1,
+     "activity_failed": 0,
+     "activity_requested": 1,
+     "attempt_epochs": [
+      1
+     ],
+     "expected_dispositions": [
+      "applied",
+      "idempotent",
+      "refused_expected"
+     ],
+     "firing_completed": 1,
+     "firing_failed": 0,
+     "projected_results": [
+      {
+       "value": 7
+      }
+     ],
+     "reported_dispositions": [
+      "applied",
+      "idempotent",
+      "refused_expected"
+     ],
+     "terminal_limit": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.generated-runtime-authority",
+   "name": "test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence.passes",
+   "observation": {
+    "generation": 3,
+    "instant": 5,
+    "name": "generated-runtime-state",
+    "sequence": 38,
+    "value": {
+     "active_scopes": {
+      "batch": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "canonical_deliveries": [
+      {
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "completed_occurrences": [
+      2
+     ],
+     "current_instant": 5,
+     "delivery_attempts": [
+      {
+       "disposition": "applied",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "idempotent",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "applied",
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "dispatch_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "drops": 2,
+     "firing_begun": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_completed": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_failed": [],
+     "firing_selected": [
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "frontier": 31,
+     "live_in_flight": [],
+     "live_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "live_scopes": {
+      "batch": 2
+     },
+     "live_watermark": 5,
+     "prepare_calls": 2,
+     "project_calls": 2,
+     "projection_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "quarantined_occurrences": [
+      4
+     ],
+     "record_occurrences": [
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 1
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 1
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 3
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 3
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 4
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 4
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityTerminalQuarantined",
+       "occurrence": 4
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 5
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset",
+      "ActivityTerminalQuarantined",
+      "TimerMatured",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "replay_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "replay_watermark": 5,
+     "requested_invocations": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "scope_records": [
+      {
+       "generation": 1,
+       "kind": "open"
+      },
+      {
+       "cancelled": [
+        4
+       ],
+       "closed": 1,
+       "kind": "reset",
+       "opened": 2
+      }
+     ],
+     "status": "awaiting",
+     "timer_maturations": [
+      {
+       "instant": 5,
+       "maturation_instant": 5
+      }
+     ],
+     "worker_attempts": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 1,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 2,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "epoch": 1,
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      }
+     ],
+     "worker_completions": [
+      {
+       "cancelled": false,
+       "epoch": 2,
+       "occurrence": 2,
+       "result": {
+        "value": 3
+       }
+      },
+      {
+       "cancelled": true,
+       "epoch": 1,
+       "occurrence": 4,
+       "result": {
+        "value": 7
+       }
+      }
+     ],
+     "worker_failures": [
+      {
+       "attempt": 1,
+       "error": "generated retry"
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "bounds_hold": true,
+     "delivery_acknowledgements": true,
+     "delivery_exact": true,
+     "frozen_execution": true,
+     "history_writer_valid": true,
+     "in_flight_exact": true,
+     "invocation_stable": true,
+     "lifecycle_exact": true,
+     "occurrence_pairs": true,
+     "preparation_exact": true,
+     "projection_exact": true,
+     "replay_exact": true,
+     "retries_bounded": true,
+     "terminal_authorized": true,
+     "terminal_unique": true,
+     "timer_exact": true
+    },
+    "passed": true
+   }
+  },
+  {
+   "checker": "petrus.engine.generated-runtime-authority",
+   "name": "test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence.replay_exact",
+   "observation": {
+    "generation": 3,
+    "instant": 5,
+    "name": "generated-runtime-state",
+    "sequence": 38,
+    "value": {
+     "active_scopes": {
+      "batch": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "canonical_deliveries": [
+      {
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "completed_occurrences": [
+      2
+     ],
+     "current_instant": 5,
+     "delivery_attempts": [
+      {
+       "disposition": "applied",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "idempotent",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "applied",
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "dispatch_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "drops": 2,
+     "firing_begun": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_completed": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_failed": [],
+     "firing_selected": [
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "frontier": 31,
+     "live_in_flight": [],
+     "live_marking": [],
+     "live_scopes": {
+      "batch": 2
+     },
+     "live_watermark": 5,
+     "prepare_calls": 2,
+     "project_calls": 2,
+     "projection_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "quarantined_occurrences": [
+      4
+     ],
+     "record_occurrences": [
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 1
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 1
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 3
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 3
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 4
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 4
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityTerminalQuarantined",
+       "occurrence": 4
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 5
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset",
+      "ActivityTerminalQuarantined",
+      "TimerMatured",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "replay_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "replay_watermark": 5,
+     "requested_invocations": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "scope_records": [
+      {
+       "generation": 1,
+       "kind": "open"
+      },
+      {
+       "cancelled": [
+        4
+       ],
+       "closed": 1,
+       "kind": "reset",
+       "opened": 2
+      }
+     ],
+     "status": "awaiting",
+     "timer_maturations": [
+      {
+       "instant": 5,
+       "maturation_instant": 5
+      }
+     ],
+     "worker_attempts": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 1,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 2,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "epoch": 1,
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      }
+     ],
+     "worker_completions": [
+      {
+       "cancelled": false,
+       "epoch": 2,
+       "occurrence": 2,
+       "result": {
+        "value": 3
+       }
+      },
+      {
+       "cancelled": true,
+       "epoch": 1,
+       "occurrence": 4,
+       "result": {
+        "value": 7
+       }
+      }
+     ],
+     "worker_failures": [
+      {
+       "attempt": 1,
+       "error": "generated retry"
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "bounds_hold": true,
+     "delivery_acknowledgements": true,
+     "delivery_exact": true,
+     "frozen_execution": true,
+     "history_writer_valid": true,
+     "in_flight_exact": true,
+     "invocation_stable": true,
+     "lifecycle_exact": true,
+     "occurrence_pairs": true,
+     "preparation_exact": true,
+     "projection_exact": true,
+     "replay_exact": false,
+     "retries_bounded": true,
+     "terminal_authorized": true,
+     "terminal_unique": true,
+     "timer_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.generated-runtime-authority",
+   "name": "test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence.in_flight_exact",
+   "observation": {
+    "generation": 3,
+    "instant": 5,
+    "name": "generated-runtime-state",
+    "sequence": 38,
+    "value": {
+     "active_scopes": {
+      "batch": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "canonical_deliveries": [
+      {
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "completed_occurrences": [
+      2
+     ],
+     "current_instant": 5,
+     "delivery_attempts": [
+      {
+       "disposition": "applied",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "idempotent",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "applied",
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "dispatch_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "drops": 2,
+     "firing_begun": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_completed": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_failed": [],
+     "firing_selected": [
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "frontier": 31,
+     "live_in_flight": [
+      {
+       "occurrence": 99,
+       "phase": "activity_pending"
+      }
+     ],
+     "live_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "live_scopes": {
+      "batch": 2
+     },
+     "live_watermark": 5,
+     "prepare_calls": 2,
+     "project_calls": 2,
+     "projection_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "quarantined_occurrences": [
+      4
+     ],
+     "record_occurrences": [
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 1
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 1
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 3
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 3
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 4
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 4
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityTerminalQuarantined",
+       "occurrence": 4
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 5
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset",
+      "ActivityTerminalQuarantined",
+      "TimerMatured",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "replay_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "replay_watermark": 5,
+     "requested_invocations": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "scope_records": [
+      {
+       "generation": 1,
+       "kind": "open"
+      },
+      {
+       "cancelled": [
+        4
+       ],
+       "closed": 1,
+       "kind": "reset",
+       "opened": 2
+      }
+     ],
+     "status": "awaiting",
+     "timer_maturations": [
+      {
+       "instant": 5,
+       "maturation_instant": 5
+      }
+     ],
+     "worker_attempts": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 1,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 2,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "epoch": 1,
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      }
+     ],
+     "worker_completions": [
+      {
+       "cancelled": false,
+       "epoch": 2,
+       "occurrence": 2,
+       "result": {
+        "value": 3
+       }
+      },
+      {
+       "cancelled": true,
+       "epoch": 1,
+       "occurrence": 4,
+       "result": {
+        "value": 7
+       }
+      }
+     ],
+     "worker_failures": [
+      {
+       "attempt": 1,
+       "error": "generated retry"
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "bounds_hold": true,
+     "delivery_acknowledgements": true,
+     "delivery_exact": true,
+     "frozen_execution": true,
+     "history_writer_valid": true,
+     "in_flight_exact": false,
+     "invocation_stable": true,
+     "lifecycle_exact": true,
+     "occurrence_pairs": true,
+     "preparation_exact": true,
+     "projection_exact": true,
+     "replay_exact": true,
+     "retries_bounded": true,
+     "terminal_authorized": true,
+     "terminal_unique": true,
+     "timer_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.generated-runtime-authority",
+   "name": "test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence.history_writer_valid",
+   "observation": {
+    "generation": 3,
+    "instant": 5,
+    "name": "generated-runtime-state",
+    "sequence": 38,
+    "value": {
+     "active_scopes": {
+      "batch": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "canonical_deliveries": [
+      {
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "completed_occurrences": [
+      2
+     ],
+     "current_instant": 5,
+     "delivery_attempts": [
+      {
+       "disposition": "applied",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "idempotent",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "applied",
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "dispatch_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "drops": 2,
+     "firing_begun": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_completed": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_failed": [],
+     "firing_selected": [
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "frontier": 31,
+     "live_in_flight": [],
+     "live_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "live_scopes": {
+      "batch": 2
+     },
+     "live_watermark": 5,
+     "prepare_calls": 2,
+     "project_calls": 2,
+     "projection_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "quarantined_occurrences": [
+      4
+     ],
+     "record_occurrences": [
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 1
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 1
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 3
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 3
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 4
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 4
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityTerminalQuarantined",
+       "occurrence": 4
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 5
+      },
+      {
+       "kind": "Phantom",
+       "occurrence": 99
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset",
+      "ActivityTerminalQuarantined",
+      "TimerMatured",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "replay_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "replay_watermark": 5,
+     "requested_invocations": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "scope_records": [
+      {
+       "generation": 1,
+       "kind": "open"
+      },
+      {
+       "cancelled": [
+        4
+       ],
+       "closed": 1,
+       "kind": "reset",
+       "opened": 2
+      }
+     ],
+     "status": "awaiting",
+     "timer_maturations": [
+      {
+       "instant": 5,
+       "maturation_instant": 5
+      }
+     ],
+     "worker_attempts": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 1,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 2,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "epoch": 1,
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      }
+     ],
+     "worker_completions": [
+      {
+       "cancelled": false,
+       "epoch": 2,
+       "occurrence": 2,
+       "result": {
+        "value": 3
+       }
+      },
+      {
+       "cancelled": true,
+       "epoch": 1,
+       "occurrence": 4,
+       "result": {
+        "value": 7
+       }
+      }
+     ],
+     "worker_failures": [
+      {
+       "attempt": 1,
+       "error": "generated retry"
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "bounds_hold": true,
+     "delivery_acknowledgements": true,
+     "delivery_exact": true,
+     "frozen_execution": true,
+     "history_writer_valid": false,
+     "in_flight_exact": true,
+     "invocation_stable": true,
+     "lifecycle_exact": true,
+     "occurrence_pairs": true,
+     "preparation_exact": true,
+     "projection_exact": true,
+     "replay_exact": true,
+     "retries_bounded": true,
+     "terminal_authorized": true,
+     "terminal_unique": true,
+     "timer_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.generated-runtime-authority",
+   "name": "test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence.invocation_stable",
+   "observation": {
+    "generation": 3,
+    "instant": 5,
+    "name": "generated-runtime-state",
+    "sequence": 38,
+    "value": {
+     "active_scopes": {
+      "batch": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "canonical_deliveries": [
+      {
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "completed_occurrences": [
+      2
+     ],
+     "current_instant": 5,
+     "delivery_attempts": [
+      {
+       "disposition": "applied",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "idempotent",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "applied",
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "dispatch_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "changed-invocation",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "drops": 2,
+     "firing_begun": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_completed": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_failed": [],
+     "firing_selected": [
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "frontier": 31,
+     "live_in_flight": [],
+     "live_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "live_scopes": {
+      "batch": 2
+     },
+     "live_watermark": 5,
+     "prepare_calls": 2,
+     "project_calls": 2,
+     "projection_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "quarantined_occurrences": [
+      4
+     ],
+     "record_occurrences": [
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 1
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 1
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 3
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 3
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 4
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 4
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityTerminalQuarantined",
+       "occurrence": 4
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 5
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset",
+      "ActivityTerminalQuarantined",
+      "TimerMatured",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "replay_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "replay_watermark": 5,
+     "requested_invocations": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "scope_records": [
+      {
+       "generation": 1,
+       "kind": "open"
+      },
+      {
+       "cancelled": [
+        4
+       ],
+       "closed": 1,
+       "kind": "reset",
+       "opened": 2
+      }
+     ],
+     "status": "awaiting",
+     "timer_maturations": [
+      {
+       "instant": 5,
+       "maturation_instant": 5
+      }
+     ],
+     "worker_attempts": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 1,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 2,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "epoch": 1,
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      }
+     ],
+     "worker_completions": [
+      {
+       "cancelled": false,
+       "epoch": 2,
+       "occurrence": 2,
+       "result": {
+        "value": 3
+       }
+      },
+      {
+       "cancelled": true,
+       "epoch": 1,
+       "occurrence": 4,
+       "result": {
+        "value": 7
+       }
+      }
+     ],
+     "worker_failures": [
+      {
+       "attempt": 1,
+       "error": "generated retry"
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "bounds_hold": true,
+     "delivery_acknowledgements": true,
+     "delivery_exact": true,
+     "frozen_execution": true,
+     "history_writer_valid": true,
+     "in_flight_exact": true,
+     "invocation_stable": false,
+     "lifecycle_exact": true,
+     "occurrence_pairs": true,
+     "preparation_exact": true,
+     "projection_exact": true,
+     "replay_exact": true,
+     "retries_bounded": true,
+     "terminal_authorized": true,
+     "terminal_unique": true,
+     "timer_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.generated-runtime-authority",
+   "name": "test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence.delivery_acknowledgements",
+   "observation": {
+    "generation": 3,
+    "instant": 5,
+    "name": "generated-runtime-state",
+    "sequence": 38,
+    "value": {
+     "active_scopes": {
+      "batch": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "canonical_deliveries": [
+      {
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "completed_occurrences": [
+      2
+     ],
+     "current_instant": 5,
+     "delivery_attempts": [
+      {
+       "disposition": "applied",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "applied",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "applied",
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "dispatch_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "drops": 2,
+     "firing_begun": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_completed": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_failed": [],
+     "firing_selected": [
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "frontier": 31,
+     "live_in_flight": [],
+     "live_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "live_scopes": {
+      "batch": 2
+     },
+     "live_watermark": 5,
+     "prepare_calls": 2,
+     "project_calls": 2,
+     "projection_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "quarantined_occurrences": [
+      4
+     ],
+     "record_occurrences": [
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 1
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 1
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 3
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 3
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 4
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 4
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityTerminalQuarantined",
+       "occurrence": 4
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 5
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset",
+      "ActivityTerminalQuarantined",
+      "TimerMatured",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "replay_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "replay_watermark": 5,
+     "requested_invocations": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "scope_records": [
+      {
+       "generation": 1,
+       "kind": "open"
+      },
+      {
+       "cancelled": [
+        4
+       ],
+       "closed": 1,
+       "kind": "reset",
+       "opened": 2
+      }
+     ],
+     "status": "awaiting",
+     "timer_maturations": [
+      {
+       "instant": 5,
+       "maturation_instant": 5
+      }
+     ],
+     "worker_attempts": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 1,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 2,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "epoch": 1,
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      }
+     ],
+     "worker_completions": [
+      {
+       "cancelled": false,
+       "epoch": 2,
+       "occurrence": 2,
+       "result": {
+        "value": 3
+       }
+      },
+      {
+       "cancelled": true,
+       "epoch": 1,
+       "occurrence": 4,
+       "result": {
+        "value": 7
+       }
+      }
+     ],
+     "worker_failures": [
+      {
+       "attempt": 1,
+       "error": "generated retry"
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "bounds_hold": true,
+     "delivery_acknowledgements": false,
+     "delivery_exact": true,
+     "frozen_execution": true,
+     "history_writer_valid": true,
+     "in_flight_exact": true,
+     "invocation_stable": true,
+     "lifecycle_exact": true,
+     "occurrence_pairs": true,
+     "preparation_exact": true,
+     "projection_exact": true,
+     "replay_exact": true,
+     "retries_bounded": true,
+     "terminal_authorized": true,
+     "terminal_unique": true,
+     "timer_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.generated-runtime-authority",
+   "name": "test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence.lifecycle_exact",
+   "observation": {
+    "generation": 3,
+    "instant": 5,
+    "name": "generated-runtime-state",
+    "sequence": 38,
+    "value": {
+     "active_scopes": {
+      "batch": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "canonical_deliveries": [
+      {
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "completed_occurrences": [
+      2
+     ],
+     "current_instant": 5,
+     "delivery_attempts": [
+      {
+       "disposition": "applied",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "idempotent",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "applied",
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "dispatch_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "drops": 2,
+     "firing_begun": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_completed": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_failed": [],
+     "firing_selected": [
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "frontier": 31,
+     "live_in_flight": [],
+     "live_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "live_scopes": {
+      "batch": 99
+     },
+     "live_watermark": 5,
+     "prepare_calls": 2,
+     "project_calls": 2,
+     "projection_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "quarantined_occurrences": [
+      4
+     ],
+     "record_occurrences": [
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 1
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 1
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 3
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 3
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 4
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 4
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityTerminalQuarantined",
+       "occurrence": 4
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 5
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset",
+      "ActivityTerminalQuarantined",
+      "TimerMatured",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "replay_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "replay_watermark": 5,
+     "requested_invocations": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "scope_records": [
+      {
+       "generation": 1,
+       "kind": "open"
+      },
+      {
+       "cancelled": [
+        4
+       ],
+       "closed": 1,
+       "kind": "reset",
+       "opened": 2
+      }
+     ],
+     "status": "awaiting",
+     "timer_maturations": [
+      {
+       "instant": 5,
+       "maturation_instant": 5
+      }
+     ],
+     "worker_attempts": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 1,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 2,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "epoch": 1,
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      }
+     ],
+     "worker_completions": [
+      {
+       "cancelled": false,
+       "epoch": 2,
+       "occurrence": 2,
+       "result": {
+        "value": 3
+       }
+      },
+      {
+       "cancelled": true,
+       "epoch": 1,
+       "occurrence": 4,
+       "result": {
+        "value": 7
+       }
+      }
+     ],
+     "worker_failures": [
+      {
+       "attempt": 1,
+       "error": "generated retry"
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "bounds_hold": true,
+     "delivery_acknowledgements": true,
+     "delivery_exact": true,
+     "frozen_execution": true,
+     "history_writer_valid": true,
+     "in_flight_exact": true,
+     "invocation_stable": true,
+     "lifecycle_exact": false,
+     "occurrence_pairs": true,
+     "preparation_exact": true,
+     "projection_exact": true,
+     "replay_exact": true,
+     "retries_bounded": true,
+     "terminal_authorized": true,
+     "terminal_unique": true,
+     "timer_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.generated-runtime-authority",
+   "name": "test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence.projection_exact",
+   "observation": {
+    "generation": 3,
+    "instant": 5,
+    "name": "generated-runtime-state",
+    "sequence": 38,
+    "value": {
+     "active_scopes": {
+      "batch": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "canonical_deliveries": [
+      {
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "completed_occurrences": [
+      2
+     ],
+     "current_instant": 5,
+     "delivery_attempts": [
+      {
+       "disposition": "applied",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "idempotent",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "applied",
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "dispatch_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "drops": 2,
+     "firing_begun": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_completed": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_failed": [],
+     "firing_selected": [
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "frontier": 31,
+     "live_in_flight": [],
+     "live_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "live_scopes": {
+      "batch": 2
+     },
+     "live_watermark": 5,
+     "prepare_calls": 2,
+     "project_calls": 2,
+     "projection_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "record_types": [
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "quarantined_occurrences": [
+      4
+     ],
+     "record_occurrences": [
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 1
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 1
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 3
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 3
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 4
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 4
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityTerminalQuarantined",
+       "occurrence": 4
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 5
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset",
+      "ActivityTerminalQuarantined",
+      "TimerMatured",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "replay_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "replay_watermark": 5,
+     "requested_invocations": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "scope_records": [
+      {
+       "generation": 1,
+       "kind": "open"
+      },
+      {
+       "cancelled": [
+        4
+       ],
+       "closed": 1,
+       "kind": "reset",
+       "opened": 2
+      }
+     ],
+     "status": "awaiting",
+     "timer_maturations": [
+      {
+       "instant": 5,
+       "maturation_instant": 5
+      }
+     ],
+     "worker_attempts": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 1,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 2,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "epoch": 1,
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      }
+     ],
+     "worker_completions": [
+      {
+       "cancelled": false,
+       "epoch": 2,
+       "occurrence": 2,
+       "result": {
+        "value": 3
+       }
+      },
+      {
+       "cancelled": true,
+       "epoch": 1,
+       "occurrence": 4,
+       "result": {
+        "value": 7
+       }
+      }
+     ],
+     "worker_failures": [
+      {
+       "attempt": 1,
+       "error": "generated retry"
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "bounds_hold": true,
+     "delivery_acknowledgements": true,
+     "delivery_exact": true,
+     "frozen_execution": true,
+     "history_writer_valid": true,
+     "in_flight_exact": true,
+     "invocation_stable": true,
+     "lifecycle_exact": true,
+     "occurrence_pairs": true,
+     "preparation_exact": true,
+     "projection_exact": false,
+     "replay_exact": true,
+     "retries_bounded": true,
+     "terminal_authorized": true,
+     "terminal_unique": true,
+     "timer_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.generated-runtime-authority",
+   "name": "test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence.timer_exact",
+   "observation": {
+    "generation": 3,
+    "instant": 5,
+    "name": "generated-runtime-state",
+    "sequence": 38,
+    "value": {
+     "active_scopes": {
+      "batch": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "canonical_deliveries": [
+      {
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "completed_occurrences": [
+      2
+     ],
+     "current_instant": 5,
+     "delivery_attempts": [
+      {
+       "disposition": "applied",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "idempotent",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "applied",
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "dispatch_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "drops": 2,
+     "firing_begun": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_completed": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_failed": [],
+     "firing_selected": [
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "frontier": 31,
+     "live_in_flight": [],
+     "live_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "live_scopes": {
+      "batch": 2
+     },
+     "live_watermark": 5,
+     "prepare_calls": 2,
+     "project_calls": 2,
+     "projection_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "quarantined_occurrences": [
+      4
+     ],
+     "record_occurrences": [
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 1
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 1
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 3
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 3
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 4
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 4
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityTerminalQuarantined",
+       "occurrence": 4
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 5
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset",
+      "ActivityTerminalQuarantined",
+      "TimerMatured",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "replay_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "replay_watermark": 5,
+     "requested_invocations": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "scope_records": [
+      {
+       "generation": 1,
+       "kind": "open"
+      },
+      {
+       "cancelled": [
+        4
+       ],
+       "closed": 1,
+       "kind": "reset",
+       "opened": 2
+      }
+     ],
+     "status": "awaiting",
+     "timer_maturations": [],
+     "worker_attempts": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 1,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 2,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "epoch": 1,
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      }
+     ],
+     "worker_completions": [
+      {
+       "cancelled": false,
+       "epoch": 2,
+       "occurrence": 2,
+       "result": {
+        "value": 3
+       }
+      },
+      {
+       "cancelled": true,
+       "epoch": 1,
+       "occurrence": 4,
+       "result": {
+        "value": 7
+       }
+      }
+     ],
+     "worker_failures": [
+      {
+       "attempt": 1,
+       "error": "generated retry"
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "bounds_hold": true,
+     "delivery_acknowledgements": true,
+     "delivery_exact": true,
+     "frozen_execution": true,
+     "history_writer_valid": true,
+     "in_flight_exact": true,
+     "invocation_stable": true,
+     "lifecycle_exact": true,
+     "occurrence_pairs": true,
+     "preparation_exact": true,
+     "projection_exact": true,
+     "replay_exact": true,
+     "retries_bounded": true,
+     "terminal_authorized": true,
+     "terminal_unique": true,
+     "timer_exact": false
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.generated-runtime-authority",
+   "name": "test_generated_runtime_world.test_cross_layer_checker_rejects_independent_authority_divergence.frozen_execution",
+   "observation": {
+    "generation": 3,
+    "instant": 5,
+    "name": "generated-runtime-state",
+    "sequence": 38,
+    "value": {
+     "active_scopes": {
+      "batch": 2
+     },
+     "authored_scope_generation": 2,
+     "authored_scope_opens": 1,
+     "authored_scope_resets": 1,
+     "canonical_deliveries": [
+      {
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "completed_occurrences": [
+      2
+     ],
+     "current_instant": 5,
+     "delivery_attempts": [
+      {
+       "disposition": "applied",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "idempotent",
+       "identity": "generated-event-1",
+       "value": 3
+      },
+      {
+       "disposition": "applied",
+       "identity": "generated-event-2",
+       "value": 7
+      }
+     ],
+     "dispatch_attempts": [
+      {
+       "accepted": false,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "accepted": true,
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "drops": 2,
+     "firing_begun": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_completed": [
+      {
+       "occurrence": 1,
+       "transition": "source"
+      },
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 3,
+       "transition": "source"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "firing_failed": [],
+     "firing_selected": [
+      {
+       "occurrence": 2,
+       "transition": "work"
+      },
+      {
+       "occurrence": 4,
+       "transition": "work"
+      },
+      {
+       "occurrence": 5,
+       "transition": "release"
+      }
+     ],
+     "frontier": 31,
+     "live_in_flight": [],
+     "live_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "live_scopes": {
+      "batch": 2
+     },
+     "live_watermark": 5,
+     "prepare_calls": 2,
+     "project_calls": 2,
+     "projection_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "quarantined_occurrences": [
+      4
+     ],
+     "record_occurrences": [
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 1
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 1
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 1
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 2
+      },
+      {
+       "kind": "ActivityCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 2
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 2
+      },
+      {
+       "kind": "ExternalEventDelivered",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 3
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 3
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 3
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 4
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 4
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityRequested",
+       "occurrence": 4
+      },
+      {
+       "kind": "ActivityTerminalQuarantined",
+       "occurrence": 4
+      },
+      {
+       "kind": "CandidateSelected",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringBegun",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensConsumed",
+       "occurrence": 5
+      },
+      {
+       "kind": "TokensProduced",
+       "occurrence": 5
+      },
+      {
+       "kind": "FiringCompleted",
+       "occurrence": 5
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset",
+      "ActivityTerminalQuarantined",
+      "TimerMatured",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "replay_marking": [
+      {
+       "place": "released",
+       "tokens": [
+        {
+         "color": "Waiting",
+         "data": null
+        }
+       ]
+      }
+     ],
+     "replay_watermark": 5,
+     "requested_invocations": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       }
+      }
+     ],
+     "scope_records": [
+      {
+       "generation": 1,
+       "kind": "open"
+      },
+      {
+       "cancelled": [
+        4
+       ],
+       "closed": 1,
+       "kind": "reset",
+       "opened": 2
+      }
+     ],
+     "status": "awaiting",
+     "timer_maturations": [
+      {
+       "instant": 5,
+       "maturation_instant": 5
+      }
+     ],
+     "worker_attempts": [
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 1,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 2,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-4",
+       "epoch": 1,
+       "idempotency": "occurrence-4",
+       "input": 7,
+       "occurrence": 4,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      },
+      {
+       "activity": "calculate",
+       "correlation": "occurrence-2",
+       "epoch": 1,
+       "idempotency": "occurrence-2",
+       "input": 3,
+       "occurrence": 2,
+       "policy": {
+        "attempts": 2,
+        "coefficient": 2,
+        "heartbeat_timeout": 30,
+        "initial_interval": 0,
+        "jitter": 0,
+        "max_interval": 60,
+        "schedule_to_close": null,
+        "start_to_close": null
+       },
+       "queue": "default"
+      }
+     ],
+     "worker_completions": [
+      {
+       "cancelled": false,
+       "epoch": 2,
+       "occurrence": 2,
+       "result": {
+        "value": 3
+       }
+      },
+      {
+       "cancelled": true,
+       "epoch": 1,
+       "occurrence": 4,
+       "result": {
+        "value": 7
+       }
+      }
+     ],
+     "worker_failures": [
+      {
+       "attempt": 1,
+       "error": "generated retry"
+      }
+     ]
+    }
+   },
+   "prior": [
+    {
+     "generation": 3,
+     "instant": 5,
+     "name": "generated-runtime-state",
+     "sequence": 38,
+     "value": {
+      "active_scopes": {
+       "batch": 2
+      },
+      "authored_scope_generation": 2,
+      "authored_scope_opens": 1,
+      "authored_scope_resets": 1,
+      "canonical_deliveries": [
+       {
+        "identity": "generated-event-1",
+        "value": 3
+       },
+       {
+        "identity": "generated-event-2",
+        "value": 7
+       }
+      ],
+      "completed_occurrences": [
+       2
+      ],
+      "current_instant": 5,
+      "delivery_attempts": [
+       {
+        "disposition": "applied",
+        "identity": "generated-event-1",
+        "value": 3
+       },
+       {
+        "disposition": "idempotent",
+        "identity": "generated-event-1",
+        "value": 3
+       },
+       {
+        "disposition": "applied",
+        "identity": "generated-event-2",
+        "value": 7
+       }
+      ],
+      "dispatch_attempts": [
+       {
+        "accepted": false,
+        "activity": "calculate",
+        "correlation": "occurrence-2",
+        "idempotency": "occurrence-2",
+        "input": 3,
+        "occurrence": 2,
+        "policy": {
+         "attempts": 2,
+         "coefficient": 2,
+         "heartbeat_timeout": 30,
+         "initial_interval": 0,
+         "jitter": 0,
+         "max_interval": 60,
+         "schedule_to_close": null,
+         "start_to_close": null
+        }
+       },
+       {
+        "accepted": true,
+        "activity": "calculate",
+        "correlation": "occurrence-2",
+        "idempotency": "occurrence-2",
+        "input": 3,
+        "occurrence": 2,
+        "policy": {
+         "attempts": 2,
+         "coefficient": 2,
+         "heartbeat_timeout": 30,
+         "initial_interval": 0,
+         "jitter": 0,
+         "max_interval": 60,
+         "schedule_to_close": null,
+         "start_to_close": null
+        }
+       },
+       {
+        "accepted": true,
+        "activity": "calculate",
+        "correlation": "occurrence-4",
+        "idempotency": "occurrence-4",
+        "input": 7,
+        "occurrence": 4,
+        "policy": {
+         "attempts": 2,
+         "coefficient": 2,
+         "heartbeat_timeout": 30,
+         "initial_interval": 0,
+         "jitter": 0,
+         "max_interval": 60,
+         "schedule_to_close": null,
+         "start_to_close": null
+        }
+       }
+      ],
+      "drops": 2,
+      "firing_begun": [
+       {
+        "occurrence": 1,
+        "transition": "source"
+       },
+       {
+        "occurrence": 2,
+        "transition": "work"
+       },
+       {
+        "occurrence": 3,
+        "transition": "source"
+       },
+       {
+        "occurrence": 4,
+        "transition": "work"
+       },
+       {
+        "occurrence": 5,
+        "transition": "release"
+       }
+      ],
+      "firing_completed": [
+       {
+        "occurrence": 1,
+        "transition": "source"
+       },
+       {
+        "occurrence": 2,
+        "transition": "work"
+       },
+       {
+        "occurrence": 3,
+        "transition": "source"
+       },
+       {
+        "occurrence": 5,
+        "transition": "release"
+       }
+      ],
+      "firing_failed": [],
+      "firing_selected": [
+       {
+        "occurrence": 2,
+        "transition": "work"
+       },
+       {
+        "occurrence": 4,
+        "transition": "work"
+       },
+       {
+        "occurrence": 5,
+        "transition": "release"
+       }
+      ],
+      "frontier": 31,
+      "live_in_flight": [],
+      "live_marking": [
+       {
+        "place": "released",
+        "tokens": [
+         {
+          "color": "Waiting",
+          "data": null
+         }
+        ]
+       }
+      ],
+      "live_scopes": {
+       "batch": 2
+      },
+      "live_watermark": 5,
+      "prepare_calls": 2,
+      "project_calls": 2,
+      "projection_attempts": [
+       {
+        "accepted": false,
+        "record_types": [
+         "TokensProduced",
+         "FiringCompleted"
+        ]
+       },
+       {
+        "accepted": true,
+        "record_types": [
+         "TokensProduced",
+         "FiringCompleted"
+        ]
+       }
+      ],
+      "quarantined_occurrences": [
+       4
+      ],
+      "record_occurrences": [
+       {
+        "kind": "ExternalEventDelivered",
+        "occurrence": 1
+       },
+       {
+        "kind": "FiringBegun",
+        "occurrence": 1
+       },
+       {
+        "kind": "TokensProduced",
+        "occurrence": 1
+       },
+       {
+        "kind": "FiringCompleted",
+        "occurrence": 1
+       },
+       {
+        "kind": "CandidateSelected",
+        "occurrence": 2
+       },
+       {
+        "kind": "FiringBegun",
+        "occurrence": 2
+       },
+       {
+        "kind": "TokensConsumed",
+        "occurrence": 2
+       },
+       {
+        "kind": "ActivityRequested",
+        "occurrence": 2
+       },
+       {
+        "kind": "ActivityCompleted",
+        "occurrence": 2
+       },
+       {
+        "kind": "TokensProduced",
+        "occurrence": 2
+       },
+       {
+        "kind": "FiringCompleted",
+        "occurrence": 2
+       },
+       {
+        "kind": "ExternalEventDelivered",
+        "occurrence": 3
+       },
+       {
+        "kind": "FiringBegun",
+        "occurrence": 3
+       },
+       {
+        "kind": "TokensProduced",
+        "occurrence": 3
+       },
+       {
+        "kind": "FiringCompleted",
+        "occurrence": 3
+       },
+       {
+        "kind": "CandidateSelected",
+        "occurrence": 4
+       },
+       {
+        "kind": "FiringBegun",
+        "occurrence": 4
+       },
+       {
+        "kind": "TokensConsumed",
+        "occurrence": 4
+       },
+       {
+        "kind": "ActivityRequested",
+        "occurrence": 4
+       },
+       {
+        "kind": "ActivityTerminalQuarantined",
+        "occurrence": 4
+       },
+       {
+        "kind": "CandidateSelected",
+        "occurrence": 5
+       },
+       {
+        "kind": "FiringBegun",
+        "occurrence": 5
+       },
+       {
+        "kind": "TokensConsumed",
+        "occurrence": 5
+       },
+       {
+        "kind": "TokensProduced",
+        "occurrence": 5
+       },
+       {
+        "kind": "FiringCompleted",
+        "occurrence": 5
+       }
+      ],
+      "record_types": [
+       "InstanceCreated",
+       "TokensInitialized",
+       "DeliveryRegistrationOpened",
+       "ScopeOpened",
+       "ExternalEventDelivered",
+       "FiringBegun",
+       "TokensProduced",
+       "FiringCompleted",
+       "CandidateSelected",
+       "FiringBegun",
+       "TokensConsumed",
+       "ActivityRequested",
+       "ActivityCompleted",
+       "TokensProduced",
+       "FiringCompleted",
+       "ExternalEventDelivered",
+       "FiringBegun",
+       "TokensProduced",
+       "FiringCompleted",
+       "CandidateSelected",
+       "FiringBegun",
+       "TokensConsumed",
+       "ActivityRequested",
+       "ScopeReset",
+       "ActivityTerminalQuarantined",
+       "TimerMatured",
+       "CandidateSelected",
+       "FiringBegun",
+       "TokensConsumed",
+       "TokensProduced",
+       "FiringCompleted"
+      ],
+      "replay_marking": [
+       {
+        "place": "released",
+        "tokens": [
+         {
+          "color": "Waiting",
+          "data": null
+         }
+        ]
+       }
+      ],
+      "replay_watermark": 5,
+      "requested_invocations": [
+       {
+        "activity": "calculate",
+        "correlation": "occurrence-2",
+        "idempotency": "occurrence-2",
+        "input": 3,
+        "occurrence": 2,
+        "policy": {
+         "attempts": 2,
+         "coefficient": 2,
+         "heartbeat_timeout": 30,
+         "initial_interval": 0,
+         "jitter": 0,
+         "max_interval": 60,
+         "schedule_to_close": null,
+         "start_to_close": null
+        }
+       },
+       {
+        "activity": "calculate",
+        "correlation": "occurrence-4",
+        "idempotency": "occurrence-4",
+        "input": 7,
+        "occurrence": 4,
+        "policy": {
+         "attempts": 2,
+         "coefficient": 2,
+         "heartbeat_timeout": 30,
+         "initial_interval": 0,
+         "jitter": 0,
+         "max_interval": 60,
+         "schedule_to_close": null,
+         "start_to_close": null
+        }
+       }
+      ],
+      "scope_records": [
+       {
+        "generation": 1,
+        "kind": "open"
+       },
+       {
+        "cancelled": [
+         4
+        ],
+        "closed": 1,
+        "kind": "reset",
+        "opened": 2
+       }
+      ],
+      "status": "awaiting",
+      "timer_maturations": [
+       {
+        "instant": 5,
+        "maturation_instant": 5
+       }
+      ],
+      "worker_attempts": [
+       {
+        "activity": "calculate",
+        "correlation": "occurrence-2",
+        "epoch": 1,
+        "idempotency": "occurrence-2",
+        "input": 3,
+        "occurrence": 2,
+        "policy": {
+         "attempts": 2,
+         "coefficient": 2,
+         "heartbeat_timeout": 30,
+         "initial_interval": 0,
+         "jitter": 0,
+         "max_interval": 60,
+         "schedule_to_close": null,
+         "start_to_close": null
+        },
+        "queue": "default"
+       },
+       {
+        "activity": "calculate",
+        "correlation": "occurrence-2",
+        "epoch": 2,
+        "idempotency": "occurrence-2",
+        "input": 3,
+        "occurrence": 2,
+        "policy": {
+         "attempts": 2,
+         "coefficient": 2,
+         "heartbeat_timeout": 30,
+         "initial_interval": 0,
+         "jitter": 0,
+         "max_interval": 60,
+         "schedule_to_close": null,
+         "start_to_close": null
+        },
+        "queue": "default"
+       },
+       {
+        "activity": "calculate",
+        "correlation": "occurrence-4",
+        "epoch": 1,
+        "idempotency": "occurrence-4",
+        "input": 7,
+        "occurrence": 4,
+        "policy": {
+         "attempts": 2,
+         "coefficient": 2,
+         "heartbeat_timeout": 30,
+         "initial_interval": 0,
+         "jitter": 0,
+         "max_interval": 60,
+         "schedule_to_close": null,
+         "start_to_close": null
+        },
+        "queue": "default"
+       }
+      ],
+      "worker_completions": [
+       {
+        "cancelled": false,
+        "epoch": 2,
+        "occurrence": 2,
+        "result": {
+         "value": 3
+        }
+       },
+       {
+        "cancelled": true,
+        "epoch": 1,
+        "occurrence": 4,
+        "result": {
+         "value": 7
+        }
+       }
+      ],
+      "worker_failures": [
+       {
+        "attempt": 1,
+        "error": "generated retry"
+       }
+      ]
+     }
+    }
+   ],
+   "result": {
+    "detail": {
+     "bounds_hold": true,
+     "delivery_acknowledgements": true,
+     "delivery_exact": true,
+     "frozen_execution": false,
+     "history_writer_valid": true,
+     "in_flight_exact": true,
+     "invocation_stable": true,
+     "lifecycle_exact": true,
+     "occurrence_pairs": true,
+     "preparation_exact": true,
+     "projection_exact": true,
+     "replay_exact": true,
+     "retries_bounded": false,
+     "terminal_authorized": true,
+     "terminal_unique": true,
+     "timer_exact": true
+    },
+    "passed": false
+   }
   }
  ]
 }
