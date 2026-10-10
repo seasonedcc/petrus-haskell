@@ -32,7 +32,7 @@ import Control.Monad (forM_, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.IORef
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Clock (getMonotonicTime)
@@ -41,6 +41,7 @@ import Petrus.Motus.Execution.Error
 import System.Exit (ExitCode (..))
 import System.IO (Handle, hClose, hSetBinaryMode)
 import System.Posix.Files (fileAccess, getFileStatus, isDirectory)
+import System.Posix.Signals (sigKILL, signalProcess)
 import System.Posix.Types (CPid)
 import System.Process
 import System.Timeout (timeout)
@@ -297,7 +298,7 @@ runCaptured spec seconds = do
     Just done -> finish running done
     Nothing -> do
       code <- pollExit running
-      when (code == Nothing) (terminateProcess (runningHandle running))
+      when (isNothing code) (signalProcess sigKILL (runningPid running))
       _ <- communicate running
       throwExecution
         TimeoutError
