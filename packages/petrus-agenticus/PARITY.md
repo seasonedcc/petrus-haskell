@@ -19,7 +19,7 @@ prefix in the same way upstream does.
 
 | Upstream test | Haskell | Notes |
 | --- | --- | --- |
-| `test_exact_descriptors_capabilities_and_serializable_envelopes` | same label | The envelope half is checked. For the descriptor half (`AGENT_AS_NET_PROGRAM`, its Continuation descriptor and capability sets), see the Program descriptor section below. |
+| `test_exact_descriptors_capabilities_and_serializable_envelopes` | same label | Checks `agentAsNetProgram` (Net-owned, fresh start, accepted and produced Continuation, no steering or evaluation), both capability descriptors and the envelope round trips. |
 | `test_fresh_and_resumed_state_reference_contracts` | same label | |
 | `test_exact_topology_activity_separation_and_done_token_completion` | same label | |
 | `test_multi_tool_batch_is_sequential_and_one_activity_per_actual_call` | same label | |

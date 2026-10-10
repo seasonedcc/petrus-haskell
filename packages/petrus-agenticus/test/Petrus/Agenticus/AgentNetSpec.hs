@@ -18,6 +18,10 @@ import Data.Text.Encoding qualified as TE
 import Petrus.Activity (ActivityInvocation (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Program.AgentNet
+import Petrus.Agenticus.Catalog.Descriptor qualified as Catalog
+import Petrus.Agenticus.Program.Descriptor qualified as Program
+import Petrus.Agenticus.Program.Descriptor (ProgramOwnership (..))
+import Petrus.Agenticus.Thread.Continuation qualified as Continuation
 import Petrus.Agenticus.TestSupport
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (encodeLine)
@@ -179,15 +183,20 @@ spec = do
 upstream :: Spec
 upstream = do
   it "test_exact_descriptors_capabilities_and_serializable_envelopes" $ do
+    agentAsNetProgram.ownership `shouldBe` NetOwned
+    agentAsNetProgram.acceptsFreshStart `shouldBe` True
+    agentAsNetProgram.ownsSteering `shouldBe` False
+    agentAsNetProgram.ownsEvaluation `shouldBe` False
+    length agentAsNetProgram.acceptedContinuations `shouldBe` 1
+    map (.identity) agentAsNetProgram.acceptedContinuations `shouldBe` [agentAsNetContinuationDescriptor.identity]
+    agentAsNetProgram.producedContinuation `shouldBe` Just agentAsNetContinuationDescriptor.identity
+    agentAsNetProgramCapabilities.offers `shouldBe` Set.fromList ["program.net-owned"]
+    agentAsNetContinuationCapabilities.offers `shouldBe` Set.fromList ["continuation.net-owned"]
     state.outputRef `shouldBe` Nothing
     state.continuationRef `shouldBe` Nothing
     loopStateFromData (loopStateToData state) `shouldBe` Right state
     let item = readP "call-1"
     proposalFromData (proposalToData item) `shouldBe` Right item
-    -- The program and Continuation descriptors are asserted in
-    -- "Petrus.Agenticus.Program.AgentNetDescriptors" once the Program
-    -- descriptor layer is merged; see PARITY.md.
-    pendingWith "descriptor half: see PARITY.md"
 
   it "test_fresh_and_resumed_state_reference_contracts" $ do
     state.outputRef `shouldBe` Nothing

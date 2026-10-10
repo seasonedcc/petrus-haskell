@@ -36,6 +36,11 @@ module Petrus.Agenticus.Program.AgentNet
   , recordResult
   , modelPhaseActivity
   , handsActivity
+    -- * Program and Continuation descriptors
+  , agentAsNetContinuationDescriptor
+  , agentAsNetProgram
+  , agentAsNetProgramCapabilities
+  , agentAsNetContinuationCapabilities
     -- * Vocabulary
   , StopReason (..)
   , stopReasonText
@@ -115,7 +120,10 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity (invocation)
+import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorIdentity, DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Error
+import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor, ProgramOwnership (..), agentProgramDescriptor, continuationRequirement)
+import Petrus.Agenticus.Thread.Continuation (ContinuationDescriptor, continuationDescriptor)
 import Petrus.Agenticus.Internal.Validate (hasDuplicates, isTrimmed, sortedUnique, utf8Length)
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), Handler, HandlerResult, handlerTokens)
 import Petrus.Impetus.Dsl
@@ -186,6 +194,29 @@ recordResult = path "record_result"
 modelPhaseActivity, handsActivity :: Text
 modelPhaseActivity = "agenticus.net.model-phase"
 handsActivity = "agenticus.net.hands"
+
+-- ---------------------------------------------------------------------------
+-- Program and Continuation descriptors
+
+programId, continuationId :: DescriptorIdentity
+programId = descriptorIdentity KindProgram "agenticus.net-owned" agentNetVersion
+continuationId = descriptorIdentity KindContinuation "agenticus.net-owned" agentNetVersion
+
+agentAsNetContinuationDescriptor :: ContinuationDescriptor
+agentAsNetContinuationDescriptor = continuationDescriptor continuationId programId
+
+-- | The Net-owned Agent Program: it accepts a fresh start or its own
+-- Continuation, produces that Continuation, and owns neither steering nor
+-- evaluation.
+agentAsNetProgram :: AgentProgramDescriptor
+agentAsNetProgram =
+  agentProgramDescriptor programId NetOwned True [continuationRequirement continuationId programId] (Just continuationId) False False
+
+agentAsNetProgramCapabilities :: CapabilityDescriptor
+agentAsNetProgramCapabilities = capabilityDescriptor programId ["program.net-owned"] []
+
+agentAsNetContinuationCapabilities :: CapabilityDescriptor
+agentAsNetContinuationCapabilities = capabilityDescriptor continuationId ["continuation.net-owned"] []
 
 -- ---------------------------------------------------------------------------
 -- Vocabulary
