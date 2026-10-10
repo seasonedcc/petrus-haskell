@@ -2,9 +2,11 @@ module Main (main) where
 
 import BindingSpec qualified
 import RunnableSpec qualified
+import TimersSpec qualified
 import Test.Hspec
 
 main :: IO ()
 main = hspec $ do
   BindingSpec.spec
   RunnableSpec.spec
+  TimersSpec.spec
