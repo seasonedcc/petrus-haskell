@@ -1,0 +1,8 @@
+petrus-json
+Copyright 2026 Seasoned
+
+Ryu (the shortest round-trip float digits in Petrus.Json.Float are a port of
+the reference d2s algorithm, with CPython's float.__repr__ rounding rules)
+  Copyright 2018 Ulf Adams
+  Licensed under the Apache License, Version 2.0
+  https://github.com/ulfjack/ryu

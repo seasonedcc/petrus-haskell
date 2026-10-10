@@ -9,6 +9,7 @@ description:
   byte-for-byte identical to CPython's @json.dumps@ for every option Petrus uses.
 license:            Apache-2.0
 license-file:       LICENSE
+extra-doc-files:    NOTICE
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Data
@@ -27,6 +28,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.Json
+                    Petrus.Json.Float
                     Petrus.Json.Encode
                     Petrus.Json.Limits
                     Petrus.Json.Parse
@@ -48,11 +50,15 @@ test-suite petrus-json-test
   main-is:          Main.hs
   other-modules:    Petrus.Json.ReferenceParse
                     Petrus.Json.PythonTextSpec
+                    Petrus.Json.FloatReprSpec
   build-depends:    base
                   , bytestring
                   , hspec >=2.10
                   , QuickCheck >=2.14
                   , containers
+                  , directory
+                  , filepath
+                  , process
                   , petrus-json
                   , text
   ghc-options:      -rtsopts
