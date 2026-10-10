@@ -202,3 +202,41 @@ sides of each one. Its single accepted difference is item 6.
 6. **`probe` fails closed on any synchronous exception.** When `package.json`
    is not an object, the reference lets an `AttributeError` escape. The port
    reports `protocol-unavailable`.
+
+## Pi A2 host (`Petrus.Agenticus.Runtime.PiA2Host`)
+
+1. **Protocols and private attributes.** `PiA2RuntimeHost` is an abstract
+   type built only by the composers, so the reference's
+   `TypeError("Protocols cannot be instantiated")` cannot occur. The private
+   attributes its tests reach (`_provider`, `_adapter`, `_ledger`, `_bodies`,
+   `_storage`, `_fingerprint`, `_territory_operation`) are exported
+   accessors, and `type(host._adapter._factory)` is `hostFactoryKind`.
+   Monkeypatching `host._bodies.publish` becomes `PiA2HostHooks.publishBodies`.
+2. **Fixed types.** These checks have no port, because the types rule them
+   out:
+   - `TypeError` for a `workspace_archive` that is not `bytes`;
+   - `TypeError` for capabilities that are not `ToolMethod` values (an empty
+     set is still refused, with the reference's message);
+   - the `PiA2DirectAuthority` and `PiA2ScriptedCall` type checks.
+3. **Validation is explicit.** Dataclass `__post_init__` validation becomes
+   `newPiA2RuntimeHostConfig`, `mkPiA2RuntimePolicy`, `newPiA2RuntimeStart`,
+   `mkPiA2DirectAuthority`, `mkPiA2ScriptedCall` and `mkPiA2ScriptedTurn`.
+   The composers validate the configuration, and `startHost` validates the
+   start, so an unvalidated record never reaches the host.
+4. **Archive errors.** `validate_workspace_archive` raises Motus's own
+   `ExecutionError` of kind `ValueError` in the port. `newPiA2RuntimeStart`
+   re-raises it as the `ValueError` the reference raises, with the same
+   message.
+5. **Erasable buffers.** The authority supplier returns `ScrubbedBytes`
+   instead of a `bytearray`. As in the reference, the host copies the key into
+   custody and then zeroes the supplied buffer.
+6. **Child processes.** The killed-host and reconstructed-host tests
+   re-execute the test binary (with `PETRUS_PI_A2_HOST_CHILD`) instead of
+   running `python -c`.
+7. **`/bin/true`.** The spec uses `/usr/bin/true` when `/bin/true` is absent
+   (macOS). The host's own default test command is still `("/bin/true",)`,
+   as in the reference.
+8. **Scripted factory.** `piA2ScriptedFactory` takes a list, which may be
+   infinite (the benchmark uses `repeat`). The reference's tuple is finite;
+   `compose_pi_a2_scripted_runtime` still refuses an empty script with the
+   reference's `TypeError`.

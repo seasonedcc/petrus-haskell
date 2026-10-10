@@ -116,15 +116,20 @@ benchmark petrus-agenticus-runtime-bench
   type:             exitcode-stdio-1.0
   hs-source-dirs:   bench
   main-is:          Main.hs
-  other-modules:    PiBench
+  other-modules:    PiA2Bench
+                    PiBench
   build-depends:    base
                   , bytestring
+                  , containers
+                  , directory
                   , filepath
                   , petrus-activity
                   , petrus-agenticus
                   , petrus-agenticus-core
                   , petrus-agenticus-runtime
+                  , petrus-execution
                   , petrus-json
+                  , ram >=0.20
                   , tasty-bench >=0.3
                   , temporary
                   , text

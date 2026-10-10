@@ -286,3 +286,77 @@ pending for the same reason the reference skips them:
 No differential corpus or benchmark covers the application runtime. Its pure
 pieces (the strict loader, base64 and the transcript bound) are the ones the
 `test_pi.py` corpus already pins.
+
+## `tests/petrus/agenticus/runtime/test_pi_a2_host.py` (24 functions, 27 cases)
+
+Module: `Petrus.Agenticus.Runtime.PiA2Host` (`pi_a2_host.py`). Spec:
+`test/Petrus/Agenticus/Runtime/PiA2HostSpec.hs`.
+
+Every pytest id is an `it` label, parameters included. All 27 cases pass,
+and none is pending.
+
+**Fixtures.**
+
+- `Keys`, `Plan`, `Client`, `Factory` and `Authority` are ported one to one.
+  `Keys` wraps the shared AES-GCM `PiSupport.aesKeys` and counts `erase`.
+  `Authority.supply` returns a `ScrubbedBytes`, and the completed-operation
+  test checks that every supplied buffer is zeroed afterwards, as the
+  reference checks its `bytearray`s.
+- `_config` and `_start` take their keyword changes as small records
+  (`Changes`, `StartOptions`). `_tar_with` writes the one-member ustar
+  archive that `tarfile` writes, padded to a 10240-byte record.
+- The reference's `/bin/true` (the allowed argv, the test command and the
+  scripted shell call) becomes `/usr/bin/true` when `/bin/true` is absent,
+  as it is on macOS. Upstream, those tests fail on macOS for that reason.
+- `AttachFailure` and `UnverifiedDestroy` are record overrides of the local
+  provider's `providerAttach` and `providerDestroy`. The reference's
+  `monkeypatch.setattr(host._bodies, "publish", ...)` becomes
+  `setPiA2HostHooks`.
+- `host._provider`, `host._adapter`, `host._ledger`, `host._bodies`,
+  `host._storage`, `host._fingerprint` and `host._territory_operation` are
+  `hostProvider`, `hostAdapter`, `hostLedger`, `hostBodies`, `hostStorage`,
+  `hostFingerprint` and `piA2TerritoryOperation`. `type(host._adapter._factory)`
+  becomes `hostFactoryKind`.
+- The two process tests run `python -c` against the test module upstream.
+  Here they re-execute the test binary with `PETRUS_PI_A2_HOST_CHILD` set
+  (`test/Main.hs` dispatches to `PiA2HostSpec.child`). The killed child is
+  stopped with `SIGKILL` on its exact PID and must exit with `-9`. The
+  reconstructed child ends with `exitImmediately`, the twin of `os._exit(0)`.
+
+**Notes on individual tests.**
+
+| Function | Cases | Notes |
+| --- | ---: | --- |
+| `test_config_and_composition_are_exactly_direct_pi_a2_local` | 1 | `LocalProcessEnvironment.provider = "foreign"` is the record update `providerName = "foreign"`. |
+| `test_public_host_construction_boundaries_exclude_arbitrary_collaborators` | 1 | The `inspect.signature` and Protocol-instantiation checks are fixed by the Haskell types; the rest runs. |
+| `test_start_requires_exact_safe_workspace_and_operation_policy` | 1 | The `bytearray` archive `TypeError` has no counterpart (the field is a `ByteString`). |
+| `test_probe_is_authority_free_and_nonready_start_fails_before_admission` | 1 | |
+| `test_completed_operation_commits_bodies_only_after_verified_cleanup` | 1 | |
+| `test_start_archive_not_global_working_directory_is_episode_input` | 1 | |
+| `test_per_start_policy_is_exact_attachment_authority` | 1 | |
+| `test_policy_ceiling_rejection_does_not_burn_operation_identity` | 1 | |
+| `test_continuation_and_second_operation_reuse_one_host_authorization` | 1 | |
+| `test_continuation_workspace_mismatch_precedes_admission_and_can_be_corrected` | 1 | |
+| `test_terminal_replay_precedes_probe_authority_and_territory` | 1 | |
+| `test_concurrent_starts_serialize_one_shot_authority_and_dedupe_live_work` | 1 | Two `forkIO` threads in place of the thread pool; `is` becomes the operation's identity equality. |
+| `test_close_fences_new_starts_and_cancels_active_operation` | 1 | |
+| `test_indeterminate_close_prevents_late_waiter_publication` | 1 | |
+| `test_changed_work_conflicts_before_probe_or_authority` | 1 | |
+| `test_surviving_executing_record_becomes_indeterminate_without_authority` | 1 | |
+| `test_killed_host_process_reopens_admitted_work_without_redispatch` | 1 | Child process: the test binary itself. |
+| `test_reconstructed_host_requires_current_authority_for_new_work` | 4 | Child process: the test binary itself. |
+| `test_pre_workspace_fingerprint_conflicts_without_authority_or_provider_work` | 1 | |
+| `test_invalid_authority_is_consumed_once_and_replays_terminal_failure` | 1 | |
+| `test_partial_attachment_construction_rolls_back_and_replays_clean_failure` | 1 | |
+| `test_body_publication_failure_leaves_output_unreadable_and_operation_indeterminate` | 1 | `setPiA2HostHooks` replaces the monkeypatch. |
+| `test_unverified_territory_cleanup_never_publishes_success` | 1 | |
+| `test_private_state_root_rejects_unsafe_existing_mode` | 1 | |
+
+**Storage.** The body store's nine SQL statements, the `pi_a2_bodies` DDL
+among them, are byte-identical to the reference's. The comparison was made
+with the reference's AST against the port's literals.
+
+No differential corpus covers the host: its pure pieces are the fingerprint
+(benchmarked as `pi-a2-fingerprint`) and the inner Pi pieces that the
+`test_pi.py` corpus already pins. `bench/PiA2Bench.hs` and
+`bench/python_pi_a2.py` are twins; see `bench/results-pi.md`.
