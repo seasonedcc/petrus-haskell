@@ -1,0 +1,72 @@
+cabal-version:      3.4
+name:               petrus-agenticus-core
+version:            0.1.0.0
+synopsis:           The pure and SQLite-backed core layers of Petrus Agenticus
+description:
+  A Haskell port of the kernel-free layers of @petrus.agenticus@: the host
+  Catalog and its compatibility resolution, Thread/Episode/Turn lifecycle
+  values and opaque Continuations, Agent Program descriptors and seams,
+  provider-neutral external Effects, the capability-scoped Hands contract,
+  grants, gateway and ES-049 conformance policy, and Agent Connection
+  custody (key boundary, private-file materialization, SQLite CAS storage).
+  Every wire and storage format is byte-identical to the reference.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    PARITY.md
+                    DIVERGENCES.md
+extra-source-files: test/conformance/*.json
+                    differential/*.py
+                    differential/*.json
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Agenticus.Error
+                    Petrus.Agenticus.Internal.Validate
+                    Petrus.Agenticus.Catalog.Descriptor
+                    Petrus.Agenticus.Catalog.Result
+                    Petrus.Agenticus.Catalog.Resolution
+                    Petrus.Agenticus.Runtime.Profiles
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , crypton >=1.0
+                  , ram >=0.20
+                  , petrus-json
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-agenticus-core-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Petrus.Agenticus.Support
+                    Petrus.Agenticus.CatalogSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hspec >=2.10
+                  , petrus-agenticus-core
+                  , petrus-json
+                  , QuickCheck >=2.14
+                  , text
+  ghc-options:      -threaded -rtsopts
