@@ -1,3 +1,5 @@
+{-# LANGUAGE MagicHash #-}
+
 -- | JSON values with JavaScript (V8) semantics.
 --
 -- The Node backend of the viewer never forwards bytes verbatim: every relay
@@ -79,8 +81,10 @@ import Data.ByteString.Unsafe qualified as BU
 import Control.Monad (foldM, void)
 import Data.Char (chr, ord)
 import Foreign.Marshal.Utils (copyBytes)
-import Foreign.Ptr (Ptr, castPtr, plusPtr)
-import Foreign.Storable (poke)
+import Foreign.Ptr (castPtr, plusPtr)
+import GHC.Exts (Ptr (..))
+import System.IO.Unsafe (unsafeDupablePerformIO)
+import Foreign.Storable (peekByteOff, poke, pokeByteOff)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -130,30 +134,66 @@ data JsValue
 
 -- | The JavaScript string for a 'Text'.
 jsString :: Text -> JsString
-jsString t
-  | T.all plain t = JsString (TE.encodeUtf8 t)
-  | otherwise = JsString (BL.toStrict (BB.toLazyByteString (BP.primMapByteStringBounded escapeByte (TE.encodeUtf8 t))))
-  where
-    plain c = c >= ' ' && c /= '"' && c /= '\\'
+jsString t = JsString (escapeUtf8 (TE.encodeUtf8 t))
 
--- | One UTF-8 byte of a 'Text' as @JSON.stringify@ writes it (a 'Text'
--- holds no lone surrogates, so only ASCII needs escaping).
-escapeByte :: BP.BoundedPrim Word8
-escapeByte =
-  BP.condB (\w -> w >= 0x20 && w /= 0x22 && w /= 0x5c) (BP.liftFixedToBounded BP.word8) $
-    BP.condB (== 0x22) (two 0x22) $
-      BP.condB (== 0x5c) (two 0x5c) $
-        BP.condB (== 0x0a) (two 0x6e) $
-          BP.condB (== 0x0d) (two 0x72) $
-            BP.condB (== 0x09) (two 0x74) $
-              BP.condB (== 0x08) (two 0x62) $
-                BP.condB (== 0x0c) (two 0x66) $
-                  BP.liftFixedToBounded ((\w -> (0x5c, (0x75, (0x30, (0x30, (nibble (w `shiftR` 4), nibble (w .&. 0xf))))))) BP.>$< fixed6)
+-- | UTF-8 bytes of a 'Text' as @JSON.stringify@ writes them inside quotes.
+-- A 'Text' holds no lone surrogates, so only ASCII needs escaping. Two
+-- passes over the bytes with a lookup table (no data-dependent branches
+-- while counting): count the extra bytes, then write into one buffer.
+escapeUtf8 :: ByteString -> ByteString
+escapeUtf8 b = unsafeDupablePerformIO $ BU.unsafeUseAsCString b $ \src0 -> do
+  let src = castPtr src0 :: Ptr Word8
+      len = B.length b
+      count !i !acc
+        | i >= len = pure acc
+        | otherwise = do
+            w <- peekByteOff src i
+            e <- escapeExtra w
+            count (i + 1) (acc + e)
+  extra <- count 0 0
+  if extra == 0
+    then pure b
+    else BI.create (len + extra) $ \dst -> do
+      let go !i !o
+            | i >= len = pure ()
+            | otherwise = do
+                w <- peekByteOff src i :: IO Word8
+                e <- escapeExtra w
+                if e == 0
+                  then pokeByteOff dst o w >> go (i + 1) (o + 1)
+                  else do
+                    pokeByteOff dst o (0x5c :: Word8)
+                    if e == 1
+                      then pokeByteOff dst (o + 1) (shortEscape w) >> go (i + 1) (o + 2)
+                      else do
+                        pokeByteOff dst (o + 1) (0x75 :: Word8)
+                        pokeByteOff dst (o + 2) (0x30 :: Word8)
+                        pokeByteOff dst (o + 3) (0x30 :: Word8)
+                        pokeByteOff dst (o + 4) (nibble (w `shiftR` 4))
+                        pokeByteOff dst (o + 5) (nibble (w .&. 0xf))
+                        go (i + 1) (o + 6)
+      go 0 0
   where
-    two c = BP.liftFixedToBounded ((\_ -> (0x5c, c)) BP.>$< (BP.word8 BP.>*< BP.word8))
-    fixed6 = BP.word8 BP.>*< BP.word8 BP.>*< BP.word8 BP.>*< BP.word8 BP.>*< BP.word8 BP.>*< BP.word8
+    -- the letter after the backslash (quote and backslash escape themselves)
+    shortEscape :: Word8 -> Word8
+    shortEscape = \case
+      0x0a -> 0x6e
+      0x0d -> 0x72
+      0x09 -> 0x74
+      0x08 -> 0x62
+      0x0c -> 0x66
+      w -> w
     nibble :: Word8 -> Word8
     nibble d = if d < 10 then 0x30 + d else 0x57 + d
+
+-- | How many bytes 'escapeUtf8' adds for one byte: 0 (plain), 1 (@\\n@ and
+-- the like), or 5 (@\\u00XX@).
+escapeExtra :: Word8 -> IO Int
+escapeExtra w = fromIntegral <$> (peekByteOff escapeTable (fromIntegral w) :: IO Word8)
+{-# INLINE escapeExtra #-}
+
+escapeTable :: Ptr Word8
+escapeTable = Ptr "\x05\x05\x05\x05\x05\x05\x05\x05\x01\x01\x01\x05\x01\x01\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\0\0\x01\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"#
 
 -- | Wrap bytes already in canonical escaped form (callers must guarantee it).
 unsafeJsStringFromCanonical :: ByteString -> JsString

@@ -12,8 +12,14 @@
  *   haskell     petrus /collab-ws, and petrus-collab P
  *   node        node server/collab.mjs P
  *
+ * All servers run for the whole benchmark and the runs are interleaved
+ * (scenario by scenario, rep by rep, rotating which target goes first), so
+ * load from other processes on the machine hits every target alike. The
+ * reported run is the median by ops/s.
+ *
  * Usage:
- *   node packages/petrus-viewer-server/bench/run.mjs [--bin-dir DIR] [--reps 3] [--quick] [--json out.json]
+ *   node packages/petrus-viewer-server/bench/run.mjs [--bin-dir DIR] [--reps 5] [--quick]
+ *        [--only SUBSTRING] [--rts "RTS OPTIONS"] [--json out.json]
  *
  * Without --bin-dir the executables are built with cabal (benchmarks enabled).
  * Requires `pnpm install` in upstream/petrus-viewer.
@@ -36,17 +42,21 @@ const opt = (name, d) => {
   return i < 0 ? d : args[i + 1];
 };
 const quick = args.includes("--quick");
-const reps = Number(opt("--reps", quick ? "1" : "3"));
+const reps = Number(opt("--reps", quick ? "1" : "5"));
+const only = opt("--only", null);
 const jsonOut = opt("--json", null);
-let binDir = opt("--bin-dir", null);
+const binDir = opt("--bin-dir", null);
+// extra RTS options for the Haskell servers, e.g. --rts "-N4"
+const rts = opt("--rts", null);
+const rtsArgs = rts ? ["+RTS", ...rts.split(/\s+/).filter(Boolean), "-RTS"] : [];
 
 function bin(name) {
   if (binDir) return path.join(binDir, name);
   const target = name === "petrus-viewer-bench" ? "petrus-viewer-server:bench:petrus-viewer-bench" : `petrus-viewer-server:exe:${name}`;
-  return execFileSync("cabal", ["list-bin", target], { cwd: REPO, encoding: "utf8" }).trim();
+  return execFileSync("cabal", ["list-bin", "--enable-benchmarks", target], { cwd: REPO, encoding: "utf8" }).trim();
 }
 if (!binDir) {
-  execFileSync("cabal", ["build", "petrus-viewer-server:exes", "petrus-viewer-server:benchmarks"], { cwd: REPO, stdio: "inherit" });
+  execFileSync("cabal", ["build", "--enable-benchmarks", "petrus-viewer-server:exes", "petrus-viewer-server:benchmarks"], { cwd: REPO, stdio: "inherit" });
 }
 const BENCH = bin("petrus-viewer-bench");
 const PETRUS = bin("petrus");
@@ -58,7 +68,9 @@ fs.copyFileSync(path.join(VIEWER, "examples/sample-net.json"), netFile);
 
 let nextPort = 47310;
 const children = new Set();
-process.on("exit", () => { for (const c of children) try { c.kill(); } catch {} });
+process.on("exit", () => {
+  for (const c of children) try { c.kill(); } catch {}
+});
 
 // resolves with the loopback address the server accepts connections on
 function waitPort(port, ms = 30000) {
@@ -107,63 +119,70 @@ function runBench(argv) {
   return JSON.parse(out.trim().split("\n").pop());
 }
 
-const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
-
-function measure({ port, host }, scenario) {
-  const runs = [];
-  for (let i = 0; i < reps; i++) runs.push(runBench([...scenario.argv, "--host", host, "--port", String(port)]));
-  const pick = runs.find((r) => r.opsPerSec === median(runs.map((x) => x.opsPerSec)));
-  return pick;
-}
-
 const n = (full, q) => String(quick ? q : full);
-const HTTP_SCENARIOS = [
-  { name: "relay round trip, 1 pair", argv: ["relay", "--pairs", "1", "--iters", n(5000, 1000)] },
-  { name: "relay round trip, 16 pairs", argv: ["relay", "--pairs", "16", "--iters", n(2000, 300)] },
-  { name: "open-file POST+GET, 1 client", argv: ["http", "--endpoint", "open-file", "--file", netFile, "--concurrency", "1", "--requests", n(5000, 1000)] },
-  { name: "open-file POST+GET, 16 clients", argv: ["http", "--endpoint", "open-file", "--file", netFile, "--concurrency", "16", "--requests", n(32000, 4000)] },
-  { name: "resolve-ref, 1 client", argv: ["http", "--endpoint", "resolve-ref", "--file", netFile, "--concurrency", "1", "--requests", n(5000, 1000)] },
-  { name: "resolve-ref, 16 clients", argv: ["http", "--endpoint", "resolve-ref", "--file", netFile, "--concurrency", "16", "--requests", n(32000, 4000)] },
-];
-const FANOUT = (path_) => [
-  { name: "collab fan-out, 50 peers x 1000 msgs", argv: ["fanout", "--path", path_, "--receivers", "50", "--messages", n(1000, 200)] },
-  { name: "collab fan-out, 200 peers x 200 msgs", argv: ["fanout", "--path", path_, "--receivers", "200", "--messages", n(200, 50)] },
-];
+// `group` selects the targets; fan-out targets supply the WebSocket path
+const SCENARIOS = [
+  { name: "relay round trip, 1 pair", group: "viewer", argv: () => ["relay", "--pairs", "1", "--iters", n(5000, 1000)] },
+  { name: "relay round trip, 16 pairs", group: "viewer", argv: () => ["relay", "--pairs", "16", "--iters", n(2000, 300)] },
+  { name: "open-file POST+GET, 1 client", group: "viewer", argv: () => ["http", "--endpoint", "open-file", "--file", netFile, "--concurrency", "1", "--requests", n(5000, 1000)] },
+  { name: "open-file POST+GET, 16 clients", group: "viewer", argv: () => ["http", "--endpoint", "open-file", "--file", netFile, "--concurrency", "16", "--requests", n(32000, 4000)] },
+  { name: "resolve-ref, 1 client", group: "viewer", argv: () => ["http", "--endpoint", "resolve-ref", "--file", netFile, "--concurrency", "1", "--requests", n(5000, 1000)] },
+  { name: "resolve-ref, 16 clients", group: "viewer", argv: () => ["http", "--endpoint", "resolve-ref", "--file", netFile, "--concurrency", "16", "--requests", n(32000, 4000)] },
+  { name: "collab fan-out, 50 peers x 1000 msgs", group: "collab", argv: (t) => ["fanout", "--path", t.wsPath, "--receivers", "50", "--messages", n(1000, 200)] },
+  { name: "collab fan-out, 200 peers x 200 msgs", group: "collab", argv: (t) => ["fanout", "--path", t.wsPath, "--receivers", "200", "--messages", n(200, 50)] },
+].filter((s) => !only || s.name.includes(only));
 
 const TARGETS = [
-  { name: "haskell (petrus)", scenarios: [...HTTP_SCENARIOS, ...FANOUT("/collab-ws")], start: () => start(PETRUS, (p) => ["--no-open", "--strict-port", "--port", String(p)], scratch) },
-  { name: "node (vite dev server)", scenarios: HTTP_SCENARIOS, start: () => start(process.execPath, (p) => [path.join(VIEWER, "node_modules/vite/bin/vite.js"), "--port", String(p), "--strictPort"], VIEWER) },
-  { name: "node (bare baseline)", scenarios: HTTP_SCENARIOS, start: () => start(process.execPath, (p) => [path.join(HERE, "node-baseline.mjs"), VIEWER, String(p)], scratch) },
-  { name: "haskell (petrus-collab)", scenarios: FANOUT("/"), start: () => start(PETRUS_COLLAB, (p) => [String(p)], scratch) },
-  { name: "node (server/collab.mjs)", scenarios: FANOUT("/"), start: () => start(process.execPath, (p) => [path.join(VIEWER, "server/collab.mjs"), String(p)], VIEWER) },
-];
+  { name: "haskell (petrus)", groups: ["viewer", "collab"], wsPath: "/collab-ws", start: () => start(PETRUS, (p) => ["--no-open", "--strict-port", "--port", String(p), ...rtsArgs], scratch) },
+  { name: "node (vite dev server)", groups: ["viewer"], start: () => start(process.execPath, (p) => [path.join(VIEWER, "node_modules/vite/bin/vite.js"), "--port", String(p), "--strictPort"], VIEWER) },
+  { name: "node (bare baseline)", groups: ["viewer"], start: () => start(process.execPath, (p) => [path.join(HERE, "node-baseline.mjs"), VIEWER, String(p)], scratch) },
+  { name: "haskell (petrus-collab)", groups: ["collab"], wsPath: "/", start: () => start(PETRUS_COLLAB, (p) => [String(p), ...rtsArgs], scratch) },
+  { name: "node (server/collab.mjs)", groups: ["collab"], wsPath: "/", start: () => start(process.execPath, (p) => [path.join(VIEWER, "server/collab.mjs"), String(p)], VIEWER) },
+].filter((t) => SCENARIOS.some((s) => t.groups.includes(s.group)));
+
+const servers = new Map();
+for (const t of TARGETS) servers.set(t.name, await t.start());
 
 const results = [];
-for (const target of TARGETS) {
-  const server = await target.start();
-  for (const scenario of target.scenarios) {
-    const r = measure(server, scenario);
-    results.push({ target: target.name, scenario: scenario.name, ...r });
-    console.error(`${target.name.padEnd(26)} ${scenario.name.padEnd(38)} ${String(r.opsPerSec).padStart(9)} ops/s  p50 ${r.p50us}us  p99 ${r.p99us}us`);
+for (const scenario of SCENARIOS) {
+  const targets = TARGETS.filter((t) => t.groups.includes(scenario.group));
+  const runs = new Map(targets.map((t) => [t.name, []]));
+  for (let rep = 0; rep < reps; rep++) {
+    for (let k = 0; k < targets.length; k++) {
+      const t = targets[(k + rep) % targets.length];
+      const { host, port } = servers.get(t.name);
+      runs.get(t.name).push(runBench([...scenario.argv(t), "--host", host, "--port", String(port)]));
+    }
   }
-  const rss = rssMiB(server.child.pid);
-  results.push({ target: target.name, scenario: "server RSS after run (MiB)", rss });
-  await stop(server);
+  for (const t of targets) {
+    const rs = [...runs.get(t.name)].sort((a, b) => a.opsPerSec - b.opsPerSec);
+    const r = rs[Math.floor(rs.length / 2)];
+    results.push({ ...r, target: t.name, scenario: scenario.name, allOpsPerSec: runs.get(t.name).map((x) => x.opsPerSec) });
+    console.error(`${t.name.padEnd(26)} ${scenario.name.padEnd(38)} ${String(r.opsPerSec).padStart(9)} ops/s  p50 ${r.p50us}us  p99 ${r.p99us}us`);
+  }
 }
+const rss = Object.fromEntries(TARGETS.map((t) => [t.name, rssMiB(servers.get(t.name).child.pid)]));
+for (const t of TARGETS) await stop(servers.get(t.name));
 fs.rmSync(scratch, { recursive: true, force: true });
 
-// Markdown summary: one row per scenario, one column group per target
-const scenarios = [...new Set(results.filter((r) => r.opsPerSec !== undefined).map((r) => r.scenario))];
-const targets = TARGETS.map((t) => t.name);
-let md = `| scenario | ${targets.map((t) => `${t} ops/s (p50 / p99 us)`).join(" | ")} |\n|---|${targets.map(() => "---:").join("|")}|\n`;
-for (const s of scenarios) {
-  const cells = targets.map((t) => {
-    const r = results.find((x) => x.target === t && x.scenario === s);
+// Markdown summary: one row per scenario, one column per target, and the
+// ratio of the best Haskell server to the best Node server
+const names = TARGETS.map((t) => t.name);
+const find = (t, s) => results.find((x) => x.target === t && x.scenario === s);
+let md = `| scenario | ${names.join(" | ")} | Haskell / Node |\n|---|${names.map(() => "---:").join("|")}|---:|\n`;
+for (const s of SCENARIOS) {
+  const cells = names.map((t) => {
+    const r = find(t, s.name);
     return r ? `${r.opsPerSec} (${r.p50us} / ${r.p99us})` : "";
   });
-  md += `| ${s} | ${cells.join(" | ")} |\n`;
+  const best = (prefix) => Math.max(0, ...names.filter((t) => t.startsWith(prefix)).map((t) => find(t, s.name)?.opsPerSec ?? 0));
+  md += `| ${s.name} | ${cells.join(" | ")} | ${(best("haskell") / best("node")).toFixed(2)}x |\n`;
 }
-md += `| server RSS after run (MiB) | ${targets.map((t) => results.find((x) => x.target === t && x.rss !== undefined)?.rss ?? "").join(" | ")} |\n`;
+md += `| server RSS after run (MiB) | ${names.map((t) => rss[t] ?? "").join(" | ")} | |\n`;
+md += `\nCells: median ops/s over ${reps} interleaved runs (p50 / p99 latency in us).\n`;
 console.log(md);
-if (jsonOut) fs.writeFileSync(jsonOut, JSON.stringify({ machine: `${os.cpus()[0].model} x${os.cpus().length}, ${os.platform()} ${os.release()}, node ${process.version}`, reps, results }, null, 2));
+if (jsonOut) {
+  const machine = `${os.cpus()[0].model} x${os.cpus().length}, ${os.platform()} ${os.release()}, node ${process.version}`;
+  fs.writeFileSync(jsonOut, JSON.stringify({ machine, reps, results, rss }, null, 2));
+}
 process.exit(0);

@@ -10,7 +10,7 @@ module Petrus.Viewer.Log
   , logLine
   ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkOn)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Concurrent.STM
 import Control.Exception (SomeException, try)
@@ -20,6 +20,9 @@ import Data.ByteString qualified as B
 import Data.ByteString.Char8 qualified as BC
 import Data.Time.Calendar (toGregorian)
 import Data.Time.Clock (UTCTime (..), diffTimeToPicoseconds, getCurrentTime)
+import Data.ByteString.Internal qualified as BI
+import Data.Word (Word8)
+import Foreign.Storable (pokeByteOff)
 import GHC.Clock (getMonotonicTimeNSec)
 import System.IO (Handle, hFlush)
 
@@ -34,9 +37,29 @@ isoTimestamp = do
       (h, mi, sec, ms)
         | msOfDay >= 86400000 = (23, 59, 60, msOfDay - 86400000)
         | otherwise = (msOfDay `div` 3600000, msOfDay `div` 60000 `mod` 60, msOfDay `div` 1000 `mod` 60, msOfDay `mod` 1000)
-      pad n x = let t = show x in replicate (n - length t) '0' ++ t
-  pure . BC.pack $
-    pad 4 y ++ "-" ++ pad 2 mo ++ "-" ++ pad 2 d ++ "T" ++ pad 2 h ++ ":" ++ pad 2 mi ++ ":" ++ pad 2 sec ++ "." ++ pad 3 ms ++ "Z"
+  pure . BI.unsafeCreate 24 $ \ptr -> do
+    let digits :: Int -> Int -> Int -> IO ()
+        digits off n = go (off + n - 1) n
+          where
+            go :: Int -> Int -> Int -> IO ()
+            go _ 0 _ = pure ()
+            go i k v = pokeByteOff ptr i (fromIntegral (48 + v `mod` 10) :: Word8) >> go (i - 1) (k - 1) (v `div` 10)
+        sep :: Int -> Char -> IO ()
+        sep off ch = pokeByteOff ptr off (fromIntegral (fromEnum ch) :: Word8)
+    digits 0 4 (fromIntegral y)
+    sep 4 '-'
+    digits 5 2 mo
+    sep 7 '-'
+    digits 8 2 d
+    sep 10 'T'
+    digits 11 2 h
+    sep 13 ':'
+    digits 14 2 mi
+    sep 16 ':'
+    digits 17 2 sec
+    sep 19 '.'
+    digits 20 3 ms
+    sep 23 'Z'
 
 -- | @performance.now()@-style monotonic milliseconds.
 monotonicMs :: IO Double
@@ -59,11 +82,12 @@ newLogger h = SyncLogger h <$> newMVar ()
 -- | 'logLine' only enqueues; a background thread writes whatever has
 -- accumulated in one call and flushes. Lines keep their order. For hot
 -- paths (the relay logs every request and response), where a write and
--- flush per line under a lock would serialize the server.
-newAsyncLogger :: Handle -> IO Logger
-newAsyncLogger h = do
+-- flush per line under a lock would serialize the server. The writer runs
+-- on the given capability (that of the threads that log the most).
+newAsyncLogger :: Int -> Handle -> IO Logger
+newAsyncLogger cap h = do
   q <- newTQueueIO
-  void . forkIO . forever $ do
+  void . forkOn cap . forever $ do
     ls <- atomically $ do
       x <- readTQueue q
       xs <- flushTQueue q

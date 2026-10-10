@@ -15,6 +15,14 @@
 -- event loop. Each client has its own outbound queue and writer thread, so
 -- a slow receiver never blocks a sender (Node's @ws.send@ never blocks
 -- either).
+--
+-- All threads of one relay run on one capability (@forkOn@). Relay work is
+-- a chain of hand-offs between threads (reader, queue, writer); across
+-- capabilities each hand-off wakes another OS thread, which costs more than
+-- the work itself (on macOS, 16 relay pairs ran at half the round trips per
+-- second spread over four capabilities than on one). HTTP requests still
+-- use every capability. The agent relay uses capability 0 and the
+-- collaboration relay capability 1 (modulo the capability count).
 module Petrus.Viewer.Relay
   ( RelayKind (..)
   , Relay
@@ -26,7 +34,7 @@ module Petrus.Viewer.Relay
   , Routed (..)
   ) where
 
-import Control.Concurrent.Async (withAsync)
+import Control.Concurrent.Async (wait, withAsyncOn)
 import Control.Concurrent.STM
 import Control.Exception (SomeException, finally, try)
 import Control.Monad (forM_, unless, void, when)
@@ -70,10 +78,14 @@ data Relay = Relay
   , clients :: TVar (Map Int Client)
   , timings :: IORef (Map JsString Double)
   , perfLogger :: Maybe Logger
+  , capability :: Int
+  -- ^ where all of this relay's threads run
   }
 
 newRelay :: RelayKind -> Maybe Logger -> IO Relay
-newRelay k lg = Relay k <$> newTVarIO 1 <*> newTVarIO Map.empty <*> newIORef Map.empty <*> pure lg
+newRelay k lg =
+  Relay k <$> newTVarIO 1 <*> newTVarIO Map.empty <*> newIORef Map.empty <*> pure lg
+    <*> pure (case k of AgentRelay -> 0; CollabRelay -> 1)
 
 relayClientCount :: Relay -> IO Int
 relayClientCount r = Map.size <$> readTVarIO (clients r)
@@ -103,7 +115,10 @@ wsApp relay pending = do
 
 -- | Run one client connection until it closes.
 serveConnection :: Relay -> WS.Connection -> IO ()
-serveConnection relay conn = do
+serveConnection relay conn = withAsyncOn (capability relay) (serveHere relay conn) wait
+
+serveHere :: Relay -> WS.Connection -> IO ()
+serveHere relay conn = do
   me <- atomically $ do
     n <- readTVar (nextId relay)
     writeTVar (nextId relay) (n + 1)
@@ -121,7 +136,7 @@ serveConnection relay conn = do
         then writeTQueue (outbox o) (Frame msg) >> writeTQueue (outbox o) (Signal gate)
         else writeTQueue (outbox o) (Await gate) >> writeTQueue (outbox o) (Frame msg)
     pure c
-  withAsync (writer me) $ \_ ->
+  withAsyncOn (capability relay) (writer me) $ \_ ->
     receiveLoop me `finally` leave me
   where
     showText n = T.pack (show (n :: Int))

@@ -22,9 +22,10 @@ module Petrus.Viewer.Server
   , wsOptions
   ) where
 
-import Control.Concurrent.Async (mapConcurrently_, withAsync)
+import Control.Concurrent.Async (forConcurrently_, withAsync)
 import Control.Exception (IOException, bracket, bracketOnError, throwIO, try)
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (getNumCapabilities, threadDelay)
+import Control.Concurrent.Async qualified as Async
 import Control.Monad (forM, forever)
 import Data.ByteString qualified as B
 import Data.List (nub)
@@ -194,11 +195,21 @@ warpSettings =
   Warp.setOnException (\_ _ -> pure ()) $
     Warp.setServerName "" Warp.defaultSettings
 
+-- | Accept on every listening socket from every capability. A connection's
+-- thread starts on the capability that accepted it and stays there (the
+-- executables run with @-qm@, no thread migration), so connections spread
+-- over the capabilities without a request ever hopping between them.
+acceptEverywhere :: (S.Socket -> IO ()) -> [S.Socket] -> IO ()
+acceptEverywhere serve socks = do
+  caps <- getNumCapabilities
+  forConcurrently_ [(c, s) | c <- [0 .. caps - 1], s <- socks] $ \(c, s) ->
+    Async.withAsyncOn c (serve s) Async.wait
+
 -- | Start the server, run the action with it, stop it afterwards.
 withServer :: ServerConfig -> (ServerHandle -> IO a) -> IO a
 withServer cfg action = do
   mgr <- newFetchManager
-  logger <- if serverRelayPerf cfg then Just <$> newAsyncLogger stdout else pure Nothing
+  logger <- if serverRelayPerf cfg then Just <$> newAsyncLogger 0 stdout else pure Nothing
   agent <- newRelay AgentRelay logger
   collab <- newRelay CollabRelay Nothing
   openState <- newOpenFileState (serverOpenFile cfg) (serverSourceUrl cfg)
@@ -208,7 +219,7 @@ withServer cfg action = do
   bracket (bindListeners (serverHost cfg) (serverPort cfg) (serverStrictPort cfg)) (mapM_ S.close . snd) $ \(port, socks) -> do
     let app = viewerApp cfg mgr agent collab openState observation
         serve s = Warp.runSettingsSocket (Warp.setPort port warpSettings) s app
-    withAsync (mapConcurrently_ serve socks) $ \_ ->
+    withAsync (acceptEverywhere serve socks) $ \_ ->
       action (ServerHandle port agent collab openState)
 
 -- | Serve until interrupted; @onReady@ runs once the sockets listen.
@@ -225,4 +236,4 @@ runCollabServer port = do
   bracket (bindListeners "::" port True) (mapM_ S.close . snd) $ \(_, socks) -> do
     hSetBuffering stdout LineBuffering
     putStrLn ("Collab relay listening on ws://localhost:" <> show port)
-    mapConcurrently_ (\s -> Warp.runSettingsSocket warpSettings s (collabApp relay)) socks
+    acceptEverywhere (\s -> Warp.runSettingsSocket warpSettings s (collabApp relay)) socks

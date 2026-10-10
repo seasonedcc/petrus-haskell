@@ -28,6 +28,8 @@ import Petrus.Viewer.Json
 import Petrus.Viewer.Relay (RelayKind (..), Routed (..), relayMessage)
 import Petrus.Viewer.Url (decodeURIComponent, parseUrl, resolveUrl, serializeUrl)
 import System.Directory (doesPathExist)
+import System.Posix.IO qualified as PIO
+import System.Posix.Files qualified as PF
 import System.Environment (getArgs)
 import System.Exit (die)
 import System.FilePath (takeDirectory, (</>))
@@ -327,7 +329,9 @@ microBench o = do
   timeIt "parseUrl short" $ \i -> pure $! maybe 0 (T.length . serializeUrl) (parseUrl ("file:///a/b" <> T.pack (show (i `mod` 2))))
   timeIt "parseUrl only (no serialize)" $ \i -> pure $! maybe 0 (const 1) (parseUrl (base <> T.pack (show (i `mod` 2))))
   timeIt "parseJs net file" $ \i -> pure $! either (const i) (const 1) (parseJs raw)
-  timeIt "encodeJs content string" $ \i -> pure $! B.length (encodeJs (obj [("content", str content), ("n", int i)]))
+  timeIt "encodeJs content string" $ \i -> pure $! B.length (encodeJs (obj [("content", str (if i < 0 then T.empty else content)), ("n", int i)]))
+  timeIt "decode+jsString file bytes" $ \i -> pure $! i + B.length (jsStringBytes (jsString (TE.decodeUtf8Lenient (if i < 0 then B.empty else raw))))
+  timeIt "readFileNode+encode (resolve-ref body)" $ \i -> either T.length (\c -> i + B.length (encodeJs (obj [("content", str c)]))) <$> readFileNode file
   timeIt "encodeJs parsed net" $ \i -> pure $! i + B.length (encodeJs parsed)
   timeIt "relayMessage parse+route+encode" $ \i -> pure $! i + case parseJs relayIn of
     Right v | Just r <- relayMessage AgentRelay (jsString "2") v -> fromIntegral (BL.length (routedBytes r))
@@ -336,6 +340,10 @@ microBench o = do
   timeIt "decodeURIComponent path" $ \i -> pure $! i + either T.length T.length (decodeURIComponent (T.pack file))
   timeIt "doesPathExist" $ \i -> (\b -> if b then i else 0) <$> doesPathExist filePath
   timeIt "readFileNode" $ \i -> either T.length ((+ i) . T.length) <$> readFileNode filePath
+  timeIt "B.readFile" $ \i -> (+ i) . B.length <$> B.readFile filePath
+  timeIt "open+close" $ \i -> PIO.openFd filePath PIO.ReadOnly PIO.defaultFileFlags >>= PIO.closeFd >> pure i
+  timeIt "stat" $ \i -> (\s -> i + fromIntegral (PF.fileSize s)) <$> PF.getFileStatus filePath
+  timeIt "decodeUtf8 file" $ \i -> pure $! i + T.length (TE.decodeUtf8 (if i < 0 then B.empty else raw))
   timeIt "resolveRef (file)" $ \_ -> do
     r <- resolveRef mgr ref base
     pure $ case r of

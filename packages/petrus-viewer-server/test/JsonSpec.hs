@@ -63,6 +63,10 @@ spec = do
         `shouldBe` Left "Unexpected token '<', \"<!doctype \"... is not valid JSON"
 
   describe "properties" $ do
+    it "jsString escapes like JSON.stringify and decodes back" $
+      property $ \(StrText t) ->
+        let s = jsString t
+         in (jsStringBytes s === TE.encodeUtf8 (T.concatMap stringifyChar t)) .&&. (jsStringText s === t)
     it "encoding is a fixed point of parse . encode" $
       property $ \(Doc v) -> stringify (encodeJs v) === Right (encodeJs v)
     it "pretty output parses back to the same value" $
@@ -91,3 +95,35 @@ instance Arbitrary Doc where
           , str . T.pack <$> listOf (oneof [arbitrary, elements "\"\\\n\t\x7f\xe9\x2028\x1F600"])
           ]
       key = elements ["a", "b", "0", "1", "10", "01", "-1", "4294967294", "4294967295", "é", ""]
+
+-- | Text weighted towards the characters JSON.stringify escapes.
+newtype StrText = StrText Text
+  deriving stock (Show)
+
+instance Arbitrary StrText where
+  arbitrary =
+    StrText . T.pack
+      <$> listOf
+        ( frequency
+            [ (3, choose ('\0', '\x7f'))
+            , (2, elements "\"\\\n\r\t\b\f\x1f\x7f")
+            , (1, choose ('\x80', '\x10ffff') `suchThat` (\c -> c < '\xd800' || c > '\xdfff'))
+            ]
+        )
+  shrink (StrText t) = StrText . T.pack <$> shrink (T.unpack t)
+
+-- | One character as JSON.stringify writes it inside a string literal.
+stringifyChar :: Char -> Text
+stringifyChar = \case
+  '"' -> "\\\""
+  '\\' -> "\\\\"
+  '\n' -> "\\n"
+  '\r' -> "\\r"
+  '\t' -> "\\t"
+  '\b' -> "\\b"
+  '\f' -> "\\f"
+  c
+    | c < ' ' -> T.pack ("\\u00" ++ [hex (fromEnum c `div` 16), hex (fromEnum c `mod` 16)])
+    | otherwise -> T.singleton c
+  where
+    hex d = "0123456789abcdef" !! d

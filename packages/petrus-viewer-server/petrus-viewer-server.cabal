@@ -39,6 +39,7 @@ library
                     Petrus.Viewer.Url
                     Petrus.Viewer.UrlCache
                     Petrus.Viewer.Http
+                    Petrus.Viewer.FileIO
                     Petrus.Viewer.Relay
                     Petrus.Viewer.Endpoints
                     Petrus.Viewer.Static
@@ -81,7 +82,10 @@ executable petrus
   hs-source-dirs:   app/petrus
   main-is:          Main.hs
   build-depends:    base, petrus-viewer-server
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N -A16m"
+  -- Two capabilities and sequential GC: request handling is short and
+  -- I/O bound, and more capabilities mostly add cross-thread wake-ups (see
+  -- bench/RESULTS.md). Override with +RTS -N<n> -RTS.
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N2 -qg -qm -A16m"
 
 executable petrus-mcp
   import:           warnings
@@ -95,7 +99,7 @@ executable petrus-collab
   hs-source-dirs:   app/petrus-collab
   main-is:          Main.hs
   build-depends:    base, petrus-viewer-server
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N -A16m"
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N2 -qg -qm -A16m"
 
 
 -- Test oracle used by upstream-tests/ (upstream Node tests and
@@ -164,5 +168,8 @@ benchmark petrus-viewer-bench
                   , stm
                   , text
                   , time
+                  , unix
                   , websockets
-  ghc-options:      -O2 -threaded -rtsopts -with-rtsopts=-N
+  -- two capabilities: enough to keep any of the servers busy, and the same
+  -- client cost against every server
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N2 -qg"

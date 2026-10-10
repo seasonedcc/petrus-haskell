@@ -17,9 +17,8 @@ module Petrus.Viewer.Endpoints
   , readFileNode
   ) where
 
-import Control.Exception (IOException, bracket, try)
+import Control.Exception (IOException, try)
 import Data.ByteString qualified as B
-import Data.ByteString.Internal qualified as BI
 import Data.ByteString.Lazy qualified as BL
 import Data.IORef
 import Data.Text (Text)
@@ -29,14 +28,12 @@ import Data.Text.Encoding.Error qualified as TE
 import Network.HTTP.Client qualified as HC
 import Network.HTTP.Types qualified as H
 import Network.Wai qualified as W
+import Petrus.Viewer.FileIO (pathExists, readFileBytes)
 import Petrus.Viewer.Json
 import Petrus.Viewer.Http (lbsResponse)
 import Petrus.Viewer.Url
 import Petrus.Viewer.UrlCache
-import System.Directory (doesPathExist)
 import System.IO.Error (isDoesNotExistError, isPermissionError)
-import System.Posix.Files (fileSize, getFdStatus)
-import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, fdReadBuf, openFd)
 
 -- | The pending file (consumed by the next GET) and its source URL.
 data OpenFileState = OpenFileState (IORef (Maybe FilePath, Maybe Text))
@@ -103,7 +100,7 @@ openFile (OpenFileState ref) req respond = case W.requestMethod req of
               JsObj o -> lookupKey "path" o
               _ -> Nothing
         exists <- case filePath of
-          Just (JsStr s) | not (T.null (jsStringText s)) -> doesPathExist (T.unpack (jsStringText s))
+          Just (JsStr s) | not (T.null (jsStringText s)) -> pathExists (T.unpack (jsStringText s))
           _ -> pure False
         case filePath of
           Just (JsStr s) | exists -> do
@@ -126,18 +123,6 @@ readFileNode path = do
       | "is a directory" `T.isInfixOf` T.toLower (T.pack (show e)) || "inappropriate type" `T.isInfixOf` T.toLower (T.pack (show e)) ->
           Left "EISDIR: illegal operation on a directory, read"
       | otherwise -> Left (T.pack (show e))
-
--- | The whole file: open, fstat, read to EOF, close, without the 'Handle'
--- machinery (buffers, locking) that dominates small reads.
-readFileBytes :: FilePath -> IO B.ByteString
-readFileBytes path = bracket (openFd path ReadOnly defaultFileFlags) closeFd $ \fd -> do
-  size <- fromIntegral . fileSize <$> getFdStatus fd
-  let chunkSize = max 4096 (size + 1) :: Int
-      readChunk = BI.createAndTrim chunkSize $ \p -> fromIntegral <$> fdReadBuf fd p (fromIntegral chunkSize)
-      go acc = do
-        chunk <- readChunk
-        if B.null chunk then pure (B.concat (reverse acc)) else go (chunk : acc)
-  go []
 
 data ResolveResult
   = Resolved JsValue
@@ -176,7 +161,7 @@ resolveRef mgr ref basePath = do
         "file" -> case decodeURIComponent (urlPathname u) of
           Left e -> pure (ResolveError e)
           Right filePath -> do
-            exists <- doesPathExist (T.unpack filePath)
+            exists <- pathExists (T.unpack filePath)
             if not exists
               then pure (ResolveError ("File not found: " <> filePath))
               else do
