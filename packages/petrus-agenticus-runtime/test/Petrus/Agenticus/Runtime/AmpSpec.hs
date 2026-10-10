@@ -37,6 +37,7 @@ import Petrus.Agenticus.Thread.Continuation (Continuation (..), ContinuationDesc
 import Petrus.Agenticus.Thread.Identity (mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))
+import Petrus.TestSupport.Python (pythonExecutable)
 import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -514,15 +515,16 @@ spec = describe "test_amp" $ do
 
   describe "official sidecar (not in the reference)" $ do
     let fixtureSidecar = do
+          python <- pythonExecutable
           root <- makeAbsolute ("test" </> "fixtures" </> "amp")
-          pure ampSidecar {searchPath = [root], grace = 5}
+          pure ampSidecar {python, searchPath = [root], grace = 5}
 
     it "reads the SDK version and protocol through the sidecar" $ do
       sidecar <- fixtureSidecar
       let hooks = officialProbeHooks sidecar
       hooks.installedSdkVersion `shouldReturn` Just ampSdkVersion
       hooks.sdkProtocolReady `shouldReturn` True
-      (officialProbeHooks ampSidecar {searchPath = ["/nonexistent"]}).sdkProtocolReady `shouldReturn` False
+      (officialProbeHooks sidecar {searchPath = ["/nonexistent"]}).sdkProtocolReady `shouldReturn` False
 
     it "runs one Orb turn through the official execute" $ do
       sidecar <- fixtureSidecar

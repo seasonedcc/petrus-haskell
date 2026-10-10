@@ -74,7 +74,7 @@ def _emit(value):
 def _portable(value):
     try:
         json.dumps(value, allow_nan=False)
-    except TypeError, ValueError, RecursionError:
+    except (TypeError, ValueError, RecursionError):
         return False
     return True
 
@@ -116,7 +116,7 @@ def _message_size(message):
             allow_nan=False,
             sort_keys=True,
         ).encode()
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         raise _ProtocolError("malformed-message") from None
     return len(encoded), data
 

@@ -31,6 +31,9 @@ extra-source-files: differential/*.json
                     test/fixtures/pi/*.py
                     test/fixtures/amp/amp_sdk/*.py
                     test/fixtures/amp/amp_sdk-0.1.20260729121202.dist-info/METADATA
+                    test/fixtures/claude/claude_agent_sdk/*.py
+                    test/fixtures/claude/claude_agent_sdk/_bundled/claude
+                    test/fixtures/claude/claude_agent_sdk-0.2.128.dist-info/METADATA
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -88,6 +91,7 @@ test-suite petrus-agenticus-runtime-test
   main-is:          Main.hs
   other-modules:    Petrus.Agenticus.Runtime.AgentNetRunnerSpec
                     Petrus.Agenticus.Runtime.AmpSpec
+                    Petrus.Agenticus.Runtime.ClaudeSpec
                     Petrus.Agenticus.Runtime.PiA2HostSpec
                     Petrus.Agenticus.Runtime.PiApplicationSpec
                     Petrus.Agenticus.Runtime.PiDifferentialSpec
@@ -111,6 +115,7 @@ test-suite petrus-agenticus-runtime-test
                   , petrus-impetus
                   , petrus-json
                   , petrus-motus
+                  , petrus-test-support
                   , process
                   , ram >=0.20
                   , temporary
