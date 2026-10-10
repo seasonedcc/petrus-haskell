@@ -5,8 +5,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdint.h>
+#include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #if defined(__APPLE__)
@@ -86,4 +89,21 @@ int petrus_wait_readable(int fd, int timeout_ms)
         return 1;
     }
     return ready;
+}
+
+/* Block until child `pid` has exited, without reaping it: waitid(2) with
+ * WNOWAIT leaves the zombie for the caller's own waitpid, so a reaped pid is
+ * never signalled.  Call it only from a safe foreign call on the threaded
+ * RTS.  Returns 0 once the child has exited, or errno (ECHILD when it has
+ * already been reaped). */
+int petrus_wait_exited(pid_t pid)
+{
+    siginfo_t info;
+    for (;;) {
+        memset(&info, 0, sizeof info);
+        if (waitid(P_PID, (id_t)pid, &info, WEXITED | WNOWAIT) == 0)
+            return 0;
+        if (errno != EINTR)
+            return errno;
+    }
 }
