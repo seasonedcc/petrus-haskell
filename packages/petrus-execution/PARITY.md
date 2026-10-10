@@ -130,27 +130,70 @@ tests (`pytest -k "docker or cross_provider"`) took 8.3 s on the same machine.
 
 ### Gondolin (`PETRUS_REAL_GONDOLIN_SDK_MODULE`, `PETRUS_REAL_GONDOLIN_IMAGE`, optional `PETRUS_REAL_GONDOLIN_NODE`)
 
-Status: **not yet run.** QEMU and Node 24 are available on the development machine, but installing
-the pinned SDK (`npm install`) was blocked by the session's permission policy, so no real Gondolin
-SDK is present. The fake-SDK suite drives the verbatim sidecar through every upstream scenario.
+Status on 2026-10-10: **not yet run.** The pinned SDK is installed package-locally. Pulling the guest
+image was blocked by the session's permission policy, so no image resolves locally and the
+acceptance test cannot provision a VM. The fake-SDK suite drives the verbatim sidecar through
+every upstream scenario.
 
-To run it (the SDK goes in the git-ignored, package-local `.gondolin/` directory, never globally):
+| Step | State |
+| --- | --- |
+| SDK `@earendil-works/gondolin@0.12.0` in the git-ignored `.gondolin/sdk` | installed |
+| SDK entry module | `node_modules/@earendil-works/gondolin/dist/src/index.js`, the package's `exports["."].import`; the sidecar `import()`s it by path |
+| Guest image `alpine-base:latest` in the package-local store `.gondolin/images` | **not pulled**: `gondolin image pull` was denied by the permission policy |
+| QEMU 11.1.2, Node 24 via `fnm` | available |
+
+The sidecar resolves the image with the SDK's `resolveImageSelector`. That lookup is local only: it
+reads `GONDOLIN_IMAGE_STORE` (default `$XDG_CACHE_HOME/gondolin/images`) and never downloads. The
+image therefore has to be pulled first. Upstream's acceptance test has the same requirement, and
+both implementations pass `GONDOLIN_IMAGE_STORE`, `HOME`, `PATH` and `XDG_CACHE_HOME` through to
+the sidecar. `alpine-base:latest` is the SDK's default image (`GONDOLIN_DEFAULT_IMAGE`).
+
+To run it, from the repository root (everything stays inside the package's git-ignored `.gondolin/`):
 
 ```
 cd packages/petrus-execution
-mkdir -p .gondolin/sdk && cd .gondolin/sdk
-echo '{"private":true}' > package.json
-fnm exec --using=24 npm install --save-exact @earendil-works/gondolin@0.12.0
-cd ../../../..
-PETRUS_REAL_GONDOLIN_SDK_MODULE=$PWD/packages/petrus-execution/.gondolin/sdk/node_modules/@earendil-works/gondolin/<entry module> \
-PETRUS_REAL_GONDOLIN_IMAGE=<local image selector> \
+mkdir -p .gondolin/sdk
+printf '{"private":true,"dependencies":{"@earendil-works/gondolin":"0.12.0"}}\n' > .gondolin/sdk/package.json
+(cd .gondolin/sdk && fnm exec --using=24 npm install)
+export GONDOLIN_IMAGE_STORE=$PWD/.gondolin/images
+fnm exec --using=24 node .gondolin/sdk/node_modules/@earendil-works/gondolin/dist/bin/gondolin.js \
+  image pull alpine-base:latest
+cd ../..
+PETRUS_REAL_GONDOLIN_SDK_MODULE=$PWD/packages/petrus-execution/.gondolin/sdk/node_modules/@earendil-works/gondolin/dist/src/index.js \
+PETRUS_REAL_GONDOLIN_IMAGE=alpine-base:latest \
 PETRUS_REAL_GONDOLIN_NODE=$(fnm exec --using=24 which node) \
   cabal test petrus-execution --test-options='--match test_real_gondolin_lifecycle_is_explicitly_opt_in'
 ```
 
-The sidecar refuses a real SDK on Node older than 23.6, hence `PETRUS_REAL_GONDOLIN_NODE` (upstream
-takes `node` from `PATH`). The image selector must resolve in the local image store
-(`GONDOLIN_IMAGE_STORE` or the XDG cache), as for upstream's acceptance test.
+Upstream's own test, for comparison (same variables; its sidecar takes `node` from `PATH`):
+
+```
+cd upstream/petrus
+PETRUS_REAL_GONDOLIN_SDK_MODULE=... PETRUS_REAL_GONDOLIN_IMAGE=alpine-base:latest \
+  fnm exec --using=24 uv run pytest -m real_gondolin_acceptance tests/petrus/motus/test_gondolin_environment.py
+```
+
+The sidecar refuses a real SDK on Node older than 23.6, which is why `PETRUS_REAL_GONDOLIN_NODE`
+exists; upstream takes `node` from `PATH`.
+
+`npm audit` (2026-10-10) reports 2 high-severity entries, both caused by one advisory:
+
+- [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv): `node-forge` (1.4.0
+  installed; no fixed version) accepts extra nested DigestAlgorithm elements when verifying RSA
+  PKCS#1 v1.5 signatures.
+- The second entry is `@earendil-works/gondolin` itself, flagged only because it depends on
+  `node-forge`.
+
+The SDK uses `node-forge` to:
+
+- generate its HTTPS-interception CA and per-host leaf certificates;
+- parse PEM files;
+- verify signatures in exactly one place: checking that a leaf certificate it previously cached on
+  the host (under the XDG cache) was signed by its own CA (`qemu/net.js`, `caCertVerifiesLeaf`).
+
+Exploiting the flaw would require an attacker who can already write that host-side cache
+directory. No signature from the network or the guest is ever verified with `node-forge`. For the
+opt-in, test-only use here, the finding does not matter.
 
 ### E2B
 
