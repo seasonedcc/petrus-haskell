@@ -99,6 +99,79 @@ surface:
 16. **Spawn-based tests run as threads.** See PARITY.md. The cross-process
     behavior they guard is covered by the interop suite, with reference
     processes and Haskell threads contending on one file.
-17. **No `Worker` yet.** `dispatch.worker(...)` returns the custody surface;
-    there is no Worker loop to drive it. The upstream Worker-driven
-    cancellation test runs the same custody sequence by hand.
+17. **The Worker-driven Local cancellation test runs by hand.**
+    `test_running_cancellation_..._quarantine` was ported before the Worker
+    runtime. It runs the same custody sequence over `dispatch.worker(...)`
+    by hand. The Worker's own drain and terminal reporting are covered by
+    the Worker specs. See PARITY.md.
+
+## Worker runtime (`Petrus.Motus.Worker`, `Petrus.Motus.Worker.Cli`)
+
+What a Worker exchanges with custody is the reference's:
+- the claim, heartbeat and terminal sequence;
+- the failure classification;
+- the result normalization (`json.loads(json.dumps(result, allow_nan=False))`);
+- the supervisor-facing event lines (CPython's default `json.dumps`
+  spelling, members in the reference's order);
+- the exit statuses and every CLI message.
+
+Interop checks this both ways. What differs is the host-language surface:
+
+18. **One Activity type, no function colours.** The reference keeps
+    synchronous and `async def` Activities apart. `Worker` refuses
+    coroutine functions, `AsyncWorker` refuses synchronous definitions, and
+    `@activity` / `@async_activity` check signatures and type annotations.
+    Here an `Activity` is `ActivityInvocation -> ActivityExecutionContext -> IO Json`
+    and serves both Workers. Those refusals have nothing to refuse. An
+    `AsyncWorker` runs each Activity on its own thread, which is how GHC
+    threads give an `async def` its concurrency.
+19. **Cancellation is an asynchronous exception.** The reference's
+    `AsyncWorker.run` absorbs a `CancelledError` thrown into its task:
+    admission stops, running Activities and claims in progress drain,
+    custody closes, and the cancellation is re-raised. `runAsyncWorker` does
+    the same with any asynchronous exception thrown at its thread
+    (`killThread`, `cancel`, `timeout`). A Worker error raised meanwhile
+    wins, as in the reference.
+
+    An Activity that ends with an asynchronous exception is reported as the
+    reference reports a cancelled task: `RuntimeError("Activity cancelled:
+    …")`. `CancelledError` is provided for an Activity that wants to cancel
+    itself with a message.
+20. **The sync bridge's lanes are threads, not executor workers.** The
+    reference gives each slot a dedicated `threading.Thread` that owns the
+    provider its factory built. Here each slot gets a forked lane thread
+    (`forkLane`), with the same ownership: every custody call for a slot
+    runs on that slot's thread.
+
+    A `LaneSpawner` argument replaces the reference's monkeypatched
+    `Thread.start` as the seam for thread-start failures. The native-access
+    door, `AsyncWorker._from_async_access`, is the public
+    `asyncWorkerFromAccess`.
+21. **Keyword arguments become `WorkerOptions`.** `resolver=`, `worker_id=`
+    and the event sink are fields of `WorkerOptions`. `output` replaces the
+    reference's `print`, so an embedding host can route or silence event
+    lines. It defaults to `stdoutEvents`, which writes the reference's
+    bytes. `run(poll_interval=)` and `run_available(limit=)` take their
+    arguments positionally.
+22. **Registries are compiled in, not imported by name.** The reference's
+    `--registry module:attribute` imports a Python module at run time.
+    Haskell cannot do that, so an application builds its own worker
+    executable around `workerMain`. It passes the registries it was
+    compiled with, keyed by the same `module:attribute` spellings, and the
+    provider plugins it links. Local custody is built in. Absurd and ZeroMQ
+    arrive as `ProviderPlugins`, so this package never links libpq or
+    libzmq.
+
+    A spelling that is malformed, unknown, or yields an invalid registry is
+    refused with exit status 1 and a message in the reference's style. The
+    reference's import errors (`ModuleNotFoundError` and so on) have no
+    equivalent here.
+
+    The program name in help and usage text is the one the executable
+    passes to `workerMain`. The byte-for-byte comparisons pass the
+    reference's `python -m petrus.motus.worker`.
+23. **Exception type names are Haskell's.** A failure the Worker hands to
+    custody (`FailureException`) is spelled after the Haskell exception's
+    type name, as in (12). The Worker's own refusals (`ValueError`,
+    `RuntimeError`, `LookupError`) are declared under the reference's names,
+    so they read identically.

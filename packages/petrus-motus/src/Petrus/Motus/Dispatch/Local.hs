@@ -83,7 +83,6 @@ import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
 import Control.Exception (SomeException, bracket, catch, onException, throw, throwIO, try)
 import Control.Monad (forM, forM_, unless, when)
-import Data.Bits ((.&.), (.|.))
 import Data.ByteString qualified as BS
 import Data.Char (isDigit)
 import Data.IORef
@@ -100,7 +99,6 @@ import Data.Text.Encoding qualified as TE
 import Database.SQLite3 (Database, SQLData (..), SQLError (..), SQLOpenFlag (..), SQLVFS (..), StepResult (..))
 import Database.SQLite3 qualified as Sql
 import GHC.Clock (getMonotonicTime)
-import Numeric (showHex)
 import Petrus.Activity hiding (ActivityExecutionContext (..))
 import Petrus.Json
 import Petrus.Motus.Dispatch
@@ -116,12 +114,11 @@ import Petrus.Motus.Dispatch
   , dispositionText
   )
 import Petrus.Motus.Dispatch qualified as Port
-import Petrus.Motus.Internal.Repr (exceptionMessage, exceptionTypeName, pyStr)
+import Petrus.Motus.Internal.Repr (exceptionRepr, exceptionTypeName, pyRepr, pyStr, uuid4)
 import Petrus.Telemetry (TelemetryLogger, getLogger)
 import Petrus.Telemetry qualified as Telemetry
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeDirectory)
-import System.IO (IOMode (..), withBinaryFile)
 import Prelude hiding (fail)
 
 -- ---------------------------------------------------------------------------
@@ -1381,21 +1378,6 @@ reprRows rows = "[" <> T.intercalate ", " (map tuple rows) <> "]"
       SQLBlob b -> "b" <> pyStr (TE.decodeLatin1 b)
       SQLNull -> "None"
 
--- | @repr@ of a JSON-decoded Python value.
-pyRepr :: Json -> Text
-pyRepr = \case
-  Null -> "None"
-  Bool True -> "True"
-  Bool False -> "False"
-  Int i -> showT i
-  Float d
-    | isNaN d -> "nan"
-    | isInfinite d -> if d > 0 then "inf" else "-inf"
-    | otherwise -> T.pack (pythonFloatRepr d)
-  String s -> pyStr s
-  Array items -> "[" <> T.intercalate ", " (map pyRepr items) <> "]"
-  Object members -> "{" <> T.intercalate ", " [pyStr k <> ": " <> pyRepr v | (k, v) <- members] <> "}"
-
 -- | The integer value of a column, if it holds one.
 integerOf :: SQLData -> Maybe Integer
 integerOf = \case
@@ -1438,25 +1420,6 @@ pathText file =
         | "/" `T.isPrefixOf` raw = "/"
         | otherwise = ""
    in if T.null root && T.null body then "." else root <> body
-
--- | The @repr@ of a caught exception, Python style: @Type('message')@.
-exceptionRepr :: SomeException -> Text
-exceptionRepr err =
-  let message = exceptionMessage err
-   in exceptionTypeName err <> "(" <> (if T.null message then "" else pyStr message) <> ")"
-
--- | A random (version 4) UUID, spelled as @str(uuid.uuid4())@.
-uuid4 :: IO Text
-uuid4 = do
-  bytes <- withBinaryFile "/dev/urandom" ReadMode (`BS.hGet` 16)
-  let octets = zipWith adjust [0 :: Int ..] (BS.unpack bytes)
-      adjust i b
-        | i == 6 = (b .&. 0x0f) .|. 0x40
-        | i == 8 = (b .&. 0x3f) .|. 0x80
-        | otherwise = b
-      hex b = let s = showHex b "" in T.pack (if length s == 1 then '0' : s else s)
-      chunk from count = T.concat (map hex (take count (drop from octets)))
-  pure (T.intercalate "-" [chunk 0 4, chunk 4 2, chunk 6 2, chunk 8 2, chunk 10 6])
 
 sleepSeconds :: Double -> IO ()
 sleepSeconds seconds = threadDelay (max 0 (round (seconds * 1000000)))

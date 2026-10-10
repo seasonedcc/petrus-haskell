@@ -1,0 +1,134 @@
+cabal-version:      3.4
+name:               hamsterdan-readiness
+version:            0.1.0.0
+synopsis:           Hamsterdan's V5 PR-readiness net: topology, folds, gates, and board
+description:
+  The executable V5 actor-loop PR-readiness Net of Hamsterdan
+  (@src/hamsterdan/readiness/net_v5@ and @readiness/payloads.py@): nine
+  loops of pure folds over strict workflow tokens, the startup precondition,
+  the variant-routing Activity gates with their @$variant@ converter, and
+  the summary-board renderer. The net definition it builds is
+  byte-identical to the reference's.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    README.md
+                    PARITY.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  default-extensions: DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+  exposed-modules:  Hamsterdan.Readiness.NetV5.Folding
+                    Hamsterdan.Readiness.NetV5.Py
+                    Hamsterdan.Readiness.NetV5.Wiring
+                    Hamsterdan.Readiness.NetV5.Life
+                    Hamsterdan.Readiness.NetV5.Ci
+                    Hamsterdan.Readiness.NetV5.Esc
+                    Hamsterdan.Readiness.NetV5.Review
+                    Hamsterdan.Readiness.NetV5.Mutation
+                    Hamsterdan.Readiness.NetV5.Conversation
+                    Hamsterdan.Readiness.NetV5.Dashboard
+                    Hamsterdan.Readiness.NetV5.Reminders
+                    Hamsterdan.Readiness.NetV5.Readiness
+                    Hamsterdan.Readiness.NetV5.Startup
+                    Hamsterdan.Readiness.NetV5.Topology
+                    Hamsterdan.Readiness.NetV5.Gating
+                    Hamsterdan.Readiness.NetV5.Board
+                    Hamsterdan.Readiness.NetV5
+                    Hamsterdan.Readiness.Payloads
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , cryptohash-sha256 >=0.11
+                  , base16-bytestring >=1.0
+                  , hamsterdan-contracts
+                  , petrus-activity
+                  , petrus-dsl
+                  , petrus-impetus
+                  , petrus-json
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite hamsterdan-readiness-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  default-extensions: DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+  other-modules:    Corpus
+                    PayloadsSpec
+                    InlineRecoverySpec
+                    GatingSpec
+                    BoardCorpusSpec
+                    BoardSpec
+                    ReadinessSpec
+                    ReviewSpec
+                    RemindersSpec
+                    MutationSpec
+                    EscalationSpec
+                    DashboardSpec
+                    ConversationSpec
+                    CiSpec
+                    FoldCorpusSpec
+                    Harness
+                    LifecycleSpec
+                    StartupSpec
+                    TopologySpec
+  build-depends:    base
+                  , base16-bytestring
+                  , bytestring
+                  , containers
+                  , cryptohash-sha256
+                  , hamsterdan-contracts
+                  , hamsterdan-readiness
+                  , hspec >=2.10
+                  , petrus-activity
+                  , petrus-cel
+                  , petrus-dsl
+                  , petrus-engine
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-history-store
+                  , petrus-motus
+                  , direct-sqlite
+                  , temporary
+                  , filepath
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+benchmark hamsterdan-readiness-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  default-extensions: DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , hamsterdan-readiness
+                  , petrus-dsl
+                  , petrus-impetus
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts

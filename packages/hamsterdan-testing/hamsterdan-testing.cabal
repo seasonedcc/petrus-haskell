@@ -1,0 +1,74 @@
+cabal-version:      3.4
+name:               hamsterdan-testing
+version:            0.1.0.0
+synopsis:           Hamsterdan's independent expected-readiness oracle
+description:
+  The @ReadinessModel@ oracle of Hamsterdan (@src/hamsterdan/testing/readiness.py@):
+  topology-neutral normalized facts with strict pydantic-identical JSON
+  codecs, the expected readiness verdict they imply, and the fair-environment
+  liveness classification used by deterministic simulation.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Testing
+build-type:         Simple
+extra-doc-files:    README.md
+                    PARITY.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Hamsterdan.Testing.Readiness
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , hamsterdan-contracts
+                  , petrus-json
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite hamsterdan-testing-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    OracleCorpusSpec
+                    ReadinessModelSpec
+  build-depends:    base
+                  , base16-bytestring
+                  , bytestring
+                  , cryptohash-sha256
+                  , hamsterdan-contracts
+                  , hamsterdan-testing
+                  , hspec >=2.10
+                  , petrus-dst
+                  , petrus-json
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+benchmark hamsterdan-testing-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , bytestring
+                  , hamsterdan-testing
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -rtsopts
