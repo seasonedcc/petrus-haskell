@@ -18,6 +18,9 @@ category:           Control
 build-type:         Simple
 extra-doc-files:    PARITY.md
                     DIVERGENCES.md
+                    parity/*.md
+                    divergences/*.md
+                    bench/*.md
 extra-source-files: test/conformance/*.json
                     differential/*.py
                     differential/*.json
