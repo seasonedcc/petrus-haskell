@@ -32,12 +32,18 @@ common warnings
 library
   import:           warnings
   hs-source-dirs:   src
-  exposed-modules:  Petrus.Testing.Dst.Choice
+  exposed-modules:  Petrus.Testing.Dst
+                    Petrus.Testing.Dst.Choice
                     Petrus.Testing.Dst.Codec
                     Petrus.Testing.Dst.Decode
                     Petrus.Testing.Dst.Internal.StrictJson
+                    Petrus.Testing.Dst.Internal.World
+                    Petrus.Testing.Dst.Profile
                     Petrus.Testing.Dst.PyRepr
+                    Petrus.Testing.Dst.Replay
+                    Petrus.Testing.Dst.Timeline
                     Petrus.Testing.Dst.Types
+                    Petrus.Testing.Dst.World
   build-depends:    base >=4.18 && <5
                   , array >=0.5
                   , base16-bytestring >=1.0
