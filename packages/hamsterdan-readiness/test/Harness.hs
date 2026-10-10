@@ -32,6 +32,7 @@ module Harness
   , pump
   , pumpHolding
   , releaseOne
+  , completeOne
   , pendingWork
   , pendingAll
   , without
@@ -865,14 +866,18 @@ pumpHolding h hold = go (400 :: Int)
 
 -- | Complete the single pending invocation of @activity@, then pump.
 releaseOne :: H -> Text -> IO ()
-releaseOne h activity = do
-  let pool = maybe (error "releaseOne requires spawnHeld") id h.held
+releaseOne h activity = completeOne h activity >> pump h
+
+-- | Complete the single pending invocation of @activity@ without pumping
+-- (@dispatch.complete(occurrence, definition(invocation))@).
+completeOne :: H -> Text -> IO ()
+completeOne h activity = do
+  let pool = maybe (error "completeOne requires spawnHeld") id h.held
   work <- InMemory.pending pool
   case [(o, i) | (o, i) <- work, i.activity == activity] of
     [(occurrence, inv)] -> do
       value <- callDefinition (h.definitions Map.! inv.activity) inv
       InMemory.completeOccurrence pool occurrence value
-      pump h
     other -> throwIO (ErrorCall ("expected exactly one pending " <> T.unpack activity <> ", got " <> show (length other)))
 
 -- | The pending invocations of @activity@ in a held engine's pool.

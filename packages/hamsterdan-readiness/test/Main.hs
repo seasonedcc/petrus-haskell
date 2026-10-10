@@ -9,6 +9,7 @@ import DashboardSpec qualified
 import EscalationSpec qualified
 import MutationSpec qualified
 import RemindersSpec qualified
+import ReviewSpec qualified
 import Test.Hspec (hspec)
 import TopologySpec qualified
 
@@ -24,3 +25,4 @@ main = hspec $ do
   EscalationSpec.spec
   MutationSpec.spec
   RemindersSpec.spec
+  ReviewSpec.spec
