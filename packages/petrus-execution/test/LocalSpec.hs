@@ -5,7 +5,7 @@ module LocalSpec (spec) where
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar
-import Control.Exception (bracket_, finally, throwIO, try)
+import Control.Exception (bracket, bracket_, finally, throwIO, try)
 import Control.Monad (unless, when)
 import Data.ByteString qualified as B
 import Data.Maybe (fromJust)
@@ -15,11 +15,15 @@ import Data.Text qualified as T
 import GHC.Clock (getMonotonicTime)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
+import Petrus.Motus.Execution.Internal.Process (RunOutcome (..), runCaptured, spawnSpec)
 import Petrus.Motus.Execution.Providers.Local
 import Support
 import System.Directory
 import System.Environment (setEnv, unsetEnv)
 import System.Posix.Files (createSymbolicLink, removeLink)
+import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, openFd)
+import System.Posix.Signals (Handler (Ignore), installHandler, openEndedPipe)
+import System.Posix.Types (Fd (..))
 import System.Posix.Process (getProcessID)
 import Test.Hspec
 
@@ -236,6 +240,21 @@ spec = do
       resultReturncode result `shouldBe` -15
       _ <- providerDestroy provider lease
       pure ()
+
+  describe "child processes (Popen close_fds and restore_signals semantics)" $ do
+    it "never lets a child inherit a parent descriptor that lacks close-on-exec" $
+      bracket (openFd "/dev/null" ReadOnly defaultFileFlags) closeFd $ \(Fd fd) -> do
+        let probe = "if [ -e /dev/fd/" <> show fd <> " ]; then echo leaked; else echo closed; fi"
+        outcome <- runCaptured (spawnSpec ["/bin/sh", "-c", probe]) 5
+        (outcomeCode outcome, outcomeStdout outcome) `shouldBe` (0, "closed\n")
+
+    it "restores SIGPIPE to its default even when the parent ignores it" $ do
+      -- An ignored SIGPIPE survives exec; then `yes` would see EPIPE and
+      -- complain on stderr instead of dying quietly.
+      outcome <-
+        bracket (installHandler openEndedPipe Ignore Nothing) (\previous -> installHandler openEndedPipe previous Nothing) $ \_ ->
+          runCaptured (spawnSpec ["/bin/sh", "-c", "yes | head -c 4"]) 5
+      (outcomeCode outcome, outcomeStdout outcome, outcomeStderr outcome) `shouldBe` (0, "y\ny\n", "")
 
   describe "test_private_file_transfer" $ do
     it "test_local_private_file_full_custody_route_is_bounded_and_workspace_free" $ withTempDir $ \tmp -> do

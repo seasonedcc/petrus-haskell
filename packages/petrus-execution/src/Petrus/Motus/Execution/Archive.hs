@@ -699,7 +699,7 @@ makeFile payload member targetpath = do
 
 writeAll :: Fd -> ByteString -> IO ()
 writeAll fd bytes = unless (B.null bytes) $ do
-  written <- BU.unsafeUseAsCStringLen bytes $ \(ptr, len) -> fdWriteBuf fd (castPtr ptr) (fromIntegral (min len (64 * 1024 * 1024)))
+  written <- BU.unsafeUseAsCStringLen bytes $ \(ptr, len) -> fdWriteBuf fd (castPtr ptr) (fromIntegral (min len (1024 * 1024)))
   writeAll fd (B.drop (fromIntegral written) bytes)
 
 foreign import capi unsafe "unistd.h linkat"

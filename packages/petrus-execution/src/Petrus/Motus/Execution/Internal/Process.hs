@@ -1,3 +1,5 @@
+{-# LANGUAGE CApiFFI #-}
+
 -- | Child processes with bounded output capture, and the upstream
 -- @_collect@ / @_result@ polling loop.
 --
@@ -6,8 +8,21 @@
 -- limit while still counting every byte, which yields byte-identical results
 -- (@stdout[:limit]@, @stderr[:limit - len(stdout)]@, and the
 -- @len(stdout) + len(stderr) > limit@ truncation flag) in bounded memory.
+--
+-- Children are started with @posix_spawn@ (@cbits/petrus_spawn.c@), not the
+-- @process@ package: with @close_fds@ that package forks and closes every
+-- descriptor up to @RLIMIT_NOFILE@ (about 0.1 s per spawn at macOS's
+-- 1 048 576), whereas CPython closes only open descriptors.
 module Petrus.Motus.Execution.Internal.Process
-  ( SpawnSpec (..)
+  ( -- * Children
+    Child
+  , childPid
+  , StdioFd (..)
+  , spawnChild
+  , childExitCode
+  , signalChild
+    -- * Captured commands
+  , SpawnSpec (..)
   , spawnSpec
   , Running
   , runningPid
@@ -26,8 +41,9 @@ module Petrus.Motus.Execution.Internal.Process
   ) where
 
 import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent.MVar
 import Control.Concurrent.STM
-import Control.Exception (SomeException, catch, finally, mask, onException, throwIO, try)
+import Control.Exception (SomeException, catch, finally, mask, onException, try)
 import Control.Monad (forM_, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -35,16 +51,110 @@ import Data.IORef
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Foreign.C.Error (Errno (..), eCHILD)
+import Foreign.C.String (CString)
+import Foreign.C.Types (CInt (..))
+import Foreign.Marshal.Alloc (alloca)
+import Foreign.Marshal.Array (withArray0)
+import Foreign.Marshal.Utils (fromBool, maybeWith, withMany)
+import Foreign.Ptr (Ptr, nullPtr)
+import Foreign.Storable (peek)
 import GHC.Clock (getMonotonicTime)
+import GHC.Foreign qualified as GHC
+import GHC.IO.Encoding (getFileSystemEncoding)
+import GHC.IO.Exception (IOException (..))
 import Petrus.Motus.Execution (Command, commandIsCurrent, commandOutputLimit, commandTimeout, secondsToDouble)
 import Petrus.Motus.Execution.Error
 import System.Exit (ExitCode (..))
 import System.IO (Handle, hClose, hSetBinaryMode)
 import System.Posix.Files (fileAccess, getFileStatus, isDirectory)
-import System.Posix.Signals (sigKILL, signalProcess)
-import System.Posix.Types (CPid)
-import System.Process
+import System.Posix.IO (FdOption (CloseOnExec), closeFd, createPipe, fdToHandle, setFdOption)
+import System.Posix.Process (ProcessStatus (..), getProcessStatus)
+import System.Posix.Signals (Signal, sigKILL, signalProcess)
+import System.Posix.Types (CPid (..), Fd (..))
 import System.Timeout (timeout)
+
+-- ---------------------------------------------------------------------------
+-- Children
+
+-- | A spawned child.  Its status is reaped at most once and cached, and it
+-- is only signalled while unreaped, so a recycled pid is never signalled.
+data Child = Child
+  { childPid :: CPid
+  , childStatus :: MVar (Maybe Int)
+  }
+
+-- | Where a child's standard descriptor comes from.
+data StdioFd = InheritFd | UseFd Fd
+
+foreign import capi safe "petrus_posix.h petrus_spawn"
+  c_spawn :: CString -> Ptr CString -> Ptr CString -> CString -> CInt -> CInt -> CInt -> CInt -> Ptr CPid -> IO CInt
+
+-- | @Popen(argv, cwd=..., env=..., start_new_session=..., close_fds=True)@
+-- with the given stdin, stdout and stderr.  Failures raise 'OSError' with
+-- CPython's message for the executable.
+spawnChild :: [String] -> Maybe FilePath -> Maybe [(String, String)] -> Bool -> (StdioFd, StdioFd, StdioFd) -> IO Child
+spawnChild argv cwd environment newSession (input, output, errors) = case argv of
+  [] -> throwExecution ValueError "empty argv"
+  executable : _ -> do
+    encoding <- getFileSystemEncoding
+    let withText = GHC.withCString encoding
+        withEnvironment action = case environment of
+          Nothing -> action nullPtr
+          Just pairs -> withMany withText [key <> "=" <> value | (key, value) <- pairs] (\entries -> withArray0 nullPtr entries action)
+    status <-
+      withText executable $ \file ->
+        withMany withText argv $ \arguments ->
+          withArray0 nullPtr arguments $ \argumentsPtr ->
+            withEnvironment $ \environmentPtr ->
+              maybeWith withText cwd $ \cwdPtr ->
+                alloca $ \pidPtr -> do
+                  code <-
+                    c_spawn file argumentsPtr environmentPtr cwdPtr (fromBool newSession) (raw input) (raw output) (raw errors) pidPtr
+                  if code == 0 then Right <$> peek pidPtr else pure (Left code)
+    case status of
+      Left code -> throwExecution OSError (T.pack (pythonErrnoMessage code (Just executable)))
+      Right pid -> Child pid <$> newMVar Nothing
+  where
+    raw = \case
+      InheritFd -> -1
+      UseFd (Fd fd) -> fd
+
+-- | @Popen.poll()@ on a 'Child': the Python return code (@-signal@ when
+-- signalled), reaping at most once.
+childExitCode :: Child -> IO (Maybe Int)
+childExitCode child = modifyMVar (childStatus child) $ \case
+  done@(Just _) -> pure (done, done)
+  Nothing -> do
+    -- Popen._internal_poll: a child that cannot be waited for (ECHILD,
+    -- already reaped elsewhere) is dead with return code 0.
+    status <-
+      getProcessStatus False False (childPid child) `catch` \(failure :: IOError) ->
+        if fmap Errno (ioe_errno failure) == Just eCHILD then pure (Just (Exited ExitSuccess)) else ioError failure
+    let code =
+          status >>= \case
+            Exited ExitSuccess -> Just 0
+            Exited (ExitFailure n) -> Just n
+            Terminated signal _ -> Just (negate (fromIntegral signal))
+            Stopped _ -> Nothing
+    pure (code, code)
+
+-- | @Popen.send_signal@: a no-op once the child has been reaped.
+signalChild :: Child -> Signal -> IO ()
+signalChild child signal = withMVar (childStatus child) $ \case
+  Just _ -> pure ()
+  Nothing -> signalProcess signal (childPid child)
+
+-- | A pipe whose ends are both close-on-exec: @(read, write)@.
+pipeCloexec :: IO (Fd, Fd)
+pipeCloexec = do
+  (readEnd, writeEnd) <- createPipe
+  setFdOption readEnd CloseOnExec True
+  setFdOption writeEnd CloseOnExec True
+  pure (readEnd, writeEnd)
+
+-- ---------------------------------------------------------------------------
+-- Captured commands
 
 data SpawnSpec = SpawnSpec
   { spawnArgv :: [String]
@@ -69,8 +179,7 @@ data Stream = Stream
   }
 
 data Running = Running
-  { runningHandle :: ProcessHandle
-  , runningPid :: CPid
+  { runningChild :: Child
   , runningOut :: Stream
   , runningErr :: Stream
   , runningInputDone :: TVar Bool
@@ -100,25 +209,27 @@ drain retain handle stream = do
 
 -- | Start a child with piped stdout/stderr (and stdin when given).
 spawnCaptured :: SpawnSpec -> IO Running
-spawnCaptured spec = case spawnArgv spec of
-  [] -> throwExecution ValueError "empty argv"
-  executable : arguments -> mask $ \restore -> do
-    let process =
-          (proc executable arguments)
-            { cwd = spawnCwd spec
-            , env = spawnEnv spec
-            , std_in = maybe Inherit (const CreatePipe) (spawnStdin spec)
-            , std_out = CreatePipe
-            , std_err = CreatePipe
-            , close_fds = True
-            , new_session = spawnNewSession spec
-            }
-    created <- try (createProcess process)
-    (input, out, err, handle) <- case created of
-      Left (failure :: IOError) -> throwIO (osErrorFromIO failure)
-      Right (input, Just out, Just err, handle) -> pure (input, out, err, handle)
-      Right _ -> throwExecution OSError "process pipes were not created"
-    pid <- fromMaybe 0 <$> getPid handle
+spawnCaptured spec = mask $ \restore -> do
+    let closeAll = mapM_ (\fd -> closeFd fd `catch` \(_ :: IOError) -> pure ())
+    (outRead, outWrite) <- pipeCloexec
+    (errRead, errWrite) <- pipeCloexec `onException` closeAll [outRead, outWrite]
+    inputPipe <- case spawnStdin spec of
+      Nothing -> pure Nothing
+      Just _ -> Just <$> pipeCloexec `onException` closeAll [outRead, outWrite, errRead, errWrite]
+    let parentEnds = [outRead, errRead] <> maybe [] (pure . snd) inputPipe
+        childEnds = [outWrite, errWrite] <> maybe [] (pure . fst) inputPipe
+    child <-
+      spawnChild
+        (spawnArgv spec)
+        (spawnCwd spec)
+        (spawnEnv spec)
+        (spawnNewSession spec)
+        (maybe InheritFd (UseFd . fst) inputPipe, UseFd outWrite, UseFd errWrite)
+        `finally` closeAll childEnds
+        `onException` closeAll parentEnds
+    out <- fdToHandle outRead
+    err <- fdToHandle errRead
+    input <- traverse (fdToHandle . snd) inputPipe
     stdoutStream <- newStream
     stderrStream <- newStream
     inputDone <- newTVarIO True
@@ -138,7 +249,11 @@ spawnCaptured spec = case spawnArgv spec of
         pure ()
       _ -> pure ()
     exitRef <- newIORef Nothing
-    pure (Running handle pid stdoutStream stderrStream inputDone exitRef)
+    pure (Running child stdoutStream stderrStream inputDone exitRef)
+
+-- | The child's pid (its process group too when started in a new session).
+runningPid :: Running -> CPid
+runningPid = childPid . runningChild
 
 -- | @Popen.poll()@: the Python return code (@-signal@ when signalled).
 pollExit :: Running -> IO (Maybe Int)
@@ -146,8 +261,7 @@ pollExit running =
   readIORef (runningExit running) >>= \case
     Just code -> pure (Just code)
     Nothing -> do
-      status <- getProcessExitCode (runningHandle running)
-      let code = fmap (\case ExitSuccess -> 0; ExitFailure n -> n) status
+      code <- childExitCode (runningChild running)
       forM_ code (writeIORef (runningExit running) . Just)
       pure code
 
@@ -298,7 +412,7 @@ runCaptured spec seconds = do
     Just done -> finish running done
     Nothing -> do
       code <- pollExit running
-      when (isNothing code) (signalProcess sigKILL (runningPid running))
+      when (isNothing code) (signalChild (runningChild running) sigKILL)
       _ <- communicate running
       throwExecution
         TimeoutError

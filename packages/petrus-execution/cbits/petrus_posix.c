@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <stdint.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -67,4 +68,22 @@ int petrus_dir_entry_count(int fd)
         return -1;
     }
     return count;
+}
+
+/* Block the calling OS thread until fd is readable (1), the timeout
+ * elapses (0) or poll fails (-1, errno set; EINTR when the RTS interrupts
+ * an `interruptible` call to deliver an asynchronous exception).  This is
+ * what CPython's socket timeouts do, and it avoids an IO-manager wakeup on
+ * every control-socket round trip. */
+int petrus_wait_readable(int fd, int timeout_ms)
+{
+    struct pollfd entry;
+    entry.fd = fd;
+    entry.events = POLLIN;
+    entry.revents = 0;
+    int ready = poll(&entry, 1, timeout_ms);
+    if (ready > 0) {
+        return 1;
+    }
+    return ready;
 }

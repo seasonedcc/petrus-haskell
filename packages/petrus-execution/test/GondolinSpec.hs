@@ -731,20 +731,23 @@ realSuite :: Spec
 realSuite = do
   sdkModule <- runIO (lookupEnv "PETRUS_REAL_GONDOLIN_SDK_MODULE")
   image <- runIO (lookupEnv "PETRUS_REAL_GONDOLIN_IMAGE")
+  -- The real SDK needs Node >= 23.6 (the sidecar refuses older runtimes);
+  -- upstream takes @node@ from PATH, this optional knob names it directly.
+  node <- runIO (fromMaybe "node" <$> lookupEnv "PETRUS_REAL_GONDOLIN_NODE")
   describe "against real Gondolin" $ case (sdkModule, image) of
     (Just sdkText, Just imageText) | not (null sdkText) && not (null imageText) ->
       it "runs the real lifecycle (opt-in) (test_real_gondolin_lifecycle_is_explicitly_opt_in)" $ withSystemTempDirectory "petrus-real-gondolin" $ \tmp ->
         withEnvironment [("GITHUB_TOKEN", Just "must-remain-on-host")] $
-          realLifecycle tmp (T.pack sdkText) (T.pack imageText)
+          realLifecycle tmp node (T.pack sdkText) (T.pack imageText)
     _ ->
       it "runs the real lifecycle (opt-in) (test_real_gondolin_lifecycle_is_explicitly_opt_in)" $
-        pendingWith "set PETRUS_REAL_GONDOLIN_SDK_MODULE and PETRUS_REAL_GONDOLIN_IMAGE"
+        pendingWith "skipped: set PETRUS_REAL_GONDOLIN_SDK_MODULE and PETRUS_REAL_GONDOLIN_IMAGE (and PETRUS_REAL_GONDOLIN_NODE to a Node >= 23.6) to run against real Gondolin; see PARITY.md"
 
-realLifecycle :: FilePath -> Text -> Text -> IO ()
-realLifecycle tmp sdk image = do
+realLifecycle :: FilePath -> FilePath -> Text -> Text -> IO ()
+realLifecycle tmp node sdk image = do
   let root = tmp </> "real"
       realSpec = imageSpec image [capVm, capMicrovm, capPrivateFileTransfer]
-      config = (gondolinConfig sdk) {gondolinLeaseTtl = 30}
+      config = (gondolinConfig sdk) {gondolinLeaseTtl = 30, gondolinNode = node}
       source = tmp </> "source"
   createDirectory source
   writeFile (source </> "input.txt") "host input\n"

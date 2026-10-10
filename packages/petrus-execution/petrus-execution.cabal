@@ -47,6 +47,7 @@ library
                     Petrus.Motus.Execution.Timeline
   include-dirs:     cbits
   c-sources:        cbits/petrus_posix.c
+                    cbits/petrus_spawn.c
   build-depends:    base >=4.18 && <5
                   , base64-bytestring >=1.2
                   , bytestring >=0.11
@@ -100,3 +101,17 @@ test-suite petrus-execution-test
                   , unix
                   , zlib
   ghc-options:      -threaded -rtsopts
+
+benchmark petrus-execution-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , directory
+                  , filepath
+                  , petrus-execution
+                  , petrus-json
+                  , temporary
+                  , text
+  ghc-options:      -O2 -threaded -rtsopts

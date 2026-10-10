@@ -1,3 +1,6 @@
+{-# LANGUAGE CApiFFI #-}
+{-# LANGUAGE InterruptibleFFI #-}
+
 -- | Gondolin micro-VM territories (upstream @_execution/gondolin.py@).
 --
 -- Every lease owns one authenticated Node sidecar running the verbatim
@@ -88,21 +91,23 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error qualified as TE
 import Data.Void (Void, absurd)
 import GHC.Clock (getMonotonicTime)
-import Network.Socket (Family (AF_UNIX), SockAddr (SockAddrUnix), SocketType (Stream), close, connect, defaultProtocol, socket)
+import Foreign.C.Error (eINTR, getErrno)
+import Foreign.C.Types (CInt (..))
+import Network.Socket (Family (AF_UNIX), SockAddr (SockAddrUnix), Socket, SocketType (Stream), close, connect, defaultProtocol, socket, withFdSocket)
 import Network.Socket.ByteString (recv, sendAll)
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, dumpsText, lookupMember, parseJson, pythonFloatRepr, pythonLoads)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, maxWorkspaceArchiveBytes, workspaceArchive)
 import Petrus.Motus.Execution.Internal.Common (checkedGuestCwd, newUuid4, requireSupportedCapabilities, specFingerprint, uuidHex)
 import Petrus.Motus.Execution.Internal.Posix (atomicWriteFile, flockExclusive, fstatInfo, StatInfo (..), toRawPath)
-import Petrus.Motus.Execution.Internal.Process (resolveExecutable)
+import Petrus.Motus.Execution.Internal.Process (Child, StdioFd (..), childExitCode, childPid, resolveExecutable, signalChild, spawnChild)
 import Petrus.Motus.Execution.Internal.PyText (pyStrRepr)
 import Petrus.Motus.Execution.Internal.Sidecar (sidecarSha256, sidecarSource)
 import System.Directory (doesDirectoryExist, doesPathExist, listDirectory, removeDirectory, removeDirectoryRecursive, removeFile)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, takeFileName, (</>))
-import System.IO (Handle, IOMode (..), hClose, openFile)
+import System.IO (Handle, hClose)
 import System.IO.Error (isDoesNotExistError)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Posix.Directory (createDirectory)
@@ -127,17 +132,7 @@ import System.Posix.Signals (Signal, sigKILL, sigTERM, signalProcessGroup)
 import System.Posix.Temp (mkdtemp)
 import System.Posix.Types (Fd)
 import System.Posix.User (getRealUserID)
-import System.Process
-  ( CreateProcess (..)
-  , ProcessHandle
-  , StdStream (..)
-  , createProcess
-  , getPid
-  , getProcessExitCode
-  , proc
-  , readCreateProcessWithExitCode
-  , terminateProcess
-  )
+import System.Process (proc, readCreateProcessWithExitCode)
 import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
@@ -529,7 +524,8 @@ exchange path tick payload onTick =
     micros = max 1 (round (tick * 1000000))
     within action = timeout micros action >>= maybe (throwExecution TimeoutError "timed out") pure
     receive client chunks size = do
-      chunk <- timeout micros (recv client (min 65536 (maxFrame + 1 - size)))
+      ready <- waitReadable client micros
+      chunk <- if ready then Just <$> recv client (min 65536 (maxFrame + 1 - size)) else pure Nothing
       case chunk of
         Nothing -> onTick >>= maybe (receive client chunks size) (pure . Left)
         Just bytes
@@ -541,6 +537,27 @@ exchange path tick payload onTick =
               if B.elem 10 bytes
                 then Right <$> decodeResponse (BC.takeWhile (/= '\n') (B.concat (reverse chunks')))
                 else receive client chunks' size'
+
+-- | Wait for the control socket to become readable on the calling thread
+-- (@poll@ via an @interruptible@ call, like CPython's socket timeouts)
+-- instead of parking on the IO manager.  'False' means the tick elapsed.
+-- A poll failure other than @EINTR@ reports readiness so that the
+-- following @recv@ raises the real socket error.
+waitReadable :: Socket -> Int -> IO Bool
+waitReadable client micros = do
+  deadline <- (+ fromIntegral micros / 1000000) <$> getMonotonicTime
+  let loop = do
+        now <- getMonotonicTime
+        let remaining = max 0 (ceiling ((deadline - now) * 1000)) :: Int
+        status <- withFdSocket client $ \fd -> c_wait_readable fd (fromIntegral remaining)
+        case status of
+          1 -> pure True
+          0 -> pure False
+          _ -> getErrno >>= \errno -> if errno == eINTR then loop else pure True
+  loop
+
+foreign import capi interruptible "petrus_posix.h petrus_wait_readable"
+  c_wait_readable :: CInt -> CInt -> IO CInt
 
 decodeResponse :: ByteString -> IO Json
 decodeResponse line = case parseJson pythonLoads line of
@@ -790,11 +807,11 @@ secondsText = \case
   WholeSeconds n -> show n
   FractionalSeconds d -> pythonFloatRepr d
 
-waitWithin :: ProcessHandle -> Double -> IO (Maybe ExitCode)
+waitWithin :: Child -> Double -> IO (Maybe Int)
 waitWithin handle seconds = do
   deadline <- (+ seconds) <$> getMonotonicTime
   let loop = do
-        code <- getProcessExitCode handle
+        code <- childExitCode handle
         now <- getMonotonicTime
         case code of
           Just done -> pure (Just done)
@@ -850,7 +867,7 @@ launch env operation spec image directory = do
         removeDirectoryRecursive workspace
         removeFile (directory </> "lock")
         removeDirectory directory
-  pid <- maybe (throwExecution RuntimeError "Gondolin sidecar has no process id") (pure . fromIntegral) =<< getPid handle
+  let pid = fromIntegral (childPid handle)
   startIdentity <- inspectIdentity (inspector env) pid
   let record =
         Registry
@@ -873,7 +890,7 @@ launch env operation spec image directory = do
   written <- try (writeRegistry env directory record)
   case written of
     Left (failure :: SomeException) -> do
-      ignoring (terminateProcess handle)
+      ignoring (signalChild handle sigTERM)
       exited <- waitWithin handle 1
       when (isNothing exited) $ do
         cleanupGroup (inspector env) record
@@ -925,7 +942,7 @@ launch env operation spec image directory = do
 -- | Start the sidecar in its own session with a scrubbed environment;
 -- stdin and stdout are @/dev/null@ and stderr goes to the private runtime.
 spawnSidecar
-  :: GondolinEnvironment -> FilePath -> FilePath -> FilePath -> FilePath -> Text -> Text -> Text -> Bool -> IO ProcessHandle
+  :: GondolinEnvironment -> FilePath -> FilePath -> FilePath -> FilePath -> Text -> Text -> Text -> Bool -> IO Child
 spawnSidecar env runtime workspace socketPath stderrPath leaseIdent token image private = do
   let config = environmentConfig env
   host <- getEnvironment
@@ -937,7 +954,7 @@ spawnSidecar env runtime workspace socketPath stderrPath leaseIdent token image 
              , ("PETRUS_GONDOLIN_BOOT_TOKEN", T.unpack token)
              , ("PETRUS_GONDOLIN_SDK", T.unpack (gondolinSdkModule config))
              ]
-  bracket (openPrivate stderrPath) hClose $ \errors -> do
+  bracket (openPrivateFd stderrPath) closeFd $ \errors -> do
     sidecar <- case gondolinSidecar config of
       Just path -> pure path
       Nothing -> do
@@ -949,39 +966,35 @@ spawnSidecar env runtime workspace socketPath stderrPath leaseIdent token image 
     unless present $ throwExecution OSError (T.pack (pythonErrnoMessage 2 (Just executable)))
     usable <- fileAccess executable False False True
     unless usable $ throwExecution OSError (T.pack (pythonErrnoMessage 13 (Just executable)))
-    bracket (openFile "/dev/null" ReadMode) hClose $ \input ->
-      bracket (openFile "/dev/null" WriteMode) hClose $ \output -> do
-        (_, _, _, handle) <-
-          createProcess
-            ( proc
-                executable
-                [ sidecar
-                , socketPath
-                , T.unpack leaseIdent
-                , workspace
-                , T.unpack image
-                , secondsText (gondolinLeaseTtl config)
-                , if private then "private" else "standard"
-                ]
-            )
-              { env = Just environment
-              , std_in = UseHandle input
-              , std_out = UseHandle output
-              , std_err = UseHandle errors
-              , new_session = True
-              , close_fds = True
-              }
-        pure handle
+    let devNull mode = openFd "/dev/null" mode defaultFileFlags {cloexec = True}
+    bracket (devNull ReadOnly) closeFd $ \input ->
+      bracket (devNull WriteOnly) closeFd $ \output ->
+        spawnChild
+          [ executable
+          , sidecar
+          , socketPath
+          , T.unpack leaseIdent
+          , workspace
+          , T.unpack image
+          , secondsText (gondolinLeaseTtl config)
+          , if private then "private" else "standard"
+          ]
+          Nothing
+          (Just environment)
+          True
+          (UseFd input, UseFd output, UseFd errors)
   where
     openPrivate :: FilePath -> IO Handle
-    openPrivate path = do
+    openPrivate path = openPrivateFd path >>= fdToHandle
+    openPrivateFd :: FilePath -> IO Fd
+    openPrivateFd path = do
       fd <- openFd path WriteOnly defaultFileFlags {creat = Just 0o600, trunc = True, cloexec = True}
       setFileMode path 0o600
-      fdToHandle fd
+      pure fd
 
 -- | @_await_start@: poll the handshake until ready; on any failure stop
 -- the group and remove the runtime and operation directory.
-awaitStart :: GondolinEnvironment -> FilePath -> Registry -> ProcessHandle -> FilePath -> IO ()
+awaitStart :: GondolinEnvironment -> FilePath -> Registry -> Child -> FilePath -> IO ()
 awaitStart env directory record handle stderrPath = do
   deadline <- (+ gondolinStartupTimeout (environmentConfig env)) <$> getMonotonicTime
   let loop = do
@@ -989,7 +1002,7 @@ awaitStart env directory record handle stderrPath = do
         if now >= deadline
           then throwExecution RuntimeError "Gondolin sidecar readiness timed out"
           else do
-            exited <- getProcessExitCode handle
+            exited <- childExitCode handle
             case exited of
               Just _ -> do
                 detail <- B.readFile stderrPath
