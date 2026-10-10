@@ -47,6 +47,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Runtime.AgentNetRunner
                     Petrus.Agenticus.Runtime.Pi
+                    Petrus.Agenticus.Runtime.PiA2Host
                     Petrus.Agenticus.Runtime.PiApplication
                     Petrus.Agenticus.Runtime.PiModelPhase
                     Petrus.Agenticus.Runtime.PiRecovery
@@ -80,6 +81,7 @@ test-suite petrus-agenticus-runtime-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    Petrus.Agenticus.Runtime.AgentNetRunnerSpec
+                    Petrus.Agenticus.Runtime.PiA2HostSpec
                     Petrus.Agenticus.Runtime.PiApplicationSpec
                     Petrus.Agenticus.Runtime.PiDifferentialSpec
                     Petrus.Agenticus.Runtime.PiModelPhaseSpec
