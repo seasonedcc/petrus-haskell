@@ -1,16 +1,48 @@
 name: CI
 
-# TEMPORARY baseline measurement on Blacksmith (ci-speed branch only).
+# The same checks as scripts/check-all (plus the petrus-viewer suites of
+# `scripts/check-all --viewer`), spread over several Blacksmith runners:
+#
+#   lint       scripts/check-pins, scripts/lint-skips, scripts/bench --check,
+#              scripts/check-parity (none needs a build)
+#   build      cabal build all (-Werror), incrementally from the latest cached
+#              dist-newstyle; then scripts/ci-tests plan decides which test
+#              suites run and spreads them over the test shards
+#   checks     scripts/interop --check against the build
+#   test (N)   cabal test for the suites of shard N, with PostgreSQL 17
+#   viewer     scripts/interop --viewer petrus-viewer-server (the upstream
+#              petrus-viewer suites against the Haskell backend)
+#   container  the image and its runtime contract (scripts/container-smoke)
+#   ci         the verdict: green only when every job above is; it also
+#              records this run's test ledger
+#
+# A suite is reused instead of rerun only when its input hash (its package,
+# every local package it depends on or names, everything outside packages/
+# but prose and benchmark records, and the toolchain and runner image) equals
+# the hash of a run where it passed (scripts/ci-tests explains the hash). The
+# nightly schedule and a dispatch with `full` rerun everything.
+# docs/reproducing.md, "Continuous integration", has the details.
 
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 4 * * *"
   workflow_dispatch:
+    inputs:
+      full:
+        description: Rerun every test suite (reuse no earlier result)
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
 
 env:
   GHC_VERSION: "9.10.3"
@@ -18,43 +50,45 @@ env:
   GHCUP_VERSION: "0.2.6.2"
   GHCUP_SHA256: 9ed5da5449b48043a0d17e767c05d2ef585e25a639bb934329496c6d2fad9cf8
   CABAL_DIR: /home/runner/.cabal
+  PETRUS_POSTGRES_IMAGE: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+  DIST_KEY_PREFIX: dist-v1-Linux-ghc-9.10.3-
 
 jobs:
-  check:
-    runs-on: blacksmith-16vcpu-ubuntu-2404
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd pg_isready --health-interval 1s --health-timeout 5s --health-retries 60
-    env:
-      PETRUS_TEST_POSTGRES: postgresql://postgres:postgres@localhost:5432/postgres
-      PETRUS_TEST_DOCKER: "1"
+  lint:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Runner
-        run: nproc; free -g; df -h / /tmp /dev/shm; env | grep -i -E 'image|blacksmith' | grep -v TOKEN || true; node --version; python3 --version; docker --version
+      - name: Upstream pins
+        run: scripts/check-pins
+      - name: No silent skips on a missing Python reference
+        run: scripts/lint-skips
+      - name: Benchmark bookkeeping (rerun blocks, bench-results/summary.md)
+        run: scripts/bench --check
+      - name: Parity table
+        run: scripts/check-parity
+
+  build:
+    runs-on: blacksmith-16vcpu-ubuntu-2404
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      viewer: ${{ steps.plan.outputs.viewer }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: ./.github/actions/toolchain
         id: toolchain
-      - name: Sync the upstream Python references
-        run: scripts/upstream-python petrus && scripts/upstream-python petrus-engine
-      - name: Restore dist-newstyle
+      - name: Restore dist-newstyle (this commit's, else the latest)
+        id: dist
         uses: actions/cache/restore@v4
         with:
           path: dist-newstyle
-          key: dist-v1-${{ runner.os }}-ghc-${{ env.GHC_VERSION }}-${{ github.sha }}
-          restore-keys: dist-v1-${{ runner.os }}-ghc-${{ env.GHC_VERSION }}-
-      - name: Resolve dependencies
-        run: cabal update && cabal build all --dry-run
-      - name: Build
-        run: time cabal build all -j
-      - name: Sizes
-        run: du -sh ~/.ghcup ~/.cabal/store ~/.cabal/packages dist-newstyle; du -sh dist-newstyle/build/*/*/* | sort -h | tail -5
+          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+          restore-keys: ${{ env.DIST_KEY_PREFIX }}
+      - name: Build (all packages, -Werror)
+        run: cabal update -v0 && cabal build all -j
       - name: Save the cabal store
         if: steps.toolchain.outputs.store-hit != 'true'
         uses: actions/cache/save@v4
@@ -64,20 +98,161 @@ jobs:
             ~/.cabal/packages
           key: ${{ steps.toolchain.outputs.store-key }}
       - name: Save dist-newstyle
+        if: steps.dist.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: dist-newstyle
-          key: dist-v1-${{ runner.os }}-ghc-${{ env.GHC_VERSION }}-${{ github.sha }}
-      - name: Tests (profiling run)
+          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+      - name: Earlier test ledgers
+        if: ${{ !(github.event_name == 'schedule' || inputs.full) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-tests fetch-ledgers "$RUNNER_TEMP/ledgers"
+      - name: Plan the test shards
+        id: plan
         run: |
-          scripts/with-postgres cabal test all -j --keep-going --test-show-details=direct \
-            --test-options='+RTS -M2G -RTS --print-slow-items=40'
+          scripts/ci-tests plan --out plan.json --ledgers "$RUNNER_TEMP/ledgers" \
+            ${{ (github.event_name == 'schedule' || inputs.full) && '--full' || '' }}
+          echo "shards=$(python3 -c 'import json; print(json.dumps(json.load(open("plan.json"))["shards"]))')" >> "$GITHUB_OUTPUT"
+          echo "viewer=$(python3 -c 'import json; print(str(json.load(open("plan.json"))["viewer"]).lower())')" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-plan
+          path: plan.json
+          retention-days: 30
 
+  checks:
+    needs: build
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain
+      - uses: actions/cache/restore@v4
+        with:
+          path: dist-newstyle
+          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+          fail-on-cache-miss: true
+      - name: Interop selection (scripts/interop patterns still select their groups)
+        run: scripts/interop --check -j
+
+  test:
+    needs: build
+    if: needs.build.outputs.shards != '[]'
+    name: test (${{ matrix.name }})
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.build.outputs.shards) }}
+    services:
+      postgres:
+        image: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 1s --health-timeout 5s --health-retries 60
+    env:
+      PETRUS_TEST_POSTGRES: postgresql://postgres:postgres@localhost:5432/postgres
+      # petrus-execution: also run the shared Docker provider tests against the runner's daemon.
+      PETRUS_TEST_DOCKER: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain
+      - uses: actions/cache/restore@v4
+        with:
+          path: dist-newstyle
+          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+          fail-on-cache-miss: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-plan
+      - name: Upstream Python environments
+        run: for p in petrus petrus-engine hamsterdan; do scripts/upstream-python "$p" >/dev/null; done
+      - name: Tests (${{ matrix.suites }})
+        run: scripts/ci-tests run-shard plan.json "${{ matrix.name }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.name }}-${{ github.run_attempt }}
+          path: results-*.json
+          retention-days: 30
+
+  viewer:
+    needs: build
+    if: needs.build.outputs.viewer == 'true'
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain
+      - uses: actions/cache/restore@v4
+        with:
+          path: dist-newstyle
+          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+          fail-on-cache-miss: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-plan
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+          cache-dependency-path: upstream/petrus-viewer/pnpm-lock.yaml
+      - name: Restore the Playwright browsers
+        id: playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-v1-${{ runner.os }}-${{ hashFiles('upstream/petrus-viewer/pnpm-lock.yaml') }}
+      - name: The upstream petrus-viewer (pnpm install, pnpm build, Chromium)
+        working-directory: upstream/petrus-viewer
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          npx playwright install --with-deps chromium
+      - name: Upstream Python environment
+        run: scripts/upstream-python petrus >/dev/null
+      - name: The petrus-viewer suites against the Haskell backend
+        run: scripts/ci-tests run-viewer plan.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-viewer-${{ github.run_attempt }}
+          path: results-*.json
+          retention-days: 30
+
+  # The Haskell port's container runtime contract (PARITY.md, "Container
+  # runtime contract"): lint the launcher, the interpreter-path shim, the
+  # smoke scripts and the Containerfile; build deployment/Containerfile for
+  # linux/amd64 with the reference's build arguments on Blacksmith's
+  # persistent Docker builder (layers and the build's cache mounts survive
+  # between runs); then run scripts/container-smoke against the built image.
+  # It checks at run time what the reference's release verification, Ansible
+  # playbooks and systemd unit expect of the image.
   container:
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      - name: Lint the launcher, the interpreter-path shim and the smoke scripts
+        run: |
+          shellcheck scripts/with-runtime-secrets scripts/container-smoke scripts/container-smoke.d/fake-op scripts/container-smoke.d/node-wrapper
+          shellcheck --shell=sh deployment/python-shim
+      - name: Lint the Containerfile
+        run: |
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/hadolint" \
+            https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          chmod 0755 "$RUNNER_TEMP/hadolint"
+          "$RUNNER_TEMP/hadolint" --failure-threshold error deployment/Containerfile
       - name: Image build arguments
         id: source
         run: |
@@ -103,3 +278,49 @@ jobs:
         run: |
           scripts/container-smoke hamsterdan:ci \
             --revision "${{ steps.source.outputs.revision }}" --version "${{ steps.source.outputs.version }}"
+
+  ci:
+    needs: [lint, build, checks, test, viewer, container]
+    if: always()
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        if: needs.build.result == 'success'
+        with:
+          name: test-plan
+      - uses: actions/download-artifact@v4
+        if: needs.build.result == 'success'
+        with:
+          pattern: test-results-*
+          path: results
+      - name: This run's test ledger
+        id: ledger
+        if: needs.build.result == 'success'
+        run: scripts/ci-tests ledger --plan plan.json --results results --out ledger.json
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        if: needs.build.result == 'success'
+        with:
+          name: test-ledger
+          path: ledger.json
+          retention-days: 30
+      - name: Verdict
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          LEDGER: ${{ steps.ledger.outcome }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+          needs = json.loads(os.environ["RESULTS"])
+          ok = True
+          for job, data in needs.items():
+              result = data["result"]
+              allowed = ("success", "skipped") if job in ("test", "viewer") else ("success",)
+              print(f"{job}: {result}")
+              ok = ok and result in allowed
+          if os.environ["LEDGER"] != "success":
+              print("ledger: a suite that was to run did not pass")
+              ok = False
+          sys.exit(0 if ok else 1)
+          EOF

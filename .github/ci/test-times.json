@@ -1,0 +1,99 @@
+{
+ "about": "Measured wall-clock seconds per test suite on CI's test shard runners, used by scripts/ci-tests to balance the shards (refresh from a run's 'Measured' summary). parts splits a long suite into hspec --match selections; its remaining examples run as the suite's 'rest' part. A stale figure, or a pattern that no longer selects anything, only unbalances the shards: every example still runs.",
+ "seconds": {
+  "hamsterdan-agents-test": 17,
+  "hamsterdan-contracts-test": 1,
+  "hamsterdan-e2e-test": 96,
+  "hamsterdan-export-test": 23,
+  "hamsterdan-github-test": 10,
+  "hamsterdan-host-test": 36,
+  "hamsterdan-operator-test": 32,
+  "hamsterdan-readiness-test": 3,
+  "hamsterdan-testing-test": 427,
+  "petrus-activity-test": 2,
+  "petrus-agenticus-core-test": 5,
+  "petrus-agenticus-runtime-test": 26,
+  "petrus-agenticus-test": 12,
+  "petrus-cel-test": 1,
+  "petrus-dsl-test": 1,
+  "petrus-dst-test": 31,
+  "petrus-engine-absurd-test": 32,
+  "petrus-engine-file-test": 12,
+  "petrus-engine-postgres-test": 10,
+  "petrus-engine-sqlite-test": 5,
+  "petrus-engine-test": 7,
+  "petrus-execution-test": 37,
+  "petrus-fabric-test": 18,
+  "petrus-history-postgres-test": 12,
+  "petrus-history-store-test": 14,
+  "petrus-http-core-test": 3,
+  "petrus-impetus-test": 1,
+  "petrus-json-test": 4,
+  "petrus-motus-absurd-test": 16,
+  "petrus-motus-test": 5,
+  "petrus-motus-zeromq-test": 11,
+  "petrus-observation-http-test": 2,
+  "petrus-observation-test": 1,
+  "petrus-posix-test": 1,
+  "petrus-postgres-test": 8,
+  "petrus-processes-test": 8,
+  "petrus-simulation-test": 52,
+  "petrus-sqlite-test": 3,
+  "petrus-telemetry-instrumentation-test": 1,
+  "petrus-telemetry-test": 1,
+  "petrus-test-support-test": 1,
+  "petrus-viewer-server-test": 9
+ },
+ "parts": {
+  "hamsterdan-testing-test": {
+   "campaign-timer-delivery": {
+    "match": [
+     "/tests/integration/testing/test_readiness_campaign.py/test_generated_reminder_timer_recovery",
+     "/tests/integration/testing/test_readiness_campaign.py/test_generated_delivery_recovery"
+    ],
+    "seconds": 64
+   },
+   "campaign-git-authority": {
+    "match": [
+     "/tests/integration/testing/test_readiness_campaign.py/test_generated_v5_git_publication_recovery",
+     "/tests/integration/testing/test_readiness_campaign.py/test_generated_authority_lifecycle"
+    ],
+    "seconds": 61
+   },
+   "world-interop-git": {
+    "match": [
+     "/World interop against the reference/git-"
+    ],
+    "seconds": 100
+   },
+   "world-interop-timer-authority": {
+    "match": [
+     "/World interop against the reference/timer-",
+     "/World interop against the reference/authority-"
+    ],
+    "seconds": 70
+   },
+   "journeys-1": {
+    "match": [
+     "/journeys against the reference/clean_green/",
+     "/journeys against the reference/first_attempt_flake/",
+     "/journeys against the reference/persistent_ci_regression/",
+     "/journeys against the reference/seeded_review_finding/",
+     "/journeys against the reference/conversational_change/",
+     "/journeys against the reference/agent_repair/"
+    ],
+    "seconds": 70
+   },
+   "journeys-2": {
+    "match": [
+     "/journeys against the reference/hero_review/",
+     "/journeys against the reference/draft_ready/",
+     "/journeys against the reference/stale_base_update/",
+     "/journeys against the reference/true_conflict_resolution/",
+     "/journeys against the reference/collaboration_approval/"
+    ],
+    "seconds": 60
+   }
+  }
+ }
+}
