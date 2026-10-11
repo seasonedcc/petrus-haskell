@@ -6,6 +6,8 @@ import Data.Either (isLeft)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity
+import Petrus.Activity.DifferentialSpec qualified as DifferentialSpec
+import Petrus.Activity.HeartbeatSpec qualified as HeartbeatSpec
 import Petrus.Json (Json (..))
 import Test.Hspec
 import Test.QuickCheck
@@ -107,9 +109,41 @@ main = hspec $ do
         `shouldReturn` Left "Activity 'add' cannot execute invocation for 'sub'"
       callActivity definition (invocation "add" (Object [("a", Int 1)])) ctx
         `shouldReturn` Left "Activity 'add' requires parameters ['a', 'b'], got ['a']"
+    it "spells names with Python's repr" $ do
+      ctx <- executionContext
+      callActivity definition (invocation "it's" Null) ctx
+        `shouldReturn` Left "Activity 'add' cannot execute invocation for \"it's\""
+      callActivity definition (invocation "add" (Array [])) ctx
+        `shouldReturn` Left "Activity 'add' parameter payload must be a mapping, got list"
+    it "refuses a result json.dumps refuses, with its message" $ do
+      ctx <- executionContext
+      let nan = defineActivity declaration [] (\_ _ -> pure (Array [Float (0 / 0)]))
+      callActivity nan (invocation "add" (Object [])) ctx
+        `shouldReturn` Left "Activity payload is not JSON-faithful: Out of range float values are not JSON compliant: nan"
+      let huge = defineActivity declaration [] (\_ _ -> pure (Int (10 ^ (4300 :: Int))))
+      callActivity huge (invocation "add" (Object [])) ctx
+        `shouldReturn` Left "Activity payload is not JSON-faithful: Exceeds the limit (4300 digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit"
 
-  describe "heartbeat details" $
+  describe "heartbeat details" $ do
     it "require finite JSON within the byte limit" $ do
       snapshotHeartbeatDetails (Float (0 / 0)) `shouldBe` Left "heartbeat details require finite JSON numbers"
       snapshotHeartbeatDetails (String (T.replicate 70000 "x")) `shouldSatisfy` isLeft
       snapshotHeartbeatDetails (Object [("k", Int 1)]) `shouldBe` Right (Object [("k", Int 1)])
+    it "refuse an integer past 4300 digits with json.dumps's own message, after any non-finite float" $ do
+      snapshotHeartbeatDetails (Array [Int (10 ^ (4300 :: Int))])
+        `shouldBe` Left "Exceeds the limit (4300 digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit"
+      snapshotHeartbeatDetails (Array [Int (10 ^ (4300 :: Int)), Float (1 / 0)])
+        `shouldBe` Left "heartbeat details require finite JSON numbers"
+
+  describe "CPython's numeric exceptions" $ do
+    it "an int too large to convert to float is refused as math.isfinite refuses it" $ do
+      let overflow = 2 ^ (1024 :: Int) - 2 ^ (970 :: Int)
+      policyWith (\f -> f {coefficient = IntNumber overflow}) `shouldBe` Left "int too large to convert to float"
+      policyWith (\f -> f {coefficient = IntNumber (overflow - 1)}) `shouldSatisfy` (not . isLeft)
+      policyWith (\f -> f {startToClose = Just (IntNumber (negate overflow))}) `shouldBe` Left "int too large to convert to float"
+    it "a refused attempts count past 4300 digits cannot be spelled in the message" $
+      policyWith (\f -> f {attempts = negate (10 ^ (4300 :: Int))})
+        `shouldBe` Left "Exceeds the limit (4300 digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit"
+
+  HeartbeatSpec.spec
+  DifferentialSpec.spec

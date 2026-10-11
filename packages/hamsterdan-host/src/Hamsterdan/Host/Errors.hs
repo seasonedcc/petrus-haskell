@@ -34,7 +34,10 @@ import Hamsterdan.GitHub.Models
   )
 import Hamsterdan.Agents.Protocol (AgentProtocolError (..))
 import Hamsterdan.GitHub.Python (PythonFault (..))
+import Hamsterdan.Host.Agenticus (AgentCompositionError (..))
 import Hamsterdan.Host.GitPublish (GitPublishError (..))
+import Petrus.Agenticus.Error (AgenticusError (..), errorClassName, isSubclassOf)
+import Petrus.Agenticus.Error qualified as AE
 import Hamsterdan.Host.Python (RuntimeError (..), ValueError (..))
 
 -- | @UnstagedCustodyError(blocker)@: one exact same-PR custody row has not
@@ -72,6 +75,10 @@ caught err
   | Just (RerunRefused m) <- fromException err = Just (CaughtRerunRefused (orRepr "RerunRefusedError" m))
   | Just (RuntimeError m) <- fromException err = Just (CaughtFault (orRepr "RuntimeError" m))
   | Just (ValueError m) <- fromException err = Just (CaughtFault (orRepr "ValueError" m))
+  | Just (AgentCompositionError m) <- fromException err = Just (CaughtFault (orRepr "AgentCompositionError" m))
+  | Just (e :: AgenticusError) <- fromException err
+  , any (e.errorClass `isSubclassOf`) [AE.ValueError, AE.RuntimeError] =
+      Just (CaughtFault (orRepr (errorClassName e.errorClass) e.errorMessage))
   | Just (ContractRefused m) <- fromException err = Just (CaughtFault (orRepr "RuntimeError" m))
   | Just (e :: GitPublishError) <- fromException err = Just (CaughtFault (orRepr "GitPublishError" e.reason))
   | Just (e :: AgentProtocolError) <- fromException err = Just (CaughtFault (orRepr "AgentProtocolError" e.reason))

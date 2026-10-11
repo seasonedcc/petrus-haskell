@@ -45,6 +45,11 @@ ROOT = Path(__file__).resolve().parent.parent
 # Package -> hspec --match patterns for its cross-language groups.
 PATTERNS: Dict[str, List[str]] = {
     "hamsterdan-contracts": ["differential corpora"],
+    "hamsterdan-agents": [
+        "on-disk interop with the reference agent stores",
+        "test_restarted_executing_operation_is_indeterminate_without_authority",
+    ],
+    "hamsterdan-export": ["differential: python -m hamsterdan.host.export"],
     "hamsterdan-host": [
         "state interop with the reference host",
         "the HTTP surface against the reference (uvicorn)",
@@ -52,8 +57,15 @@ PATTERNS: Dict[str, List[str]] = {
         "reference_bytes",
     ],
     "hamsterdan-github": ["configuration corpus", "reads, effects and GraphQL corpus", "HTTP client corpus", "webhook, inbox and routing corpus"],
+    "hamsterdan-operator": [
+        "differential against python -m hamsterdan.operator",
+        "the interpreter-path shim answers as the reference interpreter",
+        "CPython's json.loads value",
+        "shutil.rmtree, as the setup cleanup runs it, against CPython's",
+    ],
     "hamsterdan-readiness": ["fold corpus", "board corpus"],
-    "hamsterdan-testing": ["oracle corpus"],
+    "hamsterdan-testing": ["oracle corpus", "journeys against the reference", "World interop against the reference"],
+    "petrus-activity": ["differential against the pinned petrus.motus.activity"],
     "petrus-agenticus": ["differential/"],
     "petrus-agenticus-core": ["differential", "interop: custody", "hands/test_conformance.py"],
     "petrus-agenticus-runtime": ["differential/", "hosts differential corpus", "verbatim and interop"],
@@ -76,7 +88,7 @@ PATTERNS: Dict[str, List[str]] = {
     "petrus-motus-absurd": ["interop with the pinned reference"],
     "petrus-motus-zeromq": ["ZeroMQ interop with the reference"],
     "petrus-observation": ["differential corpus"],
-    "petrus-observation-http": ["byte-identical to the upstream server", "Python urllib clients", "petrus --observation"],
+    "petrus-observation-http": ["byte-identical to the upstream server", "Python urllib clients"],
     "petrus-posix": ["Python", "upstream"],
     "petrus-postgres": ["psycopg", "Python", "upstream"],
     "petrus-processes": ["Process lifecycle conformance", "Process lifecycle interop", "CV5.DS2 lifecycle demo"],

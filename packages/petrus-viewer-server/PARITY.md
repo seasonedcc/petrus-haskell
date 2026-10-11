@@ -18,9 +18,9 @@ tables, the method and the commands.
 ## How to check
 
 ```bash
-cabal test petrus-viewer-server                               # 97 examples
+cabal test petrus-viewer-server                               # 99 examples
 node packages/petrus-viewer-server/upstream-tests/run.mjs     # upstream suites
-node packages/petrus-viewer-server/bench/run.mjs --reps 7     # benchmarks
+node packages/petrus-viewer-server/bench/run.mjs --reps 15    # benchmarks
 ```
 
 The upstream suites need:
@@ -44,16 +44,20 @@ suites marked "ours" were written for this port.
 | `mcp-haskell-relay` | `tests/mcpServer.test.mjs` with the relay in `petrus` | 7/7 |
 | `collab` | `tests/collab-server.test.mjs` | 6/6 |
 | `differential` | ours: JSON and URL ports against V8 and Node | 4/4 |
-| `wire` | ours: WebSocket bytes against the `ws` relays | 2/2 |
+| `wire` | ours: WebSocket bytes against the `ws` relays, and HTTP endpoint bytes against `node:http` | 20/20 |
 | `playwright` | `tests/playwright/bridge-live.test.mjs` | 4/4 |
 | `live` | ours: every MCP tool through a headless browser | 12/12 |
 | `history` | ours: replay and live watching in the browser from real producers | 8/8 |
 
 ## Capabilities
 
-The ratios below come from the two final runs in
-[bench/RESULTS.md](bench/RESULTS.md): run C and run D (the final code),
-each with 7 interleaved rounds, on a machine shared with other agents.
+The ratios below come from [bench/RESULTS.md](bench/RESULTS.md), on a
+machine shared with other agents:
+
+- run F: the final code, every scenario, 15 interleaved rounds;
+- run E: the HTTP endpoints only, 15 interleaved rounds, with the previous
+  server (Warp) running in the same rounds;
+- runs C and D: the relays before the HTTP front, 7 rounds each.
 
 - "Median" is median Haskell ops/s over median Node ops/s.
 - "Per round" is the lowest Haskell / Node ratio within a single round.
@@ -97,7 +101,7 @@ relay's.
 
 - `test/RelaySpec.hs` and `test/ProtocolSpec.hs` (25 examples).
 - Upstream `relay` (5/5) and `differential` (4/4).
-- `wire` (2/2):
+- `wire` (`ws-wire.test.mjs`, 2/2):
   - the opening handshake, compared byte for byte with `ws` over 20
     requests: the 101 and the 400/405 refusals, subprotocols, repeated
     headers, versions, keys, and methods;
@@ -108,14 +112,14 @@ relay's.
 **Performance**, against the Node relay on bare `ws` (Node's fastest
 case), both without the timing log:
 
-| Round trip | Median (C / D) | Per round (C / D) |
+| Round trip | Median (C / D / F) | Per round (C / D / F) |
 | --- | ---: | ---: |
-| 1 pair | 1.41x / 1.40x | ≥ 1.09x / ≥ 1.23x |
-| 16 pairs | 1.17x / 1.31x | ≥ 1.07x / ≥ 1.07x |
+| 1 pair | 1.41x / 1.40x / 1.32x | ≥ 1.09x / ≥ 1.23x / ≥ 1.01x |
+| 16 pairs | 1.17x / 1.31x / 1.09x | ≥ 1.07x / ≥ 1.07x / ≥ 1.02x |
 
 Before this work the 16-pair round trip was 0.81–0.98x. With the timing
-log on, `petrus` is 1.38x the Vite relay that `bin/petrus.mjs` runs
-(run D).
+log on, `petrus` is 1.35x the Vite relay that `bin/petrus.mjs` runs
+(1 pair, run F).
 
 **Status:** at parity.
 
@@ -125,10 +129,10 @@ log on, `petrus` is 1.38x the Vite relay that `bin/petrus.mjs` runs
 
 - `test/CollabSpec.hs` (6 examples).
 - Upstream `collab` (6/6).
-- `wire` (2/2): every byte against `server/collab.mjs`.
+- `wire` (`ws-wire.test.mjs`, 2/2): every byte against `server/collab.mjs`.
 
-**Performance:** fan-out to 50 or 200 peers is 3.9–4.5x Node (median),
-and at least 3.78x in every round.
+**Performance:** fan-out to 50 or 200 peers is 3.9–4.5x Node by median
+(runs C, D and F), and at least 3.21x in every round.
 
 **Status:** at parity. Unlike upstream, the Haskell relay keeps running
 after a WebSocket protocol error (see [DIVERGENCES.md](DIVERGENCES.md)).
@@ -141,68 +145,92 @@ after a WebSocket protocol error (see [DIVERGENCES.md](DIVERGENCES.md)).
 - Upstream `endpoints` (14/14) and `url-cache` (9/9).
 - `differential` (4/4): `new URL`, `decodeURIComponent` and
   `JSON.parse`/`JSON.stringify` against Node.
+- `wire` (`http-wire.test.mjs`): raw requests to `petrus` and to the
+  upstream endpoint on bare `node:http` give the same bytes (only the
+  `Date` value masked). That covers the status line, headers in order and
+  body, local files and every refusal, `Connection: close`, HTTP/1.0,
+  split and pipelined requests, `Expect: 100-continue`, and a 400-request
+  pipelined burst read slowly.
 
 **Performance:**
 
-| Clients | Median (C / D) | Per round (C / D) |
+| Clients | Median (E / F) | Per round (E / F) |
 | --- | ---: | ---: |
-| 1 | 1.07x / 1.07x | ≥ 1.07x / 0.96x |
-| 16 | 1.16x / 1.17x | ≥ 1.01x / 0.84x |
+| 1 | 1.17x / 1.16x | ≥ 0.83x / ≥ 1.01x |
+| 16 | 1.31x / 1.37x | ≥ 1.07x / ≥ 1.06x |
 
-Before this work the 16-client median was 0.69–0.91x.
+Before the HTTP front, run D had 1.07x and 1.17x by median, with rounds
+at 0.96x and 0.84x. In run E the previous server ran in the same rounds:
+1.08x and 1.16x. With the lean C client, 16 threads get 33.7k req/s
+(Node 21.9k, the previous server 24.5k). The one round below 1.0x
+(0.83x, run E, 1 client) is explained under the open-file endpoint.
 
-Every round of run C is at or above 1.0x. Run D, under heavier outside
-load, has two rounds below it. One round at or above 1.0x every time
-cannot be guaranteed on this machine, because the margin is smaller than
-the noise:
-
-- With a lean sequential client, a request takes 42.9 µs on Haskell and
-  43.5 µs on Node.
-- Most of those 43 µs is kernel work both servers pay alike: loopback TCP,
-  `open`/`read`/`close` of the file, and the readiness wait.
-- That leaves a margin of a few percent per request.
-- A single round on the shared machine swings by tens of percent.
-
-The details are in [bench/RESULTS.md](bench/RESULTS.md).
-
-**Status:** at parity: ahead in every median and in every round of the
-quieter run.
+**Status:** at parity: ahead in every median, and at or above 1.0x in
+every round of run F.
 
 ### `open-file` endpoint (`server/openFileEndpoint.mjs`)
 
 **Evidence:**
 
-- `test/EndpointsSpec.hs`.
+- `test/EndpointsSpec.hs`, and `test/ServerSpec.hs` (the HTTP front hands
+  a connection to Warp mid-stream, and closes idle connections after
+  Node's 5 s).
 - Upstream `endpoints` (14/14).
+- `wire` (`http-wire.test.mjs`): the bytes of `GET` 204 and 200, `POST`
+  and its refusals, `OPTIONS`, 405 and `HEAD`, and a pending file that
+  cannot be read (500, and it stays pending) are identical to Node's, as
+  for resolve-ref above.
 - `live`: the UI loads `PETRUS_OPEN_FILE` through the endpoint.
 
 **Performance:**
 
-| Clients | Median (C / D) | Per round (C / D) |
+| Clients | Median (E / F) | Per round (E / F) |
 | --- | ---: | ---: |
-| 1 | 1.00x / 1.10x | 0.79x / 0.97x |
-| 16 | 1.10x / 1.00x | 0.77x / 0.58x |
+| 1 | 1.14x / 1.20x | ≥ 0.66x / ≥ 0.78x |
+| 16, in lockstep | 1.39x / 1.54x | ≥ 0.94x / ≥ 0.97x |
 
-The Haskell server is not reliably ahead. Measured with a lean
-sequential client, one request at a time, Haskell's fixed cost per
-request is 0.5–2.5 µs (about 3%) above Node's:
+Before the HTTP front, run D had 1.10x and 1.00x by median, with rounds
+down to 0.97x and 0.58x. In run E the previous server ran in the same
+rounds: 1.03x and 1.12x.
 
-| Request | Haskell | Node |
-| --- | ---: | ---: |
-| `GET` (204) | 17.0 µs | 16.5 µs |
-| `POST` | 22.6 µs | 22.1 µs |
-| `resolve-ref`, for comparison | 42.9 µs | 43.5 µs |
+What changed:
 
-The `open-file` handlers do almost no work, so that fixed cost decides
-the ratio. It comes from Warp's request loop and GHC's I/O manager: one
-kqueue registration and one wake-up per wait, where libuv keeps every
-socket registered.
+- **The HTTP front.** Both endpoints are served by one event-loop
+  thread that keeps every socket registered with kqueue/epoll and writes
+  each answer with one `writev`. Before, Warp paid a thread wake-up and a
+  one-shot I/O-manager registration on every wait. With the lean C
+  client, a `GET` that answers 204 takes 11.7 µs (Node about 19 µs, the
+  previous server 18.8 µs). Any other request, or a request the front
+  does not parse conservatively, hands the connection to Warp.
+- **The 16-client workload is now the same on every server.** All
+  clients share one pending file, so with free-running clients the
+  number of `GET`s that read it depended on how each server interleaved
+  them. The load client now runs lockstep rounds (every client `POST`s,
+  then every client `GET`s), and the runner fails if any run's status
+  counts differ.
+- **A race fixed.** The workload check caught the previous server: its
+  `GET` read the pending file and cleared it afterwards, so two Warp
+  threads could both serve one pending file (up to 6 extra 200s in a
+  run). Node's single thread cannot. The `GET` now takes the file
+  atomically.
+- **The load client.** It now speaks HTTP/1.1 itself. With `http-client`
+  it was slower than the servers at 16 clients and set the pace for all
+  of them.
 
-At 16 clients the workload also differs between the two servers. All
-clients share one pending file, so how many `GET`s actually read the file
-depends on how the server interleaves requests.
+The rounds below 1.0x are 1-client rounds and two 16-client rounds at
+0.94x and 0.97x. A 1-client run has one request in flight, so it runs at
+the speed of the cores the scheduler gives the server and the client for
+that second. The machine has 4 performance and 6 efficiency cores, and
+other agents kept the load at 5–9. In the low rounds, servers fall to
+about half speed together: in run E's 0.66x round, three of the four
+servers ran at 7.4–7.8k ops/s against 11–15k elsewhere. Within run F, the
+same server's 1-client runs range over 9.2–16.9k (`petrus`) and
+5.6–14.4k (Node bare). The details are in
+[bench/RESULTS.md](bench/RESULTS.md).
 
-**Status:** in progress (performance).
+**Status:** at parity: ahead in every median of runs E and F. The
+remaining low rounds are 1-client rounds in which the machine slowed the
+servers together.
 
 ### Simulation (browser UI)
 
@@ -232,7 +260,8 @@ the pinned UI.
   - The producers are a Haskell Engine (`petrus-engine` with
     `petrus-observation-http`) and the pinned Python reference
     (`withPython`).
-  - Replay: the list, `get_schema` and `get_state` queries.
+  - Replay: the list, `get_schema` and `get_state` queries, and a query
+    for an unknown workflow.
   - Live watching: `get_state` is polled after every step, and the states
     the UI appends (`states.slice(length)`) are checked until the Engine
     is terminal.

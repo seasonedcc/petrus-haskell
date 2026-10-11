@@ -27,8 +27,8 @@ module Hamsterdan.Host.Cli
     -- * Running
   , CliEnvironment (..)
   , productionEnvironment
-  , unavailableRunner
   , runCli
+  , handledMessage
   ) where
 
 import Control.Exception (Exception (..), IOException, SomeException, finally, fromException, throwIO, try)
@@ -50,6 +50,10 @@ import Foreign.Marshal.Alloc (allocaBytes)
 import Foreign.Ptr (Ptr)
 import Foreign.Storable (peekElemOff)
 import Hamsterdan.Agents.Protocol (AgentRunner (..))
+import Hamsterdan.Host.Agenticus (AgentCompositionError (..))
+import Hamsterdan.Host.Agents (OwnedAgent, closeOwnedAgent, composeHostAgent, newOwnedAgent, productionAgentSeams)
+import Petrus.Agenticus.Error (AgenticusError (..), errorClassName, isSubclassOf)
+import Petrus.Agenticus.Error qualified as AE
 import Hamsterdan.GitHub.Client (AppCredentials (..), ClientOptions, defaultClientOptions, newAppClients)
 import Hamsterdan.GitHub.Config (ConfigurationError (..), HostConfig (..), fromEnvironment, revealSecret)
 import Hamsterdan.GitHub.Http (ClientError (..), ClientErrorKind (..))
@@ -65,7 +69,6 @@ import Hamsterdan.Host.Service
   , HostService (..)
   , ServiceOptions (..)
   , gitHubHostClients
-  , noAgentCustody
   , openHostService
   , qualificationFaultFromEnvironment
   , reconcileRegistration
@@ -221,9 +224,12 @@ parseCommandLine :: Text -> Integer -> [Text] -> Parsed
 parseCommandLine hostDefault portDefault argv =
   case run of
     Left stop -> stop
-    Right namespace -> case namespace of
-      (_, extras@(_ : _)) -> ParseError ("unrecognized arguments: " <> T.unwords extras)
-      (ns, []) -> either id Parsed (finish ns)
+    -- parse_known_args reports a missing required argument before
+    -- parse_args reports the extras.
+    Right (ns, extras) -> case (finish ns, extras) of
+      (Left stop, _) -> stop
+      (Right _, _ : _) -> ParseError ("unrecognized arguments: " <> T.unwords extras)
+      (Right arguments, []) -> Parsed arguments
   where
     strings = argv
     pattern' = classify argv
@@ -828,10 +834,12 @@ data CliEnvironment = CliEnvironment
   -- ^ @HostConfig.from_environment()@.
   , clientOptions :: IO ClientOptions
   -- ^ The GitHub network (@GitHubAppClients(config)@'s transport).
-  , composeAgent :: IO (AgentRunner, AgentCustody)
-  -- ^ The agent composition (@compose_agent@, the route store and the
-  -- Pi runtime upstream); called only for the commands that open the
-  -- service.
+  , composeAgent :: OwnedAgent -> FilePath -> IO (AgentRunner, AgentCustody)
+  -- ^ The agent composition over the state path (the Pi installation,
+  -- @compose_agent@, the route store, the workspace receiver and the Pi
+  -- runtime); called only for the commands that open the service. Each
+  -- resource is recorded in the 'OwnedAgent' as soon as it exists, so
+  -- startup cleanup releases it when the service never opens.
   , columns :: IO Int
   -- ^ @shutil.get_terminal_size().columns@.
   , output :: Handle
@@ -840,8 +848,8 @@ data CliEnvironment = CliEnvironment
   -- ^ Called once @serve@ listens, with the port.
   }
 
--- | The process's own environment: the real network, the stub agent
--- runner, standard streams.
+-- | The process's own environment: the real network, the real Pi A2
+-- composition, standard streams.
 productionEnvironment :: Map String String -> CliEnvironment
 productionEnvironment environment =
   CliEnvironment
@@ -849,25 +857,20 @@ productionEnvironment environment =
     , forgetSecrets = mapM_ unsetEnv ["HAMSTERDAN_GITHUB_PRIVATE_KEY", "HAMSTERDAN_GITHUB_WEBHOOK_SECRET"]
     , loadConfig = fromEnvironment environment
     , clientOptions = defaultClientOptions
-    , composeAgent = pure (unavailableRunner, noAgentCustody)
+    , composeAgent = \owned ->
+        composeHostAgent
+          productionAgentSeams
+          owned
+          [ (T.pack name, T.pack value)
+          | (name, value) <- Map.toList environment
+          , name `notElem` ["HAMSTERDAN_GITHUB_PRIVATE_KEY", "HAMSTERDAN_GITHUB_WEBHOOK_SECRET"]
+          ]
+          (unsetEnv "HAMSTERDAN_PI_API_KEY")
     , columns = terminalColumns environment
     , output = stdout
     , errors = stderr
     , onServing = \_ -> pure ()
     }
-
--- | The agent seam until the agent runtimes are ported: every capability
--- refuses, so a delivery that needs an agent fails its Activity (and is
--- retried by the reference's policy) instead of guessing.
-unavailableRunner :: AgentRunner
-unavailableRunner =
-  AgentRunner
-    { review = \_ _ _ -> refuse
-    , converse = \_ _ _ -> refuse
-    , code = \_ _ _ -> refuse
-    }
-  where
-    refuse = throwIO (RuntimeError "no agent runtime is composed in this host")
 
 -- | Why the reference's @except (ConfigurationError, RuntimeError,
 -- ValueError)@ catches a failure, as @str(error)@; 'Nothing' for the
@@ -877,6 +880,10 @@ handledMessage e
   | Just (ConfigurationError m) <- fromException e = Just m
   | Just (RuntimeError m) <- fromException e = Just m
   | Just (ValueError m) <- fromException e = Just m
+  | Just (AgentCompositionError m) <- fromException e = Just m
+  | Just (failure :: AgenticusError) <- fromException e
+  , any (failure.errorClass `isSubclassOf`) [AE.ValueError, AE.RuntimeError] =
+      Just failure.errorMessage
   | Just (boundaryError :: GitHubBoundaryError) <- fromException e = Just boundaryError.message
   | Just (ContractRefused m) <- fromException e = Just m
   | Just (InvalidRequest m) <- fromException e = Just m
@@ -915,6 +922,7 @@ runCli env argv = do
             usageError "inspect-instance requires --installation, --repository, and --pr"
         | otherwise -> do
             service <- newIORef Nothing
+            owned <- newOwnedAgent
             let body = do
                   config <- env.loadConfig
                   env.forgetSecrets
@@ -927,7 +935,7 @@ runCli env argv = do
                       when (Map.member "HAMSTERDAN_READINESS_TOPOLOGY" env.environment) $
                         throwIO (ValueError "HAMSTERDAN_READINESS_TOPOLOGY is retired; remove it to run the V5 topology")
                       preflightV5State config.statePath
-                      (runner, agents) <- env.composeAgent
+                      (runner, agents) <- env.composeAgent owned config.statePath
                       options <- env.clientOptions
                       appClients <-
                         newAppClients
@@ -990,20 +998,23 @@ runCli env argv = do
                             , onStarted = env.onServing (fromInteger arguments.port)
                             }
                     pure (either (const (ExitFailure 3)) (const ExitSuccess) served)
+                -- @finally: _close_owned_resources(service, pi_runtime,
+                -- route_store)@, after the @except@ clause has printed its
+                -- usage error.
                 cleanup = do
                   opened <- readIORef service
-                  outcome <- try @SomeException (mapM_ Service.close opened)
-                  pure (either Just (const Nothing) outcome)
+                  try @SomeException (closeOwnedAgent (Service.close <$> opened) owned)
             outcome <- try @SomeException body
+            settled <- case outcome of
+              Right code -> pure (Right code)
+              Left e
+                | Just message <- handledMessage e -> Right <$> usageError message
+                | Just (code :: ExitCode) <- fromException e -> pure (Right code)
+                | otherwise -> pure (Left e)
             closing <- cleanup
             case closing of
-              Just _ -> escaped (toException (RuntimeError "host resource cleanup is unverified"))
-              Nothing -> case outcome of
-                Right code -> pure code
-                Left e
-                  | Just message <- handledMessage e -> usageError message
-                  | Just (code :: ExitCode) <- fromException e -> pure code
-                  | otherwise -> escaped e
+              Left failure -> escaped failure
+              Right () -> either escaped pure settled
   where
     dumpsSorted value = either (const "null") id (dumpsText defaultDumps {Json.sortKeys = True} value)
 
@@ -1014,4 +1025,6 @@ uncaughtText e = case fromException e of
   Just (PythonException name args) -> name <> ": " <> (case args of [PyStr m] -> m; _ -> "") <> "\n"
   _ -> case fromException e of
     Just (RuntimeError m) -> "RuntimeError: " <> m <> "\n"
-    _ -> T.pack (displayException e) <> "\n"
+    _ -> case fromException e of
+      Just (failure :: AgenticusError) -> errorClassName failure.errorClass <> ": " <> failure.errorMessage <> "\n"
+      _ -> T.pack (displayException e) <> "\n"

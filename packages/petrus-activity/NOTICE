@@ -1,0 +1,11 @@
+petrus-activity
+Copyright 2026 Seasoned
+
+This package is a Haskell port of software written by Henrique Bastos. It
+follows the structure, test suite, and documented behavior of the
+petrus.motus.activity module of the original project, which is pinned as a
+git submodule under upstream/petrus (see UPSTREAM.md at the repository root).
+
+Ported from henriquebastos/petrus
+  Copyright 2026 Henrique Bastos
+  Licensed under the Apache License, Version 2.0 (see LICENSE).

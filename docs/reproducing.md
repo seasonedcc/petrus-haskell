@@ -42,6 +42,13 @@ plus Node.js 22 (for example from NodeSource) and either Docker or
 PostgreSQL 17 from the [PGDG apt repository](https://www.postgresql.org/download/linux/ubuntu/)
 (Ubuntu 24.04's own `postgresql` package is 16).
 
+Haskell dependency versions are pinned in `cabal.project.freeze` (every
+Hackage package's exact version, plus the Hackage `index-state`), so a clean
+checkout builds against the same libraries CI and the committed benchmarks
+used. Run `cabal update` once so the index reaches that state. To move the
+pins, run `cabal freeze`, keep only the version lines and the `index-state`
+(the flag lines describe the machine that ran it), and let CI confirm.
+
 The scripts put `~/.ghcup/bin` and `~/.local/bin` (uv's default location) on
 `PATH` themselves.
 

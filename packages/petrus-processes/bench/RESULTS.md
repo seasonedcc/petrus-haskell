@@ -3,23 +3,63 @@
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
 names, values and store operations. Both are wall-clock time. Ratios above 1
-mean Haskell is faster. **One store row is slower than Python:**
-`postgres.child-of` (0.97×).
+mean Haskell is faster. Haskell is faster on every row: 1.39–1.88× on the
+registry operations, which now run as prepared statements as psycopg's do,
+and 2.8–14× on values and the Activity.
 
-- Date: 2026-10-10 21:06–21:08 local (UTC-3), commit `74e6b1e` with the switch to wall-clock
-  time in `bench/Main.hs` (the library code is unchanged)
-- Machine: Darwin arm64, Apple M4, shared with other agents; 1-minute load average 2.7–4.0
-  around the runs
+- Date: 2026-10-11 00:08–00:46 local (UTC-3), two runs of
+  `scripts/bench-compare petrus-processes 6` (00:08–00:19 and 00:37–00:46), on the commit
+  that adds petrus-postgres's prepared-statement cache
+- Machine: Darwin arm64, Apple M4, heavily shared with other agents' builds and benchmarks;
+  1-minute load average 4.9–8.7 around the runs
 - Haskell: GHC 9.10.3 (-O2), tasty-bench mean in wall-clock time, `--stdev 5`, `+RTS -M2G -RTS`
 - Python: CPython 3.14.6 (upstream venv), psycopg 3.3.4, median of 10 timed batches of 0.2 s
   (scripts/bench_timing.py)
 - PostgreSQL 17.7, a throwaway server from `scripts/with-postgres` (Postgres.app binaries,
-  `initdb` defaults) on 127.0.0.1; the store rows use a scratch database each run
-- Interleaved by `scripts/bench-compare petrus-processes 2`: Haskell, Python, then Python,
-  Haskell. The figures are the medians of the two repetitions; the last two columns give each
-  repetition.
+  `initdb` defaults) on 127.0.0.1, one per run; the store rows use a scratch database each
+  repetition
+- Interleaved: each run alternates Haskell first and Python first over six repetitions. The
+  figures are the medians of all twelve repetitions; "lowest" is the worst single
+  repetition's ratio, and the last column counts the repetitions Haskell won.
 
-| Benchmark | Haskell | Python | Python / Haskell | Haskell per repetition | Python per repetition |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
+|---|---:|---:|---:|---:|---:|
+| `model.child-identity` | 654 ns | 1.83 µs | 2.80× | 2.48× | 12/12 |
+| `model.spawn-spec-digest` | 2.73 µs | 16.1 µs | 5.89× | 5.79× | 12/12 |
+| `model.spawn-spec-roundtrip` | 1.3 µs | 14.8 µs | 11.38× | 9.97× | 12/12 |
+| `call.request-envelope` | 1.47 µs | 15.5 µs | 10.58× | 10.30× | 12/12 |
+| `call.result-envelope` | 1.61 µs | 16 µs | 9.92× | 8.46× | 12/12 |
+| `call.reply-from-envelope` | 869 ns | 12.3 µs | 14.18× | 13.19× | 12/12 |
+| `spawn.activity` | 6.19 µs | 48.9 µs | 7.90× | 7.36× | 12/12 |
+| `postgres.claim-prior` | 93.7 µs | 176 µs | 1.88× | 1.05× | 12/12 |
+| `postgres.child-of` | 60.4 µs | 90.4 µs | 1.50× | 0.81× | 11/12 |
+| `postgres.claim-new` | 148 µs | 205 µs | 1.39× | 0.95× | 11/12 |
+| `postgres.spawn-activity` | 155 µs | 286 µs | 1.85× | 0.93× | 11/12 |
+
+The load moved every registry figure: Haskell's `postgres.child-of` ranged
+from 45.6 µs to 126 µs over the twelve repetitions, Python's from 63.9 µs to
+160 µs. The two runs agree: `postgres.child-of` came out at 1.64× and 1.47×
+on their own medians. Each registry row lost at most one repetition out of
+twelve, in the busiest stretches.
+
+`postgres.child-of` is the fabric authentication `SELECT` and the indexed
+lineage `SELECT`, two round trips. It used to come out level with Python
+(0.97×, the superseded table below). Both clients send the same two
+statements (checked with `log_statement = all`), but psycopg executes each by
+name once it has run five times on the connection, sparing the server the
+parse and plan, while petrus-postgres sent both unnamed every time.
+petrus-postgres now keeps psycopg's prepared-statement cache (see its
+[DIVERGENCES](../../petrus-postgres/DIVERGENCES.md) and the
+[fabric results](../../petrus-fabric/bench/RESULTS.md)), and the two clients'
+statement logs are identical, statement names included.
+
+### Before the prepared-statement cache
+
+<!-- bench: superseded -->
+2026-10-10 21:06–21:08 local, commit `74e6b1e`, `scripts/bench-compare petrus-processes 2`,
+load average 2.7–4.0:
+
+| Benchmark | Haskell | Python | Python / Haskell (before) | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---|---|
 | `model.child-identity` | 625 ns | 1.78 µs | 2.85× | 629 ns, 622 ns | 1.78 µs, 1.78 µs |
 | `model.spawn-spec-digest` | 2.61 µs | 15.5 µs | 5.93× | 2.57 µs, 2.65 µs | 15.6 µs, 15.4 µs |
@@ -33,16 +73,10 @@ mean Haskell is faster. **One store row is slower than Python:**
 | `postgres.claim-new` | 100 µs | 135 µs | 1.35× | 101 µs, 99.7 µs | 134 µs, 136 µs |
 | `postgres.spawn-activity` | 113 µs | 187 µs | 1.65× | 119 µs, 107 µs | 187 µs, 186 µs |
 
-### Wall-clock time, and the earlier figures
-
-The figures committed before these timed Haskell in tasty-bench's default CPU
+The figures committed before those timed Haskell in tasty-bench's default CPU
 time, against Python's wall-clock time. CPU time leaves out the wait for the
 server, so the store rows read 3.0–5.5× faster than Python
-(`postgres.child-of` 17.5–19.7 µs). Measured the same way as Python, they are
-0.97–1.65×: `postgres.child-of` is one indexed `SELECT`, essentially a round
-trip on both sides, and comes out level with Python (0.97× on the medians;
-Haskell won the first repetition, Python the second). The in-memory rows
-(`model.*`, `call.*`, `spawn.activity`) are unchanged.
+(`postgres.child-of` 17.5–19.7 µs).
 
 ## Notes
 
@@ -65,4 +99,5 @@ cabal bench -j2 petrus-processes --benchmark-options '--stdev 5 --timeout 300 +R
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-processes/bench/python_bench.py)
 ```
 
-`scripts/bench-compare petrus-processes 2` interleaves both sides and prints the table above.
+`scripts/bench-compare petrus-processes 6` interleaves both sides over six repetitions and prints a
+table like the one above; the table pools two such runs.

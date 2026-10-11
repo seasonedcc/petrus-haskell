@@ -65,6 +65,33 @@ rounds (`PETRUS_BENCH_ONLY=none`, which skips the archive workloads):
 | sidecar/handshake-round-trip | 0.033 | 0.033 | 1.01x | 7/10 |
 | sidecar/execute-round-trip | 6.463 | 6.613 | 0.98x | 6/10 |
 
+### Sidecar rows rerun, 2026-10-11
+
+The sidecar rows were rerun on 2026-10-11 00:35–00:38 local, at a 1-minute
+load average of 5.6–6.2 (other agents' builds and benchmarks), to check
+whether the 0.98× above had a cause in the client. First `compare.py` with
+`PETRUS_BENCH_ONLY=none` for 10 rounds (Python first in every round), then
+12 rounds that alternate which harness goes first, keeping every round's
+medians:
+
+| benchmark | Python (ms) | Haskell (ms) | Python / Haskell | rounds Haskell won |
+|---|---:|---:|---:|---:|
+| process/run-captured (10 rounds) | 1.589 | 0.952 | 1.67x | |
+| sidecar/handshake-round-trip (10 rounds) | 0.088 | 0.082 | 1.08x | |
+| sidecar/execute-round-trip (10 rounds) | 6.461 | 6.455 | 1.00x | |
+| process/run-captured (12 alternating rounds) | 1.519 | 0.905 | 1.68x | 12/12 |
+| sidecar/handshake-round-trip (12 alternating rounds) | 0.079 | 0.068 | 1.16x | 7/12 |
+| sidecar/execute-round-trip (12 alternating rounds) | 6.416 | 6.301 | 1.02x | 6/12 |
+
+Nothing in these rows touches PostgreSQL. An execute is the same three steps
+on both sides: read and check the registry, one handshake exchange, and the
+execute exchange, in which the Node sidecar spawns `sh`. The client's own
+share (the handshake row) is faster in Haskell. The execute exchange is the
+shared Node process spawning `sh`, about 6 ms, and neither client controls
+it; the two sides trade rounds (6 of 12 each). The execute row is at parity
+within the noise of a 6 ms child-process spawn on a loaded machine, not
+measurably slower.
+
 ### Reading the numbers
 
 - **Archive codec.** Haskell is faster on every pack and validate. The output bytes are identical

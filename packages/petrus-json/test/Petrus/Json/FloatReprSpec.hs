@@ -24,10 +24,9 @@ import Data.Word (Word64)
 import GHC.Float (castDoubleToWord64, castWord64ToDouble)
 import Petrus.Json
 import Petrus.Json.Float (floatReprBuilder, pythonFloatReprBytes)
+import Petrus.Json.Reference (upstreamPython)
 import Petrus.Json.Repr (pythonReprFloat)
-import System.Directory (doesFileExist, getCurrentDirectory, makeAbsolute)
 import System.Exit (ExitCode (..))
-import System.FilePath (takeDirectory, (</>))
 import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
 import Test.Hspec
 
@@ -72,24 +71,6 @@ corpus = edgeDoubles <> map negate edgeDoubles <> doublesFrom 4242 70000 <> larg
         <> [fromIntegral i * 1.0e-7 | i <- [1 .. 2000 :: Int]]
         <> [fromIntegral i * 1.0e14 | i <- [1 .. 2000 :: Int]]
     powers = filter (\d -> d /= 0 && not (isInfinite d)) ([10 ^^ k | k <- [-330 .. 310 :: Int]] <> [2 ^^ k | k <- [-1080 .. 1023 :: Int]])
-
--- | The pinned reference interpreter and its checkout, provisioned by
--- @scripts/upstream-python@ as every differential suite's is. (petrus-json
--- cannot use petrus-test-support, which depends on it.) Fails, never skips,
--- when the environment cannot be provisioned.
-upstreamPython :: IO (FilePath, FilePath)
-upstreamPython = getCurrentDirectory >>= makeAbsolute >>= root >>= provision
-  where
-    root dir = do
-      found <- doesFileExist (dir </> "scripts" </> "upstream-python")
-      if found
-        then pure dir
-        else if takeDirectory dir == dir then fail "no scripts/upstream-python above the test's directory" else root (takeDirectory dir)
-    provision dir = do
-      (code, out, err) <- readCreateProcessWithExitCode (proc (dir </> "scripts" </> "upstream-python") ["petrus"]) ""
-      case (code, lines out) of
-        (ExitSuccess, exe : _) -> pure (exe, dir </> "upstream" </> "petrus")
-        _ -> fail ("scripts/upstream-python could not provision the reference: " ++ err)
 
 -- | CPython's @json.dumps@ and @repr@ of every double, one per line, after
 -- the compact array: @(dumps, [repr])@.

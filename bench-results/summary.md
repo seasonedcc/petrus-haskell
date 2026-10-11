@@ -11,11 +11,15 @@ slower. Historical columns and tables (marked *before*) are left out.
 
 | Package | Results | Rows | Worst | Best | |
 | --- | --- | ---: | ---: | ---: | --- |
+| `hamsterdan-agents` | [RESULTS.md](../packages/hamsterdan-agents/bench/RESULTS.md) | 6 | 1.15× | 3.90× |  |
 | `hamsterdan-contracts` | [RESULTS.md](../packages/hamsterdan-contracts/bench/RESULTS.md) | 7 | 1.50× | 3.30× |  |
+| `hamsterdan-export` | [RESULTS.md](../packages/hamsterdan-export/bench/RESULTS.md) | 6 | 1.25× | 20.7× |  |
 | `hamsterdan-github` | [RESULTS.md](../packages/hamsterdan-github/bench/RESULTS.md) | 8 | 1.08× | 92.0× |  |
-| `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | 5 | 0.95× | 19.2× | **below 1.0×**: fresh timer store open (no History) |
+| `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | 6 | 0.99× | 19.9× | **below 1.0×**: fresh timer store open (no History) |
+| `hamsterdan-operator` | [RESULTS.md](../packages/hamsterdan-operator/bench/RESULTS.md) | 7 | 1.06× | 22.9× |  |
 | `hamsterdan-readiness` | [RESULTS.md](../packages/hamsterdan-readiness/bench/RESULTS.md) | 13 | 3.70× | 11.0× |  |
-| `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | 3 | 1.70× | 22.8× |  |
+| `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | 22 | 1.70× | 22.8× |  |
+| `petrus-activity` | [RESULTS.md](../packages/petrus-activity/bench/RESULTS.md) | 7 | 2.67× | 94.7× |  |
 | `petrus-agenticus` | [RESULTS.md](../packages/petrus-agenticus/bench/RESULTS.md) | 5 | 1.23× | 5.50× |  |
 | `petrus-agenticus-core` | [RESULTS.md](../packages/petrus-agenticus-core/bench/RESULTS.md) | 1 | 2.70× | 4.70× |  |
 | `petrus-agenticus-core` | [results-catalog.md](../packages/petrus-agenticus-core/bench/results-catalog.md) | 4 | 1.80× | 6.10× |  |
@@ -30,27 +34,28 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | 10 | 2.80× | 6.00× |  |
 | `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | 11 | 1.00× | 2.90× |  |
 | `petrus-engine` | [RESULTS.md](../packages/petrus-engine/bench/RESULTS.md) | 5 | 5.00× | 13.7× |  |
-| `petrus-engine-absurd` | [RESULTS.md](../packages/petrus-engine-absurd/bench/RESULTS.md) | 2 | 1.04× | 1.39× |  |
+| `petrus-engine-absurd` | [RESULTS.md](../packages/petrus-engine-absurd/bench/RESULTS.md) | 2 | 1.15× | 1.33× |  |
 | `petrus-engine-file` | [RESULTS.md](../packages/petrus-engine-file/bench/RESULTS.md) | 15 | 1.40× | 5.30× |  |
-| `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | 3 | 1.10× | 7.93× |  |
+| `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | 3 | 1.21× | 7.34× |  |
 | `petrus-engine-sqlite` | [RESULTS.md](../packages/petrus-engine-sqlite/bench/RESULTS.md) | 4 | 1.12× | 7.27× |  |
-| `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | 15 | 0.98× | 7.97× | **below 1.0×**: sidecar/execute-round-trip |
-| `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | 8 | 0.86× | 9.89× | **below 1.0×**: `postgres.discover`; `postgres.submit` |
-| `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | 7 | 1.05× | 2.51× |  |
+| `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | 21 | 0.98× | 7.97× | **below 1.0×**: sidecar/execute-round-trip |
+| `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | 8 | 1.94× | 9.60× |  |
+| `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | 7 | 1.24× | 2.61× |  |
 | `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | 14 | 1.04× | 9 000× |  |
 | `petrus-http-core` | [RESULTS.md](../packages/petrus-http-core/bench/RESULTS.md) | 6 | 1.59× | 18.7× |  |
 | `petrus-impetus` | [RESULTS.md](../packages/petrus-impetus/bench/RESULTS.md) | 10 | 1.60× | 97.0× |  |
+| `petrus-json` | [RESULTS.md](../packages/petrus-json/bench/RESULTS.md) | 8 | 1.80× | 2.67× |  |
 | `petrus-motus` | [RESULTS.md](../packages/petrus-motus/bench/RESULTS.md) | 14 | 1.02× | 78.0× |  |
-| `petrus-motus-absurd` | [RESULTS.md](../packages/petrus-motus-absurd/bench/RESULTS.md) | 4 | 1.00× | 3.70× |  |
+| `petrus-motus-absurd` | [RESULTS.md](../packages/petrus-motus-absurd/bench/RESULTS.md) | 4 | 1.16× | 3.68× |  |
 | `petrus-motus-zeromq` | [RESULTS.md](../packages/petrus-motus-zeromq/bench/RESULTS.md) | 8 | 1.06× | 1.67× |  |
 | `petrus-observation` | [RESULTS.md](../packages/petrus-observation/bench/RESULTS.md) | 21 | 3.10× | 23.0× |  |
 | `petrus-observation-http` | [RESULTS.md](../packages/petrus-observation-http/bench/RESULTS.md) | 11 | 1.61× | 5.07× |  |
 | `petrus-posix` | [RESULTS.md](../packages/petrus-posix/bench/RESULTS.md) | 7 | 0.97× | 2.18× | **below 1.0×**: `flock.open-tryLock-close` |
-| `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | 8 | 1.01× | 14.4× |  |
-| `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | 11 | 0.97× | 14.9× | **below 1.0×**: `postgres.child-of` |
+| `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | 8 | 1.19× | 14.7× |  |
+| `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | 11 | 1.39× | 14.2× |  |
 | `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | 17 | 1.64× | 34.2× |  |
 | `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | 7 | 1.01× | 1.69× |  |
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | 2 | 2.50× | 8.00× |  |
-| `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | 16 | 0.87× | 4.50× | **below 1.0×**: open-file POST+GET, 16 clients |
+| `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | 20 | 1.09× | 4.83× |  |
 
-41 results files; 6 with a row below 1.0×.
+46 results files; 3 with a row below 1.0×.

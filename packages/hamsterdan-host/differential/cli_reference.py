@@ -9,14 +9,13 @@ captured; the result is ``{"code", "stdout", "stderr"}``. An exception that
 escapes ``main()`` is reported as exit status 1 with its final traceback
 line (``Class: message``) on stderr.
 
-Two compositions are replaced, as in the Haskell port:
-
-* the GitHub network: ``GitHubAppClients`` sends every request to the
-  recording fake GitHub on ``127.0.0.1:github_port`` (plain HTTP, same
-  paths), through an injected httpx transport;
-* the Pi agent runtime: the agent composition is the test default
-  (``compose_agent()``), with no Pi runtime or workspaces and an
-  ``object()`` runner, since the agent runtimes are not part of this port.
+One composition is replaced, as in the Haskell port: the GitHub network.
+``GitHubAppClients`` sends every request to the recording fake GitHub on
+``127.0.0.1:github_port`` (plain HTTP, same paths), through an injected httpx
+transport. The agent composition is the real one: the Pi installation from
+the case's environment (an installed-package fixture and a Node stand-in),
+``compose_agent``, the route store, the workspace receiver, the owned Pi A2
+runtime, and the probe-selected runner.
 """
 
 from __future__ import annotations
@@ -27,14 +26,12 @@ import json
 import os
 import sys
 import traceback
-import types
 
 import httpx
 
 import hamsterdan.host.service as service_module
 from hamsterdan.github_app.auth import GitHubAppClients
 from hamsterdan.host import __main__ as host_main
-from hamsterdan.host.agenticus import compose_agent
 
 
 class Redirect(httpx.HTTPTransport):
@@ -56,12 +53,6 @@ def run(case: dict[str, object]) -> dict[str, object]:
         return GitHubAppClients(config, transport=Redirect(int(port)), **kwargs)
 
     service_module.GitHubAppClients = clients
-    host_main.PiA2InstallationConfig = types.SimpleNamespace(
-        from_environment=lambda environ, state_path: types.SimpleNamespace(provider=None, model=None)
-    )
-    host_main.compose_agent = lambda *args, **kwargs: compose_agent()
-    host_main._compose_agent_runtime = lambda state_path, installation: (None, None)
-    host_main.compose_agent_runner = lambda **kwargs: object()
     os.environ.clear()
     os.environ.update(case["env"])
     sys.argv = ["hamsterdan.host", *case["argv"]]
