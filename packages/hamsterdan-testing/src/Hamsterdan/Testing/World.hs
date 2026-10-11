@@ -657,7 +657,7 @@ applyOne p g c now = do
         observed <- Host.processOne g.host `onFailure` modifyIORef' ref (\u -> u {activeAdmission = Nothing})
         modifyIORef' ref (\u -> u {activeAdmission = Nothing})
         let expected = maybe Null (\e -> Object [("delivery", String e.delivery), ("disposition", String "completed")]) candidate
-            observedValue = maybe Null (\o -> Object [("delivery", String o.deliveryId), ("disposition", String o.disposition)]) observed
+            observedValue = maybe Null (\o -> Object [("delivery", String o.deliveryId), ("disposition", String (Host.custodyDispositionText o.disposition))]) observed
         forM_ candidate $ \e -> when (observedValue == expected) $ admit ref e now (Just admission)
         modifyIORef' ref (\u -> u {custodyActions = u.custodyActions <> [Object [("expected", expected), ("observed", observedValue)]]})
         pure (Object [("custody", observedValue)], if isJust observed then Applied else RefusedExpected)
@@ -802,7 +802,7 @@ readinessState :: ReadinessProfile -> Generation -> Integer -> IO Json
 readinessState p g now = do
   t <- readIORef p.truth
   custody <- forM (Map.keys t.emittedDeliveries) $ \delivery ->
-    (delivery,) . maybe Null String <$> Custody.status g.host.custody delivery
+    (delivery,) . maybe Null (String . Custody.inboxStatusText) <$> Custody.status g.host.custody delivery
   let timers = expectedTimers t now
   facts <- either (throwPy "ValueError") pure (factsOf t timers)
   let expected = evaluate facts

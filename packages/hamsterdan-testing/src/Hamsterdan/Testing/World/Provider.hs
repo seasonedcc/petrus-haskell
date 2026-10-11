@@ -85,7 +85,7 @@ import Hamsterdan.Agents.Protocol
 import Hamsterdan.Agents.Protocol qualified as Protocol
 import Hamsterdan.GitHub.Config (HostConfig)
 import Hamsterdan.GitHub.Models (InstallationInventory (..), RegistrationInventory (..), Transport (..), WireResponse (..), boundary)
-import Hamsterdan.Host.GitPublish (GitPublishError (..), GitPublishResult (..), GitReconciliation (..), PublicationCategory (..))
+import Hamsterdan.Host.GitPublish (GitPublishError (..), GitPublishResult (..), GitReconciliation (..), OperationDisposition (..), PublicationCategory (..))
 import Hamsterdan.Host.Python (RuntimeError (..), TypeError (..), ValueError (..), exceptionClass)
 import Hamsterdan.Host.Service (HostClients (..))
 import Hamsterdan.Host.V5.Mutation (MutationPublisher (..))
@@ -807,7 +807,7 @@ modeledGitPublisher ref holder =
           throwPy "RuntimeError" ("readiness profile bound git_reconciliations exhausted at " <> showT limit)
         writeIORef ref t {gitReconciliations = t.gitReconciliations + 1}
         case find (\p -> p.operation == operation) t.gitPublications of
-          Nothing -> pure (GitReconciliation "absent" t.authority.head "" [])
+          Nothing -> pure (GitReconciliation OperationAbsent t.authority.head "" [])
           Just existing -> do
             when (existing.payloadDigest /= digest || existing.expectedHead /= expected) $
               throwIO (GitPublishError Idempotency "modeled Git operation identity collided")
@@ -818,7 +818,7 @@ modeledGitPublisher ref holder =
             let identity = if existing.responseLost then recoveryIdentity u operation True else existing.recoveryIdentity
                 updated = existing {recovered = existing.responseLost || existing.recovered, recoveryIdentity = identity}
             writeIORef ref u {gitPublications = map (\p -> if p.operation == operation then updated else p) u.gitPublications}
-            pure (GitReconciliation "existing" u.authority.head existing.resultHead [existing.expectedHead])
+            pure (GitReconciliation OperationExisting u.authority.head existing.resultHead [existing.expectedHead])
     , publish = \result operation digest expected baseHead _mergeBase -> do
         held <- readIORef holder
         when (isNothing held) $ throwPy "RuntimeError" "modeled Git publication escaped its atomic profile operation"

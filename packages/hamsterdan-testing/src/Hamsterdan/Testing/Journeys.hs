@@ -96,7 +96,7 @@ import Hamsterdan.GitHub.Routing qualified as Routing
 import Hamsterdan.GitHub.Webhooks (Disposition (..), Observation (..), Receipt (..), sign)
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Agenticus (activateRoutes, claimRoute, closeRoutes, composeAgent, openAgentRouteStore, settleRoutes)
-import Hamsterdan.Host.GitPublish (GitPublishResult (..), GitReconciliation (..), HostGitPublisher (..), hostGitPublisher, publicationAuthority)
+import Hamsterdan.Host.GitPublish (GitPublishResult (..), GitReconciliation (..), OperationDisposition (..), HostGitPublisher (..), hostGitPublisher, operationDispositionText, publicationAuthority)
 import Hamsterdan.Host.GitPublish qualified as Git
 import Hamsterdan.Host.Service
   ( AgentCustody (..)
@@ -1207,7 +1207,7 @@ scenarioRunner ref =
 reconciliationJson :: GitReconciliation -> Json
 reconciliationJson r =
   Object
-    [ ("disposition", String r.disposition)
+    [ ("disposition", String (operationDispositionText r.disposition))
     , ("observed_head", String r.observedHead)
     , ("commit", String r.commit)
     , ("parents", texts r.parents)
@@ -1261,7 +1261,7 @@ journeyApplications flags truth root instanceId authority runner options = do
                   modifyIORef' truth $ \p ->
                     p {gitReconciliations = p.gitReconciliations <> [Object (publicationKeywords operation digest expectedHead baseHead mergeBase)]}
                   p <- readIORef truth
-                  pure (GitReconciliation "absent" p.head "" [])
+                  pure (GitReconciliation OperationAbsent p.head "" [])
               , publish = \result operation digest expectedHead baseHead mergeBase -> do
                   modifyIORef' truth $ \p ->
                     p
@@ -1481,7 +1481,7 @@ converge d = go (50 :: Int)
 
 -- | Receive a signed delivery, process it, and converge: the delivery id
 -- and its custody status before processing.
-deliver :: Drive -> ByteString -> Text -> IO (Text, Maybe Text)
+deliver :: Drive -> ByteString -> Text -> IO (Text, Maybe Custody.InboxStatus)
 deliver d body event = do
   delivery <- nextDelivery d
   receipt <- Custody.receive d.host.custody (signed body delivery event) body
@@ -1549,8 +1549,8 @@ commentEnvelope commentId instruction =
            )
          ]
 
-statusJson :: Maybe Text -> Json
-statusJson = maybeText
+statusJson :: Maybe Custody.InboxStatus -> Json
+statusJson = maybeText . fmap Custody.inboxStatusText
 
 countsJson :: Drive -> IO Json
 countsJson d = do

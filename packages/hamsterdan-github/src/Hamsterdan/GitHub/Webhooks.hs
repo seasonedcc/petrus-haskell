@@ -47,6 +47,8 @@ module Hamsterdan.GitHub.Webhooks
   , acknowledge
   , retry
   , ErrorClass (..)
+  , InboxStatus (..)
+  , inboxStatusText
   , status
   , counts
   , Failure (..)
@@ -71,6 +73,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -703,13 +706,31 @@ retry custody deliveryId (ErrorClass className) = Db.withLock custody.connection
             [SQLInteger (fromIntegral attempts), SQLFloat (now + fromIntegral delay), errorClass, SQLText deliveryId]
     _ -> pure ()
 
+-- | An inbox row's @status@. Every writer, here and in the reference, stores
+-- one of the three named statuses. The column itself is unconstrained
+-- @TEXT@ and the reference compares it as a string, so a row some other
+-- writer left reads as 'InboxUnrecognized' and matches none of them.
+data InboxStatus = InboxPending | InboxTerminal | InboxFailed | InboxUnrecognized Text
+  deriving stock (Eq, Show)
+
+-- | The status's spelling in the @status@ column.
+inboxStatusText :: InboxStatus -> Text
+inboxStatusText = \case
+  InboxPending -> "pending"
+  InboxTerminal -> "terminal"
+  InboxFailed -> "failed"
+  InboxUnrecognized other -> other
+
 -- | A delivery's status, if custodied.
-status :: WebhookCustody -> Text -> IO (Maybe Text)
+status :: WebhookCustody -> Text -> IO (Maybe InboxStatus)
 status custody deliveryId = Db.withLock custody.connection $ do
   rows <- Db.query custody.connection "SELECT status FROM inbox WHERE delivery_id=?" [SQLText deliveryId]
   pure $ case rows of
-    [SQLText value] : _ -> Just value
+    [SQLText value] : _ -> Just (spelled value)
     _ -> Nothing
+  where
+    spelled value =
+      fromMaybe (InboxUnrecognized value) (lookup value [(inboxStatusText known, known) | known <- [InboxPending, InboxTerminal, InboxFailed]])
 
 -- | Deliveries per status.
 counts :: WebhookCustody -> IO (Map Text Int)

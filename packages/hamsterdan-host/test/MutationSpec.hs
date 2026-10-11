@@ -14,7 +14,7 @@ import Hamsterdan.GitHub.Models (boundary)
 import Hamsterdan.Host.GitPublish
   ( GitPublishError (..)
   , GitPublishResult (..)
-  , GitReconciliation (..)
+  , GitReconciliation (..), OperationDisposition (..)
   , PublicationCategory (..)
   )
 import Hamsterdan.Host.Python (RuntimeError (..), ValueError (..))
@@ -125,10 +125,10 @@ data PublisherCall
 data Publisher = Publisher {calls :: IORef [PublisherCall], publisher :: MutationPublisher}
 
 absent :: Either SomeException GitReconciliation
-absent = Right (GitReconciliation "absent" headSha "" [])
+absent = Right (GitReconciliation OperationAbsent headSha "" [])
 
 existing :: Either SomeException GitReconciliation
-existing = Right (GitReconciliation "existing" newHead newHead [headSha])
+existing = Right (GitReconciliation OperationExisting newHead newHead [headSha])
 
 published :: Either SomeException GitPublishResult
 published = Right (GitPublishResult newHead False)
@@ -338,7 +338,7 @@ spec = describe "test_v5_mutation" $ do
       out.newHead `shouldBe` newHead
 
       r' <- newRunner Nothing False
-      p' <- newPublisher [absent, Right (GitReconciliation "absent" newHead "" [])] (Left (toException (GitPublishError RefCas "unproven")))
+      p' <- newPublisher [absent, Right (GitReconciliation OperationAbsent newHead "" [])] (Left (toException (GitPublishError RefCas "unproven")))
       g' <- gate r' p' (claims [claim0, claim0])
       assertFault =<< gitGate g' work0
 

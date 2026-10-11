@@ -46,6 +46,8 @@ module Hamsterdan.Host.Service
   , Selected (..)
   , openHostService
   , CustodyOneResult (..)
+  , CustodyDisposition (..)
+  , custodyDispositionText
 
     -- * Operations
   , resolveActivity
@@ -87,6 +89,7 @@ import Data.IORef
 import Data.List (sort, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Functor ((<&>))
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -494,10 +497,21 @@ keyMembers key = [key.installation, key.repository, key.pullRequest]
 -- | @CustodyOneResult(delivery_id, disposition)@.
 data CustodyOneResult = CustodyOneResult
   { deliveryId :: Text
-  , disposition :: Text
-  -- ^ @completed@, @disposed@, @retained@ or @failed@.
+  , disposition :: CustodyDisposition
   }
   deriving stock (Eq, Show)
+
+-- | What @process_one@ did with the delivery it took.
+data CustodyDisposition = CustodyCompleted | CustodyDisposed | CustodyRetained | CustodyFailed
+  deriving stock (Eq, Show)
+
+-- | The disposition's spelling in the reference.
+custodyDispositionText :: CustodyDisposition -> Text
+custodyDispositionText = \case
+  CustodyCompleted -> "completed"
+  CustodyDisposed -> "disposed"
+  CustodyRetained -> "retained"
+  CustodyFailed -> "failed"
 
 -- | @HostService(config, ...)@.
 openHostService :: HostConfig -> ServiceOptions -> IO HostService
@@ -835,7 +849,7 @@ process service item = case observationInstance item of
   Nothing -> void (selectObservation service item)
   Just instanceText -> do
     status <- Custody.status service.custody item.deliveryId
-    when (status `elem` [Nothing, Just "pending"]) $
+    when (status `elem` [Nothing, Just Custody.InboxPending]) $
       void (activateInstanceWith service instanceText (if isNothing status then Just item else Nothing) Nothing)
         `catchPython` \_ -> pure ()
 
@@ -994,14 +1008,12 @@ processOne service =
             activateInstanceWith service selected.instanceName (Just item) Nothing `catchPython` \_ -> pure False
           Just . CustodyOneResult item.deliveryId <$> custodyDisposition service item completed
 
-custodyDisposition :: HostService -> Observation -> Bool -> IO Text
+custodyDisposition :: HostService -> Observation -> Bool -> IO CustodyDisposition
 custodyDisposition service item completed =
-  Custody.status service.custody item.deliveryId <&&> \case
-    Just "terminal" -> if completed then "completed" else "disposed"
-    Just "failed" -> "failed"
-    _ -> "retained"
-  where
-    (<&&>) = flip fmap
+  Custody.status service.custody item.deliveryId <&> \case
+    Just Custody.InboxTerminal -> if completed then CustodyCompleted else CustodyDisposed
+    Just Custody.InboxFailed -> CustodyFailed
+    _ -> CustodyRetained
 
 -- | @run_one_activity()@: execute at most one immediately claimable
 -- durable Activity Attempt.

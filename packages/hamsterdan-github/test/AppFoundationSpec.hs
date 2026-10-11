@@ -351,7 +351,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
         pending custody 100 Nothing `shouldReturn` []
         when (attempt < maxDeliveryAttempts) $
           modifyIORef' now (+ fromIntegral (min (2 ^ (attempt - 1) :: Int) 300))
-      status custody delivery `shouldReturn` Just "failed"
+      status custody delivery `shouldReturn` Just InboxFailed
       counts custody `shouldReturn` Map.fromList [("failed", 1)]
       parked <- failures custody 100
       [(f.deliveryId, f.event, f.attempts, f.errorClass, f.reason) | f <- parked]

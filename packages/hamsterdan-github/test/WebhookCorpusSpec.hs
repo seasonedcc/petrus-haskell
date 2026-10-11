@@ -127,7 +127,7 @@ apply custody registry setClock step = case textOf (field "op" step) of
   "eligible" -> Bool <$> eligible custody (textOf (field "delivery" step)) (subjectOf (field "subject" step))
   "acknowledge" -> Null <$ acknowledge custody (textOf (field "delivery" step)) (textOf (field "reason" step))
   "retry" -> Null <$ retry custody (textOf (field "delivery" step)) (ErrorClass (textOf (field "error" step)))
-  "status" -> maybe Null String <$> status custody (textOf (field "delivery" step))
+  "status" -> maybe Null (String . inboxStatusText) <$> status custody (textOf (field "delivery" step))
   "counts" -> Object . map (\(k, v) -> (k, Int (toInteger v))) . Map.toList <$> counts custody
   "failures" -> do
     items <- failures custody (fromInteger (intOf (field "limit" step)))

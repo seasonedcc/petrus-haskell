@@ -18,11 +18,13 @@ import Data.Text qualified as T
 import Hamsterdan.Agents.Protocol
   ( AgentProtocolError (..)
   , AgentRunner (..)
+  , CodingOutcome (..)
   , CodingRequest (..)
+  , CodingRequestKind (..)
   , CodingResult (..)
   , Invocation (..)
   )
-import Hamsterdan.Contracts.Codec (Contract, dump)
+import Hamsterdan.Contracts.Codec (Contract, dump, spelling, unspelling)
 import Hamsterdan.Contracts.ReadinessV5 (DeclinedM (..), FaultM (..), MovedM (..), MutWork (..), Phase (..), Pushed (..))
 import Hamsterdan.GitHub.Models (GitHubBoundaryError (..))
 import Hamsterdan.Host.Errors (catchGate, caughtReason)
@@ -99,7 +101,7 @@ mutationRequest repository pullRequest work = do
           else pure ("", [[("kind", String work.kind), ("request", String work.instruction)]], [], [])
   pure
     CodingRequest
-      { kind = if work.kind == "repair" then "repair" else "change"
+      { kind = spelling (if work.kind == "repair" then RequestRepair else RequestChange)
       , repository
       , pullRequest
       , epoch = work.incarnation
@@ -189,7 +191,7 @@ gitGate g work = do
   first <- reconcileOnce
   case first of
     Left terminal -> pure terminal
-    Right r | r.disposition == "existing" -> pure (pushed r.commit)
+    Right r | r.disposition == Git.OperationExisting -> pure (pushed r.commit)
     Right _ -> do
       before <- readClaim
       case before of
@@ -211,10 +213,10 @@ gitGate g work = do
               Right result
                 | correlation result /= requestCorrelation request ->
                     pure (declined "correlation" "agent result did not match its request")
-                | result.status /= "changed" ->
+                | unspelling result.status /= Just CodingChanged ->
                     pure
                       ( declined
-                          (if result.status `elem` ["unchanged", "unable"] then result.status else "output_schema")
+                          (maybe "output_schema" spelling (unspelling @CodingOutcome result.status))
                           "agent produced no publishable change"
                       )
                 | otherwise -> do
@@ -232,7 +234,7 @@ gitGate g work = do
                             again <- reconcileOnce
                             case again of
                               Left terminal -> pure terminal
-                              Right r | r.disposition == "existing" -> pure (pushed r.commit)
+                              Right r | r.disposition == Git.OperationExisting -> pure (pushed r.commit)
                               Right _ -> pure (fault (orRepr "GitPublishError" e.reason))
                         | otherwise -> pure (fault (orRepr "GitPublishError" e.reason))
   where

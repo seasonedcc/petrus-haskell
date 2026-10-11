@@ -31,6 +31,11 @@ module Hamsterdan.Agents.Protocol
   , RepairResult
   , AgentResult (..)
 
+    -- * Closed vocabularies
+  , ReviewVerdict (..)
+  , CodingOutcome (..)
+  , CodingRequestKind (..)
+
     -- * Failures
   , AgentResultCategory (..)
   , AgentCleanupCategory (..)
@@ -47,6 +52,43 @@ module Hamsterdan.Agents.Protocol
 import Control.Exception (Exception)
 import Data.Text (Text)
 import Hamsterdan.Contracts.Codec
+
+-- ---------------------------------------------------------------------------
+-- Closed vocabularies
+--
+-- The dataclasses hold these as plain @str@ (the protocol corpus round-trips
+-- any string through the records, so the records keep 'Text'). They are the
+-- closed sets @_validate_result@ admits and the host acts on; read a
+-- record's field with 'unspelling' and write one with 'spelling'.
+
+-- | @ReviewResult.status@: @clear@, @blocking@ or @unable@.
+data ReviewVerdict = VerdictClear | VerdictBlocking | VerdictUnable
+  deriving stock (Bounded, Enum, Eq, Ord, Show)
+
+instance Contract ReviewVerdict where
+  contract = enum "ReviewVerdict" $ \case
+    VerdictClear -> "clear"
+    VerdictBlocking -> "blocking"
+    VerdictUnable -> "unable"
+
+-- | @CodingResult.status@: @changed@, @unchanged@ or @unable@.
+data CodingOutcome = CodingChanged | CodingUnchanged | CodingUnable
+  deriving stock (Bounded, Enum, Eq, Ord, Show)
+
+instance Contract CodingOutcome where
+  contract = enum "CodingOutcome" $ \case
+    CodingChanged -> "changed"
+    CodingUnchanged -> "unchanged"
+    CodingUnable -> "unable"
+
+-- | @CodingRequest.kind@ (and @CodingResult.kind@): @change@ or @repair@.
+data CodingRequestKind = RequestChange | RequestRepair
+  deriving stock (Bounded, Enum, Eq, Ord, Show)
+
+instance Contract CodingRequestKind where
+  contract = enum "CodingRequestKind" $ \case
+    RequestChange -> "change"
+    RequestRepair -> "repair"
 
 -- | @ReviewRequest@.
 data ReviewRequest = ReviewRequest

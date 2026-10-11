@@ -32,7 +32,7 @@ import Hamsterdan.GitHub.Models
   , RerunIssue (..)
   , publication
   )
-import Hamsterdan.Host.GitPublish (GitPublishResult (..), GitReconciliation (..))
+import Hamsterdan.Host.GitPublish (GitPublishResult (..), GitReconciliation (..), OperationDisposition (..))
 import Hamsterdan.Host.Python (ValueError (..))
 import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Gates (PublicationProvider (..), publicationGates, publishGate, reminderGate)
@@ -616,10 +616,10 @@ spec = describe "test_inline_recovery (host gates)" $ do
             { reconcile = \operation digest expectedHead _ _ -> do
                 prior <- Map.lookup operation <$> readIORef heldRefs
                 case prior of
-                  Nothing -> pure (GitReconciliation "absent" expectedHead "" [])
+                  Nothing -> pure (GitReconciliation OperationAbsent expectedHead "" [])
                   Just (storedDigest, commit) -> do
                     storedDigest `shouldBe` digest
-                    pure (GitReconciliation "existing" commit commit [expectedHead])
+                    pure (GitReconciliation OperationExisting commit commit [expectedHead])
             , publish = \_ operation digest expectedHead _ _ -> do
                 crash <- readIORef crashBeforePublish
                 if crash

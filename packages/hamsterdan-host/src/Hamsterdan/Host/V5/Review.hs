@@ -40,8 +40,9 @@ import Hamsterdan.Agents.Protocol
   , Invocation (..)
   , ReviewRequest (..)
   , ReviewResult (..)
+  , ReviewVerdict (..)
   )
-import Hamsterdan.Contracts.Codec (Object, dump, validateJson)
+import Hamsterdan.Contracts.Codec (Object, dump, unspelling, validateJson)
 import Hamsterdan.Contracts.ReadinessV5
   ( AgentReview (..)
   , Phase (..)
@@ -316,8 +317,8 @@ reviewAgent g work = do
                   case late of
                     Just blocker -> pure (deferred blocker)
                     Nothing
-                      | result.status == "unable" -> pure (unable UnableUnable)
-                      | result.status `notElem` ["clear", "blocking"] ->
+                      | Just VerdictUnable <- unspelling result.status -> pure (unable UnableUnable)
+                      | Nothing <- unspelling @ReviewVerdict result.status ->
                           throwIO (ValueError "agent returned an unrecognized review status")
                       | otherwise ->
                           pure $

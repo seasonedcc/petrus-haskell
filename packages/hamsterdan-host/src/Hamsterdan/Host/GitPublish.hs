@@ -16,6 +16,8 @@ module Hamsterdan.Host.GitPublish
     -- * Results
   , GitPublishResult (..)
   , GitReconciliation (..)
+  , OperationDisposition (..)
+  , operationDispositionText
 
     -- * The authority port
   , PublicationAuthority (..)
@@ -58,7 +60,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error (UnicodeException)
-import Hamsterdan.Agents.Protocol (CodingResult (..))
+import Hamsterdan.Agents.Protocol (CodingOutcome (..), CodingResult (..))
+import Hamsterdan.Contracts.Codec (unspelling)
 import Hamsterdan.GitHub.Gateway (GitHubAuthority)
 import Hamsterdan.GitHub.Gateway qualified as Gateway
 import Hamsterdan.GitHub.Models
@@ -132,13 +135,23 @@ data GitPublishResult = GitPublishResult
 
 -- | @GitReconciliation(disposition, observed_head, commit, parents)@.
 data GitReconciliation = GitReconciliation
-  { disposition :: Text
-  -- ^ @absent@ or @existing@.
+  { disposition :: OperationDisposition
   , observedHead :: Text
   , commit :: Text
   , parents :: [Text]
   }
   deriving stock (Eq, Show)
+
+-- | @GitReconciliation.disposition@: whether the stable operation's commit
+-- is already on the ref (@existing@) or not (@absent@).
+data OperationDisposition = OperationAbsent | OperationExisting
+  deriving stock (Eq, Show)
+
+-- | The disposition's spelling in the reference.
+operationDispositionText :: OperationDisposition -> Text
+operationDispositionText = \case
+  OperationAbsent -> "absent"
+  OperationExisting -> "existing"
 
 -- ---------------------------------------------------------------------------
 -- The authority port
@@ -212,13 +225,13 @@ publish p result operation digest expectedHead baseHead mergeBase = do
   when (result.head /= expectedHead || result.base /= baseHead) $
     failWith Correlation "stale or incorrectly correlated Git publication"
   reconciled <- reconcile p operation digest expectedHead baseHead mergeBase
-  if reconciled.disposition == "existing"
+  if reconciled.disposition == OperationExisting
     then pure (GitPublishResult reconciled.commit True)
     else do
       pull <- p.authority.pullRequest
       unless (publishable p pull) $
         failWith RepositoryRef "fork or unsafe pull-request ref is not publishable"
-      when (result.status /= "changed" || T.null (Py.strip result.diff) || hasConflictMarkers result.diff) $
+      when (unspelling result.status /= Just CodingChanged || T.null (Py.strip result.diff) || hasConflictMarkers result.diff) $
         failWith PatchAdmission "empty, unchanged, or conflicted agent patch is not publishable"
       withPublicationDirectory $ \temporary -> do
         let root = temporary </> "repository"
@@ -254,12 +267,12 @@ publish p result operation digest expectedHead baseHead mergeBase = do
             | e.category /= RefCas -> throwIO e
             | otherwise -> do
                 again <- reconcileSelfCaused p operation digest expectedHead baseHead mergeBase commit
-                if again.disposition == "existing"
+                if again.disposition == OperationExisting
                   then pure (GitPublishResult again.commit True)
                   else throwIO e
           Right () -> do
             verified <- reconcileSelfCaused p operation digest expectedHead baseHead mergeBase commit
-            unless (verified.disposition == "existing") $
+            unless (verified.disposition == OperationExisting) $
               failWith RefCas "ref advance succeeded without a provable operation commit"
             pure (GitPublishResult verified.commit False)
 
@@ -329,11 +342,11 @@ reconcileUnhooked p operation digest expectedHead baseHead mergeBase selfCausedH
             pure [(commit, pyWords rawParents)]
     case matches of
       _ : _ : _ -> failWith Idempotency "stable operation identifies multiple commits"
-      [] -> pure (GitReconciliation "absent" observedHead "" [])
+      [] -> pure (GitReconciliation OperationAbsent observedHead "" [])
       [(commit, parents)] -> do
         unless (parents == expectedHead : [baseHead | mergeBase]) $
           failWith Idempotency "recovered operation has unexpected commit parents"
-        pure (GitReconciliation "existing" observedHead commit parents)
+        pure (GitReconciliation OperationExisting observedHead commit parents)
   where
     triples = \case
       a : b : c : rest -> (a, b, c) : triples rest
