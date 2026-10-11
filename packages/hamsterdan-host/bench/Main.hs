@@ -1,7 +1,12 @@
 -- | Hot-path benchmarks for hamsterdan-host; bench.py runs the same
 -- operations on the same inputs in the pinned Python.
 --
--- > cabal bench hamsterdan-host --benchmark-options='+RTS -M2G -RTS'
+-- > cabal bench hamsterdan-host --benchmark-options='-j1 --csv hs.csv +RTS -M2G -RTS'
+--
+-- Read the numbers from the CSV: the reconciliation row sends stdout (the
+-- Worker's progress lines) to /dev/null while it runs, and the console
+-- reporter can print the previous row's result in that window, so the
+-- console may show a row's name over its neighbour's time.
 --
 -- * webhook ingest: 100 signed @pull_request@ deliveries, each a
 --   @POST /github/webhooks@ through the WAI application called in process,
@@ -13,7 +18,8 @@
 -- * gate classification: the reply, reminder and dashboard gates under the
 --   eight publisher outcomes of @test_v5_gates.py@ (24 classifications);
 -- * timer rebuild: a fresh timer store opened from the 333-fact History of
---   @bench/inputs.json@, closed, and removed.
+--   @bench/inputs.json@, closed, and removed; and the same open of a fresh
+--   store with no History, to separate the file work from the replay.
 --
 -- Results and the comparison with Python are in RESULTS.md.
 module Main (main) where

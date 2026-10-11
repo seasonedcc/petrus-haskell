@@ -6,7 +6,6 @@ module RawHttp
   , exchange
   , parseResponse
   , comparable
-  , connectionHeader
   ) where
 
 import Control.Exception (bracket)
@@ -72,21 +71,15 @@ parseResponse raw =
           let (line, rest) = BS.breakSubstring "\r\n" bytes
            in line : splitCrlf (BS.drop 2 rest)
 
--- | The response without the headers each server writes itself: @date@
--- and @server@ (which vary), and the hop-by-hop @connection@, whose
--- position among the headers differs between uvicorn (after the
--- application's headers) and warp (before them); its value is compared
--- on its own. Header names keep their wire spelling.
-comparable :: RawResponse -> RawResponse
-comparable response =
-  response
-    { headers =
-        [ (name, value)
-        | (name, value) <- response.headers
-        , CI.foldCase name `notElem` ["date", "server", "connection"]
-        ]
-    }
-
--- | The @connection@ header's value, if any.
-connectionHeader :: RawResponse -> Maybe ByteString
-connectionHeader response = lookup "connection" [(CI.foldCase name, value) | (name, value) <- response.headers]
+-- | The raw bytes with every @date@ header value blanked (in every
+-- response of a pipelined exchange): the only bytes that may differ
+-- between two servers answering the same requests.
+comparable :: ByteString -> ByteString
+comparable raw = BS.intercalate "\r\n" (map blank (splitOn raw))
+  where
+    blank line
+      | CI.foldCase (BS.take 5 line) == "date:" = BS.take 5 line
+      | otherwise = line
+    splitOn bytes =
+      let (line, rest) = BS.breakSubstring "\r\n" bytes
+       in if BS.null rest then [line] else line : splitOn (BS.drop 2 rest)

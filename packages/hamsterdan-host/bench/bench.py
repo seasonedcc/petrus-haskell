@@ -20,7 +20,8 @@ Rows:
   unclassified status, already held), 24 classifications;
 * timer rebuild: ``V5TimerStore.open`` of a fresh store from the 333-fact
   timer History in ``inputs.json`` (made by ``make_inputs.py``), then close
-  and remove the database.
+  and remove the database; and, to separate the file work from the
+  replay, the same open of a fresh store with no History.
 
 The doubles are ``differential/state_reference.py``'s, the ones the state
 interop tests run. Worker progress lines go to /dev/null on both sides.

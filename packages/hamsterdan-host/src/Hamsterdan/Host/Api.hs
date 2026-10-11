@@ -17,6 +17,10 @@
 --   with @allow@, 307 to the path without its trailing slash, and 404
 --   @{"detail":"Not Found"}@.
 --
+-- Served ('serve', 'hostServerApplication'), every response also carries
+-- what uvicorn writes around the application's headers ('uvicornHeaders'),
+-- so the bytes on the wire are uvicorn's.
+--
 -- The lifespan ('withLifespan') is the reference's: reconcile the
 -- registration (optionally), start the inbox worker, serve, then stop the
 -- service, wait for the worker (its failure is the primary error), and
@@ -24,6 +28,8 @@
 module Hamsterdan.Host.Api
   ( -- * The application
     hostWaiApplication
+  , hostServerApplication
+  , uvicornHeaders
 
     -- * The lifespan
   , withLifespan
@@ -43,19 +49,20 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.CaseInsensitive qualified as CI
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, toLower)
 import Data.List (find)
 import Data.String (fromString)
 import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
+import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Hamsterdan.GitHub.Webhooks (Receipt (..), WebhookRejected (..), dispositionName)
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Api.Documents (oauth2RedirectDocument, openApiDocument, redocDocument, swaggerDocument)
 import Hamsterdan.Host.Service (HostService (..))
 import Hamsterdan.Host.Service qualified as Service
-import Network.HTTP.Types (Status, status200, status202, status307, status400, status404, status405, status500, urlDecode)
+import Network.HTTP.Types (Status, http11, status200, status202, status307, status400, status404, status405, status500, urlDecode)
 import Network.HTTP.Types.Header (Header)
-import Network.Wai (Application, Request, Response, getRequestBodyChunk, rawPathInfo, rawQueryString, requestHeaderHost, requestHeaders, requestMethod, responseLBS)
+import Network.Wai (Application, Middleware, Request, Response, getRequestBodyChunk, httpVersion, mapResponseHeaders, rawPathInfo, rawQueryString, requestHeaderHost, requestHeaders, requestMethod, responseLBS)
 import Network.Wai.Handler.Warp qualified as Warp
 import Petrus.Json (Json (..), compact, dumps)
 import System.Posix.Signals (Handler (..), installHandler, sigINT, sigTERM)
@@ -127,6 +134,25 @@ hostWaiApplication :: HostService -> Application
 hostWaiApplication service request send = do
   response <- route service request `catch` \(_ :: SomeException) -> pure internalError
   send response
+
+-- | 'hostWaiApplication' as uvicorn serves it ('uvicornHeaders').
+hostServerApplication :: HostService -> Application
+hostServerApplication = uvicornHeaders . hostWaiApplication
+
+-- | What uvicorn's h11 protocol writes around an application's headers:
+-- @date@ and @server: uvicorn@ before them, and @Connection: close@ after
+-- them when the connection will not persist (the request says @close@, or
+-- it is older than HTTP/1.1). Warp keeps a @date@ or @server@ the
+-- response already has, and closes the connection when the response says
+-- @close@ without adding its own @Connection@ header.
+uvicornHeaders :: Middleware
+uvicornHeaders app request send = do
+  now <- getCurrentTime
+  let date = BC.pack (formatTime defaultTimeLocale "%a, %d %b %Y %H:%M:%S GMT" now)
+      tokens = [BC.map toLower (BC.strip token) | (name, value) <- requestHeaders request, name == "connection", token <- BC.split ',' value]
+      closing = httpVersion request < http11 || "close" `elem` tokens
+      around headers = [("date", date), ("server", "uvicorn")] <> headers <> [("Connection", "close") | closing]
+  app request (send . mapResponseHeaders around)
 
 -- | Starlette's @Router@: a full match, else the first path-only match
 -- (405), else the trailing-slash redirect, else 404.
@@ -255,12 +281,13 @@ serve service options = withLifespan service True $ do
                 void (installHandler sigINT (CatchOnce closeSocket) Nothing)
             )
           $ hostSettings
-  Warp.runSettings settings (hostWaiApplication service)
+  Warp.runSettings settings (hostServerApplication service)
 
--- | The warp settings 'serve' starts from: no @Server@ banner and a
+-- | The warp settings 'serve' starts from: uvicorn's @server@ banner (which
+-- 'uvicornHeaders' writes in uvicorn's position, so warp keeps it) and a
 -- bounded graceful shutdown (uvicorn waits for in-flight requests).
 hostSettings :: Warp.Settings
 hostSettings =
-  Warp.setServerName ""
+  Warp.setServerName "uvicorn"
     . Warp.setGracefulShutdownTimeout (Just 30)
     $ Warp.defaultSettings

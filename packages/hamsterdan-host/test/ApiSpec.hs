@@ -2,8 +2,8 @@
 -- the warp ingress ("Hamsterdan.Host.Api"), plus a differential check of
 -- the whole HTTP surface against the pinned reference served by uvicorn
 -- (@differential/api_reference.py@): every request below gets the same
--- status line, headers (other than @date@ and @server@) and body bytes
--- from both servers.
+-- status line, headers in the same order (only the @date@ value may
+-- differ) and body bytes from both servers.
 module ApiSpec (spec) where
 
 import Control.Concurrent (threadDelay)
@@ -13,12 +13,12 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.IORef
-import Data.List (sort)
+import Data.List (isSuffixOf, sort)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.GitHub.Webhooks qualified as Custody
-import Hamsterdan.Host.Api (hostSettings, hostWaiApplication, withLifespan)
+import Hamsterdan.Host.Api (hostServerApplication, hostSettings, withLifespan)
 import Hamsterdan.Host.Python (RuntimeError (..))
 import Hamsterdan.Host.Service
 import Hamsterdan.Host.Service qualified as Host
@@ -37,11 +37,12 @@ import Test.Hspec
 import TestSupport (runtimeError, withTempRoot)
 
 -- | @TestClient(create_app(host, reconcile_startup=...))@ entered: the
--- lifespan around a live warp server on an ephemeral port.
+-- lifespan around a live warp server on an ephemeral port, serving what
+-- 'serve' serves.
 withClient :: HostService -> Bool -> (Int -> IO a) -> IO a
 withClient host reconcileStartup action =
   withLifespan host reconcileStartup $
-    Warp.testWithApplicationSettings hostSettings (pure (hostWaiApplication host)) action
+    Warp.testWithApplicationSettings hostSettings (pure (hostServerApplication host)) action
 
 post :: Int -> ByteString -> [(Text, Text)] -> IO RawResponse
 post port payload headers =
@@ -130,12 +131,22 @@ spec = do
       withReferenceServer referenceRoot $ \referencePort ->
         withClient h.host False $ \hostPort ->
           forM_ surface $ \(label, request) -> do
-            reference <- parseResponse <$> exchange referencePort request
-            ours <- parseResponse <$> exchange hostPort request
-            let expected = (unordered (comparable reference), connectionHeader reference)
-                actual = (unordered (comparable ours), connectionHeader ours)
+            reference <- parseResponse . comparable <$> exchange referencePort request
+            ours <- parseResponse . comparable <$> exchange hostPort request
+            let expected = unordered reference
+                actual = unordered (http10StatusLine label ours)
             unless (actual == expected) $
               expectationFailure (label <> "\n  reference: " <> show expected <> "\n  host:      " <> show actual)
+
+-- | The one recorded divergence (DIVERGENCES.md): warp answers an HTTP/1.0
+-- request with an @HTTP/1.0@ status line where h11 writes @HTTP/1.1@.
+-- Everything after the version is still compared.
+http10StatusLine :: String -> RawResponse -> RawResponse
+http10StatusLine label response
+  | "over HTTP/1.0" `isSuffixOf` label
+  , Just rest <- BS.stripPrefix "HTTP/1.0 " response.statusLine =
+      response {statusLine = "HTTP/1.1 " <> rest}
+  | otherwise = response
 
 -- | @allow@ with its methods sorted: Starlette joins a set, whose order
 -- varies with the reference process's string hashing.
@@ -167,6 +178,8 @@ withReferenceServer root action = do
 surface :: [(String, ByteString)]
 surface =
   [ ("GET /healthz", plain "GET" "/healthz")
+  , ("GET /healthz over HTTP/1.0", "GET /healthz HTTP/1.0\r\nhost: testserver\r\n\r\n")
+  , ("GET /healthz kept alive, then closed", "GET /healthz HTTP/1.1\r\nhost: testserver\r\n\r\nGET /nope HTTP/1.1\r\nhost: testserver\r\nconnection: Keep-Alive, CLOSE\r\n\r\n")
   , ("HEAD /healthz", plain "HEAD" "/healthz")
   , ("POST /healthz", rawRequest "POST" "/healthz" [] "")
   , ("GET /healthz/", plain "GET" "/healthz/")
