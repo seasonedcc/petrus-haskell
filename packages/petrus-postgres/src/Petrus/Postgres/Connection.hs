@@ -22,6 +22,13 @@
 -- hold several statements. Rows come back in PostgreSQL's text format;
 -- "Petrus.Postgres.Value" decodes them.
 --
+-- As in psycopg, a statement that has run five times on a connection is
+-- prepared on the server (psycopg's @prepare_threshold@, names
+-- @_pg3_<n>@, at most 100 kept) and executed by name from then on, which
+-- spares the server its parse and plan; 'prepareThresholdOption' and
+-- 'preparedMaxOption' tune it. A rollback discards the prepared
+-- statements, as psycopg's does.
+--
 -- Waiting for the server is interruptible: an asynchronous exception
 -- (a timeout, a killed thread) cancels the running statement on the server
 -- and leaves the connection usable.
@@ -73,9 +80,9 @@ module Petrus.Postgres.Connection
 
 import Control.Concurrent.MVar (newMVar)
 import Control.Exception (bracket, mask, onException, throwIO, try)
-import Control.Monad (unless, void)
+import Control.Monad (unless, void, when)
 import Data.ByteString (ByteString)
-import Data.IORef (atomicWriteIORef, newIORef, readIORef, writeIORef)
+import Data.IORef (atomicWriteIORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Text (Text)
 import Database.PostgreSQL.LibPQ qualified as PQ
 import Petrus.Postgres.Internal
@@ -87,12 +94,25 @@ data ConnectOptions = ConnectOptions
   -- ^ psycopg's @autocommit@ argument.
   , isolationLevel :: Isolation
   -- ^ The level transactions start with ('ReadCommitted' by default).
+  , prepareThresholdOption :: Maybe Int
+  -- ^ psycopg's @prepare_threshold@: how many times a statement runs
+  -- before it is prepared on the server (5, psycopg's default); 'Nothing'
+  -- never prepares.
+  , preparedMaxOption :: Int
+  -- ^ psycopg's @prepared_max@: the most statements kept prepared (100).
   }
   deriving stock (Eq, Show)
 
--- | Join mode (@autocommit=False@), READ COMMITTED.
+-- | Join mode (@autocommit=False@), READ COMMITTED, psycopg's default
+-- prepared-statement cache.
 defaultConnectOptions :: ConnectOptions
-defaultConnectOptions = ConnectOptions {autocommitMode = False, isolationLevel = ReadCommitted}
+defaultConnectOptions =
+  ConnectOptions
+    { autocommitMode = False
+    , isolationLevel = ReadCommitted
+    , prepareThresholdOption = Just 5
+    , preparedMaxOption = 100
+    }
 
 -- | @psycopg.connect(dsn, autocommit=...)@ with READ COMMITTED
 -- transactions. The DSN is a libpq connection string (URI or
@@ -123,6 +143,7 @@ connectWith options dsn = do
   lock <- newMVar ()
   autocommitVar <- newIORef (autocommitMode options)
   closed <- newIORef False
+  cache <- newIORef emptyPrepareCache
   pure
     Connection
       { rawConnection = raw
@@ -130,6 +151,9 @@ connectWith options dsn = do
       , autocommitRef = autocommitVar
       , closedRef = closed
       , connectionIsolation = isolationLevel options
+      , prepareThreshold = prepareThresholdOption options
+      , preparedMax = preparedMaxOption options
+      , prepareCacheRef = cache
       }
 
 -- | Close the connection (idempotent). An open transaction is discarded by
@@ -225,14 +249,19 @@ commit :: Connection -> IO ()
 commit connection = endTransaction connection "COMMIT"
 
 -- | @connection.rollback()@: @ROLLBACK@ when a transaction is open,
--- nothing otherwise.
+-- nothing otherwise. Like psycopg, a rollback forgets the connection's
+-- prepared statements (@DEALLOCATE ALL@ when any were prepared).
 rollback :: Connection -> IO ()
 rollback connection = endTransaction connection "ROLLBACK"
 
 endTransaction :: Connection -> ByteString -> IO ()
 endTransaction connection command = withLockedConnection connection $ \raw -> do
   status <- PQ.transactionStatus raw
-  unless (status == PQ.TransIdle) (runCommand raw command)
+  unless (status == PQ.TransIdle) $ do
+    runCommand raw command
+    when (command == "ROLLBACK") $ do
+      modifyIORef' (prepareCacheRef connection) discardPrepared
+      maintainPrepared connection raw
 
 -- | Who ends the transaction a batch runs in.
 data TransactionMode
