@@ -18,9 +18,25 @@ Pinned reference: `upstream/petrus` (`src/petrus/telemetry.py`).
 
 ## The library (`Petrus.Telemetry`)
 
-1. **`IMPETUS_TELEMETRY_LEVEL` is read when first used,** not at import
-   (Haskell has no import-time effects). An invalid value throws
-   `UnknownTelemetryLevel` at that first use, and again at every later use.
+1. **`IMPETUS_TELEMETRY_LEVEL` is validated by each instrumented
+   constructor,** not at import (Haskell has no import-time effects). The
+   reference refuses a bad value when `petrus.telemetry` is imported, so a
+   program that loads the Instance, a History store, the Engine, a dispatch,
+   the Worker, or the PostgreSQL fabric or processes aborts before it can
+   write anything. Here `validateTelemetryEnvironment` throws
+   `UnknownTelemetryLevel` (the reference's `ValueError` text) as the first
+   step of every constructor of those modules: `newInstance`, `resume`,
+   `openJsonlHistoryStore`, `openPostgresHistoryStore`, Engine creation,
+   `newWorker`/`newAsyncWorker`, the Local and Absurd dispatches,
+   `postgresFabric` and `postgresSpawnRegistry`, before any I/O. So a
+   misconfigured process is still refused before its first durable write
+   (`petrus-telemetry-instrumentation`'s "IMPETUS_TELEMETRY_LEVEL refused at
+   construction" runs a child and checks that no History file appears and
+   no record is appended). The level itself reads totally: an invalid value
+   reads as `off`, so `emit` and `withSpan` never throw for configuration
+   after an effect. A program that uses only `Petrus.Telemetry` and no
+   instrumented runtime is not refused unless it calls
+   `validateTelemetryEnvironment` itself, as hosts may at startup.
 2. **`setLevel` and `atLevel` take a typed `Level`.** Only `parseLevel` can
    see a bad spelling, so upstream's quirk where `capture(level="bad")`
    leaves the sink swapped cannot happen.

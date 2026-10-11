@@ -95,7 +95,7 @@ import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Impetus.Petrinet (Filter, Guard, Instant, Marking, Net, NetPath, Token, emptyMarking)
 import Petrus.Impetus.Scope (LifecycleScope)
 import Petrus.Motus.Dispatch (Dispatch)
-import Petrus.Telemetry (EventSink)
+import Petrus.Telemetry (EventSink, validateTelemetryEnvironment)
 
 -- ---------------------------------------------------------------------------
 -- Configuration
@@ -223,6 +223,7 @@ openEngine mode net identity store port options resources =
   where
     fate = resources.rollback `finally` (resources.release `finally` resources.close)
     construct = do
+      validateTelemetryEnvironment
       -- A joined store's appends ride the provider's transaction: without a
       -- commit point they would never become durable. (A port-only guard;
       -- a backend-owned store may still take a commit hook, as the

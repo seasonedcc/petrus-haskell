@@ -46,6 +46,7 @@ test-suite petrus-telemetry-instrumentation-test
                     Petrus.Telemetry.Scenarios
                     Petrus.Telemetry.InstrumentationSpec
                     Petrus.Telemetry.DifferentialSpec
+                    Petrus.Telemetry.InvalidLevelSpec
   build-depends:    base >=4.18 && <5
                   , bytestring
                   , containers

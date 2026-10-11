@@ -750,6 +750,7 @@ defaultAbsurdWorkerOptions = AbsurdWorkerOptions {queues = ["default"], workerId
 -- (committed). The connection is closed if any of it fails.
 openAbsurdWorkerDispatch :: ByteString -> AbsurdWorkerOptions -> IO AbsurdWorkerDispatch
 openAbsurdWorkerDispatch dsn' options = do
+  Telemetry.validateTelemetryEnvironment
   validated <- mapM (refuse . validateQueue) options.queues
   let queues' = nub validated
   when (null queues') $ dispatchError "Absurd Worker Dispatch requires at least one queue"
@@ -893,6 +894,7 @@ absurdDispatch connection = absurdDispatchOver (sessionOf connection)
 -- | @AbsurdDispatch(...)@ over a session.
 absurdDispatchOver :: Session -> Text -> AbsurdDispatchOptions -> IO AbsurdDispatch
 absurdDispatchOver s instanceId options = do
+  Telemetry.validateTelemetryEnvironment
   when (T.null instanceId) $ dispatchError "AbsurdDispatch requires a non-empty string instance id, got ''"
   forM_ options.listen $ \l -> do
     mode <- autocommit l
