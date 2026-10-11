@@ -13,14 +13,14 @@ that every in-scope upstream test is accounted for, run:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-`cabal test petrus-history-store` runs 132 examples, with 0 failures and 0
+`cabal test petrus-history-store` runs 134 examples, with 0 failures and 0
 pending. The interop examples fail, never skip, when `upstream/petrus/.venv`
 cannot be provisioned. By file:
 
 | spec | examples |
 | --- | ---: |
 | JsonlSpec (JSONL, upstream and beyond) | 26 |
-| BackendContractSpec (jsonl and sqlite, 13 each) | 26 |
+| BackendContractSpec (jsonl and sqlite, 14 each: 13 upstream, 1 beyond) | 28 |
 | InteropSpec (JSONL interop) | 8 |
 | SqliteSpec (`test_sqlite_history.py` 14, beyond upstream 5) | 19 |
 | SqliteInteropSpec (SQLite interop) | 53 |
@@ -105,6 +105,14 @@ The `reopen` fixture's sqlite parameter runs the same 13 examples through
   difference.
 - **The kernel contract through the file.** An Instance's every appending door
   is driven through a JSONL store.
+
+- **Every `json.dumps` refusal fails loud** (BackendContractSpec, one
+  example per backend). An integer over CPython's 4300-digit limit in token
+  data is refused with the backend's `cannot durably encode …` text, on
+  JSONL, SQLite and PostgreSQL alike, and the stored history is unchanged;
+  JSONL's encoder is a single `Either` pass over `dumpsBuilder`, as
+  `jsonl.py`'s `_encoded_line` catches every `json.dumps` error (it used to
+  check only non-finite floats and write an empty line for the rest).
 
 ### SQLite
 
