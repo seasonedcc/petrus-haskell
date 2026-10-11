@@ -80,7 +80,7 @@ PATTERNS: Dict[str, List[str]] = {
     "petrus-motus-absurd": ["interop with the pinned reference"],
     "petrus-motus-zeromq": ["ZeroMQ interop with the reference"],
     "petrus-observation": ["differential corpus"],
-    "petrus-observation-http": ["byte-identical to the upstream server", "Python urllib clients", "petrus --observation"],
+    "petrus-observation-http": ["byte-identical to the upstream server", "Python urllib clients"],
     "petrus-posix": ["Python", "upstream"],
     "petrus-postgres": ["psycopg", "Python", "upstream"],
     "petrus-processes": ["Process lifecycle conformance", "Process lifecycle interop", "CV5.DS2 lifecycle demo"],
