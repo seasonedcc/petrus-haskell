@@ -154,7 +154,7 @@ spec = do
               , not ("--from=" `T.isInfixOf` rest)
               , length operands >= 2
               ]
-          admits source = source `elem` admitted || any (\p -> Just "**" == T.stripPrefix (source <> "/") p) admitted
+          admits source = source `elem` admitted || any (\p -> maybe False (\directory -> (directory <> "/") `T.isPrefixOf` source) (T.stripSuffix "/**" p)) admitted
       filter (not . admits) sources `shouldBe` []
 
     it "test_container_build_has_pinned_runtime_without_build_credentials" do
@@ -233,13 +233,19 @@ spec = do
       -- Order and text of everything else: labels, user, workdir, Pi,
       -- launcher, environment, port, entrypoint and command.
       filter (`elem` kept) ours `shouldBe` kept
-      -- The reference's virtual environment becomes the binaries and the
-      -- shim at its interpreter path.
+      -- The reference's virtual environment becomes the binaries, the shim
+      -- at its interpreter path, and petrus-agenticus-runtime's data files
+      -- (the Pi helpers) with the variable that points the binaries at them.
       filter isVenvCopy reference `shouldBe` ["COPY --from=build --chown=hamsterdan:hamsterdan /opt/hamsterdan/.venv ./.venv"] -- lint-skips: allow the reference Containerfile's text, not an interpreter
       filter (\i -> not (i `elem` kept || isRun i)) ours
         `shouldBe` [ "COPY --from=build --chown=hamsterdan:hamsterdan /opt/hamsterdan/bin ./bin"
                    , "COPY --chown=hamsterdan:hamsterdan --chmod=0755 deployment/python-shim ./.venv/bin/python" -- lint-skips: allow the image path the shim is installed at
+                   , "COPY --chown=hamsterdan:hamsterdan packages/petrus-agenticus-runtime/data/*.mjs ./share/petrus-agenticus-runtime/data/"
+                   , "ENV petrus_agenticus_runtime_datadir=\"/opt/hamsterdan/share/petrus-agenticus-runtime\""
                    ]
+      -- That COPY takes exactly the package's declared data files.
+      cabal <- readText (root </> "packages" </> "petrus-agenticus-runtime" </> "petrus-agenticus-runtime.cabal")
+      [T.strip (T.drop (T.length "data-files:") line) | line <- T.lines cabal, "data-files:" `T.isPrefixOf` line] `shouldBe` ["data/*.mjs"]
       -- One RUN: the reference's commands, with a superset of its packages.
       case (filter isRun reference, filter isRun ours) of
         ([theirs], [mine]) -> do

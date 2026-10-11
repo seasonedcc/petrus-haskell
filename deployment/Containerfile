@@ -84,6 +84,10 @@ RUN apt-get update \
 WORKDIR /opt/hamsterdan
 COPY --from=build --chown=hamsterdan:hamsterdan /opt/hamsterdan/bin ./bin
 COPY --chown=hamsterdan:hamsterdan --chmod=0755 deployment/python-shim ./.venv/bin/python
+# petrus-agenticus-runtime's data files (the Pi helpers the agent runtime
+# runs under Node). The binaries find them through Cabal's
+# <package>_datadir override; the path compiled in is the build stage's.
+COPY --chown=hamsterdan:hamsterdan packages/petrus-agenticus-runtime/data/*.mjs ./share/petrus-agenticus-runtime/data/
 COPY --from=pi --chown=hamsterdan:hamsterdan /opt/hamsterdan/pi ./pi
 COPY --chmod=0755 scripts/with-runtime-secrets /opt/hamsterdan/with-runtime-secrets
 ENV PATH="/opt/hamsterdan/.venv/bin:${PATH}" \
@@ -92,6 +96,7 @@ ENV PATH="/opt/hamsterdan/.venv/bin:${PATH}" \
     HAMSTERDAN_PI_NODE_PATH="/opt/hamsterdan/pi/node_modules/node/bin/node" \
     HAMSTERDAN_PI_PACKAGE_ROOT="/opt/hamsterdan/pi/node_modules/@earendil-works/pi-coding-agent" \
     HAMSTERDAN_STATE_PATH="/var/lib/hamsterdan"
+ENV petrus_agenticus_runtime_datadir="/opt/hamsterdan/share/petrus-agenticus-runtime"
 USER hamsterdan
 EXPOSE 8000
 ENTRYPOINT ["/opt/hamsterdan/.venv/bin/python", "-m", "hamsterdan.host"]
