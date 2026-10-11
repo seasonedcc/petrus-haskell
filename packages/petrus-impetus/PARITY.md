@@ -48,7 +48,7 @@ parameters are separate Hspec examples where they are ported.
 | petrinet/test_golden_replay.py (3) | GoldenTracesSpec | 3 | | | | |
 | instance/test_fifo_queue.py (2) | FifoQueueSpec | 2 | | | | |
 | instance/test_passthrough_chain.py (1) | GoldenTracesSpec | 1 | | | | |
-| instance/ — 10 files (135) | see `parity-instance-a.md` | 104 | 20 | 4 | 5 | 2 |
+| instance/ — 10 files (135) | see `parity-instance-a.md` | 106 | 20 | 4 | 5 | 0 |
 | instance/ — 6 files (158) | see `parity-instance-b.md` | 148 | 3 | 7 | | 0 |
 | selection, history, history_store (in-memory), petrinet History halves | see `parity-history.md` | 61 | 3 | 3 | 11 | |
 | integration/test_activity_seam.py + binding/test_typed_bindings.py | see `parity-activity-seam.md` | 94 | 0 | 9 | 8 | |
@@ -121,18 +121,19 @@ with `Petrus.Cel.Impetus.celCompilers`.
 The per-test rows are in `parity-activity-seam.md`, `parity-history.md`, and
 `parity-instance-a.md`.
 
-## Not at parity (2 upstream test functions)
+## Not at parity (0 upstream test functions)
 
-**Instance firing helpers the port does not export**, in `test_firing.py`.
-Upstream they are the public module functions
-`petrus.impetus.instance.firing.begin_firing` and `complete_firing` (the test
-imports them as `instance_begin_firing` and `instance_complete_firing`); the
-port keeps their work inside `Petrus.Impetus.Instance` and exports no
-equivalent. The same records and outcomes are asserted through the public
-`begin` and `complete` doors. See `docs/audit/impetus-spec.md` (IMP-3).
-
-- `TestBeginEndFiring.test_instance_begin_firing_retains_its_record_authoring_contract`
-- `TestBeginEndFiring.test_instance_complete_firing_retains_its_outcome_and_registration_contract`
+Every upstream test function in this slice is ported, enforced by types, or
+ported in the package that owns its subject. The last two, the
+Instance-layer record-authoring contracts in `test_firing.py`
+(`test_instance_begin_firing_retains_its_record_authoring_contract` and
+`test_instance_complete_firing_retains_its_outcome_and_registration_contract`),
+are ported against `Petrus.Impetus.Instance.Firing.instanceBeginFiring` /
+`instanceCompleteFiring`, the reference's public
+`petrus.impetus.instance.firing.begin_firing` / `complete_firing` (IMP-3 in
+`docs/audit/impetus-spec.md`). The Haskell names carry the `instance` prefix
+the upstream test imports them under, so they never clash with the Petrinet
+`beginFiring` / `completeFiring` that `Petrus.Impetus.Petrinet` exports.
 
 ## Net definition and document edge cases
 

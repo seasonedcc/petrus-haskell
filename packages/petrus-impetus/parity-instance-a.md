@@ -10,9 +10,9 @@ RuntimeSpec, AwaitingTerminationSpec, CompletionSpec, EnvironmentSignalSpec, Ins
 GuardBranchSpec, CelGuardsSpec}.hs`, with helpers in `InstanceSupport.hs` and the test-local CEL
 compiler in `CelStub.hs`.
 
-Totals: 135 upstream tests — 104 ported, 20 ported via CEL stub, 4 enforced by types, 5 ported
-in `petrus-cel`, 2 not at parity. 126 Hspec examples (the 124 ported cases plus 2 door-level equivalents of not-at-parity
-cases).
+Totals: 135 upstream tests — 106 ported, 20 ported via CEL stub, 4 enforced by types, 5 ported
+in `petrus-cel`, 0 not at parity. 128 Hspec examples (the 126 ported cases plus 2 door-level
+companions of the two Instance record-authoring contracts).
 
 Kernel fix made for parity: `src/Petrus/Impetus/Internal/Uuid.hs` minted UUIDv7 ids with random
 bits inside a millisecond, so two instances built in the same millisecond were creation-ordered
@@ -35,8 +35,8 @@ that advances within a millisecond, process-wide.
 | TestSelectConservative.test_returns_none_when_empty | Instance firing / selectConservative / returns Nothing when empty | ported | |
 | TestBeginEndFiring.test_petrinet_source_binding_begins_with_no_movement_effects | Instance firing / begin/end firing / begins a source binding with no movement effects | ported | |
 | TestBeginEndFiring.test_petrinet_consume_precedes_read_and_same_token_fails_loud | Instance firing / begin/end firing / consumes before reading, so reading the consumed token fails loud | ported | exact message asserted |
-| TestBeginEndFiring.test_instance_begin_firing_retains_its_record_authoring_contract | Instance firing / begin/end firing / authors the begin records through the begin door | not at parity | `instance.begin_firing` (record-authoring helper taking a caller-chosen occurrence) is not exported by the Haskell port; the same FiringBegun + TokensConsumed batch is asserted through the `begin` door (occurrence minted as 1) |
-| TestBeginEndFiring.test_instance_complete_firing_retains_its_outcome_and_registration_contract | Instance firing / begin/end firing / authors the completion records through the complete door | not at parity | `instance.complete_firing` helper is not exported; asserted through the `complete` door, which validates registration effects against armed keys, so the equivalent closes the source's armed `default` key instead of an unarmed `old` |
+| TestBeginEndFiring.test_instance_begin_firing_retains_its_record_authoring_contract | Instance firing / begin/end firing / retains the Instance begin record-authoring contract | ported | against `instanceBeginFiring` (the reference's `instance.firing.begin_firing`); the begin-door companion "authors the begin records through the begin door" is kept beyond the reference |
+| TestBeginEndFiring.test_instance_complete_firing_retains_its_outcome_and_registration_contract | Instance firing / begin/end firing / retains the Instance complete outcome and registration contract | ported | against `instanceCompleteFiring` (the reference's `instance.firing.complete_firing`); the complete-door companion "authors the completion records through the complete door" is kept beyond the reference |
 | TestBeginEndFiring.test_begin_consumes_and_end_produces | Instance firing / begin/end firing / consumes at begin and produces at end | ported | |
 | TestBeginEndFiring.test_returns_movements_in_lifecycle_order | Instance firing / begin/end firing / returns movements in lifecycle order | ported | |
 | TestBeginEndFiring.test_begin_fails_loud_on_a_stale_selection_before_any_record_matters | Instance firing / begin/end firing / fails loud on a stale selection before any record matters | ported | exact message asserted |
