@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
 """Interleave a package's Haskell and Python benchmarks and tabulate them.
 
-    scripts/bench-compare <package> [REPETITIONS]   # default 2 repetitions
+    scripts/bench-compare <package> [REPETITIONS] [options]   # default 2 repetitions
 
-For packages whose ``bench/python_bench.py`` prints ``name,nanoseconds`` lines
-(scripts/bench_timing.py) named like the package's tasty-bench benchmarks.
-Each repetition runs ``cabal bench <package>`` (tasty-bench ``--csv``,
-``--stdev 5``, ``+RTS -M2G``) and ``python_bench.py`` (in the pinned
-upstream environment from scripts/upstream-python, from ``upstream/petrus``)
-back to back, alternating which goes first, and records the 1-minute load
-average around every run. Benchmarks that read ``PETRUS_TEST_POSTGRES`` get
+    --python SCRIPT     a Python twin in the package's bench/ directory
+                        (repeatable; default python_bench.py)
+    --upstream PROJECT  the pinned upstream project whose environment runs
+                        the twins, from upstream/PROJECT (default petrus)
+    --pattern PATTERN   only the tasty-bench rows this pattern selects (-p);
+                        the table then lists only those rows
+    --stdev PERCENT     tasty-bench's target relative deviation (default 5)
+
+For packages whose Python twins print ``name,nanoseconds`` lines on stdout
+(scripts/bench_timing.py, or a script's own median) named like the package's
+tasty-bench benchmarks; other output lines are ignored. Each repetition runs
+``cabal bench <package>`` (tasty-bench ``--csv``, ``--stdev 5``,
+``--time-mode wall``, ``+RTS -M2G``) and the twins (in the pinned upstream
+environment from scripts/upstream-python) back to back, alternating which
+goes first, and records the 1-minute load average around every run. Benchmarks that read ``PETRUS_TEST_POSTGRES`` get
 a throwaway server from scripts/with-postgres when it is unset.
 
 It prints a Markdown table: the median over repetitions of each row
@@ -19,12 +27,15 @@ same table is written to ``bench-results/tmp/<package>.compare.md``, and the
 raw CSV files to ``bench-results/tmp/`` (ignored by git). It never writes a
 package's RESULTS.md: those are curated by hand from runs like this one.
 
-Every Haskell benchmark measures wall-clock time (``localOption WallTime`` in
-its bench/Main.hs), as bench_timing.py does for Python.
+Every Haskell benchmark measures wall-clock time, as bench_timing.py does for
+Python: most bench/Main.hs files set ``localOption WallTime``, and the
+``--time-mode wall`` this script passes covers the ones that leave it to the
+command line.
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import os
 import statistics
@@ -35,7 +46,6 @@ from typing import Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent
 TMP = ROOT / "bench-results" / "tmp"
-UPSTREAM = ROOT / "upstream" / "petrus"
 
 
 def environment() -> Dict[str, str]:
@@ -45,9 +55,9 @@ def environment() -> Dict[str, str]:
     return env
 
 
-def upstream_python() -> str:
+def upstream_python(project: str) -> str:
     return subprocess.run(
-        [str(ROOT / "scripts" / "upstream-python"), "petrus"],
+        [str(ROOT / "scripts" / "upstream-python"), project],
         env=environment(),
         check=True,
         stdout=subprocess.PIPE,
@@ -55,11 +65,12 @@ def upstream_python() -> str:
     ).stdout.strip()
 
 
-def haskell(package: str, repetition: int) -> Dict[str, float]:
+def haskell(package: str, repetition: int, pattern: Optional[str], stdev: str) -> Dict[str, float]:
     output = TMP / f"{package}.haskell.{repetition}.csv"
     if output.exists():
         output.unlink()
-    options = f"--csv {output} --stdev 5 --timeout 300 +RTS -M2G -RTS"
+    selection = f"-p '{pattern}' " if pattern else ""
+    options = f"{selection}--csv {output} --stdev {stdev} --timeout 300 --time-mode wall +RTS -M2G -RTS"
     print(f"+ cabal bench {package} -j2 --benchmark-options '{options}'", file=sys.stderr, flush=True)
     subprocess.run(
         ["cabal", "bench", package, "-j2", "--benchmark-options", options],
@@ -78,23 +89,28 @@ def haskell(package: str, repetition: int) -> Dict[str, float]:
     return results
 
 
-def python(package: str, interpreter: str, repetition: int) -> Dict[str, float]:
-    script = ROOT / "packages" / package / "bench" / "python_bench.py"
-    print(f"+ {interpreter} -I -B {script.relative_to(ROOT)}", file=sys.stderr, flush=True)
-    completed = subprocess.run(
-        [interpreter, "-I", "-B", str(script)],
-        cwd=UPSTREAM,
-        env=environment(),
-        check=True,
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    (TMP / f"{package}.python.{repetition}.csv").write_text(completed.stdout)
+def python(package: str, interpreter: str, upstream: str, scripts: List[str], repetition: int) -> Dict[str, float]:
     results = {}
-    for line in completed.stdout.splitlines():
-        name, _, value = line.rpartition(",")
-        if name:
-            results[name] = float(value)
+    outputs = []
+    for name in scripts:
+        script = ROOT / "packages" / package / "bench" / name
+        print(f"+ {interpreter} -I -B {script.relative_to(ROOT)}", file=sys.stderr, flush=True)
+        completed = subprocess.run(
+            [interpreter, "-I", "-B", str(script)],
+            cwd=ROOT / "upstream" / upstream,
+            env=environment(),
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        outputs.append(completed.stdout)
+        for line in completed.stdout.splitlines():
+            row, _, value = line.rpartition(",")
+            try:
+                results[row] = float(value)
+            except ValueError:
+                continue
+    (TMP / f"{package}.python.{repetition}.csv").write_text("".join(outputs))
     return results
 
 
@@ -112,29 +128,39 @@ def main() -> int:
     if not arguments or arguments[0].startswith("-"):
         print(__doc__, file=sys.stderr)
         return 2
-    package = arguments[0]
-    repetitions = int(arguments[1]) if len(arguments) > 1 else 2
+    parser = argparse.ArgumentParser(usage=__doc__)
+    parser.add_argument("package")
+    parser.add_argument("repetitions", nargs="?", type=int, default=2)
+    parser.add_argument("--python", action="append", dest="scripts")
+    parser.add_argument("--upstream", default="petrus")
+    parser.add_argument("--pattern")
+    parser.add_argument("--stdev", default="5")
+    options = parser.parse_args(arguments)
+    package = options.package
+    repetitions = options.repetitions
+    scripts = options.scripts or ["python_bench.py"]
     main_hs = ROOT / "packages" / package / "bench" / "Main.hs"
-    if not (ROOT / "packages" / package / "bench" / "python_bench.py").exists():
-        print(f"{package} has no bench/python_bench.py", file=sys.stderr)
-        return 2
+    for name in scripts:
+        if not (ROOT / "packages" / package / "bench" / name).exists():
+            print(f"{package} has no bench/{name}", file=sys.stderr)
+            return 2
     if "PETRUS_TEST_POSTGRES" in main_hs.read_text() and not os.environ.get("PETRUS_TEST_POSTGRES"):
         # Re-run under a throwaway server; scripts/with-postgres stops it.
         return subprocess.call([str(ROOT / "scripts" / "with-postgres"), sys.executable, __file__, *arguments])
     TMP.mkdir(parents=True, exist_ok=True)
-    interpreter = upstream_python()
+    interpreter = upstream_python(options.upstream)
     runs: List[Tuple[Dict[str, float], Dict[str, float]]] = []
     loads: List[float] = []
     for repetition in range(1, repetitions + 1):
         loads.append(os.getloadavg()[0])
         if repetition % 2:
-            ours = haskell(package, repetition)
+            ours = haskell(package, repetition, options.pattern, options.stdev)
             loads.append(os.getloadavg()[0])
-            theirs = python(package, interpreter, repetition)
+            theirs = python(package, interpreter, options.upstream, scripts, repetition)
         else:
-            theirs = python(package, interpreter, repetition)
+            theirs = python(package, interpreter, options.upstream, scripts, repetition)
             loads.append(os.getloadavg()[0])
-            ours = haskell(package, repetition)
+            ours = haskell(package, repetition, options.pattern, options.stdev)
         loads.append(os.getloadavg()[0])
         runs.append((ours, theirs))
         print(f"repetition {repetition} done, load average {loads[-3]:.2f} / {loads[-2]:.2f} / {loads[-1]:.2f}", file=sys.stderr)
@@ -144,7 +170,9 @@ def main() -> int:
         "| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |",
         "|---|---:|---:|---:|---:|---|---|",
     ]
-    names = list(runs[0][0]) + [name for name in runs[0][1] if name not in runs[0][0]]
+    names = list(runs[0][0])
+    if not options.pattern:
+        names += [name for name in runs[0][1] if name not in runs[0][0]]
     for name in names:
         ours = [run[0][name] for run in runs if name in run[0]]
         theirs = [run[1][name] for run in runs if name in run[1]]

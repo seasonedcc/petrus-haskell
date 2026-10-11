@@ -8,7 +8,8 @@ Run from the pinned upstream checkout with its virtual environment:
 The History is the same 20 002 records the Haskell side builds (a drained
 4 000-token FIFO); every timing is the median of several runs after one
 warm-up, printed in milliseconds with a result size the Haskell side
-computes too.
+computes too (on stderr), and as a ``name,nanoseconds`` line on stdout for
+``scripts/bench-compare``.
 """
 
 from __future__ import annotations
@@ -52,8 +53,11 @@ def timed(name: str, action, repeats: int) -> None:
         start = time.perf_counter()
         action()
         samples.append(time.perf_counter() - start)
-    print(f"{name:28} {statistics.median(samples) * 1000:12.3f} ms   (size {size}, n={repeats})")
-    sys.stdout.flush()
+    median = statistics.median(samples)
+    # The readable line goes to stderr; stdout carries ``name,nanoseconds``
+    # for scripts/bench-compare.
+    print(f"{name:28} {median * 1000:12.3f} ms   (size {size}, n={repeats})", file=sys.stderr, flush=True)
+    print(f"{name},{median * 1e9:.0f}", flush=True)
 
 
 def main() -> None:
