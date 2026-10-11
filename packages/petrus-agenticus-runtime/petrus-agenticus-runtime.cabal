@@ -158,6 +158,7 @@ benchmark petrus-agenticus-runtime-bench
                   , petrus-execution
                   , petrus-json
                   , ram >=0.20
+                  , tasty >=1.4
                   , tasty-bench >=0.3
                   , temporary
                   , text

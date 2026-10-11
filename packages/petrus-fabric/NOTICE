@@ -14,12 +14,6 @@ Petrus
   Copyright Seasoned
   Licensed under the Apache License, Version 2.0
 
-Ryu (the shortest round-trip float digits in Petrus.Fabric.Canonical are a
-port of the reference d2s algorithm)
-  Copyright 2018 Ulf Adams
-  Licensed under the Apache License, Version 2.0
-  https://github.com/ulfjack/ryu
-
 psycopg 3 (driven by the reference; its transaction semantics are
 reproduced through petrus-postgres)
   Copyright The Psycopg Team

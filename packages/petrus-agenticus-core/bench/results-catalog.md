@@ -19,31 +19,38 @@ kinds with all ten capabilities.
 
 Environment:
 
-- Apple M4, macOS (Darwin 25.3).
-- GHC 9.10.3, `-O2`, run with `+RTS -A32m`.
+- Apple M4, macOS (Darwin 25.3), 2026-10-10.
+- GHC 9.10.3, `-O2`, run with `+RTS -A32m -M2G`.
 - CPython 3.14.6.
 
-Haskell times are tasty-bench means. Python times are medians of 7 batches.
+Method: five interleaved rounds. Each round ran the Haskell bench, then
+this script, so both saw the same machine state. A Haskell value is a
+tasty-bench mean (`--stdev 3`); a Python value is the script's median of 7
+batches. The table gives the median of the five rounds. The machine was
+shared with other work (load average 3.7 to 5.8).
 
-| Benchmark | Haskell | Python | Python / Haskell |
-| --- | ---: | ---: | ---: |
-| resolve-6-kinds | 2.61 µs | 16.46 µs | 6.3× |
-| snapshot-to-json | 22.4 µs | 15.47 µs | 0.69× |
-| snapshot-from-data | 74.3 µs | 120.8 µs | 1.6× |
-| register+enable-1000 | 850 µs | 3 040 µs | 3.6× |
+| Benchmark | Haskell | Python | Python / Haskell | Slowest round |
+| --- | ---: | ---: | ---: | ---: |
+| resolve-6-kinds | 2.50 µs | 15.2 µs | 6.1× | 5.9× |
+| snapshot-to-json | 7.07 µs | 14.6 µs | 2.1× | 2.0× |
+| snapshot-from-data | 64.2 µs | 114 µs | 1.8× | 1.6× |
+| register+enable-1000 | 734 µs | 2 870 µs | 3.9× | 3.7× |
 
-`snapshot-to-json` is the one path where Haskell is slower. CPython's
-`json.dumps` is implemented in C, while petrus-json's encoder:
+"Slowest round" is the lowest Python / Haskell ratio of a single round.
+Haskell was faster in every round of every row.
 
-1. pre-scans for non-finite floats,
-2. builds a `Builder`,
-3. turns that into a lazy `ByteString`,
-4. then copies it into a strict one.
+`snapshot-to-json` was 0.69× (22.4 µs against 15.5 µs) before petrus-json's
+encoder was rewritten. The encoder used to:
 
-petrus-json is shared by every package, so this is recorded instead of
-special-cased here. The effect layer needed a fast canonical writer, so
-`Petrus.Agenticus.Effect.Model` streams its digest input straight into
-SHA-256 (see `results-effect.md`).
+1. pre-scan for non-finite floats,
+2. build a `Builder`,
+3. turn that into a lazy `ByteString`,
+4. then copy it into a strict one.
+
+It now writes the bytes in one pass into a growing buffer, refusing as it
+goes, and copies a plain string with one `memcpy`. The output is unchanged:
+200 000 generated values and options give the same bytes and the same
+refusals as the old encoder.
 
 ## Rerun
 

@@ -40,7 +40,7 @@ module Petrus.Motus.Execution.Internal.Process
   , RunOutcome (..)
   ) where
 
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO, rtsSupportsBoundThreads, threadDelay)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception (SomeException, catch, finally, mask, onException, try)
@@ -48,7 +48,7 @@ import Control.Monad (forM_, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.IORef
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Foreign.C.Error (Errno (..), eCHILD)
@@ -82,10 +82,18 @@ import System.Timeout (timeout)
 data Child = Child
   { childPid :: CPid
   , childStatus :: MVar (Maybe Int)
+  , childExited :: TVar Bool
+  -- ^ Set once the child has exited (still unreaped) or cannot be waited
+  -- for; see 'exitSignal'.
+  , childWatched :: IORef Bool
+  -- ^ Whether 'exitSignal' has started its watcher.
   }
 
 -- | Where a child's standard descriptor comes from.
 data StdioFd = InheritFd | UseFd Fd
+
+foreign import capi safe "petrus_posix.h petrus_wait_exited"
+  c_waitExited :: CPid -> IO CInt
 
 foreign import capi safe "petrus_posix.h petrus_spawn"
   c_spawn :: CString -> Ptr CString -> Ptr CString -> CString -> CInt -> CInt -> CInt -> CInt -> Ptr CPid -> IO CInt
@@ -114,7 +122,7 @@ spawnChild argv cwd environment newSession (input, output, errors) = case argv o
                   if code == 0 then Right <$> peek pidPtr else pure (Left code)
     case status of
       Left code -> throwExecution OSError (T.pack (pythonErrnoMessage code (Just executable)))
-      Right pid -> Child pid <$> newMVar Nothing
+      Right pid -> Child pid <$> newMVar Nothing <*> newTVarIO False <*> newIORef False
   where
     raw = \case
       InheritFd -> -1
@@ -138,6 +146,20 @@ childExitCode child = modifyMVar (childStatus child) $ \case
             Terminated signal _ -> Just (negate (fromIntegral signal))
             Stopped _ -> Nothing
     pure (code, code)
+
+-- | A variable that turns 'True' once the child has exited, so a waiter can
+-- block instead of polling.  The first call starts one watcher thread whose
+-- safe foreign call blocks in @waitid(WNOWAIT)@: it observes the exit without
+-- reaping, so 'childExitCode' still reaps exactly once and 'signalChild'
+-- never targets a recycled pid.  It also turns 'True' when the child cannot
+-- be waited for (already reaped).  Only for the threaded RTS, where a blocked
+-- safe call holds one OS thread rather than the whole program.
+exitSignal :: Child -> IO (TVar Bool)
+exitSignal child = do
+  watching <- atomicModifyIORef' (childWatched child) (True,)
+  unless watching $
+    () <$ forkIO (c_waitExited (childPid child) >> atomically (writeTVar (childExited child) True))
+  pure (childExited child)
 
 -- | @Popen.send_signal@: a no-op once the child has been reaped.
 signalChild :: Child -> Signal -> IO ()
@@ -266,8 +288,36 @@ pollExit running =
       pure code
 
 -- | @Popen.wait(timeout)@ without raising: 'Nothing' when still running.
+--
+-- On the threaded RTS this blocks until the child exits ('exitSignal') or
+-- the limit passes, then reaps it; elsewhere it polls with CPython's
+-- back-off (0.5 ms doubling to 50 ms).
 waitExitWithin :: Running -> Maybe Double -> IO (Maybe Int)
-waitExitWithin running limit = do
+waitExitWithin running limit
+  | rtsSupportsBoundThreads =
+      pollExit running >>= \case
+        Just code -> pure (Just code)
+        Nothing -> do
+          start <- getMonotonicTime
+          exited <- exitSignal (runningChild running)
+          let arrival = atomically (readTVar exited >>= check)
+          arrived <- case limit of
+            Nothing -> True <$ arrival
+            Just seconds
+              | seconds > 0 -> isJust <$> timeout (max 1 (round (min seconds 1.0e9 * 1e6))) arrival
+              | otherwise -> pure False
+          code <- pollExit running
+          case code of
+            Nothing | arrived -> do
+              -- Exited but not yet reapable: finish with the poll loop.
+              now <- getMonotonicTime
+              waitExitPolling running (fmap (\seconds -> max 0 (seconds - (now - start))) limit)
+            _ -> pure code
+  | otherwise = waitExitPolling running limit
+
+-- | 'waitExitWithin' by polling: CPython's @Popen._wait@ loop.
+waitExitPolling :: Running -> Maybe Double -> IO (Maybe Int)
+waitExitPolling running limit = do
   start <- getMonotonicTime
   let loop delay =
         pollExit running >>= \case

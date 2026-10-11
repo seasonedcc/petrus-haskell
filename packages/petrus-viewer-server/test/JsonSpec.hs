@@ -43,6 +43,10 @@ spec = do
     it "formats numbers like Number.prototype.toString" $ do
       stringify "[1e21,1e-7,1e-6,123e-20,-0,0.1,5e-324,100,1.0,9007199254740993,0.30000000000000004,1E+2,-1e400]"
         `shouldBe` Right "[1e+21,1e-7,0.000001,1.23e-18,0,0.1,5e-324,100,1,9007199254740992,0.30000000000000004,100,null]"
+      -- Recorded from Node 22: the rounding interval's ends are admitted for
+      -- an even significand, and exact ties go to even.
+      stringify "[9.999999999999999e22,99999999999999991611392,2.98023223876953125e-8,1.2345678901234567e-300,123456789012345678]"
+        `shouldBe` Right "[1e+23,1e+23,2.9802322387695312e-8,1.2345678901234568e-300,123456789012345680]"
 
     it "orders integer-like keys first and keeps the last duplicate in the first position" $ do
       stringify "{\"b\":1,\"a\":2,\"10\":3,\"2\":4,\"4294967295\":5,\"4294967294\":6,\"01\":7,\"b\":8}"

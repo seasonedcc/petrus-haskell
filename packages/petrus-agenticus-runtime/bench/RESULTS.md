@@ -24,21 +24,26 @@ These are twin workloads: `bench/Main.hs` (tasty-bench) and
 
 Environment:
 
-- Apple M4, macOS (Darwin 25.3), APFS.
+- Apple M4, macOS (Darwin 25.3), APFS, 2026-10-10.
 - GHC 9.10.3, `-O2`, run with `+RTS -A32m -M2G`.
 - CPython 3.14.6.
 
-Haskell times are tasty-bench means. Python times are medians of 7 batches.
+Method: five interleaved rounds, together with the Pi rows of
+[results-pi.md](results-pi.md). Each round ran the Haskell bench, then the
+Python scripts. A Haskell value is a tasty-bench mean (`--stdev 3`); a
+Python value is the script's median of 7 batches. The table gives the median
+of the five rounds. The machine was shared with other work (load average 3.7
+to 5.8).
 
-| Benchmark | Haskell | Python | Python / Haskell |
-| --- | ---: | ---: | ---: |
-| runner-3-phases-3-reads | 5.86 ms | 11.39 ms | 1.9× |
-| projection-roundtrip | 81.8 µs | 116.1 µs | 1.4× |
+| Benchmark | Haskell | Python | Python / Haskell | Slowest round |
+| --- | ---: | ---: | ---: | ---: |
+| runner-3-phases-3-reads | 5.41 ms | 10.2 ms | 1.9× | 1.7× |
+| projection-roundtrip | 42.0 µs | 110 µs | 2.6× | 2.4× |
 
 The full run is dominated by file-system work (temporary-file creation,
 fsync, rename and History appends), which costs the same in both languages.
-The round trip is dominated by JSON text encoding. `petrus-json`'s
-`dumpsText` is known to trail CPython's C encoder on large documents.
+The round trip is mostly JSON text encoding. It was 1.4× (81.8 µs) before
+petrus-json's encoder was rewritten to write in one pass.
 
 ## Rerun
 

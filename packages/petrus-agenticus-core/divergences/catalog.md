@@ -64,9 +64,9 @@ The differential corpus pins both.
 
 ## Benchmarks
 
-8. **`catalog/snapshot-to-json` is slower than Python**: 22 µs against
-   15 µs. CPython's `json.dumps` is C. petrus-json's encoder builds a
-   `Builder`, then a lazy `ByteString`, then a strict one, after a
-   non-finite pre-scan. It is a shared package, so this is recorded rather
-   than special-cased. The other three catalog paths are 1.6 to 6.3 times
-   faster than Python.
+8. **`catalog/snapshot-to-json`** used to be slower than Python (22 µs
+   against 15 µs), because petrus-json's encoder built a `Builder`, then a
+   lazy `ByteString`, then a strict one, after a non-finite pre-scan. The
+   encoder now writes in one pass, and the row is 2.1 times faster than
+   Python (7.1 µs against 14.6 µs). The other three catalog paths are 1.8
+   to 6.1 times faster. See `bench/results-catalog.md`.

@@ -33,52 +33,85 @@ and by scripts against the pinned reference (`upstream/petrus` @ 3f85fc2):
 
 Environment:
 
-- Apple M4, macOS (Darwin 25.3), APFS.
+- Apple M4, macOS (Darwin 25.3), APFS, 2026-10-10.
 - GHC 9.10.3. The benchmark is built with `-O2` and run with
   `+RTS -A32m -M2G`.
 - CPython 3.14.6.
 
-Haskell times are tasty-bench means. Python times are medians of 7 batches.
+Method: five interleaved rounds. Each round ran the Haskell bench, then
+`python_pi.py` and `python_pi_a2.py`, so both saw the same machine state.
+The table gives the median of the five rounds. The machine was shared with
+other work (load average 3.7 to 5.8).
 
-| Benchmark | Haskell | Python | Python / Haskell |
-| --- | ---: | ---: | ---: |
-| pi-start-frame-encode | 15.7 µs | 7.7 µs | 0.5× |
-| pi-tool-call-decode | 406 ns | 1.81 µs | 4.5× |
-| pi-session-validate | 445 µs | 460 µs | 1.0× |
-| pi-fingerprint | 7.33 µs | 6.35 µs | 0.9× |
-| pi-ledger-cycle | 755 µs | 862 µs | 1.1× |
-| pi-a2-fingerprint | 7.55 µs | 6.24 µs | 0.8× |
-| pi-a2-scripted-turn | 55 ms (± 61 ms) | 29.1 ms | 0.5× |
+- A Haskell value is a tasty-bench mean (`--stdev 3`), except for
+  `pi-a2-scripted-turn`.
+- A Python value is the script's median of 7 batches.
+- `pi-a2-scripted-turn` is timed on both sides with the Python script's
+  protocol: one warm-up turn, then 7 batches of 20 turns, and the median
+  batch's time per turn. Each turn adds to the host's ledgers, so a turn
+  costs more the more turns came before it, in both implementations.
+  tasty-bench doubles its iteration count until the estimate settles, so on
+  this workload it measured turns from much fuller ledgers than the twin
+  did. `bench/PiA2Bench.hs` explains this in more detail.
+
+| Benchmark | Haskell | Python | Python / Haskell | Slowest round |
+| --- | ---: | ---: | ---: | ---: |
+| pi-start-frame-encode | 3.24 µs | 7.80 µs | 2.4× | 2.3× |
+| pi-tool-call-decode | 377 ns | 1.87 µs | 5.0× | 4.4× |
+| pi-session-validate | 168 µs | 460 µs | 2.7× | 2.5× |
+| pi-fingerprint | 2.32 µs | 6.46 µs | 2.8× | 2.6× |
+| pi-ledger-cycle | 794 µs | 923 µs | 1.2× | 1.1× |
+| pi-a2-fingerprint | 2.49 µs | 6.25 µs | 2.5× | 2.5× |
+| pi-a2-scripted-turn | 10.4 ms | 29.2 ms | 2.8× | 2.7× |
+
+"Slowest round" is the lowest Python / Haskell ratio of a single round.
+Haskell was faster in every round of every row. The batches of the scripted
+turn ranged from 7.3 to 15.0 ms across the five rounds.
+
+Before these changes, the committed figures were 0.5× for frame encoding,
+0.9× and 0.8× for the fingerprints, 1.0× for session validation and 0.5×
+(55 ms ± 61 ms) for the scripted turn.
 
 Notes on the results:
 
-- **Frame encoding** is `petrus-json`'s `dumps`, which is known to trail
-  CPython's C encoder. A `start` frame is written once per Turn, so it is
-  not a hot path in practice.
-- **Session validation** runs the CPython-faithful scanner from
-  `Petrus.Impetus.Internal.PyJson`, which keeps lone surrogate escapes the
-  way the reference does. That scanner works over `String`, so it is no
-  faster than CPython's C scanner.
+- **Frame encoding** and **both fingerprints** are `petrus-json`'s `dumps`.
+  The fingerprints add SHA-256 over those bytes. The encoder now writes
+  in one pass into a growing buffer (no `Builder`, no lazy intermediate),
+  and copies a string that needs no escaping with one `memcpy`. A
+  fingerprint's hex digest comes from `memory`'s base-16 encoder rather
+  than `show` of the digest. The bytes are unchanged.
+- **Session validation** first runs `petrus-json`'s strict parser
+  (duplicate members and non-finite constants refused). Whatever that
+  parser accepts, the CPython-faithful scanner in
+  `Petrus.Impetus.Internal.PyJson` accepts as the same value. The two
+  differ only on lone surrogate escapes, a UTF-8 BOM and very deep nesting,
+  which the strict parser refuses. Those inputs, and every refused input,
+  still go through the scanner, so the outcome is the reference's.
 - **The ledger cycle** is four SQLite write transactions plus one read, each
   committed with the journal in `delete` mode. File-system work dominates it
   in both languages.
-- **The A2 fingerprint** is the inner Pi fingerprint's shape again: a
-  compact sorted `dumps` plus SHA-256. It trails for the same reason as
-  frame encoding.
-- **The scripted A2 turn** is about twice as slow in the port, and its
-  spread is wide: the mean is 55 ms and the standard deviation 61 ms, on two
-  runs. Most of a turn is Local territory work: creating the lease directory,
-  extracting and exporting the archive through `/bin/sh` commands, and
-  destroying it. On top of that come three SQLite databases written with
-  `synchronous = FULL`. The port starts each of those commands through the
-  `process` library and polls for its exit with CPython's back-off (0.5 ms
-  doubling to 50 ms), so one slow command can cost a 50 ms step. This has not
-  been profiled further.
+- **The scripted A2 turn** is mostly Local territory work:
+  - creating the lease directory;
+  - extracting and exporting the archive through `/bin/sh` commands;
+  - destroying the lease.
+
+  On top of that come three SQLite databases written with
+  `synchronous = FULL`. The wide spread of the earlier figure had two
+  causes:
+  - tasty-bench's iteration doubling over a workload whose cost grows per
+    turn (see the method above);
+  - CPython's exit-polling back-off (0.5 ms doubling to 50 ms), which the
+    port copied. With it, a command that ended just after a poll cost up to
+    one 50 ms step.
+
+  `petrus-execution` now blocks on the child's exit instead (a watcher
+  thread in `waitid(..., WNOWAIT)`; see its DIVERGENCES.md). Timeouts,
+  cancellation and the process-group kill are unchanged.
 
 ## Rerun
 
 ```sh
-cabal bench petrus-agenticus-runtime-bench --benchmark-options='+RTS -M2G -RTS'
-cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-runtime/bench/python_pi.py
-cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-runtime/bench/python_pi_a2.py
+cabal bench petrus-agenticus-runtime-bench --benchmark-options='--stdev 3 +RTS -A32m -M2G -RTS'
+cd upstream/petrus && .venv/bin/python -I -B ../../packages/petrus-agenticus-runtime/bench/python_pi.py
+cd upstream/petrus && .venv/bin/python -I -B ../../packages/petrus-agenticus-runtime/bench/python_pi_a2.py
 ```

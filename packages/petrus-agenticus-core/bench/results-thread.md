@@ -4,23 +4,27 @@ Workload: 1000 Episodes × 4 Turns on one Thread (each Turn accepts one
 append and settles completed; each Episode settles completed with a fresh
 Continuation). Both sides run the same five measurements.
 
-Environment: Apple M4, macOS 26.3, GHC 9.10.3 (`-O2 -threaded`,
-`-with-rtsopts=-A32m`, run with `+RTS -M2G -RTS`), tasty-bench; Python 3.14.6
-(upstream `.venv`), `time.perf_counter` best-of-N.
+Environment: Apple M4, macOS 26.3, 2026-10-10. GHC 9.10.3 (`-O2 -threaded`,
+`-with-rtsopts=-A32m`, run with `+RTS -A32m -M2G -RTS`), tasty-bench means
+(`--stdev 3`). Python 3.14.6 (upstream `.venv`), the script's median of
+batches.
 
-| Benchmark | Haskell | Python | Ratio (Py/Hs) |
-| --- | --- | --- | --- |
-| build-1000x4 | 18.3 ms ± 1.8 | 51 694 ms | ~2 800× |
-| episode-after-1000 | 29.8 µs ± 3.0 | 94.1 ms | ~3 100× |
-| to-json-1000x4 (to-data + dumps) | 28.5 ms ± 0.4 | 18.7 ms | 0.66× |
-| dumps-only-1000x4 | 24.2 ms ± 2.0 | 10.2 ms | 0.42× |
-| from-data-1000x4 | 22.3 ms ± 1.7 | 103.4 ms | ~4.6× |
+Method: five interleaved rounds (Haskell bench, then Python script, each
+round), run as `python_thread.py --skip-build`. The table gives the median
+of the five rounds. The Python build row comes from one extra full run of
+`python_thread.py` right after them: each of its iterations takes about 20 s.
+The machine was shared with other work (load average 3.7 to 5.8).
 
-Earlier quiet Haskell run (same binary): build 30.8 ms, episode 43.8 µs,
-to-json 37.2 ms, dumps-only 34.4 ms, from-data 30.4 ms. A second Python run
-under machine load measured build 56 200 ms, episode 184.3 ms, to-json
-59.9 ms, from-data 206.3 ms. The machine was shared with other builds, so
-treat single-digit-percent differences as noise.
+| Benchmark | Haskell | Python | Python / Haskell | Slowest round |
+| --- | ---: | ---: | ---: | ---: |
+| build-1000x4 | 16.6 ms | 22 431 ms | ~1 350× | (one run) |
+| episode-after-1000 | 26.0 µs | 48.6 ms | ~1 870× | ~1 820× |
+| to-json-1000x4 (to-data + dumps) | 4.17 ms | 10.6 ms | 2.5× | 2.5× |
+| dumps-only-1000x4 | 3.43 ms | 6.26 ms | 1.8× | 1.8× |
+| from-data-1000x4 | 17.1 ms | 60.8 ms | 3.6× | 3.3× |
+
+Before petrus-json's encoder was rewritten, `to-json` was 0.66× (28.5 ms
+against 18.7 ms) and `dumps-only` 0.42× (24.2 ms against 10.2 ms).
 
 ## Findings
 
@@ -29,19 +33,18 @@ treat single-digit-percent differences as noise.
   port validates only the Episode being changed plus the Thread invariants
   that span Episodes, which keeps building linear without changing any
   accepted or refused outcome (checked by the differential corpus).
-- Haskell is slower at pure JSON encoding. `dumps-only` is entirely
-  `Petrus.Json.dumpsText defaultDumps` (shared `petrus-json` Builder encoder)
-  against CPython's C-accelerated `json.dumps`. It is GC-sensitive: 18.6 ms
-  with `-A128m`, and a large-chunk Builder strategy reached 22.7 ms.
-  `petrus-json` is a shared package with concurrent edits, so it is left
-  unchanged here. Follow-up: an escaping fast path for ASCII-only strings
-  and pre-sized strict output in `petrus-json`.
-- `to-json` (Thread → `Json` → text) is the same story: the to-data half is
-  ~4 ms; the rest is the encoder.
+- `dumps-only` is entirely `Petrus.Json.dumpsText defaultDumps` against
+  CPython's C-accelerated `json.dumps`. petrus-json now writes in one pass
+  into a growing buffer (no `Builder`, no lazy intermediate), scans each
+  string once, and copies a string that needs no escaping with one
+  `memcpy`. That took this row from 24.2 ms to 3.4 ms. The bytes are
+  unchanged.
+- `to-json` (Thread → `Json` → text) is the to-data half (about 0.7 ms) plus
+  the encoder.
 
 ## Rerun
 
 ```sh
 cabal -j2 bench petrus-agenticus-core --benchmark-options='-p thread +RTS -M2G -RTS'
-cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-core/bench/python_thread.py
+cd upstream/petrus && .venv/bin/python -I -B ../../packages/petrus-agenticus-core/bench/python_thread.py  # --skip-build to leave out the slow row
 ```
