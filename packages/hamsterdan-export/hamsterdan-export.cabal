@@ -58,7 +58,8 @@ executable hamsterdan-export
   main-is:          Main.hs
   build-depends:    base
                   , hamsterdan-export
-                  , text
+                  , petrus-json
+                  , unix
   ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-maxN4"
 
 test-suite hamsterdan-export-test

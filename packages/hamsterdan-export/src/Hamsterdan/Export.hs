@@ -33,6 +33,7 @@ module Hamsterdan.Export
 
 import Control.Exception (Exception, SomeException, fromException, throwIO, try)
 import Control.Monad (foldM, forM, forM_, unless, when)
+import Data.Bifunctor (bimap)
 import Data.ByteString qualified as BS
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Containers.ListUtils (nubOrd)
@@ -69,6 +70,7 @@ import Hamsterdan.Python.Text qualified as Py
 import Hamsterdan.PyLiteral qualified as Lit
 import Hamsterdan.Readiness.NetV5.Board (renderBoard)
 import Petrus.Json (Json (..))
+import Petrus.Json.Python (utf8BackslashReplace)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.IO (Handle, hFlush, stderr, stdout)
@@ -219,8 +221,16 @@ type Row = [(Text, PV)]
 -- | The @bodies.sqlite3@ key for one logical agent operation attempt: the
 -- ONLY join between canonical History and the agent session bodies.
 agentOperationId :: Text -> Integer -> Text
-agentOperationId operation attempt =
-  "pi:" <> sha256Hex (TE.encodeUtf8 (operation <> "\0" <> tshow attempt))
+agentOperationId operation attempt = "pi:" <> sha256Hex (TE.encodeUtf8 (operationKey operation attempt))
+
+-- | 'agentOperationId', or the @UnicodeEncodeError@ the reference's
+-- @.encode()@ raises for an operation holding a lone surrogate.
+checkedOperationId :: Text -> Integer -> Either PyError Text
+checkedOperationId operation attempt =
+  bimap fromPython (("pi:" <>) . sha256Hex) (Py.utf8Encode (operationKey operation attempt))
+
+operationKey :: Text -> Integer -> Text
+operationKey operation attempt = operation <> "\0" <> tshow attempt
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
@@ -418,8 +428,8 @@ historyOperations records inst = do
                   settle logical 1 "mutation"
               where
                 settle logical attempt kind = do
-                  let operationId = agentOperationId logical attempt
-                      seen = Map.lookup operationId table
+                  operationId <- raiseEither (checkedOperationId logical attempt)
+                  let seen = Map.lookup operationId table
                   occurrence <- raiseEither (subscript "occurrence" record >>= pyInt)
                   let operation =
                         Operation
@@ -440,18 +450,21 @@ routedOperations routes known = do
   let logicalKnown = Set.fromList (map (.logicalOperation) known)
   fmap concat . forM routes $ \row -> do
     logical <- pyStr <$> raiseEither (subscript "operation" row)
-    pure
-      [ Operation
-          { operationId = agentOperationId logical 1
-          , logicalOperation = logical
-          , attempt = 1
-          , kind = fst (T.breakOn ":" logical)
-          , origin = "agent-routes"
-          , historyOccurrences = []
-          , historyInputs = []
-          }
-      | not (Set.member logical logicalKnown)
-      ]
+    if Set.member logical logicalKnown
+      then pure []
+      else do
+        operationId <- raiseEither (checkedOperationId logical 1)
+        pure
+          [ Operation
+              { operationId
+              , logicalOperation = logical
+              , attempt = 1
+              , kind = fst (T.breakOn ":" logical)
+              , origin = "agent-routes"
+              , historyOccurrences = []
+              , historyInputs = []
+              }
+          ]
 
 transcriptStem :: Text -> IO Text
 transcriptStem operationId
@@ -830,7 +843,10 @@ writeBoards out records reporter = do
   planned <- newIORef []
   outcome <- try . forM rendered $ \(name, seq', result, board) -> do
     text <- either raise pure board
-    modifyIORef' planned ((joinPath out name, TE.encodeUtf8 (text <> "\n")) :)
+    -- write_text opens (truncates) the file, then encodes.
+    case Py.utf8Encode (text <> "\n") of
+      Right bytes -> modifyIORef' planned ((joinPath out name, bytes) :)
+      Left failure -> modifyIORef' planned ((joinPath out name, "") :) >> raise (fromPython failure)
     pure
       ( "- ["
           <> name
@@ -1398,9 +1414,9 @@ runExport env argv = do
   width <- subtract 2 <$> terminalColumns env.environment
   case parseArgs width exportParser argv of
     Exited status printed problems -> do
-      emit env.output printed
+      printed' <- printOut env printed
       emit env.errors problems
-      pure (if status == 0 then ExitSuccess else ExitFailure status)
+      pure (if not printed' then ExitFailure 1 else if status == 0 then ExitSuccess else ExitFailure status)
     Parsed namespace -> do
       let request =
             ExportRequest
@@ -1417,9 +1433,9 @@ runExport env argv = do
           emit env.errors (T.concat ["GAP: " <> g <> "\n" | g <- report.gaps])
           numbers <- raiseEither (dumpsIndentedJson (Object (Map.toList report.numbers)))
           emit env.output (numbers <> "\n")
-          emit env.output ("package written to " <> request.out <> " (gaps: " <> tshow (length report.gaps) <> ")\n")
+          done <- printOut env ("package written to " <> request.out <> " (gaps: " <> tshow (length report.gaps) <> ")\n")
           hFlush env.output
-          pure ExitSuccess
+          pure (if done then ExitSuccess else ExitFailure 1)
         Left (e :: SomeException)
           | Just (EvidenceExportError message) <- fromException e -> do
               emit env.errors ("export failed: " <> message <> "\n")
@@ -1431,7 +1447,17 @@ runExport env argv = do
               emit env.errors (T.pack (show e) <> "\n")
               pure (ExitFailure 1)
 
--- | Write text to a handle in one piece: @Data.Text.IO@ writes an
--- unbuffered handle (stderr) one character at a time.
+-- | Write text to a handle in one piece (@Data.Text.IO@ writes an
+-- unbuffered handle, stderr, one character at a time), encoded as
+-- CPython's @sys.stderr@ encodes: UTF-8, a lone surrogate (an undecodable
+-- byte of an argument or a name) as its @\\udcXX@ escape.
 emit :: Handle -> Text -> IO ()
-emit handle text = BS.hPut handle (TE.encodeUtf8 text)
+emit handle text = BS.hPut handle (utf8BackslashReplace text)
+
+-- | @print@ to @sys.stdout@, which encodes strict UTF-8: a lone surrogate
+-- raises @UnicodeEncodeError@ before anything of the line is written, and
+-- the interpreter reports it as uncaught. 'False' when it did.
+printOut :: ExportEnvironment -> Text -> IO Bool
+printOut env text = case Py.utf8Encode text of
+  Right bytes -> True <$ BS.hPut env.output bytes
+  Left failure -> False <$ emit env.errors (errorLine (fromPython failure) <> "\n")

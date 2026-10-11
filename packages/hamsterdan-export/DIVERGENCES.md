@@ -24,15 +24,23 @@ Below are the differences that remain, with their rationale.
    help on a terminal when `NO_COLOR` and `PYTHON_COLORS` allow it. The port
    writes the plain text, which is what the reference writes to a pipe. The
    width is the same: `COLUMNS`, else the terminal, else 80.
-3. **Names and text that are not UTF-8.**
-   - CPython keeps the undecodable bytes of a file name or an argument as
-     lone surrogates (`surrogateescape`). `Text` cannot hold them.
-   - The port decodes such names leniently (U+FFFD). An export over such a
-     directory entry, or with such an argument, can name it differently.
-   - Lone surrogates inside JSON (`"\ud800"`) raise
-     `UnsupportedLoneSurrogate` instead of being carried through: the
-     dynamic value model (`Hamsterdan.Python.Object`) holds `str` as `Text`.
-   - The host never writes either.
+3. **Names and text that are not UTF-8: resolved, no longer a
+   difference.**
+   - Arguments and directory entries are decoded with `surrogateescape`
+     (petrus-json's `fsDecode`), every path is encoded back with
+     `fsEncode`, so an undecodable byte round-trips, and a surrogate that
+     is not an escaped byte raises CPython's `UnicodeEncodeError`
+     (`os.path.exists` and the other predicates answer `False` instead,
+     as CPython's do).
+   - Lone surrogates inside JSON (`"\ud800"`) and escaped in a board
+     literal stay in their `str` (WTF-8, "Petrus.Json.Wtf8"). Writing one
+     fails where CPython's does: a file (`write_text` truncates first, so
+     an empty file is left), an operation id (`str.encode`), standard
+     output (strict); standard error escapes it (`backslashreplace`).
+   - The differential runs hostile cases for each, and command lines with
+     undecodable arguments. APFS refuses names that are not UTF-8
+     (`EILSEQ`), so the undecodable directory entries exist on Linux
+     only; on macOS that case runs without them.
 4. **JSON stored as UTF-16 or UTF-32 bytes: resolved, no longer a
    difference.** `json.loads(bytes)` is petrus-json's `loadsBytes`, which
    runs CPython's `detect_encoding` and decodes with `surrogatepass`, so

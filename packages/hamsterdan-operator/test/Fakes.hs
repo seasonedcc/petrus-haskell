@@ -31,6 +31,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.GitHub.Config (HostConfig (..), fromEnvironment, revealSecret)
 import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json.Wtf8 (fromCodePoints)
 import System.Directory
   ( copyFile
   , createDirectoryIfMissing
@@ -107,7 +108,7 @@ fakeProvider :: FilePath -> String -> [String] -> IO ()
 fakeProvider root name arguments = do
   cwd <- getCurrentDirectory
   let rootText = T.pack root
-      normalized = map (normalizeText rootText . T.pack) arguments
+      normalized = map (normalizeText rootText . fromCodePoints) arguments
       key = T.unwords (T.pack name : normalized)
       logPath = root </> "calls.log"
   logged <- doesFileExist logPath

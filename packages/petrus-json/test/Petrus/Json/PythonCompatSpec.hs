@@ -388,6 +388,7 @@ check c answer = case (c, answer) of
       ++ compareAs ("upper " ++ show s) (asString (member "upper" got)) (T.unpack (pythonUpper (fromCodePoints s)))
       ++ compareAs ("casefold " ++ show s) (asString (member "casefold" got)) (T.unpack (pythonCasefold (fromCodePoints s)))
       ++ compareAs ("fsencode " ++ show s) (fsEncoded (member "fsencode" got)) (either (Left . pythonExceptionStr) (Right . hexOf) (fsEncode (fromCodePoints s)))
+      ++ compareAs ("backslashreplace " ++ show s) (member "backslashreplace" got) (String (hexOf (utf8BackslashReplace (fromCodePoints s))))
       ++ if any (\ch -> ord ch >= 0xD800 && ord ch <= 0xDFFF) s
         then []
         else
@@ -465,7 +466,7 @@ spec = describe "Petrus.Json.Python against the pinned CPython" $ do
         length mine `shouldSatisfy` (> 0)
         take 10 (concatMap (uncurry check) mine) `shouldBe` []
   group "agrees on every code point (isprintable, isspace, line boundaries, decimal, isdigit, lower, upper, casefold)" $ \case UnicodeCase -> True; _ -> False
-  group "agrees on repr, strip, split, splitlines, isprintable, lower, upper, casefold and os.fsencode of generated strings" $ \case StringCase _ -> True; _ -> False
+  group "agrees on repr, strip, split, splitlines, isprintable, lower, upper, casefold, os.fsencode and backslashreplace of generated strings" $ \case StringCase _ -> True; _ -> False
   group "agrees on repr(bytes)" $ \case BytesReprCase _ -> True; _ -> False
   group "agrees on repr(float)" $ \case FloatReprCase _ -> True; _ -> False
   group "agrees on repr, str and type name of json.loads values" $ \case JsonReprCase _ -> True; _ -> False

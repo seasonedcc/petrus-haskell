@@ -65,6 +65,7 @@ import Data.ByteString qualified as BS
 import Data.List (find, sortOn)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Bifunctor (bimap)
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Python.Exception (PythonException (..), pythonExceptionStr)
 import Hamsterdan.Python.Text (strRepr)
@@ -72,7 +73,6 @@ import Hamsterdan.Python.Text qualified as Py
 import Petrus.Json (EncodeError (..), EncodeOptions (..), Json (..), defaultDumps, dumps, encodeErrorMessage)
 import Petrus.Json.Python (loadsUtf8, pythonBytesRepr, pythonDoubleRepr)
 import Petrus.Json.Python qualified as Python
-import Petrus.Json.Wtf8 (holdsLoneSurrogate)
 
 -- ---------------------------------------------------------------------------
 -- Values
@@ -340,19 +340,14 @@ loadsText = loaded . loadsUtf8
 -- or the @TypeError@ for anything else.
 loadsValue :: PV -> Either PyError PV
 loadsValue = \case
-  PStr s -> loadsText (TE.encodeUtf8 s)
+  PStr s -> loaded (Python.loadsText s)
   PBytes b -> loaded (Python.loadsBytes b)
   other -> Left (typeError ("the JSON object must be str, bytes or bytearray, not " <> typeName other))
 
--- | The object, or the exception as the traceback prints it. A string
--- holding a lone surrogate, which CPython keeps in a @str@, is refused
--- (DIVERGENCES.md, 3).
+-- | The object, or the exception as the traceback prints it. A lone
+-- surrogate stays in its @str@ (WTF-8, "Petrus.Json.Wtf8"), as in CPython.
 loaded :: Either PythonException Json -> Either PyError PV
-loaded = \case
-  Right json
-    | holdsLoneSurrogate json -> Left (PyError "UnsupportedLoneSurrogate" "a string holds a lone surrogate, which this implementation cannot represent")
-    | otherwise -> Right (fromJson json)
-  Left failure -> Left (fromPython failure)
+loaded = bimap fromPython fromJson
 
 -- | @json.dumps(value, indent=2, sort_keys=True)@ (@sorted@ is
 -- @sort_keys@).

@@ -32,7 +32,7 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Python.Object (PV (..), PyError (..), hashCheck, loadsText, loadsValue, pyEq, toJson, typeName)
+import Hamsterdan.Python.Object (PV (..), PyError (..), hashCheck, loadsValue, pyEq, toJson, typeName)
 import Hamsterdan.Python.Text qualified as Py
 import Hamsterdan.Python.Url qualified as Url
 import Hamsterdan.Operator.FastJson (fastLoads)
@@ -142,7 +142,7 @@ loadsJson value = case (case value of PStr s -> loadsStr s; _ -> loadsValue valu
 -- | @json.loads@ of a @str@: the fast path when the document is in its
 -- subset, the reference loader otherwise.
 loadsStr :: Text -> Either PyError PV
-loadsStr text = maybe (loadsText (TE.encodeUtf8 text)) Right (fastLoads text)
+loadsStr text = maybe (loadsValue (PStr text)) Right (fastLoads text)
 
 -- | @json.dumps(value)@ (unsorted, default separators).
 dumpsPlain :: PV -> Either PyError Text

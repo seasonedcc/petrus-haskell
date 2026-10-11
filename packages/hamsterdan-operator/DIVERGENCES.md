@@ -48,15 +48,24 @@ Below are the differences that remain, with their rationale.
    help on a terminal when `NO_COLOR` and `PYTHON_COLORS` allow it. The port
    writes the plain text, which is what the reference writes to a pipe. The
    width is the same: `COLUMNS`, else the terminal, else 80.
-5. **Names and text that are not UTF-8, and Unicode tables.** These are
-   inherited from the shared Python value model (hamsterdan-export's
-   DIVERGENCES.md, items 3 to 5):
-   - an undecodable argument is decoded leniently (U+FFFD) instead of
-     being kept with `surrogateescape`;
-   - JSON with lone surrogates or in UTF-16/32 is refused;
-   - `str.casefold()` (the bot-login comparison) and `str.isspace()` now
-     use petrus-json's CPython 3.14 (Unicode 16.0) tables, checked on every
-     code point against the pinned interpreter: no longer a difference.
+5. **Names and text that are not UTF-8, and Unicode tables: resolved, no
+   longer a difference.**
+   - Arguments are decoded with `surrogateescape` (petrus-json's
+     `fsDecode`), and what a subprocess receives (executable, arguments,
+     environment) goes through `os.fsencode`'s rule: an undecodable byte
+     reaches the child as that byte, and a surrogate that is not an escaped
+     byte raises `UnicodeEncodeError` before anything is spawned.
+   - JSON with lone surrogate escapes keeps them in its `str` (WTF-8,
+     "Petrus.Json.Wtf8"); JSON bytes in UTF-16 or UTF-32 load through
+     `detect_encoding`. The result line escapes them as `json.dumps` does;
+     standard error writes them with `backslashreplace`, standard output
+     is strict.
+   - `str.casefold()` (the bot-login comparison) and `str.isspace()` use
+     petrus-json's CPython 3.14 (Unicode 16.0) tables, checked on every
+     code point against the pinned interpreter.
+   - The differential runs undecodable arguments (a pull request number,
+     a scenario, a health URL, a bot login) and provider answers with lone
+     surrogates (in the result line, and in a subprocess argument).
 
 ## Internal (no observable difference)
 

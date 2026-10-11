@@ -17,7 +17,7 @@ import Hamsterdan.Contracts.Readiness qualified as Legacy
 import Hamsterdan.Contracts.ReadinessProjection
 import Hamsterdan.Contracts.ReadinessV5 qualified as V5
 import Hamsterdan.PyLiteral
-import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), LoneSurrogates (..), ParseOptions (..), compact, dumps, parseJson, pythonLoads)
 import Test.Hspec
 
 -- | The rows of a JSONL corpus.
@@ -26,7 +26,7 @@ readCorpus path = do
   bytes <- BS.readFile ("test/corpus/" <> path)
   traverse row (filter (not . BS.null) (BS8.split '\n' bytes))
   where
-    row line = either (fail . ("corpus row: " <>)) pure (parseJson pythonLoads line)
+    row line = either (fail . ("corpus row: " <>)) pure (parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates} line)
 
 member :: Text -> Json -> Maybe Json
 member key = \case

@@ -7,10 +7,14 @@
 -- 'Text' ("Petrus.Json.Wtf8"). Encoding turns those surrogates back into
 -- their bytes, so names round-trip, and refuses any other surrogate with
 -- CPython's @UnicodeEncodeError@.
+--
+-- Also @sys.stderr@'s codec, UTF-8 with @backslashreplace@, which never
+-- fails ('utf8BackslashReplace').
 module Petrus.Json.Python.Fs
   ( fsDecode
   , fsEncode
   , fsEncodeFailure
+  , utf8BackslashReplace
   ) where
 
 import Data.Bits (shiftR, (.&.), (.|.))
@@ -77,6 +81,17 @@ fsEncode text
       | otherwise = BB.charUtf8 c
       where
         n = ord c
+
+-- | @text.encode("utf-8", "backslashreplace")@: each lone surrogate
+-- becomes @\\udXXX@ (what CPython writes for it to @sys.stderr@).
+utf8BackslashReplace :: Text -> ByteString
+utf8BackslashReplace text
+  | not (hasLoneSurrogate text) = TE.encodeUtf8 text
+  | otherwise = BL.toStrict (BB.toLazyByteString (foldMap char (T.unpack text)))
+  where
+    char c
+      | c >= '\xD800' && c <= '\xDFFF' = BB.string7 "\\u" <> BB.wordHex (fromIntegral (ord c))
+      | otherwise = BB.charUtf8 c
 
 -- | The failure 'fsEncode' reports, if any. CPython's encoder hands the
 -- handler each run of surrogates; @surrogateescape@ writes the escapes

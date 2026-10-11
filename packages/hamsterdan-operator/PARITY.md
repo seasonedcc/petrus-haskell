@@ -116,7 +116,7 @@ same files left).
 
 ## Differential suite
 
-`DifferentialSpec` runs 124 command lines through both
+`DifferentialSpec` runs 130 command lines through both
 `python -I -B -m hamsterdan.operator` and the `hamsterdan-operator` binary.
 Each side runs in its own directory, with `PATH` starting with scripted
 fakes of `gh`, `git`, `curl` and `python` (modes of the test binary that log
@@ -133,22 +133,24 @@ must give:
 
 Before comparing, it replaces each side's own root, temporary-directory
 suffixes and UTC time stamps with placeholders. The suite collects every
-mismatch before failing, and a 125th example checks that every subcommand
+mismatch before failing, and a 131st example checks that every subcommand
 has cases. The cases:
 
-- **Argument parsing (19):** help at several widths, every parser error,
-  each subcommand's help.
-- **`preflight` (15):** legacy, App and delegated brokers, missing
+- **Argument parsing (21):** help at several widths, every parser error
+  (undecodable arguments among them), each subcommand's help.
+- **`preflight` (16):** legacy, App and delegated brokers, missing
   authentication, missing or malformed provider answers, wrong
-  repositories and workflows, healthy, malformed, unreachable and empty
-  health URLs.
-- **`create` (15):** each scenario, clone and pull request failures,
-  malformed admission files, unexpected, empty and mismatched changes.
+  repositories and workflows, healthy, malformed, unreachable, empty and
+  undecodable health URLs.
+- **`create` (17):** each scenario, clone and pull request failures,
+  malformed admission files, unexpected, empty and mismatched changes,
+  lone surrogates in a pull request answer (printed, and passed to a
+  subprocess).
 - **`prepare-broker` (11):** a prepared pull request (and one lacking its
   number), current, legacy, malformed, missing and non-UTF-8 brokers, an
   unrecognized validator, a failed or malformed search and a failed push.
-- **`inspect` (18):** fresh and legacy evidence, foreign and case-folded
-  bot logins, the hero review, inline comments and findings batches,
+- **`inspect` (19):** fresh and legacy evidence, foreign, case-folded and
+  undecodable bot logins, the hero review, inline comments and findings batches,
   non-positive pull requests, and each malformed provider answer.
 - **`inspect-authority` (25):** each of the eight expectations, then
   malformed pull requests, rules, reviewers, reviews, threads and

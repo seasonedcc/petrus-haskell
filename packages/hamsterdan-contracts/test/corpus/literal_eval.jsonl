@@ -205,8 +205,8 @@
 {"source":"'\\U00000041'","repr":"'A'"}
 {"source":"'\\U0010ffff'","repr":"'\\U0010ffff'"}
 {"source":"'\\U00110000'","error":"SyntaxError"}
-{"source":"'\\ud800'","unsupported":"surrogate"}
-{"source":"'\\udc00\\ud800'","unsupported":"surrogate"}
+{"source":"'\\ud800'","repr":"'\\ud800'"}
+{"source":"'\\udc00\\ud800'","repr":"'\\udc00\\ud800'"}
 {"source":"'\\N{BULLET}'","repr":"'•'"}
 {"source":"'\\N{bullet}'","repr":"'•'"}
 {"source":"'\\q'","repr":"'\\\\q'"}
@@ -4606,3 +4606,7 @@
 {"source":"1 if {f else 2","error":"SyntaxError"}
 {"source":"(a[l]e","error":"SyntaxError"}
 {"source":"0b101u[","error":"SyntaxError"}
+{"source":"'\\ud83d\\ude00'","repr":"'\\ud83d\\ude00'"}
+{"source":"{'\\udcff': '\\U0000dfff'}","repr":"{'\\udcff': '\\udfff'}"}
+{"source":"'\udc80'","error":"UnicodeEncodeError"}
+{"source":"'a' '\ud800b'","error":"UnicodeEncodeError"}

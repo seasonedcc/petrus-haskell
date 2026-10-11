@@ -17,7 +17,10 @@ Two modes, both run with the pinned upstream interpreter
     last entry of its traceback (``traceback.format_exception_only``: the
     exception line, then the notes Python attached to it, such as
     ``json.dumps``'s ``when serializing ...``) and exit status 1, as the
-    interpreter would.
+    interpreter would. Standard output and error encode as the
+    interpreter's do in a UTF-8 locale (strict, and ``backslashreplace``),
+    and an argument holds an undecodable byte as ``surrogateescape``
+    decodes it (``"\\udcff"``), as ``sys.argv`` does.
 """
 
 from __future__ import annotations
@@ -83,8 +86,20 @@ def fixture(root: Path, name: str) -> None:
         raise SystemExit(f"unknown fixture {name}")
 
 
+def stdio(errors: str) -> io.TextIOWrapper:
+    """A stream encoding as the interpreter's own: stdout strict UTF-8
+    (a lone surrogate raises ``UnicodeEncodeError`` at the ``print``),
+    stderr UTF-8 with ``backslashreplace``."""
+    return io.TextIOWrapper(io.BytesIO(), encoding="utf-8", errors=errors, write_through=True)
+
+
+def written(stream: io.TextIOWrapper) -> str:
+    stream.flush()
+    return stream.buffer.getvalue().decode("utf-8")
+
+
 def run_case(case: dict[str, object]) -> dict[str, object]:
-    out, err = io.StringIO(), io.StringIO()
+    out, err = stdio("strict"), stdio("backslashreplace")
     previous = os.getcwd()
     columns = case.get("columns")
     if columns is None:
@@ -103,7 +118,7 @@ def run_case(case: dict[str, object]) -> dict[str, object]:
                 code = 1
     finally:
         os.chdir(previous)
-    return {"code": code, "stdout": out.getvalue(), "stderr": err.getvalue()}
+    return {"code": code, "stdout": written(out), "stderr": written(err)}
 
 
 def run() -> None:

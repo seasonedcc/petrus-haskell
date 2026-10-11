@@ -72,9 +72,13 @@ digest is checked byte for byte against the pinned Python (see
 ## Unmodeled Python values
 
 9. **`Unsupported` literals.**
-   - CPython's `literal_eval` also returns bytes, complex numbers, sets,
-     `Ellipsis`, and strings with lone surrogates. `Data.Text` cannot hold lone
-     surrogates.
+   - CPython's `literal_eval` also returns bytes, complex numbers, sets and
+     `Ellipsis`.
+   - Strings with lone surrogates are no longer among them (resolved). An
+     escaped one (`'\ud800'`) is kept in the `str`, unpaired, as WTF-8
+     ("Petrus.Json.Wtf8"); a raw one in the source is `Malformed`, the
+     `UnicodeEncodeError` (a `ValueError`) CPython's compiler raises
+     encoding the source. The corpus has both forms.
    - No Hamsterdan body contains any of these, so `PyValue` does not model them.
      `literalEval` reports `Unsupported` where CPython would return a value.
      The corpus checks that the Haskell side says `Unsupported` exactly where

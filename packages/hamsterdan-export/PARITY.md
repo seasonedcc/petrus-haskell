@@ -53,8 +53,8 @@ same state directory. Each case must give:
 - the same package tree, file by file and byte for byte, including the
   partial tree a failure part-way leaves.
 
-The suite collects every mismatch before failing. There are 115 cases: 11
-upstream fixtures, 4 host-driven, and 100 hostile state directories and
+The suite collects every mismatch before failing. There are 123 cases: 11
+upstream fixtures, 4 host-driven, and 108 hostile state directories and
 command lines.
 
 - **Upstream fixtures (11):** the reference test suite's own state
@@ -81,14 +81,17 @@ command lines.
   - WAL sidecars and locked or unreadable stores;
   - credential-named, hidden and symbolic-link identity files;
   - raw delivery directories with every file-name edge the classifier
-    meets;
+    meets, delivery ids only Unicode 16.0 lower-cases alike, and
+    undecodable names (where the file system allows them);
+  - lone surrogates in board entries and digests, record kinds and review
+    operations;
   - enough transcripts, History lines and boards to take the parallel paths
     (DIVERGENCES, internal), with a failure in the middle of each: a file
     name too long for the file system, a text session, colliding file names,
     a bad line, a board that does not render.
 - **Command lines:** help at widths 1 to 200, every parser error,
   abbreviations, negative pull requests, output paths that exist, are files
-  or are not empty, and repeated options.
+  or are not empty, repeated options, and undecodable arguments.
 
 ## Benchmarks
 

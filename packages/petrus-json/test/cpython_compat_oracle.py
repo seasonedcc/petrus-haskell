@@ -66,6 +66,7 @@ def string_methods(argument):
         "upper": points(value.upper()),
         "casefold": points(value.casefold()),
         "fsencode": fs_encode(value),
+        "backslashreplace": value.encode("utf-8", "backslashreplace").hex(),
     }
 
 

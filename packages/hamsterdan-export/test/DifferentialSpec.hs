@@ -18,10 +18,13 @@
 -- delivery directories with every file-name edge the classifier meets.
 module DifferentialSpec (spec) where
 
-import Control.Exception (bracket_)
+import Control.Exception (IOException, bracket_, throwIO, try)
+import Foreign.C.Error (Errno (..), eILSEQ)
+import GHC.IO.Exception (IOException (..))
 import Control.Monad (forM, forM_, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.List (sort)
 import Data.Maybe (fromMaybe)
@@ -30,7 +33,12 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Database.SQLite3 qualified as S
 import Fixtures
-import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Numeric (showHex)
+import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json.Python (fsEncode)
+import Petrus.Json.Wtf8 (fromCodePoints)
+import GHC.Foreign qualified
+import GHC.IO.Encoding (mkTextEncoding, setForeignEncoding)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import System.Directory
@@ -45,7 +53,9 @@ import System.Directory
 import System.Environment (getEnvironment, lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
+import System.Posix.Directory.ByteString qualified as PDir
 import System.Posix.Files (createSymbolicLink, setFileMode)
+import System.Posix.IO.ByteString qualified as PIO
 import System.Process.Typed
 import Test.Hspec
 
@@ -342,6 +352,12 @@ hostileCases =
                , dashLanded (Array [Int 1, Null, Object [("k", String "v")], String "human_needed:{'reason': 'x'}"])
                ]
         )
+  , hostile "a landed board whose entry holds a lone surrogate" $
+      historyWith (history ++ [dashLanded (Array [String (surrogate "human_needed:{'reason': 'x\xDC80'}")])])
+  , hostile "a landed board whose digest holds a lone surrogate" $
+      historyWith (history ++ [record "ActivityCompleted" [("occurrence", Int 5), ("result", Object [("$variant", String "DashLanded"), ("entries", Array []), ("digest", String (surrogate "d\xD800"))])]])
+  , hostile "a History record kind that holds a lone surrogate" (historyWith (history ++ [record (surrogate "Note\xDBFF") []]))
+  , hostile "a review operation that holds a lone surrogate" (historyWith (history ++ [reviewRequested [("operation", String (surrogate "r\xDC80")), ("attempt", Int 1)]]))
   , hostile "a landed board whose entries are a number" (historyWith (history ++ [dashLanded (Int 3)]))
   , hostile "a landed board with no entries" $
       historyWith (history ++ [record "ActivityCompleted" [("result", Object [("$variant", String "DashLanded")])]])
@@ -485,7 +501,42 @@ argvCases =
        , Case "a missing identity file" (Built (const (pure ()))) (standard ++ ["--identity", "../absent.txt"]) (Just 80)
        , Case "an identity file named like a credential" (Built (const (pure ()))) (standard ++ ["--identity", "../absent.key", "--identity", "/"]) (Just 80)
        , Case "a delivery directory with every name edge" (Built deliveryEdges) (standard ++ ["--webhook-deliveries", "../d1", "--webhook-deliveries", "../d2"]) (Just 80)
+       , -- An argument holds an undecodable byte as sys.argv does.
+         Case "an undecodable output directory" (Built (const (pure ()))) ["--state-dir", "../state", "--out", surrogate "pkg\xDCFF", "--repository", repository, "--pull-request", "7"] (Just 80)
+       , Case
+           "undecodable identity files and delivery names"
+           (Built undecodableNames)
+           (standard ++ ["--identity", surrogate "../id\xDCFE.txt", "--identity", surrogate "../absent\xDCFE.txt", "--webhook-deliveries", surrogate "../d\xDCE9"])
+           (Just 80)
+       , Case "a missing undecodable delivery directory" (Built (const (pure ()))) (standard ++ ["--webhook-deliveries", surrogate "../missing\xDCFF"]) (Just 80)
        ]
+
+-- | A lone surrogate in a 'Text' (WTF-8), as CPython holds one in a @str@.
+surrogate :: String -> Text
+surrogate = fromCodePoints
+
+-- | A delivery directory and an identity file whose names, and some of
+-- whose entries' names, are not UTF-8. A file system that only stores
+-- UTF-8 names (APFS refuses others with @EILSEQ@) gets none of them, and
+-- the arguments then name missing files on both sides.
+undecodableNames :: FilePath -> IO ()
+undecodableNames root = do
+  let base = BC.pack root <> "/"
+      directory = base <> "d\xE9"
+      write path = do
+        fd <- PIO.openFd path PIO.WriteOnly PIO.defaultFileFlags {PIO.creat = Just 0o644, PIO.trunc = True}
+        _ <- PIO.fdWrite fd "{\"name\": \"raw\"}\n"
+        PIO.closeFd fd
+  created <- try (PDir.createDirectory directory 0o755)
+  case created of
+    Left e | ioe_errno e == Just (let Errno n = eILSEQ in n) -> pure ()
+    Left e -> throwIO e
+    Right () -> do
+      write (base <> "id\xFE.txt")
+      write (directory <> "/" <> TE.encodeUtf8 admittedDelivery <> "-pull\xFF.json")
+      write (directory <> "/" <> TE.encodeUtf8 admittedDelivery <> "-x\xE9\x80.json")
+      write (directory <> "/\xFE\xFD.json")
+      write (directory <> "/" <> TE.encodeUtf8 otherPrDelivery <> "-push\xC0.json")
 
 deliveryEdges :: FilePath -> IO ()
 deliveryEdges root = do
@@ -567,7 +618,8 @@ runReference repo cases = do
               ]
           | (caseRoot, c) <- cases
           ]
-      payload = either (error . show) id (dumps compact input)
+      -- ASCII, so a lone surrogate in an argument travels as its escape.
+      payload = either (error . show) id (dumps defaultDumps input)
   (status, stdoutBytes, stderrBytes) <-
     readProcess (setStdin (byteStringInput (BL.fromStrict payload)) (proc python ["-I", "-B", script, "run"]))
   unless (status == ExitSuccess) $ expectationFailure ("the reference driver failed: " <> show stderrBytes)
@@ -599,13 +651,14 @@ exportBinary = do
 runPort :: FilePath -> FilePath -> Case -> IO Outcome
 runPort binary caseRoot theCase = do
   inherited <- getEnvironment
+  arguments <- mapM argument theCase.argv
   let environment =
         [(k, v) | (k, v) <- inherited, k /= "COLUMNS", k /= "GHCRTS"]
           ++ [("GHCRTS", "-M2G")]
           ++ [("COLUMNS", show n) | Just n <- [theCase.columns]]
       config =
         setWorkingDir (caseRoot </> "hs") $
-          setEnv environment (proc binary (map T.unpack theCase.argv))
+          setEnv environment (proc binary arguments)
   (status, outBytes, errBytes) <- readProcess config
   pure
     Outcome
@@ -615,6 +668,18 @@ runPort binary caseRoot theCase = do
       , out = TE.decodeUtf8 (BL.toStrict outBytes)
       , err = TE.decodeUtf8 (BL.toStrict errBytes)
       }
+
+-- | An argument as the 'String' the process library turns back into its
+-- bytes: an undecodable byte (a lone surrogate) becomes that byte again.
+-- The library encodes arguments with the foreign encoding, plain UTF-8 by
+-- default, which drops such a character; its round-tripping variant
+-- restores the byte.
+argument :: Text -> IO String
+argument text = do
+  roundtrip <- mkTextEncoding "UTF-8//ROUNDTRIP"
+  setForeignEncoding roundtrip
+  bytes <- either (fail . show) pure (fsEncode text)
+  BS.useAsCStringLen bytes (GHC.Foreign.peekCStringLen roundtrip)
 
 -- | Undo what a case did to permissions so the temporary root can go.
 unlock :: FilePath -> IO ()
@@ -626,7 +691,7 @@ unlock caseRoot = do
 spec :: Spec
 spec = describe "differential: python -m hamsterdan.host.export" $ do
   let cases = upstreamCases ++ drivenCases ++ hostileCases
-  it ("matches the reference on " <> show (length cases) <> " command lines, package trees included") $
+  it ("matches the reference on " <> show (length cases) <> " command lines, package trees included") . printableFailure $
     withSystemTempDirectory "hamsterdan-export-differential" $ \tmp -> do
       repo <- repoRoot
       binary <- exportBinary
@@ -643,7 +708,22 @@ spec = describe "differential: python -m hamsterdan.host.export" $ do
             ( [label <> "\n--- reference ---\n" <> show reference <> "\n--- port ---\n" <> show port | port /= reference]
                 ++ [label <> ": package trees differ\n" <> treeDiff referenceTree portTree | referenceTree /= portTree]
             )
-        unless (null failures) $ expectationFailure (unlines failures)
+        unless (null failures) $ expectationFailure (concatMap printable (unlines failures))
+
+-- | Report an I/O failure with 'printable' text: its message may name a
+-- file whose name is not UTF-8.
+printableFailure :: IO () -> IO ()
+printableFailure action =
+  try action >>= \case
+    Right () -> pure ()
+    Left (e :: IOException) -> expectationFailure (concatMap printable (show e))
+
+-- | A file name's undecodable byte (a lone surrogate in the 'String') as
+-- its escape, so the report can be printed.
+printable :: Char -> String
+printable c
+  | c >= '\xD800' && c <= '\xDFFF' = "\\u" <> showHex (fromEnum c) ""
+  | otherwise = [c]
 
 treeDiff :: Tree -> Tree -> String
 treeDiff reference port =

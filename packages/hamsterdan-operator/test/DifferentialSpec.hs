@@ -35,7 +35,11 @@ import OperatorSpec
   , rulesPath
   , sha
   )
+import GHC.Foreign qualified
+import GHC.IO.Encoding (mkTextEncoding, setForeignEncoding)
 import Petrus.Json (Json (..), compact, dumps)
+import Petrus.Json.Python (fsEncode)
+import Petrus.Json.Wtf8 (fromCodePoints)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Support (Response (..), bool, encoded, int, list, merge, none, obj, setPath, str)
 import System.Directory
@@ -135,6 +139,8 @@ parsingCases =
   , base "create with an unsupported scenario" ["create", "--scenario", "bogus"] 2
   , base "inspect with a non-integer --pr" ["inspect", "--pr", "seven"] 2
   , base "inspect with an unsupported readiness" ["inspect", "--pr", "7", "--expect-readiness", "maybe"] 2
+  , base "inspect with an undecodable --pr" ["inspect", "--pr", surrogate "7\xDCFF"] 2
+  , base "create with an undecodable scenario" ["create", "--scenario", surrogate "clean\xDCE9"] 2
   , base "inspect-authority without --expect" ["inspect-authority", "--pr", "9"] 2
   , base "inspect-authority with an unsupported expectation" ["inspect-authority", "--pr", "9", "--expect", "merged"] 2
   , base "qualification-setup without its files" ["qualification-setup"] 2
@@ -191,6 +197,7 @@ preflightCases =
       (base "preflight with a malformed health answer" ["preflight", "--health-url", "http://host.test"] 1)
   , with inventory (base "preflight with an unreachable host" ["preflight", "--health-url", "http://host.test"] 1)
   , with inventory (base "preflight with an empty health URL" ["preflight", "--health-url", ""] 0)
+  , with inventory (base "preflight with an undecodable health URL" ["preflight", "--health-url", surrogate "http://h\xDCFFst.test/"] 1)
   ]
   where
     curl url = "curl --fail --silent --show-error --max-time 10 " <> url
@@ -259,6 +266,10 @@ createCases =
       replace' "gh pr view" [value (obj [("url", str "https://github.test/pr/12")])]
   , creating "clean-green" (base "create with an empty pull request answer" ["create", "--scenario", "clean-green"] 1) $
       replace' "gh pr view" [answer "  \n"]
+  , creating "clean-green" (base "create with lone surrogates in the pull request URL" ["create", "--scenario", "clean-green"] 0) $
+      replace' "gh pr view" [answer "{\"number\": 12, \"url\": \"\\udcff\\ud800x\"}"]
+  , creating "hero-review" (base "create hero-review with a lone surrogate for the number" ["create", "--scenario", "hero-review"] 1) $
+      replace' "gh pr view" [answer "{\"number\": \"1\\ud800\", \"url\": \"u\"}"]
   ]
   where
     creating scenario c f = (with (f (creation scenario)) c) {files = templateFiles}
@@ -316,6 +327,7 @@ inspectCases =
   , inspecting appBotLogin (base "inspect with a legacy marker" ["inspect", "--pr", "7"] 1) id
   , inspecting "human" (base "inspect with comments the App does not own" ["inspect", "--pr", "7"] 1) id
   , inspecting "Bot-Owner" (base "inspect with another, case-folded bot login" ["inspect", "--pr", "7", "--bot-login", "bot-owner"] 0) (cleanOf "Bot-Owner")
+  , inspecting appBotLogin (base "inspect with an undecodable bot login" ["inspect", "--pr", "7", "--bot-login", surrogate "b\xDCFFt"] 1) id
   , inspecting appBotLogin (base "inspect expecting the hero review" ["inspect", "--pr", "7", "--expect-hero-review"] 1) id
   , inspecting appBotLogin (base "inspect expecting no readiness advisory" ["inspect", "--pr", "7", "--expect-readiness", "absent"] 1) id
   , base "inspect a non-positive pull request" ["inspect", "--pr", "0"] 1
@@ -601,7 +613,7 @@ runSide program prefix side c = do
       environment =
         [("PATH", path), ("TMPDIR", side </> "tmp"), ("COLUMNS", T.unpack c.columns)]
           <> [(k, v) | (k, v) <- inherited, k `notElem` ["PATH", "TMPDIR", "COLUMNS", "LINES", "PYTHONPATH", "PYTHONHOME", "GH_TOKEN", "GITHUB_TOKEN"]]
-      arguments = map (T.unpack . T.replace "<root>" (T.pack side)) c.argv
+  arguments <- mapM (argument . T.replace "<root>" (T.pack side)) c.argv
   (status, stdoutBytes, stderrBytes) <-
     readProcess (setStdin nullStream (setWorkingDir side (setEnv environment (proc program (prefix <> arguments)))))
   logged <- doesFileExist (side </> "calls.log")
@@ -620,6 +632,23 @@ runSide program prefix side c = do
       }
   where
     decode = TE.decodeUtf8With TEE.lenientDecode
+
+-- | An argument as the 'String' the process library turns back into its
+-- bytes: an undecodable byte (a lone surrogate) becomes that byte again.
+-- The library encodes arguments with the foreign encoding, plain UTF-8 by
+-- default, which drops such a character; its round-tripping variant
+-- restores the byte.
+argument :: Text -> IO String
+argument text = do
+  roundtrip <- mkTextEncoding "UTF-8//ROUNDTRIP"
+  setForeignEncoding roundtrip
+  bytes <- either (fail . show) pure (fsEncode text)
+  BS.useAsCStringLen bytes (GHC.Foreign.peekCStringLen roundtrip)
+
+-- | A @str@ holding lone surrogates (an undecodable byte, as
+-- @surrogateescape@ decodes it, or a JSON @\\ud800@ escape).
+surrogate :: String -> Text
+surrogate = fromCodePoints
 
 -- | An uncaught Python exception's traceback, reduced to the line naming
 -- the exception: what the port prints for the same failure.

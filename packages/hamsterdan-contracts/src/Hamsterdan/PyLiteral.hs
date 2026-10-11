@@ -15,8 +15,10 @@
 -- escape except @\\N{...}@, implicit concatenation, all integer bases,
 -- underscores, comments, line continuations, trailing commas) and reports
 -- 'Unsupported' for literals CPython would accept but whose values are not
--- modeled (@bytes@, @complex@, @set@, @Ellipsis@, lone surrogates,
--- @\\N{...}@ escapes).
+-- modeled (@bytes@, @complex@, @set@, @Ellipsis@, @\\N{...}@ escapes). An
+-- escaped lone surrogate (@'\\udc80'@) is kept in its @str@ (WTF-8,
+-- "Petrus.Json.Wtf8"), as CPython keeps it; a raw one in the source is the
+-- @UnicodeEncodeError@ CPython's compiler raises encoding the source.
 module Hamsterdan.PyLiteral
   ( -- * Values
     PyValue (..)
@@ -48,7 +50,8 @@ import Data.Text.Internal qualified as TI
 import Hamsterdan.Contracts.Codec (pythonDict)
 import Petrus.Json (Json)
 import Petrus.Json qualified as Json
-import Petrus.Json.Python (pythonDoubleRepr, pythonStrRepr)
+import Petrus.Json.Python (pythonDoubleRepr, pythonExceptionStr, pythonStrRepr, unicodeEncodeError, utf8EncodeFailure)
+import Petrus.Json.Wtf8 (fromCodePoints)
 
 -- | A Python value of a modeled type. 'PyDict' keeps insertion order and
 -- never holds two Python-equal keys.
@@ -350,6 +353,7 @@ data Expr
 -- | @ast.literal_eval(source)@.
 literalEval :: Text -> Either LiteralError PyValue
 literalEval source = do
+  mapM_ (malformed . pythonExceptionStr . unicodeEncodeError source) (utf8EncodeFailure source)
   when (T.any (== '\0') source) $ malformed "source code string cannot contain null bytes"
   let prepared = translateNewlines (T.dropWhile (\c -> c == ' ' || c == '\t') source)
   (expr, rest) <- runP topLevel prepared
@@ -794,7 +798,7 @@ scanString isTriple delimiter = go []
 unescape :: Text -> Either LiteralError Text
 unescape body
   | not (T.any (== '\\') body) = Right body
-  | otherwise = T.pack <$> go (T.unpack body)
+  | otherwise = fromCodePoints <$> go (T.unpack body)
   where
     go [] = Right []
     go ('\\' : rest) = escape rest
@@ -833,7 +837,6 @@ unescape body
               let value = foldl (\acc d -> acc * 16 + digitValue d) 0 digits
                in if
                     | value > 0x10FFFF -> malformed "illegal Unicode character"
-                    | value >= 0xD800 && value <= 0xDFFF -> unsupported "lone surrogate"
                     | otherwise -> (chr value :) <$> go (drop width rest)
     digitValue d
       | isDigit d = ord d - ord '0'

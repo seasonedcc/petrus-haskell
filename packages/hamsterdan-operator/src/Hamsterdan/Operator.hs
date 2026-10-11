@@ -106,6 +106,7 @@ import Hamsterdan.Python.Object
   ( PV (..)
   , PyError (..)
   , errorLine
+  , fromPython
   , hashCheck
   , intText
   , iterateValue
@@ -117,11 +118,12 @@ import Hamsterdan.Python.Object
   )
 import Hamsterdan.Python.Object qualified as PyV
 import Hamsterdan.Python.Hashlib (sha256HexText)
-import Hamsterdan.Python.Text (splitlines)
+import Hamsterdan.Python.Text (splitlines, utf8Encode)
 import Hamsterdan.Host.PublicationQualification
 import Hamsterdan.Operator.Posix (Stat (..), effectiveUid, isDirectory, isRegular, normpath, pathParent, permissionBits)
 import Hamsterdan.Operator.Posix qualified as Posix
 import Hamsterdan.Operator.Python
+import Petrus.Json.Python (fsEncode, utf8BackslashReplace)
 import System.Directory (canonicalizePath, doesFileExist, getTemporaryDirectory)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
@@ -301,11 +303,12 @@ commandRunner :: Runner
 commandRunner command cwd = case command of
   [] -> throwIO (PyError "IndexError" "list index out of range")
   executable : arguments -> do
+    (program, argv) <- execStrings executable arguments
     let config =
           maybe id P.setWorkingDir cwd
             . P.setStdout P.byteStringOutput
             . P.setStderr P.byteStringOutput
-            $ P.proc (T.unpack executable) (map T.unpack arguments)
+            $ P.proc program argv
     outcome <- try (P.readProcess config)
     case outcome of
       Left (e :: IOException) -> throwIO (spawnError executable e)
@@ -313,6 +316,19 @@ commandRunner command cwd = case command of
         decodedOut <- py (decodeOutput (BL.toStrict out))
         decodedErr <- py (decodeOutput (BL.toStrict err))
         pure Completed {returncode = exitInt code, stdout = decodedOut, stderr = decodedErr}
+
+-- | What @subprocess@ hands to @exec@: the executable, then each argument
+-- (see 'execString').
+execStrings :: Text -> [Text] -> IO (String, [String])
+execStrings executable arguments = (,) <$> execString executable <*> mapM execString arguments
+
+-- | A string as @subprocess@ passes it to @exec@, through @os.fsencode@:
+-- @UnicodeEncodeError@, before anything is spawned, for a surrogate that
+-- is not an escaped byte. An escaped byte stays its lone-surrogate
+-- 'Char', which the process library's foreign encoding (UTF-8//ROUNDTRIP,
+-- set by the executable's @main@) turns back into the byte.
+execString :: Text -> IO String
+execString text = either (throwIO . fromPython) (const (pure (T.unpack text))) (fsEncode text)
 
 exitInt :: ExitCode -> Int
 exitInt = \case
@@ -413,13 +429,15 @@ setupSubprocess :: SetupRunner
 setupSubprocess command cwd environment input = case command of
   [] -> throwIO (PyError "IndexError" "tuple index out of range")
   executable : arguments -> do
+    variables <- mapM (\(k, v) -> (,) <$> execString k <*> execString v) environment
+    (program, argv) <- execStrings executable arguments
     let config =
           P.setWorkingDir cwd
-            . P.setEnv [(T.unpack k, T.unpack v) | (k, v) <- environment]
+            . P.setEnv variables
             . maybe id (P.setStdin . P.byteStringInput . BL.fromStrict) input
             . P.setStdout P.byteStringOutput
             . P.setStderr P.byteStringOutput
-            $ P.proc (T.unpack executable) (map T.unpack arguments)
+            $ P.proc program argv
     finished <- timeout 30000000 (P.readProcess config)
     case finished of
       Nothing -> throwIO (PyError "subprocess.TimeoutExpired" "Command timed out after 30 seconds")
@@ -1820,9 +1838,9 @@ runOperator env argv = do
   let fixture = env.operator.fixture
   case parseArgs width (operatorParserFor fixture) argv of
     Exited status printed problems -> do
-      emit env.output printed
+      printed' <- printOut env printed
       emit env.errors problems
-      pure (if status == 0 then ExitSuccess else ExitFailure status)
+      pure (if not printed' then ExitFailure 1 else if status == 0 then ExitSuccess else ExitFailure status)
     Parsed namespace -> case decodeOperatorCommand fixture namespace of
       Nothing -> do
         emit env.errors "the parsed namespace names no operator command\n"
@@ -1858,6 +1876,16 @@ runOperator env argv = do
               emit env.errors (T.pack (show e) <> "\n")
               pure (ExitFailure 1)
 
+-- | A write to @sys.stderr@, whose @backslashreplace@ handler spells a
+-- lone surrogate as its escape.
 emit :: Handle -> Text -> IO ()
-emit handle text = BS.hPut handle (TE.encodeUtf8 text)
+emit handle text = BS.hPut handle (utf8BackslashReplace text)
+
+-- | A write to @sys.stdout@, which encodes strict UTF-8: a lone surrogate
+-- raises @UnicodeEncodeError@ before anything is written, and the
+-- interpreter reports it as uncaught. 'False' when it did.
+printOut :: OperatorEnvironment -> Text -> IO Bool
+printOut env text = case utf8Encode text of
+  Right bytes -> True <$ BS.hPut env.output bytes
+  Left failure -> False <$ emit env.errors (errorLine (fromPython failure) <> "\n")
 

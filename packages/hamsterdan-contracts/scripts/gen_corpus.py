@@ -360,6 +360,11 @@ HANDCRAFTED = [
 ]
 
 
+# Lone surrogates: escaped ones stay in the str; a raw one in the source is
+# the UnicodeEncodeError the compiler raises encoding it.
+SURROGATES = ["'\\ud83d\\ude00'", "{'\\udcff': '\\U0000dfff'}", "'\udc80'", "'a' '\ud800b'"]
+
+
 def literal_case(source: str) -> dict:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -384,7 +389,7 @@ def modeled_problem(value) -> str | None:
     if value is None or isinstance(value, (bool, int, float)):
         return None
     if isinstance(value, str):
-        return "surrogate" if any(0xD800 <= ord(c) <= 0xDFFF for c in value) else None
+        return None
     if isinstance(value, (list, tuple)):
         return next((p for p in map(modeled_problem, value) if p), None)
     if isinstance(value, dict):
@@ -419,8 +424,9 @@ def literal_cases():
         sources.append(mutate(repr(py_value())))
     for _ in range(1000):
         sources.append(mutate(rng.choice(HANDCRAFTED)))
+    sources.extend(SURROGATES)
     for source in sources:
-        if source in seen or any(0xD800 <= ord(c) <= 0xDFFF for c in source):
+        if source in seen:
             continue
         seen.add(source)
         yield literal_case(source)
@@ -493,7 +499,11 @@ def write(name: str, rows) -> int:
     count = 0
     with (OUT / name).open("w", encoding="utf-8") as stream:
         for row in rows:
-            stream.write(json.dumps(row, ensure_ascii=False, allow_nan=False, separators=(",", ":")) + "\n")
+            line = json.dumps(row, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+            if any(0xD800 <= ord(c) <= 0xDFFF for c in line):
+                # A lone surrogate cannot be written as UTF-8: escape the row.
+                line = json.dumps(row, allow_nan=False, separators=(",", ":"))
+            stream.write(line + "\n")
             count += 1
     return count
 

@@ -81,7 +81,8 @@ It sorts failures the way `board.py` needs them sorted:
 - `Malformed` is CPython's `SyntaxError` or `ValueError`, which the board skips.
 - `Unhashable` is CPython's `TypeError`, which propagates in Python.
 - `Unsupported` covers literals CPython accepts but whose type is not modeled:
-  bytes, complex, sets, `Ellipsis`, lone surrogates, and `\N{...}`.
+  bytes, complex, sets, `Ellipsis`, and `\N{...}`. An escaped lone
+  surrogate stays in its `str`, as in CPython.
 
 ## Tests and corpora
 

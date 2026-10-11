@@ -6,6 +6,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.PyLiteral
 import Petrus.Json (Json (..))
+import Petrus.Json.Wtf8 (fromCodePoints)
 import Test.Hspec
 import Test.QuickCheck
 
@@ -57,7 +58,10 @@ spec = describe "Hamsterdan.PyLiteral" $ do
       kindOf "1j" `shouldBe` Just Unsupported
       kindOf "{1, 2}" `shouldBe` Just Unsupported
       kindOf "'\\N{BULLET}'" `shouldBe` Just Unsupported
-      kindOf "'\\ud800'" `shouldBe` Just Unsupported
+      kindOf (fromCodePoints "'\xDC80'") `shouldBe` Just Malformed
+    it "keeps escaped lone surrogates, unpaired, as CPython does" $ do
+      fmap repr (literalEval "'\\ud800'") `shouldBe` Right "'\\ud800'"
+      fmap repr (literalEval "'\\ud83d\\ude00'") `shouldBe` Right "'\\ud83d\\ude00'"
     it "spells unhashable refusals as CPython 3.14 does" $ do
       let messageOf source = either (\(LiteralError _ message) -> Just message) (const Nothing) (literalEval source)
       messageOf "{[1]: 2}" `shouldBe` Just "cannot use 'list' as a dict key (unhashable type: 'list')"
