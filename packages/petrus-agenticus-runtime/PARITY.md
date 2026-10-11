@@ -99,25 +99,40 @@ projection decode and encode round trip is 1.4 times faster.
 
 `HostsDifferentialSpec` replays the 5,844-case hosts corpus in 22 sections.
 
-## Out of scope: the `*_real.py` tests
+## The `*_real.py` live-provider tests (opt-in)
 
-| Upstream file | Functions | Gate upstream |
-| --- | ---: | --- |
-| `test_codex_real.py` | 2 | `PETRUS_CV16_CODEX_LIVE=1`, `PETRUS_CV16_CODEX_GONDOLIN_LIVE=1` |
-| `test_claude_real.py` | 2 | `PETRUS_CV16_CLAUDE_QUALIFY=1`, `PETRUS_CV16_CLAUDE_LIVE=1` |
-| `test_amp_real.py` | 1 | `PETRUS_RUN_CV16_AMP_A1=1` |
-| `test_agent_net_real.py` | 2 | real model APIs |
+| Upstream file | Functions | Gate | Haskell spec |
+| --- | ---: | --- | --- |
+| `test_codex_real.py` | 2 | `PETRUS_CV16_CODEX_LIVE=1`, `PETRUS_CV16_CODEX_GONDOLIN_LIVE=1` | `test/Petrus/Agenticus/Runtime/Live/CodexSpec.hs` |
+| `test_claude_real.py` | 2 | `PETRUS_CV16_CLAUDE_QUALIFY=1`, `PETRUS_CV16_CLAUDE_LIVE=1` | `test/Petrus/Agenticus/Runtime/Live/ClaudeSpec.hs` |
+| `test_amp_real.py` | 1 | `PETRUS_RUN_CV16_AMP_A1=1` | `test/Petrus/Agenticus/Runtime/Live/AmpSpec.hs` |
+| `test_pi_real.py` | 2 | `PETRUS_CV16_PI_QUALIFY=1`, `PETRUS_CV16_PI_LIVE=1` | `test/Petrus/Agenticus/Runtime/Live/PiSpec.hs` |
+| `test_agent_net_real.py` | 2 | `PETRUS_CV16_AGENT_NET_QUALIFY=1`, `PETRUS_CV16_AGENT_NET_LIVE=1` | `test/Petrus/Agenticus/Runtime/Live/AgentNetSpec.hs` |
 
 These tests call real provider services: OpenAI through the `codex` CLI
 (plus a real Gondolin VM image for A3), Anthropic through the Claude Agent
-SDK, Amp's thread service and Orbs, and real model APIs. Each needs
-credentials and makes paid calls. Upstream they are opt-in and skipped by
-default.
+SDK and through Pi, Amp's thread service and Orbs. Most need credentials
+and make paid calls; the three `*_QUALIFY` probes only inspect the
+installation.
 
-They are not ported, for two reasons. As default tests they would add
-credentials and paid calls to every run. And everything they reach on the
-host side (the argv, the helper, the sidecars, admission, custody,
-publication) is already exercised by the fakes: the reference's own fake
-`codex` CLI and fake Gondolin SDK, and fake Claude and Amp SDK packages with
-the pinned public surfaces. The per-host `parity/*.md` files list each test
-and its gate.
+All nine are ported, each under its upstream name and behind its upstream
+gate, with the adapters' production options and production custody (SQLite
+storage, a private-file materializer and random AES-GCM keys, as in the
+reference). Without its variable a test is pending, and the message names
+the variable. With the variable set, a missing prerequisite fails the test.
+That includes the reference's in-test `pytest.skip` calls (no CLI, no
+`OPENAI_API_KEY`, no handoff, another Gondolin image build), which the port
+turns into failures with the same message. `Live/Support.hs` holds what the
+five files share: the gate, the private handoff readers, the live keys and
+the stores.
+
+[docs/live-provider-acceptance.md](../../docs/live-provider-acceptance.md)
+lists each test's prerequisites and how to run them.
+
+**TODO: no live run has been recorded.** Every run so far had the gates
+unset, so the nine tests are pending in CI and locally. The fakes still
+exercise everything they reach on the host side: the argv, the helpers, the
+sidecars, admission, custody and publication. Those fakes are the
+reference's own fake `codex` CLI and fake Gondolin SDK, and fake Claude and
+Amp SDK packages with the pinned public surfaces. The record of a live run
+belongs in that document.

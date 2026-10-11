@@ -70,6 +70,41 @@ sides of each one. Its single accepted difference is item 6.
    This is the one corpus case recorded as a known divergence
    (`strictLoadDivergences` in `PiDifferentialSpec`).
 
+   **User-visible effect.** A Pi Turn whose model output or tool parameters
+   carry a lone surrogate escape fails in the port (`malformed-frame`),
+   where the reference can complete it.
+
+   **Planned fix (audit finding SDA-12), waiting on IMP-2.** The port should
+   forward such strings the way the reference does. That needs a `Text`
+   that holds a lone surrogate. petrus-json gains one in IMP-2 (commit
+   805e139 on branch `worktree-agent-ace10fbba84e526e8`, not yet on `main`):
+   `ParseOptions.loneSurrogates = KeepLoneSurrogates` parses a lone
+   surrogate escape into a WTF-8 `Text`, `Petrus.Json.Wtf8.hasLoneSurrogate`
+   detects one, and `dumps` writes it back as `\udXXX` under `ensure_ascii`.
+   This package does not duplicate that representation, so it stays as
+   described above until IMP-2 lands. After that, the change is:
+   - `strictFrameLoad` (`Pi.hs`) parses with
+     `strictParseOptions {loneSurrogates = KeepLoneSurrogates}` and still
+     refuses bytes that are not UTF-8. Its callers are the native frame
+     loop (`runSubprocess` in `Pi.hs`), the A5 application frame loop
+     (`PiApplication.hs`) and the probe frame (`probeInstalled` in
+     `Pi.hs`), which compares the frame to a fixed object, so a surrogate
+     still fails it.
+   - Where the reference calls `str.encode()` on a frame member, the port
+     checks `hasLoneSurrogate` first and fails with that site's code, as
+     CPython's `UnicodeEncodeError` does. These are the `_text` validators
+     (`pi.py`, `pi_application.py` and `pi_model_phase.py`), the `complete`
+     frame's final text (`pi_application.py`, `len(text.encode())`, which
+     gives `malformed-complete`) and the identities bounded by
+     `len(identity.encode())`.
+   - `tool_call` parameters reach the Hands gateway as WTF-8 `Text`, and
+     the gateway's JSON writing re-escapes them, as the reference forwards
+     the `str`.
+   - `strictLoad` (sessions and credentials) keeps lone surrogates too,
+     instead of replacing them with U+FFFD. The case then leaves
+     `strictLoadDivergences`, and `PiDifferentialSpec` gains frame cases
+     with a lone surrogate in a tool parameter and in the final text.
+
 7. **Ledger rows with foreign column types.** `_decode` passes raw SQLite
    values into `PiOperationRecord`. The port mirrors the values a tampered
    file can hold:
@@ -191,7 +226,8 @@ sides of each one. Its single accepted difference is item 6.
    native port does. Neither one publishes.
 4. **Frames.**
    - As in the native port, a lone surrogate escape in a helper frame is a
-     `malformed-frame`.
+     `malformed-frame` (item 6 of the native list gives the effect and the
+     planned fix, which waits on petrus-json's WTF-8 strings).
    - A `tool_call` whose `method` is an array or an object makes the
      reference's `method not in _METHODS` raise `TypeError`, so the run ends
      as `runtime-failed`. The port reports `malformed-tool-call`. Neither one

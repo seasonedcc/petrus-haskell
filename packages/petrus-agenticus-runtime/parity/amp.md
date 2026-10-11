@@ -89,13 +89,14 @@ by `HostsDifferentialSpec`:
 
 See `bench/results-hosts.md`: `amp-stream-admit` 3.5× and
 `amp-final-text` 1.8× the reference's speed. A whole Turn through the
-official `execute` and the shared sidecar (`amp-turn`) is 1.31× (lowest
-interleaved repetition 1.15×).
+official `execute` and the shared sidecar (`amp-turn`) is 1.15× (lowest
+of nine interleaved rounds 1.09×).
 
 ## `tests/petrus/agenticus/runtime/test_amp_real.py` (1 function)
 
-Not ported. It runs the real Amp SDK and CLI against a real Amp account and
-a provider-managed Orb. Upstream it is opt-in: it is skipped unless
-`PETRUS_RUN_CV16_AMP_A1=1` is set together with credentials. Porting it
-would add credentials and paid provider calls to the default suite, and it
-would test the same sidecar path that the fake SDK already reaches.
+Ported in `test/Petrus/Agenticus/Runtime/Live/AmpSpec.hs`, behind the same
+gate (`PETRUS_RUN_CV16_AMP_A1=1`). It runs the real Amp SDK and CLI through
+the production sidecar against a real Amp account and a provider-managed
+Orb. Without the gate it is pending. See
+[docs/live-provider-acceptance.md](../../../docs/live-provider-acceptance.md);
+no live run is recorded yet.

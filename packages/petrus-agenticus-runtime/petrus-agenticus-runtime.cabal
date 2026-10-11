@@ -106,6 +106,12 @@ test-suite petrus-agenticus-runtime-test
                     Petrus.Agenticus.Runtime.ClaudeSpec
                     Petrus.Agenticus.Runtime.CodexSpec
                     Petrus.Agenticus.Runtime.HostsDifferentialSpec
+                    Petrus.Agenticus.Runtime.Live.AgentNetSpec
+                    Petrus.Agenticus.Runtime.Live.AmpSpec
+                    Petrus.Agenticus.Runtime.Live.ClaudeSpec
+                    Petrus.Agenticus.Runtime.Live.CodexSpec
+                    Petrus.Agenticus.Runtime.Live.PiSpec
+                    Petrus.Agenticus.Runtime.Live.Support
                     Petrus.Agenticus.Runtime.PiA2HostSpec
                     Petrus.Agenticus.Runtime.PiApplicationSpec
                     Petrus.Agenticus.Runtime.PiDifferentialSpec
@@ -135,6 +141,7 @@ test-suite petrus-agenticus-runtime-test
                   , ram >=0.20
                   , temporary
                   , text
+                  , time
                   , unix
   ghc-options:      -threaded -rtsopts
 

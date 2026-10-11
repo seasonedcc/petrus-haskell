@@ -92,7 +92,14 @@ them.
 | `test_subscription_deadline_after_activation_releases_without_checkpoint` | 1 |  |
 | `test_start_failure_and_ledger_cleanup_recovery_are_safe_and_secret_free` | 1 | `PiAdapterSurface` override. |
 
-`test_pi_real.py` (2 functions) calls real provider APIs. It is out of scope.
+`test_pi_real.py` (2 functions) calls real provider APIs. Both tests are
+ported in `test/Petrus/Agenticus/Runtime/Live/PiSpec.hs`, behind the same
+gates (`PETRUS_CV16_PI_QUALIFY=1`, `PETRUS_CV16_PI_LIVE=1`), and
+`test_agent_net_real.py` (2 functions) in `Live/AgentNetSpec.hs`
+(`PETRUS_CV16_AGENT_NET_QUALIFY=1`, `PETRUS_CV16_AGENT_NET_LIVE=1`).
+Without the gate each is pending. See
+[docs/live-provider-acceptance.md](../../../docs/live-provider-acceptance.md);
+no live run is recorded yet.
 
 ### Differential corpus
 
