@@ -58,6 +58,7 @@ library
                     Petrus.Impetus.Petrinet.Schema
                     Petrus.Impetus.Scope
                     Petrus.Impetus.Validation.Pydantic
+  other-modules:    Petrus.Impetus.Instance.Resume
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
