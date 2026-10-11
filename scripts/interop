@@ -45,6 +45,12 @@ ROOT = Path(__file__).resolve().parent.parent
 # Package -> hspec --match patterns for its cross-language groups.
 PATTERNS: Dict[str, List[str]] = {
     "hamsterdan-contracts": ["differential corpora"],
+    "hamsterdan-host": [
+        "state interop with the reference host",
+        "the HTTP surface against the reference (uvicorn)",
+        "the command line against the reference",
+        "reference_bytes",
+    ],
     "hamsterdan-github": ["configuration corpus", "reads, effects and GraphQL corpus", "HTTP client corpus", "webhook, inbox and routing corpus"],
     "hamsterdan-readiness": ["fold corpus", "board corpus"],
     "hamsterdan-testing": ["oracle corpus"],
@@ -145,7 +151,8 @@ def check(packages: List[str], jobs: str, show: bool) -> int:
 
 
 def run(packages: List[str], jobs: str) -> int:
-    for project in ("petrus", "petrus-engine"):
+    projects = ["petrus", "petrus-engine"] + (["hamsterdan"] if any(p.startswith("hamsterdan-") for p in packages) else [])
+    for project in projects:
         subprocess.run([str(ROOT / "scripts" / "upstream-python"), project], cwd=ROOT, env=ENV, check=True, stdout=subprocess.DEVNULL)
     failed = []
     for package in packages:
