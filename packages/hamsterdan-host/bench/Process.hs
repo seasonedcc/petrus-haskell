@@ -21,8 +21,8 @@
 -- 20 PRs (the V5 provider double of @state_reference.py@ for any PR
 -- number). Its state is reset to the template's before every run.
 --
--- * __CLI (fresh process)__: @validate@, @inbox@ and @inspect-instance@,
---   each a fresh process: @python -I -B bench/cli_child.py ARGS@ (the
+-- * __CLI (fresh process)__: @validate@, @inbox@, @requeue@ and
+--   @inspect-instance@, each a fresh process: @python -I -B bench/cli_child.py ARGS@ (the
 --   reference's @main()@ with @GitHubAppClients@ sent to the fake, as
 --   @differential/cli_reference.py@ does) against this binary in its
 --   @--cli@ mode (the port's 'runCli' over 'productionEnvironment', with
@@ -518,6 +518,7 @@ processMain arguments = do
     progress "preparing the template state (20 PRs x 5 heads)"
     snapshot <- prepareTemplate template
     writeInspected (tmp </> "inspected")
+    writeParked template (tmp </> "parked")
     histories <- forM pullRequests $ \n -> length . BC.lines <$> BS.readFile (template </> "applications" </> "44" </> "31" </> show n </> "history.jsonl")
     fake <- newMulti snapshot
     withFakeGitHubIO (fakeRoute fake) $ \githubPort _ -> do
@@ -601,6 +602,7 @@ cliWorkloads :: [(String, [String])]
 cliWorkloads =
   [ ("`validate` (20 Instances)", ["validate"])
   , ("`inbox` (20 Instances)", ["inbox"])
+  , ("`requeue` of a parked delivery (20 Instances)", ["requeue", "--delivery", T.unpack parkedDelivery])
   , ("`inspect-instance` (a 2001-record History)", ["inspect-instance", "--installation", "44", "--repository", "31", "--pr", "7"])
   ]
 
@@ -622,6 +624,27 @@ writeInspected state = do
           ]
         | i <- [1 .. 1000 :: Integer]
         ]
+
+-- | The delivery @requeue@ resets.
+parkedDelivery :: Text
+parkedDelivery = deliveryOf 99 1
+
+-- | The state @requeue@ reads: the template with one more delivery in its
+-- inbox, parked as @failed@ by exhausting its attempts (what @requeue@
+-- exists to undo).
+writeParked :: FilePath -> FilePath -> IO ()
+writeParked template state = do
+  freshState template state
+  custody <- Custody.openCustody (state </> "webhooks.sqlite3") "hook-secret" (Custody.defaultCustodyOptions (realToFrac <$> getPOSIXTime))
+  ( do
+      let body = synchronizeFor 31 1
+      receipt <- Custody.receive custody (signedHeaders body parkedDelivery "pull_request") body
+      unless (receipt.disposition == Custody.Accepted) $ fail "the parked delivery was not accepted"
+      replicateM_ Custody.maxDeliveryAttempts (Custody.retry custody parkedDelivery (Custody.ErrorClass "RuntimeError"))
+      parked <- Custody.status custody parkedDelivery
+      unless (parked == Just Custody.InboxFailed) $ fail ("the parked delivery is " <> show parked)
+    )
+    `finally` Custody.closeCustody custody
 
 -- | The process environment of a side: the inherited one without any
 -- @HAMSTERDAN_@ variable, then the configuration over @state@.
@@ -647,7 +670,8 @@ command workspace side argv = case side of
   Python -> (workspace.python, ["-I", "-B", workspace.benchDirectory </> "cli_child.py"] <> argv)
 
 -- | Reset the fake GitHub and the side's state to the template's
--- (@inspect-instance@ reads its own state, which nothing changes).
+-- (@inspect-instance@ reads its own state, which nothing changes;
+-- @requeue@ starts from the parked one).
 resetSide :: Workspace -> Side -> IO FilePath
 resetSide workspace side = resetSideFor workspace side []
 
@@ -656,10 +680,10 @@ resetSideFor workspace side argv = do
   let directory = workspace.tmp </> ("cli-" <> sideName side)
       state = directory </> "state"
   createDirectoryIfMissing True directory
-  if take 1 argv == ["inspect-instance"]
-    then pure (workspace.tmp </> "inspected")
-    else do
-      freshState workspace.template state
+  case take 1 argv of
+    ["inspect-instance"] -> pure (workspace.tmp </> "inspected")
+    first -> do
+      freshState (if first == ["requeue"] then workspace.tmp </> "parked" else workspace.template) state
       writeIORef workspace.fake.state workspace.snapshot
       pure state
 
