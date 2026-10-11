@@ -29,8 +29,11 @@ upstream test name; parametrized cases keep pytest's ids.
 
 `test/fixtures/amp/amp_sdk` is a fake SDK package with the pinned SDK's
 protocol surface (`AmpOptions.model_fields` and `execute(prompt, options)`).
-It yields events that carry `model_dump_json`. The sidecar tests run it
-under the pinned CPython (`pythonExecutable`).
+It yields events that carry `model_dump_json`. A project of
+`raise:<scenario>` selects one of its `SCENARIOS`: streams whose events
+raise from `model_dump_json`, from an attribute or from `Mapping.get`, or
+whose pull raises. The sidecar tests run it under the pinned CPython
+(`pythonExecutable`).
 
 ## `tests/petrus/agenticus/runtime/test_amp.py` (15 functions, 19 cases)
 
@@ -61,6 +64,12 @@ way, and the event sizes and values cross the other.
 - `reads the SDK version and protocol through the sidecar`
 - `runs one Orb turn through the official execute`
 - `injects the cancellation into the SDK generator`
+- `settles events that raise where upstream reads them as the reference
+  does`: every `raise:` scenario through the reference's own adapter
+  (`test/fixtures/amp-raising-reference.py`, under the pinned interpreter)
+  and through the port, comparing outcome, appends, termination code and
+  cleanup code. The reference run is required: the example fails, never
+  skips, without it.
 
 ## Differential corpus
 

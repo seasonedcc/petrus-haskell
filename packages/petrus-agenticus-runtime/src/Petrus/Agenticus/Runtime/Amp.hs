@@ -50,6 +50,7 @@ module Petrus.Agenticus.Runtime.Amp
   , renderAmpRuntimeInvocation
     -- * SDK streams
   , AmpEvent (..)
+  , AmpRaise (..)
   , jsonEvent
   , AmpEventStream (..)
   , AmpExecute
@@ -452,12 +453,22 @@ newAmpRuntimeInvocation operationId episodeId turnId prompt connection attachmen
 -- ---------------------------------------------------------------------------
 -- SDK streams
 
+-- | An exception raised while upstream's adapter reads an event (computing
+-- @_event_size@ or reading one @_event_value@ attribute), by how @_run@
+-- settles it: a @TimeoutError@ is @deadline-exceeded@, a @CancelledError@
+-- is a cancelled Turn, anything else is @client-failed@.
+data AmpRaise = AmpRaiseFailed | AmpRaiseTimeout | AmpRaiseCancelled
+  deriving stock (Eq, Show)
+
+instance Exception AmpRaise
+
 -- | One SDK event as upstream's adapter sees it: the attributes it reads
 -- (@_event_value@) and its encoded size (@_event_size@; 'Nothing' when the
--- event cannot be measured, @malformed-event@).
+-- event cannot be measured, @malformed-event@). Either can be an exception
+-- the read raises, which upstream sees only when it gets that far.
 data AmpEvent = AmpEvent
-  { values :: [(Text, Json)]
-  , encodedSize :: Maybe Int
+  { values :: [(Text, Either AmpRaise Json)]
+  , encodedSize :: Either AmpRaise (Maybe Int)
   }
   deriving stock (Show)
 
@@ -466,10 +477,18 @@ data AmpEvent = AmpEvent
 -- @Event@.
 jsonEvent :: [(Text, Json)] -> AmpEvent
 jsonEvent members =
-  AmpEvent members (either (const Nothing) (Just . B.length) (J.dumps J.defaultDumps {J.itemSeparator = Just ",", J.keySeparator = ":"} (Object members)))
+  AmpEvent
+    [(name, Right value) | (name, value) <- members]
+    (Right (either (const Nothing) (Just . B.length) (J.dumps J.defaultDumps {J.itemSeparator = Just ",", J.keySeparator = ":"} (Object members))))
 
-eventValue :: AmpEvent -> Text -> Json
-eventValue event name = fromMaybe Null (lookup name event.values)
+-- | Why admission stopped: a protocol code or a raised exception.
+data AmpStop = AmpProtocol Text | AmpRaised AmpRaise
+
+eventValue :: AmpEvent -> Text -> Either AmpStop Json
+eventValue event name = case lookup name event.values of
+  Nothing -> Right Null
+  Just (Right value) -> Right value
+  Just (Left raised) -> Left (AmpRaised raised)
 
 -- | One started SDK stream: pull the next event ('Nothing' at the end),
 -- inject a cancellation (@athrow(asyncio.CancelledError())@), and close it
@@ -509,48 +528,72 @@ data SidecarFailure = SidecarFailure Text
 
 instance Exception SidecarFailure
 
--- | @_official_execute@: @execute(prompt, AmpOptions(**options))@ through the
--- sidecar.
+-- | @_official_execute@: @execute(prompt, AmpOptions(**options))@ on a
+-- channel of the shared sidecar. The first pull is requested together with
+-- the stream, as upstream starts iterating right after @execute@ returns.
 officialExecute :: AmpSidecar -> AmpExecute
 officialExecute s prompt options = do
-  command <- sidecarCommand s "execute"
-  sidecar <- spawnSidecar command >>= maybe (throwIO (SidecarFailure "launch")) pure
+  command <- sidecarCommand s "serve"
+  c <- openSidecarChannel command >>= maybe (throwIO (SidecarFailure "launch")) pure
   let request = Object [("prompt", String prompt), ("options", Object options)]
-      failStart = void (sidecarClose sidecar s.grace) >> throwIO (SidecarFailure "start")
-  sent <- sidecarSend sidecar request
-  unless sent failStart
-  sidecarReceive sidecar >>= \case
+      failStart = void (channelClose c s.grace) >> throwIO (SidecarFailure "start")
+  sent <- channelSend c request
+  requested <- if sent then channelSend c (String "next") else pure False
+  channelReceive c >>= \case
     Just (Object [("started", Bool True)]) -> pure ()
     _ -> failStart
+  prefetched <- newIORef requested
   aborted <- newIORef False
-  let pull =
-        sidecarSend sidecar (String "next") >> sidecarReceive sidecar >>= \case
+  -- Set when the sidecar reports the SDK generator closed: its finalizers
+  -- run no SDK code, and the sidecar has already ended the channel.
+  finished <- newIORef False
+  let pull = do
+        ahead <- atomicModifyIORef' prefetched (False,)
+        unless ahead (void (channelSend c (String "next")))
+        frame <- channelReceive c
+        case frame of
+          Just (Object members) | lookup "finished" members == Just (Bool True) -> writeIORef finished True
+          _ -> pure ()
+        case frame of
           Just (Object [("event", Object fields)])
             | Just (Object members) <- lookup "values" fields ->
-                pure . Just $
-                  AmpEvent
-                    members
-                    (case lookup "size" fields of Just (Int n) | n >= 0 -> Just (fromInteger n); _ -> Nothing)
-          Just (Object [("end", Bool True)]) -> pure Nothing
-          Just (Object [("error", String "timeout")]) -> throwIO (agenticusError TimeoutError "Amp SDK stream timed out")
+                pure . Just $ AmpEvent (map (fmap value) members) (maybe (Right Nothing) size (lookup "size" fields))
+          Just (Object members)
+            | Just (Bool True) <- lookup "end" members -> pure Nothing
+            | Just (String "timeout") <- lookup "error" members -> throwIO AmpRaiseTimeout
+            | Just (String "cancelled") <- lookup "error" members -> throwIO AmpRaiseCancelled
           _ -> throwIO (SidecarFailure "stream")
+      size = \case
+        Int n | n >= 0 -> Right (Just (fromInteger n))
+        Object [("raised", String kind)] -> Left (raise kind)
+        _ -> Right Nothing
+      -- A value the sidecar cannot represent arrives as
+      -- @{"opaque": type, "hashable": bool}@, which equals no string or
+      -- boolean the admission compares against.
+      value = \case
+        Object [("raised", String kind)] -> Left (raise kind)
+        other -> Right other
+      raise = \case
+        "timeout" -> AmpRaiseTimeout
+        "cancelled" -> AmpRaiseCancelled
+        _ -> AmpRaiseFailed
       cancelStream = do
         first <- atomicModifyIORef' aborted (True,)
-        unless first $ do
-          _ <- sidecarSend sidecar (String "abort")
+        done <- readIORef finished
+        unless (first || done) $ do
+          _ <- channelSend c (String "abort")
           void (timeout (micros s.grace) (awaitFrame "aborted"))
       awaitFrame name =
-        sidecarReceive sidecar >>= \case
+        channelReceive c >>= \case
           Nothing -> pure ()
           Just (Object [(key, Bool True)]) | key == name -> pure ()
           Just _ -> awaitFrame name
       closeStream = do
-        _ <- sidecarSend sidecar (String "close")
-        void (timeout (micros s.grace) (awaitFrame "closed"))
-        void (sidecarClose sidecar s.grace)
-  -- A value the sidecar cannot represent arrives as
-  -- @{"opaque": type, "hashable": bool}@, which equals no string or boolean
-  -- the admission compares against.
+        done <- readIORef finished
+        unless done $ do
+          _ <- channelSend c (String "close")
+          void (timeout (micros s.grace) (awaitFrame "closed"))
+        void (channelAwaitEnd c s.grace)
   pure AmpEventStream {next = pull, abort = cancelStream, close = closeStream}
 
 -- ---------------------------------------------------------------------------
@@ -574,16 +617,18 @@ data Admission = Admission
   , terminal :: Maybe AmpCandidate
   }
 
--- | @_read_stream@'s per-event step: the next state or a protocol code.
-admitStep :: AmpRuntimeConfig -> Maybe Text -> Admission -> AmpEvent -> Either Text Admission
+-- | @_read_stream@'s per-event step: the next state, or why it stopped.
+-- Attributes are read in upstream's order, so an attribute that raises
+-- matters only where upstream reads it.
+admitStep :: AmpRuntimeConfig -> Maybe Text -> Admission -> AmpEvent -> Either AmpStop Admission
 admitStep config continuationThread state event = do
   let count' = state.count + 1
-  when (count' > config.maxEvents) $ Left "event-count-overflow"
-  size <- maybe (Left "malformed-event") Right event.encodedSize
-  when (size > config.maxEventBytes) $ Left "event-overflow"
+  when (count' > config.maxEvents) $ protocol "event-count-overflow"
+  size <- either (Left . AmpRaised) (maybe (protocol "malformed-event") Right) event.encodedSize
+  when (size > config.maxEventBytes) $ protocol "event-overflow"
   let total' = state.total + size
-  when (total' > config.maxTotalEventBytes) $ Left "event-total-overflow"
-  when (isJust state.terminal) $ Left "duplicate-terminal"
+  when (total' > config.maxTotalEventBytes) $ protocol "event-total-overflow"
+  when (isJust state.terminal) $ protocol "duplicate-terminal"
   if count' == 1
     then do
       thread <- admitInitial
@@ -592,37 +637,48 @@ admitStep config continuationThread state event = do
       terminal <- admitLater state.thread
       pure state {count = count', total = total', terminal}
   where
+    protocol :: Text -> Either AmpStop a
+    protocol = Left . AmpProtocol
+    read' = eventValue event
     admitInitial = do
-      when (eventValue event "type" /= String "system" || eventValue event "subtype" /= String "init") $
-        Left "missing-system-init"
-      thread <- case eventValue event "session_id" of
-        String t | Right _ <- ampThreadId t -> Right t
-        _ -> Left "malformed-thread-id"
-      when (maybe False (/= thread) continuationThread) $ Left "continuation-thread-mismatch"
+      kind <- read' "type"
+      when (kind /= String "system") $ protocol "missing-system-init"
+      subtype <- read' "subtype"
+      when (subtype /= String "init") $ protocol "missing-system-init"
+      thread <-
+        read' "session_id" >>= \case
+          String t | Right _ <- ampThreadId t -> Right t
+          _ -> protocol "malformed-thread-id"
+      when (maybe False (/= thread) continuationThread) $ protocol "continuation-thread-mismatch"
       pure thread
     admitLater = \case
-      Nothing -> Left "missing-system-init"
+      Nothing -> protocol "missing-system-init"
       Just thread -> do
-        when (eventValue event "session_id" /= String thread) $ Left "event-thread-mismatch"
-        case eventValue event "type" of
+        session <- read' "session_id"
+        when (session /= String thread) $ protocol "event-thread-mismatch"
+        read' "type" >>= \case
           String t | t `elem` ["assistant", "user"] -> pure Nothing
           String "result" -> Just <$> admitTerminal thread
           -- @event_type in {...}@ raises TypeError on an unhashable
           -- value, which @_run@ settles as client-failed.
-          value | unhashable value -> Left "client-failed"
-          _ -> Left "unknown-event"
-    admitTerminal thread = case (eventValue event "is_error", eventValue event "subtype") of
-      (Bool False, String "success") -> do
-        text <- case eventValue event "result" of
-          String value -> safeFinalText config.maxFinalTextBytes value
-          _ -> Left "malformed-result"
-        pure (AmpCandidate TurnCompleted 1 "turn-completed" (Just thread) (Just text) True)
-      (Bool True, String subtype)
-        | subtype `elem` ["error_during_execution", "error_max_turns"] ->
-            let code = if subtype == "error_max_turns" then "provider-max-turns" else "provider-failed"
-             in pure (AmpCandidate TurnFailed 0 code (Just thread) Nothing True)
-      (Bool True, subtype) | unhashable subtype -> Left "client-failed"
-      _ -> Left "malformed-terminal"
+          value | unhashable value -> Left (AmpRaised AmpRaiseFailed)
+          _ -> protocol "unknown-event"
+    admitTerminal thread = do
+      isError <- read' "is_error"
+      subtype <- read' "subtype"
+      case (isError, subtype) of
+        (Bool False, String "success") -> do
+          text <-
+            read' "result" >>= \case
+              String value -> either (Left . AmpProtocol) Right (safeFinalText config.maxFinalTextBytes value)
+              _ -> protocol "malformed-result"
+          pure (AmpCandidate TurnCompleted 1 "turn-completed" (Just thread) (Just text) True)
+        (Bool True, String code)
+          | code `elem` ["error_during_execution", "error_max_turns"] ->
+              let code' = if code == "error_max_turns" then "provider-max-turns" else "provider-failed"
+               in pure (AmpCandidate TurnFailed 0 code' (Just thread) Nothing True)
+        (Bool True, value) | unhashable value -> Left (AmpRaised AmpRaiseFailed)
+        _ -> protocol "malformed-terminal"
     -- A JSON list or object (a Python list or dict), or an opaque sidecar
     -- value whose type has no @__hash__@.
     unhashable = \case
@@ -630,13 +686,21 @@ admitStep config continuationThread state event = do
       Object members -> lookup "hashable" members /= Just (Bool True) || isNothing (lookup "opaque" members)
       _ -> False
 
+-- | The termination code a stopped admission settles with.
+stopCode :: AmpStop -> Text
+stopCode = \case
+  AmpProtocol code -> code
+  AmpRaised AmpRaiseFailed -> "client-failed"
+  AmpRaised AmpRaiseTimeout -> "deadline-exceeded"
+  AmpRaised AmpRaiseCancelled -> "cancelled"
+
 -- | @_read_stream@ over a complete event list (the corpus's pure view).
 admitEvents :: AmpRuntimeConfig -> Maybe Text -> [AmpEvent] -> Either Text AmpCandidate
 admitEvents config continuationThread = go (Admission 0 0 Nothing Nothing)
   where
     go state = \case
       [] -> maybe (Left "terminal-result-missing") Right state.terminal
-      event : rest -> admitStep config continuationThread state event >>= (`go` rest)
+      event : rest -> either (Left . stopCode) (`go` rest) (admitStep config continuationThread state event)
 
 -- | @_execution_options()@, in the reference's member order.
 executionOptions :: AmpRuntimeConfig -> Maybe Text -> [(Text, Json)]
@@ -766,8 +830,12 @@ interrupt o reason = do
 
 startOperation :: AmpOperation -> IO ()
 startOperation o = mask_ $ do
-  thread <- forkIOWithUnmask $ \unmask -> unmask (runWorker o) `finally` atomically (writeTVar o.finished True)
-  atomically (writeTVar o.worker (Just thread))
+  -- A finished thread's id is dropped: a retained 'ThreadId' keeps the
+  -- thread's stack alive for as long as the operation is remembered.
+  thread <- forkIOWithUnmask $ \unmask -> unmask (runWorker o) `finally` atomically (writeTVar o.finished True >> writeTVar o.worker Nothing)
+  atomically $ do
+    done <- readTVar o.finished
+    unless done (writeTVar o.worker (Just thread))
 
 runWorker :: AmpOperation -> IO ()
 runWorker o = do
@@ -792,7 +860,7 @@ runBody o = do
       requested <- readTVarIO o.cancelRequested
       when requested (interrupt o Cancelled)
       timer <- forkIO (threadDelay (micros remaining) >> interrupt o DeadlineExceeded)
-      consumed <- takeMVar done `finally` killThread timer
+      consumed <- takeMVar done `finally` (killThread timer >> atomically (writeTVar o.consumer Nothing))
       case consumed of
         Right candidate -> do
           atomically (writeTVar o.providerTerminal candidate.providerTerminal)
@@ -805,10 +873,14 @@ classify o e = case fromException e of
   Just Cancelled -> failed TurnCancelled "cancelled"
   Just DeadlineExceeded -> failed TurnFailed "deadline-exceeded"
   Nothing -> case fromException e of
-    Just (a :: AgenticusError)
-      | a `isInstanceOf` TimeoutError -> failed TurnFailed "deadline-exceeded"
-      | Just code <- runtimeProtocolErrorCode a -> failed TurnFailed code
-    _ -> failed TurnFailed "client-failed"
+    Just AmpRaiseCancelled -> failed TurnCancelled "cancelled"
+    Just AmpRaiseTimeout -> failed TurnFailed "deadline-exceeded"
+    Just AmpRaiseFailed -> failed TurnFailed "client-failed"
+    Nothing -> case fromException e of
+      Just (a :: AgenticusError)
+        | a `isInstanceOf` TimeoutError -> failed TurnFailed "deadline-exceeded"
+        | Just code <- runtimeProtocolErrorCode a -> failed TurnFailed code
+      _ -> failed TurnFailed "client-failed"
   where
     failed outcome code = settlement o outcome 0 code Nothing Nothing
 
@@ -826,7 +898,8 @@ consume o = do
           stream.next >>= \case
             Nothing -> maybe (throwIO (runtimeProtocolError "terminal-result-missing")) pure state.terminal
             Just event -> case admitStep o.config o.continuationThread state event of
-              Left code -> throwIO (runtimeProtocolError code)
+              Left (AmpProtocol code) -> throwIO (runtimeProtocolError code)
+              Left (AmpRaised raised) -> throwIO raised
               Right state' -> go state'
 
 publish :: AmpOperation -> AmpCandidate -> IO RuntimeTurnSettlement

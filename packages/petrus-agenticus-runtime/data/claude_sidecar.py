@@ -13,10 +13,15 @@ Usage: ``python -I -B claude_sidecar.py MODE [SYS_PATH ...]``
 * ``version``: print ``{"version": "<installed>"}`` or ``{"version": null}``.
 * ``probe``: print ``{"surface": {"file", "attributes", "parameters"}}`` or
   ``{"surface": null}`` when the import fails.
-* ``client``: read ``{"options", "server", "tools"}``, answer
-  ``{"ready": true}`` or ``{"error": "start"}``, then serve operations.
+* ``serve``: host any number of SDK clients, one per channel, in one event
+  loop, so the SDK is imported once per process (upstream imports it once
+  into the host's interpreter). Every line, in both directions, is
+  ``[channel, frame]``; ``[channel]`` ends a channel: from the Haskell side,
+  the end of its input; from this side, its teardown is finished.
 
-Client frames, one JSON object per line in each direction:
+A channel's first frame is ``{"options", "server", "tools"}``, answered
+``{"ready": true}`` or ``{"error": "start"}`` (which ends the channel). Its
+later frames, in each direction:
 
 * Haskell to sidecar: ``{"op": OP, "id": N, ...}`` with OP one of
   ``connect``, ``query`` (``prompt``), ``receive``, ``next``, ``interrupt``,
@@ -30,7 +35,9 @@ Client frames, one JSON object per line in each direction:
 ``next`` answers ``null`` at the end of the response or one message reduced
 to what upstream's ``_OfficialClient.receive_response`` keeps: its kind, its
 ``_message_size`` byte count and, for a result, the five fields the adapter
-reads. End of stdin cancels every operation and disconnects the client.
+reads. Operations start eagerly, as upstream awaits them directly. The end
+of a channel's input cancels its operations and disconnects its client (when
+connected and not yet disconnected) before the channel ends.
 """
 
 import asyncio
@@ -38,8 +45,8 @@ import importlib
 import importlib.metadata
 import inspect
 import json
+import os
 import sys
-import threading
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
@@ -64,6 +71,10 @@ class _ProtocolError(Exception):
     def __init__(self, code):
         super().__init__(code)
         self.code = code
+
+
+# How long the end of input waits for the open channels' teardown.
+_SHUTDOWN_GRACE = 10.0
 
 
 def _emit(value):
@@ -144,7 +155,8 @@ def _describe(sdk, message):
 
 
 class _Bridge:
-    def __init__(self):
+    def __init__(self, emit):
+        self.emit = emit
         self.counter = 0
         self.pending = {}
         self.closed = False
@@ -157,7 +169,7 @@ class _Bridge:
         future = asyncio.get_running_loop().create_future()
         self.pending[key] = future
         try:
-            _emit({"call": key, "method": method, **fields})
+            self.emit({"call": key, "method": method, **fields})
             reply = await future
         finally:
             self.pending.pop(key, None)
@@ -197,19 +209,6 @@ class _Store:
 
 def _discard_provider_stderr(_line):
     return None
-
-
-def _reader(loop, queue):
-    try:
-        for line in sys.stdin:
-            try:
-                frame = json.loads(line)
-            except ValueError:
-                continue
-            loop.call_soon_threadsafe(queue.put_nowait, frame)
-        loop.call_soon_threadsafe(queue.put_nowait, None)
-    except RuntimeError:
-        pass
 
 
 _DENY = {
@@ -286,90 +285,208 @@ async def _disconnect(raw):
             raise _ProtocolError("private-cleanup-uncertain")
 
 
-async def _serve(request):
-    loop = asyncio.get_running_loop()
-    queue = asyncio.Queue()
-    threading.Thread(target=_reader, args=(loop, queue), daemon=True).start()
-    bridge = _Bridge()
+def _eager(loop, coroutine):
     try:
-        sdk = importlib.import_module("claude_agent_sdk")
-        raw = _create(sdk, request, bridge)
-    except Exception:
-        _emit({"error": "start"})
-        return
-    _emit({"ready": True})
-    state = {"stream": None, "connected": False, "disconnected": False}
-    tasks = {}
+        return asyncio.Task(coroutine, loop=loop, eager_start=True)
+    except TypeError:
+        return loop.create_task(coroutine)
 
-    async def receive():
-        async for message in raw.receive_response():
-            yield _describe(sdk, message)
 
-    async def run(op, frame):
+class _Client:
+    """One channel: one official client and its operations."""
+
+    def __init__(self, server, ident):
+        self.server = server
+        self.ident = ident
+        self.bridge = _Bridge(self.emit)
+        self.sdk = None
+        self.raw = None
+        self.stream = None
+        self.connected = False
+        self.disconnected = False
+        self.tasks = {}
+        self.ending = None
+
+    def emit(self, frame):
+        self.server.emit([self.ident, frame])
+
+    def receive(self, frame):
+        if self.ending is not None:
+            return
+        if frame is None:
+            self.ending = _eager(self.server.loop, self.shutdown())
+            return
+        if self.raw is None:
+            self.start(frame)
+            return
+        if not isinstance(frame, dict):
+            return
+        if "reply" in frame:
+            self.bridge.resolve(frame)
+            return
+        op, ident = frame.get("op"), frame.get("id")
+        if op == "cancel":
+            task = self.tasks.get(frame.get("target"))
+            if task is not None:
+                task.cancel()
+            return
+        task = _eager(self.server.loop, self.run(op, frame))
+        if task.done():
+            self.finish(ident, task)
+            return
+        self.tasks[ident] = task
+        task.add_done_callback(lambda done, _ident=ident: self.finish(_ident, done))
+
+    def start(self, request):
+        try:
+            self.sdk = importlib.import_module("claude_agent_sdk")
+            self.raw = _create(self.sdk, request, self.bridge)
+        except Exception:
+            self.emit({"error": "start"})
+            self.server.end(self.ident)
+            return
+        self.emit({"ready": True})
+
+    async def receive_response(self):
+        async for message in self.raw.receive_response():
+            yield _describe(self.sdk, message)
+
+    async def run(self, op, frame):
+        raw = self.raw
         if op == "connect":
-            state["connected"] = True
+            self.connected = True
             await raw.connect(None)
         elif op == "query":
             await raw.query(frame["prompt"], "default")
         elif op == "receive":
-            state["stream"] = receive()
+            self.stream = self.receive_response()
         elif op == "next":
-            if state["stream"] is None:
+            if self.stream is None:
                 raise _ProtocolError("malformed-message")
             try:
-                return await state["stream"].__anext__()
+                return await self.stream.__anext__()
             except StopAsyncIteration:
                 return None
         elif op == "interrupt":
             await raw.interrupt()
         elif op == "disconnect":
-            state["disconnected"] = True
+            self.disconnected = True
             await _disconnect(raw)
         else:
             raise RuntimeError("unknown-operation")
         return None
 
-    def finish(ident, task):
-        tasks.pop(ident, None)
+    def finish(self, ident, task):
+        self.tasks.pop(ident, None)
+        if self.ending is not None:
+            return
         if task.cancelled():
-            _emit({"done": ident, "error": "cancelled"})
+            self.emit({"done": ident, "error": "cancelled"})
             return
         failure = task.exception()
         if failure is None:
-            _emit({"done": ident, "value": task.result()})
+            self.emit({"done": ident, "value": task.result()})
         elif isinstance(failure, _ProtocolError):
-            _emit({"done": ident, "error": "protocol", "code": failure.code})
+            self.emit({"done": ident, "error": "protocol", "code": failure.code})
         elif isinstance(failure, TimeoutError):
-            _emit({"done": ident, "error": "timeout"})
+            self.emit({"done": ident, "error": "timeout"})
         else:
-            _emit({"done": ident, "error": "failed"})
+            self.emit({"done": ident, "error": "failed"})
 
-    while True:
-        frame = await queue.get()
-        if frame is None:
-            break
-        if not isinstance(frame, dict):
-            continue
-        if "reply" in frame:
-            bridge.resolve(frame)
-            continue
-        op, ident = frame.get("op"), frame.get("id")
-        if op == "cancel":
-            task = tasks.get(frame.get("target"))
-            if task is not None:
-                task.cancel()
-            continue
-        task = asyncio.ensure_future(run(op, frame))
-        tasks[ident] = task
-        task.add_done_callback(lambda done, _ident=ident: finish(_ident, done))
-    bridge.close()
-    for task in list(tasks.values()):
-        task.cancel()
-    if state["connected"] and not state["disconnected"]:
+    async def shutdown(self):
+        self.bridge.close()
+        pending = list(self.tasks.values())
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        if self.raw is not None and self.connected and not self.disconnected:
+            try:
+                await self.raw.disconnect()
+            except BaseException:
+                pass
+        self.server.end(self.ident)
+
+
+class _Server:
+    def __init__(self, loop):
+        self.loop = loop
+        self.clients = {}
+        self.finished = set()
+        self.buffer = bytearray()
+        self.done = loop.create_future()
+        self.out = sys.stdout.fileno()
+
+    def emit(self, frame):
+        data = (json.dumps(frame, separators=(",", ":")) + "\n").encode()
+        view = memoryview(data)
+        while view:
+            written = os.write(self.out, view)
+            view = view[written:]
+
+    def end(self, ident):
+        if ident not in self.finished:
+            self.finished.add(ident)
+            self.clients.pop(ident, None)
+            self.emit([ident])
+
+    def readable(self):
         try:
-            await raw.disconnect()
-        except BaseException:
-            pass
+            data = os.read(0, 65536)
+        except BlockingIOError:
+            return
+        if not data:
+            self.loop.remove_reader(0)
+            self.loop.create_task(self.shutdown())
+            return
+        self.buffer += data
+        while True:
+            index = self.buffer.find(b"\n")
+            if index < 0:
+                return
+            line = bytes(self.buffer[:index])
+            del self.buffer[: index + 1]
+            try:
+                frame = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(frame, list) or not frame or type(frame[0]) is not int:
+                continue
+            ident = frame[0]
+            if ident in self.finished:
+                continue
+            client = self.clients.get(ident)
+            if client is None:
+                if len(frame) != 2:
+                    continue
+                client = self.clients[ident] = _Client(self, ident)
+            client.receive(frame[1] if len(frame) == 2 else None)
+
+    async def shutdown(self):
+        for client in list(self.clients.values()):
+            client.receive(None)
+        pending = [client.ending for client in self.clients.values() if client.ending is not None]
+        if pending:
+            await asyncio.wait(pending, timeout=_SHUTDOWN_GRACE)
+        self.done.set_result(None)
+
+
+def _serve():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    os.set_blocking(0, False)
+    server = _Server(loop)
+    loop.add_reader(0, server.readable)
+    loop.run_until_complete(server.done)
+    try:
+        if any(not task.done() for task in asyncio.all_tasks(loop)):
+            raise TimeoutError
+        loop.run_until_complete(asyncio.wait_for(loop.shutdown_asyncgens(), _SHUTDOWN_GRACE))
+    except BaseException:
+        # A teardown is stuck past the grace: leave without it rather than
+        # outlive the process that started us.
+        os._exit(0)
+    loop.close()
 
 
 def main():
@@ -379,14 +496,8 @@ def main():
         _emit({"version": _version()})
     elif mode == "probe":
         _emit({"surface": _probe()})
-    elif mode == "client":
-        line = sys.stdin.readline()
-        try:
-            request = json.loads(line)
-        except ValueError:
-            _emit({"error": "start"})
-            return
-        asyncio.run(_serve(request))
+    elif mode == "serve":
+        _serve()
     else:
         raise SystemExit(2)
 

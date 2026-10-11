@@ -7,6 +7,12 @@
 --   History record goes to @history.jsonl@.
 -- * @projection-roundtrip@: @AgentNetThreadProjection.from_data(json.loads(text))@
 --   and back to compact sorted JSON, over that run's final @thread.json@.
+--
+-- It also runs the Pi rows ("PiBench", "PiA2Bench"; @bench/results-pi.md@),
+-- the hosts' protocol rows ("HostsBench"; @bench/results-hosts.md@) and the
+-- whole Codex, Claude and Amp Turns ("TurnsBench", the twin of
+-- @bench/python_bench.py@; @bench/results-hosts.md@). Every row measures
+-- wall-clock time.
 module Main (main) where
 
 import Control.Exception (finally, throwIO)
@@ -35,6 +41,8 @@ import System.IO.Temp (withSystemTempDirectory)
 import HostsBench (hostsBenchmarks)
 import PiA2Bench (piA2Benchmarks)
 import PiBench (piBenchmarks)
+import TurnsBench (turnsBenchmarks)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 ok :: (Show e) => Either e a -> a
@@ -118,12 +126,15 @@ main = withSystemTempDirectory "pi-bench" $ \tmp -> do
   final <- runOnce
   pi' <- piBenchmarks tmp
   (a2, closeA2) <- piA2Benchmarks (tmp </> "a2")
+  turns <- turnsBenchmarks tmp
   defaultMain
-    ( [ bench "runner-3-phases-3-reads" (whnfIO runOnce)
+    ( map (localOption WallTime) $
+      [ bench "runner-3-phases-3-reads" (whnfIO runOnce)
       , bench "projection-roundtrip" (nf roundtrip final)
       ]
         <> pi'
         <> a2
         <> hostsBenchmarks
+        <> turns
     )
     `finally` closeA2

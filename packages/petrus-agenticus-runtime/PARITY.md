@@ -95,7 +95,7 @@ projection decode and encode round trip is 1.4 times faster.
 | --- | ---: | ---: | --- |
 | `test_codex.py` | 41 | 54 | `CodexSpec`, plus 5 verbatim and interop examples |
 | `test_claude.py` | 32 | 46 | `ClaudeSpec`, plus 4 sidecar examples |
-| `test_amp.py` | 15 | 19 | `AmpSpec`, plus 3 sidecar examples |
+| `test_amp.py` | 15 | 19 | `AmpSpec`, plus 4 sidecar examples |
 
 `HostsDifferentialSpec` replays the 5,844-case hosts corpus in 22 sections.
 
