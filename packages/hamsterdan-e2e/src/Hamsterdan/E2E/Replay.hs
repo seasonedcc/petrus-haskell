@@ -21,15 +21,17 @@ module Hamsterdan.E2E.Replay
   , replayRunner
   , replayPublisher
   , raiseRecorded
+  , RecordedError (..)
   ) where
 
-import Control.Exception (SomeException (..), displayException, throwIO, try)
-import Control.Monad (forM, forM_, void, when)
+import Control.Exception (Exception (..), SomeException (..), throwIO, try)
+import Control.Monad (forM, forM_, join, unless, void, when)
 import Data.ByteString qualified as BS
+import Data.Char (isAsciiLower, isDigit)
 import Data.IORef
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -47,7 +49,7 @@ import Hamsterdan.GitHub.Routing qualified as Routing
 import Hamsterdan.GitHub.Webhooks (Observation (..), Receipt (..), dispositionName)
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Agenticus (activateRoutes, claimRoute, closeRoutes, composeAgent, openAgentRouteStore, settleRoutes)
-import Hamsterdan.Host.GitPublish (GitPublishError (..), GitPublishResult (..), GitReconciliation (..), OperationDisposition (..), PublicationCategory (BoundaryUnavailable), categoryName)
+import Hamsterdan.Host.GitPublish (GitPublishError (..), GitPublishResult (..), GitReconciliation (..), OperationDisposition (..), PublicationCategory (BoundaryUnavailable), categoryName, operationDispositionText)
 import Hamsterdan.Host.Service
   ( AgentCustody (..)
   , HostApplication (..)
@@ -62,6 +64,7 @@ import Hamsterdan.Host.Service qualified as Host
 import Hamsterdan.Host.V5.Application (ApplicationOptions (..))
 import Hamsterdan.Host.V5.Mutation (MutationPublisher (..))
 import Petrus.Json (Json (..))
+import Petrus.Json.Python (pythonStr)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 
@@ -83,7 +86,8 @@ type Key = (Text, Text, Integer)
 -- | The replay 'AgentRunner' and its report (@ReplayRunner.report()@).
 replayRunner :: Tape -> IO (AgentRunner, IO Json)
 replayRunner tape = do
-  calls <- newIORef (Map.fromListWith (flip (<>)) [(keyOf record, [record]) | record <- tape.agents] :: Map Key [Json])
+  keyed <- forM tape.agents $ \record -> (,[record]) <$> keyOf record
+  calls <- newIORef (Map.fromListWith (flip (<>)) keyed :: Map Key [Json])
   logged <- newIORef []
   unknown <- newIORef []
   mismatches <- newIORef []
@@ -99,17 +103,21 @@ replayRunner tape = do
             modifyIORef' unknown (<> [Object (keyJson key)])
             throwIO (protocolError ("replay: no recorded " <> kind <> " call for " <> invocation.operation <> " attempt " <> T.pack (show invocation.attempt)))
           Just record -> do
-            modifyIORef' logged (<> [Object (keyJson key <> [("seq", member "seq" record)])])
+            sequence' <- field "seq" record
+            modifyIORef' logged (<> [Object (keyJson key <> [("seq", sequence')])])
             let sent = Codec.dump request
-            when (canonical sent /= canonical (member "request" record) || String url /= member "repository_url" record) $
-              modifyIORef' mismatches (<> [Object (keyJson key <> [("recorded", member "request" record), ("sent", sent)])])
-            forM_ (list (member "is_current" record)) $ \expected -> do
+            recordedRequest <- field "request" record
+            repositoryUrl <- field "repository_url" record
+            when (canonical sent /= canonical recordedRequest || String url /= repositoryUrl) $
+              modifyIORef' mismatches (<> [Object (keyJson key <> [("recorded", recordedRequest), ("sent", sent)])])
+            expectations <- field @[Bool] "is_current" record
+            forM_ expectations $ \expected -> do
               observed <- fromMaybe (pure True) invocation.isCurrent
-              when (Bool observed /= expected) $
-                modifyIORef' mismatches (<> [Object (keyJson key <> [("is_current", Array [expected, Bool observed])])])
-            case member "error" record of
-              Null -> either (\problem -> throwIO (protocolError ("replay: recorded result refused: " <> renderDecodeError problem))) pure (validate (member "result" record))
-              failure -> raiseRecorded failure
+              when (observed /= expected) $
+                modifyIORef' mismatches (<> [Object (keyJson key <> [("is_current", Array [Bool expected, Bool observed])])])
+            optionalField "error" record >>= \case
+              Nothing -> field "result" record >>= either (\problem -> throwIO (protocolError ("replay: recorded result refused: " <> renderDecodeError problem))) pure . validate
+              Just failure -> raiseRecorded failure
       runner =
         AgentRunner
           { review = call "review"
@@ -130,40 +138,60 @@ replayRunner tape = do
             ]
   pure (runner, report)
   where
-    keyOf record = (text (member "kind" record), text (member "operation" record), integer (member "attempt" record))
+    keyOf record = (,,) <$> field "kind" record <*> field "operation" record <*> field "attempt" record
 
--- | Throw the exception a tape recorded.
+-- | Throw the exception a tape recorded (@host_seams.raise_recorded@).
 raiseRecorded :: Json -> IO a
-raiseRecorded failure = case text (member "class" failure) of
-  "AgentProtocolError" ->
-    throwIO
-      AgentProtocolError
-        { reason = text (member "reason" failure)
-        , canceled = member "canceled" failure == Bool True
-        , timedOut = member "timed_out" failure == Bool True
-        , resultCategory = either (const Nothing) Just (validate (member "result_category" failure))
-        , cleanupCategory = either (const Nothing) Just (validate (member "cleanup_category" failure))
-        }
-  "GitPublishError" ->
-    case [c | c <- [minBound .. maxBound :: PublicationCategory], categoryName c == text (member "category" failure)] of
-      category : _ -> throwIO (GitPublishError category (text (member "reason" failure)))
-      [] -> ioError (userError ("replay: unknown publication category in " <> show failure))
-  name
-    | name `elem` ["GitHubBoundaryError", "GitHubObjectWriteError"] ->
-        case [c | c <- [minBound .. maxBound :: FailureClass], failureClassName c == text (member "failure_class" failure)] of
-          failureClass : _ ->
-            throwIO
-              GitHubBoundaryError
-                { kind = if name == "GitHubObjectWriteError" then ObjectWrite else Boundary
-                , message = text (member "message" failure)
-                , failureClass
-                , providerStatus = case member "provider_status" failure of
-                    Int status -> Just (fromInteger status)
-                    _ -> Nothing
-                , providerDetail = text (member "provider_detail" failure)
-                }
-          [] -> ioError (userError ("replay: unknown failure class in " <> show failure))
-    | otherwise -> ioError (userError ("replay: recorded " <> T.unpack name <> ": " <> T.unpack (text (member "reason" failure))))
+raiseRecorded failure =
+  field "class" failure >>= \case
+    "AgentProtocolError" -> do
+      reason <- field "reason" failure
+      canceled <- field "canceled" failure
+      timedOut <- field "timed_out" failure
+      resultCategory <- category "result_category"
+      cleanupCategory <- category "cleanup_category"
+      throwIO AgentProtocolError {reason, canceled, timedOut, resultCategory, cleanupCategory}
+    "GitPublishError" -> GitPublishError <$> named "category" categoryName [minBound .. maxBound] <*> field "reason" failure >>= throwIO
+    name
+      | name `elem` ["GitHubBoundaryError", "GitHubObjectWriteError"] -> do
+          recordedMessage <- field "message" failure
+          failureClass <- named "failure_class" failureClassName [minBound .. maxBound :: FailureClass]
+          -- @GitHubBoundaryError.__init__@'s checks.
+          providerStatus <- field "provider_status" failure
+          unless (all (\status -> 100 <= status && status <= 599) providerStatus) $
+            refused "provider_status" (maybe Null Int providerStatus)
+          providerDetail <- field "provider_detail" failure
+          unless (boundedDetail providerDetail) $ refused "provider_detail" (String providerDetail)
+          throwIO
+            GitHubBoundaryError
+              { kind = if name == "GitHubObjectWriteError" then ObjectWrite else Boundary
+              , message = recordedMessage
+              , failureClass
+              , providerStatus = fromInteger <$> providerStatus
+              , providerDetail
+              }
+      | otherwise -> do
+          reason <- optionalField "reason" failure
+          throwIO (RecordedError name (maybe "" pythonStr reason))
+  where
+    category :: (Contract c) => Text -> IO (Maybe c)
+    category key = field key failure >>= traverse (\value -> either (const (refused key value)) pure (validate value))
+    named :: Text -> (c -> Text) -> [c] -> IO c
+    named key spelling choices = do
+      spelled <- field key failure
+      maybe (refused key (String spelled)) pure (listToMaybe [c | c <- choices, spelling c == spelled])
+    -- @re.fullmatch(r"[a-z0-9_.:-]+", detail)@, at most 96 characters.
+    boundedDetail detail =
+      not (T.null detail) && T.length detail <= 96 && T.all (\c -> isAsciiLower c || isDigit c || c `elem` ("_.:-" :: String)) detail
+
+-- | A recorded exception of another class: Python's
+-- @RuntimeError(f"recorded {kind}: {error.get('reason', '')}")@, its text
+-- the same.
+data RecordedError = RecordedError Text Text
+  deriving stock (Show)
+
+instance Exception RecordedError where
+  displayException (RecordedError kind reason) = T.unpack ("recorded " <> kind <> ": " <> reason)
 
 -- ---------------------------------------------------------------------------
 -- The Git publisher
@@ -174,7 +202,7 @@ replayPublisher tape = do
   records <- newIORef tape.publisher
   logged <- newIORef []
   mismatches <- newIORef []
-  let answer :: Text -> [(Text, Json)] -> (Json -> a) -> IO a
+  let answer :: Text -> [(Text, Json)] -> (Json -> IO a) -> IO a
       answer method arguments decode = do
         next <- atomicModifyIORef' records $ \case
           record : rest -> (rest, Just record)
@@ -184,12 +212,15 @@ replayPublisher tape = do
             modifyIORef' mismatches (<> [Object [("method", String method), ("arguments", Object arguments), ("recorded", Null)]])
             throwIO (GitPublishError BoundaryUnavailable "replay: no recorded publisher call")
           Just record -> do
-            modifyIORef' logged (<> [Object [("method", String method), ("seq", member "seq" record)]])
-            when (member "method" record /= String method || canonical (member "arguments" record) /= canonical (Object arguments)) $
+            sequence' <- field "seq" record
+            modifyIORef' logged (<> [Object [("method", String method), ("seq", sequence')]])
+            recordedMethod <- field "method" record
+            recordedArguments <- field "arguments" record
+            when (recordedMethod /= String method || canonical recordedArguments /= canonical (Object arguments)) $
               modifyIORef' mismatches (<> [Object [("method", String method), ("arguments", Object arguments), ("recorded", record)]])
-            case member "error" record of
-              Null -> pure (decode (member "outcome" record))
-              failure -> raiseRecorded failure
+            optionalField "error" record >>= \case
+              Nothing -> field "outcome" record >>= decode
+              Just failure -> raiseRecorded failure
       keywords operation digest expectedHead baseHead mergeBase =
         [ ("operation", String operation)
         , ("payload_digest", String digest)
@@ -200,22 +231,22 @@ replayPublisher tape = do
       publisher =
         MutationPublisher
           { reconcile = \operation digest expectedHead baseHead mergeBase ->
-              answer "reconcile" (keywords operation digest expectedHead baseHead mergeBase) $ \value ->
-                GitReconciliation
-                  { disposition = if member "disposition" value == String "existing" then OperationExisting else OperationAbsent
-                  , observedHead = text (member "observed_head" value)
-                  , commit = text (member "commit" value)
-                  , parents = map text (list (member "parents" value))
-                  }
+              answer "reconcile" (keywords operation digest expectedHead baseHead mergeBase) $ \value -> do
+                spelled <- field "disposition" value
+                disposition <-
+                  maybe (refused "disposition" (String spelled)) pure $
+                    listToMaybe [d | d <- [OperationAbsent, OperationExisting], operationDispositionText d == spelled]
+                GitReconciliation disposition <$> field "observed_head" value <*> field "commit" value <*> field "parents" value
           , publish = \result operation digest expectedHead baseHead mergeBase ->
               answer "publish" (keywords operation digest expectedHead baseHead mergeBase <> [("result", Codec.dump result)]) $ \value ->
-                GitPublishResult {head = text (member "head" value), recovered = member "recovered" value == Bool True}
+                GitPublishResult <$> field "head" value <*> field "recovered" value
           }
       report = do
         left <- readIORef records
         known <- readIORef logged
         mismatched <- readIORef mismatches
-        pure (Object [("calls", Array known), ("mismatches", Array mismatched), ("unused", Array (map (member "seq") left))])
+        unused <- mapM (field "seq") left
+        pure (Object [("calls", Array known), ("mismatches", Array mismatched), ("unused", Array unused)])
   pure (publisher, report)
 
 -- ---------------------------------------------------------------------------
@@ -228,27 +259,32 @@ replayPublisher tape = do
 runReplay :: ReplayOptions -> IO Json
 runReplay options = do
   tape <- readTape options.tape
-  let settings = member "config" tape.meta
-      replaySecret = text (member "replay_webhook_secret" settings)
-      agent = member "agent" tape.meta
-      optionalText key = case member key agent of
-        String value -> Just value
-        _ -> Nothing
-      config =
+  settings <- field "config" tape.meta
+  replaySecret <- field "replay_webhook_secret" settings
+  appId <- field "app_id" settings
+  appSlug <- field "app_slug" settings
+  clientId <- field "client_id" settings
+  accounts <- field "accounts" settings
+  watchedAuthors <- fromMaybe [] <$> optionalField "watched_authors" settings
+  let config =
         HostConfig
-          { appId = integer (member "app_id" settings)
-          , appSlug = T.toCaseFold (text (member "app_slug" settings))
-          , clientId = text (member "client_id" settings)
+          { appId
+          , appSlug = T.toCaseFold appSlug
+          , clientId
           , accounts =
-              [ AccountConfig (integer account) (text login) [(integer rid, T.toCaseFold (text name)) | Array [rid, name] <- list repositories]
-              | Array [account, login, repositories] <- list (member "accounts" settings)
+              [ AccountConfig account login [(rid, T.toCaseFold name) | (rid, name) <- repositories]
+              | (account, login, repositories) <- accounts
               ]
           , statePath = options.root
-          , watchedAuthors = Set.fromList (map text (list (member "watched_authors" settings)))
+          , watchedAuthors = Set.fromList watchedAuthors
           , privateKey = secret options.privateKey
           , webhookSecret = secret replaySecret
           }
-  composition <- composeAgent Nothing (optionalText "provider") (optionalText "model")
+  -- @meta.get("agent") or {}@
+  agent <- fromMaybe (Object []) . join <$> optionalField "agent" tape.meta
+  provider <- join <$> optionalField "provider" agent
+  model <- join <$> optionalField "model" agent
+  composition <- composeAgent Nothing provider model
   store <- openAgentRouteStore (options.root </> "agent-routes.sqlite3")
   activateRoutes store composition (options.root </> "applications")
   let custody =
@@ -264,7 +300,9 @@ runReplay options = do
       ClientOptions {exchange, clock = realToFrac <$> getPOSIXTime, metadataHook = Nothing}
   (runner, runnerReport) <- replayRunner tape
   (publisher, publisherReport) <- replayPublisher tape
-  clock <- newIORef (case tape.steps of first : _ -> number (member "clock" first); [] -> 0)
+  clock <- newIORef =<< case tape.steps of
+    first : _ -> field "clock" first
+    [] -> pure 0
   runnerCalls <- newIORef (0 :: Int)
   publisherCalls <- newIORef (0 :: Int)
   let counted ref action = modifyIORef' ref (+ 1) >> action
@@ -279,6 +317,8 @@ runReplay options = do
           { reconcile = \a b c d e -> counted publisherCalls (publisher.reconcile a b c d e)
           , publish = \r a b c d e -> counted publisherCalls (publisher.publish r a b c d e)
           }
+  workflowPath <- field "workflow_path" settings
+  reminderDelay <- field "reminder_seconds" settings
   host <-
     openHostService
       config
@@ -287,8 +327,8 @@ runReplay options = do
         , applicationFactory = \root' instanceId authority runner' applicationOptions ->
             v5ApplicationFactory root' instanceId authority runner' applicationOptions {mutationPublisher = Just countingPublisher}
         , clock = Just (readIORef clock)
-        , workflowPath = text (member "workflow_path" settings)
-        , reminderDelay = number (member "reminder_seconds" settings)
+        , workflowPath
+        , reminderDelay
         }
   closed <- newIORef False
   let serverLines = do
@@ -298,26 +338,29 @@ runReplay options = do
       unresolved = do
         loaded <- readIORef host.loaded
         or <$> mapM (.app.hasUnresolvedPublication) (Map.elems loaded)
-      run step = case text (member "op" step) of
+      run step op = case op of
         "registry" -> do
+          inventories <- field "inventories" step
           void . Routing.reconcile host.registry $
-            [ InstallationInventory (integer i) (integer a) [(integer rid, text name) | Array [rid, name] <- list repositories]
-            | Array [i, a, repositories] <- list (member "inventories" step)
-            ]
+            [InstallationInventory i a repositories | (i, a, repositories) <- inventories]
           pure []
         "deliver" -> do
-          let body = TE.encodeUtf8 (text (member "body" step))
-          receipt <- Custody.receive host.custody (signedHeaders replaySecret (member "headers" step) body) body
+          body <- TE.encodeUtf8 <$> field "body" step
+          headers <- field "headers" step
+          receipt <- Custody.receive host.custody (signedHeaders replaySecret headers body) body
+          recorded <- field "disposition" step
           let disposition = dispositionName receipt.disposition
-          pure [("disposition", String disposition), ("ok", Bool (String disposition == member "disposition" step))]
+          pure [("disposition", String disposition), ("ok", Bool (String disposition == recorded))]
         "process" -> do
+          delivery <- field "delivery" step
           waiting <- Custody.pending host.custody 100 Nothing
-          case [item | item <- waiting, String item.deliveryId == member "delivery" step] of
+          case [item | item <- waiting, String item.deliveryId == delivery] of
             [item] -> Host.process host item >> pure []
             _ -> pure [("ok", Bool False)]
         "pump" -> do
-          processed <- Host.pump host (fromInteger (integer (member "limit" step)))
-          pure [("processed", Int (toInteger processed)), ("ok", Bool (Int (toInteger processed) == member "processed" step))]
+          processed <- Host.pump host . fromInteger =<< field "limit" step
+          recorded <- field "processed" step
+          pure [("processed", Int (toInteger processed)), ("ok", Bool (Int (toInteger processed) == recorded))]
         "converge" -> do
           let go :: Int -> IO [(Text, Json)]
               go 0 = pure [("ok", Bool False)]
@@ -329,32 +372,31 @@ runReplay options = do
                 if processed == 0 && before == after && not pending then pure [] else go (n - 1)
           go 50
         "sweep" -> do
-          reconciled <- Host.sweep host (text (member "trigger" step))
+          reconciled <- Host.sweep host =<< field "trigger" step
           pure [("reconciled", Int (toInteger reconciled))]
         "close" -> Host.close host >> writeIORef closed True >> pure []
         other -> pure [("ok", Bool False), ("error", String ("unknown step " <> other))]
   entries <- forM tape.steps $ \step -> do
-    writeIORef clock (number (member "clock" step))
-    outcome <- try @SomeException (run step)
-    let base = [("op", member "op" step), ("seq", member "seq" step)]
-    pure . Object . okFirst base $ case (outcome, member "raises" step) of
-      (Right fields, Null) -> fields
-      (Right _, expected) -> [("ok", Bool False), ("error", String ("expected to raise: " <> text expected))]
-      (Left failure, Null) -> [("ok", Bool False), ("error", String (message failure))]
-      (Left failure, expected) ->
+    writeIORef clock =<< field "clock" step
+    op <- field "op" step
+    sequence' <- field "seq" step
+    outcome <- try @SomeException (run step op)
+    raises <- optionalField "raises" step
+    let base = [("op", String op), ("seq", sequence')]
+    pure . Object . okFirst base $ case (outcome, raises) of
+      (Right fields, Nothing) -> fields
+      (Right _, Just expected) -> [("ok", Bool False), ("error", String ("expected to raise: " <> expected))]
+      (Left failure, Nothing) -> [("ok", Bool False), ("error", String (message failure))]
+      (Left failure, Just expected) ->
         let raised = message failure
-         in [("ok", Bool (String raised == expected)), ("raised", String raised)]
+         in [("ok", Bool (raised == expected)), ("raised", String raised)]
   done <- readIORef closed
   when (not done) (Host.close host)
   agentsReport <- runnerReport
   publisherReport' <- publisherReport
   pure (Object [("steps", Array entries), ("agents", agentsReport), ("publisher", publisherReport')])
   where
-    number = \case
-      Int value -> fromInteger value
-      Float value -> value
-      _ -> 0
-    okFirst base fields = base <> [("ok", fromMaybe (Bool True) (lookup "ok" fields))] <> [field | field@(name, _) <- fields, name /= "ok"]
+    okFirst base fields = base <> [("ok", fromMaybe (Bool True) (lookup "ok" fields))] <> [entry | entry@(name, _) <- fields, name /= "ok"]
 
 -- | The exception's own text (Python's @str(error)@), without the
 -- backtrace 'SomeException' adds.

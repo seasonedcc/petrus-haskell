@@ -12,6 +12,7 @@ module Hamsterdan.E2E.Agents
   ) where
 
 import Control.Exception (throwIO)
+import Control.Monad (forM)
 import Data.Char (isDigit)
 import Data.IORef
 import Data.List (sortOn)
@@ -93,7 +94,8 @@ data CarriedRunner = CarriedRunner
 -- | @CarriedRunner(tape)@ over a tape's @agents.jsonl@.
 carriedRunner :: Tape -> IO CarriedRunner
 carriedRunner tape = do
-  calls <- newIORef (Map.fromListWith (flip (<>)) [(keyOf record, [record]) | record <- tape.agents] :: Map Key [Json])
+  keyed <- forM tape.agents $ \record -> (,[record]) <$> keyOf record
+  calls <- newIORef (Map.fromListWith (flip (<>)) keyed :: Map Key [Json])
   logged <- newIORef []
   unknown <- newIORef []
   let answer kind operation attempt request = do
@@ -118,16 +120,20 @@ carriedRunner tape = do
                   )
                 ]
           Just record -> do
-            modifyIORef' logged (<> [Object (fields (identity kind operation attempt) <> [("seq", member "seq" record)])])
-            pure $ case member "error" record of
-              Null -> Object [("result", carryResult (member "request" record) request (member "result" record))]
-              failure -> Object [("error", failure)]
+            sequence' <- field "seq" record
+            modifyIORef' logged (<> [Object (fields (identity kind operation attempt) <> [("seq", sequence')])])
+            optionalField "error" record >>= \case
+              Just failure -> pure (Object [("error", failure)])
+              Nothing -> do
+                recordedRequest <- field "request" record
+                result <- field "result" record
+                pure (Object [("result", carryResult recordedRequest request result)])
       call :: (Contract request, Contract result) => Text -> Text -> request -> Invocation -> IO result
       call kind _ request invocation = do
         answered <- answer kind invocation.operation invocation.attempt (Codec.dump request)
-        case member "error" answered of
-          Null -> either (throwIO . protocolError . ("carried: recorded result refused: " <>) . renderDecodeError) pure (validate (member "result" answered))
-          failure -> raiseRecorded failure
+        optionalField "error" answered >>= \case
+          Nothing -> field "result" answered >>= either (throwIO . protocolError . ("carried: recorded result refused: " <>) . renderDecodeError) pure . validate
+          Just failure -> raiseRecorded failure
       report = do
         known <- readIORef logged
         missing <- readIORef unknown
@@ -139,7 +145,7 @@ carriedRunner tape = do
       , report
       }
   where
-    keyOf record = (text (member "kind" record), operationShape (text (member "operation" record)), integer (member "attempt" record))
+    keyOf record = (,,) <$> field "kind" record <*> (operationShape <$> field "operation" record) <*> field "attempt" record
     identity kind operation attempt = Object [("kind", String kind), ("operation", String operation), ("attempt", Int attempt)]
     fields = \case
       Object members -> members

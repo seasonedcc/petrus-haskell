@@ -33,7 +33,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.E2E.Agents (CarriedRunner (..), carriedRunner, replaceStrings)
-import Hamsterdan.E2E.Tape (Tape (..), canonical, integer, list, member, readTape, text)
+import Hamsterdan.E2E.Tape (Tape (..), canonical, field, member, readTape)
 import Petrus.Json (Json (..))
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
@@ -64,8 +64,8 @@ carried = describe "the carried agent (HAMSTERDAN_E2E_AGENTS)" $
       let journey = takeWhile (/= ',') name
       (interpreter, tapePath) <- record dir journey fault
       recorded <- readTape tapePath
-      let moved = map carry recorded.agents
-          calls = case moved of
+      moved <- mapM carry recorded.agents
+      let calls = case moved of
             -- The first call once more (its record is spent) and a call
             -- nothing recorded: both unknown.
             first : _ -> moved <> [first, obj [("kind", String "code"), ("operation", String "mutation:never:recorded"), ("attempt", Int 1), ("request", obj [])]]
@@ -75,33 +75,40 @@ carried = describe "the carried agent (HAMSTERDAN_E2E_AGENTS)" $
       out <- script interpreter "carry_check.py" [tapePath, dir </> "calls.jsonl"]
       python <- mapM readJson (BC.lines out)
       runner <- carriedRunner recorded
-      answers <- forM calls $ \call -> runner.answer (text (member "kind" call)) (text (member "operation" call)) (integer (member "attempt" call)) (member "request" call)
+      answers <- forM calls $ \call -> do
+        kind <- field "kind" call
+        operation <- field "operation" call
+        attempt <- field "attempt" call
+        runner.answer kind operation attempt =<< field "request" call
       report <- runner.report
       let haskell = answers <> [obj [("unknown", member "unknown" report)]]
       map canonical haskell `shouldBe` map canonical python
-      length (list (member "unknown" report)) `shouldBe` 2
+      unknown <- field @[Json] "unknown" report
+      length unknown `shouldBe` 2
       -- A carried result speaks of the new request only.
       let old = "owner/repo" : [value | record' <- recorded.agents, name' <- ["head", "base"], String value <- [member name' (member "request" record')]]
       forM_ (zip calls answers) $ \(call, answer) -> case member "result" answer of
         Null -> pure ()
         result -> do
-          forM_ ["kind", "repository", "pull_request", "epoch", "head", "base", "ref"] $ \field ->
-            unless (member field result == Null) $ member field result `shouldBe` member field (member "request" call)
+          forM_ ["kind", "repository", "pull_request", "epoch", "head", "base", "ref"] $ \key ->
+            unless (member key result == Null) $ member key result `shouldBe` member key (member "request" call)
           forM_ old $ \value -> T.unpack (canonical result) `shouldNotContain` T.unpack value
       unless (fault == Nothing) $
-        [() | answer <- answers, member "error" answer /= Null, text (member "class" (member "error" answer)) == "AgentProtocolError", member "timed_out" (member "error" answer) == Bool True]
+        [() | answer <- answers, member "class" (member "error" answer) == String "AgentProtocolError", member "timed_out" (member "error" answer) == Bool True]
           `shouldSatisfy` (not . null)
 
 -- | A recorded call moved to @seasonedcc/demo-pr-readiness-hs@,
 -- installation 4401, repository 3101, pull request 12 and reversed heads.
-carry :: Json -> Json
-carry recorded =
-  obj
-    [ ("kind", member "kind" recorded)
-    , ("operation", String (T.replace ":pr:7:" ":pr:12:" (T.replace "github:44:31:" "github:4401:3101:" (strings (text (member "operation" recorded))))))
-    , ("attempt", member "attempt" recorded)
-    , ("request", setMember "pull_request" (Int 12) (replaceStrings replacements (member "request" recorded)))
-    ]
+carry :: Json -> IO Json
+carry recorded = do
+  operation <- field "operation" recorded
+  pure $
+    obj
+      [ ("kind", member "kind" recorded)
+      , ("operation", String (T.replace ":pr:7:" ":pr:12:" (T.replace "github:44:31:" "github:4401:3101:" (strings operation))))
+      , ("attempt", member "attempt" recorded)
+      , ("request", setMember "pull_request" (Int 12) (replaceStrings replacements (member "request" recorded)))
+      ]
   where
     replacements =
       ("owner/repo", "seasonedcc/demo-pr-readiness-hs")
@@ -247,17 +254,19 @@ rehearsal = describe "the hosts' start (rehearse_hosts.py, a fake GitHub)" $
       report <- readJson out
       let python = member "python" report
           haskell = member "haskell" report
-      forM_ ["health", "webhook", "exit", "github"] $ \field ->
-        member field haskell `shouldBe` member field python
+      forM_ ["health", "webhook", "exit", "github"] $ \key ->
+        member key haskell `shouldBe` member key python
       member "exit" python `shouldBe` status
-      list (member "health" python) `shouldSatisfy` (\case Int 200 : _ -> True; _ -> False)
-      text (member "disposition" (list (member "webhook" python) !! 1)) `shouldBe` "accepted"
-      [text (member "kind" call) | call <- list (member "github" python)] `shouldNotContain` ["unanswered"]
+      member "health" python `shouldSatisfy` (\case Array (Int 200 : _) -> True; _ -> False)
+      webhook <- field @[Json] "webhook" python
+      map (member "disposition") (drop 1 webhook) `shouldSatisfy` (\case String "accepted" : _ -> True; _ -> False)
+      github <- field @[Json] "github" python
+      map (member "kind") github `shouldNotContain` [String "unanswered"]
       member "secrets_on_disk" report `shouldBe` Array []
-      let ops = [text (member "op" step) | step <- list (member "tape_steps" python)]
+      ops <- mapM (field @Text "op") =<< field @[Json] "tape_steps" python
       take 2 ops `shouldBe` ["registry", "deliver"]
       ops `shouldContain` ["close"]
-      text (member "source" (member "tape_meta" python)) `shouldBe` "live"
+      member "source" (member "tape_meta" python) `shouldBe` String "live"
 
 -- ---------------------------------------------------------------------------
 -- Live-shaped tapes
@@ -270,7 +279,7 @@ liveStyle = describe "live-shaped tapes (converge steps, sticky reads)" $
       let live = dir </> "live"
       _ <- script interpreter "live_style.py" [tapePath, live]
       shaped <- readTape live
-      let ops = [text (member "op" step) | step <- shaped.steps]
+      ops <- mapM (field @Text "op") shaped.steps
       ops `shouldContain` ["converge"]
       ops `shouldNotContain` ["process"]
       python <- replayPython interpreter ["--sticky-reads"] live (dir </> "python")

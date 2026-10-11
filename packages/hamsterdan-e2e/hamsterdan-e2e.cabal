@@ -103,7 +103,10 @@ test-suite hamsterdan-e2e-test
                   , cryptohash-sha256
                   , directory
                   , filepath
+                  , hamsterdan-contracts
                   , hamsterdan-e2e
+                  , hamsterdan-github
+                  , hamsterdan-host
                   , hspec >=2.10
                   , petrus-json
                   , petrus-test-support
