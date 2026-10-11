@@ -13,6 +13,17 @@ if [[ -n "$bad" ]]; then
   echo "$bad" >&2
   exit 1
 fi
+# Every package a row names carries its DIVERGENCES.md (README: every
+# intentional divergence is documented next to the package), "None" if so.
+missing=$(awk -F'|' '/^\|/ {print $4}' PARITY.md | grep -o '`[a-z0-9-]*`' | tr -d '`' | sort -u |
+  while read -r package; do
+    if [[ -d "packages/$package" && ! -f "packages/$package/DIVERGENCES.md" ]]; then echo "$package"; fi
+  done)
+if [[ -n "$missing" ]]; then
+  echo "packages named in PARITY.md without a DIVERGENCES.md:" >&2
+  echo "$missing" >&2
+  exit 1
+fi
 python3 -B scripts/bench_results.py check-parity
 total=$(awk -F'|' '/^\|/ && $5 ~ /^ *(not started|in progress|at parity)/ {n++} END {print n+0}' PARITY.md)
 done_=$(awk -F'|' '/^\|/ && $5 ~ /^ *at parity/ {n++} END {print n+0}' PARITY.md)
