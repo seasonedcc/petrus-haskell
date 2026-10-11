@@ -119,6 +119,14 @@
     ],
     "seconds": 38
    }
+  },
+  "hamsterdan-e2e-test": {
+   "tier-b": {
+    "match": [
+     "/tier B: the reference recorded, both hosts replayed/"
+    ],
+    "seconds": 59
+   }
   }
  }
 }

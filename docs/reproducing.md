@@ -321,7 +321,12 @@ Blacksmith's persistent Docker builder (`useblacksmith/setup-docker-builder`
 and `useblacksmith/build-push-action`), which keeps the layers between runs.
 The Containerfile builds every Hackage dependency in a layer keyed only on
 the `.cabal` files, `cabal.project` and `cabal.project.freeze`, so a
-source-only change rebuilds the local packages and nothing else.
+source-only change rebuilds the local packages and nothing else. The cabal
+store and the local packages' `dist-newstyle` are build cache mounts, which
+the persistent builder keeps: a source change recompiles only the changed
+packages and those that depend on them, and a `.cabal` change finds the
+Hackage dependencies already built. A builder without that cache (a local
+`scripts/container-smoke --build`) builds everything.
 
 ## Parity
 
