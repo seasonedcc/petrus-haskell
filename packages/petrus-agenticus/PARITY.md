@@ -94,6 +94,15 @@ over the Haskell sources and cabal files of all three agenticus packages.
 | `test_agenticus_does_not_import_private_motus_or_its_own_root_facade` | same label | |
 | `test_forbidden_universal_concepts_are_not_defined` | same label | No type, class or top-level function may be named `Agent` or `Session`. |
 
+## `tests/project/test_package_boundaries.py` (1 function, runtime-service half)
+
+Spec: `test/Petrus/Agenticus/BoundariesSpec.hs`, under the describe
+`tests/project/test_package_boundaries.py`.
+
+| Upstream test | Haskell | Notes |
+| --- | --- | --- |
+| `test_activity_worker_and_runtime_service_do_not_own_retained_territory_lifecycle` | same label, "(runtime-service half)" | Upstream walks the AST of `_CodexGondolinActivityAdapter` and `_CodexGondolinRuntimeService` and forbids calls named `_release_to`, `begin_release`, `create`, `destroy`, `export`, `lookup`, `reclaim`, `release`, `retire` and `settle`. The port reads `Petrus.Agenticus.Runtime.CodexGondolin`, takes the top-level bindings of its "host-local Activity adapter" and "runtime service" sections, and follows them transitively through the module's other bindings. Comments and literals are stripped first. The Haskell names of the forbidden operations must not appear: attachment/binding `releaseTo`, `settle`, `release`, `retrySettlement`; custody `beginRelease`, `lookupCustody`, `reclaim`, `reclaimExactMotusBinding`, `retire`; provider `providerCreate`/`Destroy`/`Export`/`Lookup`. The module must also not import `Petrus.Agenticus.Attachment.Retention`. A planted source checks that the scanner sees a call made through a helper or with a qualified name, and ignores comments and strings. The Worker half (`petrus.motus.worker` never imports retention) belongs to petrus-motus. |
+
 ## `tests/petrus/agenticus/hands/test_workspace.py` (3 functions)
 
 Module: `Petrus.Agenticus.Hands.Workspace`. Spec: `test/Petrus/Agenticus/WorkspaceSpec.hs`.
