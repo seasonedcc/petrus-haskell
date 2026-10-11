@@ -41,11 +41,17 @@ suites, the benchmarks and the parity check. In short:
 ```sh
 git clone --recursive https://github.com/seasonedcc/petrus-haskell.git
 cd petrus-haskell
-scripts/check-all -j2      # build, tests, conformance, interop, parity table (what CI runs)
+scripts/check-all -j2      # build, tests, conformance, interop, parity table
+scripts/check-all --viewer # also the upstream petrus-viewer suites (what CI runs)
 scripts/interop            # only the cross-language suites, against the pinned Python
 scripts/bench PACKAGE      # rerun a package's benchmarks against the pinned Python
 scripts/check-parity       # the parity table's claims against the committed evidence
 ```
+
+CI runs those same checks on every push to `main` and every pull request,
+spread over parallel runners, plus the container image; its
+[section in docs/reproducing.md](docs/reproducing.md#continuous-integration)
+maps each CI job to its `scripts/check-all` step.
 
 ## License
 
