@@ -243,14 +243,12 @@ spec = do
             factory = SocketFactory (pure raw)
         if asynchronous
           then do
-            (access, _) <- accessWith (ipcEndpoint tmp "unused.sock") id
-            Z.replaceAccessSocketFactory access factory
+            (access, _) <- accessWith (ipcEndpoint tmp "unused.sock") (\o -> o {socketFactory = Just factory})
             void (Z.openAccessSocket access) `shouldThrow` runtimeErrorMatching "option refused"
             readIORef closed `shouldReturn` 1
             Z.closeAccess access
           else do
-            client <- clientWith (ipcEndpoint tmp "unused.sock") id
-            Z.replaceSocketFactory client factory
+            client <- clientWith (ipcEndpoint tmp "unused.sock") (\o -> o {socketFactory = Just factory})
             void (Z.openClientSocket client) `shouldThrow` runtimeErrorMatching "option refused"
             readIORef closed `shouldReturn` 1
             Z.close client
@@ -265,8 +263,7 @@ spec = do
             , receive = \_ -> throwIO (userError "send did not finish")
             , close = modifyIORef' closed (+ 1)
             }
-    (access, port) <- accessWith (ipcEndpoint tmp "unused.sock") (\o -> o {maxInFlightOperations = 1})
-    Z.replaceAccessSocketOpener access (pure socket)
+    (access, port) <- accessWith (ipcEndpoint tmp "unused.sock") (\o -> o {maxInFlightOperations = 1, socketOpener = Just (pure socket)})
     sending <- spawn (port.claim 0)
     takeMVar sendEntered
     waiting <- spawn (port.claim 1)
@@ -304,8 +301,7 @@ spec = do
     (access, port) <-
       accessWith
         (ipcEndpoint tmp "unused.sock")
-        (\o -> o {requestTimeout = 0.001, terminalTimeout = 0.02, maxInFlightOperations = 1})
-    Z.replaceAccessSocketOpener access open
+        (\o -> o {requestTimeout = 0.001, terminalTimeout = 0.02, maxInFlightOperations = 1, socketOpener = Just open})
     port.complete 0 transportAttempt (obj [("same", Array [Int 1])])
       `shouldThrow` uncertainMatching "sent but not acknowledged"
     sent <- readIORef payloads

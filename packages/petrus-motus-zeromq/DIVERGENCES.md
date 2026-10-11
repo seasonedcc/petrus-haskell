@@ -88,10 +88,12 @@ requests no conforming peer can produce.
    The validation and its messages are the reference's.
 8. **Test seams are exported functions.** The reference's tests monkeypatch
    `_context`, `_open_socket` and the server's internals. This package
-   exports small seams instead, grouped under "Seams for tests":
-   - `replaceSocketFactory` and `openClientSocket`;
-   - `replaceAccessSocketFactory`, `replaceAccessSocketOpener` and
-     `openAccessSocket`;
+   takes small seams instead:
+   - `ClientOptions`'s `socketFactory` (for `_context`) and
+     `socketOpener` (for the access's `_open_socket`), fixed at
+     construction;
+   - `openClientSocket` and `openAccessSocket`, exported under "Seams for
+     tests";
    - the server's `fromFactory`, which is the reference's private
      `_from_factory` door.
 
