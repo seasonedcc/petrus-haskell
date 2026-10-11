@@ -109,12 +109,13 @@ failureText e = case fromException e of
 -- span's @error_type@) for a failure the Engine raises in the reference's
 -- vocabulary: an 'EngineError' (a handler failure is named after its
 -- recorded text, @RuntimeError('handler broke')@ being a @RuntimeError@),
--- a 'DispatchError' (@ValueError@), or a 'PythonException'. 'Nothing' for
--- anything else, which "Petrus.Telemetry" names.
+-- a Dispatch's or Worker's own exception ('knownPythonException': a
+-- 'DispatchError' is a @ValueError@), or a 'PythonException'. 'Nothing'
+-- for anything else, which "Petrus.Telemetry" names.
 engineErrorType :: SomeException -> Maybe Text
-engineErrorType e = case (fromException e, fromException e, fromException e) of
+engineErrorType e = case (fromException e, knownPythonException [] e, fromException e) of
   (Just (_ :: EngineError), _, _) -> Just (failureClass (failureText e))
-  (_, Just (DispatchError _), _) -> Just "ValueError"
+  (_, Just known, _) -> Just (failureClass (pythonRepr known))
   (_, _, Just (python :: PythonException)) -> Just (failureClass (exceptionFailureText (toException python)))
   _ -> Nothing
 
