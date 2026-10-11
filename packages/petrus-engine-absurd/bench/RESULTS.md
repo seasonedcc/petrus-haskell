@@ -11,9 +11,48 @@ Both sides do the following:
 - provision the pinned History and Absurd schemas;
 - drop the database afterwards.
 
-Ratios above 1 mean Haskell is faster. Haskell is faster than Python on every row. Statements now
-run prepared from their sixth execution on a connection, as psycopg's do (petrus-postgres's
-prepared-statement cache).
+Ratios above 1 mean Haskell is faster. Haskell is faster than Python on every row, on a server
+with `fsync` on and with it off, in every repetition. Statements run prepared from their sixth
+execution on a connection, as psycopg's do (petrus-postgres's prepared-statement cache).
+
+- Date: 2026-10-11 07:05–07:11 local (UTC-3), at commit `ccc5c9b`.
+- Machine: Darwin arm64, Apple M4, shared with other agents. Each run started once the 1-minute
+  load average was 3 or below and the 5-minute one 4 or below; the 1-minute load was 1.48–2.54
+  around the repetitions. (A run at 06:53–06:58, while another agent's stress tests drove the
+  load to 7–25, was discarded.)
+- Haskell: GHC 9.10.3 `-O2 -threaded`, tasty-bench mean (`--stdev 5`), run with
+  `+RTS -M2G -RTS`, the benchmark executable started directly by bench-compare. Both rows use
+  wall-clock time (`localOption WallTime` in `Main.hs`).
+- Python: CPython 3.14.6 with psycopg 3.3.4 (binary), in the pinned upstream venv. The figure is
+  the median of 10 timed batches (`scripts/bench_timing.py`) of at least 0.5 s each (see
+  "Equal samples" below).
+- Interleaved by `scripts/bench-compare petrus-engine-absurd 7`, alternating Haskell first and
+  Python first. The figures are the medians of the seven repetitions; "lowest" is the worst
+  single repetition's ratio, and the last column counts the repetitions Haskell won.
+
+**`fsync` on** (`scripts/with-postgres`'s throwaway PostgreSQL 17.7, `initdb` defaults,
+07:05–07:08, load 1.48–2.31):
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
+|---|---:|---:|---:|---:|---:|
+| `engine.create-close` | 3.03 ms | 3.50 ms | 1.16× | 1.14× | 7/7 |
+| `roundtrip.issue-to-completion` | 10.2 ms | 12.4 ms | 1.21× | 1.19× | 7/7 |
+
+**`fsync` off** (a private PostgreSQL 17.7 started with `-c fsync=off`, TCP only, 07:08–07:11,
+load 2.02–2.54):
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
+|---|---:|---:|---:|---:|---:|
+| `engine.create-close` | 3.07 ms | 3.52 ms | 1.15× | 1.13× | 7/7 |
+| `roundtrip.issue-to-completion` | 9.87 ms | 12.4 ms | 1.25× | 1.23× | 7/7 |
+
+On a quiet machine `fsync` barely matters here: the round trip's thirteen commits cost about
+0.3 ms more on the Haskell side with `fsync` on, and nothing measurable on the Python side.
+The 0.72× of the earlier `fsync=on` run below came from disk contention, not from the client.
+
+### The rounds of 2026-10-11, 02:21–02:25
+
+<!-- bench: superseded -->
 
 - Date: 2026-10-11 02:21–02:25 local (UTC-3), on the commit that adds petrus-postgres's
   prepared-statement cache.
@@ -36,7 +75,9 @@ prepared-statement cache).
 | `engine.create-close` | 3.36 ms | 3.88 ms | 1.15× | 0.97× | 5/6 |
 | `roundtrip.issue-to-completion` | 10.9 ms | 14.5 ms | 1.33× | 1.00× | 6/6 |
 
-### Under `fsync=on` and heavy load
+### Under `fsync=on` and heavy load (2026-10-11, 01:35–01:50)
+
+<!-- bench: superseded -->
 
 A run twenty minutes earlier (01:35–01:50, load 4.3–5.8) used `scripts/with-postgres`'s
 throwaway server, whose `initdb` defaults keep `fsync` on. The round trip commits ten times on
