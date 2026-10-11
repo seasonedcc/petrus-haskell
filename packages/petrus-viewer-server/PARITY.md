@@ -42,6 +42,7 @@ suites marked "ours" were written for this port.
 | `cli` | `tests/petrusCli.test.mjs` | 5/5 |
 | `mcp` | `tests/mcpServer.test.mjs` | 7/7 |
 | `mcp-haskell-relay` | `tests/mcpServer.test.mjs` with the relay in `petrus` | 7/7 |
+| `mcp-node-haskell-relay` | `tests/mcpServer.test.mjs` with the upstream `server/mcp.mjs` on the relay in `petrus` | 7/7 |
 | `collab` | `tests/collab-server.test.mjs` | 6/6 |
 | `protocol` | `tests/agentProtocol.test.ts`, `tests/agentParseRegression.test.ts`, with `parseAgentMessage` answered by `Agent.Protocol` through `petrus-viewer-oracle` | 19/19 |
 | `differential` | ours: JSON and URL ports against V8 and Node | 4/4 |
@@ -105,8 +106,11 @@ Vite (see [DIVERGENCES.md](DIVERGENCES.md)).
   past input validation (checked), plus validation failures, unknown
   tools and methods, a garbage line and version negotiation.
   `test/record-mcp-transcript.mjs` records the transcript from
-  `server/mcp.mjs` (`--check`: confirm it is current).
-- Upstream `mcp` (7/7) and `mcp-haskell-relay` (7/7).
+  `server/mcp.mjs`; its `--check` runs in CI's `viewer` job and in
+  `scripts/check-all --viewer`. `test/record-node-corpora.mjs` re-records
+  the V8 `JSON.parse` and WHATWG URL corpora (`scripts/check-corpora`).
+- Upstream `mcp` (7/7) and `mcp-haskell-relay` (7/7); `mcp-node-haskell-relay` (7/7), the
+  other direction: the upstream Node MCP server on the `petrus` relay.
 - `live` (12/12): every tool, through `petrus-mcp` (Haskell), the `petrus`
   relay (Haskell) and the built UI in headless Chromium.
 

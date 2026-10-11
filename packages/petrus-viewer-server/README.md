@@ -115,7 +115,8 @@ only how they start the backend (the imports of the in-process Node servers
 and the spawns of `server/mcp.mjs`, `bin/petrus.mjs`, and `vite`; each
 rewrite must match the upstream text exactly), and runs them with
 `node --test`: `relay`, `endpoints`, `url-cache`, `cli`, `mcp`,
-`mcp-haskell-relay`, `collab`, `protocol` (the upstream agent-protocol
+`mcp-haskell-relay`, `mcp-node-haskell-relay` (the upstream Node MCP
+server on the Haskell relay), `collab`, `protocol` (the upstream agent-protocol
 tests, TypeScript run through Node's type stripping, with
 `parseAgentMessage` answered by the Haskell parser), `differential`
 (Haskell JSON/URL ports against V8 on recorded and generated inputs), `wire` (every byte of the

@@ -150,7 +150,9 @@ against Node on recorded corpora and on thousands of generated inputs
   carry it exactly (tests: `test/JsonSpec.hs`, `test/EndpointsSpec.hs`,
   the `jsonRoundTrip` and HTTP-wire differentials against Node; one entry of
   `test/fixtures/json-parse-v8.json` had been recorded with the surrogate
-  repaired and is re-recorded from Node 22). **Still open:** a history or
+  repaired and is re-recorded from Node 22; `test/record-node-corpora.mjs`
+  now re-records every result of that corpus from Node in
+  `scripts/check-corpora`). **Still open:** a history or
   observation server answering malformed JSON yields a message that the
   history tools fold into `Text` errors, where the half-pair becomes
   U+FFFD. Why it stays: it needs a third-party server's malformed answer
