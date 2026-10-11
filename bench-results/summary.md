@@ -52,7 +52,7 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-observation-http` | [RESULTS.md](../packages/petrus-observation-http/bench/RESULTS.md) | 11 | 1.61× | 5.07× |  |
 | `petrus-posix` | [RESULTS.md](../packages/petrus-posix/bench/RESULTS.md) | 7 | 1.00× | 2.27× |  |
 | `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | 8 | 1.19× | 14.7× |  |
-| `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | 11 | 1.39× | 14.2× |  |
+| `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | 12 | 1.39× | 14.2× |  |
 | `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | 17 | 1.64× | 34.2× |  |
 | `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | 7 | 1.01× | 1.69× |  |
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | 2 | 2.50× | 8.00× |  |
