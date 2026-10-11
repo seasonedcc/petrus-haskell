@@ -135,9 +135,7 @@ mkContinuation
   -> Text
   -> ContinuationState
   -> Either AgenticusError Continuation
-mkContinuation i t d ref s
-  | isBoundedText maxTextBytes ref = Right (Continuation i t d ref s)
-  | otherwise = Left referenceMessage
+mkContinuation i t d ref s = (\checked -> Continuation i t d checked s) <$> checkedText maxTextBytes referenceMessage ref
 
 -- | @Continuation(id, thread, descriptor, state_reference)@: an available
 -- revision.

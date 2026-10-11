@@ -66,7 +66,6 @@ These come from the fragments:
 - `RuntimeProbeResult` raises a raw `TypeError` from `sorted()` when two
   issues share a code and only one names a component. This is a Python
   crash, and it is not reproduced (`divergences/thread.md`).
-- Lone-surrogate connection payloads are refused (`divergences/custody.md`).
 - Neither implementation tests a real OS-process crash between the custody
   COMMIT and its cleanup. Both simulate it by abandoning and reopening the
   store.

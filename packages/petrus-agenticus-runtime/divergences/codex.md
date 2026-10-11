@@ -46,19 +46,23 @@ pin those on both sides. The corpus's single tolerated difference is item 5.
    of `codex.__all__`. The port puts it in a separate module
    (`CodexGondolin`), and `Codex`'s export list does not name it.
 
-5. **Lone surrogate escapes are refused at decoding.** `petrus-json`
-   values hold `Text`, which cannot contain a lone surrogate. CPython admits
-   `"\ud800"` into a `str`. Two cases follow:
-   - An agent message holding one makes the reference's `_final_text` raise
-     an uncaught `UnicodeEncodeError` later. The port refuses the line as
-     `malformed-jsonl`.
-   - A runtime-service request frame holding one is refused as
-     `request-invalid` before admission. The reference decodes it and
-     carries the string further. The corpus does not pin this path.
-
-   In the first case the Turn fails in both languages and nothing is
-   published. The corpus accepts any refusal where the reference raises
-   `UnicodeEncodeError`, and nothing else.
+5. **Lone surrogate escapes (resolved).** CPython's `json.loads` admits
+   `"\ud800"` into a `str`, and so do the port's loaders now, as a WTF-8
+   `Text` (`Petrus.Json.Wtf8`): the JSONL events, the helper's stdout, the
+   runtime-service request and terminal frames, and the Claude transcript
+   all go through petrus-json's `loadsBytes`/`loadsUtf8`. Where the
+   reference measures such a string with `len(value.encode())` (every
+   `_text` validator, `_final_text`, Claude's `_sanitize` and transcript
+   encoding, Amp's `_safe_final_text`), the port fails first with
+   CPython's message (`encodeRefusal`, `sanitizeOutput`), in class
+   `ValueError`, the base of `UnicodeEncodeError`. So an agent message
+   holding one fails the Turn with `runtime-failed`, a thread id is
+   `malformed-thread-id`, an event type `unknown-event`; a request token is
+   `unauthorized`, and an operation id or prompt `request-invalid`. The
+   hosts corpus pins each case against the reference (`agrees` requires
+   the `ValueError` class and CPython's exact message wherever the
+   reference raises `UnicodeEncodeError`), and the runtime-service test
+   pins the request frames.
 
 6. **Values Python can forge but JSON cannot carry.** The reference's
    fence test passes an `EqualityString`, a `str` subclass whose `__eq__`

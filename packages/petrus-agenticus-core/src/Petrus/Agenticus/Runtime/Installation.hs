@@ -27,9 +27,7 @@ import Petrus.Agenticus.Internal.Shape
 import Petrus.Agenticus.Internal.Validate
 
 text :: Text -> Text -> Either AgenticusError Text
-text label value
-  | isBoundedText maxTextBytes value = Right value
-  | otherwise = Left (valueError (label <> " must be a bounded non-empty text value"))
+text label = checkedText maxTextBytes (valueError (label <> " must be a bounded non-empty text value"))
 
 runtimeIdentity :: DescriptorIdentity -> Either AgenticusError DescriptorIdentity
 runtimeIdentity i

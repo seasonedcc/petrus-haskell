@@ -65,9 +65,7 @@ data CapabilityGrant = CapabilityGrant
   deriving stock (Eq, Show)
 
 identity :: Text -> Text -> Either AgenticusError Text
-identity name value
-  | isBoundedText maxTextBytes value = Right value
-  | otherwise = Left (valueError (name <> " must be a bounded non-empty identity string"))
+identity name = checkedText maxTextBytes (valueError (name <> " must be a bounded non-empty identity string"))
 
 positive :: Text -> Integer -> Either AgenticusError Integer
 positive name value

@@ -90,6 +90,8 @@ import Petrus.Agenticus.Thread.Identity (EpisodeId, LifecycleId (..), TurnId, li
 import Petrus.Agenticus.Thread.Lifecycle (StrEnum (..), TurnOutcome)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
+import Petrus.Json.Python (pythonExceptionStr)
+import Petrus.Json.Python qualified as Python
 import Petrus.Posix.Flock qualified as Flock
 import System.Directory (createDirectoryIfMissing, pathIsSymbolicLink)
 import System.Environment (lookupEnv)
@@ -224,7 +226,13 @@ parseTerminal :: ByteString -> Maybe Text -> Maybe EpisodeId -> Maybe TurnId -> 
 parseTerminal encoded operationId episodeId turnId = do
   unless ("\n" `B.isSuffixOf` encoded && B.count 10 encoded == 1 && B.length encoded <= maxResponse) $
     Left "terminal frame shape"
-  value <- maybe (Left "terminal JSON") Right (pyJsonLoadsBytes (B.init encoded))
+  -- @except UnicodeDecodeError, json.JSONDecodeError, RecursionError@:
+  -- @int()@'s digit-limit @ValueError@ propagates with its own text.
+  value <- case pyJsonLoadsBytes (B.init encoded) of
+    Right json -> Right json
+    Left failure
+      | failure.name `elem` ["UnicodeDecodeError", "JSONDecodeError", "RecursionError"] -> Left "terminal JSON"
+      | otherwise -> Left (pythonExceptionStr failure)
   canonical <- either (const (Left "terminal canonical form")) (Right . (<> "\n")) (jsonBytes value)
   case value of
     Object _ | canonical == encoded -> pure ()
@@ -739,7 +747,7 @@ constantTimeEqual a b =
 request :: CodexGondolinRuntimeService -> ByteString -> IO Json
 request s frame = do
   let canonical = do
-        value <- pyJsonLoadsBytes frame
+        value <- either (const Nothing) Just (pyJsonLoadsBytes frame)
         encoded <- either (const Nothing) Just (jsonBytes value)
         pure (value, encoded)
   case canonical of

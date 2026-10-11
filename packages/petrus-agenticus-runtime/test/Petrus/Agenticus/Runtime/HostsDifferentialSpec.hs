@@ -21,13 +21,14 @@ import Petrus.Agenticus.Thread.Identity (mkEpisodeId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (StrEnum (..))
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
+import Petrus.Json.Python qualified as Python
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec
 
 corpus :: Json
 corpus = unsafePerformIO $ do
   bytes <- B.readFile "differential/hosts_corpus.json"
-  either (fail . ("hosts_corpus.json: " <>)) pure (J.parseJson J.pythonLoads bytes)
+  either (fail . ("hosts_corpus.json: " <>) . show) pure (Python.loadsBytes bytes)
 {-# NOINLINE corpus #-}
 
 field :: Text -> Json -> Maybe Json
@@ -90,12 +91,6 @@ outcome = \case
   Right v -> Object [("ok", v)]
   Left e -> Object [("error", refusal (errorClassName e.errorClass) e.errorMessage)]
 
--- | A refusal raised as @RuntimeProtocolError(code)@.
-protocol :: Either Text Json -> Json
-protocol = \case
-  Right v -> Object [("ok", v)]
-  Left code -> Object [("error", refusal "RuntimeProtocolError" ("runtime protocol error: " <> code))]
-
 -- | A refusal raised as @ValueError(message)@.
 valueErr :: Either Text Json -> Json
 valueErr = \case
@@ -125,13 +120,15 @@ section host name run =
     length cases `shouldSatisfy` (> 0)
     take 5 failures `shouldBe` []
 
--- | Whether the port's outcome matches the reference's. A lone surrogate
--- (@\\ud800@) is not representable in the port's JSON values: where the
--- reference later fails with @UnicodeEncodeError@, the port refuses the same
--- input earlier, at decoding (divergences/codex.md).
+-- | Whether the port's outcome matches the reference's. CPython's
+-- @UnicodeEncodeError@ (a lone surrogate reaching @str.encode()@) is a
+-- @ValueError@ subclass: the port raises it as class @ValueError@ with
+-- CPython's exact message, everything else must agree verbatim.
 agrees :: Json -> Json -> Bool
 agrees want got = case (field "error" want, field "error" got) of
-  (Just (Object e), Just _) | lookup "class" e == Just (String "UnicodeEncodeError") -> True
+  (Just (Object e), Just (Object g))
+    | lookup "class" e == Just (String "UnicodeEncodeError") ->
+        lookup "class" g == Just (String "ValueError") && lookup "message" g == lookup "message" e
   _ -> render want == render got
 
 args :: Json -> [Json]
@@ -196,7 +193,7 @@ claudeSpecs = do
     _ -> error "decode_transcript"
   section "claude" "canonical_input" $ outcome . fmap hexText . canonicalInput
   section "claude" "sanitize" $ \i -> case args i of
-    [v, m] -> protocol (String <$> sanitize (int m) (str v))
+    [v, m] -> outcome (String <$> sanitize (int m) (str v))
     _ -> error "sanitize"
   section "claude" "payload" $ \i -> case args i of
     [s, b, k, t] ->
@@ -212,7 +209,7 @@ ampSpecs = do
     _ -> error "bounded_text"
   section "amp" "thread_id" $ outcome . fmap String . ampThreadId . str
   section "amp" "safe_final_text" $ \i -> case args i of
-    [v, m] -> protocol (String <$> safeFinalText (int m) (str v))
+    [v, m] -> outcome (String <$> safeFinalText (int m) (str v))
     _ -> error "safe_final_text"
   section "amp" "payload_from_data" $ outcome . fmap ampPayloadToData . ampPayloadFromData
   section "amp" "execution_options" $ \i -> case args i of

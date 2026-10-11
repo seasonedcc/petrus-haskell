@@ -654,7 +654,7 @@ decodeSnapshot payload = case decodeShape payload of
 
 decodeShape :: Text -> Maybe StorageSnapshot
 decodeShape payload = do
-  root <- either (const Nothing) Just (J.parseJson J.pythonLoads (TE.encodeUtf8 payload))
+  root <- either (const Nothing) Just (J.parseJson J.pythonLoads {J.loneSurrogates = J.KeepLoneSurrogates} (TE.encodeUtf8 payload))
   fields <- object root
   schema <- integer =<< key "schema_version" fields
   unless (schema == 1) Nothing

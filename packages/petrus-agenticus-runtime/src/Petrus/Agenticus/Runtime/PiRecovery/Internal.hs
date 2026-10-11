@@ -65,7 +65,7 @@ import Petrus.Agenticus.Error
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Sqlite
 import Petrus.Agenticus.Internal.WriterFence
-import Petrus.Agenticus.Internal.Validate (isBoundedText)
+import Petrus.Agenticus.Internal.Validate (checkedText)
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
   , RuntimeOperation (..)
@@ -109,9 +109,7 @@ phaseText = \case
 
 -- | @_text(value, name, maximum=512)@.
 recoveryText :: Text -> Int -> Text -> Either AgenticusError Text
-recoveryText name bound value
-  | isBoundedText bound value = Right value
-  | otherwise = Left (valueError (name <> " must be bounded non-empty text"))
+recoveryText name bound = checkedText bound (valueError (name <> " must be bounded non-empty text"))
 
 -- | Secret-free durable operation identity, terminal refs, and cleanup state.
 data PiOperationRecord = PiOperationRecord

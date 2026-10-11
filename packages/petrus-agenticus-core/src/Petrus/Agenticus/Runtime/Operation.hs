@@ -23,9 +23,7 @@ import Petrus.Agenticus.Runtime.Result
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition)
 
 operationIdentity :: Text -> Either AgenticusError Text
-operationIdentity value
-  | isBoundedText maxTextBytes value = Right value
-  | otherwise = Left (valueError "runtime operation identity must be a bounded non-empty text value")
+operationIdentity = checkedText maxTextBytes (valueError "runtime operation identity must be a bounded non-empty text value")
 
 data RuntimeCleanupDisposition
   = RuntimeCleanupClean

@@ -205,7 +205,7 @@ import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Json.Python (pythonStrRepr)
-import Petrus.Agenticus.Internal.Validate (encodeRefusal, isBoundedText, isTrimmed, sha256Hex, utf8Length)
+import Petrus.Agenticus.Internal.Validate (checkedText, encodeRefusal, isBoundedText, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
   ( AgentProgramDescriptor
   , ProgramOwnership (..)
@@ -417,12 +417,9 @@ piToolSchemas =
 -- Validation helpers
 
 -- | @_text(value, label, bound)@. A lone surrogate fails @value.encode()@,
--- after the emptiness and strip checks.
+-- after the emptiness and strip checks ('checkedText').
 piText :: Text -> Int -> Text -> Either AgenticusError Text
-piText label bound value
-  | not (T.null value) && isTrimmed value, Just refusal <- encodeRefusal value = Left refusal
-  | isBoundedText bound value = Right value
-  | otherwise = Left (valueError (label <> " must be bounded non-empty text"))
+piText label bound = checkedText bound (valueError (label <> " must be bounded non-empty text"))
 
 -- | @_uuid@: a canonical lowercase RFC 4122 session identity.
 piUuid :: Text -> Either AgenticusError Text

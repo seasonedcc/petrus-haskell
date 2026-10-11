@@ -1870,6 +1870,17 @@ serviceSpecs = do
     value <- gondolinActivityInput attachment g.custody "first" "turn-service-fences" Nothing
     exchange endpoint (frame (request' (T.replicate 32 "x") "unauthorized" value) <> "\n") `shouldReturn` errorReply "unauthorized"
     exchange endpoint "{\"version\":1, \"token\":\"bad\"}\n" `shouldReturn` errorReply "request-invalid"
+    -- A @"\\ud800"@ escape survives @json.loads@: a token holding it fails
+    -- @supplied.isascii()@ (unauthorized), and an operation id or prompt
+    -- holding it makes the invocation's @len(value.encode())@ raise inside
+    -- @_runtime_invocation@'s @except Exception@ (request-invalid).
+    let surrogate prefix = J.fromCodePoints (prefix <> "\xd800")
+        promptInput prompt = case value of
+          Object members -> Object [(k, if k == "prompt" then String prompt else v) | (k, v) <- members]
+          other -> other
+    exchange endpoint (frame (request' (surrogate (T.unpack (T.drop 1 token))) "surrogate" value) <> "\n") `shouldReturn` errorReply "unauthorized"
+    exchange endpoint (frame (request' token (surrogate "op") value) <> "\n") `shouldReturn` errorReply "request-invalid"
+    exchange endpoint (frame (request' token "surrogate" (promptInput (surrogate "prompt"))) <> "\n") `shouldReturn` errorReply "request-invalid"
     exchange endpoint (B.replicate (maxRequest + 1) 120) `shouldReturn` errorReply "frame-too-large"
     writeIORef g.wrapStart $ \_ _ -> throwAgenticus RuntimeError (TE.decodeUtf8 authCanary)
     first <- exchange endpoint (frame (request' token "same" value) <> "\n")

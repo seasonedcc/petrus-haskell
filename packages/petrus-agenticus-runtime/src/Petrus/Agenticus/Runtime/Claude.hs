@@ -135,6 +135,7 @@ import Control.Exception
   )
 import Control.Monad (forM_, unless, void, when)
 import Data.Bits ((.&.))
+import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.Char (isDigit, isHexDigit, isLower)
@@ -185,8 +186,9 @@ import Petrus.Agenticus.Hands.Gateway (HandsGateway, gatewayAttachmentEpoch, gat
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
 import Petrus.Agenticus.Internal.Exception
-import Petrus.Json.Python (pythonStrRepr)
-import Petrus.Agenticus.Internal.Validate (isBoundedText, sha256Hex, utf8Length)
+import Petrus.Json.Python (pythonExceptionStr, pythonStrRepr)
+import Petrus.Json.Python qualified as Python
+import Petrus.Agenticus.Internal.Validate (checkedText, encodeRefusal, isBoundedText, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
   ( AgentProgramDescriptor
   , ProgramOwnership (..)
@@ -386,9 +388,7 @@ minDisconnectTimeout = 25
 
 -- | @_text(value, name, maximum)@.
 claudeText :: Text -> Int -> Text -> Either AgenticusError Text
-claudeText name maximum' value
-  | isBoundedText maximum' value = Right value
-  | otherwise = Left (valueError (name <> " must be bounded non-empty text"))
+claudeText name maximum' = checkedText maximum' (valueError (name <> " must be bounded non-empty text"))
 
 -- | @_uuid(value)@.
 claudeUuid :: Text -> Either AgenticusError Text
@@ -405,9 +405,13 @@ sortedDeep = \case
   other -> other
 
 -- | @json.dumps(value, separators=(",", ":"), ensure_ascii=False,
--- allow_nan=False, sort_keys=True).encode()@.
-canonicalBytes :: Json -> Either J.EncodeError ByteString
-canonicalBytes = J.dumps J.compact {J.sortKeys = True}
+-- allow_nan=False, sort_keys=True).encode()@: 'Nothing' where either step
+-- raises its @ValueError@ (a non-finite float, or a lone surrogate the dump
+-- kept, which @encode()@ refuses).
+canonicalBytes :: Json -> Maybe ByteString
+canonicalBytes value = case J.dumps J.compact {J.sortKeys = True} value of
+  Right dumped | Nothing <- encodeRefusal (J.unsafeTextFromBytes dumped) -> Just dumped
+  _ -> Nothing
 
 -- | @_json_entries(value, maximum_entries, maximum_total)@: the entries as
 -- @json.loads@ returns them, with their canonical bytes.
@@ -416,7 +420,7 @@ jsonEntries maximumEntries maximumTotal = \case
   Array values
     | not (null values) && length values <= maximumEntries -> do
         let copied = map sortedDeep values
-        encoded <- either (const (Left (valueError "Claude transcript must contain strict JSON entries"))) Right (canonicalBytes (Array copied))
+        encoded <- maybe (Left (valueError "Claude transcript must contain strict JSON entries")) Right (canonicalBytes (Array copied))
         when (B.length encoded > maximumTotal || any (not . isObject) copied) $
           Left (valueError "Claude transcript exceeds its entry or total bound")
         pure (copied, encoded)
@@ -435,7 +439,14 @@ decodeTranscript :: Int -> Int -> ByteString -> Either AgenticusError [Json]
 decodeTranscript maximumEntries maximumTotal value = do
   when (B.null value || B.length value > maximumTotal) $
     Left (valueError "Claude transcript must be non-empty bounded opaque bytes")
-  decoded <- maybe (Left (valueError "Claude transcript must be strict JSON bytes")) Right (pyJsonLoadsBytes value)
+  -- Only @UnicodeDecodeError@ and @JSONDecodeError@ are caught; @int()@'s
+  -- digit-limit @ValueError@ (or a @RecursionError@) propagates as itself.
+  decoded <- case pyJsonLoadsBytes value of
+    Right json -> Right json
+    Left failure
+      | failure.name `elem` ["UnicodeDecodeError", "JSONDecodeError"] -> Left (valueError "Claude transcript must be strict JSON bytes")
+      | failure.name == "ValueError" -> Left (valueError (pythonExceptionStr failure))
+      | otherwise -> Left (agenticusError (OtherError failure.name) (pythonExceptionStr failure))
   (entries, encoded) <- jsonEntries maximumEntries maximumTotal decoded
   when (encoded /= value) $ Left (valueError "Claude transcript bytes must use the canonical immutable encoding")
   pure entries
@@ -451,17 +462,11 @@ canonicalInput = \case
     pure encoded
   _ -> Left (valueError "Claude tool input must be a JSON object")
 
--- | @_sanitize(value, maximum)@ for a string result: the overflow code on
--- the left.
-sanitize :: Int -> Text -> Either Text Text
-sanitize maximum' value
-  | utf8Length sanitized > maximum' = Left "result-overflow"
-  | otherwise = Right sanitized
+-- | @_sanitize(value, maximum)@ for a string result ('sanitizeOutput').
+sanitize :: Int -> Text -> Either AgenticusError Text
+sanitize maximum' = first (outputError "result-overflow") . sanitizeOutput keep maximum'
   where
-    sanitized = T.map safe (stripAnsi value)
-    safe c
-      | c `elem` ("\n\r\t" :: String) || (c >= ' ' && not (c >= '\x7f' && c <= '\x9f')) = c
-      | otherwise = '\xfffd'
+    keep c = c `elem` ("\n\r\t" :: String) || (c >= ' ' && not (c >= '\x7f' && c <= '\x9f'))
 
 -- | @_project_binding(path)@.
 projectBinding :: FilePath -> Text
@@ -1677,7 +1682,7 @@ execute a operation = do
             when (admission.operationId /= ids "admit" || admission.purpose /= "result" || admission.attachmentId /= fence.attachmentId) $
               protocol "custody-admission-mismatch"
             text <- case result.text of
-              String value -> either protocol pure (sanitize config.maxMessageBytes value)
+              String value -> either throwIO pure (sanitize config.maxMessageBytes value)
               _ -> protocol "malformed-result"
             output <- a.turns.storeTurn inv.operationId text >>= throwLeft . claudeText "Claude output reference" 512
             payload <- throwLeft (mkClaudeContinuationPayloadV1 session (projectBinding config.workingDirectory) projectKey transcript)

@@ -243,9 +243,7 @@ textError name = valueError (name <> " must be a non-empty, trimmed string of at
 
 -- | @_text(value, name)@.
 text :: Text -> Text -> Either AgenticusError Text
-text name value
-  | isBoundedText maxTextBytes value = Right value
-  | otherwise = Left (textError name)
+text name = checkedText maxTextBytes (textError name)
 
 -- | @_code(value, name)@.
 code :: Text -> Text -> Either AgenticusError Text

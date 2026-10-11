@@ -19,6 +19,7 @@ module Petrus.Agenticus.Internal.Validate
   , maxTextBytes
   , isBoundedText
   , boundedText
+  , checkedText
     -- * Integers
   , isPositive
     -- * JSON decoding
@@ -44,18 +45,21 @@ module Petrus.Agenticus.Internal.Validate
 import Crypto.Hash (Digest, SHA256, hash)
 import Data.ByteArray.Encoding (Base (Base16), convertToBase)
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as B
 import Data.Char (ord)
 import Data.List (sort)
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Numeric (showHex)
+import Data.Text.Array qualified as A
+import Data.Text.Internal qualified as TI
+import Data.Text.Unsafe qualified as TU
 import Petrus.Agenticus.Error
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
+import Petrus.Json.Python (utf8EncodeError)
 
 -- | Python's @str.isspace@ (the characters @str.strip()@ removes).
 pyIsSpace :: Char -> Bool
@@ -73,30 +77,37 @@ isTrimmed value = case (T.uncons value, T.unsnoc value) of
   (Just (first, _), Just (_, lastChar)) -> not (pyIsSpace first || pyIsSpace lastChar)
   _ -> True
 
--- | @len(value.encode())@.
+-- | @len(value.encode())@ (the byte length of the 'Text'; for a WTF-8
+-- 'Text', where CPython's @encode()@ raises, see 'encodeRefusal').
 utf8Length :: Text -> Int
-utf8Length = B.length . TE.encodeUtf8
+utf8Length = TU.lengthWord8
 
 -- | The failure of @value.encode()@, if any. Only a string that holds a
 -- lone surrogate fails (a WTF-8 'Text', "Petrus.Json.Wtf8", which a parser
 -- builds from a @"\\ud800"@ escape as CPython's @json.loads@ does).
 -- CPython raises @UnicodeEncodeError@, a @ValueError@; the port keeps the
 -- 'ValueError' class, which is what every @except@ on the way tests for,
--- and CPython's message. The check walks the 'Text' in place (a surrogate
--- decodes as its own code point) rather than copying it, since every
--- validated identity text passes through it.
+-- and CPython's message (petrus-json's 'utf8EncodeError').
 encodeRefusal :: Text -> Maybe AgenticusError
 encodeRefusal value
-  | not (T.any isSurrogate value) = Nothing
-  | otherwise = Just (valueError ("'utf-8' codec can't encode " <> spot <> ": surrogates not allowed"))
+  | not (holdsSurrogate value) = Nothing
+  | otherwise = valueError <$> utf8EncodeError value
+
+-- | Whether the 'Text' holds a surrogate code point: a byte scan of its
+-- WTF-8 array in place (@ED@ then a byte from @A0@), since every validated
+-- text and every sanitized provider output passes through it.
+holdsSurrogate :: Text -> Bool
+holdsSurrogate (TI.Text array offset len) = go offset
   where
-    isSurrogate c = c >= '\xD800' && c <= '\xDFFF'
-    surrogate (_, c) = isSurrogate c
-    run = takeWhile surrogate (dropWhile (not . surrogate) (zip [0 :: Int ..] (T.unpack value)))
-    spot = case run of
-      [(i, c)] -> "character '\\u" <> T.pack (showHex (ord c) "") <> "' in position " <> T.pack (show i)
-      (i, _) : rest -> "characters in position " <> T.pack (show i) <> "-" <> T.pack (show (i + length rest))
-      [] -> "" -- unreachable: the value holds a surrogate
+    end = offset + len - 1
+    go i
+      | i >= end = False
+      | A.unsafeIndex array i == 0xED && A.unsafeIndex array (i + 1) >= 0xA0 = True
+      | otherwise = go (i + 1)
+
+isSurrogate :: Char -> Bool
+isSurrogate c = c >= '\xD800' && c <= '\xDFFF'
+{-# INLINE isSurrogate #-}
 
 -- | @any(ord(c) < 32 for c in value)@.
 hasControl :: Text -> Bool
@@ -113,18 +124,34 @@ codePointLength = T.length
 maxTextBytes :: Int
 maxTextBytes = 256
 
--- | The @_text@ predicate: non-empty, trimmed, at most @limit@ UTF-8 bytes,
--- no code point below 32 (DEL is allowed).
+-- | The @_text@ predicate: non-empty, trimmed, encodable (no lone
+-- surrogate), at most @limit@ UTF-8 bytes, no code point below 32 (DEL is
+-- allowed).
 isBoundedText :: Int -> Text -> Bool
 isBoundedText limit value =
-  not (T.null value) && isTrimmed value && utf8Length value <= limit && not (hasControl value)
+  not (T.null value) && isTrimmed value && utf8Length value <= limit && not (T.any suspicious value)
+
+-- | A control character or a surrogate: one scan decides both @_text@
+-- refusals that look at characters.
+suspicious :: Char -> Bool
+suspicious c = c < ' ' || isSurrogate c
+{-# INLINE suspicious #-}
 
 -- | Validate with the 256-byte bound, failing with a @ValueError@ carrying
--- the given message.
+-- the given message ('checkedText').
 boundedText :: Text -> Text -> Either AgenticusError Text
-boundedText message value
-  | isBoundedText maxTextBytes value = Right value
-  | otherwise = Left (valueError message)
+boundedText message = checkedText maxTextBytes (valueError message)
+
+-- | @_text(value, name, limit)@ with the failure CPython raises: the
+-- emptiness and strip checks refuse with the given error, then
+-- @len(value.encode())@ raises its @UnicodeEncodeError@ for a lone
+-- surrogate ('encodeRefusal'), and the length and control checks refuse
+-- with the given error.
+checkedText :: Int -> AgenticusError -> Text -> Either AgenticusError Text
+checkedText limit failure value
+  | T.null value || not (isTrimmed value) = Left failure
+  | utf8Length value > limit || T.any suspicious value = Left (fromMaybe failure (encodeRefusal value))
+  | otherwise = Right value
 
 -- | @type(v) is int and v > 0@ for an already-typed integer.
 isPositive :: Integer -> Bool

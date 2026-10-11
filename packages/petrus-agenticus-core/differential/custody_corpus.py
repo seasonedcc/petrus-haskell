@@ -596,6 +596,14 @@ def payload_cases(sessions: list[dict]) -> list[dict]:
     variant("revision-mismatch", lambda data: data.update(revision=data["revision"] + 1))
     variant("hosts-object", lambda data: data.update(hosts={}))
     variant("extra-key", lambda data: data.update(extra=1))
+    # json.loads keeps a lone surrogate escape, which _stored_text accepts;
+    # an integer token past 4300 digits raises its ValueError.
+    cases.append(("revision-4301-digits", rich.replace(f'"revision":{base["revision"]}', '"revision":' + "1" * 4301, 1)))
+    if base["hosts"]:
+        variant("host-id-surrogate", lambda data: first("hosts", data).update(host_id="h\ud800"))
+    if base["audit"]:
+        variant("audit-detail-surrogate", lambda data: first("audit", data)["details"].update(note="\udc80x"))
+        variant("audit-detail-name-surrogate", lambda data: first("audit", data)["details"].update({"\ud800": 1}))
     if base["hosts"]:
         variant("host-missing-active", lambda data: first("hosts", data).pop("active"))
         variant("host-id-int", lambda data: first("hosts", data).update(host_id=1))

@@ -12,6 +12,9 @@
 module Petrus.Agenticus.Runtime.Internal.HostSupport
   ( -- * Text
     stripAnsi
+  , OutputRefusal (..)
+  , sanitizeOutput
+  , outputError
   , pyStrip
   , pyFirstWord
   , pyJsonLoadsBytes
@@ -47,7 +50,7 @@ module Petrus.Agenticus.Runtime.Internal.HostSupport
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar, withMVar)
 import Control.Concurrent.STM
-import Control.Exception (IOException, SomeException, bracket, catch, evaluate, finally, mask_, try)
+import Control.Exception (IOException, SomeException, bracket, catch, finally, mask_, try)
 import Control.Monad (filterM, forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -58,14 +61,16 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
-import Data.Text.Encoding.Error (OnDecodeError, UnicodeException, strictDecode)
-import Petrus.Agenticus.Internal.Validate (pyIsSpace)
+import Petrus.Agenticus.Error (AgenticusError)
+import Petrus.Agenticus.Internal.Validate (encodeRefusal, pyIsSpace, utf8Length)
+import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
 import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), spawnHelper, closeOnce, closeInput, stopReader, killGroup, awaitDrain, spawnPiped, waitExit, splitLines, micros)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
+import Petrus.Json.Python (PythonException)
+import Petrus.Json.Python qualified as Python
 import System.Exit (ExitCode (..))
-import System.IO.Unsafe (unsafeDupablePerformIO, unsafePerformIO)
+import System.IO.Unsafe (unsafePerformIO)
 import Foreign.ForeignPtr (mallocForeignPtrBytes, withForeignPtr)
 import Foreign.Ptr (castPtr)
 import System.IO (BufferMode (..), Handle, hClose, hFlush, hGetBufSome, hSetBinaryMode, hSetBuffering)
@@ -87,8 +92,13 @@ import System.Timeout (timeout)
 -- The three CSI classes are disjoint, so the greedy match never needs to
 -- backtrack; the OSC body runs to the first BEL, or else (backtracking from
 -- the end of the text) to the last @ESC \\@.
+--
+-- A surrogate code point passes through untouched ('J.fromCodePoints'),
+-- and a text without ESC is returned as it is.
 stripAnsi :: Text -> Text
-stripAnsi = T.pack . go . T.unpack
+stripAnsi value
+  | T.any (== '\x1b') value = J.fromCodePoints (go (T.unpack value))
+  | otherwise = value
   where
     go = \case
       [] -> []
@@ -113,6 +123,34 @@ stripAnsi = T.pack . go . T.unpack
       [] -> []
       _ : rest -> xs : tailsOf rest
 
+-- | Why a provider's final text cannot be returned ('sanitizeOutput').
+data OutputRefusal
+  = -- | @str.encode()@'s @UnicodeEncodeError@ ('encodeRefusal').
+    OutputUnencodable AgenticusError
+  | -- | More UTF-8 bytes than the bound.
+    OutputOverflow
+
+-- | The hosts' final-text sanitizer: 'stripAnsi', every character @keep@
+-- refuses replaced by U+FFFD, then @len(sanitized.encode()) > maximum@.
+-- A lone surrogate survives every host's replacement (its code point is
+-- above 159), so the measurement raises @UnicodeEncodeError@ first, at the
+-- positions it has in the stripped text: the replacement keeps them all.
+sanitizeOutput :: (Char -> Bool) -> Int -> Text -> Either OutputRefusal Text
+sanitizeOutput keep maximum' value
+  | Just refusal <- encodeRefusal stripped = Left (OutputUnencodable refusal)
+  | utf8Length sanitized > maximum' = Left OutputOverflow
+  | otherwise = Right sanitized
+  where
+    stripped = stripAnsi value
+    sanitized = T.map (\c -> if keep c then c else '\xfffd') stripped
+
+-- | The error an 'OutputRefusal' raises: the overflow is the given
+-- @RuntimeProtocolError@ code.
+outputError :: Text -> OutputRefusal -> AgenticusError
+outputError overflow = \case
+  OutputUnencodable refusal -> refusal
+  OutputOverflow -> runtimeProtocolError overflow
+
 -- | Python's @str.strip()@.
 pyStrip :: Text -> Text
 pyStrip = T.dropAround pyIsSpace
@@ -121,30 +159,12 @@ pyStrip = T.dropAround pyIsSpace
 pyFirstWord :: Text -> Text
 pyFirstWord value = T.takeWhile (not . pyIsSpace) (pyStrip value)
 
--- | @json.loads(bytes)@: CPython's @json.detect_encoding@, then the scanner.
-pyJsonLoadsBytes :: ByteString -> Maybe Json
-pyJsonLoadsBytes bytes = do
-  text <- decodeDetected
-  either (const Nothing) Just (J.parseJson J.pythonLoads (TE.encodeUtf8 text))
-  where
-    strict decode input = either (const Nothing) Just (decode input)
-    viaWith :: (OnDecodeError -> ByteString -> Text) -> ByteString -> Either UnicodeException Text
-    viaWith decode input = unsafeDupablePerformIO (try (evaluate (let t = decode strictDecode input in T.length t `seq` t)))
-    starts = (`B.isPrefixOf` bytes)
-    byteAt = B.index bytes
-    decodeDetected
-      | starts "\x00\x00\xfe\xff" = strict (viaWith TE.decodeUtf32BEWith) (B.drop 4 bytes)
-      | starts "\xff\xfe\x00\x00" = strict (viaWith TE.decodeUtf32LEWith) (B.drop 4 bytes)
-      | starts "\xfe\xff" = strict (viaWith TE.decodeUtf16BEWith) (B.drop 2 bytes)
-      | starts "\xff\xfe" = strict (viaWith TE.decodeUtf16LEWith) (B.drop 2 bytes)
-      | starts "\xef\xbb\xbf" = strict TE.decodeUtf8' (B.drop 3 bytes)
-      | B.length bytes >= 4 && byteAt 0 == 0 =
-          if byteAt 1 /= 0 then strict (viaWith TE.decodeUtf16BEWith) bytes else strict (viaWith TE.decodeUtf32BEWith) bytes
-      | B.length bytes >= 4 && byteAt 1 == 0 =
-          if byteAt 2 /= 0 || byteAt 3 /= 0 then strict (viaWith TE.decodeUtf16LEWith) bytes else strict (viaWith TE.decodeUtf32LEWith) bytes
-      | B.length bytes == 2 && byteAt 0 == 0 = strict (viaWith TE.decodeUtf16BEWith) bytes
-      | B.length bytes == 2 && byteAt 1 == 0 = strict (viaWith TE.decodeUtf16LEWith) bytes
-      | otherwise = strict TE.decodeUtf8' bytes
+-- | @json.loads(bytes)@ (petrus-json's 'Python.loadsBytes': CPython's
+-- @json.detect_encoding@, @surrogatepass@, then the scanner): the value,
+-- with a lone surrogate kept as WTF-8 as CPython keeps it in a @str@, or
+-- the exception CPython raises.
+pyJsonLoadsBytes :: ByteString -> Either PythonException Json
+pyJsonLoadsBytes = Python.loadsBytes
 
 -- ---------------------------------------------------------------------------
 -- Platform

@@ -95,6 +95,7 @@ module Petrus.Agenticus.Runtime.Codex
 import Control.Concurrent.MVar
 import Control.Exception (IOException, catch, fromException, mask_, throwIO, try)
 import Control.Monad (forM_, unless, void, when)
+import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit, ord)
@@ -143,8 +144,8 @@ import Petrus.Agenticus.Connection.Custody
 import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Exception
-import Petrus.Json.Python (pythonStrRepr)
-import Petrus.Agenticus.Internal.Validate (isBoundedText, pyIsSpace, sha256Hex, utf8Length)
+import Petrus.Json.Python (loadsUtf8, pythonStrRepr)
+import Petrus.Agenticus.Internal.Validate (checkedText, encodeRefusal, pyIsSpace, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
   ( AgentProgramDescriptor
   , ProgramOwnership (..)
@@ -153,7 +154,7 @@ import Petrus.Agenticus.Program.Descriptor
   )
 import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Internal.Process (runBounded)
-import Petrus.Agenticus.Runtime.Internal.HostSupport (observedPlatform, pyJsonLoadsBytes, pyStrip, stripAnsi)
+import Petrus.Agenticus.Runtime.Internal.HostSupport (observedPlatform, outputError, pyJsonLoadsBytes, pyStrip, sanitizeOutput)
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation
@@ -298,9 +299,7 @@ protocol = throwIO . protocolError
 
 -- | @_text(value, name, maximum)@.
 codexText :: Text -> Int -> Text -> Either AgenticusError Text
-codexText name maximum' value
-  | isBoundedText maximum' value = Right value
-  | otherwise = Left (valueError (name <> " must be bounded non-empty text"))
+codexText name maximum' = checkedText maximum' (valueError (name <> " must be bounded non-empty text"))
 
 -- | @_uuid(value)@: @UUID(value)@ round-trips to exactly @value@, so only
 -- the canonical lower-case hyphenated spelling passes.
@@ -356,16 +355,12 @@ rolloutThread value = do
       _ -> False
 
 -- | @_final_text(value)@ for a string: ANSI escapes removed, control
--- characters replaced, bounded by the Motus output limit.
+-- characters replaced, bounded by the Motus output limit. A lone surrogate
+-- raises @str.encode()@'s @UnicodeEncodeError@ ('sanitizeOutput').
 finalText :: Text -> Either AgenticusError Text
-finalText value
-  | utf8Length sanitized > maxCommandOutputBytes = Left (protocolError "agent-message-overflow")
-  | otherwise = Right sanitized
+finalText = first (outputError "agent-message-overflow") . sanitizeOutput keep maxCommandOutputBytes
   where
-    sanitized = T.map safe (stripAnsi value)
-    safe c
-      | c `elem` ("\n\r\t" :: String) || (ord c >= 32 && not (ord c >= 127 && ord c <= 159)) = c
-      | otherwise = '\xfffd'
+    keep c = c `elem` ("\n\r\t" :: String) || (ord c >= 32 && not (ord c >= 127 && ord c <= 159))
 
 -- | The verbatim @_HELPER_SOURCE@.
 codexHelperSource :: IO Text
@@ -379,7 +374,7 @@ codexHelperPath = getDataFileName "data/codex_helper.py"
 parseHelper :: ByteString -> Bool -> Either AgenticusError (Maybe Json)
 parseHelper stdout collect = do
   when (B.length stdout > 512) $ Left (protocolError "helper-protocol")
-  value <- maybe (Left (protocolError "helper-protocol")) Right (pyJsonLoadsBytes stdout)
+  value <- either (const (Left (protocolError "helper-protocol"))) Right (pyJsonLoadsBytes stdout)
   let expected = Set.fromList (if collect then ["ok", "rollout_path"] else ["ok"])
   case value of
     Object members
@@ -459,11 +454,11 @@ parseJsonl raw returncode = do
     head' = \case
       x : _ -> x
       [] -> ("", Object [])
+    -- @json.loads(line.decode("utf-8"))@: a lone surrogate escape is kept
+    -- (WTF-8), as in the reference's @str@.
     decodeLine line = case TE.decodeUtf8' line of
       Left _ -> malformed "malformed-jsonl"
-      Right decoded
-        | "\xfeff" `T.isPrefixOf` decoded -> malformed "malformed-jsonl"
-        | otherwise -> either (const (malformed "malformed-jsonl")) Right (J.parseJson J.pythonLoads (TE.encodeUtf8 decoded))
+      Right _ -> either (const (malformed "malformed-jsonl")) Right (loadsUtf8 line)
     eventType event = case event of
       Object _ | Just (String t) <- member "type" event -> Right (t, event)
       _ -> malformed "malformed-jsonl"
@@ -661,8 +656,10 @@ renderCodexRuntimeInvocation i =
 newCodexRuntimeInvocation :: CodexRuntimeInvocation -> IO CodexRuntimeInvocation
 newCodexRuntimeInvocation i = do
   operationId <- throwLeft (codexText "Codex operation" 256 i.operationId)
-  when (T.null i.prompt || utf8Length i.prompt > maxPromptBytes || T.elem '\0' i.prompt) $
-    throwIO (valueError "Codex prompt must be bounded non-empty text")
+  let promptRefusal = valueError "Codex prompt must be bounded non-empty text"
+  when (T.null i.prompt) $ throwIO promptRefusal
+  forM_ (encodeRefusal i.prompt) throwIO
+  when (utf8Length i.prompt > maxPromptBytes || T.elem '\0' i.prompt) $ throwIO promptRefusal
   when (i.connection.status /= StatusReady) $ throwIO (valueError "Codex connection must be ready")
   when (i.connection.identity.provider /= "codex" || i.connection.identity.profile /= "file-auth") $
     throwIO (valueError "Codex invocation requires the Codex file-auth profile")

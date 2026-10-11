@@ -211,6 +211,14 @@ def codex_section() -> dict[str, object]:
             encoded = encoded[: rng.randrange(len(encoded) + 1)]
         helper_stdouts.append((encoded, rng.random() < 0.5))
 
+    # Lone surrogates, appended after the seeded draws so they never shift them.
+    texts += [("Codex value", v, 256) for v in ["a\ud800", "\udc80", "é\udfff"]]
+    uuids += ["\ud800", THREAD[:-1] + "\udc00"]
+    paths += [(ROLLOUT[:-6] + "\ud800.jsonl", THREAD)]
+    finals += ["x\ud800y", "\x1b[31m\udc80\x1b[0m", "\ud83d\ude00\ud800"]
+    payloads += [(THREAD, ROLLOUT[:-6] + "\ud800.jsonl", b"r"), ("\ud800", ROLLOUT, b"r")]
+    helper_stdouts += [(b'{"ok":true,"rollout_path":"\\ud800"}', True), (b'{"ok":true,"\\udc00":1}', False)]
+
     return {
         "text": [{"input": [n, v, m], **attempt(lambda: codex._text(v, n, m))} for n, v, m in texts],
         "uuid": [{"input": v, **attempt(lambda: codex._uuid(v))} for v in uuids],
@@ -292,6 +300,11 @@ def jsonl_cases() -> list[dict[str, object]]:
         if rng.random() < 0.05:
             raw += b"\n"
         raws.append((raw, returncode))
+    raws += [
+        (encode(good).replace(THREAD.encode(), b"\\ud800"), 0),
+        (encode(good).replace(b'"turn.started"', b'"\\udc00"'), 0),
+        (encode(good).replace(b'"m"', b'"\\ud800"'), 0),
+    ]
 
     def candidate(raw, code):
         value = codex._parse_jsonl(raw, code)
@@ -388,6 +401,10 @@ def terminal_cases() -> list[dict[str, object]]:
         elif rng.random() < 0.05:
             envelope = rng.choice([[], {"ok": True}, {"ok": True, "result": [], "x": 1}, {"ok": None, "result": result}])
         frames.append((frame(envelope), rng.choice([None, "op", "x"]), rng.choice([None, "episode-1"]), rng.choice([None, "turn-1", "turn-x"])))
+    for name in ["operation_id", "episode_id", "turn_id", "output_reference", "continuation_reference"]:
+        frames.append((frame({"ok": True, "result": {**result_body(), name: "x\ud800"}}), None, None, None))
+    frames.append((frame({"ok": True, "result": {**result_body(), "cleanup": {"disposition": "clean", "code": "\udc00"}}}), None, None, None))
+    frames.append((frame({"ok": False, "error": "\ud800"}), None, None, None))
 
     def parse(encoded, operation, episode, turn):
         return service._parse_terminal(
@@ -446,6 +463,17 @@ def claude_section() -> dict[str, object]:
         (uuid_like() if rng.random() < 0.3 else THREAD, rng.choice(["a" * 64, "0" * 64, mutate("f" * 64)]), rng.choice(["k", "", text(0, 6)]), rng.choice([b'[{"a":1}]', b'[{"a": 1}]', b"", b"[1]"]))
         for _ in range(100)
     ]
+
+    # Lone surrogates, appended after the seeded draws so they never shift them.
+    texts += [("Claude value", v, 256) for v in ["a\ud800", "\udc80"]]
+    uuids += ["\ud800"]
+    for value in [[{"a": "\ud800"}], [{"\udc00": 1}]]:
+        encoded_cases.append({"input": [value, 10_000, 4_000_000], **attempt(lambda: encode(value, 10_000, 4_000_000))})
+    for raw in [b'[{"a":"\\ud800"}]', b'[{"\\udc00":1}]', b'[{"a":"\xed\xa0\x80"}]']:
+        decoded_cases.append({"input": [hexed(raw), 10_000, 4_000_000], **attempt(lambda: decode(raw, 10_000, 4_000_000))})
+    inputs += [{"a": "\ud800"}, "\udc00"]
+    sanitize += [("a\ud800", 64), ("\x1b[31m\udc80", 64)]
+    payloads += [(THREAD, "a" * 64, "k\ud800", b'[{"a":1}]'), (THREAD, "a" * 64, "k", b'[{"a":"\\ud800"}]')]
 
     def payload(session, binding, key, transcript):
         value = claude.ClaudeContinuationPayloadV1(session, binding, key, transcript)
@@ -567,6 +595,19 @@ def amp_section() -> dict[str, object]:
         events = [amp_event(k, AMP_THREAD) for k in kinds]
         streams.append({"input": {"limits": list(limits), "continuation": continuation, "events": [dict(e) for e in events]}, **read_stream(config, continuation, events)})
 
+    # Lone surrogates, appended after the seeded draws so they never shift them.
+    texts += [("Amp value", v, 256) for v in ["a\ud800", "\udc80"]]
+    threads += ["T-a\ud800"]
+    finals += [("a\ud800", 64), ("\ud83d\ude00\udc00", 1_000_000)]
+    payload_data += [{"schema_version": 1, "thread_id": "T-a\ud800"}]
+    for final in ["\ud800", "ok\udc00"]:
+        config = amp.AmpRuntimeConfig(project="project", max_events=10_000, max_event_bytes=1_000_000, max_total_event_bytes=4_000_000, max_final_text_bytes=1_000_000)
+        events = [
+            Event({"type": "system", "subtype": "init", "session_id": AMP_THREAD}),
+            Event({"type": "result", "subtype": "success", "is_error": False, "session_id": AMP_THREAD, "result": final}),
+        ]
+        streams.append({"input": {"limits": [10_000, 1_000_000, 4_000_000, 1_000_000], "continuation": None, "events": [dict(e) for e in events]}, **read_stream(config, None, events)})
+
     return {
         "bounded_text": [{"input": [n, v, m], **attempt(lambda: amp._bounded_text(v, n, m))} for n, v, m in texts],
         "thread_id": [{"input": v, **attempt(lambda: amp._thread_id(v))} for v in threads],
@@ -579,7 +620,10 @@ def amp_section() -> dict[str, object]:
 
 def main() -> None:
     corpus = {"seed": SEED, "codex": codex_section(), "claude": claude_section(), "amp": amp_section()}
-    Path(sys.argv[1]).write_text(json.dumps(corpus, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
+    # Lone surrogates travel as WTF-8 (``surrogatepass``), which the port's
+    # ``loadsBytes`` reads back exactly as ``json.loads`` would.
+    encoded = json.dumps(corpus, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    Path(sys.argv[1]).write_bytes(encoded.encode("utf-8", "surrogatepass"))
     for host in ("codex", "claude", "amp"):
         print(host, {name: len(cases) for name, cases in corpus[host].items()})
 

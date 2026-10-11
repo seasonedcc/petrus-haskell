@@ -84,9 +84,7 @@ refusal p =
 
 -- | @Cls(value)@.
 mkLifecycleId :: forall a. (LifecycleId a) => Text -> Either AgenticusError a
-mkLifecycleId value
-  | isBoundedText maxTextBytes value = Right (wrapLifecycleId value)
-  | otherwise = Left (refusal (Proxy @a))
+mkLifecycleId value = wrapLifecycleId <$> checkedText maxTextBytes (refusal (Proxy @a)) value
 
 -- | @to_data()@: the bare string.
 lifecycleIdToData :: (LifecycleId a) => a -> Json

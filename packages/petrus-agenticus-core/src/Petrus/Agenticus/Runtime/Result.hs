@@ -25,9 +25,7 @@ maxReferenceBytes :: Int
 maxReferenceBytes = 512
 
 reference :: Text -> Text -> Either AgenticusError Text
-reference label value
-  | isBoundedText maxReferenceBytes value = Right value
-  | otherwise = Left (valueError (label <> " must be a bounded non-empty opaque reference"))
+reference label = checkedText maxReferenceBytes (valueError (label <> " must be a bounded non-empty opaque reference"))
 
 -- | Validate one machine-safe code suitable for lifecycle evidence.
 safeTerminationCode :: Text -> Either AgenticusError Text

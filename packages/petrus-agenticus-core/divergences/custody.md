@@ -117,13 +117,15 @@ corpus and the cross-implementation interop spec pin that (see
 
 ## Hostile payloads (states the reference writer never produces)
 
-13. **Lone surrogates.** A payload with a `\ud800`-style escape decodes in
-    Python to a `str` that `_stored_text` accepts. `Data.Text` cannot hold
-    a lone surrogate, so petrus-json refuses the text, and the port reports
-    `StorageError: connection custody payload is invalid`.
+13. **Lone surrogates (resolved).** A payload with a `\ud800`-style escape
+    decodes, as in Python, to a string `_stored_text` accepts (a WTF-8
+    `Text`, `Petrus.Json.Wtf8`), and re-encodes to the same escape. The
+    custody corpus pins a surrogate host id, audit detail value and detail
+    name.
 
-14. **Integers.** Wire integers are `Integer`. CPython's 4300-digit limit on
-    int parsing is not reproduced.
+14. **Integers.** Wire integers are `Integer`. An integer token of more than
+    4300 digits fails `json.loads`, so the payload is invalid, as in Python
+    (pinned by the corpus).
 
     The `revision` column is read with Python's `int(row[0])` semantics (see
     `pythonInt`): an integer column is used as is, a float is truncated, and

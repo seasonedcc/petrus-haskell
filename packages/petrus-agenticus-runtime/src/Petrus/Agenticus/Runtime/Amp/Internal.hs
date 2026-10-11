@@ -133,7 +133,7 @@ import Petrus.Agenticus.Connection.Custody (ConnectionIdentity (..), ConnectionS
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Json.Python (pythonStrRepr)
-import Petrus.Agenticus.Internal.Validate (isBoundedText, sha256Hex, utf8Length)
+import Petrus.Agenticus.Internal.Validate (checkedText, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
   ( AgentProgramDescriptor
   , ProgramOwnership (..)
@@ -232,9 +232,7 @@ maxReference = 512
 
 -- | @_bounded_text(value, name, maximum)@.
 ampBoundedText :: Text -> Int -> Text -> Either AgenticusError Text
-ampBoundedText name maximum' value
-  | isBoundedText maximum' value = Right value
-  | otherwise = Left (valueError (name <> " must be bounded non-empty text"))
+ampBoundedText name maximum' = checkedText maximum' (valueError (name <> " must be bounded non-empty text"))
 
 operationIdText :: Text -> Either AgenticusError Text
 operationIdText = ampBoundedText "Amp operation identity" maxOperationId
@@ -260,16 +258,12 @@ positiveNumber name value
   | isNaN value || isInfinite value || value <= 0 = Left (valueError (name <> " must be a positive finite number"))
   | otherwise = Right value
 
--- | @_safe_final_text(value, maximum)@ for a string value.
-safeFinalText :: Int -> Text -> Either Text Text
-safeFinalText maximum' value
-  | utf8Length sanitized > maximum' = Left "output-overflow"
-  | otherwise = Right sanitized
+-- | @_safe_final_text(value, maximum)@ for a string value
+-- ('sanitizeOutput').
+safeFinalText :: Int -> Text -> Either AgenticusError Text
+safeFinalText maximum' = either (Left . outputError "output-overflow") Right . sanitizeOutput keep maximum'
   where
-    sanitized = T.map safe (stripAnsi value)
-    safe c
-      | c `elem` ("\n\r\t" :: String) || (ord c >= 32 && ord c /= 127) = c
-      | otherwise = '\xfffd'
+    keep c = c `elem` ("\n\r\t" :: String) || (ord c >= 32 && ord c /= 127)
 
 -- ---------------------------------------------------------------------------
 -- Continuations
@@ -671,7 +665,7 @@ admitStep config continuationThread state event = do
         (Bool False, String "success") -> do
           text <-
             read' "result" >>= \case
-              String value -> either (Left . AmpProtocol) Right (safeFinalText config.maxFinalTextBytes value)
+              String value -> either (Left . stop) Right (safeFinalText config.maxFinalTextBytes value)
               _ -> protocol "malformed-result"
           pure (AmpCandidate TurnCompleted 1 "turn-completed" (Just thread) (Just text) True)
         (Bool True, String code)
@@ -680,6 +674,10 @@ admitStep config continuationThread state event = do
                in pure (AmpCandidate TurnFailed 0 code' (Just thread) Nothing True)
         (Bool True, value) | unhashable value -> Left (AmpRaised AmpRaiseFailed)
         _ -> protocol "malformed-terminal"
+    -- A @RuntimeProtocolError@ stops the stream with its code; any other
+    -- error (@str.encode()@'s @UnicodeEncodeError@) is settled by @_run@
+    -- as client-failed.
+    stop e = maybe (AmpRaised AmpRaiseFailed) AmpProtocol (runtimeProtocolErrorCode e)
     -- A JSON list or object (a Python list or dict), or an opaque sidecar
     -- value whose type has no @__hash__@.
     unhashable = \case

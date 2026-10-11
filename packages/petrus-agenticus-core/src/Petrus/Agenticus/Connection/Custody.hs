@@ -94,7 +94,7 @@ import Petrus.Agenticus.Connection.Materialization qualified as Files
 import Petrus.Agenticus.Connection.Storage
 import Petrus.Agenticus.Error
 import Petrus.Json.Python (pythonStrRepr)
-import Petrus.Agenticus.Internal.Validate (isBoundedText, maxTextBytes, sha256Hex)
+import Petrus.Agenticus.Internal.Validate (checkedText, maxTextBytes, sha256Hex)
 
 -- ---------------------------------------------------------------------------
 -- Enumerations
@@ -948,11 +948,9 @@ auditDetails details = do
 
 identityText :: Text -> Text -> Either AgenticusError ()
 identityText value name =
-  unless (isBoundedText maxTextBytes value) $
-    Left
-      ( valueError
-          (name <> " identity must be a trimmed string of at most " <> T.pack (show maxTextBytes) <> " UTF-8 bytes")
-      )
+  () <$ checkedText maxTextBytes failure value
+  where
+    failure = valueError (name <> " identity must be a trimmed string of at most " <> T.pack (show maxTextBytes) <> " UTF-8 bytes")
 
 operationIdentity :: Text -> Either AgenticusError ()
 operationIdentity value = identityText value "operation"
