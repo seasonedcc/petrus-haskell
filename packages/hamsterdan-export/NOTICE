@@ -1,0 +1,17 @@
+hamsterdan-export
+Copyright 2026 Seasoned
+
+This package is a Haskell port of the Hamsterdan evidence exporter
+(https://github.com/henriquebastos/hamsterdan), pinned under
+upstream/hamsterdan. It follows the behavior of src/hamsterdan/host/export.py,
+and its test suite ports the upstream tests in
+tests/unit/host/test_export.py.
+
+The package itself is licensed under the Apache License, Version 2.0 (see
+LICENSE). The upstream project it ports is also distributed under the
+Apache License, Version 2.0:
+
+  hamsterdan
+  Copyright Henrique Bastos and contributors
+  Licensed under the Apache License, Version 2.0
+  https://github.com/henriquebastos/hamsterdan

@@ -1,0 +1,54 @@
+#!/bin/sh
+# Installed at /opt/hamsterdan/.venv/bin/python, the reference image's
+# interpreter path, so the image keeps the reference's runtime contract:
+# its ENTRYPOINT, the systemd unit, the Ansible validation runs and the
+# release checks all invoke this path. It accepts exactly the invocations
+# they make and runs the Haskell binaries installed in /opt/hamsterdan/bin
+# (two directories up from this file):
+#
+#   python -m hamsterdan.host ARGS...         -> hamsterdan-host ARGS...
+#   python -m hamsterdan.operator ARGS...     -> hamsterdan-operator ARGS...
+#   python -m hamsterdan.host.export ARGS...  -> hamsterdan-export ARGS...
+#   python -c "from importlib.metadata import version; print(version('hamsterdan'))"
+#   python -c "from importlib.metadata import version; import hamsterdan; assert version('hamsterdan') == 'X'"
+#
+# The version is the reference package's (upstream/hamsterdan pyproject.toml)
+# that this port is at parity with. Anything else is refused with status 2.
+set -eu
+
+version=0.1.0
+here=$(dirname -- "$0")
+binaries="$here/../../bin"
+
+if [ "$#" -ge 2 ] && [ "$1" = "-m" ]; then
+  module=$2
+  shift 2
+  case "$module" in
+    hamsterdan.host) exec "$binaries/hamsterdan-host" "$@" ;;
+    hamsterdan.operator) exec "$binaries/hamsterdan-operator" "$@" ;;
+    hamsterdan.host.export) exec "$binaries/hamsterdan-export" "$@" ;;
+  esac
+  printf '%s: No module named %s\n' "$0" "$module" >&2
+  exit 1
+fi
+
+if [ "$#" -eq 2 ] && [ "$1" = "-c" ]; then
+  case "$2" in
+    "from importlib.metadata import version; print(version('hamsterdan'))")
+      printf '%s\n' "$version"
+      exit 0
+      ;;
+    "from importlib.metadata import version; import hamsterdan; assert version('hamsterdan') == '"*"'")
+      expected=${2#*"== '"}
+      expected=${expected%"'"}
+      if [ "$expected" = "$version" ]; then
+        exit 0
+      fi
+      printf 'Traceback (most recent call last):\n  File "<string>", line 1, in <module>\nAssertionError\n' >&2
+      exit 1
+      ;;
+  esac
+fi
+
+printf '%s: unsupported invocation in the Hamsterdan image\n' "$0" >&2
+exit 2

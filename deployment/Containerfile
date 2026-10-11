@@ -1,0 +1,77 @@
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+
+# The Haskell image of Hamsterdan, keeping the reference image's runtime
+# contract (upstream/hamsterdan/deployment/Containerfile): the same pinned
+# base images, Pi runtime, user and group, state directory, environment,
+# labels, port, entrypoint and command. Where the reference copies a Python
+# virtual environment, this image copies the hamsterdan-host,
+# hamsterdan-operator and hamsterdan-export binaries and, at the reference's
+# interpreter path, a shim (deployment/python-shim) that runs them for the
+# module invocations the deployment tooling makes. See
+# packages/hamsterdan-operator/PARITY.md, "Container runtime contract".
+
+FROM node:22.19.0-bookworm-slim@sha256:4a4884e8a44826194dff92ba316264f392056cbe243dcc9fd3551e71cea02b90 AS pi
+WORKDIR /opt/hamsterdan/pi
+COPY deployment/pi/package.json deployment/pi/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
+FROM python:3.14.7-slim-bookworm@sha256:23c59390fc717bf09f9336908199a0ae75d9c4264bf296123f94ad772fea3b52 AS build
+ARG GHC_VERSION=9.10.3
+ARG CABAL_VERSION=3.16.1.0
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+       build-essential ca-certificates curl git libffi-dev libgmp-dev libncurses-dev libpq-dev \
+       libsqlite3-dev libzmq3-dev pkg-config xz-utils zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+ENV GHCUP_INSTALL_BASE_PREFIX=/opt/toolchain \
+    PATH="/opt/toolchain/.ghcup/bin:${PATH}"
+RUN mkdir -p /opt/toolchain/.ghcup/bin \
+    && curl --fail --silent --show-error --location --proto '=https' \
+       --output /opt/toolchain/.ghcup/bin/ghcup "https://downloads.haskell.org/~ghcup/$(uname -m)-linux-ghcup" \
+    && chmod 0755 /opt/toolchain/.ghcup/bin/ghcup \
+    && ghcup install ghc "${GHC_VERSION}" --set \
+    && ghcup install cabal "${CABAL_VERSION}" --set
+WORKDIR /opt/hamsterdan/src
+COPY cabal.project LICENSE NOTICE ./
+COPY cabal.project.freeze ./cabal.project.freeze
+COPY packages ./packages
+RUN cabal update \
+    && cabal build --disable-tests --disable-benchmarks \
+       exe:hamsterdan-host exe:hamsterdan-operator exe:hamsterdan-export \
+    && mkdir -p /opt/hamsterdan/bin \
+    && for executable in hamsterdan-host hamsterdan-operator hamsterdan-export; do \
+         install --mode 0755 "$(cabal list-bin --disable-tests --disable-benchmarks "exe:${executable}")" /opt/hamsterdan/bin/; \
+       done \
+    && strip /opt/hamsterdan/bin/*
+
+FROM python:3.14.7-slim-bookworm@sha256:23c59390fc717bf09f9336908199a0ae75d9c4264bf296123f94ad772fea3b52 AS runtime
+ARG SOURCE_REVISION
+ARG SOURCE_VERSION
+ARG SOURCE_CREATED
+LABEL org.opencontainers.image.created="${SOURCE_CREATED}" \
+      org.opencontainers.image.description="GitHub-native PR-readiness application powered by Petrus" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}" \
+      org.opencontainers.image.source="https://github.com/henriquebastos/hamsterdan" \
+      org.opencontainers.image.title="Hamsterdan" \
+      org.opencontainers.image.version="${SOURCE_VERSION}"
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends ca-certificates git libffi8 libgmp10 zlib1g \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 hamsterdan \
+    && useradd --uid 10001 --gid hamsterdan --home-dir /nonexistent --shell /usr/sbin/nologin hamsterdan \
+    && install --directory --owner hamsterdan --group hamsterdan --mode 0700 /var/lib/hamsterdan
+WORKDIR /opt/hamsterdan
+COPY --from=build --chown=hamsterdan:hamsterdan /opt/hamsterdan/bin ./bin
+COPY --chown=hamsterdan:hamsterdan --chmod=0755 deployment/python-shim ./.venv/bin/python
+COPY --from=pi --chown=hamsterdan:hamsterdan /opt/hamsterdan/pi ./pi
+COPY --chmod=0755 scripts/with-runtime-secrets /opt/hamsterdan/with-runtime-secrets
+ENV PATH="/opt/hamsterdan/.venv/bin:${PATH}" \
+    OP_CONFIG_DIR="/tmp/hamsterdan-op" \
+    HAMSTERDAN_PI_CLI_PATH="/opt/hamsterdan/pi/node_modules/@earendil-works/pi-coding-agent/dist/cli.js" \
+    HAMSTERDAN_PI_NODE_PATH="/opt/hamsterdan/pi/node_modules/node/bin/node" \
+    HAMSTERDAN_PI_PACKAGE_ROOT="/opt/hamsterdan/pi/node_modules/@earendil-works/pi-coding-agent" \
+    HAMSTERDAN_STATE_PATH="/var/lib/hamsterdan"
+USER hamsterdan
+EXPOSE 8000
+ENTRYPOINT ["/opt/hamsterdan/.venv/bin/python", "-m", "hamsterdan.host"]
+CMD ["serve", "--host", "0.0.0.0", "--port", "8000"]

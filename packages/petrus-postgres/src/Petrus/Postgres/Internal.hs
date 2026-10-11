@@ -12,6 +12,12 @@ module Petrus.Postgres.Internal
   , withLockedConnection
   , ensureOpen
 
+    -- * Prepared statements
+  , PrepareCache
+  , emptyPrepareCache
+  , discardPrepared
+  , maintainPrepared
+
     -- * Running statements
   , runStatement
   , runCommand
@@ -37,7 +43,11 @@ import Control.Exception (Exception (..), finally, mask, onException, throwIO, u
 import Control.Monad (unless, void, when, (>=>))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.IORef (IORef, readIORef)
+import Data.ByteString.Char8 qualified as BC
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Word (Word32, Word64)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -63,6 +73,12 @@ data Connection = Connection
   , autocommitRef :: IORef Bool
   , closedRef :: IORef Bool
   , connectionIsolation :: Isolation
+  , prepareThreshold :: Maybe Int
+  -- ^ psycopg's @prepare_threshold@: executions of a statement before it
+  -- is prepared ('Nothing' never prepares).
+  , preparedMax :: Int
+  -- ^ psycopg's @prepared_max@.
+  , prepareCacheRef :: IORef PrepareCache
   }
 
 -- | The isolation level transactions start with.
@@ -84,6 +100,124 @@ beginStatement = \case
   ServerDefault -> "BEGIN"
   RepeatableRead -> "BEGIN ISOLATION LEVEL REPEATABLE READ"
   Serializable -> "BEGIN ISOLATION LEVEL SERIALIZABLE"
+
+-- * Prepared statements
+
+-- | psycopg's @PrepareManager@ (psycopg/_preparing.py), state for state:
+-- a statement (its text as sent and its parameter type OIDs) executed
+-- @prepare_threshold@ times is prepared on the server as @_pg3_<n>@ and
+-- executed by name from then on, which skips the server's parse and plan.
+-- At most @prepared_max@ statements stay prepared (and as many counted),
+-- least recently used first out; a @ROLLBACK@, or a newly seen statement
+-- answering @DROP …@, discards them all with @DEALLOCATE ALL@.
+data PrepareCache = PrepareCache
+  { cacheCounts :: Map PrepareKey (Word64, Int)
+  -- ^ Statements not prepared yet: recency stamp and executions so far.
+  , cacheNames :: Map PrepareKey (Word64, ByteString)
+  -- ^ Prepared statements: recency stamp and name.
+  , cacheClock :: Word64
+  -- ^ The next recency stamp (stands for the OrderedDicts' order).
+  , cacheIndex :: Int
+  -- ^ The next statement name's number.
+  , cacheFlush :: [Maybe ByteString]
+  -- ^ Pending deallocations, oldest first ('Nothing' is @DEALLOCATE ALL@).
+  }
+
+type PrepareKey = (ByteString, [Word32])
+
+emptyPrepareCache :: PrepareCache
+emptyPrepareCache = PrepareCache Map.empty Map.empty 0 0 []
+
+data Prepare = PrepareNo | PrepareYes ByteString | PrepareShould ByteString
+  deriving stock (Eq)
+
+-- | @PrepareManager.get@: whether to run unprepared, by an existing name,
+-- or to prepare under a new name first (which consumes the name).
+prepareDecision :: Maybe Int -> PrepareKey -> PrepareCache -> (Prepare, PrepareCache)
+prepareDecision threshold key cache = case threshold of
+  Nothing -> (PrepareNo, cache)
+  Just limit
+    | Just (_, name) <- Map.lookup key (cacheNames cache) -> (PrepareYes name, cache)
+    | maybe 0 snd (Map.lookup key (cacheCounts cache)) >= limit ->
+        ( PrepareShould ("_pg3_" <> BC.pack (show (cacheIndex cache)))
+        , cache {cacheIndex = cacheIndex cache + 1}
+        )
+    | otherwise -> (PrepareNo, cache)
+
+-- | @PrepareManager.maybe_add_to_cache@: record the execution; 'True' when
+-- the statement was not known before (and its results must be validated).
+recordExecution :: Maybe Int -> PrepareKey -> Prepare -> PrepareCache -> (Bool, PrepareCache)
+recordExecution threshold key prep cache
+  | Nothing <- threshold = (False, cache)
+  | Just (_, count) <- Map.lookup key (cacheCounts cache) = case prep of
+      PrepareShould name ->
+        (False, stamped {cacheCounts = Map.delete key (cacheCounts cache), cacheNames = Map.insert key (stamp, name) (cacheNames cache)})
+      _ -> (False, stamped {cacheCounts = Map.insert key (stamp, count + 1) (cacheCounts cache)})
+  | Just (_, name) <- Map.lookup key (cacheNames cache) =
+      (False, stamped {cacheNames = Map.insert key (stamp, name) (cacheNames cache)})
+  | otherwise = case prep of
+      PrepareShould name -> (True, stamped {cacheNames = Map.insert key (stamp, name) (cacheNames cache)})
+      _ -> (True, stamped {cacheCounts = Map.insert key (stamp, 1) (cacheCounts cache)})
+  where
+    stamp = cacheClock cache
+    stamped = cache {cacheClock = stamp + 1}
+
+-- | @PrepareManager.validate@ for a newly recorded statement, given each
+-- result's status and command tag.
+validateExecution :: Int -> PrepareKey -> Prepare -> [(CInt, ByteString)] -> PrepareCache -> PrepareCache
+validateExecution limit key prep results cache
+  | not (Map.null (cacheNames cache)) || isShould prep
+  , any (\(status, tag) -> status == statusCommandOk && ("DROP " `BS.isPrefixOf` tag || tag == "ROLLBACK")) results =
+      discardPrepared cache
+  | not usable = cache {cacheNames = Map.delete key (cacheNames cache), cacheCounts = Map.delete key (cacheCounts cache)}
+  | otherwise = rotate
+  where
+    isShould = \case
+      PrepareShould _ -> True
+      _ -> False
+    usable = case results of
+      [(status, _)] -> status == statusCommandOk || status == statusTuplesOk
+      _ -> False
+    rotate =
+      let counts = cacheCounts cache
+          names = cacheNames cache
+          counts'
+            | Map.size counts > limit = maybe counts (`Map.delete` counts) (oldest counts)
+            | otherwise = counts
+          (names', flush')
+            | Map.size names > limit, Just evicted <- oldest names =
+                (Map.delete evicted names, cacheFlush cache ++ maybe [] (\(_, name) -> [Just name]) (Map.lookup evicted names))
+            | otherwise = (names, cacheFlush cache)
+       in cache {cacheCounts = counts', cacheNames = names', cacheFlush = flush'}
+    oldest :: Map PrepareKey (Word64, a) -> Maybe PrepareKey
+    oldest entries =
+      fst
+        <$> Map.foldlWithKey'
+          (\best k (s, _) -> case best of
+              Just (_, b) | b <= s -> best
+              _ -> Just (k, s))
+          Nothing
+          entries
+
+-- | @PrepareManager.clear@: forget every statement; when some were
+-- prepared, schedule @DEALLOCATE ALL@.
+discardPrepared :: PrepareCache -> PrepareCache
+discardPrepared cache
+  | Map.null (cacheNames cache) = cache {cacheCounts = Map.empty}
+  | otherwise = cache {cacheCounts = Map.empty, cacheNames = Map.empty, cacheFlush = [Nothing]}
+
+-- | @PrepareManager.maintain_gen@: run the pending deallocations (as
+-- psycopg does without libpq 17's @PQsendClosePrepared@: @DEALLOCATE@
+-- statements).
+maintainPrepared :: Connection -> PQ.Connection -> IO ()
+maintainPrepared connection raw = do
+  cache <- readIORef (prepareCacheRef connection)
+  case cacheFlush cache of
+    [] -> pure ()
+    next : rest -> do
+      writeIORef (prepareCacheRef connection) cache {cacheFlush = rest}
+      runCommand raw (maybe "DEALLOCATE ALL" ("DEALLOCATE " <>) next)
+      maintainPrepared connection raw
 
 -- | One statement's outcome (psycopg's cursor after @execute@).
 data Result = Result
@@ -316,6 +450,11 @@ cText ptr
   | ptr == nullPtr = pure ""
   | otherwise = decodeLenient <$> BS.packCString ptr
 
+cBytes :: CString -> IO ByteString
+cBytes ptr
+  | ptr == nullPtr = pure BS.empty
+  | otherwise = BS.packCString ptr
+
 cMaybeText :: CString -> IO (Maybe Text)
 cMaybeText ptr
   | ptr == nullPtr = pure Nothing
@@ -344,18 +483,24 @@ cancelAndDrain raw = uninterruptibleMask_ $ do
 -- are no parameters (several statements allowed, the text sent as
 -- written) and the extended protocol otherwise. Every result is checked;
 -- all are returned.
+--
+-- Statements go through psycopg's prepared-statement cache (see
+-- 'PrepareCache'): once a statement has run @prepare_threshold@ times on
+-- this connection it is prepared under psycopg's name (one extra round
+-- trip, once) and executed by name afterwards, with or without
+-- parameters.
 runStatement :: Connection -> PQ.Connection -> Sql -> [Param] -> IO [Result]
 runStatement connection raw statement params = do
   autocommit <- readIORef (autocommitRef connection)
   unless autocommit $ do
     status <- PQ.transactionStatus raw
     when (status == PQ.TransIdle) (runCommand raw (beginStatement (connectionIsolation connection)))
-  results <-
+  (text, wire) <-
     if null params
       then do
         let text = sqlRaw statement
         when (BS.elem 0 text) (throwIO (clientError DataError "PostgreSQL text fields cannot contain NUL (0x00) bytes"))
-        sendAndCollect raw "sending query failed: " (PQ.sendQuery raw text)
+        pure (text, Nothing)
       else do
         (converted, placeholders) <- either (throwIO . clientError ProgrammingError) pure (sqlConverted statement)
         when (placeholders /= length params) $
@@ -370,15 +515,55 @@ runStatement connection raw statement params = do
                 )
             )
         wire <- mapM toWire params
-        sendAndCollect raw "sending query and params failed: " (PQ.sendQueryParams raw converted wire PQ.Text)
-  (mapM_ checkResult results >> mapM readResult results) `finally` clearResults results
+        pure (converted, Just wire)
+  let threshold = prepareThreshold connection
+      key = (text, maybe [] (map wireOid) wire)
+      cacheRef = prepareCacheRef connection
+  prep <- do
+    (decision, cache) <- prepareDecision threshold key <$> readIORef cacheRef
+    writeIORef cacheRef cache
+    pure decision
+  newKey <- newIORefBool
+  let record = do
+        (added, cache) <- recordExecution threshold key prep <$> readIORef cacheRef
+        writeIORef cacheRef cache
+        writeIORef newKey added
+      values = maybe [] (map wireValue) wire
+  results <- case prep of
+    PrepareNo -> case wire of
+      Nothing -> sendAndCollect raw "sending query failed: " (sentThen record (PQ.sendQuery raw text))
+      Just ws -> sendAndCollect raw "sending query and params failed: " (sentThen record (PQ.sendQueryParams raw text (map libpqParam ws) PQ.Text))
+    PrepareYes name ->
+      sendAndCollect raw "sending prepared query failed: " (sentThen record (PQ.sendQueryPrepared raw name values PQ.Text))
+    PrepareShould name -> do
+      prepared <- sendAndCollect raw "sending query failed: " (PQ.sendPrepare raw name text (Just (map (PQ.Oid . fromIntegral) (snd key))))
+      mapM_ checkResult prepared `finally` clearResults prepared
+      sendAndCollect raw "sending prepared query failed: " (sentThen record (PQ.sendQueryPrepared raw name values PQ.Text))
+  flip finally (clearResults results) $ do
+    added <- readIORef newKey
+    when added $ do
+      shapes <- mapM (\result -> (,) <$> c_PQresultStatus result <*> (c_PQcmdStatus result >>= cBytes)) results
+      cache <- readIORef cacheRef
+      writeIORef cacheRef (validateExecution (preparedMax connection) key prep shapes cache)
+    mapM_ checkResult results
+    rows <- mapM readResult results
+    maintainPrepared connection raw
+    pure rows
   where
     toWire (Param oid value format) = case value of
-      Nothing -> pure Nothing
+      Nothing -> pure (oid, Nothing)
       Just bytes -> do
         when (format == TextFormat && BS.elem 0 bytes) $
           throwIO (clientError DataError "PostgreSQL text fields cannot contain NUL (0x00) bytes")
-        pure (Just (PQ.Oid (fromIntegral oid), bytes, if format == TextFormat then PQ.Text else PQ.Binary))
+        pure (oid, Just (bytes, if format == TextFormat then PQ.Text else PQ.Binary))
+    wireOid (oid, value) = maybe 0 (const oid) value
+    libpqParam (oid, value) = (\(bytes, format) -> (PQ.Oid (fromIntegral oid), bytes, format)) <$> value
+    wireValue = snd
+    sentThen after send = do
+      sent <- send
+      when sent after
+      pure sent
+    newIORefBool = newIORef False
 
 -- | Run a parameterless command (@BEGIN@, @COMMIT@, @ROLLBACK@) on a
 -- locked connection, outside the implicit-transaction rule.
