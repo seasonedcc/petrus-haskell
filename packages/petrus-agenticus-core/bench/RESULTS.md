@@ -9,10 +9,10 @@ All runs: Apple M4, macOS (Darwin 25.3), GHC 9.10.3 `-O2`, CPython 3.14.6.
 
 | Layer | Results | Headline (Python / Haskell) |
 | --- | --- | --- |
-| Catalog | [results-catalog.md](results-catalog.md) | resolve 6.3×, `from_data` 1.6×, register+enable 3.6×. `snapshot-to-json` is 0.69×, because it is bound by the `petrus-json` encoder. |
+| Catalog | [results-catalog.md](results-catalog.md) | resolve 6.1×, `snapshot-to-json` 2.1×, `from_data` 1.8×, register+enable 3.9× (medians of five interleaved rounds) |
 | Effect | [results-effect.md](results-effect.md) | digests 2.2× to 3.0×; gateway execute and replay 9.1× and 9.6× |
 | Hands | [results-hands.md](results-hands.md) | parse 3.9×; gateway reads 3.5×; gateway writes 1.9× to 2.1× |
-| Thread | [results-thread.md](results-thread.md) | build about 2,800× (the reference is quadratic); `from_data` about 4.6×. `to-json` is 0.66× and `dumps` alone is 0.42×, bound by the `petrus-json` encoder. |
+| Thread | [results-thread.md](results-thread.md) | build about 1,350× (the reference is quadratic); `to-json` 2.5×, `dumps` alone 1.8×, `from_data` 3.6× (medians of five interleaved rounds) |
 | Connection custody | [results-custody.md](results-custody.md) | 2.7× to 4.7× on whole sessions (FULL and OFF sync, N = 100 to 5000) |
 
 ## Known slow path
