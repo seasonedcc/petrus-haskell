@@ -55,11 +55,11 @@ module Hamsterdan.GitHub.Effects
 import Control.Concurrent (threadDelay)
 import Control.Exception (catch, throwIO, try)
 import Control.Monad (forM, unless, when)
-import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
+import Data.Either (partitionEithers)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.List (find)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (fromMaybe, isNothing, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -512,16 +512,16 @@ publishFindings publisher epoch head' items authorityOperation = do
   when (Set.size (Set.fromList (map (.operation) items)) /= length items) $
     throwIO (InvalidRequest "a native review batch requires unique finding operations")
   contents <- either throwIO pure (mapM (\item -> findingContent publisher item head') items)
-  results <- newIORef Map.empty
-  pending <- reconcileBatch publisher (zip items contents) results
-  let final = do
-        landed <- readIORef results
-        pure [landed Map.! item.operation | item <- items]
-      retries = length transientRetrySeconds
-      loop attempt current reconciliationRequired = do
-        current' <- if reconciliationRequired then reconcileBatch publisher current results else pure current
+  (landed0, pending) <- reconcileBatch publisher (zip items contents)
+  let -- Called once every item has landed, in the items' order.
+      final landed = pure (mapMaybe (\item -> Map.lookup item.operation landed) items)
+      attempt retry (current, reconciliationRequired, known) = do
+        (landed, current') <-
+          if reconciliationRequired
+            then (\(found, remaining) -> (Map.union found known, remaining)) <$> reconcileBatch publisher current
+            else pure (known, current)
         if null current'
-          then final
+          then final landed
           else do
             publisher.fence publisher.repository publisher.prNumber epoch head' authorityOperation
             outcome <- try $ do
@@ -552,60 +552,63 @@ publishFindings publisher epoch head' items authorityOperation = do
               pure response
             case outcome of
               Left (failure :: GitHubBoundaryError) -> do
-                reconciled <- try (reconcileBatch publisher current' results)
-                let (next, required) = case reconciled of
-                      Right remaining -> (remaining, False)
-                      Left (_ :: GitHubBoundaryError) -> (current', True)
-                if
-                  | null next -> final
-                  | attempt == retries -> throwIO failure
-                  | otherwise -> do
-                      publisher.retryDelay (transientRetrySeconds !! attempt)
-                      loop (attempt + 1) next required
+                reconciled <- try (reconcileBatch publisher current')
+                let (landed', next, required) = case reconciled of
+                      Right (found, remaining) -> (Map.union found landed, remaining, False)
+                      Left (_ :: GitHubBoundaryError) -> (landed, current', True)
+                if null next
+                  then final landed'
+                  else maybe (throwIO failure) ($ (next, required, landed')) retry
               Right response
                 | response.status == 200 -> do
                     let ref = lenientReference response.body
-                    mapM_
-                      (\(item, _) -> modifyIORef' results (Map.insert item.operation (publication "created" ref) {inline = True}))
-                      current'
-                    final
+                        created = (publication "created" ref) {inline = True}
+                    final (Map.union (Map.fromList [(item.operation, created) | (item, _) <- current']) landed)
                 | otherwise -> do
-                    next <- reconcileBatch publisher current' results
+                    (found, next) <- reconcileBatch publisher current'
+                    let landed' = Map.union found landed
                     if
-                      | null next -> final
+                      | null next -> final landed'
                       | transientInlineRejection response ->
-                          if attempt < retries
-                            then do
-                              publisher.retryDelay (transientRetrySeconds !! attempt)
-                              loop (attempt + 1) next False
-                            else inlineRejection response TransientHttpRejection
+                          maybe (inlineRejection response TransientHttpRejection) ($ (next, False, landed')) retry
                       | otherwise -> inlineRejection response (inlineFailureClass response)
-  loop 0 pending False
+  withTransientRetries publisher attempt (pending, False, landed0)
 
--- | @_reconcile_finding_batch(findings, contents, results)@: record every
--- landed finding and return the rest.
+-- | Run attempts on 'transientRetrySeconds': each attempt gets @Just retry@
+-- while a delay remains (@retry@ waits that delay, then runs the next
+-- attempt from the given state) and 'Nothing' on the last one, which must
+-- settle.
+withTransientRetries :: CommentPublisher -> (Maybe (s -> IO a) -> s -> IO a) -> s -> IO a
+withTransientRetries publisher attempt = go transientRetrySeconds
+  where
+    go delays = attempt (retryAfter delays)
+    retryAfter = \case
+      [] -> Nothing
+      delay : later -> Just (\state -> publisher.retryDelay delay >> go later state)
+
+-- | @_reconcile_finding_batch(findings, contents, results)@: the landed
+-- findings' results, by operation, and the findings still to publish.
 reconcileBatch ::
   CommentPublisher ->
   [(FindingPublication, FindingContent)] ->
-  IORef (Map.Map Text PublicationResult) ->
-  IO [(FindingPublication, FindingContent)]
-reconcileBatch publisher pending results = do
+  IO (Map.Map Text PublicationResult, [(FindingPublication, FindingContent)])
+reconcileBatch publisher pending = do
   reviews <- reviewComments publisher
   issues <- comments publisher
-  fmap concat . forM pending $ \(item, content) ->
+  found <- forM pending $ \(item, content) ->
     case findMarked reviews publisher.botLogin content.marker of
       Just review -> do
         unless (bodyOf review `elem` [String content.inlinePayload, String content.fallbackPayload]) collision
         ref <- referenceIO review
-        modifyIORef' results (Map.insert item.operation (publication "existing" (Just ref)) {inline = True})
-        pure []
+        pure (Left (item.operation, (publication "existing" (Just ref)) {inline = True}))
       Nothing -> case findMarked issues publisher.botLogin content.marker of
         Just held' -> do
           unless (bodyOf held' == String content.fallbackPayload) collision
           ref <- referenceIO held'
-          modifyIORef' results (Map.insert item.operation (publication "existing" (Just ref)) {inline = False})
-          pure []
-        Nothing -> pure [(item, content)]
+          pure (Left (item.operation, (publication "existing" (Just ref)) {inline = False}))
+        Nothing -> pure (Right (item, content))
+  let (landed, remaining) = partitionEithers found
+  pure (Map.fromList landed, remaining)
 
 -- | @finding_find(operation, head)@: presence-only lookup of one landed
 -- finding.
@@ -626,7 +629,6 @@ inlineFinding :: CommentPublisher -> Text -> Integer -> Text -> Text -> Text -> 
 inlineFinding publisher operation epoch head' body path line authorityOperation = do
   wanted <- markerIO "finding" operation head'
   let payload = body <> "\n\n" <> wanted
-      retries = length transientRetrySeconds
       recovered = do
         found <- findReview publisher wanted
         case found of
@@ -635,7 +637,7 @@ inlineFinding publisher operation epoch head' body path line authorityOperation 
             unless (bodyOf item == String payload) collision
             ref <- referenceIO item
             pure (Just (publication "existing" (Just ref)) {inline = True})
-      loop attempt = do
+      attempt retry () = do
         publisher.fence publisher.repository publisher.prNumber epoch head' (orOperation authorityOperation operation)
         outcome <- try $ do
           callFault publisher "before_call" "finding" operation
@@ -657,11 +659,7 @@ inlineFinding publisher operation epoch head' body path line authorityOperation 
           Left (failure :: GitHubBoundaryError) ->
             recovered >>= \case
               Just result -> pure result
-              Nothing
-                | attempt == retries -> throwIO failure
-                | otherwise -> do
-                    publisher.retryDelay (transientRetrySeconds !! attempt)
-                    loop (attempt + 1)
+              Nothing -> maybe (throwIO failure) ($ ()) retry
           Right response
             | response.status == 201, Object members <- response.body -> do
                 ref <- referenceIO members
@@ -672,13 +670,9 @@ inlineFinding publisher operation epoch head' body path line authorityOperation 
                   Nothing
                     | inlineUnavailable response -> pure (PublicationResult "inline_unavailable" Nothing False False)
                     | transientInlineRejection response ->
-                        if attempt < retries
-                          then do
-                            publisher.retryDelay (transientRetrySeconds !! attempt)
-                            loop (attempt + 1)
-                          else inlineRejection response TransientHttpRejection
+                        maybe (inlineRejection response TransientHttpRejection) ($ ()) retry
                     | otherwise -> inlineRejection response (inlineFailureClass response)
-  loop (0 :: Int)
+  withTransientRetries publisher attempt ()
 
 -- | @reminder(operation, epoch, head, reviewer=…, author=…,
 -- maintainer=…)@.
