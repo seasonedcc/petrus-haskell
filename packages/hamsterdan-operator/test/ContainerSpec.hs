@@ -155,7 +155,7 @@ spec = do
               , not ("--from=" `T.isInfixOf` rest)
               , length operands >= 2
               ]
-          admits source = source `elem` admitted || any (\p -> maybe False (\directory -> (directory <> "/") `T.isPrefixOf` source) (T.stripSuffix "/**" p)) admitted
+          admits source = source `elem` admitted || any (\p -> maybe False (\directory -> source == directory || (directory <> "/") `T.isPrefixOf` source) (T.stripSuffix "/**" p)) admitted
       filter (not . admits) sources `shouldBe` []
 
     it "test_container_build_has_pinned_runtime_without_build_credentials" do
