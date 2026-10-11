@@ -16,9 +16,9 @@ import Control.Monad (forM_, unless, void)
 import Data.Text (Text)
 import Hamsterdan.Contracts.ReadinessV5 (SummaryPending (..))
 import Hamsterdan.Readiness.NetV5.Folding (Fold)
-import Hamsterdan.Readiness.NetV5.Wiring (inhibit, place, seedToken)
+import Hamsterdan.Readiness.NetV5.Wiring (foldHandler, inhibit, place, seedToken)
 import Petrus.Impetus.Binding (handlerTokens)
-import Petrus.Impetus.Dsl (Author, configure, handler, p, petriHandler, t, (~>))
+import Petrus.Impetus.Dsl (Author, configure, handler, p, t, (~>))
 import Petrus.Impetus.Petrinet (NetPath, Token)
 
 -- | @_settled@: consumes its inputs and emits nothing.
@@ -36,9 +36,9 @@ wire :: [(Text, (Text, [Text]))] -> Author s ()
 wire gateTable = do
   pending <- p "startup.pending"
   published <- p "startup.published"
-  finish <- t "startup.finish" >>= configure [handler (petriHandler "_settled" settled)]
+  finish <- t "startup.finish" >>= configure [handler (foldHandler "_settled" settled)]
   void ([pending, published] ~> finish)
-  absorb <- t "startup.absorb_update" >>= configure [handler (petriHandler "_settled" settled)]
+  absorb <- t "startup.absorb_update" >>= configure [handler (foldHandler "_settled" settled)]
   void (published ~> absorb)
   inhibit "startup.pending" "startup.absorb_update"
   forM_ gateTable $ \(path, (activity, _)) ->

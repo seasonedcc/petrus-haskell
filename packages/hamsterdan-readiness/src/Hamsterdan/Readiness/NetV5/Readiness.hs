@@ -78,7 +78,7 @@ import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.Readiness.NetV5.Folding
 import Hamsterdan.Readiness.NetV5.Py
 import Hamsterdan.Readiness.NetV5.Wiring
-import Petrus.Impetus.Dsl (ArcSpec (..), Author, arc, configure, handler, p, petriHandler, t, (~>))
+import Petrus.Impetus.Dsl (ArcSpec (..), Author, arc, configure, handler, p, t, (~>))
 import Petrus.Impetus.Petrinet (NetPath, Token)
 import Petrus.Json (Json (..))
 
@@ -429,7 +429,7 @@ legacyFaultCleared =
 migration :: Text -> Text -> Fold -> Text -> Text -> Author s ()
 migration path name implementation expression mailbox = do
   source <- p "ready.facts"
-  node <- t path >>= configure [handler (petriHandler name implementation)]
+  node <- t path >>= configure [handler (foldHandler name implementation)]
   target <- p mailbox
   void (source ~> arc {arcFilter = Just (celFilter expression)} ~> node ~> target)
 

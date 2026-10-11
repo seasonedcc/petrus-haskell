@@ -13,15 +13,16 @@ module Hamsterdan.Readiness.Payloads
   , decodeWith
   ) where
 
-import Data.Text (Text)
+import Data.Bifunctor (first)
 import Hamsterdan.Contracts.Codec (Codec (..), Contract (..), Model (..), dump, validate)
-import Hamsterdan.Readiness.NetV5.Folding (pyError, typeError)
+import Hamsterdan.Readiness.NetV5.Folding (PythonException, pyError, typeError)
+import Petrus.Impetus.Instance.FailureText (pythonFailureText)
 import Petrus.Activity (PayloadConverter (..), jsonPayloadConverter)
 import Petrus.Json (Json (..))
 
 -- | @decode(value, T)@: a mapping, validated strictly as JSON (extra
 -- members and coercions are a @ValidationError@).
-decodeModel :: forall a. (Contract a) => Json -> Either Text a
+decodeModel :: forall a. (Contract a) => Json -> Either PythonException a
 decodeModel value = case value of
   Object _ -> either (const (Left (pyError "ValidationError" []))) Right (validate @a value)
   _ -> Left (typeError ("Pydantic payload for " <> (contract @a).codecName <> " must be a mapping"))
@@ -32,7 +33,7 @@ encodeModel :: (Contract a) => a -> Json
 encodeModel = dump
 
 -- | 'decodeModel' for a type-erased model: the validated value, dumped.
-decodeWith :: Model -> Json -> Either Text Json
+decodeWith :: Model -> Json -> Either PythonException Json
 decodeWith model value = case value of
   Object _ -> either (const (Left (pyError "ValidationError" []))) Right (model.modelRoundTrip value)
   _ -> Left (typeError ("Pydantic payload for " <> model.modelName <> " must be a mapping"))
@@ -44,8 +45,8 @@ decodeWith model value = case value of
 pydanticPayloadConverter :: Model -> PayloadConverter
 pydanticPayloadConverter model =
   PayloadConverter
-    { decodePayload = \v -> decodeWith model v >>= jsonPayloadConverter.decodePayload
+    { decodePayload = \v -> first pythonFailureText (decodeWith model v) >>= jsonPayloadConverter.decodePayload
     , encodePayload = \v -> case model.modelRoundTrip v of
         Right dumped -> jsonPayloadConverter.encodePayload dumped
-        Left _ -> Left (typeError ("Pydantic result must be " <> model.modelName))
+        Left _ -> Left (pythonFailureText (typeError ("Pydantic result must be " <> model.modelName)))
     }

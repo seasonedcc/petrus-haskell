@@ -47,24 +47,14 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Contracts.Codec (Contract, dump, spelling, validate)
 import Hamsterdan.PyLiteral qualified as Lit
-import Hamsterdan.Readiness.NetV5.Folding (pyError, typeError, validationError)
+import Hamsterdan.Readiness.NetV5.Folding (PythonException, pyError, typeError, validationError)
 import Petrus.Impetus.Instance.FailureText (PythonArg (..))
 import Petrus.Json (Json (..))
-import Hamsterdan.Python.Value (truthy)
+import Hamsterdan.Python.Value (truthy, typeName)
+import Hamsterdan.Python.Value qualified as Value
 
--- | A computation that may raise a Python exception (its recorded text).
-type Py = Either Text
-
--- | @type(value).__name__@ of a JSON-loaded value.
-typeName :: Json -> Text
-typeName = \case
-  Null -> "NoneType"
-  Bool _ -> "bool"
-  Int _ -> "int"
-  Float _ -> "float"
-  String _ -> "str"
-  Array _ -> "list"
-  Object _ -> "dict"
+-- | A computation that may raise a Python exception.
+type Py = Either PythonException
 
 isNone :: Json -> Bool
 isNone = \case
@@ -114,13 +104,7 @@ get container key = getOr container key Null
 
 -- | @container.get(key, default)@.
 getOr :: Json -> Text -> Json -> Py Json
-getOr container key fallback = case container of
-  Object members -> Right (maybe fallback id (lookup key members))
-  other -> Left (attributeError other "get")
-
-attributeError :: Json -> Text -> Text
-attributeError value attribute =
-  pyError "AttributeError" [PyStr ("'" <> typeName value <> "' object has no attribute '" <> attribute <> "'")]
+getOr container key fallback = Value.getOr key fallback container
 
 -- | @key in container@ for a string key.
 member :: Text -> Json -> Py Bool

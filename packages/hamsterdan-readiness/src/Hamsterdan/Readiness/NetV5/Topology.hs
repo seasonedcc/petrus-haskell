@@ -22,6 +22,7 @@ import Control.Monad (foldM)
 import Data.Char (ord)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Hamsterdan.Readiness.NetV5.Folding (PythonException, valueError)
 import Hamsterdan.Readiness.NetV5.Ci qualified as Ci
 import Hamsterdan.Readiness.NetV5.Conversation qualified as Conversation
 import Hamsterdan.Readiness.NetV5.Dashboard qualified as Dashboard
@@ -99,16 +100,16 @@ subjectMalformed :: Text
 subjectMalformed = "V5 workflow subject is malformed"
 
 -- | @seed_marking(subject)@.
-seedMarking :: Text -> Either Text Marking
+seedMarking :: Text -> Either PythonException Marking
 seedMarking = seedMarkingWith defaultReminderDelayS
 
 -- | @seed_marking(subject, reminder_delay_s=...)@: the newborn Instance,
 -- bound to one globally unique host subject. Refuses a subject that is
 -- empty, over 900 UTF-8 bytes, non-ASCII, or not printable; the refusal
 -- is the reference's @ValueError@ message.
-seedMarkingWith :: Integer -> Text -> Either Text Marking
+seedMarkingWith :: Integer -> Text -> Either PythonException Marking
 seedMarkingWith reminderDelayS subject
-  | T.null subject || T.length subject > 900 || not (T.all printableAscii subject) = Left subjectMalformed
+  | T.null subject || T.length subject > 900 || not (T.all printableAscii subject) = Left (valueError subjectMalformed)
   | otherwise = markingFromList . reverse <$> foldM add [] contributions
   where
     printableAscii c = ord c >= 0x20 && ord c <= 0x7e
@@ -123,7 +124,7 @@ seedMarkingWith reminderDelayS subject
         ++ Dashboard.seed
         ++ Reminders.seed subject
         ++ Readiness.seed
-    add :: [(NetPath, [Token])] -> (NetPath, [Token]) -> Either Text [(NetPath, [Token])]
+    add :: [(NetPath, [Token])] -> (NetPath, [Token]) -> Either PythonException [(NetPath, [Token])]
     add acc (path, tokens)
-      | any ((== path) . fst) acc = Left ("duplicate seed contribution for " <> netPathText path)
+      | any ((== path) . fst) acc = Left (valueError ("duplicate seed contribution for " <> netPathText path))
       | otherwise = Right ((path, tokens) : acc)

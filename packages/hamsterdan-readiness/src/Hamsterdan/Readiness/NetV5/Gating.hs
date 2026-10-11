@@ -54,6 +54,7 @@ module Hamsterdan.Readiness.NetV5.Gating
   ) where
 
 import Control.Monad (forM, unless, when)
+import Data.Bifunctor (first)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit, ord)
 import Data.List (sort)
 import Data.Map.Strict (Map)
@@ -64,7 +65,7 @@ import Data.Text qualified as T
 import Data.Typeable (Typeable, cast)
 import Hamsterdan.Contracts.Codec (Codec (..), Contract (..), colorOf, dump, validate)
 import Hamsterdan.Contracts.ReadinessV5
-import Hamsterdan.Readiness.NetV5.Folding (pyError, runtimeError, typeError, valueError)
+import Hamsterdan.Readiness.NetV5.Folding (PythonException, pyError, runtimeError, typeError, valueError)
 import Hamsterdan.Readiness.NetV5.Py (pyRepr, typeName)
 import Petrus.Activity
   ( ActivityDefinition (..)
@@ -82,7 +83,7 @@ import Petrus.Activity
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), HandlerResult, derivedActivityHandler, handlerTokens)
 import Petrus.Impetus.Dsl (BuiltNet (..))
 import Petrus.Impetus.Instance (ImplementationRef (..))
-import Petrus.Impetus.Instance.FailureText (PythonArg (..))
+import Petrus.Impetus.Instance.FailureText (PythonArg (..), pythonFailureText)
 import Petrus.Impetus.Petrinet (Arc (..), Binding (..), NetPath, Token (..), netPathText)
 import Petrus.Impetus.Petrinet.Schema (Net, handlerUri, inputs, netPath, outputs)
 import Petrus.Json (Json (..))
@@ -105,7 +106,7 @@ variantOf value = Variant (colorOf value) (dump value)
 -- | @VariantPayloadConverter.encode(value, A | B | ...)@: the value must be
 -- exactly one of the union's members; its payload gains the @$variant@
 -- discriminator first.
-encodeVariant :: [Text] -> Variant -> Either Text Json
+encodeVariant :: [Text] -> Variant -> Either PythonException Json
 encodeVariant members value
   | value.name `notElem` members =
       Left
@@ -129,7 +130,7 @@ variantPayloadConverter = jsonPayloadConverter
 
 -- | @DataclassPayloadConverter.decode(value, T)@: a mapping, filtered to
 -- the dataclass's fields, constructed strictly.
-decodeDataclass :: forall a. (Contract a) => Json -> Either Text a
+decodeDataclass :: forall a. (Contract a) => Json -> Either PythonException a
 decodeDataclass value = case value of
   Object members ->
     let accepted = (contract @a).codecFields
@@ -260,7 +261,7 @@ variantRouting flavor net transition definition variants = do
         go acc (y : ys) = f acc y >>= \acc' -> go acc' ys
 
 -- | The plain prepare: the single consumed token, as the parameter.
-basePrepare :: VariantRouting -> Binding -> Either Text ActivityInvocation
+basePrepare :: VariantRouting -> Binding -> Either PythonException ActivityInvocation
 basePrepare r b = case b.consumed of
   [(place, tokens)]
     | place /= r.source || length tokens /= 1 ->
@@ -284,7 +285,7 @@ basePrepare r b = case b.consumed of
 data Request where
   Request :: (Contract a, Typeable a) => a -> Request
 
-decodeRequest :: VariantRouting -> ActivityInvocation -> Either Text Request
+decodeRequest :: VariantRouting -> ActivityInvocation -> Either PythonException Request
 decodeRequest r inv = case r.request of
   Annotation (_ :: Proxy a) -> do
     value <- case inv.input of
@@ -299,7 +300,7 @@ as' :: forall b. (Typeable b) => Request -> Maybe b
 as' (Request value) = cast value
 
 -- | The prepare of the routing handler's flavor.
-prepareRouting :: VariantRouting -> Binding -> Either Text ActivityInvocation
+prepareRouting :: VariantRouting -> Binding -> Either PythonException ActivityInvocation
 prepareRouting r b = do
   inv <- basePrepare r b
   case r.flavor of
@@ -319,14 +320,14 @@ prepareRouting r b = do
   where
     identified operation inv = ActivityInvocation inv.activity inv.input gatePolicy (Just operation) (Just operation)
 
-durableOperation :: Request -> Either Text Text
+durableOperation :: Request -> Either PythonException Text
 durableOperation req
   | Just (q :: ReplyReq) <- as' req = Right ("reply:" <> q.id)
   | Just (q :: DashReq) <- as' req = Right ("dash:" <> q.digest)
   | Just (q :: AnnounceReq) <- as' req = Right q.op
   | otherwise = Left (typeError ("Durable publication gate received unsupported request " <> requestName req))
 
-inlineOperation :: Text -> Request -> Either Text Text
+inlineOperation :: Text -> Request -> Either PythonException Text
 inlineOperation name req
   | name == "review_agent", Just (q :: RoundOpen) <- as' req = Right q.operation
   | name == "publish_gate", Just (q :: Publishable) <- as' req =
@@ -343,7 +344,7 @@ inlineOperation name req
       Left (typeError ("Identified inline gate " <> pyRepr (String name) <> " received unsupported request " <> requestName req))
 
 -- | @project@: route the durable result to its variant's place.
-projectRouting :: VariantRouting -> Binding -> Json -> Either Text HandlerResult
+projectRouting :: VariantRouting -> Binding -> Json -> Either PythonException HandlerResult
 projectRouting r _ result = case result of
   Object members | Just variant <- lookup "$variant" members -> do
     let payload = Object [m | m@(k, _) <- members, k /= "$variant"]
@@ -372,7 +373,7 @@ projectRouting r _ result = case result of
 
 -- | The durable flavor's @project_failure@: only an expired claim
 -- (@DeadlineExceeded@) projects, as the request's blocked variant.
-projectDurableFailure :: VariantRouting -> Binding -> ActivityFailure -> Either Text HandlerResult
+projectDurableFailure :: VariantRouting -> Binding -> ActivityFailure -> Either PythonException HandlerResult
 projectDurableFailure r b failure = do
   let kind = (failureFields failure).failureKind
       name = declarationName r.definition.activity.declaration
@@ -394,14 +395,15 @@ projectDurableFailure r b failure = do
   encoded <- encodeVariant r.definition.result blocked
   projectRouting r b encoded
 
--- | The impure handler of a constructed routing gate.
+-- | The impure handler of a constructed routing gate; its exceptions
+-- become the firing's failure text here.
 routingHandler :: VariantRouting -> ActivityHandler
 routingHandler r =
   ActivityHandler
-    { prepare = prepareRouting r
-    , project = projectRouting r
+    { prepare = first pythonFailureText . prepareRouting r
+    , project = \b -> first pythonFailureText . projectRouting r b
     , projectFailure = case r.flavor of
-        DurablePublication -> Just (projectDurableFailure r)
+        DurablePublication -> Just (\b -> first pythonFailureText . projectDurableFailure r b)
         _ -> Nothing
     }
 
@@ -419,13 +421,13 @@ wireGates built gates definitions derived = do
   routed <- forM gates $ \(path, (name, variants)) -> do
     transition <- netPath path
     uri <- maybe (Left ("transition " <> path <> " has no handler identity")) Right (handlerUri built.net transition)
-    definition <- maybe (Left (pyError "KeyError" [PyStr name])) Right (Map.lookup name definitions)
+    definition <- maybe (Left (pythonFailureText (pyError "KeyError" [PyStr name]))) Right (Map.lookup name definitions)
     r <- variantRouting (gateFlavor name) built.net transition definition variants
     Right (Exact uri, ActivityBound (routingHandler r))
   stock <- forM derived $ \(path, name) -> do
     transition <- netPath path
     uri <- maybe (Left ("transition " <> path <> " has no handler identity")) Right (handlerUri built.net transition)
-    definition <- maybe (Left (pyError "KeyError" [PyStr name])) Right (Map.lookup name definitions)
+    definition <- maybe (Left (pythonFailureText (pyError "KeyError" [PyStr name]))) Right (Map.lookup name definitions)
     resultColor <- case definition.result of
       [one] -> Right one
       _ -> Left ("derived gate " <> name <> " requires exactly one result color")

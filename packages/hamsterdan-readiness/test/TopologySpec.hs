@@ -17,6 +17,8 @@ import Petrus.Impetus.Petrinet (Token (..), markingToList, netPathText)
 import Petrus.Impetus.Petrinet.Schema (netPlaceOrder, netTransitionOrder)
 import Petrus.Json (Json (..))
 import Test.Hspec
+import Data.Bifunctor (first)
+import Hamsterdan.Python (PythonArg (..), PythonException (..), pythonExceptionStr, pythonFailureText)
 
 built :: BuiltNet
 built = either (error . show) id buildNetV5
@@ -70,11 +72,18 @@ spec = describe "topology" $ do
               expected = case member "error" row of
                 Just (String message) -> Left message
                 _ -> Right (maybe Null id (member "marking" row))
-              actual = (\m -> markingJson (markingToList m) netPathText) <$> seedMarkingWith delay subject
+              actual = (\m -> markingJson (markingToList m) netPathText) <$> first valueErrorText (seedMarkingWith delay subject)
         , either id spelled expected /= either id spelled actual
         ]
     forM_ ["", "x\ty", T.replicate 901 "x", "caf\233"] $ \subject ->
       it ("refuses " <> show (T.take 12 subject)) $
-        seedMarking subject `shouldSatisfy` either (== subjectMalformed) (const False)
+        seedMarking subject `shouldSatisfy` either (\case PythonException "ValueError" [PyStr m] -> m == subjectMalformed; _ -> False) (const False)
     it "accepts exactly 900 bytes" $
       either (const False) (const True) (seedMarking (T.replicate 900 "x")) `shouldBe` True
+
+-- | The corpus records @str(error)@ of the @ValueError@ it catches; any
+-- other exception keeps its class in the text, so it cannot match.
+valueErrorText :: PythonException -> T.Text
+valueErrorText = \case
+  e@(PythonException "ValueError" _) -> pythonExceptionStr e
+  e -> pythonFailureText e

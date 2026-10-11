@@ -30,7 +30,8 @@ module Hamsterdan.Readiness.NetV5.Folding
   , Emit
   , emit
   , route
-    -- * Python failure texts
+    -- * Python exceptions
+  , PythonException
   , pyError
   , validationError
   , keyError
@@ -47,12 +48,15 @@ import Data.Typeable (Typeable, cast)
 import Hamsterdan.Contracts.Codec (Contract (..), Codec (..), dump, validate)
 import Hamsterdan.Contracts.ReadinessV5
 import Petrus.Impetus.Binding (HandlerResult, handlerTokens)
-import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..), pythonFailureText)
+import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
 import Petrus.Impetus.Petrinet (Arc (..), Binding (..), Token (..), netPathText)
 import Petrus.Json (Json (..))
 
--- | A V5 pure fold: the binding and the transition's output arcs.
-type Fold = Binding -> [Arc] -> Either Text HandlerResult
+-- | A V5 pure fold: the binding and the transition's output arcs, to the
+-- tokens it emits or the exception the reference raises. The exception is
+-- rendered to the firing's failure text once, where the fold is wired
+-- ('Hamsterdan.Readiness.NetV5.Wiring.fold').
+type Fold = Binding -> [Arc] -> Either PythonException HandlerResult
 
 -- | A hydrated workflow value of any registered color.
 data Value where
@@ -104,7 +108,7 @@ sortKeysDeep = \case
   other -> other
 
 -- | Hydrate every bound token, read selections first.
-hydrate :: Binding -> Either Text [Value]
+hydrate :: Binding -> Either PythonException [Value]
 hydrate b = traverse one [tok | (_, selected) <- b.read ++ b.consumed, tok <- selected]
   where
     one tok = case tok.color of
@@ -114,27 +118,27 @@ hydrate b = traverse one [tok | (_, selected) <- b.read ++ b.consumed, tok <- se
         Just adapter -> maybe (Left validationError) Right (adapter (sortKeysDeep tok.payload))
 
 -- | The first hydrated value of one type (@next(... isinstance ...)@).
-pick :: forall a. (Typeable a) => [Value] -> Either Text a
+pick :: forall a. (Typeable a) => [Value] -> Either PythonException a
 pick hydrated = case [x | Value v <- hydrated, Just x <- [cast v]] of
   x : _ -> Right x
   [] -> Left (runtimeError "generator raised StopIteration")
 
-values1 :: forall a. (Typeable a) => Binding -> Either Text a
+values1 :: forall a. (Typeable a) => Binding -> Either PythonException a
 values1 b = hydrate b >>= pick
 
-values2 :: forall a b. (Typeable a, Typeable b) => Binding -> Either Text (a, b)
+values2 :: forall a b. (Typeable a, Typeable b) => Binding -> Either PythonException (a, b)
 values2 b = do
   hs <- hydrate b
   (,) <$> pick hs <*> pick hs
 
-values3 :: forall a b c. (Typeable a, Typeable b, Typeable c) => Binding -> Either Text (a, b, c)
+values3 :: forall a b c. (Typeable a, Typeable b, Typeable c) => Binding -> Either PythonException (a, b, c)
 values3 b = do
   hs <- hydrate b
   (,,) <$> pick hs <*> pick hs <*> pick hs
 
 -- | Hydrate a strict workflow value from a JSON-faithful dict (a baton held
 -- through a gate round inside a work token's @mem@).
-revive :: forall a. (Contract a) => Json -> Either Text a
+revive :: forall a. (Contract a) => Json -> Either PythonException a
 revive value = either (const (Left validationError)) Right (validate @a (sortKeysDeep value))
 
 -- | One target's emitted values, already dumped.
@@ -156,22 +160,22 @@ route outs mapping =
     , Just vs <- [lookup (netPathText a.target) mapping]
     ]
 
--- | The recorded text of a Python exception.
-pyError :: Text -> [PythonArg] -> Text
-pyError name args = pythonFailureText (PythonException name args)
+-- | A Python exception: its class and @args@.
+pyError :: Text -> [PythonArg] -> PythonException
+pyError = PythonException
 
 -- | A pydantic @ValidationError@ (whose @args@ are empty).
-validationError :: Text
+validationError :: PythonException
 validationError = pyError "ValidationError" []
 
-keyError :: Text -> Text
+keyError :: Text -> PythonException
 keyError k = pyError "KeyError" [PyStr k]
 
-valueError :: Text -> Text
+valueError :: Text -> PythonException
 valueError message = pyError "ValueError" [PyStr message]
 
-runtimeError :: Text -> Text
+runtimeError :: Text -> PythonException
 runtimeError message = pyError "RuntimeError" [PyStr message]
 
-typeError :: Text -> Text
+typeError :: Text -> PythonException
 typeError message = pyError "TypeError" [PyStr message]

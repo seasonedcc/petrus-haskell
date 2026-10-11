@@ -78,7 +78,7 @@ import Hamsterdan.Contracts.ReadinessV5
   , TimerCommandApplied (..)
   , TimerDue (..)
   )
-import Hamsterdan.Host.Python (RuntimeError (..), TypeError (..), ValueError (..), dumpsCompactSorted, mkdirPrivate, raiseFailureText, raisePython, sha256Hex, sha256HexText)
+import Hamsterdan.Host.Python (RuntimeError (..), TypeError (..), ValueError (..), dumpsCompactSorted, mkdirPrivate, raisePython, sha256Hex, sha256HexText)
 import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Ingress (IngressEntry (..), ingressFrom)
 import Hamsterdan.Host.V5.Timers (TimerFact, timerHistory, timerValue)
@@ -153,9 +153,9 @@ hostGateDefinition name heartbeat (GateImplementation (implementation :: a -> IO
   let members = gateMembers name
       function args _ = do
         raw <- maybe (throwIO (TypeError (name <> "() missing 1 required keyword-only argument: 'work'"))) pure (lookup "work" args)
-        work <- either raiseFailureText pure (decodeDataclass @a raw)
+        work <- either raisePython pure (decodeDataclass @a raw)
         value <- implementation work
-        either raiseFailureText pure (encodeVariant members value)
+        either raisePython pure (encodeVariant members value)
   Right
     GateDefinition
       { activity = ActivityDefinition declaration variantPayloadConverter ["work"] function
@@ -336,7 +336,7 @@ openRuntime root instance' definitions options = do
     if exists
       then load
       else do
-        marking' <- either raiseFailureText pure (seedMarkingWith options.reminderDelayS instance')
+        marking' <- either raisePython pure (seedMarkingWith options.reminderDelayS instance')
         store <- openJsonlHistoryStore historyPath
         port <- dispatch'
         Engine.create built.net instance' store port (engineOptions marking')
@@ -605,7 +605,7 @@ conversationContext runtime = do
     [] -> pure []
   memories <- markingPlace runtime "review.memory"
   findings <- case memories of
-    m : _ -> either raiseFailureText pure (liveFindings m.payload)
+    m : _ -> either raisePython pure (liveFindings m.payload)
     [] -> pure []
   pure (facts, findings)
 

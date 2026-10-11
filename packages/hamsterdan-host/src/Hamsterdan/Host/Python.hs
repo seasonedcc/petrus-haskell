@@ -10,7 +10,6 @@ module Hamsterdan.Host.Python
   , TypeError (..)
   , LookupError (..)
   , raisePython
-  , raiseFailureText
 
     -- * @except Exception@
   , BaseException (..)
@@ -66,8 +65,6 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Sqlite (Connection, SQLData (..))
-import Hamsterdan.PyLiteral (literalEval)
-import Hamsterdan.PyLiteral qualified as PyLit
 import Hamsterdan.Python.Exception (raisingDumps)
 import Hamsterdan.Python.Hashlib (sha256Hex, sha256HexText)
 import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
@@ -82,18 +79,6 @@ import System.Posix.Directory qualified as PosixDir
 newtype TypeError = TypeError Text deriving stock (Eq, Show)
 
 instance Exception TypeError where displayException (TypeError m) = T.unpack m
-
--- | Raise a recorded Python failure text (@Name('message')@, the
--- 'Petrus.Impetus.Instance.FailureText' spelling a pure fold returns) as
--- the exception the reference raises: the host's own type for the
--- built-in classes it raises, 'PythonException' for any other class.
-raiseFailureText :: Text -> IO a
-raiseFailureText text =
-  let (name, rest) = T.breakOn "(" text
-      message = case literalEval (T.dropEnd 1 (T.drop 1 rest)) of
-        Right (PyLit.PyStr m) -> Just m
-        _ -> Nothing
-   in raisePython (PythonException name (maybe [] (pure . PyStr) message))
 
 -- | @raise error@: the host's own type for the built-in classes it raises
 -- with one message (so its catchers match them as they match the host's

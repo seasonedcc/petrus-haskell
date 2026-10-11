@@ -13,6 +13,7 @@ import Hamsterdan.Readiness.NetV5.Topology (seedMarking)
 import Petrus.Activity (ActivityInvocation (..))
 import Petrus.Json (Json (..))
 import Test.Hspec
+import Hamsterdan.Python (pythonFailureText)
 
 holdAgent, holdPublish :: [Text]
 holdAgent = ["review_agent"]
@@ -465,7 +466,7 @@ spec = describe "review loop" $ do
     forM_ ["", "bad\nsubject", "\233", T.replicate 901 "x"] $ \subject ->
       it (show (T.take 20 subject)) $
         case seedMarking subject of
-          Left message -> T.unpack message `shouldContain` "subject"
+          Left message -> T.unpack (pythonFailureText message) `shouldContain` "subject"
           Right _ -> expectationFailure "seed_marking accepted the subject"
 
   describe "live findings" $ do

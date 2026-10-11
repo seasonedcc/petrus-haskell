@@ -3,6 +3,7 @@
 module Hamsterdan.Readiness.NetV5.Wiring
   ( place
   , fold
+  , foldHandler
   , gate
   , door
   , inhibit
@@ -13,21 +14,28 @@ module Hamsterdan.Readiness.NetV5.Wiring
   ) where
 
 import Control.Monad (void)
+import Data.Bifunctor (first)
 import Data.Text (Text)
 import Hamsterdan.Contracts.Codec (Contract, colorOf, dump)
 import Hamsterdan.Readiness.NetV5.Folding (Fold)
 import Petrus.Impetus.Dsl hiding (colorOf)
+import Petrus.Impetus.Instance.FailureText (pythonFailureText)
 import Petrus.Impetus.Petrinet (Token (..))
 
 -- | @s.loop.p.name(Color)@.
 place :: Text -> Color -> Author s ()
 place path c = void (p path >>= color c)
 
+-- | @petri_handler(fn)@: the fold's exception becomes the firing's failure
+-- text here, the one place a fold's 'PythonException' is rendered.
+foldHandler :: Text -> Fold -> HandlerSpec
+foldHandler name implementation = petriHandler name (\b outs -> first pythonFailureText (implementation b outs))
+
 -- | @(inputs) >> loop.t.name(handler=petri_handler(fn)) >> (outputs)@.
 fold :: Text -> Text -> Fold -> [Text] -> [Text] -> Author s ()
 fold path name implementation ins outs = do
   sources <- mapM p ins
-  node <- t path >>= configure [handler (petriHandler name implementation)]
+  node <- t path >>= configure [handler (foldHandler name implementation)]
   targets <- mapM p outs
   void (sources ~> node ~> targets)
 

@@ -19,6 +19,8 @@ import Hamsterdan.Readiness.Payloads (decodeModel, encodeModel, pydanticPayloadC
 import Petrus.Activity (PayloadConverter (..))
 import Petrus.Json (Json (..))
 import Test.Hspec
+import Data.Bifunctor (first)
+import Hamsterdan.Python (pythonFailureText)
 
 members :: Json -> [(T.Text, Json)]
 members = \case
@@ -66,14 +68,14 @@ spec = describe "payloads converter" $ do
         encoded = converter.encodePayload (encodeModel value)
     encoded `shouldBe` Right (dump value)
     (encoded >>= converter.decodePayload) `shouldBe` Right (dump value)
-    (encoded >>= decodeModel @ActionsObservation) `shouldBe` Right value
+    (encoded >>= first pythonFailureText . decodeModel @ActionsObservation) `shouldBe` Right value
 
   it "admitted conversation forbids provider fields" $ do
     let value = AdmittedConversation "delivery" 1 2 "human" "OWNER" "status"
         payload = members (dump value)
     decodeModel @AdmittedConversation (Object payload) `shouldBe` Right value
-    decodeModel @AdmittedConversation (Object (payload <> [("actor_type", String "User")])) `shouldBe` Left "ValidationError()"
-    decodeModel @AdmittedConversation (Object ([m | m@(k, _) <- payload, k /= "comment_id"] <> [("comment_id", String "1")]))
+    first pythonFailureText (decodeModel @AdmittedConversation (Object (payload <> [("actor_type", String "User")]))) `shouldBe` Left "ValidationError()"
+    first pythonFailureText (decodeModel @AdmittedConversation (Object ([m | m@(k, _) <- payload, k /= "comment_id"] <> [("comment_id", String "1")])))
       `shouldBe` Left "ValidationError()"
 
   describe "rejects coercion and extra fields" $ do
@@ -83,7 +85,7 @@ spec = describe "payloads converter" $ do
       decodeModel @Authority (Object (authorityPayload <> [("unknown", Bool True)])) `shouldSatisfy` isLeft
 
   it "closed workflow vocabulary rejects an unknown actions state" $
-    decodeModel @ActionsState (Object [("actions", String "provider-private")]) `shouldBe` Left "ValidationError()"
+    first pythonFailureText (decodeModel @ActionsState (Object [("actions", String "provider-private")])) `shouldBe` Left "ValidationError()"
 
   -- DIVERGENCES.md: the reference refuses @type(value) is not ChangeResult@.
   -- 'encodeModel' is typed, so a RepairResult cannot be encoded as a
@@ -95,7 +97,7 @@ spec = describe "payloads converter" $ do
     codecName (contract @ChangeResult) `shouldBe` "ChangeResult"
     let converter = pydanticPayloadConverter (modelOf (contract @ChangeResult))
     converter.encodePayload (Object [("epoch", String "1")]) `shouldBe` Left "TypeError('Pydantic result must be ChangeResult')"
-    (converter.encodePayload (encodeModel repair) >>= decodeModel @ChangeResult) `shouldSatisfy` (not . isLeft)
+    (converter.encodePayload (encodeModel repair) >>= first pythonFailureText . decodeModel @ChangeResult) `shouldSatisfy` (not . isLeft)
 
   it "split tokens are strict and extra forbidden" $ do
     decodeModel @ActionsState (Object [("attempt", String "1")]) `shouldSatisfy` isLeft
@@ -104,14 +106,14 @@ spec = describe "payloads converter" $ do
   it "round trips a readiness snapshot" $ do
     snapshot <- either (fail . show) pure defaultSnapshot
     let converter = pydanticPayloadConverter (modelOf (contract @ReadinessSnapshot))
-    (converter.encodePayload (encodeModel snapshot) >>= decodeModel @ReadinessSnapshot) `shouldBe` Right snapshot
+    (converter.encodePayload (encodeModel snapshot) >>= first pythonFailureText . decodeModel @ReadinessSnapshot) `shouldBe` Right snapshot
 
   it "round trips an immutable dashboard request" $ do
     snapshot <- either (fail . show) pure defaultSnapshot
     let request = DashboardPublicationRequest 1 "head" "dashboard:1" "base" "policy" snapshot
         converter = pydanticPayloadConverter (modelOf (contract @DashboardPublicationRequest))
-    (converter.encodePayload (encodeModel request) >>= converter.decodePayload >>= decodeModel @DashboardPublicationRequest)
+    (converter.encodePayload (encodeModel request) >>= converter.decodePayload >>= first pythonFailureText . decodeModel @DashboardPublicationRequest)
       `shouldBe` Right request
 
   it "refuses a non-mapping payload with the reference's TypeError" $
-    decodeModel @Authority (Array []) `shouldBe` Left "TypeError('Pydantic payload for Authority must be a mapping')"
+    first pythonFailureText (decodeModel @Authority (Array [])) `shouldBe` Left "TypeError('Pydantic payload for Authority must be a mapping')"

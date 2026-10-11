@@ -108,6 +108,7 @@ import Petrus.Impetus.Petrinet.Schema (netPath)
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch.InMemory qualified as InMemory
 import Petrus.Motus.Dispatch.Inline (inlineDispatch, newInlineDispatch)
+import Hamsterdan.Python (pythonFailureText)
 
 -- ---------------------------------------------------------------------------
 -- JSON helpers
@@ -655,7 +656,7 @@ dashGate ref raw = do
         pure (made @C.DashLanded attempted)
 
 decoded :: forall a. (Contract a) => Json -> IO a
-decoded raw = either (throwIO . ErrorCall . T.unpack) pure (decodeDataclass @a raw)
+decoded raw = either (throwIO . ErrorCall . T.unpack . pythonFailureText) pure (decodeDataclass @a raw)
 
 -- | The eight gate activities over one world, as gate definitions.
 makeActivities :: IORef World -> Map Text GateDefinition
@@ -679,7 +680,7 @@ makeActivities ref =
       let declaration = either (error . T.unpack) id (activityDeclaration name Nothing)
           function args _ = do
             v <- gate ref (maybe Null id (lookup "work" args))
-            either (throwIO . ErrorCall . T.unpack) pure (encodeVariant members v)
+            either (throwIO . ErrorCall . T.unpack . pythonFailureText) pure (encodeVariant members v)
        in ( name
           , GateDefinition
               { activity = ActivityDefinition declaration variantPayloadConverter ["work"] function
@@ -785,7 +786,7 @@ spawnWith :: Text -> World -> [(Text, Text, Json)] -> IO H
 spawnWith instanceId world0 initialMail = do
   ref <- newIORef world0
   let definitions = makeActivities ref
-  seeded <- either (throwIO . ErrorCall . T.unpack) pure (seedMarking ("test:" <> instanceId))
+  seeded <- either (throwIO . ErrorCall . T.unpack . pythonFailureText) pure (seedMarking ("test:" <> instanceId))
   let marking' = foldl (\m (place, color, payload) -> deposit (fromText place) (Token (Just color) payload) m) seeded initialMail
   store <- inMemoryHistoryStore
   port <- inlineDispatch <$> newInlineDispatch (Map.map (\d inv _ -> callDefinition d inv) definitions)
@@ -807,7 +808,7 @@ spawnHeldWith :: Text -> World -> IO H
 spawnHeldWith instanceId world0 = do
   ref <- newIORef world0
   let definitions = makeActivities ref
-  seeded <- either (throwIO . ErrorCall . T.unpack) pure (seedMarking ("test:" <> instanceId))
+  seeded <- either (throwIO . ErrorCall . T.unpack . pythonFailureText) pure (seedMarking ("test:" <> instanceId))
   store <- inMemoryHistoryStore
   pool <- InMemory.newInMemoryDispatch
   engine <-

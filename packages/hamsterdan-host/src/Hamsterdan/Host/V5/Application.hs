@@ -90,7 +90,7 @@ import Hamsterdan.GitHub.Webhooks (Observation (..))
 import Hamsterdan.Host.Binding (ensureInstanceBinding)
 import Hamsterdan.Host.Errors (UnstagedCustodyError (..))
 import Hamsterdan.Host.GitPublish (PublicationAuthority, hostGitPublisher, publicationAuthority)
-import Hamsterdan.Host.Python (RuntimeError (..), ValueError (..), raiseFailureText)
+import Hamsterdan.Host.Python (RuntimeError (..), ValueError (..), raisePython)
 import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Gates (V5PublicationGates (..), announceGate, dashGate, publicationProvider, publishGate, reminderGate, replyGate)
 import Hamsterdan.Host.V5.Ingress
@@ -771,7 +771,7 @@ inactiveActivityResult name invocation = \case
           [single] -> pure single
           _ -> throwIO (ValueError "V5 publication invocation has malformed parameters")
         let encoded = fromMaybe Null (lookup parameter input)
-        work <- either raiseFailureText pure (decodeDataclass @a encoded)
+        work <- either raisePython pure (decodeDataclass @a encoded)
         result <- case name of
           "reply_gate"
             | Just (w :: ReplyReq) <- as work ->
@@ -794,7 +794,7 @@ inactiveActivityResult name invocation = \case
         case definition.result of
           -- A single declared type: the ordinary dataclass encoding.
           [_] -> pure result.fields
-          members -> either raiseFailureText pure (encodeVariant members result)
+          members -> either raisePython pure (encodeVariant members result)
   _ -> throwIO (ValueError "V5 publication invocation has no matching Activity definition")
   where
     as :: forall a b. (Typeable a, Typeable b) => a -> Maybe b
