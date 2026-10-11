@@ -929,6 +929,8 @@ prefixed :: [Text] -> NetPath -> NetPath
 prefixed [] at = at
 prefixed prefix at = unsafePath (T.intercalate "." prefix <> "." <> netPathText at)
 
+-- | 'error' on refusal: every caller joins or slices valid paths and
+-- 'scope'-checked segments (non-empty, dot-free), which 'netPath' admits.
 unsafePath :: Text -> NetPath
 unsafePath = either (error . T.unpack) id . netPath
 

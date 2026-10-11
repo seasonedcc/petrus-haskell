@@ -84,7 +84,9 @@ pythonActivityError err =
           , failureRetryable = True
           , failureRetryAfter = Nothing
           }
-   in either (error . T.unpack) ActivityError (activityFailure fields)
+   in -- 'error': these fields always validate (non-empty kind and error,
+      -- bounded length, no details).
+      either (error . T.unpack) ActivityError (activityFailure fields)
 
 -- | Rethrow a 'FabricError' as 'pythonActivityError'.
 asPythonFailure :: IO a -> IO a

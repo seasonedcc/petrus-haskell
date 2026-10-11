@@ -617,6 +617,7 @@ fastDouble input negative integerStart integerEnd fractionEnd exponentEnd
     signed d = if negative then negate d else d
 
 -- | Exact powers of ten up to 10^22 (every one is a representable double).
+-- (!!): both callers guard @0 <= k <= 22@.
 powerOfTen :: Int -> Double
 powerOfTen k = powersOfTen !! k
 

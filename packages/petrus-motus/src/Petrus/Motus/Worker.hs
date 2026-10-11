@@ -650,6 +650,7 @@ syncBridgeAccess :: LaneSpawner -> IO WorkerDispatch -> Int -> IO WorkerAccess
 syncBridgeAccess spawn factory concurrency = do
   lanes <- mapM newLane [0 .. concurrency - 1]
   initialized <- newIORef []
+  -- (!!): the worker hands out slots from [0 .. concurrency - 1] only.
   let lane slot = lanes !! slot
       start = do
         let launch [] = pure ([], Nothing)

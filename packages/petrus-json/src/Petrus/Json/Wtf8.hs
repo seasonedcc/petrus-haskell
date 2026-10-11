@@ -61,6 +61,8 @@ unsafeTextFromBytes bytes
         (BU.unsafeUseAsCStringLen bytes (\(pointer, size) -> TF.fromPtr (castPtr pointer) (fromIntegral size)))
 
 -- | The one-code-point string of a surrogate (0xD800–0xDFFF), in WTF-8.
+-- Any other code point is a caller's bug ('error'), as 'chr' treats one
+-- past U+10FFFF.
 surrogateText :: Int -> Text
 surrogateText code
   | code < 0xD800 || code > 0xDFFF = error ("surrogateText: not a surrogate code point " ++ show code)

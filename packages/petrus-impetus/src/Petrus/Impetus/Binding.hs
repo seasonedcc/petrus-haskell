@@ -53,6 +53,7 @@ module Petrus.Impetus.Binding
 import Control.DeepSeq (NFData (..))
 import Control.Monad (foldM, forM, forM_, unless, when)
 import Data.List (find, findIndex)
+import Data.Maybe (listToMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -249,7 +250,7 @@ derivedActivityHandler net transitionPath activityName parameters resultColor = 
             )
         members <- forM matched $ \(name, _, a, selectionIndex) -> do
           let selections = if isRead a then b.read else b.consumed
-              selected = if selectionIndex < length selections then Just (selections !! selectionIndex) else Nothing
+              selected = listToMaybe (drop selectionIndex selections)
           case selected of
             Just (place', [t]) | place' == a.source -> Right (name, t.payload)
             _ -> do
@@ -331,16 +332,15 @@ derivePlan subject net transitionPath parameters = do
             <> "; collection parameters are not supported"
         )
   (planned, used) <- foldlM' ([], []) parameters $ \(acc, used) (name, color) -> do
-    let matches = [i | (i, a) <- zip [0 :: Int ..] arcs, a.color == Just color]
-    index <- case matches of
-      [i] -> Right i
+    let matches = [match | match@(_, a) <- zip [0 :: Int ..] arcs, a.color == Just color]
+    (index, a) <- case matches of
+      [match] -> Right match
       _ ->
         Left
           ( "cannot derive " <> subject <> " for " <> at <> ": parameter " <> pythonStrRepr name <> " (" <> color
               <> ") requires exactly one matching input arc, found "
               <> pythonIntRepr (length matches)
           )
-    let a = arcs !! index
     when (index `elem` used) $
       Left ("cannot derive " <> subject <> " for " <> at <> ": input arc " <> netPathText a.source <> " is reused")
     let selectionIndex = length [c | c <- take index arcs, c.mode == a.mode]
@@ -361,7 +361,7 @@ planArguments subject (TypedPlan transitionPath planned) b = do
       )
   forM planned $ \(TypedInput name a selectionIndex) -> do
     let selections = if isRead a then b.read else b.consumed
-        selected = if selectionIndex < length selections then Just (selections !! selectionIndex) else Nothing
+        selected = listToMaybe (drop selectionIndex selections)
     case selected of
       Just (place', [t]) | place' == a.source -> do
         when (t.color /= a.color) $
