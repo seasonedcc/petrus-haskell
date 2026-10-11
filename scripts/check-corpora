@@ -318,13 +318,13 @@ GENERATORS: List[Generator] = [
         cwd=".",
         in_place=True,
     ),
-    # petrus-json: CPython's str.isprintable
+    # petrus-json: CPython's str.isprintable, str.isspace, line boundaries and decimal digits
     Generator(
-        "petrus-json/python printable",
+        "petrus-json/python tables",
         "petrus",
-        "packages/petrus-json/gen/gen_python_printable.py",
+        "packages/petrus-json/gen/gen_python_tables.py",
         [],
-        {"packages/petrus-json/src/Petrus/Json/PythonText/Printable.hs": "", "packages/petrus-json/test/python-printable.txt": ""},
+        {"packages/petrus-json/src/Petrus/Json/PythonText/Tables.hs": "", "packages/petrus-json/test/python-printable.txt": ""},
         cwd=".",
         in_place=True,
     ),

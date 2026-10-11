@@ -140,7 +140,7 @@ Notes on the results:
 - **Session validation** first runs `petrus-json`'s strict parser
   (duplicate members and non-finite constants refused). Whatever that
   parser accepts, the CPython-faithful scanner in
-  `Petrus.Impetus.Internal.PyJson` accepts as the same value. The two
+  `Petrus.Json.Python.Scanner` accepts as the same value. The two
   differ only on lone surrogate escapes, a UTF-8 BOM and very deep nesting,
   which the strict parser refuses. Those inputs, and every refused input,
   still go through the scanner, so the outcome is the reference's.

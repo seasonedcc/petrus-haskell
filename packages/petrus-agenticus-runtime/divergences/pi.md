@@ -33,7 +33,7 @@ sides of each one. Its single accepted difference is item 6.
    their Python class name as `OtherError`:
    - `binascii.Error` (strict base64) becomes `OtherError "Error"`;
    - `UnicodeDecodeError` becomes `OtherError "UnicodeDecodeError"`, with
-     CPython's exact message (from `Petrus.Impetus.Internal.PyJson`);
+     CPython's exact message (from `Petrus.Json.Python.Scanner`);
    - `OverflowError` becomes `OtherError "OverflowError"`.
 
    Both `binascii.Error` and `UnicodeDecodeError` are `ValueError`

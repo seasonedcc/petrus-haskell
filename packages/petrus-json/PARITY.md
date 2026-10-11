@@ -98,6 +98,22 @@ profiles of `loadsProfiles`:
 - **`repr(str)` and `str.isprintable`**
   ([`PythonTextSpec`](test/Petrus/Json/PythonTextSpec.hs)): the printability
   vector for every code point ([`python-printable.txt`](test/python-printable.txt)).
+- **The CPython-compatibility layer** (`Petrus.Json.Python`,
+  [`PythonCompatSpec`](test/Petrus/Json/PythonCompatSpec.hs)): one live run
+  of the pinned interpreter ([`cpython_compat_oracle.py`](test/cpython_compat_oracle.py))
+  answers every case and every answer must match exactly: `str.isprintable`,
+  `str.isspace`, the `str.splitlines` boundaries and `unicodedata.decimal`
+  on every code point; `repr`, `strip`, `lstrip`, `rstrip`, `split()`,
+  `splitlines()` and `isprintable()` of 2 500 generated strings (dense in
+  whitespace, line boundaries, U+00A0, Unicode 16.0 additions such as
+  U+105C0, and lone surrogates for `repr`); `repr(bytes)`; `repr(float)`
+  with the non-finite values; `repr`, `str` and type name of `json.loads`
+  values; the exact text of `json.loads` refusals (`JSONDecodeError` with
+  line, column and character, and the digit limit), plain and with a
+  duplicate-refusing `object_pairs_hook` and refusing `parse_constant` (hook
+  order); strict UTF-8 `UnicodeDecodeError` texts; `json.detect_encoding`
+  and the `surrogatepass` decoding `json.loads(bytes)` applies, in every
+  encoding, intact and damaged; and `uuid.uuid4()`'s spelling.
 - **Unit tests** ([`test/Main.hs`](test/Main.hs)): `dumps` spellings,
   `parseJson` behaviours, lone surrogates kept as WTF-8 (pairing, keys,
   ordering, byte-for-byte re-encoding, `dumpsText`, `repr`, `fromWtf8`), the 4 300-digit limit in both directions with

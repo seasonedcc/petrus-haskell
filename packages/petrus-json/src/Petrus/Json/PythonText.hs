@@ -1,17 +1,37 @@
--- | CPython 3.14's string predicates and @repr(str)@, exact for every code
--- point.
+-- | CPython 3.14's string predicates, the @str@ methods built on them, and
+-- @repr(str)@, exact for every code point.
 --
 -- The Petrus reference embeds @repr@ of strings in many error and
 -- diagnostic texts, and @repr@ escapes exactly the characters for which
--- @str.isprintable@ is false. GHC's "Data.Char" follows the Unicode version
--- GHC ships (15.1 for GHC 9.10) and its 'Data.Char.isPrint' admits the space
--- separators, so neither can stand in for CPython's predicate. The table in
--- "Petrus.Json.PythonText.Printable" is generated from the pinned
--- interpreter (CPython 3.14, Unicode 16.0) by @gen/gen_python_printable.py@,
--- and the test suite checks every code point 0..0x10FFFF against the
--- committed vector @test/python-printable.txt@.
+-- @str.isprintable@ is false; @str.strip@, @str.split@ and
+-- @str.splitlines@ decide by @str.isspace@ and the line-boundary set, and
+-- @int()@ reads every Unicode decimal digit. GHC's "Data.Char" follows the
+-- Unicode version GHC ships (15.1 for GHC 9.10) and its 'Data.Char.isPrint'
+-- admits the space separators, so neither can stand in for CPython's
+-- predicates. The tables in "Petrus.Json.PythonText.Tables" are generated
+-- from the pinned interpreter (CPython 3.14, Unicode 16.0) by
+-- @gen/gen_python_tables.py@; the test suite checks 'isPythonPrintable' on
+-- every code point 0..0x10FFFF against the committed vector
+-- @test/python-printable.txt@, and every predicate on every code point
+-- against the live interpreter.
+--
+-- This is the one home of these predicates: every Petrus and Hamsterdan
+-- package imports them from here (or from the "Petrus.Json.Python"
+-- umbrella) rather than keeping a table of its own.
 module Petrus.Json.PythonText
-  ( isPythonPrintable
+  ( -- * Predicates
+    isPythonPrintable
+  , isPythonSpace
+  , isPythonLineBreak
+  , pythonDecimal
+    -- * @str@ methods
+  , pythonStrip
+  , pythonLstrip
+  , pythonRstrip
+  , pythonSplit
+  , pythonSplitlines
+  , pythonIsPrintableText
+    -- * @repr(str)@
   , pythonStrRepr
   , pythonStringRepr
   ) where
@@ -21,11 +41,32 @@ import Data.IntMap.Strict qualified as IntMap
 import Data.Text (Text)
 import Data.Text qualified as T
 import Numeric (showHex)
-import Petrus.Json.PythonText.Printable (printableRanges)
+import Petrus.Json.PythonText.Tables (decimalRuns, lineBreakRanges, printableRanges, spaceRanges)
+
+rangeMap :: [(Int, Int)] -> IntMap.IntMap Int
+rangeMap = IntMap.fromList
+
+inRanges :: IntMap.IntMap Int -> Int -> Bool
+inRanges ranges n = case IntMap.lookupLE n ranges of
+  Just (_, high) -> n <= high
+  Nothing -> False
+{-# INLINE inRanges #-}
 
 printable :: IntMap.IntMap Int
-printable = IntMap.fromList printableRanges
+printable = rangeMap printableRanges
 {-# NOINLINE printable #-}
+
+spaces :: IntMap.IntMap Int
+spaces = rangeMap spaceRanges
+{-# NOINLINE spaces #-}
+
+lineBreaks :: IntMap.IntMap Int
+lineBreaks = rangeMap lineBreakRanges
+{-# NOINLINE lineBreaks #-}
+
+decimals :: IntMap.IntMap (Int, Int)
+decimals = IntMap.fromList [(low, (count, first)) | (low, count, first) <- decimalRuns]
+{-# NOINLINE decimals #-}
 
 -- | CPython's @str.isprintable@ for one code point (a lone surrogate is never
 -- printable).
@@ -33,18 +74,74 @@ isPythonPrintable :: Char -> Bool
 isPythonPrintable c
   | n < 0x7F = n >= 0x20
   | n < 0xA1 = False
-  | otherwise = case IntMap.lookupLE n printable of
-      Just (_, high) -> n <= high
-      Nothing -> False
+  | otherwise = inRanges printable n
   where
     n = ord c
+
+-- | CPython's @str.isspace@ for one code point.
+isPythonSpace :: Char -> Bool
+isPythonSpace c
+  | n < 0x80 = n == 0x20 || (n >= 0x09 && n <= 0x0D) || (n >= 0x1C && n <= 0x1F)
+  | otherwise = inRanges spaces n
+  where
+    n = ord c
+
+-- | Whether @str.splitlines@ breaks at this code point (@\\r\\n@ counts as
+-- one boundary; see 'pythonSplitlines').
+isPythonLineBreak :: Char -> Bool
+isPythonLineBreak c = inRanges lineBreaks (ord c)
+
+-- | CPython's @unicodedata.decimal@: the value of a decimal digit, which is
+-- what @int()@ and @float()@ accept for each digit of their argument.
+pythonDecimal :: Char -> Maybe Int
+pythonDecimal c
+  | n >= 0x30 && n <= 0x39 = Just (n - 0x30)
+  | n < 0x660 = Nothing
+  | otherwise = case IntMap.lookupLE n decimals of
+      Just (low, (count, first)) | n < low + count -> Just (first + n - low)
+      _ -> Nothing
+  where
+    n = ord c
+
+-- | @str.strip()@ (no argument): drop CPython whitespace at both ends.
+pythonStrip :: Text -> Text
+pythonStrip = T.dropAround isPythonSpace
+
+-- | @str.lstrip()@ (no argument).
+pythonLstrip :: Text -> Text
+pythonLstrip = T.dropWhile isPythonSpace
+
+-- | @str.rstrip()@ (no argument).
+pythonRstrip :: Text -> Text
+pythonRstrip = T.dropWhileEnd isPythonSpace
+
+-- | @str.split()@ (no argument): the runs of non-whitespace.
+pythonSplit :: Text -> [Text]
+pythonSplit = filter (not . T.null) . T.split isPythonSpace
+
+-- | @str.splitlines()@: every line boundary CPython recognises, with
+-- @\\r\\n@ as one boundary and no trailing empty line.
+pythonSplitlines :: Text -> [Text]
+pythonSplitlines text
+  | T.null text = []
+  | otherwise =
+      let (line, rest) = T.break isPythonLineBreak text
+       in line : case T.uncons rest of
+            Nothing -> []
+            Just ('\r', more) | Just ('\n', after) <- T.uncons more -> pythonSplitlines after
+            Just (_, more) -> pythonSplitlines more
+
+-- | @str.isprintable()@ of a whole string (true for the empty string).
+pythonIsPrintableText :: Text -> Bool
+pythonIsPrintableText = T.all isPythonPrintable
 
 -- | CPython's @repr(str)@.
 pythonStrRepr :: Text -> Text
 pythonStrRepr = pythonStringRepr . T.unpack
 
 -- | CPython's @repr(str)@ over code points, which may include lone
--- surrogates (a 'Text' cannot hold them, but a scanned JSON key can).
+-- surrogates (a 'Text' cannot hold them, but a scanned JSON key or a
+-- @surrogateescape@-decoded file name can).
 pythonStringRepr :: String -> Text
 pythonStringRepr chars = T.pack ([quote] ++ concatMap escape chars ++ [quote])
   where

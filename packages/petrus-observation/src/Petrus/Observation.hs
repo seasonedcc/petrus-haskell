@@ -76,7 +76,7 @@ import Petrus.Impetus.Instance
   , statusText
   )
 import Petrus.Impetus.Instance qualified as Instance
-import Petrus.Impetus.Internal.Pydantic (fromJson, pyRepr)
+import Petrus.Impetus.Validation.Pydantic (fromJson, pyRepr)
 import Petrus.Impetus.NetDefinition (netDefinitionToJson, projectNetDefinition)
 import Petrus.Impetus.NetDocument
   ( mkExecutionLineage

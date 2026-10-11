@@ -70,8 +70,9 @@ import Data.Text qualified as T
 import Numeric (showHex)
 import Petrus.Activity.Number (Number (..), reprNumber)
 import Petrus.Impetus.Internal.JsonSchema qualified as S
-import Petrus.Impetus.Internal.PyJson
-import Petrus.Impetus.Internal.Pydantic
+import Petrus.Json.Python.Decode (decodeUtf8Python)
+import Petrus.Json.Python.Scanner
+import Petrus.Impetus.Validation.Pydantic
 import Petrus.Impetus.NetDefinition
 import Petrus.Impetus.Petrinet.Schema (Net)
 import Petrus.Json (Json (..), defaultDumps, dumps, dumpsText, hasLoneSurrogate, indented, safeIntegerMax, safeIntegerMin)

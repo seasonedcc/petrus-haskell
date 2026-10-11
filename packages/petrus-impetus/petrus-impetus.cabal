@@ -46,8 +46,6 @@ library
                     Petrus.Impetus.History.Replay
                     Petrus.Impetus.Internal.OMap
                     Petrus.Impetus.Internal.JsonSchema
-                    Petrus.Impetus.Internal.Pydantic
-                    Petrus.Impetus.Internal.PyJson
                     Petrus.Impetus.Internal.Repr
                     Petrus.Impetus.Internal.Uuid
                     Petrus.Impetus.NetDefinition
@@ -60,6 +58,7 @@ library
                     Petrus.Impetus.Petrinet.Routing
                     Petrus.Impetus.Petrinet.Schema
                     Petrus.Impetus.Scope
+                    Petrus.Impetus.Validation.Pydantic
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6

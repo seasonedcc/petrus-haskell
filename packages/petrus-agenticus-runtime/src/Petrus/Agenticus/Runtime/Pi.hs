@@ -272,7 +272,8 @@ import Petrus.Agenticus.Thread.Continuation
   )
 import Petrus.Agenticus.Thread.Identity (EpisodeId, LifecycleId (..), TurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
-import Petrus.Impetus.Internal.PyJson qualified as Py
+import Petrus.Json.Python.Decode qualified as Py (decodeUtf8Python)
+import Petrus.Json.Python.Scanner qualified as Py
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import Petrus.Motus.Execution

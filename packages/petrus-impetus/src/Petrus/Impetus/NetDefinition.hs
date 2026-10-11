@@ -24,7 +24,7 @@
 -- its messages embed both libraries' diagnostics, so the admission pipeline
 -- here mirrors the reference's phases in order: UTF-8 decoding, JSON
 -- scanning with the number/constant/duplicate hooks, the Unicode
--- scalar-value pass, model validation ("Petrus.Impetus.Internal.Pydantic"),
+-- scalar-value pass, model validation ("Petrus.Impetus.Validation.Pydantic"),
 -- and compilation. CEL guards, filters, and completions stay 'Cel' data:
 -- nothing here evaluates CEL.
 module Petrus.Impetus.NetDefinition
@@ -88,8 +88,9 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity.Number (reprNumber)
-import Petrus.Impetus.Internal.PyJson
-import Petrus.Impetus.Internal.Pydantic
+import Petrus.Json.Python.Decode (decodeUtf8Python)
+import Petrus.Json.Python.Scanner
+import Petrus.Impetus.Validation.Pydantic
 import Petrus.Impetus.Petrinet.Schema hiding (validatePlace, validateTransition)
 import Petrus.Impetus.Petrinet.Schema qualified as Schema
 import Petrus.Json (Json (..), defaultDumps, dumps, dumpsText, holdsLoneSurrogate, indented, safeIntegerMax, safeIntegerMin)

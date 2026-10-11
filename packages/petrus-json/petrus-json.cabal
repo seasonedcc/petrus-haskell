@@ -33,8 +33,12 @@ library
                     Petrus.Json.Encode
                     Petrus.Json.Limits
                     Petrus.Json.Parse
+                    Petrus.Json.Python
+                    Petrus.Json.Python.Decode
+                    Petrus.Json.Python.Scanner
+                    Petrus.Json.Python.Uuid
                     Petrus.Json.PythonText
-                    Petrus.Json.PythonText.Printable
+                    Petrus.Json.PythonText.Tables
                     Petrus.Json.Repr
                     Petrus.Json.Value
                     Petrus.Json.Wtf8
@@ -54,6 +58,7 @@ test-suite petrus-json-test
   other-modules:    Petrus.Json.CPythonDifferentialSpec
                     Petrus.Json.FloatReprSpec
                     Petrus.Json.Generators
+                    Petrus.Json.PythonCompatSpec
                     Petrus.Json.PythonTextSpec
                     Petrus.Json.Reference
                     Petrus.Json.ReferenceParse

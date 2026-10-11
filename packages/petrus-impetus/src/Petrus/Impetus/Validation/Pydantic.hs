@@ -13,7 +13,7 @@
 -- (each field's errors in place), then forbidden extra members in input
 -- order, and model-level (\"after\") validators only when every field
 -- passed.
-module Petrus.Impetus.Internal.Pydantic
+module Petrus.Impetus.Validation.Pydantic
   ( -- * Python values
     PV (..)
   , fromRaw
@@ -53,7 +53,7 @@ import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Impetus.Internal.PyJson (Raw (..), rawText)
+import Petrus.Json.Python.Scanner (Raw (..), rawText)
 import Petrus.Json (Json (..), pythonFloatRepr)
 import Petrus.Json.PythonText (pythonStringRepr)
 

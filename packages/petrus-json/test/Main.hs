@@ -12,6 +12,7 @@ import Petrus.Json.CPythonDifferentialSpec qualified as CPythonDifferentialSpec
 import Petrus.Json.FloatReprSpec qualified as FloatReprSpec
 import Petrus.Json.Generators
 import Petrus.Json.PythonText (pythonStrRepr)
+import Petrus.Json.PythonCompatSpec qualified as PythonCompatSpec
 import Petrus.Json.PythonTextSpec qualified as PythonTextSpec
 import Petrus.Json.ReferenceParse (referenceParseJson)
 import Test.Hspec
@@ -20,6 +21,7 @@ import Test.QuickCheck
 main :: IO ()
 main = hspec $ do
   PythonTextSpec.spec
+  PythonCompatSpec.spec
   FloatReprSpec.spec
   CPythonDifferentialSpec.spec
   describe "pythonFloatRepr" $ do

@@ -12,12 +12,14 @@ module Petrus.HistoryStore.Internal
 
 import Control.Exception (Exception (..))
 import Data.ByteString (ByteString)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Impetus.History (Record)
 import Petrus.Impetus.History.Codec (decodeRecord)
 import Petrus.Json (Json (..), jsonTypeName)
-import Petrus.Impetus.Internal.PyJson qualified as Py
+import Petrus.Json.Python.Decode (decodeUtf8Python)
+import Petrus.Json.Python.Scanner (jsonDecodeError)
 
 -- | A refusal by the store: the reference's @ValueError@ (an unencodable
 -- record, an undecodable line or row, a conflicting fact, a refused
@@ -32,23 +34,9 @@ instance Exception HistoryStoreError where
 -- decoding them as UTF-8). The 'Text' is the fallback when the CPython-exact
 -- scanner accepts what the fast parser refused.
 pythonDiagnostic :: ByteString -> Text -> Text
-pythonDiagnostic bytes fallback = case Py.decodeUtf8Python bytes of
+pythonDiagnostic bytes fallback = case decodeUtf8Python bytes of
   Left utf8Error -> utf8Error
-  Right text -> case Py.loads hooks text of
-    Left (Py.DecodeError message position) -> Py.decodeErrorText text message position
-    Left (Py.HookError message) -> message
-    Right _ -> fallback
-  where
-    hooks =
-      Py.Hooks
-        { parseInt = Py.defaultInt
-        , parseFloat = Right . Py.defaultFloat
-        , parseConstant = \case
-            "NaN" -> Right (Py.RFloat (0 / 0))
-            "Infinity" -> Right (Py.RFloat (1 / 0))
-            _ -> Right (Py.RFloat (-1 / 0))
-        , objectPairs = const (Right ())
-        }
+  Right text -> fromMaybe fallback (jsonDecodeError text)
 
 -- | The reference's @decode_record(payload)@ for a parsed stored payload.
 -- @decode_record@ starts with @dict(payload)@, so a payload that is not a

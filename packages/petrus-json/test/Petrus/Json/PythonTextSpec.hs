@@ -14,7 +14,7 @@ import Petrus.Json.PythonText
 import Test.Hspec
 
 -- | The committed vector: alternating runs @first last verdict@ covering
--- 0..0x10FFFF, written by @gen/gen_python_printable.py@.
+-- 0..0x10FFFF, written by @gen/gen_python_tables.py@.
 readVector :: IO [(Int, Int, Bool)]
 readVector = do
   text <- TIO.readFile "test/python-printable.txt"

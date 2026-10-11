@@ -1,31 +1,36 @@
-{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
--- | CPython's text decoding and @json.loads@ scanner, error for error.
+-- | CPython's @json.loads@ scanner, error for error.
 --
--- The Net-definition and Net-document wire formats are defined by the
--- reference's strict parsers, and their refusal messages embed CPython's
--- own diagnostics: @bytes.decode("utf-8")@'s 'UnicodeDecodeError' text and
--- @json.loads@'s 'JSONDecodeError' text (with line, column, and character
--- offset). The reference also hooks the scanner (@object_pairs_hook@,
--- @parse_int@, @parse_float@, @parse_constant@), and the /order/ in which
--- those hooks fire decides which refusal a malformed document gets: a number
--- hook fires when its token is scanned, the pairs hook when its object
--- closes. "Petrus.Json"'s parser admits the same documents but reports its
--- own messages and refuses lone surrogate escapes eagerly, so this module
--- mirrors CPython's C scanner (@Modules/_json.c@) and UTF-8 decoder
--- (@Objects/stringlib/codecs.h@) instead.
+-- Several Petrus wire formats are defined by the reference's strict
+-- parsers, and their refusal messages embed CPython's own
+-- 'JSONDecodeError' text (with line, column, and character offset). The
+-- reference also hooks the scanner (@object_pairs_hook@, @parse_int@,
+-- @parse_float@, @parse_constant@), and the /order/ in which those hooks
+-- fire decides which refusal a malformed document gets: a number hook fires
+-- when its token is scanned, the pairs hook when its object closes.
+-- "Petrus.Json"'s parser admits the same documents but reports its own
+-- messages and refuses lone surrogate escapes eagerly, so this module
+-- mirrors CPython's C scanner (@Modules/_json.c@) instead.
+--
+-- Readers use it in one of two ways:
+--
+-- * as /the/ parser ('loads' with their hooks), where the hooks' order is
+--   observable (the Net-definition and Net-document readers);
+-- * as the diagnostic of a refusal ('jsonDecodeError', or 'loads' with the
+--   reader's hooks): admit with "Petrus.Json"'s fast parser, and only when
+--   it refuses, re-scan to find CPython's message and position.
 --
 -- Strings are scanned as 'String' so that a lone surrogate escape (which
--- CPython decodes into a @str@ and the reference refuses only afterwards, in
+-- CPython decodes into a @str@ and a reader may refuse only afterwards, in
 -- traversal order) survives until the caller's own admission pass.
-module Petrus.Impetus.Internal.PyJson
-  ( -- * UTF-8
-    decodeUtf8Python
-    -- * Scanning
-  , Raw (..)
+module Petrus.Json.Python.Scanner
+  ( Raw (..)
   , Hooks (..)
   , ScanError (..)
+  , defaultHooks
   , loads
+  , jsonDecodeError
   , decodeErrorText
   , defaultInt
   , defaultFloat
@@ -33,95 +38,11 @@ module Petrus.Impetus.Internal.PyJson
   , rawText
   ) where
 
-import Data.Bits ((.&.), (.|.), shiftL)
-import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
+import Data.Bits ((.|.), shiftL)
 import Data.Char (chr, isDigit, ord)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
-import Data.Word (Word8)
-import Numeric (showHex)
-
--- ---------------------------------------------------------------------------
--- UTF-8
-
--- | @payload.decode("utf-8", errors="strict")@: the decoded text, or the
--- 'UnicodeDecodeError' message CPython reports for the first malformed
--- sequence.
-decodeUtf8Python :: ByteString -> Either Text Text
-decodeUtf8Python bytes = case TE.decodeUtf8' bytes of
-  Right text -> Right text
-  Left _ -> Left (firstUtf8Error bytes)
-
--- The first error, classified exactly as CPython's decoder classifies it.
-firstUtf8Error :: ByteString -> Text
-firstUtf8Error bytes = go 0
-  where
-    n = BS.length bytes
-    at i = BS.index bytes i
-    cont w = w .&. 0xC0 == 0x80
-    go i
-      | i >= n = "'utf-8' codec can't decode bytes: no error found"
-      | otherwise =
-          let b = at i
-              remaining = n - i
-           in if
-                | b < 0x80 -> go (i + 1)
-                | b < 0xC2 -> invalidStart i
-                | b < 0xE0 ->
-                    if
-                      | remaining < 2 -> endOfData i
-                      | not (cont (at (i + 1))) -> invalid i 1
-                      | otherwise -> go (i + 2)
-                | b < 0xF0 ->
-                    if remaining < 3
-                      then
-                        if remaining >= 2 && badSecond3 b (at (i + 1))
-                          then invalid i 1
-                          else endOfData i
-                      else
-                        if
-                          | badSecond3 b (at (i + 1)) -> invalid i 1
-                          | not (cont (at (i + 2))) -> invalid i 2
-                          | otherwise -> go (i + 3)
-                | b < 0xF5 ->
-                    if remaining < 4
-                      then
-                        if
-                          | remaining >= 2 && badSecond4 b (at (i + 1)) -> invalid i 1
-                          | remaining >= 3 && not (cont (at (i + 2))) -> invalid i 2
-                          | otherwise -> endOfData i
-                      else
-                        if
-                          | badSecond4 b (at (i + 1)) -> invalid i 1
-                          | not (cont (at (i + 2))) -> invalid i 2
-                          | not (cont (at (i + 3))) -> invalid i 3
-                          | otherwise -> go (i + 4)
-                | otherwise -> invalidStart i
-    badSecond3 b w = not (cont w) || (if w < 0xA0 then b == 0xE0 else b == 0xED)
-    badSecond4 b w = not (cont w) || (if w < 0x90 then b == 0xF0 else b == 0xF4)
-    invalidStart i = message i (i + 1) "invalid start byte"
-    invalid i len = message i (i + len) "invalid continuation byte"
-    endOfData i = message i n "unexpected end of data"
-    message start end reason
-      | end - start == 1 =
-          "'utf-8' codec can't decode byte 0x"
-            <> hex2 (at start)
-            <> " in position "
-            <> tshow start
-            <> ": "
-            <> reason
-      | otherwise =
-          "'utf-8' codec can't decode bytes in position "
-            <> tshow start
-            <> "-"
-            <> tshow (end - 1)
-            <> ": "
-            <> reason
-
-hex2 :: Word8 -> Text
-hex2 w = let digits = showHex w "" in T.pack (replicate (2 - length digits) '0' ++ digits)
+import Petrus.Json.Limits (intStrDigitsError, maxIntStrDigits)
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show
@@ -169,6 +90,31 @@ data ScanError e
     DecodeError Text Int
   | -- | A hook refused a token or an object.
     HookError e
+
+-- | @json.loads@'s own hooks: CPython's @int@ (with its 4300-digit limit,
+-- refused with its 'ValueError' text) and @float@, and the @NaN@,
+-- @Infinity@ and @-Infinity@ floats; no pairs hook.
+defaultHooks :: Hooks Text
+defaultHooks =
+  Hooks
+    { parseInt = defaultInt
+    , parseFloat = Right . defaultFloat
+    , parseConstant = \case
+        "NaN" -> Right (RFloat (0 / 0))
+        "Infinity" -> Right (RFloat (1 / 0))
+        _ -> Right (RFloat (-1 / 0))
+    , objectPairs = const (Right ())
+    }
+
+-- | The text of the 'ValueError' plain @json.loads(text)@ raises for a
+-- document, or 'Nothing' when it admits the document: a 'JSONDecodeError'
+-- with its line, column and character offset, or @int()@'s digit-limit
+-- refusal.
+jsonDecodeError :: Text -> Maybe Text
+jsonDecodeError text = case loads defaultHooks text of
+  Left (DecodeError message position) -> Just (decodeErrorText text message position)
+  Left (HookError message) -> Just message
+  Right _ -> Nothing
 
 -- | @json.loads(text, ...)@ with the given hooks.
 loads :: Hooks e -> Text -> Either (ScanError e) Raw
@@ -376,13 +322,8 @@ parseArray hooks start input =
 defaultInt :: String -> Either Text Integer
 defaultInt token =
   let digits = length (filter isDigit token)
-   in if digits > 4300
-        then
-          Left
-            ( "Exceeds the limit (4300 digits) for integer string conversion: value has "
-                <> tshow digits
-                <> " digits; use sys.set_int_max_str_digits() to increase the limit"
-            )
+   in if digits > maxIntStrDigits
+        then Left (T.pack (intStrDigitsError maxIntStrDigits digits))
         else Right (read token)
 
 -- | CPython's @float(token)@ for a JSON number token: correctly rounded,
