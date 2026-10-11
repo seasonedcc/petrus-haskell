@@ -299,7 +299,7 @@ import System.IO (BufferMode (..), Handle, IOMode (..), hClose, hFlush, hSetBina
 import System.IO.Error (isDoesNotExistError)
 import System.IO.Temp (createTempDirectory)
 import Petrus.Motus.Execution.Error (ExecutionError)
-import Petrus.Motus.Execution.Internal.Process (StdioFd (..), childPid, spawnChild)
+import Petrus.Motus.Execution.Spawn (StdioFd (..), childPid, spawnChild)
 import System.Posix.Files qualified as Files
 import System.Posix.IO (FdOption (CloseOnExec), closeFd, createPipe, setFdOption)
 import System.Posix.Signals (sigKILL, signalProcess, signalProcessGroup)
