@@ -155,3 +155,26 @@ test-suite hamsterdan-host-test
                   , warp
                   , unix
   ghc-options:      -threaded -rtsopts
+
+benchmark hamsterdan-host-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench test
+  main-is:          Main.hs
+  other-modules:    V5Doubles
+  build-depends:    base
+                  , bytestring
+                  , case-insensitive
+                  , directory
+                  , filepath
+                  , hamsterdan-contracts
+                  , hamsterdan-github
+                  , hamsterdan-host
+                  , hamsterdan-readiness
+                  , http-types
+                  , petrus-impetus
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+                  , wai
+  ghc-options:      -O2 -threaded -rtsopts

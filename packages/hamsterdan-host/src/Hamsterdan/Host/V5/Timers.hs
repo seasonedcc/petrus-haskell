@@ -32,7 +32,7 @@ module Hamsterdan.Host.V5.Timers
 
 import Control.Exception (Exception (..), SomeException, catch, onException, throwIO, try)
 import Control.Monad (forM, forM_, unless, void, when)
-import Data.Char (isDigit)
+import Data.Char (isDigit, ord)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
@@ -134,7 +134,7 @@ parseUs value = do
     [y1, y2, y3, y4, '-', mo1, mo2, '-', d1, d2, 'T', h1, h2, ':', mi1, mi2, ':', s1, s2, '.', f1, f2, f3, f4, f5, f6, 'Z']
       | all isDigit [y1, y2, y3, y4, mo1, mo2, d1, d2, h1, h2, mi1, mi2, s1, s2, f1, f2, f3, f4, f5, f6] -> do
           let num :: String -> Integer
-              num = read
+              num = foldl' (\acc c -> acc * 10 + toInteger (ord c - ord '0')) 0
               year = num [y1, y2, y3, y4]
               hours = num [h1, h2]
               minutes = num [mi1, mi2]
@@ -483,7 +483,7 @@ operationGeneration store operation = do
       | Just (first, _) <- T.uncons digits
       , first >= '1' && first <= '9'
       , T.all (\c -> c >= '0' && c <= '9') digits -> do
-          let result = read (T.unpack digits) :: Integer
+          let result = T.foldl' (\acc c -> acc * 10 + toInteger (ord c - ord '0')) 0 digits :: Integer
           when (result > maxI64) $ throwIO (ValueError "V5 timer operation generation is out of range")
           pure result
     _ -> throwIO (ValueError "V5 timer operation identity is malformed")
