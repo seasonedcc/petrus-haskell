@@ -163,7 +163,7 @@ checks the image's definition against the reference's:
   - every instruction of the reference's runtime stage, in order, except
     the two that install the application:
     - the `.venv` `COPY` is replaced by the binaries' `COPY`, the shim's
-      `COPY`, and the `COPY` of petrus-agenticus-runtime's Pi helpers
+      `COPY`, and the `COPY` of petrus-agenticus-runtime's `data/`
       (exactly its `data-files`) with the `ENV` that points the binaries at
       them (DIVERGENCES.md, "The Pi helpers");
     - the `RUN` runs the same commands, and its package list is a superset
@@ -216,7 +216,7 @@ lists every check; in short:
 - **Filesystem:** uid and gid 10001 with the reference's passwd entry,
   `/var/lib/hamsterdan` at `0700`, owned by `hamsterdan` and writable;
   the ownership of the binaries, shim, Pi runtime and launcher; the
-  launcher, the shim and the Pi helpers byte for byte the repository's.
+  launcher, the shim and the runtime data files byte for byte the repository's.
 - **Shared libraries:** `ldd` resolves every library of `hamsterdan-host`,
   `hamsterdan-operator`, `hamsterdan-export` (`libm`, `libz`, `libgmp`,
   `libc`) and of the Pi runtime's `node`.

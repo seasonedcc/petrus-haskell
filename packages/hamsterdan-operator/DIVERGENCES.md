@@ -114,10 +114,11 @@ Below are the differences that remain, with their rationale.
   - It refuses an unknown module as CPython does (`No module named ...`,
     status 1) and any other invocation with status 2. A Python one-liner
     that is none of those does not run in this image.
-- **The Pi helpers.** The binaries run petrus-agenticus-runtime's Node
-  helpers (`data/*.mjs`, the package's `data-files`), which the reference
-  ships inside its virtual environment. Cabal compiles the build stage's
-  source path into the binaries, so the runtime stage copies the helpers to
+- **The Pi helpers.** The binaries run petrus-agenticus-runtime's data
+  files (the Node Pi helpers and the provider sidecars, `data/`, exactly the
+  package's `data-files`), which the reference ships inside its virtual
+  environment. Cabal compiles the build stage's source path into the
+  binaries, so the runtime stage copies `data/` to
   `/opt/hamsterdan/share/petrus-agenticus-runtime/data` and sets
   `petrus_agenticus_runtime_datadir` (Cabal's data-directory override) to
   that directory. These are the only runtime-stage instructions besides

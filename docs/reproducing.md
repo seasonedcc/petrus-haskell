@@ -264,8 +264,9 @@ local fake (`scripts/container-smoke.d/fake-op`). The checks:
 - **Filesystem**: user and group 10001 with the reference's passwd entry,
   `/var/lib/hamsterdan` at `0700` and writable, the ownership of the
   binaries, the shim, the Pi runtime and the launcher, and the launcher,
-  the shim and petrus-agenticus-runtime's Pi helpers (in the data directory
-  `petrus_agenticus_runtime_datadir` names) byte for byte the repository's.
+  the shim and petrus-agenticus-runtime's data files (the Pi helpers and the
+  provider sidecars, in the data directory `petrus_agenticus_runtime_datadir`
+  names) byte for byte the repository's.
 - **Shared libraries**: `ldd` resolves every library of the three Haskell
   binaries and of the Pi runtime's `node`.
 - **Pi runtime**: Node `v22.19.0`, Pi `0.83.0`, and the

@@ -159,7 +159,7 @@ if in_image /bin/cat /opt/hamsterdan/.venv/bin/python | cmp -s - "$root/deployme
 else
     fail "the interpreter path holds deployment/python-shim, byte for byte"
 fi
-for helper in "$root"/packages/petrus-agenticus-runtime/data/*.mjs; do
+for helper in "$root"/packages/petrus-agenticus-runtime/data/*; do
     # shellcheck disable=SC2016 # expanded inside the container
     if in_image /bin/sh -c 'cat "$petrus_agenticus_runtime_datadir/data/$1"' sh "${helper##*/}" | cmp -s - "$helper"; then
         pass "the runtime data directory holds ${helper##*/}, byte for byte"

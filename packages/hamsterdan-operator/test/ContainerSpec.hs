@@ -20,7 +20,7 @@ import Data.Text.Encoding qualified as TE
 import Petrus.Json (Json (..), parseJson, pythonLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
-import System.Directory (canonicalizePath, createDirectoryIfMissing, createFileLink, findExecutable, getPermissions, executable)
+import System.Directory (canonicalizePath, createDirectoryIfMissing, createFileLink, executable, findExecutable, getPermissions, listDirectory)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -241,12 +241,23 @@ spec = do
       filter (\i -> not (i `elem` kept || isRun i)) ours
         `shouldBe` [ "COPY --from=build --chown=hamsterdan:hamsterdan /opt/hamsterdan/bin ./bin"
                    , "COPY --chown=hamsterdan:hamsterdan --chmod=0755 deployment/python-shim ./.venv/bin/python" -- lint-skips: allow the image path the shim is installed at
-                   , "COPY --chown=hamsterdan:hamsterdan packages/petrus-agenticus-runtime/data/*.mjs ./share/petrus-agenticus-runtime/data/"
+                   , "COPY --chown=hamsterdan:hamsterdan packages/petrus-agenticus-runtime/data ./share/petrus-agenticus-runtime/data"
                    , "ENV petrus_agenticus_runtime_datadir=\"/opt/hamsterdan/share/petrus-agenticus-runtime\""
                    ]
-      -- That COPY takes exactly the package's declared data files.
+      -- That COPY takes exactly the package's declared data files: every
+      -- data-files glob is data/*.<extension>, and every file of data/
+      -- matches one of them.
       cabal <- readText (root </> "packages" </> "petrus-agenticus-runtime" </> "petrus-agenticus-runtime.cabal")
-      [T.strip (T.drop (T.length "data-files:") line) | line <- T.lines cabal, "data-files:" `T.isPrefixOf` line] `shouldBe` ["data/*.mjs"]
+      let field = case break ("data-files:" `T.isPrefixOf`) (T.lines cabal) of
+            (_, first : rest) -> T.drop (T.length "data-files:") first : takeWhile (" " `T.isPrefixOf`) rest
+            (_, []) -> []
+          globs = filter (not . T.null) (map T.strip field)
+          extensions = mapMaybe (T.stripPrefix "data/*") globs
+      globs `shouldNotBe` []
+      length extensions `shouldBe` length globs
+      files <- listDirectory (root </> "packages" </> "petrus-agenticus-runtime" </> "data")
+      files `shouldNotBe` []
+      [file | file <- files, not (any (`T.isSuffixOf` T.pack file) extensions)] `shouldBe` []
       -- One RUN: the reference's commands, with a superset of its packages.
       case (filter isRun reference, filter isRun ours) of
         ([theirs], [mine]) -> do

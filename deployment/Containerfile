@@ -85,9 +85,10 @@ WORKDIR /opt/hamsterdan
 COPY --from=build --chown=hamsterdan:hamsterdan /opt/hamsterdan/bin ./bin
 COPY --chown=hamsterdan:hamsterdan --chmod=0755 deployment/python-shim ./.venv/bin/python
 # petrus-agenticus-runtime's data files (the Pi helpers the agent runtime
-# runs under Node). The binaries find them through Cabal's
-# <package>_datadir override; the path compiled in is the build stage's.
-COPY --chown=hamsterdan:hamsterdan packages/petrus-agenticus-runtime/data/*.mjs ./share/petrus-agenticus-runtime/data/
+# runs under Node, and the provider sidecars). The binaries find them
+# through Cabal's <package>_datadir override; the path compiled in is the
+# build stage's.
+COPY --chown=hamsterdan:hamsterdan packages/petrus-agenticus-runtime/data ./share/petrus-agenticus-runtime/data
 COPY --from=pi --chown=hamsterdan:hamsterdan /opt/hamsterdan/pi ./pi
 COPY --chmod=0755 scripts/with-runtime-secrets /opt/hamsterdan/with-runtime-secrets
 ENV PATH="/opt/hamsterdan/.venv/bin:${PATH}" \
