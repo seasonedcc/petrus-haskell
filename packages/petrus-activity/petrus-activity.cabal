@@ -43,10 +43,28 @@ test-suite petrus-activity-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    Petrus.Activity.DifferentialSpec
+                    Petrus.Activity.HeartbeatSpec
   build-depends:    base
+                  , bytestring
+                  , filepath
                   , hspec >=2.10
                   , QuickCheck >=2.14
                   , petrus-activity
                   , petrus-json
+                  , petrus-test-support
                   , text
   ghc-options:      -rtsopts
+
+benchmark petrus-activity-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , petrus-activity
+                  , petrus-json
+                  , tasty
+                  , tasty-bench >=0.3.2
+                  , text
+  ghc-options:      -O2 -rtsopts

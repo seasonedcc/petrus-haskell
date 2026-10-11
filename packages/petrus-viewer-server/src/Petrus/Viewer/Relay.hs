@@ -34,7 +34,8 @@
 -- wake-up and a readiness registration with GHC's I/O manager for every
 -- message (see bench/RESULTS.md).
 --
--- The HTTP side stays with Warp: the upgrade request is answered with the
+-- The HTTP side stays with Warp (the HTTP front, "Petrus.Viewer.HttpFront",
+-- hands every upgrade request to it): the upgrade request is answered with the
 -- @ws@ library's handshake bytes ("Petrus.Viewer.Relay.Handshake", written
 -- through 'Network.Wai.responseRaw'), then the connection's socket is
 -- handed to the loop ('relaySocket') and Warp's thread waits until the

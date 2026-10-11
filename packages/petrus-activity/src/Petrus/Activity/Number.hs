@@ -120,7 +120,11 @@ numberFromJson = \case
 -- @float(int)@, correctly rounded).
 numberValue :: Number -> Double
 numberValue = \case
-  IntNumber i -> fromInteger i
+  IntNumber i
+    -- Exact below 2^53; above it, round to nearest-even as CPython's
+    -- PyLong_AsDouble does ('fromRational' is correctly rounded).
+    | abs i < 9007199254740992 -> fromInteger i
+    | otherwise -> fromRational (fromInteger i)
   FloatNumber d -> d
 
 -- | @math.isfinite@.

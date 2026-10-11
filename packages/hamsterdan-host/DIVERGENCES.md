@@ -6,25 +6,18 @@ Wire and on-disk formats never diverge. Both hosts write the same bytes to:
 - `webhooks.sqlite3`, `runnable.sqlite3` and the per-Instance stores;
 - `binding.json`;
 - the review requests;
-- the timers.
+- the timers;
+- the agent state (`agent-routes.sqlite3` and `pi-a2/`, see
+  `../hamsterdan-agents/DIVERGENCES.md`).
 
-The same holds for the HTTP responses (apart from item 1) and for the GitHub
-requests. [PARITY.md](PARITY.md) lists the tests that hold both hosts to
-this.
+The same holds for the HTTP responses and for the GitHub requests.
+[PARITY.md](PARITY.md) lists the tests that hold both hosts to this.
 
 Below are the differences that remain, with their rationale.
 
 ## Observable
 
-1. **An HTTP/1.0 request gets an `HTTP/1.0` status line.**
-   - h11 always answers `HTTP/1.1`. Warp echoes the request's version, and
-     no WAI hook can change that.
-   - The headers, including the final `Connection: close`, are the same, and
-     so is the body.
-   - The surface test (`ApiSpec`) sends one HTTP/1.0 request and compares
-     everything after the version.
-   - GitHub's webhook deliveries and health probes use HTTP/1.1.
-2. **uvicorn's own log lines are not written.**
+1. **uvicorn's own log lines are not written.**
    - `serve` does not print uvicorn's startup and shutdown lines (`Started
      server process`, `Uvicorn running on …`, `Application startup
      complete.`, and so on) to stderr.
@@ -38,27 +31,16 @@ Below are the differences that remain, with their rationale.
    - The host's `LOG.info` lines are not written on either side, because no
      handler enables INFO for the host's loggers. That includes the
      GitHub request-metadata hook, so the port does not install that hook.
-3. **The agent composition is a stub.**
-   - This package keeps the `AgentRunner` seam. The command line composes
-     `unavailableRunner`, whose capabilities all refuse with
-     `RuntimeError('no agent runtime is composed in this host')`, and
-     `noAgentCustody`.
-   - So `serve` does not read the Pi configuration, does not open
-     `agent-routes.sqlite3`, and does not refuse to start over a bad agent
-     configuration.
-   - A delivery that needs an agent fails its Activity, and the reference's
-     retry policy then applies. Every other route behaves as upstream.
-   - The agent runtimes belong to `hamsterdan-agents` (package 5).
-4. **An uncaught exception prints only its last traceback line.** The
+2. **An uncaught exception prints only its last traceback line.** The
    command line prints `Class: message` with exit status 1. The reference
    prints the whole Python traceback, which ends in that same line.
-5. **Help and usage text has no color.**
+3. **Help and usage text has no color.**
    - CPython 3.14's `argparse` colors help when the stream is a terminal and
      `NO_COLOR` / `PYTHON_COLORS` allow it.
    - The port writes the plain text, which is what the reference writes to
      a pipe. That is the differential test's setting.
    - The width is the same: `COLUMNS`, else the terminal, else 80.
-6. **Haskell-native failures get the nearest Python class name.** Where a
+4. **Haskell-native failures get the nearest Python class name.** Where a
    failure class reaches History or a log line (`error_class=…`), the
    port's own exception types carry the reference's class names
    (`RuntimeError`, `ValueError`, `TypeError`, `PythonException name`).
@@ -92,10 +74,17 @@ Below are the differences that remain, with their rationale.
   `withSystemTempDirectory` (`hamsterdan-git-…`). Failing to create it or to
   remove it is the reference's `GitOperation` failure, as with
   `tempfile.TemporaryDirectory`.
-- **`test_git_publish` derives the bounded diff with Git.** The reference
-  test gets its binary diff from the Pi workspace provider, which is not
-  ported (package 5). `GitPublishSpec` builds the same diff with
-  `git diff --cached --binary --full-index` on a local clone.
+- **`InstanceBinding` moved to hamsterdan-agents.** The Pi A2 installation
+  binding needs `host/binding.py`, so `Hamsterdan.Host.Binding` now lives
+  in hamsterdan-agents, and this package imports it. `BindingSpec` still
+  runs here.
+- **h11's status line is written by the port.** Warp echoes the request's
+  HTTP version, and no WAI hook can change that. `runHostSocket` gives warp
+  its own accept loop and wraps each connection: while the application
+  answers an HTTP/1.0 request, the first bytes sent on its thread (the
+  status line) have their version replaced with `HTTP/1.1`, as h11 writes
+  it. The headers, including the final `Connection: close`, and the body
+  are warp's, unchanged.
 
 ## Changes made in sibling packages
 

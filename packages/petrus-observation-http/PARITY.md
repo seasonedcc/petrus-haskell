@@ -6,8 +6,8 @@ observation protocol 1 HTTP binding) at the pin in
 and Engine state, the response is the reference's, except for the `Server`
 and `Date` header values (see [DIVERGENCES.md](DIVERGENCES.md)).
 
-`cabal test petrus-observation-http` runs 29 examples, with 0 failures, in
-five groups.
+`cabal test petrus-observation-http` runs 28 examples, with 0 failures, in
+four groups (the viewer end-to-end test is in petrus-viewer-server).
 
 ## Upstream tests: `tests/petrus/engine/test_observation_http.py`
 
@@ -69,11 +69,14 @@ A fourth run uses read doors that fail the way the reference's can fail:
   an upstream Engine in the same state returns. A closed Engine gives 503.
 - **Haskell clients against the Python server.** `WireSpec`'s client sends
   the same bytes to both servers (above).
-- **The viewer backend** (`test/ViewerSpec.hs`). It starts
-  `petrus --observation <url>` (petrus-viewer-server, built through
-  `build-tool-depends`) once against this server and once against the
-  upstream one. The two runs must give the same answers to the viewer's
-  `list`, `get_state` and `get_schema`, and to a missing instance.
+- **The viewer backend** (petrus-viewer-server's
+  [`test/HistorySpec.hs`](../petrus-viewer-server/test/HistorySpec.hs)).
+  It runs the viewer's `/temporal` routes once against this server and
+  once against the upstream one, in the same scenario, stepping a chain
+  Net to completion. The two runs must give the same answers at every
+  step to the viewer's `list`, `get_state` and `get_schema`, and to a
+  missing instance. The test lives in the viewer's package so the
+  dependency between the two packages goes one way.
 
 ## Performance
 

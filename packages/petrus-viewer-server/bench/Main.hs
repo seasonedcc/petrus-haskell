@@ -11,7 +11,10 @@ module Main (main) where
 import Control.Concurrent.Async (forConcurrently, forConcurrently_, mapConcurrently_, withAsync)
 import Control.Concurrent.STM
 import Control.Monad (forM_, forever, replicateM, unless, void, when)
+import Control.Exception (bracket)
 import Data.ByteString qualified as B
+import Data.ByteString.Char8 qualified as BC
+import Data.Char (toLower)
 import Data.ByteString.Lazy qualified as BL
 import Data.IORef
 import Data.List (sort)
@@ -21,7 +24,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
 import Network.HTTP.Client qualified as HC
-import Network.HTTP.Types qualified as H
+import Network.Socket qualified as S
+import Network.Socket.ByteString qualified as SB
 import Network.WebSockets qualified as WS
 import Petrus.Viewer.Endpoints (ResolveResult (..), readFileNode, resolveRef)
 import Petrus.Viewer.Json
@@ -237,9 +241,24 @@ fanoutBench o = do
 
 -- HTTP endpoints ------------------------------------------------------------
 
--- | open-file: one op = POST the file as pending, then GET it (consumed);
+-- | open-file: one op = POST the file as pending, then GET it;
 -- resolve-ref: one op = POST a relative ref resolved against the file's
 -- directory.
+--
+-- open-file keeps one pending file for the whole server, so with several
+-- clients the work would depend on how the server interleaves them (a GET
+-- reads the file only when no other GET consumed it since the last POST).
+-- With more than one client the op therefore runs in lockstep rounds: every
+-- client POSTs, all wait, every client GETs, all wait. Each round is then
+-- the same work on every server: one POST per client (200), and one GET
+-- that reads the file (200) while the others find nothing pending (204).
+-- Latencies count the time in requests, not the time waiting for the
+-- other clients.
+--
+-- Each client is one keep-alive connection driven by 'Conn': the request
+-- is a fixed byte string and the response is read by its Content-Length.
+-- A general client (http-client) costs more per request than these
+-- servers do, and with 16 clients it, not the server, set the pace.
 httpBench :: Opts -> IO ()
 httpBench o = do
   p <- port o
@@ -247,59 +266,126 @@ httpBench o = do
       file = optS o "file" ""
       concurrency = opt o "concurrency" (16 :: Int)
       requests = opt o "requests" (20000 :: Int)
-      base = "http://" <> (if ':' `elem` fst p then "[" <> fst p <> "]" else fst p) <> ":" <> show (snd p)
+      hostHeader = BC.pack ((if ':' `elem` fst p then "[" <> fst p <> "]" else fst p) <> ":" <> show (snd p))
   when (null file) (die "--file is required")
-  mgr <- HC.newManager HC.defaultManagerSettings {HC.managerConnCount = concurrency * 2}
   statuses <- newIORef ([] :: [Int])
-  let post path body = do
-        req0 <- HC.parseRequest (base <> path)
-        let req = req0 {HC.method = "POST", HC.requestBody = HC.RequestBodyLBS body, HC.requestHeaders = [("Content-Type", "application/json")]}
-        HC.withResponse req mgr $ \r -> do
-          _ <- HC.brConsume (HC.responseBody r)
-          pure (H.statusCode (HC.responseStatus r))
-      get path = do
-        req <- HC.parseRequest (base <> path)
-        HC.withResponse req mgr $ \r -> do
-          _ <- HC.brConsume (HC.responseBody r)
-          pure (H.statusCode (HC.responseStatus r))
-      fileJs = str (T.pack file)
-      op = case endpoint of
-        "open-file-get" -> (: []) <$> get "/__petrus/open-file"
-        "open-file" -> do
-          s1 <- post "/__petrus/open-file" (encodeJsLazy (obj [("path", fileJs)]))
-          s2 <- get "/__petrus/open-file"
-          pure [s1, s2]
-        _ -> do
-          let ref = "./" <> T.pack (takeFileNameOf file)
-              basePath = "file://" <> T.pack (takeDirectory file </> "A.json")
-          s <- post "/__petrus/resolve-ref" (encodeJsLazy (obj [("ref", str ref), ("basePath", str basePath)]))
-          pure [s]
-      perWorker = requests `div` concurrency
-      worker record = replicateM perWorker $ do
+  barrier <- newBarrier concurrency
+  let post path body =
+        "POST " <> path <> " HTTP/1.1\r\nHost: " <> hostHeader <> "\r\nContent-Type: application/json\r\nContent-Length: "
+          <> BC.pack (show (B.length body)) <> "\r\n\r\n" <> body
+      get path = "GET " <> path <> " HTTP/1.1\r\nHost: " <> hostHeader <> "\r\n\r\n"
+      ref = "./" <> T.pack (takeFileNameOf file)
+      basePath = "file://" <> T.pack (takeDirectory file </> "A.json")
+      openFilePost = post "/__petrus/open-file" (encodeJs (obj [("path", str (T.pack file))]))
+      openFileGet = get "/__petrus/open-file"
+      resolvePost = post "/__petrus/resolve-ref" (encodeJs (obj [("ref", str ref), ("basePath", str basePath)]))
+      timed act = do
         t0 <- getMonotonicTime
-        ss <- op
+        x <- act
         t1 <- getMonotonicTime
+        pure (x, t1 - t0)
+      lockstep = concurrency > 1 && endpoint == "open-file"
+      -- the statuses, and the time spent in requests
+      op :: Conn -> IO ([Int], Double)
+      op c = case endpoint of
+        "open-file-get" -> (\(s, t) -> ([s], t)) <$> timed (exchange c openFileGet)
+        "open-file" -> do
+          (s1, t1) <- timed (exchange c openFilePost)
+          when lockstep (awaitBarrier barrier)
+          (s2, t2) <- timed (exchange c openFileGet)
+          when lockstep (awaitBarrier barrier)
+          pure ([s1, s2], t1 + t2)
+        _ -> (\(s, t) -> ([s], t)) <$> timed (exchange c resolvePost)
+      perWorker = requests `div` concurrency
+      worker record c = replicateM perWorker $ do
+        (ss, t) <- op c
         when record (atomicModifyIORef' statuses (\acc -> (ss ++ acc, ())))
-        pure (t1 - t0)
-  -- warm up (JIT, connection pools)
-  mapConcurrently_ (const (worker False)) [1 .. concurrency]
-  t0 <- getMonotonicTime
-  lats <- concat <$> forConcurrently [1 .. concurrency] (const (worker True))
-  t1 <- getMonotonicTime
-  ss <- readIORef statuses
-  let countOf s = length (filter (== s) ss)
-  report
-    (T.pack endpoint)
-    [ ("concurrency", int concurrency)
-    , ("status200", int (countOf 200))
-    , ("status204", int (countOf 204))
-    , ("statusOther", int (length ss - countOf 200 - countOf 204))
-    ]
-    (t1 - t0)
-    (perWorker * concurrency)
-    lats
+        pure t
+  bracket (replicateM concurrency (openConn p)) (mapM_ closeConn) $ \conns -> do
+    -- warm up (JIT, connections)
+    mapConcurrently_ (worker False) conns
+    t0 <- getMonotonicTime
+    lats <- concat <$> forConcurrently conns (worker True)
+    t1 <- getMonotonicTime
+    ss <- readIORef statuses
+    let countOf s = length (filter (== s) ss)
+    report
+      (T.pack endpoint)
+      [ ("concurrency", int concurrency)
+      , ("status200", int (countOf 200))
+      , ("status204", int (countOf 204))
+      , ("statusOther", int (length ss - countOf 200 - countOf 204))
+      ]
+      (t1 - t0)
+      (perWorker * concurrency)
+      lats
   where
     takeFileNameOf = reverse . takeWhile (/= '/') . reverse
+
+-- | One keep-alive HTTP/1.1 connection and the bytes read past the last
+-- response.
+data Conn = Conn S.Socket (IORef B.ByteString)
+
+openConn :: (String, Int) -> IO Conn
+openConn (host, p) = do
+  addr <- S.getAddrInfo (Just S.defaultHints {S.addrSocketType = S.Stream}) (Just host) (Just (show p)) >>= \case
+    a : _ -> pure a
+    [] -> die ("cannot resolve " <> host)
+  s <- S.socket (S.addrFamily addr) S.Stream S.defaultProtocol
+  S.setSocketOption s S.NoDelay 1
+  S.connect s (S.addrAddress addr)
+  Conn s <$> newIORef ""
+
+closeConn :: Conn -> IO ()
+closeConn (Conn s _) = S.close s
+
+-- | Send one request and read its response; the status code. Responses
+-- must carry Content-Length (or be 204/304), as both servers' do here.
+exchange :: Conn -> B.ByteString -> IO Int
+exchange (Conn s pending) request = do
+  SB.sendAll s request
+  buffered <- readIORef pending
+  (headEnd, buf) <- fill buffered (\b -> let (h, rest) = B.breakSubstring "\r\n\r\n" b in if B.null rest then Nothing else Just (B.length h + 4))
+  let headBytes = B.take headEnd buf
+      status = maybe 0 fst (BC.readInt (B.take 3 (B.drop 9 headBytes)))
+      fields = map (BC.map toLower . BC.takeWhile (/= ':')) (drop 1 (BC.lines headBytes))
+      valueOf name =
+        [ BC.dropWhile (== ' ') (BC.drop 1 v)
+        | line <- drop 1 (BC.lines headBytes)
+        , let (k, v) = BC.break (== ':') line
+        , BC.map toLower k == name
+        ]
+  when ("transfer-encoding" `elem` fields) (die "the load client does not read chunked responses")
+  len <- case valueOf "content-length" of
+    v : _ | Just (n, _) <- BC.readInt v -> pure n
+    _ | status == 204 || status == 304 -> pure 0
+    _ -> die ("response without Content-Length: " <> show headBytes)
+  (_, full) <- fill buf (\b -> if B.length b >= headEnd + len then Just 0 else Nothing)
+  writeIORef pending (B.drop (headEnd + len) full)
+  pure status
+  where
+    fill b done = case done b of
+      Just x -> pure (x, b)
+      Nothing -> do
+        chunk <- SB.recv s 65536
+        when (B.null chunk) (die "the server closed the connection")
+        fill (b <> chunk) done
+
+-- | A reusable barrier for @n@ threads.
+data Barrier = Barrier Int (TVar Int) (TVar Int)
+
+newBarrier :: Int -> IO Barrier
+newBarrier n = Barrier n <$> newTVarIO 0 <*> newTVarIO 0
+
+awaitBarrier :: Barrier -> IO ()
+awaitBarrier (Barrier n waiting generation) = do
+  mine <- atomically $ do
+    w <- readTVar waiting
+    g <- readTVar generation
+    if w + 1 == n
+      then Nothing <$ (writeTVar waiting 0 >> writeTVar generation (g + 1))
+      else Just g <$ writeTVar waiting (w + 1)
+  forM_ mine $ \g -> atomically (readTVar generation >>= \now -> when (now == g) retry)
 
 -- Library micro-benchmarks ------------------------------------------------
 

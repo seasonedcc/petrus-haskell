@@ -6,8 +6,11 @@
 -- calls against a recording fake GitHub.
 module CliSpec (spec) where
 
-import Control.Exception (throwIO)
-import Control.Monad (forM, forM_, unless, when)
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
+import Control.Exception (bracket, throwIO)
+import Data.Char (toLower)
+import Control.Monad (forM, forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
@@ -26,6 +29,8 @@ import FakeGitHub
 import Hamsterdan.GitHub.Client (ClientOptions (..))
 import Hamsterdan.GitHub.Config (fromEnvironment)
 import Hamsterdan.GitHub.Http (newPlainExchangeAt)
+import Hamsterdan.Agents.Pi.Doubles (piPackageFixture)
+import Hamsterdan.Host.Agents (composeHostAgent, productionAgentSeams)
 import Hamsterdan.Host.Cli
 import Hamsterdan.Host.Python (ValueError (..))
 import Hamsterdan.Host.Service (noAgentCustody, openHostService, serviceOptions)
@@ -35,7 +40,12 @@ import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import ServiceSupport (envelope, hostClientsOf, hostConfig, newFakeClients, receiveSigned, sqlExec)
-import System.Directory (createDirectory, createDirectoryIfMissing, createDirectoryLink, removeFile)
+import System.Directory (createDirectory, createDirectoryIfMissing, createDirectoryLink, doesFileExist, removeFile)
+import System.Posix.Signals (raiseSignal, sigTERM)
+import Network.Socket (close)
+import Network.Wai.Handler.Warp qualified as Warp
+import RawHttp (RawResponse (..), parseResponse)
+import RawHttp qualified
 import System.FilePath ((</>))
 import System.IO (Handle, IOMode (..), openFile, withFile)
 import System.Posix.Files (createSymbolicLink, setFileMode)
@@ -87,7 +97,7 @@ spec = do
           cli =
             (testEnvironment environment silent)
               { loadConfig = pure (hostConfig tmp [(31, "owner/one"), (32, "owner/two")] Set.empty)
-              , composeAgent = modifyIORef' composed (<> ["agent"]) >> pure (objectRunner, noAgentCustody)
+              , composeAgent = \_ _ -> modifyIORef' composed (<> ["agent"]) >> pure (objectRunner, noAgentCustody)
               , clientOptions = modifyIORef' networked (+ 1) >> throwIO (userError "no provider composition")
               }
       runCli cli ["serve"] `shouldReturn` ExitFailure 2
@@ -147,6 +157,34 @@ spec = do
       createDirectoryLink (tmp </> "target") (tmp </> "applications" </> "44" </> "31" </> "7")
       inspectInstance tmp 44 31 7 `shouldRaiseValue` "not a real directory"
 
+  describe "serve (uvicorn.run)" $
+    it "composes the real agent, serves h11's status line to HTTP/1.0, and stops on SIGTERM" . withTempRoot $ \tmp -> do
+      repo <- repoRoot
+      privateKey <- BS.readFile (repo </> "packages" </> "hamsterdan-github" </> "test" </> "corpus" </> "app-test-key.pem")
+      withFakeGitHub registrationRoutes $ \githubPort _ -> do
+        side <- prepareSide (tmp </> "serve") privateKey
+        port <- bracket Warp.openFreePort (close . snd) (pure . fst)
+        probed <- newEmptyMVar
+        silent <- discard tmp
+        let probe = do
+              raw <- RawHttp.exchange port "GET /healthz HTTP/1.0\r\nhost: testserver\r\n\r\n"
+              putMVar probed (parseResponse raw)
+              raiseSignal sigTERM
+            cli =
+              (testEnvironment (Map.insert "HAMSTERDAN_PORT" (show port) side.configured) silent)
+                { clientOptions = do
+                    exchange' <- newPlainExchangeAt "127.0.0.1" githubPort
+                    pure ClientOptions {exchange = exchange', clock = realToFrac <$> getPOSIXTime, metadataHook = Nothing}
+                , onServing = \_ -> void (forkIO probe)
+                }
+        runCli cli ["serve"] `shouldReturn` ExitSuccess
+        response <- takeMVar probed
+        response.statusLine `shouldBe` "HTTP/1.1 200 OK"
+        lookup "connection" [(BC.map toLower name, value) | (name, value) <- response.headers] `shouldBe` Just "close"
+        -- The owned runtime and the route store exist and were released.
+        doesFileExist (lookupState side </> "agent-routes.sqlite3") `shouldReturn` True
+        doesFileExist (lookupState side </> "pi-a2" </> "installation") `shouldReturn` True
+
   describe "the command line against the reference (python -m hamsterdan.host)" $
     it "prints, exits, changes state and calls GitHub exactly as the reference" . withTempRoot $ \tmp -> do
       repo <- repoRoot
@@ -161,6 +199,14 @@ spec = do
         ours <- forM portCases (runPort tmp)
         portCalls <- map comparableCall <$> takeCalls calls
         length references `shouldBe` length ours
+        -- The agent composition is real on both sides: the commands that
+        -- open the service succeed over the Pi package fixture, and every
+        -- Pi refusal is the reference's own usage error.
+        let outcomes = zip referenceCases references
+            succeeded = [o | (c, o) <- outcomes, take 1 c.argv `elem` [["inbox"], ["validate"], ["requeue"]], o.code == 0]
+            piRefusals = [o | (c, o) <- outcomes, any (`Map.member` c.env) ["HAMSTERDAN_PI_API_KEY_FILE"] || not (Map.member "HAMSTERDAN_PI_PROVIDER" c.env && Map.member "HAMSTERDAN_PI_API_KEY" c.env) && Map.member "HAMSTERDAN_STATE_PATH" c.env, o.code == 2]
+        length succeeded `shouldSatisfy` (>= 4)
+        length piRefusals `shouldSatisfy` (>= 3)
         forM_ (zip3 referenceCases references ours) $ \(theCase, expected, actual) ->
           unless (expected == actual) $
             expectationFailure
@@ -210,6 +256,7 @@ prepareSide base privateKey = do
   createDirectoryIfMissing True base
   BS.writeFile installations "[[accounts]]\nid = 23\nlogin = \"Owner\"\nrepositories = [\"31:owner/one\", \"32:owner/two\"]\n"
   setFileMode installations 0o600
+  (cli, node, package) <- piPackageFixture base
   let configured =
         Map.fromList
           [ ("HAMSTERDAN_STATE_PATH", state)
@@ -219,6 +266,12 @@ prepareSide base privateKey = do
           , ("HAMSTERDAN_GITHUB_INSTALLATIONS_FILE", installations)
           , ("HAMSTERDAN_GITHUB_PRIVATE_KEY", BC.unpack privateKey)
           , ("HAMSTERDAN_GITHUB_WEBHOOK_SECRET", "hook-secret")
+          , ("HAMSTERDAN_PI_PROVIDER", "anthropic")
+          , ("HAMSTERDAN_PI_MODEL", "claude-sonnet-4-5")
+          , ("HAMSTERDAN_PI_API_KEY", "synthetic-direct-authority")
+          , ("HAMSTERDAN_PI_CLI_PATH", cli)
+          , ("HAMSTERDAN_PI_NODE_PATH", node)
+          , ("HAMSTERDAN_PI_PACKAGE_ROOT", package)
           , ("COLUMNS", "80")
           ]
   -- The custody database with one parked delivery, made by the port and
@@ -267,6 +320,23 @@ cases side githubPort =
        ]
     <> [Case ["--inst", "4_4", "--repo", "31", "--pr", " 7 ", "inspect-instance"] side.inspection Nothing]
     <> [Case ["validate"] side.inspection Nothing]
+    -- The Pi installation and the agent composition, refused before
+    -- the service exists.
+    <> [ Case ["validate"] (Map.delete key side.configured) Nothing
+       | key <- ["HAMSTERDAN_PI_PROVIDER", "HAMSTERDAN_PI_MODEL", "HAMSTERDAN_PI_API_KEY", "HAMSTERDAN_PI_CLI_PATH", "HAMSTERDAN_PI_NODE_PATH", "HAMSTERDAN_PI_PACKAGE_ROOT"]
+       ]
+    <> [ Case ["inbox"] (Map.insert key value side.configured) Nothing
+       | (key, value) <-
+           [ ("HAMSTERDAN_PI_MODEL", "claude-unqualified")
+           , ("HAMSTERDAN_PI_PROVIDER", "openai")
+           , ("HAMSTERDAN_PI_API_KEY", "")
+           , ("HAMSTERDAN_PI_API_KEY", "key with spaces")
+           , ("HAMSTERDAN_PI_API_KEY_FILE", "/run/secrets/pi")
+           , ("HAMSTERDAN_PI_CLI_PATH", "relative/cli.js")
+           , ("HAMSTERDAN_AGENT_MODE", "legacy-amp")
+           , ("HAMSTERDAN_AGENT_ISOLATION_REQUIRED", "1")
+           ]
+       ]
     -- Startup refusals before the service exists.
     <> [ Case ["inbox"] (Map.insert "HAMSTERDAN_READINESS_TOPOLOGY" "" side.configured) Nothing
        , Case ["inbox"] (Map.insert "HAMSTERDAN_REMINDER_SECONDS" "abc" side.configured) (Just githubPort)
@@ -404,8 +474,10 @@ runPort tmp theCase = do
       , err = errText
       }
 
--- | The command line over an environment map, with the reference
--- driver's agent composition and @COLUMNS@ (else 80, as for a pipe).
+-- | The command line over an environment map, with the production agent
+-- composition (the Pi installation, routes, receiver and the Pi A2 runtime
+-- over the case's package fixture) and @COLUMNS@ (else 80, as for a pipe).
+-- The process environment is left alone: the case's map stands for it.
 testEnvironment :: Map String String -> Handle -> CliEnvironment
 testEnvironment environment handle =
   CliEnvironment
@@ -413,7 +485,15 @@ testEnvironment environment handle =
     , forgetSecrets = pure ()
     , loadConfig = fromEnvironment environment
     , clientOptions = throwIO (userError "no GitHub in this case")
-    , composeAgent = pure (unavailableRunner, noAgentCustody)
+    , composeAgent = \owned ->
+        composeHostAgent
+          productionAgentSeams
+          owned
+          [ (T.pack name, T.pack value)
+          | (name, value) <- Map.toList environment
+          , name `notElem` ["HAMSTERDAN_GITHUB_PRIVATE_KEY", "HAMSTERDAN_GITHUB_WEBHOOK_SECRET"]
+          ]
+          (pure ())
     , columns = pure (fromMaybe 80 (environmentColumns environment))
     , output = handle
     , errors = handle
@@ -425,3 +505,7 @@ discard tmp = do
   let path = tmp </> "discarded.txt"
   BS.writeFile path ""
   openFile path AppendMode
+
+-- | The side's service state root.
+lookupState :: Side -> FilePath
+lookupState side = fromMaybe "" (Map.lookup "HAMSTERDAN_STATE_PATH" side.configured)

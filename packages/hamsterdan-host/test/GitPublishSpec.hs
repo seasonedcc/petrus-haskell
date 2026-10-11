@@ -24,7 +24,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Agents.Protocol (CodingResult (..))
+import Hamsterdan.Agents.Pi (PiWorkspaceProvider (..), PreparedPiWorkspace (..), PromptKind (..))
+import Hamsterdan.Agents.Protocol (AgentRequest (..), CodingRequest (..), CodingResult (..))
 import Hamsterdan.GitHub.Gateway qualified as Gateway
 import Hamsterdan.GitHub.Models
   ( BoundaryKind (..)
@@ -36,6 +37,8 @@ import Hamsterdan.GitHub.Models
   , boundary
   )
 import Hamsterdan.Host.GitPublish
+import Hamsterdan.Host.PiWorkspace (gitPiWorkspaceProvider, newGitPiWorkspaceProvider)
+import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
 import Petrus.Json (Json (..))
 import System.Directory (doesFileExist, removeFile)
 import System.Environment (getEnvironment, lookupEnv, setEnv, unsetEnv)
@@ -260,17 +263,38 @@ localAuthority a = do
           modifyIORef' a.casCount (+ 1)
       }
 
--- | The host-captured binary diff of writing @bounded.txt@ on @head@
--- (the reference derives it through its Pi workspace provider).
-diffFor :: Repository -> Text -> IO (Text, [Text])
-diffFor repo head' = do
-  let scratch = repo.tmp </> "settled"
-  _ <- readCreateProcess (proc "git" ["clone", "-q", repo.remote, scratch]) ""
-  _ <- gitIn scratch ["checkout", "-q", "--detach", T.unpack head'] Nothing
-  writeFile (scratch </> "bounded.txt") "qualified\n"
-  _ <- gitIn scratch ["add", "-A"] Nothing
-  diff <- T.pack <$> readCreateProcess (proc "git" ["-C", scratch, "diff", "--cached", "--binary", "--full-index", T.unpack head']) ""
-  pure (diff, ["bounded.txt"])
+-- | The receiving host's patch for writing @bounded.txt@ on @head@:
+--
+-- > with receiver.open("coding", str(remote), request, operation) as prepared:
+-- >     extract_workspace_archive(prepared.archive, result_root)
+-- >     (result_root / "bounded.txt").write_text("qualified\n")
+-- >     diff, changed = prepared.reconcile(workspace_archive(result_root))
+diffFor :: Repository -> Text -> Text -> Text -> IO (Text, [Text])
+diffFor repo head' ref operation = do
+  receiver <- newGitPiWorkspaceProvider (repo.tmp </> "receiver")
+  let PiWorkspaceProvider open = gitPiWorkspaceProvider receiver
+      resultRoot = repo.tmp </> "settled"
+  open CodingKind (T.pack repo.remote) (AgentCoding request) operation $ \prepared -> do
+    extractWorkspaceArchive prepared.archive resultRoot
+    writeFile (resultRoot </> "bounded.txt") "qualified\n"
+    prepared.reconcile =<< workspaceArchive resultRoot
+  where
+    request =
+      CodingRequest
+        { kind = "change"
+        , repository = "owner/repo"
+        , pullRequest = 7
+        , epoch = 2
+        , head = head'
+        , base = head'
+        , ref
+        , selectedWork = []
+        , failureEvidence = []
+        , fingerprint = ""
+        , lineage = []
+        , reproductionStatus = "unknown"
+        , mergeBase = False
+        }
 
 codingResult :: Text -> Text -> Text -> [Text] -> CodingResult
 codingResult head' ref diff changed =
@@ -513,7 +537,7 @@ spec = describe "test_git_publish" $ do
       reconcile subject "push:one" "digest" repo.first repo.first False `shouldThrow` category Idempotency
 
   it "test_host_derived_patch_publishes_and_replays_through_complete_local_authority" $ withRepository $ \repo -> do
-    (diff, changed) <- diffFor repo repo.first
+    (diff, changed) <- diffFor repo repo.first "hamsterdan/change/diagnostic" "change:diagnostic:1"
     let result = codingResult repo.first "hamsterdan/change/diagnostic" diff changed
     a <- newLocalAuthority repo.root repo.remote repo.first
     subject <- localAuthority a >>= (`hostGitPublisher` T.pack repo.remote)
@@ -529,7 +553,7 @@ spec = describe "test_git_publish" $ do
     readIORef a.casCount >>= (`shouldBe` 1)
 
   it "test_publish_settle_tolerates_only_its_own_lagging_pr_projection" $ withRepository $ \repo -> do
-    (diff, changed) <- diffFor repo repo.first
+    (diff, changed) <- diffFor repo repo.first "hamsterdan/change/lag" "change:lag:1"
     let result = codingResult repo.first "hamsterdan/change/lag" diff changed
     a <- newLocalAuthority repo.root repo.remote repo.first
     writeIORef a.lagProjection True

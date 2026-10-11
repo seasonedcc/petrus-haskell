@@ -123,6 +123,7 @@ import Hamsterdan.GitHub.Webhooks
   , openCustody
   )
 import Hamsterdan.GitHub.Webhooks qualified as Custody
+import Hamsterdan.Host.Agenticus (AgentCompositionError (..))
 import Hamsterdan.Host.Binding (InstanceBinding (..), Topology (..), preflightV5State, readInstanceBinding)
 import Hamsterdan.Host.Python
   ( RuntimeError (..)
@@ -352,7 +353,7 @@ routedRunner runner custody beforeCall =
     }
   where
     claimed kind inv = do
-      when (inv.attempt < 1) $ throwIO (ValueError "agent attempt must be a positive integer")
+      when (inv.attempt < 1) $ throwIO (AgentCompositionError "agent attempt must be a positive integer")
       custody.claim inv.operation
       forM_ beforeCall $ \hook -> hook kind inv.operation inv.attempt
 

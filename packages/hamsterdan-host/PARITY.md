@@ -20,7 +20,7 @@ reference fails when the reference is missing. It is never skipped.
 | --- | --- | --- |
 | `host/service.py` (custody, pump, sweep, scheduler, lifecycle) | `Hamsterdan.Host.Service` | `ServiceSpec` and the interop tests below. |
 | `host/api.py` (FastAPI, served by uvicorn) | `Hamsterdan.Host.Api` (WAI, served by warp), `Hamsterdan.Host.Api.Documents` | `ApiSpec`. The surface test compares every response with the reference served by uvicorn, byte for byte except the `date` value. |
-| `host/binding.py` | `Hamsterdan.Host.Binding` | `BindingSpec`, plus the interop tests (`binding.json`). |
+| `host/binding.py` | `Hamsterdan.Host.Binding` (in hamsterdan-agents, which the Pi A2 installation binding needs) | `BindingSpec`, plus the interop tests (`binding.json`). |
 | `host/runnable.py` | `Hamsterdan.Host.Runnable` | `RunnableSpec`, plus the interop tests (`runnable.sqlite3`). |
 | `host/v5/runtime.py` | `Hamsterdan.Host.V5.Runtime` | `IngressApplicationSpec`, `ServiceSpec`, interop. |
 | `host/v5/application.py` | `Hamsterdan.Host.V5.Application` | `IngressApplicationSpec`, `ServiceSpec`, interop. |
@@ -32,13 +32,16 @@ reference fails when the reference is missing. It is never skipped.
 | `host/v5/mutation.py` | `Hamsterdan.Host.V5.Mutation` | `MutationSpec`. Its `reference_bytes` cases check the ref and payload digests against Python. |
 | `host/v5/timers.py` | `Hamsterdan.Host.V5.Timers` | `TimersSpec`, plus the interop tests (`timers.sqlite3`). |
 | `host/git_publish.py` | `Hamsterdan.Host.GitPublish` | `GitPublishSpec`, over real Git and local remotes. |
-| `host/__main__.py` (`serve`, `validate`, `inbox`, `requeue`, `inspect-instance`) | `Hamsterdan.Host.Cli`, `app/Main.hs` (`hamsterdan-host`) | `CliSpec`, including a 91-case differential run against the reference. |
+| `host/__main__.py` (`serve`, `validate`, `inbox`, `requeue`, `inspect-instance`) | `Hamsterdan.Host.Cli`, `app/Main.hs` (`hamsterdan-host`) | `CliSpec`, including a 105-case differential run against the reference. |
+| `host/__main__.py` (the agent half of `main()`) | `Hamsterdan.Host.Agents` (`composeHostAgent`), over hamsterdan-agents | `CliSpec` (Pi configuration refusals; `serve` end to end), `InteropSpec` (agent state), `PiActivitySpec`. |
 
 The package reuses hamsterdan-contracts, hamsterdan-github, hamsterdan-readiness
 (the net, `wireGates`, `encodeVariant`), petrus-impetus (Engine, JSONL
 History, Inline and Local Dispatch, the Worker), petrus-json and
-petrus-posix. The agents stay behind the `AgentRunner` seam with a stub
-(DIVERGENCES item 3).
+petrus-posix, and hamsterdan-agents for the agent. `serve` composes the
+agent as `main()` does: the Pi A2 installation from the environment,
+`agent-routes.sqlite3` and its repair, the workspace receiver, the owned Pi
+A2 runtime, and the Pi runner after an exact READY probe.
 
 ## Upstream tests
 
@@ -62,6 +65,11 @@ petrus-posix. The agents stay behind the `AgentRunner` seam with a stub
 | `tests/integration/host/test_service.py` | 64 | 70 | `ServiceSpec` (59), `ApiSpec` (FastAPI, 6), `CliSpec` (4) | 69 |
 | **Total ported** | **268** | **358** | | **357** (+3) |
 
+`PiActivitySpec` runs the nine coding-activity cases of
+`tests/unit/agents/test_pi.py`, because they drive the V5 mutation gate.
+hamsterdan-agents' [PARITY.md](../hamsterdan-agents/PARITY.md) counts them
+with the rest of that file.
+
 The one `test_service.py` case not ported is
 `test_host_service_requires_agent_route_custody`. It checks that
 `HostService(config, runner=...)` without `agent_composition` raises
@@ -74,17 +82,20 @@ argument, so that call does not compile.
 | --- | ---: | --- |
 | `InteropSpec`: "resumes each other's state" | 1 | Phase one is a webhook to quiescence. Phase two is a new head, a second synchronize, a `workflow_run`, then startup and periodic sweeps, each to quiescence. The test runs phase one on one host and phase two on the other, in all three pairings: Haskell/Haskell, Python/Haskell and Haskell/Python. Each pairing must match the Python-only run file by file. That covers every file under the state root (`differential/state_reference.py` dumps them): `webhooks.sqlite3` (the inbox and the V5 ingress tables), `routes.sqlite3`, `runnable.sqlite3` and `activity-dispatch.sqlite3`; and, for each Instance, `binding.json`, `history.jsonl`, `review-requests.sqlite3` and `timers.sqlite3`. For each SQLite file it compares the schema text and every row. It also compares the command outputs (`inspect-instance`, status, counts) and the provider calls. Run identifiers, instants and epochs are normalized. |
 | `InteropSpec`: "makes the same GitHub requests as the reference" | 1 | The same two phases, with both hosts' real client stacks (JWT, installation token, REST, GraphQL) pointed at one recording fake GitHub. The tests compare the request line, the headers in order, and the body bytes of every request, plus the outputs, the state dump and the resulting PR comments. |
-| `ApiSpec`: "the HTTP surface against the reference (uvicorn)" | 1 | 43 requests, sent over a raw socket to the reference under uvicorn and to the port under warp. They cover health, the FastAPI pages, routing fallbacks (405 with `allow`, 307, 404), percent-encoding, HTTP/1.0, pipelining, and webhook accept, duplicate and refusals. The status line, every header in order (only the `date` value is blanked), and the body bytes must match. HTTP/1.0 is the one exception, DIVERGENCES item 1. |
-| `CliSpec`: "the command line against the reference" | 1 | 91 cases through `python -m hamsterdan.host`'s `main()` and through the port. They cover argparse parsing, usage and help at nine `COLUMNS` widths, configuration failures, `inspect-instance` over hostile histories, startup refusals, `inbox`/`requeue` against a parked delivery, and `validate` against a recording fake GitHub. Each case must give the same stdout, stderr, exit status, state effects and GitHub requests. |
+| `InteropSpec`: "resumes each other's agent state" | 1 | A journey through `serve`'s composed agent on both hosts, over Petrus's scripted Pi runtime and a repository with fixed commits. Phase one reviews the first head (epoch 1); phase two moves the head and reviews again (epoch 2). The test runs phase one on one host and phase two on the other, in all four pairings, and each must match the Python-only run file by file. That includes `agent-routes.sqlite3`, `pi-a2/installation`, and the runtime host's `operations.sqlite3` and `bodies.sqlite3`. It also compares the provider calls, the reviews and the dashboard. |
+| `ApiSpec`: "the HTTP surface against the reference (uvicorn)" | 1 | 43 requests, sent over a raw socket to the reference under uvicorn and to the port under warp. They cover health, the FastAPI pages, routing fallbacks (405 with `allow`, 307, 404), percent-encoding, HTTP/1.0, pipelining, and webhook accept, duplicate and refusals. The status line (h11's `HTTP/1.1`, also for HTTP/1.0), every header in order (only the `date` value is blanked), and the body bytes must match. |
+| `CliSpec`: "serve (uvicorn.run)" | 1 | `serve` on a free port, with the composed agent: an HTTP/1.0 health check gets `HTTP/1.1 200 OK` and `Connection: close`, `SIGTERM` stops it with exit status 0, and `agent-routes.sqlite3` and `pi-a2/installation` exist. |
+| `CliSpec`: "the command line against the reference" | 1 | 105 cases through `python -m hamsterdan.host`'s `main()` and through the port. They cover argparse parsing, usage and help at nine `COLUMNS` widths, configuration failures, `inspect-instance` over hostile histories, startup refusals, `inbox`/`requeue` against a parked delivery, the Pi configuration refusals of the agent composition, and `validate` against a recording fake GitHub. Both sides compose the real agent over an installed-package fixture. Each case must give the same stdout, stderr, exit status, state effects and GitHub requests. |
 | `InlineRecoverySpec` | 5 | The five restart-convergence cases of `tests/unit/readiness/net_v5/test_inline_recovery.py`, against the real host gates. This closes the gap that hamsterdan-readiness's PARITY.md recorded. |
 | `MutationSpec`: `reference_bytes` | 3 | The mutation ref and payload digest match Python for `change`, `repair` and `update_base`. |
 
-The full suite has 369 examples:
+The full suite has 380 examples:
 
-- 357 port upstream cases;
+- 357 port upstream cases of this package's scope;
+- 9 port the coding-activity cases of `test_pi.py` (`PiActivitySpec`);
 - 3 are `reference_bytes`;
 - 5 are inline recovery;
-- 4 are differential tests.
+- 6 are differential and interop tests.
 
 ## Not ported here
 
@@ -94,10 +105,10 @@ scope.
 
 | Upstream file | Cases | Belongs to |
 | --- | ---: | --- |
-| `tests/unit/host/test_agenticus.py` | 33 | `hamsterdan-agents` (5): `host/agenticus.py` |
-| `tests/unit/host/test_pi_a2.py` | 24 | `hamsterdan-agents` (5): `host/pi_a2.py` |
-| `tests/integration/host/test_pi_a2_factory.py` | 8 | `hamsterdan-agents` (5) |
-| `tests/integration/host/test_pi_workspace.py` | 20 | `hamsterdan-agents` (5): `host/pi_workspace.py` |
+| `tests/unit/host/test_agenticus.py` | 33 | `hamsterdan-agents` (5): `host/agenticus.py`, ported there |
+| `tests/unit/host/test_pi_a2.py` | 24 | `hamsterdan-agents` (5): `host/pi_a2.py`, ported there |
+| `tests/integration/host/test_pi_a2_factory.py` | 8 | `hamsterdan-agents` (5), ported there |
+| `tests/integration/host/test_pi_workspace.py` | 20 | `hamsterdan-agents` (5): `host/pi_workspace.py`, ported there |
 | `tests/unit/host/test_export.py` | 41 | `hamsterdan-export` (7): `host/export.py` |
 | `tests/unit/host/test_publication_qualification.py` | 52 | `hamsterdan-operator` (8): `host/publication_qualification.py` |
 | `tests/unit/host/test_secret_launch.py` | 10 | `hamsterdan-operator` (8): `operator.py` |
@@ -129,23 +140,26 @@ Every file under the state root is byte-compatible in both directions.
 
 ## Benchmarks
 
-[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time. Haskell is faster on
-every row but the fresh timer-store open:
+[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time on both sides.
+Haskell is faster on every row but the fresh timer-store open:
 
-| Row | Speedup |
-| --- | ---: |
-| webhook ingest | 2.7× |
-| reconciliation step | 6.0× |
-| gate classification | 20× |
-| timer rebuild | 1.61× |
-| fresh timer-store open | 0.81× (slower; SQLite file creation and schema) |
+| Row | Haskell | Python | Speedup |
+| --- | ---: | ---: | ---: |
+| webhook ingest (100 deliveries) | 5.31 ms | 18.1 ms | 3.4× |
+| reconciliation step | 36.1 ms | 184 ms | 5.1× |
+| agent turn (one webhook through the scripted Pi agent) | 175 ms | 348 ms | 2.0× |
+| gate classification | 2.92 µs | 56 µs | 19× |
+| timer rebuild | 4.58 ms | 8.54 ms | 1.86× |
+| fresh timer-store open | 1.51 ms | 1.63 ms | 1.08× |
+
+The fresh open is not reliably faster: 1.08× and 0.97× in these rounds,
+0.81× and 0.94× in the rounds of 2026-10-10 (SQLite file creation, WAL
+and schema; see RESULTS.md). It belongs to the "V5 timers" component.
 
 ## Divergences
 
-See [DIVERGENCES.md](DIVERGENCES.md). Two divergences are observable:
+See [DIVERGENCES.md](DIVERGENCES.md). One divergence is observable on
+the HTTP side: uvicorn's own log lines, which the port does not write.
 
-- the `HTTP/1.0` status line for HTTP/1.0 requests;
-- uvicorn's own log lines, which the port does not write.
-
-The CLI also differs in three ways: the stubbed agent composition, the
-one-line uncaught traceback, and no color in help.
+The CLI also differs in two ways: the one-line uncaught traceback, and no
+color in help.
