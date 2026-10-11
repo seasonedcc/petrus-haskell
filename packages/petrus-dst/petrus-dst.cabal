@@ -99,6 +99,36 @@ library engine-worlds
                   , temporary >=1.3
                   , text >=2.0
 
+-- The generated-schedule campaigns, failure bundles, legacy replay, and
+-- boundary qualification: the Haskell twins of the reference's
+-- tests/dst/{campaign,failure,replay,boundaries}.py and its Hypothesis
+-- state machines, as Hedgehog state machines over the Engine worlds.
+library campaigns
+  import:           warnings
+  visibility:       public
+  hs-source-dirs:   campaigns
+  exposed-modules:  Petrus.Testing.Dst.Campaign
+                    Petrus.Testing.Dst.Campaign.Machines
+                    Petrus.Testing.Dst.Campaign.Support
+  other-modules:    Paths_petrus_dst
+  autogen-modules:  Paths_petrus_dst
+  build-depends:    base >=4.18 && <5
+                  , barbies >=2.0
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , crypton >=1.0
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , hedgehog >=1.4
+                  , petrus-dst
+                  , petrus-dst:engine-worlds
+                  , petrus-json
+                  , process >=1.6.12
+                  , ram >=0.20
+                  , temporary >=1.3
+                  , text >=2.0
+                  , time >=1.12
+
 -- The joined History/Dispatch transaction-fault worlds: the Haskell twins
 -- of the reference's tests/dst/joined_*world.py, driving the real Absurd
 -- Engine over PostgreSQL History and Absurd Workers.
