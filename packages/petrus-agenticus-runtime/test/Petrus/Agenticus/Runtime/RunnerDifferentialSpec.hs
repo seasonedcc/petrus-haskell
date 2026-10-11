@@ -35,14 +35,12 @@ import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec
 
-corpus :: Json
-corpus = unsafePerformIO $ do
+loadCorpus :: IO Json
+loadCorpus = do
   bytes <- B.readFile "differential/runner_corpus.json"
   either (fail . ("runner_corpus.json: " <>)) pure (J.parseJson J.pythonLoads bytes)
-{-# NOINLINE corpus #-}
 
 member :: Text -> Json -> Json
 member key = \case
@@ -227,6 +225,7 @@ checkProjection runs entry =
 
 spec :: Spec
 spec = describe "differential/runner_corpus.json" $ do
+  corpus <- runIO loadCorpus
   let runs = items (member "runs" corpus)
   describe "scripted runs write the reference's thread.json and history.jsonl bytes" $
     forM_ runs $ \run' ->

@@ -41,15 +41,13 @@ import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.Directory (copyFile, createDirectory)
 import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Files (setFileMode)
 import Test.Hspec
 
-corpus :: Json
-corpus = unsafePerformIO $ do
+loadCorpus :: IO Json
+loadCorpus = do
   bytes <- B.readFile "differential/pi_corpus.json"
   either (fail . ("pi_corpus.json: " <>)) pure (J.parseJson J.pythonLoads bytes)
-{-# NOINLINE corpus #-}
 
 referenceLedger :: FilePath
 referenceLedger = "differential/pi_reference_ledger.sqlite3"
@@ -180,8 +178,8 @@ strictLoadCase c arguments =
   where
     orRefusal expected refused = maybe refused (const expected) (field "error" expected)
 
-validationCases :: [(String, Json, Json)]
-validationCases =
+validationCases :: Json -> [(String, Json, Json)]
+validationCases corpus =
   [ if function == "strict_load"
       then strictLoadCase c arguments
       else (show i <> " " <> T.unpack function <> " " <> T.unpack (render arguments), expectedOutcome c, outcome (validation function arguments))
@@ -201,8 +199,8 @@ written bound frame = outcome $ case frameBytes frame of
     | B.length encoded > bound -> Left (runtimeProtocolError "frame-overflow")
     | otherwise -> Right (String (b64Encode encoded))
 
-startCases :: FilePath -> IO [(String, Json, Json)]
-startCases root = do
+startCases :: Json -> FilePath -> IO [(String, Json, Json)]
+startCases corpus root = do
   rig <- newRig root rigOptions
   base <- invocation rig "start"
   forM (zip [0 :: Int ..] (items (member "starts" (member "frames" corpus)))) $ \(i, c) -> do
@@ -232,8 +230,8 @@ startCases root = do
         actual = written config.maxFrameBytes (Object (startFrame config args session granted))
     pure ("start " <> show i, Object [("ok", String (text "ok" expected))], actual)
 
-frameCases :: [(String, Json, Json)]
-frameCases =
+frameCases :: Json -> [(String, Json, Json)]
+frameCases corpus =
   [ ("frame " <> show i, member "result" c, written defaultBound (member "frame" c))
   | (i, c) <- zip [0 :: Int ..] (items (member "others" frames))
   ]
@@ -247,8 +245,8 @@ frameCases =
 -- ---------------------------------------------------------------------------
 -- Fingerprints
 
-fingerprintCases :: [(String, Json, Json)]
-fingerprintCases =
+fingerprintCases :: Json -> [(String, Json, Json)]
+fingerprintCases corpus =
   [ ("fingerprint " <> show i, expectedOutcome c, outcome (String <$> fingerprint c))
   | (i, c) <- zip [0 :: Int ..] (items (member "fingerprints" corpus))
   ]
@@ -362,8 +360,8 @@ replaceAll value changes = case value of
   Object members -> Object [(k, fromMaybe v (lookup k changes)) | (k, v) <- members]
   other -> error (show other)
 
-recordCases :: [(String, Json, Json)]
-recordCases =
+recordCases :: Json -> [(String, Json, Json)]
+recordCases corpus =
   [ ("record " <> show i <> " " <> T.unpack (render (input c)), expectedOutcome c, outcome (recordJson <$> recordFrom (input c)))
   | (i, c) <- zip [0 :: Int ..] (items (member "records" corpus))
   ]
@@ -471,9 +469,6 @@ withLedger path action = do
   ledgerClose l
   pure result
 
-ledgerSection :: Json
-ledgerSection = member "ledger" corpus
-
 parameter :: Json -> SqlValue
 parameter = \case
   Null -> SQLNull
@@ -482,8 +477,8 @@ parameter = \case
   Object [("blob", String b)] -> SQLBlob (unb64 b)
   other -> error (show other)
 
-mutationCases :: FilePath -> IO [(String, Json, Json)]
-mutationCases root =
+mutationCases :: Json -> FilePath -> IO [(String, Json, Json)]
+mutationCases ledgerSection root =
   fmap concat . forM (zip [0 :: Int ..] (items (member "mutations" ledgerSection))) $ \(i, c) -> do
     path <- referenceCopy root ("mutation-" <> show i)
     database <- openDatabase path
@@ -497,16 +492,18 @@ mutationCases root =
 
 spec :: Spec
 spec = describe "differential/pi_corpus.json" $ do
+  corpus <- runIO loadCorpus
+  let ledgerSection = member "ledger" corpus
   it "the protocol validators agree with the reference on every accepted and refused input" $
-    noMismatches validationCases
+    noMismatches (validationCases corpus)
   it "start frames encode to the reference's exact wire bytes" $
-    withTemp (startCases >=> noMismatches)
+    withTemp (startCases corpus >=> noMismatches)
   it "tool_result, abort and arbitrary frames encode to the same bytes or the same refusal" $
-    noMismatches frameCases
+    noMismatches (frameCases corpus)
   it "durable work fingerprints agree with pi_durable_work_fingerprint" $
-    noMismatches fingerprintCases
+    noMismatches (fingerprintCases corpus)
   it "PiOperationRecord construction agrees on the settled and executing bases and their mutations" $
-    noMismatches recordCases
+    noMismatches (recordCases corpus)
   it "the scripted ledger session returns the same records and refusals and writes the same database" $
     withTemp $ \root -> do
       path <- private root "ledger"
@@ -528,4 +525,4 @@ spec = describe "differential/pi_corpus.json" $ do
       afterwards <- dump path
       noMismatches [("recovered dump", member "recovered_dump" ledgerSection, afterwards)]
   it "raw row mutations of the reference-written ledger are refused or projected identically" $
-    withTemp (mutationCases >=> noMismatches)
+    withTemp (mutationCases ledgerSection >=> noMismatches)

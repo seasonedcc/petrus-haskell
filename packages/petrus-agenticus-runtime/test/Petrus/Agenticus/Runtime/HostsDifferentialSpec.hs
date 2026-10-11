@@ -22,14 +22,13 @@ import Petrus.Agenticus.Thread.Lifecycle (StrEnum (..))
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import Petrus.Json.Python qualified as Python
-import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec
 
-corpus :: Json
-corpus = unsafePerformIO $ do
+-- | The corpus, read once before the sections run.
+loadCorpus :: IO Json
+loadCorpus = do
   bytes <- B.readFile "differential/hosts_corpus.json"
   either (fail . ("hosts_corpus.json: " <>) . show) pure (Python.loadsBytes bytes)
-{-# NOINLINE corpus #-}
 
 field :: Text -> Json -> Maybe Json
 field key = \case
@@ -105,9 +104,9 @@ expected c = case (field "ok" c, field "error" c) of
 
 -- | Replays one section: every case's actual outcome must render to the
 -- reference's bytes.
-section :: Text -> Text -> (Json -> Json) -> Spec
+section :: Text -> Text -> (Json -> Json) -> SpecWith Json
 section host name run =
-  it (T.unpack (host <> "." <> name)) $ do
+  it (T.unpack (host <> "." <> name)) $ \corpus -> do
     let cases = items (member name (member host corpus))
         failures =
           [ T.unpack (render input <> "\n  expected " <> render want <> "\n  actual   " <> render got)
@@ -135,12 +134,12 @@ args :: Json -> [Json]
 args = items
 
 spec :: Spec
-spec = describe "hosts differential corpus" $ do
+spec = beforeAll loadCorpus . describe "hosts differential corpus" $ do
   codexSpecs
   claudeSpecs
   ampSpecs
 
-codexSpecs :: Spec
+codexSpecs :: SpecWith Json
 codexSpecs = do
   section "codex" "text" $ \i -> case args i of
     [n, v, m] -> outcome (String <$> codexText (str n) (int m) (str v))
@@ -179,7 +178,7 @@ codexSpecs = do
           (either (error . show) id . mkTurnId <$> optionalStr t)
     _ -> error "terminal"
 
-claudeSpecs :: Spec
+claudeSpecs :: SpecWith Json
 claudeSpecs = do
   section "claude" "text" $ \i -> case args i of
     [n, v, m] -> outcome (String <$> claudeText (str n) (int m) (str v))
@@ -202,7 +201,7 @@ claudeSpecs = do
           <$> mkClaudeContinuationPayloadV1 (str s) (str b) (str k) (unhex t)
     _ -> error "payload"
 
-ampSpecs :: Spec
+ampSpecs :: SpecWith Json
 ampSpecs = do
   section "amp" "bounded_text" $ \i -> case args i of
     [n, v, m] -> outcome (String <$> ampBoundedText (str n) (int m) (str v))
