@@ -26,8 +26,10 @@ clear-review ``V5Runner``, composed the way ``main()`` composes it
 entry) stands in for the Pi installation, the workspace receiver clones the
 local ``repository`` instead of the GitHub URL, and the READY probe (which
 the scripted runtime refuses) gives way to the scripted host's own
-``scripted_readiness()``. The PR's base comes in as
-``base`` so the provider names commits of that repository.
+``scripted_readiness()``. The runner also waits up to
+``AUTHORITY_POLL_SECONDS`` between authority checks instead of 0.1 s, so the
+provider calls do not depend on how fast the machine runs the turn. The PR's
+base comes in as ``base`` so the provider names commits of that repository.
 
 ``dump`` prints every file under ROOT in a comparable form: SQLite
 databases as their schema and sorted rows, every other file as text.
@@ -200,6 +202,18 @@ class LocalClone:
         return self.workspaces.open(kind, self.repository, request, operation_id)
 
 
+# How long ``PiNativeRunner._wait`` waits for the turn's settlement before it
+# asks the host again whether the attempt is current. Each such check is a
+# provider authority read (the PR, the base ref, rules, protection), and
+# with the production default of 0.1 s their number depends on how long the
+# scripted turn takes on the machine: one more check per 0.1 s. Waiting
+# returns as soon as the turn settles, so a bound no turn here approaches
+# leaves exactly the checks every turn makes (before the workspace, inside
+# it, before and after the wait), and the provider calls depend on the
+# steps alone. ``InteropSpec`` gives the Haskell runner the same bound.
+AUTHORITY_POLL_SECONDS = 3600.0
+
+
 def agent_environment(root: Path, agent: dict) -> dict[str, str]:
     return {
         "HAMSTERDAN_PI_PROVIDER": "anthropic",
@@ -228,7 +242,9 @@ def compose_real_agent(root: Path, agent: dict):
     routes = AgentRouteStore(root / "agent-routes.sqlite3")
     routes.activate(composition, root / "applications")
     runtime, workspaces = host_main._compose_agent_runtime(root, installation)
-    runner = Recording(PiNativeRunner(runtime, LocalClone(workspaces, agent["repository"])))
+    runner = Recording(
+        PiNativeRunner(runtime, LocalClone(workspaces, agent["repository"]), poll_interval=AUTHORITY_POLL_SECONDS)
+    )
     return runner, composition, routes, runtime
 
 
