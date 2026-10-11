@@ -1,13 +1,36 @@
 #!/usr/bin/env bash
 # List what changed upstream between two commits, grouped the way PARITY.md is.
 #   scripts/upstream-diff <name> <old-sha> <new-sha>
+#
+# "Ported paths" are the ones the port follows: code, specs, tests, the
+# dependency locks the reference environments are built from
+# (scripts/upstream-python), and, per project, the files that define
+# behavior outside src/ (the viewer's Vite configuration, Hamsterdan's
+# deployment). Every other changed file is listed after them, so nothing
+# that moved is left out; decide for each whether it matters.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 name=$1 old=$2 new=$3
 repo="upstream/$name"
+
+paths=(src spec tests scripts server bin pyproject.toml uv.lock)
+case "$name" in
+  petrus-viewer) paths+=(vite.config.ts index.html examples package.json pnpm-lock.yaml pnpm-workspace.yaml) ;;
+  hamsterdan) paths+=(deployment tests2 tools uv.toml .python-version env-ops.tpl env-provision.tpl) ;;
+esac
+
 git -C "$repo" fetch --quiet origin
-git -C "$repo" diff --stat "$old" "$new" -- src spec tests scripts server bin 2>/dev/null | tail -n +1
+echo "Ported paths (${paths[*]}):"
+git -C "$repo" diff --stat "$old" "$new" -- "${paths[@]}"
 echo
 echo "Changed top-level components:"
-git -C "$repo" diff --name-only "$old" "$new" -- src spec tests server bin \
-  | awk -F/ '{ if ($1 == "src") print $2 "/" $3 "/" $4; else print $1 "/" $2 }' | sort | uniq -c
+git -C "$repo" diff --name-only "$old" "$new" -- "${paths[@]}" \
+  | awk -F/ '{ if ($1 == "src") print $2 "/" $3 "/" $4; else if (NF == 1) print $1; else print $1 "/" $2 }' | sort | uniq -c
+echo
+echo "Other changed files (not ported paths; check whether they matter):"
+excludes=()
+for p in "${paths[@]}"; do excludes+=(":(exclude)$p"); done
+git -C "$repo" diff --stat "$old" "$new" -- . "${excludes[@]}"
+echo
+echo "Then: regenerate the recorded corpora and fixtures (scripts/check-corpora),"
+echo "commit the new gitlink with UPSTREAM.md, and follow UPSTREAM.md's checklist."
