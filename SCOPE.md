@@ -21,8 +21,8 @@ status lives in [PARITY.md](PARITY.md).
 | `petrus-site`, `hamsterdan-site`, `henriquebastos.net` | Websites; explicitly excluded. |
 | `beans` | A graph issue tracker for agent coordination; not part of Petrus. |
 | `orbital` | Remote workspaces for the Pi coding agent; not a Petrus dependency. |
-| `ariad` | A development method, not software Petrus runs. |
-| `CarlAdam` | An earlier, unrelated Petri net library (2024); Petrus does not depend on it. |
+| `ariad` (a fork of `mirror-mind-ai/ariad`) | A development method, not software Petrus runs. Upstream Petrus vendors its `using-ariad` agent skill as development tooling only (`upstream/petrus/THIRD_PARTY_NOTICES.md`). |
+| `CarlAdam` (a fork of `matthewryanscott/CarlAdam`) | An earlier, unrelated Petri net library (2024); Petrus does not depend on it. |
 | Every other `henriquebastos` repository | Not Petri-net or Petrus related. |
 | `hamsterdan`'s `src/hamsterdan2` at the pinned commit | An in-progress rebuild of the outer system (CV21) that production does not run: it has no entry point and no effects (see [docs/hamsterdan.md](docs/hamsterdan.md) §1.11). The goal is to behave like production Hamsterdan. When upstream cuts over to it (CV22), moving the `hamsterdan` pin brings it into scope. |
 

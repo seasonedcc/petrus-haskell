@@ -9,8 +9,8 @@ both implementations share one Absurd schema and one set of queues. The
 driver scripts in test/interop and bench run the reference itself from the
 pinned upstream virtual environment.
 
-Petrus
-  Copyright Seasoned
+Petrus (https://github.com/henriquebastos/petrus)
+  Copyright 2026 Henrique Bastos
   Licensed under the Apache License, Version 2.0
 
 Absurd 0.4.0 (absurd_schema/absurd-0.4.0.sql is the release's sql/absurd.sql,
