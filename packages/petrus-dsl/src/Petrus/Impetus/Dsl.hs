@@ -144,7 +144,7 @@ import Data.Text qualified as T
 import GHC.TypeLits (ErrorMessage (..), TypeError)
 import Petrus.Impetus.Binding (ActivityHandler, BoundHandler (..), Handler, Typed (..), TypedArgs, deriveTypedGuard, deriveTypedTransform)
 import Petrus.Impetus.Instance (ImplementationRef (..), InstanceConfig (..))
-import Petrus.Impetus.Internal.Repr (pyOptStr, pyStr)
+import Petrus.Json.Python (pythonOptionalStrRepr, pythonStrRepr)
 import Petrus.Impetus.Petrinet.Enabledness (Guard)
 import Petrus.Impetus.Petrinet.Schema
   ( AnonymousDeclaration (..)
@@ -215,8 +215,8 @@ instance Eq HandlerSpec where
 
 instance Show HandlerSpec where
   show = \case
-    HandlerNamed name -> T.unpack (pyStr name)
-    HandlerImplemented name flavor _ -> "HandlerSpec(" <> show flavor <> ", " <> T.unpack (pyStr name) <> ")"
+    HandlerNamed name -> T.unpack (pythonStrRepr name)
+    HandlerImplemented name flavor _ -> "HandlerSpec(" <> show flavor <> ", " <> T.unpack (pythonStrRepr name) <> ")"
 
 -- | A string literal is a named handler symbol.
 instance IsString HandlerSpec where
@@ -237,9 +237,9 @@ instance Eq GuardSpec where
 
 instance Show GuardSpec where
   show = \case
-    GuardNamed name -> T.unpack (pyStr name)
+    GuardNamed name -> T.unpack (pythonStrRepr name)
     GuardInline expression -> show expression
-    GuardImplemented name flavor _ -> "GuardSpec(" <> show flavor <> ", " <> T.unpack (pyStr name) <> ")"
+    GuardImplemented name flavor _ -> "GuardSpec(" <> show flavor <> ", " <> T.unpack (pythonStrRepr name) <> ")"
 
 -- | A string literal is a named guard symbol.
 instance IsString GuardSpec where
@@ -506,7 +506,7 @@ data NetSpec = NetSpec
 instance Show NetSpec where
   show spec =
     "NetSpec("
-      <> T.unpack (pyOptStr spec.header.headerName)
+      <> T.unpack (pythonOptionalStrRepr spec.header.headerName)
       <> ", "
       <> show (Set.size spec.body.placeSet)
       <> "p, "
@@ -539,7 +539,7 @@ runNetSpec header program = do
   case header.headerName of
     Just name
       | T.null name ->
-          refuse ("net specification name must be a non-empty string or None, got " <> pyStr name)
+          refuse ("net specification name must be a non-empty string or None, got " <> pythonStrRepr name)
     _ -> Right ()
   let Author run = program
   (result, finished) <- run [] emptyBody
@@ -615,7 +615,7 @@ resolve name = do
 scope :: Text -> Author s a -> Author s a
 scope segment (Author inner)
   | T.null segment || T.any (== '.') segment =
-      authorFail (DslError ("scope segment must be one non-empty path segment, got " <> pyStr segment))
+      authorFail (DslError ("scope segment must be one non-empty path segment, got " <> pythonStrRepr segment))
   | otherwise = Author (\prefix b -> inner (prefix ++ [segment]) b)
 
 -- | Stamp a reusable specification at the current scope
@@ -671,7 +671,7 @@ colored value node@(P at) = do
   pure node
   where
     alreadyColored existing =
-      authorFail (DslError ("place " <> netPathText at <> " is already configured with color " <> pyOptStr existing))
+      authorFail (DslError ("place " <> netPathText at <> " is already configured with color " <> pythonOptionalStrRepr existing))
 
 -- | Change or clear an existing explicit or inherited place color
 -- (@PlaceSpec.override(color=...)@).

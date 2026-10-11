@@ -89,7 +89,7 @@ import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Testing.Dst.Joined.Identities qualified as Id
 import Petrus.Testing.Dst.Joined.Support
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 
 -- ---------------------------------------------------------------------------
 -- Constants and nets
@@ -397,7 +397,7 @@ joinedProfile family dsn = do
         matched <- faults cfg.faultTarget
         forM matched $ \f -> do
           when (f.name /= cfg.faultName || f.disposition /= cfg.faultDisposition) $
-            raise "ValueError" ("unsupported joined-begin fault " <> pyStrRepr f.name)
+            raise "ValueError" ("unsupported joined-begin fault " <> pythonStrRepr f.name)
           unless (exactKeys ["message"] f.payload) $
             raise "ValueError" (cfg.faultName <> " requires an exact message payload")
           message <- case member "message" f.payload of
@@ -790,12 +790,12 @@ joinedProfile family dsn = do
         let authorityLayer = observationLayers family
             select' fields = select fields <$> io (state g)
             flat names unknown params fields = do
-              unless (request.name `elem` names) $ raise "ValueError" (unknown <> " " <> pyStrRepr request.name)
+              unless (request.name `elem` names) $ raise "ValueError" (unknown <> " " <> pythonStrRepr request.name)
               unless (payloadAbsent request.payload) $ raise "ValueError" params
               select' fields
             beginObserve = do
               unless (request.name `elem` ["engine.joined-commit-authority", cfg.refusedObservation, cfg.recoveredObservation]) $
-                raise "ValueError" ("unknown joined-begin observation " <> pyStrRepr request.name)
+                raise "ValueError" ("unknown joined-begin observation " <> pythonStrRepr request.name)
               unless (payloadAbsent request.payload) $ raise "ValueError" "joined-begin observations do not accept parameters"
               if request.name == "engine.joined-commit-authority"
                 then select' ["durable_tasks", "prepare_calls", "record_types", "transaction_attempts"]
@@ -1237,17 +1237,17 @@ validateCommand family c
   | isOpen family =
       if c.name == "scope.open" && pyEq c.payload draft
         then pure c
-        else refuse ("unsupported joined-open command " <> pyStrRepr c.name)
+        else refuse ("unsupported joined-open command " <> pythonStrRepr c.name)
   | isQuarantine family =
       if (c.name == "scope.open" && pyEq c.payload draft)
         || (c.name == "source.deliver-future" && pyEq c.payload (scoped "future-draft-3" 2))
         then pure c
-        else refuse ("unsupported joined scoped-quarantine command " <> pyStrRepr c.name)
+        else refuse ("unsupported joined scoped-quarantine command " <> pythonStrRepr c.name)
   | isScoped family =
       if (c.name `elem` ["scope.open", "scope.reset"] && pyEq c.payload draft)
         || (c.name == "source.deliver-stale" && pyEq c.payload (scoped "stale-draft-3" 1))
         then pure c
-        else refuse ("unsupported joined scoped-drop command " <> pyStrRepr c.name)
+        else refuse ("unsupported joined scoped-drop command " <> pythonStrRepr c.name)
   | family == FCloseAckLoss =
       if c.name == "worker.complete"
         then refuse "joined-close acknowledgement-loss profile does not accept worker.complete"
@@ -1261,7 +1261,7 @@ validateCommand family c
     draft = Object [("name", String "draft")]
     scoped identity generation = Object [("identity", String identity), ("scope_generation", Int generation), ("value", Int 3)]
     delivery
-      | c.name /= "source.deliver" = refuse ("unknown joined-delivery command " <> pyStrRepr c.name)
+      | c.name /= "source.deliver" = refuse ("unknown joined-delivery command " <> pythonStrRepr c.name)
       | not (exactKeys ["identity", "value"] c.payload) = refuse "source.deliver requires exact identity and value fields"
       | not (nonEmptyString (member "identity" c.payload)) = refuse "source.deliver identity must be a non-empty string"
       | not (isInt (member "value" c.payload)) = refuse "source.deliver value must be an integer"
@@ -1269,11 +1269,11 @@ validateCommand family c
     projection
       | c.name `elem` ["engine.drive", "worker.claim"] && empty c.payload = pure c
       | c.name == "worker.complete" && exactKeys ["result"] c.payload = pure c
-      | otherwise = refuse ("unsupported joined-projection command " <> pyStrRepr c.name)
+      | otherwise = refuse ("unsupported joined-projection command " <> pythonStrRepr c.name)
     failure
       | c.name `elem` ["engine.drive", "worker.claim"] && empty c.payload = pure c
       | c.name == "worker.fail" && exactKeys ["error"] c.payload && isStr (member "error" c.payload) = pure c
-      | otherwise = refuse ("unsupported joined-failure command " <> pyStrRepr c.name)
+      | otherwise = refuse ("unsupported joined-failure command " <> pythonStrRepr c.name)
     cancellation
       | c.name `elem` ["engine.drive", "worker.claim", "worker.complete-stale"] && empty c.payload = pure c
       | c.name `elem` ["scope.open", "scope.reset"] && pyEq c.payload draft = pure c
@@ -1281,7 +1281,7 @@ validateCommand family c
           && isPyObject c.payload
           && pyEq c.payload (Object [("identity", String "draft-input-3"), ("scope", String "draft"), ("value", Int 3)]) =
           pure c
-      | otherwise = refuse ("unsupported joined-cancellation command " <> pyStrRepr c.name)
+      | otherwise = refuse ("unsupported joined-cancellation command " <> pythonStrRepr c.name)
     reset
       | c.name == "worker.complete" && empty c.payload = pure c
       | otherwise = cancellation

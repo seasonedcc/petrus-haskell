@@ -93,7 +93,7 @@ import Petrus.Agenticus.Connection.Materialization
 import Petrus.Agenticus.Connection.Materialization qualified as Files
 import Petrus.Agenticus.Connection.Storage
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Validate (isBoundedText, maxTextBytes, sha256Hex)
 
 -- ---------------------------------------------------------------------------
@@ -223,13 +223,13 @@ instance Show Materialization where
   show materialization =
     T.unpack $
       "Materialization(attachment_id="
-        <> pyStrRepr materialization.fence.attachmentId
+        <> pythonStrRepr materialization.fence.attachmentId
         <> ", connection_id="
-        <> pyStrRepr materialization.fence.connectionId
+        <> pythonStrRepr materialization.fence.connectionId
         <> ", host_id="
-        <> pyStrRepr materialization.fence.hostId
+        <> pythonStrRepr materialization.fence.hostId
         <> ", mode="
-        <> pyStrRepr (leaseModeText materialization.mode)
+        <> pythonStrRepr (leaseModeText materialization.mode)
         <> ", home="
         <> T.pack (show materialization.home)
         <> ")"
@@ -394,19 +394,19 @@ authorize custody identity opaqueState operationId = do
     Just stored -> do
       when (stored.status /= "reauthorization_required") $ do
         eraseOpaqueState opaqueState
-        throwAgenticus CustodyError ("connection " <> pyStrRepr connectionId <> " is already authorized")
+        throwAgenticus CustodyError ("connection " <> pythonStrRepr connectionId <> " is already authorized")
       unless (identityMatches stored identity) $ do
         eraseOpaqueState opaqueState
         throwAgenticus
           CustodyError
-          ("connection " <> pyStrRepr connectionId <> " cannot be rebound to different provider authority")
+          ("connection " <> pythonStrRepr connectionId <> " cannot be rebound to different provider authority")
       pure (stored.authorityEpoch + 1, stored.stateVersion + 1, "connection.reauthorized")
   encrypted <- seal custody connectionId authorityEpoch stateVersion opaqueState
   fst <$> commit custody operationId eventKind noSubjects {connectionIdOf = Just connectionId} (pureTransform (change connectionId current authorityEpoch stateVersion encrypted))
   where
     change connectionId current authorityEpoch stateVersion encrypted snapshot = do
       unless (sameConnectionGeneration (Map.lookup connectionId (connectionsMap snapshot)) current) $
-        Left (AgenticusError StorageContention ("connection " <> pyStrRepr connectionId <> " changed during authorization"))
+        Left (AgenticusError StorageContention ("connection " <> pythonStrRepr connectionId <> " changed during authorization"))
       let stored =
             StoredConnection
               { connectionId
@@ -456,7 +456,7 @@ materialize custody connectionId hostId mode ttl operationId = do
           Left
             ( AgenticusError
                 LeaseConflict
-                ("connection " <> pyStrRepr connectionId <> " cannot grant refresh custody while materializations are active")
+                ("connection " <> pythonStrRepr connectionId <> " cannot grant refresh custody while materializations are active")
             )
         let lease =
               StoredLease
@@ -493,7 +493,7 @@ materialize custody connectionId hostId mode ttl operationId = do
   encrypted <- case connection.encryptedState of
     Nothing -> do
       abortMaterialization custody lease operationId
-      throwAgenticus ReauthorizationRequired ("connection " <> pyStrRepr connectionId <> " requires explicit reauthorization")
+      throwAgenticus ReauthorizationRequired ("connection " <> pythonStrRepr connectionId <> " requires explicit reauthorization")
     Just encrypted -> pure encrypted
   home <-
     ( do
@@ -655,7 +655,7 @@ erase custody connectionId operationId = do
         pureTransform $ \snapshot -> do
           stored <- connectionOf snapshot connectionId
           when (stored.status /= "revoked") $
-            Left (AgenticusError CustodyError ("connection " <> pyStrRepr connectionId <> " is not revoked"))
+            Left (AgenticusError CustodyError ("connection " <> pythonStrRepr connectionId <> " is not revoked"))
           pure
             Change
               { snapshot = replaceConnection snapshot (withStatus "erasure_pending" stored)
@@ -666,13 +666,13 @@ erase custody connectionId operationId = do
       pure ()
     else
       when (current.status /= "erasure_pending") $
-        throwAgenticus CustodyError ("connection " <> pyStrRepr connectionId <> " must be revoked before erasure")
+        throwAgenticus CustodyError ("connection " <> pythonStrRepr connectionId <> " must be revoked before erasure")
   keyErasure <- custody.keys.erase connectionId
   (connection, cleanup) <- commit custody operationId "connection.erased" subjects $
     pureTransform $ \snapshot -> do
       stored <- connectionOf snapshot connectionId
       when (stored.status /= "erasure_pending") $
-        Left (AgenticusError CustodyError ("connection " <> pyStrRepr connectionId <> " is not awaiting erasure"))
+        Left (AgenticusError CustodyError ("connection " <> pythonStrRepr connectionId <> " is not awaiting erasure"))
       let active = unsettledLeases snapshot connectionId
           erased = eraseState (withStatus "reauthorization_required" stored)
       view <- viewOf erased
@@ -741,7 +741,7 @@ admit custody fence operationId purpose =
     withNow custody $ \now snapshot -> do
       unless (attachmentIsCurrent snapshot fence now) $
         Left
-          (AgenticusError StaleAttachment (purpose <> " rejected: attachment " <> pyStrRepr fence.attachmentId <> " is stale"))
+          (AgenticusError StaleAttachment (purpose <> " rejected: attachment " <> pythonStrRepr fence.attachmentId <> " is stale"))
       pure
         Change
           { snapshot
@@ -765,7 +765,7 @@ replaceAuthority custody connectionId opaqueState operationId eventKind = do
     pureTransform $ \snapshot -> do
       stored <- connectionOf snapshot connectionId
       unless (sameConnectionGeneration (Just stored) (Just current)) $
-        Left (AgenticusError StaleCustody ("connection " <> pyStrRepr connectionId <> " changed during rotation"))
+        Left (AgenticusError StaleCustody ("connection " <> pythonStrRepr connectionId <> " changed during rotation"))
       let unsettled = unsettledLeases snapshot connectionId
           rotated = withEpoch authorityEpoch (withStatus "ready" (acceptState stateVersion encrypted stored))
       view <- viewOf rotated
@@ -890,13 +890,13 @@ commit custody operationId eventKind subjects transform = do
       | remaining <= 0 =
           throwAgenticus
             StorageContention
-            ("operation " <> pyStrRepr operationId <> " could not publish after bounded CAS retries")
+            ("operation " <> pythonStrRepr operationId <> " could not publish after bounded CAS retries")
       | otherwise = do
           snapshot <- loadValidated custody
           when (any (\record -> record.operationId == operationId) snapshot.audit) $
             throwAgenticus
               OperationConflict
-              ("operation " <> pyStrRepr operationId <> " is already published; reconcile it through lookup_operation")
+              ("operation " <> pythonStrRepr operationId <> " is already published; reconcile it through lookup_operation")
           change <- transform snapshot
           details <- throwLeft (auditDetails change.details)
           let record =
@@ -937,7 +937,7 @@ appendRecord revision record StorageSnapshot {hosts, connections, leases, audit}
 auditDetails :: [(Text, AuditValue)] -> Either AgenticusError AuditDetails
 auditDetails details = do
   case find unsafe (map fst details) of
-    Just name -> Left (valueError ("audit detail " <> pyStrRepr name <> " is not safe metadata"))
+    Just name -> Left (valueError ("audit detail " <> pythonStrRepr name <> " is not safe metadata"))
     Nothing -> pure ()
   pure (Map.toAscList (Map.fromList details))
   where
@@ -998,12 +998,12 @@ replaceLeases StorageSnapshot {..} replacement = StorageSnapshot {leases = Map.e
 activeHost :: StorageSnapshot -> Text -> Either AgenticusError StoredHost
 activeHost snapshot hostId = case Map.lookup hostId (hostsMap snapshot) of
   Just host | host.active -> Right host
-  _ -> Left (AgenticusError HostNotEnrolled ("host " <> pyStrRepr hostId <> " is not enrolled"))
+  _ -> Left (AgenticusError HostNotEnrolled ("host " <> pythonStrRepr hostId <> " is not enrolled"))
 
 connectionOf :: StorageSnapshot -> Text -> Either AgenticusError StoredConnection
 connectionOf snapshot connectionId = case Map.lookup connectionId (connectionsMap snapshot) of
   Just connection -> Right connection
-  Nothing -> Left (AgenticusError CustodyError ("connection " <> pyStrRepr connectionId <> " does not exist"))
+  Nothing -> Left (AgenticusError CustodyError ("connection " <> pythonStrRepr connectionId <> " does not exist"))
 
 activeLeases :: StorageSnapshot -> Double -> (StoredLease -> Bool) -> [StoredLease]
 activeLeases snapshot now selected =
@@ -1048,12 +1048,12 @@ reconcileExpired snapshot now = do
 requireMaterializable :: StoredConnection -> Either AgenticusError ()
 requireMaterializable connection = case parseConnectionStatus connection.status of
   Nothing ->
-    Left (valueError (pyStrRepr connection.status <> " is not a valid ConnectionStatus"))
+    Left (valueError (pythonStrRepr connection.status <> " is not a valid ConnectionStatus"))
   Just status
     | status `elem` [StatusRevoked, StatusErasurePending, StatusReauthorizationRequired] ->
         Left (reauthorizationRequired connection.connectionId)
     | status == StatusRefreshing ->
-        Left (AgenticusError LeaseConflict ("connection " <> pyStrRepr connection.connectionId <> " already has refresh custody"))
+        Left (AgenticusError LeaseConflict ("connection " <> pythonStrRepr connection.connectionId <> " already has refresh custody"))
     | Nothing <- connection.encryptedState -> Left (reauthorizationRequired connection.connectionId)
     | otherwise -> Right ()
 
@@ -1106,7 +1106,7 @@ fenceOf lease =
 viewOf :: StoredConnection -> Either AgenticusError ConnectionView
 viewOf connection = do
   identity <- mkConnectionIdentity connection.connectionId connection.provider connection.accountFingerprint connection.profile
-  status <- maybe (Left (valueError (pyStrRepr connection.status <> " is not a valid ConnectionStatus"))) Right (parseConnectionStatus connection.status)
+  status <- maybe (Left (valueError (pythonStrRepr connection.status <> " is not a valid ConnectionStatus"))) Right (parseConnectionStatus connection.status)
   pure
     ConnectionView
       { identity
@@ -1147,11 +1147,11 @@ operationView record =
 
 staleCustody :: AttachmentFence -> AgenticusError
 staleCustody fence =
-  AgenticusError StaleCustody ("lease is no longer current for connection " <> pyStrRepr fence.connectionId)
+  AgenticusError StaleCustody ("lease is no longer current for connection " <> pythonStrRepr fence.connectionId)
 
 reauthorizationRequired :: Text -> AgenticusError
 reauthorizationRequired connectionId =
-  AgenticusError ReauthorizationRequired ("connection " <> pyStrRepr connectionId <> " requires explicit reauthorization")
+  AgenticusError ReauthorizationRequired ("connection " <> pythonStrRepr connectionId <> " requires explicit reauthorization")
 
 -- Record rewrites (@dataclasses.replace@).
 

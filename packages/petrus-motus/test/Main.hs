@@ -243,6 +243,14 @@ suite = hspec $ do
       runInline adapter (invocation "charge_card" Null)
         `shouldThrow` (\(DispatchError m) -> m == "no activity implementation for 'charge_card': this InlineDispatch implements []")
 
+    -- repr() escapes the space separators (str.isprintable is False for
+    -- U+00A0): GHC's isPrint admits them, so a copy built on it printed
+    -- the no-break space raw.
+    it "an unknown activity's name is spelled by CPython's repr" $ do
+      adapter <- newInlineDispatch (Map.fromList [("pay\x2003", \_ _ -> pure Null)])
+      runInline adapter (invocation "charge\xa0\&card" Null)
+        `shouldThrow` (\(DispatchError m) -> m == "no activity implementation for 'charge\\xa0card': this InlineDispatch implements ['pay\\u2003']")
+
     it "an unknown activity dispatched is buffered as a ValueError failure" $ do
       adapter <- newInlineDispatch (Map.fromList [("b", \_ _ -> pure Null), ("a", \_ _ -> pure Null)])
       (inlineDispatch adapter).dispatch 1 (invocation "charge_card" Null)

@@ -185,7 +185,7 @@ import Petrus.Agenticus.Hands.Contract (ToolResult (..), allToolMethods, toolMet
 import Petrus.Agenticus.Hands.Gateway (HandsGateway, gatewayAttachmentEpoch, gatewayAttachmentId, gatewayEpisodeId)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
-import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Validate (isBoundedText, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
   ( AgentProgramDescriptor
@@ -754,9 +754,9 @@ claudeRuntimeConfig model workingDirectory runtimeRoot =
 renderClaudeRuntimeConfig :: ClaudeRuntimeConfig -> Text
 renderClaudeRuntimeConfig c =
   "ClaudeRuntimeConfig(model="
-    <> pyStrRepr c.model
+    <> pythonStrRepr c.model
     <> ", host_id="
-    <> pyStrRepr c.hostId
+    <> pythonStrRepr c.hostId
     <> ", credential_ttl="
     <> pyNumber c.credentialTtl
     <> ", max_turns="
@@ -776,9 +776,9 @@ renderClaudeRuntimeConfig c =
     <> ", max_transcript_bytes="
     <> int c.maxTranscriptBytes
     <> ", sdk_version="
-    <> pyStrRepr c.sdkVersion
+    <> pythonStrRepr c.sdkVersion
     <> ", cli_version="
-    <> pyStrRepr c.cliVersion
+    <> pythonStrRepr c.cliVersion
     <> ")"
   where
     int = T.pack . show
@@ -842,11 +842,11 @@ instance Show ClaudeRuntimeInvocation where
 renderClaudeRuntimeInvocation :: ClaudeRuntimeInvocation -> Text
 renderClaudeRuntimeInvocation i =
   "ClaudeRuntimeInvocation(operation_id="
-    <> pyStrRepr i.operationId
+    <> pythonStrRepr i.operationId
     <> ", episode_id=EpisodeId(value="
-    <> pyStrRepr (lifecycleIdText i.episodeId)
+    <> pythonStrRepr (lifecycleIdText i.episodeId)
     <> "), turn_id=TurnId(value="
-    <> pyStrRepr (lifecycleIdText i.turnId)
+    <> pythonStrRepr (lifecycleIdText i.turnId)
     <> "), connection="
     <> T.pack (show i.connection)
     <> ", grant_epoch="
@@ -1194,7 +1194,7 @@ instance Show ClaudeOperation where
   show = T.unpack . renderClaudeOperation
 
 renderClaudeOperation :: ClaudeOperation -> Text
-renderClaudeOperation o = "_Operation(operation_id=" <> pyStrRepr o.inv.operationId <> ")"
+renderClaudeOperation o = "_Operation(operation_id=" <> pythonStrRepr o.inv.operationId <> ")"
 
 claudeOperationId :: ClaudeOperation -> Text
 claudeOperationId o = o.inv.operationId
@@ -1441,7 +1441,7 @@ setClaudeReady a installation cli = modifyMVar_ a.readiness (\r -> pure r {insta
 renderClaudeRuntimeAdapter :: ClaudeRuntimeAdapter -> IO Text
 renderClaudeRuntimeAdapter a = do
   ready <- isJust . (.installation) <$> readMVar a.readiness
-  pure ("ClaudeRuntimeAdapter(model=" <> pyStrRepr a.config.model <> ", ready=" <> (if ready then "True" else "False") <> ")")
+  pure ("ClaudeRuntimeAdapter(model=" <> pythonStrRepr a.config.model <> ", ready=" <> (if ready then "True" else "False") <> ")")
 
 -- | @probe(cli_path=...)@: the exact SDK/CLI pair and the SDK's public
 -- protocol, without materialization or model use.
@@ -1540,7 +1540,7 @@ startClaude a inv0 = do
     when (p.projectBinding /= projectBinding a.config.workingDirectory) $
       throwIO (runtimeProtocolError "continuation-project-mismatch")
   coords <- Episode.coordinates inv.attachment
-  let text = pyStrRepr
+  let text = pythonStrRepr
       number = T.pack . show
       optional f = maybe "None" f
       identity =
@@ -1914,7 +1914,7 @@ cliWrapperSource python root cli =
     , "import sys"
     , ""
     , "source = os.environ"
-    , "home = source.get(\"CLAUDE_CONFIG_DIR\", " <> pyStrRepr (T.pack root) <> ")"
+    , "home = source.get(\"CLAUDE_CONFIG_DIR\", " <> pythonStrRepr (T.pack root) <> ")"
     , "environment = {"
     , "    \"HOME\": home,"
     , "    \"PATH\": os.defpath,"
@@ -1929,7 +1929,7 @@ cliWrapperSource python root cli =
     , "):"
     , "    if name in source:"
     , "        environment[name] = source[name]"
-    , "target = " <> pyStrRepr (T.pack cli)
+    , "target = " <> pythonStrRepr (T.pack cli)
     , "os.execve(target, [target, *sys.argv[1:]], environment)"
     ]
 

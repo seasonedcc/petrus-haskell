@@ -60,8 +60,8 @@ import Data.Text.Encoding qualified as TE
 import Petrus.Activity
 import Petrus.Json
 import Petrus.Motus.Dispatch (ActivityAttempt (..), AttemptFailure (..), activityAttempt)
-import Petrus.Motus.Internal.Repr (pyStrList)
-import Petrus.Motus.PythonException (PythonException (..), pythonRepr)
+import Petrus.Json.Python (pythonStrListRepr)
+import Petrus.Motus.PythonException (PythonException (..), pythonExceptionRepr)
 import Petrus.Motus.Transport.ZeroMQ.Errors
 import Petrus.Motus.Transport.ZeroMQ.PythonDecode (pythonJsonLoads)
 
@@ -179,7 +179,7 @@ dedupe = nub
 exact :: Text -> [Text] -> Json -> Either WireError [(Text, Json)]
 exact noun fields = \case
   Object members | sort (nub (map fst members)) == sort fields -> Right members
-  _ -> value (noun <> " requires exactly " <> pyStrList (sort fields))
+  _ -> value (noun <> " requires exactly " <> pythonStrListRepr (sort fields))
 
 member :: Text -> [(Text, Json)] -> Json
 member key members = maybe Null id (lookup key members)
@@ -292,7 +292,7 @@ classifiedFailure = \case
   FailureMessage message -> either value Right (activityFailure (ActivityFailureFields message "ActivityError" Null True Nothing))
   FailureException err ->
     let python = zeromqPythonException err
-     in either value Right (activityFailure (ActivityFailureFields (pythonRepr python) python.className Null True Nothing))
+     in either value Right (activityFailure (ActivityFailureFields (pythonExceptionRepr python) python.className Null True Nothing))
 
 -- | @_faithful(value, noun)@: the value as it round-trips through
 -- @json.dumps(allow_nan=False, ensure_ascii=False)@ and @json.loads@.

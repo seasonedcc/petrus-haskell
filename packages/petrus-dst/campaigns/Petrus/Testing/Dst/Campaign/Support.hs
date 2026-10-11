@@ -44,7 +44,7 @@ import Data.Version (showVersion)
 import Paths_petrus_dst qualified as Paths
 import Petrus.Json (EncodeOptions (..), Json (..), compact, defaultDumps, dumps, lookupMember)
 import Petrus.Testing.Dst.Decode (Parser, Path, failAt, pList, pStr)
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import System.Directory (doesFileExist, getCurrentDirectory, makeAbsolute)
 import System.FilePath (takeDirectory, (</>))
 import System.Info (compilerName, fullCompilerVersion)
@@ -109,7 +109,7 @@ tshow = T.pack . show
 
 -- | Python's @repr()@ of a string.
 pyRepr :: Text -> Text
-pyRepr = pyStrRepr
+pyRepr = pythonStrRepr
 
 -- ---------------------------------------------------------------------------
 -- Strict schemas

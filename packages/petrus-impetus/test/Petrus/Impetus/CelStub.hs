@@ -21,7 +21,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Petrus.Impetus.Binding (CelCompilers (..), Completion)
-import Petrus.Impetus.Internal.Repr (pyList, pyStr)
+import Petrus.Json.Python (pythonListRepr, pythonStrRepr)
 import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..))
 
@@ -41,10 +41,10 @@ dataField name key environment = case Map.findWithDefault [] name environment of
     Null ->
       Left
         ( "CELEvalError(*(\"None with type: '<class 'NoneType'>' does not support field selection\", <class 'TypeError'>, None), tree="
-            <> pyStr (name <> "[0].data." <> key)
+            <> pythonStrRepr (name <> "[0].data." <> key)
             <> ")"
         )
-    _ -> Left ("CELEvalError(no such member " <> pyStr key <> ")")
+    _ -> Left ("CELEvalError(no such member " <> pythonStrRepr key <> ")")
   [] -> Left "CELEvalError(index out of range)"
 
 -- | @name[0].color == null@.
@@ -91,11 +91,11 @@ compileGuardStub declaration at scope = do
     then Right (evaluate . guardEnvironment)
     else
       Left
-        ( "CEL guard " <> pyStr expression <> " on transition " <> netPathText at
+        ( "CEL guard " <> pythonStrRepr expression <> " on transition " <> netPathText at
             <> " references name(s) outside its consume/read input places "
-            <> pyList (map pyStr (sort (Set.toList inScope)))
+            <> pythonListRepr (map pythonStrRepr (sort (Set.toList inScope)))
             <> ": "
-            <> pyList (map pyStr outside)
+            <> pythonListRepr (map pythonStrRepr outside)
         )
 
 -- | Each known completion expression: its free variables and its
@@ -119,15 +119,15 @@ compileCompletionStub declaration places = do
   let unknown = sort [n | n <- free, n `notElem` map netPathText places]
   if null unknown
     then Right evaluate
-    else Left ("CEL completion " <> pyStr expression <> " references unknown place(s): " <> pyList (map pyStr unknown))
+    else Left ("CEL completion " <> pythonStrRepr expression <> " references unknown place(s): " <> pythonListRepr (map pythonStrRepr unknown))
 
 invalid :: Text -> Text -> Either Text ()
 invalid expression kind = case Map.lookup expression parseErrors of
-  Just rendered -> Left ("invalid CEL " <> kind <> " " <> pyStr expression <> ": " <> rendered)
+  Just rendered -> Left ("invalid CEL " <> kind <> " " <> pythonStrRepr expression <> ": " <> rendered)
   Nothing -> Right ()
 
 unknownExpression :: Text -> Either Text a
-unknownExpression expression = Left ("CEL stub: no stub for expression " <> pyStr expression)
+unknownExpression expression = Left ("CEL stub: no stub for expression " <> pythonStrRepr expression)
 
 -- | The stub compilers (inline filters are not used by these specs).
 celStub :: CelCompilers

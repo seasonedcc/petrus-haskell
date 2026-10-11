@@ -34,11 +34,10 @@ module Petrus.Cel.Binding
 import Data.List (nub, sort)
 import Data.Set qualified as Set
 import Data.Text (Text)
-import Data.Text qualified as T
 
 import Petrus.Cel
-import Petrus.Cel.Python (strRepr)
 import Petrus.Cel.Value (pyExc)
+import Petrus.Json.Python (jsonTypeName, pythonStrListRepr, pythonStrRepr)
 import Petrus.Json (Json (..))
 
 -- | A token as the expressions see it: its color (@null@ for a black
@@ -53,11 +52,11 @@ data TokenJson = TokenJson
 parsed :: Text -> Text -> Either Text Program
 parsed kind expression = case compile expression of
   Right program -> Right program
-  Left err -> Left ("invalid CEL " <> kind <> " " <> strRepr expression <> ": " <> parseErrorMessage err)
+  Left err -> Left ("invalid CEL " <> kind <> " " <> pythonStrRepr expression <> ": " <> parseErrorMessage err)
 
 -- | Python's @repr()@ of a sorted list of names.
 namesRepr :: [Text] -> Text
-namesRepr names = "[" <> T.intercalate ", " (map strRepr (sort names)) <> "]"
+namesRepr = pythonStrListRepr . sort
 
 -- | @_structs@: tokens as @[{"color": ..., "data": ...}]@.
 structs :: [TokenJson] -> Json
@@ -73,17 +72,8 @@ compileFilter expression = do
       Left
         ( pyExc
             TypeError
-            ("CEL filters read data fields; token data is " <> pythonTypeName other <> ", not a mapping")
+            ("CEL filters read data fields; token data is " <> jsonTypeName other <> ", not a mapping")
         )
-  where
-    pythonTypeName = \case
-      Null -> "NoneType"
-      Bool _ -> "bool"
-      Int _ -> "int"
-      Float _ -> "float"
-      String _ -> "str"
-      Array _ -> "list"
-      Object _ -> "dict"
 
 -- | @compile_guard@: the expression, its transition (for the refusal
 -- message), and the transition's consume/read input places. The predicate
@@ -95,7 +85,7 @@ compileGuard expression transition places = do
   if not (null unknown)
     then
       Left
-        ( "CEL guard " <> strRepr expression <> " on transition " <> transition
+        ( "CEL guard " <> pythonStrRepr expression <> " on transition " <> transition
             <> " references name(s) outside its consume/read input places "
             <> namesRepr places
             <> ": "
@@ -114,7 +104,7 @@ compileCompletion expression places = do
   let queues = nub places
       unknown = Set.toList (freeVariables program `Set.difference` Set.fromList queues)
   if not (null unknown)
-    then Left ("CEL completion " <> strRepr expression <> " references unknown place(s): " <> namesRepr unknown)
+    then Left ("CEL completion " <> pythonStrRepr expression <> " references unknown place(s): " <> namesRepr unknown)
     else Right $ \queue -> truthy <$> evaluateJson program [(name, structs (queue name)) | name <- queues]
 
 -- | The diagnostic text of a predicate's error: Python's @repr()@ of the

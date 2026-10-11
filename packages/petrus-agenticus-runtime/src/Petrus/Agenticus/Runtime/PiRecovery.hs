@@ -67,7 +67,7 @@ import Foreign.C.Types (CInt (..))
 import Numeric (showHex)
 import Petrus.Json.Repr (pythonReprFloat)
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Sqlite
 import Petrus.Agenticus.Internal.Validate (isBoundedText)
 import Petrus.Agenticus.Runtime.Operation
@@ -595,7 +595,7 @@ instance Parseable RuntimeCleanupDisposition where
 
 enumValue :: (Parseable a) => Text -> Text -> IO a
 enumValue cls value =
-  maybe (throwIO (valueError (pyStrRepr value <> " is not a valid " <> cls))) pure (parseValue value)
+  maybe (throwIO (valueError (pythonStrRepr value <> " is not a valid " <> cls))) pure (parseValue value)
 
 -- ---------------------------------------------------------------------------
 -- Path security

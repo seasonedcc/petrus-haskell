@@ -48,7 +48,7 @@ import Foreign.Ptr (Ptr, plusPtr)
 import Data.Word (Word8)
 import Petrus.Agenticus.Connection.Key (eraseBuffer)
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import System.Directory (createDirectoryIfMissing, doesPathExist)
 import System.FilePath ((</>))
 import System.IO.Error (isAlreadyExistsError, isDoesNotExistError)
@@ -180,7 +180,7 @@ materializeState materializer attachmentId plaintext = do
     Left (failure :: IOException)
       | isAlreadyExistsError failure ->
           securityError
-            ("materialization target for attachment " <> pyStrRepr attachmentId <> " already exists or is a symlink")
+            ("materialization target for attachment " <> pythonStrRepr attachmentId <> " already exists or is a symlink")
       | otherwise -> throwIO failure
     Right fd -> pure fd
   ( do
@@ -283,7 +283,7 @@ openPrivateFile materializer attachmentId mode flags = do
   throwLeft (validateAttachmentId attachmentId)
   assertRoot materializer
   let path = statePath materializer attachmentId
-      subject = "materialization for attachment " <> pyStrRepr attachmentId
+      subject = "materialization for attachment " <> pythonStrRepr attachmentId
   status <- try (getSymbolicLinkStatus path)
   metadata <- case status of
     Left (failure :: IOException)

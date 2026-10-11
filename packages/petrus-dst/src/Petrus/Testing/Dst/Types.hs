@@ -132,6 +132,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json (Json (..))
 import Petrus.Testing.Dst.PyRepr
+import Petrus.Json.Python (pythonStrRepr)
 
 -- ---------------------------------------------------------------------------
 -- Identities and limits
@@ -322,7 +323,7 @@ identityKey i = (i.name, i.version, i.digest)
 -- | Pydantic's @str()@ of an identity: @name='x' version=1 digest='sha256:…'@.
 identityStr :: Identity k -> Text
 identityStr i =
-  "name=" <> pyStrRepr i.name <> " version=" <> T.pack (show i.version) <> " digest=" <> pyStrRepr i.digest
+  "name=" <> pythonStrRepr i.name <> " version=" <> T.pack (show i.version) <> " digest=" <> pythonStrRepr i.digest
 
 -- ---------------------------------------------------------------------------
 -- Commands, faults, budgets

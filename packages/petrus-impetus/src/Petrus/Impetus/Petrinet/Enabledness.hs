@@ -67,7 +67,7 @@ import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Impetus.Internal.Repr
+import Petrus.Json.Python (pythonTupleRepr)
 import Petrus.Impetus.Petrinet.Marking
 import Petrus.Impetus.Petrinet.Schema
 
@@ -133,7 +133,7 @@ reprBinding b =
     <> reprTokens b.delivered
     <> ")"
   where
-    selections xs = pyTuple [pyTuple [T.pack (show p), reprTokens ts] | (p, ts) <- xs]
+    selections xs = pythonTupleRepr [pythonTupleRepr [T.pack (show p), reprTokens ts] | (p, ts) <- xs]
 
 -- ---------------------------------------------------------------------------
 -- Implementations

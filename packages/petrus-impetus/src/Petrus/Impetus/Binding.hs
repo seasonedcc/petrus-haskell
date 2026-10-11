@@ -56,7 +56,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity (ActivityFailure, ActivityInvocation, invocation)
 import Petrus.Impetus.History.Records (DeliveryRegistration (..))
-import Petrus.Impetus.Internal.Repr (pyInt, pyStr)
+import Petrus.Json.Python (pythonIntRepr, pythonStrRepr)
 import Petrus.Impetus.Petrinet.Enabledness (Binding (..), Filter, Guard, bindingTokens)
 import Petrus.Impetus.Petrinet.Marking (Marking, Token (..))
 import Petrus.Impetus.Petrinet.Routing (route)
@@ -156,7 +156,7 @@ noCelCompilers =
     , compileCompletion = \expression _ -> Left (refusal expression)
     }
   where
-    refusal expression = "no CEL compiler is configured for inline expression " <> pyStr (celExpression expression)
+    refusal expression = "no CEL compiler is configured for inline expression " <> pythonStrRepr (celExpression expression)
 
 -- ---------------------------------------------------------------------------
 -- Derived Activity handlers
@@ -177,21 +177,21 @@ derivedActivityHandler net transitionPath activityName parameters resultColor = 
       [m] -> Right m
       _ ->
         Left
-          ( prefix <> "parameter " <> pyStr name <> " (" <> color <> ") requires exactly one matching input arc, found "
-              <> pyInt (length matches)
+          ( prefix <> "parameter " <> pythonStrRepr name <> " (" <> color <> ") requires exactly one matching input arc, found "
+              <> pythonIntRepr (length matches)
           )
     forM_ (find (\(_, i, _, _) -> i == index) acc) $ \(prior, _, _, _) ->
       Left
-        ( prefix <> "parameter " <> pyStr name <> " (" <> color <> ") matches input arc "
+        ( prefix <> "parameter " <> pythonStrRepr name <> " (" <> color <> ") matches input arc "
             <> netPathText a.source
             <> " -> "
             <> netPathText a.target
             <> " already used by parameter "
-            <> pyStr prior
+            <> pythonStrRepr prior
         )
     when (a.weight /= 1) $
       Left
-        ( prefix <> "parameter " <> pyStr name <> " (" <> color <> ") matches weight-" <> pyInt a.weight <> " arc "
+        ( prefix <> "parameter " <> pythonStrRepr name <> " (" <> color <> ") matches weight-" <> pythonIntRepr a.weight <> " arc "
             <> netPathText a.source
             <> " -> "
             <> netPathText a.target
@@ -220,7 +220,7 @@ derivedActivityHandler net transitionPath activityName parameters resultColor = 
   let prepare' b = do
         when (b.transition /= transitionPath) $
           Left
-            ( "cannot prepare Activity " <> pyStr activityName <> " for " <> netPathText b.transition
+            ( "cannot prepare Activity " <> pythonStrRepr activityName <> " for " <> netPathText b.transition
                 <> ": this derived handler belongs to "
                 <> at
             )
@@ -234,15 +234,15 @@ derivedActivityHandler net transitionPath activityName parameters resultColor = 
                     Just (place', ts) | place' == a.source -> length ts
                     _ -> 0
               Left
-                ( "cannot prepare Activity " <> pyStr activityName <> " for " <> netPathText b.transition
+                ( "cannot prepare Activity " <> pythonStrRepr activityName <> " for " <> netPathText b.transition
                     <> ": parameter "
-                    <> pyStr name
+                    <> pythonStrRepr name
                     <> " ("
                     <> maybe "None" id a.color
                     <> ") requires exactly one selected token from "
                     <> netPathText a.source
                     <> ", found "
-                    <> pyInt found
+                    <> pythonIntRepr found
                 )
         Right (invocation activityName (objectOf members))
       project' _ result =
@@ -304,7 +304,7 @@ derivePlan subject net transitionPath parameters = do
     when (a.weight /= 1) $
       Left
         ( "cannot derive " <> subject <> " for " <> at <> ": input arc " <> netPathText a.source <> " has weight "
-            <> pyInt a.weight
+            <> pythonIntRepr a.weight
             <> "; collection parameters are not supported"
         )
   (planned, used) <- foldlM' ([], []) parameters $ \(acc, used) (name, color) -> do
@@ -313,9 +313,9 @@ derivePlan subject net transitionPath parameters = do
       [i] -> Right i
       _ ->
         Left
-          ( "cannot derive " <> subject <> " for " <> at <> ": parameter " <> pyStr name <> " (" <> color
+          ( "cannot derive " <> subject <> " for " <> at <> ": parameter " <> pythonStrRepr name <> " (" <> color
               <> ") requires exactly one matching input arc, found "
-              <> pyInt (length matches)
+              <> pythonIntRepr (length matches)
           )
     let a = arcs !! index
     when (index `elem` used) $
@@ -343,7 +343,7 @@ planArguments subject (TypedPlan transitionPath planned) b = do
       Just (place', [t]) | place' == a.source -> do
         when (t.color /= a.color) $
           Left
-            ( subject <> " for " <> netPathText transitionPath <> " parameter " <> pyStr name <> " requires color "
+            ( subject <> " for " <> netPathText transitionPath <> " parameter " <> pythonStrRepr name <> " requires color "
                 <> maybe "None" id a.color
                 <> ", got "
                 <> maybe "None" id t.color
@@ -354,11 +354,11 @@ planArguments subject (TypedPlan transitionPath planned) b = do
               Just (place', ts) | place' == a.source -> length ts
               _ -> 0
         Left
-          ( subject <> " for " <> netPathText transitionPath <> " parameter " <> pyStr name
+          ( subject <> " for " <> netPathText transitionPath <> " parameter " <> pythonStrRepr name
               <> " requires exactly one selected token from "
               <> netPathText a.source
               <> ", found "
-              <> pyInt found
+              <> pythonIntRepr found
           )
 
 -- | @derive_typed_transform(net, transition, function)@: adapt a typed
@@ -382,7 +382,7 @@ deriveTypedTransform net transitionPath (TypedArgs parameters run) = do
     when (a.weight /= 1) $
       Left
         ( "cannot derive typed transform for " <> at <> ": output arc " <> netPathText a.target <> " has weight "
-            <> pyInt a.weight
+            <> pythonIntRepr a.weight
         )
   Right $ \b arcs -> do
     when (arcs /= outputArcs) $

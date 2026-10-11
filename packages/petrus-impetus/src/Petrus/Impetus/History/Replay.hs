@@ -61,7 +61,8 @@ import Data.Text (Text)
 import Petrus.Impetus.History.Records
 import Petrus.Impetus.Internal.OMap (OMap)
 import Petrus.Impetus.Internal.OMap qualified as OMap
-import Petrus.Impetus.Internal.Repr
+import Petrus.Activity.Number (reprNumber)
+import Petrus.Json.Python (pythonIntRepr, pythonListRepr, pythonStrRepr, pythonTupleRepr)
 import Petrus.Impetus.Petrinet.Marking
 import Petrus.Impetus.Petrinet.Schema (Instant, NetPath, netPathText)
 import Petrus.Impetus.Scope
@@ -137,7 +138,7 @@ applyMovement inferred record qs = case record of
         Left "movement fold requires one inferred queue-entry identity per token"
       let duplicated = filter (`IntSet.member` qs.present) entries
       unless (null duplicated) $
-        Left ("replay divergence: queue-entry identities already present " <> pyList (map pyInt (sort duplicated)))
+        Left ("replay divergence: queue-entry identities already present " <> pythonListRepr (map pythonIntRepr (sort duplicated)))
       let queue = OMap.findWithDefault emptyQueue place qs.places
           queue' = foldl (\q (t, i) -> depositEntry (QueueEntry t (Just instant) (Just i) scope) q) queue (zip tokens entries)
       Right
@@ -178,13 +179,13 @@ scopeCleanup closedScope discarded qs = do
   unless (IntSet.null remaining) $
     Left
       ( "replay divergence: cannot discard queue entries "
-          <> pyList (map pyInt (IntSet.toAscList remaining))
+          <> pythonListRepr (map pythonIntRepr (IntSet.toAscList remaining))
           <> " from lifecycle scope "
           <> reprScope closedScope
       )
   let retainedRepr =
-        pyTuple
-          [ maybe "None" pyInt e.identity
+        pythonTupleRepr
+          [ maybe "None" pythonIntRepr e.identity
           | q <- OMap.elems places'
           , e <- toList (queueEntries q)
           , e.scope == Just closedScope
@@ -206,7 +207,7 @@ stepQueueFold (qs, next, spent) record = do
       let entries = if null recordedEntries then take (length tokens) [next ..] else recordedEntries
           duplicated = filter (`IntSet.member` spent) entries
       unless (null duplicated) $
-        Left ("replay divergence: queue-entry identities were already spent " <> pyList (map pyInt (sort duplicated)))
+        Left ("replay divergence: queue-entry identities were already spent " <> pythonListRepr (map pythonIntRepr (sort duplicated)))
       let advanced = if null entries then next else max next (maximum entries + 1)
       Right (Just entries, advanced, foldr IntSet.insert spent entries)
     Nothing -> Right (Nothing, next, spent)
@@ -283,9 +284,9 @@ replayWatermark records = do
         when (i < w) $
           Left
             ( "replay divergence: instant "
-                <> pyInt i
+                <> reprNumber i
                 <> " steps backwards past "
-                <> pyInt w
+                <> reprNumber w
                 <> ": the single writer appends monotone instants"
             )
       Right (Just i)
@@ -305,7 +306,7 @@ replayInstanceIdentity records = do
             | position /= (0 :: Int) ->
                 Left
                   ( "replay divergence: InstanceCreated at position "
-                      <> pyInt position
+                      <> pythonIntRepr position
                       <> ": the single writer records identity as the first record, exactly once"
                   )
             | otherwise -> Right (Just r)
@@ -323,7 +324,7 @@ replayInstanceIdentity records = do
 batchError :: Int -> Text
 batchError occurrence =
   "replay divergence: correlated delivery registration effect for occurrence "
-    <> pyInt occurrence
+    <> pythonIntRepr occurrence
     <> " does not belong to a contiguous writer-valid completion batch"
 
 -- | Require every firing-correlated registration effect to end in its
@@ -394,7 +395,7 @@ applyRegistration initialBatch initialInstant record armed = case record of
     when (Set.member r.key keys) $
       Left
         ( "replay divergence: delivery registration "
-            <> pyStr r.key
+            <> pythonStrRepr r.key
             <> " on "
             <> netPathText r.source
             <> " opened while armed"
@@ -403,7 +404,7 @@ applyRegistration initialBatch initialInstant record armed = case record of
       unless initialBatch $
         Left
           ( "replay divergence: uncorrelated delivery registration "
-              <> pyStr r.key
+              <> pythonStrRepr r.key
               <> " on "
               <> netPathText r.source
               <> " opened outside the initial construction batch; the single writer emits an uncorrelated open only in the initial construction batch"
@@ -413,26 +414,26 @@ applyRegistration initialBatch initialInstant record armed = case record of
           ( "replay divergence: initial delivery registration on "
               <> netPathText r.source
               <> " uses key "
-              <> pyStr r.key
+              <> pythonStrRepr r.key
               <> "; the single writer uses only 'default'"
           )
       when (r.instant /= initialInstant) $
         Left
           ( "replay divergence: initial delivery registration "
-              <> pyStr r.key
+              <> pythonStrRepr r.key
               <> " on "
               <> netPathText r.source
               <> " uses instant "
-              <> pyInt r.instant
+              <> reprNumber r.instant
               <> ", not construction instant "
-              <> pyInt initialInstant
+              <> reprNumber initialInstant
           )
     Right (OMap.adjust (Set.insert r.key) r.source armedWithSource)
   RDeliveryRegistrationClosed r -> do
     unless (Set.member r.key (OMap.findWithDefault Set.empty r.source armed)) $
       Left
         ( "replay divergence: delivery registration "
-            <> pyStr r.key
+            <> pythonStrRepr r.key
             <> " on "
             <> netPathText r.source
             <> " closed while not armed"
@@ -479,13 +480,13 @@ replayAcceptedIdentities records = snd <$> registrationFold rs Map.empty hook
     hook position record armed accepted = case deliveryFact record of
       Nothing -> Right accepted
       Just (identity, tokens) -> do
-        validateDeliveryTokens tokens ("replay divergence: " <> recordName record <> " identity " <> pyStr identity)
+        validateDeliveryTokens tokens ("replay divergence: " <> recordName record <> " identity " <> pythonStrRepr identity)
         case record of
           RExternalEventDelivered r -> do
             when (Set.null (OMap.findWithDefault Set.empty r.source armed)) $
               Left
                 ( "replay divergence: accepted delivery identity "
-                    <> pyStr r.identity
+                    <> pythonStrRepr r.identity
                     <> " source "
                     <> netPathText r.source
                     <> " had no armed delivery registration"
@@ -495,7 +496,7 @@ replayAcceptedIdentities records = snd <$> registrationFold rs Map.empty hook
             when (following /= Just expected) $
               Left
                 ( "replay divergence: accepted delivery identity "
-                    <> pyStr r.identity
+                    <> pythonStrRepr r.identity
                     <> " requires an immediately following matching FiringBegun "
                     <> reprRecord expected
                     <> "; found "
@@ -505,7 +506,7 @@ replayAcceptedIdentities records = snd <$> registrationFold rs Map.empty hook
         when (Map.member identity accepted) $
           Left
             ( "replay divergence: delivery identity "
-                <> pyStr identity
+                <> pythonStrRepr identity
                 <> " accepted twice — the single writer accepts an identity once and answers redelivery from that accepted fact"
             )
         Right (Map.insert identity record accepted)
@@ -576,7 +577,7 @@ replayCancellationPositions records = foldM step IntMap.empty (zip [1 ..] (toLis
             _ -> []
       foldM
         ( \m o -> do
-            when (IntMap.member o m) $ Left ("replay divergence: firing occurrence " <> pyInt o <> " cancelled twice")
+            when (IntMap.member o m) $ Left ("replay divergence: firing occurrence " <> pythonIntRepr o <> " cancelled twice")
             Right (IntMap.insert o position m)
         )
         positions

@@ -155,7 +155,7 @@ import Petrus.Agenticus.Hands.Contract
 import Petrus.Agenticus.Hands.Gateway (HandsGateway, gatewayAttachmentEpoch, gatewayAttachmentId, gatewayEpisodeId)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant, permits)
-import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Validate (sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor, ProgramOwnership (..), agentProgramDescriptor, continuationRequirement)
 import Petrus.Agenticus.Runtime.Installation
@@ -309,7 +309,7 @@ data PiApplicationStepPayloadV1 = PiApplicationStepPayloadV1
   deriving stock (Eq)
 
 instance Show PiApplicationStepPayloadV1 where
-  show p = "PiApplicationStepPayloadV1(profile=" <> T.unpack (pyStrRepr p.profile) <> ", schema_version=1)"
+  show p = "PiApplicationStepPayloadV1(profile=" <> T.unpack (pythonStrRepr p.profile) <> ", schema_version=1)"
 
 mkPiApplicationStepPayloadV1 :: Text -> [ToolResult] -> Text -> Either AgenticusError PiApplicationStepPayloadV1
 mkPiApplicationStepPayloadV1 profile results finalText = do
@@ -401,13 +401,13 @@ piApplicationRuntimeConfig provider model profile workingDirectory runtimeRoot =
 renderPiApplicationRuntimeConfig :: PiApplicationRuntimeConfig -> Text
 renderPiApplicationRuntimeConfig c =
   "PiApplicationRuntimeConfig(provider="
-    <> pyStrRepr c.provider
+    <> pythonStrRepr c.provider
     <> ", model="
-    <> pyStrRepr c.model
+    <> pythonStrRepr c.model
     <> ", profile="
-    <> pyStrRepr c.profile
+    <> pythonStrRepr c.profile
     <> ", host_id="
-    <> pyStrRepr c.hostId
+    <> pythonStrRepr c.hostId
     <> ", credential_ttl="
     <> T.pack (J.pythonFloatRepr c.credentialTtl)
     <> ", wall_timeout="
@@ -497,11 +497,11 @@ instance Show PiApplicationRuntimeInvocation where
 renderPiApplicationRuntimeInvocation :: PiApplicationRuntimeInvocation -> Text
 renderPiApplicationRuntimeInvocation i =
   "PiApplicationRuntimeInvocation(operation_id="
-    <> pyStrRepr i.operationId
+    <> pythonStrRepr i.operationId
     <> ", episode_id=EpisodeId(value="
-    <> pyStrRepr (lifecycleIdText i.episodeId)
+    <> pythonStrRepr (lifecycleIdText i.episodeId)
     <> "), turn_id=TurnId(value="
-    <> pyStrRepr (lifecycleIdText i.turnId)
+    <> pythonStrRepr (lifecycleIdText i.turnId)
     <> "), connection="
     <> T.pack (show i.connection)
     <> ", grant_epoch="
@@ -934,7 +934,7 @@ instance Eq PiApplicationOperation where
   a == b = a.result == b.result
 
 instance Show PiApplicationOperation where
-  show o = "_Operation(operation_id=" <> T.unpack (pyStrRepr o.inv.operationId) <> ")"
+  show o = "_Operation(operation_id=" <> T.unpack (pythonStrRepr o.inv.operationId) <> ")"
 
 applicationOperationId :: PiApplicationOperation -> Text
 applicationOperationId o = o.inv.operationId
@@ -1155,11 +1155,11 @@ renderPiApplicationRuntimeAdapter a = do
   ready <- isJust . (.installation) <$> readMVar a.runtime
   pure $
     "PiApplicationRuntimeAdapter(profile="
-      <> pyStrRepr config.profile
+      <> pythonStrRepr config.profile
       <> ", provider="
-      <> pyStrRepr config.provider
+      <> pythonStrRepr config.provider
       <> ", model="
-      <> pyStrRepr config.model
+      <> pythonStrRepr config.model
       <> ", ready="
       <> (if ready then "True" else "False")
       <> ")"
@@ -1357,29 +1357,29 @@ startApplication a inv0 = do
   grant <- currentGrant (Episode.grants inv.attachment) >>= maybe (throwAgenticus (OtherError "AssertionError") "") pure
   let methods = sort (map toolMethodText (Set.toList grant.capabilities))
       methodsRepr = case methods of
-        [single] -> "(" <> pyStrRepr single <> ",)"
-        _ -> "(" <> T.intercalate ", " (map pyStrRepr methods) <> ")"
+        [single] -> "(" <> pythonStrRepr single <> ",)"
+        _ -> "(" <> T.intercalate ", " (map pythonStrRepr methods) <> ")"
       identity =
         "("
           <> T.intercalate
             ", "
-            [ pyStrRepr (lifecycleIdText inv.episodeId)
-            , pyStrRepr (lifecycleIdText inv.turnId)
-            , pyStrRepr (sha256Hex (TE.encodeUtf8 inv.observation))
-            , pyStrRepr (sha256Hex transcript)
-            , pyStrRepr inv.connection.identity.connectionId
-            , pyStrRepr inv.connection.identity.provider
-            , pyStrRepr inv.connection.identity.profile
+            [ pythonStrRepr (lifecycleIdText inv.episodeId)
+            , pythonStrRepr (lifecycleIdText inv.turnId)
+            , pythonStrRepr (sha256Hex (TE.encodeUtf8 inv.observation))
+            , pythonStrRepr (sha256Hex transcript)
+            , pythonStrRepr inv.connection.identity.connectionId
+            , pythonStrRepr inv.connection.identity.provider
+            , pythonStrRepr inv.connection.identity.profile
             , T.pack (show inv.connection.authorityEpoch)
             , T.pack (show inv.connection.stateVersion)
-            , pyStrRepr coords.attachmentId
+            , pythonStrRepr coords.attachmentId
             , T.pack (show coords.attachmentEpoch)
             , T.pack (show inv.grantEpoch)
             , methodsRepr
-            , pyStrRepr config.profile
-            , pyStrRepr config.provider
-            , pyStrRepr config.model
-            , pyStrRepr binding
+            , pythonStrRepr config.profile
+            , pythonStrRepr config.provider
+            , pythonStrRepr config.model
+            , pythonStrRepr binding
             ]
           <> ")"
       key = sha256Hex (TE.encodeUtf8 identity)

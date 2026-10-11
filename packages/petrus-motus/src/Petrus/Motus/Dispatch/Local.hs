@@ -133,8 +133,8 @@ import Petrus.Motus.Dispatch
   , dispositionText
   )
 import Petrus.Motus.Dispatch qualified as Port
-import Petrus.Motus.Internal.Repr (pyRepr, pyStr, uuid4)
-import Petrus.Motus.PythonException (PythonException (..), pythonException, pythonRepr)
+import Petrus.Json.Python (pythonRepr, pythonStrRepr, uuid4)
+import Petrus.Motus.PythonException (PythonException (..), pythonException, pythonExceptionRepr)
 import Petrus.Sqlite.Connection (Connection)
 import Petrus.Sqlite.Connection qualified as C
 import Petrus.Sqlite.Pool (Pool, closePool, newPool, poolPath, withPooledConnection)
@@ -692,7 +692,7 @@ fail w attempt report = do
     FailureMessage message -> orRefuse (activityFailure (ActivityFailureFields message "ActivityError" Null False Nothing))
     FailureException err ->
       let python = pythonException err
-       in orRefuse (activityFailure (ActivityFailureFields (pythonRepr python) python.className Null True Nothing))
+       in orRefuse (activityFailure (ActivityFailureFields (pythonExceptionRepr python) python.className Null True Nothing))
   let outcome = failedOutcome failure
   disposition <- withTransaction w.connections $ \db -> do
     acknowledged <- acknowledgeTerminalRetry db attempt outcome
@@ -889,7 +889,7 @@ attemptKey attempt =
       , occurrence <= toInteger (maxBound :: Int)
       , attempt.instance' == Just inst ->
           pure (inst, fromInteger occurrence)
-    _ -> dispatchError ("invalid Local Activity attempt identity " <> pyStr attempt.attemptId)
+    _ -> dispatchError ("invalid Local Activity attempt identity " <> pythonStrRepr attempt.attemptId)
 
 -- | @_terminalize_exhausted@: the lease sweep every claim and wait runs.
 -- An expired retryable lease becomes delayed work (backoff anchored at the
@@ -1213,7 +1213,7 @@ decodeInvocation text = either (Left . ("corrupt durable Activity invocation: " 
   value <- either (Left . T.pack) Right (parseJson pythonLoads (TE.encodeUtf8 text))
   either (Left . refusal) Right (invocationFromJson value)
   where
-    refusal problem = flip fromMaybe (invocationRefusal pyRepr problem) $ case problem of
+    refusal problem = flip fromMaybe (invocationRefusal pythonRepr problem) $ case problem of
       InvocationFieldsNotExact -> "expected exact fields ['activity', 'correlation', 'idempotency', 'input', 'policy']"
       PolicyFieldsNotExact -> "policy expected exact legacy or current fields"
       _ -> "policy fields must be integers"
@@ -1234,7 +1234,7 @@ failureFromMembers :: [(Text, Json)] -> Either Text ActivityFailure
 failureFromMembers members = do
   forM_ members $ \(key, _) ->
     unless (key `elem` ["error", "kind", "details", "retryable", "retry_after"]) $
-      Left ("ActivityFailure.__init__() got an unexpected keyword argument " <> pyStr key)
+      Left ("ActivityFailure.__init__() got an unexpected keyword argument " <> pythonStrRepr key)
   let errorText = case lookup "error" members of
         Just (String e) -> e
         _ -> ""
@@ -1314,7 +1314,7 @@ pyInt text =
       groups = T.splitOn "_" digits
    in if not (T.null digits) && all (\g -> not (T.null g) && T.all isDigit g) groups
         then Right (sign * read (T.unpack (T.concat groups)))
-        else Left ("invalid literal for int() with base 10: " <> pyStr text)
+        else Left ("invalid literal for int() with base 10: " <> pythonStrRepr text)
 
 orRefuse :: Either Text a -> IO a
 orRefuse = either dispatchError pure
@@ -1358,9 +1358,9 @@ reprRows rows = "[" <> T.intercalate ", " (map tuple rows) <> "]"
       items -> "(" <> T.intercalate ", " (map value items) <> ")"
     value = \case
       SQLInteger i -> showT i
-      SQLFloat d -> pyRepr (Float d)
-      SQLText t -> pyStr t
-      SQLBlob b -> "b" <> pyStr (TE.decodeLatin1 b)
+      SQLFloat d -> pythonRepr (Float d)
+      SQLText t -> pythonStrRepr t
+      SQLBlob b -> "b" <> pythonStrRepr (TE.decodeLatin1 b)
       SQLNull -> "None"
 
 -- | The integer value of a column, if it holds one.

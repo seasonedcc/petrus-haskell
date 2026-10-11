@@ -136,7 +136,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Motus.Execution.Error
-import Petrus.Motus.Execution.Internal.PyText (pyIsSpace)
+import Petrus.Json.Python (isPythonSpace)
 
 -- ---------------------------------------------------------------------------
 -- Bounds
@@ -223,8 +223,8 @@ cleanupDispositionText = \case
 checkText :: Text -> Text -> Either ExecutionError Text
 checkText name value
   | T.null value
-      || T.any pyIsSpace (T.take 1 value)
-      || T.any pyIsSpace (T.takeEnd 1 value)
+      || T.any isPythonSpace (T.take 1 value)
+      || T.any isPythonSpace (T.takeEnd 1 value)
       || T.any (\c -> ord c < 32) value =
       Left (valueError (name <> " must be a non-empty trimmed string without control characters"))
   | otherwise = Right value

@@ -16,8 +16,7 @@ module Petrus.Impetus.Scope
 
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Impetus.Internal.Repr (pyStr)
-
+import Petrus.Json.Python (pythonStrRepr)
 -- | One exact named lifecycle generation. Construct with 'lifecycleScope':
 -- the name is non-empty without NUL and the generation is positive, the same
 -- rules the reference enforces in @__post_init__@.
@@ -27,7 +26,7 @@ data LifecycleScope = LifecycleScope Text Integer
 instance Show LifecycleScope where
   -- Mirrors the reference's dataclass repr, which History diagnostics embed.
   show (LifecycleScope name generation) =
-    "LifecycleScope(name=" ++ T.unpack (pyStr name) ++ ", generation=" ++ show generation ++ ")"
+    "LifecycleScope(name=" ++ T.unpack (pythonStrRepr name) ++ ", generation=" ++ show generation ++ ")"
 
 -- | Build a scope, refusing what the reference refuses.
 lifecycleScope :: Text -> Integer -> Either Text LifecycleScope

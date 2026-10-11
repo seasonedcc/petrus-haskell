@@ -12,6 +12,7 @@ import Data.Text qualified as T
 import Data.Word (Word64, Word8)
 import Petrus.Http.Core.Url
 import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json.Python (decodeUtf8Replace)
 import Petrus.TestSupport.Python (PythonResult (..), runPython)
 import Test.Hspec
 import Text.Printf (printf)

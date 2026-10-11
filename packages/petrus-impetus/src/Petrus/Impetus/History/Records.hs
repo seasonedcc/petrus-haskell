@@ -63,7 +63,7 @@ import Data.IntSet qualified as IntSet
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity
-import Petrus.Impetus.Internal.Repr
+import Petrus.Json.Python (pythonIntRepr, pythonOptionalStrRepr, pythonRepr, pythonStrRepr, pythonTupleRepr)
 import Petrus.Impetus.Petrinet.Marking (Token (..), reprTokens)
 import Petrus.Impetus.Petrinet.Schema (Instant, NetPath, netPathText)
 import Petrus.Impetus.Scope
@@ -505,27 +505,27 @@ reprFieldValue = \case
   FPath p -> T.pack (show p)
   FTokens ts -> reprTokens ts
   FNumber i -> reprNumber i
-  FOccurrence o -> maybe "None" pyInt o
-  FText t -> pyStr t
-  FOptText t -> pyOptStr t
-  FIds is -> pyTuple (map pyInt is)
+  FOccurrence o -> maybe "None" pythonIntRepr o
+  FText t -> pythonStrRepr t
+  FOptText t -> pythonOptionalStrRepr t
+  FIds is -> pythonTupleRepr (map pythonIntRepr is)
   FOptScope s -> maybe "None" reprScope s
   FScope s -> reprScope s
   FQuarantine (QuarantineGeneration s) -> reprScope s
-  FQuarantine (QuarantineName n) -> pyStr n
-  FJson j -> pyJson j
+  FQuarantine (QuarantineName n) -> pythonStrRepr n
+  FJson j -> pythonRepr j
   FPolicy p -> reprPolicy p
   FBool b -> if b then "True" else "False"
-  FOptNumber n -> maybe "None" (pyJson . numberJson) n
+  FOptNumber n -> maybe "None" (pythonRepr . numberJson) n
 
 reprPolicy :: ExecutionPolicy -> Text
 reprPolicy policy =
   let f = policyFields policy
-      num = pyJson . numberJson
+      num = pythonRepr . numberJson
    in "ExecutionPolicy(attempts="
-        <> pyInt f.attempts
+        <> pythonIntRepr f.attempts
         <> ", heartbeat_timeout="
-        <> pyInt f.heartbeatTimeout
+        <> pythonIntRepr f.heartbeatTimeout
         <> ", initial_interval="
         <> num f.initialInterval
         <> ", coefficient="
@@ -597,11 +597,11 @@ validatePositiveIds values noun = do
   when (IntSet.size (IntSet.fromList values) /= length values) $ Left (noun <> " must be unique")
 
 validateOccurrence :: Int -> Text -> Either Text ()
-validateOccurrence value noun = when (value < 1) $ Left (noun <> " must be a positive integer, got " <> pyInt value)
+validateOccurrence value noun = when (value < 1) $ Left (noun <> " must be a positive integer, got " <> pythonIntRepr value)
 
 validateDeliveryIdentity :: Text -> Text -> Either Text ()
 validateDeliveryIdentity identity record =
-  when (T.null identity) $ Left (record <> " requires an exact non-empty string identity, got " <> pyStr identity)
+  when (T.null identity) $ Left (record <> " requires an exact non-empty string identity, got " <> pythonStrRepr identity)
 
 -- | The delivery records' token rules: a non-empty tuple of tokens whose
 -- data is strict JSON (finite numbers).
@@ -610,7 +610,7 @@ validateDeliveryTokens tokens record = do
   when (null tokens) $ Left (record <> " tokens must be a non-empty tuple of canonical Tokens")
   forM_ (zip [0 :: Int ..] tokens) $ \(position, t) ->
     unless (allFinite t.payload) $
-      Left (record <> " token data at position " <> pyInt position <> " must be strict JSON")
+      Left (record <> " token data at position " <> pythonIntRepr position <> " must be strict JSON")
 
 -- | The reference's constructor (@__post_init__@) rules for one record.
 recordInvariants :: Record -> Either Text ()
@@ -647,9 +647,9 @@ recordInvariants = \case
     when (r.instant < r.maturationInstant) $
       Left
         ( "timer maturation observed at "
-            <> pyInt r.instant
+            <> reprNumber r.instant
             <> ", before its maturation instant "
-            <> pyInt r.maturationInstant
+            <> reprNumber r.maturationInstant
             <> ": a wakeup cannot precede what it observes"
         )
   RFiringBegun r -> validateOccurrence r.occurrence "FiringBegun occurrence"
@@ -672,7 +672,7 @@ recordInvariants = \case
   where
     registration noun k o = do
       when (T.null k) $
-        Left (noun <> " requires a non-empty string key of the exact built-in type, got " <> pyStr k)
+        Left (noun <> " requires a non-empty string key of the exact built-in type, got " <> pythonStrRepr k)
       forM_ o $ \n -> validateOccurrence n (noun <> " occurrence")
 
 -- | The replay door's field-by-field rules
@@ -698,7 +698,7 @@ recordFieldRules r = mapM_ (uncurry rule) (recordFields r)
       FTokens ts | delivery -> validateDeliveryTokens ts typeName
       FIds is -> validatePositiveIds is (noun n)
       FText t
-        | n == "instance" -> when (T.null t) $ Left ("Instance identity must be a non-empty string, got " <> pyStr t)
+        | n == "instance" -> when (T.null t) $ Left ("Instance identity must be a non-empty string, got " <> pythonStrRepr t)
         | n == "identity" -> validateDeliveryIdentity t typeName
         | n == "error", RFiringFailed _ <- r ->
             when (T.null t || T.length t > 4096) $

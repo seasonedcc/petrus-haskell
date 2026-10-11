@@ -22,7 +22,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Impetus.Internal.OMap qualified as OMap
-import Petrus.Impetus.Internal.Repr (pyStr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Impetus.Petrinet.Marking (Marking, counts)
 import Petrus.Impetus.Petrinet.Schema
 import System.Directory (findExecutable)
@@ -303,7 +303,7 @@ render net target marking options = do
       suffix = map toLower extension
       formats = [(".svg", "svg"), (".png", "png"), (".pdf", "pdf")] :: [(String, String)]
   if suffix /= ".dot" && suffix `notElem` map fst formats
-    then pure (Left ("unsupported Graphviz output suffix " <> pyStr (T.pack extension) <> "; expected .dot, .svg, .png, or .pdf"))
+    then pure (Left ("unsupported Graphviz output suffix " <> pythonStrRepr (T.pack extension) <> "; expected .dot, .svg, .png, or .pdf"))
     else case toDot net marking options of
       Left err -> pure (Left err)
       Right source

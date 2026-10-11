@@ -64,7 +64,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Impetus.Internal.OMap (OMap)
 import Petrus.Impetus.Internal.OMap qualified as OMap
-import Petrus.Impetus.Internal.Repr
+import Petrus.Activity.Number (reprNumber)
+import Petrus.Json.Python (pythonIntRepr, pythonRepr, pythonStrRepr, pythonTupleRepr)
 import Petrus.Impetus.Petrinet.Schema (Color, Instant, NetPath, netPathText)
 import Petrus.Impetus.Scope (LifecycleScope)
 import Petrus.Json (Json (..))
@@ -103,11 +104,11 @@ isBlack t = isNothing t.color
 reprToken :: Token -> Text
 reprToken t = case t.color of
   Nothing -> "Token.black()"
-  Just c -> "Token(" <> pyStr c <> ", " <> pyJson t.payload <> ")"
+  Just c -> "Token(" <> pythonStrRepr c <> ", " <> pythonRepr t.payload <> ")"
 
 -- | @repr@ of a tuple of tokens.
 reprTokens :: [Token] -> Text
-reprTokens = pyTuple . map reprToken
+reprTokens = pythonTupleRepr . map reprToken
 
 -- ---------------------------------------------------------------------------
 -- Token queues
@@ -145,7 +146,7 @@ instance NFData TokenQueue where
 reprQueue :: TokenQueue -> Text
 reprQueue q =
   "TokenQueue(["
-    <> T.intercalate ", " ["(" <> reprToken e.token <> ", " <> maybe "None" pyInt e.instant <> ")" | e <- toList (queueEntries q)]
+    <> T.intercalate ", " ["(" <> reprToken e.token <> ", " <> maybe "None" reprNumber e.instant <> ")" | e <- toList (queueEntries q)]
     <> "])"
 
 emptyQueue :: TokenQueue
@@ -241,7 +242,7 @@ discardIdentities identities (TokenQueue s) = TokenQueue <$> go s identities
   where
     go remaining [] = Right remaining
     go remaining (i : rest) = case Seq.findIndexL (\e -> e.identity == Just i) remaining of
-      Nothing -> Left ("cannot discard queue entry " <> pyInt i <> ": identity not present")
+      Nothing -> Left ("cannot discard queue entry " <> pythonIntRepr i <> ": identity not present")
       Just position -> go (Seq.deleteAt position remaining) rest
 
 -- | The queue positions of the tokens the judgment accepts, front-to-back:
@@ -251,7 +252,7 @@ discardIdentities identities (TokenQueue s) = TokenQueue <$> go s identities
 -- collected. A non-positive limit is refused, as in the reference.
 admittedBy :: Monad m => (Token -> m Bool) -> Maybe Int -> TokenQueue -> m (Either Text [Int])
 admittedBy admits limit (TokenQueue s) = case limit of
-  Just n | n < 1 -> pure (Left ("admitted_by requires a positive limit (or None for all), got " <> pyInt n))
+  Just n | n < 1 -> pure (Left ("admitted_by requires a positive limit (or None for all), got " <> pythonIntRepr n))
   _ -> Right . reverse <$> scan 0 0 [] (toList s)
   where
     scan _ _ acc [] = pure acc
@@ -276,7 +277,7 @@ newtype Marking = Marking (OMap NetPath (Seq Token))
 
 instance Show Marking where
   show (Marking m) =
-    T.unpack ("Marking({" <> T.intercalate ", " [netPathText p <> ": " <> pyInt (Seq.length q) | (p, q) <- OMap.toList m] <> "})")
+    T.unpack ("Marking({" <> T.intercalate ", " [netPathText p <> ": " <> pythonIntRepr (Seq.length q) | (p, q) <- OMap.toList m] <> "})")
 
 instance NFData Marking where
   rnf (Marking m) = rnf m

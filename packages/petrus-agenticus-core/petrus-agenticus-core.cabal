@@ -49,7 +49,6 @@ library
                     Petrus.Agenticus.Catalog.Result
                     Petrus.Agenticus.Catalog.Resolution
                     Petrus.Agenticus.Runtime.Profiles
-                    Petrus.Agenticus.Internal.PyRepr
                     Petrus.Agenticus.Internal.Sqlite
                     Petrus.Agenticus.Connection.Key
                     Petrus.Agenticus.Connection.Materialization

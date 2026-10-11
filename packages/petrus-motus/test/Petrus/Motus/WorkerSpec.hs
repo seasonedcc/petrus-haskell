@@ -18,7 +18,7 @@ import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch qualified as D
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Dispatch.LocalSupport (withScratch)
-import Petrus.Motus.Internal.Repr (exceptionMessage)
+import Petrus.Motus.PythonException (exceptionMessage)
 import Petrus.Motus.PythonException qualified as Python
 import Petrus.Motus.Worker
 import Petrus.Motus.WorkerSupport

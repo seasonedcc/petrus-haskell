@@ -62,7 +62,8 @@ import Petrus.Motus.Dispatch.Local
   , openLocalWorkerDispatchOn
   )
 import Petrus.Motus.Dispatch.Local qualified as Local
-import Petrus.Motus.Internal.Repr (exceptionMessage, pyRepr, pyStr, pyStrList)
+import Petrus.Motus.PythonException (exceptionMessage)
+import Petrus.Json.Python (pythonRepr, pythonStrListRepr, pythonStrRepr)
 import Petrus.Motus.PythonException (PythonException (..))
 import Petrus.Motus.Transport.ZeroMQ.Curve
 import Petrus.Motus.Transport.ZeroMQ.Errors
@@ -143,8 +144,8 @@ localFactoryOn connections allowed = do
     Local.toWorkerDispatch <$> openLocalWorkerDispatchOn connections defaultLocalWorkerOptions {workerQueues = requested, workerId = Just workerId}
   where
     tupleRepr = \case
-      [single] -> "(" <> pyStr single <> ",)"
-      items -> "(" <> T.intercalate ", " (map pyStr items) <> ")"
+      [single] -> "(" <> pythonStrRepr single <> ",)"
+      items -> "(" <> T.intercalate ", " (map pythonStrRepr items) <> ")"
 
 initialize :: Text -> ProviderFactory -> IO () -> ServerOptions -> IO ZeroMQDispatchServer
 initialize endpoint' factory releaseFactory options = do
@@ -427,7 +428,7 @@ parseRequest limit frames = either (Left . wireErrorMessage) Right $ do
   let keys = map fst request
       field key = maybe Null id (lookup key request)
   unless (all (`elem` keys) baseFields) $
-    Left (WireValue ("request requires base fields " <> pyStrList (sort baseFields)))
+    Left (WireValue ("request requires base fields " <> pythonStrListRepr (sort baseFields)))
   _ <- wireName "request id" (field "request_id")
   _ <- wireName "client id" (field "client_id")
   _ <- wireName "worker id" (field "worker_id")
@@ -437,7 +438,7 @@ parseRequest limit frames = either (Left . wireErrorMessage) Right $ do
   mapM_ (wireName "queue") queues
   case field "version" of
     Int v | v == protocolVersion -> Right request
-    other -> Left (WireValue ("unsupported ZeroMQ Dispatch protocol version " <> pyRepr other))
+    other -> Left (WireValue ("unsupported ZeroMQ Dispatch protocol version " <> pythonRepr other))
 
 -- | @_decode_operation(request, base)@: a @ValueError@ is a protocol
 -- error; the failure constructor's @TypeError@ is not.
@@ -451,7 +452,7 @@ decodeOperation request = case decode of
     field key = maybe Null id (lookup key request)
     requireFields fields operation =
       unless (sort keys == sort fields) $
-        Left (WireValue (operation <> " request requires exactly " <> pyStrList (sort fields)))
+        Left (WireValue (operation <> " request requires exactly " <> pythonStrListRepr (sort fields)))
     decode = do
       operation <- wireName "operation" (field "operation")
       case operation of
@@ -479,7 +480,7 @@ decodeOperation request = case decode of
                 either (Left . WireValue) Right (activityFailure (ActivityFailureFields message "ActivityError" Null True Nothing))
           attempt <- decodeAttempt (field "attempt")
           pure (Fail attempt (FailureClassified failure))
-        other -> Left (WireValue ("unknown Worker Dispatch operation " <> pyStr other))
+        other -> Left (WireValue ("unknown Worker Dispatch operation " <> pythonStrRepr other))
 
 -- | @_operate(operation, arguments, provider)@.
 operate :: Bool -> WorkerDispatch -> Operation -> IO Json

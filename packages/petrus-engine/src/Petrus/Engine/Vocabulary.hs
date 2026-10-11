@@ -49,7 +49,7 @@ import Data.IORef
 import Data.List (find)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Impetus.Internal.Repr (pyStr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Impetus.Instance
   ( DeliveryScope (..)
   , FiringOutcome
@@ -61,7 +61,7 @@ import Petrus.Impetus.Petrinet (Binding (..), Instant, NetPath, Selection, Token
 import Petrus.Impetus.Selection (SelectionPolicy, defaultPipeline)
 import Petrus.Json (exactEq)
 import Petrus.Motus.Dispatch (ActivityOutcome)
-import Petrus.Motus.PythonException (knownPythonException, pythonRepr)
+import Petrus.Motus.PythonException (knownPythonException, pythonExceptionRepr)
 
 -- ---------------------------------------------------------------------------
 -- Errors
@@ -96,14 +96,14 @@ engineErrorMessage = \case
 failureText :: SomeException -> Text
 failureText e = case fromException e of
   Just engineError -> T.take 4096 $ case engineError of
-    EngineValueError m -> "ValueError(" <> pyStr m <> ")"
-    EngineTypeError m -> "TypeError(" <> pyStr m <> ")"
-    EngineRuntimeError m -> "RuntimeError(" <> pyStr m <> ")"
+    EngineValueError m -> "ValueError(" <> pythonStrRepr m <> ")"
+    EngineTypeError m -> "TypeError(" <> pythonStrRepr m <> ")"
+    EngineRuntimeError m -> "RuntimeError(" <> pythonStrRepr m <> ")"
     EngineHandlerFailed m -> if T.null m then "Exception" else m
   -- A Dispatch's or Worker's own exception is spelled by its Python class
   -- (a 'DispatchError' is the reference's @ValueError@); any other is user
   -- code's, spelled by the kernel.
-  Nothing -> maybe (exceptionFailureText e) (T.take 4096 . pythonRepr) (knownPythonException [] e)
+  Nothing -> maybe (exceptionFailureText e) (T.take 4096 . pythonExceptionRepr) (knownPythonException [] e)
 
 -- | The Python class the reference reports (@type(error).__name__@, a
 -- span's @error_type@) for a failure the Engine raises in the reference's
@@ -115,7 +115,7 @@ failureText e = case fromException e of
 engineErrorType :: SomeException -> Maybe Text
 engineErrorType e = case (fromException e, knownPythonException [] e, fromException e) of
   (Just (_ :: EngineError), _, _) -> Just (failureClass (failureText e))
-  (_, Just known, _) -> Just (failureClass (pythonRepr known))
+  (_, Just known, _) -> Just (failureClass (pythonExceptionRepr known))
   (_, _, Just (python :: PythonException)) -> Just (failureClass (exceptionFailureText (toException python)))
   _ -> Nothing
 

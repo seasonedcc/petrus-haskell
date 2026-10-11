@@ -111,9 +111,24 @@ profiles of `loadsProfiles`:
   values; the exact text of `json.loads` refusals (`JSONDecodeError` with
   line, column and character, and the digit limit), plain and with a
   duplicate-refusing `object_pairs_hook` and refusing `parse_constant` (hook
-  order); strict UTF-8 `UnicodeDecodeError` texts; `json.detect_encoding`
+  order); strict UTF-8 `UnicodeDecodeError` texts; `bytes.decode("utf-8", "replace")`;
+  `json.detect_encoding`
   and the `surrogatepass` decoding `json.loads(bytes)` applies, in every
   encoding, intact and damaged; and `uuid.uuid4()`'s spelling.
+- **Retired copies.** Packages that carried their own `repr(str)` now call
+  this layer, and the copies that had drifted are fixed, each with a test in
+  its package: petrus-motus decided printability with GHC's `isPrint`, which
+  admits the space separators (U+00A0 printed raw instead of `'\xa0'`;
+  `test/Main.hs`, "an unknown activity's name is spelled by CPython's
+  repr"); petrus-agenticus-core and petrus-dst used GHC's Unicode 15.1
+  general categories, escaping characters Unicode 16.0 assigned (U+105C0
+  became `'\U000105c0'`; `ConnectionSpec` "spells connection ids with
+  CPython 3.14's repr", `Spec.Codec` "spells refused versions with CPython
+  3.14's repr"); petrus-execution's `repr` and `int()` digits had the same
+  Unicode 15.1 gap. petrus-cel's CPython tables are this package's
+  (`gen/gen-unicode-tables.py` keeps only RE2's), and
+  `bytes.decode("utf-8", "replace")` (petrus-http-core, petrus-agenticus) is
+  `decodeUtf8Replace`.
 - **Unit tests** ([`test/Main.hs`](test/Main.hs)): `dumps` spellings,
   `parseJson` behaviours, lone surrogates kept as WTF-8 (pairing, keys,
   ordering, byte-for-byte re-encoding, `dumpsText`, `repr`, `fromWtf8`), the 4 300-digit limit in both directions with

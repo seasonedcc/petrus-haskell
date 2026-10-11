@@ -169,6 +169,13 @@ spec = describe "artifact codec" $ do
     fmap artifactScenarioId (decodeArtifact "{\"value\":NaN}")
       `shouldBe` Left (DecodeRefused "invalid strict DST JSON: non-finite JSON number NaN")
 
+  -- repr() keeps characters Unicode 16.0 assigned (CPython 3.14) and
+  -- escapes the space separators: the copy this package carried used GHC's
+  -- Unicode 15.1 general categories and escaped U+105C0.
+  it "spells refused versions with CPython 3.14's repr" $ do
+    fmap artifactScenarioId (decodeArtifact (TE.encodeUtf8 "{\"version\":\"v\x105C0\\u00a0\"}"))
+      `shouldBe` Left (DecodeRefused "unsupported DST artifact version 'v\x105C0\\xa0'")
+
   it "requires one exact terminal failure in version-2 failure artifacts" $ do
     invariant <- readJson (fixturesDir </> "terminal-checker-failure-world-v2.json")
     let popped = case invariant of

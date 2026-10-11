@@ -85,6 +85,7 @@ import Petrus.Http.Core.Url (SplitResult (..), ipv4Address, ipv6Address, splitHo
 import Petrus.Impetus.Dsl (BuiltNet)
 import Petrus.Impetus.Petrinet (Marking, Token (..), markingFromList, netPath)
 import Petrus.Json (Json (..), canonicalText, parseJson, strictLoads, typeExactEq)
+import Petrus.Json.Python (pythonStrListRepr)
 import Petrus.Simulation (SimulationError (..), simulate, simulationProfile)
 
 -- ---------------------------------------------------------------------------
@@ -385,9 +386,7 @@ strictJson raw
 exactObject :: Json -> [Text] -> Text -> IO [(Text, Json)]
 exactObject value fields subject = case value of
   Object members | sort (map fst members) == sort fields -> pure members
-  _ -> invalid (subject <> " must contain exactly " <> pythonList (sort fields))
-  where
-    pythonList names = "[" <> T.intercalate ", " ["'" <> name <> "'" | name <- names] <> "]"
+  _ -> invalid (subject <> " must contain exactly " <> pythonStrListRepr (sort fields))
 
 -- | @_decode_marking(value)@: the protocol-v1 sorted place/token shape.
 -- 'Left' carries the 400 message.
@@ -420,7 +419,7 @@ decodeMarking = \case
       pure (Token color (maybe Null id (lookup "data" fields)))
     exact value fields subject = case value of
       Object members | sort (map fst members) == sort fields -> Right members
-      _ -> Left (subject <> " must contain exactly [" <> T.intercalate ", " ["'" <> f <> "'" | f <- sort fields] <> "]")
+      _ -> Left (subject <> " must contain exactly " <> pythonStrListRepr (sort fields))
 
 -- ---------------------------------------------------------------------------
 -- Origins

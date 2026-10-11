@@ -37,7 +37,7 @@ import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch)
 import Petrus.Testing.Dst hiding (Delay)
 import Petrus.Testing.Dst.Engine.Common
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 
@@ -222,7 +222,7 @@ timerEngineProfile historyPath = do
               if c.name /= "engine.drive" || c.payload /= Object []
                 then throwError (ProfileError "ValueError" "timer Engine profile accepts only engine.drive with an empty payload")
                 else pure c
-          , validateFault = \f -> throwError (ProfileError "ValueError" ("timer Engine profile has no fault named " <> pyStrRepr f.name))
+          , validateFault = \f -> throwError (ProfileError "ValueError" ("timer Engine profile has no fault named " <> pythonStrRepr f.name))
           , create = start False
           , load = start True
           , apply = \g _ -> do
@@ -256,7 +256,7 @@ timerEngineProfile historyPath = do
           , observe = \g request -> do
               current <- syncTime time
               fields <- case lookup request.name observationFields of
-                Nothing -> raise "ValueError" ("unknown timer Engine profile observation " <> pyStrRepr request.name)
+                Nothing -> raise "ValueError" ("unknown timer Engine profile observation " <> pythonStrRepr request.name)
                 Just fs -> pure fs
               if request.payload == Null || request.payload == Object []
                 then pure ()

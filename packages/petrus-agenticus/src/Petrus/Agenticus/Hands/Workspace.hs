@@ -50,7 +50,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Gateway (HandsAdapter (..), ShellOutcome, StagedWrite (..), TestOutcome, mkShellOutcome, mkStagedWrite, mkTestOutcome)
-import Petrus.Agenticus.Internal.PyText (boundedText, splitLines)
+import Petrus.Agenticus.Internal.PyText (boundedText)
+import Petrus.Json.Python (pythonSplitlines)
 import Petrus.Motus.Execution
   ( CommandResult
   , CommandSpec (..)
@@ -158,7 +159,7 @@ workspaceSearch a query path = do
 searchLines :: ByteString -> [Text]
 searchLines out =
   take maxSearchMatches
-    [T.take maxSearchMatchChars line | line <- splitLines (fst (boundedText out commandOutputLimit)), not (T.null line)]
+    [T.take maxSearchMatchChars line | line <- pythonSplitlines (fst (boundedText out commandOutputLimit)), not (T.null line)]
 
 workspaceShell :: MotusWorkspaceAdapter -> [Text] -> Text -> IO ShellOutcome
 workspaceShell a argv cwd = do

@@ -146,7 +146,7 @@ import Petrus.Agenticus.Connection.Custody
   )
 import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Validate (isBoundedText, pyIsSpace, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
   ( AgentProgramDescriptor
@@ -407,7 +407,7 @@ data Candidate = Candidate
 instance Show Candidate where
   show c =
     "_Candidate(thread_id="
-      <> T.unpack (pyStrRepr c.threadId)
+      <> T.unpack (pythonStrRepr c.threadId)
       <> ", completed="
       <> (if c.completed then "True" else "False")
       <> ")"
@@ -542,9 +542,9 @@ data CodexContinuationPayloadV1 = CodexContinuationPayloadV1
 instance Show CodexContinuationPayloadV1 where
   show p =
     "CodexContinuationPayloadV1(thread_id="
-      <> T.unpack (pyStrRepr p.threadId)
+      <> T.unpack (pythonStrRepr p.threadId)
       <> ", rollout_path="
-      <> T.unpack (pyStrRepr p.rolloutPath)
+      <> T.unpack (pythonStrRepr p.rolloutPath)
       <> ", schema_version=1)"
 
 mkCodexContinuationPayloadV1 :: Text -> Text -> ByteString -> Either AgenticusError CodexContinuationPayloadV1
@@ -606,7 +606,7 @@ codexRuntimeConfig hostId = CodexRuntimeConfig hostId 300 300 maxCommandOutputBy
 renderCodexRuntimeConfig :: CodexRuntimeConfig -> Text
 renderCodexRuntimeConfig c =
   "CodexRuntimeConfig(host_id="
-    <> pyStrRepr c.hostId
+    <> pythonStrRepr c.hostId
     <> ", credential_ttl="
     <> number c.credentialTtl
     <> ", command_timeout="
@@ -652,11 +652,11 @@ instance Show CodexRuntimeInvocation where
 renderCodexRuntimeInvocation :: CodexRuntimeInvocation -> Text
 renderCodexRuntimeInvocation i =
   "CodexRuntimeInvocation(operation_id="
-    <> pyStrRepr i.operationId
+    <> pythonStrRepr i.operationId
     <> ", episode_id=EpisodeId(value="
-    <> pyStrRepr (lifecycleIdText i.episodeId)
+    <> pythonStrRepr (lifecycleIdText i.episodeId)
     <> "), turn_id=TurnId(value="
-    <> pyStrRepr (lifecycleIdText i.turnId)
+    <> pythonStrRepr (lifecycleIdText i.turnId)
     <> "), connection="
     <> T.pack (show i.connection)
     <> ")"
@@ -722,7 +722,7 @@ instance Show CodexOperation where
 -- | The reference keeps the default @object.__repr__@; this names only the
 -- operation.
 renderCodexOperation :: CodexOperation -> Text
-renderCodexOperation o = "_CodexOperation(operation_id=" <> pyStrRepr o.inv.operationId <> ")"
+renderCodexOperation o = "_CodexOperation(operation_id=" <> pythonStrRepr o.inv.operationId <> ")"
 
 codexOperationId :: CodexOperation -> Text
 codexOperationId o = o.inv.operationId
@@ -1007,7 +1007,7 @@ renderCodexRuntimeAdapter a = do
   let name = case a.lane of
         CodexLocal -> "CodexRuntimeAdapter"
         CodexGondolin -> "CodexGondolinRuntimeAdapter"
-  pure (name <> "(host_id=" <> pyStrRepr a.config.hostId <> ", ready=" <> (if ready then "True" else "False") <> ")")
+  pure (name <> "(host_id=" <> pythonStrRepr a.config.hostId <> ", ready=" <> (if ready then "True" else "False") <> ")")
 
 runtimeIdentity :: CodexRuntimeAdapter -> DescriptorIdentity
 runtimeIdentity a = case a.lane of

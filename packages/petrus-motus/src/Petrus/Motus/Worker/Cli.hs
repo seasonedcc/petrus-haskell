@@ -39,7 +39,7 @@ import Data.Text qualified as T
 import Petrus.Motus.Dispatch (WorkerDispatch)
 import Petrus.Motus.Dispatch.Local (LocalWorkerOptions (..), openLocalWorkerDispatch, toWorkerDispatch)
 import Petrus.Motus.Internal.Argparse
-import Petrus.Motus.Internal.Repr (pyStr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Motus.Worker
 import System.Environment (getArgs, lookupEnv)
 import System.Posix.Signals (Handler (..), installHandler, sigTERM)
@@ -210,13 +210,13 @@ loadRegistry registries spec = do
   let (moduleName, rest) = T.breakOn ":" spec
       attribute = T.drop 1 rest
   when (T.null moduleName || T.null attribute) $
-    exitWithMessage ("--registry must be 'module:attribute', got " <> pyStr spec)
-  build <- maybe (exitWithMessage ("--registry " <> pyStr spec <> " names no registry linked into this worker")) pure (Map.lookup spec registries)
+    exitWithMessage ("--registry must be 'module:attribute', got " <> pythonStrRepr spec)
+  build <- maybe (exitWithMessage ("--registry " <> pythonStrRepr spec <> " names no registry linked into this worker")) pure (Map.lookup spec registries)
   activities <- build
   when (Map.null activities) $
-    exitWithMessage ("--registry " <> pyStr spec <> " must yield a non-empty mapping of activity name -> Activity")
+    exitWithMessage ("--registry " <> pythonStrRepr spec <> " must yield a non-empty mapping of activity name -> Activity")
   when (any T.null (Map.keys activities)) $
-    exitWithMessage ("--registry " <> pyStr spec <> " must yield non-empty string names mapped to callable Activities")
+    exitWithMessage ("--registry " <> pythonStrRepr spec <> " must yield non-empty string names mapped to callable Activities")
   pure activities
 
 -- | The reference's @_provider_factory@.

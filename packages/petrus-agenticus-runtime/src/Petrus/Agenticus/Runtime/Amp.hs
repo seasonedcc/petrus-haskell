@@ -140,7 +140,7 @@ import Petrus.Agenticus.Catalog.Descriptor
 import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
 import Petrus.Agenticus.Connection.Custody (ConnectionIdentity (..), ConnectionStatus (..), ConnectionView (..))
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Validate (isBoundedText, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
   ( AgentProgramDescriptor
@@ -289,7 +289,7 @@ newtype AmpContinuationPayloadV1 = AmpContinuationPayloadV1 Text
 -- | The thread identity is opaque provider state: 'Show' names the type
 -- only, as a Continuation never renders its reference.
 instance Show AmpContinuationPayloadV1 where
-  show (AmpContinuationPayloadV1 t) = "AmpContinuationPayloadV1(thread_id=" <> T.unpack (pyStrRepr t) <> ", schema_version=1)"
+  show (AmpContinuationPayloadV1 t) = "AmpContinuationPayloadV1(thread_id=" <> T.unpack (pythonStrRepr t) <> ", schema_version=1)"
 
 payloadThreadId :: AmpContinuationPayloadV1 -> Text
 payloadThreadId (AmpContinuationPayloadV1 t) = t
@@ -424,11 +424,11 @@ data AmpRuntimeInvocation = AmpRuntimeInvocation
 renderAmpRuntimeInvocation :: AmpRuntimeInvocation -> Text
 renderAmpRuntimeInvocation i =
   "AmpRuntimeInvocation(operation_id="
-    <> pyStrRepr i.operationId
+    <> pythonStrRepr i.operationId
     <> ", episode_id=EpisodeId(value="
-    <> pyStrRepr (lifecycleIdText i.episodeId)
+    <> pythonStrRepr (lifecycleIdText i.episodeId)
     <> "), turn_id=TurnId(value="
-    <> pyStrRepr (lifecycleIdText i.turnId)
+    <> pythonStrRepr (lifecycleIdText i.turnId)
     <> "), connection="
     <> T.pack (show i.connection)
     <> ")"
@@ -1093,9 +1093,9 @@ renderAmpRuntimeAdapter a = do
   ready <- isJust <$> readIORef a.installation
   pure $
     "AmpRuntimeAdapter(project="
-      <> pyStrRepr a.config.project
+      <> pythonStrRepr a.config.project
       <> ", mode="
-      <> pyStrRepr a.config.mode
+      <> pythonStrRepr a.config.mode
       <> ", ready="
       <> (if ready then "True" else "False")
       <> ")"

@@ -51,8 +51,8 @@ import Data.Text qualified as T
 import Data.Time.Calendar (Day (..), fromGregorianValid, isLeapYear, toGregorian)
 import Data.Time.Calendar.OrdinalDate (toOrdinalDate)
 
-import Petrus.Cel.Python (ExcClass (..), PyErr (..), parseFloatText, strRepr)
-import Petrus.Cel.Unicode (pythonDecimal)
+import Petrus.Cel.Python (ExcClass (..), PyErr (..), parseFloatText)
+import Petrus.Json.Python (pythonDecimal, pythonStrRepr)
 
 -- timedelta ---------------------------------------------------------------
 
@@ -557,7 +557,7 @@ parseDurationString text = do
         _ -> s
       sign = if take 1 s == "-" then -1 else 1 :: Double
       bodyNoNewline = if not (null body) && last body == '\n' then init body else body
-  if validPattern bodyNoNewline then Right () else Left (PyErr ValueError ("Invalid duration " <> strRepr text))
+  if validPattern bodyNoNewline then Right () else Left (PyErr ValueError ("Invalid duration " <> pythonStrRepr text))
   terms <- traverse term (segments body)
   let seconds = sign * fromRational (sum (map toRational terms))
   if abs seconds > fromIntegral maxDurationSeconds || isNaN seconds
@@ -580,10 +580,10 @@ parseDurationString text = do
           (unit, r2) = span isAsciiLower r1
        in if null unit then segments (drop 1 str) else (number, unit) : segments r2
     term (number, unit) = do
-      scale <- maybe (Left (PyErr ValueError ("Invalid duration " <> strRepr text))) Right (lookup unit scales)
+      scale <- maybe (Left (PyErr ValueError ("Invalid duration " <> pythonStrRepr text))) Right (lookup unit scales)
       value <-
         maybe
-          (Left (PyErr ValueError ("could not convert string to float: " <> strRepr (T.pack number))))
+          (Left (PyErr ValueError ("could not convert string to float: " <> pythonStrRepr (T.pack number))))
           Right
           (if null number then Nothing else parseFloatText (T.pack number))
       Right (value * scale)
@@ -635,4 +635,4 @@ timezoneOffset = \case
                    in if abs minutes >= 24 * 60
                         then Left (PyErr ValueError "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24).")
                         else Right (minutes * 60)
-            _ -> Left (PyErr ValueError ("Unparsable timezone: " <> strRepr name))
+            _ -> Left (PyErr ValueError ("Unparsable timezone: " <> pythonStrRepr name))

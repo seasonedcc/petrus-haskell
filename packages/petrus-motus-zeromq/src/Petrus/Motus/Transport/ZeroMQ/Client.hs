@@ -54,7 +54,7 @@ import Petrus.Activity (snapshotHeartbeatDetails)
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure, WorkerDispatch (WorkerDispatch))
 import Petrus.Motus.Dispatch qualified as D
-import Petrus.Motus.Internal.Repr (pyStr, uuid4)
+import Petrus.Json.Python (pythonStrRepr, uuid4)
 import Petrus.Motus.Transport.ZeroMQ.Curve (ClientKeys, clientSecurity)
 import Petrus.Motus.Transport.ZeroMQ.Errors
 import Petrus.Motus.Transport.ZeroMQ.Native qualified as Z
@@ -336,7 +336,7 @@ rpc c operation fields retryUntil = do
                 now <- getMonotonicTime
                 case retryUntil of
                   Just deadline | now < deadline -> loop
-                  _ -> throwIO (NotAcknowledged ("ZeroMQ Dispatch request " <> pyStr operation <> " was not acknowledged"))
+                  _ -> throwIO (NotAcknowledged ("ZeroMQ Dispatch request " <> pythonStrRepr operation <> " was not acknowledged"))
             | otherwise -> throwIO e
   loop
 
@@ -430,7 +430,7 @@ asyncRpc a operation fields retryUntil = do
   when isClosed $ throwIO (RuntimeError "ZeroMQ Worker access is closed")
   requestId <- uuid4
   payload <- request a.who requestId operation fields
-  let uncertain suffix = OperationUncertain ("ZeroMQ Dispatch request " <> pyStr operation <> suffix)
+  let uncertain suffix = OperationUncertain ("ZeroMQ Dispatch request " <> pythonStrRepr operation <> suffix)
       once = mask $ \restore -> do
         -- Waiting for a permit is interruptible and leaves nothing behind:
         -- a cancellation here is a plain cancellation.

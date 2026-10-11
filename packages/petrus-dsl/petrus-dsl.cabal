@@ -38,6 +38,7 @@ library
   build-depends:    base >=4.18 && <5
                   , containers >=0.6
                   , petrus-impetus
+                  , petrus-json
                   , text >=2.0
   ghc-options:      -O2
 

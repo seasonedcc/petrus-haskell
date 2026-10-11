@@ -30,7 +30,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity
 import Petrus.Impetus.History.Records
-import Petrus.Impetus.Internal.Repr
+import Petrus.Json.Python (pythonRepr, pythonStrRepr)
 import Petrus.Impetus.Petrinet.Marking (Token (..))
 import Petrus.Impetus.Petrinet.Schema (Instant, NetPath, netPath)
 import Petrus.Impetus.Scope
@@ -130,13 +130,13 @@ decodeRecord :: Json -> Either Text Record
 decodeRecord payload = do
   members <- case payload of
     Object ms -> Right ms
-    other -> Left ("cannot decode event history record: payload must be a mapping, got " <> pyJson other)
+    other -> Left ("cannot decode event history record: payload must be a mapping, got " <> pythonRepr other)
   nameValue <- maybe (Left "cannot decode event history record: payload has no 'record' discriminator") Right (lookup "record" members)
   schema <-
     maybe
       ( Left
           ( "cannot decode event history record "
-              <> pyJson nameValue
+              <> pythonRepr nameValue
               <> ": payload has no 'schema' version — this kernel writes schema 5, reads schema 5 only, and has no converter for older durable data"
           )
       )
@@ -147,9 +147,9 @@ decodeRecord payload = do
     _ ->
       Left
         ( "cannot decode event history record "
-            <> pyJson nameValue
+            <> pythonRepr nameValue
             <> ": 'schema' is "
-            <> pyJson schema
+            <> pythonRepr schema
             <> ", and this kernel reads schema 5 only — no migration or converter exists"
         )
   (typeName, layout) <- case nameValue of
@@ -158,15 +158,15 @@ decodeRecord payload = do
       | Just successor <- lookup n v1Successors ->
           Left
             ( "cannot decode event history record: "
-                <> pyStr n
+                <> pythonStrRepr n
                 <> " is a schema-1 discriminator — the CV3 schema-2 migration renamed it to "
-                <> pyStr successor
+                <> pythonStrRepr successor
                 <> ", and no v1 converter exists (no production histories predate the migration)"
             )
     other ->
       Left
         ( "cannot decode event history record: unknown 'record' discriminator "
-            <> pyJson other
+            <> pythonRepr other
             <> " — not a record type the kernel emits"
         )
   fields <- case members of
@@ -188,7 +188,7 @@ decodeRecord payload = do
   record <- layout.build (Reader typeName fields)
   recordInvariants record
   unless (isCanonicalSpelling record payload) $
-    Left ("cannot decode event history record " <> pyStr typeName <> ": payload is not its exact canonical schema-5 spelling")
+    Left ("cannot decode event history record " <> pythonStrRepr typeName <> ": payload is not its exact canonical schema-5 spelling")
   Right record
 
 -- | Whether the payload is the record's canonical spelling: exactly
@@ -257,7 +257,7 @@ checkArguments :: Text -> [Param] -> [(Text, Json)] -> Either Text ()
 checkArguments typeName params fields = do
   forM_ fields $ \(k, _) ->
     unless (any (\(Param n _) -> n == k) params) $
-      Left (typeName <> ".__init__() got an unexpected keyword argument " <> pyStr k)
+      Left (typeName <> ".__init__() got an unexpected keyword argument " <> pythonStrRepr k)
   let present n = isJust (lookup n fields)
       missingPositional = [n | Param n Positional <- params, not (present n)]
       missingKeyword = [n | Param n KeywordOnly <- params, not (present n)]
@@ -267,7 +267,7 @@ checkArguments typeName params fields = do
     Left (typeName <> ".__init__() missing " <> countArguments missingKeyword "keyword-only")
   where
     countArguments names kindNoun =
-      let quoted = map pyStr names
+      let quoted = map pythonStrRepr names
           listed = case quoted of
             [one] -> one
             [a, b] -> a <> " and " <> b
@@ -281,40 +281,40 @@ checkArguments typeName params fields = do
 pathValue :: Json -> Either Text NetPath
 pathValue = \case
   String s -> netPath s
-  other -> Left ("NetPath requires a non-empty dotted string or a NetPath, got " <> pyJson other)
+  other -> Left ("NetPath requires a non-empty dotted string or a NetPath, got " <> pythonRepr other)
 
 tokensValue :: Json -> Either Text [Token]
 tokensValue = \case
   Array items -> mapM tokenValue items
-  other -> Left ("event history tokens must be a list of token mappings, got " <> pyJson other)
+  other -> Left ("event history tokens must be a list of token mappings, got " <> pythonRepr other)
   where
     tokenValue = \case
       Object members -> do
         forM_ members $ \(k, _) ->
-          unless (k `elem` ["color", "data"]) $ Left ("Token.__init__() got an unexpected keyword argument " <> pyStr k)
+          unless (k `elem` ["color", "data"]) $ Left ("Token.__init__() got an unexpected keyword argument " <> pythonStrRepr k)
         color <- case lookup "color" members of
           Nothing -> Right Nothing
           Just Null -> Right Nothing
           Just (String c) -> Right (Just c)
-          Just other -> Left ("event history token color must be a string or None, got " <> pyJson other)
+          Just other -> Left ("event history token color must be a string or None, got " <> pythonRepr other)
         Right (Token color (maybe Null id (lookup "data" members)))
       other -> Left ("Token() argument after ** must be a mapping, not " <> jsonTypeName other)
 
 idsValue :: Text -> Json -> Either Text [Int]
 idsValue name = \case
   Array items -> mapM idValue items
-  other -> Left ("event history " <> name <> " must be a list of integers, got " <> pyJson other)
+  other -> Left ("event history " <> name <> " must be a list of integers, got " <> pythonRepr other)
   where
     idValue = \case
       Int i | i >= fromIntegral (minBound :: Int) && i <= fromIntegral (maxBound :: Int) -> Right (fromIntegral i)
-      other -> Left ("event history " <> name <> " must use exact integers, got " <> pyJson other)
+      other -> Left ("event history " <> name <> " must use exact integers, got " <> pythonRepr other)
 
 scopeValue :: Json -> Either Text LifecycleScope
 scopeValue = \case
   Object members -> do
     forM_ members $ \(k, _) ->
       unless (k `elem` ["name", "generation"]) $
-        Left ("LifecycleScope.__init__() got an unexpected keyword argument " <> pyStr k)
+        Left ("LifecycleScope.__init__() got an unexpected keyword argument " <> pythonStrRepr k)
     nameValue <- maybe (Left "LifecycleScope.__init__() missing 1 required positional argument: 'name'") Right (lookup "name" members)
     generationValue <-
       maybe (Left "LifecycleScope.__init__() missing 1 required positional argument: 'generation'") Right (lookup "generation" members)
@@ -334,7 +334,7 @@ policyNames =
 policyValue :: Json -> Either Text ExecutionPolicy
 policyValue value = do
   let refuse :: Either Text a
-      refuse = Left ("cannot decode ExecutionPolicy: policy must be exactly the current exact policy fields, got " <> pyJson value)
+      refuse = Left ("cannot decode ExecutionPolicy: policy must be exactly the current exact policy fields, got " <> pythonRepr value)
   members <- case value of
     Object ms -> Right ms
     _ -> refuse
@@ -391,12 +391,12 @@ instant r n = case raw r n of
   Nothing -> Right 0
   Just (Int i) -> Right (IntNumber i)
   Just (Float d) -> Right (FloatNumber d)
-  Just other -> Left (noun r n <> " must be a JSON number instant, got " <> pyJson other)
+  Just other -> Left (noun r n <> " must be a JSON number instant, got " <> pythonRepr other)
 
 occurrenceValue :: Reader -> Either Text Int
 occurrenceValue r = case raw r "occurrence" of
   Just (Int i) | i >= 1 && i <= fromIntegral (maxBound :: Int) -> Right (fromIntegral i)
-  Just other -> Left (noun r "occurrence" <> " must be a positive integer, got " <> pyJson other)
+  Just other -> Left (noun r "occurrence" <> " must be a positive integer, got " <> pythonRepr other)
   Nothing -> Left (noun r "occurrence" <> " is missing")
 
 optionalOccurrence :: Reader -> Either Text (Maybe Int)
@@ -413,11 +413,11 @@ text r n fallback = case raw r n of
 
 stringError :: Reader -> Text -> Json -> Text
 stringError r@(Reader typeName _) n other = case n of
-  "identity" -> typeName <> " requires an exact non-empty string identity, got " <> pyJson other
-  "key" -> typeName <> " requires a non-empty string key of the exact built-in type, got " <> pyJson other
-  "instance" -> "Instance identity must be a non-empty string, got " <> pyJson other
+  "identity" -> typeName <> " requires an exact non-empty string identity, got " <> pythonRepr other
+  "key" -> typeName <> " requires a non-empty string key of the exact built-in type, got " <> pythonRepr other
+  "instance" -> "Instance identity must be a non-empty string, got " <> pythonRepr other
   "error" | typeName == "FiringFailed" -> "FiringFailed error must be a non-empty string of at most 4096 characters"
-  _ | typeName == "ActivityRequested" -> "ActivityRequested requires a non-empty string " <> n <> ", got " <> pyJson other
+  _ | typeName == "ActivityRequested" -> "ActivityRequested requires a non-empty string " <> n <> ", got " <> pythonRepr other
   _ -> noun r n <> " must use the exact built-in string type"
 
 optionalText :: Reader -> Text -> Either Text (Maybe Text)
@@ -565,7 +565,7 @@ builderFor typeName = case typeName of
     e <- text r "error" ""
     o <- occurrenceValue r
     RFiringFailed . FiringFailed t e o <$> instant r "instant"
-  other -> \_ -> Left ("cannot decode event history record: unknown 'record' discriminator " <> pyStr other <> " — not a record type the kernel emits")
+  other -> \_ -> Left ("cannot decode event history record: unknown 'record' discriminator " <> pythonStrRepr other <> " — not a record type the kernel emits")
   where
     movement mk r = do
       p <- path r "place"

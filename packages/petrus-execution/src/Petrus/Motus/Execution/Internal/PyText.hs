@@ -18,7 +18,6 @@ module Petrus.Motus.Execution.Internal.PyText
   , pyStrRepr
   , pyBytesRepr
   , pyListRepr
-  , pyIsSpace
     -- * int() / float()
   , pyInt
   , pyIntBytes
@@ -31,10 +30,11 @@ import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Char8 qualified as BC
-import Data.Char (GeneralCategory (..), chr, generalCategory, isDigit, ord, toLower)
+import Data.Char (chr, isDigit, ord, toLower)
 import Data.List (dropWhileEnd)
+import Data.Text qualified as T
 import Data.Word (Word8)
-import Numeric (showHex)
+import Petrus.Json.Python (isPythonSpace, pythonDecimal, pythonListRepr, pythonReprBytes, pythonStringRepr)
 
 -- | Decode UTF-8 the way CPython does with @errors="surrogateescape"@: every
 -- byte that does not begin a complete, valid UTF-8 sequence becomes the lone
@@ -136,90 +136,29 @@ utf8Generalized n
     hi s = fromIntegral (n `shiftR` s)
     cont s = 0x80 .|. (fromIntegral (n `shiftR` s) .&. 0x3F)
 
--- | CPython's @repr()@ of a @str@.
+-- | CPython's @repr()@ of a @str@ that may hold surrogate escapes, as a
+-- 'String' (petrus-json's 'pythonStringRepr').
 pyStrRepr :: String -> String
-pyStrRepr s = quote : concatMap escape s ++ [quote]
-  where
-    quote = if '\'' `elem` s && '"' `notElem` s then '"' else '\''
-    escape c
-      | c == quote = ['\\', c]
-      | c == '\\' = "\\\\"
-      | c == '\t' = "\\t"
-      | c == '\n' = "\\n"
-      | c == '\r' = "\\r"
-      | n < 0x20 || n == 0x7F = "\\x" ++ hex 2 n
-      | n < 0x7F = [c]
-      | pyIsPrintable c = [c]
-      | n < 0x100 = "\\x" ++ hex 2 n
-      | n < 0x10000 = "\\u" ++ hex 4 n
-      | otherwise = "\\U" ++ hex 8 n
-      where
-        n = ord c
+pyStrRepr = T.unpack . pythonStringRepr
 
 -- | CPython's @repr()@ of a @bytes@ object.
 pyBytesRepr :: ByteString -> String
-pyBytesRepr bytes = 'b' : quote : concatMap escape (B.unpack bytes) ++ [quote]
-  where
-    quote = if B.elem 0x27 bytes && not (B.elem 0x22 bytes) then '"' else '\''
-    escape w
-      | c == quote = ['\\', c]
-      | c == '\\' = "\\\\"
-      | c == '\t' = "\\t"
-      | c == '\n' = "\\n"
-      | c == '\r' = "\\r"
-      | w < 0x20 || w >= 0x7F = "\\x" ++ hex 2 (fromIntegral w)
-      | otherwise = [c]
-      where
-        c = chr (fromIntegral w)
+pyBytesRepr = pythonReprBytes
 
 -- | CPython's @repr()@ of a list of strings.
 pyListRepr :: [String] -> String
-pyListRepr items = "[" ++ joinComma (map pyStrRepr items) ++ "]"
-  where
-    joinComma [] = ""
-    joinComma [x] = x
-    joinComma (x : xs) = x ++ ", " ++ joinComma xs
+pyListRepr = T.unpack . pythonListRepr . map pythonStringRepr
 
-hex :: Int -> Int -> String
-hex width n = let digits = showHex n "" in replicate (width - length digits) '0' ++ digits
-
-pyIsPrintable :: Char -> Bool
-pyIsPrintable c = case generalCategory c of
-  Control -> False
-  Format -> False
-  Surrogate -> False
-  PrivateUse -> False
-  NotAssigned -> False
-  LineSeparator -> False
-  ParagraphSeparator -> False
-  Space -> c == ' '
-  _ -> True
-
--- | CPython's @str.isspace()@ for one code point.
-pyIsSpace :: Char -> Bool
-pyIsSpace c =
-  c `elem` ("\t\n\v\f\r \x1c\x1d\x1e\x1f\x85\xa0\x1680\x2028\x2029\x202f\x205f\x3000" :: String)
-    || (c >= '\x2000' && c <= '\x200a')
-
--- | The decimal value of a Unicode @Nd@ digit, as CPython's @int()@ accepts.
+-- | The decimal value of a Unicode decimal digit, as CPython's @int()@
+-- accepts it.
 decimalValue :: Char -> Maybe Integer
-decimalValue c
-  | isDigit c = Just (fromIntegral (ord c - ord '0'))
-  | generalCategory c == DecimalNumber = Just (fromIntegral (runStart (ord c)))
-  | otherwise = Nothing
-  where
-    -- Unicode decimal digits are encoded in contiguous runs of ten starting
-    -- at zero, so the value is the distance from the run start modulo ten.
-    runStart n = (n - firstOfRun n) `mod` 10
-    firstOfRun n
-      | n > 0 && generalCategory (chr (n - 1)) == DecimalNumber = firstOfRun (n - 1)
-      | otherwise = n
+decimalValue = fmap fromIntegral . pythonDecimal
 
 -- | CPython's @int(s)@ for a @str@ in base 10; 'Nothing' when CPython raises
 -- 'ValueError'.
 pyInt :: String -> Maybe Integer
 pyInt raw = do
-  let stripped = dropWhileEnd pyIsSpace (dropWhile pyIsSpace raw)
+  let stripped = dropWhileEnd isPythonSpace (dropWhile isPythonSpace raw)
   (negative, body) <- case stripped of
     '-' : rest -> Just (True, rest)
     '+' : rest -> Just (False, rest)
@@ -253,7 +192,7 @@ pyIntBytesError b = "invalid literal for int() with base 10: " ++ pyBytesRepr b
 -- CPython raises 'ValueError'.
 pyFloat :: String -> Maybe Double
 pyFloat raw = do
-  let stripped = dropWhileEnd pyIsSpace (dropWhile pyIsSpace raw)
+  let stripped = dropWhileEnd isPythonSpace (dropWhile isPythonSpace raw)
       (sign, body) = case stripped of
         '-' : rest -> (negate, rest)
         '+' : rest -> (id, rest)

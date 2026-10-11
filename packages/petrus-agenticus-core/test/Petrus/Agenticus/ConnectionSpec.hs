@@ -65,6 +65,13 @@ spec = describe "connection/test_custody.py" $ do
     repeated <- release rig.custody h2 "release-h2-again"
     repeated.cleanup.alreadyAbsent `shouldBe` True
 
+  -- repr() keeps characters Unicode 16.0 assigned (CPython 3.14): GHC's
+  -- Unicode 15.1 general categories called U+105C0 unassigned, so the copy
+  -- this package carried escaped it as \U000105c0.
+  it "spells connection ids with CPython 3.14's repr" $ withRig $ \rig -> do
+    _ <- authorizeWith rig "connection-\x105C0" "authorize-new"
+    raisesMatching (authorizeWith rig "connection-\x105C0" "authorize-again") CustodyError "connection 'connection-\x105C0' is already authorized"
+
   it "test_concurrent_refresh_has_one_cas_winner_and_waits_for_readers" $ withRig $ \rig -> do
     forM_ ["h1", "h2"] $ \host -> enrollHost rig.custody host ("enroll-" <> host)
     _ <- authorizeMain rig

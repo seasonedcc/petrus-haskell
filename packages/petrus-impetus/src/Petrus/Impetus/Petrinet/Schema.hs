@@ -129,8 +129,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Activity.Number (Number (..))
-import Petrus.Impetus.Internal.Repr
-
+import Petrus.Json.Python (pythonListRepr, pythonOptionalStrRepr, pythonStrRepr)
 -- ---------------------------------------------------------------------------
 -- Paths
 
@@ -144,7 +143,7 @@ newtype NetPath = NetPath Text
   deriving newtype (NFData)
 
 instance Show NetPath where
-  show (NetPath text) = T.unpack ("NetPath(" <> pyStr text <> ")")
+  show (NetPath text) = T.unpack ("NetPath(" <> pythonStrRepr text <> ")")
 
 -- | Literal paths for tests and examples; an invalid literal is a programming
 -- error and fails loudly, exactly as @NetPath("")@ raises.
@@ -155,9 +154,9 @@ instance IsString NetPath where
 netPath :: Text -> Either Text NetPath
 netPath value
   | T.null value =
-      Left ("NetPath requires a non-empty dotted string or a NetPath, got " <> pyStr value)
+      Left ("NetPath requires a non-empty dotted string or a NetPath, got " <> pythonStrRepr value)
   | any T.null (T.splitOn "." value) =
-      Left ("NetPath segments must be non-empty, got " <> pyStr value)
+      Left ("NetPath segments must be non-empty, got " <> pythonStrRepr value)
   | otherwise = Right (NetPath value)
 
 -- | @canonical_net_path(value, noun)@: a base 'NetPath' from an exact
@@ -203,7 +202,7 @@ newtype NetUri = NetUri Text
   deriving newtype (NFData)
 
 instance Show NetUri where
-  show (NetUri text) = T.unpack ("NetUri(" <> pyStr text <> ")")
+  show (NetUri text) = T.unpack ("NetUri(" <> pythonStrRepr text <> ")")
 
 -- | The canonical spelling.
 netUriText :: NetUri -> Text
@@ -213,14 +212,14 @@ netUriText (NetUri text) = text
 netUri :: Text -> Either Text NetUri
 netUri value
   | T.null value || not (T.all isAscii value) =
-      Left ("NetUri requires a non-empty canonical ASCII value, got " <> pyStr value)
+      Left ("NetUri requires a non-empty canonical ASCII value, got " <> pythonStrRepr value)
   | not (any (`T.isPrefixOf` value) ["place:/", "transition:/", "arc:/"])
       || T.count "#" value > 1
       || T.any pythonIsSpace value
       || T.any (== '?') value
       || T.any (== '\\') value
       || badPercent value =
-      Left ("invalid canonical NetUri " <> pyStr value)
+      Left ("invalid canonical NetUri " <> pythonStrRepr value)
   | otherwise = Right (NetUri value)
   where
     -- @re.search(r"%(?![0-9A-F]{2})", value)@
@@ -247,7 +246,7 @@ data UriOwner = PlaceOwner | TransitionOwner
 declarationUri :: UriOwner -> NetPath -> Text -> Maybe Text -> Either Text NetUri
 declarationUri owner path declaration name = do
   when (T.null declaration || not (T.all isAscii declaration) || not (T.all isAlphaNum (T.filter (/= '-') declaration)) || T.null (T.filter (/= '-') declaration)) $
-    Left ("declaration kind must be a non-empty ASCII name, got " <> pyStr declaration)
+    Left ("declaration kind must be a non-empty ASCII name, got " <> pythonStrRepr declaration)
   when (name == Just "") $
     Left "declaration name must be a non-empty string or None, got ''"
   let ownerText = case owner of
@@ -331,7 +330,7 @@ newtype Cel = Cel Text
   deriving stock (Eq, Ord)
 
 instance Show Cel where
-  show (Cel expression) = T.unpack ("Cel(expression=" <> pyStr expression <> ")")
+  show (Cel expression) = T.unpack ("Cel(expression=" <> pythonStrRepr expression <> ")")
 
 -- | Build an inline expression; it must be non-empty.
 cel :: Text -> Either Text Cel
@@ -355,7 +354,7 @@ instance Eq AnonymousDeclaration where
   _ == _ = True
 
 instance Show AnonymousDeclaration where
-  show (AnonymousDeclaration name) = T.unpack ("AnonymousDeclaration(display_name=" <> pyOptStr name <> ")")
+  show (AnonymousDeclaration name) = T.unpack ("AnonymousDeclaration(display_name=" <> pythonOptionalStrRepr name <> ")")
 
 -- | @ANONYMOUS@.
 anonymous :: AnonymousDeclaration
@@ -391,18 +390,18 @@ data Timer = Delay Duration | Until Instant
 -- | The reference's @repr@ of a declaration value, for diagnostics.
 reprFilterDeclaration :: FilterDeclaration -> Text
 reprFilterDeclaration = \case
-  FilterSymbol name -> pyStr name
+  FilterSymbol name -> pythonStrRepr name
   FilterCel expression -> T.pack (show expression)
 
 reprGuardDeclaration :: GuardDeclaration -> Text
 reprGuardDeclaration = \case
-  GuardSymbol name -> pyStr name
+  GuardSymbol name -> pythonStrRepr name
   GuardCel expression -> T.pack (show expression)
   GuardAnonymous declaration -> T.pack (show declaration)
 
 reprCompletionDeclaration :: CompletionDeclaration -> Text
 reprCompletionDeclaration = \case
-  CompletionSymbol name -> pyStr name
+  CompletionSymbol name -> pythonStrRepr name
   CompletionCel expression -> T.pack (show expression)
 
 reprTimer :: Timer -> Text
@@ -632,7 +631,7 @@ mkNet spec = do
   forM_ spec.completion $ \case
     CompletionSymbol symbol
       | T.null symbol || "$" `T.isPrefixOf` symbol ->
-          Left ("completion symbol must be non-empty and cannot start with '$', got " <> pyStr symbol)
+          Left ("completion symbol must be non-empty and cannot start with '$', got " <> pythonStrRepr symbol)
     _ -> Right ()
   when (spec.name == Just "") $ Left "net name must be a non-empty string, got ''"
   mapM_ validatePlace spec.places
@@ -706,14 +705,14 @@ mkNet spec = do
         ( "transition "
             <> netPathText t.path
             <> ": guards on a source transition cannot be honored — it fires only on external delivery, never through enabledness; found "
-            <> pyList (map reprGuardDeclaration t.guards)
+            <> pythonListRepr (map reprGuardDeclaration t.guards)
         )
     when (source && not (null t.timers)) $
       Left
         ( "transition "
             <> netPathText t.path
             <> ": timers on a source transition cannot be honored — it fires only on external delivery, never through enabledness; found "
-            <> pyList (map reprTimer t.timers)
+            <> pythonListRepr (map reprTimer t.timers)
         )
     let anchored = or [True | Delay _ <- t.timers]
         anchors = or [value.mode /= Inhibit | InputArc _ value _ <- Map.findWithDefault [] t.path inputMap]
@@ -767,7 +766,7 @@ checkDistinctNodes places transitions = do
   when (Map.size transitionMap /= length transitions) $ Left "duplicate transition path"
   let collisions = Map.keys (Map.intersection placeMap transitionMap)
   unless (null collisions) $
-    Left ("place/transition name collision: " <> pyList (map (pyStr . netPathText) (sort collisions)))
+    Left ("place/transition name collision: " <> pythonListRepr (map (pythonStrRepr . netPathText) (sort collisions)))
 
 -- | Compile a place color default onto an otherwise untyped incident arc.
 resolveColor :: Map NetPath Place -> Map NetPath Transition -> Arc -> Either Text Arc
@@ -786,11 +785,11 @@ resolveColor placeMap transitionMap value = do
             ( "arc "
                 <> reprArc value
                 <> " declares color "
-                <> pyStr arcColor
+                <> pythonStrRepr arcColor
                 <> ", incompatible with place "
                 <> netPathText owner.path
                 <> " color "
-                <> pyStr placeColor
+                <> pythonStrRepr placeColor
             )
     (Just placeColor, Nothing) -> Right (withArcColor (Just placeColor) value)
     _ -> Right value
@@ -813,7 +812,7 @@ validateTransition value = do
   case value.handler of
     Just (HandlerSymbol symbol)
       | T.null symbol || "$" `T.isPrefixOf` symbol ->
-          Left ("handler symbol must be non-empty and cannot start with '$', got " <> pyStr symbol <> ": " <> at)
+          Left ("handler symbol must be non-empty and cannot start with '$', got " <> pythonStrRepr symbol <> ": " <> at)
     _ -> Right ()
   _ <-
     foldl'
@@ -822,8 +821,8 @@ validateTransition value = do
           case guard of
             GuardSymbol symbol -> do
               when (T.null symbol || "$" `T.isPrefixOf` symbol) $
-                Left ("guard symbol must be non-empty and cannot start with '$', got " <> pyStr symbol <> ": " <> at)
-              when (Set.member symbol seen) $ Left ("duplicate named guard " <> pyStr symbol <> ": " <> at)
+                Left ("guard symbol must be non-empty and cannot start with '$', got " <> pythonStrRepr symbol <> ": " <> at)
+              when (Set.member symbol seen) $ Left ("duplicate named guard " <> pythonStrRepr symbol <> ": " <> at)
               Right (Set.insert symbol seen)
             _ -> Right seen
       )
@@ -840,5 +839,5 @@ validateArc value = do
   case value.filter of
     Just (FilterSymbol symbol)
       | T.null symbol || "$" `T.isPrefixOf` symbol ->
-          Left ("filter symbol must be non-empty and cannot start with '$', got " <> pyStr symbol <> ": " <> reprArc value)
+          Left ("filter symbol must be non-empty and cannot start with '$', got " <> pythonStrRepr symbol <> ": " <> reprArc value)
     _ -> Right ()

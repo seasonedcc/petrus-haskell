@@ -91,7 +91,7 @@ import Petrus.Observation qualified as Observation
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
 import Petrus.Testing.Dst.Engine.Common
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 import System.Directory (doesFileExist, getFileSize)
@@ -466,7 +466,7 @@ generatedRuntimeProfileWith variant historyPath dispatchPath = do
         pure ApplyResult {disposition = Applied, value = Object (("frontier", Int frontier) : value), scheduled = []}
       activeScope g = do
         scopes <- ioScenario (Engine.activeScopes g.engine)
-        maybe (raise "KeyError" (pyStrRepr scopeName)) pure (Map.lookup scopeName scopes)
+        maybe (raise "KeyError" (pythonStrRepr scopeName)) pure (Map.lookup scopeName scopes)
       activeAttempt g = do
         held <- liftIO (readIORef g.worker)
         maybe (raise "RuntimeError" "worker outcome requires one claimed Activity attempt") pure held
@@ -486,10 +486,10 @@ generatedRuntimeProfileWith variant historyPath dispatchPath = do
             ]
       faultMessage f name = do
         unless (f.name == name && isObject f.payload) $
-          raise "ValueError" ("unexpected generated-runtime fault " <> pyStrRepr f.name)
+          raise "ValueError" ("unexpected generated-runtime fault " <> pythonStrRepr f.name)
         case member "message" f.payload of
           String message -> pure message
-          _ -> raise "ValueError" ("generated-runtime fault " <> pyStrRepr name <> " requires a message")
+          _ -> raise "ValueError" ("generated-runtime fault " <> pythonStrRepr name <> " requires a message")
       configureFaults :: RuntimeGeneration -> Scenario IO [Text]
       configureFaults g = do
         dispatchFaults <- faults "activity_requested"
@@ -821,14 +821,14 @@ generatedRuntimeProfileWith variant historyPath dispatchPath = do
           if exactKeys ["result"] c.payload
             then pure c
             else throwError (ProfileError "ValueError" "worker.complete requires one exact result field")
-        n -> throwError (ProfileError "ValueError" ("unknown generated-runtime command " <> pyStrRepr n))
+        n -> throwError (ProfileError "ValueError" ("unknown generated-runtime command " <> pythonStrRepr n))
       validateFault f = do
         let expected = case f.name of
               "dispatch.refuse" -> Just "activity_requested"
               "history.refuse" -> Just "projection_committed"
               _ -> Nothing
         unless (expected == Just f.target && f.disposition == Refuse) $
-          throwError (ProfileError "ValueError" ("unsupported generated-runtime fault " <> pyStrRepr f.name))
+          throwError (ProfileError "ValueError" ("unsupported generated-runtime fault " <> pythonStrRepr f.name))
         unless (exactKeys ["message"] f.payload) $
           throwError (ProfileError "ValueError" "generated-runtime faults require one exact message field")
         case member "message" f.payload of
@@ -852,7 +852,7 @@ generatedRuntimeProfileWith variant historyPath dispatchPath = do
           , observe = \g request -> do
               current <- syncTime time
               unless (request.name `elem` ["engine.generated-runtime-authority", "generated-runtime-state"]) $
-                raise "ValueError" ("unknown generated-runtime observation " <> pyStrRepr request.name)
+                raise "ValueError" ("unknown generated-runtime observation " <> pythonStrRepr request.name)
               unless (request.payload == Null || emptyPayload request.payload) $
                 raise "ValueError" "generated-runtime observations do not accept parameters"
               ioScenario (state g current)

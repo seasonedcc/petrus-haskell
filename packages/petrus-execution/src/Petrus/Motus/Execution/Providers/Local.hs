@@ -39,7 +39,7 @@ import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive
 import Petrus.Motus.Execution.Internal.Common
 import Petrus.Motus.Execution.Internal.Posix
 import Petrus.Motus.Execution.Internal.Process
-import Petrus.Motus.Execution.Internal.PyText (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import System.Posix.Files.ByteString (isDirectory)
 import System.Directory (doesPathExist, getTemporaryDirectory, removeDirectoryRecursive)
 import System.IO.Temp (createTempDirectory)
@@ -218,7 +218,7 @@ territoryOf :: LocalProcessEnvironment -> Text -> IO FilePath
 territoryOf env lease =
   Map.lookup lease . stateTerritories <$> getState env >>= \case
     Just territory -> pure territory
-    Nothing -> throwExecution KeyError (T.pack (pyStrRepr (T.unpack lease)))
+    Nothing -> throwExecution KeyError (pythonStrRepr lease)
 
 privateResult :: ExecutionAttachment -> CleanupDisposition -> Int -> Text -> PrivateFileCleanupResult
 privateResult attachment disposition removed detail =

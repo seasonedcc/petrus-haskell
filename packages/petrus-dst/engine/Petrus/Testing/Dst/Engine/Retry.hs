@@ -87,7 +87,7 @@ import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
 import Petrus.Testing.Dst.Engine.Common
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 
@@ -634,7 +634,7 @@ newRetryProfile kind historyPath dispatchPath = do
             String s | not (T.null s) -> pure ()
             _ -> throwError (ProfileError "ValueError" "worker.fail error must be a non-empty string")
           pure c
-        n -> throwError (ProfileError "ValueError" ("unknown retry Engine profile command " <> pyStrRepr n))
+        n -> throwError (ProfileError "ValueError" ("unknown retry Engine profile command " <> pythonStrRepr n))
       validate c = case kind of
         DelayedRetry
           | c.name == "worker.probe" ->
@@ -647,7 +647,7 @@ newRetryProfile kind historyPath dispatchPath = do
             if exactKeys ["result"] c.payload
               then pure c
               else throwError (ProfileError "ValueError" "worker.complete requires one exact result field")
-          n -> throwError (ProfileError "ValueError" ("unknown terminal Engine profile command " <> pyStrRepr n))
+          n -> throwError (ProfileError "ValueError" ("unknown terminal Engine profile command " <> pythonStrRepr n))
         _ -> validateRetry c
       release counter g = ioDoor $ do
         modifyIORef' counter (+ 1)
@@ -658,7 +658,7 @@ newRetryProfile kind historyPath dispatchPath = do
         Profile
           { identity
           , validate
-          , validateFault = \f -> throwError (ProfileError "ValueError" (label <> " Engine profile has no fault named " <> pyStrRepr f.name))
+          , validateFault = \f -> throwError (ProfileError "ValueError" (label <> " Engine profile has no fault named " <> pythonStrRepr f.name))
           , create = start False
           , load = start True
           , apply = \g c -> do
@@ -667,7 +667,7 @@ newRetryProfile kind historyPath dispatchPath = do
           , observe = \g request -> do
               current <- syncTime time
               fields <- case lookup request.name (observationFields kind) of
-                Nothing -> raise "ValueError" ("unknown " <> observeLabel <> " Engine profile observation " <> pyStrRepr request.name)
+                Nothing -> raise "ValueError" ("unknown " <> observeLabel <> " Engine profile observation " <> pythonStrRepr request.name)
                 Just fs -> pure fs
               unless (request.payload == Null || emptyPayload request.payload) $
                 raise "ValueError" (observeLabel <> " Engine profile observations do not accept parameters")

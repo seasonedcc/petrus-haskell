@@ -237,7 +237,7 @@ import Petrus.Agenticus.Hands.Contract
 import Petrus.Agenticus.Hands.Gateway (HandsGateway, gatewayAttachmentEpoch, gatewayAttachmentId, gatewayEpisodeId)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
-import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Validate (isBoundedText, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
   ( AgentProgramDescriptor
@@ -798,11 +798,11 @@ piRuntimeConfig provider model workingDirectory runtimeRoot =
 renderPiRuntimeConfig :: PiRuntimeConfig -> Text
 renderPiRuntimeConfig c =
   "PiRuntimeConfig(provider="
-    <> pyStrRepr c.provider
+    <> pythonStrRepr c.provider
     <> ", model="
-    <> pyStrRepr c.model
+    <> pythonStrRepr c.model
     <> ", host_id="
-    <> pyStrRepr c.hostId
+    <> pythonStrRepr c.hostId
     <> ", cc_patch="
     <> (if c.ccPatch then "True" else "False")
     <> ", credential_ttl="
@@ -824,7 +824,7 @@ renderPiRuntimeConfig c =
     <> ", max_auth_bytes="
     <> int c.maxAuthBytes
     <> ", territory_profile="
-    <> pyStrRepr c.territoryProfile
+    <> pythonStrRepr c.territoryProfile
     <> ")"
   where
     int = T.pack . show
@@ -899,11 +899,11 @@ instance Show PiRuntimeInvocation where
 renderPiRuntimeInvocation :: PiRuntimeInvocation -> Text
 renderPiRuntimeInvocation i =
   "PiRuntimeInvocation(operation_id="
-    <> pyStrRepr i.operationId
+    <> pythonStrRepr i.operationId
     <> ", episode_id=EpisodeId(value="
-    <> pyStrRepr (lifecycleIdText i.episodeId)
+    <> pythonStrRepr (lifecycleIdText i.episodeId)
     <> "), turn_id=TurnId(value="
-    <> pyStrRepr (lifecycleIdText i.turnId)
+    <> pythonStrRepr (lifecycleIdText i.turnId)
     <> "), connection="
     <> T.pack (show i.connection)
     <> ", grant_epoch="
@@ -1533,7 +1533,7 @@ instance Eq PiOperation where
   a == b = a.result == b.result
 
 instance Show PiOperation where
-  show o = "_Operation(operation_id=" <> T.unpack (pyStrRepr o.inv.operationId) <> ")"
+  show o = "_Operation(operation_id=" <> T.unpack (pythonStrRepr o.inv.operationId) <> ")"
 
 piOperationId :: PiOperation -> Text
 piOperationId o = o.inv.operationId
@@ -1776,11 +1776,11 @@ renderPiRuntimeAdapter a = do
   ready <- isJust . (.installation) <$> readMVar a.runtime
   pure $
     "PiRuntimeAdapter(territory_profile="
-      <> pyStrRepr config.territoryProfile
+      <> pythonStrRepr config.territoryProfile
       <> ", provider="
-      <> pyStrRepr config.provider
+      <> pythonStrRepr config.provider
       <> ", model="
-      <> pyStrRepr config.model
+      <> pythonStrRepr config.model
       <> ", ready="
       <> (if ready then "True" else "False")
       <> ")"
@@ -2013,23 +2013,23 @@ startPi a inv0 = do
         "("
           <> T.intercalate
             ", "
-            [ pyStrRepr (lifecycleIdText inv.episodeId)
-            , pyStrRepr (lifecycleIdText inv.turnId)
-            , pyStrRepr (sha256Hex (TE.encodeUtf8 inv.prompt))
-            , pyStrRepr inv.connection.identity.connectionId
+            [ pythonStrRepr (lifecycleIdText inv.episodeId)
+            , pythonStrRepr (lifecycleIdText inv.turnId)
+            , pythonStrRepr (sha256Hex (TE.encodeUtf8 inv.prompt))
+            , pythonStrRepr inv.connection.identity.connectionId
             , T.pack (show inv.connection.authorityEpoch)
             , T.pack (show inv.connection.stateVersion)
-            , pyStrRepr coords.attachmentId
+            , pythonStrRepr coords.attachmentId
             , T.pack (show coords.attachmentEpoch)
             , T.pack (show inv.grantEpoch)
-            , pyStrRepr config.provider
-            , pyStrRepr config.model
-            , pyStrRepr config.territoryProfile
-            , optional (pyStrRepr . lifecycleIdText . (.id)) inv.continuation
-            , optional (pyStrRepr . lifecycleIdText . (.thread)) inv.continuation
-            , optional (pyStrRepr . sha256Hex . TE.encodeUtf8 . (.stateReference)) inv.continuation
-            , optional (pyStrRepr . (.sessionId)) prior
-            , optional (pyStrRepr . sha256Hex . (.sessionJsonl)) prior
+            , pythonStrRepr config.provider
+            , pythonStrRepr config.model
+            , pythonStrRepr config.territoryProfile
+            , optional (pythonStrRepr . lifecycleIdText . (.id)) inv.continuation
+            , optional (pythonStrRepr . lifecycleIdText . (.thread)) inv.continuation
+            , optional (pythonStrRepr . sha256Hex . TE.encodeUtf8 . (.stateReference)) inv.continuation
+            , optional (pythonStrRepr . (.sessionId)) prior
+            , optional (pythonStrRepr . sha256Hex . (.sessionJsonl)) prior
             ]
           <> ")"
       key = sha256Hex (TE.encodeUtf8 identity)

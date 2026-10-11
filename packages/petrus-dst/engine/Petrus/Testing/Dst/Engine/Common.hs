@@ -77,7 +77,7 @@ import Petrus.Impetus.Petrinet.Schema (NetPath, netPath)
 import Petrus.Motus.Dispatch (ActivityAttempt (epoch), DispatchError (..))
 import Petrus.Observation qualified as Observation
 import Petrus.Testing.Dst
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.World qualified as World
 
 -- ---------------------------------------------------------------------------
@@ -159,7 +159,7 @@ handlerText t = case T.breakOn "(" t of
 
 -- | The recorded @FiringFailed.error@ of @raise RuntimeError(message)@.
 runtimeErrorText :: Text -> Text
-runtimeErrorText message = "RuntimeError(" <> pyStrRepr message <> ")"
+runtimeErrorText message = "RuntimeError(" <> pythonStrRepr message <> ")"
 
 -- | Run IO inside a context-free door, turning any exception into the
 -- Python exception the reference would propagate from the door.

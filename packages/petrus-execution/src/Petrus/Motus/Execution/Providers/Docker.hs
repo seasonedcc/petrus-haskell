@@ -36,6 +36,7 @@ import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
 import Petrus.Motus.Execution.Internal.Common
 import Petrus.Motus.Execution.Internal.Process
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Motus.Execution.Internal.PyText (pyStrRepr)
 import System.Environment (getEnvironment)
 import System.IO.Temp (withSystemTempDirectory)
@@ -147,7 +148,7 @@ decodeJson bytes = case parseJson pythonLoads bytes of
 index :: Text -> Json -> IO Json
 index key value = case lookupMember key value of
   Just found -> pure found
-  Nothing -> throwExecution KeyError (T.pack (pyStrRepr (T.unpack key)))
+  Nothing -> throwExecution KeyError (pythonStrRepr key)
 
 firstItem :: Json -> IO Json
 firstItem = \case

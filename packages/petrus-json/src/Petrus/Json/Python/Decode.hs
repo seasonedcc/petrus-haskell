@@ -1,9 +1,10 @@
 {-# LANGUAGE MultiWayIf #-}
 
 -- | CPython's byte decoders, error text for error text: strict
--- @bytes.decode("utf-8")@ with its 'UnicodeDecodeError' message, and the
--- decoding @json.loads(bytes)@ applies (@json.detect_encoding@, then the
--- detected codec with @errors="surrogatepass"@).
+-- @bytes.decode("utf-8")@ with its 'UnicodeDecodeError' message,
+-- @bytes.decode("utf-8", "replace")@, and the decoding @json.loads(bytes)@
+-- applies (@json.detect_encoding@, then the detected codec with
+-- @errors="surrogatepass"@).
 --
 -- Many Petrus and Hamsterdan refusal texts embed the decoder's message
 -- (@'utf-8' codec can't decode byte 0xff in position 3: invalid start byte@),
@@ -16,6 +17,7 @@ module Petrus.Json.Python.Decode
     decodeUtf8Python
   , utf8DecodeError
   , codecErrorText
+  , decodeUtf8Replace
     -- * @json.loads(bytes)@
   , detectEncoding
   , decodeJsonBytes
@@ -117,6 +119,42 @@ utf8CodePoints surrogatePass bytes = go 0
     invalidStart i = Left (codecErrorText "utf-8" bytes i (i + 1) "invalid start byte")
     invalid i len = Left (codecErrorText "utf-8" bytes i (i + len) "invalid continuation byte")
     endOfData i = Left (codecErrorText "utf-8" bytes i n "unexpected end of data")
+
+-- | @bytes.decode("utf-8", "replace")@: each maximal ill-formed subpart
+-- (Unicode §3.9) becomes one U+FFFD, as CPython substitutes; the byte that
+-- breaks a sequence is not consumed. @text@'s lenient decoder does not
+-- promise this substitution count.
+decodeUtf8Replace :: ByteString -> Text
+decodeUtf8Replace input
+  | BS.isValidUtf8 input = TE.decodeUtf8 input
+  | otherwise = T.pack (go 0)
+  where
+    len = BS.length input
+    at = BS.index input
+    go i
+      | i >= len = []
+      | otherwise =
+          let b0 = at i
+           in if
+                | b0 < 0x80 -> chr (fromIntegral b0) : go (i + 1)
+                | b0 >= 0xC2 && b0 <= 0xDF -> sequenceOf i b0 [(0x80, 0xBF)]
+                | b0 == 0xE0 -> sequenceOf i b0 [(0xA0, 0xBF), (0x80, 0xBF)]
+                | b0 == 0xED -> sequenceOf i b0 [(0x80, 0x9F), (0x80, 0xBF)]
+                | b0 >= 0xE1 && b0 <= 0xEF -> sequenceOf i b0 [(0x80, 0xBF), (0x80, 0xBF)]
+                | b0 == 0xF0 -> sequenceOf i b0 [(0x90, 0xBF), (0x80, 0xBF), (0x80, 0xBF)]
+                | b0 >= 0xF1 && b0 <= 0xF3 -> sequenceOf i b0 [(0x80, 0xBF), (0x80, 0xBF), (0x80, 0xBF)]
+                | b0 == 0xF4 -> sequenceOf i b0 [(0x80, 0x8F), (0x80, 0xBF), (0x80, 0xBF)]
+                | otherwise -> '\xFFFD' : go (i + 1)
+    sequenceOf start b0 ranges = continue (start + 1) (leadBits b0 (length ranges)) ranges
+    continue i acc [] = chr acc : go i
+    continue i acc ((lo, hi) : more)
+      | i < len, let b = at i, b >= lo && b <= hi = continue (i + 1) ((acc `shiftL` 6) .|. fromIntegral (b .&. 0x3F)) more
+      | otherwise = '\xFFFD' : go i
+    leadBits :: Word8 -> Int -> Int
+    leadBits b0 = \case
+      1 -> fromIntegral (b0 .&. 0x1F)
+      2 -> fromIntegral (b0 .&. 0x0F)
+      _ -> fromIntegral (b0 .&. 0x07)
 
 -- | @json.detect_encoding(b)@: the codec @json.loads@ decodes bytes with.
 detectEncoding :: ByteString -> Text

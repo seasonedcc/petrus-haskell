@@ -75,7 +75,7 @@ import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), Descripto
 import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (ToolResult (..), capabilityScopedHands, toolMethodText, toolResultToModelData)
-import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonRepr, pythonStrListRepr)
 import Petrus.Agenticus.Hands.Gateway (HandsAdapter, HandsGateway, submit)
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
 import Petrus.Agenticus.Program.AgentNet
@@ -162,9 +162,7 @@ orThrow = either throwIO pure
 exact :: [Text] -> Text -> Json -> Either AgenticusError [(Text, Json)]
 exact fields label = \case
   Object members | sort (map fst members) == sort fields && length members == length fields -> Right members
-  _ -> Left (valueError (label <> " requires exact fields " <> pyList (sort fields)))
-  where
-    pyList names = "[" <> T.intercalate ", " ["'" <> n <> "'" | n <- names] <> "]"
+  _ -> Left (valueError (label <> " requires exact fields " <> pythonStrListRepr (sort fields)))
 
 field :: Text -> [(Text, Json)] -> Json
 field key members = maybe Null id (lookup key members)
@@ -211,21 +209,6 @@ parseHaltCode :: Json -> Either AgenticusError HaltCode
 parseHaltCode value = case [c | c <- [minBound .. maxBound], String (haltCodeText c) == value] of
   c : _ -> Right c
   [] -> Left (valueError (pythonRepr value <> " is not a valid HaltCode"))
-
--- | Python @repr(value)@ of a JSON-decoded value.
-pythonRepr :: Json -> Text
-pythonRepr = \case
-  Null -> "None"
-  Bool True -> "True"
-  Bool False -> "False"
-  String t -> pyStrRepr t
-  Array items -> "[" <> T.intercalate ", " (map pythonRepr items) <> "]"
-  Object members -> "{" <> T.intercalate ", " [pyStrRepr k <> ": " <> pythonRepr v | (k, v) <- members] <> "}"
-  Int n -> T.pack (show n)
-  Float d
-    | isNaN d -> "nan"
-    | isInfinite d -> if d > 0 then "inf" else "-inf"
-    | otherwise -> T.pack (J.pythonFloatRepr d)
 
 -- ---------------------------------------------------------------------------
 -- Projected appends

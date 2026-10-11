@@ -26,8 +26,7 @@ module Petrus.Impetus.Instance.Identity
 
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Impetus.Internal.Repr (pyInt, pyStr)
-
+import Petrus.Json.Python (pythonIntRepr, pythonStrRepr)
 -- | The non-empty durable identity of one Instance.
 newtype InstanceIdentity = InstanceIdentity Text
   deriving stock (Eq, Ord, Show)
@@ -35,7 +34,7 @@ newtype InstanceIdentity = InstanceIdentity Text
 -- | @InstanceIdentity(value)@.
 mkInstanceIdentity :: Text -> Either Text InstanceIdentity
 mkInstanceIdentity value
-  | T.null value = Left ("Instance identity must be a non-empty string of the exact built-in type, got " <> pyStr value)
+  | T.null value = Left ("Instance identity must be a non-empty string of the exact built-in type, got " <> pythonStrRepr value)
   | otherwise = Right (InstanceIdentity value)
 
 instanceIdentityText :: InstanceIdentity -> Text
@@ -48,7 +47,7 @@ newtype DeliveryIdentity = DeliveryIdentity Text
 -- | @DeliveryIdentity(value)@.
 mkDeliveryIdentity :: Text -> Either Text DeliveryIdentity
 mkDeliveryIdentity value
-  | T.null value = Left ("delivery identity must be a non-empty string of the exact built-in type, got " <> pyStr value)
+  | T.null value = Left ("delivery identity must be a non-empty string of the exact built-in type, got " <> pythonStrRepr value)
   | otherwise = Right (DeliveryIdentity value)
 
 deliveryIdentityText :: DeliveryIdentity -> Text
@@ -61,7 +60,7 @@ newtype FiringOccurrenceId = FiringOccurrenceId Int
 -- | @FiringOccurrenceId(value)@.
 mkFiringOccurrenceId :: Int -> Either Text FiringOccurrenceId
 mkFiringOccurrenceId value
-  | value < 1 = Left ("firing occurrence must be a positive integer of the exact built-in type, got " <> pyInt value)
+  | value < 1 = Left ("firing occurrence must be a positive integer of the exact built-in type, got " <> pythonIntRepr value)
   | otherwise = Right (FiringOccurrenceId value)
 
 firingOccurrenceIdInt :: FiringOccurrenceId -> Int

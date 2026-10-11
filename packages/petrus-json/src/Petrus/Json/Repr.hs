@@ -10,10 +10,13 @@ module Petrus.Json.Repr
     pythonRepr
   , pythonStr
     -- * Scalars
+  , pythonIntRepr
+  , pythonOptionalStrRepr
   , pythonBytesRepr
   , pythonDoubleRepr
     -- * Containers of already-rendered items
   , pythonListRepr
+  , pythonStrListRepr
   , pythonTupleRepr
     -- * 'String' spellings
   , pythonReprText
@@ -37,7 +40,7 @@ pythonRepr = \case
   Null -> "None"
   Bool True -> "True"
   Bool False -> "False"
-  Int i -> T.pack (show i)
+  Int i -> pythonIntRepr i
   Float d -> pythonDoubleRepr d
   String s -> pythonStrRepr s
   Array items -> pythonListRepr (map pythonRepr items)
@@ -49,6 +52,14 @@ pythonStr :: Json -> Text
 pythonStr = \case
   String s -> s
   other -> pythonRepr other
+
+-- | @repr(int)@.
+pythonIntRepr :: Integral a => a -> Text
+pythonIntRepr = T.pack . show . toInteger
+
+-- | @repr@ of a @str | None@.
+pythonOptionalStrRepr :: Maybe Text -> Text
+pythonOptionalStrRepr = maybe "None" pythonStrRepr
 
 -- | @repr(float)@, including @inf@, @-inf@ and @nan@.
 pythonDoubleRepr :: Double -> Text
@@ -62,6 +73,10 @@ pythonBytesRepr = T.pack . pythonReprBytes
 -- | @repr(list)@ given each item's repr.
 pythonListRepr :: [Text] -> Text
 pythonListRepr items = "[" <> T.intercalate ", " items <> "]"
+
+-- | @repr(list)@ of a list of strings.
+pythonStrListRepr :: [Text] -> Text
+pythonStrListRepr = pythonListRepr . map pythonStrRepr
 
 -- | @repr(tuple)@ given each item's repr (a single item keeps its comma).
 pythonTupleRepr :: [Text] -> Text

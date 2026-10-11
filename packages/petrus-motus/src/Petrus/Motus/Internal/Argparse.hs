@@ -30,7 +30,7 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Petrus.Motus.Internal.Repr (pyStr)
+import Petrus.Json.Python (pythonStrRepr)
 import System.Exit (ExitCode (..), exitWith)
 import System.IO (hFlush, stderr, stdout)
 import Text.Read (readMaybe)
@@ -207,13 +207,13 @@ parseArguments parser arguments = either id id (go (map T.pack arguments) Map.em
     consume spec given rest parsed extras = do
       let refuse message = Left (UsageError ("argument " <> spec.name <> ": " <> message))
       case spec.kind of
-        IntOption | not (isJust (pythonInt given)) -> refuse ("invalid int value: " <> pyStr given)
-        FloatOption | not (isJust (pythonFloat given)) -> refuse ("invalid float value: " <> pyStr given)
+        IntOption | not (isJust (pythonInt given)) -> refuse ("invalid int value: " <> pythonStrRepr given)
+        FloatOption | not (isJust (pythonFloat given)) -> refuse ("invalid float value: " <> pythonStrRepr given)
         _ -> Right ()
       case spec.choices of
         Just allowed
           | given `notElem` allowed ->
-              refuse ("invalid choice: " <> pyStr given <> " (choose from " <> T.intercalate ", " (map pyStr allowed) <> ")")
+              refuse ("invalid choice: " <> pythonStrRepr given <> " (choose from " <> T.intercalate ", " (map pythonStrRepr allowed) <> ")")
         _ -> Right ()
       let stored = if spec.repeatable then Map.insertWith (flip (++)) spec.name [given] parsed else Map.insert spec.name [given] parsed
       go rest stored extras

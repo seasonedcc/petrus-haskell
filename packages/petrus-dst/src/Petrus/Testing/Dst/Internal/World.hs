@@ -89,6 +89,7 @@ import Petrus.Testing.Dst.Codec (encodeArtifact, journalDigest)
 import Petrus.Testing.Dst.Decode
 import Petrus.Testing.Dst.Profile
 import Petrus.Testing.Dst.PyRepr
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Types
 
 -- ---------------------------------------------------------------------------
@@ -137,7 +138,7 @@ instance Exception DstFailure where
 -- | The reference exception's @str()@.
 failureMessage :: DstFailure -> Text
 failureMessage = \case
-  BudgetExhausted bound limit -> "DST budget " <> pyStrRepr bound <> " exhausted at limit " <> tshow limit
+  BudgetExhausted bound limit -> "DST budget " <> pythonStrRepr bound <> " exhausted at limit " <> tshow limit
   InvariantViolation m -> m
   StaleGeneration m -> m
   PendingWork m -> m
@@ -146,7 +147,7 @@ failureMessage = \case
   ReplayMismatch m -> m
   RunUntilFailed r ->
     "DST run_until "
-      <> pyStrRepr r.name
+      <> pythonStrRepr r.name
       <> " ended as "
       <> dispositionText r.disposition
       <> "; last="

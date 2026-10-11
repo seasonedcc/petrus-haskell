@@ -101,7 +101,7 @@ import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, maxWorkspaceArch
 import Petrus.Motus.Execution.Internal.Common (checkedGuestCwd, newUuid4, requireSupportedCapabilities, specFingerprint, uuidHex)
 import Petrus.Motus.Execution.Internal.Posix (atomicWriteFile, flockExclusive, fstatInfo, StatInfo (..), toRawPath)
 import Petrus.Motus.Execution.Internal.Process (Child, StdioFd (..), childExitCode, childPid, resolveExecutable, signalChild, spawnChild)
-import Petrus.Motus.Execution.Internal.PyText (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Motus.Execution.Internal.Sidecar (sidecarSha256, sidecarSource)
 import System.Directory (doesDirectoryExist, doesPathExist, listDirectory, removeDirectory, removeDirectoryRecursive, removeFile)
 import System.Environment (getEnvironment)
@@ -451,7 +451,7 @@ registryFromJson value = case value of
       <*> pure (maybe False truthy (lookupMember "private_file_transfer" value))
   _ -> Left (typeError "Gondolin registry must be a JSON object")
   where
-    member key = maybe (Left (ExecutionError KeyError (T.pack (pyStrRepr (T.unpack key))))) Right (lookupMember key value)
+    member key = maybe (Left (ExecutionError KeyError (pythonStrRepr key))) Right (lookupMember key value)
     text key =
       member key >>= \case
         String t -> Right t
@@ -1242,7 +1242,7 @@ execute env attachment command = pythonic $ do
           either throwIO pure (mkCommandResult code stdout' stderr' timedOut False truncated provenance)
   where
     required key response =
-      maybe (throwExecution KeyError (T.pack (pyStrRepr (T.unpack key)))) pure (lookupMember key response)
+      maybe (throwExecution KeyError (pythonStrRepr key)) pure (lookupMember key response)
     decoded key response =
       required key response >>= \case
         String encoded | Right bytes <- B64.decode (TE.encodeUtf8 encoded) -> pure bytes

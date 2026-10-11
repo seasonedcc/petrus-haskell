@@ -38,7 +38,7 @@ import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch)
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.Common
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 
@@ -212,7 +212,7 @@ deliveryEngineProfile historyPath = do
           { identity = profileIdentity
           , validate = \c ->
               if c.name /= "source.deliver"
-                then throwError (ProfileError "ValueError" ("unknown delivery Engine profile command " <> pyStrRepr c.name))
+                then throwError (ProfileError "ValueError" ("unknown delivery Engine profile command " <> pythonStrRepr c.name))
                 else
                   if not (exactKeys ["identity", "value"] c.payload)
                     then throwError (ProfileError "ValueError" "source.deliver requires exact identity and value fields")
@@ -221,7 +221,7 @@ deliveryEngineProfile historyPath = do
                       (String _, Int _) -> pure c
                       (String _, _) -> throwError (ProfileError "ValueError" "source.deliver value must be an integer")
                       _ -> throwError (ProfileError "ValueError" "source.deliver identity must be a non-empty string")
-          , validateFault = \f -> throwError (ProfileError "ValueError" ("delivery Engine profile has no fault named " <> pyStrRepr f.name))
+          , validateFault = \f -> throwError (ProfileError "ValueError" ("delivery Engine profile has no fault named " <> pythonStrRepr f.name))
           , create = do
               _ <- syncTime time
               g <- ioScenario (open False)
@@ -262,7 +262,7 @@ deliveryEngineProfile historyPath = do
           , observe = \g request -> do
               _ <- syncTime time
               fields <- case lookup request.name observationFields of
-                Nothing -> raise "ValueError" ("unknown delivery Engine profile observation " <> pyStrRepr request.name)
+                Nothing -> raise "ValueError" ("unknown delivery Engine profile observation " <> pythonStrRepr request.name)
                 Just fs -> pure fs
               if request.payload == Null || request.payload == Object []
                 then pure ()

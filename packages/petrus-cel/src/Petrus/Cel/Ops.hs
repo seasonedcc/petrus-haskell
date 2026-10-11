@@ -73,6 +73,7 @@ import Data.Word (Word8)
 import Numeric (showHex)
 
 import Petrus.Cel.Python
+import Petrus.Json.Python (pythonBytesRepr, pythonStrRepr)
 import Petrus.Cel.Regex (compileRegex, compileRegexBytes, searchBytes, searchText)
 import Petrus.Cel.Time
 import Petrus.Cel.Value
@@ -1480,7 +1481,7 @@ pyIntConvert v
   | Just n <- asInteger v = Right n
   | Just d <- asDouble v = truncDouble d
   | Just t <- asText v = parsed (parseIntDigits 10 (asciiTransform t)) (valueRepr v)
-  | Just b <- asBytes v = parsed (parseIntDigits 10 (map (chr . fromIntegral) (BS.unpack b))) (bytesRepr b)
+  | Just b <- asBytes v = parsed (parseIntDigits 10 (map (chr . fromIntegral) (BS.unpack b))) (pythonBytesRepr b)
   | otherwise =
       Left (typeErr ("int() argument must be a string, a bytes-like object or a real number, not " <> quoted (tpName v)))
   where
@@ -1496,7 +1497,7 @@ pyFloatConvert v
   | Just n <- asInteger v = intToDouble n
   | Just t <- asText v = maybe (Left (couldNot (valueRepr v))) Right (parseFloatText t)
   | Just b <- asBytes v =
-      maybe (Left (couldNot (bytesRepr b))) Right (parseFloatText (T.pack (map (chr . fromIntegral) (BS.unpack b))))
+      maybe (Left (couldNot (pythonBytesRepr b))) Right (parseFloatText (T.pack (map (chr . fromIntegral) (BS.unpack b))))
   | otherwise = Left (typeErr ("float() argument must be a string or a real number, not " <> quoted (tpName v)))
   where
     couldNot shown = valueErr ("could not convert string to float: " <> shown)
@@ -1505,7 +1506,7 @@ pyFloatConvert v
 hexInt :: Text -> Either Exc Integer
 hexInt t = case parseIntDigits 16 (asciiTransform t) of
   Right n -> Right n
-  Left _ -> Left (valueErr ("invalid literal for int() with base 16: " <> strRepr t))
+  Left _ -> Left (valueErr ("invalid literal for int() with base 16: " <> pythonStrRepr t))
 
 -- | @BoolType(source)@.
 boolTypeNew :: Value -> Either Exc Value

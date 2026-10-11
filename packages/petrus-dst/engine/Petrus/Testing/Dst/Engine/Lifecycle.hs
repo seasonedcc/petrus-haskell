@@ -61,7 +61,7 @@ import Petrus.Motus.Dispatch.InMemory (InMemoryDispatch, completeOccurrence, inM
 import Petrus.Testing.Dst hiding (dispositionText)
 import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
 import Petrus.Testing.Dst.Engine.Common
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 
@@ -410,7 +410,7 @@ newLifecycle refusing historyPath = do
         pure ApplyResult {disposition = Applied, value = Object (("frontier", Int frontier) : extra), scheduled}
       activeScope g name = do
         scopes <- ioScenario (Engine.activeScopes g.engine)
-        maybe (raise "KeyError" (pyStrRepr name)) pure (Map.lookup name scopes)
+        maybe (raise "KeyError" (pythonStrRepr name)) pure (Map.lookup name scopes)
       baseApply g c = case c.name of
         "scope.open" -> do
           scope <- ioScenario (Engine.openScope g.engine scopeName')
@@ -471,7 +471,7 @@ newLifecycle refusing historyPath = do
             matched <- faults "scope_fenced"
             expected <- forM matched $ \f -> do
               when (f.name /= "dispatch.refuse-cancellation" || not (isObject f.payload)) $
-                raise "ValueError" ("unsupported lifecycle cancellation-refusal fault " <> pyStrRepr f.name)
+                raise "ValueError" ("unsupported lifecycle cancellation-refusal fault " <> pythonStrRepr f.name)
               message <- case member "message" f.payload of
                 String m -> pure m
                 _ -> raise "ValueError" "dispatch.refuse-cancellation message must be a string"
@@ -518,7 +518,7 @@ newLifecycle refusing historyPath = do
                     || not (isString (member "message" f.payload))
                     then throwError (ProfileError "ValueError" "unsupported lifecycle cancellation-refusal fault")
                     else pure f
-                else throwError (ProfileError "ValueError" ("lifecycle Engine profile has no fault named " <> pyStrRepr f.name))
+                else throwError (ProfileError "ValueError" ("lifecycle Engine profile has no fault named " <> pythonStrRepr f.name))
           , create = do
               _ <- syncTime time
               g <- ioScenario (open False)
@@ -534,7 +534,7 @@ newLifecycle refusing historyPath = do
           , observe = \g request -> do
               _ <- syncTime time
               wanted <- case lookup request.name fields of
-                Nothing -> raise "ValueError" ("unknown lifecycle Engine profile observation " <> pyStrRepr request.name)
+                Nothing -> raise "ValueError" ("unknown lifecycle Engine profile observation " <> pythonStrRepr request.name)
                 Just fs -> pure fs
               if request.payload == Null || request.payload == Object []
                 then pure ()
@@ -589,7 +589,7 @@ validateCommand c = case c.name of
         refuse "activity.complete requires exact occurrence and result fields"
     | not (isPositiveInt (member "occurrence" c.payload)) -> refuse "activity.complete occurrence must be a positive integer"
     | otherwise -> pure c
-  other -> refuse ("unknown lifecycle Engine profile command " <> pyStrRepr other)
+  other -> refuse ("unknown lifecycle Engine profile command " <> pythonStrRepr other)
   where
     refuse = throwError . ProfileError "ValueError"
     nonEmptyString = \case

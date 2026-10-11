@@ -107,6 +107,10 @@ def utf8_decode(argument):
     return points(bytes.fromhex(argument).decode("utf-8"))
 
 
+def utf8_replace(argument):
+    return points(bytes.fromhex(argument).decode("utf-8", "replace"))
+
+
 def json_bytes(argument):
     data = bytes.fromhex(argument)
     encoding = json.detect_encoding(data)
@@ -130,6 +134,7 @@ OPERATIONS = {
     "json-loads": json_loads,
     "json-loads-strict": json_loads_strict,
     "utf8-decode": utf8_decode,
+    "utf8-replace": utf8_replace,
     "json-bytes": json_bytes,
     "uuid4": uuid4_text,
 }

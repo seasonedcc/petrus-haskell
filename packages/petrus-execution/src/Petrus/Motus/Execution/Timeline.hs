@@ -50,11 +50,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time (UTCTime (..), getCurrentTime, toGregorian, timeToTimeOfDay, TimeOfDay (..))
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, parseJson, pythonFloatRepr, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, parseJson, pythonLoads)
 import Petrus.Motus.Execution.Error
 import Petrus.Motus.Execution.Internal.Common (newUuid4, uuidHex)
 import Petrus.Motus.Execution.Internal.Posix (atomicWriteFile, fsyncFd, toRawPath)
-import Petrus.Motus.Execution.Internal.PyText (pyInt, pyIsSpace, pyStrRepr)
+import Petrus.Json.Python (isPythonSpace, pythonRepr, pythonStr, pythonStrRepr)
+import Petrus.Motus.Execution.Internal.PyText (pyInt)
 import System.Directory (createDirectoryIfMissing, doesPathExist, removeFile)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Error (isDoesNotExistError)
@@ -183,7 +184,7 @@ redactSecretValues = T.pack . go . T.unpack
     tokenClass c = alnum c || c `elem` ("_-" :: String)
     bearer s = do
       rest <- prefixCI "bearer" s
-      let (spaces, afterSpaces) = span pyIsSpace rest
+      let (spaces, afterSpaces) = span isPythonSpace rest
           (body, afterBody) = span bearerClass afterSpaces
       guard (not (null spaces) && not (null body))
       pure afterBody
@@ -278,7 +279,7 @@ newTimeline path retain = do
       nextSequence <- member "producer_sequence" record >>= pythonInt
       pure (Map.insertWith max producer nextSequence sequences)
     member key record = case record of
-      Object _ -> maybe (throwExecution KeyError (T.pack (pyStrRepr (T.unpack key)))) pure (lookupMember key record)
+      Object _ -> maybe (throwExecution KeyError (pythonStrRepr key)) pure (lookupMember key record)
       _ -> throwExecution TypeError "list indices must be integers or slices, not str"
     pythonInt = \case
       Int n -> pure (fromInteger n)
@@ -344,7 +345,7 @@ appendEvent timeline event =
       throwExecution
         ValueError
         ( "Timeline producer "
-            <> T.pack (pyStrRepr (T.unpack (eventProducer event)))
+            <> pythonStrRepr (eventProducer event)
             <> " expected sequence "
             <> T.pack (show expected)
             <> ", got "
@@ -454,25 +455,3 @@ emitTelemetry handler message =
       Null -> True
       _ -> False
 
--- | Python @str(value)@ of a JSON-decoded value.
-pythonStr :: Json -> Text
-pythonStr = \case
-  String t -> t
-  other -> pythonRepr other
-
--- | Python @repr(value)@ of a JSON-decoded value.
-pythonRepr :: Json -> Text
-pythonRepr = \case
-  Null -> "None"
-  Bool True -> "True"
-  Bool False -> "False"
-  Int n -> T.pack (show n)
-  Float d -> T.pack (floatRepr d)
-  String t -> T.pack (pyStrRepr (T.unpack t))
-  Array items -> "[" <> T.intercalate ", " (map pythonRepr items) <> "]"
-  Object members -> "{" <> T.intercalate ", " [T.pack (pyStrRepr (T.unpack k)) <> ": " <> pythonRepr v | (k, v) <- members] <> "}"
-  where
-    floatRepr d
-      | isNaN d = "nan"
-      | isInfinite d = if d > 0 then "inf" else "-inf"
-      | otherwise = pythonFloatRepr d

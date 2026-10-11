@@ -36,7 +36,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Motus.Dispatch.Absurd.Embed (embedFile)
-import Petrus.Motus.Internal.Repr (pyStr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Postgres (Connection, PostgresError (..), execute_, queryFirst, sql)
 
 -- | The pinned Absurd release tag.
@@ -122,9 +122,9 @@ ensureAbsurdSchemaWith vendored connection = do
           throwIO
             ( AbsurdError
                 ( "the database speaks absurd schema version "
-                    <> maybe "None" pyStr version
+                    <> maybe "None" pythonStrRepr version
                     <> ", but this adapter is pinned to "
-                    <> pyStr absurdVersion
+                    <> pythonStrRepr absurdVersion
                     <> ": a re-pin is a deliberate act [D11] — never an implicit upgrade at boot"
                 )
             )

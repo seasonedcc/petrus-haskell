@@ -35,7 +35,6 @@ module Petrus.Simulation
   , maxActionsFromJson
   , forbiddenDispatch
   , SimulationProfileException (..)
-  , pythonRepr
   ) where
 
 import Control.Exception (Exception (..), SomeAsyncException, SomeException, finally, throwIO, try)
@@ -100,8 +99,8 @@ import Petrus.Json
   , dumps
   , encodeErrorMessage
   )
-import Petrus.Json.PythonText (pythonStrRepr)
-import Petrus.Json.Repr (pythonReprFloat)
+import Petrus.Activity.Number (reprNumber)
+import Petrus.Json.Python (pythonOptionalStrRepr, pythonRepr, pythonStrRepr)
 import Petrus.Motus.Dispatch (Dispatch (..))
 import Petrus.Observation qualified as Observation
 
@@ -207,24 +206,6 @@ utf8Length = BS.length . TE.encodeUtf8
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show
-
--- | Python's @repr@ of a JSON-shaped value (@None@, @True@, @'text'@,
--- @1.5@, lists and dicts).
-pythonRepr :: Json -> Text
-pythonRepr = \case
-  Null -> "None"
-  Bool True -> "True"
-  Bool False -> "False"
-  Int n -> tshow n
-  Float d -> T.pack (pythonReprFloat d)
-  String s -> pythonStrRepr s
-  Array items -> "[" <> T.intercalate ", " (map pythonRepr items) <> "]"
-  Object members -> "{" <> T.intercalate ", " [pythonStrRepr k <> ": " <> pythonRepr v | (k, v) <- members] <> "}"
-
-reprNumber :: Number -> Text
-reprNumber = \case
-  IntNumber n -> tshow n
-  FloatNumber d -> T.pack (pythonReprFloat d)
 
 -- | The reference's @max_actions@ check for an untyped value (what a
 -- caller holding JSON would pass): an integer, not a boolean, from 1
@@ -339,7 +320,7 @@ admit bounds built initial maxActions = do
           | token.color /= Just expected ->
               refuse
                 ( "implementation-free-v1 token color "
-                    <> maybe "None" pythonStrRepr token.color
+                    <> pythonOptionalStrRepr token.color
                     <> " does not match place "
                     <> name
                     <> " color "

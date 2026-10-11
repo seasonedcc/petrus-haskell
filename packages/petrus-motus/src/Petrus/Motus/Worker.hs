@@ -93,7 +93,8 @@ import Petrus.Activity
 import Petrus.Json
 import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch.Inline (Activity)
-import Petrus.Motus.Internal.Repr
+import Petrus.Motus.PythonException (exceptionMessage)
+import Petrus.Json.Python (pythonStrListRepr, pythonStrRepr)
 import Petrus.Motus.PythonException (CancelledError (..), LookupError (..), RuntimeError (..), ValueError (..))
 import Petrus.Telemetry (TelemetryLogger, getLogger, maxRssMb, spanSet, withSpan)
 import Petrus.Telemetry qualified as Telemetry
@@ -160,9 +161,9 @@ resolveActivity activities resolver' attempt = do
       throwIO
         ( LookupError
             ( "no activity implementation for "
-                <> pyStr attempt.invocation.activity
+                <> pythonStrRepr attempt.invocation.activity
                 <> ": this worker implements "
-                <> pyStrList (Map.keys activities)
+                <> pythonStrListRepr (Map.keys activities)
             )
         )
 

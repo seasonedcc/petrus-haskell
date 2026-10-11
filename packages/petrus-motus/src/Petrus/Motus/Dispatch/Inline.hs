@@ -30,7 +30,7 @@ import GHC.Clock (getMonotonicTime)
 import Petrus.Activity
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch
-import Petrus.Motus.Internal.Repr
+import Petrus.Json.Python (pythonStrListRepr, pythonStrRepr)
 import Petrus.Motus.PythonException (PythonException (..), pythonException)
 
 -- | An Activity implementation: the whole invocation and the Attempt's
@@ -65,9 +65,9 @@ runInline adapter inv = case Map.lookup inv.activity adapter.activities of
   Nothing ->
     dispatchError
       ( "no activity implementation for "
-          <> pyStr inv.activity
+          <> pythonStrRepr inv.activity
           <> ": this InlineDispatch implements "
-          <> pyStrList (Map.keys adapter.activities)
+          <> pythonStrListRepr (Map.keys adapter.activities)
       )
   Just implementation -> do
     started <- getMonotonicTime

@@ -59,7 +59,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 
 import Petrus.Cel.Literal (LiteralKind, LiteralValue, literalTokenType)
-import Petrus.Cel.Python (strRepr)
+import Petrus.Json.Python (pythonStrRepr)
 
 -- | An identifier token.
 type Ident = Text
@@ -354,8 +354,8 @@ jsonString t = "\"" <> T.concatMap esc t <> "\""
 larkRepr :: LarkChild -> Text
 larkRepr = \case
   LarkNode (LarkTree rule children) ->
-    "Tree(Token('RULE', " <> strRepr rule <> "), [" <> T.intercalate ", " (map larkRepr children) <> "])"
-  LarkToken ty value -> "Token(" <> strRepr ty <> ", " <> strRepr value <> ")"
+    "Tree(Token('RULE', " <> pythonStrRepr rule <> "), [" <> T.intercalate ", " (map larkRepr children) <> "])"
+  LarkToken ty value -> "Token(" <> pythonStrRepr ty <> ", " <> pythonStrRepr value <> ")"
 
 -- | celpy's @tree_dump@ (its @DumpAST@ visitor): a lossy, stack-based
 -- re-rendering of a tree used inside @CELEvalError@ reprs. The visitor's

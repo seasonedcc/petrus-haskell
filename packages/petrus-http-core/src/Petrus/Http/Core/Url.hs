@@ -30,7 +30,6 @@ module Petrus.Http.Core.Url
   , parseQsl
   , unquote
   , unquotePlus
-  , decodeUtf8Replace
 
     -- * @ipaddress@
   , ipv4Address
@@ -39,7 +38,6 @@ module Petrus.Http.Core.Url
   ) where
 
 import Control.Monad (unless, when)
-import Data.Bits (shiftL, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as B
@@ -48,8 +46,7 @@ import Data.Char (chr, isAscii, isAsciiLower, isAsciiUpper, isDigit, isHexDigit,
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Word (Word8)
-import Petrus.Json.PythonText (pythonStrRepr)
+import Petrus.Json.Python (decodeUtf8Replace, pythonStrRepr)
 
 -- ---------------------------------------------------------------------------
 -- urlsplit
@@ -275,41 +272,6 @@ percentDecode bytes = case BS.split 37 bytes of
       | w <= 57 = w - 48
       | w <= 70 = w - 55
       | otherwise = w - 87
-
--- | @bytes.decode("utf-8", "replace")@: each maximal ill-formed subpart
--- becomes one U+FFFD, as CPython (and the Unicode standard's recommended
--- practice) does.
-decodeUtf8Replace :: ByteString -> Text
-decodeUtf8Replace input
-  | BS.isValidUtf8 input = TE.decodeUtf8 input
-  | otherwise = T.pack (go 0)
-  where
-    len = BS.length input
-    at i = BS.index input i
-    go i
-      | i >= len = []
-      | otherwise =
-          let b0 = at i
-           in if
-                | b0 < 0x80 -> chr (fromIntegral b0) : go (i + 1)
-                | b0 >= 0xC2 && b0 <= 0xDF -> sequenceOf i b0 [(0x80, 0xBF)]
-                | b0 == 0xE0 -> sequenceOf i b0 [(0xA0, 0xBF), (0x80, 0xBF)]
-                | b0 == 0xED -> sequenceOf i b0 [(0x80, 0x9F), (0x80, 0xBF)]
-                | b0 >= 0xE1 && b0 <= 0xEF -> sequenceOf i b0 [(0x80, 0xBF), (0x80, 0xBF)]
-                | b0 == 0xF0 -> sequenceOf i b0 [(0x90, 0xBF), (0x80, 0xBF), (0x80, 0xBF)]
-                | b0 >= 0xF1 && b0 <= 0xF3 -> sequenceOf i b0 [(0x80, 0xBF), (0x80, 0xBF), (0x80, 0xBF)]
-                | b0 == 0xF4 -> sequenceOf i b0 [(0x80, 0x8F), (0x80, 0xBF), (0x80, 0xBF)]
-                | otherwise -> '\xFFFD' : go (i + 1)
-    sequenceOf start b0 ranges = continue (start + 1) (leadBits b0 (length ranges)) ranges
-    continue i acc [] = chr acc : go i
-    continue i acc ((low, high) : more)
-      | i < len, let b = at i, b >= low && b <= high = continue (i + 1) ((acc `shiftL` 6) .|. fromIntegral (b .&. 0x3F)) more
-      | otherwise = '\xFFFD' : go i
-    leadBits :: Word8 -> Int -> Int
-    leadBits b0 = \case
-      1 -> fromIntegral (b0 .&. 0x1F)
-      2 -> fromIntegral (b0 .&. 0x0F)
-      _ -> fromIntegral (b0 .&. 0x07)
 
 -- ---------------------------------------------------------------------------
 -- ipaddress

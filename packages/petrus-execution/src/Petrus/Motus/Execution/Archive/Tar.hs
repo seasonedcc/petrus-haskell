@@ -45,6 +45,7 @@ import Data.ByteString.Unsafe qualified as BU
 import Data.Int (Int8)
 import Data.Word (Word8)
 import Numeric (showOct)
+import Petrus.Json.Python (isPythonSpace)
 import Petrus.Motus.Execution.Internal.PyText
 
 -- ---------------------------------------------------------------------------
@@ -348,7 +349,7 @@ octalInt raw =
   let stripped = trim raw
    in if null stripped then Just 0 else signed stripped
   where
-    trim = reverse . dropWhile pyIsSpace . reverse . dropWhile pyIsSpace
+    trim = reverse . dropWhile isPythonSpace . reverse . dropWhile isPythonSpace
     signed = \case
       '-' : rest -> negate <$> prefixed rest
       '+' : rest -> prefixed rest

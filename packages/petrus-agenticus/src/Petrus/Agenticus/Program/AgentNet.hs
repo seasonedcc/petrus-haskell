@@ -150,7 +150,7 @@ import Petrus.Impetus.Dsl qualified as Dsl
 import Petrus.Cel.Impetus qualified as Cel
 import Petrus.Engine qualified as Engine
 import Petrus.Impetus.Instance (ImplementationRef (..))
-import Petrus.Impetus.Internal.Repr (pyJson, pyStr)
+import Petrus.Json.Python (pythonRepr, pythonStrRepr)
 import Petrus.Impetus.Petrinet (Binding, Guard, Marking, Net, NetPath, NetUri, Token (..), bindingTokens, handlerUri, markingFromList, netPath)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
@@ -255,7 +255,7 @@ parseTerminalCode = enumFrom' "TerminalCode" terminalCodeText
 enumFrom' :: (Enum a, Bounded a) => Text -> (a -> Text) -> Json -> Either AgenticusError a
 enumFrom' cls render value = case [c | c <- [minBound .. maxBound], String (render c) == value, isString value] of
   c : _ -> Right c
-  [] -> Left (valueError (pyJson value <> " is not a valid " <> cls))
+  [] -> Left (valueError (pythonRepr value <> " is not a valid " <> cls))
   where
     isString = \case
       String _ -> True
@@ -283,7 +283,7 @@ text name = \case
 faithful :: Text -> Json -> Either AgenticusError Json
 faithful name value = case J.dumps J.compact {J.ensureAscii = True} value of
   Left (J.NonFiniteNumber d) ->
-    Left (valueError (name <> " must be JSON-faithful: Out of range float values are not JSON compliant: " <> pyJson (Float d)))
+    Left (valueError (name <> " must be JSON-faithful: Out of range float values are not JSON compliant: " <> pythonRepr (Float d)))
   Left err -> Left (valueError (name <> " must be JSON-faithful: " <> T.pack (J.encodeErrorMessage err)))
   Right bytes
     | toInteger (BS.length bytes) > maxJsonBytes ->
@@ -298,7 +298,7 @@ exact fields name = \case
         case lookup "version" members of
           Just (Int v) | v == agentNetVersion -> Right members
           _ -> Left (valueError (name <> " version must be integer " <> showT agentNetVersion))
-  _ -> Left (valueError (name <> " requires exact fields [" <> T.intercalate ", " (map pyStr (sort fields)) <> "]"))
+  _ -> Left (valueError (name <> " requires exact fields [" <> T.intercalate ", " (map pythonStrRepr (sort fields)) <> "]"))
 
 at :: Text -> [(Text, Json)] -> Json
 at key members = maybe Null id (lookup key members)
@@ -783,7 +783,7 @@ initialMarking s = markingFromList [(modelPending, [Token (Just "LoopState") (lo
 
 -- | The recorded failure text of a raised error: Python's @repr(error)@.
 failureText :: AgenticusError -> Text
-failureText e = errorClassName e.errorClass <> "(" <> pyStr e.errorMessage <> ")"
+failureText e = errorClassName e.errorClass <> "(" <> pythonStrRepr e.errorMessage <> ")"
 
 -- | Run a validation inside a handler: a refusal is the handler raising.
 raise :: Either AgenticusError a -> Either Text a

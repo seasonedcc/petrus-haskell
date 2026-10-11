@@ -39,6 +39,7 @@ import Data.Text qualified as T
 import Petrus.Cel.Literal (LiteralValue (..))
 import Petrus.Cel.Ops
 import Petrus.Cel.Python
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Cel.Syntax
 import Petrus.Cel.Value
 
@@ -141,7 +142,7 @@ typeRepr :: Value -> Text
 typeRepr = classRepr . pyType
 
 ruleRepr :: Text -> Text
-ruleRepr rule = "Token('RULE', " <> strRepr rule <> ")"
+ruleRepr rule = "Token('RULE', " <> pythonStrRepr rule <> ")"
 
 -- | Catch the listed exception classes of an operation into a
 -- @CELEvalError@ value, letting everything else propagate.
@@ -294,7 +295,7 @@ evalMember act member = case member of
         Nothing ->
           Right
             ( noTreeArgs
-                ("No " <> strRepr name <> " in bindings [" <> T.intercalate ", " (map strRepr (sort (map fst c))) <> "]")
+                ("No " <> pythonStrRepr name <> " in bindings [" <> T.intercalate ", " (map pythonStrRepr (sort (map fst c))) <> "]")
                 KeyError
             )
       VMessage kvs ->
@@ -304,7 +305,7 @@ evalMember act member = case member of
       VMap kvs ->
         dictLookup kvs (PStr name) >>= \case
           Just v -> Right v
-          Nothing -> Right (noTreeArgs ("no such member in mapping: " <> strRepr name) KeyError)
+          Nothing -> Right (noTreeArgs ("no such member in mapping: " <> pythonStrRepr name) KeyError)
       _ ->
         Right
           ( noTreeArgs
@@ -358,7 +359,7 @@ evalFieldInits act inits = VMessage . reverse <$> go [] (toList inits)
           Nothing -> Right ()
           Just (m, r) -> evalOr act m >> evalExpr act r >> Right ()
         if any (\(k, _) -> asText k == Just name) acc
-          then Left (pyExc ValueError ("Duplicate field label " <> strRepr name))
+          then Left (pyExc ValueError ("Duplicate field label " <> pythonStrRepr name))
           else go ((VString name, v) : acc) more
 
 -- | The @exprlist@ rule: every argument is evaluated; the first error
@@ -374,7 +375,7 @@ evalExprList act es = do
 methodEval :: Value -> Text -> Maybe Value -> Result
 methodEval object name exprlist = case resolveFunction name of
   Nothing ->
-    Right (VError (celError ("undeclared reference to " <> strRepr name <> activationNote) (keyError (PStr name)) Nothing))
+    Right (VError (celError ("undeclared reference to " <> pythonStrRepr name <> activationNote) (keyError (PStr name)) Nothing))
   Just function -> case (object, exprlist) of
     (VError _, _) -> Right object
     (_, Just err@(VError _)) -> Right err

@@ -47,7 +47,7 @@ import Petrus.Testing.Dst.Engine.GeneratedRuntime
   , scopeName
   , worldBudget
   )
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 import System.Directory (createDirectoryIfMissing)
@@ -93,7 +93,7 @@ establishFairSpine identity value retry perturbations = do
           t' <- World.timeline
           drainCurrent
           pure t'
-        other -> World.throwWorld (ContractViolation "ValueError" ("unknown fair-spine perturbation " <> pyStrRepr other))
+        other -> World.throwWorld (ContractViolation "ValueError" ("unknown fair-spine perturbation " <> pythonStrRepr other))
   timeline' <- foldlM' perturb timeline perturbations
   _ <- Timeline.command timeline' "worker.claim" (Object [])
   when retry $ do

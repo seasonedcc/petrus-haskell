@@ -73,6 +73,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 
 import Petrus.Cel.Python
+import Petrus.Json.Python (pythonBytesRepr, pythonDoubleRepr, pythonStrRepr)
 import Petrus.Cel.Time
 import Petrus.Json (Json (..))
 
@@ -315,8 +316,8 @@ pyExc cls message = PyExc cls message [argRepr]
   where
     argRepr = case cls of
       Re2Error -> bytesRepr' message
-      _ -> strRepr message
-    bytesRepr' = bytesRepr . TE.encodeUtf8
+      _ -> pythonStrRepr message
+    bytesRepr' = pythonBytesRepr . TE.encodeUtf8
 
 -- | Lift the time module's exceptions.
 fromPyErr :: PyErr -> Exc
@@ -367,7 +368,7 @@ tupleRepr = \case
   xs -> "(" <> T.intercalate ", " xs <> ")"
 
 celErrorArgsRepr :: CelError -> Text
-celErrorArgsRepr e = tupleRepr [strRepr (celErrorMessage e), celErrorCause e, celErrorCauseArgs e]
+celErrorArgsRepr e = tupleRepr [pythonStrRepr (celErrorMessage e), celErrorCause e, celErrorCauseArgs e]
 
 -- ---------------------------------------------------------------------------
 -- repr / str / bool
@@ -380,18 +381,18 @@ valueRepr = \case
   VBool n -> "BoolType(" <> (if n /= 0 then "True" else "False") <> ")"
   VInt n -> "IntType(" <> showT n <> ")"
   VUint n -> "UintType(" <> showT n <> ")"
-  VDouble d -> "DoubleType(" <> floatRepr d <> ")"
-  VString t -> "StringType(" <> strRepr t <> ")"
-  VBytes b -> "BytesType(" <> bytesRepr b <> ")"
+  VDouble d -> "DoubleType(" <> pythonDoubleRepr d <> ")"
+  VString t -> "StringType(" <> pythonStrRepr t <> ")"
+  VBytes b -> "BytesType(" <> pythonBytesRepr b <> ")"
   VList xs -> "ListType(" <> listRepr xs <> ")"
   VMap kvs -> "MapType(" <> dictRepr kvs <> ")"
   VMessage kvs -> "MessageType(" <> dictRepr kvs <> ")"
-  VTimestamp dt -> "TimestampType(" <> strRepr (datetimeStr dt) <> ")"
-  VDuration td -> "DurationType(" <> strRepr (durationStr td) <> ")"
+  VTimestamp dt -> "TimestampType(" <> pythonStrRepr (datetimeStr dt) <> ")"
+  VDuration td -> "DurationType(" <> pythonStrRepr (durationStr td) <> ")"
   PInt n -> showT n
-  PFloat d -> floatRepr d
-  PStr t -> strRepr t
-  PBytes b -> bytesRepr b
+  PFloat d -> pythonDoubleRepr d
+  PStr t -> pythonStrRepr t
+  PBytes b -> pythonBytesRepr b
   PList xs -> listRepr xs
   PTimedelta td -> timedeltaRepr td
   VClass cls -> classRepr cls
@@ -401,7 +402,7 @@ valueRepr = \case
   VError e ->
     "CELEvalError(*"
       <> celErrorArgsRepr e
-      <> maybe "" (\t -> ", tree=" <> strRepr t) (celErrorTree e)
+      <> maybe "" (\t -> ", tree=" <> pythonStrRepr t) (celErrorTree e)
       <> ")"
   where
     listRepr xs = "[" <> T.intercalate ", " (map valueRepr xs) <> "]"
@@ -434,12 +435,12 @@ valueStr = \case
   VBool n -> if n /= 0 then "True" else "False"
   VInt n -> showT n
   VUint n -> showT n
-  VDouble d -> floatRepr d
+  VDouble d -> pythonDoubleRepr d
   VString t -> t
   VTimestamp dt -> datetimeStr dt
   VDuration td -> durationStr td
   PInt n -> showT n
-  PFloat d -> floatRepr d
+  PFloat d -> pythonDoubleRepr d
   PStr t -> t
   PTimedelta td -> timedeltaStr td
   VError e -> celErrorArgsRepr e

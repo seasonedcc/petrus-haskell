@@ -40,7 +40,6 @@ library
                     Petrus.Motus.Dispatch.InMemory
                     Petrus.Motus.Dispatch.Local
                     Petrus.Motus.Internal.Argparse
-                    Petrus.Motus.Internal.Repr
                     Petrus.Motus.PythonException
                     Petrus.Motus.Worker
                     Petrus.Motus.Worker.Cli

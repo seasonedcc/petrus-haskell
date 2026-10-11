@@ -28,8 +28,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Numeric (readHex)
 
-import Petrus.Cel.Python (asciiTransform, parseFloatText, parseIntDigits, strRepr)
-import Petrus.Cel.Unicode (pythonDecimal)
+import Petrus.Cel.Python (asciiTransform, parseFloatText, parseIntDigits)
+import Petrus.Json.Python (pythonDecimal, pythonStrRepr)
 import Petrus.Json.Wtf8 (fromCodePoints)
 
 -- | The lexical class of a literal token (lark's terminal names).
@@ -78,7 +78,7 @@ cookLiteral :: LiteralKind -> Text -> LiteralValue
 cookLiteral kind text = case kind of
   IntLiteral -> intType text
   UintLiteral -> uintType (T.dropEnd 1 text)
-  FloatLiteral -> maybe (LitValueError ("could not convert string to float: " <> strRepr text)) LitDouble (parseFloatText text)
+  FloatLiteral -> maybe (LitValueError ("could not convert string to float: " <> pythonStrRepr text)) LitDouble (parseFloatText text)
   StringLiteral -> cookString text
   MultilineStringLiteral -> cookString text
   BytesLiteral -> cookBytes text
@@ -97,7 +97,7 @@ intType text
   | Just rest <- T.stripPrefix "0x" text = either (const bad) int64 (parseIntDigits 16 (asciiTransform rest))
   | otherwise = either (const bad) int64 (parseIntDigits 10 (asciiTransform text))
   where
-    bad = LitValueError ("invalid literal for int() with base 10: " <> strRepr text)
+    bad = LitValueError ("invalid literal for int() with base 10: " <> pythonStrRepr text)
 
 -- | @UintType(text[:-1])@ for a lexed @UINT_LIT@: only a @0x@ prefix is
 -- special, so @-0x1u@ fails as a decimal literal.
@@ -111,7 +111,7 @@ uintType text =
           | n >= 0 && n < 2 ^ (64 :: Int) -> LitUint n
           | otherwise -> LitValueError "overflow"
         (base, Left _) ->
-          LitValueError ("invalid literal for int() with base " <> T.pack (show base) <> ": " <> strRepr (if base == 16 then T.drop 2 text else text))
+          LitValueError ("invalid literal for int() with base " <> T.pack (show base) <> ": " <> pythonStrRepr (if base == 16 then T.drop 2 text else text))
 
 -- | One match of @CEL_ESCAPES_PAT@.
 data Piece
@@ -161,7 +161,7 @@ simpleEscape = \case
 octalValue :: Text -> Either Text Integer
 octalValue digits = case parseIntDigits 8 (asciiTransform digits) of
   Right v -> Right v
-  Left _ -> Left ("invalid literal for int() with base 8: " <> strRepr digits)
+  Left _ -> Left ("invalid literal for int() with base 8: " <> pythonStrRepr digits)
 
 pyChr :: Integer -> Either Text Char
 pyChr n

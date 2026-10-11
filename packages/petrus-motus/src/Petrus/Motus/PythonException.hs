@@ -25,7 +25,8 @@ module Petrus.Motus.PythonException
   , knownPythonException
   , Namer (..)
   , motusNames
-  , pythonRepr
+  , pythonExceptionRepr
+  , exceptionMessage
   ) where
 
 import Control.Exception (Exception (..), SomeException (..), asyncExceptionFromException, asyncExceptionToException)
@@ -36,7 +37,6 @@ import Data.Typeable (tyConName, typeOf, typeRepTyCon)
 import Database.SQLite3 (SQLError (..))
 import Petrus.Json.PythonText (pythonStrRepr)
 import Petrus.Motus.Dispatch (DispatchError (..))
-import Petrus.Motus.Internal.Repr (exceptionMessage)
 
 -- ---------------------------------------------------------------------------
 -- The reference's built-in exception types
@@ -133,5 +133,10 @@ pythonException = pythonExceptionWith []
 
 -- | @repr(error)@ for an exception raised with its message as the one
 -- argument: @Name('message')@, or @Name()@ when the message is empty.
-pythonRepr :: PythonException -> Text
-pythonRepr e = e.className <> "(" <> (if T.null e.message then "" else pythonStrRepr e.message) <> ")"
+pythonExceptionRepr :: PythonException -> Text
+pythonExceptionRepr e = e.className <> "(" <> (if T.null e.message then "" else pythonStrRepr e.message) <> ")"
+
+-- | The exception's message without a trailing call stack: the analogue of
+-- @str(error)@.
+exceptionMessage :: SomeException -> Text
+exceptionMessage (SomeException e) = fst (T.breakOn "\nCallStack (from" (T.pack (displayException e)))

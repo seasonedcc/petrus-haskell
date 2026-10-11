@@ -8,8 +8,8 @@
 -- * "Petrus.Json.Repr": @repr@ and @str@ of what @json.loads@ returns,
 --   @repr(bytes)@ and @repr(float)@;
 -- * "Petrus.Json.Python.Decode": strict UTF-8 decoding with CPython's
---   'UnicodeDecodeError' text, and @json.loads(bytes)@'s
---   @detect_encoding@ decoding;
+--   'UnicodeDecodeError' text, @errors="replace"@ decoding, and
+--   @json.loads(bytes)@'s @detect_encoding@ decoding;
 -- * "Petrus.Json.Python.Scanner" (imported on its own, its names being
 --   generic): @json.loads@'s scanner with its hooks and 'JSONDecodeError'
 --   texts;

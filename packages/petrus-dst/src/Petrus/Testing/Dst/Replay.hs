@@ -29,6 +29,7 @@ import Petrus.Testing.Dst.Codec (journalDigest)
 import Petrus.Testing.Dst.Internal.World hiding (artifact)
 import Petrus.Testing.Dst.Profile
 import Petrus.Testing.Dst.PyRepr
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Types
 
 -- | A profile with its generation type hidden, so one registry holds
@@ -100,9 +101,9 @@ replay registry artifact = case resolved of
         throwWorld
           ( ReplayMismatch
               ( "DST disposition diverged: expected "
-                  <> pyStrRepr (dispositionText expectedEnding)
+                  <> pythonStrRepr (dispositionText expectedEnding)
                   <> ", observed "
-                  <> pyStrRepr (dispositionText ending)
+                  <> pythonStrRepr (dispositionText ending)
               )
           )
       entries <- journal

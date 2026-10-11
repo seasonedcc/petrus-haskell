@@ -50,7 +50,7 @@ import Petrus.Testing.Dst.Engine.Common (PyException (..), engineCurrent, ensure
 import Petrus.Testing.Dst.Joined.Checkers qualified as C
 import Petrus.Testing.Dst.Joined.Identities qualified as Id
 import Petrus.Testing.Dst.Joined.Support (payloadAbsent, probeRecords, pyEq, strs, withProbe)
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 
@@ -273,7 +273,7 @@ creationProfile variant dsn = do
         matched <- faults cfg.faultTarget
         forM matched $ \f -> do
           when (f.name /= cfg.faultName || f.disposition /= cfg.faultDisposition) $
-            raise "ValueError" ("unsupported joined-creation fault " <> pyStrRepr f.name)
+            raise "ValueError" ("unsupported joined-creation fault " <> pythonStrRepr f.name)
           unless (isObject f.payload && exactKeys ["message"] f.payload) $
             raise "ValueError" (cfg.faultName <> " requires an exact message payload")
           message <- case member "message" f.payload of
@@ -358,7 +358,7 @@ creationProfile variant dsn = do
 
       observe' g request = do
         unless (request.name `elem` cfg.observations) $
-          raise "ValueError" ("unknown joined-creation observation " <> pyStrRepr request.name)
+          raise "ValueError" ("unknown joined-creation observation " <> pythonStrRepr request.name)
         unless (payloadAbsent request.payload) $ raise "ValueError" "joined-creation observations do not accept parameters"
         ioScenario (state g)
 

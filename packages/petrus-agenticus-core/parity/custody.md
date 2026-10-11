@@ -15,7 +15,7 @@ Haskell modules:
   operations.
 - `Petrus.Agenticus.Internal.Sqlite`: the SQLite access layer, built on
   direct-sqlite. It is the swap point for `petrus-sqlite`.
-- `Petrus.Agenticus.Internal.PyRepr`: `repr()` of strings, for messages.
+- `repr()` of strings, for messages, is petrus-json's `Petrus.Json.Python.pythonStrRepr`.
 
 The tests live in `test/Petrus/Agenticus/ConnectionSpec.hs`, under
 `describe "connection/test_custody.py"`. Each `it` label is the upstream test

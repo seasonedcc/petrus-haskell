@@ -103,7 +103,7 @@ import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch (Dispatch (..))
 import Petrus.Motus.Dispatch.InMemory (InMemoryDispatch, completeOccurrence, inMemoryDispatch, newInMemoryDispatch, pending)
 import Petrus.Testing.Dst
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Testing.Dst.Timeline qualified as Timeline
@@ -504,7 +504,7 @@ projectionFaults generation = do
   matched <- faults "activity_terminal_frozen"
   forM matched $ \f -> do
     when (f.name /= "projection.raise" || f.disposition /= Raise) $
-      raise "ValueError" ("unsupported public-Engine profile fault " <> pyStrRepr f.name)
+      raise "ValueError" ("unsupported public-Engine profile fault " <> pythonStrRepr f.name)
     message <- faultMessage "projection.raise" f
     liftIO (writeIORef generation.bridge.projectionError (Just message))
     pure ("RuntimeError", message)
@@ -539,7 +539,7 @@ baseProfile b =
           | not (isPositiveInt (member "occurrence" c.payload)) ->
               throwError (ProfileError "ValueError" "engine.complete occurrence must be a positive integer")
           | otherwise -> pure c
-        other -> throwError (ProfileError "ValueError" ("unknown public-Engine profile command " <> pyStrRepr other))
+        other -> throwError (ProfileError "ValueError" ("unknown public-Engine profile command " <> pythonStrRepr other))
     , validateFault = b.faultCheck
     , create = do
         _ <- syncTime b.time
@@ -651,7 +651,7 @@ baseObserve :: Base -> Generation -> ObservationRequest -> Scenario IO Json
 baseObserve b generation request = do
   let fields = lookup request.name b.observationFields
   when (request.name /= "engine.safety" && null fields) $
-    raise "ValueError" ("unknown public-Engine profile observation " <> pyStrRepr request.name)
+    raise "ValueError" ("unknown public-Engine profile observation " <> pythonStrRepr request.name)
   unless (request.payload == Null || request.payload == Object []) $
     raise "ValueError" "public-Engine profile observations do not accept parameters"
   state <- ioScenario (baseState b generation)
@@ -864,7 +864,7 @@ armedFaults
 armedFaults target name disposition unsupported adapter (missingClass, missingMessage) generation = do
   matched <- faults target
   forM matched $ \f -> do
-    when (f.name /= name || f.disposition /= disposition) $ raise "ValueError" (unsupported <> pyStrRepr f.name)
+    when (f.name /= name || f.disposition /= disposition) $ raise "ValueError" (unsupported <> pythonStrRepr f.name)
     message <- faultMessage name f
     case adapter generation of
       Nothing -> raise missingClass missingMessage

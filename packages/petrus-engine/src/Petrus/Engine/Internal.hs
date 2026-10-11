@@ -90,7 +90,7 @@ import Petrus.Impetus.Instance
   , resume
   )
 import Petrus.Impetus.Instance qualified as I
-import Petrus.Impetus.Internal.Repr (pyStr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Impetus.Petrinet (Filter, Guard, Instant, Marking, Net, NetPath, Token, emptyMarking)
 import Petrus.Impetus.Scope (LifecycleScope)
 import Petrus.Motus.Dispatch (Dispatch)
@@ -236,20 +236,20 @@ openEngine mode net identity store port options resources =
       inst <- case mode of
         CreateInstance -> do
           when (existing /= 0) $
-            throwIO (EngineValueError ("cannot create Instance " <> pyStr identity <> ": canonical history already exists"))
+            throwIO (EngineValueError ("cannot create Instance " <> pythonStrRepr identity <> ": canonical history already exists"))
           newInstance net config {initialMarking = options.marking, constructionInstant = options.at, suppliedIdentity = Just identity}
             >>= either throwInstanceError pure
         LoadInstance -> do
           when (existing == 0) $
-            throwIO (EngineValueError ("cannot load Instance " <> pyStr identity <> ": canonical history does not exist"))
+            throwIO (EngineValueError ("cannot load Instance " <> pythonStrRepr identity <> ": canonical history does not exist"))
           loaded <- resume net store config >>= either throwInstanceError pure
           unless (instanceIdentity loaded == identity) $
             throwIO
               ( EngineValueError
                   ( "cannot load Instance "
-                      <> pyStr identity
+                      <> pythonStrRepr identity
                       <> ": canonical InstanceCreated identity is "
-                      <> pyStr (instanceIdentity loaded)
+                      <> pythonStrRepr (instanceIdentity loaded)
                       <> "; storage key and recorded identity must match exactly"
                   )
               )
@@ -281,7 +281,7 @@ resolveTimeouts fallback declared = \case
             Right (ActivityInvocation inv.activity inv.input resolved inv.correlation inv.idempotency)
         }
   where
-    valueError m = "ValueError(" <> pyStr m <> ")"
+    valueError m = "ValueError(" <> pythonStrRepr m <> ")"
 
 -- ---------------------------------------------------------------------------
 -- The monitor

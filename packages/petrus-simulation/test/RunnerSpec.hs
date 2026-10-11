@@ -21,6 +21,7 @@ import Petrus.Impetus.Dsl (BuiltNet (..))
 import Petrus.Impetus.HistoryStore (inMemoryHistoryStore)
 import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..), lookupMember, parseJson, strictLoads)
+import Petrus.Json.Python (pythonRepr)
 import Petrus.Motus.Dispatch (Dispatch (..))
 import Petrus.Motus.Dispatch.Inline (inlineDispatch, newInlineDispatch)
 import Petrus.Simulation

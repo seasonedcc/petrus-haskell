@@ -37,7 +37,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Petrus.Impetus.History.Records
-import Petrus.Impetus.Internal.Repr (pyInt)
+import Petrus.Json.Python (pythonIntRepr)
 import Petrus.Impetus.Petrinet.Enabledness (Binding (..))
 import Petrus.Impetus.Petrinet.Schema (NetPath, netPathText)
 
@@ -94,7 +94,7 @@ roundRobin ring = do
       propose' candidates state = case candidates of
         [] -> Right Nothing
         _ -> do
-          cursor <- maybe (Right 0) (\c -> if c >= 0 && c < size then Right c else Left ("invalid round-robin state: " <> pyInt c)) state
+          cursor <- maybe (Right 0) (\c -> if c >= 0 && c < size then Right c else Left ("invalid round-robin state: " <> pythonIntRepr c)) state
           let firstFor t = case [c | c <- candidates, c.transition == t] of
                 c : _ -> Just c
                 [] -> Nothing
@@ -164,7 +164,7 @@ foldHistory policy state0 history = do
         | IntMap.member r.occurrence selected ->
             Left
               ( "selection replay divergence: duplicate CandidateSelected for occurrence "
-                  <> pyInt r.occurrence
+                  <> pythonIntRepr r.occurrence
               )
         | otherwise -> Right (IntMap.insert r.occurrence r.transition selected, r.occurrence : order, begun)
       RFiringBegun r -> Right (selected, order, IntMap.insertWith (flip (++)) r.occurrence [r.transition] begun)
@@ -177,11 +177,11 @@ foldHistory policy state0 history = do
           | began /= transition ->
               Left
                 ( "selection replay divergence: occurrence "
-                    <> pyInt occurrence
+                    <> pythonIntRepr occurrence
                     <> " selected "
                     <> netPathText transition
                     <> " but began "
                     <> netPathText began
                 )
           | otherwise -> policy.foldCommitted state transition
-        _ -> Left ("selection replay divergence: duplicate FiringBegun for occurrence " <> pyInt occurrence)
+        _ -> Left ("selection replay divergence: duplicate FiringBegun for occurrence " <> pythonIntRepr occurrence)

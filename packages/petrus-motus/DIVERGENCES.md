@@ -93,7 +93,7 @@ surface:
 12. **An exception failure is spelled through the mapping in (4).** The
     reference's `fail(attempt, exc)` stores the error as `repr(exc)` and the
     kind as `type(exc).__name__`. A `FailureException` stores
-    `pythonRepr` and the class name of `pythonException`, so a
+    `pythonExceptionRepr` and the class name of `pythonException`, so a
     `DispatchError` stores exactly the reference's `ValueError('…')`.
 13. **The generated claimant's UUID** takes 16 bytes from the operating
     system's random source through `getentropy`, which `os.urandom` also

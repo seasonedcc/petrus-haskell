@@ -40,7 +40,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import Numeric (showHex)
 import Petrus.Json (DuplicateMembers (..), Json (..), ParseOptions (..), maxIntStrDigits, parseJson, pythonLoads)
-import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 
 -- | Load one strict DST JSON document. A refusal carries the text of the
 -- Python exception the reference wraps (without its
@@ -358,7 +358,7 @@ diagnose text = case document of
               next = skipWs end
           case charAt next of
             Just '}' -> case duplicate' of
-              Just k -> Left (Plain ("duplicate JSON field " <> pyStrRepr k))
+              Just k -> Left (Plain ("duplicate JSON field " <> pythonStrRepr k))
               Nothing -> Right (next + 1)
             Just ',' -> do
               let afterComma = skipWs (next + 1)

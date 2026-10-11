@@ -115,7 +115,6 @@ module Petrus.Motus.Dispatch.Absurd
 
 import Control.Exception (catch, onException, throwIO, try)
 import Control.Monad (forM, forM_, unless, void, when)
-import Data.Bits ((.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isDigit)
@@ -133,7 +132,6 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
-import Numeric (showHex)
 import Petrus.Activity hiding (ActivityExecutionContext (..))
 import Petrus.Json
 import Petrus.Motus.Dispatch
@@ -150,7 +148,7 @@ import Petrus.Motus.Dispatch
   )
 import Petrus.Motus.Dispatch qualified as Port
 import Petrus.Motus.Dispatch.Absurd.Schema
-import Petrus.Motus.Internal.Repr (pyStr)
+import Petrus.Json.Python (pythonRepr, pythonStrRepr, uuid4)
 import Petrus.Motus.PythonException (Namer (..), PythonException (..), pythonExceptionWith)
 import Petrus.Postgres
   ( Connection
@@ -177,7 +175,6 @@ import Petrus.Postgres
 import Petrus.Postgres qualified as Pg
 import Petrus.Telemetry (TelemetryLogger, getLogger)
 import Petrus.Telemetry qualified as Telemetry
-import System.IO (IOMode (..), withBinaryFile)
 import System.Posix.Process (getProcessID)
 import Prelude hiding (fail)
 
@@ -211,7 +208,7 @@ validateQueue queue
   | otherwise =
       Left
         ( "queue "
-            <> pyStr queue
+            <> pythonStrRepr queue
             <> " is invalid: a queue name must match "
             <> queuePattern
             <> " (it becomes the t_/r_/c_/e_/w_ table suffix)"
@@ -248,10 +245,10 @@ decodeInvocation :: Json -> Either Text ActivityInvocation
 decodeInvocation payload = either (Left . ((rejection <> ": ") <>) . refusal) Right (invocationFromJson payload)
   where
     rejection = "task payload does not decode as an activity invocation"
-    refusal problem = flip fromMaybe (invocationRefusal pyRepr problem) $ case problem of
+    refusal problem = flip fromMaybe (invocationRefusal pythonRepr problem) $ case problem of
       InvocationFieldsNotExact ->
-        "expected exactly the fields ['activity', 'correlation', 'idempotency', 'input', 'policy'], got " <> pyRepr payload
-      _ -> "policy must be exactly {'attempts': int, 'heartbeat_timeout': int}, got " <> pyRepr (fromMaybe Null (lookupMember "policy" payload))
+        "expected exactly the fields ['activity', 'correlation', 'idempotency', 'input', 'policy'], got " <> pythonRepr payload
+      _ -> "policy must be exactly {'attempts': int, 'heartbeat_timeout': int}, got " <> pythonRepr (fromMaybe Null (lookupMember "policy" payload))
 
 -- | @_instance_from_key@: the Petrus Instance a publication key scopes, if
 -- the key is one (@"{instance}:occurrence-{n}"@, split at the last
@@ -270,7 +267,7 @@ instanceFromKey = \case
                 || not (T.all isDigit occurrence)
                 || T.all (== '0') occurrence
                 || T.head occurrence == '0'
-                then Left ("invalid Petrus Absurd publication identity " <> pyStr value)
+                then Left ("invalid Petrus Absurd publication identity " <> pythonStrRepr value)
                 else Right (Just instanceId)
   where
     separator = ":occurrence-"
@@ -298,11 +295,11 @@ spellFailure reason = case reason of
   Object members | Just name <- lookup "name" members ->
     let message = fromMaybe Null (lookup "message" members)
      in if truthy message then strOf name <> ": " <> strOf message else strOf name
-  _ -> either (const (pyRepr reason)) TE.decodeUtf8 (dumps defaultDumps reason)
+  _ -> either (const (pythonRepr reason)) TE.decodeUtf8 (dumps defaultDumps reason)
   where
     strOf = \case
       String s -> s
-      other -> pyRepr other
+      other -> pythonRepr other
 
 -- | @_decode_failure@: a guarded failure reason back into its
 -- 'ActivityFailure'; any other reason as a plain failure spelling it.
@@ -1151,7 +1148,7 @@ recoverCustody d occurrence target inv = do
   let live = filter ((/= "cancelled") . custodyState) found
       targetTombstones = filter (\row -> custodyQueue row == target && custodyState row == "cancelled") found
       tombstoned =
-        refuseRuntime ("cannot establish Absurd custody for " <> key <> ": target queue " <> pyStr target <> " has a cancelled tombstone")
+        refuseRuntime ("cannot establish Absurd custody for " <> key <> ": target queue " <> pythonStrRepr target <> " has a cancelled tombstone")
   case live of
     []
       | not (null targetTombstones) -> tombstoned
@@ -1171,11 +1168,11 @@ recoverCustody d occurrence target inv = do
               ( "cannot reconcile terminal Absurd custody for "
                   <> key
                   <> ": task/run terminal state is invalid (task="
-                  <> pyStr taskState
+                  <> pythonStrRepr taskState
                   <> ", last_attempt_run="
-                  <> maybe "None" pyStr runId'
+                  <> maybe "None" pythonStrRepr runId'
                   <> ", run="
-                  <> maybe "None" pyStr runState
+                  <> maybe "None" pythonStrRepr runState
                   <> ")"
               )
           pure (Just (queue, taskId'))
@@ -1233,7 +1230,7 @@ reprRow = \case
   Just [single] -> "(" <> value single <> ",)"
   Just values -> "(" <> T.intercalate ", " (map value values) <> ")"
   where
-    value = maybe "None" pyStr
+    value = maybe "None" pythonStrRepr
 
 -- | @collect()@: the terminal outcomes of dispatched, not yet collected
 -- occurrences, in completion order (the last run's terminal instant, then
@@ -1397,36 +1394,8 @@ timestampText micros =
   let seconds = fromRational (toRational micros / 1000000) :: Pico
    in T.pack (formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S%Q+00:00" (posixSecondsToUTCTime (realToFrac seconds)))
 
--- | @repr@ of a JSON-decoded Python value.
-pyRepr :: Json -> Text
-pyRepr = \case
-  Null -> "None"
-  Bool True -> "True"
-  Bool False -> "False"
-  Int i -> showT i
-  Float d
-    | isNaN d -> "nan"
-    | isInfinite d -> if d > 0 then "inf" else "-inf"
-    | otherwise -> T.pack (pythonFloatRepr d)
-  String s -> pyStr s
-  Array items -> "[" <> T.intercalate ", " (map pyRepr items) <> "]"
-  Object members -> "{" <> T.intercalate ", " [pyStr k <> ": " <> pyRepr v | (k, v) <- members] <> "}"
-
 showT :: (Show a) => a -> Text
 showT = T.pack . show
-
--- | A random (version 4) UUID, spelled as @str(uuid.uuid4())@.
-uuid4 :: IO Text
-uuid4 = do
-  bytes <- withBinaryFile "/dev/urandom" ReadMode (`BS.hGet` 16)
-  let octets = zipWith adjust [0 :: Int ..] (BS.unpack bytes)
-      adjust i b
-        | i == 6 = (b .&. 0x0f) .|. 0x40
-        | i == 8 = (b .&. 0x3f) .|. 0x80
-        | otherwise = b
-      hex b = let s = showHex b "" in T.pack (if length s == 1 then '0' : s else s)
-      chunk from count = T.concat (map hex (take count (drop from octets)))
-  pure (T.intercalate "-" [chunk 0 4, chunk 4 2, chunk 6 2, chunk 8 2, chunk 10 6])
 
 -- ---------------------------------------------------------------------------
 -- Telemetry

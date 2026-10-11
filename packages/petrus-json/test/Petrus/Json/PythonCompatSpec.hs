@@ -18,7 +18,8 @@
 --   column and character, and @int()@'s digit limit), plain and with a
 --   duplicate-refusing @object_pairs_hook@ and a refusing @parse_constant@
 --   (whose order decides which fault a document is refused for);
--- * strict @bytes.decode("utf-8")@'s @UnicodeDecodeError@ text;
+-- * strict @bytes.decode("utf-8")@'s @UnicodeDecodeError@ text, and
+--   @bytes.decode("utf-8", "replace")@;
 -- * @json.detect_encoding@ and the @surrogatepass@ decoding @json.loads@
 --   applies to bytes, in every encoding it detects, intact and damaged;
 -- * @uuid.uuid4()@'s spelling (@str@ and @hex@) from given random bytes.
@@ -248,6 +249,7 @@ data Case
   | LoadsCase Text
   | StrictLoadsCase Text
   | Utf8Case BS.ByteString
+  | Utf8ReplaceCase BS.ByteString
   | JsonBytesCase BS.ByteString
   | UuidCase BS.ByteString
 
@@ -261,6 +263,7 @@ cases =
     ++ map LoadsCase loadsDocuments
     ++ map StrictLoadsCase loadsDocuments
     ++ map Utf8Case byteStrings
+    ++ map Utf8ReplaceCase byteStrings
     ++ map JsonBytesCase jsonByteStrings
     ++ map UuidCase uuidSeeds
 
@@ -274,6 +277,7 @@ encodeCase = \case
   LoadsCase text -> request "json-loads" (codePoints (T.unpack text))
   StrictLoadsCase text -> request "json-loads-strict" (codePoints (T.unpack text))
   Utf8Case b -> request "utf8-decode" (String (hexOf b))
+  Utf8ReplaceCase b -> request "utf8-replace" (String (hexOf b))
   JsonBytesCase b -> request "json-bytes" (String (hexOf b))
   UuidCase b -> request "uuid4" (String (hexOf b))
   where
@@ -317,6 +321,7 @@ check c answer = case (c, answer) of
   (Utf8Case b, _) ->
     compareAs ("decode " ++ show b) (either Just (const Nothing) answer) (utf8DecodeError b)
       ++ compareAs ("decodeUtf8Python " ++ show b) (either Left (Right . T.pack . asString) answer) (decodeUtf8Python b)
+  (Utf8ReplaceCase b, Right got) -> compareAs ("decode replace " ++ show b) (T.pack (asString got)) (decodeUtf8Replace b)
   (JsonBytesCase b, Right got) ->
     compareAs ("detect_encoding " ++ show b) (member "encoding" got) (String (detectEncoding b))
       ++ case lookupMember "error" got of
@@ -358,6 +363,7 @@ spec = describe "Petrus.Json.Python against the pinned CPython" $ do
   group "agrees on json.loads refusal texts" $ \case LoadsCase _ -> True; _ -> False
   group "agrees on hooked json.loads refusal texts (hook order)" $ \case StrictLoadsCase _ -> True; _ -> False
   group "agrees on bytes.decode('utf-8') errors" $ \case Utf8Case _ -> True; _ -> False
+  group "agrees on bytes.decode('utf-8', 'replace')" $ \case Utf8ReplaceCase _ -> True; _ -> False
   group "agrees on json.loads(bytes) decoding (detect_encoding, surrogatepass)" $ \case JsonBytesCase _ -> True; _ -> False
   group "agrees on uuid4's spelling" $ \case UuidCase _ -> True; _ -> False
   it "covers both outcomes" $ do

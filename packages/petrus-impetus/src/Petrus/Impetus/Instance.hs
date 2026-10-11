@@ -139,7 +139,8 @@ import Petrus.Impetus.Instance.Firing
 import Petrus.Impetus.Instance.Identity
 import Petrus.Impetus.Internal.OMap (OMap)
 import Petrus.Impetus.Internal.OMap qualified as OMap
-import Petrus.Impetus.Internal.Repr
+import Petrus.Activity.Number (reprNumber)
+import Petrus.Json.Python (pythonIntRepr, pythonListRepr, pythonOptionalStrRepr, pythonStrRepr, pythonTupleRepr)
 import Petrus.Impetus.Internal.Uuid (uuid7Hex)
 import Petrus.Impetus.Petrinet.Enabledness (Binding (..), Diagnostic, Filter, Guard, ImplementationKey (..), Implementations (..))
 import Petrus.Impetus.Petrinet.Enabledness qualified as E
@@ -187,9 +188,9 @@ renderInstanceError = \case
 -- handler's text verbatim, at most 4096 characters.
 firingFailureText :: InstanceError -> Text
 firingFailureText err = T.take 4096 $ case err of
-  Refused m -> "ValueError(" <> pyStr m <> ")"
-  TypeRefused m -> "TypeError(" <> pyStr m <> ")"
-  RuntimeRefused m -> "RuntimeError(" <> pyStr m <> ")"
+  Refused m -> "ValueError(" <> pythonStrRepr m <> ")"
+  TypeRefused m -> "TypeError(" <> pythonStrRepr m <> ")"
+  RuntimeRefused m -> "RuntimeError(" <> pythonStrRepr m <> ")"
   HandlerRaised m -> if T.null m then "Exception" else m
   CommitRefused e -> exceptionFailureText e
 
@@ -474,7 +475,7 @@ canonicalDeliveryTokens path tokens =
     _ <-
       canonicalPayload
         (Object [("color", maybe Null String t.color), ("data", t.payload)])
-        ("delivery to " <> netPathText path <> ": token " <> pyInt position <> " has invalid data")
+        ("delivery to " <> netPathText path <> ": token " <> pythonIntRepr position <> " has invalid data")
     Right t
 
 failureObject :: ActivityFailure -> Json
@@ -533,7 +534,7 @@ implementationFor symbol uri supplied subject =
     (Just _, Just (s, _)) ->
       Left
         ( subject <> " declaration " <> netUriText uri <> " has both an exact implementation and local symbol "
-            <> pyStr s
+            <> pythonStrRepr s
         )
     (Just exact, Nothing) -> Right (Just exact)
     (Nothing, Just (_, named)) -> Right (Just named)
@@ -557,7 +558,7 @@ bindSymbols net cfg = do
       Right (Just (uri, maybe (Left (fromMaybe (netUriText uri) symbol)) Right found))
   let missingHandlers = [m | (_, Left m) <- handlerPairs]
   unless (null missingHandlers) $
-    Left ("handler declaration(s) with no implementation: " <> pyList (map pyStr (sortOn id missingHandlers)))
+    Left ("handler declaration(s) with no implementation: " <> pythonListRepr (map pythonStrRepr (sortOn id missingHandlers)))
   let handlers = Map.fromList [(uri, h) | (uri, Right h) <- handlerPairs]
   forM_ (transitionsInOrder net) $ \t -> forM_ (handlerUri net t.path) $ \uri ->
     case Map.lookup uri handlers of
@@ -581,7 +582,7 @@ bindSymbols net cfg = do
       GuardAnonymous _ -> resolvedGuard uri Nothing
   let missingGuards = [m | (_, Left m) <- guardPairs]
   unless (null missingGuards) $
-    Left ("guard declaration(s) with no implementation: " <> pyList (map pyStr (sortOn id missingGuards)))
+    Left ("guard declaration(s) with no implementation: " <> pythonListRepr (map pythonStrRepr (sortOn id missingGuards)))
   filterPairs <- forM (filterDeclarations net) $ \(uri, declaration) -> case declaration of
     FilterCel expression -> do
       when (Map.member (Exact uri) cfg.filterImplementations) $
@@ -590,14 +591,14 @@ bindSymbols net cfg = do
       Right (uri, Right compiled)
     FilterSymbol s -> do
       found <- implementationFor (Just s) uri cfg.filterImplementations "filter"
-      Right (uri, maybe (Left (pyStr s <> " (" <> netUriText uri <> ")")) Right found)
+      Right (uri, maybe (Left (pythonStrRepr s <> " (" <> netUriText uri <> ")")) Right found)
   let missingFilters = [m | (_, Left m) <- filterPairs]
   unless (null missingFilters) $
-    Left ("filter declaration(s) with no implementation: " <> pyList (map pyStr (sortOn id missingFilters)))
+    Left ("filter declaration(s) with no implementation: " <> pythonListRepr (map pythonStrRepr (sortOn id missingFilters)))
   completion <- case netCompletion net of
     Nothing -> Right Nothing
     Just (CompletionSymbol s) -> case Map.lookup s cfg.completionImplementations of
-      Nothing -> Left ("completion symbol with no implementation: " <> pyStr s)
+      Nothing -> Left ("completion symbol with no implementation: " <> pythonStrRepr s)
       Just c -> Right (Just c)
     Just (CompletionCel expression) ->
       Just <$> cfg.celCompilers.compileCompletion expression (Map.keys (netPlaces net))
@@ -634,8 +635,8 @@ validateInitialTokens net p tokens = case lookupPlace p net of
     | Just c <- declared.color
     , (mismatch : _) <- [t | t <- tokens, t.color /= Just c] ->
         Left
-          ( "initial marking for place " <> netPathText p <> " requires color " <> pyStr c <> ", got "
-              <> pyOptStr mismatch.color
+          ( "initial marking for place " <> netPathText p <> " requires color " <> pythonStrRepr c <> ", got "
+              <> pythonOptionalStrRepr mismatch.color
               <> " on "
               <> reprToken mismatch
           )
@@ -656,7 +657,7 @@ newInstance net cfg = runExceptT $ do
       n <- liftIO (Store.size h)
       when (n > 0) $
         refuse
-          ( "cannot construct an Instance over a recorded history (" <> pyInt n
+          ( "cannot construct an Instance over a recorded history (" <> pythonIntRepr n
               <> " records): construction appends the instance's initial records; a recorded history is for resume()"
           )
       pure h
@@ -715,9 +716,9 @@ validateReplayedInitialization net r constructed initialized = do
     Left ("replay divergence: initial marking place " <> p <> " has no tokens; the live constructor omits empty places")
   when (r.instant /= constructed) $
     Left
-      ( "replay divergence: initial tokens on " <> p <> " use instant " <> pyInt r.instant
+      ( "replay divergence: initial tokens on " <> p <> " use instant " <> reprNumber r.instant
           <> ", not construction instant "
-          <> pyInt constructed
+          <> reprNumber constructed
       )
   when (not (null r.entries) || isJust r.scope) $
     Left
@@ -750,7 +751,7 @@ validateConstructionBatch net records identity = do
   (regsRev, _, _, _) <- foldM visit ([], False, Set.empty, False) (drop 1 records)
   let registrations = reverse regsRev
       expected = [DeliveryRegistrationOpened s "default" Nothing created.instant | s <- sourceTransitions net]
-      spell = pyTuple . map (reprRecord . RDeliveryRegistrationOpened)
+      spell = pythonTupleRepr . map (reprRecord . RDeliveryRegistrationOpened)
   when (registrations /= expected) $
     Left
       ( "replay divergence: initial construction prefix is a construction batch whose source registrations require exactly one ordered default open for every source; expected "
@@ -781,7 +782,7 @@ validateReplayedOccurrence :: Instance -> FiringOccurrence -> Either Text ()
 validateReplayedOccurrence inst o = do
   let t = o.binding.transition
       net = inst.iNet
-      rejection = "cannot resume firing occurrence " <> pyInt o.occurrence <> " (" <> netPathText t <> ")"
+      rejection = "cannot resume firing occurrence " <> pythonIntRepr o.occurrence <> " (" <> netPathText t <> ")"
   unless (hasTransition t net) $ Left (rejection <> ": not a transition of this net")
   when (isSource net t && null o.binding.delivered) $
     Left (rejection <> ": a scheduled selection on a source transition — a source fires only through accept_delivery()")
@@ -804,14 +805,14 @@ reprOptScope :: Maybe LifecycleScope -> Text
 reprOptScope = maybe "None" (T.pack . show)
 
 reprInts :: [Int] -> Text
-reprInts = pyTuple . map pyInt
+reprInts = pythonTupleRepr . map pythonIntRepr
 
 reprProductions :: [(NetPath, [Token])] -> Text
-reprProductions xs = pyTuple [pyTuple [T.pack (show p), reprTokens ts] | (p, ts) <- xs]
+reprProductions xs = pythonTupleRepr [pythonTupleRepr [T.pack (show p), reprTokens ts] | (p, ts) <- xs]
 
 validateAcceptedSourceProduction :: Net -> ExternalEventDelivered -> Text -> TokensProduced -> Set NetPath -> [Int] -> Either Text ()
 validateAcceptedSourceProduction net accepted ident r produced expected = do
-  let rejection = "cannot resume: accepted delivery identity " <> pyStr ident <> " source occurrence " <> pyInt accepted.occurrence
+  let rejection = "cannot resume: accepted delivery identity " <> pythonStrRepr ident <> " source occurrence " <> pythonIntRepr accepted.occurrence
       p = netPathText r.place
   when (null r.tokens) $ Left (rejection <> " contains an empty TokensProduced record")
   when (Set.member r.place produced) $ Left (rejection <> " contains a second TokensProduced record for " <> p)
@@ -844,8 +845,8 @@ validateDefaultSourceProductions net accepted ident actual
           spelling xs = [(p, deliveryContent ts) | (p, ts) <- xs]
       when (spelling actual /= spelling expected) $
         Left
-          ( "cannot resume: accepted delivery identity " <> pyStr ident <> " source occurrence "
-              <> pyInt accepted.occurrence
+          ( "cannot resume: accepted delivery identity " <> pythonStrRepr ident <> " source occurrence "
+              <> pythonIntRepr accepted.occurrence
               <> " default passthrough requires exact productions "
               <> reprProductions expected
               <> "; found "
@@ -880,7 +881,7 @@ validateAcceptedSourceOccurrences net history accepted = void (foldM visit start
       RDeliveryRegistrationOpened _ -> Just 2
       RFiringCompleted _ -> Just 3
       _ -> Nothing
-    reprOcc = maybe "None" pyInt
+    reprOcc = maybe "None" pythonIntRepr
     visit f0 record = do
       let o = recordOccurrence record
           name = recordName record
@@ -891,8 +892,8 @@ validateAcceptedSourceOccurrences net history accepted = void (foldM visit start
       forM_ f.activeCompletion $ \active -> when (o /= Just active) $ do
         let (ident, acceptedRecord) = sourceOccurrences IntMap.! active
         Left
-          ( "cannot resume: accepted delivery identity " <> pyStr ident <> " source occurrence "
-              <> pyInt acceptedRecord.occurrence
+          ( "cannot resume: accepted delivery identity " <> pythonStrRepr ident <> " source occurrence "
+              <> pythonIntRepr acceptedRecord.occurrence
               <> " completion batch was interrupted by "
               <> name
               <> " for occurrence "
@@ -913,7 +914,7 @@ validateAcceptedSourceOccurrences net history accepted = void (foldM visit start
     cancelOne name f n = case IntMap.lookup n sourceOccurrences of
       Nothing -> Right f
       Just (ident, acceptedRecord) -> do
-        let prefix = "cannot resume: accepted delivery identity " <> pyStr ident <> " source occurrence " <> pyInt acceptedRecord.occurrence
+        let prefix = "cannot resume: accepted delivery identity " <> pythonStrRepr ident <> " source occurrence " <> pythonIntRepr acceptedRecord.occurrence
         unless (IntSet.member n f.observed) $
           Left (prefix <> " contains " <> name <> " cancellation before its acceptance pair")
         when (IntMap.member n f.phases || IntMap.member n f.terminals) $ do
@@ -924,7 +925,7 @@ validateAcceptedSourceOccurrences net history accepted = void (foldM visit start
       RExternalEventDelivered _ -> Right f
       RFiringBegun _ -> Right f {observed = IntSet.insert n f.observed}
       _ -> do
-        let rejection = "cannot resume: accepted delivery identity " <> pyStr ident <> " source occurrence " <> pyInt n
+        let rejection = "cannot resume: accepted delivery identity " <> pythonStrRepr ident <> " source occurrence " <> pythonIntRepr n
         unless (IntSet.member n f.observed) $ Left (rejection <> " contains " <> name <> " before its acceptance pair")
         when (IntSet.member n f.cancelledSet) $ Left (rejection <> " contains " <> name <> " after lifecycle cancellation")
         forM_ (IntMap.lookup n f.terminals) $ \terminal -> Left (rejection <> " contains " <> name <> " after " <> terminal)
@@ -955,8 +956,8 @@ validateAcceptedSourceOccurrences net history accepted = void (foldM visit start
             forM_ (IntMap.lookup n f1.endInstants) $ \endInstant ->
               when (instant /= endInstant) $
                 Left
-                  ( rejection <> " completion batch changes instant from " <> pyInt endInstant <> " to "
-                      <> pyInt instant
+                  ( rejection <> " completion batch changes instant from " <> reprNumber endInstant <> " to "
+                      <> reprNumber instant
                   )
             let f2 =
                   f1
@@ -1006,8 +1007,8 @@ resume net store cfg = runExceptT $ do
     (Just recorded, Just supplied)
       | recorded /= supplied ->
           refuse
-            ( "cannot resume: the history records net name " <> pyStr recorded <> " but the supplied net is named "
-                <> pyStr supplied
+            ( "cannot resume: the history records net name " <> pythonStrRepr recorded <> " but the supplied net is named "
+                <> pythonStrRepr supplied
                 <> " — a foreign trace"
             )
     _ -> pure ()
@@ -1018,7 +1019,7 @@ resume net store cfg = runExceptT $ do
   placeholder <- liftIO (newIORef emptyState)
   let inst = Instance net ident handlers impls completion cfg.schedulerPolicy store logger placeholder lock
   forM_ [r | RCandidateSelected r <- history] $ \r -> do
-    let prefix = "cannot resume firing occurrence " <> pyInt r.occurrence <> " (" <> netPathText r.transition <> "): "
+    let prefix = "cannot resume firing occurrence " <> pythonIntRepr r.occurrence <> " (" <> netPathText r.transition <> "): "
     unless (hasTransition r.transition net) $ refuse (prefix <> "not a transition of this net")
     when (isSource net r.transition) $
       refuse (prefix <> "a scheduled selection on a source transition — a source fires only through accept_delivery()")
@@ -1053,12 +1054,12 @@ resume net store cfg = runExceptT $ do
     let check src ident' = do
           unless (hasTransition src net) $
             refuse
-              ( "cannot resume: accepted delivery identity " <> pyStr ident' <> " records source " <> netPathText src
+              ( "cannot resume: accepted delivery identity " <> pythonStrRepr ident' <> " records source " <> netPathText src
                   <> ": not a transition of this net"
               )
           unless (isSource net src) $
             refuse
-              ( "cannot resume: accepted delivery identity " <> pyStr ident' <> " records transition " <> netPathText src
+              ( "cannot resume: accepted delivery identity " <> pythonStrRepr ident' <> " records transition " <> netPathText src
                   <> " with input arcs — only a source transition can accept delivery"
               )
     case record of
@@ -1248,7 +1249,7 @@ openScope inst name at = locked inst $ do
   unless (validScopeName name) $ refuse scopeNameError
   st <- getState inst
   when (Map.member name st.sActiveScopes) $
-    refuse ("cannot open lifecycle scope " <> pyStr name <> ": a generation is already active")
+    refuse ("cannot open lifecycle scope " <> pythonStrRepr name <> ": a generation is already active")
   scope <- orRefuse (lifecycleScope name (Map.findWithDefault 0 name st.sGenerations + 1))
   let instant = effective st.sWatermark at
   _ <- appendBatch inst [RScopeOpened (ScopeOpened scope instant)]
@@ -1369,7 +1370,7 @@ preparedInvocation inst b = case boundHandler inst b.transition of
     forM_ [("correlation" :: Text, inv.correlation), ("idempotency", inv.idempotency)] $ \(name, value) ->
       forM_ value $ \v -> when ("occurrence-" `T.isPrefixOf` v) $
         refuse
-          ( prefix <> ": " <> name <> " " <> pyStr v
+          ( prefix <> ": " <> name <> " " <> pythonStrRepr v
               <> " uses the writer-reserved 'occurrence-' prefix — the derived self-identity namespace; supply an identity outside it, or None for the writer to derive"
           )
     input <- orRefuse (canonicalPayload inv.input (prefix <> ": invalid activity input"))
@@ -1422,7 +1423,7 @@ beginOccurrence inst b at initiation prepared supplied = do
   when (Set.size provenance > 1) $
     refuse
       ( "firing " <> netPathText t <> " combines different lifecycle scopes: "
-          <> pyList (map (T.pack . show) (Set.toList provenance))
+          <> pythonListRepr (map (T.pack . show) (Set.toList provenance))
       )
   let scope = Set.lookupMin provenance
   narrated <- forM (zip effects selected) $ \(effect, entrySelection) -> do
@@ -1433,7 +1434,7 @@ beginOccurrence inst b at initiation prepared supplied = do
     pure $ case effect of
       ConsumedTokens p ts -> RTokensConsumed (TokensConsumed p ts o recorded scope instant)
       ReadTokens p ts -> RTokensRead (TokensRead p ts o recorded scope instant)
-  let selfIdentity = "occurrence-" <> pyInt o
+  let selfIdentity = "occurrence-" <> pythonIntRepr o
       invocation' =
         fmap
           ( \inv ->
@@ -1491,10 +1492,10 @@ beginOccurrence inst b at initiation prepared supplied = do
 ensureInFlight :: Instance -> FiringOccurrence -> Text -> Door ()
 ensureInFlight inst o verb = do
   st <- getState inst
-  let prefix = "cannot " <> verb <> " firing occurrence " <> pyInt o.occurrence <> " (" <> netPathText o.binding.transition <> "): "
+  let prefix = "cannot " <> verb <> " firing occurrence " <> pythonIntRepr o.occurrence <> " (" <> netPathText o.binding.transition <> "): "
   unless (IntMap.lookup o.occurrence st.sInFlight == Just o) $
     if o.occurrence < st.sNextOccurrence && not (IntMap.member o.occurrence st.sInFlight)
-      then refuse (prefix <> "not in flight — this instance's occurrence " <> pyInt o.occurrence <> " already ended")
+      then refuse (prefix <> "not in flight — this instance's occurrence " <> pythonIntRepr o.occurrence <> " already ended")
       else refuse (prefix <> "this instance never began it")
 
 -- | Freeze the Activity's terminal result as @ActivityCompleted@, its own
@@ -1508,7 +1509,7 @@ recordCompletionDoor :: Instance -> FiringOccurrence -> Json -> Maybe Instant ->
 recordCompletionDoor inst o result at = do
   st <- getState inst
   let rejection =
-        "cannot record an activity completion for firing occurrence " <> pyInt o.occurrence <> " ("
+        "cannot record an activity completion for firing occurrence " <> pythonIntRepr o.occurrence <> " ("
           <> netPathText o.binding.transition
           <> ")"
       canonicalResult = orRefuse (canonicalPayload result (rejection <> ": invalid activity result"))
@@ -1522,7 +1523,7 @@ recordCompletionDoor inst o result at = do
         case terminal of
           TerminalFailure f ->
             refuse
-              ( rejection <> ": the occurrence ended in terminal activity failure (" <> pyStr (failureFields f).failureError
+              ( rejection <> ": the occurrence ended in terminal activity failure (" <> pythonStrRepr (failureFields f).failureError
                   <> ") — a failed occurrence cannot retroactively succeed, and a different late result is an operational conflict [DR 2026-07-14 source-delivery-projection-and-identity]"
               )
           TerminalResult prior
@@ -1654,7 +1655,7 @@ commitDoor inst o result at = do
   ensureInFlight inst o "complete"
   st <- getState inst
   let t = o.binding.transition
-      rejection = "cannot complete firing occurrence " <> pyInt o.occurrence <> " (" <> netPathText t <> ")"
+      rejection = "cannot complete firing occurrence " <> pythonIntRepr o.occurrence <> " (" <> netPathText t <> ")"
   envelope <- case o.invocation of
     Nothing -> maybe (refuse (rejection <> ": a pure firing completes with its handler's result")) pure result
     Just _ -> do
@@ -1756,7 +1757,7 @@ armedAfter inst st rejection envelope = do
           let keys = Map.findWithDefault Set.empty effect.source m
           unless (Set.member effect.key keys) $
             Left
-              ( rejection <> ": close of delivery registration " <> pyStr effect.key <> " on "
+              ( rejection <> ": close of delivery registration " <> pythonStrRepr effect.key <> " on "
                   <> netPathText effect.source
                   <> ": not armed"
               )
@@ -1770,7 +1771,7 @@ armedAfter inst st rejection envelope = do
           let keys = Map.findWithDefault Set.empty effect.source m
           when (Set.member effect.key keys) $
             Left
-              ( rejection <> ": open of delivery registration " <> pyStr effect.key <> " on "
+              ( rejection <> ": open of delivery registration " <> pythonStrRepr effect.key <> " on "
                   <> netPathText effect.source
                   <> ": already armed"
               )
@@ -1802,7 +1803,7 @@ failDoor inst o reason at = do
       TerminalFailure f | sameFailure f failure -> pure ()
       _ ->
         refuse
-          ( "cannot fail firing occurrence " <> pyInt o.occurrence <> " (" <> netPathText o.binding.transition
+          ( "cannot fail firing occurrence " <> pythonIntRepr o.occurrence <> " (" <> netPathText o.binding.transition
               <> "): its activity already completed — the frozen result stands; fix the projection and retry complete() [DR 2026-07-14 activity-invocation-runtime-seam, Deferred]"
           )
   when (isJust o.invocation && not (IntMap.member o.occurrence st0.sFrozen)) $
@@ -1895,7 +1896,7 @@ reprTarget :: Maybe DeliveryScope -> Text
 reprTarget = \case
   Nothing -> "None"
   Just (ScopeGeneration s) -> T.pack (show s)
-  Just (ScopeName n) -> pyStr n
+  Just (ScopeName n) -> pythonStrRepr n
 
 -- | Accept an external event on a source transition and begin its source
 -- occurrence without completing it. The identity is the delivery's stable,
@@ -1917,7 +1918,7 @@ acceptDelivery inst path tokens ident target at = locked inst $ do
     refuse
       ( "delivery to " <> netPathText path
           <> ": identity must be a non-empty string of the exact built-in type, got "
-          <> pyStr ident
+          <> pythonStrRepr ident
       )
   st <- getState inst
   case Map.lookup ident st.sAccepted of
@@ -1935,7 +1936,7 @@ acceptDelivery inst path tokens ident target at = locked inst $ do
           "delivery_conflicted"
           [("source", text (netPathText path)), ("identity", text ident), ("occurrence", occurrenceJson)]
         refuse
-          ( "delivery identity conflict for " <> pyStr ident <> ": recorded source " <> T.pack (show priorSource)
+          ( "delivery identity conflict for " <> pythonStrRepr ident <> ": recorded source " <> T.pack (show priorSource)
               <> ", scope "
               <> reprTarget priorScope
               <> "; attempted source "
@@ -2038,8 +2039,8 @@ completeDelivery inst carrier at = locked inst $ do
       occ = firingOccurrenceIdInt a.occurrence
   when (owner /= inst.iIdentity) $
     refuse
-      ( "cannot complete delivery for Instance " <> pyStr owner <> ": this is Instance "
-          <> pyStr inst.iIdentity
+      ( "cannot complete delivery for Instance " <> pythonStrRepr owner <> ": this is Instance "
+          <> pythonStrRepr inst.iIdentity
       )
   st <- getState inst
   let recorded = case Map.lookup ident st.sAccepted of
@@ -2051,14 +2052,14 @@ completeDelivery inst carrier at = locked inst $ do
     Nothing
       | isJust recorded ->
           refuse
-            ( "cannot complete accepted delivery " <> pyStr ident <> ": firing occurrence " <> pyInt occ
+            ( "cannot complete accepted delivery " <> pythonStrRepr ident <> ": firing occurrence " <> pythonIntRepr occ
                 <> " already ended"
             )
       | otherwise ->
-          refuse ("cannot complete delivery " <> pyStr ident <> ": no matching accepted unfinished occurrence")
+          refuse ("cannot complete delivery " <> pythonStrRepr ident <> ": no matching accepted unfinished occurrence")
   let t = o.binding.transition
       impure = isJust o.invocation || isActivityBound (boundHandler inst t)
-      prefix = "cannot complete delivery " <> pyStr ident <> ": firing occurrence " <> pyInt occ
+      prefix = "cannot complete delivery " <> pythonStrRepr ident <> ": firing occurrence " <> pythonIntRepr occ
   unless (isSource inst.iNet t) $
     refuse
       ( prefix <> " belongs to " <> (if impure then "an impure non-source" else "a non-source") <> " transition "
@@ -2070,8 +2071,8 @@ completeDelivery inst carrier at = locked inst $ do
       | t == a.source && o.binding.delivered == r.tokens && o.scope == r.scope -> pure ()
     _ ->
       refuse
-        ( "cannot complete delivery " <> pyStr ident <> ": acceptance does not match firing occurrence "
-            <> pyInt occ
+        ( "cannot complete delivery " <> pythonStrRepr ident <> ": acceptance does not match firing occurrence "
+            <> pythonIntRepr occ
         )
   executeDoor inst o at
 

@@ -47,7 +47,7 @@ import Petrus.Impetus.Binding (HandlerResult (..))
 import Petrus.Impetus.History.Records
 import Petrus.Impetus.Internal.OMap (OMap)
 import Petrus.Impetus.Internal.OMap qualified as OMap
-import Petrus.Impetus.Internal.Repr
+import Petrus.Json.Python (pythonIntRepr, pythonStrRepr, pythonTupleRepr)
 import Petrus.Impetus.Petrinet.Enabledness (Binding (..))
 import Petrus.Impetus.Petrinet.Firing (BeginEffect (..), ProducedTokens (..))
 import Petrus.Impetus.Petrinet.Firing qualified as Petrinet
@@ -174,7 +174,7 @@ divergence :: Text -> Either Text a
 divergence message = Left ("replay divergence: " <> message)
 
 occ :: Int -> Text
-occ = pyInt
+occ = pythonIntRepr
 
 requestedIn :: Lifecycle -> Int -> Bool
 requestedIn l o = any isRequest (IntMap.findWithDefault [] o l.begun)
@@ -223,9 +223,9 @@ sortedLifecycle = fmap finish . foldM step emptyLifecycle . toList
               )
         when (previousInstant /= r.instant) $
           divergence
-            ( "FiringBegun for occurrence " <> occ r.occurrence <> " has instant " <> pyInt r.instant
+            ( "FiringBegun for occurrence " <> occ r.occurrence <> " has instant " <> reprNumber r.instant
                 <> ", not its initiation instant "
-                <> pyInt previousInstant
+                <> reprNumber previousInstant
             )
         Right
           l
@@ -239,7 +239,7 @@ sortedLifecycle = fmap finish . foldM step emptyLifecycle . toList
       RActivityRequested r -> do
         unless (IntMap.member r.occurrence l.begun) $
           divergence
-            ( "activity " <> pyStr r.activity <> " requested for firing occurrence " <> occ r.occurrence
+            ( "activity " <> pythonStrRepr r.activity <> " requested for firing occurrence " <> occ r.occurrence
                 <> " with no begun boundary — the request joins the begin batch"
             )
         activityTransition l "ActivityRequested" r.transition r.occurrence
@@ -334,9 +334,9 @@ sortedLifecycle = fmap finish . foldM step emptyLifecycle . toList
         | active == o ->
             when (instant /= activeInstant) $
               divergence
-                ( name <> " for firing occurrence " <> occ o <> " has instant " <> pyInt instant
+                ( name <> " for firing occurrence " <> occ o <> " has instant " <> reprNumber instant
                     <> ", not its begin batch instant "
-                    <> pyInt activeInstant
+                    <> reprNumber activeInstant
                 )
       _ -> divergence (name <> " for firing occurrence " <> occ o <> " does not belong to its contiguous begin batch")
     activityTransition l name t o = forM_ (begunTransition l o) $ \boundary ->
@@ -350,15 +350,15 @@ sortedLifecycle = fmap finish . foldM step emptyLifecycle . toList
       let expected = [o | (o, provenance) <- OMap.toList l.scopedOpen, provenance == scope]
       when (cancelled /= expected) $
         divergence
-          ( "lifecycle close for " <> reprScope scope <> " cancels " <> pyTuple (map occ cancelled)
+          ( "lifecycle close for " <> reprScope scope <> " cancels " <> pythonTupleRepr (map occ cancelled)
               <> ", but the exact open occurrence set at this append position is "
-              <> pyTuple (map occ expected)
+              <> pythonTupleRepr (map occ expected)
           )
       let pending = [o | o <- expected, IntMap.member o l.frozen]
       unless (null pending) $
         divergence
           ( "lifecycle close for " <> reprScope scope <> " cancels accepted Activity terminal(s) "
-              <> pyTuple (map occ pending)
+              <> pythonTupleRepr (map occ pending)
               <> " still awaiting deterministic projection"
           )
       Right
@@ -447,7 +447,7 @@ rebuiltOccurrence o t delivered records = do
     divergence
       ( "firing occurrence " <> occ o <> " (" <> netPathText t
           <> ") has scope provenance inconsistent with FiringBegun on "
-          <> pyTuple (map pyStr mismatched)
+          <> pythonTupleRepr (map pythonStrRepr mismatched)
       )
   Right (FiringOccurrence o (Binding t consumed readSel delivered) records request begun.scope)
   where
