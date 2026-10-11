@@ -36,6 +36,7 @@ module Petrus.Testing.Dst.Campaign.Machines
   ) where
 
 import Barbies (FunctorB, TraversableB)
+import Control.Exception (finally)
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Foldable (traverse_)
@@ -86,21 +87,23 @@ import System.IO.Temp (createTempDirectory, withSystemTempDirectory)
 
 -- | The profile's property under its campaign settings, with its examples
 -- under @scratch@.
-campaignProperty :: CampaignSettings -> FilePath -> Property
-campaignProperty settings scratch =
+campaignProperty :: CampaignSettings -> FilePath -> Opened -> Property
+campaignProperty settings scratch opened =
   withTests (fromIntegral settings.maxExamples) $ case settings.profile.name of
-    "delivery-broad" -> deliveryProperty Broad settings scratch
-    "delivery-focused" -> deliveryProperty Focused settings scratch
-    "runtime-broad" -> broadRuntimeProperty settings scratch
-    _ -> focusedRuntimeProperty settings scratch
+    "delivery-broad" -> deliveryProperty Broad settings scratch opened
+    "delivery-focused" -> deliveryProperty Focused settings scratch opened
+    "runtime-broad" -> broadRuntimeProperty settings scratch opened
+    _ -> focusedRuntimeProperty settings scratch opened
 
 -- | @run_state_machine_as_test(Machine, settings=campaign_settings(name))@:
 -- run the profile's examples from its settings' seed.
 checkCampaign :: CampaignSettings -> IO (Report Result)
 checkCampaign settings =
   withSystemTempDirectory "petrus-dst-campaign-profile-" $ \scratch -> do
-    let p = campaignProperty settings scratch
+    opened <- newIORef (pure ())
+    let p = campaignProperty settings scratch opened
     checkReport p.propertyConfig 0 (Seed.from (fromInteger settings.seed)) p.propertyTest (const (pure ()))
+      `finally` closeOpened opened
 
 -- | The @campaign-profile NAME@ child: settings from the environment, the
 -- profile's examples, and a failure report on standard error.
@@ -137,8 +140,19 @@ inWorld live body = do
       failure
     Right a -> pure a
 
--- | @world.close()@; also closes an example that failed before its
--- teardown, when the next example starts.
+-- | The close action of the current example's World. The reference's
+-- @teardown@ closes its World in a @finally@; a Hedgehog example that fails
+-- stops before its teardown, so the next example, or the end of the run,
+-- closes it instead.
+type Opened = IORef (IO ())
+
+closeOpened :: Opened -> IO ()
+closeOpened opened = do
+  close <- readIORef opened
+  writeIORef opened (pure ())
+  close
+
+-- | @world.close()@.
 closeLive :: Live g -> IO ()
 closeLive live = do
   readIORef live >>= traverse_ (void . World.runWorldT World.close)
@@ -238,8 +252,8 @@ data DeliveryEnv = DeliveryEnv
   , nextIdentity :: IORef Int
   }
 
-deliveryProperty :: DeliveryKind -> CampaignSettings -> FilePath -> Property
-deliveryProperty kind settings scratch = property $ do
+deliveryProperty :: DeliveryKind -> CampaignSettings -> FilePath -> Opened -> Property
+deliveryProperty kind settings scratch opened = property $ do
   envRef <- liftIO (newIORef Nothing)
   let steps = settings.statefulStepCount
       commands = deliveryCommands kind envRef
@@ -249,11 +263,11 @@ deliveryProperty kind settings scratch = property $ do
       value <- Gen.integral (Range.constantFrom 0 (-1) 1)
       (Just value,) <$> Gen.sequential (Range.singleton (steps - 1)) (deliveryInitial (Just value)) commands
   -- __init__
-  previous <- liftIO (readIORef envRef)
-  liftIO (traverse_ (\e -> closeLive e.live) previous)
+  liftIO (closeOpened opened)
   root <- exampleRoot scratch "petrus-generated-delivery-"
   profile <- evalIO (Delivery.deliveryEngineProfile (root <> "/author-history.jsonl"))
   live <- liftIO (newIORef Nothing)
+  liftIO (writeIORef opened (closeLive live))
   startWorld live WorldConfig {profile = profile.profile, budget = generatedWorldBudget, checkers = [Delivery.deliveryAuthorityChecker], seed = Nothing, progress = Nothing}
   timeline <- inWorld live World.timeline
   env <- liftIO $ DeliveryEnv live <$> newIORef timeline <*> newIORef [] <*> newIORef False <*> newIORef Set.empty <*> newIORef 0
@@ -496,8 +510,8 @@ data FocusedStep (v :: Type -> Type) = ReloadQuiescentRuntime | InspectDetachedR
   deriving stock (Show, Generic)
   deriving anyclass (FunctorB, TraversableB)
 
-focusedRuntimeProperty :: CampaignSettings -> FilePath -> Property
-focusedRuntimeProperty settings scratch = property $ do
+focusedRuntimeProperty :: CampaignSettings -> FilePath -> Opened -> Property
+focusedRuntimeProperty settings scratch opened = property $ do
   envRef <- liftIO (newIORef Nothing)
   -- The story's two crashes have dropped two generations when the
   -- generated rules start.
@@ -520,11 +534,11 @@ focusedRuntimeProperty settings scratch = property $ do
     second <- Gen.integral (Range.constantFrom 0 (-3) 3)
     retryError <- Gen.element ["worker unavailable", "lease interrupted"]
     (,) (first, second, retryError) <$> Gen.sequential (Range.singleton (settings.statefulStepCount - 1)) initialModel commands
-  previous <- liftIO (readIORef envRef)
-  liftIO (traverse_ (\e -> closeLive e.live) previous)
+  liftIO (closeOpened opened)
   root <- exampleRoot scratch "petrus-generated-runtime-"
   env <- liftIO (newRuntimeEnv root)
   liftIO (writeIORef envRef (Just env))
+  liftIO (writeIORef opened (closeLive env.live))
   -- establish_cross_layer_spine
   let (first, second, retryError) = spine
   profile <- evalIO (Runtime.generatedRuntimeProfile (root <> "/author-history.jsonl") (root <> "/author-dispatch.db"))
@@ -588,8 +602,8 @@ data BroadStep (v :: Type -> Type)
 worldReloads :: Int
 worldReloads = 4
 
-broadRuntimeProperty :: CampaignSettings -> FilePath -> Property
-broadRuntimeProperty settings scratch = property $ do
+broadRuntimeProperty :: CampaignSettings -> FilePath -> Opened -> Property
+broadRuntimeProperty settings scratch opened = property $ do
   envRef <- liftIO (newIORef Nothing)
   let initialModel = BroadModel 0 False [] 0
       ensure = Ensure (\_ after _ real -> real === after.broadDrops)
@@ -618,12 +632,12 @@ broadRuntimeProperty settings scratch = property $ do
           <*> Gen.bool
           <*> Gen.bool
   actions <- forAll (Gen.sequential (Range.singleton (settings.statefulStepCount - 1)) initialModel commands)
-  previous <- liftIO (readIORef envRef)
-  liftIO (traverse_ (\e -> closeLive e.live) previous)
+  liftIO (closeOpened opened)
   -- __init__
   root <- exampleRoot scratch "petrus-generated-runtime-"
   env <- liftIO (newRuntimeEnv root)
   liftIO (writeIORef envRef (Just env))
+  liftIO (writeIORef opened (closeLive env.live))
   profile <- evalIO (Runtime.generatedRuntimeProfile (root <> "/author-history.jsonl") (root <> "/author-dispatch.db"))
   startWorld env.live (runtimeWorld profile)
   install env profile

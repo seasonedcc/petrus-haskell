@@ -40,14 +40,15 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock (UTCTime, diffUTCTime, getCurrentTime)
-import GHC.IO.Handle.Lock (LockMode (..), hTryLock)
 import Petrus.Json (Json (..))
+import Petrus.Posix.Flock (LockKind (..), openLockFileWith, tryLock)
 import Petrus.Testing.Dst.Campaign (repositoryIdentity)
 import Petrus.Testing.Dst.Campaign.Support
 import System.Directory
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
-import System.IO (IOMode (..), hPutStrLn, stderr, withFile)
+import System.IO (hPutStrLn, stderr)
+import System.Posix.IO (closeFd)
 import System.Posix.Signals (sigKILL, sigTERM, signalProcessGroup)
 import System.Process
 import System.Timeout (timeout)
@@ -67,7 +68,9 @@ terminationGraceSeconds = 5
 outputTailBytes = 8192
 
 -- | The reference's lock file, so a Haskell and a Python qualification
--- never own the shared test resources at once.
+-- never own the shared test resources at once. Both take it with
+-- @flock(2)@ (the reference's @fcntl.flock@), the only lock that excludes
+-- the other language's holder.
 lockPath :: FilePath
 lockPath = "/tmp/petrus-dst-production-boundaries.lock"
 
@@ -315,8 +318,8 @@ ownerBinary root run = do
 executeProfiles :: FilePath -> [BoundaryProfile] -> IO Json
 executeProfiles root profiles = do
   createDirectoryIfMissing True (takeDirectory lockPath)
-  withFile lockPath WriteMode $ \lock -> do
-    owned <- hTryLock lock ExclusiveLock
+  bracket (openLockFileWith lockPath 0o644) closeFd $ \lock -> do
+    owned <- tryLock lock Exclusive
     unless owned $ refuse "another production-boundary qualification owns its test resources"
     started <- getCurrentTime
     let deadline = fromIntegral profileTimeoutSeconds

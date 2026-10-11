@@ -131,6 +131,7 @@ library campaigns
                   , petrus-impetus
                   , petrus-json
                   , petrus-motus
+                  , petrus-posix
                   , process >=1.6.12
                   , ram >=0.20
                   , temporary >=1.3

@@ -247,6 +247,52 @@ the Engine worlds applies (records instead of class hierarchies, bridge counters
   produce are always well formed, so no artifact or replay can tell the difference; it shows
   only for hand-built observations, and the 35 recorded checker vectors contain none.
 
+## DST tooling (`petrus-dst:campaigns`, `petrus-dst-world`)
+
+The ported `tests/dst/` tooling (`replay.py`, `failure.py`, `campaign.py`, `boundaries.py`,
+`generated_runtime_qualification.py` and the generated-schedule state machines) keeps the
+reference's file formats, so artifacts, failure bundles and legacy replay results cross between
+the languages (`Spec.ToolingInterop`). The pytest and Python runtime around it differs.
+
+- **The CLI is one executable.** The reference runs `python -m tests.dst.replay_world`,
+  `tests.dst.replay`, `tests.dst.failure` and `tests.dst.campaign`. Here they are the routes
+  `replay`, `legacy-replay`, `failure`, `campaign` and `boundaries` of `petrus-dst-world`. Their
+  arguments, standard output and exit statuses are the reference's. A refusal prints
+  `Class: message` to standard error.
+- **A campaign child is `petrus-dst-world campaign-profile NAME`, not a pytest node.** The
+  reference runs `python -m pytest -q NODE --forbid-skips --hypothesis-seed=SEED` per profile.
+  The child receives the same environment (tier, seed, case-log path) and has the same timeout
+  and output bounds. The report's `node` is that command line.
+- **Runtime identity.** Campaign reports and failure manifests name the runtime that made them.
+  The reference records Python and its packages, so here the `python` member holds the GHC
+  version and `dependencies` lists `hedgehog` and `petrus-dst`. `Spec.ToolingInterop` compares
+  manifests without it.
+- **Failure bundles keep the reference's replay command.** A manifest's `replay.command` is the
+  reference's literal (`uv run python -m tests.dst.failure replay {bundle}`), which both
+  languages validate, so a bundle replays through either one. `petrus-dst-world failure
+  demonstrate` prints its own route as `replay_command`.
+- **Boundary owners are hspec selections.** Each production-boundary profile names the Haskell
+  test that owns the same claim, as its Cabal suite and an hspec `--match` path (PARITY.md lists
+  them), not a pytest node:
+  - one child per suite, with every selected path of that suite;
+  - the children run in sequence under one wall clock (`PROFILE_TIMEOUT_SECONDS`);
+  - `--fail-on=empty,pending` stands in for `--forbid-skips`;
+  - the binaries are the ones `cabal build` left under `dist-newstyle`.
+
+  The lock is the reference's file, taken with `flock(2)` as `fcntl.flock` takes it, so a
+  Haskell and a Python qualification exclude each other. The reference finally removes Docker
+  containers labelled for its PostgreSQL fixture; the Haskell owners start no containers, so
+  there is nothing to remove.
+- **Hedgehog runs the generated schedules.** The state machines, strategies and settings map
+  rule for rule (PARITY.md, "Generation method"). A Hedgehog example ends at its first failing
+  step, before the teardown that the reference runs in a `finally`. So the World of a failed
+  example closes when the next example starts, or when the run ends.
+- **Case counts differ.** With the same settings, Hedgehog runs exactly `max_examples`
+  examples. Hypothesis runs some examples that it does not count towards `max_examples`, so it
+  may run more. For example, the ordinary `runtime-focused` campaign records 10 cases here and
+  14 in the reference. In both, a report's `cases` is at least `examples_target`. The schedules
+  themselves differ too: the two runners use the same seed but different generators.
+
 ## A reference quirk, reproduced
 
 The generated-script property found one quirk: a budget refusal after the World has already
