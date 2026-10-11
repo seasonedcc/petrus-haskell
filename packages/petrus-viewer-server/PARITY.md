@@ -86,7 +86,11 @@ Vite (see [DIVERGENCES.md](DIVERGENCES.md)).
 **Evidence:**
 
 - `test/McpSpec.hs`: the 16 tools in order, and the upstream Node
-  transcript reproduced byte for byte.
+  transcript reproduced byte for byte: a session that calls every tool
+  past input validation (checked), plus validation failures, unknown
+  tools and methods, a garbage line and version negotiation.
+  `test/record-mcp-transcript.mjs` records the transcript from
+  `server/mcp.mjs` (`--check`: confirm it is current).
 - Upstream `mcp` (7/7) and `mcp-haskell-relay` (7/7).
 - `live` (12/12): every tool, through `petrus-mcp` (Haskell), the `petrus`
   relay (Haskell) and the built UI in headless Chromium.
