@@ -40,7 +40,7 @@ module Petrus.Motus.Transport.ZeroMQ
   ) where
 
 import Petrus.Motus.Transport.ZeroMQ.Client
-import Petrus.Motus.Transport.ZeroMQ.Curve (OSError (..), createCertificates, loadCertificate)
+import Petrus.Motus.Transport.ZeroMQ.Curve (createCertificates, loadCertificate)
 import Petrus.Motus.Transport.ZeroMQ.Errors
 import Petrus.Motus.Transport.ZeroMQ.Native (hasCapability)
 import Petrus.Motus.Transport.ZeroMQ.Server

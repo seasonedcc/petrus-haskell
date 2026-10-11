@@ -7,6 +7,8 @@
 -- with the transcript the upstream Node server produced for the same session
 -- against the same fake browser (test/fixtures/mcp-transcript-node.txt;
 -- the port, working directory and screenshot timestamp are normalized).
+-- test/record-mcp-transcript.mjs records that transcript (and, with
+-- @--check@, confirms it is current); its fake browser mirrors 'fakeBrowser'.
 module McpSpec (spec) where
 
 import Control.Concurrent (threadDelay)
@@ -34,7 +36,8 @@ import System.Timeout (timeout)
 import Test.Hspec
 import TestSupport
 
--- | Answers agent requests like the fake browser of the Node capture.
+-- | Answers agent requests like the fake browser of the Node capture
+-- (@answer@ in test/record-mcp-transcript.mjs).
 fakeBrowser :: WsClient -> IO ()
 fakeBrowser c = forever $ do
   next <- recvWithin 60000 c
@@ -102,6 +105,14 @@ normalizeStamp prefix t = case T.breakOn prefix t of
             stamp = if T.null digits then "" else "<STAMP>"
          in pre <> prefix <> stamp <> normalizeStamp prefix (T.drop (T.length digits) afterPrefix)
 
+-- | The recorded session's lines (JSON-RPC messages, and one garbage line).
+sessionRequests :: IO [JsValue]
+sessionRequests = do
+  reqsRaw <- B.readFile (fixturePath "mcp-requests.json")
+  case parseJs reqsRaw of
+    Right (JsArr xs) -> pure xs
+    other -> fail ("bad mcp-requests.json: " <> show other)
+
 -- | Run the recorded session through @petrus-mcp@; its stdout, normalized.
 runSession :: IO Text
 runSession = withSystemTempDirectory "petrus-mcp-golden-" $ \tmp -> do
@@ -110,10 +121,7 @@ runSession = withSystemTempDirectory "petrus-mcp-golden-" $ \tmp -> do
   B.writeFile (cwd </> "examples" </> "sample-net.json") "{\"fileVersion\":\"2\",\"net\":\"sample\",\"arcs\":[],\"places\":{},\"transitions\":{}}\n"
   B.writeFile (cwd </> "package.json") "{\"name\":\"fixture\"}\n"
   B.writeFile (cwd </> "index.html") "<!doctype html>\n<html><body></body></html>\n"
-  reqsRaw <- B.readFile (fixturePath "mcp-requests.json")
-  reqs <- case parseJs reqsRaw of
-    Right (JsArr xs) -> pure xs
-    other -> fail ("bad mcp-requests.json: " <> show other)
+  reqs <- sessionRequests
   withViewer id $ \h -> do
     let port = handlePort h
     withWs port "/ws/agent" $ \browser -> do
@@ -184,6 +192,20 @@ spec = describe "petrus-mcp" $ do
                  , "petrus_screenshot"
                  , "petrus_open_file"
                  ]
+
+  it "calls every tool past input validation in the recorded session" $ do
+    reqs <- sessionRequests
+    transcript <- B.readFile (fixturePath "mcp-transcript-node.txt")
+    let answers = [(field "id" v, l) | l <- BC.lines transcript, Right v <- [parseJs l]]
+        validated =
+          [ name
+          | r <- reqs
+          , textField "method" r == Just "tools/call"
+          , Just name <- [field "params" r >>= textField "name"]
+          , Just answer <- [lookup (field "id" r) answers]
+          , not ("Input validation error" `B.isInfixOf` answer)
+          ]
+    [t | t <- map toolName tools, t `notElem` validated] `shouldBe` []
 
   it "reproduces the upstream Node transcript byte for byte" $ do
     expected <- TE.decodeUtf8 <$> B.readFile (fixturePath "mcp-transcript-node.txt")

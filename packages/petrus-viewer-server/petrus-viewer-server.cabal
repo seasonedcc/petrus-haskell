@@ -12,6 +12,7 @@ description:
   the bytes on the wire are identical to the Node implementation.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Network
@@ -44,12 +45,14 @@ library
                     Petrus.Viewer.UrlCache
                     Petrus.Viewer.Http
                     Petrus.Viewer.FileIO
+                    Petrus.Viewer.EventLoop
                     Petrus.Viewer.Relay
                     Petrus.Viewer.Relay.Frame
                     Petrus.Viewer.Relay.Handshake
                     Petrus.Viewer.Endpoints
                     Petrus.Viewer.HttpFront
                     Petrus.Viewer.Static
+                    Petrus.Viewer.UiDir
                     Petrus.Viewer.Proxy
                     Petrus.Viewer.History.Observation
                     Petrus.Viewer.Server
@@ -58,6 +61,7 @@ library
                     Petrus.Viewer.Mcp.Schema
                     Petrus.Viewer.Mcp.Bridge
                     Petrus.Viewer.Mcp.History
+                    Petrus.Viewer.Mcp.Reactor
                     Petrus.Viewer.Mcp.Server
                     Petrus.Viewer.WsUrl
                     Petrus.Viewer.Log
@@ -106,7 +110,7 @@ executable petrus-mcp
   hs-source-dirs:   app/petrus-mcp
   main-is:          Main.hs
   build-depends:    base, petrus-viewer-server
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N2"
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N1 -qg -A16m"
 
 executable petrus-collab
   import:           warnings
@@ -191,12 +195,16 @@ benchmark petrus-viewer-bench
                   , directory
                   , filepath
                   , http-client
+                  , http-types
                   , network
                   , petrus-viewer-server
+                  , process
                   , stm
                   , text
                   , time
                   , unix
+                  , wai
+                  , warp
                   , websockets
   -- two capabilities: enough to keep any of the servers busy, and the same
   -- client cost against every server

@@ -94,8 +94,8 @@ import Data.Text.Encoding qualified as TE
 import Hamsterdan.GitHub.Config (AccountConfig (..), HostConfig (..), secret)
 import Hamsterdan.GitHub.Models (InstallationInventory (..))
 import Hamsterdan.GitHub.Routing qualified as Routing
-import Hamsterdan.GitHub.Sqlite (SQLData (..))
-import Hamsterdan.GitHub.Sqlite qualified as Sql
+import Hamsterdan.Sqlite (SQLData (..))
+import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.GitHub.Webhooks (Receipt (..), WebhookRejected (..), dispositionName, sign)
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Agenticus (activateRoutes, claimRoute, closeRoutes, composeAgent, openAgentRouteStore, settleRoutes)
@@ -146,6 +146,7 @@ import Petrus.Testing.Dst
   , WorldConfig (..)
   , WorldT
   , emptyRegistry
+  , pureCheck
   , raise
   , registerChecker
   , registerProfile
@@ -1404,7 +1405,7 @@ motus root = do
 
 -- | @ReadinessChecker()@.
 readinessChecker :: Checker
-readinessChecker = Checker {identity = checkerIdentity, request = stateRequest, check = checkReadiness}
+readinessChecker = Checker {identity = checkerIdentity, request = stateRequest, check = pureCheck checkReadiness}
 
 -- | @ReadinessChecker.check(observation)@.
 checkReadiness :: Observation -> Either ProfileError CheckResult

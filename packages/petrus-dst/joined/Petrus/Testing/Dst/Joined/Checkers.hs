@@ -163,7 +163,7 @@ checker identity name body =
   Checker
     { identity
     , request = ObservationRequest {name, payload = Object []}
-    , check = \o -> Right (body o.value)
+    , check = pureCheck $ \o -> Right (body o.value)
     }
 
 result :: Bool -> [(Text, Json)] -> CheckResult

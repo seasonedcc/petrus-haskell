@@ -20,6 +20,9 @@ module Petrus.Impetus.Instance.Firing
   , Scheduler
   , selectConservative
   , terminalFailure
+    -- * Record authoring
+  , instanceBeginFiring
+  , instanceCompleteFiring
     -- * Replay folds
   , replayInFlight
   , replayFiringOccurrences
@@ -40,13 +43,16 @@ import Data.List (sort)
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Petrus.Activity
+import Petrus.Impetus.Binding (HandlerResult (..))
 import Petrus.Impetus.History.Records
 import Petrus.Impetus.Internal.OMap (OMap)
 import Petrus.Impetus.Internal.OMap qualified as OMap
 import Petrus.Impetus.Internal.Repr
 import Petrus.Impetus.Petrinet.Enabledness (Binding (..))
-import Petrus.Impetus.Petrinet.Marking (Token)
-import Petrus.Impetus.Petrinet.Schema (Instant, NetPath, netPathText)
+import Petrus.Impetus.Petrinet.Firing (BeginEffect (..), ProducedTokens (..))
+import Petrus.Impetus.Petrinet.Firing qualified as Petrinet
+import Petrus.Impetus.Petrinet.Marking (Marking, Token)
+import Petrus.Impetus.Petrinet.Schema (Instant, Net, NetPath, netPathText)
 import Petrus.Impetus.Scope (LifecycleScope)
 import Petrus.Json (Json)
 
@@ -93,6 +99,55 @@ selectConservative = \case
 terminalFailure :: ActivityFailed -> Either Text TerminalOutcome
 terminalFailure r =
   TerminalFailure <$> activityFailure (ActivityFailureFields r.error r.kind r.details r.retryable r.retryAfter)
+
+-- ---------------------------------------------------------------------------
+-- Record authoring
+
+-- | The Instance-layer begin contract (the reference's
+-- @instance.firing.begin_firing@, which its @petrus.impetus.instance@ facade
+-- re-exports as @begin_firing@): the history-independent Petrinet begin
+-- transform, narrated as the begin records of occurrence @o@ at @instant@ —
+-- @FiringBegun@, then one @TokensConsumed@ / @TokensRead@ per movement
+-- effect, in effect order. The records carry no queue entries and no
+-- lifecycle scope (the reference's defaults); the Instance's @begin@ door
+-- authors the scoped, entry-bearing batch itself. 'Left' is the Petrinet
+-- refusal (a token not present, a read of a consumed token).
+instanceBeginFiring :: Marking -> Binding -> Int -> Instant -> Either Text (Marking, [Record])
+instanceBeginFiring marking b o instant = do
+  (effects, marking') <- Petrinet.beginFiring marking b
+  let narrate = \case
+        ConsumedTokens p ts -> RTokensConsumed (TokensConsumed p ts o [] Nothing instant)
+        ReadTokens p ts -> RTokensRead (TokensRead p ts o [] Nothing instant)
+  pure (marking', RFiringBegun (FiringBegun b.transition o Nothing instant) : map narrate effects)
+
+-- | The Instance-layer completion contract (the reference's
+-- @instance.firing.complete_firing@): the history-independent Petrinet
+-- completion of the occurrence's transition with the handler's tokens, the
+-- marking after it, the 'FiringOutcome', and the appended records —
+-- @TokensProduced@ per produced place, @DeliveryRegistrationClosed@ per
+-- close, @DeliveryRegistrationOpened@ per open, then @FiringCompleted@. The
+-- outcome's records are the occurrence's begin records followed by the
+-- appended ones. The registration effects are 'DeliveryRegistration' values
+-- by type (the reference's @TypeError@ for any other value cannot arise);
+-- validating them against the armed registrations is the Instance's
+-- @complete@ door's work, as in the reference.
+instanceCompleteFiring :: Net -> Marking -> FiringOccurrence -> HandlerResult -> Instant -> (Marking, FiringOutcome, [Record])
+instanceCompleteFiring net marking o result instant =
+  let t = o.binding.transition
+      (effects, marking') = Petrinet.completeFiring net marking t result.tokens
+      appended =
+        [RTokensProduced (TokensProduced p ts o.occurrence [] Nothing instant) | ProducedTokens p ts <- effects]
+          ++ [RDeliveryRegistrationClosed (DeliveryRegistrationClosed r.source r.key (Just o.occurrence) instant) | r <- result.closes]
+          ++ [RDeliveryRegistrationOpened (DeliveryRegistrationOpened r.source r.key (Just o.occurrence) instant) | r <- result.opens]
+          ++ [RFiringCompleted (FiringCompleted t o.occurrence instant)]
+      outcome =
+        FiringOutcome
+          t
+          o.occurrence
+          (concatMap snd o.binding.consumed)
+          [(p, tok) | ProducedTokens p ts <- effects, tok <- ts]
+          (o.records ++ appended)
+   in (marking', outcome, appended)
 
 -- ---------------------------------------------------------------------------
 -- Sorting the lifecycle

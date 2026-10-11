@@ -70,6 +70,42 @@ sys.exit(0 if '%d.%d.%d' % sys.version_info[:3] == '$PYTHON_VERSION' else 1)
 ") >/dev/null 2>&1
 }
 
+# Several suites run in parallel (cabal test all) and each provisions the
+# environment it needs on first use, so a sync is serialized by a lock: the
+# first process to find the environment stale syncs it while the others wait
+# and then find it usable. The lock is a directory (mkdir is atomic; macOS
+# has no flock(1)) holding its owner's PID, under dist-newstyle/ (ignored by
+# Git); a lock whose owner has exited is taken over.
+lock="$root/dist-newstyle/upstream-python/$project.lock"
+
+acquire_lock() {
+  mkdir -p "$(dirname "$lock")"
+  local waited=0 holder
+  until mkdir "$lock" 2>/dev/null; do
+    holder=$(cat "$lock/pid" 2>/dev/null || true)
+    if [[ -n "$holder" ]] && ! kill -0 "$holder" 2>/dev/null; then
+      echo "upstream/$project: taking over the provisioning lock of exited process $holder" >&2
+      rm -rf "$lock"
+      continue
+    fi
+    if ((waited == 0)); then
+      echo "upstream/$project: waiting for another process to finish provisioning it" >&2
+    fi
+    if ((waited >= 1800)); then
+      echo "upstream/$project: still locked by process ${holder:-?} after ${waited}s ($lock)" >&2
+      exit 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  echo $$ >"$lock/pid"
+  trap 'rm -rf "$lock"' EXIT
+}
+
+if ! usable; then
+  acquire_lock
+fi
+
 if ! usable; then
   if ! command -v uv >/dev/null 2>&1; then
     echo "the upstream/$project Python environment is missing or stale and \`uv\` is not on PATH; install uv, or run \`uv sync --frozen ${sync_args[*]+${sync_args[*]} }--python $PYTHON_VERSION\` in upstream/$project" >&2

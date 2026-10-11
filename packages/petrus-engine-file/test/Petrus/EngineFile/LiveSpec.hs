@@ -6,10 +6,14 @@
 -- * fresh seeded fuzz corpora (seeds 1 to 3 by default, or the
 --   comma-separated @PETRUS_ENGINE_FILE_FUZZ_SEEDS@) agree case by case;
 -- * corpora named in @PETRUS_ENGINE_FILE_CORPORA@ (comma-separated paths)
---   agree case by case.
+--   agree case by case;
+-- * the pinned @net_file_schema.json@, which "Petrus.EngineFile.SchemaSpec"
+--   checks this package against, is what @petrus-cli gen-json-schema@
+--   generates from the pinned models.
 module Petrus.EngineFile.LiveSpec (spec, referencePython, repoRoot) where
 
 import Control.Monad (forM_, unless)
+import Data.ByteString qualified as BS
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -73,6 +77,16 @@ spec = describe "live differential against petrus-engine" $ do
             ""
         unless (code == ExitSuccess) $ expectationFailure ("corpus.py failed: " <> err)
         readCorpus out >>= mapM_ checkCase
+
+  it "net_file_schema.json is what petrus-cli gen-json-schema generates" $ withReference $ \(python, root) ->
+    withSystemTempDirectory "petrus-engine-file-schema" $ \dir -> do
+      let out = dir </> "net_file_schema.json"
+      (code, _, err) <- readProcessWithExitCode python ["-m", "petrus.cli", "gen-json-schema", "-o", out] ""
+      unless (code == ExitSuccess) $ expectationFailure ("gen-json-schema failed: " <> err)
+      generated <- BS.readFile out
+      committed <- BS.readFile (root </> "upstream" </> "petrus-engine" </> "src" </> "petrus" </> "net_file_schema.json")
+      unless (generated == committed) $
+        expectationFailure "upstream/petrus-engine/src/petrus/net_file_schema.json differs from what gen-json-schema generates at the pin"
 
   extra <- runIO (maybe [] (splitOn ',') <$> lookupEnv "PETRUS_ENGINE_FILE_CORPORA")
   forM_ extra $ \path -> do

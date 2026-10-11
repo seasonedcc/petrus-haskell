@@ -11,10 +11,12 @@ description:
   with @HelpFormatter@ and @textwrap@ wrapping to the same width.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Console
 build-type:         Simple
+extra-doc-files:    NOTICE
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -36,6 +38,5 @@ library
                   , array >=0.5
                   , containers >=0.6
                   , hamsterdan-contracts
-                  , hamsterdan-github
                   , text >=2.0
   ghc-options:      -O2

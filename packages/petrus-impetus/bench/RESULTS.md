@@ -41,6 +41,13 @@ was pinned at `upstream/petrus` 3f85fc2.
 | History replay → marking | 20 002 records | 4 079 ms | 237 ms | 17× |
 | Net definition v3 serialize (200-place chain) | 110 kB | 10.5 ms | 2.49 ms | 4.2× |
 | Net definition v3 parse (200-place chain) | 200 places | 11.8 ms | 5.30 ms | 2.2× |
+| Net definition v3 compile (200-place chain) | 200 places | 7.02 ms | 0.802 ms | 8.8× |
+| Net document v1 serialize (chain, full view, 50-entry lineage) | 171 kB | 14.5 ms | 2.18 ms | 6.7× |
+| Net document v1 parse (same document) | 50 lineage entries | 14.3 ms | 8.60 ms | 1.7× |
+| Timers / delayed self-loop (50 tokens, `Delay(1)`) | 500 firings + 10 wakes | 118.6 ms | 10.2 ms | 12× |
+| Lifecycle scope / fill (200 scoped deliveries) | 200 tokens | 25.3 ms | 0.470 ms | 54× |
+| Lifecycle scope / close (filled scope) | 200 discarded | 25.2 ms | 0.499 ms | 51× |
+| Lifecycle scope / reset (filled scope) | generation 2 | 25.2 ms | 0.515 ms | 49× |
 
 These numbers are from a rerun on 2026-10-10, after the History decode work
 described in the notes. The machine was busy during the rerun (load average
@@ -61,6 +68,22 @@ There are also three Haskell-only diagnostic rows:
   already-parsed values.
 
 The decode row is roughly parse-only plus records-only.
+
+The seven rows from Net definition v3 compile down were added on 2026-10-11
+(the audit asked for coverage of compile, the Net document, timers, and
+lifecycle scopes). Both sides were run that day on the same machine, which
+was busy (load average 6–8 on 10 cores). The Haskell and Python sides were
+checked to do the same work:
+
+- the two serialized Net documents are byte-identical (171 162 bytes);
+- the timer row fires 500 bindings and wakes 10 times on both sides;
+- the scope rows fill 200 tokens, discard 200 on close, and reach
+  generation 2 on reset on both sides.
+
+The Haskell compile row also forces the compiled net's derived indices (its
+arc URIs), because the Python `Net` constructor builds them eagerly. The
+scope rows include building the Instance and the 200 deliveries; close and
+reset then add one door each, so they differ from fill by that door's cost.
 
 ## Notes
 

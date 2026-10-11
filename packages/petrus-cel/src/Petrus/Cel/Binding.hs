@@ -26,6 +26,7 @@ module Petrus.Cel.Binding
   , compileFilter
   , compileGuard
   , compileCompletion
+  , macros
     -- * Diagnostics
   , diagnostic
   ) where

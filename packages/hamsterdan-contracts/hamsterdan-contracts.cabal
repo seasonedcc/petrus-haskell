@@ -9,11 +9,13 @@ description:
   the Python literals (@repr@ / @ast.literal_eval@) that Hamsterdan stores.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Data
 build-type:         Simple
-extra-doc-files:    README.md
+extra-doc-files:    NOTICE
+                    README.md
                     PARITY.md
                     DIVERGENCES.md
 
@@ -37,12 +39,15 @@ library
                     Hamsterdan.Contracts.ReadinessV5
                     Hamsterdan.PyLiteral
                     Hamsterdan.PyLiteral.Printable
+                    Hamsterdan.PyText
+                    Hamsterdan.Sqlite
   build-depends:    base >=4.18 && <5
                   , array >=0.5
                   , base16-bytestring >=1.0
                   , bytestring >=0.11
                   , cryptohash-sha256 >=0.11
                   , containers >=0.6
+                  , direct-sqlite >=2.3.27
                   , petrus-json
                   , text >=2.0
   ghc-options:      -O2
@@ -56,6 +61,7 @@ test-suite hamsterdan-contracts-test
                     CodecSpec
                     ProtocolSpec
                     PyLiteralSpec
+                    PyTextSpec
   build-depends:    base
                   , bytestring
                   , containers

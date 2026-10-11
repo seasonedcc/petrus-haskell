@@ -34,8 +34,8 @@ module Petrus.TestSupport.Python
   ) where
 
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
-import Control.Exception (Exception, throwIO)
-import Control.Monad (unless)
+import Control.Exception (Exception, finally, throwIO)
+import Control.Monad (unless, void)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
@@ -47,6 +47,7 @@ import Petrus.TestSupport.Repo (repoRoot, upstreamPetrus)
 import System.FilePath ((</>))
 import System.IO (Handle, hClose, hFlush, hSetBuffering, BufferMode (..))
 import System.IO.Unsafe (unsafePerformIO)
+import System.Process qualified as Process
 import System.Process.Typed
 import System.Timeout (timeout)
 
@@ -158,6 +159,14 @@ data PythonProcess = PythonProcess
 -- | Run an interactive snippet for the duration of an action, then terminate
 -- it (its exact process, never a pattern) and wait for it. Lines written by
 -- the snippet must be flushed (@print(…, flush=True)@).
+--
+-- The snippet is terminated and its exit awaited here, before
+-- 'withProcessTerm' cleans up: that cleanup cancels typed-process's thread
+-- blocked in @waitpid@, and when the snippet exits at that moment (it
+-- finished, or a test made it die) the status that call reaped is lost, so
+-- the cleanup's own wait fails with ECHILD ("waitForProcess: does not exist
+-- (No child processes)"). Waiting through 'waitExitCode' never cancels that
+-- thread, and the cleanup then finds the process already gone.
 withPython :: Text -> [String] -> (PythonProcess -> IO a) -> IO a
 withPython code args action = do
   config <- snippet code args
@@ -166,7 +175,9 @@ withPython code args action = do
     let input = getStdin running
         output = getStdout running
     hSetBuffering input LineBuffering
-    action (PythonProcess input output)
+    action (PythonProcess input output) `finally` do
+      Process.terminateProcess (unsafeProcessHandle running)
+      void (waitExitCode running)
 
 -- | Write one line (a newline is appended) to the snippet's stdin.
 sendLine :: PythonProcess -> ByteString -> IO ()

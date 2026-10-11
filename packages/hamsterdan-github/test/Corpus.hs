@@ -22,7 +22,7 @@ import Data.IORef (IORef, modifyIORef')
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), LoneSurrogates (..), ParseOptions (..), defaultDumps, dumps, parseJson, pythonLoads)
 import Test.Hspec (Expectation, expectationFailure)
 
 -- | The rows of a JSONL corpus under @test/corpus@.
@@ -31,7 +31,9 @@ readCorpus path = do
   bytes <- BS.readFile ("test/corpus/" <> path)
   traverse row (filter (not . BS.null) (BS8.split '\n' bytes))
   where
-    row line = either (fail . ("corpus row: " <>)) pure (parseJson pythonLoads line)
+    -- The rows are CPython's @json.dumps@ output, so a lone surrogate the
+    -- reference held in a @str@ appears escaped; keep it, as @json.loads@ does.
+    row line = either (fail . ("corpus row: " <>)) pure (parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates} line)
 
 member :: Text -> Json -> Maybe Json
 member key = \case

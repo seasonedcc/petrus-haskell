@@ -31,6 +31,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Functor ((<&>))
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Petrus.Viewer.Agent.Protocol (RequestAction (..), requestActionName)
@@ -39,11 +40,19 @@ import Petrus.Viewer.Json
 import Petrus.Viewer.Log
 import Petrus.Viewer.Mcp.Bridge
 import Petrus.Viewer.Mcp.History
+import Petrus.Viewer.Mcp.Reactor (Reactor, readLines, withReactor)
 import Petrus.Viewer.Mcp.Schema
 import Petrus.Viewer.UrlCache (normalizePosix)
 import System.Directory (createDirectoryIfMissing, doesPathExist, getCurrentDirectory)
+import Foreign.C.Types (CInt)
+import GHC.IO.Device (IODeviceType (Stream))
+import GHC.IO.FD qualified as FD
+import GHC.IO.Handle.FD (mkHandleFromFD)
 import System.Exit (exitWith, ExitCode (..))
 import System.IO
+import System.Posix.Files (getFdStatus, isNamedPipe, isSocket)
+import System.Posix.IO (FdOption (NonBlockingRead), setFdOption)
+import System.Posix.Types (Fd (..))
 
 data Tool = Tool
   { toolName :: Text
@@ -53,7 +62,9 @@ data Tool = Tool
   , toolRun :: McpServer -> JsObject -> IO ToolResult
   }
 
-data ToolResult = ToolResult Text Bool
+-- | The text of a tool result (already a JSON string) and whether it is
+-- an error.
+data ToolResult = ToolResult JsString Bool
 
 data McpServer = McpServer
   { bridge :: Bridge
@@ -63,25 +74,32 @@ data McpServer = McpServer
   , scenarios :: IORef (Map Text JsValue)
   , inflight :: IORef (Map ByteString Bool)
   -- ^ encoded request id → cancelled
-  , out :: MVar ()
+  , out :: MVar Handle
+  -- ^ where responses go, one writer at a time
   }
 
-newMcpServer :: BridgeConfig -> Maybe HistorySource -> PerfLog -> IO McpServer
-newMcpServer cfg hist pl = do
-  b <- newBridge cfg pl
-  McpServer b hist pl <$> newIORef Map.empty <*> newIORef Map.empty <*> newMVar ()
+newMcpServer :: BridgeConfig -> Maybe HistorySource -> PerfLog -> Handle -> Reactor -> IO McpServer
+newMcpServer cfg hist pl h r = do
+  b <- newBridge cfg pl r
+  McpServer b hist pl <$> newIORef Map.empty <*> newIORef Map.empty <*> newMVar h
 
 -- | Run on stdin/stdout. As in Node, the bridge is ensured before the MCP
 -- transport starts; when it cannot be reached the process fails.
+--
+-- Standard input is read on the event loop ("Petrus.Viewer.Mcp.Reactor")
+-- when it is a pipe or a socket, as when an MCP client spawns the server;
+-- a terminal or a file is read through its handle (kqueue does not watch
+-- terminals, and epoll no regular files).
 runMcpServer :: IO ()
-runMcpServer = do
-  hSetBuffering stdout (BlockBuffering Nothing)
-  hSetBinaryMode stdin True
-  hSetBinaryMode stdout True
+runMcpServer = withReactor $ \reactor -> do
+  inputIsStream <- isStream 0
+  output <- streamHandle 1 WriteMode stdout "<stdout>"
+  hSetBuffering output (BlockBuffering Nothing)
+  hSetBinaryMode output True
   cfg <- bridgeConfigFromEnv
   pl <- mkPerfLog
   hist <- historySourceFromEnv
-  server <- newMcpServer cfg hist pl
+  server <- newMcpServer cfg hist pl output reactor
   t0 <- monotonicMs
   r <- ensureBridge (bridge server)
   case r of
@@ -92,20 +110,50 @@ runMcpServer = do
   t1 <- monotonicMs
   perfLog pl "bridge-ready" [("ms", num (fixed1 (t1 - t0)))]
   perfLog pl "mcp-server-ready" []
-  let loop = do
-        eof <- hIsEOF stdin
-        unless eof $ do
-          line <- BC.hGetLine stdin
-          handleLine server (stripCR line)
-          loop
-  loop
+  if inputIsStream
+    then do
+      ended <- newEmptyMVar
+      readLines reactor 0 (handleLine server . stripCR) (putMVar ended ())
+      takeMVar ended
+    else do
+      hSetBinaryMode stdin True
+      let loop = do
+            eof <- hIsEOF stdin
+            unless eof $ do
+              line <- BC.hGetLine stdin
+              handleLine server (stripCR line)
+              loop
+      loop
   where
     stripCR l = if not (B.null l) && BC.last l == '\r' then B.init l else l
 
+-- | Whether a standard stream is a pipe or a socket.
+isStream :: CInt -> IO Bool
+isStream fd =
+  try @IOException (getFdStatus (Fd fd)) <&> \case
+    Right st -> isNamedPipe st || isSocket st
+    Left _ -> False
+
+-- | The standard stream @fd@ for the responses. When it is a pipe or a
+-- socket it is put in non-blocking mode, as libuv does with Node's stdio
+-- pipes: a write then waits in the I/O manager only when the pipe is full,
+-- instead of a readiness poll and a blocking (safe) foreign call each,
+-- which with requests in flight hand the capability to another OS thread
+-- on every response. Terminals and files keep the standard handle.
+streamHandle :: CInt -> IOMode -> Handle -> FilePath -> IO Handle
+streamHandle fd mode std name = do
+  stream <- isStream fd
+  if stream
+    then do
+      setFdOption (Fd fd) NonBlockingRead True
+      (dev, _) <- FD.mkFD fd mode (Just (Stream, 0, 0)) False True
+      mkHandleFromFD dev Stream name mode False Nothing
+    else pure std
+
 send :: McpServer -> JsValue -> IO ()
-send s v = withMVar (out s) $ \_ -> do
-  B.hPut stdout (encodeJs v <> "\n")
-  hFlush stdout
+send s v = withMVar (out s) $ \h -> do
+  B.hPut h (encodeJs v <> "\n")
+  hFlush h
 
 -- | Handle one JSON-RPC line.
 handleLine :: McpServer -> ByteString -> IO ()
@@ -169,22 +217,19 @@ handleRequest s method params = case method of
     Just (JsStr nameS) -> do
       let name = jsStringText nameS
       case [t | t <- tools, toolName t == name] of
-        [] -> pure (Right (toolResult (ToolResult ("MCP error -32602: Tool " <> name <> " not found") True)))
+        [] -> pure (Right (toolResult (errorResult ("MCP error -32602: Tool " <> name <> " not found"))))
         (t : _) -> case validate (SObject (toolShape t) (toolPassthroughArgs t)) (lookupKey "arguments" params) of
           Left issues ->
-            pure . Right . toolResult $
-              ToolResult
-                ( "MCP error -32602: Input validation error: Invalid arguments for tool "
-                    <> name
-                    <> ": "
-                    <> issuesText issues
-                )
-                True
+            pure . Right . toolResult . errorResult $
+              "MCP error -32602: Input validation error: Invalid arguments for tool "
+                <> name
+                <> ": "
+                <> issuesText issues
           Right args -> do
             r <- try @SomeException (toolRun t s (fromMaybe emptyObject (asObject args)))
             pure . Right . toolResult $ case r of
               Right res -> res
-              Left e -> ToolResult (T.pack (show e)) True
+              Left e -> errorResult (T.pack (show e))
     other -> pure (Left (-32603, invalidRequestParams "name" "string" other))
   _ -> pure (Left (-32601, "Method not found"))
   where
@@ -210,16 +255,18 @@ invalidRequestParams key ex mv =
 
 toolResult :: ToolResult -> JsValue
 toolResult (ToolResult text isErr) =
-  obj ([("content", arr [obj [("type", str "text"), ("text", str text)]])] ++ [("isError", JsBool True) | isErr])
+  obj ([("content", arr [obj [("type", str "text"), ("text", JsStr text)]])] ++ [("isError", JsBool True) | isErr])
 
 textResult :: Text -> ToolResult
-textResult t = ToolResult t False
+textResult t = ToolResult (jsString t) False
 
 errorResult :: Text -> ToolResult
-errorResult t = ToolResult t True
+errorResult t = ToolResult (jsString t) True
 
-pretty :: JsValue -> Text
-pretty = TE.decodeUtf8 . encodePretty
+-- | A result whose text is @JSON.stringify(v, null, 2)@ (valid UTF-8, so
+-- it becomes a JSON string without a round trip through 'Text').
+prettyResult :: JsValue -> ToolResult
+prettyResult v = ToolResult (jsStringUtf8 (encodePretty v)) False
 
 ------------------------------------------------------------------------------
 -- Tools
@@ -357,7 +404,7 @@ bridgeToolIO name description shape action transform =
           (perfL s)
           "mcp-tool-done"
           [("tool", str name), ("action", actionT), ("totalMs", ms), ("resultBytes", int (utf16Len compact))]
-        pure (textResult (pretty result))
+        pure (prettyResult result)
 
 -- | @{source: "temporal", ...params}@, plus @runtimeState@ from the
 -- configured history source when there is one (see
@@ -406,7 +453,7 @@ statusTool s = do
                     else JsNull
             )
           ]
-  pure (textResult (pretty result))
+  pure (prettyResult result)
 
 -- | Property access with JavaScript's TypeError on null/undefined.
 getProp :: Maybe JsValue -> Text -> Either Text (Maybe JsValue)
@@ -516,7 +563,7 @@ scenarioCompare s args = do
               , ("changes", obj diff)
               , ("unchanged", int (length allPlaces - Set.size (Set.fromList (map fst diff))))
               ]
-      pure (textResult (pretty result))
+      pure (prettyResult result)
   where
     -- JavaScript === on decoded JSON values: primitives by value, objects
     -- and arrays (always distinct instances here) never equal

@@ -11,6 +11,7 @@ import Petrus.Json
 import Petrus.Json.CPythonDifferentialSpec qualified as CPythonDifferentialSpec
 import Petrus.Json.FloatReprSpec qualified as FloatReprSpec
 import Petrus.Json.Generators
+import Petrus.Json.PythonText (pythonStrRepr)
 import Petrus.Json.PythonTextSpec qualified as PythonTextSpec
 import Petrus.Json.ReferenceParse (referenceParseJson)
 import Test.Hspec
@@ -90,8 +91,47 @@ main = hspec $ do
       strict "NaN" `shouldSatisfy` isLeft
     it "rejects malformed numbers" $
       mapM_ (\s -> parse s `shouldSatisfy` isLeft) ["01", "1.", ".5", "+1", "1e", "-"]
-    it "rejects lone surrogates" $
-      parse "\"\\ud800\"" `shouldSatisfy` isLeft
+    it "rejects lone surrogates by default" $
+      parse "\"\\ud800\"" `shouldBe` Left "JSON strings must contain Unicode scalar values"
+    describe "lone surrogates kept (KeepLoneSurrogates, WTF-8)" $ do
+      let keep = parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates}
+          ascii = either (error . show) id . dumps defaultDumps
+          raw = either (error . show) id . dumps defaultDumps {ensureAscii = False}
+      it "keeps a lone surrogate as one WTF-8 code point" $ do
+        keep "\"\\ud800\"" `shouldBe` Right (String (surrogateText 0xD800))
+        fmap (\case String s -> (T.length s, T.unpack s); _ -> (0, "")) (keep "\"a\\ud800b\"") `shouldBe` Right (3, "a\xD800\&b")
+        fmap (\case String s -> TE.encodeUtf8 s; _ -> "") (keep "\"\\udfff\"") `shouldBe` Right "\xED\xBF\xBF"
+      it "still pairs surrogates and reads a following escape afresh" $ do
+        keep "\"\\ud83d\\ude00\"" `shouldBe` Right (String "\x1F600")
+        keep "\"\\udc00\\ud800\"" `shouldBe` Right (String (fromCodePoints "\xDC00\xD800"))
+        keep "\"\\ud83d\\u0041\"" `shouldBe` Right (String (fromCodePoints "\xD83D\&A"))
+        keep "\"\\ud800\\ud800\\udc00\"" `shouldBe` Right (String (fromCodePoints "\xD800\x10000"))
+      it "keeps them in keys and nested values" $
+        keep "{\"\\udc00x\": [\"a\\ud83d\", 1]}"
+          `shouldBe` Right (Object [(fromCodePoints "\xDC00x", Array [String (fromCodePoints "a\xD83D"), Int 1])])
+      it "re-encodes byte for byte: escaped under ensure_ascii, WTF-8 bytes otherwise" $ do
+        let line = "{\"\\udc00x\": [\"a\\ud83d\", \"\\ud83d\\ude00\", \"\\udfff\"]}"
+        fmap ascii (keep line) `shouldBe` Right line
+        fmap raw (keep line) `shouldBe` Right "{\"\xED\xB0\x80x\": [\"a\xED\xA0\xBD\", \"\xF0\x9F\x98\x80\", \"\xED\xBF\xBF\"]}"
+      it "orders and compares by code point, as CPython's str" $ do
+        compare (fromCodePoints "\xD7FF") (fromCodePoints "\xD800") `shouldBe` LT
+        compare (fromCodePoints "\xDFFF") (fromCodePoints "\xE000") `shouldBe` LT
+        (fromCodePoints "\xD800" == fromCodePoints "\xD801") `shouldBe` False
+        ascii (Object [("b", Int 1), (fromCodePoints "\xD800", Int 2), ("\xE000", Int 3)])
+          `shouldBe` "{\"b\": 1, \"\\ud800\": 2, \"\\ue000\": 3}"
+      it "fromWtf8 admits generalized UTF-8 only; hasLoneSurrogate finds them" $ do
+        fromWtf8 "a\xED\xA0\x80" `shouldBe` Just (fromCodePoints "a\xD800")
+        fromWtf8 "\xC0\x80" `shouldBe` Nothing
+        fromWtf8 "\xED\xA0" `shouldBe` Nothing
+        map hasLoneSurrogate [fromCodePoints "x\xDBFF", "\xD7FF\xE000\x1F600"] `shouldBe` [True, False]
+      it "dumpsText answers the str CPython's json.dumps returns" $ do
+        dumpsText compact (Array [String (fromCodePoints "a\xD800")]) `shouldBe` Right (fromCodePoints "[\"a\xD800\"]")
+        dumpsText defaultDumps (String (fromCodePoints "a\xD800")) `shouldBe` Right "\"a\\ud800\""
+      it "repr() escapes a kept surrogate as CPython does" $
+        pythonStrRepr (fromCodePoints "a\xD800\&b") `shouldBe` "'a\\ud800b'"
+      it "the default presets are unchanged" $ do
+        strict "\"\\ud800\"" `shouldSatisfy` isLeft
+        loneSurrogates pythonLoads `shouldBe` RefuseLoneSurrogates
     it "decodes surrogate pairs" $
       parse "\"\\ud83d\\ude00\"" `shouldBe` Right (String "\x1F600")
     it "rejects raw control characters" $
@@ -175,6 +215,27 @@ main = hspec $ do
       Int (2 ^ (53 :: Int) + 1) `shouldNotBe` Float (2 ^ (53 :: Int))
     it "compares objects as mappings" $
       Object [("a", Int 1), ("b", Int 2)] `shouldBe` Object [("b", Int 2), ("a", Int 1)]
+    it "compares objects with repeated keys as their last-wins dicts, symmetrically" $ do
+      let repeated = Object [("a", Int 1), ("a", Int 1)]
+          distinct = Object [("a", Int 1), ("b", Int 1)]
+      (repeated == distinct, distinct == repeated) `shouldBe` (False, False)
+      Object [("a", Int 1), ("a", Int 2)] `shouldBe` Object [("a", Int 2)]
+      Object [("a", Int 2)] `shouldBe` Object [("a", Int 1), ("a", Int 2)]
+      Object [("a", Int 2), ("a", Int 1)] `shouldNotBe` Object [("a", Int 2)]
+    -- The equivalence laws, over finite values dense in equal-but-differently
+    -- spelled pairs: repeated keys, reordered members, and 1 / 1.0 / true.
+    -- (A NaN equals nothing, itself included, as in CPython.)
+    it "is reflexive" $
+      property $ \(EqLaws a) -> a == a
+    it "is symmetric" $
+      property $ \(EqLaws a) -> forAll (respelled a) $ \b -> (a == b) === (b == a)
+    it "is transitive" $
+      property $ \(EqLaws a) ->
+        forAll (respelled a) $ \b ->
+          forAll (respelled b) $ \c ->
+            (a == b && b == c) ==> a == c
+    it "equals every equal respelling, both ways" $
+      property $ \(EqLaws a) -> forAll (respelledEqual a) $ \b -> a == b && b == a
 
   describe "CPython integer string-conversion limit" $ do
     let digits n = BC.replicate n '7'
@@ -379,3 +440,51 @@ instance Arbitrary Refusable where
           , Float <$> elements [1.5, 0 / 0, 1 / 0, -1 / 0]
           , pure (String "s")
           ]
+
+-- | Finite values over a small key alphabet, so objects often repeat keys,
+-- with numbers among 0, 1 and 2 in every numeric spelling.
+newtype EqLaws = EqLaws Json
+  deriving stock (Show)
+
+instance Arbitrary EqLaws where
+  arbitrary = EqLaws <$> sized go
+    where
+      go :: Int -> Gen Json
+      go n
+        | n <= 1 = leaf
+        | otherwise =
+            frequency
+              [ (3, leaf)
+              , (1, Array <$> (choose (0, 3) >>= \k -> vectorOf k (go (n `div` 3))))
+              , (2, Object <$> (choose (0, 4) >>= \k -> vectorOf k ((,) <$> elements ["a", "b", "c"] <*> go (n `div` 3))))
+              ]
+      leaf = elements [Null, Bool False, Bool True, Int 0, Int 1, Int 2, Float 0, Float 1, Float (-0.0), Float 1.5, String "a", String "b"]
+
+-- | A value spelled differently and equal to it under Python value
+-- equality: members reordered, a stale value for a key slipped in before
+-- its last occurrence, and numbers respelled across bool, int and float.
+respelledEqual :: Json -> Gen Json
+respelledEqual = \case
+  Int 0 -> elements [Int 0, Float 0, Float (-0.0), Bool False]
+  Int 1 -> elements [Int 1, Float 1, Bool True]
+  Bool b -> elements [Bool b, Int (if b then 1 else 0)]
+  Float d | d == 0 -> elements [Float 0, Float (-0.0), Int 0, Bool False]
+  Array items -> Array <$> traverse respelledEqual items
+  Object members -> do
+    let lastWins = [(k, v) | (i, (k, v)) <- zip [1 :: Int ..] members, k `notElem` map fst (drop i members)]
+    kept <- traverse (\(k, v) -> (,) k <$> respelledEqual v) lastWins
+    shuffled <- shuffle kept
+    stale <- sublistOf [(k, Int 99) | (k, _) <- shuffled]
+    pure (Object (stale <> shuffled))
+  other -> pure other
+
+-- | A respelling that is equal (most of the time) or changed in one place.
+respelled :: Json -> Gen Json
+respelled a = frequency [(3, respelledEqual a), (1, changed a)]
+  where
+    changed = \case
+      Array items@(_ : _) -> do
+        i <- chooseInt (0, length items - 1)
+        pure (Array [if j == i then String "changed" else item | (j, item) <- zip [0 ..] items])
+      Object ((k, _) : rest) -> pure (Object ((k, String "changed") : rest))
+      _ -> pure (String "changed")

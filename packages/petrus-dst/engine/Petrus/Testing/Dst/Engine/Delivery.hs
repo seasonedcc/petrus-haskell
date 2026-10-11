@@ -50,9 +50,6 @@ instanceId, scenarioId :: Text
 instanceId = "dst-world-identified-delivery"
 scenarioId = "identified-delivery-redelivery-world-v3"
 
-strs :: [Text] -> Json
-strs = Array . map String
-
 profileIdentity :: ProfileIdentity
 profileIdentity =
   Identity
@@ -283,12 +280,9 @@ deliveryAuthorityChecker =
   Checker
     { identity = checkerIdentity
     , request = ObservationRequest {name = "engine.delivery-authority", payload = Object []}
-    , check = \o -> do
-        let listOf key = case member key o.value of
-              Array xs -> xs
-              _ -> []
-            attempts = listOf "delivery_attempts"
-            canonical = listOf "canonical_deliveries"
+    , check = pureCheck $ \o -> do
+        let attempts = listOf "delivery_attempts" o.value
+            canonical = listOf "canonical_deliveries" o.value
             step (accepted, deliveries, dispositions) attempt =
               let identity = member "identity" attempt
                   payload = member "value" attempt
@@ -306,7 +300,7 @@ deliveryAuthorityChecker =
             reported = [member "disposition" a | a <- attempts]
             expectedValues = [member "value" d | d <- expectedDeliveries]
             firingCompleted = member "firing_completed" o.value
-            markingValues = listOf "marking_values"
+            markingValues = listOf "marking_values" o.value
             passed =
               actualDeliveries == expectedDeliveries
                 && reported == expectedDispositions

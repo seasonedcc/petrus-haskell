@@ -24,6 +24,7 @@ module Petrus.Impetus.Petrinet.Schema
   ( -- * Paths
     NetPath
   , netPath
+  , CanonicalNetPath (..)
   , netPathText
   , netPathSegments
   , lastSegment
@@ -158,6 +159,20 @@ netPath value
   | any T.null (T.splitOn "." value) =
       Left ("NetPath segments must be non-empty, got " <> pyStr value)
   | otherwise = Right (NetPath value)
+
+-- | @canonical_net_path(value, noun)@: a base 'NetPath' from an exact
+-- protocol spelling. A 'NetPath' is returned as it is, and its 'Text'
+-- spelling is parsed by 'netPath', with @NetPath(value)@'s refusal. Python's
+-- third case, a value of any other type refused with the caller's noun, is a
+-- type error here (DIVERGENCES item 15).
+class CanonicalNetPath a where
+  canonicalNetPath :: a -> Either Text NetPath
+
+instance CanonicalNetPath NetPath where
+  canonicalNetPath = Right
+
+instance CanonicalNetPath Text where
+  canonicalNetPath = netPath
 
 -- | The canonical dotted spelling (@str(path)@).
 netPathText :: NetPath -> Text

@@ -31,12 +31,16 @@ module Petrus.Activity
   , defaultExecutionPolicy
   , policyFields
   , policyJson
+  , policyFromMembers
   , policyRetryPolicy
     -- * Invocations
   , ActivityInvocation (..)
   , activityInvocation
   , invocation
   , invocationJson
+  , InvocationJsonError (..)
+  , invocationFromJson
+  , invocationRefusal
     -- * Failures
   , ActivityFailure
   , ActivityFailureFields (..)
@@ -63,6 +67,7 @@ module Petrus.Activity
   , snapshotHeartbeatDetails
   ) where
 
+import Control.DeepSeq (NFData (..))
 import Control.Exception (Exception, throwIO)
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
@@ -205,6 +210,14 @@ data ExecutionPolicyFields = ExecutionPolicyFields
 newtype ExecutionPolicy = ExecutionPolicy ExecutionPolicyFields
   deriving stock (Eq, Show)
 
+instance NFData ExecutionPolicyFields where
+  rnf (ExecutionPolicyFields attempts' heartbeat initial coefficient' maxInterval' jitter' startToClose' scheduleToClose') =
+    rnf attempts' `seq` rnf heartbeat `seq` rnf initial `seq` rnf coefficient' `seq` rnf maxInterval'
+      `seq` rnf jitter' `seq` rnf startToClose' `seq` rnf scheduleToClose'
+
+instance NFData ExecutionPolicy where
+  rnf (ExecutionPolicy fields) = rnf fields
+
 policyFields :: ExecutionPolicy -> ExecutionPolicyFields
 policyFields (ExecutionPolicy fields) = fields
 
@@ -272,6 +285,10 @@ data ActivityInvocation = ActivityInvocation
   }
   deriving stock (Eq, Show)
 
+instance NFData ActivityInvocation where
+  rnf (ActivityInvocation activity' input' policy' correlation' idempotency') =
+    rnf activity' `seq` rnf input' `seq` rnf policy' `seq` rnf correlation' `seq` rnf idempotency'
+
 -- | Validate an invocation as @ActivityInvocation.__post_init__@ does.
 activityInvocation :: ActivityInvocation -> Either Text ActivityInvocation
 activityInvocation value = do
@@ -289,6 +306,104 @@ activityInvocation value = do
 -- writer-derived identities.
 invocation :: Text -> Json -> ActivityInvocation
 invocation name payload = ActivityInvocation name payload defaultExecutionPolicy Nothing Nothing
+
+-- | Why a JSON value is not an encoded invocation, by the first check that
+-- failed. The shape checks are the Dispatches' own, each spelled in its own
+-- words; the rest are the value constructors' refusals ('invocationRefusal').
+data InvocationJsonError
+  = -- | Not an object with exactly @activity@, @input@, @policy@,
+    -- @correlation@ and @idempotency@.
+    InvocationFieldsNotExact
+  | -- | The policy is not an object with exactly the legacy
+    -- (@attempts@, @heartbeat_timeout@) or the eight current fields.
+    PolicyFieldsNotExact
+  | -- | @attempts@ or @heartbeat_timeout@ is not an integer.
+    PolicyFieldsNotIntegers
+  | -- | @ExecutionPolicy(**policy)@ refused, with its message.
+    PolicyRefused Text
+  | -- | The activity name is not a non-empty string.
+    ActivityNameRefused Json
+  | -- | @correlation@ or @idempotency@ (the label) is neither null nor a
+    -- non-empty string.
+    IdentityRefused Text Json
+  deriving stock (Eq, Show)
+
+-- | The inverse of 'invocationJson', as the Local and Absurd Dispatches
+-- decode a stored invocation: the exact five fields, a legacy or current
+-- policy with integer @attempts@ and @heartbeat_timeout@, then
+-- @ActivityInvocation(activity, input=..., policy=ExecutionPolicy(**policy),
+-- correlation=..., idempotency=...)@ in the reference's evaluation order.
+invocationFromJson :: Json -> Either InvocationJsonError ActivityInvocation
+invocationFromJson value = do
+  members <- case value of
+    Object ms | sort (map fst ms) == sort invocationFields -> Right ms
+    _ -> Left InvocationFieldsNotExact
+  let field key = maybe Null id (lookup key members)
+  policyMembers <- case field "policy" of
+    Object ms | sort (map fst ms) `elem` [sort legacyPolicyFields, sort currentPolicyFields] -> Right ms
+    _ -> Left PolicyFieldsNotExact
+  policy' <- case (lookup "attempts" policyMembers, lookup "heartbeat_timeout" policyMembers) of
+    (Just (Int _), Just (Int _)) -> either (Left . PolicyRefused) Right (policyFromMembers policyMembers)
+    _ -> Left PolicyFieldsNotIntegers
+  activity' <- case field "activity" of
+    String a | not (T.null a) -> Right a
+    other -> Left (ActivityNameRefused other)
+  let identity label = case field label of
+        Null -> Right Nothing
+        String v | not (T.null v) -> Right (Just v)
+        other -> Left (IdentityRefused label other)
+  correlation' <- identity "correlation"
+  idempotency' <- identity "idempotency"
+  Right ActivityInvocation {activity = activity', input = field "input", policy = policy', correlation = correlation', idempotency = idempotency'}
+  where
+    invocationFields = ["activity", "input", "policy", "correlation", "idempotency"]
+
+-- | The value constructors' refusal text for an 'InvocationJsonError', given
+-- a Python @repr@ of JSON values (the shape errors have no constructor text
+-- and are spelled by each Dispatch).
+invocationRefusal :: (Json -> Text) -> InvocationJsonError -> Maybe Text
+invocationRefusal repr = \case
+  PolicyRefused message -> Just message
+  ActivityNameRefused other -> Just ("ActivityInvocation requires a non-empty string activity name, got " <> repr other)
+  IdentityRefused label other ->
+    Just ("ActivityInvocation " <> label <> " must be a non-empty string, or None for the writer to derive at begin, got " <> repr other)
+  _ -> Nothing
+
+legacyPolicyFields, currentPolicyFields :: [Text]
+legacyPolicyFields = ["attempts", "heartbeat_timeout"]
+currentPolicyFields =
+  legacyPolicyFields <> ["initial_interval", "coefficient", "max_interval", "jitter", "start_to_close", "schedule_to_close"]
+
+-- | @ExecutionPolicy(**policy)@ over a decoded policy object whose shape the
+-- caller has checked (exactly the legacy or current fields, integer
+-- @attempts@ and @heartbeat_timeout@). An absent current field takes its
+-- default; a value that is not a number fails the constructor's own range
+-- check, with its message (a NaN stands in for it).
+policyFromMembers :: [(Text, Json)] -> Either Text ExecutionPolicy
+policyFromMembers members = do
+  let integer key = case lookup key members of
+        Just (Int i) -> Right i
+        _ -> Left ("ExecutionPolicy " <> key <> " must be an integer")
+      notANumber = FloatNumber (0 / 0)
+      number fallback key = maybe fallback (maybe notANumber id . numberFromJson) (lookup key members)
+      optional key = case lookup key members of
+        Nothing -> Nothing
+        Just Null -> Nothing
+        Just raw -> Just (maybe notANumber id (numberFromJson raw))
+      defaults = policyFields defaultExecutionPolicy
+  attempts' <- integer "attempts"
+  heartbeat' <- integer "heartbeat_timeout"
+  executionPolicy
+    ExecutionPolicyFields
+      { attempts = attempts'
+      , heartbeatTimeout = heartbeat'
+      , initialInterval = number defaults.initialInterval "initial_interval"
+      , coefficient = number defaults.coefficient "coefficient"
+      , maxInterval = number defaults.maxInterval "max_interval"
+      , jitter = number defaults.jitter "jitter"
+      , startToClose = optional "start_to_close"
+      , scheduleToClose = optional "schedule_to_close"
+      }
 
 -- | @dataclasses.asdict(invocation)@: activity, input, policy, correlation,
 -- idempotency.

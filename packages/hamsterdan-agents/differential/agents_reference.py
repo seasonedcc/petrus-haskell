@@ -14,6 +14,9 @@ prints one JSON document on stdout.
   ``{"settle": [operations]}``), close; prints one report per step (the
   claimed route, or the refusal).
 * ``dump ROOT``: the route database's schema text and sorted rows.
+* ``terminal ROOT``: ``_terminal_operations(ROOT)``, the agent operations
+  with a known terminal record in the Histories under ``ROOT``; prints
+  ``{"operations": sorted}`` or the refusal.
 
 ``InteropSpec`` runs the same operations through the Haskell port on the
 same directories, in both directions.
@@ -28,7 +31,7 @@ from pathlib import Path
 
 from petrus.agenticus.connection.key import KeyContext
 
-from hamsterdan.host.agenticus import AgentRouteStore, compose_agent
+from hamsterdan.host.agenticus import AgentRouteStore, _terminal_operations, compose_agent
 from hamsterdan.host.pi_a2 import PersistentKeyOperations
 
 
@@ -92,6 +95,11 @@ def main() -> None:
         result = routes(root, json.load(sys.stdin))
     elif command == "dump":
         result = dump(root)
+    elif command == "terminal":
+        try:
+            result = {"operations": sorted(_terminal_operations(root))}
+        except Exception as error:  # noqa: BLE001 - reported for comparison
+            result = {"refused": type(error).__name__, "message": str(error)}
     else:
         raise SystemExit(f"unknown command {command}")
     json.dump(result, sys.stdout, sort_keys=True)

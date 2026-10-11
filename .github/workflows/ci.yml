@@ -1,26 +1,204 @@
 name: CI
 
+# The same checks as scripts/check-all (plus the petrus-viewer suites of
+# `scripts/check-all --viewer`), spread over several Blacksmith runners:
+#
+#   lint       scripts/check-pins, scripts/lint-skips,
+#              scripts/lint-hamsterdan-architecture, scripts/bench --check,
+#              scripts/check-parity, the runtime test ledgers
+#              (packages/petrus-engine/scripts/parity_check.py); none needs a
+#              build
+#   build      cabal build all (-Werror), incrementally from the latest cached
+#              dist-newstyle; then scripts/ci-tests plan decides which test
+#              suites run and spreads them over the test shards
+#   checks     scripts/interop --check against the build; scripts/check-corpora
+#   test (N)   cabal test for the suites of shard N, with PostgreSQL 17, then
+#              scripts/check-pending on their output
+#   viewer     scripts/interop --viewer petrus-viewer-server (the upstream
+#              petrus-viewer suites against the Haskell backend)
+#   container  the image and its runtime contract (scripts/container-smoke)
+#   ci         the verdict: green only when every job above is; it also
+#              records this run's test ledger
+#
+# A suite is reused instead of rerun only when its input hash (its package,
+# every local package it depends on or names, everything outside packages/
+# but prose and benchmark records, and the toolchain and runner image) equals
+# the hash of a run where it passed (scripts/ci-tests explains the hash). The
+# nightly schedule and a dispatch with `full` rerun everything.
+# docs/reproducing.md, "Continuous integration", has the details.
+
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 4 * * *"
   workflow_dispatch:
+    inputs:
+      full:
+        description: Rerun every test suite (reuse no earlier result)
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: read
+
+env:
+  GHC_VERSION: "9.10.3"
+  CABAL_VERSION: "3.16.1.0"
+  GHCUP_VERSION: "0.2.6.2"
+  GHCUP_SHA256: 9ed5da5449b48043a0d17e767c05d2ef585e25a639bb934329496c6d2fad9cf8
+  CABAL_DIR: /home/runner/.cabal
+  PETRUS_POSTGRES_IMAGE: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+  DIST_KEY_PREFIX: dist-v1-Linux-ghc-9.10.3-
+
 jobs:
-  check:
-    runs-on: ubuntu-24.04
+  lint:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: CI runs every scripts/check-all step
+        run: scripts/ci-tests check-steps
+      - name: Upstream pins
+        run: scripts/check-pins
+      - name: No silent skips on a missing Python reference
+        run: scripts/lint-skips
+      - name: Hamsterdan import boundaries (upstream tests/test_architecture.py)
+        run: scripts/lint-hamsterdan-architecture
+      - name: Benchmark bookkeeping (rerun blocks, bench-results/summary.md)
+        run: scripts/bench --check
+      - name: Parity table
+        run: scripts/check-parity
+      - name: Runtime test ledgers (every in-scope upstream test accounted for)
+        run: python3 packages/petrus-engine/scripts/parity_check.py
+
+  build:
+    runs-on: blacksmith-16vcpu-ubuntu-2404
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      viewer: ${{ steps.plan.outputs.viewer }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain
+        id: toolchain
+      - name: Restore dist-newstyle (this commit's, else the latest)
+        id: dist
+        uses: actions/cache/restore@v4
+        with:
+          path: dist-newstyle
+          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+          restore-keys: ${{ env.DIST_KEY_PREFIX }}
+      - name: Keep the restored configuration
+        # Every job configures cabal alike, or cabal would reconfigure (and
+        # relink) packages: CI's test flags come from cabal.project.local
+        # (scripts/ci-tests configure), the same in every job; and the
+        # checkout leaves every .cabal file newer than the restored build,
+        # which Cabal takes as a change, so they get an old timestamp
+        # (cabal-install still compares the .cabal files by content).
+        run: |
+          scripts/ci-tests configure
+          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+      - name: Build (all packages, -Werror)
+        run: cabal update -v0 && cabal build all -j
+      - name: The split suites' parts select each example once
+        run: scripts/ci-tests check-parts
+      - name: Save the cabal store
+        if: steps.toolchain.outputs.store-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cabal/store
+            ~/.cabal/packages
+          key: ${{ steps.toolchain.outputs.store-key }}
+      - name: Save dist-newstyle
+        if: steps.dist.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: dist-newstyle
+          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+      - name: Earlier test ledgers
+        if: ${{ !(github.event_name == 'schedule' || inputs.full) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-tests fetch-ledgers "$RUNNER_TEMP/ledgers"
+      - name: Plan the test shards
+        id: plan
+        run: |
+          scripts/ci-tests plan --out plan.json --ledgers "$RUNNER_TEMP/ledgers" \
+            ${{ (github.event_name == 'schedule' || inputs.full) && '--full' || '' }}
+          echo "shards=$(python3 -c 'import json; print(json.dumps(json.load(open("plan.json"))["shards"]))')" >> "$GITHUB_OUTPUT"
+          echo "viewer=$(python3 -c 'import json; print(str(json.load(open("plan.json"))["viewer"]).lower())')" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-plan
+          path: plan.json
+          retention-days: 30
+
+  checks:
+    needs: build
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     services:
       postgres:
-        image: postgres:17
+        image: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
         env:
           POSTGRES_PASSWORD: postgres
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd pg_isready --health-interval 1s --health-timeout 5s --health-retries 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain
+      - uses: actions/cache/restore@v4
+        with:
+          path: dist-newstyle
+          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+          fail-on-cache-miss: true
+      - name: Keep the build job's configuration
+        # As in the build job, so that cabal rebuilds nothing.
+        run: |
+          scripts/ci-tests configure
+          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+      - name: Interop selection (scripts/interop patterns still select their groups)
+        # With the test jobs' opt-in variables, so that the selection counts
+        # the PostgreSQL and Docker examples too (a dry run connects to
+        # neither).
+        env:
+          PETRUS_TEST_POSTGRES: postgresql://postgres:postgres@localhost:5432/postgres
+          PETRUS_TEST_DOCKER: "1"
+        run: scripts/interop --check -j
+      - name: Committed corpora (every generator rerun against the pinned references)
+        env:
+          PETRUS_TEST_POSTGRES: postgresql://postgres:postgres@localhost:5432/postgres
+        run: scripts/check-corpora
+
+  test:
+    needs: build
+    if: needs.build.outputs.shards != '[]'
+    name: test (${{ matrix.name }})
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.build.outputs.shards) }}
+    services:
+      postgres:
+        image: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 1s --health-timeout 5s --health-retries 60
     env:
       PETRUS_TEST_POSTGRES: postgresql://postgres:postgres@localhost:5432/postgres
       # petrus-execution: also run the shared Docker provider tests against the runner's daemon.
@@ -29,40 +207,109 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: haskell-actions/setup@v2
-        id: setup
+      - uses: ./.github/actions/toolchain
+      - uses: actions/cache/restore@v4
         with:
-          ghc-version: "9.10.3"
-          cabal-version: "3.16.1.0"
-      - uses: astral-sh/setup-uv@v6
-      # The upstream Python references (upstream/petrus for most interop
-      # suites, upstream/petrus-engine for petrus-engine-file's live
-      # differential and format-CLI specs), on the exact CPython that
-      # scripts/upstream-python pins. scripts/check-all provisions them too;
-      # doing it here first surfaces a provisioning failure as its own step.
-      - name: Sync the upstream Python references
-        run: scripts/upstream-python petrus && scripts/upstream-python petrus-engine
-      - name: Install system libraries
-        run: sudo apt-get update && sudo apt-get install -y libzmq3-dev libpq-dev libsqlite3-dev graphviz
-      - name: Resolve dependencies
-        run: cabal update && cabal build all --dry-run
-      - uses: actions/cache@v4
+          path: dist-newstyle
+          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+          fail-on-cache-miss: true
+      - name: Keep the build job's configuration
+        # As in the build job, so that cabal rebuilds nothing.
+        run: |
+          scripts/ci-tests configure
+          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+      - uses: actions/download-artifact@v4
         with:
-          path: ${{ steps.setup.outputs.cabal-store }}
-          key: cabal-${{ runner.os }}-${{ hashFiles('**/*.cabal', 'cabal.project', 'dist-newstyle/cache/plan.json') }}
-          restore-keys: cabal-${{ runner.os }}-
-      - name: Check everything
-        run: scripts/check-all
+          name: test-plan
+      - name: Upstream Python environment (petrus, petrus-engine, hamsterdan)
+        run: for p in petrus petrus-engine hamsterdan; do scripts/upstream-python "$p" >/dev/null; done
+      - name: "Tests (unit, conformance, interop): ${{ matrix.suites }}"
+        # A suite counts as passed only with no pending example but the
+        # declared opt-ins (run-shard runs scripts/check-pending on each).
+        run: scripts/ci-tests run-shard plan.json "${{ matrix.name }}" --logs "$RUNNER_TEMP/test-logs"
+      - name: No pending examples (a missing tool or server fails; only the opt-ins in scripts/check-pending may pend)
+        run: scripts/check-pending "$RUNNER_TEMP/test-logs"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.name }}-${{ github.run_attempt }}
+          path: results-*.json
+          retention-days: 30
+
+  viewer:
+    needs: build
+    if: needs.build.outputs.viewer == 'true'
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain
+      - uses: actions/cache/restore@v4
+        with:
+          path: dist-newstyle
+          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+          fail-on-cache-miss: true
+      - name: Keep the build job's configuration
+        # As in the build job, so that cabal rebuilds nothing.
+        run: |
+          scripts/ci-tests configure
+          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-plan
+      # pnpm goes into the toolchain's Node directory, already on PATH: a
+      # PATH unlike the build job's would make cabal reconfigure.
+      - name: pnpm
+        id: pnpm
+        run: |
+          npm install -g --silent pnpm@11.5.1
+          echo "store=$(cd upstream/petrus-viewer && pnpm store path)" >> "$GITHUB_OUTPUT"
+      - name: Restore the pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm.outputs.store }}
+          key: pnpm-store-v1-${{ runner.os }}-${{ hashFiles('upstream/petrus-viewer/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-v1-${{ runner.os }}-
+      - name: Restore the Playwright browsers
+        id: playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-v1-${{ runner.os }}-${{ hashFiles('upstream/petrus-viewer/pnpm-lock.yaml') }}
+      - name: The upstream petrus-viewer (pnpm install, pnpm build, Chromium)
+        working-directory: upstream/petrus-viewer
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          npx playwright install --with-deps chromium
+      - name: Upstream Python environment
+        run: scripts/upstream-python petrus >/dev/null
+      - name: The upstream petrus-viewer suites against the Haskell backend
+        run: scripts/ci-tests run-viewer plan.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-viewer-${{ github.run_attempt }}
+          path: results-*.json
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: viewer-tap-${{ github.run_attempt }}
+          path: /tmp/petrus-hs-upstream-tests-*/*.tap
+          retention-days: 7
 
   # The Haskell port's container runtime contract (PARITY.md, "Container
   # runtime contract"): lint the launcher, the interpreter-path shim, the
   # smoke scripts and the Containerfile; build deployment/Containerfile for
-  # linux/amd64 with the reference's build arguments, reusing layers from
-  # the GitHub Actions cache; then run scripts/container-smoke against the
-  # built image. It checks at run time what the reference's release
-  # verification, Ansible playbooks and systemd unit expect of the image.
+  # linux/amd64 with the reference's build arguments on Blacksmith's
+  # persistent Docker builder (layers and the build's cache mounts survive
+  # between runs); then run scripts/container-smoke against the built image.
+  # It checks at run time what the reference's release verification, Ansible
+  # playbooks and systemd unit expect of the image.
   container:
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -82,9 +329,11 @@ jobs:
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "version=$(sed -n 's/^version=//p' deployment/python-shim)" >> "$GITHUB_OUTPUT"
           echo "created=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
+      - uses: useblacksmith/setup-docker-builder@v2
+        with:
+          cache-key: deployment/Containerfile
       - name: Build the image
-        uses: docker/build-push-action@v6
+        uses: useblacksmith/build-push-action@v2
         with:
           context: .
           file: deployment/Containerfile
@@ -95,9 +344,54 @@ jobs:
             SOURCE_REVISION=${{ steps.source.outputs.revision }}
             SOURCE_VERSION=${{ steps.source.outputs.version }}
             SOURCE_CREATED=${{ steps.source.outputs.created }}
-          cache-from: type=gha,scope=hamsterdan-image
-          cache-to: type=gha,scope=hamsterdan-image,mode=max
       - name: Check the runtime contract
         run: |
           scripts/container-smoke hamsterdan:ci \
             --revision "${{ steps.source.outputs.revision }}" --version "${{ steps.source.outputs.version }}"
+
+  ci:
+    needs: [lint, build, checks, test, viewer, container]
+    if: always()
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        if: needs.build.result == 'success'
+        with:
+          name: test-plan
+      - uses: actions/download-artifact@v4
+        if: needs.build.result == 'success'
+        with:
+          pattern: test-results-*
+          path: results
+      - name: This run's test ledger
+        id: ledger
+        if: needs.build.result == 'success'
+        run: scripts/ci-tests ledger --plan plan.json --results results --out ledger.json
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        if: needs.build.result == 'success'
+        with:
+          name: test-ledger
+          path: ledger.json
+          retention-days: 30
+          overwrite: true
+      - name: Verdict
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          LEDGER: ${{ steps.ledger.outcome }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+          needs = json.loads(os.environ["RESULTS"])
+          ok = True
+          for job, data in needs.items():
+              result = data["result"]
+              allowed = ("success", "skipped") if job in ("test", "viewer") else ("success",)
+              print(f"{job}: {result}")
+              ok = ok and result in allowed
+          if os.environ["LEDGER"] != "success":
+              print("ledger: a suite that was to run did not pass")
+              ok = False
+          sys.exit(0 if ok else 1)
+          EOF

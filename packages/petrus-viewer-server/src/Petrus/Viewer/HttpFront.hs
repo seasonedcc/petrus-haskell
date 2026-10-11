@@ -14,8 +14,8 @@
 -- serves whatever is ready from one loop. This loop does what libuv does:
 --
 -- * the listening sockets and the connections stay registered with one
---   kqueue or epoll set (@cbits/relay_io.c@, @cbits/http_front.c@) for as
---   long as the loop serves them;
+--   kqueue or epoll set ("Petrus.Viewer.EventLoop", @cbits/http_front.c@)
+--   for as long as the loop serves them;
 -- * a turn waits once for everything that is ready (without blocking when
 --   something already is), reads each ready socket once, answers every
 --   complete request in its buffer, and writes each answer with one
@@ -51,10 +51,8 @@ module Petrus.Viewer.HttpFront
   , renderHead
   ) where
 
-import Control.Concurrent (forkOn)
-import Control.Concurrent.STM
-import Control.Exception (SomeException, bracket, finally, try)
-import Control.Monad (forM_, unless, when)
+import Control.Exception (SomeException, try)
+import Control.Monad (forM_, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Char8 qualified as BC
@@ -64,34 +62,21 @@ import Data.ByteString.Unsafe qualified as BU
 import Data.IORef
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as IM
+import Data.List (partition)
 import Data.Word (Word8)
-import Foreign.C.Types (CChar, CInt (..), CLong (..))
-import Foreign.ForeignPtr (ForeignPtr, mallocForeignPtrArray, mallocForeignPtrBytes, touchForeignPtr, withForeignPtr)
-import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
-import Foreign.Marshal.Array (allocaArray, peekArray)
+import Foreign.C.Types (CChar, CInt (..))
+import Foreign.ForeignPtr (ForeignPtr, mallocForeignPtrBytes, withForeignPtr)
 import Foreign.Marshal.Utils (copyBytes)
 import Foreign.Ptr (Ptr, castPtr)
-import Foreign.Storable (pokeElemOff)
 import GHC.Clock (getMonotonicTime)
 import Network.HTTP.Types qualified as H
 import Network.Socket qualified as S
 import Petrus.Viewer.Endpoints (Reply (..))
+import Petrus.Viewer.EventLoop
 import Petrus.Viewer.Json (decodeLenient)
 
 -- C side -----------------------------------------------------------------------
 
-foreign import ccall unsafe "prelay_poll_create" c_pollCreate :: IO CInt
-foreign import ccall unsafe "prelay_poll_add" c_pollAdd :: CInt -> CInt -> IO CInt
-foreign import ccall unsafe "prelay_poll_remove" c_pollRemove :: CInt -> CInt -> IO CInt
-foreign import ccall unsafe "prelay_poll_wait" c_pollNow :: CInt -> Ptr CInt -> Ptr CInt -> CInt -> CInt -> IO CInt
--- the blocking wait releases the capability while it waits
-foreign import ccall safe "prelay_poll_wait" c_pollBlock :: CInt -> Ptr CInt -> Ptr CInt -> CInt -> CInt -> IO CInt
-foreign import ccall unsafe "prelay_recv" c_recv :: CInt -> Ptr Word8 -> CLong -> IO CLong
-foreign import ccall unsafe "prelay_sendv" c_sendv :: CInt -> Ptr (Ptr Word8) -> Ptr CLong -> CInt -> IO CLong
-foreign import ccall unsafe "prelay_pipe" c_pipe :: Ptr CInt -> IO CInt
-foreign import ccall unsafe "prelay_wake" c_wake :: CInt -> IO ()
-foreign import ccall unsafe "prelay_drain" c_drain :: CInt -> IO ()
-foreign import ccall unsafe "prelay_close" c_close :: CInt -> IO CInt
 foreign import ccall unsafe "pfront_accept" c_accept :: CInt -> IO CInt
 foreign import ccall unsafe "pfront_set_nonblocking" c_setNonBlocking :: CInt -> IO CInt
 foreign import ccall unsafe "pfront_watch" c_watch :: CInt -> CInt -> CInt -> IO CInt
@@ -141,25 +126,18 @@ data Conn = Conn
 
 data Front = Front
   { config :: FrontConfig
-  , pollFd :: CInt
-  , wakeRead :: CInt
-  , wakeWrite :: CInt
+  , loop :: EventLoop
   , listenFds :: [CInt]
   , conns :: IORef (IntMap Conn)
   , paused :: IORef [(CInt, Double)]
   -- ^ listeners taken out of the set after an accept error, and when to
   -- put them back
   , nextSweep :: IORef Double
-  , stopRequested :: IORef Bool
-  , stopped :: TVar Bool
   , scratch :: ForeignPtr Word8
-  , readyFds :: ForeignPtr CInt
-  , readyFlags :: ForeignPtr CInt
   }
 
-scratchSize, maxReady, maxHead, maxBody :: Int
+scratchSize, maxHead, maxBody :: Int
 scratchSize = 64 * 1024
-maxReady = 256
 -- Node's default maxHeaderSize
 maxHead = 16 * 1024
 -- larger bodies go to Warp rather than being buffered in the loop
@@ -170,95 +148,60 @@ keepAliveTimeout, requestTimeout :: Double
 keepAliveTimeout = 5
 requestTimeout = 60
 
--- the readiness flags of prelay_poll_wait
-writable :: CInt
-writable = 2
-
 -- | Serve the listening sockets for the duration of the action. On exit
 -- the loop closes every connection it still holds (not the listeners).
 withFront :: [S.Socket] -> FrontConfig -> IO a -> IO a
-withFront listeners cfg action = bracket (startFront listeners cfg) stopFront (const action)
+withFront listeners cfg action = withEventLoop "http front" 0 newFront turn shutdown (const action)
+  where
+    newFront l = do
+      lfds <- mapM S.unsafeFdSocket listeners
+      forM_ lfds $ \fd -> do
+        _ <- c_setNonBlocking fd
+        r <- watch l fd
+        when (r < 0) (ioError (userError "http front: cannot watch a listening socket"))
+      Front cfg l lfds
+        <$> newIORef IM.empty
+        <*> newIORef []
+        <*> newIORef 0
+        <*> mallocForeignPtrBytes scratchSize
 
-startFront :: [S.Socket] -> FrontConfig -> IO Front
-startFront listeners cfg = do
-  pfd <- c_pollCreate
-  when (pfd < 0) (ioError (userError "http front: cannot create the readiness poller"))
-  (wr, ww) <- allocaArray 2 $ \p -> do
-    r <- c_pipe p
-    when (r < 0) (ioError (userError "http front: cannot create the wake-up pipe"))
-    [a, b] <- peekArray 2 p
-    pure (a, b)
-  _ <- c_pollAdd pfd wr
-  lfds <- mapM S.unsafeFdSocket listeners
-  forM_ lfds $ \fd -> do
-    _ <- c_setNonBlocking fd
-    r <- c_pollAdd pfd fd
-    when (r < 0) (ioError (userError "http front: cannot watch a listening socket"))
-  front <-
-    Front cfg pfd wr ww lfds
-      <$> newIORef IM.empty
-      <*> newIORef []
-      <*> newIORef 0
-      <*> newIORef False
-      <*> newTVarIO False
-      <*> mallocForeignPtrBytes scratchSize
-      <*> mallocForeignPtrArray maxReady
-      <*> mallocForeignPtrArray maxReady
-  _ <- forkOn 0 (runLoop front `finally` shutdown front)
-  pure front
-
-stopFront :: Front -> IO ()
-stopFront front = do
-  writeIORef (stopRequested front) True
-  c_wake (wakeWrite front)
-  atomically (readTVar (stopped front) >>= check)
-
+-- | Close every connection (loop thread, on exit); the listeners stay open.
 shutdown :: Front -> IO ()
 shutdown front = do
   cs <- readIORef (conns front)
-  forM_ cs $ \c -> c_close (connFd c)
+  forM_ cs (closeFd . connFd)
   writeIORef (conns front) IM.empty
-  forM_ (listenFds front) $ \fd -> c_pollRemove (pollFd front) fd
-  _ <- c_close (pollFd front)
-  _ <- c_close (wakeRead front)
-  _ <- c_close (wakeWrite front)
-  atomically (writeTVar (stopped front) True)
+  forM_ (listenFds front) (unwatch (loop front))
 
 -- The loop ---------------------------------------------------------------------
 
-runLoop :: Front -> IO ()
-runLoop front = go
+-- | One turn of the loop: serve what is ready, then close idle
+-- connections and resume paused listeners when due.
+turn :: Front -> IO ()
+turn front = do
+  idle <- IM.null <$> readIORef (conns front)
+  waiting <- null <$> readIORef (paused front)
+  let timeoutMs
+        | not waiting = 100
+        | idle = -1
+        | otherwise = 1000
+  pollWait (loop front) timeoutMs >>= mapM_ dispatch
+  sweep front
   where
-    pfd = pollFd front
-    go = do
-      idle <- IM.null <$> readIORef (conns front)
-      waiting <- null <$> readIORef (paused front)
-      let timeoutMs
-            | not waiting = 100
-            | idle = -1
-            | otherwise = 1000
-      ready <- withForeignPtr (readyFds front) $ \fds -> withForeignPtr (readyFlags front) $ \fls -> do
-        -- block (releasing the capability) only when nothing is ready
-        n0 <- c_pollNow pfd fds fls (fromIntegral maxReady) 0
-        n <- if n0 == 0 then c_pollBlock pfd fds fls (fromIntegral maxReady) timeoutMs else pure n0
-        if n <= 0 then pure [] else zip <$> peekArray (fromIntegral n) fds <*> peekArray (fromIntegral n) fls
-      mapM_ dispatch ready
-      sweep front
-      stop <- readIORef (stopRequested front)
-      unless stop go
-    dispatch (fd, fl)
-      | fd == wakeRead front = c_drain fd
-      | fd `elem` listenFds front = acceptAll front fd
-      | otherwise = do
-          m <- IM.lookup (fromIntegral fd) <$> readIORef (conns front)
-          forM_ m $ \c -> do
-            r <- try @SomeException $
-              if
-                | fl == writable -> flushConn front c
-                | otherwise -> do
-                    out <- readIORef (connOut c)
-                    if null out then readConn front c else flushConn front c
-            either (const (closeConn front c)) pure r
+    dispatch = \case
+      Woken -> pure ()
+      Ready fd isReadable isWritable
+        | fd `elem` listenFds front -> acceptAll front fd
+        | otherwise -> do
+            m <- IM.lookup (fromIntegral fd) <$> readIORef (conns front)
+            forM_ m $ \c -> do
+              r <- try @SomeException $
+                if
+                  | isWritable && not isReadable -> flushConn front c
+                  | otherwise -> do
+                      out <- readIORef (connOut c)
+                      if null out then readConn front c else flushConn front c
+              either (const (closeConn front c)) pure r
 
 acceptAll :: Front -> CInt -> IO ()
 acceptAll front lfd = go (0 :: Int)
@@ -273,15 +216,15 @@ acceptAll front lfd = go (0 :: Int)
             | otherwise -> do
                 -- out of descriptors or the like: stop watching the listener
                 -- for a moment instead of spinning on it
-                _ <- c_pollRemove (pollFd front) lfd
+                unwatch (loop front) lfd
                 now <- getMonotonicTime
                 modifyIORef' (paused front) ((lfd, now + 0.1) :)
 
 addConn :: Front -> CInt -> IO ()
 addConn front fd = do
-  r <- c_pollAdd (pollFd front) fd
+  r <- watch (loop front) fd
   if r < 0
-    then () <$ c_close fd
+    then closeFd fd
     else do
       now <- getMonotonicTime
       c <- Conn fd <$> newIORef B.empty <*> newIORef [] <*> newIORef False <*> newIORef False <*> newIORef (now + requestTimeout)
@@ -295,7 +238,7 @@ closeConn front c = do
   present <- IM.member (fromIntegral (connFd c)) <$> readIORef (conns front)
   when present $ do
     forget front c
-    () <$ c_close (connFd c)
+    closeFd (connFd c)
 
 -- | Close idle connections past their deadline; put paused listeners back.
 sweep :: Front -> IO ()
@@ -309,17 +252,15 @@ sweep front = do
       d <- readIORef (connDeadline c)
       when (now >= d) (closeConn front c)
     ps <- readIORef (paused front)
-    let (due, later) = span' (\(_, t) -> now >= t) ps
+    let (due, later) = partition (\(_, t) -> now >= t) ps
     writeIORef (paused front) later
-    forM_ due $ \(fd, _) -> c_pollAdd (pollFd front) fd
-  where
-    span' p xs = (filter p xs, filter (not . p) xs)
+    forM_ due $ \(fd, _) -> watch (loop front) fd
 
 -- | Give the connection to Warp, with what it has sent so far.
 handOff :: Front -> Conn -> ByteString -> IO ()
 handOff front c buf = do
   forget front c
-  _ <- c_pollRemove (pollFd front) (connFd c)
+  unwatch (loop front) (connFd c)
   r <- try @SomeException $ do
     sock <- S.mkSocket (connFd c)
     peer <- S.getPeerName sock `onErr` S.close sock
@@ -332,13 +273,12 @@ handOff front c buf = do
 
 readConn :: Front -> Conn -> IO ()
 readConn front c = do
-  r <- withForeignPtr (scratch front) $ \p -> c_recv (connFd c) p (fromIntegral scratchSize)
+  r <- withForeignPtr (scratch front) $ \p -> recvSocket (connFd c) p scratchSize
   if
     | r == -2 -> pure ()
     | r <= 0 -> closeConn front c
     | otherwise -> do
-        let n = fromIntegral r
-        fresh <- withForeignPtr (scratch front) $ \p -> BI.create n (\d -> copyBytes d p n)
+        fresh <- withForeignPtr (scratch front) $ \p -> BI.create r (\d -> copyBytes d p r)
         pend <- readIORef (connIn c)
         when (B.null pend) $ do
           now <- getMonotonicTime
@@ -401,7 +341,7 @@ writeOut front c chunks = do
         | null rest -> pure ()
         | otherwise -> do
             writeIORef (connOut c) rest
-            () <$ c_watch (pollFd front) (connFd c) 1
+            () <$ c_watch (pollerFd (loop front)) (connFd c) 1
 
 -- | The socket can take more: write what is pending; once it is all out,
 -- read again (and serve what was held back), or close.
@@ -418,39 +358,8 @@ flushConn front c = do
         if closeAfter
           then closeConn front c
           else do
-            _ <- c_watch (pollFd front) (connFd c) 0
+            _ <- c_watch (pollerFd (loop front)) (connFd c) 0
             readIORef (connIn c) >>= serveBuffer front c
-
--- | writev until done or the socket is full: the unwritten rest, and
--- whether the socket failed.
-writeChunks :: CInt -> [ByteString] -> IO ([ByteString], Bool)
-writeChunks _ [] = pure ([], False)
-writeChunks fd chunks = do
-  let batch = take 64 chunks
-      count = length batch
-  r <- allocaArray count $ \ptrs -> allocaArray count $ \lens -> do
-    forM_ (zip [0 ..] batch) $ \(i, BI.BS fp len) -> do
-      pokeElemOff ptrs i (unsafeForeignPtrToPtr fp)
-      pokeElemOff lens i (fromIntegral len)
-    w <- c_sendv fd ptrs lens (fromIntegral count)
-    mapM_ (\(BI.BS fp _) -> touchForeignPtr fp) batch
-    pure (fromIntegral w :: Int)
-  if
-    | r == -2 -> pure (chunks, False)
-    | r < 0 -> pure ([], True)
-    | otherwise ->
-        let rest = dropBytes r chunks
-         in if
-              | null rest -> pure ([], False)
-              | r < sum (map B.length batch) -> pure (rest, False)
-              | otherwise -> writeChunks fd rest
-  where
-    dropBytes :: Int -> [ByteString] -> [ByteString]
-    dropBytes 0 xs = xs
-    dropBytes _ [] = []
-    dropBytes k (x : xs)
-      | k >= B.length x = dropBytes (k - B.length x) xs
-      | otherwise = BU.unsafeDrop k x : xs
 
 -- Parsing ----------------------------------------------------------------------
 

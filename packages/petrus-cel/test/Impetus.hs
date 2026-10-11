@@ -16,6 +16,9 @@
 --   complete encoded History.
 module Impetus
   ( spec
+  , celInstanceCases
+  , startCelCase
+  , caseSteps
   ) where
 
 import Control.Monad (forM_, zipWithM_)
@@ -26,7 +29,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Test.Hspec hiding (pending)
 
+import Data.Text.Encoding (decodeUtf8)
 import Petrus.Cel (compile, freeVariables)
+import Petrus.Cel.Binding (macros)
 import Petrus.Cel.Impetus (celCompilers)
 import Petrus.Impetus.Binding (CelCompilers (..))
 import Petrus.Impetus.History.Codec (encodeRecord)
@@ -35,6 +40,7 @@ import Petrus.Impetus.Instance
 import Petrus.Impetus.NetDefinition (compileNetDefinition, parseNetDefinitionText)
 import Petrus.Impetus.Petrinet hiding (candidates, candidatesWithDiagnostics, nextMaturation, outputs, token)
 import Petrus.Json
+import Petrus.TestSupport (readUpstream)
 
 np :: Text -> NetPath
 np = either (error . T.unpack) id . netPath
@@ -154,6 +160,14 @@ bindingSpec = describe "binding/test_cel.py" $ do
       free "a.exists(t, b.exists(u, u.x == t.y)) && size(c) > 0" `shouldBe` ["a", "b", "c"]
     it "a macro variable shadowing a place name is permissively skipped" $
       free "pending.exists(done, done.color == null) && size(done) == 0" `shouldBe` ["pending"]
+    -- Beyond upstream: MACROS as named API (Petrus.Cel.Binding.macros), read
+    -- back from the pinned reference's source.
+    it "MACROS is the pinned reference's set" $ do
+      source <- decodeUtf8 <$> readUpstream "src/petrus/impetus/binding/cel.py"
+      let declared = [l | l <- T.lines source, "MACROS = frozenset({" `T.isPrefixOf` l]
+          quoted l = [name | (i, name) <- zip [0 :: Int ..] (T.splitOn "\"" l), odd i]
+      map (Set.fromList . quoted) declared `shouldBe` [macros]
+      Set.size macros `shouldBe` 5
 
 -- ---------------------------------------------------------------------------
 -- The five CEL tests PARITY.md leaves to petrus-cel
@@ -220,19 +234,25 @@ paritySpec = describe "PARITY.md CEL tests on Instances" $ do
 
 endToEndSpec :: Spec
 endToEndSpec = describe "end-to-end Instances (test/corpus/cel-instance.json)" $ do
-  raw <- runIO (BS.readFile "test/corpus/cel-instance.json")
-  let cases = case parseJson pythonLoads raw of
-        Right corpus | Just (Array xs) <- lookupMember "cases" corpus -> xs
-        _ -> error "cel-instance corpus: no cases"
+  cases <- runIO celInstanceCases
   it "carries the generated cases" $ length cases `shouldSatisfy` (>= 5)
   forM_ cases $ \c -> it (T.unpack (text (member "name" c))) (replayCase c)
 
-replayCase :: Json -> Expectation
-replayCase c = do
+-- | The committed corpus's cases.
+celInstanceCases :: IO [Json]
+celInstanceCases = do
+  raw <- BS.readFile "test/corpus/cel-instance.json"
+  pure $ case parseJson pythonLoads raw of
+    Right corpus | Just (Array xs) <- lookupMember "cases" corpus -> xs
+    _ -> error "cel-instance corpus: no cases"
+
+-- | A case's net (compiled from its canonical definition) and a fresh
+-- Instance over it on the real CEL compilers, as the generator built it.
+startCelCase :: Json -> IO (Net, Instance)
+startCelCase c = do
   definition <- either (fail . T.unpack) pure (parseNetDefinitionText (text (member "definition" c)))
   net <- either (fail . T.unpack) pure (compileNetDefinition definition)
   let initial = markingFromList [(np (text (member "place" e)), map decodeToken (array (member "tokens" e))) | e <- array (member "initialMarking" c)]
-      name = T.unpack (text (member "name" c))
   inst <-
     newInstance
       net
@@ -242,7 +262,17 @@ replayCase c = do
         , suppliedIdentity = Just ("cel-" <> text (member "name" c))
         }
       >>= either (fail . T.unpack . renderInstanceError) pure
-  forM_ (zip [0 :: Int ..] (array (member "steps" c))) $ \(index, stepJson) -> do
+  pure (net, inst)
+
+-- | The recorded steps (one @step@ each).
+caseSteps :: Json -> [Json]
+caseSteps c = array (member "steps" c)
+
+replayCase :: Json -> Expectation
+replayCase c = do
+  (_, inst) <- startCelCase c
+  let name = T.unpack (text (member "name" c))
+  forM_ (zip [0 :: Int ..] (caseSteps c)) $ \(index, stepJson) -> do
     let label field = name <> " step " <> show index <> " " <> field
     (enabled, diagnostics) <- candidatesWithDiagnostics inst
     same (label "candidatesBefore") (Array (map encodeBinding enabled)) (member "candidatesBefore" stepJson)

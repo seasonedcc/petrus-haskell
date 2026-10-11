@@ -31,6 +31,10 @@ Sections:
   row mutations applied to the reference-written file before reopening it.
   The file written before ``recover`` is saved as
   ``pi_reference_ledger.sqlite3`` for the Haskell side to cross-open.
+
+Fresh session ids come from a seeded ``uuid4``. The live invocations run
+under a fresh temporary directory, whose path the start frames record, so
+``scripts/check-corpora`` compares this corpus with that directory masked.
 """
 
 from __future__ import annotations
@@ -44,6 +48,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, "tests/petrus/agenticus/runtime")
@@ -810,7 +815,15 @@ def ledger(root: Path, reference_out: Path) -> dict[str, object]:
     }
 
 
+def _seeded_uuid4(rng: random.Random = random.Random(SEED)) -> uuid.UUID:
+    """``uuid4`` drawn from a seeded stream, so the session ids the reference
+    mints for fresh start frames (``pi.py``'s ``str(uuid4())``) are the same
+    on every run."""
+    return uuid.UUID(int=rng.getrandbits(128), version=4)
+
+
 def main() -> None:
+    pi.uuid4 = _seeded_uuid4
     out, reference = Path(sys.argv[1]), Path(sys.argv[2])
     with tempfile.TemporaryDirectory() as raw:
         root = Path(raw)

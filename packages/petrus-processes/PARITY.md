@@ -117,5 +117,8 @@ repetitions: Haskell is 2.8–14× faster on values and the Activity, and
 machine). `postgres.child-of` used to come out level at 0.97×: both clients
 send the same statements, but psycopg executes them by name once they have run
 five times, and petrus-postgres now keeps the same prepared-statement cache.
+A whole call over the PostgreSQL Fabric is 1.81× faster: request, the
+callee's drain and reply, and the caller's drain and validation. Haskell won
+6 of 6 repetitions.
 Earlier figures of 3–5.5× were tasty-bench CPU time, which leaves out the wait
 for the server.

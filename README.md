@@ -25,10 +25,10 @@ The port aims to be:
 | Path | Contents |
 | --- | --- |
 | `packages/` | Haskell packages (one cabal package each). |
-| `docs/` | Plans of record, such as [docs/runtime.md](docs/runtime.md) for everything outside the kernel. |
+| `docs/` | How to reproduce the checks, the audits, and the historical port plans, such as [docs/runtime.md](docs/runtime.md) for everything outside the kernel (current status: [PARITY.md](PARITY.md)). |
 | `spec/` | Language-neutral contracts this repo adds (Fabric, processes). The upstream specs live in `upstream/petrus/spec/`. |
 | `upstream/` | Git submodules of the pinned upstream projects (the Python reference). |
-| `scripts/` | `check-all`, `interop`, `bench`, `check-parity` and their helpers. |
+| `scripts/` | `check-all`, `interop`, `check-corpora`, `bench`, `check-parity` and their helpers. |
 | `bench-results/` | [summary.md](bench-results/summary.md): every package's benchmarks against Python at a glance. |
 
 ## Building and checking
@@ -41,13 +41,25 @@ suites, the benchmarks and the parity check. In short:
 ```sh
 git clone --recursive https://github.com/seasonedcc/petrus-haskell.git
 cd petrus-haskell
-scripts/check-all -j2      # build, tests, conformance, interop, parity table (what CI runs)
+scripts/check-all -j2      # build, tests, conformance, interop, corpora, parity table
+scripts/check-all --viewer # also the upstream petrus-viewer suites (what CI runs)
+scripts/check-corpora      # rerun every committed-corpus generator against the pinned Python
 scripts/interop            # only the cross-language suites, against the pinned Python
 scripts/bench PACKAGE      # rerun a package's benchmarks against the pinned Python
 scripts/check-parity       # the parity table's claims against the committed evidence
 ```
 
+CI runs those same checks on every push to `main` and every pull request,
+spread over parallel runners, plus the container image; its
+[section in docs/reproducing.md](docs/reproducing.md#continuous-integration)
+maps each CI job to its `scripts/check-all` step.
+
 ## License
 
 Apache-2.0, like upstream Petrus. See [LICENSE](LICENSE) and [NOTICE](NOTICE)
-for attribution of the upstream projects.
+for attribution of the upstream projects. Each package carries its own
+`LICENSE` and `NOTICE` (shipped in its sdist through `extra-doc-files`): the
+NOTICE names what the package ports, credits its upstream with that
+project's license (Apache-2.0 for Petrus and Hamsterdan; MIT, reproduced in
+full, for petrus-engine and petrus-viewer), and lists any upstream file it
+carries unmodified. The cabal `copyright:` field says the same in one line.

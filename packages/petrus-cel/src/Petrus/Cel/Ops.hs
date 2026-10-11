@@ -76,6 +76,7 @@ import Petrus.Cel.Python
 import Petrus.Cel.Regex (compileRegex, compileRegexBytes, searchBytes, searchText)
 import Petrus.Cel.Time
 import Petrus.Cel.Value
+import Petrus.Json.Wtf8 (hasLoneSurrogate)
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -1316,19 +1317,43 @@ affix isStart s fragment
   where
     method = if isStart then "startswith" else "endswith"
 
+-- | @value.encode("utf-8")@ of a string value and its text: a string
+-- holding a lone surrogate (a WTF-8 'Text', "Petrus.Json.Wtf8") raises
+-- CPython's @UnicodeEncodeError@ over the first run of surrogates, with its
+-- arguments @(encoding, object, start, end, reason)@.
+encodeUtf8Strict :: Value -> Text -> Either Exc ByteString
+encodeUtf8Strict value t
+  | not (hasLoneSurrogate t) = Right (TE.encodeUtf8 t)
+  | otherwise =
+      let (before, rest) = break isSurrogate (T.unpack t)
+          run = takeWhile isSurrogate rest
+          start = length before
+          end = start + length run - 1
+          what = case run of
+            [c] -> "character '\\u" <> T.pack (showHex (ord c) "") <> "' in position " <> T.pack (show start)
+            _ -> "characters in position " <> T.pack (show start) <> "-" <> T.pack (show end)
+       in Left
+            ( PyExc
+                UnicodeEncodeError
+                ("'utf-8' codec can't encode " <> what <> ": surrogates not allowed")
+                ["'utf-8'", valueRepr value, T.pack (show start), T.pack (show (end + 1)), "'surrogates not allowed'"]
+            )
+  where
+    isSurrogate c = ord c >= 0xD800 && ord c <= 0xDFFF
+
 -- | @function_matches@: @re2.search(pattern, text)@; a pattern error is a
 -- returned @CELEvalError@ (not raised).
 matches :: Value -> Value -> Either Exc Value
 matches text pattern = do
   compiled <- case pattern of
     _
-      | Just p <- asText pattern -> Right (compileRegex p)
+      | Just p <- asText pattern -> compileRegex p <$ encodeUtf8Strict pattern p
       | Just p <- asBytes pattern -> Right (compileRegexBytes p)
       | otherwise -> Left (typeErr ("expected str or bytes pattern, got " <> tpName pattern))
   case compiled of
     Left message -> Right (VError (celError "match error" (pyExc Re2Error message) Nothing))
     Right re
-      | Just t <- asText text -> Right (boolType (searchText re t))
+      | Just t <- asText text -> boolType (searchText re t) <$ encodeUtf8Strict text t
       | Just b <- asBytes text -> Right (boolType (searchBytes re b))
       | otherwise -> Left (typeErr ("expected str or bytes text, got " <> tpName text))
 
@@ -1596,7 +1621,7 @@ bytesTypeNew src = case src of
   VMessage kvs -> VBytes <$> (messageValue kvs >>= bytesBuiltin)
   _
     | Just b <- asBytes src -> Right (VBytes b)
-    | Just t <- asText src -> Right (VBytes (TE.encodeUtf8 t))
+    | Just t <- asText src -> VBytes <$> encodeUtf8Strict src t
     | isJust (asList src) || isJust (asDict src) -> VBytes <$> (pyIter src >>= bytesFromItems)
     | otherwise -> Left (typeErr ("Invalid initial value type: " <> classRepr (pyType src)))
 

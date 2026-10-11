@@ -71,25 +71,31 @@ PATTERNS: Dict[str, List[str]] = {
     "petrus-agenticus": ["differential/"],
     "petrus-agenticus-core": ["differential", "interop: custody", "hands/test_conformance.py"],
     "petrus-agenticus-runtime": ["differential/", "hosts differential corpus", "verbatim and interop"],
-    "petrus-cel": ["differential corpus"],
-    "petrus-dsl": ["differential corpus"],
-    "petrus-dst": ["Python-authored", "Python-recorded", "Engine-backed worlds", "Joined History/Dispatch worlds"],
+    "petrus-cel": ["differential corpus", "live round trip through the pinned reference"],
+    "petrus-dsl": ["differential corpus", "live round trip through the pinned reference"],
+    "petrus-dst": [
+        "Python-authored",
+        "Python-recorded",
+        "Engine-backed worlds",
+        "Joined History/Dispatch worlds",
+        "DST tooling interop with the reference",
+    ],
     "petrus-engine": ["Engine interop with the reference", "test_worker_topology.py"],
     "petrus-engine-absurd": ["Absurd Engine interop with the reference", "test_worker_topology.py"],
     "petrus-engine-file": ["differential corpus", "live differential", "petrus-format-json against python"],
     "petrus-engine-postgres": ["PostgreSQL Engine interop with the reference"],
     "petrus-engine-sqlite": ["SQLite Engine interop with the reference"],
-    "petrus-execution": ["(differential"],
+    "petrus-execution": ["(differential", "Execution custody interop with the reference"],
     "petrus-fabric": ["Fabric conformance", "Fabric interop", "CV5 Fabric demo", "the fast canonical encoder"],
     "petrus-history-postgres": ["PostgreSQL History interop with the reference"],
     "petrus-history-store": ["JSONL interop with the reference", "SQLite History interop with the reference"],
     "petrus-http-core": ["CPython"],
-    "petrus-impetus": ["differential corpus", "golden traces", "spec/ fixtures", "firing_failure_text"],
+    "petrus-impetus": ["differential corpus", "golden traces", "spec/ fixtures", "firing_failure_text", "live round trip through the pinned reference"],
     "petrus-json": ["CPython", "Python"],
     "petrus-motus": ["Local Dispatch interop with the reference", "Worker CLI"],
     "petrus-motus-absurd": ["interop with the pinned reference"],
     "petrus-motus-zeromq": ["ZeroMQ interop with the reference"],
-    "petrus-observation": ["differential corpus"],
+    "petrus-observation": ["differential corpus", "live round trip through the pinned reference"],
     "petrus-observation-http": ["byte-identical to the upstream server", "Python urllib clients"],
     "petrus-posix": ["Python", "upstream"],
     "petrus-postgres": ["psycopg", "Python", "upstream"],
@@ -98,7 +104,16 @@ PATTERNS: Dict[str, List[str]] = {
     "petrus-sqlite": ["Python", "upstream"],
     "petrus-telemetry": ["CPython", "Python's repr"],
     "petrus-telemetry-instrumentation": ["differential/telemetry_scenarios.py"],
-    "petrus-viewer-server": ["upstream", "the Python reference Engine, with the same answers at every step"],
+    # The hspec groups that compare with recordings of the reference (V8's
+    # JSON.parse, Node's URL, the Node MCP server's transcript) and the one
+    # that runs the Python reference Engine. The upstream Node and browser
+    # suites, run against the Haskell executables, are `--viewer`.
+    "petrus-viewer-server": [
+        "matches V8 on a recorded corpus",
+        "matches Node on a recorded corpus",
+        "reproduces the upstream Node transcript byte for byte",
+        "the Python reference Engine, with the same answers at every step",
+    ],
 }
 
 POSTGRES_MARKERS = re.compile(r"PETRUS_TEST_POSTGRES|postgresSpec|withScratchDatabase|lookupPostgresUrl")
@@ -106,8 +121,12 @@ POSTGRES_MARKERS = re.compile(r"PETRUS_TEST_POSTGRES|postgresSpec|withScratchDat
 
 def environment() -> Dict[str, str]:
     env = dict(os.environ)
-    extra = [str(Path.home() / ".ghcup" / "bin"), str(Path.home() / ".local" / "bin")]
-    env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")])
+    # Only the entries PATH lacks: cabal reconfigures every package when PATH
+    # differs from the one the build ran with.
+    path = env.get("PATH", "")
+    extra = [p for p in (str(Path.home() / ".ghcup" / "bin"), str(Path.home() / ".local" / "bin"))
+             if p not in path.split(os.pathsep)]
+    env["PATH"] = os.pathsep.join(extra + [path])
     return env
 
 

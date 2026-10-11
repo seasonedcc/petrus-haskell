@@ -5,8 +5,8 @@ module Petrus.Viewer.Log
   , monotonicMs
   , fixed1
   , Logger
-  , newLogger
   , newAsyncLogger
+  , newConsoleLogger
   , newStdoutLogger
   , logLine
   ) where
@@ -18,7 +18,6 @@ import Control.Exception (SomeException, try)
 import Control.Monad (forever, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
-import Data.ByteString.Char8 qualified as BC
 import Data.Time.Calendar (toGregorian)
 import Data.Time.Clock (UTCTime (..), diffTimeToPicoseconds, getCurrentTime)
 import Data.ByteString.Internal qualified as BI
@@ -33,7 +32,12 @@ import System.IO (Handle, hFlush, stdout)
 import System.Posix.Files (getFdStatus, isCharacterDevice, isRegularFile)
 import System.Posix.Types (CSsize (..))
 
-foreign import ccall safe "write" c_write :: CInt -> Ptr Word8 -> CSize -> IO CSsize
+-- | Only used on files and character devices ('DirectLogger'), where Node
+-- writes synchronously and blocks its event loop for the duration: an
+-- unsafe call blocks the capability the same way, and spares the
+-- capability hand-off a safe call costs when other threads are runnable
+-- (with requests in flight, every logged line).
+foreign import ccall unsafe "write" c_write :: CInt -> Ptr Word8 -> CSize -> IO CSsize
 
 -- | @new Date().toISOString()@: millisecond precision, UTC, @Z@ suffix.
 isoTimestamp :: IO ByteString
@@ -80,15 +84,10 @@ fixed1 x = fromIntegral (round (x * 10) :: Integer) / 10
 
 -- | A line logger safe to share between threads.
 data Logger
-  = SyncLogger Handle (MVar ())
-  | -- | lines are written by a background thread, batched
+  = -- | lines are written by a background thread, batched
     AsyncLogger (TQueue ByteString)
   | -- | each line is one @write@ to the descriptor, from the logging thread
     DirectLogger CInt (MVar ())
-
--- | Each 'logLine' writes and flushes before returning.
-newLogger :: Handle -> IO Logger
-newLogger h = SyncLogger h <$> newMVar ()
 
 -- | 'logLine' only enqueues; a background thread writes whatever has
 -- accumulated in one call and flushes. Lines keep their order. For hot
@@ -109,26 +108,31 @@ newAsyncLogger cap h = do
     void (try @SomeException (B.hPut h (B.concat (concatMap (\l -> [l, "\n"]) ls)) >> hFlush h))
   pure (AsyncLogger q)
 
--- | The relay timing log on standard output, written the way Node's
--- @console.log@ writes it. Node writes synchronously to files and
--- terminals, and asynchronously to pipes (macOS) and sockets: to a file or
--- a character device (a terminal, @/dev/null@) each line is one @write@
--- from the thread that logs it (the relay's loop, so the line costs a
--- system call and no thread hand-off); to anything else the lines go
--- through 'newAsyncLogger', so a slow reader never stalls the relay.
-newStdoutLogger :: Int -> IO Logger
-newStdoutLogger cap = do
-  status <- try @SomeException (getFdStatus 1)
+-- | A log on a standard stream (@h@, descriptor @fd@), written the way
+-- Node's @console.log@ / @console.error@ write it. Node writes
+-- synchronously to files and terminals, and asynchronously to pipes
+-- (macOS) and sockets: to a file or a character device (a terminal,
+-- @/dev/null@) each line is one @write@ from the thread that logs it (so
+-- the line costs a system call and no thread hand-off); to anything else
+-- the lines go through 'newAsyncLogger', so a slow reader never stalls the
+-- caller.
+newConsoleLogger :: Int -> Handle -> CInt -> IO Logger
+newConsoleLogger cap h fd = do
+  status <- try @SomeException (getFdStatus (fromIntegral fd))
   case status of
     Right st
       | isRegularFile st || isCharacterDevice st -> do
           -- lines already buffered in the Handle go first
-          hFlush stdout
-          DirectLogger 1 <$> newMVar ()
-    _ -> newAsyncLogger cap stdout
+          hFlush h
+          DirectLogger fd <$> newMVar ()
+    _ -> newAsyncLogger cap h
+
+-- | The relay timing log on standard output ('newConsoleLogger'; the
+-- relay's loop logs every request and response).
+newStdoutLogger :: Int -> IO Logger
+newStdoutLogger cap = newConsoleLogger cap stdout 1
 
 logLine :: Logger -> ByteString -> IO ()
-logLine (SyncLogger h lock) line = withMVar lock $ \() -> BC.hPutStrLn h line >> hFlush h
 logLine (AsyncLogger q) line = atomically (writeTQueue q line)
 logLine (DirectLogger fd lock) line = withMVar lock $ \() ->
   BU.unsafeUseAsCStringLen (line <> "\n") $ \(p, n) -> writeAll (castPtr p) n

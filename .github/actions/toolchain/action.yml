@@ -1,0 +1,75 @@
+name: Toolchain
+description: >-
+  GHC and cabal (through ghcup, cached), the system libraries, uv, and the
+  cabal store and package index of the frozen plan (cached). Every CI job
+  that builds or runs the Haskell packages starts with this.
+outputs:
+  store-key:
+    description: The exact cache key of the cabal store for this plan.
+    value: ${{ steps.keys.outputs.store }}
+  store-hit:
+    description: Whether the cabal store was restored from its exact key.
+    value: ${{ steps.store.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - name: Cache keys
+      id: keys
+      shell: bash
+      run: |
+        echo "ghcup=ghcup-v1-${RUNNER_OS}-${RUNNER_ARCH}-ghc-${GHC_VERSION}-cabal-${CABAL_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "store=cabal-store-v1-${RUNNER_OS}-${RUNNER_ARCH}-ghc-${GHC_VERSION}-${{ hashFiles('cabal.project', 'cabal.project.freeze', 'packages/*/*.cabal') }}" >> "$GITHUB_OUTPUT"
+        echo "store-prefix=cabal-store-v1-${RUNNER_OS}-${RUNNER_ARCH}-ghc-${GHC_VERSION}-" >> "$GITHUB_OUTPUT"
+    - name: Restore GHC and cabal
+      id: ghcup
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.ghcup
+        key: ${{ steps.keys.outputs.ghcup }}
+    - name: Install GHC and cabal
+      if: steps.ghcup.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        mkdir -p ~/.ghcup/bin
+        curl --fail --silent --show-error --location --proto '=https' --output ~/.ghcup/bin/ghcup \
+          "https://downloads.haskell.org/~ghcup/${GHCUP_VERSION}/x86_64-linux-ghcup-${GHCUP_VERSION}"
+        echo "${GHCUP_SHA256}  $HOME/.ghcup/bin/ghcup" | sha256sum --check --strict
+        chmod 0755 ~/.ghcup/bin/ghcup
+        ~/.ghcup/bin/ghcup install ghc "$GHC_VERSION" --set
+        ~/.ghcup/bin/ghcup install cabal "$CABAL_VERSION" --set
+        # The HTML documentation is never read in CI; leaving it out of the
+        # cache makes every restore smaller.
+        rm -rf ~/.ghcup/ghc/"$GHC_VERSION"/share/doc ~/.ghcup/cache ~/.ghcup/tmp ~/.ghcup/logs
+    - name: Save GHC and cabal
+      if: steps.ghcup.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.ghcup
+        key: ${{ steps.keys.outputs.ghcup }}
+    - name: Put GHC and cabal on PATH
+      shell: bash
+      run: |
+        echo "$HOME/.ghcup/bin" >> "$GITHUB_PATH"
+        "$HOME/.ghcup/bin/ghc" --version
+        "$HOME/.ghcup/bin/cabal" --version
+    - name: Install system libraries
+      shell: bash
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq libzmq3-dev libpq-dev libsqlite3-dev graphviz
+    - uses: astral-sh/setup-uv@v6
+    # Node, for the suites that drive upstream JavaScript and for the viewer
+    # job's pnpm. Every job sets it up here, in the same place, because cabal
+    # reconfigures every local package when PATH differs from the build
+    # job's: a test job would then spend its first seconds reconfiguring,
+    # and relink some test binaries.
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22.19.0
+    - name: Restore the cabal store and package index
+      id: store
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/.cabal/store
+          ~/.cabal/packages
+        key: ${{ steps.keys.outputs.store }}
+        restore-keys: ${{ steps.keys.outputs.store-prefix }}

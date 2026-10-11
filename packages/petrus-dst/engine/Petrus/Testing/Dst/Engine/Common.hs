@@ -48,6 +48,10 @@ module Petrus.Testing.Dst.Engine.Common
   , isPositiveInt
   , digestOf
   , countOf
+  , strs
+  , listOf
+  , path
+  , epochOf
     -- * Story helpers
   , ensure
   , memberOf
@@ -69,7 +73,8 @@ import Petrus.Engine.Observation (observeEngine)
 import Petrus.Impetus.History.Records (FieldValue (FPolicy), encodeFieldValue, recordName)
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
 import Petrus.Json (Json (..), lookupMember)
-import Petrus.Motus.Dispatch (DispatchError (..))
+import Petrus.Impetus.Petrinet.Schema (NetPath, netPath)
+import Petrus.Motus.Dispatch (ActivityAttempt (epoch), DispatchError (..))
 import Petrus.Observation qualified as Observation
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.PyRepr (pyStrRepr)
@@ -250,6 +255,26 @@ digestOf value = either (error . T.unpack) id (digestJson value)
 -- | @records.count(name)@.
 countOf :: Text -> [Json] -> Int
 countOf name = length . filter (== String name)
+
+-- | A JSON list of strings.
+strs :: [Text] -> Json
+strs = Array . map String
+
+-- | @value[key]@ as a list (empty unless it is one).
+listOf :: Text -> Json -> [Json]
+listOf key value = case member key value of
+  Array xs -> xs
+  _ -> []
+
+-- | A net path the world spells literally.
+path :: Text -> NetPath
+path = either (error . T.unpack) id . netPath
+
+-- | @int(attempt.epoch)@.
+epochOf :: ActivityAttempt -> Integer
+epochOf attempt = case reads (T.unpack attempt.epoch) of
+  [(n, "")] -> n
+  _ -> error ("non-integer Activity attempt epoch " <> show attempt.epoch)
 
 -- ---------------------------------------------------------------------------
 -- Story helpers

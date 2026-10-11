@@ -35,7 +35,7 @@ import Petrus.HistoryStore.Postgres.Support
 import Petrus.Impetus.Binding (BoundHandler (..), handlerTokens)
 import Petrus.Impetus.History.Codec (encodeRecord)
 import Petrus.Impetus.History.Records
-import Petrus.Impetus.Instance (AcceptedDelivery (..), PriorAcknowledgement (..))
+import Petrus.Impetus.Instance (AcceptedDelivery (..), PriorAcknowledgement (..), firingOccurrenceIdInt)
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.TestSupport (netOf, np, tokD)
 import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
@@ -256,8 +256,8 @@ fateSpec = do
     void (try @IOError (Engine.completeDelivery engine accepted))
     isClosed connection `shouldReturn` True
     retried <- pyJson target ["retry-acceptance", T.unpack instanceId]
-    member "accepted" retried `shouldBe` Int (toInteger accepted.occurrence)
-    member "completed" retried `shouldBe` Int (toInteger accepted.occurrence)
+    member "accepted" retried `shouldBe` Int (toInteger (firingOccurrenceIdInt accepted.occurrence))
+    member "completed" retried `shouldBe` Int (toInteger (firingOccurrenceIdInt accepted.occurrence))
     member "output" retried `shouldBe` Int 1
     resumed <- openOn LoadInstance target providerNet instanceId Engine.defaultEngineOptions
     stateOf resumed `shouldReturn` Object [("output", Int 1), ("records", member "records" retried)]

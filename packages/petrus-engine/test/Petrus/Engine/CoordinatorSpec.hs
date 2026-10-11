@@ -520,6 +520,18 @@ spec = do
       (.waiting) <$> Engine.advance engine `shouldReturn` False
       Store.records history `shouldReturn` before
 
+    it "a steered selection proposes with the policy built from its input before each proposal" $ do
+      target <- newIORef t2
+      let steer wanted = selectionPipeline [\binding -> binding.transition == wanted] [] first :: SelectionPolicy ()
+      port <- inMemory
+      let beginning snapshot = pure (head' ([action | action@(Engine.BeginCandidate _) <- snapshot.actions] <> [Engine.Stop]))
+      (engine, _, history) <-
+        independentEngine port Nothing (\o -> o {Engine.policy = beginning, Engine.selection = Engine.SteeredSelection (readIORef target) steer ()})
+      _ <- Engine.advance engine
+      writeIORef target t1
+      _ <- Engine.advance engine
+      candidateSelections history `shouldReturn` [t2, t1]
+
     it "a completion for an occurrence never dispatched is refused loud" $ do
       let rogue = Dispatch {dispatch = \_ _ -> pure (), collect = pure [(99, Succeeded ok)], cancel = Nothing}
       (engine, _, _) <- independentEngine rogue Nothing id

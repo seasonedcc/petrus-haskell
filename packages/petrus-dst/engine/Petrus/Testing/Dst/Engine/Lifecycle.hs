@@ -1,6 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# OPTIONS_GHC -fno-full-laziness -fno-cse #-}
 
 -- | The lifecycle reset and late-terminal world: a port of the reference's
 -- @tests/dst/lifecycle_world.py@. A scoped delivery requests an Activity,
@@ -44,7 +43,7 @@ import Petrus.Activity (invocation)
 import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), handlerTokens)
+import Petrus.Impetus.Binding (BoundHandler, handlerTokens)
 import Petrus.Impetus.History.Records
   ( ActivityTerminalQuarantined (..)
   , Record (..)
@@ -60,14 +59,11 @@ import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch (CancellationInstruction (..), Dispatch (..), dispositionText)
 import Petrus.Motus.Dispatch.InMemory (InMemoryDispatch, completeOccurrence, inMemoryDispatch, newInMemoryDispatch, pending)
 import Petrus.Testing.Dst hiding (dispositionText)
+import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Testing.Dst.PyRepr (pyStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
-import System.IO.Unsafe (unsafePerformIO)
-
-path :: Text -> NetPath
-path = either (error . T.unpack) id . netPath
 
 source, input, done, project :: NetPath
 source = path "source"
@@ -83,9 +79,6 @@ cancellationScenarioId = "lifecycle-cancellation-refusal-world-v3"
 -- | @SCOPE_NAME@.
 scopeName' :: Text
 scopeName' = "draft"
-
-strs :: [Text] -> Json
-strs = Array . map String
 
 commandsDefinition :: Json
 commandsDefinition =
@@ -223,22 +216,17 @@ data Bridge = Bridge {prepared :: IORef Int, projected :: IORef Int}
 
 bridgeHandler :: Bridge -> BoundHandler
 bridgeHandler bridge =
-  ActivityBound
-    ActivityHandler
-      { prepare = \b -> effectful $ do
+  observed
+    ObservedHandler
+      { prepare = \b -> do
           modifyIORef' bridge.prepared (+ 1)
           pure $ case bindingTokens b of
             t : _ -> Right (invocation "calculate" t.payload)
             [] -> Left "IndexError('tuple index out of range')"
-      , project = \_ result -> effectful $ do
+      , project = \_ result -> do
           modifyIORef' bridge.projected (+ 1)
           pure (Right (handlerTokens [(done, [Token (Just "Done") result])]))
-      , projectFailure = Nothing
       }
-
-effectful :: IO a -> a
-effectful = unsafePerformIO
-{-# NOINLINE effectful #-}
 
 -- ---------------------------------------------------------------------------
 -- Profiles
@@ -675,7 +663,7 @@ lifecycleAuthorityChecker =
   Checker
     { identity = checkerIdentity
     , request = ObservationRequest {name = "engine.lifecycle-authority", payload = Object []}
-    , check = Right . lifecycleCheck
+    , check = pureCheck (Right . lifecycleCheck)
     }
 
 -- | @CancellationAuthorityChecker@.
@@ -684,7 +672,7 @@ cancellationAuthorityChecker =
   Checker
     { identity = cancellationCheckerIdentity
     , request = ObservationRequest {name = "engine.cancellation-authority", payload = Object []}
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         let lifecycle = lifecycleCheck o
             attempts = case member "cancellation_attempts" o.value of
               Array xs -> xs

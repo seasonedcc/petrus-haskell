@@ -13,6 +13,7 @@ description:
   Absurd provider reuses.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Workflow
@@ -85,14 +86,23 @@ test-suite petrus-engine-postgres-test
 benchmark petrus-engine-postgres-bench
   import:           warnings
   type:             exitcode-stdio-1.0
-  hs-source-dirs:   bench
+  -- petrus-engine's order scenario is compiled in from its test tree, as
+  -- for the test suite.
+  hs-source-dirs:   bench ../petrus-impetus/test ../petrus-engine/test
   main-is:          Main.hs
+  other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Engine.TestSupport
+                    Petrus.Engine.Scenario
   build-depends:    base
                   , bytestring
+                  , containers
+                  , hspec >=2.10
+                  , petrus-activity
                   , petrus-engine
                   , petrus-engine-postgres
                   , petrus-history-postgres
                   , petrus-impetus
+                  , petrus-json
                   , petrus-motus
                   , petrus-postgres
                   , petrus-test-support

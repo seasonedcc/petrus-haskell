@@ -28,6 +28,7 @@ module Hamsterdan.GitHub.Python
   , pyEqText
   , hashable
   , loadsBytes
+  , providerLoads
   , JsonLoadError (..)
 
     -- * Text
@@ -44,18 +45,16 @@ module Hamsterdan.GitHub.Python
   , canonicalUuid
   ) where
 
-import Control.Exception (Exception, SomeException, evaluate, try)
+import Control.Exception (SomeException, evaluate, try)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Char (GeneralCategory (DecimalNumber), generalCategory, ord)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error qualified as TEE
 import Hamsterdan.PyLiteral (fromJson, repr)
-import Hamsterdan.PyLiteral.Printable (isPrintableNonAscii)
-import Numeric (showHex)
-import Petrus.Json (Json (..), parseJson, pythonFloatRepr, pythonLoads)
+import Hamsterdan.PyText
+import Petrus.Json (Json (..), LoneSurrogates (..), ParseOptions (..), parseJson, pythonFloatRepr, pythonLoads)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- | The CPython exception classes the reference's provider inspection can
@@ -75,17 +74,6 @@ pyClassName = T.pack . show
 -- | A CPython exception: its class and a short description.
 data PyFailure = PyFailure PyClass Text
   deriving stock (Eq, Show)
-
--- | An exception the reference does not catch. It propagates to the caller
--- exactly where CPython's would, so a host can treat it the same way (for
--- example, as an HTTP 500).
-data PythonFault = PythonFault
-  { pythonClass :: Text
-  , pythonDetail :: Text
-  }
-  deriving stock (Eq, Show)
-
-instance Exception PythonFault
 
 -- | @value.get(key)@: 'Null' when absent; an 'AttributeError' when the value
 -- is not a dict.
@@ -202,20 +190,27 @@ data JsonLoadError
     IntegerTooLong
   deriving stock (Eq, Show)
 
+-- | The options every provider document (webhook payloads, and the
+-- observations the inbox stores from them) is parsed with: CPython's
+-- @json.loads@, which keeps a lone surrogate escape (@"\\ud800"@) in a
+-- @str@. Here it is kept as a WTF-8 'Text' ("Petrus.Json.Wtf8"). The
+-- comment-body bound and every SQLite bind raise CPython's
+-- @UnicodeEncodeError@ on such a 'Text' ('Hamsterdan.PyText.utf8EncodeError'),
+-- and the stored observation is written with @ensure_ascii@, which escapes
+-- it again, so the whole path behaves as the reference's does.
+providerLoads :: ParseOptions
+providerLoads = pythonLoads {loneSurrogates = KeepLoneSurrogates}
+
 -- | @json.loads(raw)@ for bytes: detect UTF-8, UTF-16 or UTF-32 as CPython
 -- does, decode, and parse with CPython's defaults (including the 4300-digit
--- integer limit).
---
--- CPython decodes with @surrogatepass@ and can therefore return lone
--- surrogates; 'Text' cannot hold them, so such documents are refused as
--- 'MalformedJson' (see DIVERGENCES.md).
+-- integer limit), as 'providerLoads'.
 loadsBytes :: ByteString -> Either JsonLoadError Json
 loadsBytes raw = do
   utf8 <- case detectEncoding raw of
     Utf8 -> valid raw
     Utf8Sig -> valid (BS.drop 3 raw)
     Other decode -> maybe (Left UndecodableText) (Right . TE.encodeUtf8) (decodeStrictly decode raw)
-  value <- either (Left . MalformedJson) Right (parseJson pythonLoads utf8)
+  value <- either (Left . MalformedJson) Right (parseJson providerLoads utf8)
   if tooLong value then Left IntegerTooLong else Right value
   where
     valid bytes = either (const (Left UndecodableText)) (const (Right bytes)) (TE.decodeUtf8' bytes)
@@ -259,105 +254,3 @@ decodeStrictly decode bytes = unsafePerformIO $ do
     Left (_ :: SomeException) -> Nothing
     Right text -> Just text
 {-# NOINLINE decodeStrictly #-}
-
--- | @str.isspace()@ for one character.
-isSpace :: Char -> Bool
-isSpace c =
-  (c >= '\t' && c <= '\r')
-    || (c >= '\x1c' && c <= ' ')
-    || c == '\x85'
-    || c == '\xa0'
-    || c == '\x1680'
-    || (c >= '\x2000' && c <= '\x200a')
-    || c == '\x2028'
-    || c == '\x2029'
-    || c == '\x202f'
-    || c == '\x205f'
-    || c == '\x3000'
-
--- | @str.strip()@.
-strip :: Text -> Text
-strip = T.dropAround isSpace
-
--- | @str.lstrip()@.
-lstrip :: Text -> Text
-lstrip = T.dropWhile isSpace
-
--- | @str.casefold()@ (full case folding).
-casefold :: Text -> Text
-casefold = T.toCaseFold
-
--- | @str.upper()@ (full case mapping).
-upper :: Text -> Text
-upper = T.toUpper
-
--- | @str.isascii()@.
-isAscii :: Text -> Bool
-isAscii = T.all (< '\x80')
-
--- | @str.isprintable()@.
-isPrintable :: Text -> Bool
-isPrintable = T.all printable
-  where
-    printable c
-      | c < '\x80' = c >= ' ' && c /= '\x7f'
-      | otherwise = isPrintableNonAscii (ord c)
-
--- | @value.isascii() and value.isdecimal()@.
-isAsciiDecimal :: Text -> Bool
-isAsciiDecimal value = not (T.null value) && T.all (\c -> c >= '0' && c <= '9') value
-
--- | @len(value.encode())@.
-utf8Length :: Text -> Int
-utf8Length = BS.length . TE.encodeUtf8
-
--- | @int(value, base)@ for bases 10 and 16: surrounding whitespace, a sign,
--- the @0x@ prefix in base 16, Unicode decimal digits, and single
--- underscores between digits.
-pyIntBase :: Int -> Text -> Maybe Integer
-pyIntBase base input = do
-  let trimmed = strip input
-  (sign, unsigned) <- case T.uncons trimmed of
-    Just ('-', rest) -> Just (negate, rest)
-    Just ('+', rest) -> Just (id, rest)
-    _ -> Just (id, trimmed)
-  (afterPrefix, prefixed) <-
-    if base == 16 && (T.isPrefixOf "0x" unsigned || T.isPrefixOf "0X" unsigned)
-      then Just (T.drop 2 unsigned, True)
-      else Just (unsigned, False)
-  digits <- groups prefixed (T.unpack afterPrefix)
-  if null digits then Nothing else Just (sign (foldl (\total d -> total * toInteger base + toInteger d) 0 digits))
-  where
-    -- Underscores may separate digits, and may follow a base prefix.
-    groups prefixed = \case
-      '_' : rest | prefixed -> body rest
-      chars -> body chars
-    body = \case
-      [] -> Nothing
-      chars -> go chars
-    go = \case
-      [] -> Just []
-      c : '_' : rest -> case rest of
-        next : _ | next /= '_' -> (:) <$> digit c <*> go rest
-        _ -> Nothing
-      c : rest -> (:) <$> digit c <*> go rest
-    digit c
-      | c >= '0' && c <= '9' = Just (ord c - ord '0')
-      | base == 16 && c >= 'a' && c <= 'f' = Just (ord c - ord 'a' + 10)
-      | base == 16 && c >= 'A' && c <= 'F' = Just (ord c - ord 'A' + 10)
-      | c > '\x7f' && generalCategory c == DecimalNumber = Just (unicodeDigit c)
-      | otherwise = Nothing
-    unicodeDigit c = (ord c - runStart (ord c)) `mod` 10
-    runStart n = if n > 0 && generalCategory (toEnum (n - 1)) == DecimalNumber then runStart (n - 1) else n
-
--- | @str(uuid.UUID(value))@: the canonical lowercase spelling, or 'Nothing'
--- where the constructor raises @ValueError@.
-canonicalUuid :: Text -> Maybe Text
-canonicalUuid value = do
-  let hex = T.replace "-" "" (T.dropAround (\c -> c == '{' || c == '}') (T.replace "uuid:" "" (T.replace "urn:" "" value)))
-  if T.length hex /= 32 then Nothing else Just ()
-  number <- pyIntBase 16 hex
-  if number < 0 || number >= 2 ^ (128 :: Int) then Nothing else Just ()
-  let digits = T.justifyRight 32 '0' (T.pack (showHex number ""))
-      part from size = T.take size (T.drop from digits)
-  Just (T.intercalate "-" [part 0 8, part 8 4, part 12 4, part 16 4, part 20 12])

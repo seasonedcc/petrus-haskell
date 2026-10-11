@@ -40,8 +40,13 @@ To run the tests:
 
     cabal test petrus-dsl
 
-This prints 110 examples and 0 failures: 41 behavioural, plus 69 corpus
-examples (68 cases and a coverage check).
+This prints 111 examples and 0 failures: 41 behavioural, plus 69 corpus
+examples (68 cases and a coverage check), plus 1 beyond upstream
+(`DslLiveSpec`): the definition and document Haskell writes for every net
+the corpus builds go to the pinned reference's own `parse_net_definition`
+and `parse_net_document`, which must accept them and serialize them back
+byte for byte (selected by `scripts/interop`; without the reference it
+fails).
 
 Statuses:
 

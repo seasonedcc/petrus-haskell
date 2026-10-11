@@ -10,7 +10,7 @@ import Petrus.Impetus.NetDefinition
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.TestSupport
 import Petrus.Impetus.WireSupport
-import Petrus.Json (Json (..), lookupMember)
+import Petrus.Json (Json (..), fromCodePoints, lookupMember)
 import Test.Hspec
 
 documentValue :: Json
@@ -108,10 +108,24 @@ spec = describe "Petrus.Impetus.NetDefinition" $ do
       parseNetDefinition fixture
         `shouldFailWith` valueError "places must have unique paths sorted by Unicode scalar value" "{'name': 'invalid-utf16-o... [], 'completion': None}"
 
-  -- enforced by types: test_pydantic_schema_is_strict_and_versioned (the
-  -- format and version are constants of 'NetDefinitionV3', every record is
-  -- closed, and the integer bounds are checked by the parser; the port
-  -- publishes no JSON Schema document)
+  -- test_pydantic_schema_is_strict_and_versioned
+  it "publishes a strict, versioned JSON Schema" $ do
+    let schema = netDefinitionV3JsonSchema
+        at' keys = foldl (\value key -> value >>= lookupMember key) (Just schema) keys
+        bounded lo hi title' =
+          Object [("maximum", Int hi), ("minimum", Int lo), ("title", String title'), ("type", String "integer")]
+    at' ["additionalProperties"] `shouldBe` Just (Bool False)
+    at' ["properties", "format", "const"] `shouldBe` Just (String "petrus-net-definition")
+    at' ["properties", "version", "const"] `shouldBe` Just (Int 3)
+    Just (Object defs) <- pure (at' ["$defs"])
+    [name | (name, definition) <- defs, lookupMember "additionalProperties" definition /= Just (Bool False)] `shouldBe` []
+    at' ["$defs", "DelayDefinition", "properties", "duration"] `shouldBe` Just (bounded jsonSafeIntegerMin jsonSafeIntegerMax "Duration")
+    at' ["$defs", "UntilDefinition", "properties", "instant"] `shouldBe` Just (bounded jsonSafeIntegerMin jsonSafeIntegerMax "Instant")
+    at' ["$defs", "ArcDefinition", "properties", "position", "maximum"] `shouldBe` Just (Int jsonSafeIntegerMax)
+    at' ["$defs", "ArcDefinition", "properties", "position", "minimum"] `shouldBe` Just (Int 0)
+    at' ["$defs", "ArcDefinition", "properties", "weight", "maximum"] `shouldBe` Just (Int jsonSafeIntegerMax)
+    at' ["$defs", "ArcDefinition", "properties", "weight", "minimum"] `shouldBe` Just (Int 1)
+    -- Byte for byte the reference's model_json_schema(): JsonSchemaSpec.
 
   describe "test_noncanonical_or_invalid_documents_are_refused" $ do
     let refuses label change message = it label (parseChanged change `shouldFailWith` message)
@@ -204,9 +218,15 @@ spec = describe "Petrus.Impetus.NetDefinition" $ do
   -- enforced by types: test_models_are_deeply_immutable (Haskell values are
   -- immutable)
 
-  -- enforced by types: test_runtime_projection_and_direct_model_serialization_refuse_surrogates
-  -- ('Text' cannot hold a lone surrogate, so neither a net name nor a model
-  -- field can carry one; escaped surrogates on the wire are refused above)
+  -- test_runtime_projection_and_direct_model_serialization_refuse_surrogates
+  -- (a 'Text' holds a lone surrogate only as WTF-8, "Petrus.Json.Wtf8")
+  it "refuses lone surrogates when projecting a net or serializing a model" $ do
+    projectNetDefinition (richNetNamed (Just (fromCodePoints "bad\xD800")))
+      `shouldFailWith` "JSON strings must contain Unicode scalar values"
+    document <- expectRight (projectNetDefinition richNet)
+    let body = document.definition
+        renamed = NetDefinitionV3 (NetDefinitionBody (Just (fromCodePoints "bad\xD800")) body.timeDomain body.places body.transitions body.arcs body.completion)
+    serializeNetDefinition renamed `shouldFailWith` "JSON strings must contain Unicode scalar values"
 
   -- test_adversarial_json_nesting_is_normalized_to_protocol_error
   it "normalizes adversarial nesting to a protocol error" $

@@ -14,7 +14,7 @@
 -- against the reference's server.
 module Petrus.Motus.Transport.ZeroMQ.InteropSpec (spec) where
 
-import Control.Exception (bracket, finally)
+import Control.Exception (bracket, finally, toException)
 import Control.Monad (forM, forM_, unless)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -24,7 +24,7 @@ import Data.Text qualified as T
 import Petrus.Activity hiding (invocation)
 import Data.Map.Strict qualified as Map
 import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
-import Petrus.Motus.Dispatch (ActivityAttempt (..), ActivityOutcome (..), AttemptFailure (..), activityAttempt)
+import Petrus.Motus.Dispatch (ActivityAttempt (..), ActivityOutcome (..), AttemptFailure (..), DispatchError (..), activityAttempt)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Transport.ZeroMQ
   ( ClientOptions (..)
@@ -35,7 +35,8 @@ import Petrus.Motus.Transport.ZeroMQ
   )
 import Petrus.Motus.Transport.ZeroMQ qualified as Z
 import Petrus.Motus.Transport.ZeroMQ.Support
-import Petrus.Motus.Transport.ZeroMQ.Wire (encodeAttempt)
+import Petrus.Motus.Transport.ZeroMQ.Errors (ConnectionError (..), ProtocolError (..), RuntimeError (..), TimeoutError (..), TypeError (..), ValueError (..))
+import Petrus.Motus.Transport.ZeroMQ.Wire (classifiedFailure, encodeAttempt)
 import Petrus.Motus.Worker qualified as W
 import System.Environment (getEnvironment, getExecutablePath)
 import System.Exit (ExitCode (..))
@@ -220,6 +221,27 @@ spec = do
   -- The server CLI under the reference's program name: help and usage
   -- errors byte for byte (exit 2); a refused configuration exits 1 with
   -- the last line of the reference's traceback (DIVERGENCES.md 6).
+  it "an exception a Worker reports is classified as the reference's _classified_failure" $ withReference $ \python -> do
+    expected <- runInterop python ["classified"]
+    let cases =
+          [ toException (DispatchError "heartbeat details require finite JSON numbers")
+          , toException (DispatchError "")
+          , toException (ValueError "it's \"quoted\"\x00a0\233\n")
+          , toException (RuntimeError "Activity cancelled: stop")
+          , toException (W.LookupError "no Activity implementation for 'x'")
+          , toException (TypeError "Activity failure must be a string, exception, or ActivityFailure")
+          , toException (TimeoutError "ZeroMQ Dispatch server did not become ready")
+          , toException (NotAcknowledged "ZeroMQ claim was not acknowledged")
+          , toException (OperationUncertain "ZeroMQ complete response was lost")
+          , toException (ProtocolError "unsupported ZeroMQ Dispatch protocol version")
+          ]
+        report = \case
+          Right failure ->
+            let fields = failureFields failure
+             in Object [("error", String fields.failureError), ("kind", String fields.failureKind), ("retryable", Bool fields.failureRetryable)]
+          Left problem -> String (T.pack (show problem))
+    Array (map (report . classifiedFailure . FailureException) cases) `shouldBe` expected
+
   describe "the server CLI answers as python -m petrus.motus.transport.zeromq" $ do
     let both python arguments = do
           self <- getExecutablePath

@@ -15,6 +15,7 @@ module Petrus.Impetus.WireSupport
   , writerBytes
   , mustJson
   , richNet
+  , richNetNamed
   ) where
 
 import Control.Monad (filterM)
@@ -98,7 +99,11 @@ mustJson = either error id . parseJson pythonLoads
 -- | The upstream tests' feature-complete net: every declaration kind, every
 -- arc mode, timers, a completion condition, and a name.
 richNet :: Net
-richNet =
+richNet = richNetNamed (Just "portable-review")
+
+-- | 'richNet' with another name.
+richNetNamed :: Maybe Text -> Net
+richNetNamed name' =
   mustNet
     NetSpec
       { places = [coloredPlace pending "Work", coloredPlace context "Context", coloredPlace blocked "Block", coloredPlace done "Done"]
@@ -119,7 +124,7 @@ richNet =
           , arc review done
           ]
       , completion = Just (CompletionCel (unsafeCel "size(review.done) > 0"))
-      , name = Just "portable-review"
+      , name = name'
       }
   where
     source = np "source"

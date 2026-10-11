@@ -1,6 +1,7 @@
 /*
- * Socket readiness and non-blocking I/O for the relay event loop
- * (Petrus.Viewer.Relay): kqueue on macOS and the BSDs, epoll on Linux.
+ * Socket readiness and non-blocking I/O for the event loops
+ * (Petrus.Viewer.EventLoop: the relays, the HTTP front, petrus-mcp):
+ * kqueue on macOS and the BSDs, epoll on Linux.
  *
  * Every relay socket stays registered for reading for as long as it is
  * served (level triggered), and for writing only while output is pending,
@@ -143,6 +144,26 @@ long prelay_recv(int fd, uint8_t *buf, long len)
         if (errno == EAGAIN || errno == EWOULDBLOCK) return -2;
         return -1;
     }
+}
+
+/* read from a descriptor in non-blocking mode (a pipe): as prelay_recv. */
+long prelay_read(int fd, uint8_t *buf, long len)
+{
+    for (;;) {
+        ssize_t r = read(fd, buf, (size_t)len);
+        if (r >= 0) return (long)r;
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) return -2;
+        return -1;
+    }
+}
+
+/* Put a descriptor in non-blocking mode; negative on failure. */
+int prelay_set_nonblocking(int fd)
+{
+    int flags = fcntl(fd, F_GETFL);
+    if (flags < 0) return -1;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
 /* writev without blocking (SIGPIPE is ignored by the GHC runtime): bytes

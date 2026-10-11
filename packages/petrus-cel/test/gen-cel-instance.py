@@ -8,7 +8,8 @@ environment:
     cd upstream/petrus
     .venv/bin/python ../../packages/petrus-cel/test/gen-cel-instance.py
 
-The script writes ``corpus/cel-instance.json`` next to itself. Each case is a
+The script writes ``corpus/cel-instance.json`` next to itself (or
+``cel-instance.json`` into the directory given as its first argument). Each case is a
 hand-written net (carried as its canonical Net definition v3 text) and an
 initial marking; the Instance is stepped until quiescent. Before every step
 the candidate bindings and the enabledness warnings (filter and guard
@@ -26,6 +27,7 @@ script replaces ``Activation.__repr__`` with the fixed text
 from __future__ import annotations
 
 import json
+import sys
 import warnings
 from pathlib import Path
 
@@ -36,7 +38,7 @@ from petrus.impetus.instance import Instance
 from petrus.impetus.net_definition import project_net_definition, serialize_net_definition
 from petrus.impetus.petrinet import Arc, ArcMode, Cel, Marking, Net, NetPath, Place, Token, Transition
 
-OUTPUT = Path(__file__).with_name("corpus") / "cel-instance.json"
+OUTPUT_NAME = "cel-instance.json"
 
 celpy.evaluation.Activation.__repr__ = lambda self: "<Activation>"
 
@@ -237,8 +239,9 @@ def run_case(name: str, build) -> dict[str, object]:
 def main() -> None:
     cases = [run_case(name, build) for name, build in CASES.items()]
     corpus = {"generator": "packages/petrus-cel/test/gen-cel-instance.py", "celpy": "0.5.0", "cases": cases}
-    OUTPUT.write_text(json.dumps(corpus, ensure_ascii=False, indent=1) + "\n")
-    print(f"wrote {OUTPUT.name}: {len(cases)} cases, {sum(len(c['steps']) for c in cases)} steps")
+    output = (Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent / "corpus") / OUTPUT_NAME
+    output.write_text(json.dumps(corpus, ensure_ascii=False, indent=1) + "\n")
+    print(f"wrote {output.name}: {len(cases)} cases, {sum(len(c['steps']) for c in cases)} steps")
 
 
 if __name__ == "__main__":

@@ -69,10 +69,14 @@ binary).
   DIVERGENCES.md, item 2.
 - **`test_secret_launch.py` and bash.** Nine of the ten cases run the
   launcher with no extra arguments, which expands an empty array under
-  `set -u`; bash older than 4.4 refuses that. On such a bash (macOS's
-  `/bin/bash` 3.2) those nine are pending with that reason, and the
-  reference test fails the same way there. CI (Ubuntu, bash 5) and the image
-  (Debian bookworm, bash 5.2) run all ten.
+  `set -u`; bash older than 4.4 refuses that, and the reference test fails
+  the same way there. Those nine run the launcher under a bash of at least
+  4.4: `$PETRUS_BASH` when set, else the first such bash among `bash` on
+  `PATH`, `/opt/homebrew/bin/bash` and `/usr/local/bin/bash`. When there is
+  none (a stock macOS has only `/bin/bash` 3.2) they fail and say how to
+  provide one (docs/reproducing.md). The tenth runs through the script's own
+  `#!/usr/bin/env bash`. CI (Ubuntu, bash 5) and the image (Debian bookworm,
+  bash 5.2) run all ten.
 - **The fake `op` runs the command instead of exec'ing it.** The
   reference's fake `op` ends with `os.execvpe`. The port's fake is a mode
   of the threaded test binary, and an exec from the threaded RTS fails at

@@ -33,6 +33,7 @@ module Petrus.Viewer.Json
   , encodePretty
     -- * Strings
   , jsString
+  , jsStringUtf8
   , jsStringText
   , jsStringBytes
   , unsafeJsStringFromCanonical
@@ -78,7 +79,7 @@ import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Unsafe qualified as BU
 import Control.Monad (foldM, void)
 import Data.Char (chr, ord)
-import Foreign.Marshal.Utils (copyBytes)
+import Foreign.Marshal.Utils (copyBytes, fillBytes)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import Foreign.C.Types (CSize (..))
 import System.IO.Unsafe (unsafeDupablePerformIO)
@@ -133,6 +134,11 @@ data JsValue
 -- | The JavaScript string for a 'Text'.
 jsString :: Text -> JsString
 jsString t = JsString (escapeUtf8 (TE.encodeUtf8 t))
+
+-- | The JavaScript string for valid UTF-8 bytes (callers must guarantee
+-- it), without a round trip through 'Text'.
+jsStringUtf8 :: ByteString -> JsString
+jsStringUtf8 = JsString . escapeUtf8
 
 -- | UTF-8 bytes of a 'Text' as @JSON.stringify@ writes them inside quotes.
 -- A 'Text' holds no lone surrogates, so only ASCII needs escaping. One pass
@@ -440,30 +446,44 @@ quotedAt :: ByteString -> Ptr Word8 -> IO (Ptr Word8)
 quotedAt b p = byteAt 0x22 =<< copyAt b =<< byteAt 0x22 p
 {-# INLINE quotedAt #-}
 
--- | @JSON.stringify(v, null, 2)@.
+-- | @JSON.stringify(v, null, 2)@, sized and written in one buffer like
+-- 'encodeJs' (the text of most MCP tool results).
 encodePretty :: JsValue -> ByteString
-encodePretty v0 = BL.toStrict (BB.toLazyByteString (go 0 v0))
+encodePretty v = BI.unsafeCreate (prettySize 0 v) (\p -> void (writePretty 0 v p))
+
+-- | Bytes of @JSON.stringify(v, null, 2)@ at nesting depth @ind@.
+prettySize :: Int -> JsValue -> Int
+prettySize ind = \case
+  JsArr [] -> 2
+  JsArr xs -> container (foldl' (\acc x -> acc + inner + prettySize (ind + 1) x) 0 xs) (length xs)
+  JsObj (JsObject []) -> 2
+  JsObj (JsObject kvs) ->
+    container (foldl' (\acc (JsString k, x) -> acc + inner + B.length k + 4 + prettySize (ind + 1) x) 0 kvs) (length kvs)
+  other -> encodedSize other
   where
-    go :: Int -> JsValue -> BB.Builder
-    go ind = \case
-      JsArr [] -> "[]"
-      JsArr xs ->
-        "[\n"
-          <> sepBy (map (\x -> pad (ind + 1) <> go (ind + 1) x) xs)
-          <> "\n"
-          <> pad ind
-          <> "]"
-      JsObj (JsObject []) -> "{}"
-      JsObj (JsObject kvs) ->
-        "{\n"
-          <> sepBy (map (\(JsString k, x) -> pad (ind + 1) <> quoted k <> ": " <> go (ind + 1) x) kvs)
-          <> "\n"
-          <> pad ind
-          <> "}"
-      other -> encodeJsBuilder other
-    pad n = BB.byteString (BC.replicate (2 * n) ' ')
-    sepBy [] = mempty
-    sepBy (b : bs) = b <> foldr (\x acc -> ",\n" <> x <> acc) mempty bs
+    inner = 2 * (ind + 1)
+    -- open bracket and newline, the members, a comma and newline between
+    -- them, a newline, the closing indentation and bracket
+    container members n = 2 + members + 2 * (n - 1) + 1 + 2 * ind + 1
+
+writePretty :: Int -> JsValue -> Ptr Word8 -> IO (Ptr Word8)
+writePretty ind v p = case v of
+  JsArr [] -> copyAt "[]" p
+  JsArr (x : xs) -> container 0x5b 0x5d item x xs
+  JsObj (JsObject []) -> copyAt "{}" p
+  JsObj (JsObject (kv : kvs)) -> container 0x7b 0x7d member kv kvs
+  other -> writeJs other p
+  where
+    container :: Word8 -> Word8 -> (a -> Ptr Word8 -> IO (Ptr Word8)) -> a -> [a] -> IO (Ptr Word8)
+    container open close each first rest = do
+      q <- each first =<< padAt (ind + 1) =<< byteAt 0x0a =<< byteAt open p
+      end <- foldM (\q' y -> each y =<< padAt (ind + 1) =<< byteAt 0x0a =<< byteAt 0x2c q') q rest
+      byteAt close =<< padAt ind =<< byteAt 0x0a end
+    item = writePretty (ind + 1)
+    member (JsString k, x) q = writePretty (ind + 1) x =<< byteAt 0x20 =<< byteAt 0x3a =<< quotedAt k q
+    padAt n q = do
+      fillBytes q 0x20 (2 * n)
+      pure (q `plusPtr` (2 * n))
 
 ------------------------------------------------------------------------------
 -- Decoding

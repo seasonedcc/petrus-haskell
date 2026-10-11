@@ -1,0 +1,525 @@
+#!/usr/bin/env python3
+"""Rerun every committed-corpus generator against the pinned references and diff.
+
+    scripts/check-corpora              # every generator; fails on any stale file
+    scripts/check-corpora NAME ...     # only the generators whose name contains NAME
+    scripts/check-corpora --list       # the generators and the files each one writes
+    scripts/check-corpora --update     # write the regenerated files over the committed ones
+    scripts/check-corpora -jN          # N generators at a time (default 4)
+
+Many ports are pinned by files the reference recorded once: differential
+corpora, fixture databases, generated Haskell modules. A test that replays a
+committed corpus keeps passing after the reference moves, so a stale corpus
+hides a gap. This script reruns each generator (the commands their docstrings
+and ledgers document) with the pinned interpreter from scripts/upstream-python
+and compares the result with the committed bytes. scripts/check-all runs it,
+and UPSTREAM.md's "Moving a pin" runs it with --update.
+
+A generator whose script takes an output path writes into a temporary
+directory. The few that can only write next to themselves (the Hamsterdan
+generators and some fixture extractors) run in place: their committed files
+are saved first and put back afterwards, so the working tree is unchanged
+unless --update is given.
+
+transcript_vectors.py replays the joined DST fixtures against PostgreSQL, so
+when PETRUS_TEST_POSTGRES is unset the run happens under scripts/with-postgres.
+
+Not rerun here, each for its own reason:
+
+* petrus-engine-file's corpus.py: it resaves nets through the viewer's
+  TypeScript under Node 22.18, which CI does not have; its LiveSpec reruns
+  the reference on the committed corpus (the verdicts) and on fresh fuzz.
+* petrus-cel's gen/gen-unicode-tables.py: it reads a downloaded Unicode/RE2
+  data directory, not the pinned reference.
+"""
+
+from __future__ import annotations
+
+import base64
+import binascii
+import concurrent.futures
+import difflib
+import json
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Tuple
+
+ROOT = Path(__file__).resolve().parent.parent
+UPSTREAM_PETRUS = ROOT / "upstream" / "petrus"
+
+
+@dataclass
+class Generator:
+    name: str
+    project: str
+    script: str
+    # Arguments after the script; "{out}" is the temporary output directory,
+    # "{postgres}" the PostgreSQL URL.
+    args: List[str]
+    # Committed path (repository-relative) -> path under "{out}"; for an
+    # in-place generator, the committed paths it rewrites (the values are
+    # ignored).
+    outputs: Dict[str, str]
+    cwd: str = "upstream/petrus"
+    in_place: bool = False
+    needs_postgres: bool = False
+    env: Dict[str, str] = field(default_factory=dict)
+    # Committed path -> a function both sides pass through before the
+    # comparison, for a file that embeds a run-specific value.
+    normalize: Dict[str, Callable[[bytes], bytes]] = field(default_factory=dict)
+
+
+def petrus(name: str, script: str, outputs: Dict[str, str], args: Optional[List[str]] = None, **kwargs) -> Generator:
+    return Generator(name, "petrus", script, ["{out}"] if args is None else args, outputs, **kwargs)
+
+
+def hamsterdan(name: str, script: str, outputs: List[str], **kwargs) -> Generator:
+    return Generator(name, "hamsterdan", script, [], {path: path for path in outputs}, cwd=".", in_place=True, **kwargs)
+
+
+IMPETUS = "packages/petrus-impetus/differential"
+CEL = "packages/petrus-cel/test"
+DST = "packages/petrus-dst"
+AGENTICUS = "packages/petrus-agenticus/differential"
+CORE = "packages/petrus-agenticus-core/differential"
+RUNTIME = "packages/petrus-agenticus-runtime"
+EXECUTION = "packages/petrus-execution/test/fixtures"
+PI_TESTS = "upstream/petrus/tests/petrus/agenticus/runtime"
+
+
+def sqlite_writer_free(content: bytes) -> bytes:
+    """An SQLite database's header records, at offset 96, the version of the
+    SQLite library that last wrote it: the pinned Python's bundled SQLite,
+    which differs between platforms and builds (3.53.4 on macOS, 3.53.1 on
+    CI's Linux) for the same pinned Python version. Leave those four bytes
+    out of the comparison; every other byte must match."""
+    if content.startswith(b"SQLite format 3\x00") and len(content) >= 100:
+        return content[:96] + b"\x00\x00\x00\x00" + content[100:]
+    return content
+
+
+# The same OSError on each platform: EOVERFLOW's number and message differ
+# between macOS (where the committed corpora are recorded) and Linux (CI).
+PLATFORM_ERRORS = [
+    (b"[Errno 84] Value too large to be stored in data type", b"[Errno EOVERFLOW]"),
+    (b"[Errno 75] Value too large for defined data type", b"[Errno EOVERFLOW]"),
+]
+
+
+def platform_errors_free(content: bytes) -> bytes:
+    """Replace each platform's text for the same OSError by one marker."""
+    for platform_text, marker in PLATFORM_ERRORS:
+        content = content.replace(platform_text, marker)
+    return content
+
+
+def scratch_root_free(content: bytes) -> bytes:
+    """pi_corpus.json builds its live invocations under a fresh temporary
+    directory, whose (resolved) path lands in the recorded working
+    directories, private roots and the base64 wire bytes of each start frame.
+    Replace that directory, everywhere it occurs, by a fixed marker."""
+    corpus = json.loads(content)
+    starts = corpus.get("frames", {}).get("starts", [])
+    if not starts:
+        return content
+    scratch = starts[0]["cwd"].split("/frames/")[0]
+    marker = "<scratch>"
+
+    def scrub(value):
+        if isinstance(value, dict):
+            return {key: scrub(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [scrub(item) for item in value]
+        if isinstance(value, str):
+            if scratch in value:
+                return value.replace(scratch, marker)
+            try:
+                decoded = base64.b64decode(value, validate=True)
+            except (binascii.Error, ValueError):
+                return value
+            if scratch.encode() in decoded:
+                return "base64:" + decoded.replace(scratch.encode(), marker.encode()).decode("utf-8", "backslashreplace")
+        return value
+
+    return (json.dumps(scrub(corpus), indent=1, ensure_ascii=True, allow_nan=True) + "\n").encode()
+
+
+def dst(name: str, output: str, *, postgres: bool = False) -> Generator:
+    args = (["{postgres}"] if postgres else []) + ["{out}/" + Path(output).name]
+    return Generator(
+        f"petrus-dst/{name}",
+        "petrus",
+        f"{DST}/scripts/{name}.py",
+        args,
+        {f"{DST}/{output}": Path(output).name},
+        needs_postgres=postgres,
+    )
+
+
+GENERATORS: List[Generator] = [
+    # petrus-impetus
+    petrus("petrus-impetus/kernel_corpus", f"{IMPETUS}/kernel_corpus.py", {f"{IMPETUS}/kernel_corpus.json": "kernel_corpus.json"}),
+    petrus(
+        "petrus-impetus/net_definition_corpus",
+        f"{IMPETUS}/net_definition_corpus.py",
+        {f"{IMPETUS}/net_definition_corpus.json": "net_definition_corpus.json"},
+    ),
+    petrus(
+        "petrus-impetus/failure_text_corpus",
+        f"{IMPETUS}/failure_text_corpus.py",
+        {f"{IMPETUS}/failure_text_corpus.json": "failure_text_corpus.json"},
+    ),
+    petrus("petrus-impetus/hand_built_corpus", f"{IMPETUS}/hand_built_corpus.py", {f"{IMPETUS}/hand_built_corpus.json": "hand_built_corpus.json"}),
+    petrus(
+        "petrus-impetus/json_schema",
+        f"{IMPETUS}/json_schema.py",
+        {
+            f"{IMPETUS}/net_definition_v3.schema.json": "net_definition_v3.schema.json",
+            f"{IMPETUS}/net_document_v1.schema.json": "net_document_v1.schema.json",
+        },
+    ),
+    # petrus-dsl, petrus-observation, petrus-cel
+    petrus(
+        "petrus-dsl/dsl_corpus",
+        "packages/petrus-dsl/differential/dsl_corpus.py",
+        {"packages/petrus-dsl/differential/dsl_corpus.json": "dsl_corpus.json"},
+    ),
+    petrus(
+        "petrus-observation/observation_corpus",
+        "packages/petrus-observation/differential/observation_corpus.py",
+        {"packages/petrus-observation/differential/observation_corpus.json": "observation_corpus.json"},
+    ),
+    petrus(
+        "petrus-cel/gen-cel-corpus",
+        f"{CEL}/gen-cel-corpus.py",
+        {f"{CEL}/corpus/cel-corpus.json": "cel-corpus.json", f"{CEL}/corpus/cel-operators.json": "cel-operators.json"},
+        cwd=".",
+    ),
+    petrus("petrus-cel/gen-cel-instance", f"{CEL}/gen-cel-instance.py", {f"{CEL}/corpus/cel-instance.json": "cel-instance.json"}),
+    # petrus-dst (the generated identities module included)
+    dst("codec_vectors", "test/data/codec-vectors.json"),
+    dst("world_stories", "test/data/world-stories.json"),
+    dst("choice_vectors", "test/data/choice-vectors.json"),
+    dst("process_vectors", "test/data/process-vectors.json"),
+    dst("generated_stories", "test/data/generated-stories.json"),
+    dst("transcript_vectors", "test/data/transcripts.json", postgres=True),
+    dst("engine_authored", "test/data/engine-authored.json"),
+    dst("engine_checker_vectors", "test/data/engine-checkers.json"),
+    dst("joined_checker_vectors", "test/data/joined-checkers.json"),
+    dst("joined_identities", "joined/Petrus/Testing/Dst/Joined/Identities.hs"),
+    # petrus-agenticus
+    petrus(
+        "petrus-agenticus/agent_net_corpus",
+        f"{AGENTICUS}/agent_net_corpus.py",
+        {f"{AGENTICUS}/agent_net_corpus.json": "agent_net_corpus.json"},
+        args=["{out}/agent_net_corpus.json"],
+    ),
+    petrus(
+        "petrus-agenticus/retention_corpus",
+        f"{AGENTICUS}/retention_corpus.py",
+        {f"{AGENTICUS}/retention_corpus.json": "retention_corpus.json", f"{AGENTICUS}/retention_fixture.db": "retention_fixture.db"},
+    ),
+    petrus(
+        "petrus-agenticus/workspace_corpus",
+        f"{AGENTICUS}/workspace_corpus.py",
+        {f"{AGENTICUS}/workspace_corpus.json": "workspace_corpus.json"},
+        args=["{out}/workspace_corpus.json"],
+    ),
+    # petrus-agenticus-core
+    petrus("petrus-agenticus-core/catalog_corpus", f"{CORE}/catalog_corpus.py", {f"{CORE}/catalog_corpus.json": "catalog_corpus.json"}),
+    petrus("petrus-agenticus-core/custody_corpus", f"{CORE}/custody_corpus.py", {f"{CORE}/custody_corpus.json": "custody_corpus.json"}),
+    petrus("petrus-agenticus-core/effect_corpus", f"{CORE}/effect_corpus.py", {f"{CORE}/effect_corpus.json": "effect_corpus.json"}),
+    petrus("petrus-agenticus-core/hands_corpus", f"{CORE}/hands_corpus.py", {f"{CORE}/hands_corpus.json": "hands_corpus.json"}),
+    petrus("petrus-agenticus-core/thread_corpus", f"{CORE}/thread_corpus.py", {f"{CORE}/thread_corpus.json": "thread_corpus.json"}),
+    # petrus-agenticus-runtime
+    petrus(
+        "petrus-agenticus-runtime/hosts_corpus",
+        f"{RUNTIME}/differential/hosts_corpus.py",
+        {f"{RUNTIME}/differential/hosts_corpus.json": "hosts_corpus.json"},
+        args=["{out}/hosts_corpus.json"],
+    ),
+    petrus(
+        "petrus-agenticus-runtime/pi_corpus",
+        f"{RUNTIME}/differential/pi_corpus.py",
+        {
+            f"{RUNTIME}/differential/pi_corpus.json": "pi_corpus.json",
+            f"{RUNTIME}/differential/pi_reference_ledger.sqlite3": "pi_reference_ledger.sqlite3",
+        },
+        args=["{out}/pi_corpus.json", "{out}/pi_reference_ledger.sqlite3"],
+        normalize={f"{RUNTIME}/differential/pi_corpus.json": scratch_root_free},
+    ),
+    petrus(
+        "petrus-agenticus-runtime/runner_corpus",
+        f"{RUNTIME}/differential/runner_corpus.py",
+        {f"{RUNTIME}/differential/runner_corpus.json": "runner_corpus.json"},
+        args=["{out}/runner_corpus.json"],
+    ),
+    petrus(
+        "petrus-agenticus-runtime/pi fixtures (test_pi.py)",
+        f"{RUNTIME}/test/fixtures/pi/extract.py",
+        {
+            f"{RUNTIME}/test/fixtures/pi/{name}": name
+            for name in (
+                "framed_tool_sdk.mjs",
+                "subscription_sdk.mjs",
+                "forged_known_tool_helper.mjs",
+                "forged_unknown_tool_helper.mjs",
+                "wrong_auth_helper.mjs",
+            )
+        },
+        args=[f"{PI_TESTS}/test_pi.py", "{out}"],
+        cwd=".",
+    ),
+    petrus(
+        "petrus-agenticus-runtime/codex fixtures (test_codex.py)",
+        f"{RUNTIME}/test/fixtures/codex/extract.py",
+        {f"{RUNTIME}/test/fixtures/codex/fake_codex.py": "fake_codex.py", f"{RUNTIME}/test/fixtures/codex/fake_gondolin_codex.mjs": "fake_gondolin_codex.mjs"},
+    ),
+    # petrus-telemetry-instrumentation
+    petrus(
+        "petrus-telemetry-instrumentation/telemetry_scenarios",
+        "packages/petrus-telemetry-instrumentation/differential/telemetry_scenarios.py",
+        {"packages/petrus-telemetry-instrumentation/differential/telemetry_scenarios.json": "telemetry_scenarios.json"},
+        args=["{out}/telemetry_scenarios.json"],
+    ),
+    # petrus-execution
+    Generator(
+        "petrus-execution/substrate fixtures",
+        "petrus",
+        f"{EXECUTION}/generate_substrate_fixtures.py",
+        [],
+        {f"{EXECUTION}/substrate_fixtures.json": ""},
+        cwd=".",
+        in_place=True,
+    ),
+    Generator(
+        "petrus-execution/archive fixtures",
+        "petrus",
+        f"{EXECUTION}/generate_archive_fixtures.py",
+        [],
+        {f"{EXECUTION}/archive_fixtures-{platform.system().lower()}.json": ""},
+        cwd=".",
+        in_place=True,
+    ),
+    Generator(
+        "petrus-execution/fake Gondolin SDK",
+        "petrus",
+        f"{EXECUTION}/generate_fake_gondolin.py",
+        [],
+        {f"{EXECUTION}/fake_gondolin.mjs": ""},
+        cwd=".",
+        in_place=True,
+    ),
+    # petrus-json: CPython's str.isprintable
+    Generator(
+        "petrus-json/python printable",
+        "petrus",
+        "packages/petrus-json/gen/gen_python_printable.py",
+        [],
+        {"packages/petrus-json/src/Petrus/Json/PythonText/Printable.hs": "", "packages/petrus-json/test/python-printable.txt": ""},
+        cwd=".",
+        in_place=True,
+    ),
+    # Hamsterdan (upstream/hamsterdan)
+    hamsterdan(
+        "hamsterdan-contracts/gen_corpus",
+        "packages/hamsterdan-contracts/scripts/gen_corpus.py",
+        [f"packages/hamsterdan-contracts/test/corpus/{name}.jsonl" for name in ("contracts", "projection", "repr", "literal_eval")],
+    ),
+    hamsterdan(
+        "hamsterdan-contracts/gen_protocol_corpus",
+        "packages/hamsterdan-contracts/scripts/gen_protocol_corpus.py",
+        ["packages/hamsterdan-contracts/test/corpus/protocol.jsonl"],
+    ),
+    hamsterdan(
+        "hamsterdan-contracts/gen_models",
+        "packages/hamsterdan-contracts/scripts/gen_models.py",
+        ["packages/hamsterdan-contracts/src/Hamsterdan/Contracts/ReadinessV5.hs", "packages/hamsterdan-contracts/src/Hamsterdan/Contracts/Readiness.hs"],
+    ),
+    hamsterdan(
+        "hamsterdan-contracts/gen_printable",
+        "packages/hamsterdan-contracts/scripts/gen_printable.py",
+        ["packages/hamsterdan-contracts/src/Hamsterdan/PyLiteral/Printable.hs"],
+    ),
+    hamsterdan("hamsterdan-github/gen_config_corpus", "packages/hamsterdan-github/scripts/gen_config_corpus.py", ["packages/hamsterdan-github/test/corpus/config.jsonl"]),
+    hamsterdan("hamsterdan-github/gen_effects_corpus", "packages/hamsterdan-github/scripts/gen_effects_corpus.py", ["packages/hamsterdan-github/test/corpus/effects.jsonl"]),
+    hamsterdan(
+        "hamsterdan-github/gen_http_corpus",
+        "packages/hamsterdan-github/scripts/gen_http_corpus.py",
+        ["packages/hamsterdan-github/test/corpus/http.jsonl"],
+        normalize={"packages/hamsterdan-github/test/corpus/http.jsonl": platform_errors_free},
+    ),
+    hamsterdan("hamsterdan-github/gen_webhook_corpus", "packages/hamsterdan-github/scripts/gen_webhook_corpus.py", ["packages/hamsterdan-github/test/corpus/webhooks.jsonl"]),
+    hamsterdan("hamsterdan-readiness/gen_board_corpus", "packages/hamsterdan-readiness/scripts/gen_board_corpus.py", ["packages/hamsterdan-readiness/test/corpus/board.jsonl"]),
+    hamsterdan("hamsterdan-readiness/gen_fold_corpus", "packages/hamsterdan-readiness/scripts/gen_fold_corpus.py", ["packages/hamsterdan-readiness/test/corpus/folds.jsonl"]),
+    hamsterdan(
+        "hamsterdan-readiness/gen_topology_corpus",
+        "packages/hamsterdan-readiness/scripts/gen_topology_corpus.py",
+        [f"packages/hamsterdan-readiness/test/corpus/{name}" for name in ("net_definition.sha256", "seed_marking.jsonl", "gates.json")],
+    ),
+    hamsterdan("hamsterdan-testing/gen_oracle_corpus", "packages/hamsterdan-testing/scripts/gen_oracle_corpus.py", ["packages/hamsterdan-testing/test/corpus/oracle.jsonl"]),
+]
+
+
+def environment() -> Dict[str, str]:
+    env = dict(os.environ)
+    extra = [str(Path.home() / ".ghcup" / "bin"), str(Path.home() / ".local" / "bin")]
+    env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")])
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
+
+
+ENV = environment()
+
+
+def interpreter(project: str) -> str:
+    return subprocess.run(
+        [str(ROOT / "scripts" / "upstream-python"), project], cwd=ROOT, env=ENV, check=True, stdout=subprocess.PIPE, text=True
+    ).stdout.strip()
+
+
+@dataclass
+class Result:
+    generator: Generator
+    seconds: float
+    stale: List[Tuple[str, str]]  # (committed path, description)
+    failure: Optional[str] = None
+
+
+def describe_difference(path: str, old: bytes, new: bytes) -> str:
+    if old == new:
+        return ""
+    try:
+        old_lines = old.decode("utf-8").splitlines()
+        new_lines = new.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        return f"{path}: binary content differs ({len(old)} committed bytes, {len(new)} regenerated)"
+    diff = list(difflib.unified_diff(old_lines, new_lines, f"committed/{path}", f"regenerated/{path}", n=0, lineterm=""))
+    shown = [line if len(line) <= 200 else line[:200] + "…" for line in diff[:12]]
+    more = f"\n    … {len(diff) - 12} more diff lines" if len(diff) > 12 else ""
+    return "\n".join("    " + line for line in shown) + more
+
+
+def run_generator(generator: Generator, python: str, postgres: Optional[str], update: bool) -> Result:
+    started = time.monotonic()
+    env = dict(ENV)
+    env["PYTHONPATH"] = str(UPSTREAM_PETRUS) if generator.project == "petrus" else ""
+    env.update(generator.env)
+    with tempfile.TemporaryDirectory(prefix="check-corpora-") as scratch:
+        out = Path(scratch)
+        saved: Dict[str, Optional[bytes]] = {}
+        if generator.in_place:
+            for path in generator.outputs:
+                target = ROOT / path
+                saved[path] = target.read_bytes() if target.exists() else None
+        args = [arg.replace("{out}", str(out)).replace("{postgres}", postgres or "") for arg in generator.args]
+        command = [python, "-B", str(ROOT / generator.script), *args]
+        try:
+            completed = subprocess.run(
+                command, cwd=ROOT / generator.cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            )
+            if completed.returncode != 0:
+                tail = "\n".join(completed.stdout.splitlines()[-15:])
+                return Result(generator, time.monotonic() - started, [], f"exit {completed.returncode}:\n{tail}")
+            stale = []
+            for path, produced in generator.outputs.items():
+                committed = saved.get(path) if generator.in_place else ((ROOT / path).read_bytes() if (ROOT / path).exists() else None)
+                fresh_path = ROOT / path if generator.in_place else out / produced
+                if not fresh_path.exists():
+                    return Result(generator, time.monotonic() - started, [], f"did not write {fresh_path}")
+                fresh = fresh_path.read_bytes()
+                normalize = generator.normalize.get(path, lambda content: content)
+
+                def same(content: bytes, normalize=normalize) -> bytes:
+                    return normalize(sqlite_writer_free(content))
+                if committed is None or same(committed) != same(fresh):
+                    stale.append((path, describe_difference(path, same(committed or b"{}"), same(fresh))))
+                    if update and not generator.in_place:
+                        (ROOT / path).parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(fresh_path, ROOT / path)
+            return Result(generator, time.monotonic() - started, stale)
+        finally:
+            if generator.in_place and not update:
+                for path, content in saved.items():
+                    target = ROOT / path
+                    if content is None:
+                        target.unlink(missing_ok=True)
+                    elif not target.exists() or target.read_bytes() != content:
+                        target.write_bytes(content)
+
+
+def main(argv: List[str]) -> int:
+    jobs = 4
+    flags = []
+    names = []
+    for arg in argv:
+        if re.fullmatch(r"-j\d+", arg):
+            jobs = max(1, int(arg[2:]))
+        elif arg.startswith("-"):
+            flags.append(arg)
+        else:
+            names.append(arg)
+    if any(flag not in {"--list", "--update", "-h", "--help"} for flag in flags) or "-h" in flags or "--help" in flags:
+        print(__doc__, file=sys.stderr)
+        return 0 if ("-h" in flags or "--help" in flags) else 2
+    selected = [g for g in GENERATORS if not names or any(name in g.name for name in names)]
+    if not selected:
+        print(f"no generator matches {' '.join(names)}", file=sys.stderr)
+        return 2
+    if "--list" in flags:
+        for generator in selected:
+            mode = "in place" if generator.in_place else "temporary directory"
+            print(f"{generator.name} ({generator.project}, {mode}): {generator.script}")
+            for path in generator.outputs:
+                print(f"    {path}")
+        return 0
+    postgres = os.environ.get("PETRUS_TEST_POSTGRES")
+    if not postgres and any(g.needs_postgres for g in selected):
+        return subprocess.call([str(ROOT / "scripts" / "with-postgres"), sys.executable, __file__, *argv], env=ENV)
+    pythons = {project: interpreter(project) for project in sorted({g.project for g in selected})}
+    update = "--update" in flags
+    started = time.monotonic()
+    results: List[Result] = []
+    # In-place generators share the pool: no two generators write the same
+    # file, and none reads another's output.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+        futures = [pool.submit(run_generator, g, pythons[g.project], postgres, update) for g in selected]
+        for future in concurrent.futures.as_completed(futures):
+            results.append(future.result())
+            report(results[-1])
+    failed = [r for r in results if r.failure]
+    stale = [r for r in results if r.stale]
+    elapsed = time.monotonic() - started
+    files = sum(len(r.generator.outputs) for r in results)
+    if failed or (stale and not update):
+        print(f"\ncheck-corpora: {len(failed)} generators failed, {len(stale)} have stale files ({elapsed:.0f}s)", file=sys.stderr)
+        if stale and not update:
+            print("Regenerate with: scripts/check-corpora --update " + " ".join(f"'{r.generator.name}'" for r in stale), file=sys.stderr)
+        return 1
+    verb = "updated" if update and stale else "current"
+    print(f"\ncheck-corpora: {len(results)} generators, {files} files {verb} ({elapsed:.0f}s)")
+    return 0
+
+
+def report(result: Result) -> None:
+    name = result.generator.name
+    if result.failure:
+        print(f"FAIL  {name} ({result.seconds:.1f}s): {result.failure}", flush=True)
+    elif result.stale:
+        print(f"STALE {name} ({result.seconds:.1f}s)", flush=True)
+        for path, description in result.stale:
+            print(f"  {path}\n{description}", flush=True)
+    else:
+        print(f"ok    {name} ({result.seconds:.1f}s)", flush=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -1,0 +1,132 @@
+{
+ "about": "Measured wall-clock seconds per test suite on CI's 8 vCPU test runners, which scripts/ci-tests uses to balance the test shards. parts splits a long suite into hspec --match selections (a pattern matches a substring of an example's /describe/.../it/ path); the suite's remaining examples run as its 'rest' part, which --skips every pattern. A stale figure, or a pattern that selects nothing, only unbalances the shards: every example still runs.",
+ "seconds": {
+  "hamsterdan-agents-test": 11,
+  "hamsterdan-contracts-test": 1,
+  "hamsterdan-e2e-test": 86,
+  "hamsterdan-export-test": 18,
+  "hamsterdan-github-test": 5,
+  "hamsterdan-host-test": 40,
+  "hamsterdan-operator-test": 34,
+  "hamsterdan-readiness-test": 2,
+  "hamsterdan-testing-test": 518,
+  "petrus-activity-test": 2,
+  "petrus-agenticus-core-test": 4,
+  "petrus-agenticus-runtime-test": 21,
+  "petrus-agenticus-test": 12,
+  "petrus-cel-test": 1,
+  "petrus-dsl-test": 1,
+  "petrus-dst-test": 22,
+  "petrus-engine-absurd-test": 29,
+  "petrus-engine-file-test": 8,
+  "petrus-engine-postgres-test": 7,
+  "petrus-engine-sqlite-test": 4,
+  "petrus-engine-test": 5,
+  "petrus-execution-test": 36,
+  "petrus-fabric-test": 13,
+  "petrus-history-postgres-test": 11,
+  "petrus-history-store-test": 11,
+  "petrus-http-core-test": 3,
+  "petrus-impetus-test": 1,
+  "petrus-json-test": 4,
+  "petrus-motus-absurd-test": 15,
+  "petrus-motus-test": 5,
+  "petrus-motus-zeromq-test": 11,
+  "petrus-observation-http-test": 1,
+  "petrus-observation-test": 1,
+  "petrus-posix-test": 1,
+  "petrus-postgres-test": 8,
+  "petrus-processes-test": 5,
+  "petrus-simulation-test": 50,
+  "petrus-sqlite-test": 2,
+  "petrus-telemetry-instrumentation-test": 1,
+  "petrus-telemetry-test": 1,
+  "petrus-test-support-test": 1,
+  "petrus-viewer-server-test": 8
+ },
+ "parts": {
+  "hamsterdan-testing-test": {
+   "world-1": {
+    "match": [
+     "/World interop against the reference/git-none/",
+     "/World interop against the reference/git-before_delivery/",
+     "/World interop against the reference/git-after_acceptance-unrecovered/"
+    ],
+    "seconds": 58
+   },
+   "world-2": {
+    "match": [
+     "/World interop against the reference/git-ambiguity/",
+     "/World interop against the reference/authority-active/",
+     "/World interop against the reference/authority-closed/"
+    ],
+    "seconds": 47
+   },
+   "world-3": {
+    "match": [
+     "/World interop against the reference/git-after_acceptance/",
+     "/World interop against the reference/authority-draft_resume/",
+     "/World interop against the reference/timer-stable/"
+    ],
+    "seconds": 48
+   },
+   "world-4": {
+    "match": [
+     "/World interop against the reference/git-after_head/",
+     "/World interop against the reference/timer-draft_resume/",
+     "/World interop against the reference/timer-closed/"
+    ],
+    "seconds": 49
+   },
+   "campaign-timer": {
+    "match": [
+     "/tests/integration/testing/test_readiness_campaign.py/test_generated_reminder_timer_recovery",
+     "/World interop against the reference/timer-new_head/"
+    ],
+    "seconds": 69
+   },
+   "campaign-git-delivery": {
+    "match": [
+     "/tests/integration/testing/test_readiness_campaign.py/test_generated_v5_git_publication_recovery",
+     "/tests/integration/testing/test_readiness_campaign.py/test_generated_delivery_recovery"
+    ],
+    "seconds": 59
+   },
+   "campaign-authority": {
+    "match": [
+     "/tests/integration/testing/test_readiness_campaign.py/test_generated_authority_lifecycle",
+     "/journeys against the reference/clean_green/",
+     "/journeys against the reference/first_attempt_flake/",
+     "/journeys against the reference/persistent_ci_regression/"
+    ],
+    "seconds": 60
+   },
+   "journeys-1": {
+    "match": [
+     "/journeys against the reference/seeded_review_finding/",
+     "/journeys against the reference/conversational_change/",
+     "/journeys against the reference/agent_repair/",
+     "/journeys against the reference/hero_review/"
+    ],
+    "seconds": 38
+   },
+   "journeys-2": {
+    "match": [
+     "/journeys against the reference/draft_ready/",
+     "/journeys against the reference/stale_base_update/",
+     "/journeys against the reference/true_conflict_resolution/",
+     "/journeys against the reference/collaboration_approval/"
+    ],
+    "seconds": 38
+   }
+  },
+  "hamsterdan-e2e-test": {
+   "tier-b": {
+    "match": [
+     "/tier B: the reference recorded, both hosts replayed/"
+    ],
+    "seconds": 59
+   }
+  }
+ }
+}
