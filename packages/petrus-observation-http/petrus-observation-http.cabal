@@ -93,6 +93,6 @@ benchmark petrus-observation-http-bench
                   , petrus-observation-http
                   , petrus-test-support
                   , tasty >=1.4
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
                   , text
   ghc-options:      -threaded -O2 -rtsopts

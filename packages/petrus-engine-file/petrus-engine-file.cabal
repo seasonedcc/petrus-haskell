@@ -104,7 +104,8 @@ benchmark petrus-engine-file-bench
                   , bytestring
                   , filepath
                   , petrus-engine-file
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
+                  , tasty
                   , temporary
                   , text
   ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"

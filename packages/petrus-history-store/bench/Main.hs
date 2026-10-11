@@ -29,6 +29,7 @@ import Petrus.Json (Json (..))
 import System.Directory (createDirectory, doesFileExist, getTemporaryDirectory, removeDirectoryRecursive, removeFile)
 import System.FilePath ((</>))
 import System.IO (hClose, openTempFile)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 historyFifoTokens, perRecordAppends, terminalResends :: Int
@@ -107,7 +108,10 @@ main = do
         [] -> error "no FiringCompleted in the bench History"
   withSqliteHistoryStore existingSqlite "bench" $ \store -> store.history.extend history
   resent <- openSqliteHistoryStore existingSqlite "bench"
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup
         "jsonl"
         [ bench "append-one-batch" $ whnfIO $ do

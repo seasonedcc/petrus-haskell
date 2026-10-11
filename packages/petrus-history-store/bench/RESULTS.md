@@ -7,15 +7,14 @@ and the Haskell side computes the same number.
 
 ## How to rerun
 
-From the repository root:
+From the repository root (`scripts/bench petrus-history-store` runs exactly this block;
+`scripts/upstream-python` provisions the pinned reference):
 
-    cabal bench petrus-history-store
-
-Python, from the pinned reference checkout with its virtual environment:
-
-    cd upstream/petrus
-    uv sync    # once
-    .venv/bin/python ../../packages/petrus-history-store/bench/python_bench.py
+<!-- scripts/bench: rerun -->
+```sh
+cabal bench -j2 petrus-history-store --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-history-store/bench/python_bench.py)
+```
 
 Haskell numbers are tasty-bench means (± 2σ). Python numbers are the median of
 3–20 runs after one warm-up. Both sides were run back to back on 2026-10-10 on
@@ -107,14 +106,9 @@ The workloads:
 
 ### How to rerun
 
-From the repository root (the second command runs only the SQLite rows):
+The rerun block above covers these rows too. To run only the SQLite rows on the Haskell side:
 
-    cabal bench petrus-history-store
-    cabal bench petrus-history-store --benchmark-options='-p sqlite +RTS -M2G -RTS'
-
-Python, from `upstream/petrus` as above:
-
-    .venv/bin/python ../../packages/petrus-history-store/bench/python_bench.py
+    cabal bench -j2 petrus-history-store --benchmark-options='-p sqlite +RTS -M2G -RTS'
 
 The two sides ran interleaved (Python, Haskell, Python, ...) for three rounds
 on 2026-10-10, on the machine and toolchains named above. The Haskell side is

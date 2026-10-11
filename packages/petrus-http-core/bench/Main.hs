@@ -93,7 +93,10 @@ main :: IO ()
 main =
   withRunningServer defaultServerConfig {serverHost = "127.0.0.1"} handler $ \server -> do
     port <- serverPort server
-    defaultMain
+    -- Wall-clock time for every benchmark, as the Python twins measure it
+    -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+    -- time spent waiting on the kernel, servers and child processes.
+    defaultMain . map (localOption WallTime) $
       [ -- Each iteration is a new TCP connection through the kernel and the
         -- scheduler: allow a wider spread than the global --stdev.
         localOption (RelStDev 0.2) $

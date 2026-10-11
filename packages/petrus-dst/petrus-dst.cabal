@@ -193,7 +193,8 @@ benchmark petrus-dst-bench
                   , petrus-postgres
                   , petrus-test-support
                   , QuickCheck
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
+                  , tasty
                   , temporary >=1.3
                   , text
   ghc-options:      -O2 -rtsopts

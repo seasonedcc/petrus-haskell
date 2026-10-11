@@ -6,6 +6,16 @@ The Haskell backend against the upstream Node backend at the pin in
 
 ## How to rerun
 
+From the repository root (`scripts/bench petrus-viewer-server` runs exactly this block):
+
+<!-- scripts/bench: rerun -->
+```sh
+test -d upstream/petrus-viewer/node_modules || (cd upstream/petrus-viewer && pnpm install --frozen-lockfile)
+node packages/petrus-viewer-server/bench/run.mjs
+```
+
+Other ways to run it:
+
 ```bash
 # from the repository root; needs `pnpm install` in upstream/petrus-viewer
 node packages/petrus-viewer-server/bench/run.mjs                 # builds, 5 reps
@@ -42,6 +52,11 @@ best run of each server, and stops the servers by PID.
 | collab fan-out, P peers x M msgs | one peer sends M cursor messages; one op = one delivery to one of the P other peers |
 
 ## Results
+
+<!-- parity: rows below 1.0× belong to "Agent WebSocket protocol", "File and URL endpoints" -->
+The rows below 1.0× here are relay round trips (the Agent WebSocket protocol) and `resolve-ref`
+(the file and URL endpoints); PARITY.md lists both components as in progress. The collaboration
+fan-out rows are all above 1.0×.
 
 Machine: Apple M4 (10 cores), 24 GB, macOS 26 (Darwin 25.3.0), node
 v22.22.0, GHC 9.10.3. **The machine was shared with other agents building

@@ -197,9 +197,9 @@ spec = describe "Gondolin provider" $ do
       sidecarSha256 `shouldBe` "498cffb83fb6245670e1bb5f7231374262e60cc2cfe86d20746a700eaad19b44"
       onDisk <- B.readFile "data/gondolin_sidecar.mjs"
       onDisk `shouldBe` sidecarSource
-      let upstream = "../../upstream/petrus/src/petrus/motus/_execution/gondolin_sidecar.mjs"
-      exists <- doesFileExist upstream
-      when exists (B.readFile upstream `shouldReturn` sidecarSource)
+      -- The pinned submodule is required: a missing checkout fails here
+      -- rather than skipping the comparison.
+      B.readFile "../../upstream/petrus/src/petrus/motus/_execution/gondolin_sidecar.mjs" `shouldReturn` sidecarSource
 
     it "has valid Node syntax (test_sidecar_has_valid_node_syntax)" $ case node of
       Nothing -> pendingWith "node is not on PATH"

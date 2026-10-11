@@ -78,5 +78,5 @@ benchmark petrus-http-core-bench
                   , network
                   , petrus-http-core
                   , tasty >=1.4
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
                   , time

@@ -82,7 +82,10 @@ run' url = do
         Engine.deliver engine source' [black] identity Nothing
       createClose = fresh "create-" >>= open >>= Engine.close
   flip finally (readIORef current >>= Engine.close >> Engine.close prior) $
-    defaultMain
+    -- Wall-clock time for every benchmark, as the Python twins measure it
+    -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+    -- time spent waiting on the kernel, servers and child processes.
+    defaultMain . map (localOption WallTime) $
       [ localOption (RelStDev 0.2) $
           bgroup
             "engine"

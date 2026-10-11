@@ -29,26 +29,37 @@ minted once before timing, so the `GET` measures the cached-token path.
 ## Results
 
 The machine was an Apple M4 (10 cores), macOS 26.3, shared with other
-builds; the 1-minute load average was 5–8 during these runs.
+agents; the 1-minute load average was 5.0–5.6 during these runs
+(2026-10-10, 21:40–21:45 local, UTC-3, commit `74e6b1e` with the switch to
+wall-clock time in `bench/Main.hs`).
 
-- Haskell: GHC 9.10.3 with `-O2`, `tasty-bench` 0.5.1, run with
-  `+RTS -M2G`. Each cell is the mean of that benchmark run.
+- Haskell: GHC 9.10.3 with `-O2`, `tasty-bench` 0.5.1 in wall-clock time
+  (`localOption WallTime`), run with `+RTS -M2G`. Each cell is the mean of
+  that benchmark run.
 - Python: CPython 3.14.6 with githubkit 0.16.0, httpx 0.28.1, hishel 1.3.0,
   PyJWT 2.13.0 and cryptography 50.0.0. Each cell is the best of 5 `timeit`
-  repeats.
-- Both suites were run twice, interleaved. The verify case was run once more
-  on each side. The table shows each side's best run.
+  repeats (`time.perf_counter`).
+- Both suites were run twice, interleaved (Haskell, Python, then Python,
+  Haskell). The table shows each side's best run.
 
 | Operation | Haskell | Python | Python / Haskell |
 | --- | ---: | ---: | ---: |
-| webhook verify (HMAC-SHA256, 10 KB) | 4.12 µs | 4.49 µs | 1.09× |
-| webhook parse (`issue_comment`, 10 KB) | 15.2 µs | 34.4 µs | 2.3× |
-| observation encode (sorted JSON) | 3.06 µs | 4.99 µs | 1.6× |
-| webhook receive (verify, parse, SQLite insert) | 49.6 µs | 82.1 µs | 1.7× |
-| App JWT mint (RS256, from the PEM text) | 512 µs | 47,226 µs | 92× |
-| installation GET pull (cached token, mock network) | 28.0 µs | 200.6 µs | 7.2× |
-| gateway `pull_request` snapshot | 1.84 µs | 2.48 µs | 1.35× |
-| publisher lookup hit (100 comments) | 11.2 µs | 27.0 µs | 2.4× |
+| webhook verify (HMAC-SHA256, 10 KB) | 4.06 µs | 4.37 µs | 1.08× |
+| webhook parse (`issue_comment`, 10 KB) | 13.9 µs | 34.2 µs | 2.5× |
+| observation encode (sorted JSON) | 2.81 µs | 5.06 µs | 1.8× |
+| webhook receive (verify, parse, SQLite insert) | 77.6 µs | 99.2 µs | 1.28× |
+| App JWT mint (RS256, from the PEM text) | 494 µs | 45,328 µs | 92× |
+| installation GET pull (cached token, mock network) | 27.1 µs | 189.5 µs | 7.0× |
+| gateway `pull_request` snapshot | 1.81 µs | 2.45 µs | 1.35× |
+| publisher lookup hit (100 comments) | 11.1 µs | 26.2 µs | 2.4× |
+
+The other runs: verify 4.15 µs against 4.43 µs, receive 82.4 µs against
+114.2 µs; every other row within 3% of its best on both sides.
+
+The figures committed before these timed Haskell in tasty-bench's default CPU
+time. Only `webhook receive` does IO (the SQLite insert and its commit), and
+it is the only row that moved: 49.6 µs then, 77.6 µs in wall-clock time now,
+which takes it from 1.7× to 1.28× faster than Python.
 
 Haskell is faster on every operation.
 
@@ -57,19 +68,19 @@ Two cases need a word of context:
 - **Webhook verify** is bound by SHA-256 throughput on both sides. Both use the
   ARMv8 SHA-2 instructions: OpenSSL in Python, crypton's CRYPTOGAMS assembly
   in Haskell. A raw SHA-256 of the 10 KB body takes 3.6–4.0 µs on either
-  side, so the margin is small. In single runs the two sides overlap within
-  noise: the second interleaved round measured 4.53 µs against 4.50 µs.
+  side, so the margin is small: 1.07× and 1.08× in the two interleaved
+  rounds above. Earlier single runs overlapped within noise (4.53 µs against
+  4.50 µs).
   - The Haskell custody absorbs the secret's keyed HMAC pads once, when the
     inbox opens (`verifier`), and reuses that state for every delivery
     (`verifyWith`).
   - The bench also reports `verify` with the key state rebuilt on every call.
-    Its best was 4.12 µs, the same as the custody path, but less stable
-    under load.
+    Its best was 4.02 µs, the same as the custody path.
 - **App JWT mint** is dominated on the Python side by
   `cryptography.load_pem_private_key`. PyJWT calls it on every mint, and it
   validates the RSA key on each load.
-  - Haskell parses the PEM and signs in 512 µs. The bench also reports signing
-    with an already-parsed key (469 µs).
+  - Haskell parses the PEM and signs in 494 µs. The bench also reports signing
+    with an already-parsed key (462 µs).
   - GitHubKit caches the JWT for eight minutes, and so does the Haskell
     client, so this cost is paid rarely in production on either side.
 
@@ -88,9 +99,13 @@ Changes made for these numbers:
 
 From the repository root:
 
+`scripts/bench hamsterdan-github` runs exactly this block; `scripts/upstream-python hamsterdan`
+provisions the pinned Hamsterdan and its environment:
+
+<!-- scripts/bench: rerun -->
 ```sh
 cabal bench -j2 hamsterdan-github --benchmark-options='+RTS -M2G -RTS'
-upstream/hamsterdan/.venv/bin/python packages/hamsterdan-github/bench/bench.py
+"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-github/bench/bench.py
 ```
 
 Run the Haskell benchmark from `packages/hamsterdan-github` if you call the

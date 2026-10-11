@@ -40,14 +40,16 @@ Both sides print the same row names and result sizes.
 
 ## How to rerun
 
-From the repository root:
+From the repository root (`scripts/bench petrus-motus-zeromq` runs exactly this;
+`scripts/upstream-python` provisions the pinned reference):
 
-    cabal bench petrus-motus-zeromq --benchmark-options '+RTS -M2G -RTS'
+<!-- scripts/bench: rerun -->
+```sh
+cabal bench -j2 petrus-motus-zeromq --benchmark-options '+RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-motus-zeromq/bench/python_bench.py)
+```
 
-Python, from the pinned reference checkout with its virtual environment:
-
-    cd upstream/petrus
-    .venv/bin/python ../../packages/petrus-motus-zeromq/bench/python_bench.py
+Both harnesses read the monotonic clock around each timed run, so both sides are wall-clock time.
 
 The Haskell bench prints its rows to stdout. The Python script prints the
 same rows to stderr, and `name,nanoseconds` lines to stdout for

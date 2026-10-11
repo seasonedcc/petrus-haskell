@@ -108,6 +108,7 @@ benchmark petrus-engine-bench
                   , petrus-impetus
                   , petrus-json
                   , petrus-motus
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
+                  , tasty
                   , text
   ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"

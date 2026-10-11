@@ -59,7 +59,10 @@ run url = do
           pure (a, b, c)
         _ -> Left "unexpected row shape"
   flip finally (mapM_ close [auto, joined, listener, sender]) $
-    defaultMain
+    -- Wall-clock time for every benchmark, as the Python twins measure it
+    -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+    -- time spent waiting on the kernel, servers and child processes.
+    defaultMain . map (localOption WallTime) $
       [ -- Everything that crosses to the server rides on the scheduler of a
         -- possibly loaded machine, and commits wait for the WAL flush: allow
         -- a wider spread than the global --stdev, or a busy machine never

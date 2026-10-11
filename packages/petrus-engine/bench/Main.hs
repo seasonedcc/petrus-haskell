@@ -14,6 +14,7 @@ import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch)
 import System.Directory (createDirectory, getTemporaryDirectory, removeDirectoryRecursive, removeFile)
 import System.FilePath ((</>))
 import System.IO (hClose, openTempFile)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 smallOrders, largeOrders, chainLength, chainTokens :: Int
@@ -69,7 +70,10 @@ main = do
   small <- orders inMemoryHistoryStore smallOrders
   chained <- chain
   putStrLn ("sizes: orders-small " <> show small <> ", orders-large " <> show loaded <> ", chain " <> show chained)
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup
         "engine"
         [ bench "orders-small" $ whnfIO $ orders inMemoryHistoryStore smallOrders

@@ -20,6 +20,7 @@ module Main (main) where
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 import Petrus.Cel (compile, programExpr)
@@ -117,4 +118,7 @@ check (Case name source compiler input expected) =
 main :: IO ()
 main = do
   mapM_ check cases
-  defaultMain (map benchmarks cases)
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain (map (localOption WallTime . benchmarks) cases)

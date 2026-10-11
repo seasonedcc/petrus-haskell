@@ -102,10 +102,18 @@ noise of `off`, because unrouted lines are never formatted. Python pays
 
 ## Rerun
 
-```sh
-export PATH=$HOME/.ghcup/bin:$PATH
-cabal bench petrus-telemetry-instrumentation-bench --benchmark-options='--stdev 5'
+From the repository root (`scripts/bench petrus-telemetry-instrumentation`
+runs exactly this; `scripts/upstream-python` provisions the pinned
+reference):
 
-cd upstream/petrus
-.venv/bin/python ../../packages/petrus-telemetry-instrumentation/bench/python_bench.py
+<!-- scripts/bench: rerun -->
+```sh
+cabal bench -j2 petrus-telemetry-instrumentation --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-telemetry-instrumentation/bench/python_bench.py)
 ```
+
+Haskell times are wall-clock time (`localOption WallTime` in `bench/Main.hs`),
+like the Python side's `time.perf_counter`. The table above was taken before
+that switch, in tasty-bench's default CPU time; this workload is
+single-threaded and does no I/O inside the timed region, so the two agree
+(see [CPU and wall-clock time](../../../docs/reproducing.md#cpu-and-wall-clock-time)).

@@ -40,6 +40,7 @@ import Petrus.Motus.Worker
 import System.Directory (createDirectory, doesFileExist, getTemporaryDirectory, removeDirectoryRecursive, removeFile)
 import System.FilePath ((</>))
 import System.IO (hClose, openTempFile)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 import Text.Printf (printf)
 
@@ -233,7 +234,10 @@ main = do
   -- timer-driven work, so these are medians of 10 runs after a warm-up,
   -- exactly as python_bench.py measures.
   forM_ [1, 8, 64] $ \c -> medianTimed ("async-worker/sleep-1ms-200-c" <> show c) 10 (asyncMemory c 1000 200)
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup
         "local"
         [ bench "open-fresh" $ whnfIO $ openFresh path

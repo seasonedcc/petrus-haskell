@@ -69,12 +69,13 @@ benchmark petrus-posix-bench
   type:             exitcode-stdio-1.0
   hs-source-dirs:   bench
   main-is:          Main.hs
-  ghc-options:      -threaded -O2
+  ghc-options:      -threaded -O2 -rtsopts
   build-depends:    base
                   , bytestring
                   , directory
                   , filepath
                   , petrus-posix
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
+                  , tasty
                   , temporary
                   , unix

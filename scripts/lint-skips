@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Fail when a test could skip silently because a Python reference is missing.
+
+    scripts/lint-skips
+
+Cross-language tests reach the pinned reference only through
+petrus-test-support: ``pythonExecutable`` / ``upstreamPythonExecutable``
+(which provision the environment with scripts/upstream-python and throw when
+they cannot) and ``Petrus.TestSupport.Repo`` (``repoRoot``, ``upstreamPetrus``,
+``upstreamPath``, ``readUpstream``, which throw when the checkout is
+missing). Package-local ``withReference`` helpers wrap those. A missing
+reference therefore fails the test; it never turns it pending or passes it
+vacuously.
+
+This lint scans every test and differential source under ``packages/`` for
+the ways around that convention:
+
+1. a hard-coded ``.venv`` or ``bin/python`` path in Haskell code (not
+   comments): use ``upstreamPythonExecutable``;
+2. ``pending``/``pendingWith`` whose message mentions Python, a venv, uv or
+   upstream: a missing reference must fail, not go pending;
+3. an existence probe (``doesFileExist``, ``doesDirectoryExist``,
+   ``doesPathExist``) of an ``upstream`` path, which lets a test branch
+   around a missing checkout: use ``upstreamPath``/``readUpstream``, or read
+   the file and let a missing one fail;
+4. ``findExecutable`` of ``python``/``python3``/``uv``: the reference
+   interpreter comes from scripts/upstream-python;
+5. in the Python helpers the tests run: ``pytest.skip``, ``unittest.skip``,
+   or ``except ImportError`` / ``ModuleNotFoundError``.
+
+A line may opt out with a trailing ``-- lint-skips: allow <reason>`` (or
+``# lint-skips: allow <reason>`` in Python); the reason is required.
+PETRUS_TEST_POSTGRES and Docker opt-ins are not covered here: CI sets both,
+and scripts/check-all refuses to run in CI without PETRUS_TEST_POSTGRES.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+from typing import List
+
+ROOT = Path(__file__).resolve().parent.parent
+ALLOW = re.compile(r"(--|#)\s*lint-skips:\s*allow\s+\S")
+
+HASKELL_RULES = [
+    (re.compile(r'"[^"]*(\.venv|bin/python)[^"]*"'), "hard-coded reference interpreter path; use upstreamPythonExecutable"),
+    (
+        re.compile(r"\bpending(With)?\b.*(python|venv|\buv\b|upstream)", re.IGNORECASE),
+        "pending on a missing Python reference; a missing reference must fail",
+    ),
+    (
+        re.compile(r"\bdoes(File|Directory|Path)Exist\b.*upstream", re.IGNORECASE),
+        "existence probe of an upstream path; use upstreamPath/readUpstream so a missing checkout fails",
+    ),
+    (
+        re.compile(r'\bfindExecutable\s+"(python3?|uv)"'),
+        "looks up a Python or uv on PATH; use upstreamPythonExecutable",
+    ),
+]
+
+PYTHON_RULES = [
+    (re.compile(r"\b(pytest\.skip|unittest\.skip|skipTest)\b"), "skips a test"),
+    (re.compile(r"except\s*\(?[^:]*\b(ImportError|ModuleNotFoundError)\b"), "tolerates a missing import"),
+]
+
+
+def haskell_code(line: str) -> str:
+    """The line without a trailing -- comment (good enough for this lint)."""
+    stripped = line.lstrip()
+    if stripped.startswith("--") or stripped.startswith("{-"):
+        return ""
+    position = line.find(" -- ")
+    return line if position < 0 else line[:position]
+
+
+def sources() -> List[Path]:
+    found: List[Path] = []
+    for package in sorted((ROOT / "packages").iterdir()):
+        if package.name == "petrus-test-support":
+            continue
+        for sub in ("test", "differential", "upstream-tests"):
+            directory = package / sub
+            if directory.is_dir():
+                found += sorted(p for p in directory.rglob("*") if p.suffix in (".hs", ".py") and p.is_file())
+    return found
+
+
+def main() -> int:
+    problems = []
+    files = sources()
+    for path in files:
+        rules = HASKELL_RULES if path.suffix == ".hs" else PYTHON_RULES
+        in_block_comment = False
+        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if ALLOW.search(line):
+                continue
+            if path.suffix == ".hs":
+                if in_block_comment:
+                    if "-}" in line:
+                        in_block_comment = False
+                    continue
+                if line.lstrip().startswith("{-") and "-}" not in line:
+                    in_block_comment = True
+                    continue
+                text = haskell_code(line)
+            else:
+                text = line.split("#", 1)[0] if not line.lstrip().startswith("#") else ""
+            for pattern, message in rules:
+                if pattern.search(text):
+                    problems.append(f"{path.relative_to(ROOT)}:{number}: {message}\n    {line.strip()}")
+    if problems:
+        print("tests that could skip silently on a missing Python reference:", file=sys.stderr)
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        print("(see scripts/lint-skips for the convention)", file=sys.stderr)
+        return 1
+    print(f"lint-skips: {len(files)} test sources checked, no silent skips on a missing reference")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
