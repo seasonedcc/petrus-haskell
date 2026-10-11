@@ -56,6 +56,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -447,14 +448,15 @@ def passed(package: str, suite: str) -> bool:
     return bool(logs) and f"Test suite {suite}: PASS" in text and f"Test suite {suite}: FAIL" not in text
 
 
-def counts(package: str, suite: str) -> Dict[str, int]:
-    """hspec's summary line in the suite's log: examples, failures, pending."""
-    text = "\n".join(log.read_text(errors="replace") for log in suite_logs(package, suite))
-    found = re.findall(r"(\d+) examples?, (\d+) failures?(?:, (\d+) pending)?", text)
-    if not found:
-        return {}
-    examples, failures, pending = found[-1]
-    return {"examples": int(examples), "failures": int(failures), "pending": int(pending or 0)}
+SUMMARY = re.compile(rb"(\d+) examples?, (\d+) failures?(?:, (\d+) pending)?")
+
+
+def counts(directory: Path, suite: str) -> Dict[str, int]:
+    """The suite's hspec summary (examples, failures, pending), as the
+    wrapper recorded it in DIRECTORY (with --test-show-details=direct the
+    suite's log leaves it out)."""
+    recorded = directory / f"{suite}.json"
+    return json.loads(recorded.read_text()) if recorded.is_file() else {}
 
 
 def write_results(name: str, document: dict, outcome: Dict[str, bool], tallies: Optional[Dict[str, Dict[str, int]]] = None) -> None:
@@ -492,16 +494,16 @@ def run_shard(args: List[str]) -> int:
             print(f"{unit['id']}: {' '.join(shlex.quote(a) for a in unit['args'])}")
     scratch = Path(tempfile.mkdtemp(prefix="ci-tests-", dir=os.environ.get("RUNNER_TEMP")))
     selection_file = scratch / "selection.json"
-    selection_file.write_text(json.dumps(selection))
+    selection_file.write_text(json.dumps({"args": selection, "counts": str(scratch)}))
     jobs = os.environ.get("CI_TEST_JOBS", "-j")
     command = ["cabal", "test", jobs, *targets, "--keep-going", *test_flags()]
     print("$ " + " ".join(shlex.quote(c) for c in command), flush=True)
     try:
         status = subprocess.call(command, cwd=ROOT, env={**os.environ, "CI_TESTS_SELECTION": str(selection_file)})
+        tallies = {u["id"]: counts(scratch, u["suite"]) for u in units}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     outcome = {u["id"]: passed(document["inputs"][u["suite"]]["package"], u["suite"]) for u in units}
-    tallies = {u["id"]: counts(document["inputs"][u["suite"]]["package"], u["suite"]) for u in units}
     write_results(name, document, outcome, tallies)
     return status if status != 0 else (0 if all(outcome.values()) else 1)
 
@@ -519,14 +521,33 @@ def test_flags() -> List[str]:
 
 def wrap(args: List[str]) -> int:
     """SELECTION BINARY ARGS...: run a test binary (cabal's --test-wrapper)
-    with its suite's part selection from SELECTION added to its arguments."""
+    with its suite's part selection from SELECTION added to its arguments,
+    pass its output through, and record its hspec summary in SELECTION's
+    counts directory (a shard runs at most one part of a suite)."""
     selection = json.loads(Path(args[0]).read_text())
     binary, rest = args[1], args[2:]
-    extra = selection.get(Path(binary).name, [])
+    suite = Path(binary).name
+    extra = selection["args"].get(suite, [])
     if extra:
-        print(f"{Path(binary).name}: {' '.join(shlex.quote(a) for a in extra)}", file=sys.stderr, flush=True)
-    os.execv(binary, [binary, *extra, *rest])
-    return 127
+        print(f"{suite}: {' '.join(shlex.quote(a) for a in extra)}", file=sys.stderr, flush=True)
+    child = subprocess.Popen([binary, *extra, *rest], stdout=subprocess.PIPE)
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, lambda s, _frame: child.send_signal(s))
+    tail = b""
+    while True:
+        chunk = os.read(child.stdout.fileno(), 65536)
+        if not chunk:
+            break
+        sys.stdout.buffer.write(chunk)
+        sys.stdout.buffer.flush()
+        tail = (tail + chunk)[-65536:]
+    code = child.wait()
+    found = SUMMARY.findall(tail)
+    if found:
+        examples, failures, pending = found[-1]
+        record = {"examples": int(examples), "failures": int(failures), "pending": int(pending or 0)}
+        (Path(selection["counts"]) / f"{suite}.json").write_text(json.dumps(record))
+    return code if code >= 0 else 128 - code
 
 
 # The upstream petrus-viewer suites (packages/petrus-viewer-server/

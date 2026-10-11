@@ -189,7 +189,10 @@ relayApp (Sockets ref) relay req respond = do
         W.responseRaw
           ( \_ sink -> case upgradeResponse (W.requestMethod req) (W.requestHeaders req) of
               Left refusal -> sink refusal
-              Right accepted -> sink accepted >> relaySocket relay s
+              -- Warp's 30 s inactivity timeout would close the relayed
+              -- socket (Warp sees no traffic once the relay owns it);
+              -- ws, like the reference, keeps an upgraded socket open.
+              Right accepted -> Warp.pauseTimeout req >> sink accepted >> relaySocket relay s
           )
           (lbsResponse H.status500 [("Content-Type", "text/plain")] "WebSocket relay: raw responses unsupported")
     Nothing -> respond (lbsResponse H.status500 [("Content-Type", "text/plain")] "WebSocket relay: unknown connection")
