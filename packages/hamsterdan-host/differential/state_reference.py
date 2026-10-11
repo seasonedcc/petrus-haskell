@@ -17,6 +17,18 @@ the host instead composes the real GitHub client stack and sends every
 request to the recording fake GitHub on ``127.0.0.1:github_port``; the
 ``V5Provider`` then stays unused.
 
+With ``agent`` in the document, the runner is the real agent instead of the
+clear-review ``V5Runner``, composed the way ``main()`` composes it
+(``PiA2InstallationConfig.from_environment``, ``compose_agent``, the
+``agent-routes.sqlite3`` store, ``_compose_agent_runtime`` and
+``PiNativeRunner``) with three substitutions: Petrus's deterministic
+``compose_pi_a2_scripted_runtime`` (one ``PiA2ScriptedTurn`` per ``turns``
+entry) stands in for the Pi installation, the workspace receiver clones the
+local ``repository`` instead of the GitHub URL, and the READY probe (which
+the scripted runtime refuses) gives way to the scripted host's own
+``scripted_readiness()``. The PR's base comes in as
+``base`` so the provider names commits of that repository.
+
 ``dump`` prints every file under ROOT in a comparable form: SQLite
 databases as their schema and sorted rows, every other file as text.
 
@@ -36,10 +48,15 @@ from pathlib import Path
 
 import httpx
 
+from petrus.agenticus.runtime.pi_a2_host import PiA2ScriptedTurn, compose_pi_a2_scripted_runtime
+
+from hamsterdan.agents.pi import PiNativeRunner
 from hamsterdan.agents.protocol import ReviewResult
 from hamsterdan.github_app.auth import GitHubAppClients
 from hamsterdan.github_app.config import AccountConfig, HostConfig
 from hamsterdan.github_app.models import WireResponse
+from hamsterdan.host import __main__ as host_main
+from hamsterdan.host import pi_a2 as pi_a2_module
 from hamsterdan.host import service as service_module
 from hamsterdan.host.__main__ import inspect_instance
 from hamsterdan.host.agenticus import AgentRouteStore, compose_agent
@@ -63,8 +80,8 @@ class Clients:
 
 
 class V5Provider:
-    def __init__(self, head: str, comments: list) -> None:
-        self.head, self.base = head, "b" * 40
+    def __init__(self, head: str, comments: list, base: str = "b" * 40) -> None:
+        self.head, self.base = head, base
         self.calls: list[list[str]] = []
         self.comments: list[dict[str, object]] = comments
 
@@ -155,6 +172,66 @@ class V5Runner:
         )
 
 
+class Recording:
+    """The agent runner, recording each review as ``V5Runner`` does."""
+
+    def __init__(self, runner) -> None:
+        self.runner = runner
+        self.reviews: list[list[object]] = []
+
+    def review(self, repository_url, request, *, operation, attempt, is_current=None):
+        self.reviews.append([repository_url, request.head, operation, attempt])
+        return self.runner.review(repository_url, request, operation=operation, attempt=attempt, is_current=is_current)
+
+    def converse(self, repository_url, request, *, operation, attempt, is_current=None):
+        return self.runner.converse(repository_url, request, operation=operation, attempt=attempt, is_current=is_current)
+
+    def code(self, repository_url, request, *, operation, attempt, is_current=None):
+        return self.runner.code(repository_url, request, operation=operation, attempt=attempt, is_current=is_current)
+
+
+class LocalClone:
+    """The workspace receiver, cloning a local repository for every URL."""
+
+    def __init__(self, workspaces, repository: str) -> None:
+        self.workspaces, self.repository = workspaces, repository
+
+    def open(self, kind, repository_url, request, operation_id):
+        return self.workspaces.open(kind, self.repository, request, operation_id)
+
+
+def agent_environment(root: Path, agent: dict) -> dict[str, str]:
+    return {
+        "HAMSTERDAN_PI_PROVIDER": "anthropic",
+        "HAMSTERDAN_PI_MODEL": "claude-sonnet-4-5",
+        "HAMSTERDAN_PI_API_KEY": "synthetic-direct-authority",
+        "HAMSTERDAN_PI_CLI_PATH": agent["cli"],
+        "HAMSTERDAN_PI_NODE_PATH": agent["node"],
+        "HAMSTERDAN_PI_PACKAGE_ROOT": agent["package"],
+    }
+
+
+def compose_real_agent(root: Path, agent: dict):
+    """``main()``'s agent composition over the scripted Pi runtime."""
+    script = tuple(PiA2ScriptedTurn(text) for text in agent["turns"])
+
+    def scripted(*, config, authority):
+        runtime = compose_pi_a2_scripted_runtime(config=config, authority=authority, script=script)
+        assert runtime.scripted_readiness().ready
+        return runtime
+
+    pi_a2_module.compose_pi_a2_runtime = scripted
+    environment = agent_environment(root, agent)
+    installation = pi_a2_module.PiA2InstallationConfig.from_environment(environment, state_path=root)
+    environment.pop("HAMSTERDAN_PI_API_KEY", None)
+    composition = compose_agent(environment, provider=installation.provider, model=installation.model)
+    routes = AgentRouteStore(root / "agent-routes.sqlite3")
+    routes.activate(composition, root / "applications")
+    runtime, workspaces = host_main._compose_agent_runtime(root, installation)
+    runner = Recording(PiNativeRunner(runtime, LocalClone(workspaces, agent["repository"])))
+    return runner, composition, routes, runtime
+
+
 def config(root: Path, private_key: str = "private-key-secret") -> HostConfig:
     return HostConfig(
         app_id=17,
@@ -200,7 +277,7 @@ class Redirect(httpx.HTTPTransport):
 
 
 def drive(root: Path, document: dict) -> dict:
-    provider = V5Provider(document["head"], document["comments"])
+    provider = V5Provider(document["head"], document["comments"], document.get("base", "b" * 40))
     runner = V5Runner()
     port = document.get("github_port")
     if port is None:
@@ -213,15 +290,20 @@ def drive(root: Path, document: dict) -> dict:
             configured, transport=Redirect(int(port)), **kwargs
         )
         clients, settings = None, config(root, document["private_key"])
-    composition = compose_agent()
-    routes = AgentRouteStore(root / "test-agent-routes.sqlite3")
-    routes.activate(composition, root / "applications")
+    runtime = None
+    if "agent" in document:
+        runner, composition, routes, runtime = compose_real_agent(root, document["agent"])
+    else:
+        composition = compose_agent()
+        routes = AgentRouteStore(root / "test-agent-routes.sqlite3")
+        routes.activate(composition, root / "applications")
     host = HostService(
         settings,
         clients=clients,
         runner=runner,
         agent_composition=composition,
         agent_routes=routes,
+        agent_runtime=runtime,
     )
     reports: list[dict] = []
     deliveries: list[str] = []
@@ -262,7 +344,7 @@ def drive(root: Path, document: dict) -> dict:
             else:
                 raise AssertionError(f"unknown step {op}")
     finally:
-        host.close()
+        host_main._close_owned_resources(host, runtime, routes)
     return {
         "calls": provider.calls,
         "head": provider.head,
@@ -275,13 +357,21 @@ def drive(root: Path, document: dict) -> dict:
 WORKER = re.compile(r"worker:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 INSTANT = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?")
 EPOCH = re.compile(r"1\d{9}(\.\d+)?|1\d{12}|1\d{15}")
+LIFECYCLE = re.compile(r"pi-a2-[0-9a-f]{32}-")
+PREPARED = re.compile(r"prepare-[0-9a-f]{32}")
+MONOTONIC = re.compile(r'"expires_at":\d+(\.\d+)?')
 
 
 def normalized(text: str) -> str:
     """Only what differs between two runs of the same implementation: the
-    Worker claimant's random identity and the wall-clock instants (ISO
-    instants in JSON; epoch seconds, milliseconds and microseconds in
-    SQLite columns)."""
+    Worker claimant's random identity, the Pi A2 runtime host's random
+    lifecycle identity (in its operation names, and in the connection
+    custody's ``prepare-`` names, which digest one of them), the
+    wall-clock instants (ISO instants in JSON; epoch seconds, milliseconds
+    and microseconds in SQLite columns), and the connection leases'
+    monotonic-clock expiry."""
+    text = PREPARED.sub("prepare-<digest>", LIFECYCLE.sub("pi-a2-<lifecycle>-", text))
+    text = MONOTONIC.sub('"expires_at":<monotonic>', text)
     return INSTANT.sub("<instant>", WORKER.sub("worker:<uuid>", text))
 
 
@@ -299,8 +389,8 @@ def dump(root: Path) -> dict:
             if name.endswith("-wal") or name.endswith("-shm") or name.endswith("-journal"):
                 continue
             if relative == "test-agent-routes.sqlite3":
-                # Agent route custody is the agents package's (the Haskell
-                # host composes no agent runtime yet).
+                # The clear-review journey's route store (the agent journey
+                # uses and compares the production agent-routes.sqlite3).
                 continue
             if name.endswith(".sqlite3"):
                 with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as database:
