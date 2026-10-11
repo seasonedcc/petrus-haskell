@@ -43,7 +43,8 @@ import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath (isAbsolute, (</>))
 import System.IO (hPutStrLn, stderr, stdout)
-import System.Posix.Process (executeFile)
+import System.Posix.Signals (raiseSignal)
+import System.Process.Typed (proc, runProcess, setEnv)
 
 -- | Run a fake mode when the arguments name one; otherwise return.
 dispatch :: [String] -> IO Bool
@@ -168,7 +169,7 @@ assert what holds = unless holds do
 
 -- | The fake @op@: check what the launcher hands it, count the fetch,
 -- create the CLI configuration directory, refuse when told to, then add
--- the current Environment and exec the command after @--@.
+-- the current Environment and run the command after @--@.
 fakeOp :: [String] -> IO ()
 fakeOp arguments = do
   environment <- Map.fromList <$> getEnvironment
@@ -194,7 +195,17 @@ fakeOp arguments = do
         _ -> Map.empty
       command = drop 1 (dropWhile (/= "--") arguments)
   case command of
-    executable : rest -> executeFile executable True rest (Just (Map.toList (Map.union added environment)))
+    executable : rest -> do
+      -- The reference's fake execs the command (os.execvpe). This one runs
+      -- it as a child and exits with its status, as the real op run does:
+      -- an exec from the threaded RTS fails at random, because Linux
+      -- refuses a new thread (EAGAIN, copy_fs) while another thread of the
+      -- process is in execve, and the RTS may be starting a worker then,
+      -- which it treats as fatal ("failed to create OS thread").
+      status <- runProcess (setEnv (Map.toList (Map.union added environment)) (proc executable rest))
+      case status of
+        ExitFailure code | code < 0 -> raiseSignal (fromIntegral (negate code)) >> exitWith (ExitFailure 1)
+        _ -> exitWith status
     [] -> assert "a command after --" False
 
 -- | The application child: no ambient credential family survives, and the
