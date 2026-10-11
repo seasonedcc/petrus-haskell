@@ -1,0 +1,114 @@
+cabal-version:      3.4
+name:               hamsterdan-export
+version:            0.1.0.0
+synopsis:           Hamsterdan's offline evidence exporter
+description:
+  @python -m hamsterdan.host.export@ (@src/hamsterdan/host/export.py@):
+  export one pull request's durable Hamsterdan state as a self-contained
+  offline evidence package. Given the same state directory, the package,
+  the report and the command line's output are the reference's, byte for
+  byte.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    README.md
+                    PARITY.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Hamsterdan.Export
+                    Hamsterdan.Export.Files
+                    Hamsterdan.Export.Python
+  build-depends:    base >=4.18 && <5
+                  , base16-bytestring >=1.0
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , cryptohash-sha256 >=0.11
+                  , direct-sqlite >=2.3.27
+                  , directory >=1.3
+                  , hamsterdan-cli
+                  , hamsterdan-contracts
+                  , hamsterdan-github
+                  , hamsterdan-readiness
+                  , petrus-engine-file
+                  , petrus-json
+                  , text >=2.0
+                  , unix >=2.8
+  ghc-options:      -O2
+
+executable hamsterdan-export
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  build-depends:    base
+                  , hamsterdan-export
+                  , text
+  ghc-options:      -O2 -threaded -rtsopts
+
+test-suite hamsterdan-export-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    ExportSpec
+                    Fixtures
+                    DifferentialSpec
+  build-tool-depends: hamsterdan-export:hamsterdan-export
+  build-depends:    base
+                  , base16-bytestring
+                  , bytestring
+                  , containers
+                  , cryptohash-sha256
+                  , direct-sqlite
+                  , directory
+                  , filepath
+                  , hamsterdan-export
+                  , hspec >=2.10
+                  , petrus-json
+                  , petrus-test-support
+                  , process
+                  , temporary >=1.3
+                  , text
+                  , typed-process
+                  , unix
+  ghc-options:      -threaded -rtsopts
+
+benchmark hamsterdan-export-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench test
+  main-is:          Main.hs
+  other-modules:    Fixtures
+  build-depends:    base
+                  , base16-bytestring
+                  , bytestring
+                  , containers
+                  , cryptohash-sha256
+                  , direct-sqlite
+                  , directory
+                  , filepath
+                  , hamsterdan-export
+                  , petrus-json
+                  , process
+                  , temporary >=1.3
+                  , text
+                  , typed-process
+                  , unix
+  ghc-options:      -O2 -threaded -rtsopts
