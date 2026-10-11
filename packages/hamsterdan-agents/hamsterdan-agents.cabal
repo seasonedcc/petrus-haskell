@@ -43,10 +43,12 @@ library
                     Hamsterdan.Agents.Pi.Doubles
                     Hamsterdan.Host.Binding
                     Hamsterdan.Host.Agenticus
+                    Hamsterdan.Host.PiA2
   build-depends:    base >=4.18 && <5
                   , base16-bytestring >=1.0
                   , bytestring >=0.11
                   , containers >=0.6
+                  , crypton >=1.0
                   , cryptohash-sha256 >=0.11
                   , directory >=1.3
                   , filepath >=1.4
@@ -58,6 +60,7 @@ library
                   , petrus-json
                   , petrus-motus
                   , petrus-posix
+                  , ram >=0.20
                   , text >=2.0
                   , unix >=2.8
   ghc-options:      -O2
@@ -71,8 +74,11 @@ test-suite hamsterdan-agents-test
                     PiSpec
                     PiDoubles
                     AgenticusSpec
+                    PiA2Spec
   build-depends:    base
                   , bytestring
+                  , ram
+                  , unix
                   , containers
                   , cryptohash-sha256
                   , base16-bytestring

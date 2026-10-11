@@ -93,9 +93,9 @@ import Petrus.Impetus.History.Records (ActivityCompleted (..), ActivityFailed (.
 import Petrus.Impetus.Petrinet.Schema (netPathText)
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, pythonLoads)
 import Petrus.Motus.Worker (ValueError (..))
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesPathExist, listDirectory)
+import Petrus.Posix.File (makeDirectories)
+import System.Directory (doesDirectoryExist, doesPathExist, listDirectory)
 import System.FilePath (splitDirectories, takeDirectory, (</>))
-import System.Posix.Directory qualified as PosixDir
 import System.Posix.Files qualified as Posix
 
 -- ---------------------------------------------------------------------------
@@ -317,17 +317,10 @@ migrationStatements =
   , "ALTER TABLE active_agent_route_v2 RENAME TO active_agent_route"
   ]
 
--- | @path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)@.
-mkdirPrivate :: FilePath -> IO ()
-mkdirPrivate directory = do
-  exists <- doesPathExist directory
-  unless exists $ do
-    createDirectoryIfMissing True (takeDirectory directory)
-    PosixDir.createDirectory directory 0o700 `onException` pure ()
-
 openAgentRouteStore :: FilePath -> IO AgentRouteStore
 openAgentRouteStore path = do
-  mkdirPrivate (takeDirectory path)
+  -- @path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)@
+  makeDirectories (takeDirectory path) 0o700
   database <- Sql.open (T.pack path)
   lock <- newMVar ()
   legacySchema <- newIORef False
