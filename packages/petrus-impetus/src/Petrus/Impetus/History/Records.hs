@@ -472,16 +472,56 @@ recordFields = \case
 
 -- | Every record's append instant.
 recordInstant :: Record -> Instant
-recordInstant r = case [i | ("instant", FNumber i) <- recordFields r] of
-  (i : _) -> i
-  [] -> 0
+recordInstant = \case
+  RInstanceCreated r -> r.instant
+  RTokensInitialized r -> r.instant
+  RScopeOpened r -> r.instant
+  RScopeClosed r -> r.instant
+  RScopeReset r -> r.instant
+  RCandidateSelected r -> r.instant
+  RExternalEventDelivered r -> r.instant
+  RScopedDeliveryDropped r -> r.instant
+  RScopedDeliveryQuarantined r -> r.instant
+  RDeliveryRegistrationOpened r -> r.instant
+  RDeliveryRegistrationClosed r -> r.instant
+  RTimerMatured r -> r.instant
+  RFiringBegun r -> r.instant
+  RTokensConsumed r -> r.instant
+  RTokensRead r -> r.instant
+  RActivityRequested r -> r.instant
+  RActivityCompleted r -> r.instant
+  RActivityTerminalQuarantined r -> r.instant
+  RTokensProduced r -> r.instant
+  RFiringCompleted r -> r.instant
+  RActivityFailed r -> r.instant
+  RFiringFailed r -> r.instant
 
 -- | The occurrence correlation of records that carry one ('Nothing' for
 -- the occurrence-less categories and for uncorrelated registrations).
 recordOccurrence :: Record -> Maybe Int
-recordOccurrence r = case [o | ("occurrence", FOccurrence o) <- recordFields r] of
-  (o : _) -> o
-  [] -> Nothing
+recordOccurrence = \case
+  RInstanceCreated _ -> Nothing
+  RTokensInitialized _ -> Nothing
+  RScopeOpened _ -> Nothing
+  RScopeClosed _ -> Nothing
+  RScopeReset _ -> Nothing
+  RCandidateSelected r -> Just r.occurrence
+  RExternalEventDelivered r -> Just r.occurrence
+  RScopedDeliveryDropped _ -> Nothing
+  RScopedDeliveryQuarantined _ -> Nothing
+  RDeliveryRegistrationOpened r -> r.occurrence
+  RDeliveryRegistrationClosed r -> r.occurrence
+  RTimerMatured _ -> Nothing
+  RFiringBegun r -> Just r.occurrence
+  RTokensConsumed r -> Just r.occurrence
+  RTokensRead r -> Just r.occurrence
+  RActivityRequested r -> Just r.occurrence
+  RActivityCompleted r -> Just r.occurrence
+  RActivityTerminalQuarantined r -> Just r.occurrence
+  RTokensProduced r -> Just r.occurrence
+  RFiringCompleted r -> Just r.occurrence
+  RActivityFailed r -> Just r.occurrence
+  RFiringFailed r -> Just r.occurrence
 
 -- | The optional lifecycle scope of the provenance-carrying records.
 recordScope :: Record -> Maybe LifecycleScope
