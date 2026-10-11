@@ -34,6 +34,8 @@ extra-source-files: differential/*.json
                     test/fixtures/claude/claude_agent_sdk/*.py
                     test/fixtures/claude/claude_agent_sdk/_bundled/claude
                     test/fixtures/claude/claude_agent_sdk-0.2.128.dist-info/METADATA
+                    test/fixtures/codex/*.py
+                    test/fixtures/codex/*.mjs
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -95,6 +97,7 @@ test-suite petrus-agenticus-runtime-test
   other-modules:    Petrus.Agenticus.Runtime.AgentNetRunnerSpec
                     Petrus.Agenticus.Runtime.AmpSpec
                     Petrus.Agenticus.Runtime.ClaudeSpec
+                    Petrus.Agenticus.Runtime.CodexSpec
                     Petrus.Agenticus.Runtime.PiA2HostSpec
                     Petrus.Agenticus.Runtime.PiApplicationSpec
                     Petrus.Agenticus.Runtime.PiDifferentialSpec
@@ -109,6 +112,7 @@ test-suite petrus-agenticus-runtime-test
                   , directory
                   , filepath
                   , hspec >=2.10
+                  , network
                   , petrus-activity
                   , petrus-agenticus
                   , petrus-agenticus-core
