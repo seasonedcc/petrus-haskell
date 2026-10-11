@@ -21,6 +21,14 @@ module Hamsterdan.Testing.World
   , profileResourceUsage
   , droppedGenerationsAlive
 
+    -- * Commands
+  , ReadinessCommand (..)
+  , HumanReviewState (..)
+  , AgentStatus (..)
+  , AgentFixture (..)
+  , parseCommand
+  , renderCommand
+
     -- * The checker
   , readinessChecker
   , checkReadiness
@@ -39,6 +47,7 @@ module Hamsterdan.Testing.World
     -- * The Timeline facade
   , ReadinessTimeline (..)
   , command
+  , submit
   , pending
   , step
   , setPullRequest
@@ -112,7 +121,7 @@ import Hamsterdan.Host.Service
   )
 import Hamsterdan.Host.Service qualified as Host
 import Hamsterdan.Host.V5.Application (ApplicationOptions (..))
-import Hamsterdan.Testing.Readiness (AuthorityClaim (..), Lifecycle (..), ReadinessExpectation, ReadinessFacts, dump, evaluate, loadJson)
+import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus, Lifecycle (..), ReadinessFacts, ReviewStatus, Spelled (..), dump, evaluate, loadJson)
 import Hamsterdan.Testing.World.Contract
 import Hamsterdan.Testing.World.Provider hiding (setHumanComment)
 import Hamsterdan.Testing.World.Provider qualified as Provider
@@ -282,7 +291,7 @@ readinessProfile :: ReadinessProfile -> Profile IO Generation
 readinessProfile p =
   Profile
     { identity = profileIdentity
-    , validate = \c -> either (throwError . toProfileError) pure (validateCommand c)
+    , validate = \c -> either (throwError . toProfileError) (const (pure c)) (parseCommand c)
     , validateFault = \f -> either (throwError . toProfileError) pure (validateFault f)
     , create = start p
     , load = start p
@@ -301,15 +310,95 @@ readinessProfile p =
   where
     mkWeakIORef' ref = Data.IORef.mkWeakIORef ref (pure ())
 
--- | @validate(command)@.
-validateCommand :: Command -> Either PyError Command
-validateCommand c = do
-  keys <- maybe (Left (PyError "ValueError" ("unknown readiness command " <> pyRepr c.name))) Right (Map.lookup c.name commandKeys)
+-- ---------------------------------------------------------------------------
+-- Commands
+
+-- | A readiness command as @validate@ reads it. The 'Command' stays the
+-- wire (the artifact records it); this is its interpretation, parsed once
+-- by 'parseCommand' and applied by 'applyOne' without reading the payload
+-- again.
+data ReadinessCommand
+  = -- | @readiness.github.pr.set@.
+    SetPullRequest AuthorityClaim
+  | -- | @readiness.github.ci.set@: the head, the required check names, and
+    -- each check's exact object, which the provider keeps as authored.
+    SetCi Text [Text] [Json]
+  | -- | @readiness.github.review.set@: the head, the status, the findings.
+    SetReview Text ReviewStatus [Json]
+  | -- | @readiness.github.human.review@: reviewer, head, review, state.
+    HumanReview Text Text Integer HumanReviewState
+  | -- | @readiness.github.human.resolve_thread@: thread, resolver, resolved.
+    ResolveThread Text Text Bool
+  | -- | @readiness.github.human.comment@: comment, author, fixture.
+    HumanComment Integer Text Text
+  | -- | @readiness.agent.terminal@: operation, attempt, status, fixture.
+    AgentTerminal Text Integer AgentStatus AgentFixture
+  | -- | @readiness.github.webhook.emit@: delivery, event, fixture.
+    EmitWebhook Text Text Text
+  | -- | @readiness.github.webhook.deliver@.
+    DeliverWebhook Text
+  | -- | @readiness.github.effect.reveal@: the operation.
+    RevealEffect Text
+  | -- | @readiness.time.advance@: the seconds.
+    AdvanceTime Integer
+  | -- | @readiness.host.custody_one@.
+    HostCustodyOne
+  | -- | @readiness.host.activity_one@.
+    HostActivityOne
+  | -- | @readiness.host.drive_one@.
+    HostDriveOne
+  | -- | @readiness.host.reconcile_one@.
+    HostReconcileOne
+  deriving stock (Eq, Show)
+
+-- | A human review's state.
+data HumanReviewState = HumanApproved | HumanChangesRequested | HumanDismissed
+  deriving stock (Eq, Ord, Show, Bounded, Enum)
+
+instance Spelled HumanReviewState where
+  spell = \case
+    HumanApproved -> "APPROVED"
+    HumanChangesRequested -> "CHANGES_REQUESTED"
+    HumanDismissed -> "DISMISSED"
+
+-- | An agent terminal's status.
+data AgentStatus = AgentClear | AgentBlocking | AgentUnable | AgentChanged | AgentUnchanged
+  deriving stock (Eq, Ord, Show, Bounded, Enum)
+
+instance Spelled AgentStatus where
+  spell = \case
+    AgentClear -> "clear"
+    AgentBlocking -> "blocking"
+    AgentUnable -> "unable"
+    AgentChanged -> "changed"
+    AgentUnchanged -> "unchanged"
+
+-- | The fixture an agent terminal replays.
+data AgentFixture = FixtureReview | FixtureConversationChange | FixtureConversationRecover | FixtureCoding
+  deriving stock (Eq, Ord, Show, Bounded, Enum)
+
+instance Spelled AgentFixture where
+  spell = \case
+    FixtureReview -> "review"
+    FixtureConversationChange -> "conversation_change"
+    FixtureConversationRecover -> "conversation_recover"
+    FixtureCoding -> "coding"
+
+-- | The member of a closed vocabulary a JSON string spells.
+spelledAs :: (Spelled a) => Json -> Maybe a
+spelledAs = \case
+  String s -> find ((== s) . spell) [minBound .. maxBound]
+  _ -> Nothing
+
+-- | @validate(command)@, parsing as it checks: the same checks, in the
+-- same order, with the same messages.
+parseCommand :: Command -> Either PyError ReadinessCommand
+parseCommand c = do
+  keys <- maybe (fails ("unknown readiness command " <> pyRepr c.name)) Right (Map.lookup c.name commandKeys)
   _ <- boundedJson c.payload (profileLimit "payload_bytes") c.name
   payload <- strictObject c.payload keys c.name
   let field k = fromMaybe Null (lookup k payload)
       name = c.name
-      fails = Left . PyError "ValueError"
   when
     ( Set.notMember name hostCommands
         && name /= "readiness.time.advance"
@@ -317,94 +406,161 @@ validateCommand c = do
         && field "subject" /= String subject
     )
     $ fails "readiness command subject is outside this profile"
-  if
-    | name == "readiness.github.pr.set" -> do
-        claim <- parseAuthority (field "authority")
-        _ <- boundedText (String claim.head) "pull request head" (Just isSha)
-        _ <- boundedText (String claim.base) "pull request base" (Just isSha)
-        _ <- boundedText (String claim.policy) "pull request policy" (Just isPolicy)
-        pure ()
-    | name == "readiness.github.ci.set" -> do
-        _ <- boundedText (field "head") "CI head" (Just isSha)
-        required <- case field "required_checks" of
-          Array xs | toInteger (length xs) <= profileLimit "checks" -> pure xs
-          _ -> fails "required_checks must be a bounded list"
-        names <- mapM (\x -> boundedText x "required check" (Just isName)) required
-        when (Set.size (Set.fromList names) /= length names) $ fails "required_checks must be unique"
-        items <- case field "checks" of
-          Array xs | toInteger (length xs) <= profileLimit "checks" -> pure xs
-          _ -> fails "checks must be a bounded list"
-        forM_ items $ \item -> do
-          check <- strictObject item (Set.fromList ["name", "run", "attempt", "status"]) name
-          let at k = fromMaybe Null (lookup k check)
-          _ <- boundedText (at "name") "check name" (Just isName)
-          case (at "run", at "attempt") of
-            (Int r, Int a) | r > 0 && a > 0 -> pure ()
-            _ -> fails "check run and attempt must be positive integers"
-          unless (at "status" `elem` map String ["queued", "running", "success", "failure", "canceled", "unavailable"]) $
-            fails "unsupported CI status"
-    | name == "readiness.github.review.set" -> do
-        _ <- boundedText (field "head") "review head" (Just isSha)
-        unless (field "status" `elem` map String ["pending", "clear", "blocking", "unable"]) $ fails "unsupported review status"
-        case field "findings" of
-          Array xs | toInteger (length xs) <= profileLimit "findings" -> pure ()
-          _ -> fails "review findings must be a bounded list"
-    | name == "readiness.github.human.review" -> do
-        _ <- boundedText (field "reviewer") "reviewer" (Just isName)
-        _ <- boundedText (field "head") "human review head" (Just isSha)
-        case field "review" of
-          Int r | r > 0 -> pure ()
-          _ -> fails "human review identity must be positive"
-        unless (field "state" `elem` map String ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"]) $ fails "unsupported human review state"
-    | name == "readiness.github.human.resolve_thread" -> do
-        _ <- boundedText (field "thread") "review thread" (Just isName)
-        _ <- boundedText (field "resolver") "thread resolver" (Just isName)
-        case field "resolved" of
-          Bool _ -> pure ()
-          _ -> fails "thread resolution must be boolean"
-    | name == "readiness.github.human.comment" -> do
-        case field "comment" of
-          Int i | i > 0 -> pure ()
-          _ -> fails "comment identity must be positive"
-        _ <- boundedText (field "author") "comment author" (Just isName)
-        fixture <- boundedText (field "fixture") "comment fixture" (Just isName)
-        unless (fixture == "change" || "recover:" `T.isPrefixOf` fixture) $ fails "unsupported human comment fixture"
-        forM_ (T.stripPrefix "recover:" fixture) $ \operation ->
-          boundedText (String operation) "recovery operation" (Just isOperation)
-        when (field "digest" /= String (strictDigest (Object [("fixture", String fixture)]))) $
-          fails "comment fixture digest does not match"
-    | name == "readiness.agent.terminal" -> do
-        _ <- boundedText (field "operation") "agent operation" (Just isOperation)
-        case field "attempt" of
-          Int a | a > 0 -> pure ()
-          _ -> fails "agent attempt must be positive"
-        unless (field "status" `elem` map String ["clear", "blocking", "unable", "changed", "unchanged"]) $
-          fails "unsupported agent terminal status"
-        fixture <- boundedText (field "fixture") "agent fixture" (Just isName)
-        unless (fixture `elem` ["review", "conversation_change", "conversation_recover", "coding"]) $ fails "unsupported agent fixture"
-        when (field "digest" /= String (strictDigest (Object [("fixture", String fixture), ("status", field "status")]))) $
-          fails "agent fixture digest does not match"
-    | name == "readiness.github.webhook.emit" -> do
-        exactUuid (field "delivery")
-        event <- boundedText (field "event") "webhook event" (Just isName)
-        unless (Set.member event events) $ fails "unsupported webhook event"
-        fixture <- boundedText (field "fixture") "webhook fixture" Nothing
-        unless
-          ( (event <> ":") `T.isPrefixOf` fixture
-              && field "digest" == String (strictDigest (Object [("event", String event), ("fixture", String fixture)]))
-          )
-          $ fails "webhook fixture digest does not match"
-    | name == "readiness.github.webhook.deliver" -> exactUuid (field "delivery")
-    | name == "readiness.github.effect.reveal" -> () <$ boundedText (field "operation") "effect operation" (Just isName)
-    | name == "readiness.time.advance" -> case field "seconds" of
-        Int s | 0 < s && s <= 2000000 -> pure ()
-        _ -> fails "logical time advance is outside the profile bound"
-    | otherwise -> pure ()
-  pure c
+  case name of
+    "readiness.github.pr.set" -> do
+      claim <- parseAuthority (field "authority")
+      _ <- boundedText (String claim.head) "pull request head" (Just isSha)
+      _ <- boundedText (String claim.base) "pull request base" (Just isSha)
+      _ <- boundedText (String claim.policy) "pull request policy" (Just isPolicy)
+      pure (SetPullRequest claim)
+    "readiness.github.ci.set" -> do
+      sha <- boundedText (field "head") "CI head" (Just isSha)
+      required <- bounded "checks" "required_checks must be a bounded list" (field "required_checks")
+      names <- mapM (\x -> boundedText x "required check" (Just isName)) required
+      when (Set.size (Set.fromList names) /= length names) $ fails "required_checks must be unique"
+      items <- bounded "checks" "checks must be a bounded list" (field "checks")
+      forM_ items $ \item -> do
+        check <- strictObject item (Set.fromList ["name", "run", "attempt", "status"]) name
+        let at k = fromMaybe Null (lookup k check)
+        _ <- boundedText (at "name") "check name" (Just isName)
+        case (at "run", at "attempt") of
+          (Int r, Int a) | r > 0 && a > 0 -> pure ()
+          _ -> fails "check run and attempt must be positive integers"
+        when (isNothing (spelledAs @CheckStatus (at "status"))) $ fails "unsupported CI status"
+      pure (SetCi sha names items)
+    "readiness.github.review.set" -> do
+      sha <- boundedText (field "head") "review head" (Just isSha)
+      status <- maybe (fails "unsupported review status") pure (spelledAs (field "status"))
+      found <- bounded "findings" "review findings must be a bounded list" (field "findings")
+      pure (SetReview sha status found)
+    "readiness.github.human.review" -> do
+      reviewer <- boundedText (field "reviewer") "reviewer" (Just isName)
+      sha <- boundedText (field "head") "human review head" (Just isSha)
+      review <- positive "human review identity must be positive" (field "review")
+      state <- maybe (fails "unsupported human review state") pure (spelledAs (field "state"))
+      pure (HumanReview reviewer sha review state)
+    "readiness.github.human.resolve_thread" -> do
+      thread <- boundedText (field "thread") "review thread" (Just isName)
+      resolver <- boundedText (field "resolver") "thread resolver" (Just isName)
+      resolved <- case field "resolved" of
+        Bool b -> pure b
+        _ -> fails "thread resolution must be boolean"
+      pure (ResolveThread thread resolver resolved)
+    "readiness.github.human.comment" -> do
+      comment <- positive "comment identity must be positive" (field "comment")
+      author <- boundedText (field "author") "comment author" (Just isName)
+      fixture <- boundedText (field "fixture") "comment fixture" (Just isName)
+      unless (fixture == "change" || "recover:" `T.isPrefixOf` fixture) $ fails "unsupported human comment fixture"
+      forM_ (T.stripPrefix "recover:" fixture) $ \operation ->
+        boundedText (String operation) "recovery operation" (Just isOperation)
+      when (field "digest" /= String (strictDigest (Object [("fixture", String fixture)]))) $
+        fails "comment fixture digest does not match"
+      pure (HumanComment comment author fixture)
+    "readiness.agent.terminal" -> do
+      operation <- boundedText (field "operation") "agent operation" (Just isOperation)
+      attempt <- positive "agent attempt must be positive" (field "attempt")
+      status <- maybe (fails "unsupported agent terminal status") pure (spelledAs (field "status"))
+      fixtureName <- boundedText (field "fixture") "agent fixture" (Just isName)
+      fixture <- maybe (fails "unsupported agent fixture") pure (spelledAs (String fixtureName))
+      when (field "digest" /= String (strictDigest (Object [("fixture", String fixtureName), ("status", field "status")]))) $
+        fails "agent fixture digest does not match"
+      pure (AgentTerminal operation attempt status fixture)
+    "readiness.github.webhook.emit" -> do
+      delivery <- exactUuid (field "delivery")
+      event <- boundedText (field "event") "webhook event" (Just isName)
+      unless (Set.member event events) $ fails "unsupported webhook event"
+      fixture <- boundedText (field "fixture") "webhook fixture" Nothing
+      unless
+        ( (event <> ":") `T.isPrefixOf` fixture
+            && field "digest" == String (strictDigest (Object [("event", String event), ("fixture", String fixture)]))
+        )
+        $ fails "webhook fixture digest does not match"
+      pure (EmitWebhook delivery event fixture)
+    "readiness.github.webhook.deliver" -> DeliverWebhook <$> exactUuid (field "delivery")
+    "readiness.github.effect.reveal" -> RevealEffect <$> boundedText (field "operation") "effect operation" (Just isName)
+    "readiness.time.advance" -> case field "seconds" of
+      Int seconds | 0 < seconds && seconds <= 2000000 -> pure (AdvanceTime seconds)
+      _ -> fails "logical time advance is outside the profile bound"
+    "readiness.host.custody_one" -> pure HostCustodyOne
+    "readiness.host.activity_one" -> pure HostActivityOne
+    "readiness.host.drive_one" -> pure HostDriveOne
+    "readiness.host.reconcile_one" -> pure HostReconcileOne
+    -- 'commandKeys' names exactly the commands above.
+    _ -> fails ("unknown readiness command " <> pyRepr name)
   where
+    fails :: Text -> Either PyError a
+    fails = Left . PyError "ValueError"
     exactUuid = \case
-      String s | validUuid s -> Right ()
-      _ -> Left (PyError "ValueError" "webhook delivery must be an exact UUID")
+      String s | validUuid s -> Right s
+      _ -> fails "webhook delivery must be an exact UUID"
+    bounded limit message = \case
+      Array xs | toInteger (length xs) <= profileLimit limit -> Right xs
+      _ -> fails message
+    positive message = \case
+      Int n | n > 0 -> Right n
+      _ -> fails message
+
+-- | The command a 'ReadinessCommand' is: what the Timeline facade
+-- submits. @parseCommand . renderCommand@ is 'Right'.
+renderCommand :: ReadinessCommand -> Command
+renderCommand = \case
+  SetPullRequest claim -> subjectCommand "readiness.github.pr.set" [("authority", dump claim)]
+  SetCi sha required checks ->
+    subjectCommand "readiness.github.ci.set" [("head", String sha), ("required_checks", Array (map String required)), ("checks", Array checks)]
+  SetReview sha status found ->
+    subjectCommand "readiness.github.review.set" [("head", String sha), ("status", String (spell status)), ("findings", Array found)]
+  HumanReview reviewer sha review state ->
+    subjectCommand
+      "readiness.github.human.review"
+      [("review", Int review), ("reviewer", String reviewer), ("head", String sha), ("state", String (spell state))]
+  ResolveThread thread resolver resolved ->
+    subjectCommand "readiness.github.human.resolve_thread" [("thread", String thread), ("resolver", String resolver), ("resolved", Bool resolved)]
+  HumanComment comment author fixture ->
+    subjectCommand
+      "readiness.github.human.comment"
+      [ ("comment", Int comment)
+      , ("author", String author)
+      , ("fixture", String fixture)
+      , ("digest", String (strictDigest (Object [("fixture", String fixture)])))
+      ]
+  AgentTerminal operation attempt status fixture ->
+    subjectCommand
+      "readiness.agent.terminal"
+      [ ("operation", String operation)
+      , ("attempt", Int attempt)
+      , ("status", String (spell status))
+      , ("fixture", String (spell fixture))
+      , ("digest", String (strictDigest (Object [("fixture", String (spell fixture)), ("status", String (spell status))])))
+      ]
+  EmitWebhook delivery event fixture ->
+    subjectCommand
+      "readiness.github.webhook.emit"
+      [ ("delivery", String delivery)
+      , ("event", String event)
+      , ("fixture", String fixture)
+      , ("digest", String (strictDigest (Object [("event", String event), ("fixture", String fixture)])))
+      ]
+  DeliverWebhook delivery -> plainCommand "readiness.github.webhook.deliver" [("delivery", String delivery)]
+  RevealEffect operation -> subjectCommand "readiness.github.effect.reveal" [("operation", String operation)]
+  AdvanceTime seconds -> plainCommand "readiness.time.advance" [("seconds", Int seconds)]
+  HostCustodyOne -> plainCommand "readiness.host.custody_one" []
+  HostActivityOne -> plainCommand "readiness.host.activity_one" []
+  HostDriveOne -> plainCommand "readiness.host.drive_one" []
+  HostReconcileOne -> plainCommand "readiness.host.reconcile_one" []
+  where
+    plainCommand name members = Command {profile = profileIdentity, name, payload = Object members}
+    subjectCommand name members = plainCommand name (("subject", String subject) : members)
+
+-- | Whether a command changes the provider's truth: all but the host's own
+-- steps and logical time.
+changesProviderTruth :: ReadinessCommand -> Bool
+changesProviderTruth = \case
+  AdvanceTime _ -> False
+  HostCustodyOne -> False
+  HostActivityOne -> False
+  HostDriveOne -> False
+  HostReconcileOne -> False
+  _ -> True
 
 pyRepr :: Text -> Text
 pyRepr t = "'" <> t <> "'"
@@ -487,200 +643,165 @@ start p = do
   scheduled <- contextDoor p Nothing (followups p generation)
   pure GenerationStart {generation, scheduled}
 
-hostCommand :: Text -> Command
-hostCommand name = Command {profile = profileIdentity, name, payload = Object []}
-
 -- | @apply(generation, command, context)@.
 applyCommand :: ReadinessProfile -> Generation -> Command -> Scenario IO ApplyResult
 applyCommand p g c = contextDoor p (Just g.context) $ \now -> do
+  -- The World applies only what 'parseCommand' accepted as @validate@.
+  parsed <- either (\(PyError cls m) -> throwPy cls m) pure (parseCommand c)
   modifyIORef' g.proposed (Set.delete (c.name, now))
-  when (Set.notMember c.name hostCommands && c.name /= "readiness.time.advance") $
+  when (changesProviderTruth parsed) $
     modifyIORef' p.truth (\t -> t {providerTruthChanges = t.providerTruthChanges + 1})
-  (value, disposition) <- applyOne p g c now
+  (value, disposition) <- applyOne p g parsed now
   errors <- (.harnessErrors) <$> readIORef p.truth
   unless (null errors) $ throwPy "AssertionError" (last errors)
   scheduled <- followups p g now
-  extra <-
-    if c.name == "readiness.time.advance"
-      then do
-        let target = now + fromMaybe 0 (intOf (c.payload .: "seconds"))
-            proposal = ("readiness.host.drive_one", target)
-        seen <- Set.member proposal <$> readIORef g.proposed
-        if seen
-          then pure []
-          else do
-            modifyIORef' g.proposed (Set.insert proposal)
-            modifyIORef' p.hostFollowups (+ 1)
-            pure [ScheduledCommand {instant = target, command = hostCommand "readiness.host.drive_one"}]
-      else pure []
+  extra <- case parsed of
+    AdvanceTime seconds -> do
+      let target = now + seconds
+          drive = renderCommand HostDriveOne
+          proposal = (drive.name, target)
+      seen <- Set.member proposal <$> readIORef g.proposed
+      if seen
+        then pure []
+        else do
+          modifyIORef' g.proposed (Set.insert proposal)
+          modifyIORef' p.hostFollowups (+ 1)
+          pure [ScheduledCommand {instant = target, command = drive}]
+    _ -> pure []
   pure ApplyResult {disposition, value, scheduled = scheduled <> extra}
 
 -- | @_apply(generation, command, context)@.
-applyOne :: ReadinessProfile -> Generation -> Command -> Integer -> IO (Json, ActionDisposition)
-applyOne p g c now = do
-  let payload = c.payload
-      field k = payload .: k
-      ref = p.truth
-  if
-    | c.name == "readiness.github.pr.set" -> do
-        claim <- either (\(PyError cls m) -> throwPy cls m) pure (parseAuthority (field "authority"))
-        t <- readIORef ref
-        let disposition = if claim == t.authority then Idempotent else Applied
-        setAuthority ref claim
-        pure (Object [("authority", dump claim)], disposition)
-    | c.name == "readiness.github.ci.set" -> do
-        required <- case field "required_checks" of
-          Array xs | all (\x -> maybe False (not . T.null) (str x)) xs -> pure (mapMaybe str xs)
-          _ -> throwPy "ValueError" "required_checks must be bounded names"
-        items <- case field "checks" of
-          Array xs -> pure xs
-          _ -> throwPy "ValueError" "checks must be a list"
-        normalized <- forM items $ \item -> do
-          value <- either (\(PyError cls m) -> throwPy cls m) (pure . Object) (strictObject item (Set.fromList ["name", "run", "attempt", "status"]) c.name)
-          unless (value .: "status" `elem` map String ["queued", "running", "success", "failure", "canceled", "unavailable"]) $
-            throwPy "ValueError" "unsupported CI status"
-          pure value
-        modifyIORef' ref (\t -> t {requiredChecks = required, checks = normalized, reviewHead = fromMaybe "" (str (field "head"))})
-        pure (Object [("checks", int (toInteger (length normalized)))], Applied)
-    | c.name == "readiness.github.review.set" -> do
-        found <- case field "findings" of
-          Array xs -> pure xs
-          _ -> throwPy "ValueError" "review findings must be a list"
-        let status = field "status"
-        unless (status `elem` map String ["pending", "clear", "blocking", "unable"]) $ throwPy "ValueError" "unsupported review status"
-        modifyIORef' ref $ \t ->
-          t
-            { reviewHead = fromMaybe "" (str (field "head"))
-            , reviewStatus = fromMaybe "" (str status)
-            , findings = found
-            , reviewTerminal = Just (Object [("kind", String "review"), ("status", status), ("findings", Array found)])
-            }
-        pure (Object [("status", status), ("findings", int (toInteger (length found)))], Applied)
-    | c.name == "readiness.github.human.review" -> do
-        let reviewer = fromMaybe "" (str (field "reviewer"))
-            state = field "state"
-        unless (state `elem` map String ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"]) $ throwPy "ValueError" "unsupported human review state"
-        modifyIORef' ref (\t -> t {humanReviews = Map.insert reviewer (T.pack (printf "%020d" now), fromMaybe "" (str state)) t.humanReviews})
-        pure (Object [("reviewer", String reviewer), ("state", state)], Applied)
-    | c.name == "readiness.github.human.resolve_thread" -> do
-        let resolved = field "resolved" == Bool True
-        modifyIORef' ref (\t -> t {reviewThreads = Map.insert (fromMaybe "" (str (field "thread"))) resolved t.reviewThreads})
-        pure (Object [("thread", field "thread"), ("resolved", field "resolved")], Applied)
-    | c.name == "readiness.github.human.comment" -> do
-        Provider.setHumanComment ref (fromMaybe 0 (intOf (field "comment"))) (fromMaybe "" (str (field "author"))) (fromMaybe "" (str (field "fixture")))
-        pure (Object [("comment", field "comment")], Applied)
-    | c.name == "readiness.agent.terminal" -> do
-        let operation = fromMaybe "" (str (field "operation"))
-        modifyIORef' ref $ \t ->
-          t
-            { agentTerminals =
-                Map.insert
-                  operation
-                  ( Object
-                      [ ("kind", field "fixture")
-                      , ("operation", String operation)
-                      , ("attempt", field "attempt")
-                      , ("status", field "status")
-                      , ("findings", Array [])
-                      ]
-                  )
-                  t.agentTerminals
-            }
-        pure (Object [("operation", field "operation"), ("status", field "status")], Applied)
-    | c.name == "readiness.github.webhook.emit" -> do
-        let delivery = fromMaybe "" (str (field "delivery"))
-            event = fromMaybe "" (str (field "event"))
-            fixture = fromMaybe "" (str (field "fixture"))
-        when (field "digest" /= String (strictDigest (Object [("event", String event), ("fixture", String fixture)]))) $
-          throwPy "ValueError" "webhook fixture digest does not match"
-        t <- readIORef ref
-        let action = T.drop 1 (snd (T.breakOn ":" fixture))
-            comment = if event == "issue_comment" && not (null t.humanComments) then Just (last t.humanComments) else Nothing
-            new = emitted delivery event action t.authority comment
-        case Map.lookup delivery t.emittedDeliveries of
-          Just existing
-            | existing /= new -> pure (Object [("delivery", String delivery)], ActionQuarantined)
-            | otherwise -> pure (Object [("delivery", String delivery)], Idempotent)
-          Nothing -> do
-            writeIORef ref t {emittedDeliveries = Map.insert delivery new t.emittedDeliveries}
-            pure (Object [("delivery", String delivery)], Applied)
-    | c.name == "readiness.github.webhook.deliver" -> do
-        let delivery = fromMaybe "" (str (field "delivery"))
-        t <- readIORef ref
-        event <- maybe (throwPy "ValueError" "cannot deliver an unknown webhook") pure (Map.lookup delivery t.emittedDeliveries)
-        let body = webhookBody event
-            headers =
-              [ ("content-type", "application/json")
-              , ("content-length", showT (BS.length body))
-              , ("x-hub-signature-256", sign webhookSecret body)
-              , ("x-github-delivery", delivery)
-              , ("x-github-event", event.event)
-              ]
-        outcome <- try @SomeException (Custody.receive g.host.custody headers body)
-        modifyIORef' ref (\u -> u {deliveryAttempts = Map.insertWith (+) delivery 1 u.deliveryAttempts})
-        receipt <- case outcome of
-          Right receipt -> pure receipt
-          Left e
-            | Just (WebhookRejected _) <- fromException' e -> refused (400 :: Int)
-            | isPythonException e -> refused (500 :: Int)
-            | otherwise -> throwIO e
-        let disposition = dispositionName receipt.disposition
-        when (disposition /= "duplicate") $
-          modifyIORef' ref (\u -> if delivery `elem` u.custodied then u else u {custodied = u.custodied <> [delivery]})
-        pure
-          ( Object [("delivery", String delivery), ("disposition", String disposition)]
-          , if disposition == "duplicate" then Idempotent else Applied
-          )
-    | c.name == "readiness.github.effect.reveal" -> do
-        let operation = fromMaybe "" (str (field "operation"))
-        t <- readIORef ref
-        case break (\e -> e.operation == operation) t.effects of
-          (_, []) -> pure (Object [("operation", String operation)], RefusedExpected)
-          (before, e : after) -> do
-            writeIORef ref t {effects = before <> (e {visible = True} : after)}
-            pure (Object [("operation", String operation)], Applied)
-    | c.name == "readiness.time.advance" -> case field "seconds" of
-        Int s | 0 < s && s <= 2000000 -> pure (Object [("target", int (now + s))], Applied)
-        _ -> throwPy "ValueError" "logical time advance must be an integer from 1 through 2000000 seconds"
-    | c.name == "readiness.host.custody_one" -> do
-        t <- readIORef ref
-        let admittedDeliveries = Set.fromList [e.delivery | e <- t.admitted]
-            candidate =
-              listToMaybe'
-                [ e
-                | d <- t.custodied
-                , Set.notMember d admittedDeliveries
-                , Just e <- [Map.lookup d t.emittedDeliveries]
-                ]
-            admission = t.authority
-        writeIORef ref t {activeAdmission = candidate}
-        observed <- Host.processOne g.host `onFailure` modifyIORef' ref (\u -> u {activeAdmission = Nothing})
-        modifyIORef' ref (\u -> u {activeAdmission = Nothing})
-        let expected = maybe Null (\e -> Object [("delivery", String e.delivery), ("disposition", String "completed")]) candidate
-            observedValue = maybe Null (\o -> Object [("delivery", String o.deliveryId), ("disposition", String o.disposition)]) observed
-        forM_ candidate $ \e -> when (observedValue == expected) $ admit ref e now (Just admission)
-        modifyIORef' ref (\u -> u {custodyActions = u.custodyActions <> [Object [("expected", expected), ("observed", observedValue)]]})
-        pure (Object [("custody", observedValue)], if isJust observed then Applied else RefusedExpected)
-    | c.name == "readiness.host.activity_one" -> do
-        bindReadinessEffectAuthorities p
-        processed <- Host.runOneActivity g.host
-        pure (Object [("processed", int (toInteger processed))], if processed /= 0 then Applied else RefusedExpected)
-    | c.name == "readiness.host.drive_one" -> do
-        processed <- Host.runDue g.host 1
-        pure (Object [("processed", int (toInteger processed))], if processed /= 0 then Applied else RefusedExpected)
-    | c.name == "readiness.host.reconcile_one" -> do
-        processed <- Host.reconcileOne g.host "dst"
-        t <- readIORef ref
-        when (processed && (null t.admitted || (last t.admitted).authority /= t.authority)) $ do
-          let identity = "github-reconcile:" <> showT (length t.admitted + 1)
-          admit
-            ref
-            (emitted identity "reconciliation" "provider_snapshot" t.authority Nothing) {sourceIdentity = identity}
-            now
-            (Just t.authority)
-        pure (Object [("processed", Bool processed)], if processed then Applied else RefusedExpected)
-    | otherwise -> throwPy "AssertionError" ("validated command has no readiness implementation: " <> c.name)
+applyOne :: ReadinessProfile -> Generation -> ReadinessCommand -> Integer -> IO (Json, ActionDisposition)
+applyOne p g parsed now = case parsed of
+  SetPullRequest claim -> do
+    t <- readIORef ref
+    let disposition = if claim == t.authority then Idempotent else Applied
+    setAuthority ref claim
+    pure (Object [("authority", dump claim)], disposition)
+  SetCi sha required checks -> do
+    modifyIORef' ref (\t -> t {requiredChecks = required, checks, reviewHead = sha})
+    pure (Object [("checks", int (toInteger (length checks)))], Applied)
+  SetReview sha status found -> do
+    let spelled = String (spell status)
+    modifyIORef' ref $ \t ->
+      t
+        { reviewHead = sha
+        , reviewStatus = spell status
+        , findings = found
+        , reviewTerminal = Just (Object [("kind", String "review"), ("status", spelled), ("findings", Array found)])
+        }
+    pure (Object [("status", spelled), ("findings", int (toInteger (length found)))], Applied)
+  HumanReview reviewer _ _ state -> do
+    modifyIORef' ref (\t -> t {humanReviews = Map.insert reviewer (T.pack (printf "%020d" now), spell state) t.humanReviews})
+    pure (Object [("reviewer", String reviewer), ("state", String (spell state))], Applied)
+  ResolveThread thread _ resolved -> do
+    modifyIORef' ref (\t -> t {reviewThreads = Map.insert thread resolved t.reviewThreads})
+    pure (Object [("thread", String thread), ("resolved", Bool resolved)], Applied)
+  HumanComment comment author fixture -> do
+    Provider.setHumanComment ref comment author fixture
+    pure (Object [("comment", Int comment)], Applied)
+  AgentTerminal operation attempt status fixture -> do
+    modifyIORef' ref $ \t ->
+      t
+        { agentTerminals =
+            Map.insert
+              operation
+              ( Object
+                  [ ("kind", String (spell fixture))
+                  , ("operation", String operation)
+                  , ("attempt", Int attempt)
+                  , ("status", String (spell status))
+                  , ("findings", Array [])
+                  ]
+              )
+              t.agentTerminals
+        }
+    pure (Object [("operation", String operation), ("status", String (spell status))], Applied)
+  EmitWebhook delivery event fixture -> do
+    t <- readIORef ref
+    let action = T.drop 1 (snd (T.breakOn ":" fixture))
+        comment = if event == "issue_comment" && not (null t.humanComments) then Just (last t.humanComments) else Nothing
+        new = emitted delivery event action t.authority comment
+    case Map.lookup delivery t.emittedDeliveries of
+      Just existing
+        | existing /= new -> pure (Object [("delivery", String delivery)], ActionQuarantined)
+        | otherwise -> pure (Object [("delivery", String delivery)], Idempotent)
+      Nothing -> do
+        writeIORef ref t {emittedDeliveries = Map.insert delivery new t.emittedDeliveries}
+        pure (Object [("delivery", String delivery)], Applied)
+  DeliverWebhook delivery -> do
+    t <- readIORef ref
+    event <- maybe (throwPy "ValueError" "cannot deliver an unknown webhook") pure (Map.lookup delivery t.emittedDeliveries)
+    let body = webhookBody event
+        headers =
+          [ ("content-type", "application/json")
+          , ("content-length", showT (BS.length body))
+          , ("x-hub-signature-256", sign webhookSecret body)
+          , ("x-github-delivery", delivery)
+          , ("x-github-event", event.event)
+          ]
+    outcome <- try @SomeException (Custody.receive g.host.custody headers body)
+    modifyIORef' ref (\u -> u {deliveryAttempts = Map.insertWith (+) delivery 1 u.deliveryAttempts})
+    receipt <- case outcome of
+      Right receipt -> pure receipt
+      Left e
+        | Just (WebhookRejected _) <- fromException' e -> refused (400 :: Int)
+        | isPythonException e -> refused (500 :: Int)
+        | otherwise -> throwIO e
+    let disposition = dispositionName receipt.disposition
+    when (disposition /= "duplicate") $
+      modifyIORef' ref (\u -> if delivery `elem` u.custodied then u else u {custodied = u.custodied <> [delivery]})
+    pure
+      ( Object [("delivery", String delivery), ("disposition", String disposition)]
+      , if disposition == "duplicate" then Idempotent else Applied
+      )
+  RevealEffect operation -> do
+    t <- readIORef ref
+    case break (\e -> e.operation == operation) t.effects of
+      (_, []) -> pure (Object [("operation", String operation)], RefusedExpected)
+      (before, e : after) -> do
+        writeIORef ref t {effects = before <> (e {visible = True} : after)}
+        pure (Object [("operation", String operation)], Applied)
+  AdvanceTime seconds -> pure (Object [("target", int (now + seconds))], Applied)
+  HostCustodyOne -> do
+    t <- readIORef ref
+    let admittedDeliveries = Set.fromList [e.delivery | e <- t.admitted]
+        candidate =
+          listToMaybe'
+            [ e
+            | d <- t.custodied
+            , Set.notMember d admittedDeliveries
+            , Just e <- [Map.lookup d t.emittedDeliveries]
+            ]
+        admission = t.authority
+    writeIORef ref t {activeAdmission = candidate}
+    observed <- Host.processOne g.host `onFailure` modifyIORef' ref (\u -> u {activeAdmission = Nothing})
+    modifyIORef' ref (\u -> u {activeAdmission = Nothing})
+    let expected = maybe Null (\e -> Object [("delivery", String e.delivery), ("disposition", String "completed")]) candidate
+        observedValue = maybe Null (\o -> Object [("delivery", String o.deliveryId), ("disposition", String (Host.custodyDispositionText o.disposition))]) observed
+    forM_ candidate $ \e -> when (observedValue == expected) $ admit ref e now (Just admission)
+    modifyIORef' ref (\u -> u {custodyActions = u.custodyActions <> [Object [("expected", expected), ("observed", observedValue)]]})
+    pure (Object [("custody", observedValue)], if isJust observed then Applied else RefusedExpected)
+  HostActivityOne -> do
+    bindReadinessEffectAuthorities p
+    processed <- Host.runOneActivity g.host
+    pure (Object [("processed", int (toInteger processed))], if processed /= 0 then Applied else RefusedExpected)
+  HostDriveOne -> do
+    processed <- Host.runDue g.host 1
+    pure (Object [("processed", int (toInteger processed))], if processed /= 0 then Applied else RefusedExpected)
+  HostReconcileOne -> do
+    processed <- Host.reconcileOne g.host "dst"
+    t <- readIORef ref
+    when (processed && (null t.admitted || (last t.admitted).authority /= t.authority)) $ do
+      let identity = "github-reconcile:" <> showT (length t.admitted + 1)
+      admit
+        ref
+        (emitted identity "reconciliation" "provider_snapshot" t.authority Nothing) {sourceIdentity = identity}
+        now
+        (Just t.authority)
+    pure (Object [("processed", Bool processed)], if processed then Applied else RefusedExpected)
   where
+    ref = p.truth
     refused status = throwPy "AssertionError" ("real webhook ingress refused safe fixture with status " <> showT status)
     listToMaybe' = \case
       x : _ -> Just x
@@ -705,19 +826,20 @@ followups p g now = do
       then activityTerminalReady p
       else pure False
   let candidates =
-        [ ("readiness.host.custody_one", state .: "pending_custody" == Bool True)
-        , ("readiness.host.reconcile_one", state .: "unloaded_application" == Bool True)
-        , ("readiness.host.drive_one", maybe False (<= now) due)
-        , ("readiness.host.activity_one", activity)
+        [ (HostCustodyOne, state .: "pending_custody" == Bool True)
+        , (HostReconcileOne, state .: "unloaded_application" == Bool True)
+        , (HostDriveOne, maybe False (<= now) due)
+        , (HostActivityOne, activity)
         ]
-  fmap catMaybes . forM candidates $ \(name, eligible) -> do
-    seen <- Set.member (name, now) <$> readIORef g.proposed
+  fmap catMaybes . forM candidates $ \(hostStep, eligible) -> do
+    let followup = renderCommand hostStep
+    seen <- Set.member (followup.name, now) <$> readIORef g.proposed
     if not eligible || seen
       then pure Nothing
       else do
-        modifyIORef' g.proposed (Set.insert (name, now))
+        modifyIORef' g.proposed (Set.insert (followup.name, now))
         modifyIORef' p.hostFollowups (+ 1)
-        pure (Just ScheduledCommand {instant = now, command = hostCommand name})
+        pure (Just ScheduledCommand {instant = now, command = followup})
 
 terminalRecords :: Set Text
 terminalRecords = Set.fromList ["ActivityCompleted", "ActivityFailed", "ActivityTerminalQuarantined"]
@@ -802,7 +924,7 @@ readinessState :: ReadinessProfile -> Generation -> Integer -> IO Json
 readinessState p g now = do
   t <- readIORef p.truth
   custody <- forM (Map.keys t.emittedDeliveries) $ \delivery ->
-    (delivery,) . maybe Null String <$> Custody.status g.host.custody delivery
+    (delivery,) . maybe Null (String . Custody.inboxStatusText) <$> Custody.status g.host.custody delivery
   let timers = expectedTimers t now
   facts <- either (throwPy "ValueError") pure (factsOf t timers)
   let expected = evaluate facts
@@ -1728,6 +1850,10 @@ data ReadinessTimeline = ReadinessTimeline
 command :: ReadinessTimeline -> Text -> Json -> IO ApplyResult
 command t name payload = inWorld t.owner (Timeline.command t.timeline' name payload)
 
+-- | Submit a typed command: 'renderCommand' on the wire.
+submit :: ReadinessTimeline -> ReadinessCommand -> IO ApplyResult
+submit t typed = let c = renderCommand typed in command t c.name c.payload
+
 requireCurrent :: ReadinessTimeline -> IO ()
 requireCurrent t = do
   current <- inWorld t.owner World.generation
@@ -1794,15 +1920,7 @@ setReview t h status found =
     Object [("subject", String subject), ("head", String h), ("status", String status), ("findings", Array found)]
 
 setHumanComment :: ReadinessTimeline -> Integer -> Text -> Text -> IO ApplyResult
-setHumanComment t comment fixture author =
-  command t "readiness.github.human.comment" $
-    Object
-      [ ("subject", String subject)
-      , ("comment", Int comment)
-      , ("author", String author)
-      , ("fixture", String fixture)
-      , ("digest", String (strictDigest (Object [("fixture", String fixture)])))
-      ]
+setHumanComment t comment fixture author = submit t (HumanComment comment author fixture)
 
 setAgentTerminal :: ReadinessTimeline -> Text -> Text -> Text -> Integer -> IO ApplyResult
 setAgentTerminal t operation fixture status attempt =
@@ -1821,20 +1939,11 @@ emitWebhook :: ReadinessTimeline -> Text -> Text -> IO Text
 emitWebhook t event action = do
   n <- atomicModifyIORef' t.owner.delivery (\d -> (d + 1, d + 1))
   let delivery = deliveryUuid n
-      fixture = event <> ":" <> action
-  _ <-
-    command t "readiness.github.webhook.emit" $
-      Object
-        [ ("subject", String subject)
-        , ("delivery", String delivery)
-        , ("event", String event)
-        , ("fixture", String fixture)
-        , ("digest", String (strictDigest (Object [("event", String event), ("fixture", String fixture)])))
-        ]
+  _ <- submit t (EmitWebhook delivery event (event <> ":" <> action))
   pure delivery
 
 deliverWebhook :: ReadinessTimeline -> Text -> IO ApplyResult
-deliverWebhook t delivery = command t "readiness.github.webhook.deliver" (Object [("delivery", String delivery)])
+deliverWebhook t delivery = submit t (DeliverWebhook delivery)
 
 loseEffectResponse :: ReadinessTimeline -> Text -> IO ()
 loseEffectResponse t kind = faultEffect t kind "after_acceptance_before_response" 1
@@ -1852,7 +1961,7 @@ faultGitPublication t operation cut occurrence =
 -- | @advance_time(seconds)@: step until the World reaches the target.
 advanceTime :: ReadinessTimeline -> Integer -> IO ApplyResult
 advanceTime t seconds = do
-  result <- command t "readiness.time.advance" (Object [("seconds", Int seconds)])
+  result <- submit t (AdvanceTime seconds)
   let target = fromMaybe 0 (intOf (result.value .: "target"))
       loop = do
         now <- inWorld t.owner World.currentInstant
@@ -1861,7 +1970,7 @@ advanceTime t seconds = do
   pure result
 
 revealEffect :: ReadinessTimeline -> Text -> IO ApplyResult
-revealEffect t operation = command t "readiness.github.effect.reveal" (Object [("subject", String subject), ("operation", String operation)])
+revealEffect t operation = submit t (RevealEffect operation)
 
 observe :: ReadinessTimeline -> IO Observation
 observe t = inWorld t.owner (Timeline.observeWith t.timeline' "readiness.state" (Object []))
@@ -1901,6 +2010,3 @@ replayReadiness a root = do
   case registerProfile (readinessProfile profile) emptyRegistry >>= registerChecker readinessChecker of
     Left failure -> pure (Left failure)
     Right registry -> replay registry a
-
-_unused :: (ReadinessExpectation, Json -> Int, Maybe Int -> Bool)
-_unused = (undefined, const 0, isNothing)

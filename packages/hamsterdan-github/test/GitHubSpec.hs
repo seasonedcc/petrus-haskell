@@ -26,7 +26,7 @@ import Corpus (canonical)
 import Hamsterdan.GitHub.Auth (appEvents, appPermissions, githubAppClients, registrationInventory)
 import Hamsterdan.GitHub.Client
 import Hamsterdan.GitHub.Config (HostConfig, fromEnvironment)
-import Hamsterdan.GitHub.Effects (CommentPublisher, CommentRerunBroker (..), EffectFault, Fence)
+import Hamsterdan.GitHub.Effects (CallPhase (..), CommentPublisher, CommentRerunBroker (..), EffectFault, Fence, callPhaseText)
 import Hamsterdan.GitHub.Effects qualified as E
 import Hamsterdan.GitHub.Gateway (GitHubAuthority, RunResult (..))
 import Hamsterdan.GitHub.Gateway qualified as G
@@ -145,12 +145,12 @@ recordingFence :: IORef [(Text, Integer, Integer, Text, Text)] -> Fence
 recordingFence fences repository number epoch head' operation = modifyIORef' fences (<> [(repository, number, epoch, head', operation)])
 
 -- | A fault hook that raises once in the given phase.
-faultOnce :: IORef Bool -> Text -> EffectFault
+faultOnce :: IORef Bool -> CallPhase -> EffectFault
 faultOnce spent wanted phase _ _ _ _ = do
   already <- readIORef spent
   when (phase == wanted && not already) $ do
     writeIORef spent True
-    throwIO (boundary ("qualified " <> wanted <> " failure"))
+    throwIO (boundary ("qualified " <> callPhaseText wanted <> " failure"))
 
 authority :: Transport -> GitHubAuthority
 authority transport = either (error . show) id (G.githubAuthority transport "owner/repo" 7 Nothing)
@@ -535,13 +535,13 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     respond fake "POST" issueComments 201 (j "{'id':4,'html_url':'url','body':'x'}")
     let publisher = publisherWith (transportOf fake) (countingFence events) Nothing
     created <- E.dashboard publisher "dash-1" 3 headSha "body"
-    created.status `shouldBe` "created"
+    created.status `shouldBe` PublicationCreated
     readIORef events `shouldReturn` 1
     ((\kinds -> drop (length kinds - 2) kinds) <$> callKinds fake) `shouldReturn` ["PAGES", "POST"]
     setPages fake issuePages [comment 4 "old\n\n<!-- hamsterdan:dashboard -->" "hamsterdan[bot]"]
     respond fake "PATCH" "/repos/owner/repo/issues/comments/4" 403 (j "{'message':'denied'}")
     result <- E.dashboard publisher "dash-2" 3 headSha "new"
-    (result.status, result.capabilityAvailable) `shouldBe` ("capability_unavailable", False)
+    (result.status, result.capabilityAvailable) `shouldBe` (PublicationCapabilityUnavailable, False)
     kinds <- callKinds fake
     drop (length kinds - 2) kinds `shouldSatisfy` notElem "POST"
 
@@ -557,7 +557,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
               pure (WireResponse 500 (j "{'message':'outcome unknown to caller'}") Nothing)
             else Nothing
     recovered <- E.immutable (publisherWith transport (countingFence fences) Nothing) "finding" "stable-operation" 1 headSha "Finding" Nothing []
-    recovered.status `shouldBe` "existing"
+    recovered.status `shouldBe` PublicationExisting
     fmap (.id) recovered.reference `shouldBe` Just 8
     posts fake `shouldReturn` 1
     readIORef fences `shouldReturn` 1
@@ -578,7 +578,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
               pure (WireResponse 201 item Nothing)
             else Nothing
     result <- E.immutable (publisherWith transport (countingFence fences) Nothing) "finding" "stable-operation" 1 headSha "Finding" Nothing []
-    result.status `shouldBe` "created"
+    result.status `shouldBe` PublicationCreated
     readIORef attempts `shouldReturn` 2
     callKinds fake `shouldReturn` ["PAGES", "POST", "PAGES", "POST"]
     readIORef fences `shouldReturn` 2
@@ -593,11 +593,11 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
           pure (WireResponse 201 item Nothing)
         fault phase _ _ _ _ = do
           already <- readIORef spent
-          when (phase == "after_call" && not already) $ do
+          when (phase == AfterCall && not already) $ do
             writeIORef spent True
             throwIO (boundary "qualified ambiguous outcome")
     result <- E.immutable (publisherWith transport noFence (Just fault)) "finding" "stable-operation" 1 headSha "Finding" Nothing []
-    result.status `shouldBe` "existing"
+    result.status `shouldBe` PublicationExisting
     posts fake `shouldReturn` 1
 
   it "looks up but does not retry a definitive comment rejection" $ do
@@ -667,10 +667,10 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     E.findPublication publisher "finding" "stable-operation" headSha "Finding" [] `shouldReturn` Nothing
     setPages fake issuePages [comment 11 ("Finding\n\n" <> markerOf "finding" "stable-operation" headSha) "hamsterdan[bot]"]
     held' <- E.findPublication publisher "finding" "stable-operation" headSha "Finding" []
-    fmap (.status) held' `shouldBe` Just "existing"
+    fmap (.status) held' `shouldBe` Just PublicationExisting
     (held' >>= (.reference)) `shouldBe` Just (CommentReference 11 "url")
     compatible <- E.findPublication publisher "finding" "stable-operation" headSha "Newer" ["Finding"]
-    fmap (.status) compatible `shouldBe` Just "existing"
+    fmap (.status) compatible `shouldBe` Just PublicationExisting
     E.findPublication publisher "finding" "stable-operation" headSha "Different" [] `shouldThrow` (== PublicationCollision)
     posts fake `shouldReturn` 0
 
@@ -680,7 +680,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     let publisher = publisherWith (transportOf fake) noFence Nothing
         noContext = throwIO (ErrorCall "write context must not be read for a held operation")
     recovered <- E.immutableOperation publisher "conversation" "reply:c1" "the answer" noContext []
-    recovered.status `shouldBe` "existing"
+    recovered.status `shouldBe` PublicationExisting
     fmap (.id) recovered.reference `shouldBe` Just 12
     E.immutableOperation publisher "conversation" "reply:c1" "a different answer" noContext [] `shouldThrow` (== PublicationCollision)
     posts fake `shouldReturn` 0
@@ -691,7 +691,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     setPages fake issuePages []
     respond fake "POST" issueComments 201 (j "{'id':13,'html_url':'url'}")
     result <- E.immutableOperation (publisherWith (transportOf fake) (countingFence fences) Nothing) "conversation" "reply:c1" "the answer" (pure (1, headSha)) []
-    result.status `shouldBe` "created"
+    result.status `shouldBe` PublicationCreated
     lastBody fake >>= (`shouldSatisfy` T.isSuffixOf (markerOf "conversation" "reply:c1" headSha))
     readIORef fences `shouldReturn` 1
 
@@ -699,7 +699,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     fake <- newFake
     setPages fake issuePages [comment 14 ("an OLD nudge body\n\n" <> markerOf "reminder" "reminder:t1" headSha) "hamsterdan[bot]"]
     recovered <- E.reminderOperation (publisherWith (transportOf fake) noFence Nothing) "reminder:t1" (throwIO (ErrorCall "context read"))
-    recovered.status `shouldBe` "existing"
+    recovered.status `shouldBe` PublicationExisting
     fmap (.id) recovered.reference `shouldBe` Just 14
     callKinds fake `shouldReturn` ["PAGES"]
 
@@ -708,7 +708,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     setPages fake issuePages []
     respond fake "POST" issueComments 201 (j "{'id':15,'html_url':'url'}")
     result <- E.reminderOperation (publisherWith (transportOf fake) noFence Nothing) "reminder:t1" (pure (1, headSha, Just "the-reviewer", "the-author"))
-    result.status `shouldBe` "created"
+    result.status `shouldBe` PublicationCreated
     body <- lastBody fake
     body `shouldSatisfy` T.isInfixOf "@the-reviewer"
     body `shouldSatisfy` T.isSuffixOf (markerOf "reminder" "reminder:t1" headSha)
@@ -748,7 +748,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
       ]
     existing' <- E.immutable (publisherWith (transportOf fake) noFence Nothing) "finding" "operation" 1 headSha "body" Nothing []
     wanted `shouldSatisfy` T.isPrefixOf "<!-- hamsterdan:"
-    existing'.status `shouldBe` "existing"
+    existing'.status `shouldBe` PublicationExisting
     fmap (.id) existing'.reference `shouldBe` Just 3
     posts fake `shouldReturn` 0
 
@@ -757,7 +757,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     setPages fake issuePages [Object [("id", Int 1), ("body", String "<!-- impetus:dashboard -->"), ("user", j "{'login':'hamsterdan[bot]'}")]]
     respond fake "POST" issueComments 201 (j "{'id':2,'html_url':'url'}")
     result <- E.dashboard (publisherWith (transportOf fake) noFence Nothing) "dashboard" 1 headSha "Hamsterdan readiness"
-    result.status `shouldBe` "created"
+    result.status `shouldBe` PublicationCreated
     lastBody fake >>= (`shouldSatisfy` T.isInfixOf "<!-- hamsterdan:dashboard -->")
 
   it "mentions the configured reviewer in a reminder and never assigns" $ do
@@ -814,7 +814,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
             , suggestion = "if state.is_ready:"
             }
     result <- E.publishFinding (publisherWith (transportOf fake) fence Nothing) item 3 headSha (Just "finding-activity")
-    (result.status, result.inline) `shouldBe` ("created", True)
+    (result.status, result.inline) `shouldBe` (PublicationCreated, True)
     fmap (.url) result.reference `shouldBe` Just "inline-url"
     sent <- readIORef fake.calls
     case [body | ("POST", path, Just body) <- sent, path == reviews] of
@@ -840,7 +840,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
           , anchored "finding-activity:f3" "Third finding" "src/three.py" 12
           ]
     results <- E.publishFindings (publisherWith (transportOf fake) (recordingFence fences) Nothing) 3 headSha items "finding-activity"
-    results `shouldSatisfy` all (\result -> result.status == "created" && result.inline)
+    results `shouldSatisfy` all (\result -> result.status == PublicationCreated && result.inline)
     sent <- readIORef fake.calls
     case [body | ("POST", path, Just body) <- sent, path == reviewsRoot] of
       [body] -> do
@@ -876,7 +876,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
           _ -> Nothing
         items = [anchored "finding-activity:f1" "First finding" "src/one.py" 4, anchored "finding-activity:f2" "Second finding" "src/two.py" 9]
     results <- E.publishFindings (publisherWith transport noFence Nothing) 3 headSha items "finding-activity"
-    results `shouldSatisfy` all (\result -> result.status == "existing" && result.inline)
+    results `shouldSatisfy` all (\result -> result.status == PublicationExisting && result.inline)
     postsTo fake reviewsRoot `shouldReturn` 1
 
   it "falls back to one immutable issue comment after a definitive inline denial" $ do
@@ -886,7 +886,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     respond fake "POST" inlineRoot 422 (j "{'message':'line is not in diff'}")
     respond fake "POST" issueComments 201 (j "{'id':9,'html_url':'issue-url'}")
     result <- E.publishFinding (publisherWith (transportOf fake) (recordingFence fences) Nothing) (anchored "finding-activity:finding-id" "Conceptual concern." "src/one.py" 4) 3 headSha (Just "finding-activity")
-    (result.status, result.inline) `shouldBe` ("created", False)
+    (result.status, result.inline) `shouldBe` (PublicationCreated, False)
     fmap (.url) result.reference `shouldBe` Just "issue-url"
     postsTo fake inlineRoot `shouldReturn` 1
     postsTo fake issueComments `shouldReturn` 1
@@ -933,8 +933,8 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
             setPages fake (inlineRoot <> "?per_page=100") [item]
             pure (WireResponse 201 item Nothing)
           _ -> Nothing
-    result <- concernIn (publisherWith transport noFence (Just (faultOnce spent "after_call")))
-    (result.status, result.inline) `shouldBe` ("existing", True)
+    result <- concernIn (publisherWith transport noFence (Just (faultOnce spent AfterCall)))
+    (result.status, result.inline) `shouldBe` (PublicationExisting, True)
     postsTo fake inlineRoot `shouldReturn` 1
 
   it "retries an inline finding after a before-call fault only behind a fresh fence" $ do
@@ -944,8 +944,8 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     spent <- newIORef False
     noComments fake
     respond fake "POST" inlineRoot 201 (j "{'id':11,'html_url':'inline-url'}")
-    result <- concernIn (publisherDelays (transportOf fake) (recordingFence fences) (Just (faultOnce spent "before_call")) delays)
-    (result.status, result.inline) `shouldBe` ("created", True)
+    result <- concernIn (publisherDelays (transportOf fake) (recordingFence fences) (Just (faultOnce spent BeforeCall)) delays)
+    (result.status, result.inline) `shouldBe` (PublicationCreated, True)
     length <$> readIORef fences `shouldReturn` 2
     readIORef delays `shouldReturn` [60]
     postsTo fake inlineRoot `shouldReturn` 1
@@ -973,7 +973,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
                       else WireResponse 201 (j "{'id':12,'html_url':'inline-url'}") Nothing
                 else Nothing
         result <- concernIn (publisherDelays transport (countingFence fences) Nothing delays)
-        (result.status, result.inline) `shouldBe` ("created", True)
+        (result.status, result.inline) `shouldBe` (PublicationCreated, True)
         readIORef attempts `shouldReturn` 2
         readIORef fences `shouldReturn` 2
         readIORef delays `shouldReturn` [60]
@@ -1000,7 +1000,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     let fence _ _ _ _ _ = do
           count <- atomicModifyIORef' fences (\n -> (n + 1, n + 1))
           when (count == 2) (throwIO (ContractRefused "stale head"))
-    concernIn (publisherWith (transportOf fake) fence (Just (faultOnce spent "before_call")))
+    concernIn (publisherWith (transportOf fake) fence (Just (faultOnce spent BeforeCall)))
       `shouldThrow` (== ContractRefused "stale head")
     readIORef fences `shouldReturn` 2
     postsTo fake inlineRoot `shouldReturn` 0
@@ -1026,9 +1026,9 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
       ]
     let publisher = publisherWith (transportOf fake) noFence Nothing
     found <- E.publishFinding publisher (anchored "finding-activity:finding-id" "Finding body" "src/one.py" 4) 3 headSha Nothing
-    (found.status, found.inline) `shouldBe` ("existing", False)
+    (found.status, found.inline) `shouldBe` (PublicationExisting, False)
     reminded <- E.reminder publisher "reminder-operation" 3 headSha (Just "reviewer") "author" Nothing
-    reminded.status `shouldBe` "existing"
+    reminded.status `shouldBe` PublicationExisting
     posts fake `shouldReturn` 0
 
   it "requires the unique final marker line for a lookup" $ do
@@ -1060,12 +1060,12 @@ brokerSpec = describe "rerun broker (test_github.py)" $ do
         broker = CommentRerunBroker (authority transport) (publisherWith transport (countingFence events) Nothing)
         run = snapshot 5 headSha 1 "completed" (Just "failure")
     first <- E.requestRerun broker run 3 "retry-1"
-    first.status `shouldBe` "requested"
+    first.status `shouldBe` PublicationRequested
     readIORef events `shouldReturn` 1
     (last <$> callKinds fake) `shouldReturn` "POST"
     setPages fake issuePages [comment 9 ("<!-- hamsterdan-rerun run=5 head=" <> headSha <> " operation=retry-1 -->") "hamsterdan[bot]"]
     again <- E.requestRerun broker run 3 "retry-1"
-    again.status `shouldBe` "existing"
+    again.status `shouldBe` PublicationExisting
     readIORef events `shouldReturn` 1
 
   it "carries no currency requirement in the held lookup" $ do
@@ -1077,19 +1077,19 @@ brokerSpec = describe "rerun broker (test_github.py)" $ do
     E.held broker 5 headSha "retry-1" `shouldReturn` Nothing
     setPages fake issuePages [comment 9 rerun "hamsterdan[bot]"]
     found <- E.held broker 5 headSha "retry-1"
-    fmap (.status) found `shouldBe` Just "existing"
+    fmap (.status) found `shouldBe` Just PublicationExisting
     sent <- readIORef fake.calls
     sent `shouldSatisfy` all (\(kind, path, _) -> kind == "PAGES" && issueComments `T.isPrefixOf` path)
     setPages fake issuePages [Object [("html_url", String "url"), ("body", String rerun), ("user", j "{'login':'hamsterdan[bot]'}")]]
     degraded <- E.held broker 5 headSha "retry-1"
-    fmap (\r -> (r.status, isNothing r.reference)) degraded `shouldBe` Just ("existing", True)
+    fmap (\r -> (r.status, isNothing r.reference)) degraded `shouldBe` Just (PublicationExisting, True)
 
   it "owns the final run read and the evidence cut" $ do
     fake <- newFake
     broker <- rerunWorld fake [wireRun 5 9 "[{'number':7}]" "completed" "failure", wireRun 7 1 "[{'number':7}]" "completed" "failure"]
     respond fake "POST" issueComments 201 (j "{'id':9,'html_url':'url'}")
     issued <- E.issue broker (snapshot 5 headSha 9 "completed" (Just "failure")) 3 "r-1"
-    issued.result.status `shouldBe` "requested"
+    issued.result.status `shouldBe` PublicationRequested
     (issued.cutRunId, issued.cutAttempt) `shouldBe` (7, 1)
 
   it "refuses before any effect when the head or the run moved" $ do
@@ -1106,7 +1106,7 @@ brokerSpec = describe "rerun broker (test_github.py)" $ do
     broker <- rerunWorld fake [wireRun 5 1 "[{'number':7}]" "completed" "failure"]
     respond fake "POST" issueComments 201 (j "{'html_url':'url'}")
     issued <- E.issue broker (snapshot 5 headSha 1 "completed" (Just "failure")) 3 "r-1"
-    (issued.result.status, issued.result.reference) `shouldBe` ("requested", Nothing)
+    (issued.result.status, issued.result.reference) `shouldBe` (PublicationRequested, Nothing)
 
 clientSpec :: Spec
 clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do

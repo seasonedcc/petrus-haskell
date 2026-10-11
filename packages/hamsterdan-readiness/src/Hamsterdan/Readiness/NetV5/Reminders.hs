@@ -35,7 +35,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Kind (Type)
 import Data.Typeable (Typeable)
-import Hamsterdan.Contracts.Codec (dump)
 import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.Readiness.NetV5.Folding
 import Hamsterdan.Readiness.NetV5.Py
@@ -64,32 +63,25 @@ operationFor st = ("timer-command:" <> st.subject <> ":g" <> showT generation, g
   where
     generation = st.commandGeneration + 1
 
-issueArm :: RemState -> ReminderTimer -> Py (RemState, TimerCommand)
-issueArm st timer = do
-  let (operation, generation) = operationFor st
-      command = TimerCommand {operation = operation, command = CommandArm ArmReminder {timer = timer, delayS = st.delayS}}
-  st' <-
-    vupdate
-      st
-      [ ("clock", dump (ClockArming ArmingReminderClock {timer = timer, operation = operation}))
-      , ("command_generation", Int generation)
-      ]
-  Right (st', command)
+issueArm :: RemState -> ReminderTimer -> (RemState, TimerCommand)
+issueArm st timer =
+  ( st {clock = ClockArming ArmingReminderClock {timer = timer, operation = operation}, commandGeneration = generation} :: RemState
+  , TimerCommand {operation = operation, command = CommandArm ArmReminder {timer = timer, delayS = st.delayS}}
+  )
+  where
+    (operation, generation) = operationFor st
 
-issueCancel :: RemState -> ReminderTimer -> Text -> Py (RemState, TimerCommand)
-issueCancel st timer reason = do
-  let (operation, generation) = operationFor st
-      command = TimerCommand {operation = operation, command = CommandCancel CancelReminder {timer = timer, reason = reason}}
-  st' <-
-    vupdate
-      st
-      [ ("clock", dump (ClockCancelling CancellingReminderClock {timer = timer, operation = operation, reason = reason}))
-      , ("command_generation", Int generation)
-      ]
-  Right (st', command)
+issueCancel :: RemState -> ReminderTimer -> Text -> (RemState, TimerCommand)
+issueCancel st timer reason =
+  ( st {clock = ClockCancelling CancellingReminderClock {timer = timer, operation = operation, reason = reason}, commandGeneration = generation}
+      :: RemState
+  , TimerCommand {operation = operation, command = CommandCancel CancelReminder {timer = timer, reason = reason}}
+  )
+  where
+    (operation, generation) = operationFor st
 
-noClock :: Json
-noClock = dump (ClockNone NoReminderClock)
+noClock :: ReminderClock
+noClock = ClockNone NoReminderClock
 
 isNoClock :: ReminderClock -> Bool
 isNoClock = \case
@@ -114,22 +106,20 @@ cycle' b outs = do
     then Right (route outs (keep st0))
     else do
       let desired = timerFor st0 fact.incarnation 0 fact.head
-      st <-
-        vupdate
-          st0
-          [ ("lifecycle_incarnation", Int fact.incarnation)
-          , ("lifecycle_head", String fact.head)
-          , ("lifecycle_active", Bool True)
-          , ("desired_timer", dump desired)
-          , ("delay_s", Int fact.delayS)
-          ]
-      case st.clock of
-        ClockArming _ -> Right (route outs (keep st))
-        ClockCancelling _ -> Right (route outs (keep st))
-        ClockArmed armed | armed.timer == desired -> Right (route outs (keep st))
-        _ -> do
-          (st', command) <- issueArm st desired
-          Right (route outs (withCommand st' command))
+          st =
+            st0
+              { lifecycleIncarnation = fact.incarnation
+              , lifecycleHead = fact.head
+              , lifecycleActive = True
+              , desiredTimer = Just desired
+              , delayS = fact.delayS
+              }
+              :: RemState
+      Right $ route outs $ case st.clock of
+        ClockArming _ -> keep st
+        ClockCancelling _ -> keep st
+        ClockArmed armed | armed.timer == desired -> keep st
+        _ -> uncurry withCommand (issueArm st desired)
 
 pause :: Fold
 pause b outs = do
@@ -137,22 +127,13 @@ pause b outs = do
   if fact.incarnation < st0.lifecycleIncarnation || (fact.incarnation == st0.lifecycleIncarnation && not st0.lifecycleActive)
     then Right (route outs (keep st0))
     else do
-      st <-
-        vupdate
-          st0
-          [ ("lifecycle_incarnation", Int fact.incarnation)
-          , ("lifecycle_head", String fact.head)
-          , ("lifecycle_active", Bool False)
-          , ("desired_timer", Null)
-          ]
-      case st.clock of
-        ClockArmed armed -> do
-          (st', command) <- issueCancel st armed.timer fact.reason
-          Right (route outs (withCommand st' command))
-        ClockOverdue _ -> do
-          st' <- vupdate st [("clock", noClock)]
-          Right (route outs (settle st' []))
-        _ -> Right (route outs (settle st []))
+      let st =
+            st0 {lifecycleIncarnation = fact.incarnation, lifecycleHead = fact.head, lifecycleActive = False, desiredTimer = Nothing}
+              :: RemState
+      Right $ route outs $ case st.clock of
+        ClockArmed armed -> uncurry withCommand (issueCancel st armed.timer fact.reason)
+        ClockOverdue _ -> settle st {clock = noClock} []
+        _ -> settle st []
 
 commandTimer :: ReminderCommand -> ReminderTimer
 commandTimer = \case
@@ -173,104 +154,78 @@ commandApplied b outs = do
     then redrain
     else case (issued.command, ack.result) of
       (CommandArm _, ResultArmed armed) -> do
-        st <- vupdate st0 [("clock", dump (ClockArmed ArmedReminderClock {timer = armed.timer, dueAt = armed.dueAt}))]
-        if st.desiredTimer == Just armed.timer && st.closing == Nothing
-          then Right (route outs (keep st))
-          else do
-            (st', command) <- case st.desiredTimer of
+        let st = st0 {clock = ClockArmed ArmedReminderClock {timer = armed.timer, dueAt = armed.dueAt}} :: RemState
+        Right . route outs $
+          if st.desiredTimer == Just armed.timer && st.closing == Nothing
+            then keep st
+            else uncurry withCommand $ case st.desiredTimer of
               Nothing -> issueCancel st armed.timer (maybe "draft" id st.closing)
               Just desired -> issueArm st desired
-            Right (route outs (withCommand st' command))
       (CommandCancel _, ResultCancelled _) -> do
-        st <- vupdate st0 [("clock", noClock)]
-        case st.desiredTimer of
-          Just desired | st.closing == Nothing -> do
-            (st', command) <- issueArm st desired
-            Right (route outs (withCommand st' command))
-          _ -> Right (route outs (settle st []))
+        let st = st0 {clock = noClock} :: RemState
+        Right . route outs $ case st.desiredTimer of
+          Just desired | st.closing == Nothing -> uncurry withCommand (issueArm st desired)
+          _ -> settle st []
       _ -> redrain
 
-nextAfter :: RemState -> ReminderTimer -> Py (RemState, TimerCommand)
-nextAfter st timer = do
-  let desired = timerFor st timer.incarnation (timer.sequence + 1) timer.head
-  st' <- vupdate st [("desired_timer", dump desired)]
-  issueArm st' desired
+nextAfter :: RemState -> ReminderTimer -> (RemState, TimerCommand)
+nextAfter st timer = issueArm st {desiredTimer = Just desired} desired
+  where
+    desired = timerFor st timer.incarnation (timer.sequence + 1) timer.head
 
-requestNudge :: RemState -> Text -> Py (RemState, Maybe RemReq)
+requestNudge :: RemState -> Text -> (RemState, Maybe RemReq)
 requestNudge st timerId
-  | any (any ((== timerId) . fst)) [st.pending, st.blocked, st.faulted] = Right (st, Nothing)
-  | otherwise = do
-      st' <- vupdate st [("pending", Object (insert timerId (Bool True) st.pending))]
-      Right (st', Just RemReq {timerId = timerId})
+  | any (any ((== timerId) . fst)) [st.pending, st.blocked, st.faulted] = (st, Nothing)
+  | otherwise = (st {pending = insert timerId (Bool True) st.pending} :: RemState, Just RemReq {timerId = timerId})
 
-nudge :: RemState -> ReminderTimer -> Py [Emit]
-nudge st0 timer = do
-  (st1, request) <- requestNudge st0 timer.id
-  (st, command) <- nextAfter st1 timer
-  Right (withCommand st command ++ [emit "rem.pub_req" [r] | Just r <- [request]])
+nudge :: RemState -> ReminderTimer -> [Emit]
+nudge st0 timer = withCommand st command ++ [emit "rem.pub_req" [r] | Just r <- [request]]
+  where
+    (st1, request) = requestNudge st0 timer.id
+    (st, command) = nextAfter st1 timer
 
 mature :: Fold
 mature b outs = do
   (due, st0) <- values2 @TimerDue @RemState b
-  st <- vupdate st0 [("matured", texts (st0.matured ++ [due.timer.id]))]
-  let current = case st.clock of
+  let st = st0 {matured = st0.matured ++ [due.timer.id]} :: RemState
+      current = case st.clock of
         ClockArmed armed -> armed.timer == due.timer && armed.dueAt == due.dueAt && st.closing == Nothing
         _ -> False
-  if not current
-    then Right (route outs (keep st))
-    else
-      if st.snoozed
-        then do
-          st' <-
-            vupdate
-              st
-              [ ("desired_timer", Null)
-              , ("clock", dump (ClockOverdue OverdueReminderClock {timer = due.timer, dueAt = due.dueAt, maturedAt = due.maturedAt}))
-              ]
-          Right (route outs (keep st'))
-        else route outs <$> nudge st due.timer
+      overdue = ClockOverdue OverdueReminderClock {timer = due.timer, dueAt = due.dueAt, maturedAt = due.maturedAt}
+  Right . route outs $
+    if not current
+      then keep st
+      else if st.snoozed then keep st {desiredTimer = Nothing, clock = overdue} else nudge st due.timer
 
 snooze :: Fold
 snooze b outs = do
   (fact, st0) <- values2 @SnoozeFact @RemState b
-  if fact.mode == ModeSnooze
-    then do
-      st <- vupdate st0 [("snoozed", Bool True)]
-      Right (route outs (keep st))
-    else do
-      st <- vupdate st0 [("snoozed", Bool False)]
-      case st.clock of
-        ClockOverdue overdue | st.closing == Nothing -> route outs <$> nudge st overdue.timer
-        _ -> Right (route outs (keep st))
+  Right . route outs $
+    if fact.mode == ModeSnooze
+      then keep st0 {snoozed = True}
+      else
+        let st = st0 {snoozed = False} :: RemState
+         in case st.clock of
+              ClockOverdue overdue | st.closing == Nothing -> nudge st overdue.timer
+              _ -> keep st
 
 foldLanded :: Fold
 foldLanded b outs = do
   (out, st0) <- values2 @RemLanded @RemState b
-  st <- vupdate st0 [("pending", Object (without out.timerId st0.pending)), ("blocked", Object (without out.timerId st0.blocked))]
-  let fact = GateFact {kind = "reminder", incarnation = 0, body = [("timer_id", String out.timerId)]}
+  let st = st0 {pending = without out.timerId st0.pending, blocked = without out.timerId st0.blocked} :: RemState
+      fact = GateFact {kind = "reminder", incarnation = 0, body = [("timer_id", String out.timerId)]}
   Right (route outs (settle st [emit "dash.facts" [fact]]))
 
 foldBlocked :: Fold
 foldBlocked b outs = do
   (out, st0) <- values2 @RemBlocked @RemState b
-  st <-
-    vupdate
-      st0
-      [ ("pending", Object (without out.timerId st0.pending))
-      , ("blocked", Object (insert out.timerId (Bool True) st0.blocked))
-      ]
-  Right (route outs (settle st []))
+  Right (route outs (settle st0 {pending = without out.timerId st0.pending, blocked = insert out.timerId (Bool True) st0.blocked} []))
 
 foldFault :: Fold
 foldFault b outs = do
   (out, st0) <- values2 @RemFault @RemState b
-  st <-
-    vupdate
-      st0
-      [ ("pending", Object (without out.timerId st0.pending))
-      , ("faulted", Object (insert out.timerId (String out.reason) st0.faulted))
-      ]
-  let fact = GateFact {kind = "fault", incarnation = 0, body = [("where", String "reminder"), ("reason", String out.reason)]}
+  let st = st0 {pending = without out.timerId st0.pending, faulted = insert out.timerId (String out.reason) st0.faulted} :: RemState
+      fact = GateFact {kind = "fault", incarnation = 0, body = [("where", String "reminder"), ("reason", String out.reason)]}
   Right (route outs (settle st [emit "dash.facts" [fact]]))
 
 recover :: Fold
@@ -281,33 +236,23 @@ recover b outs = do
       | fact.target == "reminder"
       , any ((== timerId) . fst) st0.blocked
       , st0.closing == Nothing -> do
-          st <-
-            vupdate
-              st0
-              [ ("pending", Object (insert timerId (Bool True) st0.pending))
-              , ("blocked", Object (without timerId st0.blocked))
-              ]
+          let st = st0 {pending = insert timerId (Bool True) st0.pending, blocked = without timerId st0.blocked} :: RemState
           Right (route outs [emit "rem.state" [st], emit "rem.pub_req" [RemReq {timerId = timerId}]])
     _ -> Right (route outs (keep st0))
 
 end :: Fold
 end b outs = do
   (close, st0) <- values2 @CloseFact @RemState b
-  st <- vupdate st0 [("closing", String close.reason), ("desired_timer", Null)]
-  case st.clock of
-    ClockArmed armed -> do
-      (st', command) <- issueCancel st armed.timer close.reason
-      Right (route outs (withCommand st' command))
-    ClockOverdue _ -> do
-      st' <- vupdate st [("clock", noClock)]
-      Right (route outs (settle st' []))
-    _ -> Right (route outs (settle st []))
+  let st = st0 {closing = Just close.reason, desiredTimer = Nothing} :: RemState
+  Right $ route outs $ case st.clock of
+    ClockArmed armed -> uncurry withCommand (issueCancel st armed.timer close.reason)
+    ClockOverdue _ -> settle st {clock = noClock} []
+    _ -> settle st []
 
 drainTimer :: Fold
 drainTimer b outs = do
   (due, ended) <- values2 @TimerDue @RemEnded b
-  updated <- vupdate ended [("matured", texts (ended.matured ++ [due.timer.id]))]
-  Right (route outs [emit "rem.done" [updated]])
+  Right (route outs [emit "rem.done" [ended {matured = ended.matured ++ [due.timer.id]} :: RemEnded]])
 
 drainOf :: forall (a :: Type). (Typeable a) => Fold
 drainOf b outs = do

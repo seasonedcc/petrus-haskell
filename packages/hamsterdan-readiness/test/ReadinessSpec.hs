@@ -4,7 +4,8 @@
 -- 38 cases): the readiness loop.
 module ReadinessSpec (spec) where
 
-import Control.Monad (foldM, forM_)
+import Control.Monad (forM_)
+import Data.Maybe (fromMaybe)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -119,8 +120,8 @@ settledFact inc key outcome =
 
 data Apply = Pending C.MutationPendingFact | Settled C.MutationSettledFact
 
-applyOne :: C.Snapshot -> Apply -> Either Text C.Snapshot
-applyOne s step = maybe s id <$> applied
+applyOne :: C.Snapshot -> Apply -> C.Snapshot
+applyOne s step = fromMaybe s applied
  where
   applied = case step of
     Pending fact -> applyMutationPending s fact
@@ -307,7 +308,7 @@ spec = describe "readiness loop" $ do
             model @C.StateFact
               (obj [("incarnation", int 1), ("body", obj [("phase", str "running"), ("head", str "h1"), ("base", str "b1"), ("mergeable", Bool True), ("policy", str "p1")])])
       case applyState baseSnapshot retained of
-        Right (Just applied) -> do
+        Just applied -> do
           applied.strictBase `shouldBe` True
           applied.baseCurrent `shouldBe` False
         other -> expectationFailure (show other)
@@ -357,13 +358,13 @@ spec = describe "readiness loop" $ do
           pendingB = Pending (pendingFact 1 keyB)
           settledA = Settled (settledFact 1 keyA "moved")
       forM_ [[pendingA, settledA, pendingB], [pendingA, pendingB, settledA]] $ \order ->
-        ((.pending) <$> foldM applyOne baseSnapshot order) `shouldBe` Right [keyB]
+        (foldl applyOne baseSnapshot order).pending `shouldBe` [keyB]
 
     it "the pending gate holds on identity not display" $ do
       let afterPending = applyMutationPending baseSnapshot (pendingFact 1 keyA)
-      ((.pending) <$>) <$> afterPending `shouldBe` Right (Just [keyA])
+      (.pending) <$> afterPending `shouldBe` Just [keyA]
       case afterPending of
-        Right (Just s) -> ((.pending) <$>) <$> applyMutationSettled s (settledFact 1 keyA "landed") `shouldBe` Right (Just [])
+        Just s -> (.pending) <$> applyMutationSettled s (settledFact 1 keyA "landed") `shouldBe` Just []
         other -> expectationFailure (show other)
 
     it "same drive pending folds before its settlement" $ do

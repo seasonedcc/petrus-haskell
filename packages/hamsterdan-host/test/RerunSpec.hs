@@ -12,6 +12,7 @@ import Hamsterdan.GitHub.Models
   ( ActionsRunSnapshot (..)
   , CommentReference (..)
   , PublicationResult (..)
+  , PublicationStatus (..)
   , RerunIssue (..)
   , RerunRefused (..)
   , boundary
@@ -25,7 +26,7 @@ import Petrus.Json (Json (..))
 import Test.Hspec
 
 claim1 :: CurrentClaim
-claim1 = CurrentClaim "running" 1 "h1" "b1" "p1"
+claim1 = CurrentClaim PhaseRunning 1 "h1" "b1" "p1"
 
 reference :: CommentReference
 reference = CommentReference 1 "https://example.test/c/1"
@@ -59,18 +60,18 @@ newBroker mode found lookupError = do
                 modifyIORef' calls (++ [Held runId head' operation])
                 if
                   | lookupError -> throwIO (boundary "comment listing unavailable")
-                  | found -> pure (Just (PublicationResult "existing" (Just reference) True False))
+                  | found -> pure (Just (PublicationResult PublicationExisting (Just reference) True False))
                   | otherwise -> pure Nothing
             , issue = \run epoch operation -> do
                 modifyIORef' calls (++ [Issue run.id run.attempt epoch operation])
                 case mode of
-                  Existing -> pure (issued (PublicationResult "existing" (Just reference) True False))
+                  Existing -> pure (issued (PublicationResult PublicationExisting (Just reference) True False))
                   Refused -> throwIO (RerunRefused "rerun request does not belong to the configured repository and exact head")
                   Boundary -> throwIO (boundary "GitHub did not prove rerun broker publication")
                   Unknown -> throwIO (RuntimeError "provider returned an unclassifiable terminal")
-                  Capability -> pure (issued (PublicationResult "capability_unavailable" Nothing False False))
-                  Unclassified -> pure (issued (PublicationResult "banana" (Just reference) True False))
-                  Requested -> pure (issued (PublicationResult "requested" (Just reference) True False))
+                  Capability -> pure (issued (PublicationResult PublicationCapabilityUnavailable Nothing False False))
+                  Unclassified -> pure (issued (PublicationResult (PublicationUnclassified "banana") (Just reference) True False))
+                  Requested -> pure (issued (PublicationResult PublicationRequested (Just reference) True False))
             }
       }
 
@@ -147,11 +148,11 @@ spec = describe "test_v5_rerun" $ describe "TestRerunGate" $ do
     out.mem `shouldBe` mem
     readIORef b.calls >>= (`shouldBe` [Held 5 "h1" "rerun:lin:fp1"])
   let drifts =
-        [ ("phase=quiescent", CurrentClaim "quiescent" 1 "h1" "b1" "p1")
-        , ("incarnation=2", CurrentClaim "running" 2 "h1" "b1" "p1")
-        , ("head=h2", CurrentClaim "running" 1 "h2" "b1" "p1")
-        , ("base=b2", CurrentClaim "running" 1 "h1" "b2" "p1")
-        , ("policy=p2", CurrentClaim "running" 1 "h1" "b1" "p2")
+        [ ("phase=quiescent", CurrentClaim PhaseQuiescent 1 "h1" "b1" "p1")
+        , ("incarnation=2", CurrentClaim PhaseRunning 2 "h1" "b1" "p1")
+        , ("head=h2", CurrentClaim PhaseRunning 1 "h2" "b1" "p1")
+        , ("base=b2", CurrentClaim PhaseRunning 1 "h1" "b2" "p1")
+        , ("policy=p2", CurrentClaim PhaseRunning 1 "h1" "b1" "p2")
         ]
   forM_ drifts $ \(label, observed) ->
     it ("test_any_moved_claim_field_refuses_the_request[" <> label <> "]") $ do

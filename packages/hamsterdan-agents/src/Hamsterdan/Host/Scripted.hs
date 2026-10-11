@@ -32,6 +32,7 @@ import GHC.Clock (getMonotonicTime)
 import Hamsterdan.Agents.Pi (PiWorkspaceProvider (..), defaultPiRunnerOptions, newPiNativeRunner, piA2Runtime, piAgentRunner)
 import Hamsterdan.Agents.Protocol (AgentRunner)
 import Hamsterdan.Host.PiA2 (PiA2Hooks (..), defaultPiA2Hooks)
+import Hamsterdan.PyText (raisingDumps)
 import Petrus.Agenticus.Runtime.PiA2Host (PiA2RuntimeHost, PiA2ScriptedReadiness (..), composePiA2ScriptedRuntime, piA2ScriptedTurn, scriptedReadiness)
 import Petrus.Json (Json (..), compact, dumps)
 import System.Environment (getEnvironment)
@@ -64,7 +65,7 @@ localClone repository (PiWorkspaceProvider open) =
 -- request, epoch (its incarnation), head and base, no findings.
 clearReviewText :: Text -> Integer -> Integer -> Text -> Text -> Text
 clearReviewText repository pullRequest epoch commit base =
-  TE.decodeUtf8 . either (error . show) id . dumps compact $
+  TE.decodeUtf8 . raisingDumps . dumps compact $
     Object
       [ ("repository", String repository)
       , ("pull_request", Int pullRequest)

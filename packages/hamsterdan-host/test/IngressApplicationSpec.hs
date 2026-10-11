@@ -23,7 +23,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Database.SQLite3 qualified as S
 import Hamsterdan.Agents.Protocol
-import Hamsterdan.Contracts.Codec (Object, dump)
+import Hamsterdan.Contracts.Codec (Object, dump, spelling)
 import Hamsterdan.Contracts.Readiness (AdmittedConversation (..))
 import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.GitHub.Effects qualified as Effects
@@ -664,7 +664,7 @@ spec = describe "test_v5_ingress (application)" $ do
     currentClaim app `shouldThrow` (\(e :: GitHubBoundaryError) -> "not staged" `T.isInfixOf` e.message)
     drafted <- newDelivery
     processObservation app (observationOf drafted "pull_request" "converted_to_draft") Nothing
-    (.phase) <$> currentClaim app `shouldReturn` "quiescent"
+    (.phase) <$> currentClaim app `shouldReturn` PhaseQuiescent
     closeApplication app
 
   it "test_v5_application_folds_draft_and_ready_in_the_host_grants_canonical_order" . withTempRoot $ \tmp -> do
@@ -675,8 +675,8 @@ spec = describe "test_v5_ingress (application)" $ do
     [life] <- place app "life.state"
     claim <- I.claim app.ingress subject
     (data' life "phase", data' life "incarnation", data' life "head")
-      `shouldBe` (String claim.phase, Int claim.incarnation, String claim.head)
-    (claim.phase, claim.incarnation, claim.head) `shouldBe` ("quiescent", 1, aaa)
+      `shouldBe` (String (spelling claim.phase), Int claim.incarnation, String claim.head)
+    (claim.phase, claim.incarnation, claim.head) `shouldBe` (PhaseQuiescent, 1, aaa)
     readIORef w.comments `shouldReturn` []
     modifyPull w (\p -> pullWith p p.head p.base False p.state p.closed)
     readied <- newDelivery
@@ -684,8 +684,8 @@ spec = describe "test_v5_ingress (application)" $ do
     [life'] <- place app "life.state"
     claim' <- I.claim app.ingress subject
     (data' life' "phase", data' life' "incarnation", data' life' "head")
-      `shouldBe` (String claim'.phase, Int claim'.incarnation, String claim'.head)
-    (claim'.phase, claim'.incarnation, claim'.head) `shouldBe` ("running", 2, aaa)
+      `shouldBe` (String (spelling claim'.phase), Int claim'.incarnation, String claim'.head)
+    (claim'.phase, claim'.incarnation, claim'.head) `shouldBe` (PhaseRunning, 2, aaa)
     closeApplication app
 
   it "test_v5_application_drains_the_real_topology_against_provider_backed_gates" . withTempRoot $ \tmp -> do

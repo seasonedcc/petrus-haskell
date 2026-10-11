@@ -45,7 +45,7 @@ module Hamsterdan.GitHub.Python
   , canonicalUuid
   ) where
 
-import Control.Exception (SomeException, evaluate, try)
+import Control.Exception (evaluate, try)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Text (Text)
@@ -247,10 +247,14 @@ detectEncoding b
     utf32be h bytes = TE.decodeUtf32BEWith h (if BS.pack [0x00, 0x00, 0xFE, 0xFF] `BS.isPrefixOf` bytes then BS.drop 4 bytes else bytes)
     utf32le = TE.decodeUtf32LEWith
 
+-- | Decode with 'TEE.strictDecode', or 'Nothing' where it refuses. The
+-- decoders report a refusal only by throwing 'TEE.UnicodeException', so
+-- exactly that exception is caught; anything else (an asynchronous
+-- exception included) propagates.
 decodeStrictly :: (TEE.OnDecodeError -> ByteString -> Text) -> ByteString -> Maybe Text
 decodeStrictly decode bytes = unsafePerformIO $ do
   result <- try (evaluate (let text = decode TEE.strictDecode bytes in T.length text `seq` text))
   pure $ case result of
-    Left (_ :: SomeException) -> Nothing
+    Left (_ :: TEE.UnicodeException) -> Nothing
     Right text -> Just text
 {-# NOINLINE decodeStrictly #-}

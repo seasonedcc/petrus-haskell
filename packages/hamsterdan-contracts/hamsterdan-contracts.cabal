@@ -59,6 +59,10 @@ test-suite hamsterdan-contracts-test
   main-is:          Main.hs
   other-modules:    CorpusSpec
                     CodecSpec
+                    Generators.Json
+                    Generators.Readiness
+                    Generators.ReadinessV5
+                    RoundTripSpec
                     ProtocolSpec
                     PyLiteralSpec
                     PyTextSpec
@@ -68,6 +72,7 @@ test-suite hamsterdan-contracts-test
                   , directory
                   , filepath
                   , hamsterdan-contracts
+                  , hedgehog >=1.4
                   , hspec >=2.10
                   , petrus-json
                   , QuickCheck >=2.14

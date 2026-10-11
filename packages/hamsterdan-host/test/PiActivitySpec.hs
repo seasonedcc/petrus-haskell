@@ -15,8 +15,8 @@ import Hamsterdan.Agents.Protocol hiding (Correlation)
 import Hamsterdan.Agents.Protocol qualified as P
 import Hamsterdan.Contracts.Codec (Contract, dump, validate)
 import Hamsterdan.Contracts.ReadinessV5 (DeclinedM (..), MutWork (..), Pushed (..))
-import Hamsterdan.Host.GitPublish (GitPublishResult (..), GitReconciliation (..))
-import Hamsterdan.Host.V5.Claim (CurrentClaim (..))
+import Hamsterdan.Host.GitPublish (GitPublishResult (..), GitReconciliation (..), OperationDisposition (..))
+import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Mutation
 import Hamsterdan.Readiness.NetV5.Gating (Variant (..))
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))
@@ -84,14 +84,14 @@ runCodingActivity subject operation = do
           , runner = piAgentRunner subject
           , publisher =
               MutationPublisher
-                { reconcile = \_ _ _ _ _ -> pure (GitReconciliation "absent" headSha "" [])
+                { reconcile = \_ _ _ _ _ -> pure (GitReconciliation OperationAbsent headSha "" [])
                 , publish = \value _ _ _ _ _ -> do
                     modifyIORef' publisher.calls (+ 1)
                     writeIORef publisher.result (Just value)
                     pure (GitPublishResult (T.replicate 40 "c") False)
                 }
           , publicCloneUrl = testUrl
-          , claim = pure (CurrentClaim "running" 2 headSha baseSha "policy")
+          , claim = pure (CurrentClaim PhaseRunning 2 headSha baseSha "policy")
           }
   effect <- gitGate gate (mutationWork operation)
   pure (effect, publisher)

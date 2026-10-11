@@ -76,6 +76,8 @@ module Hamsterdan.Operator
     -- * Command line
   , operatorParser
   , operatorParserFor
+  , OperatorCommand (..)
+  , decodeOperatorCommand
   , OperatorEnvironment (..)
   , productionEnvironment
   , runOperator
@@ -1715,40 +1717,87 @@ operatorParserFor fixture =
   newParser
     prog
     Nothing
-    [ subcommands
-        prog
-        "command"
-        [ ("preflight", [option ["--health-url"]])
-        , ("create", [(option ["--scenario"]) {choices = Just creatableScenarios, required = True}])
-        , ("prepare-broker", [])
-        ,
-          ( "inspect"
-          ,
-            [ (option ["--pr"]) {valueType = AsInt, required = True}
-            , (option ["--bot-login"]) {defaultValue = Just (Str (fixtureBotLogin fixture))}
-            , (option ["--expect-hero-review"]) {behavior = StoreTrue, defaultValue = Just (BoolValue False)}
-            , (option ["--expect-readiness"]) {choices = Just ["present", "absent"], defaultValue = Just (Str "present")}
-            ]
-          )
-        ,
-          ( "inspect-authority"
-          ,
-            [ (option ["--pr"]) {valueType = AsInt, required = True}
-            , (option ["--expect"]) {choices = Just authorityExpectations, required = True}
-            ]
-          )
-        ,
-          ( "qualification-setup"
-          ,
-            [ (option ["--credential-file"]) {valueType = AsPath, required = True}
-            , (option ["--target-file"]) {valueType = AsPath, required = True}
-            , (option ["--spent-marker"]) {valueType = AsPath, required = True}
-            ]
-          )
-        ]
-    ]
+    [subcommands prog "command" [(name, actions) | (name, actions, _) <- operatorCommands fixture]]
   where
     prog = "python -m hamsterdan.operator"
+
+-- | The decoded command line: each subcommand with what it reads.
+data OperatorCommand
+  = -- | @preflight [--health-url]@.
+    Preflight (Maybe Text)
+  | -- | @create --scenario@.
+    Create Text
+  | PrepareBroker
+  | -- | @inspect --pr@ with its expectations.
+    Inspect Integer InspectOptions
+  | -- | @inspect-authority --pr --expect@.
+    InspectAuthority Integer Text
+  | -- | @qualification-setup --credential-file --target-file --spent-marker@.
+    QualificationSetup FilePath FilePath FilePath
+
+-- | The subcommands, in the reference's order: each name with its
+-- arguments and how its namespace decodes. The parser and the decoder are
+-- both read from here, so every name the parser admits has a decoder.
+-- Required options and choices are enforced by @parse_args@ (status 2),
+-- so a decoder only reads what the parse has already checked.
+operatorCommands :: Fixture -> [(Text, [Action], Namespace -> OperatorCommand)]
+operatorCommands fixture =
+  [ ("preflight", [option ["--health-url"]], Preflight . lookupText "health_url")
+  ,
+    ( "create"
+    , [(option ["--scenario"]) {choices = Just creatableScenarios, required = True}]
+    , Create . text "scenario"
+    )
+  , ("prepare-broker", [], const PrepareBroker)
+  ,
+    ( "inspect"
+    ,
+      [ (option ["--pr"]) {valueType = AsInt, required = True}
+      , (option ["--bot-login"]) {defaultValue = Just (Str (fixtureBotLogin fixture))}
+      , (option ["--expect-hero-review"]) {behavior = StoreTrue, defaultValue = Just (BoolValue False)}
+      , (option ["--expect-readiness"]) {choices = Just ["present", "absent"], defaultValue = Just (Str "present")}
+      ]
+    , \namespace ->
+        Inspect
+          (integer "pr" namespace)
+          InspectOptions
+            { botLogin = text "bot_login" namespace
+            , expectHeroReview = lookupBool "expect_hero_review" namespace
+            , expectReadiness = text "expect_readiness" namespace == "present"
+            }
+    )
+  ,
+    ( "inspect-authority"
+    ,
+      [ (option ["--pr"]) {valueType = AsInt, required = True}
+      , (option ["--expect"]) {choices = Just authorityExpectations, required = True}
+      ]
+    , \namespace -> InspectAuthority (integer "pr" namespace) (text "expect" namespace)
+    )
+  ,
+    ( "qualification-setup"
+    ,
+      [ (option ["--credential-file"]) {valueType = AsPath, required = True}
+      , (option ["--target-file"]) {valueType = AsPath, required = True}
+      , (option ["--spent-marker"]) {valueType = AsPath, required = True}
+      ]
+    , \namespace -> QualificationSetup (path "credential_file" namespace) (path "target_file" namespace) (path "spent_marker" namespace)
+    )
+  ]
+  where
+    text key = fromMaybe "" . lookupText key
+    integer key = fromMaybe 0 . lookupInteger key
+    path key = T.unpack . text key
+
+-- | The namespace of 'operatorParserFor' as the subcommand's name and its
+-- 'OperatorCommand'. The subparsers are required and their names are
+-- 'operatorCommands', so a parse always decodes; 'Nothing' is a namespace
+-- from another parser.
+decodeOperatorCommand :: Fixture -> Namespace -> Maybe (Text, OperatorCommand)
+decodeOperatorCommand fixture namespace = do
+  name <- lookupText "command" namespace
+  decode <- listToMaybe [decode | (candidate, _, decode) <- operatorCommands fixture, candidate == name]
+  pure (name, decode namespace)
 
 -- | Where the command line reads and writes.
 data OperatorEnvironment = OperatorEnvironment
@@ -1770,39 +1819,32 @@ productionEnvironment = do
 runOperator :: OperatorEnvironment -> [Text] -> IO ExitCode
 runOperator env argv = do
   width <- subtract 2 <$> terminalColumns env.environment
-  case parseArgs width (operatorParserFor env.operator.fixture) argv of
+  let fixture = env.operator.fixture
+  case parseArgs width (operatorParserFor fixture) argv of
     Exited status printed problems -> do
       emit env.output printed
       emit env.errors problems
       pure (if status == 0 then ExitSuccess else ExitFailure status)
-    Parsed namespace -> do
-      let command = fromMaybe "" (lookupText "command" namespace)
-          text key = fromMaybe "" (lookupText key namespace)
-          op = env.operator
+    Parsed namespace -> case decodeOperatorCommand fixture namespace of
+      Nothing -> do
+        emit env.errors "the parsed namespace names no operator command\n"
+        pure (ExitFailure 2)
+      Just (name, command) -> dispatch name command
+  where
+    op = env.operator
+    dispatch name command = do
       outcome <- try do
         result <- try case command of
-          "preflight" -> preflight op (lookupText "health_url" namespace)
-          "create" -> create op (text "scenario")
-          "prepare-broker" -> prepareBroker op
-          "inspect" ->
-            inspect
-              op
-              (fromMaybe 0 (lookupInteger "pr" namespace))
-              InspectOptions
-                { botLogin = text "bot_login"
-                , expectHeroReview = lookupBool "expect_hero_review" namespace
-                , expectReadiness = text "expect_readiness" == "present"
-                }
-          "qualification-setup" ->
-            qualificationSetup
-              env.setupRunner
-              (T.unpack (text "credential_file"))
-              (T.unpack (text "target_file"))
-              (T.unpack (text "spent_marker"))
-          _ -> inspectAuthority op (fromMaybe 0 (lookupInteger "pr" namespace)) (text "expect")
+          Preflight healthUrl -> preflight op healthUrl
+          Create scenario -> create op scenario
+          PrepareBroker -> prepareBroker op
+          Inspect prNumber options -> inspect op prNumber options
+          InspectAuthority prNumber expected -> inspectAuthority op prNumber expected
+          QualificationSetup credentialFile targetFile spentMarker ->
+            qualificationSetup env.setupRunner credentialFile targetFile spentMarker
         let value = case result of
               Right v -> v
-              Left (OperatorError message) -> PDict [("command", PStr command), ("ok", PBool False), ("error", PStr message)]
+              Left (OperatorError message) -> PDict [("command", PStr name), ("ok", PBool False), ("error", PStr message)]
         line <- raiseEither (PyV.dumpsLine value)
         pure (line, truthy (field "ok" value))
       case outcome of

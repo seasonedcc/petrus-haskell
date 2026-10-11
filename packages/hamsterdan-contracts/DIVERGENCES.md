@@ -30,6 +30,11 @@ digest is checked byte for byte against the pinned Python (see
      applied by the codec when decoding and again when encoding. A value built
      in Haskell with an empty `observation` therefore still dumps
      `"{run_id}:{attempt}:{conclusion}"`, as Python would after revalidation.
+   - The equivalence rests on `validate . dump == Right` for every contract,
+     which `test/RoundTripSpec.hs` checks as a Hedgehog property over
+     generated values. The readiness folds (hamsterdan-readiness `NetV5.*`)
+     rely on it to use record syntax wherever the reference calls
+     `validated_update`.
 4. **`project_readiness` takes one `Concerns` record.**
    - Python takes the nine concern tokens positionally and builds the snapshot
      with `ReadinessSnapshot(**merged)`.
