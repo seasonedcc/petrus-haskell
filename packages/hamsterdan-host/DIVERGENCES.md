@@ -31,6 +31,15 @@ Below are the differences that remain, with their rationale.
    - The host's `LOG.info` lines are not written on either side, because no
      handler enables INFO for the host's loggers. That includes the
      GitHub request-metadata hook, so the port does not install that hook.
+   - Why it stays: these lines are uvicorn 0.52's and h11's own
+     operational log, not hamsterdan's. Matching them means emulating that
+     stack's logging: `dictConfig`'s formatters with click colors chosen by
+     each stream's `isatty`, the lifespan and bind-failure messages, the
+     access line's client address and status phrase, and h11's protocol
+     warnings (`Invalid HTTP request received.`) and ASGI tracebacks. The
+     last two have no counterpart under warp, which parses and refuses
+     malformed requests itself, so a port could only match the steady-state
+     lines. Nothing in the reference or its tests reads them.
 2. **An uncaught exception prints only its last traceback line.** The
    command line prints `Class: message` with exit status 1. The reference
    prints the whole Python traceback, which ends in that same line.

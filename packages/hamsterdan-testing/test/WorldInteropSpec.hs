@@ -13,9 +13,9 @@ import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Text qualified as T
 import Hamsterdan.Testing.World (replayReadiness)
-import Hamsterdan.Testing.World.Coverage (CoverageRun (..), collectReadinessCoverage, encodeReadinessCoverage)
+import Hamsterdan.Testing.World.Coverage (CoverageRun (..), collectReadinessCoverage, encodeReadinessCoverage, modelDumpJsonLength)
 import Hamsterdan.Testing.World.Scenarios (Scenario (..), authorScenario, scenarios)
-import Petrus.Json (Json, defaultDumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumpsText, parseJson, pythonLoads)
 import Petrus.Json.Encode (EncodeOptions (..))
 import Petrus.Testing.Dst (AnyReplayResult (..), decodeArtifact, encodeReplayResult)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
@@ -37,8 +37,15 @@ data Reference = Reference
   }
 
 spec :: Spec
-spec = describe "World interop against the reference" $
+spec = describe "World interop against the reference" $ do
   mapM_ scenarioSpec scenarios
+  it "measures an artifact as len(model_dump_json().encode()) does (2045 generated values)" $ do
+    lines' <- BC.lines <$> referenceScript "dump_json_lengths.py" [] ""
+    length lines' `shouldBe` 2045
+    let measured line = case parseJson pythonLoads line of
+          Right (Array [value, Int expected]) -> (value, fromIntegral (modelDumpJsonLength value), expected)
+          other -> error ("bad line: " <> show other)
+    take 5 [(value, ours) | (value, ours, theirs) <- map measured lines', ours /= theirs] `shouldBe` []
 
 scenarioSpec :: Scenario -> Spec
 scenarioSpec s = describe (T.unpack s.name) . beforeAll (referenceRun s) $ do
@@ -87,14 +94,19 @@ haskellCoverage bytes root = case decodeArtifact bytes of
       other -> expectationFailure ("replay refused: " <> show other) >> pure ""
 
 reference :: [String] -> ByteString -> IO ByteString
-reference arguments input = do
+reference = referenceScript "world_reference.py"
+
+-- | A script of ``differential/`` under the reference's interpreter, given
+-- its arguments and its standard input.
+referenceScript :: FilePath -> [String] -> ByteString -> IO ByteString
+referenceScript name arguments input = do
   executable <- upstreamPythonExecutable "hamsterdan"
   repo <- repoRoot
-  let script = repo </> "packages" </> "hamsterdan-testing" </> "differential" </> "world_reference.py"
+  let script = repo </> "packages" </> "hamsterdan-testing" </> "differential" </> name
       config = setStdin (byteStringInput (BL.fromStrict input)) (proc executable (["-I", "-B", script] <> arguments))
   (status, out, err) <- readProcess config
   unless (status == ExitSuccess) $
-    expectationFailure ("the reference World driver failed: " <> BC.unpack (BL.toStrict err))
+    expectationFailure ("the reference script " <> name <> " failed: " <> BC.unpack (BL.toStrict err))
   pure (BL.toStrict out)
 
 -- | Equal bytes. A difference is reported as the first differing lines of

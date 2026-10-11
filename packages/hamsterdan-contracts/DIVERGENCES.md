@@ -64,6 +64,14 @@ digest is checked byte for byte against the pinned Python (see
    - Only whether an input is admitted is compared with Python (thousands of
      corpus rows). Error texts are not part of any wire format; Hamsterdan logs
      or wraps them.
+   - Why it stays: no pydantic text reaches an output. The host's call sites
+     (`v5/ingress.py`, `review.py`, `runtime.py`, `timers.py`) catch
+     `ValidationError` and raise their own fixed text `from None`, and where
+     one propagates into a firing, the engine records
+     `ValidationError()`, which hamsterdan-readiness reproduces. Reporting
+     every error would mean reproducing pydantic-core's report format
+     (truncated `input_value` reprs, `errors.pydantic.dev` links) for no
+     reader.
 8. **`literalEval` collapses `SyntaxError` and `ValueError` into
    `Malformed`.** `board.py` catches both the same way (it skips the entry).
    `TypeError` from an unhashable dict key stays separate as `Unhashable`,

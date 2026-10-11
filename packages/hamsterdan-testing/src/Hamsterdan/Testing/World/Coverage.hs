@@ -25,6 +25,7 @@ module Hamsterdan.Testing.World.Coverage
   , covered
   , blocked
   , dimensionNames
+  , modelDumpJsonLength
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
@@ -41,6 +42,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Testing.World.Contract (PyError (..), canonical, checkerIdentity, profileIdentity)
 import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json.Float (shortestDigits)
 import Petrus.Testing.Dst
   ( AcceptedOperation (..)
   , AnyArtifact (..)
@@ -60,7 +62,6 @@ import Petrus.Testing.Dst
   , ReplayResult (..)
   , ScenarioArtifactV4 (..)
   , ScenarioExpected (..)
-  , canonicalBytes
   , operationPosition
   , toJson
   )
@@ -238,6 +239,54 @@ maxRuns = 16
 maxOperations = 8192
 maxChecks = 8192
 maxArtifactBytes = 4194304
+
+-- | The length in bytes of pydantic's @model_dump_json()@ for a model whose
+-- JSON-mode dump is this value: the reference bounds each artifact by
+-- @len(artifact.model_dump_json().encode())@. pydantic-core writes compact
+-- JSON in field order (irrelevant to the length), non-ASCII text as raw
+-- UTF-8, controls as @serde_json@ escapes them, and floats in @ryu@'s
+-- layout with a signed positive exponent (@1e+16@, @1.5e-7@, @0.00001@,
+-- @100.0@).
+modelDumpJsonLength :: Json -> Int
+modelDumpJsonLength = \case
+  Null -> 4
+  Bool True -> 4
+  Bool False -> 5
+  Int n -> length (show n)
+  Float d -> ryuLength d
+  String s -> stringLength s
+  Array items -> 2 + commas items + sum (map modelDumpJsonLength items)
+  Object members -> 2 + commas members + sum [stringLength k + 1 + modelDumpJsonLength v | (k, v) <- members]
+  where
+    commas xs = max 0 (length xs - 1)
+    stringLength = T.foldl' (\n c -> n + charLength c) 2
+    charLength c
+      | c == '"' || c == '\\' || c == '\b' || c == '\t' || c == '\n' || c == '\f' || c == '\r' = 2
+      | c < ' ' = 6
+      | c < '\x80' = 1
+      | c < '\x800' = 2
+      | c < '\x10000' = 3
+      | otherwise = 4
+    -- ryu's format64: a sign, then the shortest digits laid out by the
+    -- decimal exponent (10^(kk-1) <= |d| < 10^kk)
+    ryuLength d
+      | d == 0 = if isNegativeZero d then 4 else 3
+      | otherwise = (if d < 0 then 1 else 0) + layout
+      where
+        (digits, k) = stripZeros (shortestDigits (abs d))
+        size = length (show digits)
+        kk = size + k
+        -- a positive exponent is signed (`1e+16`), a negative one is not padded
+        exponentSize = length (show (kk - 1)) + (if kk > 1 then 1 else 0)
+        layout
+          | 0 <= k && kk <= 16 = kk + 2
+          | 0 < kk && kk <= 16 = size + 1
+          | -5 < kk && kk <= 0 = size + 2 - kk
+          | size == 1 = 2 + exponentSize
+          | otherwise = size + 2 + exponentSize
+    stripZeros (m, e)
+      | m /= 0 && m `mod` 10 == 0 = stripZeros (m `div` 10, e + 1)
+      | otherwise = (m, e)
 maxTotalArtifactBytes = 16777216
 maxReportBytes = 262144
 
@@ -367,7 +416,7 @@ collectReadinessCoverage runs = do
         requireCompatible a
         let ops' = ops + length a.operations
             checks' = checks + length a.expected.checks
-            encoded = either (const 0) BS.length (canonicalBytes (toJson (ArtifactV4 a)))
+            encoded = modelDumpJsonLength (toJson (ArtifactV4 a))
         when (encoded > maxArtifactBytes) $ valueErr "coverage artifact exceeds the per-scenario byte bound"
         let bytes' = bytes + encoded
         when (ops' > maxOperations || checks' > maxChecks) $ valueErr "coverage evidence exceeds operation or checker bounds"

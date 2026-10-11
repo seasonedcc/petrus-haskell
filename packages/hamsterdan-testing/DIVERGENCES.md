@@ -176,16 +176,22 @@ byte for byte, in both directions (see [PARITY.md](PARITY.md)).
    them, and so may the Hedgehog property, so both assert the reference's verdict (a retained invariant
    failure that replays exactly) rather than the convergence the upstream
    test body would assert.
-6. **The coverage per-artifact byte bound measures canonical JSON.**
-   Upstream bounds `len(artifact.model_dump_json().encode())`. Haskell
-   bounds the length of the artifact's canonical bytes. Both are compact
-   JSON of the same members. They differ only in key order (same length)
-   and in how non-ASCII text is spelled, which matters only for an artifact
-   within a few bytes of the 4 MiB bound.
+6. **The coverage per-artifact byte bound — resolved.** Upstream bounds
+   `len(artifact.model_dump_json().encode())`. Haskell used to bound the
+   canonical bytes, which escape non-ASCII text and spell floats as
+   CPython's `repr`. `modelDumpJsonLength` now measures what pydantic-core
+   writes (raw UTF-8, `serde_json` control escapes, `1e+16`/`1e-6`/
+   `0.00001` float layout), checked against pydantic on 2045 generated
+   values (`WorldInteropSpec`, `differential/dump_json_lengths.py`).
 7. **`ValidationError` text is pydantic-shaped, not pydantic's.** A
    refusal from `loadReadinessCoverage` has the class (`ValidationError` or
    `ValueError`) and, for the model validators, the reference's exact
    message (for example "covered dimension requires complete scenario
    evidence"). A schema refusal reports the first failing member as
    `1 validation error for ReadinessCoverageReport`, its location and
-   `[type=…]`, where pydantic lists every failing member.
+   `[type=…]`, where pydantic lists every failing member. Why it stays:
+   `load_readiness_coverage` has no caller in the reference beyond its
+   tests, which match the class and a fragment, and pydantic's full text
+   (every error with its truncated `input_value` repr and the
+   `errors.pydantic.dev/2.13/v/…` link) is pydantic-core's report format,
+   not a Hamsterdan contract.
