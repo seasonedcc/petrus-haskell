@@ -10,6 +10,7 @@ workloads, iteration counts and operations:
 | `archive/<w>/validate` | `validate_workspace_archive` / `validateWorkspaceArchive` | 7 |
 | `archive/<w>/extract` | `extract_workspace_archive` into a fresh directory / `extractWorkspaceArchive` | 7 |
 | `process/run-captured` | `subprocess.run(("/usr/bin/true",), capture_output=True, timeout=5)` / `runCaptured` | 100 |
+| `local/execute` | `LocalProcessEnvironment.execute(attachment, Command(("/bin/sh", "-c", "/bin/cat input")))` / `providerExecute` of the Local provider | 50 |
 | `sidecar/handshake-round-trip` | `GondolinEnvironment._request(record, {"action": "handshake"})` / `sidecarRequest` | 1000 |
 | `sidecar/execute-round-trip` | `environment.execute(attachment, Command(("/bin/sh", "-c", "true")))` / `providerExecute` | 50 |
 
@@ -53,12 +54,32 @@ shows the median of those per-round medians. A ratio above 1 means Haskell is fa
 | archive/one-large/validate | 0.080 | 0.010 | 7.97x |
 | archive/one-large/extract | 152.094 | 133.841 | 1.14x |
 | process/run-captured | 1.276 | 0.759 | 1.68x |
+| local/execute | 3.918 | 3.119 | 1.26x |
 | sidecar/handshake-round-trip | 0.032 | 0.031 | 1.02x |
 | sidecar/execute-round-trip | 4.862 | 4.841 | 1.00x |
 
 The archive rows come from these five rounds (2026-10-10). The process and sidecar rows come from
 the eleven alternating rounds on a quiet machine below (2026-10-11); in these five rounds they
-read 1.85x, 1.00x and 0.98x.
+read 1.85x, 1.00x and 0.98x. The `local/execute` row comes from its own eleven rounds
+(2026-10-11 10:42, below).
+
+### The Local execute row, 2026-10-11 10:42
+
+`local/execute` times `LocalProcessEnvironment.execute` in an attached territory holding one
+file: the containment checks on the territory and its working directory, the spawn of
+`/bin/sh -c "/bin/cat input"` in it, and collecting its output and exit status. It was run for
+11 rounds that alternate which harness goes first (`PETRUS_BENCH_ONLY=none`, with the fake
+Gondolin SDK), with the 1-minute load average at 3.9–4.2:
+
+| benchmark | Python (ms) | Haskell (ms) | Python / Haskell | Lowest round | rounds Haskell won |
+|---|---:|---:|---:|---:|---:|
+| process/run-captured | 1.304 | 0.769 | 1.70x | 1.64x | 11/11 |
+| local/execute | 3.918 | 3.119 | 1.26x | 1.18x | 11/11 |
+
+Most of `local/execute` is the `sh` and `cat` child processes, which both sides pay alike. In
+the same rounds, the two sidecar rows read 0.97x (handshake, 0.028 ms against 0.029 ms,
+Haskell ahead in 4 of 11) and 1.07x (execute, 9 of 11) at the higher load; the headline
+figures for those rows stay the quiet-machine run below.
 
 ### Sidecar rows alone, 2026-10-10
 

@@ -9,6 +9,8 @@ Subcommands:
                                   asynchronous access over the scenario below;
                                   SECRET/PUBLIC are CURVE certificate files or "-";
                                   print a JSON report
+  classified                      print the reference's _classified_failure of
+                                  each exception in CLASSIFIED_CASES, in order
 
 The client scenario expects four dispatched occurrences of ``scenario_call()``
 on queue "cpu" (in order 1..4); the Haskell suite dispatches them and checks
@@ -30,7 +32,13 @@ import zmq  # noqa: E402
 import zmq.auth  # noqa: E402
 
 from petrus.motus.activity import ActivityFailure, ActivityInvocation, ExecutionPolicy  # noqa: E402
-from petrus.motus.transport.zeromq import AsyncZeroMQWorkerAccess, ZeroMQWorkerDispatch  # noqa: E402
+from petrus.motus.transport.zeromq import (  # noqa: E402
+    AsyncZeroMQWorkerAccess,
+    OperationUncertain,
+    ZeroMQWorkerDispatch,
+    _classified_failure,
+    _ProtocolError,
+)
 
 
 def scenario_call() -> ActivityInvocation:
@@ -160,9 +168,30 @@ def client(endpoint: str, secret: str, public: str) -> None:
     print(json.dumps(report, sort_keys=True))
 
 
+# The exceptions a Worker may report as themselves; the Haskell suite throws
+# its twins in the same order.
+CLASSIFIED_CASES = (
+    ValueError("heartbeat details require finite JSON numbers"),
+    ValueError(),
+    ValueError("it's \"quoted\"\u00a0é\n"),
+    RuntimeError("Activity cancelled: stop"),
+    LookupError("no Activity implementation for 'x'"),
+    TypeError("Activity failure must be a string, exception, or ActivityFailure"),
+    TimeoutError("ZeroMQ Dispatch server did not become ready"),
+    ConnectionError("ZeroMQ claim was not acknowledged"),
+    OperationUncertain("ZeroMQ complete response was lost"),
+    _ProtocolError("unsupported ZeroMQ Dispatch protocol version"),
+)
+
+
+def classified() -> None:
+    failures = [_classified_failure(case) for case in CLASSIFIED_CASES]
+    print(json.dumps([{"error": f.error, "kind": f.kind, "retryable": f.retryable} for f in failures]))
+
+
 def main() -> None:
     command, *arguments = sys.argv[1:]
-    {"certs": certs, "client": client}[command](*arguments)
+    {"certs": certs, "client": client, "classified": classified}[command](*arguments)
 
 
 if __name__ == "__main__":

@@ -2,8 +2,8 @@
 
 The Haskell side is `bench/Main.hs`. The Python twin is `bench/python_bench.py`, which runs the reference's `petrus.engine.postgres` doors with the same names, net, and workloads. Both create a scratch database and drop it afterwards. Ratios above 1 mean Haskell is faster, and Haskell is faster on every row in every repetition. Statements now run prepared from their sixth execution, as psycopg's do (petrus-postgres's prepared-statement cache).
 
-- Date: 2026-10-11 01:34–01:35 local (UTC-3), on the commit that adds petrus-postgres's prepared-statement cache
-- Machine: Darwin arm64, Apple M4; shared with other agents. Load average 4.3–5.6 (1-minute) around the run.
+- Date: 2026-10-11 10:40–10:42 local (UTC-3), on the commit after `89f9fec` that adds the `engine.advance-chain` and `engine.load` rows
+- Machine: Darwin arm64, Apple M4; shared with other agents. Load average 3.1–4.8 (1-minute) around the run.
 - Server: a throwaway PostgreSQL 17.7 from `scripts/with-postgres` (Postgres.app binaries, `initdb` defaults, fsync on) on 127.0.0.1, TCP, trust auth; started for the runs and removed afterwards
 - Haskell: GHC 9.10.3 `-O2 -threaded`, tasty-bench mean in **wall-clock time** (`--stdev 5`, per-group `RelStDev 0.2`), run with `+RTS -M2G -RTS`
 - Python: CPython 3.14.6, psycopg 3.3.4 (binary, bundled libpq 18), the pinned upstream venv; median of 10 timed batches of 0.2 s (scripts/bench_timing.py)
@@ -11,17 +11,21 @@ The Haskell side is `bench/Main.hs`. The Python twin is `bench/python_bench.py`,
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
 |---|---:|---:|---:|---:|---:|
-| `engine.deliver` | 371 µs | 807 µs | 2.18× | 1.39× | 6/6 |
-| `engine.redeliver-prior` | 1.26 µs | 9.28 µs | 7.34× | 6.87× | 6/6 |
-| `engine.create-close` | 1.95 ms | 2.37 ms | 1.21× | 1.07× | 6/6 |
+| `engine.deliver` | 236 µs | 454 µs | 1.92× | 1.60× | 6/6 |
+| `engine.redeliver-prior` | 1.25 µs | 9.22 µs | 7.36× | 7.13× | 6/6 |
+| `engine.create-close` | 1.85 ms | 1.96 ms | 1.06× | 1.02× | 6/6 |
+| `engine.advance-chain` | 1.18 ms | 2.42 ms | 2.05× | 1.81× | 6/6 |
+| `engine.load` | 11.6 ms | 41.8 ms | 3.60× | 3.42× | 6/6 |
 
-The load was higher than for the superseded table below, and `engine.deliver` moved with it on both sides: Haskell's ranged from 264 µs to 570 µs over the six repetitions, Python's from 451 µs to 924 µs.
+`engine.create-close` is the closest row, as before: connecting and closing dominate it on both sides. In the fifth repetition the load rose and every row slowed on both sides (Haskell's `engine.deliver` read 436 µs, Python's 697 µs). Both sides print the size of the History behind `engine.load` (2 202 records, 100 orders settled), as a check that they time the same work.
 
 What each row measures:
 
 - **`engine.deliver`** is one identified delivery through the joined transaction. The accept step writes the delivery and begin facts, then commits. The complete step writes the production and completion facts, then commits. Every 256 deliveries, both sides close the Engine and create a fresh one on a fresh connection, so the in-memory History stays bounded. That cost is amortized into the figure on both sides alike.
 - **`engine.redeliver-prior`** is an exact redelivery of a completed identity. It is answered from memory and commits nothing.
 - **`engine.create-close`** connects, takes the fence, loads the absent History, creates the Instance and commits, then closes (unlock, rollback, close). Connecting and closing dominate it on both sides: psycopg's connect plus close alone measured 1.06 ms on this kind of server.
+- **`engine.advance-chain`** runs petrus-engine's order scenario (`Petrus.Engine.Scenario`, the twin of `test/interop/engine_interop.py`) through the joined transaction. One identified order is delivered, then one-action turns run to rest. They fire the pure validation, then the `charge_card` Activity round trip through inline Dispatch (request, result, projection). The `Delay 5` timer then matures and the settlement fires. Each step commits. Both sides close the Engine and create a fresh one every 256 orders, as for `engine.deliver`.
+- **`engine.load`** connects, takes the fence, and loads and replays the History of an Instance that settled 100 orders (2 202 records). It then runs one reconciling turn and closes.
 
 ### Before the prepared-statement cache
 

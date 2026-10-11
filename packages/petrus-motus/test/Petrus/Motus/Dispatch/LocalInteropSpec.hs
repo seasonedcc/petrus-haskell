@@ -146,6 +146,14 @@ scenario path = do
     Local.claim w1 >>= push . maybe Null attemptJson
     Local.collect dispatch >>= push . outcomesJson
     Local.collect dispatch >>= push . outcomesJson
+    -- A refused heartbeat's exception (the reference's ValueError),
+    -- reported as the exception itself, is stored as its repr and class.
+    Local.dispatch dispatch 7 (scenarioInvocation "work" (Int 7) 1 id)
+    a7 <- requireClaim w1
+    try (Local.heartbeat w1 a7 (Just (Object [("x", Float (0 / 0))]))) >>= \case
+      Left (refused :: SomeException) -> Local.fail w1 a7 (FailureException refused)
+      Right _ -> expectationFailure "non-finite heartbeat details were accepted"
+    Local.collect dispatch >>= push . outcomesJson
     recorded recorder
   pushed <- reverse <$> readIORef results
   pure (Object [("events", Array (map Object events)), ("results", Array pushed)])

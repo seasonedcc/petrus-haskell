@@ -49,7 +49,7 @@ module Petrus.Motus.Transport.ZeroMQ.Wire
   ) where
 
 import Control.Exception (throwIO)
-import Control.Monad (unless, when)
+import Control.Monad (forM_, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Bits ((.&.))
@@ -60,7 +60,8 @@ import Data.Text.Encoding qualified as TE
 import Petrus.Activity
 import Petrus.Json
 import Petrus.Motus.Dispatch (ActivityAttempt (..), AttemptFailure (..), activityAttempt)
-import Petrus.Motus.Internal.Repr (exceptionRepr, exceptionTypeName, pyStrList)
+import Petrus.Motus.Internal.Repr (pyStrList)
+import Petrus.Motus.PythonException (PythonException (..), pythonRepr)
 import Petrus.Motus.Transport.ZeroMQ.Errors
 import Petrus.Motus.Transport.ZeroMQ.PythonDecode (pythonJsonLoads)
 
@@ -213,32 +214,13 @@ decodeAttempt raw = do
 -- | @_encode_invocation@: the policy always carries the eight current
 -- fields.
 encodeInvocation :: ActivityInvocation -> Json
-encodeInvocation inv =
-  Object
-    [ ("activity", String inv.activity)
-    , ("input", inv.input)
-    ,
-      ( "policy"
-      , Object
-          [ ("attempts", Int fields.attempts)
-          , ("heartbeat_timeout", Int fields.heartbeatTimeout)
-          , ("initial_interval", numberJson fields.initialInterval)
-          , ("coefficient", numberJson fields.coefficient)
-          , ("max_interval", numberJson fields.maxInterval)
-          , ("jitter", numberJson fields.jitter)
-          , ("start_to_close", maybe Null numberJson fields.startToClose)
-          , ("schedule_to_close", maybe Null numberJson fields.scheduleToClose)
-          ]
-      )
-    , ("correlation", maybe Null String inv.correlation)
-    , ("idempotency", maybe Null String inv.idempotency)
-    ]
-  where
-    fields = policyFields inv.policy
+encodeInvocation = invocationJson
 
 -- | @_decode_invocation@: exactly five fields, a legacy (two-field) or
--- current (eight-field) policy, integer attempts and heartbeat timeout,
--- then the value constructors' own validation.
+-- current (eight-field) policy, integer attempts and heartbeat timeout, the
+-- names, then the value constructors' own validation
+-- ('policyFromMembers', 'activityInvocation'). The order of the checks, and
+-- so which refusal wins, is the transport's own.
 decodeInvocation :: Json -> Either WireError ActivityInvocation
 decodeInvocation raw = do
   members <- exact "Activity invocation" ["activity", "input", "policy", "correlation", "idempotency"] raw
@@ -247,39 +229,13 @@ decodeInvocation raw = do
   policyMembers <- case member "policy" members of
     Object ms | sort (nub (map fst ms)) `elem` [sort legacy, sort current] -> Right ms
     _ -> value "execution policy requires exact legacy or current fields"
-  let integer field = case lookup field policyMembers of
-        Just (Int i) -> Right i
-        _ -> value ("execution policy " <> field <> " must be an integer")
-  attempts' <- integer "attempts"
-  heartbeat' <- integer "heartbeat_timeout"
+  forM_ ["attempts", "heartbeat_timeout"] $ \field -> case lookup field policyMembers of
+    Just (Int _) -> Right ()
+    _ -> value ("execution policy " <> field <> " must be an integer")
   activity' <- name "Activity name" (member "activity" members)
   correlation' <- optionalName "Activity correlation" (member "correlation" members)
   idempotency' <- optionalName "Activity idempotency" (member "idempotency" members)
-  let defaults = policyFields defaultExecutionPolicy
-      -- A value that is not a number fails the constructor's own range
-      -- check with its message (the reference's isinstance check shares
-      -- it), so a NaN stands in for it.
-      notANumber = FloatNumber (0 / 0)
-      number fallback key = case lookup key policyMembers of
-        Nothing -> fallback
-        Just raw' -> maybe notANumber id (numberFromJson raw')
-      optionalNumber key = case lookup key policyMembers of
-        Nothing -> Nothing
-        Just Null -> Nothing
-        Just raw' -> Just (maybe notANumber id (numberFromJson raw'))
-  policy' <-
-    either value Right $
-      executionPolicy
-        ExecutionPolicyFields
-          { attempts = attempts'
-          , heartbeatTimeout = heartbeat'
-          , initialInterval = number defaults.initialInterval "initial_interval"
-          , coefficient = number defaults.coefficient "coefficient"
-          , maxInterval = number defaults.maxInterval "max_interval"
-          , jitter = number defaults.jitter "jitter"
-          , startToClose = optionalNumber "start_to_close"
-          , scheduleToClose = optionalNumber "schedule_to_close"
-          }
+  policy' <- either value Right (policyFromMembers policyMembers)
   either value Right $
     activityInvocation
       ActivityInvocation
@@ -335,7 +291,8 @@ classifiedFailure = \case
   FailureClassified failure -> Right failure
   FailureMessage message -> either value Right (activityFailure (ActivityFailureFields message "ActivityError" Null True Nothing))
   FailureException err ->
-    either value Right (activityFailure (ActivityFailureFields (exceptionRepr err) (exceptionTypeName err) Null True Nothing))
+    let python = zeromqPythonException err
+     in either value Right (activityFailure (ActivityFailureFields (pythonRepr python) python.className Null True Nothing))
 
 -- | @_faithful(value, noun)@: the value as it round-trips through
 -- @json.dumps(allow_nan=False, ensure_ascii=False)@ and @json.loads@.

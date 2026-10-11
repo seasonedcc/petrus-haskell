@@ -153,6 +153,15 @@ def scenario(path: str) -> None:
         results.append(w1.claim())
         results.append([[occurrence, outcome_json(outcome)] for occurrence, outcome in dispatch.collect()])
         results.append(dispatch.collect())
+        # A refused heartbeat's ValueError, reported as the exception itself,
+        # is stored as its repr and class name.
+        dispatch.dispatch(7, scenario_invocation("work", 7, attempts=1))
+        a7 = w1.claim()
+        try:
+            w1.heartbeat(a7, details={"x": float("nan")})
+        except ValueError as error:
+            w1.fail(a7, error)
+        results.append([[occurrence, outcome_json(outcome)] for occurrence, outcome in dispatch.collect()])
     emit({"events": list(events), "results": results})
 
 
