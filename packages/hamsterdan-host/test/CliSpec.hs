@@ -32,6 +32,7 @@ import Hamsterdan.GitHub.Http (newPlainExchangeAt)
 import Hamsterdan.Agents.Pi.Doubles (piPackageFixture)
 import Hamsterdan.Host.Agents (composeHostAgent, productionAgentSeams)
 import Hamsterdan.Host.Cli
+import Hamsterdan.Cli.Argparse (environmentColumns)
 import Hamsterdan.Host.Python (ValueError (..))
 import Hamsterdan.Host.Service (noAgentCustody, openHostService, serviceOptions)
 import Hamsterdan.Host.Service qualified as Host
