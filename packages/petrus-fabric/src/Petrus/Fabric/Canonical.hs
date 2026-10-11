@@ -53,7 +53,8 @@ import Petrus.Json.Limits (defaultNestingLimit, maxIntStrDigits)
 --
 -- One pass measures an upper bound of the output (exact except for numbers)
 -- and checks the refusals; a second writes straight into a buffer of that
--- size.
+-- size. unsafeDupablePerformIO: the writer touches only the buffer this
+-- call allocates.
 canonicalFast :: Json -> Maybe ByteString
 canonicalFast value
   | bound < 0 = Nothing

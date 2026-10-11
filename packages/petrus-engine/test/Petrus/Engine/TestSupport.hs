@@ -80,7 +80,10 @@ advanceUntilRest engine = go []
 
 -- | Count each application of a pure callback (the reference handlers'
 -- @self.prepared += 1@). The bump happens when the kernel evaluates the
--- application, which it does exactly once per call.
+-- application, which it does exactly once per call. unsafePerformIO
+-- (NOINLINE) is the point: it observes a pure callback being evaluated,
+-- including the ones 'EngineOptions.handlerObserver' does not see (pure
+-- handlers, selection proposals).
 counting :: IORef Int -> (x -> y) -> x -> y
 counting ref f x = unsafePerformIO $ do
   atomicModifyIORef' ref (\n -> (n + 1, ()))

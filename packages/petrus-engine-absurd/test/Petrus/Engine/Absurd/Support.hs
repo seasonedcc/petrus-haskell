@@ -106,7 +106,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
-import Numeric (showHex)
 import Petrus.Activity
   ( ActivityDeclaration
   , ActivityInvocation (..)
@@ -126,6 +125,7 @@ import Petrus.Impetus.History.Records
 import Petrus.Impetus.Instance (ImplementationRef (..))
 import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..), dumps, defaultDumps, lookupMember, parseJson, pythonLoads)
+import Petrus.Json.Python (uuid4Hex)
 import Petrus.Motus.Dispatch.Absurd (ensureAbsurdSchema)
 import Petrus.Postgres (Connection, query, textParam)
 import Petrus.Postgres qualified as Pg
@@ -134,8 +134,6 @@ import Petrus.Motus.Worker (Activity, ValueError (..))
 import System.Environment (getEnvironment, getExecutablePath, lookupEnv)
 import System.Exit (ExitCode (..))
 import System.IO (BufferMode (..), Handle, hClose, hSetBinaryMode, hSetBuffering)
-import System.IO.Unsafe (unsafePerformIO)
-import System.Posix.Process (getProcessID)
 import System.Posix.Signals (sigKILL, sigTERM, signalProcess)
 import System.Process
   ( CreateProcess (..)
@@ -345,17 +343,9 @@ openSessionOn fixture session instanceId o = do
 closeSession :: Engine -> IO ()
 closeSession = Engine.close
 
-counter :: IORef Int
-counter = unsafePerformIO (newIORef 0)
-{-# NOINLINE counter #-}
-
+-- | @f"{prefix}{uuid4().hex[:width]}"@.
 fresh :: Text -> Int -> IO Text
-fresh prefix width = do
-  n <- atomicModifyIORef' counter (\c -> (c + 1, c))
-  pid <- getProcessID
-  now <- getMonotonicTime
-  let hex = showHex (abs (round (now * 1e6) :: Integer) + toInteger n * 7919 + toInteger (fromEnum pid) * 104729) ""
-  pure (prefix <> T.pack (reverse (take width (reverse ("0000000000" <> hex)))))
+fresh prefix width = (prefix <>) . T.take width <$> uuid4Hex
 
 -- | @f"topo-{uuid4().hex[:10]}"@ (any prefix).
 freshTopo :: Text -> IO Text

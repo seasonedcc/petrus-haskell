@@ -179,6 +179,8 @@ findExisting paths = do
     p : _ -> pure p
     [] -> error ("none of " <> show paths <> " exists")
 
+-- | The pinned spec directory. unsafePerformIO (NOINLINE): a fixed path,
+-- resolved once, that pure fixture paths and spec trees are built from.
 specDirectory :: FilePath
 specDirectory = unsafePerformIO (findExisting ["../../upstream/petrus/spec", "upstream/petrus/spec"])
 {-# NOINLINE specDirectory #-}

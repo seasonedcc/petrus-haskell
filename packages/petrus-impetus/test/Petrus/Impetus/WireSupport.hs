@@ -39,6 +39,8 @@ findExisting options =
 -- | The reference's @spec/@ directory. @cabal test@ runs with the package
 -- directory as working directory; running the binary from the repository
 -- root works too.
+-- | The pinned spec directory. unsafePerformIO (NOINLINE): a fixed path,
+-- resolved once, that pure fixture paths and spec trees are built from.
 specDirectory :: FilePath
 specDirectory = unsafePerformIO (findExisting ["../../upstream/petrus/spec", "upstream/petrus/spec"])
 {-# NOINLINE specDirectory #-}

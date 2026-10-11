@@ -181,7 +181,8 @@ openScratchWorker path options = mask_ $ do
 
 -- | What 'openScratchDispatch' and 'openScratchWorker' opened, by path, with
 -- what closes it. Keyed by path, so examples running side by side close only
--- their own.
+-- their own. unsafePerformIO (NOINLINE): one registry per test process,
+-- reached from helpers that share no argument.
 opened :: IORef [([FilePath], IO ())]
 opened = unsafePerformIO (newIORef [])
 {-# NOINLINE opened #-}

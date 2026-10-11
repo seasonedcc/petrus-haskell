@@ -52,6 +52,7 @@ import System.IO.Unsafe (unsafeDupablePerformIO)
 
 -- | Copy bytes into a 'Text' without validating them. The caller guarantees
 -- they are UTF-8, or WTF-8 as this module describes.
+-- unsafeDupablePerformIO: writes only the array this call allocates.
 unsafeTextFromBytes :: ByteString -> Text
 unsafeTextFromBytes bytes
   | BS.null bytes = T.empty

@@ -17,6 +17,8 @@ import Petrus.Json (Json (..), lookupMember)
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec
 
+-- | unsafePerformIO (NOINLINE): a pinned spec file, read once, that pure
+-- helpers build on.
 definitionFixture :: NetDefinitionV3
 definitionFixture = unsafePerformIO (readSpec "net-definition-v3.json" >>= either (fail . T.unpack) pure . parseNetDefinition)
 {-# NOINLINE definitionFixture #-}

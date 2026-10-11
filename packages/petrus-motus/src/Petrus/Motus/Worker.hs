@@ -122,6 +122,8 @@ data WorkerOptions = WorkerOptions
 defaultWorkerOptions :: WorkerOptions
 defaultWorkerOptions = WorkerOptions {resolver = Nothing, workerId = Nothing, output = stdoutEvents}
 
+-- | Serializes 'stdoutEvents' lines across workers. unsafePerformIO
+-- (NOINLINE): the process has one stdout, so its lock is process-wide.
 stdoutLock :: MVar ()
 stdoutLock = unsafePerformIO (newMVar ())
 {-# NOINLINE stdoutLock #-}
