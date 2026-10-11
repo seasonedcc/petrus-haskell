@@ -111,17 +111,44 @@ genText maxSize = do
   n <- chooseInt (0, maxSize)
   T.pack <$> vectorOf n arbitraryUnicodeChar
 
+-- | @st.recursive(base, extend, max_leaves=20)@: a tree of at most
+-- @maxLeaves@ scalar leaves overall, at any depth, whose containers are
+-- @st.lists(children, max_size=5)@ or
+-- @st.dictionaries(st.text(max_size=12), children, max_size=5)@ and whose
+-- leaves are @st.none() | st.booleans() | st.integers() | st.text(max_size=30)@.
 genJson :: Int -> Gen Json
-genJson leaves
-  | leaves <= 1 = scalar
-  | otherwise =
-      frequency
-        [ (3, scalar)
-        , (1, Array <$> (chooseInt (0, 5) >>= \n -> vectorOf n (genJson (leaves `div` 5))))
-        , (1, genObject 5 (genJson (leaves `div` 5)))
-        ]
+genJson maxLeaves = fst <$> tree maxLeaves
   where
-    scalar = oneof [pure Null, Bool <$> arbitrary, Int <$> arbitrary, String <$> genText 30]
+    -- A tree within a leaf budget, and the leaves it used.
+    tree :: Int -> Gen (Json, Int)
+    tree budget
+      | budget <= 1 = (,1) <$> scalar
+      | otherwise = oneof [(,1) <$> scalar, container budget]
+    container budget = do
+      size <- chooseInt (0, 5)
+      (children, used) <- fill size budget
+      oneof
+        [ pure (Array children, used)
+        , do
+            keys <- vectorOf (length children) (genText 12)
+            -- Python dicts hold each key once.
+            pure (Object (nubBy (\a b -> fst a == fst b) (zip keys children)), used)
+        ]
+    fill :: Int -> Int -> Gen ([Json], Int)
+    fill 0 _ = pure ([], 0)
+    fill _ budget | budget <= 0 = pure ([], 0)
+    fill n budget = do
+      (child, used) <- tree budget
+      (rest, used') <- fill (n - 1) (budget - used)
+      pure (child : rest, used + used')
+    -- @st.integers()@ is unbounded: small values mostly, big ones too.
+    scalar =
+      oneof
+        [ pure Null
+        , Bool <$> arbitrary
+        , Int <$> oneof [arbitrary, chooseInteger (-(2 ^ (128 :: Int)), 2 ^ (128 :: Int))]
+        , String <$> genText 30
+        ]
 
 genObject :: Int -> Gen Json -> Gen Json
 genObject maxSize item = do
@@ -162,8 +189,9 @@ contractSpec = do
     dumped (proposalToData p) `shouldNotSatisfy` T.isInfixOf secret
     T.pack (show p) `shouldNotSatisfy` T.isInfixOf secret
 
-  it "test_payload_digest_is_a_canonical_replay_identity" $
-    withNumTests 60 $
+  -- @\@settings(max_examples=60)@ and
+  -- @\@given(st.dictionaries(st.text(max_size=12), _JSON, max_size=8))@.
+  hypothesisSettings 60 . it "test_payload_digest_is_a_canonical_replay_identity" $
       forAll (genObject 8 (genJson 20)) $ \payload ->
         let reordered = case payload of
               Object members -> Object (reverse members)
