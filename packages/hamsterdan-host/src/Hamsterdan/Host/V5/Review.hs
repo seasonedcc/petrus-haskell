@@ -61,7 +61,6 @@ import Hamsterdan.Host.Errors (catchBoundary)
 import Hamsterdan.Host.Python (RuntimeError (..), ValueError (..), dumpsSortedText, immediate, mkdirPrivate, sha256HexText)
 import Hamsterdan.Host.V5.Claim (ClaimReader, CurrentClaim (..))
 import Hamsterdan.Readiness.NetV5.Gating (Variant, variantOf)
-import Petrus.Impetus.Instance.FailureText (PythonException (..))
 import Petrus.Json (Json (..))
 import System.FilePath (takeDirectory)
 import System.IO (stderr)
@@ -224,19 +223,12 @@ category e
   | Just CleanupUnverified <- e.cleanupCategory = UnableCleanupUnverified
   | otherwise = UnableProtocol
 
-phaseOf :: Text -> IO Phase
-phaseOf = \case
-  "running" -> pure PhaseRunning
-  "quiescent" -> pure PhaseQuiescent
-  "terminal" -> pure PhaseTerminal
-  _ -> throwIO (PythonException "ValidationError" [])
-
 objects :: [Object] -> Json
 objects = Array . map Object
 
 reviewAgent :: V5ReviewGate -> RoundOpen -> IO Variant
 reviewAgent g work = do
-  let expected = CurrentClaim "running" work.incarnation work.head work.base work.policy
+  let expected = CurrentClaim PhaseRunning work.incarnation work.head work.base work.policy
       deferred blocker =
         variantOf
           RoundDeferred
@@ -272,7 +264,7 @@ reviewAgent g work = do
         Left blocker -> pure (deferred blocker)
         Right observed
           | observed /= expected -> do
-              phase <- phaseOf observed.phase
+              let phase = observed.phase
               pure $
                 variantOf
                   RoundMoved

@@ -91,7 +91,7 @@ rerunGate g work = do
             }
       faulted :: forall a. Caught -> IO (Step a)
       faulted = pure . Done . fault . caughtReason
-      expected = CurrentClaim "running" work.incarnation work.head work.base work.policy
+      expected = CurrentClaim PhaseRunning work.incarnation work.head work.base work.policy
   first <-
     catchGate
       ( do

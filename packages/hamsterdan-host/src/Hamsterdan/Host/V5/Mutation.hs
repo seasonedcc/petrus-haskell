@@ -39,7 +39,6 @@ import Hamsterdan.Host.GitPublish qualified as Git
 import Hamsterdan.Host.Python (ValueError (..), sha256HexText)
 import Hamsterdan.Host.V5.Claim (ClaimReader, CurrentClaim (..))
 import Hamsterdan.Readiness.NetV5.Gating (Variant, variantOf)
-import Petrus.Impetus.Instance.FailureText (PythonException (..))
 import Petrus.Json (Json (..))
 
 -- | The publisher surface the gate binds to.
@@ -131,13 +130,6 @@ enumValue c = case dump c of
 orRepr :: Text -> Text -> Text
 orRepr cls message = if T.null message then cls <> "()" else message
 
-phaseOf :: Text -> IO Phase
-phaseOf = \case
-  "running" -> pure PhaseRunning
-  "quiescent" -> pure PhaseQuiescent
-  "terminal" -> pure PhaseTerminal
-  _ -> throwIO (PythonException "ValidationError" [])
-
 -- | @git_gate(work)@.
 gitGate :: V5MutationGate -> MutWork -> IO Variant
 gitGate g work = do
@@ -152,7 +144,7 @@ gitGate g work = do
               , ("coding_request", dump request)
               ]
           )
-      expected = CurrentClaim "running" work.incarnation work.head work.base work.policy
+      expected = CurrentClaim PhaseRunning work.incarnation work.head work.base work.policy
       fault reason =
         variantOf
           FaultM
@@ -171,7 +163,7 @@ gitGate g work = do
       pushed newHead =
         variantOf Pushed {op = work.op, opKey = work.opKey, head = work.head, newHead, incarnation = work.incarnation, lineage = work.lineage}
       moved current = do
-        phase <- phaseOf current.phase
+        let phase = current.phase
         pure $
           variantOf
             MovedM

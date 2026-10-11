@@ -44,7 +44,7 @@ import Control.Monad (forM, void)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Hamsterdan.Contracts.Codec (Contract, Object)
+import Hamsterdan.Contracts.Codec (Contract, Object, spelling)
 import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.GitHub.Effects (CommentPublisher)
 import Hamsterdan.GitHub.Effects qualified as Effects
@@ -102,7 +102,7 @@ data V5PublicationGates = V5PublicationGates
   { publisher :: PublicationProvider
   , claim :: ClaimReader
   , recipients :: Recipients
-  , dashboardPhase :: IO Text
+  , dashboardPhase :: IO Phase
   , resolveStaleThreads :: Maybe (Text -> IO Int)
   }
 
@@ -110,7 +110,7 @@ data V5PublicationGates = V5PublicationGates
 -- @running@, no stale-thread resolution).
 publicationGates :: PublicationProvider -> ClaimReader -> Recipients -> V5PublicationGates
 publicationGates publisher claim recipients =
-  V5PublicationGates {publisher, claim, recipients, dashboardPhase = pure "running", resolveStaleThreads = Nothing}
+  V5PublicationGates {publisher, claim, recipients, dashboardPhase = pure PhaseRunning, resolveStaleThreads = Nothing}
 
 announceBody :: Text
 announceBody =
@@ -195,7 +195,7 @@ reminderGate g work = do
 
 announceGate :: V5PublicationGates -> AnnounceReq -> IO Variant
 announceGate g work = do
-  let expected = CurrentClaim "running" work.incarnation work.head work.base work.policy
+  let expected = CurrentClaim PhaseRunning work.incarnation work.head work.base work.policy
       landed = v ALanded {incarnation = work.incarnation, head = work.head}
       blocked = v ABlocked {incarnation = work.incarnation, head = work.head, base = work.base, policy = work.policy}
       fault reason = v AFault {op = work.op, incarnation = work.incarnation, reason}
@@ -215,7 +215,7 @@ announceGate g work = do
                       , observedBase = current.base
                       , observedPolicy = current.policy
                       , observedIncarnation = current.incarnation
-                      , observedPhase = current.phase
+                      , observedPhase = spelling current.phase
                       }
               else do
                 result <- g.publisher.immutable "readiness" work.op work.incarnation work.head announceBody Nothing announceCompatible
@@ -315,16 +315,9 @@ failureClassOf = \case
   PayloadRejection -> FailurePayloadRejection
   ProviderRejection -> FailureProviderRejection
 
-phaseOf :: Text -> IO Phase
-phaseOf = \case
-  "running" -> pure PhaseRunning
-  "quiescent" -> pure PhaseQuiescent
-  "terminal" -> pure PhaseTerminal
-  _ -> throwIO (PythonException "ValidationError" [])
-
 publishGate :: V5PublicationGates -> Publishable -> IO Variant
 publishGate g work = do
-  let expected = CurrentClaim "running" work.incarnation work.head work.base work.policy
+  let expected = CurrentClaim PhaseRunning work.incarnation work.head work.base work.policy
       landed = v ReviewLanded {head = work.head, incarnation = work.incarnation, findings = work.findings, effect = work.effect, mem = work.mem}
       blocked failure status detail =
         v
@@ -370,7 +363,7 @@ publishGate g work = do
             current <- g.claim
             if current /= expected
               then do
-                phase <- phaseOf current.phase
+                let phase = current.phase
                 pure $
                   v
                     ReviewMoved
@@ -427,7 +420,7 @@ dashGate g work = do
   let blocked = v DashBlocked {entries = work.entries, digest = work.digest, desiredEntries = work.desiredEntries, desiredDigest = work.desiredDigest}
       fault reason =
         v DashFault {entries = work.entries, digest = work.digest, desiredEntries = work.desiredEntries, desiredDigest = work.desiredDigest, reason}
-  if phase == "quiescent"
+  if phase == PhaseQuiescent
     then
       pure $
         v

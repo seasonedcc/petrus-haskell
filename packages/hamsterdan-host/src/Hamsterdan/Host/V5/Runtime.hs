@@ -79,7 +79,7 @@ import Hamsterdan.Contracts.ReadinessV5
   , TimerDue (..)
   )
 import Hamsterdan.Host.Python (RuntimeError (..), TypeError (..), ValueError (..), dumpsCompactSorted, mkdirPrivate, raiseFailureText, sha256Hex, sha256HexText)
-import Hamsterdan.Host.V5.Claim (CurrentClaim (..))
+import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Ingress (IngressEntry (..), ingressFrom)
 import Hamsterdan.Host.V5.Timers (TimerFact, timerHistory, timerValue)
 import Hamsterdan.PyLiteral (PyValue (PyDict), toJson)
@@ -558,7 +558,7 @@ activeClaim runtime operation = do
         , lookupObject "op" work == Just (String operation) ->
             case (lookupObject "incarnation" work, lookupObject "head" work, lookupObject "base" work, lookupObject "policy" work) of
               (Just (Int incarnation), Just (String head'), Just (String base), Just (String policy)) ->
-                pure [CurrentClaim "running" incarnation head' base policy]
+                pure [CurrentClaim PhaseRunning incarnation head' base policy]
               _ -> throwIO (RuntimeError "active V5 effect claim is malformed")
       _ -> pure []
   case claims of

@@ -17,7 +17,7 @@ import Control.Monad (forM_, when)
 import Data.IORef
 import Data.Text (Text)
 import Data.Text qualified as T
-import Hamsterdan.Contracts.Codec (Contract, validate)
+import Hamsterdan.Contracts.Codec (Contract, spelling, validate)
 import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.GitHub.Effects qualified as Effects
 import Hamsterdan.GitHub.Models
@@ -39,7 +39,7 @@ import Test.Hspec
 -- Fakes
 
 claim1 :: CurrentClaim
-claim1 = CurrentClaim {phase = "running", incarnation = 1, head = "h1", base = "b1", policy = "p1"}
+claim1 = CurrentClaim {phase = PhaseRunning, incarnation = 1, head = "h1", base = "b1", policy = "p1"}
 
 reference :: CommentReference
 reference = CommentReference 1 "https://example.test/c/1"
@@ -315,8 +315,8 @@ spec = describe "test_v5_gates" $ do
       cs <- callsOf p
       [(k, o) | CImmutable k o _ _ _ <- cs] `shouldBe` [("readiness", "ready:h1:i1")]
     let drifts =
-          [ ("phase=terminal", \c -> CurrentClaim "terminal" c.incarnation c.head c.base c.policy)
-          , ("phase=quiescent", \c -> CurrentClaim "quiescent" c.incarnation c.head c.base c.policy)
+          [ ("phase=terminal", \c -> CurrentClaim PhaseTerminal c.incarnation c.head c.base c.policy)
+          , ("phase=quiescent", \c -> CurrentClaim PhaseQuiescent c.incarnation c.head c.base c.policy)
           , ("incarnation=2", \c -> CurrentClaim c.phase 2 c.head c.base c.policy)
           , ("head=h2", \c -> CurrentClaim c.phase c.incarnation "h2" c.base c.policy)
           , ("base=b2", \c -> CurrentClaim c.phase c.incarnation c.head "b2" c.policy)
@@ -334,7 +334,7 @@ spec = describe "test_v5_gates" $ do
             , observedBase = observed.base
             , observedPolicy = observed.policy
             , observedIncarnation = observed.incarnation
-            , observedPhase = observed.phase
+            , observedPhase = spelling observed.phase
             }
         cs <- callsOf p
         [() | CImmutable {} <- cs] `shouldBe` []
@@ -364,7 +364,7 @@ spec = describe "test_v5_gates" $ do
               { publisher = fakeProvider p
               , claim = throwIO (UnstagedCustodyError blocker)
               , recipients = pure (Just "the-reviewer", "the-author")
-              , dashboardPhase = pure "running"
+              , dashboardPhase = pure PhaseRunning
               , resolveStaleThreads = Nothing
               }
       r <- announceGate g announceWork
@@ -404,7 +404,7 @@ spec = describe "test_v5_gates" $ do
   describe "TestDashGate" $ do
     it "test_a_dormant_pr_defers_without_a_provider_effect" $ do
       p <- newFakePublisher Created False
-      r <- dashGate (gatesWith p (moved (\c -> CurrentClaim "quiescent" c.incarnation c.head c.base c.policy))) dashWork
+      r <- dashGate (gatesWith p (moved (\c -> CurrentClaim PhaseQuiescent c.incarnation c.head c.base c.policy))) dashWork
       r `shouldBeVariant` dashTerminal (\e d de dd -> DashDeferred e d de dd dashWork.landed dashWork.blocked dashWork.faulted)
       callsOf p >>= (`shouldBe` [])
     it "test_an_upsert_lands_and_echoes_the_desired_state" $ do
@@ -580,7 +580,7 @@ spec = describe "test_v5_gates" $ do
       let g =
             publicationGates
               (publicationProvider pub)
-              (modifyIORef' claims (+ 1) >> pure (CurrentClaim "running" 1 head' (T.replicate 40 "b") "p1"))
+              (modifyIORef' claims (+ 1) >> pure (CurrentClaim PhaseRunning 1 head' (T.replicate 40 "b") "p1"))
               (pure (Just "reviewer", "author"))
       r <- publishGate g work
       r `shouldBeVariant` landedOf work
@@ -599,7 +599,7 @@ spec = describe "test_v5_gates" $ do
       reasonOf r `shouldSatisfy` T.isInfixOf "collided"
     it "test_a_moved_claim_reports_the_complete_observed_authority" $ do
       p <- newFakePublisher Created False
-      let observed = moved (\c -> CurrentClaim "quiescent" 2 c.head c.base c.policy)
+      let observed = moved (\c -> CurrentClaim PhaseQuiescent 2 c.head c.base c.policy)
       r <- publishGate (gatesWith p observed) publishWork
       r
         `shouldBeVariant` ReviewMoved

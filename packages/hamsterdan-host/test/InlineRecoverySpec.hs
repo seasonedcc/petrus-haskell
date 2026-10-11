@@ -33,7 +33,7 @@ import Hamsterdan.GitHub.Models
   )
 import Hamsterdan.Host.GitPublish (GitPublishResult (..), GitReconciliation (..))
 import Hamsterdan.Host.Python (ValueError (..))
-import Hamsterdan.Host.V5.Claim (CurrentClaim (..))
+import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Gates (PublicationProvider (..), publicationGates, publishGate, reminderGate)
 import Hamsterdan.Host.V5.Mutation (MutationPublisher (..), V5MutationGate (..), gitGate)
 import Hamsterdan.Host.V5.Rerun (RerunBroker (..), V5RerunGate (..), rerunGate)
@@ -71,7 +71,7 @@ baseSha = T.replicate 40 "b"
 newHead = T.replicate 40 "c"
 
 claimValue :: CurrentClaim
-claimValue = CurrentClaim "running" 3 headSha baseSha "policy-1"
+claimValue = CurrentClaim PhaseRunning 3 headSha baseSha "policy-1"
 
 model :: forall a. (Contract a) => Json -> a
 model raw = either (error . T.unpack . renderDecodeError) id (validate @a raw)

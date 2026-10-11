@@ -25,7 +25,7 @@ import Petrus.Json (Json (..))
 import Test.Hspec
 
 claim1 :: CurrentClaim
-claim1 = CurrentClaim "running" 1 "h1" "b1" "p1"
+claim1 = CurrentClaim PhaseRunning 1 "h1" "b1" "p1"
 
 reference :: CommentReference
 reference = CommentReference 1 "https://example.test/c/1"
@@ -147,11 +147,11 @@ spec = describe "test_v5_rerun" $ describe "TestRerunGate" $ do
     out.mem `shouldBe` mem
     readIORef b.calls >>= (`shouldBe` [Held 5 "h1" "rerun:lin:fp1"])
   let drifts =
-        [ ("phase=quiescent", CurrentClaim "quiescent" 1 "h1" "b1" "p1")
-        , ("incarnation=2", CurrentClaim "running" 2 "h1" "b1" "p1")
-        , ("head=h2", CurrentClaim "running" 1 "h2" "b1" "p1")
-        , ("base=b2", CurrentClaim "running" 1 "h1" "b2" "p1")
-        , ("policy=p2", CurrentClaim "running" 1 "h1" "b1" "p2")
+        [ ("phase=quiescent", CurrentClaim PhaseQuiescent 1 "h1" "b1" "p1")
+        , ("incarnation=2", CurrentClaim PhaseRunning 2 "h1" "b1" "p1")
+        , ("head=h2", CurrentClaim PhaseRunning 1 "h2" "b1" "p1")
+        , ("base=b2", CurrentClaim PhaseRunning 1 "h1" "b2" "p1")
+        , ("policy=p2", CurrentClaim PhaseRunning 1 "h1" "b1" "p2")
         ]
   forM_ drifts $ \(label, observed) ->
     it ("test_any_moved_claim_field_refuses_the_request[" <> label <> "]") $ do

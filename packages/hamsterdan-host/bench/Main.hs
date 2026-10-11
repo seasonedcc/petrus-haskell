@@ -60,7 +60,7 @@ import Hamsterdan.Host.Python (RuntimeError (..))
 import Hamsterdan.Host.Scripted (clearReviewText, deterministicRepository, localClone, scriptedAgentRunner, scriptedPiA2Hooks)
 import Hamsterdan.Host.Service (AgentCustody, HostService (..), ServiceOptions (..), noAgentCustody, openHostService, serviceOptions, v5ApplicationFactory)
 import Hamsterdan.Host.Service qualified as Host
-import Hamsterdan.Host.V5.Claim (CurrentClaim (..))
+import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Gates
 import Hamsterdan.Host.V5.Timers qualified as T5
 import Hamsterdan.Readiness.NetV5.Gating (Variant (..))
@@ -298,7 +298,7 @@ gateSet =
   | p <- [publisher o False | o <- [Created, Existing, Boundary, Collision, Unknown, Capability, Unclassified]] <> [publisher Created True]
   ]
   where
-    claim = CurrentClaim {phase = "running", incarnation = 1, head = "h1", base = "b1", policy = "p1"}
+    claim = CurrentClaim {phase = PhaseRunning, incarnation = 1, head = "h1", base = "b1", policy = "p1"}
 
 dashWork :: DashReq
 dashWork =
