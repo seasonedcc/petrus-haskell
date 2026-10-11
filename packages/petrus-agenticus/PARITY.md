@@ -186,6 +186,30 @@ ledger on disk.
   and so on. For each one, `_decode` must give the same record or the same
   `{class, message}` refusal, and `_salvage_corrupt` must give the same phase.
 
+### Live ledger interop, both directions
+
+`differential/retention_interop.py` is the reference's half of a live
+exchange (`RetentionDifferentialSpec`, "live interop"), run under the pinned
+interpreter on every test run:
+
+- **Haskell writes, Python reads.** The Haskell ledger writes, over a real
+  local provider, a record in every durable phase (`releasing`, `retained`,
+  `claiming`, `attached`, `retiring` through an expired reclaim, `retired`),
+  a retained record that expires before the reader's clock, and a retained
+  record whose capability column is then corrupted. The reference opens a
+  private copy and prints its `lookup` of every row, `records()`,
+  `recover()` and `records()` again; these must equal the Haskell ledger's
+  own reading of another copy of the same bytes (every record field, and
+  the `StorageError` text where decoding refuses: the corrupt row's lookup
+  and the first `records()`; `recover()` then salvages it to `retiring`).
+- **Python writes, Haskell reads.** The reference writes the same records
+  into a fresh ledger with `SqliteTerritoryCustody` and prints its own
+  reading; the Haskell ledger opens the file and must read it identically.
+
+So the reference's strict `_decode` (storage classes included) accepts every
+row the Haskell ledger writes, and the reverse, beyond the committed
+fixture.
+
 Rerun:
 
 ```sh

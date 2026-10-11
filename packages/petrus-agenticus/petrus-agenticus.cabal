@@ -95,6 +95,7 @@ test-suite petrus-agenticus-test
                   , petrus-impetus
                   , petrus-json
                   , petrus-motus
+                  , petrus-test-support
                   , QuickCheck
                   , stm
                   , temporary

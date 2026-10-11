@@ -4,10 +4,16 @@
 -- * the schema text in @sqlite_master@;
 -- * a reference-written ledger opened and decoded;
 -- * the capability encoding written by a release;
--- * @_decode@ and @_salvage_corrupt@ over mutated rows that SQLite read back.
+-- * @_decode@ and @_salvage_corrupt@ over mutated rows that SQLite read back;
+-- * live, both ways (@differential/retention_interop.py@): a ledger written by
+--   each language, with a record in every durable phase, an expiring record
+--   and a corrupted one, opened by the other language, whose @lookup@ of
+--   every row, @records()@, @recover()@ and @records()@ again must equal the
+--   writer's own reading of the same bytes.
 module Petrus.Agenticus.RetentionDifferentialSpec (spec) where
 
-import Control.Monad (forM_, void)
+import Control.Exception (try)
+import Control.Monad (forM, forM_, void)
 import Data.ByteString qualified as B
 import Data.ByteString.Base16 qualified as Hex
 import Data.Text (Text)
@@ -27,7 +33,9 @@ import Petrus.Json (Json (..))
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (workspaceArchive)
 import Petrus.Motus.Execution.Providers.Local (localProvider, newLocalProcessEnvironment)
-import System.Directory (createDirectory, copyFile)
+import Data.IORef (newIORef, readIORef, writeIORef)
+import Petrus.TestSupport.Python (pythonJson)
+import System.Directory (createDirectory, copyFile, makeAbsolute)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Posix.Files (setFileMode)
@@ -201,6 +209,26 @@ spec = describe "differential/retention_corpus.json" $ do
     -- reference's release-time text.
     written `shouldBe` reference
 
+  describe "live interop: each language's ledger, read by the other" $ do
+    it "the reference opens a Haskell-written ledger and decodes, lists and recovers it as Haskell does" $ withLedgerDir $ \dir -> do
+      writeHaskellLedger dir
+      let original = dir </> "territories.db"
+      ours <- privateCopy original (dir </> "haskell-reader") >>= readLedger 20
+      theirs <- privateCopy original (dir </> "python-reader") >>= \copy' -> referenceInterop ["read", copy', "20"]
+      readingOf theirs `shouldBe` ours
+      -- Every durable phase was written, and one row is corrupt.
+      [phase' | (_, Right (_, (_, _, _, phase'), _, _, _, _, _, _)) <- lookupsOf ours]
+        `shouldMatchList` ["releasing", "retained", "retained", "claiming", "attached", "retiring", "retired"]
+      length [() | (_, Left _) <- lookupsOf ours] `shouldBe` 1
+
+    it "Haskell opens a fresh reference-written ledger and decodes, lists and recovers it as the reference does" $ withLedgerDir $ \dir -> do
+      theirs <- referenceInterop ["write", dir]
+      ours <- readLedger 20 (dir </> "territories.db")
+      ours `shouldBe` readingOf theirs
+      [phase' | (_, Right (_, (_, _, _, phase'), _, _, _, _, _, _)) <- lookupsOf ours]
+        `shouldMatchList` ["releasing", "retained", "retained", "claiming", "attached", "retiring", "retired"]
+      length [() | (_, Left _) <- lookupsOf ours] `shouldBe` 1
+
   it "_decode and _salvage_corrupt agree with the reference on every mutated row" $ do
     let cases = items (member "rows" corpus)
     (length cases > 1000) `shouldBe` True
@@ -218,3 +246,149 @@ spec = describe "differential/retention_corpus.json" $ do
     lookupMember key = \case
       Object members -> lookup key members
       _ -> Nothing
+
+-- ---------------------------------------------------------------------------
+-- Live interop
+
+-- | A ledger reading: each row's @lookup@, @records()@, @recover()@, and
+-- @records()@ again; a refusal is its error text.
+type Reading =
+  ( [(Text, Either Text (Text, View))]
+  , Either Text [View]
+  , Either Text [View]
+  , Either Text [View]
+  )
+
+lookupsOf :: Reading -> [(Text, Either Text (Text, (Text, Text, Integer, Text), (Text, Text, Integer), (Text, Text, Text, [Text]), Double, (Maybe Text, Maybe Text), (Maybe Text, Maybe Text, Maybe Integer), Maybe Text))]
+lookupsOf (lookups, _, _, _) = [(custody, fmap flatten found) | (custody, found) <- lookups]
+  where
+    flatten (custody, (a, b, c, d, e, f, g)) = (custody, a, b, c, d, e, f, g)
+
+-- | The reading the reference printed.
+readingOf :: Json -> Reading
+readingOf j =
+  ( [ ( text (member "custody_id" entry)
+      , case lookupMember' "record" entry of
+          Just r -> Right (text (member "custody_id" r), expectedView r)
+          Nothing -> Left (text (member "error" entry))
+      )
+    | entry <- items (member "lookups" j)
+    ]
+  , outcomeOf (member "before" j)
+  , outcomeOf (member "recovered" j)
+  , outcomeOf (member "after" j)
+  )
+  where
+    outcomeOf o = case lookupMember' "records" o of
+      Just rs -> Right (map expectedView (items rs))
+      Nothing -> Left (text (member "error" o))
+
+lookupMember' :: Text -> Json -> Maybe Json
+lookupMember' key = \case
+  Object members -> lookup key members
+  _ -> Nothing
+
+-- | The Haskell ledger's reading, at a fixed clock. Only a 'StorageError' is
+-- a refusal the reference reports; any other error class is kept distinct.
+readLedger :: Double -> FilePath -> IO Reading
+readLedger now path' = do
+  identities <- map (\case [SQLText custody] -> custody; other -> error (show other)) <$> rawRows path' "SELECT custody_id FROM territory_custody ORDER BY custody_id"
+  custody <- openTerritoryCustodyWith path' (pure now)
+  lookups <- forM identities $ \custody' -> do
+    found <- attempt (lookupCustody custody custody')
+    pure (custody', found >>= maybe (Left "absent") (\r -> Right (r.custodyId, recordView r)))
+  listed <- attempt (map recordView <$> records custody)
+  recovered <- attempt (map recordView <$> recover custody)
+  relisted <- attempt (map recordView <$> records custody)
+  closeTerritoryCustody custody
+  pure (lookups, listed, recovered, relisted)
+  where
+    attempt :: IO a -> IO (Either Text a)
+    attempt action =
+      try action >>= \case
+        Right value -> pure (Right value)
+        Left (e :: AgenticusError)
+          | e.errorClass == StorageError -> pure (Left e.errorMessage)
+          | otherwise -> pure (Left (errorClassName e.errorClass <> ": " <> e.errorMessage))
+
+-- | Copy a ledger into a fresh private directory, as a second writer would
+-- find it.
+privateCopy :: FilePath -> FilePath -> IO FilePath
+privateCopy original directory = do
+  createDirectory directory
+  setFileMode directory 0o700
+  let copy' = directory </> "territories.db"
+  copyFile original copy'
+  setFileMode copy' 0o600
+  pure copy'
+
+-- | Run @differential/retention_interop.py@ under the pinned reference.
+referenceInterop :: [String] -> IO Json
+referenceInterop arguments = do
+  script <- makeAbsolute "differential/retention_interop.py"
+  pythonJson
+    "import runpy, sys; script = sys.argv[1]; sys.argv = sys.argv[1:]; runpy.run_path(script, run_name='__main__')"
+    (script : arguments)
+
+-- | The Haskell twin of @retention_interop.py write@: the same records,
+-- written through the Haskell ledger over a real local provider.
+writeHaskellLedger :: FilePath -> IO ()
+writeHaskellLedger dir = withSystemTempDirectory "retention-interop" $ \root -> do
+  let path' = dir </> "territories.db"
+  provider <- localProvider <$> newLocalProcessEnvironment
+  clock <- newIORef (10 :: Double)
+  custody <- openTerritoryCustodyWith path' (readIORef clock)
+  let attachmentFor suffix = do
+        let sourceDir = root </> ("source-" <> T.unpack suffix)
+        createDirectory sourceDir
+        writeFile (sourceDir </> "canary.txt") ("interop " <> T.unpack suffix)
+        archive' <- workspaceArchive sourceDir
+        binding <- openMotusBinding provider ("operation-" <> suffix) defaultSpec archive' "initial"
+        newEpisodeAttachment
+          (either (error . show) id (mkEpisodeId ("episode-" <> suffix)))
+          (snapshot suffix)
+          (motusBinding binding)
+          ("attachment-" <> suffix)
+          100
+          episodeOptions {Episode.attachmentEpoch = 3}
+      reclaimFor suffix =
+        reclaim
+          custody
+          ("custody-" <> suffix)
+          "host-one"
+          provider
+          (either (error . show) id (mkEpisodeId ("episode-" <> suffix <> "-successor")))
+          (snapshot (suffix <> "-successor"))
+          ("attachment-" <> suffix <> "-successor")
+          100
+          Nothing
+          Nothing
+  attachmentFor "releasing" >>= \a -> void (beginRelease custody "custody-releasing" "host-one" a 50)
+  attachmentFor "retained" >>= \a -> void (release custody "custody-retained" "host-one" a 50 30)
+  attachmentFor "expiring" >>= \a -> void (release custody "custody-expiring" "host-one" a 15.5 30)
+  attachmentFor "corrupt" >>= \a -> void (release custody "custody-corrupt" "host-one" a 50 30)
+  forM_ ["attached", "claiming"] $ \suffix -> do
+    attachmentFor suffix >>= \a -> void (release custody ("custody-" <> suffix) "host-one" a 50.5 30)
+    void (reclaimFor suffix)
+  attachmentFor "retired" >>= \a -> void (release custody "custody-retired" "host-one" a 50 30)
+  void (retire custody "custody-retired" "host-one" provider)
+  attachmentFor "retiring" >>= \a -> void (release custody "custody-retiring" "host-one" a 12.25 30)
+  writeIORef clock 13
+  expired <- try (reclaimFor "retiring")
+  case expired of
+    Left (e :: AgenticusError) -> e.errorMessage `shouldBe` "territory custody expired before reclaim"
+    Right _ -> expectationFailure "an expired reclaim must fail"
+  closeTerritoryCustody custody
+  -- A crash between the durable claim and the attachment, and a column
+  -- corrupted behind the ledger.
+  rawExecute path' "UPDATE territory_custody SET phase='claiming' WHERE custody_id='custody-claiming'"
+  rawExecute path' "UPDATE territory_custody SET capabilities='not-json' WHERE custody_id='custody-corrupt'"
+  forM_ ["releasing", "retained", "expiring", "corrupt", "attached", "claiming", "retiring"] $ \suffix ->
+    providerLookup provider ("operation-" <> suffix) >>= mapM_ (void . providerDestroy provider)
+  where
+    rawExecute path' sql = do
+      db <- openDatabase path'
+      statement <- prepareStatement db sql
+      runStatement statement []
+      finalizeStatement statement
+      closeDatabase db
