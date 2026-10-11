@@ -75,6 +75,7 @@ test-suite petrus-engine-file-test
                     Petrus.EngineFile.CorpusSpec
                     Petrus.EngineFile.KernelSpec
                     Petrus.EngineFile.LiveSpec
+                    Petrus.EngineFile.SchemaSpec
                     Petrus.EngineFile.CliSpec
                     Petrus.EngineFile.UpstreamSpec
   build-depends:    base
