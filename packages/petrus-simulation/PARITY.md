@@ -180,5 +180,5 @@ Each seed must yield at least 100 results and at least 30 refusals.
 - service round trips, against `bench/python_bench.py`;
 - an interleaved load comparison, with one client driving both services.
 
-Haskell is faster on every row: from 1.6× (profile GET, 1 client) to 47×
-(a 400 KB payload run).
+Haskell is faster on every row in wall-clock time: from 1.6× (profile GET,
+1 client) to 34× (`simulate.loop-24x256`).

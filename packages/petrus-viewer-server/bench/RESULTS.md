@@ -6,6 +6,16 @@ The Haskell backend against the upstream Node backend at the pin in
 
 ## How to rerun
 
+From the repository root (`scripts/bench petrus-viewer-server` runs exactly this block):
+
+<!-- scripts/bench: rerun -->
+```sh
+test -d upstream/petrus-viewer/node_modules || (cd upstream/petrus-viewer && pnpm install --frozen-lockfile)
+node packages/petrus-viewer-server/bench/run.mjs
+```
+
+Other ways to run it:
+
 ```bash
 # from the repository root; needs `pnpm install` in upstream/petrus-viewer
 node packages/petrus-viewer-server/bench/run.mjs                 # builds, 5 reps
@@ -70,6 +80,14 @@ its noise. Runs E and F are 20000 ops per run with 1 client and 64000 with 16
 rather than a fraction of one.
 
 ## Results
+
+Run F is the final code: every scenario is above 1.0× by median and by
+best run. Single rounds below 1.0× remain in the 1-client endpoint
+scenarios (lowest 0.78x) and once at 16 clients (0.97x); "Reading the
+results" explains them. Run E measured the endpoints of the same code,
+with the previous server in the same rounds (its column is the "before"
+one). Runs A to D measured earlier code; they are kept for the record and
+marked superseded, so `scripts/check-parity` reads runs E and F.
 
 Machine: Apple M4 (10 cores), 24 GB, macOS 26 (Darwin 25.3.0), node
 v22.22.0, GHC 9.10.3. **The machine was shared with other agents building
@@ -195,6 +213,8 @@ server and of both Node servers had exactly 68000 / 60000 / 0.
 
 ### Run D (commit 9a5969c, before the HTTP front; 7 reps; load average 5.0 → 6.4)
 
+<!-- bench: superseded -->
+
 | scenario | haskell (petrus) | haskell (petrus, relay log off) | node (vite dev server) | node (bare baseline) | haskell (petrus-collab) | node (server/collab.mjs) | Haskell / Node |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | relay round trip, 1 pair | 14789 (64 / 138) | 16959 (57 / 109) | 10696 (83 / 215) | 12115 (81 / 139) |  |  | 1.40x |
@@ -232,6 +252,8 @@ Cells: median ops/s over 7 interleaved runs (p50 / p99 latency in us).
 | collab fan-out, 200 peers x 200 msgs | 4.22 4.72 4.12 4.84 4.82 4.92 3.92 | 3.92x |
 
 ### Run C (commit bbab9aa: `-N1`, before the relay log was written from the relay loop; 7 reps; load average 4.3–4.7)
+
+<!-- bench: superseded -->
 
 | scenario | haskell (petrus) | haskell (petrus, relay log off) | node (vite dev server) | node (bare baseline) | haskell (petrus-collab) | node (server/collab.mjs) | Haskell / Node |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -271,6 +293,8 @@ Cells: median ops/s over 7 interleaved runs (p50 / p99 latency in us).
 
 ### Run B (commit 9a4d2b4, thread-per-connection relays, `-N2`; 9 reps; load average 7 → 186 → 37)
 
+<!-- bench: superseded -->
+
 Median ops/s (p50 / p99 latency in µs):
 
 | scenario | haskell (petrus) | haskell (petrus, relay log off) | node (vite) | node (bare) | haskell (petrus-collab) | node (collab.mjs) | Haskell / Node |
@@ -299,6 +323,8 @@ Best of 9 (ops/s):
 | collab fan-out, 200 peers x 200 msgs | 793619 | | | | 869357 | 230931 | 3.76x |
 
 ### Run A (commit 7eb9e61: before the C string escaper; no log-off target; 9 reps; load average 7)
+
+<!-- bench: superseded -->
 
 Median ops/s (p50 / p99 latency in µs):
 

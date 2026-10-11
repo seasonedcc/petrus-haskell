@@ -19,6 +19,7 @@ import Data.Text.Encoding qualified as TE
 import Petrus.EngineFile
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 -- | @chain_text(n, name)@.
@@ -96,7 +97,10 @@ main = withSystemTempDirectory "petrus-engine-file-bench" $ \dir -> do
     BS.writeFile (dir </> ("mounted-" <> show k <> ".json")) text
     schema <- load (dir </> ("mounted-" <> show k <> ".json"))
     putStrLn ("mounted-" <> show k <> ": " <> show (BS.length text) <> " bytes in, " <> show (length schema.arcs) <> " arcs")
-  defaultMain $
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ env (pure (chainText n "chain")) $ \text ->
         bgroup
           ("chain-" <> show n)

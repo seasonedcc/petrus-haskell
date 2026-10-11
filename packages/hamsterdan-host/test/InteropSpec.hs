@@ -16,6 +16,22 @@
 -- @activity-dispatch@ databases, schema text and rows) as the reference
 -- reads it back, with only the Worker claimant's random identity and
 -- wall-clock instants normalized.
+--
+-- The agent journey is the same two phases with the real agent in place of
+-- the clear-review runner: each host composes it the way @serve@ does
+-- (the Pi installation from the environment, @compose_agent@, the
+-- @agent-routes.sqlite3@ store, the workspace receiver, the owned Pi A2
+-- runtime under @pi-a2/@, and the Pi native runner), over Petrus's
+-- deterministic scripted Pi runtime, with the workspace cloned from a local
+-- repository whose commits are the PR's base and heads. Each phase is one
+-- full review turn (clone, review inputs, prompt, scripted turn, result
+-- validation, runtime bodies and operation ledger, route settlement), and
+-- the second phase resumes the agent state the first left, in either
+-- language. The comparison now covers @agent-routes.sqlite3@ and
+-- everything under @pi-a2/@ too; only the runtime host's random lifecycle
+-- identity is normalized besides the above, and every pairing runs on the
+-- same absolute state path (the working-directory binding is a digest of
+-- it).
 module InteropSpec (spec) where
 
 import Control.Exception (SomeException, throwIO, try)
@@ -33,11 +49,15 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error (lenientDecode)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import FakeGitHub (Recorded (..), comparableCall, takeCalls, withFakeGitHubIO)
+import Hamsterdan.Agents.Protocol (AgentRunner (..), Invocation (..), ReviewRequest (..))
 import Hamsterdan.GitHub.Client (AppCredentials (..), ClientOptions (..), newAppClients)
 import Hamsterdan.GitHub.Http (newPlainExchangeAt)
 import Hamsterdan.GitHub.Webhooks (Observation (..), Receipt (..), dispositionName)
 import Hamsterdan.GitHub.Webhooks qualified as Custody
+import Hamsterdan.Host.Agents (AgentSeams (..), composeHostAgent, newOwnedAgent, productionAgentSeams)
 import Hamsterdan.Host.Cli (inspectInstance)
+import Hamsterdan.Host.PiWorkspace (gitPiWorkspaceProvider)
+import Hamsterdan.Host.Scripted (clearReviewText, deterministicRepository, localClone, scriptedAgentRunner, scriptedPiA2Hooks)
 import Hamsterdan.Host.Python (ValueError (..))
 import Hamsterdan.Host.Service (HostService (..), ServiceOptions (..), gitHubHostClients, noAgentCustody, openHostService, serviceOptions, v5ApplicationFactory)
 import Hamsterdan.Host.Service qualified as Host
@@ -45,6 +65,7 @@ import Petrus.Json (Json (..), compact, defaultDumps, dumps, dumpsText, parseJso
 import Petrus.Json.Encode (EncodeOptions (..))
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
+import System.Directory (renameDirectory)
 import System.FilePath ((</>))
 import System.Process.Typed
 import Test.Hspec
@@ -95,9 +116,13 @@ phaseOne :: [Step]
 phaseOne = [Activate, Deliver d1 "pull_request" synchronize, Converge, Report [d1]]
 
 phaseTwo :: [Step]
-phaseTwo =
+phaseTwo = phaseTwoAt secondHead
+
+-- | Phase two, moving the head to the given commit.
+phaseTwoAt :: Text -> [Step]
+phaseTwoAt moved =
   [ Report [d1]
-  , Head secondHead
+  , Head moved
   , Deliver d2 "pull_request" synchronize
   , Converge
   , Deliver d3 "workflow_run" workflowRequested
@@ -117,8 +142,35 @@ data Side = Python | Haskell
 -- port (with the App's PEM).
 data Network = Doubles | GitHubAt Int Text
 
+-- | The real agent over the scripted Pi runtime: the local repository the
+-- workspace is cloned from, the PR's base commit in it, and the output of
+-- each scripted turn of the phase.
+data Agent = Agent
+  { repository :: FilePath
+  , base :: Text
+  , turns :: [Text]
+  }
+
+-- | Absolute Pi installation paths: @from_environment@ requires them, and
+-- the scripted runtime never runs them.
+installationPaths :: [(Text, Text)]
+installationPaths =
+  [ ("HAMSTERDAN_PI_CLI_PATH", "/opt/pi/cli.js")
+  , ("HAMSTERDAN_PI_NODE_PATH", "/opt/pi/node")
+  , ("HAMSTERDAN_PI_PACKAGE_ROOT", "/opt/pi/package")
+  ]
+
+-- | What @serve@ reads from the environment for the agent.
+agentEnvironment :: [(Text, Text)]
+agentEnvironment =
+  [ ("HAMSTERDAN_PI_PROVIDER", "anthropic")
+  , ("HAMSTERDAN_PI_MODEL", "claude-sonnet-4-5")
+  , ("HAMSTERDAN_PI_API_KEY", "synthetic-direct-authority")
+  ]
+    <> installationPaths
+
 -- | Run one phase on a state directory with one implementation.
-drive :: Side -> Network -> FilePath -> ProviderState -> [Step] -> IO Json
+drive :: Side -> Network -> Maybe Agent -> FilePath -> ProviderState -> [Step] -> IO Json
 drive Python = pythonDrive
 drive Haskell = haskellDrive
 
@@ -136,9 +188,9 @@ spec = describe "state interop with the reference host" $ do
     let start = ProviderState firstHead []
         run first second = do
           let root = tmp </> (show first <> "-" <> show second)
-          one <- drive first Doubles root start phaseOne
+          one <- drive first Doubles Nothing root start phaseOne
           afterOne <- referenceDump root
-          two <- drive second Doubles root (providerAfter one) phaseTwo
+          two <- drive second Doubles Nothing root (providerAfter one) phaseTwo
           afterTwo <- referenceDump root
           pure (one, afterOne, two, afterTwo)
     (pOne, pDumpOne, pTwo, pDumpTwo) <- run Python Python
@@ -158,6 +210,36 @@ spec = describe "state interop with the reference host" $ do
       sameJson (label <> ": phase two") pTwo two
       sameJson (label <> ": state after phase two") pDumpTwo dumpTwo
 
+  it "resumes each other's agent state: a scripted Pi review turn per phase through the composed agent, every pairing" . withTempRoot $ \tmp -> do
+    (base, firstCommit, secondCommit) <- deterministicRepository (tmp </> "repository")
+    let agent epoch commit = Agent (tmp </> "repository") base [clearReview epoch commit base]
+        -- One state path for every pairing, each moved aside when done.
+        root = tmp </> "state"
+        run first second = do
+          one <- drive first Doubles (Just (agent 1 firstCommit)) root (ProviderState firstCommit []) phaseOne
+          afterOne <- referenceDump root
+          two <- drive second Doubles (Just (agent 2 secondCommit)) root (providerAfter one) (phaseTwoAt secondCommit)
+          afterTwo <- referenceDump root
+          renameDirectory root (tmp </> (show first <> "-" <> show second))
+          pure (one, afterOne, two, afterTwo)
+    (pOne, pDumpOne, pTwo, pDumpTwo) <- run Python Python
+    -- Each phase is one real agent turn whose clear result reaches the
+    -- dashboard, and the agent state is on disk for the next phase.
+    reviewedHeads pOne `shouldBe` [firstCommit]
+    reviewedHeads pTwo `shouldBe` [secondCommit]
+    dashboard pOne `shouldSatisfy` T.isInfixOf "clear \x00b7 0 findings"
+    dashboard pTwo `shouldSatisfy` T.isInfixOf "clear \x00b7 0 findings"
+    finalStatuses pTwo `shouldBe` [(d, String "terminal") | d <- [d1, d2, d3]]
+    forM_ ["agent-routes.sqlite3", "pi-a2/installation", "pi-a2/runtime-host/bodies.sqlite3", "pi-a2/runtime-host/operations.sqlite3"] $ \file ->
+      fileNames pDumpTwo `shouldContain` [file]
+    forM_ [(Haskell, Haskell), (Python, Haskell), (Haskell, Python)] $ \(first, second) -> do
+      (one, dumpOne, two, dumpTwo) <- run first second
+      let label = "agent journey, " <> show first <> " then " <> show second
+      sameJson (label <> ": phase one") pOne one
+      sameJson (label <> ": state after phase one") pDumpOne dumpOne
+      sameJson (label <> ": phase two") pTwo two
+      sameJson (label <> ": state after phase two") pDumpTwo dumpTwo
+
   it "makes the same GitHub requests as the reference, header for header and body for body" . withTempRoot $ \tmp -> do
     repo <- repoRoot
     pem <- TE.decodeUtf8 <$> BS.readFile (repo </> "packages" </> "hamsterdan-github" </> "test" </> "corpus" </> "app-test-key.pem")
@@ -167,10 +249,10 @@ spec = describe "state interop with the reference host" $ do
             let root = tmp </> ("github-" <> show side)
                 network = GitHubAt port pem
                 untouched = ProviderState firstHead []
-            one <- drive side network root untouched phaseOne
+            one <- drive side network Nothing root untouched phaseOne
             callsOne <- takeCalls recorded
             writeIORef state.fakeHead secondHead
-            two <- drive side network root untouched phaseTwo
+            two <- drive side network Nothing root untouched phaseTwo
             callsTwo <- takeCalls recorded
             dumped <- referenceDump root
             comments <- readIORef state.fakeComments
@@ -204,6 +286,12 @@ spec = describe "state interop with the reference host" $ do
     reviewedHeads = \case
       Object members | Just (Array items) <- lookup "reviews" members -> [sha | Array (_ : String sha : _) <- items]
       _ -> []
+    dashboard = \case
+      Object members | Just (Array (Object comment : _)) <- lookup "comments" members, Just (String body) <- lookup "body" comment -> body
+      _ -> ""
+    fileNames = \case
+      Object members -> map fst members
+      _ -> []
     finalStatuses = \case
       Object members
         | Just (Array reports) <- lookup "reports" members
@@ -228,8 +316,15 @@ sameJson label expected actual = do
           <> " differs from the reference at "
           <> show (length differing)
           <> " lines; first:\n"
-          <> unlines [show n <> "\n  reference: " <> show a <> "\n  haskell:   " <> show b | (n, a, b) <- take 12 differing]
+          <> unlines [show n <> "\n  reference: " <> excerpt a b <> "\n  haskell:   " <> excerpt b a | (n, a, b) <- take 12 differing]
       )
+  where
+    -- A long line around its first difference.
+    excerpt mine theirs = case (mine, theirs) of
+      (Just x, Just y) | T.length x > 400 ->
+        let at = length (takeWhile id (zipWith (==) (T.unpack x) (T.unpack y)))
+         in show at <> ": " <> show (T.take 400 (T.drop (max 0 (at - 150)) x))
+      _ -> show mine
 
 -- ---------------------------------------------------------------------------
 -- The reference
@@ -256,12 +351,26 @@ parsed bytes = case parseJson pythonLoads bytes of
   Right value -> pure value
   Left problem -> expectationFailure ("unreadable reference output: " <> problem) >> pure Null
 
-pythonDrive :: Network -> FilePath -> ProviderState -> [Step] -> IO Json
-pythonDrive network root (ProviderState sha comments) steps = do
+pythonDrive :: Network -> Maybe Agent -> FilePath -> ProviderState -> [Step] -> IO Json
+pythonDrive network agent root (ProviderState sha comments) steps = do
   let github = case network of
         Doubles -> []
         GitHubAt port pem -> [("github_port", Int (toInteger port)), ("private_key", String pem)]
-      document = Object ([("head", String sha), ("comments", Array comments), ("steps", Array (map stepJson steps))] <> github)
+      agentMembers = case agent of
+        Nothing -> []
+        Just selected ->
+          [ ("base", String selected.base)
+          , ( "agent"
+            , Object
+                ( [ ("turns", Array (map String selected.turns))
+                  , ("repository", String (T.pack selected.repository))
+                  ]
+                    <> [(short, String value) | (name, value) <- installationPaths, Just short <- [lookup name shortNames]]
+                )
+            )
+          ]
+      shortNames = [("HAMSTERDAN_PI_CLI_PATH", "cli"), ("HAMSTERDAN_PI_NODE_PATH", "node"), ("HAMSTERDAN_PI_PACKAGE_ROOT", "package")]
+      document = Object ([("head", String sha), ("comments", Array comments), ("steps", Array (map stepJson steps))] <> github <> agentMembers)
   reference ["drive", root] (either (error . show) id (dumps compact document)) >>= parsed
 
 -- | @state_reference.py dump@: the state directory as the reference reads it.
@@ -318,11 +427,16 @@ v5GitHub state call = do
 -- ---------------------------------------------------------------------------
 -- The same journey through this host
 
-haskellDrive :: Network -> FilePath -> ProviderState -> [Step] -> IO Json
-haskellDrive network root (ProviderState sha initialComments) steps = do
-  provider <- newProvider sha [members | Object members <- initialComments]
+haskellDrive :: Network -> Maybe Agent -> FilePath -> ProviderState -> [Step] -> IO Json
+haskellDrive network agent root (ProviderState sha initialComments) steps = do
+  provider <- newProviderOn (maybe baseSha (.base) agent) sha [members | Object members <- initialComments]
   reviews <- newIORef []
-  let runner = clearRunner reviews
+  (runner, custody) <- case agent of
+    Nothing -> pure (clearRunner reviews, noAgentCustody)
+    Just selected -> do
+      owned <- newOwnedAgent
+      (composed, custody) <- composeHostAgent (scriptedAgent selected) owned agentEnvironment (pure ()) root
+      pure (recordingRunner reviews composed, custody)
   (config, clients) <- case network of
     Doubles -> pure (doublesConfig root "private-key-secret", doubleClients (providerTransport provider))
     GitHubAt port pem -> do
@@ -335,7 +449,7 @@ haskellDrive network root (ProviderState sha initialComments) steps = do
   host <-
     openHostService
       config
-      (serviceOptions runner noAgentCustody)
+      (serviceOptions runner custody)
         { clients = Just clients
         , applicationFactory = v5ApplicationFactory
         }
@@ -393,3 +507,29 @@ haskellDrive network root (ProviderState sha initialComments) steps = do
     onFailure action cleanup = do
       outcome <- try @SomeException action
       either (\problem -> cleanup >> throwIO problem) pure outcome
+
+-- | 'composeHostAgent' with the substitutions of @state_reference.py@'s
+-- @compose_real_agent@ ("Hamsterdan.Host.Scripted").
+scriptedAgent :: Agent -> AgentSeams
+scriptedAgent selected =
+  productionAgentSeams
+    { hooks = scriptedPiA2Hooks selected.turns
+    , workspaces = localClone selected.repository . gitPiWorkspaceProvider
+    , selectRunner = scriptedAgentRunner
+    }
+
+-- | The agent runner, recording each review as the clear-review runner does.
+recordingRunner :: IORef [Json] -> AgentRunner -> AgentRunner
+recordingRunner reviews runner =
+  AgentRunner
+    { review = \url request invocation -> do
+        modifyIORef' reviews (<> [Array [String url, String request.head, String invocation.operation, Int invocation.attempt]])
+        runner.review url request invocation
+    , converse = runner.converse
+    , code = runner.code
+    }
+
+-- | A clear review of PR 7 at the given incarnation (the request's epoch)
+-- and head: the scripted Pi turn's final text.
+clearReview :: Integer -> Text -> Text -> Text
+clearReview = clearReviewText "owner/one" 7

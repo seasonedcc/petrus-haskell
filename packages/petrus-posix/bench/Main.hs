@@ -9,6 +9,7 @@ import Petrus.Posix
 import System.Directory (createDirectory, createDirectoryLink, getTemporaryDirectory, removeDirectoryRecursive)
 import System.FilePath ((</>))
 import System.IO.Temp (createTempDirectory)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 main :: IO ()
@@ -24,7 +25,10 @@ main = do
   held <- openLockFile lockPath
   root <- openDirectoryAt Nothing dir
   flip finally (closeFd held >> closeFd root >> removeDirectoryRecursive dir) $
-    defaultMain
+    -- Wall-clock time for every benchmark, as the Python twins measure it
+    -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+    -- time spent waiting on the kernel, servers and child processes.
+    defaultMain . map (localOption WallTime) $
       [ bgroup
           "flock"
           [ bench "tryLock-unlock" (whnfIO (tryLock held Exclusive >> unlock held))

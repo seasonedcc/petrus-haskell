@@ -28,19 +28,23 @@ The port aims to be:
 | `docs/` | Plans of record, such as [docs/runtime.md](docs/runtime.md) for everything outside the kernel. |
 | `spec/` | Language-neutral contracts this repo adds (Fabric, processes). The upstream specs live in `upstream/petrus/spec/`. |
 | `upstream/` | Git submodules of the pinned upstream projects (the Python reference). |
-| `scripts/` | `check-all` and helpers. |
+| `scripts/` | `check-all`, `interop`, `bench`, `check-parity` and their helpers. |
+| `bench-results/` | [summary.md](bench-results/summary.md): every package's benchmarks against Python at a glance. |
 
 ## Building and checking
 
-Requirements: GHC 9.10.3 and cabal 3.16 (for example through
-[ghcup](https://www.haskell.org/ghcup/)), [uv](https://docs.astral.sh/uv/) for
-the Python reference, and PostgreSQL, SQLite, and libzmq for the backend suites.
+[docs/reproducing.md](docs/reproducing.md) goes from a fresh machine to a
+full rerun: prerequisites (GHC 9.10.3 and cabal 3.16 through ghcup, uv,
+libzmq, PostgreSQL 17 or Docker, Node.js), the build, the tests, the interop
+suites, the benchmarks and the parity check. In short:
 
 ```sh
-git clone --recurse-submodules git@github.com:seasonedcc/petrus-haskell.git
+git clone --recursive https://github.com/seasonedcc/petrus-haskell.git
 cd petrus-haskell
-scripts/check-all          # build, tests, conformance, interop, parity table
-scripts/check-all --bench  # also benchmarks against the pinned Python
+scripts/check-all -j2      # build, tests, conformance, interop, parity table (what CI runs)
+scripts/interop            # only the cross-language suites, against the pinned Python
+scripts/bench PACKAGE      # rerun a package's benchmarks against the pinned Python
+scripts/check-parity       # the parity table's claims against the committed evidence
 ```
 
 ## License

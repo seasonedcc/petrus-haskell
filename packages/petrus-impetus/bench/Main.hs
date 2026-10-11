@@ -20,6 +20,7 @@ import Petrus.Impetus.Instance hiding (candidates)
 import Petrus.Impetus.NetDefinition (NetDefinitionV3 (..), NetDefinitionBody (..), parseNetDefinition, projectNetDefinition, serializeNetDefinition)
 import Petrus.Impetus.Petrinet
 import Petrus.Json
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 fanInPlaces, fanInTokens, fifoTokens, weightTokens, fanOutPlaces, fanOutTokens, runFifoTokens, historyFifoTokens, chainLength :: Int
@@ -129,7 +130,10 @@ main = do
       decodeAll raw = case parseJson pythonLoads raw of
         Right (Array xs) -> either (error . T.unpack) length (traverse decodeRecord xs)
         _ -> error "decode"
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup
         "candidates"
         [ bench "wide-fanin" (nf enumerate wideFanIn)

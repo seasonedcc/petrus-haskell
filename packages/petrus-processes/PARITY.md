@@ -110,5 +110,8 @@ schema, and call and spawn each other.
 
 ## Performance
 
-[bench/RESULTS.md](bench/RESULTS.md): Haskell is faster on every row:
-2.7–14× on values and the Activity, and 3–5.5× on the registry operations.
+[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time: Haskell is 2.9–15×
+faster on values and the Activity. The registry operations are round trips
+to the server: 1.21–1.65×, and `postgres.child-of` level at 0.97×. Earlier
+figures of 3–5.5× there were tasty-bench CPU time, which leaves out the wait
+for the server.

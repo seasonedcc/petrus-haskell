@@ -19,7 +19,8 @@
 --
 -- Served ('serve', 'hostServerApplication'), every response also carries
 -- what uvicorn writes around the application's headers ('uvicornHeaders'),
--- so the bytes on the wire are uvicorn's.
+-- and every status line is h11's @HTTP/1.1@, also for an HTTP/1.0 request
+-- ('runHostSocket'), so the bytes on the wire are uvicorn's.
 --
 -- The lifespan ('withLifespan') is the reference's: reconcile the
 -- registration (optionally), start the inbox worker, serve, then stop the
@@ -38,11 +39,13 @@ module Hamsterdan.Host.Api
   , ServeOptions (..)
   , hostSettings
   , serve
+  , runHostSocket
+  , withHostServer
   ) where
 
-import Control.Concurrent (forkIOWithUnmask)
+import Control.Concurrent (ThreadId, forkIO, forkIOWithUnmask, killThread, myThreadId)
 import Control.Concurrent.MVar
-import Control.Exception (SomeException, catch, finally, mask, throwIO, try)
+import Control.Exception (IOException, SomeException, bracket, catch, finally, mask, throwIO, try)
 import Control.Monad (void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -50,7 +53,11 @@ import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.CaseInsensitive qualified as CI
 import Data.Char (isAlphaNum, toLower)
+import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import Data.List (find)
+import Data.Set (Set)
+import Data.Set qualified as Set
+import Data.Streaming.Network (bindPortTCP)
 import Data.String (fromString)
 import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
@@ -60,10 +67,12 @@ import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Api.Documents (oauth2RedirectDocument, openApiDocument, redocDocument, swaggerDocument)
 import Hamsterdan.Host.Service (HostService (..))
 import Hamsterdan.Host.Service qualified as Service
-import Network.HTTP.Types (Status, http11, status200, status202, status307, status400, status404, status405, status500, urlDecode)
+import Network.HTTP.Types (Status, http10, http11, status200, status202, status307, status400, status404, status405, status500, urlDecode)
 import Network.HTTP.Types.Header (Header)
 import Network.Wai (Application, Middleware, Request, Response, getRequestBodyChunk, httpVersion, mapResponseHeaders, rawPathInfo, rawQueryString, requestHeaderHost, requestHeaders, requestMethod, responseLBS)
+import Network.Socket (Socket, SocketOption (NoDelay), accept, close, setCloseOnExecIfNeeded, setSocketOption, withFdSocket)
 import Network.Wai.Handler.Warp qualified as Warp
+import Network.Wai.Handler.Warp.Internal (Connection (..), Settings (..), runSettingsConnection, socketConnection)
 import Petrus.Json (Json (..), compact, dumps)
 import System.Posix.Signals (Handler (..), installHandler, sigINT, sigTERM)
 
@@ -281,7 +290,72 @@ serve service options = withLifespan service True $ do
                 void (installHandler sigINT (CatchOnce closeSocket) Nothing)
             )
           $ hostSettings
-  Warp.runSettings settings (hostServerApplication service)
+  -- @Warp.runSettings@, over 'runHostSocket'.
+  bracket (bindPortTCP options.port (fromString options.host)) close $ \socket -> do
+    withFdSocket socket setCloseOnExecIfNeeded
+    runHostSocket settings socket (hostServerApplication service)
+
+-- | @Warp.runSettingsSocket@ with h11's status line: an HTTP/1.0 request's
+-- response starts @HTTP/1.1@, as uvicorn writes it, where warp echoes the
+-- request's version.
+--
+-- Warp writes the status line from the request it parsed, which no
+-- middleware sees, so the rewrite is in the connection: the application
+-- marks its thread while it sends the response to an HTTP/1.0 request, and
+-- the first bytes warp sends from that thread (the status line, at the
+-- start of the header block) have their version replaced. Warp runs the
+-- application and writes its response on the connection's own thread.
+-- Everything else (headers, @Connection: close@, the body, persistence) is
+-- warp's, unchanged.
+runHostSocket :: Warp.Settings -> Socket -> Application -> IO ()
+runHostSocket settings socket app = do
+  marked <- newIORef Set.empty
+  settings.settingsInstallShutdownHandler (close socket)
+  let connection = do
+        (accepted, address) <- accept socket
+        withFdSocket accepted setCloseOnExecIfNeeded
+        void (try @IOException (setSocketOption accepted NoDelay 1))
+        raw <- socketConnection settings accepted
+        pure (h11StatusLine marked raw, address)
+  runSettingsConnection settings connection (markHttp10 marked app)
+
+-- | Mark the current thread while the application sends its response to an
+-- HTTP/1.0 request.
+markHttp10 :: IORef (Set ThreadId) -> Middleware
+markHttp10 marked app request send
+  | httpVersion request /= http10 = app request send
+  | otherwise = app request $ \response -> do
+      thread <- myThreadId
+      atomicModifyIORef' marked (\threads -> (Set.insert thread threads, ()))
+      send response `finally` atomicModifyIORef' marked (\threads -> (Set.delete thread threads, ()))
+
+-- | The connection whose first send on a marked thread says @HTTP/1.1@.
+h11StatusLine :: IORef (Set ThreadId) -> Connection -> Connection
+h11StatusLine marked conn =
+  conn
+    { connSendAll = \bytes -> rewrite bytes >>= connSendAll conn
+    , connSendMany = \case
+        first : rest -> rewrite first >>= \first' -> connSendMany conn (first' : rest)
+        [] -> connSendMany conn []
+    }
+  where
+    rewrite bytes = do
+      thread <- myThreadId
+      wasMarked <- atomicModifyIORef' marked (\threads -> (Set.delete thread threads, Set.member thread threads))
+      pure $ case BS.stripPrefix "HTTP/1.0 " bytes of
+        Just rest | wasMarked -> "HTTP/1.1 " <> rest
+        _ -> bytes
+
+-- | Serve an application with 'runHostSocket' on a free local port for the
+-- duration of an action (@Warp.testWithApplicationSettings@).
+withHostServer :: Warp.Settings -> Application -> (Int -> IO a) -> IO a
+withHostServer settings app action =
+  bracket Warp.openFreePort (close . snd) $ \(port, socket) -> do
+    ready <- newEmptyMVar
+    done <- newEmptyMVar
+    server <- forkIO (runHostSocket (Warp.setBeforeMainLoop (putMVar ready ()) settings) socket app `finally` putMVar done ())
+    takeMVar ready
+    action port `finally` (killThread server >> takeMVar done)
 
 -- | The warp settings 'serve' starts from: uvicorn's @server@ banner (which
 -- 'uvicornHeaders' writes in uvicorn's position, so warp keeps it) and a

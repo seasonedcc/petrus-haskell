@@ -36,7 +36,7 @@ accepted = \case
 spec :: Spec
 spec = describe "kernel nets" $ do
   it "converts the viewer's sample net" $ do
-    root <- maybe (fail "no repository root") pure =<< repoRoot
+    root <- repoRoot
     result <- loadKernelFile (T.pack (root </> "upstream/petrus-viewer/examples/sample-net.json"))
     let k = accepted result
     K.netName k.net `shouldBe` Just "order_system"

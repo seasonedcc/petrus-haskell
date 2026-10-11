@@ -1,20 +1,30 @@
 """Timing helper shared by the packages' bench/python_bench.py scripts.
 
-``report(name, fn)`` times ``fn()`` the way scripts/bench expects: the batch
-size is grown until one batch takes at least ``PETRUS_BENCH_BATCH_SECONDS``
-(default 0.05 s), then ``PETRUS_BENCH_BATCHES`` (default 10) batches are timed
-with ``time.perf_counter_ns`` and the median per-call time is printed as a
-``name,nanoseconds`` CSV line on stdout. Names match the Haskell tasty-bench
-names with the group separator written as a dot.
+``report(name, fn)`` times ``fn()`` the way scripts/bench-compare expects:
+the batch size is grown until one batch takes at least
+``PETRUS_BENCH_BATCH_SECONDS`` (default 0.2 s), then ``PETRUS_BENCH_BATCHES``
+(default 10) batches are timed with ``time.perf_counter_ns`` (wall-clock time,
+like the Haskell side's ``localOption WallTime``) and the median per-call time
+is printed as a ``name,nanoseconds`` CSV line on stdout. Names match the
+Haskell tasty-bench names with the group separator written as a dot.
+
+Why 0.2 s per batch: the batches time the same workload over and over, and
+many workloads are stateful (a History that grows with every append, a
+database table that fills, a server connection that warms up). With the
+earlier 0.05 s default a fast row ran for half a second in all, far less than
+tasty-bench spends on the Haskell twin, so the two sides measured different
+amounts of accumulated state, and server-bound rows were dominated by a
+handful of slow round trips. At 0.2 s a row runs for about 2 s, comparable
+to tasty-bench at ``--stdev 5``. Garbage collection stays enabled, since the
+Haskell figures include the RTS's collections too.
 """
 
-import gc
 import os
 import statistics
 import sys
 import time
 
-BATCH_SECONDS = float(os.environ.get("PETRUS_BENCH_BATCH_SECONDS", "0.05"))
+BATCH_SECONDS = float(os.environ.get("PETRUS_BENCH_BATCH_SECONDS", "0.2"))
 BATCHES = int(os.environ.get("PETRUS_BENCH_BATCHES", "10"))
 
 
@@ -34,14 +44,7 @@ def measure(fn) -> float:
         if elapsed >= BATCH_SECONDS * 1e9 or number >= 1 << 30:
             break
         number *= 2 if elapsed == 0 else max(2, min(10, int(BATCH_SECONDS * 1e9 / max(elapsed, 1)) + 1))
-    enabled = gc.isenabled()
-    samples = []
-    try:
-        for _ in range(BATCHES):
-            samples.append(_batch(fn, number) / number)
-    finally:
-        if enabled:
-            gc.enable()
+    samples = [_batch(fn, number) / number for _ in range(BATCHES)]
     return statistics.median(samples)
 
 

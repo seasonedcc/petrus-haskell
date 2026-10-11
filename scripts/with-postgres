@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Run a command with PETRUS_TEST_POSTGRES pointing at a PostgreSQL server.
+#
+#   scripts/with-postgres <command> [args...]
+#
+# When PETRUS_TEST_POSTGRES is already set, the command runs against that
+# server unchanged. Otherwise this starts a throwaway PostgreSQL server, runs
+# the command with PETRUS_TEST_POSTGRES set to it, and stops and deletes the
+# server afterwards, whatever the command's outcome:
+#
+#   1. with `initdb` and `pg_ctl` (PostgreSQL 17 preferred: Postgres.app's 17,
+#      then whatever is on PATH), in a temporary directory, on a free
+#      127.0.0.1 port, with the server's default settings;
+#   2. otherwise with Docker (`postgres:17`), on a free 127.0.0.1 port.
+#
+# With neither available it fails and says what to install. The command's
+# exit status is this script's exit status.
+set -euo pipefail
+
+if [[ $# -eq 0 ]]; then
+  echo "usage: scripts/with-postgres <command> [args...]" >&2
+  exit 2
+fi
+
+if [[ -n "${PETRUS_TEST_POSTGRES:-}" ]]; then
+  exec "$@"
+fi
+
+for candidate in /Applications/Postgres.app/Contents/Versions/17/bin /usr/lib/postgresql/17/bin /opt/homebrew/opt/postgresql@17/bin /usr/local/opt/postgresql@17/bin; do
+  if [[ -x "$candidate/pg_ctl" && -x "$candidate/initdb" ]]; then
+    PATH="$candidate:$PATH"
+    break
+  fi
+done
+
+free_port() {
+  python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
+}
+
+cleanup=""
+finish() {
+  local status=$?
+  if [[ -n "$cleanup" ]]; then
+    eval "$cleanup" >/dev/null 2>&1 || true
+  fi
+  exit "$status"
+}
+trap finish EXIT
+trap 'exit 130' INT TERM
+
+if command -v pg_ctl >/dev/null 2>&1 && command -v initdb >/dev/null 2>&1; then
+  # /tmp, not $TMPDIR: the socket path must stay under the 104-byte limit.
+  dir=$(mktemp -d /tmp/petrus-pg.XXXXXX)
+  port=$(free_port)
+  cleanup="pg_ctl -D '$dir/data' -m immediate -w stop; rm -rf '$dir'"
+  initdb -D "$dir/data" -U postgres --auth=trust --encoding=UTF8 --locale=C >"$dir/initdb.log" 2>&1 || {
+    cat "$dir/initdb.log" >&2
+    echo "with-postgres: initdb failed" >&2
+    exit 1
+  }
+  pg_ctl -D "$dir/data" -l "$dir/server.log" -w \
+    -o "-p $port -c listen_addresses=127.0.0.1 -k $dir" start >/dev/null || {
+    cat "$dir/server.log" >&2
+    echo "with-postgres: pg_ctl could not start the server" >&2
+    exit 1
+  }
+  echo "with-postgres: throwaway PostgreSQL $(pg_ctl --version | grep -Eo '[0-9]+(\.[0-9]+)+' | head -1) on 127.0.0.1:$port ($dir)" >&2
+elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  port=$(free_port)
+  container=$(docker run -d --rm -e POSTGRES_PASSWORD=postgres -p "127.0.0.1:$port:5432" postgres:17)
+  cleanup="docker stop '$container'"
+  for _ in $(seq 1 60); do
+    if docker exec "$container" pg_isready -U postgres -h 127.0.0.1 >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  docker exec "$container" pg_isready -U postgres -h 127.0.0.1 >/dev/null || {
+    echo "with-postgres: the postgres:17 container did not become ready" >&2
+    exit 1
+  }
+  echo "with-postgres: throwaway PostgreSQL 17 container ${container:0:12} on 127.0.0.1:$port" >&2
+else
+  echo "with-postgres: PETRUS_TEST_POSTGRES is unset and neither PostgreSQL's initdb/pg_ctl nor a running Docker is available." >&2
+  echo "Install PostgreSQL 17 (or Docker), or set PETRUS_TEST_POSTGRES to a server where the role may create databases." >&2
+  exit 1
+fi
+
+export PETRUS_TEST_POSTGRES="postgresql://postgres:postgres@127.0.0.1:$port/postgres"
+status=0
+"$@" || status=$?
+exit "$status"

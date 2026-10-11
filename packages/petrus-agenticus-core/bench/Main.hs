@@ -12,6 +12,7 @@ import Bench.Thread qualified
 import Bench.Hands qualified
 import Bench.Custody qualified
 import System.Environment (getArgs)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 main :: IO ()
@@ -19,7 +20,10 @@ main =
   getArgs >>= \case
     "custody" : arguments -> Bench.Custody.run arguments
     _ ->
-      defaultMain
+      -- Wall-clock time for every benchmark, as the Python twins measure it
+      -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+      -- time spent waiting on the kernel, servers and child processes.
+      defaultMain . map (localOption WallTime) $
         [ Bench.Catalog.benchmarks
         , Bench.Effect.benchmarks
         , Bench.Thread.benchmarks

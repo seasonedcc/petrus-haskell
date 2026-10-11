@@ -74,4 +74,5 @@ How the reference's test doubles are spelled here:
 ## Benchmarks
 
 See [bench/RESULTS.md](bench/RESULTS.md). Every row is faster than the pinned
-Python: deliver 5.5×, prior redelivery 4×, and create plus close 13.6×.
+Python in wall-clock time: deliver 1.6×, prior redelivery 7.9×, and create
+plus close 1.1× (dominated by connecting and the fence).

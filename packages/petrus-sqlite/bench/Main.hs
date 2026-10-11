@@ -14,6 +14,7 @@ import Petrus.Sqlite
 import System.Directory (getTemporaryDirectory, removeDirectoryRecursive)
 import System.FilePath ((</>))
 import System.IO.Temp (createTempDirectory)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 eventsDdl :: Text
@@ -37,7 +38,10 @@ main = do
   next <- newIORef (0 :: Int)
   let fresh = atomicModifyIORef' next (\n -> (n + 1, n))
   flip finally (close connection >> removeDirectoryRecursive dir) $
-    defaultMain
+    -- Wall-clock time for every benchmark, as the Python twins measure it
+    -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+    -- time spent waiting on the kernel, servers and child processes.
+    defaultMain . map (localOption WallTime) $
       [ bgroup
           "connect"
           [ bench "local-dispatch-profile" (whnfIO (open localDispatchProfile database >>= close))

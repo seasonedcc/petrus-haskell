@@ -80,4 +80,5 @@ connection, which is the upstream `reopen` fixture's postgres parameter.
 ## Benchmarks
 
 See [bench/RESULTS.md](bench/RESULTS.md). Every row is faster than the pinned
-Python: 1.7× to 3.8× against a native PostgreSQL 17.
+Python in wall-clock time: 1.05× to 2.5× against a native PostgreSQL 17 (the
+8-record appends are server-bound and closest).

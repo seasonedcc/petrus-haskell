@@ -111,7 +111,7 @@ benchmark petrus-simulation-bench
                   , petrus-test-support
                   , stm
                   , tasty >=1.4
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
                   , text
                   , unix
   ghc-options:      -threaded -O2 -rtsopts

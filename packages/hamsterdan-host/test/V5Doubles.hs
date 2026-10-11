@@ -5,9 +5,11 @@
 module V5Doubles
   ( Provider (..)
   , newProvider
+  , newProviderOn
   , providerTransport
   , baseSha
   , pullRequest
+  , pullRequestOn
   , noReviewThreads
   , newComment
   , editComment
@@ -36,9 +38,10 @@ import Petrus.Impetus.Instance.FailureText (PythonException (..))
 import Petrus.Json (Json (..))
 
 -- | The provider's mutable state: the PR head, the calls it saw, and the
--- comments on the PR.
+-- comments on the PR; and the PR's base.
 data Provider = Provider
   { head :: IORef Text
+  , base :: Text
   , calls :: IORef [Json]
   , comments :: IORef [[(Text, Json)]]
   }
@@ -48,7 +51,11 @@ baseSha = T.replicate 40 "b"
 
 -- | PR 7 of @owner/one@: open, clean, at the given head.
 pullRequest :: Text -> Json
-pullRequest headSha =
+pullRequest = pullRequestOn baseSha
+
+-- | PR 7 of @owner/one@ on the given base.
+pullRequestOn :: Text -> Text -> Json
+pullRequestOn base headSha =
   Object
     [ ("state", String "open")
     , ("draft", Bool False)
@@ -58,7 +65,7 @@ pullRequest headSha =
     , ("html_url", String "https://example.test/owner/one/pull/7")
     , ("user", Object [("login", String "author")])
     , ("head", Object [("sha", String headSha), ("ref", String "feature"), ("repo", Object [("full_name", String "owner/one")])])
-    , ("base", Object [("sha", String baseSha), ("ref", String "main")])
+    , ("base", Object [("sha", String base), ("ref", String "main")])
     ]
 
 noReviewThreads :: Json
@@ -119,12 +126,12 @@ providerTransport provider =
     record parts = modifyIORef' provider.calls (<> [Array (map String parts)])
     ok value = pure (WireResponse 200 value Nothing)
     answer headSha method path body = case (method, path) of
-      ("GET", "/repos/owner/one/pulls/7") -> ok (pullRequest headSha)
-      ("GET", "/repos/owner/one/git/ref/heads/main") -> ok (Object [("object", Object [("sha", String baseSha)])])
+      ("GET", "/repos/owner/one/pulls/7") -> ok (pullRequestOn provider.base headSha)
+      ("GET", "/repos/owner/one/git/ref/heads/main") -> ok (Object [("object", Object [("sha", String provider.base)])])
       ("GET", "/repos/owner/one/rules/branches/main") -> pure (WireResponse 404 (Object []) Nothing)
       ("GET", "/repos/owner/one/branches/main/protection") -> pure (WireResponse 404 (Object []) Nothing)
       ("GET", p)
-        | p == "/repos/owner/one/compare/" <> baseSha <> "..." <> headSha ->
+        | p == "/repos/owner/one/compare/" <> provider.base <> "..." <> headSha ->
             ok (Object [("status", String "ahead"), ("behind_by", Int 0)])
       ("GET", "/repos/owner/one/pulls/7/requested_reviewers") -> ok (Object [("users", Array [])])
       ("GET", p)
@@ -149,7 +156,15 @@ providerTransport provider =
       _ -> throwIO (PythonException "AssertionError" [])
 
 newProvider :: Text -> [[(Text, Json)]] -> IO Provider
-newProvider sha comments = Provider <$> newIORef sha <*> newIORef [] <*> newIORef comments
+newProvider = newProviderOn baseSha
+
+-- | The provider of a PR on the given base.
+newProviderOn :: Text -> Text -> [[(Text, Json)]] -> IO Provider
+newProviderOn base sha comments = do
+  headRef <- newIORef sha
+  callsRef <- newIORef []
+  commentsRef <- newIORef comments
+  pure Provider {head = headRef, base, calls = callsRef, comments = commentsRef}
 
 -- | @config(root)@ of @state_reference.py@ with the given App private key.
 doublesConfig :: FilePath -> Text -> HostConfig
