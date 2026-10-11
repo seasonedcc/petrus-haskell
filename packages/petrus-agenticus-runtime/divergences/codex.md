@@ -80,7 +80,12 @@ pin those on both sides. The corpus's single tolerated difference is item 5.
    Anything else would end the thread without a result, and `wait` would
    only time out. The port catches every synchronous exception at that
    boundary too and settles `runtime-failed`. Asynchronous exceptions
-   (cancellation, timeouts) are never swallowed.
+   (cancellation, timeouts) are never swallowed. Why it stays: upstream's
+   outcome is a lost result, a thread that ends silently and a `wait` that
+   can only time out, which no caller relies on; reproducing it would mean
+   letting a Haskell exception kill the operation thread on purpose.
+   Every exception that reaches `_execute` in both languages settles the
+   same way.
 
 8. **Sockets, locks and ledgers use POSIX calls directly.** The runtime
    service listens on an `AF_UNIX` stream socket (the `network` package)

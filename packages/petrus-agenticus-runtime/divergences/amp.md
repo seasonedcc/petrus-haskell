@@ -76,17 +76,23 @@ stream admission are pinned against the reference by
    same fake SDK, and compares outcome, appends, termination code and
    cleanup code.
 
-   What remains:
+   What remains, and why it stays:
    - The sidecar reads every part of an event once, as it arrives. A part
      upstream never reaches is still read (its exception is dropped), so a
-     property with side effects runs where upstream's would not.
+     property with side effects runs where upstream's would not. Reading
+     parts lazily would cost a pipe round trip per part of every event, and
+     the pinned SDK's events are pydantic models whose attributes are plain
+     fields, so only a contrived property can observe the difference.
    - An exception that is not an `Exception` (a `KeyboardInterrupt`,
      `SystemExit` or `GeneratorExit` from a property) settles
      `client-failed`. Upstream it escapes `_run` and ends the worker thread
-     without a settlement.
+     without a settlement, leaving the Turn unsettled; the port keeps the
+     settlement every other SDK failure gets rather than reproduce a lost
+     Turn.
    - An SDK that raises Petrus's own `RuntimeProtocolError` from a property
      would settle with that error's code upstream; the port settles
-     `client-failed`.
+     `client-failed`. Only an SDK that imports Petrus can raise that type,
+     and the pinned `amp-sdk` does not depend on Petrus.
 
 3. **Protocols are records of operations.** Storage is
    `AmpContinuationOperations` and `AmpTurnOperations`. The probe's

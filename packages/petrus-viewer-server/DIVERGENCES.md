@@ -154,6 +154,10 @@ against Node on recorded corpora and on thousands of generated inputs
 - **IDNA.** Hosts are lowercased and punycoded but not NFKC-normalized or
   fully UTS #46 mapped: `ß` and `ﬀ` stay as code points and are punycoded
   (Node maps `ﬀ` to `ff`). Only exotic hosts in `$ref`s are affected.
+  Why it stays: matching Node means porting ada's IDNA (the UTS #46
+  mapping table, NFC, and its label checks for joiners and the bidi rule)
+  with Node 22's Unicode tables, for hosts that only appear when a net
+  names a remote `$ref` with compatibility characters in its host.
 - **ada quirks.** Node 22's URL parser (ada 2.9) differs from the WHATWG
   standard in two places found by the differential tests. A final `..` that
   finds nothing to remove in a non-special empty path leaves the path empty

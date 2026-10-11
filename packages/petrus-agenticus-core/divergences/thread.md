@@ -94,4 +94,10 @@ make `sorted()` raise a raw `TypeError` (`'<' not supported between
 instances of 'NoneType' and 'str'`; which operand comes first depends on
 timsort's comparison order).  Haskell orders an absent component first and
 accepts the value.  This is the only reference behavior not reproduced; the
-corpus does not generate it.
+corpus does not generate it.  Why it stays: every reference producer of a
+`ProbeIssue` (the Codex, Claude, Amp and Pi adapters) names a component, and
+no reference path decodes probe results from data, so the `TypeError` is
+reachable only by building the value by hand.  Its existence is decidable
+(a code that has both an absent and a named component), but its message's
+operand order is not without emulating CPython's `list.sort` comparison
+sequence (`count_run`, binary insertion, and merging past 64 items).

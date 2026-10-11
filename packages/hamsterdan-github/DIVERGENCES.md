@@ -132,6 +132,14 @@ differential corpora compare these byte for byte with the pinned Python (see
       invalid labels. `Hamsterdan.GitHub.Url.httpxUrl` admits them unchecked.
     - Only redirect `Location` headers reach this code. The bounded transport
       refuses every redirect, and every foreign host, regardless.
+    - Why it stays: the difference shows only when api.github.com, over TLS,
+      answers a 30x whose `Location` names a non-ASCII host that the
+      `idna` package rejects; the reference then fails with
+      `RemoteProtocolError` (`Invalid IDNA hostname`) where the port goes on
+      to refuse the redirect. Reproducing it means porting `idna` 3.18's
+      IDNA 2008 validation with its own Unicode 17.0 tables (code point
+      classes, CONTEXTJ and CONTEXTO rules, joining types, the bidi rule),
+      which no other part of the port needs.
 11. **`str.isdigit` in the hishel date parser: resolved, no longer a
     difference.**
     - `Cache.parseDate` (hishel's `parse_date` over
@@ -156,11 +164,16 @@ differential corpora compare these byte for byte with the pinned Python (see
     - Every message Hamsterdan writes itself is compared exactly:
       `GitHubBoundaryError` messages, failure classes, provider status and
       detail atoms, refusal texts, and configuration errors.
-    - PyJWT's `InvalidKeyError` message is an example of a CPython message that
-      is not compared. For a parseable non-RSA key (EC, Ed25519) PyJWT says
-      "Invalid Key type for RSAAlgorithm"; the port says "Could not parse the
-      provided public key.", PyJWT's text for unparseable keys. The class
-      matches.
+    - PyJWT's `InvalidKeyError` message is an example of a library message
+      that is not compared. PyJWT says "Could not parse the provided public
+      key." only for a PEM that does not parse; the port says it for every
+      non-RSA key, including a parseable EC or Ed25519 key. The class matches.
+      Why it stays: PyJWT 2.13's text for a parseable non-RSA key formats a
+      generator expression, so it embeds that object's address and differs
+      on every run (`Expected one of <generator object
+      Algorithm.check_crypto_key_type.<locals>.<genexpr> at 0x109da6c20>,
+      got: ECPrivateKey. Invalid Key type for RSAAlgorithm`). No port can
+      reproduce it byte for byte.
 13. **The production exchange is differentially tested over plain HTTP only.**
     - Both sides' corpora run over a mock network: `httpx.MockTransport` and a
       scripted `Exchange`. So h11's wire-level checks (for example, refusing
