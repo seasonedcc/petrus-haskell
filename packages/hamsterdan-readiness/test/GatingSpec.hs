@@ -7,10 +7,10 @@
 -- dispatch, exactly as the reference runs them.
 module GatingSpec (spec) where
 
-import Control.Exception (SomeException, displayException, try)
+import Control.Exception (SomeException, bracket, displayException, mask_, try)
 import Control.Monad (forM_, void)
 import Data.Foldable (toList)
-import Data.IORef (newIORef, readIORef)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -113,20 +113,39 @@ fixture work = deposit (path place) (Token (Just (workColor work)) (workDump wor
       let snapshot = (only startedMarking "ready.snap").payload
        in (replaced "ready.snap" "Snapshot" (updated snapshot [("announcing", workDump work)]) startedMarking, "ready.announce_req")
 
+-- | The Local Dispatch sessions an example opened.
+type Sessions = IORef [Local.LocalDispatch]
+
+-- | A scratch root, removed once the example's sessions are closed. The
+-- reference's sessions hold no connection between operations; the port's
+-- keep a pool, which a session left open closes when the garbage collector
+-- finalizes it, deleting @dispatch.sqlite3-wal@ at an arbitrary moment,
+-- possibly while the root is being removed (which then fails).
+withRoot :: (FilePath -> Sessions -> IO a) -> IO a
+withRoot action =
+  withSystemTempDirectory "hamsterdan-gating" $ \root ->
+    bracket (newIORef []) (\sessions -> readIORef sessions >>= mapM_ Local.closeLocalDispatch) (action root)
+
+session :: Sessions -> FilePath -> Text -> Local.LocalDispatchOptions -> IO Local.LocalDispatch
+session sessions file identity options = mask_ $ do
+  opened <- Local.openLocalDispatch file identity options
+  modifyIORef' sessions (opened :)
+  pure opened
+
 -- | @_open(root, create=..., marking=...)@.
-open :: FilePath -> Maybe Marking -> IO Engine.Engine
-open root seeded = do
+open :: Sessions -> FilePath -> Maybe Marking -> IO Engine.Engine
+open sessions root seeded = do
   ref <- newIORef freshWorld
   store <- openJsonlHistoryStore (root </> "history.jsonl")
-  custody <- Local.openLocalDispatch (root </> "dispatch.sqlite3") instanceId Local.defaultLocalDispatchOptions {Local.activityQueues = publicationQueues}
+  custody <- session sessions (root </> "dispatch.sqlite3") instanceId Local.defaultLocalDispatchOptions {Local.activityQueues = publicationQueues}
   let opts = (engineOptions (gateDefinitions ref) (maybe emptyMarking id seeded)) {Engine.policy = Engine.throughputPolicy}
   case seeded of
     Just _ -> Engine.create builtNet.net instanceId store (Local.toDispatch custody) opts
     Nothing -> Engine.load builtNet.net instanceId store (Local.toDispatch custody) opts
 
-openWorker :: FilePath -> IO Local.LocalWorkerDispatch
-openWorker root = do
-  custody <- Local.openLocalDispatch (root </> "dispatch.sqlite3") "worker" Local.defaultLocalDispatchOptions
+openWorker :: Sessions -> FilePath -> IO Local.LocalWorkerDispatch
+openWorker sessions root = do
+  custody <- session sessions (root </> "dispatch.sqlite3") "worker" Local.defaultLocalDispatchOptions
   Local.worker custody [queue] Nothing
 
 requestsOf :: Engine.Engine -> (ActivityRequested -> Bool) -> IO [ActivityRequested]
@@ -168,12 +187,12 @@ spec = describe "gating" $ do
       , ("dash_gate", Dash ["attempted"] "digest-attempted" ["attempted", "newer"] "digest-newer", "dash:digest-attempted")
       , ("announce_gate", announceWork, "ready:head-1:i3")
       ]
-      $ \(activity, work, recoverOp) -> it (T.unpack activity) $ withSystemTempDirectory "hamsterdan-gating" $ \root -> do
-        engine <- open root (Just (fixture work))
+      $ \(activity, work, recoverOp) -> it (T.unpack activity) $ withRoot $ \root sessions -> do
+        engine <- open sessions root (Just (fixture work))
         advanceUntil engine (not . null <$> requests engine activity work)
         [firstRequest] <- requests engine activity work
         let op = operation work
-        worker <- openWorker root
+        worker <- openWorker sessions root
         Just attempt <- Local.claim worker
         attempt.epoch `shouldBe` "1"
         (policyFields attempt.invocation.policy).attempts `shouldBe` 1
@@ -185,7 +204,7 @@ spec = describe "gating" $ do
         Local.close worker
         Engine.close engine
 
-        restarted <- open root Nothing
+        restarted <- open sessions root Nothing
         advanceUntil restarted (retained restarted work)
         records <- Engine.records restarted
         let failures = [f | RActivityFailed f <- records]
@@ -196,7 +215,7 @@ spec = describe "gating" $ do
         requests restarted activity work `shouldReturn` [firstRequest]
         Engine.close restarted
 
-        stable <- open root Nothing
+        stable <- open sessions root Nothing
         recordsBefore <- Engine.records stable
         void (Engine.advance stable)
         Engine.records stable `shouldReturn` recordsBefore
@@ -223,18 +242,18 @@ spec = describe "gating" $ do
         (recovered.correlation, recovered.idempotency) `shouldBe` (op, op)
         Engine.close stable
 
-  it "unknown publication failure stays projection pending and fails loudly" $ withSystemTempDirectory "hamsterdan-gating" $ \root -> do
-    engine <- open root (Just (fixture announceWork))
+  it "unknown publication failure stays projection pending and fails loudly" $ withRoot $ \root sessions -> do
+    engine <- open sessions root (Just (fixture announceWork))
     advanceUntil engine (not . null <$> requests engine "announce_gate" announceWork)
     [firstRequest] <- requests engine "announce_gate" announceWork
-    worker <- openWorker root
+    worker <- openWorker sessions root
     Just attempt <- Local.claim worker
     failure <- either (fail . T.unpack) pure (activityFailure (ActivityFailureFields "unclassified provider terminal" "UnexpectedFailure" Null False Nothing))
     Local.fail worker attempt (FailureClassified failure)
     Local.close worker
     Engine.close engine
 
-    restarted <- open root Nothing
+    restarted <- open sessions root Nothing
     outcome <- try @SomeException (Engine.advance restarted)
     case outcome of
       Left err -> do
@@ -248,7 +267,7 @@ spec = describe "gating" $ do
     length [() | RActivityFailed f <- history, f.occurrence == firstRequest.occurrence] `shouldBe` 1
     or [f.occurrence == firstRequest.occurrence | RFiringFailed f <- history] `shouldBe` False
 
-  it "restart settles a legacy unlanded announcement moved without posting" $ withSystemTempDirectory "hamsterdan-gating" $ \root -> do
+  it "restart settles a legacy unlanded announcement moved without posting" $ withRoot $ \root sessions -> do
     let legacy = obj [("op", str "ready:h1:i1"), ("incarnation", int 1), ("head", str "h1"), ("base", str "b1"), ("policy", str "p1")]
         snapshot = (only startedMarking "ready.snap").payload
         retainedSnap =
@@ -267,7 +286,7 @@ spec = describe "gating" $ do
               , ("announcing", legacy)
               ]
         seeded = deposit (path "ready.announce_req") (Token (Just "AnnounceReq") legacy) (replaced "ready.snap" "Snapshot" retainedSnap startedMarking)
-    first <- open root (Just seeded)
+    first <- open sessions root (Just seeded)
     let announceRequests engine = requestsOf engine (\r -> r.activity == "announce_gate")
     advanceUntil first (not . null <$> announceRequests first)
     [firstRequest] <- announceRequests first
@@ -283,8 +302,8 @@ spec = describe "gating" $ do
           , authority = Authority {incarnation = 1, phase = "running", head = "h1", base = "b1", policy = "p1"}
           }
     let definitions = gateDefinitions ref
-    restarted <- open root Nothing
-    worker <- openWorker root
+    restarted <- open sessions root Nothing
+    worker <- openWorker sessions root
     Just attempt <- Local.claim worker
     attempt.invocation.input `shouldBe` obj [("work", legacy)]
     result <- callDefinition (definitions Map.! "announce_gate") attempt.invocation

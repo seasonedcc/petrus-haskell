@@ -27,10 +27,10 @@ import Test.Hspec
 import Data.Text.Encoding qualified as TE
 
 open :: FilePath -> Text -> IO Local.LocalDispatch
-open path inst = openLocalDispatch path inst defaultLocalDispatchOptions
+open path inst = openScratchDispatch path inst defaultLocalDispatchOptions
 
 openWith :: FilePath -> Text -> (LocalDispatchOptions -> LocalDispatchOptions) -> IO Local.LocalDispatch
-openWith path inst tweak = openLocalDispatch path inst (tweak defaultLocalDispatchOptions)
+openWith path inst tweak = openScratchDispatch path inst (tweak defaultLocalDispatchOptions)
 
 completed :: Json -> ActivityOutcome
 completed = Succeeded

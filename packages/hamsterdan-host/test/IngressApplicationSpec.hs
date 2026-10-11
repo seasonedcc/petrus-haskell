@@ -957,12 +957,15 @@ spec = describe "test_v5_ingress (application)" $ do
     app <- openWorld tmp w runner.agent $ \o -> o {dispatchPath = Just dispatchPath}
     processObservation app (observationOf identity "pull_request" "synchronize") Nothing
     _ <- settle app
-    session <- Local.openLocalDispatch dispatchPath "inspector" Local.defaultLocalDispatchOptions
-    production <- Local.worker session ["publication"] Nothing
-    isJust <$> Local.claim production `shouldReturn` False
-    runDurableActivities app 20 >>= (`shouldSatisfy` (> 0))
-    _ <- settle app
-    Local.close production
+    -- Closed before withTempRoot removes the directory: a session left to
+    -- the garbage collector closes its connection pool when finalized, and
+    -- that last close deletes the WAL, possibly during the removal.
+    Local.withLocalDispatch dispatchPath "inspector" Local.defaultLocalDispatchOptions $ \session -> do
+      production <- Local.worker session ["publication"] Nothing
+      isJust <$> Local.claim production `shouldReturn` False
+      runDurableActivities app 20 >>= (`shouldSatisfy` (> 0))
+      _ <- settle app
+      Local.close production
     closeApplication app
 
   it "test_v5_comment_classification_is_frozen_and_settled_only_after_manifest_commit" . withTempRoot $ \tmp -> do
