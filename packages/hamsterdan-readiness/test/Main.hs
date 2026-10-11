@@ -14,6 +14,7 @@ import ReadinessSpec qualified
 import BoardSpec qualified
 import BoardCorpusSpec qualified
 import GatingSpec qualified
+import IncarnationSpec qualified
 import InlineRecoverySpec qualified
 import PayloadsSpec qualified
 import Test.Hspec (hspec)
@@ -33,6 +34,7 @@ main = hspec $ do
   RemindersSpec.spec
   ReviewSpec.spec
   ReadinessSpec.spec
+  IncarnationSpec.spec
   BoardSpec.spec
   BoardCorpusSpec.spec
   GatingSpec.spec

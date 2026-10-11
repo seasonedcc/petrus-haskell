@@ -26,9 +26,9 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Testing.World
-import Hamsterdan.Testing.World.Contract (baseSha, defaultBudget, headSha, readinessPolicyDigest, reminderDelay, withProfileResource)
+import Hamsterdan.Testing.World.Contract (defaultBudget, headSha, reminderDelay, withProfileResource)
 import Petrus.Json (Json (..))
-import Petrus.Testing.Dst (ApplyResult (..), BudgetV4, DstFailure (..), Observation (..), encodeArtifact)
+import Petrus.Testing.Dst (BudgetV4, DstFailure (..), Observation (..), encodeArtifact)
 import Petrus.Testing.Dst.World qualified as World
 import System.FilePath ((</>))
 
@@ -356,9 +356,3 @@ authorScenario s root = do
   a <- artifact rw scenarioId
   closeWorld rw
   either (throwIO . userError . T.unpack) pure (encodeArtifact a)
-
-_unusedResult :: ApplyResult -> Json
-_unusedResult r = r.value
-
-_unusedBase :: (Text, Text)
-_unusedBase = (baseSha, readinessPolicyDigest)

@@ -71,9 +71,10 @@ import Data.Text.Encoding qualified as TE
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.PyLiteral (literalEval)
 import Hamsterdan.PyLiteral qualified as PyLit
+import Hamsterdan.PyText (raisingDumps)
 import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
 import Hamsterdan.Sqlite qualified as Sql
-import Petrus.Json (EncodeOptions (..), Json, compact, defaultDumps, dumps, dumpsText, encodeErrorMessage)
+import Petrus.Json (EncodeOptions (..), Json, compact, defaultDumps, dumps, dumpsText)
 import Petrus.Motus.Worker (LookupError (..), RuntimeError (..), ValueError (..))
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.FilePath (takeDirectory)
@@ -161,28 +162,25 @@ exceptionClass e
 sortedAscii :: EncodeOptions
 sortedAscii = defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortKeys = True}
 
-orFail :: Either a b -> (a -> String) -> b
-orFail value render = either (error . render) id value
-
 -- | @json.dumps(value, sort_keys=True, separators=(",", ":"))@ (ASCII
 -- escapes, NaN allowed).
 dumpsSorted :: Json -> ByteString
-dumpsSorted value = orFail (dumps sortedAscii value) encodeErrorMessage
+dumpsSorted value = raisingDumps (dumps sortedAscii value)
 
 dumpsSortedText :: Json -> Text
-dumpsSortedText value = orFail (dumpsText sortedAscii value) encodeErrorMessage
+dumpsSortedText value = raisingDumps (dumpsText sortedAscii value)
 
 -- | @json.dumps(value, sort_keys=True, separators=(",", ":"),
 -- ensure_ascii=False, allow_nan=False)@.
 dumpsCompactSorted :: Json -> ByteString
-dumpsCompactSorted value = orFail (dumps compact {sortKeys = True} value) encodeErrorMessage
+dumpsCompactSorted value = raisingDumps (dumps compact {sortKeys = True} value)
 
 dumpsCompactSortedText :: Json -> Text
-dumpsCompactSortedText value = orFail (dumpsText compact {sortKeys = True} value) encodeErrorMessage
+dumpsCompactSortedText value = raisingDumps (dumpsText compact {sortKeys = True} value)
 
 -- | @json.dumps(value)@.
 dumpsDefault :: Json -> Text
-dumpsDefault value = orFail (dumpsText defaultDumps value) encodeErrorMessage
+dumpsDefault value = raisingDumps (dumpsText defaultDumps value)
 
 -- | @hashlib.sha256(bytes).hexdigest()@.
 sha256Hex :: ByteString -> Text

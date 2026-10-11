@@ -57,6 +57,7 @@ module Hamsterdan.Testing.Journeys
   ) where
 
 import Control.Exception (SomeException, throwIO, try)
+import Hamsterdan.PyText (raisingDumps)
 import Control.Monad (forM_, unless, void, when)
 import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
@@ -95,7 +96,7 @@ import Hamsterdan.GitHub.Routing qualified as Routing
 import Hamsterdan.GitHub.Webhooks (Disposition (..), Observation (..), Receipt (..), sign)
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Agenticus (activateRoutes, claimRoute, closeRoutes, composeAgent, openAgentRouteStore, settleRoutes)
-import Hamsterdan.Host.GitPublish (GitPublishResult (..), GitReconciliation (..), HostGitPublisher (..), hostGitPublisher, publicationAuthority)
+import Hamsterdan.Host.GitPublish (GitPublishResult (..), GitReconciliation (..), OperationDisposition (..), HostGitPublisher (..), hostGitPublisher, operationDispositionText, publicationAuthority)
 import Hamsterdan.Host.GitPublish qualified as Git
 import Hamsterdan.Host.Service
   ( AgentCustody (..)
@@ -389,11 +390,11 @@ textOf = \case
 
 -- | @json.dumps(value, sort_keys=True)@.
 canonical :: Json -> Text
-canonical value = either (error . show) id (dumpsText defaultDumps {sortKeys = True} value)
+canonical value = raisingDumps (dumpsText defaultDumps {sortKeys = True} value)
 
 -- | @json.dumps(value)@ as bytes.
 pythonDumps :: Json -> ByteString
-pythonDumps value = TE.encodeUtf8 (either (error . show) id (dumpsText defaultDumps value))
+pythonDumps value = TE.encodeUtf8 (raisingDumps (dumpsText defaultDumps value))
 
 maybeText :: Maybe Text -> Json
 maybeText = maybe Null String
@@ -1206,7 +1207,7 @@ scenarioRunner ref =
 reconciliationJson :: GitReconciliation -> Json
 reconciliationJson r =
   Object
-    [ ("disposition", String r.disposition)
+    [ ("disposition", String (operationDispositionText r.disposition))
     , ("observed_head", String r.observedHead)
     , ("commit", String r.commit)
     , ("parents", texts r.parents)
@@ -1260,7 +1261,7 @@ journeyApplications flags truth root instanceId authority runner options = do
                   modifyIORef' truth $ \p ->
                     p {gitReconciliations = p.gitReconciliations <> [Object (publicationKeywords operation digest expectedHead baseHead mergeBase)]}
                   p <- readIORef truth
-                  pure (GitReconciliation "absent" p.head "" [])
+                  pure (GitReconciliation OperationAbsent p.head "" [])
               , publish = \result operation digest expectedHead baseHead mergeBase -> do
                   modifyIORef' truth $ \p ->
                     p
@@ -1461,9 +1462,9 @@ externalState d = do
 -- application this host never loaded holds no publication.
 unresolved :: Drive -> IO Bool
 unresolved d = do
-  loaded <- readIORef d.host.apps
-  case Map.lookup (44, 31, 7) loaded of
-    Just application -> application.hasUnresolvedPublication
+  loaded <- readIORef d.host.loaded
+  case Map.lookup (Host.InstanceKey 44 31 7) loaded of
+    Just entry -> entry.app.hasUnresolvedPublication
     Nothing -> pure False
 
 -- | @converge()@.
@@ -1480,7 +1481,7 @@ converge d = go (50 :: Int)
 
 -- | Receive a signed delivery, process it, and converge: the delivery id
 -- and its custody status before processing.
-deliver :: Drive -> ByteString -> Text -> IO (Text, Maybe Text)
+deliver :: Drive -> ByteString -> Text -> IO (Text, Maybe Custody.InboxStatus)
 deliver d body event = do
   delivery <- nextDelivery d
   receipt <- Custody.receive d.host.custody (signed body delivery event) body
@@ -1548,8 +1549,8 @@ commentEnvelope commentId instruction =
            )
          ]
 
-statusJson :: Maybe Text -> Json
-statusJson = maybeText
+statusJson :: Maybe Custody.InboxStatus -> Json
+statusJson = maybeText . fmap Custody.inboxStatusText
 
 countsJson :: Drive -> IO Json
 countsJson d = do

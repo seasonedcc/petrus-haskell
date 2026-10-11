@@ -14,7 +14,7 @@ import Hamsterdan.GitHub.Models (boundary)
 import Hamsterdan.Host.GitPublish
   ( GitPublishError (..)
   , GitPublishResult (..)
-  , GitReconciliation (..)
+  , GitReconciliation (..), OperationDisposition (..)
   , PublicationCategory (..)
   )
 import Hamsterdan.Host.Python (RuntimeError (..), ValueError (..))
@@ -31,7 +31,7 @@ baseSha = T.replicate 40 "b"
 newHead = T.replicate 40 "c"
 
 claim0 :: CurrentClaim
-claim0 = CurrentClaim "running" 3 headSha baseSha "policy-1"
+claim0 = CurrentClaim PhaseRunning 3 headSha baseSha "policy-1"
 
 work0 :: MutWork
 work0 =
@@ -50,7 +50,7 @@ work0 =
     }
 
 movedPolicy :: CurrentClaim
-movedPolicy = CurrentClaim "running" 3 headSha baseSha "policy-2"
+movedPolicy = CurrentClaim PhaseRunning 3 headSha baseSha "policy-2"
 
 -- | @replace(WORK, op=, kind=, instruction=, lineage=, run_id=, attempt=)@.
 workWith :: Text -> Text -> Text -> Text -> Integer -> Integer -> MutWork
@@ -125,10 +125,10 @@ data PublisherCall
 data Publisher = Publisher {calls :: IORef [PublisherCall], publisher :: MutationPublisher}
 
 absent :: Either SomeException GitReconciliation
-absent = Right (GitReconciliation "absent" headSha "" [])
+absent = Right (GitReconciliation OperationAbsent headSha "" [])
 
 existing :: Either SomeException GitReconciliation
-existing = Right (GitReconciliation "existing" newHead newHead [headSha])
+existing = Right (GitReconciliation OperationExisting newHead newHead [headSha])
 
 published :: Either SomeException GitPublishResult
 published = Right (GitPublishResult newHead False)
@@ -219,10 +219,10 @@ spec = describe "test_v5_mutation" $ do
       readIORef p.calls >>= (`shouldBe` [True]) . map isReconcile
 
     forM_
-      [ ("phase", CurrentClaim "quiescent" 3 headSha baseSha "policy-1")
-      , ("incarnation", CurrentClaim "running" 4 headSha baseSha "policy-1")
-      , ("head", CurrentClaim "running" 3 newHead baseSha "policy-1")
-      , ("base", CurrentClaim "running" 3 headSha (T.replicate 40 "d") "policy-1")
+      [ ("phase", CurrentClaim PhaseQuiescent 3 headSha baseSha "policy-1")
+      , ("incarnation", CurrentClaim PhaseRunning 4 headSha baseSha "policy-1")
+      , ("head", CurrentClaim PhaseRunning 3 newHead baseSha "policy-1")
+      , ("base", CurrentClaim PhaseRunning 3 headSha (T.replicate 40 "d") "policy-1")
       , ("policy", movedPolicy)
       ]
       $ \(label, observed) ->
@@ -231,7 +231,7 @@ spec = describe "test_v5_mutation" $ do
           p <- defaultPublisher
           g <- gate r p (claims [observed])
           out <- gitGate g work0 >>= decode @MovedM "MovedM"
-          let phase = case observed.phase of "quiescent" -> PhaseQuiescent; _ -> PhaseRunning
+          let phase = observed.phase
           out
             `shouldBe` MovedM
               work0.op
@@ -338,7 +338,7 @@ spec = describe "test_v5_mutation" $ do
       out.newHead `shouldBe` newHead
 
       r' <- newRunner Nothing False
-      p' <- newPublisher [absent, Right (GitReconciliation "absent" newHead "" [])] (Left (toException (GitPublishError RefCas "unproven")))
+      p' <- newPublisher [absent, Right (GitReconciliation OperationAbsent newHead "" [])] (Left (toException (GitPublishError RefCas "unproven")))
       g' <- gate r' p' (claims [claim0, claim0])
       assertFault =<< gitGate g' work0
 

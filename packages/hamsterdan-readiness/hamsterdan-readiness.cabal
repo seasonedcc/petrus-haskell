@@ -65,7 +65,11 @@ library
                   , petrus-impetus
                   , petrus-json
                   , text >=2.0
-  ghc-options:      -O2
+  -- The folds update V5 contract records with record syntax
+  -- (st {phase = PhaseQuiescent} :: LifeState). Many contracts share a
+  -- member name, so an update names its record's type; GHC 9.10 accepts
+  -- that disambiguation but warns about it (-Wambiguous-fields).
+  ghc-options:      -O2 -Wno-ambiguous-fields
 
 test-suite hamsterdan-readiness-test
   import:           warnings
@@ -91,6 +95,7 @@ test-suite hamsterdan-readiness-test
                     CiSpec
                     FoldCorpusSpec
                     Harness
+                    IncarnationSpec
                     LifecycleSpec
                     StartupSpec
                     TopologySpec
@@ -101,6 +106,7 @@ test-suite hamsterdan-readiness-test
                   , cryptohash-sha256
                   , hamsterdan-contracts
                   , hamsterdan-readiness
+                  , hedgehog >=1.4
                   , hspec >=2.10
                   , petrus-activity
                   , petrus-cel

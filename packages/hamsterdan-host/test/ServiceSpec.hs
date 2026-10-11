@@ -27,7 +27,7 @@ import Hamsterdan.GitHub.Config (botLogin)
 import Hamsterdan.GitHub.Gateway (GitHubAuthority (..))
 import Hamsterdan.GitHub.Models (Transport (..))
 import Hamsterdan.GitHub.Routing qualified as Routing
-import Hamsterdan.GitHub.Webhooks (Disposition (..), ErrorClass (..), Observation (..), Receipt (..))
+import Hamsterdan.GitHub.Webhooks (Disposition (..), ErrorClass (..), InboxStatus (..), Observation (..), Receipt (..))
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Binding (InstanceBinding (..), Topology (..), readInstanceBinding)
 import Hamsterdan.Host.Python (RuntimeError (..), ValueError (..), baseExceptionFromException, baseExceptionToException, dumpsSortedText)
@@ -66,8 +66,8 @@ instance Exception SimulatedProcessDeath where
 instance7 :: Text
 instance7 = "github:44:31:pr:7"
 
-key7 :: Key
-key7 = (44, 31, 7)
+key7 :: InstanceKey
+key7 = InstanceKey 44 31 7
 
 pendingNow :: HostService -> IO [Observation]
 pendingNow host = Custody.pending host.custody 100 Nothing
@@ -78,7 +78,7 @@ firstPending host =
     item : _ -> pure item
     [] -> expectationFailure "no pending delivery" >> error "unreachable"
 
-statusOf :: HostService -> Text -> IO (Maybe Text)
+statusOf :: HostService -> Text -> IO (Maybe InboxStatus)
 statusOf host = Custody.status host.custody
 
 webhooks :: FilePath -> FilePath
@@ -300,7 +300,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     delivery <- newDelivery
     void (receiveSigned h.host (commentEnvelope "\"9\"" "@hamsterdan-test help") delivery "issue_comment")
     firstPending h.host >>= Host.process h.host
-    statusOf h.host delivery `shouldReturn` Just "terminal"
+    statusOf h.host delivery `shouldReturn` Just InboxTerminal
     (null <$> made h) `shouldReturn` True
     Host.close h.host
 
@@ -326,7 +326,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     forM_ deliveries $ \delivery -> do
       void (receiveSigned h.host envelope delivery "pull_request")
       firstPending h.host >>= Host.process h.host
-      statusOf h.host delivery `shouldReturn` Just "terminal"
+      statusOf h.host delivery `shouldReturn` Just InboxTerminal
       inboxReason tmp delivery `shouldReturn` Just "author not watched"
     (null <$> made h) `shouldReturn` True
     readIORef provider.comments `shouldReturn` []
@@ -338,7 +338,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     delivery <- newDelivery
     void (receiveSigned h.host envelope delivery "pull_request")
     firstPending h.host >>= Host.process h.host
-    statusOf h.host delivery `shouldReturn` Just "terminal"
+    statusOf h.host delivery `shouldReturn` Just InboxTerminal
     app <- app0 h
     (map (.deliveryId) <$> readIORef app.observations) `shouldReturn` [delivery]
     Host.close h.host
@@ -372,7 +372,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     firstPending h.host >>= Host.process h.host
     app <- app0 h
     readIORef app.reconciles `shouldReturn` ["github-delivery:" <> delivery]
-    statusOf h.host delivery `shouldReturn` Just "pending"
+    statusOf h.host delivery `shouldReturn` Just InboxPending
     Host.close h.host
 
   it "test_delivery_factory_failure_is_recorded_for_durable_retry" . withTempRoot $ \tmp -> do
@@ -386,7 +386,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
       S.SQLFloat at -> at `shouldSatisfy` (> 0)
       S.SQLInteger at -> at `shouldSatisfy` (> 0)
       other -> expectationFailure (show other)
-    statusOf h.host delivery `shouldReturn` Just "pending"
+    statusOf h.host delivery `shouldReturn` Just InboxPending
     Host.close h.host
 
   it "test_delivery_is_acknowledged_only_after_runnable_posture_succeeds" . withTempRoot $ \tmp -> do
@@ -397,8 +397,8 @@ spec = describe "tests/integration/host/test_service.py" $ do
     setHooks h.host $ \hooks ->
       hooks {aroundRecordPosture = \_ _ real -> (statusOf h.host delivery >>= \s -> modifyIORef' observed (<> [s])) >> real}
     firstPending h.host >>= Host.process h.host
-    readIORef observed `shouldReturn` [Just "pending"]
-    statusOf h.host delivery `shouldReturn` Just "terminal"
+    readIORef observed `shouldReturn` [Just InboxPending]
+    statusOf h.host delivery `shouldReturn` Just InboxTerminal
     Host.close h.host
 
   it "test_delivery_remains_pending_when_runnable_posture_fails" . withTempRoot $ \tmp -> do
@@ -407,7 +407,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     void (receiveSigned h.host envelope delivery "pull_request")
     setHooks h.host $ \hooks -> hooks {aroundRecordPosture = \_ _ _ -> throwIO (RuntimeError "posture failed")}
     firstPending h.host >>= Host.process h.host
-    statusOf h.host delivery `shouldReturn` Just "pending"
+    statusOf h.host delivery `shouldReturn` Just InboxPending
     Host.close h.host
 
   it "test_retry_does_not_block_later_delivery_and_new_process_resumes_same_custody" . withTempRoot $ \tmp -> do
@@ -472,7 +472,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     app <- app0 h
     readIORef app.reconciles `shouldReturn` ["github-delivery:" <> delivery]
     (length <$> readIORef app.comments) `shouldReturn` 1
-    statusOf h.host delivery `shouldReturn` Just "terminal"
+    statusOf h.host delivery `shouldReturn` Just InboxTerminal
     Host.close h.host
 
   it "test_startup_sweep_finds_instance_comment_beyond_global_pending_batch" . withTempRoot $ \tmp -> do
@@ -489,7 +489,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     app <- app0 h
     readIORef app.reconciles `shouldReturn` ["github-delivery:" <> delivery]
     (length <$> readIORef app.comments) `shouldReturn` 1
-    statusOf h.host delivery `shouldReturn` Just "terminal"
+    statusOf h.host delivery `shouldReturn` Just InboxTerminal
     Host.close h.host
 
   it "test_sweep_does_not_reconcile_while_addressed_comment_retry_is_deferred" . withTempRoot $ \tmp -> do
@@ -504,7 +504,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     app <- app0 h
     readIORef app.reconciles `shouldReturn` []
     (length <$> readIORef app.comments) `shouldReturn` 0
-    statusOf h.host delivery `shouldReturn` Just "pending"
+    statusOf h.host delivery `shouldReturn` Just InboxPending
     Host.close h.host
 
   it "test_sweep_waits_for_actionable_comment_beyond_same_instance_batch" . withTempRoot $ \tmp -> do
@@ -518,11 +518,11 @@ spec = describe "tests/integration/host/test_service.py" $ do
     sweep h.host "startup" `shouldReturn` 1
     app <- app0 h
     readIORef app.reconciles `shouldReturn` []
-    statusOf h.host target `shouldReturn` Just "pending"
+    statusOf h.host target `shouldReturn` Just InboxPending
     sweep h.host "periodic" `shouldReturn` 1
     readIORef app.reconciles `shouldReturn` ["github-delivery:" <> target]
     (length <$> readIORef app.comments) `shouldReturn` 1
-    statusOf h.host target `shouldReturn` Just "terminal"
+    statusOf h.host target `shouldReturn` Just InboxTerminal
     Host.close h.host
 
   it "test_scoped_resolver_reconstructs_persisted_application_and_rejects_non_durable_names" . withTempRoot $ \tmp -> do
@@ -534,7 +534,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     h <- harness tmp defaults {customize = resolvable}
     resolved <- resolveActivity h.host instance7 "dash_gate"
     isJust resolved `shouldBe` True
-    (Map.member key7 <$> readIORef h.host.apps) `shouldReturn` True
+    (Map.member key7 <$> readIORef h.host.loaded) `shouldReturn` True
     readIORef calls `shouldReturn` ["dash_gate"]
     (isNothing <$> resolveActivity h.host instance7 "review") `shouldReturn` True
     (isJust <$> resolveActivity h.host "not-a-pr-instance" "dash_gate") `shouldReturn` True
@@ -644,7 +644,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     delivery <- newDelivery
     receipt <- receiveSigned h.host envelope delivery "pull_request"
     receipt.disposition `shouldBe` Accepted
-    statusOf h.host delivery `shouldReturn` Just "pending"
+    statusOf h.host delivery `shouldReturn` Just InboxPending
     acknowledgedAfter <- newIORef []
     setHooks h.host $ \hooks ->
       hooks
@@ -677,7 +677,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     [accepted] <- readIORef acknowledgedAfter
     take 3 accepted `shouldBe` expected
     any ("v5-timer-command-applied:" `T.isPrefixOf`) accepted `shouldBe` True
-    statusOf h.host delivery `shouldReturn` Just "terminal"
+    statusOf h.host delivery `shouldReturn` Just InboxTerminal
     grants tmp "revision,source_kind,source_id" `shouldReturn` [[S.SQLInteger 1, S.SQLText "github-delivery", S.SQLText delivery]]
     Host.close h.host
 
@@ -703,8 +703,8 @@ spec = describe "tests/integration/host/test_service.py" $ do
     void (pump h.host 20)
     headSha <- readIORef provider.head
     readIORef reviewCalls `shouldReturn` [("review:github:44:31:pr:7:" <> headSha <> ":i1", 1)]
-    statusOf h.host first `shouldReturn` Just "terminal"
-    statusOf h.host second `shouldReturn` Just "terminal"
+    statusOf h.host first `shouldReturn` Just InboxTerminal
+    statusOf h.host second `shouldReturn` Just InboxTerminal
     grants tmp "revision,source_id" `shouldReturn` [[S.SQLInteger 2, S.SQLText second]]
     Host.close h.host
 
@@ -733,7 +733,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     beforeRestart <- BS.readFile history
     identities <- map fst <$> historyDeliveries history
     let expected = ["github-delivery:" <> delivery <> ":" <> door | door <- ["on_head", "on_ready", "on_human"]]
-    readIORef crash `shouldReturn` [(delivery, 1, Just "pending", 1)]
+    readIORef crash `shouldReturn` [(delivery, 1, Just InboxPending, 1)]
     readIORef runnerCalls `shouldReturn` []
     forM_ expected $ \identity -> length (filter (== identity) identities) `shouldBe` 1
     any ("host-reconcile:" `T.isPrefixOf`) identities `shouldBe` False
@@ -749,7 +749,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     writeIORef provider.head (T.replicate 40 "c")
     second <- v5Harness tmp provider counting id
     sweep second.host "startup" `shouldReturn` 1
-    statusOf second.host delivery `shouldReturn` Just "terminal"
+    statusOf second.host delivery `shouldReturn` Just InboxTerminal
     readIORef runnerCalls `shouldReturn` []
     readIORef provider.calls `shouldReturn` providerCalls
     BS.readFile history `shouldReturn` beforeRestart
@@ -973,7 +973,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     h <- harness tmp defaults {customize = terminalApplication events}
     Runnable.wake h.host.runnable instance7 0 "petri-timer" "next-maturation"
     runDue h.host 100 `shouldReturn` 1
-    (Map.member key7 <$> readIORef h.host.apps) `shouldReturn` True
+    (Map.member key7 <$> readIORef h.host.loaded) `shouldReturn` True
     readIORef events `shouldReturn` ["settle"]
     Host.close h.host
 
@@ -984,7 +984,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     suspend h.host
     Runnable.wake h.host.runnable instance7 0 "activity-terminal" "dashboard_publish"
     runDue h.host 100 `shouldReturn` 1
-    (Map.member key7 <$> readIORef h.host.apps) `shouldReturn` True
+    (Map.member key7 <$> readIORef h.host.loaded) `shouldReturn` True
     readIORef events `shouldReturn` ["settle"]
     app <- app0 h
     readIORef app.reconciles `shouldReturn` []
@@ -1121,9 +1121,9 @@ spec = describe "tests/integration/host/test_service.py" $ do
     second <- newDelivery
     void (receiveSigned h.host envelope first "pull_request")
     void (receiveSigned h.host (envelopeAt 32 8) second "pull_request")
-    processOne h.host `shouldReturn` Just (CustodyOneResult first "completed")
-    statusOf h.host first `shouldReturn` Just "terminal"
-    statusOf h.host second `shouldReturn` Just "pending"
+    processOne h.host `shouldReturn` Just (CustodyOneResult first CustodyCompleted)
+    statusOf h.host first `shouldReturn` Just InboxTerminal
+    statusOf h.host second `shouldReturn` Just InboxPending
     runOneActivity h.host `shouldReturn` 1
     readIORef limits `shouldReturn` [1]
     Host.close h.host
@@ -1133,8 +1133,8 @@ spec = describe "tests/integration/host/test_service.py" $ do
     _ <- application h.host 44 31 7
     delivery <- newDelivery
     void (receiveSigned h.host (commentEnvelope "9" "not addressed to the App") delivery "issue_comment")
-    processOne h.host `shouldReturn` Just (CustodyOneResult delivery "disposed")
-    statusOf h.host delivery `shouldReturn` Just "terminal"
+    processOne h.host `shouldReturn` Just (CustodyOneResult delivery CustodyDisposed)
+    statusOf h.host delivery `shouldReturn` Just InboxTerminal
     Host.close h.host
 
   it "test_abrupt_drop_releases_resources_without_settling" . withTempRoot $ \tmp -> do

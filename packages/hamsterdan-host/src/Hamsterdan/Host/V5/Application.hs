@@ -58,7 +58,7 @@ import Hamsterdan.Agents.Protocol
   , Invocation (..)
   , protocolError
   )
-import Hamsterdan.Contracts.Codec (Object)
+import Hamsterdan.Contracts.Codec (Object, spelling)
 import Hamsterdan.Contracts.Readiness (AdmittedConversation (..))
 import Hamsterdan.Contracts.ReadinessV5
   ( ABlocked (..)
@@ -91,7 +91,7 @@ import Hamsterdan.Host.Binding (ensureInstanceBinding)
 import Hamsterdan.Host.Errors (UnstagedCustodyError (..))
 import Hamsterdan.Host.GitPublish (PublicationAuthority, hostGitPublisher, publicationAuthority)
 import Hamsterdan.Host.Python (RuntimeError (..), ValueError (..), raiseFailureText)
-import Hamsterdan.Host.V5.Claim (CurrentClaim (..))
+import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Gates (V5PublicationGates (..), announceGate, dashGate, publicationProvider, publishGate, reminderGate, replyGate)
 import Hamsterdan.Host.V5.Ingress
   ( IngressAuthority (..)
@@ -447,11 +447,11 @@ projectReconciliation app = do
   h <- readIORef app.hooks
   h.aroundProjectReconciliation (Ingress.projectReconciliation app.normalizer)
 
-phaseOf :: PullRequestSnapshot -> Text
+phaseOf :: PullRequestSnapshot -> Phase
 phaseOf pull
-  | pull.closed || pull.merged = "terminal"
-  | pull.draft = "quiescent"
-  | otherwise = "running"
+  | pull.closed || pull.merged = PhaseTerminal
+  | pull.draft = PhaseQuiescent
+  | otherwise = PhaseRunning
 
 -- | @current_claim()@.
 currentClaim :: PrReadinessV5Application -> IO CurrentClaim
@@ -554,7 +554,7 @@ classify app conversation claim = do
               , ("author_association", String conversation.association)
               ]
           , actor = [("id", Int conversation.actorId), ("login", String conversation.actorLogin)]
-          , dashboard = [("phase", String claim.phase), ("head", String claim.head)]
+          , dashboard = [("phase", String (spelling claim.phase)), ("head", String claim.head)]
           , gates = gateObjects
           , findings = findingObjects
           , allowedIntents = intentDeclarations
@@ -828,7 +828,7 @@ detachedState app = do
             Nothing -> Null
             Just c ->
               Object
-                [ ("phase", String c.phase)
+                [ ("phase", String (spelling c.phase))
                 , ("incarnation", Int c.incarnation)
                 , ("head", String c.head)
                 , ("base_head", String c.base)

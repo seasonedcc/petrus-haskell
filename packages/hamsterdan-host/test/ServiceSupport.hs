@@ -425,7 +425,7 @@ insertPending path items =
     bracket (S.prepare db "INSERT INTO inbox(delivery_id,event,observation,status) VALUES(?,?,?,'pending')") S.finalize $ \statement ->
       forM_ items $ \(delivery, item) -> do
         S.reset statement
-        S.bind statement [S.SQLText delivery, S.SQLText item.event, S.SQLText (encodeObservation item)]
+        S.bind statement [S.SQLText delivery, S.SQLText item.event, S.SQLText (either (error . show) id (encodeObservation item))]
         _ <- S.step statement
         pure ()
     S.exec db "COMMIT"

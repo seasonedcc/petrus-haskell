@@ -39,6 +39,8 @@ module Hamsterdan.GitHub.Models
   , HumanReviewSnapshot (..)
   , CommentReference (..)
   , PublicationResult (..)
+  , PublicationStatus (..)
+  , publicationStatusText
   , publication
   , FindingPublication (..)
   , finding
@@ -263,15 +265,40 @@ data CommentReference = CommentReference
   deriving stock (Eq, Show)
 
 data PublicationResult = PublicationResult
-  { status :: Text
+  { status :: PublicationStatus
   , reference :: Maybe CommentReference
   , capabilityAvailable :: Bool
   , inline :: Bool
   }
   deriving stock (Eq, Show)
 
+-- | @PublicationResult.status@. Hamsterdan's publisher answers one of the
+-- six named statuses. The reference's field is a @str@, and its gate tests
+-- substitute publishers that answer something else (@"banana"@), which the
+-- gates refuse: 'PublicationUnclassified' carries such a status to them.
+data PublicationStatus
+  = PublicationCreated
+  | PublicationExisting
+  | PublicationUpdated
+  | PublicationRequested
+  | PublicationCapabilityUnavailable
+  | PublicationInlineUnavailable
+  | PublicationUnclassified Text
+  deriving stock (Eq, Show)
+
+-- | The status's spelling in the reference.
+publicationStatusText :: PublicationStatus -> Text
+publicationStatusText = \case
+  PublicationCreated -> "created"
+  PublicationExisting -> "existing"
+  PublicationUpdated -> "updated"
+  PublicationRequested -> "requested"
+  PublicationCapabilityUnavailable -> "capability_unavailable"
+  PublicationInlineUnavailable -> "inline_unavailable"
+  PublicationUnclassified other -> other
+
 -- | @PublicationResult(status, reference)@ with the dataclass defaults.
-publication :: Text -> Maybe CommentReference -> PublicationResult
+publication :: PublicationStatus -> Maybe CommentReference -> PublicationResult
 publication status reference = PublicationResult status reference True False
 
 data FindingPublication = FindingPublication

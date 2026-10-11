@@ -134,17 +134,16 @@ publishable h base policy incarnation findings mem = do
             let digest = TE.decodeUtf8 (Base16.encode (SHA256.hash (TE.encodeUtf8 (h <> "\0" <> showT incarnation))))
              in "findings:sha256:" <> digest <> ":i" <> showT incarnation
       pending =
-        Object
-          [ ("phase", String "pending")
-          , ("effect", String op)
-          , ("op", String op)
-          , ("head", String h)
-          , ("base", String base)
-          , ("policy", String policy)
-          , ("incarnation", Int incarnation)
-          , ("findings", objects findings)
-          ]
-  held <- vupdate mem [("provisional", Array []), ("pub", pending)]
+        [ ("phase", String "pending")
+        , ("effect", String op)
+        , ("op", String op)
+        , ("head", String h)
+        , ("base", String base)
+        , ("policy", String policy)
+        , ("incarnation", Int incarnation)
+        , ("findings", objects findings)
+        ]
+      held = mem {provisional = [], pub = pending} :: ReviewMemory
   Right
     Publishable
       { head = h
@@ -154,13 +153,8 @@ publishable h base policy incarnation findings mem = do
       , findings = findings
       , effect = op
       , op = op
-      , mem = objectOf (dump held)
+      , mem = dumpObject held
       }
-
-objectOf :: Json -> Object
-objectOf = \case
-  Object members -> members
-  _ -> []
 
 start :: Fold
 start b outs = do
@@ -175,9 +169,9 @@ start b outs = do
           Right (route outs [emit "review.publishable" [pub]])
     else do
       let prior = if null mem.provisional then mem.findings else mem.provisional
-      openedMem <- vupdate mem [("head", String work.head), ("incarnation", Int work.incarnation), ("status", String "pending")]
       operation <- operationOf mem.subject work.head work.incarnation
-      let opened =
+      let openedMem = mem {head = work.head, incarnation = work.incarnation, status = ReviewPending} :: ReviewMemory
+          opened =
             RoundOpen
               { operation = operation
               , head = work.head
@@ -186,23 +180,23 @@ start b outs = do
               , incarnation = work.incarnation
               , priorFindings = prior
               , priorLineage = mem.lineage
-              , mem = objectOf (dump openedMem)
+              , mem = dumpObject openedMem
               , attempt = 1
               }
       Right (route outs [emit "review.round" [opened]])
 
-recordReviewed :: Text -> ReviewMemory -> Py ReviewMemory
+recordReviewed :: Text -> ReviewMemory -> ReviewMemory
 recordReviewed h mem
-  | h `elem` mem.reviewed = Right mem
-  | otherwise = vupdate mem [("reviewed", texts (mem.reviewed ++ [h]))]
+  | h `elem` mem.reviewed = mem
+  | otherwise = mem {reviewed = mem.reviewed ++ [h]}
 
 judge :: Fold
 judge b outs = do
   out <- values1 @AgentReview b
   mem0 <- revive @ReviewMemory (Object out.mem)
-  mem1 <- recordReviewed out.head mem0
+  let mem1 = recordReviewed out.head mem0
   s <- status out.findings mem1.dismissed
-  mem <- vupdate mem1 [("findings", objects out.findings), ("lineage", objects out.lineage), ("status", String (spell s))]
+  let mem = mem1 {findings = out.findings, lineage = out.lineage, status = s} :: ReviewMemory
   open <- live out.findings mem.dismissed
   pub <- publishable out.head out.base out.policy out.incarnation open mem
   Right (route outs [emit "review.publishable" [pub]])
@@ -211,9 +205,8 @@ unable :: Fold
 unable b outs = do
   out <- values1 @RoundUnable b
   mem0 <- revive @ReviewMemory (Object out.mem)
-  mem1 <- recordReviewed out.head mem0
-  mem <- vupdate mem1 [("status", String "unable")]
-  let fact = ReviewFact {incarnation = out.incarnation, body = BodyReviewUnable ReviewUnableFactBody {head = out.head, category = out.category}}
+  let mem = (recordReviewed out.head mem0) {status = ReviewUnable} :: ReviewMemory
+      fact = ReviewFact {incarnation = out.incarnation, body = BodyReviewUnable ReviewUnableFactBody {head = out.head, category = out.category}}
   Right (route outs [emit "review.memory" [mem], emit "ready.review_facts" [fact], emit "dash.facts" [fact]])
 
 roundMoved :: Fold
@@ -306,14 +299,14 @@ factRoutes facts =
     ++ [("ready.review_facts", fs) | let fs = [dump f | OReview f <- facts], not (null fs)]
     ++ [("ready.fault_cleared_facts", fs) | let fs = [dump f | OCleared f <- facts], not (null fs)]
 
-idlePub :: Json
-idlePub = Object [("phase", String "idle")]
+idlePub :: Object
+idlePub = [("phase", String "idle")]
 
 foldLanded :: Fold
 foldLanded b outs = do
   out <- values1 @ReviewLanded b
   prior <- revive @ReviewMemory (Object out.mem)
-  mem <- vupdate prior [("provisional", Array []), ("pub", idlePub)]
+  let mem = prior {provisional = [], pub = idlePub} :: ReviewMemory
   facts <- settlementFacts mem out.head out.incarnation
   resolved <- resolution prior.pub
   Right (route outs (emit "review.memory" [mem] : factRoutes (facts ++ maybe [] (pure . OCleared) resolved)))
@@ -322,7 +315,7 @@ foldMoved :: Fold
 foldMoved b outs = do
   out <- values1 @ReviewMoved b
   prior <- revive @ReviewMemory (Object out.mem)
-  mem <- vupdate prior [("provisional", objects out.findings), ("pub", idlePub)]
+  let mem = prior {provisional = out.findings, pub = idlePub} :: ReviewMemory
   resolved <- resolution prior.pub
   Right
     ( route
@@ -336,25 +329,23 @@ foldBlocked :: Fold
 foldBlocked b outs = do
   out <- values1 @ReviewBlocked b
   prior <- revive @ReviewMemory (Object out.mem)
-  mem <-
-    vupdate
-      prior
-      [ ( "pub"
-        , Object
-            [ ("phase", String "blocked")
-            , ("effect", String out.effect)
-            , ("op", String out.op)
-            , ("head", String out.head)
-            , ("base", String out.base)
-            , ("policy", String out.policy)
-            , ("incarnation", Int out.incarnation)
-            , ("findings", objects out.findings)
-            , ("failure_class", String (spell out.failureClass))
-            , ("provider_status", maybe Null Int out.providerStatus)
-            , ("provider_detail", String out.providerDetail)
-            ]
-        )
-      ]
+  let mem =
+        prior
+          { pub =
+              [ ("phase", String "blocked")
+              , ("effect", String out.effect)
+              , ("op", String out.op)
+              , ("head", String out.head)
+              , ("base", String out.base)
+              , ("policy", String out.policy)
+              , ("incarnation", Int out.incarnation)
+              , ("findings", objects out.findings)
+              , ("failure_class", String (spell out.failureClass))
+              , ("provider_status", maybe Null Int out.providerStatus)
+              , ("provider_detail", String out.providerDetail)
+              ]
+          }
+          :: ReviewMemory
   facts <- settlementFacts mem out.head out.incarnation
   resolved <- resolution prior.pub
   Right (route outs (emit "review.memory" [mem] : factRoutes (facts ++ maybe [] (pure . OCleared) resolved)))
@@ -363,8 +354,7 @@ foldFault :: Fold
 foldFault b outs = do
   out <- values1 @ReviewFault b
   prior <- revive @ReviewMemory (Object out.mem)
-  pub <- merge (Object prior.pub) [("phase", String "faulted"), ("reason", String out.reason)]
-  mem <- vupdate prior [("pub", pub)]
+  let mem = prior {pub = overlay prior.pub [("phase", String "faulted"), ("reason", String out.reason)]} :: ReviewMemory
   op <- getOr (Object prior.pub) "op" (String "") >>= strictText
   let fact = FaultRaisedFact {body = BodyPublicationFault PublicationFaultBody {op = op, reason = out.reason}}
   Right (route outs [emit "review.memory" [mem], emit "ready.fault_raised_facts" [fact], emit "dash.facts" [fact]])
@@ -373,7 +363,7 @@ foldEmpty :: Fold
 foldEmpty b outs = do
   out <- values1 @EmptyReview b
   prior <- revive @ReviewMemory (Object out.mem)
-  mem <- vupdate prior [("provisional", Array []), ("pub", idlePub)]
+  let mem = prior {provisional = [], pub = idlePub} :: ReviewMemory
   facts <- settlementFacts mem out.head out.incarnation
   Right (route outs (emit "review.memory" [mem] : factRoutes facts))
 
@@ -397,8 +387,7 @@ recover b outs = do
       findings <- getItem pub "findings" >>= pyList
       rest <- traverse (\name -> (name,) <$> getItem pub name) ["effect", "op"]
       was <- getItem pub "phase"
-      reopenedPub <- merge (Object pending) [("phase", String "pending"), ("was", was)]
-      held <- vupdate mem [("pub", reopenedPub)]
+      let held = mem {pub = overlay pending [("phase", String "pending"), ("was", was)]} :: ReviewMemory
       reopened <- construct @Publishable (args ++ [("findings", Array findings)] ++ rest ++ [("mem", dump held)])
       Right (route outs [emit "review.publishable" [reopened]])
 
@@ -423,11 +412,10 @@ dismiss b outs = do
               op <- getItem pub0 "op" >>= strictText
               Right [OCleared FaultClearedFact {body = FaultClearedFactBody {where_ = FaultReview, op = op, status = FaultCancelled}}]
             else Right []
-        cancelled <- merge pub0 [("phase", String "cancelled")]
-        Right (cleared, cancelled)
-      else Right ([], pub0)
+        Right (cleared, overlay mem.pub [("phase", String "cancelled")])
+      else Right ([], mem.pub)
   let dismissed = if fact.findingId `elem` mem.dismissed then mem.dismissed else mem.dismissed ++ [fact.findingId]
-  updated0 <- vupdate mem [("dismissed", texts dismissed), ("pub", pub)]
+      updated0 = mem {dismissed = dismissed, pub = pub} :: ReviewMemory
   current <- anyM (\f -> (== String fact.findingId) <$> getItem (Object f) "id") updated0.findings
   (updated, facts) <-
     if current
@@ -436,7 +424,7 @@ dismiss b outs = do
         if updated0.status `elem` [ReviewClear, ReviewBlocking]
           then do
             s <- status updated0.findings updated0.dismissed
-            updated1 <- vupdate updated0 [("status", String (spell s))]
+            let updated1 = updated0 {status = s} :: ReviewMemory
             Right (updated1, OFindings ff : OReview (reviewFact updated1.head updated1.incarnation updated1.status) : faultFacts)
           else Right (updated0, OFindings ff : faultFacts)
       else Right (updated0, faultFacts)

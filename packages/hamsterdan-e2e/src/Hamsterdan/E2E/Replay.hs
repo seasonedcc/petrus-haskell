@@ -47,7 +47,7 @@ import Hamsterdan.GitHub.Routing qualified as Routing
 import Hamsterdan.GitHub.Webhooks (Observation (..), Receipt (..), dispositionName)
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Agenticus (activateRoutes, claimRoute, closeRoutes, composeAgent, openAgentRouteStore, settleRoutes)
-import Hamsterdan.Host.GitPublish (GitPublishError (..), GitPublishResult (..), GitReconciliation (..), PublicationCategory (BoundaryUnavailable), categoryName)
+import Hamsterdan.Host.GitPublish (GitPublishError (..), GitPublishResult (..), GitReconciliation (..), OperationDisposition (..), PublicationCategory (BoundaryUnavailable), categoryName)
 import Hamsterdan.Host.Service
   ( AgentCustody (..)
   , HostApplication (..)
@@ -202,7 +202,7 @@ replayPublisher tape = do
           { reconcile = \operation digest expectedHead baseHead mergeBase ->
               answer "reconcile" (keywords operation digest expectedHead baseHead mergeBase) $ \value ->
                 GitReconciliation
-                  { disposition = text (member "disposition" value)
+                  { disposition = if member "disposition" value == String "existing" then OperationExisting else OperationAbsent
                   , observedHead = text (member "observed_head" value)
                   , commit = text (member "commit" value)
                   , parents = map text (list (member "parents" value))
@@ -296,8 +296,8 @@ runReplay options = do
         if present then length . T.lines . TE.decodeUtf8Lenient <$> BS.readFile options.serverLog else pure 0
       quiet = (,,) <$> serverLines <*> readIORef runnerCalls <*> readIORef publisherCalls
       unresolved = do
-        loaded <- readIORef host.apps
-        or <$> mapM (.hasUnresolvedPublication) (Map.elems loaded)
+        loaded <- readIORef host.loaded
+        or <$> mapM (.app.hasUnresolvedPublication) (Map.elems loaded)
       run step = case text (member "op" step) of
         "registry" -> do
           void . Routing.reconcile host.registry $

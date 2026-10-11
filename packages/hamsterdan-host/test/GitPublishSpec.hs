@@ -490,7 +490,7 @@ spec = describe "test_git_publish" $ do
     writeIORef a.headRef later
     subject <- localAuthority a >>= (`hostGitPublisher` T.pack repo.remote)
     result <- reconcile subject "push:one" "digest" repo.first repo.first False
-    result `shouldBe` GitReconciliation "existing" later operation [repo.first]
+    result `shouldBe` GitReconciliation OperationExisting later operation [repo.first]
 
   it "test_merge_base_reconciliation_requires_the_exact_ordered_parents" $ withRepository $ \repo -> do
     tree <- gitIn repo.root ["rev-parse", T.unpack repo.second <> "^{tree}"] Nothing
@@ -504,13 +504,13 @@ spec = describe "test_git_publish" $ do
     writeIORef a.headRef operation
     subject <- localAuthority a >>= (`hostGitPublisher` T.pack repo.remote)
     result <- reconcile subject "push:merge" "digest" repo.first repo.second True
-    result `shouldBe` GitReconciliation "existing" operation operation [repo.first, repo.second]
+    result `shouldBe` GitReconciliation OperationExisting operation operation [repo.first, repo.second]
 
   it "test_reconciliation_proves_coherent_absence" $ withRepository $ \repo -> do
     a <- newLocalAuthority repo.root repo.remote repo.first
     subject <- localAuthority a >>= (`hostGitPublisher` T.pack repo.remote)
     result <- reconcile subject "push:absent" "digest" repo.first repo.first False
-    result `shouldBe` GitReconciliation "absent" repo.first "" []
+    result `shouldBe` GitReconciliation OperationAbsent repo.first "" []
 
   forM_ ["digest", "parents", "duplicate"] $ \collision ->
     it ("test_reconciliation_rejects_operation_identity_collisions[" <> collision <> "]") $ withRepository $ \repo -> do

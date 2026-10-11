@@ -69,9 +69,7 @@ foldFact b outs = do
     else do
       let entries = mem.entries ++ [factEntry fact]
       if not (null mem.blocked) || not (null mem.faulted)
-        then do
-          updated <- vupdate mem [("entries", texts entries), ("digest", String digest)]
-          Right (route outs [emit "dash.memory" [updated]])
+        then Right (route outs [emit "dash.memory" [mem {entries = entries, digest = digest} :: DashMemory]])
         else Right (route outs [emit "dash.pub_req" [liveReq entries digest mem]])
 
 foldLanded :: Fold
@@ -160,8 +158,7 @@ end b outs = do
 drainFact :: Fold
 drainFact b outs = do
   (fact, ended) <- values2 @GateFact @DashEnded b
-  updated <- vupdate ended [("entries", texts (ended.entries ++ [factEntry fact]))]
-  Right (route outs [emit "dash.done" [updated]])
+  Right (route outs [emit "dash.done" [ended {entries = ended.entries ++ [factEntry fact]} :: DashEnded]])
 
 drainRecover :: Fold
 drainRecover b outs = do

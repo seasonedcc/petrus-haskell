@@ -20,6 +20,7 @@ module Hamsterdan.Readiness.NetV5.Py
   , member
   , asObject
   , merge
+  , overlay
   , without
   , insert
     -- * Iteration
@@ -34,7 +35,7 @@ module Hamsterdan.Readiness.NetV5.Py
   , pyRepr
     -- * Strict construction
   , construct
-  , vupdate
+  , dumpObject
   , strictText
   , strictInteger
   , spell
@@ -147,12 +148,14 @@ asObject = \case
 
 -- | @{**base, k1: v1, ...}@.
 merge :: Json -> [(Text, Json)] -> Py Json
-merge base updates = do
-  members <- asObject base
-  Right (Object (foldl (\acc (k, v) -> insert k v acc) members updates))
+merge base updates = Object . (`overlay` updates) <$> asObject base
+
+-- | @{**base, k1: v1, ...}@ of a dict's members.
+overlay :: [(Text, a)] -> [(Text, a)] -> [(Text, a)]
+overlay = foldl (\acc (k, v) -> insert k v acc)
 
 -- | @d[k] = v@ on a Python dict: replace in place, or append.
-insert :: Text -> Json -> [(Text, Json)] -> [(Text, Json)]
+insert :: Text -> a -> [(Text, a)] -> [(Text, a)]
 insert k v members
   | any ((== k) . fst) members = [(k', if k' == k then v else v') | (k', v') <- members]
   | otherwise = members ++ [(k, v)]
@@ -280,12 +283,19 @@ strictInteger = \case
   Int i -> Right i
   _ -> Left validationError
 
--- | @value.validated_update(**changes)@: the dump with each change
--- replacing its member in place, revalidated whole.
-vupdate :: forall a. (Contract a) => a -> [(Text, Json)] -> Py a
-vupdate value changes = case dump value of
-  Object members -> construct @a (foldl (\acc (k, v) -> insert k v acc) members changes)
-  _ -> Left validationError
+-- | A model's dump as the members of the @dict@ that holds it (a model
+-- always dumps to an object).
+--
+-- The reference's @value.validated_update(**changes)@ (dump, patch the
+-- members, revalidate) is record update here: revalidating a well-typed
+-- record gives it back (@validate . dump == Right@, checked for every
+-- contract by hamsterdan-contracts' RoundTripSpec), so the folds update
+-- records with record syntax and the compiler checks each member's name
+-- and type.
+dumpObject :: (Contract a) => a -> [(Text, Json)]
+dumpObject value = case dump value of
+  Object members -> members
+  _ -> []
 
 -- | The wire spelling of a literal value.
 spell :: (Contract a) => a -> Text

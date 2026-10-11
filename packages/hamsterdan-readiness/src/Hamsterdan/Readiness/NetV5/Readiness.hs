@@ -21,6 +21,10 @@ module Hamsterdan.Readiness.NetV5.Readiness
   , announceViable
   , authorize
   , applyState
+  , applyChecks
+  , applyReview
+  , applyFindings
+  , applyHuman
   , applyMutationPending
   , applyMutationSettled
   , foldState
@@ -63,7 +67,7 @@ module Hamsterdan.Readiness.NetV5.Readiness
   , drainWake
   ) where
 
-import Control.Monad (forM_, void)
+import Control.Monad (forM_, guard, void)
 import Data.Kind (Type)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -110,14 +114,14 @@ announceViable snap =
 announceOpen :: Snapshot -> Py [Emit]
 announceOpen snap
   | announceViable snap && not snap.candidate = do
-      held <- vupdate snap [("candidate", Bool True)]
+      let held = snap {candidate = True} :: Snapshot
       Right [emit "ready.snap" [held], emit "ready.candidate" [AnnounceCandidate {incarnation = snap.incarnation, head = snap.head}]]
   | otherwise = Right [emit "ready.snap" [snap]]
 
 authorize :: Fold
 authorize b outs = do
   (_, snap0) <- values2 @AnnounceCandidate @Snapshot b
-  snap <- vupdate snap0 [("candidate", Bool False)]
+  let snap = snap0 {candidate = False} :: Snapshot
   if not (announceViable snap)
     then Right (route outs [emit "ready.snap" [snap]])
     else do
@@ -131,8 +135,8 @@ authorize b outs = do
               , strictBase = snap.strictBase
               , baseCurrent = snap.baseCurrent
               }
-      held <- vupdate snap [("announcing", dump req)]
-      Right (route outs [emit "ready.snap" [held], emit "ready.announce_req" [req]])
+      let announcing = dumpObject req
+      Right (route outs [emit "ready.snap" [snap {announcing = announcing} :: Snapshot], emit "ready.announce_req" [req]])
 
 showT :: Integer -> Text
 showT = T.pack . show
@@ -141,92 +145,84 @@ showT = T.pack . show
 current :: Snapshot -> Integer -> Bool
 current snap incarnation = incarnation == 0 || incarnation == snap.incarnation
 
-applyState :: Snapshot -> StateFact -> Py (Maybe Snapshot)
+-- | Fold a lifecycle fact: a stale incarnation leaves the snapshot alone;
+-- a newer one resets the per-incarnation decisions first.
+applyState :: Snapshot -> StateFact -> Maybe Snapshot
 applyState snap0 fact
-  | fact.incarnation < snap0.incarnation = Right Nothing
-  | otherwise = do
-      snap <-
-        if fact.incarnation /= snap0.incarnation
-          then
-            vupdate
-              snap0
-              [ ("incarnation", Int fact.incarnation)
-              , ("checks", String "pending")
-              , ("review", String "pending")
-              , ("findings_blocking", Int 0)
-              , ("pending", Array [])
-              ]
-          else Right snap0
-      let body = fact.body
+  | fact.incarnation < snap0.incarnation = Nothing
+  | otherwise =
       Just
-        <$> vupdate
-          snap
-          [ ("phase", String (spell body.phase))
-          , ("head", String body.head)
-          , ("base", String body.base)
-          , ("mergeable", Bool body.mergeable)
-          , ("policy", String body.policy)
-          , ("strict_base", Bool body.strictBase)
-          , ("base_current", Bool body.baseCurrent)
-          ]
+        ( snap
+            { phase = spell body.phase
+            , head = body.head
+            , base = body.base
+            , mergeable = body.mergeable
+            , policy = body.policy
+            , strictBase = body.strictBase
+            , baseCurrent = body.baseCurrent
+            }
+            :: Snapshot
+        )
+  where
+    body = fact.body
+    snap
+      | fact.incarnation /= snap0.incarnation =
+          snap0 {incarnation = fact.incarnation, checks = "pending", review = ReviewPending, findingsBlocking = 0, pending = []}
+            :: Snapshot
+      | otherwise = snap0
 
-applyWhenCurrent :: Snapshot -> Integer -> [(Text, Json)] -> Py (Maybe Snapshot)
-applyWhenCurrent snap incarnation changes
-  | current snap incarnation = Just <$> vupdate snap changes
-  | otherwise = Right Nothing
+-- | A fact's update applies only when the fact is global or current.
+applyWhenCurrent :: Snapshot -> Integer -> (Snapshot -> Snapshot) -> Maybe Snapshot
+applyWhenCurrent snap incarnation change = change snap <$ guard (current snap incarnation)
 
-applyChecks :: Snapshot -> ChecksFact -> Py (Maybe Snapshot)
-applyChecks snap fact = applyWhenCurrent snap fact.incarnation [("checks", String (spell fact.body.status))]
+applyChecks :: Snapshot -> ChecksFact -> Maybe Snapshot
+applyChecks snap fact = applyWhenCurrent snap fact.incarnation (\s -> s {checks = spell fact.body.status} :: Snapshot)
 
 reviewStatus :: ReviewFactBody -> ReviewStatus
 reviewStatus = \case
   BodyReviewStatus body -> body.status
   BodyReviewUnable _ -> ReviewUnable
 
-applyReview :: Snapshot -> ReviewFact -> Py (Maybe Snapshot)
-applyReview snap fact = applyWhenCurrent snap fact.incarnation [("review", dump (reviewStatus fact.body))]
+applyReview :: Snapshot -> ReviewFact -> Maybe Snapshot
+applyReview snap fact = applyWhenCurrent snap fact.incarnation (\s -> s {review = reviewStatus fact.body} :: Snapshot)
 
-applyFindings :: Snapshot -> FindingsFact -> Py (Maybe Snapshot)
-applyFindings snap fact = applyWhenCurrent snap fact.incarnation [("findings_blocking", Int fact.body.blocking)]
+applyFindings :: Snapshot -> FindingsFact -> Maybe Snapshot
+applyFindings snap fact = applyWhenCurrent snap fact.incarnation (\s -> s {findingsBlocking = fact.body.blocking} :: Snapshot)
 
-applyHuman :: Snapshot -> HumanFact -> Py (Maybe Snapshot)
+applyHuman :: Snapshot -> HumanFact -> Maybe Snapshot
 applyHuman snap fact =
   applyWhenCurrent
     snap
     fact.incarnation
-    [ ("approval", Bool fact.body.approval)
-    , ("changes_requested", Bool fact.body.changesRequested)
-    , ("unresolved", Int fact.body.unresolved)
-    ]
+    (\s -> s {approval = fact.body.approval, changesRequested = fact.body.changesRequested, unresolved = fact.body.unresolved} :: Snapshot)
 
-applyMutationPending :: Snapshot -> MutationPendingFact -> Py (Maybe Snapshot)
+applyMutationPending :: Snapshot -> MutationPendingFact -> Maybe Snapshot
 applyMutationPending snap fact =
-  applyWhenCurrent snap fact.incarnation [("pending", texts (snap.pending ++ [fact.body.opKey]))]
+  applyWhenCurrent snap fact.incarnation (\s -> s {pending = snap.pending ++ [fact.body.opKey]} :: Snapshot)
 
-applyMutationSettled :: Snapshot -> MutationSettledFact -> Py (Maybe Snapshot)
+applyMutationSettled :: Snapshot -> MutationSettledFact -> Maybe Snapshot
 applyMutationSettled snap fact =
-  applyWhenCurrent snap fact.incarnation [("pending", texts (filter (/= fact.body.opKey) snap.pending))]
+  applyWhenCurrent snap fact.incarnation (\s -> s {pending = filter (/= fact.body.opKey) snap.pending} :: Snapshot)
 
 raisedKey :: FaultRaisedFactBody -> (Text, Text)
 raisedKey = \case
   BodyPublicationFault body -> ("review:" <> body.op, body.reason)
   BodyOperationFault body -> (spell body.where_ <> ":" <> body.op, body.reason)
 
-applyFaultRaised :: Snapshot -> FaultRaisedFact -> Py (Maybe Snapshot)
+applyFaultRaised :: Snapshot -> FaultRaisedFact -> Maybe Snapshot
 applyFaultRaised snap fact =
   let (key, reason) = raisedKey fact.body
-   in Just <$> vupdate snap [("faults", Object (insert key (String reason) snap.faults))]
+   in Just (snap {faults = insert key (String reason) snap.faults} :: Snapshot)
 
-applyFaultCleared :: Snapshot -> FaultClearedFact -> Py (Maybe Snapshot)
+applyFaultCleared :: Snapshot -> FaultClearedFact -> Maybe Snapshot
 applyFaultCleared snap fact =
   let key = spell fact.body.where_ <> ":" <> fact.body.op
-   in Just <$> vupdate snap [("faults", Object (without key snap.faults))]
+   in Just (snap {faults = without key snap.faults} :: Snapshot)
 
-foldWith :: forall (f :: Type). (Typeable f) => (Snapshot -> f -> Py (Maybe Snapshot)) -> Fold
+foldWith :: forall (f :: Type). (Typeable f) => (Snapshot -> f -> Maybe Snapshot) -> Fold
 foldWith apply b outs = do
   (fact, snap) <- values2 @f @Snapshot b
-  applied <- apply snap fact
-  case applied of
+  case apply snap fact of
     Nothing -> Right (route outs [emit "ready.snap" [snap]])
     Just updated -> route outs <$> announceOpen updated
 
@@ -276,7 +272,7 @@ settle snap extra = case snap.closing of
 foldALanded :: Fold
 foldALanded b outs = do
   (out, snap0) <- values2 @ALanded @Snapshot b
-  snap <- vupdate snap0 [("announced", Array (map Int (snap0.announced ++ [out.incarnation]))), ("announcing", Object [])]
+  let snap = snap0 {announced = snap0.announced ++ [out.incarnation], announcing = []} :: Snapshot
   let fact = GateFact {kind = "announced", incarnation = out.incarnation, body = [("head", String out.head)]}
   route outs <$> settle snap [emit "dash.facts" [fact]]
 
@@ -305,18 +301,18 @@ wakeDeferred b outs = do
   if dump deferred /= dump wake || Object snap0.announcing /= dump (requestOfDeferred deferred)
     then Left (valueError "V5 announcement wake differs from its deferred request")
     else do
-      snap <- vupdate snap0 [("announcing", Object [])]
+      let snap = snap0 {announcing = []} :: Snapshot
       if not (announceViable snap)
         then route outs <$> settle snap []
         else do
           let req = requestOfDeferred deferred
-          held <- vupdate snap [("announcing", dump req)]
-          Right (route outs [emit "ready.snap" [held], emit "ready.announce_req" [req]])
+          let announcing = dumpObject req
+          Right (route outs [emit "ready.snap" [snap {announcing = announcing} :: Snapshot], emit "ready.announce_req" [req]])
 
 foldABlocked :: Fold
 foldABlocked b outs = do
   (_, snap0) <- values2 @ABlocked @Snapshot b
-  snap <- vupdate snap0 [("announcing", Object []), ("blocked", Object snap0.announcing)]
+  let snap = snap0 {announcing = [], blocked = snap0.announcing} :: Snapshot
   case snap.closing of
     Just _ -> Right (route outs [emit "ready.done" [ended snap]])
     Nothing -> Right (route outs [emit "ready.snap" [snap]])
@@ -324,7 +320,7 @@ foldABlocked b outs = do
 foldAMoved :: Fold
 foldAMoved b outs = do
   (out, snap0) <- values2 @AMoved @Snapshot b
-  snap <- vupdate snap0 [("announcing", Object [])]
+  let snap = snap0 {announcing = []} :: Snapshot
   case snap.closing of
     Just _ -> Right (route outs [emit "ready.done" [ended snap]])
     Nothing
@@ -336,13 +332,8 @@ foldAMoved b outs = do
 foldAFault :: Fold
 foldAFault b outs = do
   (out, snap0) <- values2 @AFault @Snapshot b
-  snap <-
-    vupdate
-      snap0
-      [ ("announcing", Object [])
-      , ("faults", Object (insert ("announce:" <> out.op) (String out.reason) snap0.faults))
-      ]
-  let fact =
+  let snap = snap0 {announcing = [], faults = insert ("announce:" <> out.op) (String out.reason) snap0.faults} :: Snapshot
+      fact =
         GateFact
           { kind = "fault"
           , incarnation = 0
@@ -365,13 +356,13 @@ recover b outs = do
     then Right (route outs [emit "ready.snap" [snap0]])
     else do
       req <- revive @AnnounceReq (Object snap0.blocked)
-      snap <- vupdate snap0 [("announcing", Object snap0.blocked), ("blocked", Object [])]
+      let snap = snap0 {announcing = snap0.blocked, blocked = []} :: Snapshot
       Right (route outs [emit "ready.snap" [snap], emit "ready.announce_req" [req]])
 
 end :: Fold
 end b outs = do
   (close, snap0) <- values2 @CloseFact @Snapshot b
-  snap <- vupdate snap0 [("closing", String close.reason)]
+  let snap = snap0 {closing = Just close.reason} :: Snapshot
   if not (null snap.announcing)
     then Right (route outs [emit "ready.snap" [snap]])
     else Right (route outs [emit "ready.done" [ended snap]])

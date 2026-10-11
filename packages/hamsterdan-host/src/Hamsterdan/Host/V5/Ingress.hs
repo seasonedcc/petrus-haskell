@@ -57,7 +57,7 @@ import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Contracts.Codec (Contract, colorOf, dump, validate)
+import Hamsterdan.Contracts.Codec (Contract, colorOf, dump, spelling, unspelling, validate)
 import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.GitHub.Gateway qualified as Gateway
 import Hamsterdan.GitHub.Models
@@ -605,12 +605,12 @@ claimRow store subject required = do
     [] -> do
       prior <- Sql.query db "SELECT 1 FROM v5_ingress_manifests WHERE subject=? UNION ALL SELECT 1 FROM v5_reconciliation_manifests WHERE subject=? LIMIT 1" [SQLText subject, SQLText subject]
       when (required || not (null prior)) $ throwIO (RuntimeError "V5 authority grant is missing")
-      pure StoredGrant {claim = CurrentClaim "running" 0 "" "" "", revision = 0, sourceKind = Nothing, sourceId = Nothing}
+      pure StoredGrant {claim = CurrentClaim PhaseRunning 0 "" "" "", revision = 0, sourceKind = Nothing, sourceId = Nothing}
     row : _ -> do
       let malformed = throwIO (RuntimeError "V5 authority grant is malformed")
       case row of
-        SQLText phase : SQLInteger incarnation : SQLText head' : SQLText base : SQLText policy : SQLInteger revision : SQLText sourceKind : SQLText sourceId : legacy
-          | phase `elem` ["running", "quiescent", "terminal"]
+        SQLText spelled : SQLInteger incarnation : SQLText head' : SQLText base : SQLText policy : SQLInteger revision : SQLText sourceKind : SQLText sourceId : legacy
+          | Just phase <- unspelling spelled
           , incarnation >= 0
           , revision >= 1
           , sourceKind `elem` ["github-delivery", "host-reconcile"]
@@ -676,7 +676,7 @@ writeClaim store subject c revision sourceKind sourceId = do
   forM_ fault throwIO
   let values =
         [ SQLText subject
-        , SQLText c.phase
+        , SQLText (spelling c.phase)
         , int c.incarnation
         , SQLText c.head
         , SQLText c.base
@@ -714,13 +714,13 @@ reduceClaim = go
                 Right (Py.str h, Py.str b, Py.str p)
           _ -> Left (ValueError "V5 head ingress payload is malformed")
         let next
-              | current.phase == "terminal" = current
-              | current.phase == "quiescent" || h == current.head = CurrentClaim current.phase current.incarnation h b p
-              | otherwise = CurrentClaim "running" (current.incarnation + 1) h b p
+              | current.phase == PhaseTerminal = current
+              | current.phase == PhaseQuiescent || h == current.head = CurrentClaim current.phase current.incarnation h b p
+              | otherwise = CurrentClaim PhaseRunning (current.incarnation + 1) h b p
         go next rest
-      "on_draft" | current.phase == "running" -> go (CurrentClaim "quiescent" current.incarnation current.head current.base current.policy) rest
-      "on_ready" | current.phase == "quiescent" -> go (CurrentClaim "running" (current.incarnation + 1) current.head current.base current.policy) rest
-      "on_close" -> go (CurrentClaim "terminal" current.incarnation current.head current.base current.policy) rest
+      "on_draft" | current.phase == PhaseRunning -> go (CurrentClaim PhaseQuiescent current.incarnation current.head current.base current.policy) rest
+      "on_ready" | current.phase == PhaseQuiescent -> go (CurrentClaim PhaseRunning (current.incarnation + 1) current.head current.base current.policy) rest
+      "on_close" -> go (CurrentClaim PhaseTerminal current.incarnation current.head current.base current.policy) rest
       _ -> go current rest
 
 validateDelivery :: Text -> Text -> [IngressEntry] -> Bool -> IO Text

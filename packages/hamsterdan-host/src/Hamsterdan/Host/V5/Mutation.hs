@@ -18,11 +18,13 @@ import Data.Text qualified as T
 import Hamsterdan.Agents.Protocol
   ( AgentProtocolError (..)
   , AgentRunner (..)
+  , CodingOutcome (..)
   , CodingRequest (..)
+  , CodingRequestKind (..)
   , CodingResult (..)
   , Invocation (..)
   )
-import Hamsterdan.Contracts.Codec (Contract, dump)
+import Hamsterdan.Contracts.Codec (Contract, dump, spelling, unspelling)
 import Hamsterdan.Contracts.ReadinessV5 (DeclinedM (..), FaultM (..), MovedM (..), MutWork (..), Phase (..), Pushed (..))
 import Hamsterdan.GitHub.Models (GitHubBoundaryError (..))
 import Hamsterdan.Host.Errors (catchGate, caughtReason)
@@ -39,7 +41,6 @@ import Hamsterdan.Host.GitPublish qualified as Git
 import Hamsterdan.Host.Python (ValueError (..), sha256HexText)
 import Hamsterdan.Host.V5.Claim (ClaimReader, CurrentClaim (..))
 import Hamsterdan.Readiness.NetV5.Gating (Variant, variantOf)
-import Petrus.Impetus.Instance.FailureText (PythonException (..))
 import Petrus.Json (Json (..))
 
 -- | The publisher surface the gate binds to.
@@ -100,7 +101,7 @@ mutationRequest repository pullRequest work = do
           else pure ("", [[("kind", String work.kind), ("request", String work.instruction)]], [], [])
   pure
     CodingRequest
-      { kind = if work.kind == "repair" then "repair" else "change"
+      { kind = spelling (if work.kind == "repair" then RequestRepair else RequestChange)
       , repository
       , pullRequest
       , epoch = work.incarnation
@@ -131,13 +132,6 @@ enumValue c = case dump c of
 orRepr :: Text -> Text -> Text
 orRepr cls message = if T.null message then cls <> "()" else message
 
-phaseOf :: Text -> IO Phase
-phaseOf = \case
-  "running" -> pure PhaseRunning
-  "quiescent" -> pure PhaseQuiescent
-  "terminal" -> pure PhaseTerminal
-  _ -> throwIO (PythonException "ValidationError" [])
-
 -- | @git_gate(work)@.
 gitGate :: V5MutationGate -> MutWork -> IO Variant
 gitGate g work = do
@@ -152,7 +146,7 @@ gitGate g work = do
               , ("coding_request", dump request)
               ]
           )
-      expected = CurrentClaim "running" work.incarnation work.head work.base work.policy
+      expected = CurrentClaim PhaseRunning work.incarnation work.head work.base work.policy
       fault reason =
         variantOf
           FaultM
@@ -171,7 +165,7 @@ gitGate g work = do
       pushed newHead =
         variantOf Pushed {op = work.op, opKey = work.opKey, head = work.head, newHead, incarnation = work.incarnation, lineage = work.lineage}
       moved current = do
-        phase <- phaseOf current.phase
+        let phase = current.phase
         pure $
           variantOf
             MovedM
@@ -197,7 +191,7 @@ gitGate g work = do
   first <- reconcileOnce
   case first of
     Left terminal -> pure terminal
-    Right r | r.disposition == "existing" -> pure (pushed r.commit)
+    Right r | r.disposition == Git.OperationExisting -> pure (pushed r.commit)
     Right _ -> do
       before <- readClaim
       case before of
@@ -219,10 +213,10 @@ gitGate g work = do
               Right result
                 | correlation result /= requestCorrelation request ->
                     pure (declined "correlation" "agent result did not match its request")
-                | result.status /= "changed" ->
+                | unspelling result.status /= Just CodingChanged ->
                     pure
                       ( declined
-                          (if result.status `elem` ["unchanged", "unable"] then result.status else "output_schema")
+                          (maybe "output_schema" spelling (unspelling @CodingOutcome result.status))
                           "agent produced no publishable change"
                       )
                 | otherwise -> do
@@ -240,7 +234,7 @@ gitGate g work = do
                             again <- reconcileOnce
                             case again of
                               Left terminal -> pure terminal
-                              Right r | r.disposition == "existing" -> pure (pushed r.commit)
+                              Right r | r.disposition == Git.OperationExisting -> pure (pushed r.commit)
                               Right _ -> pure (fault (orRepr "GitPublishError" e.reason))
                         | otherwise -> pure (fault (orRepr "GitPublishError" e.reason))
   where

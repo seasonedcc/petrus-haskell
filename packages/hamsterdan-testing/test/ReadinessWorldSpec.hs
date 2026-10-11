@@ -25,7 +25,7 @@ import Hamsterdan.Host.Service (ServiceHooks (..), defaultServiceHooks)
 import Hamsterdan.Testing.Readiness (dump)
 import Hamsterdan.Testing.World hiding (PullRequest (..))
 import Hamsterdan.Testing.World.Contract
-import Hamsterdan.Testing.World.Provider (Effect (..), Truth (..), initialAuthority, newContextHolder, newTruth, observation, pyException, request, setAuthority)
+import Hamsterdan.Testing.World.Provider (Truth (..), initialAuthority, newContextHolder, newTruth, observation, pyException, request, setAuthority)
 import Hamsterdan.Testing.World.Provider qualified as Provider
 import Hamsterdan.Testing.World.Scenarios (cleanGreen, drain, green, limited, moved, setPr)
 import Hamsterdan.GitHub.Models (WireResponse (..))
@@ -39,7 +39,6 @@ import Petrus.Testing.Dst
   , BudgetFailure (..)
   , BudgetV4 (..)
   , CheckResult (..)
-  , Checker (..)
   , Disposition (..)
   , DstFailure (..)
   , ExpandedOperation (..)
@@ -663,6 +662,3 @@ setPath path new value = case (path, value) of
     let position = if i < 0 then length xs + i else i
      in Array [if n == position then setPath rest new v else v | (n, v) <- zip [0 ..] xs]
   _ -> value
-
-_unused :: (Checker, Effect, AuthorityClaim, ScenarioArtifactV4, BudgetFailure, ActionDisposition, ServiceHooks)
-_unused = undefined

@@ -25,6 +25,7 @@ module Hamsterdan.Cli.Argparse
   , Value (..)
   , newParser
   , option
+  , positional
   , subcommands
 
     -- * Parsing
@@ -166,6 +167,11 @@ option strings =
     }
   where
     longest = fromMaybe (headOr "" strings) (find ("--" `T.isPrefixOf`) strings)
+
+-- | @add_argument(dest)@: a positional (@nargs=None@, so required) with
+-- @action="store"@.
+positional :: Text -> Action
+positional destination = (option []) {dest = destination, required = True}
 
 -- | @add_subparsers(dest=dest, required=True)@ and one @add_parser(name)@
 -- per entry. Each subparser's @prog@ is the parent's followed by its name.

@@ -72,7 +72,7 @@ work =
     }
 
 claim3 :: CurrentClaim
-claim3 = CurrentClaim "running" 3 headSha baseSha "policy-1"
+claim3 = CurrentClaim PhaseRunning 3 headSha baseSha "policy-1"
 
 data FakeAuthority = FakeAuthority {readable :: IORef Bool, reads :: IORef Int, commentBody :: IORef Text}
 
@@ -295,7 +295,7 @@ spec = describe "test_v5_review" $ do
       unableOf out >>= (`shouldBe` UnableCanceled)
     it "test_moved_claim_cancels_before_request_custody_provider_reads_or_agent_entry" $ do
       r <- runnerOf clear
-      let moved = CurrentClaim "running" 4 headSha baseSha "policy-1"
+      let moved = CurrentClaim PhaseRunning 4 headSha baseSha "policy-1"
       a <- newAuthority
       p <- passthrough
       out <- reviewAgent (gateWith r moved a p.custody (pure Nothing)) work

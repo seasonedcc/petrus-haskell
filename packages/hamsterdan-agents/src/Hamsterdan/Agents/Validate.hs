@@ -53,11 +53,12 @@ import Control.Monad (forM_, unless, when)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Foldable (foldlM)
 import Data.List (nubBy, sort, sortBy)
+import Data.Maybe (isNothing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Agents.Protocol
-import Hamsterdan.Contracts.Codec (pythonDict)
+import Hamsterdan.Contracts.Codec (Contract, pythonDict, spelling, unspelling)
 import Hamsterdan.PyText (strip, utf8Length)
 import Hamsterdan.PyLiteral (PyValue (..), repr)
 import Petrus.Impetus.Instance.FailureText qualified as FT
@@ -131,11 +132,15 @@ lineageFields = Set.fromList ["finding_id", "state", "supersedes"]
 intentFields = Set.fromList ["type", "arguments", "mutation", "explicit", "confidence"]
 
 reviewStatuses, findingSeverities, lineageStates, codingStatuses, reproductionStatuses :: Set.Set Text
-reviewStatuses = Set.fromList ["clear", "blocking", "unable"]
+reviewStatuses = spellings [minBound .. maxBound :: ReviewVerdict]
 findingSeverities = Set.fromList ["low", "medium", "high", "critical"]
 lineageStates = Set.fromList ["new", "still_open", "resolved", "superseded", "withdrawn"]
-codingStatuses = Set.fromList ["changed", "unchanged", "unable"]
+codingStatuses = spellings [minBound .. maxBound :: CodingOutcome]
 reproductionStatuses = Set.fromList ["unknown", "confirmed", "not_reproduced", "not_attempted"]
+
+-- | Every spelling of a closed vocabulary.
+spellings :: (Contract a) => [a] -> Set.Set Text
+spellings = Set.fromList . map spelling
 
 -- | @_FINDING_ID_PATTERN@.
 findingIdPattern :: Text
@@ -242,6 +247,15 @@ exact members names =
   where
     strList = repr . PyList . map PyStr
 
+-- | @value in VOCABULARY@ for a closed vocabulary: the member the value
+-- spells, if any. An unhashable value raises, as 'memberOf'.
+spelledMember :: (Contract a) => Json -> V (Maybe a)
+spelledMember = \case
+  String s -> Right (unspelling s)
+  Array _ -> unhashable "list"
+  Object _ -> unhashable "dict"
+  _ -> Right Nothing
+
 -- | @value in frozenset_of_strings@: an unhashable value raises.
 memberOf :: Set.Set Text -> Json -> V Bool
 memberOf names = \case
@@ -307,7 +321,7 @@ validateRequest request = do
     AgentConversation _ -> pure ()
     AgentCoding r ->
       when
-        ( r.kind `notElem` ["change", "repair"]
+        ( isNothing (unspelling @CodingRequestKind r.kind)
             || not (refMatch r.ref)
             || ".." `T.isInfixOf` r.ref
             || "@{" `T.isInfixOf` r.ref
@@ -396,20 +410,15 @@ validateResult kind value request changed = do
 -- | @_validate_review(data)@.
 validateReview :: [(Text, Json)] -> AgentRequest -> V ReviewResult
 validateReview members request = do
-  statusKnown <- memberOf reviewStatuses (members ! "status")
-  unless statusKnown $ refuse "invalid review status"
+  status <- spelledMember @ReviewVerdict (members ! "status") >>= maybe (refuse "invalid review status") pure
   findings <- pythonList (members ! "findings") "findings"
   lineage <- pythonList (members ! "lineage") "lineage"
   findingMembers <- validateFindings findings
   validateLineage lineage (Set.fromList [identity | (identity, _) <- findingMembers])
   let blocking = any (\(_, finding) -> truthy (finding ! "blocking")) findingMembers
-      status = members ! "status"
-  when ((status == String "clear" && blocking) || (status == String "blocking" && not blocking)) $
+  when ((status == VerdictClear && blocking) || (status == VerdictBlocking && not blocking)) $
     refuse "review status inconsistent with findings"
   let (repository, pullRequest, epoch, headSha, baseSha) = common request
-      statusText = case status of
-        String s -> s
-        _ -> ""
   pure
     ReviewResult
       { repository
@@ -417,7 +426,7 @@ validateReview members request = do
       , epoch
       , head = headSha
       , base = baseSha
-      , status = statusText
+      , status = spelling status
       , findings = map snd findingMembers
       , lineage = [item | Just item <- map dictMembers lineage]
       }
@@ -626,14 +635,15 @@ sortedSet values = do
 -- | @_validate_coding(data, request, changed)@.
 validateCoding :: [(Text, Json)] -> CodingRequest -> [Text] -> V CodingResult
 validateCoding members request changed = do
-  let status = members ! "status"
-  statusKnown <- memberOf codingStatuses status
-  reproductionKnown <- if statusKnown then memberOf reproductionStatuses (members ! "reproduction_status") else Right False
-  unless (statusKnown && reproductionKnown) $ refuse "invalid coding status/reproduction status"
-  let isChanged = status == String "changed"
-  when (isChanged /= not (null changed) || (status == String "unchanged" && not (null changed))) $
+  outcome <- spelledMember @CodingOutcome (members ! "status")
+  reproductionKnown <- maybe (Right False) (const (memberOf reproductionStatuses (members ! "reproduction_status"))) outcome
+  status <- case outcome of
+    Just status | reproductionKnown -> Right status
+    _ -> refuse "invalid coding status/reproduction status"
+  let isChanged = status == CodingChanged
+  when (isChanged /= not (null changed) || (status == CodingUnchanged && not (null changed))) $
     Left (Refused (retainResultCategory WorkspaceReconciliation (protocolError "coding status differs from host worktree")))
-  when (request.kind == "repair" && not (null changed) && members ! "reproduction_status" /= String "confirmed") $
+  when (unspelling request.kind == Just RequestRepair && not (null changed) && members ! "reproduction_status" /= String "confirmed") $
     refuse "repair changed result requires confirmed reproduction"
   diff <- text (members ! "diff") "diff" True 4000000
   files <- pythonList (members ! "changed_files") "changed files"
@@ -658,9 +668,7 @@ validateCoding members request changed = do
       , head = request.head
       , base = request.base
       , ref = request.ref
-      , status = case status of
-          String s -> s
-          _ -> ""
+      , status = spelling status
       , reproductionStatus = case members ! "reproduction_status" of
           String s -> s
           _ -> ""

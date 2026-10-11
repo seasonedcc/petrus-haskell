@@ -80,6 +80,7 @@ test-suite hamsterdan-github-test
                     EffectsCorpusSpec
                     GitHubSpec
                     HttpCorpusSpec
+                    SignatureSpec
                     WebhookCorpusSpec
   build-depends:    base
                   , base64-bytestring
@@ -90,6 +91,7 @@ test-suite hamsterdan-github-test
                   , filepath
                   , hamsterdan-contracts
                   , hamsterdan-github
+                  , hedgehog >=1.4
                   , hspec >=2.10
                   , petrus-json
                   , temporary >=1.3

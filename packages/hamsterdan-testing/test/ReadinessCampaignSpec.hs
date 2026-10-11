@@ -37,7 +37,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word64)
 import Hamsterdan.Testing.World hiding (PullRequest (..))
-import Hamsterdan.Testing.World.Contract (defaultBudget, headSha, reminderDelay)
+import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus, Spelled (..))
+import Hamsterdan.Testing.World.Contract (defaultBudget, events, headSha, reminderDelay)
 import Hamsterdan.Testing.World.Coverage (CoverageRun (..), blocked, collectReadinessCoverage, covered)
 import Hamsterdan.Testing.World.Scenarios (cleanGreen, drain, green, setPr)
 import Hedgehog (Callback (..), Command (..), FunctorB (..), Gen, LabelName, MonadTest, Property, TraversableB (..), assert, evalIO, forAll, label, property, (===))
@@ -171,6 +172,11 @@ spec = describe "tests/integration/testing/test_readiness_campaign.py" $ do
       retained <- retainedPath "readiness-counterexample-v4.json"
       withSlot $ \slot -> hedgehog 12 (deliveryProperty slot False retained 12 5)
 
+  it "every rendered readiness command parses back to itself (Hedgehog, fixed seed)" $
+    hedgehog 7 . H.withTests 300 . property $ do
+      typed <- forAll genCommand
+      parseCommand (renderCommand typed) === Right typed
+
   it "test_shrunk_checker_failure_retains_an_exact_replayable_artifact" $ withRoot $ \tmp -> do
     let retained = tmp </> "retained-counterexample.json"
     report <- withSlot $ \slot -> do
@@ -225,31 +231,89 @@ hedgehog seed prop = do
 event :: Text -> Text -> LabelName
 event name value = fromString (T.unpack (name <> "=" <> value))
 
+-- | A readiness command 'parseCommand' accepts.
+genCommand :: Gen ReadinessCommand
+genCommand =
+  Gen.choice
+    [ SetPullRequest <$> genClaim
+    , SetCi <$> genSha <*> (nub <$> Gen.list (Range.linear 0 6) genName) <*> Gen.list (Range.linear 0 6) genCheck
+    , SetReview <$> genSha <*> Gen.enumBounded <*> Gen.list (Range.linear 0 4) (String <$> genName)
+    , HumanReview <$> genName <*> genSha <*> genPositive <*> Gen.enumBounded
+    , ResolveThread <$> genName <*> genName <*> Gen.bool
+    , HumanComment <$> genPositive <*> genName <*> Gen.choice [pure "change", ("recover:" <>) <$> genName]
+    , AgentTerminal <$> genName <*> genPositive <*> Gen.enumBounded <*> Gen.enumBounded
+    , do
+        eventName <- Gen.element (Set.toList events)
+        action <- genName
+        delivery <- genDelivery
+        pure (EmitWebhook delivery eventName (eventName <> ":" <> action))
+    , DeliverWebhook <$> genDelivery
+    , RevealEffect <$> genName
+    , AdvanceTime <$> Gen.integral (Range.linear 1 2000000)
+    , Gen.element [HostCustodyOne, HostActivityOne, HostDriveOne, HostReconcileOne]
+    ]
+ where
+  genPositive = Gen.integral (Range.linear 1 1000000)
+  genHex n = Gen.text (Range.singleton n) (Gen.element ("0123456789abcdef" :: String))
+  genSha = genHex 40
+  genName = T.cons <$> Gen.alpha <*> Gen.text (Range.linear 0 12) (Gen.element ("abzXYZ059_.:-" :: String))
+  genDelivery = deliveryUuid <$> Gen.integral (Range.linear 1 100000)
+  genClaim =
+    AuthorityClaim
+      <$> genPositive
+      <*> genPositive
+      <*> genPositive
+      <*> genSha
+      <*> genSha
+      <*> genHex 64
+      <*> Gen.enumBounded
+      <*> Gen.bool
+      <*> Gen.bool
+      <*> Gen.bool
+  genCheck = do
+    name <- genName
+    run <- genPositive
+    attempt <- genPositive
+    status <- Gen.enumBounded @_ @CheckStatus
+    pure (Object [("name", String name), ("run", Int run), ("attempt", Int attempt), ("status", String (spell status))])
+
 -- ---------------------------------------------------------------------------
 -- Generated examples
 
-generatedActions :: [Text]
-generatedActions = ["step", "restart", "redeliver-old", "redeliver-current"]
+-- | One of @_run_generated_actions@'s actions.
+data GeneratedAction = ActStep | ActRestart | ActRedeliverOld | ActRedeliverCurrent
+  deriving stock (Eq, Show, Bounded, Enum)
+
+-- | Upstream's spelling, which the labels carry.
+actionName :: GeneratedAction -> Text
+actionName = \case
+  ActStep -> "step"
+  ActRestart -> "restart"
+  ActRedeliverOld -> "redeliver-old"
+  ActRedeliverCurrent -> "redeliver-current"
+
+-- | Upstream's @st.sampled_from@ list, in its order.
+generatedActions :: [GeneratedAction]
+generatedActions = [minBound .. maxBound]
 
 -- | @_run_generated_actions@.
-runActions :: ReadinessWorld -> ReadinessTimeline -> Text -> Text -> [Text] -> IO ReadinessTimeline
+runActions :: ReadinessWorld -> ReadinessTimeline -> Text -> Text -> [GeneratedAction] -> IO ReadinessTimeline
 runActions rw = \t old current -> foldM (act old current) t
  where
   act old current t = \case
-    "step" -> do
+    ActStep -> do
       more <- pending t
       when more (() <$ step t)
       pure t
-    "restart" -> crash t "generated_authority_lifecycle_cut" >> restart rw
-    "redeliver-old" -> redeliverWhenIdle t old
-    "redeliver-current" -> redeliverWhenIdle t current
-    other -> fail ("unknown generated readiness action " <> show other)
+    ActRestart -> crash t "generated_authority_lifecycle_cut" >> restart rw
+    ActRedeliverOld -> redeliverWhenIdle t old
+    ActRedeliverCurrent -> redeliverWhenIdle t current
   redeliverWhenIdle t delivery = do
     more <- pending t
-    unless more (() <$ deliverWebhook t delivery)
+    unless more (() <$ submit t (DeliverWebhook delivery))
     pure t
 
-authorityExample :: Integer -> Text -> [Text] -> [Text] -> IO ()
+authorityExample :: Integer -> Text -> [GeneratedAction] -> [GeneratedAction] -> IO ()
 authorityExample seed path before after =
   generated ("readiness-authority-lifecycle-" <> path <> "-v2") "readiness-authority-lifecycle-v4.json" seed $ \run -> do
     let rw = run.world
@@ -315,7 +379,7 @@ authorityExample seed path before after =
     dimensions <- replayConverged run a
     Set.fromList ["authority_movement", "fair_convergence", "checker_activation", "exact_replay"] `shouldSatisfy` (`Set.isSubsetOf` dimensions)
     when (path /= "active") $ dimensions `shouldSatisfy` Set.member "lifecycle_movement"
-    when ("restart" `elem` before || "restart" `elem` after) $ dimensions `shouldSatisfy` Set.member "crash_reconstruction"
+    when (ActRestart `elem` before || ActRestart `elem` after) $ dimensions `shouldSatisfy` Set.member "crash_reconstruction"
 
 timerExample :: Integer -> Text -> Text -> Bool -> Bool -> IO ()
 timerExample seed path cut lost redeliver =
@@ -604,7 +668,7 @@ runRule machine chosen = do
     Act
       | machine.forceFailure -> when more (() <$ capture machine (step t))
       | more -> () <$ capture machine (step t)
-      | otherwise -> () <$ capture machine (deliverWebhook t machine.delivery)
+      | otherwise -> () <$ capture machine (submit t (DeliverWebhook machine.delivery))
     Restart -> restartGeneration machine "generated_between_host_steps"
   observeMachine machine
 
@@ -662,7 +726,7 @@ finishMachine :: Machine -> IO ()
 finishMachine machine = unless machine.forceFailure $ do
   t <- readIORef machine.timelineRef
   capture machine (drain t)
-  when machine.redeliverAtFinish (() <$ capture machine (deliverWebhook t machine.delivery))
+  when machine.redeliverAtFinish (() <$ capture machine (submit t (DeliverWebhook machine.delivery)))
   final <- (.value) <$> capture machine (converge t)
   let provider = final .: "provider"
   final .: "expected" .: "ready" `shouldBe` Bool True
@@ -814,10 +878,10 @@ independentModel = \case
   InvariantViolation message -> "independent-model" `T.isInfixOf` message
   _ -> False
 
-actionsLabel :: [Text] -> Text
+actionsLabel :: [GeneratedAction] -> Text
 actionsLabel = \case
   [] -> "none"
-  actions -> T.intercalate "," actions
+  actions -> T.intercalate "," (map actionName actions)
 
 -- | Run one example, naming it in any failure (upstream's @event(...)@).
 labelled :: [Text] -> IO () -> IO ()
