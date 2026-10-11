@@ -6,11 +6,16 @@ The project name selects a script; ``options.project`` of ``block:<path>``
 yields ``system/init`` then waits forever, touching ``<path>`` when the
 cancellation reaches the generator, and ``raise:<scenario>`` yields one of
 the ``SCENARIOS`` below, whose events (or the stream itself) raise where the
-adapter reads them.
+adapter reads them. The shared-sidecar tests use two more: ``die``
+yields ``system/init`` then ends the whole sidecar process at once (a
+crash), and ``stuck:<path>`` yields ``system/init``, touches ``<path>``,
+then waits forever, ignoring every cancellation, so its channel's teardown
+never finishes.
 """
 
 import asyncio
 import json
+import os
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -51,6 +56,11 @@ async def execute(prompt, options):
         return
     thread = options.values.get("continue_thread", THREAD_ID)
     yield Event(type="system", subtype="init", session_id=thread)
+    if project == "die":
+        os._exit(70)
+    if project.startswith("stuck:"):
+        Path(project.removeprefix("stuck:")).touch()
+        await _ignore_cancellation()
     if project.startswith("block:"):
         try:
             await asyncio.Event().wait()
@@ -60,6 +70,14 @@ async def execute(prompt, options):
     echoed = json.dumps({"prompt": prompt, "options": options.values}, sort_keys=True)
     yield Event(type="assistant", session_id=thread, message={"content": [{"type": "text", "text": echoed}]})
     yield Event(type="result", subtype="success", session_id=thread, is_error=False, result=echoed)
+
+
+async def _ignore_cancellation():
+    while True:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            continue
 
 
 def _exception(kind):

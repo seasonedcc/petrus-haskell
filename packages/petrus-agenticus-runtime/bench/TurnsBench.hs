@@ -235,7 +235,7 @@ claudeTurn python root = do
   setFileMode runtimeRoot 0o700
   fixture <- makeAbsolute ("test" </> "fixtures" </> "claude")
   values <- newIORef Map.empty
-  let sidecar = ClaudeSidecar python [fixture] 10
+  let sidecar = ClaudeSidecar python [fixture] 10 defaultSidecarPool
       continuations =
         ClaudeContinuationOperations
           { store = \operationId payload -> do
@@ -315,7 +315,7 @@ ampTurn python root = do
   setEnv "AMP_CLI_PATH" cli
   fixture <- makeAbsolute ("test" </> "fixtures" </> "amp")
   values <- newIORef Map.empty
-  let sidecar = AmpSidecar python [fixture] 10
+  let sidecar = AmpSidecar python [fixture] 10 defaultSidecarPool
       continuations =
         AmpContinuationOperations
           { store = \operationId payload -> do

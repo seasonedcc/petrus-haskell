@@ -18,7 +18,8 @@ stream admission are pinned against the reference by
    `aclose()`). The sidecar injects the cancellation into the SDK generator
    just as upstream does, so the pinned SDK reaps its CLI.
 
-   One sidecar process serves every stream of a Haskell process (per
+   One sidecar process serves every stream of a `SidecarPool`
+   (`AmpSidecar.pool`, by default the per-process `defaultSidecarPool`; per
    interpreter and search path), each on its own channel, so the SDK is
    imported once, as upstream imports it once into its interpreter. Its
    streams share one asyncio loop, where upstream gives each operation's
@@ -28,6 +29,19 @@ stream admission are pinned against the reference by
    `execute` returns). The process inherits the environment it was started
    with, so environment changes made later by the Haskell process do not
    reach the SDK, where upstream's in-process SDK would see them.
+
+   Tests: `AmpSpec`'s "shared sidecar" examples, each on its own pool,
+   cover the shared process:
+   - Three streams run concurrently with a fourth that is cancelled
+     mid-turn. Each echoes its own prompt, and all of them run on one
+     process.
+   - The sidecar crashes under one stream while another waits mid-turn.
+     Both settle `failed`/`client-failed`, upstream's outcome for an SDK
+     stream that raises. The next stream starts a new process.
+   - One stream's teardown is stuck past the release grace. Another
+     stream's whole turn completes during it. The stuck one settles
+     cancelled with `provider-state-uncertain`, and closing the pool still
+     ends the process.
 
 2. **Events cross the pipe reduced to what admission reads.** Each event
    crosses as two things:

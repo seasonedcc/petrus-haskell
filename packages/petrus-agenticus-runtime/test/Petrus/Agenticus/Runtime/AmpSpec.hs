@@ -9,10 +9,10 @@
 -- official sidecar against the fake @amp_sdk@ in @test/fixtures/amp@.
 module Petrus.Agenticus.Runtime.AmpSpec (spec) where
 
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar
-import Control.Exception (try)
-import Control.Monad (forM_, void)
+import Control.Exception (SomeException, throwIO, try)
+import Control.Monad (forM, forM_, unless, void)
 import Data.IORef
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -519,6 +519,102 @@ spec = describe "test_amp" $ do
           root <- makeAbsolute ("test" </> "fixtures" </> "amp")
           pure ampSidecar {python, searchPath = [root], grace = 5}
 
+    -- divergences/amp.md item 1: every stream of a pool shares one sidecar
+    -- process, which upstream (one interpreter, no sidecar) has no
+    -- counterpart of. Each test runs its own pool.
+    describe "shared sidecar: many streams on one process" $ do
+      let pooled pool = (\s -> s {pool}) <$> fixtureSidecar
+          adapterFor sidecar project = do
+            continuations <- newContinuations
+            turns <- newTurns
+            (_, hooks) <- readyHooks
+            adapter <-
+              newAmpRuntimeAdapter
+                (ampRuntimeConfig project)
+                (ampContinuationCodec (continuationOperations continuations))
+                (turnOperations turns)
+                AmpAdapterOptions {sdkExecute = officialExecute sidecar, clock = pure 1, hooks}
+            void (probeAmp adapter)
+            pure (turns, adapter)
+          named n = request {episode = "episode-" <> n, turn = "turn-" <> n, operation = "operation-" <> n, prompt = "prompt-" <> n}
+
+      it "runs concurrent streams on one sidecar, each settling on its own" $ withSystemTempDirectory "petrus-amp" $ \tmp ->
+        withSidecarPool 5 $ \pool -> do
+          sidecar <- pooled pool
+          let marker = tmp </> "cancelled"
+          (_, blocking) <- adapterFor sidecar (T.pack ("block:" <> marker))
+          blocked <- start blocking (named "blocked")
+          (turns, adapter) <- adapterFor sidecar "henriquebastos/petrus"
+          -- Three streams run to completion while a fourth blocks mid-turn.
+          finished <-
+            concurrentlyAll
+              [ do
+                  operation <- start adapter (named name)
+                  result <- waitFor operation 30
+                  cleanup <- closeAmpOperation operation
+                  pure (result, cleanup)
+              | name <- ["a", "b", "c"]
+              ]
+          forM_ finished $ \(result, cleanup) -> do
+            result.outcome `shouldBe` TurnCompleted
+            cleanup.disposition `shouldBe` RuntimeCleanupClean
+          stored <- readIORef turns.values
+          Map.keys stored `shouldMatchList` ["amp-turn-operation-" <> name | name <- ["a", "b", "c"]]
+          -- Each stream echoed its own prompt.
+          forM_ ["a", "b", "c"] $ \name ->
+            fmap (T.isInfixOf ("prompt-" <> name) . snd) (Map.lookup ("amp-turn-operation-" <> name) stored) `shouldBe` Just True
+          cancelAmpOperation blocked "stop" `shouldReturn` CancellationRequested
+          result <- waitFor blocked 30
+          result.outcome `shouldBe` TurnCancelled
+          doesFileExist marker `shouldReturn` True
+          length <$> sidecarPoolPids pool `shouldReturn` 1
+
+      it "settles every stream of a sidecar that dies mid-turn, and the next stream respawns it" $ withSystemTempDirectory "petrus-amp" $ \tmp ->
+        withSidecarPool 5 $ \pool -> do
+          sidecar <- pooled pool
+          -- A stream waiting mid-turn, past every cancellation.
+          let marker = tmp </> "waiting"
+          (_, blocking) <- adapterFor sidecar (T.pack ("stuck:" <> marker))
+          blocked <- start blocking (named "blocked")
+          awaitFile marker
+          original <- sidecarPoolPids pool
+          length original `shouldBe` 1
+          -- The SDK crashes the sidecar process under one stream: both that
+          -- turn and the other stream's settle as upstream settles an SDK
+          -- stream that raises (client-failed).
+          (_, dying) <- adapterFor sidecar "die"
+          died <- start dying (named "die") >>= (`waitFor` 30)
+          blockedResult <- waitFor blocked 30
+          (died.outcome, died.terminationCode) `shouldBe` (TurnFailed, "client-failed")
+          (blockedResult.outcome, blockedResult.terminationCode) `shouldBe` (TurnFailed, "client-failed")
+          -- The next stream starts a new sidecar.
+          (_, adapter) <- adapterFor sidecar "henriquebastos/petrus"
+          next <- start adapter (named "next") >>= (`waitFor` 30)
+          next.outcome `shouldBe` TurnCompleted
+          respawned <- sidecarPoolPids pool
+          (length respawned, any (`elem` original) respawned) `shouldBe` (1, False)
+
+      it "reports a stream stuck past the release grace as uncertain while the others proceed" $ withSystemTempDirectory "petrus-amp" $ \tmp ->
+        withSidecarPool 2 $ \pool -> do
+          sidecar <- (\s -> s {grace = 1}) <$> pooled pool
+          let marker = tmp </> "stuck"
+          (_, stuckAdapter) <- adapterFor sidecar (T.pack ("stuck:" <> marker))
+          stuck <- start stuckAdapter (named "stuck")
+          awaitFile marker
+          cancelAmpOperation stuck "stop" `shouldReturn` CancellationRequested
+          -- While the stuck stream's teardown hangs in the sidecar, another
+          -- stream on the same sidecar runs a whole turn.
+          (_, adapter) <- adapterFor sidecar "henriquebastos/petrus"
+          other <- start adapter (named "other") >>= (`waitFor` 30)
+          other.outcome `shouldBe` TurnCompleted
+          stuckResult <- waitFor stuck 30
+          stuckResult.outcome `shouldBe` TurnCancelled
+          ((.code) <$> closeAmpOperation stuck) `shouldReturn` "provider-state-uncertain"
+          -- Closing the pool ends the sidecar although a teardown is stuck
+          -- in it: past the pool's grace, it is killed.
+          timeout 10000000 (closeSidecarPool pool 2) `shouldReturn` Just ()
+          sidecarPoolPids pool `shouldReturn` []
+
     it "reads the SDK version and protocol through the sidecar" $ do
       sidecar <- fixtureSidecar
       let hooks = officialProbeHooks sidecar
@@ -594,3 +690,20 @@ spec = describe "test_amp" $ do
               TurnIndeterminate -> "indeterminate" :: Text
         (name, Array [String outcome, Int result.acceptedAppends, String result.terminationCode, String cleanup.code])
           `shouldBe` (name, expected)
+
+-- | Run the actions on their own threads and collect their results in
+-- order, rethrowing the first failure.
+concurrentlyAll :: [IO a] -> IO [a]
+concurrentlyAll actions = do
+  boxes <- forM actions $ \action -> do
+    box <- newEmptyMVar
+    _ <- forkIO (try action >>= putMVar box)
+    pure box
+  forM boxes $ \box -> takeMVar box >>= either (\(e :: SomeException) -> throwIO e) pure
+
+-- | Wait (up to ten seconds) until a fake SDK has touched @path@.
+awaitFile :: FilePath -> IO ()
+awaitFile path = go (200 :: Int)
+  where
+    go 0 = expectationFailure ("never touched: " <> path)
+    go n = doesFileExist path >>= \found -> unless found (threadDelay 50000 >> go (n - 1))

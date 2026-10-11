@@ -86,6 +86,12 @@ module Petrus.Agenticus.Runtime.Claude
   , ClaudeSdk (..)
   , officialFactory
   , ClaudeSidecar (..)
+  , SidecarPool
+  , newSidecarPool
+  , closeSidecarPool
+  , withSidecarPool
+  , defaultSidecarPool
+  , sidecarPoolPids
   , claudeSidecar
   , claudeSidecarPath
   , sidecarSdk
@@ -1028,15 +1034,18 @@ officialFactory sdk = ClaudeClientFactory $ \options gateway invocation -> do
 -- The official SDK sidecar
 
 -- | How to run @claude_sidecar.py@: the interpreter, extra @sys.path@
--- entries, and the grace for each bounded sidecar step.
+-- entries, the grace for each bounded sidecar step, and the pool whose
+-- shared sidecar hosts the clients.
 data ClaudeSidecar = ClaudeSidecar
   { python :: FilePath
   , searchPath :: [FilePath]
   , grace :: Double
+  , pool :: SidecarPool
   }
 
+-- | @python3@ from @PATH@, over the 'defaultSidecarPool'.
 claudeSidecar :: ClaudeSidecar
-claudeSidecar = ClaudeSidecar "python3" [] 10
+claudeSidecar = ClaudeSidecar "python3" [] 10 defaultSidecarPool
 
 claudeSidecarPath :: IO FilePath
 claudeSidecarPath = getDataFileName "data/claude_sidecar.py"
@@ -1052,7 +1061,7 @@ sidecarCommand s mode = do
 sidecarSdk :: ClaudeSidecar -> ClaudeSdk
 sidecarSdk config = ClaudeSdk $ \request -> do
   command <- sidecarCommand config "serve"
-  s <- openSidecarChannel command >>= maybe (throwAgenticus RuntimeError "Claude SDK sidecar did not start") pure
+  s <- openSidecarChannel config.pool command >>= maybe (throwAgenticus RuntimeError "Claude SDK sidecar did not start") pure
   let initial =
         Object
           [ ("options", Object request.options.values)
@@ -1067,7 +1076,10 @@ sidecarSdk config = ClaudeSdk $ \request -> do
       void (channelClose s config.grace)
       throwAgenticus RuntimeError "Claude SDK client could not be created"
   writeLock <- newMVar ()
-  pending <- newMVar (Map.empty :: Map Integer (MVar (Maybe Json)))
+  -- The calls awaiting their answer; 'Nothing' once the channel has
+  -- ended, when every call fails at once (the sidecar died, or the
+  -- channel's teardown is finished).
+  pending <- newMVar (Just Map.empty :: Maybe (Map Integer (MVar (Maybe Json))))
   counter <- newIORef (0 :: Integer)
   let send frame = withMVar writeLock (const (void (channelSend s frame)))
       answer k = \case
@@ -1090,14 +1102,14 @@ sidecarSdk config = ClaudeSdk $ \request -> do
             | isAsync e -> throwIO e
             | otherwise -> answer k (Left (maybe "failed" (\(failure :: AgenticusError) -> failure.errorMessage) (fromException e)))
       failAll = modifyMVar_ pending $ \known -> do
-        forM_ known (`tryPutMVar` Nothing)
-        pure Map.empty
+        forM_ (fromMaybe Map.empty known) (`tryPutMVar` Nothing)
+        pure Nothing
       dispatch =
         channelReceive s >>= \case
           Nothing -> failAll
           Just frame -> do
             case (member "done" frame, member "call" frame) of
-              (Just (Int n), _) -> withMVar pending $ \known -> forM_ (Map.lookup n known) (\box -> void (tryPutMVar box (Just frame)))
+              (Just (Int n), _) -> withMVar pending $ \known -> forM_ (known >>= Map.lookup n) (\box -> void (tryPutMVar box (Just frame)))
               (_, Just (Int k)) -> void (forkIO (serveCall k frame))
               _ -> pure ()
             dispatch
@@ -1106,17 +1118,19 @@ sidecarSdk config = ClaudeSdk $ \request -> do
       call op fields = do
         n <- atomicModifyIORef' counter (\i -> (i + 1, i + 1))
         box <- newEmptyMVar
-        modifyMVar_ pending (pure . Map.insert n box)
+        modifyMVar_ pending $ \case
+          Just known -> pure (Just (Map.insert n box known))
+          Nothing -> putMVar box Nothing >> pure Nothing
         reply <-
           ( do
               send (Object (("op", String op) : ("id", Int n) : fields))
               takeMVar box
           )
             `onException` ( do
-                              modifyMVar_ pending (pure . Map.delete n)
+                              modifyMVar_ pending (pure . fmap (Map.delete n))
                               send (Object [("op", String "cancel"), ("id", Int 0), ("target", Int n)])
                           )
-        modifyMVar_ pending (pure . Map.delete n)
+        modifyMVar_ pending (pure . fmap (Map.delete n))
         case reply of
           Nothing -> throwAgenticus RuntimeError "Claude SDK sidecar exited"
           Just frame -> case (member "value" frame, member "error" frame) of

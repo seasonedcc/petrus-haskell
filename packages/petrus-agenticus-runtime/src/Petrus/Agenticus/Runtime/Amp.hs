@@ -55,6 +55,12 @@ module Petrus.Agenticus.Runtime.Amp
   , AmpEventStream (..)
   , AmpExecute
   , AmpSidecar (..)
+  , SidecarPool
+  , newSidecarPool
+  , closeSidecarPool
+  , withSidecarPool
+  , defaultSidecarPool
+  , sidecarPoolPids
   , ampSidecar
   , ampSidecarPath
   , officialExecute
@@ -509,11 +515,14 @@ data AmpSidecar = AmpSidecar
   { python :: FilePath
   , searchPath :: [FilePath]
   , grace :: Double
+  , pool :: SidecarPool
+  -- ^ The pool whose shared sidecar hosts the streams.
   }
 
--- | @python3@ from @PATH@, the interpreter's own @sys.path@.
+-- | @python3@ from @PATH@, the interpreter's own @sys.path@, over the
+-- 'defaultSidecarPool'.
 ampSidecar :: AmpSidecar
-ampSidecar = AmpSidecar "python3" [] 10
+ampSidecar = AmpSidecar "python3" [] 10 defaultSidecarPool
 
 ampSidecarPath :: IO FilePath
 ampSidecarPath = getDataFileName "data/amp_sidecar.py"
@@ -534,7 +543,7 @@ instance Exception SidecarFailure
 officialExecute :: AmpSidecar -> AmpExecute
 officialExecute s prompt options = do
   command <- sidecarCommand s "serve"
-  c <- openSidecarChannel command >>= maybe (throwIO (SidecarFailure "launch")) pure
+  c <- openSidecarChannel s.pool command >>= maybe (throwIO (SidecarFailure "launch")) pure
   let request = Object [("prompt", String prompt), ("options", Object options)]
       failStart = void (channelClose c s.grace) >> throwIO (SidecarFailure "start")
   sent <- channelSend c request
