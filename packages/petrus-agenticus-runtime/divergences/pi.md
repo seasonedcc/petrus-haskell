@@ -70,19 +70,29 @@ sides of each one. Its single accepted difference is item 6.
    This is the one corpus case recorded as a known divergence
    (`strictLoadDivergences` in `PiDifferentialSpec`).
 
-   **User-visible effect.** A Pi Turn whose model output or tool parameters
-   carry a lone surrogate escape fails in the port (`malformed-frame`),
-   where the reference can complete it.
+   **User-visible effect.** A helper frame with a lone surrogate escape
+   fails the Turn as `malformed-frame`. The reference fails it with the
+   code of the member it trips on, or completes it:
+   - in a `tool_call`'s parameters, it submits the call to the Hands
+     gateway, and the Turn can complete (a path or argv with a surrogate
+     usually comes back as a `provider` error result);
+   - in a `complete` frame's text, session identity or encoded members:
+     `malformed-complete`;
+   - in a `tool_call` identity: `runtime-failed` (the `UnicodeEncodeError`
+     of `len(identity.encode())` escapes the loop);
+   - in a method name: `malformed-tool-call`; in a frame type:
+     `unknown-frame` (`frame-order` in the A5 loop); in a member name:
+     `frame-order`; in a `failed` code: `malformed-failed`.
 
-   **Planned fix (audit finding SDA-12), waiting on IMP-2.** The port should
-   forward such strings the way the reference does. That needs a `Text`
-   that holds a lone surrogate. petrus-json gains one in IMP-2 (commit
-   805e139 on branch `worktree-agent-ace10fbba84e526e8`, not yet on `main`):
+   **Planned fix (audit finding SDA-12).** The port should keep such
+   strings and fail or forward them where the reference does. It needs
+   a `Text` that holds a lone surrogate. petrus-json has one since IMP-2
+   (commit 805e139, on `main` since merge 12ffe2b):
    `ParseOptions.loneSurrogates = KeepLoneSurrogates` parses a lone
    surrogate escape into a WTF-8 `Text`, `Petrus.Json.Wtf8.hasLoneSurrogate`
    detects one, and `dumps` writes it back as `\udXXX` under `ensure_ascii`.
-   This package does not duplicate that representation, so it stays as
-   described above until IMP-2 lands. After that, the change is:
+   IMP-2 reached `main` only as the SDA-12 work closed, so the change is
+   still to do. It is:
    - `strictFrameLoad` (`Pi.hs`) parses with
      `strictParseOptions {loneSurrogates = KeepLoneSurrogates}` and still
      refuses bytes that are not UTF-8. Its callers are the native frame
@@ -90,20 +100,44 @@ sides of each one. Its single accepted difference is item 6.
      (`PiApplication.hs`) and the probe frame (`probeInstalled` in
      `Pi.hs`), which compares the frame to a fixed object, so a surrogate
      still fails it.
-   - Where the reference calls `str.encode()` on a frame member, the port
-     checks `hasLoneSurrogate` first and fails with that site's code, as
-     CPython's `UnicodeEncodeError` does. These are the `_text` validators
-     (`pi.py`, `pi_application.py` and `pi_model_phase.py`), the `complete`
-     frame's final text (`pi_application.py`, `len(text.encode())`, which
-     gives `malformed-complete`) and the identities bounded by
-     `len(identity.encode())`.
-   - `tool_call` parameters reach the Hands gateway as WTF-8 `Text`, and
-     the gateway's JSON writing re-escapes them, as the reference forwards
-     the `str`.
-   - `strictLoad` (sessions and credentials) keeps lone surrogates too,
-     instead of replacing them with U+FFFD. The case then leaves
-     `strictLoadDivergences`, and `PiDifferentialSpec` gains frame cases
-     with a lone surrogate in a tool parameter and in the final text.
+   - `strictLoad` keeps lone surrogates as well, through
+     `Petrus.Json.Wtf8.fromCodePoints` instead of `T.pack`. Its callers are
+     the sessions and credentials, the A5 transcripts and the model phase's
+     assistant and transcript payloads. The case then leaves
+     `strictLoadDivergences`.
+   - Wherever the reference calls `str.encode()` on such a value, the port
+     checks `hasLoneSurrogate` first and fails as CPython's
+     `UnicodeEncodeError` (a `ValueError`) does at that site:
+     - the `_text` validators of `pi.py`, `pi_application.py` and
+       `pi_model_phase.py` (`piText` and its counterparts), which the
+       `complete` frame's session identity reaches;
+     - the `complete` frame's final text (`len(text.encode())`), giving
+       `malformed-complete` in both loops;
+     - the `tool_call` identity (`len(identity.encode())`, outside any
+       `try`), giving `runtime-failed`;
+     - the A5 `complete` frame's combined transcript
+       (`json.dumps(..., ensure_ascii=False).encode()`), so a delta whose
+       messages hold a lone surrogate escape is `malformed-complete`. The
+       port accepts it today, since U+FFFD encodes;
+     - `_write` (`ensure_ascii=False` then `.encode()`), so a `tool_result`
+       that echoes a surrogate is `helper-pipe-failed`;
+     - the model phase's assistant blocks, which `_content_block` and
+       `_text` bound by their encoded length.
+   - `tool_call` parameters reach the Hands gateway as WTF-8 `Text`. The
+     reference's contract bounds paths and argv by characters
+     (`_bounded_text`), which `Data.Text.length` counts alike. Its
+     workspace adapter then hands them to a Motus `Command`, and CPython
+     encodes argv and `cwd` with `surrogateescape`: U+DC80–U+DCFF become raw
+     bytes and any other surrogate raises, which the adapter reports as a
+     `provider` error. petrus-execution's `spawnChild` encodes with GHC's
+     file-system encoding, whose round-trip escapes are the same U+DC80–
+     U+DCFF, so the two should agree. That needs a test on each side. One
+     known difference: `stage_write` digests `content.encode()` after the
+     command ran, so a content with U+DC80–U+DCFF fails in the reference
+     and would stage in the port (`Petrus.Agenticus.Hands.Workspace`, in
+     petrus-agenticus).
+   - New cases: forged helpers that send each of the frames above, in
+     `PiSpec` and `PiApplicationSpec`, with the reference's outcomes.
 
 7. **Ledger rows with foreign column types.** `_decode` passes raw SQLite
    values into `PiOperationRecord`. The port mirrors the values a tampered

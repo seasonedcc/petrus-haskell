@@ -52,6 +52,24 @@ OPT_INS: Dict[str, str] = {
     "requires PETRUS_CV16_PI_APPLICATION_QUALIFY=1 and the exact installed packages (the reference skips too)":
         "petrus-agenticus-runtime PiApplicationSpec: test_exact_installed_application_package_probe "
         "(qualification_installation)",
+    "skipped: set PETRUS_CV16_CODEX_LIVE=1 for the authorized Codex A2 Local cell; see docs/live-provider-acceptance.md":
+        "petrus-agenticus-runtime Live.CodexSpec: test_exact_codex_a2_local_fresh_then_native_resume (real_provider_acceptance)",
+    "skipped: set PETRUS_CV16_CODEX_GONDOLIN_LIVE=1 for the authorized Codex A3 Gondolin cell; see docs/live-provider-acceptance.md":
+        "petrus-agenticus-runtime Live.CodexSpec: test_exact_codex_a3_gondolin_fresh_then_native_resume (real_gondolin_acceptance)",
+    "skipped: set PETRUS_CV16_CLAUDE_QUALIFY=1 for the exact credential-free Claude A2 probe; see docs/live-provider-acceptance.md":
+        "petrus-agenticus-runtime Live.ClaudeSpec: test_exact_claude_a2_sdk_and_bundled_client (qualification_installation)",
+    "skipped: set PETRUS_CV16_CLAUDE_LIVE=1 for the authorized Claude A2 G1→G2 cell; see docs/live-provider-acceptance.md":
+        "petrus-agenticus-runtime Live.ClaudeSpec: test_exact_claude_a2_fresh_then_native_resume (real_provider_acceptance)",
+    "skipped: set PETRUS_RUN_CV16_AMP_A1=1 for the authenticated Amp A1 cell; see docs/live-provider-acceptance.md":
+        "petrus-agenticus-runtime Live.AmpSpec: test_amp_a1_new_and_continue_in_provider_managed_orb (real_provider_acceptance)",
+    "skipped: set PETRUS_CV16_PI_QUALIFY=1 for the exact credential-free Pi A2 probe; see docs/live-provider-acceptance.md":
+        "petrus-agenticus-runtime Live.PiSpec: test_exact_pi_a2_sdk_ai_and_node (qualification_installation)",
+    "skipped: set PETRUS_CV16_PI_LIVE=1 for the authorized Pi A2 G1→G2 cell; see docs/live-provider-acceptance.md":
+        "petrus-agenticus-runtime Live.PiSpec: test_exact_pi_a2_fresh_then_native_resume (real_provider_acceptance)",
+    "skipped: set PETRUS_CV16_AGENT_NET_QUALIFY=1 for the exact credential-free Agent-as-a-Net probe; see docs/live-provider-acceptance.md":
+        "petrus-agenticus-runtime Live.AgentNetSpec: test_exact_agent_net_pi_installation_and_public_phase (qualification_installation)",
+    "skipped: set PETRUS_CV16_AGENT_NET_LIVE=1 for the direct-key Agent-as-a-Net binding cell; see docs/live-provider-acceptance.md":
+        "petrus-agenticus-runtime Live.AgentNetSpec: test_agent_net_direct_anthropic_key_runs_one_bounded_local_task (real_provider_acceptance)",
 }
 
 PENDING = re.compile(r"^\s*# PENDING: (.*)$")

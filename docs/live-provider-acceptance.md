@@ -59,7 +59,10 @@ The paid cells take minutes (the reference allows 900 s each) and spend a
 few model calls each.
 
 The default suite (`scripts/check-all`, CI) sets none of the gates, so the
-nine tests show as pending there.
+nine tests show as pending there. They are declared opt-ins in
+`scripts/check-pending`, by their exact pending messages, next to the other
+`real_provider_acceptance`, `real_gondolin_acceptance` and
+`qualification_installation` tests.
 
 ## Recorded runs
 
