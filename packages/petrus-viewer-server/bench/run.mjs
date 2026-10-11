@@ -194,6 +194,17 @@ for (const s of SCENARIOS) {
   const best = (prefix) => Math.max(0, ...names.map((t, i) => (t.startsWith(prefix) ? vals[i] ?? 0 : 0)));
   md += `| ${s.name} | ${vals.map((v) => v ?? "").join(" | ")} | ${(best("haskell") / best("node")).toFixed(2)}x |\n`;
 }
+// every round runs each target once, back to back; the ratio within a round
+// is the least exposed to the machine's drift between rounds
+md += `\n| scenario | Haskell / Node in each round (best of each side) | min |\n|---|---|---:|\n`;
+for (const s of SCENARIOS) {
+  const side = (prefix) => names.filter((t) => t.startsWith(prefix) && find(t, s.name)).map((t) => find(t, s.name).allOpsPerSec);
+  const hs = side("haskell");
+  const ns = side("node");
+  if (!hs.length || !ns.length) continue;
+  const ratios = Array.from({ length: reps }, (_, i) => Math.max(...hs.map((r) => r[i])) / Math.max(...ns.map((r) => r[i])));
+  md += `| ${s.name} | ${ratios.map((r) => r.toFixed(2)).join(" ")} | ${Math.min(...ratios).toFixed(2)}x |\n`;
+}
 console.log(md);
 if (jsonOut) {
   const machine = `${os.cpus()[0].model} x${os.cpus().length}, ${os.platform()} ${os.release()}, node ${process.version}`;

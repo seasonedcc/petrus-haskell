@@ -21,6 +21,7 @@ extra-doc-files:    NOTICE
                     DIVERGENCES.md
 data-files:         test/fixtures/*.txt
                     test/fixtures/*.json
+                    test/chain_producer.py
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -81,6 +82,7 @@ library
                   , websockets >=0.12.7
   ghc-options:      -O2
   c-sources:        cbits/json_escape.c
+                    cbits/file_io.c
                     cbits/relay_io.c
   cc-options:       -O3 -Wall
 
@@ -89,10 +91,11 @@ executable petrus
   hs-source-dirs:   app/petrus
   main-is:          Main.hs
   build-depends:    base, petrus-viewer-server
-  -- Two capabilities and sequential GC: request handling is short and
-  -- I/O bound, and more capabilities mostly add cross-thread wake-ups (see
-  -- bench/RESULTS.md). Override with +RTS -N<n> -RTS.
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N2 -qg -qm -A16m"
+  -- One capability, like Node's one event loop: request handling is short
+  -- and I/O bound, and every extra capability adds cross-thread wake-ups
+  -- to each request (see bench/RESULTS.md). The relays run their own
+  -- event-loop OS threads either way. Override with +RTS -N<n> -RTS.
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N1 -qg -A16m"
 
 executable petrus-mcp
   import:           warnings
@@ -106,7 +109,7 @@ executable petrus-collab
   hs-source-dirs:   app/petrus-collab
   main-is:          Main.hs
   build-depends:    base, petrus-viewer-server
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N2 -qg -qm -A16m"
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N1 -qg -A16m"
 
 
 -- Test oracle used by upstream-tests/ (upstream Node tests and
@@ -121,7 +124,12 @@ executable petrus-viewer-oracle
 test-suite petrus-viewer-server-test
   import:           warnings
   type:             exitcode-stdio-1.0
-  hs-source-dirs:   test
+  -- The History specs serve a Haskell Engine with petrus-observation-http.
+  -- That package's own tests use this package's petrus executable as a
+  -- build tool, so depending on it would be a package cycle; its single
+  -- module is compiled in from its source directory instead (the same
+  -- code, linked into this test executable).
+  hs-source-dirs:   test ../petrus-observation-http/src
   main-is:          Main.hs
   other-modules:    JsonSpec
                     UrlSpec
@@ -132,6 +140,9 @@ test-suite petrus-viewer-server-test
                     CliSpec
                     McpSpec
                     ObservationSpec
+                    HistorySpec
+                    ChainProducer
+                    Petrus.Observation.Http
                     ServerSpec
                     TestSupport
   build-depends:    base
@@ -144,6 +155,13 @@ test-suite petrus-viewer-server-test
                   , http-client
                   , http-types
                   , network
+                  , petrus-engine
+                  , petrus-impetus
+                  , petrus-json
+                  , petrus-http-core
+                  , petrus-motus
+                  , petrus-observation
+                  , petrus-test-support
                   , petrus-viewer-server
                   , process
                   , QuickCheck >=2.14
