@@ -204,6 +204,16 @@ GENERATORS: List[Generator] = [
         cwd=".",
     ),
     petrus("petrus-cel/gen-cel-instance", f"{CEL}/gen-cel-instance.py", {f"{CEL}/corpus/cel-instance.json": "cel-instance.json"}),
+    # petrus-cel: the pinned tzdata package, embedded for the get* accessors
+    Generator(
+        "petrus-cel/tz tables",
+        "petrus",
+        "packages/petrus-cel/gen/gen-tz-tables.py",
+        [],
+        {"packages/petrus-cel/src/Petrus/Cel/Tz/Tables.hs": ""},
+        cwd=".",
+        in_place=True,
+    ),
     # petrus-dst (the generated identities module included)
     dst("codec_vectors", "test/data/codec-vectors.json"),
     dst("world_stories", "test/data/world-stories.json"),

@@ -11,16 +11,16 @@ To run the tests:
 
     cabal test petrus-cel
 
-This prints 166 examples and 0 failures:
+This prints 170 examples and 0 failures:
 
 | group | examples | what it checks |
 | --- | ---: | --- |
-| differential corpus (`test/Corpus.hs`) | 97 | every case of the three corpora below |
+| differential corpus (`test/Corpus.hs`) | 100 | every case of the three corpora below |
 | `binding/test_cel.py` (`test/Impetus.hs`) | 20 | the 19 upstream tests, one example each, and `MACROS` read back from the pinned source |
 | PARITY.md CEL tests on Instances (`test/Impetus.hs`) | 5 | the CEL tests of the Instance suite, on real Instances |
 | end-to-end Instances (`test/Impetus.hs`) | 6 | `cel-instance.json`, five case groups and a coverage check |
 | kernel CEL seam on real CEL (`test/KernelSeam.hs`) | 26 | the kernel tests `petrus-impetus` ports on a CEL stub, rerun on `celCompilers` |
-| live round trip (`test/Live.hs`) | 1 | the reference rereads what Haskell writes |
+| live reference (`test/Live.hs`) | 2 | the reference rereads what Haskell writes, and reads time zones as Haskell does |
 | properties (`test/Properties.hs`) | 11 | QuickCheck properties and the lone-surrogate encoding errors |
 
 ## The differential corpora
@@ -29,11 +29,11 @@ This prints 166 examples and 0 failures:
 and the reference's answers. They are deterministic, and
 `scripts/check-corpora` reruns them against the pinned reference.
 
-- **`test/corpus/cel-corpus.json`**: 2041 expressions in 40 groups (literals,
+- **`test/corpus/cel-corpus.json`**: 2673 expressions in 43 groups (literals,
   lexing, precedence, parse errors, arithmetic, comparison, logic, membership,
   maps and lists, strings, regex, conversions, macros, timestamps and
-  durations, environments, the cel-python quirks, and lone-surrogate string
-  literals, and error renderings). Each case records the lark parse tree or
+  durations, IANA time zones, environments, the cel-python quirks,
+  lone-surrogate string literals, and error renderings). Each case records the lark parse tree or
   the parse error with its position, and the evaluation outcome: the value's
   `repr` and truthiness, or the raised exception rendered whole. For a
   `CELEvalError` that is its `repr()`: the message, the wrapped exception's
@@ -99,6 +99,14 @@ hide a difference between the stub and cel-python:
   re-exported by `Petrus.Cel.Binding`. `freeVariables` subtracts the
   variables of exactly these macros. An example reads the set back from the
   pinned reference's source.
+- **Time zones** (`gen/gen-tz-tables.py`, rerun by `scripts/check-corpora`).
+  The `get*` accessors read the pinned reference's own `tzdata` package
+  (2026.3, IANA 2026c), embedded in `Petrus.Cel.Tz.Tables`, never the host's
+  tz database. The live differential in `test/Live.hs` hands the reference
+  a fresh seed on every run. The reference then reads every tzdata key, every
+  directory and about 1 500 mutated keys, at random instants and on both
+  sides of DST transitions, and Haskell must agree on every one of about
+  18 800 readings.
 - **Live round trip** (`test/Live.hs`, selected by `scripts/interop`). Every
   `cel-instance.json` net's definition and document, and the History Haskell
   writes while running it with `celCompilers`, go to the pinned reference's

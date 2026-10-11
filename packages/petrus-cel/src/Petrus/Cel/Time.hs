@@ -2,18 +2,16 @@
 -- cel-python's @DurationType@ and @TimestampType@ use them, plus the
 -- @pendulum.parse@ pipeline behind @timestamp(string)@.
 --
--- Every time zone cel-python can attach is a fixed UTC offset (pendulum's
--- @FixedTimezone@, @datetime.timezone@, or UTC), so a 'Datetime' is a local
--- wall-clock reading plus an offset.
+-- Every time zone a cel-python timestamp carries is a fixed UTC offset
+-- (pendulum's @FixedTimezone@, @datetime.timezone@, or UTC), so a 'Datetime'
+-- is a local wall-clock reading plus an offset. The @get*@ accessors read a
+-- timestamp in any zone @pendulum.timezone@ accepts, IANA zones with their
+-- daylight-saving rules included ("Petrus.Cel.Tz"), through 'astimezone'.
 --
--- Deviations, all listed in the package's DIVERGENCES.md:
---
--- * @timestamp(\"now\")@ and time-only strings (which pendulum completes
---   with the current date) are impure in cel-python; here they fail with a
---   'ValueError';
--- * the timezone argument of the @get*@ functions accepts UTC-like IANA
---   names and the fixed-offset @Etc/GMT±N@ zones, not zones with daylight
---   saving rules.
+-- One deviation, listed in the package's DIVERGENCES.md:
+-- @timestamp(\"now\")@ and time-only strings (which pendulum completes with
+-- the current date) are impure in cel-python; here they fail with a
+-- 'ValueError'.
 module Petrus.Cel.Time
   ( -- * timedelta
     Timedelta (..)
@@ -35,12 +33,14 @@ module Petrus.Cel.Time
   , DatetimeFields (..)
   , isoWeekday
   , dayOfYear
-  , inOffset
+  , TimeZone (..)
+  , astimezone
     -- * Parsing
   , ParsedTimestamp (..)
   , parseTimestamp
   , parseDurationString
-  , timezoneOffset
+  , timezoneNamed
+  , namedZone
   , maxDurationSeconds
   ) where
 
@@ -52,6 +52,7 @@ import Data.Time.Calendar (Day (..), fromGregorianValid, gregorianMonthLength, i
 import Data.Time.Calendar.OrdinalDate (toOrdinalDate)
 
 import Petrus.Cel.Python (ExcClass (..), PyErr (..), parseFloatText)
+import Petrus.Cel.Tz (Zone, lookupZone, zoneUtcOffset)
 import Petrus.Json.Python (pythonDecimal, pythonStrRepr)
 
 -- timedelta ---------------------------------------------------------------
@@ -183,9 +184,27 @@ isoWeekday f = let w = fieldOrdinal f `mod` 7 in if w == 0 then 7 else w
 dayOfYear :: DatetimeFields -> Integer
 dayOfYear f = fromIntegral (snd (toOrdinalDate (fromOrdinal (fieldOrdinal f)))) - 1
 
--- | @astimezone@ to a fixed offset.
-inOffset :: Integer -> Datetime -> Either PyErr Datetime
-inOffset offset dt = checked (Datetime (datetimeUtcMicros dt + offset * microsPerSecond) offset)
+-- | A @tzinfo@ a timestamp can be read in.
+data TimeZone
+  = -- | UTC, @datetime.timezone@ or pendulum's @FixedTimezone@
+    FixedZone Integer
+  | -- | a @ZoneInfo@
+    NamedZone Zone
+
+-- | @datetime.astimezone(tz)@: @self - self.utcoffset()@ (which must stay
+-- in range), then @tz.fromutc@ adds the zone's offset at that instant.
+astimezone :: TimeZone -> Datetime -> Either PyErr Datetime
+astimezone zone dt = do
+  let utc = datetimeUtcMicros dt
+  _ <- checked (Datetime utc 0)
+  let offset = case zone of
+        FixedZone seconds -> seconds
+        NamedZone named -> toInteger (zoneUtcOffset named (fromInteger (utc `div` microsPerSecond - unixEpochSeconds)))
+  checked (Datetime (utc + offset * microsPerSecond) offset)
+
+-- | 1970-01-01T00:00, in seconds since 0001-01-01T00:00.
+unixEpochSeconds :: Integer
+unixEpochSeconds = 62135596800
 
 checked :: Datetime -> Either PyErr Datetime
 checked dt
@@ -607,31 +626,14 @@ parseDurationString shown text = do
 maxDurationSeconds :: Integer
 maxDurationSeconds = 315576000000
 
--- | @TimestampType.tz_parse@: the UTC offset (seconds) of a timezone name or
--- @[+-]hh:mm@ offset; 'Nothing' (or an empty name) is UTC.
-timezoneOffset :: Text -> Maybe Text -> Either PyErr Integer
-timezoneOffset shown = \case
-  Nothing -> Right 0
-  Just "" -> Right 0
-  Just name
-    | name `elem` utcNames -> Right 0
-    | Just hours <- etcGmt name -> Right (hours * 3600)
-    | Just hours <- lookup name fixedZones -> Right (hours * 3600)
-    | otherwise -> offsetPattern name
+-- | @TimestampType.tz_name_lookup@ of a @str@ (shown as its repr in
+-- the error): the zone @pendulum.timezone@ names, else a @[+-]hh:mm@
+-- offset (@tz_offset_parse@).
+timezoneNamed :: Text -> Text -> Either PyErr TimeZone
+timezoneNamed shown name = namedZone name >>= maybe (FixedZone <$> offsetPattern name) Right
   where
-    utcNames =
-      [ "UTC", "Etc/UTC", "GMT", "Etc/GMT", "Universal", "Etc/Universal", "Zulu", "Etc/Zulu", "UCT", "Etc/UCT"
-      , "Greenwich", "Etc/Greenwich", "GMT0", "Etc/GMT0", "GMT+0", "GMT-0", "Etc/GMT+0", "Etc/GMT-0"
-      ]
-    fixedZones = [("EST", -5), ("MST", -7), ("HST", -10)]
-    etcGmt name = case T.stripPrefix "Etc/GMT" name of
-      Just rest
-        | Just n <- T.stripPrefix "+" rest, valid n, read (T.unpack n) <= (12 :: Integer) -> Just (negate (read (T.unpack n)))
-        | Just n <- T.stripPrefix "-" rest, valid n, read (T.unpack n) <= (14 :: Integer) -> Just (read (T.unpack n))
-      _ -> Nothing
-    valid n = not (T.null n) && T.all isDigit n && T.length n <= 2 && T.head n /= '0'
-    offsetPattern name =
-      let s = T.unpack name
+    offsetPattern text =
+      let s = T.unpack text
           s' = if not (null s) && last s == '\n' then init s else s
           (sign, rest) = case s' of
             c : r | c == '+' || c == '-' -> (c, r)
@@ -646,6 +648,21 @@ timezoneOffset shown = \case
               , all (isJust . decimal) mm ->
                   let minutes = (value hh * 60 + value mm) * (if sign == '-' then -1 else 1)
                    in if abs minutes >= 24 * 60
-                        then Left (PyErr ValueError "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24).")
+                        then
+                          Left
+                            ( PyErr
+                                ValueError
+                                ( "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not "
+                                    <> timedeltaRepr (Timedelta (minutes * 60 * microsPerSecond))
+                                )
+                            )
                         else Right (minutes * 60)
             _ -> Left (PyErr ValueError ("Unparsable timezone: " <> shown))
+
+-- | @pendulum.timezone(name)@: UTC for any casing of @utc@, else
+-- @ZoneInfo(name)@; 'Nothing' when no zone has that key
+-- (@InvalidTimezone@).
+namedZone :: Text -> Either PyErr (Maybe TimeZone)
+namedZone name
+  | T.toLower name == "utc" = Right (Just (FixedZone 0))
+  | otherwise = fmap NamedZone <$> lookupZone name

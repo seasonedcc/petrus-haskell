@@ -10,9 +10,9 @@ this package follows cel-python; the module documentation of `Petrus.Cel`
 lists those departures, and the differential corpus records each one. Those
 are not divergences.
 
-The differential corpus replays all of its 2041 expressions with no
+The differential corpus replays all of its 2673 expressions with no
 exclusion. The divergences left are the ones listed under "Open" below.
-Item 8 can be reached from a realistic net. None of the others can.
+Items 8 and 9 can be reached from a realistic net. None of the others can.
 
 ## API shape
 
@@ -85,6 +85,41 @@ Evidence: the "undecodable bytes" example in `test/Properties.hs`, whose
 expected texts are celpy's own (`string(b'\xff')`, `string(b'\xe2\x82')`,
 `string(b'\xe2\x82A')`, `string(b'a\xf0\x9f\x98')`).
 
+### 7. Time zones in the `get*` functions
+
+`getHours('America/Sao_Paulo')` and the other accessors take a time zone
+name, which cel-python hands to `pendulum.timezone`, that is to
+`zoneinfo.ZoneInfo`. Before the final audit's FA-K-1, only UTC-like names
+and the fixed-offset `Etc/GMT±N` zones were accepted, and zones with
+daylight-saving rules were refused.
+
+This is now resolved. `gen/gen-tz-tables.py` embeds the pinned reference's
+own `tzdata` package (2026.3, IANA 2026c) in `Petrus.Cel.Tz.Tables`, so an
+answer never depends on the tz database of the machine evaluating it.
+`Petrus.Cel.Tz` resolves a key as ZoneInfo does with an empty `TZPATH`:
+
+- the key validation and its three `ValueError`s;
+- the dotted package import of the key's directories (`America.Argentina/Salta`
+  and `America/__init__/Sao_Paulo` are zones too);
+- `embedded null byte`, and the `Invalid TZif file` error of the package's
+  other files (`zone.tab`, `__init__.py` ...);
+- `utc` in any casing, and the `[+-]hh:mm` fallback with CPython's messages.
+
+It reads a zone as C `zoneinfo_fromutc` does, through the transition table
+and then the TZ string rule. `astimezone` also checks the intermediate UTC
+value for overflow, as CPython does.
+
+Evidence:
+
+- the corpus groups `timestamp.zones` (24 zones × 23 instants, DST changes
+  and the TZ-string era included), `timestamp.zone_keys` and
+  `timestamp.zone_overflow`;
+- the live differential in `test/Live.hs`. On every run, with a fresh seed,
+  the reference reads every tzdata key, every directory and about 1 500 keys
+  mutated from zone names, at random instants and on both sides of
+  transitions from each zone's table and rule, about 18 800 readings in all.
+  Haskell must answer every reading exactly as cel-python did.
+
 ## Open
 
 ### 2. Object identity is not tracked
@@ -139,20 +174,6 @@ same answer on replay.
 
 Source: `Petrus.Cel.Time`.
 
-### 7. Time zones in the `get*` functions
-
-`getHours('America/Sao_Paulo')` and the other accessors take a time zone
-name. Two kinds of zone are accepted:
-
-- UTC-like IANA names;
-- the fixed-offset `Etc/GMT±N` zones.
-
-Zones with daylight-saving rules are refused. They would need the tz
-database at evaluation time, and their answer would change when that
-database changes.
-
-Source: `Petrus.Cel.Time`.
-
 ### 8. A diagnostic whose rendering raises
 
 celpy renders a `CELEvalError` raised at a tree with `tree_dump`, and that
@@ -171,3 +192,26 @@ itself, and the corpus checks it on 1 616 cases. Matching the reference
 here needs a seam that lets a diagnostic abort the call.
 
 Source: `Petrus.Cel.Value` (`excRepr`, `excReprStrict`).
+
+### 9. The reference's time zones depend on its host
+
+The reference's answer to a zone name depends on the machine it runs on:
+
+- **The host's tz database comes first.** ZoneInfo searches `TZPATH`, the
+  host's `/usr/share/zoneinfo` and its siblings, before the `tzdata`
+  package. So its answers follow the host's IANA release.
+- **File systems differ.** On a case-insensitive file system (macOS by
+  default), ZoneInfo opens `Europe/berlin` or `cet` as `Europe/Berlin` and
+  `CET`. Only the final component is affected, because imports check the
+  case of directories.
+- **Imports leave files behind.** Once the `tzdata` packages have been
+  imported, their `__pycache__` directories exist, and
+  `Europe/__pycache__/...` names a resource that is not a zone.
+
+petrus-cel answers as the reference does with an empty `TZPATH` on a
+case-sensitive file system with no `__pycache__` in `tzdata`. That is the
+pinned `tzdata` package and nothing else, the same everywhere. The
+corpus is recorded that way (`zoneinfo.reset_tzpath(to=[])`), and the live
+differential generates no case variants and no `__pycache__` keys.
+
+Source: `Petrus.Cel.Tz`.

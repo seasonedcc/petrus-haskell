@@ -1386,14 +1386,18 @@ matches text pattern = do
 timeGetter :: Text -> Value -> Maybe Value -> Either Exc Value
 timeGetter getter ts tz = case ts of
   VTimestamp dt -> do
-    offset <- case tz of
-      Nothing -> Right 0
-      Just VNone -> Right 0
+    zone <- case tz of
+      Nothing -> Right (FixedZone 0)
+      Just VNone -> Right (FixedZone 0)
       Just z
-        | not (truthy z) -> Right 0
-        | Just name <- asText z -> liftPy (timezoneOffset (valueRepr z) (Just name))
-        | otherwise -> Left (typeErr ("expected string or bytes-like object, got " <> quoted (tpName z)))
-    local <- liftPy (inOffset offset dt)
+        | not (truthy z) -> Right (FixedZone 0)
+        | Just name <- asText z -> liftPy (timezoneNamed (valueRepr z) name)
+        -- @pendulum.timezone(str(z))@ first; a zone it misses goes on to
+        -- @tz_offset_parse@, whose @re.match@ refuses anything but @str@.
+        | otherwise -> do
+            named <- liftPy (namedZone (maybe (valueStr z) pythonBytesRepr (asBytes z)))
+            maybe (Left (typeErr (patternRefusal z))) Right named
+    local <- liftPy (astimezone zone dt)
     let f = datetimeFields local
     VInt <$> case getter of
       "getDate" -> Right (fromIntegral (fieldDay f))
@@ -1424,6 +1428,9 @@ timeGetter getter ts tz = case ts of
   _ -> Left (noAttribute getter)
   where
     noAttribute g = pyExc AttributeError (quoted (tpName ts) <> " object has no attribute " <> quoted g)
+    patternRefusal z
+      | isJust (asBytes z) = "cannot use a string pattern on a bytes-like object"
+      | otherwise = "expected string or bytes-like object, got " <> quoted (tpName z)
 
 -- ---------------------------------------------------------------------------
 -- Constructors

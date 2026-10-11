@@ -58,6 +58,7 @@ import json
 import math
 import re
 import sys
+import zoneinfo
 from pathlib import Path
 
 import celpy
@@ -70,6 +71,11 @@ ROOT = Path(__file__).resolve().parent
 OUT = Path(sys.argv[1]) if __name__ == "__main__" and len(sys.argv) > 1 else ROOT / "corpus"
 
 ENV = celpy.Environment()
+
+# Time zones come from the pinned tzdata package only, never from the host's
+# tz database (which ZoneInfo would search first): petrus-cel embeds that
+# package, and the corpus must not depend on the machine that records it.
+zoneinfo.reset_tzpath(to=[])
 
 celpy.evaluation.Activation.__repr__ = lambda self: "<Activation>"
 
@@ -703,6 +709,55 @@ add("errors.rendering", [
     "duration('1s').getHours('UTC')", "duration('1s').getMinutes(null)",
     "timestamp('2020/13/01')", "timestamp('2020/02/30')", "timestamp('2021/02/29')", "timestamp('2020/01/01 24:00')",
     "timestamp('2020/01/01 23:60')", "timestamp('2020/01/01 23:59:60')", "timestamp('0000')", "timestamp('0000/01/01')",
+])
+
+# Time zones: every getter in IANA zones, at instants before the first
+# transition, inside the transition table, at and around DST changes, and
+# past the last transition (the TZ string rule).
+ZONES = [
+    "America/Sao_Paulo", "Europe/Berlin", "America/New_York", "Australia/Lord_Howe", "Antarctica/Troll",
+    "America/Santiago", "Africa/Casablanca", "Pacific/Apia", "Europe/Dublin", "Asia/Kolkata", "Factory",
+    "EST5EDT", "Etc/GMT+5", "Asia/Kathmandu", "Pacific/Chatham", "America/St_Johns", "America/Nuuk",
+    "Asia/Gaza", "Europe/London", "US/Pacific", "Australia/Adelaide", "Pacific/Kiritimati", "UTC", "Etc/UTC",
+]
+INSTANTS = [
+    "0001-01-01T12:00:00Z", "1850-06-01T00:00:00Z", "1900-01-01T00:00:00Z", "1970-01-01T00:00:00Z",
+    "2024-01-15T12:00:00Z", "2024-07-01T15:00:00Z", "2024-03-10T06:59:59.999Z", "2024-03-10T07:00:00Z",
+    "2024-11-03T05:59:59Z", "2024-11-03T06:00:00Z", "2024-03-31T00:59:59Z", "2024-03-31T01:00:00Z",
+    "2024-10-27T00:59:59Z", "2024-10-27T01:00:00Z", "2050-03-13T06:59:59Z", "2050-03-13T07:00:00Z",
+    "2050-03-27T00:59:59Z", "2050-03-27T01:00:00Z", "2050-10-30T00:59:59Z", "2050-10-30T01:00:00Z",
+    "2100-07-01T00:00:00Z", "2400-02-29T12:00:00Z", "9999-12-31T12:00:00Z",
+]
+GETTERS = "[{t}.getFullYear({z}), {t}.getMonth({z}), {t}.getDate({z}), {t}.getDayOfWeek({z}), " \
+    "{t}.getDayOfYear({z}), {t}.getHours({z}), {t}.getMinutes({z}), {t}.getSeconds({z})]"
+add("timestamp.zones", [
+    GETTERS.format(t=f"timestamp('{instant}')", z=f"'{zone}'") for zone in ZONES for instant in INSTANTS
+])
+# Zone keys as ZoneInfo resolves them from the tzdata package: aliases,
+# validation, dotted package imports, resources that are not zones, and the
+# offset fallback. (Keys differing from a zone only in case are left out:
+# on a case-insensitive file system the reference finds them.)
+add("timestamp.zone_keys", [f"timestamp('2024-07-01T15:00:00Z').getHours({z})" for z in [
+    "'utc'", "'uTc'", "'zone.tab'", "'iso3166.tab'", "'tzdata.zi'", "'leapseconds'", "'__init__.py'",
+    "'America/__init__.py'", "'America'", "'America/'", "'/etc'", "'../x'", "'../_/x'", "'America/../Europe/Berlin'",
+    "'./UTC'", "'Europe//Berlin'", "'europe/berlin'", "'a<U>0000b'", "'America/Sao_Paulo<U>0000'",
+    "'a<U>0000/UTC'", "'<U>d800'", "'<U>dcff'", "'<U>dcff<U>0000'", "'<U>d800<U>0000'", "'Factory'",
+    "'+05:30'", "'05:30'", "'-5:00'", "'+24:00'", "'-24:00'", "'+99:59'", "'-30:00'", "'posixrules'", "'UTC '", "'UTC\\n'", "'America.Argentina/Buenos_Aires'",
+    "'America./Sao_Paulo'", "'.America/Sao_Paulo'", "'America..Argentina/Salta'", "'__init__/UTC'",
+    "'America/__init__/Sao_Paulo'", "'America.__init__/Sao_Paulo'", "'America/__init__.Sao_Paulo/X'",
+    "'__init__.America/Sao_Paulo'", "'.'", "'..'", "'x/.'", "'Etc'", "'Etc/'", "'America/Argentina'",
+    "'zone.tab/x'", "'__init__'", "'America/__init__'", "'x<U>005cy'", "'Amer ica/X'",
+    "b'UTC'", "b'a/../b'", "b'/x'", "['a/../b']", "{'a/../b': 1}", "['UTC']", "1", "1.5", "true",
+    "[b'a/../b', 1u, 2.5, null, true]", "[timestamp('2024-07-01T15:00:00Z'), duration('1s'), 'a/../b']",
+    "['<U>00e9/../b']", "[int, 'a//b']",
+]])
+add("timestamp.zone_overflow", [
+    "timestamp('0001-01-01T01:00:00+05:00').getHours('+06:00')", "timestamp('0001-01-01T01:00:00+05:00').getHours('Asia/Dhaka')",
+    "timestamp('0001-01-01T01:00:00+05:00').getHours('UTC')", "timestamp('0001-01-01T01:00:00+05:00').getHours()",
+    "timestamp('0001-01-01T00:00:00Z').getHours('America/Sao_Paulo')", "timestamp('0001-01-01T05:00:00Z').getHours('America/Sao_Paulo')",
+    "timestamp('9999-12-31T23:00:00Z').getHours('Asia/Tokyo')", "timestamp('9999-12-31T23:00:00Z').getHours('UTC')",
+    "timestamp('9999-12-31T23:00:00Z').getHours('utc')", "timestamp('9999-12-31T23:00:00Z').getHours('Etc/UTC')",
+    "timestamp('9999-12-31T23:00:00-05:00').getHours('Etc/UTC')", "timestamp('9999-12-31T20:00:00-05:00').getHours('Etc/GMT-1')",
 ])
 
 # ---------------------------------------------------------------------------
