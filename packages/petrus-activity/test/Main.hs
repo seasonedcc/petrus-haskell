@@ -36,7 +36,11 @@ main = hspec $ do
         compare (IntNumber a) (FloatNumber b) == compare (toRational a) (toRational b)
 
   describe "ExecutionPolicy" $ do
-    it "accepts the defaults" $ policyWith id `shouldBe` Right defaultExecutionPolicy
+    it "accepts the defaults" $ do
+      policyWith id `shouldBe` Right defaultExecutionPolicy
+      -- One frozen invocation is one Attempt unless the policy opts in
+      -- (spec/handler-contract.md, SPEC.md of petrus-engine).
+      (policyFields defaultExecutionPolicy).attempts `shouldBe` 1
     it "refuses every invalid field with the reference message" $ do
       policyWith (\f -> f {attempts = 0})
         `shouldBe` Left "ExecutionPolicy requires attempts >= 1, got 0: an invocation that may never execute is a wedge, not a policy"

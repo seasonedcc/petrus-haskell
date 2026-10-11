@@ -19,9 +19,10 @@ It also reads the ledgers of petrus-engine-absurd (all of
 current pin it reports 460 in-scope upstream tests (439 distinct: some tests
 are ported both over Local and over Absurd custody), all accounted for.
 
-`cabal test petrus-engine` runs 215 examples, with 0 failures and 0 pending.
+`cabal test petrus-engine` runs 220 examples, with 0 failures and 0 pending.
 That count includes 3 Engine interop examples against the reference process,
-and 3 Worker topology pairings with reference Engines and Workers.
+and 3 Worker topology pairings with reference Engines and Workers, and 5
+checks of spec obligations no upstream test covers (below).
 They provision the reference through `scripts/upstream-python` and fail,
 never go pending, when it cannot be provisioned.
 
@@ -196,6 +197,16 @@ module graph, not a Python import.
 | engine/test_sqlite_engine.py (5), engine/test_postgres_engine.py (12) | the durable provider compositions. They plug into `Petrus.Engine.Provider`. |
 
 ## Beyond upstream
+
+- **The specification's Engine obligations** ([SPEC.md](SPEC.md)). Every
+  normative statement of `spec/firing-semantics.md` §Scheduling, the
+  lifecycle-scope and Activity sections of `spec/event-history.md`, and the
+  activity/projection split of `spec/handler-contract.md` is mapped to the
+  examples that check it. Five statements had no check through an Engine,
+  and `SpecObligationsSpec` (5 examples) adds them: the immature wall-clock
+  re-choice, a retry that stays in Dispatch, an opted-in failure projection
+  that reloads without another Attempt, scope provenance that leaves
+  correlation alone, and no quarantine reprocessing operation.
 
 - **The DST worlds' Local Dispatch consumer shape** (LocalDispatchSpec, 1
   example). This is the shape `tests/dst/retry_world.py` and

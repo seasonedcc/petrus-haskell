@@ -9,6 +9,7 @@ import Petrus.Engine.EngineSpec qualified as Engine
 import Petrus.Engine.ExecutionSpec qualified as Execution
 import Petrus.Engine.InteropSpec qualified as Interop
 import Petrus.Engine.LocalDispatchSpec qualified as LocalDispatch
+import Petrus.Engine.SpecObligationsSpec qualified as SpecObligations
 import Petrus.Engine.WorkerTopologySpec qualified as WorkerTopology
 import Petrus.Motus.Worker.Cli (noPlugins, workerMain)
 import System.Environment (lookupEnv)
@@ -35,3 +36,4 @@ suite = hspec $ do
   Interop.spec
   WorkerTopology.spec
   Boundary.spec
+  SpecObligations.spec

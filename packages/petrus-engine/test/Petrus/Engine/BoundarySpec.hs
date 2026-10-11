@@ -4,7 +4,7 @@
 -- dependency graph; an optional extra becomes a package that must be
 -- depended on explicitly; the empty @petrus@ project namespace becomes the
 -- absence of a root @Petrus@ module). No server needed.
-module Petrus.Engine.BoundarySpec (spec) where
+module Petrus.Engine.BoundarySpec (spec, exportedNames) where
 
 import Control.Monad (forM, forM_)
 import Data.Char (isAlphaNum, isSpace)
