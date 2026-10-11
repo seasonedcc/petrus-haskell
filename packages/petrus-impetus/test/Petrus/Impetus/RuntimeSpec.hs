@@ -9,6 +9,7 @@ module Petrus.Impetus.RuntimeSpec (spec) where
 
 import Data.IORef
 import Petrus.Impetus.History
+import Petrus.Json (Json (..))
 import Petrus.Impetus.HistoryStore (HistoryStore (..), inMemoryHistoryStore)
 import Petrus.Impetus.Instance
 import Petrus.Impetus.InstanceSupport
@@ -82,3 +83,23 @@ spec = describe "Instance runtime" $ do
       _ <- wake inst 5 >>= expectRight
       _ <- step inst Nothing >>= expectRight
       readIORef folds `shouldReturn` 0
+
+  -- Beyond upstream (spec/net-schema.md, Places: "A typed place's initial
+  -- marking MUST contain only its declared color; validation rejects a
+  -- mismatch before recording initial History"). Upstream checks it only
+  -- through Engine load; the messages are the reference's.
+  describe "typed-place initial marking" $ do
+    let typed = netOf [coloredPlace pa "Order", place pb] [transition tt] [arc pa tt, arc tt pb]
+        construct tokens = do
+          (history, _) <- countingHistory
+          result <- newInstance typed defaultInstanceConfig {initialMarking = markingFromList [(pa, tokens)], historyStore = Just history}
+          recorded <- length <$> history.snapshot
+          pure (either (Left . renderInstanceError) (const (Right ())) result, recorded)
+    it "refuses a token of another color before recording anything" $ do
+      (result, recorded) <- construct [tokD "Order" (Int 1), tokD "Wrong" (Object [("x", Int 1)])]
+      result `shouldFailWith` "initial marking for place a requires color 'Order', got 'Wrong' on Token('Wrong', {'x': 1})"
+      recorded `shouldBe` 0
+    it "refuses a black token before recording anything" $ do
+      (result, recorded) <- construct [black]
+      result `shouldFailWith` "initial marking for place a requires color 'Order', got None on Token.black()"
+      recorded `shouldBe` 0

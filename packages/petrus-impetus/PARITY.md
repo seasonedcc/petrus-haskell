@@ -33,6 +33,11 @@ Per-test ledgers, one row per upstream test function:
 The remaining files are summarised in the table below, with the details in the
 spec modules' comments.
 
+The upstream tests are one view of parity. The other is the specification:
+[`spec/impetus-conformance.md`](../../spec/impetus-conformance.md) maps each
+of the 109 testable obligations of the six core `spec/` documents to the
+example that checks it.
+
 ## Summary by upstream file
 
 Counts are upstream test functions. A parametrized test counts once; its
@@ -166,6 +171,14 @@ with no argument or one string (`differential/failure_text_corpus.json`,
 
 ## Beyond upstream
 
+- **Specification obligations upstream does not test.** Two examples were
+  added to give these obligations a check (`spec/impetus-conformance.md`,
+  I-005 and I-012). Their messages were captured from the reference.
+  - `RuntimeSpec`, "typed-place initial marking": a token of another color,
+    or a black token, in a typed place's initial marking is refused before
+    any History record. Upstream checks this only through Engine load.
+  - `SchemaSpec`, "rejects an arc between two transitions": upstream tests
+    only the place-to-place case.
 - **Byte identity.**
   - Every `spec/` fixture is loaded. The valid ones re-serialize
     byte-identically, and the invalid ones are refused with the reference's

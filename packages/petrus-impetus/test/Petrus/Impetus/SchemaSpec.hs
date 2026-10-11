@@ -88,6 +88,12 @@ spec = describe "Petrinet.Schema" $ do
     it "rejects an arc between two places" $
       mkNet (netSpec [place (np "a"), place (np "b")] [] [arc (np "a") (np "b")])
         `shouldFailWith` "arc must connect a place and a transition: a -> b"
+    -- Beyond upstream (spec/net-schema.md, Arcs: "validation MUST reject
+    -- place -> place and transition -> transition"); upstream tests only the
+    -- first. The message is the reference's.
+    it "rejects an arc between two transitions" $
+      mkNet (netSpec [place (np "p")] [transition (np "a"), transition (np "b")] [arc (np "a") (np "b")])
+        `shouldFailWith` "arc must connect a place and a transition: a -> b"
     it "resolves a place color onto untyped incident arcs" $ do
       let net = netOf [coloredPlace (np "p") "Order"] [transition (np "t")] [arc (np "p") (np "t")]
       map (.color) (netArcs net) `shouldBe` [Just "Order"]
