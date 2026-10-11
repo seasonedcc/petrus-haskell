@@ -119,6 +119,7 @@ module Petrus.Agenticus.Runtime.Claude
   ) where
 
 import Control.Concurrent (forkIO, killThread)
+import Control.Concurrent.Async (async, cancel)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception
@@ -1112,7 +1113,7 @@ sidecarSdk config = ClaudeSdk $ \request -> do
               (_, Just (Int k)) -> void (forkIO (serveCall k frame))
               _ -> pure ()
             dispatch
-  dispatcher <- forkIO (dispatch `finally` failAll)
+  dispatcher <- async (dispatch `finally` failAll)
   let call :: Text -> [(Text, Json)] -> IO Json
       call op fields = do
         n <- atomicModifyIORef' counter (\i -> (i + 1, i + 1))
@@ -1163,7 +1164,7 @@ sidecarSdk config = ClaudeSdk $ \request -> do
       , disconnect = void (call "disconnect" [])
       , release = do
           clean <- channelClose s config.grace
-          killThread dispatcher
+          cancel dispatcher
           pure clean
       }
 

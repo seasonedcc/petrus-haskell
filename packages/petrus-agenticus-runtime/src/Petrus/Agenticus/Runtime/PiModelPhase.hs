@@ -59,7 +59,7 @@ module Petrus.Agenticus.Runtime.PiModelPhase
   , priorCalls
   ) where
 
-import Control.Concurrent (ThreadId, forkIO, killThread)
+import Control.Concurrent.Async (Async, async, cancel)
 import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad (unless, void, when)
@@ -363,7 +363,7 @@ piModelPhaseHelperPath = getDataFileName "data/pi_model_phase_helper.mjs" >>= ma
 -- | @_SubprocessClient@: one helper process in its own session.
 data PhaseSubprocessClient = PhaseSubprocessClient
   { helper :: Helper
-  , writer :: IORef (Maybe ThreadId)
+  , writer :: IORef (Maybe (Async ()))
   }
 
 newPhaseSubprocessClient :: FilePath -> FilePath -> FilePath -> FilePath -> IO PhaseSubprocessClient
@@ -390,7 +390,7 @@ runPhase c frame wall heartbeat = do
   when (B.length raw > maxFrameBytes) $ protocol "frame-overflow"
   written <- newTVarIO False
   writerThread <-
-    forkIO $
+    async $
       ((B.hPut c.helper.input raw >> hFlush c.helper.input) `catch` \(_ :: IOException) -> pure ())
         `finally` (closeInput c.helper >> atomically (writeTVar written True))
   writeIORef c.writer (Just writerThread)
@@ -462,7 +462,7 @@ decodeMember value bound label = case value of
 
 stopWriter :: PhaseSubprocessClient -> IO ()
 stopWriter c = do
-  readIORef c.writer >>= mapM_ killThread
+  readIORef c.writer >>= mapM_ cancel
   closeInput c.helper
 
 -- | Kill the helper's process group and report whether it and its stderr

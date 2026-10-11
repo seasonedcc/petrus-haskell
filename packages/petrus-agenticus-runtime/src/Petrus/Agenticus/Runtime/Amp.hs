@@ -96,7 +96,8 @@ module Petrus.Agenticus.Runtime.Amp
   , admitEvents
   ) where
 
-import Control.Concurrent (ThreadId, forkIO, forkIOWithUnmask, killThread, threadDelay, throwTo)
+import Control.Concurrent (ThreadId, forkIO, forkIOWithUnmask, threadDelay, throwTo)
+import Control.Concurrent.Async (withAsync)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception
@@ -857,8 +858,9 @@ runBody o = do
         atomically (writeTVar o.consumer (Just thread))
       requested <- Lifecycle.cancelRequested o.lifecycle
       when requested (interrupt o Cancelled)
-      timer <- forkIO (threadDelay (micros remaining) >> interrupt o DeadlineExceeded)
-      consumed <- takeMVar done `finally` (killThread timer >> atomically (writeTVar o.consumer Nothing))
+      consumed <-
+        withAsync (threadDelay (micros remaining) >> interrupt o DeadlineExceeded) (const (takeMVar done))
+          `finally` atomically (writeTVar o.consumer Nothing)
       case consumed of
         Right candidate -> do
           atomically (writeTVar o.providerTerminal candidate.providerTerminal)

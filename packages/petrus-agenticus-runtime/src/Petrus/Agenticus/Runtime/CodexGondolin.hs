@@ -38,10 +38,10 @@ module Petrus.Agenticus.Runtime.CodexGondolin
   , codexGondolinActivityClientWith
   ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent.Async (Async, async, waitCatch)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
-import Control.Exception (IOException, bracket, catch, finally, fromException, onException, throwIO, try)
+import Control.Exception (IOException, bracket, catch, finally, fromException, mask_, onException, throwIO, try)
 import Control.Monad (forM_, unless, void, when)
 import Data.Bits (xor, (.|.))
 import Data.ByteString (ByteString)
@@ -436,7 +436,7 @@ data CodexGondolinRuntimeService = CodexGondolinRuntimeService
   , stop :: TVar Bool
   , executionLock :: MVar ()
   , server :: IORef (Maybe Socket.Socket)
-  , serving :: IORef (Maybe (TVar Bool))
+  , serving :: IORef (Maybe (Async ()))
   , lockFile :: IORef (Maybe Fd)
   , pid :: ProcessID
   }
@@ -658,9 +658,7 @@ startCodexGondolinRuntimeService s = do
     )
     `onException` Socket.close socket
   writeIORef s.server (Just socket)
-  done <- newTVarIO False
-  writeIORef s.serving (Just done)
-  void (forkIO (serve s socket `finally` atomically (writeTVar done True)))
+  mask_ (async (serve s socket) >>= writeIORef s.serving . Just)
 
 -- | @close()@: stop serving, wait for the in-flight request, remove the
 -- endpoint, and release the fence.
@@ -672,8 +670,8 @@ closeCodexGondolinRuntimeService s = do
   writeIORef s.server Nothing
   readIORef s.serving >>= \case
     Nothing -> pure ()
-    Just done -> do
-      finished <- timeout (round (closeTimeout * 1000000)) (atomically (readTVar done >>= check))
+    Just serving -> do
+      finished <- timeout (round (closeTimeout * 1000000)) (waitCatch serving)
       when (isNothing finished) $ serviceError "runtime-service-quiescence-failed"
   existing <- try (Files.getSymbolicLinkStatus s.endpoint)
   case existing of

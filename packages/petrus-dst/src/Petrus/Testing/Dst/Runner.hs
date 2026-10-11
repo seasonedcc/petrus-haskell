@@ -67,8 +67,8 @@ module Petrus.Testing.Dst.Runner
   ) where
 
 import Control.Concurrent (threadDelay)
-import Control.Exception (SomeException, bracket, catch, finally, throwIO, try)
-import Control.Monad (unless, when)
+import Control.Exception (SomeException, bracket, catch, finally, mask, onException, throwIO, try)
+import Control.Monad (unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
@@ -831,29 +831,35 @@ runProcessScenario command spec = case pProcessRunSpec [] (toJson spec) of
             progressPath = root </> "progress.jsonl"
         BS.writeFile specPath encoded
         devNull <- openFile "/dev/null" ReadWriteMode
-        (_, _, _, handle) <-
-          createProcess
-            (proc command.executable (command.arguments ++ [specPath, progressPath]))
-              { std_in = UseHandle devNull
-              , std_out = UseHandle devNull
-              , std_err = UseHandle devNull
-              , new_session = True
-              }
-        exited <- waitFor handle (fromInteger spec.budget.wallClockMs)
-        (code, termination, timedOut) <- case exited of
-          Just code -> pure (code, Exited, False)
-          Nothing -> do
-            signalGroup handle sigTERM
-            graceful <- waitFor handle (fromInteger spec.budget.terminationGraceMs)
-            case graceful of
-              Just code -> pure (code, Terminated, True)
-              Nothing -> do
-                signalGroup handle sigKILL
-                code <- waitForProcess handle
-                pure (code, Killed, True)
+        -- An interrupted caller (an hspec timeout, 'cancel') kills and reaps
+        -- the child's group before the bracket removes its directory.
+        (code, termination, timedOut) <- mask $ \restore -> do
+          (_, _, _, handle) <-
+            createProcess
+              (proc command.executable (command.arguments ++ [specPath, progressPath]))
+                { std_in = UseHandle devNull
+                , std_out = UseHandle devNull
+                , std_err = UseHandle devNull
+                , new_session = True
+                }
+          restore (supervise handle)
+            `onException` (signalGroup handle sigKILL >> void (waitForProcess handle))
         exists <- doesFileExist progressPath
         bytes <- if exists then Just <$> BS.readFile progressPath else pure Nothing
         pure (processResult spec (exitNumber code) termination timedOut bytes)
+    supervise handle = do
+      exited <- waitFor handle (fromInteger spec.budget.wallClockMs)
+      case exited of
+        Just code -> pure (code, Exited, False)
+        Nothing -> do
+          signalGroup handle sigTERM
+          graceful <- waitFor handle (fromInteger spec.budget.terminationGraceMs)
+          case graceful of
+            Just code -> pure (code, Terminated, True)
+            Nothing -> do
+              signalGroup handle sigKILL
+              code <- waitForProcess handle
+              pure (code, Killed, True)
 
 -- | Wait up to the given milliseconds against a monotonic deadline.
 waitFor :: ProcessHandle -> Double -> IO (Maybe ExitCode)
