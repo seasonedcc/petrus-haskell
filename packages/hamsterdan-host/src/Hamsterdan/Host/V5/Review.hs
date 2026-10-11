@@ -31,6 +31,7 @@ import Control.Monad (unless, when)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Text.IO qualified as TIO
 import Hamsterdan.Agents.Protocol
   ( AgentCleanupCategory (..)
   , AgentProtocolError (..)
@@ -63,6 +64,7 @@ import Hamsterdan.Readiness.NetV5.Gating (Variant, variantOf)
 import Petrus.Impetus.Instance.FailureText (PythonException (..))
 import Petrus.Json (Json (..))
 import System.FilePath (takeDirectory)
+import System.IO (stderr)
 
 -- ---------------------------------------------------------------------------
 -- Request custody
@@ -300,7 +302,23 @@ reviewAgent g work = do
                     if e.canceled && maybe True (const False) e.cleanupCategory
                       then g.unstagedCustody
                       else pure Nothing
-                  pure (maybe (unable (category e)) deferred late)
+                  case late of
+                    Just blocker -> pure (deferred blocker)
+                    Nothing -> do
+                      let c = category e
+                      -- @LOG.warning(...)@: no handler is configured for the
+                      -- host's loggers, so logging's last resort writes the
+                      -- bare message to stderr.
+                      TIO.hPutStrLn stderr $
+                        "V5 review agent unavailable category="
+                          <> (case dump c of String t -> t; other -> T.pack (show other))
+                          <> " incarnation="
+                          <> T.pack (show work.incarnation)
+                          <> " head="
+                          <> work.head
+                          <> " operation="
+                          <> work.operation
+                      pure (unable c)
                 Right result -> do
                   late <- g.unstagedCustody
                   case late of
