@@ -7,8 +7,9 @@
 --   @NullHandler@); and under 'capture' (a recorder).
 -- * __chain__: 50 tokens through 20 passthrough transitions (1 000
 --   firings), driven by 'run' on an Instance and by one-action
---   'Engine.advance' turns, with telemetry off, facts with no route, and
---   facts with a null route.
+--   'Engine.advance' turns, with telemetry off, facts with no route, facts
+--   with a null route, and profile (the Engine's gauges after every applied
+--   action) with no route and with a null route.
 -- * __line__: where the routed emit's time goes: 'telemetryLine' alone
 --   on the full 9-field payload, and 'wallClockMs' alone (1 000 each).
 --
@@ -69,6 +70,8 @@ configurations =
   [ Configuration "off" Off Nothing
   , Configuration "facts-no-route" Facts Nothing
   , Configuration "facts-null-route" Facts (Just nullRoute)
+  , Configuration "profile-no-route" Profile Nothing
+  , Configuration "profile-null-route" Profile (Just nullRoute)
   ]
 
 configured :: Configuration -> IO a -> IO a
@@ -113,7 +116,7 @@ main = do
   defaultMain . map (localOption WallTime) $
     [ bgroup
         "emit-x1000"
-        ( [bench name (whnfIO (configured c emitBatch)) | c@(Configuration name _ _) <- configurations]
+        ( [bench name (whnfIO (configured c emitBatch)) | c@(Configuration name _ _) <- take 3 configurations]
             ++ [bench "recorder" (whnfIO (capture Nothing (Just Facts) (const emitBatch)))]
         )
     , -- Where the routed emit's time goes: formatting the line alone, and

@@ -49,7 +49,7 @@ Pinned reference: `upstream/petrus` (`src/petrus/telemetry.py`).
    The reference's `JsonLogger` runs `json.dumps` even when no handler is
    configured, and the stdlib logger then drops the INFO record. The
    Haskell default therefore costs 0.06 µs per emit, against the
-   reference's 7.5 µs ([bench](../petrus-telemetry-instrumentation/bench/RESULTS.md)).
+   reference's 2.6 µs ([bench](../petrus-telemetry-instrumentation/bench/RESULTS.md)).
    A routed line is identical on both sides.
 7. **There is no `default=str`.** Values are already `Json`;
    `exceptionJson` stringifies exceptions.

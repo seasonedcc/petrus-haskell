@@ -16,8 +16,10 @@ Two workloads, each timed as the median of several runs after one warm-up:
   ``TelemetryRecorder``). Reported per emit.
 - **chain**: 50 tokens through 20 passthrough transitions (1 000 firings),
   driven by ``Instance.run()`` and by one-action ``Engine.advance()`` turns,
-  with telemetry ``off``, ``facts`` with no handler, and ``facts`` with a
-  ``NullHandler``. The overhead is relative to ``off``.
+  with telemetry ``off``, ``facts`` with no handler, ``facts`` with a
+  ``NullHandler``, and ``profile`` (the Engine's gauges after every applied
+  action) with no handler and with a ``NullHandler``. The overhead is
+  relative to ``off``.
 - **line**: ``JsonLogger``'s ``json.dumps`` alone on the full 9-field
   payload, and the ``time.time()`` read alone.
 
@@ -149,7 +151,10 @@ CONFIGURATIONS = {
     "off": Configuration("off", False),
     "facts-no-handler": Configuration("facts", False),
     "facts-null-handler": Configuration("facts", True),
+    "profile-no-handler": Configuration("profile", False),
+    "profile-null-handler": Configuration("profile", True),
 }
+EMIT_CONFIGURATIONS = ("off", "facts-no-handler", "facts-null-handler")
 
 
 def pinned_line() -> str:
@@ -177,8 +182,8 @@ def pinned_line() -> str:
 def main() -> None:
     print(f"pinned line: {pinned_line()}")
     print()
-    for name, configuration in CONFIGURATIONS.items():
-        with configuration:
+    for name in EMIT_CONFIGURATIONS:
+        with CONFIGURATIONS[name]:
             ms, _ = median_ms(emit_batch, 50)
         print(f"emit/{name:24} {ms * 1000 / EMITS:10.3f} us per emit")
         sys.stdout.flush()
