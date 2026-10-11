@@ -19,6 +19,7 @@ module Petrus.Impetus.History.Codec
   , encodeRecord
   , decodeRecord
   , encodeHistory
+  , historyLoads
   ) where
 
 import Control.Monad (forM_, unless)
@@ -34,6 +35,15 @@ import Petrus.Impetus.Petrinet.Marking (Token (..))
 import Petrus.Impetus.Petrinet.Schema (Instant, NetPath, netPath)
 import Petrus.Impetus.Scope
 import Petrus.Json
+
+-- | How the durable History stores read a stored record: CPython's
+-- @json.loads@, lone surrogates included. The reference writes token data,
+-- activity payloads and texts with @json.dumps@, which admits a @str@
+-- holding a lone surrogate (@"\\ud800"@) and escapes it; such a string is
+-- read back as a WTF-8 'Text' ("Petrus.Json.Wtf8") and written again byte
+-- for byte, so a History either implementation wrote loads in the other.
+historyLoads :: ParseOptions
+historyLoads = pythonLoads {loneSurrogates = KeepLoneSurrogates}
 
 -- | The only schema this kernel writes and reads.
 schemaVersion :: Integer

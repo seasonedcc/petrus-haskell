@@ -58,6 +58,7 @@ import Numeric (showHex)
 import Petrus.Json.Float (floatReprBuilder, maxFloatReprLength, pythonFloatRepr, writeFloatRepr)
 import Petrus.Json.Limits (defaultNestingLimit, intReprDigitsError, maxIntStrDigits)
 import Petrus.Json.Value
+import Petrus.Json.Wtf8 (unsafeTextFromBytes)
 import System.IO.Unsafe (unsafeDupablePerformIO)
 
 -- | The subset of @json.dumps@ keyword arguments Petrus uses.
@@ -146,9 +147,12 @@ dumps options value =
   unsafeDupablePerformIO $
     either (\(Refused problem) -> Left problem) Right <$> try (direct (layoutOf options) value)
 
--- | Serialize to text.
+-- | Serialize to text: CPython's @json.dumps@ @str@. The bytes 'dumps'
+-- writes are UTF-8 by construction, or WTF-8 where a string holds a lone
+-- surrogate and 'ensureAscii' is off ("Petrus.Json.Wtf8"), so they become
+-- the 'Text' as they are.
 dumpsText :: EncodeOptions -> Json -> Either EncodeError Text
-dumpsText options value = TE.decodeUtf8 <$> dumps options value
+dumpsText options value = unsafeTextFromBytes <$> dumps options value
 
 -- | A refusal met by the writer, which abandons the output ('dumps').
 newtype Refused = Refused EncodeError

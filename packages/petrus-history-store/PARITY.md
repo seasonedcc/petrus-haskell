@@ -13,17 +13,17 @@ that every in-scope upstream test is accounted for, run:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-`cabal test petrus-history-store` runs 124 examples, with 0 failures and 0
-pending. The interop examples are pending only when
-`upstream/petrus/.venv` is not synced. By file:
+`cabal test petrus-history-store` runs 132 examples, with 0 failures and 0
+pending. The interop examples fail, never skip, when `upstream/petrus/.venv`
+cannot be provisioned. By file:
 
 | spec | examples |
 | --- | ---: |
 | JsonlSpec (JSONL, upstream and beyond) | 26 |
 | BackendContractSpec (jsonl and sqlite, 13 each) | 26 |
-| InteropSpec (JSONL interop) | 4 |
+| InteropSpec (JSONL interop) | 8 |
 | SqliteSpec (`test_sqlite_history.py` 14, beyond upstream 5) | 19 |
-| SqliteInteropSpec (SQLite interop) | 49 |
+| SqliteInteropSpec (SQLite interop) | 53 |
 
 ## Ledger
 
@@ -73,7 +73,7 @@ The `reopen` fixture's sqlite parameter runs the same 13 examples through
 
 ## Beyond upstream
 
-- **Interop with the reference process** (InteropSpec, 4 examples). These run
+- **Interop with the reference process** (InteropSpec, 8 examples). These run
   `test/interop/jsonl_interop.py` under `upstream/petrus/.venv`.
   - A file the reference wrote loads value-equal here and re-encodes
     byte-identically.
@@ -82,6 +82,14 @@ The `reopen` fixture's sqlite parameter runs the same 13 examples through
   - An Instance the reference began resumes here, and the reference reads
     the result.
   - The same holds in the other direction.
+  - Lone surrogates (4 examples): the reference's `json.dumps` writes a `str`
+    holding one as `"\ud800"`, in token data, a member name, a delivery
+    identity, an Activity result and a failure text. Both stores read
+    with `historyLoads`, which keeps them as WTF-8 `Text` (petrus-json
+    DIVERGENCES.md), so such a file loads value-equal here and re-encodes
+    byte-identically, a file written here loads value-equal in the
+    reference, and an Instance begun on either side with such token data
+    resumes on the other.
 
   The Engine suite adds whole-Engine JSONL interop: identical bytes, plus
   cross-process crash and resume in both directions.
@@ -108,10 +116,12 @@ The `reopen` fixture's sqlite parameter runs the same 13 examples through
     stay dense;
   - a conflict no stored row explains is the `RuntimeError` case;
   - the exotic record's payload is the compact ASCII spelling.
-- **Interop with the reference process** (SqliteInteropSpec, 49 examples).
+- **Interop with the reference process** (SqliteInteropSpec, 53 examples).
   These run `test/interop/sqlite_interop.py` under `upstream/petrus/.venv`.
   - Every record category, both ways: rows written by one side load
     value-equal in the other, with byte-identical payloads.
+  - Lone surrogates, both ways (4 examples), as for JSONL: records and
+    Instances whose strings hold them, with byte-identical payloads.
   - Fresh files created by each side dump identically: DDL text in
     `sqlite_master`, schema rows, and event rows apart from `recorded_at`.
   - Interleaved appends from both sides to one file stay dense and agree.

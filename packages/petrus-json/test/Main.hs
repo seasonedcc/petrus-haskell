@@ -11,6 +11,7 @@ import Petrus.Json
 import Petrus.Json.CPythonDifferentialSpec qualified as CPythonDifferentialSpec
 import Petrus.Json.FloatReprSpec qualified as FloatReprSpec
 import Petrus.Json.Generators
+import Petrus.Json.PythonText (pythonStrRepr)
 import Petrus.Json.PythonTextSpec qualified as PythonTextSpec
 import Petrus.Json.ReferenceParse (referenceParseJson)
 import Test.Hspec
@@ -90,8 +91,47 @@ main = hspec $ do
       strict "NaN" `shouldSatisfy` isLeft
     it "rejects malformed numbers" $
       mapM_ (\s -> parse s `shouldSatisfy` isLeft) ["01", "1.", ".5", "+1", "1e", "-"]
-    it "rejects lone surrogates" $
-      parse "\"\\ud800\"" `shouldSatisfy` isLeft
+    it "rejects lone surrogates by default" $
+      parse "\"\\ud800\"" `shouldBe` Left "JSON strings must contain Unicode scalar values"
+    describe "lone surrogates kept (KeepLoneSurrogates, WTF-8)" $ do
+      let keep = parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates}
+          ascii = either (error . show) id . dumps defaultDumps
+          raw = either (error . show) id . dumps defaultDumps {ensureAscii = False}
+      it "keeps a lone surrogate as one WTF-8 code point" $ do
+        keep "\"\\ud800\"" `shouldBe` Right (String (surrogateText 0xD800))
+        fmap (\case String s -> (T.length s, T.unpack s); _ -> (0, "")) (keep "\"a\\ud800b\"") `shouldBe` Right (3, "a\xD800\&b")
+        fmap (\case String s -> TE.encodeUtf8 s; _ -> "") (keep "\"\\udfff\"") `shouldBe` Right "\xED\xBF\xBF"
+      it "still pairs surrogates and reads a following escape afresh" $ do
+        keep "\"\\ud83d\\ude00\"" `shouldBe` Right (String "\x1F600")
+        keep "\"\\udc00\\ud800\"" `shouldBe` Right (String (fromCodePoints "\xDC00\xD800"))
+        keep "\"\\ud83d\\u0041\"" `shouldBe` Right (String (fromCodePoints "\xD83D\&A"))
+        keep "\"\\ud800\\ud800\\udc00\"" `shouldBe` Right (String (fromCodePoints "\xD800\x10000"))
+      it "keeps them in keys and nested values" $
+        keep "{\"\\udc00x\": [\"a\\ud83d\", 1]}"
+          `shouldBe` Right (Object [(fromCodePoints "\xDC00x", Array [String (fromCodePoints "a\xD83D"), Int 1])])
+      it "re-encodes byte for byte: escaped under ensure_ascii, WTF-8 bytes otherwise" $ do
+        let line = "{\"\\udc00x\": [\"a\\ud83d\", \"\\ud83d\\ude00\", \"\\udfff\"]}"
+        fmap ascii (keep line) `shouldBe` Right line
+        fmap raw (keep line) `shouldBe` Right "{\"\xED\xB0\x80x\": [\"a\xED\xA0\xBD\", \"\xF0\x9F\x98\x80\", \"\xED\xBF\xBF\"]}"
+      it "orders and compares by code point, as CPython's str" $ do
+        compare (fromCodePoints "\xD7FF") (fromCodePoints "\xD800") `shouldBe` LT
+        compare (fromCodePoints "\xDFFF") (fromCodePoints "\xE000") `shouldBe` LT
+        (fromCodePoints "\xD800" == fromCodePoints "\xD801") `shouldBe` False
+        ascii (Object [("b", Int 1), (fromCodePoints "\xD800", Int 2), ("\xE000", Int 3)])
+          `shouldBe` "{\"b\": 1, \"\\ud800\": 2, \"\\ue000\": 3}"
+      it "fromWtf8 admits generalized UTF-8 only; hasLoneSurrogate finds them" $ do
+        fromWtf8 "a\xED\xA0\x80" `shouldBe` Just (fromCodePoints "a\xD800")
+        fromWtf8 "\xC0\x80" `shouldBe` Nothing
+        fromWtf8 "\xED\xA0" `shouldBe` Nothing
+        map hasLoneSurrogate [fromCodePoints "x\xDBFF", "\xD7FF\xE000\x1F600"] `shouldBe` [True, False]
+      it "dumpsText answers the str CPython's json.dumps returns" $ do
+        dumpsText compact (Array [String (fromCodePoints "a\xD800")]) `shouldBe` Right (fromCodePoints "[\"a\xD800\"]")
+        dumpsText defaultDumps (String (fromCodePoints "a\xD800")) `shouldBe` Right "\"a\\ud800\""
+      it "repr() escapes a kept surrogate as CPython does" $
+        pythonStrRepr (fromCodePoints "a\xD800\&b") `shouldBe` "'a\\ud800b'"
+      it "the default presets are unchanged" $ do
+        strict "\"\\ud800\"" `shouldSatisfy` isLeft
+        loneSurrogates pythonLoads `shouldBe` RefuseLoneSurrogates
     it "decodes surrogate pairs" $
       parse "\"\\ud83d\\ude00\"" `shouldBe` Right (String "\x1F600")
     it "rejects raw control characters" $

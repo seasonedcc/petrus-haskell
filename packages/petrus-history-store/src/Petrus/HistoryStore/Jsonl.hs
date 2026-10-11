@@ -70,11 +70,11 @@ import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as T
 import Foreign.Ptr (plusPtr)
-import Petrus.Impetus.History.Codec (encodeRecord)
+import Petrus.Impetus.History.Codec (encodeRecord, historyLoads)
 import Petrus.Impetus.History.Records (Record, recordName)
 import Petrus.Impetus.HistoryStore
 import Petrus.HistoryStore.Internal (HistoryStoreError (..), decodeStored, pythonDiagnostic)
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsBuilder, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsBuilder, parseJson)
 import Petrus.Telemetry (EventSink, emit, getLogger)
 import Petrus.Telemetry qualified as Telemetry
 import System.Directory (createDirectoryIfMissing, doesFileExist)
@@ -230,7 +230,7 @@ decodeLines path content = go 1 Seq.empty (splitLines content)
 -- refused line is rescanned with the CPython-exact scanner, for the
 -- reference's diagnostic text.
 decodeLine :: ByteString -> Bool -> Either Text Record
-decodeLine line terminated = case parseJson pythonLoads line of
+decodeLine line terminated = case parseJson historyLoads line of
   Right value -> decodeStored value
   Left fallback -> Left (pythonDiagnostic (if terminated then line <> "\n" else line) (T.pack fallback))
 

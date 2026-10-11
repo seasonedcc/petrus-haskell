@@ -9,7 +9,9 @@ configuration), in order.
     <JSON array of json.dumps keyword-argument objects>
     <one tagged value per line>
 
-answers ``json.dumps(value, **kwargs).encode()`` for every configuration, and
+answers ``json.dumps(value, **kwargs).encode("utf-8", "surrogatepass")`` for
+every configuration (a lone surrogate the encoder did not escape comes back
+as its WTF-8 bytes), and
 
     loads
     <one document per line: "x" and its bytes in hex>
@@ -47,11 +49,11 @@ def build(tag: list) -> object:
     if kind == "d":
         return struct.unpack(">d", bytes.fromhex(tag[1]))[0]
     if kind == "s":
-        return bytes.fromhex(tag[1]).decode("utf-8")
+        return bytes.fromhex(tag[1]).decode("utf-8", "surrogatepass")
     if kind == "a":
         return [build(item) for item in tag[1]]
     if kind == "o":
-        return {bytes.fromhex(key).decode("utf-8"): build(item) for key, item in tag[1]}
+        return {bytes.fromhex(key).decode("utf-8", "surrogatepass"): build(item) for key, item in tag[1]}
     raise ValueError(f"unknown tag {kind!r}")
 
 
@@ -143,7 +145,7 @@ def main() -> None:
             value = build(json.loads(line))
             for options in configurations:
                 try:
-                    out.append("=" + json.dumps(value, **options).encode("utf-8").hex())
+                    out.append("=" + json.dumps(value, **options).encode("utf-8", "surrogatepass").hex())
                 except (ValueError, TypeError, RecursionError) as error:
                     out.append(refusal(error))
     elif lines[0] == "loads":

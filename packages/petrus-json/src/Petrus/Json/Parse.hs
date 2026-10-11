@@ -1,11 +1,18 @@
 -- | A strict JSON parser with the admission knobs the Petrus wire formats need.
 --
--- 'pythonLoads' accepts exactly what CPython's @json.loads@ accepts (except
--- lone surrogate escapes, which no Petrus format admits and 'Data.Text.Text'
--- cannot hold). 'ParseOptions' then tighten admission the way the reference's
--- @object_pairs_hook@, @parse_int@, @parse_float@, and @parse_constant@ hooks
--- do: refuse duplicate members, non-finite constants, decimal or exponent
--- number spellings, or integers outside the interoperable range.
+-- 'pythonLoads' accepts what CPython's @json.loads@ accepts, except that it
+-- refuses lone surrogate escapes (@"\\ud800"@) unless the reader asks for
+-- them with 'KeepLoneSurrogates'. The Petrus formats that admit them (the
+-- event History: JSONL lines and SQLite payloads hold whatever @json.dumps@
+-- wrote for token data, activity payloads and texts) ask for them and get
+-- the string as a WTF-8 'Text' ("Petrus.Json.Wtf8") that
+-- 'Petrus.Json.Encode.dumps' writes back byte for byte; the formats that
+-- refuse them (Net definitions and documents, simulation HTTP, Pi, DST, …)
+-- keep the default refusal, whose text is the reference's own. 'ParseOptions'
+-- then tighten admission the way the reference's @object_pairs_hook@,
+-- @parse_int@, @parse_float@, and @parse_constant@ hooks do: refuse duplicate
+-- members, non-finite constants, decimal or exponent number spellings, or
+-- integers outside the interoperable range.
 --
 -- Both presets also apply CPython's resource limits (see "Petrus.Json.Limits"):
 -- integer tokens longer than 4300 digits are refused with CPython's exact
@@ -14,6 +21,7 @@
 module Petrus.Json.Parse
   ( ParseOptions (..)
   , DuplicateMembers (..)
+  , LoneSurrogates (..)
   , pythonLoads
   , strictLoads
   , parseJson
@@ -45,6 +53,7 @@ import System.IO.Unsafe (unsafeDupablePerformIO)
 import Data.Word (Word64, Word8)
 import Petrus.Json.Limits (defaultNestingLimit, intStrDigitsError, maxIntStrDigits)
 import Petrus.Json.Value
+import Petrus.Json.Wtf8 (surrogateText)
 
 -- | How to treat a repeated object member.
 data DuplicateMembers
@@ -52,6 +61,17 @@ data DuplicateMembers
     LastWins
   | -- | Refuse the document.
     RejectDuplicates
+  deriving stock (Eq, Show)
+
+-- | How to treat a lone surrogate escape (@"\\ud800"@, or a high surrogate
+-- escape not followed by a low one).
+data LoneSurrogates
+  = -- | Refuse the document: @JSON strings must contain Unicode scalar
+    -- values@ (the reference's own text where its readers refuse them).
+    RefuseLoneSurrogates
+  | -- | CPython's @json.loads@: keep the surrogate, as a WTF-8 'Text'
+    -- ("Petrus.Json.Wtf8").
+    KeepLoneSurrogates
   deriving stock (Eq, Show)
 
 -- | Admission rules beyond JSON syntax.
@@ -70,6 +90,8 @@ data ParseOptions = ParseOptions
   -- CPython's @ValueError@ text. CPython's default is 'maxIntStrDigits'.
   , maxNestingDepth :: Maybe Int
   -- ^ Refuse documents with more nested arrays and objects than this.
+  , loneSurrogates :: LoneSurrogates
+  -- ^ Refuse lone surrogate escapes, or keep them as WTF-8.
   }
   deriving stock (Eq, Show)
 
@@ -84,6 +106,7 @@ pythonLoads =
     , finiteFloatsOnly = False
     , maxIntegerDigits = Just maxIntStrDigits
     , maxNestingDepth = Just defaultNestingLimit
+    , loneSurrogates = RefuseLoneSurrogates
     }
 
 -- | Duplicate-free, finite JSON: the common strict admission of Petrus formats.
@@ -162,7 +185,7 @@ expectingMessage what i = "Expecting " ++ what ++ " at byte " ++ show i
 valueAt :: ParseOptions -> ByteString -> Int -> Int -> Step
 valueAt options input !depth i = case at input i of
   -- A failed string carries its message as the text, which 'failed' also does.
-  0x22 -> case stringAt input (i + 1) of
+  0x22 -> case stringAt (loneSurrogates options) input (i + 1) of
     TextStep text end -> Step (String text) end
   0x7B -> nested "object" (objectAt options input (depth + 1) (i + 1))
   0x5B -> nested "array" (arrayAt options input (depth + 1) (i + 1))
@@ -204,7 +227,7 @@ objectAt options input depth start = case at input first of
     first = skipSpace input start
     members :: Int -> [(Text, Json)] -> Int -> Step
     members !i acc !count = case at input i of
-      0x22 -> case stringAt input (i + 1) of
+      0x22 -> case stringAt (loneSurrogates options) input (i + 1) of
         TextStep name afterKey
           | afterKey < 0 -> refuse count acc (Step (String name) afterKey)
           | otherwise ->
@@ -343,19 +366,19 @@ findSpecial input from
         .|. zeroByte (word `xor` (0x5C * ones))
 
 -- | Parse a string body starting just after the opening quote.
-stringAt :: ByteString -> Int -> TextStep
-stringAt input start
+stringAt :: LoneSurrogates -> ByteString -> Int -> TextStep
+stringAt surrogates input start
   -- Fast path: plain ASCII up to the closing quote is one copy.
   | end < BS.length input, BU.unsafeIndex input end == 0x22 = TextStep (copyAscii (slice start end)) (end + 1)
-  | otherwise = case stringSlow input start of
+  | otherwise = case stringSlow surrogates input start of
       Left problem -> TextStep (T.pack problem) (-1)
       Right (text, after) -> TextStep text after
   where
     end = findSpecial input start
     slice from to = BU.unsafeTake (to - from) (BU.unsafeDrop from input)
 
-stringSlow :: ByteString -> Int -> Either String (Text, Int)
-stringSlow input start = scanFrom True start
+stringSlow :: LoneSurrogates -> ByteString -> Int -> Either String (Text, Int)
+stringSlow surrogates input start = scanFrom True start
   where
     len = BS.length input
     -- An ASCII-only run is valid UTF-8 by construction and copies directly.
@@ -408,14 +431,18 @@ stringSlow input start = scanFrom True start
                 then
                   Right
                     (T.singleton (chr (0x10000 + ((high - 0xD800) `shiftL` 10) .|. (low - 0xDC00))), i + 11)
-                else surrogate
-            _ -> surrogate
+                else surrogate high i
+            _ -> surrogate high i
           else
             if high >= 0xDC00 && high <= 0xDFFF
-              then surrogate
+              then surrogate high i
               else Right (T.singleton (chr high), i + 5)
       _ -> Left ("Invalid \\escape at byte " ++ show (i - 1))
-    surrogate = Left "JSON strings must contain Unicode scalar values"
+    -- CPython keeps a lone surrogate as one code point and goes on after its
+    -- own escape (a following escape is read afresh).
+    surrogate code i = case surrogates of
+      RefuseLoneSurrogates -> Left "JSON strings must contain Unicode scalar values"
+      KeepLoneSurrogates -> Right (surrogateText code, i + 5)
     hex4 i
       | i + 4 > len = Left ("Invalid \\uXXXX escape at byte " ++ show i)
       | otherwise = foldl step (Right 0) [i .. i + 3]

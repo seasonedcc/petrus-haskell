@@ -171,7 +171,11 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
       unknown `kind`, `mode`, or `provenance` literal, a `format` or
       `version` other than the constant, extra fields, and non-string
       metadata keys: the types rule them out;
-    - strings with lone surrogates: `Text` holds Unicode scalar values only.
+    - model-level construction with a string holding a lone surrogate. The
+      parsers refuse them with the reference's text; a `Text` holds one
+      only as WTF-8 built on purpose ("Petrus.Json.Wtf8", what the History
+      stores read token data into), and serializing such a document is
+      not covered (the reference's `.encode()` would raise).
 
     The recursion-depth checks are calibrated to a call from a module's top
     level (item 24). A caller deeper in the Python stack hits the limit
