@@ -25,7 +25,6 @@ import Hamsterdan.Readiness.NetV5.Wiring
 import Petrus.Impetus.Dsl (Author)
 import Petrus.Impetus.Instance.FailureText (PythonArg (..))
 import Petrus.Impetus.Petrinet (NetPath, Token)
-import Petrus.Json (Json (..))
 
 checksFact :: Integer -> Text -> Py ChecksFact
 checksFact incarnation status = do
@@ -57,13 +56,7 @@ admitHead b outs = do
   if work.relation == RelationRefreshed
     then do
       let authorityChanged = (work.base, work.policy) /= (st.base, st.policy)
-      adopted <-
-        vupdate
-          st
-          [ ("base", String work.base)
-          , ("policy", String work.policy)
-          , ("parked", texts (if authorityChanged then [] else st.parked))
-          ]
+          adopted = st {base = work.base, policy = work.policy, parked = if authorityChanged then [] else st.parked} :: CiState
       reissue <-
         if authorityChanged && st.status == "failure" && st.fingerprint `elem` st.parked
           then do
@@ -105,14 +98,7 @@ assess b outs = do
   let conclusion = spell run.conclusion
       inert = Right (route outs [emit "ci.state" [st]])
       proceed = do
-        updated <-
-          vupdate
-            st
-            [ ("best", Array [Int run.runId, Int run.attempt])
-            , ("status", String conclusion)
-            , ("fingerprint", String run.fingerprint)
-            , ("parked", Array [])
-            ]
+        let updated = st {best = Just (run.runId, run.attempt), status = conclusion, fingerprint = run.fingerprint, parked = []} :: CiState
         fact <- checksFact st.incarnation conclusion
         Right $
           route
@@ -146,8 +132,7 @@ recheck b outs = do
       if attempted == (st.head, st.base, st.policy, st.incarnation)
         then do
           let parked = if echo.fp `elem` st.parked then st.parked else st.parked ++ [echo.fp]
-          updated <- vupdate st [("parked", texts parked)]
-          Right (route outs [emit "ci.state" [updated]])
+          Right (route outs [emit "ci.state" [st {parked = parked} :: CiState]])
         else do
           (r, a) <- bestPair st
           Right (route outs [emit "ci.state" [st], emit "esc.failures" [failureMail st echo.fp r a]])
