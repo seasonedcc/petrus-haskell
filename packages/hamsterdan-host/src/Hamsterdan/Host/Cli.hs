@@ -851,8 +851,10 @@ data CliEnvironment = CliEnvironment
   -- ^ After SIGTERM stopped @serve@ gracefully: uvicorn's
   -- @signal.raise_signal@ with the previous (default) handler restored. In
   -- the process ('productionEnvironment') the default action, so the
-  -- process ends by SIGTERM as the reference's does; 'runCli' returns
-  -- @128 + 15@ only when this returns.
+  -- process ends by SIGTERM as the reference's does. It returns only when
+  -- the kernel ignores that default action, as it does for PID 1 of a
+  -- container; then @uvicorn.run@ returns, as the reference's does there,
+  -- and 'runCli' ends with status 0.
   }
 
 -- | The process's own environment: the real network, the real Pi A2
@@ -1009,11 +1011,14 @@ runCli env argv = do
                       Left _ -> pure (ExitFailure 3)
                       -- SIGTERM, raised again: the default action, at once
                       -- (the @finally@ never runs; the lifespan has already
-                      -- closed the service).
+                      -- closed the service). When the process survives it
+                      -- (PID 1 of a container, where the kernel ignores a
+                      -- signal's default action), @uvicorn.run@ returns,
+                      -- the @finally@ runs, status 0, as for SIGINT.
                       Right (Just signal)
                         | signal == sigTERM -> do
                             env.reraise signal
-                            pure (ExitFailure (128 + fromIntegral signal))
+                            pure ExitSuccess
                       -- SIGINT, raised again under @asyncio.run@'s own
                       -- handler, which only cancels uvicorn's main task, by
                       -- then finished: @uvicorn.run@ returns, the @finally@

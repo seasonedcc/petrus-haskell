@@ -157,7 +157,7 @@ spec = do
       createDirectoryLink (tmp </> "target") (tmp </> "applications" </> "44" </> "31" </> "7")
       inspectInstance tmp 44 31 7 `shouldRaiseValue` "not a real directory"
 
-  describe "serve (uvicorn.run)" $ forM_ [("SIGTERM", sigTERM, ExitFailure 143, [sigTERM]), ("SIGINT", sigINT, ExitSuccess, [])] $ \(signalName, signal, status, again) ->
+  describe "serve (uvicorn.run)" $ forM_ [("SIGTERM", sigTERM, [sigTERM]), ("SIGINT", sigINT, [])] $ \(signalName, signal, again) ->
     it ("composes the real agent, serves h11's status line to HTTP/1.0, and stops on " <> signalName) . withTempRoot $ \tmp -> do
       repo <- repoRoot
       privateKey <- BS.readFile (repo </> "packages" </> "hamsterdan-github" </> "test" </> "corpus" </> "app-test-key.pem")
@@ -181,8 +181,11 @@ spec = do
                 }
         -- uvicorn raises the captured signal again once shut down: SIGTERM
         -- then ends the reference at once, by SIGTERM; SIGINT meets
-        -- asyncio.run's handler, and the command ends normally.
-        runCli cli ["serve"] `shouldReturn` status
+        -- asyncio.run's handler, and the command ends normally. The
+        -- recording reraise returns, as the default action does for PID 1
+        -- of a container: uvicorn.run returns, and the command ends with
+        -- status 0 (scripts/container-smoke checks that under docker stop).
+        runCli cli ["serve"] `shouldReturn` ExitSuccess
         readIORef reraised `shouldReturn` again
         hClose silent
         BS.readFile (tmp </> "discarded.txt") `shouldReturn` ""
