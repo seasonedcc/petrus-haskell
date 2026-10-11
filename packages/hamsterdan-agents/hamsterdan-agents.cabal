@@ -46,6 +46,8 @@ library
                     Hamsterdan.Host.PiA2
                     Hamsterdan.Host.PiWorkspace
                     Hamsterdan.Host.AgentRuntime
+                    Hamsterdan.Host.Scripted
+                    Hamsterdan.Host.Random
   build-depends:    base >=4.18 && <5
                   , base16-bytestring >=1.0
                   , bytestring >=0.11
@@ -106,3 +108,24 @@ test-suite hamsterdan-agents-test
                   , temporary >=1.3
                   , text
   ghc-options:      -threaded -rtsopts
+
+benchmark hamsterdan-agents-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  build-depends:    base
+                  , base64-bytestring
+                  , bytestring
+                  , directory
+                  , filepath
+                  , hamsterdan-agents
+                  , hamsterdan-contracts
+                  , petrus-agenticus-core
+                  , petrus-agenticus-runtime
+                  , petrus-json
+                  , ram
+                  , tasty
+                  , tasty-bench >=0.3
+                  , text
+  ghc-options:      -O2 -threaded -rtsopts

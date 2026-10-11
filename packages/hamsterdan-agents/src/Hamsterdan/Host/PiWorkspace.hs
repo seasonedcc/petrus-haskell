@@ -34,7 +34,7 @@ import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Exception (IOException, SomeAsyncException, SomeException, evaluate, fromException, mask, onException, throwIO, try)
 import Control.Monad (forM, forM_, unless, when)
 import Crypto.Hash.SHA256 qualified as SHA256
-import Crypto.Random (getRandomBytes)
+import Hamsterdan.Host.Random (urandom)
 import Data.Bits ((.&.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -141,7 +141,7 @@ makeOperationRoot root = go (100 :: Int)
   where
     alphabet = "abcdefghijklmnopqrstuvwxyz0123456789_" :: String
     go attempts = do
-      random <- getRandomBytes 8 :: IO ByteString
+      random <- urandom 8
       let path = root </> ("operation-" <> [alphabet !! (fromIntegral byte `mod` length alphabet) | byte <- BS.unpack random])
       created <- try (PosixDir.createDirectory path 0o700)
       case created of

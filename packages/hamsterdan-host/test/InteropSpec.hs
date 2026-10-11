@@ -49,8 +49,6 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error (lenientDecode)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import FakeGitHub (Recorded (..), comparableCall, takeCalls, withFakeGitHubIO)
-import GHC.Clock (getMonotonicTime)
-import Hamsterdan.Agents.Pi (PiWorkspaceProvider (..), defaultPiRunnerOptions, newPiNativeRunner, piA2Runtime, piAgentRunner)
 import Hamsterdan.Agents.Protocol (AgentRunner (..), Invocation (..), ReviewRequest (..))
 import Hamsterdan.GitHub.Client (AppCredentials (..), ClientOptions (..), newAppClients)
 import Hamsterdan.GitHub.Http (newPlainExchangeAt)
@@ -58,18 +56,16 @@ import Hamsterdan.GitHub.Webhooks (Observation (..), Receipt (..), dispositionNa
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Agents (AgentSeams (..), composeHostAgent, newOwnedAgent, productionAgentSeams)
 import Hamsterdan.Host.Cli (inspectInstance)
-import Hamsterdan.Host.PiA2 (PiA2Hooks (..), defaultPiA2Hooks)
 import Hamsterdan.Host.PiWorkspace (gitPiWorkspaceProvider)
+import Hamsterdan.Host.Scripted (clearReviewText, deterministicRepository, localClone, scriptedAgentRunner, scriptedPiA2Hooks)
 import Hamsterdan.Host.Python (ValueError (..))
 import Hamsterdan.Host.Service (HostService (..), ServiceOptions (..), gitHubHostClients, noAgentCustody, openHostService, serviceOptions, v5ApplicationFactory)
 import Hamsterdan.Host.Service qualified as Host
 import Petrus.Json (Json (..), compact, defaultDumps, dumps, dumpsText, parseJson, pythonLoads)
-import Petrus.Agenticus.Runtime.PiA2Host (PiA2ScriptedReadiness (..), composePiA2ScriptedRuntime, piA2ScriptedTurn, scriptedReadiness)
 import Petrus.Json.Encode (EncodeOptions (..))
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import System.Directory (renameDirectory)
-import System.Environment (getEnvironment)
 import System.FilePath ((</>))
 import System.Process.Typed
 import Test.Hspec
@@ -513,25 +509,14 @@ haskellDrive network agent root (ProviderState sha initialComments) steps = do
       either (\problem -> cleanup >> throwIO problem) pure outcome
 
 -- | 'composeHostAgent' with the substitutions of @state_reference.py@'s
--- @compose_real_agent@: Petrus's scripted Pi runtime (made ready by its own
--- @scripted_readiness()@, since it refuses the READY probe), the receiver
--- cloning the local repository, and the Pi native runner selected without
--- the probe.
+-- @compose_real_agent@ ("Hamsterdan.Host.Scripted").
 scriptedAgent :: Agent -> AgentSeams
 scriptedAgent selected =
   productionAgentSeams
-    { hooks = defaultPiA2Hooks {composeRuntime = scripted}
-    , workspaces = \receiver -> case gitPiWorkspaceProvider receiver of
-        PiWorkspaceProvider open -> PiWorkspaceProvider (\kind _ request operation body -> open kind (T.pack selected.repository) request operation body)
-    , selectRunner = \host provider ->
-        either (throwIO . userError . T.unpack) (pure . piAgentRunner) (newPiNativeRunner (piA2Runtime host) provider defaultPiRunnerOptions)
+    { hooks = scriptedPiA2Hooks selected.turns
+    , workspaces = localClone selected.repository . gitPiWorkspaceProvider
+    , selectRunner = scriptedAgentRunner
     }
-  where
-    scripted config authority = do
-      host <- composePiA2ScriptedRuntime config authority (map piA2ScriptedTurn selected.turns) getMonotonicTime
-      readiness <- scriptedReadiness host
-      unless readiness.ready $ expectationFailure "the scripted Pi runtime is not ready"
-      pure host
 
 -- | The agent runner, recording each review as the clear-review runner does.
 recordingRunner :: IORef [Json] -> AgentRunner -> AgentRunner
@@ -547,46 +532,4 @@ recordingRunner reviews runner =
 -- | A clear review of PR 7 at the given incarnation (the request's epoch)
 -- and head: the scripted Pi turn's final text.
 clearReview :: Integer -> Text -> Text -> Text
-clearReview epoch commit base =
-  TE.decodeUtf8 . either (error . show) id . dumps compact $
-    Object
-      [ ("repository", String "owner/one")
-      , ("pull_request", Int 7)
-      , ("epoch", Int epoch)
-      , ("head", String commit)
-      , ("base", String base)
-      , ("status", String "clear")
-      , ("findings", Array [])
-      , ("lineage", Array [])
-      ]
-
--- | A repository with fixed identities and dates, so both languages see the
--- same commits: @main@ at the base, and @feature@ two commits on.
-deterministicRepository :: FilePath -> IO (Text, Text, Text)
-deterministicRepository repo = do
-  inherited <- getEnvironment
-  let identity =
-        [ ("GIT_AUTHOR_NAME", "Author")
-        , ("GIT_AUTHOR_EMAIL", "author@example.test")
-        , ("GIT_COMMITTER_NAME", "Author")
-        , ("GIT_COMMITTER_EMAIL", "author@example.test")
-        , ("GIT_AUTHOR_DATE", "2026-01-01T00:00:00Z")
-        , ("GIT_COMMITTER_DATE", "2026-01-01T00:00:00Z")
-        , ("GIT_CONFIG_NOSYSTEM", "1")
-        , ("GIT_CONFIG_GLOBAL", "/dev/null")
-        ]
-      environment = identity <> [(k, v) | (k, v) <- inherited, k `notElem` map fst identity]
-      git arguments = do
-        (status, out, err) <- readProcess (setEnv environment (proc "git" arguments))
-        unless (status == ExitSuccess) $ expectationFailure ("git " <> unwords arguments <> ": " <> BC.unpack (BL.toStrict err))
-        pure (T.strip (TE.decodeUtf8 (BL.toStrict out)))
-      commit message content = do
-        BS.writeFile (repo </> "README.md") content
-        _ <- git ["-C", repo, "add", "README.md"]
-        git ["-C", repo, "commit", "-q", "-m", message]
-  _ <- git ["init", "-q", "-b", "main", repo]
-  _ <- commit "base" "hello\n"
-  _ <- git ["-C", repo, "checkout", "-q", "-b", "feature"]
-  _ <- commit "first" "hello\nworld\n"
-  _ <- commit "second" "hello\nworld\nagain\n"
-  (,,) <$> git ["-C", repo, "rev-parse", "main"] <*> git ["-C", repo, "rev-parse", "feature~1"] <*> git ["-C", repo, "rev-parse", "feature"]
+clearReview = clearReviewText "owner/one" 7

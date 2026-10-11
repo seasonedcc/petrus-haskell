@@ -44,7 +44,7 @@ import Crypto.Cipher.AES (AES256)
 import Crypto.Cipher.Types (AEADMode (AEAD_GCM), AuthTag (..), aeadInit, aeadSimpleDecrypt, aeadSimpleEncrypt, cipherInit)
 import Crypto.Error (CryptoFailable (..))
 import Crypto.Hash.SHA256 qualified as SHA256
-import Crypto.Random (getRandomBytes)
+import Hamsterdan.Host.Random (urandom)
 import Data.Bits ((.&.))
 import Data.ByteArray qualified as BA
 import Data.ByteString (ByteString)
@@ -84,9 +84,14 @@ import Petrus.Posix.File (fsyncFd, makeDirectories, writeAll)
 import System.Directory (canonicalizePath, listDirectory)
 import System.FilePath ((</>))
 import System.IO.Error (isAlreadyExistsError, isDoesNotExistError)
+import GHC.Foreign qualified as GHC
+import GHC.IO.Encoding (getFileSystemEncoding)
+import System.Posix.ByteString.FilePath (RawFilePath)
 import System.Posix.Files qualified as Posix
+import System.Posix.Files.ByteString qualified as PosixB
 import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, openFd)
 import System.Posix.IO.ByteString (fdRead)
+import System.Posix.IO.ByteString qualified as PosixIOB
 import System.Posix.Types (Fd)
 import System.Posix.User (getEffectiveUserID)
 
@@ -240,17 +245,27 @@ keyPath root connection
   | T.null connection = throwIO (valueError "connection identity must not be empty")
   | otherwise = pure (root </> T.unpack (TE.decodeLatin1 (B16.encode (SHA256.hash (TE.encodeUtf8 connection)))) <> ".key")
 
+-- | The file system's spelling of a path (@os.fsencode@).
+rawPath :: FilePath -> IO RawFilePath
+rawPath path = do
+  encoding <- getFileSystemEncoding
+  GHC.withCStringLen encoding path BS.packCStringLen
+
 persistentKeyOperationsWith :: PiA2Hooks -> FilePath -> IO KeyOperations
 persistentKeyOperationsWith hooks selected = do
   root <- privateDirectory selected
+  -- Every load stats and opens the key file by its encoded path: encode
+  -- the root once, the hexadecimal file name is ASCII.
+  rawRoot <- (<> "/") <$> rawPath root
   lock <- newMVar ()
   let locked :: IO a -> IO a
       locked action = withMVar lock (const action)
       unavailable = keyOperationError "opaque connection key is unavailable"
       load connection = do
-        path <- keyPath root connection
+        when (T.null connection) $ throwIO (valueError "connection identity must not be empty")
+        let path = rawRoot <> B16.encode (SHA256.hash (TE.encodeUtf8 connection)) <> ".key"
         outcome <- try @IOException $ do
-          metadata <- Posix.getSymbolicLinkStatus path
+          metadata <- PosixB.getSymbolicLinkStatus path
           euid <- getEffectiveUserID
           when
             ( Posix.isSymbolicLink metadata
@@ -260,7 +275,7 @@ persistentKeyOperationsWith hooks selected = do
                 || Posix.fileSize metadata /= fromIntegral keyBytes
             )
             $ throwIO unavailable
-          bracket (openFd path ReadOnly defaultFileFlags {nofollow = True}) closeFd $ \fd -> do
+          bracket (PosixIOB.openFd path ReadOnly defaultFileFlags {nofollow = True}) closeFd $ \fd -> do
             current <- Posix.getFdStatus fd
             when ((Posix.deviceID current, Posix.fileID current) /= (Posix.deviceID metadata, Posix.fileID metadata)) $
               throwIO (keyOperationError "opaque connection key changed while opening")
@@ -274,7 +289,7 @@ persistentKeyOperationsWith hooks selected = do
           Right key -> pure key
           Left (_ :: AgenticusError) -> do
             path <- keyPath root connection
-            key <- getRandomBytes keyBytes
+            key <- urandom keyBytes
             created <- try (openFd path WriteOnly defaultFileFlags {creat = Just 0o600, exclusive = True})
             case created of
               Left e
@@ -293,7 +308,7 @@ persistentKeyOperationsWith hooks selected = do
     KeyOperations
       { seal = \context plaintext -> locked $ do
           key <- loadOrCreate context.connectionId
-          nonce <- getRandomBytes nonceBytes
+          nonce <- urandom nonceBytes
           case aesGcmSeal key nonce (authenticatedData context) plaintext of
             Just sealed -> pure (keyVersion <> nonce <> sealed)
             Nothing -> throwIO (keyOperationError "opaque connection state could not be sealed")
@@ -499,7 +514,7 @@ makeTemporary root = go (100 :: Int)
   where
     alphabet = "abcdefghijklmnopqrstuvwxyz0123456789_" :: String
     go attempts = do
-      random <- getRandomBytes 8 :: IO ByteString
+      random <- urandom 8
       let name = ".installation-" <> [alphabet !! (fromIntegral byte `mod` length alphabet) | byte <- BS.unpack random]
           path = root </> name
       created <- try (openFd path ReadWrite defaultFileFlags {creat = Just 0o600, exclusive = True, nofollow = True, cloexec = True})

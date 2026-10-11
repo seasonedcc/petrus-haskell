@@ -141,7 +141,6 @@ test-suite hamsterdan-host-test
                   , hamsterdan-readiness
                   , petrus-activity
                   , petrus-agenticus-core
-                  , petrus-agenticus-runtime
                   , petrus-cel
                   , petrus-dsl
                   , petrus-engine
