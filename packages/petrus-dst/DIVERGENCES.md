@@ -48,11 +48,21 @@ A door signals failure with `ProfileError {errorType, errorMessage}`: the class 
 - `validate`, `validate_fault`, `drop`, `close` and `resource_usage` get no context, as in the
   reference.
 
-### Checkers are pure
+### Checkers are pure Mealy machines
 
-`check :: Observation -> Either ProfileError CheckResult`. The reference's checkers are objects
-that could hold state. A Haskell checker cannot, which makes the reference's documented
-requirement (an independent property over a detached observation) a type.
+A checker's `check` is a `Check`: an initial memory `s` and a pure step
+`s -> Observation -> Either ProfileError (CheckResult, s)`. Most checkers are stateless
+(`pureCheck`, memory `()`). The reference's checkers are objects, and one of them
+(`GeneratedRuntimeAuthorityChecker`) keeps a dictionary across the checks of one World. Here
+that memory is an explicit value. The World threads it from one check to the next and starts
+every World or replay from the checker's initial memory. So verdicts stay pure and independent
+of the World's monad, and a checker value can sit in a registry and serve any number of
+replays. The reference's documented requirement (an independent property over a detached
+observation) stays a type.
+
+An effectful `Checker m` (a `check` door in the World's monad, like a profile door) was tried
+and rejected. It would let a checker read anything at all, and it would make a registry hold
+checker factories rather than checkers. One stateful checker needs a fold, not effects.
 
 ### Static guarantees replace run-time `TypeError`s
 
@@ -181,18 +191,23 @@ in four ways.
 
   The retry family (`RetryEngineProfile` and its two subclasses) is one constructor with a
   `RetryKind`.
-- **Handlers are pure, so bridge counters use `unsafePerformIO`.** The Engine calls an
-  `ActivityHandler`'s `prepare` and `project` as pure functions. The reference's bridges count
-  their calls, and some read an armed fault. The port runs those effects with `unsafePerformIO`
-  when the Engine forces the handler's result, which happens exactly once per call. The modules
-  build with `-fno-full-laziness -fno-cse` so that GHC cannot share or float those effects.
-  The authored journals, which record `prepared` and `projected` at every observation, prove the
-  counts equal the reference's.
-- **The stateful generated-runtime checker owns a cell.** `GeneratedRuntimeAuthorityChecker`
-  keeps `_frozen_execution_counts` across the checks of one instance. `Checker.check` is pure,
-  so `newGeneratedRuntimeChecker :: IO Checker` allocates the cell, and `check` reads and
-  updates it through `unsafePerformIO`. A fresh registry or World gets a fresh checker, just as
-  the reference constructs a fresh instance.
+- **Handlers are pure, so bridge counters run in one `unsafePerformIO` module.** The Engine
+  calls an `ActivityHandler`'s `prepare` and `project` as pure functions (`petrus-impetus`'s
+  kernel API, which this slice does not change). The reference's bridges count their calls,
+  and some read an armed fault. Every world builds its bridge as an `ObservedHandler` (IO
+  `prepare` and `project`) and turns it into an Engine handler with
+  `Petrus.Testing.Dst.Engine.Bridge.observed`. That module is the only one that calls
+  `unsafePerformIO`. It runs each effect when the Engine forces the handler's result, which
+  happens exactly once per call, and it alone builds with `-fno-full-laziness -fno-cse` and a
+  `NOINLINE`, so GHC cannot share or float those effects. The authored journals, which record
+  `prepared` and `projected` at every observation, prove the counts equal the reference's. The
+  clean fix is an observer hook on the Engine, called once per invocation; it belongs to the
+  kernel.
+- **The stateful generated-runtime checker threads its memory.**
+  `GeneratedRuntimeAuthorityChecker` keeps `_frozen_execution_counts` across the checks of one
+  instance. `generatedRuntimeChecker` is a pure `Check` whose memory is that dictionary (see
+  "Checkers are pure Mealy machines"). Every World or replay starts it empty, just as the
+  reference constructs a fresh instance.
 - **Exceptions map to Python class names.** A door's exception becomes the reference's
   `(type(error).__name__, str(error))`, which the profiles compare for expected faults:
   - profile adapters raise `PyException "OSError" message`;
@@ -213,8 +228,8 @@ Those fixtures are replay-only in both runtimes, and replay through the real pro
 
 The ported `tests/dst/joined_*world.py` modules are test code too. Their artifacts, replay
 results and checker verdicts are byte-identical to the reference's. Everything said above for
-the Engine worlds applies (records instead of class hierarchies, `unsafePerformIO` bridge
-counters, Python class names for exceptions). They differ in two more ways.
+the Engine worlds applies (records instead of class hierarchies, bridge counters through
+`Engine.Bridge.observed`, Python class names for exceptions). They differ in two more ways.
 
 - **The fault connection wraps session seams, not a DB-API connection.** The reference's
   `JoinedFaultConnection` subclasses the psycopg connection and intercepts `execute`, `commit`

@@ -46,7 +46,7 @@ import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..))
 import Petrus.Postgres qualified as Pg
 import Petrus.Testing.Dst
-import Petrus.Testing.Dst.Engine.Common (PyException (..), engineCurrent, ensure, exactKeys, ioDoor, ioScenario, member, memberOf)
+import Petrus.Testing.Dst.Engine.Common (PyException (..), engineCurrent, ensure, exactKeys, ioDoor, ioScenario, member, memberOf, path)
 import Petrus.Testing.Dst.Joined.Checkers qualified as C
 import Petrus.Testing.Dst.Joined.Identities qualified as Id
 import Petrus.Testing.Dst.Joined.Support (payloadAbsent, probeRecords, pyEq, strs, withProbe)
@@ -127,9 +127,6 @@ configOf = \case
 plainInstance, sourceInstance :: Text
 plainInstance = "dst-world-joined-creation"
 sourceInstance = "dst-world-joined-source-creation"
-
-path :: Text -> NetPath
-path = either (error . T.unpack) id . netPath
 
 inputPlace, sourcePlace, outputPlace :: NetPath
 inputPlace = path "input"

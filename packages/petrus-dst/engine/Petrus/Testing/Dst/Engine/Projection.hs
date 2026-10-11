@@ -1,6 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# OPTIONS_GHC -fno-full-laziness -fno-cse #-}
 
 -- | The public-Engine projection-recovery world: a port of the reference's
 -- @tests/dst/engine_world.py@ (profiles, checkers, and executable stories).
@@ -95,7 +94,7 @@ import Petrus.Activity (invocation)
 import Petrus.Engine (Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), handlerTokens)
+import Petrus.Impetus.Binding (BoundHandler, handlerTokens)
 import Petrus.Impetus.History.Records (Record (..))
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
 import Petrus.Impetus.Instance (FiringOutcome (..), ImplementationRef (..))
@@ -105,11 +104,11 @@ import Petrus.Motus.Dispatch (Dispatch (..))
 import Petrus.Motus.Dispatch.InMemory (InMemoryDispatch, completeOccurrence, inMemoryDispatch, newInMemoryDispatch, pending)
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.PyRepr (pyStrRepr)
+import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 import System.Directory (doesFileExist, getFileSize)
-import System.IO.Unsafe (unsafePerformIO)
 
 -- ---------------------------------------------------------------------------
 -- Constants
@@ -118,9 +117,6 @@ input, done, project :: NetPath
 input = path "input"
 done = path "done"
 project = path "project"
-
-path :: Text -> NetPath
-path = either (error . T.unpack) id . netPath
 
 instanceId, legacyScenarioId, scenarioId, seededScenarioId :: Text
 instanceId = "dst-world-projection-recovery"
@@ -141,9 +137,6 @@ invariantFailureScenarioId = "terminal-checker-failure-world-v2"
 budgetFailureScenarioId = "action-budget-exhaustion-world-v2"
 resourceScenarioId = "resource-bounded-recovery-world-v4"
 resourceBudgetFailureScenarioId = "history-record-budget-exhaustion-world-v4"
-
-strs :: [Text] -> Json
-strs = Array . map String
 
 profileIdentity :: ProfileIdentity
 profileIdentity =
@@ -395,26 +388,21 @@ newBridge onPrepare = Bridge <$> newIORef 0 <*> newIORef 0 <*> newIORef Nothing 
 -- call).
 bridgeHandler :: Bridge -> BoundHandler
 bridgeHandler bridge =
-  ActivityBound
-    ActivityHandler
-      { prepare = \b -> effectful $ do
+  observed
+    ObservedHandler
+      { prepare = \b -> do
           modifyIORef' bridge.prepared (+ 1)
           bridge.onPrepare
           pure $ case bindingTokens b of
             t : _ -> Right (invocation "calculate" t.payload)
             [] -> Left "IndexError('tuple index out of range')"
-      , project = \_ result -> effectful $ do
+      , project = \_ result -> do
           modifyIORef' bridge.projected (+ 1)
           failure <- readIORef bridge.projectionError
           pure $ case failure of
             Just message -> Left (runtimeErrorText message)
             Nothing -> Right (handlerTokens [(done, [Token (Just "Done") result])])
-      , projectFailure = Nothing
       }
-
-effectful :: IO a -> a
-effectful = unsafePerformIO
-{-# NOINLINE effectful #-}
 
 -- ---------------------------------------------------------------------------
 -- Generations and the base profile
@@ -972,7 +960,7 @@ engineHistoryChecker =
   Checker
     { identity = checkerIdentity
     , request = ObservationRequest {name = "engine.safety", payload = Object []}
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         let records = listAt "record_types" o.value
             requested = positions "ActivityRequested" records
             completed = positions "ActivityCompleted" records
@@ -1000,7 +988,7 @@ commitAuthorityChecker =
   Checker
     { identity = commitAuthorityCheckerIdentity
     , request = ObservationRequest {name = "engine.commit-authority", payload = Object []}
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         let records = listAt "record_types" o.value
             deliveries = intAt "terminal_deliveries" o.value
             refusals = intAt "terminal_refusals" o.value
@@ -1028,7 +1016,7 @@ acceptedCommitAuthorityChecker =
   Checker
     { identity = acceptedCommitAuthorityCheckerIdentity
     , request = ObservationRequest {name = "engine.accepted-commit-authority", payload = Object []}
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         let records = listAt "record_types" o.value
             deliveries = intAt "terminal_deliveries" o.value
             losses = intAt "terminal_ack_losses" o.value
@@ -1055,7 +1043,7 @@ dispatchAuthorityChecker =
   Checker
     { identity = dispatchAuthorityCheckerIdentity
     , request = ObservationRequest {name = "engine.dispatch-authority", payload = Object []}
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         let attempts = listAt "dispatch_attempts" o.value
             prepareCalls = intAt "prepare_calls" o.value
             records = listAt "record_types" o.value
@@ -1101,7 +1089,7 @@ terminalRefusalChecker =
   Checker
     { identity = terminalRefusalCheckerIdentity
     , request = ObservationRequest {name = "engine.safety", payload = Object []}
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         let terminal = String "FiringCompleted" `elem` listAt "record_types" o.value
         Right CheckResult {passed = not terminal, detail = Object [("terminal_firing", Bool terminal)]}
     }

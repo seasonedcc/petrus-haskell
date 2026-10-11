@@ -71,7 +71,8 @@ library engine-worlds
   import:           warnings
   visibility:       public
   hs-source-dirs:   engine
-  exposed-modules:  Petrus.Testing.Dst.Engine.Common
+  exposed-modules:  Petrus.Testing.Dst.Engine.Bridge
+                    Petrus.Testing.Dst.Engine.Common
                     Petrus.Testing.Dst.Engine.Delayed
                     Petrus.Testing.Dst.Engine.Delivery
                     Petrus.Testing.Dst.Engine.GeneratedRuntime
@@ -149,6 +150,8 @@ test-suite petrus-dst-test
                   , crypton
                   , directory
                   , filepath
+                  , barbies >=2.0
+                  , hedgehog >=1.4
                   , hspec >=2.10
                   , mtl
                   , petrus-dst

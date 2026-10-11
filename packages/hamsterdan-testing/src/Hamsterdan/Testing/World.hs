@@ -146,6 +146,7 @@ import Petrus.Testing.Dst
   , WorldConfig (..)
   , WorldT
   , emptyRegistry
+  , pureCheck
   , raise
   , registerChecker
   , registerProfile
@@ -1404,7 +1405,7 @@ motus root = do
 
 -- | @ReadinessChecker()@.
 readinessChecker :: Checker
-readinessChecker = Checker {identity = checkerIdentity, request = stateRequest, check = checkReadiness}
+readinessChecker = Checker {identity = checkerIdentity, request = stateRequest, check = pureCheck checkReadiness}
 
 -- | @ReadinessChecker.check(observation)@.
 checkReadiness :: Observation -> Either ProfileError CheckResult

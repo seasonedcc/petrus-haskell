@@ -5,16 +5,9 @@
 -- Do not edit by hand; rerun the script.
 module Petrus.Testing.Dst.Joined.Identities where
 
-import Data.Text (Text)
-import Data.Text qualified as T
 import Petrus.Json (Json (..))
-import Petrus.Testing.Dst (CheckerIdentity, Identity (..), ProfileIdentity, digestJson)
-
-strs :: [Text] -> Json
-strs = Array . map String
-
-digestOf :: Json -> Text
-digestOf value = either (error . T.unpack) id (digestJson value)
+import Petrus.Testing.Dst (CheckerIdentity, Identity (..), ProfileIdentity)
+import Petrus.Testing.Dst.Engine.Common (digestOf, strs)
 
 -- joined_world.py
 

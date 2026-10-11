@@ -319,7 +319,7 @@ servedChecker verdicts recorded =
   Checker
     { identity = recorded.identity
     , request = recorded.request
-    , check = \o ->
+    , check = pureCheck $ \o ->
         case Map.lookup (canonical (toJson recorded.identity), canonical (toJson o)) verdicts of
           Just verdict -> verdict
           Nothing -> Left (ProfileError divergence ("no recorded verdict of " <> recorded.identity.name <> " for " <> TE.decodeUtf8 (canonical (toJson o))))
