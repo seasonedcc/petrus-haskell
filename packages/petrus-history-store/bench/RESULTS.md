@@ -16,34 +16,72 @@ cabal bench -j2 petrus-history-store --benchmark-options='--stdev 5 +RTS -M2G -R
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-history-store/bench/python_bench.py)
 ```
 
-Haskell numbers are tasty-bench means (± 2σ). Python numbers are the median of
-3–20 runs after one warm-up. Both sides were run back to back on 2026-10-10 on
-an Apple M4 with 24 GB of memory, using GHC 9.10.3 (`-O2`, `-A32m`) and
-CPython 3.14.6. The reference was pinned at `upstream/petrus` 3f85fc2.
+Haskell numbers are tasty-bench means in wall-clock time (`localOption
+WallTime` in `bench/Main.hs`), `--stdev 5`, `+RTS -M2G`. Python numbers are the
+median of 3–20 runs after one warm-up (`time.perf_counter`). Both run on an
+Apple M4 with 24 GB of memory, using GHC 9.10.3 (`-O2`, `-A32m`) and CPython
+3.14.6; the Haskell SQLite is direct-sqlite 2.3.29 (bundled SQLite 3.45.0),
+CPython's is SQLite 3.53.4. The reference was pinned at `upstream/petrus`
+3f85fc2.
 
-The machine was shared and under load (load average 3–5) during these runs,
-so expect ±10% noise on the millisecond rows.
+The machine was shared with other agents. Four full rounds ran interleaved
+(Haskell, Python, then Python, Haskell), all on 2026-10-10 local time
+(UTC-3):
+- rounds 1–2 at 21:22–21:29, at commit `74e6b1e` with the switch to
+  wall-clock time, load average 7.7–11.6;
+- rounds 3–4 at 22:17–22:24, after merging `main` (`57106c2`), load average
+  4.4–5.4.
+
+That merge changed petrus-json's encoder, but the diagnostic encode row did
+not move beyond noise (44.2 and 43.0 ms, then 46.0 and 58.2 ms), so the
+rounds are pooled. Three more rounds of only the closest rows
+(`sqlite/append-per-record`, `sqlite/append-batches-of-8`,
+`jsonl/append-per-record` and `store/in-memory-append`; tasty-bench's `-p`
+against the full Python script) followed at 22:33–22:41, load average 3.1–5.7.
+
+Each figure is the median of the rounds that ran it: four, or seven for
+those four rows. The file-system rows (every `jsonl` and `sqlite` append)
+swing by 20–50% between rounds on this machine, which is why the closest rows
+got more rounds.
 
 ## Results
 
+<!-- parity: rows below 1.0× belong to "History stores: memory", "History stores: SQLite, and the SQLite writer fence" -->
+
 | workload | size | Python | Haskell | speed-up |
 | --- | --- | ---: | ---: | ---: |
-| JSONL append, one batch (encode + open/write/close) | 20 002 records, 2.8 MB | 62.1 ms | 33.9 ms | 1.8× |
-| JSONL append, one record per append (2 000 open/write/close) | 2 000 records | 67.1 ms | 58.6 ms | 1.15× |
-| JSONL load (open: read + decode every line into the mirror) | 20 002 records | 98.0 ms | 87.0 ms | 1.13× |
-| JSONL resume (load + the Instance's validating replay) | 20 002 records | 7 552 ms | 555 ms | 13.6× |
-| in-memory append, one record at a time | 20 002 records | 0.469 ms | 0.360 ms | 1.3× |
-| in-memory `records` (snapshot + length) | 20 002 records | 45 µs | 4.4 ns | ~10 000× |
-| JSONL `records` (snapshot + length) | 20 002 records | 44 µs | 5.3 ns | ~8 000× |
-| in-memory iterate (count every record) | 20 002 records | 210 µs | 26.4 µs | 8× |
+| JSONL append, one batch (encode + open/write/close) | 20 002 records, 2.8 MB | 63.3 ms | 48.6 ms | 1.30× |
+| JSONL append, one record per append (2 000 open/write/close) | 2 000 records | 71.0 ms | 62.1 ms | 1.14× |
+| JSONL load (open: read + decode every line into the mirror) | 20 002 records | 96.3 ms | 30.9 ms | 3.1× |
+| JSONL resume (load + the Instance's validating replay) | 20 002 records | 7 304 ms | 486 ms | 15× |
+| in-memory append, one record at a time | 20 002 records | 0.435 ms | 0.445 ms | 0.98× |
+| in-memory `records` (snapshot + length) | 20 002 records | 42.5 µs | 4.98 ns | ~8 500× |
+| JSONL `records` (snapshot + length) | 20 002 records | 45 µs | 4.93 ns | ~9 000× |
+| in-memory iterate (count every record) | 20 002 records | 217 µs | 24.7 µs | 8.8× |
 
-There are also three Haskell-only rows:
+The rounds, Python / Haskell:
+- JSONL append, one batch: 63.5 / 45.7, 63.1 / 48.2, 62.7 / 48.9,
+  65.4 / 53.3 ms;
+- JSONL append, one record per append: 71.0 / 63.3, 73.6 / 60.0,
+  67.8 / 62.1, 74.5 / 85.6, then 68.4 / 60.1, 67.1 / 61.8, 73.4 / 83.9 ms;
+- JSONL load: 94.7 / 29.4, 96.0 / 28.8, 96.5 / 32.4, 101.3 / 36.5 ms;
+- JSONL resume: 7 329 / 451, 7 789 / 479, 7 181 / 492, 7 279 / 577 ms;
+- in-memory append: 0.435 / 0.484, 0.414 / 0.420, 0.446 / 0.528,
+  0.455 / 0.424, then 0.421 / 0.445, 0.456 / 0.441, 0.429 / 0.463 ms.
 
-- `store / in-memory-records-list` (45.8 µs) materializes `records` as a list.
+**In-memory append is level with Python, not faster.** Haskell was ahead in
+two of the seven rounds. The figure committed before these, 0.360 ms (1.3×),
+was tasty-bench's default CPU time from an earlier run; this workload does
+no IO, so the clock alone should not account for the difference, and these
+runs did not establish what does.
+
+There are also three Haskell-only rows (medians of the four rounds):
+
+- `store / in-memory-records-list` (42.6 µs) materializes `records` as a list.
   It is the closest twin of Python's `tuple(self._records)` copy.
-- `diagnostic / encode-payload` (43.6 ms) is the JSONL write path's encoder
+- `diagnostic / encode-payload` (45.1 ms) is the JSONL write path's encoder
   alone, without file IO.
-- `diagnostic / decode-lines` (94.8 ms) is the JSONL read path's decoder
+- `diagnostic / decode-lines` (32.0 ms) is the JSONL read path's decoder
   alone, without file IO.
 
 ## Notes
@@ -68,12 +106,11 @@ There are also three Haskell-only rows:
   through `mirroredHistoryStore`'s admission bookkeeping, which an in-memory
   store that admits everything does not need. That change is minimal and
   additive in `petrus-impetus`, and its semantics are unchanged.
-- **JSONL load is the closest row.** Almost all of it is the kernel's record
-  decoder (`decode-lines`, about 95 ms). CPython's `json.loads` is C, and the
-  pure-Haskell reader plus `decodeRecord` only just beat it. A separate kernel
-  branch that speeds up History decode about 2.5× (`154a44d`, not merged at
-  the time of writing) would carry over to this row and to `resume`
-  unchanged, because the store calls the kernel decoder.
+- **JSONL load.** Almost all of it is the kernel's record decoder
+  (`decode-lines`). That decoder has become about 3× faster since the figures
+  committed before these (`decode-lines` 94.8 ms then, 32.0 ms now), and the
+  row went from 1.13× to 3.1×; the store calls the kernel decoder, so it
+  carried over unchanged.
 - **Resume** is dominated by the Instance's validating replay. The kernel
   replays about 14× faster than the reference (see
   `packages/petrus-impetus/bench/RESULTS.md`).
@@ -110,47 +147,44 @@ The rerun block above covers these rows too. To run only the SQLite rows on the 
 
     cabal bench -j2 petrus-history-store --benchmark-options='-p sqlite +RTS -M2G -RTS'
 
-The two sides ran interleaved (Python, Haskell, Python, ...) for three rounds
-on 2026-10-10, on the machine and toolchains named above. The Haskell side is
-direct-sqlite 2.3.29, which bundles SQLite 3.45.0, and CPython 3.14.6 links
-SQLite 3.53.4. The load average was 2.3–2.8 throughout.
-
 ### Results
 
-Each cell is the median of the three rounds. A round is a tasty-bench mean
-for Haskell, and the median of 3–5 runs after a warm-up for Python.
+These rows come from the same rounds as the rows above.
 
 | workload | size | Python | Haskell | speed-up |
 | --- | ---: | ---: | ---: | ---: |
-| append-one-batch (one fsynced transaction) | 20 002 records | 112 ms | 108 ms | 1.04× |
-| append-per-record (2 000 fsynced transactions) | 2 000 records | 102 ms | 72.5 ms | 1.4× |
-| append-batches-of-8 (250 fsynced transactions) | 2 000 records | 31.2 ms | 28.2 ms | 1.1× |
-| load (open + decode every row) | 20 002 records | 109 ms | 46.1 ms | 2.4× |
-| resume (load + validating replay) | 20 002 records | 7 249 ms | 465 ms | 15.6× |
-| terminal-resend-ack (1 000 re-sends) | 20 002 records | 1 139 ms | 8.42 ms | 135× |
+| append-one-batch (one fsynced transaction) | 20 002 records | 151 ms | 129 ms | 1.17× |
+| append-per-record (2 000 fsynced transactions) | 2 000 records | 105 ms | 129 ms | 0.81× |
+| append-batches-of-8 (250 fsynced transactions) | 2 000 records | 40.7 ms | 42.4 ms | 0.96× |
+| load (open + decode every row) | 20 002 records | 110 ms | 47.9 ms | 2.3× |
+| resume (load + validating replay) | 20 002 records | 7 617 ms | 498 ms | 15× |
+| terminal-resend-ack (1 000 re-sends) | 20 002 records | 1 241 ms | 7.96 ms | 156× |
 
-The individual rounds, Python / Haskell:
+The rounds, Python / Haskell:
+- append-one-batch: 124.7 / 102, 178.4 / 154, 135.9 / 125, 165.3 / 133 ms;
+- append-per-record: 138.1 / 103, 117.3 / 158, 102.5 / 112, 103.5 / 113,
+  then 104.6 / 129, 102.2 / 140, 114.3 / 181 ms;
+- append-batches-of-8: 37.4 / 31.4, 51.5 / 48.8, 40.7 / 61.4, 40.2 / 72.5,
+  then 53.6 / 36.6, 40.1 / 42.4, 44.9 / 40.1 ms;
+- load: 122.4 / 45.0, 111.1 / 44.6, 107.5 / 50.7, 108.3 / 62.1 ms;
+- resume: 8 493 / 481, 7 301 / 457, 7 646 / 514, 7 588 / 674 ms;
+- terminal-resend-ack: 1 233 / 8.04, 1 141 / 7.62, 1 250 / 7.87,
+  1 383 / 9.34 ms.
 
-- append-one-batch: 115.0 / 108, 112.3 / 106, 111.3 / 108 ms;
-- append-per-record: 92.6 / 72.5, 102.4 / 71.5, 106.5 / 76.1 ms;
-- append-batches-of-8: 31.2 / 28.2, 32.5 / 28.1, 30.8 / 28.2 ms;
-- load: 110.3 / 48.3, 106.2 / 46.1, 109.0 / 46.0 ms;
-- resume: 7 310 / 465, 7 208 / 461, 7 249 / 470 ms;
-- terminal-resend-ack: 1 216 / 8.34, 1 139 / 8.45, 1 133 / 8.42 ms.
-
-Two more interleaved rounds after merging `main`, which brought petrus-json's
-encoder speed work, were run at load average 2.9–4.5. Haskell's
-append-one-batch dropped to 91.7 and 89.6 ms, against Python's 115.1 and
-114.1 ms. Every other row stayed within noise of the table:
-- append-per-record: 105.5 / 70.0 and 94.3 / 69.0 ms;
-- append-batches-of-8: 33.4 / 25.6 and 35.0 / 26.2 ms;
-- load: 110.3 / 46.4 and 110.0 / 46.8 ms;
-- resume: 7 356 / 481 and 7 391 / 497 ms;
-- terminal-resend-ack: 1 158 / 7.88 and 1 204 / 7.88 ms.
+**Two fsync-bound rows are slower than Python in wall-clock time.**
+`append-per-record` is 0.81×: Haskell was behind in six of the seven
+rounds, and in each of the last three. `append-batches-of-8` is 0.96× and
+swings both ways (0.55× to 1.46× per round). Both rows are dominated by
+2 000 and 250 fsynced commits through two different SQLite builds. The
+figures committed before these timed Haskell in tasty-bench's default CPU
+time, which leaves out the time blocked in fsync: 72.5 and 28.2 ms then,
+which read as 1.4× and 1.1×. Where the remaining gap comes from (the SQLite
+version and its compile options, or the binding's per-statement work) has
+not been measured.
 
 ### Notes
 
-- **append-one-batch is the closest row.** It is about half encoding and half
+- **append-one-batch.** It is about half encoding and half
   inserting on both sides. The phase split, measured by a probe:
   - Haskell: about 50 ms to encode the 20 002 payloads with `petrus-json`'s
     `dumps`, and about 50 ms for the 20 002 bound inserts and the commit;

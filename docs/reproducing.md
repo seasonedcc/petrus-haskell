@@ -167,8 +167,9 @@ scripts/bench --summary         # rewrite bench-results/summary.md
 
 Every Haskell benchmark measures wall-clock time, as the Python twins do
 (`time.perf_counter_ns`, through `scripts/bench_timing.py`). tasty-bench
-defaults to CPU time, so each `bench/Main.hs` sets `localOption WallTime`.
-The custom harnesses (petrus-execution, petrus-motus-zeromq,
+defaults to CPU time, so each `bench/Main.hs` sets `localOption WallTime`,
+except petrus-agenticus-runtime's, whose rerun block passes `--time-mode wall`
+instead. The custom harnesses (petrus-execution, petrus-motus-zeromq,
 petrus-viewer-server) read the monotonic clock directly. CPU time leaves out
 the time a process waits on the kernel, a database server or a child
 process. For those benchmarks it flattered Haskell by up to several times
@@ -177,11 +178,23 @@ time also adds up every OS thread, so it can come out above wall time too.
 
 The figures for single-threaded workloads that do no I/O inside the timed
 region (parsers, encoders, the kernel's firing) were taken before the switch,
-in CPU time. For them the two clocks agree within the run-to-run noise.
-Spot checks after the switch reproduced them, so those results files keep
-their tables and say so. Every benchmark that touches a server, a file, a
-socket or a child process was rerun in wall-clock time, interleaved with
-Python.
+in CPU time, and keep their tables. For them the two clocks should agree
+within the run-to-run noise. Two Haskell-only spot checks in wall-clock time
+on 2026-10-10 (load average 3.4–3.6) bear that out:
+- petrus-cel's `filter` rows came within 10% of the committed figures
+  (`filter/field` compile+evaluate 2.19 µs against 2.17 µs), or faster;
+- petrus-impetus's `candidates` rows did too (wide fan-in 20.8 µs against
+  23.4 µs, long FIFO 1.55 ms against 1.51 ms).
+
+The other petrus-impetus rows checked (replay 174 ms against 237 ms, net
+serialization 0.82 ms against 2.49 ms) came out faster than committed,
+because library work merged since, not because of the clock. One exception
+to "the clocks agree" turned up: petrus-history-store's in-memory append read
+0.360 ms in CPU time and 0.445 ms in wall-clock time; its RESULTS.md has the
+details.
+
+Every benchmark that touches a server, a file, a socket or a child process
+was rerun in wall-clock time, interleaved with Python.
 
 ### Python batch size
 

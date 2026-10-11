@@ -17,13 +17,14 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | 3 | 1.70× | 22.8× |  |
 | `petrus-agenticus` | [RESULTS.md](../packages/petrus-agenticus/bench/RESULTS.md) | 5 | 1.23× | 5.50× |  |
 | `petrus-agenticus-core` | [RESULTS.md](../packages/petrus-agenticus-core/bench/RESULTS.md) | 1 | 2.70× | 4.70× |  |
-| `petrus-agenticus-core` | [results-catalog.md](../packages/petrus-agenticus-core/bench/results-catalog.md) | 4 | 0.69× | 6.30× | **below 1.0×**: snapshot-to-json |
+| `petrus-agenticus-core` | [results-catalog.md](../packages/petrus-agenticus-core/bench/results-catalog.md) | 4 | 1.60× | 6.10× |  |
 | `petrus-agenticus-core` | [results-custody.md](../packages/petrus-agenticus-core/bench/results-custody.md) | 5 | 2.70× | 4.70× |  |
 | `petrus-agenticus-core` | [results-effect.md](../packages/petrus-agenticus-core/bench/results-effect.md) | 5 | 2.20× | 9.60× |  |
 | `petrus-agenticus-core` | [results-hands.md](../packages/petrus-agenticus-core/bench/results-hands.md) | 5 | 1.90× | 3.90× |  |
-| `petrus-agenticus-core` | [results-thread.md](../packages/petrus-agenticus-core/bench/results-thread.md) | 5 | 0.42× | 3 100× | **below 1.0×**: dumps-only-1000x4; to-json-1000x4 (to-data + dumps) |
-| `petrus-agenticus-runtime` | [RESULTS.md](../packages/petrus-agenticus-runtime/bench/RESULTS.md) | 2 | 1.40× | 1.86× |  |
-| `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | 7 | 0.50× | 4.50× | **below 1.0×**: pi-a2-fingerprint; pi-a2-scripted-turn; pi-fingerprint; pi-start-frame-encode |
+| `petrus-agenticus-core` | [results-thread.md](../packages/petrus-agenticus-core/bench/results-thread.md) | 5 | 1.80× | 1 870× |  |
+| `petrus-agenticus-runtime` | [RESULTS.md](../packages/petrus-agenticus-runtime/bench/RESULTS.md) | 2 | 1.80× | 2.60× |  |
+| `petrus-agenticus-runtime` | [results-hosts.md](../packages/petrus-agenticus-runtime/bench/results-hosts.md) | 10 | 1.20× | 3.50× |  |
+| `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | 7 | 0.81× | 5.00× | **below 1.0×**: pi-ledger-cycle |
 | `petrus-cel` | [RESULTS.md](../packages/petrus-cel/bench/RESULTS.md) | 7 | 14.0× | 73.0× |  |
 | `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | 10 | 2.80× | 6.00× |  |
 | `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | 11 | 1.00× | 2.90× |  |
@@ -35,7 +36,7 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | 15 | 0.98× | 7.97× | **below 1.0×**: sidecar/execute-round-trip |
 | `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | 8 | 0.86× | 9.89× | **below 1.0×**: `postgres.discover`; `postgres.submit` |
 | `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | 7 | 1.05× | 2.51× |  |
-| `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | 14 | 1.04× | 10 000× |  |
+| `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | 14 | 0.81× | 9 000× | **below 1.0×**: append-batches-of-8 (250 fsynced transactions); append-per-record (2 000 fsynced transactions); in-memory append, one record at a time |
 | `petrus-http-core` | [RESULTS.md](../packages/petrus-http-core/bench/RESULTS.md) | 6 | 1.59× | 18.7× |  |
 | `petrus-impetus` | [RESULTS.md](../packages/petrus-impetus/bench/RESULTS.md) | 10 | 1.60× | 97.0× |  |
 | `petrus-motus` | [RESULTS.md](../packages/petrus-motus/bench/RESULTS.md) | 14 | 1.02× | 78.0× |  |
@@ -51,4 +52,4 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | 2 | 2.50× | 8.00× |  |
 | `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | 16 | 0.69× | 3.87× | **below 1.0×**: relay round trip, 16 pairs; resolve-ref, 16 clients |
 
-39 results files; 9 with a row below 1.0×.
+40 results files; 8 with a row below 1.0×.
