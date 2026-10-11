@@ -79,6 +79,7 @@ test-suite petrus-execution-test
   main-is:          Main.hs
   other-modules:    ArchiveSpec
                     ContractSpec
+                    CustodyInteropSpec
                     DockerSpec
                     E2bHttpSpec
                     E2bLive
@@ -102,6 +103,7 @@ test-suite petrus-execution-test
                   , network
                   , petrus-execution
                   , petrus-json
+                  , petrus-test-support
                   , process
                   , QuickCheck >=2.14
                   , temporary >=1.3
