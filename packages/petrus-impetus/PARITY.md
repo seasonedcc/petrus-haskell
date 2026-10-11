@@ -79,10 +79,10 @@ Notes on the table:
 - In `test_net_document_lineage.py`, the tuple and non-string-key cases of
   the lineage metadata are enforced by types; their other halves are
   ported.
-- Two `test_petrinet_dot.py` examples render real SVG and run only when
-  Graphviz `dot` is installed. Without it they are pending, which is why the
-  suite reports 2 pending. Every other render test uses a fake `dot` on the
-  search path, as upstream does with `monkeypatch`.
+- Two `test_petrinet_dot.py` examples render real SVG with Graphviz `dot`.
+  Upstream skips them when `dot` is missing; here they fail, so a missing
+  Graphviz cannot pass silently. Every other render test uses a fake `dot`
+  on the search path, as upstream does with `monkeypatch`.
 
 ## Ported by other packages (not counted in this package's table)
 

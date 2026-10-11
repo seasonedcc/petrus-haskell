@@ -21,11 +21,12 @@ against the pinned Python, and the parity table. CI runs the same
 | PostgreSQL 17 (`initdb`, `pg_ctl`) **or** Docker | 17.x | the PostgreSQL suites and benchmarks |
 | Node.js | 22 | the Gondolin sidecar and Pi helper suites; the petrus-viewer suites and the viewer benchmark (with pnpm) |
 | Graphviz (`dot`) | any | petrus-impetus's diagram rendering tests |
+| bash | 4.4 or later | hamsterdan-operator's secret-launch tests (macOS ships bash 3.2) |
 
 On macOS with Homebrew:
 
 ```sh
-brew install ghcup uv zeromq libpq sqlite node pnpm graphviz postgresql@17
+brew install ghcup uv zeromq libpq sqlite node pnpm graphviz bash postgresql@17
 ghcup install ghc 9.10.3 && ghcup set ghc 9.10.3
 ghcup install cabal 3.16.1.0 && ghcup set cabal 3.16.1.0
 ```
@@ -103,9 +104,19 @@ It runs, in order, and stops at the first failing step:
    selects tests.
 6. `cabal test all` under `scripts/with-postgres`, every test binary with
    `+RTS -M2G -RTS`. This includes the conformance and interop groups.
-7. `scripts/bench --check`: every package's benchmark results document how
+7. `scripts/check-pending`: no example went pending in step 6. A pending
+   example is a test that did not run, so a missing tool (Graphviz `dot`,
+   `node`) or server fails the run. The only examples that may stay pending
+   are listed in the script: the Docker tests, which wait for
+   `PETRUS_TEST_DOCKER=1` (CI sets it, and check-all refuses to run in CI
+   without it), and the reference's own opt-in acceptance tests. Those
+   acceptance tests need provider credentials or exactly installed external
+   toolchains, and the reference skips them too.
+8. `scripts/check-corpora`: every committed corpus is regenerated against the
+   pinned references and must come out unchanged.
+9. `scripts/bench --check`: every package's benchmark results document how
    to rerun them, and `bench-results/summary.md` matches them.
-8. `scripts/check-parity`: the parity table's claims hold.
+10. `scripts/check-parity`: the parity table's claims hold.
 
 `-j2` limits cabal's parallelism; leave it out to use every core.
 

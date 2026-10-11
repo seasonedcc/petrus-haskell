@@ -34,7 +34,9 @@ the ways around that convention:
 A line may opt out with a trailing ``-- lint-skips: allow <reason>`` (or
 ``# lint-skips: allow <reason>`` in Python); the reason is required.
 PETRUS_TEST_POSTGRES and Docker opt-ins are not covered here: CI sets both,
-and scripts/check-all refuses to run in CI without PETRUS_TEST_POSTGRES.
+scripts/check-all refuses to run in CI without either, and its
+scripts/check-pending step fails on any example left pending outside the
+opt-ins listed there.
 """
 
 from __future__ import annotations
