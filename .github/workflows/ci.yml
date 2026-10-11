@@ -1,5 +1,7 @@
 name: CI
 
+# TEMPORARY baseline measurement on Blacksmith (ci-speed branch only).
+
 on:
   push:
     branches: [main]
@@ -10,9 +12,16 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GHC_VERSION: "9.10.3"
+  CABAL_VERSION: "3.16.1.0"
+  GHCUP_VERSION: "0.2.6.2"
+  GHCUP_SHA256: 9ed5da5449b48043a0d17e767c05d2ef585e25a639bb934329496c6d2fad9cf8
+  CABAL_DIR: /home/runner/.cabal
+
 jobs:
   check:
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     services:
       postgres:
         image: postgres:17
@@ -20,71 +29,66 @@ jobs:
           POSTGRES_PASSWORD: postgres
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd pg_isready --health-interval 1s --health-timeout 5s --health-retries 60
     env:
       PETRUS_TEST_POSTGRES: postgresql://postgres:postgres@localhost:5432/postgres
-      # petrus-execution: also run the shared Docker provider tests against the runner's daemon.
       PETRUS_TEST_DOCKER: "1"
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: haskell-actions/setup@v2
-        id: setup
-        with:
-          ghc-version: "9.10.3"
-          cabal-version: "3.16.1.0"
-      - uses: astral-sh/setup-uv@v6
-      # The upstream Python references (upstream/petrus for most interop
-      # suites, upstream/petrus-engine for petrus-engine-file's live
-      # differential and format-CLI specs), on the exact CPython that
-      # scripts/upstream-python pins. scripts/check-all provisions them too;
-      # doing it here first surfaces a provisioning failure as its own step.
+      - name: Runner
+        run: nproc; free -g; df -h / /tmp /dev/shm; env | grep -i -E 'image|blacksmith' | grep -v TOKEN || true; node --version; python3 --version; docker --version
+      - uses: ./.github/actions/toolchain
+        id: toolchain
       - name: Sync the upstream Python references
         run: scripts/upstream-python petrus && scripts/upstream-python petrus-engine
-      - name: Install system libraries
-        run: sudo apt-get update && sudo apt-get install -y libzmq3-dev libpq-dev libsqlite3-dev graphviz
+      - name: Restore dist-newstyle
+        uses: actions/cache/restore@v4
+        with:
+          path: dist-newstyle
+          key: dist-v1-${{ runner.os }}-ghc-${{ env.GHC_VERSION }}-${{ github.sha }}
+          restore-keys: dist-v1-${{ runner.os }}-ghc-${{ env.GHC_VERSION }}-
       - name: Resolve dependencies
         run: cabal update && cabal build all --dry-run
-      - uses: actions/cache@v4
+      - name: Build
+        run: time cabal build all -j
+      - name: Sizes
+        run: du -sh ~/.ghcup ~/.cabal/store ~/.cabal/packages dist-newstyle; du -sh dist-newstyle/build/*/*/* | sort -h | tail -5
+      - name: Save the cabal store
+        if: steps.toolchain.outputs.store-hit != 'true'
+        uses: actions/cache/save@v4
         with:
-          path: ${{ steps.setup.outputs.cabal-store }}
-          key: cabal-${{ runner.os }}-${{ hashFiles('**/*.cabal', 'cabal.project', 'dist-newstyle/cache/plan.json') }}
-          restore-keys: cabal-${{ runner.os }}-
-      - name: Check everything
-        run: scripts/check-all
+          path: |
+            ~/.cabal/store
+            ~/.cabal/packages
+          key: ${{ steps.toolchain.outputs.store-key }}
+      - name: Save dist-newstyle
+        uses: actions/cache/save@v4
+        with:
+          path: dist-newstyle
+          key: dist-v1-${{ runner.os }}-ghc-${{ env.GHC_VERSION }}-${{ github.sha }}
+      - name: Tests (profiling run)
+        run: |
+          scripts/with-postgres cabal test all -j --keep-going --test-show-details=direct \
+            --test-options='+RTS -M2G -RTS --print-slow-items=40'
 
-  # The Haskell port's container runtime contract (PARITY.md, "Container
-  # runtime contract"): lint the launcher, the interpreter-path shim, the
-  # smoke scripts and the Containerfile; build deployment/Containerfile for
-  # linux/amd64 with the reference's build arguments, reusing layers from
-  # the GitHub Actions cache; then run scripts/container-smoke against the
-  # built image. It checks at run time what the reference's release
-  # verification, Ansible playbooks and systemd unit expect of the image.
   container:
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - name: Lint the launcher, the interpreter-path shim and the smoke scripts
-        run: |
-          shellcheck scripts/with-runtime-secrets scripts/container-smoke scripts/container-smoke.d/fake-op scripts/container-smoke.d/node-wrapper
-          shellcheck --shell=sh deployment/python-shim
-      - name: Lint the Containerfile
-        run: |
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/hadolint" \
-            https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
-          chmod 0755 "$RUNNER_TEMP/hadolint"
-          "$RUNNER_TEMP/hadolint" --failure-threshold error deployment/Containerfile
       - name: Image build arguments
         id: source
         run: |
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "version=$(sed -n 's/^version=//p' deployment/python-shim)" >> "$GITHUB_OUTPUT"
           echo "created=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
+      - uses: useblacksmith/setup-docker-builder@v2
+        with:
+          cache-key: deployment/Containerfile
       - name: Build the image
-        uses: docker/build-push-action@v6
+        uses: useblacksmith/build-push-action@v2
         with:
           context: .
           file: deployment/Containerfile
@@ -95,8 +99,6 @@ jobs:
             SOURCE_REVISION=${{ steps.source.outputs.revision }}
             SOURCE_VERSION=${{ steps.source.outputs.version }}
             SOURCE_CREATED=${{ steps.source.outputs.created }}
-          cache-from: type=gha,scope=hamsterdan-image
-          cache-to: type=gha,scope=hamsterdan-image,mode=max
       - name: Check the runtime contract
         run: |
           scripts/container-smoke hamsterdan:ci \
