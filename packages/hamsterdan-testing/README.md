@@ -1,13 +1,16 @@
 # hamsterdan-testing
 
 This package ports Hamsterdan's deterministic-simulation support from
-`upstream/hamsterdan`. Today it holds two parts:
+`upstream/hamsterdan`. It holds three parts:
 
 - the independent expected-readiness oracle,
   `src/hamsterdan/testing/readiness.py`;
 - the eleven deterministic readiness journeys of
   `tests/integration/host/test_readiness_scenarios.py`, run through the
-  real V5 host.
+  real V5 host;
+- the deterministic readiness World, `src/hamsterdan/host/testing/*`: the
+  V5 host under Petrus DST v4 (`petrus-dst`), with its profile, checker,
+  replay and semantic coverage report.
 
 ## The oracle
 
@@ -44,12 +47,29 @@ and writes, so a Python span can resume a Haskell span and the reverse. The
 interop suite compares results and state directories with the Python
 journeys, byte for byte.
 
+## The World
+
+`Hamsterdan.Testing.World` is the readiness profile for Petrus DST: a
+deterministic external world (modeled GitHub, agents and Git) around the
+real V5 host. A test drives it through a Timeline (`setPullRequest`,
+`setCi`, `emitWebhook`, `deliverWebhook`, `crash`, `converge`, …), and the
+independent checker compares the host with the oracle at every boundary.
+`artifact` retains the run as a `petrus.testing.dst/v4` artifact, and
+`replayReadiness` replays one. The artifacts, replay results and coverage
+reports are the reference's bytes, so either language replays the other's
+artifacts with the same verdict.
+
 ## Modules
 
 | Module | Ports | Key API |
 | --- | --- | --- |
 | `Hamsterdan.Testing.Readiness` | `testing/readiness.py` | **Facts:** `AuthorityClaim`, `AuthorityFacts`, `CheckFacts`, `CiFacts`, `Finding`, `ReviewFacts`, `HumanFacts`, `ChangeAuthorization`, `MutationFacts`, `EffectObligation`, `TimerObligation`, `ReadinessFacts`, `ReadinessExpectation`, `FairEnvironment`. **Vocabularies:** their enumerations and `spell`. **Defaults:** `readinessFacts`, `ciFacts`, `reviewFacts`, `humanFacts`, `mutationFacts`, `effectObligation`, `timerObligation`. **Functions:** `load`, `loadJson`, `dump`, `checked`, `evaluate`, `evaluateLiveness`, `declared` |
 | `Hamsterdan.Testing.Journeys` | `tests/integration/host/test_readiness_scenarios.py` | `Journey` (the eleven journeys), `journeyName`, `journeyFromName`, `Phase`, `phasesOf`, `phaseName`, `runJourney`, `driveJourney`, and the upstream module's constants (`headSha`, `blockingFinding`, `heroFindings`, `changeDiff`, …) |
+| `Hamsterdan.Testing.World` | `host/testing/readiness_world.py` | `readinessProfile`, `readinessChecker`, `newReadinessWorld`, `newReadinessWorldWith`, `timeline`, `restart`, `artifact`, `closeWorld`, the Timeline facade (`ReadinessTimeline`, `setPullRequest`, `setCi`, `setReview`, `setHumanComment`, `setAgentTerminal`, `emitWebhook`, `deliverWebhook`, `loseEffectResponse`, `faultEffect`, `faultGitPublication`, `advanceTime`, `observe`, `runUntil`, `crash`, `converge`, …), `replayReadiness` |
+| `Hamsterdan.Testing.World.Contract` | `host/testing/_readiness_contract.py` | `profileIdentity`, `checkerIdentity`, `defaultBudget`, `withProfileResource`, the World's constants |
+| `Hamsterdan.Testing.World.Provider` | `host/testing/_readiness_provider.py` | the modeled provider truth and its effects |
+| `Hamsterdan.Testing.World.Coverage` | `host/testing/readiness_coverage.py` | `CoverageRun`, `CoverageReport`, `collectReadinessCoverage`, `encodeReadinessCoverage`, `loadReadinessCoverage`, `covered`, `blocked` |
+| `Hamsterdan.Testing.World.Scenarios` | (the interop and benchmark scenarios) | `scenarios`, `authorScenario` |
 
 ## Using it
 
@@ -80,8 +100,9 @@ journeys root other = do
 
 ## Tests, corpus, benchmarks
 
-The interop examples ("journeys against the reference") need the pinned
-Python, which `scripts/upstream-python hamsterdan` provisions.
+The interop examples ("journeys against the reference", "World interop
+against the reference") need the pinned Python, which
+`scripts/upstream-python hamsterdan` provisions.
 
 ```sh
 cabal test hamsterdan-testing -j2 --test-options='+RTS -M2G -RTS'

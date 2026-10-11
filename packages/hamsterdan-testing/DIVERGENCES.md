@@ -105,3 +105,73 @@ Python journey's, byte for byte, whole and cross-resumed (see
 5. **Results are JSON.** `runJourney` returns the `JourneyResult` as the
    plain JSON the reference driver prints, not as a record. The upstream
    tests' assertions read that JSON.
+
+## World, campaigns and coverage
+
+These are the differences between `Hamsterdan.Testing.World` (with its
+`Contract`, `Provider`, `Coverage` modules and the specs) and upstream's
+`src/hamsterdan/host/testing/*` and `tests/integration/testing/*`. None of
+them changes an artifact, a replay result, a checker verdict or a coverage
+report: the World interop suite compares all four with the reference's,
+byte for byte, in both directions (see [PARITY.md](PARITY.md)).
+
+1. **Webhook ingress calls the host's custody directly.** Upstream posts
+   each delivery through a FastAPI `TestClient` over
+   `create_app(host, reconcile_startup=False)`. The Haskell World hands the
+   same headers and body to the host's `Custody.receive`, which is what that
+   route runs. A refusal the route would answer with 400
+   (`WebhookRejected`) or 500 (a Python-class exception) raises upstream's
+   `AssertionError` naming that status.
+2. **Injection seams instead of `monkeypatch`.** Upstream's tests patch
+   `HostService._record_posture` and `ReadinessChecker.check`. Haskell
+   records cannot be patched, so `newReadinessWorldWith` takes a `prepare`
+   action (which can install `ServiceHooks`, such as
+   `aroundRecordPosture`, on the profile's hosts) and the `Checker` to run.
+   `newReadinessWorld` is `newReadinessWorldWith` with neither.
+3. **Hypothesis campaigns are deterministic enumerations.** Upstream draws
+   5 or 6 examples per campaign (derandomized) plus its explicit
+   `@example` cases, and runs the delivery state machine for 12 examples of
+   up to 5 steps. The Haskell campaigns enumerate instead, and include
+   every upstream `@example`:
+   - **authority lifecycle:** the 3 paths × 10 schedules: no action, each
+     of the 4 actions alone before the lifecycle settles, each alone after
+     it, and a restart on both sides;
+   - **reminder timer:** all 40 cases the upstream `assume` admits;
+   - **Git publication:** all 16 cases;
+   - **delivery recovery machine:** the first seed drawing each of the 8
+     branch combinations (fault, event order, workload), each run with every
+     rule sequence of up to 2 rules, 56 runs. The rules' preconditions
+     partition the states, so a sequence of "act" and "restart" names every
+     run Hypothesis could draw at that length. The invariant runs after
+     `start` and after each rule, as Hypothesis runs it.
+
+   Hypothesis' `event(...)` labels become the "falsifying example" line a
+   failing example prints. A seed is the example's index (the machine's
+   seeds are found by search), not a Hypothesis draw; any seed is valid,
+   and the artifact's `origin.seed` is asserted as upstream asserts it.
+4. **Retained counterexamples go under `dist-newstyle/`.** A campaign
+   example that fails with `BudgetExhausted` or `InvariantViolation`
+   retains its exact artifact, and checks that it replays its failure, as
+   upstream's `_retain_failure_artifact` does. Upstream writes to
+   `.hypothesis/readiness-artifacts/`; Haskell writes to
+   `dist-newstyle/readiness-artifacts/` (ignored by Git). The note upstream
+   adds to the primary exception is printed to stderr.
+5. **Two upstream-refused Git schedules assert the refusal.** See "An
+   upstream finding" in [PARITY.md](PARITY.md). Upstream's campaign never
+   draws them, and its World fails them; the Haskell enumeration does draw
+   them, so it asserts the reference's verdict (a retained invariant
+   failure that replays exactly) rather than the convergence the upstream
+   test body would assert.
+6. **The coverage per-artifact byte bound measures canonical JSON.**
+   Upstream bounds `len(artifact.model_dump_json().encode())`. Haskell
+   bounds the length of the artifact's canonical bytes. Both are compact
+   JSON of the same members. They differ only in key order (same length)
+   and in how non-ASCII text is spelled, which matters only for an artifact
+   within a few bytes of the 4 MiB bound.
+7. **`ValidationError` text is pydantic-shaped, not pydantic's.** A
+   refusal from `loadReadinessCoverage` has the class (`ValidationError` or
+   `ValueError`) and, for the model validators, the reference's exact
+   message (for example "covered dimension requires complete scenario
+   evidence"). A schema refusal reports the first failing member as
+   `1 validation error for ReadinessCoverageReport`, its location and
+   `[type=…]`, where pydantic lists every failing member.

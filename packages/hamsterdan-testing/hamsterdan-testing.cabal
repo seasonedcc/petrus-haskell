@@ -6,9 +6,11 @@ description:
   The @ReadinessModel@ oracle of Hamsterdan (@src/hamsterdan/testing/readiness.py@):
   topology-neutral normalized facts with strict pydantic-identical JSON
   codecs, the expected readiness verdict they imply, and the fair-environment
-  liveness classification used by deterministic simulation; and the eleven
+  liveness classification used by deterministic simulation; the eleven
   deterministic readiness journeys of
-  @tests/integration/host/test_readiness_scenarios.py@ over the real V5 host.
+  @tests/integration/host/test_readiness_scenarios.py@ over the real V5 host;
+  and the deterministic readiness World (@host/testing/*@) over Petrus DST v4,
+  with its checker, replay and semantic coverage report.
 license:            Apache-2.0
 license-file:       LICENSE
 author:             Seasoned
@@ -103,6 +105,7 @@ benchmark hamsterdan-testing-bench
   build-depends:    base
                   , bytestring
                   , hamsterdan-testing
+                  , petrus-dst
                   , petrus-json
                   , tasty-bench >=0.3.2
                   , tasty

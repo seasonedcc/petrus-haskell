@@ -23,6 +23,10 @@ The Haskell suite compares bytes.
 | `evaluate_liveness` | `evaluateLiveness` | **Oracle corpus.** Each verdict is checked under six environments (all conditions declared, then each one withheld) times both budget flags. |
 | `FairEnvironment.declared` | `declared` | `ReadinessModelSpec` |
 | `tests/integration/host/test_readiness_scenarios.py`: `ScenarioProvider`, `ScenarioRunner`, the Git fixtures, `_run_journey` and the eleven `run_*` journeys | `Hamsterdan.Testing.Journeys`: `runJourney`, `driveJourney`, `Journey`, `Phase`, `phasesOf`, the upstream constants | **Journeys against the reference.** All 11 journeys match the Python journey byte for byte, run whole and cross-resumed both ways (see below). The 11 upstream tests pass under their upstream names. |
+| `host/testing/readiness_world.py`: `ReadinessProfile`, `ReadinessChecker`, `ReadinessWorld`, `ReadinessTimeline`, `replay_readiness` | `Hamsterdan.Testing.World`: `readinessProfile`, `readinessChecker` / `checkReadiness`, `newReadinessWorld`, the Timeline facade, `replayReadiness` | **World interop against the reference** (below): 20 scenarios, artifacts byte-identical, each language's artifact replays in the other with identical result bytes. 19 upstream World tests. |
+| `host/testing/_readiness_contract.py` (identities, budget, command vocabulary, bounded JSON) | `Hamsterdan.Testing.World.Contract` | Profile and checker identity digests asserted by `test_profile_and_checker_compatibility_identities_are_stable`; every command payload is part of the compared artifacts. |
+| `host/testing/_readiness_provider.py` (modeled GitHub, agent and Git truth) | `Hamsterdan.Testing.World.Provider` | Its state is in every observation, so in every compared artifact and checker verdict. |
+| `host/testing/readiness_coverage.py` | `Hamsterdan.Testing.World.Coverage`: `collectReadinessCoverage`, `encodeReadinessCoverage`, `loadReadinessCoverage` | Each interop scenario's coverage report is byte-identical to the reference's. 5 upstream coverage tests. |
 
 ## Upstream tests
 
@@ -99,8 +103,57 @@ All 44 examples pass. Every result and every state directory, including
 History, the timer store, custody, the routes and the Local Dispatch, is
 identical to the Python journey's. `scripts/interop` runs this group.
 
-**Suite total:** 98 examples, 0 failures (34 + 7 model, 2 corpus, 11
-journeys, 44 journeys against the reference).
+### The World, its campaigns and coverage
+
+`tests/integration/testing/test_readiness_world.py`,
+`test_readiness_campaign.py` and `test_readiness_coverage.py` are ported in
+full. Each upstream test keeps its name and its assertions. The World runs
+over the Haskell `petrus-dst` (Petrus DST v4) and the real V5 host
+(`hamsterdan-host`).
+
+| Upstream file | Functions | Haskell spec | Examples | Notes |
+| --- | ---: | --- | ---: | --- |
+| `test_readiness_world.py` | 19 | `ReadinessWorldSpec` | 19 | The `monkeypatch` of `HostService._record_posture` is a `ServiceHooks.aroundRecordPosture` hook installed through `newReadinessWorldWith`. |
+| `test_readiness_campaign.py` | 6 | `ReadinessCampaignSpec` | 6 | Hypothesis campaigns are deterministic enumerations (see [DIVERGENCES.md](DIVERGENCES.md)): authority lifecycle 30 schedules, reminder timer 40 (every case the `assume` admits), Git publication 16 (all), the delivery recovery state machine 56 runs (8 seeds covering all 8 drawn branch combinations × every rule sequence up to 2). |
+| `test_readiness_coverage.py` | 5 | `ReadinessCoverageSpec` | 5 | The `monkeypatch` of `ReadinessChecker.check` is a custom `Checker` passed to `newReadinessWorldWith`. |
+
+**An upstream finding.** The Git enumeration includes schedules upstream's
+five Hypothesis examples never draw: a crash right after the Git ref is
+accepted, with no response fault (`response_lost=False`,
+`crash_cut="after_acceptance"`). Upstream's own World refuses both of them:
+the independent model fails the boundary after the moved head's CI is set
+(`ready_parity` and `progress_disclosed` false). Running the upstream test
+body on them in the pinned Python raises the same `InvariantViolation`. The
+Haskell campaign asserts the reference's verdict for those two cases: an
+invariant failure whose retained artifact replays exactly. The
+`git-after_acceptance-unrecovered` interop scenario shows that both
+languages fail it identically, with the same artifact bytes.
+
+### World interop against the reference
+
+`differential/world_reference.py` authors named scenarios through the
+pinned Python's `ReadinessWorld`, replays artifacts with
+`replay_readiness`, and collects coverage. `Hamsterdan.Testing.World.Scenarios`
+holds the same 20 scenarios: the Timeline call sequences of the World tests,
+each campaign's `@example` cases, the coverage fixture, and the unrecovered
+Git schedule above. Several end in a budget exhaustion or invariant failure.
+
+`WorldInteropSpec` ("World interop against the reference") runs four
+examples per scenario, 80 in all:
+
+| Example | Compares |
+| --- | --- |
+| the Haskell World authors the reference's artifact bytes | `encode_artifact` bytes of both Worlds |
+| the reference's artifact replays in Haskell with the reference's result bytes | canonical replay-result bytes |
+| the reference's artifact has the reference's coverage report bytes | `encode_readiness_coverage` bytes |
+| the Haskell artifact replays in the reference with the Haskell result bytes | canonical replay-result bytes, the other way |
+
+All 80 pass: every artifact (`petrus.testing.dst/v4`), replay result and
+coverage report is byte-identical. `scripts/interop` runs this group.
+
+**Suite total:** 208 examples, 0 failures (34 + 7 model, 2 corpus, 11
+journeys, 44 journeys against the reference, 19 World, 6 campaign, 5
+coverage, 80 World interop).
 
 ## Benchmarks
 
@@ -112,12 +165,8 @@ interleaved, and the load average is noted. Haskell is faster on every row:
 - **Journeys, end to end:** 3.3× to 7.0× for the eight journeys without Git
   publication. For the three with real `git` processes: `agent_repair`
   1.7×, `stale_base_update` 2.0×, `true_conflict_resolution` 1.9×.
+- **World, four scenarios:** authoring 2.2× to 3.0×; replay 1.7× to 2.4×.
 
 ## Gaps
 
-- **The deterministic World and its campaigns are not ported.** This covers
-  `src/hamsterdan/host/testing/*` over Petrus DST v4: `ReadinessWorld`, the
-  readiness profile and checker, `replay_readiness` and the semantic
-  coverage report. Its upstream tests are not ported either:
-  `tests/integration/testing/test_readiness_world.py`,
-  `test_readiness_campaign.py` and `test_readiness_coverage.py`.
+None. The divergences are listed in [DIVERGENCES.md](DIVERGENCES.md).

@@ -4,9 +4,10 @@
         packages/hamsterdan-testing/bench/bench.py [PREFIX ...]
 
 Reads test/corpus/oracle.jsonl next to this package and imports
-differential/journeys_reference.py for the journeys' determinism seams, so
-it can run from any directory. With PREFIX arguments, only the rows whose
-names start with one of them run (``journeys/``, ``oracle/``). Results and
+differential/journeys_reference.py for the journeys' determinism seams and
+differential/world_reference.py for the named World scenarios, so it can run
+from any directory. With PREFIX arguments, only the rows whose names start
+with one of them run (``journeys/``, ``oracle/``, ``world/``). Results and
 the Haskell side are in RESULTS.md.
 
 Prints the time per pass: the best of 5 timeit repeats (3 for a pass over
@@ -83,17 +84,65 @@ def journey_case(name: str):
     return case
 
 
+def author_world(name: str, root: Path) -> bytes:
+    """``world_reference.py author NAME ROOT``: the artifact's bytes."""
+    scenario, seed, budget = world_reference.SCENARIOS[name]
+    world = ReadinessWorld(root / "live", budget=budget, seed=seed)
+    try:
+        artifact = world.artifact(scenario(world))
+    finally:
+        world.close()
+    return encode_artifact(artifact)
+
+
+def world_author_case(name: str):
+    """One World scenario from an empty directory to its artifact bytes."""
+
+    def case() -> None:
+        with tempfile.TemporaryDirectory(prefix="world") as directory:
+            author_world(name, Path(directory).resolve())
+
+    return case
+
+
+def world_replay_case(name: str):
+    """The scenario's artifact replayed from decoded bytes to the canonical
+    replay-result bytes (``world_reference.py replay``). The artifact is
+    authored once, on the first (untimed) call."""
+
+    @functools.cache
+    def artifact():
+        with tempfile.TemporaryDirectory(prefix="world") as directory:
+            return decode_artifact(author_world(name, Path(directory).resolve()))
+
+    def case() -> None:
+        authored = artifact()
+        with tempfile.TemporaryDirectory(prefix="world") as directory:
+            result = replay_readiness(authored, Path(directory).resolve())
+            world_reference.canonical(result.model_dump(mode="json"))
+
+    return case
+
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "differential"))
 import journeys_reference  # noqa: E402
+import world_reference  # noqa: E402
+from hamsterdan.host.testing.readiness_world import ReadinessWorld, replay_readiness  # noqa: E402
+from petrus.testing.dst import decode_artifact, encode_artifact  # noqa: E402
 
 SCENARIOS = journeys_reference.scenarios_module()
 journeys_reference.git_determinism()
+
+# The same four scenarios as worldBenchmarks in Main.hs.
+WORLD = ("coverage-duplicate-delivery", "authority-draft_resume", "timer-draft_resume", "git-after_acceptance")
 
 CASES = {
     f"oracle/evaluate every admitted corpus document ({len(FACTS)})": evaluate_all,
     f"oracle/load and evaluate every admitted corpus document ({len(FACTS)})": load_and_evaluate_all,
     f"oracle/evaluate_liveness x12 over every expectation ({len(FACTS)})": liveness_all,
     **{f"journeys/{name}": journey_case(name) for name in journeys_reference.JOURNEYS},
+    **{f"world/author {name}": world_author_case(name) for name in WORLD},
+    **{f"world/replay {name}": world_replay_case(name) for name in WORLD},
 }
 
 
