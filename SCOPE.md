@@ -24,6 +24,7 @@ status lives in [PARITY.md](PARITY.md).
 | `ariad` | A development method, not software Petrus runs. |
 | `CarlAdam` | An earlier, unrelated Petri net library (2024); Petrus does not depend on it. |
 | Every other `henriquebastos` repository | Not Petri-net or Petrus related. |
+| `hamsterdan`'s `src/hamsterdan2` at the pinned commit | An in-progress rebuild of the outer system (CV21) that production does not run: it has no entry point and no effects (see [docs/hamsterdan.md](docs/hamsterdan.md) §1.11). The goal is to behave like production Hamsterdan. When upstream cuts over to it (CV22), moving the `hamsterdan` pin brings it into scope. |
 
 ## External systems
 

@@ -14,7 +14,7 @@ A component is **at parity** only when all of these hold at the current pin:
 4. **Performance** — its committed benchmarks show it at least as fast as the
    pinned Python on equivalent workloads.
 
-Statuses: `not started`, `in progress`, `at parity`. Evidence links point at
+Statuses: `not started`, `in progress`, `at parity`, and `out of scope` (with the reason; see [SCOPE.md](SCOPE.md)). Evidence links point at
 the tests, conformance suites, and benchmark results that justify the status.
 
 ## petrus
@@ -113,7 +113,7 @@ Hamsterdan depends on differs** (docs/hamsterdan.md §2.3).
 | Deterministic journeys (11 scenarios, byte-exact against Python) | `tests/integration/host/test_readiness_scenarios.py` | `hamsterdan-testing` | not started | |
 | Operator CLI | `src/hamsterdan/operator.py`, `host/publication_qualification.py` | `hamsterdan-operator` | not started | |
 | Container runtime contract | `deployment/Containerfile`, `deployment/config`, `scripts/with-runtime-secrets` | | not started | |
-| Replacement outer system (deferred until upstream CV22 cutover) | `src/hamsterdan2` | | not started | |
+| Replacement outer system (deferred until upstream CV22 cutover) | `src/hamsterdan2` | | out of scope | not run by production at the pinned commit; see [SCOPE.md](SCOPE.md#out-of-scope) |
 | End-to-end against a real GitHub App | — (docs/hamsterdan.md §5) | | not started | |
 
 ## petrus-viewer
