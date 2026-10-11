@@ -23,7 +23,7 @@ The Haskell suite replays each row and compares the results byte for byte.
 | `github_app/auth.py`: `GitHubAppClients` (`app`, `installation`, `inventory_client`), `registration_inventory`, `_validate_permissions` (the startup permission/event/installation/repository check) | `Hamsterdan.GitHub.Auth`, `Hamsterdan.GitHub.Client` | `test/corpus/http.jsonl` (rows that run the inventory check); `GitHubSpec` "GitHub App client stack" |
 | githubkit `AppAuthStrategy` / PyJWT: the RS256 App JWT, installation-token minting and expiry, `MemCacheStrategy`, route rules (App JWT vs. token vs. bypass) | `Hamsterdan.GitHub.Jwt`, `Hamsterdan.GitHub.Client` | `test/corpus/http.jsonl` (every `Authorization` header, including the JWT bytes, and every token request body) |
 | githubkit / httpx request building, header order, response decoding (`Content-Encoding`, charset), error families, `Link` handling | `Hamsterdan.GitHub.Http`, `Hamsterdan.GitHub.Url`, `Hamsterdan.GitHub.Client` | `test/corpus/http.jsonl` (1400 rows: request line, ordered headers and body bytes of every exchange; metadata-hook observations; each step's outcome) |
-| hishel 1.3 `SpecificationPolicy` (private cache, conditional revalidation, 304 freshening and invalidation, unread-body hiding, `parse_date`) | `Hamsterdan.GitHub.Cache` | `test/corpus/http.jsonl` (cacheable, revalidated, mismatched-304 and malformed-date responses) |
+| hishel 1.3 `SpecificationPolicy` (private cache, conditional revalidation, 304 freshening and invalidation, unread-body hiding, `parse_date`) | `Hamsterdan.GitHub.Cache` | `test/corpus/http.jsonl` (cacheable, revalidated, mismatched-304 and malformed-date responses); `test/corpus/dates.jsonl` (`parse_date` over 1520 header values) |
 | `github_app/transport.py`: `GitHubKitTransport` (`request`, `pages`, `download`: method and origin bounds, 64 KiB bodies, 1 MiB responses, redirect refusal, `Link` pagination to 20 pages without cycles), `GitHubGraphQL` (review threads, `resolveReviewThread`, the `repository{id}` + `updateRefs` compare-and-swap) | `Hamsterdan.GitHub.Transport` | `test/corpus/http.jsonl` (REST and download bounds); `test/corpus/effects.jsonl` (`review_threads`, `resolve_thread`, `cas_ref`); `GitHubSpec` |
 | `github_app/gateway.py`: `GitHubAuthority` (`pull_request`, `policy` with the classic-protection fallback and digest, `human_review`, `resolve_stale_finding_threads`, `base_current`, `comments`, `workflow_runs`, `select_run`, `jobs`, `run_result`, `actions_evidence`, `failure_logs`, `create_tree` / `create_commit` with blobs) | `Hamsterdan.GitHub.Gateway` | `test/corpus/effects.jsonl` (each read and Git-object write against a randomly misbehaving GitHub: every request, body and outcome); `GitHubSpec` "GitHub gateway" |
 | `github_app/effects.py`: `CommentPublisher` (markers, `immutable`, `immutable_operation`, `find`, `dashboard`, `finding`, `findings` review batches, `reminder`, `reminder_operation`, lookup-first recovery, fences, fault hooks, the 60 s / 120 s inline retry), `CommentRerunBroker` (`held`, `issue`, `request`) | `Hamsterdan.GitHub.Effects` | `test/corpus/effects.jsonl` (every interaction in order: requests with exact JSON bodies, page reads, fences, faults, retry delays, and the outcome); `GitHubSpec` "comment publisher", "rerun broker" |
@@ -37,7 +37,8 @@ The Haskell suite replays each row and compares the results byte for byte.
 | `webhooks.jsonl` (1000 receive, 200 inbox, 300 routing sequences, 6 lone-surrogate sequences) | 1506 | `scripts/gen_webhook_corpus.py` |
 | `effects.jsonl` (reads, Git objects, effects, broker and GraphQL operations against a simulated GitHub) | 4010 | `scripts/gen_effects_corpus.py` |
 | `http.jsonl` (the client stack over a scripted network) | 1400 | `scripts/gen_http_corpus.py` |
-| **Total** | **9016** | |
+| `dates.jsonl` (hishel `parse_date` over header dates, Unicode digits and case) | 1520 | `scripts/gen_date_corpus.py` |
+| **Total** | **10536** | |
 
 Each generator is seeded and deterministic. To regenerate the corpora, run
 from the repository root:
@@ -47,6 +48,7 @@ upstream/hamsterdan/.venv/bin/python packages/hamsterdan-github/scripts/gen_conf
 upstream/hamsterdan/.venv/bin/python packages/hamsterdan-github/scripts/gen_webhook_corpus.py
 upstream/hamsterdan/.venv/bin/python packages/hamsterdan-github/scripts/gen_effects_corpus.py
 upstream/hamsterdan/.venv/bin/python packages/hamsterdan-github/scripts/gen_http_corpus.py
+upstream/hamsterdan/.venv/bin/python packages/hamsterdan-github/scripts/gen_date_corpus.py
 ```
 
 Every value in the corpora is synthetic: no credential, token or real
@@ -119,7 +121,6 @@ changes a wire format. In short:
   not validated.
 - `urlsplit`'s NFKC check and httpx's IDNA check are not reproduced. The
   origin bound refuses those URLs anyway.
-- `str.isdigit` is approximated in the hishel date parser.
 - The messages of uncaught CPython exceptions are not compared; their classes
   are.
 - There is no environment proxy or CA-bundle handling, and no 100-request

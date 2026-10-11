@@ -45,6 +45,10 @@ def unicode_tables(_argument):
         "space": ranges(c.isspace() for c in chars),
         "linebreak": ranges(len(("a" + c + "b").splitlines()) == 2 for c in chars),
         "decimal": [[code, unicodedata.decimal(c)] for code, c in enumerate(chars) if unicodedata.decimal(c, None) is not None],
+        "digit": ranges(c.isdigit() for c in chars),
+        "lower": [[code, points(c.lower())] for code, c in enumerate(chars) if c.lower() != c],
+        "upper": [[code, points(c.upper())] for code, c in enumerate(chars) if c.upper() != c],
+        "casefold": [[code, points(c.casefold())] for code, c in enumerate(chars) if c.casefold() != c],
     }
 
 
@@ -58,7 +62,22 @@ def string_methods(argument):
         "split": [points(part) for part in value.split()],
         "splitlines": [points(part) for part in value.splitlines()],
         "isprintable": value.isprintable(),
+        "lower": points(value.lower()),
+        "upper": points(value.upper()),
+        "casefold": points(value.casefold()),
+        "fsencode": fs_encode(value),
     }
+
+
+def fs_encode(value: str):
+    try:
+        return {"bytes": value.encode("utf-8", "surrogateescape").hex()}
+    except UnicodeEncodeError as error:
+        return {"error": str(error)}
+
+
+def fs_decode(argument):
+    return points(bytes.fromhex(argument).decode("utf-8", "surrogateescape"))
 
 
 def bytes_repr(argument):
@@ -181,6 +200,7 @@ OPERATIONS = {
     "utf8-decode": utf8_decode,
     "utf8-replace": utf8_replace,
     "utf8-encode": utf8_encode,
+    "fs-decode": fs_decode,
     "exception": exception_text,
     "json-bytes": json_bytes,
     "json-loads-bytes": json_loads_bytes,

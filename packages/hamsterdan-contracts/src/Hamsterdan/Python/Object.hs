@@ -62,7 +62,6 @@ module Hamsterdan.Python.Object
 import Control.Exception (Exception, throwIO)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Char (GeneralCategory (..), generalCategory, isLowerCase, isUpperCase)
 import Data.List (find, sortOn)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -289,31 +288,10 @@ pyInt = \case
 intText :: Text -> Either PyError Integer
 intText = either (Left . fromPython) Right . Py.intText
 
--- | @str.lower()@: full case mapping, with the final-sigma rule.
+-- | @str.lower()@: full case mapping, with the final-sigma rule (CPython
+-- 3.14's tables, petrus-json's 'Py.lower').
 pyLower :: Text -> Text
-pyLower text
-  | T.all (\c -> c < '\x80') text = T.toLower text
-  | otherwise = T.concat (zipWith lowerAt [0 ..] chars)
-  where
-    chars = T.unpack text
-    count = length chars
-    lowerAt :: Int -> Char -> Text
-    lowerAt i c
-      | c == '\x3A3' = T.singleton (if finalSigma i then '\x3C2' else '\x3C3')
-      | otherwise = T.toLower (T.singleton c)
-    finalSigma i =
-      let before = dropWhile caseIgnorable (reverse (take i chars))
-          after' = dropWhile caseIgnorable (drop (i + 1) chars)
-       in case before of
-            c : _
-              | cased c -> i + 1 >= count || case after' of
-                  [] -> True
-                  d : _ -> not (cased d)
-            _ -> False
-    cased c = isUpperCase c || isLowerCase c || generalCategory c == TitlecaseLetter
-    caseIgnorable c =
-      generalCategory c `elem` [NonSpacingMark, EnclosingMark, Format, ModifierLetter, ModifierSymbol]
-        || c `elem` ("'.:\xB7\x387\x55F\x5F4\x2018\x2019\x2024\x2027\xFE13\xFE52\xFE55\xFF07\xFF0E\xFF1A" :: String)
+pyLower = Py.lower
 
 -- | Refuse an unhashable value as a set element or set probe.
 hashCheck :: PV -> Either PyError ()

@@ -132,15 +132,19 @@ differential corpora compare these byte for byte with the pinned Python (see
       invalid labels. `Hamsterdan.GitHub.Url.httpxUrl` admits them unchecked.
     - Only redirect `Location` headers reach this code. The bounded transport
       refuses every redirect, and every foreign host, regardless.
-11. **`str.isdigit` is approximated in the hishel date parser.**
-    - `pyIsDigit` is used by `Cache.parseDate`, the port of hishel's
-      `parse_date` over `email.utils.parsedate_tz`. It accepts Unicode
-      decimal digits plus the superscript, subscript and circled digits.
-    - CPython's `str.isdigit` also accepts a few rarer `Numeric_Type=Digit`
-      characters (for example Ethiopic and dingbat digits). A `Date` or
-      `Last-Modified` header containing one could parse differently.
-    - Header values are decoded from bytes as httpx does, and GitHub sends
-      ASCII dates.
+11. **`str.isdigit` in the hishel date parser: resolved, no longer a
+    difference.**
+    - `Cache.parseDate` (hishel's `parse_date` over
+      `email.utils.parsedate_tz`) used an approximate `pyIsDigit` that
+      missed the rarer `Numeric_Type=Digit` characters (Ethiopic, dingbat
+      digits), and GHC's Unicode 15.1 `toLower`; a year such as `፩` with a
+      valid year in the zone slot parsed where the reference returns `None`.
+    - It now uses `Hamsterdan.Python.Text.isDigit` and `lower`, which are
+      petrus-json's CPython 3.14 (Unicode 16.0) tables, checked on every code
+      point against the pinned interpreter.
+    - `test/corpus/dates.jsonl` (`scripts/gen_date_corpus.py`, 1 520 header
+      values through the reference's `parse_date`) pins it in
+      `HttpCorpusSpec`.
 
 ## Testing scope
 

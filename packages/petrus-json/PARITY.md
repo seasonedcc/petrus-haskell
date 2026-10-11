@@ -102,11 +102,15 @@ profiles of `loadsProfiles`:
   [`PythonCompatSpec`](test/Petrus/Json/PythonCompatSpec.hs)): one live run
   of the pinned interpreter ([`cpython_compat_oracle.py`](test/cpython_compat_oracle.py))
   answers every case and every answer must match exactly: `str.isprintable`,
-  `str.isspace`, the `str.splitlines` boundaries and `unicodedata.decimal`
-  on every code point; `repr`, `strip`, `lstrip`, `rstrip`, `split()`,
-  `splitlines()` and `isprintable()` of 2 500 generated strings (dense in
-  whitespace, line boundaries, U+00A0, Unicode 16.0 additions such as
-  U+105C0, and lone surrogates for `repr`); `repr(bytes)`; `repr(float)`
+  `str.isspace`, the `str.splitlines` boundaries, `unicodedata.decimal`,
+  `str.isdigit` and the full `str.lower`, `str.upper` and `str.casefold`
+  mappings on every code point; `repr`, `strip`, `lstrip`, `rstrip`,
+  `split()`, `splitlines()`, `isprintable()`, `lower()` (the final-sigma
+  rule in every context), `upper()`, `casefold()` and `os.fsencode` (the
+  `surrogateescape` error and its range) of 2 500 generated strings (dense
+  in whitespace, line boundaries, U+00A0, Unicode 16.0 additions such as
+  U+105C0, and lone surrogates); `bytes.decode("utf-8", "surrogateescape")`
+  (`fsDecode`, `os.fsdecode`); `repr(bytes)`; `repr(float)`
   with the non-finite values; `repr`, `str` and type name of `json.loads`
   values; the exact text of `json.loads` refusals (`JSONDecodeError` with
   line, column and character, and the digit limit), plain and with a

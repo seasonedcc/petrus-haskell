@@ -36,10 +36,13 @@ library
                     Petrus.Json.Python
                     Petrus.Json.Python.Decode
                     Petrus.Json.Python.Exception
+                    Petrus.Json.Python.Fs
                     Petrus.Json.Python.Loads
                     Petrus.Json.Python.Scanner
                     Petrus.Json.Python.Uuid
+                    Petrus.Json.PythonCase
                     Petrus.Json.PythonText
+                    Petrus.Json.PythonText.CaseTables
                     Petrus.Json.PythonText.Tables
                     Petrus.Json.Repr
                     Petrus.Json.Value

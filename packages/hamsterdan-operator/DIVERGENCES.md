@@ -54,8 +54,9 @@ Below are the differences that remain, with their rationale.
    - an undecodable argument is decoded leniently (U+FFFD) instead of
      being kept with `surrogateescape`;
    - JSON with lone surrogates or in UTF-16/32 is refused;
-   - `str.casefold()` (the bot-login comparison) and `str.isspace()` use
-     GHC's Unicode tables rather than CPython 3.14's.
+   - `str.casefold()` (the bot-login comparison) and `str.isspace()` now
+     use petrus-json's CPython 3.14 (Unicode 16.0) tables, checked on every
+     code point against the pinned interpreter: no longer a difference.
 
 ## Internal (no observable difference)
 

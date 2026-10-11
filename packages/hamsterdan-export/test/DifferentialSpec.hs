@@ -420,6 +420,8 @@ hostileCases =
   , hostile "the inbox holds case-folded and Unicode delivery ids" $ \root -> do
       sql (webhooksPath root) ("UPDATE inbox SET delivery_id = upper(delivery_id) WHERE rowid = 1")
       sql (webhooksPath root) "INSERT INTO inbox(delivery_id,event,observation,status,attempts) VALUES ('\x0391\x03A3 \x03A3x \x0130', 'push', '{\"\\u00e9\": [1e400, -0.0, 1E+2]}', 'pending', 0), ('0aD296B0-A66F-11F1-8280-881304021CBB', 'dup', '{}', 'done', 2)"
+  , hostile "the inbox holds delivery ids only Unicode 16.0 lower-cases alike" $ \root ->
+      sql (webhooksPath root) "INSERT INTO inbox(delivery_id,event,observation,status,attempts) VALUES ('\x1C89-\x03A3', 'push', '{}', 'pending', 0), ('\x1C8A-\x03C2', 'dup', '{}', 'done', 1)"
   , hostile "the inbox lives in a WAL that was never checkpointed" $ \root -> walInbox root
   , hostile "the webhook store is a directory" $ \root -> do
       removeFile (webhooksPath root)

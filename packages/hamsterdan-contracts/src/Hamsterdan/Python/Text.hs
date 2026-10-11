@@ -26,6 +26,8 @@ module Hamsterdan.Python.Text
   , splitlines
   , casefold
   , upper
+  , lower
+  , isDigit
   , utf8Length
   , strRepr
 
@@ -66,6 +68,10 @@ import Petrus.Json.Python
   , pythonSplitlines
   , pythonStrRepr
   , pythonStrip
+  , pythonCasefold
+  , pythonLower
+  , pythonUpper
+  , isPythonDigit
   , unicodeDecodeError
   , unicodeEncodeError
   , utf8DecodeError
@@ -112,11 +118,19 @@ splitlines = pythonSplitlines
 
 -- | @str.casefold()@ (full case folding).
 casefold :: Text -> Text
-casefold = T.toCaseFold
+casefold = pythonCasefold
 
 -- | @str.upper()@ (full case mapping).
 upper :: Text -> Text
-upper = T.toUpper
+upper = pythonUpper
+
+-- | @str.lower()@ (full case mapping, with the final-sigma rule).
+lower :: Text -> Text
+lower = pythonLower
+
+-- | @str.isdigit()@ for one character.
+isDigit :: Char -> Bool
+isDigit = isPythonDigit
 
 -- | @len(value.encode())@.
 utf8Length :: Text -> Int

@@ -8,6 +8,10 @@
 -- frozen clock. Every wire request must match the reference byte for byte
 -- (method, URL, ordered headers, body), and every step must reach the
 -- reference's outcome and metadata observations.
+--
+-- It also replays @test/corpus/dates.jsonl@ (scripts/gen_date_corpus.py):
+-- header dates through hishel's @parse_date@, whose @str.isdigit()@,
+-- @str.lower()@ and @int()@ follow CPython 3.14's Unicode 16.0 tables.
 module HttpCorpusSpec (spec) where
 
 import Control.Exception (Exception, SomeException, fromException, throwIO, try)
@@ -24,9 +28,10 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Corpus
 import Hamsterdan.GitHub.Auth (githubAppClients, registrationInventory)
+import Hamsterdan.GitHub.Cache (parseDate)
 import Hamsterdan.GitHub.Client
 import Hamsterdan.GitHub.Config (AccountConfig (..), HostConfig (..), secret)
-import Hamsterdan.GitHub.Http (Exchange (..), HttpRequest (..), RawResponse (..), transportFailure)
+import Hamsterdan.GitHub.Http (ClientError (..), Exchange (..), HttpRequest (..), RawResponse (..), transportFailure)
 import Hamsterdan.GitHub.Models
 import Hamsterdan.Python (PythonException (..))
 import Hamsterdan.GitHub.Transport qualified as Transport
@@ -43,6 +48,17 @@ spec = describe "HTTP client corpus" $ do
     forM_ (zip [0 :: Int ..] rows) $ \(index, row) ->
       when (maybe True ((== index) . read) only) $
         replay (isJust only) mismatches key ("row #" <> show index) row
+    readIORef mismatches >>= expectNone
+  dates <- runIO (readCorpus "dates.jsonl")
+  it ("parses every header date as hishel's parse_date does (" <> show (length dates) <> " values)") $ do
+    mismatches <- newIORef []
+    forM_ dates $ \row -> do
+      let value = textOf (field "value" row)
+          recorded = Object [(name, outcome) | name <- ["result", "error"], Just outcome <- [member name row]]
+          actual = case parseDate value of
+            Right stamp -> Object [("result", maybe Null Int stamp)]
+            Left failure -> Object [("error", Array [String failure.pythonClass, String failure.detail])]
+      checkJson mismatches (show value) recorded actual
     readIORef mismatches >>= expectNone
 
 newtype Diverged = Diverged String

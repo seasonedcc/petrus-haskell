@@ -38,12 +38,15 @@ Below are the differences that remain, with their rationale.
    runs CPython's `detect_encoding` and decodes with `surrogatepass`, so
    such files load as in the reference (they used to raise
    `UnsupportedJsonEncoding`). `Hamsterdan.Python.Object`'s tests cover it.
-5. **`str.lower()` uses GHC's Unicode tables.** Over non-ASCII text it uses
-   `base`'s tables for GHC 9.10 (Unicode 15.1) rather than CPython 3.14's
-   (Unicode 16.0); a character assigned in between can lower-case
-   differently. The fixtures and the hostile cases use characters both
-   versions agree on. `str.isspace()`, `str.isprintable()` (in `repr`) and
-   `int()` now come from petrus-json's CPython 3.14 tables and match.
+5. **`str.lower()`: resolved, no longer a difference.** It used `base`'s
+   Unicode 15.1 tables, without the final-sigma rule. It is now
+   petrus-json's `pythonLower`: CPython 3.14's full mapping from the
+   Unicode 16.0 tables, with `handle_capital_sigma`, checked against the
+   pinned interpreter on every code point and in every final-sigma context
+   (`PythonCompatSpec`). `str.isspace()`, `str.isprintable()` (in `repr`)
+   and `int()` come from the same tables. The hostile case "the inbox
+   holds delivery ids only Unicode 16.0 lower-cases alike" runs the
+   reference on such ids.
 
 ## Internal (no observable difference)
 

@@ -155,6 +155,8 @@ fixedUrls =
   , "https://\8453/"
   , "https://\189.com/"
   , "  \tHTTPS://EXAMPLE.com:080/a\nb"
+  , "https://\913\931.\913\931\913/"
+  , "https://\7305\304.com/"
   , "https://h:\1635/"
   , "https://h:65536/"
   , "https://h:99999999999999999999999/"

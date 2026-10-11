@@ -35,7 +35,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error qualified as TEE
 import Data.Word (Word8)
 import Numeric (readHex)
-import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python (pythonLower, pythonStrRepr)
 
 -- | @SplitResult(scheme, netloc, path, query, fragment)@.
 data SplitResult = SplitResult
@@ -259,7 +259,7 @@ hostinfo r =
 hostname :: SplitResult -> Maybe Text
 hostname r = case fst (hostinfo r) of
   "" -> Nothing
-  host -> let (address, zone) = T.breakOn "%" host in Just (T.toLower address <> zone)
+  host -> let (address, zone) = T.breakOn "%" host in Just (pythonLower address <> zone)
 
 -- | @SplitResult.port@: 'Left' is the @ValueError@ message.
 port :: SplitResult -> Either Text (Maybe Integer)

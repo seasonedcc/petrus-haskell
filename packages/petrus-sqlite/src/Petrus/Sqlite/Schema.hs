@@ -35,6 +35,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Petrus.Json.Python (isPythonSpace, pythonLower)
 import Petrus.Sqlite.Connection (Connection, SQLData (..), execute_, query, queryFirst)
 
 -- | Execute each statement verbatim, in order (inside whatever transaction
@@ -43,26 +44,15 @@ createSchema :: Connection -> [Text] -> IO ()
 createSchema connection = mapM_ (execute_ connection)
 
 -- | Python's @str.isspace@, which is also what @\\s@ matches in a @str@
--- regular expression and what @str.strip()@ removes: ASCII whitespace,
--- the information separators @\\x1c@–@\\x1f@, @\\x85@, and the Unicode
--- space separators, line and paragraph separators.
+-- regular expression and what @str.strip()@ removes (petrus-json's
+-- CPython 3.14 table).
 pythonIsSpace :: Char -> Bool
-pythonIsSpace c =
-  (c >= '\t' && c <= '\r')
-    || (c >= '\x1c' && c <= ' ')
-    || c == '\x85'
-    || c == '\xa0'
-    || c == '\x1680'
-    || (c >= '\x2000' && c <= '\x200a')
-    || c == '\x2028'
-    || c == '\x2029'
-    || c == '\x202f'
-    || c == '\x205f'
-    || c == '\x3000'
+pythonIsSpace = isPythonSpace
 
--- | Upstream's @normalize@: @re.sub(r"\\s+", " ", sql.strip()).lower()@.
+-- | Upstream's @normalize@: @re.sub(r"\\s+", " ", sql.strip()).lower()@,
+-- with CPython's @str.lower@ (Unicode 16.0, the final-sigma rule).
 normalizeDdl :: Text -> Text
-normalizeDdl = T.toLower . T.intercalate " " . filter (not . T.null) . T.split pythonIsSpace
+normalizeDdl = pythonLower . T.intercalate " " . filter (not . T.null) . T.split pythonIsSpace
 
 -- | Whether two name-to-DDL maps are equal after 'normalizeDdl' (upstream
 -- compares the dictionaries, so a missing or extra object is a mismatch).

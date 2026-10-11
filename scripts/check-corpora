@@ -318,13 +318,13 @@ GENERATORS: List[Generator] = [
         cwd=".",
         in_place=True,
     ),
-    # petrus-json: CPython's str.isprintable, str.isspace, line boundaries and decimal digits
+    # petrus-json: CPython's str.isprintable, str.isspace, line boundaries, digits and case mappings
     Generator(
         "petrus-json/python tables",
         "petrus",
         "packages/petrus-json/gen/gen_python_tables.py",
         [],
-        {"packages/petrus-json/src/Petrus/Json/PythonText/Tables.hs": "", "packages/petrus-json/test/python-printable.txt": ""},
+        {"packages/petrus-json/src/Petrus/Json/PythonText/Tables.hs": "", "packages/petrus-json/test/python-printable.txt": "", "packages/petrus-json/src/Petrus/Json/PythonText/CaseTables.hs": ""},
         cwd=".",
         in_place=True,
     ),
@@ -350,6 +350,7 @@ GENERATORS: List[Generator] = [
         ],
     ),
     hamsterdan("hamsterdan-github/gen_config_corpus", "packages/hamsterdan-github/scripts/gen_config_corpus.py", ["packages/hamsterdan-github/test/corpus/config.jsonl"]),
+    hamsterdan("hamsterdan-github/gen_date_corpus", "packages/hamsterdan-github/scripts/gen_date_corpus.py", ["packages/hamsterdan-github/test/corpus/dates.jsonl"]),
     hamsterdan("hamsterdan-github/gen_effects_corpus", "packages/hamsterdan-github/scripts/gen_effects_corpus.py", ["packages/hamsterdan-github/test/corpus/effects.jsonl"]),
     hamsterdan(
         "hamsterdan-github/gen_http_corpus",

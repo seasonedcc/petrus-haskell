@@ -418,6 +418,7 @@ schemaSpec = describe "Schema" $ do
           , ""
           , "   "
           , "x\x0b\x0cy"
+          , "\x0391\x03A3 \x03A3\x0391 \x0391\x03A3\x0301. \x1C89\x0130"
           ]
     expected <- pythonJson "import json, re, sys\nprint(json.dumps([re.sub(r'\\s+', ' ', s.strip()).lower() for s in json.loads(sys.argv[1])]))" [jsonList samples]
     strings expected `shouldBe` map normalizeDdl samples

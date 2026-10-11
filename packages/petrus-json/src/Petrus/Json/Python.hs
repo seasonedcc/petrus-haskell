@@ -24,9 +24,11 @@
 -- (@test/Petrus/Json/PythonCompatSpec.hs@).
 module Petrus.Json.Python
   ( module Petrus.Json.PythonText
+  , module Petrus.Json.PythonCase
   , module Petrus.Json.Repr
   , module Petrus.Json.Python.Decode
   , module Petrus.Json.Python.Exception
+  , module Petrus.Json.Python.Fs
   , module Petrus.Json.Python.Loads
   , module Petrus.Json.Python.Uuid
   , jsonTypeName
@@ -34,8 +36,10 @@ module Petrus.Json.Python
 
 import Petrus.Json.Python.Decode
 import Petrus.Json.Python.Exception
+import Petrus.Json.Python.Fs
 import Petrus.Json.Python.Loads
 import Petrus.Json.Python.Uuid
+import Petrus.Json.PythonCase
 import Petrus.Json.PythonText
 import Petrus.Json.Repr
 import Petrus.Json.Value (jsonTypeName)

@@ -40,7 +40,7 @@ import Control.Monad (forM, forM_)
 import Crypto.Hash (SHA256 (..), hashWith)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Char (GeneralCategory (DecimalNumber), generalCategory, ord)
+import Data.Char (ord)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
@@ -354,7 +354,7 @@ parsedateTz input = do
   let tokens0 = splitWords input
   first : rest0 <- Just tokens0
   let tokens1
-        | "," `T.isSuffixOf` first || T.toLower first `elem` dayNames = rest0
+        | "," `T.isSuffixOf` first || Py.lower first `elem` dayNames = rest0
         | otherwise = case T.breakOnEnd "," first of
             (before, after) | not (T.null before) -> after : rest0
             _ -> first : rest0
@@ -373,10 +373,10 @@ parsedateTz input = do
   dd0 : mm0 : yy0 : tm0 : tz0 : _ <- Just tokens3
   if T.null dd0 || T.null mm0 || T.null yy0 then Nothing else Just ()
   (dd1, mmName) <-
-    let lowered = T.toLower mm0
+    let lowered = Py.lower mm0
      in if lowered `elem` monthNames
           then Just (dd0, lowered)
-          else if T.toLower dd0 `elem` monthNames then Just (lowered, T.toLower dd0) else Nothing
+          else if Py.lower dd0 `elem` monthNames then Just (lowered, Py.lower dd0) else Nothing
   let monthIndex = length (takeWhile (/= mmName) monthNames) + 1
       month = if monthIndex > 12 then monthIndex - 12 else monthIndex
       dd2 = if "," `T.isSuffixOf` dd1 then T.dropEnd 1 dd1 else dd1
@@ -388,7 +388,7 @@ parsedateTz input = do
       then let trimmed = T.dropEnd 1 yy1 in if T.null trimmed then Nothing else Just trimmed
       else Just yy1
   let (yy3, _tz) = case T.uncons yy2 of
-        Just (c, _) | not (pyIsDigit c) -> (tz0, yy2)
+        Just (c, _) | not (Py.isDigit c) -> (tz0, yy2)
         _ -> (yy2, tz0)
       tm2 = if "," `T.isSuffixOf` tm1 then T.dropEnd 1 tm1 else tm1
   (thh, tmm, tss) <- case T.splitOn ":" tm2 of
@@ -415,26 +415,6 @@ parsedateTz input = do
       [ "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
       , "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"
       ]
-
--- | @str.isdigit()@ for one character: decimal digits plus the common
--- superscript, subscript and circled digits (Numeric_Type=Digit).
-pyIsDigit :: Char -> Bool
-pyIsDigit c =
-  generalCategory c == DecimalNumber
-    || c `elem` ['\xb2', '\xb3', '\xb9', '\x2070']
-    || (c >= '\x2074' && c <= '\x2079')
-    || (c >= '\x2080' && c <= '\x2089')
-    || (c >= '\x2460' && c <= '\x2468')
-    || (c >= '\x2474' && c <= '\x247c')
-    || (c >= '\x2488' && c <= '\x2490')
-    || (c >= '\x24f5' && c <= '\x24fd')
-    || c == '\x24ea'
-    || c == '\x24ff'
-    || (c >= '\x2776' && c <= '\x277e')
-    || (c >= '\x2780' && c <= '\x2788')
-    || (c >= '\x278a' && c <= '\x2792')
-    || (c >= '\x1369' && c <= '\x1371')
-    || c == '\x19da'
 
 -- | A @no-cache@ or @private@ directive: absent/bare, or with field names.
 data NoCache = Flag Bool | Fields [Text]
