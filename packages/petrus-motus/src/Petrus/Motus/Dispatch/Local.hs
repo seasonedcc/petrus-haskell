@@ -188,38 +188,41 @@ tablePrefix = "impetus_local_dispatch_"
 -- | @_DDL@, byte for byte: the reference's opener compares
 -- @sqlite_master.sql@ against these texts.
 ddl :: [Text]
-ddl =
-  [ "CREATE TABLE impetus_local_dispatch_schema (\n\
-    \ component TEXT PRIMARY KEY CHECK(component='dispatch'), version INTEGER NOT NULL)"
-  , "INSERT INTO impetus_local_dispatch_schema VALUES ('dispatch', 3)"
-  , "CREATE TABLE impetus_local_dispatch_tasks (\n\
-    \ sequence INTEGER PRIMARY KEY AUTOINCREMENT,\n\
-    \ instance TEXT NOT NULL, occurrence INTEGER NOT NULL CHECK(occurrence>0),\n\
-    \ queue TEXT NOT NULL, invocation TEXT NOT NULL CHECK(json_valid(invocation)),\n\
-    \ epoch INTEGER NOT NULL DEFAULT 0 CHECK(epoch>=0), claimant TEXT, deadline INTEGER,\n\
-    \ schedule_start INTEGER NOT NULL, attempt_start INTEGER, attempt_deadline INTEGER, available_at INTEGER NOT NULL,\n\
-    \ details TEXT CHECK(details IS NULL OR json_valid(details)),\n\
-    \ CHECK((epoch=0 AND claimant IS NULL AND deadline IS NULL) OR\n\
-    \       (epoch>0 AND claimant IS NOT NULL AND deadline IS NOT NULL)),\n\
-    \ UNIQUE(instance, occurrence))"
-  , "CREATE INDEX impetus_local_dispatch_claimable\n\
-    \ ON impetus_local_dispatch_tasks(queue, sequence)"
-  , "CREATE TABLE impetus_local_dispatch_terminals (\n\
-    \ sequence INTEGER PRIMARY KEY AUTOINCREMENT,\n\
-    \ instance TEXT NOT NULL, occurrence INTEGER NOT NULL, epoch INTEGER NOT NULL CHECK(epoch>=0),\n\
-    \ claimant TEXT, outcome TEXT NOT NULL CHECK(json_valid(outcome)),\n\
-    \ CHECK((epoch=0 AND claimant IS NULL) OR (epoch>0 AND claimant IS NOT NULL)),\n\
-    \ UNIQUE(instance, occurrence),\n\
-    \ FOREIGN KEY(instance, occurrence) REFERENCES impetus_local_dispatch_tasks(instance, occurrence))"
-  , "CREATE TABLE impetus_local_dispatch_cancellations (\n\
-    \ instance TEXT NOT NULL, occurrence INTEGER NOT NULL CHECK(occurrence>0),\n\
-    \ history_position INTEGER NOT NULL CHECK(history_position>0),\n\
-    \ invocation TEXT NOT NULL CHECK(json_valid(invocation)),\n\
-    \ PRIMARY KEY(instance, occurrence))"
-  ]
+ddl = [schemaTable, schemaRow, tasksTable, claimableIndex, terminalsTable, cancellationsTable]
 
-ddlAt :: Int -> Text
-ddlAt i = ddl !! i
+schemaTable, schemaRow, tasksTable, claimableIndex, terminalsTable, cancellationsTable :: Text
+schemaTable =
+  "CREATE TABLE impetus_local_dispatch_schema (\n\
+  \ component TEXT PRIMARY KEY CHECK(component='dispatch'), version INTEGER NOT NULL)"
+schemaRow = "INSERT INTO impetus_local_dispatch_schema VALUES ('dispatch', 3)"
+tasksTable =
+  "CREATE TABLE impetus_local_dispatch_tasks (\n\
+  \ sequence INTEGER PRIMARY KEY AUTOINCREMENT,\n\
+  \ instance TEXT NOT NULL, occurrence INTEGER NOT NULL CHECK(occurrence>0),\n\
+  \ queue TEXT NOT NULL, invocation TEXT NOT NULL CHECK(json_valid(invocation)),\n\
+  \ epoch INTEGER NOT NULL DEFAULT 0 CHECK(epoch>=0), claimant TEXT, deadline INTEGER,\n\
+  \ schedule_start INTEGER NOT NULL, attempt_start INTEGER, attempt_deadline INTEGER, available_at INTEGER NOT NULL,\n\
+  \ details TEXT CHECK(details IS NULL OR json_valid(details)),\n\
+  \ CHECK((epoch=0 AND claimant IS NULL AND deadline IS NULL) OR\n\
+  \       (epoch>0 AND claimant IS NOT NULL AND deadline IS NOT NULL)),\n\
+  \ UNIQUE(instance, occurrence))"
+claimableIndex =
+  "CREATE INDEX impetus_local_dispatch_claimable\n\
+  \ ON impetus_local_dispatch_tasks(queue, sequence)"
+terminalsTable =
+  "CREATE TABLE impetus_local_dispatch_terminals (\n\
+  \ sequence INTEGER PRIMARY KEY AUTOINCREMENT,\n\
+  \ instance TEXT NOT NULL, occurrence INTEGER NOT NULL, epoch INTEGER NOT NULL CHECK(epoch>=0),\n\
+  \ claimant TEXT, outcome TEXT NOT NULL CHECK(json_valid(outcome)),\n\
+  \ CHECK((epoch=0 AND claimant IS NULL) OR (epoch>0 AND claimant IS NOT NULL)),\n\
+  \ UNIQUE(instance, occurrence),\n\
+  \ FOREIGN KEY(instance, occurrence) REFERENCES impetus_local_dispatch_tasks(instance, occurrence))"
+cancellationsTable =
+  "CREATE TABLE impetus_local_dispatch_cancellations (\n\
+  \ instance TEXT NOT NULL, occurrence INTEGER NOT NULL CHECK(occurrence>0),\n\
+  \ history_position INTEGER NOT NULL CHECK(history_position>0),\n\
+  \ invocation TEXT NOT NULL CHECK(json_valid(invocation)),\n\
+  \ PRIMARY KEY(instance, occurrence))"
 
 -- ---------------------------------------------------------------------------
 -- Engine-facing session
@@ -646,21 +649,19 @@ heartbeat w attempt details = do
     orRefuse (encodeJson "heartbeat details" snapshot)
   latest <- withTransaction w.connections $ \db -> do
     now <- currentTime db w.workerReader
-    row <- active db attempt now
-    inv <- case row of
-      _ : SQLText stored : _ -> orRefuse (decodeInvocation stored)
-      _ -> stale attempt
+    task <- active db attempt now
+    inv <- orRefuse (decodeInvocation task.storedInvocation)
     (inst, occurrence) <- attemptKey attempt
     let timeout = (policyFields inv.policy).heartbeatTimeout
         renewed = now + timeout * 1000
-        deadline = case row !! 6 of
+        deadline = case task.attemptDeadline of
           SQLInteger hard -> min renewed (toInteger hard)
           _ -> renewed
         key = [SQLText inst, intData occurrence]
     case encoded of
       Nothing -> do
         execute db "UPDATE impetus_local_dispatch_tasks SET deadline=? WHERE instance=? AND occurrence=?" (bigint deadline : key)
-        orRefuse (jsonColumn (row !! 5))
+        orRefuse (jsonColumn task.details)
       Just text -> do
         execute db "UPDATE impetus_local_dispatch_tasks SET deadline=?,details=? WHERE instance=? AND occurrence=?" ([bigint deadline, SQLText text] <> key)
         orRefuse (parseColumn text)
@@ -807,7 +808,14 @@ close w = when w.ownsConnections (closePool w.connections)
 -- Fences
 
 -- | @_active@: the exact live lease, or "stale Activity attempt".
-active :: Connection -> ActivityAttempt -> Integer -> IO [SQLData]
+-- | The columns of a live attempt's task row its callers read.
+data ActiveTask = ActiveTask
+  { storedInvocation :: Text
+  , details :: SQLData
+  , attemptDeadline :: SQLData
+  }
+
+active :: Connection -> ActivityAttempt -> Integer -> IO ActiveTask
 active db attempt now = do
   (inst, occurrence) <- attemptKey attempt
   let key = [SQLText inst, intData occurrence]
@@ -820,16 +828,16 @@ active db attempt now = do
   cancelled <- query db "SELECT 1 FROM impetus_local_dispatch_cancellations WHERE instance=? AND occurrence=?" key
   encoded <- orRefuse (encodeInvocation attempt.invocation)
   case rows of
-    row@[queue, inv, epoch, who, deadline, _, _] : _
+    [queue, SQLText stored, epoch, who, deadline, details, attemptDeadline] : _
       | null terminal
       , null cancelled
       , queue == SQLText attempt.queue
-      , inv == SQLText encoded
+      , stored == encoded
       , dataStr epoch == attempt.epoch
       , who == SQLText attempt.claimant
       , Just expiry <- integerOf deadline
       , expiry > now ->
-          pure row
+          pure ActiveTask {storedInvocation = stored, details, attemptDeadline}
     _ -> stale attempt
 
 -- | @_cancelled_attempt@: validate the exact fenced claimant before
@@ -994,7 +1002,7 @@ initialize pool file reader = do
             if isVersion 2 rows1
               then do
                 when (objects /= v2Objects) $ refuse "foreign Local Dispatch schema-2 shape"
-                execute db (ddlAt 5) []
+                execute db cancellationsTable []
                 execute db "UPDATE impetus_local_dispatch_schema SET version=3 WHERE component='dispatch'" []
                 pure (versionRows 3)
               else pure rows1
@@ -1006,11 +1014,11 @@ validateShape :: Connection -> Text -> IO ()
 validateShape db shown = do
   let expectedSql =
         Map.fromList
-          [ ("impetus_local_dispatch_schema", ddlAt 0)
-          , ("impetus_local_dispatch_tasks", ddlAt 2)
-          , ("impetus_local_dispatch_claimable", ddlAt 3)
-          , ("impetus_local_dispatch_terminals", ddlAt 4)
-          , ("impetus_local_dispatch_cancellations", ddlAt 5)
+          [ ("impetus_local_dispatch_schema", schemaTable)
+          , ("impetus_local_dispatch_tasks", tasksTable)
+          , ("impetus_local_dispatch_claimable", claimableIndex)
+          , ("impetus_local_dispatch_terminals", terminalsTable)
+          , ("impetus_local_dispatch_cancellations", cancellationsTable)
           ]
       refuse message = dispatchError (shown <> ": " <> message)
       normalize = T.toLower . T.unwords . T.words
@@ -1104,9 +1112,9 @@ migrateV1 db reader = do
   execute db "DROP TABLE impetus_local_dispatch_terminals" []
   execute db "DROP INDEX impetus_local_dispatch_claimable" []
   execute db "DROP TABLE impetus_local_dispatch_tasks" []
-  execute db (ddlAt 2) []
-  execute db (ddlAt 3) []
-  execute db (ddlAt 4) []
+  execute db tasksTable []
+  execute db claimableIndex []
+  execute db terminalsTable []
   forM_ tasks $ \case
     [sequence', inst, occurrence, queue, SQLText encoded, epoch, who, deadline, details] -> do
       canonical <- orRefuse (decodeInvocation encoded >>= encodeInvocation)
