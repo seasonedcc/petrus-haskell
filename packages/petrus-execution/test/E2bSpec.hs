@@ -300,16 +300,18 @@ spec = describe "e2b provider (fake SDK)" $ do
     map shlexQuote ["", "safe-_@%+=:,./", "it's", "a b", "$(x)", "\233"]
       `shouldBe` ["''", "safe-_@%+=:,./", "'it'\"'\"'s'", "'a b'", "'$(x)'", "'\233'"]
 
-  -- Opt-in exactly as upstream: the same three gates and skip reasons, then
-  -- the same lifecycle against real E2B through the default loader (the
-  -- native client).  E2bHttpSpec runs this body against the fake E2B server
-  -- on every run.
+  -- Opt-in behind upstream's gate, then the same lifecycle against real E2B
+  -- through the default loader (the native client).  Upstream also skips
+  -- when the gate is set but a prerequisite is missing; here that fails, as
+  -- the other live acceptance tests do, so a requested live run cannot pass
+  -- silently.  E2bHttpSpec runs this body against the fake E2B server on
+  -- every run.
   it "test_live_e2b_vm_provider_is_explicitly_opt_in" $ do
     enabled <- lookupEnv "PETRUS_RUN_CV10_E2B"
     key <- lookupEnv "E2B_API_KEY"
     liveTemplate <- lookupEnv "PETRUS_CV10_E2B_TEMPLATE"
     case (enabled, key, liveTemplate) of
       (Just "1", Just k, Just t) | not (null k), not (null t) -> withTempDir (liveLifecycle defaultE2bConfig (T.pack t))
-      (Just "1", Just k, _) | not (null k) -> pendingWith "set PETRUS_CV10_E2B_TEMPLATE to a template with sh and tar"
-      (Just "1", _, _) -> pendingWith "live E2B lifecycle acceptance requires E2B_API_KEY"
+      (Just "1", Just k, _) | not (null k) -> expectationFailure "set PETRUS_CV10_E2B_TEMPLATE to a template with sh and tar"
+      (Just "1", _, _) -> expectationFailure "live E2B lifecycle acceptance requires E2B_API_KEY"
       _ -> pendingWith "set PETRUS_RUN_CV10_E2B=1 to run live E2B lifecycle acceptance"
