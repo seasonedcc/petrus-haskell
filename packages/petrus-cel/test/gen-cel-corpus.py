@@ -664,6 +664,15 @@ add("quirks.operator_in", [
     "_in_(1, 2, 3)", "_in_", "size(_in_)", "_in_ == _in_", "type(_in_)", "x int", "true int", "1 inx",
     "x.exists(_in_, _in_ > 1)",
 ], {"x": [1, 2], "t": [1], "x2": 1})
+# Lone surrogates: a string literal may spell one, and the result is a Python
+# str holding it (the Haskell side keeps it as WTF-8, as petrus-json does).
+add("literal.string.surrogates", [
+    r"size('<U>D800')", r"'<U>D800' + 'a'", r"'<U>D83D' + '<U>DE00'", r"'<U>D83D' + '<U>DE00' == '\U0001F600'",
+    r"'<U>D800' < '<U>E000'", r"'<U>DFFF' > '<U>D7FF'", r"'<U>DBFF<U>DC00'", r"size('<U>DBFF<U>DC00')",
+    r"'a<U>D800b'.contains('<U>D800')", r"'<U>DC00x'.startsWith('<U>DC00')", r"'x<U>DC00'.endsWith('<U>DC00')",
+    r"'<U>D800' == '<U>D800'", r"'<U>D800' in ['<U>D800']", r"{'<U>D800': 1}['<U>D800']", r"string('<U>D800')",
+    r"'<U>D800'.matches('.')", r"bytes('<U>D800')", r"type('<U>D800')",
+])
 
 # ---------------------------------------------------------------------------
 # Petrus adapter cases

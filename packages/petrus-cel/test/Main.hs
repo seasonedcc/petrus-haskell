@@ -4,6 +4,7 @@ import Test.Hspec
 
 import Corpus qualified
 import Impetus qualified
+import KernelSeam qualified
 import Live qualified
 import Properties qualified
 
@@ -13,5 +14,6 @@ main = do
   hspec $ do
     Corpus.spec corpus
     Impetus.spec
+    KernelSeam.spec
     Live.spec
     Properties.spec

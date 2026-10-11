@@ -18,6 +18,8 @@ maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Language
 build-type:         Simple
 extra-doc-files:    NOTICE
+                    PARITY.md
+                    DIVERGENCES.md
 extra-source-files: test/corpus/*.json
                     test/*.py
                     gen/*.py
@@ -67,6 +69,7 @@ test-suite petrus-cel-test
   main-is:          Main.hs
   other-modules:    Corpus
                     Impetus
+                    KernelSeam
                     Live
                     Properties
   build-depends:    base

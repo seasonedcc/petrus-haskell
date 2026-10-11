@@ -58,8 +58,11 @@
 --   string/bytes operands are \"no such overload\"; @matches@ is RE2 with
 --   RE2\'s Unicode 15.1 tables (see "Petrus.Cel.Regex").
 --
--- One deliberate deviation: a string literal spelling a lone surrogate
--- (@\'\\uD800\'@) decodes to U+FFFD, because 'Text' cannot hold a surrogate.
+-- A string literal spelling a lone surrogate (@\'\\uD800\'@) keeps it, as
+-- Python's @str@ does: 'Text' carries it in WTF-8 ("Petrus.Json.Wtf8"),
+-- its @size@ and @repr@ are CPython's, and where cel-python encodes the
+-- string (@bytes(s)@, @matches@) it raises CPython's @UnicodeEncodeError@
+-- with the same arguments.
 module Petrus.Cel
   ( -- * Programs
     Program

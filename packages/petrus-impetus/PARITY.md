@@ -16,6 +16,10 @@ Statuses:
 - **ported via CEL stub**: the test drives inline CEL through a test-local
   `CelCompilers` that recognises the test's exact expressions. The kernel's
   side of the seam (scopes, free-place checks, refusals) is what gets tested.
+  This package cannot depend on `petrus-cel`, so `petrus-cel` reruns every
+  one of these tests (26 in all) on real CEL, `Petrus.Cel.Impetus.celCompilers`,
+  under the same names in its `test/KernelSeam.hs`
+  ([ledger](../petrus-cel/PARITY.md)). The rows say so.
 - **enforced by types**: the case cannot be represented in Haskell.
 - **ported elsewhere**: the test's subject lives in another package of this
   repository, and that package ports it (the ledger row names the example).
