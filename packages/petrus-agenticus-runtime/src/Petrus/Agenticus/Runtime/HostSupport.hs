@@ -11,6 +11,7 @@ module Petrus.Agenticus.Runtime.HostSupport
     stripAnsi
   , pyStrip
   , pyFirstWord
+  , pyJsonLoadsBytes
     -- * Platform
   , observedPlatform
     -- * Sidecars
@@ -28,7 +29,7 @@ module Petrus.Agenticus.Runtime.HostSupport
 
 import Control.Concurrent (ThreadId, forkIO, killThread)
 import Control.Concurrent.STM
-import Control.Exception (IOException, SomeException, catch, finally, try)
+import Control.Exception (IOException, SomeException, catch, evaluate, finally, try)
 import Control.Monad (unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -37,11 +38,14 @@ import Data.IORef
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
+import Data.Text.Encoding.Error (OnDecodeError, UnicodeException, strictDecode)
 import Petrus.Agenticus.Internal.Validate (pyIsSpace)
 import Petrus.Agenticus.Runtime.Pi (micros, waitExit)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.Exit (ExitCode (..))
+import System.IO.Unsafe (unsafeDupablePerformIO)
 import System.IO (BufferMode (..), Handle, hClose, hFlush, hSetBinaryMode, hSetBuffering)
 import System.Posix.Signals (sigKILL, signalProcessGroup)
 import System.Posix.Unistd (SystemID (..), getSystemID)
@@ -97,6 +101,31 @@ pyStrip = T.dropAround pyIsSpace
 -- | @value.split(maxsplit=1)[0] if value else ""@ after a strip.
 pyFirstWord :: Text -> Text
 pyFirstWord value = T.takeWhile (not . pyIsSpace) (pyStrip value)
+
+-- | @json.loads(bytes)@: CPython's @json.detect_encoding@, then the scanner.
+pyJsonLoadsBytes :: ByteString -> Maybe Json
+pyJsonLoadsBytes bytes = do
+  text <- decodeDetected
+  either (const Nothing) Just (J.parseJson J.pythonLoads (TE.encodeUtf8 text))
+  where
+    strict decode input = either (const Nothing) Just (decode input)
+    viaWith :: (OnDecodeError -> ByteString -> Text) -> ByteString -> Either UnicodeException Text
+    viaWith decode input = unsafeDupablePerformIO (try (evaluate (let t = decode strictDecode input in T.length t `seq` t)))
+    starts = (`B.isPrefixOf` bytes)
+    byteAt = B.index bytes
+    decodeDetected
+      | starts "\x00\x00\xfe\xff" = strict (viaWith TE.decodeUtf32BEWith) (B.drop 4 bytes)
+      | starts "\xff\xfe\x00\x00" = strict (viaWith TE.decodeUtf32LEWith) (B.drop 4 bytes)
+      | starts "\xfe\xff" = strict (viaWith TE.decodeUtf16BEWith) (B.drop 2 bytes)
+      | starts "\xff\xfe" = strict (viaWith TE.decodeUtf16LEWith) (B.drop 2 bytes)
+      | starts "\xef\xbb\xbf" = strict TE.decodeUtf8' (B.drop 3 bytes)
+      | B.length bytes >= 4 && byteAt 0 == 0 =
+          if byteAt 1 /= 0 then strict (viaWith TE.decodeUtf16BEWith) bytes else strict (viaWith TE.decodeUtf32BEWith) bytes
+      | B.length bytes >= 4 && byteAt 1 == 0 =
+          if byteAt 2 /= 0 || byteAt 3 /= 0 then strict (viaWith TE.decodeUtf16LEWith) bytes else strict (viaWith TE.decodeUtf32LEWith) bytes
+      | B.length bytes == 2 && byteAt 0 == 0 = strict (viaWith TE.decodeUtf16BEWith) bytes
+      | B.length bytes == 2 && byteAt 1 == 0 = strict (viaWith TE.decodeUtf16LEWith) bytes
+      | otherwise = strict TE.decodeUtf8' bytes
 
 -- ---------------------------------------------------------------------------
 -- Platform

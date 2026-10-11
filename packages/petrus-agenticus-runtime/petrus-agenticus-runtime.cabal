@@ -54,6 +54,8 @@ library
   exposed-modules:  Petrus.Agenticus.Runtime.AgentNetRunner
                     Petrus.Agenticus.Runtime.Amp
                     Petrus.Agenticus.Runtime.Claude
+                    Petrus.Agenticus.Runtime.Codex
+                    Petrus.Agenticus.Runtime.CodexGondolin
                     Petrus.Agenticus.Runtime.HostSupport
                     Petrus.Agenticus.Runtime.Pi
                     Petrus.Agenticus.Runtime.PiA2Host
@@ -68,6 +70,7 @@ library
                   , crypton >=1.0
                   , directory >=1.3
                   , filepath >=1.4
+                  , network >=3.1
                   , ram >=0.20
                   , petrus-activity
                   , petrus-agenticus

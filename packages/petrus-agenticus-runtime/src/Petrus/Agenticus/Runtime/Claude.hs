@@ -120,7 +120,6 @@ import Control.Exception
   , SomeAsyncException
   , SomeException
   , catch
-  , evaluate
   , finally
   , fromException
   , mask
@@ -146,8 +145,6 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Text.Encoding.Error (OnDecodeError, UnicodeException, strictDecode)
-import System.IO.Unsafe (unsafeDupablePerformIO)
 import GHC.Clock (getMonotonicTime)
 import Paths_petrus_agenticus_runtime (getDataFileName)
 import Petrus.Agenticus.Attachment.Binding
@@ -434,31 +431,6 @@ decodeTranscript maximumEntries maximumTotal value = do
   (entries, encoded) <- jsonEntries maximumEntries maximumTotal decoded
   when (encoded /= value) $ Left (valueError "Claude transcript bytes must use the canonical immutable encoding")
   pure entries
-
--- | @json.loads(bytes)@: CPython's @json.detect_encoding@, then the scanner.
-pyJsonLoadsBytes :: ByteString -> Maybe Json
-pyJsonLoadsBytes bytes = do
-  text <- decodeDetected
-  either (const Nothing) Just (J.parseJson J.pythonLoads (TE.encodeUtf8 text))
-  where
-    strict decode input = either (const Nothing) Just (decode input)
-    viaWith :: (OnDecodeError -> ByteString -> Text) -> ByteString -> Either UnicodeException Text
-    viaWith decode input = unsafeDupablePerformIO (try (evaluate (let t = decode strictDecode input in T.length t `seq` t)))
-    starts = (`B.isPrefixOf` bytes)
-    byteAt = B.index bytes
-    decodeDetected
-      | starts "\x00\x00\xfe\xff" = strict (viaWith TE.decodeUtf32BEWith) (B.drop 4 bytes)
-      | starts "\xff\xfe\x00\x00" = strict (viaWith TE.decodeUtf32LEWith) (B.drop 4 bytes)
-      | starts "\xfe\xff" = strict (viaWith TE.decodeUtf16BEWith) (B.drop 2 bytes)
-      | starts "\xff\xfe" = strict (viaWith TE.decodeUtf16LEWith) (B.drop 2 bytes)
-      | starts "\xef\xbb\xbf" = strict TE.decodeUtf8' (B.drop 3 bytes)
-      | B.length bytes >= 4 && byteAt 0 == 0 =
-          if byteAt 1 /= 0 then strict (viaWith TE.decodeUtf16BEWith) bytes else strict (viaWith TE.decodeUtf32BEWith) bytes
-      | B.length bytes >= 4 && byteAt 1 == 0 =
-          if byteAt 2 /= 0 || byteAt 3 /= 0 then strict (viaWith TE.decodeUtf16LEWith) bytes else strict (viaWith TE.decodeUtf32LEWith) bytes
-      | B.length bytes == 2 && byteAt 0 == 0 = strict (viaWith TE.decodeUtf16BEWith) bytes
-      | B.length bytes == 2 && byteAt 1 == 0 = strict (viaWith TE.decodeUtf16LEWith) bytes
-      | otherwise = strict TE.decodeUtf8' bytes
 
 -- | @_canonical_input(value)@.
 canonicalInput :: Json -> Either AgenticusError ByteString
