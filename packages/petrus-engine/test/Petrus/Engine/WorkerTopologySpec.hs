@@ -50,7 +50,8 @@ import Petrus.Impetus.Instance (Status (Awaiting))
 import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
 import Petrus.Motus.Dispatch (ActivityOutcome (..))
 import Petrus.Motus.Dispatch.Inline (Activity)
-import Petrus.Motus.Dispatch.Local (defaultLocalDispatchOptions, defaultLocalWorkerOptions, openLocalDispatch, openLocalWorkerDispatch, toDispatch)
+import Petrus.Motus.Dispatch.Local (defaultLocalDispatchOptions, defaultLocalWorkerOptions, openLocalWorkerDispatch, toDispatch)
+import Petrus.Motus.Dispatch.LocalSupport (closingScratch, openScratchDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Worker (WorkerOptions (..), closeWorker, defaultWorkerOptions, newWorker, runAvailable)
 import System.Directory (doesFileExist, makeAbsolute, removeFile)
@@ -178,7 +179,7 @@ orderEngine :: FilePath -> (ActivityInvocation -> ActivityInvocation) -> Integer
 orderEngine dir adjust heartbeat = do
   prepared <- newIORef 0
   store <- openJsonlHistoryStore (dir </> "history.jsonl")
-  port <- toDispatch <$> openLocalDispatch (dir </> "dispatch.db") orderIdentity defaultLocalDispatchOptions
+  port <- toDispatch <$> openScratchDispatch (dir </> "dispatch.db") orderIdentity defaultLocalDispatchOptions
   Engine.create orderNet orderIdentity store port (orderOptionsWith adjust prepared) {Engine.defaultHeartbeatTimeout = heartbeat}
 
 -- | The reference's @drive_until_rest@: pump ready turns and provider waits
@@ -253,7 +254,7 @@ drainWith python implementation db = case (implementation, python) of
 -- | The lock-step scenario with the given Engine and Worker; answers the
 -- History's bytes.
 lockStep :: Maybe (FilePath, FilePath) -> FilePath -> Implementation -> Implementation -> IO BS.ByteString
-lockStep python dir engineSide workerSide = do
+lockStep python dir engineSide workerSide = closingScratch dir $ do
   let path = dir </> "history.jsonl"
       db = dir </> "dispatch.db"
       drain = drainWith python workerSide db
@@ -285,7 +286,7 @@ lockStep python dir engineSide workerSide = do
 
 spec :: Spec
 spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
-  it "the activity executes on the worker and completes through server side projection" $ withScratch $ \dir -> withWorkers $ \started -> do
+  it "the activity executes on the worker and completes through server side projection" $ withScratch $ \dir -> closingScratch dir $ withWorkers $ \started -> do
     let control = dir
     worker <- spawnWorker started (dir </> "dispatch.db") control "tests.worker_topology:activities" "remote"
     engine <- orderEngine dir id 30
@@ -306,12 +307,12 @@ spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
     Engine.close engine
     prepared <- newIORef 0
     store <- openJsonlHistoryStore (dir </> "history.jsonl")
-    port <- toDispatch <$> openLocalDispatch (dir </> "dispatch.db") orderIdentity defaultLocalDispatchOptions
+    port <- toDispatch <$> openScratchDispatch (dir </> "dispatch.db") orderIdentity defaultLocalDispatchOptions
     reloaded <- Engine.load orderNet orderIdentity store port (orderOptions prepared)
     Engine.records reloaded `shouldReturn` records
     Engine.close reloaded
 
-  it "sigkill mid activity redispatches on lease expiry with exactly one effect" $ withScratch $ \dir -> withWorkers $ \started -> do
+  it "sigkill mid activity redispatches on lease expiry with exactly one effect" $ withScratch $ \dir -> closingScratch dir $ withWorkers $ \started -> do
     let db = dir </> "dispatch.db"
     writeFile (dir </> "hang") "armed"
     doomed <- spawnWorker started db dir "tests.worker_topology:activities" "doomed"
@@ -336,7 +337,7 @@ spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
     map (\r -> r.result) (completed final) `shouldBe` [chargeReceipt (invocation "charge_card" (Object [("id", String "o-1"), ("cents", Int 100)]))]
     Engine.close engine
 
-  it "sigterm drains gracefully: the in-flight activity completes" $ withScratch $ \dir -> withWorkers $ \started -> do
+  it "sigterm drains gracefully: the in-flight activity completes" $ withScratch $ \dir -> closingScratch dir $ withWorkers $ \started -> do
     writeFile (dir </> "nap") "1.0"
     worker <- spawnWorker started (dir </> "dispatch.db") dir "tests.worker_topology:activities" "drainer"
     engine <- orderEngine dir id 30
@@ -352,10 +353,10 @@ spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
     Engine.status engine `shouldReturn` Awaiting -- at rest; the order net's source stays open
     Engine.close engine
 
-  it "the worker refuses an unregistered activity" $ withScratch $ \dir -> withWorkers $ \started -> do
+  it "the worker refuses an unregistered activity" $ withScratch $ \dir -> closingScratch dir $ withWorkers $ \started -> do
     let db = dir </> "dispatch.db"
     worker <- spawnWorker started db dir "tests.worker_topology:misrouted" "mixed"
-    dispatch <- openLocalDispatch db "misrouted" defaultLocalDispatchOptions
+    dispatch <- openScratchDispatch db "misrouted" defaultLocalDispatchOptions
     let misrouted = invocation "not_registered" (Object [("id", String "mix")])
     Local.dispatch dispatch 1 ActivityInvocation {activity = misrouted.activity, input = misrouted.input, policy = misrouted.policy, correlation = Nothing, idempotency = Just "effect-mix"}
     void (awaitEvent worker (\event -> lookupMember "outcome" event == Just (String "failed")))
@@ -367,7 +368,7 @@ spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
   -- tests.absurd_support's topology net; the order net carries the same
   -- property: changing only the custody topology (inline, or Local custody
   -- drained by a Worker) does not change a sequential canonical trace.
-  it "controlled sequential local execution is byte identical to inline history (test_worker_runtime.py)" $ withScratch $ \dir -> do
+  it "controlled sequential local execution is byte identical to inline history (test_worker_runtime.py)" $ withScratch $ \dir -> closingScratch dir $ do
     let arrangement name dispatch drain = do
           prepared <- newIORef 0
           store <- openJsonlHistoryStore (dir </> (name <> ".jsonl"))
@@ -390,7 +391,7 @@ spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
     inline <- inlineOf [("charge_card", \inv _ -> pure (canonicalReceipt inv))] >>= \dispatch -> arrangement "inline" dispatch (pure ())
     let db = dir </> "dispatch.db"
     local <- do
-      dispatch <- toDispatch <$> openLocalDispatch db orderIdentity defaultLocalDispatchOptions
+      dispatch <- toDispatch <$> openScratchDispatch db orderIdentity defaultLocalDispatchOptions
       arrangement "local" dispatch (drainWith Nothing Haskell db)
     snd local `shouldBe` settledMarking 1
     local `shouldBe` inline

@@ -25,9 +25,9 @@ import Petrus.Impetus.TestSupport (netOf, np, tokD)
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch (ActivityAttempt (..))
 import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch)
-import Petrus.Motus.Dispatch.Local (defaultLocalDispatchOptions, openLocalDispatch, toDispatch)
+import Petrus.Motus.Dispatch.Local (defaultLocalDispatchOptions, toDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
-import Petrus.Motus.Dispatch.LocalSupport (callWith, fixedWorker, rawQuery, requireClaim)
+import Petrus.Motus.Dispatch.LocalSupport (callWith, closingScratch, fixedWorker, openScratchDispatch, rawQuery, requireClaim)
 import Petrus.Sqlite.Connection (SQLData (..))
 import System.Directory (doesFileExist, listDirectory)
 import System.Exit (ExitCode (..))
@@ -184,7 +184,7 @@ spec = do
       readIORef resumedPrepares `shouldReturn` 2
       withSqliteHistoryStore path orderIdentity (Store.records . (.history)) `shouldReturn` records
 
-    it "the Engine, its History and the Local Dispatch share one database file" $ withScratch $ \dir -> do
+    it "the Engine, its History and the Local Dispatch share one database file" $ withScratch $ \dir -> closingScratch dir $ do
       let path = dir </> "application.db"
           net =
             netOf
@@ -201,7 +201,7 @@ spec = do
                 , projectFailure = Nothing
                 }
           options = Engine.defaultEngineOptions {Engine.handlers = symbols [("work", handler')]}
-      local <- openLocalDispatch path "one" defaultLocalDispatchOptions
+      local <- openScratchDispatch path "one" defaultLocalDispatchOptions
       engine <- createEngine path net "one" (toDispatch local) options {Engine.marking = markingFromList [(np "ready", [tokD "Input" (Int 7)])]}
       ((.ready) <$> Engine.advance engine) `shouldReturn` True
       worker <- fixedWorker path "worker"
@@ -215,7 +215,7 @@ spec = do
       forM_ ["impetus_history_events", "impetus_history_schema", "impetus_local_dispatch_tasks"] $ \table ->
         names `shouldSatisfy` elem table
       -- and the History reloads through a fresh Engine
-      local' <- openLocalDispatch path "one" defaultLocalDispatchOptions
+      local' <- openScratchDispatch path "one" defaultLocalDispatchOptions
       reloaded <- loadEngine path net "one" (toDispatch local') options
       done <- Engine.records reloaded
       length [() | RActivityCompleted _ <- done] `shouldBe` 1

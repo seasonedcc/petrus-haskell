@@ -17,7 +17,7 @@ import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch qualified as D
 import Petrus.Motus.Dispatch.Local qualified as Local
-import Petrus.Motus.Dispatch.LocalSupport (withScratch)
+import Petrus.Motus.Dispatch.LocalSupport (openScratchDispatch, openScratchWorker, withScratch)
 import Petrus.Motus.Internal.Repr (exceptionMessage)
 import Petrus.Motus.PythonException qualified as Python
 import Petrus.Motus.Worker
@@ -125,9 +125,9 @@ spec = do
 
   it "local worker provider executes and engine collects" $ withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
-    engine <- Local.openLocalDispatch path "one" Local.defaultLocalDispatchOptions {Local.defaultQueue = "cpu"}
+    engine <- openScratchDispatch path "one" Local.defaultLocalDispatchOptions {Local.defaultQueue = "cpu"}
     Local.dispatch engine 1 (withPolicy (\p -> p {A.attempts = 1}) (invocation "work" (Object [("value", Int 2)])))
-    provider <- Local.openLocalWorkerDispatch path Local.defaultLocalWorkerOptions {Local.workerQueues = ["cpu"], Local.workerId = Just "test"}
+    provider <- openScratchWorker path Local.defaultLocalWorkerOptions {Local.workerQueues = ["cpu"], Local.workerId = Just "test"}
     events <- newEventLog
     worker <- newWorker (Local.toWorkerDispatch provider) (Map.fromList [("work", \inv _ -> pure inv.input)]) (quietOptions events)
     _ <- runAvailable worker maxBound
@@ -135,8 +135,8 @@ spec = do
 
   it "one worker resolves scoped and default modules for isolated instances" $ withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
-    one <- Local.openLocalDispatch path "one" Local.defaultLocalDispatchOptions
-    two <- Local.openLocalDispatch path "two" Local.defaultLocalDispatchOptions
+    one <- openScratchDispatch path "one" Local.defaultLocalDispatchOptions
+    two <- openScratchDispatch path "two" Local.defaultLocalDispatchOptions
     Local.dispatch one 1 (invocation "publish" Null)
     Local.dispatch two 1 (invocation "publish" Null)
     observed <- newIORef []
@@ -144,7 +144,7 @@ spec = do
           modifyIORef' observed (++ [(label, context.instance')])
           pure (Object [("module", String label), ("instance", maybe Null String context.instance')])
         modules = Map.fromList [("one" :: Text, Map.fromList [("publish" :: Text, implementation "scoped")])]
-    provider <- Local.openLocalWorkerDispatch path Local.defaultLocalWorkerOptions {Local.workerId = Just "shared"}
+    provider <- openScratchWorker path Local.defaultLocalWorkerOptions {Local.workerId = Just "shared"}
     events <- newEventLog
     worker <-
       newWorker
@@ -160,7 +160,7 @@ spec = do
 
   it "reconstructed worker resolves delayed retry from durable instance scope" $ withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
-    dispatch <- Local.openLocalDispatch path "one" Local.defaultLocalDispatchOptions
+    dispatch <- openScratchDispatch path "one" Local.defaultLocalDispatchOptions
     Local.dispatch dispatch 1 (withPolicy (\p -> p {A.attempts = 2, initialInterval = FloatNumber 0.02, heartbeatTimeout = 1}) (invocation "publish" Null))
     let resolver' inst activity = do
           (inst, activity) `shouldBe` ("one", "publish")
@@ -169,7 +169,7 @@ spec = do
               then activityError (ActivityFailureFields "transient" "ActivityError" Null True Nothing)
               else pure (Object [("instance", maybe Null String context.instance'), ("epoch", String context.epoch)])
         build label = do
-          provider <- Local.openLocalWorkerDispatch path Local.defaultLocalWorkerOptions {Local.workerId = Just label}
+          provider <- openScratchWorker path Local.defaultLocalWorkerOptions {Local.workerId = Just label}
           events <- newEventLog
           newWorker (Local.toWorkerDispatch provider) Map.empty (quietOptions events) {resolver = Just resolver'}
     first <- build "first"
@@ -216,7 +216,7 @@ spec = do
   it "killed local worker reassigns with recovered heartbeat details" $ withScratch $ \dir -> do
     let path = dir </> "dispatch.sqlite3"
         barrier = dir </> "claimed"
-    dispatch <- Local.openLocalDispatch path "one" Local.defaultLocalDispatchOptions
+    dispatch <- openScratchDispatch path "one" Local.defaultLocalDispatchOptions
     Local.dispatch
       dispatch
       1
@@ -233,7 +233,7 @@ spec = do
   it "sigterm drains the in flight local activity before worker exit" $ withScratch $ \dir -> do
     let path = dir </> "dispatch.sqlite3"
         barrier = dir </> "running"
-    dispatch <- Local.openLocalDispatch path "one" Local.defaultLocalDispatchOptions
+    dispatch <- openScratchDispatch path "one" Local.defaultLocalDispatchOptions
     Local.dispatch
       dispatch
       1

@@ -1,3 +1,5 @@
+{-# LANGUAGE CApiFFI #-}
+
 -- | Local-process provider: ports of the local halves of
 -- @test_execution_contract.py@, @test_private_execution_substrate.py@ and
 -- all of @test_private_file_transfer.py@.
@@ -8,10 +10,16 @@ import Control.Concurrent.MVar
 import Control.Exception (bracket, bracket_, finally, throwIO, try)
 import Control.Monad (unless, when)
 import Data.ByteString qualified as B
+import Data.IORef
 import Data.Maybe (fromJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Foreign.C.Error (throwErrnoIfMinus1_)
+import Foreign.C.Types (CInt (..))
+import Foreign.Marshal.Alloc (allocaBytes, allocaBytesAligned)
+import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
+import Foreign.Storable (peek)
 import GHC.Clock (getMonotonicTime)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
@@ -20,9 +28,9 @@ import Petrus.Motus.Execution.Providers.Local
 import Support
 import System.Directory
 import System.Environment (setEnv, unsetEnv)
-import System.Posix.Files (createSymbolicLink, removeLink)
-import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, openFd)
-import System.Posix.Signals (Handler (Ignore), installHandler, openEndedPipe, sigKILL, signalProcess)
+import System.Posix.Files (createNamedPipe, createSymbolicLink, removeLink)
+import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, fdReadBuf, openFd)
+import System.Posix.Signals (openEndedPipe, sigKILL, signalProcess)
 import System.Posix.Types (Fd (..))
 import System.Posix.Process (getProcessID)
 import Test.Hspec
@@ -196,9 +204,39 @@ spec = do
       lease <- provision env "collection" defaultSpec
       attachment <- attachDir provider lease tmp "digest"
       ( do
+          -- The reference's collector checks an unfinished command against
+          -- its output limit every 50 ms and terminates it once over (both
+          -- languages do), so the reference's own assertion of exit status
+          -- 0 holds only when the writer finishes within the first 50 ms:
+          -- on a loaded runner it exits -15 (upstream carries this as debt
+          -- 2026-09-08T0300Z, "process tests assume short wall-clock
+          -- budgets"). Here the writer waits on a FIFO until the first tick
+          -- has passed with nothing written, and that tick's currentness
+          -- check (made after the overflow check, before any signal) holds
+          -- the collector until the FIFO reports that every writer process
+          -- has exited, while the collector's readers keep draining. The
+          -- command then completes on its own every time: status 0, the
+          -- whole 2 MB read, 1000 bytes kept.
+          let gate = tmp <> "/writer-gate"
+          createNamedPipe gate 0o600
+          checks <- newIORef (0 :: Int)
+          let current = do
+                check <- atomicModifyIORef' checks (\n -> (n + 1, n))
+                -- Check 0 precedes the launch; check 1 is the first tick's.
+                -- Plain blocking reads (not a Handle): the IO manager's
+                -- kqueue misses a FIFO's end-of-file on macOS.
+                when (check == 1) $
+                  bracket (openFd gate ReadOnly defaultFileFlags) closeFd $ \fd ->
+                    allocaBytes 4096 $ \buffer ->
+                      let untilEof = fdReadBuf fd buffer 4096 >>= \n -> unless (n == 0) untilEof
+                       in untilEof
+                pure True
           large <-
             providerExecute provider attachment $
-              cmdWith ["/bin/sh", "-c", "head -c 2000000 /dev/zero"] (\c -> c {specOutputLimit = 1000, specTimeout = Just 5})
+              cmdWith
+                ["/bin/sh", "-c", "exec 3>\"$1\"; head -c 2000000 /dev/zero", "sh", T.pack gate]
+                (\c -> c {specOutputLimit = 1000, specTimeout = Just 5, specIsCurrent = Just current})
+          readIORef checks >>= (`shouldSatisfy` (>= 2))
           resultReturncode large `shouldBe` 0
           resultOutputTruncated large `shouldBe` True
           B.length (resultStdout large) `shouldBe` 1000
@@ -251,10 +289,11 @@ spec = do
     it "restores SIGPIPE to its default even when the parent ignores it" $ do
       -- An ignored SIGPIPE survives exec; then `yes` would see EPIPE and
       -- complain on stderr instead of dying quietly.
-      outcome <-
-        bracket (installHandler openEndedPipe Ignore Nothing) (\previous -> installHandler openEndedPipe previous Nothing) $ \_ ->
-          runCaptured (spawnSpec ["/bin/sh", "-c", "yes | head -c 4"]) 5
+      original <- sigpipeDisposition
+      outcome <- withSigpipeIgnored (runCaptured (spawnSpec ["/bin/sh", "-c", "yes | head -c 4"]) 5)
       (outcomeCode outcome, outcomeStdout outcome, outcomeStderr outcome) `shouldBe` (0, "y\ny\n", "")
+      -- The rest of the suite needs the RTS's own SIGPIPE handler back.
+      sigpipeDisposition `shouldReturn` original
 
     it "wakes a waiter as soon as the child exits, reaping it once" $ do
       running <- spawnCaptured (spawnSpec ["/bin/sh", "-c", "sleep 0.2; exit 7"])
@@ -435,6 +474,47 @@ spec = do
       result <- providerDestroy (localProvider env) foreignLease
       cleanupDisposition result `shouldBe` Unverified
       cleanupDetail result `shouldBe` "lease belongs to a different provider"
+
+-- | Run with SIGPIPE ignored, as in a parent that ignores it, then put back
+-- the exact disposition SIGPIPE had. 'System.Posix.Signals.installHandler'
+-- cannot do that: the RTS installs its SIGPIPE handler from C, so
+-- installHandler reports it as 'Default', and restoring that leaves SIGPIPE
+-- fatal for the rest of the suite. The RTS interrupts an @interruptible@
+-- foreign call by sending its thread SIGPIPE, and a write to a closed pipe
+-- or socket raises it too, so either then killed the test binary silently
+-- (status 141): petrus-execution-test died that way in GondolinSpec (CI run
+-- 38147286527, attempt 1).
+withSigpipeIgnored :: IO a -> IO a
+withSigpipeIgnored action =
+  allocaBytesAligned sigactionRoom 16 $ \saved -> do
+    throwErrnoIfMinus1_ "sigaction" (c_sigaction openEndedPipe nullPtr saved)
+    bracket_
+      (c_signal openEndedPipe c_sigIgn)
+      (throwErrnoIfMinus1_ "sigaction" (c_sigaction openEndedPipe saved nullPtr))
+      action
+
+-- | SIGPIPE's handler: the first member of @struct sigaction@ on Linux and
+-- macOS alike. (Only that: glibc leaves most of the returned @sa_mask@
+-- unwritten.)
+sigpipeDisposition :: IO (FunPtr (CInt -> IO ()))
+sigpipeDisposition =
+  allocaBytesAligned sigactionRoom 16 $ \buffer -> do
+    throwErrnoIfMinus1_ "sigaction" (c_sigaction openEndedPipe nullPtr buffer)
+    peek (castPtr buffer)
+
+-- | More than any platform's @sizeof (struct sigaction)@ (152 on Linux,
+-- 16 on macOS).
+sigactionRoom :: Int
+sigactionRoom = 1024
+
+foreign import capi unsafe "signal.h sigaction"
+  c_sigaction :: CInt -> Ptr () -> Ptr () -> IO CInt
+
+foreign import capi unsafe "signal.h signal"
+  c_signal :: CInt -> FunPtr (CInt -> IO ()) -> IO (FunPtr (CInt -> IO ()))
+
+foreign import capi "signal.h value SIG_IGN"
+  c_sigIgn :: FunPtr (CInt -> IO ())
 
 attachDir :: EnvironmentProvider -> EnvironmentLease -> FilePath -> Text -> IO ExecutionAttachment
 attachDir provider lease directory digest = do

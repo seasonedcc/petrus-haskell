@@ -79,7 +79,7 @@ Every Haskell example that ports an upstream test carries the upstream test name
 | test_private_execution_substrate.py | test_cross_provider_workspace_handoff_has_no_shared_path | `test/DockerSpec.hs` | runs against the fake CLI and, with `PETRUS_TEST_DOCKER=1`, a real daemon |
 | test_private_execution_substrate.py | test_tar_rejects_escape_links_and_special_files | `test/ArchiveSpec.hs` |  |
 | test_private_execution_substrate.py | test_workspace_archive_member_and_size_limits_are_enforced | `test/ArchiveSpec.hs` |  |
-| test_private_execution_substrate.py | test_local_collection_drains_large_output_and_kills_sigterm_ignoring_process | `test/LocalSpec.hs` |  |
+| test_private_execution_substrate.py | test_local_collection_drains_large_output_and_kills_sigterm_ignoring_process | `test/LocalSpec.hs` | upstream expects status 0 for a 2 MB writer with a 1000-byte limit, which holds only if the writer finishes before the collector's first 50 ms overflow check (on a loaded runner both languages report -15; upstream debt 2026-09-08T0300Z). The port asserts the same outcome deterministically: the writer starts after the first tick (it opens a FIFO), and that tick's currentness check waits for the writer to exit. The collector is unchanged. |
 | test_private_execution_substrate.py | test_command_snapshots_and_validates_environment | `test/ContractSpec.hs` |  |
 | test_private_execution_substrate.py | test_docker_command_credentials_are_not_exposed_in_host_argv | `test/DockerSpec.hs` |  |
 | test_private_execution_substrate.py | test_e2b_vm_lifecycle_is_lookup_first_artifact_based_and_recoverable | `test/E2bSpec.hs` |  |

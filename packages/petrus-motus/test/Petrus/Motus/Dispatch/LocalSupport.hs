@@ -20,6 +20,9 @@ module Petrus.Motus.Dispatch.LocalSupport
   , refusalMatching
     -- * Files
   , withScratch
+  , openScratchDispatch
+  , openScratchWorker
+  , closingScratch
   , rawExec
   , rawQuery
   , rawScalar
@@ -36,9 +39,10 @@ module Petrus.Motus.Dispatch.LocalSupport
   , parsedJson
   ) where
 
-import Control.Exception (bracket)
+import Control.Exception (bracket, finally, mask_)
 import Control.Monad (void)
 import Data.IORef
+import Data.List (isPrefixOf, partition)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Database.SQLite3 (SQLData (..), StepResult (..))
@@ -46,7 +50,7 @@ import Database.SQLite3 qualified as Sql
 import Petrus.Activity
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch
-import Petrus.Motus.Dispatch.Local (LocalDispatchClock (..), LocalWorkerDispatch, LocalWorkerOptions (..), defaultLocalWorkerOptions, openLocalWorkerDispatch)
+import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), LocalDispatchOptions, LocalWorkerDispatch, closeLocalDispatch, openLocalDispatch, LocalWorkerOptions (..), defaultLocalWorkerOptions, openLocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Data.ByteString qualified as BS
 import Petrus.Json (parseJson, pythonLoads)
@@ -54,8 +58,9 @@ import Petrus.TestSupport.Python (pythonExecutable)
 import Petrus.TestSupport.Repo (upstreamPetrus)
 import System.Directory (createDirectory, getTemporaryDirectory, makeAbsolute, removeDirectoryRecursive, removeFile)
 import System.Exit (ExitCode (..))
-import System.FilePath ((</>))
+import System.FilePath (splitDirectories, (</>))
 import System.IO (Handle, hClose, hSetBinaryMode, openTempFile)
+import System.IO.Unsafe (unsafePerformIO)
 import System.Process
 import Test.Hspec
 
@@ -108,12 +113,12 @@ fixedWorker path who = fixedWorkerOn path ["default"] who
 -- | @LocalWorkerDispatch(path, queues=queues, _claimant=claimant)@.
 fixedWorkerOn :: FilePath -> [Text] -> Text -> IO LocalWorkerDispatch
 fixedWorkerOn path queues' who =
-  openLocalWorkerDispatch path defaultLocalWorkerOptions {workerQueues = queues', explicitClaimant = Just who}
+  openScratchWorker path defaultLocalWorkerOptions {workerQueues = queues', explicitClaimant = Just who}
 
 -- | @LocalWorkerDispatch(path, _claimant=claimant, clock=clock)@.
 clockedWorker :: FilePath -> Text -> LocalDispatchClock -> IO LocalWorkerDispatch
 clockedWorker path who source =
-  openLocalWorkerDispatch path defaultLocalWorkerOptions {explicitClaimant = Just who, workerClock = Just source}
+  openScratchWorker path defaultLocalWorkerOptions {explicitClaimant = Just who, workerClock = Just source}
 
 -- | @_ManualProviderClock(at)@: the clock and the cell that sets it.
 manualClock :: Integer -> IO (LocalDispatchClock, IORef Integer)
@@ -130,7 +135,9 @@ refusal expected (DispatchError message) = message == expected
 refusalMatching :: Text -> Selector DispatchError
 refusalMatching fragment (DispatchError message) = fragment `T.isInfixOf` message
 
--- | A fresh scratch directory, removed afterwards.
+-- | A fresh scratch directory, removed afterwards, once the Local Dispatch
+-- sessions and workers opened in it through 'openScratchDispatch' and
+-- 'openScratchWorker' (and the worker fixtures above) are closed.
 withScratch :: (FilePath -> IO a) -> IO a
 withScratch =
   bracket
@@ -142,7 +149,52 @@ withScratch =
         createDirectory path
         pure path
     )
-    removeDirectoryRecursive
+    (\dir -> closeOpenedIn dir >> removeDirectoryRecursive dir)
+
+-- | Run the action, then close what it opened in the directory through
+-- 'openScratchDispatch' and 'openScratchWorker': for a scratch directory
+-- that another module's @withScratch@ removes.
+closingScratch :: FilePath -> IO a -> IO a
+closingScratch dir action = action `finally` closeOpenedIn dir
+
+-- | 'openLocalDispatch', closed when the enclosing 'withScratch' ends.
+--
+-- The reference's sessions and workers hold no connection between
+-- operations; the port's keep a pool, and one left open closes it when the
+-- garbage collector finalizes it. The last of those closes deletes
+-- @dispatch.db-wal@, at an arbitrary moment: during the scratch directory's
+-- removal, that removal fails on the vanished file. Keeping each one
+-- reachable until 'withScratch' closes it removes that moment.
+openScratchDispatch :: FilePath -> Text -> LocalDispatchOptions -> IO LocalDispatch
+openScratchDispatch path identity options = mask_ $ do
+  dispatch <- openLocalDispatch path identity options
+  remember path (closeLocalDispatch dispatch)
+  pure dispatch
+
+-- | 'openLocalWorkerDispatch', closed when the enclosing 'withScratch' ends
+-- (see 'openScratchDispatch').
+openScratchWorker :: FilePath -> LocalWorkerOptions -> IO LocalWorkerDispatch
+openScratchWorker path options = mask_ $ do
+  worker <- openLocalWorkerDispatch path options
+  remember path (Local.close worker)
+  pure worker
+
+-- | What 'openScratchDispatch' and 'openScratchWorker' opened, by path, with
+-- what closes it. Keyed by path, so examples running side by side close only
+-- their own.
+opened :: IORef [([FilePath], IO ())]
+opened = unsafePerformIO (newIORef [])
+{-# NOINLINE opened #-}
+
+remember :: FilePath -> IO () -> IO ()
+remember path closer = atomicModifyIORef' opened (\entries -> ((splitDirectories path, closer) : entries, ()))
+
+-- | Close what was opened under the directory, most recent first.
+closeOpenedIn :: FilePath -> IO ()
+closeOpenedIn dir = do
+  let inside (path, _) = splitDirectories dir `isPrefixOf` path
+  mine <- atomicModifyIORef' opened (\entries -> let (here, elsewhere) = partition inside entries in (elsewhere, here))
+  mapM_ snd mine
 
 -- | @with sqlite3.connect(path) as connection: connection.execute(sql)@.
 rawExec :: FilePath -> Text -> IO ()

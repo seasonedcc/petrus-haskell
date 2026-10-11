@@ -79,6 +79,8 @@ corpus and the cross-implementation interop spec pin that (see
    uses the C `sqlite3_busy_timeout`. direct-sqlite does not expose that, so
    `petrus-sqlite` runs `PRAGMA busy_timeout = 5000` as the connection opens,
    which installs the same handler before any other statement.
+   `test/Petrus/Agenticus/SqliteSpec.hs` checks both sides under the same
+   lock, including `timeout=0` failing at once.
 
 10. **`openSqliteConnectionStorageWith`** is a port-only, additive entry
     point. It runs extra statements, such as `PRAGMA synchronous = OFF`,

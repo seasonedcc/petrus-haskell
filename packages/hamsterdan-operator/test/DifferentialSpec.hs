@@ -20,7 +20,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error qualified as TEE
-import Fakes (normalizeText, wrapperScript)
+import Fakes (normalizeText, wrapperScript, writeExecutable)
 import Hamsterdan.Export.Python (PV (..))
 import Hamsterdan.Operator (Completed (..), appBotLogin, authorityReviewFacts)
 import OperatorSpec
@@ -583,8 +583,7 @@ prepareSide binary side c = do
   createDirectoryIfMissing True (side </> "tmp")
   forM_ ["gh", "git", "curl", "python"] \tool -> do
     let path = side </> "bin" </> tool
-    writeFile path (wrapperScript binary ["--fake-provider", side, tool])
-    setFileMode path 0o755
+    writeExecutable path (wrapperScript binary ["--fake-provider", side, tool])
   let entries = Map.toList (Map.fromListWith (flip (<>)) c.responses)
       encodedResponses = either (error . show) id (dumps compact (Object [(k, Array v) | (k, v) <- entries]))
   BS.writeFile (side </> "responses.json") encodedResponses

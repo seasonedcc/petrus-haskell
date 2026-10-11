@@ -77,6 +77,18 @@ binary).
   provide one (docs/reproducing.md). The tenth runs through the script's own
   `#!/usr/bin/env bash`. CI (Ubuntu, bash 5) and the image (Debian bookworm,
   bash 5.2) run all ten.
+- **The fake `op` runs the command instead of exec'ing it.** The
+  reference's fake `op` ends with `os.execvpe`. The port's fake is a mode
+  of the threaded test binary, and an exec from the threaded RTS fails at
+  random: while one thread is in `execve`, Linux refuses to create another
+  thread of the same process (`EAGAIN` from `copy_fs`), and when the RTS
+  happens to be starting a worker at that moment it exits with "failed to
+  create OS thread: Resource temporarily unavailable". On a CI runner with
+  every CPU busy, a third of the `test_secret_launch.py` runs failed that
+  way. The fake now runs the command as a child with inherited standard
+  streams and exits with its status, as the real `op run` does; the
+  launcher, the environment the command receives and everything the cases
+  observe are unchanged.
 - **The launcher's child.** `test_secret_launch.py`'s child is a Python
   program that calls `HostConfig.from_environment` and
   `PiA2InstallationConfig.from_environment`. The port's child is a mode of

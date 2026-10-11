@@ -22,7 +22,7 @@ import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch hiding (WorkerDispatch (..))
 import Petrus.Motus.Dispatch qualified as D
 import Petrus.Motus.Dispatch.Local qualified as Local
-import Petrus.Motus.Dispatch.LocalSupport (withScratch)
+import Petrus.Motus.Dispatch.LocalSupport (openScratchDispatch, openScratchWorker, withScratch)
 import Petrus.Motus.PythonException qualified as Python
 import Petrus.Motus.Worker
 import Petrus.Motus.Worker qualified as W
@@ -515,7 +515,7 @@ spec = do
 
   it "real local async worker concurrently completes and preserves heartbeat details" $ withScratch $ \dir -> do
     let path = dir </> "dispatch.sqlite3"
-    dispatch <- Local.openLocalDispatch path "async-local" Local.defaultLocalDispatchOptions {Local.defaultQueue = "io"}
+    dispatch <- openScratchDispatch path "async-local" Local.defaultLocalDispatchOptions {Local.defaultQueue = "io"}
     forM_ [0 .. 2 :: Integer] $ \n -> Local.dispatch dispatch (fromInteger n + 1) (invocation "io" (Object [("number", Int n)]))
     entered <- newIORef (0 :: Int)
     peak <- newIORef (0 :: Int)
@@ -535,7 +535,7 @@ spec = do
     events <- newEventLog
     worker <-
       newAsyncWorker
-        (Local.toWorkerDispatch <$> Local.openLocalWorkerDispatch path Local.defaultLocalWorkerOptions {Local.workerQueues = ["io"]})
+        (Local.toWorkerDispatch <$> openScratchWorker path Local.defaultLocalWorkerOptions {Local.workerQueues = ["io"]})
         (Map.fromList [("io", io)])
         3
         (quietOptions events) {W.workerId = Just "local-async"}
