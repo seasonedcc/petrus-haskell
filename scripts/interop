@@ -106,8 +106,12 @@ POSTGRES_MARKERS = re.compile(r"PETRUS_TEST_POSTGRES|postgresSpec|withScratchDat
 
 def environment() -> Dict[str, str]:
     env = dict(os.environ)
-    extra = [str(Path.home() / ".ghcup" / "bin"), str(Path.home() / ".local" / "bin")]
-    env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")])
+    # Only the entries PATH lacks: cabal reconfigures every package when PATH
+    # differs from the one the build ran with.
+    path = env.get("PATH", "")
+    extra = [p for p in (str(Path.home() / ".ghcup" / "bin"), str(Path.home() / ".local" / "bin"))
+             if p not in path.split(os.pathsep)]
+    env["PATH"] = os.pathsep.join(extra + [path])
     return env
 
 

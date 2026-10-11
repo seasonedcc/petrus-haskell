@@ -32,8 +32,8 @@ page.on("requestfailed", (r) => log("requestfailed", r.url().slice(0, 150), r.fa
 page.on("requestfinished", (r) => log("requestfinished", r.url().slice(0, 150)));
 page.on("websocket", (ws) => {
   log("websocket open", ws.url());
-  ws.on("framesent", (f) => log("ws sent", String(f.payload).slice(0, 120)));
-  ws.on("framereceived", (f) => log("ws recv", String(f.payload).slice(0, 120)));
+  ws.on("framesent", (f) => log("browser ws sent", String(f.payload).slice(0, 160)));
+  ws.on("framereceived", (f) => log("browser ws recv", String(f.payload).slice(0, 160)));
   ws.on("socketerror", (e) => log("ws error", e));
   ws.on("close", () => log("ws close", ws.url()));
 });
@@ -45,12 +45,24 @@ for (const host of ["localhost", "127.0.0.1"]) {
   } catch (e) {
     log("goto failed", e.message.split("\n")[0]);
   }
-  for (let i = 0; i < 25; i++) {
-    const title = await page.evaluate(() => document.querySelector(".pi-status-badge")?.getAttribute("title") ?? null);
-    if (i % 5 === 0 || title?.includes("connected")) log("badge", title);
-    if (title?.includes("connected") && !title.includes("disconnected")) break;
-    await new Promise((r) => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 1000));
+  // the "MCP server" side, as the upstream playwright test connects it
+  const agent = new WebSocket(`ws://localhost:${port}/ws/agent`);
+  const welcomed = new Promise((resolve) => {
+    agent.addEventListener("message", (ev) => {
+      const text = String(ev.data);
+      log("agent recv", text.slice(0, 160));
+      if (text.includes('"welcome"')) resolve();
+    });
+  });
+  await welcomed;
+  for (let i = 1; i <= 3; i++) {
+    const requestId = `diag-${host}-${i}`;
+    log("agent send", requestId);
+    agent.send(JSON.stringify({ protocol: "petrus-agent", version: 1, kind: "request", requestId, action: "document.inspect", params: { includeSchema: true } }));
+    await new Promise((r) => setTimeout(r, 12000));
   }
+  agent.close();
 }
 await browser.close();
 proc.kill("SIGTERM");

@@ -529,10 +529,54 @@ def wrap(args: List[str]) -> int:
     return 127
 
 
+# The upstream petrus-viewer suites (packages/petrus-viewer-server/
+# upstream-tests/run.mjs), in groups that run side by side: wire waits out
+# quiet windows, the browser suites wait on Chromium, and neither uses much
+# CPU. Together they are every suite run.mjs knows.
+VIEWER_GROUPS = [
+    ["wire"],
+    ["playwright", "live"],
+    ["relay", "endpoints", "url-cache", "cli", "mcp", "mcp-haskell-relay", "collab", "differential", "history"],
+]
+
+
 def run_viewer(args: List[str]) -> int:
-    """PLAN: scripts/interop --viewer petrus-viewer-server."""
+    """PLAN: what scripts/interop --viewer petrus-viewer-server runs: the
+    package's interop group, then every upstream petrus-viewer suite against
+    the Haskell backend (in VIEWER_GROUPS, side by side, on one build of the
+    executables)."""
     document = json.loads(Path(args[0]).read_text())
-    status = subprocess.call([str(ROOT / "scripts" / "interop"), "-j", "--viewer", "petrus-viewer-server"], cwd=ROOT)
+    status = subprocess.call([str(ROOT / "scripts" / "interop"), "-j", "petrus-viewer-server"], cwd=ROOT)
+    run_mjs = ROOT / "packages" / "petrus-viewer-server" / "upstream-tests" / "run.mjs"
+    block = re.search(r"^const SUITES = \{\n(.*?)^\};", run_mjs.read_text(), re.S | re.M)
+    listed = sorted(re.findall(r'^  "?([a-z-]+)"?: \{', block.group(1), re.M)) if block else []
+    if listed != sorted(s for g in VIEWER_GROUPS for s in g):
+        print(f"ci-tests: VIEWER_GROUPS does not name exactly run.mjs's suites ({', '.join(listed)})", file=sys.stderr)
+        write_results("viewer", document, {VIEWER: False})
+        return 1
+    scratch = Path(tempfile.mkdtemp(prefix="ci-viewer-", dir=os.environ.get("RUNNER_TEMP")))
+    bins = scratch / "bin"
+    bins.mkdir()
+    test = "petrus-viewer-server:test:petrus-viewer-server-test"
+    exes = ["petrus", "petrus-mcp", "petrus-collab", "petrus-viewer-oracle"]
+    subprocess.run(["cabal", "build", "-v1", "-j", "--enable-tests", "petrus-viewer-server:exes", test], cwd=ROOT, check=True)
+    for name, target in [(e, f"petrus-viewer-server:exe:{e}") for e in exes] + [("petrus-viewer-server-test", test)]:
+        built = subprocess.run(["cabal", "list-bin", "-v0", "--enable-tests", target], cwd=ROOT, check=True,
+                               capture_output=True, text=True).stdout.strip()
+        shutil.copy2(built, bins / name)
+    procs = []
+    for i, group in enumerate(VIEWER_GROUPS):
+        out = open(scratch / f"group-{i}.log", "w")
+        procs.append((group, out, subprocess.Popen(["node", str(run_mjs), "--bin-dir", str(bins), *group],
+                                                   cwd=ROOT, stdout=out, stderr=subprocess.STDOUT)))
+    for group, out, proc in procs:
+        proc.wait()
+        out.close()
+    for i, (group, out, proc) in enumerate(procs):
+        print(f"\n==> upstream petrus-viewer suites {', '.join(group)}: exit {proc.returncode}", flush=True)
+        print((scratch / f"group-{i}.log").read_text(), flush=True)
+        status = status or proc.returncode
+    shutil.rmtree(scratch, ignore_errors=True)
     write_results("viewer", document, {VIEWER: status == 0})
     return status
 

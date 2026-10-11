@@ -370,7 +370,7 @@ job, spread over Blacksmith runners so that they run side by side:
 | `build` | 16 vCPU | 4 `cabal build all` (`-Werror`); then plans the test shards |
 | `checks` | 4 vCPU | 5 `scripts/interop --check` |
 | `test (1)` … `test (N)` | 8 vCPU | 3 and 6: `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest) |
-| `viewer` | 8 vCPU | `--viewer`: `scripts/interop --viewer petrus-viewer-server`, with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium |
+| `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium |
 | `container` | 16 vCPU | none (Docker): the image and `scripts/container-smoke` ([The container image](#the-container-image)) |
 | `ci` | 2 vCPU | the verdict: green only when every job above is |
 
