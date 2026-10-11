@@ -64,9 +64,10 @@ import Petrus.Activity
   , policyFields
   )
 import Petrus.Engine.Coordinator (Coordinator, cancelClosure, drive, newCoordinator, selectionStateText, supportsCancellation)
+import Petrus.Engine.Coordinator qualified as Coordinator
 import Petrus.Engine.Vocabulary
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), CelCompilers, Completion, noCelCompilers)
-import Petrus.Impetus.History.Records (FiringFailed (..), Record (..), ScopeReset (..))
+import Petrus.Impetus.History.Records (Record (..), ScopeReset (..))
 import Petrus.Impetus.HistoryStore (CommitMode (..), HistoryStore (..))
 import Petrus.Impetus.HistoryStore qualified as Store
 import Petrus.Impetus.Instance
@@ -188,10 +189,18 @@ data Engine = Engine
   -- ^ The thread holding the monitor (the reference's re-entrant lock).
   , writer :: IORef (Maybe ThreadId)
   -- ^ The thread inside a writing door.
-  , resourcesClosed :: IORef Bool
-  , broken :: IORef (Maybe Text)
-  , closed :: IORef Bool
+  , lifecycle :: IORef Lifecycle
   }
+
+-- | Where the Engine is in its life. The provider's resources are released
+-- and closed exactly once, on leaving 'Open'.
+data Lifecycle
+  = Open
+  | -- | A writing door failed (the failure's text); 'close' keeps the
+    -- poison, so later doors keep naming it.
+    Poisoned Text
+  | Closed
+  deriving stock (Eq, Show)
 
 -- | Create and host a previously absent Instance over backend-owned writes.
 create :: Net -> Text -> HistoryStore -> Dispatch -> EngineOptions -> IO Engine
@@ -262,9 +271,7 @@ openEngine mode net identity store port options resources =
         <$> newMVar ()
         <*> newIORef Nothing
         <*> newIORef Nothing
-        <*> newIORef False
-        <*> newIORef Nothing
-        <*> newIORef False
+        <*> newIORef Open
 
 -- | Freeze the Engine-composed heartbeat timeout into each prepared
 -- invocation: the named declaration's timeout, else the Engine default.
@@ -306,8 +313,9 @@ refuseReentry e = do
 ensureOpen :: Engine -> IO ()
 ensureOpen e = do
   e.resources.ensure
-  readIORef e.broken >>= \case
-    Just text ->
+  readIORef e.lifecycle >>= \case
+    Open -> pure ()
+    Poisoned text ->
       throwIO
         ( EngineRuntimeError
             ( "this Engine is poisoned after a writing door failed ("
@@ -315,16 +323,15 @@ ensureOpen e = do
                 <> "): History, Instance, Dispatch, and the advancement lane may have advanced together — continue through a fresh Engine.load or provider load function"
             )
         )
-    Nothing -> pure ()
-  isClosed <- readIORef e.closed
-  when isClosed $
-    throwIO (EngineRuntimeError "this Engine is closed; create or load a new Engine before observing or driving")
+    Closed -> throwIO (EngineRuntimeError "this Engine is closed; create or load a new Engine before observing or driving")
 
-closeResources :: Engine -> IO ()
-closeResources e = do
-  done <- readIORef e.resourcesClosed
-  unless done $ do
-    writeIORef e.resourcesClosed True
+-- | Leave 'Open' for the given state; the first departure releases, then
+-- closes, the provider's resources ('close' even when 'release' throws).
+departTo :: Engine -> Lifecycle -> IO ()
+departTo e next = do
+  current <- readIORef e.lifecycle
+  when (current == Open) $ do
+    writeIORef e.lifecycle next
     e.resources.release `finally` e.resources.close
 
 committed :: Engine -> IO ()
@@ -343,8 +350,9 @@ guarded e door = monitored e $ do
   case outcome of
     Right value -> pure value
     Left (failure :: SomeException) -> do
-      writeIORef e.broken (Just (failureText failure))
-      e.resources.rollback `finally` closeResources e
+      -- 'ensureOpen' admitted the door, so the Engine is still 'Open'.
+      writeIORef e.lifecycle (Poisoned (failureText failure))
+      e.resources.rollback `finally` (e.resources.release `finally` e.resources.close)
       throwIO failure
 
 readDoor :: Bool -> Engine -> IO a -> IO a
@@ -420,14 +428,7 @@ completeDelivery e accepted = guarded e $ do
 completeAccepted :: Engine -> AcceptedDelivery -> IO FiringOutcome
 completeAccepted e raw = do
   accepted <- either (throwIO . EngineValueError) pure (canonicalAcceptedDelivery raw)
-  before <- historyLength e
-  now <- e.engineClock.now
-  orThrowInstance (I.completeDelivery e.inst accepted (Just now)) `onException` do
-    history <- (instanceHistory e.inst).snapshot
-    case Seq.viewr history of
-      _ Seq.:> RFiringFailed failed
-        | Seq.length history == before + 1 && failed.occurrence == I.firingOccurrenceIdInt accepted.occurrence -> committed e
-      _ -> pure ()
+  Coordinator.completeAccepted e.coordinator accepted
 
 -- | Open and commit the next lifecycle generation for the name.
 openScope :: Engine -> Text -> IO LifecycleScope
@@ -491,10 +492,7 @@ seal e source = guarded e $ do
 close :: Engine -> IO ()
 close e = monitored e $ do
   refuseReentry e
-  isClosed <- readIORef e.closed
-  unless isClosed $ do
-    writeIORef e.closed True
-    closeResources e
+  departTo e Closed
 
 -- ---------------------------------------------------------------------------
 -- Read doors
