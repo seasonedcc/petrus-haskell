@@ -193,4 +193,26 @@ with no argument or one string (`differential/failure_text_corpus.json`,
     seed.
   - The history slice's 6 properties.
   - The 4 Net-definition properties.
-  - The port of `test_instance_replay_properties.py`, with 300 examples.
+  - The port of `test_instance_replay_properties.py`, with 300 examples
+    (see "Hypothesis mapping" below).
+
+## Hypothesis mapping
+
+Upstream uses Hypothesis in one test of this slice,
+`instance/test_instance_replay_properties.py::test_legal_instance_actions_remain_replayable_and_resumable`.
+Its port, `InstanceReplayPropertiesSpec`, is a QuickCheck property that keeps
+the strategies, the settings and the stateful structure:
+
+| Hypothesis | QuickCheck port |
+| --- | --- |
+| `@settings(max_examples=300)` | `maxSuccess = 300` (`modifyArgs`) |
+| `derandomize=True` | a fixed `replay` seed (`derandomizedSeed`), so every run, local and CI, draws the same scenarios; hspec's `--seed` does not move it |
+| `deadline=None` | nothing to map: QuickCheck has no per-example deadline |
+| `_scenario_specs()` (`@st.composite`): per transition `st.integers(0, 2)` consume place, `st.integers(1, 2)` consume weight, `st.integers(0, 2)` output place, `st.sampled_from((None, READ, INHIBIT))` gate mode, `st.sampled_from` of the other places for the gate, `st.integers(1, 2)` gate weight; `st.integers(0, 2)` source output; per place `st.lists(st.sampled_from(TOKENS), max_size=3)`; `st.integers(0, 20)` actions | `genScenario` / `genOrdinary`: `chooseInt` and `elements` over the same ranges and token set, `vectorOf` of 0–3 tokens per place |
+| `st.data()` with `data.draw(st.sampled_from(legal))` per action, then `data.draw` of the delivered token, the begun candidate, the completed occurrence | `QCM.pick (elements ...)` inside `monadicIO`, drawn after reading the live candidates and in-flight occurrences, so each draw ranges over what is legal at that point |
+| `note(...)` | `forAll` shows the scenario; `counterexample` adds each drawn action |
+| `@example` cases | none upstream, none here |
+
+No other test in this slice uses Hypothesis (`test_net_document_lineage.py`
+only mentions the word in fixture data). The kernel, history and
+Net-definition properties above are beyond the reference.
