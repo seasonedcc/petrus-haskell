@@ -25,7 +25,7 @@ import Petrus.Impetus.Instance (DeliveryScope (..), FiringOutcome (..), ScopeClo
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.Scope (LifecycleScope, scopeGeneration, scopeName)
 import Petrus.Impetus.Selection (roundRobin)
-import Petrus.Impetus.TestSupport (netOf, np, tok, tokD)
+import Petrus.Impetus.TestSupport (mustNet, netOf, np, tok, tokD)
 import Petrus.Json (Json (..), lookupMember)
 import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch.InMemory
@@ -254,6 +254,41 @@ neutralSurface = describe "TestNeutralEngineSurface" $ do
     recorded <- Store.records history
     Engine.records loaded `shouldReturn` recorded
     Engine.close loaded
+
+  -- Port-only (the final audit's FA-K-3): the reference imports its CEL
+  -- compilers unconditionally, so every Engine runs inline CEL. The
+  -- default options carry petrus-cel's compilers, cel-python's semantics.
+  it "default options compile and evaluate inline CEL guards, filters and completions" $ do
+    let payments = np "payments"
+        accepted = np "accepted"
+        rejected = np "rejected"
+        accept = np "accept"
+        reject = np "reject"
+        guarded path expression = Transition path Nothing [GuardCel (unsafeCel expression)] []
+        big = tokD "Payment" (Object [("amount", Int 150), ("at", String "2024-07-01T15:00:00Z")])
+        small = tokD "Payment" (Object [("amount", Int 50), ("at", String "2024-07-01T15:00:00Z")])
+        net =
+          mustNet
+            ( netSpec
+                [place payments, place accepted, place rejected]
+                [ guarded accept "payments[0].data.amount >= 100 && timestamp(payments[0].data.at).getHours('America/Sao_Paulo') == 12"
+                , guarded reject "payments[0].data.amount < 100"
+                ]
+                [ (arc payments accept) {filter = Just (FilterCel (unsafeCel "amount > 0"))}
+                , arc payments reject
+                , arc accept accepted
+                , arc reject rejected
+                ]
+            )
+              { completion = Just (CompletionCel (unsafeCel "size(payments) == 0"))
+              }
+    history <- inMemoryHistoryStore
+    port <- inMemoryDispatch <$> newInMemoryDispatch
+    engine <- Engine.create net "cel" history port Engine.defaultEngineOptions {Engine.marking = markingFromList [(payments, [big, small])]}
+    _ <- advanceUntilRest engine
+    Engine.marking engine `shouldReturn` markingFromList [(accepted, [big]), (rejected, [small])]
+    Engine.status engine `shouldReturn` Completed
+    Engine.close engine
 
   it "create advance close and load preserve one canonical history" $ do
     history <- inMemoryHistoryStore

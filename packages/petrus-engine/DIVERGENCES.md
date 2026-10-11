@@ -46,10 +46,13 @@ differences are in how the API is spelled and in what the types rule out.
    `defaultHeartbeatTimeout` and `telemetrySink`. The defaults are the
    reference's: the conservative policy, the kernel's default selection, a
    simulated clock, no sensor, and a 30-second default heartbeat timeout.
-6. **CEL needs a compiler.** CEL guards, filters and completions compile
-   through `celCompilers` (`petrus-cel`). With the default `noCelCompilers`,
-   a net that uses CEL is refused at construction, with the kernel's
-   message. The reference has CEL built in.
+6. **CEL compilers are a field.** CEL guards, filters and completions
+   compile through `celCompilers`. Its default is petrus-cel's
+   `Petrus.Cel.Impetus.celCompilers` (cel-python's semantics), so an Engine
+   runs every CEL net the reference runs, as the reference, which has CEL
+   built in, does. A host may inject other compilers. The kernel's own
+   default stays `noCelCompilers`, because the kernel cannot depend on
+   petrus-cel (petrus-cel depends on it).
 7. **Policies and selection are values.**
    - A `DrivingPolicy` is `Snapshot -> IO Action`.
    - `BeginCandidate` carries the candidate `Binding`. The coordinator keeps

@@ -63,10 +63,11 @@ import Petrus.Activity
   , executionPolicy
   , policyFields
   )
+import Petrus.Cel.Impetus qualified as Cel
 import Petrus.Engine.Coordinator (Coordinator, cancelClosure, drive, newCoordinator, selectionStateText, supportsCancellation)
 import Petrus.Engine.Coordinator qualified as Coordinator
 import Petrus.Engine.Vocabulary
-import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), CelCompilers, Completion, HandlerObserver, noCelCompilers)
+import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), CelCompilers, Completion, HandlerObserver)
 import Petrus.Impetus.History.Records (Record (..), ScopeReset (..))
 import Petrus.Impetus.HistoryStore (CommitMode (..), HistoryStore (..))
 import Petrus.Impetus.HistoryStore qualified as Store
@@ -112,6 +113,9 @@ data EngineOptions = EngineOptions
   , filters :: Map ImplementationRef Filter
   , completions :: Map Text Completion
   , celCompilers :: CelCompilers
+  -- ^ How inline CEL guards, filters and completions compile. The default
+  -- is petrus-cel's, cel-python's semantics, as the reference has CEL
+  -- built in; a host may inject another.
   , policy :: DrivingPolicy
   , selection :: EngineSelection
   , clock :: Maybe Clock
@@ -135,7 +139,7 @@ defaultEngineOptions =
     , guards = Map.empty
     , filters = Map.empty
     , completions = Map.empty
-    , celCompilers = noCelCompilers
+    , celCompilers = Cel.celCompilers
     , policy = conservativePolicy
     , selection = defaultSelection
     , clock = Nothing

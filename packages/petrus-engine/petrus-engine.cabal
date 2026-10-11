@@ -43,6 +43,7 @@ library
                   , containers >=0.6
                   , deepseq >=1.4
                   , petrus-activity
+                  , petrus-cel
                   , petrus-impetus
                   , petrus-json
                   , petrus-motus
