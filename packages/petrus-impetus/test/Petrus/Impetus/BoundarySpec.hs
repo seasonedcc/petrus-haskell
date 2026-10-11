@@ -1,4 +1,6 @@
--- | Parity: the seven Impetus rows of @tests/project/test_package_boundaries.py@.
+-- | Parity: the four Impetus rows of @tests/project/test_package_boundaries.py@.
+-- The project-wide rows (the lazy root surface, imports of defining modules,
+-- the removed flat modules) are petrus-engine's @Petrus.Engine.BoundarySpec@.
 --
 -- Upstream checks Python import graphs: what a module loads at import time,
 -- and which names a facade re-exports. Here the same boundaries are checked
@@ -8,17 +10,16 @@
 -- sources of every package, so a Haskell module that imports a forbidden
 -- layer fails here even though it would still compile.
 --
--- Laziness itself (upstream's "without optional imports" and "does not load")
--- has no Haskell counterpart, since a module loads nothing at import time.
--- Its structural content does: no root @Petrus@ module, no optional driver in
--- the kernel's dependencies, and no forbidden module in the Petrinet layer's
--- import closure.
+-- Laziness itself (upstream's "does not load") has no Haskell counterpart,
+-- since a module loads nothing at import time. Its structural content does:
+-- no optional driver in the kernel's dependencies, and no forbidden module in
+-- the Petrinet layer's import closure.
 module Petrus.Impetus.BoundarySpec (spec) where
 
 import Control.Monad (filterM, forM)
 import Data.ByteString qualified as ByteString
 import Data.Char (isSpace)
-import Data.List (isPrefixOf, isSuffixOf, sort)
+import Data.List (isPrefixOf, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Proxy (Proxy (..))
@@ -33,33 +34,13 @@ import Petrus.Impetus.Instance qualified as Instance
 import Petrus.Impetus.Instance.Firing qualified as InstanceFiring
 import Petrus.Impetus.Petrinet qualified as Petrinet
 import Petrus.TestSupport (repoRoot)
+import Petrus.TestSupport.Boundary (libraryDepends)
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath (dropExtension, makeRelative, splitDirectories, takeExtension, (</>))
 import Test.Hspec
 
 spec :: Spec
 spec = describe "package boundaries (test_package_boundaries.py)" $ do
-  -- test_lazy_root_surface_remains_discoverable_without_optional_imports
-  it "lazy root surface remains discoverable without optional imports" $ do
-    -- The project namespace is empty: no library defines a root @Petrus@
-    -- module, so nothing (removed exports included) is reachable through it.
-    index <- libraryModules
-    Map.lookup "Petrus" index `shouldBe` Nothing
-    -- The kernel never pulls in an optional driver: neither PostgreSQL (the
-    -- reference's psycopg and history_store.postgres) nor Absurd dispatch.
-    depends <- libraryDepends "petrus-impetus"
-    depends `shouldSatisfy` elem "petrus-json"
-    filter (`elem` optionalDrivers) depends `shouldBe` []
-
-  -- test_implementation_and_maintained_consumers_import_defining_modules_not_project_root
-  it "implementation and maintained consumers import defining modules not project root" $ do
-    files <- haskellSources
-    length files `shouldSatisfy` (> 100)
-    rootImports <- fmap concat . forM files $ \file -> do
-      imported <- importsOf file
-      pure [file | "Petrus" `elem` imported]
-    rootImports `shouldBe` []
-
   -- test_canonical_petrinet_and_binding_facades
   it "canonical petrinet and binding facades" $ do
     map
@@ -108,6 +89,12 @@ spec = describe "package boundaries (test_package_boundaries.py)" $ do
     -- reach only their own layer, lifecycle scopes, two internal helpers,
     -- Activity numbers (a schema timer's duration) and petrus-json.
     filter (\m -> not (any (`within` m) petrinetMayReach)) (Set.toList reached) `shouldBe` []
+    -- Nor does the kernel package pull in an optional driver: neither
+    -- PostgreSQL (the reference's psycopg and history_store.postgres) nor
+    -- Absurd dispatch.
+    depends <- libraryDepends "petrus-impetus"
+    depends `shouldSatisfy` elem "petrus-json"
+    filter (`elem` optionalDrivers) depends `shouldBe` []
 
   -- test_petrinet_owns_binding_and_history_independent_firing
   it "petrinet owns binding and history independent firing" $ do
@@ -122,12 +109,6 @@ spec = describe "package boundaries (test_package_boundaries.py)" $ do
     reached <- petrinetClosure
     filter (\m -> any (`within` m) ["Petrus.Impetus.History", "Petrus.Impetus.HistoryStore", "Petrus.Impetus.Instance"]) (Set.toList reached)
       `shouldBe` []
-
-  -- test_removed_flat_deep_modules_are_not_speculative_shims
-  it "removed flat deep modules are not speculative shims" $ do
-    index <- libraryModules
-    Map.size index `shouldSatisfy` (> 100)
-    filter flatImpetus (Map.keys index) `shouldBe` []
 
 optionalDrivers :: [String]
 optionalDrivers = ["petrus-postgres", "postgresql-libpq", "petrus-history-postgres", "petrus-motus-absurd"]
@@ -195,18 +176,6 @@ libraryModules = do
   where
     moduleName base file = Text.unpack (Text.intercalate (Text.pack ".") (map Text.pack (splitDirectories (dropExtension (makeRelative base file)))))
 
--- | The library stanza's @build-depends@ package names.
-libraryDepends :: String -> IO [String]
-libraryDepends package = do
-  root <- repoRoot
-  text <- readSource (root </> "packages" </> package </> (package <> ".cabal"))
-  pure
-    [ takeWhile (`notElem` (" ><=^:" :: String)) name
-    | value <- libraryField "build-depends" text
-    , entry <- splitOn ',' value
-    , name : _ <- [words entry]
-    ]
-
 -- | The values of a field in a cabal file's library stanzas (named
 -- sublibraries included), continuation lines joined.
 libraryField :: String -> String -> [String]
@@ -227,11 +196,6 @@ libraryField field text = concat [values body | (header, body) <- stanzas, "libr
       | otherwise = values ls
     indentOf = length . takeWhile isSpace
 
-splitOn :: Char -> String -> [String]
-splitOn c s = case break (== c) s of
-  (chunk, []) -> [chunk]
-  (chunk, _ : rest) -> chunk : splitOn c rest
-
 -- | The modules a source file imports (one name per top-level @import@).
 importsOf :: FilePath -> IO [String]
 importsOf file = do
@@ -243,12 +207,6 @@ importsOf file = do
 -- | The identifiers of a source, split on everything but identifier characters.
 identifiers :: String -> [String]
 identifiers = words . map (\c -> if c `elem` ("_'" :: String) || c `elem` ['a' .. 'z'] || c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9'] then c else ' ')
-
--- | Every Haskell source under @packages/@, outside build output.
-haskellSources :: IO [FilePath]
-haskellSources = do
-  root <- repoRoot
-  filter (".hs" `isSuffixOf`) <$> filesUnder (root </> "packages")
 
 filesUnder :: FilePath -> IO [FilePath]
 filesUnder dir = do

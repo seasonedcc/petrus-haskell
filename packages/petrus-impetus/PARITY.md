@@ -7,7 +7,7 @@ test function is accounted for, run:
 
     python3 packages/petrus-impetus/scripts/parity_check.py
 
-It currently reports 675 in-scope functions and 0 unaccounted.
+It currently reports 672 in-scope functions and 0 unaccounted.
 
 Statuses:
 
@@ -64,7 +64,7 @@ parameters are separate Hspec examples where they are ported.
 | test_net_definition.py (14) | NetDefinitionSpec, SpecFixturesSpec, JsonSchemaSpec | 13 | | 1 | | |
 | test_net_document.py (8) | NetDocumentSpec, SpecFixturesSpec, JsonSchemaSpec | 8 | | | | |
 | test_net_document_lineage.py (9) | NetDocumentLineageSpec | 9 | | | | |
-| project/test_package_boundaries.py, the 7 Impetus rows (of 20) | BoundarySpec | 7 | | | | |
+| project/test_package_boundaries.py, the 4 Impetus rows (of 20) | BoundarySpec | 4 | | | | |
 
 Notes on the table:
 
@@ -99,9 +99,13 @@ Notes on the table:
     internal helpers, `Petrus.Activity.Number` and petrus-json. An import
     that resolves to no library source fails, so a parsing slip cannot pass
     vacuously;
-  - there is no root `Petrus` module and no flat `Impetus` module, no source
-    imports a root module, and no library defines a `NetInstance`;
+  - no library defines a `NetInstance` and there is no flat `Impetus`
+    module;
   - the kernel library depends on no optional driver (PostgreSQL or Absurd).
+
+  The three project-wide rows (the lazy root surface, imports of defining
+  modules, the removed flat modules) are ported once, in petrus-engine's
+  `BoundarySpec` (`packages/petrus-engine/PARITY.md`).
 
   Python's laziness itself (a module that loads nothing optional when
   imported) has no Haskell counterpart; its structural content is what these

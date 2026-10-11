@@ -33,17 +33,14 @@ OUT_OF_SCOPE = {
 EXTRA = ["integration/test_activity_seam.py"]
 # Files shared with other packages: only these functions are this package's.
 # The other rows of test_package_boundaries.py (engine, dispatch, worker,
-# transports, the PostgreSQL History store) are ported by the packages that
-# own those subjects.
+# transports, the PostgreSQL History store, and the project-wide rows, which
+# petrus-engine ports) are ported by the packages that own those subjects.
 SELECTED = {
     "project/test_package_boundaries.py": {
-        "test_lazy_root_surface_remains_discoverable_without_optional_imports",
-        "test_implementation_and_maintained_consumers_import_defining_modules_not_project_root",
         "test_canonical_petrinet_and_binding_facades",
         "test_canonical_instance_facade_has_no_root_or_deep_compatibility_alias",
         "test_petrinet_import_does_not_load_forbidden_layers",
         "test_petrinet_owns_binding_and_history_independent_firing",
-        "test_removed_flat_deep_modules_are_not_speculative_shims",
     },
 }
 
