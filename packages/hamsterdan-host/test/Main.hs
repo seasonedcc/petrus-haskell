@@ -9,6 +9,7 @@ import RerunSpec qualified
 import ReviewSpec qualified
 import GitPublishSpec qualified
 import MutationSpec qualified
+import PiActivitySpec qualified
 import IngressApplicationSpec qualified
 import InlineRecoverySpec qualified
 import ServiceSpec qualified
@@ -29,6 +30,7 @@ main = hspec $ do
   ReviewSpec.spec
   GitPublishSpec.spec
   MutationSpec.spec
+  PiActivitySpec.spec
   IngressApplicationSpec.spec
   InlineRecoverySpec.spec
   ServiceSpec.spec
