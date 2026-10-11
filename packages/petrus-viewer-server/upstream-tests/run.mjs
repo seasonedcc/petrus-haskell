@@ -23,9 +23,10 @@
  *   --keep              keep the scratch directory
  *
  * Suites: relay, endpoints, url-cache, cli, mcp, mcp-haskell-relay, collab,
- * differential, wire, playwright, live, history (default: all).
+ * protocol, differential, wire, playwright, live, history (default: all).
  *
- * Requirements: pnpm install (and pnpm build for the browser suites) in
+ * Requirements: Node 22.6 or later (the protocol suite runs TypeScript
+ * through Node's type stripping); pnpm install (and pnpm build for the browser suites) in
  * upstream/petrus-viewer; `npx playwright install chromium` for playwright;
  * the history suite also runs the pinned Python reference producer through
  * scripts/upstream-python.
@@ -68,7 +69,9 @@ const IMPORT_BACKEND = `import * as __haskell from "../shims/haskell-backend.mjs
 
 /**
  * Each suite: upstream files plus exact-text rewrites. `from` must occur;
- * every occurrence is replaced.
+ * every occurrence is replaced. `sources` are upstream modules the tests
+ * import, copied to the same place in the scratch directory; `nodeArgs` go
+ * to `node --test`.
  */
 const SUITES = {
   relay: {
@@ -112,6 +115,14 @@ const SUITES = {
     files: ["tests/collab-server.test.mjs"],
     prepend: `import { startCollabRelay as startRelay } from "../shims/haskell-backend.mjs";\n`,
     rewrites: [["function startRelay(port) {", "function startNodeRelay(port) {"]],
+  },
+  // tests/agentProtocol.test.ts and tests/agentParseRegression.test.ts, with
+  // parseAgentMessage answered by the Haskell parser (shims/haskell-protocol.mjs)
+  protocol: {
+    files: ["tests/agentProtocol.test.ts", "tests/agentParseRegression.test.ts"],
+    sources: ["src/agent/protocol.ts"],
+    nodeArgs: ["--experimental-strip-types", "--no-warnings=ExperimentalWarning"],
+    rewrites: [['from "../src/agent/protocol";', 'from "../shims/haskell-protocol.mjs";']],
   },
   differential: {
     own: ["differential.test.mjs"],
@@ -186,9 +197,13 @@ function prepareWorkdir() {
 
 function runSuite(work, name, suite, env) {
   const targets = [];
+  for (const file of suite.sources ?? []) {
+    fs.mkdirSync(path.dirname(path.join(work, file)), { recursive: true });
+    fs.copyFileSync(path.join(VIEWER, file), path.join(work, file));
+  }
   for (const file of suite.files ?? []) {
     const source = fs.readFileSync(path.join(VIEWER, file), "utf8");
-    const target = path.join(work, file.replace(/\.test\.mjs$/, `.${name}.test.mjs`));
+    const target = path.join(work, file.replace(/\.test\.(mjs|ts)$/, `.${name}.test.$1`));
     fs.writeFileSync(target, rewrite(source, suite, file));
     targets.push(target);
   }
@@ -197,7 +212,7 @@ function runSuite(work, name, suite, env) {
     fs.copyFileSync(path.join(HERE, file), target);
     targets.push(target);
   }
-  const r = spawnSync(process.execPath, ["--test", "--test-reporter=tap", "--test-concurrency=1", ...targets], {
+  const r = spawnSync(process.execPath, [...(suite.nodeArgs ?? []), "--test", "--test-reporter=tap", "--test-concurrency=1", ...targets], {
     cwd: work,
     env,
     encoding: "utf8",

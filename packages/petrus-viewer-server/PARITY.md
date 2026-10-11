@@ -43,6 +43,7 @@ suites marked "ours" were written for this port.
 | `mcp` | `tests/mcpServer.test.mjs` | 7/7 |
 | `mcp-haskell-relay` | `tests/mcpServer.test.mjs` with the relay in `petrus` | 7/7 |
 | `collab` | `tests/collab-server.test.mjs` | 6/6 |
+| `protocol` | `tests/agentProtocol.test.ts`, `tests/agentParseRegression.test.ts`, with `parseAgentMessage` answered by `Agent.Protocol` through `petrus-viewer-oracle` | 19/19 |
 | `differential` | ours: JSON and URL ports against V8 and Node | 4/4 |
 | `wire` | ours: WebSocket bytes against the `ws` relays, and HTTP endpoint bytes against `node:http` | 20/20 |
 | `playwright` | `tests/playwright/bridge-live.test.mjs` | 4/4 |
@@ -99,8 +100,11 @@ relay's.
 
 **Evidence:**
 
-- `test/RelaySpec.hs` and `test/ProtocolSpec.hs` (25 examples).
-- Upstream `relay` (5/5) and `differential` (4/4).
+- `test/RelaySpec.hs` and `test/ProtocolSpec.hs` (31 examples;
+  `ProtocolSpec` ports 18 of the 19 upstream protocol cases, all but
+  `selectedEdgeToRef`, a browser-side helper).
+- Upstream `relay` (5/5), `protocol` (19/19: the upstream protocol tests,
+  verbatim, against the Haskell parser) and `differential` (4/4).
 - `wire` (`ws-wire.test.mjs`, 2/2):
   - the opening handshake, compared byte for byte with `ws` over 20
     requests: the 101 and the 400/405 refusals, subprotocols, repeated
