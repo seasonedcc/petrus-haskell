@@ -21,7 +21,7 @@
  *
  * Usage:
  *   node packages/petrus-viewer-server/bench/run.mjs [--bin-dir DIR] [--reps 5] [--quick]
- *        [--only SUBSTRING] [--rts "RTS OPTIONS"] [--json out.json]
+ *        [--only "SUBSTRING|SUBSTRING"] [--rts "RTS OPTIONS"] [--json out.json]
  *
  * Without --bin-dir the executables are built with cabal (benchmarks enabled).
  * Requires `pnpm install` in upstream/petrus-viewer.
@@ -126,13 +126,13 @@ const n = (full, q) => String(quick ? q : full);
 const SCENARIOS = [
   { name: "relay round trip, 1 pair", group: "viewer", argv: () => ["relay", "--pairs", "1", "--iters", n(5000, 1000)] },
   { name: "relay round trip, 16 pairs", group: "viewer", argv: () => ["relay", "--pairs", "16", "--iters", n(2000, 300)] },
-  { name: "open-file POST+GET, 1 client", group: "viewer", argv: () => ["http", "--endpoint", "open-file", "--file", netFile, "--concurrency", "1", "--requests", n(5000, 1000)] },
-  { name: "open-file POST+GET, 16 clients", group: "viewer", argv: () => ["http", "--endpoint", "open-file", "--file", netFile, "--concurrency", "16", "--requests", n(32000, 4000)] },
-  { name: "resolve-ref, 1 client", group: "viewer", argv: () => ["http", "--endpoint", "resolve-ref", "--file", netFile, "--concurrency", "1", "--requests", n(5000, 1000)] },
-  { name: "resolve-ref, 16 clients", group: "viewer", argv: () => ["http", "--endpoint", "resolve-ref", "--file", netFile, "--concurrency", "16", "--requests", n(32000, 4000)] },
+  { name: "open-file POST+GET, 1 client", group: "viewer", argv: () => ["http", "--endpoint", "open-file", "--file", netFile, "--concurrency", "1", "--requests", n(20000, 1000)] },
+  { name: "open-file POST+GET, 16 clients in lockstep", group: "viewer", argv: () => ["http", "--endpoint", "open-file", "--file", netFile, "--concurrency", "16", "--requests", n(64000, 4000)] },
+  { name: "resolve-ref, 1 client", group: "viewer", argv: () => ["http", "--endpoint", "resolve-ref", "--file", netFile, "--concurrency", "1", "--requests", n(20000, 1000)] },
+  { name: "resolve-ref, 16 clients", group: "viewer", argv: () => ["http", "--endpoint", "resolve-ref", "--file", netFile, "--concurrency", "16", "--requests", n(64000, 4000)] },
   { name: "collab fan-out, 50 peers x 1000 msgs", group: "collab", argv: (t) => ["fanout", "--path", t.wsPath, "--receivers", "50", "--messages", n(1000, 200)] },
   { name: "collab fan-out, 200 peers x 200 msgs", group: "collab", argv: (t) => ["fanout", "--path", t.wsPath, "--receivers", "200", "--messages", n(200, 50)] },
-].filter((s) => !only || s.name.includes(only));
+].filter((s) => !only || only.split("|").some((o) => s.name.includes(o)));
 
 const runsOn = (t, s) => t.groups.includes(s.group) && (!t.match || s.name.includes(t.match));
 const TARGETS = [
@@ -158,6 +158,15 @@ for (const scenario of SCENARIOS) {
       const { host, port } = servers.get(t.name);
       runs.get(t.name).push(runBench([...scenario.argv(t), "--host", host, "--port", String(port)]));
     }
+  }
+  // the HTTP scenarios must give every server the same work: the same
+  // status counts in every run
+  const work = (r) => (r.status200 === undefined ? null : `${r.status200}/${r.status204}/${r.statusOther}`);
+  const works = new Set(targets.flatMap((t) => runs.get(t.name).map(work)));
+  if (works.size > 1) {
+    const perTarget = targets.map((t) => `${t.name}: ${[...new Set(runs.get(t.name).map(work))].join(", ")}`);
+    console.error(`WORKLOAD DIFFERS between runs of "${scenario.name}" (200/204/other): ${perTarget.join("; ")}`);
+    process.exitCode = 1;
   }
   for (const t of targets) {
     const rs = [...runs.get(t.name)].sort((a, b) => a.opsPerSec - b.opsPerSec);
@@ -210,4 +219,4 @@ if (jsonOut) {
   const machine = `${os.cpus()[0].model} x${os.cpus().length}, ${os.platform()} ${os.release()}, node ${process.version}`;
   fs.writeFileSync(jsonOut, JSON.stringify({ machine, reps, results, rss }, null, 2));
 }
-process.exit(0);
+process.exit(process.exitCode ?? 0);

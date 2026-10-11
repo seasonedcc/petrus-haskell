@@ -138,6 +138,7 @@ client (`petrus-viewer-bench`); results and commands are in
 | `Petrus.Viewer.Cli` | `bin/petrus.mjs` (argument handling, URL detection, browser opening) |
 | `Petrus.Viewer.Server`, `Static`, `Proxy`, `Http` | Vite dev server: listeners, static UI, `/temporal` proxy |
 | `Petrus.Viewer.Relay`, `Relay.Frame`, `Relay.Handshake` | `agentRelay` plugin and `server/collab.mjs` on `ws` 8 (handshake, RFC 6455 framing, close codes) |
+| `Petrus.Viewer.HttpFront` | Node's `http` server for the two endpoints below (one event loop, Node's response framing); everything else goes to Warp |
 | `Petrus.Viewer.Endpoints`, `FileIO` | `server/openFileEndpoint.mjs` |
 | `Petrus.Viewer.UrlCache` | `server/urlCache.mjs` |
 | `Petrus.Viewer.Mcp.Server`, `Schema`, `Bridge`, `History` | `server/mcp.mjs` |

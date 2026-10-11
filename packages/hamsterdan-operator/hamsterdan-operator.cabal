@@ -1,0 +1,138 @@
+cabal-version:      3.4
+name:               hamsterdan-operator
+version:            0.1.0.0
+synopsis:           Hamsterdan's bounded human-operator tooling
+description:
+  @python -m hamsterdan.operator@ (@src/hamsterdan/operator.py@) and the
+  closed publication-qualification evidence it shares with the host
+  (@src/hamsterdan/host/publication_qualification.py@): preflight, demo
+  scenario creation, broker preparation, inspection, authority inspection
+  and the one-mutation DS11 qualification setup. Output, exit codes and
+  side effects are the reference's.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    README.md
+                    PARITY.md
+                    DIVERGENCES.md
+extra-source-files: cbits/rmtree.c cbits/stat.c
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+                      BlockArguments
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Hamsterdan.Operator
+                    Hamsterdan.Operator.FastJson
+                    Hamsterdan.Operator.Posix
+                    Hamsterdan.Operator.Python
+                    Hamsterdan.Host.PublicationQualification
+  c-sources:        cbits/rmtree.c cbits/stat.c
+  build-depends:    base >=4.18 && <5
+                  , base16-bytestring >=1.0
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , crypton >=1.0
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , hamsterdan-cli
+                  , hamsterdan-contracts
+                  , hamsterdan-export
+                  , hamsterdan-github
+                  , hamsterdan-host
+                  , petrus-engine-file
+                  , petrus-json
+                  , ram >=0.20
+                  , temporary >=1.3
+                  , text >=2.0
+                  , time >=1.9
+                  , typed-process >=0.2.11
+                  , unix >=2.8
+  ghc-options:      -O2
+
+executable hamsterdan-operator
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  build-depends:    base
+                  , hamsterdan-operator
+                  , text
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A16m"
+
+test-suite hamsterdan-operator-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    ContainerSpec
+                    DifferentialSpec
+                    Fakes
+                    FastJsonSpec
+                    OperatorSpec
+                    PublicationQualificationSpec
+                    QualificationSetupLocalSpec
+                    RmtreeSpec
+                    SecretLaunchSpec
+                    Support
+                    TypeGuaranteeSpec
+  build-tool-depends: hamsterdan-operator:hamsterdan-operator
+                    , hamsterdan-host:hamsterdan-host
+                    , hamsterdan-export:hamsterdan-export
+  build-depends:    base
+                  , base16-bytestring
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hamsterdan-cli
+                  , hamsterdan-contracts
+                  , hamsterdan-export
+                  , hamsterdan-github
+                  , hamsterdan-host
+                  , hamsterdan-operator
+                  , hspec >=2.10
+                  , petrus-json
+                  , petrus-test-support
+                  , temporary >=1.3
+                  , text
+                  , typed-process
+                  , unix
+  ghc-options:      -threaded -rtsopts "-with-rtsopts=-N4"
+
+benchmark hamsterdan-operator-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench test
+  main-is:          Main.hs
+  other-modules:    Fakes
+  build-tool-depends: hamsterdan-operator:hamsterdan-operator
+  build-depends:    base
+                  , base16-bytestring
+                  , bytestring
+                  , containers
+                  , directory
+                  , filepath
+                  , hamsterdan-export
+                  , hamsterdan-github
+                  , hamsterdan-operator
+                  , petrus-json
+                  , petrus-test-support
+                  , temporary >=1.3
+                  , text
+                  , typed-process
+                  , unix
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A16m"

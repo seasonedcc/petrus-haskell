@@ -42,6 +42,7 @@ module Hamsterdan.GitHub.Gateway
   , viewerThread
   , firstComment
   , policyDigest
+  , derivePolicy
   ) where
 
 import Control.Exception (Exception (..), catch, throwIO)

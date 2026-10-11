@@ -1,0 +1,14 @@
+**
+!deployment/Containerfile
+!cabal.project.freeze
+!deployment/pi/
+!deployment/pi/package-lock.json
+!deployment/pi/package.json
+!deployment/python-shim
+!cabal.project
+!LICENSE
+!NOTICE
+!packages/
+!packages/**
+!scripts/
+!scripts/with-runtime-secrets

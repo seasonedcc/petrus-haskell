@@ -13,7 +13,9 @@
 -- (@get_schema@ + @get_state@); live watching is what "Watch Live" does:
 -- poll @get_state@ and append @states.slice(currentLength)@ until the
 -- workflow reports a terminal state. The two producers must give the
--- viewer the same answers at every step.
+-- viewer the same answers at every step, including for a workflow they do
+-- not have. This is also petrus-observation-http's end-to-end test against
+-- the viewer (it lives here so that package does not depend on this one).
 module HistorySpec (spec) where
 
 import Control.Exception (bracket)
@@ -71,8 +73,9 @@ withPythonProducer action = do
     action (Producer port (sendLine p "advance" >> line))
 
 -- | What the viewer answered at one step: the workflow list, the schema,
--- and the runtime state.
-data Step = Step {stepList :: JsValue, stepSchema :: JsValue, stepState :: JsValue}
+-- the runtime state, and a @get_state@ for a workflow the producer does not
+-- have (status and parsed body).
+data Step = Step {stepList :: JsValue, stepSchema :: JsValue, stepState :: JsValue, stepMissing :: (Int, Either String JsValue)}
   deriving stock (Eq, Show)
 
 -- | Replay and then live-watch the producer's instance to completion
@@ -92,7 +95,9 @@ watch producer =
           l <- httpRequest "GET" base Nothing
           httpStatus l `shouldBe` 200
           list <- either fail pure (parseJ (httpBody l))
-          Step list <$> query "get_schema" <*> query "get_state"
+          missing <- httpRequest "POST" (base <> "/nope/query/get_state") (Just "{}")
+          httpStatus missing `shouldNotBe` 200
+          Step list <$> query "get_schema" <*> query "get_state" <*> pure (httpStatus missing, parseJ (httpBody missing))
 
     -- replay ("Load State")
     first <- step

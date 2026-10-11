@@ -13,17 +13,16 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.IORef
-import Data.List (isSuffixOf, sort)
+import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.GitHub.Webhooks qualified as Custody
-import Hamsterdan.Host.Api (hostServerApplication, hostSettings, withLifespan)
+import Hamsterdan.Host.Api (hostServerApplication, hostSettings, withHostServer, withLifespan)
 import Hamsterdan.Host.Python (RuntimeError (..))
 import Hamsterdan.Host.Service
 import Hamsterdan.Host.Service qualified as Host
 import IngressSpec (newDelivery)
-import Network.Wai.Handler.Warp qualified as Warp
 import Petrus.Json (Json (..), parseJson, pythonLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
@@ -38,11 +37,11 @@ import TestSupport (runtimeError, withTempRoot)
 
 -- | @TestClient(create_app(host, reconcile_startup=...))@ entered: the
 -- lifespan around a live warp server on an ephemeral port, serving what
--- 'serve' serves.
+-- 'serve' serves, the way it serves it ('withHostServer').
 withClient :: HostService -> Bool -> (Int -> IO a) -> IO a
 withClient host reconcileStartup action =
   withLifespan host reconcileStartup $
-    Warp.testWithApplicationSettings hostSettings (pure (hostServerApplication host)) action
+    withHostServer hostSettings (hostServerApplication host) action
 
 post :: Int -> ByteString -> [(Text, Text)] -> IO RawResponse
 post port payload headers =
@@ -134,19 +133,9 @@ spec = do
             reference <- parseResponse . comparable <$> exchange referencePort request
             ours <- parseResponse . comparable <$> exchange hostPort request
             let expected = unordered reference
-                actual = unordered (http10StatusLine label ours)
+                actual = unordered ours
             unless (actual == expected) $
               expectationFailure (label <> "\n  reference: " <> show expected <> "\n  host:      " <> show actual)
-
--- | The one recorded divergence (DIVERGENCES.md): warp answers an HTTP/1.0
--- request with an @HTTP/1.0@ status line where h11 writes @HTTP/1.1@.
--- Everything after the version is still compared.
-http10StatusLine :: String -> RawResponse -> RawResponse
-http10StatusLine label response
-  | "over HTTP/1.0" `isSuffixOf` label
-  , Just rest <- BS.stripPrefix "HTTP/1.0 " response.statusLine =
-      response {statusLine = "HTTP/1.1 " <> rest}
-  | otherwise = response
 
 -- | @allow@ with its methods sorted: Starlette joins a set, whose order
 -- varies with the reference process's string hashing.

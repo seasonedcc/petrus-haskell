@@ -100,10 +100,25 @@ listed here.
   stdout a moment after the message was forwarded, and lines still queued
   when the process is killed are lost. The lines are the same (their
   `toISOString` timestamps can differ by microseconds).
-- **Response framing.** JSON responses carry `Content-Length` (as Node's
-  `res.end(body)` does) but not Node's `Connection: keep-alive` /
-  `Keep-Alive: timeout=5` headers; HTTP/1.1 keep-alive is the default
+- **Response framing.** `/__petrus/open-file` and `/__petrus/resolve-ref`
+  answer with Node's bytes: status line, headers in Node's order (the
+  handler's, `Date`, `Connection: keep-alive` + `Keep-Alive: timeout=5` or
+  `Connection: close`, `Content-Length`), body, `100 Continue` for
+  `Expect: 100-continue`, and Node's 5 s idle keep-alive close
+  (`upstream-tests/http-wire.test.mjs` compares them byte for byte). The
+  exceptions are requests the HTTP front leaves to Warp: chunked bodies,
+  malformed or unusual requests, and resolve-ref requests that must fetch
+  an `http(s)` URL. Those, and every other route, carry `Content-Length`
+  (as Node's `res.end(body)` does) but not Node's `Connection: keep-alive`
+  / `Keep-Alive: timeout=5` headers; HTTP/1.1 keep-alive is the default
   either way.
+- **Pipelined requests.** `petrus` answers pipelined requests strictly in
+  order, each after the previous one's body has been read. Node runs a
+  pipelined request's handler as soon as its head is parsed and delivers
+  a POST body asynchronously, so a `GET /__petrus/open-file` pipelined
+  right behind the `POST` that sets a file may or may not see that file
+  under Node; under `petrus` it always does. Answers that do not depend
+  on that race are identical.
 
 ## Faithfulness limits of the JavaScript emulation
 
