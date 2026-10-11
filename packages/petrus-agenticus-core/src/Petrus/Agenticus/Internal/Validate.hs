@@ -82,13 +82,16 @@ utf8Length = B.length . TE.encodeUtf8
 -- builds from a @"\\ud800"@ escape as CPython's @json.loads@ does).
 -- CPython raises @UnicodeEncodeError@, a @ValueError@; the port keeps the
 -- 'ValueError' class, which is what every @except@ on the way tests for,
--- and CPython's message.
+-- and CPython's message. The check walks the 'Text' in place (a surrogate
+-- decodes as its own code point) rather than copying it, since every
+-- validated identity text passes through it.
 encodeRefusal :: Text -> Maybe AgenticusError
 encodeRefusal value
-  | not (J.hasLoneSurrogate value) = Nothing
+  | not (T.any isSurrogate value) = Nothing
   | otherwise = Just (valueError ("'utf-8' codec can't encode " <> spot <> ": surrogates not allowed"))
   where
-    surrogate (_, c) = ord c >= 0xD800 && ord c <= 0xDFFF
+    isSurrogate c = c >= '\xD800' && c <= '\xDFFF'
+    surrogate (_, c) = isSurrogate c
     run = takeWhile surrogate (dropWhile (not . surrogate) (zip [0 :: Int ..] (T.unpack value)))
     spot = case run of
       [(i, c)] -> "character '\\u" <> T.pack (showHex (ord c) "") <> "' in position " <> T.pack (show i)
