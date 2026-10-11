@@ -16,8 +16,8 @@
 --
 -- Like the Node relays, each relay is one event loop: a single thread that
 -- owns every socket of the relay once the HTTP upgrade is done. The loop
--- waits for readiness on all of them at once (kqueue or epoll, the sockets
--- stay registered, @cbits/relay_io.c@), reads what is there, decodes the
+-- waits for readiness on all of them at once ("Petrus.Viewer.EventLoop":
+-- kqueue or epoll, the sockets stay registered), reads what is there, decodes the
 -- WebSocket frames ("Petrus.Viewer.Relay.Frame", the checks and close codes
 -- of the @ws@ library), routes each message, and appends the outgoing
 -- frames to the receivers' output queues; at the end of each turn every
@@ -51,11 +51,11 @@ module Petrus.Viewer.Relay
   , Routed (..)
   ) where
 
-import Control.Concurrent (forkOn, getNumCapabilities)
+import Control.Concurrent (getNumCapabilities)
 import Control.Concurrent.STM
-import Control.Exception (SomeException, bracket, finally, mask_, onException, try, uninterruptibleMask_)
+import Control.Exception (SomeException, mask_, onException, try, uninterruptibleMask_)
 import Control.Monad (forM_, unless, when)
-import Data.Bits ((.&.), (.|.), shiftL)
+import Data.Bits ((.|.), shiftL)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Internal qualified as BI
@@ -68,13 +68,10 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Word (Word16, Word8)
-import Foreign.C.Types (CInt (..), CLong (..))
-import Foreign.ForeignPtr (ForeignPtr, mallocForeignPtrArray, mallocForeignPtrBytes, touchForeignPtr, withForeignPtr)
-import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
-import Foreign.Marshal.Array (allocaArray, peekArray)
-import Foreign.Ptr (Ptr)
-import Foreign.Storable (pokeElemOff)
+import Foreign.C.Types (CInt)
+import Foreign.ForeignPtr (ForeignPtr, mallocForeignPtrBytes, withForeignPtr)
 import Network.Socket qualified as S
+import Petrus.Viewer.EventLoop
 import Petrus.Viewer.Json
 import Petrus.Viewer.Json.Canonical (Member (..), canonicalObject)
 import Petrus.Viewer.Log
@@ -87,26 +84,6 @@ data RelayKind
   | -- | @collab.mjs@: ids are @peerId@, counts are @peer_count@.
     CollabRelay
   deriving stock (Eq, Show)
-
--- C side (cbits/relay_io.c) ------------------------------------------------
-
-foreign import ccall unsafe "prelay_poll_create" c_pollCreate :: IO CInt
-foreign import ccall unsafe "prelay_poll_add" c_pollAdd :: CInt -> CInt -> IO CInt
-foreign import ccall unsafe "prelay_poll_write" c_pollWrite :: CInt -> CInt -> CInt -> IO CInt
-foreign import ccall unsafe "prelay_poll_remove" c_pollRemove :: CInt -> CInt -> IO CInt
-foreign import ccall unsafe "prelay_poll_wait" c_pollNow :: CInt -> Ptr CInt -> Ptr CInt -> CInt -> CInt -> IO CInt
--- the blocking wait releases the capability while it waits
-foreign import ccall safe "prelay_poll_wait" c_pollBlock :: CInt -> Ptr CInt -> Ptr CInt -> CInt -> CInt -> IO CInt
-foreign import ccall unsafe "prelay_recv" c_recv :: CInt -> Ptr Word8 -> CLong -> IO CLong
-foreign import ccall unsafe "prelay_sendv" c_sendv :: CInt -> Ptr (Ptr Word8) -> Ptr CLong -> CInt -> IO CLong
-foreign import ccall unsafe "prelay_pipe" c_pipe :: Ptr CInt -> IO CInt
-foreign import ccall unsafe "prelay_wake" c_wake :: CInt -> IO ()
-foreign import ccall unsafe "prelay_drain" c_drain :: CInt -> IO ()
-foreign import ccall unsafe "prelay_close" c_close :: CInt -> IO CInt
-
-readable, writable :: CInt
-readable = 1
-writable = 2
 
 -- State ------------------------------------------------------------------------
 
@@ -145,12 +122,8 @@ data Conn = Conn
 data Relay = Relay
   { kind :: RelayKind
   , perfLogger :: Maybe Logger
-  , pollFd :: CInt
-  , wakeRead :: CInt
-  , wakeWrite :: CInt
+  , loop :: EventLoop
   , commands :: IORef [Command]
-  , stopRequested :: IORef Bool
-  , stopped :: TVar Bool
   , clientCount :: IORef Int
   -- the rest is touched by the loop thread only
   , nextId :: IORef Int
@@ -160,13 +133,10 @@ data Relay = Relay
   , dirtyConns :: IORef [Conn]
   , timings :: IORef (Map JsString Double)
   , scratch :: ForeignPtr Word8
-  , readyFds :: ForeignPtr CInt
-  , readyFlags :: ForeignPtr CInt
   }
 
-scratchSize, maxReady :: Int
+scratchSize :: Int
 scratchSize = 256 * 1024
-maxReady = 256
 
 -- | The @ws@ default @maxPayload@: 100 MiB per message.
 messageLimit :: Int
@@ -175,44 +145,23 @@ messageLimit = 100 * 1024 * 1024
 -- | Run a relay (its loop thread) for the duration of the action. On exit
 -- every connection still open is closed.
 withRelay :: RelayKind -> Maybe Logger -> (Relay -> IO a) -> IO a
-withRelay k lg = bracket (startRelay k lg) stopRelay
-
-startRelay :: RelayKind -> Maybe Logger -> IO Relay
-startRelay k lg = do
-  pfd <- c_pollCreate
-  when (pfd < 0) (ioError (userError "relay: cannot create the readiness poller"))
-  (wr, ww) <- allocaArray 2 $ \p -> do
-    r <- c_pipe p
-    when (r < 0) (ioError (userError "relay: cannot create the wake-up pipe"))
-    [a, b] <- peekArray 2 p
-    pure (a, b)
-  _ <- c_pollAdd pfd wr
-  relay <-
-    Relay k lg pfd wr ww
-      <$> newIORef []
-      <*> newIORef False
-      <*> newTVarIO False
-      <*> newIORef 0
-      <*> newIORef 1
-      <*> newIORef IM.empty
-      <*> newIORef IM.empty
-      <*> newIORef []
-      <*> newIORef Map.empty
-      <*> mallocForeignPtrBytes scratchSize
-      <*> mallocForeignPtrArray maxReady
-      <*> mallocForeignPtrArray maxReady
+withRelay k lg action = do
   caps <- getNumCapabilities
   let cap = (case k of AgentRelay -> 0; CollabRelay -> 1) `mod` caps
-  _ <- forkOn cap (runLoop relay `finally` shutdown relay)
-  pure relay
+  withEventLoop "relay" cap newRelay turn shutdown action
+  where
+    newRelay l =
+      Relay k lg l
+        <$> newIORef []
+        <*> newIORef 0
+        <*> newIORef 1
+        <*> newIORef IM.empty
+        <*> newIORef IM.empty
+        <*> newIORef []
+        <*> newIORef Map.empty
+        <*> mallocForeignPtrBytes scratchSize
 
-stopRelay :: Relay -> IO ()
-stopRelay relay = do
-  writeIORef (stopRequested relay) True
-  c_wake (wakeWrite relay)
-  atomically (readTVar (stopped relay) >>= check)
-
--- | Close every connection and release the poller (loop thread, on exit).
+-- | Close every connection (loop thread, on exit).
 shutdown :: Relay -> IO ()
 shutdown relay = do
   cs <- readIORef (conns relay)
@@ -224,10 +173,6 @@ shutdown relay = do
   forM_ cmds $ \case
     Join t -> closeTicket relay t
     Detach t -> closeTicket relay t
-  _ <- c_close (pollFd relay)
-  _ <- c_close (wakeRead relay)
-  _ <- c_close (wakeWrite relay)
-  atomically (writeTVar (stopped relay) True)
 
 relayClientCount :: Relay -> IO Int
 relayClientCount = readIORef . clientCount
@@ -235,7 +180,7 @@ relayClientCount = readIORef . clientCount
 submit :: Relay -> Command -> IO ()
 submit relay cmd = do
   atomicModifyIORef' (commands relay) (\xs -> (cmd : xs, ()))
-  c_wake (wakeWrite relay)
+  wake (loop relay)
 
 -- | Hand the socket of an upgraded connection (the @101@ response already
 -- written) to the relay, and wait until the relay has closed it.
@@ -244,7 +189,7 @@ relaySocket relay sock = do
   fd <- S.unsafeFdSocket sock
   done <- newTVarIO False
   let ticket = Ticket sock fd done
-      finished = (readTVar done >>= check) `orElse` (readTVar (stopped relay) >>= check)
+      finished = (readTVar done >>= check) `orElse` awaitStopped (loop relay)
   mask_ $ do
     submit relay (Join ticket)
     atomically finished `onException` do
@@ -256,37 +201,28 @@ relaySocket relay sock = do
 
 -- The loop ---------------------------------------------------------------------
 
-runLoop :: Relay -> IO ()
-runLoop relay = go
+-- | One turn of the loop: serve what is ready, then write every queue.
+turn :: Relay -> IO ()
+turn relay = do
+  pollWait (loop relay) (-1) >>= mapM_ dispatch
+  flushAll relay
   where
-    pfd = pollFd relay
-    go = do
-      ready <- withForeignPtr (readyFds relay) $ \fds -> withForeignPtr (readyFlags relay) $ \fls -> do
-        -- block (releasing the capability) only when nothing is ready
-        n0 <- c_pollNow pfd fds fls (fromIntegral maxReady) 0
-        n <- if n0 == 0 then c_pollBlock pfd fds fls (fromIntegral maxReady) (-1) else pure n0
-        if n <= 0 then pure [] else zip <$> peekArray (fromIntegral n) fds <*> peekArray (fromIntegral n) fls
-      mapM_ dispatch ready
-      flushAll relay
-      stop <- readIORef (stopRequested relay)
-      unless stop go
-    dispatch (fd, fl)
-      | fd == wakeRead relay = do
-          c_drain fd
-          cmds <- atomicModifyIORef' (commands relay) (\xs -> ([], reverse xs))
-          mapM_ (runCommand relay) cmds
-      | otherwise = do
-          m <- IM.lookup (fromIntegral fd) <$> readIORef (byFd relay)
-          forM_ m $ \c -> do
-            r <- try @SomeException $ do
-              when (fl .&. writable /= 0) (flushConn relay c)
-              when (fl .&. readable /= 0) (readConn relay c)
-            either (const (dropConn relay c)) pure r
+    dispatch = \case
+      Woken -> do
+        cmds <- atomicModifyIORef' (commands relay) (\xs -> ([], reverse xs))
+        mapM_ (runCommand relay) cmds
+      Ready fd isReadable isWritable -> do
+        m <- IM.lookup (fromIntegral fd) <$> readIORef (byFd relay)
+        forM_ m $ \c -> do
+          r <- try @SomeException $ do
+            when isWritable (flushConn relay c)
+            when isReadable (readConn relay c)
+          either (const (dropConn relay c)) pure r
 
 runCommand :: Relay -> Command -> IO ()
 runCommand relay = \case
   Join t -> do
-    r <- c_pollAdd (pollFd relay) (ticketFd t)
+    r <- watch (loop relay) (ticketFd t)
     if r < 0 then closeTicket relay t else join relay t
   Detach t -> do
     m <- IM.lookup (fromIntegral (ticketFd t)) <$> readIORef (byFd relay)
@@ -326,7 +262,7 @@ broadcastCount relay = do
 -- and release the thread waiting for it.
 closeTicket :: Relay -> Ticket -> IO ()
 closeTicket relay t = do
-  _ <- c_pollRemove (pollFd relay) (ticketFd t)
+  unwatch (loop relay) (ticketFd t)
   _ <- try @SomeException (S.close (ticketSocket t))
   atomically (writeTVar (ticketDone t) True)
 
@@ -393,43 +329,12 @@ flushConn relay c = do
       if null rest
         then do
           when watching $ do
-            _ <- c_pollWrite (pollFd relay) fd 0
+            watchWrite (loop relay) fd False
             writeIORef (connWatchingWrite c) False
           when closing (dropConn relay c)
         else unless watching $ do
-          _ <- c_pollWrite (pollFd relay) fd 1
+          watchWrite (loop relay) fd True
           writeIORef (connWatchingWrite c) True
-
--- | writev until done or the socket is full; the unwritten rest, and
--- whether the socket failed.
-writeChunks :: CInt -> [ByteString] -> IO ([ByteString], Bool)
-writeChunks _ [] = pure ([], False)
-writeChunks fd chunks = do
-  let batch = take 64 chunks
-      count = length batch
-  r <- allocaArray count $ \ptrs -> allocaArray count $ \lens -> do
-    forM_ (zip [0 ..] batch) $ \(i, BI.BS fp len) -> do
-      pokeElemOff ptrs i (unsafeForeignPtrToPtr fp)
-      pokeElemOff lens i (fromIntegral len)
-    w <- c_sendv fd ptrs lens (fromIntegral count)
-    mapM_ (\(BI.BS fp _) -> touchForeignPtr fp) batch
-    pure (fromIntegral w :: Int)
-  if
-    | r == -2 -> pure (chunks, False)
-    | r < 0 -> pure ([], True)
-    | otherwise ->
-        let rest = dropBytes r chunks
-         in if
-              | null rest -> pure ([], False)
-              | r < sum (map B.length batch) -> pure (rest, False) -- the socket is full
-              | otherwise -> writeChunks fd rest
-  where
-    dropBytes :: Int -> [ByteString] -> [ByteString]
-    dropBytes 0 xs = xs
-    dropBytes _ [] = []
-    dropBytes k (x : xs)
-      | k >= B.length x = dropBytes (k - B.length x) xs
-      | otherwise = BU.unsafeDrop k x : xs
 
 -- Input ------------------------------------------------------------------------
 
@@ -438,18 +343,18 @@ readConn :: Relay -> Conn -> IO ()
 readConn relay c = do
   closing <- readIORef (connClosing c)
   let fd = ticketFd (connTicket c)
-  r <- withForeignPtr (scratch relay) $ \p -> c_recv fd p (fromIntegral scratchSize)
+  r <- withForeignPtr (scratch relay) $ \p -> recvSocket fd p scratchSize
   if
     | r == -2 -> pure ()
     | r <= 0 -> dropConn relay c -- end of stream or error: ws 'close'
     | closing -> pure () -- ws stops reading after a close frame
     | otherwise -> do
-        let view = BI.BS (scratch relay) (fromIntegral r)
+        let view = BI.BS (scratch relay) r
         pend <- readIORef (connPending c)
         if null pend
           then decodeFrom relay c view True
           else do
-            size <- (+ fromIntegral r) <$> readIORef (connPendingSize c)
+            size <- (+ r) <$> readIORef (connPendingSize c)
             need <- readIORef (connNeed c)
             -- copied now: the scratch area is reused by the next recv
             let !kept = B.copy view

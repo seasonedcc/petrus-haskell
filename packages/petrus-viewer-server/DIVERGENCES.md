@@ -74,11 +74,6 @@ listed here.
 - **MCP bridge, `null` from the relay.** `server/mcp.mjs` reads `msg.type`
   on the parsed message and crashes on a JSON `null`; `petrus-mcp` ignores
   it.
-- **Join ordering.** Node writes a newcomer's `welcome` and count before
-  anyone else's count in one event-loop turn. The Haskell relays route each
-  event in one STM transaction and keep that order on the wire by holding
-  the others' count until the newcomer's greeting is written (bounded at
-  250 ms, so a stalled newcomer cannot stall the room).
 - **Unknown WebSocket paths.** Upgrades on paths other than `/ws/agent`
   and `/collab-ws…` get `404 Not Found` (Vite would hand them to its HMR
   socket or drop them). Plain HTTP requests to `/collab-ws` get

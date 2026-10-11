@@ -44,6 +44,7 @@ library
                     Petrus.Viewer.UrlCache
                     Petrus.Viewer.Http
                     Petrus.Viewer.FileIO
+                    Petrus.Viewer.EventLoop
                     Petrus.Viewer.Relay
                     Petrus.Viewer.Relay.Frame
                     Petrus.Viewer.Relay.Handshake
