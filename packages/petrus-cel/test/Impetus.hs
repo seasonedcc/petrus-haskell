@@ -16,6 +16,9 @@
 --   complete encoded History.
 module Impetus
   ( spec
+  , celInstanceCases
+  , startCelCase
+  , caseSteps
   ) where
 
 import Control.Monad (forM_, zipWithM_)
@@ -220,19 +223,25 @@ paritySpec = describe "PARITY.md CEL tests on Instances" $ do
 
 endToEndSpec :: Spec
 endToEndSpec = describe "end-to-end Instances (test/corpus/cel-instance.json)" $ do
-  raw <- runIO (BS.readFile "test/corpus/cel-instance.json")
-  let cases = case parseJson pythonLoads raw of
-        Right corpus | Just (Array xs) <- lookupMember "cases" corpus -> xs
-        _ -> error "cel-instance corpus: no cases"
+  cases <- runIO celInstanceCases
   it "carries the generated cases" $ length cases `shouldSatisfy` (>= 5)
   forM_ cases $ \c -> it (T.unpack (text (member "name" c))) (replayCase c)
 
-replayCase :: Json -> Expectation
-replayCase c = do
+-- | The committed corpus's cases.
+celInstanceCases :: IO [Json]
+celInstanceCases = do
+  raw <- BS.readFile "test/corpus/cel-instance.json"
+  pure $ case parseJson pythonLoads raw of
+    Right corpus | Just (Array xs) <- lookupMember "cases" corpus -> xs
+    _ -> error "cel-instance corpus: no cases"
+
+-- | A case's net (compiled from its canonical definition) and a fresh
+-- Instance over it on the real CEL compilers, as the generator built it.
+startCelCase :: Json -> IO (Net, Instance)
+startCelCase c = do
   definition <- either (fail . T.unpack) pure (parseNetDefinitionText (text (member "definition" c)))
   net <- either (fail . T.unpack) pure (compileNetDefinition definition)
   let initial = markingFromList [(np (text (member "place" e)), map decodeToken (array (member "tokens" e))) | e <- array (member "initialMarking" c)]
-      name = T.unpack (text (member "name" c))
   inst <-
     newInstance
       net
@@ -242,7 +251,17 @@ replayCase c = do
         , suppliedIdentity = Just ("cel-" <> text (member "name" c))
         }
       >>= either (fail . T.unpack . renderInstanceError) pure
-  forM_ (zip [0 :: Int ..] (array (member "steps" c))) $ \(index, stepJson) -> do
+  pure (net, inst)
+
+-- | The recorded steps (one @step@ each).
+caseSteps :: Json -> [Json]
+caseSteps c = array (member "steps" c)
+
+replayCase :: Json -> Expectation
+replayCase c = do
+  (_, inst) <- startCelCase c
+  let name = T.unpack (text (member "name" c))
+  forM_ (zip [0 :: Int ..] (caseSteps c)) $ \(index, stepJson) -> do
     let label field = name <> " step " <> show index <> " " <> field
     (enabled, diagnostics) <- candidatesWithDiagnostics inst
     same (label "candidatesBefore") (Array (map encodeBinding enabled)) (member "candidatesBefore" stepJson)

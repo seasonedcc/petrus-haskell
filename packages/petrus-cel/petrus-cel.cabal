@@ -67,6 +67,7 @@ test-suite petrus-cel-test
   main-is:          Main.hs
   other-modules:    Corpus
                     Impetus
+                    Live
                     Properties
   build-depends:    base
                   , bytestring
@@ -76,8 +77,9 @@ test-suite petrus-cel-test
                   , petrus-cel
                   , petrus-impetus
                   , petrus-json
+                  , petrus-test-support
                   , text
-  ghc-options:      -rtsopts
+  ghc-options:      -threaded -rtsopts
 
 benchmark petrus-cel-bench
   import:           warnings

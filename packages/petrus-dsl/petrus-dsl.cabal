@@ -48,6 +48,7 @@ test-suite petrus-dsl-test
                     Petrus.Impetus.Dsl.Corpus
                     Petrus.Impetus.DslSpec
                     Petrus.Impetus.DslCorpusSpec
+                    Petrus.Impetus.DslLiveSpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -58,6 +59,7 @@ test-suite petrus-dsl-test
                   , petrus-dsl
                   , petrus-impetus
                   , petrus-json
+                  , petrus-test-support
                   , text
   ghc-options:      -threaded -rtsopts
 

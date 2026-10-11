@@ -185,6 +185,21 @@ with no argument or one string (`differential/failure_text_corpus.json`,
     every action it records the candidate bindings, the firing outcome or
     refusal (class and message), the marking, status, watermark, and next
     maturation, and the complete encoded History (`KernelDifferentialSpec`).
+- **Live round trips through the pinned reference** (`LiveSpec`, 4
+  examples, selected by `scripts/interop`). What Haskell writes today goes
+  to the reference's own `parse_net_definition`, `parse_net_document` and
+  `decode_record`, and must come back byte for byte from
+  `serialize_net_definition`, `serialize_net_document` and
+  `encode_record` (`Petrus.TestSupport.Reference`, one interpreter run per
+  example; without the reference the group fails):
+  - definitions and documents (with generated views) of 200 nets from the
+    round-trip properties' generators, fixed seed;
+  - Haskell's rewrite of the 168 definitions and documents the corpus
+    admits;
+  - every kernel-corpus net's projected definition, and the History Haskell
+    writes driving each kernel-corpus script;
+  - every record category, and records whose token data holds lone
+    surrogates in strings and member names.
 - **Properties (QuickCheck).**
   - `KernelPropertiesSpec`: the marking is the replay of History; resume is
     equivalent; the History round-trips the codec through JSON text; tokens

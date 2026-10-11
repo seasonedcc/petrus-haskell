@@ -90,6 +90,7 @@ test-suite petrus-impetus-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Impetus.LiveSpec
                     Petrus.Impetus.WireSupport
                     Petrus.Impetus.SchemaSpec
                     Petrus.Impetus.MarkingSpec
@@ -149,6 +150,7 @@ test-suite petrus-impetus-test
                   , petrus-activity
                   , petrus-impetus
                   , petrus-json
+                  , petrus-test-support
                   , text
                   , transformers
   ghc-options:      -threaded -rtsopts
