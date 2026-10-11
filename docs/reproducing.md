@@ -432,3 +432,18 @@ gh workflow run CI --ref main -f full=true
 When a `test` job fails on a flaky test, rerunning the failed jobs reruns
 only those shards; the ledger counts a part as passed when an attempt of the
 run passed it.
+
+**Timings** (October 2026, wall clock from the first job's start to the
+`ci` verdict):
+
+| Run | Total | Notes |
+| --- | --- | --- |
+| Cold: no cache at all, every suite | about 10 min | GHC and cabal install 1 min, build 5.5 min, test jobs 1.5 to 2 min, container 6.5 min (side by side with the build) |
+| Warm, every suite (a change outside `packages/`) | about 4 min | build job 1 min, test jobs 1.5 to 2 min, `viewer` 2.5 min |
+| Warm, a change to a package many suites depend on | 4 to 5.5 min | build 1 to 3 min, depending on how much recompiles |
+| Warm, a change to a leaf package | about 3 to 4 min | its suites only |
+
+The single-runner workflow this replaced took about 50 minutes. Within a
+warm run, the longest jobs are `viewer` (the upstream petrus-viewer suites,
+about 1:45) and the shards holding parts of `hamsterdan-testing` (its
+World runs).
