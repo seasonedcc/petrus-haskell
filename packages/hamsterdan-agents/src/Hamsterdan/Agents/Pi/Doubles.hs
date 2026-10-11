@@ -26,6 +26,9 @@ module Hamsterdan.Agents.Pi.Doubles
   , fakePiRuntime
   , fakeRunner
   , fakeRunnerFor
+
+    -- * An installed Pi package
+  , piPackageFixture
   ) where
 
 import Control.Exception (ErrorCall (..), throwIO)
@@ -45,7 +48,11 @@ import Petrus.Agenticus.Runtime.Result (mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Identity (EpisodeId, TurnId, literalEpisodeId, literalTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))
 import Petrus.Json (Json (..), defaultDumps, dumpsText)
+import Petrus.Agenticus.Runtime.Pi (piAiVersion, piSdkVersion)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
+import System.Posix.Files (setFileMode)
 
 -- | @URL@.
 testUrl :: Text
@@ -208,3 +215,34 @@ fakeRunner result operation = do
   r <- newFakeRuntime operation rendered changed
   subject <- fakeRunnerFor r defaultPiRunnerOptions
   pure (subject, r)
+
+-- | An installed Pi coding-agent package and a Node stand-in that answers
+-- @--version@ and the helper probe, below @root@: the CLI, Node and
+-- package-root paths of a @PiA2InstallationConfig@.
+piPackageFixture :: FilePath -> IO (FilePath, FilePath, FilePath)
+piPackageFixture root = do
+  let package = root </> "package"
+      ai = package </> "node_modules" </> "@earendil-works" </> "pi-ai"
+  createDirectoryIfMissing True (package </> "dist")
+  createDirectoryIfMissing True ai
+  BS.writeFile (package </> "dist" </> "cli.js") "fixture"
+  BS.writeFile (package </> "dist" </> "index.js") "fixture"
+  writeJson
+    (package </> "package.json")
+    ( Object
+        [ ("name", String "@earendil-works/pi-coding-agent")
+        , ("version", String piSdkVersion)
+        , ("bin", Object [("pi", String "dist/cli.js")])
+        , ("main", String "dist/index.js")
+        , ("dependencies", Object [("@earendil-works/pi-ai", String piAiVersion)])
+        ]
+    )
+  writeJson (ai </> "package.json") (Object [("name", String "@earendil-works/pi-ai"), ("version", String piAiVersion)])
+  let node = root </> "node"
+  BS.writeFile
+    node
+    "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf \"v22.19.0\\n\"; else printf '{\"type\":\"probe\",\"ok\":true}\\n'; fi\n"
+  setFileMode node 0o700
+  pure (package </> "dist" </> "cli.js", node, package)
+  where
+    writeJson path value = either (throwIO . userError . show) (BS.writeFile path . TE.encodeUtf8) (dumpsText defaultDumps value)

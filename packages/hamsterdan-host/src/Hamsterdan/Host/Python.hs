@@ -58,6 +58,8 @@ import Data.Typeable (cast, typeOf)
 import Hamsterdan.GitHub.Models (GitHubBoundaryError (..))
 import Hamsterdan.GitHub.Python (PythonFault (..))
 import Petrus.Activity (ActivityError)
+import Hamsterdan.Host.Agenticus (AgentCompositionError)
+import Petrus.Agenticus.Error (AgenticusError (..), errorClassName)
 import System.Exit (ExitCode)
 import Control.Monad (unless, void)
 import Crypto.Hash.SHA256 qualified as SHA256
@@ -148,6 +150,8 @@ exceptionClass e
   | Just (fault :: PythonFault) <- fromException e = fault.pythonClass
   | Just (_ :: GitHubBoundaryError) <- fromException e = "GitHubBoundaryError"
   | Just (_ :: ActivityError) <- fromException e = "ActivityError"
+  | Just (_ :: AgentCompositionError) <- fromException e = "AgentCompositionError"
+  | Just (failure :: AgenticusError) <- fromException e = errorClassName failure.errorClass
   | Just (_ :: IOException) <- fromException e = "OSError"
   | Just (_ :: ErrorCall) <- fromException e = "RuntimeError"
   | Just (_ :: ArithException) <- fromException e = "ArithmeticError"

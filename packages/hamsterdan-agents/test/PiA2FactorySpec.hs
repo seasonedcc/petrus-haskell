@@ -21,6 +21,7 @@ import Data.Text.Encoding qualified as TE
 import Crypto.Hash.SHA256 qualified as SHA256
 import GHC.Clock (getMonotonicTime)
 import Hamsterdan.Agents.Pi
+import Hamsterdan.Agents.Pi.Doubles (piPackageFixture)
 import Hamsterdan.Agents.Protocol
 import Hamsterdan.Host.PiA2
 import Petrus.Agenticus.Connection.Custody (mkConnectionIdentity)
@@ -29,7 +30,7 @@ import Petrus.Agenticus.Hands.Contract (ToolMethod (..))
 import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeProbeResult (..))
 import Petrus.Agenticus.Catalog.Descriptor (DescriptorIdentity (..))
 import Petrus.Agenticus.Runtime.Operation (cleanupVerified)
-import Petrus.Agenticus.Runtime.Pi (piAiVersion, piContinuationDescriptor, piSdkVersion)
+import Petrus.Agenticus.Runtime.Pi (piContinuationDescriptor)
 import Petrus.Agenticus.Runtime.PiA2Host
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationState (..), mkContinuation)
@@ -42,7 +43,6 @@ import System.Directory (createDirectory, createDirectoryIfMissing, doesFileExis
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import System.Posix.Files (setFileMode)
 import System.Process (proc, readCreateProcessWithExitCode)
 import Test.Hspec
 
@@ -62,32 +62,7 @@ codePolicy = either (error . show) id (mkPiA2RuntimePolicy [WorkspaceRead, Works
 
 -- | @_package(root)@: an installed Pi package and a probing node.
 packageFixture :: FilePath -> IO (FilePath, FilePath, FilePath)
-packageFixture root = do
-  let package = root </> "package"
-      ai = package </> "node_modules" </> "@earendil-works" </> "pi-ai"
-  createDirectoryIfMissing True (package </> "dist")
-  createDirectoryIfMissing True ai
-  BS.writeFile (package </> "dist" </> "cli.js") "fixture"
-  BS.writeFile (package </> "dist" </> "index.js") "fixture"
-  writeJson
-    (package </> "package.json")
-    ( Object
-        [ ("name", String "@earendil-works/pi-coding-agent")
-        , ("version", String piSdkVersion)
-        , ("bin", Object [("pi", String "dist/cli.js")])
-        , ("main", String "dist/index.js")
-        , ("dependencies", Object [("@earendil-works/pi-ai", String piAiVersion)])
-        ]
-    )
-  writeJson (ai </> "package.json") (Object [("name", String "@earendil-works/pi-ai"), ("version", String piAiVersion)])
-  let node = root </> "node"
-  BS.writeFile
-    node
-    "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf \"v22.19.0\\n\"; else printf '{\"type\":\"probe\",\"ok\":true}\\n'; fi\n"
-  setFileMode node 0o700
-  pure (package </> "dist" </> "cli.js", node, package)
-  where
-    writeJson path value = either (throwIO . userError . show) (BS.writeFile path . TE.encodeUtf8) (dumpsText defaultDumps value)
+packageFixture = piPackageFixture
 
 -- | @_config(root)@.
 scriptedConfig :: FilePath -> IO PiA2RuntimeHostConfig
