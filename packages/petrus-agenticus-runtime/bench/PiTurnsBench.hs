@@ -201,18 +201,21 @@ piNativeTurn node root = do
           , load = \reference -> maybe (fail "no continuation") pure . Map.lookup reference =<< readIORef values
           }
       turns = PiTurnOperations {storeTurn = \operationId _ -> pure ("pi-turn-" <> operationId)}
+  let component = ok (mkInstalledComponent "pi-coding-agent" piSdkVersion piSdkSource)
+      prepare descriptor r =
+        r
+          { installation = Just (ok (mkRuntimeInstallation descriptor.identity 1 [component] "bench" "bench" Set.empty))
+          , node = Just node
+          , sdkEntrypoint = Just (T.pack sdk)
+          , factory = Just (subprocessFactory helper)
+          }
   adapter <-
-    newPiRuntimeAdapter
+    newPiRuntimeAdapterWith
+      PiAdapterOptions {clock = getMonotonicTime, factory = Nothing, hooks = noHooks, prepare}
       (piRuntimeConfig "provider" "model" working private) {Pi.hostId = "host-1", Pi.credentialTtl = 10, Pi.wallTimeout = 30, Pi.cancellationGrace = 2}
       (piContinuationCodec continuations)
       turns
       (benchCustody piKey)
-      getMonotonicTime
-      Nothing
-  let component = ok (mkInstalledComponent "pi-coding-agent" piSdkVersion piSdkSource)
-      installation = ok (mkRuntimeInstallation (adapterDescriptor adapter).identity 1 [component] "bench" "bench" Set.empty)
-  modifyAdapterRuntime adapter $ \r ->
-    r {installation = Just installation, node = Just node, sdkEntrypoint = Just (T.pack sdk), factory = Just (subprocessFactory helper)}
   let selected =
         ok . mkResolutionSnapshot 1 $
           [ piNativeA2Local
@@ -284,8 +287,19 @@ piA5Turn node root = do
           , load = \reference -> maybe (fail "no continuation") pure . Map.lookup reference =<< readIORef values
           }
       turns = PiApplicationTurnOperations {storeTurn = \operationId _ -> pure ("pi-application-turn-" <> operationId)}
+  let applicationComponent = ok (mkInstalledComponent "pi-agent-core" "0.83.0" "bench")
+      prepare descriptor r =
+        r
+          { installation = Just (ok (mkRuntimeInstallation descriptor.identity 1 [applicationComponent] "bench" "bench" Set.empty))
+          , node = Just node
+          , coding = Just coding
+          , core = Just core
+          , ai = Just ai
+          , factory = Just (applicationSubprocessFactory helper)
+          }
   adapter <-
-    newPiApplicationRuntimeAdapter
+    newPiApplicationRuntimeAdapterWith
+      ApplicationAdapterOptions {clock = getMonotonicTime, factory = Nothing, hooks = noApplicationHooks, prepare}
       (piApplicationRuntimeConfig "anthropic" "claude-sonnet-4-5" "gondolin" working runtime)
         { App.hostId = "host-1"
         , App.wallTimeout = 30
@@ -294,19 +308,6 @@ piA5Turn node root = do
       (piApplicationContinuationCodec continuations)
       turns
       (applicationCustody (benchCustody "credential-canary"))
-      getMonotonicTime
-      Nothing
-  let component = ok (mkInstalledComponent "pi-agent-core" "0.83.0" "bench")
-      installation = ok (mkRuntimeInstallation (applicationAdapterDescriptor adapter).identity 1 [component] "bench" "bench" Set.empty)
-  modifyApplicationAdapterRuntime adapter $ \r ->
-    r
-      { installation = Just installation
-      , node = Just node
-      , coding = Just coding
-      , core = Just core
-      , ai = Just ai
-      , factory = Just (applicationSubprocessFactory helper)
-      }
   let selected =
         ok . mkResolutionSnapshot 1 $
           [ piApplicationA5Gondolin

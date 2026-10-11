@@ -35,19 +35,20 @@ module Petrus.Agenticus.Runtime.AgentNetRunner
     -- * Thread repositories
   , AgentNetThreadRepository (..)
   , jsonThreadRepository
+  , runnerThreadRepository
     -- * The Hands Activity
   , agentNetHandsActivity
     -- * The runner
   , AgentNetRunner
   , createRunner
+  , createRunnerWith
   , loadRunner
+  , loadRunnerWith
   , runnerEngine
   , runnerHistory
   , runnerProjection
   , runnerThread
   , runnerSettled
-  , runnerRepository
-  , setRunnerRepository
   , advance
   , drain
   , closeRunner
@@ -589,7 +590,7 @@ agentNetHandsActivity attachment' adapter = do
 data AgentNetRunner = AgentNetRunner
   { engine :: Engine.Engine
   , history :: HistoryStore
-  , repository :: IORef AgentNetThreadRepository
+  , repository :: AgentNetThreadRepository
   , projection :: IORef AgentNetThreadProjection
   , attachment :: EpisodeAttachment
   }
@@ -609,12 +610,9 @@ runnerThread r = (.thread) <$> readIORef r.projection
 runnerSettled :: AgentNetRunner -> IO Bool
 runnerSettled r = projectionSettled <$> readIORef r.projection
 
-runnerRepository :: AgentNetRunner -> IO AgentNetThreadRepository
-runnerRepository r = readIORef r.repository
-
--- | Replace the repository (the reference assigns @runner.repository@).
-setRunnerRepository :: AgentNetRunner -> AgentNetThreadRepository -> IO ()
-setRunnerRepository r = writeIORef r.repository
+-- | The JSON Thread repository a runner rooted at this directory uses.
+runnerThreadRepository :: FilePath -> AgentNetThreadRepository
+runnerThreadRepository root = jsonThreadRepository (root </> threadFile)
 
 -- | @AgentNetRunner.create@: start the Episode and Turn, save the first
 -- projection, then host a fresh Engine.
@@ -627,8 +625,21 @@ createRunner
   -> Activity
   -> HandsAdapter
   -> IO AgentNetRunner
-createRunner root instanceId' thread' initial' attachment' modelActivity adapter = do
-  let repository' = jsonThreadRepository (root </> threadFile)
+createRunner root = createRunnerWith (runnerThreadRepository root) root
+
+-- | 'createRunner' over a given Thread repository (the reference's
+-- @repository=@ argument).
+createRunnerWith
+  :: AgentNetThreadRepository
+  -> FilePath
+  -> Text
+  -> Thread
+  -> LoopState
+  -> EpisodeAttachment
+  -> Activity
+  -> HandsAdapter
+  -> IO AgentNetRunner
+createRunnerWith repository' root instanceId' thread' initial' attachment' modelActivity adapter = do
   existing <- repository'.load
   historyExists <- doesFileExist (root </> historyFile)
   when (isJust existing || historyExists) $ runnerError "Agent-as-a-Net runner already exists; load it instead"
@@ -646,8 +657,11 @@ createRunner root instanceId' thread' initial' attachment' modelActivity adapter
 
 -- | @AgentNetRunner.load@.
 loadRunner :: FilePath -> EpisodeAttachment -> Activity -> HandsAdapter -> IO AgentNetRunner
-loadRunner root attachment' modelActivity adapter = do
-  let repository' = jsonThreadRepository (root </> threadFile)
+loadRunner root = loadRunnerWith (runnerThreadRepository root) root
+
+-- | 'loadRunner' over a given Thread repository.
+loadRunnerWith :: AgentNetThreadRepository -> FilePath -> EpisodeAttachment -> Activity -> HandsAdapter -> IO AgentNetRunner
+loadRunnerWith repository' root attachment' modelActivity adapter = do
   projection' <-
     repository'.load >>= maybe (runnerError "Agent-as-a-Net Thread projection does not exist") pure
   -- A crash may land after verified Attachment settlement but before the
@@ -681,9 +695,8 @@ openRunner root repository' projection' attachment' modelActivity adapter = do
           store
           port
           (agentNetOptions Engine.defaultEngineOptions {Engine.marking = initialMarking projection'.initial})
-  repositoryRef <- newIORef repository'
   projectionRef <- newIORef projection'
-  let runner = AgentNetRunner engine' store repositoryRef projectionRef attachment'
+  let runner = AgentNetRunner engine' store repository' projectionRef attachment'
   ( do
       projectCommitted runner
       settleRecordedFailure runner
@@ -803,8 +816,7 @@ closeRunner r = Engine.close r.engine
 saveProjection :: AgentNetRunner -> AgentNetThreadProjection -> IO ()
 saveProjection r next = do
   current <- readIORef r.projection
-  repository' <- readIORef r.repository
-  repository'.save (Just current) next
+  r.repository.save (Just current) next
   writeIORef r.projection next
 
 -- | @dataclasses.replace@: rebuild through the validating constructor.

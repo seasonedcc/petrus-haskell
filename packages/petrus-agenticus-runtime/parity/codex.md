@@ -38,8 +38,8 @@ The other fakes:
 | `ActivityContext(stale=...)` | `activityContext stale`, which also counts heartbeats |
 | `RecordingLocal`, `UncertainCleanupLocal`, provider monkeypatching | `Hooked`: a wrapper over a real Motus provider that records commands and lets a test swap each private-file operation and the workspace export, even after the binding is open |
 | `monkeypatch` of `shutil.which` and `subprocess.run` | `CodexProbeHooks` behind `IORef`s |
-| assigning `adapter.start` | `setCodexStartWrapper` |
-| `monkeypatch` of `_helper_executable` | `setCodexHelperExecutable` |
+| assigning `adapter.start` | `CodexAdapterOptions.startWrapper`, switched through the rig's `wrapStart` |
+| `monkeypatch` of `_helper_executable` | `CodexAdapterOptions.guestInterpreter` |
 | `python -m petrus.motus.worker` with `codex_worker_support` | this test binary re-executed as a Local Worker (`PETRUS_CODEX_TEST_WORKER`), with the same registry name and the same withhold-reply marker |
 
 The fake `codex` runs under the pinned CPython (`pythonExecutable`). The

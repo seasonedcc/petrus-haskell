@@ -40,23 +40,23 @@ them.
 | `test_uncertain_subscription_run_releases_activated_lease_without_checkpoint` | 1 |  |
 | `test_cancel_deadline_redelivery_conflict_and_too_late_claim` | 2 |  |
 | `test_native_jsonl_is_complete_strict_and_has_one_matching_header` | 4 |  |
-| `test_framed_native_a4_resume_excludes_episode_custody_from_exact_jsonl_prefix` | 1 | Real `node`; the installation is swapped through `modifyAdapterRuntime`. |
+| `test_framed_native_a4_resume_excludes_episode_custody_from_exact_jsonl_prefix` | 1 | Real `node`; the rig prepares the installation through `PiAdapterOptions.prepare`. |
 | `test_private_node_helper_routes_the_provider_tool_identity_through_hands` | 3 | Real `node` over the verbatim `pi_helper.mjs` and the fake SDK `framed_tool_sdk.mjs`. Every `withNode` test first runs `node -e ""` so that a cold Node start (seconds on a busy CI runner) is not charged to the reference's 3 s run and 5 s Episode budgets. |
 | `test_clean_subscription_provider_failure_checkpoints_auth_without_turn_publication` | 1 |  |
 | `test_invalid_returned_subscription_authority_requires_reauthorization` | 4 |  |
 | `test_subscription_storage_or_checkpoint_failure_publishes_no_references` | 1 |  |
-| `test_native_a4_rechecks_publication_admission_after_remote_lookup` | 4 | The stall goes through `PiAdapterHooks` and the clock through `setAdapterClock`. |
-| `test_helper_construction_refuses_a_grant_replaced_after_initial_validation` | 1 | The factory is replaced through `modifyAdapterRuntime`. |
+| `test_native_a4_rechecks_publication_admission_after_remote_lookup` | 4 | The stall goes through `PiAdapterHooks` and the clock through `PiAdapterOptions.clock`, both fixed when the rig is built. |
+| `test_helper_construction_refuses_a_grant_replaced_after_initial_validation` | 1 | The rig is built with the replacing factory; it reads the attachment from an `MVar` the test fills. |
 | `test_canaries_never_render_log_or_error` | 1 | The port has no logging, so `caplog` has no counterpart. The renders of the adapter, the invocation, the operation and its result are checked for every canary. |
 | `test_native_a4_publication_claim_makes_later_cancellation_too_late` | 1 | The custody fake's `beforeAdmit` hook replaces the patched `admit`. |
 | `test_private_client_rejects_auth_on_the_wrong_terminal_frame` | 3 | Real `node` over `wrong_auth_helper.mjs`. |
 | `test_native_a4_resumes_only_continuation_after_settled_gondolin_replacement` | 1 |  |
-| `test_private_node_helper_rejects_empty_or_unknown_advertised_tool_sets` | 2 | Real `node`. The reference rewrites `client._start`; the port calls `setSubprocessStartFrame`. |
+| `test_private_node_helper_rejects_empty_or_unknown_advertised_tool_sets` | 2 | Real `node`. The reference rewrites `client._start`; the port passes `SubprocessOptions.adjustStart`. |
 | `test_provider_and_cleanup_failures_publish_no_references` | 2 |  |
-| `test_subscription_reserves_publication_time_before_materializing_authority` | 1 | The config is replaced through `setAdapterConfig`. |
+| `test_subscription_reserves_publication_time_before_materializing_authority` | 1 | The rig is built with the shorter credential TTL. |
 | `test_thread_start_failure_rolls_back_registration` | 1 | `PiAdapterHooks` replaces the monkeypatch. |
 | `test_private_node_helper_rejects_custody_bearing_model_result` | 1 | Real `node`, fake SDK. |
-| `test_cc_patch_lane_requires_qualified_extension_before_authority` | 1 | The installation is replaced through `modifyAdapterRuntime`. |
+| `test_cc_patch_lane_requires_qualified_extension_before_authority` | 1 | The rig is built without the extension (`PiAdapterOptions.prepare`). |
 | `test_fresh_success_has_exact_custody_and_private_invocation` | 1 |  |
 | `test_native_territory_profile_defaults_local_and_rejects_unknown` | 1 |  |
 | `test_private_client_keeps_unknown_tools_outside_the_closed_protocol` | 1 | Real `node` over `forged_unknown_tool_helper.mjs`. |
@@ -212,7 +212,7 @@ the same reason. When those packages are present, the case runs in full.
 | `test_failures_release_authority_and_publish_nothing` | 6 | |
 | `test_materialization_fence_mismatch_releases_without_provider_use` | 3 | |
 | `test_not_ready_connection_is_rejected_at_construction` | 2 | |
-| `test_private_load_failure_and_state_mismatch_are_sanitized_pre_authority` | 1 | `object.__setattr__(rig.config, ...)` becomes `modifyModelPhaseConfig`. |
+| `test_private_load_failure_and_state_mismatch_are_sanitized_pre_authority` | 1 | `object.__setattr__(rig.config, ...)` becomes an adapter built over the same parts with the changed config. |
 | `test_stale_activity_claim_rejects_before_authority` | 1 | |
 | `test_malformed_candidate_and_proposal_overflow_publish_nothing` | 1 | |
 | `test_candidate_rejects_malformed_public_assistant` | 5 | |
@@ -221,7 +221,7 @@ the same reason. When those packages are present, the case runs in full.
 | `test_subprocess_rejects_a_relative_node_before_launch` | 1 | |
 | `test_subprocess_deadline_kills_the_helper_group_and_discards_stderr` | 1 | Real `node`. |
 | `test_subprocess_heartbeat_refusal_stops_before_the_wall_deadline` | 1 | Real `node`. |
-| `test_real_helper_runs_one_public_stream_with_declarations_and_no_tool_executor` | 1 | Real `node`, the verbatim helper and the fake SDK. The adapter attributes are set with `setModelPhaseNode`, `setModelPhaseSdkEntrypoint` and `setModelPhaseFactory`. |
+| `test_real_helper_runs_one_public_stream_with_declarations_and_no_tool_executor` | 1 | Real `node`, the verbatim helper and the fake SDK. The rig's adapter is rebuilt with the real Node, SDK entrypoint and factory. |
 | `test_real_helper_accepts_bounded_multiline_observation` | 1 | Same as the previous row. |
 | `test_real_subprocess_requires_the_exact_installed_probe_before_authority` | 1 | |
 | `test_activity_adapter_drives_the_real_static_net_to_completion` | 1 | `Petrus.Engine` with `agentNet`, an in-memory history store and the inline dispatch. |
@@ -274,7 +274,7 @@ pending for the same reason the reference skips them:
 | `test_api_key_direct_catalog_is_exact` | 3 | |
 | `test_subscription_and_codex_profiles_are_rejected` | 3 | |
 | `test_seven_separate_operations_drive_policy_and_real_gateway` | 1 | `Petrus.Agenticus.Hands.Conformance.SevenStepEpisodePolicy` over the real gateway. |
-| `test_gondolin_settles_before_e2b_and_continuation_crosses_without_authority_leak` | 1 | `dataclasses.replace(e2.adapter._config, ...)` becomes `setApplicationAdapterConfig`. |
+| `test_gondolin_settles_before_e2b_and_continuation_crosses_without_authority_leak` | 1 | `dataclasses.replace(e2.adapter._config, ...)` becomes a rig built with that working directory. |
 | `test_closed_write_is_synthetic_and_crossing_flat` | 1 | |
 | `test_shared_model_tool_result_projection_excludes_attachment_custody` | 1 | |
 | `test_real_framed_helper_blocks_write_and_round_trips_permitted_read` | 1 | System `node`. The monkeypatched `to_model_data` becomes `ApplicationSubprocessOptions {modelData = toolResultToData}`. |
@@ -287,7 +287,7 @@ pending for the same reason the reference skips them:
 | `test_helper_failures_do_not_publish` | 5 | |
 | `test_cancellation_deadline_and_cleanup_failure_prevent_publication` | 1 | |
 | `test_application_a5_cancellation_wins_while_remote_publication_lookup_is_stalled` | 2 | |
-| `test_application_a5_rechecks_publication_admission_after_remote_lookup` | 4 | `adapter._clock` becomes `setApplicationAdapterClock`. |
+| `test_application_a5_rechecks_publication_admission_after_remote_lookup` | 4 | `adapter._clock` becomes `ApplicationAdapterOptions.clock`, fixed when the rig is built. |
 | `test_application_a5_publication_claim_makes_later_cancellation_too_late` | 1 | |
 | `test_publication_failures_return_no_references_and_release_authority` | 3 | |
 | `test_idempotent_redelivery_and_operation_conflict` | 1 | `is first` becomes the operation's identity equality. |
@@ -324,7 +324,7 @@ and none is pending.
 - `AttachFailure` and `UnverifiedDestroy` are record overrides of the local
   provider's `providerAttach` and `providerDestroy`. The reference's
   `monkeypatch.setattr(host._bodies, "publish", ...)` becomes
-  `setPiA2HostHooks`.
+  `PiA2HostHooks`, passed to `composePiA2ScriptedClientRuntimeWith`.
 - `host._provider`, `host._adapter`, `host._ledger`, `host._bodies`,
   `host._storage`, `host._fingerprint` and `host._territory_operation` are
   `hostProvider`, `hostAdapter`, `hostLedger`, `hostBodies`, `hostStorage`,
@@ -361,7 +361,7 @@ and none is pending.
 | `test_pre_workspace_fingerprint_conflicts_without_authority_or_provider_work` | 1 | |
 | `test_invalid_authority_is_consumed_once_and_replays_terminal_failure` | 1 | |
 | `test_partial_attachment_construction_rolls_back_and_replays_clean_failure` | 1 | |
-| `test_body_publication_failure_leaves_output_unreadable_and_operation_indeterminate` | 1 | `setPiA2HostHooks` replaces the monkeypatch. |
+| `test_body_publication_failure_leaves_output_unreadable_and_operation_indeterminate` | 1 | `PiA2HostHooks` (at composition) replaces the monkeypatch. |
 | `test_unverified_territory_cleanup_never_publishes_success` | 1 | |
 | `test_private_state_root_rejects_unsafe_existing_mode` | 1 | |
 

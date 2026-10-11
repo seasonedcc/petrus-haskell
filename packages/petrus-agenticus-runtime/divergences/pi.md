@@ -13,17 +13,22 @@ sides of each one. Its single accepted difference is item 6.
    - helper clients and factories: `PiHelperClient`, `PiHelperFactory`;
    - the operation ledger: `PiOperationLedger`.
 
-   `piConnectionCustody` adapts the real `AgentConnectionCustody`, and
+   `hostConnectionCustody` adapts the real `AgentConnectionCustody`, and
    `sqlitePiOperationLedger` adapts the SQLite ledger.
 
-2. **Private attributes are explicit state with named setters.** The
-   reference's tests assign private adapter attributes or monkeypatch private
-   methods (`_binding_current`, `_start`, `_receipt`, `_thread_start` and
-   others). The port keeps that state in `PiAdapterRuntime`, which is
-   changed only through these functions:
-   - `modifyAdapterRuntime`, `setAdapterConfig`, `setAdapterClock`;
-   - `setAdapterHooks`, which takes `PiAdapterHooks`;
-   - `setSubprocessStartFrame`.
+2. **Private attributes are fixed at construction.** The reference's tests
+   assign private adapter attributes or monkeypatch private methods
+   (`_binding_current`, `_start`, `_receipt`, `_thread_start` and others)
+   on a built adapter. The port takes them when the adapter is built:
+   - `newPiRuntimeAdapterWith` takes `PiAdapterOptions`: the clock, the
+     helper factory, `PiAdapterHooks`, and `prepare`, the readiness a probe
+     would record in `PiAdapterRuntime`;
+   - `SubprocessOptions.adjustStart` rewrites a helper client's `start`
+     frame (the reference assigns `client._start`).
+
+   The configuration, clock and hooks are plain values; only the probe
+   changes `PiAdapterRuntime`. A test that needs a mid-run change keeps the
+   switch in its own double.
 
    The recovered runtime takes a `PiAdapterSurface`
    (`newPiRecoveredRuntimeWith`) in place of a patched adapter. Each hook
@@ -198,11 +203,11 @@ sides of each one. Its single accepted difference is item 6.
    - `TypeError("... exact collaborators")`;
    - a non-`Materialization` or non-`AttachmentFence` custody answer;
    - a non-`PiModelPhasePublication` answer (`publication-mismatch`).
-2. **Adapter attributes are explicit state.** The reference's tests assign
-   `adapter.node`, `adapter.sdk_entrypoint`, `adapter.factory` and
-   `adapter.config`. The port provides `setModelPhaseNode`,
-   `setModelPhaseSdkEntrypoint`, `setModelPhaseFactory` and
-   `modifyModelPhaseConfig`. `isinstance(self.factory, _SubprocessFactory)`
+2. **Adapter attributes are fixed at construction.** The reference's tests
+   assign `adapter.node`, `adapter.sdk_entrypoint`, `adapter.factory` and
+   `adapter.config`. The port's tests build an adapter over the same parts
+   with those values instead; only the probe changes the Node and SDK
+   entrypoint afterwards. `isinstance(self.factory, _SubprocessFactory)`
    becomes the factory's `isSubprocess` flag.
 3. **Payload refusal messages.** `_payload` lets the strict parser's own
    exception escape: `JSONDecodeError`, a bare `ValueError` for a constant or
@@ -242,14 +247,13 @@ sides of each one. Its single accepted difference is item 6.
    - a custody answer that is not a `Materialization`, `AttachmentFence`,
      `AdmissionResult` or `ReleaseResult`. The checks on the values (mode,
      fence, admission and release) remain.
-2. **Adapter attributes are explicit state.** The reference's tests assign
-   `_installation`, `_node`, `_coding`, `_core`, `_ai`, `_config` and
-   `_clock`, and they monkeypatch `_binding_current`. The port provides:
-   - `modifyApplicationAdapterRuntime`;
-   - `setApplicationAdapterConfig`, which validates, as `dataclasses.replace`
-     does;
-   - `setApplicationAdapterClock`;
-   - `ApplicationAdapterHooks.bindingCurrent`.
+2. **Adapter attributes are fixed at construction.** The reference's tests
+   assign `_installation`, `_node`, `_coding`, `_core`, `_ai`, `_config` and
+   `_clock`, and they monkeypatch `_binding_current`.
+   `newPiApplicationRuntimeAdapterWith` takes `ApplicationAdapterOptions`
+   instead: the clock, the factory, `ApplicationAdapterHooks.bindingCurrent`,
+   and `prepare`, the readiness a probe would record. The configuration is
+   validated once, as `dataclasses.replace` does.
 
    `isinstance(self._factory, _SubprocessFactory)` becomes the
    `subprocessFactoryInstalled` flag.

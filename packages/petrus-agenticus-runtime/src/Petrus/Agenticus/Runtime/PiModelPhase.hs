@@ -50,10 +50,6 @@ module Petrus.Agenticus.Runtime.PiModelPhase
   , modelPhaseAdapterActivity
   , probeModelPhase
   , modelPhaseNode
-  , setModelPhaseNode
-  , setModelPhaseSdkEntrypoint
-  , setModelPhaseFactory
-  , modifyModelPhaseConfig
     -- * Pure validation (the reference's private functions, for tests)
   , validateCandidate
   , priorCalls
@@ -481,13 +477,14 @@ closePhase c = closeOnce c.helper $ do
 -- The adapter
 
 data PiModelPhaseAdapter = PiModelPhaseAdapter
-  { config :: IORef PiModelPhaseConfig
+  { config :: PiModelPhaseConfig
   , connection :: ConnectionView
   , custody :: PiModelPhaseCustody
   , operations :: PiModelPhaseOperations
+  , factory :: PhaseFactory
   , node :: IORef FilePath
+  -- ^ The configured, then probed, Node (the probe records its real path).
   , sdkEntrypoint :: IORef (Maybe FilePath)
-  , factory :: IORef PhaseFactory
   , probed :: IORef Bool
   }
 
@@ -509,28 +506,23 @@ newPiModelPhaseAdapter config' connection custody operations node' sdk factory' 
     throwIO (valueError "Pi model phase requires a ready api-key connection")
   when (connection.identity.provider /= config''.provider) $
     throwIO (valueError "Pi model phase connection provider mismatch")
-  config <- newIORef config''
   node <- newIORef node'
   sdkEntrypoint <- newIORef sdk
-  factory <- newIORef (fromMaybe subprocessPhaseFactory factory')
   probed <- newIORef False
-  pure PiModelPhaseAdapter {config, connection, custody, operations, node, sdkEntrypoint, factory, probed}
+  pure
+    PiModelPhaseAdapter
+      { config = config''
+      , connection
+      , custody
+      , operations
+      , factory = fromMaybe subprocessPhaseFactory factory'
+      , node
+      , sdkEntrypoint
+      , probed
+      }
 
 modelPhaseNode :: PiModelPhaseAdapter -> IO FilePath
 modelPhaseNode a = readIORef a.node
-
-setModelPhaseNode :: PiModelPhaseAdapter -> FilePath -> IO ()
-setModelPhaseNode a = writeIORef a.node
-
-setModelPhaseSdkEntrypoint :: PiModelPhaseAdapter -> Maybe FilePath -> IO ()
-setModelPhaseSdkEntrypoint a = writeIORef a.sdkEntrypoint
-
-setModelPhaseFactory :: PiModelPhaseAdapter -> PhaseFactory -> IO ()
-setModelPhaseFactory a = writeIORef a.factory
-
--- | The reference's @object.__setattr__(adapter.config, ...)@.
-modifyModelPhaseConfig :: PiModelPhaseAdapter -> (PiModelPhaseConfig -> PiModelPhaseConfig) -> IO ()
-modifyModelPhaseConfig a = modifyIORef' a.config
 
 -- | @probe(package_root)@: the exact pinned packages, Node 22.19 or later,
 -- and the helper's own @--probe@.
@@ -598,13 +590,13 @@ modelPhaseAdapterActivity :: PiModelPhaseAdapter -> ActivityInvocation -> Activi
 modelPhaseAdapterActivity a invocation context = do
   when (invocation.activity /= modelPhaseActivity) $ protocol "activity-mismatch"
   state <- either (const (protocol "input-invalid")) pure (loopStateFromData invocation.input)
-  cfg <- readIORef a.config
+  let cfg = a.config
   when ((state.episodeId, state.turnId) /= (cfg.episodeId, cfg.turnId)) $ protocol "state-mismatch"
   operation <-
     either (const (protocol "runtime-not-ready")) pure $
       phaseText "operation" maxText (fromMaybe context.attemptId (invocation.idempotency >>= \i -> if T.null i then Nothing else Just i))
   sdk <- readIORef a.sdkEntrypoint
-  factory <- readIORef a.factory
+  let factory = a.factory
   probed <- readIORef a.probed
   node <- readIORef a.node
   case sdk of
@@ -689,7 +681,7 @@ execute a cfg state operation prior heartbeat = do
         node <- readIORef a.node
         entry <- fromMaybe "" <$> readIORef a.sdkEntrypoint
         helper <- piModelPhaseHelperPath
-        factory <- readIORef a.factory
+        let factory = a.factory
         client <- factory.create PhaseClientArgs {node, helper, entrypoint = entry, privateRoot = root}
         writeIORef clientRef (Just client)
         candidate <- client.run frame cfg.timeout heartbeat

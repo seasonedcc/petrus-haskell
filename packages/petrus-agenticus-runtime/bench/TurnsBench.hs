@@ -210,7 +210,7 @@ codexTurn python root = do
       (codexContinuationCodec continuations)
       turns
       operations
-      CodexAdapterOptions {clock = getMonotonicTime, hooks = officialCodexProbeHooks, interpreter = python}
+      CodexAdapterOptions {clock = getMonotonicTime, hooks = officialCodexProbeHooks, interpreter = python, guestInterpreter = "/usr/bin/python3", startWrapper = id}
   ready =<< probeCodex adapter
   let selected =
         ok . mkResolutionSnapshot 1 $
@@ -272,7 +272,7 @@ codexA3ServiceTurn python root = do
       (codexContinuationCodec continuations)
       turns
       operations
-      CodexAdapterOptions {clock = getMonotonicTime, hooks = officialCodexProbeHooks, interpreter = python}
+      CodexAdapterOptions {clock = getMonotonicTime, hooks = officialCodexProbeHooks, interpreter = python, guestInterpreter = "/usr/bin/python3", startWrapper = id}
   environment <- newGondolinEnvironment (root </> "gondolin") (gondolinConfig (T.pack sdk)) {gondolinLeaseTtl = 30}
   let provider = gondolinProvider environment
       spec = ok (mkEnvironmentSpec (Just "fake-image") [capVm, capMicrovm, capPrivateFileTransfer])
@@ -410,7 +410,7 @@ claudeTurn python root = do
       (claudeContinuationCodec continuations)
       turns
       claudeCustody
-      ClaudeAdapterOptions {clock = getMonotonicTime, clientFactory = Nothing, hooks = officialClaudeProbeHooks sidecar, interpreter = python}
+      ClaudeAdapterOptions {clock = getMonotonicTime, clientFactory = Nothing, hooks = officialClaudeProbeHooks sidecar, interpreter = python, ready = Nothing}
   ready =<< probeClaude adapter Nothing
   let selected =
         ok . mkResolutionSnapshot 1 $

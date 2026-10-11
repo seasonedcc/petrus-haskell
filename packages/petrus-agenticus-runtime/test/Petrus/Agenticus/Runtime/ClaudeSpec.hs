@@ -385,6 +385,7 @@ makeRig root o = do
   turns <- Turns <$> newIORef Map.empty
   custodyFake <- maybe custody pure o.optCustody
   factory <- newFactory o.optPlans
+  let component = ok (mkInstalledComponent "claude" claudeCodeVersion "test:claude")
   adapter <-
     newClaudeRuntimeAdapter
       (claudeRuntimeConfig "claude-sonnet-4-5" working runtimeRoot)
@@ -404,9 +405,8 @@ makeRig root o = do
         , clientFactory = Just (fromMaybe (factoryRecord factory) o.optFactory)
         , hooks = absentHooks
         , interpreter = "/usr/bin/python3"
+        , ready = Just (ok (mkRuntimeInstallation claudeA2Local.identity 1 [component] "test" "test" Set.empty), "/qualified/claude")
         }
-  let component = ok (mkInstalledComponent "claude" claudeCodeVersion "test:claude")
-  setClaudeReady adapter (Just (ok (mkRuntimeInstallation claudeA2Local.identity 1 [component] "test" "test" Set.empty))) (Just "/qualified/claude")
   pure Rig {adapter, continuations, turns, custodyFake, factory, root, runtimeRoot}
 
 data Invoked = Invoked
@@ -556,7 +556,7 @@ probeRig root hooks = do
       (claudeContinuationCodec (continuationOperations rig.continuations))
       (turnOperations rig.turns)
       (custodyOperations rig.custodyFake)
-      ClaudeAdapterOptions {clock = getMonotonicTime, clientFactory = Nothing, hooks, interpreter = "/usr/bin/python3"}
+      ClaudeAdapterOptions {clock = getMonotonicTime, clientFactory = Nothing, hooks, interpreter = "/usr/bin/python3", ready = Nothing}
   pure (rig, adapter)
 
 -- ---------------------------------------------------------------------------

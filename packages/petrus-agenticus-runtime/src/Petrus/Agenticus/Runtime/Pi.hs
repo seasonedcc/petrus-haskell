@@ -78,7 +78,6 @@ module Petrus.Agenticus.Runtime.Pi
   , newSubprocessClientWith
   , subprocessClient
   , subprocessStartFrame
-  , setSubprocessStartFrame
   , piHelperPath
     -- * Operations
   , PiOperation
@@ -92,6 +91,9 @@ module Petrus.Agenticus.Runtime.Pi
     -- * The adapter
   , PiRuntimeAdapter
   , newPiRuntimeAdapter
+  , PiAdapterOptions (..)
+  , piAdapterOptions
+  , newPiRuntimeAdapterWith
   , adapterConfig
   , adapterDescriptor
   , adapterHands
@@ -109,13 +111,9 @@ module Petrus.Agenticus.Runtime.Pi
   , receiptPi
     -- * Adapter internals (the reference's private attributes, for tests)
   , PiAdapterRuntime (..)
-  , modifyAdapterRuntime
   , readAdapterRuntime
-  , setAdapterConfig
-  , setAdapterClock
   , PiAdapterHooks (..)
   , noHooks
-  , setAdapterHooks
   , adapterBindingCurrent
   , adapterOperationIds
     -- * Pure protocol pieces (exposed for the differential corpus)
@@ -998,13 +996,15 @@ piHelperPath :: IO FilePath
 piHelperPath = getDataFileName "data/pi_helper.mjs" >>= makeAbsolute
 
 -- | Knobs the reference reaches by monkeypatching.
-newtype SubprocessOptions = SubprocessOptions
+data SubprocessOptions = SubprocessOptions
   { modelData :: ToolResult -> Json
   -- ^ @ToolResult.to_model_data@.
+  , adjustStart :: [(Text, Json)] -> [(Text, Json)]
+  -- ^ Rewrites the @start@ frame (the reference assigns @client._start@).
   }
 
 subprocessOptions :: SubprocessOptions
-subprocessOptions = SubprocessOptions {modelData = toolResultToModelData}
+subprocessOptions = SubprocessOptions {modelData = toolResultToModelData, adjustStart = id}
 
 -- | @_SubprocessClient@: one private helper process.
 data SubprocessClient = SubprocessClient
@@ -1012,7 +1012,7 @@ data SubprocessClient = SubprocessClient
   , prior :: Maybe PiContinuationPayloadV1
   , options :: SubprocessOptions
   , helper :: Helper
-  , start :: IORef [(Text, Json)]
+  , start :: [(Text, Json)]
   }
 
 newSubprocessClient :: FilePath -> PiHelperArgs -> IO SubprocessClient
@@ -1034,7 +1034,7 @@ newSubprocessClientWith options helper args = do
           }
   started <- spawnHelper Chunks command >>= maybe (throwIO (runtimeProtocolError "helper-launch-failed")) pure
   session <- maybe newUuid4 (pure . (.sessionId)) args.prior
-  start <- newIORef (startFrame args.config args session granted)
+  let start = options.adjustStart (startFrame args.config args session granted)
   pure
     SubprocessClient
       { config = args.config
@@ -1072,11 +1072,8 @@ startFrame config args session granted =
       , ("tools", Int (toInteger config.maxToolCalls))
       ]
 
-subprocessStartFrame :: SubprocessClient -> IO [(Text, Json)]
-subprocessStartFrame c = readIORef c.start
-
-setSubprocessStartFrame :: SubprocessClient -> [(Text, Json)] -> IO ()
-setSubprocessStartFrame c = writeIORef c.start
+subprocessStartFrame :: SubprocessClient -> [(Text, Json)]
+subprocessStartFrame c = c.start
 
 subprocessClient :: SubprocessClient -> PiHelperClient
 subprocessClient c = PiHelperClient {run = runSubprocess c, close = closeSubprocess c}
@@ -1130,7 +1127,7 @@ protocol = throwIO . runtimeProtocolError
 -- | The reference's fail-closed protocol state machine.
 runSubprocess :: SubprocessClient -> HandsGateway -> PiRuntimeInvocation -> IO Bool -> Double -> IO PiHelperResult
 runSubprocess c gateway' invocation current deadline = do
-  start <- readIORef c.start
+  let start = c.start
   writeFrame c (Object start)
   let subscription = isJust (lookup "auth" start)
   final <- loop subscription (Loop B.empty False False False False Set.empty 0 0 0 Nothing Nothing Nothing)
@@ -1349,7 +1346,7 @@ publicationError o = do
 -- | @_Operation.claim@: the last cancellation point before publication.
 claim :: PiOperation -> IO (Maybe Text)
 claim o = do
-  hooks <- readIORef o.adapter.hooks
+  let hooks = o.adapter.hooks
   maybe id id hooks.claim $ do
     first <- Lifecycle.inspect o.lifecycle (publicationError o)
     case first of
@@ -1377,7 +1374,7 @@ cancelPiOperation o reason = do
 -- | @close()@.
 closePiOperation :: PiOperation -> IO RuntimeOperationCleanup
 closePiOperation o = do
-  config <- readIORef o.adapter.configRef
+  let config = o.adapter.config
   Lifecycle.closeWith o.lifecycle (config.cancellationGrace * 2) (Lifecycle.settledEvidence o.lifecycle)
 
 -- | The operation as the provider-neutral 'RuntimeOperation' record.
@@ -1421,11 +1418,11 @@ noHooks :: PiAdapterHooks
 noHooks = PiAdapterHooks Nothing Nothing Nothing
 
 data PiRuntimeAdapter = PiRuntimeAdapter
-  { configRef :: IORef PiRuntimeConfig
+  { config :: PiRuntimeConfig
   , codec :: PiContinuationCodec
   , turns :: PiTurnOperations
   , custody :: HostConnectionCustody
-  , clockRef :: IORef (IO Double)
+  , clock :: IO Double
   , descriptor :: CapabilityDescriptor
   , hands :: CapabilityDescriptor
   , territory :: CapabilityDescriptor
@@ -1434,31 +1431,46 @@ data PiRuntimeAdapter = PiRuntimeAdapter
   , leaseFailure :: Text
   , runtime :: MVar PiAdapterRuntime
   , operations :: MVar (Map Text PiOperation)
-  , hooks :: IORef PiAdapterHooks
+  , hooks :: PiAdapterHooks
   }
 
 -- | @PiRuntimeAdapter(config, codec, turns, custody, clock=..., client_factory=...)@.
 newPiRuntimeAdapter
   :: PiRuntimeConfig -> PiContinuationCodec -> PiTurnOperations -> HostConnectionCustody -> IO Double -> Maybe PiHelperFactory -> IO PiRuntimeAdapter
-newPiRuntimeAdapter config0 codec turns custody clock factory = do
+newPiRuntimeAdapter config codec turns custody clock factory =
+  newPiRuntimeAdapterWith PiAdapterOptions {clock, factory, hooks = noHooks, prepare = const id} config codec turns custody
+
+-- | What the reference's tests assign on a built adapter (@_clock@, its
+-- private hooks, @_installation@, @_node@, ...), fixed at construction.
+data PiAdapterOptions = PiAdapterOptions
+  { clock :: IO Double
+  , factory :: Maybe PiHelperFactory
+  , hooks :: PiAdapterHooks
+  , prepare :: CapabilityDescriptor -> PiAdapterRuntime -> PiAdapterRuntime
+  -- ^ The readiness a probe would record, given the runtime descriptor.
+  }
+
+piAdapterOptions :: PiAdapterOptions
+piAdapterOptions = PiAdapterOptions {clock = getMonotonicTime, factory = Nothing, hooks = noHooks, prepare = const id}
+
+newPiRuntimeAdapterWith
+  :: PiAdapterOptions -> PiRuntimeConfig -> PiContinuationCodec -> PiTurnOperations -> HostConnectionCustody -> IO PiRuntimeAdapter
+newPiRuntimeAdapterWith options config0 codec turns custody = do
   config <- newPiRuntimeConfig config0
   let (descriptor, hands, territory) = case config.territoryProfile of
         "gondolin" -> (piNativeA4Gondolin, piCapabilityScopedHands, piGondolinTerritory)
         "e2b" -> (piNativeA4E2b, piCapabilityScopedHands, piE2bTerritory)
         _ -> (piNativeA2Local, piCollocatedHands, piLocalTerritory)
       split = config.territoryProfile /= "local"
-  configRef <- newIORef config
-  clockRef <- newIORef clock
-  runtime <- newMVar (PiAdapterRuntime Nothing False Nothing Nothing Nothing Nothing factory False)
+  runtime <- newMVar (options.prepare descriptor (PiAdapterRuntime Nothing False Nothing Nothing Nothing Nothing options.factory False))
   operations <- newMVar Map.empty
-  hooks <- newIORef noHooks
   pure
     PiRuntimeAdapter
-      { configRef
+      { config
       , codec
       , turns
       , custody
-      , clockRef
+      , clock = options.clock
       , descriptor
       , hands
       , territory
@@ -1468,11 +1480,11 @@ newPiRuntimeAdapter config0 codec turns custody clock factory = do
       , leaseFailure = if split then "runtime-territory-lease-required" else "runtime-local-lease-required"
       , runtime
       , operations
-      , hooks
+      , hooks = options.hooks
       }
 
-adapterConfig :: PiRuntimeAdapter -> IO PiRuntimeConfig
-adapterConfig a = readIORef a.configRef
+adapterConfig :: PiRuntimeAdapter -> PiRuntimeConfig
+adapterConfig a = a.config
 
 adapterDescriptor, adapterHands, adapterTerritory :: PiRuntimeAdapter -> CapabilityDescriptor
 adapterDescriptor a = a.descriptor
@@ -1491,7 +1503,7 @@ adapterRuntimeCapabilities a = a.runtimeCapabilities
 -- | @repr(adapter)@.
 renderPiRuntimeAdapter :: PiRuntimeAdapter -> IO Text
 renderPiRuntimeAdapter a = do
-  config <- adapterConfig a
+  let config = a.config
   ready <- isJust . (.installation) <$> readMVar a.runtime
   pure $
     "PiRuntimeAdapter(territory_profile="
@@ -1510,24 +1522,11 @@ modifyAdapterRuntime a f = modifyMVar_ a.runtime (pure . f)
 readAdapterRuntime :: PiRuntimeAdapter -> IO PiAdapterRuntime
 readAdapterRuntime a = readMVar a.runtime
 
--- | Assign @adapter._config@ (validated first).
-setAdapterConfig :: PiRuntimeAdapter -> PiRuntimeConfig -> IO ()
-setAdapterConfig a config = newPiRuntimeConfig config >>= writeIORef a.configRef
-
--- | Assign @adapter._clock@.
-setAdapterClock :: PiRuntimeAdapter -> IO Double -> IO ()
-setAdapterClock a = writeIORef a.clockRef
-
-setAdapterHooks :: PiRuntimeAdapter -> PiAdapterHooks -> IO ()
-setAdapterHooks a = writeIORef a.hooks
-
 adapterOperationIds :: PiRuntimeAdapter -> IO [Text]
 adapterOperationIds a = Map.keys <$> readMVar a.operations
 
 adapterNow :: PiRuntimeAdapter -> IO Double
-adapterNow a = join' (readIORef a.clockRef)
-  where
-    join' action = action >>= id
+adapterNow a = a.clock
 
 -- | Executables and package roots for 'probe' (@probe(cli_path=..., ...)@).
 data ProbePaths = ProbePaths
@@ -1572,7 +1571,7 @@ probe a paths = do
 
 probeInstalled :: PiRuntimeAdapter -> ProbePaths -> FilePath -> FilePath -> IO (RuntimeInstallation, FilePath, Text, FilePath, Maybe Text)
 probeInstalled a paths cli node = do
-  config <- adapterConfig a
+  let config = a.config
   let invalid = throwIO (valueError "probe")
       strict path = doesPathExist path >>= \exists -> if exists then canonicalizePath path else invalid
       readJson path = BS.readFile path >>= either (const invalid) pure . J.parseJson J.pythonLoads
@@ -1696,7 +1695,7 @@ startPi a inv0 = do
   forM_ inv.continuation $ \c ->
     when (c.state /= ContinuationInUse) $ throwIO (runtimeProtocolError "continuation-not-claimed")
   prior <- traverse (codecLoad a.codec) inv.continuation
-  config <- adapterConfig a
+  let config = a.config
   forM_ prior $ \p ->
     when (p.workingDirectoryBinding /= workingBinding config.workingDirectory) $
       throwIO (runtimeProtocolError "continuation-project-mismatch")
@@ -1725,7 +1724,7 @@ startPi a inv0 = do
             ]
           <> ")"
       key = sha256Hex (TE.encodeUtf8 identity)
-  hooks <- readIORef a.hooks
+  let hooks = a.hooks
   mask_ $ do
     registered <- modifyMVar a.operations $ \known -> do
       r <- readMVar a.runtime
@@ -1808,7 +1807,7 @@ validate a inv = do
 -- | @_binding_current@ (through the test hook, when one is installed).
 adapterBindingCurrent :: PiRuntimeAdapter -> PiRuntimeInvocation -> IO Bool
 adapterBindingCurrent a inv = do
-  hooks <- readIORef a.hooks
+  let hooks = a.hooks
   maybe id id hooks.bindingCurrent (bindingCurrent a) inv
 
 bindingCurrent :: PiRuntimeAdapter -> PiRuntimeInvocation -> IO Bool
@@ -1835,7 +1834,7 @@ bindingCurrent a inv = case (Episode.episodeBinding inv.attachment).motus of
 
 validateConnection :: PiRuntimeAdapter -> PiRuntimeInvocation -> IO ()
 validateConnection a inv = do
-  config <- adapterConfig a
+  let config = a.config
   r <- readMVar a.runtime
   let profile = inv.connection.identity.profile
   when (inv.connection.identity.provider /= config.provider) $ throwIO (runtimeProtocolError "connection-provider-mismatch")
@@ -1868,7 +1867,7 @@ data Exec = Exec
 -- publication, with cleanup and release precedence kept explicit.
 executeOperation :: PiRuntimeAdapter -> PiOperation -> IO (RuntimeTurnSettlement, RuntimeCleanupDisposition)
 executeOperation a operation = do
-  config <- adapterConfig a
+  let config = a.config
   r <- readMVar a.runtime
   let inv = operation.inv
       prior = operation.prior

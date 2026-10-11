@@ -78,8 +78,8 @@ Continuation payload's transcript is produced by `encodeTranscript`, which
 4. **Monkeypatched seams are explicit hooks.** The probe's
    `importlib.metadata.version` and `importlib.import_module` are
    `ClaudeProbeHooks`; `officialClaudeProbeHooks` asks the sidecar.
-   `setClaudeReady` stands for the tests' direct assignment of the adapter's
-   readiness.
+   `ClaudeAdapterOptions.ready` stands for the tests' direct assignment of
+   the adapter's readiness, fixed at construction.
 
 5. **The CLI wrapper's interpreter is explicit.** Upstream writes the
    private wrapper with a `#!{sys.executable} -I` line. A Haskell process

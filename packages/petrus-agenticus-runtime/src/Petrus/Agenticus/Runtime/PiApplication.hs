@@ -76,6 +76,9 @@ module Petrus.Agenticus.Runtime.PiApplication
     -- * The adapter
   , PiApplicationRuntimeAdapter
   , newPiApplicationRuntimeAdapter
+  , ApplicationAdapterOptions (..)
+  , applicationAdapterOptions
+  , newPiApplicationRuntimeAdapterWith
   , applicationAdapterConfig
   , applicationAdapterDescriptor
   , applicationAdapterTerritory
@@ -88,13 +91,9 @@ module Petrus.Agenticus.Runtime.PiApplication
   , startApplication
     -- * Adapter internals (the reference's private attributes, for tests)
   , ApplicationAdapterRuntime (..)
-  , modifyApplicationAdapterRuntime
   , readApplicationAdapterRuntime
-  , setApplicationAdapterConfig
-  , setApplicationAdapterClock
   , ApplicationAdapterHooks (..)
   , noApplicationHooks
-  , setApplicationAdapterHooks
   , applicationBindingCurrent
   , applicationWorkingBinding
   ) where
@@ -914,7 +913,7 @@ cancelApplicationOperation o reason = do
 -- | @close()@.
 closeApplicationOperation :: PiApplicationOperation -> IO RuntimeOperationCleanup
 closeApplicationOperation o = do
-  config <- applicationAdapterConfig o.adapter
+  let config = o.adapter.config
   Lifecycle.closeWith o.lifecycle (config.cancellationGrace * 2) (Lifecycle.settledEvidence o.lifecycle)
 
 -- | The operation as the provider-neutral 'RuntimeOperation' record.
@@ -953,16 +952,16 @@ noApplicationHooks :: ApplicationAdapterHooks
 noApplicationHooks = ApplicationAdapterHooks Nothing
 
 data PiApplicationRuntimeAdapter = PiApplicationRuntimeAdapter
-  { configRef :: IORef PiApplicationRuntimeConfig
+  { config :: PiApplicationRuntimeConfig
   , codec :: PiApplicationContinuationCodec
   , turns :: PiApplicationTurnOperations
   , custody :: PiApplicationConnectionCustody
-  , clockRef :: IORef (IO Double)
+  , clock :: IO Double
   , descriptor :: CapabilityDescriptor
   , territory :: DescriptorIdentity
   , runtime :: MVar ApplicationAdapterRuntime
   , operations :: MVar (Map Text PiApplicationOperation)
-  , hooks :: IORef ApplicationAdapterHooks
+  , hooks :: ApplicationAdapterHooks
   }
 
 -- | @PiApplicationRuntimeAdapter(config, codec, turns, custody, clock=...,
@@ -975,29 +974,56 @@ newPiApplicationRuntimeAdapter
   -> IO Double
   -> Maybe ApplicationFactory
   -> IO PiApplicationRuntimeAdapter
-newPiApplicationRuntimeAdapter config0 codec turns custody clock factory = do
+newPiApplicationRuntimeAdapter config codec turns custody clock factory =
+  newPiApplicationRuntimeAdapterWith
+    ApplicationAdapterOptions {clock, factory, hooks = noApplicationHooks, prepare = const id}
+    config
+    codec
+    turns
+    custody
+
+-- | What the reference's tests assign on a built adapter (@_clock@, its
+-- private hooks, @_installation@, @_node@, ...), fixed at construction.
+data ApplicationAdapterOptions = ApplicationAdapterOptions
+  { clock :: IO Double
+  , factory :: Maybe ApplicationFactory
+  , hooks :: ApplicationAdapterHooks
+  , prepare :: CapabilityDescriptor -> ApplicationAdapterRuntime -> ApplicationAdapterRuntime
+  -- ^ The readiness a probe would record, given the runtime descriptor.
+  }
+
+applicationAdapterOptions :: ApplicationAdapterOptions
+applicationAdapterOptions =
+  ApplicationAdapterOptions {clock = getMonotonicTime, factory = Nothing, hooks = noApplicationHooks, prepare = const id}
+
+newPiApplicationRuntimeAdapterWith
+  :: ApplicationAdapterOptions
+  -> PiApplicationRuntimeConfig
+  -> PiApplicationContinuationCodec
+  -> PiApplicationTurnOperations
+  -> PiApplicationConnectionCustody
+  -> IO PiApplicationRuntimeAdapter
+newPiApplicationRuntimeAdapterWith options config0 codec turns custody = do
   config <- newPiApplicationRuntimeConfig config0
-  configRef <- newIORef config
-  clockRef <- newIORef clock
-  runtime <- newMVar (ApplicationAdapterRuntime Nothing Nothing Nothing Nothing Nothing factory False)
+  let descriptor = if config.profile == "gondolin" then piApplicationA5Gondolin else piApplicationA5E2b
+  runtime <- newMVar (options.prepare descriptor (ApplicationAdapterRuntime Nothing Nothing Nothing Nothing Nothing options.factory False))
   operations <- newMVar Map.empty
-  hooks <- newIORef noApplicationHooks
   pure
     PiApplicationRuntimeAdapter
-      { configRef
+      { config
       , codec
       , turns
       , custody
-      , clockRef
-      , descriptor = if config.profile == "gondolin" then piApplicationA5Gondolin else piApplicationA5E2b
+      , clock = options.clock
+      , descriptor
       , territory = descriptorIdentity KindTerritory ("motus." <> config.profile) 1
       , runtime
       , operations
-      , hooks
+      , hooks = options.hooks
       }
 
-applicationAdapterConfig :: PiApplicationRuntimeAdapter -> IO PiApplicationRuntimeConfig
-applicationAdapterConfig a = readIORef a.configRef
+applicationAdapterConfig :: PiApplicationRuntimeAdapter -> PiApplicationRuntimeConfig
+applicationAdapterConfig a = a.config
 
 applicationAdapterDescriptor :: PiApplicationRuntimeAdapter -> CapabilityDescriptor
 applicationAdapterDescriptor a = a.descriptor
@@ -1014,7 +1040,7 @@ applicationAdapterContinuationDescriptor _ = piApplicationContinuationDescriptor
 -- | @repr(adapter)@.
 renderPiApplicationRuntimeAdapter :: PiApplicationRuntimeAdapter -> IO Text
 renderPiApplicationRuntimeAdapter a = do
-  config <- applicationAdapterConfig a
+  let config = a.config
   ready <- isJust . (.installation) <$> readMVar a.runtime
   pure $
     "PiApplicationRuntimeAdapter(profile="
@@ -1033,20 +1059,8 @@ modifyApplicationAdapterRuntime a f = modifyMVar_ a.runtime (pure . f)
 readApplicationAdapterRuntime :: PiApplicationRuntimeAdapter -> IO ApplicationAdapterRuntime
 readApplicationAdapterRuntime a = readMVar a.runtime
 
--- | Assign @adapter._config@ (validated first; the reference assigns a
--- @dataclasses.replace@, which re-runs validation).
-setApplicationAdapterConfig :: PiApplicationRuntimeAdapter -> PiApplicationRuntimeConfig -> IO ()
-setApplicationAdapterConfig a config = newPiApplicationRuntimeConfig config >>= writeIORef a.configRef
-
--- | Assign @adapter._clock@.
-setApplicationAdapterClock :: PiApplicationRuntimeAdapter -> IO Double -> IO ()
-setApplicationAdapterClock a = writeIORef a.clockRef
-
-setApplicationAdapterHooks :: PiApplicationRuntimeAdapter -> ApplicationAdapterHooks -> IO ()
-setApplicationAdapterHooks a = writeIORef a.hooks
-
 adapterNow :: PiApplicationRuntimeAdapter -> IO Double
-adapterNow a = readIORef a.clockRef >>= id
+adapterNow a = a.clock
 
 -- | @probe(cli_path=..., node_path=..., package_root=...)@.
 data ApplicationProbePaths = ApplicationProbePaths
@@ -1210,7 +1224,7 @@ startApplication a inv0 = do
   forM_ inv.continuation $ \c ->
     when (c.state /= ContinuationInUse) $ throwIO (runtimeProtocolError "continuation-not-claimed")
   prior <- traverse (applicationCodecLoad a.codec) inv.continuation
-  config <- applicationAdapterConfig a
+  let config = a.config
   let binding = applicationWorkingBinding config.workingDirectory
   forM_ prior $ \p ->
     when (p.workingDirectoryBinding /= binding) $ throwIO (runtimeProtocolError "continuation-project-mismatch")
@@ -1283,7 +1297,7 @@ newOperation adapter inv key prior factory = do
 
 validate :: PiApplicationRuntimeAdapter -> PiApplicationRuntimeInvocation -> IO ()
 validate a inv = do
-  config <- applicationAdapterConfig a
+  let config = a.config
   when (inv.connection.identity.provider /= config.provider) $ throwIO (runtimeProtocolError "connection-provider-mismatch")
   when (inv.connection.identity.profile /= "api-key") $ throwIO (runtimeProtocolError "connection-profile-mismatch")
   let expected =
@@ -1310,12 +1324,12 @@ validate a inv = do
 -- | @_binding_current@ (through the test hook, when one is installed).
 applicationBindingCurrent :: PiApplicationRuntimeAdapter -> PiApplicationRuntimeInvocation -> IO Bool
 applicationBindingCurrent a inv = do
-  hooks <- readIORef a.hooks
+  let hooks = a.hooks
   maybe id id hooks.bindingCurrent (bindingCurrent a) inv
 
 bindingCurrent :: PiApplicationRuntimeAdapter -> PiApplicationRuntimeInvocation -> IO Bool
 bindingCurrent a inv = do
-  config <- applicationAdapterConfig a
+  let config = a.config
   case (Episode.episodeBinding inv.attachment).motus of
     Nothing -> pure False
     Just binding -> do
@@ -1357,7 +1371,7 @@ data Exec = Exec
 -- cleanup and release precedence kept explicit.
 executeOperation :: PiApplicationRuntimeAdapter -> PiApplicationOperation -> IO (RuntimeTurnSettlement, RuntimeCleanupDisposition)
 executeOperation a operation = do
-  config <- applicationAdapterConfig a
+  let config = a.config
   r <- readMVar a.runtime
   let inv = operation.inv
       ids name = inv.operationId <> "." <> name

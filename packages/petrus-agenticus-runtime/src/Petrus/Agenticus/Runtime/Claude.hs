@@ -113,7 +113,6 @@ module Petrus.Agenticus.Runtime.Claude
   , newClaudeRuntimeAdapter
   , renderClaudeRuntimeAdapter
   , claudeAdapterConfig
-  , setClaudeReady
   , probeClaude
   , startClaude
   ) where
@@ -1313,13 +1312,15 @@ officialClaudeProbeHooks s =
         _ -> pure Nothing
 
 -- | The adapter's keyword arguments: @clock@, @client_factory@, the probe
--- environment, and the interpreter the private CLI launcher runs under
--- (the reference uses @sys.executable@).
+-- environment, the interpreter the private CLI launcher runs under (the
+-- reference uses @sys.executable@), and the readiness a probe would record
+-- (the reference's tests assign @_installation@ and @_cli@).
 data ClaudeAdapterOptions = ClaudeAdapterOptions
   { clock :: IO Double
   , clientFactory :: Maybe ClaudeClientFactory
   , hooks :: ClaudeProbeHooks
   , interpreter :: FilePath
+  , ready :: Maybe (RuntimeInstallation, FilePath)
   }
 
 -- | The monotonic clock, the official sidecar, and the absolute @python3@
@@ -1327,7 +1328,7 @@ data ClaudeAdapterOptions = ClaudeAdapterOptions
 claudeAdapterOptions :: IO ClaudeAdapterOptions
 claudeAdapterOptions = do
   python <- fromMaybe "/usr/bin/python3" <$> findExecutable "python3"
-  pure (ClaudeAdapterOptions getMonotonicTime Nothing (officialClaudeProbeHooks claudeSidecar) python)
+  pure (ClaudeAdapterOptions getMonotonicTime Nothing (officialClaudeProbeHooks claudeSidecar) python Nothing)
 
 data Readiness = Readiness
   { installation :: Maybe RuntimeInstallation
@@ -1353,7 +1354,7 @@ newClaudeRuntimeAdapter
   :: ClaudeRuntimeConfig -> ClaudeContinuationCodec -> ClaudeTurnOperations -> HostConnectionCustody -> ClaudeAdapterOptions -> IO ClaudeRuntimeAdapter
 newClaudeRuntimeAdapter config0 codec turns custody options = do
   config <- newClaudeRuntimeConfig config0
-  readiness <- newMVar (Readiness Nothing Nothing options.clientFactory)
+  readiness <- newMVar (Readiness (fst <$> options.ready) (snd <$> options.ready) options.clientFactory)
   operations <- newMVar Map.empty
   pure
     ClaudeRuntimeAdapter
@@ -1370,10 +1371,6 @@ newClaudeRuntimeAdapter config0 codec turns custody options = do
 
 claudeAdapterConfig :: ClaudeRuntimeAdapter -> ClaudeRuntimeConfig
 claudeAdapterConfig a = a.config
-
--- | Assign @adapter._installation@ and @adapter._cli@.
-setClaudeReady :: ClaudeRuntimeAdapter -> Maybe RuntimeInstallation -> Maybe FilePath -> IO ()
-setClaudeReady a installation cli = modifyMVar_ a.readiness (\r -> pure r {installation, cli})
 
 -- | @repr(adapter)@.
 renderClaudeRuntimeAdapter :: ClaudeRuntimeAdapter -> IO Text

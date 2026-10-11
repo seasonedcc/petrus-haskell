@@ -87,8 +87,6 @@ module Petrus.Agenticus.Runtime.Codex
   , renderCodexRuntimeAdapter
   , codexExecutable
   , codexHelperExecutable
-  , setCodexHelperExecutable
-  , setCodexStartWrapper
   , probeCodex
   , probeCodexGondolin
   , startCodex
@@ -816,21 +814,33 @@ officialCodexProbeHooks =
             Left (_ :: IOException) -> pure Nothing
     }
 
--- | The adapter's keyword arguments plus the reference's class attributes
--- that tests override: @clock@, the probe environment, and the Local
--- helper's interpreter (the reference uses @sys.executable@).
+-- | The adapter's keyword arguments plus the reference's attributes that
+-- tests override: @clock@, the probe environment, the Local helper's
+-- interpreter (the reference uses @sys.executable@), the Gondolin guest's
+-- helper interpreter, and a wrapper around @start@ (the reference's tests
+-- assign @adapter.start@; the Gondolin Activity and runtime service call
+-- through it).
 data CodexAdapterOptions = CodexAdapterOptions
   { clock :: IO Double
   , hooks :: CodexProbeHooks
   , interpreter :: FilePath
+  , guestInterpreter :: FilePath
+  , startWrapper :: (CodexRuntimeInvocation -> IO CodexOperation) -> CodexRuntimeInvocation -> IO CodexOperation
   }
 
--- | The monotonic clock, the host's @PATH@, and the absolute @python3@ on
--- @PATH@.
+-- | The monotonic clock, the host's @PATH@, the absolute @python3@ on
+-- @PATH@, the guest's @/usr/bin/python3@, and no start wrapper.
 codexAdapterOptions :: IO CodexAdapterOptions
 codexAdapterOptions = do
   python <- fromMaybe "/usr/bin/python3" <$> findExecutable "python3"
-  pure (CodexAdapterOptions getMonotonicTime officialCodexProbeHooks python)
+  pure
+    CodexAdapterOptions
+      { clock = getMonotonicTime
+      , hooks = officialCodexProbeHooks
+      , interpreter = python
+      , guestInterpreter = "/usr/bin/python3"
+      , startWrapper = id
+      }
 
 data Readiness = Readiness
   { installation :: Maybe RuntimeInstallation
@@ -846,12 +856,12 @@ data CodexRuntimeAdapter = CodexRuntimeAdapter
   , custody :: HostConnectionCustody
   , clock :: IO Double
   , hooks :: CodexProbeHooks
-  , helper :: IORef FilePath
+  , helper :: FilePath
   , source :: Text
   , readiness :: MVar Readiness
   , operations :: MVar (Map Text CodexOperation)
   , qualified :: MVar (Set (LeaseIdentity, Text))
-  , startWrapper :: IORef ((CodexRuntimeInvocation -> IO CodexOperation) -> CodexRuntimeInvocation -> IO CodexOperation)
+  , startWrapper :: (CodexRuntimeInvocation -> IO CodexOperation) -> CodexRuntimeInvocation -> IO CodexOperation
   }
 
 guestExecutable, guestPath :: Text
@@ -864,10 +874,10 @@ newCodexRuntimeAdapter
 newCodexRuntimeAdapter config codec turns custody options = newAdapter CodexLocal options.interpreter config codec turns custody options
 
 -- | @CodexGondolinRuntimeAdapter(config, codec, turns, custody, clock=...)@:
--- the guest helper is @/usr/bin/python3@.
+-- the guest helper is the options' guest interpreter.
 newCodexGondolinRuntimeAdapter
   :: CodexRuntimeConfig -> CodexContinuationCodec -> CodexTurnOperations -> HostConnectionCustody -> CodexAdapterOptions -> IO CodexRuntimeAdapter
-newCodexGondolinRuntimeAdapter config codec turns custody options = newAdapter CodexGondolin "/usr/bin/python3" config codec turns custody options
+newCodexGondolinRuntimeAdapter config codec turns custody options = newAdapter CodexGondolin options.guestInterpreter config codec turns custody options
 
 newAdapter
   :: CodexLane
@@ -878,14 +888,12 @@ newAdapter
   -> HostConnectionCustody
   -> CodexAdapterOptions
   -> IO CodexRuntimeAdapter
-newAdapter lane helperExecutable config0 codec turns custody options = do
+newAdapter lane helper config0 codec turns custody options = do
   config <- newCodexRuntimeConfig config0
-  helper <- newIORef helperExecutable
   source <- codexHelperSource
   readiness <- newMVar (Readiness Nothing Nothing Nothing)
   operations <- newMVar Map.empty
   qualified <- newMVar Set.empty
-  startWrapper <- newIORef id
   pure
     CodexRuntimeAdapter
       { lane
@@ -900,7 +908,7 @@ newAdapter lane helperExecutable config0 codec turns custody options = do
       , readiness
       , operations
       , qualified
-      , startWrapper
+      , startWrapper = options.startWrapper
       }
 
 codexAdapterLane :: CodexRuntimeAdapter -> CodexLane
@@ -914,18 +922,8 @@ codexExecutable :: CodexRuntimeAdapter -> IO (Maybe FilePath)
 codexExecutable a = (.readyExecutable) <$> readMVar a.readiness
 
 -- | @adapter._helper_executable@.
-codexHelperExecutable :: CodexRuntimeAdapter -> IO FilePath
-codexHelperExecutable a = readIORef a.helper
-
-setCodexHelperExecutable :: CodexRuntimeAdapter -> FilePath -> IO ()
-setCodexHelperExecutable a = writeIORef a.helper
-
--- | Wrap @adapter.start@ for every later caller (the reference's tests
--- assign @adapter.start@; the Gondolin Activity and runtime service call
--- through it).
-setCodexStartWrapper
-  :: CodexRuntimeAdapter -> ((CodexRuntimeInvocation -> IO CodexOperation) -> CodexRuntimeInvocation -> IO CodexOperation) -> IO ()
-setCodexStartWrapper a = writeIORef a.startWrapper
+codexHelperExecutable :: CodexRuntimeAdapter -> FilePath
+codexHelperExecutable a = a.helper
 
 -- | @repr(adapter)@.
 renderCodexRuntimeAdapter :: CodexRuntimeAdapter -> IO Text
@@ -1040,9 +1038,7 @@ validateAttachment a attachment = do
 
 -- | @start(invocation)@ through any installed start wrapper.
 startCodex :: CodexRuntimeAdapter -> CodexRuntimeInvocation -> IO CodexOperation
-startCodex a inv = do
-  wrapper <- readIORef a.startWrapper
-  wrapper (startDirect a) inv
+startCodex a = a.startWrapper (startDirect a)
 
 startDirect :: CodexRuntimeAdapter -> CodexRuntimeInvocation -> IO CodexOperation
 startDirect a inv0 = do
@@ -1159,7 +1155,7 @@ execute o = do
         (auth, roll) <- case (s.authRef, s.rolloutRef) of
           (Just x, Just y) -> pure (x, y)
           _ -> throwAgenticus (OtherError "AssertionError") "helper requires both private roots"
-        interpreter <- readIORef a.helper
+        let interpreter = a.helper
         seconds <- if checkCurrent then remaining else pure (min config.commandTimeout config.cancellationGrace)
         command <-
           either throwIO pure $
@@ -1333,7 +1329,7 @@ privateFileProbe a motus remaining = do
     provider <- bindingProvider motus
     transfer <- maybe (throwAgenticus RuntimeError "private transfer required") pure (providerPrivateFiles provider)
     reference <- newIORef Nothing
-    interpreter <- readIORef a.helper
+    let interpreter = a.helper
     passed <- trySync $ do
       probeFile <- either throwIO pure (mkPrivateFile "probe" "agenticus-codex-a3-before")
       expected <- either throwIO pure (mkPrivateFile "probe" "agenticus-codex-a3-after")

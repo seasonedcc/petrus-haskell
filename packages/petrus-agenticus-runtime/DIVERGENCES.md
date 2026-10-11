@@ -21,10 +21,12 @@ hosts are covered in [divergences/codex.md](divergences/codex.md),
    `uuid4().hex`. Both are 32 hex characters, and the name never reaches
    durable state.
 
-2. **The runner is mutable only through explicit operations.** The reference
-   assigns `runner.repository` directly in one test. The Haskell runner keeps
-   the repository and the projection in `IORef`s. `setRunnerRepository` is
-   the one exported setter, which exists for that test.
+2. **The repository is fixed at construction.** The reference assigns
+   `runner.repository` directly in one test. The Haskell runner takes its
+   repository when it is created or loaded (`createRunnerWith`,
+   `loadRunnerWith`; `createRunner` and `loadRunner` use the JSON repository
+   under the root). That test builds a repository whose `save` fails once a
+   test-owned switch is set, so it still refuses only the final save.
 
 3. **Halt-code refusals use a local `repr`.** `HaltCode(value)` raises
    `ValueError: <repr(value)> is not a valid HaltCode`. The runner renders

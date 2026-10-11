@@ -510,10 +510,15 @@ data RigOptions = RigOptions
   , optProvider :: Maybe Text
   , optTerritory :: Text
   , optPredecessor :: Maybe Rig
+  , optClock :: Maybe (IO Double)
+  , optHooks :: PiAdapterHooks
+  , optConfig :: PiRuntimeConfig -> PiRuntimeConfig
+  , optPrepare :: PiAdapterRuntime -> PiAdapterRuntime
+  -- ^ Applied after the rig's own fake installation.
   }
 
 rigOptions :: RigOptions
-rigOptions = RigOptions [] 2 "api-key" Nothing "local" Nothing
+rigOptions = RigOptions [] 2 "api-key" Nothing "local" Nothing Nothing noHooks id id
 
 data Rig = Rig
   { root :: FilePath
@@ -557,24 +562,27 @@ newRig root o = do
           , cancellationGrace = 0.05
           , territoryProfile = o.optTerritory
           }
+      component = ok (mkInstalledComponent "pi-coding-agent" piSdkVersion piSdkSource)
+      prepare descriptor r =
+        o.optPrepare
+          r
+            { installation = Just (ok (mkRuntimeInstallation descriptor.identity 1 [component] "test" "test" Set.empty))
+            , node = Just "/fake/node"
+            , sdkEntrypoint = Just "/fake/pi/index.js"
+            , ccPatchEntrypoint = if o.optProfile == "cc-patch-subscription" then Just "/fake/pi-cc-patch/index.ts" else Nothing
+            }
   adapter <-
-    newPiRuntimeAdapter
-      config
+    newPiRuntimeAdapterWith
+      PiAdapterOptions
+        { clock = fromMaybe getMonotonicTime o.optClock
+        , factory = Just (factoryRecord factory)
+        , hooks = o.optHooks
+        , prepare
+        }
+      (o.optConfig config)
       (piContinuationCodec (continuationOperations continuations))
       (turnOperations turns)
       (custodyOperations custody)
-      getMonotonicTime
-      (Just (factoryRecord factory))
-  let identity = (adapterDescriptor adapter).identity
-      component = ok (mkInstalledComponent "pi-coding-agent" piSdkVersion piSdkSource)
-      installation = ok (mkRuntimeInstallation identity 1 [component] "test" "test" Set.empty)
-  modifyAdapterRuntime adapter $ \r ->
-    r
-      { installation = Just installation
-      , node = Just "/fake/node"
-      , sdkEntrypoint = Just "/fake/pi/index.js"
-      , ccPatchEntrypoint = if o.optProfile == "cc-patch-subscription" then Just "/fake/pi-cc-patch/index.ts" else Nothing
-      }
   pure
     Rig
       { root
@@ -595,11 +603,11 @@ newRig root o = do
         Left (_ :: IOError) -> pure ()
         Right () -> pure ()
 
-rigConfig :: Rig -> IO PiRuntimeConfig
+rigConfig :: Rig -> PiRuntimeConfig
 rigConfig r = adapterConfig r.adapter
 
 runtimeRootEntries :: Rig -> IO [FilePath]
-runtimeRootEntries r = rigConfig r >>= listDirectory . (.runtimeRoot)
+runtimeRootEntries r = listDirectory (rigConfig r).runtimeRoot
 
 data InvocationOptions = InvocationOptions
   { invContinuation :: Maybe Continuation

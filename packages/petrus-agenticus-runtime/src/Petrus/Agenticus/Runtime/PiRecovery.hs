@@ -645,7 +645,7 @@ fenceTexts =
 -- with replaced fields instead.
 data PiAdapterSurface = PiAdapterSurface
   { adapter :: PiRuntimeAdapter
-  , config :: IO PiRuntimeConfig
+  , config :: PiRuntimeConfig
   , start :: PiRuntimeInvocation -> IO RuntimeOperation
   , receipt :: Text -> IO (Maybe RuntimeTurnSettlement)
   , evict :: Text -> IO Bool
@@ -798,7 +798,7 @@ recoveredAdapter r = r.surface.adapter
 -- | @start(invocation)@: admit durably before dispatch; replay settled work.
 startRecovered :: PiRecoveredRuntime -> PiRuntimeInvocation -> IO PiRecoveredOperation
 startRecovered r inv = do
-  config <- r.surface.config
+  let config = r.surface.config
   fingerprint <- throwLeft (piDurableFingerprint config inv)
   withMVar r.lock $ \_ -> do
     record <- r.ledger.admit inv.operationId fingerprint inv.episodeId inv.turnId

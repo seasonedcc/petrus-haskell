@@ -360,9 +360,12 @@ clock = getMonotonicTime
 
 -- | @_host(tmp_path, authority, factory, provider)@.
 hostWith :: FilePath -> Authority -> Factory -> Maybe EnvironmentProvider -> IO PiA2RuntimeHost
-hostWith tmp a f selected = do
+hostWith = hostWithHooks noPiA2HostHooks
+
+hostWithHooks :: PiA2HostHooks -> FilePath -> Authority -> Factory -> Maybe EnvironmentProvider -> IO PiA2RuntimeHost
+hostWithHooks hooks tmp a f selected = do
   c <- config tmp
-  h <- composePiA2ScriptedClientRuntime c (authorityValue a) (factoryRecord f) selected clock
+  h <- composePiA2ScriptedClientRuntimeWith hooks c (authorityValue a) (factoryRecord f) selected clock
   void (scriptedReadiness h)
   pure h
 
@@ -857,7 +860,7 @@ spec = describe "test_pi_a2_host" $ do
     f <- newFactory []
     h <- hostWith tmp a f (Just local)
     start <- start' tmp "operation"
-    adapterSettings <- adapterConfig (hostAdapter h)
+    let adapterSettings = adapterConfig (hostAdapter h)
     old <- either throwIO pure (piDurableWorkFingerprint adapterSettings start.episodeId start.turnId start.prompt identity Nothing)
     void (ledgerAdmit (hostLedger h) start.operationId old start.episodeId start.turnId)
     raises (startHost h start) RuntimeProtocolError "operation-conflict"
@@ -899,8 +902,8 @@ spec = describe "test_pi_a2_host" $ do
 
   it "test_body_publication_failure_leaves_output_unreadable_and_operation_indeterminate" $ withTemp $ \tmp -> do
     a <- newAuthority
-    h <- host' tmp a
-    setPiA2HostHooks h PiA2HostHooks {publishBodies = Just (\_ -> throwIO (userError "synthetic"))}
+    f <- newFactory []
+    h <- hostWithHooks PiA2HostHooks {publishBodies = Just (\_ -> throwIO (userError "synthetic"))} tmp a f Nothing
     operation <- startHost h =<< start' tmp "operation"
     raises (waitPiA2 operation (Just 1)) RuntimeProtocolError "host-cleanup-uncertain"
     raises (loadOutput h outputReference) RuntimeProtocolError "output-absent"

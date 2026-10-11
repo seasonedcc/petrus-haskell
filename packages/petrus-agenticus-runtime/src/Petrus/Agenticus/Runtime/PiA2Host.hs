@@ -48,6 +48,7 @@ module Petrus.Agenticus.Runtime.PiA2Host
   , composePiA2ScriptedRuntime
   , composePiA2RuntimeWith
   , composePiA2ScriptedClientRuntime
+  , composePiA2ScriptedClientRuntimeWith
   , hostDescriptor
   , hostSnapshot
   , hostConfig
@@ -73,7 +74,6 @@ module Petrus.Agenticus.Runtime.PiA2Host
   , piA2AttachmentIdentity
   , PiA2HostHooks (..)
   , noPiA2HostHooks
-  , setPiA2HostHooks
     -- * The body store
   , BodyStore
   , bodyTableSql
@@ -106,7 +106,7 @@ import Data.IORef
 import Data.List (sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -1208,7 +1208,7 @@ data PiA2RuntimeHost = PiA2RuntimeHost
   , lock :: MVar ()
   , lifecycleLock :: MVar ()
   , state :: IORef HostState
-  , hooks :: IORef PiA2HostHooks
+  , hooks :: PiA2HostHooks
   }
 
 hostConfig :: PiA2RuntimeHost -> PiA2RuntimeHostConfig
@@ -1235,13 +1235,8 @@ hostStorage h = h.storage
 hostBodies :: PiA2RuntimeHost -> BodyStore
 hostBodies h = h.bodies
 
-setPiA2HostHooks :: PiA2RuntimeHost -> PiA2HostHooks -> IO ()
-setPiA2HostHooks h = writeIORef h.hooks
-
 publishBodies :: PiA2RuntimeHost -> Text -> IO ()
-publishBodies h operationId = do
-  hooks <- readIORef h.hooks
-  maybe (bodyStorePublish h.bodies) id hooks.publishBodies operationId
+publishBodies h = fromMaybe (bodyStorePublish h.bodies) h.hooks.publishBodies
 
 withHostLock :: PiA2RuntimeHost -> IO a -> IO a
 withHostLock h action = withMVar h.lock (const action)
@@ -1289,15 +1284,15 @@ newHost
   -> IO Double
   -> Bool
   -> PiA2FactoryKind
+  -> PiA2HostHooks
   -> IO PiA2RuntimeHost
-newHost config authority root storage custody bodies ledger adapter provider clock scriptedConformance factoryKind = do
+newHost config authority root storage custody bodies ledger adapter provider clock scriptedConformance factoryKind hooks = do
   lifecycle <- TE.decodeUtf8 . convertToBase Base16 <$> (getRandomBytes 16 :: IO ByteString)
   records <- ledgerRecover ledger
   recovered <- traverse (throwLeft . recordSettlement) records
   lock <- newMVar ()
   lifecycleLock <- newMVar ()
   state <- newIORef (HostState Nothing False False False False Nothing Map.empty Map.empty Map.empty)
-  hooks <- newIORef noPiA2HostHooks
   let h =
         PiA2RuntimeHost
           { config
@@ -1354,7 +1349,7 @@ scriptedReadiness h = withHostLock h $ do
 -- | @_fingerprint(start)@.
 hostFingerprint :: PiA2RuntimeHost -> PiA2RuntimeStart -> IO Text
 hostFingerprint h start = do
-  config <- adapterConfig h.adapter
+  let config = adapterConfig h.adapter
   inner <- throwLeft (piDurableWorkFingerprint config start.episodeId start.turnId start.prompt h.authority.connection start.continuation)
   throwLeft (piA2DurableFingerprint h.config start inner)
 
@@ -1636,7 +1631,7 @@ composePiA2Runtime config authority clock = do
 composePiA2RuntimeWith
   :: PiA2RuntimeHostConfig -> PiA2DirectAuthority -> EnvironmentProvider -> IO Double -> Maybe PiHelperFactory -> IO PiA2RuntimeHost
 composePiA2RuntimeWith config authority provider clock factory =
-  compose config authority provider clock factory False (maybe NoClientFactory (const InjectedClientFactory) factory)
+  compose config authority provider clock factory False (maybe NoClientFactory (const InjectedClientFactory) factory) noPiA2HostHooks
 
 compose
   :: PiA2RuntimeHostConfig
@@ -1646,8 +1641,9 @@ compose
   -> Maybe PiHelperFactory
   -> Bool
   -> PiA2FactoryKind
+  -> PiA2HostHooks
   -> IO PiA2RuntimeHost
-compose config0 authority provider clock factory scripted kind = do
+compose config0 authority provider clock factory scripted kind hooks = do
   config <- newPiA2RuntimeHostConfig config0
   when (authority.connection.provider /= config.provider) $
     throwIO (valueError "Pi A2 authority provider must match the configured provider")
@@ -1694,7 +1690,7 @@ compose config0 authority provider clock factory scripted kind = do
           piCustody
           clock
           factory
-      newHost config authority root storage custody bodies ledger adapter provider clock scripted kind
+      newHost config authority root storage custody bodies ledger adapter provider clock scripted kind hooks
     )
     `onException` (readIORef opened >>= mapM_ (void . trySync))
 
@@ -1711,12 +1707,18 @@ composePiA2ScriptedRuntime config authority script clock = do
   turns <- traverse (throwLeft . mkPiA2ScriptedTurn) script
   factory <- piA2ScriptedFactory turns
   provider <- localProvider <$> newLocalProcessEnvironment
-  compose config authority provider clock (Just factory) True ScriptedClientFactory
+  compose config authority provider clock (Just factory) True ScriptedClientFactory noPiA2HostHooks
 
 -- | @_compose_pi_a2_scripted_client_runtime(...)@: the internal
 -- conformance harness for exercising host failure boundaries.
 composePiA2ScriptedClientRuntime
   :: PiA2RuntimeHostConfig -> PiA2DirectAuthority -> PiHelperFactory -> Maybe EnvironmentProvider -> IO Double -> IO PiA2RuntimeHost
-composePiA2ScriptedClientRuntime config authority factory provider clock = do
+composePiA2ScriptedClientRuntime = composePiA2ScriptedClientRuntimeWith noPiA2HostHooks
+
+-- | 'composePiA2ScriptedClientRuntime' with the seams the reference's tests
+-- reach by monkeypatching.
+composePiA2ScriptedClientRuntimeWith
+  :: PiA2HostHooks -> PiA2RuntimeHostConfig -> PiA2DirectAuthority -> PiHelperFactory -> Maybe EnvironmentProvider -> IO Double -> IO PiA2RuntimeHost
+composePiA2ScriptedClientRuntimeWith hooks config authority factory provider clock = do
   selected <- maybe (localProvider <$> newLocalProcessEnvironment) pure provider
-  compose config authority selected clock (Just factory) True InjectedClientFactory
+  compose config authority selected clock (Just factory) True InjectedClientFactory hooks

@@ -17,7 +17,7 @@ import Data.ByteString qualified as B
 import Data.IORef
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -261,8 +261,22 @@ data Rig = Rig
   , working :: FilePath
   }
 
+-- | What a test fixes on the adapter before it exists (the reference
+-- assigns @_config@, @_clock@ and @_binding_current@ afterwards).
+data RigTweaks = RigTweaks
+  { tweakConfig :: PiApplicationRuntimeConfig -> PiApplicationRuntimeConfig
+  , tweakClock :: Maybe (IO Double)
+  , tweakHooks :: ApplicationAdapterHooks
+  }
+
+noTweaks :: RigTweaks
+noTweaks = RigTweaks id Nothing noApplicationHooks
+
 newRig :: FilePath -> Text -> [Plan] -> Double -> IO Rig
-newRig root profile plans wallTimeout = do
+newRig = newRigWith noTweaks
+
+newRigWith :: RigTweaks -> FilePath -> Text -> [Plan] -> Double -> IO Rig
+newRigWith tweaks root profile plans wallTimeout = do
   let working = root </> "working"
       runtime = root </> "runtime"
       source = root </> "source"
@@ -282,22 +296,33 @@ newRig root profile plans wallTimeout = do
   continuations <- newContinuations
   turns <- newTurns
   factory <- newFactory plans
+  let component = ok (mkInstalledComponent "pi-agent-core" "0.83.0" "test")
+      prepare descriptor r =
+        r
+          { installation = Just (ok (mkRuntimeInstallation descriptor.identity 1 [component] "test" "test" Set.empty))
+          , node = Just "/fake"
+          , coding = Just "/fake"
+          , core = Just "/fake"
+          , ai = Just "/fake"
+          }
   adapter <-
-    newPiApplicationRuntimeAdapter
-      (piApplicationRuntimeConfig "anthropic" "claude-sonnet-4-5" profile working runtime)
-        { hostId = "host"
-        , wallTimeout
-        , cancellationGrace = 0.03
+    newPiApplicationRuntimeAdapterWith
+      ApplicationAdapterOptions
+        { clock = fromMaybe getMonotonicTime tweaks.tweakClock
+        , factory = Just (factoryRecord factory)
+        , hooks = tweaks.tweakHooks
+        , prepare
         }
+      ( tweaks.tweakConfig
+          (piApplicationRuntimeConfig "anthropic" "claude-sonnet-4-5" profile working runtime)
+            { hostId = "host"
+            , wallTimeout
+            , cancellationGrace = 0.03
+            }
+      )
       (piApplicationContinuationCodec (continuationOperations continuations))
       (turnOperations turns)
       (applicationCustody (custodyOperations custody))
-      getMonotonicTime
-      (Just (factoryRecord factory))
-  let component = ok (mkInstalledComponent "pi-agent-core" "0.83.0" "test")
-      installation = ok (mkRuntimeInstallation (applicationAdapterDescriptor adapter).identity 1 [component] "test" "test" Set.empty)
-  modifyApplicationAdapterRuntime adapter $ \r ->
-    r {installation = Just installation, node = Just "/fake", coding = Just "/fake", core = Just "/fake", ai = Just "/fake"}
   pure Rig {profile, territory, binding, attachment, gateway, custody, continuations, turns, factory, adapter, working}
 
 newRig' :: FilePath -> Text -> [Plan] -> IO Rig
@@ -523,10 +548,8 @@ episodeSpecs = do
     settledVerified e1 `shouldReturn` True
     gone <- providerLookup e1.territory.provider "territory-gondolin"
     isNothing gone `shouldBe` True
-    e2 <- newRig' (tmp </> "e2") "e2b" [plan {planText = "E2"}]
-    config <- applicationAdapterConfig e2.adapter
-    e1Config <- applicationAdapterConfig e1.adapter
-    setApplicationAdapterConfig e2.adapter config {workingDirectory = e1Config.workingDirectory}
+    let e1Working = (applicationAdapterConfig e1.adapter).workingDirectory
+    e2 <- newRigWith noTweaks {tweakConfig = \config -> config {workingDirectory = e1Working}} (tmp </> "e2") "e2b" [plan {planText = "E2"}] 1
     modifyIORef' e2.continuations.values (Map.insert reference payload)
     (second, _) <- runRig e2 "e2" [] (Just (claimed reference))
     secondReference <- maybe (expectationFailure "no continuation" >> error "unreachable") pure second.continuationReference
@@ -566,14 +589,14 @@ framedSpecs = do
             , apiKey = "credential-canary"
             }
         priorFor rig = do
-          config <- applicationAdapterConfig rig.adapter
+          let config = applicationAdapterConfig rig.adapter
           pure (ok (mkPiApplicationContinuationPayloadV1 (applicationWorkingBinding config.workingDirectory) "[{\"role\":\"user\",\"content\":\"prior\"}]"))
     forM_ ["blocked", "read"] $ \observation -> do
       rig <- newRig' (tmp </> T.unpack observation) "gondolin" [plan]
       inv <- invocationWith rig observation [WorkspaceRead] defaults {optObservation = Just observation}
       prior <- priorFor rig
       privateRoot <- newPrivateRoot tmp (T.unpack observation)
-      config <- applicationAdapterConfig rig.adapter
+      let config = applicationAdapterConfig rig.adapter
       client <- applicationSubprocessClient <$> newApplicationSubprocessClient helper (argsFor inv privateRoot config (Just prior))
       deadline <- (+ 2) <$> getMonotonicTime
       candidate <- client.run rig.gateway inv (pure True) deadline
@@ -594,7 +617,7 @@ framedSpecs = do
     rig <- newRig' (tmp </> "overflow") "gondolin" [plan]
     inv <- invocationWith rig "overflow" [WorkspaceRead] defaults {optObservation = Just "overflow"}
     privateRoot <- newPrivateRoot tmp "overflow"
-    config <- applicationAdapterConfig rig.adapter >>= \c -> newPiApplicationRuntimeConfig c {maxToolCalls = 1}
+    config <- newPiApplicationRuntimeConfig (applicationAdapterConfig rig.adapter) {maxToolCalls = 1}
     prior <- priorFor rig
     client <- applicationSubprocessClient <$> newApplicationSubprocessClient helper (argsFor inv privateRoot config (Just prior))
     deadline <- (+ 2) <$> getMonotonicTime
@@ -606,7 +629,7 @@ framedSpecs = do
     full <- newRig' (tmp </> "full-result") "gondolin" [plan]
     fullInv <- invocationWith full "full-result" [WorkspaceRead] defaults {optObservation = Just "read"}
     fullRoot <- newPrivateRoot tmp "full-result"
-    fullConfig <- applicationAdapterConfig full.adapter
+    let fullConfig = applicationAdapterConfig full.adapter
     fullPrior <- priorFor full
     fullClient <-
       applicationSubprocessClient
@@ -630,7 +653,7 @@ framedSpecs = do
       rig <- newRig' (tmp </> T.unpack profile) profile [plan]
       inv <- invocationWith rig profile [WorkspaceRead] defaults {optObservation = Just profile}
       privateRoot <- newPrivateRoot tmp (T.unpack profile)
-      config <- applicationAdapterConfig rig.adapter
+      let config = applicationAdapterConfig rig.adapter
       client <-
         applicationSubprocessClient
           <$> newApplicationSubprocessClient
@@ -676,7 +699,7 @@ framedSpecs = do
           rig <- newRig' (tmp </> name) "gondolin" [plan]
           inv <- invocationFor rig (T.pack name) [WorkspaceRead]
           privateRoot <- newPrivateRoot tmp name
-          config <- applicationAdapterConfig rig.adapter
+          let config = applicationAdapterConfig rig.adapter
           client <-
             applicationSubprocessClient
               <$> newApplicationSubprocessClient
@@ -806,9 +829,9 @@ publicationSpecs = do
   forM_ ["gondolin", "e2b"] $ \profile ->
     it (T.unpack ("test_application_a5_cancellation_wins_while_remote_publication_lookup_is_stalled[" <> profile <> "]")) $
       withTemp $ \tmp -> do
-        rig <- newRig' tmp profile [plan]
+        (hooks, started, released) <- stallLookups
+        rig <- newRigWith noTweaks {tweakHooks = hooks} tmp profile [plan] 1
         inv <- invocationFor rig "stalled-publication" []
-        (started, released) <- stallLookups rig
         operation <- startApplication rig.adapter inv
         timeout 2000000 (readMVar started) >>= (`shouldBe` Just ())
         ( do
@@ -834,11 +857,10 @@ publicationSpecs = do
   forM_ [(lapse, profile) | lapse <- ["grant", "deadline"], profile <- ["gondolin", "e2b"]] $ \(lapse, profile) ->
     it (T.unpack ("test_application_a5_rechecks_publication_admission_after_remote_lookup[" <> lapse <> "-" <> profile <> "]")) $
       withTemp $ \tmp -> do
-        rig <- newRig' tmp profile [plan]
-        inv <- invocationFor rig "stale-admission" []
         now <- getMonotonicTime >>= newIORef
-        setApplicationAdapterClock rig.adapter (readIORef now)
-        (started, released) <- stallLookups rig
+        (hooks, started, released) <- stallLookups
+        rig <- newRigWith noTweaks {tweakClock = Just (readIORef now), tweakHooks = hooks} tmp profile [plan] 1
+        inv <- invocationFor rig "stale-admission" []
         operation <- startApplication rig.adapter inv
         timeout 2000000 (readMVar started) >>= (`shouldBe` Just ())
         expected <-
@@ -890,20 +912,19 @@ publicationSpecs = do
 
 -- | Stall every @_binding_current@ after the initial validation until
 -- released.
-stallLookups :: Rig -> IO (MVar (), MVar ())
-stallLookups rig = do
+stallLookups :: IO (ApplicationAdapterHooks, MVar (), MVar ())
+stallLookups = do
   started <- newEmptyMVar
   released <- newEmptyMVar
   calls <- newIORef (0 :: Int)
-  setApplicationAdapterHooks
-    rig.adapter
-    ApplicationAdapterHooks
-      { bindingCurrent = Just $ \original inv -> do
-          n <- atomicModifyIORef' calls (\x -> (x + 1, x + 1))
-          when (n > 1) (stall started released)
-          original inv
-      }
-  pure (started, released)
+  let hooks =
+        ApplicationAdapterHooks
+          { bindingCurrent = Just $ \original inv -> do
+              n <- atomicModifyIORef' calls (\x -> (x + 1, x + 1))
+              when (n > 1) (stall started released)
+              original inv
+          }
+  pure (hooks, started, released)
 
 packageSpecs :: Spec
 packageSpecs = do

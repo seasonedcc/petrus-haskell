@@ -28,8 +28,8 @@ pin those on both sides. The corpus's single tolerated difference is item 5.
    | Reference seam | Port |
    | --- | --- |
    | `shutil.which`, `subprocess.run` in the probe | `CodexProbeHooks {which, run}` |
-   | assigning `adapter.start` | `setCodexStartWrapper` |
-   | `_helper_executable` | `setCodexHelperExecutable` |
+   | assigning `adapter.start` | `CodexAdapterOptions.startWrapper` (the test's switch lives in its rig) |
+   | `_helper_executable` | `CodexAdapterOptions.guestInterpreter` (Gondolin) |
    | `os.environ` read by the Activity client | `codexGondolinActivityClientWith` takes the lookup |
 
    `officialCodexProbeHooks` and `codexGondolinActivityClient` are the

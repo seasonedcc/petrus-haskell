@@ -328,17 +328,26 @@ newRig tmp final observation = do
 withRig :: Json -> (Rig -> IO a) -> IO a
 withRig final body = withTemp $ \tmp -> newRig tmp final "Continue." >>= body
 
+-- | The rig with an adapter over the same parts, built with another Node,
+-- SDK entrypoint, factory or configuration (the reference assigns them on
+-- the built adapter).
+reAdapt :: Rig -> PiModelPhaseConfig -> FilePath -> Maybe FilePath -> PhaseFactory -> IO Rig
+reAdapt rig config node entry factory = do
+  adapter' <- newPiModelPhaseAdapter config rig.connection rig.custody rig.operations node entry (Just factory)
+  pure rig {adapter = adapter'}
+
 -- | Point the rig's adapter at real @node@, the verbatim helper and the
 -- reference's fake coding SDK (@write_fake_coding@), through a subprocess
 -- factory that, like the reference's @RealFactory@, needs no probe.
-useRealHelper :: Rig -> IO ()
-useRealHelper rig = do
+useRealHelper :: Rig -> IO Rig
+useRealHelper = useRealHelperWith subprocessPhaseFactory {isSubprocess = False}
+
+useRealHelperWith :: PhaseFactory -> Rig -> IO Rig
+useRealHelperWith factory rig = do
   node <- requireNode
   let entry = rig.tmp </> "coding.mjs"
   fixture "model_phase_coding.mjs" >>= B.writeFile entry . TE.encodeUtf8
-  setModelPhaseNode rig.adapter node
-  setModelPhaseSdkEntrypoint rig.adapter (Just entry)
-  setModelPhaseFactory rig.adapter subprocessPhaseFactory {isSubprocess = False}
+  reAdapt rig rig.config node (Just entry) factory
 
 phaseContext :: (Maybe Json -> IO Json) -> ActivityExecutionContext
 phaseContext heartbeat =
@@ -571,8 +580,8 @@ adapterSpecs = do
     writeIORef rig.ops.loadRaises True
     refusedWithout "continuation-load-failed" "private load diagnostic" (invoke rig (state 1 (Just "old-output") (Just "missing") []))
     eventsOf rig `shouldReturn` ["load"]
-    modifyModelPhaseConfig rig.adapter (\c -> c {episodeId = "other"})
-    protocolError "state-mismatch" (invoke rig initial)
+    other <- reAdapt rig (rig.config) {episodeId = "other"} "node" (Just "/fake/pi/index.js") rig.factory
+    protocolError "state-mismatch" (invoke other initial)
     eventsOf rig `shouldReturn` ["load"]
 
   it "test_stale_activity_claim_rejects_before_authority" $ withRig defaultAssistant $ \rig -> do
@@ -691,8 +700,8 @@ subprocessSpecs = do
 
 realHelperSpecs :: Spec
 realHelperSpecs = do
-  it "test_real_helper_runs_one_public_stream_with_declarations_and_no_tool_executor" $ withRig defaultAssistant $ \rig -> do
-    useRealHelper rig
+  it "test_real_helper_runs_one_public_stream_with_declarations_and_no_tool_executor" $ withRig defaultAssistant $ \rig0 -> do
+    rig <- useRealHelper rig0
     settlement <- invoke rig initial
     settlement.stop `shouldBe` Stop
     Just (output, _) <- Map.lookup "operation" <$> publicationsOf rig
@@ -703,17 +712,15 @@ realHelperSpecs = do
 
   it "test_real_helper_accepts_bounded_multiline_observation" $ withTemp $ \tmp -> do
     let observation = "line one\n" <> T.replicate 300 "x"
-    rig <- newRig tmp defaultAssistant observation
-    useRealHelper rig
+    rig <- newRig tmp defaultAssistant observation >>= useRealHelper
     void (invoke rig initial)
     Just (output, _) <- Map.lookup "operation" <$> publicationsOf rig
     case firstText (load output.assistantJson) of
       String text -> text `shouldSatisfy` T.isSuffixOf ("prompt=" <> T.pack (show (T.length observation)))
       other -> expectationFailure ("no text block: " <> show other)
 
-  it "test_real_subprocess_requires_the_exact_installed_probe_before_authority" $ withRig defaultAssistant $ \rig -> do
-    useRealHelper rig
-    setModelPhaseFactory rig.adapter subprocessPhaseFactory
+  it "test_real_subprocess_requires_the_exact_installed_probe_before_authority" $ withRig defaultAssistant $ \rig0 -> do
+    rig <- useRealHelperWith subprocessPhaseFactory rig0
     protocolError "runtime-not-ready" (invoke rig initial)
     eventsOf rig `shouldReturn` []
 
@@ -734,8 +741,7 @@ realHelperSpecs = do
       then pendingWith "exact Pi qualification packages required"
       else do
         createDirectory (tmp </> "probe")
-        rig <- newRig (tmp </> "probe") defaultAssistant "Continue."
-        setModelPhaseNode rig.adapter node
+        rig <- newRig (tmp </> "probe") defaultAssistant "Continue." >>= \r -> reAdapt r r.config node (Just "/fake/pi/index.js") r.factory
         probeModelPhase rig.adapter root `shouldReturn` True
         modelPhaseNode rig.adapter >>= (`shouldSatisfy` ("/" `T.isPrefixOf`) . T.pack)
         helper <- piModelPhaseHelperPath

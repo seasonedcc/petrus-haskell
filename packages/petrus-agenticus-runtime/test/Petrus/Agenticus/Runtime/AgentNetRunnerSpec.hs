@@ -1,7 +1,8 @@
 -- | Port of @tests/petrus/agenticus/runtime/test_agent_net_runner.py@.
 --
 -- The reference replaces @runner.repository@ with a failing object; here
--- 'setRunnerRepository' installs the same wrapper.
+-- the runner is created over a repository whose @save@ a test-owned switch
+-- turns into that failure.
 module Petrus.Agenticus.Runtime.AgentNetRunnerSpec (spec, scriptedBinding, workspace) where
 
 import Control.Exception (throwIO, try)
@@ -239,19 +240,21 @@ spec = describe "runtime/test_agent_net_runner.py" $ do
     (current, events) <- attachment
     (adapter, _) <- workspace
     (m, _) <- model [(Stop, [])]
-    runner <- create tmp m current adapter
+    failing <- newIORef False
+    let original = runnerThreadRepository tmp
+        repository' =
+          AgentNetThreadRepository
+            { load = original.load
+            , save = \expected value -> do
+                refuse <- readIORef failing
+                if refuse && isJust value.terminal
+                  then ioError (userError "injected final Thread save refusal")
+                  else original.save expected value
+            }
+    runner <- createRunnerWith repository' tmp "agent-net-1" freshThread initial current m adapter
     void (advance runner)
     void (advance runner)
-    original <- runnerRepository runner
-    setRunnerRepository
-      runner
-      AgentNetThreadRepository
-        { load = original.load
-        , save = \expected value ->
-            if isJust value.terminal
-              then ioError (userError "injected final Thread save refusal")
-              else original.save expected value
-        }
+    writeIORef failing True
     try (advance runner) >>= \case
       Left (e :: IOError) -> show e `shouldContain` "injected final"
       Right _ -> expectationFailure "expected the injected save refusal"
