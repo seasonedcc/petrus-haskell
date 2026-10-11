@@ -350,7 +350,7 @@ data State = State
   , sFrozen :: IntMap TerminalOutcome
   , sTerminal :: IntMap TerminalOutcome
   , sQuarantined :: IntMap Json
-  , sAccepted :: Map Text Record
+  , sAccepted :: Map Text AcceptedFact
   , sActiveScopes :: Map Text LifecycleScope
   , sGenerations :: Map Text Integer
   }
@@ -874,17 +874,19 @@ data SourceFold = SourceFold
   , cancelledSet :: IntSet
   , observed :: IntSet
   , nextEntryF :: Int
-  , activeCompletion :: Maybe Int
+  , activeCompletion :: Maybe (Int, Text)
+  -- ^ The accepted source occurrence whose completion batch is open, and
+  -- its delivery identity.
   }
 
 -- | Every accepted source occurrence has only a writer-valid pure
 -- lifecycle: its acceptance pair, then no end; a lone failure; lifecycle
 -- cancellation; or one atomic ordered completion batch.
-validateAcceptedSourceOccurrences :: Net -> [Record] -> Map Text Record -> Either Text ()
+validateAcceptedSourceOccurrences :: Net -> [Record] -> Map Text AcceptedFact -> Either Text ()
 validateAcceptedSourceOccurrences net history accepted = void (foldM visit start history)
   where
     sourceOccurrences =
-      IntMap.fromList [(r.occurrence, (ident, r)) | (ident, RExternalEventDelivered r) <- Map.toList accepted]
+      IntMap.fromList [(r.occurrence, (ident, r)) | (ident, AcceptedDelivered r) <- Map.toList accepted]
     start = SourceFold IntMap.empty IntMap.empty IntMap.empty IntMap.empty IntMap.empty IntMap.empty IntSet.empty IntSet.empty 1 Nothing
     rankOf = \case
       RTokensProduced _ -> Just (0 :: Int)
@@ -900,11 +902,10 @@ validateAcceptedSourceOccurrences net history accepted = void (foldM visit start
             RTokensInitialized r -> entriesStep f0 r.tokens r.entries
             RTokensProduced r -> entriesStep f0 r.tokens r.entries
             _ -> ([], f0)
-      forM_ f.activeCompletion $ \active -> when (o /= Just active) $ do
-        let (ident, acceptedRecord) = sourceOccurrences IntMap.! active
+      forM_ f.activeCompletion $ \(active, ident) -> when (o /= Just active) $
         Left
           ( "cannot resume: accepted delivery identity " <> pythonStrRepr ident <> " source occurrence "
-              <> pythonIntRepr acceptedRecord.occurrence
+              <> pythonIntRepr active
               <> " completion batch was interrupted by "
               <> name
               <> " for occurrence "
@@ -959,7 +960,7 @@ validateAcceptedSourceOccurrences net history accepted = void (foldM visit start
                 ( rejection <> " default passthrough does not permit delivery-registration effects; found " <> name
                 )
             rank <- maybe (Left (rejection <> " contains writer-invalid " <> name)) Right (rankOf record)
-            let f1 = f {activeCompletion = Just (fromMaybe n f.activeCompletion)}
+            let f1 = f {activeCompletion = Just (fromMaybe (n, ident) f.activeCompletion)}
                 priorRank = IntMap.findWithDefault (-1) n f1.phases
                 instant = recordInstant record
             when (rank < priorRank) $
@@ -1935,10 +1936,9 @@ acceptDelivery inst path tokens ident target at = locked inst $ do
   case Map.lookup ident st.sAccepted of
     Just prior -> do
       let (priorSource, priorTokens, priorScope, priorOccurrence) = case prior of
-            RExternalEventDelivered r -> (r.source, r.tokens, ScopeGeneration <$> r.scope, Just r.occurrence)
-            RScopedDeliveryDropped r -> (r.source, r.tokens, Just (ScopeGeneration r.scope), Nothing)
-            RScopedDeliveryQuarantined r -> (r.source, r.tokens, Just (quarantineTarget r.scope), Nothing)
-            _ -> (path, [], Nothing, Nothing)
+            AcceptedDelivered r -> (r.source, r.tokens, ScopeGeneration <$> r.scope, Just r.occurrence)
+            AcceptedDropped r -> (r.source, r.tokens, Just (ScopeGeneration r.scope), Nothing)
+            AcceptedQuarantined r -> (r.source, r.tokens, Just (quarantineTarget r.scope), Nothing)
           matches = deliveryContent priorTokens == content
           occurrenceJson = maybe Null int priorOccurrence
       when (priorSource /= path || not matches || priorScope /= target) $ do
@@ -1962,13 +1962,12 @@ acceptDelivery inst path tokens ident target at = locked inst $ do
         "delivery_redelivered"
         [("source", text (netPathText path)), ("identity", text ident), ("occurrence", occurrenceJson)]
       case prior of
-        RScopedDeliveryDropped r -> pure (DeliveryScoped (ScopedDeliveryAcknowledgement ident Dropped (QuarantineGeneration r.scope)))
-        RScopedDeliveryQuarantined r -> pure (DeliveryScoped (ScopedDeliveryAcknowledgement ident Quarantined r.scope))
-        RExternalEventDelivered r
+        AcceptedDropped r -> pure (DeliveryScoped (ScopedDeliveryAcknowledgement ident Dropped (QuarantineGeneration r.scope)))
+        AcceptedQuarantined r -> pure (DeliveryScoped (ScopedDeliveryAcknowledgement ident Quarantined r.scope))
+        AcceptedDelivered r
           | IntMap.member r.occurrence st.sInFlight ->
               DeliveryAccepted <$> orRefuse (acceptedDelivery inst.iIdentity r.source r.identity r.occurrence)
           | otherwise -> pure (DeliveryPrior (PriorAcknowledgement ident r.occurrence))
-        _ -> throwE (RuntimeRefused "accepted identity index holds a non-delivery record")
     Nothing -> do
       unless (hasTransition path net) $
         refuse ("cannot deliver to " <> netPathText path <> ": not a transition of this net")
@@ -1984,21 +1983,21 @@ acceptDelivery inst path tokens ident target at = locked inst $ do
       if inactive
         then do
           let instant = effective st.sWatermark at
-              (record, answer) = case target of
+              (fact, answer) = case target of
                 Just (ScopeGeneration s)
                   | scopeGeneration s <= Map.findWithDefault 0 (scopeName s) st.sGenerations ->
-                      ( RScopedDeliveryDropped (ScopedDeliveryDropped path delivered ident s instant)
+                      ( AcceptedDropped (ScopedDeliveryDropped path delivered ident s instant)
                       , ScopedDeliveryAcknowledgement ident Dropped (QuarantineGeneration s)
                       )
                   | otherwise -> quarantine (QuarantineGeneration s) instant
                 Just (ScopeName n) -> quarantine (QuarantineName n) instant
                 Nothing -> quarantine (QuarantineName "") instant
               quarantine q i =
-                ( RScopedDeliveryQuarantined (ScopedDeliveryQuarantined path delivered ident q i)
+                ( AcceptedQuarantined (ScopedDeliveryQuarantined path delivered ident q i)
                 , ScopedDeliveryAcknowledgement ident Quarantined q
                 )
-          batch <- appendBatch inst [record]
-          putState inst st {sWatermark = instant, sAccepted = Map.insert ident (head' record batch) st.sAccepted}
+          _ <- appendBatch inst [acceptedFactRecord fact]
+          putState inst st {sWatermark = instant, sAccepted = Map.insert ident fact st.sAccepted}
           pure (DeliveryScoped answer)
         else do
           when (Set.null (Map.findWithDefault Set.empty path st.sArmed)) $
@@ -2021,7 +2020,7 @@ acceptDelivery inst path tokens ident target at = locked inst $ do
               { sAccepted =
                   Map.insert
                     ident
-                    (RExternalEventDelivered (ExternalEventDelivered path delivered ident o.occurrence generation after.sWatermark))
+                    (AcceptedDelivered (ExternalEventDelivered path delivered ident o.occurrence generation after.sWatermark))
                     after.sAccepted
               }
           emitEvent
@@ -2037,9 +2036,6 @@ acceptDelivery inst path tokens ident target at = locked inst $ do
     quarantineTarget = \case
       QuarantineGeneration s -> ScopeGeneration s
       QuarantineName n -> ScopeName n
-    head' fallback = \case
-      r : _ -> r
-      [] -> fallback
 
 -- | Complete only the pure source occurrence an 'AcceptedDelivery' names.
 completeDelivery :: Instance -> AcceptedDelivery -> Maybe Instant -> IO (Either InstanceError FiringOutcome)
@@ -2055,7 +2051,7 @@ completeDelivery inst carrier at = locked inst $ do
       )
   st <- getState inst
   let recorded = case Map.lookup ident st.sAccepted of
-        Just (RExternalEventDelivered r)
+        Just (AcceptedDelivered r)
           | r.source == a.source && r.identity == ident && r.occurrence == occ -> Just r
         _ -> Nothing
   o <- case IntMap.lookup occ st.sInFlight of

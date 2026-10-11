@@ -36,6 +36,8 @@ module Petrus.Impetus.History.Replay
   , replayInstanceIdentity
     -- * Deliveries and registrations
   , replayAcceptedIdentities
+  , AcceptedFact (..)
+  , acceptedFactRecord
   , replayArmed
   , validateCorrelatedDeliveryRegistrationBatches
     -- * Lifecycle scopes
@@ -472,14 +474,14 @@ replayArmed records = fst <$> registrationFold (toList records) () (\_ _ _ s -> 
 
 -- | The accepted delivery identities, each mapped to its complete recorded
 -- delivery fact.
-replayAcceptedIdentities :: Foldable f => f Record -> Either Text (Map Text Record)
+replayAcceptedIdentities :: Foldable f => f Record -> Either Text (Map Text AcceptedFact)
 replayAcceptedIdentities records = snd <$> registrationFold rs Map.empty hook
   where
     rs = toList records
     indexed = Seq.fromList rs
     hook position record armed accepted = case deliveryFact record of
       Nothing -> Right accepted
-      Just (identity, tokens) -> do
+      Just (identity, tokens, fact) -> do
         validateDeliveryTokens tokens ("replay divergence: " <> recordName record <> " identity " <> pythonStrRepr identity)
         case record of
           RExternalEventDelivered r -> do
@@ -509,12 +511,26 @@ replayAcceptedIdentities records = snd <$> registrationFold rs Map.empty hook
                 <> pythonStrRepr identity
                 <> " accepted twice — the single writer accepts an identity once and answers redelivery from that accepted fact"
             )
-        Right (Map.insert identity record accepted)
+        Right (Map.insert identity fact accepted)
     deliveryFact = \case
-      RExternalEventDelivered r -> Just (r.identity, r.tokens)
-      RScopedDeliveryDropped r -> Just (r.identity, r.tokens)
-      RScopedDeliveryQuarantined r -> Just (r.identity, r.tokens)
+      RExternalEventDelivered r -> Just (r.identity, r.tokens, AcceptedDelivered r)
+      RScopedDeliveryDropped r -> Just (r.identity, r.tokens, AcceptedDropped r)
+      RScopedDeliveryQuarantined r -> Just (r.identity, r.tokens, AcceptedQuarantined r)
       _ -> Nothing
+
+-- | The fact a delivery identity was accepted with: exactly the three
+-- records the single writer accepts an identity by.
+data AcceptedFact
+  = AcceptedDelivered ExternalEventDelivered
+  | AcceptedDropped ScopedDeliveryDropped
+  | AcceptedQuarantined ScopedDeliveryQuarantined
+  deriving stock (Eq, Show)
+
+acceptedFactRecord :: AcceptedFact -> Record
+acceptedFactRecord = \case
+  AcceptedDelivered r -> RExternalEventDelivered r
+  AcceptedDropped r -> RScopedDeliveryDropped r
+  AcceptedQuarantined r -> RScopedDeliveryQuarantined r
 
 -- ---------------------------------------------------------------------------
 -- Lifecycle scopes
