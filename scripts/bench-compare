@@ -24,7 +24,8 @@ goes first, and records the 1-minute load average around every run. Benchmarks t
 a throwaway server from scripts/with-postgres when it is unset.
 
 It prints a Markdown table: the median over repetitions of each row
-(tasty-bench means for Haskell, bench_timing medians for Python), their
+(tasty-bench means for Haskell, or the ``twin NAME NANOSECONDS`` figure of a
+row timed with the twins' own protocol; bench_timing medians for Python), their
 ratio, the lowest per-repetition ratio, and every repetition's figures. The
 same table is written to ``bench-results/tmp/<package>.compare.md``, and the
 raw CSV files to ``bench-results/tmp/`` (ignored by git). It never writes a
@@ -115,13 +116,15 @@ def haskell(package: str, repetition: int, pattern: Optional[str], stdev: str, b
     executable, env = binary
     command = [str(executable)] + options
     print("+ " + " ".join(shlex.quote(part) for part in command), file=sys.stderr, flush=True)
-    subprocess.run(
+    completed = subprocess.run(
         command,
         cwd=ROOT / "packages" / package,
         env=env,
         check=True,
-        stdout=sys.stderr,
+        stdout=subprocess.PIPE,
+        text=True,
     )
+    sys.stderr.write(completed.stdout)
     results = {}
     with output.open(newline="") as stream:
         for row in csv.DictReader(stream):
@@ -129,6 +132,16 @@ def haskell(package: str, repetition: int, pattern: Optional[str], stdev: str, b
             if name.startswith("All."):
                 name = name[len("All.") :]
             results[name] = float(row["Mean (ps)"]) / 1000.0
+    # Rows timed with the twins' own protocol (bench/Twin.hs in
+    # petrus-agenticus-runtime) are not tasty-bench measurements, so the CSV
+    # leaves them out; they report "twin NAME NANOSECONDS" instead.
+    for line in completed.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 3 and parts[0] == "twin":
+            try:
+                results[parts[1]] = float(parts[2])
+            except ValueError:
+                continue
     return results
 
 

@@ -61,5 +61,10 @@ hosts are covered in [divergences/codex.md](divergences/codex.md),
    package's DIVERGENCES.md): only stdio survives, the child leads a new
    session, and SIGPIPE and SIGXFSZ are restored as under
    `restore_signals=True`. The child is then adopted as an ordinary
-   `ProcessHandle`. The `PiSpec` group "spawnPiped (not in the reference)"
-   pins the descriptors, the session and the launch failure.
+   `ProcessHandle`. The parent's pipe ends are non-blocking handles, as the
+   `process` package makes them, so reads and writes wait in the IO
+   manager. With blocking ones (`fdToHandle`), every read and write cost a
+   readiness poll and a safe foreign call, about 75 µs per Amp Turn over
+   the shared sidecar. The `PiSpec` group "spawnPiped (not in the
+   reference)" pins the descriptors, the session, the non-blocking ends and
+   the launch failure.

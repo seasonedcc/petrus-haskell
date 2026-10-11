@@ -57,7 +57,7 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO (hClose)
 import System.Posix.Files (setFileMode)
-import System.Posix.IO (OpenMode (..), closeFd, defaultFileFlags, dupTo, openFd)
+import System.Posix.IO (FdOption (..), OpenMode (..), closeFd, defaultFileFlags, dupTo, handleToFd, openFd, queryFdOption)
 import System.Posix.Types (Fd (..))
 import System.Process (getPid, readProcessWithExitCode, waitForProcess)
 import System.Timeout (timeout)
@@ -1414,6 +1414,14 @@ spawnSpecs = describe "spawnPiped (not in the reference)" $ do
           take 3 descriptors `shouldBe` ["0", "1", "2"]
           filter (`notElem` ["0", "1", "2", "3", "4"]) descriptors `shouldBe` []
         [] -> expectationFailure "no output"
+  it "gives the parent non-blocking pipe ends, as the process package does" $ do
+    -- Reads and writes then wait in the IO manager rather than in a safe
+    -- foreign call per chunk, which cost each Amp Turn about 75 µs.
+    Just (i, o, e, process) <- spawnPiped "/bin/cat" [] Nothing (Just [("PATH", "/bin:/usr/bin")])
+    descriptors <- mapM handleToFd [i, o, e]
+    mapM (`queryFdOption` NonBlockingRead) descriptors `shouldReturn` [True, True, True]
+    mapM_ closeFd descriptors
+    waitForProcess process `shouldReturn` ExitSuccess
   it "reports a helper that cannot be started" $ do
     started <- spawnPiped "/nonexistent/helper" [] Nothing Nothing
     isNothing started `shouldBe` True

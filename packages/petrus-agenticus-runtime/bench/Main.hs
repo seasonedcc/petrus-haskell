@@ -9,9 +9,11 @@
 --   and back to compact sorted JSON, over that run's final @thread.json@.
 --
 -- It also runs the Pi rows ("PiBench", "PiA2Bench"; @bench/results-pi.md@),
--- the hosts' protocol rows ("HostsBench"; @bench/results-hosts.md@) and the
--- whole Codex, Claude and Amp Turns ("TurnsBench", the twin of
--- @bench/python_bench.py@; @bench/results-hosts.md@). Every row measures
+-- the hosts' protocol rows ("HostsBench"; @bench/results-hosts.md@), the
+-- whole Codex, Claude and Amp Turns and the Codex A3 runtime service's
+-- round trip ("TurnsBench"; @bench/results-hosts.md@), and the whole Pi
+-- native, A5 and model-phase Turns ("PiTurnsBench"; @bench/results-pi.md@).
+-- The last two are the twins of @bench/python_bench.py@. Every row measures
 -- wall-clock time.
 module Main (main) where
 

@@ -183,6 +183,9 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import GHC.Clock (getMonotonicTime)
+import GHC.IO.Device (IODeviceType (Stream))
+import GHC.IO.FD qualified as FD
+import GHC.IO.Handle.FD (mkHandleFromFD)
 import Numeric (showHex)
 import Paths_petrus_agenticus_runtime (getDataFileName)
 import Petrus.Agenticus.Attachment.Binding
@@ -292,14 +295,15 @@ import System.Directory
   )
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
-import System.IO (BufferMode (..), Handle, hClose, hFlush, hSetBinaryMode, hSetBuffering)
+import System.IO (BufferMode (..), Handle, IOMode (..), hClose, hFlush, hSetBinaryMode, hSetBuffering)
 import System.IO.Error (isDoesNotExistError)
 import System.IO.Temp (createTempDirectory)
 import Petrus.Motus.Execution.Error (ExecutionError)
 import Petrus.Motus.Execution.Internal.Process (StdioFd (..), childPid, spawnChild)
 import System.Posix.Files qualified as Files
-import System.Posix.IO (FdOption (CloseOnExec), closeFd, createPipe, fdToHandle, setFdOption)
+import System.Posix.IO (FdOption (CloseOnExec), closeFd, createPipe, setFdOption)
 import System.Posix.Signals (sigKILL, signalProcess, signalProcessGroup)
+import System.Posix.Types (Fd (..))
 import System.Posix.Unistd (SystemID (..), getSystemID)
 import System.Posix.User (getEffectiveUserID)
 import System.Process
@@ -1463,8 +1467,18 @@ spawnPiped executable arguments directory environment =
         Left (_ :: ExecutionError) -> Nothing <$ quietly parentEnds
         Right child -> do
           process <- mkProcessHandle (childPid child) False
-          handles <- ((,,) <$> fdToHandle inWrite <*> fdToHandle outRead <*> fdToHandle errRead) `onException` quietly parentEnds
+          handles <-
+            ((,,) <$> pipeHandle inWrite WriteMode <*> pipeHandle outRead ReadMode <*> pipeHandle errRead ReadMode)
+              `onException` quietly parentEnds
           pure (Just (case handles of (i, o, e) -> (i, o, e, process)))
+    -- As the process package makes its pipe handles: non-blocking, so
+    -- reads and writes wait in the IO manager. A blocking descriptor would
+    -- cost a readiness poll and a safe foreign call per read or write, and
+    -- a reader blocked in that call cannot be killed until it returns.
+    pipeHandle (Fd fd) mode = do
+      (device, _) <- FD.mkFD fd mode (Just (Stream, 0, 0)) False False
+      nonBlocking <- FD.setNonBlockingMode device True
+      mkHandleFromFD nonBlocking Stream ("fd:" <> show fd) mode False Nothing
 
 -- | Close pipes, kill the helper's whole process group, and report whether
 -- the helper and its stderr drain are proven gone.
