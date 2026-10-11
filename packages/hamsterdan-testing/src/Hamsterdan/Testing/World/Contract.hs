@@ -15,6 +15,8 @@ module Hamsterdan.Testing.World.Contract
   , privateKey
 
     -- * Limits
+  , ProfileLimit (..)
+  , profileLimitName
   , profileLimits
   , profileLimit
   , profileResourceLimits
@@ -80,72 +82,124 @@ privateKey = "readiness-world-private-key"
 -- ---------------------------------------------------------------------------
 -- Limits
 
+-- | A key of @PROFILE_LIMITS@, in the reference's order.
+data ProfileLimit
+  = AuthorityGenerations
+  | ProviderTruthChanges
+  | WebhookEmissions
+  | DeliveryAttempts
+  | Checks
+  | Reviews
+  | Findings
+  | Comments
+  | Threads
+  | AgentOperations
+  | GitPublications
+  | GitReconciliations
+  | ProviderCalls
+  | Effects
+  | HostFollowups
+  | PendingCustody
+  | Runnable
+  | DispatchEntries
+  | Reloads
+  | PayloadBytes
+  | HistoryBytes
+  | ObservationBytes
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+-- | The limit's key in @PROFILE_LIMITS@.
+profileLimitName :: ProfileLimit -> Text
+profileLimitName = \case
+  AuthorityGenerations -> "authority_generations"
+  ProviderTruthChanges -> "provider_truth_changes"
+  WebhookEmissions -> "webhook_emissions"
+  DeliveryAttempts -> "delivery_attempts"
+  Checks -> "checks"
+  Reviews -> "reviews"
+  Findings -> "findings"
+  Comments -> "comments"
+  Threads -> "threads"
+  AgentOperations -> "agent_operations"
+  GitPublications -> "git_publications"
+  GitReconciliations -> "git_reconciliations"
+  ProviderCalls -> "provider_calls"
+  Effects -> "effects"
+  HostFollowups -> "host_followups"
+  PendingCustody -> "pending_custody"
+  Runnable -> "runnable"
+  DispatchEntries -> "dispatch_entries"
+  Reloads -> "reloads"
+  PayloadBytes -> "payload_bytes"
+  HistoryBytes -> "history_bytes"
+  ObservationBytes -> "observation_bytes"
+
+-- | @PROFILE_LIMITS[name]@.
+profileLimit :: ProfileLimit -> Integer
+profileLimit = \case
+  AuthorityGenerations -> 16
+  ProviderTruthChanges -> 128
+  WebhookEmissions -> 64
+  DeliveryAttempts -> 128
+  Checks -> 64
+  Reviews -> 64
+  Findings -> 128
+  Comments -> 128
+  Threads -> 128
+  AgentOperations -> 128
+  GitPublications -> 64
+  GitReconciliations -> 128
+  ProviderCalls -> 512
+  Effects -> 128
+  HostFollowups -> 512
+  PendingCustody -> 64
+  Runnable -> 64
+  DispatchEntries -> 256
+  Reloads -> 8
+  PayloadBytes -> 65536
+  HistoryBytes -> 2097152
+  ObservationBytes -> 2097152
+
 -- | @PROFILE_LIMITS@, in the reference's order.
 profileLimits :: [(Text, Integer)]
-profileLimits =
-  [ ("authority_generations", 16)
-  , ("provider_truth_changes", 128)
-  , ("webhook_emissions", 64)
-  , ("delivery_attempts", 128)
-  , ("checks", 64)
-  , ("reviews", 64)
-  , ("findings", 128)
-  , ("comments", 128)
-  , ("threads", 128)
-  , ("agent_operations", 128)
-  , ("git_publications", 64)
-  , ("git_reconciliations", 128)
-  , ("provider_calls", 512)
-  , ("effects", 128)
-  , ("host_followups", 512)
-  , ("pending_custody", 64)
-  , ("runnable", 64)
-  , ("dispatch_entries", 256)
-  , ("reloads", 8)
-  , ("payload_bytes", 65536)
-  , ("history_bytes", 2097152)
-  , ("observation_bytes", 2097152)
-  ]
-
-profileLimit :: Text -> Integer
-profileLimit name = maybe (error ("unknown profile limit " <> T.unpack name)) id (lookup name profileLimits)
+profileLimits = [(profileLimitName limit, profileLimit limit) | limit <- [minBound .. maxBound]]
 
 -- | @PROFILE_RESOURCE_LIMITS@, in the reference's order.
 profileResourceLimits :: [(Text, Integer)]
 profileResourceLimits =
-  [ ("retained.host.history_bytes", profileLimit "history_bytes")
+  [ ("retained.host.history_bytes", profileLimit HistoryBytes)
   , ("retained.host.history_records", 4096)
   , ("retained.host.sqlite_bytes", 4194304)
   , ("retained.host.sqlite_rows", 4096)
-  , ("retained.profile.dropped_generations", profileLimit "reloads")
-  , ("retained.profile.followups", profileLimit "host_followups")
-  , ("retained.provider.admissions", profileLimit "webhook_emissions")
-  , ("retained.provider.agent_operations", profileLimit "agent_operations")
-  , ("retained.provider.authorities", profileLimit "authority_generations")
+  , ("retained.profile.dropped_generations", profileLimit Reloads)
+  , ("retained.profile.followups", profileLimit HostFollowups)
+  , ("retained.provider.admissions", profileLimit WebhookEmissions)
+  , ("retained.provider.agent_operations", profileLimit AgentOperations)
+  , ("retained.provider.authorities", profileLimit AuthorityGenerations)
   , ("retained.provider.bytes", 2097152)
-  , ("retained.provider.calls", profileLimit "provider_calls")
-  , ("retained.provider.checks", profileLimit "checks")
-  , ("retained.provider.collisions", profileLimit "effects")
-  , ("retained.provider.comments", profileLimit "comments")
-  , ("retained.provider.custody_actions", profileLimit "delivery_attempts")
-  , ("retained.provider.delivery_attempts", profileLimit "delivery_attempts")
-  , ("retained.provider.effect_bindings", profileLimit "effects")
-  , ("retained.provider.effects", profileLimit "effects")
-  , ("retained.provider.findings", profileLimit "findings")
-  , ("retained.provider.git_publications", profileLimit "git_publications")
-  , ("retained.provider.git_reconciliations", profileLimit "git_reconciliations")
-  , ("retained.provider.reviews", profileLimit "reviews")
-  , ("retained.provider.threads", profileLimit "threads")
-  , ("retained.provider.truth_changes", profileLimit "provider_truth_changes")
-  , ("retained.provider.webhooks", profileLimit "webhook_emissions")
-  , ("pending.host.activities", profileLimit "dispatch_entries")
-  , ("pending.host.custody", profileLimit "pending_custody")
-  , ("pending.host.dispatch", profileLimit "dispatch_entries")
-  , ("pending.host.runnable", profileLimit "runnable")
-  , ("pending.host.timer_acks", profileLimit "dispatch_entries")
-  , ("pending.host.timer_maturities", profileLimit "dispatch_entries")
-  , ("pending.host.timers", profileLimit "dispatch_entries")
-  , ("pending.profile.proposals", profileLimit "runnable")
+  , ("retained.provider.calls", profileLimit ProviderCalls)
+  , ("retained.provider.checks", profileLimit Checks)
+  , ("retained.provider.collisions", profileLimit Effects)
+  , ("retained.provider.comments", profileLimit Comments)
+  , ("retained.provider.custody_actions", profileLimit DeliveryAttempts)
+  , ("retained.provider.delivery_attempts", profileLimit DeliveryAttempts)
+  , ("retained.provider.effect_bindings", profileLimit Effects)
+  , ("retained.provider.effects", profileLimit Effects)
+  , ("retained.provider.findings", profileLimit Findings)
+  , ("retained.provider.git_publications", profileLimit GitPublications)
+  , ("retained.provider.git_reconciliations", profileLimit GitReconciliations)
+  , ("retained.provider.reviews", profileLimit Reviews)
+  , ("retained.provider.threads", profileLimit Threads)
+  , ("retained.provider.truth_changes", profileLimit ProviderTruthChanges)
+  , ("retained.provider.webhooks", profileLimit WebhookEmissions)
+  , ("pending.host.activities", profileLimit DispatchEntries)
+  , ("pending.host.custody", profileLimit PendingCustody)
+  , ("pending.host.dispatch", profileLimit DispatchEntries)
+  , ("pending.host.runnable", profileLimit Runnable)
+  , ("pending.host.timer_acks", profileLimit DispatchEntries)
+  , ("pending.host.timer_maturities", profileLimit DispatchEntries)
+  , ("pending.host.timers", profileLimit DispatchEntries)
+  , ("pending.profile.proposals", profileLimit Runnable)
   ]
 
 -- | @READINESS_POLICY_DIGEST@.
@@ -254,7 +308,7 @@ defaultBudget =
           , queuedCommands = 64
           , timerAdvances = 32
           , logicalInstant = 2000000
-          , reloads = profileLimit "reloads"
+          , reloads = profileLimit Reloads
           , predicatePolls = 256
           , artifactBytes = 4194304
           }

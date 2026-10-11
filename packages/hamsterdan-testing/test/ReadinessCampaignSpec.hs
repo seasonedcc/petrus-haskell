@@ -37,7 +37,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word64)
 import Hamsterdan.Testing.World hiding (PullRequest (..))
-import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus, Spelled (..))
+import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus)
 import Hamsterdan.Testing.World.Contract (defaultBudget, events, headSha, reminderDelay)
 import Hamsterdan.Testing.World.Coverage (CoverageRun (..), blocked, collectReadinessCoverage, covered)
 import Hamsterdan.Testing.World.Scenarios (cleanGreen, drain, green, setPr)
@@ -275,7 +275,7 @@ genCommand =
     run <- genPositive
     attempt <- genPositive
     status <- Gen.enumBounded @_ @CheckStatus
-    pure (Object [("name", String name), ("run", Int run), ("attempt", Int attempt), ("status", String (spell status))])
+    pure CiCheck {name, run, attempt, status}
 
 -- ---------------------------------------------------------------------------
 -- Generated examples

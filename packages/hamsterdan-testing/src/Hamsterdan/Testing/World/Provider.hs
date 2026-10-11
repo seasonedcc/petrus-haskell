@@ -22,6 +22,9 @@ module Hamsterdan.Testing.World.Provider
   , Effect (..)
   , Emitted (..)
   , GitPublication (..)
+  , CiCheck (..)
+  , ciCheckJson
+  , HumanReviewState (..)
   , TruthRef
   , newTruth
   , initialAuthority
@@ -89,7 +92,7 @@ import Hamsterdan.Host.GitPublish (GitPublishError (..), GitPublishResult (..), 
 import Hamsterdan.Host.Python (RuntimeError (..), TypeError (..), ValueError (..), exceptionClass)
 import Hamsterdan.Host.Service (HostClients (..))
 import Hamsterdan.Host.V5.Mutation (MutationPublisher (..))
-import Hamsterdan.Testing.Readiness (AuthorityClaim (..), Lifecycle (..), dump)
+import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus (..), Lifecycle (..), ReviewStatus (..), Spelled (..), dump)
 import Hamsterdan.Testing.World.Contract
 import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
 import Petrus.Json (Json (..), lookupMember)
@@ -180,16 +183,40 @@ data GitPublication = GitPublication
   }
   deriving stock (Eq, Show)
 
+-- | One CI check of @readiness.github.ci.set@, as its @strict_object@
+-- admits it.
+data CiCheck = CiCheck
+  { name :: Text
+  , run :: Integer
+  , attempt :: Integer
+  , status :: CheckStatus
+  }
+  deriving stock (Eq, Show)
+
+-- | The check's dict.
+ciCheckJson :: CiCheck -> Json
+ciCheckJson c = Object [("name", String c.name), ("run", Int c.run), ("attempt", Int c.attempt), ("status", String (spell c.status))]
+
+-- | A human review's state.
+data HumanReviewState = HumanApproved | HumanChangesRequested | HumanDismissed
+  deriving stock (Eq, Ord, Show, Bounded, Enum)
+
+instance Spelled HumanReviewState where
+  spell = \case
+    HumanApproved -> "APPROVED"
+    HumanChangesRequested -> "CHANGES_REQUESTED"
+    HumanDismissed -> "DISMISSED"
+
 -- | @ReadinessProviderTruth@'s attributes.
 data Truth = Truth
   { authority :: AuthorityClaim
   , authorities :: [AuthorityClaim]
   , requiredChecks :: [Text]
-  , checks :: [Json]
+  , checks :: [CiCheck]
   , reviewHead :: Text
-  , reviewStatus :: Text
+  , reviewStatus :: ReviewStatus
   , findings :: [Json]
-  , humanReviews :: Map Text (Text, Text)
+  , humanReviews :: Map Text (Text, HumanReviewState)
   , reviewThreads :: Map Text Bool
   , comments :: [Json]
   , humanComments :: [Json]
@@ -230,7 +257,7 @@ newTruth =
       , requiredChecks = ["build"]
       , checks = []
       , reviewHead = ""
-      , reviewStatus = "pending"
+      , reviewStatus = ReviewPending
       , findings = []
       , humanReviews = Map.empty
       , reviewThreads = Map.empty
@@ -386,18 +413,13 @@ root = "/repos/owner/repo"
 providerCall :: TruthRef -> Text -> Text -> IO ()
 providerCall ref method path = do
   t <- readIORef ref
-  let limit = profileLimit "provider_calls"
+  let limit = profileLimit ProviderCalls
   when (toInteger (length t.calls) >= limit) $
     throwPy "RuntimeError" ("readiness profile bound provider_calls exhausted at " <> showT limit)
   writeIORef ref t {calls = t.calls <> [Object [("method", String method), ("path", String path)]]}
 
 ok :: Int -> Json -> IO WireResponse
 ok status body = pure (WireResponse status body Nothing)
-
-intOf :: Json -> Maybe Integer
-intOf = \case
-  Int i -> Just i
-  _ -> Nothing
 
 textOf :: Json -> Text
 textOf = \case
@@ -462,13 +484,11 @@ request ref holder method path body = do
         ok 200 (Object [("users", Array [])])
     | method == "GET"
     , (root <> "/actions/workflows/.github%2Fworkflows%2Fci.yml/runs?event=pull_request&head_sha=") `T.isPrefixOf` path -> do
-        let keyOf c = (fromMaybe 0 (lookupMember "run" c >>= intOf), fromMaybe 0 (lookupMember "attempt" c >>= intOf))
-            grouped = Map.fromListWith (flip (<>)) [(keyOf c, [c]) | c <- t.checks]
-            run ((runId, attempt), items) =
-              let statuses = Set.fromList [maybe "None" textOf (lookupMember "status" c) | c <- items]
-                  completed = statuses `Set.isSubsetOf` Set.fromList ["success", "failure", "canceled"]
+        let grouped = Map.fromListWith (flip (<>)) [((c.run, c.attempt), [c.status]) | c <- t.checks]
+            run ((runId, attempt), statuses) =
+              let completed = all (`elem` [Success, Failure, Canceled]) statuses
                   conclusion
-                    | Set.member "failure" statuses || Set.member "canceled" statuses = String "failure"
+                    | Failure `elem` statuses || Canceled `elem` statuses = String "failure"
                     | completed = String "success"
                     | otherwise = Null
                in Object
@@ -490,24 +510,24 @@ request ref holder method path body = do
     , Just (attempt, rest''') <- positive rest''
     , rest''' == "/jobs?per_page=100" -> do
         let job (index, c) =
-              let status = maybe "None" textOf (lookupMember "status" c)
-               in Object
-                    [ ("id", Int (runId * 100 + index))
-                    , ("name", fromMaybe Null (lookupMember "name" c))
-                    , ("status", String (if status `elem` ["success", "failure", "canceled"] then "completed" else "in_progress"))
-                    ,
-                      ( "conclusion"
-                      , if
-                          | status `elem` ["success", "failure"] -> String status
-                          | status == "canceled" -> String "failure"
-                          | otherwise -> Null
-                      )
-                    ]
+              Object
+                [ ("id", Int (runId * 100 + index))
+                , ("name", String c.name)
+                , ("status", String (if c.status `elem` [Success, Failure, Canceled] then "completed" else "in_progress"))
+                ,
+                  ( "conclusion"
+                  , case c.status of
+                      Success -> String "success"
+                      Failure -> String "failure"
+                      Canceled -> String "failure"
+                      _ -> Null
+                  )
+                ]
             values =
               [ job (index, c)
               | (index, c) <- zip [1 ..] t.checks
-              , lookupMember "run" c == Just (Int runId)
-              , lookupMember "attempt" c == Just (Int attempt)
+              , c.run == runId
+              , c.attempt == attempt
               ]
         ok 200 (Object [("total_count", Int (toInteger (length values))), ("jobs", Array values)])
     | method == "POST"
@@ -575,7 +595,7 @@ pages ref path = do
         pure
           [ [ ("id", Int index)
             , ("submitted_at", String submitted)
-            , ("state", String state)
+            , ("state", String (spell state))
             , ("user", Object [("login", String reviewer)])
             ]
           | (index, (reviewer, (submitted, state))) <- zip [1 ..] (Map.toAscList t.humanReviews)
@@ -632,7 +652,7 @@ acceptComment ref holder payload = do
             throwPy "ValueError" "modeled provider operation identity collision"
         | otherwise -> do
             t' <- readIORef ref
-            let limit = profileLimit "effects"
+            let limit = profileLimit Effects
             when (toInteger (length t'.effects) >= limit) $
               throwPy "RuntimeError" ("readiness profile bound effects exhausted at " <> showT limit)
             let identifier = toInteger (length t'.comments) + 1
@@ -707,11 +727,11 @@ retainedBytes t =
       [ ("authority", dump t.authority)
       , ("authorities", Array (map dump t.authorities))
       , ("required_checks", Array (map String t.requiredChecks))
-      , ("checks", Array t.checks)
+      , ("checks", Array (map ciCheckJson t.checks))
       , ("review_head", String t.reviewHead)
-      , ("review_status", String t.reviewStatus)
+      , ("review_status", String (spell t.reviewStatus))
       , ("findings", Array t.findings)
-      , ("human_reviews", Object [(k, Array [String a, String b]) | (k, (a, b)) <- Map.toAscList t.humanReviews])
+      , ("human_reviews", Object [(k, Array [String a, String (spell b)]) | (k, (a, b)) <- Map.toAscList t.humanReviews])
       , ("review_threads", Object [(k, Bool v) | (k, v) <- Map.toAscList t.reviewThreads])
       , ("comments", Array t.comments)
       , ("human_comments", Array t.humanComments)
@@ -802,7 +822,7 @@ modeledGitPublisher ref holder =
   MutationPublisher
     { reconcile = \operation digest expected _baseHead _mergeBase -> do
         t <- readIORef ref
-        let limit = profileLimit "git_reconciliations"
+        let limit = profileLimit GitReconciliations
         when (t.gitReconciliations >= limit) $
           throwPy "RuntimeError" ("readiness profile bound git_reconciliations exhausted at " <> showT limit)
         writeIORef ref t {gitReconciliations = t.gitReconciliations + 1}
@@ -833,7 +853,7 @@ modeledGitPublisher ref holder =
           $ throwIO (GitPublishError Correlation "modeled Git publication is stale")
         when (any (\p -> p.operation == operation) t.gitPublications) $
           throwIO (GitPublishError Idempotency "modeled Git operation was accepted twice")
-        let limit = profileLimit "git_publications"
+        let limit = profileLimit GitPublications
         when (toInteger (length t.gitPublications) >= limit) $
           throwPy "RuntimeError" ("readiness profile bound git_publications exhausted at " <> showT limit)
         let resultHead = T.take 40 (sha256Hex (TE.encodeUtf8 (expected <> "\0" <> operation <> "\0" <> digest)))

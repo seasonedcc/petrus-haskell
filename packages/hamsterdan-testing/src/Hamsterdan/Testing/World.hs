@@ -24,6 +24,7 @@ module Hamsterdan.Testing.World
     -- * Commands
   , ReadinessCommand (..)
   , HumanReviewState (..)
+  , CiCheck (..)
   , AgentStatus (..)
   , AgentFixture (..)
   , parseCommand
@@ -92,7 +93,7 @@ import Data.IORef
 import Data.List (find, sort, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe)
 import Data.Sequence (Seq, (|>))
 import Data.Sequence qualified as Seq
 import Data.Set (Set)
@@ -324,7 +325,7 @@ data ReadinessCommand
     SetPullRequest AuthorityClaim
   | -- | @readiness.github.ci.set@: the head, the required check names, and
     -- each check's exact object, which the provider keeps as authored.
-    SetCi Text [Text] [Json]
+    SetCi Text [Text] [CiCheck]
   | -- | @readiness.github.review.set@: the head, the status, the findings.
     SetReview Text ReviewStatus [Json]
   | -- | @readiness.github.human.review@: reviewer, head, review, state.
@@ -352,16 +353,6 @@ data ReadinessCommand
   | -- | @readiness.host.reconcile_one@.
     HostReconcileOne
   deriving stock (Eq, Show)
-
--- | A human review's state.
-data HumanReviewState = HumanApproved | HumanChangesRequested | HumanDismissed
-  deriving stock (Eq, Ord, Show, Bounded, Enum)
-
-instance Spelled HumanReviewState where
-  spell = \case
-    HumanApproved -> "APPROVED"
-    HumanChangesRequested -> "CHANGES_REQUESTED"
-    HumanDismissed -> "DISMISSED"
 
 -- | An agent terminal's status.
 data AgentStatus = AgentClear | AgentBlocking | AgentUnable | AgentChanged | AgentUnchanged
@@ -397,7 +388,7 @@ spelledAs = \case
 parseCommand :: Command -> Either PyError ReadinessCommand
 parseCommand c = do
   keys <- maybe (fails ("unknown readiness command " <> pythonStrRepr c.name)) Right (Map.lookup c.name commandKeys)
-  _ <- boundedJson c.payload (profileLimit "payload_bytes") c.name
+  _ <- boundedJson c.payload (profileLimit PayloadBytes) c.name
   payload <- strictObject c.payload keys c.name
   let field k = fromMaybe Null (lookup k payload)
       name = c.name
@@ -417,23 +408,24 @@ parseCommand c = do
       pure (SetPullRequest claim)
     "readiness.github.ci.set" -> do
       sha <- boundedText (field "head") "CI head" (Just isSha)
-      required <- bounded "checks" "required_checks must be a bounded list" (field "required_checks")
+      required <- bounded Checks "required_checks must be a bounded list" (field "required_checks")
       names <- mapM (\x -> boundedText x "required check" (Just isName)) required
       when (Set.size (Set.fromList names) /= length names) $ fails "required_checks must be unique"
-      items <- bounded "checks" "checks must be a bounded list" (field "checks")
-      forM_ items $ \item -> do
+      items <- bounded Checks "checks must be a bounded list" (field "checks")
+      checks <- forM items $ \item -> do
         check <- strictObject item (Set.fromList ["name", "run", "attempt", "status"]) name
         let at k = fromMaybe Null (lookup k check)
-        _ <- boundedText (at "name") "check name" (Just isName)
-        case (at "run", at "attempt") of
-          (Int r, Int a) | r > 0 && a > 0 -> pure ()
+        checkName <- boundedText (at "name") "check name" (Just isName)
+        (run, attempt) <- case (at "run", at "attempt") of
+          (Int r, Int a) | r > 0 && a > 0 -> pure (r, a)
           _ -> fails "check run and attempt must be positive integers"
-        when (isNothing (spelledAs @CheckStatus (at "status"))) $ fails "unsupported CI status"
-      pure (SetCi sha names items)
+        status <- maybe (fails "unsupported CI status") pure (spelledAs @CheckStatus (at "status"))
+        pure CiCheck {name = checkName, run, attempt, status}
+      pure (SetCi sha names checks)
     "readiness.github.review.set" -> do
       sha <- boundedText (field "head") "review head" (Just isSha)
       status <- maybe (fails "unsupported review status") pure (spelledAs (field "status"))
-      found <- bounded "findings" "review findings must be a bounded list" (field "findings")
+      found <- bounded Findings "review findings must be a bounded list" (field "findings")
       pure (SetReview sha status found)
     "readiness.github.human.review" -> do
       reviewer <- boundedText (field "reviewer") "reviewer" (Just isName)
@@ -508,7 +500,7 @@ renderCommand :: ReadinessCommand -> Command
 renderCommand = \case
   SetPullRequest claim -> subjectCommand "readiness.github.pr.set" [("authority", dump claim)]
   SetCi sha required checks ->
-    subjectCommand "readiness.github.ci.set" [("head", String sha), ("required_checks", Array (map String required)), ("checks", Array checks)]
+    subjectCommand "readiness.github.ci.set" [("head", String sha), ("required_checks", Array (map String required)), ("checks", Array (map ciCheckJson checks))]
   SetReview sha status found ->
     subjectCommand "readiness.github.review.set" [("head", String sha), ("status", String (spell status)), ("findings", Array found)]
   HumanReview reviewer sha review state ->
@@ -686,13 +678,13 @@ applyOne p g parsed now = case parsed of
     modifyIORef' ref $ \t ->
       t
         { reviewHead = sha
-        , reviewStatus = spell status
+        , reviewStatus = status
         , findings = found
         , reviewTerminal = Just (Object [("kind", String "review"), ("status", spelled), ("findings", Array found)])
         }
     pure (Object [("status", spelled), ("findings", int (toInteger (length found)))], Applied)
   HumanReview reviewer _ _ state -> do
-    modifyIORef' ref (\t -> t {humanReviews = Map.insert reviewer (T.pack (printf "%020d" now), spell state) t.humanReviews})
+    modifyIORef' ref (\t -> t {humanReviews = Map.insert reviewer (T.pack (printf "%020d" now), state) t.humanReviews})
     pure (Object [("reviewer", String reviewer), ("state", String (spell state))], Applied)
   ResolveThread thread _ resolved -> do
     modifyIORef' ref (\t -> t {reviewThreads = Map.insert thread resolved t.reviewThreads})
@@ -962,7 +954,7 @@ readinessState p g now = do
           , ("work", work)
           , ("bounds", Object [("limits", Object [(k, Int v) | (k, v) <- profileResourceLimits]), ("usage", Object [(k, Int v) | (k, v) <- Map.toAscList usage.values])])
           ]
-  either (\(PyError cls m) -> throwPy cls m) (const (pure state)) (boundedJson state (profileLimit "observation_bytes") "readiness observation")
+  either (\(PyError cls m) -> throwPy cls m) (const (pure state)) (boundedJson state (profileLimit ObservationBytes) "readiness observation")
 
 -- | @resource_usage(generation)@ (@_usage@).
 profileResourceUsage :: ReadinessProfile -> Maybe Generation -> IO ResourceUsage
@@ -1036,8 +1028,8 @@ factsOf t timers = loadJson value
       [] -> Object []
       _ -> let latest = last reviewCalls in Object [("head", latest .: "head"), ("status", latest .: "status"), ("findings", Array [])]
     states = map snd (Map.elems t.humanReviews)
-    approvals = toInteger (length (filter (== "APPROVED") states))
-    changes = "CHANGES_REQUESTED" `elem` states
+    approvals = toInteger (length (filter (== HumanApproved) states))
+    changes = HumanChangesRequested `elem` states
     (mutation, mutationEffect) = expectedMutation t
     effectKind k
       | k == "finding" = "findings"
@@ -1061,7 +1053,7 @@ factsOf t timers = loadJson value
         [ ("subject", String subject)
         , ("authority", Object [("generation", Int (generationCount admissions)), ("admitted", admittedClaim), ("provider", dump t.authority)])
         , ("admitted_observations", Array [String (identityOf' e) | e <- admissions])
-        , ("ci", Object [("head", String t.reviewHead), ("required_checks", Array (map String t.requiredChecks)), ("checks", Array [Object [("name", c .: "name"), ("status", c .: "status")] | c <- t.checks])])
+        , ("ci", Object [("head", String t.reviewHead), ("required_checks", Array (map String t.requiredChecks)), ("checks", Array [Object [("name", String c.name), ("status", String (spell c.status))] | c <- t.checks])])
         , ("review", review)
         ,
           ( "human"
@@ -1570,7 +1562,7 @@ checkReadiness o = do
       neutral = hostState .: "ready" == Null
       readyParity = readinessParity && actualParity && neutral
       parity = readyParity && snapshotParity && timerParity && gitParity
-  retained <- either (\(PyError cls m) -> Left (ProfileError cls m)) (Right . TE.decodeUtf8) (boundedJson state (profileLimit "observation_bytes") "checker observation")
+  retained <- either (\(PyError cls m) -> Left (ProfileError cls m)) (Right . TE.decodeUtf8) (boundedJson state (profileLimit ObservationBytes) "checker observation")
   let sensitive =
         [ label
         | (label, value) <- [("client_id", clientId), ("private_key", privateKey), ("webhook_secret", webhookSecret)]
