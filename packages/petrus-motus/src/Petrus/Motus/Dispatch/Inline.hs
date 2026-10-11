@@ -31,6 +31,7 @@ import Petrus.Activity
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch
 import Petrus.Motus.Internal.Repr
+import Petrus.Motus.PythonException (PythonException (..), pythonException)
 
 -- | An Activity implementation: the whole invocation and the Attempt's
 -- execution context in, a JSON result out. Throw 'ActivityError' to classify
@@ -112,16 +113,13 @@ inlineContext attempt = do
 
 -- | Classify an Activity's exception: an 'ActivityError' carries its
 -- failure; anything else is a retryable failure named after the exception's
--- type, with its message (or the type name when the message is empty). A
--- 'DispatchError' is spelled @ValueError@, the reference's type for it.
+-- Python class ('pythonException'), with its message (or the class name when
+-- the message is empty), as @str(exc) or type(exc).__name__@ does.
 classifyInlineFailure :: SomeException -> IO ActivityFailure
 classifyInlineFailure err = case fromException err of
   Just (ActivityError failure) -> pure failure
   Nothing ->
-    let kind = case fromException err of
-          Just (DispatchError _) -> "ValueError"
-          Nothing -> exceptionTypeName err
-        message = exceptionMessage err
+    let PythonException {className = kind, message} = pythonException err
         fields =
           ActivityFailureFields
             { failureError = if T.null message then kind else message

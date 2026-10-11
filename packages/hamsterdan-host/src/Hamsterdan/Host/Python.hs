@@ -68,11 +68,11 @@ import Data.ByteString.Base16 qualified as Base16
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.GitHub.Sqlite (Connection, SQLData (..))
+import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.PyLiteral (literalEval)
 import Hamsterdan.PyLiteral qualified as PyLit
 import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
-import Hamsterdan.GitHub.Sqlite qualified as Sql
+import Hamsterdan.Sqlite qualified as Sql
 import Petrus.Json (EncodeOptions (..), Json, compact, defaultDumps, dumps, dumpsText, encodeErrorMessage)
 import Petrus.Motus.Worker (LookupError (..), RuntimeError (..), ValueError (..))
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)

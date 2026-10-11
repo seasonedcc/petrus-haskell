@@ -158,6 +158,7 @@ benchmark petrus-processes-bench
                   , petrus-activity
                   , petrus-fabric
                   , petrus-fabric:postgres
+                  , petrus-impetus
                   , petrus-json
                   , petrus-postgres
                   , petrus-processes

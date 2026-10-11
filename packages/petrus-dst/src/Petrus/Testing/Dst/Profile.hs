@@ -23,6 +23,9 @@ module Petrus.Testing.Dst.Profile
   ( -- * Profiles
     Profile (..)
   , Checker (..)
+  , Check (..)
+  , pureCheck
+  , runChecker
   , ProfileError (..)
   , profileError
 
@@ -155,5 +158,27 @@ data Profile m g = Profile
 data Checker = Checker
   { identity :: CheckerIdentity
   , request :: ObservationRequest
-  , check :: Observation -> Either ProfileError CheckResult
+  , check :: Check
   }
+
+-- | A checker's verdicts as a pure Mealy machine: the current memory and the
+-- step from it and one observation to a verdict and the next memory.
+--
+-- The reference's checkers are objects, and one of them
+-- (@GeneratedRuntimeAuthorityChecker@) keeps a dictionary across the checks
+-- of one World. Here that memory is an explicit value the World threads from
+-- one check to the next, starting from the checker's own initial memory in
+-- every World or replay, so verdicts stay pure and independent of the
+-- World's monad. A failure is the exception @check@ would raise.
+data Check = forall s. Check s (s -> Observation -> Either ProfileError (CheckResult, s))
+
+-- | A stateless check: the same pure verdict for every observation.
+pureCheck :: (Observation -> Either ProfileError CheckResult) -> Check
+pureCheck verdict = Check () (\() observation -> (,()) <$> verdict observation)
+
+-- | Judge one observation: the verdict and the checker for the next one.
+runChecker :: Checker -> Observation -> Either ProfileError (CheckResult, Checker)
+runChecker checker observation = case checker.check of
+  Check memory step -> do
+    (result, memory') <- step memory observation
+    pure (result, checker {check = Check memory' step})

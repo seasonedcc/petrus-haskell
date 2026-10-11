@@ -38,6 +38,5 @@ library
                   , array >=0.5
                   , containers >=0.6
                   , hamsterdan-contracts
-                  , hamsterdan-github
                   , text >=2.0
   ghc-options:      -O2

@@ -3,8 +3,7 @@
 -- @ThreadAuthenticator@ configured with @configure_curve@.
 module Petrus.Motus.Transport.ZeroMQ.Curve
   ( -- * Certificate files
-    OSError (..)
-  , loadCertificate
+    loadCertificate
   , createCertificates
     -- * Security checks
   , ClientKeys (..)
@@ -20,7 +19,7 @@ module Petrus.Motus.Transport.ZeroMQ.Curve
 
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
-import Control.Exception (Exception (..), SomeException, finally, throwIO, try)
+import Control.Exception (SomeException, finally, throwIO, try)
 import Control.Monad (forM, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -42,11 +41,6 @@ import System.FilePath ((</>))
 
 -- ---------------------------------------------------------------------------
 -- Certificate files
-
--- | The reference's @OSError@ (a certificate file that does not exist).
-newtype OSError = OSError Text deriving stock (Eq, Show)
-
-instance Exception OSError where displayException (OSError m) = T.unpack m
 
 -- | @zmq.auth.load_certificate(path)@: the Z85 public key and, when
 -- present, the Z85 secret key.

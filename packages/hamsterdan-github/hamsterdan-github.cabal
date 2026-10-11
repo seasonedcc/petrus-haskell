@@ -44,7 +44,6 @@ library
                     Hamsterdan.GitHub.Models
                     Hamsterdan.GitHub.Python
                     Hamsterdan.GitHub.Routing
-                    Hamsterdan.GitHub.Sqlite
                     Hamsterdan.GitHub.Transport
                     Hamsterdan.GitHub.Url
                     Hamsterdan.GitHub.Webhooks

@@ -52,9 +52,9 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Agents.Pi (PiNativeRunner, PiRuntime, PiWorkspaceProvider, defaultPiRunnerOptions, newPiNativeRunner, piAgentRunner, unavailablePiRunner)
 import Hamsterdan.Agents.Protocol (AgentRunner (..), CodingRequest (..), Invocation (..))
-import Hamsterdan.GitHub.Python (isAscii, isPrintable, pyIntBase, utf8Length)
-import Hamsterdan.GitHub.Sqlite (Connection, SQLData (..))
-import Hamsterdan.GitHub.Sqlite qualified as Sql
+import Hamsterdan.PyText (isAscii, isPrintable, pyIntBase, utf8Length)
+import Hamsterdan.Sqlite (Connection, SQLData (..))
+import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Binding (InstanceBinding (..), readInstanceBinding)
 import Petrus.Agenticus.Catalog.Descriptor
   ( CapabilityDescriptor (..)
@@ -485,28 +485,47 @@ historyPaths histories = do
       if isDirectory then map (directory </>) . sort <$> listDirectory directory else pure []
 
 -- | Python's @json.loads@ result, a @Mapping@ check, and @decode_record@.
-decodeLine :: Text -> Either () Record
+--
+-- The line is the UTF-8 encoding of the reference's @str@ line, which is
+-- exactly what 'parseJson' reads.
+decodeLine :: BS.ByteString -> Either () Record
 decodeLine line = do
-  value <- either (const (Left ())) Right (parseJson pythonLoads (TE.encodeUtf8 line))
+  value <- either (const (Left ())) Right (parseJson pythonLoads line)
   case value of
     Object _ -> either (const (Left ())) Right (decodeRecord value)
     _ -> Left ()
 
--- | @str.splitlines()@.
-splitLines :: Text -> [Text]
-splitLines text
-  | T.null text = []
-  | otherwise = go text
+-- | @str.splitlines()@ over the UTF-8 encoding of a valid @str@: the
+-- same boundaries (@\\n@, @\\r@, @\\r\\n@, @\\v@, @\\f@, @\\x1c@ to
+-- @\\x1e@, U+0085, U+2028 and U+2029), found byte-wise. In valid UTF-8,
+-- @C2 85@ and @E2 80 A8@/@E2 80 A9@ only ever encode those three code
+-- points, and the single-byte boundaries never occur inside a multi-byte
+-- sequence, so each line is the encoding of the reference's line.
+splitLinesUtf8 :: BS.ByteString -> [BS.ByteString]
+splitLinesUtf8 bytes
+  | BS.null bytes = []
+  | otherwise = go bytes
   where
     go s
-      | T.null s = []
-      | otherwise =
-          let (line, rest) = T.break boundary s
-           in case T.uncons rest of
-                Nothing -> [line]
-                Just ('\r', more) | Just ('\n', after) <- T.uncons more -> line : go after
-                Just (_, after) -> line : go after
-    boundary c = c `elem` ("\n\r\v\f\x1c\x1d\x1e\x85\x2028\x2029" :: String)
+      | BS.null s = []
+      | otherwise = case boundary s 0 of
+          Nothing -> [s]
+          Just (index, width) -> BS.take index s : go (BS.drop (index + width) s)
+    boundary s from = case BS.findIndex candidate (BS.drop from s) of
+      Nothing -> Nothing
+      Just offset ->
+        let index = from + offset
+            at k = if k < BS.length s then Just (BS.index s k) else Nothing
+         in case BS.index s index of
+              0x0d | at (index + 1) == Just 0x0a -> Just (index, 2)
+              0xc2
+                | at (index + 1) == Just 0x85 -> Just (index, 2)
+                | otherwise -> boundary s (index + 1)
+              0xe2
+                | at (index + 1) == Just 0x80, at (index + 2) `elem` [Just 0xa8, Just 0xa9] -> Just (index, 3)
+                | otherwise -> boundary s (index + 1)
+              _ -> Just (index, 1)
+    candidate w = (w >= 0x0a && w <= 0x0d) || (w >= 0x1c && w <= 0x1e) || w == 0xc2 || w == 0xe2
 
 -- | @value.get(name)@ on a dict.
 getKey :: Text -> Json -> Maybe Json
@@ -527,10 +546,10 @@ terminalOperations histories = do
       Right _ -> pure ()
       Left _ -> malformed
     contents <- try @IOError (BS.readFile path)
-    text <- case contents of
-      Right bytes | Right decoded <- TE.decodeUtf8' bytes -> pure decoded
+    bytes <- case contents of
+      Right bytes | Right _ <- TE.decodeUtf8' bytes -> pure bytes
       _ -> malformed
-    (requests, terminal) <- scan path (splitLines text) Map.empty Map.empty
+    (requests, terminal) <- scan path (splitLinesUtf8 bytes) Map.empty Map.empty
     fmap Set.fromList . fmap concat . forM (Map.toAscList (Map.intersectionWith (,) requests terminal)) $
       \(_, ((transition, operation), (terminalTransition, variant, failed))) -> do
         when (terminalTransition /= transition) $

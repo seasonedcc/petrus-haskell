@@ -23,6 +23,13 @@ Expected outcomes use the error categories of [fabric.md §12](fabric.md):
 invalid, conflict, denied, not-found, schema-refused, and storage. A check that
 names a category does not require Python's message text.
 
+A check cites every section it verifies, so each normative section of
+fabric.md (§3 to §13) is cited by at least one check. §1, §2, §14 and §15 set
+out scope, terms, non-contract details and worked examples. The §13
+versioning rules are checked by F-019 and F-020 (envelope version other than
+1 refused), F-035 (schema version 999 refused) and F-037 (schema version 1
+recorded), F-028 and F-029 (the `fabric:` prefix) and F-095 (the `FabricEnvelope` color).
+
 ## A Text and JSON values
 
 - **F-001** `unit` §3.1. A non-string text field is refused (invalid).
@@ -52,7 +59,7 @@ names a category does not require Python's message text.
 
 ## B Canonical encoding vectors
 
-- **F-012** `unit` §3.3–3.4. The value
+- **F-012** `unit` §3.3, §3.4. The value
 
   ```text
   {"b":1, "a":[1.0, 2, 1e16, 1.5e-7, 0.0001, 1e-5, -0.0, 123456789012345678901234567890, true, null],
@@ -112,8 +119,8 @@ names a category does not require Python's message text.
   `version` = integer 1. An absent reply route is the explicit
   `"reply_route":null`. *(test_fabric::test_envelope_is_exact…)*
 - **F-018** `unit` §4.2. `decode(encode(e)) == e`. *(test_fabric::test_envelope_is_exact…)*
-- **F-019** `unit` §4.2. Decoding refuses `version: 2`. *(test_fabric::test_envelope_is_exact…)*
-- **F-020** `unit` §4.2. Decoding refuses `version: 1.0` and `version: true`.
+- **F-019** `unit` §4.2, §13. Decoding refuses `version: 2`. *(test_fabric::test_envelope_is_exact…)*
+- **F-020** `unit` §4.2, §13. Decoding refuses `version: 1.0` and `version: true`.
   *(derived)*
 - **F-021** `unit` §4.2. Decoding refuses a missing member (for example
   `source`) and identifies the missing name. *(test_fabric::test_envelope_is_exact…)*
@@ -128,7 +135,7 @@ names a category does not require Python's message text.
   payload does not, is admitted. *(test_fabric::test_envelope_is_exact…; boundary derived)*
 - **F-025** `unit` §4.2.1. Escapes count by their encoded length:
   `{"x":"\u0001"}` costs 14 bytes. *(derived)*
-- **F-026** `unit` §4.2.2. This envelope:
+- **F-026** `unit` §4.2.2, §3.4. This envelope:
 
   ```text
   Envelope(delivery_id="d-1", sender="sender-a", recipient="recipient",
@@ -146,11 +153,11 @@ names a category does not require Python's message text.
 
   and digest `4d806f6288ac30a5e88d54e121ccef1f6797a742a0d49cec401ce7578185e6ba`.
   *(derived)*
-- **F-027** `unit` §4.2.2. A digest is 64 lowercase hex characters.
+- **F-027** `unit` §4.2.2, §3.4. A digest is 64 lowercase hex characters.
   *(test_fabric::test_envelope_is_exact…)*
-- **F-028** `unit` §4.2.3. Sender `sender-a` with delivery `delivery-1` has
+- **F-028** `unit` §4.2.3, §13. Sender `sender-a` with delivery `delivery-1` has
   ingress identity `fabric:8:sender-a:delivery-1`. *(test_fabric::test_envelope_is_exact…)*
-- **F-029** `unit` §4.2.3. Sender `é😀:z` with delivery `x:y` has ingress
+- **F-029** `unit` §4.2.3, §13. Sender `é😀:z` with delivery `x:y` has ingress
   identity `fabric:4:é😀:z:x:y`. The length counts code points, not bytes.
   *(derived)*
 - **F-030** `unit` §4.3. Endpoint JSON is exactly
@@ -175,12 +182,12 @@ names a category does not require Python's message text.
 - **F-034** `db` §6.3. Provisioning is refused (schema-refused) when the schema
   holds a pre-existing `impetus_fabric.processes (unknown_shape text)` and no
   `schema_metadata`. *(test_fabric::test_schema_provisioning_refuses_unknown_or_mismatched_versions)*
-- **F-035** `db` §6.3. Provisioning is refused (schema-refused) when
+- **F-035** `db` §6.3, §13. Provisioning is refused (schema-refused) when
   `schema_metadata('fabric').version = 999`, and the error reports 999.
   *(test_fabric::test_schema_provisioning_refuses_unknown_or_mismatched_versions)*
 - **F-036** `db` §6.3. A schema containing only unrelated tables is
   provisioned normally. *(derived)*
-- **F-037** `db` §6.2. `schema_metadata` contains exactly `('fabric', 1)`.
+- **F-037** `db` §6.2, §13. `schema_metadata` contains exactly `('fabric', 1)`.
   *(derived)*
 - **F-038** `interop` §6. A schema provisioned by Python is accepted by
   Haskell's provisioning as a no-op, and the reverse. Both leave identical
@@ -256,7 +263,7 @@ names a category does not require Python's message text.
   ("not exposed and granted"), and no row is written. *(test_fabric::test_discovery_and_send_are_deny_by_default…)*
 - **F-061** `db` §8.8. Submitting to an unregistered recipient is denied, not
   storage. *(derived)*
-- **F-062** `db` §8.8, §6.2. A fresh submit returns
+- **F-062** `db` §8.8, §6.2, §4.4. A fresh submit returns
   `Submission(sender, delivery_id, "pending", false, null, null)`. The row
   has:
   - `recipient`, `source`, and `correlation` copied from the envelope;
@@ -266,13 +273,13 @@ names a category does not require Python's message text.
   - a non-null `submitted_at`.
 
   *(test_fabric::test_discovery_and_send_are_deny_by_default…; row derived)*
-- **F-063** `db` §6.4. A fresh submit produces exactly one notification on
+- **F-063** `db` §6.4, §10. A fresh submit produces exactly one notification on
   `impetus_fabric_delivery` whose payload is the recipient id, delivered at
   commit. *(derived)*
-- **F-064** `db` §5.2. An exact retransmission returns `duplicate = true` and
+- **F-064** `db` §5.2, §4.4, §10. An exact retransmission returns `duplicate = true` and
   `state = "pending"`, leaves the row unchanged, and sends no notification.
   *(test_fabric::test_exact_retransmission_precedes_current_grant_and_changed_content_conflicts)*
-- **F-065** `db` §5.2. An exact retransmission succeeds as a duplicate after
+- **F-065** `db` §5.2, §10. An exact retransmission succeeds as a duplicate after
   the recipient revoked the grant. *(test_fabric::test_exact_retransmission_precedes_current_grant…)*
 - **F-066** `db` §5.2. A changed payload under the same
   `(sender, delivery_id)` is a conflict, and the row is unchanged.
@@ -281,12 +288,12 @@ names a category does not require Python's message text.
   `(sender, delivery_id)` is a conflict. *(derived)*
 - **F-068** `db` §5.2. A changed correlation or reply route under the same
   `(sender, delivery_id)` is a conflict. *(derived)*
-- **F-069** `db` §8.6, §8.8. After revocation, a **new** delivery id is denied.
+- **F-069** `db` §8.6, §8.8, §10. After revocation, a **new** delivery id is denied.
   *(test_fabric::test_exact_retransmission_precedes_current_grant…)*
 - **F-070** `db` §5.1. The same `delivery_id` from two different senders gives
   two rows, both pending, with ingress identities `fabric:8:sender-a:same` and
   `fabric:8:sender-b:same`. *(test_fabric::test_same_delivery_id_from_distinct_senders_has_distinct_ingress_identity)*
-- **F-071** `db` §5.2. A duplicate of an accepted row reports
+- **F-071** `db` §5.2, §4.4. A duplicate of an accepted row reports
   `state = "accepted"` with the stored occurrence and `accepted_at`.
   *(test_fabric::test_pruning_removes_envelope_but_preserves_receipt_dedup_and_conflict; demo "duplicate: accepted/true")*
 - **F-072** `db` §8.1. On a non-autocommit connection, `submit` joins the
@@ -296,7 +303,7 @@ names a category does not require Python's message text.
   - the notification is sent only on commit.
 
   *(derived; mirrors test_fabric::test_fabric_operations_join_a_caller_transaction_without_committing)*
-- **F-073** `db` §8.8. Two concurrent identical submits on two connections
+- **F-073** `db` §8.8, §10. Two concurrent identical submits on two connections
   yield one row: one fresh result and one duplicate. *(derived)*
 - **F-074** `db` §8.8. Two concurrent submits with different content for one
   `(sender, delivery_id)` yield one row and one conflict. *(derived)*
@@ -311,7 +318,7 @@ names a category does not require Python's message text.
 
 - **F-076** `unit/db` §8.9. `pending` refuses `limit` of 0, −1, and boolean
   `true` (invalid). *(derived)*
-- **F-077** `db` §8.9. `pending` returns only this recipient's unaccepted
+- **F-077** `db` §8.9, §10. `pending` returns only this recipient's unaccepted
   deliveries, ordered by `(submitted_at, sender, delivery_id)` and capped at
   `limit`. *(derived)*
 - **F-078** `db` §3.5. A payload read back through `pending` follows the
@@ -329,16 +336,16 @@ names a category does not require Python's message text.
   *(derived)*
 - **F-082** `db` §8.10. Acknowledging a delivery addressed to another process
   is not-found. *(derived)*
-- **F-083** `db` §8.10. A first acknowledgement with occurrence 4 sets
+- **F-083** `db` §8.10, §4.5, §5.3. A first acknowledgement with occurrence 4 sets
   `accepted_occurrence = 4` and `accepted_at`. It returns a Receipt with
   `state = "accepted"`, the stored digest, and `payload_retained = true`.
   *(test_fabric::test_acknowledgement_occurrence_conflicts)*
-- **F-084** `db` §8.10. Re-acknowledging with occurrence 4 succeeds with the
+- **F-084** `db` §8.10, §5.3. Re-acknowledging with occurrence 4 succeeds with the
   same `accepted_at`. *(test_fabric::test_acknowledgement_occurrence_conflicts)*
-- **F-085** `db` §8.10. Acknowledging with occurrence 5 after 4 is a conflict
+- **F-085** `db` §8.10, §5.3. Acknowledging with occurrence 5 after 4 is a conflict
   reporting 4, and the row is unchanged.
   *(test_fabric::test_acknowledgement_occurrence_conflicts)*
-- **F-086** `db` §8.10. Acknowledging a pruned delivery with its own
+- **F-086** `db` §8.10, §4.5. Acknowledging a pruned delivery with its own
   occurrence succeeds with `payload_retained = false`. *(derived)*
 - **F-087** `db` §8.1. On a non-autocommit connection, `acknowledge` joins the
   caller's transaction, and a rollback leaves the delivery pending.
@@ -346,13 +353,13 @@ names a category does not require Python's message text.
 
 ## J Receipt
 
-- **F-088** `db` §8.11. A sender receipt for a pending delivery has
+- **F-088** `db` §8.11, §4.5, §10. A sender receipt for a pending delivery has
   `state = "pending"`, null occurrence and `accepted_at`, and
   `payload_retained = true`. *(derived)*
 - **F-089** `db` §8.11. A receipt for an unknown delivery id is absent. A
   recipient asking about an inbound delivery id also gets absent, because
   receipts are sender-scoped. *(derived)*
-- **F-090** `db` §8.11. After acknowledgement, the receipt shows `"accepted"`
+- **F-090** `db` §8.11, §4.5. After acknowledgement, the receipt shows `"accepted"`
   with the occurrence. *(test_fabric::test_pruning_removes_envelope…)*
 
 ## K Prune
@@ -362,7 +369,7 @@ names a category does not require Python's message text.
 - **F-092** `db` §8.12. `prune_accepted(now + 1s)` nulls the envelope of the
   one accepted delivery and returns 1. Pending deliveries are untouched: with
   only pending deliveries, it returns 0. *(test_fabric::test_pruning_removes_envelope…; pending derived)*
-- **F-093** `db` §8.12, §5.2. After pruning:
+- **F-093** `db` §8.12, §5.2, §4.5, §10. After pruning:
   - the row exists, with the same digest and NULL `envelope`;
   - the receipt equals
     `Receipt(sender, id, recipient, source, digest, "accepted", 9, accepted_at, false)`;
@@ -376,7 +383,7 @@ names a category does not require Python's message text.
 
 ## L Ingress bridge
 
-- **F-095** `unit/db` §9.1–9.2. `drain` calls the door with
+- **F-095** `unit/db` §9.1–9.2, §13. `drain` calls the door with
   `(envelope.source, [Token("FabricEnvelope", <8-member envelope JSON>)], identity = ingress_identity)`
   and no lifecycle scope. The fixture expects
   `("commands/start", "FabricEnvelope", "fabric:8:sender-a:delivery-1")`.
@@ -384,16 +391,16 @@ names a category does not require Python's message text.
 - **F-096** `db` §9.2. `drain` acknowledges each delivery with the door's
   occurrence, returns the receipts, and afterwards `pending` is empty.
   *(test_fabric::test_inbox_delivery_acceptance…)*
-- **F-097** `db` §9.2. In the crash window (door delivered with occurrence 7,
+- **F-097** `db` §9.2, §5.3, §10. In the crash window (door delivered with occurrence 7,
   no acknowledgement), the next `drain` gets `PriorAcknowledgement(identity, 7)`
   and acknowledges with 7 (`state = "accepted"`, `occurrence = 7`).
   *(test_fabric::test_inbox_delivery_acceptance…)*
-- **F-098** `db` §9.3. When the door raises, `drain` raises, that delivery and
+- **F-098** `db` §9.3, §10. When the door raises, `drain` raises, that delivery and
   every later one remain pending, and earlier acknowledgements in the batch
   persist. *(derived)*
 - **F-099** `db` §9.2. When the door returns a value of any other type,
   `drain` fails, and nothing is acknowledged for that delivery. *(derived)*
-- **F-100** `engine` §9.1. With a real recipient Engine, the delivered token
+- **F-100** `engine` §9.1, §5.3, §10. With a real recipient Engine, the delivered token
   is recorded as `ExternalEventDelivered` with `identity` = the ingress
   identity. A redelivery appends nothing. *(demo; derived)*
 

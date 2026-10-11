@@ -53,9 +53,6 @@ scenarioId = "timer-crash-recovery-world-v3"
 maturationInstant :: Integer
 maturationInstant = 5
 
-strs :: [Text] -> Json
-strs = Array . map String
-
 profileIdentity :: ProfileIdentity
 profileIdentity =
   Identity
@@ -277,7 +274,7 @@ timerAuthorityChecker =
   Checker
     { identity = checkerIdentity
     , request = ObservationRequest {name = "engine.timer-authority", payload = Object []}
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         let deadline = maybe 0 id (lookupInt "authored_maturation_instant" o.value)
             current = maybe 0 id (lookupInt "current_instant" o.value)
             records = case member "record_types" o.value of

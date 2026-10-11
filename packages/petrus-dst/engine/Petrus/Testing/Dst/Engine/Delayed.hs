@@ -38,9 +38,6 @@ scenarioId = "delayed-terminal-recovery-world-v3"
 terminalInstant :: Integer
 terminalInstant = 5
 
-strs :: [Text] -> Json
-strs = Array . map String
-
 profileIdentity :: ProfileIdentity
 profileIdentity =
   Identity
@@ -209,7 +206,7 @@ delayedAuthorityChecker =
   Checker
     { identity = checkerIdentity
     , request = ObservationRequest {name = "engine.delayed-authority", payload = Object []}
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         let records = case member "record_types" o.value of
               Array xs -> xs
               _ -> []

@@ -26,7 +26,7 @@ that every in-scope upstream test is accounted for, run:
 The script covers this package, `petrus-motus-zeromq`, the History stores,
 and the Engines.
 
-`cabal test petrus-motus` runs 138 examples, with 0 failures and 0 pending.
+`cabal test petrus-motus` runs 140 examples, with 0 failures and 0 pending.
 The interop examples (8 Local Dispatch, 9 Worker CLI) are marked pending
 when `upstream/petrus/.venv` is not synced.
 
@@ -48,6 +48,7 @@ when `upstream/petrus/.venv` is not synced.
 | test_async_worker.py `test_async_decorator_rejects_sync_and_untyped_signatures`, `test_cli_rejects_wrong_mode_registry_before_provider_factory` | none | not applicable (see below) |
 | test_worker_topology.py, 36 tests (40 cases) | over Absurd custody, as upstream runs it: `packages/petrus-engine-absurd/test/Petrus/Engine/AbsurdSpec.hs` (27 cases) and `packages/petrus-engine-absurd/test/Petrus/Engine/Absurd/WorkerTopologySpec.hs` (13 cases); over Local custody: `packages/petrus-engine/test/Petrus/Engine/WorkerTopologySpec.hs` (4), `WorkerSpec` (1), `WorkerCliSpec` (1) | all ported; every Worker-backed case runs against the reference's Worker process and a Haskell one (see below) |
 | test_package_boundaries.py `test_worker_package_public_contract_and_module_cli` | `Worker CLI` / `test_package_boundaries.py` / worker package public contract and module cli | ported |
+| test_package_boundaries.py `test_activity_worker_and_runtime_service_do_not_own_retained_territory_lifecycle`, the Worker half | `test_package_boundaries.py (Worker row)` / activity worker does not own retained territory lifecycle (`BoundarySpec`) | ported over Cabal metadata and module imports: `petrus-motus` depends on no Agenticus package, and no Worker module imports `Petrus.Agenticus.Attachment.Retention`. The Codex adapter and runtime service half belongs to `petrus-agenticus-runtime`. |
 
 There is one test that is not applicable:
 
@@ -99,7 +100,10 @@ reference.
 
 1. **Reference to Haskell.** The reference publishes 5 occurrences, a
    Haskell worker claims and completes them, and the reference collects the
-   exact outcomes.
+   exact outcomes. A sixth occurrence's heartbeat is refused (NaN details)
+   and the Worker fails it with that exception: the reference collects the
+   same `type(error).__name__` and `repr(error)` it records for its own
+   Worker (`Petrus.Motus.PythonException`).
 2. **Haskell to reference.** Haskell publishes, a reference worker claims
    and completes (its attempt views are checked field by field), and Haskell
    collects.

@@ -12,7 +12,7 @@
 -- missing reference fails, never skips); pending without @PETRUS_TEST_POSTGRES@.
 module Petrus.Motus.Dispatch.Absurd.InteropSpec (spec) where
 
-import Control.Exception (finally)
+import Control.Exception (finally, toException)
 import Control.Monad (forM_, void)
 import Data.ByteString.Char8 qualified as BC
 import Data.Text (Text)
@@ -22,7 +22,7 @@ import GHC.Clock (getMonotonicTime)
 import Petrus.Activity hiding (ActivityExecutionContext (..))
 import Prelude hiding (fail)
 import Petrus.Json (Json (..), defaultDumps, dumps, lookupMember)
-import Petrus.Motus.Dispatch (ActivityOutcome (..), AttemptFailure (..), CancellationDisposition (..), cancellationInstruction)
+import Petrus.Motus.Dispatch (ActivityOutcome (..), AttemptFailure (..), CancellationDisposition (..), DispatchError (..), cancellationInstruction)
 import Petrus.Motus.Dispatch qualified as Port
 import Petrus.Motus.Dispatch.Absurd
 import Petrus.Motus.Dispatch.Absurd.Driver
@@ -264,6 +264,19 @@ spec = describe "interop with the pinned reference" $ do
           void (py ["work", dsnArg target, T.unpack queue, "fail-exception:boom requested"])
           waitForResults other 5 `shouldReturn` True
           collect other `shouldReturn` [(1, Failed (classified "boom requested" "ValueError" Null True Nothing))]
+          -- The same exception from a Haskell Activity (a DispatchError is the
+          -- reference's ValueError) writes the same failure_reason row.
+          haskellExceptionAuthority <- freshName "hs-exc-hs-"
+          third <- absurdDispatch authority haskellExceptionAuthority defaultAbsurdDispatchOptions {defaultQueue = queue}
+          publish third authority 1 once
+          withWorker target queue $ \w -> do
+            attempt <- claimWithin w 10
+            fail w attempt (FailureException (toException (DispatchError "boom requested")))
+          waitForResults third 5 `shouldReturn` True
+          collect third `shouldReturn` [(1, Failed (classified "boom requested" "ValueError" Null True Nothing))]
+          haskellReasons <- reasons haskellExceptionAuthority
+          referenceReasons <- reasons exceptionAuthority
+          haskellReasons `shouldBe` referenceReasons
 
     it "a retry crosses languages: the next attempt sees the other side's latest details" $ \target ->
       withAuthority target $ \authority -> do

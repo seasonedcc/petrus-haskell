@@ -19,7 +19,7 @@ The Haskell suite replays each row and compares the results byte for byte.
 | `github_app/webhooks.py`: `WebhookCustody` (envelope checks, `verify` before parse, `_parse` projection, dedupe, the retry schedule and parking, the `next_attempt_at` migration, `pending`/`eligible`/`acknowledge`/`retry`/`status`/`counts`/`failures`/`requeue`), `admit_conversation` | `Hamsterdan.GitHub.Webhooks` | `test/corpus/webhooks.jsonl`: 1000 `receive` sequences (outcomes and final SQLite rows, byte for byte) and 200 inbox lifecycles; `AppFoundationSpec` "webhooks", "conversation admission" |
 | githubkit `webhooks.sign` / `verify` | `sign`, `verify`, `verifier` / `verifyWith` | the webhook corpus (every receive verifies), `AppFoundationSpec` |
 | `github_app/routing.py`: `InstallationRegistry` (lifecycle events, reconciliation, fenced removal) | `Hamsterdan.GitHub.Routing` | `test/corpus/webhooks.jsonl` (300 routing sequences, outcomes and rows); `AppFoundationSpec` "routing" |
-| CPython `sqlite3` as the stores use it (busy timeout, scripts, `with connection:` transactions) | `Hamsterdan.GitHub.Sqlite` | the inbox and routing rows in the webhook corpus |
+| CPython `sqlite3` as the stores use it (busy timeout, scripts, `with connection:` transactions) | `Hamsterdan.Sqlite` (in hamsterdan-contracts, shared with the host and agents) | the inbox and routing rows in the webhook corpus |
 | `github_app/auth.py`: `GitHubAppClients` (`app`, `installation`, `inventory_client`), `registration_inventory`, `_validate_permissions` (the startup permission/event/installation/repository check) | `Hamsterdan.GitHub.Auth`, `Hamsterdan.GitHub.Client` | `test/corpus/http.jsonl` (rows that run the inventory check); `GitHubSpec` "GitHub App client stack" |
 | githubkit `AppAuthStrategy` / PyJWT: the RS256 App JWT, installation-token minting and expiry, `MemCacheStrategy`, route rules (App JWT vs. token vs. bypass) | `Hamsterdan.GitHub.Jwt`, `Hamsterdan.GitHub.Client` | `test/corpus/http.jsonl` (every `Authorization` header, including the JWT bytes, and every token request body) |
 | githubkit / httpx request building, header order, response decoding (`Content-Encoding`, charset), error families, `Link` handling | `Hamsterdan.GitHub.Http`, `Hamsterdan.GitHub.Url`, `Hamsterdan.GitHub.Client` | `test/corpus/http.jsonl` (1400 rows: request line, ordered headers and body bytes of every exchange; metadata-hook observations; each step's outcome) |
@@ -101,8 +101,10 @@ They make the same assertions. Two tests change how the fake is wired:
   - `tests/unit/readiness/net_v5/test_inline_recovery.py` with
     `hamsterdan-readiness`;
   - `tests/unit/test_operator.py` with `hamsterdan-operator`.
-- **`tests/test_architecture.py`** enforces Python import rules. Here, package
-  boundaries and module exports enforce them.
+- **`tests/test_architecture.py`** enforces Python import rules. Here
+  `scripts/lint-hamsterdan-architecture` enforces the ones that carry over on
+  the Haskell import graph (see "Upstream tests not ported" in the root
+  [PARITY.md](../../PARITY.md)).
 - **End-to-end runs against a real GitHub App** (docs/hamsterdan.md §5) are
   not part of this package. No test makes a network call.
 

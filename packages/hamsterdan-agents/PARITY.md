@@ -47,9 +47,9 @@ workspace receiver, and selects the Pi runner after an exact READY probe.
 | `tests/unit/agents/test_protocol.py` | 10 | 20 | `ProtocolSpec` | 20 |
 | `tests/unit/host/test_agenticus.py` | 26 | 33 | `AgenticusSpec` | 33 |
 | `tests/unit/host/test_pi_a2.py` | 15 | 24 | `PiA2Spec` | 24 |
-| `tests/integration/host/test_pi_workspace.py` | 12 | 20 | `PiWorkspaceSpec` | 20 |
+| `tests/integration/host/test_pi_workspace.py` | 12 | 20 | `PiWorkspaceSpec` | 20 (+2 beyond upstream) |
 | `tests/integration/host/test_pi_a2_factory.py` | 8 | 8 | `PiA2FactorySpec` | 8 |
-| **Total** | **99** | **151** | | **147** (+4) |
+| **Total** | **99** | **151** | | **147** (+4 compile-time, +2 beyond upstream) |
 
 - **Compile-time cases.** Four `test_pi.py` cases pass a `bool` or a `str`
   as the runner's timeout or poll interval. They do not compile in Haskell,
@@ -58,6 +58,14 @@ workspace receiver, and selects the Pi runner after an exact READY probe.
   runner behind the host's V5 mutation gate, which is a hamsterdan-host
   module. They run in hamsterdan-host's `PiActivitySpec`, over this
   package's `Hamsterdan.Agents.Pi.Doubles`.
+- **Undecodable Git output.** Two `PiWorkspaceSpec` examples go beyond
+  upstream. A Latin-1 byte in the review diff is sanitized to
+  `private Pi workspace preparation failed`, as `open`'s `except Exception`
+  does. A Latin-1 byte in the canonical patch raises CPython's
+  `UnicodeDecodeError` from `reconcile` with the pinned interpreter's
+  message, byte for byte (checked against the reference on 2026-10-11:
+  `'utf-8' codec can't decode byte 0xe9 in position 130: invalid
+  continuation byte`), so the host records `error_class=UnicodeDecodeError`.
 - **The crash case.** `test_pi_a2_factory.py`'s crash case runs the
   reference's crash script under the pinned Python, with Hamsterdan's
   `PersistentKeyOperations` and Petrus's scripted runtime. It then
@@ -69,6 +77,7 @@ workspace receiver, and selects the Pi runner after an exact READY probe.
 | --- | ---: | --- |
 | `InteropSpec`: sealed keys | 1 | Each side seals connection state, and the other opens it, both ways (`differential/agents_reference.py`). The key file is 32 bytes with mode `0600` on both sides. Opening under the wrong context, and opening tampered state, are refused the same way on both sides (`KeyOperationError`). |
 | `InteropSpec`: route database | 1 | Two phases of claims and settlements on one `agent-routes.sqlite3`, in all four pairings (Python/Python, Haskell/Haskell, Python/Haskell, Haskell/Python). Every pairing must leave the same rows and schema. Settled work must be refused with `resolved agent work cannot be redispatched`, and unsettled work must resume. |
+| `InteropSpec`: route-repair Histories | 1 | `_terminal_operations` (the History scan of agent-route repair) on the same bytes on both sides, 17 Histories: two records joined by each of `str.splitlines()`'s 11 line boundaries (`\n`, `\r\n`, `\r`, `\v`, `\f`, `\x1c`–`\x1e`, U+0085, U+2028, U+2029), non-boundary multi-byte text, no final boundary, a U+2028 or U+0085 inside a record, an empty line and invalid UTF-8. Both sides must report the same operations or the same refusal. The port finds the boundaries in the UTF-8 bytes rather than decoding each line to text (the scan was 10 times slower that way; see hamsterdan-host's bench/RESULTS.md). |
 | hamsterdan-host `InteropSpec`: agent state | 1 | A full journey through `serve`'s composed agent on both hosts, over Petrus's scripted Pi runtime. Phase one reviews the first head at epoch 1; phase two reviews a new head at epoch 2. Phase one runs on one host and phase two on the other, in all four pairings. Every file under the state root must match the Python-only run: `agent-routes.sqlite3`, `pi-a2/installation`, and the runtime host's `operations.sqlite3` and `bodies.sqlite3`, alongside the host's own files. The provider calls, the reviews and the dashboard comment must match too. |
 
 ## Benchmarks
@@ -94,12 +103,11 @@ of seven interleaved repetitions on 2026-10-11 (06:14–06:26, load
 
 ## Divergences
 
-[DIVERGENCES.md](DIVERGENCES.md) lists them. Five are observable, each only
+[DIVERGENCES.md](DIVERGENCES.md) lists them. Four are observable, each only
 in which failure is raised:
 
 - lone surrogates in a Pi result;
 - a History file that cannot be stat'ed during route repair;
-- undecodable Git output;
 - the tar reader's tolerance of malformed headers;
 - the one-line uncaught traceback.
 

@@ -29,8 +29,8 @@ import Data.Text qualified as T
 import Hamsterdan.GitHub.Config (AccountConfig (..))
 import Hamsterdan.GitHub.Models (InstallationInventory (..))
 import Hamsterdan.GitHub.Python (PythonFault (..), isAscii, isPrintable, strip)
-import Hamsterdan.GitHub.Sqlite (Connection, SQLData (..))
-import Hamsterdan.GitHub.Sqlite qualified as Db
+import Hamsterdan.Sqlite (Connection, SQLData (..))
+import Hamsterdan.Sqlite qualified as Db
 import Petrus.Json (Json (..), jsonTypeName)
 
 data Route = Route

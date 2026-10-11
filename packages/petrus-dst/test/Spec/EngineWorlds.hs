@@ -128,7 +128,7 @@ terminalRegistry dir = do
 generatedRuntimeRegistry :: Fresh
 generatedRuntimeRegistry dir = do
   p <- uncurry GeneratedRuntime.generatedRuntimeProfile (twoPaths dir)
-  checker <- GeneratedRuntime.newGeneratedRuntimeChecker
+  let checker = GeneratedRuntime.generatedRuntimeChecker
   pure (registryOf [SomeProfile p.profile] [checker])
 
 twoHistories :: (FilePath -> FilePath -> IO (Either DstFailure AnyArtifact)) -> FilePath -> IO (Either DstFailure AnyArtifact)
