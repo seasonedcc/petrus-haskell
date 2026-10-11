@@ -13,7 +13,7 @@ slower. Historical columns and tables (marked *before*) are left out.
 | --- | --- | ---: | ---: | ---: | --- |
 | `hamsterdan-contracts` | [RESULTS.md](../packages/hamsterdan-contracts/bench/RESULTS.md) | 7 | 1.50× | 3.30× |  |
 | `hamsterdan-github` | [RESULTS.md](../packages/hamsterdan-github/bench/RESULTS.md) | 8 | 1.08× | 92.0× |  |
-| `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | 5 | 0.81× | 20.0× | **below 1.0×**: fresh timer store open (no History) |
+| `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | 5 | 0.95× | 19.2× | **below 1.0×**: fresh timer store open (no History) |
 | `hamsterdan-readiness` | [RESULTS.md](../packages/hamsterdan-readiness/bench/RESULTS.md) | 13 | 3.70× | 11.0× |  |
 | `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | 3 | 1.70× | 22.8× |  |
 | `petrus-agenticus` | [RESULTS.md](../packages/petrus-agenticus/bench/RESULTS.md) | 5 | 1.23× | 5.50× |  |
@@ -25,7 +25,7 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-agenticus-core` | [results-thread.md](../packages/petrus-agenticus-core/bench/results-thread.md) | 5 | 1.80× | 1 870× |  |
 | `petrus-agenticus-runtime` | [RESULTS.md](../packages/petrus-agenticus-runtime/bench/RESULTS.md) | 2 | 1.86× | 2.60× |  |
 | `petrus-agenticus-runtime` | [results-hosts.md](../packages/petrus-agenticus-runtime/bench/results-hosts.md) | 10 | 1.20× | 3.50× |  |
-| `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | 7 | 0.84× | 5.00× | **below 1.0×**: pi-ledger-cycle |
+| `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | 7 | 1.08× | 5.00× |  |
 | `petrus-cel` | [RESULTS.md](../packages/petrus-cel/bench/RESULTS.md) | 7 | 14.0× | 73.0× |  |
 | `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | 10 | 2.80× | 6.00× |  |
 | `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | 11 | 1.00× | 2.90× |  |
@@ -37,7 +37,7 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | 15 | 0.98× | 7.97× | **below 1.0×**: sidecar/execute-round-trip |
 | `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | 8 | 0.86× | 9.89× | **below 1.0×**: `postgres.discover`; `postgres.submit` |
 | `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | 7 | 1.05× | 2.51× |  |
-| `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | 14 | 0.81× | 9 000× | **below 1.0×**: append-batches-of-8 (250 fsynced transactions); append-per-record (2 000 fsynced transactions); in-memory append, one record at a time |
+| `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | 14 | 1.04× | 9 000× |  |
 | `petrus-http-core` | [RESULTS.md](../packages/petrus-http-core/bench/RESULTS.md) | 6 | 1.59× | 18.7× |  |
 | `petrus-impetus` | [RESULTS.md](../packages/petrus-impetus/bench/RESULTS.md) | 10 | 1.60× | 97.0× |  |
 | `petrus-motus` | [RESULTS.md](../packages/petrus-motus/bench/RESULTS.md) | 14 | 1.02× | 78.0× |  |
@@ -45,12 +45,12 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-motus-zeromq` | [RESULTS.md](../packages/petrus-motus-zeromq/bench/RESULTS.md) | 8 | 1.06× | 1.67× |  |
 | `petrus-observation` | [RESULTS.md](../packages/petrus-observation/bench/RESULTS.md) | 21 | 3.10× | 23.0× |  |
 | `petrus-observation-http` | [RESULTS.md](../packages/petrus-observation-http/bench/RESULTS.md) | 11 | 1.61× | 5.07× |  |
-| `petrus-posix` | [RESULTS.md](../packages/petrus-posix/bench/RESULTS.md) | 7 | 0.93× | 2.29× | **below 1.0×**: `flock.open-tryLock-close`; `flock.tryLock-unlock` |
+| `petrus-posix` | [RESULTS.md](../packages/petrus-posix/bench/RESULTS.md) | 7 | 0.97× | 2.18× | **below 1.0×**: `flock.open-tryLock-close` |
 | `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | 8 | 1.01× | 14.4× |  |
 | `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | 11 | 0.97× | 14.9× | **below 1.0×**: `postgres.child-of` |
 | `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | 17 | 1.64× | 34.2× |  |
-| `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | 7 | 0.98× | 1.75× | **below 1.0×**: `fence.acquire-release` |
+| `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | 7 | 1.01× | 1.69× |  |
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | 2 | 2.50× | 8.00× |  |
 | `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | 16 | 0.87× | 4.50× | **below 1.0×**: open-file POST+GET, 16 clients |
 
-41 results files; 9 with a row below 1.0×.
+41 results files; 6 with a row below 1.0×.

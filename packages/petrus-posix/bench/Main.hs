@@ -3,7 +3,8 @@
 -- with @scripts/bench petrus-posix@.
 module Main (main) where
 
-import Control.Exception (finally)
+import Control.DeepSeq (force)
+import Control.Exception (evaluate, finally)
 import Data.ByteString qualified as BS
 import Petrus.Posix
 import System.Directory (createDirectory, createDirectoryLink, getTemporaryDirectory, removeDirectoryRecursive)
@@ -19,9 +20,12 @@ main = do
   createDirectory (dir </> "real" </> "a")
   BS.writeFile (dir </> "real" </> "file") "x"
   createDirectoryLink "real" (dir </> "link")
-  let lockPath = dir </> "bench.lock"
-      symlinked = dir </> "link" </> "a" </> ".." </> "file"
-      payload = BS.replicate 1024 120
+  -- Paths are built once and fully evaluated, as the Python twin binds them
+  -- once: a lazily built path could otherwise be rebuilt on every iteration.
+  [lockPath, otherLock, symlinked, state] <-
+    evaluate . force $
+      [dir </> "bench.lock", dir </> "other.lock", dir </> "link" </> "a" </> ".." </> "file", dir </> "state.json"]
+  let payload = BS.replicate 1024 120
   held <- openLockFile lockPath
   root <- openDirectoryAt Nothing dir
   flip finally (closeFd held >> closeFd root >> removeDirectoryRecursive dir) $
@@ -32,7 +36,7 @@ main = do
       [ bgroup
           "flock"
           [ bench "tryLock-unlock" (whnfIO (tryLock held Exclusive >> unlock held))
-          , bench "open-tryLock-close" (whnfIO (openLockFile (dir </> "other.lock") >>= \fd -> tryLock fd Exclusive >> closeFd fd))
+          , bench "open-tryLock-close" (whnfIO (openLockFile otherLock >>= \fd -> tryLock fd Exclusive >> closeFd fd))
           ]
       , bgroup
           "path"
@@ -45,7 +49,7 @@ main = do
           ]
       , bgroup
           "atomic"
-          [ bench "write-1KiB-fsync" (whnfIO (atomicWriteFile defaultAtomicWrite (dir </> "state.json") payload))
+          [ bench "write-1KiB-fsync" (whnfIO (atomicWriteFile defaultAtomicWrite state payload))
           ]
       , bgroup
           "resource"

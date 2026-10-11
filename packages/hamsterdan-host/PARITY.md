@@ -129,16 +129,17 @@ Every file under the state root is byte-compatible in both directions.
 
 ## Benchmarks
 
-[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time. Haskell is faster on
+[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time, five interleaved
+rounds against the twin protocol (median of batches). Haskell is faster on
 every row but the fresh timer-store open:
 
 | Row | Speedup |
 | --- | ---: |
-| webhook ingest | 2.7× |
-| reconciliation step | 6.0× |
-| gate classification | 20× |
-| timer rebuild | 1.61× |
-| fresh timer-store open | 0.81× (slower; SQLite file creation and schema) |
+| webhook ingest | 1.45× |
+| reconciliation step | 3.65× |
+| gate classification | 19× |
+| timer rebuild | 1.82× |
+| fresh timer-store open | 0.95× (slower; its SQLite work is level with Python's in a probe) |
 
 ## Divergences
 

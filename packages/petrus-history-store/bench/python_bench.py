@@ -55,9 +55,9 @@ def timed(name: str, action, repeats: int) -> None:
         samples.append(time.perf_counter() - start)
     median = statistics.median(samples)
     # The readable line goes to stderr; stdout carries ``name,nanoseconds``
-    # for scripts/bench-compare.
+    # for scripts/bench-compare, named like tasty-bench's rows (group.row).
     print(f"{name:28} {median * 1000:12.3f} ms   (size {size}, n={repeats})", file=sys.stderr, flush=True)
-    print(f"{name},{median * 1e9:.0f}", flush=True)
+    print(f"{name.replace('/', '.')},{median * 1e9:.0f}", flush=True)
 
 
 def main() -> None:

@@ -72,6 +72,7 @@ benchmark petrus-posix-bench
   ghc-options:      -threaded -O2 -rtsopts
   build-depends:    base
                   , bytestring
+                  , deepseq
                   , directory
                   , filepath
                   , petrus-posix

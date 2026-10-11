@@ -151,7 +151,20 @@ machine, the load and the date of the run they report.
 `scripts/bench-compare` serves the packages whose `bench/python_bench.py`
 names its rows like the Haskell benchmarks. It alternates the two sides for a
 number of repetitions, recording the load average, and tabulates each row's
-median and ratio. Benchmarks are noisy on a shared machine. Run them one
+median and ratio. `--python SCRIPT` picks another twin in the package's
+`bench/` directory (for example `python_pi.py`), `--upstream PROJECT` runs the
+twins in another pinned project's environment (`hamsterdan` for
+`hamsterdan-host`), `--pattern P` limits the Haskell side to the rows that
+tasty-bench's `-p P` selects, and `--stdev PERCENT` sets tasty-bench's target
+deviation:
+
+```sh
+scripts/bench-compare petrus-agenticus-runtime 5 --python python_pi.py --pattern '/pi-/' --stdev 3
+mkdir -p bench-results/tmp/htmp   # a private TMPDIR for its fixed scratch directory
+TMPDIR="$PWD/bench-results/tmp/htmp" scripts/bench-compare hamsterdan-host 5 --upstream hamsterdan
+```
+
+Benchmarks are noisy on a shared machine. Run them one
 package at a time, on an otherwise idle machine, and compare interleaved runs
 rather than runs taken minutes apart.
 

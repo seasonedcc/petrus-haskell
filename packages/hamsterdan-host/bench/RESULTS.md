@@ -33,6 +33,58 @@ that the state interop tests use (`differential/state_reference.py`, and
 
 <!-- parity: rows below 1.0× belong to "V5 timers" -->
 
+Five interleaved rounds on 2026-10-11, 02:10–02:20 local (UTC-3), at commit
+`3f31d2e`, load average 4.6–6.2, on the same machine as below:
+
+    mkdir -p bench-results/tmp/htmp
+    TMPDIR="$PWD/bench-results/tmp/htmp" scripts/bench-compare hamsterdan-host 5 --upstream hamsterdan
+
+- **Haskell:** the tasty-bench mean in wall-clock time, as below.
+- **Python:** `bench/python_bench.py` runs `bench.py`'s cases, timed by
+  `scripts/bench_timing.py`: the median of 10 batches of at least 0.2 s.
+  That is the twin protocol of the other packages. `bench.py`'s best of 5
+  repeats, used below, takes Python's luckiest run against Haskell's mean.
+- Each figure is the median of the five rounds. Rounds alternate which side
+  goes first.
+
+| Operation (one pass) | Haskell | Python | Python / Haskell | Lowest per round |
+| --- | ---: | ---: | ---: | ---: |
+| webhook ingest (100 deliveries) | 9.31 ms | 13.5 ms | 1.45× | 1.15× |
+| reconciliation step (one webhook to quiescence) | 55.4 ms | 202 ms | 3.65× | 3.41× |
+| gate classification (24 classifications) | 3.03 µs | 58.3 µs | 19.2× | 18.2× |
+| timer rebuild (333-fact History) | 4.90 ms | 8.92 ms | 1.82× | 1.38× |
+| fresh timer store open (no History) | 1.61 ms | 1.54 ms | 0.95× | 0.43× |
+
+Fresh open, round by round (Haskell / Python): 1.48 / 1.43, 3.08 / 1.32,
+2.44 / 1.56, 1.61 / 1.54 and 1.48 / 1.54 ms.
+
+**The fresh open is still slower than Python, at 0.95×.** What was
+measured:
+
+- **The SQLite work is level.** A probe ran the open's statements one by
+  one with direct-sqlite: connect, `busy_timeout`, WAL, `foreign_keys`, the
+  schema script, the meta row, the rebuild transaction, the three
+  validating queries, close and unlink. The same statements through
+  CPython's `sqlite3` alternated with it. Over three alternations of 200
+  opens each, Haskell's medians were 1.23–1.39 ms and Python's 1.32–1.44 ms.
+- **The store adds little to it.** `openTimerStore` and `close` timed
+  directly, outside tasty-bench, came to medians of 1.34–1.41 ms, with a
+  mean of 1.43 ms against a median of 1.35 ms over 300 opens.
+- **Neither SQLite build nor durability differs.** Both sides use SQLite's
+  defaults for the timer store (`synchronous` FULL, WAL, plain `fsync`).
+  The bundled 3.45.0 and the system SQLite performed alike in the probe.
+
+So the remaining gap lies between that floor and the benchmark's
+measurement. The Haskell benchmark runs with the webhook-ingest host open
+in the same process, and the row is a mean over a skewed, fsync-bound
+distribution. A switch that closed the ingest host first was tried, but
+the machine's load swamped the difference (1.52–3.06 ms either way), so it
+was not kept. The row stays slower until a quieter run settles it.
+
+### Earlier results (2026-10-10)
+
+<!-- bench: superseded -->
+
 The machine was an Apple M4 (10 cores), macOS 26.3.1, shared with other
 work. The load average was 4.0–4.3 during these runs (2026-10-10,
 22:54–22:55 local, UTC-3, commit `aaafd62`).

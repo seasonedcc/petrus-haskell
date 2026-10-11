@@ -46,7 +46,15 @@ main = do
           "connect"
           [ bench "local-dispatch-profile" (whnfIO (open localDispatchProfile database >>= close))
           ]
-      , bgroup
+      , -- Every iteration adds rows to one table, so the cost per commit grows
+        -- with the number of iterations run. The Python twin runs each row
+        -- for about 2 s (bench_timing.py). At the default --stdev 5 on a
+        -- noisy machine tasty-bench kept doubling the iterations for over a
+        -- minute and measured a table about 20 times larger (and twice as
+        -- slow per commit). A looser target lets these rows settle within
+        -- seconds, like the twin; a timeout did not work, since one slow
+        -- batch overran it and failed the row.
+        localOption (RelStDev 0.15) $ bgroup
           "tx"
           [ bench "immediate-insert-commit" $ whnfIO $ do
               position <- fresh

@@ -39,6 +39,7 @@ import argparse
 import csv
 import os
 import statistics
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -69,11 +70,13 @@ def haskell(package: str, repetition: int, pattern: Optional[str], stdev: str) -
     output = TMP / f"{package}.haskell.{repetition}.csv"
     if output.exists():
         output.unlink()
-    selection = f"-p '{pattern}' " if pattern else ""
-    options = f"{selection}--csv {output} --stdev {stdev} --timeout 300 --time-mode wall +RTS -M2G -RTS"
-    print(f"+ cabal bench {package} -j2 --benchmark-options '{options}'", file=sys.stderr, flush=True)
+    selection = ["-p", pattern] if pattern else []
+    options = selection + ["--csv", str(output), "--stdev", stdev, "--timeout", "300", "--time-mode", "wall", "+RTS", "-M2G", "-RTS"]
+    # One --benchmark-option per argument, so a pattern needs no shell quoting.
+    command = ["cabal", "bench", package, "-j2"] + [f"--benchmark-option={option}" for option in options]
+    print("+ " + " ".join(shlex.quote(part) for part in command), file=sys.stderr, flush=True)
     subprocess.run(
-        ["cabal", "bench", package, "-j2", "--benchmark-options", options],
+        command,
         cwd=ROOT,
         env=environment(),
         check=True,
