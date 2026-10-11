@@ -47,14 +47,13 @@ module Hamsterdan.Host.GitPublish
   , pySplitlines
   ) where
 
-import Control.Concurrent (forkIO)
-import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Control.Exception (Exception (..), IOException, SomeException, catch, evaluate, throwIO, try)
+import Control.Exception (Exception (..), IOException, SomeAsyncException, SomeException, catch, throwIO, try)
 import Control.Monad (forM, forM_, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.ByteString.Lazy qualified as BL
 import Data.List (nub)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -75,16 +74,9 @@ import Petrus.Json (Json)
 import System.Directory (doesFileExist)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
-import System.IO (hClose, hSetBinaryMode)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Posix.Files qualified as Posix
-import System.Process
-  ( CreateProcess (..)
-  , StdStream (..)
-  , proc
-  , waitForProcess
-  , withCreateProcess
-  )
+import System.Process.Typed (byteStringInput, proc, readProcess, setEnv, setStdin)
 import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
@@ -444,36 +436,24 @@ gitExecutable = firstExisting ["/bin/git", "/usr/bin/git"]
 
 -- | @HostGitPublisher._git(*arguments, capture=True, input_text=)@: the
 -- decoded standard output (universal newlines). Any spawn failure,
--- nonzero exit, or 60-second timeout is a 'GitOperation' failure.
+-- nonzero exit, or 60-second timeout is a 'GitOperation' failure; an
+-- asynchronous exception propagates.
+--
+-- 'readProcess' feeds standard input from its own thread (a child that
+-- exits without reading it is not an error, as with @subprocess.run@),
+-- drains both outputs, and terminates the child if the timeout fires.
 runGit :: [Text] -> Maybe Text -> IO Text
 runGit arguments input = do
   executable <- gitExecutable
   path <- maybe gitFailed pure executable
   let process =
-        (proc path (map T.unpack arguments))
-          { env = Just gitEnvironment
-          , std_in = CreatePipe
-          , std_out = CreatePipe
-          , std_err = CreatePipe
-          }
-  outcome <-
-    try @SomeException . timeout 60000000 $
-      withCreateProcess process $ \stdinH stdoutH stderrH handle -> case (stdinH, stdoutH, stderrH) of
-        (Just hin, Just hout, Just herr) -> do
-          mapM_ (`hSetBinaryMode` True) [hin, hout, herr]
-          out <- newEmptyMVar
-          err <- newEmptyMVar
-          _ <- forkIO (BS.hGetContents hout >>= evaluate >>= putMVar out)
-          _ <- forkIO (BS.hGetContents herr >>= evaluate >>= putMVar err)
-          _ <- try @IOException (BS.hPut hin (TE.encodeUtf8 (fromMaybe "" input)))
-          _ <- try @IOException (hClose hin)
-          stdout <- takeMVar out
-          _ <- takeMVar err
-          code <- waitForProcess handle
-          pure (code, stdout)
-        _ -> throwIO (userError "git pipes were not created")
+        setStdin (byteStringInput (BL.fromStrict (TE.encodeUtf8 (fromMaybe "" input))))
+          . setEnv gitEnvironment
+          $ proc path (map T.unpack arguments)
+  outcome <- try @SomeException (timeout 60000000 (readProcess process))
   case outcome of
-    Right (Just (ExitSuccess, stdout)) -> decode stdout
+    Right (Just (ExitSuccess, stdout, _)) -> decode (BL.toStrict stdout)
+    Left e | isJust (fromException @SomeAsyncException e) -> throwIO e
     _ -> gitFailed
   where
     gitFailed = failWith GitOperation "Git operation failed"

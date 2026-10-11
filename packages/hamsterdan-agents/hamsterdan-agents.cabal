@@ -69,6 +69,7 @@ library
                   , process >=1.6
                   , ram >=0.20
                   , text >=2.0
+                  , typed-process >=0.2
                   , unix >=2.8
   ghc-options:      -O2
 

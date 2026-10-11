@@ -29,15 +29,14 @@ module Hamsterdan.Host.PiWorkspace
   , safeWorkspacePath
   ) where
 
-import Control.Concurrent (forkIO)
-import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Control.Exception (IOException, SomeAsyncException, SomeException, evaluate, fromException, mask, onException, throw, throwIO, try)
+import Control.Exception (IOException, SomeAsyncException, SomeException, fromException, mask, onException, throw, throwIO, try)
 import Control.Monad (forM, forM_, unless, when)
 import Crypto.Hash.SHA256 qualified as SHA256
 import Hamsterdan.Host.Random (urandom)
 import Data.Bits ((.&.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Base16 qualified as B16
 import Data.ByteString.Char8 qualified as BC
 import Data.List (sort)
@@ -60,14 +59,13 @@ import System.Directory (canonicalizePath, doesFileExist, doesPathExist, findExe
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
-import System.IO (hClose, hSetBinaryMode)
 import System.IO.Error (isAlreadyExistsError)
 import System.Posix.Directory qualified as PosixDir
 import System.Posix.Files qualified as Posix
 import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, openFd)
 import System.Posix.User (getEffectiveUserID)
 import System.Posix.Types (FileMode)
-import System.Process
+import System.Process.Typed (closed, proc, readProcess, setEnv, setStdin)
 import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
@@ -474,24 +472,10 @@ runGit root arguments extra = do
   environment <- gitEnvironment (fromMaybe [] extra)
   executable <- maybe gitFailed pure =<< findExecutable "git"
   let argv = maybe [] (\r -> ["-C", r]) root <> map T.unpack arguments
-      process = (proc executable argv) {env = Just environment, std_in = NoStream, std_out = CreatePipe, std_err = CreatePipe}
-  outcome <-
-    try @SomeException . timeout 60000000 $
-      withCreateProcess process $ \_ stdoutH stderrH handle -> case (stdoutH, stderrH) of
-        (Just hout, Just herr) -> do
-          mapM_ (`hSetBinaryMode` True) [hout, herr]
-          out <- newEmptyMVar
-          err <- newEmptyMVar
-          _ <- forkIO (BS.hGetContents hout >>= evaluate >>= putMVar out)
-          _ <- forkIO (BS.hGetContents herr >>= evaluate >>= putMVar err)
-          stdout <- takeMVar out
-          stderr <- takeMVar err
-          code <- waitForProcess handle
-          mapM_ hClose [hout, herr]
-          pure (code, stdout, stderr)
-        _ -> throwIO (userError "git pipes were not created")
+      process = setStdin closed . setEnv environment $ proc executable argv
+  outcome <- try @SomeException (timeout 60000000 (readProcess process))
   case outcome of
-    Right (Just completed) -> pure completed
+    Right (Just (code, stdout, stderr)) -> pure (code, BL.toStrict stdout, BL.toStrict stderr)
     Left e | isJust (fromException @SomeAsyncException e) -> throwIO e
     _ -> gitFailed
 
