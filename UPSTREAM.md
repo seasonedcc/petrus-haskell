@@ -23,7 +23,13 @@ recorded in [PARITY.md](PARITY.md).
 2. Update the table above.
 3. Run `scripts/upstream-diff <name> <old-sha> <new-sha>` to list the changed
    upstream modules, specs, fixtures, and tests.
-4. Mark every affected component in [PARITY.md](PARITY.md) as `in progress`
+4. Run `scripts/check-corpora`. It reruns every committed-corpus generator
+   (differential corpora, fixture databases, generated modules) against the
+   new pin and lists each stale file with a diff. Review each diff, write the
+   new files with `scripts/check-corpora --update NAME ...`, and let the
+   corpus's tests decide what the port must change.
+5. Mark every affected component in [PARITY.md](PARITY.md) as `in progress`
    until its conformance, interop, and benchmark evidence pass again at the new
    pin.
-5. Run `scripts/check-all` (build, tests, conformance, interop, benchmarks).
+6. Run `scripts/check-all` (build, tests, conformance, interop, committed
+   corpora, benchmarks).

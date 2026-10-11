@@ -50,7 +50,10 @@ The Haskell tests also include properties:
 
 ### Regenerating the vectors
 
-Run these from `upstream/petrus`:
+`scripts/check-corpora petrus-dst` reruns every generator below against the pinned reference
+(under a throwaway PostgreSQL server when `PETRUS_TEST_POSTGRES` is unset) and fails on any
+file that no longer matches; `--update` writes the regenerated files. By hand, run these from
+`upstream/petrus`:
 
 ```sh
 PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/codec_vectors.py ../../packages/petrus-dst/test/data/codec-vectors.json

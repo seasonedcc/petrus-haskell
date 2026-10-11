@@ -6,7 +6,7 @@ environment, e.g. from the repository root:
     cd upstream/petrus
     .venv/bin/python ../../packages/petrus-impetus/differential/net_definition_corpus.py
 
-The script writes ``net_definition_corpus.json`` next to itself. Each case is
+The script writes ``net_definition_corpus.json`` next to itself (or into the directory given as its first argument). Each case is
 one payload handed to ``parse_net_definition`` or ``parse_net_document`` and
 the reference's verdict: the canonical serialization of the admitted
 document (plus, for documents, the definition identity) or the exact refusal
@@ -52,7 +52,7 @@ from petrus.impetus.net_document import (
 )
 from petrus.impetus.petrinet import ANONYMOUS, Arc, ArcMode, Cel, Delay, Net, NetPath, Place, Transition, Until
 
-OUTPUT = Path(__file__).with_name("net_definition_corpus.json")
+OUTPUT_NAME = "net_definition_corpus.json"
 SEED = 20260913
 
 
@@ -413,10 +413,11 @@ def main() -> None:
     # One case per line keeps the file small and its diffs readable.
     head = json.dumps({key: corpus[key] for key in ("generator", "seed", "bases")}, ensure_ascii=False)
     lines = ",\n".join(json.dumps(case, ensure_ascii=False) for case in CASES)
-    OUTPUT.write_text(head[:-1] + ', "cases": [\n' + lines + "\n]}\n", encoding="utf-8")
-    digest = hashlib.sha256(OUTPUT.read_bytes()).hexdigest()
+    output = (Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent) / OUTPUT_NAME
+    output.write_text(head[:-1] + ', "cases": [\n' + lines + "\n]}\n", encoding="utf-8")
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
     outcomes = sum(1 for case in CASES if "error" not in case)
-    print(f"{len(CASES)} cases ({outcomes} admitted), {OUTPUT.stat().st_size} bytes, sha256 {digest}")
+    print(f"{len(CASES)} cases ({outcomes} admitted), {output.stat().st_size} bytes, sha256 {digest}")
 
 
 if __name__ == "__main__":

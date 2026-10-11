@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Rebuild and verify everything from a clean checkout: build, unit tests,
-# conformance, interop against the pinned Python upstream, the benchmark
-# bookkeeping, and the parity table. CI runs exactly this.
+# conformance, interop against the pinned Python upstream, the committed
+# corpora regenerated from it, the benchmark bookkeeping, and the parity table. CI runs exactly this.
 #
 #   scripts/check-all            # everything except benchmarks
 #   scripts/check-all -j2        # limit cabal's parallelism (passed to cabal)
@@ -64,6 +64,9 @@ scripts/interop --check ${cabal_flags[@]+"${cabal_flags[@]}"}
 step "Tests (unit, conformance, interop)"
 scripts/with-postgres cabal test all ${cabal_flags[@]+"${cabal_flags[@]}"} --keep-going \
   --test-show-details=direct --test-options='+RTS -M2G -RTS'
+
+step "Committed corpora (every generator rerun against the pinned references)"
+scripts/check-corpora
 
 if [[ "$run_bench" == 1 ]]; then
   step "Benchmarks"

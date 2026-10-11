@@ -26,6 +26,7 @@ Sections (``test/Petrus/Agenticus/EffectSpec.hs`` replays every one):
 from __future__ import annotations
 
 import json
+import sys
 import math
 import pathlib
 import random
@@ -45,7 +46,7 @@ from petrus.agenticus.effect.model import (
     digest_payload,
 )
 
-OUT = pathlib.Path(__file__).with_name("effect_corpus.json")
+OUT_NAME = "effect_corpus.json"
 rng = random.Random(20261010)
 
 ALPHABET = (
@@ -456,9 +457,10 @@ def main() -> None:
         "decode": decode_cases(),
         "gateway": gateway_cases(),
     }
-    OUT.write_text(json.dumps(corpus) + "\n")
+    out = (pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parent) / OUT_NAME
+    out.write_text(json.dumps(corpus) + "\n")
     print(
-        f"wrote {OUT.name}: {len(corpus['digests'])} digests, {len(corpus['proposal_digests'])} proposal digests, "
+        f"wrote {out.name}: {len(corpus['digests'])} digests, {len(corpus['proposal_digests'])} proposal digests, "
         f"{len(corpus['decode'])} decode cases, {len(corpus['gateway'])} gateway cases"
     )
 

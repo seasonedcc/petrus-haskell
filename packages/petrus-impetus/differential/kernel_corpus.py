@@ -6,7 +6,7 @@ environment, e.g. from the repository root:
     cd upstream/petrus
     .venv/bin/python ../../packages/petrus-impetus/differential/kernel_corpus.py
 
-The script writes ``kernel_corpus.json`` next to itself. Each case is a small
+The script writes ``kernel_corpus.json`` next to itself (or into the directory given as its first argument). Each case is a small
 random net (seeded, so the corpus is reproducible) carried as its canonical
 Net definition v3, an initial marking, and a script of Instance actions —
 ``step``, ``deliver`` (accept then complete), ``seal``, and ``wake`` at int,
@@ -25,6 +25,7 @@ guard, ``tag`` handler) have exact Haskell twins in ``DifferentialSpec``.
 from __future__ import annotations
 
 import json
+import sys
 import random
 import warnings
 from pathlib import Path
@@ -34,7 +35,7 @@ from petrus.impetus.instance import AcceptedDelivery, Instance
 from petrus.impetus.net_definition import project_net_definition, serialize_net_definition
 from petrus.impetus.petrinet import Arc, ArcMode, Delay, Marking, Net, NetPath, Place, Token, Transition, Until
 
-OUTPUT = Path(__file__).with_name("kernel_corpus.json")
+OUTPUT_NAME = "kernel_corpus.json"
 SEED = 20261010
 CASES = 240
 COLORS = (None, "A", "B")
@@ -280,8 +281,9 @@ def main() -> None:
     rng = random.Random(SEED)
     cases = [generate_case(rng, index) for index in range(CASES)]
     corpus = {"generator": "packages/petrus-impetus/differential/kernel_corpus.py", "seed": SEED, "cases": cases}
-    OUTPUT.write_text(json.dumps(corpus, ensure_ascii=False, allow_nan=False, separators=(",", ":")) + "\n")
-    print(f"wrote {OUTPUT.name}: {len(cases)} cases")
+    output = (Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent) / OUTPUT_NAME
+    output.write_text(json.dumps(corpus, ensure_ascii=False, allow_nan=False, separators=(",", ":")) + "\n")
+    print(f"wrote {output.name}: {len(cases)} cases")
 
 
 if __name__ == "__main__":

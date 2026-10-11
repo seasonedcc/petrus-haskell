@@ -138,6 +138,18 @@ goes pending fails it. `--viewer` needs `pnpm install` in
 `upstream/petrus-viewer` (and `pnpm build` plus
 `npx playwright install chromium` for its browser suites).
 
+The committed differential corpora, fixture databases and generated modules
+are themselves reference output. `scripts/check-corpora` (also part of
+`scripts/check-all`) reruns every generator against the pinned references
+and fails on any file that no longer matches, so a corpus cannot go stale
+behind a passing replay:
+
+```sh
+scripts/check-corpora                  # every generator (about 40 s)
+scripts/check-corpora --list           # each generator and the files it writes
+scripts/check-corpora --update NAME    # write NAME's regenerated files
+```
+
 ## Benchmarks
 
 ```sh

@@ -6,7 +6,7 @@ environment, e.g. from the repository root:
     cd upstream/petrus
     .venv/bin/python ../../packages/petrus-impetus/differential/failure_text_corpus.py
 
-The script writes ``failure_text_corpus.json`` next to itself. Each case is
+The script writes ``failure_text_corpus.json`` next to itself (or into the directory given as its first argument). Each case is
 an exception (its class name and its ``args``) and the text the reference's
 ``firing_failure_text`` records for it. ``FailureTextSpec`` rebuilds every
 case as a ``PythonException`` and checks the Haskell text; the zero- and
@@ -23,13 +23,14 @@ from __future__ import annotations
 
 import base64
 import json
+import sys
 import math
 import random
 from pathlib import Path
 
 from petrus.impetus.instance import firing_failure_text
 
-OUTPUT = Path(__file__).with_name("failure_text_corpus.json")
+OUTPUT_NAME = "failure_text_corpus.json"
 SEED = 20261010
 
 
@@ -150,7 +151,8 @@ def main() -> None:
         count = rng.randint(2, 4)
         cases.append(case(rng.choice(NAMES[:-1]), tuple(rng.choice(pool) for _ in range(count))))
     cases.append(case("ValueError", tuple("y" * 1000 for _ in range(6))))
-    OUTPUT.write_text(
+    output = (Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent) / OUTPUT_NAME
+    output.write_text(
         '{"generator": "packages/petrus-impetus/differential/failure_text_corpus.py", "cases": [\n'
         + ",\n".join(json.dumps(item, ensure_ascii=False) for item in cases)
         + "\n]}\n",

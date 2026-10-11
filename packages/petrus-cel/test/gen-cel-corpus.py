@@ -58,7 +58,7 @@ from petrus.impetus.binding.cel import compile_completion, compile_filter, compi
 from petrus.impetus.petrinet import Binding, Cel, Marking, NetPath, Token
 
 ROOT = Path(__file__).resolve().parent
-OUT = ROOT / "corpus"
+OUT = Path(sys.argv[1]) if __name__ == "__main__" and len(sys.argv) > 1 else ROOT / "corpus"
 
 ENV = celpy.Environment()
 

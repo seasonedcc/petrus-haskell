@@ -6,7 +6,7 @@ environment, e.g. from the repository root:
     cd upstream/petrus
     .venv/bin/python ../../packages/petrus-observation/differential/observation_corpus.py
 
-The script writes ``observation_corpus.json`` next to itself. Each scenario
+The script writes ``observation_corpus.json`` next to itself (or into the directory given as its first argument). Each scenario
 drives a reference ``Engine`` (in-memory History, in-memory Dispatch, the
 default simulated clock) the way ``tests/petrus/engine/test_observation.py``
 does, and records the Engine's three read doors: ``snapshot()``,
@@ -21,6 +21,7 @@ observation error the Haskell types can still reach.
 from __future__ import annotations
 
 import json
+import sys
 import math
 from pathlib import Path
 
@@ -31,7 +32,7 @@ from petrus.impetus.petrinet import Arc, Cel, Delay, Marking, Net, NetPath, Plac
 from petrus.motus.activity import ActivityFailure, ActivityInvocation
 from petrus.motus.dispatch import InMemoryDispatch
 
-OUTPUT = Path(__file__).with_name("observation_corpus.json")
+OUTPUT_NAME = "observation_corpus.json"
 A, B, C = NetPath("a"), NetPath("b"), NetPath("c")
 SOURCE, WORK = NetPath("source"), NetPath("work")
 
@@ -186,7 +187,8 @@ def main() -> None:
         "scenarios": {name: reads(engine) for name, engine in scenarios()},
         "errors": dict(errors()),
     }
-    OUTPUT.write_text(json.dumps(corpus, ensure_ascii=False, indent=2) + "\n")
+    output = (Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent) / OUTPUT_NAME
+    output.write_text(json.dumps(corpus, ensure_ascii=False, indent=2) + "\n")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import copy
 import json
+import sys
 import random
 from pathlib import Path
 from typing import Any
@@ -66,7 +67,7 @@ from petrus.agenticus.thread.lifecycle import (
 )
 
 SEED = 20260710
-OUT = Path(__file__).with_name("thread_corpus.json")
+OUT_NAME = "thread_corpus.json"
 
 
 def dumps(value: object) -> str:
@@ -754,7 +755,8 @@ def main() -> None:
     corpus["decode"] = decode_cases(rng, documents)
     corpus["compatibility"] = compatibility_cases(rng)
     corpus["runtime"] = runtime_cases(rng)
-    OUT.write_text(json.dumps(corpus, ensure_ascii=True) + "\n")
+    out = (Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent) / OUT_NAME
+    out.write_text(json.dumps(corpus, ensure_ascii=True) + "\n")
     steps = sum(len(trace["steps"]) for trace in corpus["traces"])
     refused = sum(
         1 for trace in corpus["traces"] for step in trace["steps"] if "error" in step["result"]
