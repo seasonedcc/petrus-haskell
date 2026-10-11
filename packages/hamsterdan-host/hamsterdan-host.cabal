@@ -38,6 +38,7 @@ library
                     Hamsterdan.Host.Python
                     Hamsterdan.Host.Runnable
                     Hamsterdan.Host.V5.Timers
+                    Hamsterdan.Host.Cli
                     Hamsterdan.Host.Service
                     Hamsterdan.Host.Api
                     Hamsterdan.Host.Api.Documents
@@ -83,6 +84,16 @@ library
                   , warp >=3.3
   ghc-options:      -O2
 
+executable hamsterdan-host
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  build-depends:    base
+                  , containers
+                  , hamsterdan-host
+                  , text
+  ghc-options:      -threaded -rtsopts
+
 test-suite hamsterdan-host-test
   import:           warnings
   type:             exitcode-stdio-1.0
@@ -92,8 +103,10 @@ test-suite hamsterdan-host-test
                     RunnableSpec
                     TestSupport
                     TimersSpec
+                    CliSpec
                     ApiSpec
                     RawHttp
+                    FakeGitHub
                     ServiceSpec
                     ServiceSupport
                     TestUpdates
@@ -134,6 +147,8 @@ test-suite hamsterdan-host-test
                   , network
                   , petrus-test-support
                   , typed-process
+                  , wai
+                  , http-types
                   , warp
                   , unix
   ghc-options:      -threaded -rtsopts

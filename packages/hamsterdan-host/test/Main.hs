@@ -13,6 +13,7 @@ import IngressApplicationSpec qualified
 import InlineRecoverySpec qualified
 import ServiceSpec qualified
 import ApiSpec qualified
+import CliSpec qualified
 import Test.Hspec
 
 main :: IO ()
@@ -30,3 +31,4 @@ main = hspec $ do
   InlineRecoverySpec.spec
   ServiceSpec.spec
   ApiSpec.spec
+  CliSpec.spec

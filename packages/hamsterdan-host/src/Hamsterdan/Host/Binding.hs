@@ -8,6 +8,7 @@
 module Hamsterdan.Host.Binding
   ( Topology (..)
   , InstanceBinding (..)
+  , topologyText
   , bindingPayload
   , encodeBinding
   , parseInstanceBinding
