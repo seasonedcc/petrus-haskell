@@ -1013,13 +1013,17 @@ appendEntry kind name value which = modifyW $ \s ->
           { position = toInteger (Seq.length s.entries)
           , instant = s.clock
           , generation = case which of
-              CurrentGeneration -> snd <$> s.live
+              CurrentGeneration -> case s.live of
+                Just (_, liveId) -> liveId `seq` Just liveId
+                Nothing -> Nothing
               ExplicitGeneration g -> g
           , kind
           , name
           , value
           }
-   in s {entries = s.entries |> entry}
+   in -- Forced: an unevaluated entry would retain this whole state, and
+      -- with it the live generation, after the generation is dropped.
+      entry `seq` s {entries = s.entries |> entry}
 
 appendOperation :: (Monad m) => ExpandedOperation -> WorldT m g ()
 appendOperation operation = modifyW (\s -> s {accepted = s.accepted |> operation})

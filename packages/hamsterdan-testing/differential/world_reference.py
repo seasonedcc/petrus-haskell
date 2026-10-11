@@ -4,6 +4,7 @@ Usage:
 
     python -I -B world_reference.py author NAME ROOT
     python -I -B world_reference.py replay ROOT < artifact.json
+    python -I -B world_reference.py coverage ROOT < artifact.json
     python -I -B world_reference.py names
 
 ``author`` drives one named scenario through the upstream ``ReadinessWorld``
@@ -16,6 +17,10 @@ that ends in a refusal keeps the artifact the World retained for it.
 
 ``replay`` replays an artifact (from stdin) through ``replay_readiness`` and
 prints the replay result as canonical JSON (sorted keys, compact, ASCII).
+
+``coverage`` replays an artifact the same way and prints
+``encode_readiness_coverage`` of ``collect_readiness_coverage`` over that
+one run (``hamsterdan.host.testing.readiness_coverage``).
 
 ``WorldInteropSpec`` authors the same scenarios through the Haskell World
 and compares the bytes both ways: each language's artifact is identical,
@@ -36,6 +41,11 @@ from petrus.testing.dst import (
     encode_artifact,
 )
 
+from hamsterdan.host.testing.readiness_coverage import (
+    CoverageRun,
+    collect_readiness_coverage,
+    encode_readiness_coverage,
+)
 from hamsterdan.host.testing.readiness_world import (
     BASE,
     DEFAULT_BUDGET,
@@ -371,6 +381,11 @@ def main(argv: list[str]) -> int:
         artifact = decode_artifact(sys.stdin.buffer.read())
         result = replay_readiness(artifact, Path(argv[1]).resolve())
         out.write(canonical(result.model_dump(mode="json")))
+        return 0
+    if len(argv) == 2 and argv[0] == "coverage":
+        artifact = decode_artifact(sys.stdin.buffer.read())
+        result = replay_readiness(artifact, Path(argv[1]).resolve())
+        out.write(encode_readiness_coverage(collect_readiness_coverage((CoverageRun(artifact, result),))))
         return 0
     sys.stderr.write(__doc__ or "")
     return 2

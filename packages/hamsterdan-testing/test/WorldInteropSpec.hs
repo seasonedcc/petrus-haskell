@@ -13,10 +13,11 @@ import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Text qualified as T
 import Hamsterdan.Testing.World (replayReadiness)
+import Hamsterdan.Testing.World.Coverage (CoverageRun (..), collectReadinessCoverage, encodeReadinessCoverage)
 import Hamsterdan.Testing.World.Scenarios (Scenario (..), authorScenario, scenarios)
 import Petrus.Json (Json, defaultDumps, dumpsText, parseJson, pythonLoads)
 import Petrus.Json.Encode (EncodeOptions (..))
-import Petrus.Testing.Dst (decodeArtifact, encodeReplayResult)
+import Petrus.Testing.Dst (AnyReplayResult (..), decodeArtifact, encodeReplayResult)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import System.Directory (canonicalizePath, createDirectoryIfMissing)
@@ -32,6 +33,7 @@ import Test.Hspec
 data Reference = Reference
   { artifact :: ByteString
   , replayed :: ByteString
+  , coverage :: ByteString
   }
 
 spec :: Spec
@@ -46,6 +48,9 @@ scenarioSpec s = describe (T.unpack s.name) . beforeAll (referenceRun s) $ do
   it "the reference's artifact replays in Haskell with the reference's result bytes" $ \expected -> withRoot $ \root -> do
     result <- haskellReplay expected.artifact root
     sameBytes (T.unpack s.name <> ".replay") expected.replayed result
+  it "the reference's artifact has the reference's coverage report bytes" $ \expected -> withRoot $ \root -> do
+    report <- haskellCoverage expected.artifact root
+    sameBytes (T.unpack s.name <> ".coverage") expected.coverage report
   it "the Haskell artifact replays in the reference with the Haskell result bytes" $ \_ -> withRoot $ \root -> do
     authored <- authorScenario s (root </> "author")
     ours <- haskellReplay authored (root </> "haskell-replay")
@@ -59,7 +64,8 @@ referenceRun :: Scenario -> IO Reference
 referenceRun s = withRoot $ \root -> do
   authored <- reference ["author", T.unpack s.name, root </> "author"] ""
   result <- reference ["replay", root </> "replay"] authored
-  pure Reference {artifact = authored, replayed = result}
+  report <- reference ["coverage", root </> "coverage"] authored
+  pure Reference {artifact = authored, replayed = result, coverage = report}
 
 haskellReplay :: ByteString -> FilePath -> IO ByteString
 haskellReplay bytes root = case decodeArtifact bytes of
@@ -68,6 +74,17 @@ haskellReplay bytes root = case decodeArtifact bytes of
     replayReadiness decoded root >>= \case
       Left failure -> expectationFailure ("replay refused: " <> show failure) >> pure ""
       Right result -> pure (encodeReplayResult result)
+
+-- | @collect_readiness_coverage@ over the artifact and its Haskell replay.
+haskellCoverage :: ByteString -> FilePath -> IO ByteString
+haskellCoverage bytes root = case decodeArtifact bytes of
+  Left problem -> expectationFailure ("the artifact does not decode: " <> show problem) >> pure ""
+  Right decoded ->
+    replayReadiness decoded root >>= \case
+      Right (ReplayV2 result) -> case collectReadinessCoverage [CoverageRun decoded (Just result)] of
+        Right report -> pure (encodeReadinessCoverage report)
+        Left problem -> expectationFailure ("coverage refused: " <> show problem) >> pure ""
+      other -> expectationFailure ("replay refused: " <> show other) >> pure ""
 
 reference :: [String] -> ByteString -> IO ByteString
 reference arguments input = do

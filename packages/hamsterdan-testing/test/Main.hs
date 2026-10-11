@@ -3,6 +3,7 @@ module Main (main) where
 import OracleCorpusSpec qualified
 import ReadinessModelSpec qualified
 import ReadinessScenariosSpec qualified
+import ReadinessWorldSpec qualified
 import WorldInteropSpec qualified
 import Test.Hspec (hspec)
 
@@ -11,4 +12,5 @@ main = hspec $ do
   ReadinessModelSpec.spec
   OracleCorpusSpec.spec
   ReadinessScenariosSpec.spec
+  ReadinessWorldSpec.spec
   WorldInteropSpec.spec

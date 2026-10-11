@@ -29,6 +29,7 @@ module Hamsterdan.Testing.World
     -- * The World
   , ReadinessWorld (..)
   , newReadinessWorld
+  , newReadinessWorldWith
   , inWorld
   , timeline
   , restart
@@ -1670,13 +1671,14 @@ data ReadinessWorld = ReadinessWorld
   }
 
 newReadinessWorld :: FilePath -> BudgetV4 -> Maybe Integer -> IO ReadinessWorld
-newReadinessWorld root budget seed = newReadinessWorldWith root budget seed (const (pure ()))
+newReadinessWorld root budget seed = newReadinessWorldWith root budget seed (const (pure ())) readinessChecker
 
 -- | Construct with a hook that prepares the profile before the first
--- generation starts (the reference's tests patch classes before
+-- generation starts, and the checker to install (the reference's tests
+-- monkeypatch @HostService@ and @ReadinessChecker.check@ before
 -- constructing the World).
-newReadinessWorldWith :: FilePath -> BudgetV4 -> Maybe Integer -> (ReadinessProfile -> IO ()) -> IO ReadinessWorld
-newReadinessWorldWith root budget seed prepare = do
+newReadinessWorldWith :: FilePath -> BudgetV4 -> Maybe Integer -> (ReadinessProfile -> IO ()) -> Checker -> IO ReadinessWorld
+newReadinessWorldWith root budget seed prepare checker = do
   profile <- newReadinessProfile root
   prepare profile
   created <-
@@ -1684,7 +1686,7 @@ newReadinessWorldWith root budget seed prepare = do
       WorldConfig
         { profile = readinessProfile profile
         , budget = SomeBudgetV4 budget
-        , checkers = [readinessChecker]
+        , checkers = [checker]
         , seed
         , progress = Nothing
         }
