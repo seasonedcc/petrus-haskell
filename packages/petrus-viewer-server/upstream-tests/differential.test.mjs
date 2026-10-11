@@ -104,9 +104,8 @@ function nodeParse(raw) {
     return { ok: JSON.stringify(JSON.parse(raw)) };
   } catch (e) {
     // V8 can cut a surrogate pair when quoting the offending token or its
-    // context; the Haskell message is Text, which holds U+FFFD there
-    // (documented in DIVERGENCES.md).
-    return { error: e.message.toWellFormed() };
+    // context; the message keeps the lone surrogate, and so does the port's.
+    return { error: e.message };
   }
 }
 

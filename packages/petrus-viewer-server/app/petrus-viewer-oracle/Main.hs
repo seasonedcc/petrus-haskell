@@ -40,6 +40,10 @@ ok v = obj [("ok", v)]
 err :: Text -> JsValue
 err e = obj [("error", str e)]
 
+-- | An error whose message is a JavaScript string (lone surrogates kept).
+errJs :: JsString -> JsValue
+errJs e = obj [("error", JsStr e)]
+
 call :: JsValue -> IO JsValue
 call = \case
   JsArr (JsStr name : args) -> run (jsStringText name) args
@@ -55,12 +59,12 @@ call = \case
       ("cacheFile", [s, r, c]) -> ok . str . T.pack <$> cacheFile (text s) (text r) (text c)
       ("normalizeGitHubUrl", [u]) -> pure (ok (str (normalizeGitHubUrl (text u))))
       ("resolveUrl", [i, b]) -> pure (maybe (err "Invalid URL") (ok . str . serializeUrl) (resolveUrl (text i) (text b)))
-      ("jsonRoundTrip", [JsStr s]) -> pure (either (err . T.pack) (ok . str . TE.decodeUtf8 . encodeJs) (parseJs (raw s)))
+      ("jsonRoundTrip", [JsStr s]) -> pure (either errJs (ok . str . TE.decodeUtf8 . encodeJs) (parseJs (raw s)))
       ("relayAgent", [JsStr s]) -> pure (relay AgentRelay s)
       ("relayCollab", [JsStr s]) -> pure (relay CollabRelay s)
       ("parseAgentMessage", [JsStr s]) ->
         pure $ case parseJs (raw s) of
-          Left e -> err (T.pack e)
+          Left e -> errJs e
           Right v -> either err (ok . JsObj . messageObject) (parseAgentMessage v)
       _ -> pure (err ("unknown call " <> name))
     -- the JavaScript string's UTF-8 bytes (lone surrogates become U+FFFD,

@@ -25,6 +25,7 @@ import Control.Monad (forever, void)
 import Data.ByteString qualified as B
 import Data.ByteString.Lazy qualified as BL
 import Data.Text (Text)
+import Data.Text qualified as T
 import Network.HTTP.Client qualified as HC
 import Network.HTTP.Types qualified as H
 import Network.WebSockets qualified as WS
@@ -110,7 +111,7 @@ httpRequestWith extra method url body = do
   pure (HttpResult (H.statusCode (HC.responseStatus resp)) (HC.responseBody resp) (HC.responseHeaders resp))
 
 parseJ :: BL.ByteString -> Either String JsValue
-parseJ = parseJs . decodeLenient . BL.toStrict
+parseJ = either (Left . T.unpack . jsStringText) Right . parseJs . decodeLenient . BL.toStrict
 
 field :: Text -> JsValue -> Maybe JsValue
 field k v = asObject v >>= lookupKey k

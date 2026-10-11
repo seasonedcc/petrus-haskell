@@ -129,6 +129,12 @@ spec = do
       httpStatus r `shouldBe` 400
       textField "error" (jsonBody r) `shouldBe` Just "Unexpected token 'o', \"not json{{{\" is not valid JSON"
 
+    it "keeps the lone surrogate V8's message cuts from a pair" $ server Nothing $ \url -> do
+      r <- post (url <> "/__petrus/resolve-ref") (BL.fromStrict (TE.encodeUtf8 "[\x1F600]"))
+      httpStatus r `shouldBe` 400
+      -- recorded from Node 22
+      httpBody r `shouldBe` BL.fromStrict (TE.encodeUtf8 "{\"error\":\"Unexpected token '\\ud83d', \\\"[\x1F600]\\\" is not valid JSON\"}")
+
     it "returns 400 when ref is missing" $ server Nothing $ \url -> do
       r <- post (url <> "/__petrus/resolve-ref") "{\"basePath\":\"file:///tmp/A.json\"}"
       httpStatus r `shouldBe` 400

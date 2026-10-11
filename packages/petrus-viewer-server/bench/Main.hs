@@ -765,3 +765,4 @@ microBench o = do
     pure $ case r of
       Resolved _ -> 1
       ResolveError _ -> 2
+      ResolveParseError _ -> 3

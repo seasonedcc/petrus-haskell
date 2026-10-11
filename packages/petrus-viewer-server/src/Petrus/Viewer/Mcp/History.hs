@@ -86,7 +86,7 @@ fetchRuntimeState src workflowId = do
     Left e -> Left (T.pack (show e))
     Right (code, body)
       | code >= 200 && code < 300 -> case parseJs (decodeLenient body) of
-          Left e -> Left (T.pack e)
+          Left e -> Left (jsStringText e)
           Right v -> decodeQueryResult v
       | otherwise -> Left ("HTTP " <> T.pack (show code) <> ": " <> TE.decodeUtf8Lenient (B.take 500 body))
   where
@@ -110,7 +110,7 @@ decodeQueryResult v = case v of
           Just b64 | not (T.null b64) ->
             let raw = TE.encodeUtf8 b64
                 decoded = either (const raw) id (B64.decode raw)
-             in either (Left . T.pack) Right (parseJs (decodeLenient decoded))
+             in either (Left . jsStringText) Right (parseJs (decodeLenient decoded))
           _ -> Left "Empty payload data"
         _ -> Left "No payloads in queryResult"
       _ -> Left "No payloads in queryResult"

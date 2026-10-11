@@ -692,17 +692,20 @@ openFileTool s args = do
   if not exists
     then pure (errorResult ("File not found: " <> absT))
     else do
-      let fail' e = do
+      -- the message is a JavaScript string (JSON.parse's may hold a lone
+      -- surrogate)
+      let failJs e = do
             ms <- elapsedSince t0
-            perfLog (perfL s) "mcp-tool-error" [("tool", str "petrus_open_file"), ("ms", ms), ("error", str e)]
-            pure (errorResult e)
+            perfLog (perfL s) "mcp-tool-error" [("tool", str "petrus_open_file"), ("ms", ms), ("error", JsStr e)]
+            pure (ToolResult e True)
+          fail' = failJs . jsString
       r0 <- monotonicMs
       content <- readFileNode absPath
       readMs <- elapsedSince r0
       case content of
         Left e -> fail' e
         Right text -> case parseJs (TE.encodeUtf8 text) of
-          Left e -> fail' (T.pack e)
+          Left e -> failJs e
           Right _ -> do
             b0 <- monotonicMs
             r <- sendBridgeRequest (bridge s) "document.open" (objectFromList [(jsString "content", str text), (jsString "filePath", str absT)])

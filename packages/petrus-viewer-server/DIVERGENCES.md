@@ -136,10 +136,21 @@ against Node on recorded corpora and on thousands of generated inputs
 (`upstream-tests/differential.test.mjs`, `test/JsonSpec.hs`,
 `test/UrlSpec.hs`). Known, documented gaps:
 
-- **Lone surrogates in `JSON.parse` error messages.** V8 quotes the source
-  text in its messages, lone surrogates included; Haskell messages are
-  `Text`, so a lone surrogate there becomes U+FFFD. JSON *values* keep lone
-  surrogates exactly (strings are held in canonical escaped form).
+- **Lone surrogates in `JSON.parse` error messages — resolved where the
+  message reaches the wire.** V8 quotes the offending token and its context
+  by UTF-16 code units, so the message holds a lone surrogate wherever that
+  cuts a pair (`JSON.parse("[😀]")` reports `Unexpected token '\ud83d'`).
+  `parseJs` now fails with a `JsString`, which keeps it, and the
+  `/__petrus/resolve-ref` 400 body and the `petrus_open_file` MCP error
+  carry it exactly (tests: `test/JsonSpec.hs`, `test/EndpointsSpec.hs`,
+  the `jsonRoundTrip` and HTTP-wire differentials against Node; one entry of
+  `test/fixtures/json-parse-v8.json` had been recorded with the surrogate
+  repaired and is re-recorded from Node 22). **Still open:** a history or
+  observation server answering malformed JSON yields a message that the
+  history tools fold into `Text` errors, where the half-pair becomes
+  U+FFFD. Why it stays: it needs a third-party server's malformed answer
+  with an astral character at a cut, and keeping it would mean carrying
+  JavaScript strings through every history error path instead of `Text`.
 - **IDNA.** Hosts are lowercased and punycoded but not NFKC-normalized or
   fully UTS #46 mapped: `ß` and `ﬀ` stay as code points and are punycoded
   (Node maps `ﬀ` to `ff`). Only exotic hosts in `$ref`s are affected.

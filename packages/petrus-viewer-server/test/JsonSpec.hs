@@ -11,9 +11,14 @@ import TestSupport (fixturePath)
 
 -- | @JSON.stringify(JSON.parse(input))@, or the @SyntaxError@ message.
 roundTrip :: Text -> Either Text Text
-roundTrip input = either (Left . T.pack) (Right . TE.decodeUtf8 . encodeJs) (parseJs (TE.encodeUtf8 input))
+roundTrip = either (Left . jsStringText) Right . roundTripJs
 
-stringify :: B.ByteString -> Either String B.ByteString
+-- | 'roundTrip' with the message as a JavaScript string (lone surrogates
+-- kept).
+roundTripJs :: Text -> Either JsString Text
+roundTripJs input = TE.decodeUtf8 . encodeJs <$> parseJs (TE.encodeUtf8 input)
+
+stringify :: B.ByteString -> Either JsString B.ByteString
 stringify = fmap encodeJs . parseJs
 
 spec :: Spec
@@ -27,18 +32,27 @@ spec = do
       let expected v = case asObject v of
             Just o
               | Just (JsStr s) <- lookupKey "ok" o -> Just (Right (jsStringText s))
-              | Just (JsStr s) <- lookupKey "error" o -> Just (Left (jsStringText s))
+              | Just (JsStr s) <- lookupKey "error" o -> Just (Left s)
             _ -> Nothing
           mismatches =
             [ (input, got, want)
             | JsArr [JsStr i, e] <- cases
             , Just want <- [expected e]
             , let input = jsStringText i
-            , let got = roundTrip input
+            , let got = roundTripJs input
             , got /= want
             ]
       length cases `shouldSatisfy` (> 1800)
       take 5 mismatches `shouldBe` []
+
+    it "keeps the lone surrogate V8's message cuts from a pair" $ do
+      -- recorded from Node 22 (JSON.stringify of e.message)
+      let message s = either (Just . TE.decodeUtf8 . jsStringBytes) (const Nothing) (parseJs (TE.encodeUtf8 s))
+      message "[\x1F600]" `shouldBe` Just "Unexpected token '\\ud83d', \\\"[\x1F600]\\\" is not valid JSON"
+      message "[1,aaaaaaaaa\x1F600\&bbbbbbbbbbbbbbb"
+        `shouldBe` Just "Unexpected token 'a', \\\"[1,aaaaaaaaa\\ud83d\\\"... is not valid JSON"
+      message (T.replicate 12 "\x1F600")
+        `shouldBe` Just "Unexpected token '\\ud83d', \\\"\x1F600\x1F600\x1F600\x1F600\x1F600\\\"... is not valid JSON"
 
     it "formats numbers like Number.prototype.toString" $ do
       stringify "[1e21,1e-7,1e-6,123e-20,-0,0.1,5e-324,100,1.0,9007199254740993,0.30000000000000004,1E+2,-1e400]"

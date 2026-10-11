@@ -235,7 +235,7 @@ type P = Either Text
 
 -- | Parse raw JSON text (as received from the relay) and validate it.
 parseAgentMessageBytes :: ByteString -> P AgentMessage
-parseAgentMessageBytes b = either (Left . T.pack) parseAgentMessage (parseJs (decodeLenient b))
+parseAgentMessageBytes b = either (Left . jsStringText) parseAgentMessage (parseJs (decodeLenient b))
 
 -- | @parseAgentMessage@: validate and normalize a decoded message.
 parseAgentMessage :: JsValue -> P AgentMessage

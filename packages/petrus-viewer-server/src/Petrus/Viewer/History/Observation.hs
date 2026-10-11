@@ -69,7 +69,7 @@ getJson mgr url = do
     pure (H.statusCode (HC.responseStatus resp), BL.toStrict (HC.responseBody resp))
   pure $ case r of
     Left e -> Left (T.pack (show e))
-    Right (200, body) -> either (Left . T.pack) Right (parseJs (decodeLenient body))
+    Right (200, body) -> either (Left . jsStringText) Right (parseJs (decodeLenient body))
     Right (code, body) -> Left ("HTTP " <> T.pack (show code) <> ": " <> TE.decodeUtf8Lenient (B.take 500 body))
 
 -- | Serve the Temporal HTTP API subset under the given path prefix. Returns

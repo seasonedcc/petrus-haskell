@@ -497,8 +497,10 @@ decodeLenient b
 
 -- | @JSON.parse@ on well-formed UTF-8 input. Failures carry the exact V8
 -- @SyntaxError@ message (Node 22), which the Node backend surfaces verbatim
--- in some HTTP and MCP error payloads.
-parseJs :: ByteString -> Either String JsValue
+-- in some HTTP and MCP error payloads. The message is a JavaScript string:
+-- V8 quotes the offending token and its context by UTF-16 code units, so
+-- it holds a lone surrogate where that cuts a pair (@JSON.parse("[😀]")@).
+parseJs :: ByteString -> Either JsString JsValue
 parseJs input =
   case value (skipWs 0) of
     Fail e -> Left (v8Message input e)
@@ -718,8 +720,8 @@ data PErr
 
 -- | V8's @SyntaxError@ message text for a parse failure. Positions are
 -- UTF-16 code-unit offsets, as in JavaScript.
-v8Message :: ByteString -> PErr -> String
-v8Message input = \case
+v8Message :: ByteString -> PErr -> JsString
+v8Message input = jsStringFromCodePoints . \case
   EEnd -> "Unexpected end of JSON input"
   EToken i
     -- V8 classifies the offending character: a quote starts a string
@@ -787,7 +789,8 @@ utf16Units = concatMap unitsOf . T.unpack
 utf16Length :: Text -> Int
 utf16Length = T.foldl' (\n c -> n + if ord c < 0x10000 then 1 else 2) 0
 
--- | Render UTF-16 units back to a 'String', pairing surrogates.
+-- | Render UTF-16 units back to a 'String', pairing surrogates. A lone
+-- surrogate stays a surrogate 'Char' (see 'jsStringFromCodePoints').
 unitsString :: [Word16] -> String
 unitsString = \case
   [] -> []
@@ -795,8 +798,18 @@ unitsString = \case
     | h >= 0xD800 && h <= 0xDBFF && l >= 0xDC00 && l <= 0xDFFF ->
         chr (0x10000 + ((fromIntegral h - 0xD800) `shiftL` 10) + (fromIntegral l - 0xDC00)) : unitsString rest
   (u : rest)
-    | u >= 0xD800 && u <= 0xDFFF -> '\xFFFD' : unitsString rest
     | otherwise -> chr (fromIntegral u) : unitsString rest
+
+-- | The JavaScript string of code points, where a surrogate 'Char' is a
+-- lone surrogate (escaped as @JSON.stringify@ escapes it).
+jsStringFromCodePoints :: String -> JsString
+jsStringFromCodePoints = JsString . BL.toStrict . BB.toLazyByteString . go
+  where
+    go s = case break isSurrogate s of
+      (run, []) -> scalars run
+      (run, c : rest) -> scalars run <> "\\u" <> hexLower (fromIntegral (ord c)) <> go rest
+    scalars run = BB.byteString (escapeUtf8 (TE.encodeUtf8 (T.pack run)))
+    isSurrogate c = c >= '\xD800' && c <= '\xDFFF'
 
 isWs :: Word8 -> Bool
 isWs w = w == 0x20 || w == 0x0a || w == 0x0d || w == 0x09

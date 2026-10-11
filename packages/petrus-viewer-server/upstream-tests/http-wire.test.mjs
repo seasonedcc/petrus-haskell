@@ -130,6 +130,10 @@ test("open-file and resolve-ref answer with Node's bytes", async (t) => {
       post(RESOLVE, '{"ref":1,"basePath":"file:///a"}'),
       post(RESOLVE, '{"ref":"x","basePath":"nope"}'),
       post(RESOLVE, JSON.stringify({ ref: "./%E0%A4%A", basePath: `file://${dir}/A.json` })),
+      // V8 quotes the token and its context by UTF-16 units, cutting the
+      // pair: the error body carries a lone surrogate escape.
+      post(RESOLVE, "[\u{1F600}]"),
+      post(RESOLVE, "[1,aaaaaaaaa\u{1F600}bbbbbbbbbbbbbbb"),
     ],
     "Connection: close": [get(OPEN, "Connection: close\r\n")],
     "lower-case field names and values": [`GET ${OPEN} HTTP/1.1\r\nhost: x\r\nconnection: CLOSE\r\n\r\n`],

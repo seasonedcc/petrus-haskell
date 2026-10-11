@@ -160,11 +160,14 @@ readFileNode path = do
 data ResolveResult
   = Resolved JsValue
   | ResolveError Text
+  | -- | @JSON.parse@'s message, which may hold a lone surrogate.
+    ResolveParseError JsString
 
 resolveReply :: ResolveResult -> Reply
 resolveReply = \case
   Resolved v -> jsonReply H.status200 (corsHeaders "POST, OPTIONS") v
   ResolveError msg -> jsonReply H.status400 (corsHeaders "POST, OPTIONS") (errorBody msg)
+  ResolveParseError msg -> jsonReply H.status400 (corsHeaders "POST, OPTIONS") (obj [("error", JsStr msg)])
 
 -- | Where a resolve-ref request stands before any network access: answered,
 -- or waiting for a remote fetch of this URL.
@@ -184,7 +187,7 @@ resolveRefBody mgr body = resolveRefStep body >>= runResolveStep mgr
 -- | The POST handler up to the point where it would fetch.
 resolveRefStep :: B.ByteString -> IO ResolveStep
 resolveRefStep body = case parseJs body of
-  Left e -> done (ResolveError (T.pack e))
+  Left e -> done (ResolveParseError e)
   Right JsNull -> done (ResolveError "Cannot destructure property 'ref' of 'JSON.parse(...)' as it is null.")
   Right v -> do
     let field k = case v of

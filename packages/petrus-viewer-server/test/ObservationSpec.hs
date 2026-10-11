@@ -20,7 +20,7 @@ import TestSupport
 loadFixture :: FilePath -> IO JsValue
 loadFixture name = do
   raw <- B.readFile (fixturePath name)
-  either fail pure (parseJs raw)
+  either (fail . T.unpack . jsStringText) pure (parseJs raw)
 
 states :: JsValue -> [JsValue]
 states v = case field "history" v >>= field "states" of

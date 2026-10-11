@@ -18,7 +18,7 @@ import Test.Hspec
 
 parsed :: B.ByteString -> Either Text JsObject
 parsed b = case parseJs b of
-  Left e -> Left (T.pack e)
+  Left e -> Left (jsStringText e)
   Right v -> messageObject <$> parseAgentMessage v
 
 -- | Parse and project one field of the normalized message.
