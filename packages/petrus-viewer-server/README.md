@@ -47,12 +47,19 @@ cabal run petrus -- --ui-dir upstream/petrus-viewer/dist upstream/petrus-viewer/
 file and URL arguments, `PETRUS_OPEN_FILE`, `PETRUS_SOURCE_URL`) behave as
 upstream. Server options: `--port` (default 5173, next free port like Vite),
 `--strict-port`, `--host` (default `localhost`), `--ui-dir` /
-`PETRUS_UI_DIR`, `--temporal-target` / `PETRUS_TEMPORAL_TARGET`,
+`PETRUS_UI_DIR` (default: `./dist` when it holds a build, else a build next
+to the executable: `<prefix>/share/petrus-viewer/ui` for executables in
+`<prefix>/bin`, or `upstream/petrus-viewer/dist` in the checkout they were
+built in), `--temporal-target` / `PETRUS_TEMPORAL_TARGET`,
 `--observation` / `PETRUS_OBSERVATION_URLS`. `PETRUS_RELAY_PERF=0` turns the
 relay timing log off (it is on, as in Vite). `petrus-mcp` reads the upstream
 variables (`PETRUS_AGENT_URL`, `PETRUS_PERF`,
 `PETRUS_MCP_REQUEST_TIMEOUT_MS`, `PETRUS_MCP_BRIDGE_WAIT_MS`) plus `PETRUS_MCP_DEV_COMMAND`,
-`PETRUS_HISTORY_URL`, and `PETRUS_HISTORY_NAMESPACE`.
+`PETRUS_HISTORY_URL`, and `PETRUS_HISTORY_NAMESPACE`. When no bridge answers,
+`petrus-mcp` starts `petrus --no-open` with the UI found the same way
+(`PETRUS_UI_DIR`, else next to `petrus-mcp` or `petrus`, passed as
+`--ui-dir`), so the auto-started server serves the UI whatever the MCP
+client's working directory is.
 
 ## Simulation and history replay
 

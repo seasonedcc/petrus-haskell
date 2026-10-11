@@ -51,6 +51,7 @@ library
                     Petrus.Viewer.Endpoints
                     Petrus.Viewer.HttpFront
                     Petrus.Viewer.Static
+                    Petrus.Viewer.UiDir
                     Petrus.Viewer.Proxy
                     Petrus.Viewer.History.Observation
                     Petrus.Viewer.Server

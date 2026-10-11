@@ -21,12 +21,13 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Petrus.Viewer.Server
+import Petrus.Viewer.UiDir (locateUiDir)
 import Petrus.Viewer.Url (normalizeGitHubUrl)
 import Petrus.Viewer.UrlCache
 import System.Directory (doesDirectoryExist, doesFileExist, doesPathExist, getCurrentDirectory)
-import System.Environment (getArgs, lookupEnv)
+import System.Environment (getArgs, getExecutablePath, lookupEnv)
 import System.Exit (ExitCode (..), exitWith)
-import System.FilePath ((</>))
+import System.FilePath (takeDirectory, (</>))
 import System.IO
 import System.Info (os)
 import System.Process qualified as P
@@ -117,6 +118,7 @@ helpText =
     , "  --strict-port            Fail instead of moving to the next free port"
     , "  --host <host>            Address to bind (default localhost: 127.0.0.1 and ::1)"
     , "  --ui-dir <dir>           Built viewer UI (pnpm build output); env PETRUS_UI_DIR"
+    , "                           (default: ./dist, else a build next to this executable)"
     , "  --temporal-target <url>  Temporal HTTP API behind /temporal (default http://localhost:7243)"
     , "  --observation <url>      Petrus observation endpoint served as Temporal history"
     , "                           (repeatable); env PETRUS_OBSERVATION_URLS (comma separated)"
@@ -192,7 +194,8 @@ resolveFrom cwd p =
       n = normalizePosix joined
    in if length n > 1 && last n == '/' then init n else n
 
--- | @--ui-dir@, else @PETRUS_UI_DIR@, else @./dist@ when it holds a build.
+-- | @--ui-dir@, else @PETRUS_UI_DIR@, else @./dist@ when it holds a build,
+-- else a build found next to the executable ("Petrus.Viewer.UiDir").
 resolveUiDir :: FilePath -> Maybe FilePath -> IO (Maybe FilePath)
 resolveUiDir cwd flag = do
   env <- lookupEnv "PETRUS_UI_DIR"
@@ -207,7 +210,11 @@ resolveUiDir cwd flag = do
     Nothing -> do
       let dist = cwd </> "dist"
       built <- doesFileExist (dist </> "index.html")
-      pure (if built then Just dist else Nothing)
+      if built
+        then pure (Just dist)
+        else do
+          exe <- getExecutablePath
+          locateUiDir [takeDirectory exe]
   where
     orElse' a b = maybe b Just a
 

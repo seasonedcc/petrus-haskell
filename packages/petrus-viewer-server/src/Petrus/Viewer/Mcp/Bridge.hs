@@ -42,6 +42,7 @@ import Data.Text qualified as T
 import Network.WebSockets qualified as WS
 import Petrus.Viewer.Json
 import Petrus.Viewer.Log
+import Petrus.Viewer.UiDir (locateUiDir)
 import Petrus.Viewer.WsUrl
 import System.Directory (doesFileExist, findExecutable)
 import System.Environment (getExecutablePath, lookupEnv)
@@ -90,10 +91,14 @@ bridgeConfigFromEnv = do
       , autoStart = cmd
       }
 
--- | The Node server runs @pnpm run dev@ in the viewer checkout. Here the
--- viewer server is the @petrus@ executable: @PETRUS_MCP_DEV_COMMAND@ (run
--- through @sh -c@) when set, else @petrus --no-open@ found next to this
--- executable or on @PATH@.
+-- | The Node server runs @pnpm run dev@ in the viewer checkout it belongs
+-- to, whatever the working directory. Here the viewer server is the
+-- @petrus@ executable: @PETRUS_MCP_DEV_COMMAND@ (run through @sh -c@) when
+-- set, else @petrus --no-open@ found next to this executable or on @PATH@.
+-- The UI it serves does not depend on the working directory either:
+-- @PETRUS_UI_DIR@ when set (the server inherits it), else the build found
+-- next to this executable or that @petrus@ ("Petrus.Viewer.UiDir"),
+-- passed as @--ui-dir@.
 autoStartCommand :: IO (Maybe (FilePath, [String]))
 autoStartCommand = do
   custom <- lookupEnv "PETRUS_MCP_DEV_COMMAND"
@@ -104,7 +109,11 @@ autoStartCommand = do
       let sibling = takeDirectory self </> "petrus"
       here <- doesFileExist sibling
       found <- if here then pure (Just sibling) else findExecutable "petrus"
-      pure (fmap (,["--no-open"]) found)
+      uiEnv <- lookupEnv "PETRUS_UI_DIR"
+      ui <- case uiEnv of
+        Just d | not (null d) -> pure Nothing
+        _ -> locateUiDir (takeDirectory self : maybe [] (pure . takeDirectory) found)
+      pure (fmap (,["--no-open"] ++ maybe [] (\d -> ["--ui-dir", d]) ui) found)
 
 newtype PerfLog = PerfLog (Maybe Logger)
 
