@@ -1083,7 +1083,10 @@ The 11 journeys in `tests/integration/host/test_readiness_scenarios.py` are:
 
 ## 5. End-to-end against a real GitHub App
 
-**Status.**
+**Status.** The live run (tier C) is optional: parity does not depend on it.
+Tiers A and B establish equivalence offline, byte for byte, and the Haskell
+host is being validated further in real deployments. The tier C tooling stays
+ready for whenever a live side-by-side run is wanted.
 - **Tier A** is done. It lives in `packages/hamsterdan-testing`, with the
   eleven journeys byte-exact in all four pairings.
 - **Tier B** is done offline, in `packages/hamsterdan-e2e`. All eleven
