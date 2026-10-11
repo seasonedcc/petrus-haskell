@@ -21,13 +21,14 @@ ROOT = Path(__file__).resolve().parents[3]
 UPSTREAM = ROOT / "upstream" / "petrus" / "tests"
 PACKAGE = ROOT / "packages" / "petrus-impetus"
 
-# Files outside the port's scope: the DSL, CEL itself, and durable stores
+# Files this package does not port because another package of this
+# repository does, with its own ledger: the DSL, CEL, and the durable stores
 # other than the in-memory one.
 OUT_OF_SCOPE = {
-    "petrus/impetus/dsl/test_petrinet_dsl.py": "the DSL is out of scope",
-    "petrus/impetus/binding/test_cel.py": "CEL is a separate package (petrus-cel)",
-    "petrus/impetus/history_store/test_postgres_history.py": "durable stores other than in-memory are out of scope",
-    "petrus/impetus/history_store/test_sqlite_history.py": "durable stores other than in-memory are out of scope",
+    "petrus/impetus/dsl/test_petrinet_dsl.py": "ported in petrus-dsl (packages/petrus-dsl/PARITY.md)",
+    "petrus/impetus/binding/test_cel.py": "ported in petrus-cel (packages/petrus-cel/PARITY.md)",
+    "petrus/impetus/history_store/test_postgres_history.py": "ported in petrus-history-postgres (packages/petrus-history-postgres/PARITY.md)",
+    "petrus/impetus/history_store/test_sqlite_history.py": "ported in petrus-history-store (packages/petrus-history-store/PARITY.md)",
 }
 EXTRA = ["integration/test_activity_seam.py"]
 
@@ -46,7 +47,7 @@ def main() -> int:
         relative = str(path.relative_to(UPSTREAM))
         names = re.findall(r"^\s*def (test_\w+)", path.read_text(), re.M)
         if relative in OUT_OF_SCOPE:
-            print(f"{len(names):4}  {relative}: out of scope — {OUT_OF_SCOPE[relative]}")
+            print(f"{len(names):4}  {relative}: {OUT_OF_SCOPE[relative]}")
             continue
         total += len(names)
         absent = [name for name in names if not re.search(rf"\b{name}\b", haystack)]
