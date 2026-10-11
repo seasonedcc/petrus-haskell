@@ -19,6 +19,7 @@ Every name in the module's `__all__`, and where it lives in Haskell:
 | `dataclasses.asdict(ExecutionPolicy)` (History's `policy` object) | `policyJson` | differential (wire bytes) |
 | `ActivityInvocation` | `ActivityInvocation`, `activityInvocation`, `invocation` (the keyword defaults) | differential `ActivityInvocation` |
 | `dataclasses.asdict(ActivityInvocation)` | `invocationJson` | differential (wire bytes) |
+| the three dispatch backends' invocation decoders (`local.py` `_decode_invocation`, `absurd.py` `decode_invocation`, `zeromq.py` `_decode_invocation`) | one `invocationFromJson` (with `policyFromMembers` and the `InvocationJsonError` it reports), which Local, Absurd and ZeroMQ each word as their reference does (`invocationRefusal`) | `test/Main.hs` (round trip, legacy two-field policy, first refusing check); each backend's own decode tests and interop |
 | `ActivityFailure` (with `_failure_details`) | `ActivityFailure` (opaque), `ActivityFailureFields`, `activityFailure`, `simpleFailure`, `failureFields` | differential `ActivityFailure` |
 | `dataclasses.asdict(ActivityFailure)` | `failureJson` | differential (wire bytes) |
 | `ActivityError` | `ActivityError` (an `Exception`), `activityError` | `test/Main.hs`; thrown and caught by the Workers in `petrus-motus` |

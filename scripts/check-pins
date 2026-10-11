@@ -2,13 +2,22 @@
 # Fail unless every upstream submodule is checked out at the commit UPSTREAM.md pins.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+root=$(pwd -P)
 status=0
 while IFS='|' read -r _ _ submodule sha _; do
   submodule=$(echo "$submodule" | tr -d ' `')
   sha=$(echo "$sha" | tr -d ' `')
   [[ "$submodule" == upstream/* ]] || continue
-  actual=$(git -C "$submodule" rev-parse HEAD 2>/dev/null || echo missing)
   recorded=$(git ls-tree HEAD "$submodule" | awk '{print $3}')
+  # An uninitialized submodule is an empty directory (or none), inside which
+  # git resolves the superproject: only its own toplevel counts as checked out.
+  toplevel=$(git -C "$submodule" rev-parse --show-toplevel 2>/dev/null || true)
+  if [[ "$toplevel" != "$root/$submodule" ]]; then
+    echo "$submodule is not checked out (git submodule update --init $submodule): UPSTREAM.md=$sha gitlink=$recorded" >&2
+    status=1
+    continue
+  fi
+  actual=$(git -C "$submodule" rev-parse HEAD)
   if [[ "$actual" != "$sha" || "$recorded" != "$sha" ]]; then
     echo "pin mismatch for $submodule: UPSTREAM.md=$sha gitlink=$recorded checkout=$actual" >&2
     status=1

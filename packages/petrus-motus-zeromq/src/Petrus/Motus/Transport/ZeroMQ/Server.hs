@@ -48,12 +48,11 @@ import Data.Maybe (isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Database.SQLite3 (SQLError (..))
 import Foreign.C.Error (eWOULDBLOCK, getErrno, throwErrno)
 import Foreign.C.Types (CInt (..))
 import GHC.Clock (getMonotonicTime)
 import Petrus.Json (Json (..))
-import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..), DispatchError (..), WorkerDispatch (..))
+import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..), WorkerDispatch (..))
 import Petrus.Motus.Dispatch.Local
   ( LocalConnections
   , LocalWorkerOptions (..)
@@ -63,7 +62,8 @@ import Petrus.Motus.Dispatch.Local
   , openLocalWorkerDispatchOn
   )
 import Petrus.Motus.Dispatch.Local qualified as Local
-import Petrus.Motus.Internal.Repr (exceptionMessage, exceptionTypeName, pyRepr, pyStr, pyStrList)
+import Petrus.Motus.Internal.Repr (exceptionMessage, pyRepr, pyStr, pyStrList)
+import Petrus.Motus.PythonException (PythonException (..))
 import Petrus.Motus.Transport.ZeroMQ.Curve
 import Petrus.Motus.Transport.ZeroMQ.Errors
 import Petrus.Motus.Transport.ZeroMQ.Native qualified as Z
@@ -405,16 +405,16 @@ handleRequest factory limit draining providers problem frames = do
     fallback = "{\"error\":{\"kind\":\"service\",\"message\":\"ValueError\"},\"ok\":false,\"request_id\":\"unknown\",\"version\":2}"
 
 -- | The error kind and message: @_ProtocolError@ → @protocol@, any other
--- @ValueError@ → @refused@, anything else → @service@.
+-- @ValueError@ → @refused@, anything else → @service@. The class is the
+-- exception's Python class ('zeromqPythonException').
 classify :: SomeException -> (Text, Text)
-classify e
-  | Just (ProtocolError m) <- fromException e = ("protocol", errorMessage "_ProtocolError" m)
-  | Just (ValueError m) <- fromException e = ("refused", errorMessage "ValueError" m)
-  | Just (DispatchError m) <- fromException e = ("refused", errorMessage "ValueError" m)
-  | Just (SQLError _ details _) <- fromException e = ("service", errorMessage "OperationalError" details)
-  | Just (TypeError m) <- fromException e = ("service", errorMessage "TypeError" m)
-  | Just (RuntimeError m) <- fromException e = ("service", errorMessage "RuntimeError" m)
-  | otherwise = ("service", errorMessage (exceptionTypeName e) (exceptionMessage e))
+classify e = (kind python.className, errorMessage python.className python.message)
+  where
+    python = zeromqPythonException e
+    kind = \case
+      "_ProtocolError" -> "protocol"
+      "ValueError" -> "refused"
+      _ -> "service"
 
 -- | @_parse_request(frames)@ (every refusal is a protocol error).
 parseRequest :: Int -> [ByteString] -> Either Text [(Text, Json)]

@@ -79,3 +79,6 @@ scripts/bench --check
 
 step "Parity table"
 scripts/check-parity
+
+step "Runtime test ledgers (every in-scope upstream test accounted for)"
+python3 packages/petrus-engine/scripts/parity_check.py

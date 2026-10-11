@@ -77,14 +77,21 @@ differences are in how the API is spelled and in what the types rule out.
    text is the reference's for every argument shape. The evidence is the
    kernel's `FailureTextSpec` over `differential/failure_text_corpus.json`
    (452 reference-produced texts; see `packages/petrus-impetus/DIVERGENCES.md`
-   item 11). What remains is the class name: a Haskell exception is named by
-   its `Typeable` type name, so it matches the reference only when the
-   Haskell type is named like the Python class.
-10. **The joined-transaction pairing is not inspected.** As in the
+   item 11). The Dispatches' and Workers' own exceptions are named by
+   `Petrus.Motus.PythonException` (a `DispatchError` is `ValueError`; see
+   `packages/petrus-motus/DIVERGENCES.md` item 4). What remains is the class
+   name of any other exception: it is named by its `Typeable` type name, so
+   it matches the reference only when the Haskell type is named like the
+   Python class.
+10. **A joined-transaction store must come with a commit point.** As in the
     reference, the Engine commits at its commit points exactly when the
-    provider's `EngineResources` supply a `commit`. It does not check the
-    store's `CommitMode`. Pairing a `JoinedTransaction` store with a commit
-    hook is the provider's responsibility (`Petrus.Engine.Provider`).
+    provider's `EngineResources` supply a `commit`. The reference does not
+    inspect the pairing. Here `openEngine` refuses a `JoinedTransaction`
+    store without a `commit` (`ValueError`), since its appends would never
+    become durable. This is a port-only guard, checked by the EngineSpec
+    example "a joined-transaction store without a commit point is refused".
+    A `BackendOwned` store may still take a commit hook, as the reference's
+    observation tests do.
 11. **A kernel performance change.** This milestone touched
     `Petrus.Impetus.HistoryStore` in `petrus-impetus`, minimally and
     additively:

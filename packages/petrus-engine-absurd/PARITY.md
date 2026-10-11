@@ -84,6 +84,29 @@ keeps an example that says so).
 - the unregistered Activity, run once per Worker kind;
 - the mutable-registry snapshot.
 
+### Examples named in prose
+
+`packages/petrus-engine/scripts/parity_check.py` reads this ledger. It matches an example to an
+upstream test by its words, so these 14 examples, whose names read as sentences, are listed by
+upstream name:
+
+| upstream test | Haskell example |
+| --- | --- |
+| `TestLifecycleScopeCancellation.test_engine_close_commits_history_then_absurd_tombstone_and_restart_repairs` | Engine close commits History, then the Absurd tombstone, and a restart repairs |
+| `TestWorkerKill.test_replacement_process_receives_durable_details_and_resumes` | a replacement process receives durable details and resumes |
+| `TestAuthorityKill.test_killed_after_the_dispatch_commit_resumes_without_a_double_spawn` | killed after the dispatch commit, the authority resumes without a double spawn |
+| `TestAbsurdProviderEngineConstruction.test_resolves_default_and_declared_timeout_into_history_and_dispatch_and_snapshots_inputs` | resolves the default and the declared timeout into History and Dispatch |
+| `TestAbsurdProviderEngineConstruction.test_load_under_changed_timeout_keeps_recorded_in_flight_invocation_without_reprepare` | a load under a changed timeout keeps the recorded in-flight invocation without re-prepare |
+| `TestAbsurdProviderEngineConstruction.test_provider_returns_the_concrete_engine_with_only_universal_doors` | the provider returns the plain Engine, with only the universal doors |
+| `TestAbsurdProviderEngineConstruction.test_invalid_provider_option_closes_both_connections` | an invalid provider option closes both connections |
+| `TestAbsurdProviderEngineConstruction.test_wrong_autocommit_listener_leaves_create_empty_and_retriable` | a wrong-autocommit listener leaves create empty and retriable |
+| `TestAbsurdProviderEngineConstruction.test_load_refuses_recorded_identity_that_differs_from_storage_key` | load refuses a recorded identity that differs from the storage key |
+| `TestAbsurdProviderEngineConstruction.test_joined_dispatch_failure_rolls_back_selection_before_fresh_load` | a joined Dispatch failure rolls back the selection before a fresh load |
+| `TestAbsurdProviderEngineConstruction.test_real_recovery_lock_contention_poisons_preserves_old_creates_no_target_and_releases_fence` | real recovery lock contention poisons, preserves the old custody, creates no target, and releases the fence |
+| `TestActivityRegistry.test_claimant_is_reused_by_one_process_definition_and_new_for_a_new_one` | the claimant is reused by one process definition and new for a new one |
+| `TestActivityRegistry.test_worker_snapshots_mutable_queue_sequence` | the Worker snapshots its queue sequence |
+| `TestActivityRegistry.test_worker_refuses_an_empty_queue_subscription` | the Worker refuses an empty queue subscription |
+
 ### Enforced by the types
 
 - `TestAbsurdProviderEngineConstruction.test_the_session_hands_out_no_writer_and_its_accessors_are_read_only`:

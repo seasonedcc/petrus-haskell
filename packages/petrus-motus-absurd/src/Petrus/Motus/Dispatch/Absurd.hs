@@ -150,7 +150,8 @@ import Petrus.Motus.Dispatch
   )
 import Petrus.Motus.Dispatch qualified as Port
 import Petrus.Motus.Dispatch.Absurd.Schema
-import Petrus.Motus.Internal.Repr (exceptionMessage, exceptionTypeName, pyStr)
+import Petrus.Motus.Internal.Repr (pyStr)
+import Petrus.Motus.PythonException (Namer (..), PythonException (..), pythonExceptionWith)
 import Petrus.Postgres
   ( Connection
   , ErrorClass (..)
@@ -232,28 +233,7 @@ publicationKey instanceId occurrence = instanceId <> ":occurrence-" <> showT occ
 -- | @encode_invocation@: the invocation's wire spelling for the task
 -- payload, field for field like the canonical @ActivityRequested@.
 encodeInvocation :: ActivityInvocation -> Json
-encodeInvocation inv =
-  Object
-    [ ("activity", String inv.activity)
-    , ("input", inv.input)
-    ,
-      ( "policy"
-      , Object
-          [ ("attempts", Int fields.attempts)
-          , ("heartbeat_timeout", Int fields.heartbeatTimeout)
-          , ("initial_interval", numberJson fields.initialInterval)
-          , ("coefficient", numberJson fields.coefficient)
-          , ("max_interval", numberJson fields.maxInterval)
-          , ("jitter", numberJson fields.jitter)
-          , ("start_to_close", maybe Null numberJson fields.startToClose)
-          , ("schedule_to_close", maybe Null numberJson fields.scheduleToClose)
-          ]
-      )
-    , ("correlation", maybe Null String inv.correlation)
-    , ("idempotency", maybe Null String inv.idempotency)
-    ]
-  where
-    fields = policyFields inv.policy
+encodeInvocation = invocationJson
 
 -- | @_canonical_json@: the deterministic, type-sensitive spelling used for
 -- conflict judgments (sorted keys, compact, non-ASCII kept, non-finite
@@ -261,90 +241,17 @@ encodeInvocation inv =
 canonicalJson :: Json -> Either Text Text
 canonicalJson value = either (Left . T.pack . encodeErrorMessage) Right (canonicalText value)
 
--- | @decode_invocation@: the strict inverse of 'encodeInvocation' — exactly
--- the five wire fields, a legacy (@attempts@, @heartbeat_timeout@) or
--- current (eight-field) policy with integer attempts and heartbeat timeout,
--- and the value constructors' own validation. Every refusal starts with
--- "task payload does not decode as an activity invocation".
+-- | @decode_invocation@: the strict inverse of 'encodeInvocation'
+-- ('invocationFromJson'). Every refusal starts with "task payload does not
+-- decode as an activity invocation".
 decodeInvocation :: Json -> Either Text ActivityInvocation
-decodeInvocation payload = do
-  members <- case payload of
-    Object ms | Set.fromList (map fst ms) == wireFields && length ms == Set.size wireFields -> Right ms
-    _ ->
-      Left
-        ( rejection
-            <> ": expected exactly the fields ['activity', 'correlation', 'idempotency', 'input', 'policy'], got "
-            <> pyRepr payload
-        )
-  let field key = fromMaybe Null (lookup key members)
-      policy = field "policy"
-      policyRefusal =
-        Left (rejection <> ": policy must be exactly {'attempts': int, 'heartbeat_timeout': int}, got " <> pyRepr policy)
-  policyMembers <- case policy of
-    Object ms
-      | Set.fromList (map fst ms) `elem` [legacyPolicy, currentPolicy]
-      , Just (Int _) <- lookup "attempts" ms
-      , Just (Int _) <- lookup "heartbeat_timeout" ms ->
-          Right ms
-    _ -> policyRefusal
-  either (\problem -> Left (rejection <> ": " <> problem)) Right $ do
-    let policyField key = lookup key policyMembers
-        integral key = case policyField key of
-          Just (Int i) -> i
-          _ -> 0
-        defaults = policyFields defaultExecutionPolicy
-        -- A value that is not a number fails the constructor's own range
-        -- check, with its message: a NaN stands in for it.
-        numberOr fallback = \case
-          Nothing -> fallback
-          Just raw -> fromMaybe (FloatNumber (0 / 0)) (numberFromJson raw)
-        optionalNumber = \case
-          Nothing -> Nothing
-          Just Null -> Nothing
-          Just raw -> Just (fromMaybe (FloatNumber (0 / 0)) (numberFromJson raw))
-    policy' <-
-      executionPolicy
-        ExecutionPolicyFields
-          { attempts = integral "attempts"
-          , heartbeatTimeout = integral "heartbeat_timeout"
-          , initialInterval = numberOr defaults.initialInterval (policyField "initial_interval")
-          , coefficient = numberOr defaults.coefficient (policyField "coefficient")
-          , maxInterval = numberOr defaults.maxInterval (policyField "max_interval")
-          , jitter = numberOr defaults.jitter (policyField "jitter")
-          , startToClose = optionalNumber (policyField "start_to_close")
-          , scheduleToClose = optionalNumber (policyField "schedule_to_close")
-          }
-    activity' <- case field "activity" of
-      String a | not (T.null a) -> Right a
-      other -> Left ("ActivityInvocation requires a non-empty string activity name, got " <> pyRepr other)
-    correlation' <- identity "correlation" (field "correlation")
-    idempotency' <- identity "idempotency" (field "idempotency")
-    Right
-      ActivityInvocation
-        { activity = activity'
-        , input = field "input"
-        , policy = policy'
-        , correlation = correlation'
-        , idempotency = idempotency'
-        }
+decodeInvocation payload = either (Left . ((rejection <> ": ") <>) . refusal) Right (invocationFromJson payload)
   where
     rejection = "task payload does not decode as an activity invocation"
-    wireFields = Set.fromList ["activity", "input", "policy", "correlation", "idempotency"]
-    legacyPolicy = Set.fromList ["attempts", "heartbeat_timeout"]
-    currentPolicy =
-      Set.union
-        legacyPolicy
-        (Set.fromList ["initial_interval", "coefficient", "max_interval", "jitter", "start_to_close", "schedule_to_close"])
-    identity label = \case
-      Null -> Right Nothing
-      String v | not (T.null v) -> Right (Just v)
-      other ->
-        Left
-          ( "ActivityInvocation "
-              <> label
-              <> " must be a non-empty string, or None for the writer to derive at begin, got "
-              <> pyRepr other
-          )
+    refusal problem = flip fromMaybe (invocationRefusal pyRepr problem) $ case problem of
+      InvocationFieldsNotExact ->
+        "expected exactly the fields ['activity', 'correlation', 'idempotency', 'input', 'policy'], got " <> pyRepr payload
+      _ -> "policy must be exactly {'attempts': int, 'heartbeat_timeout': int}, got " <> pyRepr (fromMaybe Null (lookupMember "policy" payload))
 
 -- | @_instance_from_key@: the Petrus Instance a publication key scopes, if
 -- the key is one (@"{instance}:occurrence-{n}"@, split at the last
@@ -595,7 +502,9 @@ guardedTerminal g queue taskId' runId' report = do
     ReportResult _ -> pure Nothing
     ReportFailure (FailureClassified classified) -> pure (Just classified)
     ReportFailure (FailureMessage message) -> Just <$> refuse (retryableFailure message "RuntimeError")
-    ReportFailure (FailureException err) -> Just <$> refuse (retryableFailure (exceptionMessage err) (exceptionTypeName err))
+    ReportFailure (FailureException err) ->
+      let python = pythonExceptionWith [Namer (\(AbsurdError m) -> PythonException "RuntimeError" m)] err
+       in Just <$> refuse (retryableFailure python.message python.className)
   let reason = failureReason <$> failure
       s = g.session
       tq = "absurd.t_" <> queue

@@ -29,6 +29,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.TestSupport
+                    Petrus.TestSupport.Boundary
                     Petrus.TestSupport.Postgres
                     Petrus.TestSupport.Python
                     Petrus.TestSupport.Repo

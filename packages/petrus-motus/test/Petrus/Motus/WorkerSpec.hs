@@ -18,7 +18,8 @@ import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch qualified as D
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Dispatch.LocalSupport (withScratch)
-import Petrus.Motus.Internal.Repr (exceptionMessage, exceptionTypeName)
+import Petrus.Motus.Internal.Repr (exceptionMessage)
+import Petrus.Motus.PythonException qualified as Python
 import Petrus.Motus.Worker
 import Petrus.Motus.WorkerSupport
 import System.Exit (ExitCode (..))
@@ -35,7 +36,7 @@ withPolicy tweak inv = inv {policy = policyWith tweak}
 
 failureType :: AttemptFailure -> Text
 failureType = \case
-  FailureException err -> exceptionTypeName err
+  FailureException err -> (Python.pythonException err).className
   FailureMessage _ -> "str"
   FailureClassified _ -> "ActivityFailure"
 

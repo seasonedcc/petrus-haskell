@@ -39,6 +39,7 @@ library
                     Petrus.Motus.Dispatch.Local
                     Petrus.Motus.Internal.Argparse
                     Petrus.Motus.Internal.Repr
+                    Petrus.Motus.PythonException
                     Petrus.Motus.Worker
                     Petrus.Motus.Worker.Cli
   build-depends:    base >=4.18 && <5
@@ -68,6 +69,7 @@ test-suite petrus-motus-test
                     Petrus.Motus.WorkerSpec
                     Petrus.Motus.AsyncWorkerSpec
                     Petrus.Motus.WorkerCliSpec
+                    Petrus.Motus.BoundarySpec
   build-depends:    base
                   , bytestring
                   , containers
