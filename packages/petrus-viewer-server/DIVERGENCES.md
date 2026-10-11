@@ -33,9 +33,9 @@ listed here.
   the agent relay prints for every petrus-agent request and response
   (always on in Vite).
 - GHC runtime options: the executables accept `+RTS … -RTS`. `petrus` and
-  `petrus-collab` default to `-N2 -qg -qm -A16m` (two capabilities, no
-  parallel GC, no thread migration); see [bench/RESULTS.md](bench/RESULTS.md)
-  for why.
+  `petrus-collab` default to `-N1 -qg -A16m` (one capability, like Node's
+  one event loop; the relays run their own event-loop OS threads); see
+  [bench/RESULTS.md](bench/RESULTS.md) for why.
 - **History from Petrus observation producers.** With `--observation`,
   `/temporal/api/v1/namespaces/{ns}/workflows` and
   `…/workflows/{id}/query/get_state|get_schema` are answered from Petrus
@@ -62,6 +62,15 @@ listed here.
   exception kills the relay process. The Haskell relay drops such messages
   (arrays are relayed unchanged, as in Node, where the property assignment
   succeeds but is not serialized).
+- **Collaboration relay, WebSocket protocol errors.** `server/collab.mjs`
+  registers no `error` listener on its sockets, so when `ws` rejects a
+  client's frame (an unmasked frame, a reserved bit or opcode, a bad close
+  code or reason, invalid UTF-8) the unhandled `error` event kills the
+  relay process and every peer loses its connection. The Haskell relays
+  answer such a frame as `ws` does (the same close frame, the same close
+  code, then the connection is closed) and keep serving the other peers.
+  The agent relay's upstream code has the listener, and there the bytes
+  are identical (`upstream-tests/ws-wire.test.mjs`).
 - **MCP bridge, `null` from the relay.** `server/mcp.mjs` reads `msg.type`
   on the parsed message and crashes on a JSON `null`; `petrus-mcp` ignores
   it.
@@ -81,12 +90,16 @@ listed here.
 - **`wss://` bridge URLs.** `petrus-mcp` connects to `ws://` relays only;
   a `wss://` `PETRUS_AGENT_URL` fails like an unreachable bridge.
 - **Relay timing log.** Vite's relay calls `console.log` inline, before
-  forwarding the message; `petrus` measures at the same point but queues
-  the line after the message is queued for delivery, and a background
-  thread writes the lines in batches, in order. The lines are the same
-  (their `toISOString` timestamps can differ by microseconds), but they
-  can reach stdout a moment after the message was forwarded, and lines
-  still queued when the process is killed are lost.
+  forwarding the message. `petrus` measures at the same point and writes
+  the line right after the frame is queued, before the relay writes the
+  turn's frames to the sockets. Like `console.log`, the write is
+  synchronous when standard output is a file or a terminal; when it is a
+  pipe or a socket, a background thread writes the lines in batches, in
+  order, so a slow reader never stalls the relay (Node writes to pipes
+  asynchronously on macOS, synchronously on Linux). There, lines can reach
+  stdout a moment after the message was forwarded, and lines still queued
+  when the process is killed are lost. The lines are the same (their
+  `toISOString` timestamps can differ by microseconds).
 - **Response framing.** JSON responses carry `Content-Length` (as Node's
   `res.end(body)` does) but not Node's `Connection: keep-alive` /
   `Keep-Alive: timeout=5` headers; HTTP/1.1 keep-alive is the default

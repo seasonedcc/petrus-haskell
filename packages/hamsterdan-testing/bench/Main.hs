@@ -18,6 +18,7 @@ import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Testing.Readiness
 import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 main :: IO ()
@@ -29,7 +30,10 @@ main = do
   let expectations = map evaluate facts
       environments = [FairEnvironment (off /= 0) (off /= 1) (off /= 2) (off /= 3) (off /= 4) | off <- [-1 .. 4 :: Int]]
       count = show (length facts)
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup
         "oracle"
         [ bench ("evaluate every admitted corpus document (" <> count <> ")") $ nf (map (summary . evaluate)) facts

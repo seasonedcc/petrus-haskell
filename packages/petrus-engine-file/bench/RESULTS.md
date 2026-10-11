@@ -36,14 +36,21 @@ Each Haskell result is forced in full (`NFData`).
 
 ## How to rerun
 
-From the repository root:
+From the repository root (`scripts/bench petrus-engine-file` runs exactly
+this; `scripts/upstream-python petrus-engine` provisions the pinned
+petrus-engine):
 
-    cabal bench petrus-engine-file
+<!-- scripts/bench: rerun -->
+```sh
+cabal bench -j2 petrus-engine-file --benchmark-options='+RTS -M2G -RTS'
+"$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/python_bench.py
+```
 
-For Python, use the pinned reference and its virtual environment:
-
-    uv sync --frozen --python 3.14 --project upstream/petrus-engine   # once
-    upstream/petrus-engine/.venv/bin/python packages/petrus-engine-file/bench/python_bench.py
+Haskell times are wall-clock time (`localOption WallTime` in `bench/Main.hs`),
+like the Python side's `time.perf_counter`. The table above was taken before
+that switch, in tasty-bench's default CPU time; this workload is
+single-threaded and does no I/O inside the timed region, so the two agree
+(see [CPU and wall-clock time](../../../docs/reproducing.md#cpu-and-wall-clock-time)).
 
 Haskell numbers are tasty-bench means (± 2σ). Python numbers are the median
 of 5 to 200 runs after one warm-up. Both were run on 2026-10-10 on an Apple

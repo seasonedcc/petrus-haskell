@@ -20,25 +20,18 @@ import Petrus.Json.Parse (parseJson, pythonLoads)
 import Petrus.Json.Value qualified as J
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo qualified as TestSupport
-import System.Directory (doesDirectoryExist, getCurrentDirectory, makeAbsolute)
+import System.Directory (makeAbsolute)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
 import Test.Hspec
 
--- | The repository root: the nearest ancestor holding @upstream/petrus-engine@.
-repoRoot :: IO (Maybe FilePath)
-repoRoot = getCurrentDirectory >>= go
-  where
-    go dir = do
-      found <- doesDirectoryExist (dir </> "upstream" </> "petrus-engine")
-      if found
-        then pure (Just dir)
-        else
-          let parent = takeDirectory dir
-           in if parent == dir then pure Nothing else go parent
+-- | The repository root (petrus-test-support's, which fails loudly when
+-- there is none).
+repoRoot :: IO FilePath
+repoRoot = TestSupport.repoRoot
 
 -- | The pinned reference interpreter (@upstream/petrus-engine/.venv@,
 -- provisioned by @scripts/upstream-python petrus-engine@ on first use) and

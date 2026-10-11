@@ -2,31 +2,47 @@
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
-names, values and store operations. Ratios above 1 mean Haskell is faster.
-The ratio column pairs the slowest Haskell run with the fastest Python run.
+names, values and store operations. Both are wall-clock time. Ratios above 1
+mean Haskell is faster. **One store row is slower than Python:**
+`postgres.child-of` (0.97×).
 
-- Commit: `956d24a`
-- Machine: Darwin arm64, Apple M4
-- Haskell: GHC 9.10.3 (-O2), tasty-bench mean, `--stdev 5`, `+RTS -M2G -RTS`
-- Python: CPython 3.14.6 (upstream venv), median of timed batches (scripts/bench_timing.py)
-- PostgreSQL 17.7 on localhost (a private server; the store rows use a scratch database each run)
-- Runs: 2 rounds, interleaved (Haskell 1, Python 1, Haskell 2, Python 2). The machine was shared
-  with other work; 1-minute load averages around each run:
-  haskell 1 before: 4.22; haskell 1 after: 4.44; python 1 before: 4.44; python 1 after: 4.38; haskell 2 before: 4.38; haskell 2 after: 5.19; python 2 before: 5.19; python 2 after: 4.56.
+- Date: 2026-10-10 21:06–21:08 local (UTC-3), commit `74e6b1e` with the switch to wall-clock
+  time in `bench/Main.hs` (the library code is unchanged)
+- Machine: Darwin arm64, Apple M4, shared with other agents; 1-minute load average 2.7–4.0
+  around the runs
+- Haskell: GHC 9.10.3 (-O2), tasty-bench mean in wall-clock time, `--stdev 5`, `+RTS -M2G -RTS`
+- Python: CPython 3.14.6 (upstream venv), psycopg 3.3.4, median of 10 timed batches of 0.2 s
+  (scripts/bench_timing.py)
+- PostgreSQL 17.7, a throwaway server from `scripts/with-postgres` (Postgres.app binaries,
+  `initdb` defaults) on 127.0.0.1; the store rows use a scratch database each run
+- Interleaved by `scripts/bench-compare petrus-processes 2`: Haskell, Python, then Python,
+  Haskell. The figures are the medians of the two repetitions; the last two columns give each
+  repetition.
 
-| Benchmark | Haskell (run 1 / run 2) | Python (run 1 / run 2) | Python / Haskell (slowest Haskell vs fastest Python) |
-|---|---:|---:|---:|
-| `model.child-identity` | 652 ns / 647 ns | 1.81 µs / 1.76 µs | 2.70× |
-| `model.spawn-spec-digest` | 2.81 µs / 2.72 µs | 15.6 µs / 15.5 µs | 5.50× |
-| `model.spawn-spec-roundtrip` | 1.3 µs / 1.34 µs | 14.4 µs / 14.6 µs | 10.79× |
-| `call.request-envelope` | 1.46 µs / 1.46 µs | 14.8 µs / 15 µs | 10.14× |
-| `call.result-envelope` | 1.49 µs / 1.6 µs | 15.6 µs / 15.8 µs | 9.80× |
-| `call.reply-from-envelope` | 804 ns / 868 ns | 12.1 µs / 12.2 µs | 13.94× |
-| `spawn.activity` | 5.76 µs / 5.86 µs | 46.4 µs / 47.3 µs | 7.91× |
-| `postgres.claim-prior` | 34.5 µs / 31.1 µs | 117 µs / 102 µs | 2.97× |
-| `postgres.child-of` | 17.5 µs / 19.7 µs | 62.8 µs / 61.8 µs | 3.14× |
-| `postgres.claim-new` | 34.1 µs / 29.8 µs | 159 µs / 3.73 ms | 4.67× |
-| `postgres.spawn-activity` | 40.2 µs / 35.3 µs | 221 µs / 239 µs | 5.51× |
+| Benchmark | Haskell | Python | Python / Haskell | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---|---|
+| `model.child-identity` | 625 ns | 1.78 µs | 2.85× | 629 ns, 622 ns | 1.78 µs, 1.78 µs |
+| `model.spawn-spec-digest` | 2.61 µs | 15.5 µs | 5.93× | 2.57 µs, 2.65 µs | 15.6 µs, 15.4 µs |
+| `model.spawn-spec-roundtrip` | 1.24 µs | 14.1 µs | 11.40× | 1.28 µs, 1.2 µs | 14.1 µs, 14.1 µs |
+| `call.request-envelope` | 1.37 µs | 14.6 µs | 10.67× | 1.38 µs, 1.35 µs | 14.6 µs, 14.5 µs |
+| `call.result-envelope` | 1.51 µs | 15.3 µs | 10.15× | 1.52 µs, 1.49 µs | 15.2 µs, 15.4 µs |
+| `call.reply-from-envelope` | 796 ns | 11.9 µs | 14.91× | 804 ns, 789 ns | 11.8 µs, 12 µs |
+| `spawn.activity` | 5.83 µs | 46.5 µs | 7.98× | 5.83 µs, 5.82 µs | 45.8 µs, 47.1 µs |
+| `postgres.claim-prior` | 92.4 µs | 111 µs | 1.21× | 90.3 µs, 94.5 µs | 111 µs, 112 µs |
+| `postgres.child-of` | 59.7 µs | 58 µs | 0.97× | 58.9 µs, 60.6 µs | 60.9 µs, 55 µs |
+| `postgres.claim-new` | 100 µs | 135 µs | 1.35× | 101 µs, 99.7 µs | 134 µs, 136 µs |
+| `postgres.spawn-activity` | 113 µs | 187 µs | 1.65× | 119 µs, 107 µs | 187 µs, 186 µs |
+
+### Wall-clock time, and the earlier figures
+
+The figures committed before these timed Haskell in tasty-bench's default CPU
+time, against Python's wall-clock time. CPU time leaves out the wait for the
+server, so the store rows read 3.0–5.5× faster than Python
+(`postgres.child-of` 17.5–19.7 µs). Measured the same way as Python, they are
+0.97–1.65×: `postgres.child-of` is one indexed `SELECT`, essentially a round
+trip on both sides, and comes out level with Python (0.97× on the medians;
+Haskell won the first repetition, Python the second). The in-memory rows
+(`model.*`, `call.*`, `spawn.activity`) are unchanged.
 
 ## Notes
 
@@ -35,17 +51,18 @@ The ratio column pairs the slowest Haskell run with the fastest Python run.
   inserting rows did not converge within 300 s on a loaded machine. Each
   row is a round trip to the server, and `claim-new` and `spawn-activity`
   grow the table they read.
-- Python's second `postgres.claim-new` batch hit a load spike (3.73 ms).
-  The ratio column uses Python's fastest run, so the spike does not count
-  in Haskell's favour.
 
 ## Rerun
 
+From the repository root (`scripts/bench petrus-processes` runs exactly this block). The store
+rows need a server where the role may create databases in `PETRUS_TEST_POSTGRES`; when that is
+unset, `scripts/bench` and `scripts/bench-compare` start a throwaway one with
+`scripts/with-postgres`.
+
+<!-- scripts/bench: rerun -->
 ```sh
-export PETRUS_TEST_POSTGRES=postgresql://USER@HOST:PORT/postgres
-scripts/bench petrus-processes
-# or by hand, interleaving:
-cabal build -j2 petrus-processes:bench:petrus-processes-bench
-"$(cabal list-bin petrus-processes:bench:petrus-processes-bench)" --stdev 5 --timeout 300 +RTS -M2G -RTS
-(cd upstream/petrus && .venv/bin/python -B ../../packages/petrus-processes/bench/python_bench.py)
+cabal bench -j2 petrus-processes --benchmark-options '--stdev 5 --timeout 300 +RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-processes/bench/python_bench.py)
 ```
+
+`scripts/bench-compare petrus-processes 2` interleaves both sides and prints the table above.

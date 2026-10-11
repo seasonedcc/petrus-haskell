@@ -112,7 +112,10 @@ run connection = do
         n <- atomicModifyIORef' counter (\n -> (n + 1, n))
         pure (orError (spec ("spawn-" <> T.pack (show n) <> "-fresh")))
       activityOver = spawnActivity (spawnRegistry registry) noProvisioning
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup
         "model"
         [ bench "child-identity" (whnf (either (error . show) T.length . childIdentity "parent") "spawn-1")

@@ -24,20 +24,32 @@ recorded and routed to its owner rather than special-cased here.
 
 ## Rerun
 
+From the repository root (`scripts/bench petrus-agenticus-core` runs exactly this block;
+`scripts/upstream-python` provisions the pinned reference):
+
+<!-- scripts/bench: rerun -->
 ```sh
-cabal bench petrus-agenticus-core-bench --benchmark-options='+RTS -M2G -RTS'
-cd upstream/petrus
-.venv/bin/python ../../packages/petrus-agenticus-core/bench/python_catalog.py
-.venv/bin/python ../../packages/petrus-agenticus-core/bench/python_effect.py
-.venv/bin/python ../../packages/petrus-agenticus-core/bench/python_hands.py
-.venv/bin/python ../../packages/petrus-agenticus-core/bench/python_thread.py
-.venv/bin/python ../../packages/petrus-agenticus-core/bench/python_custody.py
+cabal bench -j2 petrus-agenticus-core --benchmark-options='+RTS -M2G -RTS'
+cabal bench -j2 petrus-agenticus-core --benchmark-options='custody FULL 100 1000 +RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_catalog.py)
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_effect.py)
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_hands.py)
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_thread.py)
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_custody.py FULL 100 1000)
 ```
+
+Every Haskell figure is wall-clock time, like Python's `time.perf_counter`: the custody driver
+reads the monotonic clock, and `bench/Main.hs` sets `localOption WallTime` for the tasty-bench
+groups. The catalog, effect, hands and thread tables were taken before that switch, in
+tasty-bench's default CPU time. Those workloads are in memory and do no I/O; CPU and wall time
+agree for the single-threaded rows, and for the `-N8` hands rows CPU time, which adds up every
+core, is if anything the larger of the two
+(see [CPU and wall-clock time](../../../docs/reproducing.md#cpu-and-wall-clock-time)).
 
 The custody workload is a stateful driver that runs outside tasty-bench and
 takes the sync mode and the cycle counts as arguments:
 
 ```sh
-cabal bench petrus-agenticus-core-bench --benchmark-options='custody FULL 100 1000 +RTS -M2G -RTS'
-cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-core/bench/python_custody.py FULL 100 1000
+cabal bench -j2 petrus-agenticus-core --benchmark-options='custody FULL 100 1000 +RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_custody.py FULL 100 1000)
 ```

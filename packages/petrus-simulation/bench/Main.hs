@@ -138,7 +138,10 @@ main = do
     case args of
       "load" : more -> load (case more of [n] -> read n; _ -> 5) port
       _ ->
-        defaultMain
+        -- Wall-clock time for every benchmark, as the Python twins measure it
+        -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+        -- time spent waiting on the kernel, servers and child processes.
+        defaultMain . map (localOption WallTime) $
           [ bgroup
               "simulate"
               [ bench "fixture-32" (nfIO (run built marking 32))

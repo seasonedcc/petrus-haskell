@@ -41,7 +41,7 @@ them.
 | `test_cancel_deadline_redelivery_conflict_and_too_late_claim` | 2 |  |
 | `test_native_jsonl_is_complete_strict_and_has_one_matching_header` | 4 |  |
 | `test_framed_native_a4_resume_excludes_episode_custody_from_exact_jsonl_prefix` | 1 | Real `node`; the installation is swapped through `modifyAdapterRuntime`. |
-| `test_private_node_helper_routes_the_provider_tool_identity_through_hands` | 3 | Real `node` over the verbatim `pi_helper.mjs` and the fake SDK `framed_tool_sdk.mjs`. |
+| `test_private_node_helper_routes_the_provider_tool_identity_through_hands` | 3 | Real `node` over the verbatim `pi_helper.mjs` and the fake SDK `framed_tool_sdk.mjs`. Every `withNode` test first runs `node -e ""` so that a cold Node start (seconds on a busy CI runner) is not charged to the reference's 3 s run and 5 s Episode budgets. |
 | `test_clean_subscription_provider_failure_checkpoints_auth_without_turn_publication` | 1 |  |
 | `test_invalid_returned_subscription_authority_requires_reauthorization` | 4 |  |
 | `test_subscription_storage_or_checkpoint_failure_publishes_no_references` | 1 |  |
@@ -159,10 +159,12 @@ See `bench/results-pi.md`:
 - Strict frame decoding is 5.0 times faster than the reference.
 - Session validation is 2.7 times faster, and the fingerprint 2.8 times.
 - `start`-frame encoding is 2.4 times faster.
-- The SQLite ledger cycle is 1.2 times faster.
+- The SQLite ledger cycle is slower: 0.84 times the reference's speed in
+  wall-clock time. It read 1.2 times faster in tasty-bench's default CPU
+  time, which leaves out the time blocked in SQLite commits.
 
-These are medians of five interleaved rounds. Haskell was faster in every
-round of every row.
+These are medians of five interleaved rounds (three wall-clock rounds for
+the ledger cycle). Haskell was faster in every round of every other row.
 
 ## `tests/petrus/agenticus/runtime/test_pi_model_phase.py` (25 functions, 45 cases)
 

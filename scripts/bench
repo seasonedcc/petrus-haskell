@@ -1,44 +1,59 @@
 #!/usr/bin/env python3
-"""Run every package's benchmarks next to their Python counterparts.
+"""Rerun the packages' benchmarks the way their results files document.
 
-    scripts/bench                    # every package with a benchmark stanza
-    scripts/bench petrus-posix ...   # only these packages
-    scripts/bench --quick            # looser tasty-bench precision, fewer Python batches
-    scripts/bench --no-python        # Haskell only
+    scripts/bench                   # every package with a benchmark stanza, one at a time
+    scripts/bench PKG [PKG ...]     # only these packages
+    scripts/bench --list [PKG ...]  # print the rerun commands instead of running them
+    scripts/bench --summary         # rewrite bench-results/summary.md from the results files
+    scripts/bench --check           # every bench documents a rerun; summary.md is current
 
-For each package with a ``benchmark`` stanza this runs ``cabal bench`` with
-tasty-bench's ``--csv`` output and, when ``packages/<pkg>/bench/python_bench.py``
-exists, that script in the pinned upstream environment
-(``upstream/petrus/.venv``, provisioned by ``scripts/upstream-python``, which
-pins the Python version). The Python script prints ``name,nanoseconds`` lines named like
-the Haskell benchmarks (groups joined with dots; see scripts/bench_timing.py).
+Each package's results (``packages/<pkg>/bench/RESULTS.md``) are curated by
+hand: the workloads, the machine, how both sides were measured, and the
+table. This script never writes them. Each one carries its rerun commands as a
+``sh`` block right after the marker line
 
-Outputs:
-  packages/<pkg>/bench/RESULTS.md   committed per-package table
-  bench-results/summary.md          committed summary of the latest run
-  bench-results/tmp/                raw CSV files (ignored by git)
+    <!-- scripts/bench: rerun -->
+
+and ``scripts/bench PKG`` runs exactly that block, with bash (``-e -o
+pipefail``) from the repository root, so the documented commands and the
+rerun cannot drift apart. The output goes to the terminal and to
+``bench-results/tmp/<pkg>.log`` (ignored by git); ``BENCH_TMP`` is set to an
+empty scratch directory, ``bench-results/tmp/<pkg>/``. Then update the
+results file by hand and run ``scripts/bench --summary``.
+
+When the block or the package's benchmark sources mention
+``PETRUS_TEST_POSTGRES`` and it is unset, the block runs under
+``scripts/with-postgres``, which starts a throwaway server for it. Packages
+run one after another, never in parallel.
+
+A block typically runs ``cabal bench <pkg>`` and then the Python twin once.
+For the packages whose ``bench/python_bench.py`` names its rows like the
+Haskell benchmarks, ``scripts/bench-compare <pkg> [N]`` interleaves N runs of
+both sides and prints the comparison table their results files show.
 """
 
 from __future__ import annotations
 
-import argparse
-import csv
-import datetime
 import os
-import platform
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 TMP = ROOT / "bench-results" / "tmp"
+MARKER = "<!-- scripts/bench: rerun -->"
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(ROOT / "scripts"))
+import bench_results  # noqa: E402
 
 
-def tool_path() -> dict[str, str]:
+def environment() -> Dict[str, str]:
     env = dict(os.environ)
-    extra = [str(Path.home() / ".ghcup" / "bin")]
+    extra = [str(Path.home() / ".ghcup" / "bin"), str(Path.home() / ".local" / "bin")]
     postgres_app = Path("/Applications/Postgres.app/Contents/Versions/17/bin")
     if postgres_app.is_dir():
         extra.append(str(postgres_app))
@@ -46,15 +61,7 @@ def tool_path() -> dict[str, str]:
     return env
 
 
-ENV = tool_path()
-
-
-def run(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
-    print("+ " + " ".join(argv), file=sys.stderr, flush=True)
-    return subprocess.run(argv, env=ENV, check=True, **kwargs)
-
-
-def benchmark_packages() -> list[str]:
+def benchmark_packages() -> List[str]:
     found = []
     for cabal in sorted(ROOT.glob("packages/*/*.cabal")):
         if re.search(r"^benchmark\s+\S+", cabal.read_text(), re.MULTILINE):
@@ -62,161 +69,108 @@ def benchmark_packages() -> list[str]:
     return found
 
 
-def requires_postgres(package: str) -> bool:
-    """A benchmark that reads PETRUS_TEST_POSTGRES needs a server."""
-    main = ROOT / "packages" / package / "bench" / "Main.hs"
-    return main.exists() and "PETRUS_TEST_POSTGRES" in main.read_text()
+def rerun_block(package: str) -> Optional[str]:
+    """The sh block after the rerun marker in the package's RESULTS.md."""
+    results = ROOT / "packages" / package / "bench" / "RESULTS.md"
+    if not results.exists():
+        return None
+    lines = results.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if line.strip() != MARKER:
+            continue
+        rest = lines[index + 1 :]
+        while rest and not rest[0].strip():
+            rest = rest[1:]
+        if not rest or not re.match(r"^```(sh|bash)\s*$", rest[0].strip()):
+            return None
+        body = []
+        for code in rest[1:]:
+            if code.strip() == "```":
+                return "\n".join(body) + "\n"
+            body.append(code)
+        return None
+    return None
 
 
-def upstream_python() -> str:
-    """The pinned upstream interpreter, provisioned by scripts/upstream-python."""
-    script = ROOT / "scripts" / "upstream-python"
-    return run([str(script)], stdout=subprocess.PIPE, text=True).stdout.strip()
+def needs_postgres(package: str, block: str) -> bool:
+    """Whether the block, or the package's benchmark sources, read PETRUS_TEST_POSTGRES."""
+    if "PETRUS_TEST_POSTGRES" in block:
+        return True
+    bench = ROOT / "packages" / package / "bench"
+    return any("PETRUS_TEST_POSTGRES" in source.read_text(encoding="utf-8", errors="replace") for source in bench.rglob("*.hs"))
 
 
-def haskell_results(package: str, quick: bool) -> dict[str, float]:
-    output = TMP / f"{package}.haskell.csv"
-    if output.exists():
-        output.unlink()
-    options = f"--csv {output} --timeout 300" + (" --stdev 20" if quick else " --stdev 5")
-    run(["cabal", "bench", package, "--benchmark-options", options], cwd=ROOT)
-    results = {}
-    with output.open(newline="") as stream:
-        for row in csv.DictReader(stream):
-            name = row["Name"]
-            if name.startswith("All."):
-                name = name[len("All.") :]
-            results[name] = float(row["Mean (ps)"]) / 1000.0
-    return results
+def run(package: str) -> int:
+    block = rerun_block(package)
+    if block is None:
+        print(f"{package}: bench/RESULTS.md has no `{MARKER}` sh block", file=sys.stderr)
+        return 1
+    scratch = TMP / package
+    if scratch.exists():
+        shutil.rmtree(scratch)
+    scratch.mkdir(parents=True)
+    env = environment()
+    env["BENCH_TMP"] = str(scratch)
+    argv = ["bash", "-e", "-o", "pipefail", "-c", block]
+    if needs_postgres(package, block) and not env.get("PETRUS_TEST_POSTGRES"):
+        argv = [str(ROOT / "scripts" / "with-postgres")] + argv
+    log = TMP / f"{package}.log"
+    print(f"==> {package}\n{block}", file=sys.stderr, flush=True)
+    with log.open("w") as sink:
+        sink.write(block + "\n")
+        process = subprocess.Popen(argv, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        assert process.stdout is not None
+        for line in process.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            sink.write(line)
+        status = process.wait()
+    shutil.rmtree(scratch, ignore_errors=True)
+    print(f"<== {package}: exit {status}; log in {log.relative_to(ROOT)}", file=sys.stderr, flush=True)
+    return status
 
 
-def python_results(package: str, quick: bool) -> dict[str, float]:
-    script = ROOT / "packages" / package / "bench" / "python_bench.py"
-    if not script.exists():
-        return {}
-    env = dict(ENV)
-    if quick:
-        env["PETRUS_BENCH_BATCHES"] = "5"
-    print(f"+ python {script.relative_to(ROOT)}", file=sys.stderr, flush=True)
-    completed = subprocess.run(
-        [upstream_python(), str(script)],
-        cwd=ROOT / "upstream" / "petrus",
-        env=env,
-        check=True,
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    (TMP / f"{package}.python.csv").write_text(completed.stdout)
-    results = {}
-    for line in completed.stdout.splitlines():
-        name, _, value = line.rpartition(",")
-        if name:
-            results[name] = float(value)
-    return results
+def check() -> int:
+    status = 0
+    for package in benchmark_packages():
+        if rerun_block(package) is None:
+            print(f"{package}: bench/RESULTS.md has no `{MARKER}` sh block", file=sys.stderr)
+            status = 1
+    if bench_results.main(["summary", "--check"]) != 0:
+        status = 1
+    if status == 0:
+        print(f"{len(benchmark_packages())} benchmark packages document their rerun; bench-results/summary.md is current")
+    return status
 
 
-def human(ns: float | None) -> str:
-    if ns is None:
-        return "—"
-    for unit, scale in (("s", 1e9), ("ms", 1e6), ("µs", 1e3)):
-        if ns >= scale:
-            return f"{ns / scale:.3g} {unit}"
-    return f"{ns:.3g} ns"
-
-
-def environment() -> list[str]:
-    def capture(argv: list[str]) -> str:
-        try:
-            return subprocess.run(argv, env=ENV, capture_output=True, text=True, check=True).stdout.strip()
-        except (OSError, subprocess.CalledProcessError):
-            return "unknown"
-
-    cpu = platform.processor() or platform.machine()
-    if sys.platform == "darwin":
-        cpu = capture(["sysctl", "-n", "machdep.cpu.brand_string"])
-    elif Path("/proc/cpuinfo").exists():
-        match = re.search(r"model name\s*:\s*(.*)", Path("/proc/cpuinfo").read_text())
-        cpu = match.group(1) if match else cpu
-    commit = capture(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"])
-    python = capture([upstream_python(), "-c", "import sys; print(sys.version.split()[0])"])
-    return [
-        f"- Date: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
-        f"- Commit: `{commit}`",
-        f"- Machine: {platform.system()} {platform.machine()}, {cpu}",
-        f"- Haskell: GHC {capture(['ghc', '--numeric-version'])} (-O2), tasty-bench mean",
-        f"- Python: CPython {python} (upstream venv), median of timed batches (scripts/bench_timing.py)",
-    ]
-
-
-def table(haskell: dict[str, float], python: dict[str, float]) -> list[str]:
-    lines = [
-        "| Benchmark | Haskell | Python | Python / Haskell |",
-        "|---|---:|---:|---:|",
-    ]
-    for name in list(haskell) + [n for n in python if n not in haskell]:
-        h, p = haskell.get(name), python.get(name)
-        ratio = f"{p / h:.2f}×" if h and p else "—"
-        lines.append(f"| `{name}` | {human(h)} | {human(p)} | {ratio} |")
-    return lines
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("packages", nargs="*")
-    parser.add_argument("--quick", action="store_true")
-    parser.add_argument("--no-python", action="store_true")
-    args = parser.parse_args()
-
+def main(argv: List[str]) -> int:
+    flags = [a for a in argv if a.startswith("-")]
+    packages = [a for a in argv if not a.startswith("-")]
+    unknown_flags = [f for f in flags if f not in ("--list", "--summary", "--check", "-h", "--help")]
+    if unknown_flags or "-h" in flags or "--help" in flags:
+        print(__doc__, file=sys.stderr)
+        return 2 if unknown_flags else 0
+    if "--summary" in flags:
+        return bench_results.main(["summary", "--write"])
+    if "--check" in flags:
+        return check()
     available = benchmark_packages()
-    packages = args.packages or available
     unknown = [p for p in packages if p not in available]
     if unknown:
         print(f"no benchmark stanza in: {', '.join(unknown)}", file=sys.stderr)
         return 2
+    selected = packages or available
+    if "--list" in flags:
+        for package in selected:
+            print(f"## {package}\n{rerun_block(package) or '(no rerun block)'}")
+        return 0
     TMP.mkdir(parents=True, exist_ok=True)
-
-    header = environment()
-    summary = ["# Benchmark summary", "", *header, ""]
-    ran = []
-    for package in packages:
-        if requires_postgres(package) and not os.environ.get("PETRUS_TEST_POSTGRES"):
-            print(f"skipping {package}: PETRUS_TEST_POSTGRES is unset (its results are kept)", file=sys.stderr)
-            continue
-        ran.append(package)
-        haskell = haskell_results(package, args.quick)
-        python = {} if args.no_python else python_results(package, args.quick)
-        rows = table(haskell, python)
-        results = ROOT / "packages" / package / "bench" / "RESULTS.md"
-        results.parent.mkdir(parents=True, exist_ok=True)
-        results.write_text(
-            "\n".join(
-                [
-                    f"# {package} benchmarks",
-                    "",
-                    "Generated by `scripts/bench`; Python figures time the upstream code path",
-                    "named in `bench/python_bench.py`. Ratios above 1 mean Haskell is faster.",
-                    "",
-                    *header,
-                    "",
-                    *rows,
-                    "",
-                ]
-            )
-        )
-        summary += [f"## {package}", "", *rows, ""]
-    summary_path = ROOT / "bench-results" / "summary.md"
-    if (args.packages or len(ran) < len(packages)) and summary_path.exists():
-        # A partial run updates only its packages' sections.
-        previous = summary_path.read_text()
-        sections = dict(re.findall(r"^## (\S+)\n(.*?)(?=^## |\Z)", previous, re.MULTILINE | re.DOTALL))
-        for package in ran:
-            sections.pop(package, None)
-        for package, body in sorted(sections.items()):
-            summary += [f"## {package}", body.rstrip("\n"), ""]
-    summary_path.write_text("\n".join(summary))
-    print(summary_path.read_text())
+    failed = [package for package in selected if run(package) != 0]
+    if failed:
+        print(f"failed: {', '.join(failed)}", file=sys.stderr)
+        return 1
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

@@ -38,15 +38,20 @@ same workload.
 
 ## How to rerun
 
-From the repository root:
+From the repository root (`scripts/bench petrus-observation` runs exactly
+this; `scripts/upstream-python` provisions the pinned reference):
 
-    cabal bench petrus-observation
+<!-- scripts/bench: rerun -->
+```sh
+cabal bench -j2 petrus-observation --benchmark-options='+RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-observation/bench/python_bench.py)
+```
 
-Python, from the pinned reference checkout with its virtual environment:
-
-    cd upstream/petrus
-    uv sync    # once
-    .venv/bin/python ../../packages/petrus-observation/bench/python_bench.py
+Haskell times are wall-clock time (`localOption WallTime` in `bench/Main.hs`),
+like the Python side's `time.perf_counter`. The table above was taken before
+that switch, in tasty-bench's default CPU time; this workload is
+single-threaded and does no I/O inside the timed region, so the two agree
+(see [CPU and wall-clock time](../../../docs/reproducing.md#cpu-and-wall-clock-time)).
 
 Haskell numbers are tasty-bench means. Python numbers are the median of 20
 runs (snapshot, page) or 5 runs (scan, document), after one warm-up.

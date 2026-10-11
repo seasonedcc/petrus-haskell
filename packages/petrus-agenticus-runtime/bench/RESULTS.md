@@ -37,8 +37,19 @@ to 5.8).
 
 | Benchmark | Haskell | Python | Python / Haskell | Slowest round |
 | --- | ---: | ---: | ---: | ---: |
-| runner-3-phases-3-reads | 5.41 ms | 10.2 ms | 1.9× | 1.7× |
+| runner-3-phases-3-reads | 6.02 ms | 11.17 ms | 1.86× | 1.8× |
 | projection-roundtrip | 42.0 µs | 110 µs | 2.6× | 2.4× |
+
+The five rounds timed Haskell in tasty-bench's default CPU time.
+`runner-3-phases-3-reads` does file IO with fsyncs inside the timed region,
+where CPU time leaves out the waits, so its row comes from a separate
+wall-clock rerun (`--time-mode wall`, as the rerun block below passes)
+interleaved with Python: Haskell 5.75 and 6.29 ms, Python 10.95 and
+11.38 ms (2026-10-10, 21:39–21:40 local, commit `74e6b1e`, load average
+5.4–5.6); the row shows the medians, and the slowest-round column the worse
+of the two pairs. In CPU time the five rounds had read 5.41 ms against
+10.2 ms (1.9×). `projection-roundtrip` is in memory and keeps its CPU-time
+figure, for which the two clocks agree.
 
 The full run is dominated by file-system work (temporary-file creation,
 fsync, rename and History appends), which costs the same in both languages.
@@ -47,7 +58,16 @@ petrus-json's encoder was rewritten to write in one pass.
 
 ## Rerun
 
+From the repository root (`scripts/bench petrus-agenticus-runtime` runs exactly this block, for
+this file's rows, [results-pi.md](results-pi.md)'s and [results-hosts.md](results-hosts.md)'s; `scripts/upstream-python` provisions the
+pinned reference). `--time-mode wall` makes tasty-bench measure wall-clock time, like the
+Python side's `time.perf_counter`:
+
+<!-- scripts/bench: rerun -->
 ```sh
-cabal bench petrus-agenticus-runtime-bench --benchmark-options='+RTS -M2G -RTS'
-cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-runtime/bench/python_runner.py
+cabal bench -j2 petrus-agenticus-runtime --benchmark-options='--time-mode wall +RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_runner.py)
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi.py)
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi_a2.py)
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_hosts.py)
 ```

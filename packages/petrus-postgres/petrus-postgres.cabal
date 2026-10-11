@@ -67,10 +67,10 @@ benchmark petrus-postgres-bench
   type:             exitcode-stdio-1.0
   hs-source-dirs:   bench
   main-is:          Main.hs
-  ghc-options:      -threaded -O2
+  ghc-options:      -threaded -O2 -rtsopts
   build-depends:    base
                   , bytestring
                   , petrus-postgres
                   , tasty >=1.4
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
                   , text

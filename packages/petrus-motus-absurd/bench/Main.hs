@@ -137,12 +137,12 @@ run' url = do
         collectOne
       wire = either (error . T.unpack) id . decodeInvocation . encodeInvocation
   flip finally (mapM_ (readIORef >=> closeLane) [spawner, tripper] >> Pg.close admin) $
-    defaultMain
+    -- Wall-clock time for every benchmark, as the Python twins measure it
+    -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+    -- time spent waiting on the kernel, servers and child processes.
+    defaultMain . map (localOption WallTime) $
       [ bgroup "wire" [bench "encode-decode" (nf (\n -> (wire (invocationFor n)).idempotency) 7)]
-      , localOption WallTime $
-          bgroup "calibration" [bench "select-1" (whnfIO (void (Pg.execute_ admin "SELECT 1" [])))]
-      , localOption WallTime $
-          bgroup "dispatch" [bench "spawn-commit" (whnfIO (void (dispatchOne False spawner)))]
-      , localOption WallTime $
-          bgroup "roundtrip" [bench "dispatch-claim-complete-collect" (whnfIO roundTrip)]
+      , bgroup "calibration" [bench "select-1" (whnfIO (void (Pg.execute_ admin "SELECT 1" [])))]
+      , bgroup "dispatch" [bench "spawn-commit" (whnfIO (void (dispatchOne False spawner)))]
+      , bgroup "roundtrip" [bench "dispatch-claim-complete-collect" (whnfIO roundTrip)]
       ]

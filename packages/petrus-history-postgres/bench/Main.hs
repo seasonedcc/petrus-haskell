@@ -101,7 +101,10 @@ run' url = do
   joinedStore <- openPostgresHistoryStore joined "append-joined"
   commit joined
   flip finally (mapM_ close [auto, joined, writer]) $
-    defaultMain
+    -- Wall-clock time for every benchmark, as the Python twins measure it
+    -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+    -- time spent waiting on the kernel, servers and child processes.
+    defaultMain . map (localOption WallTime) $
       [ localOption (RelStDev 0.2) $
           bgroup
             "append"

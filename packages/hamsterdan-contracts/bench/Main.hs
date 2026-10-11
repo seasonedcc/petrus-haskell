@@ -16,6 +16,7 @@ import Hamsterdan.Contracts.Codec (DecodeError, dump, validateJson)
 import Hamsterdan.Contracts.ReadinessV5 qualified as V5
 import Hamsterdan.PyLiteral (dictEntry, literalEval, sortedItemsDigest)
 import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 main :: IO ()
@@ -33,7 +34,10 @@ main = do
   let body = gate.body
       entry = dictEntry kind body
       entryBody = snd (breakEntry entry)
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bench "contract decode Snapshot (validate_json)" $ nf (either (const 0) (const (1 :: Int)) . (validateJson :: BS.ByteString -> Either DecodeError V5.Snapshot)) snapshotBytes
     , bench "contract encode Snapshot (dump + json.dumps)" $ nf (either (const BS.empty) id . dumps compact . dump) snapshot
     , bench "contract decode GateFact (validate_json)" $ nf (either (const 0) (const (1 :: Int)) . (validateJson :: BS.ByteString -> Either DecodeError V5.GateFact)) gateBytes

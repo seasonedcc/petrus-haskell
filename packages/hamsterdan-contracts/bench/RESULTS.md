@@ -50,12 +50,20 @@ Haskell is faster on every operation. Getting there took these changes:
 
 ## Rerun
 
-From the repository root:
+From the repository root (`scripts/bench hamsterdan-contracts` runs exactly
+this; `scripts/upstream-python hamsterdan` provisions the pinned Hamsterdan):
 
+<!-- scripts/bench: rerun -->
 ```sh
-cabal bench hamsterdan-contracts
-upstream/hamsterdan/.venv/bin/python packages/hamsterdan-contracts/bench/bench.py
+cabal bench -j2 hamsterdan-contracts --benchmark-options='+RTS -M2G -RTS'
+"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-contracts/bench/bench.py
 ```
+
+Haskell times are wall-clock time (`localOption WallTime` in `bench/Main.hs`),
+like the Python side's `time.perf_counter`. The table above was taken before
+that switch, in tasty-bench's default CPU time; this workload is
+single-threaded and does no I/O inside the timed region, so the two agree
+(see [CPU and wall-clock time](../../../docs/reproducing.md#cpu-and-wall-clock-time)).
 
 `bench.py` finds `inputs.json` next to itself, so it can run from any
 directory. Add `--benchmark-options='+RTS -T'` to the first command to see

@@ -3,10 +3,13 @@
 #
 #   scripts/upstream-python                 # upstream/petrus (the default)
 #   scripts/upstream-python petrus-engine   # upstream/petrus-engine
-#   scripts/upstream-python hamsterdan      # upstream/hamsterdan
+#   scripts/upstream-python hamsterdan      # upstream/hamsterdan (its benchmarks,
+#                                           # corpus generators and host interop)
 #
 # Each environment is upstream/<project>/.venv, synced from that project's own
-# frozen uv.lock (upstream/petrus with the postgres extra). It is reused when
+# frozen uv.lock (upstream/petrus with the postgres extra; upstream/hamsterdan
+# with its default groups, whose httpx the benchmarks' mock transport uses,
+# and its own pinned Petrus). It is reused when
 # it already runs the pinned Python and imports what the suites need;
 # otherwise it is (re)synced with uv.
 #

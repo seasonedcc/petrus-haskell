@@ -93,31 +93,24 @@ scans for non-finite floats once, up front. Two checks keep it byte-identical to
 
 ## Rerun
 
-Haskell, from the repository root (the benchmark reads fixtures relative to the package
-directory):
+From the repository root. The joined rows run only with `PETRUS_TEST_POSTGRES` set to a
+server where the role may create databases, on both sides; `scripts/bench petrus-dst` runs
+this block under `scripts/with-postgres`, which starts a throwaway server when the variable is
+unset. `cabal bench` runs the benchmark from the package directory, where it reads its
+fixtures; `scripts/upstream-python` provisions the pinned reference.
 
+<!-- scripts/bench: rerun -->
 ```sh
-cabal build petrus-dst:bench:petrus-dst-bench
-cd packages/petrus-dst && $(cabal list-bin petrus-dst:bench:petrus-dst-bench) --stdev 5
+# Every row; the joined rows need PETRUS_TEST_POSTGRES.
+cabal bench -j2 petrus-dst --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+(cd upstream/petrus && PYTHONPATH=. "$(../../scripts/upstream-python)" -B ../../packages/petrus-dst/scripts/bench.py)
 ```
 
-The joined rows run only with `PETRUS_TEST_POSTGRES` set to a server where the role may create
-databases, on both sides; measure them in wall-clock time:
+The Python script takes a name filter (`bench.py joined/`), and tasty-bench a pattern
+(`--benchmark-options='-p joined'`), to run the joined rows alone.
 
-```sh
-cd packages/petrus-dst && PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@localhost:5432/postgres \
-  $(cabal list-bin petrus-dst:bench:petrus-dst-bench) -p joined --stdev 5 --time-mode wall +RTS -M2G -RTS
-```
-
-Python, from `upstream/petrus`:
-
-```sh
-PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/bench.py
-```
-
-and the joined rows alone (the argument filters workloads by name):
-
-```sh
-PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@localhost:5432/postgres \
-  PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/bench.py joined/
-```
+Every Haskell row is timed in wall-clock time (`localOption WallTime` in `bench/Bench.hs`),
+like the Python side; the joined rows always were (`--time-mode wall`). The other rows were
+taken in tasty-bench's default CPU time; they are single-threaded and do no I/O inside the
+timed region, so the two agree (see
+[CPU and wall-clock time](../../../docs/reproducing.md#cpu-and-wall-clock-time)).

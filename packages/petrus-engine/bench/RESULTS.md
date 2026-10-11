@@ -30,31 +30,48 @@ The workloads:
 
 ## How to rerun
 
-From the repository root:
+From the repository root (`scripts/bench petrus-engine` runs exactly this block;
+`scripts/upstream-python` provisions the pinned reference):
 
-    cabal bench petrus-engine
+<!-- scripts/bench: rerun -->
+```sh
+cabal bench -j2 petrus-engine --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-engine/bench/python_bench.py)
+```
 
-Python, from the pinned reference checkout with its virtual environment:
-
-    cd upstream/petrus
-    uv sync    # once
-    .venv/bin/python ../../packages/petrus-engine/bench/python_bench.py
-
-Haskell numbers are tasty-bench means (± 2σ). Python numbers are the median of
-3–20 runs after one warm-up. Both sides were run back to back on 2026-10-10 on
-an Apple M4 with 24 GB of memory, using GHC 9.10.3 (`-O2`, `-A32m`) and
-CPython 3.14.6. The reference was pinned at `upstream/petrus` 3f85fc2. The
-machine was shared and under load (load average 3–5).
+Haskell numbers are tasty-bench means in wall-clock time (`localOption
+WallTime` in `bench/Main.hs`), `--stdev 5`, `+RTS -M2G`. Python numbers are the
+median of 3–20 runs after one warm-up (`time.perf_counter`). The two sides ran
+interleaved (Haskell, Python, then Python, Haskell) on 2026-10-10,
+21:31–21:33 local (UTC-3), at commit `74e6b1e` with the switch to wall-clock
+time, on an Apple M4 with 24 GB of memory, using GHC 9.10.3 (`-O2`, `-A32m`)
+and CPython 3.14.6. The reference was pinned at `upstream/petrus` 3f85fc2.
+The machine was shared with other agents (load average 4.3–5.8).
 
 ## Results
 
+Each cell is the median of the two repetitions.
+
 | workload | size (records) | Python | Haskell | speed-up |
 | --- | ---: | ---: | ---: | ---: |
-| orders-small (3 orders, in-memory) | 66 | 2.52 ms | 0.183 ms | 13.8× |
-| orders-large (200 orders, in-memory) | 4 203 | 850 ms | 115 ms | 7.4× |
-| orders-large-jsonl (200 orders, JSONL) | 4 203 | 913 ms | 202 ms | 4.5× |
-| chain (20 transitions × 50 tokens, InMemoryDispatch) | 5 002 | 431 ms | 57.5 ms | 7.5× |
-| load-jsonl (load 200-order History + one advance) | 4 203 | 120 ms | 27.7 ms | 4.3× |
+| orders-small (3 orders, in-memory) | 66 | 2.59 ms | 0.189 ms | 13.7× |
+| orders-large (200 orders, in-memory) | 4 203 | 830 ms | 98.8 ms | 8.4× |
+| orders-large-jsonl (200 orders, JSONL) | 4 203 | 904 ms | 180 ms | 5.0× |
+| chain (20 transitions × 50 tokens, InMemoryDispatch) | 5 002 | 430 ms | 49.6 ms | 8.7× |
+| load-jsonl (load 200-order History + one advance) | 4 203 | 117 ms | 13.9 ms | 8.4× |
+
+The individual repetitions, Python / Haskell: orders-small 2.63 / 0.184 and
+2.54 / 0.193 ms; orders-large 844 / 97.5 and 817 / 100 ms; orders-large-jsonl
+895 / 171 and 913 / 188 ms; chain 424 / 47.7 and 437 / 51.4 ms; load-jsonl
+115.9 / 14.3 and 117.9 / 13.5 ms.
+
+The figures committed before these were tasty-bench's default CPU time. The
+JSONL rows are the ones with file IO in the timed region (open, write, close
+per commit point, no fsync), and the only ones where the clocks could differ
+much; `orders-large-jsonl` read 202 ms in CPU time then and 180 ms in
+wall-clock time now. The in-memory rows got faster by about as much
+(`orders-large` 115 ms then, 99 ms now), so that difference is most likely
+library work merged since, not the clock.
 
 The History store's own benchmarks (JSONL append, load and resume; in-memory
 append and reads) are in `packages/petrus-history-store/bench/RESULTS.md`.

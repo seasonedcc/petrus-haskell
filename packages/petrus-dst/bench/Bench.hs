@@ -25,6 +25,7 @@ import Spec.Support
 import System.Directory (listDirectory)
 import System.FilePath (takeFileName, (</>))
 import System.IO.Temp (withSystemTempDirectory)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 foreignFixtures :: [FilePath]
@@ -112,7 +113,10 @@ main = do
   server <- lookupPostgresUrl
   -- force the inputs before measuring
   _ <- pure $! length (encodeAll artifacts)
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup
         "codec"
         [ bench "decode+encode 51 fixtures" $ nf roundTrip fixtures

@@ -26,44 +26,53 @@ The workloads:
 
 ## How to rerun
 
-From the repository root:
+From the repository root (`scripts/bench petrus-engine-sqlite` runs exactly this block;
+`scripts/upstream-python` provisions the pinned reference):
 
-    cabal bench petrus-engine-sqlite --benchmark-options='+RTS -M2G -RTS'
+<!-- scripts/bench: rerun -->
+```sh
+cabal bench -j2 petrus-engine-sqlite --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-engine-sqlite/bench/python_bench.py)
+```
 
-Python, from the pinned reference checkout with its virtual environment. Row
-names given as arguments restrict the run to those rows:
-
-    cd upstream/petrus
-    uv sync    # once
-    .venv/bin/python ../../packages/petrus-engine-sqlite/bench/python_bench.py
-
-The two sides ran interleaved (Python, Haskell, Python, ...) for three rounds
-on 2026-10-10 on an Apple M4 with 24 GB of memory:
-- GHC 9.10.3 (`-O2`, `-A32m`) with direct-sqlite 2.3.29, which bundles SQLite
-  3.45.0;
-- CPython 3.14.6 with SQLite 3.53.4;
-- the reference pinned at `upstream/petrus` 3f85fc2.
-
-The load average was 2.4–3.6 throughout.
+Row names given to `python_bench.py` as arguments restrict the Python run to those rows.
 
 ## Results
 
-Each cell is the median of the three rounds. A round is a tasty-bench mean
-for Haskell, and the median of 3–200 runs after a warm-up for Python.
+The two sides ran interleaved (Haskell, Python, then Python, Haskell) on
+2026-10-10, 21:29–21:32 local (UTC-3), at commit `74e6b1e` with the switch to
+wall-clock time in `bench/Main.hs`, on an Apple M4 with 24 GB of memory shared
+with other agents (1-minute load average 3.1–4.3):
+- GHC 9.10.3 (`-O2`, `-A32m`) with direct-sqlite 2.3.29, which bundles SQLite
+  3.45.0; tasty-bench means in wall-clock time, `--stdev 5`, `+RTS -M2G`;
+- CPython 3.14.6 with SQLite 3.53.4; the median of 3–200 runs after a
+  warm-up;
+- the reference pinned at `upstream/petrus` 3f85fc2.
+
+Each cell is the median of the two repetitions.
 
 | workload | size (records) | Python | Haskell | speed-up |
 | --- | ---: | ---: | ---: | ---: |
-| orders-small-sqlite (3 orders) | 66 | 7.01 ms | 4.15 ms | 1.7× |
-| orders-large-sqlite (200 orders) | 4 203 | 934 ms | 214 ms | 4.4× |
-| load-sqlite (load + one advance) | 4 203 | 122 ms | 18.0 ms | 6.8× |
-| open-close (empty instance) | 0 | 0.456 ms | 0.367 ms | 1.2× |
+| orders-small-sqlite (3 orders) | 66 | 7.61 ms | 5.51 ms | 1.38× |
+| orders-large-sqlite (200 orders) | 4 203 | 946 ms | 248 ms | 3.81× |
+| load-sqlite (load + one advance) | 4 203 | 121 ms | 16.7 ms | 7.27× |
+| open-close (empty instance) | 0 | 0.566 ms | 0.507 ms | 1.12× |
 
-The individual rounds, Python / Haskell:
+The individual repetitions, Python / Haskell:
 
-- orders-small-sqlite: 6.62 / 4.24, 7.21 / 4.03, 7.01 / 4.15 ms;
-- orders-large-sqlite: 934 / 214, 929 / 199, 946 / 215 ms;
-- load-sqlite: 122.0 / 19.0, 118.0 / 18.0, 122.0 / 17.9 ms;
-- open-close: 0.466 / 0.371, 0.455 / 0.353, 0.456 / 0.367 ms.
+- orders-small-sqlite: 7.69 / 5.47, 7.53 / 5.54 ms;
+- orders-large-sqlite: 956 / 232, 936 / 264 ms;
+- load-sqlite: 122.4 / 16.6, 119.9 / 16.7 ms;
+- open-close: 0.549 / 0.488, 0.583 / 0.526 ms.
+
+### Wall-clock time, and the earlier figures
+
+The figures committed before these timed Haskell in tasty-bench's default CPU
+time, against Python's wall-clock time. CPU time leaves out the time spent
+blocked in fsync, which every commit point here pays, so the orders rows read
+4.15 ms and 214 ms then (1.7× and 4.4×), against 5.5 ms and 248 ms in
+wall-clock time now (1.4× and 3.8×). `open-close` went from 0.367 ms to
+0.507 ms (1.2× to 1.1×). `load-sqlite`, which reads, is unchanged.
 
 ## Notes
 

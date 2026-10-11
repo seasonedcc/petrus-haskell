@@ -79,13 +79,14 @@ apply:
 
 ## Rerun
 
+From the repository root (`scripts/bench petrus-engine-absurd` runs exactly this block). It needs a server
+where the role may create databases in `PETRUS_TEST_POSTGRES`; when that is unset, `scripts/bench`
+starts a throwaway one with `scripts/with-postgres`. A scratch database is created and dropped.
+
+<!-- scripts/bench: rerun -->
 ```sh
-# any server where the role may create databases; a scratch database is created and dropped
-export PETRUS_TEST_POSTGRES=postgresql://postgres@127.0.0.1:5432/postgres
-cabal build -j2 petrus-engine-absurd:bench:petrus-engine-absurd-bench
-(cd packages/petrus-engine-absurd && \
-  $(cabal list-bin petrus-engine-absurd:bench:petrus-engine-absurd-bench) --stdev 5 --timeout 300 +RTS -M2G -RTS)
-(cd upstream/petrus && "$(../../scripts/upstream-python)" ../../packages/petrus-engine-absurd/bench/python_bench.py)
-# or both in one go, which regenerates this file in scripts/bench's standard layout:
-# scripts/bench petrus-engine-absurd
+cabal bench -j2 petrus-engine-absurd --benchmark-options '--stdev 5 --timeout 300 +RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-engine-absurd/bench/python_bench.py)
 ```
+
+Both rows are wall-clock time (`localOption WallTime` in `bench/Main.hs`), like the Python side.
