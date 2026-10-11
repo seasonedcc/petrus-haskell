@@ -194,15 +194,13 @@ decodeRecord payload = do
 -- | Whether the payload is the record's canonical spelling: exactly
 -- @encodeRecord record == payload@ (the reference's mapping equality), but
 -- decided without building the encoding when, as on every canonical
--- payload, the members arrive in the canonical order.
+-- payload, the members arrive in the canonical order with canonical values.
 --
--- Both sides have unique keys (the canonical encoding by construction, a
--- payload because a parsed object has unique members). So while the keys
--- line up position by position, a value that differs at an aligned key
--- decides the mapping comparison (the same key holds a different value on
--- each side), and keys that line up to the end with equal values are the
--- same mapping. The first misaligned key (another order, a missing or an
--- extra member) hands the whole decision to the full comparison.
+-- The canonical encoding has unique keys, so keys that line up to the end
+-- with equal values are the same mapping. Anything else (another order, a
+-- missing or an extra member, a differing value) hands the whole decision
+-- to the full comparison; a differing value cannot decide it alone, since
+-- a payload built in memory may repeat a key whose last value wins.
 isCanonicalSpelling :: Record -> Json -> Bool
 isCanonicalSpelling record payload = case payload of
   Object (("record", String name) : ("schema", Int 5) : members)
@@ -211,7 +209,7 @@ isCanonicalSpelling record payload = case payload of
   where
     fullComparison = encodeRecord record == payload
     aligned ((key, value) : fields) ((key', value') : members)
-      | key == key' = encodeFieldValue value == value' && aligned fields members
+      | key == key' && encodeFieldValue value == value' = aligned fields members
     aligned [] [] = True
     aligned _ _ = fullComparison
 
