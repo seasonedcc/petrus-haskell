@@ -477,7 +477,7 @@ an incremental build). A branch or pull request reads its own entries and
 those of `main`. The test jobs and `checks` restore the `dist-newstyle` that
 `build` saved for the commit and build nothing. Every job prepares the
 restored `dist-newstyle` the same way, in one composite action
-(`.github/actions/dist-newstyle`):
+(`.github/actions/cabal-dist`):
 
 - CI's test flags (`--test-show-details=direct`, the
   `scripts/ci-test-wrapper` wrapper and the `+RTS -M2G -RTS` heap cap) come

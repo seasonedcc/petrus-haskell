@@ -10,7 +10,7 @@ name: CI
 #              build
 #   build      cabal build all (-Werror), incrementally from the latest cached
 #              dist-newstyle (from none on a full run), re-planned from the
-#              .cabal files' content (.github/actions/dist-newstyle); then
+#              .cabal files' content (.github/actions/cabal-dist); then
 #              scripts/ci-tests plan decides which test suites run and
 #              spreads them over the test shards
 #   checks     scripts/interop --check against the build; scripts/check-corpora
@@ -108,7 +108,7 @@ jobs:
         id: toolchain
       - name: dist-newstyle (this commit's, else the latest; none on a full run)
         id: dist
-        uses: ./.github/actions/dist-newstyle
+        uses: ./.github/actions/cabal-dist
         with:
           key: ${{ env.DIST_KEY }}
           restore-keys: ${{ env.DIST_KEY_PREFIX }}
@@ -166,7 +166,7 @@ jobs:
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
-        uses: ./.github/actions/dist-newstyle
+        uses: ./.github/actions/cabal-dist
         with:
           key: ${{ env.DIST_KEY }}
           fail-on-cache-miss: "true"
@@ -210,7 +210,7 @@ jobs:
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
-        uses: ./.github/actions/dist-newstyle
+        uses: ./.github/actions/cabal-dist
         with:
           key: ${{ env.DIST_KEY }}
           fail-on-cache-miss: "true"
@@ -242,7 +242,7 @@ jobs:
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
-        uses: ./.github/actions/dist-newstyle
+        uses: ./.github/actions/cabal-dist
         with:
           key: ${{ env.DIST_KEY }}
           fail-on-cache-miss: "true"
@@ -318,7 +318,7 @@ jobs:
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
-        uses: ./.github/actions/dist-newstyle
+        uses: ./.github/actions/cabal-dist
         with:
           key: ${{ env.DIST_KEY }}
           fail-on-cache-miss: "true"
