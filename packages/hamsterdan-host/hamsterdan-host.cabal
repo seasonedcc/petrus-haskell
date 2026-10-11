@@ -39,6 +39,8 @@ library
                     Hamsterdan.Host.Runnable
                     Hamsterdan.Host.V5.Timers
                     Hamsterdan.Host.Service
+                    Hamsterdan.Host.Api
+                    Hamsterdan.Host.Api.Documents
                     Hamsterdan.Host.V5.Application
                     Hamsterdan.Host.V5.Runtime
                     Hamsterdan.Host.V5.Mutation
@@ -52,6 +54,7 @@ library
   build-depends:    base >=4.18 && <5
                   , base16-bytestring >=1.0
                   , bytestring >=0.11
+                  , case-insensitive >=1.2
                   , cryptohash-sha256 >=0.11
                   , direct-sqlite >=2.3.27
                   , hamsterdan-contracts
@@ -66,6 +69,7 @@ library
                   , filepath >=1.4
                   , hamsterdan-github
                   , hamsterdan-readiness
+                  , http-types >=0.12
                   , petrus-json
                   , petrus-motus
                   , petrus-posix
@@ -75,6 +79,8 @@ library
                   , text >=2.0
                   , time >=1.12
                   , unix >=2.8
+                  , wai >=3.2
+                  , warp >=3.3
   ghc-options:      -O2
 
 test-suite hamsterdan-host-test
@@ -86,6 +92,8 @@ test-suite hamsterdan-host-test
                     RunnableSpec
                     TestSupport
                     TimersSpec
+                    ApiSpec
+                    RawHttp
                     ServiceSpec
                     ServiceSupport
                     TestUpdates
@@ -122,5 +130,10 @@ test-suite hamsterdan-host-test
                   , temporary >=1.3
                   , text
                   , time
+                  , case-insensitive
+                  , network
+                  , petrus-test-support
+                  , typed-process
+                  , warp
                   , unix
   ghc-options:      -threaded -rtsopts
