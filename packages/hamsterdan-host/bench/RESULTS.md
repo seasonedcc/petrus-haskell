@@ -15,6 +15,14 @@ These are the host's hot paths:
      publication.
   4. Pump until nothing is runnable.
   5. Close the host and remove the directory.
+- **Agent turn:** the same step with the agent `serve` composes in place of
+  the clear-review runner: the Pi A2 installation from the environment,
+  `agent-routes.sqlite3`, the workspace receiver, the owned Pi A2 runtime
+  over Petrus's deterministic scripted Pi runtime, and the Pi native
+  runner. The review is one scripted Pi turn over a clone of a local
+  repository with fixed commits, and its route is claimed and settled.
+  The composition is the state interop's (`Hamsterdan.Host.Scripted`, and
+  `compose_real_agent` in `differential/state_reference.py`).
 - **Gate classification:** `reply_gate`, `reminder_gate` and `dash_gate`
   under each of the eight publisher outcomes of `test_v5_gates.py`, for 24
   classifications.
@@ -32,11 +40,15 @@ that the state interop tests use (`differential/state_reference.py`, and
 ## Results
 
 The machine was an Apple M4 (10 cores), macOS 26.3.1, shared with other
-work. The load average was 4.2–9.3 during these runs (`uptime` before and
-after each run).
+work. The load average was 5.3–5.8 during these runs (`uptime` after each
+run).
 
 - **Haskell:** GHC 9.10.3 with `-O2`, `tasty-bench`, run with `-j1` and
-  `+RTS -M2G`. Each cell is that benchmark's mean, taken from the CSV.
+  `+RTS -M2G`, every row in wall-clock time (`localOption WallTime`), as
+  `bench.py` measures. The reconciliation and agent rows wait on SQLite,
+  the file system and git child processes, which tasty-bench's default CPU
+  time does not count. Each cell is that benchmark's mean, taken from the
+  CSV.
 - **Python:** CPython 3.14.6 with pydantic 2.13.4 and SQLite 3.53.4. Each
   cell is the best of 5 `timeit` repeats, each about half a second of
   passes.
@@ -45,27 +57,38 @@ after each run).
 
 | Operation (one pass) | Haskell | Python | Python / Haskell |
 | --- | ---: | ---: | ---: |
-| webhook ingest (100 deliveries) | 4.42 ms | 11.4 ms | 2.6× |
-| reconciliation step (one webhook to quiescence) | 40.9 ms | 177 ms | 4.3× |
-| gate classification (24 classifications) | 3.34 µs | 53 µs | 15.9× |
-| timer rebuild (333-fact History) | 5.75 ms | 7.98 ms | 1.39× |
-| fresh timer store open (no History) | 1.59 ms | 1.67 ms | 1.05× |
+| webhook ingest (100 deliveries) | 5.31 ms | 18.1 ms | 3.4× |
+| reconciliation step (one webhook to quiescence) | 36.1 ms | 184 ms | 5.1× |
+| agent turn (one webhook to quiescence through the scripted Pi agent) | 175 ms | 348 ms | 2.0× |
+| gate classification (24 classifications) | 2.92 µs | 56 µs | 19× |
+| timer rebuild (333-fact History) | 4.58 ms | 8.54 ms | 1.86× |
+| fresh timer store open (no History) | 1.51 ms | 1.63 ms | 1.08× |
 
 Haskell is faster on every row.
 
-The fresh open row is within noise. Across the two rounds, Haskell measured
-1.59 and 1.97 ms, and Python measured 1.67 and 1.86 ms, so the order flipped
-in round 2. Almost all of that time is spent in SQLite creating the file,
-switching to WAL, and running the schema DDL. That work is the same on both
-sides.
+The other rounds were: Haskell 6.14 ms, 36.1 ms, 175 ms, 2.98 µs, 5.25 ms
+and 1.73 ms; Python 23.5 ms, 185 ms, 349 ms, 56 µs, 8.86 ms and 1.68 ms.
+
+The fresh open row is within noise: Haskell's slower round (1.73 ms) is
+above Python's slower round (1.68 ms). Almost all of that time is spent in
+SQLite creating the file, switching to WAL, and running the schema DDL.
+That work is the same on both sides.
+
+Earlier versions of this table took the Haskell side in tasty-bench's
+default CPU time; the rows above are wall-clock time on both sides.
+
+Both sides keep their scratch directory at its resolved path: the host
+refuses a state root with a symbolic link among its ancestors (as the
+reference does), and macOS's temporary directory is under `/var`, which is
+a symbolic link.
 
 The timer rebuild row was once slower in Haskell: 13.5–14.7 ms against
 Python's 8.6 ms. The cause was parsing every timestamp and generation digit
 with `read`. Folding the digits instead fixed it, and the on-disk bytes
 did not change.
 
-Python's reconciliation row moved the most between rounds: 177 ms, then
-205 ms under higher load. Haskell's moved from 40.9 to 41.4 ms.
+The webhook ingest row moved the most between rounds: 18.1 ms, then
+23.5 ms in Python, and 5.31 ms, then 6.14 ms in Haskell.
 
 ## Rerun
 

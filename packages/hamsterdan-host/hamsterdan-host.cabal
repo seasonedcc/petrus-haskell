@@ -183,6 +183,7 @@ benchmark hamsterdan-host-bench
                   , http-types
                   , petrus-impetus
                   , petrus-json
+                  , tasty
                   , tasty-bench >=0.3
                   , text
                   , wai

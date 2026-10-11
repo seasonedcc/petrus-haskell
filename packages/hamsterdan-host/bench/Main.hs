@@ -3,6 +3,11 @@
 --
 -- > cabal bench hamsterdan-host --benchmark-options='-j1 --csv hs.csv +RTS -M2G -RTS'
 --
+-- Every row is measured in wall-clock time ('WallTime'), as bench.py
+-- measures it: the reconciliation and agent rows wait on SQLite, file system
+-- calls and git child processes, which tasty-bench's default CPU time would
+-- not count.
+--
 -- Read the numbers from the CSV: the reconciliation row sends stdout (the
 -- Worker's progress lines) to /dev/null while it runs, and the console
 -- reporter can print the previous row's result in that window, so the
@@ -15,6 +20,12 @@
 --   (open the host on a fresh state directory, custody the delivery,
 --   process it through the real V5 application against the @V5Provider@
 --   double, pump until nothing is runnable, close, remove the directory);
+-- * agent turn: the same step with the composed agent of @serve@ in place of
+--   the clear-review runner ('composeHostAgent': the Pi A2 installation from
+--   the environment, @agent-routes.sqlite3@, the workspace receiver, the
+--   owned Pi A2 runtime over the scripted Pi runtime, the Pi native runner),
+--   so the review is one scripted Pi turn over a clone of a local
+--   repository, with its route claimed and settled;
 -- * gate classification: the reply, reminder and dashboard gates under the
 --   eight publisher outcomes of @test_v5_gates.py@ (24 classifications);
 -- * timer rebuild: a fresh timer store opened from the 333-fact History of
@@ -33,13 +44,17 @@ import Data.IORef
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Hamsterdan.Agents.Protocol (AgentRunner (..))
 import Hamsterdan.Contracts.Codec (validate)
 import Hamsterdan.Contracts.ReadinessV5 (DashReq, RemReq (..), ReplyReq (..), TimerCommandApplied, TimerDue)
 import Hamsterdan.GitHub.Models (CommentReference (..), PublicationCollision (..), PublicationResult (..), boundary)
 import Hamsterdan.GitHub.Webhooks qualified as Custody
+import Hamsterdan.Host.Agents (AgentSeams (..), composeHostAgent, newOwnedAgent, productionAgentSeams)
 import Hamsterdan.Host.Api (hostWaiApplication)
+import Hamsterdan.Host.PiWorkspace (gitPiWorkspaceProvider)
 import Hamsterdan.Host.Python (RuntimeError (..))
-import Hamsterdan.Host.Service (HostService (..), ServiceOptions (..), noAgentCustody, openHostService, serviceOptions, v5ApplicationFactory)
+import Hamsterdan.Host.Scripted (clearReviewText, deterministicRepository, localClone, scriptedAgentRunner, scriptedPiA2Hooks)
+import Hamsterdan.Host.Service (AgentCustody, HostService (..), ServiceOptions (..), noAgentCustody, openHostService, serviceOptions, v5ApplicationFactory)
 import Hamsterdan.Host.Service qualified as Host
 import Hamsterdan.Host.V5.Claim (CurrentClaim (..))
 import Hamsterdan.Host.V5.Gates
@@ -50,10 +65,11 @@ import Network.Wai (Application, RequestBodyLength (..), defaultRequest, respons
 import Network.Wai qualified as Wai
 import Network.Wai.Internal (ResponseReceived (..))
 import Petrus.Json (Json (..), parseJson, pythonLoads)
-import System.Directory (createDirectoryIfMissing, getTemporaryDirectory, removeDirectoryRecursive, removePathForcibly)
+import System.Directory (canonicalizePath, createDirectoryIfMissing, getTemporaryDirectory, removeDirectoryRecursive, removePathForcibly)
 import System.FilePath ((</>))
 import GHC.IO.Handle (hDuplicate, hDuplicateTo)
 import System.IO (IOMode (..), hClose, hFlush, openFile, stdout)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 import Text.Printf (printf)
 import V5Doubles
@@ -64,7 +80,9 @@ synchronize =
 
 main :: IO ()
 main = do
-  temporary <- getTemporaryDirectory
+  -- Canonical: the host refuses a state root with a symbolic link among
+  -- its ancestors, and the temporary directory is under one on macOS (/var).
+  temporary <- canonicalizePath =<< getTemporaryDirectory
   let scratch = temporary </> "hamsterdan-host-bench"
   removePathForcibly scratch
   createDirectoryIfMissing True scratch
@@ -72,13 +90,17 @@ main = do
   ingestHost <- openHost (scratch </> "ingest") =<< newIORef []
   counter <- newIORef (0 :: Int)
   let app = hostWaiApplication ingestHost
-  defaultMain
+  commits <- deterministicRepository (scratch </> "repository")
+  defaultMain . map (localOption WallTime) $
     [ bgroup
         "webhook ingest"
         [bench "100 deliveries through POST /github/webhooks" (whnfIO (ingest app counter))]
     , bgroup
         "reconciliation"
         [bench "one webhook to quiescence on a fresh Instance" (whnfIO (reconcileOnce scratch))]
+    , bgroup
+        "agent turn"
+        [bench "one webhook to quiescence through the scripted Pi agent" (whnfIO (agentReconcileOnce scratch commits))]
     , bgroup
         "gates"
         [bench "24 classifications (reply, reminder, dash x 8 outcomes)" (whnfIO classifyAll)]
@@ -139,14 +161,54 @@ post app delivery = do
 
 reconcileOnce :: FilePath -> IO ()
 reconcileOnce scratch = do
-  let root = scratch </> "reconcile"
   reviews <- newIORef []
+  provider <- newProvider (T.replicate 40 "a") []
+  toQuiescence (scratch </> "reconcile") provider (\_ -> pure (clearRunner reviews, noAgentCustody))
+
+-- | The reconciliation step with @serve@'s composed agent over the scripted
+-- Pi runtime: one clear review turn at the first feature commit.
+agentReconcileOnce :: FilePath -> (Text, Text, Text) -> IO ()
+agentReconcileOnce scratch (base, first, _) = do
+  provider <- newProviderOn base first []
+  turns <- newIORef (0 :: Int)
+  let seams =
+        productionAgentSeams
+          { hooks = scriptedPiA2Hooks [clearReviewText "owner/one" 7 1 first base]
+          , workspaces = localClone (scratch </> "repository") . gitPiWorkspaceProvider
+          , selectRunner = scriptedAgentRunner
+          }
+      compose root = do
+        owned <- newOwnedAgent
+        (runner, custody) <- composeHostAgent seams owned agentEnvironment (pure ()) root
+        pure (runner {review = \url request invocation -> modifyIORef' turns (+ 1) >> runner.review url request invocation}, custody)
+  toQuiescence (scratch </> "agent") provider compose
+  reviewed <- readIORef turns
+  unless (reviewed == 1) $ throwIO (userError ("the agent reviewed " <> show reviewed <> " times"))
+
+-- | What @serve@ reads from the environment for the agent (the Pi
+-- installation paths must be absolute; the scripted runtime never runs
+-- them).
+agentEnvironment :: [(Text, Text)]
+agentEnvironment =
+  [ ("HAMSTERDAN_PI_PROVIDER", "anthropic")
+  , ("HAMSTERDAN_PI_MODEL", "claude-sonnet-4-5")
+  , ("HAMSTERDAN_PI_API_KEY", "synthetic-direct-authority")
+  , ("HAMSTERDAN_PI_CLI_PATH", "/opt/pi/cli.js")
+  , ("HAMSTERDAN_PI_NODE_PATH", "/opt/pi/node")
+  , ("HAMSTERDAN_PI_PACKAGE_ROOT", "/opt/pi/package")
+  ]
+
+-- | Open the host on a fresh state directory with the composed runner,
+-- custody one webhook, process it, pump to quiescence, close, check the
+-- dashboard was posted, remove the directory.
+toQuiescence :: FilePath -> Provider -> (FilePath -> IO (AgentRunner, AgentCustody)) -> IO ()
+toQuiescence root provider compose = do
   comments <- quietly $ do
-    provider <- newProvider (T.replicate 40 "a") []
+    (runner, custody) <- compose root
     host <-
       openHostService
         (doublesConfig root "private-key-secret")
-        (serviceOptions (clearRunner reviews) noAgentCustody)
+        (serviceOptions runner custody)
           { clients = Just (doubleClients (providerTransport provider))
           , applicationFactory = v5ApplicationFactory
           }
