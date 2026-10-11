@@ -163,7 +163,10 @@ The committed differential corpora, fixture databases and generated modules
 are themselves reference output. `scripts/check-corpora` (also part of
 `scripts/check-all`) reruns every generator against the pinned references
 and fails on any file that no longer matches, so a corpus cannot go stale
-behind a passing replay:
+behind a passing replay. The corpora are recorded on macOS and checked on
+Linux too (CI), so the comparison leaves out the two platform facts that
+differ: the SQLite library version in a database's header, and EOVERFLOW's
+errno and message in hamsterdan-github's HTTP corpus.
 
 ```sh
 scripts/check-corpora                  # every generator (about 40 s)
