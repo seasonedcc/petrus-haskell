@@ -9,7 +9,8 @@
 -- document order with repeated keys kept, an integer of at most 18 digits
 -- is an @Int@ and a longer one a @BigInt@ (the flag on 'VInt'), @NaN@,
 -- @Infinity@ and @-Infinity@ are numbers, and nesting is limited to 200
--- non-empty containers.
+-- non-empty containers. The parser is pure: no exception carries a
+-- refusal (see 'Step').
 module Petrus.EngineFile.Jiter
   ( JsonError (..)
   , JsonErrorType (..)
@@ -19,7 +20,6 @@ module Petrus.EngineFile.Jiter
   , linePosition
   ) where
 
-import Control.Exception (Exception, evaluate, throw, try)
 import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -33,7 +33,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import Petrus.EngineFile.Number (decimalToDouble)
 import Petrus.EngineFile.Value (Value (..))
-import System.IO.Unsafe (unsafeDupablePerformIO)
+import Petrus.Json.Python.Decode (DecodeFailure (..), utf8DecodeFailure)
 
 -- | jiter's @JsonErrorType@ (the variants @parse@ can raise).
 data JsonErrorType
@@ -62,8 +62,6 @@ data JsonErrorType
 -- | An error and the byte offset jiter reports it at.
 data JsonError = JsonError !JsonErrorType !Int
   deriving stock (Eq, Show)
-
-instance Exception JsonError
 
 -- | jiter's @Display@ for the error type.
 errorMessage :: JsonErrorType -> Text
@@ -113,25 +111,28 @@ linePosition input target = go 0 1 0
 
 -- | Parse a whole document.
 parseJson :: ByteString -> Either JsonError Value
-parseJson input = unsafeDupablePerformIO (try (evaluate (parseDocument input)))
+parseJson input
+  | start >= BS.length input = Left (JsonError EofWhileParsingValue start)
+  | otherwise = case value input 0 (BU.unsafeIndex input start) start of
+      Failed kind offset -> Left (JsonError kind offset)
+      Step v end ->
+        let end' = skipWs input end
+         in if end' < BS.length input then Left (JsonError TrailingCharacters end') else Right v
+  where
+    start = skipWs input 0
 
-data R = R !Value {-# UNPACK #-} !Int
-
-failAt :: JsonErrorType -> Int -> a
-failAt kind offset = throw (JsonError kind offset)
+-- | A production's result and the offset just after it, or the error jiter
+-- raises and the offset it reports. Pure, as petrus-json's parser is: each
+-- production returns one and its caller continues or passes the failure
+-- on, so the first error in document order is the one reported. (It times
+-- the same as the exception-based scanner it replaced on the chain
+-- benchmarks.)
+data Step a
+  = Step !a {-# UNPACK #-} !Int
+  | Failed !JsonErrorType {-# UNPACK #-} !Int
 
 recursionLimit :: Int
 recursionLimit = 200
-
-parseDocument :: ByteString -> Value
-parseDocument input =
-  let start = skipWs input 0
-   in if start >= BS.length input
-        then failAt EofWhileParsingValue start
-        else case value input 0 (BU.unsafeIndex input start) start of
-          R v end ->
-            let end' = skipWs input end
-             in if end' < BS.length input then failAt TrailingCharacters end' else v
 
 skipWs :: ByteString -> Int -> Int
 skipWs input = go
@@ -150,157 +151,165 @@ byteAt input i
   | otherwise = Nothing
 {-# INLINE byteAt #-}
 
+slice :: ByteString -> Int -> Int -> ByteString
+slice input from to = BU.unsafeTake (to - from) (BU.unsafeDrop from input)
+{-# INLINE slice #-}
+
 -- | One value starting at @index@ (whose byte is @peek@). @depth@ is the
 -- number of enclosing non-empty containers (jiter's recursion stack plus
 -- the current container).
-value :: ByteString -> Int -> Word8 -> Int -> R
+value :: ByteString -> Int -> Word8 -> Int -> Step Value
 value input depth peek index = case peek of
-  116 -> R (VBool True) (ident input index "rue")
-  102 -> R (VBool False) (ident input index "alse")
-  110 -> R VNull (ident input index "ull")
-  34 -> case string input index of R s end -> R s end
+  116 -> ident input index "rue" (VBool True)
+  102 -> ident input index "alse" (VBool False)
+  110 -> ident input index "ull" VNull
+  34 -> case string input index of
+    Step s end -> Step (VStr s) end
+    Failed kind offset -> Failed kind offset
   91 -> array input depth index
   123 -> object input depth index
   _ -> number input peek index
 
--- | @consume_ident@: the rest of a literal after its first byte.
-ident :: ByteString -> Int -> ByteString -> Int
-ident input index rest
-  | BS.take size (BS.drop (index + 1) input) == rest = index + size + 1
+-- | @consume_ident@: the rest of a literal after its first byte, which
+-- spells @v@.
+ident :: ByteString -> Int -> ByteString -> a -> Step a
+ident input index rest v
+  | BS.take size (BS.drop (index + 1) input) == rest = Step v (index + size + 1)
   | otherwise = go (index + 1) 0
   where
     size = BS.length rest
     go !i !k
-      | k >= size = failAt EofWhileParsingValue i
+      | k >= size = Failed EofWhileParsingValue i
       | otherwise = case byteAt input i of
           Just b
             | b == BU.unsafeIndex rest k -> go (i + 1) (k + 1)
-            | otherwise -> failAt ExpectedSomeIdent i
-          Nothing -> failAt EofWhileParsingValue i
+            | otherwise -> Failed ExpectedSomeIdent i
+          Nothing -> Failed EofWhileParsingValue i
 
 -- Containers ----------------------------------------------------------------
 
-enter :: Int -> Int -> Int
-enter depth index
-  | depth + 1 > recursionLimit = failAt RecursionLimitExceeded index
-  | otherwise = depth + 1
+-- | A non-empty container's first member is reached at @index@: one more
+-- level, unless that passes jiter's limit.
+enter :: Int -> Int -> (Int -> Step a) -> Step a
+enter depth index continue
+  | depth >= recursionLimit = Failed RecursionLimitExceeded index
+  | otherwise = continue (depth + 1)
 {-# INLINE enter #-}
 
-array :: ByteString -> Int -> Int -> R
-array input depth open =
-  let first = skipWs input (open + 1)
-   in case byteAt input first of
-        Nothing -> failAt EofWhileParsingList first
-        Just 93 -> R (VList []) (first + 1)
-        Just b ->
-          let depth' = if depth == 0 then 1 else enter depth first
-           in items depth' b first []
+array :: ByteString -> Int -> Int -> Step Value
+array input depth open = case byteAt input first of
+  Nothing -> Failed EofWhileParsingList first
+  Just 93 -> Step (VList []) (first + 1)
+  Just b -> enter depth first (\depth' -> items depth' b first [])
   where
+    first = skipWs input (open + 1)
     items !depth' peek index acc = case value input depth' peek index of
-      R v end ->
+      Failed kind offset -> Failed kind offset
+      Step v end ->
         let next = skipWs input end
          in case byteAt input next of
               Just 44 ->
                 let after = skipWs input (next + 1)
                  in case byteAt input after of
-                      Nothing -> failAt EofWhileParsingValue after
-                      Just 93 -> failAt TrailingComma after
+                      Nothing -> Failed EofWhileParsingValue after
+                      Just 93 -> Failed TrailingComma after
                       Just b -> items depth' b after (v : acc)
-              Just 93 -> R (VList (reverse (v : acc))) (next + 1)
-              Just _ -> failAt ExpectedListCommaOrEnd next
-              Nothing -> failAt EofWhileParsingList next
+              Just 93 -> Step (VList (reverse (v : acc))) (next + 1)
+              Just _ -> Failed ExpectedListCommaOrEnd next
+              Nothing -> Failed EofWhileParsingList next
 
-object :: ByteString -> Int -> Int -> R
-object input depth open =
-  let first = skipWs input (open + 1)
-   in case byteAt input first of
-        Nothing -> failAt EofWhileParsingObject first
-        Just 125 -> R (VDict []) (first + 1)
-        Just 34 -> case key first of
-          (k, valueAt, peek) ->
-            let depth' = if depth == 0 then 1 else enter depth valueAt
-             in members depth' k peek valueAt []
-        Just _ -> failAt KeyMustBeAString first
+-- | A member's key and the first byte of its value.
+data Key = Key !Text {-# UNPACK #-} !Word8
+
+object :: ByteString -> Int -> Int -> Step Value
+object input depth open = case byteAt input first of
+  Nothing -> Failed EofWhileParsingObject first
+  Just 125 -> Step (VDict []) (first + 1)
+  Just 34 -> case key first of
+    Failed kind offset -> Failed kind offset
+    Step (Key k peek) valueAt -> enter depth valueAt (\depth' -> members depth' k peek valueAt [])
+  Just _ -> Failed KeyMustBeAString first
   where
+    first = skipWs input (open + 1)
+    -- The key at @at@ and its colon; the step ends at the value.
     key at = case string input at of
-      R (VStr k) end ->
+      Failed kind offset -> Failed kind offset
+      Step k end ->
         let colon = skipWs input end
          in case byteAt input colon of
               Just 58 ->
                 let valueAt = skipWs input (colon + 1)
                  in case byteAt input valueAt of
-                      Just peek -> (k, valueAt, peek)
-                      Nothing -> failAt EofWhileParsingValue valueAt
-              Just _ -> failAt ExpectedColon colon
-              Nothing -> failAt EofWhileParsingObject colon
-      R _ _ -> error "string returned a non-string"
+                      Just peek -> Step (Key k peek) valueAt
+                      Nothing -> Failed EofWhileParsingValue valueAt
+              Just _ -> Failed ExpectedColon colon
+              Nothing -> Failed EofWhileParsingObject colon
     members !depth' k peek index acc = case value input depth' peek index of
-      R v end ->
+      Failed kind offset -> Failed kind offset
+      Step v end ->
         let next = skipWs input end
          in case byteAt input next of
               Just 44 ->
                 let after = skipWs input (next + 1)
                  in case byteAt input after of
                       Just 34 -> case key after of
-                        (k', valueAt, peek') -> members depth' k' peek' valueAt ((k, v) : acc)
-                      Just 125 -> failAt TrailingComma after
-                      Just _ -> failAt KeyMustBeAString after
-                      Nothing -> failAt EofWhileParsingValue after
-              Just 125 -> R (VDict (reverse ((k, v) : acc))) (next + 1)
-              Just _ -> failAt ExpectedObjectCommaOrEnd next
-              Nothing -> failAt EofWhileParsingObject next
+                        Failed kind offset -> Failed kind offset
+                        Step (Key k' peek') valueAt -> members depth' k' peek' valueAt ((k, v) : acc)
+                      Just 125 -> Failed TrailingComma after
+                      Just _ -> Failed KeyMustBeAString after
+                      Nothing -> Failed EofWhileParsingValue after
+              Just 125 -> Step (VDict (reverse ((k, v) : acc))) (next + 1)
+              Just _ -> Failed ExpectedObjectCommaOrEnd next
+              Nothing -> Failed EofWhileParsingObject next
 
 -- Strings ---------------------------------------------------------------------
 
 -- | A string whose opening quote is at @open@.
-string :: ByteString -> Int -> R
+string :: ByteString -> Int -> Step Text
 string input open = scan start
   where
     start = open + 1
     len = BS.length input
     scan !i
-      | i >= len = failAt EofWhileParsingString i
+      | i >= len = Failed EofWhileParsingString i
       | otherwise =
           let b = BU.unsafeIndex input i
            in if b == 34
-                then R (VStr (toText input start (slice start i))) (i + 1)
+                then toText start (slice input start i) (i + 1)
                 else
                   if b == 92
-                    then escaped input start [slice start i] i
-                    else if b < 32 then failAt ControlCharacterWhileParsingString i else scan (i + 1)
-    slice from to = BU.unsafeTake (to - from) (BU.unsafeDrop from input)
+                    then escaped input start [slice input start i] i
+                    else if b < 32 then Failed ControlCharacterWhileParsingString i else scan (i + 1)
 
 -- | The tape path: @chunks@ (reversed) hold the decoded text so far and
 -- @backslash@ is the offset of the escape being decoded.
-escaped :: ByteString -> Int -> [ByteString] -> Int -> R
+escaped :: ByteString -> Int -> [ByteString] -> Int -> Step Text
 escaped input start = go
   where
     len = BS.length input
     go chunks backslash =
       let at = backslash + 1
        in case byteAt input at of
-            Nothing -> failAt EofWhileParsingString at
+            Nothing -> Failed EofWhileParsingString at
             Just c -> case c of
               117 -> case unicodeEscape input at of
-                (ch, lastHex) -> continue (encodeChar ch : chunks) (lastHex + 1)
+                Step ch lastHex -> continue (encodeChar ch : chunks) (lastHex + 1)
+                Failed kind offset -> Failed kind offset
               _ -> case simpleEscape c of
                 Just w -> continue (BS.singleton w : chunks) (at + 1)
-                Nothing -> failAt InvalidEscape at
+                Nothing -> Failed InvalidEscape at
     continue chunks from = scan from
       where
         scan !i
-          | i >= len = failAt EofWhileParsingString i
+          | i >= len = Failed EofWhileParsingString i
           | otherwise =
               let b = BU.unsafeIndex input i
                in if b == 34
-                    then
-                      let bytes = BS.concat (reverse (slice from i : chunks))
-                       in R (VStr (toText input start bytes)) (i + 1)
+                    then toText start (BS.concat (reverse (slice input from i : chunks))) (i + 1)
                     else
                       if b == 92
-                        then go (slice from i : chunks) i
-                        else if b < 32 then failAt ControlCharacterWhileParsingString i else scan (i + 1)
-    slice from to = BU.unsafeTake (to - from) (BU.unsafeDrop from input)
+                        then go (slice input from i : chunks) i
+                        else if b < 32 then Failed ControlCharacterWhileParsingString i else scan (i + 1)
     simpleEscape = \case
       34 -> Just 34
       92 -> Just 92
@@ -316,79 +325,53 @@ encodeChar :: Char -> ByteString
 encodeChar = BL.toStrict . B.toLazyByteString . B.charUtf8
 
 -- | @parse_escape@: the character a @\\u@ escape (and a following low
--- surrogate escape) denotes, and the offset of its last hex digit.
-unicodeEscape :: ByteString -> Int -> (Char, Int)
+-- surrogate escape) denotes; the step ends at its last hex digit.
+unicodeEscape :: ByteString -> Int -> Step Char
 unicodeEscape input u = case hex4 input u of
-  (n, index)
-    | n >= 0xDC00 && n <= 0xDFFF -> failAt LoneLeadingSurrogateInHexEscape index
+  Failed kind offset -> Failed kind offset
+  Step n index
+    | n >= 0xDC00 && n <= 0xDFFF -> Failed LoneLeadingSurrogateInHexEscape index
     | n >= 0xD800 && n <= 0xDBFF -> case (byteAt input (index + 1), byteAt input (index + 2)) of
         (Just 92, Just 117) -> case hex4 input (index + 2) of
-          (n2, index2)
+          Failed kind offset -> Failed kind offset
+          Step n2 index2
             | n2 >= 0xDC00 && n2 <= 0xDFFF ->
-                (chr ((((n - 0xD800) `shiftL` 10) .|. (n2 - 0xDC00)) + 0x10000), index2)
-            | otherwise -> failAt LoneLeadingSurrogateInHexEscape index2
-        (Just 92, Just _) -> failAt UnexpectedEndOfHexEscape (index + 2)
-        (Just _, Just _) -> failAt UnexpectedEndOfHexEscape (index + 1)
-        (Just 92, Nothing) -> failAt EofWhileParsingString (BS.length input)
-        (Nothing, _) -> failAt EofWhileParsingString (BS.length input)
-        (Just _, Nothing) -> failAt UnexpectedEndOfHexEscape (index + 1)
-    | otherwise -> (chr n, index)
+                Step (chr ((((n - 0xD800) `shiftL` 10) .|. (n2 - 0xDC00)) + 0x10000)) index2
+            | otherwise -> Failed LoneLeadingSurrogateInHexEscape index2
+        (Just 92, Just _) -> Failed UnexpectedEndOfHexEscape (index + 2)
+        (Just _, Just _) -> Failed UnexpectedEndOfHexEscape (index + 1)
+        (Just 92, Nothing) -> Failed EofWhileParsingString (BS.length input)
+        (Nothing, _) -> Failed EofWhileParsingString (BS.length input)
+        (Just _, Nothing) -> Failed UnexpectedEndOfHexEscape (index + 1)
+    | otherwise -> Step (chr n) index
 
--- | @parse_u4@: four hex digits after offset @index@.
-hex4 :: ByteString -> Int -> (Int, Int)
+-- | @parse_u4@: four hex digits after offset @index@; the step ends at the
+-- last.
+hex4 :: ByteString -> Int -> Step Int
 hex4 input index
-  | index + 5 > BS.length input = failAt EofWhileParsingString (BS.length input)
+  | index + 5 > BS.length input = Failed EofWhileParsingString (BS.length input)
   | otherwise = go 0 1
   where
     go !n !k
-      | k > 4 = (n, index + 4)
+      | k > 4 = Step n (index + 4)
       | otherwise =
           let c = BU.unsafeIndex input (index + k)
-              digit
-                | c >= 48 && c <= 57 = fromIntegral c - 48
-                | c >= 97 && c <= 102 = fromIntegral c - 87
-                | c >= 65 && c <= 70 = fromIntegral c - 55
-                | otherwise = failAt InvalidEscape (index + k)
-           in go ((n `shiftL` 4) + digit) (k + 1)
+           in case hexDigit c of
+                Just digit -> go ((n `shiftL` 4) + digit) (k + 1)
+                Nothing -> Failed InvalidEscape (index + k)
+    hexDigit c
+      | c >= 48 && c <= 57 = Just (fromIntegral c - 48)
+      | c >= 97 && c <= 102 = Just (fromIntegral c - 87)
+      | c >= 65 && c <= 70 = Just (fromIntegral c - 55)
+      | otherwise = Nothing
 
 -- | @to_str@: decode UTF-8, refusing an invalid sequence at the offset
--- jiter reports (one past the valid prefix, counted from the string start).
-toText :: ByteString -> Int -> ByteString -> Text
-toText _ start bytes = case TE.decodeUtf8' bytes of
-  Right t -> t
-  Left _ -> failAt InvalidUnicodeCodePoint (start + utf8ValidUpTo bytes + 1)
-
--- | The length of the longest valid UTF-8 prefix.
-utf8ValidUpTo :: ByteString -> Int
-utf8ValidUpTo bytes = go 0
-  where
-    len = BS.length bytes
-    at i = if i < len then fromIntegral (BU.unsafeIndex bytes i) else (-1 :: Int)
-    cont i = let c = at i in c >= 0x80 && c <= 0xBF
-    go !i
-      | i >= len = len
-      | otherwise =
-          let b = at i
-           in if b < 0x80
-                then go (i + 1)
-                else
-                  if b >= 0xC2 && b <= 0xDF && cont (i + 1)
-                    then go (i + 2)
-                    else
-                      if b >= 0xE0 && b <= 0xEF && second3 b (at (i + 1)) && cont (i + 2)
-                        then go (i + 3)
-                        else
-                          if b >= 0xF0 && b <= 0xF4 && second4 b (at (i + 1)) && cont (i + 2) && cont (i + 3)
-                            then go (i + 4)
-                            else i
-    second3 b c
-      | b == 0xE0 = c >= 0xA0 && c <= 0xBF
-      | b == 0xED = c >= 0x80 && c <= 0x9F
-      | otherwise = c >= 0x80 && c <= 0xBF
-    second4 b c
-      | b == 0xF0 = c >= 0x90 && c <= 0xBF
-      | b == 0xF4 = c >= 0x80 && c <= 0x8F
-      | otherwise = c >= 0x80 && c <= 0xBF
+-- jiter reports, one past its valid prefix (Rust's @valid_up_to@, where
+-- CPython's decoder starts its error), counted from the string start.
+toText :: Int -> ByteString -> Int -> Step Text
+toText start bytes end = case TE.decodeUtf8' bytes of
+  Right t -> Step t end
+  Left _ -> Failed InvalidUnicodeCodePoint (start + maybe (BS.length bytes) (.failureStart) (utf8DecodeFailure bytes) + 1)
 
 -- Numbers ---------------------------------------------------------------------
 
@@ -398,20 +381,20 @@ isDigitW b = b >= 48 && b <= 57
 
 -- | @NumberAny::decode@, with @take_value@'s remapping of errors for a
 -- value that does not start like a number.
-number :: ByteString -> Word8 -> Int -> R
+number :: ByteString -> Word8 -> Int -> Step Value
 number input peek start
-  | peek == 78 = R (VFloat (0 / 0)) (ident input start "aN")
-  | peek == 73 = R (VFloat (1 / 0)) (ident input start "nfinity")
+  | peek == 78 = ident input start "aN" (VFloat (0 / 0))
+  | peek == 73 = ident input start "nfinity" (VFloat (1 / 0))
   | peek == 45 = signed
   | isDigitW peek = unsigned False start
-  | otherwise = failAt ExpectedSomeValue start
+  | otherwise = Failed ExpectedSomeValue start
   where
     signed = case byteAt input (start + 1) of
-      Nothing -> failAt EofWhileParsingValue (start + 1)
-      Just 73 -> R (VFloat (-1 / 0)) (ident input (start + 1) "nfinity")
+      Nothing -> Failed EofWhileParsingValue (start + 1)
+      Just 73 -> ident input (start + 1) "nfinity" (VFloat (-1 / 0))
       Just b
         | isDigitW b -> unsigned True (start + 1)
-        | otherwise -> failAt InvalidNumber (start + 1)
+        | otherwise -> Failed InvalidNumber (start + 1)
     len = BS.length input
     digitsFrom !i = if i < len && isDigitW (BU.unsafeIndex input i) then digitsFrom (i + 1) else i
     isFloatByte i = case byteAt input i of
@@ -421,55 +404,54 @@ number input peek start
       | BU.unsafeIndex input first == 48 = case byteAt input (first + 1) of
           Just b
             | b == 46 || b == 101 || b == 69 -> float negative first
-            | isDigitW b -> failAt InvalidNumber (first + 1)
-          _ -> R (VInt 0 False) (first + 1)
+            | isDigitW b -> Failed InvalidNumber (first + 1)
+          _ -> Step (VInt 0 False) (first + 1)
+      | count > 18 && end - start > 4300 = Failed NumberOutOfRange (start + 4301)
+      | isFloatByte end = float negative first
       | otherwise =
-          let end = digitsFrom first
-              count = end - first
-           in if count > 18 && end - start > 4300
-                then failAt NumberOutOfRange (start + 4301)
-                else
-                  if isFloatByte end
-                    then float negative first
-                    else
-                      let magnitude = readDigits first end
-                       in R (VInt (if negative then negate magnitude else magnitude) (count > 18)) end
+          let magnitude = readDigits first end
+           in Step (VInt (if negative then negate magnitude else magnitude) (count > 18)) end
+      where
+        end = digitsFrom first
+        count = end - first
     readDigits from to
       | to - from <= 18 = toInteger (smallDigits from to 0)
-      | otherwise = BS.foldl' (\acc w -> acc * 10 + toInteger (w - 48)) 0 (BU.unsafeTake (to - from) (BU.unsafeDrop from input))
+      | otherwise = BS.foldl' (\acc w -> acc * 10 + toInteger (w - 48)) 0 (slice input from to)
     smallDigits :: Int -> Int -> Int -> Int
     smallDigits !i !to !acc
       | i >= to = acc
       | otherwise = smallDigits (i + 1) to (acc * 10 + fromIntegral (BU.unsafeIndex input i - 48))
     -- A float in JSON grammar; on a malformed tail, @NumberRange@'s error.
-    float negative first =
-      let intEnd = digitsFrom first
-          (fracStart, fracEnd) = case byteAt input intEnd of
-            Just 46 -> case byteAt input (intEnd + 1) of
-              Just b | isDigitW b -> (intEnd + 1, digitsFrom (intEnd + 1))
-              Just _ -> failAt InvalidNumber (intEnd + 1)
-              Nothing -> failAt EofWhileParsingValue (intEnd + 1)
-            _ -> (intEnd, intEnd)
-          (expo, end) = case byteAt input fracEnd of
-            Just b | b == 101 || b == 69 -> exponentPart (fracEnd + 1)
-            _ -> (0, fracEnd)
-          slice from to = BU.unsafeTake (to - from) (BU.unsafeDrop from input)
-       in R (VFloat (decimalToDouble negative (slice first intEnd) (slice fracStart fracEnd) expo)) end
-    exponentPart at =
-      let (negativeExp, digitsAt) = case byteAt input at of
-            Just 45 -> (True, at + 1)
-            Just 43 -> (False, at + 1)
-            Just b | isDigitW b -> (False, at)
-            Just _ -> failAt InvalidNumber at
-            Nothing -> failAt EofWhileParsingValue at
-       in case byteAt input digitsAt of
-            Just b
-              | isDigitW b ->
-                  let end = digitsFrom digitsAt
-                      magnitude = clampExponent (BU.unsafeTake (end - digitsAt) (BU.unsafeDrop digitsAt input))
-                   in (if negativeExp then negate magnitude else magnitude, end)
-              | otherwise -> failAt InvalidNumber digitsAt
-            Nothing -> failAt EofWhileParsingValue digitsAt
+    float negative first = case byteAt input intEnd of
+      Just 46 -> case byteAt input (intEnd + 1) of
+        Just b | isDigitW b -> withExponent (intEnd + 1) (digitsFrom (intEnd + 1))
+        Just _ -> Failed InvalidNumber (intEnd + 1)
+        Nothing -> Failed EofWhileParsingValue (intEnd + 1)
+      _ -> withExponent intEnd intEnd
+      where
+        intEnd = digitsFrom first
+        withExponent fracStart fracEnd = case byteAt input fracEnd of
+          Just b | b == 101 || b == 69 -> case exponentPart (fracEnd + 1) of
+            Step expo end -> done fracStart fracEnd expo end
+            Failed kind offset -> Failed kind offset
+          _ -> done fracStart fracEnd 0 fracEnd
+        done fracStart fracEnd expo end =
+          Step (VFloat (decimalToDouble negative (slice input first intEnd) (slice input fracStart fracEnd) expo)) end
+    exponentPart at = case byteAt input at of
+      Just 45 -> digits True (at + 1)
+      Just 43 -> digits False (at + 1)
+      Just b | isDigitW b -> digits False at
+      Just _ -> Failed InvalidNumber at
+      Nothing -> Failed EofWhileParsingValue at
+      where
+        digits negativeExp digitsAt = case byteAt input digitsAt of
+          Just b
+            | isDigitW b ->
+                let end = digitsFrom digitsAt
+                    magnitude = clampExponent (slice input digitsAt end)
+                 in Step (if negativeExp then negate magnitude else magnitude) end
+            | otherwise -> Failed InvalidNumber digitsAt
+          Nothing -> Failed EofWhileParsingValue digitsAt
 
 -- An exponent's value, saturated far beyond any finite double's range.
 clampExponent :: ByteString -> Integer
@@ -478,4 +460,3 @@ clampExponent ds =
    in if BS.length trimmed > 12
         then 10 ^ (12 :: Int)
         else BS.foldl' (\acc w -> acc * 10 + toInteger (w - 48)) 0 trimmed
-
