@@ -1,3 +1,5 @@
+{-# LANGUAGE CApiFFI #-}
+
 -- | Local-process provider: ports of the local halves of
 -- @test_execution_contract.py@, @test_private_execution_substrate.py@ and
 -- all of @test_private_file_transfer.py@.
@@ -13,7 +15,11 @@ import Data.Maybe (fromJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Foreign.Marshal.Alloc (allocaBytes)
+import Foreign.C.Error (throwErrnoIfMinus1_)
+import Foreign.C.Types (CInt (..))
+import Foreign.Marshal.Alloc (allocaBytes, allocaBytesAligned)
+import Foreign.Marshal.Utils (fillBytes)
+import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
 import GHC.Clock (getMonotonicTime)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
@@ -24,7 +30,7 @@ import System.Directory
 import System.Environment (setEnv, unsetEnv)
 import System.Posix.Files (createNamedPipe, createSymbolicLink, removeLink)
 import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, fdReadBuf, openFd)
-import System.Posix.Signals (Handler (Ignore), installHandler, openEndedPipe, sigKILL, signalProcess)
+import System.Posix.Signals (openEndedPipe, sigKILL, signalProcess)
 import System.Posix.Types (Fd (..))
 import System.Posix.Process (getProcessID)
 import Test.Hspec
@@ -283,10 +289,11 @@ spec = do
     it "restores SIGPIPE to its default even when the parent ignores it" $ do
       -- An ignored SIGPIPE survives exec; then `yes` would see EPIPE and
       -- complain on stderr instead of dying quietly.
-      outcome <-
-        bracket (installHandler openEndedPipe Ignore Nothing) (\previous -> installHandler openEndedPipe previous Nothing) $ \_ ->
-          runCaptured (spawnSpec ["/bin/sh", "-c", "yes | head -c 4"]) 5
+      original <- sigpipeDisposition
+      outcome <- withSigpipeIgnored (runCaptured (spawnSpec ["/bin/sh", "-c", "yes | head -c 4"]) 5)
       (outcomeCode outcome, outcomeStdout outcome, outcomeStderr outcome) `shouldBe` (0, "y\ny\n", "")
+      -- The rest of the suite needs the RTS's own SIGPIPE handler back.
+      sigpipeDisposition `shouldReturn` original
 
     it "wakes a waiter as soon as the child exits, reaping it once" $ do
       running <- spawnCaptured (spawnSpec ["/bin/sh", "-c", "sleep 0.2; exit 7"])
@@ -467,6 +474,46 @@ spec = do
       result <- providerDestroy (localProvider env) foreignLease
       cleanupDisposition result `shouldBe` Unverified
       cleanupDetail result `shouldBe` "lease belongs to a different provider"
+
+-- | Run with SIGPIPE ignored, as in a parent that ignores it, then put back
+-- the exact disposition SIGPIPE had. 'System.Posix.Signals.installHandler'
+-- cannot do that: the RTS installs its SIGPIPE handler from C, so
+-- installHandler reports it as 'Default', and restoring that leaves SIGPIPE
+-- fatal for the rest of the suite. The RTS interrupts an @interruptible@
+-- foreign call by sending its thread SIGPIPE, and a write to a closed pipe
+-- or socket raises it too, so either then killed the test binary silently
+-- (status 141): petrus-execution-test died that way in GondolinSpec (CI run
+-- 38147286527, attempt 1).
+withSigpipeIgnored :: IO a -> IO a
+withSigpipeIgnored action =
+  allocaBytesAligned sigactionRoom 16 $ \saved -> do
+    throwErrnoIfMinus1_ "sigaction" (c_sigaction openEndedPipe nullPtr saved)
+    bracket_
+      (c_signal openEndedPipe c_sigIgn)
+      (throwErrnoIfMinus1_ "sigaction" (c_sigaction openEndedPipe saved nullPtr))
+      action
+
+-- | SIGPIPE's @struct sigaction@, as bytes.
+sigpipeDisposition :: IO B.ByteString
+sigpipeDisposition =
+  allocaBytesAligned sigactionRoom 16 $ \buffer -> do
+    fillBytes buffer 0 sigactionRoom
+    throwErrnoIfMinus1_ "sigaction" (c_sigaction openEndedPipe nullPtr buffer)
+    B.packCStringLen (castPtr buffer, sigactionRoom)
+
+-- | More than any platform's @sizeof (struct sigaction)@ (152 on Linux,
+-- 16 on macOS).
+sigactionRoom :: Int
+sigactionRoom = 1024
+
+foreign import capi unsafe "signal.h sigaction"
+  c_sigaction :: CInt -> Ptr () -> Ptr () -> IO CInt
+
+foreign import capi unsafe "signal.h signal"
+  c_signal :: CInt -> FunPtr (CInt -> IO ()) -> IO (FunPtr (CInt -> IO ()))
+
+foreign import capi "signal.h value SIG_IGN"
+  c_sigIgn :: FunPtr (CInt -> IO ())
 
 attachDir :: EnvironmentProvider -> EnvironmentLease -> FilePath -> Text -> IO ExecutionAttachment
 attachDir provider lease directory digest = do
