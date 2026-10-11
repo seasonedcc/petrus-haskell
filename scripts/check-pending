@@ -38,7 +38,7 @@ OPT_INS: Dict[str, str] = {
         "petrus-agenticus WorkspaceSpec: Docker opt-in (CI sets PETRUS_TEST_DOCKER)",
     "skipped: set PETRUS_TEST_DOCKER=1 (and optionally PETRUS_TEST_DOCKER_IMAGE) to run against a real Docker daemon":
         "petrus-execution DockerSpec: Docker opt-in (CI sets PETRUS_TEST_DOCKER)",
-    "skipped: there is no Haskell E2B SDK binding; the provider is exercised through the E2bSdk seam":
+    "set PETRUS_RUN_CV10_E2B=1 to run live E2B lifecycle acceptance":
         "petrus-execution E2bSpec: test_live_e2b_vm_provider_is_explicitly_opt_in "
         "(real_provider_acceptance; needs E2B_API_KEY)",
     "skipped: set PETRUS_REAL_GONDOLIN_SDK_MODULE and PETRUS_REAL_GONDOLIN_IMAGE (and PETRUS_REAL_GONDOLIN_NODE "
