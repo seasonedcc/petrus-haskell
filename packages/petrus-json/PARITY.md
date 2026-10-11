@@ -60,7 +60,7 @@ profiles of `loadsProfiles`:
 
 ## Tests
 
-`cabal test petrus-json`: 97 examples.
+`cabal test petrus-json`: 102 examples.
 
 - **Differential against CPython**
   ([`CPythonDifferentialSpec`](test/Petrus/Json/CPythonDifferentialSpec.hs),
@@ -102,7 +102,10 @@ profiles of `loadsProfiles`:
   `parseJson` behaviours, lone surrogates kept as WTF-8 (pairing, keys,
   ordering, byte-for-byte re-encoding, `dumpsText`, `repr`, `fromWtf8`), the 4 300-digit limit in both directions with
   CPython's exact messages, the nesting guard, `encodeErrorMessage`, type-exact
-  equality, and a property check of the parser against the pre-optimization
+  equality, value equality (`Eq Json`: objects compare as their last-wins
+  dicts, so a repeated key cannot make it asymmetric, with reflexivity,
+  symmetry and transitivity checked as properties over finite values dense in
+  repeated keys, reordered members and `1` / `1.0` / `true`), and a property check of the parser against the pre-optimization
   reader ([`ReferenceParse`](test/Petrus/Json/ReferenceParse.hs)).
 
 ## Interop

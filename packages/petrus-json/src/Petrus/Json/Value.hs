@@ -9,7 +9,9 @@
 -- Equality is the reference implementation's /value/ equality: numbers compare
 -- across integer, float, and boolean the way CPython compares them
 -- (@1 == 1.0 == True@), and objects compare as mappings regardless of member
--- order. Token identity in a marking is defined by that equality, so replay
+-- order (a repeated key counts once, with its last value, as in the @dict@
+-- the members build). Over finite numbers it is an equivalence relation;
+-- like CPython's @==@, a NaN equals nothing, itself included. Token identity in a marking is defined by that equality, so replay
 -- and interop depend on it. Use 'exactEq' where the reference compares
 -- canonical spellings instead, and 'typeExactEq' where it compares Python
 -- types node by node but ignores member order.
@@ -23,6 +25,7 @@ module Petrus.Json.Value
   , jsonTypeName
   ) where
 
+import Control.DeepSeq (NFData (..))
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 
@@ -42,13 +45,28 @@ data Json
 instance Eq Json where
   (==) = pythonEq
 
+instance NFData Json where
+  rnf = \case
+    Null -> ()
+    Bool b -> rnf b
+    Int i -> rnf i
+    Float d -> rnf d
+    String s -> rnf s
+    Array items -> rnf items
+    Object members -> rnf members
+
 -- | CPython value equality.
 pythonEq :: Json -> Json -> Bool
 pythonEq Null Null = True
 pythonEq (String a) (String b) = a == b
 pythonEq (Array as) (Array bs) = length as == length bs && and (zipWith pythonEq as bs)
 pythonEq (Object as) (Object bs) =
-  length as == length bs && all (\(k, v) -> maybe False (pythonEq v) (lookup k bs)) as
+  -- The dicts the member lists stand for: a repeated key counts once, with
+  -- its last value (as @dict(pairs)@ and @json.loads@ keep it), so the
+  -- comparison is symmetric and independent of member order.
+  let left = Map.fromList as
+      right = Map.fromList bs
+   in Map.keysSet left == Map.keysSet right && and (Map.intersectionWith pythonEq left right)
 pythonEq a b = case (numeric a, numeric b) of
   (Just x, Just y) -> numericEq x y
   _ -> False

@@ -215,6 +215,27 @@ main = hspec $ do
       Int (2 ^ (53 :: Int) + 1) `shouldNotBe` Float (2 ^ (53 :: Int))
     it "compares objects as mappings" $
       Object [("a", Int 1), ("b", Int 2)] `shouldBe` Object [("b", Int 2), ("a", Int 1)]
+    it "compares objects with repeated keys as their last-wins dicts, symmetrically" $ do
+      let repeated = Object [("a", Int 1), ("a", Int 1)]
+          distinct = Object [("a", Int 1), ("b", Int 1)]
+      (repeated == distinct, distinct == repeated) `shouldBe` (False, False)
+      Object [("a", Int 1), ("a", Int 2)] `shouldBe` Object [("a", Int 2)]
+      Object [("a", Int 2)] `shouldBe` Object [("a", Int 1), ("a", Int 2)]
+      Object [("a", Int 2), ("a", Int 1)] `shouldNotBe` Object [("a", Int 2)]
+    -- The equivalence laws, over finite values dense in equal-but-differently
+    -- spelled pairs: repeated keys, reordered members, and 1 / 1.0 / true.
+    -- (A NaN equals nothing, itself included, as in CPython.)
+    it "is reflexive" $
+      property $ \(EqLaws a) -> a == a
+    it "is symmetric" $
+      property $ \(EqLaws a) -> forAll (respelled a) $ \b -> (a == b) === (b == a)
+    it "is transitive" $
+      property $ \(EqLaws a) ->
+        forAll (respelled a) $ \b ->
+          forAll (respelled b) $ \c ->
+            (a == b && b == c) ==> a == c
+    it "equals every equal respelling, both ways" $
+      property $ \(EqLaws a) -> forAll (respelledEqual a) $ \b -> a == b && b == a
 
   describe "CPython integer string-conversion limit" $ do
     let digits n = BC.replicate n '7'
@@ -419,3 +440,51 @@ instance Arbitrary Refusable where
           , Float <$> elements [1.5, 0 / 0, 1 / 0, -1 / 0]
           , pure (String "s")
           ]
+
+-- | Finite values over a small key alphabet, so objects often repeat keys,
+-- with numbers among 0, 1 and 2 in every numeric spelling.
+newtype EqLaws = EqLaws Json
+  deriving stock (Show)
+
+instance Arbitrary EqLaws where
+  arbitrary = EqLaws <$> sized go
+    where
+      go :: Int -> Gen Json
+      go n
+        | n <= 1 = leaf
+        | otherwise =
+            frequency
+              [ (3, leaf)
+              , (1, Array <$> (choose (0, 3) >>= \k -> vectorOf k (go (n `div` 3))))
+              , (2, Object <$> (choose (0, 4) >>= \k -> vectorOf k ((,) <$> elements ["a", "b", "c"] <*> go (n `div` 3))))
+              ]
+      leaf = elements [Null, Bool False, Bool True, Int 0, Int 1, Int 2, Float 0, Float 1, Float (-0.0), Float 1.5, String "a", String "b"]
+
+-- | A value spelled differently and equal to it under Python value
+-- equality: members reordered, a stale value for a key slipped in before
+-- its last occurrence, and numbers respelled across bool, int and float.
+respelledEqual :: Json -> Gen Json
+respelledEqual = \case
+  Int 0 -> elements [Int 0, Float 0, Float (-0.0), Bool False]
+  Int 1 -> elements [Int 1, Float 1, Bool True]
+  Bool b -> elements [Bool b, Int (if b then 1 else 0)]
+  Float d | d == 0 -> elements [Float 0, Float (-0.0), Int 0, Bool False]
+  Array items -> Array <$> traverse respelledEqual items
+  Object members -> do
+    let lastWins = [(k, v) | (i, (k, v)) <- zip [1 :: Int ..] members, k `notElem` map fst (drop i members)]
+    kept <- traverse (\(k, v) -> (,) k <$> respelledEqual v) lastWins
+    shuffled <- shuffle kept
+    stale <- sublistOf [(k, Int 99) | (k, _) <- shuffled]
+    pure (Object (stale <> shuffled))
+  other -> pure other
+
+-- | A respelling that is equal (most of the time) or changed in one place.
+respelled :: Json -> Gen Json
+respelled a = frequency [(3, respelledEqual a), (1, changed a)]
+  where
+    changed = \case
+      Array items@(_ : _) -> do
+        i <- chooseInt (0, length items - 1)
+        pure (Array [if j == i then String "changed" else item | (j, item) <- zip [0 ..] items])
+      Object ((k, _) : rest) -> pure (Object ((k, String "changed") : rest))
+      _ -> pure (String "changed")
