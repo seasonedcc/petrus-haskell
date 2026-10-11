@@ -25,6 +25,7 @@ import Hamsterdan.GitHub.Models
   , FindingPublication (..)
   , PublicationCollision (..)
   , PublicationResult (..)
+  , PublicationStatus (..)
   , Transport (..)
   , boundary
   )
@@ -71,18 +72,18 @@ newFakePublisher mode found = FakePublisher mode found False <$> newIORef []
 record :: FakePublisher -> Call -> IO ()
 record p c = modifyIORef' p.calls (++ [c])
 
-result :: Text -> PublicationResult
+result :: PublicationStatus -> PublicationResult
 result status = PublicationResult status (Just reference) True False
 
 outcome :: FakePublisher -> IO PublicationResult
 outcome p = case p.mode of
-  Existing -> pure (result "existing")
+  Existing -> pure (result PublicationExisting)
   Boundary -> throwIO (boundary "GitHub did not prove comment publication")
   Collision -> throwIO PublicationCollision
   Unknown -> throwIO (RuntimeError "provider returned an unclassifiable terminal")
-  Capability -> pure (PublicationResult "capability_unavailable" Nothing False False)
-  Unclassified -> pure (result "banana")
-  Created -> pure (result "created")
+  Capability -> pure (PublicationResult PublicationCapabilityUnavailable Nothing False False)
+  Unclassified -> pure (result (PublicationUnclassified "banana"))
+  Created -> pure (result PublicationCreated)
 
 fakeProvider :: FakePublisher -> PublicationProvider
 fakeProvider p =
@@ -90,13 +91,13 @@ fakeProvider p =
     { find = \kind operation head' body compatible -> do
         record p (CFind kind operation head' body compatible)
         when p.collide (throwIO PublicationCollision)
-        pure (if p.found then Just (result "existing") else Nothing)
+        pure (if p.found then Just (result PublicationExisting) else Nothing)
     , immutable = \kind operation _epoch head' body _authority compatible -> do
         record p (CImmutable kind operation head' body compatible)
         outcome p
     , immutableOperation = \kind operation body ctx _compatible ->
         if p.found
-          then record p (CImmutableOperation kind operation Nothing body) >> pure (result "existing")
+          then record p (CImmutableOperation kind operation Nothing body) >> pure (result PublicationExisting)
           else do
             (_, head') <- ctx
             record p (CImmutableOperation kind operation (Just head') body)
@@ -106,7 +107,7 @@ fakeProvider p =
         outcome p
     , reminderOperation = \operation ctx ->
         if p.found
-          then record p (CReminderOperation operation Nothing Nothing) >> pure (result "existing")
+          then record p (CReminderOperation operation Nothing Nothing) >> pure (result PublicationExisting)
           else do
             (_, _, reviewer, author) <- ctx
             record p (CReminderOperation operation (Just reviewer) (Just author))
@@ -119,7 +120,7 @@ fakeProvider p =
         mapM (const (outcome p)) items
     , findingFind = \operation head' -> do
         record p (CFindingFind operation head')
-        pure (if p.found then Just (PublicationResult "existing" (Just reference) True True) else Nothing)
+        pure (if p.found then Just (PublicationResult PublicationExisting (Just reference) True True) else Nothing)
     }
 
 gatesWith :: FakePublisher -> CurrentClaim -> V5PublicationGates

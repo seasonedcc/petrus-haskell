@@ -51,7 +51,7 @@ import Data.Text.Encoding qualified as TE
 import Hamsterdan.Agents.Protocol (AgentRunner (..))
 import Hamsterdan.Contracts.Codec (validate)
 import Hamsterdan.Contracts.ReadinessV5 (DashReq, RemReq (..), ReplyReq (..), TimerCommandApplied, TimerDue)
-import Hamsterdan.GitHub.Models (CommentReference (..), PublicationCollision (..), PublicationResult (..), boundary)
+import Hamsterdan.GitHub.Models (CommentReference (..), PublicationCollision (..), PublicationResult (..), PublicationStatus (..), boundary)
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Agents (AgentSeams (..), composeHostAgent, newOwnedAgent, productionAgentSeams)
 import Hamsterdan.Host.Api (hostWaiApplication)
@@ -258,7 +258,7 @@ reference :: CommentReference
 reference = CommentReference 1 "https://example.test/c/1"
 
 held :: PublicationResult
-held = PublicationResult "existing" (Just reference) True False
+held = PublicationResult PublicationExisting (Just reference) True False
 
 -- | @FakePublisher@ of @test_v5_gates.py@ without the call record.
 publisher :: Outcome -> Bool -> PublicationProvider
@@ -282,9 +282,9 @@ publisher outcome found =
       Boundary -> throwIO (boundary "GitHub did not prove comment publication")
       Collision -> throwIO PublicationCollision
       Unknown -> throwIO (RuntimeError "provider returned an unclassifiable terminal")
-      Capability -> pure (PublicationResult "capability_unavailable" Nothing False False)
-      Unclassified -> pure (PublicationResult "banana" (Just reference) True False)
-      Created -> pure (PublicationResult "created" (Just reference) True False)
+      Capability -> pure (PublicationResult PublicationCapabilityUnavailable Nothing False False)
+      Unclassified -> pure (PublicationResult (PublicationUnclassified "banana") (Just reference) True False)
+      Created -> pure (PublicationResult PublicationCreated (Just reference) True False)
 
 gateSet :: [V5PublicationGates]
 gateSet =

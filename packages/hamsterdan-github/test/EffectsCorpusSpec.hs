@@ -147,7 +147,7 @@ scriptedFence script repository number epoch head' operation = do
 
 scriptedFault :: Script -> E.EffectFault
 scriptedFault script phase repository number kind operation = do
-  let actual = Array [String phase, String repository, Int number, String kind, String operation]
+  let actual = Array [String (E.callPhaseText phase), String repository, Int number, String kind, String operation]
   event <- next script "fault" ("fault " <> T.unpack (spelling actual))
   same script "fault" (field "args" event) actual
   mapM_ raiseBoundary (member "raise" event)
@@ -403,7 +403,7 @@ resultJson result =
 publicationJson :: PublicationResult -> Json
 publicationJson result =
   Object
-    [ ("status", String result.status)
+    [ ("status", String (publicationStatusText result.status))
     , ("reference", maybe Null (\r -> Object [("id", Int r.id), ("url", String r.url)]) result.reference)
     , ("capability_available", Bool result.capabilityAvailable)
     , ("inline", Bool result.inline)

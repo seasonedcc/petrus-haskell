@@ -101,6 +101,7 @@ import Hamsterdan.Contracts.Readiness (AdmittedConversation (..))
 import Hamsterdan.GitHub.Auth (registrationInventory)
 import Hamsterdan.GitHub.Client (AppClients, installationClient)
 import Hamsterdan.GitHub.Config (HostConfig (..), botLogin, revealSecret)
+import Hamsterdan.GitHub.Effects (CallPhase (..), callPhaseText)
 import Hamsterdan.GitHub.Gateway (GitHubAuthority, githubAuthority)
 import Hamsterdan.GitHub.Gateway qualified as Gateway
 import Hamsterdan.GitHub.Models
@@ -175,21 +176,39 @@ logWarning message = TIO.hPutStrLn stderr message
 data QualificationFault = QualificationFault
   { repository :: Text
   , pullRequest :: Integer
-  , boundary :: Text
-  , phase :: Text
+  , point :: FaultPoint
   , kind :: Text
   , operation :: Text
   , spent :: MVar (Bool, Maybe Text)
   -- ^ @_spent@ and @_spent_operation@, under the fault's lock.
   }
 
-faultBoundaries, faultPhases :: Set Text
-faultBoundaries = Set.fromList ["agent", "comment"]
-faultPhases = Set.fromList ["timed_out", "malformed", "before_call", "after_call"]
+-- | Where a fault fires: the configuration's @boundary@ and @phase@. The
+-- reference admits exactly these four pairs (an @agent@ fault times out or
+-- is malformed; a @comment@ fault fires before or after the call).
+data FaultPoint = AgentFault AgentFaultPhase | CommentFault CallPhase
+  deriving stock (Eq, Show)
 
-qualificationFault :: Text -> Integer -> Text -> Text -> Text -> Text -> IO QualificationFault
-qualificationFault repository pullRequest boundary' phase kind operation =
-  QualificationFault repository pullRequest boundary' phase kind operation <$> newMVar (False, Nothing)
+data AgentFaultPhase = FaultTimedOut | FaultMalformed
+  deriving stock (Eq, Show)
+
+-- | The point's @(boundary, phase)@ spelling.
+faultPointSpelling :: FaultPoint -> (Text, Text)
+faultPointSpelling = \case
+  AgentFault FaultTimedOut -> ("agent", "timed_out")
+  AgentFault FaultMalformed -> ("agent", "malformed")
+  CommentFault phase -> ("comment", callPhaseText phase)
+
+-- | Every point, by its spelling.
+faultPoints :: [((Text, Text), FaultPoint)]
+faultPoints =
+  [ (faultPointSpelling point, point)
+  | point <- [AgentFault FaultTimedOut, AgentFault FaultMalformed, CommentFault BeforeCall, CommentFault AfterCall]
+  ]
+
+qualificationFault :: Text -> Integer -> FaultPoint -> Text -> Text -> IO QualificationFault
+qualificationFault repository pullRequest point kind operation =
+  QualificationFault repository pullRequest point kind operation <$> newMVar (False, Nothing)
 
 -- | @QualificationFault.from_environment(environment)@ over the value of
 -- @HAMSTERDAN_QUALIFICATION_FAULT@, if set.
@@ -211,23 +230,22 @@ qualificationFaultFromEnvironment = \case
       (String repository, Int pullRequest, String boundary', String phase, String kind, String operation)
         | T.count "/" repository == 1
         , pullRequest > 0
-        , boundary' `Set.member` faultBoundaries
-        , phase `Set.member` faultPhases
+        , Just point <- lookup (boundary', phase) faultPoints
         , not (T.null kind)
-        , not (T.null operation)
-        , (boundary' == "agent") == (phase `elem` ["timed_out", "malformed"]) ->
-            Just <$> qualificationFault repository pullRequest boundary' phase kind operation
+        , not (T.null operation) ->
+            Just <$> qualificationFault repository pullRequest point kind operation
       _ -> malformed
 
 -- | @_matches@ then @_consume@, atomically: whether this call spends the
 -- fault.
-consume :: QualificationFault -> Text -> Integer -> Text -> Text -> Text -> Text -> IO Bool
-consume fault repository pullRequest boundary' phase kind operation =
+consume :: QualificationFault -> Text -> Integer -> FaultPoint -> Text -> Text -> IO Bool
+consume fault repository pullRequest point kind operation =
   modifyMVar fault.spent $ \state@(isSpent, _) ->
     if not isSpent
-      && (casefold repository, pullRequest, boundary', phase, kind) == (casefold fault.repository, fault.pullRequest, fault.boundary, fault.phase, fault.kind)
+      && (casefold repository, pullRequest, point, kind) == (casefold fault.repository, fault.pullRequest, fault.point, fault.kind)
       && fault.operation `elem` [operation, "next"]
       then do
+        let (boundary', phase) = faultPointSpelling point
         logWarning
           ( "qualification_fault boundary="
               <> boundary'
@@ -243,19 +261,20 @@ consume fault repository pullRequest boundary' phase kind operation =
 
 -- | @publication(phase, repository, pull_request, kind, operation)@: the
 -- application's publication fault hook.
-faultPublication :: QualificationFault -> Text -> Text -> Integer -> Text -> Text -> IO ()
+faultPublication :: QualificationFault -> CallPhase -> Text -> Integer -> Text -> Text -> IO ()
 faultPublication fault phase repository pullRequest kind operation = do
-  spends <- consume fault repository pullRequest "comment" phase kind operation
+  spends <- consume fault repository pullRequest (CommentFault phase) kind operation
   when spends $ throwIO (boundary "qualified provider outcome was deliberately withheld")
 
 -- | @agent(repository, pull_request, kind, operation)@.
 faultAgent :: QualificationFault -> Text -> Integer -> Text -> Text -> IO ()
-faultAgent fault repository pullRequest kind operation = do
-  spends <- consume fault repository pullRequest "agent" fault.phase kind operation
-  when spends $
-    if fault.phase == "timed_out"
-      then throwIO (protocolError "qualified agent execution timed out") {timedOut = True}
-      else throwIO (protocolError "qualified agent result is malformed")
+faultAgent fault repository pullRequest kind operation = case fault.point of
+  CommentFault _ -> pure ()
+  AgentFault phase -> do
+    spends <- consume fault repository pullRequest fault.point kind operation
+    when spends $ case phase of
+      FaultTimedOut -> throwIO (protocolError "qualified agent execution timed out") {timedOut = True}
+      FaultMalformed -> throwIO (protocolError "qualified agent result is malformed")
 
 -- | @_spent_operation@.
 spentOperation :: QualificationFault -> IO (Maybe Text)

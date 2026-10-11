@@ -80,7 +80,7 @@ import Hamsterdan.Agents.Protocol (CodingResult (..))
 import Hamsterdan.GitHub.Client (ClientOptions (..))
 import Hamsterdan.GitHub.Effects (commentPublisher, immutable, publishFindings)
 import Hamsterdan.GitHub.Http (newPlainExchangeAt)
-import Hamsterdan.GitHub.Models (FindingPublication, GraphQLTransport (..), PublicationResult (..), Transport (..), WireResponse (..), finding)
+import Hamsterdan.GitHub.Models (FindingPublication, GraphQLTransport (..), PublicationResult (..), Transport (..), WireResponse (..), finding, publicationStatusText)
 import Hamsterdan.GitHub.Transport (githubGraphQL)
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Cli (CliEnvironment (..), productionEnvironment, runCli)
@@ -357,10 +357,10 @@ haskellRun workspace = \case
   "sweep-unloaded" -> sweepRun workspace False
   "effects-comment" -> do
     publisher <- either throwIO pure (commentPublisher effectsTransport "owner/one" 7 botLogin (\_ _ _ _ _ -> pure ()) Nothing (\_ -> pure ()))
-    timedLoop effectIterations ((.status) <$> immutable publisher "conversation" "reply:bench" 1 effectHead "the answer" Nothing [])
+    timedLoop effectIterations (publicationStatusText . (.status) <$> immutable publisher "conversation" "reply:bench" 1 effectHead "the answer" Nothing [])
   "effects-review-batch" -> do
     publisher <- either throwIO pure (commentPublisher effectsTransport "owner/one" 7 botLogin (\_ _ _ _ _ -> pure ()) Nothing (\_ -> pure ()))
-    timedLoop effectIterations (T.intercalate "," . map (.status) <$> publishFindings publisher 1 effectHead batchFindings "review:bench")
+    timedLoop effectIterations (T.intercalate "," . map (publicationStatusText . (.status)) <$> publishFindings publisher 1 effectHead batchFindings "review:bench")
   "effects-cas" -> do
     let graphql = githubGraphQL effectsTransport
     timedLoop effectIterations ("ok" <$ graphql.compareAndSwapRef "owner/one" "refs/heads/feature" effectHead (T.replicate 40 "c"))

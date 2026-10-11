@@ -48,7 +48,7 @@ import Hamsterdan.Contracts.Codec (Contract, Object, spelling)
 import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.GitHub.Effects (CommentPublisher)
 import Hamsterdan.GitHub.Effects qualified as Effects
-import Hamsterdan.GitHub.Models (FailureClass (..), FindingPublication (..), GitHubBoundaryError (..), PublicationResult (..))
+import Hamsterdan.GitHub.Models (FailureClass (..), FindingPublication (..), GitHubBoundaryError (..), PublicationResult (..), PublicationStatus (..), publicationStatusText)
 import Hamsterdan.GitHub.Python qualified as Py
 import Hamsterdan.Host.Errors (Caught (..), UnstagedCustodyError (..), catchGate)
 import Hamsterdan.Host.Python (TypeError (..), ValueError (..), raiseFailureText, sha256HexText)
@@ -121,18 +121,18 @@ announceCompatible :: [Text]
 announceCompatible =
   ["## Hamsterdan readiness advisory\n\nAll observed gates are ready. Advisory only; Hamsterdan does not merge PRs."]
 
-held, dashHeld :: [Text]
-held = ["created", "existing"]
-dashHeld = ["created", "existing", "updated"]
+held, dashHeld :: [PublicationStatus]
+held = [PublicationCreated, PublicationExisting]
+dashHeld = [PublicationCreated, PublicationExisting, PublicationUpdated]
 
 data Unproven = Proven | UnprovenBlocked | UnprovenFault Text
 
 -- | @_unproven(result, held)@.
-unproven :: [Text] -> PublicationResult -> Unproven
+unproven :: [PublicationStatus] -> PublicationResult -> Unproven
 unproven heldStatuses result
   | not result.capabilityAvailable = UnprovenBlocked
   | result.status `elem` heldStatuses = Proven
-  | otherwise = UnprovenFault ("unclassified publication status " <> pythonStrRepr result.status)
+  | otherwise = UnprovenFault ("unclassified publication status " <> pythonStrRepr (publicationStatusText result.status))
 
 v :: (Contract a) => a -> Variant
 v = variantOf

@@ -16,6 +16,8 @@ module Hamsterdan.GitHub.Effects
   ( -- * Publisher
     Fence
   , EffectFault
+  , CallPhase (..)
+  , callPhaseText
   , CommentPublisher (..)
   , commentPublisher
   , sleepSeconds
@@ -77,7 +79,18 @@ type Fence = Text -> Integer -> Integer -> Text -> Text -> IO ()
 
 -- | @EffectFault(phase, repository, pr_number, kind, operation)@: a fault
 -- injection hook called around each effect request.
-type EffectFault = Text -> Text -> Integer -> Text -> Text -> IO ()
+type EffectFault = CallPhase -> Text -> Integer -> Text -> Text -> IO ()
+
+-- | The @phase@ an 'EffectFault' is called in: just before the request,
+-- or just after its response.
+data CallPhase = BeforeCall | AfterCall
+  deriving stock (Eq, Show)
+
+-- | The phase's spelling in the reference (@before_call@, @after_call@).
+callPhaseText :: CallPhase -> Text
+callPhaseText = \case
+  BeforeCall -> "before_call"
+  AfterCall -> "after_call"
 
 -- | @CommentPublisher@.
 data CommentPublisher = CommentPublisher
@@ -195,7 +208,7 @@ lenientReference :: Json -> Maybe CommentReference
 lenientReference = either (const Nothing) Just . reference
 
 existing :: Maybe CommentReference -> PublicationResult
-existing = publication "existing"
+existing = publication PublicationExisting
 
 collision :: IO a
 collision = throwIO PublicationCollision
@@ -220,7 +233,7 @@ heldBody item payload compatible = case bodyOf item of
   String body -> body == payload || body `elem` compatible
   _ -> False
 
-callFault :: CommentPublisher -> Text -> Text -> Text -> IO ()
+callFault :: CommentPublisher -> CallPhase -> Text -> Text -> IO ()
 callFault publisher phase kind operation = case publisher.fault of
   Just hook -> hook phase publisher.repository publisher.prNumber kind operation
   Nothing -> pure ()
@@ -248,9 +261,9 @@ immutable publisher kind operation epoch head' body authorityOperation compatibl
     attempt wanted payload n = do
       publisher.fence publisher.repository publisher.prNumber epoch head' (orOperation authorityOperation operation)
       outcome <- try $ do
-        callFault publisher "before_call" kind operation
+        callFault publisher BeforeCall kind operation
         response <- publisher.transport.request "POST" publisher.root (Just [("body", String payload)])
-        callFault publisher "after_call" kind operation
+        callFault publisher AfterCall kind operation
         pure response
       case outcome of
         Left (failure :: GitHubBoundaryError) -> do
@@ -265,7 +278,7 @@ immutable publisher kind operation epoch head' body authorityOperation compatibl
                 | response.status == 201 = either (const Nothing) Just (reference response.body)
                 | otherwise = Nothing
           case created of
-            Just ref -> pure (publication "created" (Just ref))
+            Just ref -> pure (publication PublicationCreated (Just ref))
             Nothing -> do
               recovered <- recover publisher wanted payload
               case recovered of
@@ -362,7 +375,7 @@ dashboard publisher operation epoch head' body = do
         Right response -> do
           early <-
             if response.status == 201
-              then pure (publication "created" . Just <$> either (const Nothing) Just (reference response.body))
+              then pure (publication PublicationCreated . Just <$> either (const Nothing) Just (reference response.body))
               else do
                 recovered <- recover publisher dashboardMarker payload
                 case recovered of
@@ -386,7 +399,7 @@ dashboard publisher operation epoch head' body = do
             Right response -> do
               early <-
                 if response.status == 200
-                  then pure (publication "updated" . Just <$> either (const Nothing) Just (reference response.body))
+                  then pure (publication PublicationUpdated . Just <$> either (const Nothing) Just (reference response.body))
                   else do
                     recovered <- recoverDashboard publisher payload
                     case recovered of
@@ -411,7 +424,7 @@ recoverDashboard publisher payload = do
 -- | @_comment_rejection(status, operation, reference=…)@.
 commentRejection :: Int -> Text -> Maybe CommentReference -> IO PublicationResult
 commentRejection status operation held'
-  | status == 403 || status == 404 = pure (PublicationResult "capability_unavailable" held' False False)
+  | status == 403 || status == 404 = pure (PublicationResult PublicationCapabilityUnavailable held' False False)
   | status == 429 || status >= 500 = throwIO (boundary ("GitHub did not prove " <> operation))
   | otherwise = throwIO (PublicationRejected operation)
 
@@ -482,7 +495,7 @@ publishFinding publisher item epoch head' authorityOperation = do
     Just review -> do
       unless (bodyOf review `elem` [String content.inlinePayload, String content.fallbackPayload]) collision
       ref <- referenceIO review
-      pure (publication "existing" (Just ref)) {inline = True}
+      pure (publication PublicationExisting (Just ref)) {inline = True}
     Nothing -> do
       heldIssue <- findIssue publisher content.marker
       case heldIssue of
@@ -491,7 +504,7 @@ publishFinding publisher item epoch head' authorityOperation = do
                 T.null item.suggestion && null item.relatedLocations && bodyOf held' == String content.legacyPayload
           when (bodyOf held' /= String content.fallbackPayload && not compatibleLegacy) collision
           ref <- referenceIO held'
-          pure (publication "existing" (Just ref)) {inline = False}
+          pure (publication PublicationExisting (Just ref)) {inline = False}
         Nothing -> do
           inlineResult <-
             if location
@@ -525,7 +538,7 @@ publishFindings publisher epoch head' items authorityOperation = do
           else do
             publisher.fence publisher.repository publisher.prNumber epoch head' authorityOperation
             outcome <- try $ do
-              callFault publisher "before_call" "finding" authorityOperation
+              callFault publisher BeforeCall "finding" authorityOperation
               response <-
                 publisher.transport.request
                   "POST"
@@ -548,7 +561,7 @@ publishFindings publisher epoch head' items authorityOperation = do
                         )
                       ]
                   )
-              callFault publisher "after_call" "finding" authorityOperation
+              callFault publisher AfterCall "finding" authorityOperation
               pure response
             case outcome of
               Left (failure :: GitHubBoundaryError) -> do
@@ -562,7 +575,7 @@ publishFindings publisher epoch head' items authorityOperation = do
               Right response
                 | response.status == 200 -> do
                     let ref = lenientReference response.body
-                        created = (publication "created" ref) {inline = True}
+                        created = (publication PublicationCreated ref) {inline = True}
                     final (Map.union (Map.fromList [(item.operation, created) | (item, _) <- current']) landed)
                 | otherwise -> do
                     (found, next) <- reconcileBatch publisher current'
@@ -600,12 +613,12 @@ reconcileBatch publisher pending = do
       Just review -> do
         unless (bodyOf review `elem` [String content.inlinePayload, String content.fallbackPayload]) collision
         ref <- referenceIO review
-        pure (Left (item.operation, (publication "existing" (Just ref)) {inline = True}))
+        pure (Left (item.operation, (publication PublicationExisting (Just ref)) {inline = True}))
       Nothing -> case findMarked issues publisher.botLogin content.marker of
         Just held' -> do
           unless (bodyOf held' == String content.fallbackPayload) collision
           ref <- referenceIO held'
-          pure (Left (item.operation, (publication "existing" (Just ref)) {inline = False}))
+          pure (Left (item.operation, (publication PublicationExisting (Just ref)) {inline = False}))
         Nothing -> pure (Right (item, content))
   let (landed, remaining) = partitionEithers found
   pure (Map.fromList landed, remaining)
@@ -617,11 +630,11 @@ findingFind publisher operation head' = do
   wanted <- markerIO "finding" operation head'
   review <- findReview publisher wanted
   case review of
-    Just item -> Just . (\ref -> (publication "existing" (Just ref)) {inline = True}) <$> referenceIO item
+    Just item -> Just . (\ref -> (publication PublicationExisting (Just ref)) {inline = True}) <$> referenceIO item
     Nothing -> do
       held' <- findIssue publisher wanted
       case held' of
-        Just item -> Just . (\ref -> (publication "existing" (Just ref)) {inline = False}) <$> referenceIO item
+        Just item -> Just . (\ref -> (publication PublicationExisting (Just ref)) {inline = False}) <$> referenceIO item
         Nothing -> pure Nothing
 
 -- | @_inline_finding(…)@.
@@ -636,11 +649,11 @@ inlineFinding publisher operation epoch head' body path line authorityOperation 
           Just item -> do
             unless (bodyOf item == String payload) collision
             ref <- referenceIO item
-            pure (Just (publication "existing" (Just ref)) {inline = True})
+            pure (Just (publication PublicationExisting (Just ref)) {inline = True})
       attempt retry () = do
         publisher.fence publisher.repository publisher.prNumber epoch head' (orOperation authorityOperation operation)
         outcome <- try $ do
-          callFault publisher "before_call" "finding" operation
+          callFault publisher BeforeCall "finding" operation
           response <-
             publisher.transport.request
               "POST"
@@ -653,7 +666,7 @@ inlineFinding publisher operation epoch head' body path line authorityOperation 
                   , ("side", String "RIGHT")
                   ]
               )
-          callFault publisher "after_call" "finding" operation
+          callFault publisher AfterCall "finding" operation
           pure response
         case outcome of
           Left (failure :: GitHubBoundaryError) ->
@@ -663,12 +676,12 @@ inlineFinding publisher operation epoch head' body path line authorityOperation 
           Right response
             | response.status == 201, Object members <- response.body -> do
                 ref <- referenceIO members
-                pure (publication "created" (Just ref)) {inline = True}
+                pure (publication PublicationCreated (Just ref)) {inline = True}
             | otherwise ->
                 recovered >>= \case
                   Just result -> pure result
                   Nothing
-                    | inlineUnavailable response -> pure (PublicationResult "inline_unavailable" Nothing False False)
+                    | inlineUnavailable response -> pure (PublicationResult PublicationInlineUnavailable Nothing False False)
                     | transientInlineRejection response ->
                         maybe (inlineRejection response TransientHttpRejection) ($ ()) retry
                     | otherwise -> inlineRejection response (inlineFailureClass response)
@@ -813,7 +826,7 @@ issue broker run epoch operation = do
       response <- publisher.transport.request "POST" publisher.root (Just [("body", String wanted)])
       case response.body of
         Object _ | response.status == 201 ->
-          pure (RerunIssue (publication "requested" (lenientReference response.body)) cutId cutAttempt)
+          pure (RerunIssue (publication PublicationRequested (lenientReference response.body)) cutId cutAttempt)
         _ -> throwIO (boundary "GitHub did not prove rerun broker publication")
 
 -- | @request(run, epoch=…, operation=…)@: 'issue', with a refusal raised as
