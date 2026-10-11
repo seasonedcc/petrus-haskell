@@ -321,6 +321,18 @@ def git(response_lost: bool, crash_cut: str, redeliver: bool) -> Scenario:
     return run
 
 
+def git_unrecovered_after_acceptance(world: ReadinessWorld) -> str:
+    # A crash right after the Git ref is accepted, with no response fault:
+    # upstream's World refuses this schedule (the independent model fails
+    # the boundary after the moved head's CI is set). The campaign's five
+    # Hypothesis examples never draw it.
+    try:
+        git(False, "after_acceptance", False)(world)
+    except InvariantViolation:
+        pass
+    return "readiness-v5-git-publication-after_acceptance-v1"
+
+
 def limited(name: str, value: int):
     limits = dict(DEFAULT_BUDGET.profile_resources)
     limits[name] = value
@@ -352,6 +364,7 @@ SCENARIOS: dict[str, tuple[Scenario, int | None, object]] = {
     "git-after_acceptance": (git(True, "after_acceptance", True), 1, DEFAULT_BUDGET),
     "git-after_head": (git(True, "after_head", False), 2, DEFAULT_BUDGET),
     "git-none": (git(False, "none", True), 3, DEFAULT_BUDGET),
+    "git-after_acceptance-unrecovered": (git_unrecovered_after_acceptance, 0, DEFAULT_BUDGET),
 }
 
 

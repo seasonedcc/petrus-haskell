@@ -69,6 +69,8 @@ test-suite hamsterdan-testing-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    OracleCorpusSpec
+                    ReadinessCampaignSpec
+                    ReadinessCoverageSpec
                     ReadinessModelSpec
                     ReadinessScenariosSpec
                     ReadinessWorldSpec

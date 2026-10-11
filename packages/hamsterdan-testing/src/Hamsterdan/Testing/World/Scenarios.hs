@@ -342,6 +342,9 @@ scenarios =
   , Scenario "git-after_acceptance" (Just 1) defaultBudget (git True "after_acceptance" True)
   , Scenario "git-after_head" (Just 2) defaultBudget (git True "after_head" False)
   , Scenario "git-none" (Just 3) defaultBudget (git False "none" True)
+  , Scenario "git-after_acceptance-unrecovered" (Just 0) defaultBudget $ \rw -> do
+      refused isInvariant (git False "after_acceptance" False rw)
+      pure "readiness-v5-git-publication-after_acceptance-v1"
   ]
 
 -- | Author one scenario under a root: the artifact's @encode_artifact@
