@@ -384,8 +384,8 @@ broad.
     profile)`. When recording, the seed is the campaign seed.
   - The invariant runs after every step. It also runs before the first step, but only in delivery
     broad, the machine with no `@initialize` rule; Hypothesis does the same.
-  - `teardown` runs at the end of every example. When a step fails, the World still closes,
-    before the next example starts (DIVERGENCES.md).
+  - `teardown` runs at the end of every example. When a step fails, the World still closes
+    at the end of that example, in a `bracket` (DIVERGENCES.md).
 
 The rule strategies:
 
