@@ -1,0 +1,78 @@
+cabal-version:      3.4
+name:               hamsterdan-agents
+version:            0.1.0.0
+synopsis:           Hamsterdan's Pi agent adapter and its host composition
+description:
+  The Hamsterdan agent adapter (@src/hamsterdan/agents@): the canonical Pi
+  prompt envelope, strict result validation, and the Pi native runner over
+  Petrus's Pi A2 Local host; and its host composition
+  (@src/hamsterdan/host/{agenticus,pi_a2,pi_workspace}.py@): catalog
+  resolution, the durable agent route store, sealed connection keys, the
+  installation binding, and the Git workspace provider. Every on-disk
+  format is the reference's, byte for byte, so the Haskell and Python hosts
+  can resume each other's agent state.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    README.md
+                    PARITY.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+                      MultiWayIf
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Hamsterdan.Agents.Validate
+                    Hamsterdan.Agents.Url
+                    Hamsterdan.Agents.Pi
+                    Hamsterdan.Agents.Pi.Doubles
+  build-depends:    base >=4.18 && <5
+                  , base16-bytestring >=1.0
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , cryptohash-sha256 >=0.11
+                  , hamsterdan-contracts
+                  , hamsterdan-github
+                  , petrus-agenticus-core
+                  , petrus-agenticus-runtime
+                  , petrus-impetus
+                  , petrus-json
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite hamsterdan-agents-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    ProtocolSpec
+                    PiSpec
+                    PiDoubles
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , cryptohash-sha256
+                  , base16-bytestring
+                  , hamsterdan-agents
+                  , hamsterdan-contracts
+                  , hspec >=2.10
+                  , petrus-agenticus-core
+                  , petrus-agenticus-runtime
+                  , petrus-json
+                  , text
+  ghc-options:      -threaded -rtsopts
