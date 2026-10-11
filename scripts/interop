@@ -85,7 +85,7 @@ PATTERNS: Dict[str, List[str]] = {
     "petrus-engine-file": ["differential corpus", "live differential", "petrus-format-json against python"],
     "petrus-engine-postgres": ["PostgreSQL Engine interop with the reference"],
     "petrus-engine-sqlite": ["SQLite Engine interop with the reference"],
-    "petrus-execution": ["(differential", "Execution custody interop with the reference"],
+    "petrus-execution": ["(differential", "Execution custody interop with the reference", "ProviderAnswers"],
     "petrus-fabric": ["Fabric conformance", "Fabric interop", "CV5 Fabric demo", "the fast canonical encoder"],
     "petrus-history-postgres": ["PostgreSQL History interop with the reference"],
     "petrus-history-store": ["JSONL interop with the reference", "SQLite History interop with the reference"],

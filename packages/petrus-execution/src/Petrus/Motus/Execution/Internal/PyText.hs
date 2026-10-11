@@ -14,6 +14,7 @@ module Petrus.Motus.Execution.Internal.PyText
   , codePointSortKey
   , codePointLength
   , asciiReplace
+  , textModeDecode
     -- * repr
   , pyStrRepr
   , pyBytesRepr
@@ -34,7 +35,7 @@ import Data.Char (chr, isDigit, ord, toLower)
 import Data.List (dropWhileEnd)
 import Data.Text qualified as T
 import Data.Word (Word8)
-import Petrus.Json.Python (isPythonSpace, pythonDecimal, pythonListRepr, pythonReprBytes, pythonStringRepr)
+import Petrus.Json.Python (decodeUtf8Python, isPythonSpace, pythonDecimal, pythonListRepr, pythonReprBytes, pythonStringRepr)
 
 -- | Decode UTF-8 the way CPython does with @errors="surrogateescape"@: every
 -- byte that does not begin a complete, valid UTF-8 sequence becomes the lone
@@ -123,6 +124,12 @@ asciiReplace :: ByteString -> ByteString
 asciiReplace bytes
   | B.all (< 0x80) bytes = bytes
   | otherwise = BC.pack [if ord c < 0x80 then c else '?' | c <- decodeSurrogateEscape bytes]
+
+-- | Bytes read in text mode (@Path.read_text()@, @subprocess.run(text=True)@):
+-- strict UTF-8, failing with the @UnicodeDecodeError@'s text, then universal
+-- newlines.
+textModeDecode :: ByteString -> Either T.Text T.Text
+textModeDecode = fmap (T.replace "\r" "\n" . T.replace "\r\n" "\n") . decodeUtf8Python
 
 -- | Generalized UTF-8 (surrogates encoded like any other code point); its
 -- byte order is code-point order.

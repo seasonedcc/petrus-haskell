@@ -95,14 +95,16 @@ import Foreign.C.Error (eINTR, getErrno)
 import Foreign.C.Types (CInt (..))
 import Network.Socket (Family (AF_UNIX), SockAddr (SockAddrUnix), Socket, SocketType (Stream), close, connect, defaultProtocol, socket, withFdSocket)
 import Network.Socket.ByteString (recv, sendAll)
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, dumpsText, lookupMember, parseJson, pythonFloatRepr, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, pythonFloatRepr)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, maxWorkspaceArchiveBytes, workspaceArchive)
 import Petrus.Motus.Execution.Internal.Common (checkedGuestCwd, newUuid4, replaceFile, requireSupportedCapabilities, specFingerprint, uuidHex)
 import Petrus.Posix.At (FileStat (..), fdStat)
 import Petrus.Posix.Flock (LockKind (..), lock)
 import Petrus.Motus.Execution.Internal.Process (Child, StdioFd (..), childExitCode, childPid, resolveExecutable, signalChild, spawnChild)
-import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python (jsonTypeName, loadsBytes, loadsText, pythonExceptionStr, pythonStr, pythonStrRepr)
+import Petrus.Motus.Execution.Internal.PyText (textModeDecode)
+import Data.Bifunctor qualified as Bifunctor
 import Petrus.Motus.Execution.Internal.Sidecar (sidecarSha256, sidecarSource)
 import System.Directory (doesDirectoryExist, doesPathExist, listDirectory, removeDirectory, removeDirectoryRecursive, removeFile)
 import System.Environment (getEnvironment)
@@ -473,8 +475,8 @@ readRegistry directory = do
     Left e
       | isDoesNotExistError e -> pure Nothing
       | otherwise -> throwIO (osErrorFromIO e)
-    Right bytes -> case parseJson pythonLoads bytes of
-      Left problem -> throwExecution ValueError (T.pack problem)
+    Right bytes -> case textModeDecode bytes >>= Bifunctor.first pythonExceptionStr . loadsText of
+      Left problem -> throwExecution ValueError problem
       Right value -> either throwIO (pure . Just) (registryFromJson value)
 
 -- | @_write@: @json.dumps(record, sort_keys=True)@, 0600, fsync, replace.
@@ -559,30 +561,21 @@ waitReadable client micros = do
 foreign import capi interruptible "petrus_execution.h petrus_wait_readable"
   c_wait_readable :: CInt -> CInt -> IO CInt
 
+-- | @json.loads(frame)@ of the response line (its @JSONDecodeError@ or
+-- @UnicodeDecodeError@, both @ValueError@s, with CPython's text), which
+-- must then answer @.get@.
 decodeResponse :: ByteString -> IO Json
-decodeResponse line = case parseJson pythonLoads line of
-  Left problem -> throwExecution ValueError (T.pack problem)
+decodeResponse line = case loadsBytes line of
+  Left failure -> throwExecution ValueError (pythonExceptionStr failure)
   Right value@(Object _) -> pure value
-  Right other -> throwExecution (OtherError "AttributeError") ("'" <> pythonType other <> "' object has no attribute 'get'")
-  where
-    pythonType = \case
-      Array _ -> "list"
-      String _ -> "str"
-      Int _ -> "int"
-      Float _ -> "float"
-      Bool _ -> "bool"
-      Null -> "NoneType"
-      Object _ -> "dict"
+  Right other -> throwExecution (OtherError "AttributeError") ("'" <> jsonTypeName other <> "' object has no attribute 'get'")
 
--- | Raise @RuntimeError(response.get("error", fallback))@ unless @ok@.
+-- | Raise @RuntimeError(response.get("error", fallback))@ unless @ok@: the
+-- exception's text is @str()@ of the error value, whatever its type.
 requireOk :: Text -> Json -> IO Json
 requireOk fallback response
   | maybe False truthy (lookupMember "ok" response) = pure response
-  | otherwise = throwExecution RuntimeError $ case lookupMember "error" response of
-      Nothing -> fallback
-      Just (String message) -> message
-      Just Null -> "None"
-      Just other -> either (const fallback) id (dumpsText defaultDumps other)
+  | otherwise = throwExecution RuntimeError (maybe fallback pythonStr (lookupMember "error" response))
 
 -- | @_request@: one authenticated control request (compact JSON).
 sidecarRequest :: GondolinEnvironment -> Registry -> [(Text, Json)] -> Double -> IO Json

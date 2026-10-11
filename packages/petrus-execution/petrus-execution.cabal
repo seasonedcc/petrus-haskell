@@ -90,6 +90,7 @@ test-suite petrus-execution-test
                     E2bSpec
                     GondolinSpec
                     LocalSpec
+                    ProviderAnswersSpec
                     ProvidersSpec
                     SubstrateSpec
                     Support

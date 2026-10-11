@@ -8,6 +8,7 @@ import E2bHttpSpec qualified
 import E2bSpec qualified
 import GondolinSpec qualified
 import LocalSpec qualified
+import ProviderAnswersSpec qualified
 import ProvidersSpec qualified
 import SubstrateSpec qualified
 import System.Environment (getArgs, lookupEnv)
@@ -35,3 +36,4 @@ suite =
     GondolinSpec.spec
     SubstrateSpec.spec
     CustodyInteropSpec.spec
+    ProviderAnswersSpec.spec

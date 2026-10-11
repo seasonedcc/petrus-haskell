@@ -19,7 +19,7 @@ module Petrus.Motus.Execution.Providers.Docker
   ) where
 
 import Control.Exception (SomeException, finally, fromException, throwIO, try)
-import Control.Monad (unless, when)
+import Control.Monad (forM_, unless, when)
 import Data.ByteString (ByteString)
 import Data.IORef
 import Data.Map.Strict (Map)
@@ -30,13 +30,12 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Text.Encoding.Error qualified as TE
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..))
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
 import Petrus.Motus.Execution.Internal.Common
 import Petrus.Motus.Execution.Internal.Process
-import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python (decodeUtf8Python, jsonTypeName, loadsText, pythonExceptionStr, pythonSplit, pythonStrRepr, pythonStrip)
 import Petrus.Motus.Execution.Internal.PyText (pyStrRepr)
 import System.Environment (getEnvironment)
 import System.IO.Temp (withSystemTempDirectory)
@@ -115,6 +114,11 @@ docker env args check input seconds = do
             (T.pack ("Command '" <> argvRepr shown <> "' timed out after " <> showSeconds seconds <> " seconds"))
       | otherwise -> throwIO failure
     Right result -> do
+      -- @text=True@ (no input) decodes both streams in @communicate@,
+      -- before the exit status is checked.
+      when (isNothing input) $
+        forM_ [outcomeStdout result, outcomeStderr result] $
+          either (throwExecution ValueError) (const (pure ())) . decodeUtf8Python
       when (check && outcomeCode result /= 0) $
         throwExecution
           (OtherError "CalledProcessError")
@@ -137,23 +141,51 @@ isTransportError failure = case fromException failure of
   Just e -> errorKind e `elem` [OSError, ValueError, OtherError "CalledProcessError", OtherError "TimeoutExpired"]
   Nothing -> False
 
+-- | @CompletedProcess.stdout@ of a text-mode run ('docker' has checked it
+-- is UTF-8), with universal newlines.
 stdoutText :: RunOutcome -> Text
-stdoutText = TE.decodeUtf8With TE.lenientDecode . outcomeStdout
+stdoutText = T.replace "\r" "\n" . T.replace "\r\n" "\n" . TE.decodeUtf8 . outcomeStdout
 
-decodeJson :: ByteString -> IO Json
-decodeJson bytes = case parseJson pythonLoads bytes of
-  Right value -> pure value
-  Left problem -> throwExecution ValueError (T.pack problem)
+-- | @json.loads(stdout)@: its @JSONDecodeError@ (a @ValueError@) with
+-- CPython's text.
+decodeJson :: Text -> IO Json
+decodeJson text = either (throwExecution ValueError . pythonExceptionStr) pure (loadsText text)
 
+-- | @value[key]@ on a decoded value, raising what CPython raises.
 index :: Text -> Json -> IO Json
-index key value = case lookupMember key value of
-  Just found -> pure found
-  Nothing -> throwExecution KeyError (pythonStrRepr key)
+index key = \case
+  Object members -> maybe (throwExecution KeyError (pythonStrRepr key)) pure (lookup key members)
+  Array _ -> throwExecution TypeError "list indices must be integers or slices, not str"
+  String _ -> throwExecution TypeError "string indices must be integers, not 'str'"
+  other -> notSubscriptable other
 
+-- | @value[0]@.
 firstItem :: Json -> IO Json
 firstItem = \case
   Array (item : _) -> pure item
-  _ -> throwExecution (OtherError "IndexError") "list index out of range"
+  Array [] -> throwExecution (OtherError "IndexError") "list index out of range"
+  Object _ -> throwExecution KeyError "0"
+  String text
+    | T.null text -> throwExecution (OtherError "IndexError") "string index out of range"
+    | otherwise -> pure (String (T.take 1 text))
+  other -> notSubscriptable other
+
+notSubscriptable :: Json -> IO a
+notSubscriptable value = throwExecution TypeError ("'" <> jsonTypeName value <> "' object is not subscriptable")
+
+-- | @iter(value)@: a list's items, a dict's keys, a string's characters.
+iterate' :: Json -> IO [Json]
+iterate' = \case
+  Array items -> pure items
+  Object members -> pure (map (String . fst) members)
+  String text -> pure (map String (T.chunksOf 1 text))
+  other -> throwExecution TypeError ("'" <> jsonTypeName other <> "' object is not iterable")
+
+-- | @any(...)@: stops at the first true item.
+anyM :: (a -> IO Bool) -> [a] -> IO Bool
+anyM predicate = \case
+  [] -> pure False
+  item : rest -> predicate item >>= \found -> if found then pure True else anyM predicate rest
 
 truthy :: Json -> Bool
 truthy = \case
@@ -168,21 +200,19 @@ truthy = \case
 inspect :: DockerEnvironment -> Text -> IO Json
 inspect env container = do
   result <- docker env ["inspect", container] True Nothing (dockerTimeout (dockerConfig env))
-  firstItem =<< decodeJson (outcomeStdout result)
+  firstItem =<< decodeJson (stdoutText result)
 
 dockerLookup :: DockerEnvironment -> Text -> IO (Maybe EnvironmentLease)
 dockerLookup env operation = do
   checkOperationId operation
   listed <-
     docker env ["ps", "--all", "--quiet", "--filter", "label=" <> operationLabel <> "=" <> operation] True Nothing (dockerTimeout (dockerConfig env))
-  case T.words (stdoutText listed) of
+  case pythonSplit (stdoutText listed) of
     [] -> pure Nothing
     [container] -> do
       info <- inspect env container
-      mounts <- index "Mounts" info
-      bind <- case mounts of
-        Array items -> or <$> mapM (fmap (== String "bind") . index "Type") items
-        _ -> pure False
+      mounts <- iterate' =<< index "Mounts" info
+      bind <- anyM (fmap (== String "bind") . index "Type") mounts
       when bind (throwExecution RuntimeError "execution container unexpectedly has a bind mount")
       running <- truthy <$> (index "Running" =<< index "State" info)
       Just <$> either throwIO pure (mkEnvironmentLease operation providerLabel container dockerCapabilities (if running then Ready else Terminal))
@@ -198,7 +228,10 @@ create env operation spec = do
     Just lease -> do
       info <- inspect env (leaseId lease)
       labels <- index "Labels" =<< index "Config" info
-      when (lookupMember specLabel labels /= Just (String (specFingerprint spec))) $
+      recorded <- case labels of
+        Object members -> pure (lookup specLabel members)
+        other -> throwExecution (OtherError "AttributeError") ("'" <> jsonTypeName other <> "' object has no attribute 'get'")
+      when (recorded /= Just (String (specFingerprint spec))) $
         throwExecution ValueError "operation id collides with a materially different environment spec"
       when (leaseState lease == Terminal) $
         throwExecution RuntimeError "operation has a terminal prior territory; reconcile before retrying"
@@ -227,7 +260,7 @@ create env operation spec = do
       dockerLookup env operation >>= \case
         Just lease -> pure lease
         Nothing -> do
-          _ <- docker env ["rm", "--force", T.strip (stdoutText created)] False Nothing (dockerTimeout (dockerConfig env))
+          _ <- docker env ["rm", "--force", pythonStrip (stdoutText created)] False Nothing (dockerTimeout (dockerConfig env))
           throwExecution RuntimeError "created Docker lease could not be looked up"
 
 currentReady :: DockerEnvironment -> EnvironmentLease -> IO Bool

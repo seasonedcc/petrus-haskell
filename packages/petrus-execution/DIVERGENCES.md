@@ -30,11 +30,22 @@ file, embedded verbatim.
 | Executable lookup | `Popen` searches `PATH` of the supplied environment. | Done explicitly (`resolveExecutable`) before spawning, with the same `[Errno 2]` / `[Errno 13]` messages. | Keeps the error text exact. |
 | Waiting for a child's exit | `Popen.wait(timeout)` polls `waitpid(WNOHANG)` with a back-off from 0.5 ms doubling to 50 ms. | With the threaded RTS, one watcher thread per child blocks in `waitid(P_PID, WEXITED \| WNOWAIT)` (a safe FFI call, `cbits/petrus_wait.c`), which observes the exit without reaping it; waiters block on that signal under their own timeout, then reap through the same `waitpid` path as before. Without the threaded RTS the back-off loop is kept. | Same results, timeouts, cancellation and process-group kill. A waiter wakes when the child exits instead of up to 50 ms later; the back-off cost a scripted Pi A2 turn up to one 50 ms step per command. |
 | Sidecar socket wait | `socket.settimeout` (poll, then recv). | An `interruptible` `poll()` on the calling thread, then `recv`. | Same timeout semantics; avoids an IO-manager wakeup per round trip and stays cancellable by asynchronous exceptions. |
-| Non-string sidecar errors | `RuntimeError(response.get("error"))` renders via Python `str`. | Non-string error values are rendered as JSON text. | Python `repr` of arbitrary JSON values has no meaning outside Python; the sidecar only sends strings. |
 | Timeline timestamps | `observed_at` is any `datetime`; naive or non-UTC values serialize with their own offset. | `UTCTime`, always serialized with `+00:00` (microseconds omitted when zero, exactly as `isoformat`). | Upstream only ever produces UTC; the type rules out the other cases. |
 | Secret redaction | `re` patterns with `IGNORECASE`. | Hand-written matchers, including Python's Unicode case folding (`ı`→`i`, `ſ`→`s`). | No regex dependency; equivalence is proven by the redaction fixtures. |
-| Docker JSON errors | `json.loads` error text on malformed `docker inspect` output. | The `ValueError` kind with petrus-json's parser message. | Only reachable with a broken Docker CLI. |
 | Unix helpers | `os`, `os.path` and `fcntl` calls. | `flock`, `fsync`, atomic replace and the `*at` family come from the shared `petrus-posix` package. `Internal.PosixPath` keeps `os.path.realpath` with its `strict` modes and `normpath`/`dirname`/`join`/`commonpath` over raw bytes, which `petrus-posix` does not offer; `cbits/` keeps only the `posix_spawn` and wait helpers. | The tarfile `data` filter calls `realpath(strict=ALLOW_MISSING)` and reports the failing errno and path; the archive code compares undecoded bytes. |
+
+### Resolved: no longer a difference
+
+- **Provider answers that do not decode, or decode to the wrong type.** Docker's
+  `subprocess.run(text=True)` decodes stdout and then stderr strictly (the `UnicodeDecodeError`'s
+  text) before the exit status is checked, with universal newlines; `json.loads` failures carry
+  CPython's `JSONDecodeError` text (petrus-json's `loadsText`); `[0]`, `["key"]`, iteration and
+  `.get` on a value of the wrong JSON type raise the `TypeError`, `KeyError`, `IndexError` or
+  `AttributeError` CPython raises. The Gondolin sidecar's frame and `registry.json`
+  (`read_text()`: strict UTF-8, universal newlines) fail the same way, and a refused request
+  raises `RuntimeError` with `str()` of whatever `error` holds (an object, a list, `null`, a
+  number), as `RuntimeError(response.get("error"))` does. `test/ProviderAnswersSpec.hs` runs 60
+  answers through the pinned reference and the port (PARITY.md, "Provider answers").
 
 ## Not applicable
 
