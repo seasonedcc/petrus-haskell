@@ -146,6 +146,7 @@ benchmark petrus-agenticus-runtime-bench
   other-modules:    HostsBench
                     PiA2Bench
                     PiBench
+                    TurnsBench
   build-depends:    base
                   , bytestring
                   , containers
@@ -157,9 +158,11 @@ benchmark petrus-agenticus-runtime-bench
                   , petrus-agenticus-runtime
                   , petrus-execution
                   , petrus-json
+                  , petrus-test-support
                   , ram >=0.20
                   , tasty >=1.4
                   , tasty-bench >=0.3
                   , temporary
                   , text
+                  , unix
   ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A32m"

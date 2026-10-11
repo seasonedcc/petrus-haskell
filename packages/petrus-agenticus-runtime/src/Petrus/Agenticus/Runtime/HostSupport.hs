@@ -1,11 +1,14 @@
 -- | Pieces shared by the provider-managed hosts (Amp, Claude, Codex) that
 -- have no single upstream module: CPython-faithful text helpers, the
--- observed platform, and a newline-delimited JSON sidecar process.
+-- observed platform, and newline-delimited JSON sidecar processes.
 --
 -- Amp and Claude drive Python SDKs upstream. Here a small verbatim-shaped
 -- Python sidecar (shipped as a data file) hosts the SDK and speaks one
--- compact JSON value per line on stdin and stdout; 'Sidecar' is the
--- Haskell end of that pipe.
+-- compact JSON value per line on stdin and stdout. 'Sidecar' is the Haskell
+-- end of a one-off sidecar process (the probes' @version@ and @protocol@
+-- modes). 'SidecarChannel' is one channel of a shared, long-lived sidecar
+-- that serves every SDK stream or client of this process, so the SDK is
+-- imported once per process, as upstream imports it once.
 module Petrus.Agenticus.Runtime.HostSupport
   ( -- * Text
     stripAnsi
@@ -25,16 +28,28 @@ module Petrus.Agenticus.Runtime.HostSupport
   , sidecarPid
   , sidecarFrame
   , runSidecarOnce
+    -- * Shared sidecars
+  , SidecarChannel
+  , openSidecarChannel
+  , channelSend
+  , channelReceive
+  , channelReceiveWithin
+  , channelClose
+  , channelAwaitEnd
   ) where
 
 import Control.Concurrent (ThreadId, forkIO, killThread)
+import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, withMVar)
 import Control.Concurrent.STM
-import Control.Exception (IOException, SomeException, catch, evaluate, finally, try)
-import Control.Monad (unless, void, when)
+import Control.Exception (IOException, SomeException, catch, evaluate, finally, mask_, try)
+import Control.Monad (forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
+import Data.ByteString.Builder qualified as BB
 import Data.ByteString.Char8 qualified as BC
 import Data.IORef
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -45,8 +60,10 @@ import Petrus.Agenticus.Runtime.Pi (micros, waitExit)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.Exit (ExitCode (..))
-import System.IO.Unsafe (unsafeDupablePerformIO)
-import System.IO (BufferMode (..), Handle, hClose, hFlush, hSetBinaryMode, hSetBuffering)
+import System.IO.Unsafe (unsafeDupablePerformIO, unsafePerformIO)
+import Foreign.ForeignPtr (mallocForeignPtrBytes, withForeignPtr)
+import Foreign.Ptr (castPtr)
+import System.IO (BufferMode (..), Handle, hClose, hFlush, hGetBufSome, hSetBinaryMode, hSetBuffering)
 import System.Posix.Signals (sigKILL, signalProcessGroup)
 import System.Posix.Unistd (SystemID (..), getSystemID)
 import System.Process
@@ -57,6 +74,7 @@ import System.Process
   , getPid
   , getProcessExitCode
   , proc
+  , waitForProcess
   )
 import System.Timeout (timeout)
 
@@ -285,3 +303,199 @@ runSidecarOnce command seconds =
         Just line -> case J.parseJson J.pythonLoads line of
           Right value -> collect s (value : acc)
           Left _ -> collect s acc
+
+-- ---------------------------------------------------------------------------
+-- Shared sidecars
+
+-- | One long-lived sidecar process serving many channels, so an SDK is
+-- imported once per process, as upstream imports it once into its own
+-- interpreter. Frames are @[channel, value]@ in both directions; @[channel]@
+-- is the end of a channel (from Haskell: the end of the channel's input;
+-- from the sidecar: the channel has finished its teardown).
+data SharedSidecar = SharedSidecar
+  { input :: Handle
+  , writeLock :: MVar ()
+  , slots :: TVar (Map Integer Slot)
+  , alive :: TVar Bool
+  , nextChannel :: TVar Integer
+  }
+
+data Slot = Slot
+  { inbox :: TQueue (Maybe Json)
+  , ended :: TVar Bool
+  }
+
+-- | One channel of a shared sidecar: the Haskell end of one SDK client or
+-- stream.
+data SidecarChannel = SidecarChannel
+  { shared :: SharedSidecar
+  , channel :: Integer
+  , slot :: Slot
+  , closing :: IORef Bool
+  }
+
+type SharedKey = (FilePath, [String], Maybe FilePath, Maybe [(String, String)])
+
+sharedSidecars :: MVar (Map SharedKey SharedSidecar)
+sharedSidecars = unsafePerformIO (newMVar Map.empty)
+{-# NOINLINE sharedSidecars #-}
+
+-- | Open a channel on the shared sidecar that runs @command@, starting the
+-- sidecar first when none is running; 'Nothing' when it cannot be launched.
+openSidecarChannel :: SidecarCommand -> IO (Maybe SidecarChannel)
+openSidecarChannel command = attempt (2 :: Int)
+  where
+    key = (command.executable, command.arguments, command.directory, command.environment)
+    attempt remaining
+      | remaining <= 0 = pure Nothing
+      | otherwise =
+          running >>= \case
+            Nothing -> pure Nothing
+            Just s -> do
+              slot <- Slot <$> newTQueueIO <*> newTVarIO False
+              registered <- atomically $ do
+                up <- readTVar s.alive
+                if not up
+                  then pure Nothing
+                  else do
+                    n <- readTVar s.nextChannel
+                    writeTVar s.nextChannel (n + 1)
+                    modifyTVar' s.slots (Map.insert n slot)
+                    pure (Just n)
+              case registered of
+                Nothing -> attempt (remaining - 1)
+                Just n -> Just . SidecarChannel s n slot <$> newIORef False
+    running = mask_ . modifyMVar sharedSidecars $ \known -> do
+      current <- case Map.lookup key known of
+        Just s -> do
+          up <- readTVarIO s.alive
+          pure (if up then Just s else Nothing)
+        Nothing -> pure Nothing
+      case current of
+        Just s -> pure (known, Just s)
+        Nothing ->
+          spawnShared command >>= \case
+            Nothing -> pure (Map.delete key known, Nothing)
+            Just s -> pure (Map.insert key s known, Just s)
+
+spawnShared :: SidecarCommand -> IO (Maybe SharedSidecar)
+spawnShared command = do
+  spawned <-
+    try . createProcess $
+      (proc command.executable command.arguments)
+        { std_in = CreatePipe
+        , std_out = CreatePipe
+        , std_err = CreatePipe
+        , cwd = command.directory
+        , env = command.environment
+        , new_session = True
+        , close_fds = True
+        }
+  case spawned of
+    Right (Just i, Just o, Just e, p) -> do
+      mapM_ (`hSetBinaryMode` True) [i, o, e]
+      hSetBuffering i (BlockBuffering Nothing)
+      s <- SharedSidecar i <$> newMVar () <*> newTVarIO Map.empty <*> newTVarIO True <*> newTVarIO 0
+      _ <- forkIO (drain e)
+      buffer <- mallocForeignPtrBytes readSize
+      _ <- forkIO (readFrames s o buffer B.empty `finally` finish s p [i, o, e])
+      pure (Just s)
+    Right _ -> pure Nothing
+    Left (_ :: IOException) -> pure Nothing
+  where
+    drain h = do
+      chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
+      unless (B.null chunk) (drain h)
+    -- One reusable read buffer: only the bytes read are copied out, where
+    -- 'B.hGetSome' would allocate (and pin) the whole read size each time.
+    readSize = 65536
+    readFrames s h buffer pending = do
+      chunk <-
+        withForeignPtr buffer (\ptr -> hGetBufSome h ptr readSize >>= \n -> B.packCStringLen (castPtr ptr, n))
+          `catch` \(_ :: IOException) -> pure B.empty
+      unless (B.null chunk) $ do
+        let (complete, rest) = splitLines (if B.null pending then chunk else pending <> chunk)
+        mapM_ (dispatch s) complete
+        readFrames s h buffer rest
+    dispatch s line = case J.parseJson J.pythonLoads line of
+      Right (Array [Int n, value]) -> atomically $ do
+        known <- readTVar s.slots
+        forM_ (Map.lookup n known) (\slot -> writeTQueue slot.inbox (Just value))
+      Right (Array [Int n]) -> atomically $ do
+        known <- readTVar s.slots
+        forM_ (Map.lookup n known) endSlot
+        writeTVar s.slots (Map.delete n known)
+      _ -> pure ()
+    finish s p handles = do
+      atomically $ do
+        writeTVar s.alive False
+        known <- readTVar s.slots
+        writeTVar s.slots Map.empty
+        mapM_ endSlot known
+      mapM_ (\h -> hClose h `catch` \(_ :: IOException) -> pure ()) handles
+      -- Reap the process: its stdin is closed now, so it exits.
+      void (try (waitForProcess p) :: IO (Either SomeException ExitCode))
+
+endSlot :: Slot -> STM ()
+endSlot slot = do
+  writeTQueue slot.inbox Nothing
+  writeTVar slot.ended True
+
+-- | Split the complete newline-terminated lines off the front of a buffer.
+splitLines :: ByteString -> ([ByteString], ByteString)
+splitLines bytes = case BC.elemIndex '\n' bytes of
+  Nothing -> ([], bytes)
+  Just i ->
+    let (rest', remaining) = splitLines (B.drop (i + 1) bytes)
+     in (B.take i bytes : rest', remaining)
+
+-- | Write one frame on the channel; 'False' when the sidecar is gone or the
+-- channel is closing.
+channelSend :: SidecarChannel -> Json -> IO Bool
+channelSend c value = do
+  done <- readIORef c.closing
+  if done
+    then pure False
+    else writeShared c.shared (BB.char7 '[' <> BB.integerDec c.channel <> BB.char7 ',' <> BB.byteString encoded <> "]\n")
+  where
+    encoded = either (const "null") id (J.dumps J.defaultDumps {J.itemSeparator = Just ",", J.keySeparator = ":"} value)
+
+writeShared :: SharedSidecar -> BB.Builder -> IO Bool
+writeShared s frame = do
+  sent <- try (withMVar s.writeLock (const (BB.hPutBuilder s.input frame >> hFlush s.input)))
+  pure $ case sent of
+    Right () -> True
+    Left (_ :: IOException) -> False
+
+-- | The channel's next frame, or 'Nothing' once the channel has ended (and
+-- from then on).
+channelReceive :: SidecarChannel -> IO (Maybe Json)
+channelReceive c =
+  atomically (readTQueue c.slot.inbox) >>= \case
+    Nothing -> do
+      atomically (unGetTQueue c.slot.inbox Nothing)
+      pure Nothing
+    frame -> pure frame
+
+-- | 'channelReceive' bounded by a number of seconds.
+channelReceiveWithin :: SidecarChannel -> Double -> IO (Maybe Json)
+channelReceiveWithin c seconds = maybe Nothing id <$> timeout (micros seconds) (channelReceive c)
+
+-- | End the channel's input and wait up to @grace@ seconds for the sidecar
+-- to finish the channel's teardown; 'True' when it has.
+channelClose :: SidecarChannel -> Double -> IO Bool
+channelClose c grace = do
+  already <- atomicModifyIORef' c.closing (True,)
+  unless already $ do
+    finished <- readTVarIO c.slot.ended
+    unless finished (void (writeShared c.shared (BB.char7 '[' <> BB.integerDec c.channel <> "]\n")))
+  _ <- timeout (micros grace) (atomically (readTVar c.slot.ended >>= check))
+  readTVarIO c.slot.ended
+
+-- | Wait up to @grace@ seconds for a channel the sidecar ends on its own
+-- (after a frame that says so), without ending its input first; 'True'
+-- when it has ended. The channel's input is ended only when it has not.
+channelAwaitEnd :: SidecarChannel -> Double -> IO Bool
+channelAwaitEnd c grace = do
+  _ <- timeout (micros grace) (atomically (readTVar c.slot.ended >>= check))
+  channelClose c 0

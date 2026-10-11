@@ -1046,30 +1046,30 @@ sidecarCommand s mode = do
   script <- claudeSidecarPath
   pure (SidecarCommand s.python (["-I", "-B", script, mode] <> s.searchPath) Nothing Nothing)
 
--- | The real SDK behind 'ClaudeSdk': one sidecar process per client, which
--- builds the official client and forwards the hook, tool and session-store
--- calls back here.
+-- | The real SDK behind 'ClaudeSdk': one channel of the shared sidecar per
+-- client, which builds the official client and forwards the hook, tool and
+-- session-store calls back here.
 sidecarSdk :: ClaudeSidecar -> ClaudeSdk
 sidecarSdk config = ClaudeSdk $ \request -> do
-  command <- sidecarCommand config "client"
-  s <- spawnSidecar command >>= maybe (throwAgenticus RuntimeError "Claude SDK sidecar did not start") pure
+  command <- sidecarCommand config "serve"
+  s <- openSidecarChannel command >>= maybe (throwAgenticus RuntimeError "Claude SDK sidecar did not start") pure
   let initial =
         Object
           [ ("options", Object request.options.values)
           , ("server", String request.serverName)
           , ("tools", Array [Object [("name", String t.name), ("description", String t.description), ("schema", t.schema)] | t <- request.tools])
           ]
-  sent <- sidecarSend s initial
-  ready <- if sent then sidecarReceiveWithin s config.grace else pure Nothing
+  sent <- channelSend s initial
+  ready <- if sent then channelReceiveWithin s config.grace else pure Nothing
   case ready of
     Just frame | member "ready" frame == Just (Bool True) -> pure ()
     _ -> do
-      void (sidecarClose s config.grace)
+      void (channelClose s config.grace)
       throwAgenticus RuntimeError "Claude SDK client could not be created"
   writeLock <- newMVar ()
   pending <- newMVar (Map.empty :: Map Integer (MVar (Maybe Json)))
   counter <- newIORef (0 :: Integer)
-  let send frame = withMVar writeLock (const (void (sidecarSend s frame)))
+  let send frame = withMVar writeLock (const (void (channelSend s frame)))
       answer k = \case
         Right value -> send (Object [("reply", Int k), ("value", value)])
         Left code -> send (Object [("reply", Int k), ("error", String code)])
@@ -1093,7 +1093,7 @@ sidecarSdk config = ClaudeSdk $ \request -> do
         forM_ known (`tryPutMVar` Nothing)
         pure Map.empty
       dispatch =
-        sidecarReceive s >>= \case
+        channelReceive s >>= \case
           Nothing -> failAll
           Just frame -> do
             case (member "done" frame, member "call" frame) of
@@ -1140,12 +1140,16 @@ sidecarSdk config = ClaudeSdk $ \request -> do
       { connect = void (call "connect" [])
       , query = \p -> void (call "query" [("prompt", String p)])
       , receiveResponse = do
-          void (call "receive" [])
+          -- @receive_response()@ only creates the async generator (no SDK
+          -- code runs until the first pull), so its acknowledgement is not
+          -- awaited: the sidecar runs the channel's frames in order.
+          n <- atomicModifyIORef' counter (\i -> (i + 1, i + 1))
+          send (Object [("op", String "receive"), ("id", Int n)])
           pure (call "next" [] >>= decodeMessage)
       , interrupt = void (call "interrupt" [])
       , disconnect = void (call "disconnect" [])
       , release = do
-          clean <- sidecarClose s config.grace
+          clean <- channelClose s config.grace
           killThread dispatcher
           pure clean
       }

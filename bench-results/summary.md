@@ -28,7 +28,7 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-agenticus-core` | [results-hands.md](../packages/petrus-agenticus-core/bench/results-hands.md) | 5 | 1.90× | 3.90× |  |
 | `petrus-agenticus-core` | [results-thread.md](../packages/petrus-agenticus-core/bench/results-thread.md) | 5 | 1.80× | 1 870× |  |
 | `petrus-agenticus-runtime` | [RESULTS.md](../packages/petrus-agenticus-runtime/bench/RESULTS.md) | 2 | 1.86× | 2.60× |  |
-| `petrus-agenticus-runtime` | [results-hosts.md](../packages/petrus-agenticus-runtime/bench/results-hosts.md) | 10 | 1.20× | 3.50× |  |
+| `petrus-agenticus-runtime` | [results-hosts.md](../packages/petrus-agenticus-runtime/bench/results-hosts.md) | 13 | 1.20× | 3.50× |  |
 | `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | 7 | 0.84× | 5.00× | **below 1.0×**: pi-ledger-cycle |
 | `petrus-cel` | [RESULTS.md](../packages/petrus-cel/bench/RESULTS.md) | 7 | 14.0× | 73.0× |  |
 | `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | 10 | 2.80× | 6.00× |  |
