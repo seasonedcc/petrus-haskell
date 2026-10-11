@@ -1,0 +1,412 @@
+#!/usr/bin/env bash
+# Run the Haskell image of Hamsterdan and check, at run time, the contract
+# the reference image keeps (upstream/hamsterdan: deployment/Containerfile,
+# deployment/release.py's `verify`, the Ansible candidate and runtime
+# playbooks, the systemd unit and deployment/README.md):
+#
+#   scripts/container-smoke IMAGE [--revision SHA] [--version VERSION]
+#   scripts/container-smoke --build [--revision SHA] [--version VERSION]
+#
+# --build first builds deployment/Containerfile as `hamsterdan:smoke` for
+# linux/amd64 with `docker buildx build --load` and the reference's build
+# arguments (as release.py does), then checks it. The image's revision
+# label must be SHA (default: `git rev-parse HEAD`) and its version label
+# VERSION (default: the version deployment/python-shim reports).
+#
+# Needs Docker, curl, openssl and python3. Every check runs even after one
+# fails; the script exits 1 if any failed. It removes every container,
+# network, volume and temporary file it created. No credential is real:
+# the GitHub App key is the repository's test key, GitHub is a local fake
+# served over TLS as api.github.com, and `op` is a local fake.
+set -euo pipefail
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+build=0
+image=
+revision=
+version=
+while (($# > 0)); do
+    case $1 in
+        --build) build=1 ;;
+        --revision) revision=$2; shift ;;
+        --version) version=$2; shift ;;
+        -h | --help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*) echo "container-smoke: unknown option $1" >&2; exit 2 ;;
+        *) image=$1 ;;
+    esac
+    shift
+done
+[[ -n $revision ]] || revision=$(git -C "$root" rev-parse HEAD)
+[[ -n $version ]] || version=$(sed -n 's/^version=//p' "$root/deployment/python-shim")
+if ((build)); then
+    image=${image:-hamsterdan:smoke}
+    docker buildx build --load --platform linux/amd64 \
+        --build-arg "SOURCE_REVISION=$revision" \
+        --build-arg "SOURCE_VERSION=$version" \
+        --build-arg "SOURCE_CREATED=$(TZ=UTC git -C "$root" log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" \
+        --tag "$image" --file "$root/deployment/Containerfile" "$root"
+fi
+[[ -n $image ]] || { echo "usage: scripts/container-smoke IMAGE | --build" >&2; exit 2; }
+docker image inspect "$image" > /dev/null
+
+# From here on a failing command is a failed check, not the end of the run.
+set +e
+
+# ---------------------------------------------------------------------------
+# Bookkeeping
+
+failures=0
+pass() { printf 'ok   %s\n' "$1"; }
+fail() {
+    printf 'FAIL %s\n' "$1"
+    if (($# > 1)); then printf '%s\n' "$2" | sed 's/^/     | /'; fi
+    failures=$((failures + 1))
+}
+# expect DESCRIPTION ACTUAL EXPECTED
+expect() {
+    if [[ $2 == "$3" ]]; then pass "$1"; else fail "$1" "expected: $3"$'\n'"actual:   $2"; fi
+}
+# expect_status DESCRIPTION STATUS OUTPUT EXPECTED-STATUS
+expect_status() {
+    if [[ $2 == "$4" ]]; then pass "$1"; else fail "$1 (status $2, expected $4)" "$3"; fi
+}
+section() { printf '\n== %s\n' "$1"; }
+
+prefix=hamsterdan-smoke-$$-$RANDOM
+work=$(mktemp -d "${TMPDIR:-/tmp}/container-smoke.XXXXXX")
+containers=()
+volumes=()
+network=
+cleanup() {
+    local name
+    for name in ${containers[@]+"${containers[@]}"}; do docker rm --force "$name" > /dev/null 2>&1 || true; done
+    for name in ${volumes[@]+"${volumes[@]}"}; do docker volume rm --force "$name" > /dev/null 2>&1 || true; done
+    if [[ -n $network ]]; then docker network rm "$network" > /dev/null 2>&1 || true; fi
+    rm -rf "$work"
+}
+trap cleanup EXIT
+
+# Run a command in the image with an entrypoint of our choosing; prints
+# combined output, never fails the script.
+in_image() {
+    local entrypoint=$1
+    shift
+    docker run --rm --pull=never --entrypoint "$entrypoint" "$image" "$@" 2>&1
+}
+
+json() { python3 -c "import json, sys; value = json.load(sys.stdin); print(eval(sys.argv[1], {'v': value}))" "$1"; }
+
+# ---------------------------------------------------------------------------
+section "Image configuration (release.py verify, the Containerfile's runtime stage)"
+
+inspect() { docker image inspect --format "$1" "$image"; }
+expect "platform is linux/amd64" "$(inspect '{{.Os}}/{{.Architecture}}')" "linux/amd64"
+expect "runs as the hamsterdan user" "$(inspect '{{.Config.User}}')" "hamsterdan"
+expect "working directory" "$(inspect '{{.Config.WorkingDir}}')" "/opt/hamsterdan"
+expect "ENTRYPOINT is the reference's" "$(inspect '{{json .Config.Entrypoint}}')" '["/opt/hamsterdan/.venv/bin/python","-m","hamsterdan.host"]'
+expect "CMD is the reference's" "$(inspect '{{json .Config.Cmd}}')" '["serve","--host","0.0.0.0","--port","8000"]'
+expect "exposes port 8000" "$(inspect '{{json .Config.ExposedPorts}}')" '{"8000/tcp":{}}'
+labels=$(inspect '{{json .Config.Labels}}')
+expect "revision label" "$(json "v['org.opencontainers.image.revision']" <<< "$labels")" "$revision"
+expect "version label" "$(json "v['org.opencontainers.image.version']" <<< "$labels")" "$version"
+expect "title, source and description labels" \
+    "$(json "(v['org.opencontainers.image.title'], v['org.opencontainers.image.source'], v['org.opencontainers.image.description'])" <<< "$labels")" \
+    "('Hamsterdan', 'https://github.com/henriquebastos/hamsterdan', 'GitHub-native PR-readiness application powered by Petrus')"
+environment=$(inspect '{{range .Config.Env}}{{println .}}{{end}}')
+for entry in \
+    OP_CONFIG_DIR=/tmp/hamsterdan-op \
+    HAMSTERDAN_PI_CLI_PATH=/opt/hamsterdan/pi/node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
+    HAMSTERDAN_PI_NODE_PATH=/opt/hamsterdan/pi/node_modules/node/bin/node \
+    HAMSTERDAN_PI_PACKAGE_ROOT=/opt/hamsterdan/pi/node_modules/@earendil-works/pi-coding-agent \
+    HAMSTERDAN_STATE_PATH=/var/lib/hamsterdan; do
+    if grep -qxF "$entry" <<< "$environment"; then pass "ENV $entry"; else fail "ENV $entry" "$environment"; fi
+done
+if grep -q '^PATH=/opt/hamsterdan/.venv/bin:' <<< "$environment"; then pass "PATH starts with the interpreter directory"; else fail "PATH starts with the interpreter directory" "$environment"; fi
+# No credential is baked into the image: not in its environment, not in a
+# build argument or command recorded in its history.
+secret_names='OP_SERVICE_ACCOUNT_TOKEN|OP_SA_|HAMSTERDAN_GITHUB_PRIVATE_KEY|HAMSTERDAN_GITHUB_WEBHOOK_SECRET|HAMSTERDAN_PI_API_KEY|HAMSTERDAN_ENVIRONMENT_ID|GH_TOKEN|GITHUB_TOKEN|PETRUS_GITHUB_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY'
+leaks=$(grep -E "^($secret_names)" <<< "$environment" || true)
+expect "no credential in the image environment" "$leaks" ""
+history=$(docker image history --no-trunc --format '{{.CreatedBy}}' "$image")
+leaks=$(grep -E "$secret_names|--mount=type=secret" <<< "$history" || true)
+expect "no credential or secret mount in the image history" "$leaks" ""
+
+# ---------------------------------------------------------------------------
+section "Filesystem layout, user and ownership"
+
+expect "user and group 10001" "$(in_image /usr/bin/id)" "uid=10001(hamsterdan) gid=10001(hamsterdan) groups=10001(hamsterdan)"
+expect "passwd entry" "$(in_image /usr/bin/getent passwd hamsterdan)" "hamsterdan:x:10001:10001::/nonexistent:/usr/sbin/nologin"
+expect "durable state directory" "$(in_image /usr/bin/stat -c '%a %U:%G' /var/lib/hamsterdan)" "700 hamsterdan:hamsterdan"
+output=$(in_image /bin/sh -c "test -w /var/lib/hamsterdan")
+expect_status "durable state is writable (release.py verify)" $? "$output" 0
+expect "application ownership" \
+    "$(in_image /usr/bin/stat -c '%n %a %U:%G' /opt/hamsterdan/bin /opt/hamsterdan/bin/hamsterdan-host /opt/hamsterdan/bin/hamsterdan-operator /opt/hamsterdan/bin/hamsterdan-export /opt/hamsterdan/.venv/bin/python /opt/hamsterdan/pi /opt/hamsterdan/with-runtime-secrets)" \
+    "/opt/hamsterdan/bin 755 hamsterdan:hamsterdan
+/opt/hamsterdan/bin/hamsterdan-host 755 hamsterdan:hamsterdan
+/opt/hamsterdan/bin/hamsterdan-operator 755 hamsterdan:hamsterdan
+/opt/hamsterdan/bin/hamsterdan-export 755 hamsterdan:hamsterdan
+/opt/hamsterdan/.venv/bin/python 755 hamsterdan:hamsterdan
+/opt/hamsterdan/pi 755 hamsterdan:hamsterdan
+/opt/hamsterdan/with-runtime-secrets 755 root:root"
+if in_image /bin/cat /opt/hamsterdan/with-runtime-secrets | cmp -s - "$root/scripts/with-runtime-secrets"; then
+    pass "the launcher is scripts/with-runtime-secrets, byte for byte"
+else
+    fail "the launcher is scripts/with-runtime-secrets, byte for byte"
+fi
+if in_image /bin/cat /opt/hamsterdan/.venv/bin/python | cmp -s - "$root/deployment/python-shim"; then
+    pass "the interpreter path holds deployment/python-shim, byte for byte"
+else
+    fail "the interpreter path holds deployment/python-shim, byte for byte"
+fi
+output=$(in_image /usr/bin/git --version)
+expect_status "git runs" $? "$output" 0
+
+# ---------------------------------------------------------------------------
+section "Shared libraries"
+
+for binary in /opt/hamsterdan/bin/hamsterdan-host /opt/hamsterdan/bin/hamsterdan-operator /opt/hamsterdan/bin/hamsterdan-export /opt/hamsterdan/pi/node_modules/node/bin/node; do
+    output=$(in_image /usr/bin/ldd "$binary")
+    status=$?
+    printf '%s\n' "$output" | sed "s|^|     ${binary##*/}: |"
+    if ((status == 0)) && ! grep -q 'not found' <<< "$output"; then pass "ldd $binary resolves every library"; else fail "ldd $binary resolves every library" "$output"; fi
+done
+
+# ---------------------------------------------------------------------------
+section "Pi runtime (release.py verify, candidate.yml)"
+
+expect "Node runtime version" "$(in_image /opt/hamsterdan/pi/node_modules/node/bin/node --version)" "v22.19.0"
+expect "Pi agent version" "$(in_image /opt/hamsterdan/pi/node_modules/node/bin/node /opt/hamsterdan/pi/node_modules/@earendil-works/pi-coding-agent/dist/cli.js --version)" "0.83.0"
+# shellcheck disable=SC2016 # expanded inside the container
+output=$(in_image /bin/sh -c 'test -x "$HAMSTERDAN_PI_NODE_PATH" && test -f "$HAMSTERDAN_PI_CLI_PATH" && test -f "$HAMSTERDAN_PI_PACKAGE_ROOT/package.json"')
+expect_status "the HAMSTERDAN_PI_* paths exist" $? "$output" 0
+expect "Pi package root version" \
+    "$(in_image /opt/hamsterdan/pi/node_modules/node/bin/node -p 'require(process.env.HAMSTERDAN_PI_PACKAGE_ROOT + "/package.json").version')" "0.83.0"
+
+# ---------------------------------------------------------------------------
+section "The interpreter path (python-shim) and the default ENTRYPOINT"
+
+output=$(docker run --rm --pull=never "$image" --help 2>&1)
+status=$?
+expect_status "ENTRYPOINT --help (release.py verify, candidate.yml)" $status "$output" 0
+expect "ENTRYPOINT --help is the host's" "$(head -n 1 <<< "$output" | cut -c 1-33)" "usage: python -m hamsterdan.host "
+output=$(docker run --rm --pull=never "$image" 2>&1)
+status=$?
+expect_status "ENTRYPOINT and CMD start the host's serve, which refuses a missing configuration" $status "$output" 2
+expect "the refusal is the host's" "$(tail -n 1 <<< "$output")" "python -m hamsterdan.host: error: App id is missing or malformed"
+python=/opt/hamsterdan/.venv/bin/python
+expect "version probe (candidate.yml)" "$(in_image $python -c "from importlib.metadata import version; print(version('hamsterdan'))")" "$version"
+output=$(in_image $python -c "from importlib.metadata import version; import hamsterdan; assert version('hamsterdan') == '$version'")
+expect_status "version assertion (release.py verify)" $? "$output" 0
+output=$(in_image $python -c "from importlib.metadata import version; import hamsterdan; assert version('hamsterdan') == '0.0.0-not-this'")
+status=$?
+expect_status "a failed version assertion" $status "$output" 1
+expect "a failed version assertion raises AssertionError" "$(tail -n 1 <<< "$output")" "AssertionError"
+output=$(in_image $python -m hamsterdan.unknown)
+status=$?
+expect_status "an unknown module" $status "$output" 1
+expect "an unknown module's message" "$output" "$python: No module named hamsterdan.unknown"
+output=$(in_image $python -c "import os")
+expect_status "any other invocation is refused" $? "$output" 2
+for module in hamsterdan.host hamsterdan.operator hamsterdan.host.export; do
+    output=$(in_image $python -m $module --help)
+    status=$?
+    expect_status "-m $module --help" $status "$output" 0
+    expect "-m $module --help names the module" "$(head -n 1 <<< "$output" | cut -c 1-$((17 + ${#module})))" "usage: python -m $module"
+done
+
+# ---------------------------------------------------------------------------
+section "Runtime fixture: a fake GitHub over TLS, a fake op, the deployment configuration"
+
+chmod 0755 "$work"
+mkdir -p "$work/smoke/op/environment" "$work/config" "$work/github"
+chmod -R 0755 "$work/smoke" "$work/config" "$work/github"
+openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=container-smoke CA" \
+    -keyout "$work/ca.key" -out "$work/smoke/ca.pem" \
+    -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2> /dev/null
+openssl req -newkey rsa:2048 -nodes -subj "/CN=api.github.com" -keyout "$work/github/server.key" -out "$work/server.csr" 2> /dev/null
+printf 'subjectAltName=DNS:api.github.com\nbasicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n' > "$work/server.ext"
+openssl x509 -req -days 2 -in "$work/server.csr" -CA "$work/smoke/ca.pem" -CAkey "$work/ca.key" -CAcreateserial \
+    -extfile "$work/server.ext" -out "$work/github/server.pem" 2> /dev/null
+cp "$root/scripts/container-smoke.d/fake-github.py" "$work/github/"
+cp "$root/deployment/config/installations.toml" "$work/config/installations.toml"
+cp "$root/scripts/container-smoke.d/fake-op" "$work/op"
+chmod 0755 "$work/op"
+
+environment_id=smoke0environment0id000000
+bootstrap="ops_smoke-bootstrap-$RANDOM$RANDOM"
+webhook_secret="smoke-webhook-$RANDOM$RANDOM"
+pi_key="smoke-pi-key-$RANDOM$RANDOM"
+printf '%s' "$environment_id" > "$work/smoke/op/environment-id"
+printf '%s' "$bootstrap" > "$work/smoke/op/bootstrap"
+printf '%s\n' "$bootstrap" > "$work/op-token"
+cp "$root/packages/hamsterdan-github/test/corpus/app-test-key.pem" "$work/smoke/op/environment/HAMSTERDAN_GITHUB_PRIVATE_KEY"
+printf '17' > "$work/smoke/op/environment/HAMSTERDAN_GITHUB_APP_ID"
+printf 'hamsterdan-smoke' > "$work/smoke/op/environment/HAMSTERDAN_GITHUB_APP_SLUG"
+printf 'Iv1.smoke' > "$work/smoke/op/environment/HAMSTERDAN_GITHUB_CLIENT_ID"
+printf '%s' "$webhook_secret" > "$work/smoke/op/environment/HAMSTERDAN_GITHUB_WEBHOOK_SECRET"
+printf '%s' "$pi_key" > "$work/smoke/op/environment/HAMSTERDAN_PI_API_KEY"
+ln -s op/bootstrap "$work/smoke/op-token-link"
+chmod 0644 "$work"/smoke/op/environment/* "$work"/smoke/op/environment-id "$work"/smoke/op/bootstrap "$work"/op-token \
+    "$work"/smoke/ca.pem "$work"/github/* "$work"/config/installations.toml
+
+# The settings file runtime.yml installs as /etc/hamsterdan/runtime.env:
+# deployment/config/runtime.env, the Environment ID and the container paths.
+# SYSTEM_CERTIFICATE_PATH (the smoke CA) is the one test-only addition.
+{
+    cat "$root/deployment/config/runtime.env"
+    printf 'HAMSTERDAN_ENVIRONMENT_ID=%s\n' "$environment_id"
+    printf 'HAMSTERDAN_OP_TOKEN_FILE=/run/secrets/op-token\n'
+    printf 'HAMSTERDAN_GITHUB_INSTALLATIONS_FILE=/run/config/hamsterdan/installations.toml\n'
+    printf 'SYSTEM_CERTIFICATE_PATH=/run/smoke/ca.pem\n'
+} > "$work/runtime.env"
+
+network=$prefix-network
+docker network create "$network" > /dev/null
+github=$prefix-github
+containers+=("$github")
+docker run --detach --pull=never --name "$github" --network "$network" --network-alias api.github.com \
+    --user 0:0 --entrypoint /usr/local/bin/python3 \
+    --mount "type=bind,source=$work/github,target=/srv/github,readonly" \
+    --mount "type=bind,source=$work/config,target=/srv/config,readonly" \
+    "$image" -I /srv/github/fake-github.py /srv/github/server.pem /srv/github/server.key 17 hamsterdan-smoke Iv1.smoke /srv/config/installations.toml > /dev/null
+for _ in $(seq 1 50); do
+    if docker logs "$github" 2>&1 | grep -q '^listening'; then break; fi
+    sleep 0.2
+done
+if docker logs "$github" 2>&1 | grep -q '^listening'; then pass "fake GitHub listens as api.github.com"; else fail "fake GitHub listens as api.github.com" "$(docker logs "$github" 2>&1)"; fi
+
+# The flags of the systemd unit (hamsterdan.service.j2) and the Ansible
+# validation runs: read-only, no capabilities, no new privileges, a private
+# /tmp, the settings file, the launcher as entrypoint, and the token file,
+# op and configuration mounts.
+launch() {
+    local state=$1
+    shift
+    printf '%s\n' --pull=never --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+        --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=268435456,mode=0700,uid=10001,gid=10001 \
+        --env-file "$work/runtime.env" --entrypoint=/opt/hamsterdan/with-runtime-secrets \
+        --network "$network" \
+        "--mount=type=volume,source=$state,target=/var/lib/hamsterdan" \
+        "--mount=type=bind,source=$work/op-token,target=/run/secrets/op-token,readonly" \
+        "--mount=type=bind,source=$work/op,target=/usr/local/bin/op,readonly" \
+        "--mount=type=bind,source=$work/config,target=/run/config/hamsterdan,readonly" \
+        "--mount=type=bind,source=$work/smoke,target=/run/smoke,readonly"
+}
+# A fresh named volume for /var/lib/hamsterdan: Docker initializes it with
+# the image directory's owner and mode, as the VM's state directory is.
+new_state() {
+    state=$prefix-state-$1
+    volumes+=("$state")
+    docker volume create "$state" > /dev/null
+}
+read_args() { local line; args=(); while IFS= read -r line; do args+=("$line"); done; }
+
+# ---------------------------------------------------------------------------
+section "Secrets reach the application from files through the launcher (with-runtime-secrets)"
+
+new_state launcher
+read_args < <(launch "$state")
+# Credentials planted in the container's own environment must not survive:
+# the launcher scrubs them and the bootstrap comes from the token file.
+output=$(docker run --rm "${args[@]}" \
+    -e OP_SERVICE_ACCOUNT_TOKEN=leaked-env-bootstrap -e GH_TOKEN=leaked-env-gh \
+    -e HAMSTERDAN_GITHUB_PRIVATE_KEY=leaked-env-key -e HAMSTERDAN_PI_API_KEY=leaked-env-pi \
+    "$image" /usr/bin/env 2>&1)
+status=$?
+expect_status "the launcher runs op and the command" $status "$output" 0
+for line in "HAMSTERDAN_GITHUB_WEBHOOK_SECRET=$webhook_secret" "HAMSTERDAN_PI_API_KEY=$pi_key" \
+    "HAMSTERDAN_GITHUB_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----" "HAMSTERDAN_GITHUB_APP_ID=17" \
+    "HAMSTERDAN_PI_PROVIDER=openai" "HAMSTERDAN_GITHUB_INSTALLATIONS_FILE=/run/config/hamsterdan/installations.toml"; do
+    if grep -qxF "$line" <<< "$output"; then pass "the command sees ${line%%=*} from the Environment"; else fail "the command sees ${line%%=*} from the Environment" "$output"; fi
+done
+leaks=$(grep -E '^(OP_[A-Z_]*|HAMSTERDAN_OP_TOKEN_FILE|HAMSTERDAN_OP_COMMAND|GH_TOKEN)=|leaked-env|'"$bootstrap" <<< "$output" || true)
+expect "no bootstrap, op setting or planted credential reaches the command" "$leaks" ""
+output=$(docker run --rm "${args[@]}" -e HAMSTERDAN_ENVIRONMENT_ID= "$image" /usr/bin/env 2>&1)
+status=$?
+if ((status != 0)) && ! grep -q '^HAMSTERDAN_' <<< "$output"; then pass "no Environment selected: refused before op runs"; else fail "no Environment selected: refused before op runs (status $status)" "$output"; fi
+output=$(docker run --rm "${args[@]}" -e HAMSTERDAN_ENVIRONMENT_ID=NOT-AN-ID "$image" /usr/bin/env 2>&1)
+expect_status "a malformed Environment ID is refused" $? "$output" 2
+output=$(docker run --rm "${args[@]}" -e HAMSTERDAN_OP_TOKEN_FILE=/run/smoke/op-token-link "$image" /usr/bin/env 2>&1)
+expect_status "a symlinked token file is refused" $? "$output" 2
+
+# ---------------------------------------------------------------------------
+section "validate (runtime.yml, configure.yml)"
+
+new_state validate
+read_args < <(launch "$state")
+output=$(docker run --rm "${args[@]}" "$image" /opt/hamsterdan/.venv/bin/python -m hamsterdan.host validate 2> "$work/validate.err")
+status=$?
+expect_status "validate succeeds against the fake GitHub" $status "$output$(cat "$work/validate.err")" 0
+expect "validate reconciles the configured installation and repository" \
+    "$(json "(v['reconciled_installations'], v['admitted_repositories'])" <<< "$output" 2>&1)" "(1, 1)"
+
+# ---------------------------------------------------------------------------
+section "serve (hamsterdan.service.j2): the host's HTTP surface"
+
+host=$prefix-host
+containers+=("$host")
+new_state serve
+read_args < <(launch "$state")
+docker run --detach --name "$host" "${args[@]}" --publish 127.0.0.1::8000 \
+    "$image" /opt/hamsterdan/.venv/bin/python -m hamsterdan.host serve --host 0.0.0.0 --port 8000 > /dev/null
+port=$(docker port "$host" 8000/tcp | head -n 1 | sed 's/.*://')
+url=http://127.0.0.1:$port
+started=0
+for _ in $(seq 1 120); do
+    if curl --silent --fail --output /dev/null "$url/healthz"; then started=1; break; fi
+    if [[ $(docker inspect --format '{{.State.Running}}' "$host") != true ]]; then break; fi
+    sleep 0.5
+done
+if ((started)); then pass "the host serves on port 8000"; else fail "the host serves on port 8000" "$(docker logs "$host" 2>&1 | tail -n 40)"; fi
+
+response=$(curl --silent --include "$url/healthz")
+expect "GET /healthz status line" "$(head -n 1 <<< "$response" | tr -d '\r')" "HTTP/1.1 200 OK"
+if grep -qi '^server: uvicorn' <<< "$response"; then pass "GET /healthz carries uvicorn's server header"; else fail "GET /healthz carries uvicorn's server header" "$response"; fi
+health=$(curl --silent "$url/healthz")
+expect "the service is healthy, with its installation reconciled" \
+    "$(json "(v['status'], v['installations']['configured'], v['installations']['reconciled'])" <<< "$health" 2>&1)" "('ok', 1, 1)"
+expect "GET /openapi.json" "$(curl --silent --output /dev/null --write-out '%{http_code}' "$url/openapi.json")" "200"
+expect "an unknown path" "$(curl --silent --write-out ' %{http_code}' "$url/no-such-path")" '{"detail":"Not Found"} 404'
+expect "an unsigned webhook delivery is refused" \
+    "$(curl --silent --output /dev/null --write-out '%{http_code}' --request POST --header 'content-type: application/json' --data '{}' "$url/github/webhooks")" "400"
+
+# What runs inside: PID 1 is the Haskell host (the launcher, op, env and the
+# shim each exec'd into the next), as user 10001; no other process inherits
+# a credential (the host removes them from its environment once parsed).
+processes=$(docker exec "$host" /bin/sh -c '
+    for directory in /proc/[0-9]*; do
+        pid=${directory#/proc/}
+        [ "$pid" = "$$" ] && continue
+        exe=$(readlink "$directory/exe" 2>/dev/null) || continue
+        uid=$(sed -n "s/^Uid:[[:space:]]*\([0-9]*\).*/\1/p" "$directory/status")
+        printf "%s %s %s\n" "$pid" "$uid" "$exe"
+    done' 2>&1)
+printf '%s\n' "$processes" | sed 's/^/     process: /'
+expect "PID 1 is the Haskell host, as user 10001" "$(grep '^1 ' <<< "$processes")" "1 10001 /opt/hamsterdan/bin/hamsterdan-host"
+expect "PID 1 runs serve on 0.0.0.0:8000" "$(docker exec "$host" /bin/sh -c "tr '\0' ' ' < /proc/1/cmdline")" \
+    "/opt/hamsterdan/.venv/bin/../../bin/hamsterdan-host serve --host 0.0.0.0 --port 8000 "
+inherited=$(docker exec "$host" /bin/sh -c '
+    for directory in /proc/[0-9]*; do
+        pid=${directory#/proc/}
+        [ "$pid" = 1 ] || [ "$pid" = "$$" ] && continue
+        tr "\0" "\n" < "$directory/environ" 2>/dev/null | grep -E "^(HAMSTERDAN_GITHUB_PRIVATE_KEY|HAMSTERDAN_GITHUB_WEBHOOK_SECRET|HAMSTERDAN_PI_API_KEY|OP_SERVICE_ACCOUNT_TOKEN)=" | sed "s/=.*//;s/^/$pid /"
+    done' 2>&1 || true)
+expect "no child process inherits a credential" "$inherited" ""
+
+docker stop --time 30 "$host" > /dev/null
+expect "SIGTERM stops the host cleanly" "$(docker inspect --format '{{.State.ExitCode}}' "$host")" "0"
+calls=$(docker logs "$github" 2>&1)
+for call in "GET /app Bearer" "GET /app/installations?per_page=100 Bearer" "POST /app/installations/4242/access_tokens Bearer"; do
+    if grep -qxF "$call" <<< "$calls"; then pass "the host called $call over TLS"; else fail "the host called $call over TLS" "$calls"; fi
+done
+printf '%s\n' "$calls" | sed 's/^/     github: /'
+logs=$(docker logs "$host" 2>&1)
+if [[ -n $logs ]]; then printf '%s\n' "$logs" | tail -n 20 | sed 's/^/     host: /'; fi
+
+# ---------------------------------------------------------------------------
+printf '\n'
+if ((failures > 0)); then
+    printf '%d check(s) failed.\n' "$failures"
+    exit 1
+fi
+printf 'Every runtime-contract check passed for %s.\n' "$image"

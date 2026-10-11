@@ -15,6 +15,15 @@ WORKDIR /opt/hamsterdan/pi
 COPY deployment/pi/package.json deployment/pi/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
+# The local packages' .cabal files alone. The build stage copies them before
+# the sources, so its dependency layer (every Hackage package of the frozen
+# plan) is reused from the build cache until a .cabal file, cabal.project or
+# the freeze changes.
+FROM python:3.14.7-slim-bookworm@sha256:23c59390fc717bf09f9336908199a0ae75d9c4264bf296123f94ad772fea3b52 AS cabal-files
+COPY packages /opt/hamsterdan/src/packages
+RUN find /opt/hamsterdan/src/packages -type f ! -name '*.cabal' -delete \
+    && find /opt/hamsterdan/src/packages -mindepth 1 -depth -type d -empty -delete
+
 FROM python:3.14.7-slim-bookworm@sha256:23c59390fc717bf09f9336908199a0ae75d9c4264bf296123f94ad772fea3b52 AS build
 ARG GHC_VERSION=9.10.3
 ARG CABAL_VERSION=3.16.1.0
@@ -34,9 +43,12 @@ RUN mkdir -p /opt/toolchain/.ghcup/bin \
 WORKDIR /opt/hamsterdan/src
 COPY cabal.project LICENSE NOTICE ./
 COPY cabal.project.freeze ./cabal.project.freeze
-COPY packages ./packages
+COPY --from=cabal-files /opt/hamsterdan/src/packages ./packages
 RUN cabal update \
-    && cabal build --disable-tests --disable-benchmarks \
+    && cabal build --only-dependencies --disable-tests --disable-benchmarks \
+       exe:hamsterdan-host exe:hamsterdan-operator exe:hamsterdan-export
+COPY packages ./packages
+RUN cabal build --disable-tests --disable-benchmarks \
        exe:hamsterdan-host exe:hamsterdan-operator exe:hamsterdan-export \
     && mkdir -p /opt/hamsterdan/bin \
     && for executable in hamsterdan-host hamsterdan-operator hamsterdan-export; do \
