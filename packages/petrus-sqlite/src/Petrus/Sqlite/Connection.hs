@@ -328,7 +328,7 @@ implicitBegin :: Connection -> Text -> IO ()
 implicitBegin connection sql =
   when (connectionIsolation connection == LegacyDeferred && isDml sql) $ do
     autocommit <- Direct.getAutoCommit (connectionDatabase connection)
-    when autocommit (S.exec (connectionDatabase connection) "BEGIN ")
+    when autocommit (control connection "BEGIN ")
 
 isDml :: Text -> Bool
 isDml sql = any (`T.isPrefixOf` T.toLower (T.take 7 (skipNoise sql))) ["insert", "update", "delete", "replace"]
@@ -403,23 +403,32 @@ lastInsertRowId = S.lastInsertRowId . connectionDatabase
 inTransaction :: Connection -> IO Bool
 inTransaction connection = not <$> Direct.getAutoCommit (connectionDatabase connection)
 
+-- Run a transaction-control statement (@BEGIN …@, @COMMIT@, @ROLLBACK@)
+-- through the prepared-statement cache, as CPython runs
+-- @connection.execute("BEGIN IMMEDIATE")@. Preparing it on every
+-- transaction (@sqlite3_exec@) cost a parse and a code generation per
+-- statement, a measurable share of a short transaction. The step is a safe
+-- call: @BEGIN IMMEDIATE@ can wait on the busy handler and @COMMIT@ syncs.
+control :: Connection -> Text -> IO ()
+control connection sql = withPrepared connection sql (void . S.step)
+
 -- | @connection.execute("BEGIN IMMEDIATE")@.
 begin :: Connection -> IO ()
-begin connection = S.exec (connectionDatabase connection) "BEGIN IMMEDIATE"
+begin connection = control connection "BEGIN IMMEDIATE"
 
 -- | @connection.commit()@: @COMMIT@ when a transaction is open, otherwise
 -- nothing.
 commit :: Connection -> IO ()
 commit connection = do
   open' <- inTransaction connection
-  when open' (S.exec (connectionDatabase connection) "COMMIT")
+  when open' (control connection "COMMIT")
 
 -- | @connection.rollback()@: @ROLLBACK@ when a transaction is open,
 -- otherwise nothing.
 rollback :: Connection -> IO ()
 rollback connection = do
   open' <- inTransaction connection
-  when open' (S.exec (connectionDatabase connection) "ROLLBACK")
+  when open' (control connection "ROLLBACK")
 
 -- | Upstream's write pattern:
 --

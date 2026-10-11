@@ -1,3 +1,6 @@
+{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE UnboxedTuples #-}
+
 -- | The History Store contract an Instance writes through, and its
 -- in-memory implementation (@petrus.impetus.history_store@ protocol and
 -- @memory.py@).
@@ -39,7 +42,10 @@ module Petrus.Impetus.HistoryStore
 
 import Data.Foldable (toList)
 import Data.IORef
-import GHC.IORef (atomicModifyIORef'_)
+import GHC.Exts (casMutVar#, readMutVar#)
+import GHC.IO (IO (..))
+import GHC.IORef (IORef (..))
+import GHC.STRef (STRef (..))
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Petrus.Impetus.History.Records (Record)
@@ -88,10 +94,25 @@ inMemoryHistoryStore = do
       { snapshot = readIORef mirror
       , count = Seq.length <$> readIORef mirror
       , extend = \case
-          [record] -> () <$ atomicModifyIORef'_ mirror (Seq.|> record)
-          batch -> () <$ atomicModifyIORef'_ mirror (\held -> foldl' (Seq.|>) held batch)
+          [record] -> modifyStrict mirror (Seq.|> record)
+          batch -> modifyStrict mirror (\held -> foldl' (Seq.|>) held batch)
       , mode = BackendOwned
       }
+
+-- | Atomically replace the value with @f@ of it, evaluated to WHNF before
+-- it is published: read, compute, compare-and-swap, retried if another
+-- thread swapped in between. Unlike 'atomicModifyIORef'_' it allocates no
+-- thunk and no result pair, which is most of the cost of a one-record
+-- append.
+modifyStrict :: IORef a -> (a -> a) -> IO ()
+modifyStrict (IORef (STRef var)) f = IO loop
+  where
+    loop s0 = case readMutVar# var s0 of
+      (# s1, old #) ->
+        let !new = f old
+         in case casMutVar# var old new s1 of
+              (# s2, 0#, _ #) -> (# s2, () #)
+              (# s2, _, _ #) -> loop s2
 
 -- | How the backend placed one record of a batch.
 data Admission

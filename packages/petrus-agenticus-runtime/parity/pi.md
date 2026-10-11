@@ -159,12 +159,14 @@ See `bench/results-pi.md`:
 - Strict frame decoding is 5.0 times faster than the reference.
 - Session validation is 2.7 times faster, and the fingerprint 2.8 times.
 - `start`-frame encoding is 2.4 times faster.
-- The SQLite ledger cycle is slower: 0.84 times the reference's speed in
-  wall-clock time. It read 1.2 times faster in tasty-bench's default CPU
-  time, which leaves out the time blocked in SQLite commits.
+- The SQLite ledger cycle is 1.08 times faster in wall-clock time. It was
+  0.84 times until the ledger kept its prepared statements in a cache, as
+  CPython's `sqlite3` does.
 
-These are medians of five interleaved rounds (three wall-clock rounds for
-the ledger cycle). Haskell was faster in every round of every other row.
+These are medians of five interleaved rounds (a later run of five
+wall-clock rounds for the ledger cycle, in which Haskell was ahead in
+three, level in one and behind in one). Haskell was faster in every round of
+every other row.
 
 ## `tests/petrus/agenticus/runtime/test_pi_model_phase.py` (25 functions, 45 cases)
 

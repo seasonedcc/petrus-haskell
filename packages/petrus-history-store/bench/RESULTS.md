@@ -40,7 +40,9 @@ rounds are pooled. Three more rounds of only the closest rows
 against the full Python script) followed at 22:33–22:41, load average 3.1–5.7.
 
 Each figure is the median of the rounds that ran it: four, or seven for
-those four rows. The file-system rows (every `jsonl` and `sqlite` append)
+those four rows. The in-memory append and the three SQLite append rows come
+instead from a later interleaved run of five rounds, after the changes
+described with them (see "Rerun of the append rows" below). The file-system rows (every `jsonl` and `sqlite` append)
 swing by 20–50% between rounds on this machine, which is why the closest rows
 got more rounds.
 
@@ -54,7 +56,7 @@ got more rounds.
 | JSONL append, one record per append (2 000 open/write/close) | 2 000 records | 71.0 ms | 62.1 ms | 1.14× |
 | JSONL load (open: read + decode every line into the mirror) | 20 002 records | 96.3 ms | 30.9 ms | 3.1× |
 | JSONL resume (load + the Instance's validating replay) | 20 002 records | 7 304 ms | 486 ms | 15× |
-| in-memory append, one record at a time | 20 002 records | 0.435 ms | 0.445 ms | 0.98× |
+| in-memory append, one record at a time | 20 002 records | 0.438 ms | 0.411 ms | 1.07× |
 | in-memory `records` (snapshot + length) | 20 002 records | 42.5 µs | 4.98 ns | ~8 500× |
 | JSONL `records` (snapshot + length) | 20 002 records | 45 µs | 4.93 ns | ~9 000× |
 | in-memory iterate (count every record) | 20 002 records | 217 µs | 24.7 µs | 8.8× |
@@ -69,11 +71,16 @@ The rounds, Python / Haskell:
 - in-memory append: 0.435 / 0.484, 0.414 / 0.420, 0.446 / 0.528,
   0.455 / 0.424, then 0.421 / 0.445, 0.456 / 0.441, 0.429 / 0.463 ms.
 
-**In-memory append is level with Python, not faster.** Haskell was ahead in
-two of the seven rounds. The figure committed before these, 0.360 ms (1.3×),
-was tasty-bench's default CPU time from an earlier run; this workload does
-no IO, so the clock alone should not account for the difference, and these
-runs did not establish what does.
+**In-memory append is now faster than Python, at 1.07×.** It was level
+(0.98×, Haskell ahead in two of seven rounds) while the append went through
+`atomicModifyIORef'_`. That builds a selector thunk and a pair for every
+append, which the later reads then force. The append is now a
+compare-and-swap loop on the `IORef`'s `MutVar#` that installs the
+already-evaluated new `Seq`. It stays atomic, as `atomicModifyIORef'` was.
+On this row alone the new append took 354–365 µs against 409–445 µs for the
+old one, run back to back. The five rounds of the later run, Python /
+Haskell: 0.438 / 0.411, 0.416 / 0.328, 0.440 / 0.406, 0.427 / 0.485 and
+0.450 / 0.486 ms. Haskell was ahead in three.
 
 There are also three Haskell-only rows (medians of the four rounds):
 
@@ -101,7 +108,7 @@ There are also three Haskell-only rows (medians of the four rounds):
   `write`. The earlier per-record `dumps` kept every encoded
   `Json` alive and ran at 80–97 ms.
 - **In-memory append.** The kernel's `inMemoryHistoryStore` is a direct
-  `IORef (Seq Record)` with an `atomicModifyIORef'_` snoc. It has a
+  `IORef (Seq Record)` with a strict compare-and-swap snoc. It has a
   single-record fast path, which is what `append` produces. It no longer goes
   through `mirroredHistoryStore`'s admission bookkeeping, which an in-memory
   store that admits everything does not need. That change is minimal and
@@ -149,13 +156,15 @@ The rerun block above covers these rows too. To run only the SQLite rows on the 
 
 ### Results
 
-These rows come from the same rounds as the rows above.
+The three append rows come from the later run of five rounds (see "Rerun
+of the append rows" below). The other rows come from the same rounds as the
+rows above.
 
 | workload | size | Python | Haskell | speed-up |
 | --- | ---: | ---: | ---: | ---: |
-| append-one-batch (one fsynced transaction) | 20 002 records | 151 ms | 129 ms | 1.17× |
-| append-per-record (2 000 fsynced transactions) | 2 000 records | 105 ms | 129 ms | 0.81× |
-| append-batches-of-8 (250 fsynced transactions) | 2 000 records | 40.7 ms | 42.4 ms | 0.96× |
+| append-one-batch (one fsynced transaction) | 20 002 records | 121 ms | 100 ms | 1.21× |
+| append-per-record (2 000 fsynced transactions) | 2 000 records | 107 ms | 102 ms | 1.04× |
+| append-batches-of-8 (250 fsynced transactions) | 2 000 records | 36.6 ms | 33.1 ms | 1.11× |
 | load (open + decode every row) | 20 002 records | 110 ms | 47.9 ms | 2.3× |
 | resume (load + validating replay) | 20 002 records | 7 617 ms | 498 ms | 15× |
 | terminal-resend-ack (1 000 re-sends) | 20 002 records | 1 241 ms | 7.96 ms | 156× |
@@ -171,16 +180,42 @@ The rounds, Python / Haskell:
 - terminal-resend-ack: 1 233 / 8.04, 1 141 / 7.62, 1 250 / 7.87,
   1 383 / 9.34 ms.
 
-**Two fsync-bound rows are slower than Python in wall-clock time.**
-`append-per-record` is 0.81×: Haskell was behind in six of the seven
-rounds, and in each of the last three. `append-batches-of-8` is 0.96× and
-swings both ways (0.55× to 1.46× per round). Both rows are dominated by
-2 000 and 250 fsynced commits through two different SQLite builds. The
-figures committed before these timed Haskell in tasty-bench's default CPU
-time, which leaves out the time blocked in fsync: 72.5 and 28.2 ms then,
-which read as 1.4× and 1.1×. Where the remaining gap comes from (the SQLite
-version and its compile options, or the binding's per-statement work) has
-not been measured.
+**The fsync-bound appends are no longer slower.** In the run of
+2026-10-10, `append-per-record` read 0.81× and `append-batches-of-8` 0.96×
+(the rounds above). Both rows are 2 000 and 250 fsynced commits. The search
+for the gap, measured rather than assumed:
+
+- **SQLite build and durability: not the cause.** Both sides commit with
+  plain `fsync` under `synchronous=FULL` in WAL mode, never `F_FULLFSYNC`.
+  A probe of 2 000 single-insert commits took the same time, within noise,
+  on direct-sqlite's bundled 3.45.0, on the system SQLite (direct-sqlite's
+  `systemlib` flag) and from CPython with 3.53.4. So the bundled build
+  stays.
+- **Transaction control: a small saving.** `petrus-sqlite` ran
+  `BEGIN IMMEDIATE`, `COMMIT` and `ROLLBACK` through `sqlite3_exec`, which
+  parses and compiles the statement on every transaction. CPython runs
+  `execute("BEGIN IMMEDIATE")` from its statement cache. These statements
+  now go through the connection's statement cache too, with the same safe
+  step (a `BEGIN IMMEDIATE` can wait on the busy handler, a `COMMIT`
+  syncs). The SQL, the durability and the error texts are unchanged. The
+  saving is under a microsecond per transaction, far less than these rows'
+  swings.
+- **What is left is the machine.** The raw commit probe puts Haskell's
+  fsynced commit level with CPython's, and the store adds little to it. The
+  0.81× of the earlier run is best read as file-system load from other work
+  on the shared machine. These rows swing by 20–50% between rounds.
+
+The five rounds of the later run, Python / Haskell:
+- append-one-batch: 118 / 107, 118 / 89.7, 127 / 92.1, 121 / 100,
+  148 / 107 ms;
+- append-per-record: 102 / 102, 102 / 90.0, 107 / 95.6, 126 / 154,
+  118 / 105 ms;
+- append-batches-of-8: 36.1 / 53.6, 34.2 / 26.7, 36.6 / 29.5, 38.8 / 35.1,
+  45.4 / 33.1 ms.
+
+Both rows still swing with the machine's file-system load (each lost one
+round). The medians are ahead, and Haskell was ahead or level in four of
+the five rounds of each.
 
 ### Notes
 
@@ -210,3 +245,22 @@ not been measured.
   of 20 000 small bound inserts in one transaction took 34–37 ms with
   direct-sqlite's 3.45.0 and 41–46 ms with CPython's 3.53.4.
 - **resume** is dominated, as for JSONL, by the kernel's validating replay.
+
+## Rerun of the append rows
+
+The in-memory append and the three SQLite append rows above come from one
+interleaved run on 2026-10-11, 02:28–02:42 local (UTC-3), at commit `3f31d2e`
+(the CAS append and the cached transaction control), load average 3.6–10.1:
+
+    scripts/bench-compare petrus-history-store 5 --pattern append
+
+The pattern limits the Haskell side to the append rows; `python_bench.py`
+runs in full and prints `name,nanoseconds` lines for `bench-compare`. Each
+figure is the median of the five rounds. The same run also timed the JSONL
+appends. The one-batch append was 1.37× (46.4 ms against 63.3 ms). The
+per-record append's medians read 0.87× (87.6 ms against 76.3 ms), but
+Haskell was ahead in four of the five rounds: 87.6 / 105, 63.3 / 73.7,
+71.2 / 76.3, 112 / 75.1 and 89.5 / 94.9 ms (Haskell / Python). That row
+opens, writes and closes a file 2 000 times without fsync, and it swung
+the most with the load. The JSONL rows in the first table keep the
+seven-round figures.

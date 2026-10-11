@@ -41,6 +41,83 @@ that the state interop tests use (`differential/state_reference.py`, and
 
 <!-- parity: rows below 1.0× belong to "V5 timers" -->
 
+Five interleaved rounds on 2026-10-11, 03:40–03:45 local (UTC-3), on the
+merge of `ee7e4a5` with `main` at `ab3544a` (the agent-turn row and the
+HTTP layer's changes included), load average 3.6–6.5, on the same machine as
+below:
+
+    mkdir -p bench-results/tmp/htmp
+    TMPDIR="$PWD/bench-results/tmp/htmp" scripts/bench-compare hamsterdan-host 5 --upstream hamsterdan
+
+- **Haskell:** the tasty-bench mean in wall-clock time, as below.
+- **Python:** `bench/python_bench.py` runs `bench.py`'s cases, timed by
+  `scripts/bench_timing.py`: the median of 10 batches of at least 0.2 s.
+  That is the twin protocol of the other packages. `bench.py`'s best of 5
+  repeats, used in the earliest table below, takes Python's luckiest run
+  against Haskell's mean.
+- Each figure is the median of the five rounds. Rounds alternate which side
+  goes first.
+
+| Operation (one pass) | Haskell | Python | Python / Haskell | Lowest per round |
+| --- | ---: | ---: | ---: | ---: |
+| webhook ingest (100 deliveries) | 4.15 ms | 10.8 ms | 2.61× | 2.46× |
+| reconciliation step (one webhook to quiescence) | 27.7 ms | 180 ms | 6.50× | 5.76× |
+| agent turn (one webhook to quiescence through the scripted Pi agent) | 146 ms | 312 ms | 2.13× | 2.05× |
+| gate classification (24 classifications) | 2.75 µs | 54.7 µs | 19.9× | 19.2× |
+| timer rebuild (333-fact History) | 3.97 ms | 7.37 ms | 1.86× | 1.57× |
+| fresh timer store open (no History) | 1.25 ms | 1.24 ms | 0.99× | 0.96× |
+
+Fresh open, round by round (Haskell / Python): 1.32 / 1.38, 1.25 / 1.26,
+1.26 / 1.21, 1.20 / 1.24 and 1.24 / 1.22 ms. Haskell was ahead in three
+rounds and behind in two.
+
+**The fresh open is level with Python, at 0.99×, and so still not faster.**
+In the twin-protocol rounds of 02:10–02:20 (below) it was 0.95×. What was
+measured:
+
+- **The SQLite work is level.** A probe ran the open's statements one by
+  one with direct-sqlite: connect, `busy_timeout`, WAL, `foreign_keys`, the
+  schema script, the meta row, the rebuild transaction, the three
+  validating queries, close and unlink. The same statements through
+  CPython's `sqlite3` alternated with it. Over three alternations of 200
+  opens each, Haskell's medians were 1.23–1.39 ms and Python's 1.32–1.44 ms.
+- **The store adds little to it.** `openTimerStore` and `close` timed
+  directly, outside tasty-bench, came to medians of 1.34–1.41 ms, with a
+  mean of 1.43 ms against a median of 1.35 ms over 300 opens.
+- **Neither SQLite build nor durability differs.** Both sides use SQLite's
+  defaults for the timer store (`synchronous` FULL, WAL, plain `fsync`).
+  The bundled 3.45.0 and the system SQLite performed alike in the probe.
+
+So the remaining gap lies between that floor and the benchmark's
+measurement. The Haskell benchmark runs with the webhook-ingest host open
+in the same process, and the row is a mean over a skewed, fsync-bound
+distribution. A switch that closed the ingest host first was tried, but
+the machine's load swamped the difference (1.52–3.06 ms either way), so it
+was not kept. The row stays below 1.0× until a quieter run settles it.
+
+### Earlier twin-protocol rounds (2026-10-11, 02:10–02:20)
+
+<!-- bench: superseded -->
+
+Five interleaved rounds at commit `3f31d2e`, before the merge with `main`
+(no agent-turn row, the earlier HTTP layer), load average 4.6–6.2, medians
+of the rounds:
+
+| Operation (one pass) | Haskell | Python | Python / Haskell |
+| --- | ---: | ---: | ---: |
+| webhook ingest (100 deliveries) | 9.31 ms | 13.5 ms | 1.45× |
+| reconciliation step (one webhook to quiescence) | 55.4 ms | 202 ms | 3.65× |
+| gate classification (24 classifications) | 3.03 µs | 58.3 µs | 19.2× |
+| timer rebuild (333-fact History) | 4.90 ms | 8.92 ms | 1.82× |
+| fresh timer store open (no History) | 1.61 ms | 1.54 ms | 0.95× |
+
+Fresh open, round by round (Haskell / Python): 1.48 / 1.43, 3.08 / 1.32,
+2.44 / 1.56, 1.61 / 1.54 and 1.48 / 1.54 ms.
+
+### Earlier results, best-of-5 protocol (2026-10-11, 00:16–00:17)
+
+<!-- bench: superseded -->
+
 The machine was an Apple M4 (10 cores), macOS 26.3.1, shared with other
 work. The load average was 5.3–5.8 during these runs (2026-10-11,
 00:16–00:17 local, UTC-3; `uptime` after each run).

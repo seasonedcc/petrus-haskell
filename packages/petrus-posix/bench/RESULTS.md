@@ -3,39 +3,75 @@
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
 names and values. Both are wall-clock time. Ratios above 1 mean Haskell is
-faster. **Three rows are not faster than Python:** `flock.open-tryLock-close` (0.93×),
-`flock.tryLock-unlock` (0.99×) and `atomic.write-1KiB-fsync` (1.00×). Each is
-one to four system calls that cost the same from either language, and the
-per-repetition figures cross over for the last two. Opening, locking and
-closing a fresh file is the one row Haskell loses in both repetitions, by
-about 1 µs; it lost it in the earlier CPU-time table too (0.91×).
+faster. **One row is still slower than Python: `flock.open-tryLock-close`, at
+0.97×** (15.1 µs against 14.6 µs; Haskell was behind in every repetition, by
+0.4–0.9 µs). The other rows are faster, `flock.tryLock-unlock` and
+`atomic.write-1KiB-fsync` included.
 
-- Date: 2026-10-10 21:10–21:12 local (UTC-3), commit `74e6b1e` with the switch to wall-clock
-  time in `bench/Main.hs` (the library code is unchanged)
-- Machine: Darwin arm64, Apple M4, shared with other agents; 1-minute load average 2.9–4.2
+- Date: 2026-10-11 00:54–00:59 local (UTC-3), at commit `3f31d2e` plus the
+  path marshalling below (single pass, most recent path remembered) and the
+  bench's paths built once
+- Machine: Darwin arm64, Apple M4, shared with other agents; 1-minute load average 4.4–7.4
   around the runs
 - Haskell: GHC 9.10.3 (-O2), tasty-bench mean in wall-clock time, `--stdev 5`, `+RTS -M2G -RTS`
 - Python: CPython 3.14.6 (upstream venv), median of 10 timed batches of 0.2 s
   (scripts/bench_timing.py)
-- Interleaved by `scripts/bench-compare petrus-posix 2`: Haskell, Python, then Python, Haskell. The figures are the
-  medians of the 2 repetitions; the last two columns give each repetition.
+- Interleaved by `scripts/bench-compare petrus-posix 7`, alternating which side goes first. The figures are the
+  medians of the 7 repetitions; the last two columns give each repetition.
 
-| Benchmark | Haskell | Python | Python / Haskell | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---|---|
-| `flock.tryLock-unlock` | 608 ns | 604 ns | 0.99× | 589 ns, 626 ns | 617 ns, 592 ns |
-| `flock.open-tryLock-close` | 15.4 µs | 14.3 µs | 0.93× | 15.9 µs, 15 µs | 13.8 µs, 14.9 µs |
-| `path.resolve-symlinked` | 12.7 µs | 16.6 µs | 1.31× | 13.2 µs, 12.2 µs | 16.2 µs, 17 µs |
-| `path.expanduser-resolve` | 12.5 µs | 16.4 µs | 1.31× | 13 µs, 12 µs | 16 µs, 16.9 µs |
-| `at.stat-nofollow` | 838 ns | 914 ns | 1.09× | 869 ns, 807 ns | 885 ns, 944 ns |
-| `atomic.write-1KiB-fsync` | 145 µs | 145 µs | 1.00× | 158 µs, 132 µs | 136 µs, 154 µs |
-| `resource.max_rss_mb` | 199 ns | 456 ns | 2.29× | 202 ns, 196 ns | 445 ns, 467 ns |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `flock.tryLock-unlock` | 590 ns | 617 ns | 1.05× | 0.99× | 590 ns, 575 ns, 588 ns, 629 ns, 586 ns, 590 ns, 611 ns | 617 ns, 674 ns, 668 ns, 787 ns, 606 ns, 611 ns, 603 ns |
+| `flock.open-tryLock-close` | 15.1 µs | 14.6 µs | 0.97× | 0.93× | 15.8 µs, 15.1 µs, 15.3 µs, 16.7 µs, 14.2 µs, 14.4 µs, 14.6 µs | 14.6 µs, 14.8 µs, 15 µs, 16.3 µs, 13.7 µs, 14 µs, 13.7 µs |
+| `path.resolve-symlinked` | 9.88 µs | 18.1 µs | 1.84× | 1.68× | 9.64 µs, 9.93 µs, 10.7 µs, 11.9 µs, 9.44 µs, 9.7 µs, 9.88 µs | 19.2 µs, 18.1 µs, 19.8 µs, 20.8 µs, 16.6 µs, 16.6 µs, 16.6 µs |
+| `path.expanduser-resolve` | 12.5 µs | 18.6 µs | 1.48× | 1.33× | 12.2 µs, 12.5 µs, 13.4 µs, 14.3 µs, 12.5 µs, 11.7 µs, 12.6 µs | 19.6 µs, 18.6 µs, 19 µs, 19.2 µs, 16.7 µs, 16.9 µs, 16.7 µs |
+| `at.stat-nofollow` | 901 ns | 1.01 µs | 1.12× | 0.97× | 855 ns, 901 ns, 914 ns, 901 ns, 850 ns, 856 ns, 959 ns | 1.01 µs, 1.05 µs, 1.02 µs, 1.05 µs, 956 ns, 960 ns, 932 ns |
+| `atomic.write-1KiB-fsync` | 147 µs | 156 µs | 1.06× | 1.04× | 156 µs, 161 µs, 149 µs, 144 µs, 145 µs, 143 µs, 147 µs | 185 µs, 179 µs, 156 µs, 185 µs, 150 µs, 151 µs, 154 µs |
+| `resource.max_rss_mb` | 206 ns | 451 ns | 2.18× | 2.13× | 204 ns, 205 ns, 209 ns, 208 ns, 201 ns, 208 ns, 206 ns | 474 ns, 507 ns, 451 ns, 518 ns, 448 ns, 447 ns, 439 ns |
+
+## Path marshalling, and the remaining `flock` gap
+
+Every call that takes a path marshals a Haskell `String` to a C string. That
+used to cost three passes over the path (a NUL check, an ASCII check, then
+`withCAString`), about 1.2 µs for a 134-character path. Now:
+
+- An ASCII path is copied in one pass (about 0.23 µs for the same path).
+- The most recent path and its bytes are remembered. A caller that passes
+  the same `String` value again skips the copy, as a lock file's or a
+  database's fixed path does. The check is pointer equality on the
+  immutable value, so it can only miss, never confuse two paths.
+- A path with a NUL byte is still refused like Python's `ValueError:
+  embedded null byte`. Non-ASCII paths still go through the file-system
+  encoder.
+
+The paths and their results are unchanged: `test/Main.hs` checks NUL
+refusal, non-ASCII and over-long names, and alternating path values. This
+lifted the `path.*` rows (1.31× before) and `at.stat-nofollow`, and it
+narrowed `flock.open-tryLock-close` from 0.93× to 0.97×.
+
+The bench now builds its paths once, fully evaluated, as the Python twin
+binds them once.
+
+What is left of the `flock` row is not in the client code. A probe timed
+the row's three system calls from Haskell with no marshalling at all (a
+prepared C string, `open` as a safe FFI call, `flock` and `close` unsafe).
+It took 13.1–13.7 µs. Python's loop of the same calls took 13.4–13.9 µs, and
+`openLockFile` plus `tryLock` were within noise of the bare calls. The
+`open` stays a safe call because it can block on a slow file system, as
+CPython releases the GIL around it. Part of the remaining 3% may be the
+difference between tasty-bench's mean and the twin's median of batches on
+this shared machine. That was not isolated, and the gap held in every
+repetition, so the row counts as slower.
 
 ## Wall-clock time, and the earlier figures
 
-These replace a table generated by the old `scripts/bench`, which timed Haskell
+The table before this one (2026-10-10, two repetitions, commit `74e6b1e`)
+read 0.93× for `flock.open-tryLock-close`, 0.99× for `flock.tryLock-unlock`,
+1.00× for `atomic.write-1KiB-fsync`, 1.31× for both `path.*` rows and 1.09×
+for `at.stat-nofollow`. That table replaced one generated by the old `scripts/bench`, which timed Haskell
 in tasty-bench's default CPU time against Python's wall-clock time. For these
 rows the two clocks agree: every Haskell figure is within the run-to-run
-spread of the old one (`atomic.write-1KiB-fsync` 133 µs then, 132–158 µs now),
+spread of the old one (`atomic.write-1KiB-fsync` 133 µs then, 132–158 µs in that table),
 because none of them waits on anything but the system calls themselves.
 
 What each row measures, in a scratch directory:
@@ -58,7 +94,7 @@ What each row measures, in a scratch directory:
 ## Rerun
 
 From the repository root (`scripts/bench petrus-posix` runs exactly this block, once;
-`scripts/bench-compare petrus-posix 2` interleaves the two sides and prints the table above).
+`scripts/bench-compare petrus-posix 7` interleaves the two sides and prints the table above).
 
 <!-- scripts/bench: rerun -->
 ```sh
