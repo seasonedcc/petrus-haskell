@@ -12,8 +12,8 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Hamsterdan.Agents.Pi (PiRuntime (..), PiWorkspaceProvider (..))
 import Hamsterdan.Agents.Protocol
-import Hamsterdan.GitHub.Sqlite (SQLData (..))
-import Hamsterdan.GitHub.Sqlite qualified as Sql
+import Hamsterdan.Sqlite (SQLData (..))
+import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Agenticus
 import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorIdentity (..), DescriptorKind (..), capabilityDescriptor)
 import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot (..), mkResolutionSnapshot, snapshotFromData, snapshotToData)

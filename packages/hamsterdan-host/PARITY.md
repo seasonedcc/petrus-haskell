@@ -22,6 +22,7 @@ reference fails when the reference is missing. It is never skipped.
 | `host/api.py` (FastAPI, served by uvicorn) | `Hamsterdan.Host.Api` (WAI, served by warp), `Hamsterdan.Host.Api.Documents` | `ApiSpec`. The surface test compares every response with the reference served by uvicorn, byte for byte except the `date` value. |
 | `host/binding.py` | `Hamsterdan.Host.Binding` (in hamsterdan-agents, which the Pi A2 installation binding needs) | `BindingSpec`, plus the interop tests (`binding.json`). |
 | `host/runnable.py` | `Hamsterdan.Host.Runnable` | `RunnableSpec`, plus the interop tests (`runnable.sqlite3`). |
+| `host/protocol.py` (`ReadinessApplication`, `DurableActivityResolver`) | `Hamsterdan.Host.Service.HostApplication` (the protocol as a record of operations; `hostApplication` wraps the V5 application in it), `Hamsterdan.Host.V5.Runtime.DurableActivityResolver` | Every `ServiceSpec` case runs the host through this record, over the real V5 application and over the test doubles upstream's `test_service.py` passes as `ReadinessApplication`s; the resolver by `ServiceSpec`'s `test_scoped_resolver_*` and `test_durable_activity_resolver_*` cases. |
 | `host/v5/runtime.py` | `Hamsterdan.Host.V5.Runtime` | `IngressApplicationSpec`, `ServiceSpec`, interop. |
 | `host/v5/application.py` | `Hamsterdan.Host.V5.Application` | `IngressApplicationSpec`, `ServiceSpec`, interop. |
 | `host/v5/ingress.py` | `Hamsterdan.Host.V5.Ingress` | `IngressSpec`, `IngressApplicationSpec`, interop. |

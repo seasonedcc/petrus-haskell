@@ -65,6 +65,23 @@ differential corpora compare these byte for byte with the pinned Python (see
      escaped, in the observation), and the transport treats such a response
      body as malformed JSON (`response_json`).
    - GitHub does not emit lone surrogates. The corpora contain none.
+   - The rest of the path already behaves as CPython does on such a string,
+     so this entry closes with petrus-json's lone-surrogate support (audit
+     IMP-2: a WTF-8 `Text` under `KeepLoneSurrogates`). Every provider
+     document is parsed with `Hamsterdan.GitHub.Python.providerLoads`, the
+     one place to switch. After that:
+     - a lone surrogate in an `issue_comment` body is refused with 400, as
+       the reference's `len(text.encode())` raises `UnicodeEncodeError`
+       (a `ValueError`): `Hamsterdan.PyText.utf8EncodeError`;
+     - anywhere else the delivery is accepted with 202, and the stored
+       observation is written with `ensure_ascii`, which escapes it again
+       as `\ud800`, the reference's bytes. An installation lifecycle never
+       binds one to SQLite: the registry admits ASCII repository names
+       only, on both sides. Any bind that did would raise
+       `UnicodeEncodeError` with CPython's message, as CPython's `sqlite3`
+       does (`Hamsterdan.Sqlite`).
+     `PyTextSpec` checks both texts against CPython 3.14.6 on WTF-8
+     strings.
 7. **Very deep JSON nesting.**
    - CPython raises `RecursionError` once its C stack guard trips. `petrus-json`
      has no depth limit and parses such documents.

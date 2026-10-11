@@ -70,8 +70,8 @@ import Hamsterdan.GitHub.Models
   )
 import Hamsterdan.GitHub.Python (canonicalUuid, casefold, utf8Length)
 import Hamsterdan.GitHub.Python qualified as Py
-import Hamsterdan.GitHub.Sqlite (Connection, SQLData (..))
-import Hamsterdan.GitHub.Sqlite qualified as Sql
+import Hamsterdan.Sqlite (Connection, SQLData (..))
+import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Python
 import Hamsterdan.Host.V5.Claim
 import Petrus.Json (Json (..), parseJson, pythonLoads)

@@ -52,9 +52,9 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Agents.Pi (PiNativeRunner, PiRuntime, PiWorkspaceProvider, defaultPiRunnerOptions, newPiNativeRunner, piAgentRunner, unavailablePiRunner)
 import Hamsterdan.Agents.Protocol (AgentRunner (..), CodingRequest (..), Invocation (..))
-import Hamsterdan.GitHub.Python (isAscii, isPrintable, pyIntBase, utf8Length)
-import Hamsterdan.GitHub.Sqlite (Connection, SQLData (..))
-import Hamsterdan.GitHub.Sqlite qualified as Sql
+import Hamsterdan.PyText (isAscii, isPrintable, pyIntBase, utf8Length)
+import Hamsterdan.Sqlite (Connection, SQLData (..))
+import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Binding (InstanceBinding (..), readInstanceBinding)
 import Petrus.Agenticus.Catalog.Descriptor
   ( CapabilityDescriptor (..)

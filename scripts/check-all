@@ -37,14 +37,18 @@ scripts/check-pins
 step "No silent skips on a missing Python reference"
 scripts/lint-skips
 
+step "Hamsterdan import boundaries (upstream tests/test_architecture.py)"
+scripts/lint-hamsterdan-architecture
+
 step "Upstream Python environment"
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv is not on PATH; the interop suites need it to provision the upstream Python environments" >&2
   exit 1
 fi
-# Provision both references once, before the suites run in parallel and
-# each would.
-for project in petrus petrus-engine; do
+# Provision every reference once, before the suites run in parallel and
+# each would (scripts/upstream-python also serializes a lazy sync with a
+# lock, so a suite that provisions on first use is safe too).
+for project in petrus petrus-engine hamsterdan; do
   python=$(scripts/upstream-python "$project")
   echo "upstream/$project: $("$python" -I -c 'import sys; print(sys.version)')"
 done

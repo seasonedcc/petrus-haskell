@@ -52,7 +52,6 @@ library
                   , hamsterdan-cli
                   , hamsterdan-contracts
                   , hamsterdan-export
-                  , hamsterdan-github
                   , hamsterdan-host
                   , petrus-engine-file
                   , petrus-json

@@ -47,9 +47,9 @@ workspace receiver, and selects the Pi runner after an exact READY probe.
 | `tests/unit/agents/test_protocol.py` | 10 | 20 | `ProtocolSpec` | 20 |
 | `tests/unit/host/test_agenticus.py` | 26 | 33 | `AgenticusSpec` | 33 |
 | `tests/unit/host/test_pi_a2.py` | 15 | 24 | `PiA2Spec` | 24 |
-| `tests/integration/host/test_pi_workspace.py` | 12 | 20 | `PiWorkspaceSpec` | 20 |
+| `tests/integration/host/test_pi_workspace.py` | 12 | 20 | `PiWorkspaceSpec` | 20 (+2 beyond upstream) |
 | `tests/integration/host/test_pi_a2_factory.py` | 8 | 8 | `PiA2FactorySpec` | 8 |
-| **Total** | **99** | **151** | | **147** (+4) |
+| **Total** | **99** | **151** | | **147** (+4 compile-time, +2 beyond upstream) |
 
 - **Compile-time cases.** Four `test_pi.py` cases pass a `bool` or a `str`
   as the runner's timeout or poll interval. They do not compile in Haskell,
@@ -58,6 +58,14 @@ workspace receiver, and selects the Pi runner after an exact READY probe.
   runner behind the host's V5 mutation gate, which is a hamsterdan-host
   module. They run in hamsterdan-host's `PiActivitySpec`, over this
   package's `Hamsterdan.Agents.Pi.Doubles`.
+- **Undecodable Git output.** Two `PiWorkspaceSpec` examples go beyond
+  upstream. A Latin-1 byte in the review diff is sanitized to
+  `private Pi workspace preparation failed`, as `open`'s `except Exception`
+  does. A Latin-1 byte in the canonical patch raises CPython's
+  `UnicodeDecodeError` from `reconcile` with the pinned interpreter's
+  message, byte for byte (checked against the reference on 2026-10-11:
+  `'utf-8' codec can't decode byte 0xe9 in position 130: invalid
+  continuation byte`), so the host records `error_class=UnicodeDecodeError`.
 - **The crash case.** `test_pi_a2_factory.py`'s crash case runs the
   reference's crash script under the pinned Python, with Hamsterdan's
   `PersistentKeyOperations` and Petrus's scripted runtime. It then
@@ -94,12 +102,11 @@ of seven interleaved repetitions on 2026-10-11 (06:14–06:26, load
 
 ## Divergences
 
-[DIVERGENCES.md](DIVERGENCES.md) lists them. Five are observable, each only
+[DIVERGENCES.md](DIVERGENCES.md) lists them. Four are observable, each only
 in which failure is raised:
 
 - lone surrogates in a Pi result;
 - a History file that cannot be stat'ed during route repair;
-- undecodable Git output;
 - the tar reader's tolerance of malformed headers;
 - the one-line uncaught traceback.
 

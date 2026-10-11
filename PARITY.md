@@ -120,6 +120,32 @@ Hamsterdan depends on differs** (docs/hamsterdan.md §2.3).
 | Replacement outer system (deferred until upstream CV22 cutover) | `src/hamsterdan2` | | out of scope | not run by production at the pinned commit; see [SCOPE.md](SCOPE.md#out-of-scope) |
 | End-to-end against a real GitHub App | — (docs/hamsterdan.md §5) | `hamsterdan-e2e` | optional (the live run is not required for parity: tiers A and B prove equivalence offline, byte for byte; tier C tooling is ready for whenever a live run is wanted; see [docs/e2e.md](docs/e2e.md)) | tier A: the journeys row above; tier B: the 11 journeys and 3 fault cases recorded from the reference over real HTTP, replayed into both hosts against the tape's fake GitHub, with writes and every History file byte-identical to the recording and the same rendered comment set ([TierBSpec](packages/hamsterdan-e2e/test/TierBSpec.hs)); tier C, against fakes: the carried agent, both operators over a non-HBNetwork fixture, both hosts' start, webhook and exit under the §1.8 environment, live-shaped tapes, the normalizing comparator on synthetic captures, and `scripts/e2e --dry-run` ([TierCSpec](packages/hamsterdan-e2e/test/TierCSpec.hs)); runbook and what the live run needs: [docs/e2e.md](docs/e2e.md), [README](packages/hamsterdan-e2e/README.md) |
 
+### Upstream tests not ported
+
+Every upstream test file not mirrored by a hamsterdan package's ledger, with
+its collected cases (`pytest --collect-only` in `upstream/hamsterdan/.venv`
+at the pin): 13 Python files, 74 cases, plus one TypeScript file. None of
+them checks behavior of `src/hamsterdan`; they check upstream's own Python
+repository tooling or its operations tooling (docs/hamsterdan.md §1.10,
+§4.4; [SCOPE.md](SCOPE.md)).
+
+| Upstream file | Cases | What it checks | Why it is not ported; what stands in for it here |
+| --- | ---: | --- | --- |
+| `tests/test_architecture.py` | 10 | the import graph of `src/hamsterdan` | The rules that carry over are enforced on the Haskell import graph by [`scripts/lint-hamsterdan-architecture`](scripts/lint-hamsterdan-architecture), run by `scripts/check-all` (siblings never import one another, at module and package level; only the host composes concrete siblings and it does compose agents, the gateway and net V5; siblings and contracts never import the host; Agenticus only in agents and host; Engine, Dispatch and Worker only in the host; the HTTP client only in github_app and the HTTP server only in the host). The other 4 cases are about Python packaging (no `impetus` facade, no bare `petrus` import, `hamsterdan.__all__`, relative-import resolution, no `examples` import), which Haskell packages have no equivalent of. |
+| `tests/test_check_command.py` | 7 | upstream's `scripts/check` profiles (ruff, ty, mutmut, audits) | Python tooling. This repository's gate is `scripts/check-all` (builds with `-Werror`, `scripts/lint-skips`, the architecture lint, `scripts/interop --check`, every suite). |
+| `tests/test_distribution.py` | 1 | `uv build` sdist/wheel contents carry no credentials or state | Python packaging. The Haskell distribution is the container image, whose contents are checked by `test_container_contract.py`'s port (`ContainerSpec`) and the CI `container` job. |
+| `tests/test_pytest_policy.py` | 2 | the pytest plugin that turns a selected skip into a failure | pytest tooling. Its Haskell counterpart is [`scripts/lint-skips`](scripts/lint-skips): no test may skip or go pending on a missing reference. |
+| `tests/unit/test_orb_setup.py` | 10 | `.agents/setup`, the OrbStack development-VM provisioning script (Linux only upstream) | Developer environment tooling, not Hamsterdan behavior. |
+| `tests/unit/test_secret_tools.py` | 6 | `scripts/ops` and `scripts/demo-github`, the 1Password credential loaders for operators and demo identities | Operations tooling. The runtime launcher Hamsterdan does run, `scripts/with-runtime-secrets`, is ported (`SecretLaunchSpec`, byte-identical launcher in `deployment/`). |
+| `deployment/tests/test_ci_contract.py` | 1 | upstream's `.github/workflows/image.yml` | Upstream's CI workflow; this repository's CI is its own. |
+| `deployment/tests/test_deploy.py` | 3 | `deployment/deploy.py` (Ansible candidate deployment) | Deployment tooling. |
+| `deployment/tests/test_exe_access.py` | 6 | `deployment/exe_access.py` (temporary SSH access to exe.dev VMs) | Deployment tooling. |
+| `deployment/tests/test_exe_vm.py` | 8 | `deployment/exe_vm.py` (exe.dev VM inventory and creation) | Deployment tooling. |
+| `deployment/tests/test_observation.py` | 3 | `deployment/observation.py`, an operator script that reads a production state directory | Operations tooling. It reads the stores the host writes; those stores are byte-compatible in both directions (the host row's cross-resume interop), so the script reads a Haskell host's state as it reads the reference's. |
+| `deployment/tests/test_release.py` | 5 | `deployment/release.py` (image build and verification commands) | Release tooling. |
+| `deployment/tests/test_runtime.py` | 12 | `deployment/runtime.py` and the Ansible runtime playbooks and unit template | Deployment tooling. The environment the container receives is covered by the container contract and the host's `fromEnvironment` port. |
+| `tests/amp_webhook_relay.test.ts` (bun) | 6 | the development webhook relay | Development tooling in TypeScript. The receipt contract it relies on (`202` and the JSON receipt) is checked by `ApiSpec` against uvicorn. |
+
 ## petrus-viewer
 
 | Component | Upstream | Haskell package | Status | Evidence |

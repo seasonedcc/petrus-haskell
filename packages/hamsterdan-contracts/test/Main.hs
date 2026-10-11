@@ -4,6 +4,7 @@ import CodecSpec qualified
 import CorpusSpec qualified
 import ProtocolSpec qualified
 import PyLiteralSpec qualified
+import PyTextSpec qualified
 import Test.Hspec (hspec)
 
 main :: IO ()
@@ -12,3 +13,4 @@ main = hspec $ do
   PyLiteralSpec.spec
   CorpusSpec.spec
   ProtocolSpec.spec
+  PyTextSpec.spec

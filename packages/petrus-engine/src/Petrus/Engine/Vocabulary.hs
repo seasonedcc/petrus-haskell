@@ -286,7 +286,15 @@ chooseThroughput snapshot
 -- | A candidate-selection policy with its initial state (the reference's
 -- @selection=@ argument, whose state starts at @None@). The state type is
 -- the policy's own.
-data EngineSelection = forall s. (Eq s, Show s) => EngineSelection (SelectionPolicy s) s
+data EngineSelection
+  = forall s. (Eq s, Show s) => EngineSelection (SelectionPolicy s) s
+  | -- | A selection its host steers between drives (a reference policy
+    -- object whose attribute the host sets, as Hamsterdan's
+    -- @_V5EnginePolicy.target@). The coordinator reads the input before
+    -- each proposal and proposes with the policy built from it; the
+    -- policy stays pure. History is folded at load with the policy built
+    -- from the input read then.
+    forall i s. (Eq s, Show s) => SteeredSelection (IO i) (i -> SelectionPolicy s) s
 
 -- | @SelectionPipeline()@.
 defaultSelection :: EngineSelection
