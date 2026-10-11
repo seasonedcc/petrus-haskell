@@ -47,6 +47,25 @@ database alone (`CREATE DATABASE`, the Impetus and Absurd schemas, `DROP DATABAS
 costs about 60 ms on both sides, which is 2 of the 3.7 s; the rest is the Engine's, the Workers'
 and the probes' round trips. Haskell's CPU time for the whole replay workload is 0.37 s.
 
+### The joined rows after petrus-postgres's prepared-statement cache
+
+The joined rows above predate petrus-postgres's prepared-statement cache, which now prepares a
+statement on its sixth execution on a connection, as psycopg does. On 2026-10-11 (02:28–03:03
+local) they were rerun on a private PostgreSQL 17.7 (`fsync=off`) while other agents kept the
+1-minute load average between 3.6 and 9.9:
+
+- **Haskell against Python**, six interleaved pairs. The medians of the per-pair ratios were
+  1.09× for replay (Haskell faster in 4 of 6 pairs), 1.02× for authoring (3 of 6) and 1.00× for
+  the isolated database (3 of 6). Each side's own figures swung by up to 2× with the load
+  (Haskell's replay from 3.76 s to 6.91 s, Python's from 4.05 s to 7.71 s), and the medians of
+  the raw figures, which mix the quieter and busier pairs, came out at 0.98× for replay and
+  0.88× for authoring. These runs cannot tell the two sides apart. They do not replace the
+  table.
+- **The cache itself**, the same Haskell bench built with the cache off
+  (`prepareThresholdOption = Nothing`) and on, alternated four times: replay 6.69 s off against
+  4.74 s on (medians; the cache faster in all four pairs), authoring 5.68 s against 4.92 s (three
+  of four). The change does not slow these rows down.
+
 What each workload covers:
 
 - **decode + encode**: the strict artifact loader (strict JSON, duplicate keys, the pydantic-

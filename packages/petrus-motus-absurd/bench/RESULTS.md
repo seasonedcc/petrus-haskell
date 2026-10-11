@@ -4,28 +4,39 @@ The Haskell side is [`bench/Main.hs`](Main.hs). The Python twin is
 [`bench/python_bench.py`](python_bench.py), which runs the reference's
 `petrus.motus.dispatch.absurd` with the same invocations, queues and doors. Both create a scratch
 database, provision the pinned Absurd schema, and drop the database afterwards. Ratios above 1
-mean Haskell is faster. Haskell is at least as fast as Python on every row, in every round.
+mean Haskell is faster. Haskell is faster on every row: 1.16–1.34× on the PostgreSQL rows, whose
+statements now run prepared from their sixth execution as psycopg's do (petrus-postgres's
+prepared-statement cache), and 3.7× on the pure wire row.
 
-- Date: 2026-10-10, about 20:10 local (UTC-3)
-- Machine: Darwin arm64, Apple M4, shared with other agents. Load average 2.4–3.4 (1-minute),
-  taken before, between and after every run.
-- Server: a private PostgreSQL 17 (Postgres.app binaries, `fsync=off`) on 127.0.0.1, TCP,
-  trust auth; started for the runs and stopped afterwards.
-- Haskell: GHC 9.10.3 `-O2 -threaded`, tasty-bench mean (`--stdev 5`), run with
-  `+RTS -M2G -RTS`. The PostgreSQL rows use wall-clock time (set in `Main.hs`): their time is
-  mostly spent waiting on the server, which tasty-bench's default CPU time would not count.
-  `wire.encode-decode`, which is pure, was taken in CPU time; `Main.hs` now measures every row in
-  wall-clock time, and for a pure single-threaded row the two agree.
-- Python: CPython 3.14.6, psycopg 3 (binary), the pinned upstream venv; median of 10 timed
+- Date: 2026-10-11 01:11–01:34 local (UTC-3), on the commit that adds petrus-postgres's
+  prepared-statement cache
+- Machine: Darwin arm64, Apple M4, heavily shared with other agents. Load average 3.0–6.5
+  (1-minute) around the run.
+- Server: a throwaway PostgreSQL 17.7 from `scripts/with-postgres` (Postgres.app binaries,
+  `initdb` defaults) on 127.0.0.1, TCP, trust auth.
+- Haskell: GHC 9.10.3 `-O2 -threaded`, tasty-bench mean in wall-clock time (`--stdev 5`), run
+  with `+RTS -M2G -RTS`.
+- Python: CPython 3.14.6, psycopg 3.3.4 (binary), the pinned upstream venv; median of 10 timed
   batches (`scripts/bench_timing.py`) of at least 0.5 s each (see below).
-- Interleaved: Haskell, Python, three times.
+- Interleaved by `scripts/bench-compare petrus-motus-absurd 6`, alternating Haskell first and
+  Python first. The figures are the medians of the six repetitions; "lowest" is the worst
+  single repetition's ratio, and the last column counts the repetitions Haskell won.
 
-| Benchmark | Haskell (rounds 1 / 2 / 3) | Python (rounds 1 / 2 / 3) | Python / Haskell |
-|---|---:|---:|---:|
-| `wire.encode-decode` | 0.95 / 0.96 / 0.95 µs | 3.5 / 3.5 / 3.5 µs | 3.7× / 3.7× / 3.7× |
-| `calibration.select-1` | 18.7 / 18.5 / 18.6 µs | 24.4 / 25.2 / 24.3 µs | 1.31× / 1.36× / 1.31× |
-| `dispatch.spawn-commit` | 320 / 311 / 319 µs | 330 / 338 / 341 µs | 1.03× / 1.09× / 1.07× |
-| `roundtrip.dispatch-claim-complete-collect` | 1.75 / 1.75 / 1.60 ms | 1.80 / 1.76 / 1.71 ms | 1.03× / 1.00× / 1.07× |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
+|---|---:|---:|---:|---:|---:|
+| `wire.encode-decode` | 1.01 µs | 3.71 µs | 3.68× | 3.41× | 6/6 |
+| `calibration.select-1` | 17.3 µs | 23.2 µs | 1.34× | 0.77× | 5/6 |
+| `dispatch.spawn-commit` | 545 µs | 631 µs | 1.16× | 0.68× | 5/6 |
+| `roundtrip.dispatch-claim-complete-collect` | 1.86 ms | 2.24 ms | 1.20× | 0.59× | 4/6 |
+
+The load was high and uneven, and the PostgreSQL rows moved with it far more than the
+difference between the clients: Haskell's spawn ranged from 272 µs to 643 µs over the six
+repetitions and Python's from 361 µs to 1.73 ms; Haskell's round trip from 1.28 ms to 4.06 ms
+and Python's from 1.62 ms to 2.88 ms. Haskell lost the round trip in the fourth and sixth
+repetitions, while the 1-minute load peaked at 5.2 and 6.5.
+An earlier three-repetition run under a heavier load put `calibration.select-1` at 0.90× (Haskell lost all three); the round trip there is the
+same `SELECT 1` as petrus-postgres's `roundtrip.select-1`, which a quieter six-repetition run
+measured at 1.45×, Haskell faster in every repetition.
 
 What each row measures:
 
@@ -45,10 +56,25 @@ Every 256 dispatches a row's lane retires: a fresh queue, adapter, Instance and 
 trip) Worker take over, and the old queue is dropped. Both sides do this alike, and its cost is
 amortized into both figures.
 
+### Before the prepared-statement cache
+
+<!-- bench: superseded -->
+
+2026-10-10, about 20:10 local, a private PostgreSQL 17 (`fsync=off`), load average 2.4–3.4,
+interleaved Haskell, Python, three times. Haskell was at least as fast as Python on every row,
+in every round.
+
+| Benchmark | Haskell (rounds 1 / 2 / 3) | Python (rounds 1 / 2 / 3) | Python / Haskell (before) |
+|---|---:|---:|---:|
+| `wire.encode-decode` | 0.95 / 0.96 / 0.95 µs | 3.5 / 3.5 / 3.5 µs | 3.7× / 3.7× / 3.7× |
+| `calibration.select-1` | 18.7 / 18.5 / 18.6 µs | 24.4 / 25.2 / 24.3 µs | 1.31× / 1.36× / 1.31× |
+| `dispatch.spawn-commit` | 320 / 311 / 319 µs | 330 / 338 / 341 µs | 1.03× / 1.09× / 1.07× |
+| `roundtrip.dispatch-claim-complete-collect` | 1.75 / 1.75 / 1.60 ms | 1.80 / 1.76 / 1.71 ms | 1.03× / 1.00× / 1.07× |
+
 ## Why the PostgreSQL rows are close
 
 The two PostgreSQL rows send the same statements on both sides (checked with
-`log_statement = all`): 6 round trips for a spawn, about 16 for a round trip. The server's work
+`log_statement = all`; since the prepared-statement cache, the same prepared statement names too): 6 round trips for a spawn, about 16 for a round trip. The server's work
 for them (plpgsql, the queue's tables and indexes, the commit) is most of each figure, and it is
 the same for both clients. The client-side difference shows in `calibration.select-1`: Haskell's
 round trip is about 6 µs cheaper, which is 2–3% of a spawn.
