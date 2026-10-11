@@ -4,11 +4,11 @@
 -- interop examples at the end.
 --
 -- The reference's fakes are records here: @Continuations@, @Turns@ and
--- @Custody@ (a 'PiConnectionCustody'); @RecordingLocal@,
+-- @Custody@ (a 'HostConnectionCustody'); @RecordingLocal@,
 -- @UncertainCleanupLocal@ and its provider monkeypatching are one 'Hooked'
 -- wrapper over a real Motus provider; the monkeypatched @shutil.which@ and
 -- @subprocess.run@ are 'CodexProbeHooks'; an assigned @adapter.start@ is
--- 'setCodexStartWrapper'. The fake @codex@ CLI and fake Gondolin SDK are the
+-- the rig's 'wrapStart' switch, read by the adapter's start wrapper. The fake @codex@ CLI and fake Gondolin SDK are the
 -- reference's own, rendered by @test/fixtures/codex/extract.py@. The
 -- replacement Worker is this test binary re-executed in Worker mode
 -- ('codexWorkerVariable').
@@ -78,9 +78,9 @@ import Petrus.Agenticus.Internal.Validate (sha256Hex)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ProgramOwnership (..))
 import Petrus.Agenticus.Runtime.Codex
 import Petrus.Agenticus.Runtime.CodexGondolin
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (InstalledComponent (..), ProbeDisposition (..), ProbeIssue (..), RuntimeInstallation (..), RuntimeProbeResult (..))
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..), cleanupVerified)
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..), piConnectionCustody)
 import Petrus.Agenticus.Runtime.PiSupport (aesKeys)
 import Petrus.Agenticus.Runtime.Profiles (codexA2Local, codexA3Gondolin)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
@@ -263,9 +263,9 @@ custodyView c = do
 kinds :: Custody -> IO [Text]
 kinds c = map fst <$> readIORef c.records
 
-custodyOperations :: Custody -> PiConnectionCustody
+custodyOperations :: Custody -> HostConnectionCustody
 custodyOperations c =
-  PiConnectionCustody
+  HostConnectionCustody
     { materialize = \connection host mode ttl operationId -> do
         unless (connection == "codex-connection" && host == "host-1" && mode == LeaseRefresh && ttl > 0) $
           throwAgenticus (OtherError "AssertionError") "materialize"
@@ -276,7 +276,7 @@ custodyOperations c =
         home <- readIORef c.auth >>= newIORef
         now <- getMonotonicTime
         pure
-          PiMaterialization
+          HostMaterialization
             { fence =
                 AttachmentFence
                   ("connection-attachment-" <> T.pack (show version))
@@ -289,7 +289,7 @@ custodyOperations c =
             , mode
             , expiresAt = now + ttl
             , home =
-                PiHome
+                ProviderHome
                   { read = readIORef home
                   , replace = \value -> do
                       when (B.null value) $ throwAgenticus ValueError "empty auth state"
@@ -493,7 +493,7 @@ probeEnvironment executable = do
 adapterOptions :: CodexProbeHooks -> IO CodexAdapterOptions
 adapterOptions hooks = do
   python <- pythonExecutable
-  pure CodexAdapterOptions {clock = getMonotonicTime, hooks, interpreter = python}
+  pure CodexAdapterOptions {clock = getMonotonicTime, hooks, interpreter = python, guestInterpreter = "/usr/bin/python3", startWrapper = id}
 
 data Rig = Rig
   { adapter :: CodexRuntimeAdapter
@@ -692,12 +692,19 @@ data GondolinRig = GondolinRig
   , turns :: Turns
   , custody :: Custody
   , lookupLease :: Text -> IO (Maybe LeaseIdentity)
+  , wrapStart :: IORef StartWrapper
+  -- ^ The test's switch for the adapter's start wrapper.
   }
+
+type StartWrapper = (CodexRuntimeInvocation -> IO CodexOperation) -> CodexRuntimeInvocation -> IO CodexOperation
 
 -- | The reference's recurring Gondolin setup: the fake guest @codex@ at
 -- @version@, its fake SDK, one provider root, and an A3 adapter.
 gondolinRig :: FilePath -> FilePath -> Text -> IO GondolinRig
-gondolinRig tmp rootName version = do
+gondolinRig = gondolinRigWith id
+
+gondolinRigWith :: (CodexAdapterOptions -> CodexAdapterOptions) -> FilePath -> FilePath -> Text -> IO GondolinRig
+gondolinRigWith adjust tmp rootName version = do
   executable <- fakeCodex tmp version
   sdk <- fakeGondolinSdk tmp executable
   let root = tmp </> rootName
@@ -708,15 +715,16 @@ gondolinRig tmp rootName version = do
   custody <- newCustody
   probing <- probeEnvironment Nothing
   options <- adapterOptions probing.hooks
+  wrapStart <- newIORef id
   adapter <-
     newCodexGondolinRuntimeAdapter
       gondolinRuntimeConfig
       (codexContinuationCodec (continuationOperations continuations))
       (turnOperations turns)
       (custodyOperations custody)
-      options
+      (adjust options {startWrapper = \original runtime -> readIORef wrapStart >>= \wrapper -> wrapper original runtime})
   let lookupLease operation = fmap leaseIdentity <$> gondolinLookup environment operation
-  pure GondolinRig {adapter, gondolinRoot = root, territory, sdk, continuations, turns, custody, lookupLease}
+  pure GondolinRig {adapter, gondolinRoot = root, territory, sdk, continuations, turns, custody, lookupLease, wrapStart}
 
 gondolinProviderAt :: FilePath -> FilePath -> IO EnvironmentProvider
 gondolinProviderAt root sdk = gondolinProvider <$> newGondolinEnvironment root (gondolinConfig (T.pack sdk)) {gondolinLeaseTtl = 30}
@@ -1257,7 +1265,7 @@ turnSpecs = do
     turns <- newTurns
     probing <- probeEnvironment (Just executable)
     options <- adapterOptions probing.hooks
-    operations <- piConnectionCustody custody
+    operations <- hostConnectionCustody custody
     adapter <-
       newCodexRuntimeAdapter
         (codexRuntimeConfig "host-1") {credentialTtl = 2, commandTimeout = 2, cancellationGrace = 1}
@@ -1530,7 +1538,7 @@ gondolinSpecs = do
     view <- custodyView g.custody
     activity <- newCodexGondolinActivityAdapter g.adapter view attachment
     attempts <- newIORef []
-    setCodexStartWrapper g.adapter $ \original runtime -> do
+    writeIORef g.wrapStart $ \original runtime -> do
       coordinates <- Episode.coordinates runtime.attachment
       modifyIORef' attempts (<> [(runtime.operationId, coordinates.attachmentId, (bindingLeaseIdentity binding).identityLeaseId)])
       attempted <- length <$> readIORef attempts
@@ -1560,7 +1568,7 @@ gondolinSpecs = do
     view <- custodyView g.custody
     activity <- newCodexGondolinActivityAdapter g.adapter view attachment
     value <- gondolinActivityInput attachment g.custody "first" "turn-gondolin-fences" Nothing
-    setCodexStartWrapper g.adapter $ \_ _ -> expectationFailure "stale request started runtime work" >> fail "started"
+    writeIORef g.wrapStart $ \_ _ -> expectationFailure "stale request started runtime work" >> fail "started"
     let with field replacement = case value of
           Object members -> Object [(k, if k == field then replacement else v) | (k, v) <- members]
           other -> other
@@ -1584,7 +1592,7 @@ gondolinSpecs = do
       $ \(field, invalid) ->
         protocolRaises "input-invalid" (call codexGondolinActivity (with field invalid) (Just ("operation-invalid-" <> field)) False)
     protocolRaises "activity-stale" (call codexGondolinActivity value (Just "operation-stale-context") True)
-    setCodexStartWrapper g.adapter $ \_ _ -> throwAgenticus RuntimeError (TE.decodeUtf8 authCanary)
+    writeIORef g.wrapStart $ \_ _ -> throwAgenticus RuntimeError (TE.decodeUtf8 authCanary)
     redacted <- try (call codexGondolinActivity value (Just "operation-redacted-admission") False)
     case redacted of
       Left (e :: AgenticusError) -> do
@@ -1606,8 +1614,7 @@ gondolinSpecs = do
     (.settlement.verified) <$> Episode.settle attachment 2 `shouldReturn` True
 
   it "test_gondolin_lane_requires_its_exact_guest_helper_before_materialization" $ withTemp $ \tmp -> do
-    g <- gondolinRig tmp "gondolin-helper" codexGondolinVersion
-    setCodexHelperExecutable g.adapter "/missing/petrus-python3"
+    g <- gondolinRigWith (\o -> o {guestInterpreter = "/missing/petrus-python3"}) tmp "gondolin-helper" codexGondolinVersion
     (invocation, attachment, _) <- gondolinInvocation tmp g.territory.provider g.custody "operation-gondolin-helper" "never-run" Nothing
     probe <- probeCodexGondolin g.adapter (Just attachment)
     probe.disposition `shouldBe` ProbeUnavailable
@@ -1780,7 +1787,7 @@ replacementWorker tmp launch = do
   let territory = bindingLeaseIdentity binding
   coordinates <- Episode.coordinates attachment
   starts <- newIORef []
-  setCodexStartWrapper g.adapter $ \original runtime -> do
+  writeIORef g.wrapStart $ \original runtime -> do
     c <- Episode.coordinates runtime.attachment
     modifyIORef' starts (<> [(runtime.operationId, c.attachmentId, territory.identityLeaseId)])
     original runtime
@@ -1808,8 +1815,7 @@ replacementWorker tmp launch = do
     deadline <- (+ 15) <$> getMonotonicTime
     let terminalRow =
           bracket (Sql.openDatabase ledger) Sql.closeDatabase $ \db ->
-            bracket (Sql.prepareStatement db "SELECT terminal FROM operations WHERE operation_id=? AND phase='terminal'") Sql.finalizeStatement $
-              \statement -> Sql.queryRow statement [Sql.SQLText operationId]
+            Sql.queryRow db "SELECT terminal FROM operations WHERE operation_id=? AND phase='terminal'" [Sql.SQLText operationId]
         poll = do
           terminal <- terminalRow
           marker <- doesFileExist withheld
@@ -1865,7 +1871,7 @@ serviceSpecs = do
     exchange endpoint (frame (request' (T.replicate 32 "x") "unauthorized" value) <> "\n") `shouldReturn` errorReply "unauthorized"
     exchange endpoint "{\"version\":1, \"token\":\"bad\"}\n" `shouldReturn` errorReply "request-invalid"
     exchange endpoint (B.replicate (maxRequest + 1) 120) `shouldReturn` errorReply "frame-too-large"
-    setCodexStartWrapper g.adapter $ \_ _ -> throwAgenticus RuntimeError (TE.decodeUtf8 authCanary)
+    writeIORef g.wrapStart $ \_ _ -> throwAgenticus RuntimeError (TE.decodeUtf8 authCanary)
     first <- exchange endpoint (frame (request' token "same" value) <> "\n")
     first `shouldBe` errorReply "runtime-failed"
     let changed = case value of
@@ -1886,7 +1892,7 @@ serviceSpecs = do
 
     entered <- newEmptyMVar
     release <- newEmptyMVar
-    setCodexStartWrapper g.adapter $ \_ _ -> do
+    writeIORef g.wrapStart $ \_ _ -> do
       putMVar entered ()
       released <- timeout 10000000 (readMVar release)
       when (isNothing released) $ throwAgenticus (OtherError "AssertionError") "release"
@@ -1984,14 +1990,13 @@ withDatabase :: FilePath -> (Sql.Database -> IO a) -> IO a
 withDatabase path = bracket (Sql.openDatabase path) Sql.closeDatabase
 
 run :: Sql.Database -> Text -> [Sql.SqlValue] -> IO ()
-run db sql parameters = bracket (Sql.prepareStatement db sql) Sql.finalizeStatement (`Sql.runStatement` parameters)
+run = Sql.runSql
 
 count :: FilePath -> IO Integer
 count ledger = withDatabase ledger $ \db ->
-  bracket (Sql.prepareStatement db "SELECT COUNT(*) FROM operations") Sql.finalizeStatement $ \statement ->
-    Sql.queryRow statement [] >>= \case
-      Just [Sql.SQLInteger n] -> pure (toInteger n)
-      other -> fail ("count: " <> show other)
+  Sql.queryRow db "SELECT COUNT(*) FROM operations" [] >>= \case
+    Just [Sql.SQLInteger n] -> pure (toInteger n)
+    other -> fail ("count: " <> show other)
 
 pythonOut :: Text -> [String] -> IO ByteString
 pythonOut code arguments = do
@@ -2039,7 +2044,7 @@ verbatimSpecs = describe "verbatim and interop" $ do
     service <- newCodexGondolinRuntimeService endpoint ledger token g.adapter view attachment
     startCodexGondolinRuntimeService service
     value <- gondolinActivityInput attachment g.custody "first" "turn-ledger-interop" Nothing
-    setCodexStartWrapper g.adapter $ \_ _ -> throwAgenticus RuntimeError "bounded failure"
+    writeIORef g.wrapStart $ \_ _ -> throwAgenticus RuntimeError "bounded failure"
     let request' operationId = ok (jsonBytes (Object [("version", Int 1), ("token", String token), ("operation_id", String operationId), ("input", value)])) <> "\n"
     exchange endpoint (request' "interop-failed") `shouldReturn` errorReply "runtime-failed"
     closeCodexGondolinRuntimeService service
@@ -2087,8 +2092,7 @@ verbatimSpecs = describe "verbatim and interop" $ do
     pythonService <- newCodexGondolinRuntimeService (pythonState </> "r.sock") (pythonState </> "ledger.db") token g.adapter view attachment
     closeCodexGondolinRuntimeService pythonService
     withDatabase (pythonState </> "ledger.db") $ \db ->
-      bracket (Sql.prepareStatement db "SELECT terminal FROM operations WHERE operation_id='python-executing'") Sql.finalizeStatement $ \statement ->
-        Sql.queryRow statement [] `shouldReturn` Just [Sql.SQLBlob (ok (jsonBytes (errorReply "operation-indeterminate")))]
+      Sql.queryRow db "SELECT terminal FROM operations WHERE operation_id='python-executing'" [] `shouldReturn` Just [Sql.SQLBlob (ok (jsonBytes (errorReply "operation-indeterminate")))]
     (.settlement.verified) <$> Episode.settle attachment 2 `shouldReturn` True
 
   it "interop: the reference's Activity client and Worker replay through the Haskell runtime service" $ withTemp $ \tmp ->

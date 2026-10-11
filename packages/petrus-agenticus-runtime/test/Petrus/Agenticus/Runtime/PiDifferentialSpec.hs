@@ -30,8 +30,8 @@ import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (parseToolMethod)
 import Petrus.Agenticus.Internal.Sqlite
 import Petrus.Agenticus.Runtime.Operation (mkRuntimeOperationCleanup, runtimeProtocolError)
-import Petrus.Agenticus.Runtime.Pi
-import Petrus.Agenticus.Runtime.PiRecovery
+import Petrus.Agenticus.Runtime.Pi.Internal
+import Petrus.Agenticus.Runtime.PiRecovery.Internal
 import Petrus.Agenticus.Runtime.PiSupport (invocation, newRig, rigOptions, withTemp)
 import Petrus.Agenticus.Runtime.Result (mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation (ContinuationState (..), mkContinuation)
@@ -168,19 +168,11 @@ validation function arguments = case function of
       <$> mkPiContinuationPayloadV1 (text "session_id" arguments) (text "binding" arguments) (unb64 (text "session" arguments))
   other -> error ("unknown validation function " <> T.unpack other)
 
--- | Inputs whose decoded value is a documented divergence
--- (@divergences/pi.md@): a lone surrogate escape decodes to U+FFFD, since
--- 'Text' cannot hold a surrogate.
-strictLoadDivergences :: [(Text, Text)]
-strictLoadDivergences = [("eyJhIjoiXHVkODAwIn0=", "{\"a\":\"\\ufffd\"}")]
-
 -- | @_strict_load@ refuses without a message in the port; only acceptance
 -- and the decoded value are compared.
 strictLoadCase :: Json -> Json -> (String, Json, Json)
 strictLoadCase c arguments =
-  let expected = case lookup (text "value" arguments) strictLoadDivergences of
-        Just value -> Object [("ok", String value)]
-        Nothing -> expectedOutcome c
+  let expected = expectedOutcome c
       actual = case strictLoad (unb64 (text "value" arguments)) of
         Right v -> Object [("ok", String (renderAscii v))]
         Left () -> expected `orRefusal` Object [("error", Object [("class", String "refused"), ("message", String "")])]
@@ -437,9 +429,7 @@ dump :: FilePath -> IO Json
 dump path = do
   database <- openDatabase path
   let rows sql = do
-        statement <- prepareStatement database sql
-        found <- queryRows statement []
-        finalizeStatement statement
+        found <- queryRows database sql []
         pure (Array [Array (map cell row) | row <- found])
   master <- rows "SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY type, name"
   tableInfo <- rows "PRAGMA table_info(pi_operations)"
@@ -497,9 +487,7 @@ mutationCases root =
   fmap concat . forM (zip [0 :: Int ..] (items (member "mutations" ledgerSection))) $ \(i, c) -> do
     path <- referenceCopy root ("mutation-" <> show i)
     database <- openDatabase path
-    statement <- prepareStatement database (text "sql" c)
-    runStatement statement (map parameter (items (member "parameters" c)))
-    finalizeStatement statement
+    runSql database (text "sql" c) (map parameter (items (member "parameters" c)))
     closeDatabase database
     withLedger path $ \l -> do
       looked <- runStep l (Object [("op", String "lookup"), ("id", String "op-a")])

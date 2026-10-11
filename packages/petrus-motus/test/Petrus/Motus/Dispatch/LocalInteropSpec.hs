@@ -29,7 +29,6 @@ import Petrus.Motus.Dispatch.Local
   , LocalWorkerOptions (..)
   , defaultLocalDispatchOptions
   , defaultLocalWorkerOptions
-  , openLocalDispatch
   )
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Dispatch.LocalSupport
@@ -97,7 +96,7 @@ scenario :: FilePath -> IO Json
 scenario path = do
   (source, at) <- manualClock 1000
   dispatch <-
-    openLocalDispatch
+    openScratchDispatch
       path
       "interop"
       defaultLocalDispatchOptions {defaultQueue = "general", activityQueues = [("cpu_work", "cpu")], clock = Just source}
@@ -193,7 +192,7 @@ spec = describe "Local Dispatch interop with the reference" $ do
 
   it "Haskell publishes, a reference worker claims and completes, Haskell collects" $ withReference $ \python -> withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
-    published <- openLocalDispatch path "one" defaultLocalDispatchOptions
+    published <- openScratchDispatch path "one" defaultLocalDispatchOptions
     forM_ [1 .. 5] $ \i -> Local.dispatch published i (work (toInteger i))
     claimed <- parsedJson <$> runPython python ["work", path, "python"]
     claimed
@@ -213,7 +212,7 @@ spec = describe "Local Dispatch interop with the reference" $ do
             ]
         | i <- [1 .. 5 :: Integer]
         ]
-    fresh <- openLocalDispatch path "one" defaultLocalDispatchOptions
+    fresh <- openScratchDispatch path "one" defaultLocalDispatchOptions
     forM_ [1 .. 5] $ \i -> Local.dispatch fresh i (work (toInteger i))
     outcomesJson <$> Local.collect fresh `shouldReturn` completedBy "python" 5
 
@@ -232,7 +231,7 @@ spec = describe "Local Dispatch interop with the reference" $ do
     copyFile reference ours
     void (runPython python ["migrate", reference])
     (source, _) <- manualClock 5000
-    void (openLocalDispatch ours "one" defaultLocalDispatchOptions {clock = Just source})
+    void (openScratchDispatch ours "one" defaultLocalDispatchOptions {clock = Just source})
     referenceRows <- runPython python ["dump", reference]
     runPython python ["dump", ours] `shouldReturn` referenceRows
 
@@ -240,12 +239,12 @@ spec = describe "Local Dispatch interop with the reference" $ do
     let reference = dir </> "reference.db"
         ours = dir </> "haskell.db"
     void (runPython python ["open", reference, "one"])
-    void (openLocalDispatch ours "one" defaultLocalDispatchOptions)
+    void (openScratchDispatch ours "one" defaultLocalDispatchOptions)
     referenceRows <- runPython python ["dump", reference]
     runPython python ["dump", ours] `shouldReturn` referenceRows
     -- Each validates the other's file as its own current version.
     void (runPython python ["open", ours, "two"])
-    void (openLocalDispatch reference "two" defaultLocalDispatchOptions)
+    void (openScratchDispatch reference "two" defaultLocalDispatchOptions)
 
   it "schema initialization is atomic under mixed reference-process and Haskell-thread startup" $ withReference $ \python -> withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
@@ -254,17 +253,17 @@ spec = describe "Local Dispatch interop with the reference" $ do
     threads <- forM [0 :: Int .. 3] $ \n -> do
       done <- newEmptyMVar
       _ <- forkIO $ do
-        outcome <- try (openLocalDispatch path ("haskell-" <> T.pack (show n)) defaultLocalDispatchOptions)
+        outcome <- try (openScratchDispatch path ("haskell-" <> T.pack (show n)) defaultLocalDispatchOptions)
         putMVar done (either (\e -> Just (show (e :: SomeException))) (const Nothing) outcome)
       pure done
     forM_ processes $ \(args, started) -> finishPython args started
     mapM takeMVar threads `shouldReturn` replicate 4 Nothing
-    void (openLocalDispatch path "reopened" defaultLocalDispatchOptions)
+    void (openScratchDispatch path "reopened" defaultLocalDispatchOptions)
     rawScalar path "SELECT version FROM impetus_local_dispatch_schema" `shouldReturn` SQLInteger 3
 
   it "claim contention between reference processes and Haskell threads distributes distinct work once" $ withReference $ \python -> withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
-    published <- openLocalDispatch path "one" defaultLocalDispatchOptions
+    published <- openScratchDispatch path "one" defaultLocalDispatchOptions
     forM_ [1 .. 24] $ \i -> Local.dispatch published i (work (toInteger i))
     processes <- forM [0 :: Int .. 1] $ \n ->
       let args = ["work", path, "python-" <> show n] in (,) args <$> startPython python args
@@ -286,7 +285,7 @@ spec = describe "Local Dispatch interop with the reference" $ do
     -- Haskell Local Dispatch shares the file and leaves them untouched.
     let path = dir </> "application.db"
     void (runPython python ["history-write", path])
-    shared <- openLocalDispatch path "one" defaultLocalDispatchOptions
+    shared <- openScratchDispatch path "one" defaultLocalDispatchOptions
     Local.dispatch shared 1 call
     parsedJson <$> runPython python ["history-check", path]
       `shouldReturn` Object

@@ -39,8 +39,9 @@ Continuation payload's transcript is produced by `encodeTranscript`, which
    are `ClaudeClient` and `ClaudeClientFactory`. `_OfficialFactory` is
    `officialFactory` over a `ClaudeSdk` record, whose default is
    `sidecarSdk`. Storage is `ClaudeContinuationOperations` and
-   `ClaudeTurnOperations`. Connection custody is the `PiConnectionCustody`
-   record the Pi and Codex hosts share.
+   `ClaudeTurnOperations`. Connection custody is the `HostConnectionCustody`
+   record (`Petrus.Agenticus.Runtime.Custody`, the reference's
+   `PiConnectionCustody`) that every host shares.
 
 3. **The client is released explicitly.** Upstream, the official
    client's resources go when the object is garbage-collected after
@@ -77,8 +78,8 @@ Continuation payload's transcript is produced by `encodeTranscript`, which
 4. **Monkeypatched seams are explicit hooks.** The probe's
    `importlib.metadata.version` and `importlib.import_module` are
    `ClaudeProbeHooks`; `officialClaudeProbeHooks` asks the sidecar.
-   `setClaudeReady` stands for the tests' direct assignment of the adapter's
-   readiness.
+   `ClaudeAdapterOptions.ready` stands for the tests' direct assignment of
+   the adapter's readiness, fixed at construction.
 
 5. **The CLI wrapper's interpreter is explicit.** Upstream writes the
    private wrapper with a `#!{sys.executable} -I` line. A Haskell process

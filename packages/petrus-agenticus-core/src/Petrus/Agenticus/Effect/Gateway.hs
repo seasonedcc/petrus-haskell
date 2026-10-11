@@ -20,9 +20,10 @@ module Petrus.Agenticus.Effect.Gateway
   , executeJson
   ) where
 
-import Control.Exception (Exception (..), SomeAsyncException, SomeException, evaluate, throwIO, try)
+import Control.Exception (Exception (..), SomeException, evaluate, throwIO, try)
 import Petrus.Agenticus.Effect.Model
 import Petrus.Agenticus.Error
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Json (Json)
 import System.Exit (ExitCode)
 
@@ -125,6 +126,6 @@ attempt action = do
   case result of
     Right value -> pure (Just value)
     Left (failure :: SomeException)
-      | Just (_ :: SomeAsyncException) <- fromException failure -> throwIO failure
+      | isAsync failure -> throwIO failure
       | Just (_ :: ExitCode) <- fromException failure -> throwIO failure
       | otherwise -> pure Nothing

@@ -15,7 +15,8 @@
  * GHC RTS) are reset to their defaults and the child starts with an empty
  * signal mask.
  *
- * Seam: this belongs to petrus-posix; see the Haskell module header. */
+ * petrus-posix has no spawn primitive: children are started only here (and
+ * by the hosts that import Petrus.Motus.Execution.Spawn). */
 #if defined(__linux__)
 #define _GNU_SOURCE
 #endif
@@ -27,7 +28,7 @@
 #include <string.h>
 #include <sys/types.h>
 
-#include "petrus_posix.h"
+#include "petrus_execution.h"
 
 extern char **environ;
 

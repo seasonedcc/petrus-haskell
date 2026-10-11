@@ -133,9 +133,7 @@ cellJson = \case
 rawRows :: FilePath -> Text -> IO [[SqlValue]]
 rawRows path' sql = do
   db <- openDatabase path'
-  statement <- prepareStatement db sql
-  rows' <- queryRows statement []
-  finalizeStatement statement
+  rows' <- queryRows db sql []
   closeDatabase db
   pure rows'
 
@@ -388,7 +386,5 @@ writeHaskellLedger dir = withSystemTempDirectory "retention-interop" $ \root -> 
   where
     rawExecute path' sql = do
       db <- openDatabase path'
-      statement <- prepareStatement db sql
-      runStatement statement []
-      finalizeStatement statement
+      runSql db sql []
       closeDatabase db

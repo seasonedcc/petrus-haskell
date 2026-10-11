@@ -53,7 +53,7 @@ module Petrus.Agenticus.Attachment.Episode
   , fenceSnapshot
   ) where
 
-import Control.Exception (SomeAsyncException, SomeException, finally, fromException, throwIO, try)
+import Control.Exception (SomeException, finally, throwIO, try)
 import Control.Monad (forM, forM_, unless, when)
 import Crypto.Hash (Digest, SHA256, hash)
 import Data.ByteString (ByteString)
@@ -85,6 +85,7 @@ import Petrus.Agenticus.Hands.Gateway
   , withBarrier
   )
 import Petrus.Agenticus.Hands.Grants (GrantLedger, closeGrant, newGrantLedger)
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Validate (hasControl, isTrimmed, utf8Length)
 import Petrus.Agenticus.Thread.Identity (EpisodeId, LifecycleId (lifecycleIdText))
 import Petrus.Motus.Execution (LeaseIdentity)
@@ -102,7 +103,7 @@ catchSync action handler =
   try action >>= \case
     Right value -> pure value
     Left e
-      | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+      | isAsync e -> throwIO e
       | otherwise -> handler e
 
 -- ---------------------------------------------------------------------------

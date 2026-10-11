@@ -17,7 +17,7 @@ import Data.ByteString qualified as B
 import Data.IORef
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -42,7 +42,7 @@ import Petrus.Agenticus.Hands.Contract
   , toolResultToData
   , toolResultToModelData
   )
-import Petrus.Agenticus.Hands.Gateway (GatewayCounters (..), HandsGateway, counters)
+import Petrus.Agenticus.Hands.Gateway (CallEvidence (..), GatewayCounters (..), HandsGateway, counters)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), closeGrant, grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
@@ -50,8 +50,8 @@ import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), Program
 import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..), runtimeProtocolError)
 import Petrus.Agenticus.Runtime.Pi (piApiKeyCatalog, piSdkSourceCommit)
-import Petrus.Agenticus.Runtime.Pi qualified as Pi
-import Petrus.Agenticus.Runtime.PiApplication
+import Petrus.Agenticus.Runtime.Pi.Internal qualified as Pi
+import Petrus.Agenticus.Runtime.PiApplication.Internal
 import Petrus.Agenticus.Runtime.PiSupport
   ( FakeCustody (..)
   , Territory (..)
@@ -261,8 +261,22 @@ data Rig = Rig
   , working :: FilePath
   }
 
+-- | What a test fixes on the adapter before it exists (the reference
+-- assigns @_config@, @_clock@ and @_binding_current@ afterwards).
+data RigTweaks = RigTweaks
+  { tweakConfig :: PiApplicationRuntimeConfig -> PiApplicationRuntimeConfig
+  , tweakClock :: Maybe (IO Double)
+  , tweakHooks :: ApplicationAdapterHooks
+  }
+
+noTweaks :: RigTweaks
+noTweaks = RigTweaks id Nothing noApplicationHooks
+
 newRig :: FilePath -> Text -> [Plan] -> Double -> IO Rig
-newRig root profile plans wallTimeout = do
+newRig = newRigWith noTweaks
+
+newRigWith :: RigTweaks -> FilePath -> Text -> [Plan] -> Double -> IO Rig
+newRigWith tweaks root profile plans wallTimeout = do
   let working = root </> "working"
       runtime = root </> "runtime"
       source = root </> "source"
@@ -282,22 +296,33 @@ newRig root profile plans wallTimeout = do
   continuations <- newContinuations
   turns <- newTurns
   factory <- newFactory plans
+  let component = ok (mkInstalledComponent "pi-agent-core" "0.83.0" "test")
+      prepare descriptor r =
+        r
+          { installation = Just (ok (mkRuntimeInstallation descriptor.identity 1 [component] "test" "test" Set.empty))
+          , node = Just "/fake"
+          , coding = Just "/fake"
+          , core = Just "/fake"
+          , ai = Just "/fake"
+          }
   adapter <-
-    newPiApplicationRuntimeAdapter
-      (piApplicationRuntimeConfig "anthropic" "claude-sonnet-4-5" profile working runtime)
-        { hostId = "host"
-        , wallTimeout
-        , cancellationGrace = 0.03
+    newPiApplicationRuntimeAdapterWith
+      ApplicationAdapterOptions
+        { clock = fromMaybe getMonotonicTime tweaks.tweakClock
+        , factory = Just (factoryRecord factory)
+        , hooks = tweaks.tweakHooks
+        , prepare
         }
+      ( tweaks.tweakConfig
+          (piApplicationRuntimeConfig "anthropic" "claude-sonnet-4-5" profile working runtime)
+            { hostId = "host"
+            , wallTimeout
+            , cancellationGrace = 0.03
+            }
+      )
       (piApplicationContinuationCodec (continuationOperations continuations))
       (turnOperations turns)
       (applicationCustody (custodyOperations custody))
-      getMonotonicTime
-      (Just (factoryRecord factory))
-  let component = ok (mkInstalledComponent "pi-agent-core" "0.83.0" "test")
-      installation = ok (mkRuntimeInstallation (applicationAdapterDescriptor adapter).identity 1 [component] "test" "test" Set.empty)
-  modifyApplicationAdapterRuntime adapter $ \r ->
-    r {installation = Just installation, node = Just "/fake", coding = Just "/fake", core = Just "/fake", ai = Just "/fake"}
   pure Rig {profile, territory, binding, attachment, gateway, custody, continuations, turns, factory, adapter, working}
 
 newRig' :: FilePath -> Text -> [Plan] -> IO Rig
@@ -417,6 +442,7 @@ spec = describe "test_pi_application" $ do
   episodeSpecs
   framedSpecs
   boundarySpecs
+  surrogateSpecs
   publicationSpecs
   packageSpecs
 
@@ -523,10 +549,8 @@ episodeSpecs = do
     settledVerified e1 `shouldReturn` True
     gone <- providerLookup e1.territory.provider "territory-gondolin"
     isNothing gone `shouldBe` True
-    e2 <- newRig' (tmp </> "e2") "e2b" [plan {planText = "E2"}]
-    config <- applicationAdapterConfig e2.adapter
-    e1Config <- applicationAdapterConfig e1.adapter
-    setApplicationAdapterConfig e2.adapter config {workingDirectory = e1Config.workingDirectory}
+    let e1Working = (applicationAdapterConfig e1.adapter).workingDirectory
+    e2 <- newRigWith noTweaks {tweakConfig = \config -> config {workingDirectory = e1Working}} (tmp </> "e2") "e2b" [plan {planText = "E2"}] 1
     modifyIORef' e2.continuations.values (Map.insert reference payload)
     (second, _) <- runRig e2 "e2" [] (Just (claimed reference))
     secondReference <- maybe (expectationFailure "no continuation" >> error "unreachable") pure second.continuationReference
@@ -566,14 +590,14 @@ framedSpecs = do
             , apiKey = "credential-canary"
             }
         priorFor rig = do
-          config <- applicationAdapterConfig rig.adapter
+          let config = applicationAdapterConfig rig.adapter
           pure (ok (mkPiApplicationContinuationPayloadV1 (applicationWorkingBinding config.workingDirectory) "[{\"role\":\"user\",\"content\":\"prior\"}]"))
     forM_ ["blocked", "read"] $ \observation -> do
       rig <- newRig' (tmp </> T.unpack observation) "gondolin" [plan]
       inv <- invocationWith rig observation [WorkspaceRead] defaults {optObservation = Just observation}
       prior <- priorFor rig
       privateRoot <- newPrivateRoot tmp (T.unpack observation)
-      config <- applicationAdapterConfig rig.adapter
+      let config = applicationAdapterConfig rig.adapter
       client <- applicationSubprocessClient <$> newApplicationSubprocessClient helper (argsFor inv privateRoot config (Just prior))
       deadline <- (+ 2) <$> getMonotonicTime
       candidate <- client.run rig.gateway inv (pure True) deadline
@@ -594,7 +618,7 @@ framedSpecs = do
     rig <- newRig' (tmp </> "overflow") "gondolin" [plan]
     inv <- invocationWith rig "overflow" [WorkspaceRead] defaults {optObservation = Just "overflow"}
     privateRoot <- newPrivateRoot tmp "overflow"
-    config <- applicationAdapterConfig rig.adapter >>= \c -> newPiApplicationRuntimeConfig c {maxToolCalls = 1}
+    config <- newPiApplicationRuntimeConfig (applicationAdapterConfig rig.adapter) {maxToolCalls = 1}
     prior <- priorFor rig
     client <- applicationSubprocessClient <$> newApplicationSubprocessClient helper (argsFor inv privateRoot config (Just prior))
     deadline <- (+ 2) <$> getMonotonicTime
@@ -606,7 +630,7 @@ framedSpecs = do
     full <- newRig' (tmp </> "full-result") "gondolin" [plan]
     fullInv <- invocationWith full "full-result" [WorkspaceRead] defaults {optObservation = Just "read"}
     fullRoot <- newPrivateRoot tmp "full-result"
-    fullConfig <- applicationAdapterConfig full.adapter
+    let fullConfig = applicationAdapterConfig full.adapter
     fullPrior <- priorFor full
     fullClient <-
       applicationSubprocessClient
@@ -630,7 +654,7 @@ framedSpecs = do
       rig <- newRig' (tmp </> T.unpack profile) profile [plan]
       inv <- invocationWith rig profile [WorkspaceRead] defaults {optObservation = Just profile}
       privateRoot <- newPrivateRoot tmp (T.unpack profile)
-      config <- applicationAdapterConfig rig.adapter
+      let config = applicationAdapterConfig rig.adapter
       client <-
         applicationSubprocessClient
           <$> newApplicationSubprocessClient
@@ -676,7 +700,7 @@ framedSpecs = do
           rig <- newRig' (tmp </> name) "gondolin" [plan]
           inv <- invocationFor rig (T.pack name) [WorkspaceRead]
           privateRoot <- newPrivateRoot tmp name
-          config <- applicationAdapterConfig rig.adapter
+          let config = applicationAdapterConfig rig.adapter
           client <-
             applicationSubprocessClient
               <$> newApplicationSubprocessClient
@@ -705,6 +729,76 @@ framedSpecs = do
         client.close `shouldReturn` True
         (.adapterEntries) <$> counters rig.gateway `shouldReturn` 0
         void (Episode.settle rig.attachment 30)
+
+-- | The reference admits a lone surrogate escape into a helper frame and
+-- fails on, or forwards, the member that holds it (@divergences/pi.md@,
+-- item 6). Each case forges one such frame.
+surrogateSpecs :: Spec
+surrogateSpecs = describe "lone surrogate escapes in helper frames (not in the reference)" $ do
+  let clientFor options tmp scenario = do
+        node <- requireNode
+        let name = "surrogate-" <> T.unpack scenario
+            helper = tmp </> (name <> ".mjs")
+        fixture "application_lone_surrogate.mjs" >>= B.writeFile helper . TE.encodeUtf8 . T.replace "__SCENARIO__" scenario
+        rig <- newRig' (tmp </> name) "gondolin" [plan]
+        inv <- invocationFor rig (T.pack name) [WorkspaceRead]
+        privateRoot <- newPrivateRoot tmp name
+        client <-
+          applicationSubprocessClient
+            <$> newApplicationSubprocessClientWith
+              options
+              helper
+              ApplicationClientArgs
+                { node
+                , codingEntrypoint = "/unused/coding"
+                , coreEntrypoint = "/unused/core"
+                , aiEntrypoint = "/unused/ai"
+                , privateRoot
+                , config = applicationAdapterConfig rig.adapter
+                , invocation = inv
+                , prior = Nothing
+                , apiKey = "credential-canary"
+                }
+        deadline <- (+ 2) <$> getMonotonicTime
+        pure (client.run rig.gateway inv (pure True) deadline, client, rig)
+      finish client rig = do
+        client.close `shouldReturn` True
+        void (Episode.settle rig.attachment 30)
+      calls rig = map (\e -> (e.method, e.ok, e.category)) <$> Gateway.evidence rig.gateway
+
+  it "forwards tool_call parameters that hold one to the Hands gateway" $ withTemp $ \tmp -> do
+    (run, client, rig) <- clientFor applicationSubprocessOptions tmp "params"
+    candidate <- run
+    candidate.text `shouldBe` "done"
+    calls rig `shouldReturn` [(Nothing, False, Just CategoryPath)]
+    finish client rig
+
+  it "fails a tool_result that echoes one as helper-pipe-failed (str.encode())" $ withTemp $ \tmp -> do
+    let echo _ = Object [("echo", String (J.surrogateText 0xD800))]
+    (run, client, rig) <- clientFor ApplicationSubprocessOptions {modelData = echo} tmp "echo"
+    raises run RuntimeProtocolError "helper-pipe-failed"
+    finish client rig
+
+  it "raises the tool_call identity's encode failure, which no except catches" $ withTemp $ \tmp -> do
+    (run, client, rig) <- clientFor applicationSubprocessOptions tmp "identity"
+    raises run ValueError "surrogates not allowed"
+    calls rig `shouldReturn` []
+    finish client rig
+
+  forM_
+    [ ("text", "malformed-complete")
+    , ("transcript", "malformed-complete")
+    , ("method", "malformed-tool-call")
+    , ("type", "frame-order")
+    , ("member", "frame-order")
+    , ("code", "frame-order")
+    ]
+    $ \(scenario, code) ->
+      it (T.unpack ("fails one in the " <> scenario <> " as " <> code)) $ withTemp $ \tmp -> do
+        (run, client, rig) <- clientFor applicationSubprocessOptions tmp scenario
+        raises run RuntimeProtocolError code
+        calls rig `shouldReturn` []
+        finish client rig
 
 boundarySpecs :: Spec
 boundarySpecs = do
@@ -806,9 +900,9 @@ publicationSpecs = do
   forM_ ["gondolin", "e2b"] $ \profile ->
     it (T.unpack ("test_application_a5_cancellation_wins_while_remote_publication_lookup_is_stalled[" <> profile <> "]")) $
       withTemp $ \tmp -> do
-        rig <- newRig' tmp profile [plan]
+        (hooks, started, released) <- stallLookups
+        rig <- newRigWith noTweaks {tweakHooks = hooks} tmp profile [plan] 1
         inv <- invocationFor rig "stalled-publication" []
-        (started, released) <- stallLookups rig
         operation <- startApplication rig.adapter inv
         timeout 2000000 (readMVar started) >>= (`shouldBe` Just ())
         ( do
@@ -834,11 +928,10 @@ publicationSpecs = do
   forM_ [(lapse, profile) | lapse <- ["grant", "deadline"], profile <- ["gondolin", "e2b"]] $ \(lapse, profile) ->
     it (T.unpack ("test_application_a5_rechecks_publication_admission_after_remote_lookup[" <> lapse <> "-" <> profile <> "]")) $
       withTemp $ \tmp -> do
-        rig <- newRig' tmp profile [plan]
-        inv <- invocationFor rig "stale-admission" []
         now <- getMonotonicTime >>= newIORef
-        setApplicationAdapterClock rig.adapter (readIORef now)
-        (started, released) <- stallLookups rig
+        (hooks, started, released) <- stallLookups
+        rig <- newRigWith noTweaks {tweakClock = Just (readIORef now), tweakHooks = hooks} tmp profile [plan] 1
+        inv <- invocationFor rig "stale-admission" []
         operation <- startApplication rig.adapter inv
         timeout 2000000 (readMVar started) >>= (`shouldBe` Just ())
         expected <-
@@ -890,20 +983,19 @@ publicationSpecs = do
 
 -- | Stall every @_binding_current@ after the initial validation until
 -- released.
-stallLookups :: Rig -> IO (MVar (), MVar ())
-stallLookups rig = do
+stallLookups :: IO (ApplicationAdapterHooks, MVar (), MVar ())
+stallLookups = do
   started <- newEmptyMVar
   released <- newEmptyMVar
   calls <- newIORef (0 :: Int)
-  setApplicationAdapterHooks
-    rig.adapter
-    ApplicationAdapterHooks
-      { bindingCurrent = Just $ \original inv -> do
-          n <- atomicModifyIORef' calls (\x -> (x + 1, x + 1))
-          when (n > 1) (stall started released)
-          original inv
-      }
-  pure (started, released)
+  let hooks =
+        ApplicationAdapterHooks
+          { bindingCurrent = Just $ \original inv -> do
+              n <- atomicModifyIORef' calls (\x -> (x + 1, x + 1))
+              when (n > 1) (stall started released)
+              original inv
+          }
+  pure (hooks, started, released)
 
 packageSpecs :: Spec
 packageSpecs = do

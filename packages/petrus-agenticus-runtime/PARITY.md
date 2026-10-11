@@ -38,7 +38,7 @@ The runner drives the real Engine over a real `history.jsonl` and a real
 | --- | --- | --- |
 | `test_local_runner_uses_history_for_order_and_projects_thread_idempotently` | same label | |
 | `test_quiescent_reconstruction_projects_unobserved_completion_without_redispatch` | same label | |
-| `test_reconstruction_finishes_thread_projection_after_attachment_settled_before_save` | same label | The reference swaps `runner.repository` for an object whose `save` fails once. The Haskell runner exposes `setRunnerRepository`, which installs the same wrapper. |
+| `test_reconstruction_finishes_thread_projection_after_attachment_settled_before_save` | same label | The reference swaps `runner.repository` for an object whose `save` fails once. The Haskell runner is created (`createRunnerWith`) over a repository whose `save` fails once a test-owned switch is set. |
 | `test_reconstructed_in_flight_model_is_indeterminate_before_first_advance` | same label | |
 | `test_reconstructed_in_flight_hands_is_indeterminate_without_a_second_crossing` | same label | |
 | `test_in_process_activity_failure_settles_thread_and_attachment_before_propagating` | same label | The Engine's `RuntimeError` is `Engine.EngineRuntimeError`, with the same "failed terminally" text. |

@@ -92,17 +92,13 @@ phaseOf custody custodyId' = fmap (.phase) <$> lookupCustody custody custodyId'
 rawExecute :: FilePath -> Text -> [SqlValue] -> IO ()
 rawExecute path' sql parameters = do
   db <- openDatabase path'
-  statement <- prepareStatement db sql
-  runStatement statement parameters
-  finalizeStatement statement
+  runSql db sql parameters
   closeDatabase db
 
 rawPhase :: FilePath -> Text -> IO (Maybe [SqlValue])
 rawPhase path' custodyId' = do
   db <- openDatabase path'
-  statement <- prepareStatement db "SELECT phase FROM territory_custody WHERE custody_id=?"
-  row <- queryRow statement [SQLText custodyId']
-  finalizeStatement statement
+  row <- queryRow db "SELECT phase FROM territory_custody WHERE custody_id=?" [SQLText custodyId']
   closeDatabase db
   pure row
 

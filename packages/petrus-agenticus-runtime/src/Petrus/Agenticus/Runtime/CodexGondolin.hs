@@ -38,10 +38,10 @@ module Petrus.Agenticus.Runtime.CodexGondolin
   , codexGondolinActivityClientWith
   ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent.Async (Async, async, waitCatch)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
-import Control.Exception (IOException, SomeAsyncException, SomeException, bracket, finally, fromException, onException, throwIO, try)
+import Control.Exception (IOException, bracket, catch, finally, fromException, mask_, onException, throwIO, try)
 import Control.Monad (forM_, unless, void, when)
 import Data.Bits (xor, (.|.))
 import Data.ByteString (ByteString)
@@ -53,7 +53,6 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Foreign.C.Types (CInt (..))
 import Network.Socket qualified as Socket
 import Network.Socket.ByteString qualified as SocketBytes
 import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..), ExecutionPolicyFields (..), policyFields)
@@ -62,6 +61,7 @@ import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Connection.Custody (ConnectionIdentity (..), ConnectionStatus (..), ConnectionView (..))
 import Petrus.Agenticus.Error
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Sqlite qualified as Sql
 import Petrus.Agenticus.Internal.Validate (sha256Hex)
 import Petrus.Agenticus.Runtime.Codex
@@ -75,7 +75,7 @@ import Petrus.Agenticus.Runtime.Codex
   , startCodex
   , waitCodexOperation
   )
-import Petrus.Agenticus.Runtime.HostSupport (pyJsonLoadsBytes)
+import Petrus.Agenticus.Runtime.Internal.HostSupport (pyJsonLoadsBytes)
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition
   , RuntimeOperationCleanup (..)
@@ -90,6 +90,7 @@ import Petrus.Agenticus.Thread.Identity (EpisodeId, LifecycleId (..), TurnId, li
 import Petrus.Agenticus.Thread.Lifecycle (StrEnum (..), TurnOutcome)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
+import Petrus.Posix.Flock qualified as Flock
 import System.Directory (createDirectoryIfMissing, pathIsSymbolicLink)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory)
@@ -305,15 +306,6 @@ parseTerminal encoded operationId episodeId turnId = do
 -- ---------------------------------------------------------------------------
 -- Shared admission
 
-isSync :: SomeException -> Bool
-isSync e = isNothing (fromException e :: Maybe SomeAsyncException)
-
-trySync :: IO a -> IO (Either SomeException a)
-trySync action =
-  try action >>= \case
-    Left e | not (isSync e) -> throwIO e
-    other -> pure other
-
 protocol :: Text -> IO a
 protocol = throwIO . runtimeProtocolError
 
@@ -431,12 +423,6 @@ runCodexGondolinActivityAdapter a invocation context = do
 -- ---------------------------------------------------------------------------
 -- The runtime service
 
-foreign import ccall unsafe "sys/file.h flock" c_flock :: CInt -> CInt -> IO CInt
-
-lockEx, lockNb, lockUn :: CInt
-lockEx = 2
-lockNb = 4
-lockUn = 8
 
 -- | @_CodexGondolinRuntimeService@: borrow one pre-provisioned Attachment
 -- behind one process-safe service fence.
@@ -450,7 +436,7 @@ data CodexGondolinRuntimeService = CodexGondolinRuntimeService
   , stop :: TVar Bool
   , executionLock :: MVar ()
   , server :: IORef (Maybe Socket.Socket)
-  , serving :: IORef (Maybe (TVar Bool))
+  , serving :: IORef (Maybe (Async ()))
   , lockFile :: IORef (Maybe Fd)
   , pid :: ProcessID
   }
@@ -515,9 +501,8 @@ acquireFence s = do
   unless (Files.isRegularFile lockStatus && mode lockStatus == 0o600 && Files.fileOwner lockStatus == euid) $ do
     PosixIO.closeFd descriptor
     invalid
-  let Fd raw = descriptor
-  locked <- c_flock raw (lockEx .|. lockNb)
-  when (locked /= 0) $ do
+  locked <- Flock.tryLock descriptor Flock.Exclusive `catch` \(_ :: IOException) -> pure False
+  unless locked $ do
     PosixIO.closeFd descriptor
     serviceError "runtime-service-owned"
   writeIORef s.lockFile (Just descriptor)
@@ -539,8 +524,7 @@ releaseFence s =
     Nothing -> pure ()
     Just descriptor -> do
       current <- getProcessID
-      let Fd raw = descriptor
-      when (current == s.pid) $ void (c_flock raw lockUn)
+      when (current == s.pid) $ Flock.unlock descriptor `catch` \(_ :: IOException) -> pure ()
       PosixIO.closeFd descriptor
       writeIORef s.lockFile Nothing
 
@@ -554,8 +538,7 @@ ensureOwner s = do
 -- busy timeout.
 withLedger :: CodexGondolinRuntimeService -> (Sql.Database -> IO a) -> IO a
 withLedger s action =
-  bracket (Sql.openDatabase s.ledger) Sql.closeDatabase $ \db -> do
-    Sql.setBusyTimeout db 2000
+  bracket (Sql.openDatabaseWith 2000 s.ledger) Sql.closeDatabase $ \db -> do
     mode <- scalar db "PRAGMA journal_mode=WAL" []
     unless (mode == Just (Sql.SQLText "wal")) $ serviceError "runtime-service-storage-failed"
     Sql.execute_ db "PRAGMA synchronous=FULL"
@@ -563,16 +546,15 @@ withLedger s action =
 
 scalar :: Sql.Database -> Text -> [Sql.SqlValue] -> IO (Maybe Sql.SqlValue)
 scalar db sql parameters =
-  bracket (Sql.prepareStatement db sql) Sql.finalizeStatement $ \statement ->
-    Sql.queryRow statement parameters >>= \case
-      Just (value : _) -> pure (Just value)
-      _ -> pure Nothing
+  Sql.queryRow db sql parameters >>= \case
+    Just (value : _) -> pure (Just value)
+    _ -> pure Nothing
 
 rows :: Sql.Database -> Text -> [Sql.SqlValue] -> IO [[Sql.SqlValue]]
-rows db sql parameters = bracket (Sql.prepareStatement db sql) Sql.finalizeStatement (`Sql.queryRows` parameters)
+rows = Sql.queryRows
 
 run :: Sql.Database -> Text -> [Sql.SqlValue] -> IO ()
-run db sql parameters = bracket (Sql.prepareStatement db sql) Sql.finalizeStatement (`Sql.runStatement` parameters)
+run = Sql.runSql
 
 initializeLedger :: CodexGondolinRuntimeService -> IO ()
 initializeLedger s = do
@@ -676,9 +658,7 @@ startCodexGondolinRuntimeService s = do
     )
     `onException` Socket.close socket
   writeIORef s.server (Just socket)
-  done <- newTVarIO False
-  writeIORef s.serving (Just done)
-  void (forkIO (serve s socket `finally` atomically (writeTVar done True)))
+  mask_ (async (serve s socket) >>= writeIORef s.serving . Just)
 
 -- | @close()@: stop serving, wait for the in-flight request, remove the
 -- endpoint, and release the fence.
@@ -690,8 +670,8 @@ closeCodexGondolinRuntimeService s = do
   writeIORef s.server Nothing
   readIORef s.serving >>= \case
     Nothing -> pure ()
-    Just done -> do
-      finished <- timeout (round (closeTimeout * 1000000)) (atomically (readTVar done >>= check))
+    Just serving -> do
+      finished <- timeout (round (closeTimeout * 1000000)) (waitCatch serving)
       when (isNothing finished) $ serviceError "runtime-service-quiescence-failed"
   existing <- try (Files.getSymbolicLinkStatus s.endpoint)
   case existing of
@@ -791,8 +771,7 @@ request s frame = do
     replayOrExecute operationId fingerprint invocation = do
       looked <- trySync . withLedger s $ \db -> do
         row <-
-          bracket (Sql.prepareStatement db "SELECT request_fingerprint,phase,terminal FROM operations WHERE operation_id=?") Sql.finalizeStatement $
-            (`Sql.queryRow` [Sql.SQLText operationId])
+          Sql.queryRow db "SELECT request_fingerprint,phase,terminal FROM operations WHERE operation_id=?" [Sql.SQLText operationId]
         case row of
           Just [stored, phase, terminal]
             | stored /= Sql.SQLText fingerprint -> pure (Left (terminalError "operation-conflict"))

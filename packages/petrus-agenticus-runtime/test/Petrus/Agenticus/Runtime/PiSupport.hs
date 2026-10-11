@@ -108,9 +108,10 @@ import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..), allToolMethods)
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
-import Petrus.Agenticus.Runtime.Pi
+import Petrus.Agenticus.Runtime.Pi.Internal
 import Petrus.Agenticus.Runtime.Profiles (piNativeA2Local, piNativeA4E2b, piNativeA4Gondolin)
 import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationState (..), mkContinuation)
 import Petrus.Agenticus.Thread.Identity (mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
@@ -220,7 +221,7 @@ data FakeCustody = FakeCustody
   , stateVersion :: IORef Integer
   , beforeAdmit :: IORef (IO ())
   -- ^ The reference's stalled @admit_result@ monkeypatch.
-  , checkpointOverride :: IORef (Maybe (PiMaterialization -> Text -> IO PublicationResult))
+  , checkpointOverride :: IORef (Maybe (HostMaterialization -> Text -> IO PublicationResult))
   -- ^ The reference's replaced @checkpoint@.
   }
 
@@ -256,9 +257,9 @@ recordedKinds c = map fst <$> readIORef c.records
 assertTrue :: Bool -> IO ()
 assertTrue condition = unless condition (throwAgenticus (OtherError "AssertionError") "")
 
-custodyOperations :: FakeCustody -> PiConnectionCustody
+custodyOperations :: FakeCustody -> HostConnectionCustody
 custodyOperations c =
-  PiConnectionCustody
+  HostConnectionCustody
     { materialize = \connection host mode ttl operationId -> do
         let expected = if c.profile == "api-key" then LeaseRead else LeaseRefresh
         assertTrue ((connection, host, mode) == ("connection", "host", expected))
@@ -266,11 +267,11 @@ custodyOperations c =
         version <- readIORef c.stateVersion
         now <- getMonotonicTime
         pure
-          PiMaterialization
+          HostMaterialization
             { fence = AttachmentFence "credential" "lease" connection host 1 3 version
             , mode
             , expiresAt = now + ttl
-            , home = PiHome {read = readIORef c.home, replace = writeIORef c.home}
+            , home = ProviderHome {read = readIORef c.home, replace = writeIORef c.home}
             }
     , activate = \m operationId -> do
         assertTrue (m.mode == LeaseRefresh)
@@ -509,10 +510,15 @@ data RigOptions = RigOptions
   , optProvider :: Maybe Text
   , optTerritory :: Text
   , optPredecessor :: Maybe Rig
+  , optClock :: Maybe (IO Double)
+  , optHooks :: PiAdapterHooks
+  , optConfig :: PiRuntimeConfig -> PiRuntimeConfig
+  , optPrepare :: PiAdapterRuntime -> PiAdapterRuntime
+  -- ^ Applied after the rig's own fake installation.
   }
 
 rigOptions :: RigOptions
-rigOptions = RigOptions [] 2 "api-key" Nothing "local" Nothing
+rigOptions = RigOptions [] 2 "api-key" Nothing "local" Nothing Nothing noHooks id id
 
 data Rig = Rig
   { root :: FilePath
@@ -556,24 +562,27 @@ newRig root o = do
           , cancellationGrace = 0.05
           , territoryProfile = o.optTerritory
           }
+      component = ok (mkInstalledComponent "pi-coding-agent" piSdkVersion piSdkSource)
+      prepare descriptor r =
+        o.optPrepare
+          r
+            { installation = Just (ok (mkRuntimeInstallation descriptor.identity 1 [component] "test" "test" Set.empty))
+            , node = Just "/fake/node"
+            , sdkEntrypoint = Just "/fake/pi/index.js"
+            , ccPatchEntrypoint = if o.optProfile == "cc-patch-subscription" then Just "/fake/pi-cc-patch/index.ts" else Nothing
+            }
   adapter <-
-    newPiRuntimeAdapter
-      config
+    newPiRuntimeAdapterWith
+      PiAdapterOptions
+        { clock = fromMaybe getMonotonicTime o.optClock
+        , factory = Just (factoryRecord factory)
+        , hooks = o.optHooks
+        , prepare
+        }
+      (o.optConfig config)
       (piContinuationCodec (continuationOperations continuations))
       (turnOperations turns)
       (custodyOperations custody)
-      getMonotonicTime
-      (Just (factoryRecord factory))
-  let identity = (adapterDescriptor adapter).identity
-      component = ok (mkInstalledComponent "pi-coding-agent" piSdkVersion piSdkSource)
-      installation = ok (mkRuntimeInstallation identity 1 [component] "test" "test" Set.empty)
-  modifyAdapterRuntime adapter $ \r ->
-    r
-      { installation = Just installation
-      , node = Just "/fake/node"
-      , sdkEntrypoint = Just "/fake/pi/index.js"
-      , ccPatchEntrypoint = if o.optProfile == "cc-patch-subscription" then Just "/fake/pi-cc-patch/index.ts" else Nothing
-      }
   pure
     Rig
       { root
@@ -594,11 +603,11 @@ newRig root o = do
         Left (_ :: IOError) -> pure ()
         Right () -> pure ()
 
-rigConfig :: Rig -> IO PiRuntimeConfig
+rigConfig :: Rig -> PiRuntimeConfig
 rigConfig r = adapterConfig r.adapter
 
 runtimeRootEntries :: Rig -> IO [FilePath]
-runtimeRootEntries r = rigConfig r >>= listDirectory . (.runtimeRoot)
+runtimeRootEntries r = listDirectory (rigConfig r).runtimeRoot
 
 data InvocationOptions = InvocationOptions
   { invContinuation :: Maybe Continuation

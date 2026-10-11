@@ -95,9 +95,9 @@ import Petrus.Agenticus.Runtime.CodexGondolin
   , startCodexGondolinRuntimeService
   , tokenVariable
   )
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeProbeResult (..))
 import Petrus.Agenticus.Runtime.Operation (RuntimeOperationCleanup, cleanupVerified)
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..), piConnectionCustody)
 import Petrus.Agenticus.Runtime.Profiles (ampA1, claudeA2Local, codexA2Local, codexA3Gondolin)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Identity (lifecycleIdToData, mkEpisodeId, mkTurnId)
@@ -203,14 +203,14 @@ codexTurn python root = do
   _ <- fakeCodex python root codexVersion
   prependPath root
   CodexRig {custody, continuations, turns} <- codexRig root
-  operations <- piConnectionCustody custody
+  operations <- hostConnectionCustody custody
   adapter <-
     newCodexRuntimeAdapter
       (codexRuntimeConfig "host-1") {credentialTtl = 10, commandTimeout = 10, cancellationGrace = 1}
       (codexContinuationCodec continuations)
       turns
       operations
-      CodexAdapterOptions {clock = getMonotonicTime, hooks = officialCodexProbeHooks, interpreter = python}
+      CodexAdapterOptions {clock = getMonotonicTime, hooks = officialCodexProbeHooks, interpreter = python, guestInterpreter = "/usr/bin/python3", startWrapper = id}
   ready =<< probeCodex adapter
   let selected =
         ok . mkResolutionSnapshot 1 $
@@ -265,14 +265,14 @@ codexA3ServiceTurn python root = do
       T.replace "__UNAME__" (jsonPath architecture) $
         T.replace "__CODEX__" (jsonPath executable) template
   CodexRig {custody, continuations, turns} <- codexRig root
-  operations <- piConnectionCustody custody
+  operations <- hostConnectionCustody custody
   adapter <-
     newCodexGondolinRuntimeAdapter
       (codexRuntimeConfig "host-1") {credentialTtl = 10, commandTimeout = 10, cancellationGrace = 2}
       (codexContinuationCodec continuations)
       turns
       operations
-      CodexAdapterOptions {clock = getMonotonicTime, hooks = officialCodexProbeHooks, interpreter = python}
+      CodexAdapterOptions {clock = getMonotonicTime, hooks = officialCodexProbeHooks, interpreter = python, guestInterpreter = "/usr/bin/python3", startWrapper = id}
   environment <- newGondolinEnvironment (root </> "gondolin") (gondolinConfig (T.pack sdk)) {gondolinLeaseTtl = 30}
   let provider = gondolinProvider environment
       spec = ok (mkEnvironmentSpec (Just "fake-image") [capVm, capMicrovm, capPrivateFileTransfer])
@@ -354,17 +354,17 @@ codexA3ServiceTurn python root = do
 -- Claude
 
 -- | The reference test's fake custody: one READ lease per Turn.
-claudeCustody :: PiConnectionCustody
+claudeCustody :: HostConnectionCustody
 claudeCustody =
-  PiConnectionCustody
+  HostConnectionCustody
     { materialize = \connection host mode ttl _ -> do
         now <- getMonotonicTime
         pure
-          PiMaterialization
+          HostMaterialization
             { fence = AttachmentFence "connection-attachment" "connection-lease" connection host 1 3 4
             , mode
             , expiresAt = now + ttl
-            , home = PiHome {read = pure "sk-ant-api03-bench", replace = \_ -> pure ()}
+            , home = ProviderHome {read = pure "sk-ant-api03-bench", replace = \_ -> pure ()}
             }
     , activate = \_ _ -> fail "activate"
     , admitResult = \fence operationId -> pure AdmissionResult {operationId, purpose = "result", attachmentId = fence.attachmentId}
@@ -410,7 +410,7 @@ claudeTurn python root = do
       (claudeContinuationCodec continuations)
       turns
       claudeCustody
-      ClaudeAdapterOptions {clock = getMonotonicTime, clientFactory = Nothing, hooks = officialClaudeProbeHooks sidecar, interpreter = python}
+      ClaudeAdapterOptions {clock = getMonotonicTime, clientFactory = Nothing, hooks = officialClaudeProbeHooks sidecar, interpreter = python, ready = Nothing}
   ready =<< probeClaude adapter Nothing
   let selected =
         ok . mkResolutionSnapshot 1 $

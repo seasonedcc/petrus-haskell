@@ -52,8 +52,9 @@ import Petrus.Agenticus.Runtime.AgentNetRunner
   , projectionSettled
   , runnerEngine
   )
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Live.Support
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), piAiVersion, piConnectionCustody, piSdkVersion)
+import Petrus.Agenticus.Runtime.Pi (piAiVersion, piSdkVersion)
 import Petrus.Agenticus.Runtime.PiModelPhase
   ( PiModelPhaseAdapter
   , PiModelPhaseConfig (..)
@@ -142,7 +143,7 @@ privateOperations o =
 
 -- | @_CustodyBridge@: probe before authority, then delegate only to
 -- production custody.
-custodyBridge :: IORef (Maybe PiConnectionCustody) -> PiModelPhaseCustody
+custodyBridge :: IORef (Maybe HostConnectionCustody) -> PiModelPhaseCustody
 custodyBridge ref =
   PiModelPhaseCustody
     { materialize = \connection host' mode ttl operation -> target >>= \c -> c.materialize connection host' mode ttl operation
@@ -342,7 +343,7 @@ spec = describe "test_agent_net_real" $ do
         current <- lookupConnection c.custody connectionName
         (current.identity, current.status, current.authorityEpoch, current.stateVersion)
           `shouldBe` (expectedConnection.identity, expectedConnection.status, expectedConnection.authorityEpoch, expectedConnection.stateVersion)
-        writeIORef custodyRef . Just =<< piConnectionCustody c.custody
+        writeIORef custodyRef . Just =<< hostConnectionCustody c.custody
         writeIORef operationsRef (Just (privateOperations operations))
         consumeHandoff handoffMessages handoff handoffIdentity
 

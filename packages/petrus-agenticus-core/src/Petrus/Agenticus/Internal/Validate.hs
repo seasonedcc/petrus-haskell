@@ -11,6 +11,7 @@ module Petrus.Agenticus.Internal.Validate
   , pyStrip
   , isTrimmed
   , utf8Length
+  , encodeRefusal
   , hasControl
   , hasControlOrDel
   , codePointLength
@@ -51,6 +52,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Numeric (showHex)
 import Petrus.Agenticus.Error
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
@@ -74,6 +76,27 @@ isTrimmed value = case (T.uncons value, T.unsnoc value) of
 -- | @len(value.encode())@.
 utf8Length :: Text -> Int
 utf8Length = B.length . TE.encodeUtf8
+
+-- | The failure of @value.encode()@, if any. Only a string that holds a
+-- lone surrogate fails (a WTF-8 'Text', "Petrus.Json.Wtf8", which a parser
+-- builds from a @"\\ud800"@ escape as CPython's @json.loads@ does).
+-- CPython raises @UnicodeEncodeError@, a @ValueError@; the port keeps the
+-- 'ValueError' class, which is what every @except@ on the way tests for,
+-- and CPython's message. The check walks the 'Text' in place (a surrogate
+-- decodes as its own code point) rather than copying it, since every
+-- validated identity text passes through it.
+encodeRefusal :: Text -> Maybe AgenticusError
+encodeRefusal value
+  | not (T.any isSurrogate value) = Nothing
+  | otherwise = Just (valueError ("'utf-8' codec can't encode " <> spot <> ": surrogates not allowed"))
+  where
+    isSurrogate c = c >= '\xD800' && c <= '\xDFFF'
+    surrogate (_, c) = isSurrogate c
+    run = takeWhile surrogate (dropWhile (not . surrogate) (zip [0 :: Int ..] (T.unpack value)))
+    spot = case run of
+      [(i, c)] -> "character '\\u" <> T.pack (showHex (ord c) "") <> "' in position " <> T.pack (show i)
+      (i, _) : rest -> "characters in position " <> T.pack (show i) <> "-" <> T.pack (show (i + length rest))
+      [] -> "" -- unreachable: the value holds a surrogate
 
 -- | @any(ord(c) < 32 for c in value)@.
 hasControl :: Text -> Bool

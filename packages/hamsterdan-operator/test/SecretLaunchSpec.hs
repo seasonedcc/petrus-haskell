@@ -15,7 +15,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Fakes (wrapperScript)
+import Fakes (wrapperScript, writeExecutable)
 import Petrus.Json (Json (..), defaultDumps, dumps)
 import Petrus.TestSupport.Repo (repoRoot)
 import System.Directory (createDirectoryIfMissing, doesFileExist, findExecutable)
@@ -68,7 +68,7 @@ launch bash tmp options = do
       fakeOp = tmp </> "op"
       installations = tmp </> "installations.toml"
   BS.writeFile sourcePath (either (error . show) id (dumps defaultDumps (Object [(k, String v) | (k, v) <- source])))
-  writeFile fakeOp (wrapperScript binary ["--fake-op"])
+  writeExecutable fakeOp (wrapperScript binary ["--fake-op"])
   setFileMode fakeOp 0o700
   BS.writeFile installations "[[accounts]]\nid=23\nlogin=\"owner\"\nrepositories=[\"31:owner/repo\"]\n"
   ambient <- getEnvironment

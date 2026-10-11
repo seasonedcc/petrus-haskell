@@ -57,11 +57,12 @@ import Petrus.Agenticus.Hands.Contract (ToolMethod (..), allToolMethods)
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
 import Petrus.Agenticus.Program.AgentNet (ModelSettlement (..), StopReason (..), loopStateToData, mkLoopState, modelPhaseActivity, modelSettlementFromData)
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)
-import Petrus.Agenticus.Runtime.Pi
-import Petrus.Agenticus.Runtime.Pi qualified as Pi
-import Petrus.Agenticus.Runtime.PiApplication
-import Petrus.Agenticus.Runtime.PiApplication qualified as App
+import Petrus.Agenticus.Runtime.Pi.Internal
+import Petrus.Agenticus.Runtime.Pi.Internal qualified as Pi
+import Petrus.Agenticus.Runtime.PiApplication.Internal
+import Petrus.Agenticus.Runtime.PiApplication.Internal qualified as App
 import Petrus.Agenticus.Runtime.PiModelPhase
 import Petrus.Agenticus.Runtime.Profiles (piApplicationA5Gondolin, piNativeA2Local)
 import Petrus.Agenticus.Thread.Identity (mkEpisodeId, mkTurnId)
@@ -98,17 +99,17 @@ piKey = "pi-key-canary-never-render"
 
 -- | The reference tests' fake custody: one READ lease per Turn over a fixed
 -- secret.
-benchCustody :: ByteString -> PiConnectionCustody
+benchCustody :: ByteString -> HostConnectionCustody
 benchCustody secret =
-  PiConnectionCustody
+  HostConnectionCustody
     { materialize = \connection host mode ttl _ -> do
         now <- getMonotonicTime
         pure
-          PiMaterialization
+          HostMaterialization
             { fence = AttachmentFence "credential" "lease" connection host 1 3 4
             , mode
             , expiresAt = now + ttl
-            , home = PiHome {read = pure secret, replace = \_ -> pure ()}
+            , home = ProviderHome {read = pure secret, replace = \_ -> pure ()}
             }
     , activate = \_ _ -> fail "activate"
     , admitResult = \fence operationId -> pure AdmissionResult {operationId, purpose = "result", attachmentId = fence.attachmentId}
@@ -200,18 +201,21 @@ piNativeTurn node root = do
           , load = \reference -> maybe (fail "no continuation") pure . Map.lookup reference =<< readIORef values
           }
       turns = PiTurnOperations {storeTurn = \operationId _ -> pure ("pi-turn-" <> operationId)}
+  let component = ok (mkInstalledComponent "pi-coding-agent" piSdkVersion piSdkSource)
+      prepare descriptor r =
+        r
+          { installation = Just (ok (mkRuntimeInstallation descriptor.identity 1 [component] "bench" "bench" Set.empty))
+          , node = Just node
+          , sdkEntrypoint = Just (T.pack sdk)
+          , factory = Just (subprocessFactory helper)
+          }
   adapter <-
-    newPiRuntimeAdapter
+    newPiRuntimeAdapterWith
+      PiAdapterOptions {clock = getMonotonicTime, factory = Nothing, hooks = noHooks, prepare}
       (piRuntimeConfig "provider" "model" working private) {Pi.hostId = "host-1", Pi.credentialTtl = 10, Pi.wallTimeout = 30, Pi.cancellationGrace = 2}
       (piContinuationCodec continuations)
       turns
       (benchCustody piKey)
-      getMonotonicTime
-      Nothing
-  let component = ok (mkInstalledComponent "pi-coding-agent" piSdkVersion piSdkSource)
-      installation = ok (mkRuntimeInstallation (adapterDescriptor adapter).identity 1 [component] "bench" "bench" Set.empty)
-  modifyAdapterRuntime adapter $ \r ->
-    r {installation = Just installation, node = Just node, sdkEntrypoint = Just (T.pack sdk), factory = Just (subprocessFactory helper)}
   let selected =
         ok . mkResolutionSnapshot 1 $
           [ piNativeA2Local
@@ -283,8 +287,19 @@ piA5Turn node root = do
           , load = \reference -> maybe (fail "no continuation") pure . Map.lookup reference =<< readIORef values
           }
       turns = PiApplicationTurnOperations {storeTurn = \operationId _ -> pure ("pi-application-turn-" <> operationId)}
+  let applicationComponent = ok (mkInstalledComponent "pi-agent-core" "0.83.0" "bench")
+      prepare descriptor r =
+        r
+          { installation = Just (ok (mkRuntimeInstallation descriptor.identity 1 [applicationComponent] "bench" "bench" Set.empty))
+          , node = Just node
+          , coding = Just coding
+          , core = Just core
+          , ai = Just ai
+          , factory = Just (applicationSubprocessFactory helper)
+          }
   adapter <-
-    newPiApplicationRuntimeAdapter
+    newPiApplicationRuntimeAdapterWith
+      ApplicationAdapterOptions {clock = getMonotonicTime, factory = Nothing, hooks = noApplicationHooks, prepare}
       (piApplicationRuntimeConfig "anthropic" "claude-sonnet-4-5" "gondolin" working runtime)
         { App.hostId = "host-1"
         , App.wallTimeout = 30
@@ -293,19 +308,6 @@ piA5Turn node root = do
       (piApplicationContinuationCodec continuations)
       turns
       (applicationCustody (benchCustody "credential-canary"))
-      getMonotonicTime
-      Nothing
-  let component = ok (mkInstalledComponent "pi-agent-core" "0.83.0" "bench")
-      installation = ok (mkRuntimeInstallation (applicationAdapterDescriptor adapter).identity 1 [component] "bench" "bench" Set.empty)
-  modifyApplicationAdapterRuntime adapter $ \r ->
-    r
-      { installation = Just installation
-      , node = Just node
-      , coding = Just coding
-      , core = Just core
-      , ai = Just ai
-      , factory = Just (applicationSubprocessFactory helper)
-      }
   let selected =
         ok . mkResolutionSnapshot 1 $
           [ piApplicationA5Gondolin

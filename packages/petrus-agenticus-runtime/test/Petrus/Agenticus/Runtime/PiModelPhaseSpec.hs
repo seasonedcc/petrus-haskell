@@ -45,9 +45,11 @@ import Petrus.Agenticus.Program.AgentNet
   , modelSettlementToData
   , stopReasonText
   )
+import Petrus.Agenticus.Runtime.Custody
+import Petrus.Agenticus.Runtime.Internal.Process (runBounded)
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
-import Petrus.Agenticus.Runtime.Pi (PiHome (..), PiMaterialization (..), pyB64DecodeText, runBounded, strictLoad)
-import Petrus.Agenticus.Runtime.PiModelPhase
+import Petrus.Agenticus.Runtime.Pi.Internal (pyB64DecodeText, strictLoad)
+import Petrus.Agenticus.Runtime.PiModelPhase.Internal
 import Petrus.Agenticus.Runtime.PiSupport (fixture, raises, raisesValueLike, withTemp)
 import Petrus.Engine qualified as Engine
 import Petrus.Impetus.HistoryStore (inMemoryHistoryStore)
@@ -59,7 +61,6 @@ import System.Directory (createDirectory, doesDirectoryExist, doesFileExist, fin
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Posix.Files (setFileMode)
-import System.Process (CreateProcess (..), proc)
 import Test.Hspec
 
 spec :: Spec
@@ -209,11 +210,11 @@ newCustody events = do
               version <- readIORef flags.baseVersion
               now <- getMonotonicTime
               pure
-                PiMaterialization
+                HostMaterialization
                   { fence = AttachmentFence "credential" "lease" connectionId hostId 1 epoch version
                   , mode = leaseMode
                   , expiresAt = now + ttl
-                  , home = PiHome {read = pure key, replace = \_ -> pure ()}
+                  , home = ProviderHome {read = pure key, replace = \_ -> pure ()}
                   }
           , admitResult = \fence operationId -> do
               event events "admit"
@@ -327,17 +328,26 @@ newRig tmp final observation = do
 withRig :: Json -> (Rig -> IO a) -> IO a
 withRig final body = withTemp $ \tmp -> newRig tmp final "Continue." >>= body
 
+-- | The rig with an adapter over the same parts, built with another Node,
+-- SDK entrypoint, factory or configuration (the reference assigns them on
+-- the built adapter).
+reAdapt :: Rig -> PiModelPhaseConfig -> FilePath -> Maybe FilePath -> PhaseFactory -> IO Rig
+reAdapt rig config node entry factory = do
+  adapter' <- newPiModelPhaseAdapter config rig.connection rig.custody rig.operations node entry (Just factory)
+  pure rig {adapter = adapter'}
+
 -- | Point the rig's adapter at real @node@, the verbatim helper and the
 -- reference's fake coding SDK (@write_fake_coding@), through a subprocess
 -- factory that, like the reference's @RealFactory@, needs no probe.
-useRealHelper :: Rig -> IO ()
-useRealHelper rig = do
+useRealHelper :: Rig -> IO Rig
+useRealHelper = useRealHelperWith subprocessPhaseFactory {isSubprocess = False}
+
+useRealHelperWith :: PhaseFactory -> Rig -> IO Rig
+useRealHelperWith factory rig = do
   node <- requireNode
   let entry = rig.tmp </> "coding.mjs"
   fixture "model_phase_coding.mjs" >>= B.writeFile entry . TE.encodeUtf8
-  setModelPhaseNode rig.adapter node
-  setModelPhaseSdkEntrypoint rig.adapter (Just entry)
-  setModelPhaseFactory rig.adapter subprocessPhaseFactory {isSubprocess = False}
+  reAdapt rig rig.config node (Just entry) factory
 
 phaseContext :: (Maybe Json -> IO Json) -> ActivityExecutionContext
 phaseContext heartbeat =
@@ -452,6 +462,33 @@ candidateSpecs = do
   forM_ (zip [0 :: Int ..] mutations) $ \(index, mutation) ->
     it ("test_candidate_rejects_malformed_public_assistant[<lambda>" <> show index <> "]") $
       protocolError "malformed-complete" (throwsLeft (validateFresh (mutation defaultAssistant)))
+
+  -- Not in the reference: a lone surrogate escape the helper wrote reaches
+  -- the validators, whose @_text@ fails its @value.encode()@
+  -- (@divergences/pi.md@, item 6).
+  describe "lone surrogate escapes in the assistant (not in the reference)" $ do
+    let lone = J.surrogateText 0xD800
+        validateEscaped final =
+          validateCandidate
+            "[]"
+            PhaseCandidate {assistant = escaped final, transcript = escaped (Array [userMessage, final])}
+            initial
+            "Continue."
+            "anthropic"
+            "claude-sonnet-4-5"
+        escaped = either (const (error "unencodable fixture")) id . J.dumps J.compact {J.ensureAscii = True}
+    it "keeps one in the text and in a tool call's arguments" $ do
+      let final =
+            assistant
+              "toolUse"
+              (Just [Object [("type", String "text"), ("text", String lone)], toolCall "call" "workspace_read" (Object [("path", String lone)])])
+              []
+      (_, _, proposals, _) <- throwsLeft (validateEscaped final)
+      map (.params) proposals `shouldBe` [Object [("path", String lone)]]
+    it "fails one in the api as malformed-complete" $
+      protocolError "malformed-complete" (throwsLeft (validateEscaped (update "api" (String lone) defaultAssistant)))
+    it "fails one in a tool call's identity as malformed-proposal" $
+      protocolError "malformed-proposal" (throwsLeft (validateEscaped (assistant "toolUse" (Just [toolCall lone "workspace_read" (Object [])]) [])))
 
 -- ---------------------------------------------------------------------------
 -- The adapter
@@ -570,8 +607,8 @@ adapterSpecs = do
     writeIORef rig.ops.loadRaises True
     refusedWithout "continuation-load-failed" "private load diagnostic" (invoke rig (state 1 (Just "old-output") (Just "missing") []))
     eventsOf rig `shouldReturn` ["load"]
-    modifyModelPhaseConfig rig.adapter (\c -> c {episodeId = "other"})
-    protocolError "state-mismatch" (invoke rig initial)
+    other <- reAdapt rig (rig.config) {episodeId = "other"} "node" (Just "/fake/pi/index.js") rig.factory
+    protocolError "state-mismatch" (invoke other initial)
     eventsOf rig `shouldReturn` ["load"]
 
   it "test_stale_activity_claim_rejects_before_authority" $ withRig defaultAssistant $ \rig -> do
@@ -690,8 +727,8 @@ subprocessSpecs = do
 
 realHelperSpecs :: Spec
 realHelperSpecs = do
-  it "test_real_helper_runs_one_public_stream_with_declarations_and_no_tool_executor" $ withRig defaultAssistant $ \rig -> do
-    useRealHelper rig
+  it "test_real_helper_runs_one_public_stream_with_declarations_and_no_tool_executor" $ withRig defaultAssistant $ \rig0 -> do
+    rig <- useRealHelper rig0
     settlement <- invoke rig initial
     settlement.stop `shouldBe` Stop
     Just (output, _) <- Map.lookup "operation" <$> publicationsOf rig
@@ -702,23 +739,21 @@ realHelperSpecs = do
 
   it "test_real_helper_accepts_bounded_multiline_observation" $ withTemp $ \tmp -> do
     let observation = "line one\n" <> T.replicate 300 "x"
-    rig <- newRig tmp defaultAssistant observation
-    useRealHelper rig
+    rig <- newRig tmp defaultAssistant observation >>= useRealHelper
     void (invoke rig initial)
     Just (output, _) <- Map.lookup "operation" <$> publicationsOf rig
     case firstText (load output.assistantJson) of
       String text -> text `shouldSatisfy` T.isSuffixOf ("prompt=" <> T.pack (show (T.length observation)))
       other -> expectationFailure ("no text block: " <> show other)
 
-  it "test_real_subprocess_requires_the_exact_installed_probe_before_authority" $ withRig defaultAssistant $ \rig -> do
-    useRealHelper rig
-    setModelPhaseFactory rig.adapter subprocessPhaseFactory
+  it "test_real_subprocess_requires_the_exact_installed_probe_before_authority" $ withRig defaultAssistant $ \rig0 -> do
+    rig <- useRealHelperWith subprocessPhaseFactory rig0
     protocolError "runtime-not-ready" (invoke rig initial)
     eventsOf rig `shouldReturn` []
 
   it "test_helper_syntax_and_exact_hands_bounds" $ do
     helper <- piModelPhaseHelperPath
-    checked <- runBounded (proc "node" ["--check", helper])
+    checked <- runBounded ["node", "--check", helper] Nothing
     fmap (\(code, _, _) -> code) checked `shouldBe` Just ExitSuccess
     source <- B.readFile helper
     forM_ ["maxItems:4", "maxLength:64", "maxLength:8", "maxLength:1024"] $ \bound ->
@@ -733,13 +768,12 @@ realHelperSpecs = do
       then pendingWith "exact Pi qualification packages required"
       else do
         createDirectory (tmp </> "probe")
-        rig <- newRig (tmp </> "probe") defaultAssistant "Continue."
-        setModelPhaseNode rig.adapter node
+        rig <- newRig (tmp </> "probe") defaultAssistant "Continue." >>= \r -> reAdapt r r.config node (Just "/fake/pi/index.js") r.factory
         probeModelPhase rig.adapter root `shouldReturn` True
         modelPhaseNode rig.adapter >>= (`shouldSatisfy` ("/" `T.isPrefixOf`) . T.pack)
         helper <- piModelPhaseHelperPath
         let environment = [("HOME", tmp), ("PATH", prefix </> "node_modules/node/bin"), ("LANG", "C.UTF-8"), ("LC_ALL", "C.UTF-8")]
-        Just (code, out, err) <- runBounded (proc node [helper, root </> "dist/index.js", "--test-probe"]) {env = Just environment}
+        Just (code, out, err) <- runBounded [node, helper, root </> "dist/index.js", "--test-probe"] (Just environment)
         (code, err) `shouldBe` (ExitSuccess, "")
         load (B.dropWhileEnd (== 10) out)
           `shouldBe` Object

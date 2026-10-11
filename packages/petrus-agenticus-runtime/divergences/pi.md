@@ -2,27 +2,33 @@
 
 These choices are deliberate. `differential/pi_corpus.json` pins the wire
 bytes, validator results, fingerprints, records and ledger files on both
-sides of each one. Its single accepted difference is item 6.
+sides of each one, and every case matches.
 
 1. **Protocols are records of operations.** The reference's structural
    protocols are records here, whose fields are the protocol's methods:
    - continuation and Turn storage: `PiContinuationOperations`,
      `PiTurnOperations`;
-   - connection custody: `PiConnectionCustody`;
+   - connection custody: `HostConnectionCustody`
+     (`Petrus.Agenticus.Runtime.Custody`, shared by every host);
    - helper clients and factories: `PiHelperClient`, `PiHelperFactory`;
    - the operation ledger: `PiOperationLedger`.
 
-   `piConnectionCustody` adapts the real `AgentConnectionCustody`, and
+   `hostConnectionCustody` adapts the real `AgentConnectionCustody`, and
    `sqlitePiOperationLedger` adapts the SQLite ledger.
 
-2. **Private attributes are explicit state with named setters.** The
-   reference's tests assign private adapter attributes or monkeypatch private
-   methods (`_binding_current`, `_start`, `_receipt`, `_thread_start` and
-   others). The port keeps that state in `PiAdapterRuntime`, which is
-   changed only through these functions:
-   - `modifyAdapterRuntime`, `setAdapterConfig`, `setAdapterClock`;
-   - `setAdapterHooks`, which takes `PiAdapterHooks`;
-   - `setSubprocessStartFrame`.
+2. **Private attributes are fixed at construction.** The reference's tests
+   assign private adapter attributes or monkeypatch private methods
+   (`_binding_current`, `_start`, `_receipt`, `_thread_start` and others)
+   on a built adapter. The port takes them when the adapter is built:
+   - `newPiRuntimeAdapterWith` takes `PiAdapterOptions`: the clock, the
+     helper factory, `PiAdapterHooks`, and `prepare`, the readiness a probe
+     would record in `PiAdapterRuntime`;
+   - `SubprocessOptions.adjustStart` rewrites a helper client's `start`
+     frame (the reference assigns `client._start`).
+
+   The configuration, clock and hooks are plain values; only the probe
+   changes `PiAdapterRuntime`. A test that needs a mid-run change keeps the
+   switch in its own double.
 
    The recovered runtime takes a `PiAdapterSurface`
    (`newPiRecoveredRuntimeWith`) in place of a patched adapter. Each hook
@@ -53,91 +59,39 @@ sides of each one. Its single accepted difference is item 6.
    argument should contain only ASCII characters` before it applies any
    base64 rule. `pyB64DecodeText` checks in the same order.
 
-6. **Lone surrogate escapes decode to U+FFFD.** CPython's scanner admits
-   `"\ud800"` into a `str`, which `Data.Text` cannot hold. Two cases follow:
-   - **Sessions and credentials.** `strictLoad` runs the CPython-faithful
-     scanner and accepts the same documents. Each lone surrogate becomes
-     U+FFFD. `_validate_session` and `_validate_native_auth` inspect only
-     structure, so they accept exactly what the reference accepts. The
-     session bytes themselves are stored and resent untouched.
-   - **Helper frames.** `strictFrameLoad` refuses a frame with a lone
-     surrogate escape as `malformed-frame`. The reference admits such a
-     frame. It then either fails later on that member (`text.encode()` in a
-     `complete` frame gives `malformed-complete`) or forwards the string to
-     the Hands gateway. The port does not invent a replacement character
-     inside model output or tool parameters.
-
-   This is the one corpus case recorded as a known divergence
-   (`strictLoadDivergences` in `PiDifferentialSpec`).
-
-   **User-visible effect.** A helper frame with a lone surrogate escape
-   fails the Turn as `malformed-frame`. The reference fails it with the
-   code of the member it trips on, or completes it:
-   - in a `tool_call`'s parameters, it submits the call to the Hands
-     gateway, and the Turn can complete (a path or argv with a surrogate
-     usually comes back as a `provider` error result);
-   - in a `complete` frame's text, session identity or encoded members:
-     `malformed-complete`;
-   - in a `tool_call` identity: `runtime-failed` (the `UnicodeEncodeError`
-     of `len(identity.encode())` escapes the loop);
+6. **Lone surrogate escapes (resolved, audit finding SDA-12).** CPython's
+   scanner admits `"\ud800"` into a `str`; so do `strictLoad` and
+   `strictFrameLoad`, as a WTF-8 `Text` (`Petrus.Json.Wtf8`). Wherever the
+   reference calls `str.encode()` on such a string, the port checks first
+   (`encodeRefusal` in `Petrus.Agenticus.Internal.Validate`) and fails with
+   CPython's message. The class is `ValueError`, the base of CPython's
+   `UnicodeEncodeError`, which is what every `except` on the way tests for.
+   A helper frame that holds one is therefore failed, or forwarded, where
+   the reference does it:
+   - in a `tool_call`'s parameters, the call reaches the Hands gateway;
+   - in a `tool_result` that echoes one, `helper-pipe-failed` (`_write`);
+   - in a `complete` frame's text or session identity: `malformed-complete`,
+     and in the A5 loop also when the delta's messages hold one (the
+     combined transcript's encode);
+   - in a `tool_call` identity: the encode failure escapes the loop, so the
+     Turn ends `runtime-failed`;
    - in a method name: `malformed-tool-call`; in a frame type:
      `unknown-frame` (`frame-order` in the A5 loop); in a member name:
-     `frame-order`; in a `failed` code: `malformed-failed`.
+     `frame-order`; in a `failed` code: `malformed-failed` (`frame-order` in
+     the A5 loop);
+   - in the model phase's assistant `api` (`malformed-complete`) or a tool
+     call's identity (`malformed-proposal`), through the `_text` validators.
 
-   **Planned fix (audit finding SDA-12).** The port should keep such
-   strings and fail or forward them where the reference does. It needs
-   a `Text` that holds a lone surrogate. petrus-json has one since IMP-2
-   (commit 805e139, on `main` since merge 12ffe2b):
-   `ParseOptions.loneSurrogates = KeepLoneSurrogates` parses a lone
-   surrogate escape into a WTF-8 `Text`, `Petrus.Json.Wtf8.hasLoneSurrogate`
-   detects one, and `dumps` writes it back as `\udXXX` under `ensure_ascii`.
-   IMP-2 reached `main` only as the SDA-12 work closed, so the change is
-   still to do. It is:
-   - `strictFrameLoad` (`Pi.hs`) parses with
-     `strictParseOptions {loneSurrogates = KeepLoneSurrogates}` and still
-     refuses bytes that are not UTF-8. Its callers are the native frame
-     loop (`runSubprocess` in `Pi.hs`), the A5 application frame loop
-     (`PiApplication.hs`) and the probe frame (`probeInstalled` in
-     `Pi.hs`), which compares the frame to a fixed object, so a surrogate
-     still fails it.
-   - `strictLoad` keeps lone surrogates as well, through
-     `Petrus.Json.Wtf8.fromCodePoints` instead of `T.pack`. Its callers are
-     the sessions and credentials, the A5 transcripts and the model phase's
-     assistant and transcript payloads. The case then leaves
-     `strictLoadDivergences`.
-   - Wherever the reference calls `str.encode()` on such a value, the port
-     checks `hasLoneSurrogate` first and fails as CPython's
-     `UnicodeEncodeError` (a `ValueError`) does at that site:
-     - the `_text` validators of `pi.py`, `pi_application.py` and
-       `pi_model_phase.py` (`piText` and its counterparts), which the
-       `complete` frame's session identity reaches;
-     - the `complete` frame's final text (`len(text.encode())`), giving
-       `malformed-complete` in both loops;
-     - the `tool_call` identity (`len(identity.encode())`, outside any
-       `try`), giving `runtime-failed`;
-     - the A5 `complete` frame's combined transcript
-       (`json.dumps(..., ensure_ascii=False).encode()`), so a delta whose
-       messages hold a lone surrogate escape is `malformed-complete`. The
-       port accepts it today, since U+FFFD encodes;
-     - `_write` (`ensure_ascii=False` then `.encode()`), so a `tool_result`
-       that echoes a surrogate is `helper-pipe-failed`;
-     - the model phase's assistant blocks, which `_content_block` and
-       `_text` bound by their encoded length.
-   - `tool_call` parameters reach the Hands gateway as WTF-8 `Text`. The
-     reference's contract bounds paths and argv by characters
-     (`_bounded_text`), which `Data.Text.length` counts alike. Its
-     workspace adapter then hands them to a Motus `Command`, and CPython
-     encodes argv and `cwd` with `surrogateescape`: U+DC80–U+DCFF become raw
-     bytes and any other surrogate raises, which the adapter reports as a
-     `provider` error. petrus-execution's `spawnChild` encodes with GHC's
-     file-system encoding, whose round-trip escapes are the same U+DC80–
-     U+DCFF, so the two should agree. That needs a test on each side. One
-     known difference: `stage_write` digests `content.encode()` after the
-     command ran, so a content with U+DC80–U+DCFF fails in the reference
-     and would stage in the port (`Petrus.Agenticus.Hands.Workspace`, in
-     petrus-agenticus).
-   - New cases: forged helpers that send each of the frames above, in
-     `PiSpec` and `PiApplicationSpec`, with the reference's outcomes.
+   Past the gateway, the workspace adapter (`Petrus.Agenticus.Hands.Workspace`
+   in petrus-agenticus) matches CPython's `surrogateescape` argv: U+DC80–
+   U+DCFF reach the command as raw bytes, and any other surrogate fails
+   building it (`territory command failed`). A staged write's content
+   fails its `content.encode()` after the command ran, as in the reference.
+
+   The forged helpers in `PiSpec` and `PiApplicationSpec` cover each frame
+   case, `PiModelPhaseSpec` the assistant, and `WorkspaceSpec` the
+   workspace adapter. The differential corpus's lone surrogate case now
+   matches.
 
 7. **Ledger rows with foreign column types.** `_decode` passes raw SQLite
    values into `PiOperationRecord`. The port mirrors the values a tampered
@@ -191,17 +145,17 @@ sides of each one. Its single accepted difference is item 6.
 1. **Protocols are records.** `PiModelPhaseOperations`,
    `PiModelPhaseCustody`, `PhaseClient` and `PhaseFactory` replace the
    structural protocols. `piModelPhaseCustody` adapts a
-   `PiConnectionCustody`. Because the types are fixed, the reference's
+   `HostConnectionCustody`. Because the types are fixed, the reference's
    `isinstance` refusals cannot occur and have no port:
    - `TypeError("... exact configuration and connection")`;
    - `TypeError("... exact collaborators")`;
    - a non-`Materialization` or non-`AttachmentFence` custody answer;
    - a non-`PiModelPhasePublication` answer (`publication-mismatch`).
-2. **Adapter attributes are explicit state.** The reference's tests assign
-   `adapter.node`, `adapter.sdk_entrypoint`, `adapter.factory` and
-   `adapter.config`. The port provides `setModelPhaseNode`,
-   `setModelPhaseSdkEntrypoint`, `setModelPhaseFactory` and
-   `modifyModelPhaseConfig`. `isinstance(self.factory, _SubprocessFactory)`
+2. **Adapter attributes are fixed at construction.** The reference's tests
+   assign `adapter.node`, `adapter.sdk_entrypoint`, `adapter.factory` and
+   `adapter.config`. The port's tests build an adapter over the same parts
+   with those values instead; only the probe changes the Node and SDK
+   entrypoint afterwards. `isinstance(self.factory, _SubprocessFactory)`
    becomes the factory's `isSubprocess` flag.
 3. **Payload refusal messages.** `_payload` lets the strict parser's own
    exception escape: `JSONDecodeError`, a bare `ValueError` for a constant or
@@ -229,7 +183,7 @@ sides of each one. Its single accepted difference is item 6.
 1. **Protocols are records.** `PiApplicationContinuationOperations`,
    `PiApplicationTurnOperations`, `PiApplicationConnectionCustody`,
    `ApplicationClient` and `ApplicationFactory` replace the structural
-   protocols. `applicationCustody` adapts a `PiConnectionCustody`, and through
+   protocols. `applicationCustody` adapts a `HostConnectionCustody`, and through
    it the real `AgentConnectionCustody`. Because the types are fixed, the
    reference's `isinstance` refusals cannot occur and have no port:
    - `TypeError("Pi application codec requires exact operations")`;
@@ -241,14 +195,13 @@ sides of each one. Its single accepted difference is item 6.
    - a custody answer that is not a `Materialization`, `AttachmentFence`,
      `AdmissionResult` or `ReleaseResult`. The checks on the values (mode,
      fence, admission and release) remain.
-2. **Adapter attributes are explicit state.** The reference's tests assign
-   `_installation`, `_node`, `_coding`, `_core`, `_ai`, `_config` and
-   `_clock`, and they monkeypatch `_binding_current`. The port provides:
-   - `modifyApplicationAdapterRuntime`;
-   - `setApplicationAdapterConfig`, which validates, as `dataclasses.replace`
-     does;
-   - `setApplicationAdapterClock`;
-   - `ApplicationAdapterHooks.bindingCurrent`.
+2. **Adapter attributes are fixed at construction.** The reference's tests
+   assign `_installation`, `_node`, `_coding`, `_core`, `_ai`, `_config` and
+   `_clock`, and they monkeypatch `_binding_current`.
+   `newPiApplicationRuntimeAdapterWith` takes `ApplicationAdapterOptions`
+   instead: the clock, the factory, `ApplicationAdapterHooks.bindingCurrent`,
+   and `prepare`, the readiness a probe would record. The configuration is
+   validated once, as `dataclasses.replace` does.
 
    `isinstance(self._factory, _SubprocessFactory)` becomes the
    `subprocessFactoryInstalled` flag.
@@ -258,14 +211,10 @@ sides of each one. Its single accepted difference is item 6.
    the reference raises `subprocess.TimeoutExpired`, and `_execute` turns it
    into `runtime-failed`. The port reports `helper-exit-inconsistent`, as the
    native port does. Neither one publishes.
-4. **Frames.**
-   - As in the native port, a lone surrogate escape in a helper frame is a
-     `malformed-frame` (item 6 of the native list gives the effect and the
-     planned fix, which waits on petrus-json's WTF-8 strings).
-   - A `tool_call` whose `method` is an array or an object makes the
-     reference's `method not in _METHODS` raise `TypeError`, so the run ends
-     as `runtime-failed`. The port reports `malformed-tool-call`. Neither one
-     reaches the gateway.
+4. **Unhashable methods.** A `tool_call` whose `method` is an array or an
+   object makes the reference's `method not in _METHODS` raise `TypeError`,
+   so the run ends as `runtime-failed`. The port reports
+   `malformed-tool-call`. Neither one reaches the gateway.
 5. **Configuration numbers.** The three durations are `Double`s, so a bool
    cannot be passed. `repr` also differs for an integral duration: the
    reference renders the `int` it was given (`1`), and the port renders `1.0`.
@@ -279,9 +228,10 @@ sides of each one. Its single accepted difference is item 6.
    type built only by the composers, so the reference's
    `TypeError("Protocols cannot be instantiated")` cannot occur. The private
    attributes its tests reach (`_provider`, `_adapter`, `_ledger`, `_bodies`,
-   `_storage`, `_fingerprint`, `_territory_operation`) are exported
-   accessors, and `type(host._adapter._factory)` is `hostFactoryKind`.
-   Monkeypatching `host._bodies.publish` becomes `PiA2HostHooks.publishBodies`.
+   `_storage`, `_fingerprint`, `_territory_operation`) are accessors that
+   `PiA2Host.Internal` exports, and `type(host._adapter._factory)` is
+   `hostFactoryKind`. Monkeypatching `host._bodies.publish` becomes
+   `PiA2HostHooks.publishBodies`.
 2. **Fixed types.** These checks have no port, because the types rule them
    out:
    - `TypeError` for a `workspace_archive` that is not `bytes`;

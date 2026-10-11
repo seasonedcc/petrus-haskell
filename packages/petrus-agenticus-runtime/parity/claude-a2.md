@@ -25,7 +25,7 @@ upstream test name; parametrized cases keep pytest's ids.
 | `Client`, `Factory` | `ClaudeClient`, `ClaudeClientFactory` records driven by per-test plans |
 | `ToolSdk` | a capturing `ClaudeSdk` |
 | `monkeypatch` of `importlib.metadata.version` and `importlib.import_module` | `ClaudeProbeHooks` |
-| continuation, Turn and custody fakes | records over `ClaudeContinuationOperations`, `ClaudeTurnOperations` and `PiConnectionCustody` |
+| continuation, Turn and custody fakes | records over `ClaudeContinuationOperations`, `ClaudeTurnOperations` and `HostConnectionCustody` |
 
 `test/fixtures/claude/claude_agent_sdk` is a fake SDK package with the pinned
 SDK's public protocol surface (the attributes and `ClaudeAgentOptions`

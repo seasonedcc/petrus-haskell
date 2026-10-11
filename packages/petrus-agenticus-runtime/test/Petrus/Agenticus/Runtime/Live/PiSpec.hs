@@ -24,6 +24,7 @@ import Petrus.Agenticus.Hands.Contract (ToolMethod (..))
 import Petrus.Agenticus.Hands.Gateway (GatewayCounters (..), HandsGateway, counters)
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (InstalledComponent (..), ProbeDisposition (..), RuntimeInstallation (..), RuntimeProbeResult (..))
 import Petrus.Agenticus.Runtime.Live.Support
 import Petrus.Agenticus.Runtime.Operation (cleanupVerified)
@@ -60,9 +61,9 @@ snapshot connection =
     ]
 
 -- | @_NoCustody@: credential-free qualification may not touch authority.
-noCustody :: PiConnectionCustody
+noCustody :: HostConnectionCustody
 noCustody =
-  PiConnectionCustody
+  HostConnectionCustody
     { materialize = \_ _ _ _ _ -> failWith "credential-free qualification may not materialize authority"
     , activate = \_ _ -> failWith "credential-free qualification may not activate authority"
     , admitResult = \_ _ -> failWith "credential-free qualification may not admit a result"
@@ -82,7 +83,7 @@ newStores =
     <*> newStore "live-pi-turn-" "live Pi Turn custody conflict"
 
 -- | @_adapter@: a project binding and a private runtime root under @root@.
-adapterFor :: FilePath -> Stores -> PiConnectionCustody -> Text -> Text -> Bool -> IO PiRuntimeAdapter
+adapterFor :: FilePath -> Stores -> HostConnectionCustody -> Text -> Text -> Bool -> IO PiRuntimeAdapter
 adapterFor root stores custody provider model ccPatch = do
   let working = root </> "project-binding"
       runtime = root </> "runtime"
@@ -224,7 +225,7 @@ spec = describe "test_pi_real" $ do
               `withCleanup` c.storage.close
       flip withCleanup cleanup $ do
         stores <- newStores
-        operations <- piConnectionCustody c.custody
+        operations <- hostConnectionCustody c.custody
         adapter <- adapterFor tmp stores operations provider model (profile == "cc-patch-subscription")
         ((.disposition) <$> probe adapter probePaths) `shouldReturn` ProbeReady
         consumeHandoff handoffMessages handoff handoffIdentity

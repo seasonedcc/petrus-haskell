@@ -60,8 +60,9 @@ corpus and the cross-implementation interop spec pin that (see
 ## SQLite
 
 8. **Driver.** The reference uses CPython's `sqlite3`. The port goes through
-   `Petrus.Agenticus.Internal.Sqlite` over `direct-sqlite` 2.3.29, which
-   bundles SQLite 3.45.0. The reference venv links 3.53.4.
+   `Petrus.Agenticus.Internal.Sqlite` over the shared `petrus-sqlite`
+   connection (`direct-sqlite` 2.3.29, which bundles SQLite 3.45.0). The
+   reference venv links 3.53.4.
 
    - The DDL text, the pragmas, the transaction shape and the stored bytes are
      identical, and the corpus checks `sqlite_master.sql`.
@@ -71,13 +72,15 @@ corpus and the cross-implementation interop spec pin that (see
      `sqlite3_errmsg`.
    - Using a closed storage raises `ProgrammingError` with
      `Cannot operate on a closed database.`. Closing twice is harmless.
-
-   The module is the swap point for `petrus-sqlite`.
+   - Statements run through the connection's prepared-statement cache, as
+     CPython's `sqlite3` keeps one per connection.
 
 9. **Busy timeout.** The reference calls `sqlite3.connect(timeout=5)`, which
    uses the C `sqlite3_busy_timeout`. direct-sqlite does not expose that, so
-   the port runs `PRAGMA busy_timeout = 5000`, which installs the same
-   handler.
+   `petrus-sqlite` runs `PRAGMA busy_timeout = 5000` as the connection opens,
+   which installs the same handler before any other statement.
+   `test/Petrus/Agenticus/SqliteSpec.hs` checks both sides under the same
+   lock, including `timeout=0` failing at once.
 
 10. **`openSqliteConnectionStorageWith`** is a port-only, additive entry
     point. It runs extra statements, such as `PRAGMA synchronous = OFF`,

@@ -49,6 +49,8 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error (lenientDecode)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import FakeGitHub (Recorded (..), comparableCall, takeCalls, withFakeGitHubIO)
+import Hamsterdan.Agents.Pi (defaultPiRunnerOptions, newPiNativeRunner, piA2Runtime, piAgentRunner)
+import Hamsterdan.Agents.Pi qualified as Pi
 import Hamsterdan.Agents.Protocol (AgentRunner (..), Invocation (..), ReviewRequest (..))
 import Hamsterdan.GitHub.Client (AppCredentials (..), ClientOptions (..), newAppClients)
 import Hamsterdan.GitHub.Http (newPlainExchangeAt)
@@ -57,7 +59,7 @@ import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Agents (AgentSeams (..), composeHostAgent, newOwnedAgent, productionAgentSeams)
 import Hamsterdan.Host.Cli (inspectInstance)
 import Hamsterdan.Host.PiWorkspace (gitPiWorkspaceProvider)
-import Hamsterdan.Host.Scripted (clearReviewText, deterministicRepository, localClone, scriptedAgentRunner, scriptedPiA2Hooks)
+import Hamsterdan.Host.Scripted (clearReviewText, deterministicRepository, localClone, scriptedPiA2Hooks)
 import Hamsterdan.Host.Python (ValueError (..))
 import Hamsterdan.Host.Service (HostService (..), ServiceOptions (..), gitHubHostClients, noAgentCustody, openHostService, serviceOptions, v5ApplicationFactory)
 import Hamsterdan.Host.Service qualified as Host
@@ -509,14 +511,29 @@ haskellDrive network agent root (ProviderState sha initialComments) steps = do
       either (\problem -> cleanup >> throwIO problem) pure outcome
 
 -- | 'composeHostAgent' with the substitutions of @state_reference.py@'s
--- @compose_real_agent@ ("Hamsterdan.Host.Scripted").
+-- @compose_real_agent@ ("Hamsterdan.Host.Scripted"), and its runner's
+-- @poll_interval=AUTHORITY_POLL_SECONDS@.
 scriptedAgent :: Agent -> AgentSeams
 scriptedAgent selected =
   productionAgentSeams
     { hooks = scriptedPiA2Hooks selected.turns
     , workspaces = localClone selected.repository . gitPiWorkspaceProvider
-    , selectRunner = scriptedAgentRunner
+    , selectRunner = \host provider ->
+        either (throwIO . userError . T.unpack) (pure . piAgentRunner) $
+          newPiNativeRunner (piA2Runtime host) provider defaultPiRunnerOptions {Pi.pollInterval = authorityPollSeconds}
     }
+
+-- | How long the runner waits for a turn to settle before it asks the host
+-- again whether the attempt is current (@AUTHORITY_POLL_SECONDS@ of
+-- @state_reference.py@). Every such check reads the provider's authority
+-- (the PR, the base ref, rules, protection), and at the production 0.1 s
+-- their number grows with how long the scripted turn takes on the machine,
+-- in either language: a slow reference turn once made four more provider
+-- calls than the Haskell host. Waiting returns as soon as the turn settles,
+-- so a bound no turn here approaches leaves the checks every turn makes,
+-- and the provider calls depend on the steps alone.
+authorityPollSeconds :: Double
+authorityPollSeconds = 3600
 
 -- | The agent runner, recording each review as the clear-review runner does.
 recordingRunner :: IORef [Json] -> AgentRunner -> AgentRunner

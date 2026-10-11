@@ -53,12 +53,13 @@ module Petrus.Motus.Transport.ZeroMQ.Support
   ) where
 
 import Control.Concurrent
-import Control.Exception (SomeException, bracket, throwIO, try)
+import Control.Exception (SomeException, bracket, mask_, throwIO, try)
 import Control.Monad (unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.IORef
+import Data.List (isPrefixOf, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -79,8 +80,9 @@ import Petrus.Motus.Transport.ZeroMQ (ConnectionError (..), RuntimeError (..), V
 import System.Directory (copyFile, createDirectory, doesFileExist, getTemporaryDirectory, makeAbsolute, removeDirectoryRecursive, removeFile)
 import System.Environment (getEnvironment, getExecutablePath)
 import System.Exit (ExitCode (..))
-import System.FilePath ((</>))
+import System.FilePath (splitDirectories, (</>))
 import System.IO (Handle, hClose, hGetLine, hSetBinaryMode, openTempFile)
+import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Signals (signalProcess, sigKILL, sigTERM)
 import System.Process
 import System.Timeout (timeout)
@@ -117,12 +119,39 @@ obj = Object
 
 -- | @LocalDispatch(path, instance=..., activity_queues=...)@.
 localDispatch :: FilePath -> Text -> [(Text, Text)] -> IO LocalDispatch
-localDispatch path inst queues = openLocalDispatch path inst defaultLocalDispatchOptions {activityQueues = queues}
+localDispatch path inst queues = mask_ $ do
+  dispatch <- openLocalDispatch path inst defaultLocalDispatchOptions {activityQueues = queues}
+  remember path (Local.closeLocalDispatch dispatch)
+  pure dispatch
 
 -- | @LocalWorkerDispatch(path, queues=queues, worker_id=worker_id)@.
 localWorker :: FilePath -> [Text] -> Text -> IO WorkerDispatch
-localWorker path queues worker =
-  Local.toWorkerDispatch <$> openLocalWorkerDispatch path defaultLocalWorkerOptions {workerQueues = queues, workerId = Just worker}
+localWorker path queues worker = mask_ $ do
+  opened' <- openLocalWorkerDispatch path defaultLocalWorkerOptions {workerQueues = queues, workerId = Just worker}
+  remember path (Local.close opened')
+  pure (Local.toWorkerDispatch opened')
+
+-- | What 'localDispatch' and 'localWorker' opened, by path, with what closes
+-- it, so that 'withScratch' closes it before removing the directory. The
+-- reference's sessions and workers hold no connection between operations;
+-- the port's keep a pool, and one left open closes it when the garbage
+-- collector finalizes it. The last of those closes deletes the WAL file at
+-- an arbitrary moment: during the scratch directory's removal, that removal
+-- fails on the vanished file. Keyed by path, so examples running side by
+-- side close only their own.
+opened :: IORef [([FilePath], IO ())]
+opened = unsafePerformIO (newIORef [])
+{-# NOINLINE opened #-}
+
+remember :: FilePath -> IO () -> IO ()
+remember path closer = atomicModifyIORef' opened (\entries -> ((splitDirectories path, closer) : entries, ()))
+
+-- | Close what was opened under the directory, most recent first.
+closeOpenedIn :: FilePath -> IO ()
+closeOpenedIn dir = do
+  let inside (path, _) = splitDirectories dir `isPrefixOf` path
+  mine <- atomicModifyIORef' opened (\entries -> let (here, elsewhere) = partition inside entries in (elsewhere, here))
+  mapM_ snd mine
 
 -- | @_assert_task(path, epoch=epoch)@: the only task row is at this epoch.
 assertTask :: FilePath -> Integer -> IO ()
@@ -320,7 +349,8 @@ withRawDealer endpoint body =
 -- Files
 
 -- | A fresh, short scratch directory under the system temporary
--- directory, removed afterwards.
+-- directory, removed afterwards, once what 'localDispatch' and 'localWorker'
+-- opened in it is closed.
 withScratch :: (FilePath -> IO a) -> IO a
 withScratch =
   bracket
@@ -332,7 +362,7 @@ withScratch =
         createDirectory path
         pure path
     )
-    removeDirectoryRecursive
+    (\dir -> closeOpenedIn dir >> removeDirectoryRecursive dir)
 
 -- | @f"ipc://{tmp_path}/{name}"@.
 ipcEndpoint :: FilePath -> String -> Text

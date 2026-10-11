@@ -58,7 +58,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
-import Database.SQLite3.Direct qualified as Direct
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Sqlite
 import Petrus.Agenticus.Internal.Validate (pyIsSpace, sha256Hex)
@@ -196,8 +195,6 @@ updateState =
 
 data Handle = Handle
   { database :: Database
-  , select :: Statement
-  , update :: Statement
   , decoded :: IORef (Maybe (Text, StorageSnapshot))
   -- ^ The last payload text this connection read or wrote, with its decoded
   -- snapshot.  Decoding is a pure function of the text, so a load that reads
@@ -227,13 +224,9 @@ openSqliteConnectionStorageWith tuning path = do
         execute_ database "PRAGMA busy_timeout = 5000"
         mapM_ (execute_ database) tuning
         execute_ database connectionCustodyDdl
-        initial <- prepareStatement database insertInitial
-        runStatement initial [SQLText (encodeSnapshotText emptySnapshot)] `onException` finalizeStatement initial
-        finalizeStatement initial
-        select <- prepareStatement database selectState
-        update <- prepareStatement database updateState `onException` finalizeStatement select
+        runSql database insertInitial [SQLText (encodeSnapshotText emptySnapshot)]
         decoded <- newIORef Nothing
-        pure Handle {database, select, update, decoded}
+        pure Handle {database, decoded}
       )
       `onException` closeDatabase database
   lock <- newMVar (Just handle)
@@ -248,7 +241,7 @@ sqliteLoad :: MVar (Maybe Handle) -> IO StorageSnapshot
 sqliteLoad lock = do
   (row, decoded) <- withMVar lock $ \current -> do
     handle <- ensureOpen current
-    row <- queryRow handle.select []
+    row <- queryRow handle.database selectState []
     pure (row, handle.decoded)
   case row of
     Nothing -> throwIO (storageError "connection custody state is absent")
@@ -286,7 +279,7 @@ sqliteCompareAndSwap lock expected replacement = do
     execute_ handle.database "BEGIN IMMEDIATE"
     mask $ \restore -> do
       outcome <- try . restore $ do
-        runStatement handle.update [SQLInteger (fromInteger replacement.revision), SQLText payload, SQLInteger (fromInteger expected)]
+        runSql handle.database updateState [SQLInteger (fromInteger replacement.revision), SQLText payload, SQLInteger (fromInteger expected)]
         updated <- changedRows handle.database
         if updated /= 1
           then rollback handle >> pure False
@@ -302,16 +295,14 @@ sqliteCompareAndSwap lock expected replacement = do
           throwIO failure
   where
     rollback handle = do
-      autocommit <- Direct.getAutoCommit handle.database
-      unless autocommit (execute_ handle.database "ROLLBACK")
+      active <- inTransaction handle.database
+      when active (execute_ handle.database "ROLLBACK")
 
 -- | Closing twice is harmless, as with @sqlite3.Connection.close@.
 sqliteClose :: MVar (Maybe Handle) -> IO ()
 sqliteClose lock = modifyMVar_ lock $ \case
   Nothing -> pure Nothing
   Just handle -> do
-    finalizeStatement handle.select
-    finalizeStatement handle.update
     closeDatabase handle.database
     pure Nothing
 

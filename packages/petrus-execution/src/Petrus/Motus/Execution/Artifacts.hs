@@ -32,8 +32,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps)
 import Petrus.Motus.Execution.Error
-import Petrus.Motus.Execution.Internal.Common (uuidHex)
-import Petrus.Motus.Execution.Internal.Posix (atomicWriteFile, toRawPath)
+import Petrus.Motus.Execution.Internal.Common (replaceFile, shortTempName)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory, removeFile)
 import System.FilePath (dropExtension, (</>))
 import System.IO.Error (isDoesNotExistError)
@@ -102,14 +101,9 @@ putArtifact store bytes mediaType retentionClass producer = do
   metadata <-
     either (const (throwExecution ValueError "artifact metadata is not encodable")) pure $
       dumps defaultDumps {sortKeys = True} (artifactRefJson reference)
-  atomic (directory </> (T.unpack digest <> ".data")) bytes
-  atomic (directory </> (T.unpack digest <> ".json")) metadata
+  replaceFile shortTempName (directory </> (T.unpack digest <> ".data")) bytes
+  replaceFile shortTempName (directory </> (T.unpack digest <> ".json")) metadata
   pure reference
-  where
-    atomic path contents = do
-      target <- toRawPath path
-      let temporary = uuidHex >>= \hex -> toRawPath (blobDirectory store (hexDigest bytes) </> ("tmp" <> T.unpack (T.take 8 hex)))
-      atomicWriteFile temporary target contents
 
 -- | Read a blob, failing closed when its size or digest changed.
 readArtifact :: ArtifactStore -> ArtifactRef -> IO ByteString

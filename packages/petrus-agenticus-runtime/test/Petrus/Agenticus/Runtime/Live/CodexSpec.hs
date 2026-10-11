@@ -21,10 +21,10 @@ import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot, mkResolutionSnap
 import Petrus.Agenticus.Connection.Custody (ConnectionStatus (..), ConnectionView (..), ErasureResult (..), erase, lookupConnection, mkConnectionIdentity, revoke)
 import Petrus.Agenticus.Connection.Storage (ConnectionStorage (..))
 import Petrus.Agenticus.Runtime.Codex
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (InstalledComponent (..), ProbeDisposition (..), RuntimeInstallation (..), RuntimeProbeResult (..))
 import Petrus.Agenticus.Runtime.Live.Support
 import Petrus.Agenticus.Runtime.Operation (cleanupVerified)
-import Petrus.Agenticus.Runtime.Pi (piConnectionCustody)
 import Petrus.Agenticus.Runtime.Profiles (codexA2Local, codexA3Gondolin)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Continuation (ContinuationState (..), mkContinuation)
@@ -227,7 +227,7 @@ spec = describe "test_codex_real" $ do
       defaults <- codexAdapterOptions
       let hooks = defaults.hooks
           which name = if name == "codex" then pure (Just executable) else hooks.which name
-      operations <- piConnectionCustody c.custody
+      operations <- hostConnectionCustody c.custody
       adapter <-
         newCodexRuntimeAdapter
           (codexRuntimeConfig "codex-live-host") {credentialTtl = 240, commandTimeout = 180, cancellationGrace = 10}
@@ -316,7 +316,7 @@ spec = describe "test_codex_real" $ do
         consumeHandoff opaqueMessages authSource originalIdentity
         stores <- newStores
         defaults <- codexAdapterOptions
-        operations <- piConnectionCustody c.custody
+        operations <- hostConnectionCustody c.custody
         adapter <-
           newCodexGondolinRuntimeAdapter
             (codexRuntimeConfig "codex-gondolin-host") {credentialTtl = 300, commandTimeout = 240, cancellationGrace = 15}

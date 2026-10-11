@@ -44,14 +44,17 @@ import Petrus.Agenticus.Hands.Contract (RejectionCategory (..), ToolMethod (..),
 import Petrus.Agenticus.Hands.Gateway (CallEvidence (..), GatewayCounters (..), counters, evidence, gatewayAttachmentId)
 import Petrus.Agenticus.Hands.Grants (closeGrant, grantSpec, openGrant)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ProgramOwnership (..))
+import Petrus.Agenticus.Runtime.Custody (HostMaterialization (..))
+import Petrus.Agenticus.Runtime.Internal.Process (spawnPiped)
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperation (..), RuntimeOperationCleanup (..), cleanupVerified)
-import Petrus.Agenticus.Runtime.Pi
+import Petrus.Agenticus.Runtime.Pi.Internal
 import Petrus.Agenticus.Runtime.PiRecovery
 import Petrus.Agenticus.Runtime.PiSupport
 import Petrus.Agenticus.Runtime.Profiles (piNativeA2Local, piNativeA4E2b, piNativeA4Gondolin)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))
+import Petrus.Json qualified as J
 import System.Directory (canonicalizePath, createDirectory, findExecutable, removeDirectoryRecursive)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -74,6 +77,7 @@ spec = describe "test_pi" $ do
   subscriptionSpecs
   lifecycleSpecs
   recoverySpecs
+  surrogateSpecs
   spawnSpecs
 
 -- ---------------------------------------------------------------------------
@@ -139,12 +143,6 @@ reidentify :: ConnectionIdentity -> Text -> Text -> ConnectionIdentity
 reidentify c connectionId profile =
   ok (mkConnectionIdentity connectionId c.provider c.accountFingerprint profile)
 
-setFactory :: Rig -> PiHelperFactory -> IO ()
-setFactory rig f = modifyAdapterRuntime rig.adapter (\r -> r {installation = r.installation, factory = Just f})
-
-setHooks :: Rig -> PiAdapterHooks -> IO ()
-setHooks rig = setAdapterHooks rig.adapter
-
 -- | Run a helper test with Node, started once beforehand.
 --
 -- The helper tests bound one protocol run by the reference's wall-clock
@@ -165,12 +163,12 @@ privateDirectory :: FilePath -> IO ()
 privateDirectory path = createDirectory path >> setFileMode path 0o700
 
 operationRoot :: Rig -> FilePath -> IO FilePath
-operationRoot rig name = (</> name) . (.runtimeRoot) <$> rigConfig rig
+operationRoot rig name = pure ((rigConfig rig).runtimeRoot </> name)
 
 helperArgs
   :: Rig -> FilePath -> Text -> FilePath -> PiRuntimeInvocation -> Maybe PiContinuationPayloadV1 -> Maybe Text -> Maybe ByteString -> Maybe Text -> IO PiHelperArgs
 helperArgs rig node sdk privateRoot inv prior apiKey nativeAuth extension = do
-  config <- rigConfig rig
+  let config = rigConfig rig
   pure
     PiHelperArgs
       { node
@@ -215,8 +213,8 @@ awaitSignal v = timeout 2000000 (readMVar v) `shouldReturn` Just ()
 
 -- | The reference's stalled @_binding_current@: every call after the first
 -- signals and waits for release.
-stallBindingCurrent :: Rig -> IO (MVar (), MVar ())
-stallBindingCurrent rig = do
+stallBindingCurrent :: IO (PiAdapterHooks, MVar (), MVar ())
+stallBindingCurrent = do
   started <- newEmptyMVar
   released <- newEmptyMVar
   calls <- newIORef (0 :: Int)
@@ -224,8 +222,7 @@ stallBindingCurrent rig = do
         n <- atomicModifyIORef' calls (\c -> (c + 1, c + 1))
         when (n > 1) (signalWait started released)
         original current
-  setHooks rig (PiAdapterHooks (Just stalled) Nothing Nothing)
-  pure (started, released)
+  pure (PiAdapterHooks (Just stalled) Nothing Nothing, started, released)
 
 shouldNotContain' :: Text -> [Text] -> Expectation
 shouldNotContain' rendered secrets = forM_ secrets $ \s -> (s, s `T.isInfixOf` rendered) `shouldBe` (s, False)
@@ -249,7 +246,7 @@ descriptorSpecs = do
     piCcPatchSourceCommit `shouldBe` "1891a39e3e1c61e37f950159fdc51de1ecffce84"
     piSubscriptionConnectionCapabilities.offers `shouldBe` Set.fromList ["connection.pi-compatible"]
     piCcPatchConnectionCapabilities.offers `shouldBe` Set.fromList ["connection.pi-compatible"]
-    config <- rigConfig rig
+    let config = rigConfig rig
     adapterText <- renderPiRuntimeAdapter rig.adapter
     let rendered = T.pack (show payload) <> renderPiRuntimeConfig config <> renderPiRuntimeInvocation inv <> adapterText
     rendered `shouldNotContain'` [sessionId, sessionCanary, prompt, "pi-access-canary", "pi-refresh-canary", T.pack tmp]
@@ -401,14 +398,13 @@ helperSpecs = do
               marker
               ("  if(options.customTools.map(value=>value.name).join()!=='" <> expected <> "') throw new Error('advertisement');\n" <> marker)
               source
-          config <- rigConfig rig
+          let config = rigConfig rig
           let prior =
                 if resumed
                   then Just (ok (mkPiContinuationPayloadV1 sessionId (workingBinding config.workingDirectory) (session sessionId [])))
                   else Nothing
           client <- framedClient subprocessOptions node sdk privateRoot rig inv prior
-          frame <- subprocessStartFrame client
-          case lookup "schemas" frame of
+          case lookup "schemas" (subprocessStartFrame client) of
             Just (Object schemas) -> map fst schemas `shouldBe` map toolMethodText capabilities
             _ -> expectationFailure "start frame has no schema object"
           result <- runFor client inv
@@ -456,9 +452,8 @@ helperSpecs = do
         privateRoot <- operationRoot rig "invalid-tools-operation"
         let sdk = tmp </> "invalid-tools-sdk.mjs"
         framedSdk >>= writeText sdk
-        client <- framedClient subprocessOptions node sdk privateRoot rig inv Nothing
-        frame <- subprocessStartFrame client
-        setSubprocessStartFrame client [(name, if name == "schemas" then schemas else value) | (name, value) <- frame]
+        let replaceSchemas frame = [(name, if name == "schemas" then schemas else value) | (name, value) <- frame]
+        client <- framedClient subprocessOptions {adjustStart = replaceSchemas} node sdk privateRoot rig inv Nothing
         raises (runFor client inv) RuntimeProtocolError "protocol-failed"
         evidence inv.gateway `shouldReturn` []
         closeClient client `shouldReturn` True
@@ -482,11 +477,9 @@ helperSpecs = do
     let sdk = tmp </> "fake-pi-sdk.mjs"
     framedSdk >>= writeText sdk
     helper <- piHelperPath
-    let realHelper rig =
-          modifyAdapterRuntime rig.adapter $ \r ->
-            r {installation = r.installation, node = Just node, sdkEntrypoint = Just (T.pack sdk), factory = Just (subprocessFactory helper)}
-    gondolin <- newRig (tmp </> "gondolin") rigOptions {optTerritory = "gondolin"}
-    realHelper gondolin
+    let realHelper r =
+          r {installation = r.installation, node = Just node, sdkEntrypoint = Just (T.pack sdk), factory = Just (subprocessFactory helper)}
+    gondolin <- newRig (tmp </> "gondolin") rigOptions {optTerritory = "gondolin", optPrepare = realHelper}
     firstInvoked <- invoke gondolin "g1" invocationOptions
     firstOperation <- startPi gondolin.adapter firstInvoked.invocation
     firstResult <- waitPiOperation firstOperation (Just 3)
@@ -496,8 +489,7 @@ helperSpecs = do
     emptyRoot gondolin
     settledVerified firstInvoked.attachment `shouldReturn` True
 
-    e2b <- newRig (tmp </> "e2b") rigOptions {optTerritory = "e2b", optPredecessor = Just gondolin}
-    realHelper e2b
+    e2b <- newRig (tmp </> "e2b") rigOptions {optTerritory = "e2b", optPredecessor = Just gondolin, optPrepare = realHelper}
     secondInvoked <- invoke e2b "g2" invocationOptions {invContinuation = Just (claimed firstReference)}
     secondOperation <- startPi e2b.adapter secondInvoked.invocation
     secondResult <- waitPiOperation secondOperation (Just 3)
@@ -709,9 +701,9 @@ a4Specs = do
 
   forM_ ["gondolin", "e2b"] $ \profile ->
     it ("test_native_a4_cancellation_wins_while_remote_publication_lookup_is_stalled[" <> T.unpack profile <> "]") $ withTemp $ \tmp -> do
-      rig <- newRig tmp rigOptions {optTerritory = profile}
+      (hooks, started, released) <- stallBindingCurrent
+      rig <- newRig tmp rigOptions {optTerritory = profile, optHooks = hooks}
       invoked <- invoke rig "stalled-publication" invocationOptions
-      (started, released) <- stallBindingCurrent rig
       op <- startPi rig.adapter invoked.invocation
       awaitSignal started
       ( do
@@ -734,11 +726,10 @@ a4Specs = do
 
   forM_ ["grant", "deadline"] $ \lapse -> forM_ ["gondolin", "e2b"] $ \profile ->
     it ("test_native_a4_rechecks_publication_admission_after_remote_lookup[" <> lapse <> "-" <> T.unpack profile <> "]") $ withTemp $ \tmp -> do
-      rig <- newRig tmp rigOptions {optTerritory = profile}
-      invoked <- invoke rig "stale-admission" invocationOptions
       clock <- getMonotonicTime >>= newIORef
-      setAdapterClock rig.adapter (readIORef clock)
-      (started, released) <- stallBindingCurrent rig
+      (hooks, started, released) <- stallBindingCurrent
+      rig <- newRig tmp rigOptions {optTerritory = profile, optClock = Just (readIORef clock), optHooks = hooks}
+      invoked <- invoke rig "stale-admission" invocationOptions
       op <- startPi rig.adapter invoked.invocation
       awaitSignal started
       expected <-
@@ -860,12 +851,15 @@ subscriptionSpecs = do
     kinds rig `shouldReturn` ["materialize", "release"]
 
   it "test_helper_construction_refuses_a_grant_replaced_after_initial_validation" $ withTemp $ \tmp -> do
-    rig <- newRig tmp rigOptions
-    invoked <- invoke rig "replaced-grant" invocationOptions {invCapabilities = Just [WorkspaceRead]}
     helper <- piHelperPath
-    setFactory rig $ PiHelperFactory $ \arguments -> do
-      _ <- openGrant (Episode.grants invoked.attachment) (grantSpec [WorkspaceRead] (episodeDeadline invoked.attachment) 1)
-      subprocessClient <$> newSubprocessClient helper arguments
+    attached <- newEmptyMVar
+    let replacing = PiHelperFactory $ \arguments -> do
+          current <- readMVar attached
+          _ <- openGrant (Episode.grants current) (grantSpec [WorkspaceRead] (episodeDeadline current) 1)
+          subprocessClient <$> newSubprocessClient helper arguments
+    rig <- newRig tmp rigOptions {optPrepare = \r -> r {installation = r.installation, factory = Just replacing}}
+    invoked <- invoke rig "replaced-grant" invocationOptions {invCapabilities = Just [WorkspaceRead]}
+    putMVar attached invoked.attachment
     op <- startPi rig.adapter invoked.invocation
     r <- waitPiOperation op (Just 3)
     (r.outcome, r.acceptedAppends, r.terminationCode) `shouldBe` (TurnFailed, 0, "grant-mismatch")
@@ -890,8 +884,7 @@ subscriptionSpecs = do
     length <$> readIORef native.factory.calls `shouldReturn` 0
 
   it "test_cc_patch_lane_requires_qualified_extension_before_authority" $ withTemp $ \tmp -> do
-    rig <- newRig tmp rigOptions {optProfile = "cc-patch-subscription"}
-    modifyAdapterRuntime rig.adapter (\r -> r {installation = r.installation, ccPatchEntrypoint = Nothing})
+    rig <- newRig tmp rigOptions {optProfile = "cc-patch-subscription", optPrepare = \r -> r {installation = r.installation, ccPatchEntrypoint = Nothing}}
     inv <- invocation rig "missing-extension"
     raises (startPi rig.adapter inv) RuntimeProtocolError "cc-patch-not-ready"
     readIORef rig.custody.records `shouldReturn` []
@@ -905,9 +898,8 @@ subscriptionSpecs = do
     kinds rig `shouldReturn` ["materialize", "activate", "release"]
 
   it "test_subscription_stale_attachment_after_run_prevents_checkpoint_and_result_publication" $ withTemp $ \tmp -> do
-    rig <- newRig tmp rigOptions {optProfile = "subscription"}
+    rig <- newRig tmp rigOptions {optProfile = "subscription", optHooks = PiAdapterHooks Nothing (Just (\_ -> pure (Just "grant-mismatch"))) Nothing}
     inv <- invocation rig "stale"
-    setHooks rig (PiAdapterHooks Nothing (Just (\_ -> pure (Just "grant-mismatch"))) Nothing)
     r <- startWait rig inv
     (r.terminationCode, r.acceptedAppends) `shouldBe` ("grant-mismatch", 0)
     noRefs r
@@ -962,10 +954,8 @@ subscriptionSpecs = do
       emptyRoot rig
 
   it "test_subscription_reserves_publication_time_before_materializing_authority" $ withTemp $ \tmp -> do
-    rig <- newRig tmp rigOptions {optProfile = "subscription"}
+    rig <- newRig tmp rigOptions {optProfile = "subscription", optConfig = \config -> config {credentialTtl = 2}}
     inv <- invocation rig "ttl"
-    config <- rigConfig rig
-    setAdapterConfig rig.adapter config {credentialTtl = 2}
     raises (startPi rig.adapter inv) RuntimeProtocolError "subscription-ttl-insufficient"
     readIORef rig.custody.records `shouldReturn` []
 
@@ -1068,9 +1058,8 @@ lifecycleSpecs = do
       when (profile == "subscription") $ kinds rig `shouldReturn` ["materialize", "activate", "release"]
 
   it "test_thread_start_failure_rolls_back_registration" $ withTemp $ \tmp -> do
-    rig <- newRig tmp rigOptions
+    rig <- newRig tmp rigOptions {optHooks = PiAdapterHooks Nothing Nothing (Just (\_ -> throwAgenticus RuntimeError "start"))}
     inv <- invocation rig "thread"
-    setHooks rig (PiAdapterHooks Nothing Nothing (Just (\_ -> throwAgenticus RuntimeError "start")))
     raises (startPi rig.adapter inv) RuntimeError "start"
     adapterOperationIds rig.adapter >>= (`shouldNotContain` ["thread"])
 
@@ -1140,7 +1129,7 @@ replaceReceipt :: (Text -> IO (Maybe RuntimeTurnSettlement)) -> PiAdapterSurface
 replaceReceipt receipt s = PiAdapterSurface {adapter = s.adapter, config = s.config, start = s.start, receipt, evict = s.evict}
 
 fingerprintFor :: Rig -> PiRuntimeInvocation -> IO Text
-fingerprintFor rig inv = rigConfig rig >>= \config -> either throwIOE pure (piDurableFingerprint config inv)
+fingerprintFor rig inv = either throwIOE pure (piDurableFingerprint (rigConfig rig) inv)
 
 admitFor :: SqlitePiOperationLedger -> Rig -> PiRuntimeInvocation -> IO ()
 admitFor ledger rig inv = do
@@ -1381,12 +1370,67 @@ recoverySpecs = do
     (record.phase, record.cleanup) `shouldBe` (PhaseSettled, RuntimeCleanupNotCreated)
     ledgerClose ledger
     body <- B.readFile path
-    config <- rigConfig rig
+    let config = rigConfig rig
     forM_ [TE.encodeUtf8 prompt, auth, TE.encodeUtf8 sessionCanary, TE.encodeUtf8 (T.pack config.workingDirectory)] $ \secret ->
       (secret, secret `B.isInfixOf` body) `shouldBe` (secret, False)
     reopened <- openSqlitePiOperationLedger path
     (.cleanup) <$> lookupRecord reopened inv.operationId `shouldReturn` RuntimeCleanupNotCreated
     ledgerClose reopened
+
+-- ---------------------------------------------------------------------------
+-- Lone surrogate escapes in helper frames (not in the reference)
+
+-- | The reference admits a lone surrogate escape into a helper frame and
+-- fails on, or forwards, the member that holds it (@divergences/pi.md@,
+-- item 6). Each case forges one such frame.
+surrogateSpecs :: Spec
+surrogateSpecs = describe "lone surrogate escapes in helper frames (not in the reference)" $ do
+  let clientFor options tmp node scenario = do
+        rig <- newRig tmp rigOptions
+        inv <- (.invocation) <$> invoke rig ("surrogate-" <> scenario) invocationOptions {invCapabilities = Just [WorkspaceRead]}
+        privateRoot <- operationRoot rig (T.unpack ("surrogate-" <> scenario <> "-operation"))
+        privateDirectory privateRoot
+        let helper = tmp </> "lone-surrogate-helper.mjs"
+        fixture "lone_surrogate_helper.mjs" >>= writeText helper . T.replace "__SCENARIO__" scenario
+        client <- helperArgs rig node "/ignored" privateRoot inv Nothing (Just keyText) Nothing Nothing >>= newSubprocessClientWith options helper
+        pure (client, inv, privateRoot)
+      finish (client, _, privateRoot) = do
+        closeClient client `shouldReturn` True
+        removeDirectoryRecursive privateRoot
+      calls inv = map (\e -> (e.method, e.ok, e.category)) <$> evidence inv.gateway
+
+  it "forwards tool_call parameters that hold one to the Hands gateway" $ withNode $ \node -> withTemp $ \tmp -> do
+    opened@(client, inv, _) <- clientFor subprocessOptions tmp node "params"
+    result <- runFor client inv
+    fmap (.text) result.candidate `shouldBe` Just "answer"
+    calls inv `shouldReturn` [(Nothing, False, Just CategoryPath)]
+    finish opened
+
+  it "fails a tool_result that echoes one as helper-pipe-failed (str.encode())" $ withNode $ \node -> withTemp $ \tmp -> do
+    let echo _ = Object [("echo", String (J.surrogateText 0xD800))]
+    opened@(client, inv, _) <- clientFor subprocessOptions {modelData = echo} tmp node "echo"
+    raises (runFor client inv) RuntimeProtocolError "helper-pipe-failed"
+    finish opened
+
+  it "raises the tool_call identity's encode failure, which no except catches" $ withNode $ \node -> withTemp $ \tmp -> do
+    opened@(client, inv, _) <- clientFor subprocessOptions tmp node "identity"
+    raises (runFor client inv) ValueError "surrogates not allowed"
+    calls inv `shouldReturn` []
+    finish opened
+
+  forM_
+    [ ("text", "malformed-complete")
+    , ("method", "malformed-tool-call")
+    , ("type", "unknown-frame")
+    , ("member", "frame-order")
+    , ("code", "malformed-failed")
+    ]
+    $ \(scenario, code) ->
+      it (T.unpack ("fails one in the " <> scenario <> " as " <> code)) $ withNode $ \node -> withTemp $ \tmp -> do
+        opened@(client, inv, _) <- clientFor subprocessOptions tmp node scenario
+        raises (runFor client inv) RuntimeProtocolError code
+        calls inv `shouldReturn` []
+        finish opened
 
 -- ---------------------------------------------------------------------------
 -- Spawning (not in the reference)

@@ -15,8 +15,9 @@ pin those on both sides. The corpus's single tolerated difference is item 5.
    protocols are records here, whose fields are the protocol's methods:
    - continuation storage is `CodexContinuationOperations {store, load}`;
    - Turn storage is `CodexTurnOperations {storeTurn}`;
-   - connection custody is the `PiConnectionCustody` record the Pi host
-     already uses (`piConnectionCustody` adapts the real
+   - connection custody is the shared `HostConnectionCustody` record
+     (`Petrus.Agenticus.Runtime.Custody`, the reference's
+     `PiConnectionCustody`; `hostConnectionCustody` adapts the real
      `AgentConnectionCustody`).
 
    `CodexContinuationCodec` is the reference's codec over those operations.
@@ -27,8 +28,8 @@ pin those on both sides. The corpus's single tolerated difference is item 5.
    | Reference seam | Port |
    | --- | --- |
    | `shutil.which`, `subprocess.run` in the probe | `CodexProbeHooks {which, run}` |
-   | assigning `adapter.start` | `setCodexStartWrapper` |
-   | `_helper_executable` | `setCodexHelperExecutable` |
+   | assigning `adapter.start` | `CodexAdapterOptions.startWrapper` (the test's switch lives in its rig) |
+   | `_helper_executable` | `CodexAdapterOptions.guestInterpreter` (Gondolin) |
    | `os.environ` read by the Activity client | `codexGondolinActivityClientWith` takes the lookup |
 
    `officialCodexProbeHooks` and `codexGondolinActivityClient` are the

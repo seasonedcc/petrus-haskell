@@ -7,6 +7,7 @@ import Petrus.Agenticus.CustodyInteropSpec qualified
 import Petrus.Agenticus.EffectSpec qualified
 import Petrus.Agenticus.ProgramSpec qualified
 import Petrus.Agenticus.RuntimeFoundationSpec qualified
+import Petrus.Agenticus.SqliteSpec qualified
 import Petrus.Agenticus.ThreadDifferentialSpec qualified
 import Petrus.Agenticus.ThreadSpec qualified
 import Petrus.Agenticus.Hands.ConformanceSpec qualified
@@ -28,3 +29,4 @@ main = hspec $ do
   Petrus.Agenticus.ConnectionSpec.spec
   Petrus.Agenticus.CustodyCorpusSpec.spec
   Petrus.Agenticus.CustodyInteropSpec.spec
+  Petrus.Agenticus.SqliteSpec.spec

@@ -189,10 +189,7 @@ observeStore :: FilePath -> Bool -> IO Json
 observeStore root full = do
   database <- Sql.openDatabase (root </> "connections.sqlite3")
   row <-
-    ( do
-        statement <- Sql.prepareStatement database "SELECT revision, payload FROM connection_custody WHERE singleton = 1"
-        Sql.queryRow statement [] `finally` Sql.finalizeStatement statement
-    )
+    Sql.queryRow database "SELECT revision, payload FROM connection_custody WHERE singleton = 1" []
       `finally` Sql.closeDatabase database
   (revision, payload) <- case row of
     Just [Sql.SQLInteger revision, Sql.SQLText payload] -> pure (toInteger revision, payload)

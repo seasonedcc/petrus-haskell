@@ -14,7 +14,7 @@
 -- which calls those hooks, handlers and the 'SessionStore' back over its
 -- JSON-lines pipe, so every persisted transcript byte is produced here.
 -- Connection custody is the record shared with the Pi host
--- ('PiConnectionCustody').
+-- ('HostConnectionCustody').
 module Petrus.Agenticus.Runtime.Claude
   ( -- * Pins
     claudeSdkVersion
@@ -113,17 +113,16 @@ module Petrus.Agenticus.Runtime.Claude
   , newClaudeRuntimeAdapter
   , renderClaudeRuntimeAdapter
   , claudeAdapterConfig
-  , setClaudeReady
   , probeClaude
   , startClaude
   ) where
 
 import Control.Concurrent (forkIO, killThread)
+import Control.Concurrent.Async (async, cancel)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception
   ( IOException
-  , SomeAsyncException
   , SomeException
   , catch
   , finally
@@ -185,6 +184,7 @@ import Petrus.Agenticus.Hands.Contract (ToolResult (..), allToolMethods, toolMet
 import Petrus.Agenticus.Hands.Gateway (HandsGateway, gatewayAttachmentEpoch, gatewayAttachmentId, gatewayEpisodeId)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Validate (isBoundedText, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
@@ -193,7 +193,9 @@ import Petrus.Agenticus.Program.Descriptor
   , agentProgramDescriptor
   , continuationRequirement
   )
-import Petrus.Agenticus.Runtime.HostSupport
+import Petrus.Agenticus.Runtime.Custody
+import Petrus.Agenticus.Runtime.Internal.Process (runBounded, micros)
+import Petrus.Agenticus.Runtime.Internal.HostSupport
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation
@@ -203,15 +205,16 @@ import Petrus.Agenticus.Runtime.Installation
   , mkRuntimeInstallation
   , mkRuntimeProbeResult
   )
+import Petrus.Agenticus.Runtime.Internal.Lifecycle (Lifecycle, LifecycleTexts (..), newLifecycle)
+import Petrus.Agenticus.Runtime.Internal.Lifecycle qualified as Lifecycle
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
   , RuntimeOperation (..)
   , RuntimeOperationCleanup
-  , mkRuntimeOperationCleanup
   , runtimeProtocolError
   , runtimeProtocolErrorCode
   )
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..), canonicalUuid, micros, piToolSchemas, runBounded)
+import Petrus.Agenticus.Runtime.Pi.Internal (canonicalUuid, piToolSchemas)
 import Petrus.Agenticus.Runtime.Profiles (claudeA2Local)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation
@@ -243,7 +246,6 @@ import System.Posix.Files qualified as Files
 import System.Posix.IO qualified as PosixIO
 import System.Posix.Unistd (fileSynchronise)
 import System.Posix.User (getEffectiveUserID)
-import System.Process (proc)
 import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
@@ -698,9 +700,6 @@ member name = \case
   Object members -> lookup name (reverse members)
   _ -> Nothing
 
-isAsync :: SomeException -> Bool
-isAsync e = isJust (fromException e :: Maybe SomeAsyncException)
-
 -- ---------------------------------------------------------------------------
 -- Configuration
 
@@ -1050,10 +1049,10 @@ claudeSidecar = ClaudeSidecar "python3" [] 10 defaultSidecarPool
 claudeSidecarPath :: IO FilePath
 claudeSidecarPath = getDataFileName "data/claude_sidecar.py"
 
-sidecarCommand :: ClaudeSidecar -> String -> IO SidecarCommand
+sidecarCommand :: ClaudeSidecar -> String -> IO HelperSpec
 sidecarCommand s mode = do
   script <- claudeSidecarPath
-  pure (SidecarCommand s.python (["-I", "-B", script, mode] <> s.searchPath) Nothing Nothing)
+  pure (HelperSpec s.python (["-I", "-B", script, mode] <> s.searchPath) Nothing Nothing)
 
 -- | The real SDK behind 'ClaudeSdk': one channel of the shared sidecar per
 -- client, which builds the official client and forwards the hook, tool and
@@ -1113,7 +1112,7 @@ sidecarSdk config = ClaudeSdk $ \request -> do
               (_, Just (Int k)) -> void (forkIO (serveCall k frame))
               _ -> pure ()
             dispatch
-  dispatcher <- forkIO (dispatch `finally` failAll)
+  dispatcher <- async (dispatch `finally` failAll)
   let call :: Text -> [(Text, Json)] -> IO Json
       call op fields = do
         n <- atomicModifyIORef' counter (\i -> (i + 1, i + 1))
@@ -1164,7 +1163,7 @@ sidecarSdk config = ClaudeSdk $ \request -> do
       , disconnect = void (call "disconnect" [])
       , release = do
           clean <- channelClose s config.grace
-          killThread dispatcher
+          cancel dispatcher
           pure clean
       }
 
@@ -1178,17 +1177,11 @@ data ClaudeOperation = ClaudeOperation
   , key :: Text
   , prior :: Maybe ClaudeContinuationPayloadV1
   , factory :: ClaudeClientFactory
-  , monitor :: MVar ()
-  , cancelled :: TVar Bool
-  , publishing :: TVar Bool
-  , result :: TVar (Maybe RuntimeTurnSettlement)
-  , cleanupDisposition :: TVar RuntimeCleanupDisposition
-  , cleanup :: TVar (Maybe RuntimeOperationCleanup)
-  , finished :: TVar Bool
+  , lifecycle :: Lifecycle
   }
 
 instance Eq ClaudeOperation where
-  a == b = a.result == b.result
+  a == b = a.lifecycle == b.lifecycle
 
 instance Show ClaudeOperation where
   show = T.unpack . renderClaudeOperation
@@ -1199,49 +1192,32 @@ renderClaudeOperation o = "_Operation(operation_id=" <> pythonStrRepr o.inv.oper
 claudeOperationId :: ClaudeOperation -> Text
 claudeOperationId o = o.inv.operationId
 
-guarded :: ClaudeOperation -> IO a -> IO a
-guarded o action = withMVar o.monitor (const action)
-
 operationCurrent :: ClaudeOperation -> IO Bool
-operationCurrent o = not <$> readTVarIO o.cancelled
+operationCurrent o = Lifecycle.current o.lifecycle
 
 runOperation :: ClaudeOperation -> IO ()
 runOperation o = do
   outcome <- try (execute o.adapter o)
-  (settlement, disposition) <- case outcome of
+  settled <- case outcome of
     Right value -> pure value
     Left (_ :: SomeException) -> do
       failed <- settle o.inv TurnFailed 0 "runtime-failed" Nothing Nothing
       pure (failed, RuntimeCleanupUnverified)
-  guarded o $ do
-    wasCancelled <- readTVarIO o.cancelled
-    settlement' <-
-      if wasCancelled && settlement.outcome /= TurnCancelled
-        then settle o.inv TurnCancelled 0 "cancelled" Nothing Nothing
-        else pure settlement
-    atomically $ do
-      writeTVar o.result (Just settlement')
-      writeTVar o.cleanupDisposition disposition
+  Lifecycle.settle o.lifecycle (settle o.inv TurnCancelled 0 "cancelled" Nothing Nothing) settled
 
 -- | @_Operation.claim@: the last cancellation point before publication.
 claim :: ClaudeOperation -> IO (Maybe Text)
-claim o = guarded o $ do
-  wasCancelled <- readTVarIO o.cancelled
-  if wasCancelled
-    then pure (Just "cancelled")
-    else do
-      grant <- currentGrant (Episode.grants o.inv.attachment)
-      case grant of
-        Just g | g.grantEpoch == o.inv.grantEpoch -> do
-          now <- o.adapter.clock
-          if now >= min (Episode.episodeDeadline o.inv.attachment) g.deadline
-            then pure (Just "deadline-exceeded")
-            else do
-              current <- leaseObserved (Episode.episodeBinding o.inv.attachment)
-              if current
-                then atomically (writeTVar o.publishing True) >> pure Nothing
-                else pure (Just "runtime-local-lease-required")
-        _ -> pure (Just "grant-mismatch")
+claim o = Lifecycle.claim o.lifecycle $ do
+  grant <- currentGrant (Episode.grants o.inv.attachment)
+  case grant of
+    Just g | g.grantEpoch == o.inv.grantEpoch -> do
+      now <- o.adapter.clock
+      if now >= min (Episode.episodeDeadline o.inv.attachment) g.deadline
+        then pure (Just "deadline-exceeded")
+        else do
+          current <- leaseObserved (Episode.episodeBinding o.inv.attachment)
+          pure (if current then Nothing else Just "runtime-local-lease-required")
+    _ -> pure (Just "grant-mismatch")
 
 -- | Whether the binding's lease is still the exact ready lease its
 -- provider reports.
@@ -1259,61 +1235,22 @@ leaseObserved binding = case binding.motus of
 
 -- | @wait(timeout)@.
 waitClaudeOperation :: ClaudeOperation -> Maybe Double -> IO RuntimeTurnSettlement
-waitClaudeOperation o bound = do
-  forM_ bound $ \t ->
-    when (isNaN t || isInfinite t || t <= 0) $ throwIO (valueError "Claude operation wait timeout must be positive and finite")
-  closedAlready <- isJust <$> readTVarIO o.cleanup
-  when closedAlready $ throwIO (runtimeProtocolError "operation-closed")
-  expired <- case bound of
-    Nothing -> newTVarIO False
-    Just t -> registerDelay (micros t)
-  settled <-
-    atomically $
-      (readTVar o.result >>= maybe retry (pure . Just))
-        `orElse` (readTVar expired >>= \e -> if e then pure Nothing else retry)
-  maybe (throwAgenticus TimeoutError "Claude operation has not settled") pure settled
+waitClaudeOperation o = Lifecycle.waitSettled o.lifecycle
 
 -- | @cancel(reason)@.
 cancelClaudeOperation :: ClaudeOperation -> Text -> IO CancellationDisposition
 cancelClaudeOperation o reason = do
   _ <- throwLeft (claudeText "Claude cancellation reason" 256 reason)
-  disposition <- guarded o $ do
-    settled <- isJust <$> readTVarIO o.result
-    publishing <- readTVarIO o.publishing
-    wasCancelled <- readTVarIO o.cancelled
-    if
-      | settled || publishing -> pure CancellationTooLate
-      | wasCancelled -> pure CancellationAlreadyRequested
-      | otherwise -> atomically (writeTVar o.cancelled True) >> pure CancellationRequested
-  when (disposition == CancellationRequested) $
-    Episode.cancel o.inv.attachment reason `catch` \(e :: SomeException) -> when (isAsync e) (throwIO e)
-  pure disposition
+  Lifecycle.requestCancel o.lifecycle $
+    Episode.cancel o.inv.attachment reason `catch` rethrowAsync
 
 -- | @close()@.
 closeClaudeOperation :: ClaudeOperation -> IO RuntimeOperationCleanup
-closeClaudeOperation o = do
-  existing <- guarded o $ do
-    existing <- readTVarIO o.cleanup
-    settled <- isJust <$> readTVarIO o.result
-    wasCancelled <- readTVarIO o.cancelled
-    when (isNothing existing && not settled && not wasCancelled) $ throwIO (runtimeProtocolError "operation-active")
-    pure existing
-  case existing of
-    Just evidence -> pure evidence
-    Nothing -> do
-      let config = o.adapter.config
-      _ <- timeout (micros (config.disconnectTimeout + config.cancellationGrace)) (atomically (readTVar o.finished >>= check))
-      done <- readTVarIO o.finished
-      disposition <- if done then readTVarIO o.cleanupDisposition else pure RuntimeCleanupUnverified
-      let code = case disposition of
-            RuntimeCleanupNotCreated -> "client-not-created"
-            RuntimeCleanupClean -> "client-closed"
-            RuntimeCleanupUnverified -> "cleanup-uncertain"
-      evidence <- throwLeft (mkRuntimeOperationCleanup o.inv.operationId disposition code False)
-      atomically $
-        readTVar o.cleanup >>= \case
-          Just earlier -> pure earlier
-          Nothing -> writeTVar o.cleanup (Just evidence) >> pure evidence
+closeClaudeOperation o =
+  Lifecycle.closeWith
+    o.lifecycle
+    (o.adapter.config.disconnectTimeout + o.adapter.config.cancellationGrace)
+    (Lifecycle.settledEvidence o.lifecycle)
 
 -- | The operation as the provider-neutral 'RuntimeOperation' record.
 claudeRuntimeOperation :: ClaudeOperation -> RuntimeOperation
@@ -1375,13 +1312,15 @@ officialClaudeProbeHooks s =
         _ -> pure Nothing
 
 -- | The adapter's keyword arguments: @clock@, @client_factory@, the probe
--- environment, and the interpreter the private CLI launcher runs under
--- (the reference uses @sys.executable@).
+-- environment, the interpreter the private CLI launcher runs under (the
+-- reference uses @sys.executable@), and the readiness a probe would record
+-- (the reference's tests assign @_installation@ and @_cli@).
 data ClaudeAdapterOptions = ClaudeAdapterOptions
   { clock :: IO Double
   , clientFactory :: Maybe ClaudeClientFactory
   , hooks :: ClaudeProbeHooks
   , interpreter :: FilePath
+  , ready :: Maybe (RuntimeInstallation, FilePath)
   }
 
 -- | The monotonic clock, the official sidecar, and the absolute @python3@
@@ -1389,7 +1328,7 @@ data ClaudeAdapterOptions = ClaudeAdapterOptions
 claudeAdapterOptions :: IO ClaudeAdapterOptions
 claudeAdapterOptions = do
   python <- fromMaybe "/usr/bin/python3" <$> findExecutable "python3"
-  pure (ClaudeAdapterOptions getMonotonicTime Nothing (officialClaudeProbeHooks claudeSidecar) python)
+  pure (ClaudeAdapterOptions getMonotonicTime Nothing (officialClaudeProbeHooks claudeSidecar) python Nothing)
 
 data Readiness = Readiness
   { installation :: Maybe RuntimeInstallation
@@ -1401,7 +1340,7 @@ data ClaudeRuntimeAdapter = ClaudeRuntimeAdapter
   { config :: ClaudeRuntimeConfig
   , codec :: ClaudeContinuationCodec
   , turns :: ClaudeTurnOperations
-  , custody :: PiConnectionCustody
+  , custody :: HostConnectionCustody
   , clock :: IO Double
   , hooks :: ClaudeProbeHooks
   , interpreter :: FilePath
@@ -1412,10 +1351,10 @@ data ClaudeRuntimeAdapter = ClaudeRuntimeAdapter
 -- | @ClaudeRuntimeAdapter(config, codec, turns, custody, clock=...,
 -- client_factory=...)@.
 newClaudeRuntimeAdapter
-  :: ClaudeRuntimeConfig -> ClaudeContinuationCodec -> ClaudeTurnOperations -> PiConnectionCustody -> ClaudeAdapterOptions -> IO ClaudeRuntimeAdapter
+  :: ClaudeRuntimeConfig -> ClaudeContinuationCodec -> ClaudeTurnOperations -> HostConnectionCustody -> ClaudeAdapterOptions -> IO ClaudeRuntimeAdapter
 newClaudeRuntimeAdapter config0 codec turns custody options = do
   config <- newClaudeRuntimeConfig config0
-  readiness <- newMVar (Readiness Nothing Nothing options.clientFactory)
+  readiness <- newMVar (Readiness (fst <$> options.ready) (snd <$> options.ready) options.clientFactory)
   operations <- newMVar Map.empty
   pure
     ClaudeRuntimeAdapter
@@ -1432,10 +1371,6 @@ newClaudeRuntimeAdapter config0 codec turns custody options = do
 
 claudeAdapterConfig :: ClaudeRuntimeAdapter -> ClaudeRuntimeConfig
 claudeAdapterConfig a = a.config
-
--- | Assign @adapter._installation@ and @adapter._cli@.
-setClaudeReady :: ClaudeRuntimeAdapter -> Maybe RuntimeInstallation -> Maybe FilePath -> IO ()
-setClaudeReady a installation cli = modifyMVar_ a.readiness (\r -> pure r {installation, cli})
 
 -- | @repr(adapter)@.
 renderClaudeRuntimeAdapter :: ClaudeRuntimeAdapter -> IO Text
@@ -1500,7 +1435,7 @@ probeClaude a cliPath = do
                         verdict ProbeReady (Just installation) [] (Just absolute) (Just (officialFactory a.hooks.sdk))
   where
     runVersion cli = do
-      outcome <- try (runBounded (proc cli ["--version"]))
+      outcome <- try (runBounded [cli, "--version"] Nothing)
       case outcome of
         Right (Just (ExitSuccess, output, _)) -> case TE.decodeUtf8' output of
           Right text -> pure (Just text)
@@ -1576,18 +1511,12 @@ startClaude a inv0 = do
     case registered of
       Left old -> pure old
       Right operation -> do
-        void (forkIO (runOperation operation `finally` atomically (writeTVar operation.finished True)))
+        Lifecycle.startWorker operation.lifecycle (runOperation operation)
         pure operation
   where
     newOperation inv key prior factory = do
-      monitor <- newMVar ()
-      cancelled <- newTVarIO False
-      publishing <- newTVarIO False
-      result <- newTVarIO Nothing
-      cleanupDisposition <- newTVarIO RuntimeCleanupUnverified
-      cleanup <- newTVarIO Nothing
-      finished <- newTVarIO False
-      pure ClaudeOperation {adapter = a, inv, key, prior, factory, monitor, cancelled, publishing, result, cleanupDisposition, cleanup, finished}
+      lifecycle <- newLifecycle (LifecycleTexts "Claude operation wait timeout must be positive and finite" "Claude operation has not settled") inv.operationId
+      pure ClaudeOperation {adapter = a, inv, key, prior, factory, lifecycle}
     validate inv = do
       let expected =
             [ (KindRuntime, claudeA2Local.identity)
@@ -1621,7 +1550,7 @@ settle inv outcome appends code output continuation =
   throwLeft (mkRuntimeTurnSettlement inv.episodeId inv.turnId outcome appends code output continuation)
 
 data Exec = Exec
-  { materialization :: Maybe PiMaterialization
+  { materialization :: Maybe HostMaterialization
   , client :: Maybe ClaudeClient
   , created :: Maybe ClaudeClient
   , root :: Maybe (FilePath, Maybe (Integer, Integer))

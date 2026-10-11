@@ -1,98 +1,83 @@
--- | The small SQLite surface the Agenticus SQLite ledgers need.
+-- | The SQLite surface the Agenticus ledgers use, over @petrus-sqlite@.
 --
--- __Swap point.__ The repository's shared SQLite package (@petrus-sqlite@)
--- is not on @main@ yet, so this module wraps @direct-sqlite@ directly.  Every
--- Agenticus ledger goes through these few functions only; once
--- @petrus-sqlite@ lands, replace this module's implementation (not its
--- callers) with that package.
+-- A 'Database' is a @petrus-sqlite@ 'Connection' (with its per-connection
+-- prepared-statement cache, as CPython's @sqlite3@ keeps one). Statements
+-- are named by their SQL text, as the reference passes them to
+-- @connection.execute@.
 --
--- Failures surface the way CPython's @sqlite3@ module raises them: the
--- exception class @_pysqlite_seterror@ picks for the result code (for
--- example @OperationalError@ for @SQLITE_BUSY@) and @sqlite3_errmsg@ as the
--- message.
+-- Failures surface the way CPython's @sqlite3@ module raises them: an
+-- 'AgenticusError' of the exception class @_pysqlite_seterror@ picks for the
+-- result code (for example @OperationalError@ for @SQLITE_BUSY@), with
+-- @sqlite3_errmsg@ as the message.
 module Petrus.Agenticus.Internal.Sqlite
   ( Database
-  , Statement
   , SqlValue
   , SQLData (..)
   , openDatabase
+  , openDatabaseWith
   , closeDatabase
   , execute_
-  , prepareStatement
-  , finalizeStatement
-  , runStatement
+  , runSql
   , queryRow
   , queryRows
   , changedRows
-  , setBusyTimeout
   , inTransaction
   , pythonSqliteClass
   ) where
 
-import Control.Exception (catch, finally, throwIO)
+import Control.Exception (catch, throwIO)
+import Control.Monad (void)
 import Data.Text (Text)
-import Data.Text qualified as T
-import Database.SQLite3 (Database, SQLData (..), SQLError (..), Statement, StepResult (..))
 import Database.SQLite3 qualified as Sql
 import Database.SQLite3.Direct qualified as Direct
 import Petrus.Agenticus.Error
+import Petrus.Sqlite.Connection (Connection, IsolationLevel (..), SQLData (..), SQLError (..))
+import Petrus.Sqlite.Connection qualified as Connection
+
+-- | An open ledger connection.
+type Database = Connection
 
 -- | A bound parameter or a column value.
 type SqlValue = SQLData
 
--- | @sqlite3.connect(path, isolation_level=None)@: an autocommit connection;
--- transactions are always explicit.
+-- | @sqlite3.connect(path, timeout=5, isolation_level=None)@, as every
+-- Agenticus ledger connects: an autocommit connection (transactions are
+-- explicit) with a five-second busy handler.
 openDatabase :: FilePath -> IO Database
-openDatabase path = translated (Sql.open (T.pack path))
+openDatabase = openDatabaseWith 5000
+
+-- | @sqlite3.connect(path, timeout=milliseconds / 1000,
+-- isolation_level=None)@.
+openDatabaseWith :: Int -> FilePath -> IO Database
+openDatabaseWith milliseconds path = translated (Connection.connect path milliseconds Autocommit)
 
 closeDatabase :: Database -> IO ()
-closeDatabase database = translated (Sql.close database)
+closeDatabase database = translated (Connection.close database)
 
--- | Execute one or more statements without parameters or results.
+-- | Execute one or more statements without parameters or results
+-- (@executescript@-like; the statements are not cached).
 execute_ :: Database -> Text -> IO ()
-execute_ database sql = translated (Sql.exec database sql)
+execute_ database sql = translated (Sql.exec (Connection.connectionDatabase database) sql)
 
-prepareStatement :: Database -> Text -> IO Statement
-prepareStatement database sql = translated (Sql.prepare database sql)
+-- | Execute one statement with parameters, to completion.
+runSql :: Database -> Text -> [SqlValue] -> IO ()
+runSql database sql parameters = translated (void (Connection.execute database sql parameters))
 
-finalizeStatement :: Statement -> IO ()
-finalizeStatement = Sql.finalize
+-- | Run a statement and return its first row (@fetchone()@).
+queryRow :: Database -> Text -> [SqlValue] -> IO (Maybe [SqlValue])
+queryRow database sql parameters = translated (Connection.queryFirst database sql parameters)
 
--- | Bind, step to completion, and reset a prepared statement.
-runStatement :: Statement -> [SqlValue] -> IO ()
-runStatement statement parameters =
-  translated (Sql.bind statement parameters >> drain) `finally` Sql.reset statement
-  where
-    drain =
-      Sql.step statement >>= \case
-        Row -> drain
-        Done -> pure ()
-
--- | Bind and fetch the first row, if any; the statement is reset afterwards.
-queryRow :: Statement -> [SqlValue] -> IO (Maybe [SqlValue])
-queryRow statement parameters =
-  translated
-    ( do
-        Sql.bind statement parameters
-        Sql.step statement >>= \case
-          Row -> Just <$> Sql.columns statement
-          Done -> pure Nothing
-    )
-    `finally` Sql.reset statement
-
--- | Bind and fetch every row; the statement is reset afterwards.
-queryRows :: Statement -> [SqlValue] -> IO [[SqlValue]]
-queryRows statement parameters =
-  translated (Sql.bind statement parameters >> collect []) `finally` Sql.reset statement
-  where
-    collect rows =
-      Sql.step statement >>= \case
-        Row -> Sql.columns statement >>= \row -> collect (row : rows)
-        Done -> pure (reverse rows)
+-- | Run a statement and return every row (@fetchall()@).
+queryRows :: Database -> Text -> [SqlValue] -> IO [[SqlValue]]
+queryRows database sql parameters = translated (Connection.query database sql parameters)
 
 -- | @cursor.rowcount@ of the last data-modifying statement.
 changedRows :: Database -> IO Int
-changedRows = Sql.changes
+changedRows = Connection.changes
+
+-- | @Connection.in_transaction@ (@not sqlite3_get_autocommit@).
+inTransaction :: Database -> IO Bool
+inTransaction = Connection.inTransaction
 
 translated :: IO a -> IO a
 translated action =
@@ -114,13 +99,3 @@ pythonSqliteClass = \case
   Direct.ErrorNotADatabase -> "DatabaseError"
   Direct.ErrorFormat -> "DatabaseError"
   _ -> "OperationalError"
-
--- | @sqlite3.connect(..., timeout=seconds)@: wait this many milliseconds on
--- a locked database before failing.
-setBusyTimeout :: Database -> Int -> IO ()
-setBusyTimeout database milliseconds =
-  execute_ database ("PRAGMA busy_timeout = " <> T.pack (show milliseconds))
-
--- | @Connection.in_transaction@.
-inTransaction :: Database -> IO Bool
-inTransaction database = not <$> Direct.getAutoCommit database

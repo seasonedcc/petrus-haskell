@@ -125,7 +125,7 @@ import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (allRejectionCategories, rejectionCategoryText)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor, ProgramOwnership (..), agentProgramDescriptor, continuationRequirement)
 import Petrus.Agenticus.Thread.Continuation (ContinuationDescriptor, continuationDescriptor)
-import Petrus.Agenticus.Internal.Validate (hasDuplicates, isTrimmed, sortedUnique, utf8Length)
+import Petrus.Agenticus.Internal.Validate (encodeRefusal, hasDuplicates, isTrimmed, sortedUnique, utf8Length)
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), Handler, HandlerResult, handlerTokens)
 import Petrus.Impetus.Dsl
   ( BuiltNet (..)
@@ -269,13 +269,20 @@ errorCategories = Set.fromList (map rejectionCategoryText allRejectionCategories
 -- ---------------------------------------------------------------------------
 -- Shared rules
 
--- | @_text(value, name)@.
+-- | @_text(value, name)@. A lone surrogate fails @value.encode()@, after
+-- the emptiness and strip checks and before the length bound; one scan
+-- finds a surrogate or a control character.
 text :: Text -> Json -> Either AgenticusError Text
 text name = \case
   String s
-    | not (T.null s) && isTrimmed s && utf8Length s <= textLimit ->
-        if T.any (< ' ') s then Left (valueError (name <> " must not contain control characters")) else Right s
-  _ -> Left (valueError (name <> " must be bounded non-empty text"))
+    | not (T.null s) && isTrimmed s -> case encodeRefusal s of
+        _ | not (T.any (\c -> c < ' ' || (c >= '\xD800' && c <= '\xDFFF')) s) -> bounded s
+        Just refusal -> Left refusal
+        Nothing -> bounded s >> Left (valueError (name <> " must not contain control characters"))
+  _ -> boundedError
+  where
+    bounded s = if utf8Length s <= textLimit then Right s else boundedError
+    boundedError = Left (valueError (name <> " must be bounded non-empty text"))
 
 -- | @_json(value, name)@: JSON-faithful (no non-finite floats) and at most
 -- 'maxJsonBytes' in the reference's default @json.dumps@ spelling with

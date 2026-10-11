@@ -51,7 +51,7 @@ module Petrus.Agenticus.Hands.Gateway
 import Control.Concurrent (ThreadId, myThreadId, yield)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
-import Control.Exception (SomeAsyncException, SomeException, evaluate, fromException, mask, mask_, onException, throwIO, try)
+import Control.Exception (SomeException, evaluate, mask, mask_, onException, throwIO)
 import Control.Monad (when)
 import Data.Foldable (toList)
 import Data.IORef
@@ -66,6 +66,7 @@ import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract
 import Petrus.Agenticus.Hands.Grants
 import Petrus.Agenticus.Internal.Atomic (modifyStrict)
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Validate
 import Petrus.Json (Json (..))
 
@@ -493,11 +494,9 @@ runClaimed gw request signal = do
   pure result
 
 -- | A synchronous exception becomes 'Left'; asynchronous ones propagate.
-trySync :: IO a -> IO (Either SomeException a)
-trySync action =
-  try (action >>= evaluate) >>= \case
-    Left e | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
-    other -> pure other
+-- | 'trySync' of the result forced to weak head normal form.
+tryForced :: IO a -> IO (Either SomeException a)
+tryForced action = trySync (action >>= evaluate)
 
 -- | Direct prechecks; adapter, stage, commit, and target counters stay flat.
 precheck :: HandsGateway -> ToolRequest -> IO (Maybe ToolError)
@@ -507,7 +506,7 @@ precheck gw request
       || request.attachmentEpoch /= gatewayAttachmentEpoch gw =
       pure (Just (toolError CategoryStaleEpoch "episode, attachment identity, or epoch is not current"))
   | otherwise =
-      trySync gw.config.fence.snapshot >>= \case
+      tryForced gw.config.fence.snapshot >>= \case
         Left _ -> pure (Just providerError)
         Right fence'
           | not fence'.open -> pure (Just (toolError CategoryPostFence "attachment admission is closed"))
@@ -544,7 +543,7 @@ execute gw request grant = do
   case request.params of
     ParamsWrite p -> executeWrite gw request grant p
     params' ->
-      trySync (perform gw.config.adapter params') >>= \case
+      tryForced (perform gw.config.adapter params') >>= \case
         Right (Just fields) ->
           postcheck gw request grant False >>= \case
             Just failure -> finalizeError gw request failure
@@ -580,7 +579,7 @@ perform adapter' = \case
 
 executeWrite :: HandsGateway -> ToolRequest -> CapabilityGrant -> WriteParams -> IO ToolResult
 executeWrite gw request grant p =
-  trySync (gw.config.adapter.stageWrite request.callId p.path p.content) >>= \case
+  tryForced (gw.config.adapter.stageWrite request.callId p.path p.content) >>= \case
     Left _ -> finalizeError gw request providerError
     Right staged -> do
       count gw $ \c -> c {stages = c.stages + 1}
@@ -593,7 +592,7 @@ executeWrite gw request grant p =
                 discarded <- discard gw staged
                 pure (Left (if discarded then failure else providerError))
               Nothing ->
-                trySync (gw.config.adapter.commitWrite staged) >>= \case
+                tryForced (gw.config.adapter.commitWrite staged) >>= \case
                   Left _ -> discard gw staged >> pure (Left providerError)
                   Right digest' -> do
                     count gw $ \c -> c {commits = c.commits + 1, targetMutations = c.targetMutations + 1}
@@ -606,7 +605,7 @@ executeWrite gw request grant p =
 -- admission.
 postcheck :: HandsGateway -> ToolRequest -> CapabilityGrant -> Bool -> IO (Maybe ToolError)
 postcheck gw request grant write = withBarrier gw.config.barrier $
-  trySync gw.config.fence.snapshot >>= \case
+  tryForced gw.config.fence.snapshot >>= \case
     Left _ -> pure (Just providerError)
     Right fence'
       | not fence'.open -> pure (Just (toolError CategoryPostFence "attachment fence closed after staging"))
@@ -627,11 +626,11 @@ postcheck gw request grant write = withBarrier gw.config.barrier $
                       current' <- if write then maybe (pure True) (\t -> seam t.isCurrent) gw.config.target else pure True
                       pure (if current' then Nothing else Just (toolError CategoryPostFence "target head is no longer current"))
   where
-    seam action = either (const False) id <$> trySync action
+    seam action = either (const False) id <$> tryForced action
 
 discard :: HandsGateway -> StagedWrite -> IO Bool
 discard gw staged =
-  trySync (gw.config.adapter.discardWrite staged) >>= \case
+  tryForced (gw.config.adapter.discardWrite staged) >>= \case
     Left _ -> do
       count gw $ \c -> c {stageDiscardFailures = c.stageDiscardFailures + 1}
       pure False

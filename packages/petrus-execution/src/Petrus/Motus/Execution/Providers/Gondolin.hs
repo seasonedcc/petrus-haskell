@@ -98,8 +98,9 @@ import Network.Socket.ByteString (recv, sendAll)
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, dumpsText, lookupMember, parseJson, pythonFloatRepr, pythonLoads)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, maxWorkspaceArchiveBytes, workspaceArchive)
-import Petrus.Motus.Execution.Internal.Common (checkedGuestCwd, newUuid4, requireSupportedCapabilities, specFingerprint, uuidHex)
-import Petrus.Motus.Execution.Internal.Posix (atomicWriteFile, flockExclusive, fstatInfo, StatInfo (..), toRawPath)
+import Petrus.Motus.Execution.Internal.Common (checkedGuestCwd, newUuid4, replaceFile, requireSupportedCapabilities, specFingerprint, uuidHex)
+import Petrus.Posix.At (FileStat (..), fdStat)
+import Petrus.Posix.Flock (LockKind (..), lock)
 import Petrus.Motus.Execution.Internal.Process (Child, StdioFd (..), childExitCode, childPid, resolveExecutable, signalChild, spawnChild)
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Motus.Execution.Internal.Sidecar (sidecarSha256, sidecarSource)
@@ -338,15 +339,15 @@ withOperationLock env operation body = bracket acquire closeFd (const (body dire
       held <-
         ( do
             hookLockOpened (hooks env)
-            flockExclusive fd
-            held <- fstatInfo fd
+            lock fd Exclusive
+            held <- fdStat fd
             now <- try (getFileStatus lockPath)
             pure (either (\(_ :: IOException) -> False) (sameInode held) now)
         )
           `onException` closeFd fd
       if held then pure fd else closeFd fd >> acquire
-    sameInode :: StatInfo -> FileStatus -> Bool
-    sameInode held status = (stDev held, stIno held) == (fromIntegral (deviceID status), fromIntegral (fileID status))
+    sameInode :: FileStat -> FileStatus -> Bool
+    sameInode held status = (statDevice held, statInode held) == (fromIntegral (deviceID status), fromIntegral (fileID status))
 
 -- | A process identity snapshot (upstream's @_identity@ dict).
 data Identity = Identity
@@ -481,8 +482,7 @@ writeRegistry :: GondolinEnvironment -> FilePath -> Registry -> IO ()
 writeRegistry env directory record = do
   hookWriteRegistry (hooks env)
   bytes <- either (const (throwExecution ValueError "Gondolin registry is not encodable")) pure (dumps defaultDumps {sortKeys = True} (registryJson record))
-  target <- toRawPath (directory </> "registry.json")
-  atomicWriteFile (uuidHex >>= \hex -> toRawPath (directory </> ("registry." <> T.unpack hex <> ".tmp"))) target bytes
+  replaceFile ((\hex -> "registry." <> T.unpack hex <> ".tmp") <$> uuidHex) (directory </> "registry.json") bytes
 
 -- | @_remove_runtime@: remove a sidecar runtime only when it is provably
 -- ours (a real directory directly under @/tmp@, named @petrus-g-*@, owned
@@ -556,7 +556,7 @@ waitReadable client micros = do
           _ -> getErrno >>= \errno -> if errno == eINTR then loop else pure True
   loop
 
-foreign import capi interruptible "petrus_posix.h petrus_wait_readable"
+foreign import capi interruptible "petrus_execution.h petrus_wait_readable"
   c_wait_readable :: CInt -> CInt -> IO CInt
 
 decodeResponse :: ByteString -> IO Json

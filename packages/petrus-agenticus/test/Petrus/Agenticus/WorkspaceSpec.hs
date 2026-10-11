@@ -18,6 +18,7 @@ import Petrus.Agenticus.Hands.Workspace
 import Petrus.Agenticus.Hands.Workspace qualified as Workspace
 import Petrus.Agenticus.TestSupport
 import Petrus.Json (Json (..))
+import Petrus.Json qualified as J
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (workspaceArchive)
 import Petrus.Motus.Execution.Providers.Docker (defaultDockerConfig, dockerExecutable, dockerProvider, newDockerEnvironmentWith)
@@ -121,6 +122,23 @@ upstream = do
       workspaceCommitWrite other staged `shouldThrowAgenticus` "stage token is not registered with this adapter"
       workspaceDiscardWrite adapter staged
       workspaceDiscardWrite adapter staged `shouldThrowAgenticus` "stage token is not registered with this adapter"
+
+  -- Not in the reference's tests: a Pi helper can hand the gateway a lone
+  -- surrogate (@divergences/pi.md@ in petrus-agenticus-runtime, item 6).
+  -- CPython encodes argv with @surrogateescape@, so U+DC80–U+DCFF reach the
+  -- command as raw bytes and any other surrogate fails building it; the
+  -- staged content's @content.encode()@ then fails after the command ran.
+  it "lone surrogates in argv and staged content (not in the reference)" $ withTmp $ \tmp -> do
+    let source = tmp </> "source"
+    createDirectory source
+    withLocal "ds6-workspace-surrogates" source $ \provider attachment -> do
+      adapter <- newMotusWorkspaceAdapter provider attachment ["/bin/true"] 1
+      shell <- workspaceShell adapter ["/bin/sh", "-c", "printf %s \"$0\" | od -An -tx1", J.surrogateText 0xDC80] "."
+      (shell.returncode, T.strip shell.stdout) `shouldBe` (0, "80")
+      workspaceShell adapter ["/bin/sh", "-c", "true", J.surrogateText 0xD800] "." `shouldThrowAgenticus` "territory command failed"
+      workspaceStageWrite adapter "escaped" "out.txt" (J.surrogateText 0xDC80) `shouldThrowAgenticus` "surrogates not allowed"
+      workspaceStageWrite adapter "lone" "out.txt" (J.surrogateText 0xD800) `shouldThrowAgenticus` "territory command failed"
+      outstandingStages adapter `shouldReturn` 0
 
 shouldThrowAgenticus :: IO a -> Text -> Expectation
 shouldThrowAgenticus action fragment = do

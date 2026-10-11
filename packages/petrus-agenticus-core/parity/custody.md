@@ -13,8 +13,10 @@ Haskell modules:
   `validateSnapshot`, the payload codec, and `openSqliteConnectionStorage`.
 - `Petrus.Agenticus.Connection.Custody`: `AgentConnectionCustody` and its
   operations.
-- `Petrus.Agenticus.Internal.Sqlite`: the SQLite access layer, built on
-  direct-sqlite. It is the swap point for `petrus-sqlite`.
+- `Petrus.Agenticus.Internal.Sqlite`: the SQLite access layer, over
+  `petrus-sqlite`'s connection, with CPython's `sqlite3` error classes.
+- `Petrus.Agenticus.Internal.WriterFence`: the owner-checked `flock` writer
+  fence the territory-retention and Pi operation ledgers share.
 - `repr()` of strings, for messages, is petrus-json's `Petrus.Json.Python.pythonStrRepr`.
 
 The tests live in `test/Petrus/Agenticus/ConnectionSpec.hs`, under

@@ -21,10 +21,12 @@ hosts are covered in [divergences/codex.md](divergences/codex.md),
    `uuid4().hex`. Both are 32 hex characters, and the name never reaches
    durable state.
 
-2. **The runner is mutable only through explicit operations.** The reference
-   assigns `runner.repository` directly in one test. The Haskell runner keeps
-   the repository and the projection in `IORef`s. `setRunnerRepository` is
-   the one exported setter, which exists for that test.
+2. **The repository is fixed at construction.** The reference assigns
+   `runner.repository` directly in one test. The Haskell runner takes its
+   repository when it is created or loaded (`createRunnerWith`,
+   `loadRunnerWith`; `createRunner` and `loadRunner` use the JSON repository
+   under the root). That test builds a repository whose `save` fails once a
+   test-owned switch is set, so it still refuses only the final save.
 
 3. **Halt-code refusals use a local `repr`.** `HaltCode(value)` raises
    `ValueError: <repr(value)> is not a valid HaltCode`. The runner renders
@@ -46,7 +48,7 @@ hosts are covered in [divergences/codex.md](divergences/codex.md),
    exception kind. The unit test keeps a plain `userError`, because it only
    checks the "failed terminally" refusal and the settlement.
 
-## Helper and sidecar processes (`Petrus.Agenticus.Runtime.Pi.spawnPiped`)
+## Helper and sidecar processes (`Petrus.Agenticus.Runtime.Internal.Process`)
 
 1. **Children start through `posix_spawn`, not the `process` package.** The
    reference starts every helper and sidecar with
@@ -68,3 +70,13 @@ hosts are covered in [divergences/codex.md](divergences/codex.md),
    the shared sidecar. The `PiSpec` group "spawnPiped (not in the
    reference)" pins the descriptors, the session, the non-blocking ends and
    the launch failure.
+2. **Bounded probe commands start the same way.** The reference's probes
+   call `subprocess.run(argv, capture_output=True, timeout=10)`, which
+   inherits stdin, keeps the child in the caller's session and on timeout
+   kills only the child. `runBounded` starts the child through
+   `spawnPiped` too: it leads its own session, its stdin is an empty pipe,
+   and its whole process group is killed when the bound expires or when
+   the caller is interrupted (an `hspec` timeout, `cancel`), so no probe
+   outlives its caller. The probed commands (`node --version`, the helpers'
+   `--probe` modes, the provider CLIs' `--version`) read no input, so their
+   output is unchanged.

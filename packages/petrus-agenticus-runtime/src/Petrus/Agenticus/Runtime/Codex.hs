@@ -14,7 +14,7 @@
 -- retained-home helper (@_HELPER_SOURCE@) ships verbatim as the data file
 -- @codex_helper.py@ and is passed as a Motus command, as upstream does.
 -- Connection custody is the record shared with the Pi host
--- ('PiConnectionCustody').
+-- ('HostConnectionCustody').
 module Petrus.Agenticus.Runtime.Codex
   ( -- * Pins
     codexVersion
@@ -87,17 +87,13 @@ module Petrus.Agenticus.Runtime.Codex
   , renderCodexRuntimeAdapter
   , codexExecutable
   , codexHelperExecutable
-  , setCodexHelperExecutable
-  , setCodexStartWrapper
   , probeCodex
   , probeCodexGondolin
   , startCodex
   ) where
 
-import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
-import Control.Concurrent.STM
-import Control.Exception (IOException, SomeAsyncException, SomeException, catch, finally, fromException, mask_, throwIO, try)
+import Control.Exception (IOException, catch, fromException, mask_, throwIO, try)
 import Control.Monad (forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -146,6 +142,7 @@ import Petrus.Agenticus.Connection.Custody
   )
 import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Error
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Validate (isBoundedText, pyIsSpace, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
@@ -154,7 +151,9 @@ import Petrus.Agenticus.Program.Descriptor
   , agentProgramDescriptor
   , continuationRequirement
   )
-import Petrus.Agenticus.Runtime.HostSupport (observedPlatform, pyJsonLoadsBytes, pyStrip, stripAnsi)
+import Petrus.Agenticus.Runtime.Custody
+import Petrus.Agenticus.Runtime.Internal.Process (runBounded)
+import Petrus.Agenticus.Runtime.Internal.HostSupport (observedPlatform, pyJsonLoadsBytes, pyStrip, stripAnsi)
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation
@@ -164,15 +163,15 @@ import Petrus.Agenticus.Runtime.Installation
   , mkRuntimeInstallation
   , mkRuntimeProbeResult
   )
+import Petrus.Agenticus.Runtime.Internal.Lifecycle (Lifecycle, LifecycleTexts (..), newLifecycle)
+import Petrus.Agenticus.Runtime.Internal.Lifecycle qualified as Lifecycle
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
   , RuntimeOperation (..)
   , RuntimeOperationCleanup
-  , mkRuntimeOperationCleanup
   , runtimeProtocolError
   , runtimeProtocolErrorCode
   )
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..), micros, runBounded)
 import Petrus.Agenticus.Runtime.Profiles (codexA2Local, codexA3Gondolin)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation
@@ -216,8 +215,6 @@ import Petrus.Motus.Execution
 import System.Directory (findExecutable, makeAbsolute)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory)
-import System.Process (proc)
-import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
 -- Pins
@@ -703,18 +700,12 @@ data CodexOperation = CodexOperation
   , prior :: Maybe CodexContinuationPayloadV1
   , executable :: FilePath
   , executionPath :: Text
-  , monitor :: MVar ()
-  , cancelled :: TVar Bool
-  , publishing :: TVar Bool
-  , result :: TVar (Maybe RuntimeTurnSettlement)
-  , cleanupDisposition :: TVar RuntimeCleanupDisposition
-  , cleanup :: TVar (Maybe RuntimeOperationCleanup)
-  , finished :: TVar Bool
+  , lifecycle :: Lifecycle
   }
 
 -- | Handle identity (the reference compares with @is@).
 instance Eq CodexOperation where
-  a == b = a.result == b.result
+  a == b = a.lifecycle == b.lifecycle
 
 instance Show CodexOperation where
   show = T.unpack . renderCodexOperation
@@ -726,19 +717,6 @@ renderCodexOperation o = "_CodexOperation(operation_id=" <> pythonStrRepr o.inv.
 
 codexOperationId :: CodexOperation -> Text
 codexOperationId o = o.inv.operationId
-
-guarded :: CodexOperation -> IO a -> IO a
-guarded o action = withMVar o.monitor (const action)
-
-isAsync :: SomeException -> Bool
-isAsync e = isJust (fromException e :: Maybe SomeAsyncException)
-
--- | Catch synchronous failures; asynchronous ones propagate.
-trySync :: IO a -> IO (Either SomeException a)
-trySync action =
-  try action >>= \case
-    Left e | isAsync e -> throwIO e
-    other -> pure other
 
 settle :: CodexRuntimeInvocation -> TurnOutcome -> Integer -> Text -> Maybe Text -> Maybe Text -> IO RuntimeTurnSettlement
 settle inv outcome appends code output continuation =
@@ -753,7 +731,7 @@ operationBinding inv = case (Episode.episodeBinding inv.attachment).motus of
 runOperation :: CodexOperation -> IO ()
 runOperation o = do
   outcome <- trySync (withBindingOperation (operationBinding o.inv) (execute o))
-  (settlement, disposition) <- case outcome of
+  settled <- case outcome of
     Right value -> pure value
     Left e
       | Just (failure :: AgenticusError) <- fromException e
@@ -763,86 +741,33 @@ runOperation o = do
       | otherwise -> do
           failed <- settle o.inv TurnFailed 0 "runtime-failed" Nothing Nothing
           pure (failed, RuntimeCleanupUnverified)
-  guarded o $ do
-    wasCancelled <- readTVarIO o.cancelled
-    settlement' <-
-      if wasCancelled && settlement.outcome /= TurnCancelled
-        then settle o.inv TurnCancelled 0 "cancelled" Nothing Nothing
-        else pure settlement
-    atomically $ do
-      writeTVar o.result (Just settlement')
-      writeTVar o.cleanupDisposition disposition
+  Lifecycle.settle o.lifecycle (settle o.inv TurnCancelled 0 "cancelled" Nothing Nothing) settled
 
 operationCurrent :: CodexOperation -> IO Bool
-operationCurrent o = not <$> readTVarIO o.cancelled
+operationCurrent o = Lifecycle.current o.lifecycle
 
 -- | @_claim_publication@.
 claimPublication :: CodexOperation -> IO (Maybe Text)
-claimPublication o = guarded o $ do
-  wasCancelled <- readTVarIO o.cancelled
+claimPublication o = Lifecycle.claim o.lifecycle $ do
   now <- o.owner.clock
-  if
-    | wasCancelled -> pure (Just "cancelled")
-    | now >= Episode.episodeDeadline o.inv.attachment -> pure (Just "deadline-exceeded")
-    | otherwise -> atomically (writeTVar o.publishing True) >> pure Nothing
+  pure (if now >= Episode.episodeDeadline o.inv.attachment then Just "deadline-exceeded" else Nothing)
 
 -- | @wait(timeout)@.
 waitCodexOperation :: CodexOperation -> Maybe Double -> IO RuntimeTurnSettlement
-waitCodexOperation o bound = do
-  forM_ bound $ \t ->
-    when (isNaN t || isInfinite t || t <= 0) $ throwIO (valueError "Codex operation wait timeout must be positive and finite")
-  closedAlready <- isJust <$> readTVarIO o.cleanup
-  when closedAlready $ protocol "operation-closed"
-  expired <- case bound of
-    Nothing -> newTVarIO False
-    Just t -> registerDelay (micros t)
-  settled <-
-    atomically $
-      (readTVar o.result >>= maybe retry (pure . Just))
-        `orElse` (readTVar expired >>= \e -> if e then pure Nothing else retry)
-  maybe (throwAgenticus TimeoutError "Codex runtime operation has not settled") pure settled
+waitCodexOperation o = Lifecycle.waitSettled o.lifecycle
 
 -- | @cancel(reason)@.
 cancelCodexOperation :: CodexOperation -> Text -> IO CancellationDisposition
 cancelCodexOperation o reason = do
   _ <- throwLeft (codexText "Codex cancellation reason" 256 reason)
-  disposition <- guarded o $ do
-    settled <- isJust <$> readTVarIO o.result
-    publishing <- readTVarIO o.publishing
-    wasCancelled <- readTVarIO o.cancelled
-    if
-      | settled || publishing -> pure CancellationTooLate
-      | wasCancelled -> pure CancellationAlreadyRequested
-      | otherwise -> atomically (writeTVar o.cancelled True) >> pure CancellationRequested
-  when (disposition == CancellationRequested) $
+  Lifecycle.requestCancel o.lifecycle $
     Episode.cancel o.inv.attachment reason `catch` \(e :: AgenticusError) ->
       unless (e.errorClass `isSubclassOf` EpisodeAttachmentError) (throwIO e)
-  pure disposition
 
 -- | @close()@.
 closeCodexOperation :: CodexOperation -> IO RuntimeOperationCleanup
-closeCodexOperation o = do
-  existing <- guarded o $ do
-    existing <- readTVarIO o.cleanup
-    settled <- isJust <$> readTVarIO o.result
-    wasCancelled <- readTVarIO o.cancelled
-    when (isNothing existing && not settled && not wasCancelled) $ protocol "operation-active"
-    pure existing
-  case existing of
-    Just evidence -> pure evidence
-    Nothing -> do
-      _ <- timeout (micros o.owner.config.cancellationGrace) (atomically (readTVar o.finished >>= check))
-      done <- readTVarIO o.finished
-      disposition <- if done then readTVarIO o.cleanupDisposition else pure RuntimeCleanupUnverified
-      let code = case disposition of
-            RuntimeCleanupNotCreated -> "client-not-created"
-            RuntimeCleanupClean -> "client-closed"
-            RuntimeCleanupUnverified -> "cleanup-uncertain"
-      evidence <- throwLeft (mkRuntimeOperationCleanup o.inv.operationId disposition code False)
-      atomically $
-        readTVar o.cleanup >>= \case
-          Just earlier -> pure earlier
-          Nothing -> writeTVar o.cleanup (Just evidence) >> pure evidence
+closeCodexOperation o =
+  Lifecycle.closeWith o.lifecycle o.owner.config.cancellationGrace (Lifecycle.settledEvidence o.lifecycle)
 
 -- | The operation as the provider-neutral 'RuntimeOperation' record.
 codexRuntimeOperation :: CodexOperation -> RuntimeOperation
@@ -880,7 +805,7 @@ officialCodexProbeHooks =
     , run = \case
         [] -> pure Nothing
         program : arguments -> do
-          outcome <- try (runBounded (proc program arguments))
+          outcome <- try (runBounded (program : arguments) Nothing)
           case outcome of
             Right (Just (ExitSuccess, output, _)) -> case TE.decodeUtf8' output of
               Right value -> pure (Just value)
@@ -889,21 +814,33 @@ officialCodexProbeHooks =
             Left (_ :: IOException) -> pure Nothing
     }
 
--- | The adapter's keyword arguments plus the reference's class attributes
--- that tests override: @clock@, the probe environment, and the Local
--- helper's interpreter (the reference uses @sys.executable@).
+-- | The adapter's keyword arguments plus the reference's attributes that
+-- tests override: @clock@, the probe environment, the Local helper's
+-- interpreter (the reference uses @sys.executable@), the Gondolin guest's
+-- helper interpreter, and a wrapper around @start@ (the reference's tests
+-- assign @adapter.start@; the Gondolin Activity and runtime service call
+-- through it).
 data CodexAdapterOptions = CodexAdapterOptions
   { clock :: IO Double
   , hooks :: CodexProbeHooks
   , interpreter :: FilePath
+  , guestInterpreter :: FilePath
+  , startWrapper :: (CodexRuntimeInvocation -> IO CodexOperation) -> CodexRuntimeInvocation -> IO CodexOperation
   }
 
--- | The monotonic clock, the host's @PATH@, and the absolute @python3@ on
--- @PATH@.
+-- | The monotonic clock, the host's @PATH@, the absolute @python3@ on
+-- @PATH@, the guest's @/usr/bin/python3@, and no start wrapper.
 codexAdapterOptions :: IO CodexAdapterOptions
 codexAdapterOptions = do
   python <- fromMaybe "/usr/bin/python3" <$> findExecutable "python3"
-  pure (CodexAdapterOptions getMonotonicTime officialCodexProbeHooks python)
+  pure
+    CodexAdapterOptions
+      { clock = getMonotonicTime
+      , hooks = officialCodexProbeHooks
+      , interpreter = python
+      , guestInterpreter = "/usr/bin/python3"
+      , startWrapper = id
+      }
 
 data Readiness = Readiness
   { installation :: Maybe RuntimeInstallation
@@ -916,15 +853,15 @@ data CodexRuntimeAdapter = CodexRuntimeAdapter
   , config :: CodexRuntimeConfig
   , codec :: CodexContinuationCodec
   , turns :: CodexTurnOperations
-  , custody :: PiConnectionCustody
+  , custody :: HostConnectionCustody
   , clock :: IO Double
   , hooks :: CodexProbeHooks
-  , helper :: IORef FilePath
+  , helper :: FilePath
   , source :: Text
   , readiness :: MVar Readiness
   , operations :: MVar (Map Text CodexOperation)
   , qualified :: MVar (Set (LeaseIdentity, Text))
-  , startWrapper :: IORef ((CodexRuntimeInvocation -> IO CodexOperation) -> CodexRuntimeInvocation -> IO CodexOperation)
+  , startWrapper :: (CodexRuntimeInvocation -> IO CodexOperation) -> CodexRuntimeInvocation -> IO CodexOperation
   }
 
 guestExecutable, guestPath :: Text
@@ -933,14 +870,14 @@ guestPath = "/usr/local/bin:/usr/bin:/bin"
 
 -- | @CodexRuntimeAdapter(config, codec, turns, custody, clock=...)@.
 newCodexRuntimeAdapter
-  :: CodexRuntimeConfig -> CodexContinuationCodec -> CodexTurnOperations -> PiConnectionCustody -> CodexAdapterOptions -> IO CodexRuntimeAdapter
+  :: CodexRuntimeConfig -> CodexContinuationCodec -> CodexTurnOperations -> HostConnectionCustody -> CodexAdapterOptions -> IO CodexRuntimeAdapter
 newCodexRuntimeAdapter config codec turns custody options = newAdapter CodexLocal options.interpreter config codec turns custody options
 
 -- | @CodexGondolinRuntimeAdapter(config, codec, turns, custody, clock=...)@:
--- the guest helper is @/usr/bin/python3@.
+-- the guest helper is the options' guest interpreter.
 newCodexGondolinRuntimeAdapter
-  :: CodexRuntimeConfig -> CodexContinuationCodec -> CodexTurnOperations -> PiConnectionCustody -> CodexAdapterOptions -> IO CodexRuntimeAdapter
-newCodexGondolinRuntimeAdapter config codec turns custody options = newAdapter CodexGondolin "/usr/bin/python3" config codec turns custody options
+  :: CodexRuntimeConfig -> CodexContinuationCodec -> CodexTurnOperations -> HostConnectionCustody -> CodexAdapterOptions -> IO CodexRuntimeAdapter
+newCodexGondolinRuntimeAdapter config codec turns custody options = newAdapter CodexGondolin options.guestInterpreter config codec turns custody options
 
 newAdapter
   :: CodexLane
@@ -948,17 +885,15 @@ newAdapter
   -> CodexRuntimeConfig
   -> CodexContinuationCodec
   -> CodexTurnOperations
-  -> PiConnectionCustody
+  -> HostConnectionCustody
   -> CodexAdapterOptions
   -> IO CodexRuntimeAdapter
-newAdapter lane helperExecutable config0 codec turns custody options = do
+newAdapter lane helper config0 codec turns custody options = do
   config <- newCodexRuntimeConfig config0
-  helper <- newIORef helperExecutable
   source <- codexHelperSource
   readiness <- newMVar (Readiness Nothing Nothing Nothing)
   operations <- newMVar Map.empty
   qualified <- newMVar Set.empty
-  startWrapper <- newIORef id
   pure
     CodexRuntimeAdapter
       { lane
@@ -973,7 +908,7 @@ newAdapter lane helperExecutable config0 codec turns custody options = do
       , readiness
       , operations
       , qualified
-      , startWrapper
+      , startWrapper = options.startWrapper
       }
 
 codexAdapterLane :: CodexRuntimeAdapter -> CodexLane
@@ -987,18 +922,8 @@ codexExecutable :: CodexRuntimeAdapter -> IO (Maybe FilePath)
 codexExecutable a = (.readyExecutable) <$> readMVar a.readiness
 
 -- | @adapter._helper_executable@.
-codexHelperExecutable :: CodexRuntimeAdapter -> IO FilePath
-codexHelperExecutable a = readIORef a.helper
-
-setCodexHelperExecutable :: CodexRuntimeAdapter -> FilePath -> IO ()
-setCodexHelperExecutable a = writeIORef a.helper
-
--- | Wrap @adapter.start@ for every later caller (the reference's tests
--- assign @adapter.start@; the Gondolin Activity and runtime service call
--- through it).
-setCodexStartWrapper
-  :: CodexRuntimeAdapter -> ((CodexRuntimeInvocation -> IO CodexOperation) -> CodexRuntimeInvocation -> IO CodexOperation) -> IO ()
-setCodexStartWrapper a = writeIORef a.startWrapper
+codexHelperExecutable :: CodexRuntimeAdapter -> FilePath
+codexHelperExecutable a = a.helper
 
 -- | @repr(adapter)@.
 renderCodexRuntimeAdapter :: CodexRuntimeAdapter -> IO Text
@@ -1113,9 +1038,7 @@ validateAttachment a attachment = do
 
 -- | @start(invocation)@ through any installed start wrapper.
 startCodex :: CodexRuntimeAdapter -> CodexRuntimeInvocation -> IO CodexOperation
-startCodex a inv = do
-  wrapper <- readIORef a.startWrapper
-  wrapper (startDirect a) inv
+startCodex a = a.startWrapper (startDirect a)
 
 startDirect :: CodexRuntimeAdapter -> CodexRuntimeInvocation -> IO CodexOperation
 startDirect a inv0 = do
@@ -1167,17 +1090,11 @@ startDirect a inv0 = do
     case registered of
       Left old -> pure old
       Right operation -> do
-        void (forkIO (runOperation operation `finally` atomically (writeTVar operation.finished True)))
+        Lifecycle.startWorker operation.lifecycle (runOperation operation)
         pure operation
   where
     newOperation inv key prior executable executionPath = do
-      monitor <- newMVar ()
-      cancelled <- newTVarIO False
-      publishing <- newTVarIO False
-      result <- newTVarIO Nothing
-      cleanupDisposition <- newTVarIO RuntimeCleanupUnverified
-      cleanup <- newTVarIO Nothing
-      finished <- newTVarIO False
+      lifecycle <- newLifecycle (LifecycleTexts "Codex operation wait timeout must be positive and finite" "Codex runtime operation has not settled") inv.operationId
       pure
         CodexOperation
           { owner = a
@@ -1186,13 +1103,7 @@ startDirect a inv0 = do
           , prior
           , executable
           , executionPath
-          , monitor
-          , cancelled
-          , publishing
-          , result
-          , cleanupDisposition
-          , cleanup
-          , finished
+          , lifecycle
           }
 
 -- | The @PublicationResult | ReleaseResult@ cleanup gate.
@@ -1204,7 +1115,7 @@ connectionCleanupVerified expectedOperation attachmentId' operationId' cleanup' 
     && not cleanup'.securityViolation
 
 data ExecState = ExecState
-  { materialization :: Maybe PiMaterialization
+  { materialization :: Maybe HostMaterialization
   , authRef :: Maybe PrivateFileRef
   , rolloutRef :: Maybe PrivateFileRef
   , attempted :: Bool
@@ -1244,7 +1155,7 @@ execute o = do
         (auth, roll) <- case (s.authRef, s.rolloutRef) of
           (Just x, Just y) -> pure (x, y)
           _ -> throwAgenticus (OtherError "AssertionError") "helper requires both private roots"
-        interpreter <- readIORef a.helper
+        let interpreter = a.helper
         seconds <- if checkCurrent then remaining else pure (min config.commandTimeout config.cancellationGrace)
         command <-
           either throwIO pure $
@@ -1418,7 +1329,7 @@ privateFileProbe a motus remaining = do
     provider <- bindingProvider motus
     transfer <- maybe (throwAgenticus RuntimeError "private transfer required") pure (providerPrivateFiles provider)
     reference <- newIORef Nothing
-    interpreter <- readIORef a.helper
+    let interpreter = a.helper
     passed <- trySync $ do
       probeFile <- either throwIO pure (mkPrivateFile "probe" "agenticus-codex-a3-before")
       expected <- either throwIO pure (mkPrivateFile "probe" "agenticus-codex-a3-after")

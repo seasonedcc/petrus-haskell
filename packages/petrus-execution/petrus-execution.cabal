@@ -38,7 +38,7 @@ library
                     Petrus.Motus.Execution.Artifacts
                     Petrus.Motus.Execution.Error
                     Petrus.Motus.Execution.Internal.Common
-                    Petrus.Motus.Execution.Internal.Posix
+                    Petrus.Motus.Execution.Internal.PosixPath
                     Petrus.Motus.Execution.Internal.Process
                     Petrus.Motus.Execution.Internal.PyText
                     Petrus.Motus.Execution.Internal.Sidecar
@@ -51,7 +51,7 @@ library
                     Petrus.Motus.Execution.Spawn
                     Petrus.Motus.Execution.Timeline
   include-dirs:     cbits
-  c-sources:        cbits/petrus_posix.c
+  c-sources:        cbits/petrus_wait.c
                     cbits/petrus_spawn.c
   build-depends:    base >=4.18 && <5
                   , base64-bytestring >=1.2
@@ -65,6 +65,7 @@ library
                   , http-types >=0.12
                   , network >=3.1
                   , petrus-json
+                  , petrus-posix
                   , process >=1.6.18
                   , stm >=2.5
                   , template-haskell >=2.20
