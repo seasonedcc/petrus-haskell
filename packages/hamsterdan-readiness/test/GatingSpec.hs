@@ -100,7 +100,9 @@ replaced :: Text -> Text -> Json -> Marking -> Marking
 replaced place color payload m = deposit (path place) (Token (Just color) payload) (emptied place m)
 
 startedMarking :: Marking
-startedMarking = emptied "startup.pending" (either (error . T.unpack . pythonFailureText) id (seedMarking instanceId))
+startedMarking = emptied "startup.pending" seeded
+  where
+    seeded = either (error . T.unpack . pythonFailureText) id (seedMarking instanceId)
 
 fixture :: Work -> Marking
 fixture work = deposit (path place) (Token (Just (workColor work)) (workDump work)) prepared
