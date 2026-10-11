@@ -189,7 +189,7 @@ def journey(name: str, root: Path) -> dict[str, object]:
         monkeypatch.setattr(module, "uuid", SimpleNamespace(uuid4=uuid4))
         monkeypatch.setattr(module, "HostService", functools.partial(HostService, clock=lambda: CLOCK))
         intent_order(monkeypatch)
-        result =getattr(module, f"run_{name}")(root, monkeypatch)
+        result = getattr(module, f"run_{name}")(root, monkeypatch)
     return {"result": result_json(result), "state": dump(root)}
 
 
