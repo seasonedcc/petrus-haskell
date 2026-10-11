@@ -50,4 +50,9 @@ scripts/check-parity       # the parity table's claims against the committed evi
 ## License
 
 Apache-2.0, like upstream Petrus. See [LICENSE](LICENSE) and [NOTICE](NOTICE)
-for attribution of the upstream projects.
+for attribution of the upstream projects. Each package carries its own
+`LICENSE` and `NOTICE` (shipped in its sdist through `extra-doc-files`): the
+NOTICE names what the package ports, credits its upstream with that
+project's license (Apache-2.0 for Petrus and Hamsterdan; MIT, reproduced in
+full, for petrus-engine and petrus-viewer), and lists any upstream file it
+carries unmodified. The cabal `copyright:` field says the same in one line.

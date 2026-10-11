@@ -9,6 +9,7 @@ description:
   byte-identical canonical spelling.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Data

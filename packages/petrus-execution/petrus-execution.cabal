@@ -8,10 +8,12 @@ description:
   private host artifact store and timeline used as execution evidence.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           System
 build-type:         Simple
+extra-doc-files:    NOTICE
 extra-source-files: data/gondolin_sidecar.mjs
                     cbits/*.h
                     test/fixtures/*.json

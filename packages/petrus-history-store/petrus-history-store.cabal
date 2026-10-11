@@ -12,10 +12,12 @@ description:
   files and resume each other's Instances.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Database
 build-type:         Simple
+extra-doc-files:    NOTICE
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates

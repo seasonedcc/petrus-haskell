@@ -11,10 +11,12 @@ description:
   this repository's test suites.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Testing
 build-type:         Simple
+extra-doc-files:    NOTICE
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
