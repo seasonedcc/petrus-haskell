@@ -62,7 +62,6 @@ import Petrus.Json.Python.Scanner qualified as Scanner
 import Petrus.Json.Reference (repositoryRoot, upstreamPython)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
 import System.Process.Typed (byteStringInput, proc, readProcess, setStdin, setWorkingDir)
 import Test.Hspec
 import Test.QuickCheck (Gen, choose, chooseInt, elements, frequency, listOf, oneof, resize, vectorOf)
@@ -464,40 +463,38 @@ compareAs label expected actual
   | expected == actual = []
   | otherwise = [label ++ ": CPython " ++ show expected ++ ", petrus-json " ++ show actual]
 
-answers :: [Either Text Json]
-answers = unsafePerformIO (oracle (map encodeCase cases))
-{-# NOINLINE answers #-}
-
 spec :: Spec
 spec = describe "Petrus.Json.Python against the pinned CPython" $ do
-  it "answers every case" $
-    length answers `shouldBe` length cases
-  let described = zip cases answers
-      group name select = it name $ do
-        let mine = [(c, a) | (c, a) <- described, select c]
-        length mine `shouldSatisfy` (> 0)
-        take 10 (concatMap (uncurry check) mine) `shouldBe` []
-  group "agrees on every code point (isprintable, isspace, line boundaries, decimal, isdigit, lower, upper, casefold)" $ \case UnicodeCase -> True; _ -> False
-  group "agrees on repr, strip, split, splitlines, isprintable, lower, upper, casefold, os.fsencode, backslashreplace and int() of generated strings" $ \case StringCase _ -> True; _ -> False
-  group "agrees on repr(bytes)" $ \case BytesReprCase _ -> True; _ -> False
-  group "agrees on repr(float)" $ \case FloatReprCase _ -> True; _ -> False
-  group "agrees on repr, str and type name of json.loads values" $ \case JsonReprCase _ -> True; _ -> False
-  group "agrees on json.loads refusal texts" $ \case LoadsCase _ -> True; _ -> False
-  group "agrees on hooked json.loads refusal texts (hook order)" $ \case StrictLoadsCase _ -> True; _ -> False
-  group "agrees on bytes.decode('utf-8') errors" $ \case Utf8Case _ -> True; _ -> False
-  group "agrees on bytes.decode('utf-8', 'replace')" $ \case Utf8ReplaceCase _ -> True; _ -> False
-  group "agrees on str.encode('utf-8') errors" $ \case Utf8EncodeCase _ -> True; _ -> False
-  group "agrees on repr and str of exceptions" $ \case ExceptionCase _ -> True; _ -> False
-  group "agrees on json.loads(bytes) decoding (detect_encoding, surrogatepass)" $ \case JsonBytesCase _ -> True; _ -> False
-  group "agrees on json.loads(bytes): the value or the exception" $ \case LoadsBytesCase _ -> True; _ -> False
-  group "agrees on uuid4's spelling" $ \case UuidCase _ -> True; _ -> False
-  group "agrees on bytes.decode('utf-8', 'surrogateescape')" $ \case FsDecodeCase _ -> True; _ -> False
-  it "covers both outcomes" $ do
-    let refusals = length [() | (LoadsCase _, Left _) <- described]
-        admissions = length [() | (LoadsCase _, Right _) <- described]
-        undecodable = length [() | (JsonBytesCase _, Right got) <- described, isJust (lookupMember "error" got)]
-        decodable = length [() | (JsonBytesCase _, Right got) <- described, isNothing (lookupMember "error" got)]
-    forM_ [refusals, admissions, undecodable, decodable] (`shouldSatisfy` (> 100))
+  -- One oracle run, before the first selected example that needs it.
+  beforeAll (oracle (map encodeCase cases)) $ do
+    it "answers every case" $ \answers ->
+      length answers `shouldBe` length cases
+    let group name select = it name $ \answers -> do
+          let mine = [(c, a) | (c, a) <- zip cases answers, select c]
+          length mine `shouldSatisfy` (> 0)
+          take 10 (concatMap (uncurry check) mine) `shouldBe` []
+    group "agrees on every code point (isprintable, isspace, line boundaries, decimal, isdigit, lower, upper, casefold)" $ \case UnicodeCase -> True; _ -> False
+    group "agrees on repr, strip, split, splitlines, isprintable, lower, upper, casefold, os.fsencode, backslashreplace and int() of generated strings" $ \case StringCase _ -> True; _ -> False
+    group "agrees on repr(bytes)" $ \case BytesReprCase _ -> True; _ -> False
+    group "agrees on repr(float)" $ \case FloatReprCase _ -> True; _ -> False
+    group "agrees on repr, str and type name of json.loads values" $ \case JsonReprCase _ -> True; _ -> False
+    group "agrees on json.loads refusal texts" $ \case LoadsCase _ -> True; _ -> False
+    group "agrees on hooked json.loads refusal texts (hook order)" $ \case StrictLoadsCase _ -> True; _ -> False
+    group "agrees on bytes.decode('utf-8') errors" $ \case Utf8Case _ -> True; _ -> False
+    group "agrees on bytes.decode('utf-8', 'replace')" $ \case Utf8ReplaceCase _ -> True; _ -> False
+    group "agrees on str.encode('utf-8') errors" $ \case Utf8EncodeCase _ -> True; _ -> False
+    group "agrees on repr and str of exceptions" $ \case ExceptionCase _ -> True; _ -> False
+    group "agrees on json.loads(bytes) decoding (detect_encoding, surrogatepass)" $ \case JsonBytesCase _ -> True; _ -> False
+    group "agrees on json.loads(bytes): the value or the exception" $ \case LoadsBytesCase _ -> True; _ -> False
+    group "agrees on uuid4's spelling" $ \case UuidCase _ -> True; _ -> False
+    group "agrees on bytes.decode('utf-8', 'surrogateescape')" $ \case FsDecodeCase _ -> True; _ -> False
+    it "covers both outcomes" $ \answers -> do
+      let described = zip cases answers
+          refusals = length [() | (LoadsCase _, Left _) <- described]
+          admissions = length [() | (LoadsCase _, Right _) <- described]
+          undecodable = length [() | (JsonBytesCase _, Right got) <- described, isJust (lookupMember "error" got)]
+          decodable = length [() | (JsonBytesCase _, Right got) <- described, isNothing (lookupMember "error" got)]
+      forM_ [refusals, admissions, undecodable, decodable] (`shouldSatisfy` (> 100))
   it "fixes the space separators and Unicode 16.0 additions" $ do
     pythonStrRepr "\xa0" `shouldBe` "'\\xa0'"
     pythonStrRepr "\x105C0" `shouldBe` "'\x105C0'"

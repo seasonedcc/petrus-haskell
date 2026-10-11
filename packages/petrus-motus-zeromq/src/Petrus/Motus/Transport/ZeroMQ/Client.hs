@@ -34,10 +34,7 @@ module Petrus.Motus.Transport.ZeroMQ.Client
   , setAccessRequestTimeout
   , closeAccess
     -- * Seams for tests
-  , replaceSocketFactory
   , openClientSocket
-  , replaceAccessSocketFactory
-  , replaceAccessSocketOpener
   , openAccessSocket
   ) where
 
@@ -47,6 +44,7 @@ import Control.Exception (SomeAsyncException, SomeException, fromException, mask
 import Control.Monad (unless, when)
 import Data.ByteString (ByteString)
 import Data.IORef
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Clock (getMonotonicTime)
@@ -68,7 +66,7 @@ import Prelude hiding (fail)
 -- ---------------------------------------------------------------------------
 -- Options
 
--- | The reference's keyword arguments.
+-- | The reference's keyword arguments, plus two test seams.
 data ClientOptions = ClientOptions
   { queues :: [Text]
   , workerId :: Maybe Text
@@ -80,6 +78,13 @@ data ClientOptions = ClientOptions
   , maxInFlightOperations :: Int
   -- ^ The asynchronous access's socket bound (ignored by the synchronous
   -- client).
+  , socketFactory :: Maybe SocketFactory
+  -- ^ Test seam (the reference's tests assign @_context@): where new
+  -- sockets come from. Default: libzmq sockets on the client's own context.
+  , socketOpener :: Maybe (IO RpcSocket)
+  -- ^ Test seam for the asynchronous access (the reference's tests assign
+  -- @_open_socket@): opens each request socket in place of
+  -- 'openAccessSocket'. Ignored by the synchronous client.
   }
 
 -- | @queues=("default",)@, 5 s requests, 30 s terminal redelivery, 8
@@ -94,6 +99,8 @@ defaultClientOptions =
     , requestTimeout = 5.0
     , terminalTimeout = 30.0
     , maxInFlightOperations = 8
+    , socketFactory = Nothing
+    , socketOpener = Nothing
     }
 
 -- | What both clients validate and derive in their constructors.
@@ -204,7 +211,7 @@ data ZeroMQWorkerDispatch = ZeroMQWorkerDispatch
   , requestTimeout :: IORef Double
   , owner :: ThreadId
   , context :: Z.Context
-  , factory :: IORef SocketFactory
+  , factory :: SocketFactory
   , socket :: IORef (Maybe RpcSocket)
   , closed :: IORef Bool
   }
@@ -216,9 +223,9 @@ newZeroMQWorkerDispatch endpoint' options = do
   requestTimeout <- newIORef timeout'
   owner <- myThreadId
   context <- Z.newContext
-  factory <- newIORef (zmqSocketFactory context)
   socket <- newIORef Nothing
   closed <- newIORef False
+  let factory = fromMaybe (zmqSocketFactory context) options.socketFactory
   pure ZeroMQWorkerDispatch {who, requestTimeout, owner, context, factory, socket, closed}
 
 -- | The provider-neutral surface.
@@ -291,17 +298,11 @@ checkOwner c = do
 discardSocket :: ZeroMQWorkerDispatch -> IO ()
 discardSocket c = readIORef c.socket >>= mapM_ (\s -> writeIORef c.socket Nothing >> s.close)
 
--- | Replace where new sockets come from (the reference's tests assign
--- @_context@).
-replaceSocketFactory :: ZeroMQWorkerDispatch -> SocketFactory -> IO ()
-replaceSocketFactory c = writeIORef c.factory
-
 -- | @_open_socket()@.
 openClientSocket :: ZeroMQWorkerDispatch -> IO RpcSocket
 openClientSocket c = do
-  factory <- readIORef c.factory
   timeout' <- readIORef c.requestTimeout
-  openDealer factory timeout' c.who.endpoint c.who.keys
+  openDealer c.factory timeout' c.who.endpoint c.who.keys
 
 rpc :: ZeroMQWorkerDispatch -> Text -> [(Text, Json)] -> Maybe Double -> IO Json
 rpc c operation fields retryUntil = do
@@ -349,9 +350,9 @@ data AsyncZeroMQWorkerAccess = AsyncZeroMQWorkerAccess
   { who :: Identity
   , requestTimeout :: IORef Double
   , context :: Z.Context
-  , accessFactory :: IORef SocketFactory
-  , opener :: IORef (Maybe (IO RpcSocket))
-  -- ^ A replacement for 'openAccessSocket', when a test installed one.
+  , accessFactory :: SocketFactory
+  , opener :: Maybe (IO RpcSocket)
+  -- ^ A replacement for 'openAccessSocket', when a test supplied one.
   , permits :: TVar Int
   , live :: TVar Int
   , closed :: IORef Bool
@@ -368,8 +369,8 @@ newAsyncZeroMQWorkerAccess endpoint' options = do
   permits <- newTVarIO options.maxInFlightOperations
   live <- newTVarIO 0
   closed <- newIORef False
-  opener <- newIORef Nothing
-  accessFactory <- newIORef (zmqSocketFactory context)
+  let accessFactory = fromMaybe (zmqSocketFactory context) options.socketFactory
+      opener = options.socketOpener
   pure AsyncZeroMQWorkerAccess {who, requestTimeout, context, accessFactory, opener, permits, live, closed}
 
 -- | The slot-addressed surface an 'W.AsyncWorker' drives (slots are
@@ -408,21 +409,11 @@ closeAccess a = do
     atomically (readTVar a.live >>= \n -> when (n > 0) retry)
     Z.terminateContext a.context
 
--- | Replace where new sockets come from (the reference's tests assign
--- @_context@).
-replaceAccessSocketFactory :: AsyncZeroMQWorkerAccess -> SocketFactory -> IO ()
-replaceAccessSocketFactory a = writeIORef a.accessFactory
-
--- | Replace @_open_socket@ (the reference's tests assign it).
-replaceAccessSocketOpener :: AsyncZeroMQWorkerAccess -> IO RpcSocket -> IO ()
-replaceAccessSocketOpener a = writeIORef a.opener . Just
-
 -- | @_open_socket()@.
 openAccessSocket :: AsyncZeroMQWorkerAccess -> IO RpcSocket
 openAccessSocket a = do
-  factory <- readIORef a.accessFactory
   timeout' <- readIORef a.requestTimeout
-  openDealer factory timeout' a.who.endpoint a.who.keys
+  openDealer a.accessFactory timeout' a.who.endpoint a.who.keys
 
 asyncRpc :: AsyncZeroMQWorkerAccess -> Text -> [(Text, Json)] -> Maybe Double -> IO Json
 asyncRpc a operation fields retryUntil = do
@@ -439,7 +430,7 @@ asyncRpc a operation fields retryUntil = do
           when (n <= 0) retry
           writeTVar a.permits (n - 1)
         let release = atomically (modifyTVar' a.permits (+ 1))
-        open <- maybe (openAccessSocket a) id <$> readIORef a.opener
+        let open = fromMaybe (openAccessSocket a) a.opener
         s <- open `onException` release
         atomically (modifyTVar' a.live (+ 1))
         timeout' <- readIORef a.requestTimeout

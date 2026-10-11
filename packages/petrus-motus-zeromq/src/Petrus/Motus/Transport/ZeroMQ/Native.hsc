@@ -417,7 +417,8 @@ foreign import capi unsafe "zmq.h zmq_z85_decode" c_zmq_z85_decode :: Ptr Word8 
 foreign import capi unsafe "zmq.h zmq_curve_keypair" c_zmq_curve_keypair :: Ptr CChar -> Ptr CChar -> IO CInt
 foreign import capi unsafe "zmq.h zmq_curve_public" c_zmq_curve_public :: Ptr CChar -> Ptr CChar -> IO CInt
 
--- | Z85-encode bytes whose length is a multiple of 4.
+-- | Z85-encode bytes whose length is a multiple of 4. unsafePerformIO:
+-- libzmq's pure codec over a buffer this call allocates; no other effect.
 z85Encode :: ByteString -> Maybe ByteString
 z85Encode bytes
   | BS.length bytes `mod` 4 /= 0 = Nothing
@@ -427,7 +428,8 @@ z85Encode bytes
           r <- c_zmq_z85_encode out (castPtr p) (fromIntegral n)
           if r == nullPtr then pure Nothing else Just <$> BS.packCString out
 
--- | Z85-decode text whose length is a multiple of 5.
+-- | Z85-decode text whose length is a multiple of 5. unsafePerformIO: as
+-- for 'z85Encode'.
 z85Decode :: ByteString -> Maybe ByteString
 z85Decode text
   | BS.length text `mod` 5 /= 0 || BS.elem 0 text = Nothing

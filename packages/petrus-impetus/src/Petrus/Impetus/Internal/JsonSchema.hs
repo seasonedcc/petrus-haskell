@@ -93,6 +93,7 @@ modelJsonSchema models@(root : _) =
   sortKeys (Object (("$defs", Object [(name, modelSchema (spec name)) | name <- Set.toAscList defs]) : members (modelSchema root)))
   where
     table = Map.fromList [(m.modelName, m) | m <- models]
+    -- 'error': the model tables are static; a dangling 'Ref' is a table bug.
     spec name = Map.findWithDefault (error ("JsonSchema: no model " <> T.unpack name)) name table
     defs = reachable Set.empty (refsOf root)
     reachable seen [] = seen

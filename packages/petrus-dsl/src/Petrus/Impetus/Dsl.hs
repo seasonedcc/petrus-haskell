@@ -309,16 +309,31 @@ data Behavior = Behavior
 emptyBehavior :: Behavior
 emptyBehavior = Behavior Nothing [] []
 
--- | A destination override of an inherited transition: 'Nothing' keeps the
--- inherited field (@_UNSET@).
+-- | A destination override of an inherited transition, field by field.
 data Override = Override
-  { handlerChange :: Maybe (Maybe HandlerSpec)
-  , guardChange :: Maybe [GuardSpec]
-  , timerChange :: Maybe [Timer]
+  { handlerChange :: Change (Maybe HandlerSpec)
+  , guardChange :: Change [GuardSpec]
+  , timerChange :: Change [Timer]
   }
 
+-- | One overridable field: 'Keep' the inherited value (@_UNSET@), or 'Set'
+-- a new one (for the handler, possibly @None@).
+data Change a = Keep | Set a
+
+-- | The field after a change.
+changed :: a -> Change a -> a
+changed inherited = \case
+  Keep -> inherited
+  Set value -> value
+
+-- | Two changes in order: the later 'Set' wins.
+andThen :: Change a -> Change a -> Change a
+andThen current = \case
+  Keep -> current
+  new -> new
+
 noOverride :: Override
-noOverride = Override Nothing Nothing Nothing
+noOverride = Override Keep Keep Keep
 
 -- | One field of a transition declaration.
 data Field
@@ -350,24 +365,24 @@ applyField b = \case
 
 overrideField :: Override -> Field -> Override
 overrideField o = \case
-  HandlerField h -> o {handlerChange = Just h}
-  GuardsField gs -> o {guardChange = Just gs}
-  TimersField ts -> o {timerChange = Just ts}
+  HandlerField h -> o {handlerChange = Set h}
+  GuardsField gs -> o {guardChange = Set gs}
+  TimersField ts -> o {timerChange = Set ts}
 
 overrideBehavior :: Override -> Behavior -> Behavior
 overrideBehavior o b =
   Behavior
-    { handlerValue = fromMaybe b.handlerValue o.handlerChange
-    , guardValues = fromMaybe b.guardValues o.guardChange
-    , timerValues = fromMaybe b.timerValues o.timerChange
+    { handlerValue = changed b.handlerValue o.handlerChange
+    , guardValues = changed b.guardValues o.guardChange
+    , timerValues = changed b.timerValues o.timerChange
     }
 
 mergeOverride :: Override -> Override -> Override
 mergeOverride current new =
   Override
-    { handlerChange = maybe current.handlerChange Just new.handlerChange
-    , guardChange = maybe current.guardChange Just new.guardChange
-    , timerChange = maybe current.timerChange Just new.timerChange
+    { handlerChange = current.handlerChange `andThen` new.handlerChange
+    , guardChange = current.guardChange `andThen` new.guardChange
+    , timerChange = current.timerChange `andThen` new.timerChange
     }
 
 -- ---------------------------------------------------------------------------
@@ -716,7 +731,7 @@ configure fields node@(T at) = do
       putBody
         b
           { transitionOverrides =
-              Map.insert at (Override (Just value.handlerValue) (Just value.guardValues) (Just value.timerValues)) b.transitionOverrides
+              Map.insert at (Override (Set value.handlerValue) (Set value.guardValues) (Set value.timerValues)) b.transitionOverrides
           }
     else do
       forM_ (Map.lookup at b.transitionValues) $ \prior -> when (prior /= value) conflict
@@ -914,6 +929,8 @@ prefixed :: [Text] -> NetPath -> NetPath
 prefixed [] at = at
 prefixed prefix at = unsafePath (T.intercalate "." prefix <> "." <> netPathText at)
 
+-- | 'error' on refusal: every caller joins or slices valid paths and
+-- 'scope'-checked segments (non-empty, dot-free), which 'netPath' admits.
 unsafePath :: Text -> NetPath
 unsafePath = either (error . T.unpack) id . netPath
 

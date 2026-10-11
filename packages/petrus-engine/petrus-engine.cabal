@@ -89,6 +89,7 @@ test-suite petrus-engine-test
                   , petrus-telemetry
                   , petrus-test-support
                   , process >=1.6
+                  , QuickCheck >=2.14
                   , text
                   , unix
   ghc-options:      -threaded -rtsopts

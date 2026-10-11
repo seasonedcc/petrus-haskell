@@ -226,14 +226,14 @@ reloaded store = do
     bytes <- either (fail . show) pure (dumps compact (encodeRecord r))
     value <- either fail pure (parseJson strictLoads bytes)
     either (fail . T.unpack) pure (decodeRecord value)
-  mirroredHistoryStore BackendOwned (Seq.fromList decoded) (pure . map (const Entered))
+  mirroredHistoryStore BackendOwned (Seq.fromList decoded) (const (pure . map (const Entered)))
 
 -- | @_BatchRecordingHistory@: an in-memory store that records every
 -- committed batch.
 batchRecordingStore :: IO (HistoryStore, IORef [[Record]])
 batchRecordingStore = do
   batches <- newIORef []
-  store <- mirroredHistoryStore BackendOwned Seq.empty $ \batch -> do
+  store <- mirroredHistoryStore BackendOwned Seq.empty $ \_ batch -> do
     modifyIORef' batches (++ [batch])
     pure (map (const Entered) batch)
   pure (store, batches)

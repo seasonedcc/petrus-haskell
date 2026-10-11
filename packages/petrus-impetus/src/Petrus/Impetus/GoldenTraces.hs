@@ -155,6 +155,8 @@ declaredSymbols n =
 -- ---------------------------------------------------------------------------
 -- Scenarios
 
+-- | 'error' on refusal (here and in 'named'): the scenarios are fixed
+-- literals, so a refusal is a bug the golden-trace suite reports at once.
 p :: Text -> NetPath
 p = either (error . T.unpack) id . netPath
 

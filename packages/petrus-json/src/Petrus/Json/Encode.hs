@@ -141,7 +141,8 @@ encodeErrorMessage = \case
 -- the streaming equivalent and spells the same bytes. The writer refuses as
 -- it goes, at the first value the options refuse in writer order (a
 -- container before its items, keys sorted under 'sortKeys'), which is the
--- refusal 'dumpsBuilder' reports too.
+-- refusal 'dumpsBuilder' reports too. unsafeDupablePerformIO: the writer
+-- touches only buffers this call allocates, so 'dumps' is pure.
 dumps :: EncodeOptions -> Json -> Either EncodeError BS.ByteString
 dumps options value =
   unsafeDupablePerformIO $

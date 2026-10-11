@@ -101,3 +101,13 @@ differences are in how the API is spelled and in what the types rule out.
       entered.
 
     Semantics are unchanged, and the kernel suite (2 762 examples) passes.
+12. **`EngineOptions.handlerObserver` is a port-only option.** The
+    reference's Activity handlers are objects that may count their calls or
+    read an injected fault (its tests' bridges do both). Here handlers stay
+    pure values, and the host passes that behaviour once as a
+    `HandlerObserver`, which the Instance's writing door runs exactly once
+    before each `prepare`/`project` application; a `Left` is that call
+    raising. The default (`Nothing`) is the reference's behaviour. The
+    EngineSpec examples under "handler observer" pin the call count and the
+    raise; the DST worlds install their bridges through it
+    (`Petrus.Testing.Dst.Engine.Bridge.withBridge`).

@@ -51,8 +51,9 @@ import Data.Int (Int64)
 import Foreign.C.Error (eINTR, eOK, getErrno, throwErrno, throwErrnoIfMinus1Retry_, throwErrnoPath)
 import Foreign.C.String (CString)
 import Foreign.C.Types (CInt (..))
-import Foreign.Marshal.Array (allocaArray, peekArray)
+import Foreign.Marshal.Array (allocaArray)
 import Foreign.Ptr (Ptr, nullPtr)
+import Foreign.Storable (peekElemOff)
 import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, openFdAt)
 import Petrus.Posix.Internal (withPath)
 import System.Posix.Internals (peekFilePath)
@@ -191,11 +192,25 @@ data FileStat = FileStat
   }
   deriving stock (Eq, Show)
 
-fromFields :: [Int64] -> FileStat
-fromFields = \case
-  [dev, ino, mode, nlink, uid, gid, size, as, ans, ms, mns, cs, cns] ->
-    FileStat dev ino mode nlink uid gid size as ans ms mns cs cns
-  fields -> error ("Petrus.Posix.At: unexpected stat field count " ++ show (length fields))
+-- | The 13 fields the C shim writes, in 'FileStat' field order.
+peekFileStat :: Ptr Int64 -> IO FileStat
+peekFileStat buffer =
+  FileStat
+    <$> field 0
+    <*> field 1
+    <*> field 2
+    <*> field 3
+    <*> field 4
+    <*> field 5
+    <*> field 6
+    <*> field 7
+    <*> field 8
+    <*> field 9
+    <*> field 10
+    <*> field 11
+    <*> field 12
+  where
+    field = peekElemOff buffer
 
 -- | @os.stat(name, dir_fd=dir, follow_symlinks=...)@.
 statAt :: Maybe Fd -> FilePath -> Follow -> IO FileStat
@@ -205,14 +220,14 @@ statAt dir name follow = do
   allocaArray 13 $ \buffer -> do
     withPath name $ \cname ->
       retryPath "fstatat" name (c_fstatat base cname flag buffer)
-    fromFields <$> peekArray 13 buffer
+    peekFileStat buffer
 
 -- | @os.fstat(fd)@.
 fdStat :: Fd -> IO FileStat
 fdStat (Fd fd) =
   allocaArray 13 $ \buffer -> do
     throwErrnoIfMinus1Retry_ "fstat" (c_fstat fd buffer)
-    fromFields <$> peekArray 13 buffer
+    peekFileStat buffer
 
 fileType :: FileStat -> Int64
 fileType stat = statMode stat .&. 0o170000

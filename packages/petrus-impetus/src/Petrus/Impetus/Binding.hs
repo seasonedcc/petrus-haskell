@@ -32,6 +32,8 @@ module Petrus.Impetus.Binding
   , ActivityHandler (..)
   , BoundHandler (..)
   , isActivityBound
+  , HandlerCall (..)
+  , HandlerObserver
   , passthrough
     -- * Completion conditions
   , Completion
@@ -49,8 +51,9 @@ module Petrus.Impetus.Binding
   ) where
 
 import Control.DeepSeq (NFData (..))
-import Control.Monad (forM, forM_, unless, when)
+import Control.Monad (foldM, forM, forM_, unless, when)
 import Data.List (find, findIndex)
+import Data.Maybe (listToMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -115,6 +118,27 @@ data ActivityHandler = ActivityHandler
 data BoundHandler
   = PureHandler Handler
   | ActivityBound ActivityHandler
+
+-- | One application of an 'ActivityHandler' function, as a writing door is
+-- about to make it.
+data HandlerCall
+  = -- | @prepare@ for this binding.
+    Preparing Binding
+  | -- | @project@ of this binding's frozen result.
+    Projecting Binding Json
+  | -- | @project_failure@ of this binding's frozen failure.
+    ProjectingFailure Binding ActivityFailure
+
+-- | An effect the writing door runs immediately before it applies an
+-- 'ActivityHandler' function: exactly once per application, in door order,
+-- under the Instance's lock. A 'Left' is the call raising with that text,
+-- exactly as if the handler had; the pure function is then not applied.
+--
+-- The reference's handlers are objects that may count their calls or read
+-- an injected fault; here the handler stays a pure value and the host
+-- supplies that behaviour once, as this observer (Engine and Instance
+-- option @handlerObserver@).
+type HandlerObserver = HandlerCall -> IO (Either Text ())
 
 -- | Whether the binding is impure work.
 isActivityBound :: BoundHandler -> Bool
@@ -226,7 +250,7 @@ derivedActivityHandler net transitionPath activityName parameters resultColor = 
             )
         members <- forM matched $ \(name, _, a, selectionIndex) -> do
           let selections = if isRead a then b.read else b.consumed
-              selected = if selectionIndex < length selections then Just (selections !! selectionIndex) else Nothing
+              selected = listToMaybe (drop selectionIndex selections)
           case selected of
             Just (place', [t]) | place' == a.source -> Right (name, t.payload)
             _ -> do
@@ -244,7 +268,7 @@ derivedActivityHandler net transitionPath activityName parameters resultColor = 
                     <> ", found "
                     <> pythonIntRepr found
                 )
-        Right (invocation activityName (objectOf members))
+        Right (invocation activityName (Object members))
       project' _ result =
         let produced = Token (Just resultColor) result
          in Right (handlerTokens (coalesce [(a.target, [produced]) | a <- resultArcs]))
@@ -308,16 +332,15 @@ derivePlan subject net transitionPath parameters = do
             <> "; collection parameters are not supported"
         )
   (planned, used) <- foldlM' ([], []) parameters $ \(acc, used) (name, color) -> do
-    let matches = [i | (i, a) <- zip [0 :: Int ..] arcs, a.color == Just color]
-    index <- case matches of
-      [i] -> Right i
+    let matches = [match | match@(_, a) <- zip [0 :: Int ..] arcs, a.color == Just color]
+    (index, a) <- case matches of
+      [match] -> Right match
       _ ->
         Left
           ( "cannot derive " <> subject <> " for " <> at <> ": parameter " <> pythonStrRepr name <> " (" <> color
               <> ") requires exactly one matching input arc, found "
               <> pythonIntRepr (length matches)
           )
-    let a = arcs !! index
     when (index `elem` used) $
       Left ("cannot derive " <> subject <> " for " <> at <> ": input arc " <> netPathText a.source <> " is reused")
     let selectionIndex = length [c | c <- take index arcs, c.mode == a.mode]
@@ -338,7 +361,7 @@ planArguments subject (TypedPlan transitionPath planned) b = do
       )
   forM planned $ \(TypedInput name a selectionIndex) -> do
     let selections = if isRead a then b.read else b.consumed
-        selected = if selectionIndex < length selections then Just (selections !! selectionIndex) else Nothing
+        selected = listToMaybe (drop selectionIndex selections)
     case selected of
       Just (place', [t]) | place' == a.source -> do
         when (t.color /= a.color) $
@@ -415,8 +438,6 @@ coalesce = foldl add []
       Just i -> [if j == i then (q, us ++ ts) else (q, us) | (j, (q, us)) <- zip [0 :: Int ..] acc]
       Nothing -> acc ++ [(p, ts)]
 
-objectOf :: [(Text, Json)] -> Json
-objectOf = Object
-
+-- | 'foldM' with the step last, for a trailing lambda.
 foldlM' :: b -> [a] -> (b -> a -> Either Text b) -> Either Text b
-foldlM' z xs f = foldl (\acc x -> acc >>= \b -> f b x) (Right z) xs
+foldlM' z xs f = foldM f z xs

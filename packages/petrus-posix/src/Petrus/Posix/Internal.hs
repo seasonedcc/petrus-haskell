@@ -57,6 +57,8 @@ withPath path action = do
 -- lazy so it holds exactly the caller's pointer.
 data Encoded = Encoded FilePath !ByteString
 
+-- | 'withPath''s one-entry cache. unsafePerformIO (NOINLINE): a
+-- process-wide memo of immutable values; any thread may hit or replace it.
 recentPath :: IORef Encoded
 recentPath = unsafePerformIO (newIORef (Encoded [] (BS.singleton 0)))
 {-# NOINLINE recentPath #-}

@@ -115,6 +115,8 @@ spawnSpec parent spawnId processKind source capabilities config route = do
   let built = SpawnSpec parent' spawnId' processKind' source' capabilities' config' route child (specDigest built)
   pure built
 
+-- | Lazy, so like upstream's @digest@ property it raises only when read;
+-- 'mapping' has admitted every member, so only nesting depth can refuse.
 specDigest :: SpawnSpec -> Text
 specDigest s = either (error . show) sha256Hex (canonicalBytes (spawnSpecToData s))
 

@@ -279,6 +279,54 @@ neutralSurface = describe "TestNeutralEngineSurface" $ do
     readIORef loadedBridge.projected `shouldReturn` 0
     Engine.close loaded
 
+  -- Port-only: the hook through which a host counts handler calls or
+  -- injects a fault (the reference's bridges do it inside the handler).
+  describe "handler observer" $ do
+    let observedHandler =
+          ActivityBound
+            ActivityHandler
+              { prepare = \binding -> case bindingTokens binding of
+                  t : _ -> Right (invocation "activity" t.payload)
+                  [] -> Left "IndexError('tuple index out of range')"
+              , project = \_ result -> Right (handlerTokens [(b, [tokD "Done" result])])
+              , projectFailure = Nothing
+              }
+        observing armed calls =
+          Engine.defaultEngineOptions
+            { Engine.handlers = symbols [("bridge", observedHandler)]
+            , Engine.marking = input3
+            , Engine.handlerObserver = Just $ \call -> do
+                let name = case call of
+                      Engine.Preparing _ -> "prepare"
+                      Engine.Projecting _ _ -> "project"
+                      Engine.ProjectingFailure _ _ -> "project_failure" :: Text
+                modifyIORef' calls (<> [name])
+                fault <- readIORef armed
+                pure (if fault == Just name then Left "RuntimeError('armed')" else Right ())
+            }
+
+    it "runs once before each Activity handler call" $ do
+      history <- inMemoryHistoryStore
+      port <- inlineActivity
+      calls <- newIORef []
+      armed <- newIORef Nothing
+      engine <- Engine.create activityNet "observed" history port (observing armed calls)
+      _ <- advanceUntilRest engine
+      Engine.marking engine `shouldReturn` done3
+      readIORef calls `shouldReturn` ["prepare", "project"]
+      Engine.close engine
+
+    it "answering Left raises the call before anything is appended" $ do
+      history <- inMemoryHistoryStore
+      port <- inlineActivity
+      calls <- newIORef []
+      armed <- newIORef (Just "prepare")
+      engine <- Engine.create activityNet "observed-fault" history port (observing armed calls)
+      before <- Engine.records engine
+      Engine.advance engine `shouldThrow` (== Engine.EngineHandlerFailed "RuntimeError('armed')")
+      readIORef calls `shouldReturn` ["prepare"]
+      (toList <$> history.snapshot) `shouldReturn` before
+
   it "advance yields after each whole action" $ do
     history <- inMemoryHistoryStore
     port <- inlineActivity

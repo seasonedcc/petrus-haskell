@@ -43,7 +43,7 @@ import Petrus.Activity (invocation)
 import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (BoundHandler, handlerTokens)
+import Petrus.Impetus.Binding (handlerTokens)
 import Petrus.Impetus.History.Records
   ( ActivityTerminalQuarantined (..)
   , Record (..)
@@ -52,14 +52,14 @@ import Petrus.Impetus.History.Records
   , recordName
   )
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
-import Petrus.Impetus.Instance (DeliveryScope (..), FiringOutcome (..), ImplementationRef (..))
+import Petrus.Impetus.Instance (DeliveryScope (..), FiringOutcome (..))
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.Scope (scopeGeneration, scopeName)
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch (CancellationInstruction (..), Dispatch (..), dispositionText)
 import Petrus.Motus.Dispatch.InMemory (InMemoryDispatch, completeOccurrence, inMemoryDispatch, newInMemoryDispatch, pending)
 import Petrus.Testing.Dst hiding (dispositionText)
-import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
+import Petrus.Testing.Dst.Engine.Bridge (Bridged (..), withBridge)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
@@ -214,19 +214,16 @@ applicationNet =
 
 data Bridge = Bridge {prepared :: IORef Int, projected :: IORef Int}
 
-bridgeHandler :: Bridge -> BoundHandler
-bridgeHandler bridge =
-  observed
-    ObservedHandler
-      { prepare = \b -> do
-          modifyIORef' bridge.prepared (+ 1)
-          pure $ case bindingTokens b of
-            t : _ -> Right (invocation "calculate" t.payload)
-            [] -> Left "IndexError('tuple index out of range')"
-      , project = \_ result -> do
-          modifyIORef' bridge.projected (+ 1)
-          pure (Right (handlerTokens [(done, [Token (Just "Done") result])]))
-      }
+bridged :: Bridge -> Bridged
+bridged bridge =
+  Bridged
+    { prepare = \b -> case bindingTokens b of
+        t : _ -> Right (invocation "calculate" t.payload)
+        [] -> Left "IndexError('tuple index out of range')"
+    , project = \_ result -> Right (handlerTokens [(done, [Token (Just "Done") result])])
+    , onPrepare = Right () <$ modifyIORef' bridge.prepared (+ 1)
+    , onProject = Right () <$ modifyIORef' bridge.projected (+ 1)
+    }
 
 -- ---------------------------------------------------------------------------
 -- Profiles
@@ -345,11 +342,7 @@ newLifecycle refusing historyPath = do
             then (\(d, r) -> (d, Just r)) <$> refusingCancellationDispatch attempts pool
             else pure (inMemoryDispatch pool, Nothing)
         bridge <- Bridge <$> newIORef 0 <*> newIORef 0
-        let options =
-              Engine.defaultEngineOptions
-                { Engine.handlers = Map.fromList [(Symbol "bridge", bridgeHandler bridge)]
-                , Engine.clock = Just (worldClock time)
-                }
+        let options = withBridge (bridged bridge) Engine.defaultEngineOptions {Engine.clock = Just (worldClock time)}
         engine <-
           if load
             then Engine.load applicationNet instanceId history port options

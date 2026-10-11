@@ -14,6 +14,8 @@ import Petrus.Json (Json (..), fromCodePoints, lookupMember)
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec
 
+-- | unsafePerformIO (NOINLINE): a pinned spec file, read once, that pure
+-- helpers build on.
 lineageFixture :: BS.ByteString
 lineageFixture = unsafePerformIO (readSpec "net-document-v1-lineage.json")
 {-# NOINLINE lineageFixture #-}

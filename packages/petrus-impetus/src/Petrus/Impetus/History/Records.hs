@@ -47,6 +47,9 @@ module Petrus.Impetus.History.Records
   , recordInstant
   , recordOccurrence
   , recordScope
+  , TerminalFamily (..)
+  , recordTerminalFamily
+  , terminalFamilyNames
   , reprRecord
   , reprFieldValue
   , encodeFieldValue
@@ -472,16 +475,95 @@ recordFields = \case
 
 -- | Every record's append instant.
 recordInstant :: Record -> Instant
-recordInstant r = case [i | ("instant", FNumber i) <- recordFields r] of
-  (i : _) -> i
-  [] -> 0
+recordInstant = \case
+  RInstanceCreated r -> r.instant
+  RTokensInitialized r -> r.instant
+  RScopeOpened r -> r.instant
+  RScopeClosed r -> r.instant
+  RScopeReset r -> r.instant
+  RCandidateSelected r -> r.instant
+  RExternalEventDelivered r -> r.instant
+  RScopedDeliveryDropped r -> r.instant
+  RScopedDeliveryQuarantined r -> r.instant
+  RDeliveryRegistrationOpened r -> r.instant
+  RDeliveryRegistrationClosed r -> r.instant
+  RTimerMatured r -> r.instant
+  RFiringBegun r -> r.instant
+  RTokensConsumed r -> r.instant
+  RTokensRead r -> r.instant
+  RActivityRequested r -> r.instant
+  RActivityCompleted r -> r.instant
+  RActivityTerminalQuarantined r -> r.instant
+  RTokensProduced r -> r.instant
+  RFiringCompleted r -> r.instant
+  RActivityFailed r -> r.instant
+  RFiringFailed r -> r.instant
 
 -- | The occurrence correlation of records that carry one ('Nothing' for
 -- the occurrence-less categories and for uncorrelated registrations).
 recordOccurrence :: Record -> Maybe Int
-recordOccurrence r = case [o | ("occurrence", FOccurrence o) <- recordFields r] of
-  (o : _) -> o
-  [] -> Nothing
+recordOccurrence = \case
+  RInstanceCreated _ -> Nothing
+  RTokensInitialized _ -> Nothing
+  RScopeOpened _ -> Nothing
+  RScopeClosed _ -> Nothing
+  RScopeReset _ -> Nothing
+  RCandidateSelected r -> Just r.occurrence
+  RExternalEventDelivered r -> Just r.occurrence
+  RScopedDeliveryDropped _ -> Nothing
+  RScopedDeliveryQuarantined _ -> Nothing
+  RDeliveryRegistrationOpened r -> r.occurrence
+  RDeliveryRegistrationClosed r -> r.occurrence
+  RTimerMatured _ -> Nothing
+  RFiringBegun r -> Just r.occurrence
+  RTokensConsumed r -> Just r.occurrence
+  RTokensRead r -> Just r.occurrence
+  RActivityRequested r -> Just r.occurrence
+  RActivityCompleted r -> Just r.occurrence
+  RActivityTerminalQuarantined r -> Just r.occurrence
+  RTokensProduced r -> Just r.occurrence
+  RFiringCompleted r -> Just r.occurrence
+  RActivityFailed r -> Just r.occurrence
+  RFiringFailed r -> Just r.occurrence
+
+-- | The one-terminal disciplines: an occurrence ends in exactly one firing
+-- terminal (@FiringCompleted@ or @FiringFailed@), and an Activity in
+-- exactly one Activity terminal (@ActivityCompleted@ or @ActivityFailed@).
+data TerminalFamily = FiringTerminal | ActivityTerminal
+  deriving stock (Eq, Show)
+
+-- | The terminal family a record belongs to, if any.
+recordTerminalFamily :: Record -> Maybe TerminalFamily
+recordTerminalFamily = \case
+  RFiringCompleted _ -> Just FiringTerminal
+  RFiringFailed _ -> Just FiringTerminal
+  RActivityCompleted _ -> Just ActivityTerminal
+  RActivityFailed _ -> Just ActivityTerminal
+  RInstanceCreated _ -> Nothing
+  RTokensInitialized _ -> Nothing
+  RScopeOpened _ -> Nothing
+  RScopeClosed _ -> Nothing
+  RScopeReset _ -> Nothing
+  RCandidateSelected _ -> Nothing
+  RExternalEventDelivered _ -> Nothing
+  RScopedDeliveryDropped _ -> Nothing
+  RScopedDeliveryQuarantined _ -> Nothing
+  RDeliveryRegistrationOpened _ -> Nothing
+  RDeliveryRegistrationClosed _ -> Nothing
+  RTimerMatured _ -> Nothing
+  RFiringBegun _ -> Nothing
+  RTokensConsumed _ -> Nothing
+  RTokensRead _ -> Nothing
+  RActivityRequested _ -> Nothing
+  RActivityTerminalQuarantined _ -> Nothing
+  RTokensProduced _ -> Nothing
+
+-- | The record names of a terminal family (the stores' @record_type@
+-- values), completion first.
+terminalFamilyNames :: TerminalFamily -> (Text, Text)
+terminalFamilyNames = \case
+  FiringTerminal -> ("FiringCompleted", "FiringFailed")
+  ActivityTerminal -> ("ActivityCompleted", "ActivityFailed")
 
 -- | The optional lifecycle scope of the provenance-carrying records.
 recordScope :: Record -> Maybe LifecycleScope

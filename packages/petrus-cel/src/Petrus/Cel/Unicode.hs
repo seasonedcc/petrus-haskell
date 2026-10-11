@@ -66,6 +66,7 @@ decodeRanges = map one . words
       (a, '-' : b) -> (hex a, hex b)
       (a, _) -> (hex a, hex a)
 
+-- | 'error' on a malformed entry: the tables are compiled-in constants.
 hex :: String -> Int
 hex s = case readHex (filter isHexDigit s) of
   [(v, "")] -> v

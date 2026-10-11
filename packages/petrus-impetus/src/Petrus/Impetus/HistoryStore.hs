@@ -36,20 +36,23 @@ module Petrus.Impetus.HistoryStore
   , mirroredHistoryStore
     -- * Verify-on-conflict
   , Admission (..)
-  , ConflictVerdict (..)
-  , verifyConflict
+  , AdmissionMismatch (..)
+  , UnverifiableConflict (..)
   ) where
 
+import Control.Exception (Exception (..), throwIO)
+import Control.Monad (when)
 import Data.Foldable (toList)
 import Data.IORef
+import Data.Sequence (Seq)
+import Data.Sequence qualified as Seq
+import Data.Text (Text)
+import Data.Text qualified as T
 import GHC.Exts (casMutVar#, readMutVar#)
 import GHC.IO (IO (..))
 import GHC.IORef (IORef (..))
 import GHC.STRef (STRef (..))
-import Data.Sequence (Seq)
-import Data.Sequence qualified as Seq
 import Petrus.Impetus.History.Records (Record)
-import Petrus.Json (Json)
 
 -- | Who commits a batch: the backend itself, or the caller's transaction
 -- that the backend joined.
@@ -124,17 +127,21 @@ data Admission
   deriving stock (Eq, Show)
 
 -- | Build a store over already-loaded records and one durable write. The
--- write receives the whole batch, commits it (or joins the caller's
--- transaction), and reports each record's admission; only then do the
+-- write receives the mirror's length (the position the batch starts at)
+-- and the whole batch, commits it (or joins the caller's transaction), and
+-- reports each record's admission, one per record; only then do the
 -- entered records join the mirror. If the write throws, nothing does.
-mirroredHistoryStore :: CommitMode -> Seq Record -> ([Record] -> IO [Admission]) -> IO HistoryStore
+mirroredHistoryStore :: CommitMode -> Seq Record -> (Int -> [Record] -> IO [Admission]) -> IO HistoryStore
 mirroredHistoryStore commitMode loaded durable = do
   mirror <- newIORef loaded
   let extend' batch = do
-        admissions <- durable batch
+        position <- Seq.length <$> readIORef mirror
+        admissions <- durable position batch
         let entered
               | all (== Entered) admissions = batch
-              | otherwise = [r | (r, Entered) <- zip batch (admissions ++ repeat Entered)]
+              | otherwise = [r | (r, Entered) <- zip batch admissions]
+        when (length admissions /= length batch) $
+          throwIO (AdmissionMismatch (length batch) (length admissions))
         atomicModifyIORef' mirror (\held -> (foldl' (Seq.|>) held entered, ()))
   pure
     HistoryStore
@@ -144,22 +151,22 @@ mirroredHistoryStore commitMode loaded durable = do
       , mode = commitMode
       }
 
--- | The outcome of verifying a conflicting insert against the stored row.
-data ConflictVerdict
-  = -- | Equal payload at the same position: the record fills it.
-    FillsPosition
-  | -- | Equal payload at another position: acknowledged elsewhere.
-    Acknowledged
-  | -- | A different payload: a conflicting fact (the reference's @ValueError@).
-    Conflicting
+-- | A backend's durable write reported a different number of admissions
+-- than the batch has records (records, admissions): a backend defect, so
+-- nothing joins the mirror.
+data AdmissionMismatch = AdmissionMismatch Int Int
   deriving stock (Eq, Show)
 
--- | Verify-on-conflict with Python value equality on the decoded payloads
--- (@1 == 1.0 == true@, objects order-insensitive): the 'Eq' instance of
--- 'Json'. The 'Bool' says whether the stored row sits at the attempted
--- position.
-verifyConflict :: Bool -> Json -> Json -> ConflictVerdict
-verifyConflict samePosition stored attempted
-  | stored /= attempted = Conflicting
-  | samePosition = FillsPosition
-  | otherwise = Acknowledged
+instance Exception AdmissionMismatch where
+  displayException (AdmissionMismatch batch admissions) =
+    "a History backend reported " <> show admissions <> " admissions for a batch of " <> show batch <> " records"
+
+-- | A transactional backend's insert conflicted and no stored row explains
+-- it (the reference's @RuntimeError@): the conflict cannot be verified, so
+-- it is never acknowledged. (A conflict is verified with the 'Eq' instance
+-- of 'Petrus.Json.Json', Python value equality on the decoded payloads.)
+newtype UnverifiableConflict = UnverifiableConflict Text
+  deriving stock (Eq, Show)
+
+instance Exception UnverifiableConflict where
+  displayException (UnverifiableConflict message) = T.unpack message

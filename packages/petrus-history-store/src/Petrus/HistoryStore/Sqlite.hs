@@ -69,7 +69,6 @@ import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, withMVar)
 import Control.Exception (Exception (..), bracket, mask, onException, throwIO, try)
 import Control.Monad (foldM, unless, when)
 import Data.ByteString (ByteString)
-import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Int (Int64)
 import Data.List (intercalate)
 import Data.Map.Strict (Map)
@@ -81,7 +80,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.HistoryStore.Internal (HistoryStoreError (..), decodeStored, pythonDiagnostic)
 import Petrus.Impetus.History.Codec (encodeRecord, historyLoads)
-import Petrus.Impetus.History.Records (Record, recordName)
+import Petrus.Impetus.History.Records (Record, recordName, recordTerminalFamily, terminalFamilyNames)
 import Petrus.Impetus.HistoryStore
 import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, encodeErrorMessage, jsonTypeName, lookupMember, parseJson)
 import Petrus.Posix.Path (purePath)
@@ -103,38 +102,43 @@ historySchemaVersion = 1
 -- | @_DDL@, verbatim: the reference validates these objects by their stored
 -- @sqlite_master.sql@ text, so they are created from the same strings.
 historyDdl :: [Text]
-historyDdl =
-  [ "CREATE TABLE impetus_history_schema (\n\
-    \    component TEXT PRIMARY KEY CHECK (component = 'history'),\n\
-    \    version INTEGER NOT NULL\n\
-    \)"
-  , "INSERT INTO impetus_history_schema (component, version) VALUES ('history', 1)"
-  , "CREATE TABLE impetus_history_events (\n\
-    \    instance TEXT NOT NULL,\n\
-    \    position INTEGER NOT NULL CHECK (position >= 0),\n\
-    \    event_id TEXT NOT NULL UNIQUE,\n\
-    \    record_type TEXT NOT NULL,\n\
-    \    occurrence INTEGER,\n\
-    \    payload TEXT NOT NULL,\n\
-    \    recorded_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\n\
-    \    PRIMARY KEY (instance, position)\n\
-    \)"
-  , "CREATE UNIQUE INDEX impetus_history_one_firing_terminal\n\
-    \    ON impetus_history_events (instance, occurrence)\n\
-    \    WHERE record_type IN ('FiringCompleted', 'FiringFailed')"
-  , "CREATE UNIQUE INDEX impetus_history_one_activity_terminal\n\
-    \    ON impetus_history_events (instance, occurrence)\n\
-    \    WHERE record_type IN ('ActivityCompleted', 'ActivityFailed')"
-  ]
+historyDdl = [schemaTable, schemaRow, eventsTable, oneFiringTerminal, oneActivityTerminal]
+
+schemaTable, schemaRow, eventsTable, oneFiringTerminal, oneActivityTerminal :: Text
+schemaTable =
+  "CREATE TABLE impetus_history_schema (\n\
+  \    component TEXT PRIMARY KEY CHECK (component = 'history'),\n\
+  \    version INTEGER NOT NULL\n\
+  \)"
+schemaRow = "INSERT INTO impetus_history_schema (component, version) VALUES ('history', 1)"
+eventsTable =
+  "CREATE TABLE impetus_history_events (\n\
+  \    instance TEXT NOT NULL,\n\
+  \    position INTEGER NOT NULL CHECK (position >= 0),\n\
+  \    event_id TEXT NOT NULL UNIQUE,\n\
+  \    record_type TEXT NOT NULL,\n\
+  \    occurrence INTEGER,\n\
+  \    payload TEXT NOT NULL,\n\
+  \    recorded_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\n\
+  \    PRIMARY KEY (instance, position)\n\
+  \)"
+oneFiringTerminal =
+  "CREATE UNIQUE INDEX impetus_history_one_firing_terminal\n\
+  \    ON impetus_history_events (instance, occurrence)\n\
+  \    WHERE record_type IN ('FiringCompleted', 'FiringFailed')"
+oneActivityTerminal =
+  "CREATE UNIQUE INDEX impetus_history_one_activity_terminal\n\
+  \    ON impetus_history_events (instance, occurrence)\n\
+  \    WHERE record_type IN ('ActivityCompleted', 'ActivityFailed')"
 
 -- | The DDL each stored object must match, by name.
 expectedSql :: Map Text Text
 expectedSql =
   Map.fromList
-    [ ("impetus_history_schema", historyDdl !! 0)
-    , ("impetus_history_events", historyDdl !! 2)
-    , ("impetus_history_one_firing_terminal", historyDdl !! 3)
-    , ("impetus_history_one_activity_terminal", historyDdl !! 4)
+    [ ("impetus_history_schema", schemaTable)
+    , ("impetus_history_events", eventsTable)
+    , ("impetus_history_one_firing_terminal", oneFiringTerminal)
+    , ("impetus_history_one_activity_terminal", oneActivityTerminal)
     ]
 
 expectedObjects :: Map Text SQLData
@@ -146,9 +150,6 @@ expectedObjects =
     , ("impetus_history_one_activity_terminal", SQLText "index")
     ]
 
-firingTerminals, activityTerminals :: (Text, Text)
-firingTerminals = ("FiringCompleted", "FiringFailed")
-activityTerminals = ("ActivityCompleted", "ActivityFailed")
 
 -- | One record's row values, encoded before any IO.
 data EncodedRow = EncodedRow
@@ -201,17 +202,15 @@ encodeRows = traverse encodeOne
 
 -- | The store's failures that the reference raises as something other than
 -- @ValueError@ (which is 'HistoryStoreError').
+-- (An insert conflict no stored row explains is the kernel's
+-- 'UnverifiableConflict'.)
 data SqliteHistoryStoreFailure
-  = -- | @RuntimeError@: an insert conflicted and no stored row explains it.
-    UnexplainedConflict Text
-  | -- | @sqlite3.ProgrammingError@: the store was used after 'close'.
+  = -- | @sqlite3.ProgrammingError@: the store was used after 'close'.
     ClosedDatabase
   deriving stock (Eq, Show)
 
 instance Exception SqliteHistoryStoreFailure where
-  displayException = \case
-    UnexplainedConflict message -> T.unpack message
-    ClosedDatabase -> "Cannot operate on a closed database."
+  displayException ClosedDatabase = "Cannot operate on a closed database."
 
 -- ---------------------------------------------------------------------------
 -- The store
@@ -252,10 +251,7 @@ openSqliteHistoryStore path instanceId = do
         `onException` Sql.close connection
     pure (connection, loaded)
   guard' <- newMVar (Just connection)
-  self <- newIORef Nothing
-  let position = readIORef self >>= maybe (pure 0) (.count)
-  store <- mirroredHistoryStore BackendOwned loaded (commitBatch instanceId guard' position)
-  writeIORef self (Just store)
+  store <- mirroredHistoryStore BackendOwned loaded (commitBatch instanceId guard')
   pure
     SqliteHistoryStore
       { history = store
@@ -448,14 +444,13 @@ insertStatement =
   "INSERT INTO impetus_history_events (instance, position, event_id, record_type, occurrence, payload) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING"
 
 -- | @_commit@: encode the whole batch, then one @BEGIN IMMEDIATE@
--- transaction inserting each record at the mirror's next position.
-commitBatch :: Text -> MVar (Maybe Connection) -> IO Int -> [Record] -> IO [Admission]
-commitBatch instanceId guard' mirrorSize batch = do
+-- transaction inserting each record from the mirror's next position.
+commitBatch :: Text -> MVar (Maybe Connection) -> Int -> [Record] -> IO [Admission]
+commitBatch instanceId guard' start batch = do
   rows <- either refuse pure (encodeRows batch)
   withMVar guard' $ \case
     Nothing -> throwIO ClosedDatabase
     Just connection -> Sql.withImmediateTransaction connection $ do
-      start <- mirrorSize
       -- tail recursive: the admissions accumulate in reverse (a 20 000-row
       -- batch would otherwise build as deep a stack)
       let go !_ admitted [] = pure (reverse admitted)
@@ -487,9 +482,9 @@ verifyInsert connection instanceId eventId row = do
   case stored of
     Just [storedType, storedPayload] -> do
       json <- either refuse pure (loadsColumn storedPayload)
-      case verifyConflict True json row.value of
-        FillsPosition -> pure True
-        _ ->
+      if json == row.value
+        then pure True
+        else
           refuse
             ( "event "
                 <> eventId
@@ -500,12 +495,7 @@ verifyInsert connection instanceId eventId row = do
                 <> ")"
             )
     _ -> do
-      let family
-            | row.recordType `elemOf` firingTerminals = Just firingTerminals
-            | row.recordType `elemOf` activityTerminals = Just activityTerminals
-            | otherwise = Nothing
-          elemOf name (a, b) = name == a || name == b
-      terminal <- case family of
+      terminal <- case terminalFamilyNames <$> recordTerminalFamily row.record of
         Nothing -> pure Nothing
         Just (a, b) ->
           Sql.queryFirst
@@ -515,9 +505,9 @@ verifyInsert connection instanceId eventId row = do
       case terminal of
         Just [storedEvent, storedType, storedPayload] -> do
           json <- either refuse pure (loadsColumn storedPayload)
-          case verifyConflict False json row.value of
-            Acknowledged -> pure False
-            _ ->
+          if json == row.value
+            then pure False
+            else
               refuse
                 ( "occurrence "
                     <> pythonStr row.occurrence
@@ -533,4 +523,4 @@ verifyInsert connection instanceId eventId row = do
                     <> eventId
                     <> ")"
                 )
-        _ -> throwIO (UnexplainedConflict ("insert of event " <> eventId <> " conflicted but no stored row explains it"))
+        _ -> throwIO (UnverifiableConflict ("insert of event " <> eventId <> " conflicted but no stored row explains it"))

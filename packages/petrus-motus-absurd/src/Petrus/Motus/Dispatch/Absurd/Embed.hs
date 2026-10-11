@@ -14,7 +14,9 @@ import Language.Haskell.TH.Syntax (addDependentFile)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- | An expression of type 'BS.ByteString' holding the file's bytes, read
--- relative to the package directory at compile time.
+-- relative to the package directory at compile time. The spliced
+-- unsafePerformIO only wraps the static literal ('unsafePackAddressLen'
+-- copies nothing and has no other effect).
 embedFile :: FilePath -> Q Exp
 embedFile path = do
   addDependentFile path

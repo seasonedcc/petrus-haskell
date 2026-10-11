@@ -44,20 +44,17 @@ import Control.Exception (bracket)
 import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as BC
-import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Numeric (showHex)
 import Petrus.Activity
 import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json.Python (uuid4Hex)
 import Petrus.Motus.Dispatch (DispatchError (..))
 import Petrus.Motus.Dispatch.Absurd
 import Petrus.Postgres (Connection, Param, intParam, jsonbParam, query, textParam)
 import Petrus.Postgres qualified as Pg
 import Petrus.TestSupport (PostgresTarget (..), postgresSpec)
-import System.IO.Unsafe (unsafePerformIO)
-import System.Random (randomIO)
 import Test.Hspec
 
 -- | The reference's @absurd_dsn@ session fixture: one scratch database
@@ -85,16 +82,9 @@ withObserver target = withConn target True
 withAuthority :: PostgresTarget -> (Connection -> IO a) -> IO a
 withAuthority target = withConn target False
 
-counter :: IORef Int
-counter = unsafePerformIO (newIORef 0)
-{-# NOINLINE counter #-}
-
--- | @f"{prefix}{uuid4().hex[:n]}"@ style unique names.
+-- | @f"{prefix}{uuid4().hex[:8]}"@.
 freshName :: Text -> IO Text
-freshName prefix = do
-  n <- atomicModifyIORef' counter (\c -> (c + 1, c))
-  r <- randomIO :: IO Word
-  pure (prefix <> T.pack (take 8 (showHex r "" <> "00000000")) <> T.pack (show n))
+freshName prefix = (prefix <>) . T.take 8 <$> uuid4Hex
 
 -- | @queue@: a fresh queue per test.
 freshQueue :: IO Text

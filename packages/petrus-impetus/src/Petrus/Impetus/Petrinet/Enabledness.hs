@@ -359,11 +359,8 @@ guardsHold :: Transition -> Binding -> Implementations -> [NetUri] -> Either Ena
 guardsHold t b impls identities = do
   resolved <-
     mapM
-      ( \(position, declaration) ->
-          let identity = if null identities then Nothing else Just (identities !! position)
-           in (declaration,identity,) <$> guardImplementation impls identity declaration
-      )
-      (zip [0 :: Int ..] t.guards)
+      (\(declaration, identity) -> (declaration,identity,) <$> guardImplementation impls identity declaration)
+      (zip t.guards (positional identities))
   Right (go resolved)
   where
     go [] = pure True
@@ -373,6 +370,11 @@ guardsHold t b impls identities = do
         pure False
       Right False -> pure False
       Right True -> go rest
+
+-- | A transition's guard identities by declaration position: 'Nothing'
+-- past the end (a net built without them has none).
+positional :: [NetUri] -> [Maybe NetUri]
+positional identities = map Just identities ++ repeat Nothing
 
 -- ---------------------------------------------------------------------------
 -- Candidates
@@ -443,9 +445,8 @@ survey net marking impls clock = do
     addPending i (e, p) = (e, i : p)
     guardsHoldPrepared t at = do
       let identities = guardUris net at
-      _ <- mapM (\(position, declaration) -> guardImplementation impls (lookupAt identities position) declaration) (zip [0 :: Int ..] t.guards)
+      _ <- mapM (\(declaration, identity) -> guardImplementation impls identity declaration) (zip t.guards (positional identities))
       Right (\b -> either (const (pure False)) id (guardsHold t b impls identities))
-    lookupAt xs position = if position < length xs then Just (xs !! position) else Nothing
     collectOffers _ [] acc = pure (Right (Just (reverse acc)))
     collectOffers anchorMap ((position, a, filterUri) : rest) acc = do
       _ <- pure position

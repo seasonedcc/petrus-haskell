@@ -138,7 +138,8 @@ localWorker path queues worker = mask_ $ do
 -- collector finalizes it. The last of those closes deletes the WAL file at
 -- an arbitrary moment: during the scratch directory's removal, that removal
 -- fails on the vanished file. Keyed by path, so examples running side by
--- side close only their own.
+-- side close only their own. unsafePerformIO (NOINLINE): one registry per
+-- test process, reached from helpers that share no argument.
 opened :: IORef [([FilePath], IO ())]
 opened = unsafePerformIO (newIORef [])
 {-# NOINLINE opened #-}

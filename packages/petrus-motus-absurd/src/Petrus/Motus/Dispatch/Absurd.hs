@@ -1003,15 +1003,25 @@ dispatch d occurrence inv = do
             , ("task", String taskId')
             ]
 
--- | One custody row: queue, task id, task state, first start (as text),
--- last attempt run, that run's state.
-type Custody = (Text, Text, Text, Maybe Text, Maybe Text, Maybe Text)
+-- | One custody row ('custodySelect'), decoded once. States are Absurd's
+-- stored state names, compared as the reference compares them.
+data Custody = Custody
+  { queue :: Text
+  , taskId :: Text
+  , state :: Text
+  , firstStarted :: Maybe Text
+  -- ^ @first_started_at@, as text.
+  , lastRun :: Maybe Text
+  -- ^ @last_attempt_run@.
+  , runState :: Maybe Text
+  -- ^ The state of 'lastRun'.
+  }
 
-custodyState :: Custody -> Text
-custodyState (_, _, state, _, _, _) = state
+isTombstone :: Custody -> Bool
+isTombstone custody = custody.state == "cancelled"
 
-custodyQueue :: Custody -> Text
-custodyQueue (queue, _, _, _, _, _) = queue
+isTerminalState :: Text -> Bool
+isTerminalState = (`elem` ["completed", "failed"])
 
 -- | Fence one exact invocation with Absurd's durable task tombstone.
 cancel :: AbsurdDispatch -> CancellationInstruction -> IO CancellationDisposition
@@ -1034,7 +1044,7 @@ cancel d instruction = do
       let key = publicationKey d.instance' occurrence
       run_ d.session "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))" [textParam key]
       found <- custodies d key
-      let live = filter ((/= "cancelled") . custodyState) found
+      let live = filter (not . isTombstone) found
       when (length live > 1) $
         throwIO
           ( AbsurdError
@@ -1043,7 +1053,7 @@ cancel d instruction = do
       resolved <-
         if null live
           then do
-            let tombstones = filter ((== "cancelled") . custodyState) found
+            let tombstones = filter isTombstone found
             if not (null tombstones)
               then do
                 forM_ tombstones $ \row -> verifyCustodyInvocation d key row instruction.invocation
@@ -1060,9 +1070,12 @@ cancel d instruction = do
           else pure (case live of { row : _ -> Just row; [] -> Nothing })
       case resolved of
         Nothing -> pure Acknowledged
-        Just custody'@(queue, taskId', state, _, _, _) -> do
+        Just custody' -> do
+          let queue = custody'.queue
+              taskId' = custody'.taskId
+              state = custody'.state
           verifyCustodyInvocation d key custody' instruction.invocation
-          if state `elem` ["completed", "failed"]
+          if isTerminalState state
             then do
               modifyIORef' d.tasks (Map.insert occurrence (queue, taskId'))
               modifyIORef' d.cancelled (Map.insert occurrence instruction)
@@ -1098,7 +1111,15 @@ custodySelect queue predicate =
 custodyRow :: Text -> [Maybe ByteString] -> IO Custody
 custodyRow queue = \case
   [Just task', Just state, started, run', runState] ->
-    pure (queue, utf8 task', utf8 state, utf8 <$> started, utf8 <$> run', utf8 <$> runState)
+    pure
+      Custody
+        { queue
+        , taskId = utf8 task'
+        , state = utf8 state
+        , firstStarted = utf8 <$> started
+        , lastRun = utf8 <$> run'
+        , runState = utf8 <$> runState
+        }
   other -> throwIO (AbsurdError ("unexpected Absurd custody row " <> showT other))
 
 -- | Every task under the key, across every provider queue.
@@ -1115,8 +1136,8 @@ custodyOf d queue taskId' =
 
 -- | The stored task's name and params against the instruction's invocation.
 verifyCustodyInvocation :: AbsurdDispatch -> Text -> Custody -> ActivityInvocation -> IO ()
-verifyCustodyInvocation d key (queue, taskId', _, _, _, _) inv = do
-  (name, stored) <- taskIdentity d queue taskId'
+verifyCustodyInvocation d key custody inv = do
+  (name, stored) <- taskIdentity d custody.queue custody.taskId
   recovered <- case decodeInvocation stored of
     Right decoded -> pure (encodeInvocation decoded)
     Left _ -> dispatchError ("Absurd cancellation conflict for " <> key <> ": stored invocation params are invalid")
@@ -1145,15 +1166,15 @@ recoverCustody d occurrence target inv = do
   -- discovery through any cancel, replacement spawn, and notification.
   run_ s "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))" [textParam key]
   found <- custodies d key
-  let live = filter ((/= "cancelled") . custodyState) found
-      targetTombstones = filter (\row -> custodyQueue row == target && custodyState row == "cancelled") found
+  let live = filter (not . isTombstone) found
+      targetTombstones = filter (\custody -> custody.queue == target && isTombstone custody) found
       tombstoned =
         refuseRuntime ("cannot establish Absurd custody for " <> key <> ": target queue " <> pythonStrRepr target <> " has a cancelled tombstone")
   case live of
     []
       | not (null targetTombstones) -> tombstoned
       | otherwise -> pure Nothing
-    [(queue, taskId', taskState, _firstStarted, runId', runState)] -> do
+    [Custody {queue, taskId = taskId', state = taskState, lastRun = runId', runState}] -> do
       (name, stored) <- taskIdentity d queue taskId'
       recovered <- case decodeInvocation stored of
         Right decoded -> pure (encodeInvocation decoded)
@@ -1161,7 +1182,7 @@ recoverCustody d occurrence target inv = do
       same <- sameWire recovered inv
       unless (name == inv.activity && same) $
         dispatchError ("Absurd publication conflict for " <> key <> ": activity or invocation params differ")
-      if taskState `elem` ["completed", "failed"]
+      if isTerminalState taskState
         then do
           when (runId' == Nothing || runState /= Just taskState) $
             refuseRuntime

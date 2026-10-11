@@ -201,7 +201,7 @@ recordsOf = Store.records . instanceHistory
 refusingHistory :: IO (IORef Bool, HistoryStore)
 refusingHistory = do
   refusing <- newIORef False
-  store <- Store.mirroredHistoryStore Store.BackendOwned Seq.empty $ \batch -> do
+  store <- Store.mirroredHistoryStore Store.BackendOwned Seq.empty $ \_ batch -> do
     refuse <- readIORef refusing
     when refuse $ ioError (userError "disk full")
     pure (map (const Store.Entered) batch)
@@ -453,6 +453,13 @@ spec = describe "History codec" $ do
           let tokens = [if l then tokD "X" (Object [("n", Int (toInteger n))]) else black | l <- labels]
               record = RTokensProduced (TokensProduced p tokens occurrence [] Nothing (IntNumber instant))
            in throughText record === Right record
+      -- Not upstream: the accessors are total matches; the wire fields are
+      -- their oracle.
+      it "recordInstant and recordOccurrence read every category's wire fields" $
+        forM_ everyRecordCategory $ \record -> do
+          [i | ("instant", FNumber i) <- recordFields record] `shouldBe` [recordInstant record]
+          concat [maybe [] pure o | ("occurrence", FOccurrence o) <- recordFields record]
+            `shouldBe` maybe [] pure (recordOccurrence record)
       it "every decoded category re-encodes to its payload (property)" $
         property $ forAll (elements everyRecordCategory) $ \record ->
           fmap encodeRecord (decodeRecord (encodeRecord record)) === Right (encodeRecord record)

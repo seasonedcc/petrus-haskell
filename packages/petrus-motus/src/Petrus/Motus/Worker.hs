@@ -122,6 +122,8 @@ data WorkerOptions = WorkerOptions
 defaultWorkerOptions :: WorkerOptions
 defaultWorkerOptions = WorkerOptions {resolver = Nothing, workerId = Nothing, output = stdoutEvents}
 
+-- | Serializes 'stdoutEvents' lines across workers. unsafePerformIO
+-- (NOINLINE): the process has one stdout, so its lock is process-wide.
 stdoutLock :: MVar ()
 stdoutLock = unsafePerformIO (newMVar ())
 {-# NOINLINE stdoutLock #-}
@@ -648,6 +650,7 @@ syncBridgeAccess :: LaneSpawner -> IO WorkerDispatch -> Int -> IO WorkerAccess
 syncBridgeAccess spawn factory concurrency = do
   lanes <- mapM newLane [0 .. concurrency - 1]
   initialized <- newIORef []
+  -- (!!): the worker hands out slots from [0 .. concurrency - 1] only.
   let lane slot = lanes !! slot
       start = do
         let launch [] = pure ([], Nothing)

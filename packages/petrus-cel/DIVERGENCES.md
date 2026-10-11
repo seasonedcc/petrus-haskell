@@ -15,6 +15,24 @@ exclusion. The divergences left are the ones listed under "Open" below. None
 of them is reachable from an expression a Petrus net would realistically
 carry.
 
+## API shape
+
+These change how a Haskell caller holds the library, not what an expression
+evaluates to.
+
+- **Exceptions are values.** celpy raises `CELParseError`,
+  `CELEvalError` and Python exceptions. `compile` returns
+  `Either ParseError Program`, and `evaluateJson`/`evaluateValues` return
+  `Either Exc Value`, where `Exc` is a CEL evaluation error (`CelExc`) or a
+  Python exception (`PyExc`) carrying the class name and arguments celpy's
+  rendering shows. Nothing is thrown.
+- **Compile, then evaluate.** celpy's `Environment().compile(text)` →
+  `env.program(ast)` → `program.evaluate(activation)` is `compile` (a pure
+  parse to a typed tree) and `evaluateJson program variables`. The
+  activation is a list of `(name, Json)` pairs converted as celpy's
+  `json_to_cel` would; `evaluateValues` takes values that are already CEL
+  values.
+
 ## Resolved
 
 ### 1. A string literal spelling a lone surrogate

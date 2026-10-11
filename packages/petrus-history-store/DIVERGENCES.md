@@ -73,8 +73,9 @@ differences:
    - `ValueError` (a foreign or unsupported schema, a different fact at an
      event id or terminal, an undecodable row, an empty instance id, an
      unencodable record) is `HistoryStoreError`;
-   - `RuntimeError` for a conflict that no stored row explains is
-     `SqliteHistoryStoreFailure`'s `UnexplainedConflict`;
+   - `RuntimeError` for a conflict that no stored row explains is the
+     kernel's `UnverifiableConflict` (`Petrus.Impetus.HistoryStore`, shared
+     with the PostgreSQL store);
    - `sqlite3.ProgrammingError` for an append after `close` is
      `ClosedDatabase`, with the text `Cannot operate on a closed database.`;
    - SQLite's own errors (a busy or locked database, IO errors) surface as

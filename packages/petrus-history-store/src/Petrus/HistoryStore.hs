@@ -10,7 +10,7 @@
 -- * "Petrus.HistoryStore.Sqlite" — the reference's @SqliteHistoryStore@:
 --   one short @BEGIN IMMEDIATE@ transaction per batch over the same DDL,
 --   rows and payload spelling, with verify-on-conflict
---   ('verifyConflict'); 'BackendOwned' commits. It also re-exports the
+--   ('UnverifiableConflict'); 'BackendOwned' commits. It also re-exports the
 --   SQLite writer fence that production hosts take before loading (the
 --   SQLite Engine provider, @petrus-engine-sqlite@).
 --
@@ -20,9 +20,10 @@
 --    'Petrus.Impetus.History.Codec.decodeRecord' (refusing loud on a bad
 --    one).
 -- 2. Build the store with @'mirroredHistoryStore' mode loaded write@, where
---    @write@ encodes the whole batch first, then writes it and reports each
---    record's 'Admission' ('AcknowledgedElsewhere' for an equal terminal
---    held elsewhere).
+--    @write position batch@ encodes the whole batch first, then writes it
+--    from @position@ (the mirror's length) and reports one 'Admission' per
+--    record ('AcknowledgedElsewhere' for an equal terminal held elsewhere;
+--    a different count is refused as 'AdmissionMismatch').
 -- 3. Choose the 'CommitMode': 'BackendOwned' when the store commits its own
 --    transaction; 'JoinedTransaction' when it writes inside a connection the
 --    Engine's provider commits (@Petrus.Engine.Provider@).
@@ -34,8 +35,8 @@ module Petrus.HistoryStore
     HistoryStore (..)
   , CommitMode (..)
   , Admission (..)
-  , ConflictVerdict (..)
-  , verifyConflict
+  , AdmissionMismatch (..)
+  , UnverifiableConflict (..)
   , append
   , records
   , size

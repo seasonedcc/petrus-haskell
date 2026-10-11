@@ -33,12 +33,12 @@ module Petrus.Engine.Coordinator
   , cancelClosure
   , supportsCancellation
   , selectionStateText
-  , completePure
+  , completeAccepted
   ) where
 
 import Prelude hiding (span)
 import Control.DeepSeq (force)
-import Control.Exception (SomeAsyncException, SomeException, catch, evaluate, fromException, throwIO, toException, try)
+import Control.Exception (SomeAsyncException, SomeException, catch, evaluate, fromException, throwIO, try)
 import Control.Monad (forM, forM_, unless, when)
 import Data.Foldable (toList)
 import Data.IORef
@@ -193,9 +193,9 @@ drive c = withSpanClassifying engineErrorType c.logger "drive" [] $ \span -> do
               DriveOutcome done' waiting False <$> nextMaturation c.inst
         _ -> do
           before <- historyLength c
-          (install, applied) <- accumulateTime span "apply_ms" (apply c chosen firings span)
-          if applied
-            then do
+          accumulateTime span "apply_ms" (apply c chosen span) >>= \case
+            Applied fired install -> do
+              mapM_ (\f -> modifyIORef' firings (Seq.|> f)) fired
               increment span "actions" 1
               after <- historyLength c
               unless (isDelivery chosen && after == before) (committed c)
@@ -206,7 +206,7 @@ drive c = withSpanClassifying engineErrorType c.logger "drive" [] $ \span -> do
               done' <- toList <$> readIORef firings
               spanSet span [("firings", Int (fromIntegral (length done'))), ("waiting", Bool False), ("ready", Bool True)]
               DriveOutcome done' False True <$> nextMaturation c.inst
-            else do
+            NotDue -> do
               -- A clock can reveal that a chosen AdvanceTime is not due; it
               -- cannot consume the turn, so the policy chooses again
               -- without that offer.
@@ -410,11 +410,17 @@ observeTurn c = do
 -- ---------------------------------------------------------------------------
 -- Apply
 
--- | Apply one chosen action against the single writer. Returns the
--- selection install deferred to the joined commit, and whether the action
--- applied.
-apply :: Coordinator -> Action -> IORef (Seq FiringOutcome) -> Span -> IO (Maybe (IO ()), Bool)
-apply c action firings span = case action of
+-- | What applying one chosen action did.
+data Applied
+  = -- | The action consumed the turn: the firing it completed, if any, and
+    -- the selection install deferred to the joined commit.
+    Applied (Maybe FiringOutcome) (Maybe (IO ()))
+  | -- | The clock revealed a chosen 'AdvanceTime' is not yet due.
+    NotDue
+
+-- | Apply one chosen action against the single writer.
+apply :: Coordinator -> Action -> Span -> IO Applied
+apply c action span = case action of
   AcceptResult occurrenceId outcome -> do
     flying <- inFlight c.inst
     o <- case find ((== occurrenceId) . (.occurrence)) flying of
@@ -431,11 +437,15 @@ apply c action firings span = case action of
         let projects = projectsFailure c o.binding.transition
         at' <- stamp c
         if projects
-          then orThrowInstance (complete c.inst o Nothing at') >>= \f -> modifyIORef' firings (Seq.|> f)
-          else orThrowInstance (failFiring c.inst o (FailureValue failure) at')
-        -- The recorded failure is a whole fact: it commits before the halt.
-        committed c
-        if projects then pure (Nothing, True) else throwIO (terminalHalt o failure)
+          then do
+            f <- orThrowInstance (complete c.inst o Nothing at')
+            -- The recorded failure is a whole fact: it commits before the halt.
+            committed c
+            pure (Applied (Just f) Nothing)
+          else do
+            orThrowInstance (failFiring c.inst o (FailureValue failure) at')
+            committed c
+            throwIO (terminalHalt o failure)
       Succeeded result -> do
         at <- stamp c
         _ <- orThrowInstance (recordActivityCompletion c.inst o result at)
@@ -443,8 +453,7 @@ apply c action firings span = case action of
         committed c
         at' <- stamp c
         f <- orThrowInstance (complete c.inst o Nothing at')
-        modifyIORef' firings (Seq.|> f)
-        pure (Nothing, True)
+        pure (Applied (Just f) Nothing)
   AcceptDelivery chosen -> do
     queued <- readIORef c.deliveries
     let position = case Seq.findIndexL (sameDelivery chosen) queued of
@@ -463,9 +472,8 @@ apply c action firings span = case action of
         after <- historyLength c
         when (after /= before) (committed c)
         outcome <- completeAccepted c accepted
-        modifyIORef' firings (Seq.|> outcome)
-      _ -> pure ()
-    pure (Nothing, True)
+        pure (Applied (Just outcome) Nothing)
+      _ -> pure (Applied Nothing Nothing)
   BeginCandidate binding -> do
     at <- stamp c
     o <- accumulateTime span "begin_ms" (orThrowInstance (begin c.inst binding at))
@@ -473,17 +481,15 @@ apply c action firings span = case action of
     -- A backend-owned begin is durable at the door: install now. A joined
     -- backend installs only after the provider commit returns.
     when (isNothing c.commit) install
-    case o.invocation of
-      Nothing -> do
-        outcome <- completePure c o (Just span)
-        modifyIORef' firings (Seq.|> outcome)
+    fired <- case o.invocation of
+      Nothing -> Just <$> completePure c o (Just span)
       Just inv -> do
         modifyIORef' c.dispatched (IntMap.insert o.occurrence o)
-        c.port.dispatch o.occurrence inv
-    pure (if isJust c.commit then Just install else Nothing, True)
+        Nothing <$ c.port.dispatch o.occurrence inv
+    pure (Applied fired (if isJust c.commit then Just install else Nothing))
   AdvanceTime instant ->
     c.clock.observe instant >>= \case
-      Nothing -> pure (Nothing, False)
+      Nothing -> pure NotDue
       Just observed
         | observed < instant ->
             throwIO
@@ -497,7 +503,7 @@ apply c action firings span = case action of
               )
         | otherwise -> do
             _ <- orThrowInstance (wake c.inst observed)
-            pure (Nothing, True)
+            pure (Applied Nothing Nothing)
   Wait -> throwIO (EngineValueError "cannot apply non-mutating host posture Wait()")
   Stop -> throwIO (EngineValueError "cannot apply non-mutating host posture Stop()")
 
@@ -539,35 +545,27 @@ completePure c o span = case boundHandler c.inst transition of
     case result of
       Left e
         | isAsync e -> throwIO e
-        | otherwise -> settle (exceptionFailureText e) e
-      Right (Left text) -> settle text (toEngine (EngineHandlerFailed text))
+        | otherwise -> settle (exceptionFailureText e) (throwIO e)
+      Right (Left text) -> settle text (throwIO (EngineHandlerFailed text))
       Right (Right envelope) -> do
         committedOutcome <- timed "commit_ms" (stamp c >>= commitCompletion c.inst o (Just envelope))
         case committedOutcome of
           Right outcome -> pure outcome
           Left (CommitRefused e) -> throwIO e
-          Left err -> settle (firingFailureText err) (toEngine (instanceToEngine err))
+          Left err -> settle (firingFailureText err) (throwInstanceError err)
   where
     transition = o.binding.transition
     timed :: Text -> IO r -> IO r
     timed field body = maybe body (\s -> accumulateTime s field body) span
-    settle text err = do
+    -- Fail and commit the occurrence (if still in flight), then raise.
+    settle :: Text -> IO FiringOutcome -> IO FiringOutcome
+    settle text raise = do
       flying <- inFlight c.inst
       when (any ((== o.occurrence) . (.occurrence)) flying) $ do
         at <- stamp c
         orThrowInstance (failFiring c.inst o (FailureText text) at)
         committed c
-      throwIO err
-    toEngine :: EngineError -> SomeException
-    toEngine = toException
-
-instanceToEngine :: InstanceError -> EngineError
-instanceToEngine = \case
-  Refused m -> EngineValueError m
-  TypeRefused m -> EngineTypeError m
-  RuntimeRefused m -> EngineRuntimeError m
-  HandlerRaised m -> EngineHandlerFailed m
-  CommitRefused e -> EngineRuntimeError (T.pack (show e))
+      raise
 
 -- ---------------------------------------------------------------------------
 -- Cancellation

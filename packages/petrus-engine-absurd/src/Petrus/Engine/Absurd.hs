@@ -48,11 +48,10 @@ import Control.Monad (unless, when)
 import Data.Text (Text)
 import Petrus.Engine (Engine, EngineError (..), EngineOptions)
 import Petrus.Engine qualified as Engine
-import Petrus.Engine.Postgres.Joined (JoinedProvider (..), joinedProvider, openJoinedEngine)
+import Petrus.Engine.Postgres.Joined (JoinedProvider (..), openJoinedEngine)
 import Petrus.Engine.Provider (OpenMode (..))
 import Petrus.Impetus.HistoryStore (HistoryStore)
 import Petrus.Impetus.Petrinet (Net)
-import Petrus.Motus.Dispatch (Dispatch)
 import Petrus.Motus.Dispatch.Absurd
   ( AbsurdDispatchOptions (..)
   , Session
@@ -166,8 +165,9 @@ openAbsurdEngine session mode net instanceId absurdOptions =
   where
     provider :: JoinedProvider
     provider =
-      (joinedProvider session.connection unused)
-        { validate = validateConnections session.connection session.listen
+      JoinedProvider
+        { connection = session.connection
+        , validate = validateConnections session.connection session.listen
         , commit = session.commit
         , rollback = session.rollback
         , closeConnections = session.close
@@ -185,5 +185,3 @@ openAbsurdEngine session mode net instanceId absurdOptions =
                   }
             pure (toDispatch adapter, Just (waitForResults adapter))
         }
-    unused :: Dispatch
-    unused = error "Petrus.Engine.Absurd: the Absurd composition supplies its own Dispatch"

@@ -20,7 +20,8 @@ import System.IO (IOMode (ReadMode), withBinaryFile)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- | The process-wide last minted (timestamp, counter): the reference's
--- @_last_timestamp_v7@ / @_last_counter_v7@ globals.
+-- @_last_timestamp_v7@ / @_last_counter_v7@ globals. unsafePerformIO
+-- (NOINLINE): monotonic minting needs exactly one such state per process.
 lastMinted :: IORef (Maybe (Integer, Integer))
 lastMinted = unsafePerformIO (newIORef Nothing)
 {-# NOINLINE lastMinted #-}

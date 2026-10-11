@@ -61,7 +61,6 @@ import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.Foldable (toList)
 import Data.IORef
-import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -75,17 +74,17 @@ import Petrus.Activity
 import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (BoundHandler, handlerTokens)
+import Petrus.Impetus.Binding (handlerTokens)
 import Petrus.Impetus.History.Records (recordName)
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
-import Petrus.Impetus.Instance (FiringOutcome (..), ImplementationRef (..))
+import Petrus.Impetus.Instance (FiringOutcome (..))
 import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch (ActivityAttempt (epoch, instance', invocation, queue), AttemptFailure (..), DispatchError (..))
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), LocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Testing.Dst
-import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
+import Petrus.Testing.Dst.Engine.Bridge (Bridged (..), withBridge)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
@@ -272,15 +271,11 @@ applicationNet =
 -- | @RetryBridge@: counts its calls.
 data Bridge = Bridge {prepared :: IORef Int, projected :: IORef Int}
 
--- | The bridge's prepare/project pair. The Engine calls a handler as a
--- pure function; the effects run when the Engine forces the result.
-bridgeHandler :: Integer -> Bridge -> BoundHandler
-bridgeHandler interval bridge =
-  observed
-    ObservedHandler
-      { prepare = \b -> do
-          modifyIORef' bridge.prepared (+ 1)
-          pure $ case bindingTokens b of
+-- | The bridge's pure prepare/project pair and its call counting.
+bridged :: Integer -> Bridge -> Bridged
+bridged interval bridge =
+  Bridged
+    { prepare = \b -> case bindingTokens b of
             t : _ -> do
               policy <-
                 executionPolicy
@@ -296,10 +291,10 @@ bridgeHandler interval bridge =
                     }
               Right ActivityInvocation {activity = "work", input = t.payload, policy, correlation = Nothing, idempotency = Nothing}
             [] -> Left "IndexError('tuple index out of range')"
-      , project = \_ result -> do
-          modifyIORef' bridge.projected (+ 1)
-          pure (Right (handlerTokens [(done, [Token (Just "Done") result])]))
-      }
+    , project = \_ result -> Right (handlerTokens [(done, [Token (Just "Done") result])])
+    , onPrepare = Right () <$ modifyIORef' bridge.prepared (+ 1)
+    , onProject = Right () <$ modifyIORef' bridge.projected (+ 1)
+    }
 
 -- ---------------------------------------------------------------------------
 -- Profiles
@@ -427,11 +422,7 @@ newRetryProfile kind historyPath dispatchPath = do
         let providerClock = if kind == DelayedRetry then Just (LocalDispatchClock (worldProviderMs time)) else Nothing
         dispatch <- Local.openLocalDispatch dispatchPath instanceId Local.defaultLocalDispatchOptions {Local.clock = providerClock}
         bridge <- Bridge <$> newIORef 0 <*> newIORef 0
-        let options =
-              Engine.defaultEngineOptions
-                { Engine.handlers = Map.fromList [(Symbol "bridge", bridgeHandler interval bridge)]
-                , Engine.clock = Just (worldClock time)
-                }
+        let options = withBridge (bridged interval bridge) Engine.defaultEngineOptions {Engine.clock = Just (worldClock time)}
         engine <-
           if load
             then Engine.load applicationNet instanceId history (Local.toDispatch dispatch) options

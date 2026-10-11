@@ -227,7 +227,7 @@ spec = describe "Lifecycle scopes" $ do
   it "leaves live state unchanged when the scope append fails" $ do
     refusing <- newIORef False
     history <-
-      mirroredHistoryStore BackendOwned Seq.empty $ \batch -> do
+      mirroredHistoryStore BackendOwned Seq.empty $ \_ batch -> do
         refuse <- readIORef refusing
         when (refuse && or [True | RScopeClosed _ <- batch]) $ throwIO (userError "refused close")
         pure (map (const Entered) batch)

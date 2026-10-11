@@ -201,18 +201,15 @@ in four ways.
 
   The retry family (`RetryEngineProfile` and its two subclasses) is one constructor with a
   `RetryKind`.
-- **Handlers are pure, so bridge counters run in one `unsafePerformIO` module.** The Engine
-  calls an `ActivityHandler`'s `prepare` and `project` as pure functions (`petrus-impetus`'s
-  kernel API, which this slice does not change). The reference's bridges count their calls,
-  and some read an armed fault. Every world builds its bridge as an `ObservedHandler` (IO
-  `prepare` and `project`) and turns it into an Engine handler with
-  `Petrus.Testing.Dst.Engine.Bridge.observed`. That module is the only one that calls
-  `unsafePerformIO`. It runs each effect when the Engine forces the handler's result, which
-  happens exactly once per call, and it alone builds with `-fno-full-laziness -fno-cse` and a
-  `NOINLINE`, so GHC cannot share or float those effects. The authored journals, which record
-  `prepared` and `projected` at every observation, prove the counts equal the reference's. The
-  clean fix is an observer hook on the Engine, called once per invocation; it belongs to the
-  kernel.
+- **Handlers are pure, so a bridge's effects run as the Engine's handler observer.** The
+  Engine calls an `ActivityHandler`'s `prepare` and `project` as pure functions. The
+  reference's bridges count their calls, and some read an armed fault. Every world builds its
+  bridge as a `Bridged` value (the pure `prepare`/`project`, plus `onPrepare`/`onProject`
+  effects) and installs it with `Petrus.Testing.Dst.Engine.Bridge.withBridge`, which binds the
+  pure handler and passes the effects as `EngineOptions.handlerObserver`. The Engine's writing
+  door runs that observer exactly once before each call, and a `Left` from it is the bridge
+  raising. The authored journals, which record `prepared` and `projected` at every
+  observation, prove the counts equal the reference's.
 - **The stateful generated-runtime checker threads its memory.**
   `GeneratedRuntimeAuthorityChecker` keeps `_frozen_execution_counts` across the checks of one
   instance. `generatedRuntimeChecker` is a pure `Check` whose memory is that dictionary (see
@@ -238,8 +235,8 @@ Those fixtures are replay-only in both runtimes, and replay through the real pro
 
 The ported `tests/dst/joined_*world.py` modules are test code too. Their artifacts, replay
 results and checker verdicts are byte-identical to the reference's. Everything said above for
-the Engine worlds applies (records instead of class hierarchies, bridge counters through
-`Engine.Bridge.observed`, Python class names for exceptions). They differ in two more ways.
+the Engine worlds applies (records instead of class hierarchies, bridges installed through
+`Engine.Bridge.withBridge`, Python class names for exceptions). They differ in two more ways.
 
 - **The fault connection wraps session seams, not a DB-API connection.** The reference's
   `JoinedFaultConnection` subclasses the psycopg connection and intercepts `execute`, `commit`

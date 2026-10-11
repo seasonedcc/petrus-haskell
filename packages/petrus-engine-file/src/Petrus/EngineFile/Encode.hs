@@ -171,6 +171,7 @@ compactJsonWith indent maxInline keyOrder itemKeyOrder top = do
               )
               (sortMembers depth members)
           Right ("{\n" <> joinLines rendered <> "\n" <> pad <> "}")
+        -- 'format' calls 'multiline' only for containers.
         _ -> error "multiline: not a container"
     joinLines = mconcat . zipWith (\i b -> (if i == (0 :: Int) then mempty else ",\n") <> b) [0 ..]
     sortMembers :: Int -> [(Text, Value)] -> [(Text, Value)]

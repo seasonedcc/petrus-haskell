@@ -89,8 +89,8 @@ follows.
   - `delayed` is the reference's delayed-completion server script: it
     commits a completion, records that it did, then hangs.
 - **`monkeypatch` on `_context` and `_open_socket`.** These become the
-  client socket seams (`replaceSocketFactory`, `replaceAccessSocketFactory`,
-  `replaceAccessSocketOpener`). They inject:
+  client socket seams (`ClientOptions`'s `socketFactory` and
+  `socketOpener`). They inject:
   - sockets that fail while being configured;
   - sockets that block while sending;
   - sockets that never answer.

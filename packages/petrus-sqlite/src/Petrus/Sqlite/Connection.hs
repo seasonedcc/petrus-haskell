@@ -29,6 +29,7 @@ module Petrus.Sqlite.Connection
     Profile (..)
   , Setup (..)
   , WalRetry (..)
+  , WalMatch (..)
   , IsolationLevel (..)
   , historyStoreProfile
   , localDispatchProfile
@@ -115,10 +116,16 @@ data WalRetry
 data Setup
   = -- | A statement executed verbatim (its result rows are ignored).
     Pragma Text
-  | -- | A @journal_mode = WAL@ statement whose reported mode must be @wal@
-    -- (compared case-insensitively unless the flag says exact, as the Codex
-    -- service compares @fetchone() != ("wal",)@).
-    RequireWal Text WalRetry Bool
+  | -- | A @journal_mode = WAL@ statement whose reported mode must be @wal@.
+    RequireWal Text WalRetry WalMatch
+  deriving stock (Eq, Show)
+
+-- | How a 'RequireWal' step compares the reported journal mode with @wal@.
+data WalMatch
+  = -- | @str(mode).lower() == "wal"@.
+    CaseInsensitive
+  | -- | @fetchone() == ("wal",)@, as the Codex service compares.
+    ExactWal
   deriving stock (Eq, Show)
 
 -- | Python's @isolation_level@: 'Autocommit' is @None@ (statements run as
@@ -153,7 +160,7 @@ historyStoreProfile =
         [ Pragma "PRAGMA busy_timeout = 5000"
         , Pragma "PRAGMA foreign_keys = ON"
         , Pragma "PRAGMA synchronous = FULL"
-        , RequireWal "PRAGMA journal_mode = WAL" locked False
+        , RequireWal "PRAGMA journal_mode = WAL" locked CaseInsensitive
         ]
     }
 
@@ -167,7 +174,7 @@ localDispatchProfile =
         [ Pragma "PRAGMA busy_timeout=5000"
         , Pragma "PRAGMA foreign_keys=ON"
         , Pragma "PRAGMA synchronous=FULL"
-        , RequireWal "PRAGMA journal_mode=WAL" locked False
+        , RequireWal "PRAGMA journal_mode=WAL" locked CaseInsensitive
         ]
     }
 
@@ -195,7 +202,7 @@ codexServiceProfile =
   Profile
     { busyTimeoutMs = 2000
     , isolationLevel = LegacyDeferred
-    , setup = [RequireWal "PRAGMA journal_mode=WAL" NoRetry True, Pragma "PRAGMA synchronous=FULL"]
+    , setup = [RequireWal "PRAGMA journal_mode=WAL" NoRetry ExactWal, Pragma "PRAGMA synchronous=FULL"]
     }
 
 -- | An open connection with its prepared-statement cache (CPython's
@@ -265,11 +272,13 @@ configure connection profile = mapM_ (runSetup connection) (setup profile)
 runSetup :: Connection -> Setup -> IO ()
 runSetup connection = \case
   Pragma statement -> void (query connection statement [])
-  RequireWal statement retry exact -> do
+  RequireWal statement retry match -> do
     start <- getMonotonicTime
     mode <- walLoop start statement retry
     let ok = case mode of
-          Just (SQLText text) -> if exact then text == "wal" else T.toLower text == "wal"
+          Just (SQLText text) -> case match of
+            ExactWal -> text == "wal"
+            CaseInsensitive -> T.toLower text == "wal"
           -- str(mode).lower() of a non-text value is never "wal".
           _ -> False
     when (not ok) (throwIO (WalRefused (connectionPath connection) mode))

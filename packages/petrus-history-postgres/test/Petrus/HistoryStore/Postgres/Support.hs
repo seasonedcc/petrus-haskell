@@ -36,21 +36,17 @@ import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
-import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import GHC.Clock (getMonotonicTimeNSec)
-import Numeric (showHex)
 import Petrus.HistoryStore.Postgres (HistoryStoreError (..), ensureSchema)
 import Petrus.Json (Json, parseJson, pythonLoads)
+import Petrus.Json.Python (uuid4)
 import Petrus.Postgres (Connection, close, connect, query, textParam)
 import Petrus.TestSupport (PostgresTarget (..), PythonFailure (..), pythonExecutable, upstreamPetrus)
 import System.Directory (makeAbsolute)
 import System.Exit (ExitCode (..))
 import System.IO (BufferMode (..), Handle, hClose, hFlush, hSetBinaryMode, hSetBuffering)
-import System.IO.Unsafe (unsafePerformIO)
-import System.Posix.Process (getProcessID)
 import System.Posix.Signals (sigKILL, signalProcess)
 import System.Process
   ( CreateProcess (..)
@@ -79,17 +75,9 @@ withPgConnection target action = withPg target True $ \connection -> do
   ensureSchema connection
   action connection
 
-counter :: IORef Int
-counter = unsafePerformIO (newIORef 0)
-{-# NOINLINE counter #-}
-
--- | @f"{prefix}-{uuid4()}"@: unique per call and per process.
+-- | @f"{prefix}-{uuid4()}"@.
 freshInstance :: Text -> IO Text
-freshInstance prefix = do
-  n <- atomicModifyIORef' counter (\c -> (c + 1, c))
-  pid <- getProcessID
-  now <- getMonotonicTimeNSec
-  pure (prefix <> "-" <> T.pack (show pid) <> "-" <> T.pack (showHex now "") <> "-" <> T.pack (show n))
+freshInstance prefix = ((prefix <> "-") <>) <$> uuid4
 
 -- | One @_rows@ row.
 data Row = Row

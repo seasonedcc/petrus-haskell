@@ -336,6 +336,7 @@ keyHash (TI.Text array offset size) =
 -- | The offset of the first byte at or after @from@ that ends a plain string
 -- run: a quote, a backslash, a control character, or a non-ASCII byte; the
 -- input length when there is none. Eight bytes are tested at a time.
+-- unsafeDupablePerformIO: a read-only scan of the input's own bytes.
 findSpecial :: ByteString -> Int -> Int
 findSpecial input from
   | targetByteOrder /= LittleEndian = bytewise from
@@ -458,6 +459,7 @@ stringSlow surrogates input start = scanFrom True start
           | otherwise = Left ("Invalid \\uXXXX escape at byte " ++ show i)
 
 -- | Copy bytes known to be ASCII (hence valid UTF-8) into a 'Text'.
+-- unsafeDupablePerformIO: writes only the array this call allocates.
 copyAscii :: ByteString -> Text
 copyAscii bytes
   | BS.null bytes = T.empty
@@ -615,6 +617,7 @@ fastDouble input negative integerStart integerEnd fractionEnd exponentEnd
     signed d = if negative then negate d else d
 
 -- | Exact powers of ten up to 10^22 (every one is a representable double).
+-- (!!): both callers guard @0 <= k <= 22@.
 powerOfTen :: Int -> Double
 powerOfTen k = powersOfTen !! k
 
