@@ -76,7 +76,7 @@ newFile = DurableFile <$> newIORef []
 open :: DurableFile -> IO HistoryStore
 open (DurableFile ref) = do
   loaded <- readIORef ref
-  mirroredHistoryStore BackendOwned (Seq.fromList loaded) $ \batch -> do
+  mirroredHistoryStore BackendOwned (Seq.fromList loaded) $ \_ batch -> do
     modifyIORef' ref (<> batch)
     pure (map (const Entered) batch)
 

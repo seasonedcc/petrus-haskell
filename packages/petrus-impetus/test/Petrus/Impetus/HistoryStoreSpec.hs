@@ -13,7 +13,9 @@
 module Petrus.Impetus.HistoryStoreSpec (spec) where
 
 import Control.Exception (ErrorCall (..))
+import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Map.Strict qualified as Map
+import Data.Sequence qualified as Seq
 import Data.Text qualified as T
 import Petrus.Activity (ActivityInvocation (..), invocation)
 import Petrus.Impetus.History
@@ -142,6 +144,25 @@ spec = describe "HistoryStore contract" $ do
         `shouldThrow` \(ErrorCall m) -> "TokensProduced" `T.isInfixOf` T.pack m
       Store.size history `shouldReturn` 0
       (reopen >>= Store.records) `shouldReturn` []
+
+  -- Port-only: the kernel's mirrored-store seam itself.
+  describe "mirrored store" $ do
+    let begun n = RFiringBegun (FiringBegun work n Nothing 1)
+    it "hands each write the mirror's length as its start position" $ do
+      seen <- newIORef []
+      store <- Store.mirroredHistoryStore Store.BackendOwned (Seq.fromList [begun 1]) $ \position batch -> do
+        modifyIORef' seen (++ [position])
+        -- the first record of each batch is held elsewhere
+        pure (Store.AcknowledgedElsewhere : (Store.Entered <$ drop 1 batch))
+      store.extend [begun 2, begun 3]
+      store.extend [begun 4]
+      readIORef seen `shouldReturn` [1, 2]
+      Store.records store `shouldReturn` [begun 1, begun 3]
+
+    it "refuses a write that miscounts its admissions, and enters nothing" $ do
+      store <- Store.mirroredHistoryStore Store.BackendOwned Seq.empty $ \_ _ -> pure [Store.Entered]
+      store.extend [begun 1, begun 2] `shouldThrow` (== Store.AdmissionMismatch 2 1)
+      Store.size store `shouldReturn` 0
 
   describe "Instance parity" $ do
     let driven reopen = do

@@ -50,8 +50,13 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
    durableWrite` builds any durable backend with the reference's contract:
    - backend-owned writes, or the joined-transaction mode;
    - a batch extends as one commit;
-   - the mirror grows only after the durable write succeeds;
-   - conflicts are verified with Python equality (`verifyConflict`).
+   - the write is handed the mirror's length as the batch's start
+     position, so no backend reads its own store back;
+   - the mirror grows only after the durable write succeeds, and only
+     when it reports one admission per record (`AdmissionMismatch`
+     otherwise);
+   - conflicts are verified with Python equality (the `Eq` of `Json`);
+     a conflict no stored row explains is `UnverifiableConflict`.
 6. **The Instance's single-writer lock is an `MVar`,** and doors called by
    other doors (fail → record failure → complete) never take it twice. The
    reference uses a re-entrant lock.

@@ -125,7 +125,6 @@ import Petrus.Postgres
   )
 import Petrus.Telemetry (EventSink, emit, getLogger)
 import Petrus.Telemetry qualified as Telemetry
-import System.IO (fixIO)
 
 -- ---------------------------------------------------------------------------
 -- Errors
@@ -279,21 +278,19 @@ openPostgresHistoryStoreWith options connection instanceId = do
       Owned -> pure BackendOwned
       Joined -> pure JoinedTransaction
   let logger = getLogger "impetus" options.telemetry
-  fixIO $ \store ->
-    mirroredHistoryStore commitMode loaded $ \batch -> do
-      started <- Telemetry.monotonicClock
-      encoded <- either (throwIO . HistoryStoreError) pure (traverse encodeEvent batch)
-      position <- store.count
-      admissions <- withTransaction connection (insertBatch connection instanceId position encoded)
-      elapsed <- Telemetry.elapsedMs Telemetry.monotonicClock started
-      emit
-        logger
-        "postgres_commit"
-        [ ("records", Int (fromIntegral (length batch)))
-        , ("entered", Int (fromIntegral (length (filter (== Entered) admissions))))
-        , ("elapsed_ms", Int elapsed)
-        ]
-      pure admissions
+  mirroredHistoryStore commitMode loaded $ \position batch -> do
+    started <- Telemetry.monotonicClock
+    encoded <- either (throwIO . HistoryStoreError) pure (traverse encodeEvent batch)
+    admissions <- withTransaction connection (insertBatch connection instanceId position encoded)
+    elapsed <- Telemetry.elapsedMs Telemetry.monotonicClock started
+    emit
+      logger
+      "postgres_commit"
+      [ ("records", Int (fromIntegral (length batch)))
+      , ("entered", Int (fromIntegral (length (filter (== Entered) admissions))))
+      , ("elapsed_ms", Int elapsed)
+      ]
+    pure admissions
 
 -- | Insert the batch from the given position: the running position
 -- advances only when a row lands or the value-equal row already sits at

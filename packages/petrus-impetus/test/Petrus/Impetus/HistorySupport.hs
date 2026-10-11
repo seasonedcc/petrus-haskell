@@ -88,7 +88,7 @@ newReopen = do
   pure $ do
     stored <- readIORef storage
     loaded <- either (throwIO . ErrorCall . T.unpack) pure (mapM decodeLine (toList stored))
-    Store.mirroredHistoryStore Store.BackendOwned (Seq.fromList loaded) $ \batch -> do
+    Store.mirroredHistoryStore Store.BackendOwned (Seq.fromList loaded) $ \_ batch -> do
       encoded <- either throwIO pure (mapM encodeLine batch)
       modifyIORef' storage (<> Seq.fromList encoded)
       pure (map (const Store.Entered) batch)

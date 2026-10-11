@@ -69,7 +69,6 @@ import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, withMVar)
 import Control.Exception (Exception (..), bracket, mask, onException, throwIO, try)
 import Control.Monad (foldM, unless, when)
 import Data.ByteString (ByteString)
-import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Int (Int64)
 import Data.List (intercalate)
 import Data.Map.Strict (Map)
@@ -247,10 +246,7 @@ openSqliteHistoryStore path instanceId = do
         `onException` Sql.close connection
     pure (connection, loaded)
   guard' <- newMVar (Just connection)
-  self <- newIORef Nothing
-  let position = readIORef self >>= maybe (pure 0) (.count)
-  store <- mirroredHistoryStore BackendOwned loaded (commitBatch instanceId guard' position)
-  writeIORef self (Just store)
+  store <- mirroredHistoryStore BackendOwned loaded (commitBatch instanceId guard')
   pure
     SqliteHistoryStore
       { history = store
@@ -443,14 +439,13 @@ insertStatement =
   "INSERT INTO impetus_history_events (instance, position, event_id, record_type, occurrence, payload) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING"
 
 -- | @_commit@: encode the whole batch, then one @BEGIN IMMEDIATE@
--- transaction inserting each record at the mirror's next position.
-commitBatch :: Text -> MVar (Maybe Connection) -> IO Int -> [Record] -> IO [Admission]
-commitBatch instanceId guard' mirrorSize batch = do
+-- transaction inserting each record from the mirror's next position.
+commitBatch :: Text -> MVar (Maybe Connection) -> Int -> [Record] -> IO [Admission]
+commitBatch instanceId guard' start batch = do
   rows <- either refuse pure (encodeRows batch)
   withMVar guard' $ \case
     Nothing -> throwIO ClosedDatabase
     Just connection -> Sql.withImmediateTransaction connection $ do
-      start <- mirrorSize
       -- tail recursive: the admissions accumulate in reverse (a 20 000-row
       -- batch would otherwise build as deep a stack)
       let go !_ admitted [] = pure (reverse admitted)

@@ -260,4 +260,4 @@ openJsonlHistoryStoreWith options path = do
           , ("elapsed_ms", Int elapsed)
           ]
         pure (map (const Entered) batch)
-  mirroredHistoryStore BackendOwned loaded write
+  mirroredHistoryStore BackendOwned loaded (const write)

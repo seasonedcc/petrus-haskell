@@ -201,7 +201,7 @@ recordsOf = Store.records . instanceHistory
 refusingHistory :: IO (IORef Bool, HistoryStore)
 refusingHistory = do
   refusing <- newIORef False
-  store <- Store.mirroredHistoryStore Store.BackendOwned Seq.empty $ \batch -> do
+  store <- Store.mirroredHistoryStore Store.BackendOwned Seq.empty $ \_ batch -> do
     refuse <- readIORef refusing
     when refuse $ ioError (userError "disk full")
     pure (map (const Store.Entered) batch)
