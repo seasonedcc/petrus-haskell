@@ -63,6 +63,7 @@ module Petrus.Activity
   , snapshotHeartbeatDetails
   ) where
 
+import Control.DeepSeq (NFData (..))
 import Control.Exception (Exception, throwIO)
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
@@ -205,6 +206,14 @@ data ExecutionPolicyFields = ExecutionPolicyFields
 newtype ExecutionPolicy = ExecutionPolicy ExecutionPolicyFields
   deriving stock (Eq, Show)
 
+instance NFData ExecutionPolicyFields where
+  rnf (ExecutionPolicyFields attempts' heartbeat initial coefficient' maxInterval' jitter' startToClose' scheduleToClose') =
+    rnf attempts' `seq` rnf heartbeat `seq` rnf initial `seq` rnf coefficient' `seq` rnf maxInterval'
+      `seq` rnf jitter' `seq` rnf startToClose' `seq` rnf scheduleToClose'
+
+instance NFData ExecutionPolicy where
+  rnf (ExecutionPolicy fields) = rnf fields
+
 policyFields :: ExecutionPolicy -> ExecutionPolicyFields
 policyFields (ExecutionPolicy fields) = fields
 
@@ -271,6 +280,10 @@ data ActivityInvocation = ActivityInvocation
   , idempotency :: Maybe Text
   }
   deriving stock (Eq, Show)
+
+instance NFData ActivityInvocation where
+  rnf (ActivityInvocation activity' input' policy' correlation' idempotency') =
+    rnf activity' `seq` rnf input' `seq` rnf policy' `seq` rnf correlation' `seq` rnf idempotency'
 
 -- | Validate an invocation as @ActivityInvocation.__post_init__@ does.
 activityInvocation :: ActivityInvocation -> Either Text ActivityInvocation

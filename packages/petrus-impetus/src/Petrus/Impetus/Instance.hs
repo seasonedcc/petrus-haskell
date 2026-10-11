@@ -517,7 +517,7 @@ forceResult result =
 
 forcePrepared :: Either Text ActivityInvocation -> IO (Either Text ActivityInvocation)
 forcePrepared prepared =
-  try (evaluate (length (show prepared) `seq` prepared)) >>= \case
+  try (evaluate (force prepared)) >>= \case
     Left e | isAsync e -> throwIO e
     Left e -> pure (Left (exceptionFailureText e))
     Right value -> pure value
