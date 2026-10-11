@@ -94,10 +94,8 @@ module Petrus.Agenticus.Runtime.Codex
   , startCodex
   ) where
 
-import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
-import Control.Concurrent.STM
-import Control.Exception (IOException, catch, finally, fromException, mask_, throwIO, try)
+import Control.Exception (IOException, catch, fromException, mask_, throwIO, try)
 import Control.Monad (forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -165,15 +163,16 @@ import Petrus.Agenticus.Runtime.Installation
   , mkRuntimeInstallation
   , mkRuntimeProbeResult
   )
+import Petrus.Agenticus.Runtime.Internal.Lifecycle (Lifecycle, LifecycleTexts (..), newLifecycle)
+import Petrus.Agenticus.Runtime.Internal.Lifecycle qualified as Lifecycle
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
   , RuntimeOperation (..)
   , RuntimeOperationCleanup
-  , mkRuntimeOperationCleanup
   , runtimeProtocolError
   , runtimeProtocolErrorCode
   )
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..), micros, runBounded)
+import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..), runBounded)
 import Petrus.Agenticus.Runtime.Profiles (codexA2Local, codexA3Gondolin)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation
@@ -218,7 +217,6 @@ import System.Directory (findExecutable, makeAbsolute)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory)
 import System.Process (proc)
-import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
 -- Pins
@@ -704,18 +702,12 @@ data CodexOperation = CodexOperation
   , prior :: Maybe CodexContinuationPayloadV1
   , executable :: FilePath
   , executionPath :: Text
-  , monitor :: MVar ()
-  , cancelled :: TVar Bool
-  , publishing :: TVar Bool
-  , result :: TVar (Maybe RuntimeTurnSettlement)
-  , cleanupDisposition :: TVar RuntimeCleanupDisposition
-  , cleanup :: TVar (Maybe RuntimeOperationCleanup)
-  , finished :: TVar Bool
+  , lifecycle :: Lifecycle
   }
 
 -- | Handle identity (the reference compares with @is@).
 instance Eq CodexOperation where
-  a == b = a.result == b.result
+  a == b = a.lifecycle == b.lifecycle
 
 instance Show CodexOperation where
   show = T.unpack . renderCodexOperation
@@ -727,9 +719,6 @@ renderCodexOperation o = "_CodexOperation(operation_id=" <> pyStrRepr o.inv.oper
 
 codexOperationId :: CodexOperation -> Text
 codexOperationId o = o.inv.operationId
-
-guarded :: CodexOperation -> IO a -> IO a
-guarded o action = withMVar o.monitor (const action)
 
 settle :: CodexRuntimeInvocation -> TurnOutcome -> Integer -> Text -> Maybe Text -> Maybe Text -> IO RuntimeTurnSettlement
 settle inv outcome appends code output continuation =
@@ -744,7 +733,7 @@ operationBinding inv = case (Episode.episodeBinding inv.attachment).motus of
 runOperation :: CodexOperation -> IO ()
 runOperation o = do
   outcome <- trySync (withBindingOperation (operationBinding o.inv) (execute o))
-  (settlement, disposition) <- case outcome of
+  settled <- case outcome of
     Right value -> pure value
     Left e
       | Just (failure :: AgenticusError) <- fromException e
@@ -754,86 +743,33 @@ runOperation o = do
       | otherwise -> do
           failed <- settle o.inv TurnFailed 0 "runtime-failed" Nothing Nothing
           pure (failed, RuntimeCleanupUnverified)
-  guarded o $ do
-    wasCancelled <- readTVarIO o.cancelled
-    settlement' <-
-      if wasCancelled && settlement.outcome /= TurnCancelled
-        then settle o.inv TurnCancelled 0 "cancelled" Nothing Nothing
-        else pure settlement
-    atomically $ do
-      writeTVar o.result (Just settlement')
-      writeTVar o.cleanupDisposition disposition
+  Lifecycle.settle o.lifecycle (settle o.inv TurnCancelled 0 "cancelled" Nothing Nothing) settled
 
 operationCurrent :: CodexOperation -> IO Bool
-operationCurrent o = not <$> readTVarIO o.cancelled
+operationCurrent o = Lifecycle.current o.lifecycle
 
 -- | @_claim_publication@.
 claimPublication :: CodexOperation -> IO (Maybe Text)
-claimPublication o = guarded o $ do
-  wasCancelled <- readTVarIO o.cancelled
+claimPublication o = Lifecycle.claim o.lifecycle $ do
   now <- o.owner.clock
-  if
-    | wasCancelled -> pure (Just "cancelled")
-    | now >= Episode.episodeDeadline o.inv.attachment -> pure (Just "deadline-exceeded")
-    | otherwise -> atomically (writeTVar o.publishing True) >> pure Nothing
+  pure (if now >= Episode.episodeDeadline o.inv.attachment then Just "deadline-exceeded" else Nothing)
 
 -- | @wait(timeout)@.
 waitCodexOperation :: CodexOperation -> Maybe Double -> IO RuntimeTurnSettlement
-waitCodexOperation o bound = do
-  forM_ bound $ \t ->
-    when (isNaN t || isInfinite t || t <= 0) $ throwIO (valueError "Codex operation wait timeout must be positive and finite")
-  closedAlready <- isJust <$> readTVarIO o.cleanup
-  when closedAlready $ protocol "operation-closed"
-  expired <- case bound of
-    Nothing -> newTVarIO False
-    Just t -> registerDelay (micros t)
-  settled <-
-    atomically $
-      (readTVar o.result >>= maybe retry (pure . Just))
-        `orElse` (readTVar expired >>= \e -> if e then pure Nothing else retry)
-  maybe (throwAgenticus TimeoutError "Codex runtime operation has not settled") pure settled
+waitCodexOperation o = Lifecycle.waitSettled o.lifecycle
 
 -- | @cancel(reason)@.
 cancelCodexOperation :: CodexOperation -> Text -> IO CancellationDisposition
 cancelCodexOperation o reason = do
   _ <- throwLeft (codexText "Codex cancellation reason" 256 reason)
-  disposition <- guarded o $ do
-    settled <- isJust <$> readTVarIO o.result
-    publishing <- readTVarIO o.publishing
-    wasCancelled <- readTVarIO o.cancelled
-    if
-      | settled || publishing -> pure CancellationTooLate
-      | wasCancelled -> pure CancellationAlreadyRequested
-      | otherwise -> atomically (writeTVar o.cancelled True) >> pure CancellationRequested
-  when (disposition == CancellationRequested) $
+  Lifecycle.requestCancel o.lifecycle $
     Episode.cancel o.inv.attachment reason `catch` \(e :: AgenticusError) ->
       unless (e.errorClass `isSubclassOf` EpisodeAttachmentError) (throwIO e)
-  pure disposition
 
 -- | @close()@.
 closeCodexOperation :: CodexOperation -> IO RuntimeOperationCleanup
-closeCodexOperation o = do
-  existing <- guarded o $ do
-    existing <- readTVarIO o.cleanup
-    settled <- isJust <$> readTVarIO o.result
-    wasCancelled <- readTVarIO o.cancelled
-    when (isNothing existing && not settled && not wasCancelled) $ protocol "operation-active"
-    pure existing
-  case existing of
-    Just evidence -> pure evidence
-    Nothing -> do
-      _ <- timeout (micros o.owner.config.cancellationGrace) (atomically (readTVar o.finished >>= check))
-      done <- readTVarIO o.finished
-      disposition <- if done then readTVarIO o.cleanupDisposition else pure RuntimeCleanupUnverified
-      let code = case disposition of
-            RuntimeCleanupNotCreated -> "client-not-created"
-            RuntimeCleanupClean -> "client-closed"
-            RuntimeCleanupUnverified -> "cleanup-uncertain"
-      evidence <- throwLeft (mkRuntimeOperationCleanup o.inv.operationId disposition code False)
-      atomically $
-        readTVar o.cleanup >>= \case
-          Just earlier -> pure earlier
-          Nothing -> writeTVar o.cleanup (Just evidence) >> pure evidence
+closeCodexOperation o =
+  Lifecycle.closeWith o.lifecycle o.owner.config.cancellationGrace (Lifecycle.settledEvidence o.lifecycle)
 
 -- | The operation as the provider-neutral 'RuntimeOperation' record.
 codexRuntimeOperation :: CodexOperation -> RuntimeOperation
@@ -1158,17 +1094,11 @@ startDirect a inv0 = do
     case registered of
       Left old -> pure old
       Right operation -> do
-        void (forkIO (runOperation operation `finally` atomically (writeTVar operation.finished True)))
+        Lifecycle.startWorker operation.lifecycle (runOperation operation)
         pure operation
   where
     newOperation inv key prior executable executionPath = do
-      monitor <- newMVar ()
-      cancelled <- newTVarIO False
-      publishing <- newTVarIO False
-      result <- newTVarIO Nothing
-      cleanupDisposition <- newTVarIO RuntimeCleanupUnverified
-      cleanup <- newTVarIO Nothing
-      finished <- newTVarIO False
+      lifecycle <- newLifecycle (LifecycleTexts "Codex operation wait timeout must be positive and finite" "Codex runtime operation has not settled") inv.operationId
       pure
         CodexOperation
           { owner = a
@@ -1177,13 +1107,7 @@ startDirect a inv0 = do
           , prior
           , executable
           , executionPath
-          , monitor
-          , cancelled
-          , publishing
-          , result
-          , cleanupDisposition
-          , cleanup
-          , finished
+          , lifecycle
           }
 
 -- | The @PublicationResult | ReleaseResult@ cleanup gate.

@@ -96,7 +96,7 @@ module Petrus.Agenticus.Runtime.Amp
   , admitEvents
   ) where
 
-import Control.Concurrent (ThreadId, forkIO, forkIOWithUnmask, killThread, myThreadId, threadDelay, throwTo)
+import Control.Concurrent (ThreadId, forkIO, forkIOWithUnmask, killThread, threadDelay, throwTo)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception
@@ -158,12 +158,13 @@ import Petrus.Agenticus.Runtime.Installation
   , mkRuntimeInstallation
   , mkRuntimeProbeResult
   )
+import Petrus.Agenticus.Runtime.Internal.Lifecycle (Lifecycle, LifecycleTexts (..), newLifecycle)
+import Petrus.Agenticus.Runtime.Internal.Lifecycle qualified as Lifecycle
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
   , RuntimeOperation (..)
   , RuntimeOperationCleanup
   , cleanupVerified
-  , mkRuntimeOperationCleanup
   , runtimeProtocolError
   , runtimeProtocolErrorCode
   )
@@ -803,23 +804,18 @@ data AmpOperation = AmpOperation
   , continuationThread :: Maybe Text
   , clock :: IO Double
   , token :: Unique
-  , lock :: MVar ()
-  , result :: TVar (Maybe RuntimeTurnSettlement)
-  , cleanup :: TVar (Maybe RuntimeOperationCleanup)
-  , cancelRequested :: TVar Bool
+  , lifecycle :: Lifecycle
   , sdkStarted :: TVar Bool
   , providerTerminal :: TVar Bool
   , consumer :: TVar (Maybe ThreadId)
   , interrupted :: TVar Bool
-  , worker :: TVar (Maybe ThreadId)
-  , finished :: TVar Bool
   }
 
 ampOperationId :: AmpOperation -> Text
 ampOperationId o = o.invocation.operationId
 
 guarded :: AmpOperation -> IO a -> IO a
-guarded o action = withMVar o.lock (const action)
+guarded o = Lifecycle.guarded o.lifecycle
 
 settlement :: AmpOperation -> TurnOutcome -> Integer -> Text -> Maybe Text -> Maybe Text -> IO RuntimeTurnSettlement
 settlement o outcome appends code out cont =
@@ -838,22 +834,16 @@ interrupt o reason = do
   forM_ target $ \t -> void (forkIO (throwTo t reason))
 
 startOperation :: AmpOperation -> IO ()
-startOperation o = mask_ $ do
-  -- A finished thread's id is dropped: a retained 'ThreadId' keeps the
-  -- thread's stack alive for as long as the operation is remembered.
-  thread <- forkIOWithUnmask $ \unmask -> unmask (runWorker o) `finally` atomically (writeTVar o.finished True >> writeTVar o.worker Nothing)
-  atomically $ do
-    done <- readTVar o.finished
-    unless done (writeTVar o.worker (Just thread))
+startOperation o = Lifecycle.startWorker o.lifecycle (runWorker o)
 
 runWorker :: AmpOperation -> IO ()
 runWorker o = do
-  cancelledEarly <- readTVarIO o.cancelRequested
+  cancelledEarly <- Lifecycle.cancelRequested o.lifecycle
   outcome <-
     if cancelledEarly
       then settlement o TurnCancelled 0 "cancelled" Nothing Nothing
       else runBody o
-  atomically (writeTVar o.result (Just outcome))
+  Lifecycle.settleAs o.lifecycle outcome
 
 runBody :: AmpOperation -> IO RuntimeTurnSettlement
 runBody o = do
@@ -866,7 +856,7 @@ runBody o = do
       guarded o . mask_ $ do
         thread <- forkIOWithUnmask $ \unmask -> try (unmask (consume o)) >>= putMVar done
         atomically (writeTVar o.consumer (Just thread))
-      requested <- readTVarIO o.cancelRequested
+      requested <- Lifecycle.cancelRequested o.lifecycle
       when requested (interrupt o Cancelled)
       timer <- forkIO (threadDelay (micros remaining) >> interrupt o DeadlineExceeded)
       consumed <- takeMVar done `finally` (killThread timer >> atomically (writeTVar o.consumer Nothing))
@@ -927,60 +917,25 @@ publish o candidate = do
 
 -- | @wait(timeout)@.
 waitAmpOperation :: AmpOperation -> Maybe Double -> IO RuntimeTurnSettlement
-waitAmpOperation o bound = do
-  forM_ bound (throwLeft . positiveNumber "Amp operation wait timeout")
-  closedAlready <- isJust <$> readTVarIO o.cleanup
-  when closedAlready $ throwIO (runtimeProtocolError "operation-closed")
-  expired <- maybe (newTVarIO False) (registerDelay . micros) bound
-  settled <-
-    atomically $
-      (readTVar o.result >>= maybe retry (pure . Just))
-        `orElse` (readTVar expired >>= \e -> if e then pure Nothing else retry)
-  maybe (throwAgenticus TimeoutError "Amp runtime operation has not settled") pure settled
+waitAmpOperation o = Lifecycle.waitSettled o.lifecycle
 
 -- | @cancel(reason)@.
 cancelAmpOperation :: AmpOperation -> Text -> IO CancellationDisposition
 cancelAmpOperation o reason = do
   _ <- throwLeft (ampBoundedText "Amp cancellation reason" 256 reason)
-  disposition <- guarded o $ do
-    settled <- isJust <$> readTVarIO o.result
-    requested <- readTVarIO o.cancelRequested
-    if
-      | settled -> pure CancellationTooLate
-      | requested -> pure CancellationAlreadyRequested
-      | otherwise -> atomically (writeTVar o.cancelRequested True) >> pure CancellationRequested
-  when (disposition == CancellationRequested) (interrupt o Cancelled)
-  pure disposition
+  Lifecycle.requestCancel o.lifecycle (interrupt o Cancelled)
 
 -- | @close()@.
 closeAmpOperation :: AmpOperation -> IO RuntimeOperationCleanup
-closeAmpOperation o = do
-  existing <- guarded o $ do
-    existing <- readTVarIO o.cleanup
-    settled <- isJust <$> readTVarIO o.result
-    requested <- readTVarIO o.cancelRequested
-    when (isNothing existing && not settled && not requested) $ throwIO (runtimeProtocolError "operation-active")
-    pure existing
-  case existing of
-    Just evidence -> pure evidence
-    Nothing -> do
-      thread <- readTVarIO o.worker
-      self <- myThreadId
-      when (isJust thread && thread /= Just self) $
-        void (timeout (micros o.config.cancellationGrace) (atomically (readTVar o.finished >>= check)))
-      absent <- if isNothing thread then pure True else readTVarIO o.finished
-      terminal <- readTVarIO o.providerTerminal
-      started <- readTVarIO o.sdkStarted
-      let (disposition, code)
-            | not absent = (RuntimeCleanupUnverified, "client-cleanup-uncertain")
-            | terminal = (RuntimeCleanupClean, "client-closed")
-            | not started = (RuntimeCleanupNotCreated, "client-not-created")
-            | otherwise = (RuntimeCleanupUnverified, "provider-state-uncertain")
-      evidence <- throwLeft (mkRuntimeOperationCleanup (ampOperationId o) disposition code False)
-      atomically $
-        readTVar o.cleanup >>= \case
-          Just earlier -> pure earlier
-          Nothing -> writeTVar o.cleanup (Just evidence) >> pure evidence
+closeAmpOperation o = Lifecycle.closeWith o.lifecycle o.config.cancellationGrace $ \absent -> do
+  terminal <- readTVarIO o.providerTerminal
+  started <- readTVarIO o.sdkStarted
+  pure $
+    if
+      | not absent -> (RuntimeCleanupUnverified, "client-cleanup-uncertain")
+      | terminal -> (RuntimeCleanupClean, "client-closed")
+      | not started -> (RuntimeCleanupNotCreated, "client-not-created")
+      | otherwise -> (RuntimeCleanupUnverified, "provider-state-uncertain")
 
 -- | The operation as the provider-neutral 'RuntimeOperation' record.
 ampRuntimeOperation :: AmpOperation -> RuntimeOperation
@@ -1200,16 +1155,11 @@ startAmp a inv = do
 newOperation :: AmpRuntimeAdapter -> AmpRuntimeInvocation -> OperationKey -> Maybe Text -> IO AmpOperation
 newOperation a inv key continuationThread = do
   token <- newUnique
-  lock <- newMVar ()
-  result <- newTVarIO Nothing
-  cleanup <- newTVarIO Nothing
-  cancelRequested <- newTVarIO False
+  lifecycle <- newLifecycle (LifecycleTexts "Amp operation wait timeout must be a positive finite number" "Amp runtime operation has not settled") inv.operationId
   sdkStarted <- newTVarIO False
   providerTerminal <- newTVarIO False
   consumer <- newTVarIO Nothing
   interrupted <- newTVarIO False
-  worker <- newTVarIO Nothing
-  finished <- newTVarIO False
   pure
     AmpOperation
       { invocation = inv

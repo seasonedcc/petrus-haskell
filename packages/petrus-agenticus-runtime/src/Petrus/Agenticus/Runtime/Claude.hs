@@ -203,11 +203,12 @@ import Petrus.Agenticus.Runtime.Installation
   , mkRuntimeInstallation
   , mkRuntimeProbeResult
   )
+import Petrus.Agenticus.Runtime.Internal.Lifecycle (Lifecycle, LifecycleTexts (..), newLifecycle)
+import Petrus.Agenticus.Runtime.Internal.Lifecycle qualified as Lifecycle
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
   , RuntimeOperation (..)
   , RuntimeOperationCleanup
-  , mkRuntimeOperationCleanup
   , runtimeProtocolError
   , runtimeProtocolErrorCode
   )
@@ -1175,17 +1176,11 @@ data ClaudeOperation = ClaudeOperation
   , key :: Text
   , prior :: Maybe ClaudeContinuationPayloadV1
   , factory :: ClaudeClientFactory
-  , monitor :: MVar ()
-  , cancelled :: TVar Bool
-  , publishing :: TVar Bool
-  , result :: TVar (Maybe RuntimeTurnSettlement)
-  , cleanupDisposition :: TVar RuntimeCleanupDisposition
-  , cleanup :: TVar (Maybe RuntimeOperationCleanup)
-  , finished :: TVar Bool
+  , lifecycle :: Lifecycle
   }
 
 instance Eq ClaudeOperation where
-  a == b = a.result == b.result
+  a == b = a.lifecycle == b.lifecycle
 
 instance Show ClaudeOperation where
   show = T.unpack . renderClaudeOperation
@@ -1196,49 +1191,32 @@ renderClaudeOperation o = "_Operation(operation_id=" <> pyStrRepr o.inv.operatio
 claudeOperationId :: ClaudeOperation -> Text
 claudeOperationId o = o.inv.operationId
 
-guarded :: ClaudeOperation -> IO a -> IO a
-guarded o action = withMVar o.monitor (const action)
-
 operationCurrent :: ClaudeOperation -> IO Bool
-operationCurrent o = not <$> readTVarIO o.cancelled
+operationCurrent o = Lifecycle.current o.lifecycle
 
 runOperation :: ClaudeOperation -> IO ()
 runOperation o = do
   outcome <- try (execute o.adapter o)
-  (settlement, disposition) <- case outcome of
+  settled <- case outcome of
     Right value -> pure value
     Left (_ :: SomeException) -> do
       failed <- settle o.inv TurnFailed 0 "runtime-failed" Nothing Nothing
       pure (failed, RuntimeCleanupUnverified)
-  guarded o $ do
-    wasCancelled <- readTVarIO o.cancelled
-    settlement' <-
-      if wasCancelled && settlement.outcome /= TurnCancelled
-        then settle o.inv TurnCancelled 0 "cancelled" Nothing Nothing
-        else pure settlement
-    atomically $ do
-      writeTVar o.result (Just settlement')
-      writeTVar o.cleanupDisposition disposition
+  Lifecycle.settle o.lifecycle (settle o.inv TurnCancelled 0 "cancelled" Nothing Nothing) settled
 
 -- | @_Operation.claim@: the last cancellation point before publication.
 claim :: ClaudeOperation -> IO (Maybe Text)
-claim o = guarded o $ do
-  wasCancelled <- readTVarIO o.cancelled
-  if wasCancelled
-    then pure (Just "cancelled")
-    else do
-      grant <- currentGrant (Episode.grants o.inv.attachment)
-      case grant of
-        Just g | g.grantEpoch == o.inv.grantEpoch -> do
-          now <- o.adapter.clock
-          if now >= min (Episode.episodeDeadline o.inv.attachment) g.deadline
-            then pure (Just "deadline-exceeded")
-            else do
-              current <- leaseObserved (Episode.episodeBinding o.inv.attachment)
-              if current
-                then atomically (writeTVar o.publishing True) >> pure Nothing
-                else pure (Just "runtime-local-lease-required")
-        _ -> pure (Just "grant-mismatch")
+claim o = Lifecycle.claim o.lifecycle $ do
+  grant <- currentGrant (Episode.grants o.inv.attachment)
+  case grant of
+    Just g | g.grantEpoch == o.inv.grantEpoch -> do
+      now <- o.adapter.clock
+      if now >= min (Episode.episodeDeadline o.inv.attachment) g.deadline
+        then pure (Just "deadline-exceeded")
+        else do
+          current <- leaseObserved (Episode.episodeBinding o.inv.attachment)
+          pure (if current then Nothing else Just "runtime-local-lease-required")
+    _ -> pure (Just "grant-mismatch")
 
 -- | Whether the binding's lease is still the exact ready lease its
 -- provider reports.
@@ -1256,61 +1234,22 @@ leaseObserved binding = case binding.motus of
 
 -- | @wait(timeout)@.
 waitClaudeOperation :: ClaudeOperation -> Maybe Double -> IO RuntimeTurnSettlement
-waitClaudeOperation o bound = do
-  forM_ bound $ \t ->
-    when (isNaN t || isInfinite t || t <= 0) $ throwIO (valueError "Claude operation wait timeout must be positive and finite")
-  closedAlready <- isJust <$> readTVarIO o.cleanup
-  when closedAlready $ throwIO (runtimeProtocolError "operation-closed")
-  expired <- case bound of
-    Nothing -> newTVarIO False
-    Just t -> registerDelay (micros t)
-  settled <-
-    atomically $
-      (readTVar o.result >>= maybe retry (pure . Just))
-        `orElse` (readTVar expired >>= \e -> if e then pure Nothing else retry)
-  maybe (throwAgenticus TimeoutError "Claude operation has not settled") pure settled
+waitClaudeOperation o = Lifecycle.waitSettled o.lifecycle
 
 -- | @cancel(reason)@.
 cancelClaudeOperation :: ClaudeOperation -> Text -> IO CancellationDisposition
 cancelClaudeOperation o reason = do
   _ <- throwLeft (claudeText "Claude cancellation reason" 256 reason)
-  disposition <- guarded o $ do
-    settled <- isJust <$> readTVarIO o.result
-    publishing <- readTVarIO o.publishing
-    wasCancelled <- readTVarIO o.cancelled
-    if
-      | settled || publishing -> pure CancellationTooLate
-      | wasCancelled -> pure CancellationAlreadyRequested
-      | otherwise -> atomically (writeTVar o.cancelled True) >> pure CancellationRequested
-  when (disposition == CancellationRequested) $
-    Episode.cancel o.inv.attachment reason `catch` \(e :: SomeException) -> when (isAsync e) (throwIO e)
-  pure disposition
+  Lifecycle.requestCancel o.lifecycle $
+    Episode.cancel o.inv.attachment reason `catch` rethrowAsync
 
 -- | @close()@.
 closeClaudeOperation :: ClaudeOperation -> IO RuntimeOperationCleanup
-closeClaudeOperation o = do
-  existing <- guarded o $ do
-    existing <- readTVarIO o.cleanup
-    settled <- isJust <$> readTVarIO o.result
-    wasCancelled <- readTVarIO o.cancelled
-    when (isNothing existing && not settled && not wasCancelled) $ throwIO (runtimeProtocolError "operation-active")
-    pure existing
-  case existing of
-    Just evidence -> pure evidence
-    Nothing -> do
-      let config = o.adapter.config
-      _ <- timeout (micros (config.disconnectTimeout + config.cancellationGrace)) (atomically (readTVar o.finished >>= check))
-      done <- readTVarIO o.finished
-      disposition <- if done then readTVarIO o.cleanupDisposition else pure RuntimeCleanupUnverified
-      let code = case disposition of
-            RuntimeCleanupNotCreated -> "client-not-created"
-            RuntimeCleanupClean -> "client-closed"
-            RuntimeCleanupUnverified -> "cleanup-uncertain"
-      evidence <- throwLeft (mkRuntimeOperationCleanup o.inv.operationId disposition code False)
-      atomically $
-        readTVar o.cleanup >>= \case
-          Just earlier -> pure earlier
-          Nothing -> writeTVar o.cleanup (Just evidence) >> pure evidence
+closeClaudeOperation o =
+  Lifecycle.closeWith
+    o.lifecycle
+    (o.adapter.config.disconnectTimeout + o.adapter.config.cancellationGrace)
+    (Lifecycle.settledEvidence o.lifecycle)
 
 -- | The operation as the provider-neutral 'RuntimeOperation' record.
 claudeRuntimeOperation :: ClaudeOperation -> RuntimeOperation
@@ -1573,18 +1512,12 @@ startClaude a inv0 = do
     case registered of
       Left old -> pure old
       Right operation -> do
-        void (forkIO (runOperation operation `finally` atomically (writeTVar operation.finished True)))
+        Lifecycle.startWorker operation.lifecycle (runOperation operation)
         pure operation
   where
     newOperation inv key prior factory = do
-      monitor <- newMVar ()
-      cancelled <- newTVarIO False
-      publishing <- newTVarIO False
-      result <- newTVarIO Nothing
-      cleanupDisposition <- newTVarIO RuntimeCleanupUnverified
-      cleanup <- newTVarIO Nothing
-      finished <- newTVarIO False
-      pure ClaudeOperation {adapter = a, inv, key, prior, factory, monitor, cancelled, publishing, result, cleanupDisposition, cleanup, finished}
+      lifecycle <- newLifecycle (LifecycleTexts "Claude operation wait timeout must be positive and finite" "Claude operation has not settled") inv.operationId
+      pure ClaudeOperation {adapter = a, inv, key, prior, factory, lifecycle}
     validate inv = do
       let expected =
             [ (KindRuntime, claudeA2Local.identity)

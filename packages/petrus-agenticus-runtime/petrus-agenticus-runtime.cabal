@@ -68,6 +68,7 @@ library
                     Petrus.Agenticus.Runtime.Codex
                     Petrus.Agenticus.Runtime.CodexGondolin
                     Petrus.Agenticus.Runtime.HostSupport
+                    Petrus.Agenticus.Runtime.Internal.Lifecycle
                     Petrus.Agenticus.Runtime.Pi
                     Petrus.Agenticus.Runtime.PiA2Host
                     Petrus.Agenticus.Runtime.PiApplication

@@ -103,7 +103,7 @@ import Control.Concurrent (ThreadId, forkIO, killThread)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception (IOException, SomeException, catch, finally, fromException, mask_, throwIO, try)
-import Control.Monad (filterM, forM_, unless, void, when)
+import Control.Monad (filterM, forM_, unless, when)
 import Data.Bits ((.&.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -168,11 +168,12 @@ import Petrus.Agenticus.Runtime.Installation
   , mkRuntimeInstallation
   , mkRuntimeProbeResult
   )
+import Petrus.Agenticus.Runtime.Internal.Lifecycle (Lifecycle, LifecycleTexts (..), newLifecycle)
+import Petrus.Agenticus.Runtime.Internal.Lifecycle qualified as Lifecycle
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
   , RuntimeOperation (..)
   , RuntimeOperationCleanup
-  , mkRuntimeOperationCleanup
   , runtimeProtocolError
   , runtimeProtocolErrorCode
   )
@@ -922,17 +923,11 @@ data PiApplicationOperation = PiApplicationOperation
   , key :: Text
   , prior :: Maybe PiApplicationContinuationPayloadV1
   , factory :: ApplicationFactory
-  , monitor :: MVar ()
-  , cancelled :: TVar Bool
-  , publishing :: TVar Bool
-  , result :: TVar (Maybe RuntimeTurnSettlement)
-  , cleanupDisposition :: TVar RuntimeCleanupDisposition
-  , cleanup :: TVar (Maybe RuntimeOperationCleanup)
-  , finished :: TVar Bool
+  , lifecycle :: Lifecycle
   }
 
 instance Eq PiApplicationOperation where
-  a == b = a.result == b.result
+  a == b = a.lifecycle == b.lifecycle
 
 instance Show PiApplicationOperation where
   show o = "_Operation(operation_id=" <> T.unpack (pyStrRepr o.inv.operationId) <> ")"
@@ -940,115 +935,60 @@ instance Show PiApplicationOperation where
 applicationOperationId :: PiApplicationOperation -> Text
 applicationOperationId o = o.inv.operationId
 
-guarded :: PiApplicationOperation -> IO a -> IO a
-guarded o action = withMVar o.monitor (const action)
-
 runOperation :: PiApplicationOperation -> IO ()
 runOperation o = do
   outcome <- try (executeOperation o.adapter o)
-  (settlement, disposition) <- case outcome of
+  settled <- case outcome of
     Right value -> pure value
     Left (_ :: SomeException) -> do
       failed <- settle o.inv TurnFailed 0 "runtime-failed" Nothing Nothing
       pure (failed, RuntimeCleanupUnverified)
-  guarded o $ do
-    wasCancelled <- readTVarIO o.cancelled
-    settlement' <-
-      if wasCancelled && settlement.outcome /= TurnCancelled
-        then settle o.inv TurnCancelled 0 "cancelled" Nothing Nothing
-        else pure settlement
-    atomically $ do
-      writeTVar o.result (Just settlement')
-      writeTVar o.cleanupDisposition disposition
+  Lifecycle.settle o.lifecycle (settle o.inv TurnCancelled 0 "cancelled" Nothing Nothing) settled
 
 operationCurrent :: PiApplicationOperation -> IO Bool
-operationCurrent o = not <$> readTVarIO o.cancelled
+operationCurrent o = Lifecycle.current o.lifecycle
 
+-- | The publication check after cancellation (@_publication_error@).
 publicationError :: PiApplicationOperation -> IO (Maybe Text)
 publicationError o = do
-  wasCancelled <- readTVarIO o.cancelled
-  if wasCancelled
-    then pure (Just "cancelled")
-    else do
-      grant <- currentGrant (Episode.grants o.inv.attachment)
-      case grant of
-        Just g | g.grantEpoch == o.inv.grantEpoch -> do
-          now <- adapterNow o.adapter
-          pure (if now >= min g.deadline (Episode.episodeDeadline o.inv.attachment) then Just "deadline-exceeded" else Nothing)
-        _ -> pure (Just "grant-mismatch")
+  grant <- currentGrant (Episode.grants o.inv.attachment)
+  case grant of
+    Just g | g.grantEpoch == o.inv.grantEpoch -> do
+      now <- adapterNow o.adapter
+      pure (if now >= min g.deadline (Episode.episodeDeadline o.inv.attachment) then Just "deadline-exceeded" else Nothing)
+    _ -> pure (Just "grant-mismatch")
 
 -- | @_Operation.claim@: the last cancellation point before publication.
 claim :: PiApplicationOperation -> IO (Maybe Text)
 claim o = do
-  first <- guarded o (publicationError o)
+  first <- Lifecycle.inspect o.lifecycle (publicationError o)
   case first of
     Just e -> pure (Just e)
     Nothing -> do
       current <- applicationBindingCurrent o.adapter o.inv
-      guarded o $
+      Lifecycle.claim o.lifecycle $
         publicationError o >>= \case
           Just e -> pure (Just e)
           Nothing
             | not current -> pure (Just "runtime-territory-lease-required")
-            | otherwise -> atomically (writeTVar o.publishing True) >> pure Nothing
+            | otherwise -> pure Nothing
 
 -- | @wait(timeout)@.
 waitApplicationOperation :: PiApplicationOperation -> Maybe Double -> IO RuntimeTurnSettlement
-waitApplicationOperation o bound = do
-  forM_ bound $ \t ->
-    when (isNaN t || isInfinite t || t <= 0) $ throwIO (valueError "Pi application wait timeout must be positive and finite")
-  closedAlready <- isJust <$> readTVarIO o.cleanup
-  when closedAlready $ throwIO (runtimeProtocolError "operation-closed")
-  expired <- case bound of
-    Nothing -> newTVarIO False
-    Just t -> registerDelay (micros t)
-  settled <-
-    atomically $
-      (readTVar o.result >>= maybe retry (pure . Just))
-        `orElse` (readTVar expired >>= \e -> if e then pure Nothing else retry)
-  maybe (throwIO (agenticusError TimeoutError "Pi application operation has not settled")) pure settled
+waitApplicationOperation o = Lifecycle.waitSettled o.lifecycle
 
 -- | @cancel(reason)@.
 cancelApplicationOperation :: PiApplicationOperation -> Text -> IO CancellationDisposition
 cancelApplicationOperation o reason = do
   _ <- throwLeft (piText "Pi application cancellation reason" 256 reason)
-  disposition <- guarded o $ do
-    settled <- isJust <$> readTVarIO o.result
-    publishing <- readTVarIO o.publishing
-    wasCancelled <- readTVarIO o.cancelled
-    if
-      | settled || publishing -> pure CancellationTooLate
-      | wasCancelled -> pure CancellationAlreadyRequested
-      | otherwise -> atomically (writeTVar o.cancelled True) >> pure CancellationRequested
-  when (disposition == CancellationRequested) $
-    Episode.cancel o.inv.attachment reason `catch` \(e :: SomeException) -> rethrowAsync e
-  pure disposition
+  Lifecycle.requestCancel o.lifecycle $
+    Episode.cancel o.inv.attachment reason `catch` rethrowAsync
 
 -- | @close()@.
 closeApplicationOperation :: PiApplicationOperation -> IO RuntimeOperationCleanup
 closeApplicationOperation o = do
-  existing <- guarded o $ do
-    existing <- readTVarIO o.cleanup
-    settled <- isJust <$> readTVarIO o.result
-    wasCancelled <- readTVarIO o.cancelled
-    when (isNothing existing && not settled && not wasCancelled) $ throwIO (runtimeProtocolError "operation-active")
-    pure existing
-  case existing of
-    Just evidence -> pure evidence
-    Nothing -> do
-      config <- applicationAdapterConfig o.adapter
-      _ <- timeout (micros (config.cancellationGrace * 2)) (atomically (readTVar o.finished >>= check))
-      done <- readTVarIO o.finished
-      disposition <- if done then readTVarIO o.cleanupDisposition else pure RuntimeCleanupUnverified
-      let code = case disposition of
-            RuntimeCleanupNotCreated -> "client-not-created"
-            RuntimeCleanupClean -> "client-closed"
-            RuntimeCleanupUnverified -> "cleanup-uncertain"
-      evidence <- throwLeft (mkRuntimeOperationCleanup o.inv.operationId disposition code False)
-      atomically $
-        readTVar o.cleanup >>= \case
-          Just earlier -> pure earlier
-          Nothing -> writeTVar o.cleanup (Just evidence) >> pure evidence
+  config <- applicationAdapterConfig o.adapter
+  Lifecycle.closeWith o.lifecycle (config.cancellationGrace * 2) (Lifecycle.settledEvidence o.lifecycle)
 
 -- | The operation as the provider-neutral 'RuntimeOperation' record.
 applicationRuntimeOperation :: PiApplicationOperation -> RuntimeOperation
@@ -1395,12 +1335,12 @@ startApplication a inv0 = do
     case registered of
       Left old -> pure old
       Right operation -> do
-        spawned <- try (void (forkIO (runOperation operation `finally` atomically (writeTVar operation.finished True))))
+        spawned <- try (Lifecycle.startWorker operation.lifecycle (runOperation operation))
         case spawned of
           Right () -> pure operation
           Left (e :: SomeException) -> do
             modifyMVar_ a.operations $ \known ->
-              pure (if fmap (.result) (Map.lookup inv.operationId known) == Just operation.result then Map.delete inv.operationId known else known)
+              pure (if Map.lookup inv.operationId known == Just operation then Map.delete inv.operationId known else known)
             throwIO e
 
 newOperation
@@ -1411,14 +1351,8 @@ newOperation
   -> ApplicationFactory
   -> IO PiApplicationOperation
 newOperation adapter inv key prior factory = do
-  monitor <- newMVar ()
-  cancelled <- newTVarIO False
-  publishing <- newTVarIO False
-  result <- newTVarIO Nothing
-  cleanupDisposition <- newTVarIO RuntimeCleanupUnverified
-  cleanup <- newTVarIO Nothing
-  finished <- newTVarIO False
-  pure PiApplicationOperation {adapter, inv, key, prior, factory, monitor, cancelled, publishing, result, cleanupDisposition, cleanup, finished}
+  lifecycle <- newLifecycle (LifecycleTexts "Pi application wait timeout must be positive and finite" "Pi application operation has not settled") inv.operationId
+  pure PiApplicationOperation {adapter, inv, key, prior, factory, lifecycle}
 
 validate :: PiApplicationRuntimeAdapter -> PiApplicationRuntimeInvocation -> IO ()
 validate a inv = do
