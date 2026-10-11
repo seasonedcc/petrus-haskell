@@ -41,18 +41,25 @@ library
                     Hamsterdan.Agents.Url
                     Hamsterdan.Agents.Pi
                     Hamsterdan.Agents.Pi.Doubles
+                    Hamsterdan.Host.Binding
+                    Hamsterdan.Host.Agenticus
   build-depends:    base >=4.18 && <5
                   , base16-bytestring >=1.0
                   , bytestring >=0.11
                   , containers >=0.6
                   , cryptohash-sha256 >=0.11
+                  , directory >=1.3
+                  , filepath >=1.4
                   , hamsterdan-contracts
                   , hamsterdan-github
                   , petrus-agenticus-core
                   , petrus-agenticus-runtime
                   , petrus-impetus
                   , petrus-json
+                  , petrus-motus
+                  , petrus-posix
                   , text >=2.0
+                  , unix >=2.8
   ghc-options:      -O2
 
 test-suite hamsterdan-agents-test
@@ -63,16 +70,23 @@ test-suite hamsterdan-agents-test
   other-modules:    ProtocolSpec
                     PiSpec
                     PiDoubles
+                    AgenticusSpec
   build-depends:    base
                   , bytestring
                   , containers
                   , cryptohash-sha256
                   , base16-bytestring
                   , hamsterdan-agents
+                  , directory
+                  , filepath
                   , hamsterdan-contracts
+                  , hamsterdan-github
                   , hspec >=2.10
                   , petrus-agenticus-core
                   , petrus-agenticus-runtime
                   , petrus-json
+                  , petrus-motus
+                  , petrus-test-support
+                  , temporary >=1.3
                   , text
   ghc-options:      -threaded -rtsopts

@@ -34,8 +34,7 @@ common warnings
 library
   import:           warnings
   hs-source-dirs:   src
-  exposed-modules:  Hamsterdan.Host.Binding
-                    Hamsterdan.Host.Python
+  exposed-modules:  Hamsterdan.Host.Python
                     Hamsterdan.Host.Runnable
                     Hamsterdan.Host.V5.Timers
                     Hamsterdan.Host.Cli
@@ -58,6 +57,7 @@ library
                   , case-insensitive >=1.2
                   , cryptohash-sha256 >=0.11
                   , direct-sqlite >=2.3.27
+                  , hamsterdan-agents
                   , hamsterdan-contracts
                   , petrus-activity
                   , petrus-cel
@@ -128,6 +128,7 @@ test-suite hamsterdan-host-test
                   , direct-sqlite
                   , directory
                   , filepath
+                  , hamsterdan-agents
                   , hamsterdan-github
                   , hamsterdan-contracts
                   , hamsterdan-host
@@ -167,6 +168,7 @@ benchmark hamsterdan-host-bench
                   , case-insensitive
                   , directory
                   , filepath
+                  , hamsterdan-agents
                   , hamsterdan-contracts
                   , hamsterdan-github
                   , hamsterdan-host

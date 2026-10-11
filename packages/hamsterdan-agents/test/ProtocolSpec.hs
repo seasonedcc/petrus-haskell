@@ -1,6 +1,6 @@
 -- | @tests/unit/agents/test_protocol.py@: provider-neutral agent request and
 -- result contract tests.
-module ProtocolSpec (spec) where
+module ProtocolSpec (spec, reviewRequest) where
 
 import Control.Monad (forM_)
 import Data.Text (Text)
