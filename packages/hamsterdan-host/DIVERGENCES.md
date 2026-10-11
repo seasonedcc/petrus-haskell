@@ -103,6 +103,21 @@ Below are the differences that remain, with their rationale.
   it. The headers, including the final `Connection: close`, and the body
   are warp's, unchanged.
 
+- **A fresh timer store's schema is one transaction.** The reference's
+  `_create_schema` runs `executescript` on an autocommit connection, so each
+  of its six `CREATE` statements commits on its own, and then the meta row
+  does: seven WAL commits, each with its fsync, on every fresh open and
+  every rebuild. `createSchema` runs the same statements and the same
+  `INSERT` inside one transaction, which saves six of the open's fifteen
+  fsyncs (about 0.35 ms of 1.3 ms on the benchmark machine). The closed file
+  is unchanged: the schema cookie still counts one change per statement,
+  and `TimersSpec` checks the file byte for byte against one the reference
+  wrote. The only bytes that differ are offsets 96–99, the
+  `SQLITE_VERSION_NUMBER` of the library that wrote the file (direct-sqlite
+  bundles 3.45.0, CPython links 3.53.4), as they did before. A crash during
+  the schema leaves a store that the next open quarantines either way: the
+  reference's holds part of the schema, the port's none of it.
+
 ## Changes made in sibling packages
 
 The interop tests found these differences, and they were fixed at the
