@@ -88,7 +88,9 @@ faster on every row:
 
 hamsterdan-host's [bench](../hamsterdan-host/bench/RESULTS.md) adds a full
 scripted agent turn through the host: one webhook to quiescence through the
-composed agent. Haskell takes 175 ms and Python 348 ms (2.0×).
+composed agent. Haskell takes 147 ms and Python 317 ms (2.15×), the median
+of seven interleaved repetitions on 2026-10-11 (06:14–06:26, load
+1.96–3.91; Haskell ahead in each, by 1.94× at the least).
 
 ## Divergences
 

@@ -60,10 +60,10 @@ A2 runtime, and the Pi runner after an exact READY probe.
 | `tests/unit/host/test_v5_mutation.py` | 15 | 41 | `MutationSpec` | 41 (+3 `reference_bytes`) |
 | `tests/unit/host/test_v5_rerun.py` | 13 | 17 | `RerunSpec` | 17 |
 | `tests/unit/host/test_v5_review.py` | 14 | 22 | `ReviewSpec` | 22 |
-| `tests/unit/host/test_v5_timers.py` | 18 | 21 | `TimersSpec` | 21 |
+| `tests/unit/host/test_v5_timers.py` | 18 | 21 | `TimersSpec` | 21 (+1 fresh-store bytes) |
 | `tests/integration/host/test_git_publish.py` | 18 | 30 | `GitPublishSpec` | 30 |
 | `tests/integration/host/test_service.py` | 64 | 70 | `ServiceSpec` (59), `ApiSpec` (FastAPI, 6), `CliSpec` (4) | 69 |
-| **Total ported** | **268** | **358** | | **357** (+3) |
+| **Total ported** | **268** | **358** | | **357** (+4) |
 
 `PiActivitySpec` runs the nine coding-activity cases of
 `tests/unit/agents/test_pi.py`, because they drive the V5 mutation gate.
@@ -141,22 +141,26 @@ Every file under the state root is byte-compatible in both directions.
 ## Benchmarks
 
 [bench/RESULTS.md](bench/RESULTS.md), in wall-clock time on both sides,
-five interleaved rounds against the twin protocol (median of batches).
-Haskell is faster on every row but the fresh timer-store open:
+seven interleaved repetitions against the twin protocol (median of
+batches), 2026-10-11, load average 1.96–3.91. Haskell is faster on every
+row:
 
 | Row | Haskell | Python | Speedup |
 | --- | ---: | ---: | ---: |
-| webhook ingest (100 deliveries) | 4.15 ms | 10.8 ms | 2.61× |
-| reconciliation step | 27.7 ms | 180 ms | 6.50× |
-| agent turn (one webhook through the scripted Pi agent) | 146 ms | 312 ms | 2.13× |
-| gate classification | 2.75 µs | 54.7 µs | 19.9× |
-| timer rebuild | 3.97 ms | 7.37 ms | 1.86× |
-| fresh timer-store open | 1.25 ms | 1.24 ms | 0.99× |
+| webhook ingest (100 deliveries) | 4.20 ms | 10.8 ms | 2.57× |
+| reconciliation step | 28.3 ms | 176 ms | 6.23× |
+| agent turn (one webhook through the scripted Pi agent) | 147 ms | 317 ms | 2.15× |
+| gate classification | 2.69 µs | 55.4 µs | 20.6× |
+| timer rebuild | 3.73 ms | 7.52 ms | 2.01× |
+| fresh timer-store open | 943 µs | 1.40 ms | 1.49× |
 
-The fresh open is level, not faster: 0.99× here, 0.95× in the previous
-twin-protocol rounds, 0.81–1.08× in earlier ones. Its SQLite work (file
-creation, WAL and schema) is level with Python's in a probe; see
-RESULTS.md. It belongs to the "V5 timers" component.
+The fresh open was level before (1.00× in the previous seven repetitions,
+0.95–0.99× in earlier rounds): the same system calls on both sides, and
+fifteen fsyncs per open, seven of them from the schema's statements
+committing one by one. The port now creates the schema in one transaction
+(DIVERGENCES.md); the file's bytes do not change, and `TimersSpec` checks
+them against the reference's. Haskell was ahead in all seven repetitions,
+by 1.01× at the least, when the load rose to 3.9.
 
 ## Divergences
 
