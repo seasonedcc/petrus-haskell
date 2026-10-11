@@ -10,10 +10,12 @@ description:
   reference implementation; CEL is a seam, never a dependency.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Control
 build-type:         Simple
+extra-doc-files:    NOTICE
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -37,11 +39,13 @@ library
                     Petrus.Impetus.Instance
                     Petrus.Impetus.Instance.FailureText
                     Petrus.Impetus.Instance.Firing
+                    Petrus.Impetus.Instance.Identity
                     Petrus.Impetus.Selection
                     Petrus.Impetus.History.Codec
                     Petrus.Impetus.History.Records
                     Petrus.Impetus.History.Replay
                     Petrus.Impetus.Internal.OMap
+                    Petrus.Impetus.Internal.JsonSchema
                     Petrus.Impetus.Internal.Pydantic
                     Petrus.Impetus.Internal.PyJson
                     Petrus.Impetus.Internal.Repr
@@ -89,6 +93,7 @@ test-suite petrus-impetus-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    Petrus.Impetus.TestSupport
+                    Petrus.Impetus.LiveSpec
                     Petrus.Impetus.WireSupport
                     Petrus.Impetus.SchemaSpec
                     Petrus.Impetus.MarkingSpec
@@ -131,11 +136,13 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.SpecFixturesSpec
                     Petrus.Impetus.NetDefinitionPropertiesSpec
                     Petrus.Impetus.NetDefinitionCorpusSpec
+                    Petrus.Impetus.JsonSchemaSpec
                     Petrus.Impetus.GoldenTracesSpec
                     Petrus.Impetus.KernelDifferentialSpec
                     Petrus.Impetus.KernelPropertiesSpec
                     Petrus.Impetus.FailureTextSpec
                     Petrus.Impetus.HandBuiltCorpusSpec
+                    Petrus.Impetus.BoundarySpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -147,6 +154,7 @@ test-suite petrus-impetus-test
                   , petrus-activity
                   , petrus-impetus
                   , petrus-json
+                  , petrus-test-support
                   , text
                   , transformers
   ghc-options:      -threaded -rtsopts
@@ -158,6 +166,7 @@ benchmark petrus-impetus-bench
   main-is:          Main.hs
   build-depends:    base
                   , bytestring
+                  , containers
                   , petrus-impetus
                   , petrus-json
                   , tasty-bench >=0.3.2

@@ -24,6 +24,7 @@ status lives in [PARITY.md](PARITY.md).
 | `ariad` (a fork of `mirror-mind-ai/ariad`) | A development method, not software Petrus runs. Upstream Petrus vendors its `using-ariad` agent skill as development tooling only (`upstream/petrus/THIRD_PARTY_NOTICES.md`). |
 | `CarlAdam` (a fork of `matthewryanscott/CarlAdam`) | An earlier, unrelated Petri net library (2024); Petrus does not depend on it. |
 | Every other `henriquebastos` repository | Not Petri-net or Petrus related. |
+| `petrus-viewer`'s ngrok tunnel (`NGROK=1`, `pnpm dev:ngrok`) | A developer convenience in `vite.config.ts` that spawns the external `ngrok` CLI against the dev server; it is not part of the viewer's backend contract. `ngrok http <port>` against `petrus` does the same. |
 | `hamsterdan`'s `src/hamsterdan2` at the pinned commit | An in-progress rebuild of the outer system (CV21) that production does not run: it has no entry point and no effects (see [docs/hamsterdan.md](docs/hamsterdan.md) §1.11). The goal is to behave like production Hamsterdan. When upstream cuts over to it (CV22), moving the `hamsterdan` pin brings it into scope. |
 
 ## External systems

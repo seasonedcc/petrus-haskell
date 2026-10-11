@@ -23,8 +23,8 @@ import Hamsterdan.Contracts.ReadinessV5
   , RoundOpen (..)
   , RoundUnable (..)
   )
-import Hamsterdan.GitHub.Sqlite (SQLData (..))
-import Hamsterdan.GitHub.Sqlite qualified as Sql
+import Hamsterdan.Sqlite (SQLData (..))
+import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Python (RuntimeError (..), sha256HexText)
 import Hamsterdan.Host.V5.Claim (CurrentClaim (..))
 import Hamsterdan.Host.V5.Review

@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""Enforce upstream Hamsterdan's package and dependency boundaries on the port.
+
+    scripts/lint-hamsterdan-architecture
+
+Upstream's ``tests/test_architecture.py`` (pinned in UPSTREAM.md) scans the
+imports of every module under ``src/hamsterdan`` and fails when a module
+crosses a subsystem boundary. This lint applies the same rules to the
+library and executable sources of the ``hamsterdan-*`` packages, and adds
+the package-level form of the sibling rule (a sibling package never
+``build-depends`` on another sibling package).
+
+Each Haskell module is assigned the upstream subsystem it ports, by its
+module name (not its package: ``Hamsterdan.Host.*`` modules that live in
+``hamsterdan-agents`` because the Pi agent needs them are host modules, as
+their upstream files are under ``host/``):
+
+    Hamsterdan.Agents.*                          agents
+    Hamsterdan.GitHub, Hamsterdan.GitHub.*       github_app
+    Hamsterdan.Readiness.*                       readiness
+    Hamsterdan.Contracts*, Hamsterdan.Agents.Protocol? (see below)
+    Hamsterdan.Host.*, Hamsterdan.Export*        host   (host/, host/export.py)
+    Hamsterdan.Testing.World*                    host   (host/testing/)
+    Hamsterdan.Testing.Readiness                 testing
+    Hamsterdan.Operator*                         operator (operator.py)
+    Hamsterdan.PyLiteral*, Hamsterdan.PyText,
+    Hamsterdan.Sqlite, Hamsterdan.Cli.*          contracts (the port's shared
+                                                 foundation: what CPython's
+                                                 standard library is upstream)
+
+``Hamsterdan.Agents.Protocol`` is ``agents/protocol.py`` and is an agents
+module, although it is built in ``hamsterdan-contracts`` (every subsystem
+that names an agent needs its vocabulary). ``Hamsterdan.Testing.Journeys``
+and ``Hamsterdan.E2E.*`` port upstream tests and tooling, which
+``test_architecture.py`` does not scan, and are not checked.
+
+The rules (upstream test names):
+
+- test_sibling_subsystems_never_import_one_another: agents, github_app and
+  readiness never import one another; and, at the package level,
+  hamsterdan-agents, hamsterdan-github and hamsterdan-readiness never
+  depend on one another.
+- test_only_host_may_import_concrete_sibling_subsystems: outside the host,
+  a module imports no sibling but its own; and the host imports
+  agents, github_app's gateway and readiness's net_v5.
+- test_sibling_and_contract_packages_never_import_host.
+- test_agenticus_imports_remain_in_agents_and_host: Petrus.Agenticus.* only
+  in agents and host modules.
+- test_host_owns_petrus_runtime_custody: Petrus.Engine*, Petrus.Motus.Dispatch*
+  and Petrus.Motus.Worker* only in host modules.
+- test_provider_libraries_remain_at_owned_boundaries: the HTTP client
+  (Network.HTTP.Client*, githubkit/httpx upstream) only in github_app; the
+  HTTP server (Network.Wai*, Network.HTTP.Types.*-free WAI and warp,
+  FastAPI upstream) only in the host.
+
+``test_project_uses_the_petrus_distribution_without_compatibility_facades``,
+``test_project_rejects_petrus_root_and_compatibility_facades``,
+``test_host_never_imports_examples`` and
+``test_import_scanner_resolves_relative_imports`` are about Python packaging
+and relative imports; Haskell has neither a facade package nor relative
+imports. They are recorded in packages/hamsterdan-host/PARITY.md.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+PACKAGES = ROOT / "packages"
+SIBLINGS = ("agents", "github_app", "readiness")
+SIBLING_PACKAGES = {
+    "agents": "hamsterdan-agents",
+    "github_app": "hamsterdan-github",
+    "readiness": "hamsterdan-readiness",
+}
+
+IMPORT = re.compile(r"^import\s+(?:safe\s+)?(?:qualified\s+)?([A-Z][\w.]*)", re.MULTILINE)
+MODULE = re.compile(r"^module\s+([A-Z][\w.]*)", re.MULTILINE)
+
+
+def owner(module: str) -> str | None:
+    """The upstream subsystem a Hamsterdan module ports, or None if unscanned."""
+
+    def under(prefix: str) -> bool:
+        return module == prefix or module.startswith(prefix + ".")
+
+    if under("Hamsterdan.Testing.Journeys") or under("Hamsterdan.E2E"):
+        return None
+    if under("Hamsterdan.Agents"):
+        return "agents"
+    if under("Hamsterdan.GitHub"):
+        return "github_app"
+    if under("Hamsterdan.Readiness"):
+        return "readiness"
+    if under("Hamsterdan.Host") or under("Hamsterdan.Export") or under("Hamsterdan.Testing.World"):
+        return "host"
+    if under("Hamsterdan.Testing"):
+        return "testing"
+    if under("Hamsterdan.Operator"):
+        return "operator"
+    if (
+        under("Hamsterdan.Contracts")
+        or under("Hamsterdan.PyLiteral")
+        or under("Hamsterdan.PyText")
+        or under("Hamsterdan.Sqlite")
+        or under("Hamsterdan.Cli")
+    ):
+        return "contracts"
+    return "unknown"
+
+
+def strip_comments(source: str) -> str:
+    source = re.sub(r"\{-.*?-\}", "", source, flags=re.DOTALL)
+    return re.sub(r"--.*", "", source)
+
+
+def matches(name: str, prefix: str) -> bool:
+    return name == prefix or name.startswith(prefix + ".")
+
+
+def sources() -> list[tuple[str, Path]]:
+    """Every library and executable source of the hamsterdan-* packages."""
+    found = []
+    for package in sorted(PACKAGES.glob("hamsterdan-*")):
+        for directory in ("src", "app"):
+            for path in sorted((package / directory).rglob("*.hs")):
+                found.append((package.name, path))
+    return found
+
+
+def main() -> int:
+    problems: list[str] = []
+    host_imports: set[str] = set()
+    scanned = 0
+    for package, path in sources():
+        text = strip_comments(path.read_text(encoding="utf-8"))
+        declared = MODULE.search(text)
+        relative = path.relative_to(ROOT)
+        if declared is None or declared.group(1) == "Main":
+            # An executable's Main: it composes its package's subsystem
+            # (hamsterdan-e2e's executables are test tooling).
+            module_owner = {
+                "hamsterdan-host": "host",
+                "hamsterdan-export": "host",
+                "hamsterdan-operator": "operator",
+            }.get(package)
+        else:
+            module_owner = owner(declared.group(1))
+        if module_owner is None:
+            continue
+        if module_owner == "unknown":
+            problems.append(f"{relative}: module {declared.group(1)} has no upstream owner in this lint")
+            continue
+        scanned += 1
+        imported = set(IMPORT.findall(text))
+        hamsterdan = {name for name in imported if matches(name, "Hamsterdan")}
+        owners = {name: owner(name) for name in hamsterdan}
+        if module_owner == "host":
+            host_imports.update(hamsterdan)
+
+        # test_sibling_subsystems_never_import_one_another and
+        # test_only_host_may_import_concrete_sibling_subsystems
+        if module_owner != "host":
+            escaped = sorted(name for name, o in owners.items() if o in SIBLINGS and o != module_owner)
+            if escaped:
+                problems.append(f"{relative} ({module_owner}) imports sibling subsystem(s): {escaped}")
+
+        # test_sibling_and_contract_packages_never_import_host
+        if module_owner in (*SIBLINGS, "contracts"):
+            escaped = sorted(name for name, o in owners.items() if o == "host")
+            if escaped:
+                problems.append(f"{relative} ({module_owner}) imports host: {escaped}")
+
+        # test_agenticus_imports_remain_in_agents_and_host
+        if module_owner not in ("agents", "host"):
+            escaped = sorted(name for name in imported if matches(name, "Petrus.Agenticus"))
+            if escaped:
+                problems.append(f"{relative} ({module_owner}) imports Petrus Agenticus outside agents or host: {escaped}")
+
+        # test_host_owns_petrus_runtime_custody
+        if module_owner != "host":
+            runtime = ("Petrus.Engine", "Petrus.Motus.Dispatch", "Petrus.Motus.Worker")
+            escaped = sorted(name for name in imported if any(matches(name, r) for r in runtime))
+            if escaped:
+                problems.append(f"{relative} ({module_owner}) imports host-owned Petrus runtime concept(s): {escaped}")
+
+        # test_provider_libraries_remain_at_owned_boundaries
+        if module_owner != "github_app":
+            escaped = sorted(name for name in imported if matches(name, "Network.HTTP.Client"))
+            if escaped:
+                problems.append(f"{relative} ({module_owner}) imports the GitHub provider HTTP client outside github_app: {escaped}")
+        if module_owner != "host":
+            escaped = sorted(
+                name for name in imported if matches(name, "Network.Wai") or matches(name, "Network.Wai.Handler.Warp")
+            )
+            if escaped:
+                problems.append(f"{relative} ({module_owner}) imports the HTTP server outside host: {escaped}")
+
+    # The second half of test_only_host_may_import_concrete_sibling_subsystems.
+    expected = {
+        "agents": "Hamsterdan.Agents",
+        "github_app gateway": "Hamsterdan.GitHub.Gateway",
+        "readiness net_v5": "Hamsterdan.Readiness.NetV5",
+    }
+    for what, prefix in expected.items():
+        if not any(matches(name, prefix) for name in host_imports):
+            problems.append(f"host is missing concrete composition import of {what} ({prefix})")
+
+    # The sibling rule at the package level: no sibling package depends on another.
+    depends = re.compile(r"^\s*(?:build-depends:|,)\s*([a-z][\w-]*)", re.MULTILINE)
+    for sibling, package in SIBLING_PACKAGES.items():
+        cabal = (PACKAGES / package / f"{package}.cabal").read_text(encoding="utf-8")
+        library = re.search(r"^library\b(.*?)(?=^\S)", cabal + "\nend\n", re.DOTALL | re.MULTILINE)
+        if library is None:
+            problems.append(f"{package}.cabal has no library stanza")
+            continue
+        named = set(depends.findall(library.group(1)))
+        others = sorted(p for s, p in SIBLING_PACKAGES.items() if s != sibling and p in named)
+        if others:
+            problems.append(f"{package} ({sibling}) depends on sibling package(s): {others}")
+
+    if problems:
+        print("hamsterdan architecture violations (upstream tests/test_architecture.py):", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        return 1
+    print(f"hamsterdan architecture: {scanned} modules follow upstream's import boundaries")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

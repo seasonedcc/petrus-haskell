@@ -21,9 +21,25 @@ recorded in [PARITY.md](PARITY.md).
 
 1. `git -C upstream/<name> fetch && git -C upstream/<name> checkout <new-sha>`.
 2. Update the table above.
-3. Run `scripts/upstream-diff <name> <old-sha> <new-sha>` to list the changed
-   upstream modules, specs, fixtures, and tests.
-4. Mark every affected component in [PARITY.md](PARITY.md) as `in progress`
+3. Run `scripts/upstream-diff <name> <old-sha> <new-sha>`. It lists the
+   changed upstream modules, specs, fixtures, tests, dependency locks
+   (`pyproject.toml`, `uv.lock`; `package.json`, `pnpm-lock.yaml`), the
+   viewer's `vite.config.ts` and Hamsterdan's `deployment/`, then every
+   other changed file, so nothing that moved goes unseen.
+4. Run `scripts/check-corpora`. It reruns every committed-corpus generator
+   (differential corpora, fixture databases, generated modules) against the
+   new pin and lists each stale file with a diff. Review each diff, write the
+   new files with `scripts/check-corpora --update NAME ...`, and let the
+   corpus's tests decide what the port must change. It does not run the
+   viewer's recorders, which run on Node; rerun those too, for example
+   `node packages/petrus-viewer-server/test/record-mcp-transcript.mjs` for
+   the MCP golden transcript (`--check` reports it stale).
+5. Mark every affected component in [PARITY.md](PARITY.md) as `in progress`
    until its conformance, interop, and benchmark evidence pass again at the new
    pin.
-5. Run `scripts/check-all` (build, tests, conformance, interop, benchmarks).
+6. Run `scripts/check-all` (build, tests, conformance, interop, committed
+   corpora, benchmarks).
+7. Commit the new gitlink (`git add upstream/<name>`) together with this
+   table, the regenerated corpora, and the PARITY changes. A checkout that
+   is moved but not committed leaves the gitlink at the old commit, and
+   `scripts/check-pins` fails until the two agree.

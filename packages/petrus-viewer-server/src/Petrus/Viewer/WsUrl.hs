@@ -7,11 +7,12 @@ module Petrus.Viewer.WsUrl
   , runWsClient
   ) where
 
-import Control.Exception (SomeException, bracketOnError, throwIO, try)
+import Control.Exception (SomeException, bracketOnError, finally, throwIO, try)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Network.Socket qualified as S
 import Network.WebSockets qualified as WS
+import Network.WebSockets.Stream qualified as WSS
 import Petrus.Viewer.Url
 
 data WsTarget = WsTarget
@@ -48,13 +49,16 @@ parseWsUrl t = case parseUrl t of
                   , wsHostHeader = h ++ maybe "" (\p -> ':' : show p) (urlPort u)
                   }
 
--- | Connect and run a client application.
-runWsClient :: WsTarget -> WS.ConnectionOptions -> WS.ClientApp a -> IO a
-runWsClient target opts app = do
+-- | Connect and run a client application over the stream @withStream@
+-- makes of the connected socket (the stream is closed, then the socket).
+runWsClient :: (S.Socket -> (WSS.Stream -> IO a) -> IO a) -> WsTarget -> WS.ConnectionOptions -> WS.ClientApp a -> IO a
+runWsClient withStream target opts app = do
   let hints = S.defaultHints {S.addrSocketType = S.Stream}
   addrs <- S.getAddrInfo (Just hints) (Just (wsHost target)) (Just (show (wsPort target)))
   sock <- firstConnect addrs
-  r <- try @SomeException (WS.runClientWithSocket sock (wsHostHeader target) (wsResource target) opts [] app)
+  r <-
+    try @SomeException . withStream sock $ \stream ->
+      WS.runClientWithStream stream (wsHostHeader target) (wsResource target) opts [] app `finally` WSS.close stream
   S.close sock
   either throwIO pure r
   where

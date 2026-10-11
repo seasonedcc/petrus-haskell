@@ -13,10 +13,12 @@ description:
   values in their own packages.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Control
 build-type:         Simple
+extra-doc-files:    NOTICE
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -39,6 +41,7 @@ library
                     Petrus.Motus.Dispatch.Local
                     Petrus.Motus.Internal.Argparse
                     Petrus.Motus.Internal.Repr
+                    Petrus.Motus.PythonException
                     Petrus.Motus.Worker
                     Petrus.Motus.Worker.Cli
   build-depends:    base >=4.18 && <5
@@ -68,6 +71,7 @@ test-suite petrus-motus-test
                     Petrus.Motus.WorkerSpec
                     Petrus.Motus.AsyncWorkerSpec
                     Petrus.Motus.WorkerCliSpec
+                    Petrus.Motus.BoundarySpec
   build-depends:    base
                   , bytestring
                   , containers

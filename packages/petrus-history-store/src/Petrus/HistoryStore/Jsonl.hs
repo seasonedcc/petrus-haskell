@@ -58,23 +58,23 @@ module Petrus.HistoryStore.Jsonl
   ) where
 
 import Control.Exception (bracket, throwIO)
-import Control.Monad (unless, when)
+import Data.Bifunctor (first)
+import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as B
 import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Char8 qualified as BC
-import Data.ByteString.Unsafe qualified as BU
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as T
-import Foreign.Ptr (plusPtr)
-import Petrus.Impetus.History.Codec (encodeRecord)
+import Petrus.Impetus.History.Codec (encodeRecord, historyLoads)
 import Petrus.Impetus.History.Records (Record, recordName)
 import Petrus.Impetus.HistoryStore
 import Petrus.HistoryStore.Internal (HistoryStoreError (..), decodeStored, pythonDiagnostic)
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsBuilder, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsBuilder, encodeErrorMessage, parseJson)
+import Petrus.Posix.File (fsyncFd, fsyncPath, writeAll)
 import Petrus.Telemetry (EventSink, emit, getLogger)
 import Petrus.Telemetry qualified as Telemetry
 import System.Directory (createDirectoryIfMissing, doesFileExist)
@@ -84,11 +84,8 @@ import System.Posix.IO
   , OpenMode (..)
   , closeFd
   , defaultFileFlags
-  , fdWriteBuf
   , openFd
   )
-import System.Posix.Types (Fd)
-import System.Posix.Unistd (fileSynchronise)
 
 -- ---------------------------------------------------------------------------
 -- Options
@@ -141,16 +138,8 @@ appendPayload policy payload = do
   let flags = defaultFileFlags {append = True, creat = Just 0o666}
   bracket (openFd policy.path WriteOnly flags) closeFd $ \fd -> do
     writeAll fd payload
-    when (policy.durability == PowerFailure) (fileSynchronise fd)
-  when (policy.durability == PowerFailure && not existed) $
-    bracket (openFd directory ReadOnly defaultFileFlags) closeFd fileSynchronise
-
-writeAll :: Fd -> ByteString -> IO ()
-writeAll fd bytes = BU.unsafeUseAsCStringLen bytes $ \(start, total) ->
-  let go offset = unless (offset >= total) $ do
-        written <- fdWriteBuf fd (plusPtr start offset) (fromIntegral (total - offset))
-        go (offset + fromIntegral written)
-   in go 0
+    when (policy.durability == PowerFailure) (fsyncFd fd)
+  when (policy.durability == PowerFailure && not existed) (fsyncPath directory)
 
 -- ---------------------------------------------------------------------------
 -- The format
@@ -158,55 +147,35 @@ writeAll fd bytes = BU.unsafeUseAsCStringLen bytes $ \(start, total) ->
 -- | @json.dumps(encode_record(record), allow_nan=False)@, or the reference's
 -- refusal text.
 encodeLine :: Record -> Either Text ByteString
-encodeLine record = encodeRefusal record >> Right (BL.toStrict (B.toLazyByteString (lineBuilder record)))
+encodeLine record = BL.toStrict . B.toLazyByteString <$> lineBuilder record
 
--- | The reference's refusal for a record that is not JSON-faithful: the
--- first non-finite float, in the order @json.dumps@ visits values.
-encodeRefusal :: Record -> Either Text ()
-encodeRefusal record = case firstNonFinite (encodeRecord record) of
-  Nothing -> Right ()
-  Just value ->
-    Left
-      ( "cannot durably encode "
-          <> recordName record
-          <> ": Out of range float values are not JSON compliant: "
-          <> floatRepr value
-          <> " — durable instants and token data must be JSON-faithful values"
-      )
+-- | One record's line, unterminated, or the reference's @_encoded_line@
+-- refusal: every value @json.dumps@ refuses (a non-finite float, an integer
+-- over CPython's 4300-digit limit, nesting past the limit) is
+-- @cannot durably encode {Type}: {error} — durable instants and token data
+-- must be JSON-faithful values@. The encoder's own refusal is the only
+-- check, so nothing it refuses can reach the file.
+lineBuilder :: Record -> Either Text B.Builder
+lineBuilder record = first refusal (dumpsBuilder defaultDumps {allowNan = False} (encodeRecord record))
   where
-    floatRepr value
-      | isNaN value = "nan"
-      | value > 0 = "inf"
-      | otherwise = "-inf"
-
-firstNonFinite :: Json -> Maybe Double
-firstNonFinite = \case
-  Float d | isNaN d || isInfinite d -> Just d
-  Array items -> firstJust (map firstNonFinite items)
-  Object members -> firstJust (map (firstNonFinite . snd) members)
-  _ -> Nothing
-  where
-    firstJust = \case
-      [] -> Nothing
-      Just d : _ -> Just d
-      Nothing : rest -> firstJust rest
-
--- | One already-checked record's line, unterminated. (The check runs as a
--- separate streaming pass so no batch's values are held all at once.)
-lineBuilder :: Record -> B.Builder
-lineBuilder record = either (const mempty) id (dumpsBuilder defaultDumps {allowNan = True} (encodeRecord record))
+    refusal problem =
+      "cannot durably encode "
+        <> recordName record
+        <> ": "
+        <> T.pack (encodeErrorMessage problem)
+        <> " — durable instants and token data must be JSON-faithful values"
 
 -- | Encode a whole batch before any IO.
 encodeBatch :: [Record] -> Either Text [ByteString]
 encodeBatch = traverse encodeLine
 
 -- | Encode a whole batch before any IO, as the one terminated payload the
--- append writes: every record is checked first, then the batch is written
--- through one builder run.
+-- append writes: every record is checked first (the first refusal in batch
+-- order wins), then the batch is written through one builder run.
 encodePayload :: [Record] -> Either Text ByteString
 encodePayload batch = do
-  mapM_ encodeRefusal batch
-  Right (BL.toStrict (B.toLazyByteString (foldMap (\record -> lineBuilder record <> B.char7 '\n') batch)))
+  lines' <- traverse lineBuilder batch
+  Right (BL.toStrict (B.toLazyByteString (foldMap (<> B.char7 '\n') lines')))
 
 -- | Decode a file's bytes: universal newlines, one record per line, all or
 -- nothing. The 'FilePath' only names the file in the refusal.
@@ -230,7 +199,7 @@ decodeLines path content = go 1 Seq.empty (splitLines content)
 -- refused line is rescanned with the CPython-exact scanner, for the
 -- reference's diagnostic text.
 decodeLine :: ByteString -> Bool -> Either Text Record
-decodeLine line terminated = case parseJson pythonLoads line of
+decodeLine line terminated = case parseJson historyLoads line of
   Right value -> decodeStored value
   Left fallback -> Left (pythonDiagnostic (if terminated then line <> "\n" else line) (T.pack fallback))
 

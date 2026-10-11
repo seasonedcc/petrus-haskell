@@ -8,6 +8,7 @@ import Petrus.Impetus.CompletionSpec qualified as CompletionSpec
 import Petrus.Impetus.EnvironmentSignalSpec qualified as EnvironmentSignalSpec
 import Petrus.Impetus.FailureTextSpec qualified as FailureTextSpec
 import Petrus.Impetus.HandBuiltCorpusSpec qualified as HandBuiltCorpusSpec
+import Petrus.Impetus.BoundarySpec qualified as BoundarySpec
 import Petrus.Impetus.FiringOccurrencesSpec qualified as FiringOccurrencesSpec
 import Petrus.Impetus.GuardBranchSpec qualified as GuardBranchSpec
 import Petrus.Impetus.HandlersSpec qualified as HandlersSpec
@@ -32,7 +33,9 @@ import Petrus.Impetus.SelectionSpec qualified as SelectionSpec
 import Petrus.Impetus.GoldenTracesSpec qualified as GoldenTracesSpec
 import Petrus.Impetus.KernelDifferentialSpec qualified as KernelDifferentialSpec
 import Petrus.Impetus.KernelPropertiesSpec qualified as KernelPropertiesSpec
+import Petrus.Impetus.LiveSpec qualified as LiveSpec
 import Petrus.Impetus.MarkingSpec qualified as MarkingSpec
+import Petrus.Impetus.JsonSchemaSpec qualified as JsonSchemaSpec
 import Petrus.Impetus.NetDefinitionCorpusSpec qualified as NetDefinitionCorpusSpec
 import Petrus.Impetus.NetDefinitionPropertiesSpec qualified as NetDefinitionPropertiesSpec
 import Petrus.Impetus.NetDefinitionSpec qualified as NetDefinitionSpec
@@ -62,6 +65,7 @@ main = hspec $ do
   CompletionSpec.spec
   FailureTextSpec.spec
   HandBuiltCorpusSpec.spec
+  BoundarySpec.spec
   GuardBranchSpec.spec
   CelGuardsSpec.spec
   IngressSpec.spec
@@ -83,6 +87,8 @@ main = hspec $ do
   SpecFixturesSpec.spec
   NetDefinitionPropertiesSpec.spec
   NetDefinitionCorpusSpec.spec
+  JsonSchemaSpec.spec
   GoldenTracesSpec.spec
   KernelDifferentialSpec.spec
   KernelPropertiesSpec.spec
+  LiveSpec.spec

@@ -31,7 +31,7 @@ import Data.Text.Encoding qualified as TE
 import Petrus.Activity (invocation)
 import Petrus.HistoryStore.Sqlite
 import Petrus.HistoryStore.SqliteSupport
-import Petrus.HistoryStore.Support (withScratch)
+import Petrus.HistoryStore.Support (surrogatePayment, surrogateRecords, withScratch)
 import Petrus.Impetus.Binding
 import Petrus.Impetus.History
 import Petrus.Impetus.History.Codec (encodeRecord)
@@ -150,6 +150,51 @@ spec = describe "SQLite History interop with the reference" $ do
     let path = dir </> "history.sqlite3"
     withSqliteHistoryStore path "one" $ \store -> store.history.extend everything
     reference ["verify-every", path, "one"] `shouldReturn` (BC.pack (show (length everything)) <> "\n")
+
+  describe "lone surrogates (json.dumps escapes a str's lone surrogate; json.loads reads it back)" $ do
+    it "a file the reference wrote loads value-equal with the reference's payload spelling" $ withScratch $ \dir -> do
+      let path = dir </> "history.sqlite3"
+      void (reference ["write-surrogates", path, "one"])
+      withSqliteHistoryStore path "one" (Store.records . (.history)) `shouldReturn` surrogateRecords
+      payloads <- rawQuery path "SELECT payload FROM impetus_history_events ORDER BY position"
+      payloads `shouldBe` [[SQLText (TE.decodeUtf8 bytes)] | Right bytes <- map (dumps compact {ensureAscii = True} . encodeRecord) surrogateRecords]
+      [SQLText first] : _ <- pure payloads
+      first `shouldSatisfy` T.isInfixOf "\"data\":\"\\ud800\""
+
+    it "a file Haskell wrote loads value-equal in the reference with identical payloads" $ withScratch $ \dir -> do
+      let path = dir </> "history.sqlite3"
+      withSqliteHistoryStore path "one" $ \store -> store.history.extend surrogateRecords
+      reference ["verify-surrogates", path, "one"] `shouldReturn` (BC.pack (show (length surrogateRecords)) <> "\n")
+
+    it "an Instance the reference began with lone surrogates in its token data resumes in Haskell and the reference reads the result" $ withScratch $ \dir -> do
+      let path = dir </> "history.sqlite3"
+      void (reference ["begin-surrogate", path])
+      count <- withSqliteHistoryStore path "interop-1" $ \store -> do
+        resumed <- resume activityNet store.history (config False) >>= expectRight
+        [occurrence] <- inFlight resumed
+        _ <- recordActivityCompletion resumed occurrence (Object [("status", String "captured")]) (Just 3) >>= expectRight
+        _ <- complete resumed occurrence Nothing (Just 4) >>= expectRight
+        marking resumed `shouldReturn` receipt
+        Store.size (instanceHistory resumed)
+      reference ["inspect", path] `shouldReturn` (BC.pack (show count) <> "\n")
+
+    it "an Instance Haskell began with lone surrogates in its token data resumes in the reference and Haskell reads the result" $ withScratch $ \dir -> do
+      let path = dir </> "history.sqlite3"
+      withSqliteHistoryStore path "interop-1" $ \store -> do
+        inst <- newInstance activityNet (config True) {historyStore = Just store.history, suppliedIdentity = Just "interop-1"} >>= expectRight
+        DeliveryAccepted accepted <- acceptDelivery inst intake [surrogatePayment] "evt_123" Nothing (Just 1) >>= expectRight
+        _ <- completeDelivery inst accepted (Just 1) >>= expectRight
+        (b : _) <- candidates inst
+        void (begin inst b (Just 2) >>= expectRight)
+      void (reference ["finish", path])
+      withSqliteHistoryStore path "interop-1" $ \store -> do
+        back <- resume activityNet store.history (config False) >>= expectRight
+        marking back `shouldReturn` receipt
+        watermark back `shouldReturn` 4
+        inFlight back `shouldReturn` []
+        records' <- Store.records store.history
+        let delivered = [tokens | RExternalEventDelivered (ExternalEventDelivered _ tokens _ _ _ _) <- records']
+        delivered `shouldBe` [[surrogatePayment]]
 
   it "files created by each side are row-identical" $ withScratch $ \dir -> do
     let ours = dir </> "haskell.sqlite3"

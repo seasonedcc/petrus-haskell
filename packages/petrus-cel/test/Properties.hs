@@ -125,3 +125,16 @@ spec = describe "properties" $ do
      in holds "x in xs" env == (x `elem` xs)
           && holds "xs.exists(e, e == x)" env == (x `elem` xs)
           && holds "size(xs.filter(e, e > x)) == size(xs) - size(xs.filter(e, e <= x))" env
+
+  -- Beyond the corpus (which records an error's first argument only): a
+  -- string holding a lone surrogate raises CPython's UnicodeEncodeError
+  -- wherever cel-python encodes it, with every argument. The expected
+  -- texts are celpy's own repr of the raised CELEvalError.
+  describe "lone-surrogate strings" $
+    it "raise UnicodeEncodeError with CPython's arguments where cel-python encodes them" $ do
+      let rendered source = either (error . show) (either excRepr valueRepr . (`evaluateJson` [])) (compile source)
+      rendered "bytes('a\\uD800')"
+        `shouldBe` "CELEvalError(*('return error for overflow', <class 'UnicodeEncodeError'>, ('utf-8', StringType('a\\ud800'), 1, 2, 'surrogates not allowed')))"
+      rendered "('x' + '\\uD800\\uDC00').matches('.')"
+        `shouldBe` "CELEvalError(*('return error for overflow', <class 'UnicodeEncodeError'>, ('utf-8', 'x\\ud800\\udc00', 1, 3, 'surrogates not allowed')))"
+      rendered "bytes('\\uD800') == b'' || true" `shouldBe` "BoolType(True)"

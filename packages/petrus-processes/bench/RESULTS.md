@@ -53,6 +53,32 @@ petrus-postgres now keeps psycopg's prepared-statement cache (see its
 [fabric results](../../petrus-fabric/bench/RESULTS.md)), and the two clients'
 statement logs are identical, statement names included.
 
+### The call round trip
+
+`call.roundtrip-postgres` is one whole call over the PostgreSQL Fabric
+(spec/processes.md §6). The caller and the callee each use their own
+connection, and each step is the same on both sides:
+
+1. The caller sends a fresh request envelope.
+2. The callee drains it through a door that validates the request
+   (`request_from_envelope`) and sends the correlated result envelope.
+3. The caller drains the reply through a door that validates it against the
+   request (`reply_from_envelope`).
+
+Each drain authenticates, reads the pending delivery, and acknowledges it.
+
+It was added after the table above, and timed on 2026-10-11 10:46–10:50
+local, on the commit that adds it. The run was a separate interleaved
+`scripts/bench-compare petrus-processes 6` restricted to this row (Haskell
+first, then Python first, alternately). The 1-minute load average was 4.1–7.2:
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
+|---|---:|---:|---:|---:|---:|
+| `call.roundtrip-postgres` | 901 µs | 1.63 ms | 1.81× | 1.08× | 6/6 |
+
+The load moved both sides. Haskell's figure ranged from 674 µs to 1.58 ms over
+the six repetitions, and Python's from 1.11 ms to 1.88 ms.
+
 ### Before the prepared-statement cache
 
 <!-- bench: superseded -->

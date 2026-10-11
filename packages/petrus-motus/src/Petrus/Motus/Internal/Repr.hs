@@ -4,9 +4,7 @@
 module Petrus.Motus.Internal.Repr
   ( pyStr
   , pyStrList
-  , exceptionTypeName
   , exceptionMessage
-  , exceptionRepr
   , uuid4
   , pyRepr
   ) where
@@ -15,7 +13,6 @@ import Control.Exception (SomeException (..), displayException)
 import Data.Char (isPrint, ord)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Typeable (typeOf)
 import Control.Monad (when)
 import Data.Bits (shiftR, (.&.), (.|.))
 import Data.ByteString qualified as BS
@@ -49,20 +46,10 @@ pyStr text =
 pyStrList :: [Text] -> Text
 pyStrList items = "[" <> T.intercalate ", " (map pyStr items) <> "]"
 
--- | The exception's type name: the analogue of @type(error).__name__@.
-exceptionTypeName :: SomeException -> Text
-exceptionTypeName (SomeException e) = T.pack (show (typeOf e))
-
 -- | The exception's message without a trailing call stack: the analogue of
 -- @str(error)@.
 exceptionMessage :: SomeException -> Text
 exceptionMessage (SomeException e) = fst (T.breakOn "\nCallStack (from" (T.pack (displayException e)))
-
--- | The @repr@ of a caught exception, Python style: @Type('message')@.
-exceptionRepr :: SomeException -> Text
-exceptionRepr err =
-  let message = exceptionMessage err
-   in exceptionTypeName err <> "(" <> (if T.null message then "" else pyStr message) <> ")"
 
 foreign import capi unsafe "sys/random.h getentropy" c_getentropy :: Ptr Word8 -> CSize -> IO CInt
 

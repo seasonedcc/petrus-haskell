@@ -5,10 +5,9 @@
 -- The reference's @_fire@ drives the two history-independent Petrinet
 -- transforms ('beginFiring', a handler, 'completeFiring'); 'fire' here is
 -- the same composition. The reference's Instance-layer record-authoring
--- helpers (@instance.begin_firing@ / @instance.complete_firing@) are not
--- exported by the Haskell port — the 'begin' and 'complete' doors author the
--- same records inline — so their two contract tests are asserted through
--- the doors instead (and listed as not at parity in the ledger).
+-- functions (@instance.begin_firing@ / @instance.complete_firing@, imported
+-- by the test as @instance_begin_firing@ / @instance_complete_firing@) are
+-- 'I.instanceBeginFiring' / 'I.instanceCompleteFiring'.
 module Petrus.Impetus.InstanceFiringSpec (spec) where
 
 import Data.Map.Strict qualified as Map
@@ -112,8 +111,41 @@ spec = describe "Instance firing" $ do
       beginFiring (markingFromList [(shared, [tok "X"])]) binding
         `shouldFailWith` "cannot read Token('X', None) from shared: token not present"
     -- TestBeginEndFiring.test_instance_begin_firing_retains_its_record_authoring_contract
-    -- (not at parity: the helper is not exported; the begin door authors the
-    -- same FiringBegun + TokensConsumed batch at the effective instant)
+    it "retains the Instance begin record-authoring contract" $ do
+      let token' = tok "X"
+          m = markingFromList [(a, [token'])]
+      binding <- onlyCandidate lineNet m
+      (after', records) <- expectRight (I.instanceBeginFiring m binding 7 11)
+      after' `shouldBe` emptyMarking
+      records
+        `shouldBe` [ RFiringBegun (FiringBegun t 7 Nothing 11)
+                   , RTokensConsumed (TokensConsumed a [token'] 7 [] Nothing 11)
+                   ]
+    -- TestBeginEndFiring.test_instance_complete_firing_retains_its_outcome_and_registration_contract
+    it "retains the Instance complete outcome and registration contract" $ do
+      let token' = tok "X"
+          m = markingFromList [(a, [token'])]
+          source = np "source"
+          close = DeliveryRegistration source "old"
+          open' = DeliveryRegistration source "new"
+      binding <- onlyCandidate lineNet m
+      (begun, beginRecords) <- expectRight (I.instanceBeginFiring m binding 7 11)
+      let occurrence = I.FiringOccurrence 7 binding beginRecords Nothing Nothing
+          (after', outcome, appended) =
+            I.instanceCompleteFiring lineNet begun occurrence (HandlerResult [(b, [token'])] [open'] [close]) 12
+      after' `shouldBe` markingFromList [(b, [token'])]
+      appended
+        `shouldBe` [ RTokensProduced (TokensProduced b [token'] 7 [] Nothing 12)
+                   , RDeliveryRegistrationClosed (DeliveryRegistrationClosed source "old" (Just 7) 12)
+                   , RDeliveryRegistrationOpened (DeliveryRegistrationOpened source "new" (Just 7) 12)
+                   , RFiringCompleted (FiringCompleted t 7 12)
+                   ]
+      outcome.consumed `shouldBe` [token']
+      outcome.produced `shouldBe` [(b, token')]
+    -- Beyond the reference: the begin and complete doors author the same
+    -- batches as the two contracts above (at the Instance's own occurrence
+    -- id, and closing the source's armed "default" key, since the door
+    -- validates each effect against the armed registrations).
     it "authors the begin records through the begin door" $ do
       let token' = tok "X"
       inst <- seeded lineNet (markingFromList [(a, [token'])])
@@ -124,11 +156,6 @@ spec = describe "Instance firing" $ do
         `shouldBe` [ RFiringBegun (FiringBegun t 1 Nothing 11)
                    , RTokensConsumed (TokensConsumed a [token'] 1 [] Nothing 11)
                    ]
-    -- TestBeginEndFiring.test_instance_complete_firing_retains_its_outcome_and_registration_contract
-    -- (not at parity: the helper is not exported; the complete door authors
-    -- produces, registration closes, opens, then FiringCompleted — here
-    -- closing the source's armed "default" key, since the door validates
-    -- each effect against the armed registrations)
     it "authors the completion records through the complete door" $ do
       let token' = tok "X"
           source = np "source"

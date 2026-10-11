@@ -1,0 +1,21 @@
+petrus-posix
+Copyright 2026 Seasoned
+
+This package supports the Haskell port of Petrus (see UPSTREAM.md at the
+repository root). It reproduces the POSIX behaviour the pinned reference
+gets from CPython 3.14 (fcntl.flock, os calls with dir_fd, pathlib's resolve
+and expanduser, os.path.realpath, the atomic-replace pattern, getrusage and
+sysconf figures), and its test suite checks it against Python.
+
+The package itself is licensed under the Apache License, Version 2.0 (see
+LICENSE). The behaviour it reproduces is that of:
+
+  Petrus
+  Copyright 2026 Henrique Bastos
+  Licensed under the Apache License, Version 2.0
+  https://github.com/henriquebastos/petrus
+
+  CPython
+  Copyright 2001-2026 Python Software Foundation
+  Licensed under the Python Software Foundation License Version 2
+  https://github.com/python/cpython

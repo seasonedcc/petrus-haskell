@@ -1,0 +1,10 @@
+petrus-test-support
+Copyright 2026 Seasoned
+
+This package holds the test infrastructure of the Haskell port of Petrus
+(see UPSTREAM.md at the repository root): locating the pinned upstream
+checkouts and running the Python references in their virtual environments.
+It contains no code ported from them.
+
+The package itself is licensed under the Apache License, Version 2.0 (see
+LICENSE).

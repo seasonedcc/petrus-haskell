@@ -6,7 +6,7 @@
 -- @FixedTimezone@, @datetime.timezone@, or UTC), so a 'Datetime' is a local
 -- wall-clock reading plus an offset.
 --
--- Deviations, all documented in the corpus runner:
+-- Deviations, all listed in the package's DIVERGENCES.md:
 --
 -- * @timestamp(\"now\")@ and time-only strings (which pendulum completes
 --   with the current date) are impure in cel-python; here they fail with a

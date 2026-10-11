@@ -3,15 +3,27 @@
 -- resumable.
 --
 -- Translation notes. The reference's Hypothesis property becomes a QuickCheck
--- property with the same 300-example budget: the generator draws the same
--- scenario shape (two ordinary transitions with a consume arc, an output arc,
--- and an optional read/inhibit gate on another place; a source; an initial
--- marking of up to three tokens per place; up to 20 actions), and the
--- interleaved @data.draw@ calls become 'pick' inside 'monadicIO', so each
--- action is drawn from the actions legal /at that point/. Hypothesis'
--- @derandomize=True@ has no QuickCheck counterpart; the run is randomized,
--- and a failure prints the drawn scenario and actions as the reference's
--- @note@ does.
+-- property, mapped setting by setting (the ledger row is in PARITY.md):
+--
+-- * @max_examples=300@ is 'maxSuccess' 300;
+-- * @derandomize=True@ is a fixed 'replay' seed ('derandomizedSeed'): every
+--   run, locally and on CI, draws the same 300 scenarios and action
+--   sequences, as Hypothesis' derandomized run does (hspec's @--seed@ does
+--   not move it);
+-- * @deadline=None@ needs nothing (QuickCheck has no per-example deadline);
+-- * the @_scenario_specs@ composite strategy is 'genScenario', drawing the
+--   same shape: two ordinary transitions with a consume arc (weight 1–2), an
+--   output arc, and an optional read/inhibit gate (weight 1–2) on another
+--   place; a source output place; an initial marking of up to three tokens
+--   per place from the same four tokens; up to 20 actions;
+-- * the interleaved @data.draw@ calls (Hypothesis' @st.data()@) become
+--   'QCM.pick' inside 'monadicIO', so each action, delivered token, begun
+--   candidate and completed occurrence is drawn from what is legal /at that
+--   point/, the reference's stateful structure;
+-- * @note(...)@ is 'counterexample': a failure prints the drawn scenario
+--   (via 'forAll') and every drawn action, as the reference's notes do.
+--
+-- The reference has no @\@example@ cases for this property.
 module Petrus.Impetus.InstanceReplayPropertiesSpec (spec) where
 
 import Control.Monad (forM_)
@@ -25,8 +37,9 @@ import Petrus.Impetus.TestSupport (expectRight, np, tokD)
 import Petrus.Impetus.TestSupport qualified as TS
 import Petrus.Json (Json (..))
 import Test.Hspec
-import Test.Hspec.QuickCheck (modifyMaxSuccess)
-import Test.QuickCheck (Gen, chooseInt, counterexample, elements, forAll, property, vectorOf)
+import Test.Hspec.QuickCheck (modifyArgs)
+import Test.QuickCheck (Args (..), Gen, chooseInt, counterexample, elements, forAll, property, vectorOf)
+import Test.QuickCheck.Random (mkQCGen)
 import Test.QuickCheck.Monadic qualified as QCM
 
 placesP :: [NetPath]
@@ -110,12 +123,16 @@ assertReplayAndResume inst net = do
   let ids = fmap (map (.occurrence)) . inFlight
   (,) <$> ids resumed <*> ids inst >>= uncurry shouldBe
 
+-- | The fixed seed standing for Hypothesis' @derandomize=True@.
+derandomizedSeed :: Int
+derandomizedSeed = 300
+
 data Action = Deliver | Step | Begin | Complete
   deriving stock (Eq, Show)
 
 spec :: Spec
 spec = describe "Instance replay properties" $
-  modifyMaxSuccess (const 300) $
+  modifyArgs (\args -> args {maxSuccess = 300, replay = Just (mkQCGen derandomizedSeed, 0)}) $
     -- test_legal_instance_actions_remain_replayable_and_resumable
     it "keeps legal instance actions replayable and resumable" $
       property $ forAll genScenario $ \sc -> QCM.monadicIO $ do

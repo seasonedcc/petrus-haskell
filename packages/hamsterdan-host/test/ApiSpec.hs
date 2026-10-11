@@ -23,7 +23,7 @@ import Hamsterdan.Host.Python (RuntimeError (..))
 import Hamsterdan.Host.Service
 import Hamsterdan.Host.Service qualified as Host
 import IngressSpec (newDelivery)
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), LoneSurrogates (..), ParseOptions (..), parseJson, pythonLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import RawHttp
@@ -122,6 +122,33 @@ spec = do
       length apps `shouldBe` 1
       forM_ apps $ \app -> readIORef app.closed `shouldReturn` 1
 
+  -- CPython's json.loads keeps a lone surrogate escape in a str, and so does
+  -- the provider path (Hamsterdan.GitHub.Python.providerLoads). The
+  -- webhook corpus checks the stored bytes against the reference; the
+  -- surface below checks both answers against uvicorn.
+  describe "lone surrogate escapes in a webhook payload" $ do
+    it "accepts one outside a comment body (202) and keeps it in the observation" . withTempRoot $ \tmp -> do
+      h <- harness tmp defaults
+      delivery <- newDelivery
+      withClient h.host False $ \port -> do
+        response <- post port surrogateAction (signed surrogateAction delivery "pull_request")
+        response.status `shouldBe` 202
+        lookupKey "disposition" (jsonBody response) `shouldBe` Just (String "accepted")
+        Custody.status h.host.custody delivery `shouldReturn` Just "pending"
+        -- Read back from the inbox, where it was stored escaped.
+        Custody.pending h.host.custody 100 Nothing >>= \case
+          [item] -> item.action `shouldBe` loneSurrogate
+          other -> expectationFailure ("expected one pending delivery, got " <> show other)
+
+    it "refuses one in a comment body (400), as len(text.encode()) raises" . withTempRoot $ \tmp -> do
+      h <- harness tmp defaults
+      delivery <- newDelivery
+      withClient h.host False $ \port -> do
+        response <- post port surrogateComment (signed surrogateComment delivery "issue_comment")
+        response.status `shouldBe` 400
+        jsonBody response `shouldBe` Object [("detail", String "webhook envelope is malformed")]
+        Custody.status h.host.custody delivery `shouldReturn` Nothing
+
   describe "the HTTP surface against the reference (uvicorn)" $
     it "answers every request with the reference's status line, headers and body" . withTempRoot $ \tmp -> do
       let referenceRoot = tmp </> "reference"
@@ -208,6 +235,8 @@ surface =
   , ("POST unknown event", webhookWith envelope (signedWire envelope otherDelivery "fork"))
   , ("POST non-ASCII detail", webhookWith envelope (replace "x-github-event" "\233v\233nement" (signedWire envelope otherDelivery "pull_request")))
   , ("POST at the body bound", webhookWith atBound (signedWire atBound otherDelivery "pull_request"))
+  , ("POST lone surrogate", webhookWith surrogateAction (signedWire surrogateAction surrogateDelivery "pull_request"))
+  , ("POST lone surrogate in a comment body", webhookWith surrogateComment (signedWire surrogateComment otherDelivery "issue_comment"))
   , ("POST over the body bound", webhookWith (BS.replicate 1048577 32) [])
   ]
   where
@@ -217,9 +246,22 @@ surface =
     atBound = BS.replicate 1048576 32
     replace name value =map (\(n, v) -> if n == name then (n, value) else (n, v))
 
-fixedDelivery, otherDelivery :: Text
+fixedDelivery, otherDelivery, surrogateDelivery :: Text
 fixedDelivery = "6f1e8a5c-0d3b-4c1e-9a7e-2b4d6c8e0f12"
 otherDelivery = "0b9c4d2e-7a1f-4e3b-8c5d-9e2f1a3b4c5d"
+surrogateDelivery = "5d800000-0000-4000-8000-000000000001"
+
+-- | A @pull_request@ envelope whose action is the escape @"\\ud800"@.
+surrogateAction :: ByteString
+surrogateAction = BC.pack "{\"action\": \"\\ud800\", \"installation\": {\"id\": 44, \"account\": {\"id\": 23}}, \"repository\": {\"id\": 31, \"full_name\": \"owner/one\"}, \"pull_request\": {\"number\": 7}}"
+
+-- | An @issue_comment@ envelope whose body holds the escape @"\\ud800"@.
+surrogateComment :: ByteString
+surrogateComment = commentEnvelope "9" "@hamster-dan \\ud800 why"
+
+-- | The string CPython's @json.loads@ makes of @"\\ud800"@.
+loneSurrogate :: Json
+loneSurrogate = either error id (parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates} (BC.pack "\"\\ud800\""))
 
 signedWire :: ByteString -> Text -> Text -> [(ByteString, ByteString)]
 signedWire payload delivery event =

@@ -21,8 +21,14 @@ import time
 from petrus.impetus.history.codec import decode_record, encode_record
 from petrus.impetus.history import replay_marking
 from petrus.impetus.instance import Instance
-from petrus.impetus.net_definition import parse_net_definition, project_net_definition, serialize_net_definition
-from petrus.impetus.petrinet import Arc, ArcMode, Marking, Net, NetPath, Place, Token, Transition, candidates
+from petrus.impetus.net_definition import (
+    compile_net_definition,
+    parse_net_definition,
+    project_net_definition,
+    serialize_net_definition,
+)
+from petrus.impetus.net_document import ExecutionLineage, parse_net_document, project_net_document, serialize_net_document
+from petrus.impetus.petrinet import Arc, ArcMode, Delay, Marking, Net, NetPath, Place, Token, Transition, candidates
 
 FANIN_PLACES = 6
 FANIN_TOKENS = 3
@@ -33,6 +39,10 @@ FANOUT_TOKENS = 200
 RUN_FIFO_TOKENS = 1_000
 HISTORY_FIFO_TOKENS = 4_000
 CHAIN_LENGTH = 200
+TIMER_TOKENS = 50
+TIMER_FIRINGS = 500
+SCOPE_DELIVERIES = 200
+LINEAGE_ENTRIES = 50
 
 
 def item(n: int) -> Token:
@@ -71,6 +81,74 @@ def chain() -> Net:
         arcs.append(Arc(NetPath(f"p{i}"), NetPath(f"t{i}")))
         arcs.append(Arc(NetPath(f"t{i}"), NetPath(f"p{i + 1}")))
     return Net(places=places, transitions=transitions, arcs=arcs, name="chain")
+
+
+def chain_document():
+    """The chain with a position for every node and a 50-entry lineage."""
+    positions = {f"p{i}": (i * 10, 0) for i in range(CHAIN_LENGTH)}
+    positions.update({f"t{i}": (i * 10 + 5, 1.5) for i in range(CHAIN_LENGTH - 1)})
+    entries = [
+        {
+            "id": n,
+            "parent": n - 1 if n else None,
+            "provenance": "simulated",
+            "marking": [{"place": f"p{n}", "tokens": [{"color": "Item", "data": {"seq": n}}]}],
+            "metadata": {"step": n},
+        }
+        for n in range(LINEAGE_ENTRIES)
+    ]
+    lineage = ExecutionLineage.model_validate({"head": LINEAGE_ENTRIES - 1, "entries": entries})
+    return project_net_document(chain(), positions, lineage=lineage)
+
+
+def timer_ring() -> tuple[Net, Marking]:
+    """A delayed self-loop: every firing re-enters its token, maturing a second later."""
+    ring, tick = NetPath("ring"), NetPath("tick")
+    net = Net(
+        places=[Place(ring)],
+        transitions=[Transition(tick, timers=(Delay(1),))],
+        arcs=[Arc(ring, tick), Arc(tick, ring)],
+    )
+    return net, Marking({ring: tuple(item(n) for n in range(TIMER_TOKENS))})
+
+
+def drive_timers(net: Net, marking: Marking) -> int:
+    """Fire TIMER_FIRINGS matured bindings, waking at each next maturation."""
+    instance = Instance(net, marking, instance_id="bench")
+    fired = wakes = 0
+    while fired < TIMER_FIRINGS:
+        if instance.step() is None:
+            instance.wake(instance.next_maturation)
+            wakes += 1
+        else:
+            fired += 1
+    return fired + wakes
+
+
+SOURCE, QUEUE = NetPath("source"), NetPath("queue")
+
+
+def filled_scope():
+    """An Instance whose scope holds SCOPE_DELIVERIES delivered entries."""
+    instance = Instance(
+        Net(places=[Place(QUEUE)], transitions=[Transition(SOURCE)], arcs=[Arc(SOURCE, QUEUE)]),
+        instance_id="bench",
+    )
+    scope = instance.open_scope("batch", at=1)
+    for n in range(SCOPE_DELIVERIES):
+        accepted = instance.accept_delivery(SOURCE, item(n), identity=f"d{n}", scope=scope, at=2)
+        instance.complete_delivery(accepted, at=2)
+    return instance, scope
+
+
+def close_filled() -> int:
+    instance, scope = filled_scope()
+    return len(instance.close_scope(scope, at=3).discarded)
+
+
+def reset_filled() -> int:
+    instance, scope = filled_scope()
+    return instance.reset_scope(scope, at=3).generation
 
 
 def drained(tokens: int) -> Instance:
@@ -114,6 +192,19 @@ def main() -> None:
     payload = serialize_net_definition(definition)
     timed("net-definition/serialize", lambda: len(serialize_net_definition(definition)), 20)
     timed("net-definition/parse", lambda: len(parse_net_definition(payload).definition.places), 20)
+    timed("net-definition/compile", lambda: len(compile_net_definition(definition).places), 20)
+
+    document = chain_document()
+    document_payload = serialize_net_document(document)
+    timed("net-document/serialize", lambda: len(serialize_net_document(document)), 20)
+    timed("net-document/parse", lambda: len(parse_net_document(document_payload).lineage.entries), 20)
+
+    ring_net, ring_marking = timer_ring()
+    timed("timers/delay-ring", lambda: drive_timers(ring_net, ring_marking), 5)
+
+    timed("lifecycle-scope/fill", lambda: len(filled_scope()[0].marking.place(QUEUE)), 5)
+    timed("lifecycle-scope/close", close_filled, 5)
+    timed("lifecycle-scope/reset", reset_filled, 5)
 
 
 if __name__ == "__main__":

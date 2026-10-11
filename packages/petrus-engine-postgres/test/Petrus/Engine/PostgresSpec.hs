@@ -26,7 +26,7 @@ import Petrus.HistoryStore.Postgres.Support (connectTo, freshInstance, valueErro
 import Petrus.Impetus.Binding (BoundHandler (..), handlerTokens)
 import Petrus.Impetus.History.Records
 import Petrus.Impetus.HistoryStore qualified as Store
-import Petrus.Impetus.Instance (AcceptedDelivery (..), FiringOutcome (..), PriorAcknowledgement (..))
+import Petrus.Impetus.Instance (AcceptedDelivery (..), FiringOutcome (..), PriorAcknowledgement (..), firingOccurrenceIdInt)
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.TestSupport (netOf, np, tokD)
 import Petrus.Json (Json (..))
@@ -214,7 +214,7 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
     _ <- Engine.completeDelivery engine reconstructed
     afterCompletion <- readIORef commits
     Engine.acceptDelivery engine source' [eventToken] "event-7" Nothing
-      `shouldReturn` DeliveryPrior (PriorAcknowledgement "event-7" accepted.occurrence)
+      `shouldReturn` DeliveryPrior (PriorAcknowledgement "event-7" (firingOccurrenceIdInt accepted.occurrence))
     readIORef commits `shouldReturn` afterCompletion
     Engine.close engine
 
@@ -266,7 +266,7 @@ providerSpec = describe "TestPostgresEngineProvider" $ do
     reconstructed <- Engine.acceptDelivery resumed source' [eventToken] "event-7" Nothing >>= accepted'
     reconstructed `shouldBe` accepted
     outcome <- Engine.completeDelivery resumed reconstructed
-    outcome.occurrence `shouldBe` accepted.occurrence
+    outcome.occurrence `shouldBe` firingOccurrenceIdInt accepted.occurrence
     Engine.close resumed
 
   it "create_load_and_idempotent_close_own_the_joined_connection" $ \target -> do
@@ -395,7 +395,7 @@ commitFaultCase fault = it ("[" <> fault <> "]") $ \target -> do
       outputTokens resumed `shouldReturn` [eventToken]
     else do
       endsFailed "RuntimeError('projection failed')" recs
-      redelivered `shouldBe` DeliveryPrior (PriorAcknowledgement "event-7" accepted.occurrence)
+      redelivered `shouldBe` DeliveryPrior (PriorAcknowledgement "event-7" (firingOccurrenceIdInt accepted.occurrence))
       outputTokens resumed `shouldReturn` []
   Engine.close resumed
 

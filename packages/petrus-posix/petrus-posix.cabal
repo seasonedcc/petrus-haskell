@@ -10,12 +10,14 @@ description:
   upstream telemetry reports them.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           System
 build-type:         Simple
 extra-source-files: cbits/petrus_posix.h
-extra-doc-files:    bench/RESULTS.md
+extra-doc-files:    NOTICE
+                    bench/RESULTS.md
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates

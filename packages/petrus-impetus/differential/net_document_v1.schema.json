@@ -1,0 +1,694 @@
+{
+  "$defs": {
+    "AnonymousBehavior": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "anonymous",
+          "title": "Kind",
+          "type": "string"
+        },
+        "uri": {
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "uri"
+      ],
+      "title": "AnonymousBehavior",
+      "type": "object"
+    },
+    "ArcDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "position": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Position",
+          "type": "integer"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "consume",
+            "read",
+            "inhibit"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "weight": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "title": "Weight",
+          "type": "integer"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Color"
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "cel": "#/$defs/CelExpression",
+                  "symbol": "#/$defs/SymbolExpression"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SymbolExpression"
+                },
+                {
+                  "$ref": "#/$defs/CelExpression"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Filter"
+        }
+      },
+      "required": [
+        "position",
+        "source",
+        "target",
+        "mode",
+        "weight",
+        "color",
+        "filter"
+      ],
+      "title": "ArcDefinition",
+      "type": "object"
+    },
+    "CelBehavior": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "cel",
+          "title": "Kind",
+          "type": "string"
+        },
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        },
+        "uri": {
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "expression",
+        "uri"
+      ],
+      "title": "CelBehavior",
+      "type": "object"
+    },
+    "CelExpression": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "cel",
+          "title": "Kind",
+          "type": "string"
+        },
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "expression"
+      ],
+      "title": "CelExpression",
+      "type": "object"
+    },
+    "DelayDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "delay",
+          "title": "Kind",
+          "type": "string"
+        },
+        "duration": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "title": "Duration",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "duration"
+      ],
+      "title": "DelayDefinition",
+      "type": "object"
+    },
+    "ExecutionLineage": {
+      "additionalProperties": false,
+      "description": "One flat, forkable sequence of complete sparse markings.",
+      "properties": {
+        "head": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Head",
+          "type": "integer"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/LineageEntry"
+          },
+          "title": "Entries",
+          "type": "array"
+        }
+      },
+      "required": [
+        "head",
+        "entries"
+      ],
+      "title": "ExecutionLineage",
+      "type": "object"
+    },
+    "LineageEntry": {
+      "additionalProperties": false,
+      "description": "One dense, self-contained marking in a backward-linked lineage.",
+      "properties": {
+        "id": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Id",
+          "type": "integer"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent"
+        },
+        "provenance": {
+          "enum": [
+            "observed",
+            "simulated",
+            "manual"
+          ],
+          "title": "Provenance",
+          "type": "string"
+        },
+        "marking": {
+          "items": {
+            "$ref": "#/$defs/PlaceMarking"
+          },
+          "title": "Marking",
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "parent",
+        "provenance",
+        "marking",
+        "metadata"
+      ],
+      "title": "LineageEntry",
+      "type": "object"
+    },
+    "MarkingToken": {
+      "additionalProperties": false,
+      "description": "One token in a portable sparse marking.",
+      "properties": {
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Color"
+        },
+        "data": {
+          "title": "Data"
+        }
+      },
+      "required": [
+        "color",
+        "data"
+      ],
+      "title": "MarkingToken",
+      "type": "object"
+    },
+    "NetDefinitionBody": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "time_domain": {
+          "const": "integer",
+          "title": "Time Domain",
+          "type": "string"
+        },
+        "places": {
+          "items": {
+            "$ref": "#/$defs/PlaceDefinition"
+          },
+          "title": "Places",
+          "type": "array"
+        },
+        "transitions": {
+          "items": {
+            "$ref": "#/$defs/TransitionDefinition"
+          },
+          "title": "Transitions",
+          "type": "array"
+        },
+        "arcs": {
+          "items": {
+            "$ref": "#/$defs/ArcDefinition"
+          },
+          "title": "Arcs",
+          "type": "array"
+        },
+        "completion": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "cel": "#/$defs/CelExpression",
+                  "symbol": "#/$defs/SymbolExpression"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SymbolExpression"
+                },
+                {
+                  "$ref": "#/$defs/CelExpression"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completion"
+        }
+      },
+      "required": [
+        "name",
+        "time_domain",
+        "places",
+        "transitions",
+        "arcs",
+        "completion"
+      ],
+      "title": "NetDefinitionBody",
+      "type": "object"
+    },
+    "NetDefinitionV3": {
+      "additionalProperties": false,
+      "description": "One canonical flat, complete, implementation-free Net definition.",
+      "properties": {
+        "format": {
+          "const": "petrus-net-definition",
+          "title": "Format",
+          "type": "string"
+        },
+        "version": {
+          "const": 3,
+          "title": "Version",
+          "type": "integer"
+        },
+        "definition": {
+          "$ref": "#/$defs/NetDefinitionBody"
+        }
+      },
+      "required": [
+        "format",
+        "version",
+        "definition"
+      ],
+      "title": "NetDefinitionV3",
+      "type": "object"
+    },
+    "NodePosition": {
+      "additionalProperties": false,
+      "description": "One canonical Net node's presentation position.",
+      "properties": {
+        "node": {
+          "title": "Node",
+          "type": "string"
+        },
+        "x": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "X"
+        },
+        "y": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Y"
+        }
+      },
+      "required": [
+        "node",
+        "x",
+        "y"
+      ],
+      "title": "NodePosition",
+      "type": "object"
+    },
+    "PlaceDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Color"
+        }
+      },
+      "required": [
+        "path",
+        "color"
+      ],
+      "title": "PlaceDefinition",
+      "type": "object"
+    },
+    "PlaceMarking": {
+      "additionalProperties": false,
+      "description": "The nonempty token queue currently held by one place.",
+      "properties": {
+        "place": {
+          "title": "Place",
+          "type": "string"
+        },
+        "tokens": {
+          "items": {
+            "$ref": "#/$defs/MarkingToken"
+          },
+          "title": "Tokens",
+          "type": "array"
+        }
+      },
+      "required": [
+        "place",
+        "tokens"
+      ],
+      "title": "PlaceMarking",
+      "type": "object"
+    },
+    "PortableViewV1": {
+      "additionalProperties": false,
+      "description": "A partial, portable set of authored node positions.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/NodePosition"
+          },
+          "title": "Nodes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "version",
+        "nodes"
+      ],
+      "title": "PortableViewV1",
+      "type": "object"
+    },
+    "SymbolBehavior": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "symbol",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "uri": {
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "uri"
+      ],
+      "title": "SymbolBehavior",
+      "type": "object"
+    },
+    "SymbolExpression": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "symbol",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "SymbolExpression",
+      "type": "object"
+    },
+    "TransitionDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "handler": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "anonymous": "#/$defs/AnonymousBehavior",
+                  "symbol": "#/$defs/SymbolBehavior"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SymbolBehavior"
+                },
+                {
+                  "$ref": "#/$defs/AnonymousBehavior"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Handler"
+        },
+        "guards": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "anonymous": "#/$defs/AnonymousBehavior",
+                "cel": "#/$defs/CelBehavior",
+                "symbol": "#/$defs/SymbolBehavior"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/SymbolBehavior"
+              },
+              {
+                "$ref": "#/$defs/CelBehavior"
+              },
+              {
+                "$ref": "#/$defs/AnonymousBehavior"
+              }
+            ]
+          },
+          "title": "Guards",
+          "type": "array"
+        },
+        "timers": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "delay": "#/$defs/DelayDefinition",
+                "until": "#/$defs/UntilDefinition"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/DelayDefinition"
+              },
+              {
+                "$ref": "#/$defs/UntilDefinition"
+              }
+            ]
+          },
+          "title": "Timers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "handler",
+        "guards",
+        "timers"
+      ],
+      "title": "TransitionDefinition",
+      "type": "object"
+    },
+    "UntilDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "until",
+          "title": "Kind",
+          "type": "string"
+        },
+        "instant": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "title": "Instant",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "instant"
+      ],
+      "title": "UntilDefinition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One Net definition with optional view data and execution lineage.",
+  "properties": {
+    "format": {
+      "const": "petrus-net-document",
+      "title": "Format",
+      "type": "string"
+    },
+    "version": {
+      "const": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "definition": {
+      "$ref": "#/$defs/NetDefinitionV3"
+    },
+    "view": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PortableViewV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "lineage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExecutionLineage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "definition"
+  ],
+  "title": "NetDocumentV1",
+  "type": "object"
+}

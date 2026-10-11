@@ -13,11 +13,13 @@ description:
   with its checker, replay and semantic coverage report.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Testing
 build-type:         Simple
-extra-doc-files:    README.md
+extra-doc-files:    NOTICE
+                    README.md
                     PARITY.md
                     DIVERGENCES.md
 
@@ -88,6 +90,7 @@ test-suite hamsterdan-testing-test
                   , hamsterdan-github
                   , hamsterdan-host
                   , hamsterdan-testing
+                  , hedgehog >=1.4
                   , hspec >=2.10
                   , petrus-dst
                   , petrus-json

@@ -11,8 +11,8 @@ import Data.Text qualified as T
 import Database.SQLite3 qualified as S
 import Hamsterdan.Contracts.Codec (dump, validate)
 import Hamsterdan.Contracts.ReadinessV5
-import Hamsterdan.GitHub.Sqlite (SQLData (..))
-import Hamsterdan.GitHub.Sqlite qualified as Sql
+import Hamsterdan.Sqlite (SQLData (..))
+import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Python (RuntimeError (..), ValueError (..))
 import Hamsterdan.Host.V5.Timers qualified as T5
 import Petrus.Activity (Number (..))

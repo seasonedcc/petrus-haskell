@@ -11,7 +11,7 @@
 -- Payloads are stored compactly: literal text or base64, a repetition
 -- (deep nesting, huge integers), a structural mutation of a named base value,
 -- or byte edits of a named base spelling.
-module Petrus.Impetus.NetDefinitionCorpusSpec (spec, findPackageFile) where
+module Petrus.Impetus.NetDefinitionCorpusSpec (spec, findPackageFile, admittedPayloads) where
 
 import Control.Monad (filterM, forM_)
 import Crypto.Hash.SHA256 qualified as SHA256
@@ -54,6 +54,19 @@ spec = describe "Petrus.Impetus.NetDefinition differential corpus" $ do
   it "covers a substantial corpus" (length cases `shouldSatisfy` (> 1000))
   forM_ cases $ \c ->
     it (T.unpack (c.kind <> ": " <> c.name)) (haskellVerdict c `shouldBe` c.verdict)
+
+-- | Every payload the reference admitted (its verdict is a canonical
+-- spelling): name, kind (@definition@ or @document@) and bytes.
+admittedPayloads :: IO [(Text, Text, ByteString)]
+admittedPayloads = do
+  path <- findPackageFile ["differential/net_definition_corpus.json", "packages/petrus-impetus/differential/net_definition_corpus.json"]
+  raw <- BS.readFile path
+  cases <- either fail pure (loadCorpus raw)
+  pure [(c.name, c.kind, c.payload) | c <- cases, admitted c.verdict]
+  where
+    admitted = \case
+      Refused _ -> False
+      _ -> True
 
 haskellVerdict :: Case -> Verdict
 haskellVerdict c = case c.kind of

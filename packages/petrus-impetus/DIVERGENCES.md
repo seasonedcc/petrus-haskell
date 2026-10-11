@@ -140,6 +140,28 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
     holds for read-only views and mutation of returned containers, since
     every value is immutable. `AcceptedDelivery` can only be built through
     `acceptedDelivery`, which validates it.
+
+    The reference's identity classes are newtypes whose constructors are
+    not exported (`Petrus.Impetus.Instance.Identity`):
+    - `InstanceIdentity`, built by `mkInstanceIdentity`;
+    - `DeliveryIdentity`, built by `mkDeliveryIdentity`;
+    - `FiringOccurrenceId`, built by `mkFiringOccurrenceId`.
+
+    Each constructor has its class's rule and message. Upstream's classes
+    subclass `str` and `int`, so a value passes wherever a plain one does.
+    Here it converts explicitly (`instanceIdentityText`,
+    `deliveryIdentityText`, `firingOccurrenceIdInt`). The newtypes appear
+    where upstream's annotations carry them:
+    - the fields of `AcceptedDelivery`;
+    - the identity an Instance is created or resumed with.
+
+    Elsewhere the API keeps validated `Text` and `Int`, which matches how
+    upstream passes the plain values on: History records, `FiringOccurrence`,
+    and `instanceIdentity`.
+
+    `canonical_net_path(value, noun)` is the class `CanonicalNetPath`: a
+    `NetPath` passes as it is, and a `Text` is parsed by `netPath`. Its third
+    case, any other type refused with the caller's noun, is a type error.
 16. **Timer enabledness errors are typed** (`ClockRequired`,
     `MisalignedInstants ...`). The fields carry the data of the reference's
     message; the pure layer has no text rendering, and the Instance never
@@ -181,7 +203,11 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
       unknown `kind`, `mode`, or `provenance` literal, a `format` or
       `version` other than the constant, extra fields, and non-string
       metadata keys: the types rule them out;
-    - strings with lone surrogates: `Text` holds Unicode scalar values only.
+    - model-level construction with a string holding a lone surrogate. The
+      parsers refuse them with the reference's text; a `Text` holds one
+      only as WTF-8 built on purpose ("Petrus.Json.Wtf8", what the History
+      stores read token data into), and serializing such a document is
+      not covered (the reference's `.encode()` would raise).
 
     The recursion-depth checks are calibrated to a call from a module's top
     level (item 24). A caller deeper in the Python stack hits the limit

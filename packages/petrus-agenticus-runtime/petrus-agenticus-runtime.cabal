@@ -11,11 +11,13 @@ description:
   Provider hosts (Pi, Codex, Claude, Amp) are tracked in PARITY.md.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Control
 build-type:         Simple
-extra-doc-files:    PARITY.md
+extra-doc-files:    NOTICE
+                    PARITY.md
                     DIVERGENCES.md
                     bench/RESULTS.md
                     parity/pi.md

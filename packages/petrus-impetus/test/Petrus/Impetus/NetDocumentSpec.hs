@@ -95,12 +95,17 @@ spec = describe "Petrus.Impetus.NetDocument" $ do
     definitionIdentity plain `shouldBe` definitionIdentity arranged
 
   -- test_partial_fractional_view_is_valid_and_schema_is_strict
-  -- (the schema half is enforced by types: format and version are constants
-  -- of 'NetDocumentV1' and every record is closed)
-  it "admits a partial, fractional view" $ do
+  it "admits a partial, fractional view and publishes a strict JSON Schema" $ do
     document <- expectRight (parseNetDocument (pyDumpsUnicode documentValue))
+    let schema = netDocumentV1JsonSchema
     fmap (map (\n -> n.node) . (\v -> v.nodes)) document.view
       `shouldBe` Just ["review.correctness.pending", "review.correctness.review"]
+    lookupMember "additionalProperties" schema `shouldBe` Just (Bool False)
+    (lookupMember "properties" schema >>= lookupMember "format" >>= lookupMember "const") `shouldBe` Just (String "petrus-net-document")
+    (lookupMember "properties" schema >>= lookupMember "version" >>= lookupMember "const") `shouldBe` Just (Int 1)
+    Just (Object defs) <- pure (lookupMember "$defs" schema)
+    [name | (name, item) <- defs, lookupMember "additionalProperties" item /= Just (Bool False)] `shouldBe` []
+    -- Byte for byte the reference's model_json_schema(): JsonSchemaSpec.
 
   describe "test_malformed_or_confused_documents_are_refused" $ do
     let refuses label change message = it label (parseChanged change `shouldFailWith` message)

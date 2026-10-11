@@ -23,8 +23,11 @@ from psycopg.conninfo import make_conninfo
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scripts"))
 from bench_timing import report  # noqa: E402
 
-from petrus.fabric import ReplyRoute  # noqa: E402
-from petrus.fabric.postgres import ensure_fabric_schema, issue_credential, register_process  # noqa: E402
+from petrus.fabric import Envelope, ReplyRoute  # noqa: E402
+from petrus.fabric.ingress import FabricInbox  # noqa: E402
+from petrus.fabric.postgres import PostgresFabric, ensure_fabric_schema, issue_credential, register_process  # noqa: E402
+from petrus.impetus.instance import FiringOutcome  # noqa: E402
+from petrus.impetus.petrinet import NetPath  # noqa: E402
 from petrus.motus.activity import ActivityInvocation  # noqa: E402
 from petrus.processes import (  # noqa: E402
     CallRequest,
@@ -34,6 +37,7 @@ from petrus.processes import (  # noqa: E402
     child_identity,
     reply_from_envelope,
     request_envelope,
+    request_from_envelope,
     result_envelope,
 )
 from petrus.processes.postgres import PostgresSpawnRegistry, ensure_lifecycle_schema  # noqa: E402
@@ -85,19 +89,67 @@ def main() -> None:
     with psycopg.connect(url, autocommit=True) as admin:
         admin.execute(f'CREATE DATABASE "{name}"')
     try:
-        with psycopg.connect(make_conninfo(url, dbname=name), autocommit=True) as connection:
-            run(connection)
+        dsn = make_conninfo(url, dbname=name)
+        with (
+            psycopg.connect(dsn, autocommit=True) as connection,
+            psycopg.connect(dsn, autocommit=True) as caller_connection,
+            psycopg.connect(dsn, autocommit=True) as callee_connection,
+        ):
+            run(connection, caller_connection, callee_connection)
     finally:
         with psycopg.connect(url, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
 
-def run(connection) -> None:
+def run(connection, caller_connection, callee_connection) -> None:
     ensure_fabric_schema(connection)
     ensure_lifecycle_schema(connection)
     credential = issue_credential()
     register_process(connection, "parent", credential)
     registry = PostgresSpawnRegistry(connection, "parent", credential)
+
+    def register(on, name: str) -> PostgresFabric:
+        secret = issue_credential()
+        register_process(connection, name, secret)
+        return PostgresFabric(on, name, secret)
+
+    caller = register(caller_connection, "caller")
+    callee = register(callee_connection, "callee")
+    callee.expose_source("calls")
+    callee.grant("caller", "calls")
+    caller.expose_source("replies")
+    caller.grant("callee", "replies")
+    occurrences = itertools.count(1)
+    outstanding = {}
+
+    def delivered(tokens) -> Envelope:
+        (token,) = tokens
+        return Envelope.from_data(token.data)
+
+    class CalleeDoor:
+        def deliver(self, source, tokens, *, identity):
+            request = delivered(tokens)
+            call = request_from_envelope(request)
+            reply = result_envelope(result=CallResult(call.call_id, {"answer": 42}), request=request, sender="callee")
+            callee.send(reply)
+            return FiringOutcome(NetPath(source), next(occurrences), (), (), ())
+
+    class CallerDoor:
+        def deliver(self, source, tokens, *, identity):
+            reply_from_envelope(delivered(tokens), request=outstanding["request"])
+            return FiringOutcome(NetPath(source), next(occurrences), (), (), ())
+
+    callee_inbox = FabricInbox(callee, CalleeDoor())
+    caller_inbox = FabricInbox(caller, CallerDoor())
+
+    def round_trip() -> int:
+        call = CallRequest(f"call-{next(occurrences)}", "answer", {"question": 42, "context": ["a", "b"]})
+        request = request_envelope(
+            request=call, sender="caller", recipient="callee", source="calls", reply_route=ReplyRoute("caller", "replies")
+        )
+        outstanding["request"] = request
+        caller.send(request)
+        return len(callee_inbox.drain(1)) + len(caller_inbox.drain(1))
     item = spec("spawn-1")
     request = call_envelope("call-1")
     result = result_envelope(result=ANSWER, request=request, sender="child")
@@ -116,6 +168,7 @@ def run(connection) -> None:
     report("call.request-envelope", lambda: call_envelope("call-1"))
     report("call.result-envelope", lambda: result_envelope(result=ANSWER, request=request, sender="child"))
     report("call.reply-from-envelope", lambda: reply_from_envelope(result, request=request))
+    report("call.roundtrip-postgres", round_trip)
     report("spawn.activity", lambda: memory(invocation(item), context=None))
     report("postgres.claim-prior", lambda: registry.claim(item).prior_claim)
     report("postgres.child-of", lambda: registry.child_of("parent", "spawn-1"))

@@ -1,0 +1,26 @@
+petrus-agenticus-runtime
+Copyright 2026 Seasoned
+
+This package is a Haskell port of the Petrus Agenticus runtime hosts
+(petrus.agenticus.runtime) from Petrus
+(https://github.com/henriquebastos/petrus), pinned under upstream/petrus
+(see UPSTREAM.md at the repository root). It reproduces the observable
+behaviour of that reference, and its test suite ports the reference's tests
+and runs differential checks against it.
+
+Files copied unmodified from the reference and run as they are:
+data/pi_helper.mjs, data/pi_application_helper.mjs and
+data/pi_model_phase_helper.mjs (upstream src/petrus/agenticus/runtime/), and
+data/codex_helper.py (the _HELPER_SOURCE of upstream
+src/petrus/agenticus/runtime/codex.py). data/amp_sidecar.py and
+data/claude_sidecar.py were written for this package; they call the provider
+SDKs the way the reference does.
+
+The package itself is licensed under the Apache License, Version 2.0 (see
+LICENSE). The upstream project it ports is distributed under the same
+license:
+
+  Petrus
+  Copyright 2026 Henrique Bastos
+  Licensed under the Apache License, Version 2.0
+  https://github.com/henriquebastos/petrus

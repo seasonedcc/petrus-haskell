@@ -1,30 +1,54 @@
 -- | @tests/integration/testing/test_readiness_campaign.py@: generated
 -- readiness campaigns over the deterministic World.
 --
--- Upstream draws its examples with Hypothesis (derandomized, a handful of
--- examples per test plus explicit @\@example@ cases). Here every campaign is
--- a deterministic enumeration that includes those explicit cases and covers
--- each generated dimension exhaustively (or, for the state machine, every
--- seed-drawn branch combination with every action sequence up to a bound).
--- Each example is a fresh World in a fresh directory; a BudgetExhausted or
+-- Upstream draws its examples with Hypothesis (@derandomize=True@, so a
+-- fixed seed; a handful of examples per test plus explicit @\@example@
+-- cases). Here, by the same method:
+--
+-- * the authority lifecycle is a Hedgehog property over upstream's
+--   strategies, with its @max_examples@ and its explicit examples;
+-- * the delivery recovery machine is a Hedgehog state machine
+--   ('Gen.sequential' / 'executeSequential') of up to
+--   @stateful_step_count@ rules, its seed drawn as @\@initialize@ draws it
+--   and its invariant checked after every rule;
+-- * the timer and Git campaigns are Hedgehog properties over upstream's
+--   strategies with its @max_examples@ and explicit examples, plus an
+--   exhaustive enumeration of every generated dimension except the seed.
+--
+-- Every Hedgehog run uses a fixed seed and shrinks a failure; each example
+-- is a fresh World in a fresh directory, and a BudgetExhausted or
 -- InvariantViolation retains the exact failed artifact before the failure
--- propagates, as upstream's @_retain_failure_artifact@ does.
+-- propagates, as upstream's @_retain_failure_artifact@ does (so the last
+-- retained artifact is the shrunk case's). A failing property's report
+-- names the Hedgehog seed and shrink path that rerun the shrunk case.
 module ReadinessCampaignSpec (spec) where
 
 import Control.Exception (Exception (..), SomeException, catch, finally, throwIO, try)
 import Control.Monad (foldM, forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.IORef
+import Data.Kind (Type)
 import Data.List (nub)
 import Data.Map.Strict qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.String (fromString)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Word (Word64)
 import Hamsterdan.Testing.World hiding (PullRequest (..))
 import Hamsterdan.Testing.World.Contract (defaultBudget, headSha, reminderDelay)
 import Hamsterdan.Testing.World.Coverage (CoverageRun (..), blocked, collectReadinessCoverage, covered)
 import Hamsterdan.Testing.World.Scenarios (cleanGreen, drain, green, setPr)
+import Hedgehog (Callback (..), Command (..), FunctorB (..), Gen, LabelName, MonadTest, Property, TraversableB (..), assert, evalIO, forAll, label, property, (===))
+import Hedgehog qualified as H
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Internal.Config (UseColor (..))
+import Hedgehog.Internal.Property (Property (..))
+import Hedgehog.Internal.Report (Report (..), Result (..), renderResult)
+import Hedgehog.Internal.Runner (checkReport)
+import Hedgehog.Internal.Seed qualified as Seed
+import Hedgehog.Range qualified as Range
 import Petrus.Json (Json (..))
 import Petrus.Testing.Dst
   ( AnyArtifact (..)
@@ -45,9 +69,10 @@ import Petrus.Testing.Dst
 import Petrus.Testing.Dst.World qualified as World
 import Petrus.TestSupport.Repo (repoRoot)
 import ReadinessWorldSpec (items, replayed, withRoot)
-import System.Directory (createDirectoryIfMissing)
+import System.Directory (canonicalizePath, createDirectoryIfMissing, getTemporaryDirectory, removePathForcibly)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hPutStrLn, stderr)
+import System.IO.Temp (createTempDirectory)
 import Test.Hspec hiding (after, before, example, pending)
 
 authorityHead :: Text
@@ -64,58 +89,100 @@ spec = describe "tests/integration/testing/test_readiness_campaign.py" $ do
       result <- step t
       result.value `shouldBe` Object [("custody", Object [("delivery", String delivery), ("disposition", String "completed")])]
 
-  it "test_generated_authority_lifecycle_schedules_replay_exactly" $ do
-    let paths = ["active", "draft_resume", "closed"]
-        -- Each action alone before the lifecycle settles, each alone after
-        -- it, and a restart on both sides.
-        schedules =
-          [([], [])]
-            <> [([a], []) | a <- generatedActions]
-            <> [([], [a]) | a <- generatedActions]
-            <> [(["restart"], ["restart"])]
-        examples = [(path, before, after) | path <- paths, (before, after) <- schedules]
-    forM_ (zip [0 ..] examples) $ \(seed, (path, before, after)) ->
-      labelled ["authority", path, actionsLabel before, actionsLabel after] (authorityExample seed path before after)
+  describe "test_generated_authority_lifecycle_schedules_replay_exactly" $ do
+    it "the explicit examples (@example)" $
+      forM_ ["active", "draft_resume", "closed"] $ \path ->
+        labelled ["authority", "0", path, "none", "none"] (authorityExample 0 path [] [])
+    it "max_examples=6 generated examples (Hedgehog, fixed seed)" $
+      hedgehog 6 . H.withTests 6 . property $ do
+        seed <- forAll worldSeed
+        path <- forAll (Gen.element ["active", "draft_resume", "closed"])
+        before <- forAll (Gen.list (Range.constant 0 1) (Gen.element generatedActions))
+        after <- forAll (Gen.list (Range.constant 0 1) (Gen.element generatedActions))
+        label (event "authority_path" path)
+        label (event "authority_before" (actionsLabel before))
+        label (event "authority_after" (actionsLabel after))
+        evalIO (authorityExample seed path before after)
 
-  it "test_generated_reminder_timer_recovery_schedules_replay_exactly" $ do
-    let examples =
-          [ (path, cut, lost, redeliver)
-          | path <- ["stable", "new_head", "draft_resume", "closed"]
-          , cut <- ["before_due", "after_due", "after_acceptance"]
-          , lost <- [False, True]
-          , redeliver <- [False, True]
-          , path /= "closed" || (cut /= "after_acceptance" && not lost)
-          ]
-    length examples `shouldBe` 40
-    forM_ (zip [0 ..] examples) $ \(seed, (path, cut, lost, redeliver)) ->
-      labelled ["timer", path, cut, tshow lost, tshow redeliver] (timerExample seed path cut lost redeliver)
+  describe "test_generated_reminder_timer_recovery_schedules_replay_exactly" $ do
+    it "the explicit examples (@example)" $
+      forM_
+        [ (0, "stable", "before_due", False, False)
+        , (1, "new_head", "after_due", False, True)
+        , (2, "draft_resume", "after_acceptance", True, True)
+        , (3, "closed", "after_due", False, True)
+        ]
+        timer
+    it "max_examples=5 generated examples (Hedgehog, fixed seed)" $
+      hedgehog 5 . H.withTests 5 . property $ do
+        seed <- forAll worldSeed
+        path <- forAll (Gen.element ["stable", "new_head", "draft_resume", "closed"])
+        cut <- forAll (Gen.element ["before_due", "after_due", "after_acceptance"])
+        lost <- forAll Gen.bool
+        redeliver <- forAll Gen.bool
+        unless (path /= "closed" || (cut /= "after_acceptance" && not lost)) H.discard
+        label (event "timer_path" path)
+        label (event "timer_crash_cut" cut)
+        label (event "timer_response_lost" (tshow lost))
+        label (event "timer_redeliver" (tshow redeliver))
+        evalIO (timer (seed, path, cut, lost, redeliver))
+    it "every path, cut, loss and redelivery (enumeration)" $ do
+      let examples =
+            [ (path, cut, lost, redeliver)
+            | path <- ["stable", "new_head", "draft_resume", "closed"]
+            , cut <- ["before_due", "after_due", "after_acceptance"]
+            , lost <- [False, True]
+            , redeliver <- [False, True]
+            , path /= "closed" || (cut /= "after_acceptance" && not lost)
+            ]
+      length examples `shouldBe` 40
+      forM_ (zip [0 ..] examples) $ \(seed, (path, cut, lost, redeliver)) -> timer (seed, path, cut, lost, redeliver)
 
-  it "test_generated_v5_git_publication_recovery_schedules_replay_exactly" $ do
-    let examples =
-          [ (lost, cut, redeliver)
-          | lost <- [False, True]
-          , cut <- ["none", "before_delivery", "after_acceptance", "after_head"]
-          , redeliver <- [False, True]
-          ]
-    forM_ (zip [0 ..] examples) $ \(seed, (lost, cut, redeliver)) ->
-      labelled ["git", tshow lost, cut, tshow redeliver] $
-        if unrecoveredAfterAcceptance lost cut
-          then gitRefusal seed lost cut redeliver
-          else retainedPath "readiness-v5-git-publication-v4.json" >>= \retained -> gitExample retained seed lost cut redeliver
+  describe "test_generated_v5_git_publication_recovery_schedules_replay_exactly" $ do
+    it "the explicit examples (@example)" $
+      forM_
+        [ (0, False, "before_delivery", False)
+        , (1, True, "after_acceptance", True)
+        , (2, True, "after_head", False)
+        , (3, False, "none", True)
+        ]
+        git
+    it "max_examples=5 generated examples (Hedgehog, fixed seed)" $
+      hedgehog 5 . H.withTests 5 . property $ do
+        seed <- forAll worldSeed
+        lost <- forAll Gen.bool
+        cut <- forAll (Gen.element ["none", "before_delivery", "after_acceptance", "after_head"])
+        redeliver <- forAll Gen.bool
+        label (event "git_response_lost" (tshow lost))
+        label (event "git_crash_cut" cut)
+        label (event "git_redeliver" (tshow redeliver))
+        evalIO (git (seed, lost, cut, redeliver))
+    it "every loss, cut and redelivery (enumeration)" $ do
+      let examples =
+            [ (lost, cut, redeliver)
+            | lost <- [False, True]
+            , cut <- ["none", "before_delivery", "after_acceptance", "after_head"]
+            , redeliver <- [False, True]
+            ]
+      forM_ (zip [0 ..] examples) $ \(seed, (lost, cut, redeliver)) -> git (seed, lost, cut, redeliver)
 
-  it "test_generated_delivery_recovery_schedules_replay_exactly" $ do
-    seeds <- branchSeeds
-    Map.size seeds `shouldBe` 8
-    let schedules = [[]] <> [[a] | a <- [Act, Restart]] <> [[a, b] | a <- [Act, Restart], b <- [Act, Restart]]
-    forM_ (Map.toList seeds) $ \(branches, seed) ->
-      forM_ schedules $ \actions ->
-        labelled ["delivery", tshow seed, tshow branches, tshow actions] $ do
-          retained <- retainedPath "readiness-counterexample-v4.json"
-          deliveryMachine False retained seed actions
+  describe "test_generated_delivery_recovery_schedules_replay_exactly" $ do
+    it "max_examples=12 machines of up to stateful_step_count=5 rules (Hedgehog state machine, fixed seed)" $ do
+      retained <- retainedPath "readiness-counterexample-v4.json"
+      withSlot $ \slot -> hedgehog 12 (deliveryProperty slot False retained 12 5)
 
   it "test_shrunk_checker_failure_retains_an_exact_replayable_artifact" $ withRoot $ \tmp -> do
     let retained = tmp </> "retained-counterexample.json"
-    deliveryMachine True retained 0 [Act, Act] `shouldThrow` independentModel
+    report <- withSlot $ \slot -> do
+      report <- checkFixed 2 (deliveryProperty slot True retained 2 2)
+      failures <- readIORef slot.failures
+      case failures of
+        primary : _ -> primary `shouldSatisfy` independentModel
+        [] -> expectationFailure "the forced machine raised no DST failure"
+      pure report
+    case report.reportStatus of
+      Failed _ -> pure ()
+      other -> expectationFailure ("the forced machine must fail, got " <> show other)
     loaded <- loadArtifact retained
     a <- either (fail . show) pure loaded
     artifactVersion a `shouldBe` 4
@@ -125,6 +192,38 @@ spec = describe "tests/integration/testing/test_readiness_campaign.py" $ do
     case result.failure of
       Just (FInvariant _) -> pure ()
       other -> expectationFailure ("expected an invariant failure, got " <> show other)
+ where
+  timer (seed, path, cut, lost, redeliver) =
+    labelled ["timer", tshow seed, path, cut, tshow lost, tshow redeliver] (timerExample seed path cut lost redeliver)
+  git (seed, lost, cut, redeliver) =
+    labelled ["git", tshow seed, tshow lost, cut, tshow redeliver] $
+      if unrecoveredAfterAcceptance lost cut
+        then gitRefusal seed lost cut redeliver
+        else retainedPath "readiness-v5-git-publication-v4.json" >>= \retained -> gitExample retained seed lost cut redeliver
+
+-- ---------------------------------------------------------------------------
+-- Hedgehog
+
+-- | @st.integers(min_value=0, max_value=2**53 - 1)@.
+worldSeed :: Gen Integer
+worldSeed = Gen.integral (Range.constant 0 (2 ^ (53 :: Int) - 1))
+
+-- | Check a property from a fixed seed (upstream's @derandomize=True@).
+checkFixed :: Word64 -> Property -> IO (Report Result)
+checkFixed seed (Property config test) = checkReport config 0 (Seed.from seed) test (\_ -> pure ())
+
+-- | Check a property from a fixed seed and fail with Hedgehog's report of the
+-- shrunk case, which names the seed and shrink path that rerun it.
+hedgehog :: Word64 -> Property -> Expectation
+hedgehog seed prop = do
+  report <- checkFixed seed prop
+  case report.reportStatus of
+    OK -> pure ()
+    _ -> renderResult DisableColor Nothing report >>= expectationFailure
+
+-- | Upstream's @event(f"{name}={value}")@.
+event :: Text -> Text -> LabelName
+event name value = fromString (T.unpack (name <> "=" <> value))
 
 -- ---------------------------------------------------------------------------
 -- Generated examples
@@ -415,29 +514,183 @@ gitExample retained seed lost cut redeliver =
 -- ---------------------------------------------------------------------------
 -- The delivery recovery state machine (@_DeliveryRecoveryMachine@)
 
--- | A generated rule: 'Act' runs @execute_one_disclosed_action@ while work
--- is pending and @redeliver_after_quiescence@ otherwise (their
--- preconditions partition the states); 'Restart' is @restart_generation@.
-data Action = Act | Restart
+-- | A rule. 'Act' is @execute_one_disclosed_action@ while work is pending
+-- and @redeliver_after_quiescence@ otherwise: their preconditions read the
+-- live timeline and partition its states, so exactly one of them is enabled
+-- at every step, and choosing 'Act' is choosing that one. 'Restart' is
+-- @restart_generation@. In the forced-failure machine 'Act' is
+-- @trigger_replayable_checker_failure@ (a step while work is pending), the
+-- only rule upstream enables there.
+data Rule (v :: Type -> Type) = Act | Restart
   deriving stock (Eq, Show)
 
--- | The three seed-drawn branches: response lost, crash before the first
--- step, redeliver at finish.
-type Branches = (Bool, Bool, Bool)
+instance FunctorB Rule where
+  bmap _ = \case
+    Act -> Act
+    Restart -> Restart
 
--- | The first seed drawing each branch combination.
-branchSeeds :: IO (Map.Map Branches Integer)
-branchSeeds = go 0 Map.empty
+instance TraversableB Rule where
+  btraverse _ = \case
+    Act -> pure Act
+    Restart -> pure Restart
+
+-- | The machine's model. Every rule is always available (the live
+-- timeline, not the model, decides what 'Act' does), so it carries nothing.
+data Model (v :: Type -> Type) = Model
+
+-- | The machine a run drives, and what outlives it: the DST failures each
+-- run raised (newest first) and the machine to close before the next run.
+data Slot = Slot
+  { current :: IORef (Maybe Machine)
+  , failures :: IORef [DstFailure]
+  }
+
+withSlot :: (Slot -> IO a) -> IO a
+withSlot use = do
+  slot <- Slot <$> newIORef Nothing <*> newIORef []
+  use slot `finally` (readIORef slot.current >>= mapM_ closeMachine)
+
+-- | One machine: upstream's @_DeliveryRecoveryMachine@ instance.
+data Machine = Machine
+  { slot :: Slot
+  , forceFailure :: Bool
+  , failurePath :: FilePath
+  , seed :: Integer
+  , run :: Run
+  , timelineRef :: IORef ReadinessTimeline
+  , delivery :: Text
+  , lost :: Bool
+  , redeliverAtFinish :: Bool
+  , retained :: IORef Bool
+  , directory :: FilePath
+  }
+
+-- | The property: draw @start@'s seed and up to @steps@ rules, then run
+-- them on a fresh machine with the invariant after @start@ and after every
+-- rule, and the teardown's convergence and replay. Everything is drawn
+-- before anything runs, so a shrunk case reruns from a fresh World.
+deliveryProperty :: Slot -> Bool -> FilePath -> Int -> Int -> Property
+deliveryProperty slot force failurePath examples steps = H.withTests (fromIntegral examples) . property $ do
+  seed <- forAll worldSeed
+  actions <- forAll (Gen.sequential (Range.constant 1 steps) Model (if force then [rule slot Act] else [rule slot Act, rule slot Restart]))
+  machine <- evalIO (startMachine slot force failurePath seed)
+  label (event "response_lost" (tshow machine.lost))
+  label (event "redeliver_at_finish" (tshow machine.redeliverAtFinish))
+  invariant =<< evalIO (observeMachine machine)
+  H.executeSequential Model actions
+  evalIO (finishMachine machine)
+
+rule :: Slot -> Rule v -> Command Gen (H.PropertyT IO) Model
+rule slot chosen =
+  Command
+    { commandGen = \_ -> Just (pure (coerceRule chosen))
+    , commandExecute = \input -> evalIO $ do
+        machine <- readIORef slot.current >>= maybe (fail "generated readiness machine is not initialized") pure
+        runRule machine (coerceRule input)
+    , commandCallbacks = [Ensure (\_ _ _ observed -> invariant observed)]
+    }
  where
-  go seed found
-    | Map.size found == 8 || seed > 256 = pure found
-    | otherwise = do
-        branches <- withRoot $ \root -> do
-          rw <- newReadinessWorld (root </> "live") defaultBudget (Just seed)
-          (`finally` closeWorld rw) $ do
-            (lost, crashFirst, redeliver, _) <- drawBranches rw
-            pure (lost, crashFirst, redeliver)
-        go (seed + 1) (Map.insertWith (\_ old -> old) branches seed found)
+  coerceRule :: Rule a -> Rule b
+  coerceRule = \case
+    Act -> Act
+    Restart -> Restart
+
+-- | Run one rule and observe the timeline after it.
+runRule :: Machine -> Rule v -> IO Json
+runRule machine chosen = do
+  t <- readIORef machine.timelineRef
+  more <- pending t
+  case chosen of
+    Act
+      | machine.forceFailure -> when more (() <$ capture machine (step t))
+      | more -> () <$ capture machine (step t)
+      | otherwise -> () <$ capture machine (deliverWebhook t machine.delivery)
+    Restart -> restartGeneration machine "generated_between_host_steps"
+  observeMachine machine
+
+-- | @independent_safety_holds_at_each_generated_boundary@.
+invariant :: (MonadTest m) => Json -> m ()
+invariant s = do
+  assert (intAt (s .: "provider" .: "accepted_by_kind" .: "readiness") <= 1)
+  assert (length (items (s .: "facts" .: "admitted_observations")) <= 1)
+  s .: "expected" .: "violations" === Array []
+
+observeMachine :: Machine -> IO Json
+observeMachine machine = readIORef machine.timelineRef >>= capture machine . state
+
+-- | @start(seed)@ on a fresh World in a fresh directory, closing the
+-- previous run's machine first.
+startMachine :: Slot -> Bool -> FilePath -> Integer -> IO Machine
+startMachine slot force failurePath seed = do
+  readIORef slot.current >>= mapM_ closeMachine
+  writeIORef slot.current Nothing
+  directory <- canonicalizePath =<< (getTemporaryDirectory >>= \tmp -> createTempDirectory tmp "hamsterdan-readiness-campaign-")
+  rw <- newReadinessWorld (directory </> "live") defaultBudget (Just seed)
+  (lost, crashFirst, redeliverAtFinish, scenarioId) <- drawBranches rw
+  scenario <- newIORef scenarioId
+  closed <- newIORef False
+  timelineRef <- newIORef =<< timeline rw
+  retained <- newIORef False
+  let close = readIORef closed >>= \done -> unless done (writeIORef closed True >> closeWorld rw)
+      run = Run {root = directory, world = rw, scenario, scenarioId, close}
+      machineWith delivery = Machine {slot, forceFailure = force, failurePath, seed, run, timelineRef, delivery, lost, redeliverAtFinish, retained, directory}
+      pendingMachine = machineWith ""
+  writeIORef slot.current (Just pendingMachine)
+  t <- readIORef timelineRef
+  delivery <-
+    capture pendingMachine $
+      if force
+        then do
+          d <- emitWebhook t "issue_comment" "created"
+          _ <- deliverWebhook t d
+          pure d
+        else cleanGreen t lost
+  let machine = machineWith delivery
+  writeIORef slot.current (Just machine)
+  when (crashFirst && not force) $ restartGeneration machine "generated_before_first_host_step"
+  pure machine
+
+restartGeneration :: Machine -> Text -> IO ()
+restartGeneration machine cut = capture machine $ do
+  t <- readIORef machine.timelineRef
+  crash t cut
+  writeIORef machine.timelineRef =<< restart machine.run.world
+
+-- | The teardown: drain, redeliver at finish, converge, and replay the
+-- artifact exactly (nothing more for the forced-failure machine).
+finishMachine :: Machine -> IO ()
+finishMachine machine = unless machine.forceFailure $ do
+  t <- readIORef machine.timelineRef
+  capture machine (drain t)
+  when machine.redeliverAtFinish (() <$ capture machine (deliverWebhook t machine.delivery))
+  final <- (.value) <$> capture machine (converge t)
+  let provider = final .: "provider"
+  final .: "expected" .: "ready" `shouldBe` Bool True
+  final .: "actual" .: "readiness_published" `shouldBe` Bool True
+  provider .: "accepted_by_kind" .: "readiness" `shouldBe` Int 1
+  final .: "facts" .: "admitted_observations" `shouldBe` Array [String ("github-delivery:" <> machine.delivery)]
+  when machine.lost $ intAt (provider .: "lookup_recoveries") `shouldSatisfy` (>= 1)
+  a <- artifact machine.run.world machine.run.scenarioId
+  let origin = originOf a
+  origin.seed `shouldBe` machine.seed
+  origin.draws `shouldBe` Map.fromList [("event_order", 1), ("fault", 1), ("identifier:scenario", 1), ("workload", 1)]
+  _ <- replayConverged machine.run a
+  pure ()
+
+closeMachine :: Machine -> IO ()
+closeMachine machine = machine.run.close `finally` removePathForcibly machine.directory
+
+-- | @_capture_failure@: record the failure, retain the exact failed
+-- artifact once, and let the failure propagate.
+capture :: Machine -> IO a -> IO a
+capture machine operation =
+  operation `catch` \(failure :: DstFailure) -> do
+    modifyIORef' machine.slot.failures (failure :)
+    done <- readIORef machine.retained
+    when (retainable failure && not done) $ do
+      writeIORef machine.retained True
+      retainFailure machine.run.world machine.run.scenarioId machine.failurePath (machine.directory </> "failure-replay")
+    throwIO failure
 
 drawBranches :: ReadinessWorld -> IO (Bool, Bool, Bool, Text)
 drawBranches rw = do
@@ -446,67 +699,6 @@ drawBranches rw = do
   redeliver <- (== 1) <$> inWorld rw (World.chooseIndex WorkloadChoice 2)
   scenarioId <- inWorld rw (World.chooseIdentifier "scenario")
   pure (lost, crashFirst, redeliver, scenarioId)
-
--- | One run of the machine: @start(seed)@, the invariant, each rule with
--- the invariant after it, and the teardown's convergence and replay.
-deliveryMachine :: Bool -> FilePath -> Integer -> [Action] -> IO ()
-deliveryMachine forceFailure retained seed actions =
-  generatedAt "readiness-generated-counterexample-v4" retained seed $ \run -> do
-    let rw = run.world
-    (lost, crashFirst, redeliverAtFinish, scenarioId) <- drawBranches rw
-    writeIORef run.scenario scenarioId
-    current <- newIORef =<< timeline rw
-    let restartGeneration cut = do
-          t <- readIORef current
-          crash t cut
-          writeIORef current =<< restart rw
-        invariant = do
-          s <- readIORef current >>= state
-          intAt (s .: "provider" .: "accepted_by_kind" .: "readiness") `shouldSatisfy` (<= 1)
-          length (items (s .: "facts" .: "admitted_observations")) `shouldSatisfy` (<= 1)
-          s .: "expected" .: "violations" `shouldBe` Array []
-    delivery <-
-      if forceFailure
-        then do
-          t <- readIORef current
-          d <- emitWebhook t "issue_comment" "created"
-          _ <- deliverWebhook t d
-          pure d
-        else do
-          t <- readIORef current
-          d <- cleanGreen t lost
-          when crashFirst (restartGeneration "generated_before_first_host_step")
-          pure d
-    invariant
-    forM_ actions $ \action -> do
-      t <- readIORef current
-      more <- pending t
-      case action of
-        Act
-          | forceFailure -> when more (() <$ step t)
-          | more -> () <$ step t
-          | otherwise -> () <$ deliverWebhook t delivery
-        Restart
-          | forceFailure -> pure ()
-          | otherwise -> restartGeneration "generated_between_host_steps"
-      invariant
-    unless forceFailure $ do
-      t <- readIORef current
-      drain t
-      when redeliverAtFinish (() <$ deliverWebhook t delivery)
-      final <- (.value) <$> converge t
-      let provider = final .: "provider"
-      final .: "expected" .: "ready" `shouldBe` Bool True
-      final .: "actual" .: "readiness_published" `shouldBe` Bool True
-      provider .: "accepted_by_kind" .: "readiness" `shouldBe` Int 1
-      final .: "facts" .: "admitted_observations" `shouldBe` Array [String ("github-delivery:" <> delivery)]
-      when lost $ intAt (provider .: "lookup_recoveries") `shouldSatisfy` (>= 1)
-      a <- artifact rw scenarioId
-      let origin = originOf a
-      origin.seed `shouldBe` seed
-      origin.draws `shouldBe` Map.fromList [("event_order", 1), ("fault", 1), ("identifier:scenario", 1), ("workload", 1)]
-      _ <- replayConverged run a
-      pure ()
 
 -- ---------------------------------------------------------------------------
 -- Shared machinery

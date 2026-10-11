@@ -51,7 +51,7 @@ checkerNamed :: Text -> IO (Maybe Checker)
 checkerNamed name = case [c | c <- engineCheckers, c.identity.name == name] of
   c : _ -> pure (Just c)
   []
-    | name == GeneratedRuntime.checkerIdentity.name -> Just <$> GeneratedRuntime.newGeneratedRuntimeChecker
+    | name == GeneratedRuntime.checkerIdentity.name -> pure (Just GeneratedRuntime.generatedRuntimeChecker)
     | otherwise -> pure Nothing
 
 int :: Text -> Json -> Integer
@@ -89,8 +89,10 @@ vectorSpec file named = do
       let prior = case lookupMember "prior" vector of
             Just (Array xs) -> xs
             _ -> []
-      forM_ prior $ \earlier -> either (expectationFailure . show) (const (pure ())) (checker.check (observationOf earlier))
-      case checker.check (observationOf (member "observation" vector)) of
+      -- The prior observations build the checker's memory, as the
+      -- reference's vectors call @check@ on one instance in order.
+      let advance current earlier = current >>= fmap snd . (`runChecker` observationOf earlier)
+      case foldl' advance (Right checker) prior >>= (`runChecker` observationOf (member "observation" vector)) of
         Left failure -> expectationFailure (show failure)
-        Right result ->
+        Right (result, _) ->
           Object [("detail", result.detail), ("passed", Bool result.passed)] `shouldBeJson` member "result" vector

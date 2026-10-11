@@ -80,10 +80,10 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.HistoryStore.Internal (HistoryStoreError (..), decodeStored, pythonDiagnostic)
-import Petrus.Impetus.History.Codec (encodeRecord)
+import Petrus.Impetus.History.Codec (encodeRecord, historyLoads)
 import Petrus.Impetus.History.Records (Record, recordName)
 import Petrus.Impetus.HistoryStore
-import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, encodeErrorMessage, jsonTypeName, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, encodeErrorMessage, jsonTypeName, lookupMember, parseJson)
 import Petrus.Posix.Path (purePath)
 import Petrus.Sqlite.Connection (Connection, SQLData (..))
 import Petrus.Sqlite.Connection qualified as Sql
@@ -427,7 +427,7 @@ loadsColumn = \case
   SQLNull -> notText "NoneType"
   where
     notText kind = Left ("the JSON object must be str, bytes or bytearray, not " <> kind)
-    loadsBytes bytes = case parseJson pythonLoads bytes of
+    loadsBytes bytes = case parseJson historyLoads bytes of
       Right json -> Right json
       Left fallback -> Left (pythonDiagnostic bytes (T.pack fallback))
 

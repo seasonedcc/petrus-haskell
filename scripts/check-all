@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Rebuild and verify everything from a clean checkout: build, unit tests,
-# conformance, interop against the pinned Python upstream, the benchmark
-# bookkeeping, and the parity table. CI runs exactly this.
+# conformance, interop against the pinned Python upstream, the committed
+# corpora regenerated from it, the benchmark bookkeeping, and the parity table. CI runs exactly this.
 #
 #   scripts/check-all            # everything except benchmarks
 #   scripts/check-all -j2        # limit cabal's parallelism (passed to cabal)
@@ -37,21 +37,29 @@ scripts/check-pins
 step "No silent skips on a missing Python reference"
 scripts/lint-skips
 
+step "Hamsterdan import boundaries (upstream tests/test_architecture.py)"
+scripts/lint-hamsterdan-architecture
+
 step "Upstream Python environment"
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv is not on PATH; the interop suites need it to provision the upstream Python environments" >&2
   exit 1
 fi
-# Provision both references once, before the suites run in parallel and
-# each would.
-for project in petrus petrus-engine; do
+# Provision every reference once, before the suites run in parallel and
+# each would (scripts/upstream-python also serializes a lazy sync with a
+# lock, so a suite that provisions on first use is safe too).
+for project in petrus petrus-engine hamsterdan; do
   python=$(scripts/upstream-python "$project")
   echo "upstream/$project: $("$python" -I -c 'import sys; print(sys.version)')"
 done
 
-# In CI the PostgreSQL suites must run, never skip as pending.
+# In CI the PostgreSQL and Docker suites must run, never skip as pending.
 if [[ -n "${CI:-}" && -z "${PETRUS_TEST_POSTGRES:-}" ]]; then
   echo "CI is set but PETRUS_TEST_POSTGRES is not: the PostgreSQL suites would be skipped" >&2
+  exit 1
+fi
+if [[ -n "${CI:-}" && "${PETRUS_TEST_DOCKER:-}" != 1 ]]; then
+  echo "CI is set but PETRUS_TEST_DOCKER is not 1: the Docker suites would be skipped" >&2
   exit 1
 fi
 
@@ -62,8 +70,18 @@ step "Interop selection (scripts/interop patterns still select their groups)"
 scripts/interop --check ${cabal_flags[@]+"${cabal_flags[@]}"}
 
 step "Tests (unit, conformance, interop)"
+# Each suite's output also goes to its own log, for the pending check below.
+test_logs=$(mktemp -d)
+trap 'rm -rf "$test_logs"' EXIT
 scripts/with-postgres cabal test all ${cabal_flags[@]+"${cabal_flags[@]}"} --keep-going \
-  --test-show-details=direct --test-options='+RTS -M2G -RTS'
+  --test-show-details=streaming --test-log="$test_logs/\$pkgid-\$test-suite.log" \
+  --test-options='+RTS -M2G -RTS'
+
+step "No pending examples (a missing tool or server fails; only the opt-ins in scripts/check-pending may pend)"
+scripts/check-pending "$test_logs"
+
+step "Committed corpora (every generator rerun against the pinned references)"
+scripts/check-corpora
 
 if [[ "$run_bench" == 1 ]]; then
   step "Benchmarks"
@@ -75,3 +93,6 @@ scripts/bench --check
 
 step "Parity table"
 scripts/check-parity
+
+step "Runtime test ledgers (every in-scope upstream test accounted for)"
+python3 packages/petrus-engine/scripts/parity_check.py

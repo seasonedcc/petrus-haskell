@@ -11,10 +11,12 @@ description:
   "Petrus.Engine.Observation".
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Workflow
 build-type:         Simple
+extra-doc-files:    NOTICE
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -69,6 +71,8 @@ test-suite petrus-engine-test
                     Petrus.Engine.InteropSpec
                     Petrus.Engine.LocalDispatchSpec
                     Petrus.Engine.WorkerTopologySpec
+                    Petrus.Engine.BoundarySpec
+                    Petrus.Engine.SpecObligationsSpec
   build-depends:    base
                   , bytestring
                   , containers

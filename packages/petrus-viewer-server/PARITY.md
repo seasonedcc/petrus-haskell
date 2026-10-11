@@ -43,6 +43,7 @@ suites marked "ours" were written for this port.
 | `mcp` | `tests/mcpServer.test.mjs` | 7/7 |
 | `mcp-haskell-relay` | `tests/mcpServer.test.mjs` with the relay in `petrus` | 7/7 |
 | `collab` | `tests/collab-server.test.mjs` | 6/6 |
+| `protocol` | `tests/agentProtocol.test.ts`, `tests/agentParseRegression.test.ts`, with `parseAgentMessage` answered by `Agent.Protocol` through `petrus-viewer-oracle` | 19/19 |
 | `differential` | ours: JSON and URL ports against V8 and Node | 4/4 |
 | `wire` | ours: WebSocket bytes against the `ws` relays, and HTTP endpoint bytes against `node:http` | 20/20 |
 | `playwright` | `tests/playwright/bridge-live.test.mjs` | 4/4 |
@@ -54,7 +55,9 @@ suites marked "ours" were written for this port.
 The ratios below come from [bench/RESULTS.md](bench/RESULTS.md), on a
 machine shared with other agents:
 
-- run F: the final code, every scenario, 15 interleaved rounds;
+- run G: the static UI, the `/temporal` proxy, the MCP server and cold
+  start, 5 interleaved rounds;
+- run F: the final code, every other scenario, 15 interleaved rounds;
 - run E: the HTTP endpoints only, 15 interleaved rounds, with the previous
   server (Warp) running in the same rounds;
 - runs C and D: the relays before the HTTP front, 7 rounds each.
@@ -74,8 +77,21 @@ Each ratio compares the best Haskell server with the best Node server.
   `petrus`.
 - Upstream `live` (12/12).
 
-**Performance:** startup is not benchmarked. Every request the CLI's
-server answers is benchmarked in the rows below.
+**Performance** (run G), against `node bin/petrus.mjs` and `vite preview`:
+
+| Scenario | Median | Per round |
+| --- | ---: | ---: |
+| cold start until the file and the UI are served | 32.27x | ≥ 31.01x |
+| GET / (index.html), 1 client | 1.61x | ≥ 1.51x |
+| GET / (index.html), 16 clients | 1.42x | ≥ 1.27x |
+| GET the JS bundle (592 KiB), 16 clients | 3.22x | ≥ 2.82x |
+| GET /sample-net.json, 16 clients | 1.89x | ≥ 1.07x |
+| GET /temporal/... (proxied), 1 client | 3.34x | ≥ 3.14x |
+| GET /temporal/... (proxied), 16 clients | 2.14x | ≥ 2.00x |
+
+`petrus FILE` serves the file and the UI 11.6 ms after it is spawned;
+`bin/petrus.mjs` takes 378 ms. The endpoints and relays the CLI's server
+also answers are in the rows below.
 
 **Status:** at parity. `petrus` serves the built UI instead of running
 Vite (see [DIVERGENCES.md](DIVERGENCES.md)).
@@ -85,13 +101,26 @@ Vite (see [DIVERGENCES.md](DIVERGENCES.md)).
 **Evidence:**
 
 - `test/McpSpec.hs`: the 16 tools in order, and the upstream Node
-  transcript reproduced byte for byte.
+  transcript reproduced byte for byte: a session that calls every tool
+  past input validation (checked), plus validation failures, unknown
+  tools and methods, a garbage line and version negotiation.
+  `test/record-mcp-transcript.mjs` records the transcript from
+  `server/mcp.mjs` (`--check`: confirm it is current).
 - Upstream `mcp` (7/7) and `mcp-haskell-relay` (7/7).
 - `live` (12/12): every tool, through `petrus-mcp` (Haskell), the `petrus`
   relay (Haskell) and the built UI in headless Chromium.
 
-**Performance:** the MCP server is a stdio bridge, so its cost is the
-relay's.
+**Performance** (run G), `petrus-mcp` against `node server/mcp.mjs`, both
+bridged to the same relay; one op is a `tools/call` line on stdin
+answered on stdout:
+
+| Scenario | Median | Per round |
+| --- | ---: | ---: |
+| petrus_inspect_document (bridged), 1 call at a time | 1.20x | ≥ 1.17x |
+| petrus_inspect_document (bridged), 16 calls in flight | 1.29x | ≥ 1.12x |
+| petrus_status, 1 call at a time | 1.31x | ≥ 1.23x |
+
+Per call, `petrus-mcp` uses about a third of Node's CPU time.
 
 **Status:** at parity.
 
@@ -99,8 +128,11 @@ relay's.
 
 **Evidence:**
 
-- `test/RelaySpec.hs` and `test/ProtocolSpec.hs` (25 examples).
-- Upstream `relay` (5/5) and `differential` (4/4).
+- `test/RelaySpec.hs` and `test/ProtocolSpec.hs` (31 examples;
+  `ProtocolSpec` ports 18 of the 19 upstream protocol cases, all but
+  `selectedEdgeToRef`, a browser-side helper).
+- Upstream `relay` (5/5), `protocol` (19/19: the upstream protocol tests,
+  verbatim, against the Haskell parser) and `differential` (4/4).
 - `wire` (`ws-wire.test.mjs`, 2/2):
   - the opening handshake, compared byte for byte with `ws` over 20
     requests: the 101 and the 400/405 refusals, subprotocols, repeated
@@ -276,7 +308,8 @@ the pinned UI.
   - the UI ends up with the same history from both producers.
 - `live`: replay through `petrus_trace_import` with `PETRUS_HISTORY_URL`.
 
-**Performance:** there is no Node counterpart. Upstream proxies
-`/temporal` to Temporal and has no observation source.
+**Performance:** the observation source has no Node counterpart: upstream
+proxies `/temporal` to Temporal. The proxy itself is benchmarked under the
+`petrus` CLI above (2.1–3.3x Vite's).
 
 **Status:** at parity.

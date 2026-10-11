@@ -86,7 +86,7 @@ Two cases need a word of context:
 
 Changes made for these numbers:
 
-- **SQLite statement cache:** `Hamsterdan.GitHub.Sqlite` keeps one prepared
+- **SQLite statement cache:** `Hamsterdan.Sqlite` keeps one prepared
   statement per SQL text on each connection. A statement is checked out
   atomically, then reset and unbound when it is returned. This mirrors
   CPython's `sqlite3` statement cache.

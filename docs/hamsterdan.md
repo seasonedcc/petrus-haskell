@@ -1071,7 +1071,9 @@ The 11 journeys in `tests/integration/host/test_readiness_scenarios.py` are:
   - the ast-grep rules (`audit-rules/reflective-contract-access.yml` and the 7
     `quality/hamsterdan2` rules).
 
-  Package boundaries and module visibility enforce the architecture rules.
+  `scripts/lint-hamsterdan-architecture` (run by `scripts/check-all`)
+  enforces the architecture rules that carry over on the Haskell import
+  graph, at module and package level.
 - **Ops tests stay with the Python and TypeScript tooling:** launcher, orb
   setup, deployment, relay.
 - **Best cross-implementation corpus:**
@@ -1297,7 +1299,9 @@ deterministic. Only tier C touches real GitHub.
 ## 6. Port decomposition and sequencing
 
 The packages follow the upstream architecture so the import rules become
-package boundaries. Names follow the existing `petrus-*` convention.
+package boundaries (checked by `scripts/lint-hamsterdan-architecture`; the
+CPython `str` and `sqlite3` semantics several siblings share live in
+`hamsterdan-contracts`, as `Hamsterdan.PyText` and `Hamsterdan.Sqlite`). Names follow the existing `petrus-*` convention.
 
 | # | Package | Ports | Petrus components needed first | Can start |
 | --- | --- | --- | --- | --- |

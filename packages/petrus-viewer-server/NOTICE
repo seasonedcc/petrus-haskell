@@ -31,3 +31,15 @@ License, reproduced here as its terms require:
   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
+
+Two test fixtures are copied unmodified from Petrus's language-neutral
+specification (upstream/petrus/spec): test/fixtures/engine-snapshot-v1.json
+(spec/observation/engine-snapshot-v1.json) and
+test/fixtures/net-document-v1-observation.json
+(spec/net-document-v1-observation.json). They are distributed under Petrus's
+license:
+
+  Petrus
+  Copyright 2026 Henrique Bastos
+  Licensed under the Apache License, Version 2.0
+  https://github.com/henriquebastos/petrus

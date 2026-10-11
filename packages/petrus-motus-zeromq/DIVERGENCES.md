@@ -51,15 +51,20 @@ requests no conforming peer can produce.
    for one), and those texts can differ. See also
    `packages/petrus-motus/DIVERGENCES.md` (10).
 5. **Other unexpected exceptions are spelled by their Haskell type.** A
-   `service` answer carries `str(error).strip()`, or the exception's type
-   name when that is empty. The exceptions the protocol can produce are
-   declared under the reference's names, so they read identically:
-   - `ValueError`, refused;
+   `service` answer carries `str(error).strip()`, or the class name when
+   that is empty, and a Worker's exception failure carries `repr(error)` and
+   the class. Both name the exception through `zeromqPythonException`, the
+   Motus mapping (`packages/petrus-motus/DIVERGENCES.md` item 4) extended
+   with this package's `ConnectionError`, `OperationUncertain`,
+   `_ProtocolError` and `ZMQError`. The exceptions the protocol can produce
+   all have names there:
+   - `ValueError` (and a `DispatchError`), refused;
    - `TypeError`, the failure constructor's non-boolean `retryable`;
    - `RuntimeError`, `ConnectionError`, `TimeoutError`, and `OSError`.
 
    Anything else (an `IOException`, say) falls back to its Haskell type
-   name and `displayException` text.
+   constructor's name and `displayException` text. The interop suite
+   compares ten exceptions' `_classified_failure` with the reference's.
 6. **The server CLI's program name and its errors.**
    - `petrus-zeromq-dispatch` prints its own name in help and usage text,
      where the reference prints `python -m petrus.motus.transport.zeromq`.

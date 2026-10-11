@@ -13,6 +13,7 @@ description:
   one database.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Distributed Computing
@@ -157,6 +158,7 @@ benchmark petrus-processes-bench
                   , petrus-activity
                   , petrus-fabric
                   , petrus-fabric:postgres
+                  , petrus-impetus
                   , petrus-json
                   , petrus-postgres
                   , petrus-processes

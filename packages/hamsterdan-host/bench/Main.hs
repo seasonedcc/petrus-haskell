@@ -32,6 +32,10 @@
 --   @bench/inputs.json@, closed, and removed; and the same open of a fresh
 --   store with no History, to separate the file work from the replay.
 --
+-- The process-level, restart and housekeeping rows (the CLI, @serve@
+-- start-up, socket ingest, sweeps, GitHub effects and Git publication)
+-- are a separate comparison in "Process", run with @--process@.
+--
 -- Results and the comparison with Python are in RESULTS.md.
 module Main (main) where
 
@@ -72,6 +76,8 @@ import System.IO (IOMode (..), hClose, hFlush, openFile, stdout)
 import Test.Tasty (localOption)
 import Test.Tasty.Bench
 import Text.Printf (printf)
+import Process (cliChild, processMain)
+import System.Environment (getArgs)
 import V5Doubles
 
 synchronize :: ByteString
@@ -79,7 +85,14 @@ synchronize =
   "{\"action\": \"synchronize\", \"installation\": {\"id\": 44, \"account\": {\"id\": 23}}, \"repository\": {\"id\": 31, \"full_name\": \"owner/one\"}, \"pull_request\": {\"number\": 7}}"
 
 main :: IO ()
-main = do
+main =
+  getArgs >>= \case
+    "--process" : rest -> processMain rest
+    "--cli" : rest -> cliChild rest
+    _ -> tastyMain
+
+tastyMain :: IO ()
+tastyMain = do
   -- Canonical: the host refuses a state root with a symbolic link among
   -- its ancestors, and the temporary directory is under one on macOS (/var).
   temporary <- canonicalizePath =<< getTemporaryDirectory

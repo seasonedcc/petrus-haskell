@@ -1,5 +1,11 @@
 # Runtime port plan
 
+> **Historical plan.** This document is the plan the runtime port was built
+> from, kept for its decisions and rationale; it describes the state before
+> the work started. The current status of every component is in
+> [PARITY.md](../PARITY.md), and each package's intentional differences from
+> upstream are in its own `DIVERGENCES.md`.
+
 This is the plan of record for porting everything in `upstream/petrus/src/petrus`
 that sits **outside the kernel**: the durable History stores, observation, the
 net DSL, `motus` (Activities, Dispatch, execution, Workers, transports), the

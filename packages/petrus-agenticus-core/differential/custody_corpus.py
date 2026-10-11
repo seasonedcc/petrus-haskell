@@ -5,7 +5,7 @@ Run from the pinned upstream checkout with its virtual environment:
     cd upstream/petrus
     .venv/bin/python ../../packages/petrus-agenticus-core/differential/custody_corpus.py
 
-It writes ``custody_corpus.json`` next to this script:
+It writes ``custody_corpus.json`` next to this script (or into the directory given as its first argument):
 
 * ``schema``: ``sqlite_master`` rows of a fresh store (the DDL text SQLite keeps)
   and the initial payload row.
@@ -29,6 +29,7 @@ session can move between processes and implementations mid-run.
 from __future__ import annotations
 
 import json
+import sys
 import math
 import os
 import random
@@ -655,7 +656,7 @@ def main() -> None:
         "payload_cases": payload_cases(sessions),
         "sessions": sessions,
     }
-    output = HERE / "custody_corpus.json"
+    output = (Path(sys.argv[1]) if len(sys.argv) > 1 else HERE) / "custody_corpus.json"
     output.write_text(json.dumps(corpus, ensure_ascii=False, indent=1, sort_keys=True) + "\n")
     print(f"wrote {output} ({output.stat().st_size} bytes)")
 
