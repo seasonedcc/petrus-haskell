@@ -86,18 +86,25 @@ it through one shared sidecar process per SDK (`data/claude_sidecar.py`,
 SDK call, hook, tool call and event crosses a pipe. The connection keys are
 reversible stand-ins on both sides, so the cipher is not measured.
 
-Method: `scripts/bench-compare petrus-agenticus-runtime 5`, five
-interleaved repetitions of the Haskell bench (tasty-bench wall-clock means,
-`--stdev 5`) and `python_bench.py` (median of 10 batches of 0.2 s), commit
-`aa613ac`, 2026-10-11 03:08–03:30 local, load average 3.9 to 5.3 (the
-machine was shared). The table gives the medians over the repetitions and
-the lowest single-repetition ratio.
+Method: `scripts/bench-compare petrus-agenticus-runtime 7 --pattern=-turn`,
+seven interleaved repetitions of the Haskell bench (tasty-bench wall-clock
+means, `--stdev 5`, the executable started directly) and `python_bench.py`
+(median of 10 batches of 0.2 s), commit `24b53d7`, 2026-10-11 07:58–08:01
+local, load average 2.46 to 3.03, each repetition alternating which side
+went first. The table gives the medians over the repetitions and the
+lowest single-repetition ratio; Haskell was ahead in every repetition of
+every row.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition |
 | --- | ---: | ---: | ---: | ---: |
-| codex-turn | 57.1 ms | 68.7 ms | 1.20× | 1.10× |
-| claude-turn | 10.5 ms | 14.1 ms | 1.34× | 1.25× |
-| amp-turn | 163 µs | 213 µs | 1.31× | 1.15× |
+| codex-turn | 47.1 ms | 62.8 ms | 1.33× | 1.26× |
+| claude-turn | 8.27 ms | 10.9 ms | 1.32× | 1.22× |
+| amp-turn | 161 µs | 196 µs | 1.22× | 1.21× |
+
+`codex-turn`, repetition by repetition (Haskell / Python): 45.0 / 61.0,
+46.0 / 65.0, 47.1 / 61.8, 46.7 / 66.9, 49.7 / 62.7, 48.5 / 65.0 and
+47.6 / 62.8 ms. The 1.20× of the earlier run (below) was the same code at a
+load of 3.9–5.3.
 
 What it took:
 
@@ -124,6 +131,23 @@ interpreter start-up each), so its ratio is bounded by them. Its first
 interleaved run had one Haskell repetition at 126 ms (load average 8.6),
 the noise these subprocess-bound rows are open to on a shared machine.
 
+### The run of 2026-10-11, 03:08–03:30
+
+<!-- bench: superseded -->
+
+Five
+interleaved repetitions of the Haskell bench (tasty-bench wall-clock means,
+`--stdev 5`) and `python_bench.py` (median of 10 batches of 0.2 s), commit
+`aa613ac`, 2026-10-11 03:08–03:30 local, load average 3.9 to 5.3 (the
+machine was shared). The table gives the medians over the repetitions and
+the lowest single-repetition ratio.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition |
+| --- | ---: | ---: | ---: | ---: |
+| codex-turn | 57.1 ms | 68.7 ms | 1.20× | 1.10× |
+| claude-turn | 10.5 ms | 14.1 ms | 1.34× | 1.25× |
+| amp-turn | 163 µs | 213 µs | 1.31× | 1.15× |
+
 ## Rerun
 
 ```sh
@@ -134,5 +158,5 @@ cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-runtime/b
 ```
 
 The pattern also selects the whole-Turn rows. For the interleaved
-comparison of those rows, run `scripts/bench-compare petrus-agenticus-runtime 5`
+comparison of those rows, run `scripts/bench-compare petrus-agenticus-runtime 7 --pattern=-turn`
 from the repository root.
