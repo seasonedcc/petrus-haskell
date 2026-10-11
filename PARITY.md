@@ -76,6 +76,25 @@ reaches parity together with the components that use it.
 | PostgreSQL connections, transactions, LISTEN/NOTIFY, authority fence | psycopg 3 as used by the Postgres store, Engine and Absurd dispatch | `petrus-postgres` | at parity | `packages/petrus-postgres/test`, including psycopg's prepared-statement cache (threshold, size, `_pg3_<n>` names, discards and eviction) checked against psycopg's own `pg_prepared_statements`; [benchmarks](packages/petrus-postgres/bench/RESULTS.md), in wall-clock time over six interleaved repetitions: round trips, transactions, the fence and NOTIFY 1.19–1.59× faster, a decoded 1 000-row result 2.1×, placeholder conversion 15×; every component built on it (History stores: Postgres, Engine: Postgres, Engine: Absurd, Dispatch: Absurd, Fabric, Processes, Deterministic simulation testing) at parity; [divergences](packages/petrus-postgres/DIVERGENCES.md) |
 | HTTP/1.0 server core | `http.server` (`ThreadingHTTPServer`, `BaseHTTPRequestHandler`), `urllib.parse.urlsplit`/`parse_qsl` and `ipaddress` under the observation and simulation services | `petrus-http-core` | at parity | `packages/petrus-http-core/test` (raw-request and generated-line comparisons with CPython, [UrlSpec](packages/petrus-http-core/test/UrlSpec.hs)); both services byte-identical to upstream through it ([observation WireSpec](packages/petrus-observation-http/test/WireSpec.hs), [simulation WireSpec](packages/petrus-simulation/test/WireSpec.hs)); [benchmarks](packages/petrus-http-core/bench/RESULTS.md), [divergences](packages/petrus-http-core/DIVERGENCES.md) |
 
+### Upstream tests not ported
+
+Upstream's `tests/project/` checks upstream's own Python repository tooling,
+not Petrus behavior, with one exception: `test_package_boundaries.py` (20
+cases) is accounted for in the package ledgers (petrus-engine's,
+petrus-engine-postgres's and petrus-agenticus's PARITY.md, and
+`packages/petrus-engine/scripts/parity_check.py`). The five files below are not ported,
+with their collected cases (`pytest --collect-only` in `upstream/petrus/.venv`
+at the pin): 23 cases. [docs/runtime.md](docs/runtime.md), "Project tests and
+test infrastructure", has the design notes.
+
+| Upstream file | Cases | What it checks | Why it is not ported; what stands in for it here |
+| --- | ---: | --- | --- |
+| `tests/project/test_check_command.py` | 3 | upstream's `scripts/check` profiles (valid bash, its help, the pinned `uv`/`pytest` flags, usage errors) | Python tooling. This repository's gate is `scripts/check-all` (builds with `-Werror`, `scripts/lint-skips`, `scripts/interop --check`, every suite, the corpora, the parity table), and `scripts/ci-tests check-steps` checks that CI runs every one of its steps. |
+| `tests/project/test_conventions.py` | 4 | upstream's ast-grep `rules/*.yml`: every module covered by a structural rule, the concept rules' forbidden dependencies, a clean `ast-grep scan`, the rule tests | Python import conventions. Package boundaries are cabal `build-depends` here, so a forbidden dependency is a compile error. One case's content, the PostgreSQL history provider's boundary, is mapped in [petrus-fabric's PARITY](packages/petrus-fabric/PARITY.md). |
+| `tests/project/test_distribution.py` | 1 | `uv build`: the sdist and wheel carry only declared sources (no `.git`, caches, databases, keys, `.env`), ship `gondolin_sidecar.mjs`, and pass `twine check` | Python packaging. The port ships no sdist or wheel: its distribution is the container image, whose contents and runtime contract the CI `container` job checks (`scripts/container-smoke`). No `cabal sdist` content check stands in. |
+| `tests/project/test_exploration_identity.py` | 1 | the ES-NNN codes of upstream's exploration documents are contiguous | Upstream's process documents; nothing to port. |
+| `tests/project/test_release_command.py` | 14 | `scripts/check-release.py`: the 0.x PEP 440 version policy, the `v<version>` tag, the prerelease flag, no draft release | Upstream's PyPI release guard. The port has no release process yet; a Hackage-style guard (version against tag) would come with one. |
+
 ## hamsterdan
 
 The port plan is [docs/hamsterdan.md](docs/hamsterdan.md). The target is the V5

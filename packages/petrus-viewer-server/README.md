@@ -96,7 +96,8 @@ Runtime needs and seams for work done elsewhere:
 - `simulation-http-v1` (`POST /v1/simulations`, a Net document per run,
   ported in `petrus-simulation`) is not consumed by the pinned UI, which
   simulates locally: upstream petrus-viewer has no simulation-service
-  path to port. Its result is a
+  path to port. (Its consumer upstream is plausibly Arx, the private
+  editor and inspector SCOPE.md lists as out of scope.) Its result is a
   Net document with `simulated` Timeline entries, i.e. the same shape
   `documentToRuntimeState` already maps; serving server-side simulations to
   the UI needs only a route that posts the scenario and returns the mapped

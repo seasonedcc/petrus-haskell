@@ -248,9 +248,12 @@ Their tests map by kind:
 | `*_checker_*` (checker unit tests over Engine observations) | `Spec.EngineCheckers` | `Spec.EngineCheckers` over `joined-checkers.json` (21 tests: 17, 2, 1, 1) |
 
 Upstream test counts of the joined files: `test_joined_world.py` 67, `test_joined_creation_world.py`
-10, `test_joined_registration_world.py` 5, `test_joined_seal_world.py` 5. Upstream skips the 66
-PostgreSQL tests without `PETRUS_TEST_POSTGRES`; `Spec.JoinedWorlds` marks them pending, saying
-so.
+10, `test_joined_registration_world.py` 5, `test_joined_seal_world.py` 5. Upstream never skips
+the 66 PostgreSQL tests: its `postgres_dsn` fixture (the repository's root `conftest.py`) starts a
+throwaway PostgreSQL in Docker and fails the test, loudly, when Docker is unavailable ("a silent
+skip is not a pass"). Here `Spec.JoinedWorlds` goes pending without `PETRUS_TEST_POSTGRES`,
+saying so; `scripts/check-all` and CI always provide a server, so `scripts/check-pending` rejects
+that pending there.
 
 The non-joined files are:
 

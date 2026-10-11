@@ -18,7 +18,7 @@ tables, the method and the commands.
 ## How to check
 
 ```bash
-cabal test petrus-viewer-server                               # 99 examples
+cabal test petrus-viewer-server                               # 114 examples
 node packages/petrus-viewer-server/upstream-tests/run.mjs     # upstream suites
 node packages/petrus-viewer-server/bench/run.mjs --reps 15    # benchmarks
 ```
@@ -71,7 +71,7 @@ Each ratio compares the best Haskell server with the best Node server.
 
 **Evidence:**
 
-- `test/CliSpec.hs` (8 examples).
+- `test/CliSpec.hs` (10 examples).
 - Upstream `cli` (5/5).
 - Upstream `playwright` (4/4): the upstream browser suite against
   `petrus`.
@@ -279,7 +279,11 @@ the agent relay.
 **Status:** at parity. Simulation runs in the UI upstream as well.
 Upstream petrus-viewer never calls a simulation service:
 `simulation-http-v1`, ported in `petrus-simulation`, has no consumer in
-the pinned UI.
+the pinned UI. Its consumer upstream is plausibly Arx, the separately
+maintained editor and inspector that upstream's README names; upstream's
+`test_simulation_http.py` calls the service from the browser origin
+`http://localhost:5173`. Arx is private, so interop with it is untested
+(SCOPE.md).
 
 ### History replay and live watching (`/temporal`)
 
@@ -307,6 +311,11 @@ the pinned UI.
   - `petrus_trace_import` replays the finished run;
   - the UI ends up with the same history from both producers.
 - `live`: replay through `petrus_trace_import` with `PETRUS_HISTORY_URL`.
+- `test/ProxySpec.hs`: the `/temporal` proxy to a Temporal-like target
+  passes content codings through as Vite's http-proxy does. The browser's
+  `Accept-Encoding` arrives as sent, or absent when the browser sent none.
+  A `br`, `deflate` or `gzip` body comes back byte for byte, with its
+  `Content-Encoding`.
 
 **Performance:** the observation source has no Node counterpart: upstream
 proxies `/temporal` to Temporal. The proxy itself is benchmarked under the

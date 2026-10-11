@@ -14,6 +14,8 @@ module Petrus.Viewer.Mcp.Bridge
   , Bridge
   , newBridge
   , ensureBridge
+  , BridgeAction (..)
+  , bridgeActionName
   , sendBridgeRequest
   , BridgeStatus (..)
   , bridgeStatus
@@ -40,6 +42,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Network.WebSockets qualified as WS
+import Petrus.Viewer.Agent.Protocol (RequestAction (DocumentInspect), requestActionName)
 import Petrus.Viewer.Json
 import Petrus.Viewer.Log
 import Petrus.Viewer.Mcp.Reactor (Reactor, withSocketStream)
@@ -350,10 +353,25 @@ awaitOutcome b rid var timeoutMs = do
         modifyTVar' (pending b) (Map.delete rid)
         pure Nothing
 
+-- | The actions the MCP server asks the browser for: the agent protocol's
+-- request actions, and @canvas.screenshot@, which upstream sends outside
+-- @protocol.ts@ (the browser's @Provider.tsx@ handles it on its own), so it
+-- is not a 'RequestAction' an incoming message may carry.
+data BridgeAction
+  = ProtocolAction RequestAction
+  | CanvasScreenshot
+  deriving stock (Eq, Show)
+
+bridgeActionName :: BridgeAction -> Text
+bridgeActionName = \case
+  ProtocolAction a -> requestActionName a
+  CanvasScreenshot -> "canvas.screenshot"
+
 -- | @sendBridgeRequest(action, params)@: the response's result, or the
 -- error message the tool reports.
-sendBridgeRequest :: Bridge -> Text -> JsObject -> IO (Either Text (Maybe JsValue))
-sendBridgeRequest b actionText params = do
+sendBridgeRequest :: Bridge -> BridgeAction -> JsObject -> IO (Either Text (Maybe JsValue))
+sendBridgeRequest b action params = do
+  let actionText = bridgeActionName action
   cur <- currentActive b
   ready <- case cur of
     Just a -> pure (Right a)
@@ -397,8 +415,9 @@ hasBrowserUI b = do
   case cur of
     Nothing -> pure False
     Just a -> do
-      (rid, var) <- register b "ping" "document.inspect"
-      sendOn a (requestEnvelope rid "document.inspect" emptyObject)
+      let inspect = requestActionName DocumentInspect
+      (rid, var) <- register b "ping" inspect
+      sendOn a (requestEnvelope rid inspect emptyObject)
       out <- awaitOutcome b rid var 1500
       pure $ case out of
         Just (Right _) -> True
