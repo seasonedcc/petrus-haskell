@@ -17,6 +17,7 @@ import Petrus.Motus.Transport.ZeroMQ.Cli (serverMainWith)
 import Petrus.Motus.Transport.ZeroMQ.InteropSpec qualified as InteropSpec
 import Petrus.Motus.Transport.ZeroMQ.Support (localWorker, serverModeVariable)
 import Petrus.Motus.Transport.ZeroMQ.TransportSpec qualified as TransportSpec
+import Petrus.Motus.Transport.ZeroMQ.WirePropertiesSpec qualified as WirePropertiesSpec
 import System.Environment (getArgs, lookupEnv)
 import System.IO (hFlush, stdout)
 import Test.Hspec
@@ -30,6 +31,7 @@ main =
       describe "test_zeromq_dispatch_transport.py" TransportSpec.spec
       describe "ZeroMQ interop with the reference" InteropSpec.spec
       BoundarySpec.spec
+      WirePropertiesSpec.spec
 
 -- | The reference's @_start_delayed_completion_server_process@ script: a
 -- server whose completion commits, records that it did, and then hangs

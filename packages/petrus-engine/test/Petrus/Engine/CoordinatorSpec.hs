@@ -8,6 +8,7 @@
 module Petrus.Engine.CoordinatorSpec (spec) where
 
 import Control.Exception (ErrorCall (..), IOException, bracket, throwIO)
+import Data.Either (isLeft)
 import Data.Foldable (toList)
 import Data.IORef
 import Data.Map.Strict qualified as Map
@@ -45,6 +46,7 @@ import Petrus.Motus.Dispatch.InMemory (InMemoryDispatch, completeOccurrence, fai
 import System.Directory (createDirectoryIfMissing, getTemporaryDirectory, removeDirectoryRecursive)
 import System.FilePath ((</>))
 import Test.Hspec hiding (before, errorCall, pending)
+import Test.QuickCheck (Gen, Property, conjoin, counterexample, elements, forAll, oneof, property, shuffle, sublistOf, (===))
 
 a1, t1, b1, a2, t2, b2, a, t, b, src :: NetPath
 a1 = np "a1"
@@ -212,6 +214,40 @@ refusingHistory = do
         if refusing then ioError (userError "disk full") else inner.extend records
   pure (inner {extend = extend'}, refused)
 
+-- | Every kind of action a live instance offers, and its in-flight views.
+policyPool :: IO ([Engine.Action], [Engine.InFlightView])
+policyPool = do
+  inst <- independentInstance
+  begun <- bindingOf inst 0
+  occurrence <- I.begin inst begun Nothing >>= expectRight
+  candidates' <- I.candidates inst
+  vs <- views inst
+  let deliver name = Engine.AcceptDelivery (mkDelivery src [tok "X"] name)
+  pure
+    ( [ Engine.AcceptResult occurrence.occurrence (Succeeded ok)
+      , deliver "property-1"
+      , deliver "property-2"
+      , Engine.AdvanceTime 9
+      , Engine.Wait
+      , Engine.Stop
+      , Engine.BeginCandidate begun
+      ]
+        <> map Engine.BeginCandidate candidates'
+    , vs
+    )
+
+snapshotOf :: [Engine.Action] -> [Engine.InFlightView] -> Gen Engine.Snapshot
+snapshotOf offered inFlight = do
+  actions <- sublistOf offered >>= shuffle
+  views' <- sublistOf inFlight
+  previous <- oneof [pure Nothing, Just <$> elements offered]
+  pure (Engine.Snapshot actions views' previous)
+
+drawnFrom :: (Engine.Snapshot -> Either Text Engine.Action) -> Engine.Snapshot -> Property
+drawnFrom policy snapshot = case policy snapshot of
+  Right action -> counterexample ("chose an action not offered: " <> show action) (action `elem` snapshot.actions)
+  Left _ -> property True
+
 -- ---------------------------------------------------------------------------
 
 spec :: Spec
@@ -291,6 +327,19 @@ spec = do
         Left (Refused message) -> message `shouldSatisfy` T.isInfixOf "stale selection"
         other -> expectationFailure ("expected a stale-selection refusal, got " <> either show show other)
       I.inFlight inst `shouldReturn` [firstOccurrence]
+
+  -- Port-only: the laws every snapshot obeys, over random offers drawn from
+  -- one live instance's actions (results, ingress, time, waits, stops, an
+  -- independent begin and one that collides with the in-flight work).
+  describe "built-in driving policies (properties)" $
+    beforeAll policyPool $
+      it "choose an offered action, and the conservative one always chooses" $ \(offered, inFlight) ->
+        forAll (snapshotOf offered inFlight) $ \snapshot ->
+          conjoin
+            [ drawnFrom Engine.chooseConservative snapshot
+            , drawnFrom Engine.chooseThroughput snapshot
+            , counterexample "conservative refused a non-empty offer" (isLeft (Engine.chooseConservative snapshot) === null snapshot.actions)
+            ]
 
   describe "TestOneActionDrive" $ do
     it "each drive applies at most one normal action" $ do

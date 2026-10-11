@@ -78,6 +78,7 @@ test-suite petrus-motus-zeromq-test
                     Petrus.Motus.Transport.ZeroMQ.TransportSpec
                     Petrus.Motus.Transport.ZeroMQ.InteropSpec
                     Petrus.Motus.Transport.ZeroMQ.BoundarySpec
+                    Petrus.Motus.Transport.ZeroMQ.WirePropertiesSpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -91,6 +92,7 @@ test-suite petrus-motus-zeromq-test
                   , petrus-motus-zeromq
                   , petrus-test-support
                   , process >=1.6
+                  , QuickCheck >=2.14
                   , text
                   , unix
   ghc-options:      -threaded -rtsopts
