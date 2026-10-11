@@ -21,7 +21,9 @@ against the pinned Python, and the parity table. CI runs the same
 | PostgreSQL 17 (`initdb`, `pg_ctl`) **or** Docker | 17.x | the PostgreSQL suites and benchmarks |
 | Node.js | 22 | the Gondolin sidecar and Pi helper suites; the petrus-viewer suites and the viewer benchmark (with pnpm) |
 | Graphviz (`dot`) | any | petrus-impetus's diagram rendering tests |
-| bash | 4.4 or later | hamsterdan-operator's secret-launch tests (macOS ships bash 3.2) |
+| bash | 4.4 or later | hamsterdan-operator's secret-launch tests (macOS ships bash 3.2). They use `$PETRUS_BASH` when it is set, else the first bash of at least 4.4 among `bash` on `PATH`, `/opt/homebrew/bin/bash` and `/usr/local/bin/bash` |
+
+A suite whose tool is missing fails and names the tool; it does not skip.
 
 On macOS with Homebrew:
 
