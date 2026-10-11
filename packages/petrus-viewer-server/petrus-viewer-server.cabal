@@ -61,6 +61,7 @@ library
                     Petrus.Viewer.Mcp.Schema
                     Petrus.Viewer.Mcp.Bridge
                     Petrus.Viewer.Mcp.History
+                    Petrus.Viewer.Mcp.Reactor
                     Petrus.Viewer.Mcp.Server
                     Petrus.Viewer.WsUrl
                     Petrus.Viewer.Log
@@ -109,7 +110,7 @@ executable petrus-mcp
   hs-source-dirs:   app/petrus-mcp
   main-is:          Main.hs
   build-depends:    base, petrus-viewer-server
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N2"
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N1 -qg -A16m"
 
 executable petrus-collab
   import:           warnings
@@ -194,12 +195,16 @@ benchmark petrus-viewer-bench
                   , directory
                   , filepath
                   , http-client
+                  , http-types
                   , network
                   , petrus-viewer-server
+                  , process
                   , stm
                   , text
                   , time
                   , unix
+                  , wai
+                  , warp
                   , websockets
   -- two capabilities: enough to keep any of the servers busy, and the same
   -- client cost against every server

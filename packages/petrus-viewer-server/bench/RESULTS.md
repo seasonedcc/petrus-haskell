@@ -11,6 +11,7 @@ From the repository root (`scripts/bench petrus-viewer-server` runs exactly this
 <!-- scripts/bench: rerun -->
 ```sh
 test -d upstream/petrus-viewer/node_modules || (cd upstream/petrus-viewer && pnpm install --frozen-lockfile)
+test -f upstream/petrus-viewer/dist/index.html || (cd upstream/petrus-viewer && pnpm build)
 node packages/petrus-viewer-server/bench/run.mjs
 ```
 
@@ -23,6 +24,7 @@ node packages/petrus-viewer-server/bench/run.mjs --reps 15 --json out.json  # th
 node packages/petrus-viewer-server/bench/run.mjs --bin-dir DIR   # prebuilt petrus, petrus-collab, petrus-viewer-bench
 node packages/petrus-viewer-server/bench/run.mjs --quick         # 1 short rep
 node packages/petrus-viewer-server/bench/run.mjs --only "open-file|resolve-ref"  # scenarios by name
+node packages/petrus-viewer-server/bench/run.mjs --only "GET /|GET the|MCP|cold start"  # run G
 node packages/petrus-viewer-server/bench/run.mjs --rts "-N4"     # other RTS options for petrus
 cabal run petrus-viewer-bench -- micro --file upstream/petrus-viewer/examples/sample-net.json
 ```
@@ -32,7 +34,9 @@ The runner starts every server once on its own non-default port (from
 repetition, rotating which server goes first), prints the median and the
 best run of each server and the Haskell / Node ratio within each round,
 and stops the servers by PID. `petrus-viewer-bench` runs with
-`+RTS -M2G -RTS`. The `micro` mode times single library calls in process
+`+RTS -M2G -RTS`. The static, `/temporal` and cold-start scenarios need
+the built UI (`pnpm build` in `upstream/petrus-viewer`); the `/temporal`
+scenarios need port 7243 free, since Vite's proxy target is fixed. The `micro` mode times single library calls in process
 (wall clock, `GHC.Clock`); it has no Node counterpart and is for profiling
 only.
 
@@ -46,6 +50,12 @@ only.
 | node (bare baseline) | `bench/node-baseline.mjs`: the upstream `attachOpenFileEndpoint` and the upstream relay logic on bare `node:http` + `ws`, no relay lines (Node's best case) |
 | haskell (petrus-collab) | `petrus-collab P` |
 | node (server/collab.mjs) | upstream `node server/collab.mjs P` |
+| haskell (petrus), static and `/temporal` rows | the same `petrus`, with `--ui-dir upstream/petrus-viewer/dist` (the `pnpm build` output) |
+| node (vite preview) | upstream `vite preview --port P --strictPort`: serves `dist/` like `petrus` does |
+| haskell (petrus-mcp) | `petrus-mcp` (stdio), bridged to an agent relay (`petrus`, relay log off) |
+| node (server/mcp.mjs) | upstream `node server/mcp.mjs` (stdio), bridged to the same relay |
+| haskell (petrus FILE) | `petrus --no-open --ui-dir upstream/petrus-viewer/dist FILE` |
+| node (bin/petrus.mjs FILE) | upstream `node bin/petrus.mjs --no-open FILE` (it runs `pnpm exec vite`) |
 
 ## Scenarios
 
@@ -55,6 +65,10 @@ only.
 | open-file POST+GET | `POST /__petrus/open-file {path}` then `GET /__petrus/open-file` (reads the 3.3 KB sample net); with 16 clients, in lockstep rounds (below) |
 | resolve-ref | `POST /__petrus/resolve-ref {ref: "./B.json", basePath: "file:///…/A.json"}` (resolves the URL, reads the file, returns it as a JSON string) |
 | collab fan-out, P peers x M msgs | one peer sends M cursor messages; one op = one delivery to one of the P other peers |
+| GET / (index.html), the JS bundle, /sample-net.json | a static `GET` of the UI's page (389 B; the Vite dev server sends its 548 B dev page), its 592 KiB bundle (built servers only), and the sample net (3.3 KB) |
+| GET /temporal/... (proxied) | a `GET` through the server's `/temporal` proxy to `localhost:7243`, where `petrus-viewer-bench backend` (Warp) answers every request with the same 2.3 KB JSON |
+| MCP tool, C calls in flight | one `tools/call` line on the server's stdin, answered on its stdout: `petrus_inspect_document {includeSchema: true}` (a bridge request to the browser, whose 2.4 KB answer the server formats as the tool result) or `petrus_status` (no bridge request); the load client is the agent and, over a WebSocket to the relay, the browser |
+| cold start | spawn the server for a net file, until `GET /__petrus/open-file` returns the file and `GET /` returns the UI; then stop the process group and wait for the port to close |
 
 The HTTP scenarios give every server the same work, and the runner checks
 it: every run of a scenario must have the same counts of 200, 204 and
@@ -81,7 +95,10 @@ rather than a fraction of one.
 
 ## Results
 
-Run F is the final code: every scenario is above 1.0× by median and by
+Run G covers the static UI, the `/temporal` proxy, the MCP server and
+cold start: every one of its scenarios is above 1.0× in every round (the
+lowest round is 1.07x). Run F is the final code for the other scenarios:
+every scenario is above 1.0× by median and by
 best run. Single rounds below 1.0× remain in the 1-client endpoint
 scenarios (lowest 0.78x) and once at 16 clients (0.97x); "Reading the
 results" explains them. Run E measured the endpoints of the same code,
@@ -140,6 +157,112 @@ Lowest Haskell / Node ratio within a round:
 | resolve-ref, 16 clients | 1.01x | 0.84x | 1.07x | 1.06x |
 | collab fan-out, 50 peers x 1000 msgs | 3.87x | 3.91x | | 3.79x |
 | collab fan-out, 200 peers x 200 msgs | 3.78x | 3.92x | | 3.21x |
+
+### Run G (static UI, `/temporal`, MCP and cold start; 5 reps; load average 5.9 → 6.8)
+
+The scenarios that run F did not cover, on the final code (`--only "GET /|GET the|MCP|cold start"`).
+The other scenarios' code is unchanged since run F. In the static and
+`/temporal` rows, "Haskell / Node" compares `petrus` with the faster of
+the Vite dev server and `vite preview`. The Vite dev server serves its
+development page and does not serve the built bundle.
+
+#### Static UI (`dist/`)
+
+| scenario | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
+|---|---:|---:|---:|---:|
+| GET / (index.html), 1 client | 22003 (43 / 87) | 9478 (95 / 257) | 13658 (68 / 149) | 1.61x |
+| GET / (index.html), 16 clients | 40523 (384 / 620) | 16723 (884 / 2249) | 28627 (536 / 965) | 1.42x |
+| GET the JS bundle (592 KiB), 16 clients | 19711 (766 / 1610) |  | 6126 (2557 / 4058) | 3.22x |
+| GET /sample-net.json, 16 clients | 37915 (412 / 590) | 19370 (603 / 3079) | 20112 (738 / 1806) | 1.89x |
+| server RSS after run (MiB) | 53 | 135 | 83 | |
+
+Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+| scenario (best of 5) | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
+|---|---:|---:|---:|---:|
+| GET / (index.html), 1 client | 24195 | 10335 | 14744 | 1.64x |
+| GET / (index.html), 16 clients | 40957 | 18106 | 31223 | 1.31x |
+| GET the JS bundle (592 KiB), 16 clients | 20160 |  | 6217 | 3.24x |
+| GET /sample-net.json, 16 clients | 38954 | 32700 | 21728 | 1.19x |
+
+| scenario | Haskell / Node in each round (best of each side) | min |
+|---|---|---:|
+| GET / (index.html), 1 client | 1.74 1.68 1.64 1.51 1.65 | 1.51x |
+| GET / (index.html), 16 clients | 1.41 1.42 1.27 1.38 1.31 | 1.27x |
+| GET the JS bundle (592 KiB), 16 clients | 3.17 3.25 2.82 3.29 3.60 | 2.82x |
+| GET /sample-net.json, 16 clients | 1.07 1.21 1.74 2.09 1.58 | 1.07x |
+
+#### The `/temporal` proxy
+
+| scenario | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
+|---|---:|---:|---:|---:|
+| GET /temporal/... (proxied), 1 client | 7103 (136 / 229) | 2128 (435 / 1062) | 2042 (437 / 1241) | 3.34x |
+| GET /temporal/... (proxied), 16 clients | 12594 (1245 / 1835) | 5698 (2617 / 6491) | 5887 (2351 / 7497) | 2.14x |
+| server RSS after run (MiB) | 53 | 135 | 83 | |
+
+Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+| scenario (best of 5) | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
+|---|---:|---:|---:|---:|
+| GET /temporal/... (proxied), 1 client | 8290 | 2179 | 2205 | 3.76x |
+| GET /temporal/... (proxied), 16 clients | 15398 | 6058 | 6016 | 2.54x |
+
+| scenario | Haskell / Node in each round (best of each side) | min |
+|---|---|---:|
+| GET /temporal/... (proxied), 1 client | 3.45 3.35 3.26 3.14 4.12 | 3.14x |
+| GET /temporal/... (proxied), 16 clients | 2.54 2.08 2.06 2.24 2.00 | 2.00x |
+
+#### MCP `tools/call` round trip
+
+| scenario | haskell (petrus-mcp) | node (server/mcp.mjs) | Haskell / Node |
+|---|---:|---:|---:|
+| MCP petrus_inspect_document, 1 call at a time | 4589 (202 / 439) | 3827 (238 / 664) | 1.20x |
+| MCP petrus_inspect_document, 16 calls in flight | 11896 (1254 / 2660) | 9239 (1542 / 4330) | 1.29x |
+| MCP petrus_status, 1 call at a time | 6180 (154 / 298) | 4735 (183 / 521) | 1.31x |
+
+Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+| scenario (best of 5) | haskell (petrus-mcp) | node (server/mcp.mjs) | Haskell / Node |
+|---|---:|---:|---:|
+| MCP petrus_inspect_document, 1 call at a time | 4630 | 3876 | 1.19x |
+| MCP petrus_inspect_document, 16 calls in flight | 12223 | 10111 | 1.21x |
+| MCP petrus_status, 1 call at a time | 6417 | 4928 | 1.30x |
+
+| scenario | Haskell / Node in each round (best of each side) | min |
+|---|---|---:|
+| MCP petrus_inspect_document, 1 call at a time | 1.30 1.20 1.19 1.30 1.17 | 1.17x |
+| MCP petrus_inspect_document, 16 calls in flight | 1.22 1.32 1.40 1.12 1.43 | 1.12x |
+| MCP petrus_status, 1 call at a time | 1.31 1.30 1.23 1.24 1.44 | 1.23x |
+
+#### Cold start
+
+| scenario | haskell (petrus FILE) | node (bin/petrus.mjs FILE) | Haskell / Node |
+|---|---:|---:|---:|
+| cold start until the file and UI are served | 85.83 (11575 / 12862) | 2.66 (377930 / 387062) | 32.27x |
+
+Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+| scenario (best of 5) | haskell (petrus FILE) | node (bin/petrus.mjs FILE) | Haskell / Node |
+|---|---:|---:|---:|
+| cold start until the file and UI are served | 95.11 | 2.71 | 35.10x |
+
+| scenario | Haskell / Node in each round (best of each side) | min |
+|---|---|---:|
+| cold start until the file and UI are served | 33.79 31.56 35.49 31.01 35.59 | 31.01x |
+
+Server CPU per MCP call (user + system time of the server process over
+the timed calls, from `ps`; the medians' runs):
+
+| scenario | haskell (petrus-mcp) | node (server/mcp.mjs) |
+|---|---:|---:|
+| petrus_inspect_document, 1 call at a time | 50 + 20 us | 155 + 25 us |
+| petrus_inspect_document, 16 calls in flight | 53.1 + 16.3 us | 171.3 + 13.1 us |
+| petrus_status, 1 call at a time | 25 + 20 us | 140 + 27.5 us |
+
+Through Vite, every `/temporal` request was answered with
+`Connection: close` (4000 and 8000 reconnects per run, one per request);
+the load client reopens its connection, as a browser does, and that time
+is part of Vite's latencies.
 
 ### Run F (the HTTP front, final code; 15 reps; load average 5.1 → 9.0)
 
@@ -359,6 +482,23 @@ log off on both sides (interleaved, 5 reps, load average about 5): 16 pairs
 
 ## Reading the results
 
+- **Static UI: 1.4–3.2x `vite preview`** by median (run G), and at
+  least 1.07x in every round. Warp sends files with `sendfile`, and
+  `petrus` keeps its one capability for it; the 592 KiB bundle is where
+  the gap is widest (3.2x). The Vite dev server is slower still: it
+  transforms its development page on every request.
+- **`/temporal` proxy: 3.3x Vite (1 client) and 2.1x (16 clients).**
+  Vite's proxy opens a new connection to Temporal for every request and
+  closes the browser's connection after each answer; `petrus` keeps both
+  alive (see [DIVERGENCES.md](../DIVERGENCES.md)).
+- **MCP: 1.20–1.31x `server/mcp.mjs`** by median and at least 1.12x in
+  every round, for a call that goes through the browser bridge and for
+  one that does not, one at a time and 16 in flight. Per call, `petrus-mcp`
+  uses about a third of Node's CPU time (70 us against 185 us with the
+  bridge).
+- **Cold start: about 32x.** `petrus FILE` serves the file and the UI
+  11.6 ms after it is spawned (median); `bin/petrus.mjs`, which starts
+  Vite through `pnpm exec vite`, takes 378 ms.
 - **Collaboration fan-out: Haskell is 3.9–4.5x Node** by median in runs
   C, D and F, and at least 3.2x in every round.
 - **Agent relay: Haskell is ahead of the bare-`ws` Node relay**, Node's
@@ -444,13 +584,33 @@ log off on both sides (interleaved, 5 reps, load average about 5): 16 pairs
   through GHC's I/O manager on every wait. With the lean C client, a
   `GET` that answers 204 now takes 11.7 µs (Warp: 18.8 µs, Node: about
   19 µs).
+- **The MCP server.** Before this work, with 16 calls in flight,
+  `petrus-mcp` was slower than Node (about 9k against 12–15k calls/s) and
+  saturated its one busy core at about 88 + 26 us of user and system time
+  per call. A ticky profile put most of the allocation in the pretty
+  printer, a `Builder`. Three changes:
+  - `JSON.stringify(v, null, 2)`, the text of most tool results, is now
+    measured and written into one buffer, like the compact encoder. The
+    text goes into the result as an already escaped JSON string, without
+    a round trip through `Text`. This is the change that cut the CPU time:
+    about 38 + 9 us per call at 16 in flight with `-N1`, in interleaved
+    A/B runs against Node.
+  - Standard input and the bridge WebSocket are served from one event loop
+    (`Petrus.Viewer.Mcp.Reactor` on `Petrus.Viewer.EventLoop`), like the
+    relays. Both stay registered with kqueue/epoll, and a turn reads
+    whatever is ready, instead of one wait in GHC's I/O manager per line
+    and per frame. On its own this made no difference the A/B runs could
+    tell from noise; it removes a thread hand-off per message.
+  - `PETRUS_PERF` lines go to standard error like the relay's timing
+    lines: one unsafe `write` to a file or a terminal, a background writer
+    for a pipe.
 - **HTTP handlers.** File reads are unsafe foreign calls shaped like
   `readFileSync`: one call opens the file and learns its size
   (`cbits/file_io.c`), then the file is read up to that size. `resolve-ref`
   resolves plain relative paths against `file:///` bases without the URL
   state machine (property-tested against it). JSON string escaping is a
   small C routine (`cbits/json_escape.c`).
-- **RTS defaults** for `petrus` and `petrus-collab`: `-N1 -qg -A16m`. That
+- **RTS defaults** for `petrus`, `petrus-collab` and `petrus-mcp`: `-N1 -qg -A16m`. That
   is one capability, like Node's one event loop. Request handling is short
   and I/O bound, and every extra capability adds cross-thread wake-ups to
   each request: `resolve-ref` at 16 clients ran 22.9–25.9k ops/s with
@@ -460,7 +620,10 @@ log off on both sides (interleaved, 5 reps, load average about 5): 16 pairs
   measured against it in the same interleaved rounds (11 reps). The
   medians moved by −13% (open-file, 1 client), +2% (open-file, 16
   clients), −2% (resolve-ref, 1 client) and +9% (resolve-ref, 16
-  clients). That is no consistent gain, so the defaults stay. Override with
-  `+RTS … -RTS` (or `--rts` in the runner).
+  clients). That is no consistent gain, so the defaults stay. `petrus-mcp`
+  ran `-N2` before run G; with 16 calls in flight, `-N1 -qg -A16m` served
+  as many calls per second (17.3–20.3k against 16.5–20.5k over three
+  interleaved rounds) for less CPU (37 + 8 us per call against 45 + 20 us).
+  Override with `+RTS … -RTS` (or `--rts` in the runner).
 - **Memory.** `petrus` holds 82–86 MiB after runs A–D and 50–55 MiB after runs E–F; Vite holds 46–108
   MiB. `+RTS -M…` caps it if needed.

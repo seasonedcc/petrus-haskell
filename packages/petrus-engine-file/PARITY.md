@@ -88,6 +88,11 @@ afterwards and error line. The scenarios cover:
 - `RecursionError` at the CLI's nesting limit (990 levels formatted, 991
   refused) for lists, objects, and place and arc metadata.
 
+As a process, start to exit, `petrus-format-json` is 2.3–5.1× faster than
+`python -m petrus.cli.format_json` (at least 2.2× in every round), from
+one 2 KB file to one 2 MB file and 100 files in place
+([bench/RESULTS.md](bench/RESULTS.md#the-format-command-as-a-process)).
+
 ## 4. The JSON Schema
 
 petrus-engine exports the file format as a JSON Schema,

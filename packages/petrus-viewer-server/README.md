@@ -151,6 +151,7 @@ client (`petrus-viewer-bench`); results and commands are in
 | `Petrus.Viewer.Endpoints`, `FileIO` | `server/openFileEndpoint.mjs` |
 | `Petrus.Viewer.UrlCache` | `server/urlCache.mjs` |
 | `Petrus.Viewer.Mcp.Server`, `Schema`, `Bridge`, `History` | `server/mcp.mjs` |
+| `Petrus.Viewer.EventLoop`, `Mcp.Reactor` | Node's event loop: one thread on kqueue/epoll (`cbits/relay_io.c`) for the relays, the HTTP front, and `petrus-mcp`'s stdin and bridge socket |
 | `Petrus.Viewer.Agent.Protocol` | `src/agent/protocol.ts` (the typed petrus-agent envelope) |
 | `Petrus.Viewer.History.Observation` | none: Temporal history API from observation producers |
 | `Petrus.Viewer.Json`, `Json.Number` | V8 `JSON.parse` / `JSON.stringify` / `Number#toString` |

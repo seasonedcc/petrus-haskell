@@ -42,6 +42,7 @@ import Data.Text qualified as T
 import Network.WebSockets qualified as WS
 import Petrus.Viewer.Json
 import Petrus.Viewer.Log
+import Petrus.Viewer.Mcp.Reactor (Reactor, withSocketStream)
 import Petrus.Viewer.UiDir (locateUiDir)
 import Petrus.Viewer.WsUrl
 import System.Directory (doesFileExist, findExecutable)
@@ -120,7 +121,7 @@ newtype PerfLog = PerfLog (Maybe Logger)
 mkPerfLog :: IO PerfLog
 mkPerfLog = do
   v <- lookupEnv "PETRUS_PERF"
-  if v == Just "0" then pure (PerfLog Nothing) else PerfLog . Just <$> newLogger stderr
+  if v == Just "0" then pure (PerfLog Nothing) else PerfLog . Just <$> newConsoleLogger 0 stderr 2
 
 -- | @[petrus-perf] <ISO time> <label> <json>@ on stderr.
 perfLog :: PerfLog -> ByteString -> [(Text, JsValue)] -> IO ()
@@ -148,6 +149,8 @@ data Pending = Pending
 data Bridge = Bridge
   { config :: BridgeConfig
   , perf :: PerfLog
+  , reactor :: Reactor
+  -- ^ the event loop the bridge connections are read on
   , active :: TVar (Maybe Active)
   , clientId :: TVar JsValue
   , pending :: TVar (Map JsString Pending)
@@ -156,9 +159,9 @@ data Bridge = Bridge
   , ensureLock :: MVar ()
   }
 
-newBridge :: BridgeConfig -> PerfLog -> IO Bridge
-newBridge cfg pl =
-  Bridge cfg pl
+newBridge :: BridgeConfig -> PerfLog -> Reactor -> IO Bridge
+newBridge cfg pl r =
+  Bridge cfg pl r
     <$> newTVarIO Nothing
     <*> newTVarIO JsNull
     <*> newTVarIO Map.empty
@@ -192,7 +195,7 @@ connectBridgeAt b url = do
   case parseWsUrl url of
     Left _ -> finish False
     Right target -> void . forkIO $ do
-      r <- try @SomeException . runWsClient target WS.defaultConnectionOptions $ \conn -> do
+      r <- try @SomeException . runWsClient (withSocketStream (reactor b)) target WS.defaultConnectionOptions $ \conn -> do
         openVar <- newTVarIO True
         lock <- newMVar ()
         let me = Active url conn openVar lock

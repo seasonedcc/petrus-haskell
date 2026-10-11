@@ -1,7 +1,8 @@
 {-# LANGUAGE MultiWayIf #-}
 
--- | The event-loop substrate shared by the relays ("Petrus.Viewer.Relay")
--- and the HTTP front ("Petrus.Viewer.HttpFront"): one thread that owns a
+-- | The event-loop substrate shared by the relays ("Petrus.Viewer.Relay"),
+-- the HTTP front ("Petrus.Viewer.HttpFront") and @petrus-mcp@'s stdin and
+-- bridge socket ("Petrus.Viewer.Mcp.Reactor"): one thread that owns a
 -- kqueue or epoll set (@cbits/relay_io.c@), the way Node's event loop
 -- owns its sockets.
 --
@@ -31,6 +32,8 @@ module Petrus.Viewer.EventLoop
   , watchWrite
     -- * Non-blocking socket I/O
   , recvSocket
+  , readNonBlocking
+  , setNonBlocking
   , writeChunks
   , closeFd
   ) where
@@ -63,6 +66,8 @@ foreign import ccall unsafe "prelay_poll_wait" c_pollNow :: CInt -> Ptr CInt -> 
 -- the blocking wait releases the capability while it waits
 foreign import ccall safe "prelay_poll_wait" c_pollBlock :: CInt -> Ptr CInt -> Ptr CInt -> CInt -> CInt -> IO CInt
 foreign import ccall unsafe "prelay_recv" c_recv :: CInt -> Ptr Word8 -> CLong -> IO CLong
+foreign import ccall unsafe "prelay_read" c_read :: CInt -> Ptr Word8 -> CLong -> IO CLong
+foreign import ccall unsafe "prelay_set_nonblocking" c_setNonBlocking :: CInt -> IO CInt
 foreign import ccall unsafe "prelay_sendv" c_sendv :: CInt -> Ptr (Ptr Word8) -> Ptr CLong -> CInt -> IO CLong
 foreign import ccall unsafe "prelay_pipe" c_pipe :: Ptr CInt -> IO CInt
 foreign import ccall unsafe "prelay_wake" c_wake :: CInt -> IO ()
@@ -198,6 +203,15 @@ watchWrite loop fd on = () <$ c_pollWrite (pollerFd loop) fd (if on then 1 else 
 -- of the stream, -2 when nothing is there, -1 on error.
 recvSocket :: CInt -> Ptr Word8 -> Int -> IO Int
 recvSocket fd p len = fromIntegral <$> c_recv fd p (fromIntegral len)
+
+-- | @read@ from a non-blocking descriptor (a pipe), with 'recvSocket''s
+-- results.
+readNonBlocking :: CInt -> Ptr Word8 -> Int -> IO Int
+readNonBlocking fd p len = fromIntegral <$> c_read fd p (fromIntegral len)
+
+-- | Put a descriptor in non-blocking mode; negative on failure.
+setNonBlocking :: CInt -> IO CInt
+setNonBlocking = c_setNonBlocking
 
 closeFd :: CInt -> IO ()
 closeFd fd = () <$ c_close fd

@@ -95,6 +95,18 @@ listed here.
   stdout a moment after the message was forwarded, and lines still queued
   when the process is killed are lost. The lines are the same (their
   `toISOString` timestamps can differ by microseconds).
+- **MCP standard streams.** When standard input or output is a pipe or a
+  socket, `petrus-mcp` puts it in non-blocking mode and serves it from its
+  event loop, as libuv does for Node's pipes; a file or a terminal is read
+  and written as before. `PETRUS_PERF` lines on standard error follow the
+  relay timing log's rule below: synchronous to a file or a terminal,
+  written in batches by a background thread to a pipe.
+- **`/temporal` proxy connections.** Vite's proxy (`http-proxy` without an
+  agent) asks Temporal to close every connection and answers the browser
+  with `Connection: close`, so each proxied request opens two new TCP
+  connections. `petrus` keeps both the browser's connection and its
+  connections to Temporal alive, and streams the body with chunked
+  transfer coding instead of copying Temporal's `Content-Length`.
 - **Response framing.** `/__petrus/open-file` and `/__petrus/resolve-ref`
   answer with Node's bytes: status line, headers in Node's order (the
   handler's, `Date`, `Connection: keep-alive` + `Keep-Alive: timeout=5` or
