@@ -16,16 +16,19 @@
  *
  * Options:
  *   --bin-dir <dir>     use these executables (petrus, petrus-mcp,
- *                       petrus-collab, petrus-viewer-oracle) instead of
+ *                       petrus-collab, petrus-viewer-oracle,
+ *                       petrus-viewer-server-test) instead of
  *                       building with cabal
  *   --skip-playwright   skip the headless-browser suites
  *   --keep              keep the scratch directory
  *
  * Suites: relay, endpoints, url-cache, cli, mcp, mcp-haskell-relay, collab,
- * differential, playwright, live (default: all).
+ * differential, wire, playwright, live, history (default: all).
  *
  * Requirements: pnpm install (and pnpm build for the browser suites) in
- * upstream/petrus-viewer; `npx playwright install chromium` for playwright.
+ * upstream/petrus-viewer; `npx playwright install chromium` for playwright;
+ * the history suite also runs the pinned Python reference producer through
+ * scripts/upstream-python.
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -39,6 +42,9 @@ const PACKAGE = path.resolve(HERE, "..");
 const REPO = path.resolve(PACKAGE, "../..");
 const VIEWER = path.join(REPO, "upstream/petrus-viewer");
 const EXECUTABLES = ["petrus", "petrus-mcp", "petrus-collab", "petrus-viewer-oracle"];
+// the test executable doubles as the Haskell observation producer
+// (--chain-producer, test/ChainProducer.hs) for the history suite
+const TEST_EXECUTABLE = "petrus-viewer-server-test";
 
 const args = process.argv.slice(2);
 const opt = (name) => {
@@ -110,6 +116,9 @@ const SUITES = {
   differential: {
     own: ["differential.test.mjs"],
   },
+  wire: {
+    own: ["ws-wire.test.mjs"],
+  },
   playwright: {
     browser: true,
     files: ["tests/playwright/bridge-live.test.mjs"],
@@ -125,6 +134,10 @@ const SUITES = {
     browser: true,
     own: ["live-mcp.test.mjs"],
   },
+  history: {
+    browser: true,
+    own: ["history-live.test.mjs"],
+  },
 };
 
 function log(msg) {
@@ -133,14 +146,15 @@ function log(msg) {
 
 function resolveBinaries() {
   if (binDir) return path.resolve(binDir);
-  log("building the Haskell executables (cabal build petrus-viewer-server:exes)...");
-  execFileSync("cabal", ["build", "-v0", "petrus-viewer-server:exes"], { cwd: REPO, stdio: "inherit" });
+  log("building the Haskell executables (cabal build petrus-viewer-server:exes and its test)...");
+  const test = `petrus-viewer-server:test:${TEST_EXECUTABLE}`;
+  execFileSync("cabal", ["build", "-v0", "--enable-tests", "petrus-viewer-server:exes", test], { cwd: REPO, stdio: "inherit" });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "petrus-hs-bin-"));
-  for (const exe of EXECUTABLES) {
-    const bin = execFileSync("cabal", ["list-bin", "-v0", `petrus-viewer-server:exe:${exe}`], { cwd: REPO })
+  for (const [name, target] of [...EXECUTABLES.map((exe) => [exe, `petrus-viewer-server:exe:${exe}`]), [TEST_EXECUTABLE, test]]) {
+    const bin = execFileSync("cabal", ["list-bin", "-v0", "--enable-tests", target], { cwd: REPO })
       .toString()
       .trim();
-    fs.symlinkSync(bin, path.join(dir, exe));
+    fs.symlinkSync(bin, path.join(dir, name));
   }
   return dir;
 }
@@ -207,6 +221,7 @@ function main() {
     PETRUS_HS_BIN_DIR: binDir,
     PETRUS_HS_UI_DIR: uiDir,
     PETRUS_HS_VIEWER_DIR: VIEWER,
+    PETRUS_HS_PACKAGE_DIR: PACKAGE,
     PETRUS_HS_SPEC_DIR: path.join(REPO, "upstream/petrus/spec"),
   };
   log(`scratch directory: ${work}`);

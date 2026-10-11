@@ -1,3 +1,5 @@
+{-# LANGUAGE MultiWayIf #-}
+
 -- | The two WebSocket relays of the viewer backend.
 --
 -- * The agent relay (@/ws/agent@, the @agentRelay@ Vite plugin) connects the
@@ -10,48 +12,72 @@
 -- (overwriting any spoofed value), deliver to one target when the target
 -- field is truthy, and otherwise broadcast to everyone but the sender.
 --
--- Routing is one STM transaction per event, so every client observes the
--- same total order of relay events, exactly like the single-threaded Node
--- event loop. Each client has its own outbound queue and writer thread, so
--- a slow receiver never blocks a sender (Node's @ws.send@ never blocks
--- either).
+-- = How a relay runs
 --
--- All threads of one relay run on one capability (@forkOn@). Relay work is
--- a chain of hand-offs between threads (reader, queue, writer); across
--- capabilities each hand-off wakes another OS thread, which costs more than
--- the work itself (on macOS, 16 relay pairs ran at half the round trips per
--- second spread over four capabilities than on one). HTTP requests still
--- use every capability. The agent relay uses capability 0 and the
--- collaboration relay capability 1 (modulo the capability count).
+-- Like the Node relays, each relay is one event loop: a single thread that
+-- owns every socket of the relay once the HTTP upgrade is done. The loop
+-- waits for readiness on all of them at once (kqueue or epoll, the sockets
+-- stay registered, @cbits/relay_io.c@), reads what is there, decodes the
+-- WebSocket frames ("Petrus.Viewer.Relay.Frame", the checks and close codes
+-- of the @ws@ library), routes each message, and appends the outgoing
+-- frames to the receivers' output queues; at the end of each turn every
+-- queue is written with one @writev@. A receiver whose socket buffer is
+-- full keeps its queue (written when the socket drains), so a slow
+-- receiver never blocks the others, as with @ws.send@.
+--
+-- One thread means the relay sees events in one total order, exactly like
+-- Node's event loop: a newcomer's @welcome@ and count precede anyone
+-- else's count, and every client sees joins, messages, and leaves in the
+-- same order. It also means that serving a message costs one shared
+-- readiness wait, one @recv@, and one @writev@ per receiver, with no
+-- thread hand-offs; a thread per connection (the previous design) paid a
+-- wake-up and a readiness registration with GHC's I/O manager for every
+-- message (see bench/RESULTS.md).
+--
+-- The HTTP side stays with Warp: the upgrade request is answered with the
+-- @ws@ library's handshake bytes ("Petrus.Viewer.Relay.Handshake", written
+-- through 'Network.Wai.responseRaw'), then the connection's socket is
+-- handed to the loop ('relaySocket') and Warp's thread waits until the
+-- loop has closed it.
 module Petrus.Viewer.Relay
   ( RelayKind (..)
   , Relay
-  , newRelay
+  , withRelay
   , relayClientCount
-  , serveConnection
-  , wsApp
+  , relaySocket
   , relayMessage
   , routeRaw
   , Routed (..)
   ) where
 
-import Control.Concurrent.Async (wait, withAsyncOn)
+import Control.Concurrent (forkOn, getNumCapabilities)
 import Control.Concurrent.STM
-import Control.Exception (SomeException, finally, try)
-import Control.Monad (forM_, unless, void, when)
+import Control.Exception (SomeException, bracket, finally, mask_, onException, try, uninterruptibleMask_)
+import Control.Monad (forM_, unless, when)
+import Data.Bits ((.&.), (.|.), shiftL)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
+import Data.ByteString.Internal qualified as BI
 import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Unsafe qualified as BU
 import Data.IORef
+import Data.IntMap.Strict (IntMap)
+import Data.IntMap.Strict qualified as IM
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (listToMaybe)
 import Data.Text qualified as T
-import Network.WebSockets qualified as WS
+import Data.Word (Word16, Word8)
+import Foreign.C.Types (CInt (..), CLong (..))
+import Foreign.ForeignPtr (ForeignPtr, mallocForeignPtrArray, mallocForeignPtrBytes, touchForeignPtr, withForeignPtr)
+import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
+import Foreign.Marshal.Array (allocaArray, peekArray)
+import Foreign.Ptr (Ptr)
+import Foreign.Storable (pokeElemOff)
+import Network.Socket qualified as S
 import Petrus.Viewer.Json
 import Petrus.Viewer.Json.Canonical (Member (..), canonicalObject)
 import Petrus.Viewer.Log
+import Petrus.Viewer.Relay.Frame
 
 data RelayKind
   = -- | @/ws/agent@: ids are @clientId@, counts are @client_count@, only
@@ -61,37 +87,516 @@ data RelayKind
     CollabRelay
   deriving stock (Eq, Show)
 
-data Client = Client
-  { clientNumber :: Int
-  , clientIdStr :: JsString
-  , outbox :: TQueue Out
+-- C side (cbits/relay_io.c) ------------------------------------------------
+
+foreign import ccall unsafe "prelay_poll_create" c_pollCreate :: IO CInt
+foreign import ccall unsafe "prelay_poll_add" c_pollAdd :: CInt -> CInt -> IO CInt
+foreign import ccall unsafe "prelay_poll_write" c_pollWrite :: CInt -> CInt -> CInt -> IO CInt
+foreign import ccall unsafe "prelay_poll_remove" c_pollRemove :: CInt -> CInt -> IO CInt
+foreign import ccall unsafe "prelay_poll_wait" c_pollNow :: CInt -> Ptr CInt -> Ptr CInt -> CInt -> CInt -> IO CInt
+-- the blocking wait releases the capability while it waits
+foreign import ccall safe "prelay_poll_wait" c_pollBlock :: CInt -> Ptr CInt -> Ptr CInt -> CInt -> CInt -> IO CInt
+foreign import ccall unsafe "prelay_recv" c_recv :: CInt -> Ptr Word8 -> CLong -> IO CLong
+foreign import ccall unsafe "prelay_sendv" c_sendv :: CInt -> Ptr (Ptr Word8) -> Ptr CLong -> CInt -> IO CLong
+foreign import ccall unsafe "prelay_pipe" c_pipe :: Ptr CInt -> IO CInt
+foreign import ccall unsafe "prelay_wake" c_wake :: CInt -> IO ()
+foreign import ccall unsafe "prelay_drain" c_drain :: CInt -> IO ()
+foreign import ccall unsafe "prelay_close" c_close :: CInt -> IO CInt
+
+readable, writable :: CInt
+readable = 1
+writable = 2
+
+-- State ------------------------------------------------------------------------
+
+-- | A connection handed to the loop by the thread that accepted it.
+data Ticket = Ticket
+  { ticketSocket :: S.Socket
+  , ticketFd :: CInt
+  , ticketDone :: TVar Bool
+  -- ^ set by the loop once it has closed the socket
   }
 
-data Out
-  = Frame BL.ByteString
-  | Shutdown
-  | -- | written by a joining client's writer once its greeting is on the wire
-    Signal (TMVar ())
-  | -- | hold this client's later frames until the gate opens (bounded wait)
-    Await (TMVar ())
+data Command = Join Ticket | Detach Ticket
+
+-- | Output waiting for a socket: a queue of byte strings (front, and the
+-- back reversed).
+data OutQueue = OutQueue [ByteString] [ByteString]
+
+data Conn = Conn
+  { connNumber :: Int
+  , connId :: JsString
+  , connTicket :: Ticket
+  , connPending :: IORef [ByteString]
+  -- ^ received bytes not yet decoded, newest first
+  , connPendingSize :: IORef Int
+  , connNeed :: IORef Int
+  -- ^ bytes needed before decoding can make progress (0: unknown)
+  , connFragments :: IORef (Maybe (Word8, [ByteString], Int))
+  -- ^ a fragmented message in progress: opcode, payloads (newest first), size
+  , connOut :: IORef OutQueue
+  , connDirty :: IORef Bool
+  , connWatchingWrite :: IORef Bool
+  , connClosing :: IORef Bool
+  -- ^ a close frame is queued: read nothing more, close once written
+  }
 
 data Relay = Relay
   { kind :: RelayKind
-  , nextId :: TVar Int
-  , clients :: TVar (Map Int Client)
-  , timings :: IORef (Map JsString Double)
   , perfLogger :: Maybe Logger
-  , capability :: Int
-  -- ^ where all of this relay's threads run
+  , pollFd :: CInt
+  , wakeRead :: CInt
+  , wakeWrite :: CInt
+  , commands :: IORef [Command]
+  , stopRequested :: IORef Bool
+  , stopped :: TVar Bool
+  , clientCount :: IORef Int
+  -- the rest is touched by the loop thread only
+  , nextId :: IORef Int
+  , conns :: IORef (IntMap Conn)
+  -- ^ by client number (join order, the order Node's Map iterates in)
+  , byFd :: IORef (IntMap Conn)
+  , dirtyConns :: IORef [Conn]
+  , timings :: IORef (Map JsString Double)
+  , scratch :: ForeignPtr Word8
+  , readyFds :: ForeignPtr CInt
+  , readyFlags :: ForeignPtr CInt
   }
 
-newRelay :: RelayKind -> Maybe Logger -> IO Relay
-newRelay k lg =
-  Relay k <$> newTVarIO 1 <*> newTVarIO Map.empty <*> newIORef Map.empty <*> pure lg
-    <*> pure (case k of AgentRelay -> 0; CollabRelay -> 1)
+scratchSize, maxReady :: Int
+scratchSize = 256 * 1024
+maxReady = 256
+
+-- | The @ws@ default @maxPayload@: 100 MiB per message.
+messageLimit :: Int
+messageLimit = 100 * 1024 * 1024
+
+-- | Run a relay (its loop thread) for the duration of the action. On exit
+-- every connection still open is closed.
+withRelay :: RelayKind -> Maybe Logger -> (Relay -> IO a) -> IO a
+withRelay k lg = bracket (startRelay k lg) stopRelay
+
+startRelay :: RelayKind -> Maybe Logger -> IO Relay
+startRelay k lg = do
+  pfd <- c_pollCreate
+  when (pfd < 0) (ioError (userError "relay: cannot create the readiness poller"))
+  (wr, ww) <- allocaArray 2 $ \p -> do
+    r <- c_pipe p
+    when (r < 0) (ioError (userError "relay: cannot create the wake-up pipe"))
+    [a, b] <- peekArray 2 p
+    pure (a, b)
+  _ <- c_pollAdd pfd wr
+  relay <-
+    Relay k lg pfd wr ww
+      <$> newIORef []
+      <*> newIORef False
+      <*> newTVarIO False
+      <*> newIORef 0
+      <*> newIORef 1
+      <*> newIORef IM.empty
+      <*> newIORef IM.empty
+      <*> newIORef []
+      <*> newIORef Map.empty
+      <*> mallocForeignPtrBytes scratchSize
+      <*> mallocForeignPtrArray maxReady
+      <*> mallocForeignPtrArray maxReady
+  caps <- getNumCapabilities
+  let cap = (case k of AgentRelay -> 0; CollabRelay -> 1) `mod` caps
+  _ <- forkOn cap (runLoop relay `finally` shutdown relay)
+  pure relay
+
+stopRelay :: Relay -> IO ()
+stopRelay relay = do
+  writeIORef (stopRequested relay) True
+  c_wake (wakeWrite relay)
+  atomically (readTVar (stopped relay) >>= check)
+
+-- | Close every connection and release the poller (loop thread, on exit).
+shutdown :: Relay -> IO ()
+shutdown relay = do
+  cs <- readIORef (conns relay)
+  forM_ cs $ \c -> closeTicket relay (connTicket c)
+  writeIORef (conns relay) IM.empty
+  writeIORef (byFd relay) IM.empty
+  writeIORef (clientCount relay) 0
+  cmds <- atomicModifyIORef' (commands relay) (\xs -> ([], xs))
+  forM_ cmds $ \case
+    Join t -> closeTicket relay t
+    Detach t -> closeTicket relay t
+  _ <- c_close (pollFd relay)
+  _ <- c_close (wakeRead relay)
+  _ <- c_close (wakeWrite relay)
+  atomically (writeTVar (stopped relay) True)
 
 relayClientCount :: Relay -> IO Int
-relayClientCount r = Map.size <$> readTVarIO (clients r)
+relayClientCount = readIORef . clientCount
+
+submit :: Relay -> Command -> IO ()
+submit relay cmd = do
+  atomicModifyIORef' (commands relay) (\xs -> (cmd : xs, ()))
+  c_wake (wakeWrite relay)
+
+-- | Hand the socket of an upgraded connection (the @101@ response already
+-- written) to the relay, and wait until the relay has closed it.
+relaySocket :: Relay -> S.Socket -> IO ()
+relaySocket relay sock = do
+  fd <- S.unsafeFdSocket sock
+  done <- newTVarIO False
+  let ticket = Ticket sock fd done
+      finished = (readTVar done >>= check) `orElse` (readTVar (stopped relay) >>= check)
+  mask_ $ do
+    submit relay (Join ticket)
+    atomically finished `onException` do
+      -- the server is going away: the socket must leave the loop before
+      -- Warp closes it (bounded, should the loop be gone)
+      submit relay (Detach ticket)
+      deadline <- registerDelay 2000000
+      uninterruptibleMask_ (atomically (finished `orElse` (readTVar deadline >>= check)))
+
+-- The loop ---------------------------------------------------------------------
+
+runLoop :: Relay -> IO ()
+runLoop relay = go
+  where
+    pfd = pollFd relay
+    go = do
+      ready <- withForeignPtr (readyFds relay) $ \fds -> withForeignPtr (readyFlags relay) $ \fls -> do
+        -- block (releasing the capability) only when nothing is ready
+        n0 <- c_pollNow pfd fds fls (fromIntegral maxReady) 0
+        n <- if n0 == 0 then c_pollBlock pfd fds fls (fromIntegral maxReady) (-1) else pure n0
+        if n <= 0 then pure [] else zip <$> peekArray (fromIntegral n) fds <*> peekArray (fromIntegral n) fls
+      mapM_ dispatch ready
+      flushAll relay
+      stop <- readIORef (stopRequested relay)
+      unless stop go
+    dispatch (fd, fl)
+      | fd == wakeRead relay = do
+          c_drain fd
+          cmds <- atomicModifyIORef' (commands relay) (\xs -> ([], reverse xs))
+          mapM_ (runCommand relay) cmds
+      | otherwise = do
+          m <- IM.lookup (fromIntegral fd) <$> readIORef (byFd relay)
+          forM_ m $ \c -> do
+            r <- try @SomeException $ do
+              when (fl .&. writable /= 0) (flushConn relay c)
+              when (fl .&. readable /= 0) (readConn relay c)
+            either (const (dropConn relay c)) pure r
+
+runCommand :: Relay -> Command -> IO ()
+runCommand relay = \case
+  Join t -> do
+    r <- c_pollAdd (pollFd relay) (ticketFd t)
+    if r < 0 then closeTicket relay t else join relay t
+  Detach t -> do
+    m <- IM.lookup (fromIntegral (ticketFd t)) <$> readIORef (byFd relay)
+    case m of
+      Just c | ticketDone (connTicket c) == ticketDone t -> dropConn relay c
+      _ -> pure ()
+
+join :: Relay -> Ticket -> IO ()
+join relay t = do
+  n <- readIORef (nextId relay)
+  writeIORef (nextId relay) (n + 1)
+  c <-
+    Conn n (jsString (T.pack (show n))) t
+      <$> newIORef []
+      <*> newIORef 0
+      <*> newIORef 0
+      <*> newIORef Nothing
+      <*> newIORef (OutQueue [] [])
+      <*> newIORef False
+      <*> newIORef False
+      <*> newIORef False
+  modifyIORef' (conns relay) (IM.insert n c)
+  modifyIORef' (byFd relay) (IM.insert (fromIntegral (ticketFd t)) c)
+  modifyIORef' (clientCount relay) (+ 1)
+  -- ws.send(welcome), then the count to everyone (the newcomer included)
+  sendText relay c (BL.toStrict (idMessage (kind relay) "welcome" (connId c)))
+  broadcastCount relay
+
+broadcastCount :: Relay -> IO ()
+broadcastCount relay = do
+  cs <- readIORef (conns relay)
+  let msg = BL.toStrict (countMessage (kind relay) (IM.size cs))
+      frame = encodeFrame opText msg
+  forM_ cs $ \c -> enqueue relay c frame
+
+-- | Close the socket of a connection that was never joined or is leaving,
+-- and release the thread waiting for it.
+closeTicket :: Relay -> Ticket -> IO ()
+closeTicket relay t = do
+  _ <- c_pollRemove (pollFd relay) (ticketFd t)
+  _ <- try @SomeException (S.close (ticketSocket t))
+  atomically (writeTVar (ticketDone t) True)
+
+-- | The connection is gone: forget it, tell the others (@ws@ 'close').
+dropConn :: Relay -> Conn -> IO ()
+dropConn relay c = do
+  present <- IM.member (connNumber c) <$> readIORef (conns relay)
+  when present $ do
+    modifyIORef' (conns relay) (IM.delete (connNumber c))
+    modifyIORef' (byFd relay) (IM.delete (fromIntegral (ticketFd (connTicket c))))
+    modifyIORef' (clientCount relay) (subtract 1)
+    writeIORef (connOut c) (OutQueue [] [])
+    closeTicket relay (connTicket c)
+    let out = encodeFrame opText (BL.toStrict (idMessage (kind relay) "leave" (connId c)))
+    cs <- readIORef (conns relay)
+    forM_ cs $ \o -> enqueue relay o out
+    broadcastCount relay
+
+-- Output -----------------------------------------------------------------------
+
+enqueue :: Relay -> Conn -> [ByteString] -> IO ()
+enqueue relay c chunks = do
+  closing <- readIORef (connClosing c)
+  unless closing (push relay c chunks)
+
+push :: Relay -> Conn -> [ByteString] -> IO ()
+push relay c chunks = do
+  OutQueue front back <- readIORef (connOut c)
+  writeIORef (connOut c) (OutQueue front (reverse chunks ++ back))
+  dirty <- readIORef (connDirty c)
+  unless dirty $ do
+    writeIORef (connDirty c) True
+    modifyIORef' (dirtyConns relay) (c :)
+
+sendText :: Relay -> Conn -> ByteString -> IO ()
+sendText relay c = enqueue relay c . encodeFrame opText
+
+-- | Write every queue that got output this turn (until none is left: a
+-- connection closing while its queue is written tells the others).
+flushAll :: Relay -> IO ()
+flushAll relay = do
+  cs <- atomicModifyIORef' (dirtyConns relay) (\xs -> ([], reverse xs))
+  unless (null cs) $ do
+    forM_ cs $ \c -> do
+      writeIORef (connDirty c) False
+      r <- try @SomeException (flushConn relay c)
+      either (const (dropConn relay c)) pure r
+    flushAll relay
+
+-- | Write as much of the queue as the socket takes; watch for writability
+-- while something is left; close a closing connection once it is written.
+flushConn :: Relay -> Conn -> IO ()
+flushConn relay c = do
+  OutQueue front back <- readIORef (connOut c)
+  let chunks = filter (not . B.null) (front ++ reverse back)
+      fd = ticketFd (connTicket c)
+  (rest, failed) <- writeChunks fd chunks
+  writeIORef (connOut c) (OutQueue rest [])
+  watching <- readIORef (connWatchingWrite c)
+  closing <- readIORef (connClosing c)
+  if failed
+    then dropConn relay c
+    else
+      if null rest
+        then do
+          when watching $ do
+            _ <- c_pollWrite (pollFd relay) fd 0
+            writeIORef (connWatchingWrite c) False
+          when closing (dropConn relay c)
+        else unless watching $ do
+          _ <- c_pollWrite (pollFd relay) fd 1
+          writeIORef (connWatchingWrite c) True
+
+-- | writev until done or the socket is full; the unwritten rest, and
+-- whether the socket failed.
+writeChunks :: CInt -> [ByteString] -> IO ([ByteString], Bool)
+writeChunks _ [] = pure ([], False)
+writeChunks fd chunks = do
+  let batch = take 64 chunks
+      count = length batch
+  r <- allocaArray count $ \ptrs -> allocaArray count $ \lens -> do
+    forM_ (zip [0 ..] batch) $ \(i, BI.BS fp len) -> do
+      pokeElemOff ptrs i (unsafeForeignPtrToPtr fp)
+      pokeElemOff lens i (fromIntegral len)
+    w <- c_sendv fd ptrs lens (fromIntegral count)
+    mapM_ (\(BI.BS fp _) -> touchForeignPtr fp) batch
+    pure (fromIntegral w :: Int)
+  if
+    | r == -2 -> pure (chunks, False)
+    | r < 0 -> pure ([], True)
+    | otherwise ->
+        let rest = dropBytes r chunks
+         in if
+              | null rest -> pure ([], False)
+              | r < sum (map B.length batch) -> pure (rest, False) -- the socket is full
+              | otherwise -> writeChunks fd rest
+  where
+    dropBytes :: Int -> [ByteString] -> [ByteString]
+    dropBytes 0 xs = xs
+    dropBytes _ [] = []
+    dropBytes k (x : xs)
+      | k >= B.length x = dropBytes (k - B.length x) xs
+      | otherwise = BU.unsafeDrop k x : xs
+
+-- Input ------------------------------------------------------------------------
+
+-- | Read what the socket has and decode it.
+readConn :: Relay -> Conn -> IO ()
+readConn relay c = do
+  closing <- readIORef (connClosing c)
+  let fd = ticketFd (connTicket c)
+  r <- withForeignPtr (scratch relay) $ \p -> c_recv fd p (fromIntegral scratchSize)
+  if
+    | r == -2 -> pure ()
+    | r <= 0 -> dropConn relay c -- end of stream or error: ws 'close'
+    | closing -> pure () -- ws stops reading after a close frame
+    | otherwise -> do
+        let view = BI.BS (scratch relay) (fromIntegral r)
+        pend <- readIORef (connPending c)
+        if null pend
+          then decodeFrom relay c view True
+          else do
+            size <- (+ fromIntegral r) <$> readIORef (connPendingSize c)
+            need <- readIORef (connNeed c)
+            -- copied now: the scratch area is reused by the next recv
+            let !kept = B.copy view
+            writeIORef (connPending c) (kept : pend)
+            writeIORef (connPendingSize c) size
+            when (size >= need) $ do
+              chunks <- readIORef (connPending c)
+              writeIORef (connPending c) []
+              writeIORef (connPendingSize c) 0
+              decodeFrom relay c (B.concat (reverse chunks)) False
+
+-- | Decode the frames at the start of the buffer. @borrowed@: the buffer is
+-- the scratch area, so what is kept must be copied.
+decodeFrom :: Relay -> Conn -> ByteString -> Bool -> IO ()
+decodeFrom relay c buf borrowed = do
+  frag <- readIORef (connFragments c)
+  let soFar = maybe 0 (\(_, _, s) -> s) frag
+  case parseHeader (maybe False (const True) frag) soFar messageLimit buf of
+    NeedMore -> keep 0
+    Refuse code -> failWith relay c code
+    Parsed h
+      | B.length buf < hSize h + hLength h -> keep (hSize h + hLength h)
+      | otherwise -> do
+          -- the payload is a fresh buffer, made now (not when first used,
+          -- by which time the scratch area may hold other bytes)
+          let !payload = unmaskedCopy h buf
+              rest = BU.unsafeDrop (hSize h + hLength h) buf
+          continue <- onFrame relay c h payload
+          closing <- readIORef (connClosing c)
+          when (continue && not closing && not (B.null rest)) (decodeFrom relay c rest borrowed)
+  where
+    keep need = do
+      let !kept = if borrowed then B.copy buf else buf
+      writeIORef (connPending c) [kept]
+      writeIORef (connPendingSize c) (B.length buf)
+      writeIORef (connNeed c) need
+
+-- | One complete frame; False when the connection is closing.
+onFrame :: Relay -> Conn -> Header -> ByteString -> IO Bool
+onFrame relay c h payload
+  | op == opPing = True <$ push relay c (encodeFrame opPong payload)
+  | op == opPong = pure True
+  | op == opClose = do
+      if B.null payload
+        then closeWith relay c B.empty
+        else do
+          let code = fromIntegral (BU.unsafeIndex payload 0) `shiftL` 8 .|. fromIntegral (BU.unsafeIndex payload 1) :: Int
+              reason = BU.unsafeDrop 2 payload
+          if
+            | not (validCloseCode code) -> failWith relay c 1002
+            | not (B.isValidUtf8 reason) -> failWith relay c 1007
+            | otherwise -> closeWith relay c payload -- echo code and reason
+      pure False
+  | otherwise = do
+      frag <- readIORef (connFragments c)
+      case (frag, hFin h) of
+        (Nothing, True) -> message op payload
+        (Nothing, False) -> True <$ writeIORef (connFragments c) (Just (op, [payload], B.length payload))
+        (Just (op0, ps, size), False) -> True <$ writeIORef (connFragments c) (Just (op0, payload : ps, size + B.length payload))
+        (Just (op0, ps, _), True) -> do
+          writeIORef (connFragments c) Nothing
+          message op0 (B.concat (reverse (payload : ps)))
+  where
+    op = hOpcode h
+    message o bytes
+      | o == opText =
+          if B.isValidUtf8 bytes
+            then True <$ routeIn relay c bytes
+            else False <$ failWith relay c 1007
+      | otherwise = True <$ routeIn relay c (decodeLenient bytes)
+
+-- | Queue a close frame and stop reading; the socket closes once written.
+closeWith :: Relay -> Conn -> ByteString -> IO ()
+closeWith relay c payload = do
+  push relay c (encodeFrame opClose payload)
+  writeIORef (connClosing c) True
+  writeIORef (connPending c) []
+  writeIORef (connFragments c) Nothing
+
+-- | A protocol error: @ws@ closes with the code and no reason.
+failWith :: Relay -> Conn -> Word16 -> IO ()
+failWith relay c code = closeWith relay c (closePayload code)
+
+-- Routing ----------------------------------------------------------------------
+
+-- | Route one text message from a client.
+routeIn :: Relay -> Conn -> ByteString -> IO ()
+routeIn relay me raw = do
+  now <- maybe (pure 0) (const monotonicMs) (perfLogger relay)
+  case routeRaw (kind relay) (connId me) raw of
+    Nothing -> pure ()
+    Just routed -> do
+      -- Vite logs before sending; the line is queued for the logger thread
+      -- right after the frame is queued here (same order, same values)
+      emit <- maybe (pure (pure ())) (\lg -> logTiming relay lg me now routed) (perfLogger relay)
+      let frame = encodeFrame opText (BL.toStrict (routedBytes routed))
+      cs <- readIORef (conns relay)
+      case routedTarget routed of
+        Just target ->
+          forM_ (targetNumber target >>= (`IM.lookup` cs)) $ \c ->
+            when (JsStr (connId c) == target) (enqueue relay c frame)
+        Nothing
+          | routedTargeted routed -> pure ()
+          | otherwise -> forM_ cs $ \c -> unless (connNumber c == connNumber me) (enqueue relay c frame)
+      emit
+
+-- | The client number a target value can name (ids are decimal numbers).
+targetNumber :: JsValue -> Maybe Int
+targetNumber = \case
+  JsStr s
+    | let b = jsStringBytes s
+    , not (B.null b)
+    , B.length b < 16
+    , B.all (\w -> w >= 48 && w <= 57) b ->
+        Just (B.foldl' (\acc w -> acc * 10 + fromIntegral (w - 48)) 0 b)
+  _ -> Nothing
+
+logTiming :: Relay -> Logger -> Conn -> Double -> Routed -> IO (IO ())
+logTiming relay lg me now routed = case look "protocol" of
+  Just protocol
+    | protocol == str "petrus-agent" -> do
+        let kindV = look "kind"
+            reqId = case look "requestId" of
+              Just (JsStr s) -> Just s
+              _ -> Nothing
+        case (kindV, reqId) of
+          (Just k, Just rid)
+            | k == str "request" -> do
+                modifyIORef' (timings relay) (Map.insert rid now)
+                pure . perfLine "relay-forward-request" $
+                  [("requestId", JsStr rid)] ++ opt "action" (look "action") ++ [("from", JsStr (connId me))]
+            | k == str "response" -> do
+                start <- atomicModifyIORef' (timings relay) (\m -> (Map.delete rid m, Map.lookup rid m))
+                pure . forM_ start $ \s ->
+                  perfLine "relay-forward-response" $
+                    [("requestId", JsStr rid)]
+                      ++ opt "action" (look "action")
+                      ++ opt "ok" (look "ok")
+                      ++ [("relayRoundtripMs", num (fixed1 (now - s))), ("from", JsStr (connId me))]
+                      ++ opt "to" (look "targetClientId")
+          _ -> pure (pure ())
+  _ -> pure (pure ())
+  where
+    look = routedLookup routed . jsString
+    opt k = maybe [] (\v -> [(k, v)])
+    perfLine label fields = do
+      ts <- isoTimestamp
+      logLine lg ("[petrus-relay-perf] " <> ts <> " " <> label <> " " <> encodeJs (obj fields))
 
 idKey, targetKey :: RelayKind -> JsString
 idKey = \case
@@ -107,153 +612,6 @@ countMessage k n =
 
 idMessage :: RelayKind -> ByteString -> JsString -> BL.ByteString
 idMessage k typ i = encodeJsLazy (JsObj (objectFromList [(jsString "type", JsStr (unsafeJsStringFromCanonical typ)), (idKey k, JsStr i)]))
-
--- | Accept a pending WebSocket like the @ws@ server does (echoing the first
--- requested subprotocol) and serve it.
-wsApp :: Relay -> WS.ServerApp
-wsApp relay pending = do
-  let protos = WS.getRequestSubprotocols (WS.pendingRequest pending)
-  conn <- WS.acceptRequestWith pending WS.defaultAcceptRequest {WS.acceptSubprotocol = listToMaybe protos}
-  serveConnection relay conn
-
--- | Run one client connection until it closes.
-serveConnection :: Relay -> WS.Connection -> IO ()
-serveConnection relay conn = withAsyncOn (capability relay) (serveHere relay conn) wait
-
-serveHere :: Relay -> WS.Connection -> IO ()
-serveHere relay conn = do
-  me <- atomically $ do
-    n <- readTVar (nextId relay)
-    writeTVar (nextId relay) (n + 1)
-    q <- newTQueue
-    gate <- newEmptyTMVar
-    let c = Client n (jsString (showText n)) q
-    modifyTVar' (clients relay) (Map.insert n c)
-    -- Node writes the newcomer's welcome and count before the others' count
-    -- in one event-loop turn; the gate keeps that order on the wire
-    writeTQueue q (Frame (idMessage (kind relay) "welcome" (clientIdStr c)))
-    cs <- readTVar (clients relay)
-    let msg = countMessage (kind relay) (Map.size cs)
-    forM_ cs $ \o ->
-      if clientNumber o == n
-        then writeTQueue (outbox o) (Frame msg) >> writeTQueue (outbox o) (Signal gate)
-        else writeTQueue (outbox o) (Await gate) >> writeTQueue (outbox o) (Frame msg)
-    pure c
-  withAsyncOn (capability relay) (writer me) $ \_ ->
-    receiveLoop me `finally` leave me
-  where
-    showText n = T.pack (show (n :: Int))
-
-    broadcastCount = do
-      cs <- readTVar (clients relay)
-      let msg = countMessage (kind relay) (Map.size cs)
-      forM_ cs $ \c -> writeTQueue (outbox c) (Frame msg)
-
-    writer me = do
-      let loop = do
-            items <- atomically $ do
-              x <- readTQueue (outbox me)
-              rest <- flushTQueue (outbox me)
-              pure (x : rest)
-            continue <- process [] items
-            when continue loop
-          -- frames are batched into one write until a control item
-          process acc = \case
-            [] -> sendAll (reverse acc)
-            Frame f : rest -> process (f : acc) rest
-            Shutdown : _ -> False <$ sendAll (reverse acc)
-            Signal g : rest -> do
-              ok <- sendAll (reverse acc)
-              atomically (void (tryPutTMVar g ()))
-              if ok then process [] rest else pure False
-            Await g : rest -> do
-              ok <- sendAll (reverse acc)
-              timeout <- registerDelay 250000
-              atomically (readTMVar g `orElse` (readTVar timeout >>= check))
-              if ok then process [] rest else pure False
-          sendAll [] = pure True
-          sendAll frames = do
-            r <- try @SomeException (WS.sendDataMessages conn (map (\f -> WS.Text f Nothing) frames))
-            pure (either (const False) (const True) r)
-      loop
-
-    receiveLoop me = do
-      r <- try @SomeException (WS.receiveDataMessage conn)
-      case r of
-        Left _ -> pure ()
-        Right dm -> do
-          continue <- case dm of
-            WS.Text bytes _ -> do
-              let strict = BL.toStrict bytes
-              if B.isValidUtf8 strict
-                then handleRaw me strict >> pure True
-                else do
-                  -- ws closes with 1007 on malformed UTF-8 text frames
-                  _ <- try @SomeException (WS.sendCloseCode conn 1007 ("Invalid WebSocket frame: invalid UTF-8 sequence" :: ByteString))
-                  pure False
-            WS.Binary bytes -> handleRaw me (decodeLenient (BL.toStrict bytes)) >> pure True
-          when continue (receiveLoop me)
-
-    handleRaw me raw = do
-        now <- maybe (pure 0) (const monotonicMs) (perfLogger relay)
-        case routeRaw (kind relay) (clientIdStr me) raw of
-          Nothing -> pure ()
-          Just routed -> do
-            -- Vite logs before sending. Here the request/response timing is
-            -- recorded first, but the line is written after the frame is
-            -- queued, so that the frame's writer runs before the logger
-            emit <- maybe (pure (pure ())) (\lg -> logTiming lg me now routed) (perfLogger relay)
-            let frame = Frame (routedBytes routed)
-            atomically $ do
-              cs <- readTVar (clients relay)
-              case routedTarget routed of
-                Just target ->
-                  case [c | c <- Map.elems cs, JsStr (clientIdStr c) == target] of
-                    (c : _) -> writeTQueue (outbox c) frame
-                    [] -> pure ()
-                Nothing
-                  | routedTargeted routed -> pure ()
-                  | otherwise -> forM_ cs $ \c -> unless (clientNumber c == clientNumber me) (writeTQueue (outbox c) frame)
-            emit
-
-    leave me = atomically $ do
-      modifyTVar' (clients relay) (Map.delete (clientNumber me))
-      writeTQueue (outbox me) Shutdown
-      cs <- readTVar (clients relay)
-      let out = idMessage (kind relay) "leave" (clientIdStr me)
-      forM_ cs $ \c -> writeTQueue (outbox c) (Frame out)
-      broadcastCount
-
-    logTiming lg me now routed = case look "protocol" of
-      Just protocol
-        | protocol == str "petrus-agent" -> do
-            let kindV = look "kind"
-                reqId = case look "requestId" of
-                  Just (JsStr s) -> Just s
-                  _ -> Nothing
-            case (kindV, reqId) of
-              (Just k, Just rid)
-                | k == str "request" -> do
-                    atomicModifyIORef' (timings relay) (\m -> (Map.insert rid now m, ()))
-                    pure . perfLine lg "relay-forward-request" $
-                      [("requestId", JsStr rid)] ++ opt "action" (look "action") ++ [("from", JsStr (clientIdStr me))]
-                | k == str "response" -> do
-                    start <- atomicModifyIORef' (timings relay) (\m -> (Map.delete rid m, Map.lookup rid m))
-                    pure . forM_ start $ \s ->
-                      perfLine lg "relay-forward-response" $
-                        [("requestId", JsStr rid)]
-                          ++ opt "action" (look "action")
-                          ++ opt "ok" (look "ok")
-                          ++ [("relayRoundtripMs", num (fixed1 (now - s))), ("from", JsStr (clientIdStr me))]
-                          ++ opt "to" (look "targetClientId")
-              _ -> pure (pure ())
-      _ -> pure (pure ())
-      where
-        look = routedLookup routed . jsString
-    opt k = maybe [] (\v -> [(k, v)])
-    perfLine lg label fields = do
-      ts <- isoTimestamp
-      logLine lg ("[petrus-relay-perf] " <> ts <> " " <> label <> " " <> encodeJs (obj fields))
 
 -- | The result of routing one parsed message.
 data Routed = Routed
