@@ -7,7 +7,7 @@ test function is accounted for, run:
 
     python3 packages/petrus-impetus/scripts/parity_check.py
 
-It currently reports 668 in-scope functions and 0 unaccounted.
+It currently reports 675 in-scope functions and 0 unaccounted.
 
 Statuses:
 
@@ -64,6 +64,7 @@ parameters are separate Hspec examples where they are ported.
 | test_net_definition.py (14) | NetDefinitionSpec, SpecFixturesSpec, JsonSchemaSpec | 13 | | 1 | | |
 | test_net_document.py (8) | NetDocumentSpec, SpecFixturesSpec, JsonSchemaSpec | 8 | | | | |
 | test_net_document_lineage.py (9) | NetDocumentLineageSpec | 9 | | | | |
+| project/test_package_boundaries.py, the 7 Impetus rows (of 20) | BoundarySpec | 7 | | | | |
 
 Notes on the table:
 
@@ -84,6 +85,30 @@ Notes on the table:
 - In `test_net_document_lineage.py`, the tuple and non-string-key cases of
   the lineage metadata are enforced by types; their other halves are
   ported.
+- `test_package_boundaries.py` checks Python import graphs. `BoundarySpec`
+  checks the same boundaries over this repository's sources and Cabal
+  metadata, under the same test names:
+  - a facade re-export has the same `TypeRep` as the type in its defining
+    module, which is Python's `is`. The facade functions are pinned by their
+    types;
+  - the Petrinet layer is checked by walking the `import` declarations of
+    every library source from the `Petrus.Impetus.Petrinet*` modules. The
+    walk reaches no History, HistoryStore, Instance, Binding or Motus
+    module, which is upstream's forbidden list. It also reaches nothing
+    outside an allow-list: the layer itself, `Petrus.Impetus.Scope`, two
+    internal helpers, `Petrus.Activity.Number` and petrus-json. An import
+    that resolves to no library source fails, so a parsing slip cannot pass
+    vacuously;
+  - there is no root `Petrus` module and no flat `Impetus` module, no source
+    imports a root module, and no library defines a `NetInstance`;
+  - the kernel library depends on no optional driver (PostgreSQL or Absurd).
+
+  Python's laziness itself (a module that loads nothing optional when
+  imported) has no Haskell counterpart; its structural content is what these
+  examples check. The `binding.cel` half of the facade test is petrus-cel's
+  `Petrus.Cel.Binding`. The other 13 rows of the file belong to the packages
+  that own their subjects (engine, dispatch, worker, transports, and the
+  PostgreSQL History store).
 - Two `test_petrinet_dot.py` examples render real SVG with Graphviz `dot`.
   Upstream skips them when `dot` is missing; here they fail, so a missing
   Graphviz cannot pass silently. Every other render test uses a fake `dot`

@@ -8,6 +8,7 @@ import Petrus.Impetus.CompletionSpec qualified as CompletionSpec
 import Petrus.Impetus.EnvironmentSignalSpec qualified as EnvironmentSignalSpec
 import Petrus.Impetus.FailureTextSpec qualified as FailureTextSpec
 import Petrus.Impetus.HandBuiltCorpusSpec qualified as HandBuiltCorpusSpec
+import Petrus.Impetus.BoundarySpec qualified as BoundarySpec
 import Petrus.Impetus.FiringOccurrencesSpec qualified as FiringOccurrencesSpec
 import Petrus.Impetus.GuardBranchSpec qualified as GuardBranchSpec
 import Petrus.Impetus.HandlersSpec qualified as HandlersSpec
@@ -64,6 +65,7 @@ main = hspec $ do
   CompletionSpec.spec
   FailureTextSpec.spec
   HandBuiltCorpusSpec.spec
+  BoundarySpec.spec
   GuardBranchSpec.spec
   CelGuardsSpec.spec
   IngressSpec.spec
