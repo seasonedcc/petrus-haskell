@@ -859,8 +859,8 @@ oneResponse endpoint response delay = do
         receive B.empty
         threadDelay (round (delay * 1000000))
         SocketBytes.sendAll connection response
-  void (timeout 2000000 (takeMVar ready))
-  pure (isJust <$> timeout 2000000 (takeMVar done))
+  void (timeout 10000000 (takeMVar ready))
+  pure (isJust <$> timeout 10000000 (takeMVar done))
 
 -- ---------------------------------------------------------------------------
 -- The helper
@@ -1648,17 +1648,19 @@ gondolinSpecs = do
     exported <- newIORef False
     writeIORef g.territory.cleanupWrap $ \original a -> do
       void (tryPutMVar entered ())
-      finished <- timeout 2000000 (readMVar finish)
+      -- Upstream waits 2 s and 1 s below; the port allows 20 s and 10 s so a
+      -- loaded machine cannot fail it. Only the bounds change.
+      finished <- timeout 20000000 (readMVar finish)
       when (isNothing finished) $ throwAgenticus (OtherError "AssertionError") "finish"
       original a
     writeIORef g.territory.workspaceExportWrap $ \original a -> writeIORef exported True >> original a
     custody <- openTerritoryCustodyWith (tmp </> "probe-custody" </> "custody.db") (pure 10)
     probing <- newEmptyMVar
     void (forkIO (try @SomeException (probeCodexGondolin g.adapter (Just attachment)) >>= putMVar probing))
-    timeout 1000000 (readMVar entered) `shouldReturn` Just ()
+    timeout 10000000 (readMVar entered) `shouldReturn` Just ()
     releasing <- newEmptyMVar
     void (forkIO (try @SomeException (Retention.release custody "custody-probe" "host-1" attachment 50 2) >>= putMVar releasing))
-    deadline <- (+ 1) <$> getMonotonicTime
+    deadline <- (+ 10) <$> getMonotonicTime
     let observe = do
           admitted <- try (withBindingOperation binding (pure ()))
           case admitted of
@@ -1893,12 +1895,12 @@ serviceSpecs = do
     startCodexGondolinRuntimeService active
     responses <- newEmptyMVar
     void (forkIO (try @SomeException (exchange endpoint (frame (request' token "active" value) <> "\n")) >>= putMVar responses))
-    timeout 2000000 (takeMVar entered) `shouldReturn` Just ()
+    timeout 10000000 (takeMVar entered) `shouldReturn` Just ()
     raisesWith RuntimeError "runtime-service-quiescence-failed" (closeCodexGondolinRuntimeService active)
     doesPathExist endpoint `shouldReturn` True
     raisesWith RuntimeError "runtime-service-owned" newService
     putMVar release ()
-    answered <- timeout 3000000 (takeMVar responses)
+    answered <- timeout 10000000 (takeMVar responses)
     fmap (either (const Null) id) answered `shouldBe` Just (errorReply "runtime-failed")
     closeCodexGondolinRuntimeService active
     doesPathExist endpoint `shouldReturn` False

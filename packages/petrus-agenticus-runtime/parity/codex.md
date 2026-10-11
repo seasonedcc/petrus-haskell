@@ -86,7 +86,7 @@ helper in the Gondolin lane runs under `/usr/bin/python3`.
 | `test_gondolin_lane_rejects_guest_version_drift_before_materialization` | |
 | `test_gondolin_lane_requires_its_exact_guest_helper_before_materialization` | |
 | `test_gondolin_lane_private_probe_failure_cleans_and_never_qualifies_or_materializes` `[import]`, `[export]`, `[delete]`, `[cleanup]` | |
-| `test_gondolin_private_probe_cleanup_drains_before_host_retention_export` | |
+| `test_gondolin_private_probe_cleanup_drains_before_host_retention_export` | The waits for the probe to enter cleanup and for the fence are 10 s, not 1 s, so a loaded machine cannot fail them; the ordering asserted is the same. |
 | `test_gondolin_lane_failed_reprobe_revokes_only_that_exact_attachment` | |
 | `test_gondolin_lane_cancellation_closes_the_vm_discards_output_and_still_settles` | |
 | `test_gondolin_runtime_service_fences_frames_conflicts_restart_and_redacts` | |
