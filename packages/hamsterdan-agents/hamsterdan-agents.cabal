@@ -44,6 +44,7 @@ library
                     Hamsterdan.Host.Binding
                     Hamsterdan.Host.Agenticus
                     Hamsterdan.Host.PiA2
+                    Hamsterdan.Host.PiWorkspace
   build-depends:    base >=4.18 && <5
                   , base16-bytestring >=1.0
                   , bytestring >=0.11
@@ -56,10 +57,12 @@ library
                   , hamsterdan-github
                   , petrus-agenticus-core
                   , petrus-agenticus-runtime
+                  , petrus-execution
                   , petrus-impetus
                   , petrus-json
                   , petrus-motus
                   , petrus-posix
+                  , process >=1.6
                   , ram >=0.20
                   , text >=2.0
                   , unix >=2.8
@@ -76,6 +79,7 @@ test-suite hamsterdan-agents-test
                     AgenticusSpec
                     PiA2Spec
                     PiA2FactorySpec
+                    PiWorkspaceSpec
   build-depends:    base
                   , bytestring
                   , ram
@@ -91,6 +95,7 @@ test-suite hamsterdan-agents-test
                   , hspec >=2.10
                   , petrus-agenticus-core
                   , petrus-agenticus-runtime
+                  , petrus-execution
                   , petrus-json
                   , petrus-execution
                   , petrus-motus
