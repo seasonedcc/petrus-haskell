@@ -6,6 +6,7 @@ import CustodyInteropSpec qualified
 import DockerSpec qualified
 import E2bHttpSpec qualified
 import E2bSpec qualified
+import ErrorSpec qualified
 import GondolinSpec qualified
 import LocalSpec qualified
 import ProviderAnswersSpec qualified
@@ -28,6 +29,7 @@ suite =
   hspec $ do
     ArchiveSpec.spec
     ContractSpec.spec
+    ErrorSpec.spec
     ProvidersSpec.spec
     LocalSpec.spec
     DockerSpec.spec

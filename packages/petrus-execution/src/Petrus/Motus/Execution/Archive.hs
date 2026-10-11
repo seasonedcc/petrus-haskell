@@ -286,10 +286,10 @@ openArchive bytes = do
         Right members -> Right (bytes, members)
         Left (True, ReadFailure _)
           | isOtherCompression bytes ->
-              Left (ExecutionError TarError "bzip2, xz, and zstd workspace archives are not supported")
+              Left (ExecutionError (TarError "ReadError") "bzip2, xz, and zstd workspace archives are not supported")
         Left (True, ReadFailure message) ->
           Left
-            ( ExecutionError TarError . T.pack $
+            ( ExecutionError (TarError "ReadError") . T.pack $
                 "file could not be opened successfully:\n- method gz: "
                   <> gzMessage
                   <> "\n- method bz2: ReadError('not a bzip2 file')\n- method xz: "
@@ -310,7 +310,7 @@ openArchive bytes = do
       | otherwise = Right (Left (readErrorRepr "not a gzip file"))
     readErrorRepr message = "ReadError(" <> T.unpack (pythonStringRepr message) <> ")"
     fromFailure = \case
-      ReadFailure message -> ExecutionError TarError (T.pack message)
+      ReadFailure message -> ExecutionError (TarError "ReadError") (T.pack message)
       PythonFailure cls message -> ExecutionError (pythonKind cls) (T.pack message)
     pythonKind = \case
       "ValueError" -> ValueError
@@ -451,7 +451,7 @@ validateWorkspaceArchive allowLinks forbiddenRoots bytes = do
     throwValue "workspace archive exceeds transfer size limit"
   case openArchive bytes of
     Left err
-      | errorKind err == TarError -> throwValue "workspace archive is malformed"
+      | TarError _ <- errorKind err -> throwValue "workspace archive is malformed"
       | otherwise -> throwIO err
     Right (_, members) ->
       either throwIO (const (pure ())) $
@@ -517,8 +517,9 @@ memberRepr = T.unpack . nameRepr . memberName
 pathRepr :: ByteString -> String
 pathRepr = T.unpack . nameRepr
 
-filterError :: String -> IO a
-filterError = throwExecution TarError . T.pack
+-- | A @tarfile.FilterError@ of the given subclass.
+filterError :: Text -> String -> IO a
+filterError cls = throwExecution (TarError cls) . T.pack
 
 realpathOrRaise :: ByteString -> IO ByteString
 realpathOrRaise path = do
@@ -538,7 +539,7 @@ dataFilter member dest = do
           else memberName member
   targetPath <- realpathOrRaise (joinPath destPath name)
   unless (commonpathWithin targetPath destPath) $
-    filterError (memberRepr member <> " would be extracted to " <> pathRepr targetPath <> ", which is outside the destination")
+    filterError "OutsideDestinationError" (memberRepr member <> " would be extracted to " <> pathRepr targetPath <> ", which is outside the destination")
   let masked = memberMode member .&. 0o755
   mode <-
     if isRegular member || isHardlink member
@@ -548,14 +549,14 @@ dataFilter member dest = do
       else
         if isDirectory member || isSymlink member
           then pure Nothing
-          else filterError (memberRepr member <> " is a special file")
+          else filterError "SpecialFileError" (memberRepr member <> " is a special file")
   linkname <-
     if isHardlink member || isSymlink member
       then do
         when (isAbsolute (memberLinkname member)) $
-          filterError (memberRepr member <> " is a link to an absolute path")
+          filterError "AbsoluteLinkError" (memberRepr member <> " is a link to an absolute path")
         when (targetPath == destPath) $
-          filterError (memberRepr member <> " would be extracted to " <> pathRepr targetPath <> ", which is outside the destination")
+          filterError "OutsideDestinationError" (memberRepr member <> " would be extracted to " <> pathRepr targetPath <> ", which is outside the destination")
         let normalized = normpath (memberLinkname member)
             linkTarget
               | isSymlink member =
@@ -563,7 +564,7 @@ dataFilter member dest = do
               | otherwise = joinPath destPath normalized
         resolved <- realpathOrRaise linkTarget
         unless (commonpathWithin resolved destPath) $
-          filterError (memberRepr member <> " would link to " <> pathRepr resolved <> ", which is outside the destination")
+          filterError "LinkOutsideDestinationError" (memberRepr member <> " would link to " <> pathRepr resolved <> ", which is outside the destination")
         pure normalized
       else pure (memberLinkname member)
   pure (Filtered member name mode linkname)
@@ -694,7 +695,7 @@ makeFile payload member targetpath = do
       | otherwise = do
           let available = fromIntegral (B.length payload) - position
           when (position < 0 || available < size) $
-            throwExecution TarError "unexpected end of data"
+            throwExecution (TarError "ReadError") "unexpected end of data"
           writeAll fd (B.take (fromIntegral size) (B.drop (fromIntegral position) payload))
 
 -- | Write all bytes in 64 KiB @write(2)@ calls (the size that measured
@@ -773,6 +774,7 @@ makeLink payload members dest filtered targetpath = do
           case refiltered of
             Left (_ :: ExecutionError) ->
               filterError
+                "LinkFallbackError"
                 ( "link " <> memberRepr member <> " would be extracted as a copy of "
                     <> memberRepr unfiltered <> ", which was rejected"
                 )

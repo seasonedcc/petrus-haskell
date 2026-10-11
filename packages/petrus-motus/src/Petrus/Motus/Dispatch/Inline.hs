@@ -31,7 +31,8 @@ import Petrus.Activity
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch
 import Petrus.Json.Python (pythonStrListRepr, pythonStrRepr)
-import Petrus.Motus.PythonException (PythonException (..), pythonException)
+import Petrus.Motus.PythonException (pythonException, pythonExceptionStr)
+import Petrus.Motus.PythonException qualified as Python (PythonException (..))
 
 -- | An Activity implementation: the whole invocation and the Attempt's
 -- execution context in, a JSON result out. Throw 'ActivityError' to classify
@@ -119,7 +120,9 @@ classifyInlineFailure :: SomeException -> IO ActivityFailure
 classifyInlineFailure err = case fromException err of
   Just (ActivityError failure) -> pure failure
   Nothing ->
-    let PythonException {className = kind, message} = pythonException err
+    let python = pythonException err
+        kind = python.name
+        message = pythonExceptionStr python
         fields =
           ActivityFailureFields
             { failureError = if T.null message then kind else message

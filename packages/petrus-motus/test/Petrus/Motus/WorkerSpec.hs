@@ -11,6 +11,7 @@ import Data.IORef
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Foreign.C.Error (eNOENT, errnoToIOError)
 import Petrus.Activity
 import Petrus.Activity qualified as A
 import Petrus.Json (Json (..))
@@ -36,7 +37,7 @@ withPolicy tweak inv = inv {policy = policyWith tweak}
 
 failureType :: AttemptFailure -> Text
 failureType = \case
-  FailureException err -> (Python.pythonException err).className
+  FailureException err -> (Python.pythonException err).name
   FailureMessage _ -> "str"
   FailureClassified _ -> "ActivityFailure"
 
@@ -48,6 +49,14 @@ failureText = \case
 
 spec :: Spec
 spec = do
+  it "an exception is recorded as the Python exception it stands for" $ do
+    let enoent = toException (errnoToIOError "open" eNOENT Nothing (Just "/tmp/x"))
+        python = Python.pythonException
+    Python.pythonExceptionRepr (python enoent) `shouldBe` "FileNotFoundError(2, 'No such file or directory')"
+    Python.pythonExceptionStr (python enoent) `shouldBe` "[Errno 2] No such file or directory"
+    Python.pythonExceptionRepr (python (toException (DispatchError "refused"))) `shouldBe` "ValueError('refused')"
+    Python.pythonExceptionRepr (python (toException (LookupError ""))) `shouldBe` "LookupError()"
+
   it "worker dispatch is the exact runtime checkable worker surface" $ do
     -- The surface is a record of exactly the six custody operations; a value
     -- of it is a WorkerDispatch by construction.

@@ -62,7 +62,8 @@ import Petrus.Motus.Dispatch.Local
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.PythonException (exceptionMessage)
 import Petrus.Json.Python (pythonRepr, pythonStrListRepr, pythonStrRepr)
-import Petrus.Motus.PythonException (PythonException (..))
+import Petrus.Motus.PythonException (pythonException, pythonExceptionStr)
+import Petrus.Motus.PythonException qualified as Python (PythonException (..))
 import Petrus.Motus.Transport.ZeroMQ.Curve
 import Petrus.Motus.Transport.ZeroMQ.Errors
 import Petrus.Motus.Transport.ZeroMQ.Native qualified as Z
@@ -401,11 +402,11 @@ handleRequest factory limit draining providers problem frames = do
 
 -- | The error kind and message: @_ProtocolError@ → @protocol@, any other
 -- @ValueError@ → @refused@, anything else → @service@. The class is the
--- exception's Python class ('zeromqPythonException').
+-- exception's Python class ('pythonException').
 classify :: SomeException -> (Text, Text)
-classify e = (kind python.className, errorMessage python.className python.message)
+classify e = (kind python.name, errorMessage python.name (pythonExceptionStr python))
   where
-    python = zeromqPythonException e
+    python = pythonException e
     kind = \case
       "_ProtocolError" -> "protocol"
       "ValueError" -> "refused"

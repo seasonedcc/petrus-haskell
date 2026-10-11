@@ -80,7 +80,7 @@ import Petrus.Fabric.Postgres
   , registerProcess
   , submit
   )
-import Petrus.Fabric.Send (asPythonFailure, sendActivity, sendInvocation)
+import Petrus.Fabric.Send (sendActivity, sendInvocation)
 import Petrus.HistoryStore.Postgres (ensureSchema, loadPostgresHistory)
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), HandlerResult (..), handlerTokens)
 import Petrus.Impetus.History.Records (DeliveryRegistration (..), recordName)
@@ -292,7 +292,7 @@ newSendActivity dsn authority credential = do
 -- count, then the submit (the reference's order).
 sendActivityOf :: SendActivity -> Activity
 sendActivityOf a inv _ =
-  asPythonFailure (sendActivity (\e -> atomicModifyIORef' a.count (\n -> (n + 1, ())) >> submit a.client e) inv)
+  sendActivity (\e -> atomicModifyIORef' a.count (\n -> (n + 1, ())) >> submit a.client e) inv
 
 -- ---------------------------------------------------------------------------
 -- Roles

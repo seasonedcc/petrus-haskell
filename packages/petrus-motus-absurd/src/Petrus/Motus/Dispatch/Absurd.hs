@@ -149,7 +149,8 @@ import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch qualified as Port
 import Petrus.Motus.Dispatch.Absurd.Schema
 import Petrus.Json.Python (pythonRepr, pythonStrRepr, uuid4)
-import Petrus.Motus.PythonException (Namer (..), PythonException (..), pythonExceptionWith)
+import Petrus.Motus.PythonException (pythonException, pythonExceptionStr)
+import Petrus.Motus.PythonException qualified as Python (PythonException (..))
 import Petrus.Postgres
   ( Connection
   , ErrorClass (..)
@@ -500,8 +501,8 @@ guardedTerminal g queue taskId' runId' report = do
     ReportFailure (FailureClassified classified) -> pure (Just classified)
     ReportFailure (FailureMessage message) -> Just <$> refuse (retryableFailure message "RuntimeError")
     ReportFailure (FailureException err) ->
-      let python = pythonExceptionWith [Namer (\(AbsurdError m) -> PythonException "RuntimeError" m)] err
-       in Just <$> refuse (retryableFailure python.message python.className)
+      let python = pythonException err
+       in Just <$> refuse (retryableFailure (pythonExceptionStr python) python.name)
   let reason = failureReason <$> failure
       s = g.session
       tq = "absurd.t_" <> queue

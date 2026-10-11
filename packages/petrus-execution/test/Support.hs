@@ -86,7 +86,7 @@ pythonClassKind = \case
   "KeyError" -> KeyError
   "TimeoutError" -> TimeoutError
   cls
-    | cls `elem` tarErrors -> TarError
+    | cls `elem` tarErrors -> TarError cls
     | cls `elem` osErrors -> OSError
     | otherwise -> OtherError cls
   where

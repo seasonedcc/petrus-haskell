@@ -19,31 +19,44 @@ everything that the Engine and History can see.
    `[(Int, ActivityOutcome)]`, with `Succeeded Json | Failed ActivityFailure`.
    The reference yields `(occurrence, object)` pairs and separates failures
    with `isinstance(outcome, ActivityFailure)`.
-4. **Exceptions are named by one explicit mapping, not by Python classes.**
+4. **Exceptions are named by the types that declare a Python class.**
    Wherever the reference records `type(error).__name__` and `repr(error)`
    or `str(error)` (the Inline Dispatch, Local and Absurd `fail`, the ZeroMQ
    client's `_classified_failure` and server error kinds, the Engine's
-   firing-failure text), the port asks one total function,
-   `Petrus.Motus.PythonException.pythonException`. `DispatchError` is the
-   reference's `ValueError`. The built-in classes the port raises
+   firing-failure text, a span's `error_type`), the port asks one total
+   function, `Petrus.Motus.PythonException.pythonException`. An exception
+   type that stands for a Python exception says which one through an
+   `IsPythonException` instance and joins petrus-json's
+   `SomePythonException` hierarchy, so the mapping is open: every package
+   names its own refusals there, and every seam sees them. `DispatchError`
+   is the reference's `ValueError`; the built-in classes the port raises
    (`ValueError`, `RuntimeError`, `LookupError`, `TypeError`,
-   `TimeoutError`, `OSError`, `CancelledError`) are declared there under
-   those names. A SQLite failure is `OperationalError`, the class `sqlite3`
-   raises for the busy, locked and I/O failures a custody store meets. The
-   ZeroMQ and Absurd packages add their own (`ConnectionError`,
-   `OperationUncertain`, `_ProtocolError`, `ZMQError`; `AbsurdError` is
-   `RuntimeError`).
+   `TimeoutError`, `OSError`) carry their own names; a Fabric or Processes
+   refusal is the class the reference raises (`PermissionError`,
+   `ValueError`, `LookupError`, ...); the ZeroMQ and Absurd packages declare
+   theirs (`ConnectionError`, `OperationUncertain`, `_ProtocolError`,
+   `ZMQError`; `AbsurdError` is `RuntimeError`), and an execution
+   provider's errors are its `ValueError`, `OSError` subclasses, `KeyError`
+   and `tarfile` errors. `CancelledError` stays an asynchronous exception
+   and is named by the same function. A SQLite failure is
+   `OperationalError`, the class `sqlite3` raises for the busy, locked and
+   I/O failures a custody store meets. A Haskell exception with a Python
+   counterpart is that class with the reference's arguments (an `errno`
+   `IOException` is the `OSError` subclass CPython picks:
+   `FileNotFoundError(2, 'No such file or directory')`).
 
-   The remaining divergence: any other Haskell exception, such as one an
-   Activity throws, is named after its Haskell type constructor, since it
-   has no Python class. `repr` assumes the exception was raised with its
-   message as the one argument. An empty message is spelled `Name()`, and
-   the Inline error falls back to the class name, as
+   The remaining divergence: any other Haskell exception, such as an
+   `ErrorCall` an Activity throws, is named after its Haskell type
+   constructor, since it has no Python class. `repr` assumes the exception
+   was raised with its message as the one argument. An empty message is
+   spelled `Name()`, and the Inline error falls back to the class name, as
    `str(exc) or type(exc).__name__` does. The Local and ZeroMQ spellings
    are compared with the reference's in the interop suites: a refused
-   heartbeat's `ValueError` failed through Local, and ten exceptions through
-   `_classified_failure`. The Absurd interop compares the `failure_reason`
-   rows of a reference and a Haskell exception failure.
+   heartbeat's `ValueError` failed through Local, ten exceptions through
+   `_classified_failure`, and (in petrus-processes) refused `fabric.send`
+   and `process.spawn` invocations run by a Haskell and a Python Worker
+   under one Python Local Dispatch. The Absurd interop compares the
+   `failure_reason` rows of a reference and a Haskell exception failure.
 5. **No dataclass reflection.** The adapters are closures. They have no
    `repr`, no `==`, and no field list. Their registries are immutable maps,
    which is the property the reference's frozen dataclass guards. See

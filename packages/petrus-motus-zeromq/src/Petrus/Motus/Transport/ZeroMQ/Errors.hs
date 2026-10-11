@@ -10,23 +10,19 @@ module Petrus.Motus.Transport.ZeroMQ.Errors
   , ConnectionError (..)
   , connectionMessage
   , ProtocolError (..)
-  , zeromqPythonException
   ) where
 
-import Control.Exception (Exception (..), SomeException)
+import Control.Exception (Exception (..))
 import Data.Text (Text)
 import Data.Text qualified as T
+import Petrus.Json.Python.Exception (IsPythonException (..), pythonExceptionFromException, pythonExceptionToException, raised)
 import Petrus.Motus.PythonException
-  ( Namer (..)
-  , OSError (..)
-  , PythonException (..)
+  ( OSError (..)
   , RuntimeError (..)
   , TimeoutError (..)
   , TypeError (..)
   , ValueError (..)
-  , pythonExceptionWith
   )
-import Petrus.Motus.Transport.ZeroMQ.Native (ZmqError (..))
 
 -- | The reference's @ConnectionError@ and its @OperationUncertain@
 -- subclass: a custody operation was sent but its definitive response was
@@ -39,7 +35,15 @@ data ConnectionError
     OperationUncertain Text
   deriving stock (Eq, Show)
 
-instance Exception ConnectionError where displayException = T.unpack . connectionMessage
+instance Exception ConnectionError where
+  toException = pythonExceptionToException
+  fromException = pythonExceptionFromException
+  displayException = T.unpack . connectionMessage
+
+instance IsPythonException ConnectionError where
+  toPythonException = \case
+    NotAcknowledged m -> raised "ConnectionError" m
+    OperationUncertain m -> raised "OperationUncertain" m
 
 connectionMessage :: ConnectionError -> Text
 connectionMessage = \case
@@ -50,18 +54,10 @@ connectionMessage = \case
 -- interpret (answered with error kind @protocol@).
 newtype ProtocolError = ProtocolError Text deriving stock (Eq, Show)
 
-instance Exception ProtocolError where displayException (ProtocolError m) = T.unpack m
+instance Exception ProtocolError where
+  toException = pythonExceptionToException
+  fromException = pythonExceptionFromException
+  displayException (ProtocolError m) = T.unpack m
 
--- | The Python class and message of any exception the transport sees: its
--- own exceptions by the reference's classes (@ConnectionError@,
--- @OperationUncertain@, @_ProtocolError@, @zmq.ZMQError@), then the Motus
--- mapping ('pythonExceptionWith').
-zeromqPythonException :: SomeException -> PythonException
-zeromqPythonException =
-  pythonExceptionWith
-    [ Namer $ \case
-        NotAcknowledged m -> PythonException "ConnectionError" m
-        OperationUncertain m -> PythonException "OperationUncertain" m
-    , Namer (\(ProtocolError m) -> PythonException "_ProtocolError" m)
-    , Namer (\(ZmqError _ _ m) -> PythonException "ZMQError" m)
-    ]
+instance IsPythonException ProtocolError where
+  toPythonException (ProtocolError m) = raised "_ProtocolError" m

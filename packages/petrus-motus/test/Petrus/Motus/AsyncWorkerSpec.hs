@@ -118,7 +118,7 @@ raisedRuntime fragment = \case
 
 failureMessage :: AttemptFailure -> (Text, Text)
 failureMessage = \case
-  FailureException err -> let python = Python.pythonException err in (python.className, python.message)
+  FailureException err -> let python = Python.pythonException err in (python.name, Python.pythonExceptionStr python)
   FailureMessage m -> ("str", m)
   FailureClassified f -> ("ActivityFailure", (failureFields f).failureError)
 

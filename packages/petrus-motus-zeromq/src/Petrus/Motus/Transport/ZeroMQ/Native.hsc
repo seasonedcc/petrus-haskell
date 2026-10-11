@@ -74,6 +74,7 @@ import Foreign.Marshal.Utils (with)
 import Foreign.Ptr (Ptr, castPtr, nullPtr)
 import Foreign.Storable (peek, sizeOf)
 import GHC.Clock (getMonotonicTimeNSec)
+import Petrus.Json.Python.Exception (IsPythonException (..), pythonExceptionFromException, pythonExceptionToException, raised)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Types (Fd (..))
 import System.Timeout (timeout)
@@ -91,7 +92,13 @@ data ZmqError = ZmqError
   deriving stock (Eq, Show)
 
 instance Exception ZmqError where
+  toException = pythonExceptionToException
+  fromException = pythonExceptionFromException
   displayException e = T.unpack e.message
+
+-- | pyzmq's @zmq.ZMQError@ with the @zmq_strerror@ text.
+instance IsPythonException ZmqError where
+  toPythonException e = raised "ZMQError" e.message
 
 -- | @EAGAIN@ on this platform.
 eagain :: Int

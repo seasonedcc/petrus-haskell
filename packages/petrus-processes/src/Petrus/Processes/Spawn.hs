@@ -53,8 +53,8 @@ spawnInvocation spec =
 
 -- | @SpawnActivity(registry, provisioner)(invocation)@ (§11.2): claim
 -- durably, then ensure, then answer the SpawnOutcome JSON. Refusals are
--- 'FabricError's; wrap the executor in 'Petrus.Fabric.Send.asPythonFailure'
--- to record them as the reference's dispatchers do.
+-- 'FabricError's, which every dispatcher records under the Python class
+-- the reference raises ("Petrus.Fabric.Error").
 spawnActivity :: SpawnRegistry -> ProcessProvisioner -> ActivityInvocation -> IO Json
 spawnActivity registry provisioner inv = do
   unless (inv.activity == spawnActivityName) $

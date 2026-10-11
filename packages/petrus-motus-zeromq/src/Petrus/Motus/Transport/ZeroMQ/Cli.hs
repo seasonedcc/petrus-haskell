@@ -18,8 +18,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json (Json (..), defaultDumps, dumps)
 import Petrus.Motus.Internal.Argparse
-import Petrus.Motus.PythonException (PythonException (..))
-import Petrus.Motus.Transport.ZeroMQ.Errors (zeromqPythonException)
+import Petrus.Motus.PythonException (pythonException, pythonExceptionStr)
+import Petrus.Motus.PythonException qualified as Python (PythonException (..))
 import Petrus.Motus.Transport.ZeroMQ.Client
 import Petrus.Motus.Transport.ZeroMQ.Server
 import Petrus.Motus.Worker.Cli (ProviderPlugins (..), WorkerArguments (..), noPlugins)
@@ -61,8 +61,9 @@ uncaught e
   | Just (_ :: ExitCode) <- fromException e = throwIO e
   | Just (_ :: SomeAsyncException) <- fromException e = throwIO e
   | otherwise = do
-      let PythonException {className, message} = zeromqPythonException e
-      hPutStrLn stderr (T.unpack (className <> if T.null message then "" else ": " <> message))
+      let python = pythonException e
+          message = pythonExceptionStr python
+      hPutStrLn stderr (T.unpack (python.name <> if T.null message then "" else ": " <> message))
       exitWith (ExitFailure 1)
 
 serve :: Text -> [String] -> IO ()

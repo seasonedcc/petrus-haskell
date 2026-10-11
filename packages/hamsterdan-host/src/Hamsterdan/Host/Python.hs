@@ -70,6 +70,7 @@ import Hamsterdan.Python.Hashlib (sha256Hex, sha256HexText)
 import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Petrus.Json (EncodeOptions (..), Json, compact, defaultDumps, dumps, dumpsText)
+import Petrus.Json.Python.Exception (asPythonException)
 import Petrus.Motus.Worker (LookupError (..), RuntimeError (..), ValueError (..))
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.FilePath (takeDirectory)
@@ -135,7 +136,7 @@ tryPython action = (Right <$> action) `catchPython` (pure . Left)
 -- for.
 exceptionClass :: SomeException -> Text
 exceptionClass e
-  | Just (PythonException name _) <- fromException e = name
+  | Just (PythonException name _) <- asPythonException e = name
   | Just (_ :: GitHubBoundaryError) <- fromException e = "GitHubBoundaryError"
   | Just (_ :: ActivityError) <- fromException e = "ActivityError"
   | Just (_ :: AgentCompositionError) <- fromException e = "AgentCompositionError"
