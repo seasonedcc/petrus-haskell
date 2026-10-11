@@ -62,7 +62,7 @@ import Foreign.C.Types (CInt (..), CULong (..))
 import Foreign.Marshal.Alloc (allocaBytes)
 import Foreign.Ptr (Ptr)
 import Foreign.Storable (peekElemOff)
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.PyText qualified as Py
 import Hamsterdan.PyLiteral (strRepr)
 
 -- ---------------------------------------------------------------------------

@@ -32,6 +32,11 @@ These are the host's hot paths:
 - **Fresh open:** the same open with no History. It separates the SQLite
   file work (create, WAL, schema) from the History replay.
 
+The restart and housekeeping paths (`serve` start, the periodic sweep),
+the operator's commands (`validate`, `inbox`, `inspect-instance`), ingest
+through the real HTTP servers, and the GitHub and Git effects on their own
+are measured at process level, in the section after these results.
+
 Both sides run the same operations on the same inputs, using the doubles
 that the state interop tests use (`differential/state_reference.py`, and
 `test/V5Doubles.hs`). Each side sends the Worker's progress lines to
@@ -264,6 +269,159 @@ The timer rebuild row was once slower in Haskell: 13.5–14.7 ms against
 Python's 8.6 ms. The cause was parsing every timestamp and generation digit
 with `read`. Folding the digits instead fixed it, and the on-disk bytes
 did not change.
+
+## Restart, housekeeping, operator commands and effects (process level)
+
+The rows above run inside one process on each side. These rows measure the
+paths that run on every deploy and every minute, the operator's commands,
+and the GitHub and Git effects on their own, in the shape of the operator
+and export benchmarks. `bench/Process.hs` (the `--process` mode of the
+benchmark executable) times both sides by monotonic wall clock, run by run,
+flipping which side goes first every run, on the same inputs. The
+reference's in-process rows run in one long-lived interpreter
+(`bench/process_bench.py`), which times each run itself and answers over a
+line protocol.
+
+**The state.** One state directory, made once per bench run by the Haskell
+host over the V5 doubles: 20 PR Instances of `owner/one`, each driven
+through 5 `synchronize` deliveries at 5 heads (a review and a dashboard
+publication or edit per head) to quiescence, so every Instance has a
+1,228-record History (933 KB). Both hosts resume each other's state
+directories (the state interop tests), so each run of either side starts
+from a fresh copy of the same bytes. The copy is not timed.
+
+**The GitHub.** One fake GitHub REST API on a local port, served from the
+bench process: the App registration that `validate` and `serve` check, and
+the PR reads and comment writes of the 20 PRs (the `V5Provider` double of
+`differential/state_reference.py`, for any PR number). Its state is reset
+before every run. Both sides call it over plain HTTP.
+
+**The rows.**
+
+- **CLI (fresh process):** `validate`, `inbox` and `inspect-instance`, each
+  a fresh process, from spawn to exit. The reference side is
+  `python -I -B bench/cli_child.py ARGS`: the reference's `main()` with
+  `GitHubAppClients` sent to the fake, as `differential/cli_reference.py`
+  does. The port's side is the benchmark executable's `--cli` mode, which
+  runs `runCli` over `productionEnvironment` with the client sent to the
+  fake. Both sides compose the real Pi A2 agent over the Pi package fixture
+  and run preflight, agent-route repair (which reads every History), and
+  the service open. Interpreter and runtime start-up are included.
+  `inspect-instance` reads a 2,001-record History of 1,000 requested and
+  settled Activities written for it. Both sides refuse the V5 Histories
+  above with `Activity operation is malformed`, since their first Activity
+  request carries no `work.operation`; that is the reference's behavior,
+  and the port's.
+- **serve:** from process start to the first `200` on `GET /healthz`,
+  polled every millisecond over a fresh connection. That covers preflight,
+  route repair, the service open, the startup registration reconciliation
+  against the fake, and the server's bind (warp, against uvicorn). The
+  startup sweep runs in the background, as in production.
+- **Socket ingest:** 100 signed `pull_request` deliveries POSTed to each
+  side's running `serve` (warp against uvicorn and h11), each over its own
+  connection as GitHub delivers them, for a repository with no active
+  route, so the worker only acknowledges them. The first pair of runs is a
+  warm-up and is dropped.
+- **Sweep:** `sweep("periodic")` over the 20 Instances on a host opened
+  over a fresh copy: loaded (after one warm-up sweep, not timed) and
+  unloaded (a freshly opened host loads each Engine from its History). Both
+  sides reconcile 20 Instances with 180 provider calls.
+- **GitHub effects:** one immutable comment publication with 100 bot
+  comments on the PR; one native review batch of 8 anchored findings with
+  100 issue and 100 review comments; one GraphQL ref compare-and-swap. Each
+  is the mean of 100 calls against an in-process transport that answers
+  from fixed pages, so the row is the effect's own work (paging, matching,
+  request building, response checks).
+- **Git publication:** one whole `HostGitPublisher.publish` of a coding
+  result (clone, checkout, apply, write-tree, the commit through the
+  authority, the ref compare-and-swap) through the local publication
+  authority of `test_git_publish.py`, over real Git and a local remote.
+  Setup (the repository fixture, the workspace round trip that makes the
+  diff) is not timed.
+
+Before timing, every row's first run must agree on both sides: the same
+exit status and stdout for the CLI rows (and the same number of calls to
+the fake), the same `/healthz` response, the same sweep count and provider
+calls, and the same publication outcome. The Shape column shows the agreed
+outcome.
+
+### Results of the process rows
+
+Eleven runs per row on 2026-10-11, 10:59–11:03 local (UTC-3), load average
+4.04–5.79 (`uptime` before and after), on the machine described above
+(Apple M4, 10 cores, macOS 26.3.1, shared with other work); CPython 3.14.6.
+Each cell is the median of the eleven runs, with the fastest in brackets.
+
+| Workload | Shape | Haskell median (fastest) | Python median (fastest) | Python / Haskell |
+| --- | --- | ---: | ---: | ---: |
+| `validate` (20 Instances) | CLI (fresh process) | 140 ms (119 ms) | 1.07 s (836 ms) | 7.65× |
+| `inbox` (20 Instances) | CLI (fresh process) | 129 ms (117 ms) | 786 ms (716 ms) | 6.09× |
+| `inspect-instance` (a 2,001-record History) | CLI (fresh process) | 42.0 ms (39.5 ms) | 593 ms (567 ms) | 14.1× |
+| `serve` start to the first `200` on `/healthz` (20 Instances) | process | 164 ms (151 ms) | 941 ms (864 ms) | 5.75× |
+| 100 signed deliveries POSTed to `serve` (inactive route) | socket | 18.0 ms (14.8 ms) | 41.8 ms (38.6 ms) | 2.33× |
+| `sweep("periodic")` over 20 loaded Instances | in process; 20 reconciled, 180 provider calls | 17.0 ms (15.0 ms) | 1.70 s (1.61 s) | 100× |
+| `sweep("periodic")` over 20 unloaded Instances (fresh host) | in process; 20 reconciled, 180 provider calls | 232 ms (219 ms) | 3.25 s (3.23 s) | 14.0× |
+| immutable comment publication (100 bot comments) | in process; created | 12.1 µs (11.6 µs) | 25.1 µs (24.7 µs) | 2.08× |
+| native review batch of 8 findings (100 issue + 100 review comments) | in process; 8 created | 189 µs (188 µs) | 389 µs (387 µs) | 2.06× |
+| GraphQL ref compare-and-swap | in process; ok | 2.3 µs (2.2 µs) | 3.9 µs (3.9 µs) | 1.68× |
+| Git publication through the local authority | in process; not recovered | 307 ms (303 ms) | 355 ms (348 ms) | 1.16× |
+
+The Git publication row is the closest to level because almost all of it
+is Git itself: both sides run the same sequence of Git commands with the
+same environment, and the process spawns and Git's own work dominate. In a
+three-run round at 10:55 (load 4.6–5.2) it read 1.03×; on the fastest runs
+above it is 1.15×.
+
+### Route repair, before the change
+
+<!-- bench: superseded -->
+
+Agent-route repair runs on every `serve` start and every CLI command that
+opens the service. It reads every `history.jsonl` under `applications/`
+(`_terminal_operations`). The first rounds of these rows had the port
+behind on everything that runs it. Three runs per row, 10:46–10:48, load
+average 3.99–6.85:
+
+| Workload | Haskell median | Python median | Python / Haskell |
+| --- | ---: | ---: | ---: |
+| `validate` (20 Instances) | 1.33 s | 919 ms | 0.69× |
+| `inbox` (20 Instances) | 1.10 s | 733 ms | 0.66× |
+| `serve` start to the first `200` on `/healthz` (20 Instances) | 1.51 s | 987 ms | 0.65× |
+
+### Route repair: what changed
+
+Timing the service open phase by phase put about 1.0 s of the 1.1–1.5 s
+in route repair, and almost all of that in `terminalOperations` over the 20
+Histories (988 ms for 24,560 records), while parsing and decoding all the
+records of one History took about 2 ms. The rest was the line split: the
+port decoded each file to `Text` and split it as `str.splitlines()` does,
+testing every character against a list of the eleven boundaries, then
+encoded each line back to UTF-8 for the parser.
+
+`terminalOperations` now checks that the file is valid UTF-8, as
+`read_text(encoding="utf-8")` does, and finds the same boundaries in the
+bytes: `\n`, `\r`, `\r\n`, `\v`, `\f` and `\x1c`–`\x1e` are single bytes,
+and U+0085, U+2028 and U+2029 are `C2 85`, `E2 80 A8` and `E2 80 A9`,
+which in valid UTF-8 encode only those code points. Each line goes to the
+parser as it is. The scan dropped to 105 ms, and route repair with it. The
+agents' `InteropSpec` checks the scan against the reference's
+`_terminal_operations` on the same bytes: two records joined by each of
+the eleven boundaries, non-boundary multi-byte text, no final boundary, a
+boundary inside a record, an empty line and invalid UTF-8 give the same
+operations or the same refusal.
+
+### Rerunning the process rows
+
+From the package directory, after building the benchmark
+(`cabal build -j2 --enable-benchmarks hamsterdan-host:bench:hamsterdan-host-bench`;
+`scripts/upstream-python hamsterdan` provisions the reference, which the
+bench finds the same way):
+
+```sh
+"$(cabal list-bin --enable-benchmarks hamsterdan-host:bench:hamsterdan-host-bench)" --process --runs 11 +RTS -M2G -RTS
+```
+
+It prints `uptime` before and after, and the table above.
 
 ## Rerun
 

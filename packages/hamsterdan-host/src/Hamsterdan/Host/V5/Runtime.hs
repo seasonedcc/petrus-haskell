@@ -127,7 +127,6 @@ import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Worker (Worker, WorkerOptions (..), closeWorker, defaultWorkerOptions, newWorker, runAvailable, stopWorker)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
 
 -- ---------------------------------------------------------------------------
 -- Gate definitions
@@ -198,12 +197,14 @@ path text = either (error . T.unpack) id (netPath text)
 -- The engine policy
 
 -- | @_V5EnginePolicy@'s selection half: the default pipeline, restricted
--- to the exact lifecycle fold while one is targeted.
-v5Selection :: IORef (Maybe NetPath) -> SelectionPolicy ()
+-- to the exact lifecycle fold while one is targeted. The Engine builds it
+-- from the target it reads before each proposal ('Engine.SteeredSelection'),
+-- where the reference reads the policy's mutable @target@ attribute.
+v5Selection :: Maybe NetPath -> SelectionPolicy ()
 v5Selection target =
   SelectionPolicy
     { propose = \candidates state ->
-        let selected = case currentTarget target candidates of
+        let selected = case target of
               Nothing -> candidates
               Just t -> [c | c <- candidates, c.transition == t]
          in pipeline.propose selected state
@@ -211,15 +212,6 @@ v5Selection target =
     }
   where
     pipeline = defaultPipeline :: SelectionPolicy ()
-
--- | The policy's target, read where the reference reads its mutable
--- attribute. The selection seam is pure, so the read is
--- 'unsafePerformIO'; it depends on the candidates so it is never floated
--- out of a proposal, and the host writes the target only between drives
--- on the Instance's single thread.
-currentTarget :: IORef (Maybe NetPath) -> [Binding] -> Maybe NetPath
-currentTarget target candidates = unsafePerformIO (length candidates `seq` readIORef target)
-{-# NOINLINE currentTarget #-}
 
 -- | @_V5EnginePolicy.__call__@: the targeted fold's candidate, or
 -- throughput.
@@ -331,7 +323,7 @@ openRuntime root instance' definitions options = do
           , Engine.guards = Map.fromList [(Exact uri, g) | (uri, g) <- Map.toList built.guards]
           , Engine.celCompilers = celCompilers
           , Engine.policy = v5Driving target
-          , Engine.selection = Engine.EngineSelection (v5Selection target) ()
+          , Engine.selection = Engine.SteeredSelection (readIORef target) v5Selection ()
           , Engine.activities = declarations
           }
       load = do

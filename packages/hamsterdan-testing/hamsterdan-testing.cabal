@@ -88,6 +88,7 @@ test-suite hamsterdan-testing-test
                   , hamsterdan-github
                   , hamsterdan-host
                   , hamsterdan-testing
+                  , hedgehog >=1.4
                   , hspec >=2.10
                   , petrus-dst
                   , petrus-json

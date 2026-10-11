@@ -73,11 +73,12 @@ Below are the differences that remain, with their rationale.
 - **Stores are closed when the application fails to construct.**
   `openApplication` closes the stores it had already opened when a later
   step fails. The reference leaves them for the garbage collector.
-- **The engine policy's target is read through `unsafePerformIO`.** The
-  reference's selection reads a mutable attribute, but the Petrus selection
-  seam is pure. `currentTarget` depends on the candidates, so it is never
-  floated out. The host writes the target only between drives, on the
-  Instance's single thread.
+- **The engine policy's target is the selection's input.** The
+  reference's selection reads the policy object's mutable `target`
+  attribute. The Petrus selection seam is pure, so the Engine is given a
+  `SteeredSelection`: it reads the target (an `IORef` the host writes only
+  between drives, on the Instance's single thread) before each proposal and
+  proposes with `v5Selection target`. No `unsafePerformIO` is involved.
 - **`inactive_activity_result` decodes the single parameter.** Every V5
   publication gate declares exactly one parameter. The port refuses any
   other shape with the reference's `ValueError` text, and does not

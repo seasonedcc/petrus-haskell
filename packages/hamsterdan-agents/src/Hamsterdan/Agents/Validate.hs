@@ -58,7 +58,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Agents.Protocol
 import Hamsterdan.Contracts.Codec (pythonDict)
-import Hamsterdan.GitHub.Python (strip, utf8Length)
+import Hamsterdan.PyText (strip, utf8Length)
 import Hamsterdan.PyLiteral (PyValue (..), repr)
 import Petrus.Impetus.Instance.FailureText qualified as FT
 import Petrus.Json (Json (..), defaultDumps, dumps)

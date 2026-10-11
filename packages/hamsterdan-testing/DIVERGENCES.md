@@ -128,27 +128,41 @@ byte for byte, in both directions (see [PARITY.md](PARITY.md)).
    action (which can install `ServiceHooks`, such as
    `aroundRecordPosture`, on the profile's hosts) and the `Checker` to run.
    `newReadinessWorld` is `newReadinessWorldWith` with neither.
-3. **Hypothesis campaigns are deterministic enumerations.** Upstream draws
-   5 or 6 examples per campaign (derandomized) plus its explicit
-   `@example` cases, and runs the delivery state machine for 12 examples of
-   up to 5 steps. The Haskell campaigns enumerate instead, and include
-   every upstream `@example`:
-   - **authority lifecycle:** the 3 paths × 10 schedules: no action, each
-     of the 4 actions alone before the lifecycle settles, each alone after
-     it, and a restart on both sides;
-   - **reminder timer:** all 40 cases the upstream `assume` admits;
-   - **Git publication:** all 16 cases;
-   - **delivery recovery machine:** the first seed drawing each of the 8
-     branch combinations (fault, event order, workload), each run with every
-     rule sequence of up to 2 rules, 56 runs. The rules' preconditions
-     partition the states, so a sequence of "act" and "restart" names every
-     run Hypothesis could draw at that length. The invariant runs after
-     `start` and after each rule, as Hypothesis runs it.
+3. **Hypothesis campaigns are Hedgehog campaigns.** Upstream draws with
+   Hypothesis (`derandomize=True`, so a fixed seed), with a few examples
+   per test plus explicit `@example` cases. Haskell uses the same method
+   with Hedgehog, from a fixed seed and with shrinking:
+   - **authority lifecycle:** the 3 `@example` cases, then a Hedgehog
+     property over upstream's strategies (seed `0..2^53-1`, path, and
+     before/after lists of at most one action) with `max_examples=6`.
+   - **delivery recovery machine:** a Hedgehog state machine
+     (`Gen.sequential`/`executeSequential`) with `max_examples=12` and up
+     to `stateful_step_count=5` rules. `start` draws its seed as
+     `@initialize` does. Upstream's rule preconditions read the live
+     timeline. "Execute one disclosed action" and "redeliver after
+     quiescence" partition its states, so the machine has two rules: `Act`,
+     whichever of those two is enabled, and `Restart`. The invariant runs
+     after `start` and after every rule (an `Ensure` callback), as
+     Hypothesis runs it, and the teardown runs upstream's convergence and
+     replay. Every draw happens before anything runs, so a shrunk case
+     reruns from a fresh World.
+   - **forced checker failure:** the same machine with only the forced
+     rule (`max_examples=2`, `stateful_step_count=2`). Hedgehog shrinks the
+     failure, and the exact artifact retained for it replays its invariant
+     failure.
+   - **reminder timer and Git publication:** the 4 `@example` cases each,
+     then a Hedgehog property over upstream's strategies with
+     `max_examples=5`. For the timer, upstream's `assume` becomes a
+     `discard`. On top of these come exhaustive enumerations: all 40 timer
+     cases the `assume` admits, and all 16 Git cases. Each enumeration
+     covers every generated dimension except the World seed, which is the
+     case's index.
 
-   Hypothesis' `event(...)` labels become the "falsifying example" line a
-   failing example prints. A seed is the example's index (the machine's
-   seeds are found by search), not a Hypothesis draw; any seed is valid,
-   and the artifact's `origin.seed` is asserted as upstream asserts it.
+   Hypothesis' `event(...)` labels become Hedgehog `label`s. In the
+   enumerations they become the "falsifying example" line a failing case
+   prints. A failing Hedgehog property reports the shrunk case together
+   with the seed and shrink path that rerun it. In every campaign, the
+   artifact's `origin.seed` is asserted as upstream asserts it.
 4. **Retained counterexamples go under `dist-newstyle/`.** A campaign
    example that fails with `BudgetExhausted` or `InvariantViolation`
    retains its exact artifact, and checks that it replays its failure, as
@@ -158,8 +172,8 @@ byte for byte, in both directions (see [PARITY.md](PARITY.md)).
    adds to the primary exception is printed to stderr.
 5. **Two upstream-refused Git schedules assert the refusal.** See "An
    upstream finding" in [PARITY.md](PARITY.md). Upstream's campaign never
-   draws them, and its World fails them; the Haskell enumeration does draw
-   them, so it asserts the reference's verdict (a retained invariant
+   draws them, and its World fails them. The Haskell enumeration does draw
+   them, and so may the Hedgehog property, so both assert the reference's verdict (a retained invariant
    failure that replays exactly) rather than the convergence the upstream
    test body would assert.
 6. **The coverage per-artifact byte bound measures canonical JSON.**

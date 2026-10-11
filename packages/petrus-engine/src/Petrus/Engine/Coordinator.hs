@@ -67,8 +67,10 @@ import Petrus.Motus.Dispatch
 import Petrus.Telemetry (Level (..), Span, TelemetryLogger, accumulateTime, atLevel, bind, emit, getLogger, increment, spanSet, withSpan)
 import Petrus.Telemetry qualified as Telemetry
 
--- | The candidate-selection policy and its live state.
-data SelectionSlot = forall s. (Eq s, Show s) => SelectionSlot (SelectionPolicy s) (IORef s)
+-- | The candidate-selection policy (read before each proposal: fixed for
+-- 'EngineSelection', built from the host's input for 'SteeredSelection')
+-- and its live state.
+data SelectionSlot = forall s. (Eq s, Show s) => SelectionSlot (IO (SelectionPolicy s)) (IORef s)
 
 -- | The coordinator: the only component that applies actions to the
 -- Instance.
@@ -98,10 +100,11 @@ data Coordinator = Coordinator
 -- refuse a Dispatch that cannot fence recorded lifecycle cancellations.
 newCoordinator ::
   Instance -> Dispatch -> DrivingPolicy -> EngineSelection -> Clock -> Maybe Sensor -> Maybe (IO ()) -> Maybe Telemetry.EventSink -> IO Coordinator
-newCoordinator inst port policy (EngineSelection selectionPolicy initial) clock sensor commit sink = do
+newCoordinator inst port policy engineSelection clock sensor commit sink = do
   history <- (instanceHistory inst).snapshot
-  state <- either (throwIO . EngineValueError) pure (foldHistory selectionPolicy initial history)
-  stateRef <- newIORef state
+  selection <- case engineSelection of
+    EngineSelection selectionPolicy initial -> slot (pure selectionPolicy) initial history
+    SteeredSelection input build initial -> slot (build <$> input) initial history
   occurrences <- activityOccurrences inst
   recordedCancellations <- cancelled inst
   when (any (isJust . (.invocation)) recordedCancellations && isNothing port.cancel) $
@@ -123,7 +126,7 @@ newCoordinator inst port policy (EngineSelection selectionPolicy initial) clock 
       { inst
       , port
       , policy
-      , selection = SelectionSlot selectionPolicy stateRef
+      , selection
       , clock
       , sensor
       , commit
@@ -135,6 +138,13 @@ newCoordinator inst port policy (EngineSelection selectionPolicy initial) clock 
       , offer
       , logger = either (const base) id (bind fields base)
       }
+
+-- | A selection slot whose state is folded from History.
+slot :: (Eq s, Show s) => IO (SelectionPolicy s) -> s -> Seq Record -> IO SelectionSlot
+slot current initial history = do
+  atLoad <- current
+  state <- either (throwIO . EngineValueError) pure (foldHistory atLoad initial history)
+  SelectionSlot current <$> newIORef state
 
 -- | Whether this composition can fence lifecycle-cancelled Activities.
 supportsCancellation :: Coordinator -> Bool
@@ -348,7 +358,8 @@ observeTurn c = do
     if null enabled
       then pure []
       else case c.selection of
-        SelectionSlot policy' stateRef -> do
+        SelectionSlot current stateRef -> do
+          policy' <- current
           state <- readIORef stateRef
           case policy'.propose enabled state of
             Left err -> throwIO (EngineValueError err)

@@ -25,7 +25,7 @@ import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.GitHub.Python (isAscii, isPrintable, pyIntBase, utf8Length)
+import Hamsterdan.PyText (isAscii, isPrintable, pyIntBase, utf8Length)
 import Petrus.Json (Json (..), dumps, parseJson, pythonLoads)
 import Petrus.Json qualified as Json
 import Petrus.Motus.Worker (RuntimeError (..), ValueError (..))

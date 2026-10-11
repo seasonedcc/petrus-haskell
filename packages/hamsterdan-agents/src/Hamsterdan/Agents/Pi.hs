@@ -57,7 +57,7 @@ import Hamsterdan.Agents.Protocol
 import Hamsterdan.Agents.Url qualified as Url
 import Hamsterdan.Agents.Validate
 import Hamsterdan.Contracts.Codec (contract, encode)
-import Hamsterdan.GitHub.Python (utf8Length)
+import Hamsterdan.PyText (utf8Length)
 import Hamsterdan.PyLiteral (PyValue (..), repr)
 import Petrus.Agenticus.Error (AgenticusError, ErrorClass (RuntimeProtocolError, TimeoutError), isInstanceOf)
 import Petrus.Agenticus.Runtime.Operation (RuntimeOperationCleanup (..), cleanupVerified)

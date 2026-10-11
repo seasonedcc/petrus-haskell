@@ -58,7 +58,11 @@ differences are in how the API is spelled and in what the types rule out.
      test.
    - A selection policy is a pure `SelectionPolicy s` with explicit state
      (`EngineSelection`). Two Engines given the same policy share no mutable
-     state, which the reference has to test for.
+     state, which the reference has to test for. A host that steers its
+     selection between drives (the reference lets it set an attribute on
+     its policy object) gives a `SteeredSelection`: an `IO` input the
+     coordinator reads before each proposal and a pure policy built from
+     it.
 8. **The monitor is an `MVar` with an owner thread.** It stands in for the
    reference's `RLock`, and it is re-entrant for the holding thread. A
    sensor or hook that calls a read door (for example `Engine.status`) from

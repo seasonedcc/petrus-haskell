@@ -35,15 +35,7 @@ Below are the differences that remain, with their rationale.
    dangling `history.jsonl` symbolic link raises `FileNotFoundError`. The
    port reports `agent route repair History is malformed`, as it does when
    the file cannot be read. The host refuses to start in both cases.
-3. **Undecodable Git output is a `ValueError`.** The workspace provider runs
-   Git with `text=True`, so non-UTF-8 output raises CPython's
-   `UnicodeDecodeError`, which is not a `PiWorkspaceError`. The port raises
-   `ValueError("'utf-8' codec can't decode git output")`.
-   `UnicodeDecodeError` is a `ValueError` subclass, and that is the class
-   name the host records (`error_class=ValueError`, where the reference
-   records `UnicodeDecodeError`). Git writes UTF-8 for every path and ref
-   the provider asks for, so this needs a corrupt repository.
-4. **Settled workspace archives are read by petrus-motus's tar reader.**
+3. **Settled workspace archives are read by petrus-motus's tar reader.**
    - The reference opens them with `tarfile`. The port uses
      `Petrus.Motus.Execution.Archive.Tar`, the reader Petrus's own Pi A2
      workspace code uses.
@@ -62,7 +54,7 @@ Below are the differences that remain, with their rationale.
      bad checksum, a truncated final block, and GNU or PAX extensions the
      Pi runtime never writes.
    - The Pi runtime writes plain ustar, which both readers read the same.
-5. **Exceptions the composition cannot classify print one line.** When the
+4. **Exceptions the composition cannot classify print one line.** When the
    startup composition or its cleanup fails, `serve` prints
    `Class: message` with exit status 1, as hamsterdan-host's DIVERGENCES
    item 2 records for every uncaught exception. The reference prints the

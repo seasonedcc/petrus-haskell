@@ -3,8 +3,10 @@
 -- | A small, locked SQLite connection with the semantics of CPython's
 -- @sqlite3@ module as Hamsterdan uses it: a five-second busy timeout,
 -- scripts, parameterized statements, and @with connection:@ transactions
--- that commit on success and roll back on any exception.
-module Hamsterdan.GitHub.Sqlite
+-- that commit on success and roll back on any exception. Binding a text
+-- CPython cannot encode as UTF-8 raises its @UnicodeEncodeError@ before the
+-- statement runs, as CPython's @sqlite3@ does.
+module Hamsterdan.Sqlite
   ( Connection
   , SQLData (..)
   , open
@@ -17,7 +19,7 @@ module Hamsterdan.GitHub.Sqlite
   ) where
 
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
-import Control.Exception (SomeException, finally, mask, onException, try)
+import Control.Exception (SomeException, finally, mask, onException, throwIO, try)
 import Control.Monad (void)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.Map.Strict (Map)
@@ -25,6 +27,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Database.SQLite3 (Database, SQLData (..), Statement, StepResult (..))
 import Database.SQLite3 qualified as S
+import Hamsterdan.PyText (PythonFault (..), utf8EncodeError)
 
 -- | A connection guarded by a lock (CPython's @threading.RLock@ around the
 -- shared connection).
@@ -75,14 +78,23 @@ query connection sql parameters = withStatement connection sql $ \statement -> d
           Row -> do
             row <- S.columns statement
             collect (row : acc)
-  S.bind statement parameters >> collect []
+  bindChecked statement parameters >> collect []
 
 -- | Run one statement and return the number of rows it changed.
 execute :: Connection -> Text -> [SQLData] -> IO Int
 execute connection sql parameters = withStatement connection sql $ \statement -> do
-  S.bind statement parameters
+  bindChecked statement parameters
   void (S.step statement)
   S.changes connection.database
+
+-- | Bind the parameters, refusing a text CPython cannot encode as UTF-8 (a
+-- surrogate a JSON reader kept from an escape), as CPython's @sqlite3@ does.
+bindChecked :: Statement -> [SQLData] -> IO ()
+bindChecked statement parameters = do
+  mapM_ refuse [failure | SQLText value <- parameters, Just failure <- [utf8EncodeError value]]
+  S.bind statement parameters
+  where
+    refuse failure = throwIO (PythonFault "UnicodeEncodeError" failure)
 
 -- | Run with a cached prepared statement for this SQL (preparing it on
 -- first use). The statement is checked out of the cache while in use, so
