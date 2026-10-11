@@ -24,7 +24,7 @@ import Data.ByteString.Builder qualified as BB
 import Data.ByteString.Char8 qualified as BC
 import Data.Ratio ((%))
 import Data.Word (Word8)
-import Numeric (floatToDigits)
+import Petrus.Json.Float (shortestDigits)
 
 -- | The canonical (Node @JSON.stringify@) spelling of a grammar-valid JSON
 -- number literal, together with its (lazily computed) double value.
@@ -117,9 +117,14 @@ formatDouble d
   | d < 0 = "-" <> positive (negate d)
   | otherwise = positive d
   where
+    -- The shortest digits nearest the value, ties to even, with the rounding
+    -- interval's ends admitted for an even significand: ECMAScript's choice
+    -- (and CPython's), so 1e23 prints as @1e+23@. 'Numeric.floatToDigits'
+    -- excludes the ends and would print @9.999999999999999e+22@.
     positive x =
-      let (ds, e) = floatToDigits 10 x
-       in formatDigits (B.pack (map (\i -> fromIntegral i + 0x30) ds)) e
+      let (output, e) = shortestDigits x
+          digits = BC.pack (show output)
+       in formatDigits (B.dropWhileEnd (== 0x30) digits) (B.length digits + e)
 
 formatDoubleBuilder :: Double -> BB.Builder
 formatDoubleBuilder = BB.byteString . formatDouble

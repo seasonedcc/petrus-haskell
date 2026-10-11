@@ -52,6 +52,12 @@ The in-memory rows (`envelope.*`, `canonical.16KiB`) are unchanged.
   the reference Ryu algorithm (≈60 ns a float against ≈450 ns), and small
   objects are sorted with an insertion sort. The same encoder serves every
   digest and size check, so `envelope.*` gained 25–40% as well.
+- That Ryu port now lives in petrus-json (`Petrus.Json.Float`) and spells
+  every petrus-json float. A same-process A/B against the previous private
+  copy measured the 16 KiB payload at 68.0 µs against 66.1 µs, and 10 000
+  random doubles at 708 µs against 820 µs. A later run of this bench gave
+  `canonical.16KiB` 59.5 µs and `envelope.*` 1.29, 3.08 and 2.03 µs, in line
+  with the table.
 - The store rows include the round trips to the server. Both sides use one
   autocommit connection to the same server and the same SQL.
 

@@ -1,19 +1,12 @@
 -- | The fast canonical encoder ("Petrus.Fabric.Canonical") writes exactly
 -- what CPython writes for @json.dumps(allow_nan=False, ensure_ascii=False,
--- sort_keys=True, separators=(",", ":"))@, and what petrus-json's general
--- encoder writes except for two classes of doubles where petrus-json's
--- 'floatToDigits' spelling is not CPython's repr:
---
--- * at least 2^53 with an even significand, where CPython admits a shorter
---   decimal on the rounding interval's end (@repr(1e23) == "1e+23"@;
---   'floatToDigits' spells @9.999999999999999e+22@);
--- * exact ties one digit past the shortest answer, which CPython breaks to
---   even (@repr(2**-25) == "2.9802322387695312e-08"@; 'floatToDigits'
---   spells @...313e-08@). These need @o * 2^k@ (@o@ odd) with
---   @-25 <= k <= 22@.
+-- sort_keys=True, separators=(",", ":"))@, and exactly what petrus-json's
+-- general encoder writes: both spell floats with petrus-json's shared
+-- CPython repr, including the two classes where GHC's 'floatToDigits' does
+-- not (@repr(1e23) == "1e+23"@, @repr(2**-25) == "2.9802322387695312e-08"@).
 module Petrus.Fabric.CanonicalSpec (spec) where
 
-import Data.Bits (countTrailingZeros, shiftL, (.|.))
+import Data.Bits (shiftL, (.|.))
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Text (Text)
@@ -32,15 +25,10 @@ import Test.QuickCheck
 general :: Json -> Maybe BS.ByteString
 general = either (const Nothing) Just . dumps compact {sortKeys = True}
 
--- | Doubles where petrus-json's 'floatToDigits' spelling and CPython's
--- repr may differ (see the module header).
-endAdmitted, shortDyadic, petrusJsonMayDiffer :: Double -> Bool
+-- | At least 2^53 with an even significand, where CPython admits the
+-- rounding interval's ends.
+endAdmitted :: Double -> Bool
 endAdmitted d = abs d >= 2 ^ (53 :: Int) && even (fst (decodeFloat d))
-shortDyadic d =
-  let (m, e) = decodeFloat (abs d)
-      zeros = if m == 0 then 0 else countTrailingZeros (fromInteger m :: Word64)
-   in d /= 0 && e + zeros >= -25 && e + zeros <= 22
-petrusJsonMayDiffer d = endAdmitted d || shortDyadic d
 
 -- | Exact ties at 17 and 18 significant digits: @(2^52 + r) * 2^k@.
 ties :: [Double]
@@ -49,9 +37,9 @@ ties = take 5000 [encodeFloat (2 ^ (52 :: Int) + r) k | (r, k) <- zip offsets (c
     offsets = map (`mod` (2 ^ (52 :: Int))) (iterate (\x -> (x * 6364136223846793005 + 1) `mod` (2 ^ (64 :: Int))) 99)
 
 -- | Finite doubles from uniformly random bit patterns (every exponent,
--- subnormals included), outside 'endAdmitted'.
+-- subnormals included).
 finiteDoubles :: Gen Double
-finiteDoubles = (castWord64ToDouble <$> (arbitrary :: Gen Word64)) `suchThat` (\d -> not (isNaN d || isInfinite d || petrusJsonMayDiffer d))
+finiteDoubles = (castWord64ToDouble <$> (arbitrary :: Gen Word64)) `suchThat` (\d -> not (isNaN d || isInfinite d))
 
 -- | A deterministic stream of finite doubles from a 64-bit LCG.
 doublesFrom :: Word64 -> Int -> [Double]
@@ -84,9 +72,10 @@ jsonValues size
         [ pure Null
         , Bool <$> arbitrary
         , Int <$> arbitrary
-        , Int <$> elements [2 ^ (64 :: Int), -(2 ^ (63 :: Int)) - 1, 10 ^ (40 :: Int), 10 ^ (4299 :: Int)]
+        , Int . toInteger <$> (arbitrary :: Gen Int)
+        , Int <$> elements [2 ^ (64 :: Int), -(2 ^ (63 :: Int)), -(2 ^ (63 :: Int)) - 1, 10 ^ (17 :: Int), 10 ^ (18 :: Int), -(10 ^ (18 :: Int)) + 1, 10 ^ (40 :: Int), 10 ^ (4299 :: Int)]
         , Float <$> finiteDoubles
-        , Float <$> elements (filter (not . petrusJsonMayDiffer) edgeDoubles)
+        , Float <$> elements edgeDoubles
         , String <$> texts
         ]
 
@@ -98,14 +87,18 @@ spec = describe "the fast canonical encoder" $ do
   it "writes petrus-json's bytes for generated values" $
     property $ forAll (sized (jsonValues . max 1)) $ \value -> canonicalFast value === general value
   it "writes petrus-json's bytes for 200000 random finite doubles" $
-    filter (\d -> canonicalFast (Float d) /= general (Float d)) (filter (not . petrusJsonMayDiffer) (doublesFrom 20261010 200000)) `shouldBe` []
+    filter (\d -> canonicalFast (Float d) /= general (Float d)) (doublesFrom 20261010 200000) `shouldBe` []
   it "writes petrus-json's bytes for the float edge cases" $
-    filter (\d -> canonicalFast (Float d) /= general (Float d)) (filter (not . petrusJsonMayDiffer) (edgeDoubles <> map negate edgeDoubles)) `shouldBe` []
-  it "spells 1e23 and 2^-25 as CPython does, where floatToDigits does not" $ do
+    filter (\d -> canonicalFast (Float d) /= general (Float d)) (edgeDoubles <> map negate edgeDoubles) `shouldBe` []
+  it "writes every digit of 18- and 19-digit machine integers" $ do
+    let ints = [10 ^ (17 :: Int), 123456789012345678, 10 ^ (18 :: Int), 9223372036854775807, -9223372036854775808, -(10 ^ (18 :: Int))]
+    canonicalFast (Array (map Int ints)) `shouldBe` general (Array (map Int ints))
+    canonicalFast (Array [Int 123456789012345678]) `shouldBe` Just "[123456789012345678]"
+  it "spells 1e23 and 2^-25 as CPython does, like petrus-json" $ do
     canonicalFast (Float 1e23) `shouldBe` Just "1e+23"
-    general (Float 1e23) `shouldBe` Just "9.999999999999999e+22"
+    general (Float 1e23) `shouldBe` Just "1e+23"
     canonicalFast (Float (2 ^^ (-25 :: Int))) `shouldBe` Just "2.9802322387695312e-08"
-    general (Float (2 ^^ (-25 :: Int))) `shouldBe` Just "2.9802322387695313e-08"
+    general (Float (2 ^^ (-25 :: Int))) `shouldBe` Just "2.9802322387695312e-08"
   it "defers every refusal to the general encoder" $ do
     canonicalFast (Object [("bad", Float (0 / 0))]) `shouldBe` Nothing
     canonicalFast (Array [Float (1 / 0)]) `shouldBe` Nothing

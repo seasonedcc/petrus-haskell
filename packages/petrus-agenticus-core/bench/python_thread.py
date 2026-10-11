@@ -10,13 +10,15 @@ Episode runs a harness-owned program that produces a Continuation: start the
 Episode (claiming the previous revision), then four times start a Turn, accept
 one append and settle it completed, then settle the Episode completed with a
 fresh result Continuation.  Each line prints the median per-operation time
-over several batches after one warm-up run.
+over several batches after one warm-up run.  ``--skip-build`` leaves out the
+``build-1000x4`` row, whose quadratic reference takes minutes per run.
 """
 
 from __future__ import annotations
 
 import json
 import statistics
+import sys
 import time
 
 from petrus.agenticus.catalog.descriptor import DescriptorIdentity, DescriptorKind
@@ -74,7 +76,8 @@ def timed(name: str, action, per_batch: int, batches: int = 5) -> None:
 def main() -> None:
     built = build(1000)
     data = built.to_data()
-    timed("thread/build-1000x4", lambda: build(1000), 1, 3)
+    if "--skip-build" not in sys.argv[1:]:
+        timed("thread/build-1000x4", lambda: build(1000), 1, 3)
     timed("thread/episode-after-1000", lambda: episode(built, 1001), 5)
     timed("thread/to-json-1000x4", lambda: json.dumps(built.to_data()), 5)
     timed("thread/dumps-only-1000x4", lambda: json.dumps(data), 5)

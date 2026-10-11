@@ -41,6 +41,7 @@ module Petrus.Agenticus.Internal.Validate
   ) where
 
 import Crypto.Hash (Digest, SHA256, hash)
+import Data.ByteArray.Encoding (Base (Base16), convertToBase)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.Char (ord)
@@ -165,7 +166,7 @@ require ok failure = if ok then Right () else Left failure
 
 -- | Lowercase hex SHA-256.
 sha256Hex :: ByteString -> Text
-sha256Hex bytes = T.pack (show (hash bytes :: Digest SHA256))
+sha256Hex bytes = TE.decodeLatin1 (convertToBase Base16 (hash bytes :: Digest SHA256))
 
 -- | @json.dumps(v, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()@
 -- for values known to be finite.

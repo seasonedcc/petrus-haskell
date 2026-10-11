@@ -125,6 +125,7 @@ module Petrus.Agenticus.Runtime.Pi
     -- * Pure protocol pieces (exposed for the differential corpus)
   , piText
   , piUuid
+  , canonicalUuid
   , strictLoad
   , strictFrameLoad
   , validateNativeAuth
@@ -489,7 +490,14 @@ canonicalUuid value = case T.splitOn "-" value of
 strictLoad :: ByteString -> Either () Json
 strictLoad bytes = do
   text <- either (const (Left ())) Right (TE.decodeUtf8' bytes)
-  either (const (Left ())) (Right . fromRaw) (Py.loads hooks text)
+  -- Whatever petrus-json's strict parser admits, the CPython-faithful
+  -- scanner admits as the same value: it differs only by refusing lone
+  -- surrogate escapes, a UTF-8 BOM, and nesting past 'J.defaultNestingLimit'
+  -- (the scanner has no depth bound). Only those, and the refusals, take the
+  -- slower scanner.
+  case J.parseJson strictParseOptions bytes of
+    Right value -> Right value
+    Left _ -> either (const (Left ())) (Right . fromRaw) (Py.loads hooks text)
   where
     hooks =
       Py.Hooks
@@ -514,9 +522,12 @@ strictLoad bytes = do
 strictFrameLoad :: ByteString -> Either () Json
 strictFrameLoad bytes = case TE.decodeUtf8' bytes of
   Left _ -> Left ()
-  Right _ -> either (const (Left ())) Right (J.parseJson strictOptions bytes)
-  where
-    strictOptions = J.pythonLoads {J.duplicateMembers = J.RejectDuplicates, J.allowNonFiniteConstants = False}
+  Right _ -> either (const (Left ())) Right (J.parseJson strictParseOptions bytes)
+
+-- | @json.loads@ with a duplicate-refusing @object_pairs_hook@ and a
+-- refusing @parse_constant@.
+strictParseOptions :: J.ParseOptions
+strictParseOptions = J.pythonLoads {J.duplicateMembers = J.RejectDuplicates, J.allowNonFiniteConstants = False}
 
 bare :: AgenticusError
 bare = valueError ""
