@@ -10,8 +10,8 @@ spawn each other. The acceptance demo reproduces the reference's
 scripts/cv5-lifecycle-demo.py. The driver scripts in test/interop and bench
 run the reference itself from the pinned upstream virtual environment.
 
-Petrus
-  Copyright Seasoned
+Petrus (https://github.com/henriquebastos/petrus)
+  Copyright 2026 Henrique Bastos
   Licensed under the Apache License, Version 2.0
 
 psycopg 3 (driven by the reference; its transaction semantics are

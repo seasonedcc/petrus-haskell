@@ -71,14 +71,14 @@ Notes on the table:
   suite reports 2 pending. Every other render test uses a fake `dot` on the
   search path, as upstream does with `monkeypatch`.
 
-## Out of scope (not ported, by the task's boundary)
+## Ported by other packages (not counted in this package's table)
 
-| upstream file | reason |
+| upstream file | where |
 | --- | --- |
 | dsl/test_petrinet_dsl.py (42) | the DSL is its own package: ported in `petrus-dsl` (`packages/petrus-dsl/PARITY.md`) |
 | binding/test_cel.py (19) | CEL itself is the separate `petrus-cel` package; all 19 are ported there, in `packages/petrus-cel/test/Impetus.hs` |
-| history_store/test_sqlite_history.py (11) | durable stores other than in-memory are out of scope |
-| history_store/test_postgres_history.py (21) | same |
+| history_store/test_sqlite_history.py (11) | the SQLite store is `petrus-history-store` (`packages/petrus-history-store/PARITY.md`) |
+| history_store/test_postgres_history.py (21) | the PostgreSQL store is `petrus-history-postgres` (`packages/petrus-history-postgres/PARITY.md`) |
 
 ## Ported in other packages (24 upstream test functions)
 
@@ -100,8 +100,9 @@ dataclass reflection and does not apply to a record of functions (see
 `TestJsonlHistoryStore` (8) are in
 `packages/petrus-history-store/test/Petrus/HistoryStore/JsonlSpec.hs`, and the
 `reopen` fixture's jsonl parameter is `BackendContractSpec.hs` there. The
-fixture's sqlite and postgres parameters wait for those backends, which are
-out of scope like `test_sqlite_history.py` and `test_postgres_history.py`.
+fixture's sqlite parameter is ported in the same `BackendContractSpec.hs`,
+and its postgres parameter in
+`packages/petrus-history-postgres/test/Petrus/HistoryStore/PostgresSpec.hs`.
 See `packages/petrus-history-store/PARITY.md`.
 
 **CEL semantics (5)**: the CEL environment and macro-bound variable
@@ -113,9 +114,13 @@ The per-test rows are in `parity-activity-seam.md`, `parity-history.md`, and
 
 ## Not at parity (2 upstream test functions)
 
-**Private Instance helpers that are not exported**, in `test_firing.py`. The
-same records and outcomes are asserted through the public `begin` and
-`complete` doors.
+**Instance firing helpers the port does not export**, in `test_firing.py`.
+Upstream they are the public module functions
+`petrus.impetus.instance.firing.begin_firing` and `complete_firing` (the test
+imports them as `instance_begin_firing` and `instance_complete_firing`); the
+port keeps their work inside `Petrus.Impetus.Instance` and exports no
+equivalent. The same records and outcomes are asserted through the public
+`begin` and `complete` doors. See `docs/audit/impetus-spec.md` (IMP-3).
 
 - `TestBeginEndFiring.test_instance_begin_firing_retains_its_record_authoring_contract`
 - `TestBeginEndFiring.test_instance_complete_firing_retains_its_outcome_and_registration_contract`

@@ -25,7 +25,8 @@ The instrumentation suite runs 52 examples, 0 failures:
 - the 22 ported tests;
 - 4 Haskell-specific examples;
 - 26 differential examples. One of them regenerates the reference's events
-  from the pinned checkout and is pending without `upstream/petrus/.venv`.
+  from the pinned checkout; it provisions the reference through
+  `scripts/upstream-python` and fails, never goes pending, when it cannot.
 
 ## `test_telemetry.py` → `petrus-telemetry/test/Main.hs`
 
@@ -113,10 +114,11 @@ Haskell-specific examples:
   (DIVERGENCES 17).
 - A failing sink never breaks a run.
 
-## Events emitted by components not yet ported
+## Events emitted by other components
 
-The reference also emits telemetry from components that have no Haskell
-port yet:
+The reference also emits telemetry from components with their own rows in
+the top-level [PARITY.md](../../PARITY.md), whose Haskell ports emit them
+through this library:
 
 - the workers (`worker_started`, `worker_stopped`, and a span per
   activity);

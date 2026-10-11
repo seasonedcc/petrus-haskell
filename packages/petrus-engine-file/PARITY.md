@@ -49,13 +49,13 @@ loads in petrus-engine.
 To regenerate the corpus (deterministic; needs node 22.18 or later for the
 viewer re-saves):
 
-    uv sync --frozen --python 3.14 --project upstream/petrus-engine
-    upstream/petrus-engine/.venv/bin/python packages/petrus-engine-file/differential/corpus.py
+    "$(scripts/upstream-python petrus-engine)" packages/petrus-engine-file/differential/corpus.py
 
 ## 2. Live differential
 
-When `upstream/petrus-engine/.venv` exists, `LiveSpec` runs these checks; CI
-creates it, and without it they are pending:
+`LiveSpec` runs these checks against the pinned petrus-engine, which
+`scripts/upstream-python petrus-engine` provisions on first use; when it
+cannot, the examples fail rather than go pending:
 
 - **The corpus is current.** `reference.py` reproduces every recorded result.
 - **Fresh fuzz cases agree.** Three seeds (1, 2, 3) of 300 cases each are
@@ -130,4 +130,5 @@ The run prints 971 examples and 0 failures:
 | `LiveSpec` | 4 |
 | `CliSpec` | 40 |
 
-The live and CLI examples are pending without the reference venv.
+The live and CLI examples provision the reference venv on first use and fail
+if they cannot.
