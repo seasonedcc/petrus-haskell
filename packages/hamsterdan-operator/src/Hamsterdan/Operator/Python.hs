@@ -16,7 +16,6 @@ module Hamsterdan.Operator.Python
   , dictKeys
   , urlQuote
   , shlexQuote
-  , listRepr
   , decodeOutput
   , pyStrip
   , pyCasefold
@@ -100,9 +99,6 @@ shlexQuote s
   where
     safe c = c < '\x80' && (isAsciiLower c || isAsciiUpper c || isDigit c || c `elem` ("_@%+=:,./-" :: String))
 
--- | @repr(list_of_str)@.
-listRepr :: [Text] -> Text
-listRepr items = "[" <> T.intercalate ", " (map strRepr items) <> "]"
 
 -- | What @subprocess.run(..., text=True)@ makes of captured bytes: strict
 -- UTF-8 and universal newlines, or its @UnicodeDecodeError@.

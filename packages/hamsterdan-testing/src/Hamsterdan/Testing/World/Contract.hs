@@ -47,7 +47,6 @@ module Hamsterdan.Testing.World.Contract
   , boundedJson
   , canonical
   , sha256Hex
-  , pyListRepr
   ) where
 
 import Control.Exception (Exception (..), throw)
@@ -62,6 +61,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json (Json (..))
+import Petrus.Json.Python (pythonStrListRepr)
 import Petrus.Testing.Dst (Budget (..), BudgetV4 (..), CheckerIdentity, Identity (..), ProfileIdentity, canonicalBytes, digestJson)
 import Hamsterdan.Python.Hashlib (sha256Hex)
 
@@ -344,15 +344,12 @@ data PyError = PyError Text Text
 instance Exception PyError where
   displayException (PyError cls message) = T.unpack (cls <> ": " <> message)
 
--- | @str(sorted(keys))@.
-pyListRepr :: [Text] -> Text
-pyListRepr items = "[" <> T.intercalate ", " (map (\k -> "'" <> k <> "'") items) <> "]"
 
 -- | @strict_object(value, keys, label)@.
 strictObject :: Json -> Set Text -> Text -> Either PyError [(Text, Json)]
 strictObject value keys label = case value of
   Object members | Set.fromList (map fst members) == keys && length members == Set.size keys -> Right members
-  _ -> Left (PyError "ValueError" (label <> " requires exact fields " <> pyListRepr (Set.toAscList keys)))
+  _ -> Left (PyError "ValueError" (label <> " requires exact fields " <> pythonStrListRepr (Set.toAscList keys)))
 
 -- | @json.dumps(value, sort_keys=True, separators=(",", ":"))@ (ASCII).
 canonical :: Json -> ByteString

@@ -123,7 +123,7 @@ import Hamsterdan.Host.PublicationQualification
 import Hamsterdan.Operator.Posix (Stat (..), effectiveUid, isDirectory, isRegular, normpath, pathParent, permissionBits)
 import Hamsterdan.Operator.Posix qualified as Posix
 import Hamsterdan.Operator.Python
-import Petrus.Json.Python (fsEncode, utf8BackslashReplace)
+import Petrus.Json.Python (fsEncode, pythonStrListRepr, utf8BackslashReplace)
 import Petrus.Json.Wtf8 (fromCodePoints)
 import Hamsterdan.Python.Exception (ioException)
 import System.Directory (canonicalizePath, doesFileExist, getTemporaryDirectory)
@@ -941,7 +941,7 @@ assertOnly :: Operator -> FilePath -> Set.Set Text -> IO ()
 assertOnly op checkout admitted = do
   changed <- Set.fromList . splitlines <$> run op ["git", "diff", "--name-only", "origin/main...HEAD"] (Just checkout)
   when (changed /= admitted) $
-    operatorError ("refusing unexpected changed paths: " <> listRepr (Set.toAscList changed))
+    operatorError ("refusing unexpected changed paths: " <> pythonStrListRepr (Set.toAscList changed))
 
 -- | @create(scenario, runner)@.
 create :: Operator -> Text -> IO PV
@@ -967,7 +967,7 @@ create op scenario = do
     untracked <- splitlines <$> inCheckout ["git", "ls-files", "--others", "--exclude-standard"]
     let changed = Set.fromList (modified <> untracked)
     when (Set.null changed || not (changed `Set.isSubsetOf` admittedPaths)) $
-      operatorError ("refusing unexpected changed paths: " <> listRepr (Set.toAscList changed))
+      operatorError ("refusing unexpected changed paths: " <> pythonStrListRepr (Set.toAscList changed))
     void (inCheckout (["git", "add", "--"] <> Set.toAscList changed))
     void (inCheckout ["git", "commit", "-m", title])
     assertOnly op checkout changed

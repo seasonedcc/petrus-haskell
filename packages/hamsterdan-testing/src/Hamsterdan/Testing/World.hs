@@ -126,6 +126,7 @@ import Hamsterdan.Testing.World.Contract
 import Hamsterdan.Testing.World.Provider hiding (setHumanComment)
 import Hamsterdan.Testing.World.Provider qualified as Provider
 import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst
   ( ActionDisposition (..)
   , AnyArtifact
@@ -395,7 +396,7 @@ spelledAs = \case
 -- same order, with the same messages.
 parseCommand :: Command -> Either PyError ReadinessCommand
 parseCommand c = do
-  keys <- maybe (fails ("unknown readiness command " <> pyRepr c.name)) Right (Map.lookup c.name commandKeys)
+  keys <- maybe (fails ("unknown readiness command " <> pythonStrRepr c.name)) Right (Map.lookup c.name commandKeys)
   _ <- boundedJson c.payload (profileLimit "payload_bytes") c.name
   payload <- strictObject c.payload keys c.name
   let field k = fromMaybe Null (lookup k payload)
@@ -487,7 +488,7 @@ parseCommand c = do
     "readiness.host.drive_one" -> pure HostDriveOne
     "readiness.host.reconcile_one" -> pure HostReconcileOne
     -- 'commandKeys' names exactly the commands above.
-    _ -> fails ("unknown readiness command " <> pyRepr name)
+    _ -> fails ("unknown readiness command " <> pythonStrRepr name)
   where
     fails :: Text -> Either PyError a
     fails = Left . PyError "ValueError"
@@ -563,8 +564,6 @@ changesProviderTruth = \case
   HostReconcileOne -> False
   _ -> True
 
-pyRepr :: Text -> Text
-pyRepr t = "'" <> t <> "'"
 
 -- | @parse_authority(value)@.
 parseAuthority :: Json -> Either PyError AuthorityClaim

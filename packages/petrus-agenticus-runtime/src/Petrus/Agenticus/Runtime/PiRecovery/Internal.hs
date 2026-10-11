@@ -54,15 +54,12 @@ import Data.Char (GeneralCategory (..), generalCategory, isHexDigit, isSpace)
 import Data.IORef
 import Data.Int (Int64)
 import Data.Maybe (fromMaybe, isJust)
-import Data.ByteString (ByteString)
-import Data.ByteString qualified as B
 import Data.Text (Text)
 import Data.Text qualified as T
-import Numeric (showHex)
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Json.Repr (pythonReprFloat)
 import Petrus.Agenticus.Error
-import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python (pythonBytesRepr, pythonStrRepr)
 import Petrus.Agenticus.Internal.Sqlite
 import Petrus.Agenticus.Internal.WriterFence
 import Petrus.Agenticus.Internal.Validate (checkedText)
@@ -485,20 +482,7 @@ pyStr = \case
   SQLInteger n -> T.pack (show n)
   SQLFloat x -> T.pack (pythonReprFloat x)
   SQLNull -> "None"
-  SQLBlob b -> pyBytesRepr b
-
--- | @repr(value)@ of a @bytes@ value.
-pyBytesRepr :: ByteString -> Text
-pyBytesRepr bytes = "b" <> T.singleton quote <> T.concat (map escape (B.unpack bytes)) <> T.singleton quote
-  where
-    quote = if B.elem 39 bytes && not (B.elem 34 bytes) then '"' else '\''
-    escape w
-      | w == fromIntegral (fromEnum quote) || w == 92 = T.pack ['\\', toEnum (fromIntegral w)]
-      | w == 9 = "\\t"
-      | w == 10 = "\\n"
-      | w == 13 = "\\r"
-      | w < 32 || w >= 127 = T.pack ('\\' : 'x' : (if w < 16 then ('0' :) else id) (showHex w ""))
-      | otherwise = T.singleton (toEnum (fromIntegral w))
+  SQLBlob b -> pythonBytesRepr b
 
 -- | @_decode(row)@.
 decode :: [SqlValue] -> IO PiOperationRecord
