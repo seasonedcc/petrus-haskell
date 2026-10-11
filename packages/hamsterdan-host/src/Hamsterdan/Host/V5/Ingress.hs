@@ -333,37 +333,39 @@ openIngressStore path = do
   flip onException (Sql.close db) $ do
     Sql.script
       db
-      "PRAGMA journal_mode=WAL;\n\
-      \CREATE TABLE IF NOT EXISTS v5_ingress_manifests (\n\
-      \  delivery_id TEXT PRIMARY KEY,\n\
-      \  subject TEXT NOT NULL,\n\
-      \  revision INTEGER NOT NULL,\n\
-      \  topology TEXT NOT NULL,\n\
-      \  schema_version INTEGER NOT NULL,\n\
-      \  entries TEXT NOT NULL,\n\
-      \  UNIQUE(subject, revision)\n\
-      \);\n\
-      \CREATE TABLE IF NOT EXISTS v5_authority_grants (\n\
-      \  subject TEXT PRIMARY KEY,\n\
-      \  phase TEXT NOT NULL,\n\
-      \  incarnation INTEGER NOT NULL,\n\
-      \  head TEXT NOT NULL,\n\
-      \  base TEXT NOT NULL,\n\
-      \  policy TEXT NOT NULL,\n\
-      \  revision INTEGER NOT NULL,\n\
-      \  source_kind TEXT NOT NULL,\n\
-      \  source_id TEXT NOT NULL\n\
-      \);\n\
-      \CREATE TABLE IF NOT EXISTS v5_reconciliation_manifests (\n\
-      \  source_id TEXT PRIMARY KEY,\n\
-      \  subject TEXT NOT NULL,\n\
-      \  revision INTEGER NOT NULL,\n\
-      \  digest TEXT NOT NULL,\n\
-      \  topology TEXT NOT NULL,\n\
-      \  schema_version INTEGER NOT NULL,\n\
-      \  entries TEXT NOT NULL,\n\
-      \  UNIQUE(subject, revision)\n\
-      \);"
+      "\n\
+      \                PRAGMA journal_mode=WAL;\n\
+      \                CREATE TABLE IF NOT EXISTS v5_ingress_manifests (\n\
+      \                  delivery_id TEXT PRIMARY KEY,\n\
+      \                  subject TEXT NOT NULL,\n\
+      \                  revision INTEGER NOT NULL,\n\
+      \                  topology TEXT NOT NULL,\n\
+      \                  schema_version INTEGER NOT NULL,\n\
+      \                  entries TEXT NOT NULL,\n\
+      \                  UNIQUE(subject, revision)\n\
+      \                );\n\
+      \                CREATE TABLE IF NOT EXISTS v5_authority_grants (\n\
+      \                  subject TEXT PRIMARY KEY,\n\
+      \                  phase TEXT NOT NULL,\n\
+      \                  incarnation INTEGER NOT NULL,\n\
+      \                  head TEXT NOT NULL,\n\
+      \                  base TEXT NOT NULL,\n\
+      \                  policy TEXT NOT NULL,\n\
+      \                  revision INTEGER NOT NULL,\n\
+      \                  source_kind TEXT NOT NULL,\n\
+      \                  source_id TEXT NOT NULL\n\
+      \                );\n\
+      \                CREATE TABLE IF NOT EXISTS v5_reconciliation_manifests (\n\
+      \                  source_id TEXT PRIMARY KEY,\n\
+      \                  subject TEXT NOT NULL,\n\
+      \                  revision INTEGER NOT NULL,\n\
+      \                  digest TEXT NOT NULL,\n\
+      \                  topology TEXT NOT NULL,\n\
+      \                  schema_version INTEGER NOT NULL,\n\
+      \                  entries TEXT NOT NULL,\n\
+      \                  UNIQUE(subject, revision)\n\
+      \                );\n\
+      \                "
     grantColumns <- columnNames db "v5_authority_grants"
     manifestColumns <- columnNames db "v5_ingress_manifests"
     let hasKind = "source_kind" `elem` grantColumns

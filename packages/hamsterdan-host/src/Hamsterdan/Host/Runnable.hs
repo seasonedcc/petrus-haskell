@@ -72,15 +72,17 @@ openRunnableIndexWith path clock = do
       else Sql.open (T.pack path)
   Sql.script
     connection
-    "PRAGMA journal_mode=WAL;\n\
-    \CREATE TABLE IF NOT EXISTS wakes (\n\
-    \  instance TEXT NOT NULL,\n\
-    \  kind TEXT NOT NULL,\n\
-    \  identity TEXT NOT NULL,\n\
-    \  due_at REAL NOT NULL,\n\
-    \  PRIMARY KEY(instance, kind, identity)\n\
-    \);\n\
-    \CREATE INDEX IF NOT EXISTS wakes_due ON wakes(due_at, instance);"
+    "\n\
+    \          PRAGMA journal_mode=WAL;\n\
+    \          CREATE TABLE IF NOT EXISTS wakes (\n\
+    \            instance TEXT NOT NULL,\n\
+    \            kind TEXT NOT NULL,\n\
+    \            identity TEXT NOT NULL,\n\
+    \            due_at REAL NOT NULL,\n\
+    \            PRIMARY KEY(instance, kind, identity)\n\
+    \          );\n\
+    \          CREATE INDEX IF NOT EXISTS wakes_due ON wakes(due_at, instance);\n\
+    \        "
   pure RunnableIndex {connection, clock}
   where
     createParents directory = do

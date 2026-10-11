@@ -103,6 +103,8 @@ test-suite hamsterdan-host-test
                     RunnableSpec
                     TestSupport
                     TimersSpec
+                    InteropSpec
+                    ArchitectureSpec
                     CliSpec
                     ApiSpec
                     RawHttp

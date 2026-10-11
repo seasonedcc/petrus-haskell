@@ -318,52 +318,54 @@ createSchema :: Connection -> Text -> IO ()
 createSchema database subject = do
   Sql.script
     database
-    "CREATE TABLE v5_timer_meta (\n\
-    \  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),\n\
-    \  schema_version INTEGER NOT NULL CHECK (schema_version = 1),\n\
-    \  topology TEXT NOT NULL CHECK (topology = 'v5'),\n\
-    \  subject TEXT NOT NULL UNIQUE,\n\
-    \  last_generation INTEGER NOT NULL CHECK (last_generation >= 0)\n\
-    \);\n\
-    \CREATE TABLE v5_timer_operations (\n\
-    \  operation TEXT PRIMARY KEY,\n\
-    \  subject TEXT NOT NULL,\n\
-    \  generation INTEGER NOT NULL CHECK (generation > 0),\n\
-    \  command_json TEXT NOT NULL,\n\
-    \  result_json TEXT NOT NULL,\n\
-    \  ack_identity TEXT NOT NULL UNIQUE,\n\
-    \  applied_at_us INTEGER NOT NULL,\n\
-    \  ack_delivered INTEGER NOT NULL DEFAULT 0 CHECK (ack_delivered IN (0, 1)),\n\
-    \  UNIQUE(subject, generation)\n\
-    \);\n\
-    \CREATE TABLE v5_timers (\n\
-    \  timer_id TEXT PRIMARY KEY,\n\
-    \  subject TEXT NOT NULL,\n\
-    \  incarnation INTEGER NOT NULL CHECK (incarnation >= 0),\n\
-    \  sequence INTEGER NOT NULL CHECK (sequence >= 0),\n\
-    \  head TEXT NOT NULL,\n\
-    \  due_at_us INTEGER NOT NULL,\n\
-    \  arm_operation TEXT NOT NULL,\n\
-    \  state TEXT NOT NULL CHECK (state IN ('armed','superseded','cancelled','matured','retired')),\n\
-    \  terminal_operation TEXT,\n\
-    \  matured_at_us INTEGER,\n\
-    \  maturity_identity TEXT UNIQUE,\n\
-    \  maturity_delivered INTEGER NOT NULL DEFAULT 0 CHECK (maturity_delivered IN (0, 1)),\n\
-    \  CHECK (\n\
-    \    (state = 'armed' AND terminal_operation IS NULL AND matured_at_us IS NULL\n\
-    \      AND maturity_identity IS NULL AND maturity_delivered = 0)\n\
-    \    OR (state IN ('superseded','cancelled') AND terminal_operation IS NOT NULL\n\
-    \      AND matured_at_us IS NULL AND maturity_identity IS NULL AND maturity_delivered = 0)\n\
-    \    OR (state = 'retired' AND terminal_operation IS NULL AND matured_at_us IS NULL\n\
-    \      AND maturity_identity IS NULL AND maturity_delivered = 0)\n\
-    \    OR (state = 'matured' AND terminal_operation IS NULL AND matured_at_us IS NOT NULL\n\
-    \      AND maturity_identity IS NOT NULL)\n\
-    \  )\n\
-    \);\n\
-    \CREATE UNIQUE INDEX v5_timers_one_armed ON v5_timers(subject) WHERE state='armed';\n\
-    \CREATE INDEX v5_timers_due ON v5_timers(subject,due_at_us,timer_id) WHERE state='armed';\n\
-    \CREATE INDEX v5_timer_pending_acks\n\
-    \  ON v5_timer_operations(subject,ack_delivered,generation);"
+    "\n\
+    \            CREATE TABLE v5_timer_meta (\n\
+    \              singleton INTEGER PRIMARY KEY CHECK (singleton = 1),\n\
+    \              schema_version INTEGER NOT NULL CHECK (schema_version = 1),\n\
+    \              topology TEXT NOT NULL CHECK (topology = 'v5'),\n\
+    \              subject TEXT NOT NULL UNIQUE,\n\
+    \              last_generation INTEGER NOT NULL CHECK (last_generation >= 0)\n\
+    \            );\n\
+    \            CREATE TABLE v5_timer_operations (\n\
+    \              operation TEXT PRIMARY KEY,\n\
+    \              subject TEXT NOT NULL,\n\
+    \              generation INTEGER NOT NULL CHECK (generation > 0),\n\
+    \              command_json TEXT NOT NULL,\n\
+    \              result_json TEXT NOT NULL,\n\
+    \              ack_identity TEXT NOT NULL UNIQUE,\n\
+    \              applied_at_us INTEGER NOT NULL,\n\
+    \              ack_delivered INTEGER NOT NULL DEFAULT 0 CHECK (ack_delivered IN (0, 1)),\n\
+    \              UNIQUE(subject, generation)\n\
+    \            );\n\
+    \            CREATE TABLE v5_timers (\n\
+    \              timer_id TEXT PRIMARY KEY,\n\
+    \              subject TEXT NOT NULL,\n\
+    \              incarnation INTEGER NOT NULL CHECK (incarnation >= 0),\n\
+    \              sequence INTEGER NOT NULL CHECK (sequence >= 0),\n\
+    \              head TEXT NOT NULL,\n\
+    \              due_at_us INTEGER NOT NULL,\n\
+    \              arm_operation TEXT NOT NULL,\n\
+    \              state TEXT NOT NULL CHECK (state IN ('armed','superseded','cancelled','matured','retired')),\n\
+    \              terminal_operation TEXT,\n\
+    \              matured_at_us INTEGER,\n\
+    \              maturity_identity TEXT UNIQUE,\n\
+    \              maturity_delivered INTEGER NOT NULL DEFAULT 0 CHECK (maturity_delivered IN (0, 1)),\n\
+    \              CHECK (\n\
+    \                (state = 'armed' AND terminal_operation IS NULL AND matured_at_us IS NULL\n\
+    \                  AND maturity_identity IS NULL AND maturity_delivered = 0)\n\
+    \                OR (state IN ('superseded','cancelled') AND terminal_operation IS NOT NULL\n\
+    \                  AND matured_at_us IS NULL AND maturity_identity IS NULL AND maturity_delivered = 0)\n\
+    \                OR (state = 'retired' AND terminal_operation IS NULL AND matured_at_us IS NULL\n\
+    \                  AND maturity_identity IS NULL AND maturity_delivered = 0)\n\
+    \                OR (state = 'matured' AND terminal_operation IS NULL AND matured_at_us IS NOT NULL\n\
+    \                  AND maturity_identity IS NOT NULL)\n\
+    \              )\n\
+    \            );\n\
+    \            CREATE UNIQUE INDEX v5_timers_one_armed ON v5_timers(subject) WHERE state='armed';\n\
+    \            CREATE INDEX v5_timers_due ON v5_timers(subject,due_at_us,timer_id) WHERE state='armed';\n\
+    \            CREATE INDEX v5_timer_pending_acks\n\
+    \              ON v5_timer_operations(subject,ack_delivered,generation);\n\
+    \            "
   void $
     Sql.execute
       database
