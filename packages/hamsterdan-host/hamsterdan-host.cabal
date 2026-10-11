@@ -144,6 +144,7 @@ test-suite hamsterdan-host-test
                   , petrus-cel
                   , petrus-dsl
                   , petrus-engine
+                  , petrus-execution
                   , petrus-history-store
                   , petrus-impetus
                   , hspec >=2.10
