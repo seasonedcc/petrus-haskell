@@ -14,6 +14,7 @@ module Hamsterdan.Export.Python
     PV (..)
   , typeName
   , fromValue
+  , forceValue
   , toJson
 
     -- * Exceptions
@@ -45,6 +46,7 @@ module Hamsterdan.Export.Python
   , loadsText
   , loadsValue
   , dumpsIndented
+  , dumpsIndentedBytes
   , dumpsLine
   ) where
 
@@ -63,8 +65,8 @@ import Numeric (showHex)
 import Petrus.EngineFile.PyJson (PyJsonError (..), pyLoads, renderPyJsonError)
 import Petrus.EngineFile.PyText (decodeText)
 import Petrus.EngineFile.Validate (PyException (..))
-import Petrus.EngineFile.Value (Value (..), pyDict)
-import Petrus.Json (EncodeError (..), EncodeOptions (..), Json (..), defaultDumps, dumpsText, encodeErrorMessage, pythonFloatRepr)
+import Petrus.EngineFile.Value (Value (..))
+import Petrus.Json (EncodeError (..), EncodeOptions (..), Json (..), defaultDumps, dumps, encodeErrorMessage, pythonFloatRepr)
 import Petrus.Json.Limits (intStrDigitsError, maxIntStrDigits)
 
 -- ---------------------------------------------------------------------------
@@ -97,7 +99,8 @@ typeName = \case
   PDict _ -> "dict"
 
 -- | The Python object @json.loads@ builds from a parsed value (a repeated
--- member keeps its first position and takes its last value).
+-- member keeps its first position and takes its last value: @pyLoads@
+-- has already settled that).
 fromValue :: Value -> PV
 fromValue = \case
   VNull -> PNone
@@ -106,7 +109,19 @@ fromValue = \case
   VFloat d -> PFloat d
   VStr s -> PStr s
   VList items -> PList (map fromValue items)
-  VDict members -> PDict [(k, fromValue v) | (k, v) <- pyDict members]
+  VDict members -> PDict [(k, fromValue v) | (k, v) <- members]
+
+-- | Evaluate a value completely.
+forceValue :: PV -> ()
+forceValue = \case
+  PNone -> ()
+  PBool b -> b `seq` ()
+  PInt i -> i `seq` ()
+  PFloat d -> d `seq` ()
+  PStr s -> s `seq` ()
+  PBytes b -> b `seq` ()
+  PList items -> foldr (\v acc -> forceValue v `seq` acc) () items
+  PDict members -> foldr (\(k, v) acc -> k `seq` forceValue v `seq` acc) () members
 
 -- | The JSON @json.dumps@ writes for a value (@sort_keys@ when the flag is
 -- set), or its @TypeError@ for the first value it cannot serialize in the
@@ -124,8 +139,8 @@ toJson sorted = \case
   PDict members -> do
     let visited = if sorted then sortOn fst members else members
     converted <- traverse (\(k, v) -> (k,) <$> noted ("dict item " <> strRepr k) (toJson sorted v)) visited
-    -- The encoder writes the sorted order; the value keeps its own.
-    Right (Object (if sorted then [(k, v) | (k, _) <- members, Just v <- [lookup k converted]] else converted))
+    -- Sorted or not, the members are in the order the encoder writes them.
+    Right (Object converted)
   where
     noted place = either (\(PyError name text) -> Left (PyError name (text <> "\nwhen serializing " <> place))) Right
 
@@ -419,14 +434,18 @@ loadsValue = \case
 -- | @json.dumps(value, indent=2, sort_keys=True)@ (@sorted@ is
 -- @sort_keys@).
 dumpsIndented :: Bool -> PV -> Either PyError Text
-dumpsIndented sorted value = toJson sorted value >>= encode defaultDumps {indent = Just 2, sortKeys = sorted}
+dumpsIndented sorted value = TE.decodeUtf8 <$> dumpsIndentedBytes sorted value
+
+-- | 'dumpsIndented', as its UTF-8 bytes.
+dumpsIndentedBytes :: Bool -> PV -> Either PyError ByteString
+dumpsIndentedBytes sorted value = toJson sorted value >>= encode defaultDumps {indent = Just 2, sortKeys = sorted}
 
 -- | @json.dumps(value, sort_keys=True)@.
-dumpsLine :: PV -> Either PyError Text
+dumpsLine :: PV -> Either PyError ByteString
 dumpsLine value = toJson True value >>= encode defaultDumps {sortKeys = True}
 
-encode :: EncodeOptions -> Json -> Either PyError Text
-encode options json = either (Left . refusal) Right (dumpsText options json)
+encode :: EncodeOptions -> Json -> Either PyError ByteString
+encode options json = either (Left . refusal) Right (dumps options json)
   where
     refusal e = case e of
       NestingTooDeep _ -> PyError "RecursionError" (T.pack (encodeErrorMessage e))

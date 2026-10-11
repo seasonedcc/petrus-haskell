@@ -33,19 +33,21 @@ module Hamsterdan.Export
 
 import Control.Exception (Exception, SomeException, fromException, throwIO, try)
 import Control.Monad (foldM, forM, forM_, unless, when)
-import Crypto.Hash.SHA256 qualified as SHA256
+import Crypto.Hash (SHA256 (..), hashWith)
 import Data.ByteString qualified as BS
+import Data.ByteArray qualified as BA
 import Data.ByteString.Base16 qualified as Base16
+import Data.ByteString.Unsafe qualified as BU
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
+import Data.Containers.ListUtils (nubOrd)
 import Data.List (nub, sort, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Text.IO qualified as TIO
 import Hamsterdan.Cli.Argparse
   ( Action (..)
   , Behavior (..)
@@ -62,6 +64,7 @@ import Hamsterdan.Cli.Argparse
   , terminalColumns
   )
 import Hamsterdan.Export.Files
+import Hamsterdan.Export.Parallel (parallelMap, writeFiles)
 import Hamsterdan.Export.Python
 import Hamsterdan.GitHub.Python qualified as Py
 import Hamsterdan.PyLiteral (PyValue (..), literalEval, strRepr)
@@ -219,13 +222,13 @@ type Row = [(Text, PV)]
 -- ONLY join between canonical History and the agent session bodies.
 agentOperationId :: Text -> Integer -> Text
 agentOperationId operation attempt =
-  "pi:" <> TE.decodeUtf8 (Base16.encode (SHA256.hash (TE.encodeUtf8 (operation <> "\0" <> tshow attempt))))
+  "pi:" <> sha256Hex (TE.encodeUtf8 (operation <> "\0" <> tshow attempt))
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
 
 sha256Hex :: BS.ByteString -> Text
-sha256Hex = TE.decodeUtf8 . Base16.encode . SHA256.hash
+sha256Hex bytes = TE.decodeUtf8 (Base16.encode (BA.convert (hashWith SHA256 bytes)))
 
 -- ---------------------------------------------------------------------------
 -- Reading the state directory
@@ -293,31 +296,53 @@ findInstance stateDir repository pullRequest = do
 -- | Canonical History in file order; the line number is the record seq.
 readHistory :: Text -> IO [Record]
 readHistory path = do
-  text <- TE.decodeUtf8 <$> readText path
-  fmap concat . forM (zip [1 :: Integer ..] (splitLines text)) $ \(seq', line) ->
-    if T.null (Py.strip line)
-      then pure []
-      else case loadsText (TE.encodeUtf8 line) of
-        Left e | e.cls == "json.decoder.JSONDecodeError" -> refuse ("History record " <> tshow seq' <> " is not JSON")
-        Left e -> raise e
-        Right (PDict members) | contains "record" members -> pure [members]
-        Right _ -> refuse ("History record " <> tshow seq' <> " has no record kind")
-
--- | @str.splitlines()@.
-splitLines :: Text -> [Text]
-splitLines text
-  | T.null text = []
-  | otherwise = go text
+  bytes <- readText path
+  -- Every line parses on its own, so they parse at once; the first bad
+  -- one in file order is still the one reported.
+  parsed <- parallelMap 256 forceParsed parseLine (zip [1 :: Integer ..] (splitLines bytes))
+  fmap concat . forM parsed $ \(seq', outcome) -> case outcome of
+    Nothing -> pure []
+    Just (Left e) | e.cls == "json.decoder.JSONDecodeError" -> refuse ("History record " <> tshow seq' <> " is not JSON")
+    Just (Left e) -> raise e
+    Just (Right (PDict members)) | contains "record" members -> pure [members]
+    Just (Right _) -> refuse ("History record " <> tshow seq' <> " has no record kind")
   where
-    go rest
-      | T.null rest = []
-      | otherwise =
-          let (line, after) = T.break breaks rest
-           in line : case T.uncons after of
-                Nothing -> []
-                Just ('\r', more) | Just ('\n', more') <- T.uncons more -> go more'
-                Just (_, more) -> go more
-    breaks c = c `elem` ("\n\r\v\f\x1c\x1d\x1e\x85\x2028\x2029" :: String)
+    parseLine (seq', line) = (seq', if blank line then Nothing else Just (loadsText line))
+    forceParsed (_, outcome) = case outcome of
+      Just (Right value) -> forceValue value
+      Just (Left e) -> e `seq` ()
+      Nothing -> ()
+    -- @not line.strip()@: decided on the bytes unless only non-ASCII
+    -- characters could be the non-space ones.
+    blank line
+      | BS.any (\b -> b < 0x80 && not (asciiSpace b)) line = False
+      | BS.all (< 0x80) line = True
+      | otherwise = T.null (Py.strip (TE.decodeUtf8 line))
+    asciiSpace b = (b >= 0x09 && b <= 0x0D) || (b >= 0x1C && b <= 0x20)
+
+-- | @str.splitlines()@ over UTF-8 text, on its bytes: the line breaks are
+-- @\\n \\v \\f \\r \\x1c \\x1d \\x1e@ (one byte each), @\\x85@ (C2 85) and
+-- @\\u2028 \\u2029@ (E2 80 A8, E2 80 A9), and @\\r\\n@ breaks once.
+splitLines :: BS.ByteString -> [BS.ByteString]
+splitLines bytes = go 0 0
+  where
+    size = BS.length bytes
+    at i = BU.unsafeIndex bytes i
+    candidate b = (b >= 0x0A && b <= 0x0D) || (b >= 0x1C && b <= 0x1E) || b == 0xC2 || b == 0xE2
+    slice start end = BU.unsafeTake (end - start) (BU.unsafeDrop start bytes)
+    -- @start@ begins the current line; @from@ is where to look for its end.
+    go !start !from = case BS.findIndex candidate (BU.unsafeDrop from bytes) of
+      Nothing -> [slice start size | size > start]
+      Just offset ->
+        let i = from + offset
+         in case breakWidth i (at i) of
+              0 -> go start (i + 1)
+              width -> slice start i : go (i + width) (i + width)
+    breakWidth i b
+      | b == 0x0D = if i + 1 < size && at (i + 1) == 0x0A then 2 else 1
+      | b == 0xC2 = if i + 1 < size && at (i + 1) == 0x85 then 2 else 0
+      | b == 0xE2 = if i + 2 < size && at (i + 1) == 0x80 && (at (i + 2) == 0xA8 || at (i + 2) == 0xA9) then 3 else 0
+      | otherwise = 1 :: Int
 
 recordKind :: Record -> PV
 recordKind record = fromMaybe PNone (getKey "record" record)
@@ -501,8 +526,8 @@ sessionCoverage operation body session piOperation terminals
 
 writeJsonFile :: Text -> Bool -> PV -> IO ()
 writeJsonFile path sorted value = do
-  text <- raiseEither (dumpsIndented sorted value)
-  writeText path (text <> "\n")
+  bytes <- raiseEither (dumpsIndentedBytes sorted value)
+  writeBytes path (bytes <> "\n")
 
 pvList :: [Text] -> PV
 pvList = PList . map PStr
@@ -522,7 +547,13 @@ writeTranscripts ::
   IO ()
 writeTranscripts out operations bodies sessions piOperations reviewRequests terminals reporter = do
   mkdirParents out
-  (index, joined, sessionBytes, classes) <- foldM step ([], 0 :: Integer, 0 :: Integer, Map.empty) operations
+  -- The loop plans its files; they are written together, then the loop's
+  -- failure (if any) is raised, leaving what the reference's loop leaves.
+  planned <- newIORef []
+  let plan path bytes = modifyIORef' planned ((path, bytes) :)
+  outcome <- try (foldM (step plan) ([], 0 :: Integer, 0 :: Integer, Map.empty) operations)
+  readIORef planned >>= writeFiles . reverse
+  (index, joined, sessionBytes, classes) <- either (\(e :: SomeException) -> throwIO e) pure outcome
   writeJsonFile (joinPath out "index.json") True (PList (reverse index))
   let classCount name = Map.findWithDefault 0 name classes
   setNumber reporter "transcripts" $
@@ -542,7 +573,7 @@ writeTranscripts out operations bodies sessions piOperations reviewRequests term
         )
       ]
   where
-    step (index, joined, sessionBytes, classes) operation = do
+    step plan (index, joined, sessionBytes, classes) operation = do
       stem <- transcriptStem operation.operationId
       let body = Map.lookup operation.operationId bodies
           session = Map.lookup operation.operationId sessions
@@ -555,7 +586,7 @@ writeTranscripts out operations bodies sessions piOperations reviewRequests term
           bytes <- case value of
             PBytes bytes -> pure bytes
             other -> raise (typeError ("memoryview: a bytes-like object is required, not " <> strRepr (typeName other)))
-          writeBytes (joinPath out name) bytes
+          plan (joinPath out name) bytes
           pure (Just name, toInteger (BS.length bytes))
         _ -> pure (Nothing, 0)
       let request = Map.lookup (operation.logicalOperation, operation.attempt) reviewRequests
@@ -603,7 +634,8 @@ writeTranscripts out operations bodies sessions piOperations reviewRequests term
                 )
               , ("pi_operation", maybe PNone PDict piOperation)
               ]
-      writeJsonFile (joinPath out (stem <> ".json")) True document
+      rendered <- raiseEither (dumpsIndentedBytes True document)
+      plan (joinPath out (stem <> ".json")) (rendered <> "\n")
       let entry =
             PDict
               [ ("operation_id", PStr operation.operationId)
@@ -641,28 +673,25 @@ writeTranscripts out operations bodies sessions piOperations reviewRequests term
 -- id (in first-seen order), and the files that are not delivery records.
 indexRawDeliveries :: [Text] -> IO ([(Text, [RawDelivery])], [Text])
 indexRawDeliveries directories = do
-  (byDelivery, unrecognized) <- foldM visit ([], []) directories
-  pure ([(key, reverse records) | (key, records) <- reverse byDelivery], reverse unrecognized)
+  (table, keys, unrecognized) <- foldM visit (Map.empty, [], []) directories
+  -- Latest-first by first sighting, each delivery's records in order.
+  pure ([(key, reverse (Map.findWithDefault [] key table)) | key <- keys], reverse unrecognized)
   where
     visit acc directory = do
       present <- isDir directory
       unless present $ refuse ("webhook delivery directory " <> directory <> " does not exist")
       paths <- sortOn pathName <$> iterdir directory
       foldM classify acc paths
-    classify acc@(byDelivery, unrecognized) path = do
+    classify acc@(table, keys, unrecognized) path = do
       regular <- isFile path
       if not regular
         then pure acc
         else case deliveryName (pathName path) of
-          Nothing -> pure (byDelivery, path : unrecognized)
+          Nothing -> pure (table, keys, path : unrecognized)
           Just (delivery, label) ->
             let record = RawDelivery {path, deliveryId = delivery, label}
-             in pure (addTo delivery record byDelivery, unrecognized)
-    addTo key record = \case
-      [] -> [(key, [record])]
-      (other, records) : rest
-        | other == key -> (other, record : records) : rest
-        | otherwise -> (other, records) : addTo key record rest
+                keys' = if Map.member delivery table then keys else delivery : keys
+             in pure (Map.insertWith (++) delivery [record] table, keys', unrecognized)
 
 -- | @_DELIVERY_FILE.fullmatch(name)@: the lower-cased delivery guid and the
 -- label.
@@ -701,11 +730,17 @@ writeRawDeliveries out directories rows reporter
         )
   | otherwise = do
       (byDelivery, unrecognized) <- indexRawDeliveries directories
-      admitted <- foldM admit [] rows
+      keyed <- forM rows $ \row -> do
+        key <- pyLower . pyStr <$> raiseEither (subscript "delivery_id" row)
+        pure (key, row)
+      -- A dict keyed by the lower-cased id: first position, last row.
+      let latest = Map.fromList keyed
+          admitted = [(key, latest Map.! key) | key <- nubOrd (map fst keyed)]
+          deliveryTable = Map.fromList byDelivery
       let target = joinPath out "deliveries"
       mkdirParents target
       copied <- fmap concat . forM admitted $ \(delivery, row) -> do
-        let records = fromMaybe [] (lookup delivery byDelivery)
+        let records = Map.findWithDefault [] delivery deliveryTable
         if null records
           then do
             gap
@@ -741,6 +776,7 @@ writeRawDeliveries out directories rows reporter
                       ]
                   ]
       let admittedIds = map fst admitted
+          admittedSet = Set.fromList admittedIds
           outOfScope =
             [ PDict
                 [ ("file", PStr (pathName record.path))
@@ -749,7 +785,7 @@ writeRawDeliveries out directories rows reporter
                 , ("source", PStr record.path)
                 ]
             | (delivery, records) <- sortOn fst byDelivery
-            , delivery `notElem` admittedIds
+            , not (Set.member delivery admittedSet)
             , record <- records
             ]
       writeJsonFile (joinPath target "index.json") True (PList copied)
@@ -773,21 +809,14 @@ writeRawDeliveries out directories rows reporter
           [ ("supplied", Bool True)
           , ("directories", Array (map String directories))
           , ("files_seen", Int (toInteger (sum (map (length . snd) byDelivery))))
-          , ("matched_deliveries", Int (toInteger (length [d | d <- admittedIds, isJust (lookup d byDelivery)])))
+          , ("matched_deliveries", Int (toInteger (length [d | d <- admittedIds, Map.member d deliveryTable])))
           , ("copied", Int (toInteger (length copied)))
           , ("bytes", Int byteCount)
-          , ("inbox_rows_without_raw", Array (map String (sort [d | d <- admittedIds, isNothing (lookup d byDelivery)])))
+          , ("inbox_rows_without_raw", Array (map String (sort [d | d <- admittedIds, not (Map.member d deliveryTable)])))
           , ("out_of_scope_files", Int (toInteger (length outOfScope)))
           , ("out_of_scope_listing", String "webhooks/out-of-scope-deliveries.json")
           , ("unrecognized_files", Array (map String (sort unrecognized)))
           ]
-  where
-    admit admitted row = do
-      key <- pyLower . pyStr <$> raiseEither (subscript "delivery_id" row)
-      pure $
-        if any ((== key) . fst) admitted
-          then [(k, if k == key then row else r) | (k, r) <- admitted]
-          else admitted ++ [(key, row)]
 
 writeWebhooks :: Text -> Text -> Text -> [Text] -> Reporter -> IO ()
 writeWebhooks out stateDir scratch deliveries reporter = do
@@ -808,11 +837,12 @@ writeWebhooks out stateDir scratch deliveries reporter = do
               let row' = [(k, if k == "observation" then observation else v) | (k, v) <- row]
               event <- pyStr <$> raiseEither (subscript "event" row')
               line <- raiseEither (dumpsLine (PDict row'))
-              write (TE.encodeUtf8 (line <> "\n"))
-              pure (done ++ [row'], Map.insertWith (+) event (1 :: Integer) counts)
+              write (line <> "\n")
+              pure (row' : done, Map.insertWith (+) event (1 :: Integer) counts)
           )
           ([], Map.empty)
           rows
+          >>= \(done, counts) -> pure (reverse done, counts)
       setNumber reporter "webhooks" $
         Object [("rows", Int (toInteger (length rows))), ("by_event", Object [(k, Int v) | (k, v) <- Map.toList byEvent])]
       writeRawDeliveries out deliveries parsed reporter
@@ -821,11 +851,13 @@ writeBoards :: Text -> [Record] -> Reporter -> IO ()
 writeBoards out records reporter = do
   let landed = boardDocuments records
   mkdirParents out
-  entries' <- forM (zip [1 :: Int ..] landed) $ \(ordinal, (seq', result)) -> do
-    let name = T.justifyRight 4 '0' (tshow ordinal) <> ".md"
-    items <- raiseEither (subscript "entries" result >>= iterateValue)
-    board <- either (raise . boardFailure) pure (renderBoard (map pyStr items))
-    writeText (joinPath out name) (board <> "\n")
+  -- The boards render at once; each still fails where the reference's
+  -- loop would, after the boards before it are written.
+  rendered <- parallelMap 4 forceRendered render (zip [1 :: Int ..] landed)
+  planned <- newIORef []
+  outcome <- try . forM rendered $ \(name, seq', result, board) -> do
+    text <- either raise pure board
+    modifyIORef' planned ((joinPath out name, TE.encodeUtf8 (text <> "\n")) :)
     pure
       ( "- ["
           <> name
@@ -837,12 +869,22 @@ writeBoards out records reporter = do
           <> pyStr (fromMaybe (PStr "") (getKey "digest" result))
           <> "`"
       )
+  readIORef planned >>= writeFiles . reverse
+  entries' <- either (\(e :: SomeException) -> throwIO e) pure outcome
   let index = ["# Board history", "", "Every board the PR page showed, in publication order.", ""] ++ entries'
   writeText (joinPath out "index.md") (T.intercalate "\n" index <> "\n")
   setNumber reporter "boards" $
     Object [("dash_landed", Int (toInteger (length landed))), ("files", Int (toInteger (length landed)))]
   when (null landed) $
     gap reporter "canonical History holds no landed dashboard publication; no board state is reproducible"
+  where
+    render (ordinal, (seq', result)) =
+      let name = T.justifyRight 4 '0' (tshow ordinal) <> ".md"
+          board = do
+            items <- subscript "entries" result >>= iterateValue
+            either (Left . boardFailure) Right (renderBoard (map pyStr items))
+       in (name, seq', result, board)
+    forceRendered (_, _, _, board) = either (`seq` ()) (`seq` ()) board
 
 -- | The board renderer's recorded failure text (@Name('message')@) as the
 -- exception it stands for.
@@ -1396,8 +1438,8 @@ runExport env argv = do
   width <- subtract 2 <$> terminalColumns env.environment
   case parseArgs width exportParser argv of
     Exited status printed problems -> do
-      TIO.hPutStr env.output printed
-      TIO.hPutStr env.errors problems
+      emit env.output printed
+      emit env.errors problems
       pure (if status == 0 then ExitSuccess else ExitFailure status)
     Parsed namespace -> do
       let request =
@@ -1412,19 +1454,24 @@ runExport env argv = do
       outcome <- try (exportPackage request)
       case outcome of
         Right report -> do
-          forM_ report.gaps $ \g -> TIO.hPutStr env.errors ("GAP: " <> g <> "\n")
+          emit env.errors (T.concat ["GAP: " <> g <> "\n" | g <- report.gaps])
           numbers <- raiseEither (dumpsIndentedJson (Object (Map.toList report.numbers)))
-          TIO.hPutStr env.output (numbers <> "\n")
-          TIO.hPutStr env.output ("package written to " <> request.out <> " (gaps: " <> tshow (length report.gaps) <> ")\n")
+          emit env.output (numbers <> "\n")
+          emit env.output ("package written to " <> request.out <> " (gaps: " <> tshow (length report.gaps) <> ")\n")
           hFlush env.output
           pure ExitSuccess
         Left (e :: SomeException)
           | Just (EvidenceExportError message) <- fromException e -> do
-              TIO.hPutStr env.errors ("export failed: " <> message <> "\n")
+              emit env.errors ("export failed: " <> message <> "\n")
               pure (ExitFailure 2)
           | Just (problem :: PyError) <- fromException e -> do
-              TIO.hPutStr env.errors (errorLine problem <> "\n")
+              emit env.errors (errorLine problem <> "\n")
               pure (ExitFailure 1)
           | otherwise -> do
-              TIO.hPutStr env.errors (T.pack (show e) <> "\n")
+              emit env.errors (T.pack (show e) <> "\n")
               pure (ExitFailure 1)
+
+-- | Write text to a handle in one piece: @Data.Text.IO@ writes an
+-- unbuffered handle (stderr) one character at a time.
+emit :: Handle -> Text -> IO ()
+emit handle text = BS.hPut handle (TE.encodeUtf8 text)

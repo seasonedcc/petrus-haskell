@@ -37,13 +37,14 @@ module Hamsterdan.Export.Files
   , writeText
   , copyFile
   , withAppend
+  , removeFileQuietly
 
     -- * SQLite
   , queryRows
   ) where
 
 import Control.Exception (IOException, bracket, finally, try)
-import Control.Monad (filterM, forM, unless, when)
+import Control.Monad (filterM, forM, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.List (sortOn)
@@ -86,8 +87,8 @@ import Petrus.EngineFile.Validate (PyException (..))
 import Petrus.EngineFile.Value (pyDict)
 import System.Directory (removePathForcibly)
 import System.Environment (lookupEnv)
-import System.IO (Handle, IOMode (..), hClose)
 import System.Posix.ByteString (RawFilePath)
+import System.Posix.Types (Fd)
 import System.Posix.Directory.ByteString qualified as Dir
 import System.Posix.Files.ByteString qualified as Files
 import System.Posix.IO.ByteString qualified as PIO
@@ -326,24 +327,40 @@ readText path = do
 
 -- | @open(path, "wb").write(bytes)@.
 writeBytes :: Text -> ByteString -> IO ()
-writeBytes path bytes = withFileHandle path WriteMode (`BS.hPut` bytes)
+writeBytes path bytes = withFd path (\fd -> writeAll path fd bytes)
 
 -- | @path.write_text(text, encoding="utf-8")@.
 writeText :: Text -> Text -> IO ()
 writeText path text = writeBytes path (TE.encodeUtf8 text)
 
 -- | @open(path, "w")@, then the action's writes; the file is closed (and
--- what was written stays) whatever the action does.
+-- what was written stays) whatever the action does. Like the reference's
+-- buffered file, the writes reach the file when it is closed.
 withAppend :: Text -> ((ByteString -> IO ()) -> IO a) -> IO a
-withAppend path action = withFileHandle path WriteMode (\handle -> action (onPath path . BS.hPut handle))
+withAppend path action = do
+  chunks <- newIORef []
+  withFd path $ \fd ->
+    action (\chunk -> modifyIORef' chunks (chunk :))
+      `finally` (readIORef chunks >>= writeAll path fd . BS.concat . reverse)
 
-withFileHandle :: Text -> IOMode -> (Handle -> IO a) -> IO a
-withFileHandle path _ action = do
+-- | Open for writing (created, truncated), run the action, close.
+withFd :: Text -> (Fd -> IO a) -> IO a
+withFd path action = do
   fd <-
     onPath path $
       PIO.openFd (rawPath path) PIO.WriteOnly PIO.defaultFileFlags {PIO.trunc = True, PIO.creat = Just 0o666}
-  handle <- PIO.fdToHandle fd
-  action handle `finally` hClose handle
+  action fd `finally` PIO.closeFd fd
+
+writeAll :: Text -> Fd -> ByteString -> IO ()
+writeAll path fd bytes
+  | BS.null bytes = pure ()
+  | otherwise = do
+      written <- onPath path (PIO.fdWrite fd bytes)
+      writeAll path fd (BS.drop (fromIntegral written) bytes)
+
+-- | Remove a file if it is there; nothing else, and no complaint.
+removeFileQuietly :: Text -> IO ()
+removeFileQuietly path = void (try (Files.removeLink (rawPath path)) :: IO (Either IOException ()))
 
 -- | @shutil.copyfile(src, dst)@.
 copyFile :: Text -> Text -> IO ()

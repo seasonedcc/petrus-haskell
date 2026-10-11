@@ -9,7 +9,9 @@
 -- package a failure part-way leaves behind.
 --
 -- The state directories are the upstream test suite's own fixtures (built
--- by the reference's helpers) and hostile variants of them built here:
+-- by the reference's helpers), state directories the reference host itself
+-- wrote (hamsterdan-host's @differential/state_reference.py drive@), and
+-- hostile variants of the fixtures built here:
 -- malformed bindings and History, values of the wrong type everywhere the
 -- reference reads one, unreadable and mistyped stores, WAL sidecars,
 -- undecodable text, credential-named files, symbolic links, and raw
@@ -38,6 +40,7 @@ import System.Directory
   , listDirectory
   , pathIsSymbolicLink
   , removeFile
+  , renameFile
   )
 import System.Environment (getEnvironment, lookupEnv)
 import System.FilePath ((</>))
@@ -60,6 +63,10 @@ data Setup
     Upstream String
   | -- | The default fixture, then these changes.
     Built (FilePath -> IO ())
+  | -- | A real state directory: the reference host
+    -- (@hamsterdan-host@'s @differential/state_reference.py drive@) run
+    -- through @differential/host_steps.json@, then these changes.
+    Driven (FilePath -> IO ())
   | -- | Nothing at all.
     Empty
 
@@ -103,6 +110,30 @@ upstreamCases =
            (Just 80)
        ]
 
+-- | State directories the reference host itself wrote: two webhooks and
+-- a workflow run for @owner/one@ PR 7, converged and swept, about 600
+-- History records.
+drivenCases :: [Case]
+drivenCases =
+  [ Case "host-driven state" (Driven (const (pure ()))) driven (Just 80)
+  , Case "host-driven state, agent routes in place" (Driven routesInPlace) driven (Just 80)
+  , Case
+      "host-driven state, raw deliveries and identity"
+      (Driven routesInPlace)
+      ( driven
+          ++ [ "--webhook-deliveries"
+             , "../state/applications"
+             , "--identity"
+             , "../state/applications/44/31/7/binding.json"
+             ]
+      )
+      (Just 80)
+  , Case "host-driven state, another pull request" (Driven (const (pure ()))) (take 6 driven ++ ["--pull-request", "8"]) (Just 80)
+  ]
+  where
+    driven = ["--state-dir", "../state", "--out", "pkg", "--repository", "owner/one", "--pull-request", "7"]
+    routesInPlace root = renameFile (root </> "state" </> "test-agent-routes.sqlite3") (root </> "state" </> "agent-routes.sqlite3")
+
 -- ---------------------------------------------------------------------------
 -- Hostile state directories
 
@@ -143,6 +174,26 @@ reviewRequested work =
 dashLanded :: Json -> Json
 dashLanded entries =
   record "ActivityCompleted" [("occurrence", Int 5), ("result", Object [("$variant", String "DashLanded"), ("entries", entries)])]
+
+-- | A hundred bodies no History operation claims, @z100@ to @z199@.
+manyBodies :: Text
+manyBodies =
+  "WITH RECURSIVE n(i) AS (SELECT 100 UNION ALL SELECT i + 1 FROM n WHERE i < 199) "
+    <> "INSERT INTO pi_a2_bodies SELECT 'z' || i, 'out-ref', 'output text', NULL, 'session-1', NULL, x'7b7d0a', x'00', 'wd1', 1 FROM n"
+
+oneBody :: Text -> Text -> Text
+oneBody operationId session =
+  "INSERT INTO pi_a2_bodies VALUES ('" <> operationId <> "', 'out-ref', 'output text', NULL, 'session-1', NULL, " <> session <> ", x'00', 'wd1', 1)"
+
+-- | Three hundred History lines: the default History, then records, with
+-- the given lines in place.
+writeHistoryLines :: (Int -> Maybe ByteString) -> FilePath -> IO ()
+writeHistoryLines replaced root =
+  writeHistory
+    root
+    [ fromMaybe (dumpsDefault line) (replaced i)
+    | (i, line) <- zip [1 ..] (history ++ [record "Note" [("n", Int (toInteger n))] | n <- [1 .. 300 - length history]])
+    ]
 
 hostileCases :: [Case]
 hostileCases =
@@ -191,6 +242,33 @@ hostileCases =
       BS.writeFile
         (instanceDir root </> "history.jsonl")
         (BS.intercalate "\r" (map dumpsDefault history) <> "\r\n\x0c\r\n" <> dumpsDefault (record "Late" [("x", Int 1)]))
+  , hostile "History breaks lines at every str.splitlines boundary, with Unicode-space blank lines" $ \root ->
+      BS.writeFile
+        (instanceDir root </> "history.jsonl")
+        ( BS.intercalate
+            "\n"
+            [ BS.intercalate "\xC2\x85" (map dumpsDefault (take 3 history))
+            , "\xE2\x80\xA8\xE2\x80\xA9\x1c\x1d\x1e\x0b"
+            , "\xC2\xA0\xE3\x80\x80 \x1f"
+            , "{\"record\": \"Late\", \"text\": \"\xC2\xA0x\xE3\x80\x80\"}\xE2\x80\xA9"
+            , BS.intercalate "\x1c" (map dumpsDefault (drop 3 history))
+            ]
+        )
+  , hostile "History has a zero-width-space line (not blank) after a split string" $ \root ->
+      writeHistory
+        root
+        [ dumpsDefault (record "InstanceCreated" [])
+        , "\xE2\x80\x8B"
+        , "{\"record\": \"Late\", \"text\": \"a\xE2\x80\xA8z\"}"
+        ]
+  , hostile "History records repeat keys (first position, last value)" $ \root ->
+      writeHistory
+        root
+        [ "{\"record\": \"InstanceCreated\", \"schema\": 4, \"record\": \"ActivityCompleted\", \"occurrence\": 1, \"result\": {\"$variant\": \"X\", \"entries\": [], \"$variant\": \"DashLanded\", \"digest\": \"d\"}, \"schema\": 5}"
+        , "{\"z\": 1, \"record\": \"ActivityRequested\", \"z\": {\"a\": 1, \"a\": [2]}, \"activity\": \"review_agent\", \"occurrence\": 2, \"input\": {\"work\": {\"operation\": \"op\", \"attempt\": 1, \"operation\": \"op2\"}}}"
+        ]
+  , hostile "History has a line split inside a string" $ \root ->
+      writeHistory root [dumpsDefault (record "InstanceCreated" []), "{\"record\": \"Late\", \"text\": \"a\xC2\x85z\"}"]
   , hostile "History has an integer past the digit limit" $ \root ->
       writeHistory root ["{\"record\": \"InstanceCreated\", \"n\": " <> BS.replicate 4400 0x37 <> "}"]
   , hostile "History has a schema list" (historyWith (history ++ [Object [("record", String "X"), ("schema", Array [])]]))
@@ -281,6 +359,22 @@ hostileCases =
       sql (routesPath root) "INSERT INTO agent_routes VALUES (x'6162', 'p', '{}', 1), (7, 'p', '{}', 0), ('conversation:z', 'p', '{}', 1), ('conversation:z', 'p', '{}', 1), (NULL, 'p', '{}', 1), (2.5, 'p', '{}', 1)"
   , hostile "agent routes holds text that is not UTF-8" $ \root ->
       sql (routesPath root) "INSERT INTO agent_routes VALUES (CAST(x'61ff00626364' AS TEXT), 'p', '{}', 1)"
+  , -- Enough files to be written at once: the outcome must still be the
+    -- one-by-one one, failures included.
+    hostile "a hundred unattributed bodies, one named too long for the file system" $ \root -> do
+      sql (bodiesPath root) (manyBodies <> "; " <> oneBody ("z150" <> T.replicate 248 "x") "x'7b7d0a'")
+  , hostile "a hundred unattributed bodies, one whose session is text" $ \root -> do
+      sql (bodiesPath root) (manyBodies <> "; " <> oneBody "z150a" "'text session'")
+  , hostile "a hundred unattributed bodies, two of whose file names collide" $ \root -> do
+      sql (bodiesPath root) (manyBodies <> "; " <> oneBody "y-a" "x'610a'" <> "; " <> oneBody "y:a" "x'620a'")
+  , hostile "three hundred History lines, a bad one in the middle and a worse one later" $
+      writeHistoryLines (\i -> if i == 150 then Just "{not json" else if i == 200 then Just "[1]" else Nothing)
+  , hostile "three hundred History lines, one without a record kind before a bad one" $
+      writeHistoryLines (\i -> if i == 120 then Just "[1]" else if i == 200 then Just "{not json" else Nothing)
+  , hostile "a hundred boards, one whose entries are not a list" $
+      historyWith (history ++ [dashLanded (if i == 50 then Int 5 else Array (map String boardEntries)) | i <- [1 .. 100 :: Int]])
+  , hostile "a hundred boards, one the renderer refuses" $
+      historyWith (history ++ [dashLanded (Array (map String (if i == 60 then ["checks:{'status'"] else boardEntries))) | i <- [1 .. 100 :: Int]])
   , hostile "a body whose session is text" $ \root ->
       sql (bodiesPath root) "UPDATE pi_a2_bodies SET session_jsonl = 'text session'"
   , hostile "a body whose session is an empty blob, a zero and a float" $ \root -> do
@@ -451,6 +545,12 @@ prepare repo caseRoot theCase = do
     Built change -> do
       _ <- stateDir caseRoot defaults
       change caseRoot
+    Driven change -> do
+      python <- upstreamPythonExecutable "hamsterdan"
+      steps <- BS.readFile (repo </> "packages" </> "hamsterdan-export" </> "differential" </> "host_steps.json")
+      let script = repo </> "packages" </> "hamsterdan-host" </> "differential" </> "state_reference.py"
+      _ <- readProcessStdout_ (setStdin (byteStringInput (BL.fromStrict steps)) (proc python ["-I", "-B", script, "drive", caseRoot </> "state"]))
+      change caseRoot
 
 runReference :: FilePath -> [(FilePath, Case)] -> IO [Outcome]
 runReference repo cases = do
@@ -523,7 +623,7 @@ unlock caseRoot = do
 
 spec :: Spec
 spec = describe "differential: python -m hamsterdan.host.export" $ do
-  let cases = upstreamCases ++ hostileCases
+  let cases = upstreamCases ++ drivenCases ++ hostileCases
   it ("matches the reference on " <> show (length cases) <> " command lines, package trees included") $
     withSystemTempDirectory "hamsterdan-export-differential" $ \tmp -> do
       repo <- repoRoot
