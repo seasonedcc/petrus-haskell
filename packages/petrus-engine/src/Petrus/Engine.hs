@@ -25,6 +25,8 @@ module Petrus.Engine
   , load
   , EngineOptions (..)
   , defaultEngineOptions
+  , HandlerCall (..)
+  , HandlerObserver
     -- * Driving
   , advance
   , wait
@@ -72,5 +74,6 @@ module Petrus.Engine
   ) where
 
 import Petrus.Engine.Internal
+import Petrus.Impetus.Binding (HandlerCall (..), HandlerObserver)
 import Petrus.Impetus.Instance (AcceptedDelivery (..), DeliveryAnswer (..), acceptedDelivery)
 import Petrus.Engine.Vocabulary

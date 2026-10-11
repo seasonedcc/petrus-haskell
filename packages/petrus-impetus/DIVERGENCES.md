@@ -79,6 +79,15 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
     - Upstream tests that count calls to a pure function (`prepared == 0`, or
       "the strategy was never called") are replaced by stand-ins that refuse
       if they are ever consulted.
+    - The reference's Activity handlers are objects, so a host can make one
+      count its calls or read an injected fault. Here an `ActivityHandler`
+      stays pure, and a host supplies that behaviour once, as a
+      `HandlerObserver` (`InstanceConfig.handlerObserver`, and the Engine's
+      `EngineOptions.handlerObserver`). The writing door runs it exactly
+      once per `prepare`/`project`/`projectFailure` application, just before
+      the pure function is applied, and a `Left` from it is that call
+      raising. Port-only: the reference has no such option, and a host that
+      sets none sees the reference's behaviour.
 11. **`FiringFailed.error` for a Haskell exception is named by its type.**
     The reference records `firing_failure_text(error)`: the class name and
     each of `error.args` (`None`, `bool`, `int`, `float`, `str`, and `bytes`

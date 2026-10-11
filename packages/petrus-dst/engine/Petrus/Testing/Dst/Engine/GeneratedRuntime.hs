@@ -60,7 +60,7 @@ import Petrus.Activity
 import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (BoundHandler, handlerTokens)
+import Petrus.Impetus.Binding (handlerTokens)
 import Petrus.Impetus.History.Records
   ( ActivityRequested (..)
   , ActivityTerminalQuarantined (..)
@@ -79,7 +79,7 @@ import Petrus.Impetus.History.Records
 import Petrus.Impetus.History.Records qualified as Records
 import Petrus.Impetus.History.Replay (replayMarking, replayScopes, replayWatermark)
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
-import Petrus.Impetus.Instance (DeliveryScope (..), FiringOutcome (..), ImplementationRef (..))
+import Petrus.Impetus.Instance (DeliveryScope (..), FiringOutcome (..))
 import Petrus.Impetus.Petrinet hiding (Delay)
 import Petrus.Impetus.Petrinet qualified as Petrinet
 import Petrus.Impetus.Scope (scopeGeneration)
@@ -89,7 +89,7 @@ import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), Loca
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Observation qualified as Observation
 import Petrus.Testing.Dst
-import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
+import Petrus.Testing.Dst.Engine.Bridge (Bridged (..), withBridge)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
@@ -250,13 +250,10 @@ applicationNet =
 -- The bridge
 
 -- | @RuntimeBridge(prepared, projected)@: counts into the profile.
-bridgeHandler :: IORef Int -> IORef Int -> BoundHandler
-bridgeHandler prepared projected =
-  observed
-    ObservedHandler
-      { prepare = \b -> do
-          modifyIORef' prepared (+ 1)
-          pure $ case bindingTokens b of
+bridged :: IORef Int -> IORef Int -> Bridged
+bridged prepared projected =
+  Bridged
+    { prepare = \b -> case bindingTokens b of
             t : _ -> do
               policy <-
                 executionPolicy
@@ -272,10 +269,10 @@ bridgeHandler prepared projected =
                     }
               Right ActivityInvocation {activity = "calculate", input = t.payload, policy, correlation = Nothing, idempotency = Nothing}
             [] -> Left "IndexError('tuple index out of range')"
-      , project = \_ value -> do
-          modifyIORef' projected (+ 1)
-          pure (Right (handlerTokens [(result, [Token (Just "Result") value])]))
-      }
+    , project = \_ value -> Right (handlerTokens [(result, [Token (Just "Result") value])])
+    , onPrepare = Right () <$ modifyIORef' prepared (+ 1)
+    , onProject = Right () <$ modifyIORef' projected (+ 1)
+    }
 
 -- ---------------------------------------------------------------------------
 -- Refusing adapters
@@ -438,11 +435,7 @@ generatedRuntimeProfileWith variant historyPath dispatchPath = do
             instanceId
             Local.defaultLocalDispatchOptions {Local.clock = Just (LocalDispatchClock (worldProviderMs time))}
         (dispatch', refuseNextDispatch) <- refusingDispatch custody dispatchAttempts
-        let options =
-              Engine.defaultEngineOptions
-                { Engine.handlers = Map.fromList [(Symbol "bridge", bridgeHandler prepareCalls projectCalls)]
-                , Engine.clock = Just (worldClock time)
-                }
+        let options = withBridge (bridged prepareCalls projectCalls) Engine.defaultEngineOptions {Engine.clock = Just (worldClock time)}
         engine <-
           if load
             then Engine.load applicationNet instanceId history dispatch' options

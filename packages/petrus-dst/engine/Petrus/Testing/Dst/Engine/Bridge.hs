@@ -1,47 +1,54 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# OPTIONS_GHC -fno-full-laziness -fno-cse #-}
 
--- | The one place the DST worlds run effects inside an Engine Activity
--- handler.
+-- | How the DST worlds install their Activity bridge in an Engine.
 --
 -- The reference's bridges (@RuntimeBridge@, @RetryBridge@, the lifecycle,
 -- projection and joined bridges) count their @prepare@/@project@ calls and
--- read injected faults. @petrus-impetus@'s 'ActivityHandler' makes both
--- functions pure, and changing that kernel API is outside the DST slice, so
--- an 'ObservedHandler' runs its 'IO' with 'unsafePerformIO' when the Engine
--- forces the result. That is sound because the Engine forces each handler
--- result exactly once per call, and because this module alone carries the
--- flags (@-fno-full-laziness -fno-cse@) and the @NOINLINE@ that stop GHC
--- from sharing or floating two calls into one. The authored journals pin
--- the call counts, so a lost or duplicated effect fails the World
--- fixtures.
+-- read injected faults. @petrus-impetus@'s 'ActivityHandler' keeps both
+-- functions pure, so a world splits its bridge in two: the pure handler,
+-- and the per-call effects, which run as the Engine's handler observer
+-- ('Engine.handlerObserver') in the writing door, once per call, before
+-- the pure function is applied. An effect answering 'Left' is the bridge
+-- raising.
 module Petrus.Testing.Dst.Engine.Bridge
-  ( ObservedHandler (..)
-  , observed
+  ( Bridged (..)
+  , withBridge
   ) where
 
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Petrus.Activity (ActivityInvocation)
+import Petrus.Engine (EngineOptions, HandlerCall (..))
+import Petrus.Engine qualified as Engine
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), HandlerResult)
+import Petrus.Impetus.Instance (ImplementationRef (..))
 import Petrus.Impetus.Petrinet.Enabledness (Binding)
 import Petrus.Json (Json)
-import System.IO.Unsafe (unsafePerformIO)
 
--- | An Activity handler whose @prepare@ and @project@ run effects.
-data ObservedHandler = ObservedHandler
-  { prepare :: Binding -> IO (Either Text ActivityInvocation)
-  , project :: Binding -> Json -> IO (Either Text HandlerResult)
+-- | A world's Activity bridge.
+data Bridged = Bridged
+  { prepare :: Binding -> Either Text ActivityInvocation
+  , project :: Binding -> Json -> Either Text HandlerResult
+  , onPrepare :: IO (Either Text ())
+  -- ^ Run before each @prepare@ (a 'Left' raises it).
+  , onProject :: IO (Either Text ())
+  -- ^ Run before each @project@ (a 'Left' raises it).
   }
 
--- | The Engine handler running each effect once per Engine call.
-observed :: ObservedHandler -> BoundHandler
-observed handler =
-  ActivityBound
-    ActivityHandler
-      { prepare = \binding -> unsafePerformIO (handler.prepare binding)
-      , project = \binding value -> unsafePerformIO (handler.project binding value)
-      , projectFailure = Nothing
-      }
-{-# NOINLINE observed #-}
+-- | Bind the bridge to the @bridge@ handler symbol and run its effects as
+-- the Engine's handler observer.
+withBridge :: Bridged -> EngineOptions -> EngineOptions
+withBridge bridge options =
+  options
+    { Engine.handlers =
+        Map.insert
+          (Symbol "bridge")
+          (ActivityBound ActivityHandler {prepare = bridge.prepare, project = bridge.project, projectFailure = Nothing})
+          options.handlers
+    , Engine.handlerObserver = Just $ \case
+        Preparing _ -> bridge.onPrepare
+        Projecting _ _ -> bridge.onProject
+        ProjectingFailure _ _ -> pure (Right ())
+    }

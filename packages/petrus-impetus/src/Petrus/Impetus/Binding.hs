@@ -32,6 +32,8 @@ module Petrus.Impetus.Binding
   , ActivityHandler (..)
   , BoundHandler (..)
   , isActivityBound
+  , HandlerCall (..)
+  , HandlerObserver
   , passthrough
     -- * Completion conditions
   , Completion
@@ -115,6 +117,27 @@ data ActivityHandler = ActivityHandler
 data BoundHandler
   = PureHandler Handler
   | ActivityBound ActivityHandler
+
+-- | One application of an 'ActivityHandler' function, as a writing door is
+-- about to make it.
+data HandlerCall
+  = -- | @prepare@ for this binding.
+    Preparing Binding
+  | -- | @project@ of this binding's frozen result.
+    Projecting Binding Json
+  | -- | @project_failure@ of this binding's frozen failure.
+    ProjectingFailure Binding ActivityFailure
+
+-- | An effect the writing door runs immediately before it applies an
+-- 'ActivityHandler' function: exactly once per application, in door order,
+-- under the Instance's lock. A 'Left' is the call raising with that text,
+-- exactly as if the handler had; the pure function is then not applied.
+--
+-- The reference's handlers are objects that may count their calls or read
+-- an injected fault; here the handler stays a pure value and the host
+-- supplies that behaviour once, as this observer (Engine and Instance
+-- option @handlerObserver@).
+type HandlerObserver = HandlerCall -> IO (Either Text ())
 
 -- | Whether the binding is impure work.
 isActivityBound :: BoundHandler -> Bool

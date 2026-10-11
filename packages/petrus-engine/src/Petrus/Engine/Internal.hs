@@ -66,7 +66,7 @@ import Petrus.Activity
 import Petrus.Engine.Coordinator (Coordinator, cancelClosure, drive, newCoordinator, selectionStateText, supportsCancellation)
 import Petrus.Engine.Coordinator qualified as Coordinator
 import Petrus.Engine.Vocabulary
-import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), CelCompilers, Completion, noCelCompilers)
+import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), CelCompilers, Completion, HandlerObserver, noCelCompilers)
 import Petrus.Impetus.History.Records (Record (..), ScopeReset (..))
 import Petrus.Impetus.HistoryStore (CommitMode (..), HistoryStore (..))
 import Petrus.Impetus.HistoryStore qualified as Store
@@ -120,6 +120,9 @@ data EngineOptions = EngineOptions
   , activities :: [ActivityDeclaration]
   , defaultHeartbeatTimeout :: Integer
   , telemetrySink :: Maybe EventSink
+  , handlerObserver :: Maybe HandlerObserver
+  -- ^ Run in the writing door before each Activity handler application
+  -- ('HandlerObserver'): where a host counts calls or injects a fault.
   }
 
 -- | The reference's keyword defaults.
@@ -140,6 +143,7 @@ defaultEngineOptions =
     , activities = []
     , defaultHeartbeatTimeout = 30
     , telemetrySink = Nothing
+    , handlerObserver = Nothing
     }
 
 -- | A provider's transaction and hosting fate for one Engine (the
@@ -240,6 +244,7 @@ openEngine mode net identity store port options resources =
               , celCompilers = options.celCompilers
               , historyStore = Just store
               , telemetrySink = options.telemetrySink
+              , handlerObserver = options.handlerObserver
               }
       existing <- Store.size store
       inst <- case mode of

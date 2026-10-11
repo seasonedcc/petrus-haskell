@@ -311,6 +311,8 @@ data InstanceConfig = InstanceConfig
   -- ^ The instance identity; 'Nothing' mints a UUIDv7 hex.
   , telemetrySink :: Maybe EventSink
   -- ^ Where @impetus_*@ events go; 'Nothing' uses the process default.
+  , handlerObserver :: Maybe HandlerObserver
+  -- ^ Run before each Activity handler application ('HandlerObserver').
   }
 
 -- | No marking, the conservative scheduler, no implementations, no CEL.
@@ -328,6 +330,7 @@ defaultInstanceConfig =
     , historyStore = Nothing
     , suppliedIdentity = Nothing
     , telemetrySink = Nothing
+    , handlerObserver = Nothing
     }
 
 -- ---------------------------------------------------------------------------
@@ -362,6 +365,7 @@ data Instance = Instance
   , iScheduler :: Scheduler
   , iStore :: HistoryStore
   , iLogger :: TelemetryLogger
+  , iObserver :: Maybe HandlerObserver
   , iState :: IORef State
   , iLock :: MVar ()
   }
@@ -523,6 +527,13 @@ forcePrepared prepared =
 
 handlerDoor :: IO (Either Text a) -> Door a
 handlerDoor action = liftIO action >>= either (throwE . HandlerRaised) pure
+
+-- | Apply an Activity handler function after the Instance's observer, if
+-- any; the observer raising stands for the call raising.
+observedCall :: Instance -> HandlerCall -> IO (Either Text a) -> Door a
+observedCall inst call apply = handlerDoor $ case inst.iObserver of
+  Nothing -> apply
+  Just observe -> observe call >>= either (pure . Left) (const apply)
 
 -- ---------------------------------------------------------------------------
 -- Symbol binding
@@ -687,7 +698,7 @@ newInstance net cfg = runExceptT $ do
       , sGenerations = Map.empty
       }
   lock <- liftIO (newMVar ())
-  let inst = Instance net ident handlers impls completion cfg.schedulerPolicy store logger stateRef lock
+  let inst = Instance net ident handlers impls completion cfg.schedulerPolicy store logger cfg.handlerObserver stateRef lock
   emitEvent
     inst
     "instance_created"
@@ -1017,7 +1028,7 @@ resume net store cfg = runExceptT $ do
   (handlers, impls, completion) <- orRefuse (bindSymbols net cfg)
   lock <- liftIO (newMVar ())
   placeholder <- liftIO (newIORef emptyState)
-  let inst = Instance net ident handlers impls completion cfg.schedulerPolicy store logger placeholder lock
+  let inst = Instance net ident handlers impls completion cfg.schedulerPolicy store logger cfg.handlerObserver placeholder lock
   forM_ [r | RCandidateSelected r <- history] $ \r -> do
     let prefix = "cannot resume firing occurrence " <> pythonIntRepr r.occurrence <> " (" <> netPathText r.transition <> "): "
     unless (hasTransition r.transition net) $ refuse (prefix <> "not a transition of this net")
@@ -1365,7 +1376,7 @@ preparedInvocation inst b = case boundHandler inst b.transition of
   PureHandler _ -> pure Nothing
   ActivityBound h -> do
     let prefix = "cannot begin firing " <> netPathText b.transition
-    raw <- handlerDoor (forcePrepared (h.prepare b))
+    raw <- observedCall inst (Preparing b) (forcePrepared (h.prepare b))
     inv <- orRefuse (activityInvocation raw)
     forM_ [("correlation" :: Text, inv.correlation), ("idempotency", inv.idempotency)] $ \(name, value) ->
       forM_ value $ \v -> when ("occurrence-" `T.isPrefixOf` v) $
@@ -1679,8 +1690,8 @@ commitDoor inst o result at = do
       case frozen of
         TerminalFailure f -> case handler.projectFailure of
           Nothing -> refuse (rejection <> ": frozen failure has no opt-in failure projection")
-          Just projector -> handlerDoor (forceResult (projector o.binding f))
-        TerminalResult value -> handlerDoor (forceResult (handler.project o.binding value))
+          Just projector -> observedCall inst (ProjectingFailure o.binding f) (forceResult (projector o.binding f))
+        TerminalResult value -> observedCall inst (Projecting o.binding value) (forceResult (handler.project o.binding value))
   (armedNext, closes, opens) <- orRefuse (armedAfter inst st rejection envelope)
   let instant = effective st.sWatermark at
       (effects, _) = completeFiring inst.iNet (queuesMarking st.sQueues) t envelope.tokens

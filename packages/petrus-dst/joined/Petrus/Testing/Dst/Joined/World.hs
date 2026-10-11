@@ -67,7 +67,6 @@ import Petrus.Impetus.Instance
   ( DeliveryDisposition (..)
   , DeliveryScope (..)
   , FiringOutcome (..)
-  , ImplementationRef (..)
   , ScopeClosure (..)
   , ScopedDeliveryAcknowledgement (..)
   )
@@ -85,7 +84,7 @@ import Petrus.Motus.Dispatch.Absurd
 import Petrus.Motus.Dispatch.Absurd qualified as Worker
 import Petrus.Postgres qualified as Pg
 import Petrus.Testing.Dst hiding (dispositionText)
-import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
+import Petrus.Testing.Dst.Engine.Bridge (Bridged (..), withBridge)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Testing.Dst.Joined.Identities qualified as Id
 import Petrus.Testing.Dst.Joined.Support
@@ -356,11 +355,7 @@ joinedProfile family dsn = do
               | create && not (isDelivery family) && not (isCancellationChain family) =
                   markingFromList [(inputPlace, [Token (Just "Input") (Int 3)])]
               | otherwise = Engine.defaultEngineOptions.marking
-            options =
-              Engine.defaultEngineOptions
-                { Engine.marking = marking
-                , Engine.handlers = Map.fromList [(Symbol "bridge", bridgeHandler)]
-                }
+            options = withBridge bridge Engine.defaultEngineOptions {Engine.marking = marking}
         engine <-
           openAbsurdEngine
             session
@@ -371,26 +366,25 @@ joinedProfile family dsn = do
             options
         JoinedGeneration engine connection <$> newIORef Nothing <*> newIORef Nothing <*> newIORef False
 
-      bridgeHandler =
-        observed
-          ObservedHandler
-            { prepare = \b -> do
-                bump "prepare_calls"
-                pure $ case bindingTokens b of
-                  t : _ -> Right (invocation "calculate" t.payload)
-                  [] -> Left "IndexError('tuple index out of range')"
-            , project = \_ result ->
-                let base = handlerTokens [(donePlace, [Token (Just "Done") result])]
-                 in pure . Right $
-                      if
-                        | isRegistration family ->
-                            base
-                              { closes = [DeliveryRegistration sourcePlace "default"]
-                              , opens = [DeliveryRegistration sourcePlace "replacement"]
-                              }
-                        | isSeal family -> base {opens = [DeliveryRegistration sourcePlace "subscription"]}
-                        | otherwise -> base
-            }
+      bridge =
+        Bridged
+          { prepare = \b -> case bindingTokens b of
+              t : _ -> Right (invocation "calculate" t.payload)
+              [] -> Left "IndexError('tuple index out of range')"
+          , project = \_ result ->
+              let base = handlerTokens [(donePlace, [Token (Just "Done") result])]
+               in Right $
+                    if
+                      | isRegistration family ->
+                          base
+                            { closes = [DeliveryRegistration sourcePlace "default"]
+                            , opens = [DeliveryRegistration sourcePlace "replacement"]
+                            }
+                      | isSeal family -> base {opens = [DeliveryRegistration sourcePlace "subscription"]}
+                      | otherwise -> base
+          , onPrepare = Right () <$ bump "prepare_calls"
+          , onProject = pure (Right ())
+          }
 
       -- _configure_faults
       configureFaults g = do

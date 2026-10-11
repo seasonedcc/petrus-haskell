@@ -43,7 +43,7 @@ module Petrus.Testing.Dst.Engine.Projection
   , Generation (..)
   , Bridge (..)
   , newBridge
-  , bridgeHandler
+  , bridged
   , EngineProfile (..)
   , Base (..)
   , newBase
@@ -94,17 +94,17 @@ import Petrus.Activity (invocation)
 import Petrus.Engine (Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (BoundHandler, handlerTokens)
+import Petrus.Impetus.Binding (handlerTokens)
 import Petrus.Impetus.History.Records (Record (..))
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
-import Petrus.Impetus.Instance (FiringOutcome (..), ImplementationRef (..))
+import Petrus.Impetus.Instance (FiringOutcome (..))
 import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch (Dispatch (..))
 import Petrus.Motus.Dispatch.InMemory (InMemoryDispatch, completeOccurrence, inMemoryDispatch, newInMemoryDispatch, pending)
 import Petrus.Testing.Dst
 import Petrus.Json.Python (pythonStrRepr)
-import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
+import Petrus.Testing.Dst.Engine.Bridge (Bridged (..), withBridge)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
@@ -382,27 +382,20 @@ data Bridge = Bridge
 newBridge :: IO () -> IO Bridge
 newBridge onPrepare = Bridge <$> newIORef 0 <*> newIORef 0 <*> newIORef Nothing <*> pure onPrepare
 
--- | The bridge's prepare/project pair. The Engine calls a handler as a
--- pure function; the reference's bridge counts its calls and reads its
--- fault, so the effects run when the Engine forces the result (once per
--- call).
-bridgeHandler :: Bridge -> BoundHandler
-bridgeHandler bridge =
-  observed
-    ObservedHandler
-      { prepare = \b -> do
-          modifyIORef' bridge.prepared (+ 1)
-          bridge.onPrepare
-          pure $ case bindingTokens b of
-            t : _ -> Right (invocation "calculate" t.payload)
-            [] -> Left "IndexError('tuple index out of range')"
-      , project = \_ result -> do
-          modifyIORef' bridge.projected (+ 1)
-          failure <- readIORef bridge.projectionError
-          pure $ case failure of
-            Just message -> Left (runtimeErrorText message)
-            Nothing -> Right (handlerTokens [(done, [Token (Just "Done") result])])
-      }
+-- | The bridge's pure prepare/project pair, and the per-call effects of
+-- the reference's bridge: counting, and reading its armed fault.
+bridged :: Bridge -> Bridged
+bridged bridge =
+  Bridged
+    { prepare = \b -> case bindingTokens b of
+        t : _ -> Right (invocation "calculate" t.payload)
+        [] -> Left "IndexError('tuple index out of range')"
+    , project = \_ result -> Right (handlerTokens [(done, [Token (Just "Done") result])])
+    , onPrepare = Right () <$ (modifyIORef' bridge.prepared (+ 1) >> bridge.onPrepare)
+    , onProject = do
+        modifyIORef' bridge.projected (+ 1)
+        maybe (Right ()) (Left . runtimeErrorText) <$> readIORef bridge.projectionError
+    }
 
 -- ---------------------------------------------------------------------------
 -- Generations and the base profile
@@ -575,11 +568,7 @@ open b mode = do
   (history, historyFault) <- b.makeHistory
   (pool, port, dispatchFault) <- b.makeDispatch
   bridge <- b.makeBridge
-  let options =
-        Engine.defaultEngineOptions
-          { Engine.handlers = Map.fromList [(Symbol "bridge", bridgeHandler bridge)]
-          , Engine.clock = Just (worldClock b.time)
-          }
+  let options = withBridge (bridged bridge) Engine.defaultEngineOptions {Engine.clock = Just (worldClock b.time)}
   engine <- case mode of
     Nothing ->
       Engine.create

@@ -41,7 +41,6 @@ import Data.ByteString qualified as BS
 import Data.Foldable (toList)
 import Data.IORef
 import Data.List (findIndex, nub, sort, sortOn)
-import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -50,17 +49,16 @@ import Petrus.Activity qualified as Activity (ActivityInvocation (..))
 import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (BoundHandler, handlerTokens)
+import Petrus.Impetus.Binding (handlerTokens)
 import Petrus.Impetus.History.Records (ActivityRequested (..), Record (..), recordName)
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
-import Petrus.Impetus.Instance (ImplementationRef (..))
 import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch.InMemory (InMemoryDispatch, completeOccurrence, failOccurrence, inMemoryDispatch, newInMemoryDispatch, pending)
 import Petrus.Testing.Dst (loadStrictJson)
 import Petrus.Testing.Dst.Campaign.Support (canonicalDumps, member, orRefuse, pListLen, pyRepr, refuse, sha256Digest, tshow)
 import Petrus.Testing.Dst.Decode
-import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
+import Petrus.Testing.Dst.Engine.Bridge (Bridged (..), withBridge)
 import Petrus.Testing.Dst.Engine.Common (engineCurrent, path, pythonError, runtimeErrorText)
 import Petrus.Testing.Dst.PyRepr (jsonToPy)
 import Petrus.Testing.Dst.PyRepr qualified as Py
@@ -623,22 +621,18 @@ data Bridge = Bridge {prepared :: IORef Int, projected :: IORef Int, projectionE
 newBridge :: IO Bridge
 newBridge = Bridge <$> newIORef 0 <*> newIORef 0 <*> newIORef Nothing
 
-bridgeHandler :: Bridge -> BoundHandler
-bridgeHandler bridge =
-  observed
-    ObservedHandler
-      { prepare = \b -> do
-          modifyIORef' bridge.prepared (+ 1)
-          pure $ case bindingTokens b of
-            t : _ -> Right (invocation "calculate" t.payload)
-            [] -> Left "IndexError('tuple index out of range')"
-      , project = \_ result -> do
-          modifyIORef' bridge.projected (+ 1)
-          failure <- readIORef bridge.projectionError
-          pure $ case failure of
-            Just message -> Left (runtimeErrorText message)
-            Nothing -> Right (handlerTokens [(done, [Token (Just "Done") result])])
-      }
+bridged :: Bridge -> Bridged
+bridged bridge =
+  Bridged
+    { prepare = \b -> case bindingTokens b of
+        t : _ -> Right (invocation "calculate" t.payload)
+        [] -> Left "IndexError('tuple index out of range')"
+    , project = \_ result -> Right (handlerTokens [(done, [Token (Just "Done") result])])
+    , onPrepare = Right () <$ modifyIORef' bridge.prepared (+ 1)
+    , onProject = do
+        modifyIORef' bridge.projected (+ 1)
+        maybe (Right ()) (Left . runtimeErrorText) <$> readIORef bridge.projectionError
+    }
 
 -- | @ReplayReport@.
 data ReplayReport = ReplayReport
@@ -695,7 +689,7 @@ openLive _ scenario history create = do
   pool <- newInMemoryDispatch
   bridge <- newBridge
   let options =
-        Engine.defaultEngineOptions {Engine.handlers = Map.fromList [(Symbol "bridge", bridgeHandler bridge)]}
+        withBridge (bridged bridge) Engine.defaultEngineOptions
       initialMarking = markingFromList [(path e.place, [Token t.color t.value | t <- e.tokens]) | e <- scenario.initial.marking]
   engine <-
     if create
@@ -893,7 +887,7 @@ replayScenario scenario = do
         scenario.initial.instanceId
         finalHistory
         (inMemoryDispatch finalPool)
-        Engine.defaultEngineOptions {Engine.handlers = Map.fromList [(Symbol "bridge", bridgeHandler finalBridge)]}
+        (withBridge (bridged finalBridge) Engine.defaultEngineOptions)
     finalCurrent <- engineCurrent finalEngine
     Engine.close finalEngine
     let computed =
