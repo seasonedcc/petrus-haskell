@@ -20,6 +20,9 @@ module Petrus.Motus.Dispatch.LocalSupport
   , refusalMatching
     -- * Files
   , withScratch
+  , Dispatches
+  , withDispatches
+  , openDispatch
   , rawExec
   , rawQuery
   , rawScalar
@@ -36,7 +39,7 @@ module Petrus.Motus.Dispatch.LocalSupport
   , parsedJson
   ) where
 
-import Control.Exception (bracket)
+import Control.Exception (bracket, mask_)
 import Control.Monad (void)
 import Data.IORef
 import Data.Text (Text)
@@ -46,7 +49,7 @@ import Database.SQLite3 qualified as Sql
 import Petrus.Activity
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch
-import Petrus.Motus.Dispatch.Local (LocalDispatchClock (..), LocalWorkerDispatch, LocalWorkerOptions (..), defaultLocalWorkerOptions, openLocalWorkerDispatch)
+import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), LocalDispatchOptions, LocalWorkerDispatch, closeLocalDispatch, openLocalDispatch, LocalWorkerOptions (..), defaultLocalWorkerOptions, openLocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Data.ByteString qualified as BS
 import Petrus.Json (parseJson, pythonLoads)
@@ -143,6 +146,26 @@ withScratch =
         pure path
     )
     removeDirectoryRecursive
+
+-- | The Local Dispatch sessions an example opened.
+type Dispatches = IORef [LocalDispatch]
+
+-- | Close every Local Dispatch session the example opened ('openDispatch')
+-- when it ends, inside its 'withScratch'. The reference's sessions hold no
+-- connection between operations; the port's keep a pool, and a session
+-- left open closes it when the garbage collector finalizes the session.
+-- The last of those closes deletes @dispatch.db-wal@, at an arbitrary
+-- moment: during the scratch directory's removal, that removal fails on the
+-- vanished file.
+withDispatches :: (Dispatches -> IO a) -> IO a
+withDispatches = bracket (newIORef []) (\opened -> readIORef opened >>= mapM_ closeLocalDispatch)
+
+-- | 'openLocalDispatch', closed by the enclosing 'withDispatches'.
+openDispatch :: Dispatches -> FilePath -> Text -> LocalDispatchOptions -> IO LocalDispatch
+openDispatch opened path identity options = mask_ $ do
+  dispatch <- openLocalDispatch path identity options
+  modifyIORef' opened (dispatch :)
+  pure dispatch
 
 -- | @with sqlite3.connect(path) as connection: connection.execute(sql)@.
 rawExec :: FilePath -> Text -> IO ()

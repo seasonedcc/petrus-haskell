@@ -22,9 +22,9 @@ import Petrus.Impetus.Petrinet
 import Petrus.Impetus.TestSupport (netOf, np, tokD)
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch (ActivityAttempt (..), AttemptFailure (..), Dispatch (..))
-import Petrus.Motus.Dispatch.Local (LocalDispatchClock (..), LocalDispatchOptions (..), defaultLocalDispatchOptions, openLocalDispatch, toDispatch)
+import Petrus.Motus.Dispatch.Local (LocalDispatchClock (..), LocalDispatchOptions (..), defaultLocalDispatchOptions, toDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
-import Petrus.Motus.Dispatch.LocalSupport (callWith, failure, fixedWorker, parsedJson, rawExec, requireClaim, withScratch)
+import Petrus.Motus.Dispatch.LocalSupport (Dispatches, callWith, failure, fixedWorker, openDispatch, parsedJson, rawExec, requireClaim, withDispatches, withScratch)
 import System.FilePath ((</>))
 import Test.Hspec
 
@@ -61,15 +61,15 @@ options :: Counting -> Engine.EngineOptions
 options handler' = Engine.defaultEngineOptions {Engine.handlers = symbols [("activity", handler'.handler)]}
 
 -- | @_activity_engine(tmp_path, handler, load=..., history=...)@.
-activityEngine :: FilePath -> Counting -> Bool -> Maybe HistoryStore -> IO Engine.Engine
-activityEngine dir handler' load history = do
+activityEngine :: Dispatches -> FilePath -> Counting -> Bool -> Maybe HistoryStore -> IO Engine.Engine
+activityEngine opened dir handler' load history = do
   let net =
         netOf
           [place (np "ready"), place (np "done")]
           [Transition (np "activity") (Just (HandlerSymbol "activity")) [] []]
           [arc (np "ready") (np "activity"), arc (np "activity") (np "done")]
   store <- maybe (openJsonlHistoryStore (dir </> "history.jsonl")) pure history
-  dispatch <- toDispatch <$> openLocalDispatch (dir </> "dispatch.db") "split-store" defaultLocalDispatchOptions
+  dispatch <- toDispatch <$> openDispatch opened (dir </> "dispatch.db") "split-store" defaultLocalDispatchOptions
   if load
     then Engine.load net "split-store" store dispatch (options handler')
     else
@@ -107,9 +107,9 @@ ioErrorContaining fragment e = fragment `isInfixOf` show e
 
 spec :: Spec
 spec = do
-  it "engine reconciles canonical request missing from local custody" $ withScratch $ \dir -> do
+  it "engine reconciles canonical request missing from local custody" $ withScratch $ \dir -> withDispatches $ \opened -> do
     originalHandler <- newCounting False
-    original <- activityEngine dir originalHandler False Nothing
+    original <- activityEngine opened dir originalHandler False Nothing
     ((.ready) <$> Engine.advance original) `shouldReturn` True
     [request] <- (\rs -> [r | RActivityRequested r <- rs]) <$> Engine.records original
     Engine.close original
@@ -119,7 +119,7 @@ spec = do
     rawExec (dir </> "dispatch.db") "DELETE FROM impetus_local_dispatch_tasks WHERE instance='split-store'"
 
     poison <- newCounting True
-    resumed <- activityEngine dir poison True Nothing
+    resumed <- activityEngine opened dir poison True Nothing
     ((.waiting) <$> Engine.advance resumed) `shouldReturn` True
     attempt <- fixedWorker (dir </> "dispatch.db") "worker" >>= requireClaim
 
@@ -134,7 +134,7 @@ spec = do
     readIORef poison.prepared `shouldReturn` 0
     (fixedWorker (dir </> "dispatch.db") "other" >>= Local.claim) `shouldReturn` Nothing
 
-  it "engine close fences claimed local attempt and canonically quarantines its late result" $ withScratch $ \dir -> do
+  it "engine close fences claimed local attempt and canonically quarantines its late result" $ withScratch $ \dir -> withDispatches $ \opened -> do
     let source = np "source"
         net =
           netOf
@@ -142,7 +142,7 @@ spec = do
             [transition source, Transition (np "work") (Just (HandlerSymbol "activity")) [] []]
             [arc source (np "ready"), arc (np "ready") (np "work"), arc (np "work") (np "done")]
     history <- openJsonlHistoryStore (dir </> "history.jsonl")
-    local <- openLocalDispatch (dir </> "dispatch.db") "scoped-local" defaultLocalDispatchOptions
+    local <- openDispatch opened (dir </> "dispatch.db") "scoped-local" defaultLocalDispatchOptions
     handler' <- newCounting False
     engine <- Engine.create net "scoped-local" history (toDispatch local) (options handler')
     scope <- Engine.openScope engine "draft"
@@ -159,11 +159,11 @@ spec = do
     map (.occurrence) quarantined `shouldBe` [occurrenceOf attempt]
     markingNull <$> Engine.marking engine `shouldReturn` True
 
-  it "engine recollects terminal result after canonical acceptance refusal" $ withScratch $ \dir -> do
+  it "engine recollects terminal result after canonical acceptance refusal" $ withScratch $ \dir -> withDispatches $ \opened -> do
     handler' <- newCounting False
     durable <- openJsonlHistoryStore (dir </> "history.jsonl")
     refusing <- refuseActivityCompleted durable
-    original <- activityEngine dir handler' False (Just refusing)
+    original <- activityEngine opened dir handler' False (Just refusing)
     ((.ready) <$> Engine.advance original) `shouldReturn` True
     custody <- fixedWorker (dir </> "dispatch.db") "worker"
     attempt <- requireClaim custody
@@ -176,7 +176,7 @@ spec = do
     readIORef handler'.prepared `shouldReturn` 1
 
     recoveredHandler <- newCounting True
-    recovered <- activityEngine dir recoveredHandler True Nothing
+    recovered <- activityEngine opened dir recoveredHandler True Nothing
     outcome <- Engine.advance recovered
     stored <- openJsonlHistoryStore (dir </> "history.jsonl") >>= Store.records
 
@@ -192,10 +192,11 @@ spec = do
   -- clock (logical seconds to milliseconds), the public dispatch door
   -- wrapped (RefusingLocalDispatch), a fresh labelled worker per claim, a
   -- retryable failure with retry_after=0, and a close after each report.
-  it "the DST worlds' consumer shape: world clock, wrapped dispatch door, a worker per claim" $ withScratch $ \dir -> do
+  it "the DST worlds' consumer shape: world clock, wrapped dispatch door, a worker per claim" $ withScratch $ \dir -> withDispatches $ \opened -> do
     seconds <- newIORef (5 :: Integer)
     local <-
-      openLocalDispatch
+      openDispatch
+        opened
         (dir </> "dispatch.db")
         "split-store"
         defaultLocalDispatchOptions {clock = Just (LocalDispatchClock ((* 1000) <$> readIORef seconds))}
