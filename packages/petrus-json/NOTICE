@@ -1,6 +1,13 @@
 petrus-json
 Copyright 2026 Seasoned
 
+Behaviour reference: CPython's json module (the byte-for-byte output of
+json.dumps and the values and limits of json.loads, as the pinned Petrus
+uses them; the test suite compares against CPython 3.14.6 directly)
+  Copyright 2001-2026 Python Software Foundation
+  Licensed under the Python Software Foundation License Version 2
+  https://github.com/python/cpython
+
 Ryu (the shortest round-trip float digits in Petrus.Json.Float are a port of
 the reference d2s algorithm, with CPython's float.__repr__ rounding rules)
   Copyright 2018 Ulf Adams

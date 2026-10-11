@@ -41,6 +41,7 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | 14 | 0.81× | 9 000× | **below 1.0×**: append-batches-of-8 (250 fsynced transactions); append-per-record (2 000 fsynced transactions); in-memory append, one record at a time |
 | `petrus-http-core` | [RESULTS.md](../packages/petrus-http-core/bench/RESULTS.md) | 6 | 1.59× | 18.7× |  |
 | `petrus-impetus` | [RESULTS.md](../packages/petrus-impetus/bench/RESULTS.md) | 10 | 1.60× | 97.0× |  |
+| `petrus-json` | [RESULTS.md](../packages/petrus-json/bench/RESULTS.md) | 8 | 1.80× | 2.67× |  |
 | `petrus-motus` | [RESULTS.md](../packages/petrus-motus/bench/RESULTS.md) | 14 | 1.02× | 78.0× |  |
 | `petrus-motus-absurd` | [RESULTS.md](../packages/petrus-motus-absurd/bench/RESULTS.md) | 4 | 1.00× | 3.70× |  |
 | `petrus-motus-zeromq` | [RESULTS.md](../packages/petrus-motus-zeromq/bench/RESULTS.md) | 8 | 1.06× | 1.67× |  |
@@ -54,4 +55,4 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | 2 | 2.50× | 8.00× |  |
 | `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | 20 | 1.09× | 4.83× |  |
 
-42 results files; 7 with a row below 1.0×.
+43 results files; 7 with a row below 1.0×.
