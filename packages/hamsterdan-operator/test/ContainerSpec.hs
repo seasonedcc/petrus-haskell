@@ -1,8 +1,9 @@
 -- | The container runtime contract (PARITY.md, "Container runtime
 -- contract"): @deployment/tests/test_container_contract.py@ ported to this
--- repository's image, plus the static checks that stand in for building it
--- (no container runtime is used): the runtime inputs are byte-identical
--- copies of the reference's, the Containerfile keeps every runtime-stage
+-- repository's image, plus static checks of its definition (no container
+-- runtime is used here; CI builds and runs the image with
+-- scripts/container-smoke): the runtime inputs are byte-identical copies
+-- of the reference's, the Containerfile keeps every runtime-stage
 -- instruction of the reference's except the two that install the
 -- application, and the interpreter-path shim answers the deployment
 -- tooling's invocations as the reference interpreter does.

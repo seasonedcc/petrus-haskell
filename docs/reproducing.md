@@ -213,6 +213,90 @@ enough for stateful workloads (a database that grows, a cache that warms) to
 drift between the calibration and the timed batches. They also left a single
 scheduler hiccup a large share of a batch.
 
+## The container image
+
+`deployment/Containerfile` builds the Haskell image of Hamsterdan, which
+keeps the reference image's runtime contract
+([PARITY](../packages/hamsterdan-operator/PARITY.md#container-runtime-contract)).
+`scripts/container-smoke` runs it and checks that contract at run time. It
+needs Docker with Buildx, `curl`, `openssl` and `python3`:
+
+```sh
+scripts/container-smoke --build      # build hamsterdan:smoke for linux/amd64, then check it
+scripts/container-smoke IMAGE        # check an image built already
+```
+
+`--build` runs `docker buildx build --load --platform linux/amd64` with the
+reference's build arguments (`SOURCE_REVISION`, `SOURCE_VERSION`,
+`SOURCE_CREATED`), as upstream's `deployment/release.py build` does. The
+image's revision label must be `--revision` (default `git rev-parse HEAD`)
+and its version label `--version` (default: the version
+`deployment/python-shim` reports). A cold build compiles GHC's toolchain
+and every Hackage dependency, which takes a long time and several GB of
+memory. Building `linux/amd64` on an arm64 machine goes through emulation
+and is slower still.
+
+The script runs every check even after one fails, prints `ok` or `FAIL` for
+each, and exits 1 if any failed. It removes every container, network,
+volume and temporary file it creates. No credential is real: the GitHub App
+key is the repository's test key (`packages/hamsterdan-github/test/corpus`),
+GitHub is a local fake (`scripts/container-smoke.d/fake-github.py`) served
+over TLS as `api.github.com` from a CA the run generates, and `op` is a
+local fake (`scripts/container-smoke.d/fake-op`). The checks:
+
+- **Image configuration**, as `release.py verify` reads it: `linux/amd64`,
+  the user, working directory, `ENTRYPOINT`, `CMD`, exposed port, the OCI
+  labels (revision and version included), and the environment. No
+  credential name appears in the image's environment or build history.
+- **Filesystem**: user and group 10001 with the reference's passwd entry,
+  `/var/lib/hamsterdan` at `0700` and writable, the ownership of the
+  binaries, the shim, the Pi runtime and the launcher, and the launcher,
+  the shim and petrus-agenticus-runtime's Pi helpers (in the data directory
+  `petrus_agenticus_runtime_datadir` names) byte for byte the repository's.
+- **Shared libraries**: `ldd` resolves every library of the three Haskell
+  binaries and of the Pi runtime's `node`.
+- **Pi runtime**: Node `v22.19.0`, Pi `0.83.0`, and the
+  `HAMSTERDAN_PI_*` paths, as `release.py verify` and the Ansible candidate
+  playbook check them.
+- **The interpreter path**: the default `ENTRYPOINT` with `--help` (the
+  host's usage) and with its `CMD` (the host's `serve`, which refuses the
+  missing configuration with status 2), the version probe and assertion,
+  an unknown module, any other invocation, and `--help` of each of the
+  three modules.
+- **Secrets from files**: `/opt/hamsterdan/with-runtime-secrets` runs as
+  the entrypoint with the systemd unit's flags (read-only root,
+  no capabilities, `no-new-privileges`, the private `/tmp`), the settings
+  file the runtime playbook installs (`deployment/config/runtime.env` plus
+  the Environment ID and container paths), and the token-file, `op` and
+  configuration mounts. The fake `op` checks that it receives the
+  Environment, the bootstrap read from the mounted token file and the
+  configuration directory, and none of the scrubbed credentials. The
+  application sees the Environment's values, multiline key included, and
+  neither the bootstrap nor credentials planted in the container's
+  environment. A missing or malformed Environment ID and a symlinked token
+  file are refused.
+- **`validate`**, as the runtime and configure playbooks run it, against
+  `deployment/config/installations.toml`: one installation reconciled, one
+  repository admitted.
+- **`serve`**, as the systemd unit runs it: `GET /healthz` answers 200 with
+  uvicorn's headers and a healthy, reconciled service; `/openapi.json`, an
+  unknown path and an unsigned webhook delivery answer as the host does.
+  PID 1 is `/opt/hamsterdan/bin/hamsterdan-host serve --host 0.0.0.0 --port
+  8000` running as 10001, alone. The host made its registration calls to
+  the fake over TLS, and `docker stop` ends it with status 0. A recording
+  wrapper around the image's Node (`scripts/container-smoke.d/node-wrapper`,
+  through `HAMSTERDAN_PI_NODE_PATH`) shows that at startup the host checked
+  Node's version and ran the Pi helper's READY probe against the image's Pi
+  package, that the probe answered ready (so the host selected Pi
+  execution), and that neither Node process inherited a credential.
+
+The `container` job of `.github/workflows/ci.yml` runs the same script on
+every push to `main` and every pull request, after building the image with
+`docker/build-push-action`. The layers come from the GitHub Actions cache.
+The Containerfile builds every Hackage dependency in a layer keyed only on
+the `.cabal` files, `cabal.project` and `cabal.project.freeze`, so a
+source-only change rebuilds the local packages and nothing else.
+
 ## Parity
 
 ```sh
