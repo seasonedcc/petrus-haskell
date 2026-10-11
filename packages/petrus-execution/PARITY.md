@@ -13,8 +13,9 @@ Upstream: `petrus.motus.execution` and `petrus.motus._execution` at the pin in
 | Interop | The Gondolin sidecar is upstream's file, embedded verbatim (pinned SHA-256); registries, archives, Timeline JSONL and artifact metadata are the upstream formats. |
 | Performance | Archive pack/validate/extract 1.1x-8x faster, process spawn 1.7x faster; sidecar round trips level: over eleven alternating rounds on a quiet machine (2026-10-11, load 2.2–2.3), handshake 1.02x (Haskell ahead in 6 of 11) and execute 1.00x (4.84 ms against 4.86 ms, Haskell ahead in 7 of 11, every round within 3%; the execute is the shared Node sidecar spawning `sh`, and no PostgreSQL is involved). The earlier 0.98x was within that noise ([bench/RESULTS.md](bench/RESULTS.md)). |
 
-Suite: `cabal test petrus-execution` runs 397 examples (3 pending: real Docker, real Gondolin and
-live E2B, all opt-in).
+Suite: `cabal test petrus-execution` runs 400 examples on macOS and 404 on the Linux CI runner
+(3 pending without opt-ins: real Docker, real Gondolin and live E2B; CI sets `PETRUS_TEST_DOCKER=1`,
+so 2 are pending there).
 
 ## Upstream test map
 

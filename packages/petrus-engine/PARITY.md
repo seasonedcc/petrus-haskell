@@ -13,13 +13,17 @@ cross-check that every in-scope upstream test is accounted for, run:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-It reports 275 in-scope upstream tests across the three runtime packages,
-with 0 unaccounted.
+At the current pin it reports 441 in-scope upstream tests and lists 29 of
+`test_worker_topology.py`'s Absurd-backed tests as unaccounted. Those 29 are
+ledgered in [petrus-engine-absurd's PARITY](../petrus-engine-absurd/PARITY.md);
+the script predates that package and does not read its ledger
+(docs/audit/engines-motus-fabric.md, EMF-9).
 
 `cabal test petrus-engine` runs 209 examples, with 0 failures and 0 pending.
 That count includes 3 Engine interop examples against the reference process,
 and 3 Worker topology pairings with reference Engines and Workers.
-Those are pending only when `upstream/petrus/.venv` is not synced.
+They provision the reference through `scripts/upstream-python` and fail,
+never go pending, when it cannot be provisioned.
 
 ## Summary by upstream file
 

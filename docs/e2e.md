@@ -7,6 +7,8 @@ own GitHub App and its own public copy of the fixture repository. The same
 two people drive the same scenarios on both, and the checkpoints are
 compared after normalizing.
 
+This live run is optional: parity does not depend on it (see the
+"End-to-end against a real GitHub App" row of [PARITY.md](../PARITY.md)).
 Tiers A and B run offline and need nothing from you (see
 [Offline checks](#offline-checks)). All tier C tooling is in place and tested
 against fakes. What remains is the inputs listed below, which only you can

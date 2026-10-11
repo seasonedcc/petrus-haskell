@@ -66,7 +66,7 @@ The suite has 200 examples:
 | Upstream module | Tests | Haskell | Status |
 | --- | ---: | --- | --- |
 | `tests/unit/github_app/test_github.py` | 56 | `test/GitHubSpec.hs` (gateway, comment publisher, rerun broker): 81 examples with parameters | 55 ported. `test_transport_repr_does_not_claim_or_expose_credentials` does not apply (DIVERGENCES 3). |
-| `tests/unit/github_app/test_app_foundation.py` | 31 | `test/AppFoundationSpec.hs` (admission, configuration, routing, webhooks): 54 examples; `test/GitHubSpec.hs` "GitHub App client stack": 27 examples | all ported |
+| `tests/unit/github_app/test_app_foundation.py` | 34 | `test/AppFoundationSpec.hs` (admission, configuration, routing, webhooks): 54 examples; `test/GitHubSpec.hs` "GitHub App client stack": 27 examples | all ported |
 
 Each ported example's description paraphrases its upstream test name. For
 example, `test_inline_transient_exhaustion_uses_bounded_exponential_backoff`
