@@ -9,7 +9,7 @@ everything it could depend on is identical.
     scripts/ci-tests plan --out PLAN [--full] [--ledgers DIR] [--max-shards N] [--target SECONDS]
                                              # which suites run, which are reused, in which shard
     scripts/ci-tests run-shard PLAN NAME     # cabal test the shard's suites; write results-NAME.json
-    scripts/ci-tests test-flags              # the cabal test flags of CI's build and test jobs
+    scripts/ci-tests configure               # write CI's cabal.project.local (its test flags; CI only)
     scripts/ci-tests wrap SELECTION BIN ...  # (scripts/ci-test-wrapper, cabal's --test-wrapper)
     scripts/ci-tests run-viewer PLAN         # scripts/interop --viewer petrus-viewer-server
     scripts/ci-tests ledger --plan PLAN --results DIR --out FILE
@@ -532,7 +532,11 @@ def run_shard(args: List[str]) -> int:
     selection_file = scratch / "selection.json"
     selection_file.write_text(json.dumps({"args": selection, "counts": str(scratch)}))
     jobs = os.environ.get("CI_TEST_JOBS", "-j")
-    command = ["cabal", "test", jobs, *targets, "--keep-going", *test_flags()]
+    if not PROJECT_LOCAL.exists() or PROJECT_LOCAL.read_text() != project_config():
+        print("ci-tests: run `scripts/ci-tests configure` first (CI's test flags come from cabal.project.local)",
+              file=sys.stderr)
+        return 2
+    command = ["cabal", "test", jobs, *targets, "--keep-going"]
     print("$ " + " ".join(shlex.quote(c) for c in command), flush=True)
     try:
         status = subprocess.call(command, cwd=ROOT, env={**os.environ, "CI_TESTS_SELECTION": str(selection_file)})
@@ -544,15 +548,36 @@ def run_shard(args: List[str]) -> int:
     return status if status != 0 else (0 if all(outcome.values()) else 1)
 
 
-def test_flags() -> List[str]:
-    """The test flags of every cabal command in CI's build and test jobs.
-    cabal records them in each local package's configuration, so the build
-    job builds with the same ones, and `cabal test` in the test jobs then
-    neither reconfigures nor relinks anything. The wrapper
-    (scripts/ci-test-wrapper) runs a test binary unchanged unless
-    CI_TESTS_SELECTION names a selection file."""
-    return ["--test-show-details=direct", f"--test-wrapper={ROOT / 'scripts' / 'ci-test-wrapper'}",
-            "--test-option=+RTS", "--test-option=-M2G", "--test-option=-RTS"]
+PROJECT_LOCAL = ROOT / "cabal.project.local"
+PROJECT_LOCAL_HEADER = "-- Written by scripts/ci-tests configure"
+
+
+def project_config() -> str:
+    """CI's cabal.project.local: the test flags of every cabal command in
+    every CI job. cabal records them in each local package's configuration,
+    and a flag given on one command line but not another makes cabal
+    reconfigure (and relink) every package; from the project file, `cabal
+    build` in the build job, `cabal test` in the test jobs and
+    scripts/interop's builds in the checks and viewer jobs all share one
+    configuration and rebuild nothing. The wrapper (scripts/ci-test-wrapper)
+    runs a test binary unchanged unless CI_TESTS_SELECTION names a
+    selection file. Every test binary runs with a 2 GiB heap cap, as in
+    scripts/check-all."""
+    return (f"{PROJECT_LOCAL_HEADER} (CI only; see that script).\n"
+            "test-show-details: direct\n"
+            f"test-wrapper: {ROOT / 'scripts' / 'ci-test-wrapper'}\n"
+            "test-options: +RTS -M2G -RTS\n")
+
+
+def configure() -> int:
+    """Write CI's cabal.project.local (project_config). It refuses to replace
+    a cabal.project.local that it did not write."""
+    if PROJECT_LOCAL.exists() and not PROJECT_LOCAL.read_text().startswith(PROJECT_LOCAL_HEADER):
+        print(f"ci-tests: {PROJECT_LOCAL} exists and is not CI's; not replacing it", file=sys.stderr)
+        return 1
+    PROJECT_LOCAL.write_text(project_config())
+    print(f"ci-tests: wrote {PROJECT_LOCAL.name}:\n{project_config()}", end="")
+    return 0
 
 
 def wrap(args: List[str]) -> int:
@@ -721,7 +746,7 @@ def main(argv: List[str]) -> int:
         "run-shard": lambda: run_shard(rest),
         "run-viewer": lambda: run_viewer(rest),
         "wrap": lambda: wrap(rest),
-        "test-flags": lambda: print(" ".join(test_flags())) or 0,
+        "configure": lambda: configure(),
         "ledger": lambda: ledger(rest),
         "fetch-ledgers": lambda: fetch_ledgers(Path(rest[0])),
         "check-steps": lambda: check_steps(),

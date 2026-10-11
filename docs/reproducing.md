@@ -388,11 +388,15 @@ entry, so `build` recompiles only what changed since: cabal decides that
 from the sources' content, not from timestamps. A branch or pull request
 reads its own entries and those of `main`. The test jobs and `checks`
 restore the `dist-newstyle` that `build` saved for the commit and build
-nothing. Two things would make cabal reconfigure (and relink) anyway, and
-every job avoids them: a `PATH` unlike the build's (so every job installs
-the same toolchain, Node included), and `.cabal` files newer than the
-restored configuration (Cabal's own check, which a fresh checkout always
-trips; the jobs set the `.cabal` files' timestamps back after checkout, and
+nothing. Three things would make cabal reconfigure (and relink) anyway, and
+every job avoids them: test flags that differ between commands (so CI's
+test flags, `--test-show-details=direct`, the `scripts/ci-test-wrapper`
+wrapper and the `+RTS -M2G -RTS` heap cap, come from a `cabal.project.local`
+that `scripts/ci-tests configure` writes in every job, not from command
+lines); a `PATH` unlike the build's (so every job installs the same
+toolchain, Node included); and `.cabal` files newer than the restored
+configuration (Cabal's own check, which a fresh checkout always trips; the
+jobs set the `.cabal` files' timestamps back after checkout, and
 cabal-install still notices a changed `.cabal` file by its content).
 
 **Shards.** `scripts/ci-tests plan` spreads the suites over about ten

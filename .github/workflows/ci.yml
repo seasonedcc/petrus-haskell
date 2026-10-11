@@ -97,15 +97,17 @@ jobs:
           key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
           restore-keys: ${{ env.DIST_KEY_PREFIX }}
       - name: Keep the restored configuration
-        # The checkout leaves every .cabal file newer than the restored
-        # build, so Cabal would reconfigure every component (and relink
-        # some). cabal-install compares the .cabal files by content and
-        # still reconfigures a package whose .cabal file changed.
-        run: find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+        # Every job configures cabal alike, or cabal would reconfigure (and
+        # relink) packages: CI's test flags come from cabal.project.local
+        # (scripts/ci-tests configure), the same in every job; and the
+        # checkout leaves every .cabal file newer than the restored build,
+        # which Cabal takes as a change, so they get an old timestamp
+        # (cabal-install still compares the .cabal files by content).
+        run: |
+          scripts/ci-tests configure
+          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
       - name: Build (all packages, -Werror)
-        # With the test jobs' test flags, which cabal records in each
-        # package's configuration: `cabal test` there then rebuilds nothing.
-        run: cabal update -v0 && cabal build all -j $(scripts/ci-tests test-flags)
+        run: cabal update -v0 && cabal build all -j
       - name: The split suites' parts select each example once
         run: scripts/ci-tests check-parts
       - name: Save the cabal store
@@ -154,9 +156,10 @@ jobs:
           key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
           fail-on-cache-miss: true
       - name: Keep the build job's configuration
-        # As in the build job: the checkout leaves every .cabal file newer
-        # than the restored build.
-        run: find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+        # As in the build job, so that cabal rebuilds nothing.
+        run: |
+          scripts/ci-tests configure
+          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
       - name: Interop selection (scripts/interop patterns still select their groups)
         # With the test jobs' opt-in variables, so that the selection counts
         # the PostgreSQL and Docker examples too (a dry run connects to
@@ -198,8 +201,10 @@ jobs:
           key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
           fail-on-cache-miss: true
       - name: Keep the build job's configuration
-        # See the checks job.
-        run: find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+        # As in the build job, so that cabal rebuilds nothing.
+        run: |
+          scripts/ci-tests configure
+          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
       - uses: actions/download-artifact@v4
         with:
           name: test-plan
@@ -229,8 +234,10 @@ jobs:
           key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
           fail-on-cache-miss: true
       - name: Keep the build job's configuration
-        # See the checks job.
-        run: find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+        # As in the build job, so that cabal rebuilds nothing.
+        run: |
+          scripts/ci-tests configure
+          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
       - uses: actions/download-artifact@v4
         with:
           name: test-plan

@@ -1,5 +1,5 @@
 #!/bin/sh
-# cabal's --test-wrapper in CI (scripts/ci-tests test-flags): runs a test
+# cabal's --test-wrapper in CI (scripts/ci-tests configure): runs a test
 # binary with its arguments. When CI_TESTS_SELECTION names a selection file
 # (scripts/ci-tests run-shard), the binary's suite part's hspec --match and
 # --skip arguments are added first.
