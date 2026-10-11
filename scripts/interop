@@ -58,6 +58,7 @@ PATTERNS: Dict[str, List[str]] = {
     "hamsterdan-github": ["configuration corpus", "reads, effects and GraphQL corpus", "HTTP client corpus", "webhook, inbox and routing corpus"],
     "hamsterdan-readiness": ["fold corpus", "board corpus"],
     "hamsterdan-testing": ["oracle corpus"],
+    "petrus-activity": ["differential against the pinned petrus.motus.activity"],
     "petrus-agenticus": ["differential/"],
     "petrus-agenticus-core": ["differential", "interop: custody", "hands/test_conformance.py"],
     "petrus-agenticus-runtime": ["differential/", "hosts differential corpus", "verbatim and interop"],

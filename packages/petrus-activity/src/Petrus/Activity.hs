@@ -22,6 +22,7 @@ module Petrus.Activity
   , retryPolicy
   , defaultRetryPolicy
   , retryPolicyFields
+  , retryPolicyJson
   , retryDelay
     -- * Execution policy
   , ExecutionPolicy
@@ -29,11 +30,13 @@ module Petrus.Activity
   , executionPolicy
   , defaultExecutionPolicy
   , policyFields
+  , policyJson
   , policyRetryPolicy
     -- * Invocations
   , ActivityInvocation (..)
   , activityInvocation
   , invocation
+  , invocationJson
     -- * Failures
   , ActivityFailure
   , ActivityFailureFields (..)
@@ -48,6 +51,7 @@ module Petrus.Activity
   , activityDeclaration
   , declarationName
   , declarationHeartbeatTimeout
+  , declarationJson
   , PayloadConverter (..)
   , jsonPayloadConverter
   , ActivityExecutionContext (..)
@@ -67,11 +71,37 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity.Number
 import Petrus.Json
+import Petrus.Json.PythonText (pythonStrRepr)
 
 -- | Largest accepted duration: provider-neutral and safe for milliseconds
 -- and datetimes.
 maxDurationSeconds :: Double
 maxDurationSeconds = 1000000000
+
+-- | @math.isfinite(value)@, including the @OverflowError@ CPython raises
+-- for an int too large to convert to a float (at least 2^1024 - 2^970, the
+-- first integer that rounds past the largest double).
+finite :: Number -> Either Text Bool
+finite = \case
+  IntNumber i
+    | abs i >= floatOverflow -> Left "int too large to convert to float"
+    | otherwise -> Right True
+  number -> Right (isFinite number)
+  where
+    floatOverflow = 2 ^ (1024 :: Int) - 2 ^ (970 :: Int) :: Integer
+
+-- | @repr(int)@, including the @ValueError@ CPython raises for an integer of
+-- more than 4300 digits.
+intRepr :: Integer -> Either Text Text
+intRepr i
+  | length digits > maxIntStrDigits = Left (T.pack (intReprDigitsError maxIntStrDigits))
+  | otherwise = Right (T.pack (show i))
+  where
+    digits = show (abs i)
+
+-- | A JSON member for an optional number.
+optionalNumber :: Maybe Number -> Json
+optionalNumber = maybe Null numberJson
 
 -- ---------------------------------------------------------------------------
 -- Retry policy
@@ -108,8 +138,9 @@ retryPolicy fields = do
     , ("max_interval", fields.retryMaxInterval)
     , ("jitter", fields.retryJitter)
     ]
-    $ \(name, value) ->
-      unless (isFinite value && value >= 0) $
+    $ \(name, value) -> do
+      ok <- finite value
+      unless (ok && value >= 0) $
         Left ("RetryPolicy " <> name <> " must be a non-negative number")
   forM_ [("initial_interval", fields.retryInitialInterval), ("max_interval", fields.retryMaxInterval)] $ \(name, value) ->
     when (numberValue value > maxDurationSeconds) $
@@ -118,6 +149,18 @@ retryPolicy fields = do
   when (fields.retryMaxAttempts < 1) $ Left "RetryPolicy max_attempts must be an integer >= 1"
   when (fields.retryJitter /= 0) $ Left "RetryPolicy jitter is unsupported; only deterministic jitter=0 is accepted"
   Right (RetryPolicy fields)
+
+-- | @dataclasses.asdict(policy)@: the members in the reference's field
+-- order.
+retryPolicyJson :: RetryPolicy -> Json
+retryPolicyJson (RetryPolicy f) =
+  Object
+    [ ("initial_interval", numberJson f.retryInitialInterval)
+    , ("coefficient", numberJson f.retryCoefficient)
+    , ("max_interval", numberJson f.retryMaxInterval)
+    , ("max_attempts", Int f.retryMaxAttempts)
+    , ("jitter", numberJson f.retryJitter)
+    ]
 
 -- | The delay following the numbered failed attempt (@RetryPolicy.delay@),
 -- computed with the reference's float operations so the value is
@@ -173,10 +216,12 @@ defaultExecutionPolicy = ExecutionPolicy (ExecutionPolicyFields 1 30 0 2 60 0 No
 -- constructs) do, in the reference's order.
 executionPolicy :: ExecutionPolicyFields -> Either Text ExecutionPolicy
 executionPolicy fields = do
-  when (fields.attempts < 1) $
+  when (fields.attempts < 1) $ do
+    -- The f-string's repr() is evaluated first, and refuses past 4300 digits.
+    spelled <- intRepr fields.attempts
     Left
       ( "ExecutionPolicy requires attempts >= 1, got "
-          <> T.pack (show fields.attempts)
+          <> spelled
           <> ": an invocation that may never execute is a wedge, not a policy"
       )
   when (fields.heartbeatTimeout <= 0) $ Left "ExecutionPolicy heartbeat_timeout must be a positive integer"
@@ -185,11 +230,27 @@ executionPolicy fields = do
   _ <- retryPolicy (retryFields fields)
   forM_ [("start_to_close", fields.startToClose), ("schedule_to_close", fields.scheduleToClose)] $ \(name, value) ->
     forM_ value $ \number -> do
-      unless (isFinite number && number > 0) $
+      ok <- finite number
+      unless (ok && number > 0) $
         Left ("ExecutionPolicy " <> name <> " must be a positive number or None")
       when (numberValue number > maxDurationSeconds) $
         Left ("ExecutionPolicy " <> name <> " must be at most 1000000000 seconds for provider-neutral duration safety")
   Right (ExecutionPolicy fields)
+
+-- | @dataclasses.asdict(policy)@: the members in the reference's field
+-- order (History's @policy@ object).
+policyJson :: ExecutionPolicy -> Json
+policyJson (ExecutionPolicy f) =
+  Object
+    [ ("attempts", Int f.attempts)
+    , ("heartbeat_timeout", Int f.heartbeatTimeout)
+    , ("initial_interval", numberJson f.initialInterval)
+    , ("coefficient", numberJson f.coefficient)
+    , ("max_interval", numberJson f.maxInterval)
+    , ("jitter", numberJson f.jitter)
+    , ("start_to_close", optionalNumber f.startToClose)
+    , ("schedule_to_close", optionalNumber f.scheduleToClose)
+    ]
 
 retryFields :: ExecutionPolicyFields -> RetryPolicyFields
 retryFields f = RetryPolicyFields f.initialInterval f.coefficient f.maxInterval f.attempts f.jitter
@@ -229,6 +290,18 @@ activityInvocation value = do
 invocation :: Text -> Json -> ActivityInvocation
 invocation name payload = ActivityInvocation name payload defaultExecutionPolicy Nothing Nothing
 
+-- | @dataclasses.asdict(invocation)@: activity, input, policy, correlation,
+-- idempotency.
+invocationJson :: ActivityInvocation -> Json
+invocationJson value =
+  Object
+    [ ("activity", String value.activity)
+    , ("input", value.input)
+    , ("policy", policyJson value.policy)
+    , ("correlation", maybe Null String value.correlation)
+    , ("idempotency", maybe Null String value.idempotency)
+    ]
+
 -- ---------------------------------------------------------------------------
 -- Failures
 
@@ -258,36 +331,22 @@ activityFailure fields = do
   when (T.null fields.failureKind || T.length fields.failureKind > 128) $
     Left "ActivityFailure kind must be a non-empty string of at most 128 characters"
   forM_ fields.failureRetryAfter $ \number -> do
-    unless (isFinite number && number >= 0) $
+    ok <- finite number
+    unless (ok && number >= 0) $
       Left "ActivityFailure retry_after must be a non-negative number or None"
     when (numberValue number > maxDurationSeconds) $
       Left "ActivityFailure retry_after must be at most 1000000000 seconds for provider-neutral duration safety"
-  case firstNonFinite fields.failureDetails of
-    Just bad -> Left ("Activity failure details must be JSON-faithful: Out of range float values are not JSON compliant: " <> bad)
-    Nothing -> case dumps compactUnicode fields.failureDetails of
-      Left _ -> Left "Activity failure details must be JSON-faithful"
-      Right encoded ->
-        when (BS.length encoded > 16384) $
-          Left "Activity failure details must be JSON-faithful: Activity failure details exceed the 16384-byte limit"
+  case dumps compactUnicode fields.failureDetails of
+    Left problem -> Left ("Activity failure details must be JSON-faithful: " <> T.pack (encodeErrorMessage problem))
+    Right encoded ->
+      when (BS.length encoded > 16384) $
+        Left "Activity failure details must be JSON-faithful: Activity failure details exceed the 16384-byte limit"
   Right (ActivityFailure fields)
 
 -- | Compact separators without ASCII escaping — the reference's byte
 -- measure for failure details and heartbeat details.
 compactUnicode :: EncodeOptions
 compactUnicode = compact
-
--- | The first non-finite float in a value, spelled as CPython's encoder
--- error names it.
-firstNonFinite :: Json -> Maybe Text
-firstNonFinite = \case
-  Float d
-    | isNaN d -> Just "nan"
-    | isInfinite d -> Just (if d > 0 then "inf" else "-inf")
-  Array items -> firstJust (map firstNonFinite items)
-  Object members -> firstJust (map (firstNonFinite . snd) members)
-  _ -> Nothing
-  where
-    firstJust = foldr (\x acc -> maybe acc Just x) Nothing
 
 -- | @ActivityFailure(error)@: the default kind, no details, not retryable.
 simpleFailure :: Text -> Either Text ActivityFailure
@@ -301,7 +360,7 @@ failureJson (ActivityFailure fields) =
     , ("kind", String fields.failureKind)
     , ("details", fields.failureDetails)
     , ("retryable", Bool fields.failureRetryable)
-    , ("retry_after", maybe Null numberJson fields.failureRetryAfter)
+    , ("retry_after", optionalNumber fields.failureRetryAfter)
     ]
 
 -- | The exception an Activity throws to classify a safe operational
@@ -336,6 +395,11 @@ declarationName (ActivityDeclaration name _) = name
 declarationHeartbeatTimeout :: ActivityDeclaration -> Maybe Integer
 declarationHeartbeatTimeout (ActivityDeclaration _ heartbeat) = heartbeat
 
+-- | @dataclasses.asdict(declaration)@: name, heartbeat_timeout.
+declarationJson :: ActivityDeclaration -> Json
+declarationJson (ActivityDeclaration name heartbeat) =
+  Object [("name", String name), ("heartbeat_timeout", maybe Null Int heartbeat)]
+
 -- | Convert Activity payloads between canonical values and typed values.
 -- The reference's converters are keyed by Python type annotations; here a
 -- typed definition supplies its own conversions and a converter only
@@ -345,13 +409,16 @@ data PayloadConverter = PayloadConverter
   , encodePayload :: Json -> Either Text Json
   }
 
--- | @JsonPayloadConverter@: preserve a detached JSON-faithful value.
+-- | @JsonPayloadConverter@: preserve a detached JSON-faithful value. The
+-- reference's @json.loads(json.dumps(value, allow_nan=False))@ refuses what
+-- @dumps@ refuses (a non-finite float, an integer past 4300 digits), with
+-- @dumps@'s message; what it accepts comes back unchanged.
 jsonPayloadConverter :: PayloadConverter
 jsonPayloadConverter = PayloadConverter canonical canonical
   where
-    canonical value = case firstNonFinite value of
-      Just bad -> Left ("Activity payload is not JSON-faithful: Out of range float values are not JSON compliant: " <> bad)
-      Nothing -> Right value
+    canonical value = case dumps defaultDumps {allowNan = False} value of
+      Left problem -> Left ("Activity payload is not JSON-faithful: " <> T.pack (encodeErrorMessage problem))
+      Right _ -> Right value
 
 -- | What an executing Activity sees of its Attempt.
 data ActivityExecutionContext = ActivityExecutionContext
@@ -383,7 +450,7 @@ defineActivity declaration parameters = ActivityDefinition declaration jsonPaylo
 callActivity :: ActivityDefinition -> ActivityInvocation -> ActivityExecutionContext -> IO (Either Text Json)
 callActivity definition inv context
   | inv.activity /= name =
-      pure (Left ("Activity " <> pyRepr name <> " cannot execute invocation for " <> pyRepr inv.activity))
+      pure (Left ("Activity " <> pythonStrRepr name <> " cannot execute invocation for " <> pythonStrRepr inv.activity))
   | otherwise = case inv.input of
       Object members -> do
         let expected = sort definition.parameters
@@ -393,7 +460,7 @@ callActivity definition inv context
             pure
               ( Left
                   ( "Activity "
-                      <> pyRepr name
+                      <> pythonStrRepr name
                       <> " requires parameters "
                       <> pyList expected
                       <> ", got "
@@ -404,11 +471,10 @@ callActivity definition inv context
             Left err -> pure (Left err)
             Right arguments -> definition.converter.encodePayload <$> definition.function arguments context
       other ->
-        pure (Left ("Activity " <> pyRepr name <> " parameter payload must be a mapping, got " <> jsonTypeName other))
+        pure (Left ("Activity " <> pythonStrRepr name <> " parameter payload must be a mapping, got " <> jsonTypeName other))
   where
     name = declarationName definition.declaration
-    pyRepr t = "'" <> T.replace "'" "\\'" t <> "'"
-    pyList items = "[" <> T.intercalate ", " (map pyRepr items) <> "]"
+    pyList items = "[" <> T.intercalate ", " (map pythonStrRepr items) <> "]"
 
 -- ---------------------------------------------------------------------------
 -- Heartbeats
@@ -420,8 +486,11 @@ heartbeatDetailsLimit = 65536
 -- | The exact, detached JSON value accepted at the heartbeat door.
 snapshotHeartbeatDetails :: Json -> Either Text Json
 snapshotHeartbeatDetails value = do
+  -- The reference's normalize pass refuses a non-finite float anywhere
+  -- before json.dumps runs; json.dumps then refuses an integer past 4300
+  -- digits with its own ValueError, unwrapped.
   unless (allFinite value) $ Left "heartbeat details require finite JSON numbers"
-  encoded <- either (const (Left "heartbeat details require finite JSON numbers")) Right (dumps compactUnicode value)
+  encoded <- either (Left . T.pack . encodeErrorMessage) Right (dumps compactUnicode value)
   when (BS.length encoded > heartbeatDetailsLimit) $
     Left
       ( "heartbeat details encode to "

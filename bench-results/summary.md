@@ -17,6 +17,7 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | 6 | 1.08× | 19.0× |  |
 | `hamsterdan-readiness` | [RESULTS.md](../packages/hamsterdan-readiness/bench/RESULTS.md) | 13 | 3.70× | 11.0× |  |
 | `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | 3 | 1.70× | 22.8× |  |
+| `petrus-activity` | [RESULTS.md](../packages/petrus-activity/bench/RESULTS.md) | 7 | 2.67× | 94.7× |  |
 | `petrus-agenticus` | [RESULTS.md](../packages/petrus-agenticus/bench/RESULTS.md) | 5 | 1.23× | 5.50× |  |
 | `petrus-agenticus-core` | [RESULTS.md](../packages/petrus-agenticus-core/bench/RESULTS.md) | 1 | 2.70× | 4.70× |  |
 | `petrus-agenticus-core` | [results-catalog.md](../packages/petrus-agenticus-core/bench/results-catalog.md) | 4 | 1.80× | 6.10× |  |
@@ -55,4 +56,4 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | 2 | 2.50× | 8.00× |  |
 | `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | 20 | 1.09× | 4.83× |  |
 
-43 results files; 7 with a row below 1.0×.
+44 results files; 7 with a row below 1.0×.
