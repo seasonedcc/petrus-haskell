@@ -7,9 +7,18 @@ at `upstream/petrus` 3f85fc2. So far these are ported:
 - the Pi native runtime (`pi.py`, `pi_recovery.py`);
 - the Pi A2 model phase (`pi_model_phase.py`);
 - the application-owned Pi A5 runtime (`pi_application.py`);
-- the Pi A2 host (`pi_a2_host.py`).
+- the Pi A2 host (`pi_a2_host.py`);
+- the Codex A2 Local and A3 Gondolin host (`codex.py`,
+  `_codex_gondolin_service.py`);
+- the Claude A2 Local host (`claude.py`);
+- the Amp A1 provider-managed host (`amp.py`).
 
-`parity/pi.md` maps the Pi tests, corpus and benchmarks. The runtime value modules (`profiles.py`, `result.py`, `operation.py`,
+`parity/pi.md` maps the Pi tests, corpus and benchmarks. `parity/codex.md`,
+`parity/claude-a2.md` and `parity/amp.md` map the Codex, Claude and Amp tests,
+the shared hosts corpus (`differential/hosts_corpus.json`) and their
+benchmarks (`bench/results-hosts.md`). The Claude files are not named
+`claude.md` because a case-insensitive file system would read that name as
+`CLAUDE.md`. The runtime value modules (`profiles.py`, `result.py`, `operation.py`,
 `installation.py`) live in `petrus-agenticus-core`, which maps their tests
 (`test_profiles.py` and `test_foundation.py`).
 
@@ -80,16 +89,35 @@ See `bench/RESULTS.md`. A full three-phase run, which includes the fsyncs of
 the atomic `thread.json` saves, is 1.9 times faster than the reference. A
 projection decode and encode round trip is 1.4 times faster.
 
-## Not yet ported
+## Host test counts
 
-These upstream modules and tests have no Haskell counterpart yet:
+| Upstream file | Functions | Cases | Haskell spec |
+| --- | ---: | ---: | --- |
+| `test_codex.py` | 41 | 54 | `CodexSpec`, plus 5 verbatim and interop examples |
+| `test_claude.py` | 32 | 46 | `ClaudeSpec`, plus 4 sidecar examples |
+| `test_amp.py` | 15 | 19 | `AmpSpec`, plus 3 sidecar examples |
 
-| Upstream module | Tests | Plan |
-| --- | --- | --- |
-| `codex.py`, `_codex_gondolin_service.py` | `test_codex.py` (41), `test_codex_real.py` (2) | After Pi. Use the fake Codex CLI only. |
-| `claude.py` | `test_claude.py` (32), `test_claude_real.py` (2) | Through a Python sidecar around the Claude SDK, tested against a fake SDK. |
-| `amp.py` | `test_amp.py` (15), `test_amp_real.py` (1) | Through a Python sidecar, tested against a fake SDK. |
-| — | `test_agent_net_real.py` (2) | Calls real model APIs; it will stay out of scope. |
+`HostsDifferentialSpec` replays the 5,844-case hosts corpus in 22 sections.
 
-The `*_real.py` tests call real provider APIs and are opt-in upstream as well.
-They will not be ported as default tests.
+## Out of scope: the `*_real.py` tests
+
+| Upstream file | Functions | Gate upstream |
+| --- | ---: | --- |
+| `test_codex_real.py` | 2 | `PETRUS_CV16_CODEX_LIVE=1`, `PETRUS_CV16_CODEX_GONDOLIN_LIVE=1` |
+| `test_claude_real.py` | 2 | `PETRUS_CV16_CLAUDE_QUALIFY=1`, `PETRUS_CV16_CLAUDE_LIVE=1` |
+| `test_amp_real.py` | 1 | `PETRUS_RUN_CV16_AMP_A1=1` |
+| `test_agent_net_real.py` | 2 | real model APIs |
+
+These tests call real provider services: OpenAI through the `codex` CLI
+(plus a real Gondolin VM image for A3), Anthropic through the Claude Agent
+SDK, Amp's thread service and Orbs, and real model APIs. Each needs
+credentials and makes paid calls. Upstream they are opt-in and skipped by
+default.
+
+They are not ported, for two reasons. As default tests they would add
+credentials and paid calls to every run. And everything they reach on the
+host side (the argv, the helper, the sidecars, admission, custody,
+publication) is already exercised by the fakes: the reference's own fake
+`codex` CLI and fake Gondolin SDK, and fake Claude and Amp SDK packages with
+the pinned public surfaces. The per-host `parity/*.md` files list each test
+and its gate.

@@ -4,7 +4,10 @@ These choices are deliberate. None of them changes a `thread.json` byte, a
 History byte or a refusal; `differential/runner_corpus.json` pins all three.
 
 The Pi hosts (native, recovery, model phase, application and A2 host) are
-covered in [divergences/pi.md](divergences/pi.md).
+covered in [divergences/pi.md](divergences/pi.md). The Codex, Claude and Amp
+hosts are covered in [divergences/codex.md](divergences/codex.md),
+[divergences/claude-a2.md](divergences/claude-a2.md) and
+[divergences/amp.md](divergences/amp.md).
 
 ## Local Agent-as-a-Net runner (`Petrus.Agenticus.Runtime.AgentNetRunner`)
 

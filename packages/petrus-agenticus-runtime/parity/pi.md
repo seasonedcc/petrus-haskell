@@ -41,7 +41,7 @@ them.
 | `test_cancel_deadline_redelivery_conflict_and_too_late_claim` | 2 |  |
 | `test_native_jsonl_is_complete_strict_and_has_one_matching_header` | 4 |  |
 | `test_framed_native_a4_resume_excludes_episode_custody_from_exact_jsonl_prefix` | 1 | Real `node`; the installation is swapped through `modifyAdapterRuntime`. |
-| `test_private_node_helper_routes_the_provider_tool_identity_through_hands` | 3 | Real `node` over the verbatim `pi_helper.mjs` and the fake SDK `framed_tool_sdk.mjs`. |
+| `test_private_node_helper_routes_the_provider_tool_identity_through_hands` | 3 | Real `node` over the verbatim `pi_helper.mjs` and the fake SDK `framed_tool_sdk.mjs`. Every `withNode` test first runs `node -e ""` so that a cold Node start (seconds on a busy CI runner) is not charged to the reference's 3 s run and 5 s Episode budgets. |
 | `test_clean_subscription_provider_failure_checkpoints_auth_without_turn_publication` | 1 |  |
 | `test_invalid_returned_subscription_authority_requires_reauthorization` | 4 |  |
 | `test_subscription_storage_or_checkpoint_failure_publishes_no_references` | 1 |  |

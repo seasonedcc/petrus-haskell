@@ -68,8 +68,7 @@ the converter half of `tests/unit/readiness/test_payloads.py`.
 
 Upstream proves convergence in `test_inline_recovery.py` with the real
 `hamsterdan.host.v5` gates: `V5ReviewGate`, `V5PublicationGates`,
-`V5RerunGate` and `V5MutationGate`. Those gates belong to `hamsterdan-host`,
-which does not exist yet.
+`V5RerunGate` and `V5MutationGate`. Those gates belong to `hamsterdan-host`.
 
 The five convergence cases here instead wrap the harness gate in a ledger
 test double. They drive the same restart protocol: a crash-cut dispatch, a
@@ -81,8 +80,10 @@ assert the net-side contract:
 - there are three calls;
 - a reload is stable.
 
-When `hamsterdan-host` is ported, these five cases must be rerun there
-against the real gates.
+`hamsterdan-host` reruns the five cases against the real gates, with the
+reference's provider-ledger doubles, in
+[`../hamsterdan-host/test/InlineRecoverySpec.hs`](../hamsterdan-host/test/InlineRecoverySpec.hs)
+(5 examples, 0 failures).
 
 ## Benchmarks
 
@@ -95,12 +96,8 @@ interleaved, and the load average is noted. Haskell is faster on every row:
 
 ## Gaps
 
-- **`hamsterdan-host` needs:**
-  - the real `host.v5` gate implementations for the five
-    `InlineRecoverySpec` convergence cases;
-  - `wireGates` with real `GateDefinition`s;
-  - a `PayloadConverter` per gate: `variantPayloadConverter` with
-    `encodeVariant` on results, and `pydanticPayloadConverter` for derived
-    gates.
+- **Closed by `hamsterdan-host`:** the real `host.v5` gates rerun the five
+  convergence cases; `wireGates` runs with real `GateDefinition`s; each gate
+  uses `variantPayloadConverter` with `encodeVariant` on its result.
 - **Out of scope:** `readiness/__init__.py` holds only a docstring, so it
   has no Haskell counterpart.

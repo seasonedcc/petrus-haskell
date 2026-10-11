@@ -18,6 +18,9 @@ module Hamsterdan.GitHub.Http
   , Exchange (..)
   , realExchange
   , newRealExchange
+  , Origin (..)
+  , exchangeAt
+  , newPlainExchangeAt
 
     -- * Failures
   , ClientError (..)
@@ -285,13 +288,34 @@ newRealExchange = do
   pure (realExchange manager)
 
 realExchange :: Client.Manager -> Exchange
-realExchange manager = Exchange $ \request continue -> do
+realExchange manager = exchangeAt manager (Origin True "api.github.com" 443)
+
+-- | Where an exchange sends its requests: the scheme, host and port that
+-- replace @https://api.github.com@ (the request target is unchanged).
+data Origin = Origin
+  { secure :: Bool
+  , host :: ByteString
+  , port :: Int
+  }
+  deriving stock (Eq, Show)
+
+-- | A plain-HTTP exchange to another origin, such as a recording fake
+-- GitHub in tests: the same wire behaviour as 'realExchange' (no proxy, no
+-- redirects, no timeout, raw bodies) over cleartext.
+newPlainExchangeAt :: ByteString -> Int -> IO Exchange
+newPlainExchangeAt host port = do
+  manager <- Client.newManager (Client.managerSetProxy Client.noProxy Client.defaultManagerSettings)
+  pure (exchangeAt manager (Origin False host port))
+
+-- | 'realExchange' to an arbitrary origin.
+exchangeAt :: Client.Manager -> Origin -> Exchange
+exchangeAt manager origin = Exchange $ \request continue -> do
   let wire =
         Client.defaultRequest
           { Client.method = TE.encodeUtf8 request.method
-          , Client.secure = True
-          , Client.host = "api.github.com"
-          , Client.port = 443
+          , Client.secure = origin.secure
+          , Client.host = origin.host
+          , Client.port = origin.port
           , Client.path = TE.encodeUtf8 (fst (T.breakOn "?" request.target))
           , Client.queryString = TE.encodeUtf8 (snd (T.breakOn "?" request.target))
           , Client.requestHeaders =
@@ -299,6 +323,10 @@ realExchange manager = Exchange $ \request continue -> do
               | (name, value) <- request.headers
               , name `notElem` ["host", "content-length"]
               ]
+                -- http-client adds @Accept-Encoding: gzip@ unless the header is
+                -- present; an empty value suppresses it (httpx sends only what
+                -- the request names).
+                <> [("Accept-Encoding", "") | "accept-encoding" `notElem` map fst request.headers]
           , Client.requestBody = Client.RequestBodyBS request.body
           , Client.redirectCount = 0
           , Client.decompress = const False

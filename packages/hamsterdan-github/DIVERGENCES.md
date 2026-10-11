@@ -124,10 +124,18 @@ differential corpora compare these byte for byte with the pinned Python (see
       "Invalid Key type for RSAAlgorithm"; the port says "Could not parse the
       provided public key.", PyJWT's text for unparseable keys. The class
       matches.
-13. **The production exchange is not differentially tested.**
+13. **The production exchange is differentially tested over plain HTTP only.**
     - Both sides' corpora run over a mock network: `httpx.MockTransport` and a
       scripted `Exchange`. So h11's wire-level checks (for example, refusing
       CR or LF in a header value) and http-client's are not compared.
+    - The production code path (`exchangeAt`, which `realExchange` is at
+      `https://api.github.com`) is compared on the wire by hamsterdan-host:
+      `InteropSpec` and `CliSpec` point both hosts at one recording fake
+      GitHub (`newPlainExchangeAt`, and an httpx transport that rewrites the
+      origin). The request line, the headers in order, and the body bytes
+      match. That comparison found http-client's default
+      `Accept-Encoding: gzip`, which httpx does not send. The exchange now
+      suppresses it. TLS itself is not compared.
     - The headers the stack sends are fixed strings, the App JWT and the
       installation token. Non-ASCII values are refused before sending, as
       httpx refuses them.

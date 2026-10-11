@@ -369,11 +369,13 @@ openCustody path secretText options = do
   connection <- Db.open (T.pack path)
   Db.script
     connection
-    "PRAGMA journal_mode=WAL;\n\
-    \CREATE TABLE IF NOT EXISTS inbox (\n\
-    \  delivery_id TEXT PRIMARY KEY, event TEXT NOT NULL, observation TEXT NOT NULL,\n\
-    \  status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,\n\
-    \  reason TEXT, error_class TEXT, next_attempt_at REAL NOT NULL DEFAULT 0);"
+    "\n\
+    \          PRAGMA journal_mode=WAL;\n\
+    \          CREATE TABLE IF NOT EXISTS inbox (\n\
+    \            delivery_id TEXT PRIMARY KEY, event TEXT NOT NULL, observation TEXT NOT NULL,\n\
+    \            status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,\n\
+    \            reason TEXT, error_class TEXT, next_attempt_at REAL NOT NULL DEFAULT 0);\n\
+    \        "
   columns <- Db.query connection "PRAGMA table_info(inbox)" []
   let names = [name | _ : SQLText name : _ <- columns]
   unless ("next_attempt_at" `elem` names) $
