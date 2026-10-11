@@ -89,6 +89,7 @@ import Petrus.Agenticus.Connection.Custody
   )
 import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Error
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Validate (hasControlOrDel, isTrimmed, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.AgentNet
   ( LoopState (..)
@@ -450,7 +451,7 @@ runPhase c frame wall heartbeat = do
                   beat <- try heartbeat
                   case beat of
                     Left (e :: SomeException)
-                      | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+                      | isAsync e -> throwIO e
                       | otherwise -> protocol "activity-stale"
                     Right () -> (+ interval) <$> getMonotonicTime
                 else pure heartbeatAt
@@ -635,7 +636,7 @@ probeModelPhase a packageRoot = do
   case outcome of
     Right value -> pure value
     Left (e :: SomeException)
-      | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+      | isAsync e -> throwIO e
       | otherwise -> pure False
   where
     invalid :: IO a
@@ -678,7 +679,7 @@ modelPhaseAdapterActivity a invocation context = do
   prior <- case loaded of
     Right value -> pure value
     Left (e :: SomeException)
-      | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+      | isAsync e -> throwIO e
       | otherwise -> protocol "continuation-load-failed"
   unless (null state.results) $ do
     calls <- either throwIO pure (priorCalls prior)
@@ -687,7 +688,7 @@ modelPhaseAdapterActivity a invocation context = do
   claimed <- try heartbeat
   case claimed of
     Left (e :: SomeException)
-      | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+      | isAsync e -> throwIO e
       | otherwise -> protocol "activity-stale"
     Right () -> pure ()
   execute a cfg state operation prior heartbeat
@@ -788,7 +789,7 @@ execute a cfg state operation prior heartbeat = do
   clean <- readIORef cleanRef
   case outcome of
     Left (e :: SomeException)
-      | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+      | isAsync e -> throwIO e
     _ | not clean -> protocol "cleanup-unverified"
     Right value -> pure value
     Left e
@@ -799,7 +800,7 @@ execute a cfg state operation prior heartbeat = do
       try action >>= \case
         Right value -> pure value
         Left (e :: SomeException)
-          | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+          | isAsync e -> throwIO e
           | otherwise -> pure False
 
 -- | @_release_verified(value, operation, attachment)@.

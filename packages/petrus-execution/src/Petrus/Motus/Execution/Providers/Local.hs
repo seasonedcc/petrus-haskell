@@ -26,6 +26,7 @@ import Control.Monad (forM, forM_, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.IORef
+import Data.Int (Int64)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
@@ -37,14 +38,30 @@ import Data.Text.Encoding qualified as TE
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
 import Petrus.Motus.Execution.Internal.Common
-import Petrus.Motus.Execution.Internal.Posix
+import Petrus.Motus.Execution.Internal.PosixPath (ioErrno, lstatMaybe, pathLexists, toRawPath)
+import Petrus.Posix.At
+  ( FileStat (..)
+  , Follow (..)
+  , createExclusiveAt
+  , fdStat
+  , listDirectoryFd
+  , mkdirAt
+  , openAt
+  , openDirectoryAt
+  , permissionBits
+  , removeDirectoryAt
+  , statAt
+  , unlinkAt
+  )
+import Petrus.Posix.At qualified as At
+import Petrus.Posix.File (fsyncFd)
 import Petrus.Motus.Execution.Internal.Process
 import Petrus.Motus.Execution.Internal.PyText (pyStrRepr)
 import System.Posix.Files.ByteString (isDirectory)
 import System.Directory (doesPathExist, getTemporaryDirectory, removeDirectoryRecursive)
 import System.IO.Temp (createTempDirectory)
 import System.Posix.Files.ByteString (removeLink, setFdMode)
-import System.Posix.IO.ByteString (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, fdReadBuf, fdWriteBuf, openFdAt)
+import System.Posix.IO.ByteString (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, fdReadBuf, fdWriteBuf)
 import System.Posix.Signals (sigKILL, sigTERM, signalProcessGroup)
 import System.Posix.Types (Fd)
 import System.Posix.User (getRealUserID)
@@ -256,27 +273,43 @@ privateAttachmentOk env attachment =
       | errorKind failure `elem` [ValueError, RuntimeError] -> pure False
       | otherwise -> throwIO failure
 
-raw :: Text -> ByteString
-raw = TE.encodeUtf8
+-- | A territory-relative name (its UTF-8 bytes on disk).
+raw :: Text -> FilePath
+raw = T.unpack
+
+-- | The @stat@ fields compared to detect a change during an export (all
+-- but the access time, which the read itself may update).
+statIdentity :: FileStat -> [Int64]
+statIdentity info =
+  [ statDevice info
+  , statInode info
+  , statMode info
+  , statUid info
+  , statLinkCount info
+  , statSize info
+  , statModifySeconds info
+  , statModifyNanoseconds info
+  , statChangeSeconds info
+  , statChangeNanoseconds info
+  ]
 
 ownedDirectory :: Fd -> IO Bool
 ownedDirectory fd = do
-  info <- fstatInfo fd
+  info <- fdStat fd
   uid <- getRealUserID
-  pure (isDirectoryMode info && permissionBits info == 0o700 && stUid info == fromIntegral uid)
+  pure (At.isDirectory info && permissionBits info == 0o700 && statUid info == fromIntegral uid)
 
-ownedFile :: StatInfo -> IO Bool
+ownedFile :: FileStat -> IO Bool
 ownedFile info = do
   uid <- getRealUserID
-  pure (isRegularMode info && permissionBits info == 0o600 && stUid info == fromIntegral uid && stNlink info == 1)
+  pure (At.isRegularFile info && permissionBits info == 0o600 && statUid info == fromIntegral uid && statLinkCount info == 1)
 
 -- | Open @territory/private/<file_id>@ without following links and check
 -- every directory's ownership invariant.
 withPrivateTree :: LocalProcessEnvironment -> Text -> Text -> (Fd -> Fd -> IO a) -> IO a
 withPrivateTree env lease fileId action = do
   territoryPath <- territoryOf env lease
-  rawTerritory <- toRawPath territoryPath
-  bracket (openDirectoryAt Nothing rawTerritory) closeFd $ \territory ->
+  bracket (openDirectoryAt Nothing territoryPath) closeFd $ \territory ->
     bracket (openDirectoryAt (Just territory) "private") closeFd $ \private ->
       bracket (openDirectoryAt (Just private) (raw fileId)) closeFd $ \root -> do
         owned <- and <$> mapM ownedDirectory [territory, private, root]
@@ -302,31 +335,26 @@ createPrivateFileLocked env attachment fileId value = do
   let opened fd = modifyIORef' descriptors (fd :) >> pure fd
       closeAll = readIORef descriptors >>= mapM_ (\fd -> try (closeFd fd) :: IO (Either IOException ())) >> writeIORef descriptors []
       body = do
-        rawTerritory <- toRawPath territoryPath
-        territory <- opened =<< openDirectoryAt Nothing rawTerritory
+        territory <- opened =<< openDirectoryAt Nothing territoryPath
         ownedDirectory territory >>= \ok -> unless ok (throwExecution RuntimeError "private-file territory invariant failed")
-        made <- try (mkdirAt territory "private" 0o700)
+        made <- try (mkdirAt (Just territory) "private" 0o700)
         case made of
           Left (failure :: IOException) | ioErrno failure /= 17 -> throwIO failure
           _ -> pure ()
         private <- opened =<< openDirectoryAt (Just territory) "private"
         setFdMode private 0o700
         ownedDirectory private >>= \ok -> unless ok (throwExecution RuntimeError "private-file directory invariant failed")
-        mkdirAt private (raw fileId) 0o700
+        mkdirAt (Just private) (raw fileId) 0o700
         root <- opened =<< openDirectoryAt (Just private) (raw fileId)
         setFdMode root 0o700
         ownedDirectory root >>= \ok -> unless ok (throwExecution RuntimeError "private-file root invariant failed")
         leaf <-
           opened
-            =<< openFdAt
-              (Just root)
-              (raw (privateFileName value))
-              WriteOnly
-              defaultFileFlags {creat = Just 0o600, exclusive = True, nofollow = True, cloexec = True}
+            =<< createExclusiveAt (Just root) (raw (privateFileName value)) 0o600
         setFdMode leaf 0o600
         writeAll leaf (privateFileContent value)
         fsyncFd leaf
-        info <- fstatInfo leaf
+        info <- fdStat leaf
         ownedFile info >>= \ok -> unless ok (throwExecution RuntimeError "private-file leaf invariant failed")
         pure rootPath
   result <- try body
@@ -397,12 +425,12 @@ readPrivateFileLocked env attachment record = do
   let reference = recordReference record
   outcome <- try $ withPrivateTree env (leaseId (attachmentLease attachment)) (refFileId reference) $ \_ root ->
     bracket
-      (openFdAt (Just root) (raw (refName reference)) ReadOnly defaultFileFlags {nofollow = True, cloexec = True})
+      (openAt (Just root) (raw (refName reference)) ReadOnly defaultFileFlags {nofollow = True, cloexec = True})
       closeFd
       $ \fd -> do
-        before <- fstatInfo fd
+        before <- fdStat fd
         owned <- ownedFile before
-        when (not owned || stSize before > fromIntegral maxPrivateFileBytes) $
+        when (not owned || statSize before > fromIntegral maxPrivateFileBytes) $
           throwExecution RuntimeError "private-file leaf invariant failed"
         let readLoop retained acc
               | retained > maxPrivateFileBytes = pure (reverse acc)
@@ -410,10 +438,10 @@ readPrivateFileLocked env attachment record = do
                   chunk <- readChunk fd (min 65536 (maxPrivateFileBytes + 1 - retained))
                   if B.null chunk then pure (reverse acc) else readLoop (retained + B.length chunk) (chunk : acc)
         chunks <- readLoop 0 []
-        after <- fstatInfo fd
+        after <- fdStat fd
         let content = B.concat chunks
         when
-          (before /= after || fromIntegral (B.length content) /= stSize after || B.length content > maxPrivateFileBytes)
+          (statIdentity before /= statIdentity after || fromIntegral (B.length content) /= statSize after || B.length content > maxPrivateFileBytes)
           (throwExecution RuntimeError "private file changed during export")
         pure content
   case outcome of
@@ -451,14 +479,14 @@ deleteRecordLocked env attachment record
       invariantRef <- newIORef False
       removedRef <- newIORef 0
       attempt <- try $ withPrivateTree env lease (refFileId reference) $ \private root -> do
-        info <- statAtNoFollow root (raw (refName reference))
+        info <- statAt (Just root) (raw (refName reference)) NoFollowLinks
         writeIORef invariantRef =<< ownedFile info
-        unlinkAt root (raw (refName reference))
+        unlinkAt (Just root) (raw (refName reference))
         writeIORef removedRef 1
-        remaining <- dirEntryCount root
+        remaining <- length <$> listDirectoryFd root
         if remaining /= 0
           then writeIORef invariantRef False
-          else rmdirAt private (raw (refFileId reference))
+          else removeDirectoryAt (Just private) (raw (refFileId reference))
       case attempt of
         Left (_ :: SomeException) -> writeIORef invariantRef False
         Right () -> pure ()
@@ -487,7 +515,7 @@ removePrivateParentLocked :: LocalProcessEnvironment -> ExecutionAttachment -> I
 removePrivateParentLocked env attachment = do
   territoryPath <- territoryOf env (leaseId (attachmentLease attachment))
   rawTerritory <- toRawPath territoryPath
-  outcome <- try $ bracket (openDirectoryAt Nothing rawTerritory) closeFd $ \territory -> do
+  outcome <- try $ bracket (openDirectoryAt Nothing territoryPath) closeFd $ \territory -> do
     opened <- try (openDirectoryAt (Just territory) "private")
     case opened of
       Left (failure :: IOException)
@@ -497,14 +525,14 @@ removePrivateParentLocked env attachment = do
         removable <-
           ( do
               owned <- ownedDirectory private
-              entries <- dirEntryCount private
+              entries <- length <$> listDirectoryFd private
               pure (owned && entries == 0)
             )
             `finally` closeFd private
         if not removable
           then pure False
           else do
-            rmdirAt territory "private"
+            removeDirectoryAt (Just territory) "private"
             not <$> pathLexists (rawTerritory <> "/private")
   case outcome of
     Right ok -> pure ok

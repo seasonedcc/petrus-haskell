@@ -55,6 +55,7 @@ library
                    , petrus-activity
                    , petrus-json
                    , petrus-motus
+                   , petrus-posix
                    , stm >=2.5
                    , text >=2.0
                    , time >=1.12

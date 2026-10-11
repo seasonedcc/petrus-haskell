@@ -102,7 +102,6 @@ import Control.Concurrent.STM
 import Control.Exception
   ( Exception
   , IOException
-  , SomeAsyncException
   , SomeException
   , catch
   , finally
@@ -140,6 +139,7 @@ import Petrus.Agenticus.Catalog.Descriptor
 import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
 import Petrus.Agenticus.Connection.Custody (ConnectionIdentity (..), ConnectionStatus (..), ConnectionView (..))
 import Petrus.Agenticus.Error
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
 import Petrus.Agenticus.Internal.Validate (isBoundedText, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
@@ -1158,9 +1158,7 @@ protocolReady hooks cli =
         then hooks.sdkProtocolReady
         else pure False
   )
-    `catch` \(e :: SomeException) -> case fromException e of
-      Just (_ :: SomeAsyncException) -> throwIO e
-      Nothing -> pure False
+    `catch` \(e :: SomeException) -> if isAsync e then throwIO e else pure False
 
 -- | @start(invocation)@: the same handle for an identical redelivery.
 startAmp :: AmpRuntimeAdapter -> AmpRuntimeInvocation -> IO AmpOperation

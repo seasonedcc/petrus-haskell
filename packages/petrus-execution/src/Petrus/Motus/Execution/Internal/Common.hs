@@ -12,6 +12,8 @@ module Petrus.Motus.Execution.Internal.Common
   , truncateOutput
   , newUuid4
   , uuidHex
+  , replaceFile
+  , shortTempName
   ) where
 
 import Control.Monad (unless, when)
@@ -29,7 +31,7 @@ import Data.Word (Word8)
 import Numeric (showHex)
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps)
 import Petrus.Motus.Execution
-import Petrus.Motus.Execution.Internal.Posix
+import Petrus.Motus.Execution.Internal.PosixPath
   ( RealpathMode (..)
   , fromRawPath
   , joinPath
@@ -37,6 +39,7 @@ import Petrus.Motus.Execution.Internal.Posix
   , toRawPath
   )
 import Petrus.Motus.Execution.Internal.PyText (pyListRepr)
+import Petrus.Posix.File (AtomicWrite (..), TempNaming (..), atomicWriteFile, defaultAtomicWrite)
 import Crypto.Random (getRandomBytes)
 import Control.Exception (throwIO)
 
@@ -142,6 +145,17 @@ newUuid4 = do
         "-"
         [T.take 8 hex, T.take 4 (T.drop 8 hex), T.take 4 (T.drop 12 hex), T.take 4 (T.drop 16 hex), T.drop 20 hex]
     )
+
+-- | Atomically replace a file: a mode-0600 temporary file beside it, named
+-- by the action, written, fsynced and renamed over it (petrus-posix's
+-- 'atomicWriteFile'; the directory is not fsynced).
+replaceFile :: IO FilePath -> FilePath -> ByteString -> IO ()
+replaceFile name = atomicWriteFile defaultAtomicWrite {tempNaming = TempNaming (const name)}
+
+-- | @tmp@ and eight hex digits: the temporary name of artifact blobs and
+-- of a compacted timeline.
+shortTempName :: IO FilePath
+shortTempName = ("tmp" <>) . T.unpack . T.take 8 <$> uuidHex
 
 -- | @uuid.uuid4().hex@.
 uuidHex :: IO Text

@@ -97,7 +97,7 @@ module Petrus.Agenticus.Runtime.Codex
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
-import Control.Exception (IOException, SomeAsyncException, SomeException, catch, finally, fromException, mask_, throwIO, try)
+import Control.Exception (IOException, catch, finally, fromException, mask_, throwIO, try)
 import Control.Monad (forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -146,6 +146,7 @@ import Petrus.Agenticus.Connection.Custody
   )
 import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Error
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
 import Petrus.Agenticus.Internal.Validate (isBoundedText, pyIsSpace, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
@@ -729,16 +730,6 @@ codexOperationId o = o.inv.operationId
 
 guarded :: CodexOperation -> IO a -> IO a
 guarded o action = withMVar o.monitor (const action)
-
-isAsync :: SomeException -> Bool
-isAsync e = isJust (fromException e :: Maybe SomeAsyncException)
-
--- | Catch synchronous failures; asynchronous ones propagate.
-trySync :: IO a -> IO (Either SomeException a)
-trySync action =
-  try action >>= \case
-    Left e | isAsync e -> throwIO e
-    other -> pure other
 
 settle :: CodexRuntimeInvocation -> TurnOutcome -> Integer -> Text -> Maybe Text -> Maybe Text -> IO RuntimeTurnSettlement
 settle inv outcome appends code output continuation =

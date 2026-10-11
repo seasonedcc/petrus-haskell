@@ -80,24 +80,28 @@ package's DIVERGENCES.md.
 
 ## Territory retention (`Petrus.Agenticus.Attachment.Retention`)
 
-11. **SQLite through `direct-sqlite`, behind `Petrus.Agenticus.Internal.Sqlite`.**
-    `petrus-sqlite` is not on `main` yet, so the ledger talks to SQLite
-    through that small internal module (swap point). The DDL strings,
+11. **SQLite through `petrus-sqlite`, behind `Petrus.Agenticus.Internal.Sqlite`.**
+    The ledger talks to SQLite through that small module of
+    agenticus-core, which maps driver errors to Python's `sqlite3`
+    classes. The DDL strings,
     including their whitespace, and the column order are the reference's, so
     either implementation can open the other's file. The differential corpus
     proves this in both directions.
 
 12. **`timeout=5` becomes `PRAGMA busy_timeout = 5000`.** Python's
     `sqlite3.connect(timeout=5)` installs a 5-second busy handler.
-    `setBusyTimeout` installs the same handler through the pragma.
+    `openDatabase` installs the same handler through the pragma, as the
+    connection opens.
     `inTransaction` is `not (sqlite3_get_autocommit)`, which is how CPython
     computes `Connection.in_transaction`.
 
-13. **The writer fence uses `flock` directly through the FFI.** The reference
-    calls `fcntl.flock(LOCK_EX | LOCK_NB)` on `.<name>.writer.lock`. The
-    Haskell ledger calls the same `flock(2)` with the same flags. It does not
-    use `fcntl` record locks, which would not exclude a second open in the
-    same process.
+13. **The writer fence uses BSD `flock`.** The reference calls
+    `fcntl.flock(LOCK_EX | LOCK_NB)` on `.<name>.writer.lock`. The Haskell
+    ledger calls the same `flock(2)` with the same flags, through
+    `petrus-posix`'s `Petrus.Posix.Flock` and agenticus-core's shared
+    `Internal.WriterFence` (the Pi operation ledger's fence is the same code
+    with its own messages). It does not use `fcntl` record locks, which would
+    not exclude a second open in the same process.
 
 14. **The clock is an `IO Double`.** `openTerritoryCustodyWith path clock`
     takes the reference's `clock=` callable. `openTerritoryCustody` uses

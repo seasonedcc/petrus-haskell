@@ -34,8 +34,8 @@ module Petrus.Agenticus.Attachment.Retention
   ) where
 
 import Control.Concurrent.MVar
-import Control.Exception (SomeAsyncException, SomeException, bracket, catch, finally, fromException, mask, onException, throwIO, try)
-import Control.Monad (forM, unless, void, when)
+import Control.Exception (SomeException, catch, onException, throwIO, try)
+import Control.Monad (forM, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.IORef
@@ -44,8 +44,6 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Foreign.C.Error (eACCES, eAGAIN, eWOULDBLOCK, getErrno)
-import Foreign.C.Types (CInt (..))
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Petrus.Agenticus.Attachment.Binding
 import Petrus.Agenticus.Attachment.Episode
@@ -53,19 +51,20 @@ import Petrus.Agenticus.Catalog.Descriptor (DescriptorKind (..))
 import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot, snapshotDescriptor)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Gateway (ResultAdmission, TargetCurrency)
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Sqlite
+import Petrus.Agenticus.Internal.WriterFence
 import Petrus.Agenticus.Internal.Validate (hasControl, isTrimmed, sha256Hex, utf8Length)
 import Petrus.Agenticus.Thread.Identity (EpisodeId, lifecycleIdText)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import Petrus.Motus.Execution hiding (ErrorKind (..))
 import Petrus.Motus.Execution.Archive (maxWorkspaceArchiveBytes)
-import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.FilePath (takeDirectory)
 import System.Posix.Directory qualified as Dir
 import System.Posix.Files qualified as Files
 import System.Posix.IO qualified as PIO
-import System.Posix.Process (getProcessID)
-import System.Posix.Types (Fd (..), FileMode, ProcessID)
+import System.Posix.Types (FileMode)
 import System.Posix.User (getEffectiveUserID)
 import System.Directory (createDirectoryIfMissing, doesPathExist)
 
@@ -374,12 +373,11 @@ openTerritoryCustody path' = openTerritoryCustodyWith path' (realToFrac <$> getP
 openTerritoryCustodyWith :: FilePath -> IO Double -> IO SqliteTerritoryCustody
 openTerritoryCustodyWith path' clock' = do
   preparePath path'
-  fence' <- openWriterFence path'
+  fence' <- openWriterFence fenceTexts path'
   lock' <- newMVar ()
   ( do
       db <- openDatabase path'
       ( do
-          setBusyTimeout db 5000
           Files.setFileMode path' 0o600
           execute_ db "PRAGMA journal_mode = DELETE"
           execute_ db "PRAGMA synchronous = FULL"
@@ -628,8 +626,8 @@ records c = do
 
 closeTerritoryCustody :: SqliteTerritoryCustody -> IO ()
 closeTerritoryCustody c = do
-  open' <- readIORef c.fence.descriptor
-  when (isJust open') $ withLock c (closeDatabase c.database)
+  open' <- fenceHeld c.fence
+  when open' $ withLock c (closeDatabase c.database)
   closeFence c.fence
 
 -- ---------------------------------------------------------------------------
@@ -691,7 +689,7 @@ write :: SqliteTerritoryCustody -> Text -> [SqlValue] -> Maybe Int -> IO ()
 write c sql parameters expectedRows = do
   execute_ c.database "BEGIN IMMEDIATE"
   ( do
-      bracket (prepareStatement c.database sql) finalizeStatement (`runStatement` parameters)
+      runSql c.database sql parameters
       changed <- changedRows c.database
       case expectedRows of
         Just n | changed /= n -> throwAgenticus StorageError "territory custody write lost its expected state"
@@ -705,17 +703,17 @@ write c sql parameters expectedRows = do
       when active $ execute_ c.database "ROLLBACK"
 
 selectOne :: SqliteTerritoryCustody -> Text -> [SqlValue] -> IO (Maybe [SqlValue])
-selectOne c sql parameters = bracket (prepareStatement c.database sql) finalizeStatement (`queryRow` parameters)
+selectOne c = queryRow c.database
 
 selectAll :: SqliteTerritoryCustody -> Text -> [SqlValue] -> IO [[SqlValue]]
-selectAll c sql parameters = bracket (prepareStatement c.database sql) finalizeStatement (`queryRows` parameters)
+selectAll c = queryRows c.database
 
 onSyncException :: IO a -> IO () -> IO a
 onSyncException action handler =
   try action >>= \case
     Right value -> pure value
     Left (e :: SomeException)
-      | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+      | isAsync e -> throwIO e
       | otherwise -> handler >> throwIO e
 
 -- ---------------------------------------------------------------------------
@@ -767,60 +765,13 @@ permissionBits status = Files.fileMode status `Files.intersectFileModes` 0o7777
 -- ---------------------------------------------------------------------------
 -- Writer fence
 
-data WriterFence = WriterFence
-  { owner :: ProcessID
-  , descriptor :: IORef (Maybe Fd)
-  }
-
-foreign import ccall unsafe "sys/file.h flock"
-  c_flock :: CInt -> CInt -> IO CInt
-
-lockExclusive, lockNonBlocking, lockUnlock :: CInt
-lockExclusive = 2
-lockNonBlocking = 4
-lockUnlock = 8
-
-openWriterFence :: FilePath -> IO WriterFence
-openWriterFence database' = do
-  let fencePath = takeDirectory database' </> ("." <> takeFileName database' <> ".writer.lock")
-  pid <- getProcessID
-  mask $ \restore -> do
-    fd <- PIO.openFd fencePath PIO.ReadWrite PIO.defaultFileFlags {PIO.creat = Just 0o600, PIO.nofollow = True}
-    ( restore $ do
-        uid <- getEffectiveUserID
-        status <- Files.getFdStatus fd
-        unless
-          ( Files.isRegularFile status
-              && permissionBits status == 0o600
-              && Files.fileOwner status == uid
-          )
-          $ security "territory custody writer fence must be owned regular mode-0600"
-        let Fd raw = fd
-        result <- c_flock raw (lockExclusive + lockNonBlocking)
-        when (result /= 0) $ do
-          errno <- getErrno
-          if errno == eWOULDBLOCK || errno == eAGAIN || errno == eACCES
-            then throwAgenticus StorageError "territory custody already has a live writer"
-            else throwAgenticus (OtherError "OSError") "territory custody writer fence could not be locked"
-      )
-      `onException` PIO.closeFd fd
-    WriterFence pid <$> newIORef (Just fd)
-
-ensureFence :: WriterFence -> IO ()
-ensureFence f = do
-  readIORef f.descriptor >>= \case
-    Nothing -> throwAgenticus StorageError "territory custody writer is closed"
-    Just _ -> pure ()
-  pid <- getProcessID
-  when (pid /= f.owner) $ throwAgenticus StorageError "territory custody cannot be used across fork"
-
-closeFence :: WriterFence -> IO ()
-closeFence f = do
-  current <- atomicModifyIORef' f.descriptor (Nothing,)
-  case current of
-    Nothing -> pure ()
-    Just fd@(Fd raw) -> do
-      pid <- getProcessID
-      if pid == f.owner
-        then void (c_flock raw lockUnlock) `finally` PIO.closeFd fd
-        else PIO.closeFd fd
+fenceTexts :: FenceTexts
+fenceTexts =
+  FenceTexts
+    { unavailable = Nothing
+    , notOwned = "territory custody writer fence must be owned regular mode-0600"
+    , live = "territory custody already has a live writer"
+    , unlockable = "territory custody writer fence could not be locked"
+    , closed = "territory custody writer is closed"
+    , forked = "territory custody cannot be used across fork"
+    }

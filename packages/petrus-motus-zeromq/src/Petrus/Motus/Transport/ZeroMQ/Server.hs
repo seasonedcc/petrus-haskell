@@ -48,8 +48,6 @@ import Data.Maybe (isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Foreign.C.Error (eWOULDBLOCK, getErrno, throwErrno)
-import Foreign.C.Types (CInt (..))
 import GHC.Clock (getMonotonicTime)
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..), WorkerDispatch (..))
@@ -69,6 +67,7 @@ import Petrus.Motus.Transport.ZeroMQ.Errors
 import Petrus.Motus.Transport.ZeroMQ.Native qualified as Z
 import Petrus.Motus.Transport.ZeroMQ.Wire
 import Petrus.Activity (ActivityFailureFields (..), activityFailure)
+import Petrus.Posix.Flock (LockKind (..), tryLock)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, openFd)
@@ -238,8 +237,6 @@ openServer server context = do
   where
     encodeText = BS.pack . map (fromIntegral . fromEnum) . T.unpack
 
-foreign import ccall unsafe "sys/file.h flock" c_flock :: CInt -> CInt -> IO CInt
-
 -- | @_endpoint_lock(endpoint)@: for @ipc://path@, an exclusive BSD @flock@
 -- on @<dir>/.<name>.impetus.lock@ (shared with the reference's servers),
 -- refused when another server holds it.
@@ -250,15 +247,12 @@ endpointLock endpoint
       let path = T.unpack (T.drop (T.length "ipc://") endpoint)
           parent = takeDirectory path
       createDirectoryIfMissing True parent
-      fd@(Fd raw) <-
+      fd <-
         openFd (parent </> ("." <> takeFileName path <> ".impetus.lock")) ReadWrite defaultFileFlags {append = True, creat = Just 0o666}
-      rc <- c_flock raw (2 {- LOCK_EX -} + 4 {- LOCK_NB -})
-      when (rc /= 0) $ do
-        errno <- getErrno
+      held <- tryLock fd Exclusive `onException` closeFd fd
+      unless held $ do
         closeFd fd
-        if errno == eWOULDBLOCK
-          then throwIO (RuntimeError ("ZeroMQ IPC endpoint is already owned: " <> endpoint))
-          else throwErrno "flock"
+        throwIO (RuntimeError ("ZeroMQ IPC endpoint is already owned: " <> endpoint))
       pure (Just fd)
 
 -- | @wait_ready(timeout)@: the bound endpoint (with the port a @:*@ bind

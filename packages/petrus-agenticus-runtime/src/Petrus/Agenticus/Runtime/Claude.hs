@@ -123,7 +123,6 @@ import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception
   ( IOException
-  , SomeAsyncException
   , SomeException
   , catch
   , finally
@@ -185,6 +184,7 @@ import Petrus.Agenticus.Hands.Contract (ToolResult (..), allToolMethods, toolMet
 import Petrus.Agenticus.Hands.Gateway (HandsGateway, gatewayAttachmentEpoch, gatewayAttachmentId, gatewayEpisodeId)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
 import Petrus.Agenticus.Internal.Validate (isBoundedText, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
@@ -697,9 +697,6 @@ member :: Text -> Json -> Maybe Json
 member name = \case
   Object members -> lookup name (reverse members)
   _ -> Nothing
-
-isAsync :: SomeException -> Bool
-isAsync e = isJust (fromException e :: Maybe SomeAsyncException)
 
 -- ---------------------------------------------------------------------------
 -- Configuration

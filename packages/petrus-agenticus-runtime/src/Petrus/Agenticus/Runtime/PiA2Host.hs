@@ -87,9 +87,7 @@ import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Exception
   ( IOException
-  , SomeAsyncException
   , SomeException
-  , bracket
   , catch
   , finally
   , fromException
@@ -154,6 +152,7 @@ import Petrus.Agenticus.Hands.Contract (ToolMethod (..), ToolResult (..), toolMe
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), mkCapabilityGrant, openGrant)
 import Petrus.Agenticus.Hands.Workspace (newMotusWorkspaceAdapter, stageDirectory, workspaceHandsAdapter)
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Sqlite
 import Petrus.Agenticus.Internal.Validate (sha256Hex, utf8Length)
 import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeInstallation (..), RuntimeProbeResult (..))
@@ -356,12 +355,6 @@ privateSubdirectory root name = do
   valid <- ownedDirectory status
   unless valid $ security ("Pi A2 " <> name <> " root must be an owned mode-0700 directory")
   pure selected
-
-trySync :: IO a -> IO (Either SomeException a)
-trySync action =
-  try action >>= \case
-    Left e | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
-    other -> pure other
 
 -- ---------------------------------------------------------------------------
 -- Configuration
@@ -755,7 +748,6 @@ openBodyStore path = do
   prepareBodyPath path
   database <- openDatabase path
   ( do
-      setBusyTimeout database 5000
       Files.setFileMode path 0o600
       execute_ database "PRAGMA journal_mode = DELETE"
       execute_ database "PRAGMA synchronous = FULL"
@@ -792,10 +784,10 @@ withBodies bs action = withMVar bs.lock $ \_ -> do
   action
 
 selectRow :: BodyStore -> Text -> [SqlValue] -> IO (Maybe [SqlValue])
-selectRow bs sql parameters = bracket (prepareStatement bs.database sql) finalizeStatement (`queryRow` parameters)
+selectRow bs = queryRow bs.database
 
 execute :: BodyStore -> Text -> [SqlValue] -> IO ()
-execute bs sql parameters = bracket (prepareStatement bs.database sql) finalizeStatement (`runStatement` parameters)
+execute bs = runSql bs.database
 
 immediate :: BodyStore -> IO a -> IO a
 immediate bs action = do
@@ -1135,9 +1127,7 @@ finalizeOwned o result = flip finally (operationFinished o.host o.inner.operatio
       atomically $ do
         writeTVar o.failure (Just error')
         writeTVar o.cleanup (Just evidence)
-      case fromException raised of
-        Just (_ :: SomeAsyncException) -> throwIO raised
-        Nothing -> throwIO error'
+      if isAsync raised then throwIO raised else throwIO error'
 
 -- | @_finalize_indeterminate_owned()@.
 finalizeIndeterminateOwned :: HostOperation -> IO ()
@@ -1488,9 +1478,7 @@ launch h start = do
       unless clean $ void (trySync (ledgerSettle h.ledger start.operationId settlement))
       case fromException raised of
         Just (e :: AgenticusError) | isJust (runtimeProtocolErrorCode e) -> throwIO e
-        _ -> case fromException raised of
-          Just (_ :: SomeAsyncException) -> throwIO raised
-          Nothing -> rpe (if clean then "runtime-start-failed" else "host-cleanup-uncertain")
+        _ -> if isAsync raised then throwIO raised else rpe (if clean then "runtime-start-failed" else "host-cleanup-uncertain")
 
 -- | @_rollback_attachment(attachment, territory_operation_id, base_archive)@.
 rollbackAttachment :: PiA2RuntimeHost -> Maybe EpisodeAttachment -> Text -> ByteString -> IO (Bool, ByteString)

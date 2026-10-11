@@ -39,7 +39,7 @@ module Petrus.Agenticus.Hands.Workspace
   , stageName
   ) where
 
-import Control.Exception (SomeAsyncException, SomeException, fromException, throwIO, try)
+import Control.Exception (SomeException, fromException, throwIO, try)
 import Crypto.Hash (Digest, SHA256, hash)
 import Data.ByteString (ByteString)
 import Data.IORef
@@ -50,6 +50,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Gateway (HandsAdapter (..), ShellOutcome, StagedWrite (..), TestOutcome, mkShellOutcome, mkStagedWrite, mkTestOutcome)
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.PyText (boundedText, splitLines)
 import Petrus.Motus.Execution
   ( CommandResult
@@ -245,7 +246,7 @@ run a argv cwd = do
   result <- case outcome of
     Right result -> pure result
     Left (e :: SomeException)
-      | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+      | isAsync e -> throwIO e
       | Just (ae :: AgenticusError) <- fromException e, ae.errorClass == WorkspaceAdapterError -> throwIO ae
       | otherwise -> failWith "territory command failed"
   if provenanceIdentity (resultProvenance result) /= a.lease

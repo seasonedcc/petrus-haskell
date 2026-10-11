@@ -58,9 +58,8 @@ withLedger action = withSystemTempDirectory "retention-bench" $ \tmp -> do
   let path' = dir </> "territories.db"
   openTerritoryCustodyWith path' (pure 10) >>= closeTerritoryCustody
   db <- openDatabase path'
-  statement <- prepareStatement db ("INSERT INTO territory_custody VALUES (" <> T.intercalate ", " (replicate 18 "?") <> ")")
-  forM_ [1 .. 100 :: Int] (runStatement statement . row)
-  finalizeStatement statement
+  let insert = "INSERT INTO territory_custody VALUES (" <> T.intercalate ", " (replicate 18 "?") <> ")"
+  forM_ [1 .. 100 :: Int] (runSql db insert . row)
   closeDatabase db
   bracket (openTerritoryCustodyWith path' (pure 10)) closeTerritoryCustody action
 

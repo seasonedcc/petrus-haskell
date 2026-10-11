@@ -45,12 +45,14 @@ library
   exposed-modules:  Petrus.Agenticus.Error
                     Petrus.Agenticus.Internal.Validate
                     Petrus.Agenticus.Internal.Atomic
+                    Petrus.Agenticus.Internal.Exception
                     Petrus.Agenticus.Catalog.Descriptor
                     Petrus.Agenticus.Catalog.Result
                     Petrus.Agenticus.Catalog.Resolution
                     Petrus.Agenticus.Runtime.Profiles
                     Petrus.Agenticus.Internal.PyRepr
                     Petrus.Agenticus.Internal.Sqlite
+                    Petrus.Agenticus.Internal.WriterFence
                     Petrus.Agenticus.Connection.Key
                     Petrus.Agenticus.Connection.Materialization
                     Petrus.Agenticus.Connection.Storage
@@ -76,6 +78,8 @@ library
                   , crypton >=1.0
                   , ram >=0.20
                   , petrus-json
+                  , petrus-posix
+                  , petrus-sqlite
                   , stm >=2.5
                   , text >=2.0
                   , unix >=2.8

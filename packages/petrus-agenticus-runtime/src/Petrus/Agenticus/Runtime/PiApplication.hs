@@ -102,7 +102,7 @@ module Petrus.Agenticus.Runtime.PiApplication
 import Control.Concurrent (ThreadId, forkIO, killThread)
 import Control.Concurrent.MVar
 import Control.Concurrent.STM
-import Control.Exception (IOException, SomeAsyncException, SomeException, catch, finally, fromException, mask_, throwIO, try)
+import Control.Exception (IOException, SomeException, catch, finally, fromException, mask_, throwIO, try)
 import Control.Monad (filterM, forM_, unless, void, when)
 import Data.Bits ((.&.))
 import Data.ByteString (ByteString)
@@ -155,6 +155,7 @@ import Petrus.Agenticus.Hands.Contract
 import Petrus.Agenticus.Hands.Gateway (HandsGateway, gatewayAttachmentEpoch, gatewayAttachmentId, gatewayEpisodeId)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant, permits)
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
 import Petrus.Agenticus.Internal.Validate (sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor, ProgramOwnership (..), agentProgramDescriptor, continuationRequirement)
@@ -1023,11 +1024,6 @@ cancelApplicationOperation o reason = do
     Episode.cancel o.inv.attachment reason `catch` \(e :: SomeException) -> rethrowAsync e
   pure disposition
 
-rethrowAsync :: SomeException -> IO ()
-rethrowAsync e = case fromException e of
-  Just (_ :: SomeAsyncException) -> throwIO e
-  Nothing -> pure ()
-
 -- | @close()@.
 closeApplicationOperation :: PiApplicationOperation -> IO RuntimeOperationCleanup
 closeApplicationOperation o = do
@@ -1586,7 +1582,7 @@ executeOperation a operation = do
   case outcome of
     Right () -> pure ()
     Left (e :: SomeException)
-      | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+      | isAsync e -> throwIO e
       | Just failure <- fromException e, Just code <- runtimeProtocolErrorCode failure -> do
           live <- operationCurrent operation
           let cancelled = not live || code == "cancelled"

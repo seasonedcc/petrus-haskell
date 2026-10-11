@@ -53,7 +53,7 @@ module Petrus.Agenticus.Runtime.AgentNetRunner
   , closeRunner
   ) where
 
-import Control.Exception (IOException, SomeAsyncException, SomeException, catch, finally, fromException, onException, throwIO, try)
+import Control.Exception (IOException, SomeException, catch, finally, fromException, onException, throwIO, try)
 import Control.Monad (forM_, unless, when)
 import Crypto.Hash (Digest, SHA256, hash)
 import Crypto.Random (getRandomBytes)
@@ -75,6 +75,7 @@ import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), Descripto
 import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (ToolResult (..), capabilityScopedHands, toolMethodText, toolResultToModelData)
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
 import Petrus.Agenticus.Hands.Gateway (HandsAdapter, HandsGateway, submit)
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
@@ -579,12 +580,6 @@ agentNetHandsActivity attachment' adapter = do
       $ runnerError "Hands Activity result fence mismatch"
     projected <- orThrow (modelResultFromModelData (String proposal.id) (toolResultToModelData result))
     pure (Object [("version", Int schemaVersion), ("result", modelResultToData projected)])
-
-trySync :: IO a -> IO (Either SomeException a)
-trySync action =
-  try action >>= \case
-    Left e | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
-    other -> pure other
 
 -- ---------------------------------------------------------------------------
 -- The runner

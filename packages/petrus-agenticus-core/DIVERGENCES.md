@@ -11,7 +11,7 @@ differential corpora pin all three. Each layer has its own fragment under
 | Effect | [divergences/effect.md](divergences/effect.md) | Payloads are admitted as a float-free `PayloadValue`. Canonical digests are streamed straight into SHA-256. The proposal digest is cached. Adapters and fence sources are records of IO actions. |
 | Hands | [divergences/hands.md](divergences/hands.md) | Typed tool methods. A re-entrant `MVar` barrier stands in for the shared `RLock`. The call ledger is an `IORef` updated by compare-and-swap, with per-claim `MVar` signals. `isinstance` refusals become types. |
 | Thread, program descriptors, runtime values | [divergences/thread.md](divergences/thread.md) | Identities are distinct newtypes. Thread transitions revalidate only the Episode they change, which keeps them linear. Error attributes become accessors. Probe issues that share a code are handled differently. |
-| Connection custody | [divergences/custody.md](divergences/custody.md) | Secrets are held in `ScrubbedBytes`. The logger is a callback. SQLite runs through `direct-sqlite` behind `Petrus.Agenticus.Internal.Sqlite`, which is the swap point for `petrus-sqlite`. The busy timeout is set by pragma. Each write is validated once and decoded snapshots are cached. Payloads the reference never writes are handled differently. |
+| Connection custody | [divergences/custody.md](divergences/custody.md) | Secrets are held in `ScrubbedBytes`. The logger is a callback. SQLite runs through the shared `petrus-sqlite` connection behind `Petrus.Agenticus.Internal.Sqlite`, which maps driver errors to the Python `sqlite3` classes. Each write is validated once and decoded snapshots are cached. Payloads the reference never writes are handled differently. |
 
 ## Shared conventions
 

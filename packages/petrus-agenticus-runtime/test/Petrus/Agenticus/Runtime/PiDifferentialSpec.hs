@@ -437,9 +437,7 @@ dump :: FilePath -> IO Json
 dump path = do
   database <- openDatabase path
   let rows sql = do
-        statement <- prepareStatement database sql
-        found <- queryRows statement []
-        finalizeStatement statement
+        found <- queryRows database sql []
         pure (Array [Array (map cell row) | row <- found])
   master <- rows "SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY type, name"
   tableInfo <- rows "PRAGMA table_info(pi_operations)"
@@ -497,9 +495,7 @@ mutationCases root =
   fmap concat . forM (zip [0 :: Int ..] (items (member "mutations" ledgerSection))) $ \(i, c) -> do
     path <- referenceCopy root ("mutation-" <> show i)
     database <- openDatabase path
-    statement <- prepareStatement database (text "sql" c)
-    runStatement statement (map parameter (items (member "parameters" c)))
-    finalizeStatement statement
+    runSql database (text "sql" c) (map parameter (items (member "parameters" c)))
     closeDatabase database
     withLedger path $ \l -> do
       looked <- runStep l (Object [("op", String "lookup"), ("id", String "op-a")])

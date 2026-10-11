@@ -62,8 +62,7 @@ sqliteRows :: FilePath -> Text -> IO Json
 sqliteRows path query = do
   database <- Sql.openDatabase path
   ( do
-      statement <- Sql.prepareStatement database query
-      rows <- Sql.queryRows statement [] `finally` Sql.finalizeStatement statement
+      rows <- Sql.queryRows database query []
       pure (Array [Array (map cell row) | row <- rows])
     )
     `finally` Sql.closeDatabase database

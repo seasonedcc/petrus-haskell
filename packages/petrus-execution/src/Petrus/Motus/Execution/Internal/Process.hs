@@ -92,10 +92,10 @@ data Child = Child
 -- | Where a child's standard descriptor comes from.
 data StdioFd = InheritFd | UseFd Fd
 
-foreign import capi safe "petrus_posix.h petrus_wait_exited"
+foreign import capi safe "petrus_execution.h petrus_wait_exited"
   c_waitExited :: CPid -> IO CInt
 
-foreign import capi safe "petrus_posix.h petrus_spawn"
+foreign import capi safe "petrus_execution.h petrus_spawn"
   c_spawn :: CString -> Ptr CString -> Ptr CString -> CString -> CInt -> CInt -> CInt -> CInt -> Ptr CPid -> IO CInt
 
 -- | @Popen(argv, cwd=..., env=..., start_new_session=..., close_fds=True)@

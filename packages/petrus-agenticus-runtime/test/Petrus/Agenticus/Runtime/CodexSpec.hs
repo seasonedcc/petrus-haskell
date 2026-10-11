@@ -1808,8 +1808,7 @@ replacementWorker tmp launch = do
     deadline <- (+ 15) <$> getMonotonicTime
     let terminalRow =
           bracket (Sql.openDatabase ledger) Sql.closeDatabase $ \db ->
-            bracket (Sql.prepareStatement db "SELECT terminal FROM operations WHERE operation_id=? AND phase='terminal'") Sql.finalizeStatement $
-              \statement -> Sql.queryRow statement [Sql.SQLText operationId]
+            Sql.queryRow db "SELECT terminal FROM operations WHERE operation_id=? AND phase='terminal'" [Sql.SQLText operationId]
         poll = do
           terminal <- terminalRow
           marker <- doesFileExist withheld
@@ -1984,14 +1983,13 @@ withDatabase :: FilePath -> (Sql.Database -> IO a) -> IO a
 withDatabase path = bracket (Sql.openDatabase path) Sql.closeDatabase
 
 run :: Sql.Database -> Text -> [Sql.SqlValue] -> IO ()
-run db sql parameters = bracket (Sql.prepareStatement db sql) Sql.finalizeStatement (`Sql.runStatement` parameters)
+run = Sql.runSql
 
 count :: FilePath -> IO Integer
 count ledger = withDatabase ledger $ \db ->
-  bracket (Sql.prepareStatement db "SELECT COUNT(*) FROM operations") Sql.finalizeStatement $ \statement ->
-    Sql.queryRow statement [] >>= \case
-      Just [Sql.SQLInteger n] -> pure (toInteger n)
-      other -> fail ("count: " <> show other)
+  Sql.queryRow db "SELECT COUNT(*) FROM operations" [] >>= \case
+    Just [Sql.SQLInteger n] -> pure (toInteger n)
+    other -> fail ("count: " <> show other)
 
 pythonOut :: Text -> [String] -> IO ByteString
 pythonOut code arguments = do
@@ -2087,8 +2085,7 @@ verbatimSpecs = describe "verbatim and interop" $ do
     pythonService <- newCodexGondolinRuntimeService (pythonState </> "r.sock") (pythonState </> "ledger.db") token g.adapter view attachment
     closeCodexGondolinRuntimeService pythonService
     withDatabase (pythonState </> "ledger.db") $ \db ->
-      bracket (Sql.prepareStatement db "SELECT terminal FROM operations WHERE operation_id='python-executing'") Sql.finalizeStatement $ \statement ->
-        Sql.queryRow statement [] `shouldReturn` Just [Sql.SQLBlob (ok (jsonBytes (errorReply "operation-indeterminate")))]
+      Sql.queryRow db "SELECT terminal FROM operations WHERE operation_id='python-executing'" [] `shouldReturn` Just [Sql.SQLBlob (ok (jsonBytes (errorReply "operation-indeterminate")))]
     (.settlement.verified) <$> Episode.settle attachment 2 `shouldReturn` True
 
   it "interop: the reference's Activity client and Worker replay through the Haskell runtime service" $ withTemp $ \tmp ->

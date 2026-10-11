@@ -47,7 +47,7 @@ module Petrus.Agenticus.Attachment.Binding
 
 import Control.Concurrent (ThreadId, myThreadId)
 import Control.Concurrent.STM
-import Control.Exception (SomeAsyncException, SomeException, finally, fromException, throwIO, try)
+import Control.Exception (finally)
 import Control.Monad (unless, when)
 import Data.ByteString (ByteString)
 import Data.Char (isAsciiLower, isDigit)
@@ -56,6 +56,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Agenticus.Error
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Validate (isTrimmed, utf8Length)
 import Petrus.Motus.Execution
   ( CleanupResult (..)
@@ -207,13 +208,6 @@ newMotusAttachmentBinding provider' lease' execution' archive = do
     <*> newTVarIO True
     <*> newTVarIO 0
     <*> newTVarIO Map.empty
-
--- | Catch a synchronous failure (asynchronous exceptions propagate).
-trySync :: IO a -> IO (Either SomeException a)
-trySync action =
-  try action >>= \case
-    Left e | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
-    other -> pure other
 
 -- | @MotusAttachmentBinding.open@: bind lookup-first — reuse the
 -- operation's lease or create it, then attach. A failed attach destroys

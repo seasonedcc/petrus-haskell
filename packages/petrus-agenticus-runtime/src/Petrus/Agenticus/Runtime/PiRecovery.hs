@@ -51,7 +51,7 @@ module Petrus.Agenticus.Runtime.PiRecovery
 
 import Control.Concurrent.MVar
 import Prelude hiding (sequence)
-import Control.Exception (SomeAsyncException, SomeException, finally, fromException, mask, onException, throwIO, try)
+import Control.Exception (SomeException, fromException, onException, throwIO, try)
 import Control.Monad (forM, unless, void, when)
 import Data.Char (GeneralCategory (..), generalCategory, isHexDigit, isSpace)
 import Data.IORef
@@ -60,15 +60,14 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.Text (Text)
-import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
-import Foreign.C.Error (eACCES, eAGAIN, eWOULDBLOCK, getErrno)
-import Foreign.C.Types (CInt (..))
 import Numeric (showHex)
+import Petrus.Agenticus.Internal.Exception
 import Petrus.Json.Repr (pythonReprFloat)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
 import Petrus.Agenticus.Internal.Sqlite
+import Petrus.Agenticus.Internal.WriterFence
 import Petrus.Agenticus.Internal.Validate (isBoundedText)
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
@@ -93,12 +92,11 @@ import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTur
 import Petrus.Agenticus.Thread.Identity (EpisodeId, LifecycleId (..), TurnId, mkEpisodeId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), StrEnum (..), TurnOutcome (..), parseStrEnum)
 import System.Directory (createDirectoryIfMissing, doesPathExist)
-import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.FilePath (takeDirectory)
 import System.Posix.Directory qualified as Dir
 import System.Posix.Files qualified as Files
 import System.Posix.IO qualified as PIO
-import System.Posix.Process (getProcessID)
-import System.Posix.Types (Fd (..), FileMode, ProcessID)
+import System.Posix.Types (FileMode)
 import System.Posix.User (getEffectiveUserID)
 
 -- ---------------------------------------------------------------------------
@@ -234,9 +232,6 @@ data SqlitePiOperationLedger = SqlitePiOperationLedger
   , lock :: MVar ()
   , database :: Database
   , closed :: IORef Bool
-  , statements :: IORef (Map.Map Text Statement)
-  -- ^ Prepared statements by SQL text, as CPython's @sqlite3@ statement
-  -- cache keeps them; used and changed only under 'lock'.
   }
 
 ledgerPath :: SqlitePiOperationLedger -> FilePath
@@ -302,19 +297,17 @@ executingSql = "SELECT operation_id FROM pi_operations WHERE phase = ? ORDER BY 
 openSqlitePiOperationLedger :: FilePath -> IO SqlitePiOperationLedger
 openSqlitePiOperationLedger path = do
   preparePath path
-  fence <- openWriterFence path
+  fence <- openWriterFence fenceTexts path
   lock <- newMVar ()
   closed <- newIORef False
-  statements <- newIORef Map.empty
   ( do
       db <- openDatabase path
       ( do
-          setBusyTimeout db 5000
           Files.setFileMode path 0o600
           execute_ db "PRAGMA journal_mode = DELETE"
           execute_ db "PRAGMA synchronous = FULL"
           execute_ db createTableSql
-          pure SqlitePiOperationLedger {path, fence, lock, database = db, closed, statements}
+          pure SqlitePiOperationLedger {path, fence, lock, database = db, closed}
         )
         `onException` closeDatabase db
     )
@@ -456,10 +449,7 @@ ledgerClose :: SqlitePiOperationLedger -> IO ()
 ledgerClose l = do
   withLock l $ do
     wasClosed <- atomicModifyIORef' l.closed (True,)
-    unless wasClosed $ do
-      cached <- atomicModifyIORef' l.statements (Map.empty,)
-      mapM_ finalizeStatement cached
-      closeDatabase l.database
+    unless wasClosed $ closeDatabase l.database
   closeFence l.fence
 
 required :: SqlitePiOperationLedger -> Text -> IO PiOperationRecord
@@ -471,8 +461,7 @@ write :: SqlitePiOperationLedger -> Text -> [SqlValue] -> Maybe Int -> IO ()
 write l sql parameters expectedRows = do
   control "BEGIN IMMEDIATE"
   ( do
-      statement <- cachedStatement l sql
-      runStatement statement parameters
+      runSql l.database sql parameters
       changed <- changedRows l.database
       case expectedRows of
         Just n | changed /= n -> throwAgenticus StorageError "Pi operation ledger write lost its expected state"
@@ -481,29 +470,18 @@ write l sql parameters expectedRows = do
     )
     `onException` rollback
   where
-    control statement = cachedStatement l statement >>= (`runStatement` [])
+    control statement = runSql l.database statement []
     rollback = do
       active <- inTransaction l.database
       when active $ control "ROLLBACK"
 
--- | The prepared statement for this SQL, prepared on first use and kept
--- (reset after each use) until 'ledgerClose', as CPython's statement cache
--- keeps the reference's. The ledger runs a fixed handful of statements, so
--- the cache needs no eviction. Callers hold the ledger's lock.
-cachedStatement :: SqlitePiOperationLedger -> Text -> IO Statement
-cachedStatement l sql =
-  Map.lookup sql <$> readIORef l.statements >>= \case
-    Just statement -> pure statement
-    Nothing -> do
-      statement <- prepareStatement l.database sql
-      modifyIORef' l.statements (Map.insert sql statement)
-      pure statement
-
+-- Statements run through the connection's prepared-statement cache, as
+-- CPython's @sqlite3@ keeps the reference's. Callers hold the ledger's lock.
 selectOne :: SqlitePiOperationLedger -> Text -> [SqlValue] -> IO (Maybe [SqlValue])
-selectOne l sql parameters = cachedStatement l sql >>= (`queryRow` parameters)
+selectOne l = queryRow l.database
 
 selectAll :: SqlitePiOperationLedger -> Text -> [SqlValue] -> IO [[SqlValue]]
-selectAll l sql parameters = cachedStatement l sql >>= (`queryRows` parameters)
+selectAll l = queryRows l.database
 
 -- | @str(value)@ of a column value.
 pyStr :: SqlValue -> Text
@@ -648,64 +626,16 @@ permissionBits status = Files.fileMode status `Files.intersectFileModes` 0o7777
 -- ---------------------------------------------------------------------------
 -- Writer fence
 
-data WriterFence = WriterFence
-  { owner :: ProcessID
-  , descriptor :: IORef (Maybe Fd)
-  }
-
-foreign import ccall unsafe "sys/file.h flock"
-  c_flock :: CInt -> CInt -> IO CInt
-
-lockExclusive, lockNonBlocking, lockUnlock :: CInt
-lockExclusive = 2
-lockNonBlocking = 4
-lockUnlock = 8
-
-openWriterFence :: FilePath -> IO WriterFence
-openWriterFence database = do
-  let fencePath = takeDirectory database </> ("." <> takeFileName database <> ".writer.lock")
-  pid <- getProcessID
-  mask $ \restore -> do
-    opened <- try (PIO.openFd fencePath PIO.ReadWrite PIO.defaultFileFlags {PIO.creat = Just 0o600, PIO.nofollow = True})
-    fd <- either (\(_ :: IOError) -> security "Pi ledger writer fence is unavailable") pure opened
-    ( restore $ do
-        uid <- getEffectiveUserID
-        status <- Files.getFdStatus fd
-        unless
-          ( Files.isRegularFile status
-              && permissionBits status == 0o600
-              && Files.fileOwner status == uid
-          )
-          $ security "Pi ledger writer fence must be owned regular mode-0600"
-        let Fd raw = fd
-        result <- c_flock raw (lockExclusive + lockNonBlocking)
-        when (result /= 0) $ do
-          errno <- getErrno
-          if errno == eWOULDBLOCK || errno == eAGAIN || errno == eACCES
-            then throwAgenticus StorageError "Pi operation ledger already has a live writer"
-            else throwAgenticus (OtherError "OSError") "Pi ledger writer fence could not be locked"
-      )
-      `onException` PIO.closeFd fd
-    WriterFence pid <$> newIORef (Just fd)
-
-ensureFence :: WriterFence -> IO ()
-ensureFence f = do
-  readIORef f.descriptor >>= \case
-    Nothing -> throwAgenticus StorageError "Pi operation ledger writer is closed"
-    Just _ -> pure ()
-  pid <- getProcessID
-  when (pid /= f.owner) $ throwAgenticus StorageError "Pi operation ledger cannot be used across fork"
-
-closeFence :: WriterFence -> IO ()
-closeFence f = do
-  current <- atomicModifyIORef' f.descriptor (Nothing,)
-  case current of
-    Nothing -> pure ()
-    Just fd@(Fd raw) -> do
-      pid <- getProcessID
-      if pid == f.owner
-        then void (c_flock raw lockUnlock) `finally` PIO.closeFd fd
-        else PIO.closeFd fd
+fenceTexts :: FenceTexts
+fenceTexts =
+  FenceTexts
+    { unavailable = Just "Pi ledger writer fence is unavailable"
+    , notOwned = "Pi ledger writer fence must be owned regular mode-0600"
+    , live = "Pi operation ledger already has a live writer"
+    , unlockable = "Pi ledger writer fence could not be locked"
+    , closed = "Pi operation ledger writer is closed"
+    , forked = "Pi operation ledger cannot be used across fork"
+    }
 
 -- ---------------------------------------------------------------------------
 -- Operations
@@ -883,7 +813,7 @@ startRecovered r inv = do
             inner <- case started of
               Right inner -> pure inner
               Left (failure :: SomeException)
-                | Just (_ :: SomeAsyncException) <- fromException failure -> throwIO failure
+                | isAsync failure -> throwIO failure
                 | otherwise -> do
                 let code = fromException failure >>= runtimeProtocolErrorCode
                     failedCode = fromMaybe "runtime-start-failed" code

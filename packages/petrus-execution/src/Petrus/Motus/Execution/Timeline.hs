@@ -52,14 +52,14 @@ import Data.Text.Encoding qualified as TE
 import Data.Time (UTCTime (..), getCurrentTime, toGregorian, timeToTimeOfDay, TimeOfDay (..))
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, parseJson, pythonFloatRepr, pythonLoads)
 import Petrus.Motus.Execution.Error
-import Petrus.Motus.Execution.Internal.Common (newUuid4, uuidHex)
-import Petrus.Motus.Execution.Internal.Posix (atomicWriteFile, fsyncFd, toRawPath)
+import Petrus.Motus.Execution.Internal.Common (newUuid4, replaceFile, shortTempName)
 import Petrus.Motus.Execution.Internal.PyText (pyInt, pyIsSpace, pyStrRepr)
 import System.Directory (createDirectoryIfMissing, doesPathExist, removeFile)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath (takeDirectory)
 import System.IO.Error (isDoesNotExistError)
 import System.Posix.Files (setFileMode)
-import System.Posix.IO.ByteString (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, fdWrite, openFd)
+import Petrus.Posix.File (fsyncFd, writeAll)
+import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, openFd)
 import Text.Printf (printf)
 
 -- ---------------------------------------------------------------------------
@@ -365,9 +365,8 @@ appendRecord timeline lineCount event = do
   encoded <-
     either (const (throwExecution TypeError "Timeline metadata is not JSON serializable")) pure $
       dumps defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortKeys = True} (timelineEventJson event)
-  rawPath <- toRawPath (timelinePath timeline)
-  ( bracket (openFd rawPath WriteOnly defaultFileFlags {append = True, creat = Just 0o600, cloexec = True}) closeFd $ \fd -> do
-      writeFully fd (encoded <> "\n")
+  ( bracket (openFd (timelinePath timeline) WriteOnly defaultFileFlags {append = True, creat = Just 0o600, cloexec = True}) closeFd $ \fd -> do
+      writeAll fd (encoded <> "\n")
       fsyncFd fd
     )
     `catch` \(e :: IOException) -> throwIO (osErrorFromIO e)
@@ -381,15 +380,11 @@ appendRecord timeline lineCount event = do
         else do
           bytes <- B.readFile (timelinePath timeline)
           let kept = lastN retain (splitLinesKeepEnds bytes)
-              directory = takeDirectory (timelinePath timeline)
-          atomicWriteFile (uuidHex >>= \hex -> toRawPath (directory </> ("tmp" <> T.unpack (T.take 8 hex)))) rawPath (B.concat kept)
+          replaceFile shortTempName (timelinePath timeline) (B.concat kept)
           setFileMode (timelinePath timeline) 0o600
           pure (length kept)
   where
     lastN n items = drop (length items - n) items
-    writeFully fd bytes = unless (B.null bytes) $ do
-      written <- fdWrite fd bytes
-      writeFully fd (B.drop (fromIntegral written) bytes)
 
 -- | Remove the Timeline file.
 deleteTimeline :: Timeline -> IO ()

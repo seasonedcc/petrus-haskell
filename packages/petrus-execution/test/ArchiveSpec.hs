@@ -28,7 +28,7 @@ import Petrus.Json
 import Petrus.Motus.Execution.Archive
 import Petrus.Motus.Execution.Archive.Tar
 import Petrus.Motus.Execution.Error
-import Petrus.Motus.Execution.Internal.Posix (RealpathMode (..), fromRawPath, realpath, toRawPath)
+import Petrus.Motus.Execution.Internal.PosixPath (RealpathMode (..), fromRawPath, realpath, toRawPath)
 import Support
 import System.Directory (createDirectory)
 import System.FilePath ((</>))

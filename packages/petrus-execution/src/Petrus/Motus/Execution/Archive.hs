@@ -56,7 +56,7 @@ import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import GHC.IO.Exception (IOException (..))
 import Petrus.Motus.Execution.Archive.Tar
 import Petrus.Motus.Execution.Error
-import Petrus.Motus.Execution.Internal.Posix
+import Petrus.Motus.Execution.Internal.PosixPath
 import Petrus.Motus.Execution.Internal.PyText
 import System.Posix.Directory.ByteString (closeDirStream, createDirectory, openDirStream, readDirStream)
 import System.Posix.Files.ByteString
