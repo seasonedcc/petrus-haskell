@@ -14,9 +14,10 @@ module Fakes
   ( dispatch
   , normalizeText
   , wrapperScript
+  , writeExecutable
   ) where
 
-import Control.Exception (SomeException, try)
+import Control.Exception (SomeException, finally, try)
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
@@ -42,7 +43,9 @@ import System.Directory
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath (isAbsolute, (</>))
-import System.IO (hPutStrLn, stderr, stdout)
+import System.IO (hClose, hPutStr, hPutStrLn, stderr, stdout)
+import System.Posix.Files (setFileMode)
+import System.Posix.IO (OpenFileFlags (..), OpenMode (WriteOnly), defaultFileFlags, fdToHandle, openFd)
 import System.Posix.Signals (raiseSignal)
 import System.Process.Typed (proc, runProcess, setEnv)
 
@@ -60,6 +63,19 @@ wrapperScript binary arguments =
   "#!/bin/sh\nexec " <> unwords (map quote (binary : arguments)) <> " \"$@\"\n"
   where
     quote s = "'" <> concatMap (\c -> if c == '\'' then "'\"'\"'" else [c]) s <> "'"
+
+-- | Write an executable script (mode 0755) through a close-on-exec
+-- descriptor. A descriptor from 'writeFile' is inherited by every process
+-- another thread spawns while it is open (the differential cases run in
+-- parallel), and while such a process holds the script open for writing,
+-- executing the script fails with ETXTBSY. Python's PATH search then goes
+-- on to the next @gh@ on PATH (a CI runner's real one) instead of the fake.
+writeExecutable :: FilePath -> String -> IO ()
+writeExecutable path contents = do
+  fd <- openFd path WriteOnly defaultFileFlags {creat = Just 0o755, trunc = True, cloexec = True}
+  handle <- fdToHandle fd
+  hPutStr handle contents `finally` hClose handle
+  setFileMode path 0o755
 
 -- ---------------------------------------------------------------------------
 -- The scripted provider
