@@ -78,12 +78,18 @@ What each depends on (upstream pin):
 
 Runtime needs and seams for work done elsewhere:
 
-- Observation producers: any server speaking `observation-protocol-v1`
-  (the Python reference today; the Haskell `petrus-impetus` runtime once it
-  exposes the profile). Only `/v1/snapshot` and `/v1/document` are used; no
-  producer code is linked in.
-- `simulation-http-v1` (`POST /v1/simulations`, a Net document per run) is
-  not consumed by the pinned UI, which simulates locally. Its result is a
+- Observation producers: any server speaking `observation-protocol-v1`:
+  a Haskell Engine served by `petrus-observation-http`, or the Python
+  reference. Only `/v1/snapshot` and `/v1/document` are used; no producer
+  code is linked into the executables. The tests run both producers in the
+  same scenario (a chain Net advanced one step at a time) and check that
+  the viewer gives the same answers for both: `test/HistorySpec.hs` over
+  HTTP, and the `history` browser suite through the UI's Connect dialog,
+  Load State, Watch Live, and `petrus_trace_import`.
+- `simulation-http-v1` (`POST /v1/simulations`, a Net document per run,
+  ported in `petrus-simulation`) is not consumed by the pinned UI, which
+  simulates locally: upstream petrus-viewer has no simulation-service
+  path to port. Its result is a
   Net document with `simulated` Timeline entries, i.e. the same shape
   `documentToRuntimeState` already maps; serving server-side simulations to
   the UI needs only a route that posts the scenario and returns the mapped
@@ -102,12 +108,22 @@ and the spawns of `server/mcp.mjs`, `bin/petrus.mjs`, and `vite`; each
 rewrite must match the upstream text exactly), and runs them with
 `node --test`: `relay`, `endpoints`, `url-cache`, `cli`, `mcp`,
 `mcp-haskell-relay`, `collab`, `differential` (Haskell JSON/URL ports
-against V8 on recorded and generated inputs), `playwright` (the upstream
-browser suite), and `live` (every MCP tool through `petrus-mcp`,
-`petrus`, and a headless browser, plus observation-backed replay). It needs
-`pnpm install` and `pnpm build` in `upstream/petrus-viewer` and
-`npx playwright install chromium`. `--bin-dir DIR` uses prebuilt
-executables; `--skip-playwright` skips the browser suites.
+against V8 on recorded and generated inputs), `wire` (every byte of the
+WebSocket handshakes, frames and closes against the `ws` relays),
+`playwright` (the upstream browser suite), `live` (every MCP tool through
+`petrus-mcp`, `petrus`, and a headless browser, plus observation-backed
+replay), and `history` (replay and live watching in the browser from a
+Haskell Engine and the Python reference). It needs `pnpm install` and
+`pnpm build` in `upstream/petrus-viewer`, `npx playwright install
+chromium`, and, for `history`, the pinned Python reference
+(`scripts/upstream-python`). `--bin-dir DIR` uses prebuilt executables
+(including `petrus-viewer-server-test`, which doubles as the Haskell
+producer); `--skip-playwright` skips the browser suites.
+
+The `live` suite raises `PETRUS_MCP_REQUEST_TIMEOUT_MS` to 30 s: the
+browser's `canvas.screenshot` (html-to-image) fetches the Monaco
+stylesheet from cdn.jsdelivr.net, which can take longer than the default
+5 s; the relay forwards the browser's answer as soon as it arrives.
 
 ## Benchmarks
 
@@ -121,7 +137,7 @@ client (`petrus-viewer-bench`); results and commands are in
 | --- | --- |
 | `Petrus.Viewer.Cli` | `bin/petrus.mjs` (argument handling, URL detection, browser opening) |
 | `Petrus.Viewer.Server`, `Static`, `Proxy`, `Http` | Vite dev server: listeners, static UI, `/temporal` proxy |
-| `Petrus.Viewer.Relay` | `agentRelay` plugin and `server/collab.mjs` |
+| `Petrus.Viewer.Relay`, `Relay.Frame`, `Relay.Handshake` | `agentRelay` plugin and `server/collab.mjs` on `ws` 8 (handshake, RFC 6455 framing, close codes) |
 | `Petrus.Viewer.Endpoints`, `FileIO` | `server/openFileEndpoint.mjs` |
 | `Petrus.Viewer.UrlCache` | `server/urlCache.mjs` |
 | `Petrus.Viewer.Mcp.Server`, `Schema`, `Bridge`, `History` | `server/mcp.mjs` |

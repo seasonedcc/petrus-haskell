@@ -245,9 +245,9 @@ newWarpSettings (Sockets ref) = do
 withServer :: ServerConfig -> (ServerHandle -> IO a) -> IO a
 withServer cfg action = do
   mgr <- newFetchManager
-  -- the log writer runs next to the collaboration relay, away from the
-  -- agent relay's loop (capability 0)
-  logger <- if serverRelayPerf cfg then Just <$> newAsyncLogger 1 stdout else pure Nothing
+  -- a log writer thread, when one is needed, runs next to the collaboration
+  -- relay, away from the agent relay's loop (capability 0)
+  logger <- if serverRelayPerf cfg then Just <$> newStdoutLogger 1 else pure Nothing
   openState <- newOpenFileState (serverOpenFile cfg) (serverSourceUrl cfg)
   observation <- case serverObservation cfg of
     [] -> pure Nothing
