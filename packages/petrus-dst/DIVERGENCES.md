@@ -48,11 +48,21 @@ A door signals failure with `ProfileError {errorType, errorMessage}`: the class 
 - `validate`, `validate_fault`, `drop`, `close` and `resource_usage` get no context, as in the
   reference.
 
-### Checkers are pure
+### Checkers are pure Mealy machines
 
-`check :: Observation -> Either ProfileError CheckResult`. The reference's checkers are objects
-that could hold state. A Haskell checker cannot, which makes the reference's documented
-requirement (an independent property over a detached observation) a type.
+A checker's `check` is a `Check`: an initial memory `s` and a pure step
+`s -> Observation -> Either ProfileError (CheckResult, s)`. Most checkers are stateless
+(`pureCheck`, memory `()`). The reference's checkers are objects, and one of them
+(`GeneratedRuntimeAuthorityChecker`) keeps a dictionary across the checks of one World. Here
+that memory is an explicit value. The World threads it from one check to the next and starts
+every World or replay from the checker's initial memory. So verdicts stay pure and independent
+of the World's monad, and a checker value can sit in a registry and serve any number of
+replays. The reference's documented requirement (an independent property over a detached
+observation) stays a type.
+
+An effectful `Checker m` (a `check` door in the World's monad, like a profile door) was tried
+and rejected. It would let a checker read anything at all, and it would make a registry hold
+checker factories rather than checkers. One stateful checker needs a fold, not effects.
 
 ### Static guarantees replace run-time `TypeError`s
 
@@ -181,18 +191,23 @@ in four ways.
 
   The retry family (`RetryEngineProfile` and its two subclasses) is one constructor with a
   `RetryKind`.
-- **Handlers are pure, so bridge counters use `unsafePerformIO`.** The Engine calls an
-  `ActivityHandler`'s `prepare` and `project` as pure functions. The reference's bridges count
-  their calls, and some read an armed fault. The port runs those effects with `unsafePerformIO`
-  when the Engine forces the handler's result, which happens exactly once per call. The modules
-  build with `-fno-full-laziness -fno-cse` so that GHC cannot share or float those effects.
-  The authored journals, which record `prepared` and `projected` at every observation, prove the
-  counts equal the reference's.
-- **The stateful generated-runtime checker owns a cell.** `GeneratedRuntimeAuthorityChecker`
-  keeps `_frozen_execution_counts` across the checks of one instance. `Checker.check` is pure,
-  so `newGeneratedRuntimeChecker :: IO Checker` allocates the cell, and `check` reads and
-  updates it through `unsafePerformIO`. A fresh registry or World gets a fresh checker, just as
-  the reference constructs a fresh instance.
+- **Handlers are pure, so bridge counters run in one `unsafePerformIO` module.** The Engine
+  calls an `ActivityHandler`'s `prepare` and `project` as pure functions (`petrus-impetus`'s
+  kernel API, which this slice does not change). The reference's bridges count their calls,
+  and some read an armed fault. Every world builds its bridge as an `ObservedHandler` (IO
+  `prepare` and `project`) and turns it into an Engine handler with
+  `Petrus.Testing.Dst.Engine.Bridge.observed`. That module is the only one that calls
+  `unsafePerformIO`. It runs each effect when the Engine forces the handler's result, which
+  happens exactly once per call, and it alone builds with `-fno-full-laziness -fno-cse` and a
+  `NOINLINE`, so GHC cannot share or float those effects. The authored journals, which record
+  `prepared` and `projected` at every observation, prove the counts equal the reference's. The
+  clean fix is an observer hook on the Engine, called once per invocation; it belongs to the
+  kernel.
+- **The stateful generated-runtime checker threads its memory.**
+  `GeneratedRuntimeAuthorityChecker` keeps `_frozen_execution_counts` across the checks of one
+  instance. `generatedRuntimeChecker` is a pure `Check` whose memory is that dictionary (see
+  "Checkers are pure Mealy machines"). Every World or replay starts it empty, just as the
+  reference constructs a fresh instance.
 - **Exceptions map to Python class names.** A door's exception becomes the reference's
   `(type(error).__name__, str(error))`, which the profiles compare for expected faults:
   - profile adapters raise `PyException "OSError" message`;
@@ -213,8 +228,8 @@ Those fixtures are replay-only in both runtimes, and replay through the real pro
 
 The ported `tests/dst/joined_*world.py` modules are test code too. Their artifacts, replay
 results and checker verdicts are byte-identical to the reference's. Everything said above for
-the Engine worlds applies (records instead of class hierarchies, `unsafePerformIO` bridge
-counters, Python class names for exceptions). They differ in two more ways.
+the Engine worlds applies (records instead of class hierarchies, bridge counters through
+`Engine.Bridge.observed`, Python class names for exceptions). They differ in two more ways.
 
 - **The fault connection wraps session seams, not a DB-API connection.** The reference's
   `JoinedFaultConnection` subclasses the psycopg connection and intercepts `execute`, `commit`
@@ -231,6 +246,52 @@ counters, Python class names for exceptions). They differ in two more ways.
   the comparison it appears in and the verdict is `passed = false`. Observations the profiles
   produce are always well formed, so no artifact or replay can tell the difference; it shows
   only for hand-built observations, and the 35 recorded checker vectors contain none.
+
+## DST tooling (`petrus-dst:campaigns`, `petrus-dst-world`)
+
+The ported `tests/dst/` tooling (`replay.py`, `failure.py`, `campaign.py`, `boundaries.py`,
+`generated_runtime_qualification.py` and the generated-schedule state machines) keeps the
+reference's file formats, so artifacts, failure bundles and legacy replay results cross between
+the languages (`Spec.ToolingInterop`). The pytest and Python runtime around it differs.
+
+- **The CLI is one executable.** The reference runs `python -m tests.dst.replay_world`,
+  `tests.dst.replay`, `tests.dst.failure` and `tests.dst.campaign`. Here they are the routes
+  `replay`, `legacy-replay`, `failure`, `campaign` and `boundaries` of `petrus-dst-world`. Their
+  arguments, standard output and exit statuses are the reference's. A refusal prints
+  `Class: message` to standard error.
+- **A campaign child is `petrus-dst-world campaign-profile NAME`, not a pytest node.** The
+  reference runs `python -m pytest -q NODE --forbid-skips --hypothesis-seed=SEED` per profile.
+  The child receives the same environment (tier, seed, case-log path) and has the same timeout
+  and output bounds. The report's `node` is that command line.
+- **Runtime identity.** Campaign reports and failure manifests name the runtime that made them.
+  The reference records Python and its packages, so here the `python` member holds the GHC
+  version and `dependencies` lists `hedgehog` and `petrus-dst`. `Spec.ToolingInterop` compares
+  manifests without it.
+- **Failure bundles keep the reference's replay command.** A manifest's `replay.command` is the
+  reference's literal (`uv run python -m tests.dst.failure replay {bundle}`), which both
+  languages validate, so a bundle replays through either one. `petrus-dst-world failure
+  demonstrate` prints its own route as `replay_command`.
+- **Boundary owners are hspec selections.** Each production-boundary profile names the Haskell
+  test that owns the same claim, as its Cabal suite and an hspec `--match` path (PARITY.md lists
+  them), not a pytest node:
+  - one child per suite, with every selected path of that suite;
+  - the children run in sequence under one wall clock (`PROFILE_TIMEOUT_SECONDS`);
+  - `--fail-on=empty,pending` stands in for `--forbid-skips`;
+  - the binaries are the ones `cabal build` left under `dist-newstyle`.
+
+  The lock is the reference's file, taken with `flock(2)` as `fcntl.flock` takes it, so a
+  Haskell and a Python qualification exclude each other. The reference finally removes Docker
+  containers labelled for its PostgreSQL fixture; the Haskell owners start no containers, so
+  there is nothing to remove.
+- **Hedgehog runs the generated schedules.** The state machines, strategies and settings map
+  rule for rule (PARITY.md, "Generation method"). A Hedgehog example ends at its first failing
+  step, before the teardown that the reference runs in a `finally`. So the World of a failed
+  example closes when the next example starts, or when the run ends.
+- **Case counts differ.** With the same settings, Hedgehog runs exactly `max_examples`
+  examples. Hypothesis runs some examples that it does not count towards `max_examples`, so it
+  may run more. For example, the ordinary `runtime-focused` campaign records 10 cases here and
+  14 in the reference. In both, a report's `cases` is at least `examples_target`. The schedules
+  themselves differ too: the two runners use the same seed but different generators.
 
 ## A reference quirk, reproduced
 

@@ -1,6 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# OPTIONS_GHC -fno-full-laziness -fno-cse #-}
 
 -- | The cross-layer public-Engine World for stateful generation: a port of
 -- the reference's @tests/dst/generated_runtime_world.py@.
@@ -24,11 +23,17 @@ module Petrus.Testing.Dst.Engine.GeneratedRuntime
   , RuntimeGeneration (..)
   , GeneratedRuntimeProfile (..)
   , generatedRuntimeProfile
-  , newGeneratedRuntimeChecker
+  , RuntimeVariant (..)
+  , generatedRuntimeProfileWith
+  , livelockProfileIdentity
+  , generatedRuntimeChecker
   , StoryOptions (..)
   , defaultStoryOptions
   , executeGeneratedRuntimeStory
   , buildGeneratedRuntimeArtifact
+  , buildGeneratedRuntimeArtifactWith
+  , drainNow
+  , drainAll
   ) where
 
 import Control.Exception (throwIO, try)
@@ -55,7 +60,7 @@ import Petrus.Activity
 import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), handlerTokens)
+import Petrus.Impetus.Binding (BoundHandler, handlerTokens)
 import Petrus.Impetus.History.Records
   ( ActivityRequested (..)
   , ActivityTerminalQuarantined (..)
@@ -78,18 +83,18 @@ import Petrus.Impetus.Instance (DeliveryScope (..), FiringOutcome (..), Implemen
 import Petrus.Impetus.Petrinet hiding (Delay)
 import Petrus.Impetus.Petrinet qualified as Petrinet
 import Petrus.Impetus.Scope (scopeGeneration)
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
 import Petrus.Motus.Dispatch (ActivityAttempt (attemptId, epoch, invocation, queue), AttemptFailure (..), Dispatch (..))
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), LocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Observation qualified as Observation
 import Petrus.Testing.Dst
+import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Testing.Dst.PyRepr (pyStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 import System.Directory (doesFileExist, getFileSize)
-import System.IO.Unsafe (unsafePerformIO)
 
 -- ---------------------------------------------------------------------------
 -- Constants
@@ -103,9 +108,6 @@ released = path "released"
 work = path "work"
 release = path "release"
 
-path :: Text -> NetPath
-path = either (error . T.unpack) id . netPath
-
 scopeName, instanceId, scenarioId :: Text
 scopeName = "batch"
 instanceId = "dst-generated-runtime"
@@ -113,9 +115,6 @@ scenarioId = "generated-runtime-cross-layer-world-v4"
 
 maturationInstant :: Integer
 maturationInstant = 5
-
-strs :: [Text] -> Json
-strs = Array . map String
 
 resourceKeys :: [Text]
 resourceKeys =
@@ -155,6 +154,22 @@ profileIdentity =
               , ("observations", strs ["engine.generated-runtime-authority", "generated-runtime-state"])
               , ("resources", strs resourceKeys)
               , ("timer", Int maturationInstant)
+              ]
+          )
+    }
+
+-- | @LIVELOCK_PROFILE_IDENTITY@ (@generated_runtime_qualification.py@):
+-- the test-only falsification mutant's identity.
+livelockProfileIdentity :: ProfileIdentity
+livelockProfileIdentity =
+  Identity
+    { name = "petrus.engine.generated-runtime-livelock-mutation"
+    , version = 1
+    , digest =
+        digestOf
+          ( Object
+              [ ("base_profile", toJson profileIdentity)
+              , ("mutation", String "reschedule an otherwise quiescent engine.drive at the same logical instant")
               ]
           )
     }
@@ -237,9 +252,9 @@ applicationNet =
 -- | @RuntimeBridge(prepared, projected)@: counts into the profile.
 bridgeHandler :: IORef Int -> IORef Int -> BoundHandler
 bridgeHandler prepared projected =
-  ActivityBound
-    ActivityHandler
-      { prepare = \b -> effectful $ do
+  observed
+    ObservedHandler
+      { prepare = \b -> do
           modifyIORef' prepared (+ 1)
           pure $ case bindingTokens b of
             t : _ -> do
@@ -257,15 +272,10 @@ bridgeHandler prepared projected =
                     }
               Right ActivityInvocation {activity = "calculate", input = t.payload, policy, correlation = Nothing, idempotency = Nothing}
             [] -> Left "IndexError('tuple index out of range')"
-      , project = \_ value -> effectful $ do
+      , project = \_ value -> do
           modifyIORef' projected (+ 1)
           pure (Right (handlerTokens [(result, [Token (Just "Result") value])]))
-      , projectFailure = Nothing
       }
-
-effectful :: IO a -> a
-effectful = unsafePerformIO
-{-# NOINLINE effectful #-}
 
 -- ---------------------------------------------------------------------------
 -- Refusing adapters
@@ -346,12 +356,6 @@ data GeneratedRuntimeProfile = GeneratedRuntimeProfile
   , closes :: IORef Int
   }
 
--- | @int(attempt.epoch)@.
-epochOf :: ActivityAttempt -> Integer
-epochOf attempt = case reads (T.unpack attempt.epoch) of
-  [(n, "")] -> n
-  _ -> error ("non-integer Activity attempt epoch " <> show attempt.epoch)
-
 -- | @_attempt_occurrence@: the occurrence of a LocalDispatch attempt
 -- identity (@[instance, occurrence]@).
 attemptOccurrence :: ActivityAttempt -> Either Text Integer
@@ -380,9 +384,26 @@ numberJson = \case
 occurrencePair :: NetPath -> Int -> Json
 occurrencePair t o = Object [("occurrence", jsonInt o), ("transition", String (netPathText t))]
 
+-- | Which generated-runtime profile class to build.
+data RuntimeVariant
+  = -- | @GeneratedRuntimeProfile@.
+    Unmutated
+  | -- | @LivelockMutationProfile@ (@generated_runtime_qualification.py@): a
+    -- test-only falsification profile which preserves safety but cannot
+    -- quiesce. Its @_drive@ reschedules an otherwise quiescent
+    -- @engine.drive@ at the same logical instant once the timer is due and
+    -- the Engine is awaiting.
+    LivelockMutation
+  deriving stock (Eq, Show)
+
 -- | @GeneratedRuntimeProfile(history_path, dispatch_path)@.
 generatedRuntimeProfile :: FilePath -> FilePath -> IO GeneratedRuntimeProfile
-generatedRuntimeProfile historyPath dispatchPath = do
+generatedRuntimeProfile = generatedRuntimeProfileWith Unmutated
+
+-- | @GeneratedRuntimeProfile@ or @LivelockMutationProfile@ over the same
+-- History and LocalDispatch paths.
+generatedRuntimeProfileWith :: RuntimeVariant -> FilePath -> FilePath -> IO GeneratedRuntimeProfile
+generatedRuntimeProfileWith variant historyPath dispatchPath = do
   time <- newWorldTime
   deliveryAttempts <- newIORef []
   dispatchAttempts <- newIORef []
@@ -397,7 +418,18 @@ generatedRuntimeProfile historyPath dispatchPath = do
   scopeResets <- newIORef 0
   drops <- newIORef 0
   closes <- newIORef 0
-  let scheduledAt instant = ScheduledCommand {instant, command = Command {profile = profileIdentity, name = "engine.drive", payload = Object []}}
+  let variantIdentity = case variant of
+        Unmutated -> profileIdentity
+        LivelockMutation -> livelockProfileIdentity
+      scheduledAt instant = ScheduledCommand {instant, command = Command {profile = variantIdentity, name = "engine.drive", payload = Object []}}
+      -- LivelockMutationProfile._drive
+      mutate current r = case variant of
+        LivelockMutation
+          | null r.scheduled && current >= maturationInstant -> case lookupMember "status" r.value of
+              Nothing -> raise "KeyError" "'status'"
+              Just (String "awaiting") -> pure ApplyResult {disposition = r.disposition, value = r.value, scheduled = [scheduledAt current]}
+              Just _ -> pure r
+        _ -> pure r
       open load = do
         (history, refuseNextProjection) <- refusingProjectionHistory historyPath projectionAttempts
         custody <-
@@ -560,7 +592,7 @@ generatedRuntimeProfile historyPath dispatchPath = do
           ioScenario (Local.close w)
           liftIO (writeIORef g.worker Nothing)
           applied g [("report", report)]
-        _ -> drive g current
+        _ -> drive g current >>= mutate current
       drive g current = do
         liftIO $ do
           scheduledTimer <- readIORef g.timerScheduled
@@ -809,7 +841,7 @@ generatedRuntimeProfile historyPath dispatchPath = do
         Engine.close g.engine
       profile =
         Profile
-          { identity = profileIdentity
+          { identity = variantIdentity
           , validate
           , validateFault
           , create = start False
@@ -861,23 +893,17 @@ generatedRuntimeProfile historyPath dispatchPath = do
 -- ---------------------------------------------------------------------------
 -- The checker
 
--- | A fresh @GeneratedRuntimeAuthorityChecker()@. The reference's checker
--- keeps @_frozen_execution_counts@ across checks of one World or replay;
--- here that cell belongs to the returned 'Checker'.
-newGeneratedRuntimeChecker :: IO Checker
-newGeneratedRuntimeChecker = do
-  frozen <- newIORef []
-  pure
-    Checker
-      { identity = checkerIdentity
-      , request = ObservationRequest {name = "engine.generated-runtime-authority", payload = Object []}
-      , check = \o -> effectful (Right <$> verdict frozen o.value)
-      }
-
-listOf :: Text -> Json -> [Json]
-listOf key value = case member key value of
-  Array xs -> xs
-  _ -> []
+-- | @GeneratedRuntimeAuthorityChecker()@. The reference's checker keeps
+-- @_frozen_execution_counts@ across the checks of one World or replay; here
+-- that dictionary is the checker's memory, which the World threads from one
+-- check to the next and every World or replay starts empty.
+generatedRuntimeChecker :: Checker
+generatedRuntimeChecker =
+  Checker
+    { identity = checkerIdentity
+    , request = ObservationRequest {name = "engine.generated-runtime-authority", payload = Object []}
+    , check = Check [] (\frozen o -> Right (verdict frozen o.value))
+    }
 
 -- | @set(a) <= set(b)@ over JSON values (Python equality).
 subset :: [Json] -> [Json] -> Bool
@@ -896,8 +922,9 @@ withoutKeys keys = \case
   Object members -> Object [(k, v) | (k, v) <- members, k `notElem` keys]
   other -> other
 
-verdict :: IORef [(Json, (Int, Int))] -> Json -> IO CheckResult
-verdict frozenRef value = do
+-- | The verdict over one observation, and the frozen execution counts after it.
+verdict :: [(Json, (Int, Int))] -> Json -> (CheckResult, [(Json, (Int, Int))])
+verdict frozen value =
   let liveMarking = member "live_marking" value
       replayExact =
         liveMarking == Null
@@ -1009,23 +1036,18 @@ verdict frozenRef value = do
         length (listOf "record_types" value) <= 128
           && length deliveryAttempts <= 8
           && length workerAttempts <= 16
-  frozenExecution <-
-    and
-      <$> forM
-        completed
-        ( \occurrence -> do
-            let execCounts =
-                  ( length [() | a <- dispatches, member "occurrence" a == occurrence]
-                  , length [() | a <- workerAttempts, member "occurrence" a == occurrence]
-                  )
-            known <- readIORef frozenRef
-            case lookup occurrence known of
-              Just previous -> pure (execCounts == previous)
-              Nothing -> do
-                writeIORef frozenRef (known <> [(occurrence, execCounts)])
-                pure True
-        )
-  let passed =
+      -- @_frozen_execution_counts.setdefault@ over every completed
+      -- occurrence (no short circuit).
+      freeze (ok, known) occurrence =
+        let execCounts =
+              ( length [() | a <- dispatches, member "occurrence" a == occurrence]
+              , length [() | a <- workerAttempts, member "occurrence" a == occurrence]
+              )
+         in case lookup occurrence known of
+              Just previous -> (ok && execCounts == previous, known)
+              Nothing -> (ok, known <> [(occurrence, execCounts)])
+      (frozenExecution, frozen') = foldl' freeze (True, frozen) completed
+      passed =
         and
           [ replayExact
           , inFlightExact
@@ -1044,9 +1066,8 @@ verdict frozenRef value = do
           , timerExact
           , boundsHold
           ]
-  pure
-    CheckResult
-      { passed
+   in ( CheckResult
+          { passed
       , detail =
           Object
             [ ("bounds_hold", Bool boundsHold)
@@ -1067,6 +1088,8 @@ verdict frozenRef value = do
             , ("timer_exact", Bool timerExact)
             ]
       }
+      , frozen'
+      )
   where
     leq v n = case v of
       Int i -> i <= n
@@ -1200,10 +1223,14 @@ executeGeneratedRuntimeStory opts = do
 
 -- | @build_generated_runtime_artifact(history_path, dispatch_path)@.
 buildGeneratedRuntimeArtifact :: FilePath -> FilePath -> IO (Either DstFailure AnyArtifact)
-buildGeneratedRuntimeArtifact historyPath dispatchPath = do
+buildGeneratedRuntimeArtifact = buildGeneratedRuntimeArtifactWith defaultStoryOptions
+
+-- | @build_generated_runtime_artifact(history_path, dispatch_path, **options)@.
+buildGeneratedRuntimeArtifactWith :: StoryOptions -> FilePath -> FilePath -> IO (Either DstFailure AnyArtifact)
+buildGeneratedRuntimeArtifactWith opts historyPath dispatchPath = do
   p <- generatedRuntimeProfile historyPath dispatchPath
-  checker <- newGeneratedRuntimeChecker
+  let checker = generatedRuntimeChecker
   World.withWorld
     WorldConfig {profile = p.profile, budget = worldBudget, checkers = [checker], seed = Nothing, progress = Nothing}
-    (executeGeneratedRuntimeStory defaultStoryOptions >> World.artifact scenarioId)
+    (executeGeneratedRuntimeStory opts >> World.artifact scenarioId)
 

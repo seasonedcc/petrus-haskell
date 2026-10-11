@@ -204,7 +204,7 @@ rejectingChecker =
     { identity =
         Identity {name = "petrus.testing.rejecting-checker", version = 1, digest = digestOf (Object [("result", String "reject")])}
     , request = queueStateRequest
-    , check = \o -> Right CheckResult {passed = False, detail = Object [("values", o.value)]}
+    , check = pureCheck $ \o -> Right CheckResult {passed = False, detail = Object [("values", o.value)]}
     }
 
 badValueIdentity :: CheckerIdentity
@@ -221,7 +221,7 @@ rejectBadValueChecker =
   Checker
     { identity = badValueIdentity
     , request = queueStateRequest
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         vs <- observedValues o
         Right CheckResult {passed = String "bad" `notElem` vs, detail = Object [("values", Array vs)]}
     }
@@ -232,7 +232,7 @@ passingBadValueChecker =
   Checker
     { identity = badValueIdentity
     , request = queueStateRequest
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         vs <- observedValues o
         Right CheckResult {passed = True, detail = Object [("values", Array vs)]}
     }
@@ -248,7 +248,7 @@ raisingReservedExceptionChecker =
           , digest = digestOf (Object [("bug", String "raises instead of returning a check result")])
           }
     , request = queueStateRequest
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         vs <- observedValues o
         if null vs
           then Right CheckResult {passed = True, detail = Object [("values", Array vs)]}
