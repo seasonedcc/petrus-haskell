@@ -34,13 +34,13 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit, isHexDigit)
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (isJust, isNothing, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Testing.World.Contract (PyError (..), canonical, checkerIdentity, profileIdentity)
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, pythonLoads)
 import Petrus.Testing.Dst
   ( AcceptedOperation (..)
   , AnyArtifact (..)
@@ -66,10 +66,8 @@ import Petrus.Testing.Dst
   )
 import Petrus.Testing.Dst qualified as Dst
 import Petrus.Testing.Dst.Decode
-  ( LocPart (..)
-  , Parser
+  ( Parser
   , Path
-  , SchemaError (..)
   , failAt
   , field
   , fieldDefault
@@ -508,7 +506,7 @@ extractCheckpoints a isReplayed = do
   when (length finishes > 1) $ valueErr "readiness coverage artifact has multiple finish operations"
   finishPoint <- case finishes of
     [finish]
-      | finish.disposition == Converged && fairChecked && allPassed && isNothing' a.expected.failure -> do
+      | finish.disposition == Converged && fairChecked && allPassed && isNothing a.expected.failure -> do
           signals <- operationSignals a finish.position certified
           Right
             [ Checkpoint
@@ -523,10 +521,6 @@ extractCheckpoints a isReplayed = do
         | isReplayed
         ]
   Right (points <> finishPoint <> replayPoint)
-  where
-    isNothing' = \case
-      Nothing -> True
-      Just _ -> False
 
 identityName :: Identity k -> Text
 identityName i = i.name
@@ -826,7 +820,7 @@ pDimension path v = do
         valueError path "blocked dimension must retain its exact reason and revisit trigger"
       Right d
     Nothing -> do
-      unless (isNothing' blockedReason && isNothing' revisitTrigger) $
+      unless (isNothing blockedReason && isNothing revisitTrigger) $
         valueError path "executable dimension cannot carry a blocked reason"
       let isComplete = any (complete name) evidence
       when (status == "covered" && not isComplete) $
@@ -836,13 +830,6 @@ pDimension path v = do
       when (status == "blocked") $
         valueError path "executable dimension cannot be blocked"
       Right d
-  where
-    isNothing' = \case
-      Nothing -> True
-      Just _ -> False
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
-
-_unused :: (SchemaError, LocPart, Maybe Json, ExecuteOperation, FaultOperation, CrashOperation, FinishOperation, ScenarioExpected, JournalEntry, Dst.Disposition)
-_unused = (undefined, undefined, lookupMember "" Null, undefined, undefined, undefined, undefined, undefined, undefined, undefined)

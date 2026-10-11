@@ -83,7 +83,7 @@ import Data.IORef
 import Data.List (find, sort, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe)
 import Data.Sequence (Seq, (|>))
 import Data.Sequence qualified as Seq
 import Data.Set (Set)
@@ -112,7 +112,7 @@ import Hamsterdan.Host.Service
   )
 import Hamsterdan.Host.Service qualified as Host
 import Hamsterdan.Host.V5.Application (ApplicationOptions (..))
-import Hamsterdan.Testing.Readiness (AuthorityClaim (..), Lifecycle (..), ReadinessExpectation, ReadinessFacts, dump, evaluate, loadJson)
+import Hamsterdan.Testing.Readiness (AuthorityClaim (..), Lifecycle (..), ReadinessFacts, dump, evaluate, loadJson)
 import Hamsterdan.Testing.World.Contract
 import Hamsterdan.Testing.World.Provider hiding (setHumanComment)
 import Hamsterdan.Testing.World.Provider qualified as Provider
@@ -1901,6 +1901,3 @@ replayReadiness a root = do
   case registerProfile (readinessProfile profile) emptyRegistry >>= registerChecker readinessChecker of
     Left failure -> pure (Left failure)
     Right registry -> replay registry a
-
-_unused :: (ReadinessExpectation, Json -> Int, Maybe Int -> Bool)
-_unused = (undefined, const 0, isNothing)
