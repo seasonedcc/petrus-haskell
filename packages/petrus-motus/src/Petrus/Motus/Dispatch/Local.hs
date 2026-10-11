@@ -110,7 +110,7 @@ import Data.Int (Int64)
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -133,7 +133,8 @@ import Petrus.Motus.Dispatch
   , dispositionText
   )
 import Petrus.Motus.Dispatch qualified as Port
-import Petrus.Motus.Internal.Repr (exceptionRepr, exceptionTypeName, pyRepr, pyStr, uuid4)
+import Petrus.Motus.Internal.Repr (pyRepr, pyStr, uuid4)
+import Petrus.Motus.PythonException (PythonException (..), pythonException, pythonRepr)
 import Petrus.Sqlite.Connection (Connection)
 import Petrus.Sqlite.Connection qualified as C
 import Petrus.Sqlite.Pool (Pool, closePool, newPool, poolPath, withPooledConnection)
@@ -690,7 +691,8 @@ fail w attempt report = do
     FailureClassified classified -> pure classified
     FailureMessage message -> orRefuse (activityFailure (ActivityFailureFields message "ActivityError" Null False Nothing))
     FailureException err ->
-      orRefuse (activityFailure (ActivityFailureFields (exceptionRepr err) (exceptionTypeName err) Null True Nothing))
+      let python = pythonException err
+       in orRefuse (activityFailure (ActivityFailureFields (pythonRepr python) python.className Null True Nothing))
   let outcome = failedOutcome failure
   disposition <- withTransaction w.connections $ \db -> do
     acknowledged <- acknowledgeTerminalRetry db attempt outcome
@@ -1202,92 +1204,19 @@ faithfulJson noun value = encodeJson noun value >>= parseColumn
 
 -- | @_encode_invocation@.
 encodeInvocation :: ActivityInvocation -> Either Text Text
-encodeInvocation inv =
-  encodeJson "Activity invocation" $
-    Object
-      [ ("activity", String inv.activity)
-      , ("input", inv.input)
-      ,
-        ( "policy"
-        , Object
-            [ ("attempts", Int fields.attempts)
-            , ("heartbeat_timeout", Int fields.heartbeatTimeout)
-            , ("initial_interval", numberJson fields.initialInterval)
-            , ("coefficient", numberJson fields.coefficient)
-            , ("max_interval", numberJson fields.maxInterval)
-            , ("jitter", numberJson fields.jitter)
-            , ("start_to_close", maybe Null numberJson fields.startToClose)
-            , ("schedule_to_close", maybe Null numberJson fields.scheduleToClose)
-            ]
-        )
-      , ("correlation", maybe Null String inv.correlation)
-      , ("idempotency", maybe Null String inv.idempotency)
-      ]
-  where
-    fields = policyFields inv.policy
+encodeInvocation = encodeJson "Activity invocation" . invocationJson
 
--- | @_decode_invocation@: exactly the five fields, a legacy (two-field) or
--- current (eight-field) policy, integer attempts and heartbeat timeout, and
--- the value constructors' own validation; every refusal is prefixed
+-- | @_decode_invocation@ ('invocationFromJson'); every refusal is prefixed
 -- "corrupt durable Activity invocation: ".
 decodeInvocation :: Text -> Either Text ActivityInvocation
 decodeInvocation text = either (Left . ("corrupt durable Activity invocation: " <>)) Right $ do
   value <- either (Left . T.pack) Right (parseJson pythonLoads (TE.encodeUtf8 text))
-  let topFields = Set.fromList ["activity", "input", "policy", "correlation", "idempotency"]
-  members <- case value of
-    Object ms | Set.fromList (map fst ms) == topFields -> Right ms
-    _ -> Left "expected exact fields ['activity', 'correlation', 'idempotency', 'input', 'policy']"
-  let field key = maybe Null id (lookup key members)
-      legacy = Set.fromList ["attempts", "heartbeat_timeout"]
-      current = Set.union legacy (Set.fromList ["initial_interval", "coefficient", "max_interval", "jitter", "start_to_close", "schedule_to_close"])
-  policyMembers <- case field "policy" of
-    Object ms | Set.fromList (map fst ms) `elem` [legacy, current] -> Right ms
-    _ -> Left "policy expected exact legacy or current fields"
-  let policyField key = lookup key policyMembers
-  attempts' <- integerField (policyField "attempts")
-  heartbeat' <- integerField (policyField "heartbeat_timeout")
-  let defaults = policyFields defaultExecutionPolicy
-      -- A value that is not a number fails the constructor's own range
-      -- check, with its message: a NaN stands in for it.
-      numberOr fallback = \case
-        Nothing -> fallback
-        Just raw -> maybe (FloatNumber (0 / 0)) id (numberFromJson raw)
-      optionalNumber = \case
-        Nothing -> Nothing
-        Just Null -> Nothing
-        Just raw -> Just (maybe (FloatNumber (0 / 0)) id (numberFromJson raw))
-  policy' <-
-    executionPolicy
-      ExecutionPolicyFields
-        { attempts = attempts'
-        , heartbeatTimeout = heartbeat'
-        , initialInterval = numberOr defaults.initialInterval (policyField "initial_interval")
-        , coefficient = numberOr defaults.coefficient (policyField "coefficient")
-        , maxInterval = numberOr defaults.maxInterval (policyField "max_interval")
-        , jitter = numberOr defaults.jitter (policyField "jitter")
-        , startToClose = optionalNumber (policyField "start_to_close")
-        , scheduleToClose = optionalNumber (policyField "schedule_to_close")
-        }
-  activity' <- case field "activity" of
-    String a | not (T.null a) -> Right a
-    other -> Left ("ActivityInvocation requires a non-empty string activity name, got " <> pyRepr other)
-  correlation' <- identity "correlation" (field "correlation")
-  idempotency' <- identity "idempotency" (field "idempotency")
-  Right ActivityInvocation {activity = activity', input = field "input", policy = policy', correlation = correlation', idempotency = idempotency'}
+  either (Left . refusal) Right (invocationFromJson value)
   where
-    integerField = \case
-      Just (Int i) -> Right i
-      _ -> Left "policy fields must be integers"
-    identity label = \case
-      Null -> Right Nothing
-      String v | not (T.null v) -> Right (Just v)
-      other ->
-        Left
-          ( "ActivityInvocation "
-              <> label
-              <> " must be a non-empty string, or None for the writer to derive at begin, got "
-              <> pyRepr other
-          )
+    refusal problem = flip fromMaybe (invocationRefusal pyRepr problem) $ case problem of
+      InvocationFieldsNotExact -> "expected exact fields ['activity', 'correlation', 'idempotency', 'input', 'policy']"
+      PolicyFieldsNotExact -> "policy expected exact legacy or current fields"
+      _ -> "policy fields must be integers"
 
 -- | @_decode_outcome@: a completed value, or the classified failure (the
 -- legacy @{"kind":"failed","error":E}@ shape included).

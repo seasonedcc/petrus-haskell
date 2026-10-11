@@ -23,7 +23,7 @@ import Petrus.Motus.Dispatch hiding (WorkerDispatch (..))
 import Petrus.Motus.Dispatch qualified as D
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Dispatch.LocalSupport (withScratch)
-import Petrus.Motus.Internal.Repr (exceptionMessage, exceptionTypeName)
+import Petrus.Motus.PythonException qualified as Python
 import Petrus.Motus.Worker
 import Petrus.Motus.Worker qualified as W
 import Petrus.Motus.Worker.Cli
@@ -118,7 +118,7 @@ raisedRuntime fragment = \case
 
 failureMessage :: AttemptFailure -> (Text, Text)
 failureMessage = \case
-  FailureException err -> (exceptionTypeName err, exceptionMessage err)
+  FailureException err -> let python = Python.pythonException err in (python.className, python.message)
   FailureMessage m -> ("str", m)
   FailureClassified f -> ("ActivityFailure", (failureFields f).failureError)
 

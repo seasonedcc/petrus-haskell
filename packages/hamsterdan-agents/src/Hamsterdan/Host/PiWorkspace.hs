@@ -48,7 +48,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Agents.Pi (PiWorkspaceError (..), PiWorkspaceProvider (..), PreparedPiWorkspace (..), PromptKind (..))
 import Hamsterdan.Agents.Protocol
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.PyText (PythonFault (..), utf8DecodeError)
+import Hamsterdan.PyText qualified as Py
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..))
 import Petrus.Agenticus.Runtime.PiA2Host (PiA2RuntimePolicy, mkPiA2RuntimePolicy)
 import Petrus.Motus.Execution.Archive (workspaceArchive)
@@ -458,9 +459,15 @@ gitFailed = failWith "private Git workspace operation failed"
 -- | @subprocess.run(("git", "-C", root, *arguments), check=True,
 -- capture_output=True, timeout=60, env=...)@: the raw standard output.
 gitBytes :: FilePath -> [Text] -> Maybe [(String, String)] -> IO ByteString
-gitBytes root arguments extra = runGit (Just root) arguments extra
+gitBytes root arguments extra =
+  runGit (Just root) arguments extra >>= \case
+    (ExitSuccess, stdout, _) -> pure stdout
+    _ -> gitFailed
 
-runGit :: Maybe FilePath -> [Text] -> Maybe [(String, String)] -> IO ByteString
+-- | Run Git to completion: its exit status, standard output and standard
+-- error. A failure to start it, or the 60-second timeout, is the
+-- reference's @PiWorkspaceError@ (@OSError@ and @SubprocessError@).
+runGit :: Maybe FilePath -> [Text] -> Maybe [(String, String)] -> IO (ExitCode, ByteString, ByteString)
 runGit root arguments extra = do
   environment <- gitEnvironment (fromMaybe [] extra)
   executable <- maybe gitFailed pure =<< findExecutable "git"
@@ -476,25 +483,30 @@ runGit root arguments extra = do
           _ <- forkIO (BS.hGetContents hout >>= evaluate >>= putMVar out)
           _ <- forkIO (BS.hGetContents herr >>= evaluate >>= putMVar err)
           stdout <- takeMVar out
-          _ <- takeMVar err
+          stderr <- takeMVar err
           code <- waitForProcess handle
           mapM_ hClose [hout, herr]
-          pure (code, stdout)
+          pure (code, stdout, stderr)
         _ -> throwIO (userError "git pipes were not created")
   case outcome of
-    Right (Just (ExitSuccess, stdout)) -> pure stdout
+    Right (Just completed) -> pure completed
     Left e | isJust (fromException @SomeAsyncException e) -> throwIO e
     _ -> gitFailed
 
 -- | @_git(root, *arguments, capture=True)@ / @_run_git(...)@ with
--- @text=True@: strict UTF-8 and universal newlines. Undecodable output is
--- CPython's @UnicodeDecodeError@, which is not a 'PiWorkspaceError'.
+-- @text=True@: strict UTF-8 and universal newlines. @subprocess.run@
+-- decodes standard output, then standard error, before @check=True@ looks
+-- at the exit status, so undecodable output of either is CPython's
+-- @UnicodeDecodeError@ (which is not a 'PiWorkspaceError'), with its
+-- message, whatever the status.
 gitText :: Maybe FilePath -> [Text] -> Maybe [(String, String)] -> IO Text
 gitText root arguments extra = do
-  bytes <- runGit root arguments extra
-  case TE.decodeUtf8' bytes of
-    Left _ -> throwIO (ValueError "'utf-8' codec can't decode git output")
-    Right text -> pure (universalNewlines text)
+  (code, stdout, stderr) <- runGit root arguments extra
+  forM_ [stdout, stderr] $ \bytes -> forM_ (utf8DecodeError bytes) $ \message ->
+    throwIO (PythonFault "UnicodeDecodeError" message)
+  case code of
+    ExitSuccess -> pure (universalNewlines (TE.decodeUtf8 stdout))
+    _ -> gitFailed
 
 -- | @_git_paths(root, *arguments)@.
 gitPaths :: FilePath -> [Text] -> IO [Text]

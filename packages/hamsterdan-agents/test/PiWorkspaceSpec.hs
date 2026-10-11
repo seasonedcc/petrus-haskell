@@ -17,6 +17,7 @@ import Data.Text.IO qualified as TIO
 import Hamsterdan.Agents.Pi (PiWorkspaceError (..), PiWorkspaceProvider (..), PreparedPiWorkspace (..), PromptKind (..))
 import Hamsterdan.Agents.Protocol
 import Hamsterdan.Host.PiWorkspace
+import Hamsterdan.PyText (PythonFault (..))
 import Numeric (showOct)
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..))
 import Petrus.Agenticus.Runtime.PiA2Host (PiA2RuntimePolicy (..))
@@ -220,6 +221,41 @@ spec = describe "tests/integration/host/test_pi_workspace.py" $ do
     patch `shouldSatisfy` T.isInfixOf "new file mode 100755"
     patch `shouldSatisfy` T.isInfixOf "deleted file mode 100644"
     patch `shouldSatisfy` (\value -> "-before" `T.isInfixOf` value && "+after" `T.isInfixOf` value)
+    emptyRoot receiver
+
+  -- Not upstream tests: the reference's `_run_git` runs Git with
+  -- `text=True`, so non-UTF-8 output raises CPython's `UnicodeDecodeError`.
+  -- During preparation `open`'s `except Exception` sanitizes it like any
+  -- other staging failure.
+  it "a non-UTF-8 review diff is a sanitized preparation failure" . withTmp $ \tmp -> do
+    (source, baseSha) <- repository tmp
+    BS.writeFile (source </> "latin1.txt") "caf\xe9\n"
+    _ <- git source ["add", "latin1.txt"]
+    _ <- git source ["commit", "-qm", "latin-1"]
+    headSha <- git source ["rev-parse", "HEAD"]
+    receiver <- newGitPiWorkspaceProvider (tmp </> "receiver")
+    openWith receiver ReviewKind source (review headSha baseSha) "pi:latin-1" (\_ -> expectationFailure "an undecodable diff must not enter the agent")
+      `shouldThrow` (== PiWorkspaceError "private Pi workspace preparation failed")
+    emptyRoot receiver
+
+  -- `reconcile` runs outside that `try`: a settled Latin-1 file makes the
+  -- canonical patch (`git diff --cached --binary`, a text diff for a file
+  -- without NUL bytes) raise `UnicodeDecodeError` to the host, which
+  -- records that class name. The message names the byte and its offset in
+  -- Git's output, after a new file's diff header (seven-digit abbreviated
+  -- blob name) and the added line's `+caf`.
+  it "a non-UTF-8 canonical patch raises CPython's UnicodeDecodeError" . withTmp $ \tmp -> do
+    (source, headSha) <- repository tmp
+    receiver <- newGitPiWorkspaceProvider (tmp </> "receiver")
+    let result = tmp </> "settled"
+        header = "diff --git a/latin1.txt b/latin1.txt\nnew file mode 100644\nindex 0000000..1234567\n--- /dev/null\n+++ b/latin1.txt\n@@ -0,0 +1 @@\n+caf" :: ByteString
+        expected = "'utf-8' codec can't decode byte 0xe9 in position " <> T.pack (show (BS.length header)) <> ": invalid continuation byte"
+    openWith receiver CodingKind source (request headSha) "pi:latin-1" (\prepared -> do
+      extractWorkspaceArchive prepared.archive result
+      BS.writeFile (result </> "latin1.txt") "caf\xe9\n"
+      _ <- prepared.reconcile =<< workspaceArchive result
+      expectationFailure "an undecodable patch must not be returned")
+      `shouldThrow` (== PythonFault "UnicodeDecodeError" expected)
     emptyRoot receiver
 
   describe "test_review_inputs_never_overwrite_a_tracked_file" $

@@ -20,8 +20,8 @@ import Hamsterdan.GitHub.Models (InstallationInventory (..))
 import Hamsterdan.GitHub.Python (PythonFault (..))
 import Hamsterdan.GitHub.Routing (InventoryMismatch (..), Route (..))
 import Hamsterdan.GitHub.Routing qualified as Routing
-import Hamsterdan.GitHub.Sqlite (SQLData (..))
-import Hamsterdan.GitHub.Sqlite qualified as Db
+import Hamsterdan.Sqlite (SQLData (..))
+import Hamsterdan.Sqlite qualified as Db
 import Hamsterdan.GitHub.Webhooks
 import Petrus.Json (Json (..))
 import System.FilePath ((</>))

@@ -19,20 +19,35 @@ import uuid
 import psycopg
 from psycopg.conninfo import make_conninfo
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scripts"))
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "scripts"))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "petrus-engine", "test", "interop"))
 from bench_timing import report  # noqa: E402
 
-from petrus.engine.postgres import create_engine  # noqa: E402
+import engine_interop as scenario  # noqa: E402
+
+from petrus.engine.postgres import create_engine, load_engine  # noqa: E402
 from petrus.impetus.history_store.postgres import ensure_schema  # noqa: E402
 from petrus.impetus.petrinet import Arc, Net, NetPath, Place, Token, Transition  # noqa: E402
 from petrus.motus.dispatch import InlineDispatch  # noqa: E402
 
 SOURCE, OUTPUT = NetPath("source"), NetPath("output")
 ROTATION = 256
+LOADED_ORDERS = 100
 
 
 def provider_net() -> Net:
     return Net(places=[Place(OUTPUT)], transitions=[Transition(SOURCE)], arcs=[Arc(SOURCE, OUTPUT)])
+
+
+def advance_until_rest(engine) -> None:
+    while engine.advance().ready:
+        pass
+
+
+def settle_order(engine, k: int) -> None:
+    engine.deliver(scenario.INTAKE, Token("Order", {"id": f"o-{k}", "amount": 1}), identity=f"evt_{k}")
+    advance_until_rest(engine)
 
 
 def main() -> None:
@@ -74,13 +89,46 @@ def run(dsn: str) -> None:
     def create_close():
         open_engine("create-").close()
 
+    def open_orders(door, instance: str):
+        return door(
+            psycopg.connect(dsn, autocommit=False),
+            scenario.order_net(),
+            instance,
+            dispatch=InlineDispatch({"charge_card": scenario.charge_card}),
+            handlers=scenario.handlers(),
+        )
+
+    chain = {"engine": open_orders(create_engine, f"{scenario.IDENTITY}-{next(counter)}"), "settled": 0}
+
+    def advance_chain():
+        chain["settled"] += 1
+        if chain["settled"] % ROTATION == 0:
+            chain["engine"].close()
+            chain["engine"] = open_orders(create_engine, f"{scenario.IDENTITY}-{next(counter)}")
+        settle_order(chain["engine"], chain["settled"])
+
+    loaded = open_orders(create_engine, "load-existing")
+    for k in range(1, LOADED_ORDERS + 1):
+        settle_order(loaded, k)
+    settled = len(loaded.marking.place(scenario.DONE))
+    print(f"sizes: engine.load {len(loaded.records)} records, {settled} settled", flush=True)
+    loaded.close()
+
+    def load_one():
+        engine = open_orders(load_engine, "load-existing")
+        engine.advance()
+        engine.close()
+
     try:
         report("engine.deliver", deliver_one)
         report("engine.redeliver-prior", lambda: prior.deliver(SOURCE, Token.black(), identity="known"))
         report("engine.create-close", create_close)
+        report("engine.advance-chain", advance_chain)
+        report("engine.load", load_one)
     finally:
         state["engine"].close()
         prior.close()
+        chain["engine"].close()
 
 
 if __name__ == "__main__":

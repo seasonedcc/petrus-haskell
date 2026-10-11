@@ -99,9 +99,10 @@ import Hamsterdan.GitHub.Python
 import Hamsterdan.GitHub.Python qualified as Py
 import Hamsterdan.GitHub.Routing (InstallationRegistry)
 import Hamsterdan.GitHub.Routing qualified as Routing
-import Hamsterdan.GitHub.Sqlite (Connection, SQLData (..))
-import Hamsterdan.GitHub.Sqlite qualified as Db
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, lookupMember, parseJson, pythonLoads)
+import Hamsterdan.PyText (utf8EncodeError)
+import Hamsterdan.Sqlite (Connection, SQLData (..))
+import Hamsterdan.Sqlite qualified as Db
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, lookupMember, parseJson)
 
 -- | @MAX_BODY_BYTES@.
 maxBodyBytes :: Int
@@ -514,7 +515,9 @@ parseObservation delivery event body = do
       else Right Null
   commentBody <- case text of
     Null -> Right Nothing
-    String s | utf8Length s <= maxCommentBytes -> Right (Just s)
+    -- @len(text.encode())@ raises UnicodeEncodeError, a ValueError, on a
+    -- kept lone surrogate.
+    String s | Nothing <- utf8EncodeError s, utf8Length s <= maxCommentBytes -> Right (Just s)
     _ -> refused
   let issueComment = event == "issue_comment"
       whenComment action = if issueComment then py action else Right Null
@@ -587,7 +590,7 @@ pending custody requested subject = do
         Just _ -> takeWhile (\row -> nextAttempt row <= now) rows
   forM due $ \case
     SQLText raw : SQLInteger attempts : _ ->
-      case parseJson pythonLoads (TE.encodeUtf8 raw) >>= maybe (Left "observation") Right . observationFromJson (fromIntegral attempts) of
+      case parseJson Py.providerLoads (TE.encodeUtf8 raw) >>= maybe (Left "observation") Right . observationFromJson (fromIntegral attempts) of
         Right item -> pure item
         Left _ -> throwIO (PythonFault "TypeError" "stored observation is malformed")
     _ -> throwIO (PythonFault "TypeError" "stored observation is malformed")

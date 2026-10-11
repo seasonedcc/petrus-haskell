@@ -19,13 +19,31 @@ everything that the Engine and History can see.
    `[(Int, ActivityOutcome)]`, with `Succeeded Json | Failed ActivityFailure`.
    The reference yields `(occurrence, object)` pairs and separates failures
    with `isinstance(outcome, ActivityFailure)`.
-4. **Exception classification by Haskell type name.** `InlineDispatch` gives
-   an unclassified exception a retryable `ActivityFailure` whose error type
-   is the Haskell exception's type name. The reference uses Python's class
-   name. Tests that need the reference's spelling define exceptions with the
-   Python names (`RuntimeError`, `LookupError`). A `DispatchError` is spelled
-   `ValueError`, the reference's type for it. An empty message is spelled as
-   the type name, as `str(exc) or type(exc).__name__` does.
+4. **Exceptions are named by one explicit mapping, not by Python classes.**
+   Wherever the reference records `type(error).__name__` and `repr(error)`
+   or `str(error)` (the Inline Dispatch, Local and Absurd `fail`, the ZeroMQ
+   client's `_classified_failure` and server error kinds, the Engine's
+   firing-failure text), the port asks one total function,
+   `Petrus.Motus.PythonException.pythonException`. `DispatchError` is the
+   reference's `ValueError`. The built-in classes the port raises
+   (`ValueError`, `RuntimeError`, `LookupError`, `TypeError`,
+   `TimeoutError`, `OSError`, `CancelledError`) are declared there under
+   those names. A SQLite failure is `OperationalError`, the class `sqlite3`
+   raises for the busy, locked and I/O failures a custody store meets. The
+   ZeroMQ and Absurd packages add their own (`ConnectionError`,
+   `OperationUncertain`, `_ProtocolError`, `ZMQError`; `AbsurdError` is
+   `RuntimeError`).
+
+   The remaining divergence: any other Haskell exception, such as one an
+   Activity throws, is named after its Haskell type constructor, since it
+   has no Python class. `repr` assumes the exception was raised with its
+   message as the one argument. An empty message is spelled `Name()`, and
+   the Inline error falls back to the class name, as
+   `str(exc) or type(exc).__name__` does. The Local and ZeroMQ spellings
+   are compared with the reference's in the interop suites: a refused
+   heartbeat's `ValueError` failed through Local, and ten exceptions through
+   `_classified_failure`. The Absurd interop compares the `failure_reason`
+   rows of a reference and a Haskell exception failure.
 5. **No dataclass reflection.** The adapters are closures. They have no
    `repr`, no `==`, and no field list. Their registries are immutable maps,
    which is the property the reference's frozen dataclass guards. See
@@ -72,13 +90,11 @@ surface:
     omitted `details` argument (keep the stored details) from
     `details=None` (store JSON null) with a sentinel. Here `Nothing` is
     omitted and `Just Null` is null.
-12. **An exception failure is spelled by the Haskell exception.** The
+12. **An exception failure is spelled through the mapping in (4).** The
     reference's `fail(attempt, exc)` stores the error as `repr(exc)` and the
-    kind as `type(exc).__name__`. Here an `AttemptFailure`'s
-    `FailureException` is spelled `TypeName('message')` (Python `repr`
-    quoting) after the Haskell exception's type name and `displayException`.
-    An exception declared as `ValueError` therefore stores exactly the
-    reference's `ValueError('…')`.
+    kind as `type(exc).__name__`. A `FailureException` stores
+    `pythonRepr` and the class name of `pythonException`, so a
+    `DispatchError` stores exactly the reference's `ValueError('…')`.
 13. **The generated claimant's UUID** takes 16 bytes from the operating
     system's random source through `getentropy`, which `os.urandom` also
     uses, and formats a version-4 UUID as `str(uuid.uuid4())` does.
@@ -195,8 +211,7 @@ Interop checks this both ways. What differs is the host-language surface:
     The program name in help and usage text is the one the executable
     passes to `workerMain`. The byte-for-byte comparisons pass the
     reference's `python -m petrus.motus.worker`.
-23. **Exception type names are Haskell's.** A failure the Worker hands to
-    custody (`FailureException`) is spelled after the Haskell exception's
-    type name, as in (12). The Worker's own refusals (`ValueError`,
-    `RuntimeError`, `LookupError`) are declared under the reference's names,
-    so they read identically.
+23. **Exception names come from the mapping in (4).** A failure the Worker
+    hands to custody (`FailureException`) is spelled as in (12). The
+    Worker's own refusals (`ValueError`, `RuntimeError`, `LookupError`) are
+    the mapping's built-in classes, so they read identically.

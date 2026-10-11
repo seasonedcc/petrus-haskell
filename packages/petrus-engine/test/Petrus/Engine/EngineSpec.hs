@@ -566,6 +566,19 @@ neutralSurfaceContinued = describe "TestNeutralEngineSurfaceContinued" $ do
     Store.records recorded `shouldReturn` before
     Engine.close created
 
+  it "a joined-transaction store without a commit point is refused (beyond upstream)" $ do
+    tx <- newTransactionalHistory
+    port <- inlineActivity
+    released <- newIORef (0 :: Int)
+    openEngine CreateInstance activityNet "joined" tx.store port Engine.defaultEngineOptions (txResources tx (modifyIORef' released (+ 1))) {commit = Nothing}
+      `shouldThrow` valueError "a joined-transaction History store requires the provider's commit point"
+    -- The refusal is a construction failure: the provider's resources are
+    -- rolled back and released, and nothing was appended.
+    readIORef tx.rollbacks `shouldReturn` 1
+    readIORef released `shouldReturn` 1
+    txPending tx `shouldReturn` []
+    txCommitted tx `shouldReturn` []
+
   it "activity policy resolution belongs to engine and snapshots declarations" $ do
     -- Declarations are immutable values here: the reference's
     -- @declarations.clear()@ after construction has no Haskell spelling.

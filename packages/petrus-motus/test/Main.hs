@@ -20,6 +20,7 @@ import Petrus.Motus.Dispatch.Inline
 import Petrus.Motus.Dispatch.LocalInteropSpec qualified as LocalInteropSpec
 import Petrus.Motus.Dispatch.LocalSpec qualified as LocalSpec
 import Petrus.Motus.AsyncWorkerSpec qualified as AsyncWorkerSpec
+import Petrus.Motus.BoundarySpec qualified as BoundarySpec
 import Petrus.Motus.Worker.Cli (noPlugins, workerMain)
 import Petrus.Motus.WorkerCliSpec qualified as WorkerCliSpec
 import Petrus.Motus.WorkerSpec qualified as WorkerSpec
@@ -80,6 +81,7 @@ suite = hspec $ do
   describe "Worker CLI" WorkerCliSpec.spec
   describe "test_local_dispatch.py" LocalSpec.spec
   LocalInteropSpec.spec
+  BoundarySpec.spec
   describe "TestInMemoryDispatch" $ do
     it "dispatch acknowledges and the invocation waits in the pool" $ do
       pool <- newInMemoryDispatch

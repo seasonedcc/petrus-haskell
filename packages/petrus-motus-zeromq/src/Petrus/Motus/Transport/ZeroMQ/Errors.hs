@@ -6,27 +6,27 @@ module Petrus.Motus.Transport.ZeroMQ.Errors
   , RuntimeError (..)
   , TypeError (..)
   , TimeoutError (..)
+  , OSError (..)
   , ConnectionError (..)
   , connectionMessage
   , ProtocolError (..)
+  , zeromqPythonException
   ) where
 
-import Control.Exception (Exception (..))
+import Control.Exception (Exception (..), SomeException)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Motus.Worker (RuntimeError (..), ValueError (..))
-
--- | The reference's @TypeError@ (only one is observable on the wire: a
--- failure whose @retryable@ is not a boolean, which the reference's server
--- answers as a @service@ error).
-newtype TypeError = TypeError Text deriving stock (Eq, Show)
-
-instance Exception TypeError where displayException (TypeError m) = T.unpack m
-
--- | The reference's @TimeoutError@ (a server that did not become ready).
-newtype TimeoutError = TimeoutError Text deriving stock (Eq, Show)
-
-instance Exception TimeoutError where displayException (TimeoutError m) = T.unpack m
+import Petrus.Motus.PythonException
+  ( Namer (..)
+  , OSError (..)
+  , PythonException (..)
+  , RuntimeError (..)
+  , TimeoutError (..)
+  , TypeError (..)
+  , ValueError (..)
+  , pythonExceptionWith
+  )
+import Petrus.Motus.Transport.ZeroMQ.Native (ZmqError (..))
 
 -- | The reference's @ConnectionError@ and its @OperationUncertain@
 -- subclass: a custody operation was sent but its definitive response was
@@ -51,3 +51,17 @@ connectionMessage = \case
 newtype ProtocolError = ProtocolError Text deriving stock (Eq, Show)
 
 instance Exception ProtocolError where displayException (ProtocolError m) = T.unpack m
+
+-- | The Python class and message of any exception the transport sees: its
+-- own exceptions by the reference's classes (@ConnectionError@,
+-- @OperationUncertain@, @_ProtocolError@, @zmq.ZMQError@), then the Motus
+-- mapping ('pythonExceptionWith').
+zeromqPythonException :: SomeException -> PythonException
+zeromqPythonException =
+  pythonExceptionWith
+    [ Namer $ \case
+        NotAcknowledged m -> PythonException "ConnectionError" m
+        OperationUncertain m -> PythonException "OperationUncertain" m
+    , Namer (\(ProtocolError m) -> PythonException "_ProtocolError" m)
+    , Namer (\(ZmqError _ _ m) -> PythonException "ZMQError" m)
+    ]

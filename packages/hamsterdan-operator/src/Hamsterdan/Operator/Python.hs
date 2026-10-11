@@ -34,7 +34,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Export.Python (PV (..), PyError (..), hashCheck, loadsText, loadsValue, pyEq, toJson, typeName)
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.PyText qualified as Py
 import Hamsterdan.Operator.FastJson (fastLoads)
 import Hamsterdan.PyLiteral (strRepr)
 import Numeric (showHex)

@@ -1071,7 +1071,9 @@ The 11 journeys in `tests/integration/host/test_readiness_scenarios.py` are:
   - the ast-grep rules (`audit-rules/reflective-contract-access.yml` and the 7
     `quality/hamsterdan2` rules).
 
-  Package boundaries and module visibility enforce the architecture rules.
+  `scripts/lint-hamsterdan-architecture` (run by `scripts/check-all`)
+  enforces the architecture rules that carry over on the Haskell import
+  graph, at module and package level.
 - **Ops tests stay with the Python and TypeScript tooling:** launcher, orb
   setup, deployment, relay.
 - **Best cross-implementation corpus:**
@@ -1297,7 +1299,9 @@ deterministic. Only tier C touches real GitHub.
 ## 6. Port decomposition and sequencing
 
 The packages follow the upstream architecture so the import rules become
-package boundaries. Names follow the existing `petrus-*` convention.
+package boundaries (checked by `scripts/lint-hamsterdan-architecture`; the
+CPython `str` and `sqlite3` semantics several siblings share live in
+`hamsterdan-contracts`, as `Hamsterdan.PyText` and `Hamsterdan.Sqlite`). Names follow the existing `petrus-*` convention.
 
 | # | Package | Ports | Petrus components needed first | Can start |
 | --- | --- | --- | --- | --- |
@@ -1341,25 +1345,29 @@ schemas, environment variables, CLI JSON):
 
 ## 7. Interop checklist
 
-- [ ] Pydantic `dump_python(mode="json")` field order for all 106 models; `kind`
+Every item below is covered by a component marked at parity in
+[PARITY.md](../PARITY.md); the evidence is in that row and its package
+ledger. The audit of record is [docs/audit/hamsterdan.md](audit/hamsterdan.md).
+
+- [x] Pydantic `dump_python(mode="json")` field order for all 106 models; `kind`
       last in typed facts; tuple→list; defaults always present.
-- [ ] Python `repr`/`literal_eval` subset for dashboard entries and digests.
-- [ ] CPython `json.dumps` variants used for digests (`sort_keys`, compact
+- [x] Python `repr`/`literal_eval` subset for dashboard entries and digests.
+- [x] CPython `json.dumps` variants used for digests (`sort_keys`, compact
       separators, `ensure_ascii` default; `allow_nan=False` on requests).
-- [ ] `$variant` result encoding; refusal of subclasses and unknown variants.
-- [ ] Operation-identity grammars and sha256 fallbacks.
-- [ ] Delivery identity formats (§1.4).
-- [ ] Timer instant format `%Y-%m-%dT%H:%M:%S.%fZ`.
-- [ ] Engine selection order (`choose_throughput`, forced ingress folds).
-- [ ] LocalDispatch schema v3 bytes; JSONL History schema 5.
-- [ ] Webhook 202 receipt shape; 400 `{"detail"}`; header and body rules.
-- [ ] Every REST path, query string and JSON body in §1.6, including
+- [x] `$variant` result encoding; refusal of subclasses and unknown variants.
+- [x] Operation-identity grammars and sha256 fallbacks.
+- [x] Delivery identity formats (§1.4).
+- [x] Timer instant format `%Y-%m-%dT%H:%M:%S.%fZ`.
+- [x] Engine selection order (`choose_throughput`, forced ingress folds).
+- [x] LocalDispatch schema v3 bytes; JSONL History schema 5.
+- [x] Webhook 202 receipt shape; 400 `{"detail"}`; header and body rules.
+- [x] Every REST path, query string and JSON body in §1.6, including
       `per_page` values and the compact JSON encoding.
-- [ ] Comment markers, bodies, legacy-compatible bodies on lookup.
-- [ ] Git publication: tree equality, trailers, author, parents shape,
+- [x] Comment markers, bodies, legacy-compatible bodies on lookup.
+- [x] Git publication: tree equality, trailers, author, parents shape,
       `clientMutationId` digest.
-- [ ] `workspace_archive` bytes; `ResolutionSnapshot.to_data()` JSON.
-- [ ] Environment variable names, retired-variable refusal, exit code 2 on
+- [x] `workspace_archive` bytes; `ResolutionSnapshot.to_data()` JSON.
+- [x] Environment variable names, retired-variable refusal, exit code 2 on
       configuration errors; CLI JSON outputs.
 
 ## 8. Open questions

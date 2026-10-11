@@ -10,6 +10,14 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
   `scripts/cv5-lifecycle-demo.py`;
 - outcome categories are those of [fabric.md §12](fabric.md).
 
+A check cites every section it verifies, so each normative section of
+processes.md (§1 to §16) is cited by at least one check; §17 lists
+non-contract details. The §16 versioning rules are
+checked by P-003 and P-044 (payload and SpawnSpec version other than 1
+refused), P-049 (SpawnOutcome version 1), P-061 (lifecycle schema version 999
+refused) and P-063 (lifecycle schema version 1 recorded), and P-006, P-007, P-010, P-047, P-048 and
+P-051 (the fixed kinds, prefixes and Activity name).
+
 ## A Call payloads
 
 - **P-001** `unit` §3.1. `CallRequest("call-1", "answer", {"nested":[1]})`
@@ -18,7 +26,7 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
   *(test_processes::test_call_values_are_exact_detached_and_provider_neutral)*
 - **P-002** `unit` §3.1. `input` is detached and immutable, and a non-object
   `input` is refused. *(test_processes::test_call_values_are_exact…)*
-- **P-003** `unit` §1, §3. Request decoding is refused (invalid) for:
+- **P-003** `unit` §1, §3, §16. Request decoding is refused (invalid) for:
   - an extra member (`"provider": "claude"`);
   - a missing member;
   - `version` of 2, `1.0`, or `true`;
@@ -33,13 +41,13 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
   emits it. `CallError("call-1","refused","no",{"retry":false})` round-trips.
   An empty or non-string `code` or `message` is refused.
   *(test_processes::test_call_values_are_exact…; refusals derived)*
-- **P-006** `unit` §3. The kind strings are exactly `process.call.request`,
+- **P-006** `unit` §3, §16. The kind strings are exactly `process.call.request`,
   `process.call.result`, and `process.call.error`. Each decoder refuses the
   other kinds. *(derived)*
 
 ## B Call envelopes and identities
 
-- **P-007** `unit` §4.1. The default request delivery id is
+- **P-007** `unit` §4.1, §16. The default request delivery id is
   `process-call-v1-request-` followed by the SHA-256 hex of `call_id`:
   - `call-1` gives
     `process-call-v1-request-5d7963c4f471e142f5a72214a9666fb164718f9ba1066a7862ac1c5041887940`;
@@ -53,7 +61,7 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
 - **P-009** `unit` §4.1. The §8 request envelope has digest
   `e838ab15859a2bcadbb3d2c17fe2fcf8a7b0a5e62a0dcf3b8e2b969b1120990e`.
   *(derived)*
-- **P-010** `unit` §4.2. The default reply delivery id prefixes the caller
+- **P-010** `unit` §4.2, §16. The default reply delivery id prefixes the caller
   with its UTF-8 byte length as a big-endian u32:
   - caller `caller` with call `call-1` gives
     `process-call-v1-reply-cc2a24e1ad965ab6d3ed917d5d448e43f5246556a710a74a57ee205ade2e2b6c`;
@@ -134,11 +142,11 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
 - **P-033** `engine` §6.1, §7. A reply for an unrelated `call_id`, delivered
   while the reply registration is armed, is accepted, and the caller stays
   AWAITING. *(demo "unrelated correlation: parent=awaiting")*
-- **P-034** `engine` §6. A correlated result completes both caller and
+- **P-034** `engine` §6, §2. A correlated result completes both caller and
   callee. *(demo "correlated result: parent=completed child=completed")*
 - **P-035** `engine` §6, §7. A correlated error completes the caller with
   outcome `error`. *(demo "correlated error: parent=completed outcome=error")*
-- **P-036** `engine` §6.2. Reopening both Engines after completion appends 0
+- **P-036** `engine` §6.2, §2. Reopening both Engines after completion appends 0
   records and dispatches 0 Activities. *(demo "replay: parent appends=0 dispatches=0; child appends=0 dispatches=0")*
 - **P-037** `engine` §7. A reply delivered to a reply source with no armed
   registration is refused by the caller's door, stays pending, and blocks the
@@ -165,7 +173,7 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
   *(test_processes::test_spawn_spec_is_exact…)*
 - **P-043** `unit` §9. A reply route owned by someone other than the parent
   is refused ("belong to the parent"). *(test_processes::test_spawn_spec_is_exact…)*
-- **P-044** `unit` §9. A non-object `capabilities` or `config` is refused,
+- **P-044** `unit` §9, §16. A non-object `capabilities` or `config` is refused,
   and so is a `version` that is not the integer 1. *(derived)*
 - **P-045** `unit` §9, §15. The §15 spec has canonical bytes
   `{"capabilities":{"protocol":"call-v1"},"config":{"role":"agent"},"parent":"parent","process_kind":"analysis-agent","reply_route":{"instance_id":"parent","source":"replies"},"source":"calls","spawn_id":"spawn-1","version":1}`
@@ -179,16 +187,16 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
     `process-v1-46c4213496ebb26fcfad46ad7d181d60377de58df89d012d08235b2c94e6df64`.
 
   *(derived)*
-- **P-047** `unit` §10. The child identity:
+- **P-047** `unit` §10, §16. The child identity:
   - does not change when `process_kind` changes;
   - changes when `parent` or `spawn_id` changes;
   - starts with `process-v1-` and is 75 characters long.
 
   *(test_processes::test_child_identity_is_stable_parent_scoped_and_not_spec_scoped)*
-- **P-048** `unit` §11.1. `spawn_idempotency("parent","spawn-1")` is
+- **P-048** `unit` §11.1, §16. `spawn_idempotency("parent","spawn-1")` is
   `process.spawn:process-v1-d2404af783c2bf50f6456e89c63e58067a6205fb5e23d3de79a411921c64ecad`.
   *(derived)*
-- **P-049** `unit` §11.3. SpawnOutcome:
+- **P-049** `unit` §11.3, §16. SpawnOutcome:
   - round-trips;
   - refuses an extra member (`"credential"`) as "exact version-1";
   - refuses a non-boolean `prior_claim`;
@@ -204,7 +212,7 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
 
 ## G The `process.spawn` Activity
 
-- **P-051** `unit` §11.2. An invocation with an activity name other than
+- **P-051** `unit` §11.2, §16. An invocation with an activity name other than
   `process.spawn` is refused ("only implements"). *(test_processes::test_spawn_activity_refuses_wrong_activity_idempotency_or_registry_identity)*
 - **P-052** `unit` §11.2. A wrong `idempotency` is refused.
   *(test_processes::test_spawn_activity_refuses_wrong…)*
@@ -238,12 +246,12 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
 - **P-060** `db` §12.2. A pre-existing unversioned
   `impetus_lifecycle.spawns (unknown text)` is refused (schema-refused).
   *(test_processes::test_lifecycle_schema_is_mapping_only…)*
-- **P-061** `db` §12.2. `schema_metadata('lifecycle').version = 999` is refused
+- **P-061** `db` §12.2, §16. `schema_metadata('lifecycle').version = 999` is refused
   (schema-refused, reporting 999). *(test_processes::test_lifecycle_schema_is_mapping_only…)*
 - **P-062** `db` §12.2. Provisioning in a non-autocommit transaction followed
   by a rollback leaves no `impetus_lifecycle` namespace.
   *(test_processes::test_lifecycle_schema_provisioning_does_not_commit_the_callers_transaction)*
-- **P-063** `db` §12.2. Provisioning is idempotent, and `schema_metadata`
+- **P-063** `db` §12.2, §16. Provisioning is idempotent, and `schema_metadata`
   contains exactly `('lifecycle', 1)`. *(derived)*
 - **P-064** `db` §12.3. Constructing a registry on a non-autocommit
   connection is refused. *(test_processes::test_postgres_registry_requires_autocommit_and_authentication)*
@@ -279,7 +287,7 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
 
 ## I Provisioner postconditions
 
-- **P-073** `db` §13.1–13.2. After a spawn with a reference-profile
+- **P-073** `db` §13.1, §13.2. After a spawn with a reference-profile
   provisioner:
   - the child is registered;
   - `(child, endpoint.source)` is exposed, and the parent is granted on it;
@@ -295,7 +303,7 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
 
 ## J Spawn and net Instances
 
-- **P-076** `engine` §11.3, §14. After a successful spawn and before any child
+- **P-076** `engine` §11.3, §14, §2. After a successful spawn and before any child
   host opens, the child's History is empty (size 0).
   *(demo "child history before host open: 0")*
 - **P-077** `engine` §14.1. When the first spawn completion is lost and the
@@ -305,7 +313,7 @@ The format matches [fabric-conformance.md](fabric-conformance.md):
   - the outcome recorded in the parent's History has `prior_claim = true`.
 
   *(demo "spawn retry: claims=1 ensure_calls=2 prior_claim=true")*
-- **P-078** `engine` §14. Spawn followed by call: a call to `outcome.child`
+- **P-078** `engine` §14, §2. Spawn followed by call: a call to `outcome.child`
   on `outcome.endpoint.source` is pending while the child is offline. Once a
   host opens the child Engine with Instance identity = child identity, the
   call completes. *(demo)*

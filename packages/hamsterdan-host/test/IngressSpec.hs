@@ -22,7 +22,7 @@ import Data.Text qualified as T
 import Database.SQLite3 qualified as S
 import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.GitHub.Models
-import Hamsterdan.GitHub.Sqlite (SQLData (..))
+import Hamsterdan.Sqlite (SQLData (..))
 import Hamsterdan.Host.Python (RuntimeError (..), dumpsSortedText, sha256Hex, dumpsSorted)
 import Hamsterdan.Host.V5.Claim
 import Hamsterdan.Host.V5.Ingress qualified as I
