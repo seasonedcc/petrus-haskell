@@ -17,17 +17,20 @@ module Petrus.Viewer.Server
   , runServer
   , viewerApp
   , collabApp
+  , Sockets
+  , newSockets
   , runCollabServer
   , bindListeners
-  , wsOptions
   ) where
 
 import Control.Concurrent.Async (mapConcurrently_, withAsync)
 import Control.Exception (IOException, bracket, bracketOnError, throwIO, try)
 import Control.Concurrent (forkOnWithUnmask, getNumCapabilities, threadDelay)
 import Control.Monad (forM, forever, void)
-import Data.IORef (atomicModifyIORef', newIORef)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import Data.Map.Strict qualified as Map
 import Data.ByteString qualified as B
+import Data.ByteString.Char8 qualified as BC
 import Data.List (nub)
 import Data.Text (Text)
 import Network.HTTP.Client qualified as HC
@@ -35,13 +38,13 @@ import Network.HTTP.Types qualified as H
 import Network.Socket qualified as S
 import Network.Wai qualified as W
 import Network.Wai.Handler.Warp qualified as Warp
-import Network.Wai.Handler.WebSockets qualified as WaiWS
-import Network.WebSockets qualified as WS
+import Data.CaseInsensitive qualified as CI
 import Petrus.Viewer.Endpoints
 import Petrus.Viewer.History.Observation
 import Petrus.Viewer.Log
 import Petrus.Viewer.Proxy
 import Petrus.Viewer.Relay
+import Petrus.Viewer.Relay.Handshake (upgradeResponse)
 import Petrus.Viewer.Static
 import Petrus.Viewer.Http (lbsResponse)
 import Petrus.Viewer.UrlCache (newFetchManager)
@@ -82,14 +85,6 @@ data ServerHandle = ServerHandle
   , handleCollabRelay :: Relay
   , handleOpenFile :: OpenFileState
   }
-
--- | The @ws@ defaults: 100 MiB messages, no compression.
-wsOptions :: WS.ConnectionOptions
-wsOptions =
-  WS.defaultConnectionOptions
-    { WS.connectionFramePayloadSizeLimit = WS.SizeLimit (100 * 1024 * 1024)
-    , WS.connectionMessageDataSizeLimit = WS.SizeLimit (100 * 1024 * 1024)
-    }
 
 -- | Bind the listening sockets: every address of the host on the first
 -- free port from the requested one (Vite moves on when a port is taken).
@@ -150,18 +145,52 @@ bindListeners host port0 strict
         S.listen s 2048
         pure s
 
+-- | Whether Node would emit @upgrade@ for the request rather than
+-- @request@: an @Upgrade@ header and @upgrade@ among the @Connection@
+-- tokens (whatever the protocol; the relay's handshake checks the rest).
 isWsUpgrade :: W.Request -> Bool
-isWsUpgrade = WaiWS.isWebSocketsReq
+isWsUpgrade req =
+  any ((== "upgrade") . fst) hs
+    && or [CI.mk (BC.strip t) == ("upgrade" :: CI.CI B.ByteString) | (k, v) <- hs, k == "connection", t <- BC.split ',' v]
+  where
+    hs = W.requestHeaders req
+
+-- | The accepted sockets by peer address, so that a WebSocket upgrade can
+-- hand its socket to a relay loop. Filled by the accept function of the
+-- Warp settings ('newWarpSettings'), emptied by its close hook (which runs
+-- while the socket is still open, so a peer address names one socket).
+newtype Sockets = Sockets (IORef (Map.Map S.SockAddr S.Socket))
+
+newSockets :: IO Sockets
+newSockets = Sockets <$> newIORef Map.empty
+
+-- | Serve a WebSocket upgrade with a relay: answer the handshake as @ws@
+-- does (the 101, or the 400/405 that refuses it), then hand the socket
+-- to the relay. The client may not send frames before it has the 101
+-- (RFC 6455, 4.1), so Warp has buffered nothing past the request.
+relayApp :: Sockets -> Relay -> W.Application
+relayApp (Sockets ref) relay req respond = do
+  sock <- Map.lookup (W.remoteHost req) <$> readIORef ref
+  case sock of
+    Just s ->
+      respond $
+        W.responseRaw
+          ( \_ sink -> case upgradeResponse (W.requestMethod req) (W.requestHeaders req) of
+              Left refusal -> sink refusal
+              Right accepted -> sink accepted >> relaySocket relay s
+          )
+          (lbsResponse H.status500 [("Content-Type", "text/plain")] "WebSocket relay: raw responses unsupported")
+    Nothing -> respond (lbsResponse H.status500 [("Content-Type", "text/plain")] "WebSocket relay: unknown connection")
 
 -- | The full viewer backend.
-viewerApp :: ServerConfig -> HC.Manager -> Relay -> Relay -> OpenFileState -> Maybe ObservationSources -> W.Application
-viewerApp cfg mgr agent collab openState observation req respond
+viewerApp :: ServerConfig -> HC.Manager -> Sockets -> Relay -> Relay -> OpenFileState -> Maybe ObservationSources -> W.Application
+viewerApp cfg mgr sockets agent collab openState observation req respond
   | isWsUpgrade req =
       if url == "/ws/agent"
-        then WaiWS.websocketsOr wsOptions (wsApp agent) notFound req respond
+        then relayApp sockets agent req respond
         else
           if "/collab-ws" `B.isPrefixOf` url
-            then WaiWS.websocketsOr wsOptions (wsApp collab) notFound req respond
+            then relayApp sockets collab req respond
             else notFound req respond
   | otherwise = endpointsMiddleware openState mgr rest req respond
   where
@@ -185,43 +214,52 @@ viewerApp cfg mgr agent collab openState observation req respond
 
 -- | @server/collab.mjs@: a collaboration relay on every path; plain HTTP
 -- requests get @426 Upgrade Required@.
-collabApp :: Relay -> W.Application
-collabApp relay =
-  WaiWS.websocketsOr wsOptions (wsApp relay) $ \_ k ->
-    k (lbsResponse H.status426 [("Content-Type", "text/plain")] "Upgrade Required")
+collabApp :: Sockets -> Relay -> W.Application
+collabApp sockets relay req k
+  | isWsUpgrade req = relayApp sockets relay req k
+  | otherwise = k (lbsResponse H.status426 [("Content-Type", "text/plain")] "Upgrade Required")
 
 -- | Warp settings. Each connection's thread is pinned to a capability,
 -- round robin: a request then runs start to finish on one capability (with
 -- that capability's I/O manager), instead of being woken on whichever
 -- capability is free, and connections still spread over all of them.
-newWarpSettings :: IO Warp.Settings
-newWarpSettings = do
+--
+-- Accepted sockets are recorded in 'Sockets' until Warp is done with them.
+newWarpSettings :: Sockets -> IO Warp.Settings
+newWarpSettings (Sockets ref) = do
   counter <- newIORef (0 :: Int)
   let spread :: ((forall a. IO a -> IO a) -> IO ()) -> IO ()
       spread io = do
         caps <- getNumCapabilities
         n <- atomicModifyIORef' counter (\c -> (c + 1, c))
         void (forkOnWithUnmask (n `mod` caps) io)
-  pure . Warp.setFork spread . Warp.setOnException (\_ _ -> pure ()) $
+      accept listener = do
+        (s, addr) <- S.accept listener
+        atomicModifyIORef' ref (\m -> (Map.insert addr s m, ()))
+        pure (s, addr)
+      forget addr = atomicModifyIORef' ref (\m -> (Map.delete addr m, ()))
+  pure . Warp.setFork spread . Warp.setAccept accept . Warp.setOnClose forget . Warp.setOnException (\_ _ -> pure ()) $
     Warp.setServerName "" Warp.defaultSettings
 
 -- | Start the server, run the action with it, stop it afterwards.
 withServer :: ServerConfig -> (ServerHandle -> IO a) -> IO a
 withServer cfg action = do
   mgr <- newFetchManager
-  logger <- if serverRelayPerf cfg then Just <$> newAsyncLogger 0 stdout else pure Nothing
-  agent <- newRelay AgentRelay logger
-  collab <- newRelay CollabRelay Nothing
+  -- the log writer runs next to the collaboration relay, away from the
+  -- agent relay's loop (capability 0)
+  logger <- if serverRelayPerf cfg then Just <$> newAsyncLogger 1 stdout else pure Nothing
   openState <- newOpenFileState (serverOpenFile cfg) (serverSourceUrl cfg)
   observation <- case serverObservation cfg of
     [] -> pure Nothing
     urls -> Just <$> newObservationSources (nub urls)
-  bracket (bindListeners (serverHost cfg) (serverPort cfg) (serverStrictPort cfg)) (mapM_ S.close . snd) $ \(port, socks) -> do
-    let app = viewerApp cfg mgr agent collab openState observation
-    settings <- newWarpSettings
-    let serve s = Warp.runSettingsSocket (Warp.setPort port settings) s app
-    withAsync (mapConcurrently_ serve socks) $ \_ ->
-      action (ServerHandle port agent collab openState)
+  sockets <- newSockets
+  withRelay AgentRelay logger $ \agent -> withRelay CollabRelay Nothing $ \collab ->
+    bracket (bindListeners (serverHost cfg) (serverPort cfg) (serverStrictPort cfg)) (mapM_ S.close . snd) $ \(port, socks) -> do
+      let app = viewerApp cfg mgr sockets agent collab openState observation
+      settings <- newWarpSettings sockets
+      let serve s = Warp.runSettingsSocket (Warp.setPort port settings) s app
+      withAsync (mapConcurrently_ serve socks) $ \_ ->
+        action (ServerHandle port agent collab openState)
 
 -- | Serve until interrupted; @onReady@ runs once the sockets listen.
 runServer :: ServerConfig -> (Int -> IO ()) -> IO ()
@@ -233,9 +271,10 @@ runServer cfg onReady = withServer cfg $ \h -> do
 -- every interface like @new WebSocketServer({ port })@.
 runCollabServer :: Int -> IO ()
 runCollabServer port = do
-  relay <- newRelay CollabRelay Nothing
-  bracket (bindListeners "::" port True) (mapM_ S.close . snd) $ \(_, socks) -> do
-    hSetBuffering stdout LineBuffering
-    putStrLn ("Collab relay listening on ws://localhost:" <> show port)
-    settings <- newWarpSettings
-    mapConcurrently_ (\s -> Warp.runSettingsSocket settings s (collabApp relay)) socks
+  sockets <- newSockets
+  withRelay CollabRelay Nothing $ \relay ->
+    bracket (bindListeners "::" port True) (mapM_ S.close . snd) $ \(_, socks) -> do
+      hSetBuffering stdout LineBuffering
+      putStrLn ("Collab relay listening on ws://localhost:" <> show port)
+      settings <- newWarpSettings sockets
+      mapConcurrently_ (\s -> Warp.runSettingsSocket settings s (collabApp sockets relay)) socks

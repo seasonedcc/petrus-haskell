@@ -42,6 +42,8 @@ library
                     Petrus.Viewer.Http
                     Petrus.Viewer.FileIO
                     Petrus.Viewer.Relay
+                    Petrus.Viewer.Relay.Frame
+                    Petrus.Viewer.Relay.Handshake
                     Petrus.Viewer.Endpoints
                     Petrus.Viewer.Static
                     Petrus.Viewer.Proxy
@@ -56,6 +58,7 @@ library
                     Petrus.Viewer.WsUrl
                     Petrus.Viewer.Log
   build-depends:    base >=4.18 && <5
+                  , SHA >=1.6
                   , async >=2.2
                   , base64-bytestring >=1.2
                   , bytestring >=0.11.2
@@ -74,11 +77,11 @@ library
                   , time >=1.12
                   , unix >=2.8
                   , wai >=3.2
-                  , wai-websockets >=3.0
                   , warp >=3.3
                   , websockets >=0.12.7
   ghc-options:      -O2
   c-sources:        cbits/json_escape.c
+                    cbits/relay_io.c
   cc-options:       -O3 -Wall
 
 executable petrus

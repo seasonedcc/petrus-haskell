@@ -83,7 +83,17 @@ function startPetrus(observationUrl) {
 
 async function connectMcp(extraEnv) {
   const client = new Client({ name: "petrus-live-test", version: "1.0.0" });
-  const env = { ...process.env, PETRUS_AGENT_URL: `ws://localhost:${port}/ws/agent`, PETRUS_PERF: "0", ...extraEnv };
+  // The browser's canvas.screenshot (html-to-image) fetches the Monaco
+  // stylesheet from cdn.jsdelivr.net, which can take longer than the
+  // default 5 s request timeout on a slow network; the relay forwards the
+  // response as soon as the browser sends it (relay-forward-response).
+  const env = {
+    ...process.env,
+    PETRUS_AGENT_URL: `ws://localhost:${port}/ws/agent`,
+    PETRUS_PERF: "0",
+    PETRUS_MCP_REQUEST_TIMEOUT_MS: "30000",
+    ...extraEnv,
+  };
   delete env.PETRUS_MCP_DEV_COMMAND;
   if (!extraEnv.PETRUS_HISTORY_URL) delete env.PETRUS_HISTORY_URL;
   await client.connect(new StdioClientTransport({ command: PETRUS_MCP, args: [], env, stderr: "ignore" }));

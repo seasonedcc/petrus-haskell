@@ -22,7 +22,7 @@
  *   --keep              keep the scratch directory
  *
  * Suites: relay, endpoints, url-cache, cli, mcp, mcp-haskell-relay, collab,
- * differential, playwright, live (default: all).
+ * differential, wire, playwright, live (default: all).
  *
  * Requirements: pnpm install (and pnpm build for the browser suites) in
  * upstream/petrus-viewer; `npx playwright install chromium` for playwright.
@@ -109,6 +109,9 @@ const SUITES = {
   },
   differential: {
     own: ["differential.test.mjs"],
+  },
+  wire: {
+    own: ["ws-wire.test.mjs"],
   },
   playwright: {
     browser: true,
@@ -207,6 +210,7 @@ function main() {
     PETRUS_HS_BIN_DIR: binDir,
     PETRUS_HS_UI_DIR: uiDir,
     PETRUS_HS_VIEWER_DIR: VIEWER,
+    PETRUS_HS_PACKAGE_DIR: PACKAGE,
     PETRUS_HS_SPEC_DIR: path.join(REPO, "upstream/petrus/spec"),
   };
   log(`scratch directory: ${work}`);

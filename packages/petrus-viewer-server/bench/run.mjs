@@ -117,7 +117,7 @@ function rssMiB(pid) {
 }
 
 function runBench(argv) {
-  const out = execFileSync(BENCH, argv, { encoding: "utf8", timeout: 300000 });
+  const out = execFileSync(BENCH, [...argv, "+RTS", "-M2G", "-RTS"], { encoding: "utf8", timeout: 300000 });
   return JSON.parse(out.trim().split("\n").pop());
 }
 
