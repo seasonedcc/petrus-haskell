@@ -29,7 +29,7 @@ module Petrus.Agenticus.Internal.Sqlite
   , pythonSqliteClass
   ) where
 
-import Control.Exception (catch, finally, throwIO)
+import Control.Exception (catch, finally, onException, throwIO)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Database.SQLite3 (Database, SQLData (..), SQLError (..), Statement, StepResult (..))
@@ -41,9 +41,21 @@ import Petrus.Agenticus.Error
 type SqlValue = SQLData
 
 -- | @sqlite3.connect(path, isolation_level=None)@: an autocommit connection;
--- transactions are always explicit.
+-- transactions are always explicit.  Like @sqlite3.connect@, whose
+-- @timeout@ defaults to 5.0 seconds, it waits up to five seconds on a
+-- locked database before failing ('setBusyTimeout' changes that, as
+-- @timeout=@ does).  Without it a reader racing another connection's
+-- checkpoint, or a writer's lock, failed at once with "database is locked"
+-- where the reference waits.
 openDatabase :: FilePath -> IO Database
-openDatabase path = translated (Sql.open (T.pack path))
+openDatabase path = do
+  database <- translated (Sql.open (T.pack path))
+  setBusyTimeout database defaultBusyTimeout `onException` Sql.close database
+  pure database
+
+-- | @sqlite3.connect@'s default @timeout@ (5.0 seconds), in milliseconds.
+defaultBusyTimeout :: Int
+defaultBusyTimeout = 5000
 
 closeDatabase :: Database -> IO ()
 closeDatabase database = translated (Sql.close database)

@@ -77,7 +77,16 @@ corpus and the cross-implementation interop spec pin that (see
 9. **Busy timeout.** The reference calls `sqlite3.connect(timeout=5)`, which
    uses the C `sqlite3_busy_timeout`. direct-sqlite does not expose that, so
    the port runs `PRAGMA busy_timeout = 5000`, which installs the same
-   handler.
+   handler. `openDatabase` itself installs it too, because a bare
+   `sqlite3.connect(path)` waits 5 seconds by default: every connection of
+   `Petrus.Agenticus.Internal.Sqlite` waits on a locked database as the
+   reference's does, and `setBusyTimeout` changes the wait as `timeout=`
+   does (the Codex runtime service's ledger uses 2 seconds, as
+   `_connect_db` does). Before, a connection opened without an explicit
+   timeout failed at once with `database is locked` where the reference
+   waits, which made the Codex interop test that polls the runtime ledger
+   fail on a busy CI runner. `test/Petrus/Agenticus/SqliteSpec.hs` checks
+   both sides under the same lock.
 
 10. **`openSqliteConnectionStorageWith`** is a port-only, additive entry
     point. It runs extra statements, such as `PRAGMA synchronous = OFF`,
