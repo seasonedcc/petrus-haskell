@@ -93,6 +93,8 @@ module Petrus.Impetus.Instance
   , completeDelivery
   , seal
   , wake
+    -- * Identities
+  , module Petrus.Impetus.Instance.Identity
     -- * Firing values
   , module Petrus.Impetus.Instance.Firing
   ) where
@@ -134,6 +136,7 @@ import Petrus.Impetus.HistoryStore (HistoryStore (..), inMemoryHistoryStore)
 import Petrus.Impetus.HistoryStore qualified as Store
 import Petrus.Impetus.Instance.FailureText
 import Petrus.Impetus.Instance.Firing
+import Petrus.Impetus.Instance.Identity
 import Petrus.Impetus.Internal.OMap (OMap)
 import Petrus.Impetus.Internal.OMap qualified as OMap
 import Petrus.Impetus.Internal.Repr
@@ -197,29 +200,24 @@ firingFailureText err = T.take 4096 $ case err of
 -- occurrence. Built through 'acceptedDelivery'; exact redelivery
 -- reconstructs the same value from History.
 data AcceptedDelivery = AcceptedDelivery
-  { instanceId :: Text
+  { instanceId :: InstanceIdentity
   , source :: NetPath
-  , identity :: Text
-  , occurrence :: Int
+  , identity :: DeliveryIdentity
+  , occurrence :: FiringOccurrenceId
   }
   deriving stock (Eq, Show)
 
--- | @AcceptedDelivery(instance, source, identity, occurrence)@ with its field
--- constructors' rules.
+-- | @AcceptedDelivery(instance, source, identity, occurrence)@: the field
+-- constructors run in the reference's order, and the first refusal wins.
 acceptedDelivery :: Text -> NetPath -> Text -> Int -> Either Text AcceptedDelivery
-acceptedDelivery owner path ident o = do
-  when (T.null owner) $
-    Left ("Instance identity must be a non-empty string of the exact built-in type, got " <> pyStr owner)
-  when (T.null ident) $
-    Left ("delivery identity must be a non-empty string of the exact built-in type, got " <> pyStr ident)
-  when (o < 1) $
-    Left ("firing occurrence must be a positive integer of the exact built-in type, got " <> pyInt o)
-  Right (AcceptedDelivery owner path ident o)
+acceptedDelivery owner path ident o =
+  AcceptedDelivery <$> mkInstanceIdentity owner <*> pure path <*> mkDeliveryIdentity ident <*> mkFiringOccurrenceId o
 
 -- | @_canonical_accepted_delivery@: snapshot one carrier through its field
--- constructors (the exact-type check is the type's).
+-- constructors. The fields are already validated newtypes and the
+-- exact-type check is the type's, so every carrier is canonical.
 canonicalAcceptedDelivery :: AcceptedDelivery -> Either Text AcceptedDelivery
-canonicalAcceptedDelivery a = acceptedDelivery a.instanceId a.source a.identity a.occurrence
+canonicalAcceptedDelivery = Right
 
 -- | The delivery door's answer to redelivery after the accepted occurrence
 -- ended: not a firing, and minting one appends nothing.
@@ -646,9 +644,7 @@ validateInitialTokens net p tokens = case lookupPlace p net of
 -- | @Instance(net, ...)@: record the construction batch to a fresh History.
 newInstance :: Net -> InstanceConfig -> IO (Either InstanceError Instance)
 newInstance net cfg = runExceptT $ do
-  ident <- maybe (liftIO uuid7Hex) pure cfg.suppliedIdentity
-  when (T.null ident) $
-    refuse ("Instance identity must be a non-empty string of the exact built-in type, got " <> pyStr ident)
+  ident <- instanceIdentityText <$> (orRefuse . mkInstanceIdentity =<< maybe (liftIO uuid7Hex) pure cfg.suppliedIdentity)
   let logger = instanceLogger net ident cfg.telemetrySink
       at = cfg.constructionInstant
       initial = markingToList cfg.initialMarking
@@ -1015,8 +1011,8 @@ resume net store cfg = runExceptT $ do
                 <> " — a foreign trace"
             )
     _ -> pure ()
-  let ident = created.instanceId
-      logger = instanceLogger net ident cfg.telemetrySink
+  ident <- instanceIdentityText <$> orRefuse (mkInstanceIdentity created.instanceId)
+  let logger = instanceLogger net ident cfg.telemetrySink
   (handlers, impls, completion) <- orRefuse (bindSymbols net cfg)
   lock <- liftIO (newMVar ())
   placeholder <- liftIO (newIORef emptyState)
@@ -2037,29 +2033,32 @@ acceptDelivery inst path tokens ident target at = locked inst $ do
 completeDelivery :: Instance -> AcceptedDelivery -> Maybe Instant -> IO (Either InstanceError FiringOutcome)
 completeDelivery inst carrier at = locked inst $ do
   a <- orRefuse (canonicalAcceptedDelivery carrier)
-  when (a.instanceId /= inst.iIdentity) $
+  let owner = instanceIdentityText a.instanceId
+      ident = deliveryIdentityText a.identity
+      occ = firingOccurrenceIdInt a.occurrence
+  when (owner /= inst.iIdentity) $
     refuse
-      ( "cannot complete delivery for Instance " <> pyStr a.instanceId <> ": this is Instance "
+      ( "cannot complete delivery for Instance " <> pyStr owner <> ": this is Instance "
           <> pyStr inst.iIdentity
       )
   st <- getState inst
-  let recorded = case Map.lookup a.identity st.sAccepted of
+  let recorded = case Map.lookup ident st.sAccepted of
         Just (RExternalEventDelivered r)
-          | r.source == a.source && r.identity == a.identity && r.occurrence == a.occurrence -> Just r
+          | r.source == a.source && r.identity == ident && r.occurrence == occ -> Just r
         _ -> Nothing
-  o <- case IntMap.lookup a.occurrence st.sInFlight of
+  o <- case IntMap.lookup occ st.sInFlight of
     Just o -> pure o
     Nothing
       | isJust recorded ->
           refuse
-            ( "cannot complete accepted delivery " <> pyStr a.identity <> ": firing occurrence " <> pyInt a.occurrence
+            ( "cannot complete accepted delivery " <> pyStr ident <> ": firing occurrence " <> pyInt occ
                 <> " already ended"
             )
       | otherwise ->
-          refuse ("cannot complete delivery " <> pyStr a.identity <> ": no matching accepted unfinished occurrence")
+          refuse ("cannot complete delivery " <> pyStr ident <> ": no matching accepted unfinished occurrence")
   let t = o.binding.transition
       impure = isJust o.invocation || isActivityBound (boundHandler inst t)
-      prefix = "cannot complete delivery " <> pyStr a.identity <> ": firing occurrence " <> pyInt a.occurrence
+      prefix = "cannot complete delivery " <> pyStr ident <> ": firing occurrence " <> pyInt occ
   unless (isSource inst.iNet t) $
     refuse
       ( prefix <> " belongs to " <> (if impure then "an impure non-source" else "a non-source") <> " transition "
@@ -2071,8 +2070,8 @@ completeDelivery inst carrier at = locked inst $ do
       | t == a.source && o.binding.delivered == r.tokens && o.scope == r.scope -> pure ()
     _ ->
       refuse
-        ( "cannot complete delivery " <> pyStr a.identity <> ": acceptance does not match firing occurrence "
-            <> pyInt a.occurrence
+        ( "cannot complete delivery " <> pyStr ident <> ": acceptance does not match firing occurrence "
+            <> pyInt occ
         )
   executeDoor inst o at
 

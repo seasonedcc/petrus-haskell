@@ -420,7 +420,7 @@ completeAccepted e raw = do
     history <- (instanceHistory e.inst).snapshot
     case Seq.viewr history of
       _ Seq.:> RFiringFailed failed
-        | Seq.length history == before + 1 && failed.occurrence == accepted.occurrence -> committed e
+        | Seq.length history == before + 1 && failed.occurrence == I.firingOccurrenceIdInt accepted.occurrence -> committed e
       _ -> pure ()
 
 -- | Open and commit the next lifecycle generation for the name.

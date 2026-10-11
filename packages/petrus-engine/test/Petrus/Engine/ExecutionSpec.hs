@@ -21,7 +21,7 @@ import Petrus.Impetus.Binding
 import Petrus.Impetus.History.Records
 import Petrus.Impetus.HistoryStore (HistoryStore, inMemoryHistoryStore)
 import Petrus.Impetus.HistoryStore qualified as Store
-import Petrus.Impetus.Instance (AcceptedDelivery (..), DeliveryAnswer (..), DeliveryScope (..), FiringOutcome (..), Status (..))
+import Petrus.Impetus.Instance (AcceptedDelivery (..), DeliveryAnswer (..), DeliveryScope (..), FiringOutcome (..), Status (..), deliveryIdentityText, firingOccurrenceIdInt)
 import Petrus.Impetus.Petrinet hiding (token)
 import Petrus.Impetus.TestSupport (mustNet, netOf, np, tok, tokD)
 import Petrus.Json (Json (..))
@@ -307,11 +307,11 @@ spec = do
         DeliveryAccepted carrier -> pure carrier
         other -> expectationFailure ("expected an acceptance, got " <> show other) >> error "unreachable"
       Engine.close first
-      sensor <- scripted [[mkDelivery src [xToken] accepted.identity], [], []]
+      sensor <- scripted [[mkDelivery src [xToken] (deliveryIdentityText accepted.identity)], [], []]
       port <- memory
       resumed <- Engine.load ingressNet "returned-sensor-identity" history port opts {Engine.sensor = Just sensor}
       outcome <- advanceUntilRest resumed
-      occurrences outcome `shouldBe` [accepted.occurrence, 2]
+      occurrences outcome `shouldBe` [firingOccurrenceIdInt accepted.occurrence, 2]
       recorded <- Store.records history
       [event.identity | event <- delivered recorded] `shouldBe` ["event-7"]
 

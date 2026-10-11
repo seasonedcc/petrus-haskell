@@ -501,7 +501,7 @@ completeAccepted c accepted = do
       history <- (instanceHistory c.inst).snapshot
       case Seq.viewr history of
         _ Seq.:> RFiringFailed failed
-          | Seq.length history == before + 1 && failed.occurrence == accepted.occurrence -> committed c
+          | Seq.length history == before + 1 && failed.occurrence == firingOccurrenceIdInt accepted.occurrence -> committed c
         _ -> pure ()
     throwIO e
 

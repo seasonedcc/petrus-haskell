@@ -204,6 +204,14 @@ with no argument or one string (`differential/failure_text_corpus.json`,
     any History record. Upstream checks this only through Engine load.
   - `SchemaSpec`, "rejects an arc between two transitions": upstream tests
     only the place-to-place case.
+- **Named identity values.** `InstanceIdentity`, `DeliveryIdentity` and
+  `FiringOccurrenceId` are newtypes with validating constructors
+  (`Petrus.Impetus.Instance.Identity`; DIVERGENCES item 15).
+  `canonical_net_path` is `canonicalNetPath`. Upstream exercises these only
+  through `AcceptedDelivery` and Instance construction. Five examples check
+  them directly, with the reference's messages:
+  - `InstanceIdentitySpec`, "identity values": 4 examples;
+  - `SchemaSpec`, "canonicalizes an exact protocol spelling": 1 example.
 - **Byte identity.**
   - Every `spec/` fixture is loaded. The valid ones re-serialize
     byte-identically, and the invalid ones are refused with the reference's

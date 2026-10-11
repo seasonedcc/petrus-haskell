@@ -37,6 +37,7 @@ library
                     Petrus.Impetus.Instance
                     Petrus.Impetus.Instance.FailureText
                     Petrus.Impetus.Instance.Firing
+                    Petrus.Impetus.Instance.Identity
                     Petrus.Impetus.Selection
                     Petrus.Impetus.History.Codec
                     Petrus.Impetus.History.Records
@@ -163,6 +164,8 @@ benchmark petrus-impetus-bench
   main-is:          Main.hs
   build-depends:    base
                   , bytestring
+                  , containers
+                  , petrus-activity
                   , petrus-impetus
                   , petrus-json
                   , tasty-bench >=0.3.2

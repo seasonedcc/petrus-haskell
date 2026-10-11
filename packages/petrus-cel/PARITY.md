@@ -11,12 +11,12 @@ To run the tests:
 
     cabal test petrus-cel
 
-This prints 163 examples and 0 failures:
+This prints 164 examples and 0 failures:
 
 | group | examples | what it checks |
 | --- | ---: | --- |
 | differential corpus (`test/Corpus.hs`) | 96 | every case of the three corpora below |
-| `binding/test_cel.py` (`test/Impetus.hs`) | 19 | the upstream tests, one example each |
+| `binding/test_cel.py` (`test/Impetus.hs`) | 20 | the 19 upstream tests, one example each, and `MACROS` read back from the pinned source |
 | PARITY.md CEL tests on Instances (`test/Impetus.hs`) | 5 | the CEL tests of the Instance suite, on real Instances |
 | end-to-end Instances (`test/Impetus.hs`) | 6 | `cel-instance.json`, five case groups and a coverage check |
 | kernel CEL seam on real CEL (`test/KernelSeam.hs`) | 26 | the kernel tests `petrus-impetus` ports on a CEL stub, rerun on `celCompilers` |
@@ -89,6 +89,10 @@ hide a difference between the stub and cel-python:
 
 ## Beyond upstream
 
+- **`MACROS`** (`binding/cel.py`) is named API: `macros` in `Petrus.Cel`,
+  re-exported by `Petrus.Cel.Binding`. `freeVariables` subtracts the
+  variables of exactly these macros. An example reads the set back from the
+  pinned reference's source.
 - **Live round trip** (`test/Live.hs`, selected by `scripts/interop`). Every
   `cel-instance.json` net's definition and document, and the History Haskell
   writes while running it with `celCompilers`, go to the pinned reference's
