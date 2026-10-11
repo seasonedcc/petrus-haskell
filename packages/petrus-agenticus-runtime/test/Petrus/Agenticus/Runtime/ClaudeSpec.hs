@@ -49,9 +49,9 @@ import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), gran
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ProgramOwnership (..))
 import Petrus.Agenticus.Runtime.Claude
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (InstalledComponent (..), ProbeDisposition (..), RuntimeInstallation (..), RuntimeProbeResult (..), mkInstalledComponent, mkRuntimeInstallation)
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..), cleanupVerified)
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..))
 import Petrus.Agenticus.Runtime.PiSupport (Territory (..), newTerritory)
 import Petrus.Agenticus.Runtime.Profiles (claudeA2Local)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
@@ -148,20 +148,20 @@ custody = do
 view :: ConnectionView
 view = ConnectionView (ok (mkConnectionIdentity "claude-connection" "claude" "safe-account" "api-key")) StatusReady 3 4 Nothing
 
-custodyOperations :: Custody -> PiConnectionCustody
+custodyOperations :: Custody -> HostConnectionCustody
 custodyOperations c =
-  PiConnectionCustody
+  HostConnectionCustody
     { materialize = \connection host mode ttl operationId -> do
         unless (connection == "claude-connection" && host == "host-1" && mode == LeaseRead && ttl > 0) $
           throwAgenticus (OtherError "AssertionError") "materialize"
         record "materialize" operationId
         now <- getMonotonicTime
         pure
-          PiMaterialization
+          HostMaterialization
             { fence = AttachmentFence "connection-attachment" "connection-lease" connection host 1 (3 + if c.foreignFence then 1 else 0) 4
             , mode
             , expiresAt = now + ttl
-            , home = PiHome {read = pure authCanary, replace = \_ -> pure ()}
+            , home = ProviderHome {read = pure authCanary, replace = \_ -> pure ()}
             }
     , activate = \_ _ -> throwAgenticus (OtherError "AssertionError") "activate"
     , admitResult = \fence operationId -> do

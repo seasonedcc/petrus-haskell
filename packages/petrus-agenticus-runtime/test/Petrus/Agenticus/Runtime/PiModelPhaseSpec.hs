@@ -45,8 +45,10 @@ import Petrus.Agenticus.Program.AgentNet
   , modelSettlementToData
   , stopReasonText
   )
+import Petrus.Agenticus.Runtime.Custody
+import Petrus.Agenticus.Runtime.Internal.Process (runBounded)
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
-import Petrus.Agenticus.Runtime.Pi (PiHome (..), PiMaterialization (..), pyB64DecodeText, runBounded, strictLoad)
+import Petrus.Agenticus.Runtime.Pi (pyB64DecodeText, strictLoad)
 import Petrus.Agenticus.Runtime.PiModelPhase
 import Petrus.Agenticus.Runtime.PiSupport (fixture, raises, raisesValueLike, withTemp)
 import Petrus.Engine qualified as Engine
@@ -59,7 +61,6 @@ import System.Directory (createDirectory, doesDirectoryExist, doesFileExist, fin
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Posix.Files (setFileMode)
-import System.Process (CreateProcess (..), proc)
 import Test.Hspec
 
 spec :: Spec
@@ -209,11 +210,11 @@ newCustody events = do
               version <- readIORef flags.baseVersion
               now <- getMonotonicTime
               pure
-                PiMaterialization
+                HostMaterialization
                   { fence = AttachmentFence "credential" "lease" connectionId hostId 1 epoch version
                   , mode = leaseMode
                   , expiresAt = now + ttl
-                  , home = PiHome {read = pure key, replace = \_ -> pure ()}
+                  , home = ProviderHome {read = pure key, replace = \_ -> pure ()}
                   }
           , admitResult = \fence operationId -> do
               event events "admit"
@@ -718,7 +719,7 @@ realHelperSpecs = do
 
   it "test_helper_syntax_and_exact_hands_bounds" $ do
     helper <- piModelPhaseHelperPath
-    checked <- runBounded (proc "node" ["--check", helper])
+    checked <- runBounded ["node", "--check", helper] Nothing
     fmap (\(code, _, _) -> code) checked `shouldBe` Just ExitSuccess
     source <- B.readFile helper
     forM_ ["maxItems:4", "maxLength:64", "maxLength:8", "maxLength:1024"] $ \bound ->
@@ -739,7 +740,7 @@ realHelperSpecs = do
         modelPhaseNode rig.adapter >>= (`shouldSatisfy` ("/" `T.isPrefixOf`) . T.pack)
         helper <- piModelPhaseHelperPath
         let environment = [("HOME", tmp), ("PATH", prefix </> "node_modules/node/bin"), ("LANG", "C.UTF-8"), ("LC_ALL", "C.UTF-8")]
-        Just (code, out, err) <- runBounded (proc node [helper, root </> "dist/index.js", "--test-probe"]) {env = Just environment}
+        Just (code, out, err) <- runBounded [node, helper, root </> "dist/index.js", "--test-probe"] (Just environment)
         (code, err) `shouldBe` (ExitSuccess, "")
         load (B.dropWhileEnd (== 10) out)
           `shouldBe` Object

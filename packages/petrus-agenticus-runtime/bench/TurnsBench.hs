@@ -95,9 +95,9 @@ import Petrus.Agenticus.Runtime.CodexGondolin
   , startCodexGondolinRuntimeService
   , tokenVariable
   )
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeProbeResult (..))
 import Petrus.Agenticus.Runtime.Operation (RuntimeOperationCleanup, cleanupVerified)
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..), piConnectionCustody)
 import Petrus.Agenticus.Runtime.Profiles (ampA1, claudeA2Local, codexA2Local, codexA3Gondolin)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Identity (lifecycleIdToData, mkEpisodeId, mkTurnId)
@@ -203,7 +203,7 @@ codexTurn python root = do
   _ <- fakeCodex python root codexVersion
   prependPath root
   CodexRig {custody, continuations, turns} <- codexRig root
-  operations <- piConnectionCustody custody
+  operations <- hostConnectionCustody custody
   adapter <-
     newCodexRuntimeAdapter
       (codexRuntimeConfig "host-1") {credentialTtl = 10, commandTimeout = 10, cancellationGrace = 1}
@@ -265,7 +265,7 @@ codexA3ServiceTurn python root = do
       T.replace "__UNAME__" (jsonPath architecture) $
         T.replace "__CODEX__" (jsonPath executable) template
   CodexRig {custody, continuations, turns} <- codexRig root
-  operations <- piConnectionCustody custody
+  operations <- hostConnectionCustody custody
   adapter <-
     newCodexGondolinRuntimeAdapter
       (codexRuntimeConfig "host-1") {credentialTtl = 10, commandTimeout = 10, cancellationGrace = 2}
@@ -354,17 +354,17 @@ codexA3ServiceTurn python root = do
 -- Claude
 
 -- | The reference test's fake custody: one READ lease per Turn.
-claudeCustody :: PiConnectionCustody
+claudeCustody :: HostConnectionCustody
 claudeCustody =
-  PiConnectionCustody
+  HostConnectionCustody
     { materialize = \connection host mode ttl _ -> do
         now <- getMonotonicTime
         pure
-          PiMaterialization
+          HostMaterialization
             { fence = AttachmentFence "connection-attachment" "connection-lease" connection host 1 3 4
             , mode
             , expiresAt = now + ttl
-            , home = PiHome {read = pure "sk-ant-api03-bench", replace = \_ -> pure ()}
+            , home = ProviderHome {read = pure "sk-ant-api03-bench", replace = \_ -> pure ()}
             }
     , activate = \_ _ -> fail "activate"
     , admitResult = \fence operationId -> pure AdmissionResult {operationId, purpose = "result", attachmentId = fence.attachmentId}

@@ -15,8 +15,9 @@ pin those on both sides. The corpus's single tolerated difference is item 5.
    protocols are records here, whose fields are the protocol's methods:
    - continuation storage is `CodexContinuationOperations {store, load}`;
    - Turn storage is `CodexTurnOperations {storeTurn}`;
-   - connection custody is the `PiConnectionCustody` record the Pi host
-     already uses (`piConnectionCustody` adapts the real
+   - connection custody is the shared `HostConnectionCustody` record
+     (`Petrus.Agenticus.Runtime.Custody`, the reference's
+     `PiConnectionCustody`; `hostConnectionCustody` adapts the real
      `AgentConnectionCustody`).
 
    `CodexContinuationCodec` is the reference's codec over those operations.

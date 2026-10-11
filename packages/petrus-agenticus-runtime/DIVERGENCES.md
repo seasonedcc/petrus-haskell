@@ -46,7 +46,7 @@ hosts are covered in [divergences/codex.md](divergences/codex.md),
    exception kind. The unit test keeps a plain `userError`, because it only
    checks the "failed terminally" refusal and the settlement.
 
-## Helper and sidecar processes (`Petrus.Agenticus.Runtime.Pi.spawnPiped`)
+## Helper and sidecar processes (`Petrus.Agenticus.Runtime.Internal.Process`)
 
 1. **Children start through `posix_spawn`, not the `process` package.** The
    reference starts every helper and sidecar with
@@ -68,3 +68,13 @@ hosts are covered in [divergences/codex.md](divergences/codex.md),
    the shared sidecar. The `PiSpec` group "spawnPiped (not in the
    reference)" pins the descriptors, the session, the non-blocking ends and
    the launch failure.
+2. **Bounded probe commands start the same way.** The reference's probes
+   call `subprocess.run(argv, capture_output=True, timeout=10)`, which
+   inherits stdin, keeps the child in the caller's session and on timeout
+   kills only the child. `runBounded` starts the child through
+   `spawnPiped` too: it leads its own session, its stdin is an empty pipe,
+   and its whole process group is killed when the bound expires or when
+   the caller is interrupted (an `hspec` timeout, `cancel`), so no probe
+   outlives its caller. The probed commands (`node --version`, the helpers'
+   `--probe` modes, the provider CLIs' `--version`) read no input, so their
+   output is unchanged.

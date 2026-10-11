@@ -160,6 +160,7 @@ import Petrus.Agenticus.Runtime.Installation
   )
 import Petrus.Agenticus.Runtime.Internal.Lifecycle (Lifecycle, LifecycleTexts (..), newLifecycle)
 import Petrus.Agenticus.Runtime.Internal.Lifecycle qualified as Lifecycle
+import Petrus.Agenticus.Runtime.Internal.Process (runBounded, micros)
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
   , RuntimeOperation (..)
@@ -168,7 +169,6 @@ import Petrus.Agenticus.Runtime.Operation
   , runtimeProtocolError
   , runtimeProtocolErrorCode
   )
-import Petrus.Agenticus.Runtime.Pi (micros, runBounded)
 import Petrus.Agenticus.Runtime.Profiles (ampA1)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement, mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation (Continuation (..), ContinuationDescriptor, continuationDescriptor)
@@ -180,7 +180,6 @@ import System.Directory (doesFileExist, executable, findExecutable, getHomeDirec
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
-import System.Process (proc)
 import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
@@ -528,10 +527,10 @@ ampSidecar = AmpSidecar "python3" [] 10 defaultSidecarPool
 ampSidecarPath :: IO FilePath
 ampSidecarPath = getDataFileName "data/amp_sidecar.py"
 
-sidecarCommand :: AmpSidecar -> String -> IO SidecarCommand
+sidecarCommand :: AmpSidecar -> String -> IO HelperSpec
 sidecarCommand s mode = do
   script <- ampSidecarPath
-  pure (SidecarCommand s.python (["-I", "-B", script, mode] <> s.searchPath) Nothing Nothing)
+  pure (HelperSpec s.python (["-I", "-B", script, mode] <> s.searchPath) Nothing Nothing)
 
 data SidecarFailure = SidecarFailure Text
   deriving stock (Show)
@@ -974,7 +973,7 @@ officialProbeHooks s =
     , runCli = \case
         [] -> throwIO (userError "empty argv")
         executable' : arguments ->
-          runBounded (proc executable' arguments) >>= \case
+          runBounded (executable' : arguments) Nothing >>= \case
             Just (ExitSuccess, out, _) -> pure (TE.decodeUtf8With (\_ _ -> Just '\xfffd') out)
             _ -> throwIO (userError "command failed")
     , sdkProtocolReady =

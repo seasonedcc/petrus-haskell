@@ -67,8 +67,10 @@ library
                     Petrus.Agenticus.Runtime.Claude
                     Petrus.Agenticus.Runtime.Codex
                     Petrus.Agenticus.Runtime.CodexGondolin
+                    Petrus.Agenticus.Runtime.Custody
                     Petrus.Agenticus.Runtime.HostSupport
                     Petrus.Agenticus.Runtime.Internal.Lifecycle
+                    Petrus.Agenticus.Runtime.Internal.Process
                     Petrus.Agenticus.Runtime.Pi
                     Petrus.Agenticus.Runtime.PiA2Host
                     Petrus.Agenticus.Runtime.PiApplication
@@ -77,6 +79,7 @@ library
   other-modules:    Paths_petrus_agenticus_runtime
   autogen-modules:  Paths_petrus_agenticus_runtime
   build-depends:    base >=4.18 && <5
+                  , async >=2.2
                   , bytestring >=0.11
                   , containers >=0.6
                   , crypton >=1.0

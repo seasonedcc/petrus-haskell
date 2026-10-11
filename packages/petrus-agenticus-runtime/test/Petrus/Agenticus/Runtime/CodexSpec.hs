@@ -4,7 +4,7 @@
 -- interop examples at the end.
 --
 -- The reference's fakes are records here: @Continuations@, @Turns@ and
--- @Custody@ (a 'PiConnectionCustody'); @RecordingLocal@,
+-- @Custody@ (a 'HostConnectionCustody'); @RecordingLocal@,
 -- @UncertainCleanupLocal@ and its provider monkeypatching are one 'Hooked'
 -- wrapper over a real Motus provider; the monkeypatched @shutil.which@ and
 -- @subprocess.run@ are 'CodexProbeHooks'; an assigned @adapter.start@ is
@@ -78,9 +78,9 @@ import Petrus.Agenticus.Internal.Validate (sha256Hex)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ProgramOwnership (..))
 import Petrus.Agenticus.Runtime.Codex
 import Petrus.Agenticus.Runtime.CodexGondolin
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (InstalledComponent (..), ProbeDisposition (..), ProbeIssue (..), RuntimeInstallation (..), RuntimeProbeResult (..))
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..), cleanupVerified)
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..), piConnectionCustody)
 import Petrus.Agenticus.Runtime.PiSupport (aesKeys)
 import Petrus.Agenticus.Runtime.Profiles (codexA2Local, codexA3Gondolin)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
@@ -263,9 +263,9 @@ custodyView c = do
 kinds :: Custody -> IO [Text]
 kinds c = map fst <$> readIORef c.records
 
-custodyOperations :: Custody -> PiConnectionCustody
+custodyOperations :: Custody -> HostConnectionCustody
 custodyOperations c =
-  PiConnectionCustody
+  HostConnectionCustody
     { materialize = \connection host mode ttl operationId -> do
         unless (connection == "codex-connection" && host == "host-1" && mode == LeaseRefresh && ttl > 0) $
           throwAgenticus (OtherError "AssertionError") "materialize"
@@ -276,7 +276,7 @@ custodyOperations c =
         home <- readIORef c.auth >>= newIORef
         now <- getMonotonicTime
         pure
-          PiMaterialization
+          HostMaterialization
             { fence =
                 AttachmentFence
                   ("connection-attachment-" <> T.pack (show version))
@@ -289,7 +289,7 @@ custodyOperations c =
             , mode
             , expiresAt = now + ttl
             , home =
-                PiHome
+                ProviderHome
                   { read = readIORef home
                   , replace = \value -> do
                       when (B.null value) $ throwAgenticus ValueError "empty auth state"
@@ -1257,7 +1257,7 @@ turnSpecs = do
     turns <- newTurns
     probing <- probeEnvironment (Just executable)
     options <- adapterOptions probing.hooks
-    operations <- piConnectionCustody custody
+    operations <- hostConnectionCustody custody
     adapter <-
       newCodexRuntimeAdapter
         (codexRuntimeConfig "host-1") {credentialTtl = 2, commandTimeout = 2, cancellationGrace = 1}

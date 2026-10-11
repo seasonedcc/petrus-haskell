@@ -31,7 +31,6 @@ module Petrus.Agenticus.Runtime.Internal.Lifecycle
   , requestCancel
   , closeWith
   , settledEvidence
-  , micros
   ) where
 
 import Control.Concurrent (ThreadId, forkIOWithUnmask, myThreadId)
@@ -42,6 +41,7 @@ import Control.Monad (forM_, unless, void, when)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Petrus.Agenticus.Error
+import Petrus.Agenticus.Runtime.Internal.Process (micros)
 import Petrus.Agenticus.Runtime.Operation
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
@@ -228,7 +228,3 @@ settledEvidence l done = do
     RuntimeCleanupNotCreated -> "client-not-created"
     RuntimeCleanupClean -> "client-closed"
     RuntimeCleanupUnverified -> "cleanup-uncertain"
-
--- | Seconds to 'threadDelay' microseconds.
-micros :: Double -> Int
-micros seconds = max 0 (round (seconds * 1000000))

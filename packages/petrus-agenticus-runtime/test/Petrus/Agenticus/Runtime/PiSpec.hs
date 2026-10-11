@@ -44,6 +44,8 @@ import Petrus.Agenticus.Hands.Contract (RejectionCategory (..), ToolMethod (..),
 import Petrus.Agenticus.Hands.Gateway (CallEvidence (..), GatewayCounters (..), counters, evidence, gatewayAttachmentId)
 import Petrus.Agenticus.Hands.Grants (closeGrant, grantSpec, openGrant)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ProgramOwnership (..))
+import Petrus.Agenticus.Runtime.Custody (HostMaterialization (..))
+import Petrus.Agenticus.Runtime.Internal.Process (spawnPiped)
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperation (..), RuntimeOperationCleanup (..), cleanupVerified)
 import Petrus.Agenticus.Runtime.Pi
 import Petrus.Agenticus.Runtime.PiRecovery

@@ -13,7 +13,7 @@
 --
 -- The reference's structural protocols (continuation and turn storage,
 -- connection custody, helper clients and factories) are records of
--- operations here. 'piConnectionCustody' adapts the real
+-- operations here. 'hostConnectionCustody' adapts the real
 -- 'AgentConnectionCustody'.
 module Petrus.Agenticus.Runtime.Pi
   ( -- * Pins and catalogs
@@ -64,10 +64,6 @@ module Petrus.Agenticus.Runtime.Pi
   , piDurableWorkFingerprint
   , piDurableFingerprint
     -- * Connection custody
-  , PiHome (..)
-  , PiMaterialization (..)
-  , PiConnectionCustody (..)
-  , piConnectionCustody
     -- * Helper clients
   , PiCandidate (..)
   , PiHelperResult (..)
@@ -139,26 +135,15 @@ module Petrus.Agenticus.Runtime.Pi
   , startFrame
   , maxPrompt
   , maxKey
-    -- * Process pieces shared with the sibling Pi runtimes
-  , waitExit
-  , spawnPiped
-  , exitInt
-  , removeRoot
-  , runBounded
-  , micros
   ) where
 
-import Control.Concurrent (ThreadId, forkIO, killThread, threadDelay)
 import Control.Concurrent.MVar
-import Control.Concurrent.STM
 import Control.Exception
   ( IOException
   , SomeException
   , catch
-  , finally
   , fromException
   , mask_
-  , onException
   , throwIO
   , try
   )
@@ -182,9 +167,6 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import GHC.Clock (getMonotonicTime)
-import GHC.IO.Device (IODeviceType (Stream))
-import GHC.IO.FD qualified as FD
-import GHC.IO.Handle.FD (mkHandleFromFD)
 import Numeric (showHex)
 import Paths_petrus_agenticus_runtime (getDataFileName)
 import Petrus.Agenticus.Attachment.Binding
@@ -206,18 +188,15 @@ import Petrus.Agenticus.Catalog.Descriptor
 import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
-  , AgentConnectionCustody
   , AttachmentFence (..)
   , ConnectionIdentity (..)
   , ConnectionStatus (..)
   , ConnectionView (..)
   , LeaseMode (..)
-  , Materialization (..)
   , PublicationResult (..)
   , ReleaseResult (..)
   )
-import Petrus.Agenticus.Connection.Custody qualified as Custody
-import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..), readMaterialized, replaceMaterialized)
+import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Error hiding (ValueError)
 import Petrus.Agenticus.Error qualified as E
 import Petrus.Agenticus.Hands.Contract
@@ -245,6 +224,8 @@ import Petrus.Agenticus.Program.Descriptor
   , agentProgramDescriptor
   , continuationRequirement
   )
+import Petrus.Agenticus.Runtime.Custody
+import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), privateEnvironment, spawnHelper, nextReceived, helperExited, closeHelper, waitExit, exitInt, runBounded, removeRoot)
 import Petrus.Agenticus.Runtime.Internal.Lifecycle (Lifecycle, LifecycleTexts (..), newLifecycle)
 import Petrus.Agenticus.Runtime.Internal.Lifecycle qualified as Lifecycle
 import Petrus.Agenticus.Runtime.Installation
@@ -292,32 +273,14 @@ import System.Directory
   , findExecutable
   , makeAbsolute
   , pathIsSymbolicLink
-  , removeDirectoryRecursive
   )
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
-import System.IO (BufferMode (..), Handle, IOMode (..), hClose, hFlush, hSetBinaryMode, hSetBuffering)
-import System.IO.Error (isDoesNotExistError)
+import System.IO (hFlush)
 import System.IO.Temp (createTempDirectory)
-import Petrus.Motus.Execution.Error (ExecutionError)
-import Petrus.Motus.Execution.Spawn (StdioFd (..), childPid, spawnChild)
 import System.Posix.Files qualified as Files
-import System.Posix.IO (FdOption (CloseOnExec), closeFd, createPipe, setFdOption)
-import System.Posix.Signals (sigKILL, signalProcess, signalProcessGroup)
-import System.Posix.Types (Fd (..))
 import System.Posix.Unistd (SystemID (..), getSystemID)
 import System.Posix.User (getEffectiveUserID)
-import System.Process
-  ( CreateProcess (..)
-  , ProcessHandle
-  , StdStream (..)
-  , createProcess
-  , getPid
-  , getProcessExitCode
-  , proc
-  )
-import System.Process.Internals (mkProcessHandle)
-import System.Timeout (timeout)
 import Data.ByteString qualified as BS
 
 -- ---------------------------------------------------------------------------
@@ -979,59 +942,6 @@ piDurableFingerprint config i =
   piDurableWorkFingerprint config i.episodeId i.turnId i.prompt i.connection.identity i.continuation
 
 -- ---------------------------------------------------------------------------
--- Connection custody
-
--- | The materialized private state of one lease.
-data PiHome = PiHome
-  { read :: IO ByteString
-  , replace :: ByteString -> IO ()
-  }
-
--- | One materialized connection lease, as the adapter sees it.
-data PiMaterialization = PiMaterialization
-  { fence :: AttachmentFence
-  , mode :: LeaseMode
-  , expiresAt :: Double
-  , home :: PiHome
-  }
-
--- | @PiConnectionCustody@: the custody operations the adapter needs.
-data PiConnectionCustody = PiConnectionCustody
-  { materialize :: Text -> Text -> LeaseMode -> Double -> Text -> IO PiMaterialization
-  -- ^ connection, host, mode, ttl, operation
-  , activate :: PiMaterialization -> Text -> IO ()
-  , admitResult :: AttachmentFence -> Text -> IO AdmissionResult
-  , checkpoint :: PiMaterialization -> Text -> IO PublicationResult
-  , release :: PiMaterialization -> Text -> IO ReleaseResult
-  }
-
--- | The real 'AgentConnectionCustody' as Pi custody.
-piConnectionCustody :: AgentConnectionCustody -> IO PiConnectionCustody
-piConnectionCustody custody = do
-  live <- newIORef (Map.empty :: Map AttachmentFence Materialization)
-  let underlying m =
-        readIORef live >>= \known -> case Map.lookup m.fence known of
-          Just value -> pure value
-          Nothing -> throwIO (agenticusError CustodyError "materialization is not owned by this custody")
-  pure
-    PiConnectionCustody
-      { materialize = \connection host mode ttl operation -> do
-          m <- Custody.materialize custody connection host mode ttl operation
-          modifyIORef' live (Map.insert m.fence m)
-          pure
-            PiMaterialization
-              { fence = m.fence
-              , mode = m.mode
-              , expiresAt = m.expiresAt
-              , home = PiHome {read = readMaterialized m.home, replace = replaceMaterialized m.home}
-              }
-      , activate = \m operation -> underlying m >>= \value -> Custody.activate custody value operation
-      , admitResult = Custody.admitResult custody
-      , checkpoint = \m operation -> underlying m >>= \value -> Custody.checkpoint custody value operation
-      , release = \m operation -> underlying m >>= \value -> Custody.release custody value operation
-      }
-
--- ---------------------------------------------------------------------------
 -- Helper clients
 
 -- | One completed native candidate. 'Show' renders only the session shape.
@@ -1101,17 +1011,8 @@ data SubprocessClient = SubprocessClient
   { config :: PiRuntimeConfig
   , prior :: Maybe PiContinuationPayloadV1
   , options :: SubprocessOptions
-  , process :: ProcessHandle
-  , pid :: Maybe Int
-  , stdinHandle :: Handle
-  , stdoutHandle :: Handle
-  , stderrHandle :: Handle
-  , chunks :: TQueue (Maybe ByteString)
-  , reader :: ThreadId
-  , drainer :: ThreadId
-  , stderrDone :: TVar Bool
+  , helper :: Helper
   , start :: IORef [(Text, Json)]
-  , closed :: IORef (Maybe Bool)
   }
 
 newSubprocessClient :: FilePath -> PiHelperArgs -> IO SubprocessClient
@@ -1124,52 +1025,24 @@ newSubprocessClientWith options helper args = do
   granted <- case grant of
     Just g | g.grantEpoch == args.invocation.grantEpoch -> pure g.capabilities
     _ -> throwIO (runtimeProtocolError "grant-mismatch")
-  let environment =
-        [ ("HOME", args.privateRoot)
-        , ("PATH", takeDirectory args.node)
-        , ("LANG", "C.UTF-8")
-        , ("LC_ALL", "C.UTF-8")
-        ]
-  spawned <- spawnPiped args.node [helper, T.unpack args.sdkEntrypoint, maybe "--no-extension" T.unpack args.extension] Nothing (Just environment)
-  (stdinHandle, stdoutHandle, stderrHandle, process) <- case spawned of
-    Just started -> pure started
-    Nothing -> throwIO (runtimeProtocolError "helper-launch-failed")
-  mapM_ (`hSetBinaryMode` True) [stdinHandle, stdoutHandle, stderrHandle]
-  hSetBuffering stdinHandle (BlockBuffering Nothing)
-  pid <- fmap fromIntegral <$> getPid process
-  stderrDone <- newTVarIO False
-  drainer <- forkIO (drain stderrHandle `finally` atomically (writeTVar stderrDone True))
-  chunks <- newTQueueIO
-  reader <- forkIO (readChunks stdoutHandle chunks)
+  let command =
+        HelperSpec
+          { executable = args.node
+          , arguments = [helper, T.unpack args.sdkEntrypoint, maybe "--no-extension" T.unpack args.extension]
+          , directory = Nothing
+          , environment = Just (privateEnvironment args.privateRoot args.node)
+          }
+  started <- spawnHelper Chunks command >>= maybe (throwIO (runtimeProtocolError "helper-launch-failed")) pure
   session <- maybe newUuid4 (pure . (.sessionId)) args.prior
   start <- newIORef (startFrame args.config args session granted)
-  closed <- newIORef Nothing
   pure
     SubprocessClient
       { config = args.config
       , prior = args.prior
       , options
-      , process
-      , pid
-      , stdinHandle
-      , stdoutHandle
-      , stderrHandle
-      , chunks
-      , reader
-      , drainer
-      , stderrDone
+      , helper = started
       , start
-      , closed
       }
-  where
-    drain h = do
-      chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
-      unless (B.null chunk) (drain h)
-    readChunks h queue = do
-      chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
-      if B.null chunk
-        then atomically (writeTQueue queue Nothing)
-        else atomically (writeTQueue queue (Just chunk)) >> readChunks h queue
 
 -- | The @start@ frame, in the reference's member order.
 startFrame :: PiRuntimeConfig -> PiHelperArgs -> Text -> Set ToolMethod -> [(Text, Json)]
@@ -1231,7 +1104,7 @@ writeFrame :: SubprocessClient -> Json -> IO ()
 writeFrame c frame = do
   encoded <- either (const (throwIO (runtimeProtocolError "helper-pipe-failed"))) pure (frameBytes frame)
   when (B.length encoded > c.config.maxFrameBytes) $ throwIO (runtimeProtocolError "frame-overflow")
-  written <- try (B.hPut c.stdinHandle encoded >> hFlush c.stdinHandle)
+  written <- try (B.hPut c.helper.input encoded >> hFlush c.helper.input)
   case written of
     Right () -> pure ()
     Left (_ :: IOException) -> throwIO (runtimeProtocolError "helper-pipe-failed")
@@ -1266,7 +1139,7 @@ runSubprocess c gateway' invocation current deadline = do
   case (c.prior, final.candidate) of
     (Just p, Just cand) | cand.sessionId /= p.sessionId -> protocol "session-mismatch"
     _ -> pure ()
-  exited <- waitExit c.process c.config.cancellationGrace
+  exited <- waitExit c.helper.process c.config.cancellationGrace
   returncode <- maybe (protocol "helper-exit-inconsistent") pure exited
   let expected = if isJust final.candidate then 0 else 1
   when (exitInt returncode /= expected) $ protocol "helper-exit-inconsistent"
@@ -1291,7 +1164,7 @@ runSubprocess c gateway' invocation current deadline = do
           when (s1.abortSent && now >= s1.graceEnd) $ do
             live' <- current
             protocol (if not live' then "cancelled" else "deadline-exceeded")
-          exited <- isJust <$> getProcessExitCode c.process
+          exited <- helperExited c.helper
           if exited && s1.eof
             then pure s1
             else do
@@ -1307,10 +1180,7 @@ runSubprocess c gateway' invocation current deadline = do
                   when (B.length buffer > cfg.maxFrameBytes) $ protocol "frame-overflow"
                   s2 <- frames subscription s1 {buffer}
                   loop subscription s2
-    nextChunk = do
-          delay <- registerDelay 50000
-          atomically $
-            (Just <$> readTQueue c.chunks) `orElse` (readTVar delay >>= \expired -> if expired then pure Nothing else retry)
+    nextChunk = nextReceived c.helper 50000
     frames subscription s = case B.elemIndex 10 s.buffer of
       Nothing -> pure s
       Just i -> do
@@ -1420,95 +1290,10 @@ runSubprocess c gateway' invocation current deadline = do
     -- @except TypeError, ValueError@ (with their subclasses).
     malformed e = any (e `isInstanceOf`) [E.ValueError, TypeError] || e.errorClass `elem` [OtherError "Error", OtherError "UnicodeDecodeError"]
 
-exitInt :: ExitCode -> Int
-exitInt = \case
-  ExitSuccess -> 0
-  ExitFailure n -> n
-
--- | @process.wait(timeout=seconds)@: 'Nothing' when it is still running.
-waitExit :: ProcessHandle -> Double -> IO (Maybe ExitCode)
-waitExit process seconds = do
-  end <- (+ seconds) <$> getMonotonicTime
-  let go =
-        getProcessExitCode process >>= \case
-          Just code -> pure (Just code)
-          Nothing -> do
-            now <- getMonotonicTime
-            if now >= end then pure Nothing else threadDelay 2000 >> go
-  go
-
--- | @subprocess.Popen([executable, *arguments], stdin=PIPE, stdout=PIPE,
--- stderr=PIPE, cwd=directory, env=environment, start_new_session=True)@
--- (@close_fds=True@ by default): the child's stdin, stdout and stderr
--- handles and its process, or 'Nothing' when it cannot be started.
---
--- The child is started with petrus-execution's @posix_spawn@, which keeps
--- only stdio open the way each platform intends.  The @process@ package
--- falls back to fork and closes every descriptor up to @RLIMIT_NOFILE@ for
--- @close_fds@, about 0.1 s per spawn at macOS's 1 048 576, where CPython
--- closes only the open ones.
-spawnPiped :: FilePath -> [String] -> Maybe FilePath -> Maybe [(String, String)] -> IO (Maybe (Handle, Handle, Handle, ProcessHandle))
-spawnPiped executable arguments directory environment =
-  mask_ (start `catch` \(_ :: IOException) -> pure Nothing)
-  where
-    quietly = mapM_ (\fd -> closeFd fd `catch` \(_ :: IOException) -> pure ())
-    pipe = do
-      (readEnd, writeEnd) <- createPipe
-      (readEnd, writeEnd) <$ (setFdOption readEnd CloseOnExec True >> setFdOption writeEnd CloseOnExec True)
-        `onException` quietly [readEnd, writeEnd]
-    start = do
-      (inRead, inWrite) <- pipe
-      (outRead, outWrite) <- pipe `onException` quietly [inRead, inWrite]
-      (errRead, errWrite) <- pipe `onException` quietly [inRead, inWrite, outRead, outWrite]
-      let parentEnds = [inWrite, outRead, errRead]
-      spawned <-
-        try (spawnChild (executable : arguments) directory environment True (UseFd inRead, UseFd outWrite, UseFd errWrite))
-          `finally` quietly [inRead, outWrite, errWrite]
-      case spawned of
-        Left (_ :: ExecutionError) -> Nothing <$ quietly parentEnds
-        Right child -> do
-          process <- mkProcessHandle (childPid child) False
-          handles <-
-            ((,,) <$> pipeHandle inWrite WriteMode <*> pipeHandle outRead ReadMode <*> pipeHandle errRead ReadMode)
-              `onException` quietly parentEnds
-          pure (Just (case handles of (i, o, e) -> (i, o, e, process)))
-    -- As the process package makes its pipe handles: non-blocking, so
-    -- reads and writes wait in the IO manager. A blocking descriptor would
-    -- cost a readiness poll and a safe foreign call per read or write, and
-    -- a reader blocked in that call cannot be killed until it returns.
-    pipeHandle (Fd fd) mode = do
-      (device, _) <- FD.mkFD fd mode (Just (Stream, 0, 0)) False False
-      nonBlocking <- FD.setNonBlockingMode device True
-      mkHandleFromFD nonBlocking Stream ("fd:" <> show fd) mode False Nothing
-
 -- | Close pipes, kill the helper's whole process group, and report whether
 -- the helper and its stderr drain are proven gone.
 closeSubprocess :: SubprocessClient -> IO Bool
-closeSubprocess c =
-  readIORef c.closed >>= \case
-    Just _ -> isJust <$> getProcessExitCode c.process
-    Nothing -> do
-      writeIORef c.closed (Just False)
-      hClose c.stdinHandle `catch` \(_ :: IOException) -> pure ()
-      -- A Handle is locked while a thread blocks reading it: stop the reader
-      -- before closing stdout.
-      killThread c.reader
-      hClose c.stdoutHandle `catch` \(_ :: IOException) -> pure ()
-      running <- isNothing <$> getProcessExitCode c.process
-      when running $ forM_ c.pid $ \pid ->
-        signalProcessGroup sigKILL (fromIntegral pid) `catch` \(_ :: IOException) -> pure ()
-      waitExit c.process c.config.cancellationGrace >>= \case
-        Nothing -> pure False
-        Just _ -> do
-          _ <- timeout (micros c.config.cancellationGrace) (atomically (readTVar c.stderrDone >>= check))
-          drained <- readTVarIO c.stderrDone
-          unless drained (killThread c.drainer)
-          hClose c.stderrHandle `catch` \(_ :: IOException) -> pure ()
-          exited <- isJust <$> getProcessExitCode c.process
-          pure (exited && drained)
-
-micros :: Double -> Int
-micros seconds = max 0 (round (seconds * 1000000))
+closeSubprocess c = closeHelper c.helper c.config.cancellationGrace
 
 -- ---------------------------------------------------------------------------
 -- Operations
@@ -1639,7 +1424,7 @@ data PiRuntimeAdapter = PiRuntimeAdapter
   { configRef :: IORef PiRuntimeConfig
   , codec :: PiContinuationCodec
   , turns :: PiTurnOperations
-  , custody :: PiConnectionCustody
+  , custody :: HostConnectionCustody
   , clockRef :: IORef (IO Double)
   , descriptor :: CapabilityDescriptor
   , hands :: CapabilityDescriptor
@@ -1654,7 +1439,7 @@ data PiRuntimeAdapter = PiRuntimeAdapter
 
 -- | @PiRuntimeAdapter(config, codec, turns, custody, clock=..., client_factory=...)@.
 newPiRuntimeAdapter
-  :: PiRuntimeConfig -> PiContinuationCodec -> PiTurnOperations -> PiConnectionCustody -> IO Double -> Maybe PiHelperFactory -> IO PiRuntimeAdapter
+  :: PiRuntimeConfig -> PiContinuationCodec -> PiTurnOperations -> HostConnectionCustody -> IO Double -> Maybe PiHelperFactory -> IO PiRuntimeAdapter
 newPiRuntimeAdapter config0 codec turns custody clock factory = do
   config <- newPiRuntimeConfig config0
   let (descriptor, hands, territory) = case config.territoryProfile of
@@ -1816,7 +1601,7 @@ probeInstalled a paths cli node = do
         || dependency `notElem` map String [piAiVersion, "^" <> piAiVersion, "~" <> piAiVersion]
     )
     invalid
-  (versionCode, versionOutBytes, _) <- runBounded (proc nodeReal ["--version"]) >>= maybe invalid pure
+  (versionCode, versionOutBytes, _) <- runBounded [nodeReal, "--version"] Nothing >>= maybe invalid pure
   let versionOut = T.unpack (TE.decodeUtf8With (\_ _ -> Just '\xfffd') versionOutBytes)
   when (versionCode /= ExitSuccess) invalid
   let version = T.strip (T.pack versionOut)
@@ -1851,12 +1636,8 @@ probeInstalled a paths cli node = do
           ]
       pairs = Array . map (\(p, m) -> Array [String p, String m])
   catalogText <- either (const invalid) pure (J.dumpsText J.defaultDumps {J.itemSeparator = Just ",", J.keySeparator = ":"} catalogs)
-  let environment = [("HOME", "/dev/null"), ("PATH", takeDirectory nodeReal), ("LANG", "C.UTF-8"), ("LC_ALL", "C.UTF-8")]
-      command =
-        (proc nodeReal ([helper, sdk, "--probe", T.unpack catalogText] <> maybe [] pure ccEntry))
-          { env = Just environment
-          }
-  (code, out, err) <- runBounded command >>= maybe invalid pure
+  let command = [nodeReal, helper, sdk, "--probe", T.unpack catalogText] <> maybe [] pure ccEntry
+  (code, out, err) <- runBounded command (Just (privateEnvironment "/dev/null" nodeReal)) >>= maybe invalid pure
   frame <- either (const invalid) pure (strictFrameLoad (fst (BC.spanEnd (== '\n') out)))
   when (code /= ExitSuccess || not (B.null err) || BC.count '\n' out /= 1 || frame /= Object [("type", String "probe"), ("ok", Bool True)]) invalid
   system <- getSystemID
@@ -1879,29 +1660,6 @@ probeInstalled a paths cli node = do
   pure (installation, nodeReal, T.pack sdk, helper, T.pack <$> ccEntry)
   where
     nonEmpty value = if T.null value then "unknown" else value
-
--- | @subprocess.run(..., capture_output=True, timeout=10)@: capture stdout
--- and stderr as bytes, killing the child when the bound expires.
-runBounded :: CreateProcess -> IO (Maybe (ExitCode, ByteString, ByteString))
-runBounded command = do
-  (_, Just out, Just err, handle) <-
-    createProcess command {std_in = NoStream, std_out = CreatePipe, std_err = CreatePipe}
-  mapM_ (`hSetBinaryMode` True) [out, err]
-  errVar <- newEmptyMVar :: IO (MVar (Either IOException ByteString))
-  outVar <- newEmptyMVar :: IO (MVar (Either IOException ByteString))
-  _ <- forkIO (try (B.hGetContents err) >>= putMVar errVar)
-  _ <- forkIO (try (B.hGetContents out) >>= putMVar outVar)
-  finished <- timeout (10 * 1000000) $ do
-    output <- takeMVar outVar
-    errors <- takeMVar errVar
-    code <- waitExit handle 10
-    pure (output, errors, code)
-  case finished of
-    Just (Right output, Right errors, Just code) -> pure (Just (code, output, errors))
-    _ -> do
-      getPid handle >>= mapM_ (\pid -> signalProcess sigKILL pid `catch` \(_ :: IOException) -> pure ())
-      _ <- waitExit handle 1
-      pure Nothing
 
 -- | @_record@: keep the readiness that matches this probe verdict.
 record :: PiRuntimeAdapter -> RuntimeProbeResult -> IO RuntimeProbeResult
@@ -2094,7 +1852,7 @@ settle inv outcome appends code output continuation =
   throwLeft (mkRuntimeTurnSettlement inv.episodeId inv.turnId outcome appends code output continuation)
 
 data Exec = Exec
-  { materialization :: Maybe PiMaterialization
+  { materialization :: Maybe HostMaterialization
   , client :: Maybe PiHelperClient
   , root :: Maybe (FilePath, Maybe (Integer, Integer))
   , attempted :: Bool
@@ -2287,29 +2045,3 @@ checkpointVerified value operationId attachmentId inv =
     && value.cleanup.attachmentId == attachmentId
     && (value.cleanup.removed || value.cleanup.alreadyAbsent)
     && not value.cleanup.securityViolation
-
--- | @_remove_root@: remove only the exact owned mode-0700 directory created
--- for this operation.
-removeRoot :: FilePath -> Maybe (Integer, Integer) -> IO Bool
-removeRoot path identity = do
-  status <- try (Files.getSymbolicLinkStatus path)
-  case status of
-    Left e
-      | isDoesNotExistError e -> pure True
-      | otherwise -> pure False
-    Right metadata -> do
-      uid <- getEffectiveUserID
-      if not (Files.isDirectory metadata)
-        || Files.isSymbolicLink metadata
-        || Files.fileOwner metadata /= uid
-        || Files.fileMode metadata .&. 0o7777 /= 0o700
-        || identity /= Just (toInteger (Files.deviceID metadata), toInteger (Files.fileID metadata))
-        then pure False
-        else do
-          removed <- try (removeDirectoryRecursive path)
-          case removed of
-            Left (_ :: IOException) -> pure False
-            Right () -> not <$> pathPresent path
-  where
-    pathPresent p =
-      (True <$ Files.getSymbolicLinkStatus p) `catch` \(_ :: IOException) -> pure False

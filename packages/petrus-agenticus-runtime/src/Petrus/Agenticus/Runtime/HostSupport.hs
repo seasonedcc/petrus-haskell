@@ -18,7 +18,7 @@ module Petrus.Agenticus.Runtime.HostSupport
     -- * Platform
   , observedPlatform
     -- * Sidecars
-  , SidecarCommand (..)
+  , HelperSpec (..)
   , Sidecar
   , spawnSidecar
   , sidecarSend
@@ -44,7 +44,7 @@ module Petrus.Agenticus.Runtime.HostSupport
   , channelAwaitEnd
   ) where
 
-import Control.Concurrent (ThreadId, forkIO, killThread)
+import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar, withMVar)
 import Control.Concurrent.STM
 import Control.Exception (IOException, SomeException, bracket, catch, evaluate, finally, mask_, try)
@@ -52,7 +52,6 @@ import Control.Monad (filterM, forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Builder qualified as BB
-import Data.ByteString.Char8 qualified as BC
 import Data.IORef
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -62,7 +61,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error (OnDecodeError, UnicodeException, strictDecode)
 import Petrus.Agenticus.Internal.Validate (pyIsSpace)
-import Petrus.Agenticus.Runtime.Pi (micros, spawnPiped, waitExit)
+import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), spawnHelper, closeOnce, closeInput, stopReader, killGroup, awaitDrain, spawnPiped, waitExit, splitLines, micros)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.Exit (ExitCode (..))
@@ -162,65 +161,16 @@ observedPlatform = do
 -- ---------------------------------------------------------------------------
 -- Sidecars
 
--- | How to start one sidecar: the interpreter, its arguments, the working
--- directory, and an optional environment (inherited when absent).
-data SidecarCommand = SidecarCommand
-  { executable :: FilePath
-  , arguments :: [String]
-  , directory :: Maybe FilePath
-  , environment :: Maybe [(String, String)]
-  }
-
--- | One running sidecar process in its own session.
-data Sidecar = Sidecar
-  { process :: ProcessHandle
-  , pid :: Maybe Int
-  , input :: Handle
-  , output :: Handle
-  , errors :: Handle
-  , frames :: TQueue (Maybe ByteString)
-  , reader :: ThreadId
-  , drainer :: ThreadId
-  , drained :: TVar Bool
-  , closed :: IORef Bool
-  }
+-- | One running sidecar process in its own session; its reader splits
+-- stdout into lines.
+newtype Sidecar = Sidecar Helper
 
 sidecarPid :: Sidecar -> Maybe Int
-sidecarPid s = s.pid
+sidecarPid (Sidecar h) = h.pid
 
 -- | Start the sidecar, or 'Nothing' when it cannot be launched.
-spawnSidecar :: SidecarCommand -> IO (Maybe Sidecar)
-spawnSidecar command = do
-  spawned <- spawnPiped command.executable command.arguments command.directory command.environment
-  case spawned of
-    Just (i, o, e, p) -> do
-      mapM_ (`hSetBinaryMode` True) [i, o, e]
-      hSetBuffering i (BlockBuffering Nothing)
-      pid <- fmap fromIntegral <$> getPid p
-      drained <- newTVarIO False
-      drainer <- forkIO (drain e `finally` atomically (writeTVar drained True))
-      frames <- newTQueueIO
-      reader <- forkIO (readLines o frames B.empty)
-      closed <- newIORef False
-      pure (Just (Sidecar p pid i o e frames reader drainer drained closed))
-    Nothing -> pure Nothing
-  where
-    drain h = do
-      chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
-      unless (B.null chunk) (drain h)
-    readLines h queue pending = do
-      chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
-      if B.null chunk
-        then atomically (writeTQueue queue Nothing)
-        else do
-          let (complete, rest) = splitComplete (pending <> chunk)
-          atomically (mapM_ (writeTQueue queue . Just) complete)
-          readLines h queue rest
-    splitComplete bytes = case BC.elemIndex '\n' bytes of
-      Nothing -> ([], bytes)
-      Just i ->
-        let (rest', remaining) = splitComplete (B.drop (i + 1) bytes)
-         in (B.take i bytes : rest', remaining)
+spawnSidecar :: HelperSpec -> IO (Maybe Sidecar)
+spawnSidecar command = fmap Sidecar <$> spawnHelper Lines command
 
 -- | @json.dumps(value, separators=(",", ":"))@ plus a newline.
 sidecarFrame :: Json -> ByteString
@@ -228,8 +178,8 @@ sidecarFrame value = either (const "null") id (J.dumps J.defaultDumps {J.itemSep
 
 -- | Write one frame; 'False' when the pipe is gone.
 sidecarSend :: Sidecar -> Json -> IO Bool
-sidecarSend s value = do
-  sent <- try (B.hPut s.input (sidecarFrame value) >> hFlush s.input)
+sidecarSend (Sidecar h) value = do
+  sent <- try (B.hPut h.input (sidecarFrame value) >> hFlush h.input)
   pure $ case sent of
     Right () -> True
     Left (_ :: IOException) -> False
@@ -237,10 +187,10 @@ sidecarSend s value = do
 -- | The next frame, or 'Nothing' at end of output or for an undecodable
 -- line.
 sidecarReceive :: Sidecar -> IO (Maybe Json)
-sidecarReceive s =
-  atomically (readTQueue s.frames) >>= \case
+sidecarReceive (Sidecar h) =
+  atomically (readTQueue h.received) >>= \case
     Nothing -> do
-      atomically (unGetTQueue s.frames Nothing)
+      atomically (unGetTQueue h.received Nothing)
       pure Nothing
     Just line -> pure (either (const Nothing) Just (J.parseJson J.pythonLoads line))
 
@@ -252,48 +202,38 @@ sidecarReceiveWithin s seconds = maybe Nothing id <$> timeout (micros seconds) (
 -- the whole process group. 'True' when the process and its stderr drain
 -- are proven gone.
 sidecarClose :: Sidecar -> Double -> IO Bool
-sidecarClose s grace = do
-  already <- readIORef s.closed
-  if already
-    then isJust <$> getProcessExitCode s.process
-    else do
-      writeIORef s.closed True
-      hClose s.input `catch` \(_ :: IOException) -> pure ()
-      exited <- waitExit s.process grace
-      when (isNothing exited) $
-        mapM_ (\pid -> signalProcessGroup sigKILL (fromIntegral pid) `catch` \(_ :: IOException) -> pure ()) s.pid
-      final <- maybe (waitExit s.process grace) (pure . Just) exited
-      _ <- timeout (micros grace) (atomically (readTVar s.drained >>= check))
-      done <- readTVarIO s.drained
-      unless done (killThread s.drainer)
-      killThread s.reader
-      hClose s.output `catch` \(_ :: IOException) -> pure ()
-      hClose s.errors `catch` \(_ :: IOException) -> pure ()
-      pure (isJust final && done)
+sidecarClose (Sidecar h) grace = closeOnce h $ do
+  closeInput h
+  exited <- waitExit h.process grace
+  when (isNothing exited) (killGroup h)
+  final <- maybe (waitExit h.process grace) (pure . Just) exited
+  drained <- awaitDrain h grace
+  stopReader h
+  pure (isJust final && drained)
 
 -- | Run a sidecar to completion with stdin closed, returning its exit code
 -- and every frame it wrote, within @seconds@.
-runSidecarOnce :: SidecarCommand -> Double -> IO (Maybe (ExitCode, [Json]))
+runSidecarOnce :: HelperSpec -> Double -> IO (Maybe (ExitCode, [Json]))
 runSidecarOnce command seconds =
   spawnSidecar command >>= \case
     Nothing -> pure Nothing
-    Just s -> do
-      hClose s.input `catch` \(_ :: IOException) -> pure ()
+    Just sidecar@(Sidecar h) -> do
+      closeInput h
       collected <-
-        timeout (micros seconds) (collect s [])
+        timeout (micros seconds) (collect h [])
           `catch` \(_ :: SomeException) -> pure Nothing
-      code <- waitExit s.process (if isJust collected then seconds else 0)
-      void (sidecarClose s 1)
+      code <- waitExit h.process (if isJust collected then seconds else 0)
+      void (sidecarClose sidecar 1)
       pure $ case (collected, code) of
         (Just values, Just exit) -> Just (exit, values)
         _ -> Nothing
   where
-    collect s acc =
-      atomically (readTQueue s.frames) >>= \case
+    collect h acc =
+      atomically (readTQueue h.received) >>= \case
         Nothing -> pure (reverse acc)
         Just line -> case J.parseJson J.pythonLoads line of
-          Right value -> collect s (value : acc)
-          Left _ -> collect s acc
+          Right value -> collect h (value : acc)
+          Left _ -> collect h acc
 
 -- ---------------------------------------------------------------------------
 -- Shared sidecars
@@ -377,7 +317,7 @@ sidecarPoolPids (SidecarPool pool) = do
 -- | Open a channel on the pool's sidecar for @command@, starting the
 -- sidecar first when none is running (or the last one has died); 'Nothing'
 -- when it cannot be launched or the pool is closed.
-openSidecarChannel :: SidecarPool -> SidecarCommand -> IO (Maybe SidecarChannel)
+openSidecarChannel :: SidecarPool -> HelperSpec -> IO (Maybe SidecarChannel)
 openSidecarChannel (SidecarPool pool) command = attempt (2 :: Int)
   where
     key = (command.executable, command.arguments, command.directory, command.environment)
@@ -418,7 +358,7 @@ openSidecarChannel (SidecarPool pool) command = attempt (2 :: Int)
               Nothing -> pure (Just (Map.delete key known), Nothing)
               Just s -> pure (Just (Map.insert key s known), Just s)
 
-spawnShared :: SidecarCommand -> IO (Maybe SharedSidecar)
+spawnShared :: HelperSpec -> IO (Maybe SharedSidecar)
 spawnShared command = do
   spawned <- spawnPiped command.executable command.arguments command.directory command.environment
   case spawned of
@@ -471,14 +411,6 @@ endSlot :: Slot -> STM ()
 endSlot slot = do
   writeTQueue slot.inbox Nothing
   writeTVar slot.ended True
-
--- | Split the complete newline-terminated lines off the front of a buffer.
-splitLines :: ByteString -> ([ByteString], ByteString)
-splitLines bytes = case BC.elemIndex '\n' bytes of
-  Nothing -> ([], bytes)
-  Just i ->
-    let (rest', remaining) = splitLines (B.drop (i + 1) bytes)
-     in (B.take i bytes : rest', remaining)
 
 -- | Write one frame on the channel; 'False' when the sidecar is gone or the
 -- channel is closing.

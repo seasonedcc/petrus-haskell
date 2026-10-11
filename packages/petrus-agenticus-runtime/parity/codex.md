@@ -34,7 +34,7 @@ The other fakes:
 | --- | --- |
 | `Continuations`, `BlockingContinuations` | `Continuations` (an optional entered/release gate) over `CodexContinuationOperations` |
 | `Turns` | `Turns` over `CodexTurnOperations` |
-| `Custody`, `PublishingCustody` | `Custody` (an optional admit gate) as a `PiConnectionCustody` record |
+| `Custody`, `PublishingCustody` | `Custody` (an optional admit gate) as a `HostConnectionCustody` record |
 | `ActivityContext(stale=...)` | `activityContext stale`, which also counts heartbeats |
 | `RecordingLocal`, `UncertainCleanupLocal`, provider monkeypatching | `Hooked`: a wrapper over a real Motus provider that records commands and lets a test swap each private-file operation and the workspace export, even after the binding is open |
 | `monkeypatch` of `shutil.which` and `subprocess.run` | `CodexProbeHooks` behind `IORef`s |

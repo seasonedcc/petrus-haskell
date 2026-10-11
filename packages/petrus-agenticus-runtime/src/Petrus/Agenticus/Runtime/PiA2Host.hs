@@ -155,6 +155,8 @@ import Petrus.Agenticus.Hands.Workspace (newMotusWorkspaceAdapter, stageDirector
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Sqlite
 import Petrus.Agenticus.Internal.Validate (sha256Hex, utf8Length)
+import Petrus.Agenticus.Runtime.Custody
+import Petrus.Agenticus.Runtime.Internal.Process (micros)
 import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeInstallation (..), RuntimeProbeResult (..))
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
@@ -180,13 +182,11 @@ import Petrus.Agenticus.Runtime.Pi
   , ProbePaths (..)
   , adapterConfig
   , enableScriptedConformance
-  , micros
   , mkPiContinuationPayloadV1
   , newPiRuntimeAdapter
   , piApiKeyCatalog
   , piCollocatedHands
   , piConnectionCapabilities
-  , piConnectionCustody
   , piContinuationCapabilities
   , piContinuationCodec
   , piContinuationDescriptor
@@ -1667,7 +1667,7 @@ compose config0 authority provider clock factory scripted kind = do
       owned (bodyStoreClose bodies)
       ledger <- openSqlitePiOperationLedger (root </> "operations.sqlite3")
       owned (ledgerClose ledger)
-      piCustody <- piConnectionCustody custody
+      piCustody <- hostConnectionCustody custody
       let defaults = piRuntimeConfig config.provider config.model config.workingDirectory runtimeRoot
       adapter <-
         newPiRuntimeAdapter

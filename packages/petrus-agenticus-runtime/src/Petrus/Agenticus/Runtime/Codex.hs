@@ -14,7 +14,7 @@
 -- retained-home helper (@_HELPER_SOURCE@) ships verbatim as the data file
 -- @codex_helper.py@ and is passed as a Motus command, as upstream does.
 -- Connection custody is the record shared with the Pi host
--- ('PiConnectionCustody').
+-- ('HostConnectionCustody').
 module Petrus.Agenticus.Runtime.Codex
   ( -- * Pins
     codexVersion
@@ -153,6 +153,8 @@ import Petrus.Agenticus.Program.Descriptor
   , agentProgramDescriptor
   , continuationRequirement
   )
+import Petrus.Agenticus.Runtime.Custody
+import Petrus.Agenticus.Runtime.Internal.Process (runBounded)
 import Petrus.Agenticus.Runtime.HostSupport (observedPlatform, pyJsonLoadsBytes, pyStrip, stripAnsi)
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
@@ -172,7 +174,6 @@ import Petrus.Agenticus.Runtime.Operation
   , runtimeProtocolError
   , runtimeProtocolErrorCode
   )
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..), runBounded)
 import Petrus.Agenticus.Runtime.Profiles (codexA2Local, codexA3Gondolin)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation
@@ -216,7 +217,6 @@ import Petrus.Motus.Execution
 import System.Directory (findExecutable, makeAbsolute)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory)
-import System.Process (proc)
 
 -- ---------------------------------------------------------------------------
 -- Pins
@@ -807,7 +807,7 @@ officialCodexProbeHooks =
     , run = \case
         [] -> pure Nothing
         program : arguments -> do
-          outcome <- try (runBounded (proc program arguments))
+          outcome <- try (runBounded (program : arguments) Nothing)
           case outcome of
             Right (Just (ExitSuccess, output, _)) -> case TE.decodeUtf8' output of
               Right value -> pure (Just value)
@@ -843,7 +843,7 @@ data CodexRuntimeAdapter = CodexRuntimeAdapter
   , config :: CodexRuntimeConfig
   , codec :: CodexContinuationCodec
   , turns :: CodexTurnOperations
-  , custody :: PiConnectionCustody
+  , custody :: HostConnectionCustody
   , clock :: IO Double
   , hooks :: CodexProbeHooks
   , helper :: IORef FilePath
@@ -860,13 +860,13 @@ guestPath = "/usr/local/bin:/usr/bin:/bin"
 
 -- | @CodexRuntimeAdapter(config, codec, turns, custody, clock=...)@.
 newCodexRuntimeAdapter
-  :: CodexRuntimeConfig -> CodexContinuationCodec -> CodexTurnOperations -> PiConnectionCustody -> CodexAdapterOptions -> IO CodexRuntimeAdapter
+  :: CodexRuntimeConfig -> CodexContinuationCodec -> CodexTurnOperations -> HostConnectionCustody -> CodexAdapterOptions -> IO CodexRuntimeAdapter
 newCodexRuntimeAdapter config codec turns custody options = newAdapter CodexLocal options.interpreter config codec turns custody options
 
 -- | @CodexGondolinRuntimeAdapter(config, codec, turns, custody, clock=...)@:
 -- the guest helper is @/usr/bin/python3@.
 newCodexGondolinRuntimeAdapter
-  :: CodexRuntimeConfig -> CodexContinuationCodec -> CodexTurnOperations -> PiConnectionCustody -> CodexAdapterOptions -> IO CodexRuntimeAdapter
+  :: CodexRuntimeConfig -> CodexContinuationCodec -> CodexTurnOperations -> HostConnectionCustody -> CodexAdapterOptions -> IO CodexRuntimeAdapter
 newCodexGondolinRuntimeAdapter config codec turns custody options = newAdapter CodexGondolin "/usr/bin/python3" config codec turns custody options
 
 newAdapter
@@ -875,7 +875,7 @@ newAdapter
   -> CodexRuntimeConfig
   -> CodexContinuationCodec
   -> CodexTurnOperations
-  -> PiConnectionCustody
+  -> HostConnectionCustody
   -> CodexAdapterOptions
   -> IO CodexRuntimeAdapter
 newAdapter lane helperExecutable config0 codec turns custody options = do
@@ -1119,7 +1119,7 @@ connectionCleanupVerified expectedOperation attachmentId' operationId' cleanup' 
     && not cleanup'.securityViolation
 
 data ExecState = ExecState
-  { materialization :: Maybe PiMaterialization
+  { materialization :: Maybe HostMaterialization
   , authRef :: Maybe PrivateFileRef
   , rolloutRef :: Maybe PrivateFileRef
   , attempted :: Bool

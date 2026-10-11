@@ -23,10 +23,10 @@ import Petrus.Agenticus.Hands.Gateway (GatewayCounters (..), HandsGateway, count
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
 import Petrus.Agenticus.Runtime.Claude
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (InstalledComponent (..), ProbeDisposition (..), RuntimeInstallation (..), RuntimeProbeResult (..))
 import Petrus.Agenticus.Runtime.Live.Support
 import Petrus.Agenticus.Runtime.Operation (cleanupVerified)
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), piConnectionCustody)
 import Petrus.Agenticus.Runtime.Profiles (claudeA2Local)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Continuation (ContinuationState (..), mkContinuation)
@@ -55,9 +55,9 @@ snapshot =
     ]
 
 -- | @_NoCustody@: credential-free qualification may not touch authority.
-noCustody :: PiConnectionCustody
+noCustody :: HostConnectionCustody
 noCustody =
-  PiConnectionCustody
+  HostConnectionCustody
     { materialize = \_ _ _ _ _ -> failWith "credential-free qualification may not materialize authority"
     , activate = \_ _ -> failWith "credential-free qualification may not activate authority"
     , admitResult = \_ _ -> failWith "credential-free qualification may not admit a result"
@@ -80,7 +80,7 @@ model :: IO Text
 model = maybe "claude-sonnet-4-5" T.pack <$> lookupEnv "PETRUS_CV16_CLAUDE_MODEL"
 
 -- | @_adapter@: a project binding and a private runtime root under @root@.
-adapterFor :: FilePath -> Stores -> PiConnectionCustody -> Text -> IO ClaudeRuntimeAdapter
+adapterFor :: FilePath -> Stores -> HostConnectionCustody -> Text -> IO ClaudeRuntimeAdapter
 adapterFor root stores custody model' = do
   let working = root </> "project-binding"
       runtime = root </> "runtime"
@@ -184,7 +184,7 @@ spec = describe "test_claude_real" $ do
               `withCleanup` c.storage.close
       flip withCleanup settleConnection $ do
         stores <- newStores
-        operations <- piConnectionCustody c.custody
+        operations <- hostConnectionCustody c.custody
         adapter <- adapterFor tmp stores operations model'
         probe <- probeClaude adapter Nothing
         probe.disposition `shouldBe` ProbeReady

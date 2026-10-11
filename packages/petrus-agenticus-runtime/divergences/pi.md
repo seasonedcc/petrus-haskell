@@ -8,7 +8,8 @@ sides of each one. Its single accepted difference is item 6.
    protocols are records here, whose fields are the protocol's methods:
    - continuation and Turn storage: `PiContinuationOperations`,
      `PiTurnOperations`;
-   - connection custody: `PiConnectionCustody`;
+   - connection custody: `HostConnectionCustody`
+     (`Petrus.Agenticus.Runtime.Custody`, shared by every host);
    - helper clients and factories: `PiHelperClient`, `PiHelperFactory`;
    - the operation ledger: `PiOperationLedger`.
 
@@ -191,7 +192,7 @@ sides of each one. Its single accepted difference is item 6.
 1. **Protocols are records.** `PiModelPhaseOperations`,
    `PiModelPhaseCustody`, `PhaseClient` and `PhaseFactory` replace the
    structural protocols. `piModelPhaseCustody` adapts a
-   `PiConnectionCustody`. Because the types are fixed, the reference's
+   `HostConnectionCustody`. Because the types are fixed, the reference's
    `isinstance` refusals cannot occur and have no port:
    - `TypeError("... exact configuration and connection")`;
    - `TypeError("... exact collaborators")`;
@@ -229,7 +230,7 @@ sides of each one. Its single accepted difference is item 6.
 1. **Protocols are records.** `PiApplicationContinuationOperations`,
    `PiApplicationTurnOperations`, `PiApplicationConnectionCustody`,
    `ApplicationClient` and `ApplicationFactory` replace the structural
-   protocols. `applicationCustody` adapts a `PiConnectionCustody`, and through
+   protocols. `applicationCustody` adapts a `HostConnectionCustody`, and through
    it the real `AgentConnectionCustody`. Because the types are fixed, the
    reference's `isinstance` refusals cannot occur and have no port:
    - `TypeError("Pi application codec requires exact operations")`;

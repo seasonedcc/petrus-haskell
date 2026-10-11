@@ -57,6 +57,7 @@ import Petrus.Agenticus.Hands.Contract (ToolMethod (..), allToolMethods)
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
 import Petrus.Agenticus.Program.AgentNet (ModelSettlement (..), StopReason (..), loopStateToData, mkLoopState, modelPhaseActivity, modelSettlementFromData)
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)
 import Petrus.Agenticus.Runtime.Pi
 import Petrus.Agenticus.Runtime.Pi qualified as Pi
@@ -98,17 +99,17 @@ piKey = "pi-key-canary-never-render"
 
 -- | The reference tests' fake custody: one READ lease per Turn over a fixed
 -- secret.
-benchCustody :: ByteString -> PiConnectionCustody
+benchCustody :: ByteString -> HostConnectionCustody
 benchCustody secret =
-  PiConnectionCustody
+  HostConnectionCustody
     { materialize = \connection host mode ttl _ -> do
         now <- getMonotonicTime
         pure
-          PiMaterialization
+          HostMaterialization
             { fence = AttachmentFence "credential" "lease" connection host 1 3 4
             , mode
             , expiresAt = now + ttl
-            , home = PiHome {read = pure secret, replace = \_ -> pure ()}
+            , home = ProviderHome {read = pure secret, replace = \_ -> pure ()}
             }
     , activate = \_ _ -> fail "activate"
     , admitResult = \fence operationId -> pure AdmissionResult {operationId, purpose = "result", attachmentId = fence.attachmentId}

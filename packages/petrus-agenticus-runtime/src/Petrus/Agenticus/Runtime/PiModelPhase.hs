@@ -62,7 +62,7 @@ module Petrus.Agenticus.Runtime.PiModelPhase
 import Control.Concurrent (ThreadId, forkIO, killThread)
 import Control.Concurrent.STM
 import Control.Exception
-import Control.Monad (forM_, unless, void, when)
+import Control.Monad (unless, void, when)
 import Data.Bits ((.&.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -105,24 +105,17 @@ import Petrus.Agenticus.Program.AgentNet
   , modelSettlementToData
   , parseStopReason
   )
+import Petrus.Agenticus.Runtime.Custody
+import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), privateEnvironment, spawnHelper, nextReceived, helperExited, closeOnce, closeInput, stopReader, killGroup, awaitDrain, waitExit, exitInt, runBounded, removeRoot)
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
 import Petrus.Agenticus.Runtime.Pi
-  ( PiConnectionCustody
-  , PiHome (..)
-  , PiMaterialization (..)
-  , b64Encode
-  , exitInt
+  ( b64Encode
   , piAiVersion
   , piApiKeyCatalog
   , piSdkVersion
   , pyB64DecodeText
-  , removeRoot
-  , runBounded
-  , spawnPiped
   , strictLoad
-  , waitExit
   )
-import Petrus.Agenticus.Runtime.Pi qualified as Pi
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.Directory
@@ -134,14 +127,11 @@ import System.Directory
   , pathIsSymbolicLink
   )
 import System.Exit (ExitCode (..))
-import System.FilePath (isAbsolute, takeDirectory, (</>))
-import System.IO (BufferMode (..), Handle, hClose, hFlush, hSetBinaryMode, hSetBuffering)
+import System.FilePath (isAbsolute, (</>))
+import System.IO (hFlush)
 import System.IO.Temp (createTempDirectory)
 import System.Posix.Files qualified as Files
-import System.Posix.Signals (sigKILL, signalProcessGroup)
 import System.Posix.User (getEffectiveUserID)
-import System.Process (CreateProcess (..), ProcessHandle, getPid, getProcessExitCode, proc)
-import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
 -- Bounds
@@ -256,15 +246,15 @@ data PiModelPhaseOperations = PiModelPhaseOperations
 
 -- | @PiModelPhaseCustody@: the custody operations one phase needs.
 data PiModelPhaseCustody = PiModelPhaseCustody
-  { materialize :: Text -> Text -> LeaseMode -> Double -> Text -> IO PiMaterialization
+  { materialize :: Text -> Text -> LeaseMode -> Double -> Text -> IO HostMaterialization
   -- ^ connection, host, mode, ttl, operation
   , admitResult :: AttachmentFence -> Text -> IO AdmissionResult
-  , release :: PiMaterialization -> Text -> IO ReleaseResult
+  , release :: HostMaterialization -> Text -> IO ReleaseResult
   }
 
 -- | The Pi runtime's custody (for example the real 'AgentConnectionCustody'
--- through 'Pi.piConnectionCustody') as model-phase custody.
-piModelPhaseCustody :: PiConnectionCustody -> PiModelPhaseCustody
+-- through 'Pi.hostConnectionCustody') as model-phase custody.
+piModelPhaseCustody :: HostConnectionCustody -> PiModelPhaseCustody
 piModelPhaseCustody c =
   PiModelPhaseCustody {materialize = c.materialize, admitResult = c.admitResult, release = c.release}
 
@@ -372,53 +362,23 @@ piModelPhaseHelperPath = getDataFileName "data/pi_model_phase_helper.mjs" >>= ma
 
 -- | @_SubprocessClient@: one helper process in its own session.
 data PhaseSubprocessClient = PhaseSubprocessClient
-  { process :: ProcessHandle
-  , pid :: Maybe Int
-  , stdinHandle :: Handle
-  , stdoutHandle :: Handle
-  , stderrHandle :: Handle
-  , chunks :: TQueue (Maybe ByteString)
-  , reader :: ThreadId
-  , drainer :: ThreadId
-  , stderrDone :: TVar Bool
+  { helper :: Helper
   , writer :: IORef (Maybe ThreadId)
-  , closed :: IORef Bool
   }
 
 newPhaseSubprocessClient :: FilePath -> FilePath -> FilePath -> FilePath -> IO PhaseSubprocessClient
 newPhaseSubprocessClient node helper entrypoint privateRoot = do
   unless (isAbsolute node) $ protocol "runtime-not-ready"
-  let environment = [("HOME", privateRoot), ("PATH", takeDirectory node), ("LANG", "C.UTF-8"), ("LC_ALL", "C.UTF-8")]
-  spawned <- spawnPiped node [helper, entrypoint] Nothing (Just environment)
-  (stdinHandle, stdoutHandle, stderrHandle, process) <- case spawned of
-    Just started -> pure started
-    Nothing -> protocol "helper-launch-failed"
-  mapM_ (`hSetBinaryMode` True) [stdinHandle, stdoutHandle, stderrHandle]
-  hSetBuffering stdinHandle (BlockBuffering Nothing)
-  pid <- fmap fromIntegral <$> getPid process
-  stderrDone <- newTVarIO False
-  drainer <- forkIO (drain stderrHandle `finally` atomically (writeTVar stderrDone True))
-  chunks <- newTQueueIO
-  reader <- forkIO (readChunks stdoutHandle chunks)
-  writer <- newIORef Nothing
-  closed <- newIORef False
-  pure PhaseSubprocessClient {process, pid, stdinHandle, stdoutHandle, stderrHandle, chunks, reader, drainer, stderrDone, writer, closed}
-  where
-    drain h = do
-      chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
-      unless (B.null chunk) (drain h)
-    readChunks h queue = do
-      chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
-      if B.null chunk
-        then atomically (writeTQueue queue Nothing)
-        else atomically (writeTQueue queue (Just chunk)) >> readChunks h queue
+  let command = HelperSpec {executable = node, arguments = [helper, entrypoint], directory = Nothing, environment = Just (privateEnvironment privateRoot node)}
+  started <- spawnHelper Chunks command >>= maybe (protocol "helper-launch-failed") pure
+  PhaseSubprocessClient started <$> newIORef Nothing
 
 phaseSubprocessClient :: PhaseSubprocessClient -> PhaseClient
 phaseSubprocessClient c = PhaseClient {run = runPhase c, close = closePhase c}
 
 -- | @client.process.poll() is not None@.
 phaseSubprocessExited :: PhaseSubprocessClient -> IO Bool
-phaseSubprocessExited c = isJust <$> getProcessExitCode c.process
+phaseSubprocessExited c = helperExited c.helper
 
 -- | The reference's framed exchange: write the whole frame, read until the
 -- helper closes stdout, heartbeating and honouring the wall deadline.
@@ -431,9 +391,8 @@ runPhase c frame wall heartbeat = do
   written <- newTVarIO False
   writerThread <-
     forkIO $
-      ( (B.hPut c.stdinHandle raw >> hFlush c.stdinHandle) `catch` \(_ :: IOException) -> pure ()
-      )
-        `finally` ((hClose c.stdinHandle `catch` \(_ :: IOException) -> pure ()) >> atomically (writeTVar written True))
+      ((B.hPut c.helper.input raw >> hFlush c.helper.input) `catch` \(_ :: IOException) -> pure ())
+        `finally` (closeInput c.helper >> atomically (writeTVar written True))
   writeIORef c.writer (Just writerThread)
   start <- getMonotonicTime
   let deadline = start + wall
@@ -463,12 +422,12 @@ runPhase c frame wall heartbeat = do
                 let grown = buffer <> chunk
                 when (B.length grown > maxFrameBytes) $ protocol "frame-overflow"
                 pure (grown, True)
-            exited <- isJust <$> getProcessExitCode c.process
+            exited <- helperExited c.helper
             stillWriting <- not <$> readTVarIO written
             when (exited && stillWriting) $ stopWriter c >> atomically (writeTVar written True)
             loop buffer' outputOpen' heartbeatAt'
   buffer <- loop B.empty True (start + interval)
-  returncode <- waitExit c.process 0.1 >>= maybe (throwIO (agenticusError (OtherError "TimeoutExpired") "helper did not exit")) pure
+  returncode <- waitExit c.helper.process 0.1 >>= maybe (throwIO (agenticusError (OtherError "TimeoutExpired") "helper did not exit")) pure
   when (BC.count '\n' buffer /= 1 || BC.last buffer /= '\n') $ protocol "helper-protocol"
   answer <- maybe (protocol "malformed-frame") pure (strict (B.init buffer))
   members <- case answer of
@@ -487,10 +446,7 @@ runPhase c frame wall heartbeat = do
     <$> decodeMember (field "assistant") maxOutputBytes "assistant"
     <*> decodeMember (field "transcript") maxTranscriptBytes "transcript"
   where
-    nextChunk = do
-      delay <- registerDelay 20000
-      atomically $
-        (Just <$> readTQueue c.chunks) `orElse` (readTVar delay >>= \expired -> if expired then pure Nothing else retry)
+    nextChunk = nextReceived c.helper 20000
     pollDelay = do
       delay <- registerDelay 20000
       atomically (readTVar delay >>= check)
@@ -507,31 +463,19 @@ decodeMember value bound label = case value of
 stopWriter :: PhaseSubprocessClient -> IO ()
 stopWriter c = do
   readIORef c.writer >>= mapM_ killThread
-  hClose c.stdinHandle `catch` \(_ :: IOException) -> pure ()
+  closeInput c.helper
 
 -- | Kill the helper's process group and report whether it and its stderr
 -- drain are proven gone.
 closePhase :: PhaseSubprocessClient -> IO Bool
-closePhase c =
-  readIORef c.closed >>= \case
-    True -> phaseSubprocessExited c
-    False -> do
-      writeIORef c.closed True
-      running <- isNothing <$> getProcessExitCode c.process
-      when running $ forM_ c.pid $ \pid ->
-        signalProcessGroup sigKILL (fromIntegral pid) `catch` \(_ :: IOException) -> pure ()
-      exited <- waitExit c.process 1
-      stopWriter c
-      killThread c.reader
-      hClose c.stdoutHandle `catch` \(_ :: IOException) -> pure ()
-      case exited of
-        Nothing -> pure False
-        Just _ -> do
-          _ <- timeout 1000000 (atomically (readTVar c.stderrDone >>= check))
-          drained <- readTVarIO c.stderrDone
-          unless drained (killThread c.drainer)
-          hClose c.stderrHandle `catch` \(_ :: IOException) -> pure ()
-          pure drained
+closePhase c = closeOnce c.helper $ do
+  killGroup c.helper
+  exited <- waitExit c.helper.process 1
+  stopWriter c
+  stopReader c.helper
+  case exited of
+    Nothing -> pure False
+    Just _ -> awaitDrain c.helper 1
 
 -- ---------------------------------------------------------------------------
 -- The adapter
@@ -609,7 +553,7 @@ probeModelPhase a packageRoot = do
         root <- strictPath packageRoot
         package <- readJson (root </> "package.json")
         ai <- readJson (root </> "node_modules/@earendil-works/pi-ai/package.json")
-        (versionCode, versionOut, _) <- runBounded (proc nodeReal ["--version"]) >>= maybe invalid pure
+        (versionCode, versionOut, _) <- runBounded [nodeReal, "--version"] Nothing >>= maybe invalid pure
         when (versionCode /= ExitSuccess) invalid
         entry <- strictPath (root </> "dist/index.js")
         helper <- piModelPhaseHelperPath >>= strictPath
@@ -624,8 +568,7 @@ probeModelPhase a packageRoot = do
           || maybe True (< [22, 19, 0]) numbers
           then pure False
           else do
-            let environment = [("HOME", "/dev/null"), ("PATH", takeDirectory nodeReal), ("LANG", "C.UTF-8"), ("LC_ALL", "C.UTF-8")]
-            (code, out, err) <- runBounded (proc nodeReal [helper, entry, "--probe"]) {env = Just environment} >>= maybe invalid pure
+            (code, out, err) <- runBounded [nodeReal, helper, entry, "--probe"] (Just (privateEnvironment "/dev/null" nodeReal)) >>= maybe invalid pure
             if code /= ExitSuccess || not (B.null err) || out /= "{\"type\":\"probe\",\"ok\":true}\n"
               then pure False
               else do

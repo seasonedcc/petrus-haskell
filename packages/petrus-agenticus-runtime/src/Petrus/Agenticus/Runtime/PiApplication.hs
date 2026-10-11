@@ -99,10 +99,8 @@ module Petrus.Agenticus.Runtime.PiApplication
   , applicationWorkingBinding
   ) where
 
-import Control.Concurrent (ThreadId, forkIO, killThread)
 import Control.Concurrent.MVar
-import Control.Concurrent.STM
-import Control.Exception (IOException, SomeException, catch, finally, fromException, mask_, throwIO, try)
+import Control.Exception (IOException, SomeException, catch, fromException, mask_, throwIO, try)
 import Control.Monad (filterM, forM_, unless, when)
 import Data.Bits ((.&.))
 import Data.ByteString (ByteString)
@@ -159,6 +157,8 @@ import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
 import Petrus.Agenticus.Internal.Validate (sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor, ProgramOwnership (..), agentProgramDescriptor, continuationRequirement)
+import Petrus.Agenticus.Runtime.Custody
+import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), privateEnvironment, spawnHelper, nextReceived, helperExited, closeHelper, waitExit, exitInt, runBounded, removeRoot)
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation
@@ -178,24 +178,15 @@ import Petrus.Agenticus.Runtime.Operation
   , runtimeProtocolErrorCode
   )
 import Petrus.Agenticus.Runtime.Pi
-  ( PiMaterialization (..)
-  , PiConnectionCustody (..)
-  , PiHome (..)
-  , b64Encode
-  , exitInt
-  , micros
+  ( b64Encode
   , piAiSource
   , piAiVersion
   , piApiKeyCatalog
   , piSdkSourceCommit
   , piText
   , pyB64DecodeText
-  , removeRoot
-  , runBounded
-  , spawnPiped
   , strictFrameLoad
   , strictLoad
-  , waitExit
   )
 import Petrus.Agenticus.Runtime.Profiles (piApplicationA5E2b, piApplicationA5Gondolin)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
@@ -216,14 +207,11 @@ import Petrus.Motus.Execution
 import System.Directory (canonicalizePath, doesDirectoryExist, doesPathExist, findExecutable, makeAbsolute, pathIsSymbolicLink)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
-import System.IO (BufferMode (..), Handle, hClose, hFlush, hSetBinaryMode, hSetBuffering)
+import System.IO (hFlush)
 import System.IO.Temp (createTempDirectory)
 import System.Posix.Files qualified as Files
-import System.Posix.Signals (sigKILL, signalProcessGroup)
 import System.Posix.Unistd (SystemID (..), getSystemID)
 import System.Posix.User (getEffectiveUserID)
-import System.Process (CreateProcess (..), ProcessHandle, getPid, getProcessExitCode, proc)
-import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
 -- Pins and descriptors
@@ -544,16 +532,16 @@ newPiApplicationRuntimeInvocation i = do
 
 -- | @PiApplicationConnectionCustody@: materialize, admit and release only.
 data PiApplicationConnectionCustody = PiApplicationConnectionCustody
-  { materialize :: Text -> Text -> LeaseMode -> Double -> Text -> IO PiMaterialization
+  { materialize :: Text -> Text -> LeaseMode -> Double -> Text -> IO HostMaterialization
   -- ^ connection, host, mode, ttl, operation
   , admitResult :: AttachmentFence -> Text -> IO AdmissionResult
-  , release :: PiMaterialization -> Text -> IO ReleaseResult
+  , release :: HostMaterialization -> Text -> IO ReleaseResult
   }
 
 -- | The application's view of the native Pi custody (and so of the real
 -- 'Petrus.Agenticus.Connection.Custody.AgentConnectionCustody' through
--- 'Petrus.Agenticus.Runtime.Pi.piConnectionCustody').
-applicationCustody :: PiConnectionCustody -> PiApplicationConnectionCustody
+-- 'Petrus.Agenticus.Runtime.Pi.hostConnectionCustody').
+applicationCustody :: HostConnectionCustody -> PiApplicationConnectionCustody
 applicationCustody custody =
   PiApplicationConnectionCustody
     { materialize = custody.materialize
@@ -622,19 +610,10 @@ applicationSubprocessOptions = ApplicationSubprocessOptions {modelData = toolRes
 data ApplicationSubprocessClient = ApplicationSubprocessClient
   { config :: PiApplicationRuntimeConfig
   , options :: ApplicationSubprocessOptions
-  , process :: ProcessHandle
-  , pid :: Maybe Int
-  , stdinHandle :: Handle
-  , stdoutHandle :: Handle
-  , stderrHandle :: Handle
-  , chunks :: TQueue (Maybe ByteString)
-  , reader :: ThreadId
-  , drainer :: ThreadId
-  , stderrDone :: TVar Bool
+  , helper :: Helper
   , start :: [(Text, Json)]
   , priorTranscript :: ByteString
   , writeAllowed :: Bool
-  , closed :: IORef Bool
   }
 
 newApplicationSubprocessClient :: FilePath -> ApplicationClientArgs -> IO ApplicationSubprocessClient
@@ -642,24 +621,14 @@ newApplicationSubprocessClient = newApplicationSubprocessClientWith applicationS
 
 newApplicationSubprocessClientWith :: ApplicationSubprocessOptions -> FilePath -> ApplicationClientArgs -> IO ApplicationSubprocessClient
 newApplicationSubprocessClientWith options helper args = do
-  let environment =
-        [ ("HOME", args.privateRoot)
-        , ("PATH", takeDirectory args.node)
-        , ("LANG", "C.UTF-8")
-        , ("LC_ALL", "C.UTF-8")
-        ]
-  spawned <- spawnPiped args.node [helper, args.codingEntrypoint, args.coreEntrypoint, args.aiEntrypoint] Nothing (Just environment)
-  (stdinHandle, stdoutHandle, stderrHandle, process) <- case spawned of
-    Just started -> pure started
-    Nothing -> throwIO (runtimeProtocolError "helper-launch-failed")
-  mapM_ (`hSetBinaryMode` True) [stdinHandle, stdoutHandle, stderrHandle]
-  hSetBuffering stdinHandle (BlockBuffering Nothing)
-  pid <- fmap fromIntegral <$> getPid process
-  stderrDone <- newTVarIO False
-  drainer <- forkIO (drain stderrHandle `finally` atomically (writeTVar stderrDone True))
-  chunks <- newTQueueIO
-  reader <- forkIO (readChunks stdoutHandle chunks)
-  closed <- newIORef False
+  let command =
+        HelperSpec
+          { executable = args.node
+          , arguments = [helper, args.codingEntrypoint, args.coreEntrypoint, args.aiEntrypoint]
+          , directory = Nothing
+          , environment = Just (privateEnvironment args.privateRoot args.node)
+          }
+  started <- spawnHelper Chunks command >>= maybe (throwIO (runtimeProtocolError "helper-launch-failed")) pure
   grant <- currentGrant (Episode.grants args.invocation.attachment)
   let writeAllowed = maybe False (`permits` WorkspaceWrite) grant
       priorTranscript = maybe "[]" (.transcriptJson) args.prior
@@ -690,29 +659,11 @@ newApplicationSubprocessClientWith options helper args = do
     ApplicationSubprocessClient
       { config = cfg
       , options
-      , process
-      , pid
-      , stdinHandle
-      , stdoutHandle
-      , stderrHandle
-      , chunks
-      , reader
-      , drainer
-      , stderrDone
+      , helper = started
       , start
       , priorTranscript
       , writeAllowed
-      , closed
       }
-  where
-    drain h = do
-      chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
-      unless (B.null chunk) (drain h)
-    readChunks h queue = do
-      chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
-      if B.null chunk
-        then atomically (writeTQueue queue Nothing)
-        else atomically (writeTQueue queue (Just chunk)) >> readChunks h queue
 
 applicationSubprocessClient :: ApplicationSubprocessClient -> ApplicationClient
 applicationSubprocessClient c = ApplicationClient {run = runApplicationSubprocess c, close = closeApplicationSubprocess c}
@@ -725,7 +676,7 @@ writeFrame :: ApplicationSubprocessClient -> Json -> IO ()
 writeFrame c frame = do
   encoded <- either (const (protocol "helper-pipe-failed")) (pure . (<> "\n")) (J.dumps J.compact frame)
   when (B.length encoded > c.config.maxFrameBytes) $ protocol "helper-pipe-failed"
-  written <- try (B.hPut c.stdinHandle encoded >> hFlush c.stdinHandle)
+  written <- try (B.hPut c.helper.input encoded >> hFlush c.helper.input)
   case written of
     Right () -> pure ()
     Left (_ :: IOException) -> protocol "helper-pipe-failed"
@@ -754,7 +705,7 @@ runApplicationSubprocess c gateway' invocation current deadline = do
   terminal <- case final.terminal of
     Just value | B.null final.buffer -> pure value
     _ -> protocol "terminal-missing"
-  exited <- waitExit c.process cfg.cancellationGrace
+  exited <- waitExit c.helper.process cfg.cancellationGrace
   case exited of
     Just code | exitInt code == 0 -> pure terminal
     _ -> protocol "helper-exit-inconsistent"
@@ -774,7 +725,7 @@ runApplicationSubprocess c gateway' invocation current deadline = do
                 pure s {abortSent = True, graceEnd = now + cfg.cancellationGrace}
               else pure s
           when (s1.abortSent && now >= s1.graceEnd) stopped
-          exited <- isJust <$> getProcessExitCode c.process
+          exited <- helperExited c.helper
           if exited && s1.eof
             then pure s1
             else do
@@ -790,10 +741,7 @@ runApplicationSubprocess c gateway' invocation current deadline = do
                   when (B.length buffer > cfg.maxFrameBytes) $ protocol "frame-overflow"
                   s2 <- frames s1 {buffer}
                   loop s2
-    nextChunk = do
-      delay <- registerDelay 50000
-      atomically $
-        (Just <$> readTQueue c.chunks) `orElse` (readTVar delay >>= \expired -> if expired then pure Nothing else retry)
+    nextChunk = nextReceived c.helper 50000
     frames s = case B.elemIndex 10 s.buffer of
       Nothing -> pure s
       Just i -> do
@@ -890,28 +838,7 @@ runApplicationSubprocess c gateway' invocation current deadline = do
 -- | Close pipes, kill the helper's whole process group, and report whether
 -- the helper and its stderr drain are proven gone.
 closeApplicationSubprocess :: ApplicationSubprocessClient -> IO Bool
-closeApplicationSubprocess c =
-  readIORef c.closed >>= \case
-    True -> isJust <$> getProcessExitCode c.process
-    False -> do
-      writeIORef c.closed True
-      hClose c.stdinHandle `catch` \(_ :: IOException) -> pure ()
-      -- A Handle is locked while a thread blocks reading it: stop the reader
-      -- before closing stdout.
-      killThread c.reader
-      hClose c.stdoutHandle `catch` \(_ :: IOException) -> pure ()
-      running <- isNothing <$> getProcessExitCode c.process
-      when running $ forM_ c.pid $ \pid ->
-        signalProcessGroup sigKILL (fromIntegral pid) `catch` \(_ :: IOException) -> pure ()
-      waitExit c.process c.config.cancellationGrace >>= \case
-        Nothing -> pure False
-        Just _ -> do
-          _ <- timeout (micros c.config.cancellationGrace) (atomically (readTVar c.stderrDone >>= check))
-          drained <- readTVarIO c.stderrDone
-          unless drained (killThread c.drainer)
-          hClose c.stderrHandle `catch` \(_ :: IOException) -> pure ()
-          exited <- isJust <$> getProcessExitCode c.process
-          pure (exited && drained)
+closeApplicationSubprocess c = closeHelper c.helper c.config.cancellationGrace
 
 -- ---------------------------------------------------------------------------
 -- Operations
@@ -1212,7 +1139,7 @@ probeInstalled a paths cli node = do
         || field "@earendil-works/pi-ai" dependencies `notElem` pinned
     )
     invalid
-  (versionCode, versionOut, _) <- runBounded (proc nodeReal ["--version"]) >>= maybe invalid pure
+  (versionCode, versionOut, _) <- runBounded [nodeReal, "--version"] Nothing >>= maybe invalid pure
   when (versionCode /= ExitSuccess) invalid
   let version = T.strip (TE.decodeUtf8With (\_ _ -> Just '\xfffd') versionOut)
   case T.splitOn "." <$> T.stripPrefix "v" version of
@@ -1225,9 +1152,9 @@ probeInstalled a paths cli node = do
   catalog <-
     either (const invalid) pure $
       J.dumpsText J.defaultDumps (Array [Array [String p, String m] | (p, m) <- piApiKeyCatalog])
-  let environment = [("HOME", "/dev/null"), ("PATH", takeDirectory nodeReal), ("LANG", "C.UTF-8"), ("LC_ALL", "C.UTF-8")]
-      command = (proc nodeReal [helper, coding, core, ai, "--probe", T.unpack catalog]) {env = Just environment}
-  (code, out, err) <- runBounded command >>= maybe invalid pure
+  (code, out, err) <-
+    runBounded [nodeReal, helper, coding, core, ai, "--probe", T.unpack catalog] (Just (privateEnvironment "/dev/null" nodeReal))
+      >>= maybe invalid pure
   when (code /= ExitSuccess || not (B.null err) || out /= "{\"type\":\"probe\",\"ok\":true}\n") invalid
   system <- getSystemID
   components <-
@@ -1415,7 +1342,7 @@ settle inv outcome appends code output continuation =
   throwLeft (mkRuntimeTurnSettlement inv.episodeId inv.turnId outcome appends code output continuation)
 
 data Exec = Exec
-  { materialization :: Maybe PiMaterialization
+  { materialization :: Maybe HostMaterialization
   , client :: Maybe ApplicationClient
   , root :: Maybe (FilePath, Maybe (Integer, Integer))
   , attempted :: Bool

@@ -39,8 +39,9 @@ Continuation payload's transcript is produced by `encodeTranscript`, which
    are `ClaudeClient` and `ClaudeClientFactory`. `_OfficialFactory` is
    `officialFactory` over a `ClaudeSdk` record, whose default is
    `sidecarSdk`. Storage is `ClaudeContinuationOperations` and
-   `ClaudeTurnOperations`. Connection custody is the `PiConnectionCustody`
-   record the Pi and Codex hosts share.
+   `ClaudeTurnOperations`. Connection custody is the `HostConnectionCustody`
+   record (`Petrus.Agenticus.Runtime.Custody`, the reference's
+   `PiConnectionCustody`) that every host shares.
 
 3. **The client is released explicitly.** Upstream, the official
    client's resources go when the object is garbage-collected after

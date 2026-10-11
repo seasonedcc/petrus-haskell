@@ -108,6 +108,7 @@ import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..), allToolMethods)
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
+import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
 import Petrus.Agenticus.Runtime.Pi
@@ -220,7 +221,7 @@ data FakeCustody = FakeCustody
   , stateVersion :: IORef Integer
   , beforeAdmit :: IORef (IO ())
   -- ^ The reference's stalled @admit_result@ monkeypatch.
-  , checkpointOverride :: IORef (Maybe (PiMaterialization -> Text -> IO PublicationResult))
+  , checkpointOverride :: IORef (Maybe (HostMaterialization -> Text -> IO PublicationResult))
   -- ^ The reference's replaced @checkpoint@.
   }
 
@@ -256,9 +257,9 @@ recordedKinds c = map fst <$> readIORef c.records
 assertTrue :: Bool -> IO ()
 assertTrue condition = unless condition (throwAgenticus (OtherError "AssertionError") "")
 
-custodyOperations :: FakeCustody -> PiConnectionCustody
+custodyOperations :: FakeCustody -> HostConnectionCustody
 custodyOperations c =
-  PiConnectionCustody
+  HostConnectionCustody
     { materialize = \connection host mode ttl operationId -> do
         let expected = if c.profile == "api-key" then LeaseRead else LeaseRefresh
         assertTrue ((connection, host, mode) == ("connection", "host", expected))
@@ -266,11 +267,11 @@ custodyOperations c =
         version <- readIORef c.stateVersion
         now <- getMonotonicTime
         pure
-          PiMaterialization
+          HostMaterialization
             { fence = AttachmentFence "credential" "lease" connection host 1 3 version
             , mode
             , expiresAt = now + ttl
-            , home = PiHome {read = readIORef c.home, replace = writeIORef c.home}
+            , home = ProviderHome {read = readIORef c.home, replace = writeIORef c.home}
             }
     , activate = \m operationId -> do
         assertTrue (m.mode == LeaseRefresh)

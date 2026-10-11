@@ -14,7 +14,7 @@
 -- which calls those hooks, handlers and the 'SessionStore' back over its
 -- JSON-lines pipe, so every persisted transcript byte is produced here.
 -- Connection custody is the record shared with the Pi host
--- ('PiConnectionCustody').
+-- ('HostConnectionCustody').
 module Petrus.Agenticus.Runtime.Claude
   ( -- * Pins
     claudeSdkVersion
@@ -193,6 +193,8 @@ import Petrus.Agenticus.Program.Descriptor
   , agentProgramDescriptor
   , continuationRequirement
   )
+import Petrus.Agenticus.Runtime.Custody
+import Petrus.Agenticus.Runtime.Internal.Process (runBounded, micros)
 import Petrus.Agenticus.Runtime.HostSupport
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
@@ -212,7 +214,7 @@ import Petrus.Agenticus.Runtime.Operation
   , runtimeProtocolError
   , runtimeProtocolErrorCode
   )
-import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..), canonicalUuid, micros, piToolSchemas, runBounded)
+import Petrus.Agenticus.Runtime.Pi (canonicalUuid, piToolSchemas)
 import Petrus.Agenticus.Runtime.Profiles (claudeA2Local)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation
@@ -244,7 +246,6 @@ import System.Posix.Files qualified as Files
 import System.Posix.IO qualified as PosixIO
 import System.Posix.Unistd (fileSynchronise)
 import System.Posix.User (getEffectiveUserID)
-import System.Process (proc)
 import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
@@ -1048,10 +1049,10 @@ claudeSidecar = ClaudeSidecar "python3" [] 10 defaultSidecarPool
 claudeSidecarPath :: IO FilePath
 claudeSidecarPath = getDataFileName "data/claude_sidecar.py"
 
-sidecarCommand :: ClaudeSidecar -> String -> IO SidecarCommand
+sidecarCommand :: ClaudeSidecar -> String -> IO HelperSpec
 sidecarCommand s mode = do
   script <- claudeSidecarPath
-  pure (SidecarCommand s.python (["-I", "-B", script, mode] <> s.searchPath) Nothing Nothing)
+  pure (HelperSpec s.python (["-I", "-B", script, mode] <> s.searchPath) Nothing Nothing)
 
 -- | The real SDK behind 'ClaudeSdk': one channel of the shared sidecar per
 -- client, which builds the official client and forwards the hook, tool and
@@ -1337,7 +1338,7 @@ data ClaudeRuntimeAdapter = ClaudeRuntimeAdapter
   { config :: ClaudeRuntimeConfig
   , codec :: ClaudeContinuationCodec
   , turns :: ClaudeTurnOperations
-  , custody :: PiConnectionCustody
+  , custody :: HostConnectionCustody
   , clock :: IO Double
   , hooks :: ClaudeProbeHooks
   , interpreter :: FilePath
@@ -1348,7 +1349,7 @@ data ClaudeRuntimeAdapter = ClaudeRuntimeAdapter
 -- | @ClaudeRuntimeAdapter(config, codec, turns, custody, clock=...,
 -- client_factory=...)@.
 newClaudeRuntimeAdapter
-  :: ClaudeRuntimeConfig -> ClaudeContinuationCodec -> ClaudeTurnOperations -> PiConnectionCustody -> ClaudeAdapterOptions -> IO ClaudeRuntimeAdapter
+  :: ClaudeRuntimeConfig -> ClaudeContinuationCodec -> ClaudeTurnOperations -> HostConnectionCustody -> ClaudeAdapterOptions -> IO ClaudeRuntimeAdapter
 newClaudeRuntimeAdapter config0 codec turns custody options = do
   config <- newClaudeRuntimeConfig config0
   readiness <- newMVar (Readiness Nothing Nothing options.clientFactory)
@@ -1436,7 +1437,7 @@ probeClaude a cliPath = do
                         verdict ProbeReady (Just installation) [] (Just absolute) (Just (officialFactory a.hooks.sdk))
   where
     runVersion cli = do
-      outcome <- try (runBounded (proc cli ["--version"]))
+      outcome <- try (runBounded [cli, "--version"] Nothing)
       case outcome of
         Right (Just (ExitSuccess, output, _)) -> case TE.decodeUtf8' output of
           Right text -> pure (Just text)
@@ -1551,7 +1552,7 @@ settle inv outcome appends code output continuation =
   throwLeft (mkRuntimeTurnSettlement inv.episodeId inv.turnId outcome appends code output continuation)
 
 data Exec = Exec
-  { materialization :: Maybe PiMaterialization
+  { materialization :: Maybe HostMaterialization
   , client :: Maybe ClaudeClient
   , created :: Maybe ClaudeClient
   , root :: Maybe (FilePath, Maybe (Integer, Integer))
