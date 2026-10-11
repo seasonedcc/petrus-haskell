@@ -31,6 +31,7 @@ module Petrus.Json.Wtf8
   ( fromCodePoints
   , fromWtf8
   , hasLoneSurrogate
+  , holdsLoneSurrogate
   , surrogateText
   , unsafeTextFromBytes
   ) where
@@ -45,6 +46,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Foreign qualified as TF
 import Data.Word (Word8)
+import Petrus.Json.Value (Json (..))
 import Foreign.Ptr (castPtr)
 import System.IO.Unsafe (unsafeDupablePerformIO)
 
@@ -93,6 +95,15 @@ hasLoneSurrogate text = go 0
       | i + 1 >= size = False
       | BU.unsafeIndex bytes i == 0xED && BU.unsafeIndex bytes (i + 1) >= 0xA0 = True
       | otherwise = go (i + 1)
+
+-- | Whether any string of a value (member names included) holds a
+-- surrogate code point.
+holdsLoneSurrogate :: Json -> Bool
+holdsLoneSurrogate = \case
+  String s -> hasLoneSurrogate s
+  Array items -> any holdsLoneSurrogate items
+  Object members -> any (\(k, v) -> hasLoneSurrogate k || holdsLoneSurrogate v) members
+  _ -> False
 
 -- | The 'Text' of generalized UTF-8 bytes (UTF-8 that may also spell
 -- surrogate code points, Python's @surrogatepass@), or 'Nothing' when the

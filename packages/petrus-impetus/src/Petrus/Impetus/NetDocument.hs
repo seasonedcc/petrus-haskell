@@ -52,6 +52,8 @@ module Petrus.Impetus.NetDocument
     -- * Model values
   , netDocumentToJson
   , netDocumentFromJson
+    -- * JSON Schema
+  , netDocumentV1JsonSchema
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
@@ -67,11 +69,65 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Numeric (showHex)
 import Petrus.Activity.Number (Number (..), reprNumber)
+import Petrus.Impetus.Internal.JsonSchema qualified as S
 import Petrus.Impetus.Internal.PyJson
 import Petrus.Impetus.Internal.Pydantic
 import Petrus.Impetus.NetDefinition
 import Petrus.Impetus.Petrinet.Schema (Net)
-import Petrus.Json (Json (..), defaultDumps, dumps, dumpsText, indented, safeIntegerMax, safeIntegerMin)
+import Petrus.Json (Json (..), defaultDumps, dumps, dumpsText, hasLoneSurrogate, indented, safeIntegerMax, safeIntegerMin)
+
+-- ---------------------------------------------------------------------------
+-- JSON Schema
+
+-- | @NetDocumentV1.model_json_schema()@ (spec/net-document-v1.md, "JSON
+-- Schema"): strict and versioned like 'netDefinitionV3JsonSchema', which it
+-- embeds as the @NetDefinitionV3@ definition. Only lineage metadata is an
+-- open object. Serialized with @json.dumps(…, indent=2)@ it is
+-- byte-identical to the reference's (@differential/json_schema.py@).
+netDocumentV1JsonSchema :: Json
+netDocumentV1JsonSchema =
+  S.modelJsonSchema
+    ( [ S.ModelSpec
+          "NetDocumentV1"
+          (Just "One Net definition with optional view data and execution lineage.")
+          [ S.field "format" (S.ConstStr "petrus-net-document")
+          , S.field "version" (S.ConstInt 1)
+          , S.field "definition" (S.Ref "NetDefinitionV3")
+          , S.defaultedNull "view" (S.Nullable (S.Ref "PortableViewV1"))
+          , S.defaultedNull "lineage" (S.Nullable (S.Ref "ExecutionLineage"))
+          ]
+      , S.ModelSpec
+          "PortableViewV1"
+          (Just "A partial, portable set of authored node positions.")
+          [S.field "version" (S.ConstInt 1), S.field "nodes" (S.ListOf (S.Ref "NodePosition"))]
+      , S.ModelSpec
+          "NodePosition"
+          (Just "One canonical Net node's presentation position.")
+          [S.field "node" S.Str, S.field "x" S.IntOrFloat, S.field "y" S.IntOrFloat]
+      , S.ModelSpec
+          "ExecutionLineage"
+          (Just "One flat, forkable sequence of complete sparse markings.")
+          [S.field "head" (S.IntIn 0 safeIntegerMax), S.field "entries" (S.ListOf (S.Ref "LineageEntry"))]
+      , S.ModelSpec
+          "LineageEntry"
+          (Just "One dense, self-contained marking in a backward-linked lineage.")
+          [ S.field "id" (S.IntIn 0 safeIntegerMax)
+          , S.field "parent" (S.Nullable (S.IntIn 0 safeIntegerMax))
+          , S.field "provenance" (S.Enum ["observed", "simulated", "manual"])
+          , S.field "marking" (S.ListOf (S.Ref "PlaceMarking"))
+          , S.field "metadata" S.Dict
+          ]
+      , S.ModelSpec
+          "PlaceMarking"
+          (Just "The nonempty token queue currently held by one place.")
+          [S.field "place" S.Str, S.field "tokens" (S.ListOf (S.Ref "MarkingToken"))]
+      , S.ModelSpec
+          "MarkingToken"
+          (Just "One token in a portable sparse marking.")
+          [S.field "color" (S.Nullable S.Str), S.field "data" S.AnyValue]
+      ]
+        ++ netDefinitionSchemaModels
+    )
 
 -- ---------------------------------------------------------------------------
 -- Documents
@@ -328,10 +384,11 @@ pvNode = \case
   PBool _ -> NBool
   PInt i -> NInt i
   PFloat d -> NFloat d
-  PStr _ -> NStr False
+  -- A 'Text' holds a lone surrogate only as WTF-8 ("Petrus.Json.Wtf8").
+  PStr s -> NStr (hasLoneSurrogate s)
   PList items -> NList (map pvNode items)
   PTuple _ -> NOther "tuple"
-  PDict members -> NDict [(False, pvNode v) | (_, v) <- members]
+  PDict members -> NDict [(hasLoneSurrogate k, pvNode v) | (k, v) <- members]
   PInstance name _ -> NOther name
 
 -- | How the @_strict_json@ walk failed: a @ValueError@ (its message), or a

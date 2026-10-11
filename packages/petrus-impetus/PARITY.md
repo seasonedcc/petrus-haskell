@@ -52,8 +52,8 @@ parameters are separate Hspec examples where they are ported.
 | instance/ — 6 files (158) | see `parity-instance-b.md` | 148 | 3 | 7 | | 0 |
 | selection, history, history_store (in-memory), petrinet History halves | see `parity-history.md` | 61 | 3 | 3 | 11 | |
 | integration/test_activity_seam.py + binding/test_typed_bindings.py | see `parity-activity-seam.md` | 94 | 0 | 9 | 8 | |
-| test_net_definition.py (14) | NetDefinitionSpec, SpecFixturesSpec | 11 | | 3 | | |
-| test_net_document.py (8) | NetDocumentSpec, SpecFixturesSpec | 8 | | | | |
+| test_net_definition.py (14) | NetDefinitionSpec, SpecFixturesSpec, JsonSchemaSpec | 13 | | 1 | | |
+| test_net_document.py (8) | NetDocumentSpec, SpecFixturesSpec, JsonSchemaSpec | 8 | | | | |
 | test_net_document_lineage.py (9) | NetDocumentLineageSpec | 9 | | | | |
 
 Notes on the table:
@@ -63,9 +63,18 @@ Notes on the table:
 - The History halves of `test_arc_filters.py` and `test_read_arc.py` appear
   in both their petrinet rows and the history ledger's row. This includes the
   three `TestCelFilterSelection` cases, which are ported via CEL stub.
-- In `test_net_document.py`, the schema half of the partial-view test and the
-  tuple and non-string-key cases of the lineage metadata are enforced by
-  types; their other halves are ported.
+- The JSON Schema tests (`test_pydantic_schema_is_strict_and_versioned`, the
+  schema half of `test_partial_fractional_view_is_valid_and_schema_is_strict`)
+  are ported against `netDefinitionV3JsonSchema` and `netDocumentV1JsonSchema`,
+  which `JsonSchemaSpec` also compares byte for byte with the reference's
+  `model_json_schema()` (`differential/*.schema.json`, regenerated live by
+  `LiveSpec`). `test_runtime_projection_and_direct_model_serialization_refuse_surrogates`
+  is ported with WTF-8 `Text` (`Petrus.Json.Wtf8`). The one remaining
+  "enforced by types" row of `test_net_definition.py` is
+  `test_models_are_deeply_immutable`.
+- In `test_net_document_lineage.py`, the tuple and non-string-key cases of
+  the lineage metadata are enforced by types; their other halves are
+  ported.
 - Two `test_petrinet_dot.py` examples render real SVG and run only when
   Graphviz `dot` is installed. Without it they are pending, which is why the
   suite reports 2 pending. Every other render test uses a fake `dot` on the

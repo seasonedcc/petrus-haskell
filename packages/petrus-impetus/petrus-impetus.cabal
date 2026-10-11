@@ -42,6 +42,7 @@ library
                     Petrus.Impetus.History.Records
                     Petrus.Impetus.History.Replay
                     Petrus.Impetus.Internal.OMap
+                    Petrus.Impetus.Internal.JsonSchema
                     Petrus.Impetus.Internal.Pydantic
                     Petrus.Impetus.Internal.PyJson
                     Petrus.Impetus.Internal.Repr
@@ -131,6 +132,7 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.SpecFixturesSpec
                     Petrus.Impetus.NetDefinitionPropertiesSpec
                     Petrus.Impetus.NetDefinitionCorpusSpec
+                    Petrus.Impetus.JsonSchemaSpec
                     Petrus.Impetus.GoldenTracesSpec
                     Petrus.Impetus.KernelDifferentialSpec
                     Petrus.Impetus.KernelPropertiesSpec

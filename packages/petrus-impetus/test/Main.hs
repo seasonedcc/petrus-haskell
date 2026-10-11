@@ -33,6 +33,7 @@ import Petrus.Impetus.GoldenTracesSpec qualified as GoldenTracesSpec
 import Petrus.Impetus.KernelDifferentialSpec qualified as KernelDifferentialSpec
 import Petrus.Impetus.KernelPropertiesSpec qualified as KernelPropertiesSpec
 import Petrus.Impetus.MarkingSpec qualified as MarkingSpec
+import Petrus.Impetus.JsonSchemaSpec qualified as JsonSchemaSpec
 import Petrus.Impetus.NetDefinitionCorpusSpec qualified as NetDefinitionCorpusSpec
 import Petrus.Impetus.NetDefinitionPropertiesSpec qualified as NetDefinitionPropertiesSpec
 import Petrus.Impetus.NetDefinitionSpec qualified as NetDefinitionSpec
@@ -83,6 +84,7 @@ main = hspec $ do
   SpecFixturesSpec.spec
   NetDefinitionPropertiesSpec.spec
   NetDefinitionCorpusSpec.spec
+  JsonSchemaSpec.spec
   GoldenTracesSpec.spec
   KernelDifferentialSpec.spec
   KernelPropertiesSpec.spec

@@ -91,14 +91,6 @@ dumpsConfigurations =
 keepingSurrogates :: ParseOptions
 keepingSurrogates = pythonLoads {loneSurrogates = KeepLoneSurrogates}
 
--- | Whether a value holds a string with a lone surrogate.
-holdsLoneSurrogate :: Json -> Bool
-holdsLoneSurrogate = \case
-  String s -> hasLoneSurrogate s
-  Array items -> any holdsLoneSurrogate items
-  Object members -> any (\(k, v) -> hasLoneSurrogate k || holdsLoneSurrogate v) members
-  _ -> False
-
 -- | The @json.loads@ admission profiles, in the oracle's order.
 loadsProfiles :: [(String, ParseOptions)]
 loadsProfiles =
