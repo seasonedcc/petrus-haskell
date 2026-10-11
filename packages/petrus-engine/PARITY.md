@@ -19,7 +19,7 @@ It also reads the ledgers of petrus-engine-absurd (all of
 current pin it reports 460 in-scope upstream tests (439 distinct: some tests
 are ported both over Local and over Absurd custody), all accounted for.
 
-`cabal test petrus-engine` runs 214 examples, with 0 failures and 0 pending.
+`cabal test petrus-engine` runs 215 examples, with 0 failures and 0 pending.
 That count includes 3 Engine interop examples against the reference process,
 and 3 Worker topology pairings with reference Engines and Workers.
 They provision the reference through `scripts/upstream-python` and fail,
@@ -230,4 +230,8 @@ module graph, not a Python import.
 - **Joined-transaction fate.** It is exercised through the provider seam,
   with a test transactional History (`TestSupport.TransactionalHistory`)
   that counts commits and rollbacks and can refuse a numbered commit.
+  `openEngine` also refuses a joined-transaction History store whose
+  provider supplies no commit point (EngineSpec, 1 example, "a
+  joined-transaction store without a commit point is refused"): the
+  reference would append without ever committing.
 - **Benchmarks** against the reference, in `bench/RESULTS.md`.

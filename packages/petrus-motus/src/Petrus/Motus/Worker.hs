@@ -94,41 +94,12 @@ import Petrus.Json
 import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch.Inline (Activity)
 import Petrus.Motus.Internal.Repr
+import Petrus.Motus.PythonException (CancelledError (..), LookupError (..), RuntimeError (..), ValueError (..))
 import Petrus.Telemetry (TelemetryLogger, getLogger, maxRssMb, spanSet, withSpan)
 import Petrus.Telemetry qualified as Telemetry
 import System.IO (hFlush, stdout)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Process (getProcessID)
-
--- ---------------------------------------------------------------------------
--- Errors
-
--- | The reference's @ValueError@ (a refused argument).
-newtype ValueError = ValueError Text deriving stock (Eq, Show)
-
-instance Exception ValueError where displayException (ValueError m) = T.unpack m
-
--- | The reference's @RuntimeError@ (a lifecycle refusal, a cancelled
--- Activity).
-newtype RuntimeError = RuntimeError Text deriving stock (Eq, Show)
-
-instance Exception RuntimeError where displayException (RuntimeError m) = T.unpack m
-
--- | The reference's @LookupError@ (no Activity implementation).
-newtype LookupError = LookupError Text deriving stock (Eq, Show)
-
-instance Exception LookupError where displayException (LookupError m) = T.unpack m
-
--- | The reference's @asyncio.CancelledError@ with a message, as an
--- asynchronous exception. An Activity of an 'AsyncWorker' that ends with any
--- asynchronous exception is reported as @RuntimeError("Activity cancelled:
--- <message>")@.
-newtype CancelledError = CancelledError Text deriving stock (Eq, Show)
-
-instance Exception CancelledError where
-  toException = asyncExceptionToException
-  fromException = asyncExceptionFromException
-  displayException (CancelledError m) = T.unpack m
 
 -- ---------------------------------------------------------------------------
 -- Options

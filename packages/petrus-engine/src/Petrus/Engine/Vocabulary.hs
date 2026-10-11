@@ -57,7 +57,8 @@ import Petrus.Impetus.Instance
 import Petrus.Impetus.Petrinet (Binding (..), Instant, NetPath, Selection, Token (..))
 import Petrus.Impetus.Selection (SelectionPolicy, defaultPipeline)
 import Petrus.Json (exactEq)
-import Petrus.Motus.Dispatch (ActivityOutcome, DispatchError (..))
+import Petrus.Motus.Dispatch (ActivityOutcome)
+import Petrus.Motus.PythonException (knownPythonException, pythonRepr)
 
 -- ---------------------------------------------------------------------------
 -- Errors
@@ -96,9 +97,10 @@ failureText e = case fromException e of
     EngineTypeError m -> "TypeError(" <> pyStr m <> ")"
     EngineRuntimeError m -> "RuntimeError(" <> pyStr m <> ")"
     EngineHandlerFailed m -> if T.null m then "Exception" else m
-  Nothing -> case fromException e of
-    Just (DispatchError m) -> T.take 4096 ("ValueError(" <> pyStr m <> ")")
-    Nothing -> exceptionFailureText e
+  -- A Dispatch's or Worker's own exception is spelled by its Python class
+  -- (a 'DispatchError' is the reference's @ValueError@); any other is user
+  -- code's, spelled by the kernel.
+  Nothing -> maybe (exceptionFailureText e) (T.take 4096 . pythonRepr) (knownPythonException [] e)
 
 -- | Raise a kernel refusal as the reference would: a @ValueError@,
 -- @TypeError@, or @RuntimeError@; a handler failure; or the History store's

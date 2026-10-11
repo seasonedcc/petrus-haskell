@@ -26,7 +26,7 @@ that every in-scope upstream test is accounted for, run:
 The script covers this package, `petrus-motus-zeromq`, the History stores,
 and the Engines.
 
-`cabal test petrus-motus` runs 139 examples, with 0 failures and 0 pending.
+`cabal test petrus-motus` runs 140 examples, with 0 failures and 0 pending.
 The interop examples (8 Local Dispatch, 9 Worker CLI) are marked pending
 when `upstream/petrus/.venv` is not synced.
 
@@ -100,7 +100,10 @@ reference.
 
 1. **Reference to Haskell.** The reference publishes 5 occurrences, a
    Haskell worker claims and completes them, and the reference collects the
-   exact outcomes.
+   exact outcomes. A sixth occurrence's heartbeat is refused (NaN details)
+   and the Worker fails it with that exception: the reference collects the
+   same `type(error).__name__` and `repr(error)` it records for its own
+   Worker (`Petrus.Motus.PythonException`).
 2. **Haskell to reference.** Haskell publishes, a reference worker claims
    and completes (its attempt views are checked field by field), and Haskell
    collects.
