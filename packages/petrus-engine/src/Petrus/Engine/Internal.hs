@@ -67,7 +67,7 @@ import Petrus.Engine.Coordinator (Coordinator, cancelClosure, drive, newCoordina
 import Petrus.Engine.Vocabulary
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), CelCompilers, Completion, noCelCompilers)
 import Petrus.Impetus.History.Records (FiringFailed (..), Record (..), ScopeReset (..))
-import Petrus.Impetus.HistoryStore (HistoryStore (..))
+import Petrus.Impetus.HistoryStore (CommitMode (..), HistoryStore (..))
 import Petrus.Impetus.HistoryStore qualified as Store
 import Petrus.Impetus.Instance
   ( AcceptedDelivery (..)
@@ -210,6 +210,12 @@ openEngine mode net identity store port options resources =
   where
     fate = resources.rollback `finally` (resources.release `finally` resources.close)
     construct = do
+      -- A joined store's appends ride the provider's transaction: without a
+      -- commit point they would never become durable. (A port-only guard;
+      -- a backend-owned store may still take a commit hook, as the
+      -- reference's tests do.)
+      when (store.mode == JoinedTransaction && null resources.commit) $
+        throwIO (EngineValueError "a joined-transaction History store requires the provider's commit point")
       when (options.defaultHeartbeatTimeout <= 0) $
         throwIO (EngineValueError "Engine default_heartbeat_timeout must be a positive integer")
       let declared = Map.fromList [(declarationName d, d) | d <- options.activities]

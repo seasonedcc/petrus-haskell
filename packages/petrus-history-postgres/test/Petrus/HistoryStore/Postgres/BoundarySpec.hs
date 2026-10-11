@@ -4,36 +4,9 @@
 -- Python import graph becomes a Cabal dependency graph). No server needed.
 module Petrus.HistoryStore.Postgres.BoundarySpec (spec) where
 
-import Data.List (isInfixOf, isPrefixOf)
-import Petrus.TestSupport (repoRoot)
-import System.FilePath ((</>))
+import Data.List (isPrefixOf)
+import Petrus.TestSupport.Boundary (importedModules, libraryDepends)
 import Test.Hspec
-
--- | The library stanza's @build-depends@ names of a package.
-libraryDepends :: String -> IO [String]
-libraryDepends package = do
-  root <- repoRoot
-  text <- readFile (root </> "packages" </> package </> (package <> ".cabal"))
-  let stanza = takeWhile (not . isStanza) (drop 1 (dropWhile (not . ("library" `isPrefixOf`)) (lines text)))
-      isStanza l = any (`isPrefixOf` l) ["test-suite", "benchmark", "executable", "common"]
-      depends = takeWhile continued (dropWhile (not . ("build-depends:" `isInfixOf`)) stanza)
-      continued l = "build-depends:" `isInfixOf` l || ("," `isPrefixOf` dropWhile (== ' ') l)
-  pure [takeWhile (`notElem` (" ><=^" :: String)) (dropWhile (`elem` (" ,:" :: String)) (strip l)) | l <- depends]
-  where
-    strip l = case breakOn "build-depends:" l of
-      Just rest -> rest
-      Nothing -> l
-    breakOn needle hay
-      | needle `isPrefixOf` hay = Just (drop (length needle) hay)
-      | null hay = Nothing
-      | otherwise = breakOn needle (drop 1 hay)
-
--- | The modules a source file imports.
-importsOf :: FilePath -> IO [String]
-importsOf relative = do
-  root <- repoRoot
-  text <- readFile (root </> relative)
-  pure [takeWhile (/= ' ') (dropWhile (== ' ') (drop (length ("import" :: String)) l)) | l <- lines text, "import " `isPrefixOf` l]
 
 spec :: Spec
 spec = describe "package boundaries" $ do
@@ -55,7 +28,7 @@ spec = describe "package boundaries" $ do
     libraryDepends "petrus-postgres" >>= (`shouldSatisfy` all (`notElem` ["petrus-impetus", "petrus-history-store", "petrus-engine"]))
 
   it "history store postgres provider boundary (rules/history-store-postgres-provider-boundary.yml)" $ do
-    imported <- importsOf "packages/petrus-history-postgres/src/Petrus/HistoryStore/Postgres.hs"
+    imported <- importedModules "packages/petrus-history-postgres/src/Petrus/HistoryStore/Postgres.hs"
     let forbidden m =
           any
             (`isPrefixOf` m)

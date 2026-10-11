@@ -75,5 +75,6 @@ How the reference's test doubles are spelled here:
 
 See [bench/RESULTS.md](bench/RESULTS.md). Every row is faster than the pinned
 Python in wall-clock time, in every one of six interleaved repetitions: deliver
-2.2×, prior redelivery 7.3×, and create plus close 1.2× (dominated by
-connecting and the fence).
+1.9×, prior redelivery 7.4×, create plus close 1.06× (dominated by connecting
+and the fence), the order scenario driven to rest through internal firings
+and an Activity round trip 2.1×, and loading a 100-order History 3.6×.

@@ -19,10 +19,12 @@ import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (archiveDigest, extractWorkspaceArchive, validateWorkspaceArchive, workspaceArchive)
 import Petrus.Motus.Execution.Internal.Process (runCaptured, spawnSpec)
 import Petrus.Motus.Execution.Providers.Gondolin
+import Petrus.Motus.Execution.Providers.Local (localProvider, newLocalProcessEnvironment)
 import System.Directory (createDirectory, makeAbsolute, removeDirectoryRecursive)
 import System.Environment (getArgs, lookupEnv)
 import System.FilePath ((</>))
 import System.IO (BufferMode (..), hSetBuffering, stdout)
+import System.IO.Temp (withSystemTempDirectory)
 import System.IO.Temp (createTempDirectory)
 
 workloads :: [(String, Int)]
@@ -41,6 +43,27 @@ processBenchmarks = do
   void run
   samples <- replicateM spawns (timed run)
   report "process/run-captured" samples spawns
+
+-- | @LocalProcessEnvironment.execute@ in an attached territory: the cwd
+-- containment checks, the spawn of @sh@ in the territory, and collecting
+-- its output.
+localBenchmarks :: IO ()
+localBenchmarks = do
+  env <- newLocalProcessEnvironment
+  let provider = localProvider env
+      spec = either (error . show) id (mkEnvironmentSpec Nothing [])
+  lease <- providerCreate provider "bench" spec
+  ( do
+      archive <- withSystemTempDirectory "petrus-lb-" $ \source -> do
+        TIO.writeFile (source </> "input") "host"
+        workspaceArchive source
+      attachment <- providerAttach provider lease archive "digest"
+      let command = either (error . show) id (mkCommand (commandSpec ["/bin/sh", "-c", "/bin/cat input"]))
+      void (providerExecute provider attachment command)
+      samples <- replicateM executions (timed (providerExecute provider attachment command))
+      report "local/execute" samples executions
+    )
+    `finally` providerDestroy provider lease
 
 timed :: IO a -> IO Double
 timed action = do
@@ -115,9 +138,10 @@ main = do
   hSetBuffering stdout LineBuffering
   args <- getArgs
   case args of
-    [workdir] -> archiveBenchmarks workdir >> processBenchmarks
+    [workdir] -> archiveBenchmarks workdir >> processBenchmarks >> localBenchmarks
     [workdir, sdk] -> do
       archiveBenchmarks workdir
       processBenchmarks
+      localBenchmarks
       makeAbsolute sdk >>= sidecarBenchmarks . T.pack
     _ -> error "usage: petrus-execution-bench WORKDIR [FAKE_GONDOLIN_SDK]"

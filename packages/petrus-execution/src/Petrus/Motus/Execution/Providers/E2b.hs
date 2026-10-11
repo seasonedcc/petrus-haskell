@@ -1,11 +1,12 @@
 -- | E2B VM territories (upstream @E2bEnvironment@).
 --
--- __Seam:__ there is no Haskell E2B SDK.  The provider is written against
--- 'E2bSdk', a record mirroring exactly the SDK surface upstream uses
--- (@Sandbox.list/create/connect@, @files.write/read/remove@,
--- @commands.run@, command handles).  Callers bind it to a real transport;
--- the default loader fails like upstream does when the @e2b@ module is not
--- installed.  SDK objects and provider credentials stay host-side.
+-- The provider is written against 'E2bSdk', a record mirroring exactly the
+-- SDK surface upstream uses (@Sandbox.list/create/connect@,
+-- @files.write/read/remove@, @commands.run@, command handles).  The default
+-- loader is the native client of E2B's REST and envd APIs
+-- ("Petrus.Motus.Execution.Providers.E2b.Http"), playing the part of
+-- upstream's @importlib.import_module("e2b")@.  SDK objects and provider
+-- credentials stay host-side.
 module Petrus.Motus.Execution.Providers.E2b
   ( E2bEnvironment
   , E2bConfig (..)
@@ -25,6 +26,7 @@ module Petrus.Motus.Execution.Providers.E2b
   , E2bCommandResult (..)
   , E2bHandle (..)
   , missingSdk
+  , httpSdkLoader
   , shlexQuote
   , shlexJoin
   ) where
@@ -50,62 +52,10 @@ import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
 import Petrus.Motus.Execution.Internal.Common
 import Petrus.Motus.Execution.Internal.PyText (pyStrRepr)
+import Petrus.Motus.Execution.Providers.E2b.Http (httpSdkLoader)
+import Petrus.Motus.Execution.Providers.E2b.Sdk
 import System.Environment (lookupEnv)
 import System.IO.Temp (withSystemTempDirectory)
-
--- | Keyword options upstream passes as @**self._opts()@.
-newtype E2bOptions = E2bOptions {optionApiKey :: Maybe Text}
-  deriving stock (Eq, Show)
-
-data E2bSandboxInfo = E2bSandboxInfo
-  { infoSandboxId :: Text
-  , infoMetadata :: Map Text Text
-  , infoState :: Text
-  -- ^ @str(getattr(state, "value", state))@.
-  }
-
-data E2bPaginator = E2bPaginator
-  { paginatorHasNext :: IO Bool
-  , paginatorNextItems :: E2bOptions -> IO [E2bSandboxInfo]
-  }
-
-data E2bRunOptions = E2bRunOptions
-  { runEnvs :: [(Text, Text)]
-  , runCwd :: Maybe Text
-  , runTimeout :: Maybe Double
-  }
-
--- | A finished command.  A binding must return non-zero exits (the SDK's
--- @CommandExitException@) as results, not exceptions.
-data E2bCommandResult = E2bCommandResult
-  { commandExitCode :: Int
-  , commandStdout :: Text
-  , commandStderr :: Text
-  }
-
-data E2bHandle = E2bHandle
-  { handleWait :: (Text -> IO ()) -> (Text -> IO ()) -> IO E2bCommandResult
-  , handleKill :: IO ()
-  }
-
-data E2bSandbox = E2bSandbox
-  { sandboxId :: Text
-  , sandboxKill :: IO ()
-  , sandboxWriteFile :: Text -> ByteString -> IO ()
-  , sandboxReadFile :: Text -> IO ByteString
-  , sandboxRemoveFile :: Text -> IO ()
-  , sandboxRun :: Text -> E2bRunOptions -> IO E2bCommandResult
-  , sandboxRunBackground :: Text -> E2bRunOptions -> IO E2bHandle
-  }
-
-data E2bSdk = E2bSdk
-  { sdkList :: E2bOptions -> Map Text Text -> Int -> IO E2bPaginator
-  -- ^ @Sandbox.list(query=SandboxQuery(metadata=...), limit=...)@.
-  , sdkCreate :: E2bOptions -> Text -> Int -> Map Text Text -> IO E2bSandbox
-  -- ^ @Sandbox.create(template, timeout, metadata, envs={}, secure=True)@.
-  , sdkConnect :: E2bOptions -> Text -> Maybe Int -> IO E2bSandbox
-  -- ^ @Sandbox.connect(sandbox_id, timeout=...)@.
-  }
 
 data E2bConfig = E2bConfig
   { e2bApiKey :: Maybe Text
@@ -113,12 +63,15 @@ data E2bConfig = E2bConfig
   , e2bLeaseTimeout :: Int
   }
 
--- | The default loader: no SDK binding is installed.
+-- | A loader that fails like upstream's when the @e2b@ module is not
+-- installed, for configurations that must never reach E2B.
 missingSdk :: IO E2bSdk
 missingSdk = throwExecution (OtherError "ModuleNotFoundError") "No module named 'e2b'"
 
+-- | Upstream's defaults: the API key from @E2B_API_KEY@, the real SDK
+-- ('httpSdkLoader') and a 900-second lease timeout.
 defaultE2bConfig :: E2bConfig
-defaultE2bConfig = E2bConfig Nothing missingSdk 900
+defaultE2bConfig = E2bConfig Nothing httpSdkLoader 900
 
 data E2bEnvironment = E2bEnvironment
   { e2bConfig :: E2bConfig
@@ -260,13 +213,9 @@ attach env lease archive digest = do
   let archivePath = "/tmp/petrus-input-" <> suffix <> ".tar"
       workspace = shlexQuote e2bWorkspace
   sandboxWriteFile sandbox archivePath archive
-  ( () <$
-      sandboxRun
-        sandbox
-        ( "rm -rf " <> workspace <> " && mkdir -p " <> workspace <> " && tar -xf " <> shlexQuote archivePath <> " -C " <> workspace
-        )
-        (E2bRunOptions [] Nothing (Just 60))
-    )
+  runForeground
+    sandbox
+    ("rm -rf " <> workspace <> " && mkdir -p " <> workspace <> " && tar -xf " <> shlexQuote archivePath <> " -C " <> workspace)
     `finally` sandboxRemoveFile sandbox archivePath
   identifier <- newUuid4
   either throwIO pure (mkExecutionAttachment identifier lease digest (T.unpack e2bWorkspace))
@@ -368,11 +317,21 @@ export env attachment = do
   sandbox <- sandboxFor env lease
   suffix <- newUuid4
   let archivePath = "/tmp/petrus-output-" <> suffix <> ".tar"
-  _ <- sandboxRun sandbox ("tar -cf " <> shlexQuote archivePath <> " -C " <> shlexQuote e2bWorkspace <> " .") (E2bRunOptions [] Nothing (Just 60))
+  runForeground sandbox ("tar -cf " <> shlexQuote archivePath <> " -C " <> shlexQuote e2bWorkspace <> " .")
   raw <- sandboxReadFile sandbox archivePath `finally` sandboxRemoveFile sandbox archivePath
   withSystemTempDirectory "petrus-e2b-export" $ \root -> do
     extractWorkspaceArchive raw root
     workspaceArchive root
+
+-- | @sandbox.commands.run(command, timeout=60)@, which raises the SDK's
+-- @CommandExitException@ for a non-zero exit.
+runForeground :: E2bSandbox -> Text -> IO ()
+runForeground sandbox command = do
+  result <- sandboxRun sandbox command (E2bRunOptions [] Nothing (Just 60))
+  unless (commandExitCode result == 0) $
+    throwExecution
+      (OtherError "CommandExitException")
+      ("Command exited with code " <> T.pack (show (commandExitCode result)) <> " and error:\n" <> commandStderr result)
 
 -- | Upstream catches every @Exception@ here; asynchronous exceptions still
 -- propagate.

@@ -36,7 +36,11 @@ main = hspec $ do
         compare (IntNumber a) (FloatNumber b) == compare (toRational a) (toRational b)
 
   describe "ExecutionPolicy" $ do
-    it "accepts the defaults" $ policyWith id `shouldBe` Right defaultExecutionPolicy
+    it "accepts the defaults" $ do
+      policyWith id `shouldBe` Right defaultExecutionPolicy
+      -- One frozen invocation is one Attempt unless the policy opts in
+      -- (spec/handler-contract.md, SPEC.md of petrus-engine).
+      (policyFields defaultExecutionPolicy).attempts `shouldBe` 1
     it "refuses every invalid field with the reference message" $ do
       policyWith (\f -> f {attempts = 0})
         `shouldBe` Left "ExecutionPolicy requires attempts >= 1, got 0: an invocation that may never execute is a wedge, not a policy"
@@ -73,6 +77,49 @@ main = hspec $ do
     it "requires non-empty correlation and idempotency when supplied" $
       activityInvocation (invocation "a" Null) {correlation = Just ""}
         `shouldBe` Left "ActivityInvocation correlation must be a non-empty string, or None for the writer to derive at begin, got ''"
+    it "decodes its own encoding (invocationFromJson . invocationJson)" $
+      property $ \(Positive attempts') (Positive heartbeat) (NonNegative interval) start name correlation' payload ->
+        let policy' =
+              either (error . T.unpack) id $
+                executionPolicy
+                  (policyFields defaultExecutionPolicy)
+                    { attempts = attempts'
+                    , heartbeatTimeout = min heartbeat 1000
+                    , initialInterval = IntNumber (min interval 60)
+                    , startToClose = fmap (\(Positive s) -> IntNumber (min s 1000)) start
+                    }
+            value =
+              ActivityInvocation
+                { activity = "a" <> T.pack name
+                , input = Int payload
+                , policy = policy'
+                , correlation = fmap (("c" <>) . T.pack) correlation'
+                , idempotency = Nothing
+                }
+         in invocationFromJson (invocationJson value) === Right value
+    it "decodes a legacy two-field policy with the current defaults" $
+      invocationFromJson
+        ( Object
+            [ ("activity", String "a")
+            , ("input", Null)
+            , ("policy", Object [("attempts", Int 2), ("heartbeat_timeout", Int 5)])
+            , ("correlation", Null)
+            , ("idempotency", Null)
+            ]
+        )
+        `shouldBe` Right (invocation "a" Null) {policy = either (error . T.unpack) id (policyWith (\p -> p {attempts = 2, heartbeatTimeout = 5}))}
+    it "names the first check that refuses" $ do
+      let encoded = invocationJson (invocation "a" Null)
+          with key v = case encoded of
+            Object ms -> Object [(k, if k == key then v else old) | (k, old) <- ms]
+            other -> other
+      invocationFromJson (Object []) `shouldBe` Left InvocationFieldsNotExact
+      invocationFromJson (with "policy" (Object [("attempts", Int 1)])) `shouldBe` Left PolicyFieldsNotExact
+      invocationFromJson (with "policy" (Object [("attempts", Bool True), ("heartbeat_timeout", Int 1)])) `shouldBe` Left PolicyFieldsNotIntegers
+      invocationFromJson (with "policy" (Object [("attempts", Int 0), ("heartbeat_timeout", Int 1)]))
+        `shouldSatisfy` either (\case PolicyRefused _ -> True; _ -> False) (const False)
+      invocationFromJson (with "activity" (Int 5)) `shouldBe` Left (ActivityNameRefused (Int 5))
+      invocationFromJson (with "idempotency" (String "")) `shouldBe` Left (IdentityRefused "idempotency" (String ""))
 
   describe "ActivityFailure" $ do
     let fields = ActivityFailureFields "boom" "ActivityError" Null False Nothing
