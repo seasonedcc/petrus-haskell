@@ -314,8 +314,15 @@ configure database = do
   unless (take 1 journal == [[SQLText "wal"]] && take 1 foreignKeys == [[SQLInteger 1]]) $
     throwIO (RuntimeError "V5 timer store could not enforce SQLite safety settings")
 
+-- | @_create_schema@. The reference's @executescript@ (in autocommit mode)
+-- commits each of the six DDL statements and then the meta row on its own,
+-- seven WAL commits and their fsyncs. Here they share one transaction. The
+-- closed file holds the same bytes either way (the schema cookie still counts
+-- one change per statement), and a crash part-way leaves a store that the
+-- next open quarantines either way: the reference's has a partial schema,
+-- this one an empty one. See DIVERGENCES.md.
 createSchema :: Connection -> Text -> IO ()
-createSchema database subject = do
+createSchema database subject = Sql.transaction database $ do
   Sql.script
     database
     "\n\

@@ -39,7 +39,101 @@ that the state interop tests use (`differential/state_reference.py`, and
 
 ## Results
 
-<!-- parity: rows below 1.0× belong to "V5 timers" -->
+Seven interleaved repetitions on 2026-10-11, 06:14–06:26 local (UTC-3), at
+commit `8024875` (a fresh timer store's schema in one transaction, below),
+load average 1.96–3.91, on the same machine as below:
+
+    mkdir -p bench-results/tmp/htmp
+    TMPDIR="$PWD/bench-results/tmp/htmp" scripts/bench-compare hamsterdan-host 7 --upstream hamsterdan
+
+- **Haskell:** the tasty-bench mean in wall-clock time (`--stdev 5`,
+  `+RTS -M2G`). scripts/bench-compare now builds the benchmark once and runs
+  its executable directly, in the package directory with the variables
+  `cabal bench` sets, as it runs the Python twin; under `cabal bench` the
+  benchmark had cabal as its parent process, which the twin does not.
+- **Python:** `bench/python_bench.py` runs `bench.py`'s cases, timed by
+  `scripts/bench_timing.py`: the median of 10 batches of at least 0.2 s.
+  That is the twin protocol of the other packages. `bench.py`'s best of 5
+  repeats, used in the earliest table below, takes Python's luckiest run
+  against Haskell's mean.
+- Each figure is the median of the seven repetitions. Repetitions alternate
+  which side goes first.
+
+| Operation (one pass) | Haskell | Python | Python / Haskell | Lowest per repetition |
+| --- | ---: | ---: | ---: | ---: |
+| webhook ingest (100 deliveries) | 4.20 ms | 10.8 ms | 2.57× | 0.97× |
+| reconciliation step (one webhook to quiescence) | 28.3 ms | 176 ms | 6.23× | 3.35× |
+| agent turn (one webhook to quiescence through the scripted Pi agent) | 147 ms | 317 ms | 2.15× | 1.94× |
+| gate classification (24 classifications) | 2.69 µs | 55.4 µs | 20.6× | 20.2× |
+| timer rebuild (333-fact History) | 3.73 ms | 7.52 ms | 2.01× | 1.76× |
+| fresh timer store open (no History) | 943 µs | 1.40 ms | 1.49× | 1.01× |
+
+Fresh open, repetition by repetition (Haskell / Python): 1.01 / 1.43,
+0.94 / 1.33, 1.30 / 2.10, 1.43 / 1.44, 0.89 / 1.40, 0.93 / 1.40 and
+0.93 / 1.35 ms. Haskell was ahead in all seven. The lowest ratios of the
+first three rows come from repetitions 3–5, when the load average rose to
+3.6–3.9: the Haskell ingest row read 8.5–11.4 ms there against 4.1–4.2 ms
+in the other four, and the reconciliation row 52.7 ms once.
+
+### The fresh open: six fsyncs fewer
+
+The row was level with Python before this change: 1.00× (1.41 ms against
+1.41 ms) over seven repetitions at 05:49–06:00, load 3.08–5.20, with
+Haskell ahead in three, behind in three and tied in one. What was
+measured, with the harnesses doing the same work (the same open, close and
+removal of the three files, in the same scratch directory):
+
+- **The system calls were the same.** A libc interposer counted, per open,
+  6 `open`s, 15 `fsync`s, 65 `pwrite`s, about 91 `fcntl`s and 18 `pread`s
+  on both sides. The only difference was the benchmark's own cleanup:
+  `removePathForcibly` makes an `lstat` and one `unlink` where Python makes
+  three `unlink`s. The time inside those calls came to about 1.0 ms of the
+  1.3 ms open on both sides.
+- **The rest is SQLite on both sides.** macOS's `sample` over the
+  benchmark put 87% of the busy thread in the kernel and 8% in SQLite on
+  both sides; the Haskell code itself (RTS included) was 2%, as was the
+  interpreter's on the Python side.
+- **The cost was the commits.** The reference's `_create_schema` runs
+  `executescript` on an autocommit connection: each of its six `CREATE`
+  statements commits on its own, and the meta row once more, each commit
+  writing WAL frames and fsyncing the WAL. The port did the same.
+
+`createSchema` now runs the same statements in one transaction: 9 fsyncs
+and 51 `pwrite`s per open instead of 15 and 65, and the row dropped from
+about 1.3 ms to 0.93 ms. The closed file holds the same bytes as before and
+as the reference's: `TimersSpec` compares a fresh store with one the
+reference writes, byte for byte, except offsets 96–99, the
+`SQLITE_VERSION_NUMBER` of the library that wrote it (direct-sqlite bundles
+3.45.0, CPython links 3.53.4). A crash during the schema leaves a store the
+next open quarantines either way. See DIVERGENCES.md. The timer rebuild row
+opens a fresh store too, and gained as much (4.33 ms before, 3.73 ms now).
+
+The row's earlier swings (2–3 ms Haskell means in some rounds) came from
+the machine's load, not from the benchmark's context: on a quiet machine
+the row read the same alone and after every other row (1.26–1.35 ms before
+the change), and tasty-bench at `--stdev 2` agreed with `--stdev 5`.
+
+### Rounds before the schema transaction (2026-10-11, 05:49–06:00)
+
+<!-- bench: superseded -->
+
+Seven interleaved repetitions at commit `5c8bb93`, load average
+3.08–5.20, medians of the repetitions:
+
+| Operation (one pass) | Haskell | Python | Python / Haskell | Lowest per repetition |
+| --- | ---: | ---: | ---: | ---: |
+| webhook ingest (100 deliveries) | 4.51 ms | 11.2 ms | 2.48× | 1.12× |
+| reconciliation step (one webhook to quiescence) | 31.5 ms | 185 ms | 5.87× | 5.53× |
+| agent turn (one webhook to quiescence through the scripted Pi agent) | 163 ms | 336 ms | 2.06× | 1.99× |
+| gate classification (24 classifications) | 2.81 µs | 55.9 µs | 19.9× | 19.4× |
+| timer rebuild (333-fact History) | 4.33 ms | 8.03 ms | 1.85× | 1.75× |
+| fresh timer store open (no History) | 1.41 ms | 1.41 ms | 1.00× | 0.90× |
+
+### Rounds of 2026-10-11, 03:40–03:45
+
+<!-- bench: superseded -->
+
+The analysis after the table is the one written at the time.
 
 Five interleaved rounds on 2026-10-11, 03:40–03:45 local (UTC-3), on the
 merge of `ee7e4a5` with `main` at `ab3544a` (the agent-turn row and the

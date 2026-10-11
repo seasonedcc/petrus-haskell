@@ -11,7 +11,7 @@ Upstream: `petrus.motus.execution` and `petrus.motus._execution` at the pin in
 | Tests | Every test in the four upstream files is ported (table below); 1 is not applicable. |
 | Conformance | Archive bytes, Timeline lines, artifact metadata, redaction and telemetry mirroring are byte-identical to upstream (differential fixtures below). |
 | Interop | The Gondolin sidecar is upstream's file, embedded verbatim (pinned SHA-256); registries, archives, Timeline JSONL and artifact metadata are the upstream formats. |
-| Performance | Archive pack/validate/extract 1.1x-8x faster, process spawn 1.8x faster; sidecar round trips at parity: handshake 1.08–1.16x, execute 1.00–1.02x in the 2026-10-11 reruns (each side won 6 of 12 alternating rounds; the execute is the shared Node sidecar spawning `sh`, and no PostgreSQL is involved). The earlier 0.98x was within that noise ([bench/RESULTS.md](bench/RESULTS.md)). |
+| Performance | Archive pack/validate/extract 1.1x-8x faster, process spawn 1.7x faster; sidecar round trips level: over eleven alternating rounds on a quiet machine (2026-10-11, load 2.2–2.3), handshake 1.02x (Haskell ahead in 6 of 11) and execute 1.00x (4.84 ms against 4.86 ms, Haskell ahead in 7 of 11, every round within 3%; the execute is the shared Node sidecar spawning `sh`, and no PostgreSQL is involved). The earlier 0.98x was within that noise ([bench/RESULTS.md](bench/RESULTS.md)). |
 
 Suite: `cabal test petrus-execution` runs 397 examples (3 pending: real Docker, real Gondolin and
 live E2B, all opt-in).
@@ -130,16 +130,19 @@ tests (`pytest -k "docker or cross_provider"`) took 8.3 s on the same machine.
 
 ### Gondolin (`PETRUS_REAL_GONDOLIN_SDK_MODULE`, `PETRUS_REAL_GONDOLIN_IMAGE`, optional `PETRUS_REAL_GONDOLIN_NODE`)
 
-Status on 2026-10-10: **not yet run.** The pinned SDK is installed package-locally. Pulling the guest
-image was blocked by the session's permission policy, so no image resolves locally and the
-acceptance test cannot provision a VM. The fake-SDK suite drives the verbatim sidecar through
-every upstream scenario.
+Status on 2026-10-11: **passes against real Gondolin, as upstream's own acceptance test does.**
+On macOS (aarch64), with the commands below, the port's
+`test_real_gondolin_lifecycle_is_explicitly_opt_in` provisioned a real VM and ran its whole
+lifecycle: 1 example, 0 failures in 11.3 s. Upstream's
+`pytest -m real_gondolin_acceptance tests/petrus/motus/test_gondolin_environment.py`, run at the
+pinned commit with the same SDK, image and Node, passed in 11.2 s (1 passed, 32 deselected). The
+fake-SDK suite drives the verbatim sidecar through every upstream scenario on every CI run.
 
 | Step | State |
 | --- | --- |
 | SDK `@earendil-works/gondolin@0.12.0` in the git-ignored `.gondolin/sdk` | installed |
 | SDK entry module | `node_modules/@earendil-works/gondolin/dist/src/index.js`, the package's `exports["."].import`; the sidecar `import()`s it by path |
-| Guest image `alpine-base:latest` in the package-local store `.gondolin/images` | **not pulled**: `gondolin image pull` was denied by the permission policy |
+| Guest image `alpine-base:latest` in the package-local store `.gondolin/images` | pulled (build `e490f153-9700-596d-bb59-9ebf69c725dc`, aarch64) |
 | QEMU 11.1.2, Node 24 via `fnm` | available |
 
 The sidecar resolves the image with the SDK's `resolveImageSelector`. That lookup is local only: it

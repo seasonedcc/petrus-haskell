@@ -50,13 +50,16 @@ got more rounds.
 
 <!-- parity: rows below 1.0× belong to "History stores: memory", "History stores: SQLite, and the SQLite writer fence" -->
 
+The three append rows of this table come from the seven-repetition run in "Rerun of the append
+rows" below; the other rows, and the rounds listed under the table, from the earlier rounds.
+
 | workload | size | Python | Haskell | speed-up |
 | --- | --- | ---: | ---: | ---: |
-| JSONL append, one batch (encode + open/write/close) | 20 002 records, 2.8 MB | 63.3 ms | 48.6 ms | 1.30× |
-| JSONL append, one record per append (2 000 open/write/close) | 2 000 records | 71.0 ms | 62.1 ms | 1.14× |
+| JSONL append, one batch (encode + open/write/close) | 20 002 records, 2.8 MB | 61.0 ms | 41.8 ms | 1.46× |
+| JSONL append, one record per append (2 000 open/write/close) | 2 000 records | 69.8 ms | 58.9 ms | 1.18× |
 | JSONL load (open: read + decode every line into the mirror) | 20 002 records | 96.3 ms | 30.9 ms | 3.1× |
 | JSONL resume (load + the Instance's validating replay) | 20 002 records | 7 304 ms | 486 ms | 15× |
-| in-memory append, one record at a time | 20 002 records | 0.438 ms | 0.411 ms | 1.07× |
+| in-memory append, one record at a time | 20 002 records | 0.415 ms | 0.329 ms | 1.26× |
 | in-memory `records` (snapshot + length) | 20 002 records | 42.5 µs | 4.98 ns | ~8 500× |
 | JSONL `records` (snapshot + length) | 20 002 records | 45 µs | 4.93 ns | ~9 000× |
 | in-memory iterate (count every record) | 20 002 records | 217 µs | 24.7 µs | 8.8× |
@@ -156,15 +159,15 @@ The rerun block above covers these rows too. To run only the SQLite rows on the 
 
 ### Results
 
-The three append rows come from the later run of five rounds (see "Rerun
-of the append rows" below). The other rows come from the same rounds as the
+The three append rows come from the seven-repetition run (see "Rerun
+of the append rows" below); the rounds listed after the table are the earlier ones. The other rows come from the same rounds as the
 rows above.
 
 | workload | size | Python | Haskell | speed-up |
 | --- | ---: | ---: | ---: | ---: |
-| append-one-batch (one fsynced transaction) | 20 002 records | 121 ms | 100 ms | 1.21× |
-| append-per-record (2 000 fsynced transactions) | 2 000 records | 107 ms | 102 ms | 1.04× |
-| append-batches-of-8 (250 fsynced transactions) | 2 000 records | 36.6 ms | 33.1 ms | 1.11× |
+| append-one-batch (one fsynced transaction) | 20 002 records | 112 ms | 85.6 ms | 1.31× |
+| append-per-record (2 000 fsynced transactions) | 2 000 records | 95.8 ms | 87.8 ms | 1.09× |
+| append-batches-of-8 (250 fsynced transactions) | 2 000 records | 35.4 ms | 27.3 ms | 1.29× |
 | load (open + decode every row) | 20 002 records | 110 ms | 47.9 ms | 2.3× |
 | resume (load + validating replay) | 20 002 records | 7 617 ms | 498 ms | 15× |
 | terminal-resend-ack (1 000 re-sends) | 20 002 records | 1 241 ms | 7.96 ms | 156× |
@@ -247,6 +250,38 @@ the five rounds of each.
 - **resume** is dominated, as for JSONL, by the kernel's validating replay.
 
 ## Rerun of the append rows
+
+The four append rows of the first table and the three SQLite append rows
+come from seven interleaved repetitions on 2026-10-11, 07:33–07:46 local
+(UTC-3), at commit `fc77e8d`, with the 1-minute load average at 1.79–2.54:
+
+    scripts/bench-compare petrus-history-store 7 --pattern append
+
+The pattern limits the Haskell side to the append rows; `python_bench.py`
+runs in full and prints `name,nanoseconds` lines for `bench-compare`. Each
+figure is the median of the seven repetitions; bench-compare starts the
+benchmark executable directly. Haskell was ahead in every repetition of
+every row.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition |
+|---|---:|---:|---:|---:|
+| `jsonl.append-one-batch` | 41.8 ms | 61.0 ms | 1.46× | 1.43× |
+| `jsonl.append-per-record` | 58.9 ms | 69.8 ms | 1.18× | 1.08× |
+| `sqlite.append-one-batch` | 85.6 ms | 112 ms | 1.31× | 1.29× |
+| `sqlite.append-per-record` | 87.8 ms | 95.8 ms | 1.09× | 1.06× |
+| `sqlite.append-batches-of-8` | 27.3 ms | 35.4 ms | 1.29× | 1.17× |
+| `store.in-memory-append` | 329 µs | 415 µs | 1.26× | 1.22× |
+
+`jsonl.append-per-record`, repetition by repetition (Haskell / Python):
+58.3 / 66.9, 58.4 / 69.8, 58.9 / 69.9, 58.7 / 70.4, 62.6 / 67.5,
+59.5 / 69.8 and 59.4 / 66.7 ms. The 0.87× of the earlier run below came from
+the machine's load (3.6–10.1): on a quiet machine the row is 1.18×, with no
+code change.
+
+### The run of 2026-10-11, 02:28–02:42
+
+<!-- bench: superseded -->
+
 
 The in-memory append and the three SQLite append rows above come from one
 interleaved run on 2026-10-11, 02:28–02:42 local (UTC-3), at commit `3f31d2e`

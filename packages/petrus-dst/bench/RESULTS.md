@@ -19,12 +19,29 @@ and in the pinned Python reference (`scripts/bench.py`, `timeit`).
 | fold the queue-story process progress into its result | 557 µs | 256 µs | 2.2× |
 | replay the 18 Engine-world fixtures through real Engine profiles | 162 ms | 81.3 ms | 2.0× |
 | author the 18 Engine worlds (the reference's `build_*_artifact`) | 228 ms | 107 ms | 2.1× |
-| one isolated PostgreSQL database (create, both schemas, drop) | 60.3 ms | 59.3 ms | 1.0× |
-| replay the 33 joined fixtures, each in a fresh isolated database | 3.93 s | 3.74 s | 1.05× |
-| author the 33 joined worlds, each in a fresh isolated database | 4.09 s | 3.70 s | 1.10× |
+| one isolated PostgreSQL database (create, both schemas, drop) | 58.4 ms | 57.2 ms | 1.02× |
+| replay the 33 joined fixtures, each in a fresh isolated database | 4.00 s | 3.61 s | 1.11× |
+| author the 33 joined worlds, each in a fresh isolated database | 4.00 s | 3.63 s | 1.10× |
 
 Haskell is faster on every workload. On the joined rows the margin is small, because the
-PostgreSQL server does most of the work (below).
+PostgreSQL server does most of the work (below); the isolated database alone is level.
+
+The three joined rows come from seven interleaved repetitions on 2026-10-11, 07:12–07:32 local
+(UTC-3), at commit `570780d`, on `scripts/with-postgres`'s throwaway PostgreSQL 17.7 (`initdb`
+defaults, so `fsync` on), with the 1-minute load average at 1.85–3.48. Each repetition ran
+tasty-bench's `-p joined` (the executable started directly, `--stdev 5`, wall-clock time,
+`+RTS -M2G`) and `scripts/bench.py joined/` (the median of 5 `timeit` rounds), alternating which
+went first. Each figure is the median of the seven repetitions:
+
+| Joined row | Python / Haskell | Lowest repetition | Repetitions Haskell faster | Haskell per repetition (ms) | Python per repetition (ms) |
+| --- | ---: | ---: | ---: | --- | --- |
+| one isolated database | 1.02× | 0.84× | 4/7 | 58, 56, 54, 70, 57, 57, 63 | 56, 58, 58, 59, 58, 58, 61 |
+| replay 33 joined fixtures | 1.11× | 1.10× | 7/7 | 3471, 3439, 3703, 3730, 3608, 3641, 3598 | 3938, 3948, 4241, 4192, 4011, 4003, 4005 |
+| author 33 joined worlds | 1.10× | 1.00× | 6/7 | 3595, 3770, 3595, 3618, 3688, 3633, 3678 | 3969, 3760, 4366, 4197, 3940, 4001, 4086 |
+
+The isolated database is `CREATE DATABASE`, the two schemas and `DROP DATABASE … WITH (FORCE)`:
+the same statements on both sides, and the server's work. It is level (the median repetition
+1.006×); one Haskell repetition at 70 ms, when the load rose to 3.5, gives its lowest ratio.
 
 The two Engine rows were measured later the same day, with many other builds running on the
 machine (load average between 60 and 200), so their absolute times are much noisier than the
@@ -35,10 +52,16 @@ fixture than the History-only worlds. An earlier, quieter run over the 14 Histor
 measured 61.4 ms against 23.2 ms for replay (2.6×) and 62.7 ms against 21.3 ms for authoring
 (2.9×).
 
-The three joined rows were measured later still (2026-10-10, load average 3 to 5) on a private
+### The joined rows of 2026-10-10
+
+<!-- bench: superseded -->
+
+The three joined rows were earlier measured (2026-10-10, load average 3 to 5) on a private
 PostgreSQL 17 server (`fsync=off`) on the same machine, in wall-clock time (`--time-mode wall`;
 these workloads wait on the server, which CPU time would not count). Haskell and Python ran
-interleaved, twice each; the table shows the second pair. The first pair measured 4.37 s against
+interleaved, twice each; the table then showed the second pair: 3.93 s against 3.74 s for replay
+(1.05×), 4.09 s against 3.70 s for authoring (1.10×), 60.3 ms against 59.3 ms for the isolated
+database (1.0×), Python first. The first pair measured 4.37 s against
 3.62 s for replay and 4.15 s against 3.56 s for authoring. An earlier run at a higher load had
 Haskell 5% behind on replay (4.71 s against 4.48 s), within the spread between runs.
 
@@ -47,7 +70,7 @@ database alone (`CREATE DATABASE`, the Impetus and Absurd schemas, `DROP DATABAS
 costs about 60 ms on both sides, which is 2 of the 3.7 s; the rest is the Engine's, the Workers'
 and the probes' round trips. Haskell's CPU time for the whole replay workload is 0.37 s.
 
-### The joined rows after petrus-postgres's prepared-statement cache
+### The joined rows after petrus-postgres's prepared-statement cache (2026-10-11, 02:28–03:03)
 
 The joined rows above predate petrus-postgres's prepared-statement cache, which now prepares a
 statement on its sixth execution on a connection, as psycopg does. On 2026-10-11 (02:28–03:03

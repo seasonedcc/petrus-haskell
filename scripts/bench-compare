@@ -13,9 +13,12 @@
 
 For packages whose Python twins print ``name,nanoseconds`` lines on stdout
 (scripts/bench_timing.py, or a script's own median) named like the package's
-tasty-bench benchmarks; other output lines are ignored. Each repetition runs
-``cabal bench <package>`` (tasty-bench ``--csv``, ``--stdev 5``,
-``--time-mode wall``, ``+RTS -M2G``) and the twins (in the pinned upstream
+tasty-bench benchmarks; other output lines are ignored. The package's
+benchmark is built once with ``cabal build``; each repetition then runs its
+executable directly, the way ``cabal bench <package>`` would (in the package
+directory, with cabal's environment variables) but without cabal as the
+parent process (tasty-bench ``--csv``, ``--stdev 5``,
+``--time-mode wall``, ``+RTS -M2G``), and the twins (in the pinned upstream
 environment from scripts/upstream-python) back to back, alternating which
 goes first, and records the 1-minute load average around every run. Benchmarks that read ``PETRUS_TEST_POSTGRES`` get
 a throwaway server from scripts/with-postgres when it is unset.
@@ -38,6 +41,7 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import re
 import statistics
 import shlex
 import subprocess
@@ -66,19 +70,55 @@ def upstream_python(project: str) -> str:
     ).stdout.strip()
 
 
-def haskell(package: str, repetition: int, pattern: Optional[str], stdev: str) -> Dict[str, float]:
+def benchmark_binary(package: str) -> Tuple[Path, Dict[str, str]]:
+    """Build the package's benchmark and return its executable and the
+    environment ``cabal bench`` would run it with.
+
+    The repetitions run the executable directly, as the Python twins run, not
+    through ``cabal bench``: a benchmark started by cabal ran measurably
+    slower (about 1% on petrus-posix's syscall-bound rows, in every pairing
+    of an alternated check on 2026-10-11) than the same executable started
+    directly, a cost the twins never pay. ``cabal bench`` runs the executable
+    in the package directory with ``HASKELL_DIST_DIR`` and
+    ``<package>_datadir`` set, and so does this script.
+    """
+    cabal_file = next((ROOT / "packages" / package).glob("*.cabal"))
+    stanza = re.search(r"^benchmark\s+(\S+)", cabal_file.read_text(), re.MULTILINE)
+    if stanza is None:
+        raise SystemExit(f"{package} has no benchmark stanza")
+    target = f"{package}:bench:{stanza.group(1)}"
+    command = ["cabal", "build", "-j2", "--enable-benchmarks", target]
+    print("+ " + " ".join(shlex.quote(part) for part in command), file=sys.stderr, flush=True)
+    subprocess.run(command, cwd=ROOT, env=environment(), check=True, stdout=sys.stderr)
+    binary = Path(
+        subprocess.run(
+            ["cabal", "list-bin", "-v0", "--enable-benchmarks", target],
+            cwd=ROOT,
+            env=environment(),
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True,
+        ).stdout.strip()
+    )
+    env = environment()
+    env["HASKELL_DIST_DIR"] = str(binary.parent.parent.parent)
+    env[f"{package.replace('-', '_')}_datadir"] = str(ROOT / "packages" / package) + "/."
+    return binary, env
+
+
+def haskell(package: str, repetition: int, pattern: Optional[str], stdev: str, binary: Tuple[Path, Dict[str, str]]) -> Dict[str, float]:
     output = TMP / f"{package}.haskell.{repetition}.csv"
     if output.exists():
         output.unlink()
     selection = ["-p", pattern] if pattern else []
     options = selection + ["--csv", str(output), "--stdev", stdev, "--timeout", "300", "--time-mode", "wall", "+RTS", "-M2G", "-RTS"]
-    # One --benchmark-option per argument, so a pattern needs no shell quoting.
-    command = ["cabal", "bench", package, "-j2"] + [f"--benchmark-option={option}" for option in options]
+    executable, env = binary
+    command = [str(executable)] + options
     print("+ " + " ".join(shlex.quote(part) for part in command), file=sys.stderr, flush=True)
     subprocess.run(
         command,
-        cwd=ROOT,
-        env=environment(),
+        cwd=ROOT / "packages" / package,
+        env=env,
         check=True,
         stdout=sys.stderr,
     )
@@ -152,18 +192,19 @@ def main() -> int:
         return subprocess.call([str(ROOT / "scripts" / "with-postgres"), sys.executable, __file__, *arguments])
     TMP.mkdir(parents=True, exist_ok=True)
     interpreter = upstream_python(options.upstream)
+    binary = benchmark_binary(package)
     runs: List[Tuple[Dict[str, float], Dict[str, float]]] = []
     loads: List[float] = []
     for repetition in range(1, repetitions + 1):
         loads.append(os.getloadavg()[0])
         if repetition % 2:
-            ours = haskell(package, repetition, options.pattern, options.stdev)
+            ours = haskell(package, repetition, options.pattern, options.stdev, binary)
             loads.append(os.getloadavg()[0])
             theirs = python(package, interpreter, options.upstream, scripts, repetition)
         else:
             theirs = python(package, interpreter, options.upstream, scripts, repetition)
             loads.append(os.getloadavg()[0])
-            ours = haskell(package, repetition, options.pattern, options.stdev)
+            ours = haskell(package, repetition, options.pattern, options.stdev, binary)
         loads.append(os.getloadavg()[0])
         runs.append((ours, theirs))
         print(f"repetition {repetition} done, load average {loads[-3]:.2f} / {loads[-2]:.2f} / {loads[-1]:.2f}", file=sys.stderr)

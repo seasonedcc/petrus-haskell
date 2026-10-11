@@ -49,18 +49,43 @@ foreign import capi interruptible "sys/file.h flock" c_flock :: CInt -> CInt -> 
 -- overhead.
 foreign import capi unsafe "sys/file.h flock" c_flock_nb :: CInt -> CInt -> IO CInt
 
-foreign import capi "sys/file.h value LOCK_SH" lockSh :: CInt
+-- A @capi "value"@ import is a call to a generated C function, safe unless
+-- marked otherwise, and GHC inlines it at every use: 'tryLock' used to make
+-- two safe foreign calls (for @LOCK_EX@ and @LOCK_NB@) besides @flock@
+-- itself, about 0.1-0.2 µs each. Each constant is now read once, into a
+-- top-level value that is never inlined.
+foreign import capi unsafe "sys/file.h value LOCK_SH" c_LOCK_SH :: CInt
 
-foreign import capi "sys/file.h value LOCK_EX" lockEx :: CInt
+foreign import capi unsafe "sys/file.h value LOCK_EX" c_LOCK_EX :: CInt
 
-foreign import capi "sys/file.h value LOCK_NB" lockNb :: CInt
+foreign import capi unsafe "sys/file.h value LOCK_NB" c_LOCK_NB :: CInt
 
-foreign import capi "sys/file.h value LOCK_UN" lockUn :: CInt
+foreign import capi unsafe "sys/file.h value LOCK_UN" c_LOCK_UN :: CInt
+
+lockUn :: CInt
+lockUn = c_LOCK_UN
+{-# NOINLINE lockUn #-}
+
+-- | The blocking and the non-blocking request for each kind.
+lockSh, lockEx, lockShNb, lockExNb :: CInt
+lockSh = c_LOCK_SH
+lockEx = c_LOCK_EX
+lockShNb = c_LOCK_SH .|. c_LOCK_NB
+lockExNb = c_LOCK_EX .|. c_LOCK_NB
+{-# NOINLINE lockSh #-}
+{-# NOINLINE lockEx #-}
+{-# NOINLINE lockShNb #-}
+{-# NOINLINE lockExNb #-}
 
 kindFlag :: LockKind -> CInt
 kindFlag = \case
   Shared -> lockSh
   Exclusive -> lockEx
+
+kindFlagNb :: LockKind -> CInt
+kindFlagNb = \case
+  Shared -> lockShNb
+  Exclusive -> lockExNb
 
 -- | @flock(fd, kind | LOCK_NB)@: 'True' when the lock was taken, 'False' when
 -- another open file description holds a conflicting lock (@EWOULDBLOCK@,
@@ -69,7 +94,7 @@ tryLock :: Fd -> LockKind -> IO Bool
 tryLock (Fd fd) kind = loop
   where
     loop = do
-      result <- c_flock_nb fd (kindFlag kind + lockNb)
+      result <- c_flock_nb fd (kindFlagNb kind)
       if result == 0
         then pure True
         else do
@@ -106,11 +131,15 @@ openLockFile path = openLockFileWith path 0o600
 
 -- | 'openLockFile' with an explicit creation mode.
 openLockFileWith :: FilePath -> FileMode -> IO Fd
-openLockFileWith path mode = openPath "open" path (oRdwr .|. oCreat) mode
+openLockFileWith path mode = openPath "open" path rdwrCreat mode
 
-foreign import capi "fcntl.h value O_RDWR" oRdwr :: CInt
+foreign import capi unsafe "fcntl.h value O_RDWR" c_O_RDWR :: CInt
 
-foreign import capi "fcntl.h value O_CREAT" oCreat :: CInt
+foreign import capi unsafe "fcntl.h value O_CREAT" c_O_CREAT :: CInt
+
+rdwrCreat :: CInt
+rdwrCreat = c_O_RDWR .|. c_O_CREAT
+{-# NOINLINE rdwrCreat #-}
 
 -- | Open the lock file, take a blocking lock of the given kind, run the
 -- action, then release by closing the descriptor.

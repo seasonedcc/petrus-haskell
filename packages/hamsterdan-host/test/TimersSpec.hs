@@ -20,8 +20,10 @@ import Petrus.Impetus.History.Records (ExternalEventDelivered (..), Record (..))
 import Petrus.Impetus.Petrinet.Marking (Token (..))
 import Petrus.Impetus.Petrinet.Schema (netPath)
 import Petrus.Json (Json (..))
+import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
+import System.Process.Typed (proc, runProcess_)
 import Test.Hspec
 import TestSupport
 
@@ -272,6 +274,29 @@ spec = describe "test_v5_timers" $ do
           (_, Just (RuntimeError m)) -> "delay" `T.isInfixOf` m
           _ -> False
       T5.close store
+
+  -- Not an upstream test. The port creates the schema in one transaction
+  -- where the reference commits each statement (see DIVERGENCES.md); the
+  -- closed file must still hold the reference's bytes. Offsets 96-99 hold
+  -- SQLITE_VERSION_NUMBER of the library that wrote the file, which differs
+  -- between direct-sqlite's bundled SQLite and CPython's.
+  it "a fresh store holds the reference's bytes, but for the SQLite version number" . withTempRoot $ \tmp -> do
+    executable <- upstreamPythonExecutable "hamsterdan"
+    let mine = tmp </> "haskell" </> "timers.sqlite3"
+        theirs = tmp </> "python" </> "timers.sqlite3"
+        program =
+          "import sys\n\
+          \from pathlib import Path\n\
+          \from hamsterdan.host.v5.timers import V5TimerStore\n\
+          \V5TimerStore.open(Path(sys.argv[1]), sys.argv[2]).close()\n"
+    open' mine [] Nothing >>= T5.close
+    runProcess_ (proc executable ["-I", "-B", "-c", program, theirs, T.unpack subject])
+    ours <- BS.readFile mine
+    reference <- BS.readFile theirs
+    let masked bytes = BS.take 96 bytes <> BS.drop 100 bytes
+    BS.length ours `shouldBe` BS.length reference
+    masked ours `shouldBe` masked reference
+    mapM_ (\suffix -> doesFileExist (mine <> suffix) `shouldReturn` False) ["-wal", "-shm"]
 
   it "test_arm_delay_contract_rejects_boolean" $ do
     let encoded = case dump ArmReminder {timer = timer 1 0 "h1", delayS = 1} of

@@ -2,34 +2,92 @@
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
-names and values. Both are wall-clock time. Ratios above 1 mean Haskell is
-faster. **One row is still slower than Python: `flock.open-tryLock-close`, at
-0.97×** (15.1 µs against 14.6 µs; Haskell was behind in every repetition, by
-0.4–0.9 µs). The other rows are faster, `flock.tryLock-unlock` and
-`atomic.write-1KiB-fsync` included.
+names and values. Both are wall-clock time, and both sides work in a fresh
+directory under the same `TMPDIR`. Ratios above 1 mean Haskell is faster.
+**No row is slower than Python.** `flock.open-tryLock-close` is level, at
+1.00× (13.29 µs against 13.30 µs; Haskell ahead in five of nine
+repetitions, the median repetition 1.003×, the lowest 0.96×): both sides
+spend it in the kernel's `open`, below.
 
-- Date: 2026-10-11 00:54–00:59 local (UTC-3), at commit `3f31d2e` plus the
-  path marshalling below (single pass, most recent path remembered) and the
-  bench's paths built once
-- Machine: Darwin arm64, Apple M4, shared with other agents; 1-minute load average 4.4–7.4
-  around the runs
-- Haskell: GHC 9.10.3 (-O2), tasty-bench mean in wall-clock time, `--stdev 5`, `+RTS -M2G -RTS`
+- Date: 2026-10-11 06:32–06:38 local (UTC-3), at commit `573e8d6` (this
+  package as of `2935191`: the constants below)
+- Machine: Darwin arm64, Apple M4, shared with other agents; 1-minute load
+  average 2.28–2.77 around the runs
+- Haskell: GHC 9.10.3 (-O2), tasty-bench mean in wall-clock time,
+  `--stdev 5`, `+RTS -M2G -RTS`, the benchmark executable run directly
+  (below)
 - Python: CPython 3.14.6 (upstream venv), median of 10 timed batches of 0.2 s
   (scripts/bench_timing.py)
-- Interleaved by `scripts/bench-compare petrus-posix 7`, alternating which side goes first. The figures are the
-  medians of the 7 repetitions; the last two columns give each repetition.
+- Interleaved by `scripts/bench-compare petrus-posix 9`, alternating which
+  side goes first. The figures are the medians of the nine repetitions; the
+  last two columns give each repetition.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---|---|
-| `flock.tryLock-unlock` | 590 ns | 617 ns | 1.05× | 0.99× | 590 ns, 575 ns, 588 ns, 629 ns, 586 ns, 590 ns, 611 ns | 617 ns, 674 ns, 668 ns, 787 ns, 606 ns, 611 ns, 603 ns |
-| `flock.open-tryLock-close` | 15.1 µs | 14.6 µs | 0.97× | 0.93× | 15.8 µs, 15.1 µs, 15.3 µs, 16.7 µs, 14.2 µs, 14.4 µs, 14.6 µs | 14.6 µs, 14.8 µs, 15 µs, 16.3 µs, 13.7 µs, 14 µs, 13.7 µs |
-| `path.resolve-symlinked` | 9.88 µs | 18.1 µs | 1.84× | 1.68× | 9.64 µs, 9.93 µs, 10.7 µs, 11.9 µs, 9.44 µs, 9.7 µs, 9.88 µs | 19.2 µs, 18.1 µs, 19.8 µs, 20.8 µs, 16.6 µs, 16.6 µs, 16.6 µs |
-| `path.expanduser-resolve` | 12.5 µs | 18.6 µs | 1.48× | 1.33× | 12.2 µs, 12.5 µs, 13.4 µs, 14.3 µs, 12.5 µs, 11.7 µs, 12.6 µs | 19.6 µs, 18.6 µs, 19 µs, 19.2 µs, 16.7 µs, 16.9 µs, 16.7 µs |
-| `at.stat-nofollow` | 901 ns | 1.01 µs | 1.12× | 0.97× | 855 ns, 901 ns, 914 ns, 901 ns, 850 ns, 856 ns, 959 ns | 1.01 µs, 1.05 µs, 1.02 µs, 1.05 µs, 956 ns, 960 ns, 932 ns |
-| `atomic.write-1KiB-fsync` | 147 µs | 156 µs | 1.06× | 1.04× | 156 µs, 161 µs, 149 µs, 144 µs, 145 µs, 143 µs, 147 µs | 185 µs, 179 µs, 156 µs, 185 µs, 150 µs, 151 µs, 154 µs |
-| `resource.max_rss_mb` | 206 ns | 451 ns | 2.18× | 2.13× | 204 ns, 205 ns, 209 ns, 208 ns, 201 ns, 208 ns, 206 ns | 474 ns, 507 ns, 451 ns, 518 ns, 448 ns, 447 ns, 439 ns |
+| `flock.tryLock-unlock` | 454 ns | 587 ns | 1.29× | 1.19× | 443 ns, 490 ns, 456 ns, 454 ns, 454 ns, 454 ns, 453 ns, 454 ns, 491 ns | 583 ns, 590 ns, 587 ns, 585 ns, 588 ns, 583 ns, 589 ns, 588 ns, 585 ns |
+| `flock.open-tryLock-close` | 13.3 µs | 13.3 µs | 1.00× | 0.96× | 13.2 µs, 13.3 µs, 13.3 µs, 13.3 µs, 13.2 µs, 13.3 µs, 13.8 µs, 13.3 µs, 13.4 µs | 13.3 µs, 13.3 µs, 13.3 µs, 13.3 µs, 13.4 µs, 13.3 µs, 13.3 µs, 13.3 µs, 13.3 µs |
+| `path.resolve-symlinked` | 8.80 µs | 15.9 µs | 1.81× | 1.67× | 9.4 µs, 8.8 µs, 8.77 µs, 8.78 µs, 8.84 µs, 8.73 µs, 8.86 µs, 8.7 µs, 8.8 µs | 15.7 µs, 15.9 µs, 16 µs, 15.9 µs, 15.9 µs, 16 µs, 16.1 µs, 16 µs, 15.8 µs |
+| `path.expanduser-resolve` | 10.8 µs | 16.0 µs | 1.48× | 1.44× | 10.8 µs, 10.8 µs, 10.8 µs, 10.8 µs, 11.1 µs, 11 µs, 10.9 µs, 10.8 µs, 10.7 µs | 15.8 µs, 16 µs, 16.1 µs, 15.9 µs, 16 µs, 16.1 µs, 16 µs, 16.1 µs, 16.1 µs |
+| `at.stat-nofollow` | 789 ns | 895 ns | 1.13× | 1.11× | 782 ns, 791 ns, 815 ns, 786 ns, 789 ns, 786 ns, 793 ns, 789 ns, 790 ns | 867 ns, 889 ns, 903 ns, 920 ns, 896 ns, 894 ns, 896 ns, 895 ns, 883 ns |
+| `atomic.write-1KiB-fsync` | 129 µs | 134 µs | 1.04× | 0.98× | 134 µs, 135 µs, 130 µs, 129 µs, 130 µs, 129 µs, 128 µs, 128 µs, 129 µs | 133 µs, 132 µs, 138 µs, 136 µs, 134 µs, 134 µs, 134 µs, 141 µs, 133 µs |
+| `resource.max_rss_mb` | 192 ns | 436 ns | 2.27× | 2.01× | 209 ns, 214 ns, 197 ns, 189 ns, 192 ns, 193 ns, 191 ns, 188 ns, 188 ns | 432 ns, 430 ns, 436 ns, 437 ns, 441 ns, 446 ns, 442 ns, 436 ns, 432 ns |
 
-## Path marshalling, and the remaining `flock` gap
+`flock.open-tryLock-close`, repetition by repetition (Python / Haskell, from
+the CSVs): 1.003, 1.003, 1.003, 0.998, 1.010, 1.003, 0.963, 0.997 and
+0.996×. The row is level: the spread of single repetitions is wider than
+the difference between the sides.
+
+## The `flock` constants were foreign calls
+
+A `foreign import capi "sys/file.h value LOCK_EX"` constant is a call to a
+C function that GHC generates, and the call is safe unless the import says
+`unsafe`. GHC inlined each one at every use, so `tryLock` made two safe
+foreign calls (for `LOCK_EX` and `LOCK_NB`) besides `flock` itself, and
+`unlock` one more (`LOCK_UN`). A safe call releases and reacquires the
+capability, about 25 ns here against 2 ns for an unsafe one (a `getpid`
+probe), and more under the benchmark. The Core of `Petrus.Posix.Flock`
+(`-ddump-simpl`) showed them. Each constant is now an unsafe import read
+once into a top-level value that is never inlined, and the flags are
+combined once (`LOCK_EX | LOCK_NB`, `O_RDWR | O_CREAT`). The only safe
+calls left are the intended ones: `open`, which can block on a slow file
+system as CPython releases the GIL around it, and the blocking `flock`
+(interruptible). `flock.tryLock-unlock` went from 1.01–1.05× to 1.29×.
+
+## `flock.open-tryLock-close` is the kernel's `open`
+
+Both sides make the same three system calls: `open(path, O_RDWR | O_CREAT
+| O_CLOEXEC, 0600)`, `flock(fd, LOCK_EX | LOCK_NB)` and `close`. CPython's
+`os.open` adds `O_CLOEXEC` and calls `open` with the GIL released (it
+checks once per process that `O_CLOEXEC` works); `fcntl.flock` and
+`os.close` release the GIL too. Neither side uses `openat`. Measured
+outside tasty-bench, in fixed loops:
+
+- **`open` is almost all of it.** In this `TMPDIR` (and in the worktree),
+  one `open` of an existing file took 11.5–13 µs; in `/private/tmp`, 1.35
+  µs. The difference is the file system's watchers (`fseventsd` ran at
+  100% CPU during these runs), and both sides pay it. `O_CREAT` costs
+  nothing extra on an existing file. `O_RDONLY` would be cheaper (8.2 µs)
+  but would not be the reference's call.
+- **The client code is within noise of C.** A C loop of the three calls
+  took about 12.3 µs, the Haskell library's `openLockFile`, `tryLock` and
+  `closeFd` 12.6–13.1 µs, and Python's loop 13.0–13.5 µs, alternated.
+
+So the row moves with the kernel, not with either client: at 1.00× here,
+0.97–0.99× in the earlier tables, where the Haskell side also ran under
+`cabal bench` (below).
+
+## How bench-compare runs the Haskell side
+
+`scripts/bench-compare` used to run `cabal bench petrus-posix` in each
+repetition, so the benchmark ran with cabal as its parent process. In
+alternated checks on 2026-10-11, the same executable measured this row
+about 150–250 ns (1–2%) slower under `cabal bench` than when started
+directly. The Python twin is started directly. bench-compare now builds the
+benchmark once and runs its executable directly, in the package directory
+and with the environment variables `cabal bench` sets
+(`HASKELL_DIST_DIR`, `petrus_posix_datadir`).
+
+## Path marshalling
 
 Every call that takes a path marshals a Haskell `String` to a C string. That
 used to cost three passes over the path (a NUL check, an ASCII check, then
@@ -49,23 +107,39 @@ refusal, non-ASCII and over-long names, and alternating path values. This
 lifted the `path.*` rows (1.31× before) and `at.stat-nofollow`, and it
 narrowed `flock.open-tryLock-close` from 0.93× to 0.97×.
 
-The bench now builds its paths once, fully evaluated, as the Python twin
+The bench builds its paths once, fully evaluated, as the Python twin
 binds them once.
 
-What is left of the `flock` row is not in the client code. A probe timed
-the row's three system calls from Haskell with no marshalling at all (a
-prepared C string, `open` as a safe FFI call, `flock` and `close` unsafe).
-It took 13.1–13.7 µs. Python's loop of the same calls took 13.4–13.9 µs, and
-`openLockFile` plus `tryLock` were within noise of the bare calls. The
-`open` stays a safe call because it can block on a slow file system, as
-CPython releases the GIL around it. Part of the remaining 3% may be the
-difference between tasty-bench's mean and the twin's median of batches on
-this shared machine. That was not isolated, and the gap held in every
-repetition, so the row counts as slower.
+## Earlier tables
 
-## Wall-clock time, and the earlier figures
+### 2026-10-11, 00:54–00:59
 
-The table before this one (2026-10-10, two repetitions, commit `74e6b1e`)
+<!-- bench: superseded -->
+
+At commit `3f31d2e` plus the path marshalling above and the bench's paths
+built once, before the constants change, through `cabal bench`; load
+average 4.4–7.4; `scripts/bench-compare petrus-posix 7`.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `flock.tryLock-unlock` | 590 ns | 617 ns | 1.05× | 0.99× | 590 ns, 575 ns, 588 ns, 629 ns, 586 ns, 590 ns, 611 ns | 617 ns, 674 ns, 668 ns, 787 ns, 606 ns, 611 ns, 603 ns |
+| `flock.open-tryLock-close` | 15.1 µs | 14.6 µs | 0.97× | 0.93× | 15.8 µs, 15.1 µs, 15.3 µs, 16.7 µs, 14.2 µs, 14.4 µs, 14.6 µs | 14.6 µs, 14.8 µs, 15 µs, 16.3 µs, 13.7 µs, 14 µs, 13.7 µs |
+| `path.resolve-symlinked` | 9.88 µs | 18.1 µs | 1.84× | 1.68× | 9.64 µs, 9.93 µs, 10.7 µs, 11.9 µs, 9.44 µs, 9.7 µs, 9.88 µs | 19.2 µs, 18.1 µs, 19.8 µs, 20.8 µs, 16.6 µs, 16.6 µs, 16.6 µs |
+| `path.expanduser-resolve` | 12.5 µs | 18.6 µs | 1.48× | 1.33× | 12.2 µs, 12.5 µs, 13.4 µs, 14.3 µs, 12.5 µs, 11.7 µs, 12.6 µs | 19.6 µs, 18.6 µs, 19 µs, 19.2 µs, 16.7 µs, 16.9 µs, 16.7 µs |
+| `at.stat-nofollow` | 901 ns | 1.01 µs | 1.12× | 0.97× | 855 ns, 901 ns, 914 ns, 901 ns, 850 ns, 856 ns, 959 ns | 1.01 µs, 1.05 µs, 1.02 µs, 1.05 µs, 956 ns, 960 ns, 932 ns |
+| `atomic.write-1KiB-fsync` | 147 µs | 156 µs | 1.06× | 1.04× | 156 µs, 161 µs, 149 µs, 144 µs, 145 µs, 143 µs, 147 µs | 185 µs, 179 µs, 156 µs, 185 µs, 150 µs, 151 µs, 154 µs |
+| `resource.max_rss_mb` | 206 ns | 451 ns | 2.18× | 2.13× | 204 ns, 205 ns, 209 ns, 208 ns, 201 ns, 208 ns, 206 ns | 474 ns, 507 ns, 451 ns, 518 ns, 448 ns, 447 ns, 439 ns |
+
+Later the same day, after the constants change and still through `cabal
+bench` (load 2.36–3.05, seven repetitions), the open row read 0.97×
+(lowest 0.97×) and `flock.tryLock-unlock` 1.29×; with the executable run
+directly (load 2.00–5.31), 0.99× and 1.28×.
+
+### 2026-10-10, and the CPU-time table before it
+
+<!-- bench: superseded -->
+
+The table before the one above (2026-10-10, two repetitions, commit `74e6b1e`)
 read 0.93× for `flock.open-tryLock-close`, 0.99× for `flock.tryLock-unlock`,
 1.00× for `atomic.write-1KiB-fsync`, 1.31× for both `path.*` rows and 1.09×
 for `at.stat-nofollow`. That table replaced one generated by the old `scripts/bench`, which timed Haskell
@@ -74,7 +148,9 @@ rows the two clocks agree: every Haskell figure is within the run-to-run
 spread of the old one (`atomic.write-1KiB-fsync` 133 µs then, 132–158 µs in that table),
 because none of them waits on anything but the system calls themselves.
 
-What each row measures, in a scratch directory:
+## What each row measures
+
+In a scratch directory:
 
 - **`flock.tryLock-unlock`**: a nonblocking exclusive `flock` and its release,
   on a file descriptor held open.
@@ -94,7 +170,7 @@ What each row measures, in a scratch directory:
 ## Rerun
 
 From the repository root (`scripts/bench petrus-posix` runs exactly this block, once;
-`scripts/bench-compare petrus-posix 7` interleaves the two sides and prints the table above).
+`scripts/bench-compare petrus-posix 9` interleaves the two sides and prints the table above).
 
 <!-- scripts/bench: rerun -->
 ```sh

@@ -56,6 +56,7 @@ PATTERNS: Dict[str, List[str]] = {
         "the HTTP surface against the reference (uvicorn)",
         "the command line against the reference",
         "reference_bytes",
+        "a fresh store holds the reference's bytes",
     ],
     "hamsterdan-github": ["configuration corpus", "reads, effects and GraphQL corpus", "HTTP client corpus", "webhook, inbox and routing corpus"],
     "hamsterdan-operator": [

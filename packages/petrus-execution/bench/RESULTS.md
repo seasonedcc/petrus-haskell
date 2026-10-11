@@ -39,7 +39,7 @@ shows the median of those per-round medians. A ratio above 1 means Haskell is fa
 
 ## Results
 
-`compare.py`, 5 interleaved rounds:
+`compare.py`, 5 interleaved rounds (archive rows):
 
 | benchmark | Python (ms) | Haskell (ms) | Python / Haskell |
 |---|---:|---:|---:|
@@ -52,11 +52,19 @@ shows the median of those per-round medians. A ratio above 1 means Haskell is fa
 | archive/one-large/pack+sha256 | 131.149 | 111.167 | 1.18x |
 | archive/one-large/validate | 0.080 | 0.010 | 7.97x |
 | archive/one-large/extract | 152.094 | 133.841 | 1.14x |
-| process/run-captured | 1.452 | 0.783 | 1.85x |
-| sidecar/handshake-round-trip | 0.034 | 0.034 | 1.00x |
-| sidecar/execute-round-trip | 5.497 | 5.602 | 0.98x |
+| process/run-captured | 1.276 | 0.759 | 1.68x |
+| sidecar/handshake-round-trip | 0.032 | 0.031 | 1.02x |
+| sidecar/execute-round-trip | 4.862 | 4.841 | 1.00x |
 
-The two sidecar rows are within noise, so they were run again on their own for 10 interleaved
+The archive rows come from these five rounds (2026-10-10). The process and sidecar rows come from
+the eleven alternating rounds on a quiet machine below (2026-10-11); in these five rounds they
+read 1.85x, 1.00x and 0.98x.
+
+### Sidecar rows alone, 2026-10-10
+
+<!-- bench: superseded -->
+
+The two sidecar rows were within noise, so they were run again on their own for 10 interleaved
 rounds (`PETRUS_BENCH_ONLY=none`, which skips the archive workloads):
 
 | benchmark | Python (ms) | Haskell (ms) | Python / Haskell | rounds Haskell won |
@@ -65,7 +73,30 @@ rounds (`PETRUS_BENCH_ONLY=none`, which skips the archive workloads):
 | sidecar/handshake-round-trip | 0.033 | 0.033 | 1.01x | 7/10 |
 | sidecar/execute-round-trip | 6.463 | 6.613 | 0.98x | 6/10 |
 
-### Sidecar rows rerun, 2026-10-11
+### Sidecar rows on a quiet machine, 2026-10-11 07:46
+
+The rows without archive workloads (`PETRUS_BENCH_ONLY=none`) were rerun
+for 11 rounds that alternate which harness goes first, at commit `fc77e8d`,
+with the 1-minute load average at 2.18–2.33. Each harness reports its
+median per round (50 executes, 1000 handshakes, 100 spawns); the table
+gives the median of the rounds, the lowest round's ratio, and the rounds
+Haskell won:
+
+| benchmark | Python (ms) | Haskell (ms) | Python / Haskell | Lowest round | rounds Haskell won |
+|---|---:|---:|---:|---:|---:|
+| process/run-captured | 1.276 | 0.759 | 1.68x | 1.67x | 11/11 |
+| sidecar/handshake-round-trip | 0.032 | 0.031 | 1.02x | 0.80x | 6/11 |
+| sidecar/execute-round-trip | 4.862 | 4.841 | 1.00x | 0.97x | 7/11 |
+
+The execute row is level: 4.84 ms against 4.86 ms, Haskell ahead in seven
+of eleven rounds, every round within 3%. Almost all of it is the shared
+Node sidecar spawning `sh` (below), which neither client controls. The
+handshake row's lowest round is one Python round at 0.025 ms; the other
+rounds sat at 0.030–0.034 ms on both sides.
+
+### Sidecar rows rerun, 2026-10-11 00:35–00:38
+
+<!-- bench: superseded -->
 
 The sidecar rows were rerun on 2026-10-11 00:35–00:38 local, at a 1-minute
 load average of 5.6–6.2 (other agents' builds and benchmarks), to check
