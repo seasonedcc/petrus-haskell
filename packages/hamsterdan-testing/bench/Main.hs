@@ -1,13 +1,18 @@
--- | Oracle benchmarks for hamsterdan-testing; bench.py runs the same
--- operations on the same inputs (test/corpus/oracle.jsonl) in the pinned
--- Python.
+-- | Benchmarks for hamsterdan-testing; bench.py runs the same operations on
+-- the same inputs in the pinned Python.
 --
 -- > cabal bench hamsterdan-testing --benchmark-options='+RTS -M2G -RTS'
+--
+-- The oracle (test/corpus/oracle.jsonl):
 --
 -- * @ReadinessModel().evaluate@ over every admitted corpus document;
 -- * @ReadinessFacts.load@ then @evaluate@ over the same documents' JSON;
 -- * @evaluate_liveness@ under the corpus's six environments and both
 --   budget flags, over every expectation.
+--
+-- The journeys: each of the eleven readiness journeys end to end, from an
+-- empty directory to the journey result, through the real V5 host, real
+-- SQLite stores and real Git repositories.
 --
 -- Results and the comparison with Python are in RESULTS.md.
 module Main (main) where
@@ -15,9 +20,12 @@ module Main (main) where
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Hamsterdan.Testing.Journeys (journeyName, runJourney)
 import Hamsterdan.Testing.Readiness
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, dumps, encodeErrorMessage, parseJson, pythonLoads)
+import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
@@ -41,6 +49,15 @@ main = do
             nf (map (fmap (summary . evaluate) . (load :: BS.ByteString -> Either Text ReadinessFacts))) inputs
         , bench ("evaluate_liveness x12 over every expectation (" <> count <> ")") $
             nf (\es -> [fromEnum (evaluateLiveness e fairness budget) | e <- es, fairness <- environments, budget <- [False, True]]) expectations
+        ]
+    , -- One journey from an empty directory to its result document, which
+      -- is encoded so that all of it is forced.
+      bgroup
+        "journeys"
+        [ bench (T.unpack (journeyName journey)) . nfIO $
+            withSystemTempDirectory "journey" $ \root ->
+              either (fail . encodeErrorMessage) (pure . BS.length) . dumps compact =<< runJourney journey root
+        | journey <- [minBound .. maxBound]
         ]
     ]
  where

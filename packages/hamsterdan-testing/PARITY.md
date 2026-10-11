@@ -22,6 +22,7 @@ The Haskell suite compares bytes.
 | `ReadinessModel.evaluate` | `evaluate` | **Oracle corpus.** 1658 admitted documents cover all six dispositions, every blocker family and every violation family. Each must produce the reference's `ReadinessExpectation` dump, byte for byte. |
 | `evaluate_liveness` | `evaluateLiveness` | **Oracle corpus.** Each verdict is checked under six environments (all conditions declared, then each one withheld) times both budget flags. |
 | `FairEnvironment.declared` | `declared` | `ReadinessModelSpec` |
+| `tests/integration/host/test_readiness_scenarios.py`: `ScenarioProvider`, `ScenarioRunner`, the Git fixtures, `_run_journey` and the eleven `run_*` journeys | `Hamsterdan.Testing.Journeys`: `runJourney`, `driveJourney`, `Journey`, `Phase`, `phasesOf`, the upstream constants | **Journeys against the reference.** All 11 journeys match the Python journey byte for byte, run whole and cross-resumed both ways (see below). The 11 upstream tests pass under their upstream names. |
 
 ## Upstream tests
 
@@ -45,27 +46,78 @@ checks `apiCompatibility`, `artifactFormat` and `resultVersion`. Haskell
 `petrus-dst` has no `ARTIFACT_VERSION` constant: the version is read off a
 decoded artifact. The `petrus.testing.dst/v4` API pins it to 4.
 
+`tests/integration/host/test_readiness_scenarios.py` is ported in full in
+`test/ReadinessScenariosSpec.hs`. Each upstream test keeps its name and
+makes the upstream test's assertions about the `JourneyResult`. The journeys
+themselves run in `Hamsterdan.Testing.Journeys`, so the interop suite and
+the benchmarks can run them too. They run through the real V5 host
+(`hamsterdan-host`): its custody, its SQLite stores, its Local Dispatch
+Worker, and, for the journeys that publish, its real Git publisher over a
+local bare repository.
+
+| Upstream file | Functions | Haskell spec | Examples | Notes |
+| --- | ---: | --- | ---: | --- |
+| `test_readiness_scenarios.py` | 11 | `ReadinessScenariosSpec` | 11 | `test_clean_green_user_journey` also checks that `evaluate` of the journey's model facts is ready, as upstream does. `test_hero_review_user_journey` runs the journey twice and compares the two results, as upstream does. |
+
 ### Corpus suite
 
 | Spec | Examples | What it checks |
 | --- | ---: | --- |
 | `OracleCorpusSpec` | 2 | Every corpus row is checked for admission or refusal (with the rule), the facts dump digest, the expectation dump and 12 liveness verdicts. The corpus must cover refusals, named rules and every disposition. |
 
-**Suite total:** 43 examples, 0 failures.
+### Journeys against the reference
+
+`differential/journeys_reference.py` runs each journey in the pinned Python,
+through the upstream `run_<name>` function itself, unchanged. It applies the
+four determinism seams listed in [DIVERGENCES.md](DIVERGENCES.md), and
+nothing else. Its `dump` reads a state directory back the same way for both
+languages. SQLite databases become their schema and sorted rows, and every
+other file becomes its text. Two things are normalized there, and neither is
+in History: the per-process Worker claimant, and the Local Dispatch's
+wall-clock milliseconds.
+
+`ReadinessScenariosSpec` ("journeys against the reference") runs four
+examples per journey, 44 in all. Each one compares the journey `result`
+(the `JourneyResult`: every GitHub request and write, every posted comment,
+review and status, the agent calls and results, the Git reconciliations and
+publications, and the snapshots) and the whole `state` directory with the
+Python journey's:
+
+| Example | First half | Second half |
+| --- | --- | --- |
+| the whole journey | Haskell, in one host lifetime | none |
+| Haskell then Haskell | Haskell | Haskell, in a new host over the same directory |
+| Python then Haskell | Python | Haskell, resuming Python's state and carry |
+| Haskell then Python | Haskell | Python, resuming Haskell's state and carry |
+
+The split is at half of the journey's phases (`Open`, then `Draft`,
+`StaleBase`, `Collaboration` or `FollowUp` as the journey has them). The
+`carry` between halves is the same JSON in both languages: provider truth,
+runner state, the journey's snapshots and the next delivery number.
+
+All 44 examples pass. Every result and every state directory, including
+History, the timer store, custody, the routes and the Local Dispatch, is
+identical to the Python journey's. `scripts/interop` runs this group.
+
+**Suite total:** 98 examples, 0 failures (34 + 7 model, 2 corpus, 11
+journeys, 44 journeys against the reference).
 
 ## Benchmarks
 
 See [bench/RESULTS.md](bench/RESULTS.md). The Haskell and Python runs were
 interleaved, and the load average is noted. Haskell is faster on every row:
 
-- `evaluate`: 11.6×;
-- `load` + `evaluate`: 1.7×;
-- `evaluate_liveness`: 22.8×.
+- **Oracle:** `evaluate` 11.6×; `load` + `evaluate` 1.7×;
+  `evaluate_liveness` 22.8×.
+- **Journeys, end to end:** 3.3× to 7.0× for the eight journeys without Git
+  publication. For the three with real `git` processes: `agent_repair`
+  1.7×, `stale_base_update` 2.0×, `true_conflict_resolution` 1.9×.
 
 ## Gaps
 
-- **Only the oracle is ported.** The rest of the testing surface is planned
-  for this package but not started. That includes the deterministic World
-  and its campaigns (`src/hamsterdan/host/testing`) and the deterministic
-  journeys (`tests/integration/host/test_readiness_scenarios.py`). Both need
-  `hamsterdan-host`.
+- **The deterministic World and its campaigns are not ported.** This covers
+  `src/hamsterdan/host/testing/*` over Petrus DST v4: `ReadinessWorld`, the
+  readiness profile and checker, `replay_readiness` and the semantic
+  coverage report. Its upstream tests are not ported either:
+  `tests/integration/testing/test_readiness_world.py`,
+  `test_readiness_campaign.py` and `test_readiness_coverage.py`.

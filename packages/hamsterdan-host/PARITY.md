@@ -113,7 +113,7 @@ scope.
 | `tests/unit/host/test_publication_qualification.py` | 52 | `hamsterdan-operator` (8): `host/publication_qualification.py` |
 | `tests/unit/host/test_secret_launch.py` | 10 | `hamsterdan-operator` (8): `operator.py` |
 | `tests/integration/host/test_qualification_setup_local.py` | 7 | `hamsterdan-operator` (8) |
-| `tests/integration/host/test_readiness_scenarios.py` | 11 | `hamsterdan-testing` (6): the 11 journeys over `host/testing` (the World) |
+| `tests/integration/host/test_readiness_scenarios.py` | 11 | `hamsterdan-testing` (6): the 11 journeys, ported there over this host |
 
 The upstream counts are:
 

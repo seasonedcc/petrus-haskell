@@ -1,12 +1,14 @@
 cabal-version:      3.4
 name:               hamsterdan-testing
 version:            0.1.0.0
-synopsis:           Hamsterdan's independent expected-readiness oracle
+synopsis:           Hamsterdan's independent expected-readiness oracle and readiness journeys
 description:
   The @ReadinessModel@ oracle of Hamsterdan (@src/hamsterdan/testing/readiness.py@):
   topology-neutral normalized facts with strict pydantic-identical JSON
   codecs, the expected readiness verdict they imply, and the fair-environment
-  liveness classification used by deterministic simulation.
+  liveness classification used by deterministic simulation; and the eleven
+  deterministic readiness journeys of
+  @tests/integration/host/test_readiness_scenarios.py@ over the real V5 host.
 license:            Apache-2.0
 license-file:       LICENSE
 author:             Seasoned
@@ -88,5 +90,6 @@ benchmark hamsterdan-testing-bench
                   , petrus-json
                   , tasty-bench >=0.3.2
                   , tasty
+                  , temporary >=1.3
                   , text
-  ghc-options:      -O2 -rtsopts
+  ghc-options:      -O2 -threaded -rtsopts
