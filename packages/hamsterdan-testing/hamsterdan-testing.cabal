@@ -36,6 +36,10 @@ library
   hs-source-dirs:   src
   exposed-modules:  Hamsterdan.Testing.Readiness
                     Hamsterdan.Testing.Journeys
+                    Hamsterdan.Testing.World
+                    Hamsterdan.Testing.World.Contract
+                    Hamsterdan.Testing.World.Provider
+                    Hamsterdan.Testing.World.Scenarios
   build-depends:    base >=4.18 && <5
                   , base16-bytestring >=1.0
                   , base64-bytestring >=1.2
@@ -48,9 +52,13 @@ library
                   , hamsterdan-contracts
                   , hamsterdan-github
                   , hamsterdan-host
+                  , mtl >=2.3
+                  , petrus-dst
                   , petrus-impetus
                   , petrus-json
+                  , petrus-motus
                   , text >=2.0
+                  , transformers >=0.6
                   , typed-process >=0.2.11
   ghc-options:      -O2
 
@@ -62,6 +70,7 @@ test-suite hamsterdan-testing-test
   other-modules:    OracleCorpusSpec
                     ReadinessModelSpec
                     ReadinessScenariosSpec
+                    WorldInteropSpec
   build-depends:    base
                   , base16-bytestring
                   , bytestring
