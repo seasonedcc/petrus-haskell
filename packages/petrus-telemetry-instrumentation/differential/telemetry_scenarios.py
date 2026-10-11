@@ -43,7 +43,7 @@ import tempfile
 from pathlib import Path
 
 import petrus.telemetry as telemetry
-from petrus.engine import Delivery, Engine
+from petrus.engine import AdvanceTime, Delivery, Engine
 from petrus.impetus.history_store import InMemoryHistoryStore, JsonlHistoryStore
 from petrus.impetus.instance import Instance
 from petrus.impetus.petrinet import Arc, Delay, Marking, Net, NetPath, Place, Token, Transition
@@ -321,6 +321,34 @@ def engine_failing_handler():
         pass
     else:
         raise AssertionError("the handler should raise")
+
+
+@scenario()
+def engine_handler_oserror():
+    # A handler failing with an errno-carrying OSError: the drive span's
+    # error_type and firing_failed.error name CPython's subclass for it.
+    def missing(binding, outputs):
+        raise FileNotFoundError(2, os.strerror(2))
+
+    engine = _engine(handled_net("missing"), "oserror-span", Marking({P("a"): (Token.black(),)}), {"missing": missing})
+    try:
+        engine.advance()
+    except FileNotFoundError:
+        pass
+    else:
+        raise AssertionError("the handler should raise")
+
+
+@scenario()
+def engine_policy_refusal():
+    # The coordinator's own refusal escaping the drive span: a ValueError.
+    engine = _engine(fork_net(), "refused-policy", Marking({P("a"): (x(),)}), policy=lambda snapshot: AdvanceTime(99))
+    try:
+        engine.advance()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("the policy's choice should be refused")
 
 
 @scenario(level="profile")

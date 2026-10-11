@@ -24,10 +24,22 @@ Pinned reference: `upstream/petrus` (`src/petrus/telemetry.py`).
 2. **`setLevel` and `atLevel` take a typed `Level`.** Only `parseLevel` can
    see a bad spelling, so upstream's quirk where `capture(level="bad")`
    leaves the sink swapped cannot happen.
-3. **`error_type` is the Haskell exception's `Typeable` name**
-   (`ErrorCall`, `IOException`), not the Python class name. Spans also
-   observe async exceptions, as `__exit__` sees `KeyboardInterrupt`. Item 15
-   shows what this means for the Engine's events.
+3. **`error_type` uses the reference's class vocabulary.** A span names the
+   exception escaping its body by the Python class the reference reports
+   (`Petrus.Telemetry.ErrorType.pythonErrorType`): an `errno`-carrying
+   `IOException` is CPython's `OSError` subclass for that `errno`
+   (`FileNotFoundError`, `PermissionError`, `BlockingIOError`, ..., checked
+   against the pinned interpreter for every `errno` the platform knows), one
+   without an `errno` is `OSError`; `UserInterrupt` is `KeyboardInterrupt`,
+   `async`'s `AsyncCancelled` is `CancelledError`, `DivideByZero` is
+   `ZeroDivisionError`, `Overflow` is `OverflowError`, an `ExitCode` is
+   `SystemExit`. A runtime whose own failures stand for Python exceptions
+   names them first with `classifyErrors`/`withSpanClassifying` (the Engine
+   does, item 15). The one remaining difference: a Haskell exception with no
+   Python counterpart (`ErrorCall`, a user's own exception type) is named by
+   its `Typeable` type constructor, since the reference has no class to
+   report for it. Spans also observe async exceptions, as `__exit__` sees
+   `KeyboardInterrupt`.
 4. **A duplicate field in `emit` throws `DuplicateTelemetryFields`;** `bind`
    returns `Either Text`.
 5. **A sink swallows only synchronous exceptions.**
@@ -37,7 +49,7 @@ Pinned reference: `upstream/petrus` (`src/petrus/telemetry.py`).
    The reference's `JsonLogger` runs `json.dumps` even when no handler is
    configured, and the stdlib logger then drops the INFO record. The
    Haskell default therefore costs 0.06 µs per emit, against the
-   reference's 7.5 µs ([bench](../petrus-telemetry-instrumentation/bench/RESULTS.md)).
+   reference's 2.6 µs ([bench](../petrus-telemetry-instrumentation/bench/RESULTS.md)).
    A routed line is identical on both sides.
 7. **There is no `default=str`.** Values are already `Json`;
    `exceptionJson` stringifies exceptions.
@@ -54,21 +66,32 @@ Pinned reference: `upstream/petrus` (`src/petrus/telemetry.py`).
 
 ## The instrumentation (`impetus_*` events)
 
-15. **A failed Engine drive reports `error_type: "EngineError"`.** When a
-    handler fails during `Engine.advance`, the reference's `drive` span
-    finishes with the class of the exception that escapes the drive
-    (`RuntimeError` for a handler raising one). The Haskell Engine raises
-    its typed `EngineError` (`EngineHandlerFailed`, item 1 of
-    [`petrus-engine/DIVERGENCES.md`](../petrus-engine/DIVERGENCES.md)), so
-    item 3 names that.
-
-    `test_a_halting_advance_finishes_the_span_failed` expects `EngineError`.
-    The differential maps `EngineError` to `RuntimeError` and nothing else.
-    Every other field of the event matches.
-16. **`firing_failed.error` is the Haskell failure text.** It follows
-    [`petrus-impetus/DIVERGENCES.md`](../petrus-impetus/DIVERGENCES.md)
-    item 11. The differential's failing handlers return the reference's
-    spelling (`RuntimeError('handler broke')`), so the field matches there.
+15. **A failed Engine drive reports the reference's `error_type`.** (Once
+    a divergence: the drive span reported the Haskell `EngineError`.) The
+    Haskell Engine raises its typed `EngineError` where the reference raises
+    `ValueError`, `TypeError`, `RuntimeError` or the handler's own
+    exception; its drive span names that failure by the class the reference
+    reports (`Petrus.Engine.Vocabulary.engineErrorType`): the refusal's
+    class, a handler failure's class as its recorded text names it
+    (`RuntimeError('handler broke')` is a `RuntimeError`), a
+    `PythonException`'s class, and otherwise `pythonErrorType` (item 3), so
+    a handler throwing an `ENOENT` `IOException` reports `FileNotFoundError`.
+    `test_a_halting_advance_finishes_the_span_failed` is ported unadapted
+    (`RuntimeError`), and the differential compares `error_type` raw, with
+    scenarios for a handler's `RuntimeError`, a handler's
+    `FileNotFoundError` and the coordinator's own `ValueError`.
+16. **`firing_failed.error` uses the reference's class vocabulary too.** It
+    is the recorded `FiringFailed.error`
+    ([`petrus-impetus/DIVERGENCES.md`](../petrus-impetus/DIVERGENCES.md)
+    item 11): the reference's spelling for kernel refusals, handler texts
+    and `PythonException`s, and for a Haskell exception with a Python
+    counterpart that class with the arguments the reference's exception
+    carries (`FileNotFoundError(2, 'No such file or directory')`,
+    `KeyboardInterrupt()`, `ZeroDivisionError('division by zero')`,
+    `SystemExit(3)`), checked against the pinned reference's
+    `firing_failure_text` for every `errno`. A Haskell exception with no
+    Python counterpart keeps the `Name('message')` spelling of item 3. The
+    differential compares the field raw.
 17. **The Engine and Instance take an explicit `telemetrySink`.**
     `EngineOptions.telemetrySink` and `InstanceConfig.telemetrySink` bypass
     the process default. When neither is set, the process default applies,

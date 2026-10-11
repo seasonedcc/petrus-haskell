@@ -289,11 +289,12 @@ spec = do
       c <- catalogOf True orderComponents
       r <- resolve c (request (map (.identity) orderComponents))
       pure (maybe Null snapshotToData r.snapshot)
-    it "test_registration_and_selection_order_are_deterministic" $
+    -- @\@settings(max_examples=40, deadline=None)@ and
+    -- @\@given(st.permutations(tuple(range(7))), st.permutations(tuple(range(7))))@.
+    hypothesisSettings 40 . it "test_registration_and_selection_order_are_deterministic" $
       let components = orderComponents
           reference = orderReference
        in (length components == 7 .&&.) $
-            withNumTests 40 $
           forAll (shuffle [0 .. 6 :: Int]) $ \registrationOrder ->
             forAll (shuffle [0 .. 6 :: Int]) $ \selectionOrder -> ioProperty $ do
               c <- newCatalog

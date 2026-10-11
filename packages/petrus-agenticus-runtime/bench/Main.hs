@@ -9,9 +9,11 @@
 --   and back to compact sorted JSON, over that run's final @thread.json@.
 --
 -- It also runs the Pi rows ("PiBench", "PiA2Bench"; @bench/results-pi.md@),
--- the hosts' protocol rows ("HostsBench"; @bench/results-hosts.md@) and the
--- whole Codex, Claude and Amp Turns ("TurnsBench", the twin of
--- @bench/python_bench.py@; @bench/results-hosts.md@). Every row measures
+-- the hosts' protocol rows ("HostsBench"; @bench/results-hosts.md@), the
+-- whole Codex, Claude and Amp Turns and the Codex A3 runtime service's
+-- round trip ("TurnsBench"; @bench/results-hosts.md@), and the whole Pi
+-- native, A5 and model-phase Turns ("PiTurnsBench"; @bench/results-pi.md@).
+-- The last two are the twins of @bench/python_bench.py@. Every row measures
 -- wall-clock time.
 module Main (main) where
 
@@ -41,6 +43,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import HostsBench (hostsBenchmarks)
 import PiA2Bench (piA2Benchmarks)
 import PiBench (piBenchmarks)
+import PiTurnsBench (piTurnsBenchmarks)
 import TurnsBench (turnsBenchmarks)
 import Test.Tasty (localOption)
 import Test.Tasty.Bench
@@ -127,6 +130,7 @@ main = withSystemTempDirectory "pi-bench" $ \tmp -> do
   pi' <- piBenchmarks tmp
   (a2, closeA2) <- piA2Benchmarks (tmp </> "a2")
   turns <- turnsBenchmarks tmp
+  piTurns <- piTurnsBenchmarks tmp
   defaultMain
     ( map (localOption WallTime) $
       [ bench "runner-3-phases-3-reads" (whnfIO runOnce)
@@ -136,5 +140,6 @@ main = withSystemTempDirectory "pi-bench" $ \tmp -> do
         <> a2
         <> hostsBenchmarks
         <> turns
+        <> piTurns
     )
     `finally` closeA2

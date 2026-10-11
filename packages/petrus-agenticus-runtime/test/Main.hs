@@ -5,6 +5,11 @@ import Petrus.Agenticus.Runtime.AmpSpec qualified
 import Petrus.Agenticus.Runtime.ClaudeSpec qualified
 import Petrus.Agenticus.Runtime.CodexSpec qualified
 import Petrus.Agenticus.Runtime.HostsDifferentialSpec qualified
+import Petrus.Agenticus.Runtime.Live.AgentNetSpec qualified
+import Petrus.Agenticus.Runtime.Live.AmpSpec qualified
+import Petrus.Agenticus.Runtime.Live.ClaudeSpec qualified
+import Petrus.Agenticus.Runtime.Live.CodexSpec qualified
+import Petrus.Agenticus.Runtime.Live.PiSpec qualified
 import Petrus.Agenticus.Runtime.PiA2HostSpec qualified
 import Petrus.Agenticus.Runtime.PiApplicationSpec qualified
 import Petrus.Agenticus.Runtime.PiDifferentialSpec qualified
@@ -38,4 +43,11 @@ suite =
     Petrus.Agenticus.Runtime.AmpSpec.spec
     Petrus.Agenticus.Runtime.ClaudeSpec.spec
     Petrus.Agenticus.Runtime.CodexSpec.spec
+    -- The reference's opt-in live-provider tests (docs/live-provider-acceptance.md).
+    describe "live providers (opt-in)" $ do
+      Petrus.Agenticus.Runtime.Live.CodexSpec.spec
+      Petrus.Agenticus.Runtime.Live.ClaudeSpec.spec
+      Petrus.Agenticus.Runtime.Live.AmpSpec.spec
+      Petrus.Agenticus.Runtime.Live.PiSpec.spec
+      Petrus.Agenticus.Runtime.Live.AgentNetSpec.spec
     Petrus.Agenticus.Runtime.HostsDifferentialSpec.spec

@@ -33,7 +33,8 @@ module Petrus.Telemetry.Scenarios
   , scenarios
   ) where
 
-import Control.Exception (SomeException, try)
+import Control.Exception (SomeException, throw, try)
+import Foreign.C.Error (eNOENT, errnoToIOError)
 import Control.Monad (forM_, void, when)
 import Data.Maybe (isJust)
 import Data.IORef
@@ -207,6 +208,8 @@ scenarios =
   , ("jsonl_commits", jsonlCommits)
   , ("engine_advance", engineAdvance)
   , ("engine_failing_handler", engineFailingHandler)
+  , ("engine_handler_oserror", engineHandlerOsError)
+  , ("engine_policy_refusal", enginePolicyRefusal)
   , ("engine_gauges", engineGauges)
   , ("engine_declined", engineDeclined)
   , ("engine_orders", engineOrders)
@@ -349,6 +352,36 @@ engineFailingHandler = do
       Nothing
       port
       (\o -> o {Engine.marking = markingFromList [(p "a", [black])], Engine.handlers = symbols [("boom", PureHandler boom)]})
+  raises (Engine.advance engine)
+
+-- | A handler failing with an @errno@-carrying 'IOException': the drive
+-- span's @error_type@ and @firing_failed.error@ name CPython's subclass for
+-- it (@FileNotFoundError(2, 'No such file or directory')@).
+engineHandlerOsError :: IO ()
+engineHandlerOsError = do
+  port <- inMemory
+  let missing :: Handler
+      missing _ _ = throw (errnoToIOError "open" eNOENT Nothing Nothing)
+  engine <-
+    newEngine
+      (handledNet "missing")
+      "oserror-span"
+      Nothing
+      port
+      (\o -> o {Engine.marking = markingFromList [(p "a", [black])], Engine.handlers = symbols [("missing", PureHandler missing)]})
+  raises (Engine.advance engine)
+
+-- | The coordinator's own refusal escaping the drive span: a @ValueError@.
+enginePolicyRefusal :: IO ()
+enginePolicyRefusal = do
+  port <- inMemory
+  engine <-
+    newEngine
+      forkNet
+      "refused-policy"
+      Nothing
+      port
+      (\o -> o {Engine.marking = markingFromList [(p "a", [x])], Engine.policy = \_ -> pure (Engine.AdvanceTime 99)})
   raises (Engine.advance engine)
 
 engineGauges :: IO ()

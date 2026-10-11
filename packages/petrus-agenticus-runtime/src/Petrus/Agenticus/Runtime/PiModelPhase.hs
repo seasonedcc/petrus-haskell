@@ -117,6 +117,7 @@ import Petrus.Agenticus.Runtime.Pi
   , pyB64DecodeText
   , removeRoot
   , runBounded
+  , spawnPiped
   , strictLoad
   , waitExit
   )
@@ -138,7 +139,7 @@ import System.IO.Temp (createTempDirectory)
 import System.Posix.Files qualified as Files
 import System.Posix.Signals (sigKILL, signalProcessGroup)
 import System.Posix.User (getEffectiveUserID)
-import System.Process (CreateProcess (..), ProcessHandle, StdStream (..), createProcess, getPid, getProcessExitCode, proc)
+import System.Process (CreateProcess (..), ProcessHandle, getPid, getProcessExitCode, proc)
 import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
@@ -387,20 +388,10 @@ newPhaseSubprocessClient :: FilePath -> FilePath -> FilePath -> FilePath -> IO P
 newPhaseSubprocessClient node helper entrypoint privateRoot = do
   unless (isAbsolute node) $ protocol "runtime-not-ready"
   let environment = [("HOME", privateRoot), ("PATH", takeDirectory node), ("LANG", "C.UTF-8"), ("LC_ALL", "C.UTF-8")]
-      command =
-        (proc node [helper, entrypoint])
-          { std_in = CreatePipe
-          , std_out = CreatePipe
-          , std_err = CreatePipe
-          , env = Just environment
-          , new_session = True
-          , close_fds = True
-          }
-  spawned <- try (createProcess command)
+  spawned <- spawnPiped node [helper, entrypoint] Nothing (Just environment)
   (stdinHandle, stdoutHandle, stderrHandle, process) <- case spawned of
-    Right (Just i, Just o, Just e, p) -> pure (i, o, e, p)
-    Right _ -> protocol "helper-launch-failed"
-    Left (_ :: IOException) -> protocol "helper-launch-failed"
+    Just started -> pure started
+    Nothing -> protocol "helper-launch-failed"
   mapM_ (`hSetBinaryMode` True) [stdinHandle, stdoutHandle, stderrHandle]
   hSetBuffering stdinHandle (BlockBuffering Nothing)
   pid <- fmap fromIntegral <$> getPid process

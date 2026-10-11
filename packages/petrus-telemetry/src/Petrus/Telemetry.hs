@@ -78,6 +78,9 @@ module Petrus.Telemetry
   , newSpan
   , runSpan
   , withSpan
+  , withSpanClassifying
+  , classifyErrors
+  , pythonErrorType
   , withChildSpan
   , spanEmit
   , milestone
@@ -124,18 +127,19 @@ import Data.ByteString.Char8 qualified as BC
 import Data.Foldable (for_, traverse_)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.List (nub, sort)
+import Data.Maybe (fromMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Read qualified as TR
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import Data.Typeable (tyConName, typeOf, typeRepTyCon)
 import Foreign.C.Error (throwErrnoIfMinus1)
 import Foreign.C.Types (CLong (..))
 import GHC.Clock (getMonotonicTimeNSec)
 import Petrus.Json (Json (..), defaultDumps, dumps)
 import Petrus.Json.PythonText (pythonStrRepr)
+import Petrus.Telemetry.ErrorType (pythonErrorType)
 import System.Environment (lookupEnv)
 import System.IO (stderr)
 import System.IO.Unsafe (unsafePerformIO)
@@ -408,6 +412,8 @@ data Span = Span
   , spanName :: Text
   , spanResult :: IORef Payload
   , spanStartedAt :: IORef (Maybe Double)
+  , spanErrorType :: SomeException -> Text
+  -- ^ The @error_type@ of an exception escaping the body.
   }
 
 -- | A span that has not started. Its fields are bound now, so a collision
@@ -418,16 +424,24 @@ data Span = Span
 newSpan :: TelemetryLogger -> Text -> Payload -> IO Span
 newSpan logger name fields = case bindFields fields logger of
   Left duplicates -> throwIO (DuplicateTelemetryFields duplicates)
-  Right bound -> Span bound name <$> newIORef [] <*> newIORef Nothing
+  Right bound -> (\result started -> Span bound name result started pythonErrorType) <$> newIORef [] <*> newIORef Nothing
+
+-- | Name the exceptions a span's body raises in the reference's vocabulary
+-- first, then as 'pythonErrorType' does. A runtime whose own failures stand
+-- for Python exceptions (the Engine's @ValueError@/@RuntimeError@, a
+-- handler's recorded failure) names them here.
+classifyErrors :: (SomeException -> Maybe Text) -> Span -> Span
+classifyErrors classify s = s {spanErrorType = \e -> fromMaybe (spanErrorType s e) (classify e)}
 
 -- | Run a body inside the span: stamp the start, emit @{name}_started@, run,
 -- then emit @{name}_finished@. On an exception (asynchronous ones included,
 -- as Python's @__exit__@ sees @KeyboardInterrupt@) the finish event carries
 -- @status = "failed"@ and @error_type@, and the exception is rethrown.
 --
--- @error_type@ is the Haskell exception's type constructor name (e.g.
--- @ErrorCall@, @IOException@), not Python's (@RuntimeError@); operators
--- matching on it must accept the Haskell spelling. If the finish emit itself
+-- @error_type@ is the Python class the reference reports for the exception
+-- ('pythonErrorType', or the span's 'classifyErrors'); a Haskell exception
+-- with no Python counterpart is named by its type constructor (@ErrorCall@).
+-- If the finish emit itself
 -- throws (a result field colliding with the context), that exception replaces
 -- the body's, as in the reference.
 runSpan :: Span -> (Span -> IO a) -> IO a
@@ -448,12 +462,17 @@ runSpan s body = mask $ \restore -> do
       let succeeded = dictUnion results [("status", String "success"), ("elapsed_ms", Int elapsed)]
           fields = case failure of
             Nothing -> succeeded
-            Just e -> dictUnion succeeded [("status", String "failed"), ("error_type", String (exceptionTypeName e))]
+            Just e -> dictUnion succeeded [("status", String "failed"), ("error_type", String (spanErrorType s e))]
       emit (spanLogger s) (spanName s <> "_finished") fields
 
 -- | @with log.span(name, **fields) as span:@ — 'newSpan' then 'runSpan'.
 withSpan :: TelemetryLogger -> Text -> Payload -> (Span -> IO a) -> IO a
 withSpan logger name fields body = newSpan logger name fields >>= (`runSpan` body)
+
+-- | 'withSpan' whose @error_type@ is named by the classifier first
+-- ('classifyErrors').
+withSpanClassifying :: (SomeException -> Maybe Text) -> TelemetryLogger -> Text -> Payload -> (Span -> IO a) -> IO a
+withSpanClassifying classify logger name fields body = newSpan logger name fields >>= \s -> runSpan (classifyErrors classify s) body
 
 -- | A child span inheriting this span's bound fields (@span.span(...)@).
 withChildSpan :: Span -> Text -> Payload -> (Span -> IO a) -> IO a
@@ -506,9 +525,6 @@ spanElapsedMs s =
   readIORef (spanStartedAt s) >>= \case
     Nothing -> throwIO SpanNotStarted
     Just started -> elapsedMs (clock (spanLogger s)) started
-
-exceptionTypeName :: SomeException -> Text
-exceptionTypeName (SomeException e) = T.pack (tyConName (typeRepTyCon (typeOf e)))
 
 -- ---------------------------------------------------------------------------
 -- Clocks

@@ -107,15 +107,16 @@ the reference accepts or refuses is matched byte for byte.
 See `bench/results-hosts.md`: `claude-transcript-encode` 2.0×,
 `claude-transcript-decode` 2.4×, `claude-canonical-input` 2.4× and
 `claude-sanitize` 2.2× the reference's speed. A whole Turn through the
-official client and the shared sidecar (`claude-turn`) is 1.34× (lowest
-interleaved repetition 1.25×).
+official client and the shared sidecar (`claude-turn`) is 1.20× (lowest
+of nine interleaved rounds 1.18×).
 
 ## `tests/petrus/agenticus/runtime/test_claude_real.py` (2 functions)
 
-Not ported. Both tests run the real Claude Agent SDK and its bundled Claude
-Code CLI against a real Anthropic account. Upstream they are opt-in: they
-are skipped unless `PETRUS_CV16_CLAUDE_QUALIFY=1` or
-`PETRUS_CV16_CLAUDE_LIVE=1` is set together with an approved credential
-handoff. Porting them would add credentials and paid model calls to the
-default suite, and they would test the same sidecar path that the fake SDK
-already reaches.
+Ported in `test/Petrus/Agenticus/Runtime/Live/ClaudeSpec.hs`, behind the
+same gates (`PETRUS_CV16_CLAUDE_QUALIFY=1`, `PETRUS_CV16_CLAUDE_LIVE=1`).
+Both run the real Claude Agent SDK and its bundled Claude Code CLI through
+the production sidecar; the live cell also needs an approved credential
+handoff. Without the gate they are pending; with it, a missing handoff
+fails where the reference skips. See
+[docs/live-provider-acceptance.md](../../../docs/live-provider-acceptance.md);
+no live run is recorded yet.

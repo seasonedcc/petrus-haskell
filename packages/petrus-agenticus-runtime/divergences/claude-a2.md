@@ -21,9 +21,14 @@ Continuation payload's transcript is produced by `encodeTranscript`, which
    `ClaudeOptions` (the session store and the stderr policy), and the
    sidecar rebuilds them on its side.
 
-   One sidecar process serves every client of a Haskell process (per
+   One sidecar process serves every client of a `SidecarPool` (per
    interpreter and search path), each on its own channel, so the SDK is
-   imported once, as upstream imports it once into its interpreter. Its
+   imported once, as upstream imports it once into its interpreter.
+   `ClaudeSidecar.pool` defaults to `defaultSidecarPool`, one per Haskell
+   process. `withSidecarPool` gives an owner its own pool, closed with it.
+   When a sidecar dies, every channel on it ends. Each pending call then
+   fails at once, and so does each later call. The next client starts a new
+   sidecar. Its
    clients share one asyncio loop, where upstream gives each operation a
    loop on its own thread, and each operation starts as an eagerly started
    task, as upstream awaits it directly. The process inherits the
@@ -46,9 +51,28 @@ Continuation payload's transcript is produced by `encodeTranscript`, which
    happened within the grace. An unproven release downgrades the cleanup to
    unverified, the same outcome upstream reports for a surviving child. A
    client stuck past the grace stays in the shared process, which is not
-   killed for it, since other clients share it. When the Haskell process
-   exits, the sidecar's input closes; it then gives every open channel 10
-   seconds to tear down and exits.
+   killed for it, since other clients share it. `closeSidecarPool` ends each
+   sidecar's input and kills the sidecar's process group if it has not
+   exited within the pool's grace. When the Haskell process exits, the
+   sidecar's input closes. The sidecar then gives every open channel 10
+   seconds to tear down, and exits.
+
+   Tests: `ClaudeSpec`'s "shared sidecar" examples, each on its own pool,
+   cover the shared process:
+   - Three turns run concurrently with a fourth that is cancelled mid-turn.
+     Each completes on its own channel, with its own prompt in its own
+     session mirror, and all of them run on one process.
+   - The sidecar crashes under one client while another waits mid-turn.
+     Both settle within seconds as `failed`/`cleanup-unverified`, which is
+     upstream's outcome for a client whose disconnect fails. The next turn
+     starts a new process.
+   - One client's teardown is stuck past the release grace. Another
+     client's whole turn completes during it. The stuck one settles
+     cancelled with an unverified cleanup, and closing the pool still ends
+     the process.
+
+   These tests found one bug, now fixed: a call made after the channel had
+   ended waited out the disconnect timeout (25 s).
 
 4. **Monkeypatched seams are explicit hooks.** The probe's
    `importlib.metadata.version` and `importlib.import_module` are

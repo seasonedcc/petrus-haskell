@@ -9,10 +9,16 @@ the turn's main transcript). The prompt selects a script:
 
 * ``block``: yield ``system/init`` and wait for ``interrupt``.
 * ``unclean``: leave the fake child running after ``disconnect``.
+* ``die``: yield ``system/init``, then end the whole sidecar process at
+  once (a crash).
+* ``stuck:<path>``: yield ``system/init``, touch ``<path>``, then wait
+  forever, ignoring every cancellation, so the channel's teardown never
+  finishes.
 * anything else: complete with a ``success`` result.
 """
 
 import asyncio
+import os
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -143,6 +149,15 @@ class ClaudeSDKClient:
         if self.prompt == "block":
             await self._interrupted.wait()
             return
+        if self.prompt == "die":
+            os._exit(70)
+        if self.prompt.startswith("stuck:"):
+            Path(self.prompt.removeprefix("stuck:")).touch()
+            while True:
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    continue
         hook = self.options.hooks["PreToolUse"][0].hooks[0]
         denied = await hook({"tool_name": "Read", "tool_use_id": "toolu_foreign", "tool_input": {"path": "x"}}, None, {})
         assert denied["hookSpecificOutput"]["permissionDecision"] == "deny"

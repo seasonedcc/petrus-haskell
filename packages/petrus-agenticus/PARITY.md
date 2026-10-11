@@ -94,6 +94,15 @@ over the Haskell sources and cabal files of all three agenticus packages.
 | `test_agenticus_does_not_import_private_motus_or_its_own_root_facade` | same label | |
 | `test_forbidden_universal_concepts_are_not_defined` | same label | No type, class or top-level function may be named `Agent` or `Session`. |
 
+## `tests/project/test_package_boundaries.py` (1 function, runtime-service half)
+
+Spec: `test/Petrus/Agenticus/BoundariesSpec.hs`, under the describe
+`tests/project/test_package_boundaries.py`.
+
+| Upstream test | Haskell | Notes |
+| --- | --- | --- |
+| `test_activity_worker_and_runtime_service_do_not_own_retained_territory_lifecycle` | same label, "(runtime-service half)" | Upstream walks the AST of `_CodexGondolinActivityAdapter` and `_CodexGondolinRuntimeService` and forbids calls named `_release_to`, `begin_release`, `create`, `destroy`, `export`, `lookup`, `reclaim`, `release`, `retire` and `settle`. The port reads `Petrus.Agenticus.Runtime.CodexGondolin`, takes the top-level bindings of its "host-local Activity adapter" and "runtime service" sections, and follows them transitively through the module's other bindings. Comments and literals are stripped first. The Haskell names of the forbidden operations must not appear: attachment/binding `releaseTo`, `settle`, `release`, `retrySettlement`; custody `beginRelease`, `lookupCustody`, `reclaim`, `reclaimExactMotusBinding`, `retire`; provider `providerCreate`/`Destroy`/`Export`/`Lookup`. The module must also not import `Petrus.Agenticus.Attachment.Retention`. A planted source checks that the scanner sees a call made through a helper or with a qualified name, and ignores comments and strings. The Worker half (`petrus.motus.worker` never imports retention) belongs to petrus-motus. |
+
 ## `tests/petrus/agenticus/hands/test_workspace.py` (3 functions)
 
 Module: `Petrus.Agenticus.Hands.Workspace`. Spec: `test/Petrus/Agenticus/WorkspaceSpec.hs`.
@@ -185,6 +194,30 @@ ledger on disk.
   storage class, an out-of-range value, a bad digest, an inconsistent phase,
   and so on. For each one, `_decode` must give the same record or the same
   `{class, message}` refusal, and `_salvage_corrupt` must give the same phase.
+
+### Live ledger interop, both directions
+
+`differential/retention_interop.py` is the reference's half of a live
+exchange (`RetentionDifferentialSpec`, "live interop"), run under the pinned
+interpreter on every test run:
+
+- **Haskell writes, Python reads.** The Haskell ledger writes, over a real
+  local provider, a record in every durable phase (`releasing`, `retained`,
+  `claiming`, `attached`, `retiring` through an expired reclaim, `retired`),
+  a retained record that expires before the reader's clock, and a retained
+  record whose capability column is then corrupted. The reference opens a
+  private copy and prints its `lookup` of every row, `records()`,
+  `recover()` and `records()` again; these must equal the Haskell ledger's
+  own reading of another copy of the same bytes (every record field, and
+  the `StorageError` text where decoding refuses: the corrupt row's lookup
+  and the first `records()`; `recover()` then salvages it to `retiring`).
+- **Python writes, Haskell reads.** The reference writes the same records
+  into a fresh ledger with `SqliteTerritoryCustody` and prints its own
+  reading; the Haskell ledger opens the file and must read it identically.
+
+So the reference's strict `_decode` (storage classes included) accepts every
+row the Haskell ledger writes, and the reverse, beyond the committed
+fixture.
 
 Rerun:
 

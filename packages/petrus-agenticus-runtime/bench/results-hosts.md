@@ -51,11 +51,8 @@ Haskell times are tasty-bench means. Python times are medians of 7 batches.
 | amp-stream-admit | 125 µs | 438 µs | 3.5× |
 | amp-final-text | 68.0 µs | 124 µs | 1.8× |
 
-Every row is at least as fast as the reference.
-
-Not benchmarked: **the A3 runtime service round trip.** One Unix-socket
-request plus a SQLite ledger commit (`synchronous = FULL`), dominated by
-fsync.
+Every row is at least as fast as the reference. The A3 runtime service's
+round trip is measured whole, as `codex-a3-service-turn` below.
 
 ## Whole Turns
 
@@ -79,6 +76,17 @@ id every call:
 - `amp-turn`: an Episode Attachment over the provider-managed binding, then
   `start` (the official `execute` of the fake `amp_sdk`: `system/init`, an
   assistant event and the `success` result), `wait`, `close`, and settle.
+- `codex-a3-service-turn`: the A3 lane end to end over its host-local
+  runtime service. Open a Gondolin Motus territory over the reference's
+  fake Gondolin SDK (`test/fixtures/codex/fake_gondolin_codex.mjs`, under
+  the system `node`; its guest commands run on the host) and its Episode
+  Attachment, and probe the guest `codex`. Start the service on a fresh
+  private state directory under `/private/tmp`, with its fence and SQLite
+  replay ledger. Send one request through the Worker-side Activity client
+  over the Unix socket: the service records the operation, runs one Codex
+  Turn with the same custody as `codex-turn`, and stores and returns the
+  terminal. Then close the service, remove its state directory, and settle
+  the attachment.
 
 The reference imports each SDK into its own interpreter. The port reaches
 it through one shared sidecar process per SDK (`data/claude_sidecar.py`,
@@ -86,25 +94,50 @@ it through one shared sidecar process per SDK (`data/claude_sidecar.py`,
 SDK call, hook, tool call and event crosses a pipe. The connection keys are
 reversible stand-ins on both sides, so the cipher is not measured.
 
-Method: `scripts/bench-compare petrus-agenticus-runtime 7 --pattern=-turn`,
-seven interleaved repetitions of the Haskell bench (tasty-bench wall-clock
-means, `--stdev 5`, the executable started directly) and `python_bench.py`
-(median of 10 batches of 0.2 s), commit `24b53d7`, 2026-10-11 07:58–08:01
-local, load average 2.46 to 3.03, each repetition alternating which side
-went first. The table gives the medians over the repetitions and the
-lowest single-repetition ratio; Haskell was ahead in every repetition of
-every row.
+Method: nine interleaved rounds on 2026-10-11 at 12:21–12:33 local
+(UTC-3), load average 2.7 to 5.7, with `spawnPiped`'s non-blocking pipe
+ends (see below). Each round ran the Haskell bench executable directly
+(tasty-bench wall-clock means, `--stdev 5`, `+RTS -A32m -M2G`) and
+`python_bench.py` (`scripts/bench_timing.py`: the median of 10 batches of
+at least 0.2 s), alternating which side went first. That is what
+`scripts/bench-compare petrus-agenticus-runtime 9 --pattern '/-turn/ &&
+!/scripted/'` runs. The table gives the medians over the rounds and the
+lowest single-round ratio. Haskell was ahead in every round of every row
+except one `codex-a3-service-turn` round (0.96×).
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition |
 | --- | ---: | ---: | ---: | ---: |
-| codex-turn | 47.1 ms | 62.8 ms | 1.33× | 1.26× |
-| claude-turn | 8.27 ms | 10.9 ms | 1.32× | 1.22× |
-| amp-turn | 161 µs | 196 µs | 1.22× | 1.21× |
+| codex-turn | 51.5 ms | 64.4 ms | 1.25× | 1.10× |
+| codex-a3-service-turn | 1.24 s | 1.25 s | 1.01× | 0.96× |
+| claude-turn | 9.29 ms | 11.2 ms | 1.20× | 1.18× |
+| amp-turn | 174 µs | 199 µs | 1.15× | 1.09× |
 
-`codex-turn`, repetition by repetition (Haskell / Python): 45.0 / 61.0,
-46.0 / 65.0, 47.1 / 61.8, 46.7 / 66.9, 49.7 / 62.7, 48.5 / 65.0 and
-47.6 / 62.8 ms. The 1.20× of the earlier run (below) was the same code at a
-load of 3.9–5.3.
+`codex-a3-service-turn`, round by round (Haskell / Python): 1.26 / 1.34,
+1.24 / 1.36, 1.24 / 1.39, 1.32 / 1.61, 1.30 / 1.25, 1.13 / 1.25,
+1.12 / 1.25, 1.11 / 1.25 and 1.11 / 1.24 s; the per-round ratios have a
+median of 1.11×. Most of the second goes to the fake Gondolin SDK's `node`
+process and the fake `codex` CLI's Python, the same on both sides.
+
+**`--stdev 5`, not tighter.** These rows are stateful: every Turn adds an
+operation to the custody ledger and the stores, and a Turn costs more the
+more Turns came before it, in both implementations. bench_timing's 0.2 s
+batches are sized to match tasty-bench at `--stdev 5` (see its docstring).
+At `--stdev 3`, tasty-bench ran `codex-turn` for its full 75 s, about 1 500
+Turns, and its mean rose to 82 ms ± 39 ms, against 44 ms at `--stdev 5`.
+The reference grows faster over a run that long: `python_bench.py
+codex-turn` with batches of 4 s (about 600 Turns) gave 268 ms per Turn. An
+earlier round series at `--stdev 3` therefore showed `codex-turn` at
+0.76–0.83×; it was the protocol, not the port.
+
+**Non-blocking pipe ends.** That series also showed `amp-turn` at 236 µs
+against Python's 195 µs (0.83×, behind in all nine rounds). The cause was
+in the port. Helpers and sidecars had just moved to `spawnPiped`
+(`posix_spawn`, see DIVERGENCES.md). It wrapped the parent's pipe ends with
+`fdToHandle`, which makes blocking handles: every read and write then cost
+a readiness poll and a safe foreign call. The `process` package makes its
+pipe handles non-blocking, so that reads and writes wait in the IO manager.
+`spawnPiped` now does the same, and `amp-turn` went back to 157–164 µs on
+its own (174 µs in the table, taken alongside the other rows).
 
 What it took:
 
@@ -130,6 +163,31 @@ Codex runs the same two Python subprocesses on both sides (about 20 ms of
 interpreter start-up each), so its ratio is bounded by them. Its first
 interleaved run had one Haskell repetition at 126 ms (load average 8.6),
 the noise these subprocess-bound rows are open to on a shared machine.
+
+### The run of 2026-10-11, 07:58–08:01
+
+<!-- bench: superseded -->
+
+`scripts/bench-compare petrus-agenticus-runtime 7 --pattern=-turn`,
+seven interleaved repetitions of the Haskell bench (tasty-bench wall-clock
+means, `--stdev 5`, the executable started directly) and `python_bench.py`
+(median of 10 batches of 0.2 s), commit `24b53d7`, 2026-10-11 07:58–08:01
+local, load average 2.46 to 3.03, each repetition alternating which side
+went first. Helpers and sidecars were then started through the `process`
+package. The table gives the medians over the repetitions and the
+lowest single-repetition ratio; Haskell was ahead in every repetition of
+every row.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition |
+| --- | ---: | ---: | ---: | ---: |
+| codex-turn | 47.1 ms | 62.8 ms | 1.33× | 1.26× |
+| claude-turn | 8.27 ms | 10.9 ms | 1.32× | 1.22× |
+| amp-turn | 161 µs | 196 µs | 1.22× | 1.21× |
+
+`codex-turn`, repetition by repetition (Haskell / Python): 45.0 / 61.0,
+46.0 / 65.0, 47.1 / 61.8, 46.7 / 66.9, 49.7 / 62.7, 48.5 / 65.0 and
+47.6 / 62.8 ms. The 1.20× of the earlier run (below) was the same code at a
+load of 3.9–5.3.
 
 ### The run of 2026-10-11, 03:08–03:30
 
@@ -158,5 +216,8 @@ cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-runtime/b
 ```
 
 The pattern also selects the whole-Turn rows. For the interleaved
-comparison of those rows, run `scripts/bench-compare petrus-agenticus-runtime 7 --pattern=-turn`
-from the repository root.
+comparison of those rows, run `scripts/bench-compare petrus-agenticus-runtime 9
+--pattern '/-turn/ && !/scripted/'` from the repository root. The pattern
+also selects the whole Pi Turns ([results-pi.md](results-pi.md)), whose
+twins are in `python_bench.py` too; `!/scripted/` leaves out
+`pi-a2-scripted-turn`, whose twin is `python_pi_a2.py`.

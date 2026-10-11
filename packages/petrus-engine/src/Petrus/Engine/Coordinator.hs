@@ -64,7 +64,7 @@ import Petrus.Impetus.Petrinet (Binding (..), Instant, NetPath, markingToList, n
 import Petrus.Impetus.Selection (SelectionPolicy (..), SelectionProposal (..), foldHistory)
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch
-import Petrus.Telemetry (Level (..), Span, TelemetryLogger, accumulateTime, atLevel, bind, emit, getLogger, increment, spanSet, withSpan)
+import Petrus.Telemetry (Level (..), Span, TelemetryLogger, accumulateTime, atLevel, bind, emit, getLogger, increment, spanSet, withSpanClassifying)
 import Petrus.Telemetry qualified as Telemetry
 
 -- | The candidate-selection policy (read before each proposal: fixed for
@@ -169,7 +169,7 @@ historyLength c = Store.size (instanceHistory c.inst)
 
 -- | Reconcile once, then observe, choose, and apply at most one action.
 drive :: Coordinator -> IO DriveOutcome
-drive c = withSpan c.logger "drive" [] $ \span -> do
+drive c = withSpanClassifying engineErrorType c.logger "drive" [] $ \span -> do
   firings <- newIORef Seq.empty
   done <- readIORef c.reconciled
   unless done $ do

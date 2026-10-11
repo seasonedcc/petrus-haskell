@@ -190,6 +190,7 @@ import Petrus.Agenticus.Runtime.Pi
   , pyB64DecodeText
   , removeRoot
   , runBounded
+  , spawnPiped
   , strictFrameLoad
   , strictLoad
   , waitExit
@@ -219,7 +220,7 @@ import System.Posix.Files qualified as Files
 import System.Posix.Signals (sigKILL, signalProcessGroup)
 import System.Posix.Unistd (SystemID (..), getSystemID)
 import System.Posix.User (getEffectiveUserID)
-import System.Process (CreateProcess (..), ProcessHandle, StdStream (..), createProcess, getPid, getProcessExitCode, proc)
+import System.Process (CreateProcess (..), ProcessHandle, getPid, getProcessExitCode, proc)
 import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
@@ -645,20 +646,10 @@ newApplicationSubprocessClientWith options helper args = do
         , ("LANG", "C.UTF-8")
         , ("LC_ALL", "C.UTF-8")
         ]
-      command =
-        (proc args.node [helper, args.codingEntrypoint, args.coreEntrypoint, args.aiEntrypoint])
-          { std_in = CreatePipe
-          , std_out = CreatePipe
-          , std_err = CreatePipe
-          , env = Just environment
-          , new_session = True
-          , close_fds = True
-          }
-  spawned <- try (createProcess command)
+  spawned <- spawnPiped args.node [helper, args.codingEntrypoint, args.coreEntrypoint, args.aiEntrypoint] Nothing (Just environment)
   (stdinHandle, stdoutHandle, stderrHandle, process) <- case spawned of
-    Right (Just i, Just o, Just e, p) -> pure (i, o, e, p)
-    Right _ -> throwIO (runtimeProtocolError "helper-launch-failed")
-    Left (_ :: IOException) -> throwIO (runtimeProtocolError "helper-launch-failed")
+    Just started -> pure started
+    Nothing -> throwIO (runtimeProtocolError "helper-launch-failed")
   mapM_ (`hSetBinaryMode` True) [stdinHandle, stdoutHandle, stderrHandle]
   hSetBuffering stdinHandle (BlockBuffering Nothing)
   pid <- fmap fromIntegral <$> getPid process

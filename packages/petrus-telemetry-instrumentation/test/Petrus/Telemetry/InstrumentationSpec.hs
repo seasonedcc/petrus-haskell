@@ -14,8 +14,8 @@
 -- handler is the handler's 'Left' text in the reference's recorded spelling
 -- (@RuntimeError('handler broke')@), so @firing_failed.error@ is
 -- comparable verbatim. The Engine rethrows it as an 'Engine.EngineError',
--- so a halted drive's @error_type@ is @EngineError@, not @RuntimeError@
--- (petrus-telemetry/DIVERGENCES.md, 15).
+-- and the drive span names that failure by the class its recorded text
+-- names, so a halted drive's @error_type@ is @RuntimeError@, as upstream's.
 module Petrus.Telemetry.InstrumentationSpec (spec) where
 
 import Control.Exception (SomeException, try)
@@ -275,14 +275,13 @@ spec = do
       -- Between the span's edges: the kernel doors' own per-fact events.
       eventNames (init (drop 1 events)) `shouldBe` ["impetus_firing_begun", "impetus_firing_completed"]
 
-    -- Adapted: error_type is the Haskell exception's type, EngineError.
     it "test_a_halting_advance_finishes_the_span_failed" $ do
       engine <- engineOf (handledNet "boom") "failed-span" (markingFromList [(p "a", [black])]) [("boom", PureHandler boom)]
       events <- captured (Engine.advance engine `shouldThrow` handlerFailed "handler broke")
       let finished = last events
       field "event" finished `shouldBe` String "impetus_drive_finished"
       field "status" finished `shouldBe` String "failed"
-      field "error_type" finished `shouldBe` String "EngineError"
+      field "error_type" finished `shouldBe` String "RuntimeError"
 
   describe "TestInstanceIdentity" $ do
     -- Identity is always on: an instance with no supplied id mints one, and

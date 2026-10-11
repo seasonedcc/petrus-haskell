@@ -45,3 +45,26 @@ hosts are covered in [divergences/codex.md](divergences/codex.md),
    kind `RuntimeError`, which is how a Haskell Activity spells a Python
    exception kind. The unit test keeps a plain `userError`, because it only
    checks the "failed terminally" refusal and the settlement.
+
+## Helper and sidecar processes (`Petrus.Agenticus.Runtime.Pi.spawnPiped`)
+
+1. **Children start through `posix_spawn`, not the `process` package.** The
+   reference starts every helper and sidecar with
+   `subprocess.Popen(..., stdin=PIPE, stdout=PIPE, stderr=PIPE,
+   start_new_session=True)`. Its default `close_fds=True` closes only the
+   descriptors that are open. With `close_fds`, the `process` package falls
+   back to fork and closes every descriptor up to `RLIMIT_NOFILE`. That costs
+   about 0.1 s per spawn at macOS's 1 048 576, and made each Pi Turn about
+   three times slower than the reference's. `spawnPiped` serves the native,
+   application and model-phase Pi helpers and the Codex, Claude and Amp
+   sidecars. It uses petrus-execution's `posix_spawn` instead (see that
+   package's DIVERGENCES.md): only stdio survives, the child leads a new
+   session, and SIGPIPE and SIGXFSZ are restored as under
+   `restore_signals=True`. The child is then adopted as an ordinary
+   `ProcessHandle`. The parent's pipe ends are non-blocking handles, as the
+   `process` package makes them, so reads and writes wait in the IO
+   manager. With blocking ones (`fdToHandle`), every read and write cost a
+   readiness poll and a safe foreign call, about 75 µs per Amp Turn over
+   the shared sidecar. The `PiSpec` group "spawnPiped (not in the
+   reference)" pins the descriptors, the session, the non-blocking ends and
+   the launch failure.

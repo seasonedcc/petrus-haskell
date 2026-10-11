@@ -7,11 +7,14 @@
 -- @<module.qualname>@ of its type. The text is bounded to 4096 characters,
 -- and an exception with no usable class name is spelled @Exception@.
 --
--- A Haskell exception has no @args@. It is spelled @Name()@ when its message
--- is empty and @Name('message')@ otherwise, where @Name@ is its 'Typeable'
--- name and the message is its 'displayException' text without a GHC call
--- stack: exactly what the reference records for a Python exception of that
--- class raised with no argument or with that one string. A handler that
+-- A Haskell exception has no @args@. One with a Python counterpart (an
+-- 'IOException', 'UserInterrupt', 'DivideByZero', an 'ExitCode') is spelled
+-- with that Python class and the arguments the reference's exception carries.
+-- Any other is spelled @Name()@ when its message is empty and
+-- @Name('message')@ otherwise, where @Name@ is its 'Typeable' name and the
+-- message is its 'displayException' text without a GHC call stack: exactly
+-- what the reference records for a Python exception of that class raised
+-- with no argument or with that one string. A handler that
 -- needs any other Python spelling throws a 'PythonException', whose text is
 -- the reference's for every argument shape.
 module Petrus.Impetus.Instance.FailureText
@@ -21,16 +24,18 @@ module Petrus.Impetus.Instance.FailureText
   , exceptionFailureText
   ) where
 
-import Control.Exception (Exception (..), SomeException (..))
+import Control.Exception (ArithException (..), AsyncException (..), Exception (..), SomeAsyncException (..), SomeException (..))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Typeable (typeOf)
 import Data.Word (Word8)
 import Numeric (showHex)
 import Petrus.Json (pythonFloatRepr)
 import Petrus.Json.PythonText (pythonStrRepr)
+import GHC.IO.Exception (IOException (..))
+import Petrus.Telemetry.ErrorType (pythonErrorType)
+import System.Exit (ExitCode (..))
 
 -- | A Python exception as user code would raise it: its class name and its
 -- positional @args@.
@@ -95,17 +100,29 @@ bytesRepr bytes = "b" <> T.singleton quote <> T.concat (map escape (BS.unpack by
       | otherwise = T.singleton (toEnum (fromIntegral w))
 
 -- | The recorded text of any exception user code threw: the reference's
--- spelling for a 'PythonException', and for any other Haskell exception its
--- 'Typeable' name with its message as the one string argument (none when
+-- spelling for a 'PythonException'; for a Haskell exception with a Python
+-- counterpart ("Petrus.Telemetry.ErrorType") the Python class with the
+-- arguments the reference's exception carries (an @errno@-carrying
+-- 'IOException' is @FileNotFoundError(2, 'No such file or directory')@,
+-- 'UserInterrupt' is @KeyboardInterrupt()@); for any other Haskell exception
+-- its 'Typeable' name with its message as the one string argument (none when
 -- the message is empty).
 exceptionFailureText :: SomeException -> Text
-exceptionFailureText some@(SomeException e) = case fromException some of
+exceptionFailureText some = case fromException some of
   Just python -> pythonFailureText python
-  Nothing ->
-    pythonFailureText
-      PythonException
-        { name = T.pack (show (typeOf e))
-        , args = [PyStr message | not (T.null message)]
-        }
+  Nothing -> pythonFailureText PythonException {name = pythonErrorType some, args = pythonArgs}
   where
-    message = fst (T.breakOn "\nCallStack (from" (T.pack (displayException e)))
+    message = case some of SomeException e -> fst (T.breakOn "\nCallStack (from" (T.pack (displayException e)))
+    stringArg text = [PyStr text | not (T.null text)]
+    pythonArgs
+      | Just (io :: IOException) <- fromException some = case ioe_errno io of
+          Just errno -> [PyInt (toInteger errno), PyStr (T.pack (ioe_description io))]
+          Nothing -> stringArg (T.pack (ioe_description io))
+      | Just UserInterrupt <- fromException some = []
+      | Just DivideByZero <- fromException some = [PyStr "division by zero"]
+      | Just code <- fromException some = [PyInt (exitStatus code)]
+      | Just (SomeAsyncException _) <- fromException some, pythonErrorType some == "CancelledError" = []
+      | otherwise = stringArg message
+    exitStatus = \case
+      ExitSuccess -> 0
+      ExitFailure n -> toInteger n

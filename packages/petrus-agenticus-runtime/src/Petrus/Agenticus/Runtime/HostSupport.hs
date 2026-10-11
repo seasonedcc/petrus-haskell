@@ -29,6 +29,12 @@ module Petrus.Agenticus.Runtime.HostSupport
   , sidecarFrame
   , runSidecarOnce
     -- * Shared sidecars
+  , SidecarPool
+  , newSidecarPool
+  , closeSidecarPool
+  , withSidecarPool
+  , defaultSidecarPool
+  , sidecarPoolPids
   , SidecarChannel
   , openSidecarChannel
   , channelSend
@@ -39,10 +45,10 @@ module Petrus.Agenticus.Runtime.HostSupport
   ) where
 
 import Control.Concurrent (ThreadId, forkIO, killThread)
-import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, withMVar)
+import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar, withMVar)
 import Control.Concurrent.STM
-import Control.Exception (IOException, SomeException, catch, evaluate, finally, mask_, try)
-import Control.Monad (forM_, unless, void, when)
+import Control.Exception (IOException, SomeException, bracket, catch, evaluate, finally, mask_, try)
+import Control.Monad (filterM, forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Builder qualified as BB
@@ -56,7 +62,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error (OnDecodeError, UnicodeException, strictDecode)
 import Petrus.Agenticus.Internal.Validate (pyIsSpace)
-import Petrus.Agenticus.Runtime.Pi (micros, waitExit)
+import Petrus.Agenticus.Runtime.Pi (micros, spawnPiped, waitExit)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.Exit (ExitCode (..))
@@ -67,13 +73,9 @@ import System.IO (BufferMode (..), Handle, hClose, hFlush, hGetBufSome, hSetBina
 import System.Posix.Signals (sigKILL, signalProcessGroup)
 import System.Posix.Unistd (SystemID (..), getSystemID)
 import System.Process
-  ( CreateProcess (..)
-  , ProcessHandle
-  , StdStream (..)
-  , createProcess
+  ( ProcessHandle
   , getPid
   , getProcessExitCode
-  , proc
   , waitForProcess
   )
 import System.Timeout (timeout)
@@ -189,19 +191,9 @@ sidecarPid s = s.pid
 -- | Start the sidecar, or 'Nothing' when it cannot be launched.
 spawnSidecar :: SidecarCommand -> IO (Maybe Sidecar)
 spawnSidecar command = do
-  spawned <-
-    try . createProcess $
-      (proc command.executable command.arguments)
-        { std_in = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
-        , cwd = command.directory
-        , env = command.environment
-        , new_session = True
-        , close_fds = True
-        }
+  spawned <- spawnPiped command.executable command.arguments command.directory command.environment
   case spawned of
-    Right (Just i, Just o, Just e, p) -> do
+    Just (i, o, e, p) -> do
       mapM_ (`hSetBinaryMode` True) [i, o, e]
       hSetBuffering i (BlockBuffering Nothing)
       pid <- fmap fromIntegral <$> getPid p
@@ -211,8 +203,7 @@ spawnSidecar command = do
       reader <- forkIO (readLines o frames B.empty)
       closed <- newIORef False
       pure (Just (Sidecar p pid i o e frames reader drainer drained closed))
-    Right _ -> pure Nothing
-    Left (_ :: IOException) -> pure Nothing
+    Nothing -> pure Nothing
   where
     drain h = do
       chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
@@ -313,10 +304,15 @@ runSidecarOnce command seconds =
 -- is the end of a channel (from Haskell: the end of the channel's input;
 -- from the sidecar: the channel has finished its teardown).
 data SharedSidecar = SharedSidecar
-  { input :: Handle
+  { process :: ProcessHandle
+  , pid :: Maybe Int
+  , input :: Handle
   , writeLock :: MVar ()
   , slots :: TVar (Map Integer Slot)
   , alive :: TVar Bool
+  -- ^ False once its output has ended (every channel is then ended too).
+  , reaped :: TVar Bool
+  -- ^ True once the process has been waited for.
   , nextChannel :: TVar Integer
   }
 
@@ -336,14 +332,53 @@ data SidecarChannel = SidecarChannel
 
 type SharedKey = (FilePath, [String], Maybe FilePath, Maybe [(String, String)])
 
-sharedSidecars :: MVar (Map SharedKey SharedSidecar)
-sharedSidecars = unsafePerformIO (newMVar Map.empty)
-{-# NOINLINE sharedSidecars #-}
+-- | The shared sidecars one owner runs, at most one per command: every
+-- channel opened for the same command shares its process, so an SDK is
+-- imported once per pool. A sidecar that has died is replaced by the next
+-- 'openSidecarChannel'. 'closeSidecarPool' stops them all.
+newtype SidecarPool = SidecarPool (MVar (Maybe (Map SharedKey SharedSidecar)))
 
--- | Open a channel on the shared sidecar that runs @command@, starting the
--- sidecar first when none is running; 'Nothing' when it cannot be launched.
-openSidecarChannel :: SidecarCommand -> IO (Maybe SidecarChannel)
-openSidecarChannel command = attempt (2 :: Int)
+newSidecarPool :: IO SidecarPool
+newSidecarPool = SidecarPool <$> newMVar (Just Map.empty)
+
+-- | The pool the Claude and Amp hosts use unless given their own: one per
+-- Haskell process (the reference imports each SDK once into its
+-- interpreter), never closed; its sidecars end with the process, whose exit
+-- closes their input.
+defaultSidecarPool :: SidecarPool
+defaultSidecarPool = unsafePerformIO newSidecarPool
+{-# NOINLINE defaultSidecarPool #-}
+
+-- | Close the pool: no channel opens on it again, and each sidecar's input
+-- is ended (its open channels are torn down as at any end of input). A
+-- sidecar not reaped within @grace@ seconds is killed with its whole
+-- process group, and then reaped.
+closeSidecarPool :: SidecarPool -> Double -> IO ()
+closeSidecarPool (SidecarPool pool) grace = do
+  known <- modifyMVar pool (\current -> pure (Nothing, maybe [] Map.elems current))
+  forM_ known $ \s -> withMVar s.writeLock (const (hClose s.input)) `catch` \(_ :: IOException) -> pure ()
+  forM_ known $ \s -> do
+    reapedInTime <- timeout (micros grace) (atomically (readTVar s.reaped >>= check))
+    when (isNothing reapedInTime) $
+      mapM_ (\n -> signalProcessGroup sigKILL (fromIntegral n) `catch` \(_ :: IOException) -> pure ()) s.pid
+    atomically (readTVar s.reaped >>= check)
+
+-- | A private pool for the extent of an action, closed (with @grace@) after it.
+withSidecarPool :: Double -> (SidecarPool -> IO a) -> IO a
+withSidecarPool grace = bracket newSidecarPool (`closeSidecarPool` grace)
+
+-- | The process ids of the pool's running sidecars.
+sidecarPoolPids :: SidecarPool -> IO [Int]
+sidecarPoolPids (SidecarPool pool) = do
+  known <- maybe [] Map.elems <$> readMVar pool
+  live <- filterM (readTVarIO . (.alive)) known
+  pure [n | Just n <- map (.pid) live]
+
+-- | Open a channel on the pool's sidecar for @command@, starting the
+-- sidecar first when none is running (or the last one has died); 'Nothing'
+-- when it cannot be launched or the pool is closed.
+openSidecarChannel :: SidecarPool -> SidecarCommand -> IO (Maybe SidecarChannel)
+openSidecarChannel (SidecarPool pool) command = attempt (2 :: Int)
   where
     key = (command.executable, command.arguments, command.directory, command.environment)
     attempt remaining
@@ -365,43 +400,38 @@ openSidecarChannel command = attempt (2 :: Int)
               case registered of
                 Nothing -> attempt (remaining - 1)
                 Just n -> Just . SidecarChannel s n slot <$> newIORef False
-    running = mask_ . modifyMVar sharedSidecars $ \known -> do
-      current <- case Map.lookup key known of
-        Just s -> do
-          up <- readTVarIO s.alive
-          pure (if up then Just s else Nothing)
-        Nothing -> pure Nothing
-      case current of
-        Just s -> pure (known, Just s)
-        Nothing ->
-          spawnShared command >>= \case
-            Nothing -> pure (Map.delete key known, Nothing)
-            Just s -> pure (Map.insert key s known, Just s)
+    running = mask_ . modifyMVar pool $ \case
+      Nothing -> pure (Nothing, Nothing)
+      Just known -> do
+        current <- case Map.lookup key known of
+          Just s -> do
+            up <- readTVarIO s.alive
+            -- A sidecar can have exited before its output's end is read:
+            -- it is as dead as one whose end has been.
+            exited <- isJust <$> getProcessExitCode s.process
+            pure (if up && not exited then Just s else Nothing)
+          Nothing -> pure Nothing
+        case current of
+          Just s -> pure (Just known, Just s)
+          Nothing ->
+            spawnShared command >>= \case
+              Nothing -> pure (Just (Map.delete key known), Nothing)
+              Just s -> pure (Just (Map.insert key s known), Just s)
 
 spawnShared :: SidecarCommand -> IO (Maybe SharedSidecar)
 spawnShared command = do
-  spawned <-
-    try . createProcess $
-      (proc command.executable command.arguments)
-        { std_in = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
-        , cwd = command.directory
-        , env = command.environment
-        , new_session = True
-        , close_fds = True
-        }
+  spawned <- spawnPiped command.executable command.arguments command.directory command.environment
   case spawned of
-    Right (Just i, Just o, Just e, p) -> do
+    Just (i, o, e, p) -> do
       mapM_ (`hSetBinaryMode` True) [i, o, e]
       hSetBuffering i (BlockBuffering Nothing)
-      s <- SharedSidecar i <$> newMVar () <*> newTVarIO Map.empty <*> newTVarIO True <*> newTVarIO 0
+      pid <- fmap fromIntegral <$> getPid p
+      s <- SharedSidecar p pid i <$> newMVar () <*> newTVarIO Map.empty <*> newTVarIO True <*> newTVarIO False <*> newTVarIO 0
       _ <- forkIO (drain e)
       buffer <- mallocForeignPtrBytes readSize
       _ <- forkIO (readFrames s o buffer B.empty `finally` finish s p [i, o, e])
       pure (Just s)
-    Right _ -> pure Nothing
-    Left (_ :: IOException) -> pure Nothing
+    Nothing -> pure Nothing
   where
     drain h = do
       chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
@@ -435,6 +465,7 @@ spawnShared command = do
       mapM_ (\h -> hClose h `catch` \(_ :: IOException) -> pure ()) handles
       -- Reap the process: its stdin is closed now, so it exits.
       void (try (waitForProcess p) :: IO (Either SomeException ExitCode))
+      atomically (writeTVar s.reaped True)
 
 endSlot :: Slot -> STM ()
 endSlot slot = do

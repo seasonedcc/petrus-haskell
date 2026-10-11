@@ -48,6 +48,7 @@ library
                     Petrus.Motus.Execution.Providers.E2b.Sdk
                     Petrus.Motus.Execution.Providers.Gondolin
                     Petrus.Motus.Execution.Providers.Local
+                    Petrus.Motus.Execution.Spawn
                     Petrus.Motus.Execution.Timeline
   include-dirs:     cbits
   c-sources:        cbits/petrus_posix.c

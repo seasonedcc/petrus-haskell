@@ -55,8 +55,11 @@ import Petrus.Json (Json (..))
 import System.Directory (canonicalizePath, createDirectory, findExecutable, removeDirectoryRecursive)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
+import System.IO (hClose)
 import System.Posix.Files (setFileMode)
-import System.Process (readProcessWithExitCode)
+import System.Posix.IO (FdOption (..), OpenMode (..), closeFd, defaultFileFlags, dupTo, handleToFd, openFd, queryFdOption)
+import System.Posix.Types (Fd (..))
+import System.Process (getPid, readProcessWithExitCode, waitForProcess)
 import System.Timeout (timeout)
 import Test.Hspec
 
@@ -71,6 +74,7 @@ spec = describe "test_pi" $ do
   subscriptionSpecs
   lifecycleSpecs
   recoverySpecs
+  spawnSpecs
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -1383,3 +1387,41 @@ recoverySpecs = do
     reopened <- openSqlitePiOperationLedger path
     (.cleanup) <$> lookupRecord reopened inv.operationId `shouldReturn` RuntimeCleanupNotCreated
     ledgerClose reopened
+
+-- ---------------------------------------------------------------------------
+-- Spawning (not in the reference)
+
+spawnSpecs :: Spec
+spawnSpecs = describe "spawnPiped (not in the reference)" $ do
+  it "starts the helper like Popen(close_fds=True, start_new_session=True)" $ do
+    -- An inheritable descriptor (dup2 clears close-on-exec) the child must
+    -- not see.
+    devNull <- openFd "/dev/null" ReadOnly defaultFileFlags
+    inherited <- dupTo devNull (Fd 50) `finally` closeFd devNull
+    flip finally (closeFd inherited) $ do
+      Just (i, o, e, process) <- spawnPiped "/bin/sh" ["-c", "ps -o pgid= -p $$; ls /dev/fd"] Nothing (Just [("PATH", "/bin:/usr/bin")])
+      Just pid <- getPid process
+      hClose i
+      output <- B.hGetContents o
+      _ <- B.hGetContents e
+      waitForProcess process `shouldReturn` ExitSuccess
+      case T.lines (TE.decodeUtf8 output) of
+        group : descriptors -> do
+          -- A new session leads its own process group.
+          read (T.unpack (T.strip group)) `shouldBe` (fromIntegral pid :: Int)
+          -- stdio, and the two descriptors @ls@ opens itself (3 and 4, the
+          -- same listing as under CPython's Popen(close_fds=True)).
+          take 3 descriptors `shouldBe` ["0", "1", "2"]
+          filter (`notElem` ["0", "1", "2", "3", "4"]) descriptors `shouldBe` []
+        [] -> expectationFailure "no output"
+  it "gives the parent non-blocking pipe ends, as the process package does" $ do
+    -- Reads and writes then wait in the IO manager rather than in a safe
+    -- foreign call per chunk, which cost each Amp Turn about 75 µs.
+    Just (i, o, e, process) <- spawnPiped "/bin/cat" [] Nothing (Just [("PATH", "/bin:/usr/bin")])
+    descriptors <- mapM handleToFd [i, o, e]
+    mapM (`queryFdOption` NonBlockingRead) descriptors `shouldReturn` [True, True, True]
+    mapM_ closeFd descriptors
+    waitForProcess process `shouldReturn` ExitSuccess
+  it "reports a helper that cannot be started" $ do
+    started <- spawnPiped "/nonexistent/helper" [] Nothing Nothing
+    isNothing started `shouldBe` True

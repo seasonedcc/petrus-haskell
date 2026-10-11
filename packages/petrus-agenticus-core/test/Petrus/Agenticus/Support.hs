@@ -12,6 +12,7 @@ module Petrus.Agenticus.Support
   , obj
   , str
   , setMember
+  , hypothesisSettings
   ) where
 
 import Control.Exception (try)
@@ -23,6 +24,9 @@ import Petrus.Agenticus.Error
 import Petrus.Json (Json (..), parseJson, pythonLoads)
 import System.Directory (doesFileExist)
 import Test.Hspec
+import Test.Hspec.QuickCheck (modifyArgs)
+import Test.QuickCheck (Args (..))
+import Test.QuickCheck.Random (mkQCGen)
 
 -- | A file of this package, whether the suite runs from the package or the
 -- repository root.
@@ -102,3 +106,13 @@ setMember key value = \case
     | any ((== key) . fst) members -> Object [(k, if k == key then value else v) | (k, v) <- members]
     | otherwise -> Object (members <> [(key, value)])
   other -> other
+
+-- | A Hypothesis @\@settings(max_examples=n)@ property, run as the
+-- reference runs it: upstream's pytest addopts pin @--randomly-seed=1729@,
+-- which pytest-randomly also feeds to Hypothesis, so every run draws the
+-- same examples. Here the QuickCheck generator is fixed at seed 1729
+-- whatever hspec's own @--seed@ (which still orders the examples), and
+-- @max_examples@ becomes the number of tests.
+hypothesisSettings :: Int -> SpecWith a -> SpecWith a
+hypothesisSettings maxExamples =
+  modifyArgs (\args -> args {maxSuccess = maxExamples, replay = Just (mkQCGen 1729, 0)})

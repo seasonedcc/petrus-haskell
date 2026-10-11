@@ -13,8 +13,9 @@
 module Petrus.Agenticus.Runtime.ClaudeSpec (spec) where
 
 import Control.Concurrent.MVar
-import Control.Exception (catch, finally, try)
-import Control.Monad (forM_, unless, void, when)
+import Control.Concurrent (forkIO, threadDelay)
+import Control.Exception (SomeException, catch, finally, throwIO, try)
+import Control.Monad (forM, forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.IORef
@@ -62,7 +63,7 @@ import Petrus.Json qualified as J
 import Petrus.Motus.Execution (defaultSpec)
 import Petrus.Motus.Execution.Archive (workspaceArchive)
 import Petrus.TestSupport.Python (pythonExecutable)
-import System.Directory (createDirectory, listDirectory, makeAbsolute)
+import System.Directory (createDirectory, doesFileExist, listDirectory, makeAbsolute)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeFileName, (</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -1053,9 +1054,124 @@ spec = describe "test_claude" $ do
       ((.disposition) <$> closeClaudeOperation operation) `shouldReturn` RuntimeCleanupUnverified
       noValues rig
       settleAttachment invoked.attachment
+
+  -- divergences/claude-a2.md item 1: every client of a pool shares one
+  -- sidecar process, which upstream (one interpreter, no sidecar) has no
+  -- counterpart of. Each test runs its own pool.
+  describe "shared sidecar: many clients on one process (not in the reference)" $ do
+    let pooled pool = (\s -> s {pool}) <$> fixtureSidecar
+        officialRig tmp sidecar wall grace =
+          makeRig tmp rigOptions {optFactory = Just (officialFactory (sidecarSdk sidecar)), optWall = wall, optGrace = grace}
+
+    it "runs concurrent turns on one sidecar, each settling on its own" $ withTemp $ \tmp ->
+      withSidecarPool 5 $ \pool -> do
+        sidecar <- pooled pool
+        rig <- officialRig tmp sidecar 30 5
+        blocked <- invoke rig "operation-blocked" invocationOptions {invPrompt = "block"}
+        blockedOperation <- startClaude rig.adapter blocked.invocation
+        -- Three turns run to completion while a fourth blocks mid-turn.
+        finished <-
+          concurrentlyAll
+            [ run' rig ("operation-" <> name) invocationOptions {invPrompt = "prompt-" <> name}
+            | name <- ["a", "b", "c"]
+            ]
+        forM_ finished $ \(invoked, operation, result) -> do
+          (result.outcome, result.terminationCode) `shouldBe` (TurnCompleted, "turn-completed")
+          ((.disposition) <$> closeClaudeOperation operation) `shouldReturn` RuntimeCleanupClean
+          settleAttachment invoked.attachment
+        stored <- readIORef rig.turns.values
+        Map.keys stored `shouldMatchList` ["claude-turn-operation-" <> name | name <- ["a", "b", "c"]]
+        forM_ (Map.elems stored) (`shouldSatisfy` T.isPrefixOf "read:")
+        -- Each client saw its own prompt in its own session-store mirror.
+        continuations <- readIORef rig.continuations.values
+        forM_ ["a", "b", "c"] $ \name -> do
+          let payload = continuations Map.! ("claude-continuation-operation-" <> name)
+          map (member "message") (take 1 (decoded payload.transcript)) `shouldBe` [String ("prompt-" <> name)]
+        cancelClaudeOperation blockedOperation "stop" `shouldReturn` CancellationRequested
+        result <- waitClaudeOperation blockedOperation (Just 30)
+        (result.outcome, result.acceptedAppends) `shouldBe` (TurnCancelled, 0)
+        (cleanupVerified <$> closeClaudeOperation blockedOperation) `shouldReturn` True
+        settleAttachment blocked.attachment
+        emptyRuntimeRoot rig
+        length <$> sidecarPoolPids pool `shouldReturn` 1
+
+    it "settles every turn of a sidecar that dies mid-turn, and the next turn respawns it" $ withTemp $ \tmp ->
+      withSidecarPool 5 $ \pool -> do
+        sidecar <- pooled pool
+        rig <- officialRig tmp sidecar 30 5
+        -- A client waiting mid-response, past every cancellation.
+        let marker = tmp </> "waiting"
+        blocked <- invoke rig "operation-blocked" invocationOptions {invPrompt = T.pack ("stuck:" <> marker)}
+        blockedOperation <- startClaude rig.adapter blocked.invocation
+        awaitFile marker
+        original <- sidecarPoolPids pool
+        length original `shouldBe` 1
+        -- The SDK crashes the sidecar process under one client: both that
+        -- turn and the other client's settle as upstream settles a client
+        -- that failed and whose disconnect cannot be confirmed.
+        -- Both settle at once: a call on a channel whose sidecar is gone
+        -- fails immediately rather than waiting out the disconnect timeout
+        -- (25 s here).
+        died <- invoke rig "operation-die" invocationOptions {invPrompt = "die"}
+        diedResult <- startClaude rig.adapter died.invocation >>= (`waitClaudeOperation` Just 10)
+        (diedResult.outcome, diedResult.terminationCode) `shouldBe` (TurnFailed, "cleanup-unverified")
+        blockedResult <- waitClaudeOperation blockedOperation (Just 10)
+        (blockedResult.outcome, blockedResult.terminationCode) `shouldBe` (TurnFailed, "cleanup-unverified")
+        ((.disposition) <$> closeClaudeOperation blockedOperation) `shouldReturn` RuntimeCleanupUnverified
+        noValues rig
+        mapM_ (settleAttachment . (.attachment)) [died, blocked]
+        -- The next client starts a new sidecar.
+        (next, _, nextResult) <- run' rig "operation-next" invocationOptions
+        (nextResult.outcome, nextResult.terminationCode) `shouldBe` (TurnCompleted, "turn-completed")
+        settleAttachment next.attachment
+        respawned <- sidecarPoolPids pool
+        (length respawned, any (`elem` original) respawned) `shouldBe` (1, False)
+
+    it "reports a client stuck past the release grace as unverified while the others proceed" $ withTemp $ \tmp ->
+      withSidecarPool 2 $ \pool -> do
+        sidecar <- (\s -> s {grace = 2}) <$> pooled pool
+        rig <- officialRig tmp sidecar 30 0.5
+        let marker = tmp </> "stuck"
+        stuck <- invoke rig "operation-stuck" invocationOptions {invPrompt = T.pack ("stuck:" <> marker)}
+        stuckOperation <- startClaude rig.adapter stuck.invocation
+        awaitFile marker
+        cancelClaudeOperation stuckOperation "stop" `shouldReturn` CancellationRequested
+        -- While the stuck client's teardown hangs in the sidecar, another
+        -- client on the same sidecar runs a whole turn.
+        (other, _, otherResult) <- run' rig "operation-other" invocationOptions
+        (otherResult.outcome, otherResult.terminationCode) `shouldBe` (TurnCompleted, "turn-completed")
+        settleAttachment other.attachment
+        stuckResult <- waitClaudeOperation stuckOperation (Just 30)
+        -- A cancelled operation settles cancelled whatever its cleanup
+        -- (upstream's @_Operation._run@); the cleanup is what records that
+        -- the client's release could not be verified.
+        (stuckResult.outcome, stuckResult.terminationCode) `shouldBe` (TurnCancelled, "cancelled")
+        ((.disposition) <$> closeClaudeOperation stuckOperation) `shouldReturn` RuntimeCleanupUnverified
+        settleAttachment stuck.attachment
+        -- Closing the pool ends the sidecar although a teardown is stuck in
+        -- it: past the pool's grace, it is killed.
+        timeout 10000000 (closeSidecarPool pool 2) `shouldReturn` Just ()
+        sidecarPoolPids pool `shouldReturn` []
   where
     run' rig name o = do
       invoked <- invoke rig name o
       operation <- startClaude rig.adapter invoked.invocation
       result <- waitClaudeOperation operation (Just 60)
       pure (invoked, operation, result)
+
+-- | Run the actions on their own threads and collect their results in
+-- order, rethrowing the first failure.
+concurrentlyAll :: [IO a] -> IO [a]
+concurrentlyAll actions = do
+  boxes <- forM actions $ \action -> do
+    box <- newEmptyMVar
+    _ <- forkIO (try action >>= putMVar box)
+    pure box
+  forM boxes $ \box -> takeMVar box >>= either (\(e :: SomeException) -> throwIO e) pure
+
+-- | Wait (up to ten seconds) until a fake SDK has touched @path@.
+awaitFile :: FilePath -> IO ()
+awaitFile path = go (200 :: Int)
+  where
+    go 0 = expectationFailure ("never touched: " <> path)
+    go n = doesFileExist path >>= \found -> unless found (threadDelay 50000 >> go (n - 1))
