@@ -11,21 +11,24 @@
 -- Only wall-clock-dependent fields are normalised, by key and type, on both
 -- sides: every @*_ms@ field must be an @int >= 0@ (then 0), @max_rss_mb@ a
 -- positive float (then 0.0), @current_rss_mb@ a float or null (then null).
--- One documented divergence is mapped: the Engine's failed-drive
--- @error_type@ is the Haskell exception type @EngineError@ where the
--- reference names Python's @RuntimeError@ (petrus-telemetry/DIVERGENCES.md, 15).
+-- Nothing else is mapped: @error_type@ and @firing_failed.error@ are
+-- compared raw.
 module Petrus.Telemetry.DifferentialSpec (spec) where
 
+import Control.Exception (ArithException (..), AsyncException (..), toException)
 import Control.Monad (forM_, unless, zipWithM_)
 import Data.ByteString qualified as BS
 import Data.IORef
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Foreign.C.Error (Errno (..), errnoToIOError)
 import Petrus.HistoryStore.Support (withReference, runPython, withScratch)
 import Petrus.Json (Json (..), exactEq, lookupMember, parseJson, pythonLoads)
 import Petrus.Telemetry
+import Petrus.Impetus.Instance (exceptionFailureText)
 import Petrus.Telemetry.Scenarios (scenarios)
+import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import Test.Hspec
 
@@ -56,11 +59,6 @@ object = \case
   Object members -> members
   other -> error ("fixture: not an object: " <> show other)
 
--- | The Haskell spelling of an @error_type@ mapped to the reference's, for
--- the documented divergence only.
-errorTypeDivergences :: [(Text, Text)]
-errorTypeDivergences = [("EngineError", "RuntimeError")]
-
 -- | Check one wall-clock field's type, then replace it with the normal form.
 normalise :: Payload -> Either String Payload
 normalise = traverse $ \(key, value) -> fmap (key,) $
@@ -75,7 +73,6 @@ normalise = traverse $ \(key, value) -> fmap (key,) $
         Null -> Right Null
         Float _ -> Right Null
         _ -> Left ("current_rss_mb is not a float or null: " <> show value)
-    | key == "error_type", String name <- value, Just python <- lookup name errorTypeDivergences -> Right (String python)
     | otherwise -> Right value
 
 samePayload :: Payload -> Payload -> Bool
@@ -128,6 +125,34 @@ spec = do
         let sink' = jsonLoggerWith (pure ts) (\line -> modifyIORef' lines' (line :))
         info sink' (object (member "payload" pinned))
         readIORef lines' `shouldReturn` [TE.encodeUtf8 (text (member "line" pinned))]
+
+  describe "the Python class vocabulary (error_type, FiringFailed.error)" $ do
+    it "names every errno's OSError subclass and spells its failure text as the pinned reference does" $ withReference $ \python -> do
+      reference <- runPython python "differential/error_types.py" [] >>= either fail pure . parseJson pythonLoads . TE.encodeUtf8 . T.pack
+      let errnos = array (member "errnos" reference)
+      length errnos `shouldSatisfy` (> 50)
+      forM_ errnos $ \entry -> do
+        number <- case member "errno" entry of
+          Int n -> pure (fromInteger n)
+          other -> fail ("errno: " <> show other)
+        let raised = toException (errnoToIOError "op" (Errno number) Nothing Nothing)
+        (number, pythonErrorType raised, exceptionFailureText raised)
+          `shouldBe` (number, text (member "error_type" entry), text (member "text" entry))
+
+    it "names the other mapped exceptions as the pinned reference does" $ withReference $ \python -> do
+      reference <- runPython python "differential/error_types.py" [] >>= either fail pure . parseJson pythonLoads . TE.encodeUtf8 . T.pack
+      let others = member "others" reference
+          haskell =
+            [ ("user_error", toException (userError "boom"))
+            , ("keyboard_interrupt", toException UserInterrupt)
+            , ("divide_by_zero", toException DivideByZero)
+            , ("exit_failure", toException (ExitFailure 3))
+            , ("exit_success", toException ExitSuccess)
+            ]
+      forM_ haskell $ \(name, raised) -> do
+        let expected = member name others
+        (name, pythonErrorType raised, exceptionFailureText raised)
+          `shouldBe` (name, text (member "error_type" expected), text (member "text" expected))
 
   it "the committed reference events are what the pinned reference emits today" $ withReference $ \python -> withScratch $ \dir -> do
     let fresh = dir </> "telemetry_scenarios.json"

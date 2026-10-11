@@ -15,8 +15,8 @@ Divergences are listed in [DIVERGENCES.md](DIVERGENCES.md).
 | What | Where | Result |
 | --- | --- | --- |
 | `test_telemetry.py`, 29 tests | `petrus-telemetry/test/Main.hs` | 29 ported; 37 examples, 0 failures |
-| `test_telemetry_instrumentation.py`, 22 tests | `petrus-telemetry-instrumentation/test/Petrus/Telemetry/InstrumentationSpec.hs` | 21 ported as is, 1 adapted (`error_type`, DIVERGENCES 15) |
-| Instrumentation differential: 23 scenarios, 282 events | [`differential/`](../petrus-telemetry-instrumentation/differential), `DifferentialSpec.hs` | every event name, field, field order and value is exact, and every routed line is byte-identical with `ts` pinned |
+| `test_telemetry_instrumentation.py`, 22 tests | `petrus-telemetry-instrumentation/test/Petrus/Telemetry/InstrumentationSpec.hs` | all 22 ported as is |
+| Instrumentation differential: 25 scenarios, 290 events, compared raw | [`differential/`](../petrus-telemetry-instrumentation/differential), `DifferentialSpec.hs` | every event name, field, field order and value is exact, and every routed line is byte-identical with `ts` pinned |
 | Routed-line bytes | `pinned` in the differential fixture | 4 fixed payloads, including non-ASCII, non-finite floats, a payload `ts`, and the benchmark payload |
 | Overhead benchmark | [`bench/RESULTS.md`](../petrus-telemetry-instrumentation/bench/RESULTS.md) | a routed emit costs 4.6 µs vs Python's 14.4 µs; the default (no route) costs 0.06 µs vs 7.5 µs |
 
@@ -69,7 +69,7 @@ Haskell-specific examples:
 - the default route drops lines;
 - names duplicate fields sorted;
 - result fields keep first-set order ahead of status;
-- `error_type` is the Haskell exception type name;
+- `error_type` names the Python class the reference reports;
 - quotes unknown levels like Python's repr;
 - statm parsing refuses malformed contents.
 
@@ -91,7 +91,7 @@ its upstream class.
 | `TestKernelDoorEvents::test_resume_emits_instance_resumed_under_the_recorded_identity` | ported |
 | `TestJsonlCommitEvents::test_every_durable_commit_emits_batch_size_bytes_and_latency` | ported |
 | `TestEngineSpan::test_advance_is_a_span_whose_counters_summarize_the_turn` | ported |
-| `TestEngineSpan::test_a_halting_advance_finishes_the_span_failed` | adapted: `error_type` is `EngineError` (DIVERGENCES 15) |
+| `TestEngineSpan::test_a_halting_advance_finishes_the_span_failed` | ported (`error_type` is `RuntimeError`, DIVERGENCES 15) |
 | `TestInstanceIdentity::test_every_door_event_carries_the_minted_identity` | ported |
 | `TestInstanceIdentity::test_two_instances_mint_distinct_identities` | ported |
 | `TestInstanceIdentity::test_the_driver_span_carries_the_instance_identity` | ported |

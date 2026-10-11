@@ -7,13 +7,15 @@
 -- so the whole spec runs sequentially.
 module Main (main) where
 
-import Control.Exception (ErrorCall (..), Exception, throwIO, try)
+import Control.Exception (ArithException (..), AsyncException (..), ErrorCall (..), Exception, SomeException, fromException, throwIO, try)
 import Control.Monad (void)
 import Data.ByteString (ByteString)
 import Data.IORef (atomicModifyIORef', modifyIORef', newIORef, readIORef)
 import Data.Text qualified as T
 import Petrus.Json (Json (..), exactEq, parseJson, pythonLoads)
+import Foreign.C.Error (eACCES, eAGAIN, eNOENT, eNOSPC, ePIPE, errnoToIOError)
 import Petrus.Telemetry
+import System.Exit (ExitCode (..))
 import Test.Hspec
 
 -- | The upstream tests raise @RuntimeError@; a Haskell exception with the
@@ -357,11 +359,30 @@ main = hspec . sequential $ do
       finished
         `shouldBe` [("event", String "impetus_s_finished"), ("status", String "success"), ("n", Int 1), ("elapsed_ms", Int 0)]
 
-    it "error_type is the Haskell exception type name" $ do
-      (logger, recorder) <- makeLogger
-      void (try (withSpan logger "s" [] (\_ -> ioError (userError "boom"))) :: IO (Either IOError ()))
-      finished <- last <$> recorded recorder
-      field "error_type" finished `shouldBe` String "IOException"
+    it "error_type names the Python class the reference reports" $ do
+      let failedWith :: Exception e => (Span -> Span) -> e -> IO Json
+          failedWith classify e = do
+            (logger, recorder) <- makeLogger
+            s <- newSpan logger "s" []
+            void (try (runSpan (classify s) (\_ -> throwIO e)) :: IO (Either SomeException ()))
+            field "error_type" . last <$> recorded recorder
+      -- An errno-carrying IOException is CPython's OSError subclass for it.
+      failedWith id (errnoToIOError "open" eNOENT Nothing (Just "x")) `shouldReturn` String "FileNotFoundError"
+      failedWith id (errnoToIOError "open" eACCES Nothing Nothing) `shouldReturn` String "PermissionError"
+      failedWith id (errnoToIOError "read" eAGAIN Nothing Nothing) `shouldReturn` String "BlockingIOError"
+      failedWith id (errnoToIOError "send" ePIPE Nothing Nothing) `shouldReturn` String "BrokenPipeError"
+      failedWith id (errnoToIOError "write" eNOSPC Nothing Nothing) `shouldReturn` String "OSError"
+      failedWith id (userError "boom") `shouldReturn` String "OSError"
+      failedWith id UserInterrupt `shouldReturn` String "KeyboardInterrupt"
+      failedWith id DivideByZero `shouldReturn` String "ZeroDivisionError"
+      failedWith id (ExitFailure 3) `shouldReturn` String "SystemExit"
+      -- No Python counterpart: the Haskell type constructor.
+      failedWith id (ErrorCall "boom") `shouldReturn` String "ErrorCall"
+      -- A runtime names its own failures first.
+      let classify = classifyErrors (\e -> if fmap (\(ErrorCall m) -> m) (fromException e) == Just "refused" then Just "ValueError" else Nothing)
+      failedWith classify (ErrorCall "refused") `shouldReturn` String "ValueError"
+      failedWith classify (ErrorCall "other") `shouldReturn` String "ErrorCall"
+      failedWith classify (userError "boom") `shouldReturn` String "OSError"
 
     it "quotes unknown levels like Python's repr" $ do
       levelFromEnv Nothing `shouldBe` Right Facts

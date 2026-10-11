@@ -91,6 +91,16 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
       reference records a Python exception of that class and those args,
       for every argument shape above (huge ints, non-finite floats, quotes,
       unprintable characters, bytes, objects).
+    - A Haskell exception with a Python counterpart is recorded under that
+      class with the arguments the reference's exception carries: an
+      `errno`-carrying `IOException` as CPython's `OSError` subclass with
+      `(errno, strerror)` (`FileNotFoundError(2, 'No such file or
+      directory')`), one without an `errno` as `OSError('description')`,
+      `UserInterrupt` as `KeyboardInterrupt()`, `DivideByZero` as
+      `ZeroDivisionError('division by zero')`, an `ExitCode` as
+      `SystemExit(n)` (`Petrus.Telemetry.ErrorType`; checked against the
+      pinned reference for every `errno` in petrus-telemetry-instrumentation's
+      `DifferentialSpec`).
     - Any other Haskell exception is recorded as `Name()` when its message is
       empty and `Name('message')` otherwise, with the message's GHC call
       stack removed: exactly what the reference records for a Python

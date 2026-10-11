@@ -10,13 +10,13 @@ The full map from every upstream telemetry test to its Haskell example is in
 [`petrus-telemetry/PARITY.md`](../petrus-telemetry/PARITY.md). Divergences
 are in [`petrus-telemetry/DIVERGENCES.md`](../petrus-telemetry/DIVERGENCES.md).
 
-`cabal test petrus-telemetry-instrumentation` runs 52 examples, 0 failures.
+`cabal test petrus-telemetry-instrumentation` runs 56 examples, 0 failures.
 
 ## The port: `test/Petrus/Telemetry/InstrumentationSpec.hs`
 
 All 22 tests of `tests/petrus/telemetry/test_telemetry_instrumentation.py`
-are here, each named after its upstream test. One is adapted: a halting
-advance reports `error_type: "EngineError"` (DIVERGENCES 15). Four
+are here, each named after its upstream test, none adapted: a halting
+advance reports `error_type: "RuntimeError"`, as upstream's (DIVERGENCES 15). Four
 Haskell-specific examples are added. One of them is the telemetry half of
 `test_coordinator.py`'s all-filtered decline test, which the Engine port
 deferred to this package.
@@ -24,9 +24,9 @@ deferred to this package.
 ## The differential: `differential/` and `test/Petrus/Telemetry/DifferentialSpec.hs`
 
 The generator, [`telemetry_scenarios.py`](differential/telemetry_scenarios.py),
-runs 23 scenarios through the pinned reference. Each runs under
+runs 25 scenarios through the pinned reference. Each runs under
 `telemetry.capture(level=...)`, and every emitted payload is recorded in
-[`telemetry_scenarios.json`](differential/telemetry_scenarios.json): 282
+[`telemetry_scenarios.json`](differential/telemetry_scenarios.json): 290
 events, plus the routed line for each event with `ts` pinned. The fixture is
 committed, and regenerating it is deterministic.
 
@@ -50,12 +50,20 @@ Only wall-clock fields are normalised, by key and type, on both sides:
 - `max_rss_mb` must be a positive float;
 - `current_rss_mb` must be a float or null.
 
-One documented divergence is mapped: `error_type` `EngineError` →
-`RuntimeError` (DIVERGENCES 15).
+Nothing else is mapped: `error_type` and `firing_failed.error` are compared
+raw (DIVERGENCES 15 and 16).
+
+Two more examples run
+[`error_types.py`](differential/error_types.py) under the pinned
+interpreter: for every `errno` the platform knows, an `IOException` carrying
+it must get CPython's `OSError` subclass as `error_type` and the reference's
+`firing_failure_text(OSError(n, os.strerror(n)))` as its recorded failure
+text; and likewise for `userError`, `UserInterrupt`, `DivideByZero` and both
+`ExitCode`s.
 
 A further example reruns the generator against the pinned checkout into a
 scratch directory and requires the committed fixture to equal its output.
-It is pending when `upstream/petrus/.venv` is missing.
+It fails when the reference cannot be provisioned.
 
 The `pinned` entries are fixed payloads, including the benchmark payload.
 They are routed through the reference's real `JsonLogger` with
@@ -75,7 +83,9 @@ The scenarios are, in order:
 | `activity_seam` | `begin`, `record_activity_completion` and `_failure` (with redelivery), `complete`, `fail` with text and with an `ActivityFailure` |
 | `jsonl_commits` | `jsonl_commit` on run, resume, and a delivery with non-ASCII data |
 | `engine_advance` | the `drive` span: counters, phase timings, a named net |
-| `engine_failing_handler` | a halting advance: the span finishes `failed` (DIVERGENCES 15) |
+| `engine_failing_handler` | a halting advance: the span finishes `failed` with `error_type` `RuntimeError` (DIVERGENCES 15) |
+| `engine_handler_oserror` | a handler failing with `FileNotFoundError(2, ...)` (an `ENOENT` `IOException` in Haskell): `error_type` and `firing_failed.error` in CPython's vocabulary |
+| `engine_policy_refusal` | the coordinator's own `ValueError` escaping the drive span |
 | `engine_gauges` | `gauges` at `profile` |
 | `engine_declined` | `candidate_selection_declined` |
 | `engine_orders` | the order scenario: deliveries, a redelivery, seal, inline activities |
@@ -90,9 +100,10 @@ The scenarios are, in order:
 | `engine_debug_level` | `debug` admits what `profile` does |
 | `level_off` | `engine_orders` and `jsonl_commits` at `off`: nothing |
 
-No emission divergence was found. The differential needed no change to
-`petrus-impetus`, `petrus-engine`, `petrus-history-store` or
-`petrus-telemetry` code.
+No emission divergence remains. The raw comparison of the failure fields
+(audit SDA-4) needed the class vocabulary of `Petrus.Telemetry.ErrorType`,
+the Engine's `engineErrorType` for its drive span, and Python-class failure
+texts in `petrus-impetus`'s `exceptionFailureText`.
 
 ## The benchmark: `bench/`
 

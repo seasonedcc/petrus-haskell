@@ -37,12 +37,14 @@ module Petrus.Engine.Vocabulary
     -- * Errors
   , EngineError (..)
   , engineErrorMessage
+  , engineErrorType
   , failureText
   , throwInstanceError
   , orThrowInstance
   ) where
 
 import Control.Exception (Exception (..), SomeException, fromException, throwIO)
+import Data.Char (isAlpha, isAlphaNum)
 import Data.IORef
 import Data.List (find)
 import Data.Text (Text)
@@ -52,6 +54,7 @@ import Petrus.Impetus.Instance
   ( DeliveryScope (..)
   , FiringOutcome
   , InstanceError (..)
+  , PythonException
   , exceptionFailureText
   )
 import Petrus.Impetus.Petrinet (Binding (..), Instant, NetPath, Selection, Token (..))
@@ -99,6 +102,31 @@ failureText e = case fromException e of
   Nothing -> case fromException e of
     Just (DispatchError m) -> T.take 4096 ("ValueError(" <> pyStr m <> ")")
     Nothing -> exceptionFailureText e
+
+-- | The Python class the reference reports (@type(error).__name__@, a
+-- span's @error_type@) for a failure the Engine raises in the reference's
+-- vocabulary: an 'EngineError' (a handler failure is named after its
+-- recorded text, @RuntimeError('handler broke')@ being a @RuntimeError@),
+-- a 'DispatchError' (@ValueError@), or a 'PythonException'. 'Nothing' for
+-- anything else, which "Petrus.Telemetry" names.
+engineErrorType :: SomeException -> Maybe Text
+engineErrorType e = case (fromException e, fromException e, fromException e) of
+  (Just (_ :: EngineError), _, _) -> Just (failureClass (failureText e))
+  (_, Just (DispatchError _), _) -> Just "ValueError"
+  (_, _, Just (python :: PythonException)) -> Just (failureClass (exceptionFailureText (toException python)))
+  _ -> Nothing
+
+-- | The class a recorded failure text names: @Name@ of @Name(...)@, a bare
+-- class name as given, and @Exception@ for any other text (as the reference
+-- spells an exception without a usable name).
+failureClass :: Text -> Text
+failureClass text = case T.breakOn "(" text of
+  (name, rest) | identifier name && (T.null rest || T.isSuffixOf ")" rest) -> name
+  _ -> "Exception"
+  where
+    identifier name = case T.uncons name of
+      Just (c, cs) -> (isAlpha c || c == '_') && T.all (\x -> isAlphaNum x || x == '_') cs
+      Nothing -> False
 
 -- | Raise a kernel refusal as the reference would: a @ValueError@,
 -- @TypeError@, or @RuntimeError@; a handler failure; or the History store's

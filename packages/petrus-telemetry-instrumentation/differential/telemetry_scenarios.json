@@ -999,6 +999,91 @@
    ]
   },
   {
+   "name": "engine_handler_oserror",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "oserror-span",
+     "places": 2,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "oserror-span"
+    },
+    {
+     "event": "impetus_firing_begun",
+     "instance": "oserror-span",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "impure": false
+    },
+    {
+     "event": "impetus_firing_failed",
+     "instance": "oserror-span",
+     "transition": "t",
+     "occurrence": 1,
+     "instant": 0,
+     "error": "FileNotFoundError(2, 'No such file or directory')"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "oserror-span",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "begin_ms": 0,
+     "handler_ms": 0,
+     "apply_ms": 0,
+     "status": "failed",
+     "elapsed_ms": 0,
+     "error_type": "FileNotFoundError"
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"oserror-span\", \"places\": 2, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"oserror-span\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_begun\", \"instance\": \"oserror-span\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"impure\": false, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_firing_failed\", \"instance\": \"oserror-span\", \"transition\": \"t\", \"occurrence\": 1, \"instant\": 0, \"error\": \"FileNotFoundError(2, 'No such file or directory')\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"oserror-span\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"begin_ms\": 0, \"handler_ms\": 0, \"apply_ms\": 0, \"status\": \"failed\", \"elapsed_ms\": 0, \"error_type\": \"FileNotFoundError\", \"ts\": 1700000000123}"
+   ]
+  },
+  {
+   "name": "engine_policy_refusal",
+   "level": "facts",
+   "events": [
+    {
+     "event": "impetus_instance_created",
+     "instance": "refused-policy",
+     "places": 3,
+     "transitions": 1,
+     "records": 2,
+     "instant": 0
+    },
+    {
+     "event": "impetus_drive_started",
+     "instance": "refused-policy"
+    },
+    {
+     "event": "impetus_drive_finished",
+     "instance": "refused-policy",
+     "reconciled_firings": 0,
+     "observe_ms": 0,
+     "status": "failed",
+     "elapsed_ms": 0,
+     "error_type": "ValueError"
+    }
+   ],
+   "lines": [
+    "{\"event\": \"impetus_instance_created\", \"instance\": \"refused-policy\", \"places\": 3, \"transitions\": 1, \"records\": 2, \"instant\": 0, \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_started\", \"instance\": \"refused-policy\", \"ts\": 1700000000123}",
+    "{\"event\": \"impetus_drive_finished\", \"instance\": \"refused-policy\", \"reconciled_firings\": 0, \"observe_ms\": 0, \"status\": \"failed\", \"elapsed_ms\": 0, \"error_type\": \"ValueError\", \"ts\": 1700000000123}"
+   ]
+  },
+  {
    "name": "engine_gauges",
    "level": "profile",
    "events": [
