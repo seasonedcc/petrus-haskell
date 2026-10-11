@@ -33,5 +33,9 @@
  {"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"petrus_simulation_command","arguments":{"kind":"x","marking":{"p":"a"}}}},
  {"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"petrus_trace_scenarios","arguments":{"checkpointSteps":["a"]}}},
  {"jsonrpc":"2.0","id":32,"method":"initialize","params":{"protocolVersion":"1999-01-01","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}},
- {"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"petrus_inspect_document","arguments":{"includeSchema":true,"bogus":1}}}
+ {"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"petrus_inspect_document","arguments":{"includeSchema":true,"bogus":1}}},
+ {"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"petrus_inspect_simulation","arguments":{}}},
+ {"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"petrus_redo","arguments":{}}},
+ {"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"petrus_inspect_canvas","arguments":{"includeNodes":true}}},
+ {"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"petrus_apply_mutation","arguments":{"previewId":"preview-1"}}}
 ]

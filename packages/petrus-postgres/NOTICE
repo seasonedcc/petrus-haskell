@@ -1,0 +1,21 @@
+petrus-postgres
+Copyright 2026 Seasoned
+
+This package supports the Haskell port of Petrus (see UPSTREAM.md at the
+repository root). It is the PostgreSQL layer the PostgreSQL components
+share, shaped after how the pinned reference drives PostgreSQL through
+psycopg 3; its test suite runs the same statements through psycopg and
+compares the results.
+
+The package itself is licensed under the Apache License, Version 2.0 (see
+LICENSE). The behaviour it reproduces is that of:
+
+  Petrus
+  Copyright 2026 Henrique Bastos
+  Licensed under the Apache License, Version 2.0
+  https://github.com/henriquebastos/petrus
+
+  psycopg 3
+  Copyright The Psycopg Team
+  Licensed under the GNU Lesser General Public License v3.0
+  https://www.psycopg.org

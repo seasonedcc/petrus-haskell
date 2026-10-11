@@ -9,6 +9,7 @@ description:
   byte-for-byte identical to CPython's @json.dumps@ for every option Petrus uses.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned (see NOTICE)
 extra-doc-files:    NOTICE
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
@@ -36,10 +37,12 @@ library
                     Petrus.Json.PythonText.Printable
                     Petrus.Json.Repr
                     Petrus.Json.Value
+                    Petrus.Json.Wtf8
   build-depends:    base >=4.18 && <5
                   , array >=0.5
                   , bytestring >=0.11
                   , containers >=0.6
+                  , deepseq >=1.4
                   , text >=2.0
   ghc-options:      -O2
 

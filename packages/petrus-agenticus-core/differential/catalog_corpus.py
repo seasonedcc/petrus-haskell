@@ -6,7 +6,7 @@ environment, e.g. from the repository root:
     cd upstream/petrus
     .venv/bin/python ../../packages/petrus-agenticus-core/differential/catalog_corpus.py
 
-The script writes ``catalog_corpus.json`` next to itself. It records:
+The script writes ``catalog_corpus.json`` next to itself (or into the directory given as its first argument). It records:
 
 - ``profiles``: every runtime x territory qualification cell, with the exact
   ``json.dumps`` bytes of its descriptor;
@@ -24,6 +24,7 @@ same bytes and the same refusals.
 from __future__ import annotations
 
 import json
+import sys
 import random
 from pathlib import Path
 
@@ -273,7 +274,8 @@ def main() -> None:
         "snapshots": snapshot_cases(),
         "sessions": resolutions(),
     }
-    (HERE / "catalog_corpus.json").write_text(json.dumps(corpus, indent=1, ensure_ascii=False) + "\n")
+    out = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE
+    (out / "catalog_corpus.json").write_text(json.dumps(corpus, indent=1, ensure_ascii=False) + "\n")
 
 
 if __name__ == "__main__":

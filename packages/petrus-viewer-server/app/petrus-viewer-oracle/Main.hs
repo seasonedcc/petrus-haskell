@@ -9,7 +9,9 @@
 -- @cacheFile slug relativePath content@, @normalizeGitHubUrl url@,
 -- @resolveUrl input base@, @jsonRoundTrip text@ (@JSON.stringify(JSON.parse(text))@),
 -- @relayAgent text@ / @relayCollab text@ (the relay's output for a message
--- from client @"7"@, or null when it is dropped), @parseAgentMessage text@.
+-- from client @"7"@, or null when it is dropped), @parseAgentMessage text@
+-- (the normalized message; the upstream protocol tests call it through
+-- @upstream-tests/shims/haskell-protocol.mjs@).
 module Main (main) where
 
 import Data.ByteString qualified as B

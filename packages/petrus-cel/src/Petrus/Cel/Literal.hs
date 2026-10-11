@@ -30,6 +30,7 @@ import Numeric (readHex)
 
 import Petrus.Cel.Python (asciiTransform, parseFloatText, parseIntDigits, strRepr)
 import Petrus.Cel.Unicode (pythonDecimal)
+import Petrus.Json.Wtf8 (fromCodePoints)
 
 -- | The lexical class of a literal token (lark's terminal names).
 data LiteralKind
@@ -179,7 +180,7 @@ cookString text
       LitString (if tripleAt 1 text then slice 4 3 else slice 2 1)
   | otherwise =
       let body = if tripleAt 0 text then slice 3 3 else slice 1 1
-       in either LitValueError (LitString . T.pack) (traverse expand (escapes (T.unpack body)))
+       in either LitValueError (LitString . fromCodePoints) (traverse expand (escapes (T.unpack body)))
   where
     slice front back = T.dropEnd back (T.drop front text)
     expand = \case

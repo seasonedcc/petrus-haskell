@@ -6,8 +6,9 @@
 -- one marking per history step), polling @get_state@ every two seconds while
 -- live. This module serves that same protocol from Petrus Engines exposed
 -- through @upstream/petrus/spec/observation-protocol-v1.md@ (any producer:
--- the Python reference today, the Haskell runtime when it lands), so the
--- unchanged browser UI replays and watches Petrus instances.
+-- the Python reference, or a Haskell Engine served by
+-- @petrus-observation-http@; @HistorySpec@ runs both), so the unchanged
+-- browser UI replays and watches Petrus instances.
 --
 -- Mapping (one Temporal "workflow" per observed Engine instance):
 --

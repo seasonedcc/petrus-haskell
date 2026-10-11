@@ -1,7 +1,9 @@
 # fileVersion 2 benchmarks: Haskell vs petrus-engine
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same steps
-on the same input texts. Both sides generate the inputs byte for byte the
+on the same input texts. `bench/process_bench.py` times the format command
+as a process, `petrus-format-json` against `python -m
+petrus.cli.format_json` ([below](#the-format-command-as-a-process)). Both sides generate the inputs byte for byte the
 same and print their sizes, and the sizes agree:
 
 | input | bytes in | out |
@@ -44,6 +46,8 @@ petrus-engine):
 ```sh
 cabal bench -j2 petrus-engine-file --benchmark-options='+RTS -M2G -RTS'
 "$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/python_bench.py
+cabal build -j2 -v0 petrus-engine-file:exe:petrus-format-json
+"$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/process_bench.py "$(cabal list-bin -v0 petrus-engine-file:exe:petrus-format-json)" 11
 ```
 
 Haskell times are wall-clock time (`localOption WallTime` in `bench/Main.hs`),
@@ -86,6 +90,44 @@ slowest Haskell run of the same step:
 - chain-10000 parse: 88.9 ms against 72.8 ms, 1.22×.
 
 Every step was faster in Haskell in every run.
+
+## The format command as a process
+
+The library rows above leave out what a user, or a pre-commit hook, pays
+for each run: starting the interpreter or the runtime, parsing arguments,
+reading, writing and exiting. `bench/process_bench.py` times whole runs of
+the two commands on the same inputs (`python_bench.chain_text`, the texts
+of the library rows):
+
+- `--infile/--outfile chain-N`: one file in, one file out;
+- `in place, 100 x chain-10`: 100 files named on the command line and
+  rewritten in place. The inputs are restored before every run, outside
+  the timed region.
+
+Each round runs both commands once per scenario, back to back, and
+alternates which one goes first. A run is timed with `time.perf_counter`
+around `subprocess.run`, and a warm-up round is not counted. Both outputs
+are compared byte for byte after every run. Times are medians, the
+speed-up is Python's median over Haskell's, and "lowest round" is the
+smallest ratio within a single round.
+
+Run on 2026-10-11 on the same machine (Apple M4, 10 cores, 24 GB, macOS 26),
+with CPython 3.14.6 and petrus-engine at the pin. The run had 11 rounds,
+with a load average of 5.8 at the start and 5.6 at the end; the machine was
+shared with other builds.
+
+| scenario | Python | Haskell | speed-up | lowest round |
+| --- | ---: | ---: | ---: | ---: |
+| --infile/--outfile chain-10 | 85.8 ms | 17.0 ms | 5.05× | 4.75× |
+| --infile/--outfile chain-1000 | 121.4 ms | 29.5 ms | 4.12× | 3.83× |
+| --infile/--outfile chain-10000 | 486.5 ms | 212.1 ms | 2.29× | 2.17× |
+| in place, 100 x chain-10 | 130.0 ms | 28.3 ms | 4.59× | 4.27× |
+
+Python spends about 85 ms starting the interpreter and importing pydantic
+and petrus-engine before it formats anything. That start-up cost decides
+the small inputs. On chain-10000 the formatting itself dominates, and the
+ratio approaches the library rows' `format` ratio (3.0×), less the time
+both commands spend reading and writing 2 MB.
 
 ## Notes
 

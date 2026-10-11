@@ -60,7 +60,7 @@ profiles of `loadsProfiles`:
 
 ## Tests
 
-`cabal test petrus-json`: 88 examples.
+`cabal test petrus-json`: 102 examples.
 
 - **Differential against CPython**
   ([`CPythonDifferentialSpec`](test/Petrus/Json/CPythonDifferentialSpec.hs),
@@ -70,7 +70,8 @@ profiles of `loadsProfiles`:
   - `json.dumps`: 2 003 values × 16 configurations = **32 048 answers**,
     byte for byte or refusal text for refusal text. The values have every
     code point class (ASCII controls, `\u007f`, Latin-1, BMP, astral, the
-    characters around the surrogate block), integers up to 10^4400 (both
+    characters around the surrogate block, and lone surrogates as WTF-8
+    `Text`, which the oracle encodes with `surrogatepass`), integers up to 10^4400 (both
     sides of the 4 300-digit limit), doubles including NaN, ±inf, -0.0,
     subnormals and the extremes, and three values nested 1 200 levels deep.
   - `json.loads`: 16 402 documents × 4 profiles = **65 608 answers**. The
@@ -83,8 +84,12 @@ profiles of `loadsProfiles`:
     profile both admits and refuses at least 2 000 of them. An accepted
     document must give the type-exact value; a refused one must be refused.
     In the plain profile, the digit-limit refusal must have CPython's text.
-    The one tolerated difference is a lone surrogate CPython admits, which
-    petrus-json must refuse with its own text ([DIVERGENCES.md](DIVERGENCES.md)).
+    Under the default `RefuseLoneSurrogates`, the one tolerated difference
+    is a lone surrogate CPython admits, which must be refused with the
+    surrogate text ([DIVERGENCES.md](DIVERGENCES.md)); with
+    `KeepLoneSurrogates` the plain profile must answer exactly as CPython
+    does, value for value, lone surrogates included (more than 200 such
+    admissions per run).
   - The tagged transport between the two sides is itself checked lossless.
 - **Float `repr`** ([`FloatReprSpec`](test/Petrus/Json/FloatReprSpec.hs)):
   `pythonFloatRepr` against CPython's `repr` on more than 100 000 doubles
@@ -94,9 +99,13 @@ profiles of `loadsProfiles`:
   ([`PythonTextSpec`](test/Petrus/Json/PythonTextSpec.hs)): the printability
   vector for every code point ([`python-printable.txt`](test/python-printable.txt)).
 - **Unit tests** ([`test/Main.hs`](test/Main.hs)): `dumps` spellings,
-  `parseJson` behaviours, the 4 300-digit limit in both directions with
+  `parseJson` behaviours, lone surrogates kept as WTF-8 (pairing, keys,
+  ordering, byte-for-byte re-encoding, `dumpsText`, `repr`, `fromWtf8`), the 4 300-digit limit in both directions with
   CPython's exact messages, the nesting guard, `encodeErrorMessage`, type-exact
-  equality, and a property check of the parser against the pre-optimization
+  equality, value equality (`Eq Json`: objects compare as their last-wins
+  dicts, so a repeated key cannot make it asymmetric, with reflexivity,
+  symmetry and transitivity checked as properties over finite values dense in
+  repeated keys, reordered members and `1` / `1.0` / `true`), and a property check of the parser against the pre-optimization
   reader ([`ReferenceParse`](test/Petrus/Json/ReferenceParse.hs)).
 
 ## Interop

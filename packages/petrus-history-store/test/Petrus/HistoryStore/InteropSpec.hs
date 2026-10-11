@@ -84,33 +84,63 @@ spec = describe "JSONL interop with the reference" $ do
     _ <- runPython python script ["verify-every", path]
     pure ()
 
-  it "an Instance the reference began resumes in Haskell and the reference reads the result" $ withReference $ \python -> withScratch $ \dir -> do
-    let path = dir </> "history.jsonl"
-    _ <- runPython python script ["begin", path]
-    store <- openJsonlHistoryStore path
-    resumed <- resume activityNet store (config False) >>= expectRight
-    [occurrence] <- inFlight resumed
-    _ <- recordActivityCompletion resumed occurrence (Object [("status", String "captured")]) (Just 3) >>= expectRight
-    _ <- complete resumed occurrence Nothing (Just 4) >>= expectRight
-    marking resumed `shouldReturn` receipt
-    count <- Store.size (instanceHistory resumed)
-    out' <- runPython python script ["inspect", path]
-    words out' `shouldBe` [show count]
-    _ <- runPython python script ["verify-bytes", path]
-    pure ()
+  referenceBegan "begin"
 
-  it "an Instance Haskell began resumes in the reference and Haskell reads the result" $ withReference $ \python -> withScratch $ \dir -> do
-    let path = dir </> "history.jsonl"
-    store <- openJsonlHistoryStore path
-    inst <- newInstance activityNet (config True) {historyStore = Just store, suppliedIdentity = Just "interop-1"} >>= expectRight
-    DeliveryAccepted accepted <- acceptDelivery inst intake [tokD "Payment" (Object [("amount", Int 100)])] "evt_123" Nothing (Just 1) >>= expectRight
-    _ <- completeDelivery inst accepted (Just 1) >>= expectRight
-    (b : _) <- candidates inst
-    _ <- begin inst b (Just 2) >>= expectRight
-    _ <- runPython python script ["finish", path]
-    back <- openJsonlHistoryStore path >>= \s -> resume activityNet s (config False) >>= expectRight
-    marking back `shouldReturn` receipt
-    watermark back `shouldReturn` 4
-    inFlight back `shouldReturn` []
-    loaded <- Store.records (instanceHistory back)
-    BS.readFile path `shouldReturn` reencoded loaded
+  haskellBegan "payment" (tokD "Payment" (Object [("amount", Int 100)]))
+
+  describe "lone surrogates (json.dumps escapes a str's lone surrogate; json.loads reads it back)" $ do
+    it "a file the reference wrote loads value-equal and re-encodes byte-identical" $ withReference $ \python -> withScratch $ \dir -> do
+      let path = dir </> "history.jsonl"
+      _ <- runPython python script ["write-surrogates", path]
+      loaded <- openJsonlHistoryStore path >>= Store.records
+      loaded `shouldBe` surrogateRecords
+      BS.readFile path `shouldReturn` reencoded loaded
+      BS.readFile path >>= (`shouldSatisfy` BS.isInfixOf "\"data\": \"\\ud800\"")
+
+    it "a file Haskell wrote loads value-equal in the reference and re-encodes byte-identical" $ withReference $ \python -> withScratch $ \dir -> do
+      let path = dir </> "history.jsonl"
+      openJsonlHistoryStore path >>= \s -> s.extend surrogateRecords
+      _ <- runPython python script ["verify-surrogates", path]
+      pure ()
+
+    referenceBegan "begin-surrogate"
+
+    haskellBegan "surrogate" surrogatePayment
+  where
+    referenceBegan :: String -> Spec
+    referenceBegan command = it (label "an Instance the reference began" command <> " resumes in Haskell and the reference reads the result") $ withReference $ \python -> withScratch $ \dir -> do
+        let path = dir </> "history.jsonl"
+        _ <- runPython python script [command, path]
+        store <- openJsonlHistoryStore path
+        resumed <- resume activityNet store (config False) >>= expectRight
+        [occurrence] <- inFlight resumed
+        _ <- recordActivityCompletion resumed occurrence (Object [("status", String "captured")]) (Just 3) >>= expectRight
+        _ <- complete resumed occurrence Nothing (Just 4) >>= expectRight
+        marking resumed `shouldReturn` receipt
+        count <- Store.size (instanceHistory resumed)
+        out' <- runPython python script ["inspect", path]
+        words out' `shouldBe` [show count]
+        _ <- runPython python script ["verify-bytes", path]
+        pure ()
+
+    haskellBegan :: String -> Token -> Spec
+    haskellBegan which delivered = it (label "an Instance Haskell began" which <> " resumes in the reference and Haskell reads the result") $ withReference $ \python -> withScratch $ \dir -> do
+        let path = dir </> "history.jsonl"
+        store <- openJsonlHistoryStore path
+        inst <- newInstance activityNet (config True) {historyStore = Just store, suppliedIdentity = Just "interop-1"} >>= expectRight
+        DeliveryAccepted accepted <- acceptDelivery inst intake [delivered] "evt_123" Nothing (Just 1) >>= expectRight
+        _ <- completeDelivery inst accepted (Just 1) >>= expectRight
+        (b : _) <- candidates inst
+        _ <- begin inst b (Just 2) >>= expectRight
+        _ <- runPython python script ["finish", path]
+        back <- openJsonlHistoryStore path >>= \s -> resume activityNet s (config False) >>= expectRight
+        marking back `shouldReturn` receipt
+        watermark back `shouldReturn` 4
+        inFlight back `shouldReturn` []
+        loaded <- Store.records (instanceHistory back)
+        BS.readFile path `shouldReturn` reencoded loaded
+    label :: String -> String -> String
+    label what = \case
+      "begin" -> what
+      "payment" -> what
+      _ -> what <> " with lone surrogates in its token data"

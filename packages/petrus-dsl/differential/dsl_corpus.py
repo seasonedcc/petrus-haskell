@@ -6,7 +6,7 @@ environment, e.g. from the repository root:
     cd upstream/petrus
     .venv/bin/python ../../packages/petrus-dsl/differential/dsl_corpus.py
 
-The script writes ``dsl_corpus.json`` next to itself. Every case authors one
+The script writes ``dsl_corpus.json`` next to itself (or into the directory given as its first argument). Every case authors one
 net with the reference DSL (``petrus.impetus.dsl``): each net the upstream
 DSL tests author (``tests/petrus/impetus/dsl/test_petrinet_dsl.py``), the
 nets other upstream modules author with the DSL (the Agent-as-Net, the
@@ -32,6 +32,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import sys
 from pathlib import Path
 
 from petrus.agenticus.program.agent_net import AGENT_AS_NET, agent_net_guards, agent_net_handlers
@@ -39,7 +40,7 @@ from petrus.impetus.dsl import NetBuilder, NetSpec, arc, direct, petri_guard, pe
 from petrus.impetus.net_definition import project_net_definition, serialize_net_definition
 from petrus.impetus.petrinet import AnonymousDeclaration, Cel, Delay, Until
 
-OUTPUT = Path(__file__).with_name("dsl_corpus.json")
+OUTPUT_NAME = "dsl_corpus.json"
 
 
 @dataclass(frozen=True)
@@ -703,8 +704,9 @@ case("stamped-30")(lambda: built(stamped(30)))
 
 
 def main() -> None:
-    OUTPUT.write_text(json.dumps(CASES, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
-    print(f"wrote {len(CASES)} cases to {OUTPUT}")
+    output = (Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent) / OUTPUT_NAME
+    output.write_text(json.dumps(CASES, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
+    print(f"wrote {len(CASES)} cases to {output}")
 
 
 if __name__ == "__main__":

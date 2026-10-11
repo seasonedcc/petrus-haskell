@@ -13,11 +13,13 @@ description:
   system under test plugs in through the 'Petrus.Testing.Dst.Profile' record.
 license:            Apache-2.0
 license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
 maintainer:         danielweinmann@avatarnaturalfoods.com
 category:           Testing
 build-type:         Simple
-extra-doc-files:    PARITY.md
+extra-doc-files:    NOTICE
+                    PARITY.md
                     DIVERGENCES.md
 
 common warnings

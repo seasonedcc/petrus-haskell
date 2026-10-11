@@ -54,7 +54,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error qualified as TEE
 import Hamsterdan.PyLiteral (fromJson, repr)
 import Hamsterdan.PyText
-import Petrus.Json (Json (..), ParseOptions, parseJson, pythonFloatRepr, pythonLoads)
+import Petrus.Json (Json (..), LoneSurrogates (..), ParseOptions (..), parseJson, pythonFloatRepr, pythonLoads)
 import System.IO.Unsafe (unsafePerformIO)
 
 -- | The CPython exception classes the reference's provider inspection can
@@ -192,18 +192,14 @@ data JsonLoadError
 
 -- | The options every provider document (webhook payloads, and the
 -- observations the inbox stores from them) is parsed with: CPython's
--- @json.loads@.
---
--- CPython keeps a lone surrogate escape (@"\\ud800"@) in a @str@. Once
--- petrus-json can keep one too (as a WTF-8 'Text', audit IMP-2), setting
--- its @loneSurrogates = KeepLoneSurrogates@ here is the one change the
--- provider path needs: the comment-body bound and every SQLite bind
--- already raise CPython's @UnicodeEncodeError@ on such a 'Text'
--- ('Hamsterdan.PyText.utf8EncodeError'), and the stored observation is
--- written with @ensure_ascii@, which escapes it again. Until then such
--- documents are refused as 'MalformedJson' (see DIVERGENCES.md).
+-- @json.loads@, which keeps a lone surrogate escape (@"\\ud800"@) in a
+-- @str@. Here it is kept as a WTF-8 'Text' ("Petrus.Json.Wtf8"). The
+-- comment-body bound and every SQLite bind raise CPython's
+-- @UnicodeEncodeError@ on such a 'Text' ('Hamsterdan.PyText.utf8EncodeError'),
+-- and the stored observation is written with @ensure_ascii@, which escapes
+-- it again, so the whole path behaves as the reference's does.
 providerLoads :: ParseOptions
-providerLoads = pythonLoads
+providerLoads = pythonLoads {loneSurrogates = KeepLoneSurrogates}
 
 -- | @json.loads(raw)@ for bytes: detect UTF-8, UTF-16 or UTF-32 as CPython
 -- does, decode, and parse with CPython's defaults (including the 4300-digit

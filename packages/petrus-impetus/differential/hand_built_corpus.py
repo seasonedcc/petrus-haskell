@@ -6,7 +6,7 @@ environment, e.g. from the repository root:
     cd upstream/petrus
     .venv/bin/python -I ../../packages/petrus-impetus/differential/hand_built_corpus.py
 
-The script writes ``hand_built_corpus.json`` next to itself.
+The script writes ``hand_built_corpus.json`` next to itself (or into the directory given as its first argument).
 ``HandBuiltCorpusSpec`` asserts that the Haskell port agrees on every case.
 
 A Haskell record built with its constructor checks nothing: it is the
@@ -85,7 +85,7 @@ from petrus.impetus.net_document import (
 )
 from petrus.impetus.petrinet import ANONYMOUS, Arc, ArcMode, Cel, Delay, Net, NetPath, Place, Transition, Until
 
-OUTPUT = Path(__file__).with_name("hand_built_corpus.json")
+OUTPUT_NAME = "hand_built_corpus.json"
 SEED = 20261010
 
 
@@ -654,12 +654,13 @@ def main() -> None:
     }
     head = json.dumps({key: corpus[key] for key in ("generator", "seed", "definition", "document", "projection")}, ensure_ascii=False)
     lines = ",\n".join(json.dumps(case, ensure_ascii=False) for case in CASES)
-    OUTPUT.write_text(head[:-1] + ', "cases": [\n' + lines + "\n]}\n", encoding="utf-8")
-    digest = hashlib.sha256(OUTPUT.read_bytes()).hexdigest()
+    output = (Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent) / OUTPUT_NAME
+    output.write_text(head[:-1] + ', "cases": [\n' + lines + "\n]}\n", encoding="utf-8")
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
     counts: dict[str, int] = {}
     for case in CASES:
         counts[str(case["op"])] = counts.get(str(case["op"]), 0) + 1
-    print(f"{len(CASES)} cases {counts}, {OUTPUT.stat().st_size} bytes, sha256 {digest}")
+    print(f"{len(CASES)} cases {counts}, {output.stat().st_size} bytes, sha256 {digest}")
 
 
 def project(positions, built_lineage):

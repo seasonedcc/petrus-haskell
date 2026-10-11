@@ -16,7 +16,7 @@ The Haskell suite replays each row and compares the results byte for byte.
 | Upstream | Haskell | Evidence |
 | --- | --- | --- |
 | `github_app/config.py`: `HostConfig.from_environment`, `installation_accounts` (TOML through `tomllib`, file custody checks, credential validation, watched authors, redaction) | `Hamsterdan.GitHub.Config` | `test/corpus/config.jsonl` (1500 installations files, 600 host environments: every snapshot and every `ConfigurationError` message); `AppFoundationSpec` "configuration" |
-| `github_app/webhooks.py`: `WebhookCustody` (envelope checks, `verify` before parse, `_parse` projection, dedupe, the retry schedule and parking, the `next_attempt_at` migration, `pending`/`eligible`/`acknowledge`/`retry`/`status`/`counts`/`failures`/`requeue`), `admit_conversation` | `Hamsterdan.GitHub.Webhooks` | `test/corpus/webhooks.jsonl`: 1000 `receive` sequences (outcomes and final SQLite rows, byte for byte) and 200 inbox lifecycles; `AppFoundationSpec` "webhooks", "conversation admission" |
+| `github_app/webhooks.py`: `WebhookCustody` (envelope checks, `verify` before parse, `_parse` projection, dedupe, the retry schedule and parking, the `next_attempt_at` migration, `pending`/`eligible`/`acknowledge`/`retry`/`status`/`counts`/`failures`/`requeue`), `admit_conversation` | `Hamsterdan.GitHub.Webhooks` | `test/corpus/webhooks.jsonl`: 1000 `receive` sequences (outcomes and final SQLite rows, byte for byte), 200 inbox lifecycles and 6 lone-surrogate sequences; `AppFoundationSpec` "webhooks", "conversation admission" |
 | githubkit `webhooks.sign` / `verify` | `sign`, `verify`, `verifier` / `verifyWith` | the webhook corpus (every receive verifies), `AppFoundationSpec` |
 | `github_app/routing.py`: `InstallationRegistry` (lifecycle events, reconciliation, fenced removal) | `Hamsterdan.GitHub.Routing` | `test/corpus/webhooks.jsonl` (300 routing sequences, outcomes and rows); `AppFoundationSpec` "routing" |
 | CPython `sqlite3` as the stores use it (busy timeout, scripts, `with connection:` transactions) | `Hamsterdan.Sqlite` (in hamsterdan-contracts, shared with the host and agents) | the inbox and routing rows in the webhook corpus |
@@ -34,10 +34,10 @@ The Haskell suite replays each row and compares the results byte for byte.
 | Corpus | Rows | Generator |
 | --- | ---: | --- |
 | `config.jsonl` (installations files and host environments) | 2100 | `scripts/gen_config_corpus.py` |
-| `webhooks.jsonl` (1000 receive, 200 inbox, 300 routing sequences) | 1500 | `scripts/gen_webhook_corpus.py` |
+| `webhooks.jsonl` (1000 receive, 200 inbox, 300 routing sequences, 6 lone-surrogate sequences) | 1506 | `scripts/gen_webhook_corpus.py` |
 | `effects.jsonl` (reads, Git objects, effects, broker and GraphQL operations against a simulated GitHub) | 4010 | `scripts/gen_effects_corpus.py` |
 | `http.jsonl` (the client stack over a scripted network) | 1400 | `scripts/gen_http_corpus.py` |
-| **Total** | **9010** | |
+| **Total** | **9016** | |
 
 Each generator is seeded and deterministic. To regenerate the corpora, run
 from the repository root:
@@ -113,8 +113,8 @@ They make the same assertions. Two tests change how the fake is wired:
 All are listed with their reasons in [DIVERGENCES.md](DIVERGENCES.md). None
 changes a wire format. In short:
 
-- Lone surrogates in provider JSON are refused, and very deep nesting is
-  parsed.
+- Very deep JSON nesting is parsed. (Lone surrogates in provider JSON are
+  kept, as CPython keeps them; DIVERGENCES 6 records how that was resolved.)
 - The members of the repository objects in an installation-token response are
   not validated.
 - `urlsplit`'s NFKC check and httpx's IDNA check are not reproduced. The

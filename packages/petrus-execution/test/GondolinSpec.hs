@@ -202,7 +202,7 @@ spec = describe "Gondolin provider" $ do
       B.readFile "../../upstream/petrus/src/petrus/motus/_execution/gondolin_sidecar.mjs" `shouldReturn` sidecarSource
 
     it "has valid Node syntax (test_sidecar_has_valid_node_syntax)" $ case node of
-      Nothing -> pendingWith "node is not on PATH"
+      Nothing -> expectationFailure "node is not on PATH: this example checks the sidecar with the real Node"
       Just executable -> withTempDir $ \tmp -> do
         let path = tmp </> "gondolin_sidecar.mjs"
         B.writeFile path sidecarSource
@@ -304,7 +304,7 @@ spec = describe "Gondolin provider" $ do
       readIORef signalled `shouldReturn` [(41, fromIntegral sigTERM), (41, fromIntegral sigKILL)]
 
   case node of
-    Nothing -> it "fake-SDK lifecycle" (pendingWith "node is not on PATH")
+    Nothing -> it "fake-SDK lifecycle" (expectationFailure "node is not on PATH: the fake-SDK lifecycle runs the sidecar under the real Node")
     Just _ -> fakeSuite sdk
 
   realSuite

@@ -86,16 +86,7 @@ instance Show Token where
   show = T.unpack . reprToken
 
 instance NFData Token where
-  rnf (Token c d) = rnf c `seq` jsonRnf d
-
-jsonRnf :: Json -> ()
-jsonRnf = \case
-  Array items -> foldr (seq . jsonRnf) () items
-  Object members -> foldr (\(k, v) r -> rnf k `seq` jsonRnf v `seq` r) () members
-  String s -> rnf s
-  Int i -> rnf i
-  Float d -> rnf d
-  _ -> ()
+  rnf (Token c d) = rnf c `seq` rnf d
 
 -- | The black token — control flow with no data.
 black :: Token

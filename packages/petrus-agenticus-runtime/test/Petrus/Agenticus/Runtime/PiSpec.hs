@@ -151,7 +151,7 @@ setHooks rig = setAdapterHooks rig.adapter
 -- alongside it has taken over 2 s, and once more than the whole 3 s. That
 -- start-up is not what these tests bound, so it is paid here, outside them.
 withNode :: (FilePath -> IO ()) -> IO ()
-withNode body = findExecutable "node" >>= maybe (pendingWith "Node is required for the private helper protocol test") (\node -> warm node >> body node)
+withNode body = findExecutable "node" >>= maybe (expectationFailure "node is not on PATH: the private helper protocol test runs the helper under the real Node") (\node -> warm node >> body node)
   where
     warm node = do
       (code, _, _) <- readProcessWithExitCode node ["-e", ""] ""

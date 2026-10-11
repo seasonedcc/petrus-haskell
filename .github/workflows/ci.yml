@@ -11,8 +11,9 @@ name: CI
 #   build      cabal build all (-Werror), incrementally from the latest cached
 #              dist-newstyle; then scripts/ci-tests plan decides which test
 #              suites run and spreads them over the test shards
-#   checks     scripts/interop --check against the build
-#   test (N)   cabal test for the suites of shard N, with PostgreSQL 17
+#   checks     scripts/interop --check against the build; scripts/check-corpora
+#   test (N)   cabal test for the suites of shard N, with PostgreSQL 17, then
+#              scripts/check-pending on their output
 #   viewer     scripts/interop --viewer petrus-viewer-server (the upstream
 #              petrus-viewer suites against the Haskell backend)
 #   container  the image and its runtime contract (scripts/container-smoke)
@@ -145,6 +146,14 @@ jobs:
   checks:
     needs: build
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    services:
+      postgres:
+        image: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 1s --health-timeout 5s --health-retries 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -168,6 +177,10 @@ jobs:
           PETRUS_TEST_POSTGRES: postgresql://postgres:postgres@localhost:5432/postgres
           PETRUS_TEST_DOCKER: "1"
         run: scripts/interop --check -j
+      - name: Committed corpora (every generator rerun against the pinned references)
+        env:
+          PETRUS_TEST_POSTGRES: postgresql://postgres:postgres@localhost:5432/postgres
+        run: scripts/check-corpora
 
   test:
     needs: build
@@ -211,7 +224,11 @@ jobs:
       - name: Upstream Python environment (petrus, petrus-engine, hamsterdan)
         run: for p in petrus petrus-engine hamsterdan; do scripts/upstream-python "$p" >/dev/null; done
       - name: "Tests (unit, conformance, interop): ${{ matrix.suites }}"
-        run: scripts/ci-tests run-shard plan.json "${{ matrix.name }}"
+        # A suite counts as passed only with no pending example but the
+        # declared opt-ins (run-shard runs scripts/check-pending on each).
+        run: scripts/ci-tests run-shard plan.json "${{ matrix.name }}" --logs "$RUNNER_TEMP/test-logs"
+      - name: No pending examples (a missing tool or server fails; only the opt-ins in scripts/check-pending may pend)
+        run: scripts/check-pending "$RUNNER_TEMP/test-logs"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

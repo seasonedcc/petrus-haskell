@@ -75,6 +75,26 @@ spec = do
       property $ \(Doc v) -> stringify (encodeJs v) === Right (encodeJs v)
     it "pretty output parses back to the same value" $
       property $ \(Doc v) -> stringify (encodePretty v) === Right (encodeJs v)
+    it "pretty output is JSON.stringify(v, null, 2) byte for byte" $ do
+      -- recorded from Node 22
+      fmap encodePretty (parseJs "{\"a\":[1,{\"b\":[]}],\"c\":{},\"d\\\"\":\"x\\n\"}")
+        `shouldBe` Right "{\n  \"a\": [\n    1,\n    {\n      \"b\": []\n    }\n  ],\n  \"c\": {},\n  \"d\\\"\": \"x\\n\"\n}"
+    it "pretty output matches a direct spelling of the format" $
+      property $ \(Doc v) -> encodePretty v === prettyRef 0 v
+
+-- | @JSON.stringify(v, null, 2)@ spelled out directly.
+prettyRef :: Int -> JsValue -> B.ByteString
+prettyRef ind = \case
+  JsArr [] -> "[]"
+  JsArr xs -> container "[" "]" [prettyRef (ind + 1) x | x <- xs]
+  JsObj o
+    | null (objectToList o) -> "{}"
+    | otherwise -> container "{" "}" ["\"" <> jsStringBytes k <> "\": " <> prettyRef (ind + 1) x | (k, x) <- objectToList o]
+  other -> encodeJs other
+  where
+    pad n = B.replicate (2 * n) 0x20
+    container open close items =
+      open <> "\n" <> B.intercalate ",\n" (map (pad (ind + 1) <>) items) <> "\n" <> pad ind <> close
 
 newtype Doc = Doc JsValue
   deriving stock (Show)

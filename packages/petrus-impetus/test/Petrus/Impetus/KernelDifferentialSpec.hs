@@ -10,7 +10,7 @@
 -- message), markings, statuses, watermarks, pending maturations, and the
 -- complete encoded schema-5 History — by canonical JSON spelling, so an
 -- int/float difference is a failure too.
-module Petrus.Impetus.KernelDifferentialSpec (spec) where
+module Petrus.Impetus.KernelDifferentialSpec (spec, kernelCases, startCase, perform) where
 
 import Control.Monad (forM_, unless, zipWithM_)
 import Data.ByteString qualified as BS
@@ -31,30 +31,23 @@ import Test.Hspec hiding (context, pending)
 
 spec :: Spec
 spec = describe "Petrus.Impetus.Instance differential corpus" $ do
-  path <- runIO (findExisting ["differential/kernel_corpus.json", "packages/petrus-impetus/differential/kernel_corpus.json"])
-  raw <- runIO (BS.readFile path)
-  let cases = case parseJson pythonLoads raw of
-        Right corpus | Array xs <- member "cases" corpus -> xs
-        Right _ -> error "kernel corpus: no cases"
-        Left problem -> error ("kernel corpus: " <> problem)
+  cases <- runIO kernelCases
   it "carries the generated cases" $ length cases `shouldSatisfy` (>= 200)
   forM_ cases $ \c -> it (T.unpack (text (member "name" c))) (replayCase c)
 
+-- | The committed corpus's cases.
+kernelCases :: IO [Json]
+kernelCases = do
+  path <- findExisting ["differential/kernel_corpus.json", "packages/petrus-impetus/differential/kernel_corpus.json"]
+  raw <- BS.readFile path
+  pure $ case parseJson pythonLoads raw of
+    Right corpus | Array xs <- member "cases" corpus -> xs
+    Right _ -> error "kernel corpus: no cases"
+    Left problem -> error ("kernel corpus: " <> problem)
+
 replayCase :: Json -> Expectation
 replayCase c = do
-  definition <- either (fail . T.unpack) pure (parseNetDefinitionText (text (member "definition" c)))
-  net <- either (fail . T.unpack) pure (compileNetDefinition definition)
-  let initial = markingFromList [(np (text (member "place" e)), map decodeToken (array (member "tokens" e))) | e <- array (member "initialMarking" c)]
-      uses predicate = predicate net
-      config =
-        defaultInstanceConfig
-          { initialMarking = initial
-          , guardImplementations = Map.fromList [(Symbol "small_total", smallTotal)]
-          , handlerImplementations = if uses usesHandler then Map.fromList [(Symbol "tag", PureHandler tag)] else Map.empty
-          , filterImplementations = if uses usesFilter then Map.fromList [(Symbol "even", even')] else Map.empty
-          , suppliedIdentity = Just (text (member "name" c))
-          }
-  inst <- newInstance net config >>= either (fail . T.unpack . renderInstanceError) pure
+  (_, inst) <- startCase c
   forM_ (zip [0 :: Int ..] (array (member "walk" c))) $ \(index, stepJson) -> do
     let action = member "action" stepJson
         context field = T.unpack (text (member "name" c)) <> " step " <> show index <> " " <> field
@@ -74,6 +67,25 @@ replayCase c = do
   let expected = array (member "history" c)
   length history `shouldBe` length expected
   zipWithM_ (\i (r, e) -> same ("history record " <> show i) (encodeRecord r) e) [0 :: Int ..] (zip history expected)
+
+-- | A case's net (compiled from its canonical definition) and a fresh
+-- Instance over it, configured as the generator configured the reference.
+startCase :: Json -> IO (Net, Instance)
+startCase c = do
+  definition <- either (fail . T.unpack) pure (parseNetDefinitionText (text (member "definition" c)))
+  net <- either (fail . T.unpack) pure (compileNetDefinition definition)
+  let initial = markingFromList [(np (text (member "place" e)), map decodeToken (array (member "tokens" e))) | e <- array (member "initialMarking" c)]
+      uses predicate = predicate net
+      config =
+        defaultInstanceConfig
+          { initialMarking = initial
+          , guardImplementations = Map.fromList [(Symbol "small_total", smallTotal)]
+          , handlerImplementations = if uses usesHandler then Map.fromList [(Symbol "tag", PureHandler tag)] else Map.empty
+          , filterImplementations = if uses usesFilter then Map.fromList [(Symbol "even", even')] else Map.empty
+          , suppliedIdentity = Just (text (member "name" c))
+          }
+  inst <- newInstance net config >>= either (fail . T.unpack . renderInstanceError) pure
+  pure (net, inst)
 
 -- | Run one scripted action; answer the fields the corpus records for it.
 perform :: Instance -> Json -> IO [(Text, Json)]

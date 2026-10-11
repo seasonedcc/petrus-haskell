@@ -7,7 +7,7 @@ test function is accounted for, run:
 
     python3 packages/petrus-impetus/scripts/parity_check.py
 
-It currently reports 668 in-scope functions and 0 unaccounted.
+It currently reports 672 in-scope functions and 0 unaccounted.
 
 Statuses:
 
@@ -16,6 +16,10 @@ Statuses:
 - **ported via CEL stub**: the test drives inline CEL through a test-local
   `CelCompilers` that recognises the test's exact expressions. The kernel's
   side of the seam (scopes, free-place checks, refusals) is what gets tested.
+  This package cannot depend on `petrus-cel`, so `petrus-cel` reruns every
+  one of these tests (26 in all) on real CEL, `Petrus.Cel.Impetus.celCompilers`,
+  under the same names in its `test/KernelSeam.hs`
+  ([ledger](../petrus-cel/PARITY.md)). The rows say so.
 - **enforced by types**: the case cannot be represented in Haskell.
 - **ported elsewhere**: the test's subject lives in another package of this
   repository, and that package ports it (the ledger row names the example).
@@ -28,6 +32,11 @@ Per-test ledgers, one row per upstream test function:
 [`parity-activity-seam.md`](parity-activity-seam.md).
 The remaining files are summarised in the table below, with the details in the
 spec modules' comments.
+
+The upstream tests are one view of parity. The other is the specification:
+[`spec/impetus-conformance.md`](../../spec/impetus-conformance.md) maps each
+of the 109 testable obligations of the six core `spec/` documents to the
+example that checks it.
 
 ## Summary by upstream file
 
@@ -48,13 +57,14 @@ parameters are separate Hspec examples where they are ported.
 | petrinet/test_golden_replay.py (3) | GoldenTracesSpec | 3 | | | | |
 | instance/test_fifo_queue.py (2) | FifoQueueSpec | 2 | | | | |
 | instance/test_passthrough_chain.py (1) | GoldenTracesSpec | 1 | | | | |
-| instance/ — 10 files (135) | see `parity-instance-a.md` | 104 | 20 | 4 | 5 | 2 |
+| instance/ — 10 files (135) | see `parity-instance-a.md` | 106 | 20 | 4 | 5 | 0 |
 | instance/ — 6 files (158) | see `parity-instance-b.md` | 148 | 3 | 7 | | 0 |
 | selection, history, history_store (in-memory), petrinet History halves | see `parity-history.md` | 61 | 3 | 3 | 11 | |
 | integration/test_activity_seam.py + binding/test_typed_bindings.py | see `parity-activity-seam.md` | 94 | 0 | 9 | 8 | |
-| test_net_definition.py (14) | NetDefinitionSpec, SpecFixturesSpec | 11 | | 3 | | |
-| test_net_document.py (8) | NetDocumentSpec, SpecFixturesSpec | 8 | | | | |
+| test_net_definition.py (14) | NetDefinitionSpec, SpecFixturesSpec, JsonSchemaSpec | 13 | | 1 | | |
+| test_net_document.py (8) | NetDocumentSpec, SpecFixturesSpec, JsonSchemaSpec | 8 | | | | |
 | test_net_document_lineage.py (9) | NetDocumentLineageSpec | 9 | | | | |
+| project/test_package_boundaries.py, the 4 Impetus rows (of 20) | BoundarySpec | 4 | | | | |
 
 Notes on the table:
 
@@ -63,13 +73,50 @@ Notes on the table:
 - The History halves of `test_arc_filters.py` and `test_read_arc.py` appear
   in both their petrinet rows and the history ledger's row. This includes the
   three `TestCelFilterSelection` cases, which are ported via CEL stub.
-- In `test_net_document.py`, the schema half of the partial-view test and the
-  tuple and non-string-key cases of the lineage metadata are enforced by
-  types; their other halves are ported.
-- Two `test_petrinet_dot.py` examples render real SVG and run only when
-  Graphviz `dot` is installed. Without it they are pending, which is why the
-  suite reports 2 pending. Every other render test uses a fake `dot` on the
-  search path, as upstream does with `monkeypatch`.
+- The JSON Schema tests (`test_pydantic_schema_is_strict_and_versioned`, the
+  schema half of `test_partial_fractional_view_is_valid_and_schema_is_strict`)
+  are ported against `netDefinitionV3JsonSchema` and `netDocumentV1JsonSchema`,
+  which `JsonSchemaSpec` also compares byte for byte with the reference's
+  `model_json_schema()` (`differential/*.schema.json`, regenerated live by
+  `LiveSpec`). `test_runtime_projection_and_direct_model_serialization_refuse_surrogates`
+  is ported with WTF-8 `Text` (`Petrus.Json.Wtf8`). The one remaining
+  "enforced by types" row of `test_net_definition.py` is
+  `test_models_are_deeply_immutable`.
+- In `test_net_document_lineage.py`, the tuple and non-string-key cases of
+  the lineage metadata are enforced by types; their other halves are
+  ported.
+- `test_package_boundaries.py` checks Python import graphs. `BoundarySpec`
+  checks the same boundaries over this repository's sources and Cabal
+  metadata, under the same test names:
+  - a facade re-export has the same `TypeRep` as the type in its defining
+    module, which is Python's `is`. The facade functions are pinned by their
+    types;
+  - the Petrinet layer is checked by walking the `import` declarations of
+    every library source from the `Petrus.Impetus.Petrinet*` modules. The
+    walk reaches no History, HistoryStore, Instance, Binding or Motus
+    module, which is upstream's forbidden list. It also reaches nothing
+    outside an allow-list: the layer itself, `Petrus.Impetus.Scope`, two
+    internal helpers, `Petrus.Activity.Number` and petrus-json. An import
+    that resolves to no library source fails, so a parsing slip cannot pass
+    vacuously;
+  - no library defines a `NetInstance` and there is no flat `Impetus`
+    module;
+  - the kernel library depends on no optional driver (PostgreSQL or Absurd).
+
+  The three project-wide rows (the lazy root surface, imports of defining
+  modules, the removed flat modules) are ported once, in petrus-engine's
+  `BoundarySpec` (`packages/petrus-engine/PARITY.md`).
+
+  Python's laziness itself (a module that loads nothing optional when
+  imported) has no Haskell counterpart; its structural content is what these
+  examples check. The `binding.cel` half of the facade test is petrus-cel's
+  `Petrus.Cel.Binding`. The other 13 rows of the file belong to the packages
+  that own their subjects (engine, dispatch, worker, transports, and the
+  PostgreSQL History store).
+- Two `test_petrinet_dot.py` examples render real SVG with Graphviz `dot`.
+  Upstream skips them when `dot` is missing; here they fail, so a missing
+  Graphviz cannot pass silently. Every other render test uses a fake `dot`
+  on the search path, as upstream does with `monkeypatch`.
 
 ## Ported by other packages (not counted in this package's table)
 
@@ -112,18 +159,19 @@ with `Petrus.Cel.Impetus.celCompilers`.
 The per-test rows are in `parity-activity-seam.md`, `parity-history.md`, and
 `parity-instance-a.md`.
 
-## Not at parity (2 upstream test functions)
+## Not at parity (0 upstream test functions)
 
-**Instance firing helpers the port does not export**, in `test_firing.py`.
-Upstream they are the public module functions
-`petrus.impetus.instance.firing.begin_firing` and `complete_firing` (the test
-imports them as `instance_begin_firing` and `instance_complete_firing`); the
-port keeps their work inside `Petrus.Impetus.Instance` and exports no
-equivalent. The same records and outcomes are asserted through the public
-`begin` and `complete` doors. See `docs/audit/impetus-spec.md` (IMP-3).
-
-- `TestBeginEndFiring.test_instance_begin_firing_retains_its_record_authoring_contract`
-- `TestBeginEndFiring.test_instance_complete_firing_retains_its_outcome_and_registration_contract`
+Every upstream test function in this slice is ported, enforced by types, or
+ported in the package that owns its subject. The last two, the
+Instance-layer record-authoring contracts in `test_firing.py`
+(`test_instance_begin_firing_retains_its_record_authoring_contract` and
+`test_instance_complete_firing_retains_its_outcome_and_registration_contract`),
+are ported against `Petrus.Impetus.Instance.Firing.instanceBeginFiring` /
+`instanceCompleteFiring`, the reference's public
+`petrus.impetus.instance.firing.begin_firing` / `complete_firing` (IMP-3 in
+`docs/audit/impetus-spec.md`). The Haskell names carry the `instance` prefix
+the upstream test imports them under, so they never clash with the Petrinet
+`beginFiring` / `completeFiring` that `Petrus.Impetus.Petrinet` exports.
 
 ## Net definition and document edge cases
 
@@ -152,6 +200,22 @@ with no argument or one string (`differential/failure_text_corpus.json`,
 
 ## Beyond upstream
 
+- **Specification obligations upstream does not test.** Two examples were
+  added to give these obligations a check (`spec/impetus-conformance.md`,
+  I-005 and I-012). Their messages were captured from the reference.
+  - `RuntimeSpec`, "typed-place initial marking": a token of another color,
+    or a black token, in a typed place's initial marking is refused before
+    any History record. Upstream checks this only through Engine load.
+  - `SchemaSpec`, "rejects an arc between two transitions": upstream tests
+    only the place-to-place case.
+- **Named identity values.** `InstanceIdentity`, `DeliveryIdentity` and
+  `FiringOccurrenceId` are newtypes with validating constructors
+  (`Petrus.Impetus.Instance.Identity`; DIVERGENCES item 15).
+  `canonical_net_path` is `canonicalNetPath`. Upstream exercises these only
+  through `AcceptedDelivery` and Instance construction. Five examples check
+  them directly, with the reference's messages:
+  - `InstanceIdentitySpec`, "identity values": 4 examples;
+  - `SchemaSpec`, "canonicalizes an exact protocol spelling": 1 example.
 - **Byte identity.**
   - Every `spec/` fixture is loaded. The valid ones re-serialize
     byte-identically, and the invalid ones are refused with the reference's
@@ -175,6 +239,21 @@ with no argument or one string (`differential/failure_text_corpus.json`,
     every action it records the candidate bindings, the firing outcome or
     refusal (class and message), the marking, status, watermark, and next
     maturation, and the complete encoded History (`KernelDifferentialSpec`).
+- **Live round trips through the pinned reference** (`LiveSpec`, 4
+  examples, selected by `scripts/interop`). What Haskell writes today goes
+  to the reference's own `parse_net_definition`, `parse_net_document` and
+  `decode_record`, and must come back byte for byte from
+  `serialize_net_definition`, `serialize_net_document` and
+  `encode_record` (`Petrus.TestSupport.Reference`, one interpreter run per
+  example; without the reference the group fails):
+  - definitions and documents (with generated views) of 200 nets from the
+    round-trip properties' generators, fixed seed;
+  - Haskell's rewrite of the 168 definitions and documents the corpus
+    admits;
+  - every kernel-corpus net's projected definition, and the History Haskell
+    writes driving each kernel-corpus script;
+  - every record category, and records whose token data holds lone
+    surrogates in strings and member names.
 - **Properties (QuickCheck).**
   - `KernelPropertiesSpec`: the marking is the replay of History; resume is
     equivalent; the History round-trips the codec through JSON text; tokens
@@ -183,4 +262,26 @@ with no argument or one string (`differential/failure_text_corpus.json`,
     seed.
   - The history slice's 6 properties.
   - The 4 Net-definition properties.
-  - The port of `test_instance_replay_properties.py`, with 300 examples.
+  - The port of `test_instance_replay_properties.py`, with 300 examples
+    (see "Hypothesis mapping" below).
+
+## Hypothesis mapping
+
+Upstream uses Hypothesis in one test of this slice,
+`instance/test_instance_replay_properties.py::test_legal_instance_actions_remain_replayable_and_resumable`.
+Its port, `InstanceReplayPropertiesSpec`, is a QuickCheck property that keeps
+the strategies, the settings and the stateful structure:
+
+| Hypothesis | QuickCheck port |
+| --- | --- |
+| `@settings(max_examples=300)` | `maxSuccess = 300` (`modifyArgs`) |
+| `derandomize=True` | a fixed `replay` seed (`derandomizedSeed`), so every run, local and CI, draws the same scenarios; hspec's `--seed` does not move it |
+| `deadline=None` | nothing to map: QuickCheck has no per-example deadline |
+| `_scenario_specs()` (`@st.composite`): per transition `st.integers(0, 2)` consume place, `st.integers(1, 2)` consume weight, `st.integers(0, 2)` output place, `st.sampled_from((None, READ, INHIBIT))` gate mode, `st.sampled_from` of the other places for the gate, `st.integers(1, 2)` gate weight; `st.integers(0, 2)` source output; per place `st.lists(st.sampled_from(TOKENS), max_size=3)`; `st.integers(0, 20)` actions | `genScenario` / `genOrdinary`: `chooseInt` and `elements` over the same ranges and token set, `vectorOf` of 0–3 tokens per place |
+| `st.data()` with `data.draw(st.sampled_from(legal))` per action, then `data.draw` of the delivered token, the begun candidate, the completed occurrence | `QCM.pick (elements ...)` inside `monadicIO`, drawn after reading the live candidates and in-flight occurrences, so each draw ranges over what is legal at that point |
+| `note(...)` | `forAll` shows the scenario; `counterexample` adds each drawn action |
+| `@example` cases | none upstream, none here |
+
+No other test in this slice uses Hypothesis (`test_net_document_lineage.py`
+only mentions the word in fixture data). The kernel, history and
+Net-definition properties above are beyond the reference.

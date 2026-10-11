@@ -6,7 +6,7 @@ environment, e.g. from the repository root:
     cd upstream/petrus
     .venv/bin/python ../../packages/petrus-agenticus-core/differential/hands_corpus.py
 
-The script writes ``hands_corpus.json`` next to itself. It records:
+The script writes ``hands_corpus.json`` next to itself (or into the directory given as its first argument). It records:
 
 - ``requests``: ``parse_tool_request`` cases (valid and invalid on every
   axis: envelope shape, version, method, params keys, every bound at its
@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import random
 from pathlib import Path
 from threading import RLock
@@ -772,7 +773,8 @@ def main() -> None:
         "grants": grant_corpus(rng),
         "sessions": [run_session(rng, index) for index in range(50)],
     }
-    (HERE / "hands_corpus.json").write_text(json.dumps(corpus, indent=1, ensure_ascii=False) + "\n")
+    out = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE
+    (out / "hands_corpus.json").write_text(json.dumps(corpus, indent=1, ensure_ascii=False) + "\n")
 
 
 if __name__ == "__main__":

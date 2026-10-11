@@ -24,6 +24,10 @@ namedSpec = NetSpec [place pa, place pb] [transition tt] [arc pa tt, arc tt pb] 
 namedNet :: Maybe Text -> Net
 namedNet = mustNet . namedSpec
 
+-- | The value of a refusal-free construction.
+mustRight :: Either Text a -> a
+mustRight = either (error . show) id
+
 -- | A run instance over a one-token line net.
 ranOver :: Net -> InstanceConfig -> IO Instance
 ranOver net cfg = do
@@ -110,3 +114,32 @@ spec = describe "Instance identity" $ do
       history <- Store.inMemoryHistoryStore
       Store.append history (RInstanceCreated (InstanceCreated "order-7" Nothing 0))
       replayNextOccurrence <$> Store.records history `shouldReturn` 1
+
+  -- Beyond upstream: the named identity values of petrus.impetus.instance
+  -- (InstanceIdentity, DeliveryIdentity, FiringOccurrenceId), which upstream
+  -- exercises only through AcceptedDelivery and Instance construction. The
+  -- messages were captured from the reference.
+  describe "identity values" $ do
+    it "validates each identity with the reference's rule and message" $ do
+      instanceIdentityText <$> mkInstanceIdentity "order-7" `shouldBe` Right "order-7"
+      deliveryIdentityText <$> mkDeliveryIdentity "evt-1" `shouldBe` Right "evt-1"
+      firingOccurrenceIdInt <$> mkFiringOccurrenceId 4 `shouldBe` Right 4
+      mkInstanceIdentity "" `shouldFailWith` "Instance identity must be a non-empty string of the exact built-in type, got ''"
+      mkDeliveryIdentity "" `shouldFailWith` "delivery identity must be a non-empty string of the exact built-in type, got ''"
+      mkFiringOccurrenceId 0 `shouldFailWith` "firing occurrence must be a positive integer of the exact built-in type, got 0"
+      mkFiringOccurrenceId (-3) `shouldFailWith` "firing occurrence must be a positive integer of the exact built-in type, got -3"
+    it "builds an accepted delivery from validated identities, the first refusal winning" $ do
+      acceptedDelivery "" (np "s") "" 0 `shouldFailWith` "Instance identity must be a non-empty string of the exact built-in type, got ''"
+      accepted <- expectRight (acceptedDelivery "order-7" (np "s") "evt-1" 2)
+      (accepted.instanceId, accepted.source, accepted.identity, accepted.occurrence)
+        `shouldBe` (mustRight (mkInstanceIdentity "order-7"), np "s", mustRight (mkDeliveryIdentity "evt-1"), mustRight (mkFiringOccurrenceId 2))
+    it "refuses an empty supplied identity at construction" $ do
+      created <- newInstance (namedNet Nothing) defaultInstanceConfig {suppliedIdentity = Just ""}
+      either (Left . renderInstanceError) (const (Right ())) created
+        `shouldFailWith` "Instance identity must be a non-empty string of the exact built-in type, got ''"
+    it "refuses to resume a History whose identity fact is empty, with the reference's message" $ do
+      history <- Store.inMemoryHistoryStore
+      Store.append history (RInstanceCreated (InstanceCreated "" Nothing 0))
+      resumed <- resume (namedNet Nothing) history defaultInstanceConfig
+      either (Left . renderInstanceError) (const (Right ())) resumed
+        `shouldFailWith` "Instance identity must be a non-empty string, got ''"

@@ -7,7 +7,8 @@
 -- variables @PiA2InstallationConfig.from_environment@ reads.
 module SecretLaunchSpec (spec) where
 
-import Control.Monad (forM_, when)
+import Control.Exception (SomeException, try)
+import Control.Monad (filterM, forM_, when)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Map.Strict qualified as Map
@@ -17,8 +18,8 @@ import Data.Text.Encoding qualified as TE
 import Fakes (wrapperScript)
 import Petrus.Json (Json (..), defaultDumps, dumps)
 import Petrus.TestSupport.Repo (repoRoot)
-import System.Directory (createDirectoryIfMissing)
-import System.Environment (getEnvironment, getExecutablePath)
+import System.Directory (createDirectoryIfMissing, doesFileExist, findExecutable)
+import System.Environment (getEnvironment, getExecutablePath, lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Posix.Files (setFileMode)
@@ -46,9 +47,10 @@ defaults = Launch Nothing False False
 
 data Result = Result {code :: ExitCode, out :: Text, err :: Text}
 
--- | @launch(tmp_path, missing=..., denied=..., unusable_home=...)@.
-launch :: FilePath -> Launch -> IO Result
-launch tmp options = do
+-- | @launch(tmp_path, missing=..., denied=..., unusable_home=...)@, under
+-- the given bash, or through the script's own @#!/usr/bin/env bash@.
+launch :: Maybe FilePath -> FilePath -> Launch -> IO Result
+launch bash tmp options = do
   createDirectoryIfMissing True tmp
   root <- repoRoot
   binary <- getExecutablePath
@@ -105,7 +107,8 @@ launch tmp options = do
         setWorkingDir root
           . setEnv environment
           . setStdin nullStream
-          $ proc (root </> "scripts" </> "with-runtime-secrets") [binary, "--launch-child"]
+          $ let script = root </> "scripts" </> "with-runtime-secrets"
+             in maybe (proc script [binary, "--launch-child"]) (\b -> proc b [script, binary, "--launch-child"]) bash
   finished <- timeout 10000000 (readProcess config)
   case finished of
     Nothing -> fail "with-runtime-secrets timed out"
@@ -117,52 +120,76 @@ launch tmp options = do
 -- | Bash before 4.4 cannot expand the launcher's empty @op_config@ array
 -- under @set -u@ (macOS ships 3.2), so a start without @OP_CONFIG_DIR@
 -- needs a newer bash; the reference test fails the same way there.
-modernBash :: IO Bool
-modernBash = do
-  (_, version) <- readProcessStdout (proc "bash" ["-c", "echo $((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1]))"])
-  pure (maybe False (>= (404 :: Int)) (readMaybeInt (BL.toStrict version)))
+-- Production images run bash 5. These examples run the launcher under the
+-- first bash of at least 4.4 among @$PETRUS_BASH@ (which, when set, must be
+-- one), @bash@ on the PATH, and Homebrew's (@/opt/homebrew/bin/bash@,
+-- @/usr/local/bin/bash@), and fail when there is none.
+withModernBash :: (FilePath -> IO ()) -> IO ()
+withModernBash action =
+  lookupEnv "PETRUS_BASH" >>= \case
+    Just override -> do
+      modern <- isModernBash override
+      if modern
+        then action override
+        else expectationFailure ("PETRUS_BASH=" <> override <> " is not a bash of version 4.4 or later")
+    Nothing -> do
+      onPath <- findExecutable "bash"
+      found <- filterM isModernBash (maybe id (:) onPath ["/opt/homebrew/bin/bash", "/usr/local/bin/bash"])
+      case found of
+        bash : _ -> action bash
+        [] ->
+          expectationFailure
+            "scripts/with-runtime-secrets needs bash 4.4 or later, and none was found (macOS ships 3.2): \
+            \install one (Homebrew: brew install bash) or set PETRUS_BASH to its path; see docs/reproducing.md"
+
+isModernBash :: FilePath -> IO Bool
+isModernBash path = do
+  present <- doesFileExist path
+  if not present
+    then pure False
+    else do
+      answer <- try (readProcessStdout (proc path ["-c", "echo $((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1]))"]))
+      pure $ case answer of
+        Right (ExitSuccess, version) -> maybe False (>= (404 :: Int)) (readMaybeInt (BL.toStrict version))
+        Right _ -> False
+        Left (_ :: SomeException) -> False
   where
     readMaybeInt bytes = case reads (T.unpack (T.strip (TE.decodeUtf8 bytes))) of
       [(n, "")] -> Just n
       _ -> Nothing
 
-needsModernBash :: IO () -> IO ()
-needsModernBash action = do
-  modern <- modernBash
-  if modern then action else pendingWith "bash older than 4.4 cannot expand an empty array under set -u; production images run bash 5"
-
 spec :: Spec
 spec = describe "tests/unit/host/test_secret_launch.py" do
-  it "test_launcher_refreshes_multiline_values_and_excludes_bootstrap_from_application" $ needsModernBash do
+  it "test_launcher_refreshes_multiline_values_and_excludes_bootstrap_from_application" $ withModernBash \bash ->
     withSystemTempDirectory "secret-launch" \tmp -> do
-      result <- launch (tmp </> "case") defaults
+      result <- launch (Just bash) (tmp </> "case") defaults
       (result.code, result.err) `shouldBe` (ExitSuccess, "")
       result.out `shouldBe` "current credentials accepted\n"
 
-  it "test_each_application_start_fetches_current_environment" $ needsModernBash do
+  it "test_each_application_start_fetches_current_environment" $ withModernBash \bash ->
     withSystemTempDirectory "secret-launch" \tmp -> do
-      first <- launch (tmp </> "case") defaults
-      second <- launch (tmp </> "case") defaults
+      first <- launch (Just bash) (tmp </> "case") defaults
+      second <- launch (Just bash) (tmp </> "case") defaults
       (first.code, second.code) `shouldBe` (ExitSuccess, ExitSuccess)
       BS.readFile (tmp </> "case" </> "fetch-count") `shouldReturn` "2"
 
   it "test_temporary_cli_configuration_allows_start_without_a_writable_home" do
     withSystemTempDirectory "secret-launch" \tmp -> do
-      result <- launch (tmp </> "case") defaults {unusableHome = True}
+      result <- launch Nothing (tmp </> "case") defaults {unusableHome = True}
       (result.code, result.err) `shouldBe` (ExitSuccess, "")
       result.out `shouldBe` "current credentials accepted\n"
 
   describe "test_missing_environment_variable_cannot_fall_back_to_ambient_authority" do
     forM_ required \name ->
-      it (T.unpack name) $ needsModernBash do
+      it (T.unpack name) $ withModernBash \bash ->
         withSystemTempDirectory "secret-launch" \tmp -> do
-          result <- launch (tmp </> "case") defaults {missing = Just name}
+          result <- launch (Just bash) (tmp </> "case") defaults {missing = Just name}
           result.code `shouldNotBe` ExitSuccess
           result.out `shouldBe` ""
           result.err `shouldNotSatisfy` T.isInfixOf "stale-secret-canary"
 
-  it "test_retrieval_failure_prevents_application_start" $ needsModernBash do
+  it "test_retrieval_failure_prevents_application_start" $ withModernBash \bash ->
     withSystemTempDirectory "secret-launch" \tmp -> do
-      result <- launch (tmp </> "case") defaults {denied = True}
+      result <- launch (Just bash) (tmp </> "case") defaults {denied = True}
       result.code `shouldBe` ExitFailure 23
       (result.out, result.err) `shouldBe` ("", "")

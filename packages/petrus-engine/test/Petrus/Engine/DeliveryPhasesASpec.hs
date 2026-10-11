@@ -30,7 +30,7 @@ import Petrus.Impetus.Binding
 import Petrus.Impetus.History.Records
 import Petrus.Impetus.HistoryStore (HistoryStore (..), inMemoryHistoryStore)
 import Petrus.Impetus.HistoryStore qualified as Store
-import Petrus.Impetus.Instance (AcceptedDelivery (..), DeliveryAnswer (..), DeliveryScope (..), FiringOutcome (..))
+import Petrus.Impetus.Instance (AcceptedDelivery (..), DeliveryAnswer (..), DeliveryScope (..), FiringOutcome (..), deliveryIdentityText, firingOccurrenceIdInt)
 import Petrus.Impetus.Petrinet hiding (token)
 import Petrus.Impetus.Scope (lifecycleScope)
 import Petrus.Impetus.TestSupport (netOf, np, tok, tokD)
@@ -230,7 +230,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
     completed <- Engine.completeDelivery loaded reconstructed
 
     reconstructed `shouldBe` accepted
-    completed.occurrence `shouldBe` accepted.occurrence
+    completed.occurrence `shouldBe` firingOccurrenceIdInt accepted.occurrence
     recorded <- Engine.records loaded
     map recordInstant recorded `shouldSatisfy` all (== FloatNumber 0.5)
 
@@ -241,7 +241,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
 
     accepted <- acceptOn engine src [token] "event-7"
 
-    (accepted.source, accepted.identity, accepted.occurrence) `shouldBe` (src, "event-7", 1)
+    (accepted.source, deliveryIdentityText accepted.identity, firingOccurrenceIdInt accepted.occurrence) `shouldBe` (src, "event-7", 1)
     recorded <- Store.records history
     drop (length recorded - 2) recorded `shouldBe` [eventDelivered src [token] "event-7" 1, firingBegun src 1]
     recorded `shouldSatisfy` all (\case RTokensProduced _ -> False; RFiringCompleted _ -> False; _ -> True)
@@ -254,7 +254,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
     accepted <- acceptOn engine src [token] "event-7"
     acceptedRecords <- Store.records history
 
-    reconstructed <- acceptOn engine src [token] accepted.identity
+    reconstructed <- acceptOn engine src [token] (deliveryIdentityText accepted.identity)
 
     reconstructed `shouldBe` accepted
     Store.records history `shouldReturn` acceptedRecords
@@ -266,7 +266,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
 
     accepted <- acceptOn engine src [token] "event-7"
 
-    accepted.occurrence `shouldBe` 1
+    firingOccurrenceIdInt accepted.occurrence `shouldBe` 1
     reopened <- jsonl path >>= Store.records
     drop (length reopened - 2) reopened `shouldBe` [eventDelivered src [token] "event-7" 1, firingBegun src 1]
 
@@ -300,7 +300,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
     reconstructed <- acceptOn resumed src [token] "event-7"
     reconstructed `shouldBe` accepted
     completed <- Engine.completeDelivery resumed reconstructed
-    completed.occurrence `shouldBe` accepted.occurrence
+    completed.occurrence `shouldBe` firingOccurrenceIdInt accepted.occurrence
 
   -- composed_delivery_requires_stable_identity_before_history_mutation: N/A
   -- by construction — 'Engine.deliver' takes the identity as a required

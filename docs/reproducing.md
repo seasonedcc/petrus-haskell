@@ -24,11 +24,14 @@ several runners ([Continuous integration](#continuous-integration)).
 | Node.js | 22 (CI pins 22.19.0) | the Gondolin sidecar and Pi helper suites; the petrus-viewer suites and the viewer benchmark (with pnpm) |
 | pnpm | 11.5.1 | the petrus-viewer suites (`--viewer`) and the viewer benchmark |
 | Graphviz (`dot`) | any | petrus-impetus's diagram rendering tests |
+| bash | 4.4 or later | hamsterdan-operator's secret-launch tests (macOS ships bash 3.2). They use `$PETRUS_BASH` when it is set, else the first bash of at least 4.4 among `bash` on `PATH`, `/opt/homebrew/bin/bash` and `/usr/local/bin/bash` |
+
+A suite whose tool is missing fails and names the tool; it does not skip.
 
 On macOS with Homebrew:
 
 ```sh
-brew install ghcup uv zeromq libpq sqlite node pnpm graphviz postgresql@17
+brew install ghcup uv zeromq libpq sqlite node pnpm graphviz bash postgresql@17
 ghcup install ghc 9.10.3 && ghcup set ghc 9.10.3
 ghcup install cabal 3.16.1.0 && ghcup set cabal 3.16.1.0
 ```
@@ -106,9 +109,19 @@ It runs, in order, and stops at the first failing step:
    selects tests.
 6. `cabal test all` under `scripts/with-postgres`, every test binary with
    `+RTS -M2G -RTS`. This includes the conformance and interop groups.
-7. `scripts/bench --check`: every package's benchmark results document how
+7. `scripts/check-pending`: no example went pending in step 6. A pending
+   example is a test that did not run, so a missing tool (Graphviz `dot`,
+   `node`) or server fails the run. The only examples that may stay pending
+   are listed in the script: the Docker tests, which wait for
+   `PETRUS_TEST_DOCKER=1` (CI sets it, and check-all refuses to run in CI
+   without it), and the reference's own opt-in acceptance tests. Those
+   acceptance tests need provider credentials or exactly installed external
+   toolchains, and the reference skips them too.
+8. `scripts/check-corpora`: every committed corpus is regenerated against the
+   pinned references and must come out unchanged.
+9. `scripts/bench --check`: every package's benchmark results document how
    to rerun them, and `bench-results/summary.md` matches them.
-8. `scripts/check-parity`: the parity table's claims hold.
+10. `scripts/check-parity`: the parity table's claims hold.
 
 `-j2` limits cabal's parallelism; leave it out to use every core.
 `--viewer` adds, after the tests, the upstream petrus-viewer suites against
@@ -145,6 +158,18 @@ passes hspec's `--fail-on=empty,pending`, so a renamed group or a test that
 goes pending fails it. `--viewer` needs `pnpm install` in
 `upstream/petrus-viewer` (and `pnpm build` plus
 `npx playwright install chromium` for its browser suites).
+
+The committed differential corpora, fixture databases and generated modules
+are themselves reference output. `scripts/check-corpora` (also part of
+`scripts/check-all`) reruns every generator against the pinned references
+and fails on any file that no longer matches, so a corpus cannot go stale
+behind a passing replay:
+
+```sh
+scripts/check-corpora                  # every generator (about 40 s)
+scripts/check-corpora --list           # each generator and the files it writes
+scripts/check-corpora --update NAME    # write NAME's regenerated files
+```
 
 ## Benchmarks
 
@@ -368,8 +393,8 @@ job, spread over Blacksmith runners so that they run side by side:
 | --- | --- | --- |
 | `lint` | 2 vCPU | `check-pins`, `lint-skips`, `lint-hamsterdan-architecture`, `bench --check`, `check-parity`, the runtime test ledgers (`parity_check.py`) |
 | `build` | 16 vCPU | `cabal build all` (`-Werror`); then plans the test shards |
-| `checks` | 4 vCPU | `scripts/interop --check` (with the PostgreSQL and Docker variables set, so that the selection counts those examples too) |
-| `test (1)` … `test (N)` | 8 vCPU | the upstream Python environments, then `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest) |
+| `checks` | 4 vCPU | `scripts/interop --check` (with the PostgreSQL and Docker variables set, so that the selection counts those examples too); `scripts/check-corpora`, with PostgreSQL 17 |
+| `test (1)` … `test (N)` | 8 vCPU | the upstream Python environments, then `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest); then `scripts/check-pending` on their output (a suite with a pending example outside the declared opt-ins does not count as passed) |
 | `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium |
 | `container` | 16 vCPU | none (Docker): the image and `scripts/container-smoke` ([The container image](#the-container-image)) |
 | `ci` | 2 vCPU | the verdict: green only when every job above is |

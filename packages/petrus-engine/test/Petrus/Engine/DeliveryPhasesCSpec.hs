@@ -30,6 +30,9 @@ import Petrus.Impetus.Instance
   , FiringOutcome (..)
   , PriorAcknowledgement (..)
   , acceptedDelivery
+  , deliveryIdentityText
+  , firingOccurrenceIdInt
+  , instanceIdentityText
   )
 import Petrus.Impetus.Petrinet hiding (route, token)
 import Petrus.Impetus.TestSupport (netOf, np, tokD)
@@ -321,7 +324,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
     engine <- createWith ingressNet "mismatched-delivery" history plain
     accepted <- accept engine src [tokD "X" (Int 7)] "event-7"
     acceptedRecords <- Store.records history
-    let mismatched = carrier accepted.instanceId accepted.source "other-event" accepted.occurrence
+    let mismatched = carrier (instanceIdentityText accepted.instanceId) accepted.source "other-event" (firingOccurrenceIdInt accepted.occurrence)
 
     Engine.completeDelivery engine mismatched `shouldThrow` valueError "acceptance does not match firing occurrence 1"
 
@@ -336,7 +339,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
     accepted <- accept engine src [tokD "X" (Int 7)] "event-7"
     other <- accept engine otherSource [tokD "Y" (Int 8)] "event-8"
     acceptedRecords <- Store.records history
-    let wrong = carrier accepted.instanceId accepted.source accepted.identity other.occurrence
+    let wrong = carrier (instanceIdentityText accepted.instanceId) accepted.source (deliveryIdentityText accepted.identity) (firingOccurrenceIdInt other.occurrence)
 
     Engine.completeDelivery engine wrong `shouldThrow` valueError "acceptance does not match firing occurrence 2"
 
@@ -367,7 +370,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
     engine <- createWith ingressNet "malformed-identity" history plain
     accepted <- accept engine src [tokD "X" (Int 7)] "event-7"
     acceptedRecords <- Store.records history
-    case acceptedDelivery accepted.instanceId accepted.source "" accepted.occurrence of
+    case acceptedDelivery (instanceIdentityText accepted.instanceId) accepted.source "" (firingOccurrenceIdInt accepted.occurrence) of
       Left message -> message `shouldSatisfy` T.isInfixOf "identity must be a non-empty string"
       Right malformed -> expectationFailure ("expected a refusal, got " <> show malformed)
     Store.records history `shouldReturn` acceptedRecords
@@ -379,7 +382,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
     engine <- createWith ingressNet "strict-instance-carrier" history plain
     accepted <- accept engine src [tokD "X" (Int 7)] "event-7"
     acceptedRecords <- Store.records history
-    case acceptedDelivery "" accepted.source accepted.identity accepted.occurrence of
+    case acceptedDelivery "" accepted.source (deliveryIdentityText accepted.identity) (firingOccurrenceIdInt accepted.occurrence) of
       Left message -> message `shouldSatisfy` T.isInfixOf "Instance identity must be a non-empty string"
       Right malformed -> expectationFailure ("expected a refusal, got " <> show malformed)
     Store.records history `shouldReturn` acceptedRecords
@@ -391,7 +394,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
     engine <- createWith ingressNet "strict-occurrence-carrier" history plain
     accepted <- accept engine src [tokD "X" (Int 7)] "event-7"
     acceptedRecords <- Store.records history
-    case acceptedDelivery accepted.instanceId accepted.source accepted.identity (-1) of
+    case acceptedDelivery (instanceIdentityText accepted.instanceId) accepted.source (deliveryIdentityText accepted.identity) (-1) of
       Left message -> message `shouldSatisfy` T.isInfixOf "firing occurrence must be a positive integer"
       Right malformed -> expectationFailure ("expected a refusal, got " <> show malformed)
     Store.records history `shouldReturn` acceptedRecords

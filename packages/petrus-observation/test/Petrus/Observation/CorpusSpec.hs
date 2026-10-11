@@ -4,7 +4,7 @@
 -- snapshot, History page, and observed Net document must equal the
 -- reference's exactly (member order and int/float spelling included);
 -- each recorded refusal must have the reference's exact text.
-module Petrus.Observation.CorpusSpec (spec) where
+module Petrus.Observation.CorpusSpec (spec, scenario) where
 
 import Control.Monad (forM_)
 import Data.Text (Text)

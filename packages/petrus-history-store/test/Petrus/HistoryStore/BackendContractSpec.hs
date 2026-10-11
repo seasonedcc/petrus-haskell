@@ -139,6 +139,24 @@ backendContract backend withReopen = describe ("backend contract (" <> backend <
       Store.size history `shouldReturn` 0
       (reopen >>= Store.records) `shouldReturn` []
 
+    -- Beyond the reference's NaN case: every refusal of @json.dumps@ (here an
+    -- integer over CPython's 4300-digit limit in token data) fails loud with
+    -- the backend's "cannot durably encode" text, on every backend alike,
+    -- and leaves the stored history exactly as it was (no blank line, no
+    -- partial row), so the next load still succeeds.
+    it "an over-long integer fails loud and leaves the history unchanged" $ withReopen $ \reopen -> do
+      history <- reopen
+      let kept = RTokensInitialized (TokensInitialized queue [black] 0 [] Nothing)
+          huge = RTokensProduced (TokensProduced out [tokD "x" (Object [("n", Int (10 ^ (5000 :: Int)))])] 1 [] Nothing 1)
+          refusal = "cannot durably encode TokensProduced: " <> T.pack (encodeErrorMessage (IntegerTooLarge maxIntStrDigits)) <> " — durable instants"
+      Store.append history kept
+      Store.append history huge
+        `shouldThrow` \(HistoryStoreError m) -> refusal `T.isPrefixOf` m && "must be JSON-faithful values" `T.isSuffixOf` m
+      history.extend [RFiringBegun (FiringBegun work 1 Nothing 1), huge]
+        `shouldThrow` \(HistoryStoreError m) -> refusal `T.isPrefixOf` m
+      Store.records history `shouldReturn` [kept]
+      (reopen >>= Store.records) `shouldReturn` [kept]
+
   describe "Instance parity" $ do
     let driven reopen = do
           store <- reopen

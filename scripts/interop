@@ -71,8 +71,8 @@ PATTERNS: Dict[str, List[str]] = {
     "petrus-agenticus": ["differential/"],
     "petrus-agenticus-core": ["differential", "interop: custody", "hands/test_conformance.py"],
     "petrus-agenticus-runtime": ["differential/", "hosts differential corpus", "verbatim and interop"],
-    "petrus-cel": ["differential corpus"],
-    "petrus-dsl": ["differential corpus"],
+    "petrus-cel": ["differential corpus", "live round trip through the pinned reference"],
+    "petrus-dsl": ["differential corpus", "live round trip through the pinned reference"],
     "petrus-dst": [
         "Python-authored",
         "Python-recorded",
@@ -90,12 +90,12 @@ PATTERNS: Dict[str, List[str]] = {
     "petrus-history-postgres": ["PostgreSQL History interop with the reference"],
     "petrus-history-store": ["JSONL interop with the reference", "SQLite History interop with the reference"],
     "petrus-http-core": ["CPython"],
-    "petrus-impetus": ["differential corpus", "golden traces", "spec/ fixtures", "firing_failure_text"],
+    "petrus-impetus": ["differential corpus", "golden traces", "spec/ fixtures", "firing_failure_text", "live round trip through the pinned reference"],
     "petrus-json": ["CPython", "Python"],
     "petrus-motus": ["Local Dispatch interop with the reference", "Worker CLI"],
     "petrus-motus-absurd": ["interop with the pinned reference"],
     "petrus-motus-zeromq": ["ZeroMQ interop with the reference"],
-    "petrus-observation": ["differential corpus"],
+    "petrus-observation": ["differential corpus", "live round trip through the pinned reference"],
     "petrus-observation-http": ["byte-identical to the upstream server", "Python urllib clients"],
     "petrus-posix": ["Python", "upstream"],
     "petrus-postgres": ["psycopg", "Python", "upstream"],
@@ -104,7 +104,16 @@ PATTERNS: Dict[str, List[str]] = {
     "petrus-sqlite": ["Python", "upstream"],
     "petrus-telemetry": ["CPython", "Python's repr"],
     "petrus-telemetry-instrumentation": ["differential/telemetry_scenarios.py"],
-    "petrus-viewer-server": ["upstream", "the Python reference Engine, with the same answers at every step"],
+    # The hspec groups that compare with recordings of the reference (V8's
+    # JSON.parse, Node's URL, the Node MCP server's transcript) and the one
+    # that runs the Python reference Engine. The upstream Node and browser
+    # suites, run against the Haskell executables, are `--viewer`.
+    "petrus-viewer-server": [
+        "matches V8 on a recorded corpus",
+        "matches Node on a recorded corpus",
+        "reproduces the upstream Node transcript byte for byte",
+        "the Python reference Engine, with the same answers at every step",
+    ],
 }
 
 POSTGRES_MARKERS = re.compile(r"PETRUS_TEST_POSTGRES|postgresSpec|withScratchDatabase|lookupPostgresUrl")

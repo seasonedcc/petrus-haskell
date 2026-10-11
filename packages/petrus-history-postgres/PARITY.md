@@ -11,8 +11,8 @@ that every in-scope upstream test is accounted for, run:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-`cabal test petrus-history-postgres` runs 59 examples. With
-`PETRUS_TEST_POSTGRES` set (CI sets it), all 59 pass. Without it, the 56
+`cabal test petrus-history-postgres` runs 60 examples. With
+`PETRUS_TEST_POSTGRES` set (CI sets it), all 60 pass. Without it, the 57
 examples that need a server are pending and say why, the same way upstream's
 `postgres` marker skips. Each group of examples gets its own scratch database
 (`Petrus.TestSupport.postgresSpec`), which is dropped afterwards.
@@ -49,6 +49,9 @@ connection, which is the upstream `reopen` fixture's postgres parameter.
 
 ## Beyond upstream
 
+- **The shared backend contract, beyond upstream** (1 example): an integer
+  over CPython's 4300-digit limit is refused with the `cannot durably encode`
+  text and enters nothing, as on JSONL and SQLite.
 - **PostgresSpec / beyond upstream** (7 examples):
   - an autocommit connection is `BackendOwned`;
   - the `postgres_commit` telemetry event carries the batch size and the entered count;

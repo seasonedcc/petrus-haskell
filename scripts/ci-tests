@@ -8,7 +8,9 @@ everything it could depend on is identical.
     scripts/ci-tests fetch-ledgers DIR       # the test ledgers of recent runs on this branch and main
     scripts/ci-tests plan --out PLAN [--full] [--ledgers DIR] [--max-shards N] [--target SECONDS]
                                              # which suites run, which are reused, in which shard
-    scripts/ci-tests run-shard PLAN NAME     # cabal test the shard's suites; write results-NAME.json
+    scripts/ci-tests run-shard PLAN NAME [--logs DIR]
+                                             # cabal test the shard's suites (no pending example but the
+                                             # opt-ins); write results-NAME.json, each suite's output to DIR
     scripts/ci-tests configure               # write CI's cabal.project.local (its test flags; CI only)
     scripts/ci-tests wrap SELECTION BIN ...  # (scripts/ci-test-wrapper, cabal's --test-wrapper)
     scripts/ci-tests run-viewer PLAN         # scripts/interop --viewer petrus-viewer-server
@@ -484,6 +486,16 @@ def passed(package: str, suite: str) -> bool:
     return bool(logs) and f"Test suite {suite}: PASS" in text and f"Test suite {suite}: FAIL" not in text
 
 
+def no_pending(log: Path, scratch: Path) -> bool:
+    """scripts/check-pending on this one suite's output: no pending example
+    but the declared opt-ins."""
+    if not log.is_file():
+        return False
+    alone = Path(tempfile.mkdtemp(prefix="pending-", dir=scratch))
+    shutil.copy(log, alone / log.name)
+    return subprocess.call([str(ROOT / "scripts" / "check-pending"), str(alone)], cwd=ROOT) == 0
+
+
 SUMMARY = re.compile(rb"(\d+) examples?, (\d+) failures?(?:, (\d+) pending)?")
 
 
@@ -513,8 +525,21 @@ def run_shard(args: List[str]) -> int:
     test binary through scripts/ci-test-wrapper (--test-wrapper), which adds
     the part's hspec --match/--skip arguments from CI_TESTS_SELECTION
     (hspec takes no --match from a .hspec file or HSPEC_OPTIONS, and
-    --test-options would apply to every suite of the invocation)."""
+    --test-options would apply to every suite of the invocation).
+
+    With --logs DIR, each suite's output is kept as DIR/SUITE.log. A suite
+    passes only when its binary passed and scripts/check-pending finds no
+    pending example in its output but the declared opt-ins, as in
+    scripts/check-all; CI's next step runs scripts/check-pending over DIR
+    too."""
     plan_file, name = args[0], args[1]
+    logs = Path(args[args.index("--logs") + 1]) if "--logs" in args else None
+    # As scripts/check-all: in CI the PostgreSQL and Docker suites must run
+    # (the Docker ones would otherwise pend as a declared opt-in).
+    if os.environ.get("CI") and (not os.environ.get("PETRUS_TEST_POSTGRES") or os.environ.get("PETRUS_TEST_DOCKER") != "1"):
+        print("ci-tests: CI is set but PETRUS_TEST_POSTGRES is unset or PETRUS_TEST_DOCKER is not 1:"
+              " the PostgreSQL or Docker suites would be skipped", file=sys.stderr)
+        return 2
     document = json.loads(Path(plan_file).read_text())
     shard_doc = next(s for s in document["shards"] if s["name"] == name)
     units = [document["units"][u] for u in shard_doc["units"]]
@@ -529,8 +554,12 @@ def run_shard(args: List[str]) -> int:
             selection[unit["suite"]] = unit["args"]
             print(f"{unit['id']}: {' '.join(shlex.quote(a) for a in unit['args'])}")
     scratch = Path(tempfile.mkdtemp(prefix="ci-tests-", dir=os.environ.get("RUNNER_TEMP")))
+    logs = logs or scratch / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    for unit in units:
+        (logs / f"{unit['suite']}.log").unlink(missing_ok=True)
     selection_file = scratch / "selection.json"
-    selection_file.write_text(json.dumps({"args": selection, "counts": str(scratch)}))
+    selection_file.write_text(json.dumps({"args": selection, "counts": str(scratch), "logs": str(logs)}))
     jobs = os.environ.get("CI_TEST_JOBS", "-j")
     if not PROJECT_LOCAL.exists() or PROJECT_LOCAL.read_text() != project_config():
         print("ci-tests: run `scripts/ci-tests configure` first (CI's test flags come from cabal.project.local)",
@@ -541,9 +570,10 @@ def run_shard(args: List[str]) -> int:
     try:
         status = subprocess.call(command, cwd=ROOT, env={**os.environ, "CI_TESTS_SELECTION": str(selection_file)})
         tallies = {u["id"]: counts(scratch, u["suite"]) for u in units}
+        outcome = {u["id"]: passed(document["inputs"][u["suite"]]["package"], u["suite"])
+                   and no_pending(logs / f"{u['suite']}.log", scratch) for u in units}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
-    outcome = {u["id"]: passed(document["inputs"][u["suite"]]["package"], u["suite"]) for u in units}
     write_results(name, document, outcome, tallies)
     return status if status != 0 else (0 if all(outcome.values()) else 1)
 
@@ -583,8 +613,10 @@ def configure() -> int:
 def wrap(args: List[str]) -> int:
     """SELECTION BINARY ARGS...: run a test binary (cabal's --test-wrapper)
     with its suite's part selection from SELECTION added to its arguments,
-    pass its output through, and record its hspec summary in SELECTION's
-    counts directory (a shard runs at most one part of a suite)."""
+    pass its output through, keep it as SELECTION's logs directory's
+    SUITE.log (for scripts/check-pending), and record its hspec summary in
+    SELECTION's counts directory (a shard runs at most one part of a
+    suite)."""
     selection = json.loads(Path(args[0]).read_text())
     binary, rest = args[1], args[2:]
     suite = Path(binary).name
@@ -595,13 +627,15 @@ def wrap(args: List[str]) -> int:
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda s, _frame: child.send_signal(s))
     tail = b""
-    while True:
-        chunk = os.read(child.stdout.fileno(), 65536)
-        if not chunk:
-            break
-        sys.stdout.buffer.write(chunk)
-        sys.stdout.buffer.flush()
-        tail = (tail + chunk)[-65536:]
+    with open(Path(selection["logs"]) / f"{suite}.log", "wb") as log:
+        while True:
+            chunk = os.read(child.stdout.fileno(), 65536)
+            if not chunk:
+                break
+            sys.stdout.buffer.write(chunk)
+            sys.stdout.buffer.flush()
+            log.write(chunk)
+            tail = (tail + chunk)[-65536:]
     code = child.wait()
     found = SUMMARY.findall(tail)
     if found:

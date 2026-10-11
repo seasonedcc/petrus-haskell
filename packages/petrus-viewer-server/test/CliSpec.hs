@@ -5,7 +5,11 @@ module CliSpec (spec) where
 import Data.List (isInfixOf)
 import Data.Text qualified as T
 import Petrus.Viewer.Cli
+import Petrus.Viewer.UiDir (locateUiDir, uiDirCandidates)
+import System.Directory (createDirectoryIfMissing)
 import System.Exit (ExitCode (..))
+import System.FilePath ((</>))
+import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
 import Test.Hspec
 
@@ -38,6 +42,23 @@ spec = do
       parseCliArgs ["--port"] `shouldBe` BadOption "option --port requires a value"
     it "keeps the upstream help text first" $
       T.lines helpText `shouldStartWith` ["Usage: petrus [options] [file | url]", "", "Options:", "  --no-open    Don't open the browser automatically"]
+
+  describe "the UI directory found next to the executable" $ do
+    it "looks in an installed share/ directory, then in the checkout's upstream/petrus-viewer/dist" $
+      take 4 (uiDirCandidates ["/opt/p/bin"])
+        `shouldBe` ["/opt/p/share/petrus-viewer/ui", "/opt/p/bin/upstream/petrus-viewer/dist", "/opt/p/upstream/petrus-viewer/dist", "/opt/upstream/petrus-viewer/dist"]
+    it "finds the build whatever the working directory, and only a build" $ withSystemTempDirectory "petrus-ui-dir-" $ \tmp -> do
+      let bin = tmp </> "repo" </> "dist-newstyle" </> "build" </> "x" </> "petrus"
+          dist = tmp </> "repo" </> "upstream" </> "petrus-viewer" </> "dist"
+          share = tmp </> "repo" </> "dist-newstyle" </> "build" </> "x" </> "share" </> "petrus-viewer" </> "ui"
+      createDirectoryIfMissing True bin
+      createDirectoryIfMissing True dist
+      locateUiDir [bin] `shouldReturn` Nothing
+      writeFile (dist </> "index.html") "<!doctype html>"
+      locateUiDir [bin] `shouldReturn` Just dist
+      createDirectoryIfMissing True share
+      writeFile (share </> "index.html") "<!doctype html>"
+      locateUiDir [bin] `shouldReturn` Just share
 
   describe "petrus executable (tests/petrusCli.test.mjs)" $ do
     it "--help prints usage and exits 0" $ do

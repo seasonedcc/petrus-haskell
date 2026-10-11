@@ -1,0 +1,18 @@
+petrus-observation
+Copyright 2026 Seasoned
+
+This package is a Haskell port of Petrus's read-only observation projections
+of an Instance (observation protocol v1) from Petrus
+(https://github.com/henriquebastos/petrus), pinned under upstream/petrus
+(see UPSTREAM.md at the repository root). It reproduces the observable
+behaviour of that reference, and its test suite ports the reference's tests
+and runs differential checks against it.
+
+The package itself is licensed under the Apache License, Version 2.0 (see
+LICENSE). The upstream project it ports is distributed under the same
+license:
+
+  Petrus
+  Copyright 2026 Henrique Bastos
+  Licensed under the Apache License, Version 2.0
+  https://github.com/henriquebastos/petrus

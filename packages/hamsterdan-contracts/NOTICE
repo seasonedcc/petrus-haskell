@@ -1,0 +1,18 @@
+hamsterdan-contracts
+Copyright 2026 Seasoned
+
+This package is a Haskell port of Hamsterdan's workflow contracts and their
+pydantic JSON codecs from Hamsterdan
+(https://github.com/henriquebastos/hamsterdan), pinned under
+upstream/hamsterdan (see UPSTREAM.md at the repository root). It reproduces
+the observable behaviour of that reference, and its test suite ports the
+reference's tests and runs differential checks against it.
+
+The package itself is licensed under the Apache License, Version 2.0 (see
+LICENSE). The upstream project it ports is distributed under the same
+license:
+
+  Hamsterdan
+  Copyright 2026 Henrique Bastos
+  Licensed under the Apache License, Version 2.0
+  https://github.com/henriquebastos/hamsterdan

@@ -36,6 +36,7 @@ import Petrus.Impetus.Instance
   , FiringOccurrence (..)
   , FiringOutcome (..)
   , PriorAcknowledgement (..)
+  , firingOccurrenceIdInt
   )
 import Petrus.Impetus.Petrinet hiding (candidates)
 import Petrus.Impetus.Scope (lifecycleScope)
@@ -610,7 +611,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
     _ <- Engine.completeDelivery engine reconstructed
     completedRecords <- recordsOf history
     acknowledged <- accept engine src event7 "event-7" Nothing
-    acknowledged `shouldBe` DeliveryPrior (PriorAcknowledgement "event-7" original.occurrence)
+    acknowledged `shouldBe` DeliveryPrior (PriorAcknowledgement "event-7" (firingOccurrenceIdInt original.occurrence))
     recordsOf history `shouldReturn` completedRecords
 
   it "identity content collision fails before mutation" $ do

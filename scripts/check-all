@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Rebuild and verify everything from a clean checkout: build, unit tests,
-# conformance, interop against the pinned Python upstream, the benchmark
-# bookkeeping, and the parity table. CI (.github/workflows/ci.yml) runs the
-# same steps, plus --viewer, spread over several runners; docs/reproducing.md,
-# "Continuous integration", maps each CI job to its step here.
+# conformance, interop against the pinned Python upstream, the committed
+# corpora regenerated from it, the benchmark bookkeeping, and the parity
+# table. CI (.github/workflows/ci.yml) runs the same steps, plus --viewer,
+# spread over several runners; docs/reproducing.md, "Continuous
+# integration", maps each CI job to its step here.
 #
 #   scripts/check-all            # everything except benchmarks and the viewer suites
 #   scripts/check-all -j2        # limit cabal's parallelism (passed to cabal)
@@ -61,9 +62,13 @@ for project in petrus petrus-engine hamsterdan; do
   echo "upstream/$project: $("$python" -I -c 'import sys; print(sys.version)')"
 done
 
-# In CI the PostgreSQL suites must run, never skip as pending.
+# In CI the PostgreSQL and Docker suites must run, never skip as pending.
 if [[ -n "${CI:-}" && -z "${PETRUS_TEST_POSTGRES:-}" ]]; then
   echo "CI is set but PETRUS_TEST_POSTGRES is not: the PostgreSQL suites would be skipped" >&2
+  exit 1
+fi
+if [[ -n "${CI:-}" && "${PETRUS_TEST_DOCKER:-}" != 1 ]]; then
+  echo "CI is set but PETRUS_TEST_DOCKER is not 1: the Docker suites would be skipped" >&2
   exit 1
 fi
 
@@ -74,8 +79,18 @@ step "Interop selection (scripts/interop patterns still select their groups)"
 scripts/interop --check ${cabal_flags[@]+"${cabal_flags[@]}"}
 
 step "Tests (unit, conformance, interop)"
+# Each suite's output also goes to its own log, for the pending check below.
+test_logs=$(mktemp -d)
+trap 'rm -rf "$test_logs"' EXIT
 scripts/with-postgres cabal test all ${cabal_flags[@]+"${cabal_flags[@]}"} --keep-going \
-  --test-show-details=direct --test-options='+RTS -M2G -RTS'
+  --test-show-details=streaming --test-log="$test_logs/\$pkgid-\$test-suite.log" \
+  --test-options='+RTS -M2G -RTS'
+
+step "No pending examples (a missing tool or server fails; only the opt-ins in scripts/check-pending may pend)"
+scripts/check-pending "$test_logs"
+
+step "Committed corpora (every generator rerun against the pinned references)"
+scripts/check-corpora
 
 if [[ "$run_viewer" == 1 ]]; then
   step "The upstream petrus-viewer suites against the Haskell backend"
