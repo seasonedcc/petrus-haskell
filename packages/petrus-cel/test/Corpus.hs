@@ -134,11 +134,6 @@ checkFree c = case compile (textField "expr" c) of
   Left err -> Just ("parse error " <> show err)
   Right program -> checkFreeList program c
 
--- | The generator's normalisation of error texts: the activation dump of
--- "undeclared reference" errors is cut.
-normalise :: Text -> Text
-normalise text = fst (T.breakOn " (in activation '" text)
-
 -- | Compare an evaluation with the recorded outcome.
 checkOutcome :: [(Text, Json)] -> Json -> Maybe String
 checkOutcome environment c = case compile (textField "expr" c) of
@@ -152,28 +147,46 @@ compareResult result c = case (result, field "value" c, field "cel_error" c, fie
   (Right v, Just (String want), _, _) ->
     let wantTruthy = field "truthy" c
         gotTruthy = Bool (truthy v)
-     in if normalise (valueRepr v) /= want
+     in if valueRepr v /= want
           then Just ("value " <> T.unpack (valueRepr v) <> "\n    expected " <> T.unpack want)
           else case wantTruthy of
             Just (Bool b) | Bool b /= gotTruthy -> Just ("truthiness " <> show (truthy v) <> ", expected " <> show b)
             _ -> Nothing
-  (Left (CelExc e), _, Just (String want), _)
-    | normalise (celErrorMessage e) == want -> Nothing
-  (Left (PyExc cls message _), _, _, Just (String want))
-    | excClassName cls == want && normalise message == textField "message" c -> Nothing
+  (Left ex, Nothing, _, _) | matchesError ex c -> Nothing
   _ -> Just ("got " <> describeResult result <> "\n    expected " <> T.unpack (expectedText c))
+
+-- | Does a raised exception match the recorded one, rendering and all?
+--
+-- * @cel_error@: the whole @repr()@ of the @CELEvalError@;
+-- * @cel_error_args@ with @repr_raises@: the @repr()@ itself raised (celpy's
+--   @tree_dump@), so the arguments and the raised error are compared;
+-- * @py_error@: the class name, @str()@ and @repr()@.
+matchesError :: Exc -> Json -> Bool
+matchesError ex c = case (ex, field "cel_error" c, field "cel_error_args" c, field "py_error" c) of
+  (CelExc _, Just (String want), _, _) -> either (const False) (== want) (excReprStrict ex)
+  (CelExc e, _, Just (String args), _) ->
+    let raised = either (\r -> excClassName' r <> ": " <> excStr r) (const "") (excReprStrict ex)
+     in excArgsText e == args && raised == textField "repr_raises" c
+  (PyExc cls message _, _, _, Just (String want)) ->
+    excClassName cls == want && message == textField "message" c && either (const False) (== textField "repr" c) (excReprStrict ex)
+  _ -> False
+  where
+    excClassName' = \case
+      PyExc cls _ _ -> excClassName cls
+      CelExc _ -> "CELEvalError"
+    excArgsText e = excStr (CelExc e)
 
 describeResult :: Either Exc Value -> String
 describeResult = \case
   Right v -> "value " <> T.unpack (valueRepr v)
-  Left (CelExc e) -> "cel_error " <> show (celErrorMessage e)
-  Left (PyExc cls message _) -> "py_error " <> T.unpack (excClassName cls) <> " " <> show message
+  Left ex -> "error " <> either (\r -> "(repr raises " <> T.unpack (excRepr r) <> ") " <> T.unpack (excStr ex)) T.unpack (excReprStrict ex)
 
 expectedText :: Json -> Text
-expectedText c = case (field "value" c, field "cel_error" c, field "py_error" c) of
-  (Just (String v), _, _) -> "value " <> v
-  (_, Just (String e), _) -> "cel_error " <> T.pack (show e)
-  (_, _, Just (String cls)) -> "py_error " <> cls <> " " <> T.pack (show (textField "message" c))
+expectedText c = case (field "value" c, field "cel_error" c, field "cel_error_args" c, field "py_error" c) of
+  (Just (String v), _, _, _) -> "value " <> v
+  (_, Just (String e), _, _) -> "error " <> e
+  (_, _, Just (String args), _) -> "error (repr raises " <> textField "repr_raises" c <> ") " <> args
+  (_, _, _, Just (String _)) -> "error " <> textField "repr" c
   _ -> "?"
 
 -- | A Petrus adapter case: compile once, then evaluate each input.
@@ -217,9 +230,7 @@ checkPetrus c =
 comparePetrus :: Either Exc Bool -> Json -> Maybe String
 comparePetrus result expected = case (result, field "value" expected, field "cel_error" expected, field "py_error" expected) of
   (Right b, Just (Bool want), _, _) | b == want -> Nothing
-  (Left (CelExc e), _, Just (String want), _) | normalise (celErrorMessage e) == want -> Nothing
-  (Left (PyExc cls message _), _, _, Just (String want))
-    | excClassName cls == want && normalise message == textField "message" expected -> Nothing
+  (Left ex, Nothing, _, _) | matchesError ex expected -> Nothing
   _ ->
     Just
       ( "got " <> either (describeResult . Left) (\b -> "value " <> show b) result <> "\n    expected "

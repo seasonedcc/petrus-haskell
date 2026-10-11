@@ -500,7 +500,12 @@ deltaOp op v w = case op of
         if b == 0 then zeroDivision else deltaValue (checkTimedelta (a `mod` b))
   _ -> Right Nothing
   where
+    -- @multiply_int_timedelta@ computes @factor * microseconds@ with the
+    -- factor's own @__mul__@, which @IntType@ and @UintType@ clamp to their
+    -- range (@ValueError('overflow')@).
     scaled d@(Timedelta a) factor
+      | VInt n <- factor, let p = a * n, p < -(2 ^ (63 :: Int)) || p >= 2 ^ (63 :: Int) = Left (valueErr "overflow")
+      | VUint n <- factor, let p = a * n, p < 0 || p >= 2 ^ (64 :: Int) = Left (valueErr "overflow")
       | Just n <- asInteger factor = deltaValue (checkTimedelta (a * n))
       | Just f <- asDouble factor = integerRatio f >>= deltaValue . timedeltaMulRational d
       | otherwise = Right Nothing
@@ -1345,13 +1350,36 @@ matches text pattern = do
     _
       | Just p <- asText pattern -> compileRegex p <$ encodeUtf8Strict pattern p
       | Just p <- asBytes pattern -> Right (compileRegexBytes p)
-      | otherwise -> Left (typeErr ("expected str or bytes pattern, got " <> tpName pattern))
+      -- re2's lru_cache hashes the pattern before pybind11 sees it.
+      | Nothing <- hashKey pattern -> Left (typeErr ("unhashable type: " <> quoted (tpName pattern)))
+      | otherwise ->
+          Left
+            ( typeErr
+                ( "__init__(): incompatible constructor arguments. The following argument types are supported:\n"
+                    <> "    1. re2._re2.RE2(arg0: Buffer, arg1: re2._re2.RE2.Options)\n\nInvoked with: "
+                    <> valueRepr pattern
+                    <> ", <re2.Options object>"
+                )
+            )
   case compiled of
     Left message -> Right (VError (celError "match error" (pyExc Re2Error message) Nothing))
     Right re
       | Just t <- asText text -> boolType (searchText re t) <$ encodeUtf8Strict text t
       | Just b <- asBytes text -> Right (boolType (searchBytes re b))
-      | otherwise -> Left (typeErr ("expected str or bytes text, got " <> tpName text))
+      | otherwise -> do
+          -- @_Regexp._match@ takes @len(text)@, then hands the object to
+          -- pybind11, which accepts only a buffer.
+          size <- pyLen text
+          Left
+            ( typeErr
+                ( "Match(): incompatible function arguments. The following argument types are supported:\n"
+                    <> "    1. (self: re2._re2.RE2, arg0: re2._re2.RE2.Anchor, arg1: Buffer, arg2: int, arg3: int)"
+                    <> " -> list[tuple[int, int]]\n\nInvoked with: <re2._re2.RE2 object>, <Anchor.UNANCHORED: 0>, "
+                    <> valueRepr text
+                    <> ", 0, "
+                    <> T.pack (show size)
+                )
+            )
 
 -- | The @get*@ functions: @TimestampType@ methods (with a timezone) and
 -- the four @DurationType@ ones (which @assert@ no timezone).
@@ -1363,7 +1391,7 @@ timeGetter getter ts tz = case ts of
       Just VNone -> Right 0
       Just z
         | not (truthy z) -> Right 0
-        | Just name <- asText z -> liftPy (timezoneOffset (Just name))
+        | Just name <- asText z -> liftPy (timezoneOffset (valueRepr z) (Just name))
         | otherwise -> Left (typeErr ("expected string or bytes-like object, got " <> quoted (tpName z)))
     local <- liftPy (inOffset offset dt)
     let f = datetimeFields local
@@ -1384,7 +1412,7 @@ timeGetter getter ts tz = case ts of
         case tz of
           Just VNone -> Right ()
           Nothing -> Right ()
-          Just _ -> Left (pyExc AssertionError "")
+          Just _ -> Left (PyExc AssertionError "" [])
         let total = timedeltaTotalSeconds td
             value = case getter of
               "getHours" -> total / 60 / 60
@@ -1492,7 +1520,7 @@ pyFloatConvert v
   | Just n <- asInteger v = intToDouble n
   | Just t <- asText v = maybe (Left (couldNot (valueRepr v))) Right (parseFloatText t)
   | Just b <- asBytes v =
-      maybe (Left (couldNot (pythonBytesRepr b))) Right (parseFloatText (T.pack (map (chr . fromIntegral) (BS.unpack b))))
+      maybe (Left (couldNot (valueRepr v))) Right (parseFloatText (T.pack (map (chr . fromIntegral) (BS.unpack b))))
   | otherwise = Left (typeErr ("float() argument must be a string or a real number, not " <> quoted (tpName v)))
   where
     couldNot shown = valueErr ("could not convert string to float: " <> shown)
@@ -1652,7 +1680,7 @@ durationTypeNew seconds nanos
           | Just d <- asDouble micros -> Right (round d)
           | otherwise -> Left (typeErr ("unsupported type for timedelta microseconds component: " <> tpName micros))
       VDuration <$> liftPy (checkTimedelta (n * 1000000 + extra))
-  | Just t <- asText seconds = VDuration <$> liftPy (parseDurationString t)
+  | Just t <- asText seconds = VDuration <$> liftPy (parseDurationString (valueRepr seconds) t)
   | otherwise = Left (typeErr ("Invalid initial value type: " <> classRepr (pyType seconds)))
 
 -- | @TimestampType(source, *args)@.

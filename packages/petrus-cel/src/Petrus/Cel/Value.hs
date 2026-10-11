@@ -34,6 +34,7 @@ module Petrus.Cel.Value
   , fromPyErr
   , keyError
   , excRepr
+  , excReprStrict
   , excStr
   , excClassOf
   , excArgsRepr
@@ -113,7 +114,9 @@ data CelError = CelError
   -- ^ @repr@ of the wrapped exception class, e.g. @<class 'TypeError'>@.
   , celErrorCauseArgs :: Text
   -- ^ @repr@ of the wrapped exception's @args@ (or @None@).
-  , celErrorTree :: Maybe Text
+  , celErrorTree :: Maybe (Either Text Text)
+  -- ^ @tree_dump@ of the tree it was raised at; 'Left' is the @IndexError@
+  -- message when celpy's dump itself raises.
   }
 
 instance Eq CelError where
@@ -122,7 +125,7 @@ instance Eq CelError where
       == (celErrorMessage b, celErrorCause b, celErrorCauseArgs b)
 
 -- | @CELEvalError(message, ex.__class__, ex.args, tree=...)@.
-celError :: Text -> Exc -> Maybe Text -> CelError
+celError :: Text -> Exc -> Maybe (Either Text Text) -> CelError
 celError message cause tree =
   CelError
     { celErrorMessage = message
@@ -137,7 +140,7 @@ celError message cause tree =
 
 -- | @CELEvalError(message, cls, args)@ with an explicit cause class and the
 -- @repr@ of its arguments (cel-python passes @None@ for some).
-celErrorWith :: Text -> ExcClass -> Text -> Maybe Text -> CelError
+celErrorWith :: Text -> ExcClass -> Text -> Maybe (Either Text Text) -> CelError
 celErrorWith message cls args tree =
   CelError
     { celErrorMessage = message
@@ -333,11 +336,20 @@ excClassOf = \case
   PyExc cls _ _ -> Just cls
   CelExc _ -> Nothing
 
--- | @repr(exc)@.
+-- | @repr(exc)@. Where celpy's @tree_dump@ raises inside the @repr@ of a
+-- @CELEvalError@ ('excReprStrict'), this renders the error without its
+-- tree; see the package's DIVERGENCES.md.
 excRepr :: Exc -> Text
 excRepr = \case
   PyExc cls _ args -> excClassName cls <> "(" <> T.intercalate ", " args <> ")"
   CelExc e -> valueRepr (VError e)
+
+-- | @repr(exc)@ exactly as CPython computes it: 'Left' is the exception the
+-- rendering itself raises (celpy's @tree_dump@ popping an empty stack).
+excReprStrict :: Exc -> Either Exc Text
+excReprStrict = \case
+  CelExc e | Just (Left message) <- celErrorTree e -> Left (pyExc IndexError message)
+  ex -> Right (excRepr ex)
 
 -- | @str(exc)@.
 excStr :: Exc -> Text
@@ -358,7 +370,7 @@ excArg0 = \case
   CelExc e -> celErrorMessage e
 
 -- | Wrap a caught exception as @CELEvalError(message, ex.__class__, ex.args)@.
-excToCelError :: Text -> Maybe Text -> Exc -> CelError
+excToCelError :: Text -> Maybe (Either Text Text) -> Exc -> CelError
 excToCelError message tree ex = celError message ex tree
 
 tupleRepr :: [Text] -> Text
@@ -402,7 +414,7 @@ valueRepr = \case
   VError e ->
     "CELEvalError(*"
       <> celErrorArgsRepr e
-      <> maybe "" (\t -> ", tree=" <> pythonStrRepr t) (celErrorTree e)
+      <> (case celErrorTree e of Just (Right t) -> ", tree=" <> pythonStrRepr t; _ -> "")
       <> ")"
   where
     listRepr xs = "[" <> T.intercalate ", " (map valueRepr xs) <> "]"

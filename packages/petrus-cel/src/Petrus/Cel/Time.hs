@@ -48,7 +48,7 @@ import Data.Char (isAsciiLower, isDigit)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Time.Calendar (Day (..), fromGregorianValid, isLeapYear, toGregorian)
+import Data.Time.Calendar (Day (..), fromGregorianValid, gregorianMonthLength, isLeapYear, toGregorian)
 import Data.Time.Calendar.OrdinalDate (toOrdinalDate)
 
 import Petrus.Cel.Python (ExcClass (..), PyErr (..), parseFloatText)
@@ -64,13 +64,17 @@ microsPerSecond, microsPerDay :: Integer
 microsPerSecond = 1000000
 microsPerDay = 86400 * microsPerSecond
 
--- | @timedelta@'s range check (@|days| <= 999999999@).
+-- | @timedelta@'s range check (@|days| <= 999999999@), after CPython's
+-- @microseconds_to_delta@ has converted the day count to a C @int@.
 checkTimedelta :: Integer -> Either PyErr Timedelta
-checkTimedelta micros =
-  let days = micros `div` microsPerDay
-   in if abs days > 999999999
-        then Left (PyErr OverflowError ("days=" <> T.pack (show days) <> "; must have magnitude <= 999999999"))
-        else Right (Timedelta micros)
+checkTimedelta micros
+  | days < -(2 ^ (31 :: Int)) || days >= 2 ^ (31 :: Int) =
+      Left (PyErr OverflowError "Python int too large to convert to C int")
+  | abs days > 999999999 =
+      Left (PyErr OverflowError ("days=" <> T.pack (show days) <> "; must have magnitude <= 999999999"))
+  | otherwise = Right (Timedelta micros)
+  where
+    days = micros `div` microsPerDay
 
 -- | @repr(timedelta)@: @datetime.timedelta(days=-1, seconds=86399)@.
 timedeltaRepr :: Timedelta -> Text
@@ -221,13 +225,13 @@ datetimeTimestamp dt = timedeltaTotalSeconds (Timedelta (datetimeUtcMicros dt - 
 datetimeFromFields :: Integer -> [Integer] -> Either PyErr Datetime
 datetimeFromFields offset fields = case fields ++ replicate (7 - length fields) 0 of
   [y, m, d, h, mi, s, us]
-    | y < 1 || y > 9999 -> bad ("year " <> T.pack (show y) <> " is out of range")
-    | m < 1 || m > 12 -> bad "month must be in 1..12"
-    | Nothing <- day -> bad "day is out of range for month"
-    | h < 0 || h > 23 -> bad "hour must be in 0..23"
-    | mi < 0 || mi > 59 -> bad "minute must be in 0..59"
-    | s < 0 || s > 59 -> bad "second must be in 0..59"
-    | us < 0 || us > 999999 -> bad "microsecond must be in 0..999999"
+    | y < 1 || y > 9999 -> bad ("year must be in 1..9999, not " <> shown y)
+    | m < 1 || m > 12 -> bad ("month must be in 1..12, not " <> shown m)
+    | Nothing <- day -> bad ("day " <> shown d <> " must be in range 1.." <> shown (monthLength y m) <> " for month " <> shown m <> " in year " <> shown y)
+    | h < 0 || h > 23 -> bad ("hour must be in 0..23, not " <> shown h)
+    | mi < 0 || mi > 59 -> bad ("minute must be in 0..59, not " <> shown mi)
+    | s < 0 || s > 59 -> bad ("second must be in 0..59, not " <> shown s)
+    | us < 0 || us > 999999 -> bad ("microsecond must be in 0..999999, not " <> shown us)
     | abs offset >= 86400 -> bad "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24)"
     | Just dayValue <- day ->
         Right
@@ -240,6 +244,9 @@ datetimeFromFields offset fields = case fields ++ replicate (7 - length fields) 
   _ -> bad "function takes at most 8 arguments"
   where
     bad = Left . PyErr ValueError
+    shown :: Integer -> Text
+    shown = T.pack . show
+    monthLength y m = toInteger (gregorianMonthLength y (fromIntegral m))
 
 -- Parsing ----------------------------------------------------------------
 
@@ -282,7 +289,7 @@ parseTimestamp text
       | otherwise = Nothing
     validRust part = rustIso8601 (T.unpack part)
     common = case parseCommon (T.unpack text) of
-      Nothing -> Left (PyErr ValueError ("Unable to parse string [" <> text <> "]"))
+      Nothing -> Left (PyErr ParserError ("Unable to parse string [" <> text <> "]"))
       Just r -> r
 
 data RustResult
@@ -504,7 +511,7 @@ parseCommon input = case [caps | (rest, caps) <- run common input [], null rest]
        in case get "time" of
             Nothing -> case get "date" of
               Just _ -> ParsedDatetime <$> datetimeFromFields 0 (dateFields get)
-              Nothing -> Left (PyErr ValueError "empty")
+              Nothing -> ParsedDatetime <$> datetimeFromFields 0 [0, 1, 1]
             Just _ -> case get "minute" of
               Nothing -> Left (PyErr TypeError "int() argument must be a string, a bytes-like object or a real number, not 'NoneType'")
               Just minute
@@ -548,17 +555,22 @@ digits lo hi = Re $ \s caps ->
    in [(drop n s, caps) | n <- [available, available - 1 .. lo]]
 
 -- | celpy's @DurationType(str)@: @^[-+]?([0-9]*(\\.[0-9]*)?[a-z]+)+$@, then
--- the sum of each @number unit@ pair.
-parseDurationString :: Text -> Either PyErr Timedelta
-parseDurationString text = do
+-- the sum of each @number unit@ pair. @shown@ is @repr()@ of the source
+-- object (a @StringType@ or a plain @str@), which the error messages spell
+-- until a sign is consumed: slicing the sign off leaves a plain @str@.
+parseDurationString :: Text -> Text -> Either PyErr Timedelta
+parseDurationString shown text = do
   let s = T.unpack text
-      body = case s of
-        c : rest | c == '+' || c == '-' -> rest
-        _ -> s
+      (signed, body) = case s of
+        c : rest | c == '+' || c == '-' -> (True, rest)
+        _ -> (False, s)
       sign = if take 1 s == "-" then -1 else 1 :: Double
       bodyNoNewline = if not (null body) && last body == '\n' then init body else body
-  if validPattern bodyNoNewline then Right () else Left (PyErr ValueError ("Invalid duration " <> pythonStrRepr text))
-  terms <- traverse term (segments body)
+      -- The @KeyError@ of an unknown unit, re-raised with the string as it is
+      -- after the sign was consumed.
+      unknownUnit = PyErr ValueError ("Invalid duration " <> if signed then pythonStrRepr (T.pack body) else shown)
+  if validPattern bodyNoNewline then Right () else Left (PyErr ValueError ("Invalid duration " <> shown))
+  terms <- traverse (term unknownUnit) (segments body)
   let seconds = sign * fromRational (sum (map toRational terms))
   if abs seconds > fromIntegral maxDurationSeconds || isNaN seconds
     then Left (PyErr ValueError "range error: {seconds}")
@@ -579,13 +591,14 @@ parseDurationString text = do
       let (number, r1) = span (\c -> isDigit c || c == '.') str
           (unit, r2) = span isAsciiLower r1
        in if null unit then segments (drop 1 str) else (number, unit) : segments r2
-    term (number, unit) = do
-      scale <- maybe (Left (PyErr ValueError ("Invalid duration " <> pythonStrRepr text))) Right (lookup unit scales)
+    -- @float(number) * scale[unit]@: the number is converted first.
+    term unknownUnit (number, unit) = do
       value <-
         maybe
           (Left (PyErr ValueError ("could not convert string to float: " <> pythonStrRepr (T.pack number))))
           Right
           (if null number then Nothing else parseFloatText (T.pack number))
+      scale <- maybe (Left unknownUnit) Right (lookup unit scales)
       Right (value * scale)
     scales :: [(String, Double)]
     scales = [("ns", 1e-9), ("us", 1e-6), ("ms", 1e-3), ("s", 1), ("m", 60), ("h", 3600), ("d", 86400)]
@@ -596,8 +609,8 @@ maxDurationSeconds = 315576000000
 
 -- | @TimestampType.tz_parse@: the UTC offset (seconds) of a timezone name or
 -- @[+-]hh:mm@ offset; 'Nothing' (or an empty name) is UTC.
-timezoneOffset :: Maybe Text -> Either PyErr Integer
-timezoneOffset = \case
+timezoneOffset :: Text -> Maybe Text -> Either PyErr Integer
+timezoneOffset shown = \case
   Nothing -> Right 0
   Just "" -> Right 0
   Just name
@@ -635,4 +648,4 @@ timezoneOffset = \case
                    in if abs minutes >= 24 * 60
                         then Left (PyErr ValueError "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24).")
                         else Right (minutes * 60)
-            _ -> Left (PyErr ValueError ("Unparsable timezone: " <> pythonStrRepr name))
+            _ -> Left (PyErr ValueError ("Unparsable timezone: " <> shown))

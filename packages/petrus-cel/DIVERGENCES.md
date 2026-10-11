@@ -4,16 +4,15 @@ The contract is cel-python's (`celpy` 0.5.0) observable behaviour on every
 expression a Petrus net can carry, and `petrus.impetus.binding.cel`'s
 environments on top of it (pinned reference: `upstream/petrus` 3f85fc2).
 That behaviour covers parse trees and parse errors, values with their
-`repr` and truthiness, CEL error texts, and Python exception classes and
-messages. Where cel-python departs from the CEL specification, this package
-follows cel-python; the module documentation of `Petrus.Cel` lists those
-departures, and the differential corpus records each one. Those are not
-divergences.
+`repr` and truthiness, and raised exceptions rendered whole: class,
+arguments and `repr()`. Where cel-python departs from the CEL specification,
+this package follows cel-python; the module documentation of `Petrus.Cel`
+lists those departures, and the differential corpus records each one. Those
+are not divergences.
 
-The differential corpus replays all of its 1996 expressions with no
-exclusion. The divergences left are the ones listed under "Open" below. None
-of them is reachable from an expression a Petrus net would realistically
-carry.
+The differential corpus replays all of its 2041 expressions with no
+exclusion. The divergences left are the ones listed under "Open" below.
+Item 8 can be reached from a realistic net. None of the others can.
 
 ## API shape
 
@@ -153,3 +152,22 @@ database at evaluation time, and their answer would change when that
 database changes.
 
 Source: `Petrus.Cel.Time`.
+
+### 8. A diagnostic whose rendering raises
+
+celpy renders a `CELEvalError` raised at a tree with `tree_dump`, and that
+visitor pops an empty stack on some trees: an empty list or map literal as
+an operand of a failing comparison or operator, such as `x.tags == []` when
+`tags` holds a string. `repr()` of the error then raises
+`IndexError("pop from empty list")`. The reference builds its filter, guard
+and completion warnings with `{error!r}`, so the `IndexError` escapes the
+enabledness or completion evaluation and the Instance call fails.
+
+The kernel's CEL seam (`CelCompilers`) carries a diagnostic as a value and
+has no way to abort the call. So `Binding.diagnostic` renders such an error
+without its tree, and the kernel warns and reads the expression as not
+satisfied, as for any other error. `excReprStrict` reproduces the raise
+itself, and the corpus checks it on 1 616 cases. Matching the reference
+here needs a seam that lets a diagnostic abort the call.
+
+Source: `Petrus.Cel.Value` (`excRepr`, `excReprStrict`).

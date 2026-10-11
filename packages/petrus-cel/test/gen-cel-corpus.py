@@ -33,12 +33,20 @@ Outcome encoding (shared by both files):
     Evaluation returned a value; ``repr`` is Python's ``repr`` (function
     addresses normalised) and ``truthy`` is ``bool(value)`` -- the reading
     Petrus applies to filters, guards, and completion conditions.
-``{"cel_error": message}``
-    Evaluation raised ``CELEvalError``; ``message`` is ``args[0]`` with the
-    unbounded activation dump of "undeclared reference" messages cut off.
-``{"py_error": class, "message": text}``
+``{"cel_error": rendering}``
+    Evaluation raised ``CELEvalError``; ``rendering`` is its whole ``repr()``:
+    the message, the wrapped exception's class, and that exception's
+    arguments. Petrus puts this text into guard, filter, and completion
+    diagnostics.
+``{"py_error": class, "message": text, "repr": rendering}``
     Evaluation raised some other Python exception (cel-python leaks these for
-    several malformed expressions).
+    several malformed expressions): its class name, ``str()`` and ``repr()``.
+
+Function addresses are normalised in every recorded text, and
+``Activation.__repr__`` is replaced by the fixed text ``<Activation>``.
+Otherwise an "undeclared reference" error would dump the whole activation,
+addresses included. ``<Activation>`` is what the Haskell evaluator prints
+there.
 
 Every parseable case also records ``free``: Petrus' ``free_variables`` of the
 compiled tree (sorted).
@@ -53,6 +61,7 @@ import sys
 from pathlib import Path
 
 import celpy
+import celpy.evaluation
 import lark
 from petrus.impetus.binding.cel import compile_completion, compile_filter, compile_guard, free_variables
 from petrus.impetus.petrinet import Binding, Cel, Marking, NetPath, Token
@@ -62,14 +71,24 @@ OUT = Path(sys.argv[1]) if __name__ == "__main__" and len(sys.argv) > 1 else ROO
 
 ENV = celpy.Environment()
 
+celpy.evaluation.Activation.__repr__ = lambda self: "<Activation>"
+
 FUNCTION_ADDRESS = re.compile(r"<function (\w+) at 0x[0-9a-f]+>")
-ACTIVATION_DUMP = " (in activation '"
+OBJECT_ADDRESS = re.compile(r"<([\w.]+) object at 0x[0-9a-f]+>")
 
 
 def normalise(text: str) -> str:
-    text = FUNCTION_ADDRESS.sub(r"<function \1>", text)
-    cut = text.find(ACTIVATION_DUMP)
-    return text if cut < 0 else text[:cut]
+    return OBJECT_ADDRESS.sub(r"<\1 object>", FUNCTION_ADDRESS.sub(r"<function \1>", text))
+
+
+def error_outcome(error: BaseException) -> dict:
+    """The whole rendering of a raised exception (see the module docstring)."""
+    if isinstance(error, celpy.CELEvalError):
+        try:
+            return {"cel_error": normalise(repr(error))}
+        except Exception as failure:
+            return {"cel_error_args": normalise(repr(error.args)), "repr_raises": f"{type(failure).__name__}: {failure}"}
+    return {"py_error": type(error).__name__, "message": normalise(str(error)), "repr": normalise(repr(error))}
 
 
 def jsonable(value):
@@ -103,14 +122,8 @@ def outcome(expression: str, bindings: dict | None, with_tree: bool = False) -> 
     try:
         activation = {name: celpy.json_to_cel(value) for name, value in (bindings or {}).items()}
         value = program.evaluate(activation)
-    except celpy.CELEvalError as error:
-        record["cel_error"] = normalise(str(error.args[0]))
-        return record
-    except RecursionError as error:  # pragma: no cover - not expected in the corpus
-        record.update({"py_error": "RecursionError", "message": str(error)})
-        return record
     except Exception as error:
-        record.update({"py_error": type(error).__name__, "message": normalise(str(error))})
+        record.update(error_outcome(error))
         return record
     record.update({"value": normalise(repr(value)), "truthy": bool(value)})
     return record
@@ -674,6 +687,24 @@ add("literal.string.surrogates", [
     r"'<U>D800'.matches('.')", r"bytes('<U>D800')", r"type('<U>D800')",
 ])
 
+# Error renderings: the class and arguments of the wrapped exception, which
+# Petrus diagnostics show in full.
+add("errors.rendering", [
+    "duration('abc')", "duration('1x')", "duration('-1x')", "duration('+abc')", "duration('.s')", "duration('1.s')",
+    "duration('1s2x')", "duration('-1s2x')", "duration(('a' + 'b'))", "duration(('1' + 'x'))",
+    "duration(('-' + '1x'))", "timestamp('2024-02-30')", "timestamp('2024-07-01T25:00:00Z')", "timestamp('')",
+    "timestamp('2024-07-01T15:00:00Z').getHours('Not/AZone')", "timestamp('2024-07-01T15:00:00Z').getHours(('a' + 'b'))",
+    "'a'.matches({})", "'a'.matches(1.5)", "'a'.matches(duration('1s'))", "'a'.matches(timestamp('2020-01-01T00:00:00Z'))",
+    "{'a': 1}.matches('a')", "1.5.matches('a')", "duration('1s').matches('a')", "('a' + 'b').matches(['a'])",
+    "['a', 'b'].matches('a')", "(['a'] + []).matches('a')",
+    "duration('2s') * 4611686018427387904", "duration('-1s') * 2u", "duration('1s') * 9223372036854775807u",
+    "duration('2s') * (true + 4611686018427387903)", "duration('1000s') * (true + 99999999)",
+    "duration('1s') * (true + 999999999)", "double(b'ab')", "double(b'')", "int(b'ab')",
+    "duration('1s').getHours('UTC')", "duration('1s').getMinutes(null)",
+    "timestamp('2020/13/01')", "timestamp('2020/02/30')", "timestamp('2021/02/29')", "timestamp('2020/01/01 24:00')",
+    "timestamp('2020/01/01 23:60')", "timestamp('2020/01/01 23:59:60')", "timestamp('0000')", "timestamp('0000/01/01')",
+])
+
 # ---------------------------------------------------------------------------
 # Petrus adapter cases
 # ---------------------------------------------------------------------------
@@ -715,10 +746,8 @@ def petrus_outcome(kind: str, expression: str, places, inputs):
                 marking = Marking({NetPath(p): tuple(token_from(t) for t in ts) for p, ts in item})
                 value = implementation(marking)
             results.append({"value": value})
-        except celpy.CELEvalError as error:
-            results.append({"cel_error": normalise(str(error.args[0]))})
         except Exception as error:
-            results.append({"py_error": type(error).__name__, "message": normalise(str(error))})
+            results.append(error_outcome(error))
     return {"results": results}
 
 
