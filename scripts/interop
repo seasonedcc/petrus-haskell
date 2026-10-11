@@ -98,7 +98,16 @@ PATTERNS: Dict[str, List[str]] = {
     "petrus-sqlite": ["Python", "upstream"],
     "petrus-telemetry": ["CPython", "Python's repr"],
     "petrus-telemetry-instrumentation": ["differential/telemetry_scenarios.py"],
-    "petrus-viewer-server": ["upstream", "the Python reference Engine, with the same answers at every step"],
+    # The hspec groups that compare with recordings of the reference (V8's
+    # JSON.parse, Node's URL, the Node MCP server's transcript) and the one
+    # that runs the Python reference Engine. The upstream Node and browser
+    # suites, run against the Haskell executables, are `--viewer`.
+    "petrus-viewer-server": [
+        "matches V8 on a recorded corpus",
+        "matches Node on a recorded corpus",
+        "reproduces the upstream Node transcript byte for byte",
+        "the Python reference Engine, with the same answers at every step",
+    ],
 }
 
 POSTGRES_MARKERS = re.compile(r"PETRUS_TEST_POSTGRES|postgresSpec|withScratchDatabase|lookupPostgresUrl")
