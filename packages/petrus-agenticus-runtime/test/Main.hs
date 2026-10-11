@@ -15,6 +15,7 @@ import Petrus.Agenticus.Runtime.PiApplicationSpec qualified
 import Petrus.Agenticus.Runtime.PiDifferentialSpec qualified
 import Petrus.Agenticus.Runtime.PiModelPhaseSpec qualified
 import Petrus.Agenticus.Runtime.PiSpec qualified
+import Petrus.Agenticus.Runtime.PinnedSdkSpec qualified
 import Petrus.Agenticus.Runtime.RunnerDifferentialSpec qualified
 import Petrus.Motus.Worker.Cli (noPlugins, workerMain)
 import System.Environment (lookupEnv)
@@ -43,6 +44,7 @@ suite =
     Petrus.Agenticus.Runtime.AmpSpec.spec
     Petrus.Agenticus.Runtime.ClaudeSpec.spec
     Petrus.Agenticus.Runtime.CodexSpec.spec
+    Petrus.Agenticus.Runtime.PinnedSdkSpec.spec
     -- The reference's opt-in live-provider tests (docs/live-provider-acceptance.md).
     describe "live providers (opt-in)" $ do
       Petrus.Agenticus.Runtime.Live.CodexSpec.spec

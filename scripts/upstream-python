@@ -5,11 +5,20 @@
 #   scripts/upstream-python petrus-engine   # upstream/petrus-engine
 #   scripts/upstream-python hamsterdan      # upstream/hamsterdan (its benchmarks,
 #                                           # corpus generators and host interop)
+#   scripts/upstream-python petrus-sdks     # upstream/petrus with the pinned
+#                                           # agenticus-claude and agenticus-amp
+#                                           # extras (the real provider SDKs)
 #
 # Each environment is upstream/<project>/.venv, synced from that project's own
 # frozen uv.lock (upstream/petrus with the postgres extra; upstream/hamsterdan
 # with its default groups, whose httpx the benchmarks' mock transport uses,
-# and its own pinned Petrus). It is reused when
+# and its own pinned Petrus). petrus-sdks is upstream/petrus synced from the
+# same lock with its agenticus-claude and agenticus-amp extras, so
+# claude-agent-sdk (with its bundled Claude Code) and amp-sdk are exactly the
+# reference's pins. It lives apart, in dist-newstyle/upstream-python/
+# petrus-sdks/.venv, so that the default environment, which the differential
+# suites run against fake SDKs, keeps exactly the packages the committed
+# fixtures were made with. It is reused when
 # it already runs the pinned Python and imports what the suites need;
 # otherwise it is (re)synced with uv.
 #
@@ -46,18 +55,29 @@ case "$project" in
     sync_args=()
     imports="hamsterdan, fastapi, httpx"
     ;;
+  petrus-sdks)
+    sync_args=(--extra agenticus-claude --extra agenticus-amp)
+    imports="petrus, claude_agent_sdk, amp_sdk"
+    ;;
   *)
-    echo "unknown upstream project: $project (petrus, petrus-engine or hamsterdan)" >&2
+    echo "unknown upstream project: $project (petrus, petrus-engine, hamsterdan or petrus-sdks)" >&2
     exit 2
     ;;
 esac
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-upstream="$root/upstream/$project"
-python="$upstream/.venv/bin/python"
+if [[ "$project" == petrus-sdks ]]; then
+  upstream="$root/upstream/petrus"
+  # uv syncs the project into this environment instead of its .venv.
+  export UV_PROJECT_ENVIRONMENT="$root/dist-newstyle/upstream-python/petrus-sdks/.venv"
+  python="$UV_PROJECT_ENVIRONMENT/bin/python"
+else
+  upstream="$root/upstream/$project"
+  python="$upstream/.venv/bin/python"
+fi
 
 if [[ ! -f "$upstream/pyproject.toml" ]]; then
-  echo "upstream/$project is empty; run \`git submodule update --init upstream/$project\` in $root" >&2
+  echo "${upstream#"$root"/} is empty; run \`git submodule update --init ${upstream#"$root"/}\` in $root" >&2
   exit 1
 fi
 
@@ -108,7 +128,7 @@ fi
 
 if ! usable; then
   if ! command -v uv >/dev/null 2>&1; then
-    echo "the upstream/$project Python environment is missing or stale and \`uv\` is not on PATH; install uv, or run \`uv sync --frozen ${sync_args[*]+${sync_args[*]} }--python $PYTHON_VERSION\` in upstream/$project" >&2
+    echo "the upstream/$project Python environment is missing or stale and \`uv\` is not on PATH; install uv, or run \`uv sync --frozen ${sync_args[*]+${sync_args[*]} }--python $PYTHON_VERSION\` in ${upstream#"$root"/}${UV_PROJECT_ENVIRONMENT:+ with UV_PROJECT_ENVIRONMENT=$UV_PROJECT_ENVIRONMENT}" >&2
     exit 1
   fi
   (cd "$upstream" && uv sync --frozen ${sync_args[@]+"${sync_args[@]}"} --python "$PYTHON_VERSION") >&2

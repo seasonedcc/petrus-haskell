@@ -57,7 +57,8 @@ OPT_INS: Dict[str, str] = {
     "skipped: set PETRUS_CV16_CODEX_GONDOLIN_LIVE=1 for the authorized Codex A3 Gondolin cell; see docs/live-provider-acceptance.md":
         "petrus-agenticus-runtime Live.CodexSpec: test_exact_codex_a3_gondolin_fresh_then_native_resume (real_gondolin_acceptance)",
     "skipped: set PETRUS_CV16_CLAUDE_QUALIFY=1 for the exact credential-free Claude A2 probe; see docs/live-provider-acceptance.md":
-        "petrus-agenticus-runtime Live.ClaudeSpec: test_exact_claude_a2_sdk_and_bundled_client (qualification_installation)",
+        "petrus-agenticus-runtime Live.ClaudeSpec: test_exact_claude_a2_sdk_and_bundled_client (qualification_installation; "
+        "its body also runs ungated in PinnedSdkSpec over scripts/upstream-python petrus-sdks)",
     "skipped: set PETRUS_CV16_CLAUDE_LIVE=1 for the authorized Claude A2 G1→G2 cell; see docs/live-provider-acceptance.md":
         "petrus-agenticus-runtime Live.ClaudeSpec: test_exact_claude_a2_fresh_then_native_resume (real_provider_acceptance)",
     "skipped: set PETRUS_RUN_CV16_AMP_A1=1 for the authenticated Amp A1 cell; see docs/live-provider-acceptance.md":
