@@ -8,10 +8,12 @@ import Control.Concurrent.MVar
 import Control.Exception (bracket, bracket_, finally, throwIO, try)
 import Control.Monad (unless, when)
 import Data.ByteString qualified as B
+import Data.IORef
 import Data.Maybe (fromJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Foreign.Marshal.Alloc (allocaBytes)
 import GHC.Clock (getMonotonicTime)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
@@ -20,8 +22,8 @@ import Petrus.Motus.Execution.Providers.Local
 import Support
 import System.Directory
 import System.Environment (setEnv, unsetEnv)
-import System.Posix.Files (createSymbolicLink, removeLink)
-import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, openFd)
+import System.Posix.Files (createNamedPipe, createSymbolicLink, removeLink)
+import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, fdReadBuf, openFd)
 import System.Posix.Signals (Handler (Ignore), installHandler, openEndedPipe, sigKILL, signalProcess)
 import System.Posix.Types (Fd (..))
 import System.Posix.Process (getProcessID)
@@ -196,9 +198,39 @@ spec = do
       lease <- provision env "collection" defaultSpec
       attachment <- attachDir provider lease tmp "digest"
       ( do
+          -- The reference's collector checks an unfinished command against
+          -- its output limit every 50 ms and terminates it once over (both
+          -- languages do), so the reference's own assertion of exit status
+          -- 0 holds only when the writer finishes within the first 50 ms:
+          -- on a loaded runner it exits -15 (upstream carries this as debt
+          -- 2026-09-08T0300Z, "process tests assume short wall-clock
+          -- budgets"). Here the writer waits on a FIFO until the first tick
+          -- has passed with nothing written, and that tick's currentness
+          -- check (made after the overflow check, before any signal) holds
+          -- the collector until the FIFO reports that every writer process
+          -- has exited, while the collector's readers keep draining. The
+          -- command then completes on its own every time: status 0, the
+          -- whole 2 MB read, 1000 bytes kept.
+          let gate = tmp <> "/writer-gate"
+          createNamedPipe gate 0o600
+          checks <- newIORef (0 :: Int)
+          let current = do
+                check <- atomicModifyIORef' checks (\n -> (n + 1, n))
+                -- Check 0 precedes the launch; check 1 is the first tick's.
+                -- Plain blocking reads (not a Handle): the IO manager's
+                -- kqueue misses a FIFO's end-of-file on macOS.
+                when (check == 1) $
+                  bracket (openFd gate ReadOnly defaultFileFlags) closeFd $ \fd ->
+                    allocaBytes 4096 $ \buffer ->
+                      let untilEof = fdReadBuf fd buffer 4096 >>= \n -> unless (n == 0) untilEof
+                       in untilEof
+                pure True
           large <-
             providerExecute provider attachment $
-              cmdWith ["/bin/sh", "-c", "head -c 2000000 /dev/zero"] (\c -> c {specOutputLimit = 1000, specTimeout = Just 5})
+              cmdWith
+                ["/bin/sh", "-c", "exec 3>\"$1\"; head -c 2000000 /dev/zero", "sh", T.pack gate]
+                (\c -> c {specOutputLimit = 1000, specTimeout = Just 5, specIsCurrent = Just current})
+          readIORef checks >>= (`shouldSatisfy` (>= 2))
           resultReturncode large `shouldBe` 0
           resultOutputTruncated large `shouldBe` True
           B.length (resultStdout large) `shouldBe` 1000
