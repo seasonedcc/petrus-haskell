@@ -18,8 +18,8 @@ import Data.Text qualified as T
 import Foreign.C.Error (throwErrnoIfMinus1_)
 import Foreign.C.Types (CInt (..))
 import Foreign.Marshal.Alloc (allocaBytes, allocaBytesAligned)
-import Foreign.Marshal.Utils (fillBytes)
 import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
+import Foreign.Storable (peek)
 import GHC.Clock (getMonotonicTime)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
@@ -493,13 +493,14 @@ withSigpipeIgnored action =
       (throwErrnoIfMinus1_ "sigaction" (c_sigaction openEndedPipe saved nullPtr))
       action
 
--- | SIGPIPE's @struct sigaction@, as bytes.
-sigpipeDisposition :: IO B.ByteString
+-- | SIGPIPE's handler: the first member of @struct sigaction@ on Linux and
+-- macOS alike. (Only that: glibc leaves most of the returned @sa_mask@
+-- unwritten.)
+sigpipeDisposition :: IO (FunPtr (CInt -> IO ()))
 sigpipeDisposition =
   allocaBytesAligned sigactionRoom 16 $ \buffer -> do
-    fillBytes buffer 0 sigactionRoom
     throwErrnoIfMinus1_ "sigaction" (c_sigaction openEndedPipe nullPtr buffer)
-    B.packCStringLen (castPtr buffer, sigactionRoom)
+    peek (castPtr buffer)
 
 -- | More than any platform's @sizeof (struct sigaction)@ (152 on Linux,
 -- 16 on macOS).
