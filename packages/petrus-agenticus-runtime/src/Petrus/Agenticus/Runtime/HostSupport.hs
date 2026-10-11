@@ -62,7 +62,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error (OnDecodeError, UnicodeException, strictDecode)
 import Petrus.Agenticus.Internal.Validate (pyIsSpace)
-import Petrus.Agenticus.Runtime.Pi (micros, waitExit)
+import Petrus.Agenticus.Runtime.Pi (micros, spawnPiped, waitExit)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.Exit (ExitCode (..))
@@ -73,13 +73,9 @@ import System.IO (BufferMode (..), Handle, hClose, hFlush, hGetBufSome, hSetBina
 import System.Posix.Signals (sigKILL, signalProcessGroup)
 import System.Posix.Unistd (SystemID (..), getSystemID)
 import System.Process
-  ( CreateProcess (..)
-  , ProcessHandle
-  , StdStream (..)
-  , createProcess
+  ( ProcessHandle
   , getPid
   , getProcessExitCode
-  , proc
   , waitForProcess
   )
 import System.Timeout (timeout)
@@ -195,19 +191,9 @@ sidecarPid s = s.pid
 -- | Start the sidecar, or 'Nothing' when it cannot be launched.
 spawnSidecar :: SidecarCommand -> IO (Maybe Sidecar)
 spawnSidecar command = do
-  spawned <-
-    try . createProcess $
-      (proc command.executable command.arguments)
-        { std_in = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
-        , cwd = command.directory
-        , env = command.environment
-        , new_session = True
-        , close_fds = True
-        }
+  spawned <- spawnPiped command.executable command.arguments command.directory command.environment
   case spawned of
-    Right (Just i, Just o, Just e, p) -> do
+    Just (i, o, e, p) -> do
       mapM_ (`hSetBinaryMode` True) [i, o, e]
       hSetBuffering i (BlockBuffering Nothing)
       pid <- fmap fromIntegral <$> getPid p
@@ -217,8 +203,7 @@ spawnSidecar command = do
       reader <- forkIO (readLines o frames B.empty)
       closed <- newIORef False
       pure (Just (Sidecar p pid i o e frames reader drainer drained closed))
-    Right _ -> pure Nothing
-    Left (_ :: IOException) -> pure Nothing
+    Nothing -> pure Nothing
   where
     drain h = do
       chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
@@ -435,19 +420,9 @@ openSidecarChannel (SidecarPool pool) command = attempt (2 :: Int)
 
 spawnShared :: SidecarCommand -> IO (Maybe SharedSidecar)
 spawnShared command = do
-  spawned <-
-    try . createProcess $
-      (proc command.executable command.arguments)
-        { std_in = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
-        , cwd = command.directory
-        , env = command.environment
-        , new_session = True
-        , close_fds = True
-        }
+  spawned <- spawnPiped command.executable command.arguments command.directory command.environment
   case spawned of
-    Right (Just i, Just o, Just e, p) -> do
+    Just (i, o, e, p) -> do
       mapM_ (`hSetBinaryMode` True) [i, o, e]
       hSetBuffering i (BlockBuffering Nothing)
       pid <- fmap fromIntegral <$> getPid p
@@ -456,8 +431,7 @@ spawnShared command = do
       buffer <- mallocForeignPtrBytes readSize
       _ <- forkIO (readFrames s o buffer B.empty `finally` finish s p [i, o, e])
       pure (Just s)
-    Right _ -> pure Nothing
-    Left (_ :: IOException) -> pure Nothing
+    Nothing -> pure Nothing
   where
     drain h = do
       chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty

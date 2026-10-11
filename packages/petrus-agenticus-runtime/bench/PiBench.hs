@@ -7,7 +7,8 @@
 -- * @pi-session-validate@: @_validate_session@ over a 200-entry session.
 -- * @pi-fingerprint@: @pi_durable_work_fingerprint@.
 -- * @pi-ledger-cycle@: one durable operation through a SQLite ledger:
---   @admit@, @settle@, @upgrade_cleanup@, @acknowledge@ and @lookup@.
+--   @admit@, @settle@, @upgrade_cleanup@, @acknowledge@ and @lookup@,
+--   timed with the twin's protocol (see "Twin": the ledger is fsync-bound).
 module PiBench (piBenchmarks) where
 
 import Control.Exception (throwIO)
@@ -27,6 +28,7 @@ import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.FilePath ((</>))
 import Test.Tasty.Bench
+import Twin (twin)
 
 ok :: (Show e) => Either e a -> a
 ok = either (error . show) id
@@ -112,5 +114,5 @@ piBenchmarks tmp = do
     , bench "pi-tool-call-decode" (whnf (size . ok . strictFrameLoad) toolCall)
     , bench "pi-session-validate" (nf (\s -> ok (validateSession s sessionId 4000000 10000)) sessionBytes)
     , bench "pi-fingerprint" (nf fingerprint "pi-prompt-canary-never-render")
-    , bench "pi-ledger-cycle" (whnfIO (ledgerCycle ledger counter))
+    , twin "pi-ledger-cycle" 200 (ledgerCycle ledger counter)
     ]

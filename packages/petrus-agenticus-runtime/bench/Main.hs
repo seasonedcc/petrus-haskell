@@ -41,6 +41,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import HostsBench (hostsBenchmarks)
 import PiA2Bench (piA2Benchmarks)
 import PiBench (piBenchmarks)
+import PiTurnsBench (piTurnsBenchmarks)
 import TurnsBench (turnsBenchmarks)
 import Test.Tasty (localOption)
 import Test.Tasty.Bench
@@ -127,6 +128,7 @@ main = withSystemTempDirectory "pi-bench" $ \tmp -> do
   pi' <- piBenchmarks tmp
   (a2, closeA2) <- piA2Benchmarks (tmp </> "a2")
   turns <- turnsBenchmarks tmp
+  piTurns <- piTurnsBenchmarks tmp
   defaultMain
     ( map (localOption WallTime) $
       [ bench "runner-3-phases-3-reads" (whnfIO runOnce)
@@ -136,5 +138,6 @@ main = withSystemTempDirectory "pi-bench" $ \tmp -> do
         <> a2
         <> hostsBenchmarks
         <> turns
+        <> piTurns
     )
     `finally` closeA2

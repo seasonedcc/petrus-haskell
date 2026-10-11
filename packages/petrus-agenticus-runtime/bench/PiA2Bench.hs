@@ -12,8 +12,8 @@
 --   implementations (closing evicts handles up to the acknowledged
 --   watermark, which reads every ledger record), so tasty-bench's doubling
 --   of iterations never settles on it. This row therefore runs the twin's
---   exact protocol instead: one warm-up turn, then 7 batches of 20 turns on
---   one host, reporting the median batch's time per turn.
+--   exact protocol instead ('twin'): one warm-up turn, then 7 batches of 20
+--   turns on one host, reporting the median batch's time per turn.
 module PiA2Bench (piA2Benchmarks) where
 
 import Data.ByteArray qualified as BA
@@ -35,28 +35,8 @@ import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))
 import Petrus.Motus.Execution.Archive (workspaceArchive)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
-import Data.List (sort)
 import Test.Tasty.Bench
-import Test.Tasty.Providers (IsTest (..), singleTest, testPassed)
-import Text.Printf (printf)
-
--- | @timed(label, operation, batches=7, per_batch=20)@ of the Python twin:
--- one warm-up call, then the median of 7 batches' mean time per call.
-newtype TwinProtocol = TwinProtocol (IO ())
-
-instance IsTest TwinProtocol where
-  testOptions = pure []
-  run _ (TwinProtocol operation) _ = do
-    operation
-    let batch = do
-          start <- getMonotonicTime
-          mapM_ (const operation) [1 .. perBatch]
-          end <- getMonotonicTime
-          pure ((end - start) / fromIntegral perBatch)
-        perBatch = 20 :: Int
-    samples <- sort <$> mapM (const batch) [1 .. 7 :: Int]
-    let at i = samples !! i * 1e3 :: Double
-    pure (testPassed (printf "%.2f ms per turn (median of 7 batches of 20, after 1 warm-up; batches %.2f to %.2f ms)" (at 3) (at 0) (at 6)))
+import Twin (twin)
 
 ok :: (Show e) => Either e a -> a
 ok = either (error . show) id
@@ -132,7 +112,7 @@ piA2Benchmarks tmp = do
   counter <- newIORef 0
   pure
     ( [ bench "pi-a2-fingerprint" (nf (\s -> ok (piA2DurableFingerprint validated s inner)) (startFor archive "operation"))
-      , singleTest "pi-a2-scripted-turn" (TwinProtocol (scriptedTurn host archive counter))
+      , twin "pi-a2-scripted-turn" 20 (scriptedTurn host archive counter)
       ]
     , () <$ closeHost host
     )

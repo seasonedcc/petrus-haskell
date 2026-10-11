@@ -141,6 +141,7 @@ module Petrus.Agenticus.Runtime.Pi
   , maxKey
     -- * Process pieces shared with the sibling Pi runtimes
   , waitExit
+  , spawnPiped
   , exitInt
   , removeRoot
   , runBounded
@@ -158,6 +159,7 @@ import Control.Exception
   , finally
   , fromException
   , mask_
+  , onException
   , throwIO
   , try
   )
@@ -293,7 +295,10 @@ import System.FilePath (takeDirectory, (</>))
 import System.IO (BufferMode (..), Handle, hClose, hFlush, hSetBinaryMode, hSetBuffering)
 import System.IO.Error (isDoesNotExistError)
 import System.IO.Temp (createTempDirectory)
+import Petrus.Motus.Execution.Error (ExecutionError)
+import Petrus.Motus.Execution.Internal.Process (StdioFd (..), childPid, spawnChild)
 import System.Posix.Files qualified as Files
+import System.Posix.IO (FdOption (CloseOnExec), closeFd, createPipe, fdToHandle, setFdOption)
 import System.Posix.Signals (sigKILL, signalProcess, signalProcessGroup)
 import System.Posix.Unistd (SystemID (..), getSystemID)
 import System.Posix.User (getEffectiveUserID)
@@ -306,6 +311,7 @@ import System.Process
   , getProcessExitCode
   , proc
   )
+import System.Process.Internals (mkProcessHandle)
 import System.Timeout (timeout)
 import Data.ByteString qualified as BS
 
@@ -1119,20 +1125,10 @@ newSubprocessClientWith options helper args = do
         , ("LANG", "C.UTF-8")
         , ("LC_ALL", "C.UTF-8")
         ]
-      command =
-        (proc args.node [helper, T.unpack args.sdkEntrypoint, maybe "--no-extension" T.unpack args.extension])
-          { std_in = CreatePipe
-          , std_out = CreatePipe
-          , std_err = CreatePipe
-          , env = Just environment
-          , new_session = True
-          , close_fds = True
-          }
-  spawned <- try (createProcess command)
+  spawned <- spawnPiped args.node [helper, T.unpack args.sdkEntrypoint, maybe "--no-extension" T.unpack args.extension] Nothing (Just environment)
   (stdinHandle, stdoutHandle, stderrHandle, process) <- case spawned of
-    Right (Just i, Just o, Just e, p) -> pure (i, o, e, p)
-    Right _ -> throwIO (runtimeProtocolError "helper-launch-failed")
-    Left (_ :: IOException) -> throwIO (runtimeProtocolError "helper-launch-failed")
+    Just started -> pure started
+    Nothing -> throwIO (runtimeProtocolError "helper-launch-failed")
   mapM_ (`hSetBinaryMode` True) [stdinHandle, stdoutHandle, stderrHandle]
   hSetBuffering stdinHandle (BlockBuffering Nothing)
   pid <- fmap fromIntegral <$> getPid process
@@ -1435,6 +1431,40 @@ waitExit process seconds = do
             now <- getMonotonicTime
             if now >= end then pure Nothing else threadDelay 2000 >> go
   go
+
+-- | @subprocess.Popen([executable, *arguments], stdin=PIPE, stdout=PIPE,
+-- stderr=PIPE, cwd=directory, env=environment, start_new_session=True)@
+-- (@close_fds=True@ by default): the child's stdin, stdout and stderr
+-- handles and its process, or 'Nothing' when it cannot be started.
+--
+-- The child is started with petrus-execution's @posix_spawn@, which keeps
+-- only stdio open the way each platform intends.  The @process@ package
+-- falls back to fork and closes every descriptor up to @RLIMIT_NOFILE@ for
+-- @close_fds@, about 0.1 s per spawn at macOS's 1 048 576, where CPython
+-- closes only the open ones.
+spawnPiped :: FilePath -> [String] -> Maybe FilePath -> Maybe [(String, String)] -> IO (Maybe (Handle, Handle, Handle, ProcessHandle))
+spawnPiped executable arguments directory environment =
+  mask_ (start `catch` \(_ :: IOException) -> pure Nothing)
+  where
+    quietly = mapM_ (\fd -> closeFd fd `catch` \(_ :: IOException) -> pure ())
+    pipe = do
+      (readEnd, writeEnd) <- createPipe
+      (readEnd, writeEnd) <$ (setFdOption readEnd CloseOnExec True >> setFdOption writeEnd CloseOnExec True)
+        `onException` quietly [readEnd, writeEnd]
+    start = do
+      (inRead, inWrite) <- pipe
+      (outRead, outWrite) <- pipe `onException` quietly [inRead, inWrite]
+      (errRead, errWrite) <- pipe `onException` quietly [inRead, inWrite, outRead, outWrite]
+      let parentEnds = [inWrite, outRead, errRead]
+      spawned <-
+        try (spawnChild (executable : arguments) directory environment True (UseFd inRead, UseFd outWrite, UseFd errWrite))
+          `finally` quietly [inRead, outWrite, errWrite]
+      case spawned of
+        Left (_ :: ExecutionError) -> Nothing <$ quietly parentEnds
+        Right child -> do
+          process <- mkProcessHandle (childPid child) False
+          handles <- ((,,) <$> fdToHandle inWrite <*> fdToHandle outRead <*> fdToHandle errRead) `onException` quietly parentEnds
+          pure (Just (case handles of (i, o, e) -> (i, o, e, process)))
 
 -- | Close pipes, kill the helper's whole process group, and report whether
 -- the helper and its stderr drain are proven gone.

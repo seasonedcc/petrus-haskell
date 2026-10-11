@@ -1,4 +1,5 @@
--- | Whole Codex, Claude and Amp Turns; the twins of @bench/python_bench.py@.
+-- | Whole Codex, Claude and Amp Turns, and the Codex A3 runtime service's
+-- round trip; the twins of @bench/python_bench.py@.
 --
 -- Each row takes one Turn through the host's adapter, against the same fakes
 -- the reference side uses (@test/fixtures@), with a fresh operation id every
@@ -9,6 +10,17 @@
 --   materialize and activate; the fake @codex@ CLI and the private helper's
 --   @collect@ run as subprocesses; checkpoint and admission),
 --   'waitCodexOperation', 'closeCodexOperation', and settle the attachment.
+-- * @codex-a3-service-turn@: the A3 lane end to end over its host-local
+--   runtime service: open a Gondolin Motus territory (the fake Gondolin SDK
+--   @test/fixtures/codex/fake_gondolin_codex.mjs@, whose guest commands run
+--   on the host) and its Episode Attachment, probe the guest @codex@, start
+--   the service on a fresh private state directory under @/private/tmp@
+--   (a Unix socket path has at most 104 bytes on macOS): its fence and
+--   SQLite replay ledger; send one request through the Worker-side Activity client over
+--   the Unix socket (the service records the operation, runs one Codex Turn
+--   with the same custody as @codex-turn@, stores and replies the terminal),
+--   close the service, remove its state directory, and settle the
+--   attachment.
 -- * @claude-turn@: open a Local Motus territory, its Episode Attachment, the
 --   Hands gateway and a grant, then 'startClaude' (custody materialization,
 --   the official client of the fake @claude_agent_sdk@ through the sidecar:
@@ -22,8 +34,18 @@
 -- The connection keys are reversible stand-ins on both sides, so the cipher
 -- is not measured. The probes run once, before timing, through the official
 -- probe hooks.
-module TurnsBench (turnsBenchmarks) where
+module TurnsBench
+  ( turnsBenchmarks
+    -- * Shared with "PiTurnsBench"
+  , ok
+  , counter
+  , completed
+  , verified
+  , settled
+  , hostFencedEffect
+  ) where
 
+import Control.Exception (finally)
 import Control.Monad (unless)
 import Data.ByteArray qualified as BA
 import Data.ByteString qualified as B
@@ -33,14 +55,17 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
-import Petrus.Agenticus.Attachment.Binding (BindingSettlement (..), bindingExecution, motusBinding, openMotusBinding)
+import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..), defaultExecutionPolicy)
+import Petrus.Agenticus.Attachment.Binding (AttachmentCoordinates (..), BindingSettlement (..), bindingExecution, motusBinding, openMotusBinding)
 import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment, episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Catalog.Resolution (mkResolutionSnapshot)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
+  , AgentConnectionCustody
   , AttachmentFence (..)
+  , ConnectionIdentity (..)
   , ConnectionStatus (..)
   , ConnectionView (..)
   , ReleaseResult (..)
@@ -60,20 +85,33 @@ import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspac
 import Petrus.Agenticus.Runtime.Amp
 import Petrus.Agenticus.Runtime.Claude
 import Petrus.Agenticus.Runtime.Codex
+import Petrus.Agenticus.Runtime.CodexGondolin
+  ( closeCodexGondolinRuntimeService
+  , codexGondolinActivityClientWith
+  , endpointVariable
+  , jsonBytes
+  , newCodexGondolinRuntimeService
+  , serviceActivity
+  , startCodexGondolinRuntimeService
+  , tokenVariable
+  )
 import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeProbeResult (..))
 import Petrus.Agenticus.Runtime.Operation (RuntimeOperationCleanup, cleanupVerified)
 import Petrus.Agenticus.Runtime.Pi (PiConnectionCustody (..), PiHome (..), PiMaterialization (..), piConnectionCustody)
-import Petrus.Agenticus.Runtime.Profiles (ampA1, claudeA2Local, codexA2Local)
+import Petrus.Agenticus.Runtime.Profiles (ampA1, claudeA2Local, codexA2Local, codexA3Gondolin)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
-import Petrus.Agenticus.Thread.Identity (mkEpisodeId, mkTurnId)
+import Petrus.Agenticus.Thread.Identity (lifecycleIdToData, mkEpisodeId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))
-import Petrus.Motus.Execution (capPrivateFileTransfer, defaultSpec, mkEnvironmentSpec)
+import Petrus.Json (Json (..))
+import Petrus.Motus.Execution (capMicrovm, capPrivateFileTransfer, capVm, defaultSpec, mkEnvironmentSpec)
 import Petrus.Motus.Execution.Archive (workspaceArchive)
+import Petrus.Motus.Execution.Providers.Gondolin (GondolinConfig (..), gondolinConfig, gondolinProvider, newGondolinEnvironment)
 import Petrus.Motus.Execution.Providers.Local (localProvider, newLocalProcessEnvironment)
 import Petrus.TestSupport.Python (pythonExecutable)
-import System.Directory (createDirectory, makeAbsolute)
+import System.Directory (createDirectory, makeAbsolute, removeDirectoryRecursive)
 import System.Environment (lookupEnv, setEnv)
 import System.FilePath ((</>))
+import System.IO.Temp (createTempDirectory)
 import System.Posix.Files (setFileMode)
 import Test.Tasty.Bench
 
@@ -120,13 +158,25 @@ prependPath directory = do
 -- ---------------------------------------------------------------------------
 -- Codex
 
-codexTurn :: FilePath -> FilePath -> IO (IO ())
-codexTurn python root = do
+-- | The fake @codex@ CLI at @version@, written to @root@.
+fakeCodex :: FilePath -> FilePath -> Text -> IO FilePath
+fakeCodex python root version = do
   template <- TE.decodeUtf8 <$> B.readFile ("test" </> "fixtures" </> "codex" </> "fake_codex.py")
   let executable = root </> "codex"
-  B.writeFile executable (TE.encodeUtf8 (T.replace "__VERSION__" codexVersion (T.replace "__PYTHON__" (T.pack python) template)))
+  B.writeFile executable (TE.encodeUtf8 (T.replace "__VERSION__" version (T.replace "__PYTHON__" (T.pack python) template)))
   setFileMode executable 0o755
-  prependPath root
+  pure executable
+
+-- | Real custody over a SQLite ledger with the @codex-bench@ connection
+-- authorized, and the in-memory Continuation and Turn stores.
+data CodexRig = CodexRig
+  { custody :: AgentConnectionCustody
+  , continuations :: CodexContinuationOperations
+  , turns :: CodexTurnOperations
+  }
+
+codexRig :: FilePath -> IO CodexRig
+codexRig root = do
   let installation = root </> "installation"
   createDirectory installation
   setFileMode installation 0o700
@@ -146,6 +196,13 @@ codexTurn python root = do
           , load = \reference -> maybe (fail "no continuation") pure . Map.lookup reference =<< readIORef values
           }
       turns = CodexTurnOperations (\operationId _ _ -> pure ("codex-turn-" <> operationId))
+  pure CodexRig {custody, continuations, turns}
+
+codexTurn :: FilePath -> FilePath -> IO (IO ())
+codexTurn python root = do
+  _ <- fakeCodex python root codexVersion
+  prependPath root
+  CodexRig {custody, continuations, turns} <- codexRig root
   operations <- piConnectionCustody custody
   adapter <-
     newCodexRuntimeAdapter
@@ -189,6 +246,108 @@ codexTurn python root = do
     operation <- startCodex adapter invocation
     completed =<< waitCodexOperation operation (Just 30)
     verified =<< closeCodexOperation operation
+    settled attachment
+
+-- ---------------------------------------------------------------------------
+-- Codex A3 runtime service
+
+codexA3ServiceTurn :: FilePath -> FilePath -> IO (IO ())
+codexA3ServiceTurn python root = do
+  executable <- fakeCodex python root codexGondolinVersion
+  let architecture = root </> "fake-uname"
+      sdk = root </> "fake-gondolin-codex.mjs"
+      jsonPath = TE.decodeUtf8 . ok . jsonBytes . String . T.pack
+  writeFile architecture "#!/bin/sh\nprintf aarch64\n"
+  setFileMode architecture 0o755
+  template <- TE.decodeUtf8 <$> B.readFile ("test" </> "fixtures" </> "codex" </> "fake_gondolin_codex.mjs")
+  B.writeFile sdk . TE.encodeUtf8 $
+    T.replace "__STARTED__" (jsonPath (root </> "fake-codex-command-started")) $
+      T.replace "__UNAME__" (jsonPath architecture) $
+        T.replace "__CODEX__" (jsonPath executable) template
+  CodexRig {custody, continuations, turns} <- codexRig root
+  operations <- piConnectionCustody custody
+  adapter <-
+    newCodexGondolinRuntimeAdapter
+      (codexRuntimeConfig "host-1") {credentialTtl = 10, commandTimeout = 10, cancellationGrace = 2}
+      (codexContinuationCodec continuations)
+      turns
+      operations
+      CodexAdapterOptions {clock = getMonotonicTime, hooks = officialCodexProbeHooks, interpreter = python}
+  environment <- newGondolinEnvironment (root </> "gondolin") (gondolinConfig (T.pack sdk)) {gondolinLeaseTtl = 30}
+  let provider = gondolinProvider environment
+      spec = ok (mkEnvironmentSpec (Just "fake-image") [capVm, capMicrovm, capPrivateFileTransfer])
+      selected =
+        ok . mkResolutionSnapshot 1 $
+          [ codexA3Gondolin
+          , codexConnectionCapabilities
+          , codexProgramCapabilities
+          , codexCollocatedHands
+          , codexGondolinTerritory
+          , codexContinuationCapabilities
+          , hostFencedEffect
+          ]
+      token = T.replicate 32 "t"
+      context =
+        ActivityExecutionContext
+          { attemptId = "activity-attempt"
+          , epoch = "1"
+          , claimant = "host"
+          , instance' = Nothing
+          , latestDetails = pure Null
+          , heartbeat = pure . maybe Null id
+          }
+  createDirectory (root </> "workspace")
+  writeFile (root </> "workspace" </> "public-input.txt") "public-workspace-canary"
+  archive <- workspaceArchive (root </> "workspace")
+  next <- counter
+  pure $ do
+    n <- next
+    binding <- openMotusBinding provider ("territory-" <> n) spec archive ("input-" <> n)
+    now <- getMonotonicTime
+    attachment <- newEpisodeAttachment (ok (mkEpisodeId ("episode-" <> n))) selected (motusBinding binding) ("attachment-" <> n) (now + 30) episodeOptions
+    ready =<< probeCodexGondolin adapter (Just attachment)
+    connection <- lookupConnection custody "codex-bench"
+    state <- createTempDirectory "/private/tmp" "petrus-a3-"
+    let endpoint = state </> "runtime.sock"
+    service <- newCodexGondolinRuntimeService endpoint (state </> "runtime-ledger.db") token adapter connection attachment
+    startCodexGondolinRuntimeService service
+    coordinates <- Episode.coordinates attachment
+    let input =
+          Object
+            [ ("version", Int 1)
+            , ("episode_id", lifecycleIdToData (Episode.episodeId attachment))
+            , ("turn_id", String ("turn-" <> n))
+            , ("prompt", String "first")
+            , ("attachment_id", String coordinates.attachmentId)
+            , ("attachment_epoch", Int coordinates.attachmentEpoch)
+            , ("connection_id", String connection.identity.connectionId)
+            , ("authority_epoch", Int connection.authorityEpoch)
+            , ("state_version", Int connection.stateVersion)
+            , ("continuation", Null)
+            ]
+        invocation =
+          ActivityInvocation
+            { activity = serviceActivity
+            , input
+            , policy = defaultExecutionPolicy
+            , correlation = Nothing
+            , idempotency = Just ("operation-" <> n)
+            }
+        variables name
+          | name == endpointVariable = pure (Just (T.pack endpoint))
+          | name == tokenVariable = pure (Just token)
+          | otherwise = pure Nothing
+    result <-
+      codexGondolinActivityClientWith variables invocation context
+        `finally` closeCodexGondolinRuntimeService service
+        `finally` removeDirectoryRecursive state
+    case result of
+      Object members
+        | lookup "outcome" members == Just (String "completed")
+        , Just (Object cleanup) <- lookup "cleanup" members
+        , lookup "disposition" cleanup == Just (String "clean") ->
+            pure ()
+      _ -> fail ("service turn did not complete: " <> show result)
     settled attachment
 
 -- ---------------------------------------------------------------------------
@@ -356,7 +515,7 @@ ampTurn python root = do
     verified =<< closeAmpOperation operation
     settled attachment
 
--- | The three rows, each over its own directory under @tmp@.
+-- | The four rows, each over its own directory under @tmp@.
 turnsBenchmarks :: FilePath -> IO [Benchmark]
 turnsBenchmarks tmp = do
   python <- pythonExecutable
@@ -366,6 +525,7 @@ turnsBenchmarks tmp = do
         bench name . whnfIO <$> make python directory
   sequence
     [ build "codex-turn" codexTurn
+    , build "codex-a3-service-turn" codexA3ServiceTurn
     , build "claude-turn" claudeTurn
     , build "amp-turn" ampTurn
     ]

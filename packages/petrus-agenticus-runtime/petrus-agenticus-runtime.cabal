@@ -146,7 +146,9 @@ benchmark petrus-agenticus-runtime-bench
   other-modules:    HostsBench
                     PiA2Bench
                     PiBench
+                    PiTurnsBench
                     TurnsBench
+                    Twin
   build-depends:    base
                   , bytestring
                   , containers
