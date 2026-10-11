@@ -14,17 +14,17 @@ Divergences are listed in [DIVERGENCES.md](DIVERGENCES.md).
 
 | What | Where | Result |
 | --- | --- | --- |
-| `test_telemetry.py`, 29 tests | `petrus-telemetry/test/Main.hs` | 29 ported; 37 examples, 0 failures |
+| `test_telemetry.py`, 29 tests | `petrus-telemetry/test/Main.hs` | 28 ported, 1 unrepresentable (DIVERGENCES 13); 36 examples, 0 failures |
 | `test_telemetry_instrumentation.py`, 22 tests | `petrus-telemetry-instrumentation/test/Petrus/Telemetry/InstrumentationSpec.hs` | all 22 ported as is |
 | Instrumentation differential: 25 scenarios, 290 events, compared raw | [`differential/`](../petrus-telemetry-instrumentation/differential), `DifferentialSpec.hs` | every event name, field, field order and value is exact, and every routed line is byte-identical with `ts` pinned |
 | Routed-line bytes | `pinned` in the differential fixture | 4 fixed payloads, including non-ASCII, non-finite floats, a payload `ts`, and the benchmark payload |
 | Overhead benchmark | [`bench/RESULTS.md`](../petrus-telemetry-instrumentation/bench/RESULTS.md) | a routed emit costs 2.5 µs vs Python's 4.5 µs; the default (no route) costs 0.06 µs vs 2.6 µs; `profile`-level gauges on a 1 000-firing Engine chain cost ~25 µs per firing routed vs ~52 µs |
 
-The instrumentation suite runs 52 examples, 0 failures:
+The instrumentation suite runs 56 examples, 0 failures:
 
 - the 22 ported tests;
 - 4 Haskell-specific examples;
-- 26 differential examples. One of them regenerates the reference's events
+- 30 differential examples. One of them regenerates the reference's events
   from the pinned checkout; it provisions the reference through
   `scripts/upstream-python` and fails, never goes pending, when it cannot.
 
@@ -44,7 +44,7 @@ The instrumentation suite runs 52 examples, 0 failures:
 | `TestTelemetryLoggerEmit::test_rebinding_existing_context_field_fails_loudly` | `rebinding existing context field fails loudly` | ported (`Either`; DIVERGENCES 4) |
 | `TestTelemetryLoggerEmit::test_emit_cannot_override_bound_context_field` | `emit cannot override bound context field` | ported (DIVERGENCES 4) |
 | `TestTelemetryLoggerEmit::test_a_failing_sink_never_gates_execution` | `a failing sink never gates execution` | ported (DIVERGENCES 5) |
-| `TestTelemetrySpan::test_elapsed_time_before_span_entry_fails_with_lifecycle_error` | `TelemetrySpan` / `elapsed time before span entry fails with lifecycle error` | ported (DIVERGENCES 13) |
+| `TestTelemetrySpan::test_elapsed_time_before_span_entry_fails_with_lifecycle_error` | — | not ported: an unstarted span is unrepresentable (DIVERGENCES 13) |
 | `TestTelemetrySpan::test_span_emits_started_and_finished_events_with_result_fields` | `span emits started and finished events with result fields` | ported |
 | `TestTelemetrySpan::test_failed_span_emits_failed_status_and_reraises` | `failed span emits failed status and reraises` | ported (DIVERGENCES 3) |
 | `TestTelemetrySpan::test_child_span_inherits_parent_span_context` | `child span inherits parent span context` | ported |

@@ -169,11 +169,6 @@ main = hspec . sequential $ do
       emit (getLogger "impetus" (Just broken)) "thing" [("occurrence", Int 1)]
 
   describe "TelemetrySpan" $ do
-    it "elapsed time before span entry fails with lifecycle error" $ do
-      (logger, _) <- makeLogger
-      s <- newSpan logger "commit" []
-      spanElapsedMs s `shouldThrowMessage` "span has not started"
-
     it "span emits started and finished events with result fields" $ do
       (logger, recorder) <- makeLogger
       let logger' = bound [("backend", String "jsonl")] logger
@@ -360,26 +355,25 @@ main = hspec . sequential $ do
         `shouldBe` [("event", String "impetus_s_finished"), ("status", String "success"), ("n", Int 1), ("elapsed_ms", Int 0)]
 
     it "error_type names the Python class the reference reports" $ do
-      let failedWith :: Exception e => (Span -> Span) -> e -> IO Json
+      let failedWith :: Exception e => (SomeException -> Maybe T.Text) -> e -> IO Json
           failedWith classify e = do
             (logger, recorder) <- makeLogger
-            s <- newSpan logger "s" []
-            void (try (runSpan (classify s) (\_ -> throwIO e)) :: IO (Either SomeException ()))
+            void (try (withSpanClassifying classify logger "s" [] (\_ -> throwIO e)) :: IO (Either SomeException ()))
             field "error_type" . last <$> recorded recorder
       -- An errno-carrying IOException is CPython's OSError subclass for it.
-      failedWith id (errnoToIOError "open" eNOENT Nothing (Just "x")) `shouldReturn` String "FileNotFoundError"
-      failedWith id (errnoToIOError "open" eACCES Nothing Nothing) `shouldReturn` String "PermissionError"
-      failedWith id (errnoToIOError "read" eAGAIN Nothing Nothing) `shouldReturn` String "BlockingIOError"
-      failedWith id (errnoToIOError "send" ePIPE Nothing Nothing) `shouldReturn` String "BrokenPipeError"
-      failedWith id (errnoToIOError "write" eNOSPC Nothing Nothing) `shouldReturn` String "OSError"
-      failedWith id (userError "boom") `shouldReturn` String "OSError"
-      failedWith id UserInterrupt `shouldReturn` String "KeyboardInterrupt"
-      failedWith id DivideByZero `shouldReturn` String "ZeroDivisionError"
-      failedWith id (ExitFailure 3) `shouldReturn` String "SystemExit"
+      failedWith (const Nothing) (errnoToIOError "open" eNOENT Nothing (Just "x")) `shouldReturn` String "FileNotFoundError"
+      failedWith (const Nothing) (errnoToIOError "open" eACCES Nothing Nothing) `shouldReturn` String "PermissionError"
+      failedWith (const Nothing) (errnoToIOError "read" eAGAIN Nothing Nothing) `shouldReturn` String "BlockingIOError"
+      failedWith (const Nothing) (errnoToIOError "send" ePIPE Nothing Nothing) `shouldReturn` String "BrokenPipeError"
+      failedWith (const Nothing) (errnoToIOError "write" eNOSPC Nothing Nothing) `shouldReturn` String "OSError"
+      failedWith (const Nothing) (userError "boom") `shouldReturn` String "OSError"
+      failedWith (const Nothing) UserInterrupt `shouldReturn` String "KeyboardInterrupt"
+      failedWith (const Nothing) DivideByZero `shouldReturn` String "ZeroDivisionError"
+      failedWith (const Nothing) (ExitFailure 3) `shouldReturn` String "SystemExit"
       -- No Python counterpart: the Haskell type constructor.
-      failedWith id (ErrorCall "boom") `shouldReturn` String "ErrorCall"
+      failedWith (const Nothing) (ErrorCall "boom") `shouldReturn` String "ErrorCall"
       -- A runtime names its own failures first.
-      let classify = classifyErrors (\e -> if fmap (\(ErrorCall m) -> m) (fromException e) == Just "refused" then Just "ValueError" else Nothing)
+      let classify e = if fmap (\(ErrorCall m) -> m) (fromException e) == Just "refused" then Just "ValueError" else Nothing
       failedWith classify (ErrorCall "refused") `shouldReturn` String "ValueError"
       failedWith classify (ErrorCall "other") `shouldReturn` String "ErrorCall"
       failedWith classify (userError "boom") `shouldReturn` String "OSError"

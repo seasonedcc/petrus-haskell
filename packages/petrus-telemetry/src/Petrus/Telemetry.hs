@@ -75,11 +75,8 @@ module Petrus.Telemetry
   , Span
   , spanName
   , spanLogger
-  , newSpan
-  , runSpan
   , withSpan
   , withSpanClassifying
-  , classifyErrors
   , pythonErrorType
   , withChildSpan
   , spanEmit
@@ -405,74 +402,65 @@ insertField fields (key, value) = case break ((== key) . fst) fields of
 -- the two, 'milestone' marks progress with elapsed time, and 'spanSet',
 -- 'increment' and 'accumulateTime' build the result fields the finish event
 -- carries, in first-set order.
+--
+-- A span exists only once it has started (DIVERGENCES 13): it is made by
+-- 'withSpan', so its elapsed time is always defined.
 data Span = Span
   { spanLogger :: TelemetryLogger
   -- ^ The parent logger with the span's fields bound; child spans and
   -- 'spanEmit' inherit them.
   , spanName :: Text
   , spanResult :: IORef Payload
-  , spanStartedAt :: IORef (Maybe Double)
+  , spanStartedAt :: Double
   , spanErrorType :: SomeException -> Text
   -- ^ The @error_type@ of an exception escaping the body.
   }
 
--- | A span that has not started. Its fields are bound now, so a collision
--- with the logger's context throws 'DuplicateTelemetryFields' before any
--- event. Most callers want 'withSpan'; this exists because the reference can
--- hold a span before entering it, and asking its elapsed time then is a
--- lifecycle error ('SpanNotStarted').
-newSpan :: TelemetryLogger -> Text -> Payload -> IO Span
-newSpan logger name fields = case bindFields fields logger of
-  Left duplicates -> throwIO (DuplicateTelemetryFields duplicates)
-  Right bound -> (\result started -> Span bound name result started pythonErrorType) <$> newIORef [] <*> newIORef Nothing
-
--- | Name the exceptions a span's body raises in the reference's vocabulary
--- first, then as 'pythonErrorType' does. A runtime whose own failures stand
--- for Python exceptions (the Engine's @ValueError@/@RuntimeError@, a
--- handler's recorded failure) names them here.
-classifyErrors :: (SomeException -> Maybe Text) -> Span -> Span
-classifyErrors classify s = s {spanErrorType = \e -> fromMaybe (spanErrorType s e) (classify e)}
-
--- | Run a body inside the span: stamp the start, emit @{name}_started@, run,
--- then emit @{name}_finished@. On an exception (asynchronous ones included,
--- as Python's @__exit__@ sees @KeyboardInterrupt@) the finish event carries
--- @status = "failed"@ and @error_type@, and the exception is rethrown.
+-- | @with log.span(name, **fields) as span:@. The fields are bound first,
+-- so a collision with the logger's context throws 'DuplicateTelemetryFields'
+-- before any event. Then the span stamps its start, emits @{name}_started@,
+-- runs the body and emits @{name}_finished@. On an exception (asynchronous
+-- ones included, as Python's @__exit__@ sees @KeyboardInterrupt@) the
+-- finish event carries @status = "failed"@ and @error_type@, and the
+-- exception is rethrown.
 --
 -- @error_type@ is the Python class the reference reports for the exception
--- ('pythonErrorType', or the span's 'classifyErrors'); a Haskell exception
--- with no Python counterpart is named by its type constructor (@ErrorCall@).
--- If the finish emit itself
--- throws (a result field colliding with the context), that exception replaces
--- the body's, as in the reference.
-runSpan :: Span -> (Span -> IO a) -> IO a
-runSpan s body = mask $ \restore -> do
-  started <- clock (spanLogger s)
-  writeIORef (spanStartedAt s) (Just started)
-  emit (spanLogger s) (spanName s <> "_started") []
-  result <-
-    restore (body s) `catch` \(e :: SomeException) -> do
-      finish (Just e)
-      throwIO e
-  finish Nothing
-  pure result
+-- ('pythonErrorType', or 'withSpanClassifying''s classifier); a Haskell
+-- exception with no Python counterpart is named by its type constructor
+-- (@ErrorCall@). If the finish emit itself throws (a result field colliding
+-- with the context), that exception replaces the body's, as in the
+-- reference.
+withSpan :: TelemetryLogger -> Text -> Payload -> (Span -> IO a) -> IO a
+withSpan = withSpanClassifying (const Nothing)
+
+-- | 'withSpan' whose @error_type@ is named by the classifier first, then as
+-- 'pythonErrorType' does. A runtime whose own failures stand for Python
+-- exceptions (the Engine's @ValueError@/@RuntimeError@, a handler's
+-- recorded failure) names them here.
+withSpanClassifying :: (SomeException -> Maybe Text) -> TelemetryLogger -> Text -> Payload -> (Span -> IO a) -> IO a
+withSpanClassifying classify logger name fields body = case bindFields fields logger of
+  Left duplicates -> throwIO (DuplicateTelemetryFields duplicates)
+  Right bound -> do
+    result <- newIORef []
+    mask $ \restore -> do
+      started <- clock bound
+      let s = Span bound name result started (\e -> fromMaybe (pythonErrorType e) (classify e))
+      emit bound (name <> "_started") []
+      value <-
+        restore (body s) `catch` \(e :: SomeException) -> do
+          finish s (Just e)
+          throwIO e
+      finish s Nothing
+      pure value
   where
-    finish failure = do
+    finish s failure = do
       results <- readIORef (spanResult s)
       elapsed <- spanElapsedMs s
       let succeeded = dictUnion results [("status", String "success"), ("elapsed_ms", Int elapsed)]
-          fields = case failure of
+          finished = case failure of
             Nothing -> succeeded
             Just e -> dictUnion succeeded [("status", String "failed"), ("error_type", String (spanErrorType s e))]
-      emit (spanLogger s) (spanName s <> "_finished") fields
-
--- | @with log.span(name, **fields) as span:@ — 'newSpan' then 'runSpan'.
-withSpan :: TelemetryLogger -> Text -> Payload -> (Span -> IO a) -> IO a
-withSpan logger name fields body = newSpan logger name fields >>= (`runSpan` body)
-
--- | 'withSpan' whose @error_type@ is named by the classifier first
--- ('classifyErrors').
-withSpanClassifying :: (SomeException -> Maybe Text) -> TelemetryLogger -> Text -> Payload -> (Span -> IO a) -> IO a
-withSpanClassifying classify logger name fields body = newSpan logger name fields >>= \s -> runSpan (classifyErrors classify s) body
+      emit (spanLogger s) (spanName s <> "_finished") finished
 
 -- | A child span inheriting this span's bound fields (@span.span(...)@).
 withChildSpan :: Span -> Text -> Payload -> (Span -> IO a) -> IO a
@@ -519,12 +507,9 @@ addToResult s field amount = do
         Just _ -> Left (NonNumericTelemetryField field)
   either throwIO (\value -> writeIORef (spanResult s) (insertField results (field, value))) added
 
--- | Milliseconds since the span started; 'SpanNotStarted' before 'runSpan'.
+-- | Milliseconds since the span started.
 spanElapsedMs :: Span -> IO Integer
-spanElapsedMs s =
-  readIORef (spanStartedAt s) >>= \case
-    Nothing -> throwIO SpanNotStarted
-    Just started -> elapsedMs (clock (spanLogger s)) started
+spanElapsedMs s = elapsedMs (clock (spanLogger s)) (spanStartedAt s)
 
 -- ---------------------------------------------------------------------------
 -- Clocks
@@ -627,8 +612,6 @@ data TelemetryError
     UnknownTelemetryLevel Text
   | -- | Fields bound twice, sorted.
     DuplicateTelemetryFields [Text]
-  | -- | 'spanElapsedMs' or 'milestone' before the span ran.
-    SpanNotStarted
   | -- | 'increment' or 'accumulateTime' onto a non-numeric result field
     -- (the reference's @TypeError@).
     NonNumericTelemetryField Text
@@ -646,7 +629,6 @@ telemetryErrorMessage = \case
       <> ": one of "
       <> T.intercalate ", " (map levelText levels)
   DuplicateTelemetryFields names -> duplicateMessage names
-  SpanNotStarted -> "span has not started"
   NonNumericTelemetryField field ->
     "unsupported operand type(s) for +: telemetry field '" <> field <> "' is not numeric"
 
