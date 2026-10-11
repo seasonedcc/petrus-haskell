@@ -31,7 +31,7 @@ module Hamsterdan.Host.PiWorkspace
 
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Control.Exception (IOException, SomeAsyncException, SomeException, evaluate, fromException, mask, onException, throwIO, try)
+import Control.Exception (IOException, SomeAsyncException, SomeException, evaluate, fromException, mask, onException, throw, throwIO, try)
 import Control.Monad (forM, forM_, unless, when)
 import Crypto.Hash.SHA256 qualified as SHA256
 import Hamsterdan.Host.Random (urandom)
@@ -81,10 +81,12 @@ maxPatchBytes = 4000000
 deniedRoots :: [Text]
 deniedRoots = [".git", ".gitmodules", ".impetus", ".petrus-hands-stage"]
 
--- | @_READ_POLICY@ and @_CODE_POLICY@.
+-- | @_READ_POLICY@ and @_CODE_POLICY@: module constants the reference
+-- builds at import, raising the policy's 'AgenticusError' if it were
+-- invalid (it is not: the arguments are fixed).
 readPolicy, codePolicy :: PiA2RuntimePolicy
-readPolicy = either (error . show) id (mkPiA2RuntimePolicy [WorkspaceRead, WorkspaceSearch] [] 16 [])
-codePolicy = either (error . show) id (mkPiA2RuntimePolicy [WorkspaceRead, WorkspaceSearch, WorkspaceWrite] [] 32 ["."])
+readPolicy = either throw id (mkPiA2RuntimePolicy [WorkspaceRead, WorkspaceSearch] [] 16 [])
+codePolicy = either throw id (mkPiA2RuntimePolicy [WorkspaceRead, WorkspaceSearch, WorkspaceWrite] [] 32 ["."])
 
 -- | The module globals the reference tests patch: @MAX_WORKSPACE_BYTES@
 -- and @shutil.rmtree@.

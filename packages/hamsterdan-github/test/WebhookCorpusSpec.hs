@@ -108,7 +108,7 @@ apply custody registry setClock step = case textOf (field "op" step) of
           [ ("outcome", String "receipt")
           , ("delivery_id", String receipt.deliveryId)
           , ("disposition", String (dispositionName receipt.disposition))
-          , ("observation", maybe Null (String . encodeObservation) receipt.observation)
+          , ("observation", maybe Null (either (error . show) String . encodeObservation) receipt.observation)
           ]
             <> case receipt.observation of
               Nothing -> []

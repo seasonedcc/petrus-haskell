@@ -57,6 +57,7 @@ module Hamsterdan.Testing.Journeys
   ) where
 
 import Control.Exception (SomeException, throwIO, try)
+import Hamsterdan.PyText (raisingDumps)
 import Control.Monad (forM_, unless, void, when)
 import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
@@ -389,11 +390,11 @@ textOf = \case
 
 -- | @json.dumps(value, sort_keys=True)@.
 canonical :: Json -> Text
-canonical value = either (error . show) id (dumpsText defaultDumps {sortKeys = True} value)
+canonical value = raisingDumps (dumpsText defaultDumps {sortKeys = True} value)
 
 -- | @json.dumps(value)@ as bytes.
 pythonDumps :: Json -> ByteString
-pythonDumps value = TE.encodeUtf8 (either (error . show) id (dumpsText defaultDumps value))
+pythonDumps value = TE.encodeUtf8 (raisingDumps (dumpsText defaultDumps value))
 
 maybeText :: Maybe Text -> Json
 maybeText = maybe Null String

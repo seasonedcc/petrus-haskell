@@ -179,7 +179,7 @@ main = withSystemTempDirectory "hamsterdan-bench" $ \state -> do
     , bench "webhook verify, key state per call" $ nf (verify secretText webhookBody) signature
     , bench "webhook parse (issue_comment, 10 KB)" $
         nf (either (const ()) forceObservation . parseObservation delivery "issue_comment") webhookBody
-    , bench "observation encode (sorted JSON)" $ nf encodeObservation parsed
+    , bench "observation encode (sorted JSON)" $ nf (either (const Nothing) Just . encodeObservation) parsed
     , bench "webhook receive (verify, parse, SQLite insert)" $ whnfIO (dispositionName . (.disposition) <$> receiveFresh)
     , bench "App JWT mint (RS256, PEM key)" $ nf (\pem -> either (const "") (\k -> either (const "") id (appJwt k "17" 1760000000)) (loadSigningKey pem)) key
     , bench "App JWT sign (RS256, parsed key)" $ nf (\now -> either (const "") id (appJwt signingKey "17" now)) 1760000000

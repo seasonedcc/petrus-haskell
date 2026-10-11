@@ -99,10 +99,10 @@ import Hamsterdan.GitHub.Python
 import Hamsterdan.GitHub.Python qualified as Py
 import Hamsterdan.GitHub.Routing (InstallationRegistry)
 import Hamsterdan.GitHub.Routing qualified as Routing
-import Hamsterdan.PyText (utf8EncodeError)
+import Hamsterdan.PyText (dumpsFault, utf8EncodeError)
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Db
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, lookupMember, parseJson)
+import Petrus.Json (EncodeError, EncodeOptions (..), Json (..), defaultDumps, dumpsText, lookupMember, parseJson)
 
 -- | @MAX_BODY_BYTES@.
 maxBodyBytes :: Int
@@ -214,11 +214,14 @@ observationJson item =
     ]
 
 -- | The stored spelling: @json.dumps(asdict(o), separators=(",", ":"),
--- sort_keys=True)@ (ASCII-escaped, NaN admitted).
-encodeObservation :: Observation -> Text
+-- sort_keys=True)@ (ASCII-escaped, NaN admitted). The provider controls
+-- the members, so the encoding can be refused: a value nested deeper than
+-- the encoder's limit is 'NestingTooDeep' (CPython's @RecursionError@). The
+-- parser refuses bodies past the same limit and no member sits deeper here
+-- than in the body, so a parsed observation always encodes.
+encodeObservation :: Observation -> Either EncodeError Text
 encodeObservation item =
-  either (const (error "observation encoding admits non-finite numbers")) id $
-    dumpsText defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortKeys = True} (observationJson item)
+  dumpsText defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortKeys = True} (observationJson item)
 
 -- | @Observation(**json.loads(raw) | {"repositories": ..., "attempts": n})@.
 observationFromJson :: Int -> Json -> Maybe Observation
@@ -392,7 +395,9 @@ closeCustody custody = Db.close custody.connection
 -- Throws 'WebhookRejected' for every refusal the reference answers with
 -- HTTP 400, and 'PythonFault' where the reference raises an uncaught
 -- exception (HTTP 500): a provider value of the wrong container type where
--- it calls @.get@, or an unhashable lifecycle action.
+-- it calls @.get@, or an unhashable lifecycle action. An observation the
+-- encoder refuses would be the reference's @RecursionError@ (see
+-- 'encodeObservation' and DIVERGENCES.md, deep nesting).
 receive :: WebhookCustody -> [(Text, Text)] -> ByteString -> IO Receipt
 receive custody headers body = do
   projected <- either throwIO pure (projectHeaders headers)
@@ -419,7 +424,7 @@ receive custody headers body = do
     Left (Left ()) -> reject "webhook envelope is malformed"
     Left (Right (PyFailure cls detail)) -> throwIO (PythonFault (pyClassName cls) detail)
     Right value -> pure value
-  let encoded = encodeObservation item
+  encoded <- either (throwIO . dumpsFault) pure (encodeObservation item)
   Db.withLock custody.connection $ Db.transaction custody.connection $ do
     existing <- Db.query custody.connection "SELECT 1 FROM inbox WHERE delivery_id=?" [SQLText delivery]
     if not (null existing)

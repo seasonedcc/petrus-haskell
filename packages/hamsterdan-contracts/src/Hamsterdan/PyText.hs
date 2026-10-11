@@ -24,9 +24,11 @@ module Hamsterdan.PyText
   , utf8DecodeError
   , utf8EncodeError
   , PythonFault (..)
+  , dumpsFault
+  , raisingDumps
   ) where
 
-import Control.Exception (Exception)
+import Control.Exception (Exception, throw)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (GeneralCategory (DecimalNumber), generalCategory, ord)
@@ -36,6 +38,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import Hamsterdan.PyLiteral.Printable (isPrintableNonAscii)
 import Numeric (showHex)
+import Petrus.Json (EncodeError (..), encodeErrorMessage)
 
 -- | An exception the reference does not catch. It propagates to the caller
 -- exactly where CPython's would, so a host can treat it the same way (for
@@ -47,6 +50,22 @@ data PythonFault = PythonFault
   deriving stock (Eq, Show)
 
 instance Exception PythonFault
+
+-- | The exception @json.dumps@ raises where the encoder refuses a value:
+-- @RecursionError@ for one nested too deep, @ValueError@ otherwise (a
+-- non-finite float under @allow_nan=False@, an integer past the digit
+-- limit).
+dumpsFault :: EncodeError -> PythonFault
+dumpsFault refusal = PythonFault cls (T.pack (encodeErrorMessage refusal))
+  where
+    cls = case refusal of
+      NestingTooDeep _ -> "RecursionError"
+      _ -> "ValueError"
+
+-- | A @json.dumps@ result, raising where the encoder refused: the
+-- 'dumpsFault' of the refusal propagates as CPython's exception would.
+raisingDumps :: Either EncodeError a -> a
+raisingDumps = either (throw . dumpsFault) id
 
 -- | @bytes.decode("utf-8")@ (strict): 'Nothing' when the bytes are UTF-8,
 -- otherwise the @UnicodeDecodeError@'s @str()@ for the first undecodable

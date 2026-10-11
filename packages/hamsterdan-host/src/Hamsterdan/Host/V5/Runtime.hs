@@ -54,7 +54,7 @@ module Hamsterdan.Host.V5.Runtime
   , ingressFolds
   ) where
 
-import Control.Exception (SomeException, finally, onException, throwIO, try)
+import Control.Exception (SomeException, finally, onException, throw, throwIO, try)
 import Control.Monad (forM, forM_, unless, when)
 import Data.Foldable (toList)
 import Data.IORef
@@ -190,8 +190,9 @@ ingressFolds =
 durableQueue :: Text -> Text
 durableQueue instance' = "v5-publication:" <> instance'
 
+-- | @NetPath(text)@, raising its @ValueError@ for a malformed path.
 path :: Text -> NetPath
-path text = either (error . T.unpack) id (netPath text)
+path text = either (throw . ValueError) id (netPath text)
 
 -- ---------------------------------------------------------------------------
 -- The engine policy

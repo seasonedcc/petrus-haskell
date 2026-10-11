@@ -83,8 +83,18 @@ differential corpora compare these byte for byte with the pinned Python (see
      surrogates, and the effects and HTTP corpora contain none, so the
      response path is not differentially tested on them.
 7. **Very deep JSON nesting.**
-   - CPython raises `RecursionError` once its C stack guard trips. `petrus-json`
-     has no depth limit and parses such documents.
+   - CPython's limit depends on the C stack. On an 8 MiB main-thread stack,
+     CPython 3.14 parses and re-encodes a webhook whose `action` nests
+     100,001 levels deep. At 520,000 levels (still under the 1 MiB body cap)
+     `json.loads` raises `RecursionError`, which the reference does not catch
+     (HTTP 500).
+   - `petrus-json` refuses documents nested past a fixed 100,000 levels
+     (`defaultNestingLimit`). A webhook nested deeper is a malformed envelope
+     here (HTTP 400), where the reference may accept it or answer 500.
+   - Its encoder has the same limit, and no observation member sits deeper
+     than it did in the body, so a parsed observation always encodes.
+     `encodeObservation` still returns the refusal, and `receive` raises it as
+     the reference's `RecursionError` rather than failing with an `ErrorCall`.
    - The corpora include 5000-level arrays in responses and 200-level arrays in
      webhook payloads. Both sides parse those identically.
    - Response bodies are capped at 1 MiB, so the difference only shows on a

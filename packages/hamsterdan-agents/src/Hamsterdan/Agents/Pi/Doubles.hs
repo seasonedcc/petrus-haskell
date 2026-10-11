@@ -31,7 +31,7 @@ module Hamsterdan.Agents.Pi.Doubles
   , piPackageFixture
   ) where
 
-import Control.Exception (ErrorCall (..), throwIO)
+import Control.Exception (ErrorCall (..), throw, throwIO)
 import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -51,7 +51,6 @@ import Petrus.Json (Json (..), defaultDumps, dumpsText)
 import Petrus.Agenticus.Runtime.Pi (piAiVersion, piSdkVersion)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Files (setFileMode)
 
 -- | @URL@.
@@ -62,10 +61,11 @@ testUrl = "https://example.invalid/owner/repo.git"
 testWorkspaceArchive :: ByteString
 testWorkspaceArchive = BS.replicate 10240 0
 
--- | @READ_POLICY@.
+-- | @READ_POLICY@: a module constant the reference builds at import,
+-- raising the policy's 'AgenticusError' if it were invalid (it is not:
+-- the arguments are fixed).
 readPolicy :: PiA2RuntimePolicy
-readPolicy = unsafePerformIO (throwLeft (mkPiA2RuntimePolicy [WorkspaceRead] [] 16 []))
-{-# NOINLINE readPolicy #-}
+readPolicy = either throw id (mkPiA2RuntimePolicy [WorkspaceRead] [] 16 [])
 
 -- | @Operation(operation, outcome=..., clean=...)@ and its subclasses: the
 -- overrides stand for the tests' replaced methods.

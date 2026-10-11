@@ -21,6 +21,7 @@ import Data.Text.Encoding qualified as TE
 import Hamsterdan.Contracts.Codec (dump)
 import Hamsterdan.GitHub.Config
 import Hamsterdan.GitHub.Models (InstallationInventory (..))
+import Hamsterdan.PyText (PythonFault (..), dumpsFault)
 import Hamsterdan.GitHub.Routing (InventoryMismatch (..))
 import Hamsterdan.GitHub.Routing qualified as Routing
 import Hamsterdan.Sqlite qualified as Db
@@ -327,6 +328,16 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       Db.close db
       show rows `shouldSatisfy` ("secret payload text" `isInfixOf`)
       show rows `shouldNotSatisfy` ("x-hub-signature" `isInfixOf`)
+
+    -- ELG-H-11: the observation encoder is total. A value nested past its
+    -- limit is a refusal that maps to the reference's RecursionError, not an
+    -- ErrorCall (DIVERGENCES.md item 7 covers the depths).
+    it "an observation nested past the encoder's limit is refused as a RecursionError" $ do
+      let deep = iterate (\value -> Array [value]) Null !! 100001
+          item = (observation (deliveries !! 3) "pull_request") {action = deep}
+      case encodeObservation item of
+        Left refusal -> case dumpsFault refusal of PythonFault cls _ -> cls `shouldBe` "RecursionError"
+        Right _ -> expectationFailure "expected the encoder to refuse"
 
     it "delays retries and eventually parks the delivery" $ withTemp $ \directory -> do
       now <- newIORef (100 :: Double)
