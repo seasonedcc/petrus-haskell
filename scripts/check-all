@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # Rebuild and verify everything from a clean checkout: build, unit tests,
 # conformance, interop against the pinned Python upstream, the benchmark
-# bookkeeping, and the parity table. CI runs exactly this.
+# bookkeeping, and the parity table. CI (.github/workflows/ci.yml) runs the
+# same steps, plus --viewer, spread over several runners; docs/reproducing.md,
+# "Continuous integration", maps each CI job to its step here.
 #
-#   scripts/check-all            # everything except benchmarks
+#   scripts/check-all            # everything except benchmarks and the viewer suites
 #   scripts/check-all -j2        # limit cabal's parallelism (passed to cabal)
+#   scripts/check-all --viewer   # also the upstream petrus-viewer suites against the
+#                                # Haskell backend (scripts/interop --viewer; needs
+#                                # Node 22, pnpm install and pnpm build in
+#                                # upstream/petrus-viewer, and Playwright's Chromium)
 #   scripts/check-all --bench    # also rerun every benchmark against Python (slow)
 #
 # Every test binary runs with a 2 GiB heap cap (+RTS -M2G -RTS), as locally.
@@ -20,10 +26,12 @@ cd "$(dirname "$0")/.."
 export PATH="$HOME/.ghcup/bin:$HOME/.local/bin:$PATH"
 
 run_bench=0
+run_viewer=0
 cabal_flags=()
 for arg in "$@"; do
   case "$arg" in
     --bench) run_bench=1 ;;
+    --viewer) run_viewer=1 ;;
     -j*) cabal_flags+=("$arg") ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
@@ -64,6 +72,11 @@ scripts/interop --check ${cabal_flags[@]+"${cabal_flags[@]}"}
 step "Tests (unit, conformance, interop)"
 scripts/with-postgres cabal test all ${cabal_flags[@]+"${cabal_flags[@]}"} --keep-going \
   --test-show-details=direct --test-options='+RTS -M2G -RTS'
+
+if [[ "$run_viewer" == 1 ]]; then
+  step "The upstream petrus-viewer suites against the Haskell backend"
+  scripts/interop --viewer petrus-viewer-server ${cabal_flags[@]+"${cabal_flags[@]}"}
+fi
 
 if [[ "$run_bench" == 1 ]]; then
   step "Benchmarks"

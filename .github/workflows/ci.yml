@@ -171,10 +171,15 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: test-plan
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
       - name: Upstream Python environments
         run: for p in petrus petrus-engine hamsterdan; do scripts/upstream-python "$p" >/dev/null; done
       - name: Tests (${{ matrix.suites }})
-        run: scripts/ci-tests run-shard plan.json "${{ matrix.name }}"
+        run: |
+          grep -E '^Sig(Ign|Blk|Cgt)' /proc/self/status
+          scripts/ci-tests run-shard plan.json "${{ matrix.name }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -229,6 +234,12 @@ jobs:
           name: test-results-viewer-${{ github.run_attempt }}
           path: results-*.json
           retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: viewer-tap-${{ github.run_attempt }}
+          path: /tmp/petrus-hs-upstream-tests-*/*.tap
+          retention-days: 7
 
   # The Haskell port's container runtime contract (PARITY.md, "Container
   # runtime contract"): lint the launcher, the interpreter-path shim, the
@@ -305,6 +316,7 @@ jobs:
           name: test-ledger
           path: ledger.json
           retention-days: 30
+          overwrite: true
       - name: Verdict
         env:
           RESULTS: ${{ toJSON(needs) }}

@@ -7,6 +7,7 @@ everything it could depend on is identical.
     scripts/ci-tests plan --out PLAN [--full] [--ledgers DIR] [--max-shards N] [--target SECONDS]
                                              # which suites run, which are reused, in which shard
     scripts/ci-tests run-shard PLAN NAME     # cabal test the shard's suites; write results-NAME.json
+    scripts/ci-tests wrap SELECTION BIN ...  # (cabal's --test-wrapper in run-shard)
     scripts/ci-tests run-viewer PLAN         # scripts/interop --viewer petrus-viewer-server
     scripts/ci-tests ledger --plan PLAN --results DIR --out FILE
                                              # this run's ledger: every suite known green, by hash
@@ -53,8 +54,10 @@ import math
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
@@ -453,37 +456,54 @@ def write_results(name: str, document: dict, outcome: Dict[str, bool]) -> None:
 
 def run_shard(args: List[str]) -> int:
     """PLAN NAME: `cabal test` this shard's suites (in parallel, as
-    scripts/check-all does), each restricted to its part through a .hspec
-    file in its package directory (hspec reads it; the test runs there)."""
+    scripts/check-all does), each restricted to its part: cabal runs every
+    test binary through `ci-tests wrap` (--test-wrapper), which adds the
+    part's hspec --match/--skip arguments. (hspec takes no --match from a
+    .hspec file or HSPEC_OPTIONS, and --test-options would apply to every
+    suite of the invocation.)"""
     plan_file, name = args[0], args[1]
     document = json.loads(Path(plan_file).read_text())
     shard_doc = next(s for s in document["shards"] if s["name"] == name)
     units = [document["units"][u] for u in shard_doc["units"]]
-    written = []
+    selection: Dict[str, List[str]] = {}
     targets = []
     for unit in units:
         package = document["inputs"][unit["suite"]]["package"]
         targets.append(f"{package}:test:{unit['suite']}")
         for log in suite_logs(package, unit["suite"]):
             log.unlink()
-        dot = ROOT / "packages" / package / ".hspec"
-        if dot.exists():
-            raise SystemExit(f"{dot} exists; CI's selection would replace it")
         if unit["args"]:
-            dot.write_text(" ".join(shlex.quote(a) for a in unit["args"]) + "\n")
-            written.append(dot)
+            selection[unit["suite"]] = unit["args"]
             print(f"{unit['id']}: {' '.join(shlex.quote(a) for a in unit['args'])}")
+    scratch = Path(tempfile.mkdtemp(prefix="ci-tests-", dir=os.environ.get("RUNNER_TEMP")))
+    selection_file = scratch / "selection.json"
+    selection_file.write_text(json.dumps(selection))
+    wrapper = scratch / "wrap"
+    wrapper.write_text(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(Path(__file__).resolve()))} wrap {shlex.quote(str(selection_file))} \"$@\"\n")
+    wrapper.chmod(0o755)
     jobs = os.environ.get("CI_TEST_JOBS", "-j")
-    command = ["cabal", "test", jobs, *targets, "--keep-going", "--test-show-details=direct", "--test-options=+RTS -M2G -RTS"]
+    command = ["cabal", "test", jobs, *targets, "--keep-going", "--test-show-details=direct",
+               f"--test-wrapper={wrapper}", "--test-options=+RTS -M2G -RTS"]
     print("$ " + " ".join(shlex.quote(c) for c in command), flush=True)
     try:
         status = subprocess.call(command, cwd=ROOT)
     finally:
-        for dot in written:
-            dot.unlink()
+        shutil.rmtree(scratch, ignore_errors=True)
     outcome = {u["id"]: passed(document["inputs"][u["suite"]]["package"], u["suite"]) for u in units}
     write_results(name, document, outcome)
     return status if status != 0 else (0 if all(outcome.values()) else 1)
+
+
+def wrap(args: List[str]) -> int:
+    """SELECTION BINARY ARGS...: run a test binary (cabal's --test-wrapper)
+    with its suite's part selection from SELECTION added to its arguments."""
+    selection = json.loads(Path(args[0]).read_text())
+    binary, rest = args[1], args[2:]
+    extra = selection.get(Path(binary).name, [])
+    if extra:
+        print(f"{Path(binary).name}: {' '.join(shlex.quote(a) for a in extra)}", file=sys.stderr, flush=True)
+    os.execv(binary, [binary, *extra, *rest])
+    return 127
 
 
 def run_viewer(args: List[str]) -> int:
@@ -547,6 +567,7 @@ def main(argv: List[str]) -> int:
         "plan": lambda: plan(rest),
         "run-shard": lambda: run_shard(rest),
         "run-viewer": lambda: run_viewer(rest),
+        "wrap": lambda: wrap(rest),
         "ledger": lambda: ledger(rest),
         "fetch-ledgers": lambda: fetch_ledgers(Path(rest[0])),
     }

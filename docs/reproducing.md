@@ -3,9 +3,11 @@
 This page takes a fresh machine to a full rerun of what this repository
 claims: the build, the test suites (unit, conformance and interop with the
 pinned Python), the cross-language suites on their own, the benchmarks
-against the pinned Python, and the parity table. CI runs the same
-`scripts/check-all` on every push to `main` and every pull request
-(`.github/workflows/ci.yml`).
+against the pinned Python, and the parity table. `scripts/check-all` runs all of it but
+the benchmarks and, unless asked with `--viewer`, the upstream petrus-viewer
+suites. CI (`.github/workflows/ci.yml`) runs the same steps, `--viewer`
+included, on every push to `main` and every pull request, spread over
+several runners ([Continuous integration](#continuous-integration)).
 
 ## Prerequisites
 
@@ -19,7 +21,8 @@ against the pinned Python, and the parity table. CI runs the same
 | git | with submodule support | the pinned upstream projects are submodules |
 | libzmq, libpq, SQLite | system packages | the ZeroMQ, PostgreSQL and SQLite bindings |
 | PostgreSQL 17 (`initdb`, `pg_ctl`) **or** Docker | 17.x | the PostgreSQL suites and benchmarks |
-| Node.js | 22 | the Gondolin sidecar and Pi helper suites; the petrus-viewer suites and the viewer benchmark (with pnpm) |
+| Node.js | 22 (CI pins 22.19.0) | the Gondolin sidecar and Pi helper suites; the petrus-viewer suites and the viewer benchmark (with pnpm) |
+| pnpm | 11.5.1 | the petrus-viewer suites (`--viewer`) and the viewer benchmark |
 | Graphviz (`dot`) | any | petrus-impetus's diagram rendering tests |
 
 On macOS with Homebrew:
@@ -108,6 +111,10 @@ It runs, in order, and stops at the first failing step:
 8. `scripts/check-parity`: the parity table's claims hold.
 
 `-j2` limits cabal's parallelism; leave it out to use every core.
+`--viewer` adds, after the tests, the upstream petrus-viewer suites against
+the Haskell backend (`scripts/interop --viewer petrus-viewer-server`, below);
+they need Node 22, pnpm, `pnpm install --frozen-lockfile && pnpm build` in
+`upstream/petrus-viewer`, and `npx playwright install chromium`.
 
 One package's suite, or one group in it:
 
@@ -128,7 +135,8 @@ scripts/interop --viewer        # also the upstream petrus-viewer test suites ag
 ```
 
 `scripts/check-all` already runs these groups as part of each package's
-suite. `scripts/interop` runs only them: the live interop against reference
+suite (the `--viewer` suites only when given `--viewer` too).
+`scripts/interop` runs only them: the live interop against reference
 processes over shared files, databases and sockets, the byte-for-byte
 comparisons with the reference's servers and CLIs, the committed
 differential corpora, and the conformance suites shared with the reference.
