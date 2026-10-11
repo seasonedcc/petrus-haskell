@@ -40,6 +40,8 @@ import Data.Char (ord)
 import Data.IntMap.Strict qualified as IntMap
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Array qualified as TA
+import Data.Text.Internal qualified as TI
 import Numeric (showHex)
 import Petrus.Json.PythonText.Tables (decimalRuns, lineBreakRanges, printableRanges, spaceRanges)
 
@@ -135,24 +137,60 @@ pythonSplitlines text
 pythonIsPrintableText :: Text -> Bool
 pythonIsPrintableText = T.all isPythonPrintable
 
--- | CPython's @repr(str)@.
+-- | CPython's @repr(str)@: single quotes unless the text holds a single
+-- quote and no double quote; the backslash, the chosen quote, @\\t@,
+-- @\\n@ and @\\r@ escaped; every other character that is not printable
+-- ('isPythonPrintable') as @\\xhh@, @\\uhhhh@ or @\\Uhhhhhhhh@.
+--
+-- The output is the text's printable runs, sliced (not copied character
+-- by character), around the escapes, joined once; printable ASCII without
+-- quotes or backslashes, the common case, is decided on the UTF-8 bytes.
 pythonStrRepr :: Text -> Text
-pythonStrRepr = pythonStringRepr . T.unpack
+pythonStrRepr value
+  | simpleAscii value = T.concat ["'", value, "'"]
+  | T.all plain value = T.concat [quoteText, value, quoteText]
+  | otherwise = T.concat (quoteText : runs value)
+  where
+    doubleQuoted = T.any (== '\'') value && not (T.any (== '"') value)
+    quote = if doubleQuoted then '"' else '\''
+    quoteText = T.singleton quote
+    plain c = c /= quote && c /= '\\' && isPythonPrintable c
+    runs remaining =
+      let (run, after) = T.span plain remaining
+       in run : case T.uncons after of
+            Nothing -> [quoteText]
+            Just (c, more) -> T.pack (escapeChar quote c) : runs more
+
+-- | Whether a text is printable ASCII without quotes or backslashes (its
+-- @repr@ is the text in single quotes), tested on the UTF-8 bytes.
+simpleAscii :: Text -> Bool
+simpleAscii (TI.Text array offset size) = go offset
+  where
+    end = offset + size
+    go i
+      | i >= end = True
+      | otherwise =
+          let w = TA.unsafeIndex array i
+           in w >= 0x20 && w < 0x7F && w /= 0x27 && w /= 0x22 && w /= 0x5C && go (i + 1)
 
 -- | CPython's @repr(str)@ over code points, which may include lone
 -- surrogates (a 'Text' cannot hold them, but a scanned JSON key or a
 -- @surrogateescape@-decoded file name can).
 pythonStringRepr :: String -> Text
-pythonStringRepr chars = T.pack ([quote] ++ concatMap escape chars ++ [quote])
+pythonStringRepr chars = T.pack ([quote] ++ concatMap (escapeChar quote) chars ++ [quote])
   where
     quote = if '\'' `elem` chars && '"' `notElem` chars then '"' else '\''
-    escape c
-      | c == quote || c == '\\' = ['\\', c]
-      | c == '\t' = "\\t"
-      | c == '\n' = "\\n"
-      | c == '\r' = "\\r"
-      | isPythonPrintable c = [c]
-      | ord c < 0x100 = "\\x" ++ pad 2 (ord c)
-      | ord c < 0x10000 = "\\u" ++ pad 4 (ord c)
-      | otherwise = "\\U" ++ pad 8 (ord c)
+
+-- | One character as @repr(str)@ writes it inside the given quote.
+escapeChar :: Char -> Char -> String
+escapeChar quote c
+  | c == quote || c == '\\' = ['\\', c]
+  | c == '\t' = "\\t"
+  | c == '\n' = "\\n"
+  | c == '\r' = "\\r"
+  | isPythonPrintable c = [c]
+  | ord c < 0x100 = "\\x" ++ pad 2 (ord c)
+  | ord c < 0x10000 = "\\u" ++ pad 4 (ord c)
+  | otherwise = "\\U" ++ pad 8 (ord c)
+  where
     pad width n = let digits = showHex n "" in replicate (width - length digits) '0' ++ digits
