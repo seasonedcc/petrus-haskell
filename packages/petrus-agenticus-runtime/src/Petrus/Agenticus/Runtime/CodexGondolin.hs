@@ -228,7 +228,8 @@ parseTerminal encoded operationId episodeId turnId = do
   case value of
     Object _ | canonical == encoded -> pure ()
     _ -> Left "terminal canonical form"
-  if member "ok" value == Just (Bool False)
+  -- @is False@ / @is True@: identity, never numeric equality.
+  if member "ok" value `isExactly` False
     then case member "error" value of
       Just (String code)
         | keysOf value == Set.fromList ["ok", "error"]
@@ -238,7 +239,7 @@ parseTerminal encoded operationId episodeId turnId = do
     else do
       result <- case member "result" value of
         Just r@(Object _)
-          | member "ok" value == Just (Bool True)
+          | member "ok" value `isExactly` True
           , keysOf value == Set.fromList ["ok", "result"] ->
               Right r
         _ -> Left "terminal envelope"
@@ -248,7 +249,9 @@ parseTerminal encoded operationId episodeId turnId = do
           , keysOf c == Set.fromList ["disposition", "code"] ->
               Right c
         _ -> Left "terminal result shape"
-      unless (member "version" result == Just (Int 1)) $ Left "terminal version"
+      case member "version" result of
+        Just (Int 1) -> pure ()
+        _ -> Left "terminal version"
       unless (all (boundedString False . (`member` result)) ["operation_id", "episode_id", "turn_id", "termination_code"]) $
         Left "terminal identity"
       unless (all (boundedString True . (`member` result)) ["output_reference", "continuation_reference"]) $
@@ -287,6 +290,8 @@ parseTerminal encoded operationId episodeId turnId = do
         when (settlement.turnId /= expected) $ Left "terminal turn correlation"
       pure value
   where
+    isExactly (Just (Bool b)) expected' = b == expected'
+    isExactly _ _ = False
     maybeNull = maybe Null id
     enumFrom' :: Text -> Maybe Json -> Either AgenticusError TurnOutcome
     enumFrom' name = \case

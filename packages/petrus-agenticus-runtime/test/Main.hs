@@ -4,6 +4,7 @@ import Petrus.Agenticus.Runtime.AgentNetRunnerSpec qualified
 import Petrus.Agenticus.Runtime.AmpSpec qualified
 import Petrus.Agenticus.Runtime.ClaudeSpec qualified
 import Petrus.Agenticus.Runtime.CodexSpec qualified
+import Petrus.Agenticus.Runtime.HostsDifferentialSpec qualified
 import Petrus.Agenticus.Runtime.PiA2HostSpec qualified
 import Petrus.Agenticus.Runtime.PiApplicationSpec qualified
 import Petrus.Agenticus.Runtime.PiDifferentialSpec qualified
@@ -37,3 +38,4 @@ suite =
     Petrus.Agenticus.Runtime.AmpSpec.spec
     Petrus.Agenticus.Runtime.ClaudeSpec.spec
     Petrus.Agenticus.Runtime.CodexSpec.spec
+    Petrus.Agenticus.Runtime.HostsDifferentialSpec.spec

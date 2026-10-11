@@ -606,6 +606,9 @@ admitStep config continuationThread state event = do
         case eventValue event "type" of
           String t | t `elem` ["assistant", "user"] -> pure Nothing
           String "result" -> Just <$> admitTerminal thread
+          -- @event_type in {...}@ raises TypeError on an unhashable
+          -- value, which @_run@ settles as client-failed.
+          value | unhashable value -> Left "client-failed"
           _ -> Left "unknown-event"
     admitTerminal thread = case (eventValue event "is_error", eventValue event "subtype") of
       (Bool False, String "success") -> do
@@ -617,7 +620,12 @@ admitStep config continuationThread state event = do
         | subtype `elem` ["error_during_execution", "error_max_turns"] ->
             let code = if subtype == "error_max_turns" then "provider-max-turns" else "provider-failed"
              in pure (AmpCandidate TurnFailed 0 code (Just thread) Nothing True)
+      (Bool True, subtype) | unhashable subtype -> Left "client-failed"
       _ -> Left "malformed-terminal"
+    unhashable = \case
+      Array _ -> True
+      Object _ -> True
+      _ -> False
 
 -- | @_read_stream@ over a complete event list (the corpus's pure view).
 admitEvents :: AmpRuntimeConfig -> Maybe Text -> [AmpEvent] -> Either Text AmpCandidate

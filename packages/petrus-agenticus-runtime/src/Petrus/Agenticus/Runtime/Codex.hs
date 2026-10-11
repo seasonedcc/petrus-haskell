@@ -506,8 +506,8 @@ parseJsonl raw returncode = do
             , not (T.null identifier) -> do
                 itemType <- case member "type" item of
                   Just (String t) | t `elem` itemTypes -> Right t
-                  Just (Array _) -> Left (typeError "unhashable type: 'list'")
-                  Just (Object _) -> Left (typeError "unhashable type: 'dict'")
+                  Just (Array _) -> Left (typeError "cannot use 'list' as a set element (unhashable type: 'list')")
+                  Just (Object _) -> Left (typeError "cannot use 'dict' as a set element (unhashable type: 'dict')")
                   _ -> malformed "malformed-item"
                 if kind == "item.completed"
                   then do

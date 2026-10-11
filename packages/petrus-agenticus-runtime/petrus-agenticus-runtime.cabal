@@ -98,6 +98,7 @@ test-suite petrus-agenticus-runtime-test
                     Petrus.Agenticus.Runtime.AmpSpec
                     Petrus.Agenticus.Runtime.ClaudeSpec
                     Petrus.Agenticus.Runtime.CodexSpec
+                    Petrus.Agenticus.Runtime.HostsDifferentialSpec
                     Petrus.Agenticus.Runtime.PiA2HostSpec
                     Petrus.Agenticus.Runtime.PiApplicationSpec
                     Petrus.Agenticus.Runtime.PiDifferentialSpec
