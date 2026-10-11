@@ -73,11 +73,10 @@ import Data.Word (Word8)
 import Numeric (showHex)
 
 import Petrus.Cel.Python
-import Petrus.Json.Python (DecodeFailure (..), decodeFailureText, pythonBytesRepr, pythonStrRepr, utf8DecodeFailure)
+import Petrus.Json.Python (CodecFailure (..), decodeFailureText, encodeFailureText, pythonBytesRepr, pythonStrRepr, utf8DecodeFailure, utf8EncodeFailure)
 import Petrus.Cel.Regex (compileRegex, compileRegexBytes, searchBytes, searchText)
 import Petrus.Cel.Time
 import Petrus.Cel.Value
-import Petrus.Json.Wtf8 (hasLoneSurrogate)
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -1323,24 +1322,20 @@ affix isStart s fragment
 -- CPython's @UnicodeEncodeError@ over the first run of surrogates, with its
 -- arguments @(encoding, object, start, end, reason)@.
 encodeUtf8Strict :: Value -> Text -> Either Exc ByteString
-encodeUtf8Strict value t
-  | not (hasLoneSurrogate t) = Right (TE.encodeUtf8 t)
-  | otherwise =
-      let (before, rest) = break isSurrogate (T.unpack t)
-          run = takeWhile isSurrogate rest
-          start = length before
-          end = start + length run - 1
-          what = case run of
-            [c] -> "character '\\u" <> T.pack (showHex (ord c) "") <> "' in position " <> T.pack (show start)
-            _ -> "characters in position " <> T.pack (show start) <> "-" <> T.pack (show end)
-       in Left
-            ( PyExc
-                UnicodeEncodeError
-                ("'utf-8' codec can't encode " <> what <> ": surrogates not allowed")
-                ["'utf-8'", valueRepr value, T.pack (show start), T.pack (show (end + 1)), "'surrogates not allowed'"]
-            )
-  where
-    isSurrogate c = ord c >= 0xD800 && ord c <= 0xDFFF
+encodeUtf8Strict value t = case utf8EncodeFailure t of
+  Nothing -> Right (TE.encodeUtf8 t)
+  Just failure ->
+    Left
+      ( PyExc
+          UnicodeEncodeError
+          (encodeFailureText t failure)
+          [ pythonStrRepr (failureCodec failure)
+          , valueRepr value
+          , T.pack (show (failureStart failure))
+          , T.pack (show (failureEnd failure))
+          , pythonStrRepr (failureReason failure)
+          ]
+      )
 
 -- | @function_matches@: @re2.search(pattern, text)@; a pattern error is a
 -- returned @CELEvalError@ (not raised).

@@ -33,7 +33,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import Petrus.EngineFile.Number (decimalToDouble)
 import Petrus.EngineFile.Value (Value (..))
-import Petrus.Json.Python.Decode (DecodeFailure (..), utf8DecodeFailure)
+import Petrus.Json.Python.Decode (CodecFailure (..), utf8DecodeFailure)
 
 -- | jiter's @JsonErrorType@ (the variants @parse@ can raise).
 data JsonErrorType

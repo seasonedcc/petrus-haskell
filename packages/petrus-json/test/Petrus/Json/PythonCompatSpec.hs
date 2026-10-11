@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedRecordDot #-}
+
 -- | The CPython-compatibility layer ("Petrus.Json.Python") against the pinned
 -- interpreter, live, on generated inputs.
 --
@@ -18,8 +20,11 @@
 --   column and character, and @int()@'s digit limit), plain and with a
 --   duplicate-refusing @object_pairs_hook@ and a refusing @parse_constant@
 --   (whose order decides which fault a document is refused for);
--- * strict @bytes.decode("utf-8")@'s @UnicodeDecodeError@ text, and
---   @bytes.decode("utf-8", "replace")@;
+-- * strict @bytes.decode("utf-8")@'s @UnicodeDecodeError@ text,
+--   @bytes.decode("utf-8", "replace")@, and strict @str.encode("utf-8")@'s
+--   @UnicodeEncodeError@ text;
+-- * @repr()@ and @str()@ of exceptions built from generated arguments
+--   (@KeyError@'s and the codec errors' own @__str__@ included);
 -- * @json.detect_encoding@ and the @surrogatepass@ decoding @json.loads@
 --   applies to bytes, in every encoding it detects, intact and damaged;
 -- * @uuid.uuid4()@'s spelling (@str@ and @hex@) from given random bytes.
@@ -217,6 +222,54 @@ reprDocuments = [document | seed <- [1 .. 800], let document = generate seed doc
 uuidSeeds :: [BS.ByteString]
 uuidSeeds = BS.replicate 16 0 : BS.replicate 16 0xff : [generate seed (BS.pack <$> vectorOf 16 (fromIntegral <$> chooseInt (0, 255))) | seed <- [1 .. 200 :: Int]]
 
+-- | An exception of a class with its own @__str__@ (or none), with
+-- arguments of every kind the reference spells; the codec errors' five
+-- arguments now and then out of range.
+exceptionOf :: Gen PythonException
+exceptionOf = do
+  className <- elements ["ValueError", "KeyError", "RuntimeError", "TypeError", "UnicodeDecodeError", "UnicodeEncodeError"]
+  arguments <- case className of
+    "UnicodeDecodeError" -> do
+      bytes <- utf8ish
+      codec (PyBytes bytes) (BS.length bytes)
+    "UnicodeEncodeError" -> do
+      text <- T.pack <$> pyString
+      codec (PyStr text) (T.length text)
+    _ -> do
+      count <- chooseInt (0, 3)
+      vectorOf count argument
+  pure (PythonException className arguments)
+  where
+    codec :: PythonArg -> Int -> Gen [PythonArg]
+    codec object size = do
+      start <- chooseInt (0, size + 1)
+      end <- frequency [(3, pure (start + 1)), (1, chooseInt (start, size + 2))]
+      name <- elements ["utf-8", "ascii"]
+      reason <- elements ["invalid start byte", "surrogates not allowed", ""]
+      pure [PyStr name, object, PyInt (toInteger start), PyInt (toInteger end), PyStr reason]
+    argument =
+      oneof
+        [ pure PyNone
+        , PyBool <$> elements [False, True]
+        , PyInt <$> choose (-(10 ^ (30 :: Int)), 10 ^ (30 :: Int))
+        , PyFloat <$> elements doubles
+        , PyStr . T.pack <$> pyString
+        , PyBytes <$> utf8ish
+        ]
+
+exceptionArgument :: PythonArg -> Json
+exceptionArgument = \case
+  PyNone -> Array [String "none", Null]
+  PyBool b -> Array [String "bool", Bool b]
+  PyInt i -> Array [String "int", String (T.pack (show i))]
+  PyFloat d -> Array [String "float", String (T.pack (pad16 (showHex (castDoubleToWord64 d) "")))]
+  PyStr s -> Array [String "str", codePoints (T.unpack s)]
+  PyBytes b -> Array [String "bytes", String (hexOf b)]
+  PyObject _ _ -> error "not generated"
+
+pad16 :: String -> String
+pad16 s = replicate (16 - length s) '0' ++ s
+
 -- | Every case, in the order the requests go out.
 data Case
   = UnicodeCase
@@ -228,6 +281,8 @@ data Case
   | StrictLoadsCase Text
   | Utf8Case BS.ByteString
   | Utf8ReplaceCase BS.ByteString
+  | Utf8EncodeCase String
+  | ExceptionCase PythonException
   | JsonBytesCase BS.ByteString
   | UuidCase BS.ByteString
 
@@ -242,6 +297,8 @@ cases =
     ++ map StrictLoadsCase loadsDocuments
     ++ map Utf8Case byteStrings
     ++ map Utf8ReplaceCase byteStrings
+    ++ map Utf8EncodeCase strings
+    ++ [ExceptionCase (generate seed exceptionOf) | seed <- [1 .. 1500]]
     ++ map JsonBytesCase jsonByteStrings
     ++ map UuidCase uuidSeeds
 
@@ -256,10 +313,10 @@ encodeCase = \case
   StrictLoadsCase text -> request "json-loads-strict" (codePoints (T.unpack text))
   Utf8Case b -> request "utf8-decode" (String (hexOf b))
   Utf8ReplaceCase b -> request "utf8-replace" (String (hexOf b))
+  Utf8EncodeCase s -> request "utf8-encode" (codePoints s)
+  ExceptionCase e -> request "exception" (Array [String e.name, Array (map exceptionArgument e.args)])
   JsonBytesCase b -> request "json-bytes" (String (hexOf b))
   UuidCase b -> request "uuid4" (String (hexOf b))
-  where
-    pad16 s = replicate (16 - length s) '0' ++ s
 
 -- | The case's disagreements with the oracle's answer (empty when none).
 check :: Case -> Either Text Json -> [String]
@@ -300,6 +357,10 @@ check c answer = case (c, answer) of
     compareAs ("decode " ++ show b) (either Just (const Nothing) answer) (utf8DecodeError b)
       ++ compareAs ("decodeUtf8Python " ++ show b) (either Left (Right . T.pack . asString) answer) (decodeUtf8Python b)
   (Utf8ReplaceCase b, Right got) -> compareAs ("decode replace " ++ show b) (T.pack (asString got)) (decodeUtf8Replace b)
+  (Utf8EncodeCase s, _) -> compareAs ("encode " ++ show s) (either Just (const Nothing) answer) (utf8EncodeError (fromCodePoints s))
+  (ExceptionCase e, Right got) ->
+    compareAs ("repr " ++ show e) (T.pack (asString (member "repr" got))) (pythonExceptionRepr e)
+      ++ compareAs ("str " ++ show e) (T.pack (asString (member "str" got))) (pythonExceptionStr e)
   (JsonBytesCase b, Right got) ->
     compareAs ("detect_encoding " ++ show b) (member "encoding" got) (String (detectEncoding b))
       ++ case lookupMember "error" got of
@@ -342,6 +403,8 @@ spec = describe "Petrus.Json.Python against the pinned CPython" $ do
   group "agrees on hooked json.loads refusal texts (hook order)" $ \case StrictLoadsCase _ -> True; _ -> False
   group "agrees on bytes.decode('utf-8') errors" $ \case Utf8Case _ -> True; _ -> False
   group "agrees on bytes.decode('utf-8', 'replace')" $ \case Utf8ReplaceCase _ -> True; _ -> False
+  group "agrees on str.encode('utf-8') errors" $ \case Utf8EncodeCase _ -> True; _ -> False
+  group "agrees on repr and str of exceptions" $ \case ExceptionCase _ -> True; _ -> False
   group "agrees on json.loads(bytes) decoding (detect_encoding, surrogatepass)" $ \case JsonBytesCase _ -> True; _ -> False
   group "agrees on uuid4's spelling" $ \case UuidCase _ -> True; _ -> False
   it "covers both outcomes" $ do

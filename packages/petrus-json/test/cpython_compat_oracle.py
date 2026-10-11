@@ -111,6 +111,40 @@ def utf8_replace(argument):
     return points(bytes.fromhex(argument).decode("utf-8", "replace"))
 
 
+def utf8_encode(argument):
+    text(argument).encode("utf-8")
+    return None
+
+
+EXCEPTIONS = {
+    cls.__name__: cls
+    for cls in (ValueError, KeyError, RuntimeError, TypeError, UnicodeDecodeError, UnicodeEncodeError)
+}
+
+
+def exception_argument(argument):
+    kind, value = argument
+    if kind == "none":
+        return None
+    if kind == "bool":
+        return value
+    if kind == "int":
+        return int(value)
+    if kind == "float":
+        import struct
+
+        return struct.unpack(">d", bytes.fromhex(value))[0]
+    if kind == "str":
+        return text(value)
+    return bytes.fromhex(value)
+
+
+def exception_text(argument):
+    name, arguments = argument
+    error = EXCEPTIONS[name](*map(exception_argument, arguments))
+    return {"repr": points(repr(error)), "str": points(str(error))}
+
+
 def json_bytes(argument):
     data = bytes.fromhex(argument)
     encoding = json.detect_encoding(data)
@@ -135,6 +169,8 @@ OPERATIONS = {
     "json-loads-strict": json_loads_strict,
     "utf8-decode": utf8_decode,
     "utf8-replace": utf8_replace,
+    "utf8-encode": utf8_encode,
+    "exception": exception_text,
     "json-bytes": json_bytes,
     "uuid4": uuid4_text,
 }

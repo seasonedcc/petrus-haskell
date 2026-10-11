@@ -111,8 +111,11 @@ profiles of `loadsProfiles`:
   values; the exact text of `json.loads` refusals (`JSONDecodeError` with
   line, column and character, and the digit limit), plain and with a
   duplicate-refusing `object_pairs_hook` and refusing `parse_constant` (hook
-  order); strict UTF-8 `UnicodeDecodeError` texts; `bytes.decode("utf-8", "replace")`;
-  `json.detect_encoding`
+  order); strict UTF-8 `UnicodeDecodeError` texts and strict
+  `str.encode("utf-8")`'s `UnicodeEncodeError` texts; `bytes.decode("utf-8", "replace")`;
+  `repr()` and `str()` of exceptions (`PythonException`) built from 1 500
+  generated argument lists, `KeyError`'s and the codec errors' own `__str__`
+  included, out-of-range positions too; `json.detect_encoding`
   and the `surrogatepass` decoding `json.loads(bytes)` applies, in every
   encoding, intact and damaged; and `uuid.uuid4()`'s spelling.
 - **Retired copies.** Packages that carried their own `repr(str)` now call
@@ -128,7 +131,12 @@ profiles of `loadsProfiles`:
   Unicode 15.1 gap. petrus-cel's CPython tables are this package's
   (`gen/gen-unicode-tables.py` keeps only RE2's), and
   `bytes.decode("utf-8", "replace")` (petrus-http-core, petrus-agenticus) is
-  `decodeUtf8Replace`.
+  `decodeUtf8Replace`. petrus-impetus's Python exception value and its
+  text are this package's `PythonException`; petrus-cel's
+  `UnicodeEncodeError` and `UnicodeDecodeError` are `utf8EncodeFailure` and
+  `utf8DecodeFailure`; the json.loads diagnosers of petrus-motus-zeromq,
+  petrus-dst and petrus-engine-file are `Petrus.Json.Python.Scanner`, and
+  engine-file's Jiter port is a pure parser.
 - **Unit tests** ([`test/Main.hs`](test/Main.hs)): `dumps` spellings,
   `parseJson` behaviours, lone surrogates kept as WTF-8 (pairing, keys,
   ordering, byte-for-byte re-encoding, `dumpsText`, `repr`, `fromWtf8`), the 4 300-digit limit in both directions with

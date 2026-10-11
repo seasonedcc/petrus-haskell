@@ -17,10 +17,14 @@ module Petrus.Json.Python.Decode
   ( -- * Strict UTF-8
     decodeUtf8Python
   , utf8DecodeError
-  , DecodeFailure (..)
+  , CodecFailure (..)
   , utf8DecodeFailure
   , decodeFailureText
   , decodeUtf8Replace
+    -- * Strict UTF-8 encoding
+  , utf8EncodeError
+  , utf8EncodeFailure
+  , encodeFailureText
     -- * @json.loads(bytes)@
   , detectEncoding
   , decodeJsonBytes
@@ -29,13 +33,14 @@ module Petrus.Json.Python.Decode
 import Data.Bits (shiftL, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Char (chr)
+import Data.Char (chr, ord)
+import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import Numeric (showHex)
-import Petrus.Json.Wtf8 (fromCodePoints)
+import Petrus.Json.Wtf8 (fromCodePoints, hasLoneSurrogate)
 
 -- | @payload.decode("utf-8")@ (strict): the text, or the
 -- 'UnicodeDecodeError' message CPython reports for the first malformed
@@ -50,9 +55,10 @@ decodeUtf8Python bytes = case TE.decodeUtf8' bytes of
 utf8DecodeError :: ByteString -> Maybe Text
 utf8DecodeError bytes = decodeFailureText bytes <$> utf8DecodeFailure bytes
 
--- | A 'UnicodeDecodeError''s arguments besides the object decoded: the
--- codec, the malformed range @[start, end)@, and the reason.
-data DecodeFailure = DecodeFailure
+-- | A 'UnicodeDecodeError''s or 'UnicodeEncodeError''s arguments besides
+-- the object: the codec, the offending range @[start, end)@ (bytes when
+-- decoding, code points when encoding), and the reason.
+data CodecFailure = CodecFailure
   { failureCodec :: Text
   , failureStart :: Int
   , failureEnd :: Int
@@ -62,22 +68,60 @@ data DecodeFailure = DecodeFailure
 
 -- | The first malformed sequence strict UTF-8 decoding meets, as CPython's
 -- decoder classifies it, or 'Nothing' when the bytes are UTF-8.
-utf8DecodeFailure :: ByteString -> Maybe DecodeFailure
+utf8DecodeFailure :: ByteString -> Maybe CodecFailure
 utf8DecodeFailure bytes
   | BS.isValidUtf8 bytes = Nothing
   | otherwise = either Just (const Nothing) (utf8CodePoints False bytes)
 
 -- | CPython's @UnicodeDecodeError.__str__@ for the bytes decoded: one byte
--- names its value, a longer range its first and last positions.
-decodeFailureText :: ByteString -> DecodeFailure -> Text
+-- of the object names its value, any other range its first and last
+-- positions.
+decodeFailureText :: ByteString -> CodecFailure -> Text
 decodeFailureText bytes failure
-  | failure.failureEnd - failure.failureStart == 1 =
+  | failure.failureStart < BS.length bytes && failure.failureEnd - failure.failureStart == 1 =
       "'" <> failure.failureCodec <> "' codec can't decode byte 0x" <> hex2 (BS.index bytes failure.failureStart) <> " in position " <> tshow failure.failureStart <> ": " <> failure.failureReason
   | otherwise =
       "'" <> failure.failureCodec <> "' codec can't decode bytes in position " <> tshow failure.failureStart <> "-" <> tshow (failure.failureEnd - 1) <> ": " <> failure.failureReason
 
+-- | @value.encode("utf-8")@ (strict): 'Nothing' when it succeeds, otherwise
+-- the @UnicodeEncodeError@'s @str()@ for the first run of surrogate code
+-- points. A 'Text' holds a surrogate only in the WTF-8 form
+-- "Petrus.Json.Wtf8" gives a lone surrogate CPython keeps in a @str@.
+utf8EncodeError :: Text -> Maybe Text
+utf8EncodeError text = encodeFailureText text <$> utf8EncodeFailure text
+
+-- | The first run of surrogates strict UTF-8 encoding refuses, or 'Nothing'
+-- when the text encodes.
+utf8EncodeFailure :: Text -> Maybe CodecFailure
+utf8EncodeFailure text
+  | not (hasLoneSurrogate text) = Nothing
+  | otherwise =
+      let (before, rest) = break isSurrogate (T.unpack text)
+          start = length before
+          end = start + length (takeWhile isSurrogate rest)
+       in Just (CodecFailure "utf-8" start end "surrogates not allowed")
+  where
+    isSurrogate c = c >= '\xD800' && c <= '\xDFFF'
+
+-- | CPython's @UnicodeEncodeError.__str__@ for the text encoded: one code
+-- point of the object names it, any other range its first and last
+-- positions.
+encodeFailureText :: Text -> CodecFailure -> Text
+encodeFailureText text failure
+  | failure.failureStart < T.length text && failure.failureEnd - failure.failureStart == 1 =
+      "'" <> failure.failureCodec <> "' codec can't encode character '" <> escaped <> "' in position " <> tshow failure.failureStart <> ": " <> failure.failureReason
+  | otherwise =
+      "'" <> failure.failureCodec <> "' codec can't encode characters in position " <> tshow failure.failureStart <> "-" <> tshow (failure.failureEnd - 1) <> ": " <> failure.failureReason
+  where
+    code = maybe 0 ord (listToMaybe (drop failure.failureStart (T.unpack text)))
+    digits = showHex code ""
+    escaped
+      | code <= 0xFF = "\\x" <> T.justifyRight 2 '0' (T.pack digits)
+      | code <= 0xFFFF = "\\u" <> T.justifyRight 4 '0' (T.pack digits)
+      | otherwise = "\\U" <> T.justifyRight 8 '0' (T.pack digits)
+
 codecError :: Text -> ByteString -> Int -> Int -> Text -> Either Text a
-codecError name bytes from to why = Left (decodeFailureText bytes (DecodeFailure name from to why))
+codecError name bytes from to why = Left (decodeFailureText bytes (CodecFailure name from to why))
 
 hex2 :: Word8 -> Text
 hex2 w = let digits = showHex w "" in T.pack (replicate (2 - length digits) '0' ++ digits)
@@ -88,7 +132,7 @@ tshow = T.pack . show
 -- | CPython's UTF-8 decoder: the code points, or the message for the first
 -- malformed sequence. With @surrogatepass@, an encoded surrogate
 -- (@ED A0..BF 80..BF@) decodes to its code point.
-utf8CodePoints :: Bool -> ByteString -> Either DecodeFailure String
+utf8CodePoints :: Bool -> ByteString -> Either CodecFailure String
 utf8CodePoints surrogatePass bytes = go 0
   where
     n = BS.length bytes
@@ -139,9 +183,9 @@ utf8CodePoints surrogatePass bytes = go 0
                 | otherwise -> invalidStart i
     badSecond3 b w = not (cont w) || (if w < 0xA0 then b == 0xE0 else b == 0xED)
     badSecond4 b w = not (cont w) || (if w < 0x90 then b == 0xF0 else b == 0xF4)
-    invalidStart i = Left (DecodeFailure "utf-8" i (i + 1) "invalid start byte")
-    invalid i len = Left (DecodeFailure "utf-8" i (i + len) "invalid continuation byte")
-    endOfData i = Left (DecodeFailure "utf-8" i n "unexpected end of data")
+    invalidStart i = Left (CodecFailure "utf-8" i (i + 1) "invalid start byte")
+    invalid i len = Left (CodecFailure "utf-8" i (i + len) "invalid continuation byte")
+    endOfData i = Left (CodecFailure "utf-8" i n "unexpected end of data")
 
 -- | @bytes.decode("utf-8", "replace")@: each maximal ill-formed subpart
 -- (Unicode §3.9) becomes one U+FFFD, as CPython substitutes; the byte that

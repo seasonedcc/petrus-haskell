@@ -13,6 +13,8 @@
 -- * "Petrus.Json.Python.Scanner" (imported on its own, its names being
 --   generic): @json.loads@'s scanner with its hooks and 'JSONDecodeError'
 --   texts;
+-- * "Petrus.Json.Python.Exception": an exception as a value (class and
+--   @args@), with its @repr()@ and @str()@;
 -- * "Petrus.Json.Python.Uuid": @uuid.uuid4()@;
 -- * 'jsonTypeName': @type(value).__name__@ of a decoded value.
 --
@@ -22,11 +24,13 @@ module Petrus.Json.Python
   ( module Petrus.Json.PythonText
   , module Petrus.Json.Repr
   , module Petrus.Json.Python.Decode
+  , module Petrus.Json.Python.Exception
   , module Petrus.Json.Python.Uuid
   , jsonTypeName
   ) where
 
 import Petrus.Json.Python.Decode
+import Petrus.Json.Python.Exception
 import Petrus.Json.Python.Uuid
 import Petrus.Json.PythonText
 import Petrus.Json.Repr
