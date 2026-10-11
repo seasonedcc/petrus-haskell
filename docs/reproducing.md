@@ -217,8 +217,11 @@ and evidence. The script fails if a component is marked at parity without
 evidence, or if a benchmark results file its evidence cites has a row where
 Haskell is slower than Python. A results file shared by several components
 can attribute its slower rows to components that are still in progress, with
-a `<!-- parity: rows below 1.0× belong to "..." -->` marker
-(`scripts/bench_results.py`).
+a `<!-- parity: rows below 1.0× belong to "..." -->` marker. A row counts by
+its headline ratio. Historical figures do not count: columns or headings that
+say "before", and sections marked `<!-- bench: superseded -->`. Neither do
+spread columns (`min`, `lowest …`, `slowest …`, `worst …`), which give a
+row's worst single round. `scripts/bench_results.py` documents the rules.
 
 ## No silent skips
 

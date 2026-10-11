@@ -58,10 +58,12 @@ only.
 
 ## Results
 
-<!-- parity: rows below 1.0× belong to "Agent WebSocket protocol", "File and URL endpoints" -->
-The rows below 1.0× here are relay round trips (the Agent WebSocket protocol) and `resolve-ref`
-(the file and URL endpoints); PARITY.md lists both components as in progress. The collaboration
-fan-out rows are all above 1.0×.
+<!-- parity: rows below 1.0× belong to "open-file endpoint" -->
+In run D, the final code, the only row below 1.0× is the open-file endpoint's (best of 7 at
+16 clients, 0.87x; PARITY.md lists it as in progress). Its single rounds go down to 0.58x, and
+resolve-ref's to 0.96x and 0.84x around medians of 1.07x and 1.17x (see "Reading the
+results"). Runs A to C measured earlier code; they are kept for the record and marked
+superseded, so `scripts/check-parity` reads only run D.
 
 Machine: Apple M4 (10 cores), 24 GB, macOS 26 (Darwin 25.3.0), node
 v22.22.0, GHC 9.10.3. **The machine was shared with other agents building
@@ -147,6 +149,8 @@ Cells: median ops/s over 7 interleaved runs (p50 / p99 latency in us).
 
 ### Run C (commit bbab9aa: `-N1`, before the relay log was written from the relay loop; 7 reps; load average 4.3–4.7)
 
+<!-- bench: superseded -->
+
 | scenario | haskell (petrus) | haskell (petrus, relay log off) | node (vite dev server) | node (bare baseline) | haskell (petrus-collab) | node (server/collab.mjs) | Haskell / Node |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | relay round trip, 1 pair | 11116 (80 / 179) | 14874 (59 / 160) | 10055 (92 / 208) | 10538 (86 / 232) |  |  | 1.41x |
@@ -185,6 +189,8 @@ Cells: median ops/s over 7 interleaved runs (p50 / p99 latency in us).
 
 ### Run B (commit 9a4d2b4, thread-per-connection relays, `-N2`; 9 reps; load average 7 → 186 → 37)
 
+<!-- bench: superseded -->
+
 Median ops/s (p50 / p99 latency in µs):
 
 | scenario | haskell (petrus) | haskell (petrus, relay log off) | node (vite) | node (bare) | haskell (petrus-collab) | node (collab.mjs) | Haskell / Node |
@@ -213,6 +219,8 @@ Best of 9 (ops/s):
 | collab fan-out, 200 peers x 200 msgs | 793619 | | | | 869357 | 230931 | 3.76x |
 
 ### Run A (commit 7eb9e61: before the C string escaper; no log-off target; 9 reps; load average 7)
+
+<!-- bench: superseded -->
 
 Median ops/s (p50 / p99 latency in µs):
 

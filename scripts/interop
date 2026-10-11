@@ -84,7 +84,7 @@ PATTERNS: Dict[str, List[str]] = {
     "petrus-sqlite": ["Python", "upstream"],
     "petrus-telemetry": ["CPython", "Python's repr"],
     "petrus-telemetry-instrumentation": ["differential/telemetry_scenarios.py"],
-    "petrus-viewer-server": ["upstream"],
+    "petrus-viewer-server": ["upstream", "the Python reference Engine, with the same answers at every step"],
 }
 
 POSTGRES_MARKERS = re.compile(r"PETRUS_TEST_POSTGRES|postgresSpec|withScratchDatabase|lookupPostgresUrl")

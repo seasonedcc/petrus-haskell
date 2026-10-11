@@ -12,8 +12,15 @@ times, Haskell ÷ Python for throughputs), so a ratio below 1.0 is a row where
 Haskell is slower.
 
 Ratios that describe code that no longer runs are not results: a column whose
-header says ``before``, or a table under a heading that says ``before``, holds
-historical numbers and is skipped.
+header says ``before``, a table under a heading that says ``before``, and a
+table in a section marked ``<!-- bench: superseded -->`` (the marker applies
+from its line to the next heading) hold historical numbers and are skipped.
+
+A row's headline ratio is what counts. A column whose header is ``min`` or
+starts with ``lowest``, ``slowest`` or ``worst`` holds the spread of a row
+measured over several rounds (its worst single round); it is skipped too, as
+is a single round's figure quoted in prose. A component whose rows sit near
+1.0× should say so in its PARITY.md evidence.
 
     python3 scripts/bench_results.py summary         # print bench-results/summary.md
     python3 scripts/bench_results.py summary --write # rewrite it
@@ -45,6 +52,8 @@ RATIO_START = re.compile(r"^\s*\**\s*[~≈]?\s*\d[\d\s,]*(?:\.\d+)?\s*[×x](?![A
 RATIO_TOKEN = re.compile(r"(\d[\d\s,]*(?:\.\d+)?)\s*[×x](?![A-Za-z])")
 HEADING = re.compile(r"^#{1,6}\s+(.*)$")
 EXEMPT = re.compile(r"<!--\s*parity:\s*rows below 1\.0× belong to (.*?)-->")
+SUPERSEDED = re.compile(r"<!--\s*bench:\s*superseded\b")
+SPREAD = re.compile(r"^(min\b|lowest|slowest|worst)", re.IGNORECASE)
 
 
 class Ratio:
@@ -84,12 +93,17 @@ def ratios(path: Path) -> List[Ratio]:
     lines = path.read_text(encoding="utf-8").splitlines()
     found: List[Ratio] = []
     heading = ""
+    superseded = False
     header: Optional[List[str]] = None
     for number, line in enumerate(lines, 1):
         match = HEADING.match(line)
         if match:
             heading = match.group(1)
+            superseded = False
             header = None
+            continue
+        if SUPERSEDED.search(line):
+            superseded = True
             continue
         if not line.lstrip().startswith("|"):
             header = None
@@ -100,11 +114,11 @@ def ratios(path: Path) -> List[Ratio]:
             continue
         if all(re.fullmatch(r":?-{2,}:?", cell) for cell in row if cell):
             continue
-        if "before" in heading.lower():
+        if "before" in heading.lower() or superseded:
             continue
         for index, cell in enumerate(row):
             column = header[index] if index < len(header) else ""
-            if "before" in column.lower():
+            if "before" in column.lower() or SPREAD.match(column):
                 continue
             for value in ratio_values(cell):
                 found.append(Ratio(value, cell, row[0], number))
