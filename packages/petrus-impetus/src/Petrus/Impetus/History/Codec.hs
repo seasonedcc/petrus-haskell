@@ -18,6 +18,7 @@ module Petrus.Impetus.History.Codec
   ( schemaVersion
   , encodeRecord
   , decodeRecord
+  , checkRecordHeader
   , encodeHistory
   , historyLoads
   ) where
@@ -131,44 +132,7 @@ decodeRecord payload = do
   members <- case payload of
     Object ms -> Right ms
     other -> Left ("cannot decode event history record: payload must be a mapping, got " <> pythonRepr other)
-  nameValue <- maybe (Left "cannot decode event history record: payload has no 'record' discriminator") Right (lookup "record" members)
-  schema <-
-    maybe
-      ( Left
-          ( "cannot decode event history record "
-              <> pythonRepr nameValue
-              <> ": payload has no 'schema' version — this kernel writes schema 5, reads schema 5 only, and has no converter for older durable data"
-          )
-      )
-      Right
-      (lookup "schema" members)
-  case schema of
-    Int 5 -> Right ()
-    _ ->
-      Left
-        ( "cannot decode event history record "
-            <> pythonRepr nameValue
-            <> ": 'schema' is "
-            <> pythonRepr schema
-            <> ", and this kernel reads schema 5 only — no migration or converter exists"
-        )
-  (typeName, layout) <- case nameValue of
-    String n | Just l <- Map.lookup n layoutIndex -> Right (n, l)
-    String n
-      | Just successor <- lookup n v1Successors ->
-          Left
-            ( "cannot decode event history record: "
-                <> pythonStrRepr n
-                <> " is a schema-1 discriminator — the CV3 schema-2 migration renamed it to "
-                <> pythonStrRepr successor
-                <> ", and no v1 converter exists (no production histories predate the migration)"
-            )
-    other ->
-      Left
-        ( "cannot decode event history record: unknown 'record' discriminator "
-            <> pythonRepr other
-            <> " — not a record type the kernel emits"
-        )
+  (typeName, layout) <- decodeHeader members
   fields <- case members of
     -- The canonical payload: the discriminators first, then exactly the
     -- constructor's parameters in field order. Every argument is present
@@ -190,6 +154,53 @@ decodeRecord payload = do
   unless (isCanonicalSpelling record payload) $
     Left ("cannot decode event history record " <> pythonStrRepr typeName <> ": payload is not its exact canonical schema-5 spelling")
   Right record
+
+-- | The header stage of 'decodeRecord' on a payload's members: the
+-- @record@ discriminator, the @schema@ version, and a known record type,
+-- refused with 'decodeRecord''s own text.
+checkRecordHeader :: [(Text, Json)] -> Either Text ()
+checkRecordHeader members = () <$ decodeHeader members
+
+decodeHeader :: [(Text, Json)] -> Either Text (Text, Layout)
+decodeHeader members = do
+  nameValue <- maybe (Left "cannot decode event history record: payload has no 'record' discriminator") Right (lookup "record" members)
+  schema <-
+    maybe
+      ( Left
+          ( "cannot decode event history record "
+              <> pythonRepr nameValue
+              <> ": payload has no 'schema' version — this kernel writes schema 5, reads schema 5 only, and has no converter for older durable data"
+          )
+      )
+      Right
+      (lookup "schema" members)
+  case schema of
+    Int 5 -> Right ()
+    _ ->
+      Left
+        ( "cannot decode event history record "
+            <> pythonRepr nameValue
+            <> ": 'schema' is "
+            <> pythonRepr schema
+            <> ", and this kernel reads schema 5 only — no migration or converter exists"
+        )
+  case nameValue of
+    String n | Just l <- Map.lookup n layoutIndex -> Right (n, l)
+    String n
+      | Just successor <- lookup n v1Successors ->
+          Left
+            ( "cannot decode event history record: "
+                <> pythonStrRepr n
+                <> " is a schema-1 discriminator — the CV3 schema-2 migration renamed it to "
+                <> pythonStrRepr successor
+                <> ", and no v1 converter exists (no production histories predate the migration)"
+            )
+    other ->
+      Left
+        ( "cannot decode event history record: unknown 'record' discriminator "
+            <> pythonRepr other
+            <> " — not a record type the kernel emits"
+        )
 
 -- | Whether the payload is the record's canonical spelling: exactly
 -- @encodeRecord record == payload@ (the reference's mapping equality), but

@@ -16,7 +16,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Impetus.History (Record)
-import Petrus.Impetus.History.Codec (decodeRecord)
+import Petrus.Impetus.History.Codec (checkRecordHeader, decodeRecord)
 import Petrus.Json (Json (..), jsonTypeName)
 import Petrus.Json.Python.Decode (decodeUtf8Python)
 import Petrus.Json.Python.Scanner (jsonDecodeError)
@@ -52,24 +52,11 @@ decodeStored payload = case payload of
       Just members -> decodeRecord (Object members)
       -- A key that is not a @str@: the discriminator and schema checks run
       -- first, then @Record(**data)@ refuses the keyword.
-      Nothing -> case decodeRecord (Object [(key, value) | (Right key, value) <- pairs, key `elem` ["record", "schema"]]) of
-        Left message | not (headerPassed message) -> Left message
-        _ -> Left "keywords must be strings"
+      Nothing -> do
+        checkRecordHeader [(key, value) | (Right key, value) <- pairs, key `elem` ["record", "schema"]]
+        Left "keywords must be strings"
   where
     textKey (key, value) = either (const Nothing) (\k -> Just (k, value)) key
-    -- the header's refusals; past the header, the trimmed payload fails
-    -- only for its missing fields
-    headerPassed message =
-      not
-        ( any
-            (`T.isInfixOf` message)
-            [ "payload has no 'record' discriminator"
-            , ": payload has no 'schema' version"
-            , ": 'schema' is "
-            , " is a schema-1 discriminator"
-            , "unknown 'record' discriminator"
-            ]
-        )
 
 -- | CPython's @dict(value)@ for a value that is not a JSON object: the
 -- @TypeError@ / @ValueError@ text it raises, or the keys (a 'Text' for a
