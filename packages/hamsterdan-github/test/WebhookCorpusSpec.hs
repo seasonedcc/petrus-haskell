@@ -91,9 +91,9 @@ dumpRows path sql = do
       SQLNull -> Null
       SQLBlob _ -> String "<blob>"
 
-subjectOf :: Json -> (Integer, Integer, Integer)
+subjectOf :: Json -> InstanceKey
 subjectOf value = case listOf value of
-  [a, b, c] -> (intOf a, intOf b, intOf c)
+  [a, b, c] -> InstanceKey (intOf a) (intOf b) (intOf c)
   _ -> error "corpus: subject"
 
 apply :: WebhookCustody -> Maybe Routing.InstallationRegistry -> (Double -> IO ()) -> Json -> IO Json

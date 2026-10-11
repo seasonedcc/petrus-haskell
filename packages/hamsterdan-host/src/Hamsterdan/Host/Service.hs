@@ -41,7 +41,9 @@ module Hamsterdan.Host.Service
   , ServiceHooks (..)
   , defaultServiceHooks
   , HostService (..)
-  , Key
+  , InstanceKey (..)
+  , Loaded (..)
+  , Selected (..)
   , openHostService
   , CustodyOneResult (..)
 
@@ -109,13 +111,14 @@ import Hamsterdan.GitHub.Models
   , Transport
   , boundary
   )
-import Hamsterdan.GitHub.Python (casefold, pyIntBase, utf8Length)
+import Hamsterdan.GitHub.Python (PythonFault (..), casefold, pyIntBase, utf8Length)
 import Hamsterdan.GitHub.Routing (InstallationRegistry, Route (..), activeCount, activeInstallationCount, closeRegistry, openRegistry)
 import Hamsterdan.GitHub.Routing qualified as Routing
 import Hamsterdan.GitHub.Transport (githubGraphQL, githubTransport)
 import Hamsterdan.GitHub.Webhooks
   ( CustodyOptions (..)
   , ErrorClass (..)
+  , InstanceKey (..)
   , Observation (..)
   , WebhookCustody
   , admitConversation
@@ -360,8 +363,6 @@ routedRunner runner custody beforeCall =
 -- ---------------------------------------------------------------------------
 -- The service
 
-type Key = (Integer, Integer, Integer)
-
 -- | The constructor's keyword arguments.
 data ServiceOptions = ServiceOptions
   { clients :: Maybe HostClients
@@ -433,13 +434,11 @@ data HostService = HostService
   , serviceClock :: IO Double
   , custody :: WebhookCustody
   , installationIds :: IORef (Set Integer)
-  , apps :: IORef (Map Key HostApplication)
-  , locks :: IORef (Map Key (MVar ()))
-  , instances :: IORef [(Text, Key)]
-  -- ^ Loaded Instances in load order (the reference's dict order).
+  , loaded :: IORef (Map InstanceKey Loaded)
+  -- ^ The loaded Instances (the reference's @_apps@ and @_locks@).
   , stopped :: TVar Bool
   , closed :: IORef Bool
-  , watchVerdicts :: IORef (Map Key Bool)
+  , watchVerdicts :: IORef (Map InstanceKey Bool)
   , applicationLock :: MVar ()
   , pumpLock :: MVar ()
   , schedulerErrors :: IORef (Map Text Text)
@@ -447,6 +446,31 @@ data HostService = HostService
   , dispatchPath :: FilePath
   , hooks :: IORef ServiceHooks
   }
+
+-- | One loaded PR Instance: its application and the lock that serializes
+-- work on it.
+data Loaded = Loaded
+  { key :: InstanceKey
+  , instanceName :: Text
+  , app :: HostApplication
+  , lock :: MVar ()
+  , ordinal :: Int
+  -- ^ Its place in load order (the reference's dict order).
+  }
+
+-- | The loaded Instances in load order.
+loadedInOrder :: HostService -> IO [Loaded]
+loadedInOrder service = sortOn (.ordinal) . Map.elems <$> readIORef service.loaded
+
+-- | @self._apps[key]@ (with its lock), raising the reference's @KeyError@
+-- when the Instance is not loaded.
+loadedAt :: HostService -> InstanceKey -> IO Loaded
+loadedAt service key =
+  Map.lookup key <$> readIORef service.loaded
+    >>= maybe (throwIO (PythonFault "KeyError" ("(" <> T.intercalate ", " (map tshow (keyMembers key)) <> ")"))) pure
+
+keyMembers :: InstanceKey -> [Integer]
+keyMembers key = [key.installation, key.repository, key.pullRequest]
 
 -- | @CustodyOneResult(delivery_id, disposition)@.
 data CustodyOneResult = CustodyOneResult
@@ -477,9 +501,7 @@ openHostService config options = do
       `onException` (closeCustody custody >> closeRegistry registry)
   clientsRef <- newIORef clients
   installationIds <- newIORef Set.empty
-  apps <- newIORef Map.empty
-  locks <- newIORef Map.empty
-  instances <- newIORef []
+  loaded <- newIORef Map.empty
   stopped <- newTVarIO False
   closed <- newIORef False
   watchVerdicts <- newIORef Map.empty
@@ -497,9 +519,7 @@ openHostService config options = do
       , serviceClock
       , custody
       , installationIds
-      , apps
-      , locks
-      , instances
+      , loaded
       , stopped
       , closed
       , watchVerdicts
@@ -516,9 +536,9 @@ openHostService config options = do
 -- ---------------------------------------------------------------------------
 -- Instance identity
 
-instancePattern :: Text -> Maybe Key
+instancePattern :: Text -> Maybe InstanceKey
 instancePattern instanceText = case T.splitOn ":" instanceText of
-  ["github", a, b, "pr", c] -> (,,) <$> positive a <*> positive b <*> positive c
+  ["github", a, b, "pr", c] -> InstanceKey <$> positive a <*> positive b <*> positive c
   _ -> Nothing
   where
     positive t = case T.uncons t of
@@ -528,14 +548,14 @@ instancePattern instanceText = case T.splitOn ":" instanceText of
             Just (read (T.unpack t))
       _ -> Nothing
 
-instanceOf :: Key -> Text
-instanceOf (i, r, p) = "github:" <> tshow i <> ":" <> tshow r <> ":pr:" <> tshow p
+instanceOf :: InstanceKey -> Text
+instanceOf key = "github:" <> tshow key.installation <> ":" <> tshow key.repository <> ":pr:" <> tshow key.pullRequest
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
 
-applicationRoot :: HostService -> Key -> FilePath
-applicationRoot service (i, r, p) = service.root </> "applications" </> show i </> show r </> show p
+applicationRoot :: HostService -> InstanceKey -> FilePath
+applicationRoot service key = service.root </> "applications" </> show key.installation </> show key.repository </> show key.pullRequest
 
 -- | Python's @str()@ of a provider-given identifier.
 pyStrId :: Json -> Text
@@ -570,9 +590,9 @@ resolveActivity service instanceText name
   | name `notElem` durablePublicationGates = pure Nothing
   | otherwise = case instancePattern instanceText of
       Nothing -> pure (Just invalidPublicationScope)
-      Just (i, r, p) -> do
+      Just key -> do
         outcome <- tryPython $ do
-          app <- applicationWith service i r p True
+          app <- applicationWith service key.installation key.repository key.pullRequest True
           app.activity name
         case outcome of
           Right (Just implementation) -> guardWith service instanceText name implementation True
@@ -588,15 +608,15 @@ guardWith service instanceText name implementation acquireLock
   | name `notElem` durablePublicationGates = pure Nothing
   | otherwise = case instancePattern instanceText of
       Nothing -> pure (Just invalidPublicationScope)
-      Just key@(i, r, _) -> pure . Just $ \invocation context ->
+      Just key -> pure . Just $ \invocation context ->
         let invoke =
-              Routing.route service.registry i r >>= \case
+              Routing.route service.registry key.installation key.repository >>= \case
                 Nothing -> inactiveActivityResult name invocation (Just implementation)
                 Just _ -> callActivity implementation.activity invocation context >>= either (throwIO . ValueError) pure
             locked
               | acquireLock = do
-                  lock <- (Map.! key) <$> readIORef service.locks
-                  withMVar lock (const invoke)
+                  entry <- loadedAt service key
+                  withMVar entry.lock (const invoke)
               | otherwise = invoke
             classified =
               try @ActivityError locked >>= \case
@@ -656,17 +676,17 @@ application :: HostService -> Integer -> Integer -> Integer -> IO HostApplicatio
 application service i r p = applicationWith service i r p False
 
 -- | The loaded application of one key, if any (@_apps.get(key)@).
-loadedApplication :: HostService -> Key -> IO (Maybe HostApplication)
-loadedApplication service key = Map.lookup key <$> readIORef service.apps
+loadedApplication :: HostService -> InstanceKey -> IO (Maybe HostApplication)
+loadedApplication service key = fmap (.app) . Map.lookup key <$> readIORef service.loaded
 
 -- | The loaded keys in load order.
-applicationKeys :: HostService -> IO [Key]
-applicationKeys service = map snd <$> readIORef service.instances
+applicationKeys :: HostService -> IO [InstanceKey]
+applicationKeys service = map (.key) <$> loadedInOrder service
 
 applicationWith :: HostService -> Integer -> Integer -> Integer -> Bool -> IO HostApplication
 applicationWith service i r p allowInactiveBinding = withMVar service.applicationLock $ \() -> do
-  let key = (i, r, p)
-  loaded <- Map.lookup key <$> readIORef service.apps
+  let key = InstanceKey i r p
+  loaded <- loadedApplication service key
   case loaded of
     Just app -> pure app
     Nothing -> do
@@ -720,9 +740,8 @@ applicationWith service i r p allowInactiveBinding = withMVar service.applicatio
               }
       app <- service.options.applicationFactory root instanceText authority runner appOptions
       lock <- newMVar ()
-      modifyIORef' service.locks (Map.insert key lock)
-      modifyIORef' service.apps (Map.insert key app)
-      modifyIORef' service.instances (\items -> filter ((/= instanceText) . fst) items <> [(instanceText, key)])
+      modifyIORef' service.loaded $ \entries ->
+        Map.insert key Loaded {key, instanceName = instanceText, app, lock, ordinal = Map.size entries} entries
       pure app
 
 isSymlink :: FilePath -> IO Bool
@@ -757,8 +776,8 @@ persistedHistories service = do
     listDirectoryOrEmpty directory = either (const []) id <$> try @SomeException (listDirectory directory)
 
 -- | @int(part)@ of each parent name, if all three parse.
-historyKey :: (FilePath, FilePath, FilePath) -> Maybe Key
-historyKey (a, b, c) = (,,) <$> number a <*> number b <*> number c
+historyKey :: (FilePath, FilePath, FilePath) -> Maybe InstanceKey
+historyKey (a, b, c) = InstanceKey <$> number a <*> number b <*> number c
   where
     number = pyIntBase 10 . T.pack
 
@@ -771,8 +790,8 @@ sweep service trigger = do
   where
     step reconciled (_, parts) = case historyKey parts of
       Nothing -> pure reconciled
-      Just key@(i, r, p)
-        | minimum [i, r, p] <= 0 -> pure reconciled
+      Just key
+        | minimum (keyMembers key) <= 0 -> pure reconciled
         | otherwise ->
             ( do
                 activated <- activateInstance service (instanceOf key) Nothing (Just trigger)
@@ -781,11 +800,11 @@ sweep service trigger = do
               `catchPython` \err -> do
                 logWarning
                   ( "application_sweep_retry installation_id="
-                      <> tshow i
+                      <> tshow key.installation
                       <> " repository_id="
-                      <> tshow r
+                      <> tshow key.repository
                       <> " pull_request_number="
-                      <> tshow p
+                      <> tshow key.pullRequest
                       <> " error_class="
                       <> exceptionClass err
                   )
@@ -801,9 +820,17 @@ process service item = case observationInstance item of
       void (activateInstanceWith service instanceText (if isNothing status then Just item else Nothing) Nothing)
         `catchPython` \_ -> pure ()
 
+-- | An observation '_select_observation' admitted, with the Instance its
+-- members address.
+data Selected = Selected
+  { item :: Observation
+  , conversation :: Maybe AdmittedConversation
+  , instanceName :: Text
+  }
+
 -- | @_select_observation(item)@: terminally dispose observations which
 -- cannot address a PR Instance.
-selectObservation :: HostService -> Observation -> IO (Maybe (Observation, Maybe AdmittedConversation))
+selectObservation :: HostService -> Observation -> IO (Maybe Selected)
 selectObservation service item
   | item.event `elem` ["ping", "installation", "installation_repositories"] = disposed "non-workflow event"
   | otherwise = do
@@ -811,15 +838,17 @@ selectObservation service item
         if item.installationId == Null || item.repositoryId == Null
           then pure Nothing
           else observationRoute service item.installationId item.repositoryId
-      case route of
-        Nothing -> disposed "inactive route"
-        Just _
-          | item.pullRequestNumber == Null -> disposed "no pull request"
+      -- An active route proves the installation and repository; the
+      -- Instance then exists exactly when the pull request number does.
+      case (route, observationInstance item) of
+        (Nothing, _) -> disposed "inactive route"
+        (Just _, Nothing) -> disposed "no pull request"
+        (Just _, Just instanceName)
           | item.event == "issue_comment" ->
               case admitConversation service.config.appSlug (botLogin service.config) item of
                 Nothing -> disposed "comment not addressed"
-                Just conversation -> pure (Just (item, Just conversation))
-          | otherwise -> pure (Just (item, Nothing))
+                Just conversation -> pure (Just Selected {item, conversation = Just conversation, instanceName})
+          | otherwise -> pure (Just Selected {item, conversation = Nothing, instanceName})
   where
     disposed reason = Nothing <$ Custody.acknowledge service.custody item.deliveryId reason
 
@@ -908,32 +937,28 @@ pump service limit = withMVar service.pumpLock $ \() -> do
   if halted
     then pure 0
     else do
-      loaded <- readIORef service.instances
+      loaded <- loadedInOrder service
       processed <-
         foldM
-          ( \processed (instanceText, key) ->
+          ( \processed entry ->
               if processed >= limit
                 then pure processed
                 else do
-                  blocked <- Custody.hasPending service.custody key
+                  blocked <- Custody.hasPending service.custody entry.key
                   if blocked
                     then pure processed
-                    else do
-                      app <- (Map.! key) <$> readIORef service.apps
-                      lock <- (Map.! key) <$> readIORef service.locks
-                      withMVar lock $ \() -> do
-                        completed <- app.runDurableActivities (limit - processed)
-                        when (completed > 0) $ app.settle >>= recordPosture service instanceText
-                        pure (processed + completed)
+                    else withMVar entry.lock $ \() -> do
+                      completed <- entry.app.runDurableActivities (limit - processed)
+                      when (completed > 0) $ entry.app.settle >>= recordPosture service entry.instanceName
+                      pure (processed + completed)
           )
           0
           loaded
-      forM_ loaded $ \(instanceText, key) -> do
-        app <- (Map.! key) <$> readIORef service.apps
-        unresolved <- app.hasUnresolvedPublication
+      forM_ loaded $ \entry -> do
+        unresolved <- entry.app.hasUnresolvedPublication
         when unresolved $ do
           now <- service.serviceClock
-          Runnable.wake service.runnable instanceText now "dispatch-repair" "unresolved-publication"
+          Runnable.wake service.runnable entry.instanceName now "dispatch-repair" "unresolved-publication"
       pure processed
 
 -- | @process_one()@: process at most one currently due custodied
@@ -945,10 +970,9 @@ processOne service =
     item : _ ->
       selectObservation service item >>= \case
         Nothing -> Just . CustodyOneResult item.deliveryId <$> custodyDisposition service item False
-        Just _ -> do
-          let instanceText = fromMaybe (error "selected observation has an Instance") (observationInstance item)
+        Just selected -> do
           completed <-
-            activateInstanceWith service instanceText (Just item) Nothing `catchPython` \_ -> pure False
+            activateInstanceWith service selected.instanceName (Just item) Nothing `catchPython` \_ -> pure False
           Just . CustodyOneResult item.deliveryId <$> custodyDisposition service item completed
 
 custodyDisposition :: HostService -> Observation -> Bool -> IO Text
@@ -967,37 +991,34 @@ runOneActivity service = withMVar service.pumpLock $ \() -> do
   halted <- isStopped service
   if halted
     then pure 0
-    else readIORef service.instances >>= go
+    else loadedInOrder service >>= go
   where
     go = \case
       [] -> pure 0
-      (instanceText, key) : rest -> do
-        blocked <- Custody.hasPending service.custody key
+      entry : rest -> do
+        blocked <- Custody.hasPending service.custody entry.key
         if blocked
           then go rest
           else do
-            app <- (Map.! key) <$> readIORef service.apps
-            lock <- (Map.! key) <$> readIORef service.locks
-            completed <- withMVar lock $ \() -> do
-              completed <- app.runDurableActivities 1
-              when (completed > 0) $ app.settle >>= recordPosture service instanceText
+            completed <- withMVar entry.lock $ \() -> do
+              completed <- entry.app.runDurableActivities 1
+              when (completed > 0) $ entry.app.settle >>= recordPosture service entry.instanceName
               pure completed
             if completed > 0 then pure completed else go rest
 
 -- | @subject_state(installation, repository, pull_request)@.
 subjectState :: HostService -> Integer -> Integer -> Integer -> IO (Maybe Json)
-subjectState service i r p = loadedApplication service (i, r, p) >>= traverse (.detachedState)
+subjectState service i r p = loadedApplication service (InstanceKey i r p) >>= traverse (.detachedState)
 
 -- | @work_state()@: bounded eligible work without runtime handles.
 workState :: HostService -> IO Json
 workState service = do
   histories <- persistedHistories service
-  loaded <- Map.keysSet <$> readIORef service.apps
+  loaded <- Map.elems <$> readIORef service.loaded
   pending <- Custody.pending service.custody 1 Nothing
   due <- Runnable.nextDue service.runnable
-  apps <- Map.elems <$> readIORef service.apps
-  unresolved <- anyM (.hasUnresolvedPublication) apps
-  let loadedRoots = Set.map (\key -> applicationRoot service key </> "history.jsonl") loaded
+  unresolved <- anyM (.app.hasUnresolvedPublication) loaded
+  let loadedRoots = Set.fromList [applicationRoot service entry.key </> "history.jsonl" | entry <- loaded]
   pure $
     Object
       [ ("pending_custody", Bool (not (null pending)))
@@ -1020,10 +1041,10 @@ reconcileOne service trigger = persistedHistories service >>= go
       [] -> pure False
       (_, parts) : rest -> case historyKey parts of
         Nothing -> go rest
-        Just key@(i, r, p)
-          | minimum [i, r, p] <= 0 -> go rest
+        Just key
+          | minimum (keyMembers key) <= 0 -> go rest
           | otherwise -> do
-              isLoaded <- Map.member key <$> readIORef service.apps
+              isLoaded <- Map.member key <$> readIORef service.loaded
               if isLoaded
                 then go rest
                 else do
@@ -1059,23 +1080,23 @@ recordPosture service instanceText maturation = do
 
 -- | @_watched(key, selected)@: whether this unbound subject's PR author
 -- is watched.
-watched :: HostService -> Key -> [(Observation, Maybe AdmittedConversation)] -> IO Bool
-watched service key@(i, r, p) selected
+watched :: HostService -> InstanceKey -> [(Observation, Maybe AdmittedConversation)] -> IO Bool
+watched service key selected
   | Set.null service.config.watchedAuthors = pure True
   | otherwise = do
       when (any (isJust . snd) selected) $ modifyIORef' service.watchVerdicts (Map.insert key True)
       Map.lookup key <$> readIORef service.watchVerdicts >>= \case
         Just verdict -> pure verdict
         Nothing ->
-          Routing.route service.registry i r >>= \case
+          Routing.route service.registry key.installation key.repository >>= \case
             Nothing -> pure True
             Just route -> do
               clients <- readIORef service.clientsRef
-              operationTransport <- clients.installation i [r]
+              operationTransport <- clients.installation key.installation [key.repository]
               let transport = maybe id id service.options.transportFactory operationTransport
               authority <-
                 either (\(InvalidRequest m) -> throwIO (ValueError m)) pure $
-                  githubAuthority transport route.repositoryFullName p Nothing
+                  githubAuthority transport route.repositoryFullName key.pullRequest Nothing
               snapshot <- Gateway.pullRequest authority
               let verdict = casefold snapshot.author `Set.member` service.config.watchedAuthors
               modifyIORef' service.watchVerdicts (Map.insert key verdict)
@@ -1092,7 +1113,8 @@ activateInstance service instanceText observation trigger =
 activateInstanceWith :: HostService -> Text -> Maybe Observation -> Maybe Text -> IO Bool
 activateInstanceWith service instanceText observation trigger = case instancePattern instanceText of
   Nothing -> pure False
-  Just key@(i, r, _) -> do
+  Just key -> do
+    let (i, r) = (key.installation, key.repository)
     eligible <- case observation of
       Just item -> Custody.eligible service.custody item.deliveryId key
       Nothing -> pure True
@@ -1100,12 +1122,12 @@ activateInstanceWith service instanceText observation trigger = case instancePat
       then pure False
       else do
         candidates <- maybe (Custody.pending service.custody 1000 (Just key)) (pure . pure) observation
-        selected <- catMaybes <$> mapM (selectObservation service) candidates
+        selected <- selectAll candidates
         seen <- newIORef (Set.fromList (map (.deliveryId) candidates))
         allSelected <- newIORef selected
         routeActive <- isJust <$> Routing.route service.registry i r
         bound <- doesFileExist (applicationRoot service key </> "history.jsonl")
-        isLoaded <- Map.member key <$> readIORef service.apps
+        isLoaded <- Map.member key <$> readIORef service.loaded
         if
           | not (null candidates) && null selected && not isLoaded && not bound -> pure False
           | not routeActive && not isLoaded && not bound -> pure False
@@ -1123,10 +1145,9 @@ activateInstanceWith service instanceText observation trigger = case instancePat
                         forM_ selected $ \(item, _) -> Custody.acknowledge service.custody item.deliveryId "author not watched"
                         pure False
                       else do
-                        let (a, b, c) = key
-                        app <- loadedApplication service key >>= maybe (applicationWith service a b c (not routeActive)) pure
-                        lock <- (Map.! key) <$> readIORef service.locks
-                        withMVar lock $ \() -> do
+                        app <- loadedApplication service key >>= maybe (applicationWith service i r key.pullRequest (not routeActive)) pure
+                        entry <- loadedAt service key
+                        withMVar entry.lock $ \() -> do
                           outcome0 <- if null selected then Just <$> app.settle else pure Nothing
                           activationError <- applyBatches app selected seen allSelected succeeded handled attempted False
                           let (activatedByBatches, failure) = activationError
@@ -1164,7 +1185,8 @@ activateInstanceWith service instanceText observation trigger = case instancePat
                     retryObservation service item err
                 throwIO err
   where
-    keyText (a, b, c) = tshow a <> ":" <> tshow b <> ":" <> tshow c
+    keyText key = T.intercalate ":" (map tshow (keyMembers key))
+    selectAll items = map (\selected -> (selected.item, selected.conversation)) . catMaybes <$> mapM (selectObservation service) items
     applyBatches app batch seen allSelected succeeded handled attempted activated = do
       (activated', failure) <- applyBatch app batch succeeded handled attempted activated
       case failure of
@@ -1181,7 +1203,7 @@ activateInstanceWith service instanceText observation trigger = case instancePat
                 then pure (activated', Nothing)
                 else do
                   modifyIORef' seen (Set.union (Set.fromList (map (.deliveryId) arrived)))
-                  next <- catMaybes <$> mapM (selectObservation service) arrived
+                  next <- selectAll arrived
                   modifyIORef' allSelected (<> next)
                   applyBatches app next seen allSelected succeeded handled attempted activated'
     applyBatch app batch succeeded handled attempted activated = case batch of
@@ -1222,8 +1244,8 @@ runDue service limit = do
 stop :: HostService -> IO ()
 stop service = do
   atomically (writeTVar service.stopped True)
-  loaded <- withMVar service.applicationLock $ \() -> Map.elems <$> readIORef service.apps
-  mapM_ (.stopDurableActivities) loaded
+  loaded <- withMVar service.applicationLock $ \() -> Map.elems <$> readIORef service.loaded
+  mapM_ (.app.stopDurableActivities) loaded
 
 -- | @health()@: sanitized service health.
 health :: HostService -> IO Json
@@ -1232,7 +1254,7 @@ health service = do
   reconciled <- Set.size <$> readIORef service.installationIds
   activeInstallations <- activeInstallationCount service.registry
   activeRepositories <- activeCount service.registry
-  applications <- Map.size <$> readIORef service.apps
+  applications <- Map.size <$> readIORef service.loaded
   inbox <- Custody.counts service.custody
   hints <- Runnable.count service.runnable
   pure $
@@ -1262,17 +1284,11 @@ health service = do
 -- | @settle_terminals_for_shutdown()@.
 settleTerminalsForShutdown :: HostService -> IO ()
 settleTerminalsForShutdown service = do
-  loaded <- readIORef service.instances
-  forM_ loaded $ \(instanceText, key) ->
-    loadedApplication service key >>= \case
-      Nothing -> pure ()
-      Just app ->
-        ( do
-            lock <- (Map.! key) <$> readIORef service.locks
-            withMVar lock $ \() -> app.settle >>= recordPosture service instanceText
-        )
-          `catchPython` \err ->
-            logWarning ("shutdown_terminal_settlement_failed instance=" <> instanceText <> " error_class=" <> exceptionClass err)
+  loaded <- loadedInOrder service
+  forM_ loaded $ \entry ->
+    withMVar entry.lock (\() -> entry.app.settle >>= recordPosture service entry.instanceName)
+      `catchPython` \err ->
+        logWarning ("shutdown_terminal_settlement_failed instance=" <> entry.instanceName <> " error_class=" <> exceptionClass err)
 
 -- | @abort()@: release this process generation without settling semantic
 -- work.
@@ -1293,11 +1309,10 @@ release service settling = mask $ \_ -> do
     withMVar service.pumpLock $ \() ->
       when settling $
         settleTerminalsForShutdown service `catchPython` remember
-    loaded <- readIORef service.instances
-    apps <- readIORef service.apps
+    loaded <- loadedInOrder service
     clients <- readIORef service.clientsRef
     let resources =
-          [app.close | (_, key) <- loaded, Just app <- [Map.lookup key apps]]
+          [entry.app.close | entry <- loaded]
             <> [ Runnable.close service.runnable
                , closeCustody service.custody
                , closeRegistry service.registry
@@ -1305,7 +1320,5 @@ release service settling = mask $ \_ -> do
                , service.options.agents.close
                ]
     forM_ resources $ \resource -> resource `catchPython` remember
-    writeIORef service.apps Map.empty
-    writeIORef service.locks Map.empty
-    writeIORef service.instances []
+    writeIORef service.loaded Map.empty
     readIORef failure >>= mapM_ throwIO

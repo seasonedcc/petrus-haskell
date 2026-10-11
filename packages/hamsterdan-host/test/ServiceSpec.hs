@@ -66,8 +66,8 @@ instance Exception SimulatedProcessDeath where
 instance7 :: Text
 instance7 = "github:44:31:pr:7"
 
-key7 :: Key
-key7 = (44, 31, 7)
+key7 :: InstanceKey
+key7 = InstanceKey 44 31 7
 
 pendingNow :: HostService -> IO [Observation]
 pendingNow host = Custody.pending host.custody 100 Nothing
@@ -534,7 +534,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     h <- harness tmp defaults {customize = resolvable}
     resolved <- resolveActivity h.host instance7 "dash_gate"
     isJust resolved `shouldBe` True
-    (Map.member key7 <$> readIORef h.host.apps) `shouldReturn` True
+    (Map.member key7 <$> readIORef h.host.loaded) `shouldReturn` True
     readIORef calls `shouldReturn` ["dash_gate"]
     (isNothing <$> resolveActivity h.host instance7 "review") `shouldReturn` True
     (isJust <$> resolveActivity h.host "not-a-pr-instance" "dash_gate") `shouldReturn` True
@@ -973,7 +973,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     h <- harness tmp defaults {customize = terminalApplication events}
     Runnable.wake h.host.runnable instance7 0 "petri-timer" "next-maturation"
     runDue h.host 100 `shouldReturn` 1
-    (Map.member key7 <$> readIORef h.host.apps) `shouldReturn` True
+    (Map.member key7 <$> readIORef h.host.loaded) `shouldReturn` True
     readIORef events `shouldReturn` ["settle"]
     Host.close h.host
 
@@ -984,7 +984,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     suspend h.host
     Runnable.wake h.host.runnable instance7 0 "activity-terminal" "dashboard_publish"
     runDue h.host 100 `shouldReturn` 1
-    (Map.member key7 <$> readIORef h.host.apps) `shouldReturn` True
+    (Map.member key7 <$> readIORef h.host.loaded) `shouldReturn` True
     readIORef events `shouldReturn` ["settle"]
     app <- app0 h
     readIORef app.reconciles `shouldReturn` []

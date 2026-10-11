@@ -296,8 +296,8 @@ runReplay options = do
         if present then length . T.lines . TE.decodeUtf8Lenient <$> BS.readFile options.serverLog else pure 0
       quiet = (,,) <$> serverLines <*> readIORef runnerCalls <*> readIORef publisherCalls
       unresolved = do
-        loaded <- readIORef host.apps
-        or <$> mapM (.hasUnresolvedPublication) (Map.elems loaded)
+        loaded <- readIORef host.loaded
+        or <$> mapM (.app.hasUnresolvedPublication) (Map.elems loaded)
       run step = case text (member "op" step) of
         "registry" -> do
           void . Routing.reconcile host.registry $

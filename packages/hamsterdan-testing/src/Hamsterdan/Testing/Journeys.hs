@@ -1462,9 +1462,9 @@ externalState d = do
 -- application this host never loaded holds no publication.
 unresolved :: Drive -> IO Bool
 unresolved d = do
-  loaded <- readIORef d.host.apps
-  case Map.lookup (44, 31, 7) loaded of
-    Just application -> application.hasUnresolvedPublication
+  loaded <- readIORef d.host.loaded
+  case Map.lookup (Host.InstanceKey 44 31 7) loaded of
+    Just entry -> entry.app.hasUnresolvedPublication
     Nothing -> pure False
 
 -- | @converge()@.

@@ -34,6 +34,7 @@ module Hamsterdan.GitHub.Webhooks
   , verifyWith
 
     -- * The inbox
+  , InstanceKey (..)
   , WebhookCustody
   , CustodyOptions (..)
   , defaultCustodyOptions
@@ -569,12 +570,26 @@ parseObservation delivery event body = do
       Object members -> maybe (Left (PyFailure KeyError name)) Right (lookup name members)
       _ -> Left (PyFailure TypeError "indices must be integers")
 
+-- | One PR Instance's subject: the reference's
+-- @(installation_id, repository_id, pull_request_number)@ tuple, with each
+-- position named.
+data InstanceKey = InstanceKey
+  { installation :: Integer
+  , repository :: Integer
+  , pullRequest :: Integer
+  }
+  deriving stock (Eq, Ord, Show)
+
+-- | The subject's members as the query parameters 'subjectQuery' binds.
+subjectParameters :: InstanceKey -> [SQLData]
+subjectParameters key = map integer [key.installation, key.repository, key.pullRequest]
+
 -- | Stored observations ready for processing, in arrival order.
 --
--- With a subject @(installation, repository, pull request)@, processing is
--- strict row order: an earlier deferred failure fences every later
--- observation for that subject until it is due again.
-pending :: WebhookCustody -> Int -> Maybe (Integer, Integer, Integer) -> IO [Observation]
+-- With a subject, processing is strict row order: an earlier deferred
+-- failure fences every later observation for that subject until it is due
+-- again.
+pending :: WebhookCustody -> Int -> Maybe InstanceKey -> IO [Observation]
 pending custody requested subject = do
   let limit = max 1 (min requested 1000)
   now <- custody.options.clock
@@ -584,12 +599,12 @@ pending custody requested subject = do
         custody.connection
         "SELECT observation,attempts,next_attempt_at FROM inbox WHERE status='pending' AND next_attempt_at<=? ORDER BY rowid LIMIT ?"
         [SQLFloat now, SQLInteger (fromIntegral limit)]
-    Just (installationId, repositoryId, number) ->
+    Just key ->
       Db.query
         custody.connection
         "SELECT observation,attempts,next_attempt_at FROM inbox WHERE status='pending' AND json_extract(observation,'$.installation_id')=?\
         \ AND json_extract(observation,'$.repository_id')=? AND json_extract(observation,'$.pull_request_number')=? ORDER BY rowid LIMIT ?"
-        [integer installationId, integer repositoryId, integer number, SQLInteger (fromIntegral limit)]
+        (subjectParameters key <> [SQLInteger (fromIntegral limit)])
   let due = case subject of
         Nothing -> rows
         Just _ -> takeWhile (\row -> nextAttempt row <= now) rows
@@ -615,20 +630,20 @@ subjectQuery =
   \ AND json_extract(observation,'$.pull_request_number')=?"
 
 -- | Whether the subject has any pending delivery.
-hasPending :: WebhookCustody -> (Integer, Integer, Integer) -> IO Bool
-hasPending custody (installationId, repositoryId, number) = Db.withLock custody.connection $ do
+hasPending :: WebhookCustody -> InstanceKey -> IO Bool
+hasPending custody key = Db.withLock custody.connection $ do
   rows <-
     Db.query
       custody.connection
       ("SELECT 1 FROM inbox WHERE status='pending'" <> subjectQuery <> " LIMIT 1")
-      [integer installationId, integer repositoryId, integer number]
+      (subjectParameters key)
   pure (not (null rows))
 
 -- | Whether a custodied delivery is the due head of its subject's row
 -- order. Uncustodied deliveries remain eligible; a terminal or later pending
 -- delivery never bypasses the earliest pending row.
-eligible :: WebhookCustody -> Text -> (Integer, Integer, Integer) -> IO Bool
-eligible custody deliveryId (installationId, repositoryId, number) = do
+eligible :: WebhookCustody -> Text -> InstanceKey -> IO Bool
+eligible custody deliveryId key = do
   now <- custody.options.clock
   Db.withLock custody.connection $ do
     target <- Db.query custody.connection "SELECT status FROM inbox WHERE delivery_id=?" [SQLText deliveryId]
@@ -639,7 +654,7 @@ eligible custody deliveryId (installationId, repositoryId, number) = do
           Db.query
             custody.connection
             ("SELECT delivery_id,next_attempt_at FROM inbox WHERE status='pending'" <> subjectQuery <> " ORDER BY rowid LIMIT 1")
-            [integer installationId, integer repositoryId, integer number]
+            (subjectParameters key)
         pure $ case earliest of
           [SQLText first, at] : _ -> first == deliveryId && real at <= now
           _ -> False
