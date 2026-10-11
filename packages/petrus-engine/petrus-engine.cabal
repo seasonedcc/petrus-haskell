@@ -69,6 +69,7 @@ test-suite petrus-engine-test
                     Petrus.Engine.InteropSpec
                     Petrus.Engine.LocalDispatchSpec
                     Petrus.Engine.WorkerTopologySpec
+                    Petrus.Engine.BoundarySpec
   build-depends:    base
                   , bytestring
                   , containers

@@ -5,7 +5,8 @@ Run from the repository root:
     python3 packages/petrus-engine/scripts/parity_check.py
 
 Covers petrus-motus, petrus-motus-zeromq, petrus-history-store, petrus-engine,
-petrus-engine-sqlite, petrus-history-postgres, and petrus-engine-postgres. Every Hspec example
+petrus-engine-sqlite, petrus-history-postgres, petrus-engine-postgres,
+petrus-engine-absurd and petrus-motus-absurd. Every Hspec example
 is named after the upstream test it ports (``test_a_b_c`` becomes ``it "a b c"``,
 under ``describe "TestClass"``; a parametrized test becomes ``describe "a b c"``
 with one example per case), so a test is accounted for when:
@@ -51,6 +52,14 @@ TOPOLOGY_ENGINE_TESTS = {
     "test_sigterm_drains_gracefully_the_in_flight_activity_completes",
     "test_the_worker_refuses_an_unregistered_activity",
 }
+# The Worker-registry tests of test_worker_topology.py that petrus-motus also
+# ports over Local custody. petrus-engine-absurd ports the whole file over
+# Absurd custody, as upstream runs it.
+TOPOLOGY_MOTUS_TESTS = {
+    "test_worker_and_loader_snapshot_mutable_registries",
+    "test_worker_refuses_invalid_activity_registries",
+    "test_main_defaults_queue_and_preserves_deduplicated_flag_order",
+}
 
 # package -> [(upstream file, classes in scope or None for all,
 #              tests in scope or None for all, or Excluding(tests out of scope))]
@@ -66,10 +75,23 @@ SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | Excluding | None]]
         ("petrus/motus/dispatch/test_local_dispatch.py", None, Excluding(LOCAL_ENGINE_TESTS)),
         ("petrus/motus/worker/test_worker_runtime.py", None, Excluding(WORKER_ENGINE_TESTS)),
         ("petrus/motus/worker/test_async_worker.py", None, None),
-        ("petrus/motus/worker/test_worker_topology.py", None, Excluding(TOPOLOGY_ENGINE_TESTS)),
+        ("petrus/motus/worker/test_worker_topology.py", None, TOPOLOGY_MOTUS_TESTS),
+        (
+            "project/test_package_boundaries.py",
+            None,
+            {
+                "test_worker_package_public_contract_and_module_cli",
+                "test_activity_worker_and_runtime_service_do_not_own_retained_territory_lifecycle",
+            },
+        ),
     ],
     "petrus-motus-zeromq": [
         ("petrus/motus/transport/test_zeromq_dispatch_transport.py", None, None),
+        (
+            "project/test_package_boundaries.py",
+            None,
+            {"test_zeromq_transport_base_import_is_optional_and_deep_import_has_guidance"},
+        ),
     ],
     "petrus-history-store": [
         ("petrus/impetus/history_store/test_persistence.py", {"TestDurableAppend", "TestJsonlHistoryStore"}, None),
@@ -97,6 +119,17 @@ SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | Excluding | None]]
         ("petrus/motus/dispatch/test_local_dispatch.py", None, LOCAL_ENGINE_TESTS),
         ("petrus/motus/worker/test_worker_runtime.py", None, WORKER_ENGINE_TESTS),
         ("petrus/motus/worker/test_worker_topology.py", None, TOPOLOGY_ENGINE_TESTS),
+        (
+            "project/test_package_boundaries.py",
+            None,
+            {
+                "test_lazy_root_surface_remains_discoverable_without_optional_imports",
+                "test_implementation_and_maintained_consumers_import_defining_modules_not_project_root",
+                "test_engine_is_canonical_public_and_optional_dependency_safe",
+                "test_removed_flat_deep_modules_are_not_speculative_shims",
+                "test_dispatch_is_canonical_and_coordination_remains_private",
+            },
+        ),
     ],
     "petrus-engine-sqlite": [
         ("petrus/engine/test_sqlite_engine.py", None, None),
@@ -116,6 +149,21 @@ SCOPES: dict[str, list[tuple[str, set[str] | None, set[str] | Excluding | None]]
     "petrus-engine-postgres": [
         ("petrus/engine/test_postgres_engine.py", None, None),
         ("project/test_package_boundaries.py", None, {"test_postgres_history_provider_returns_only_the_neutral_engine"}),
+    ],
+    "petrus-engine-absurd": [
+        ("petrus/motus/worker/test_worker_topology.py", None, None),
+    ],
+    "petrus-motus-absurd": [
+        (
+            "project/test_package_boundaries.py",
+            None,
+            {
+                "test_dispatch_import_is_optional_dependency_safe_and_absurd_is_canonical",
+                "test_absurd_dispatch_removed_name_has_no_deep_compatibility_alias",
+                "test_absurd_deep_import_preserves_missing_extra_guidance",
+                "test_worker_import_does_not_require_absurd_extra",
+            },
+        ),
     ],
 }
 
@@ -160,6 +208,7 @@ def ported(name: str, texts: list[tuple[str, ...]]) -> bool:
 def main() -> int:
     missing = 0
     total = 0
+    distinct: set[tuple[str, str, str]] = set()
     for package_name, scopes in SCOPES.items():
         package = ROOT / "packages" / package_name
         texts = examples(package)
@@ -175,6 +224,7 @@ def main() -> int:
                 if not ported(name, texts) and not re.search(rf"\b{name}\b", parity)
             ]
             total += len(tests)
+            distinct.update((relative, cls, name) for cls, name in tests)
             missing += len(absent)
             label = relative + (f" [{', '.join(sorted(classes))}]" if classes else "")
             if isinstance(names, Excluding):
@@ -185,7 +235,7 @@ def main() -> int:
             print(f"  {len(tests):4}  {label}: {by_name} by example name, {in_ledger} in PARITY.md")
             for name in absent:
                 print(f"        UNACCOUNTED: {name}")
-    print(f"{total} in-scope upstream tests, {missing} unaccounted")
+    print(f"{total} in-scope upstream tests ({len(distinct)} distinct), {missing} unaccounted")
     return 1 if missing else 0
 
 

@@ -76,6 +76,7 @@ test-suite petrus-motus-zeromq-test
   other-modules:    Petrus.Motus.Transport.ZeroMQ.Support
                     Petrus.Motus.Transport.ZeroMQ.TransportSpec
                     Petrus.Motus.Transport.ZeroMQ.InteropSpec
+                    Petrus.Motus.Transport.ZeroMQ.BoundarySpec
   build-depends:    base
                   , bytestring
                   , containers

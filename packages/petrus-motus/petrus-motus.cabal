@@ -68,6 +68,7 @@ test-suite petrus-motus-test
                     Petrus.Motus.WorkerSpec
                     Petrus.Motus.AsyncWorkerSpec
                     Petrus.Motus.WorkerCliSpec
+                    Petrus.Motus.BoundarySpec
   build-depends:    base
                   , bytestring
                   , containers

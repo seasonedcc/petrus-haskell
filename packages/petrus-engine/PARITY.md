@@ -13,13 +13,13 @@ cross-check that every in-scope upstream test is accounted for, run:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-At the current pin it reports 441 in-scope upstream tests and lists 29 of
-`test_worker_topology.py`'s Absurd-backed tests as unaccounted. Those 29 are
-ledgered in [petrus-engine-absurd's PARITY](../petrus-engine-absurd/PARITY.md);
-the script predates that package and does not read its ledger
-(docs/audit/engines-motus-fabric.md, EMF-9).
+It also reads the ledgers of petrus-engine-absurd (all of
+`test_worker_topology.py`, over Absurd custody) and petrus-motus-absurd (its
+`test_package_boundaries.py` rows), and `scripts/check-all` runs it. At the
+current pin it reports 460 in-scope upstream tests (439 distinct: some tests
+are ported both over Local and over Absurd custody), all accounted for.
 
-`cabal test petrus-engine` runs 209 examples, with 0 failures and 0 pending.
+`cabal test petrus-engine` runs 214 examples, with 0 failures and 0 pending.
 That count includes 3 Engine interop examples against the reference process,
 and 3 Worker topology pairings with reference Engines and Workers.
 They provision the reference through `scripts/upstream-python` and fail,
@@ -35,6 +35,7 @@ never go pending, when it cannot be provisioned.
 | motus/dispatch/test_local_dispatch.py, the 3 Engine-level tests | LocalDispatchSpec (4 examples) | 3 | 0 | 0 |
 | motus/worker/test_worker_runtime.py, the Engine-level test (byte-identical inline and Local History) | WorkerTopologySpec (1 example, over the order net) | 0 | 1 | 0 |
 | motus/worker/test_worker_topology.py, 4 Worker cases of 36 | WorkerTopologySpec (4 examples, over Local Dispatch; the rest are ledgered in `petrus-motus/PARITY.md`) | 0 | 4 | 0 |
+| project/test_package_boundaries.py, the 2 Engine rows and the 3 project-wide rows | BoundarySpec (5 examples; see below) | 0 | 5 | 0 |
 
 `TestInMemoryDispatch` (5) and `TestInlineDispatch` (2) from
 test_coordinator.py are ported in `petrus-motus`.
@@ -165,6 +166,26 @@ In `TestEngineRefusesABrokenSensor`:
 
 - `test_none_is_not_an_empty_answer`: a `Sensor` is `IO [Delivery]`, so it
   cannot answer `None`.
+
+## `test_package_boundaries.py`: the Engine and project-wide rows
+
+`Petrus.Engine.BoundarySpec` checks these over package metadata and module
+sources, through `Petrus.TestSupport.Boundary`. A Python import graph
+becomes a Cabal dependency graph. An optional extra becomes a package that
+must be depended on explicitly. The empty `petrus` project namespace
+becomes the absence of a root `Petrus` module. The project-wide rows live
+here because the Engine is the package every composition depends on.
+
+| upstream test | Haskell example | how |
+| --- | --- | --- |
+| `test_lazy_root_surface_remains_discoverable_without_optional_imports` | lazy root surface remains discoverable without optional imports | no package exposes a root `Petrus` module, so nothing (the removed coordination vocabulary, kernel and History names, or an optional driver) is reachable through one |
+| `test_implementation_and_maintained_consumers_import_defining_modules_not_project_root` | implementation and maintained consumers import defining modules, not project root | no Haskell source in any package (library, test, bench or app) imports `Petrus` |
+| `test_engine_is_canonical_public_and_optional_dependency_safe` | engine is canonical public and optional dependency safe | `petrus-engine` depends on no PostgreSQL, Absurd or ZeroMQ package; `Petrus.Engine` exports `Engine`, `create`, `load` and `wait`, and no `queueFor` |
+| `test_removed_flat_deep_modules_are_not_speculative_shims` | removed flat deep modules are not speculative shims | no package exposes an `Impetus` or `Impetus.*` library module |
+| `test_dispatch_is_canonical_and_coordination_remains_private` | dispatch is canonical and coordination remains private | `inlineDispatch` and `inMemoryDispatch` build `Dispatch`es. `LocalDispatch` is exported by `Petrus.Motus.Dispatch.Local`, and `ActivityAttempt` is defined in `Petrus.Motus.Dispatch`. The removed adapter names are absent from the facade. `Petrus.Engine` exports the Haskell spelling of `petrus.engine.__all__`, with `Action (..)` and `simulatedClock`, and no `Coordinator` or `Runner`. The coordination lives in `Petrus.Engine.Coordinator`, with no root coordination module. |
+
+The rows count as "partial or analog" because they check the Cabal and
+module graph, not a Python import.
 
 ## Out of scope
 

@@ -4,11 +4,12 @@ This package ports `petrus/motus/transport/zeromq.py` and its server CLI.
 The upstream tests are in
 `tests/petrus/motus/transport/test_zeromq_dispatch_transport.py`.
 
-`cabal test petrus-motus-zeromq` runs 43 examples, with 0 failures and 0
+`cabal test petrus-motus-zeromq` runs 44 examples, with 0 failures and 0
 pending:
 - 32 in `test_zeromq_dispatch_transport.py`
   (`test/Petrus/Motus/Transport/ZeroMQ/TransportSpec.hs`);
-- 11 in the interop suite (`test/Petrus/Motus/Transport/ZeroMQ/InteropSpec.hs`).
+- 11 in the interop suite (`test/Petrus/Motus/Transport/ZeroMQ/InteropSpec.hs`);
+- 1 boundary row (`test/Petrus/Motus/Transport/ZeroMQ/BoundarySpec.hs`).
 
 The reference's processes are needed by the 11 interop examples and by the 2
 "the reference's server" cases. When `upstream/petrus/.venv` is not synced,
@@ -23,6 +24,17 @@ To check that every upstream test is accounted for:
 | upstream | collected | Haskell examples | status |
 | --- | ---: | ---: | --- |
 | test_zeromq_dispatch_transport.py, 26 tests | 30 | 32 | 25 ported by name; 1 ported in part (below) |
+| test_package_boundaries.py `test_zeromq_transport_base_import_is_optional_and_deep_import_has_guidance` | 1 | 1 | ported over Cabal metadata (below) |
+
+### The boundary row
+
+The reference's base `petrus.motus.transport` is an empty namespace, and its
+deep import names the missing `zeromq` extra. Here, `petrus-motus` links no
+libzmq, neither through a Haskell package nor through `pkgconfig-depends` or
+`extra-libraries`. No package but this one exposes a `Petrus.Motus.Transport`
+module. This package requires `libzmq` through pkg-config, so a build without
+the native library stops at configure and names it. The README carries the
+install guidance (`brew install zeromq`, `apt-get install libzmq3-dev`).
 
 ### Parametrized tests
 

@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Petrus.Engine.BoundarySpec qualified as Boundary
 import Petrus.Engine.CoordinatorSpec qualified as Coordinator
 import Petrus.Engine.DeliveryPhasesASpec qualified as DeliveryPhasesA
 import Petrus.Engine.DeliveryPhasesBSpec qualified as DeliveryPhasesB
@@ -33,3 +34,4 @@ suite = hspec $ do
   describe "test_local_dispatch.py (Engine)" LocalDispatch.spec
   Interop.spec
   WorkerTopology.spec
+  Boundary.spec
