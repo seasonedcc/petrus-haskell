@@ -652,7 +652,7 @@ def wrap(args: List[str]) -> int:
 VIEWER_GROUPS = [
     ["wire"],
     ["playwright", "live"],
-    ["relay", "endpoints", "url-cache", "cli", "mcp", "mcp-haskell-relay", "collab", "differential", "history"],
+    ["relay", "endpoints", "url-cache", "cli", "mcp", "mcp-haskell-relay", "collab", "protocol", "differential", "history"],
 ]
 
 
