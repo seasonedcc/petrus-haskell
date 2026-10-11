@@ -15,11 +15,13 @@ import Data.Maybe (fromJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import E2bLive (liveLifecycle)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (workspaceArchive)
 import Petrus.Motus.Execution.Providers.E2b
 import Support
 import System.Directory (createDirectory)
+import System.Environment (lookupEnv)
 import Test.Hspec
 
 rightOr :: (Show e) => Either e a -> a
@@ -288,7 +290,7 @@ spec = describe "e2b provider (fake SDK)" $ do
   it "validates construction and reports a missing SDK as uncertain" $ do
     newE2bEnvironment defaultE2bConfig {e2bLeaseTimeout = 0}
       `shouldThrowMessage` (ValueError, "E2B lease timeout must be positive")
-    env <- newE2bEnvironment defaultE2bConfig
+    env <- newE2bEnvironment defaultE2bConfig {e2bSdkLoader = missingSdk}
     result <- providerReconcile (e2bProvider env) "op"
     reconcileClassification result `shouldBe` ReconcileUncertain
     reconcileDetail result `shouldBe` "No module named 'e2b'"
@@ -298,5 +300,16 @@ spec = describe "e2b provider (fake SDK)" $ do
     map shlexQuote ["", "safe-_@%+=:,./", "it's", "a b", "$(x)", "\233"]
       `shouldBe` ["''", "safe-_@%+=:,./", "'it'\"'\"'s'", "'a b'", "'$(x)'", "'\233'"]
 
-  it "test_live_e2b_vm_provider_is_explicitly_opt_in" $
-    pendingWith "skipped: there is no Haskell E2B SDK binding; the provider is exercised through the E2bSdk seam"
+  -- Opt-in exactly as upstream: the same three gates and skip reasons, then
+  -- the same lifecycle against real E2B through the default loader (the
+  -- native client).  E2bHttpSpec runs this body against the fake E2B server
+  -- on every run.
+  it "test_live_e2b_vm_provider_is_explicitly_opt_in" $ do
+    enabled <- lookupEnv "PETRUS_RUN_CV10_E2B"
+    key <- lookupEnv "E2B_API_KEY"
+    liveTemplate <- lookupEnv "PETRUS_CV10_E2B_TEMPLATE"
+    case (enabled, key, liveTemplate) of
+      (Just "1", Just k, Just t) | not (null k), not (null t) -> withTempDir (liveLifecycle defaultE2bConfig (T.pack t))
+      (Just "1", Just k, _) | not (null k) -> pendingWith "set PETRUS_CV10_E2B_TEMPLATE to a template with sh and tar"
+      (Just "1", _, _) -> pendingWith "live E2B lifecycle acceptance requires E2B_API_KEY"
+      _ -> pendingWith "set PETRUS_RUN_CV10_E2B=1 to run live E2B lifecycle acceptance"

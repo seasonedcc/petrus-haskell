@@ -42,6 +42,8 @@ library
                     Petrus.Motus.Execution.Internal.Sidecar
                     Petrus.Motus.Execution.Providers.Docker
                     Petrus.Motus.Execution.Providers.E2b
+                    Petrus.Motus.Execution.Providers.E2b.Http
+                    Petrus.Motus.Execution.Providers.E2b.Sdk
                     Petrus.Motus.Execution.Providers.Gondolin
                     Petrus.Motus.Execution.Providers.Local
                     Petrus.Motus.Execution.Timeline
@@ -55,6 +57,9 @@ library
                   , crypton >=1.0
                   , directory >=1.3
                   , filepath >=1.4
+                  , http-client >=0.7.14
+                  , http-client-tls >=0.3.6
+                  , http-types >=0.12
                   , network >=3.1
                   , petrus-json
                   , process >=1.6.18
@@ -75,6 +80,8 @@ test-suite petrus-execution-test
   other-modules:    ArchiveSpec
                     ContractSpec
                     DockerSpec
+                    E2bHttpSpec
+                    E2bLive
                     E2bSpec
                     GondolinSpec
                     LocalSpec
@@ -90,6 +97,8 @@ test-suite petrus-execution-test
                   , directory
                   , filepath
                   , hspec >=2.10
+                  , http-client
+                  , http-client-tls
                   , network
                   , petrus-execution
                   , petrus-json

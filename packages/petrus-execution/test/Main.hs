@@ -3,6 +3,7 @@ module Main (main) where
 import ArchiveSpec qualified
 import ContractSpec qualified
 import DockerSpec qualified
+import E2bHttpSpec qualified
 import E2bSpec qualified
 import GondolinSpec qualified
 import LocalSpec qualified
@@ -22,5 +23,6 @@ main = do
     LocalSpec.spec
     DockerSpec.spec
     E2bSpec.spec
+    E2bHttpSpec.spec
     GondolinSpec.spec
     SubstrateSpec.spec
