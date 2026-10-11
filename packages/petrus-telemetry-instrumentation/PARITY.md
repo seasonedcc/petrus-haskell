@@ -110,7 +110,8 @@ texts in `petrus-impetus`'s `exceptionFailureText`.
 [`bench/RESULTS.md`](bench/RESULTS.md) compares `bench/Main.hs` (tasty-bench)
 with `bench/python_bench.py`:
 
-- a routed emit costs 4.6 µs against the reference's 14.4 µs;
-- the default (no route) costs 0.06 µs against 7.5 µs;
-- on a 1 000-firing chain, routed telemetry costs about 8× less per firing
-  through `run`, and about 2.5× less through `Engine.advance`.
+- a routed emit costs 2.5 µs against the reference's 4.5 µs;
+- the default (no route) costs 0.057 µs against 2.6 µs;
+- on a 1 000-firing chain, routed telemetry costs about 4× less per firing
+  through `run` and about 3× less through `Engine.advance` at `facts`, and
+  about 2× less through `Engine.advance` at `profile`.
