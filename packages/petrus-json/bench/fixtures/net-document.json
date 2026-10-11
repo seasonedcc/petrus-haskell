@@ -1,0 +1,4754 @@
+{
+  "format": "petrus-net-document",
+  "version": 1,
+  "definition": {
+    "format": "petrus-net-definition",
+    "version": 3,
+    "definition": {
+      "name": null,
+      "time_domain": "integer",
+      "places": [
+        {
+          "path": "pipeline.stage000.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage001.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage002.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage003.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage004.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage005.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage006.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage007.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage008.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage009.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage010.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage011.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage012.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage013.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage014.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage015.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage016.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage017.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage018.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage019.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage020.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage021.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage022.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage023.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage024.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage025.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage026.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage027.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage028.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage029.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage030.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage031.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage032.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage033.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage034.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage035.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage036.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage037.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage038.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage039.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage040.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage041.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage042.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage043.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage044.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage045.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage046.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage047.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage048.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage049.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage050.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage051.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage052.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage053.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage054.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage055.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage056.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage057.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage058.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage059.ready",
+          "color": null
+        },
+        {
+          "path": "pipeline.stage060.ready",
+          "color": null
+        }
+      ],
+      "transitions": [
+        {
+          "path": "pipeline.stage000.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage001.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage002.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage003.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage004.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage005.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage006.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage007.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage008.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage009.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage010.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage011.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage012.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage013.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage014.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage015.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage016.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage017.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage018.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage019.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage020.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage021.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage022.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage023.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage024.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage025.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage026.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage027.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage028.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage029.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage030.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage031.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage032.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage033.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage034.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage035.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage036.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage037.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage038.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage039.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage040.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage041.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage042.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage043.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage044.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage045.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage046.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage047.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage048.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage049.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage050.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage051.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage052.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage053.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage054.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage055.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage056.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage057.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage058.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        },
+        {
+          "path": "pipeline.stage059.work",
+          "handler": null,
+          "guards": [],
+          "timers": []
+        }
+      ],
+      "arcs": [
+        {
+          "position": 0,
+          "source": "pipeline.stage000.ready",
+          "target": "pipeline.stage000.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 1,
+          "source": "pipeline.stage000.work",
+          "target": "pipeline.stage001.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 2,
+          "source": "pipeline.stage001.ready",
+          "target": "pipeline.stage001.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 3,
+          "source": "pipeline.stage001.work",
+          "target": "pipeline.stage002.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 4,
+          "source": "pipeline.stage002.ready",
+          "target": "pipeline.stage002.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 5,
+          "source": "pipeline.stage002.work",
+          "target": "pipeline.stage003.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 6,
+          "source": "pipeline.stage003.ready",
+          "target": "pipeline.stage003.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 7,
+          "source": "pipeline.stage003.work",
+          "target": "pipeline.stage004.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 8,
+          "source": "pipeline.stage004.ready",
+          "target": "pipeline.stage004.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 9,
+          "source": "pipeline.stage004.work",
+          "target": "pipeline.stage005.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 10,
+          "source": "pipeline.stage005.ready",
+          "target": "pipeline.stage005.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 11,
+          "source": "pipeline.stage005.work",
+          "target": "pipeline.stage006.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 12,
+          "source": "pipeline.stage006.ready",
+          "target": "pipeline.stage006.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 13,
+          "source": "pipeline.stage006.work",
+          "target": "pipeline.stage007.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 14,
+          "source": "pipeline.stage007.ready",
+          "target": "pipeline.stage007.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 15,
+          "source": "pipeline.stage007.work",
+          "target": "pipeline.stage008.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 16,
+          "source": "pipeline.stage008.ready",
+          "target": "pipeline.stage008.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 17,
+          "source": "pipeline.stage008.work",
+          "target": "pipeline.stage009.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 18,
+          "source": "pipeline.stage009.ready",
+          "target": "pipeline.stage009.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 19,
+          "source": "pipeline.stage009.work",
+          "target": "pipeline.stage010.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 20,
+          "source": "pipeline.stage010.ready",
+          "target": "pipeline.stage010.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 21,
+          "source": "pipeline.stage010.work",
+          "target": "pipeline.stage011.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 22,
+          "source": "pipeline.stage011.ready",
+          "target": "pipeline.stage011.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 23,
+          "source": "pipeline.stage011.work",
+          "target": "pipeline.stage012.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 24,
+          "source": "pipeline.stage012.ready",
+          "target": "pipeline.stage012.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 25,
+          "source": "pipeline.stage012.work",
+          "target": "pipeline.stage013.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 26,
+          "source": "pipeline.stage013.ready",
+          "target": "pipeline.stage013.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 27,
+          "source": "pipeline.stage013.work",
+          "target": "pipeline.stage014.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 28,
+          "source": "pipeline.stage014.ready",
+          "target": "pipeline.stage014.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 29,
+          "source": "pipeline.stage014.work",
+          "target": "pipeline.stage015.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 30,
+          "source": "pipeline.stage015.ready",
+          "target": "pipeline.stage015.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 31,
+          "source": "pipeline.stage015.work",
+          "target": "pipeline.stage016.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 32,
+          "source": "pipeline.stage016.ready",
+          "target": "pipeline.stage016.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 33,
+          "source": "pipeline.stage016.work",
+          "target": "pipeline.stage017.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 34,
+          "source": "pipeline.stage017.ready",
+          "target": "pipeline.stage017.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 35,
+          "source": "pipeline.stage017.work",
+          "target": "pipeline.stage018.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 36,
+          "source": "pipeline.stage018.ready",
+          "target": "pipeline.stage018.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 37,
+          "source": "pipeline.stage018.work",
+          "target": "pipeline.stage019.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 38,
+          "source": "pipeline.stage019.ready",
+          "target": "pipeline.stage019.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 39,
+          "source": "pipeline.stage019.work",
+          "target": "pipeline.stage020.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 40,
+          "source": "pipeline.stage020.ready",
+          "target": "pipeline.stage020.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 41,
+          "source": "pipeline.stage020.work",
+          "target": "pipeline.stage021.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 42,
+          "source": "pipeline.stage021.ready",
+          "target": "pipeline.stage021.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 43,
+          "source": "pipeline.stage021.work",
+          "target": "pipeline.stage022.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 44,
+          "source": "pipeline.stage022.ready",
+          "target": "pipeline.stage022.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 45,
+          "source": "pipeline.stage022.work",
+          "target": "pipeline.stage023.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 46,
+          "source": "pipeline.stage023.ready",
+          "target": "pipeline.stage023.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 47,
+          "source": "pipeline.stage023.work",
+          "target": "pipeline.stage024.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 48,
+          "source": "pipeline.stage024.ready",
+          "target": "pipeline.stage024.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 49,
+          "source": "pipeline.stage024.work",
+          "target": "pipeline.stage025.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 50,
+          "source": "pipeline.stage025.ready",
+          "target": "pipeline.stage025.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 51,
+          "source": "pipeline.stage025.work",
+          "target": "pipeline.stage026.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 52,
+          "source": "pipeline.stage026.ready",
+          "target": "pipeline.stage026.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 53,
+          "source": "pipeline.stage026.work",
+          "target": "pipeline.stage027.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 54,
+          "source": "pipeline.stage027.ready",
+          "target": "pipeline.stage027.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 55,
+          "source": "pipeline.stage027.work",
+          "target": "pipeline.stage028.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 56,
+          "source": "pipeline.stage028.ready",
+          "target": "pipeline.stage028.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 57,
+          "source": "pipeline.stage028.work",
+          "target": "pipeline.stage029.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 58,
+          "source": "pipeline.stage029.ready",
+          "target": "pipeline.stage029.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 59,
+          "source": "pipeline.stage029.work",
+          "target": "pipeline.stage030.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 60,
+          "source": "pipeline.stage030.ready",
+          "target": "pipeline.stage030.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 61,
+          "source": "pipeline.stage030.work",
+          "target": "pipeline.stage031.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 62,
+          "source": "pipeline.stage031.ready",
+          "target": "pipeline.stage031.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 63,
+          "source": "pipeline.stage031.work",
+          "target": "pipeline.stage032.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 64,
+          "source": "pipeline.stage032.ready",
+          "target": "pipeline.stage032.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 65,
+          "source": "pipeline.stage032.work",
+          "target": "pipeline.stage033.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 66,
+          "source": "pipeline.stage033.ready",
+          "target": "pipeline.stage033.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 67,
+          "source": "pipeline.stage033.work",
+          "target": "pipeline.stage034.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 68,
+          "source": "pipeline.stage034.ready",
+          "target": "pipeline.stage034.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 69,
+          "source": "pipeline.stage034.work",
+          "target": "pipeline.stage035.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 70,
+          "source": "pipeline.stage035.ready",
+          "target": "pipeline.stage035.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 71,
+          "source": "pipeline.stage035.work",
+          "target": "pipeline.stage036.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 72,
+          "source": "pipeline.stage036.ready",
+          "target": "pipeline.stage036.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 73,
+          "source": "pipeline.stage036.work",
+          "target": "pipeline.stage037.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 74,
+          "source": "pipeline.stage037.ready",
+          "target": "pipeline.stage037.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 75,
+          "source": "pipeline.stage037.work",
+          "target": "pipeline.stage038.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 76,
+          "source": "pipeline.stage038.ready",
+          "target": "pipeline.stage038.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 77,
+          "source": "pipeline.stage038.work",
+          "target": "pipeline.stage039.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 78,
+          "source": "pipeline.stage039.ready",
+          "target": "pipeline.stage039.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 79,
+          "source": "pipeline.stage039.work",
+          "target": "pipeline.stage040.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 80,
+          "source": "pipeline.stage040.ready",
+          "target": "pipeline.stage040.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 81,
+          "source": "pipeline.stage040.work",
+          "target": "pipeline.stage041.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 82,
+          "source": "pipeline.stage041.ready",
+          "target": "pipeline.stage041.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 83,
+          "source": "pipeline.stage041.work",
+          "target": "pipeline.stage042.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 84,
+          "source": "pipeline.stage042.ready",
+          "target": "pipeline.stage042.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 85,
+          "source": "pipeline.stage042.work",
+          "target": "pipeline.stage043.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 86,
+          "source": "pipeline.stage043.ready",
+          "target": "pipeline.stage043.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 87,
+          "source": "pipeline.stage043.work",
+          "target": "pipeline.stage044.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 88,
+          "source": "pipeline.stage044.ready",
+          "target": "pipeline.stage044.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 89,
+          "source": "pipeline.stage044.work",
+          "target": "pipeline.stage045.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 90,
+          "source": "pipeline.stage045.ready",
+          "target": "pipeline.stage045.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 91,
+          "source": "pipeline.stage045.work",
+          "target": "pipeline.stage046.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 92,
+          "source": "pipeline.stage046.ready",
+          "target": "pipeline.stage046.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 93,
+          "source": "pipeline.stage046.work",
+          "target": "pipeline.stage047.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 94,
+          "source": "pipeline.stage047.ready",
+          "target": "pipeline.stage047.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 95,
+          "source": "pipeline.stage047.work",
+          "target": "pipeline.stage048.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 96,
+          "source": "pipeline.stage048.ready",
+          "target": "pipeline.stage048.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 97,
+          "source": "pipeline.stage048.work",
+          "target": "pipeline.stage049.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 98,
+          "source": "pipeline.stage049.ready",
+          "target": "pipeline.stage049.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 99,
+          "source": "pipeline.stage049.work",
+          "target": "pipeline.stage050.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 100,
+          "source": "pipeline.stage050.ready",
+          "target": "pipeline.stage050.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 101,
+          "source": "pipeline.stage050.work",
+          "target": "pipeline.stage051.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 102,
+          "source": "pipeline.stage051.ready",
+          "target": "pipeline.stage051.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 103,
+          "source": "pipeline.stage051.work",
+          "target": "pipeline.stage052.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 104,
+          "source": "pipeline.stage052.ready",
+          "target": "pipeline.stage052.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 105,
+          "source": "pipeline.stage052.work",
+          "target": "pipeline.stage053.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 106,
+          "source": "pipeline.stage053.ready",
+          "target": "pipeline.stage053.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 107,
+          "source": "pipeline.stage053.work",
+          "target": "pipeline.stage054.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 108,
+          "source": "pipeline.stage054.ready",
+          "target": "pipeline.stage054.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 109,
+          "source": "pipeline.stage054.work",
+          "target": "pipeline.stage055.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 110,
+          "source": "pipeline.stage055.ready",
+          "target": "pipeline.stage055.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 111,
+          "source": "pipeline.stage055.work",
+          "target": "pipeline.stage056.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 112,
+          "source": "pipeline.stage056.ready",
+          "target": "pipeline.stage056.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 113,
+          "source": "pipeline.stage056.work",
+          "target": "pipeline.stage057.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 114,
+          "source": "pipeline.stage057.ready",
+          "target": "pipeline.stage057.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 115,
+          "source": "pipeline.stage057.work",
+          "target": "pipeline.stage058.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 116,
+          "source": "pipeline.stage058.ready",
+          "target": "pipeline.stage058.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 117,
+          "source": "pipeline.stage058.work",
+          "target": "pipeline.stage059.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 118,
+          "source": "pipeline.stage059.ready",
+          "target": "pipeline.stage059.work",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        },
+        {
+          "position": 119,
+          "source": "pipeline.stage059.work",
+          "target": "pipeline.stage060.ready",
+          "mode": "consume",
+          "weight": 1,
+          "color": null,
+          "filter": null
+        }
+      ],
+      "completion": null
+    }
+  },
+  "view": {
+    "version": 1,
+    "nodes": [
+      {
+        "node": "pipeline.stage000.ready",
+        "x": 0,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage000.work",
+        "x": 70,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage001.ready",
+        "x": 140,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage001.work",
+        "x": 210,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage002.ready",
+        "x": 280,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage002.work",
+        "x": 350,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage003.ready",
+        "x": 420,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage003.work",
+        "x": 490,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage004.ready",
+        "x": 560,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage004.work",
+        "x": 630,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage005.ready",
+        "x": 700,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage005.work",
+        "x": 770,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage006.ready",
+        "x": 840,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage006.work",
+        "x": 910,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage007.ready",
+        "x": 980,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage007.work",
+        "x": 1050,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage008.ready",
+        "x": 1120,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage008.work",
+        "x": 1190,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage009.ready",
+        "x": 1260,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage009.work",
+        "x": 1330,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage010.ready",
+        "x": 1400,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage010.work",
+        "x": 1470,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage011.ready",
+        "x": 1540,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage011.work",
+        "x": 1610,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage012.ready",
+        "x": 1680,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage012.work",
+        "x": 1750,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage013.ready",
+        "x": 1820,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage013.work",
+        "x": 1890,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage014.ready",
+        "x": 1960,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage014.work",
+        "x": 2030,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage015.ready",
+        "x": 2100,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage015.work",
+        "x": 2170,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage016.ready",
+        "x": 2240,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage016.work",
+        "x": 2310,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage017.ready",
+        "x": 2380,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage017.work",
+        "x": 2450,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage018.ready",
+        "x": 2520,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage018.work",
+        "x": 2590,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage019.ready",
+        "x": 2660,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage019.work",
+        "x": 2730,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage020.ready",
+        "x": 2800,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage020.work",
+        "x": 2870,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage021.ready",
+        "x": 2940,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage021.work",
+        "x": 3010,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage022.ready",
+        "x": 3080,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage022.work",
+        "x": 3150,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage023.ready",
+        "x": 3220,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage023.work",
+        "x": 3290,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage024.ready",
+        "x": 3360,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage024.work",
+        "x": 3430,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage025.ready",
+        "x": 3500,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage025.work",
+        "x": 3570,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage026.ready",
+        "x": 3640,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage026.work",
+        "x": 3710,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage027.ready",
+        "x": 3780,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage027.work",
+        "x": 3850,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage028.ready",
+        "x": 3920,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage028.work",
+        "x": 3990,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage029.ready",
+        "x": 4060,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage029.work",
+        "x": 4130,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage030.ready",
+        "x": 4200,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage030.work",
+        "x": 4270,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage031.ready",
+        "x": 4340,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage031.work",
+        "x": 4410,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage032.ready",
+        "x": 4480,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage032.work",
+        "x": 4550,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage033.ready",
+        "x": 4620,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage033.work",
+        "x": 4690,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage034.ready",
+        "x": 4760,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage034.work",
+        "x": 4830,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage035.ready",
+        "x": 4900,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage035.work",
+        "x": 4970,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage036.ready",
+        "x": 5040,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage036.work",
+        "x": 5110,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage037.ready",
+        "x": 5180,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage037.work",
+        "x": 5250,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage038.ready",
+        "x": 5320,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage038.work",
+        "x": 5390,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage039.ready",
+        "x": 5460,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage039.work",
+        "x": 5530,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage040.ready",
+        "x": 5600,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage040.work",
+        "x": 5670,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage041.ready",
+        "x": 5740,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage041.work",
+        "x": 5810,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage042.ready",
+        "x": 5880,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage042.work",
+        "x": 5950,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage043.ready",
+        "x": 6020,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage043.work",
+        "x": 6090,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage044.ready",
+        "x": 6160,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage044.work",
+        "x": 6230,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage045.ready",
+        "x": 6300,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage045.work",
+        "x": 6370,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage046.ready",
+        "x": 6440,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage046.work",
+        "x": 6510,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage047.ready",
+        "x": 6580,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage047.work",
+        "x": 6650,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage048.ready",
+        "x": 6720,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage048.work",
+        "x": 6790,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage049.ready",
+        "x": 6860,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage049.work",
+        "x": 6930,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage050.ready",
+        "x": 7000,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage050.work",
+        "x": 7070,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage051.ready",
+        "x": 7140,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage051.work",
+        "x": 7210,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage052.ready",
+        "x": 7280,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage052.work",
+        "x": 7350,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage053.ready",
+        "x": 7420,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage053.work",
+        "x": 7490,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage054.ready",
+        "x": 7560,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage054.work",
+        "x": 7630,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage055.ready",
+        "x": 7700,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage055.work",
+        "x": 7770,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage056.ready",
+        "x": 7840,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage056.work",
+        "x": 7910,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage057.ready",
+        "x": 7980,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage057.work",
+        "x": 8050,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage058.ready",
+        "x": 8120,
+        "y": 40.5
+      },
+      {
+        "node": "pipeline.stage058.work",
+        "x": 8190,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage059.ready",
+        "x": 8260,
+        "y": 80
+      },
+      {
+        "node": "pipeline.stage059.work",
+        "x": 8330,
+        "y": 60
+      },
+      {
+        "node": "pipeline.stage060.ready",
+        "x": 8400,
+        "y": 40.5
+      }
+    ]
+  },
+  "lineage": {
+    "head": 19,
+    "entries": [
+      {
+        "id": 0,
+        "parent": null,
+        "provenance": "simulated",
+        "marking": [
+          {
+            "place": "pipeline.stage000.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 0,
+                  "customer": {
+                    "name": "Ana",
+                    "email": "customer0@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-00102",
+                      "name": "cocoa",
+                      "quantity": 2,
+                      "price": 33.39
+                    },
+                    {
+                      "sku": "SKU-02294",
+                      "name": "chai",
+                      "quantity": 1,
+                      "price": 29.16
+                    }
+                  ],
+                  "total": 95.94,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage001.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 1,
+                  "customer": {
+                    "name": "Mei 美",
+                    "email": "customer1@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-06488",
+                      "name": "cocoa",
+                      "quantity": 2,
+                      "price": 10.84
+                    },
+                    {
+                      "sku": "SKU-08836",
+                      "name": "café au lait",
+                      "quantity": 2,
+                      "price": 32.75
+                    },
+                    {
+                      "sku": "SKU-03015",
+                      "name": "cocoa",
+                      "quantity": 5,
+                      "price": 36.33
+                    },
+                    {
+                      "sku": "SKU-00669",
+                      "name": "café au lait",
+                      "quantity": 1,
+                      "price": 37.46
+                    }
+                  ],
+                  "total": 306.29,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage002.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 2,
+                  "customer": {
+                    "name": "Ilsa 🚀",
+                    "email": "customer2@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-05108",
+                      "name": "café au lait",
+                      "quantity": 5,
+                      "price": 32.08
+                    },
+                    {
+                      "sku": "SKU-05812",
+                      "name": "chai",
+                      "quantity": 3,
+                      "price": 24.29
+                    },
+                    {
+                      "sku": "SKU-03094",
+                      "name": "coffee",
+                      "quantity": 2,
+                      "price": 11.9
+                    },
+                    {
+                      "sku": "SKU-06783",
+                      "name": "matcha",
+                      "quantity": 5,
+                      "price": 3.32
+                    }
+                  ],
+                  "total": 273.67,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 0",
+          "operator": "Łukasz",
+          "elapsed": 1.876
+        }
+      },
+      {
+        "id": 1,
+        "parent": 0,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage004.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 10,
+                  "customer": {
+                    "name": "Ana",
+                    "email": "customer10@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-03909",
+                      "name": "coffee",
+                      "quantity": 3,
+                      "price": 22.73
+                    },
+                    {
+                      "sku": "SKU-01983",
+                      "name": "coffee",
+                      "quantity": 3,
+                      "price": 15.45
+                    },
+                    {
+                      "sku": "SKU-04831",
+                      "name": "tea",
+                      "quantity": 2,
+                      "price": 21.11
+                    },
+                    {
+                      "sku": "SKU-04169",
+                      "name": "café au lait",
+                      "quantity": 5,
+                      "price": 4.98
+                    }
+                  ],
+                  "total": 181.66,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage005.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 11,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer11@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-03107",
+                      "name": "cocoa",
+                      "quantity": 5,
+                      "price": 1.39
+                    },
+                    {
+                      "sku": "SKU-02460",
+                      "name": "matcha",
+                      "quantity": 2,
+                      "price": 37.07
+                    }
+                  ],
+                  "total": 81.09,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage006.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 12,
+                  "customer": {
+                    "name": "Ilsa 🚀",
+                    "email": "customer12@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-02115",
+                      "name": "tea",
+                      "quantity": 5,
+                      "price": 2.63
+                    }
+                  ],
+                  "total": 13.15,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 1",
+          "operator": "Zoë",
+          "elapsed": 1.807
+        }
+      },
+      {
+        "id": 2,
+        "parent": 1,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage008.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 20,
+                  "customer": {
+                    "name": "Łukasz",
+                    "email": "customer20@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-08678",
+                      "name": "tea",
+                      "quantity": 1,
+                      "price": 23.18
+                    },
+                    {
+                      "sku": "SKU-02120",
+                      "name": "chai",
+                      "quantity": 2,
+                      "price": 8.35
+                    },
+                    {
+                      "sku": "SKU-08025",
+                      "name": "cocoa",
+                      "quantity": 2,
+                      "price": 35.05
+                    }
+                  ],
+                  "total": 109.98,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage009.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 21,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer21@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-04430",
+                      "name": "cocoa",
+                      "quantity": 3,
+                      "price": 2.78
+                    },
+                    {
+                      "sku": "SKU-06412",
+                      "name": "chai",
+                      "quantity": 5,
+                      "price": 9.58
+                    },
+                    {
+                      "sku": "SKU-07035",
+                      "name": "chai",
+                      "quantity": 1,
+                      "price": 13.23
+                    }
+                  ],
+                  "total": 69.47,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage010.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 22,
+                  "customer": {
+                    "name": "Ana",
+                    "email": "customer22@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-01467",
+                      "name": "café au lait",
+                      "quantity": 3,
+                      "price": 36.71
+                    }
+                  ],
+                  "total": 110.13,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 2",
+          "operator": "João",
+          "elapsed": 0.343
+        }
+      },
+      {
+        "id": 3,
+        "parent": 2,
+        "provenance": "simulated",
+        "marking": [
+          {
+            "place": "pipeline.stage012.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 30,
+                  "customer": {
+                    "name": "Ilsa 🚀",
+                    "email": "customer30@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-03543",
+                      "name": "cocoa",
+                      "quantity": 1,
+                      "price": 5.6
+                    },
+                    {
+                      "sku": "SKU-09243",
+                      "name": "chai",
+                      "quantity": 3,
+                      "price": 26.74
+                    },
+                    {
+                      "sku": "SKU-01759",
+                      "name": "cocoa",
+                      "quantity": 2,
+                      "price": 35.26
+                    },
+                    {
+                      "sku": "SKU-00276",
+                      "name": "chai",
+                      "quantity": 3,
+                      "price": 33.19
+                    }
+                  ],
+                  "total": 255.91,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage013.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 31,
+                  "customer": {
+                    "name": "Ilsa 🚀",
+                    "email": "customer31@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-07092",
+                      "name": "coffee",
+                      "quantity": 4,
+                      "price": 7.24
+                    }
+                  ],
+                  "total": 28.96,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage014.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 32,
+                  "customer": {
+                    "name": "Mei 美",
+                    "email": "customer32@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-06325",
+                      "name": "coffee",
+                      "quantity": 2,
+                      "price": 2.06
+                    },
+                    {
+                      "sku": "SKU-01336",
+                      "name": "cocoa",
+                      "quantity": 3,
+                      "price": 29.45
+                    }
+                  ],
+                  "total": 92.47,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 3",
+          "operator": "Søren",
+          "elapsed": 2.081
+        }
+      },
+      {
+        "id": 4,
+        "parent": 3,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage016.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 40,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer40@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-00060",
+                      "name": "cocoa",
+                      "quantity": 4,
+                      "price": 9.01
+                    }
+                  ],
+                  "total": 36.04,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage017.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 41,
+                  "customer": {
+                    "name": "Renée",
+                    "email": "customer41@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-00892",
+                      "name": "cocoa",
+                      "quantity": 4,
+                      "price": 9.6
+                    },
+                    {
+                      "sku": "SKU-02967",
+                      "name": "chai",
+                      "quantity": 4,
+                      "price": 24.48
+                    }
+                  ],
+                  "total": 136.32,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage018.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 42,
+                  "customer": {
+                    "name": "Łukasz",
+                    "email": "customer42@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-01377",
+                      "name": "matcha",
+                      "quantity": 1,
+                      "price": 31.17
+                    },
+                    {
+                      "sku": "SKU-06474",
+                      "name": "chai",
+                      "quantity": 4,
+                      "price": 4.74
+                    },
+                    {
+                      "sku": "SKU-07379",
+                      "name": "cocoa",
+                      "quantity": 3,
+                      "price": 1.93
+                    },
+                    {
+                      "sku": "SKU-00053",
+                      "name": "chai",
+                      "quantity": 5,
+                      "price": 28.42
+                    }
+                  ],
+                  "total": 198.02,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 4",
+          "operator": "Łukasz",
+          "elapsed": 2.653
+        }
+      },
+      {
+        "id": 5,
+        "parent": 4,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage020.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 50,
+                  "customer": {
+                    "name": "Ana",
+                    "email": "customer50@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-07521",
+                      "name": "café au lait",
+                      "quantity": 4,
+                      "price": 39.2
+                    }
+                  ],
+                  "total": 156.8,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage021.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 51,
+                  "customer": {
+                    "name": "Ilsa 🚀",
+                    "email": "customer51@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-03096",
+                      "name": "matcha",
+                      "quantity": 5,
+                      "price": 15.24
+                    },
+                    {
+                      "sku": "SKU-07588",
+                      "name": "chai",
+                      "quantity": 5,
+                      "price": 25.42
+                    },
+                    {
+                      "sku": "SKU-00845",
+                      "name": "café au lait",
+                      "quantity": 4,
+                      "price": 39.16
+                    },
+                    {
+                      "sku": "SKU-07184",
+                      "name": "coffee",
+                      "quantity": 4,
+                      "price": 39.33
+                    }
+                  ],
+                  "total": 517.26,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage022.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 52,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer52@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-00362",
+                      "name": "café au lait",
+                      "quantity": 1,
+                      "price": 14.07
+                    },
+                    {
+                      "sku": "SKU-01461",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 28.01
+                    }
+                  ],
+                  "total": 126.11,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 5",
+          "operator": "Dmitri",
+          "elapsed": 2.407
+        }
+      },
+      {
+        "id": 6,
+        "parent": 5,
+        "provenance": "simulated",
+        "marking": [
+          {
+            "place": "pipeline.stage024.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 60,
+                  "customer": {
+                    "name": "Mei 美",
+                    "email": "customer60@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-09730",
+                      "name": "chai",
+                      "quantity": 4,
+                      "price": 34.0
+                    },
+                    {
+                      "sku": "SKU-04839",
+                      "name": "coffee",
+                      "quantity": 5,
+                      "price": 11.05
+                    },
+                    {
+                      "sku": "SKU-00821",
+                      "name": "café au lait",
+                      "quantity": 2,
+                      "price": 38.67
+                    },
+                    {
+                      "sku": "SKU-02724",
+                      "name": "tea",
+                      "quantity": 5,
+                      "price": 18.21
+                    }
+                  ],
+                  "total": 359.64,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage025.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 61,
+                  "customer": {
+                    "name": "Dmitri",
+                    "email": "customer61@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-08100",
+                      "name": "tea",
+                      "quantity": 2,
+                      "price": 11.73
+                    },
+                    {
+                      "sku": "SKU-08522",
+                      "name": "café au lait",
+                      "quantity": 5,
+                      "price": 10.28
+                    },
+                    {
+                      "sku": "SKU-03925",
+                      "name": "matcha",
+                      "quantity": 2,
+                      "price": 24.03
+                    }
+                  ],
+                  "total": 122.92,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage026.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 62,
+                  "customer": {
+                    "name": "Ilsa 🚀",
+                    "email": "customer62@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-03456",
+                      "name": "cocoa",
+                      "quantity": 3,
+                      "price": 6.05
+                    }
+                  ],
+                  "total": 18.15,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 6",
+          "operator": "Dmitri",
+          "elapsed": 1.189
+        }
+      },
+      {
+        "id": 7,
+        "parent": 6,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage028.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 70,
+                  "customer": {
+                    "name": "Ilsa 🚀",
+                    "email": "customer70@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-06769",
+                      "name": "cocoa",
+                      "quantity": 1,
+                      "price": 22.86
+                    }
+                  ],
+                  "total": 22.86,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage029.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 71,
+                  "customer": {
+                    "name": "Søren",
+                    "email": "customer71@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-07050",
+                      "name": "matcha",
+                      "quantity": 3,
+                      "price": 27.19
+                    },
+                    {
+                      "sku": "SKU-07494",
+                      "name": "tea",
+                      "quantity": 3,
+                      "price": 25.07
+                    },
+                    {
+                      "sku": "SKU-03768",
+                      "name": "coffee",
+                      "quantity": 1,
+                      "price": 3.94
+                    },
+                    {
+                      "sku": "SKU-01819",
+                      "name": "café au lait",
+                      "quantity": 4,
+                      "price": 27.78
+                    }
+                  ],
+                  "total": 271.84,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage030.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 72,
+                  "customer": {
+                    "name": "Mei 美",
+                    "email": "customer72@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-02289",
+                      "name": "cocoa",
+                      "quantity": 4,
+                      "price": 9.1
+                    }
+                  ],
+                  "total": 36.4,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 7",
+          "operator": "Ilsa 🚀",
+          "elapsed": 2.239
+        }
+      },
+      {
+        "id": 8,
+        "parent": 7,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage032.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 80,
+                  "customer": {
+                    "name": "Zoë",
+                    "email": "customer80@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-05449",
+                      "name": "cocoa",
+                      "quantity": 5,
+                      "price": 32.84
+                    },
+                    {
+                      "sku": "SKU-08957",
+                      "name": "cocoa",
+                      "quantity": 3,
+                      "price": 26.69
+                    },
+                    {
+                      "sku": "SKU-07293",
+                      "name": "tea",
+                      "quantity": 1,
+                      "price": 2.48
+                    },
+                    {
+                      "sku": "SKU-02722",
+                      "name": "chai",
+                      "quantity": 1,
+                      "price": 22.55
+                    }
+                  ],
+                  "total": 269.3,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage033.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 81,
+                  "customer": {
+                    "name": "Søren",
+                    "email": "customer81@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-03166",
+                      "name": "café au lait",
+                      "quantity": 2,
+                      "price": 38.92
+                    }
+                  ],
+                  "total": 77.84,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage034.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 82,
+                  "customer": {
+                    "name": "Łukasz",
+                    "email": "customer82@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-06598",
+                      "name": "café au lait",
+                      "quantity": 4,
+                      "price": 11.16
+                    }
+                  ],
+                  "total": 44.64,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 8",
+          "operator": "Dmitri",
+          "elapsed": 2.083
+        }
+      },
+      {
+        "id": 9,
+        "parent": 8,
+        "provenance": "simulated",
+        "marking": [
+          {
+            "place": "pipeline.stage036.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 90,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer90@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-06703",
+                      "name": "tea",
+                      "quantity": 3,
+                      "price": 2.22
+                    },
+                    {
+                      "sku": "SKU-09322",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 25.59
+                    },
+                    {
+                      "sku": "SKU-00288",
+                      "name": "tea",
+                      "quantity": 1,
+                      "price": 10.5
+                    },
+                    {
+                      "sku": "SKU-04299",
+                      "name": "chai",
+                      "quantity": 3,
+                      "price": 25.06
+                    }
+                  ],
+                  "total": 194.7,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage037.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 91,
+                  "customer": {
+                    "name": "Ilsa 🚀",
+                    "email": "customer91@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-05066",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 36.33
+                    },
+                    {
+                      "sku": "SKU-09256",
+                      "name": "cocoa",
+                      "quantity": 3,
+                      "price": 30.21
+                    }
+                  ],
+                  "total": 235.95,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage038.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 92,
+                  "customer": {
+                    "name": "João",
+                    "email": "customer92@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-02822",
+                      "name": "cocoa",
+                      "quantity": 1,
+                      "price": 19.95
+                    },
+                    {
+                      "sku": "SKU-04844",
+                      "name": "coffee",
+                      "quantity": 3,
+                      "price": 18.06
+                    },
+                    {
+                      "sku": "SKU-01525",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 8.97
+                    },
+                    {
+                      "sku": "SKU-09118",
+                      "name": "tea",
+                      "quantity": 1,
+                      "price": 39.35
+                    }
+                  ],
+                  "total": 149.36,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 9",
+          "operator": "Mei 美",
+          "elapsed": 2.975
+        }
+      },
+      {
+        "id": 10,
+        "parent": 9,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage040.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 100,
+                  "customer": {
+                    "name": "Mei 美",
+                    "email": "customer100@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-01165",
+                      "name": "chai",
+                      "quantity": 5,
+                      "price": 6.6
+                    },
+                    {
+                      "sku": "SKU-08162",
+                      "name": "coffee",
+                      "quantity": 3,
+                      "price": 13.64
+                    },
+                    {
+                      "sku": "SKU-04369",
+                      "name": "coffee",
+                      "quantity": 1,
+                      "price": 14.87
+                    }
+                  ],
+                  "total": 88.79,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage041.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 101,
+                  "customer": {
+                    "name": "Zoë",
+                    "email": "customer101@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-01241",
+                      "name": "café au lait",
+                      "quantity": 1,
+                      "price": 2.68
+                    },
+                    {
+                      "sku": "SKU-05714",
+                      "name": "tea",
+                      "quantity": 1,
+                      "price": 11.6
+                    },
+                    {
+                      "sku": "SKU-02030",
+                      "name": "tea",
+                      "quantity": 2,
+                      "price": 37.99
+                    }
+                  ],
+                  "total": 90.26,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage042.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 102,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer102@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-04995",
+                      "name": "tea",
+                      "quantity": 1,
+                      "price": 28.61
+                    },
+                    {
+                      "sku": "SKU-03743",
+                      "name": "café au lait",
+                      "quantity": 5,
+                      "price": 9.42
+                    }
+                  ],
+                  "total": 75.71,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 10",
+          "operator": "Ana",
+          "elapsed": 2.129
+        }
+      },
+      {
+        "id": 11,
+        "parent": 10,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage044.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 110,
+                  "customer": {
+                    "name": "Mei 美",
+                    "email": "customer110@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-09099",
+                      "name": "café au lait",
+                      "quantity": 4,
+                      "price": 17.46
+                    }
+                  ],
+                  "total": 69.84,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage045.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 111,
+                  "customer": {
+                    "name": "Dmitri",
+                    "email": "customer111@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-09122",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 15.7
+                    },
+                    {
+                      "sku": "SKU-01532",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 30.37
+                    },
+                    {
+                      "sku": "SKU-02693",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 29.66
+                    },
+                    {
+                      "sku": "SKU-09990",
+                      "name": "tea",
+                      "quantity": 2,
+                      "price": 9.41
+                    }
+                  ],
+                  "total": 321.74,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage046.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 112,
+                  "customer": {
+                    "name": "Łukasz",
+                    "email": "customer112@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-02866",
+                      "name": "coffee",
+                      "quantity": 4,
+                      "price": 17.29
+                    }
+                  ],
+                  "total": 69.16,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 11",
+          "operator": "Dmitri",
+          "elapsed": 0.729
+        }
+      },
+      {
+        "id": 12,
+        "parent": 11,
+        "provenance": "simulated",
+        "marking": [
+          {
+            "place": "pipeline.stage048.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 120,
+                  "customer": {
+                    "name": "Ana",
+                    "email": "customer120@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-00940",
+                      "name": "chai",
+                      "quantity": 5,
+                      "price": 1.48
+                    },
+                    {
+                      "sku": "SKU-03829",
+                      "name": "chai",
+                      "quantity": 3,
+                      "price": 38.87
+                    },
+                    {
+                      "sku": "SKU-02614",
+                      "name": "coffee",
+                      "quantity": 1,
+                      "price": 2.99
+                    },
+                    {
+                      "sku": "SKU-07680",
+                      "name": "tea",
+                      "quantity": 4,
+                      "price": 20.04
+                    }
+                  ],
+                  "total": 207.16,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage049.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 121,
+                  "customer": {
+                    "name": "Zoë",
+                    "email": "customer121@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-09074",
+                      "name": "coffee",
+                      "quantity": 1,
+                      "price": 8.72
+                    },
+                    {
+                      "sku": "SKU-09538",
+                      "name": "coffee",
+                      "quantity": 2,
+                      "price": 14.48
+                    }
+                  ],
+                  "total": 37.68,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage050.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 122,
+                  "customer": {
+                    "name": "Łukasz",
+                    "email": "customer122@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-08848",
+                      "name": "cocoa",
+                      "quantity": 3,
+                      "price": 38.04
+                    },
+                    {
+                      "sku": "SKU-00165",
+                      "name": "café au lait",
+                      "quantity": 5,
+                      "price": 38.29
+                    },
+                    {
+                      "sku": "SKU-01203",
+                      "name": "chai",
+                      "quantity": 2,
+                      "price": 3.21
+                    },
+                    {
+                      "sku": "SKU-06366",
+                      "name": "cocoa",
+                      "quantity": 1,
+                      "price": 14.7
+                    }
+                  ],
+                  "total": 326.69,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 12",
+          "operator": "Ana",
+          "elapsed": 1.862
+        }
+      },
+      {
+        "id": 13,
+        "parent": 12,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage052.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 130,
+                  "customer": {
+                    "name": "Mei 美",
+                    "email": "customer130@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-05828",
+                      "name": "coffee",
+                      "quantity": 1,
+                      "price": 33.82
+                    }
+                  ],
+                  "total": 33.82,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage053.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 131,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer131@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-05228",
+                      "name": "coffee",
+                      "quantity": 4,
+                      "price": 21.51
+                    },
+                    {
+                      "sku": "SKU-09895",
+                      "name": "coffee",
+                      "quantity": 2,
+                      "price": 22.99
+                    },
+                    {
+                      "sku": "SKU-03511",
+                      "name": "tea",
+                      "quantity": 3,
+                      "price": 14.1
+                    }
+                  ],
+                  "total": 174.32,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage054.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 132,
+                  "customer": {
+                    "name": "João",
+                    "email": "customer132@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-05200",
+                      "name": "coffee",
+                      "quantity": 3,
+                      "price": 5.5
+                    },
+                    {
+                      "sku": "SKU-04883",
+                      "name": "chai",
+                      "quantity": 3,
+                      "price": 19.02
+                    },
+                    {
+                      "sku": "SKU-06401",
+                      "name": "tea",
+                      "quantity": 3,
+                      "price": 3.26
+                    },
+                    {
+                      "sku": "SKU-08747",
+                      "name": "café au lait",
+                      "quantity": 5,
+                      "price": 22.05
+                    }
+                  ],
+                  "total": 193.59,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 13",
+          "operator": "João",
+          "elapsed": 2.26
+        }
+      },
+      {
+        "id": 14,
+        "parent": 13,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage056.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 140,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer140@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-04397",
+                      "name": "tea",
+                      "quantity": 1,
+                      "price": 28.39
+                    }
+                  ],
+                  "total": 28.39,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage057.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 141,
+                  "customer": {
+                    "name": "Mei 美",
+                    "email": "customer141@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-02988",
+                      "name": "cocoa",
+                      "quantity": 5,
+                      "price": 12.64
+                    },
+                    {
+                      "sku": "SKU-03307",
+                      "name": "coffee",
+                      "quantity": 2,
+                      "price": 11.47
+                    },
+                    {
+                      "sku": "SKU-05064",
+                      "name": "café au lait",
+                      "quantity": 1,
+                      "price": 35.41
+                    }
+                  ],
+                  "total": 121.55,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage058.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 142,
+                  "customer": {
+                    "name": "Ana",
+                    "email": "customer142@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-06394",
+                      "name": "chai",
+                      "quantity": 3,
+                      "price": 3.9
+                    },
+                    {
+                      "sku": "SKU-05918",
+                      "name": "café au lait",
+                      "quantity": 2,
+                      "price": 34.4
+                    },
+                    {
+                      "sku": "SKU-00751",
+                      "name": "coffee",
+                      "quantity": 4,
+                      "price": 6.77
+                    }
+                  ],
+                  "total": 107.58,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 14",
+          "operator": "Zoë",
+          "elapsed": 1.008
+        }
+      },
+      {
+        "id": 15,
+        "parent": 14,
+        "provenance": "simulated",
+        "marking": [
+          {
+            "place": "pipeline.stage000.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 151,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer151@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-07133",
+                      "name": "cocoa",
+                      "quantity": 4,
+                      "price": 7.9
+                    },
+                    {
+                      "sku": "SKU-09110",
+                      "name": "matcha",
+                      "quantity": 1,
+                      "price": 37.2
+                    },
+                    {
+                      "sku": "SKU-04102",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 16.89
+                    },
+                    {
+                      "sku": "SKU-01943",
+                      "name": "cocoa",
+                      "quantity": 1,
+                      "price": 10.23
+                    }
+                  ],
+                  "total": 146.59,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage001.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 152,
+                  "customer": {
+                    "name": "Ilsa 🚀",
+                    "email": "customer152@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-09372",
+                      "name": "coffee",
+                      "quantity": 3,
+                      "price": 39.0
+                    },
+                    {
+                      "sku": "SKU-00049",
+                      "name": "coffee",
+                      "quantity": 5,
+                      "price": 8.74
+                    }
+                  ],
+                  "total": 160.7,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage060.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 150,
+                  "customer": {
+                    "name": "Søren",
+                    "email": "customer150@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-07724",
+                      "name": "cocoa",
+                      "quantity": 3,
+                      "price": 14.75
+                    },
+                    {
+                      "sku": "SKU-01155",
+                      "name": "coffee",
+                      "quantity": 5,
+                      "price": 25.73
+                    }
+                  ],
+                  "total": 172.9,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 15",
+          "operator": "Łukasz",
+          "elapsed": 2.293
+        }
+      },
+      {
+        "id": 16,
+        "parent": 15,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage003.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 160,
+                  "customer": {
+                    "name": "Søren",
+                    "email": "customer160@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-09719",
+                      "name": "matcha",
+                      "quantity": 5,
+                      "price": 14.74
+                    },
+                    {
+                      "sku": "SKU-01613",
+                      "name": "tea",
+                      "quantity": 2,
+                      "price": 8.13
+                    }
+                  ],
+                  "total": 89.96,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage004.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 161,
+                  "customer": {
+                    "name": "Ana",
+                    "email": "customer161@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-04198",
+                      "name": "tea",
+                      "quantity": 2,
+                      "price": 8.76
+                    }
+                  ],
+                  "total": 17.52,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage005.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 162,
+                  "customer": {
+                    "name": "Dmitri",
+                    "email": "customer162@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-05457",
+                      "name": "cocoa",
+                      "quantity": 1,
+                      "price": 7.97
+                    },
+                    {
+                      "sku": "SKU-06369",
+                      "name": "tea",
+                      "quantity": 4,
+                      "price": 14.96
+                    },
+                    {
+                      "sku": "SKU-05158",
+                      "name": "coffee",
+                      "quantity": 1,
+                      "price": 21.83
+                    },
+                    {
+                      "sku": "SKU-03881",
+                      "name": "café au lait",
+                      "quantity": 3,
+                      "price": 31.56
+                    }
+                  ],
+                  "total": 184.32,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 16",
+          "operator": "Ana",
+          "elapsed": 1.696
+        }
+      },
+      {
+        "id": 17,
+        "parent": 16,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage007.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 170,
+                  "customer": {
+                    "name": "Søren",
+                    "email": "customer170@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-02222",
+                      "name": "tea",
+                      "quantity": 3,
+                      "price": 30.1
+                    },
+                    {
+                      "sku": "SKU-05053",
+                      "name": "coffee",
+                      "quantity": 4,
+                      "price": 22.01
+                    },
+                    {
+                      "sku": "SKU-06487",
+                      "name": "chai",
+                      "quantity": 2,
+                      "price": 5.47
+                    },
+                    {
+                      "sku": "SKU-04747",
+                      "name": "cocoa",
+                      "quantity": 4,
+                      "price": 22.33
+                    }
+                  ],
+                  "total": 278.6,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage008.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 171,
+                  "customer": {
+                    "name": "João",
+                    "email": "customer171@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-06060",
+                      "name": "matcha",
+                      "quantity": 1,
+                      "price": 9.64
+                    }
+                  ],
+                  "total": 9.64,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage009.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 172,
+                  "customer": {
+                    "name": "João",
+                    "email": "customer172@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-06219",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 14.51
+                    },
+                    {
+                      "sku": "SKU-04700",
+                      "name": "cocoa",
+                      "quantity": 1,
+                      "price": 8.39
+                    },
+                    {
+                      "sku": "SKU-08884",
+                      "name": "matcha",
+                      "quantity": 3,
+                      "price": 21.68
+                    },
+                    {
+                      "sku": "SKU-06409",
+                      "name": "chai",
+                      "quantity": 2,
+                      "price": 24.25
+                    }
+                  ],
+                  "total": 179.97,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 17",
+          "operator": "João",
+          "elapsed": 1.614
+        }
+      },
+      {
+        "id": 18,
+        "parent": 17,
+        "provenance": "simulated",
+        "marking": [
+          {
+            "place": "pipeline.stage011.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 180,
+                  "customer": {
+                    "name": "Dmitri",
+                    "email": "customer180@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-06394",
+                      "name": "cocoa",
+                      "quantity": 4,
+                      "price": 23.73
+                    },
+                    {
+                      "sku": "SKU-02204",
+                      "name": "matcha",
+                      "quantity": 3,
+                      "price": 21.97
+                    },
+                    {
+                      "sku": "SKU-05833",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 11.55
+                    }
+                  ],
+                  "total": 207.03,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage012.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 181,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer181@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-07057",
+                      "name": "cocoa",
+                      "quantity": 5,
+                      "price": 13.77
+                    },
+                    {
+                      "sku": "SKU-06200",
+                      "name": "café au lait",
+                      "quantity": 2,
+                      "price": 14.53
+                    },
+                    {
+                      "sku": "SKU-07616",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 18.62
+                    },
+                    {
+                      "sku": "SKU-01929",
+                      "name": "matcha",
+                      "quantity": 3,
+                      "price": 21.1
+                    }
+                  ],
+                  "total": 235.69,
+                  "coupon": null,
+                  "notes": "deliver after 18:00 — ring twice"
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage013.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 182,
+                  "customer": {
+                    "name": "Ilsa 🚀",
+                    "email": "customer182@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-01937",
+                      "name": "chai",
+                      "quantity": 1,
+                      "price": 11.12
+                    },
+                    {
+                      "sku": "SKU-08191",
+                      "name": "chai",
+                      "quantity": 1,
+                      "price": 18.01
+                    },
+                    {
+                      "sku": "SKU-00022",
+                      "name": "tea",
+                      "quantity": 5,
+                      "price": 8.1
+                    },
+                    {
+                      "sku": "SKU-08301",
+                      "name": "coffee",
+                      "quantity": 3,
+                      "price": 4.77
+                    }
+                  ],
+                  "total": 83.94,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 18",
+          "operator": "Ilsa 🚀",
+          "elapsed": 1.13
+        }
+      },
+      {
+        "id": 19,
+        "parent": 18,
+        "provenance": "observed",
+        "marking": [
+          {
+            "place": "pipeline.stage015.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 190,
+                  "customer": {
+                    "name": "Ilsa 🚀",
+                    "email": "customer190@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-06149",
+                      "name": "coffee",
+                      "quantity": 4,
+                      "price": 1.27
+                    },
+                    {
+                      "sku": "SKU-05647",
+                      "name": "chai",
+                      "quantity": 5,
+                      "price": 8.5
+                    },
+                    {
+                      "sku": "SKU-05266",
+                      "name": "chai",
+                      "quantity": 1,
+                      "price": 35.12
+                    }
+                  ],
+                  "total": 82.7,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage016.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 191,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer191@example.com",
+                    "vip": false
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-00390",
+                      "name": "cocoa",
+                      "quantity": 3,
+                      "price": 5.41
+                    }
+                  ],
+                  "total": 16.23,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          },
+          {
+            "place": "pipeline.stage017.ready",
+            "tokens": [
+              {
+                "color": null,
+                "data": {
+                  "order": 192,
+                  "customer": {
+                    "name": "Olúwa",
+                    "email": "customer192@example.com",
+                    "vip": true
+                  },
+                  "items": [
+                    {
+                      "sku": "SKU-00806",
+                      "name": "coffee",
+                      "quantity": 2,
+                      "price": 33.17
+                    },
+                    {
+                      "sku": "SKU-07293",
+                      "name": "café au lait",
+                      "quantity": 1,
+                      "price": 1.83
+                    },
+                    {
+                      "sku": "SKU-03669",
+                      "name": "matcha",
+                      "quantity": 4,
+                      "price": 19.24
+                    }
+                  ],
+                  "total": 145.13,
+                  "coupon": null,
+                  "notes": ""
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "note": "step 19",
+          "operator": "Renée",
+          "elapsed": 1.465
+        }
+      }
+    ]
+  }
+}

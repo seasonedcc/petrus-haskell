@@ -48,9 +48,12 @@ test-suite petrus-json-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    Petrus.Json.ReferenceParse
-                    Petrus.Json.PythonTextSpec
+  other-modules:    Petrus.Json.CPythonDifferentialSpec
                     Petrus.Json.FloatReprSpec
+                    Petrus.Json.Generators
+                    Petrus.Json.PythonTextSpec
+                    Petrus.Json.Reference
+                    Petrus.Json.ReferenceParse
   build-depends:    base
                   , bytestring
                   , hspec >=2.10
@@ -61,4 +64,20 @@ test-suite petrus-json-test
                   , process
                   , petrus-json
                   , text
+                  , typed-process >=0.2.11
   ghc-options:      -rtsopts
+
+benchmark petrus-json-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench
+  main-is:          Main.hs
+  ghc-options:      -O2 -rtsopts
+  build-depends:    base
+                  , bytestring
+                  , directory
+                  , filepath
+                  , petrus-json
+                  , tasty
+                  , tasty-bench >=0.3.2
+                  , text
