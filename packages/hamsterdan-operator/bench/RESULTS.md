@@ -48,16 +48,44 @@ in-process row.
 
 ## Results
 
-The machine was an Apple M4 (10 cores) running macOS 26.3.1, shared with
-other work. The load average was 4.6–5.5 during the run (2026-10-11,
-02:08–02:10 local, UTC-3, on top of `e170b69` with this package's
-changes).
+Seven full runs on 2026-10-11, 06:40–06:52 local (UTC-3), at commit
+`b7c4c1e`, one after another, each started once the 1-minute load average
+was 3 or below (1.84–3.39 around the runs). Each run interleaves the two
+sides itself, as described above. Each figure below is the median of the
+seven runs' medians, with the lowest minimum in parentheses. The ratio is
+the median of the seven runs' ratios; the next columns give the lowest
+run's ratio and the runs Haskell won.
 
 - **Haskell:** GHC 9.10.3. The binary and the benchmark are built with
   `-O2 -threaded "-with-rtsopts=-A16m"`, and run with `+RTS -M2G`.
 - **Python:** CPython 3.14.6, the pinned reference in
   `upstream/hamsterdan/.venv`.
 
+| Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell | Lowest run | Runs Haskell faster |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `--help` | CLI (fresh process) | 21.87 ms (16.78 ms) | 704.29 ms (693.38 ms) | 32.56× | 31.57× | 7/7 |
+| `preflight` | CLI (fresh process) | 134.21 ms (118.17 ms) | 831.35 ms (811.28 ms) | 6.26× | 6.09× | 7/7 |
+| `inspect --pr 7 --expect-hero-review` (25 fake `gh` calls) | CLI (fresh process) | 598.50 ms (571.27 ms) | 1.34 s (1.28 s) | 2.24× | 2.20× | 7/7 |
+| inspect, hero review (200 comments, 20 runs of 30 jobs) | in process | 659.0 µs (578.0 µs) | 972.9 µs (909.4 µs) | 1.48× | 1.23× | 7/7 |
+| inspect-authority (40 rules, 99 reviews, 100 threads) | in process | 76.0 µs (64.0 µs) | 149.5 µs (129.1 µs) | 1.95× | 1.71× | 7/7 |
+| Git ref projection parse (2000 refs) | in process | 991.0 µs (901.0 µs) | 1.83 ms (1.69 ms) | 1.85× | 1.56× | 7/7 |
+| qualification-setup success path (scripted Git and gh) | in process | 910.0 µs (812.0 µs) | 924.0 µs (845.7 µs) | 1.04× | 1.01× | 7/7 |
+
+The Haskell side is faster on every row, in every run.
+`qualification-setup` read 1.01×, 1.04×, 1.04×, 1.04×, 1.04×, 1.05× and
+1.04× run by run, and Haskell's minimum was below the reference's in each.
+
+- **CLI rows.** CPython's start-up and imports (about 0.7 s) dominate
+  them. In the `inspect` row, the 25 fake `gh` processes, which both sides
+  spawn, take most of the remaining time.
+- **In-process rows.** These compare the operations themselves.
+
+### The run before (2026-10-11, 02:08–02:10)
+
+<!-- bench: superseded -->
+
+One run, on top of `e170b69` with this package's changes, load average
+4.6–5.5. Each cell is the median, with the minimum in parentheses.
 | Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell |
 | --- | --- | ---: | ---: | ---: |
 | `--help` | CLI (fresh process) | 21.14 ms (17.71 ms) | 484.46 ms (437.89 ms) | 22.91× |
@@ -68,14 +96,7 @@ changes).
 | Git ref projection parse (2000 refs) | in process | 1.20 ms (1.03 ms) | 1.99 ms (1.89 ms) | 1.67× |
 | qualification-setup success path (scripted Git and gh) | in process | 995.0 µs (830.0 µs) | 1.06 ms (881.6 µs) | 1.06× |
 
-The Haskell side is faster on every row.
-
-- **CLI rows.** CPython's start-up and imports (about 0.5 s) dominate
-  them. In the `inspect` row, the 25 fake `gh` processes, which both sides
-  spawn, take most of the remaining time.
-- **In-process rows.** These compare the operations themselves.
-
-### `qualification-setup` sits at about 1.0×
+### Why `qualification-setup` is close to 1.0×
 
 Almost all of this workload's time is in the kernel. Both sides make the
 same costly system calls:
@@ -93,8 +114,9 @@ and the reference about 200. The extra ones are cheap: mostly `lstat`,
 whole run on both sides.
 
 So the ratio moves with the machine's load. Over the four full runs made
-with the final code, the row read 0.97×, 1.04×, 1.04× and 1.06×. The
-Haskell minimum was lower than the reference's in each run.
+with the final code at load 4.6–5.5, the row read 0.97×, 1.04×, 1.04× and
+1.06×; over the seven at load 1.8–3.4 in the table above, 1.01–1.05×. The
+Haskell minimum was lower than the reference's in every run.
 
 The row moved from below 1.0× to these figures when the cleanup's
 `shutil.rmtree` became CPython's descriptor-relative walk
