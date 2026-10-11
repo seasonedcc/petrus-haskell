@@ -2,6 +2,8 @@
 """Plan CI's test shards, and reuse a suite's earlier green result only when
 everything it could depend on is identical.
 
+    scripts/ci-tests check-steps             # every scripts/check-all step is a CI step
+    scripts/ci-tests check-parts             # the split suites' parts select each example once (needs the build)
     scripts/ci-tests inputs                  # each suite's input hash and the packages in it
     scripts/ci-tests fetch-ledgers DIR       # the test ledgers of recent runs on this branch and main
     scripts/ci-tests plan --out PLAN [--full] [--ledgers DIR] [--max-shards N] [--target SECONDS]
@@ -345,6 +347,40 @@ def units_of(suite: str, times: dict) -> List[dict]:
     return units
 
 
+def check_parts() -> int:
+    """The parts of every split suite, as hspec dry runs of the built test
+    binaries: each part selects at least one example, and the parts plus the
+    rest select the suite's examples exactly once each (their counts add up
+    to the suite's: an overlap would add more)."""
+    times = load_times()
+    bad = 0
+    for suite in sorted(times.get("parts", {})):
+        package = suite.removesuffix("-test")
+        binary = subprocess.run(["cabal", "list-bin", "-v0", f"{package}:test:{suite}"], cwd=ROOT, check=True,
+                                capture_output=True, text=True).stdout.strip()
+
+        def selected(args: List[str]) -> int:
+            out = subprocess.run([binary, "--dry-run", *args], cwd=ROOT / "packages" / package,
+                                 capture_output=True).stdout
+            found = SUMMARY.findall(out)
+            return int(found[-1][0]) if found else -1
+
+        total = selected([])
+        counts = {u["id"]: selected(u["args"]) for u in units_of(suite, times)}
+        for unit, n in counts.items():
+            print(f"{unit}: {n} examples")
+            if n < 1:
+                print(f"ci-tests: {unit} selects no example", file=sys.stderr)
+                bad += 1
+        if sum(counts.values()) != total:
+            print(f"ci-tests: the parts of {suite} select {sum(counts.values())} examples, the suite has {total}",
+                  file=sys.stderr)
+            bad += 1
+        else:
+            print(f"{suite}: {len(counts)} parts select its {total} examples once each")
+    return 1 if bad else 0
+
+
 def shard(units: List[dict], max_shards: int, target: float) -> List[dict]:
     """Longest processing time first, over as few shards as keep each near
     the target, at most max_shards; two units of one suite never share a shard
@@ -655,6 +691,25 @@ def inputs_cmd() -> int:
     return 0
 
 
+# check-all steps CI does not run: the benchmarks are opt-in (--bench).
+NOT_IN_CI = {"Benchmarks"}
+
+
+def check_steps() -> int:
+    """Every step of scripts/check-all is a step of CI (.github/workflows/
+    ci.yml), by name: a step whose name starts with the check-all step's.
+    A check added to check-all then fails CI until CI runs it too."""
+    steps = re.findall(r'^\s*step "([^"]+)"', (ROOT / "scripts" / "check-all").read_text(), re.M)
+    names = [n.strip().strip('"') for n in re.findall(r"^\s*-? *name: (.+)$", (ROOT / ".github" / "workflows" / "ci.yml").read_text(), re.M)]
+    missing = [s for s in steps if s not in NOT_IN_CI and not any(n.startswith(s) for n in names)]
+    for s in missing:
+        print(f"ci-tests: scripts/check-all step {s!r} has no CI step of that name (.github/workflows/ci.yml)", file=sys.stderr)
+    if not missing:
+        print(f"ci-tests: CI runs all {len(steps) - len(NOT_IN_CI & set(steps))} scripts/check-all steps"
+              f" (not: {', '.join(sorted(NOT_IN_CI))})")
+    return 1 if missing else 0
+
+
 def main(argv: List[str]) -> int:
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
@@ -669,6 +724,8 @@ def main(argv: List[str]) -> int:
         "test-flags": lambda: print(" ".join(test_flags())) or 0,
         "ledger": lambda: ledger(rest),
         "fetch-ledgers": lambda: fetch_ledgers(Path(rest[0])),
+        "check-steps": lambda: check_steps(),
+        "check-parts": lambda: check_parts(),
     }
     if command not in commands:
         print(f"unknown command {command}", file=sys.stderr)

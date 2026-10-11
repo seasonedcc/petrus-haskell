@@ -3,7 +3,8 @@ name: CI
 # The same checks as scripts/check-all (plus the petrus-viewer suites of
 # `scripts/check-all --viewer`), spread over several Blacksmith runners:
 #
-#   lint       scripts/check-pins, scripts/lint-skips, scripts/bench --check,
+#   lint       scripts/check-pins, scripts/lint-skips,
+#              scripts/lint-hamsterdan-architecture, scripts/bench --check,
 #              scripts/check-parity, the runtime test ledgers
 #              (packages/petrus-engine/scripts/parity_check.py); none needs a
 #              build
@@ -62,10 +63,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: CI runs every scripts/check-all step
+        run: scripts/ci-tests check-steps
       - name: Upstream pins
         run: scripts/check-pins
       - name: No silent skips on a missing Python reference
         run: scripts/lint-skips
+      - name: Hamsterdan import boundaries (upstream tests/test_architecture.py)
+        run: scripts/lint-hamsterdan-architecture
       - name: Benchmark bookkeeping (rerun blocks, bench-results/summary.md)
         run: scripts/bench --check
       - name: Parity table
@@ -95,6 +100,8 @@ jobs:
         # With the test jobs' test flags, which cabal records in each
         # package's configuration: `cabal test` there then rebuilds nothing.
         run: cabal update -v0 && cabal build all -j $(scripts/ci-tests test-flags)
+      - name: The split suites' parts select each example once
+        run: scripts/ci-tests check-parts
       - name: Save the cabal store
         if: steps.toolchain.outputs.store-hit != 'true'
         uses: actions/cache/save@v4
@@ -183,9 +190,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: test-plan
-      - name: Upstream Python environments
+      - name: Upstream Python environment (petrus, petrus-engine, hamsterdan)
         run: for p in petrus petrus-engine hamsterdan; do scripts/upstream-python "$p" >/dev/null; done
-      - name: Tests (${{ matrix.suites }})
+      - name: "Tests (unit, conformance, interop): ${{ matrix.suites }}"
         run: scripts/ci-tests run-shard plan.json "${{ matrix.name }}"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -238,7 +245,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Upstream Python environment
         run: scripts/upstream-python petrus >/dev/null
-      - name: The petrus-viewer suites against the Haskell backend
+      - name: The upstream petrus-viewer suites against the Haskell backend
         run: scripts/ci-tests run-viewer plan.json
       - uses: actions/upload-artifact@v4
         if: always()

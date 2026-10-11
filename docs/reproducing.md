@@ -366,15 +366,19 @@ job, spread over Blacksmith runners so that they run side by side:
 
 | CI job | Runner | `scripts/check-all` step |
 | --- | --- | --- |
-| `lint` | 2 vCPU | 1 `check-pins`, 2 `lint-skips`, 7 `bench --check`, 8 `check-parity`, 9 the runtime test ledgers (`parity_check.py`) |
-| `build` | 16 vCPU | 4 `cabal build all` (`-Werror`); then plans the test shards |
-| `checks` | 4 vCPU | 5 `scripts/interop --check` |
-| `test (1)` … `test (N)` | 8 vCPU | 3 and 6: `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest) |
+| `lint` | 2 vCPU | `check-pins`, `lint-skips`, `lint-hamsterdan-architecture`, `bench --check`, `check-parity`, the runtime test ledgers (`parity_check.py`) |
+| `build` | 16 vCPU | `cabal build all` (`-Werror`); then plans the test shards |
+| `checks` | 4 vCPU | `scripts/interop --check` (with the PostgreSQL and Docker variables set, so that the selection counts those examples too) |
+| `test (1)` … `test (N)` | 8 vCPU | the upstream Python environments, then `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest) |
 | `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium |
 | `container` | 16 vCPU | none (Docker): the image and `scripts/container-smoke` ([The container image](#the-container-image)) |
 | `ci` | 2 vCPU | the verdict: green only when every job above is |
 
-Branch protection needs only the `ci` check.
+Branch protection needs only the `ci` check. CI steps carry the names of
+the `check-all` steps they run, and `lint` first runs
+`scripts/ci-tests check-steps`, which fails when a `check-all` step (other
+than the opt-in benchmarks) has no CI step of that name: a check added to
+`check-all` fails CI until CI runs it too.
 
 **Caches.** The GHC and cabal install (`~/.ghcup`) is cached by their
 versions. The cabal store and package index are cached by `cabal.project`,
@@ -391,7 +395,9 @@ nothing.
 A suite much longer than the rest is split into parts, each a set of hspec
 `--match` patterns, plus a rest part that `--skip`s all of them, so every
 example runs whatever the patterns select; two parts of one
-suite never share a job. A suite passes only when all its parts pass. Stale
+suite never share a job. `build` checks the parts against the built test
+binaries (`scripts/ci-tests check-parts`, hspec dry runs): each part
+selects an example, and the parts' counts add up to the suite's. A suite passes only when all its parts pass. Stale
 times only unbalance the jobs.
 
 **Reusing results.** Each run's `ci` job uploads a test ledger: for every
