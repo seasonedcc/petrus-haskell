@@ -168,19 +168,11 @@ validation function arguments = case function of
       <$> mkPiContinuationPayloadV1 (text "session_id" arguments) (text "binding" arguments) (unb64 (text "session" arguments))
   other -> error ("unknown validation function " <> T.unpack other)
 
--- | Inputs whose decoded value is a documented divergence
--- (@divergences/pi.md@): a lone surrogate escape decodes to U+FFFD, since
--- 'Text' cannot hold a surrogate.
-strictLoadDivergences :: [(Text, Text)]
-strictLoadDivergences = [("eyJhIjoiXHVkODAwIn0=", "{\"a\":\"\\ufffd\"}")]
-
 -- | @_strict_load@ refuses without a message in the port; only acceptance
 -- and the decoded value are compared.
 strictLoadCase :: Json -> Json -> (String, Json, Json)
 strictLoadCase c arguments =
-  let expected = case lookup (text "value" arguments) strictLoadDivergences of
-        Just value -> Object [("ok", String value)]
-        Nothing -> expectedOutcome c
+  let expected = expectedOutcome c
       actual = case strictLoad (unb64 (text "value" arguments)) of
         Right v -> Object [("ok", String (renderAscii v))]
         Left () -> expected `orRefusal` Object [("error", Object [("class", String "refused"), ("message", String "")])]

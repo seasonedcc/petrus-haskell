@@ -129,6 +129,7 @@ module Petrus.Agenticus.Runtime.Pi
   , pyB64DecodeStrict
   , pyB64DecodeText
   , b64Encode
+  , compactBytes
   , frameBytes
   , startFrame
   , maxPrompt
@@ -215,7 +216,7 @@ import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
-import Petrus.Agenticus.Internal.Validate (isBoundedText, sha256Hex, utf8Length)
+import Petrus.Agenticus.Internal.Validate (encodeRefusal, isBoundedText, isTrimmed, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor
   ( AgentProgramDescriptor
   , ProgramOwnership (..)
@@ -425,9 +426,11 @@ piToolSchemas =
 -- ---------------------------------------------------------------------------
 -- Validation helpers
 
--- | @_text(value, label, bound)@.
+-- | @_text(value, label, bound)@. A lone surrogate fails @value.encode()@,
+-- after the emptiness and strip checks.
 piText :: Text -> Int -> Text -> Either AgenticusError Text
 piText label bound value
+  | not (T.null value) && isTrimmed value, Just refusal <- encodeRefusal value = Left refusal
   | isBoundedText bound value = Right value
   | otherwise = Left (valueError (label <> " must be bounded non-empty text"))
 
@@ -456,17 +459,16 @@ canonicalUuid value = case T.splitOn "-" value of
 -- @ValueError@ (including @UnicodeDecodeError@ and @JSONDecodeError@).
 --
 -- CPython's scanner admits lone surrogate escapes (@"\\ud800"@) into a
--- @str@; so does this one, but 'Text' cannot hold a surrogate, so each
--- decodes to U+FFFD. The session and credential validators only inspect
--- structure, so they accept exactly what the reference accepts.
+-- @str@; so does this one, as a WTF-8 'Text' ("Petrus.Json.Wtf8"). A
+-- reader that encodes such a string fails as CPython's @str.encode()@ does
+-- ('encodeRefusal').
 strictLoad :: ByteString -> Either () Json
 strictLoad bytes = do
   text <- either (const (Left ())) Right (TE.decodeUtf8' bytes)
   -- Whatever petrus-json's strict parser admits, the CPython-faithful
-  -- scanner admits as the same value: it differs only by refusing lone
-  -- surrogate escapes, a UTF-8 BOM, and nesting past 'J.defaultNestingLimit'
-  -- (the scanner has no depth bound). Only those, and the refusals, take the
-  -- slower scanner.
+  -- scanner admits as the same value: it differs only by refusing a UTF-8
+  -- BOM and nesting past 'J.defaultNestingLimit' (the scanner has no depth
+  -- bound). Only those, and the refusals, take the slower scanner.
   case J.parseJson strictParseOptions bytes of
     Right value -> Right value
     Left _ -> either (const (Left ())) (Right . fromRaw) (Py.loads hooks text)
@@ -484,13 +486,14 @@ strictLoad bytes = do
       Py.RBool b -> Bool b
       Py.RInt n -> Int n
       Py.RFloat d -> Float d
-      Py.RStr t -> String (T.pack t)
+      Py.RStr t -> String (J.fromCodePoints t)
       Py.RList xs -> Array (map fromRaw xs)
-      Py.RDict members -> Object [(T.pack k, fromRaw v) | (k, v) <- members]
+      Py.RDict members -> Object [(J.fromCodePoints k, fromRaw v) | (k, v) <- members]
 
--- | 'strictLoad' for helper frames, refusing lone surrogate escapes outright
--- (a 'malformed-frame'): the reference admits them and fails later, or
--- passes them on, depending on the member.
+-- | 'strictLoad' for helper frames, on petrus-json's parser alone (a frame
+-- is never nested past its depth bound). Like the reference, it keeps lone
+-- surrogate escapes; the frame loops fail on, or pass on, such a string
+-- where the reference does.
 strictFrameLoad :: ByteString -> Either () Json
 strictFrameLoad bytes = case TE.decodeUtf8' bytes of
   Left _ -> Left ()
@@ -499,10 +502,21 @@ strictFrameLoad bytes = case TE.decodeUtf8' bytes of
 -- | @json.loads@ with a duplicate-refusing @object_pairs_hook@ and a
 -- refusing @parse_constant@.
 strictParseOptions :: J.ParseOptions
-strictParseOptions = J.pythonLoads {J.duplicateMembers = J.RejectDuplicates, J.allowNonFiniteConstants = False}
+strictParseOptions =
+  J.pythonLoads
+    { J.duplicateMembers = J.RejectDuplicates
+    , J.allowNonFiniteConstants = False
+    , J.loneSurrogates = J.KeepLoneSurrogates
+    }
 
 bare :: AgenticusError
 bare = valueError ""
+
+-- | A frame member that is a non-empty string (@isinstance(v, str) and v@).
+nonEmptyString :: Json -> Maybe Text
+nonEmptyString = \case
+  String value | not (T.null value) -> Just value
+  _ -> Nothing
 
 -- | @_validate_native_auth@: one exact OAuth credential object for the
 -- provider, at most @bound@ bytes of strict UTF-8.
@@ -1092,10 +1106,17 @@ newUuid4 = do
       (d, e) = splitAt 4 r3
   pure (T.pack (a <> "-" <> b <> "-" <> c <> "-" <> d <> "-" <> e))
 
--- | @json.dumps(frame, separators=(",", ":"), ensure_ascii=False,
--- allow_nan=False).encode() + b"\\n"@.
-frameBytes :: Json -> Either J.EncodeError ByteString
-frameBytes frame = (<> "\n") <$> J.dumps J.compact frame
+-- | @json.dumps(value, separators=(",", ":"), ensure_ascii=False,
+-- allow_nan=False).encode()@. Both steps fail with a @ValueError@: a
+-- non-finite float, or a lone surrogate the dump kept.
+compactBytes :: Json -> Either AgenticusError ByteString
+compactBytes value = case J.dumps J.compact value of
+  Left _ -> Left (valueError "Out of range float values are not JSON compliant")
+  Right dumped -> maybe (Right dumped) Left (encodeRefusal (J.unsafeTextFromBytes dumped))
+
+-- | A helper frame's line: 'compactBytes' and @b"\\n"@.
+frameBytes :: Json -> Either AgenticusError ByteString
+frameBytes frame = (<> "\n") <$> compactBytes frame
 
 writeFrame :: SubprocessClient -> Json -> IO ()
 writeFrame c frame = do
@@ -1206,6 +1227,8 @@ runSubprocess c gateway' invocation current deadline = do
             (\_ -> throwIO (valueError "Out of range float values are not JSON compliant"))
             pure
             (J.dumps dumpOptions params)
+        -- @len(identity.encode())@ raises outside any @try@.
+        forM_ (encodeRefusal =<< nonEmptyString identity) throwIO
         callId <- case (identity, method, params) of
           (String i, String m, Object _)
             | not (T.null i)
@@ -1243,7 +1266,7 @@ runSubprocess c gateway' invocation current deadline = do
                 String value -> piUuid value
                 _ -> Left bare
               text <- case member "text" of
-                String value | utf8Length value <= cfg.maxOutputBytes -> Right value
+                String value | isNothing (encodeRefusal value) && utf8Length value <= cfg.maxOutputBytes -> Right value
                 _ -> Left bare
               body <- case member "session" of
                 String value -> pyB64DecodeText value

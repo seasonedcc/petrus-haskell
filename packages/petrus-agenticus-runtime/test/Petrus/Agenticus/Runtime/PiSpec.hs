@@ -54,6 +54,7 @@ import Petrus.Agenticus.Runtime.Profiles (piNativeA2Local, piNativeA4E2b, piNati
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))
+import Petrus.Json qualified as J
 import System.Directory (canonicalizePath, createDirectory, findExecutable, removeDirectoryRecursive)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -76,6 +77,7 @@ spec = describe "test_pi" $ do
   subscriptionSpecs
   lifecycleSpecs
   recoverySpecs
+  surrogateSpecs
   spawnSpecs
 
 -- ---------------------------------------------------------------------------
@@ -1374,6 +1376,61 @@ recoverySpecs = do
     reopened <- openSqlitePiOperationLedger path
     (.cleanup) <$> lookupRecord reopened inv.operationId `shouldReturn` RuntimeCleanupNotCreated
     ledgerClose reopened
+
+-- ---------------------------------------------------------------------------
+-- Lone surrogate escapes in helper frames (not in the reference)
+
+-- | The reference admits a lone surrogate escape into a helper frame and
+-- fails on, or forwards, the member that holds it (@divergences/pi.md@,
+-- item 6). Each case forges one such frame.
+surrogateSpecs :: Spec
+surrogateSpecs = describe "lone surrogate escapes in helper frames (not in the reference)" $ do
+  let clientFor options tmp node scenario = do
+        rig <- newRig tmp rigOptions
+        inv <- (.invocation) <$> invoke rig ("surrogate-" <> scenario) invocationOptions {invCapabilities = Just [WorkspaceRead]}
+        privateRoot <- operationRoot rig (T.unpack ("surrogate-" <> scenario <> "-operation"))
+        privateDirectory privateRoot
+        let helper = tmp </> "lone-surrogate-helper.mjs"
+        fixture "lone_surrogate_helper.mjs" >>= writeText helper . T.replace "__SCENARIO__" scenario
+        client <- helperArgs rig node "/ignored" privateRoot inv Nothing (Just keyText) Nothing Nothing >>= newSubprocessClientWith options helper
+        pure (client, inv, privateRoot)
+      finish (client, _, privateRoot) = do
+        closeClient client `shouldReturn` True
+        removeDirectoryRecursive privateRoot
+      calls inv = map (\e -> (e.method, e.ok, e.category)) <$> evidence inv.gateway
+
+  it "forwards tool_call parameters that hold one to the Hands gateway" $ withNode $ \node -> withTemp $ \tmp -> do
+    opened@(client, inv, _) <- clientFor subprocessOptions tmp node "params"
+    result <- runFor client inv
+    fmap (.text) result.candidate `shouldBe` Just "answer"
+    calls inv `shouldReturn` [(Nothing, False, Just CategoryPath)]
+    finish opened
+
+  it "fails a tool_result that echoes one as helper-pipe-failed (str.encode())" $ withNode $ \node -> withTemp $ \tmp -> do
+    let echo _ = Object [("echo", String (J.surrogateText 0xD800))]
+    opened@(client, inv, _) <- clientFor subprocessOptions {modelData = echo} tmp node "echo"
+    raises (runFor client inv) RuntimeProtocolError "helper-pipe-failed"
+    finish opened
+
+  it "raises the tool_call identity's encode failure, which no except catches" $ withNode $ \node -> withTemp $ \tmp -> do
+    opened@(client, inv, _) <- clientFor subprocessOptions tmp node "identity"
+    raises (runFor client inv) ValueError "surrogates not allowed"
+    calls inv `shouldReturn` []
+    finish opened
+
+  forM_
+    [ ("text", "malformed-complete")
+    , ("method", "malformed-tool-call")
+    , ("type", "unknown-frame")
+    , ("member", "frame-order")
+    , ("code", "malformed-failed")
+    ]
+    $ \(scenario, code) ->
+      it (T.unpack ("fails one in the " <> scenario <> " as " <> code)) $ withNode $ \node -> withTemp $ \tmp -> do
+        opened@(client, inv, _) <- clientFor subprocessOptions tmp node scenario
+        raises (runFor client inv) RuntimeProtocolError code
+        calls inv `shouldReturn` []
+        finish opened
 
 -- ---------------------------------------------------------------------------
 -- Spawning (not in the reference)

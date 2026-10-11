@@ -42,7 +42,7 @@ import Petrus.Agenticus.Hands.Contract
   , toolResultToData
   , toolResultToModelData
   )
-import Petrus.Agenticus.Hands.Gateway (GatewayCounters (..), HandsGateway, counters)
+import Petrus.Agenticus.Hands.Gateway (CallEvidence (..), GatewayCounters (..), HandsGateway, counters)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), closeGrant, grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
@@ -442,6 +442,7 @@ spec = describe "test_pi_application" $ do
   episodeSpecs
   framedSpecs
   boundarySpecs
+  surrogateSpecs
   publicationSpecs
   packageSpecs
 
@@ -728,6 +729,76 @@ framedSpecs = do
         client.close `shouldReturn` True
         (.adapterEntries) <$> counters rig.gateway `shouldReturn` 0
         void (Episode.settle rig.attachment 30)
+
+-- | The reference admits a lone surrogate escape into a helper frame and
+-- fails on, or forwards, the member that holds it (@divergences/pi.md@,
+-- item 6). Each case forges one such frame.
+surrogateSpecs :: Spec
+surrogateSpecs = describe "lone surrogate escapes in helper frames (not in the reference)" $ do
+  let clientFor options tmp scenario = do
+        node <- requireNode
+        let name = "surrogate-" <> T.unpack scenario
+            helper = tmp </> (name <> ".mjs")
+        fixture "application_lone_surrogate.mjs" >>= B.writeFile helper . TE.encodeUtf8 . T.replace "__SCENARIO__" scenario
+        rig <- newRig' (tmp </> name) "gondolin" [plan]
+        inv <- invocationFor rig (T.pack name) [WorkspaceRead]
+        privateRoot <- newPrivateRoot tmp name
+        client <-
+          applicationSubprocessClient
+            <$> newApplicationSubprocessClientWith
+              options
+              helper
+              ApplicationClientArgs
+                { node
+                , codingEntrypoint = "/unused/coding"
+                , coreEntrypoint = "/unused/core"
+                , aiEntrypoint = "/unused/ai"
+                , privateRoot
+                , config = applicationAdapterConfig rig.adapter
+                , invocation = inv
+                , prior = Nothing
+                , apiKey = "credential-canary"
+                }
+        deadline <- (+ 2) <$> getMonotonicTime
+        pure (client.run rig.gateway inv (pure True) deadline, client, rig)
+      finish client rig = do
+        client.close `shouldReturn` True
+        void (Episode.settle rig.attachment 30)
+      calls rig = map (\e -> (e.method, e.ok, e.category)) <$> Gateway.evidence rig.gateway
+
+  it "forwards tool_call parameters that hold one to the Hands gateway" $ withTemp $ \tmp -> do
+    (run, client, rig) <- clientFor applicationSubprocessOptions tmp "params"
+    candidate <- run
+    candidate.text `shouldBe` "done"
+    calls rig `shouldReturn` [(Nothing, False, Just CategoryPath)]
+    finish client rig
+
+  it "fails a tool_result that echoes one as helper-pipe-failed (str.encode())" $ withTemp $ \tmp -> do
+    let echo _ = Object [("echo", String (J.surrogateText 0xD800))]
+    (run, client, rig) <- clientFor ApplicationSubprocessOptions {modelData = echo} tmp "echo"
+    raises run RuntimeProtocolError "helper-pipe-failed"
+    finish client rig
+
+  it "raises the tool_call identity's encode failure, which no except catches" $ withTemp $ \tmp -> do
+    (run, client, rig) <- clientFor applicationSubprocessOptions tmp "identity"
+    raises run ValueError "surrogates not allowed"
+    calls rig `shouldReturn` []
+    finish client rig
+
+  forM_
+    [ ("text", "malformed-complete")
+    , ("transcript", "malformed-complete")
+    , ("method", "malformed-tool-call")
+    , ("type", "frame-order")
+    , ("member", "frame-order")
+    , ("code", "frame-order")
+    ]
+    $ \(scenario, code) ->
+      it (T.unpack ("fails one in the " <> scenario <> " as " <> code)) $ withTemp $ \tmp -> do
+        (run, client, rig) <- clientFor applicationSubprocessOptions tmp scenario
+        raises run RuntimeProtocolError code
+        calls rig `shouldReturn` []
+        finish client rig
 
 boundarySpecs :: Spec
 boundarySpecs = do

@@ -86,7 +86,7 @@ import Petrus.Agenticus.Connection.Custody
 import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Exception
-import Petrus.Agenticus.Internal.Validate (hasControlOrDel, isTrimmed, sha256Hex, utf8Length)
+import Petrus.Agenticus.Internal.Validate (encodeRefusal, hasControlOrDel, isTrimmed, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.AgentNet
   ( LoopState (..)
   , ModelResult (..)
@@ -106,6 +106,7 @@ import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), 
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
 import Petrus.Agenticus.Runtime.Pi
   ( b64Encode
+  , frameBytes
   , piAiVersion
   , piApiKeyCatalog
   , piSdkVersion
@@ -156,9 +157,11 @@ limits =
 protocol :: Text -> IO a
 protocol = throwIO . runtimeProtocolError
 
--- | @_text(value, label, maximum)@.
+-- | @_text(value, label, maximum)@. A lone surrogate fails
+-- @value.encode()@, after the emptiness and strip checks.
 phaseText :: Text -> Int -> Text -> Either AgenticusError Text
 phaseText label bound value
+  | not (T.null value) && isTrimmed value, Just refusal <- encodeRefusal value = Left refusal
   | T.null value || not (isTrimmed value) || utf8Length value > bound || hasControlOrDel value =
       Left (valueError ("Pi model phase " <> label <> " is invalid"))
   | otherwise = Right value
@@ -380,9 +383,7 @@ phaseSubprocessExited c = helperExited c.helper
 -- helper closes stdout, heartbeating and honouring the wall deadline.
 runPhase :: PhaseSubprocessClient -> Json -> Double -> IO () -> IO PhaseCandidate
 runPhase c frame wall heartbeat = do
-  raw <- case J.dumps J.compact frame of
-    Left _ -> throwIO (valueError "Out of range float values are not JSON compliant")
-    Right encoded -> pure (encoded <> "\n")
+  raw <- either throwIO pure (frameBytes frame)
   when (B.length raw > maxFrameBytes) $ protocol "frame-overflow"
   written <- newTVarIO False
   writerThread <-

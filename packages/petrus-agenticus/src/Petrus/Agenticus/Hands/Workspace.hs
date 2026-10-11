@@ -52,6 +52,7 @@ import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Gateway (HandsAdapter (..), ShellOutcome, StagedWrite (..), TestOutcome, mkShellOutcome, mkStagedWrite, mkTestOutcome)
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.PyText (boundedText, splitLines)
+import Petrus.Agenticus.Internal.Validate (encodeRefusal)
 import Petrus.Motus.Execution
   ( CommandResult
   , CommandSpec (..)
@@ -182,6 +183,10 @@ workspaceStageWrite a callId path content = do
   let name = stageName callId
   result <- run a (sh "mkdir -p -- \"$0\" && printf %s \"$2\" > \"$0/$1\"" [stageDirectory, name, content]) "."
   if resultReturncode result /= 0 then failWith "workspace stage failed" else pure ()
+  -- @content.encode()@ runs after the command, so content whose lone
+  -- surrogates the command could carry (U+DC80–U+DCFF, as raw bytes) still
+  -- fails here.
+  maybe (pure ()) throwIO (encodeRefusal content)
   staged <- either throwIO pure (mkStagedWrite callId path (hexDigest (TE.encodeUtf8 content)))
   atomicModifyIORef' a.stages (\m -> (Map.insert name staged.path m, ()))
   pure staged

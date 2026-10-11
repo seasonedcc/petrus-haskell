@@ -125,7 +125,7 @@ import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (allRejectionCategories, rejectionCategoryText)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor, ProgramOwnership (..), agentProgramDescriptor, continuationRequirement)
 import Petrus.Agenticus.Thread.Continuation (ContinuationDescriptor, continuationDescriptor)
-import Petrus.Agenticus.Internal.Validate (hasDuplicates, isTrimmed, sortedUnique, utf8Length)
+import Petrus.Agenticus.Internal.Validate (encodeRefusal, hasDuplicates, isTrimmed, sortedUnique, utf8Length)
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), Handler, HandlerResult, handlerTokens)
 import Petrus.Impetus.Dsl
   ( BuiltNet (..)
@@ -269,10 +269,12 @@ errorCategories = Set.fromList (map rejectionCategoryText allRejectionCategories
 -- ---------------------------------------------------------------------------
 -- Shared rules
 
--- | @_text(value, name)@.
+-- | @_text(value, name)@. A lone surrogate fails @value.encode()@, after
+-- the emptiness and strip checks.
 text :: Text -> Json -> Either AgenticusError Text
 text name = \case
   String s
+    | not (T.null s) && isTrimmed s, Just refusal <- encodeRefusal s -> Left refusal
     | not (T.null s) && isTrimmed s && utf8Length s <= textLimit ->
         if T.any (< ' ') s then Left (valueError (name <> " must not contain control characters")) else Right s
   _ -> Left (valueError (name <> " must be bounded non-empty text"))

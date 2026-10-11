@@ -147,8 +147,9 @@ eight examples:
 
 The corpus found four port bugs, all now fixed: lone surrogate escapes in
 `_strict_load`, the `UnicodeDecodeError` message, the order of the
-non-ASCII base64 check, and `BLOB` and `REAL` ledger cells. One known
-divergence remains, item 6 of `divergences/pi.md`.
+non-ASCII base64 check, and `BLOB` and `REAL` ledger cells. A lone
+surrogate escape is kept as CPython keeps it (item 6 of
+`divergences/pi.md`), so every corpus case now matches.
 
 Rerun:
 

@@ -154,7 +154,7 @@ import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant, permits)
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
-import Petrus.Agenticus.Internal.Validate (sha256Hex, utf8Length)
+import Petrus.Agenticus.Internal.Validate (encodeRefusal, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor, ProgramOwnership (..), agentProgramDescriptor, continuationRequirement)
 import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), privateEnvironment, spawnHelper, nextReceived, helperExited, closeHelper, waitExit, exitInt, runBounded, removeRoot)
@@ -178,6 +178,8 @@ import Petrus.Agenticus.Runtime.Operation
   )
 import Petrus.Agenticus.Runtime.Pi
   ( b64Encode
+  , compactBytes
+  , frameBytes
   , piAiSource
   , piAiVersion
   , piApiKeyCatalog
@@ -673,7 +675,7 @@ protocol = throwIO . runtimeProtocolError
 -- | @_write@: every encoding, bound or pipe failure is @helper-pipe-failed@.
 writeFrame :: ApplicationSubprocessClient -> Json -> IO ()
 writeFrame c frame = do
-  encoded <- either (const (protocol "helper-pipe-failed")) (pure . (<> "\n")) (J.dumps J.compact frame)
+  encoded <- either (const (protocol "helper-pipe-failed")) pure (frameBytes frame)
   when (B.length encoded > c.config.maxFrameBytes) $ protocol "helper-pipe-failed"
   written <- try (B.hPut c.helper.input encoded >> hFlush c.helper.input)
   case written of
@@ -777,6 +779,14 @@ runApplicationSubprocess c gateway' invocation current deadline = do
       let identity = member "id" fields
           method = member "method" fields
           params = member "params" fields
+      -- @len(identity.encode())@ raises outside any @try@, once the frame
+      -- order and the identity's type have passed.
+      case identity of
+        String i
+          | s.ready && keys fields == ["id", "method", "params", "type"] && not (T.null i)
+          , Just refusal <- encodeRefusal i ->
+              throwIO refusal
+        _ -> pure ()
       callId <- case (identity, method, params) of
         (String i, String m, Object _)
           | s.ready
@@ -818,7 +828,7 @@ runApplicationSubprocess c gateway' invocation current deadline = do
     -- @except ValueError, TypeError@.
     complete textValue transcriptValue = do
       text <- case textValue of
-        String value | utf8Length value <= cfg.maxOutputBytes -> Right value
+        String value | isNothing (encodeRefusal value) && utf8Length value <= cfg.maxOutputBytes -> Right value
         _ -> Left ()
       encoded <- case transcriptValue of
         String value -> Right value
@@ -828,8 +838,10 @@ runApplicationSubprocess c gateway' invocation current deadline = do
       _ <- either (const (Left ())) Right (applicationTranscript delta cfg.maxTranscriptBytes cfg.maxMessages)
       priorMessages <- strictLoad c.priorTranscript
       deltaMessages <- strictLoad delta
+      -- @json.dumps(..., ensure_ascii=False).encode()@: a message that holds
+      -- a lone surrogate fails the encode.
       combined <- case (priorMessages, deltaMessages) of
-        (Array p, Array d) -> either (const (Left ())) Right (J.dumps J.compact (Array (p <> d)))
+        (Array p, Array d) -> either (const (Left ())) Right (compactBytes (Array (p <> d)))
         _ -> Left ()
       _ <- either (const (Left ())) Right (applicationTranscript combined cfg.maxTranscriptBytes cfg.maxMessages)
       pure (text, combined)

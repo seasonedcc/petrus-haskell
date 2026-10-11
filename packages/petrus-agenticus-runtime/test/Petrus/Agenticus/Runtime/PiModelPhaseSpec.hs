@@ -463,6 +463,33 @@ candidateSpecs = do
     it ("test_candidate_rejects_malformed_public_assistant[<lambda>" <> show index <> "]") $
       protocolError "malformed-complete" (throwsLeft (validateFresh (mutation defaultAssistant)))
 
+  -- Not in the reference: a lone surrogate escape the helper wrote reaches
+  -- the validators, whose @_text@ fails its @value.encode()@
+  -- (@divergences/pi.md@, item 6).
+  describe "lone surrogate escapes in the assistant (not in the reference)" $ do
+    let lone = J.surrogateText 0xD800
+        validateEscaped final =
+          validateCandidate
+            "[]"
+            PhaseCandidate {assistant = escaped final, transcript = escaped (Array [userMessage, final])}
+            initial
+            "Continue."
+            "anthropic"
+            "claude-sonnet-4-5"
+        escaped = either (const (error "unencodable fixture")) id . J.dumps J.compact {J.ensureAscii = True}
+    it "keeps one in the text and in a tool call's arguments" $ do
+      let final =
+            assistant
+              "toolUse"
+              (Just [Object [("type", String "text"), ("text", String lone)], toolCall "call" "workspace_read" (Object [("path", String lone)])])
+              []
+      (_, _, proposals, _) <- throwsLeft (validateEscaped final)
+      map (.params) proposals `shouldBe` [Object [("path", String lone)]]
+    it "fails one in the api as malformed-complete" $
+      protocolError "malformed-complete" (throwsLeft (validateEscaped (update "api" (String lone) defaultAssistant)))
+    it "fails one in a tool call's identity as malformed-proposal" $
+      protocolError "malformed-proposal" (throwsLeft (validateEscaped (assistant "toolUse" (Just [toolCall lone "workspace_read" (Object [])]) [])))
+
 -- ---------------------------------------------------------------------------
 -- The adapter
 
