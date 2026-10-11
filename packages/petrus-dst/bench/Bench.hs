@@ -19,6 +19,8 @@ import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Runner
 import Generated
 import Spec.EngineWorlds (AuthorCase (..), authorCases, replayCases, replayFixture)
+import Spec.JoinedWorlds (JoinedCase (..), fixtureBytes, isolated, joinedCases)
+import Petrus.TestSupport.Postgres (lookupPostgresUrl)
 import Spec.Support
 import System.Directory (listDirectory)
 import System.FilePath (takeFileName, (</>))
@@ -66,6 +68,24 @@ authorEngineWorlds = forM authorCases $ \c -> do
   authored <- withSystemTempDirectory "petrus-dst-bench" c.build
   pure (either (error . show) (either (error . T.unpack) id . encodeArtifact) authored)
 
+-- | Replay every joined fixture through a fresh profile in a fresh
+-- isolated database (@isolated_absurd_database@); the replay result bytes.
+replayJoinedFixtures :: ByteString -> IO [Text]
+replayJoinedFixtures server = forM joinedCases $ \c -> do
+  bytes <- fixtureBytes c.file
+  artifact <- either (fail . show) pure (decodeArtifact bytes)
+  outcome <- isolated server $ \dsn -> do
+    registry <- c.registry dsn
+    replay registry artifact
+  pure (canonText (replayJson outcome))
+
+-- | Author every joined world in a fresh isolated database; the artifact
+-- bytes.
+authorJoinedWorlds :: ByteString -> IO [ByteString]
+authorJoinedWorlds server = forM joinedCases $ \c -> do
+  authored <- isolated server c.build
+  pure (either (error . show) (either (error . T.unpack) id . encodeArtifact) authored)
+
 draws :: Int -> Integer
 draws n = go n (either (error . show) id (choiceStreams 1729)) 0
   where
@@ -89,6 +109,7 @@ main = do
       runSpec <- either (fail . show) pure (pProcessRunSpec [] specValue)
       pure (runSpec, textBytes (memberText "progress" child))
     [] -> fail "no queue-story vector"
+  server <- lookupPostgresUrl
   -- force the inputs before measuring
   _ <- pure $! length (encodeAll artifacts)
   defaultMain
@@ -107,4 +128,15 @@ main = do
         [ bench "replay the Engine-world fixtures" $ nfIO replayEngineFixtures
         , bench "author the Engine worlds" $ nfIO authorEngineWorlds
         ]
+    , -- Only with PETRUS_TEST_POSTGRES (a role that may create databases).
+      bgroup
+        "joined"
+        ( case server of
+            Nothing -> []
+            Just url ->
+              [ bench "one isolated database (create, both schemas, drop)" $ nfIO (isolated url (\_ -> pure ()))
+              , bench "replay the 33 joined fixtures" $ nfIO (replayJoinedFixtures url)
+              , bench "author the 33 joined worlds" $ nfIO (authorJoinedWorlds url)
+              ]
+        )
     ]

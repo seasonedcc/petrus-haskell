@@ -1,0 +1,2633 @@
+{
+ "vectors": [
+  {
+   "checker": "petrus.engine.joined-accepted-begin-authority",
+   "name": "test_joined_world.test_joined_accepted_begin_checker_refuses_ack_loss_without_durable_truth.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-accepted-begin-authority",
+    "sequence": 0,
+    "value": {
+     "commit_ack_losses": 1,
+     "durable_tasks": [],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized"
+     ],
+     "transaction_attempts": []
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 0,
+     "ack_losses": 1,
+     "attempts_exact": true,
+     "durable_tasks": 0,
+     "prepare_calls": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-delivery-authority",
+   "name": "test_joined_world.test_joined_delivery_checker_refuses_phantom_acceptance_and_ack_loss.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-delivery-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_deliveries": [
+      {
+       "identity": "event-3",
+       "occurrence": 1,
+       "value": 3
+      }
+     ],
+     "delivery_ack_losses": 0,
+     "delivery_attempts": [
+      {
+       "disposition": "refused_expected",
+       "identity": "event-3",
+       "value": 3
+      }
+     ],
+     "delivery_refusals": 1,
+     "firing_completed": 1,
+     "produced_values": [
+      3
+     ],
+     "transaction_attempts": [
+      {
+       "accepted": false,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ExternalEventDelivered",
+        "FiringBegun"
+       ]
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_acceptances": 0,
+     "accepted_completions": 0,
+     "ack_losses": 0,
+     "canonical_deliveries": [
+      {
+       "identity": "event-3",
+       "occurrence": 1,
+       "value": 3
+      }
+     ],
+     "expected_deliveries": [],
+     "refused_acceptances": 1,
+     "reported_dispositions": [
+      "refused_expected"
+     ],
+     "transactions_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-delivery-authority",
+   "name": "test_joined_world.test_joined_delivery_checker_refuses_phantom_acceptance_and_ack_loss.2",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-delivery-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_deliveries": [],
+     "delivery_ack_losses": 1,
+     "delivery_attempts": [
+      {
+       "disposition": "refused_expected",
+       "identity": "event-3",
+       "value": 3
+      }
+     ],
+     "delivery_refusals": 0,
+     "firing_completed": 0,
+     "produced_values": [],
+     "transaction_attempts": []
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_acceptances": 0,
+     "accepted_completions": 0,
+     "ack_losses": 1,
+     "canonical_deliveries": [],
+     "expected_deliveries": [],
+     "refused_acceptances": 0,
+     "reported_dispositions": [
+      "refused_expected"
+     ],
+     "transactions_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-scoped-drop-authority",
+   "name": "test_joined_world.test_joined_scoped_drop_checkers_reject_phantom_and_unaccepted_ack_loss.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-scoped-drop-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_drops": [
+      {
+       "identity": "stale-draft-3",
+       "scope_generation": 1,
+       "scope_name": "draft",
+       "source": "source",
+       "value": 3
+      }
+     ],
+     "lifecycle_attempts": [
+      {
+       "accepted": true,
+       "phase": "scope_open",
+       "record_types": [
+        "ScopeOpened"
+       ]
+      },
+      {
+       "accepted": true,
+       "phase": "scope_reset",
+       "record_types": [
+        "ScopeReset"
+       ]
+      }
+     ],
+     "lifecycle_records": [
+      {
+       "generation": 1,
+       "kind": "opened",
+       "name": "draft"
+      },
+      {
+       "closed_generation": 1,
+       "kind": "reset",
+       "name": "draft",
+       "opened_generation": 2
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ScopeReset",
+      "ScopedDeliveryDropped"
+     ],
+     "scope_opens": 1,
+     "scope_resets": 1,
+     "scoped_delivery_attempts": [
+      {
+       "disposition": "refused_expected",
+       "identity": "stale-draft-3",
+       "scope_generation": 1,
+       "value": 3
+      }
+     ],
+     "scoped_drop_ack_losses": 0,
+     "scoped_drop_refusals": 1,
+     "transaction_attempts": [
+      {
+       "accepted": false,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ScopedDeliveryDropped"
+       ]
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_drops": 0,
+     "ack_losses": 0,
+     "canonical_drops": 1,
+     "lifecycle_ready": true,
+     "refused_drops": 1,
+     "reported_dispositions": [
+      "refused_expected"
+     ],
+     "transactions_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-accepted-scoped-drop-authority",
+   "name": "test_joined_world.test_joined_scoped_drop_checkers_reject_phantom_and_unaccepted_ack_loss.2",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-accepted-scoped-drop-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_drops": [],
+     "lifecycle_attempts": [
+      {
+       "accepted": true,
+       "phase": "scope_open",
+       "record_types": [
+        "ScopeOpened"
+       ]
+      },
+      {
+       "accepted": true,
+       "phase": "scope_reset",
+       "record_types": [
+        "ScopeReset"
+       ]
+      }
+     ],
+     "lifecycle_records": [
+      {
+       "generation": 1,
+       "kind": "opened",
+       "name": "draft"
+      },
+      {
+       "closed_generation": 1,
+       "kind": "reset",
+       "name": "draft",
+       "opened_generation": 2
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ScopeReset"
+     ],
+     "scope_opens": 1,
+     "scope_resets": 1,
+     "scoped_delivery_attempts": [],
+     "scoped_drop_ack_losses": 1,
+     "scoped_drop_refusals": 0,
+     "transaction_attempts": []
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_drops": 0,
+     "ack_losses": 1,
+     "canonical_drops": 0,
+     "lifecycle_ready": true,
+     "refused_drops": 0,
+     "reported_dispositions": [],
+     "transactions_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-scoped-quarantine-authority",
+   "name": "test_joined_world.test_joined_scoped_quarantine_checkers_reject_phantom_and_unaccepted_ack_loss.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-scoped-quarantine-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_quarantines": [
+      {
+       "identity": "future-draft-3",
+       "scope_generation": 2,
+       "scope_name": "draft",
+       "source": "source",
+       "value": 3
+      }
+     ],
+     "lifecycle_attempts": [
+      {
+       "accepted": true,
+       "phase": "scope_open",
+       "record_types": [
+        "ScopeOpened"
+       ]
+      }
+     ],
+     "lifecycle_records": [
+      {
+       "generation": 1,
+       "kind": "opened",
+       "name": "draft"
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ScopedDeliveryQuarantined"
+     ],
+     "scope_opens": 1,
+     "scoped_delivery_attempts": [
+      {
+       "disposition": "refused_expected",
+       "identity": "future-draft-3",
+       "scope_generation": 2,
+       "value": 3
+      }
+     ],
+     "scoped_quarantine_ack_losses": 0,
+     "scoped_quarantine_refusals": 1,
+     "transaction_attempts": [
+      {
+       "accepted": false,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ScopedDeliveryQuarantined"
+       ]
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_quarantines": 0,
+     "ack_losses": 0,
+     "canonical_quarantines": 1,
+     "lifecycle_ready": true,
+     "refused_quarantines": 1,
+     "reported_dispositions": [
+      "refused_expected"
+     ],
+     "transactions_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-accepted-scoped-quarantine-authority",
+   "name": "test_joined_world.test_joined_scoped_quarantine_checkers_reject_phantom_and_unaccepted_ack_loss.2",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-accepted-scoped-quarantine-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_quarantines": [],
+     "lifecycle_attempts": [
+      {
+       "accepted": true,
+       "phase": "scope_open",
+       "record_types": [
+        "ScopeOpened"
+       ]
+      }
+     ],
+     "lifecycle_records": [
+      {
+       "generation": 1,
+       "kind": "opened",
+       "name": "draft"
+      }
+     ],
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened"
+     ],
+     "scope_opens": 1,
+     "scoped_delivery_attempts": [],
+     "scoped_quarantine_ack_losses": 1,
+     "scoped_quarantine_refusals": 0,
+     "transaction_attempts": []
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_quarantines": 0,
+     "ack_losses": 1,
+     "canonical_quarantines": 0,
+     "lifecycle_ready": true,
+     "refused_quarantines": 0,
+     "reported_dispositions": [],
+     "transactions_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-terminal-authority",
+   "name": "test_joined_world.test_joined_terminal_checker_refuses_a_canonical_terminal_after_refused_transaction.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-terminal-authority",
+    "sequence": 0,
+    "value": {
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "completed"
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted"
+     ],
+     "terminal_refusals": 1,
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": false,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityCompleted"
+       ]
+      }
+     ],
+     "worker_completions": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_projections": 0,
+     "accepted_terminals": 0,
+     "attempts_exact": true,
+     "canonical_projections": 0,
+     "canonical_terminals": 1,
+     "completed_custody": true,
+     "refused_terminals": 1,
+     "tasks_exact": true,
+     "worker_completions": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-failure-authority",
+   "name": "test_joined_world.test_joined_failure_checker_refuses_a_canonical_failure_after_refused_transaction.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-failure-authority",
+    "sequence": 0,
+    "value": {
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "failed"
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityFailed"
+     ],
+     "terminal_refusals": 1,
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": false,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityFailed"
+       ]
+      }
+     ],
+     "worker_failures": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_failures": 0,
+     "accepted_firings_failed": 0,
+     "attempts_exact": true,
+     "canonical_failures": 1,
+     "canonical_firings_failed": 0,
+     "failed_custody": true,
+     "refused_failures": 1,
+     "tasks_exact": true,
+     "worker_failures": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-failure-projection-authority",
+   "name": "test_joined_world.test_joined_failure_projection_checkers_reject_phantom_and_unaccepted_ack_loss.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-failure-projection-authority",
+    "sequence": 0,
+    "value": {
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "failed"
+      }
+     ],
+     "prepare_calls": 1,
+     "projection_refusals": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityFailed",
+      "FiringFailed"
+     ],
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityFailed"
+       ]
+      },
+      {
+       "accepted": false,
+       "dispatch_attempted": false,
+       "record_types": [
+        "FiringFailed"
+       ]
+      }
+     ],
+     "worker_failures": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_failures": 1,
+     "accepted_projections": 0,
+     "attempts_exact": true,
+     "canonical_projections": 1,
+     "failed_custody": true,
+     "fault_count": 1,
+     "refused_projections": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-accepted-failure-projection-authority",
+   "name": "test_joined_world.test_joined_failure_projection_checkers_reject_phantom_and_unaccepted_ack_loss.2",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-accepted-failure-projection-authority",
+    "sequence": 0,
+    "value": {
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "failed"
+      }
+     ],
+     "prepare_calls": 1,
+     "projection_ack_losses": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityFailed"
+     ],
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityFailed"
+       ]
+      }
+     ],
+     "worker_failures": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_failures": 1,
+     "accepted_projections": 0,
+     "attempts_exact": true,
+     "canonical_projections": 0,
+     "failed_custody": true,
+     "fault_count": 1,
+     "refused_projections": 0
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-accepted-failure-authority",
+   "name": "test_joined_world.test_joined_accepted_failure_checker_refuses_ack_loss_without_accepted_failure.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-accepted-failure-authority",
+    "sequence": 0,
+    "value": {
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "failed"
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityFailed"
+     ],
+     "terminal_ack_losses": 1,
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      }
+     ],
+     "worker_failures": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_failures": 0,
+     "accepted_firings_failed": 0,
+     "ack_losses": 1,
+     "attempts_exact": true,
+     "canonical_failures": 1,
+     "canonical_firings_failed": 0,
+     "failed_custody": true,
+     "tasks_exact": true,
+     "worker_failures": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-accepted-terminal-authority",
+   "name": "test_joined_world.test_joined_accepted_terminal_checker_refuses_projection_without_accepted_transaction.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-accepted-terminal-authority",
+    "sequence": 0,
+    "value": {
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "completed"
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "terminal_ack_losses": 1,
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityCompleted"
+       ]
+      }
+     ],
+     "worker_completions": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_projections": 0,
+     "accepted_terminals": 1,
+     "ack_losses": 1,
+     "attempts_exact": true,
+     "canonical_projections": 1,
+     "canonical_terminals": 1,
+     "completed_custody": true,
+     "tasks_exact": true,
+     "worker_completions": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-projection-authority",
+   "name": "test_joined_world.test_joined_projection_checker_refuses_projection_after_refused_transaction.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-projection-authority",
+    "sequence": 0,
+    "value": {
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "completed"
+      }
+     ],
+     "prepare_calls": 1,
+     "projection_refusals": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "FiringCompleted"
+     ],
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityCompleted"
+       ]
+      },
+      {
+       "accepted": false,
+       "dispatch_attempted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "worker_completions": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_projections": 0,
+     "accepted_terminals": 1,
+     "attempts_exact": true,
+     "canonical_projections": 1,
+     "canonical_terminals": 1,
+     "completed_custody": true,
+     "refused_projections": 1,
+     "tasks_exact": true,
+     "worker_completions": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-accepted-projection-authority",
+   "name": "test_joined_world.test_joined_accepted_projection_checker_refuses_ack_loss_without_accepted_projection.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-accepted-projection-authority",
+    "sequence": 0,
+    "value": {
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "completed"
+      }
+     ],
+     "prepare_calls": 1,
+     "projection_ack_losses": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted"
+     ],
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityCompleted"
+       ]
+      }
+     ],
+     "worker_completions": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_projections": 0,
+     "accepted_terminals": 1,
+     "ack_losses": 1,
+     "attempts_exact": false,
+     "canonical_projections": 0,
+     "canonical_terminals": 1,
+     "completed_custody": true,
+     "tasks_exact": true,
+     "worker_completions": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-commit-authority",
+   "name": "test_joined_world.test_joined_commit_checker_refuses_a_phantom_task_after_rollback.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-commit-authority",
+    "sequence": 0,
+    "value": {
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "pending"
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized"
+     ],
+     "transaction_attempts": [
+      {
+       "accepted": false,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_joined_begins": 0,
+     "activity_requested": 0,
+     "candidate_selected": 0,
+     "durable_tasks": 1,
+     "firing_begun": 0,
+     "joined_attempts_whole": true,
+     "prepare_calls": 1,
+     "refused_joined_begins": 1,
+     "tasks_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-reset-refusal-authority",
+   "name": "test_joined_world.test_joined_reset_checker_refuses_a_canonical_fence_after_refused_reset.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-reset-refusal-authority",
+    "sequence": 0,
+    "value": {
+     "cancellation_refusals": 0,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-2",
+       "state": "running"
+      }
+     ],
+     "lifecycle_attempts": [
+      {
+       "accepted": false,
+       "phase": "scope_reset",
+       "record_types": [
+        "ScopeReset"
+       ]
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset"
+     ],
+     "reset_refusals": 1,
+     "scope_opens": 1,
+     "scope_resets": 1,
+     "source_deliveries": 1,
+     "stale_worker_refusals": 0,
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ExternalEventDelivered",
+        "FiringBegun"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      }
+     ],
+     "worker_claims": 1,
+     "worker_completions": 0
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_projections": 0,
+     "accepted_terminals": 0,
+     "attempts_exact": true,
+     "canonical_resets": 1,
+     "lifecycle_exact": true,
+     "reset_refusals": 1,
+     "task_state": "running",
+     "worker_completions": 0
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-open-authority",
+   "name": "test_joined_world.test_joined_open_checker_rejects_phantom_scope_and_ack_loss.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-open-authority",
+    "sequence": 0,
+    "value": {
+     "active_scopes": null,
+     "canonical_scopes": [
+      {
+       "generation": 1,
+       "name": "draft"
+      }
+     ],
+     "drops": 0,
+     "frontier": 3,
+     "lifecycle_attempts": [
+      {
+       "accepted": false,
+       "phase": "scope_open",
+       "record_types": [
+        "ScopeOpened"
+       ]
+      }
+     ],
+     "open_ack_losses": 0,
+     "open_refusals": 1,
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened"
+     ],
+     "scope_opens": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_opens": 0,
+     "ack_losses": 0,
+     "active_scopes": null,
+     "attempts_exact": true,
+     "canonical_scopes": [
+      {
+       "generation": 1,
+       "name": "draft"
+      }
+     ],
+     "live_coherent": true,
+     "refused_opens": 1
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-open-authority",
+   "name": "test_joined_world.test_joined_open_checker_rejects_phantom_scope_and_ack_loss.2",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-open-authority",
+    "sequence": 0,
+    "value": {
+     "active_scopes": null,
+     "canonical_scopes": [],
+     "drops": 0,
+     "frontier": 2,
+     "lifecycle_attempts": [],
+     "open_ack_losses": 1,
+     "open_refusals": 0,
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened"
+     ],
+     "scope_opens": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_opens": 0,
+     "ack_losses": 1,
+     "active_scopes": null,
+     "attempts_exact": true,
+     "canonical_scopes": [],
+     "live_coherent": true,
+     "refused_opens": 0
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-accepted-reset-authority",
+   "name": "test_joined_world.test_joined_accepted_reset_checker_refuses_ack_loss_without_accepted_reset.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-accepted-reset-authority",
+    "sequence": 0,
+    "value": {
+     "cancellation_refusals": 0,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-2",
+       "state": "running"
+      }
+     ],
+     "lifecycle_attempts": [],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested"
+     ],
+     "reset_ack_losses": 1,
+     "reset_refusals": 0,
+     "scope_opens": 1,
+     "scope_resets": 0,
+     "source_deliveries": 1,
+     "stale_worker_refusals": 0,
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ExternalEventDelivered",
+        "FiringBegun"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      }
+     ],
+     "worker_claims": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_cancellations": 0,
+     "accepted_resets": 0,
+     "ack_losses": 1,
+     "attempts_exact": true,
+     "canonical_resets": 0,
+     "lifecycle_exact": true,
+     "stale_worker_refusals": 0,
+     "task_state": "running"
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-cancellation-authority",
+   "name": "test_joined_world.test_joined_cancellation_checker_refuses_a_tombstone_after_refused_only_transaction.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-cancellation-authority",
+    "sequence": 0,
+    "value": {
+     "cancellation_refusals": 1,
+     "drive_calls": 1,
+     "drops": 0,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-2",
+       "state": "cancelled"
+      }
+     ],
+     "frontier": 12,
+     "lifecycle_attempts": [
+      {
+       "accepted": true,
+       "phase": "scope_reset",
+       "record_types": [
+        "ScopeReset"
+       ]
+      },
+      {
+       "accepted": false,
+       "phase": "cancellation",
+       "record_types": []
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset"
+     ],
+     "scope_opens": 1,
+     "scope_resets": 1,
+     "source_deliveries": 1,
+     "stale_worker_refusals": 0,
+     "status": "poisoned",
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ExternalEventDelivered",
+        "FiringBegun",
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      }
+     ],
+     "worker_claims": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_cancellations": 0,
+     "attempts_exact": false,
+     "cancellation_refusals": 1,
+     "canonical_resets": 1,
+     "lifecycle_exact": true,
+     "stale_worker_refusals": 0,
+     "task_state": "cancelled"
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-accepted-cancellation-authority",
+   "name": "test_joined_world.test_joined_accepted_cancellation_checker_refuses_ack_loss_without_accepted_tombstone.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-accepted-cancellation-authority",
+    "sequence": 0,
+    "value": {
+     "cancellation_ack_losses": 1,
+     "cancellation_refusals": 0,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-2",
+       "state": "cancelled"
+      }
+     ],
+     "lifecycle_attempts": [
+      {
+       "accepted": true,
+       "phase": "scope_reset",
+       "record_types": [
+        "ScopeReset"
+       ]
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeReset"
+     ],
+     "scope_opens": 1,
+     "scope_resets": 1,
+     "source_deliveries": 1,
+     "stale_worker_refusals": 0,
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ExternalEventDelivered",
+        "FiringBegun",
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      }
+     ],
+     "worker_claims": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_cancellations": 0,
+     "ack_losses": 1,
+     "attempts_exact": false,
+     "canonical_resets": 1,
+     "lifecycle_exact": false,
+     "stale_worker_refusals": 0,
+     "task_state": "cancelled"
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-creation-authority",
+   "name": "test_joined_creation_world.test_joined_creation_checker_refuses_phantom_instance_and_ack_loss.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-creation-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_instances": [
+      "dst-world-joined-creation"
+     ],
+     "canonical_tokens": [
+      1
+     ],
+     "commit_ack_losses": 0,
+     "commit_refusals": 1,
+     "creation_attempts": [
+      {
+       "disposition": "refused_expected",
+       "frontier": 0
+      }
+     ],
+     "drops": 0,
+     "engine_present": false,
+     "engine_record_types": [],
+     "engine_tokens": [],
+     "frontier": 2,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized"
+     ],
+     "transaction_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "InstanceCreated",
+        "TokensInitialized"
+       ]
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_transactions": 0,
+     "ack_losses": 0,
+     "canonical_instances": [
+      "dst-world-joined-creation"
+     ],
+     "commit_refusals": 1,
+     "engine_coherent": true,
+     "refused_transactions": 1,
+     "transactions_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-creation-authority",
+   "name": "test_joined_creation_world.test_joined_creation_checker_refuses_phantom_instance_and_ack_loss.2",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-creation-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_instances": [],
+     "canonical_tokens": [],
+     "commit_ack_losses": 1,
+     "commit_refusals": 0,
+     "creation_attempts": [
+      {
+       "disposition": "refused_expected",
+       "frontier": 0
+      }
+     ],
+     "drops": 0,
+     "engine_present": false,
+     "engine_record_types": [],
+     "engine_tokens": [],
+     "frontier": 0,
+     "record_types": [],
+     "transaction_attempts": []
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_transactions": 0,
+     "ack_losses": 1,
+     "canonical_instances": [],
+     "commit_refusals": 0,
+     "engine_coherent": true,
+     "refused_transactions": 0,
+     "transactions_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-creation-authority",
+   "name": "test_joined_creation_world.test_joined_creation_checker_refuses_phantom_instance_and_ack_loss.3",
+   "observation": {
+    "generation": 2,
+    "instant": 0,
+    "name": "engine.joined-creation-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_instances": [
+      "dst-world-joined-creation"
+     ],
+     "canonical_tokens": [
+      1
+     ],
+     "commit_ack_losses": 1,
+     "commit_refusals": 0,
+     "creation_attempts": [
+      {
+       "disposition": "refused_expected",
+       "frontier": 2
+      }
+     ],
+     "drops": 1,
+     "engine_present": false,
+     "engine_record_types": [],
+     "engine_tokens": [],
+     "frontier": 2,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized"
+     ],
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "record_types": [
+        "InstanceCreated",
+        "TokensInitialized"
+       ]
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_transactions": 1,
+     "ack_losses": 1,
+     "canonical_instances": [
+      "dst-world-joined-creation"
+     ],
+     "commit_refusals": 0,
+     "engine_coherent": false,
+     "refused_transactions": 0,
+     "transactions_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-source-creation-authority",
+   "name": "test_joined_creation_world.test_joined_source_creation_checker_rejects_phantom_registration_and_ack_loss.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-source-creation-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_instances": [
+      "dst-world-joined-source-creation"
+     ],
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "occurrence": null,
+       "source": "source"
+      }
+     ],
+     "canonical_tokens": [],
+     "commit_ack_losses": 0,
+     "commit_refusals": 1,
+     "creation_attempts": [
+      {
+       "disposition": "refused_expected",
+       "frontier": 0
+      }
+     ],
+     "drops": 0,
+     "engine_armed": [],
+     "engine_present": false,
+     "engine_record_types": [],
+     "engine_status": null,
+     "engine_tokens": [],
+     "frontier": 2,
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened"
+     ],
+     "transaction_attempts": [
+      {
+       "accepted": false,
+       "record_types": [
+        "InstanceCreated",
+        "DeliveryRegistrationOpened"
+       ]
+      }
+     ]
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_transactions": 0,
+     "ack_losses": 0,
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "occurrence": null,
+       "source": "source"
+      }
+     ],
+     "commit_refusals": 1,
+     "engine_coherent": true,
+     "refused_transactions": 1,
+     "transactions_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-source-creation-authority",
+   "name": "test_joined_creation_world.test_joined_source_creation_checker_rejects_phantom_registration_and_ack_loss.2",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-source-creation-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_instances": [],
+     "canonical_registrations": [],
+     "canonical_tokens": [],
+     "commit_ack_losses": 1,
+     "commit_refusals": 0,
+     "creation_attempts": [
+      {
+       "disposition": "refused_expected",
+       "frontier": 0
+      }
+     ],
+     "drops": 0,
+     "engine_armed": [],
+     "engine_present": false,
+     "engine_record_types": [],
+     "engine_status": null,
+     "engine_tokens": [],
+     "frontier": 0,
+     "record_types": [],
+     "transaction_attempts": []
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_transactions": 0,
+     "ack_losses": 1,
+     "canonical_registrations": [],
+     "commit_refusals": 0,
+     "engine_coherent": true,
+     "refused_transactions": 0,
+     "transactions_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-registration-projection-authority",
+   "name": "test_joined_registration_world.test_joined_registration_checker_rejects_phantom_effects_ack_loss_and_wrong_reload.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-registration-projection-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "default",
+       "kind": "closed",
+       "occurrence": 1,
+       "source": "source"
+      },
+      {
+       "key": "replacement",
+       "kind": "opened",
+       "occurrence": 1,
+       "source": "source"
+      }
+     ],
+     "drive_calls": 2,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "completed"
+      }
+     ],
+     "engine_armed": null,
+     "frontier": 12,
+     "prepare_calls": 1,
+     "projection_ack_losses": 0,
+     "projection_refusals": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "DeliveryRegistrationClosed",
+      "DeliveryRegistrationOpened",
+      "FiringCompleted"
+     ],
+     "status": "poisoned",
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityCompleted"
+       ]
+      },
+      {
+       "accepted": false,
+       "dispatch_attempted": false,
+       "record_types": [
+        "TokensProduced",
+        "DeliveryRegistrationClosed",
+        "DeliveryRegistrationOpened",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "worker_completions": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_projections": 0,
+     "ack_losses": 0,
+     "attempts_exact": true,
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "default",
+       "kind": "closed",
+       "occurrence": 1,
+       "source": "source"
+      },
+      {
+       "key": "replacement",
+       "kind": "opened",
+       "occurrence": 1,
+       "source": "source"
+      }
+     ],
+     "engine_coherent": true,
+     "refused_projections": 1,
+     "tasks_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-registration-projection-authority",
+   "name": "test_joined_registration_world.test_joined_registration_checker_rejects_phantom_effects_ack_loss_and_wrong_reload.2",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-registration-projection-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      }
+     ],
+     "drive_calls": 2,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "completed"
+      }
+     ],
+     "engine_armed": null,
+     "frontier": 8,
+     "prepare_calls": 1,
+     "projection_ack_losses": 1,
+     "projection_refusals": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted"
+     ],
+     "status": "poisoned",
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityCompleted"
+       ]
+      },
+      {
+       "accepted": false,
+       "dispatch_attempted": false,
+       "record_types": [
+        "TokensProduced",
+        "DeliveryRegistrationClosed",
+        "DeliveryRegistrationOpened",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "worker_completions": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_projections": 0,
+     "ack_losses": 1,
+     "attempts_exact": true,
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      }
+     ],
+     "engine_coherent": true,
+     "refused_projections": 1,
+     "tasks_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-registration-projection-authority",
+   "name": "test_joined_registration_world.test_joined_registration_checker_rejects_phantom_effects_ack_loss_and_wrong_reload.3",
+   "observation": {
+    "generation": 2,
+    "instant": 0,
+    "name": "engine.joined-registration-projection-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "default",
+       "kind": "closed",
+       "occurrence": 1,
+       "source": "source"
+      },
+      {
+       "key": "replacement",
+       "kind": "opened",
+       "occurrence": 1,
+       "source": "source"
+      }
+     ],
+     "drive_calls": 2,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "completed"
+      }
+     ],
+     "engine_armed": [
+      {
+       "key": "default",
+       "source": "source"
+      }
+     ],
+     "frontier": 12,
+     "prepare_calls": 1,
+     "projection_ack_losses": 1,
+     "projection_refusals": 0,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "DeliveryRegistrationClosed",
+      "DeliveryRegistrationOpened",
+      "FiringCompleted"
+     ],
+     "status": "awaiting",
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "TokensProduced",
+        "DeliveryRegistrationClosed",
+        "DeliveryRegistrationOpened",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "worker_completions": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_projections": 1,
+     "ack_losses": 1,
+     "attempts_exact": true,
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "default",
+       "kind": "closed",
+       "occurrence": 1,
+       "source": "source"
+      },
+      {
+       "key": "replacement",
+       "kind": "opened",
+       "occurrence": 1,
+       "source": "source"
+      }
+     ],
+     "engine_coherent": false,
+     "refused_projections": 0,
+     "tasks_exact": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-seal-authority",
+   "name": "test_joined_seal_world.test_joined_seal_checker_rejects_phantom_close_ack_loss_and_armed_reload.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-seal-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "subscription",
+       "kind": "opened",
+       "occurrence": 1,
+       "source": "source"
+      },
+      {
+       "key": "default",
+       "kind": "closed",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "subscription",
+       "kind": "closed",
+       "occurrence": null,
+       "source": "source"
+      }
+     ],
+     "drive_calls": 2,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "completed"
+      }
+     ],
+     "engine_armed": null,
+     "frontier": 13,
+     "lifecycle_attempts": [
+      {
+       "accepted": false,
+       "phase": "source_seal",
+       "record_types": [
+        "DeliveryRegistrationClosed",
+        "DeliveryRegistrationClosed"
+       ]
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "DeliveryRegistrationOpened",
+      "FiringCompleted",
+      "DeliveryRegistrationClosed",
+      "DeliveryRegistrationClosed"
+     ],
+     "seal_ack_losses": 0,
+     "seal_calls": 1,
+     "seal_refusals": 1,
+     "status": "poisoned",
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "TokensProduced",
+        "DeliveryRegistrationOpened",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "worker_completions": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_seals": 0,
+     "ack_losses": 0,
+     "attempts_exact": true,
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "subscription",
+       "kind": "opened",
+       "occurrence": 1,
+       "source": "source"
+      },
+      {
+       "key": "default",
+       "kind": "closed",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "subscription",
+       "kind": "closed",
+       "occurrence": null,
+       "source": "source"
+      }
+     ],
+     "engine_coherent": true,
+     "lifecycle_exact": true,
+     "refused_seals": 1,
+     "tasks_exact": true,
+     "terminal_coherent": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-seal-authority",
+   "name": "test_joined_seal_world.test_joined_seal_checker_rejects_phantom_close_ack_loss_and_armed_reload.2",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-seal-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "subscription",
+       "kind": "opened",
+       "occurrence": 1,
+       "source": "source"
+      }
+     ],
+     "drive_calls": 2,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "completed"
+      }
+     ],
+     "engine_armed": null,
+     "frontier": 11,
+     "lifecycle_attempts": [
+      {
+       "accepted": false,
+       "phase": "source_seal",
+       "record_types": [
+        "DeliveryRegistrationClosed",
+        "DeliveryRegistrationClosed"
+       ]
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "DeliveryRegistrationOpened",
+      "FiringCompleted"
+     ],
+     "seal_ack_losses": 1,
+     "seal_calls": 1,
+     "seal_refusals": 1,
+     "status": "poisoned",
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "TokensProduced",
+        "DeliveryRegistrationOpened",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "worker_completions": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_seals": 0,
+     "ack_losses": 1,
+     "attempts_exact": true,
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "subscription",
+       "kind": "opened",
+       "occurrence": 1,
+       "source": "source"
+      }
+     ],
+     "engine_coherent": true,
+     "lifecycle_exact": true,
+     "refused_seals": 1,
+     "tasks_exact": true,
+     "terminal_coherent": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-seal-authority",
+   "name": "test_joined_seal_world.test_joined_seal_checker_rejects_phantom_close_ack_loss_and_armed_reload.3",
+   "observation": {
+    "generation": 2,
+    "instant": 0,
+    "name": "engine.joined-seal-authority",
+    "sequence": 0,
+    "value": {
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "subscription",
+       "kind": "opened",
+       "occurrence": 1,
+       "source": "source"
+      },
+      {
+       "key": "default",
+       "kind": "closed",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "subscription",
+       "kind": "closed",
+       "occurrence": null,
+       "source": "source"
+      }
+     ],
+     "drive_calls": 2,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-1",
+       "state": "completed"
+      }
+     ],
+     "engine_armed": [
+      {
+       "key": "default",
+       "source": "source"
+      },
+      {
+       "key": "subscription",
+       "source": "source"
+      }
+     ],
+     "frontier": 13,
+     "lifecycle_attempts": [
+      {
+       "accepted": true,
+       "phase": "source_seal",
+       "record_types": [
+        "DeliveryRegistrationClosed",
+        "DeliveryRegistrationClosed"
+       ]
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "TokensInitialized",
+      "DeliveryRegistrationOpened",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ActivityCompleted",
+      "TokensProduced",
+      "DeliveryRegistrationOpened",
+      "FiringCompleted",
+      "DeliveryRegistrationClosed",
+      "DeliveryRegistrationClosed"
+     ],
+     "seal_ack_losses": 1,
+     "seal_calls": 1,
+     "seal_refusals": 0,
+     "status": "terminated",
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ActivityCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "TokensProduced",
+        "DeliveryRegistrationOpened",
+        "FiringCompleted"
+       ]
+      }
+     ],
+     "worker_completions": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_seals": 1,
+     "ack_losses": 1,
+     "attempts_exact": true,
+     "canonical_registrations": [
+      {
+       "key": "default",
+       "kind": "opened",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "subscription",
+       "kind": "opened",
+       "occurrence": 1,
+       "source": "source"
+      },
+      {
+       "key": "default",
+       "kind": "closed",
+       "occurrence": null,
+       "source": "source"
+      },
+      {
+       "key": "subscription",
+       "kind": "closed",
+       "occurrence": null,
+       "source": "source"
+      }
+     ],
+     "engine_coherent": false,
+     "lifecycle_exact": true,
+     "refused_seals": 0,
+     "tasks_exact": true,
+     "terminal_coherent": true
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-close-refusal-authority",
+   "name": "extra.close-from.test_joined_world.test_joined_reset_checker_refuses_a_canonical_fence_after_refused_reset.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-reset-refusal-authority",
+    "sequence": 0,
+    "value": {
+     "cancellation_refusals": 0,
+     "close_refusals": 1,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-2",
+       "state": "running"
+      }
+     ],
+     "lifecycle_attempts": [
+      {
+       "accepted": false,
+       "phase": "scope_close",
+       "record_types": [
+        "ScopeClosed"
+       ]
+      }
+     ],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested",
+      "ScopeClosed"
+     ],
+     "scope_closes": 1,
+     "scope_opens": 1,
+     "source_deliveries": 1,
+     "stale_worker_refusals": 0,
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ExternalEventDelivered",
+        "FiringBegun"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      }
+     ],
+     "worker_claims": 1,
+     "worker_completions": 0
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_projections": 0,
+     "accepted_terminals": 0,
+     "attempts_exact": true,
+     "canonical_closes": 1,
+     "close_refusals": 1,
+     "lifecycle_exact": true,
+     "task_state": "running",
+     "worker_completions": 0
+    },
+    "passed": false
+   }
+  },
+  {
+   "checker": "petrus.engine.joined-accepted-close-authority",
+   "name": "extra.close-from.test_joined_world.test_joined_accepted_reset_checker_refuses_ack_loss_without_accepted_reset.1",
+   "observation": {
+    "generation": 1,
+    "instant": 0,
+    "name": "engine.joined-accepted-reset-authority",
+    "sequence": 0,
+    "value": {
+     "cancellation_refusals": 0,
+     "close_ack_losses": 1,
+     "close_refusals": 0,
+     "durable_tasks": [
+      {
+       "idempotency": "dst-world-joined-begin-refusal:occurrence-2",
+       "state": "running"
+      }
+     ],
+     "lifecycle_attempts": [],
+     "prepare_calls": 1,
+     "record_types": [
+      "InstanceCreated",
+      "DeliveryRegistrationOpened",
+      "ScopeOpened",
+      "ExternalEventDelivered",
+      "FiringBegun",
+      "TokensProduced",
+      "FiringCompleted",
+      "CandidateSelected",
+      "FiringBegun",
+      "TokensConsumed",
+      "ActivityRequested"
+     ],
+     "scope_closes": 0,
+     "scope_opens": 1,
+     "source_deliveries": 1,
+     "stale_worker_refusals": 0,
+     "transaction_attempts": [
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "ExternalEventDelivered",
+        "FiringBegun"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": false,
+       "record_types": [
+        "TokensProduced",
+        "FiringCompleted"
+       ]
+      },
+      {
+       "accepted": true,
+       "dispatch_attempted": true,
+       "record_types": [
+        "CandidateSelected",
+        "FiringBegun",
+        "TokensConsumed",
+        "ActivityRequested"
+       ]
+      }
+     ],
+     "worker_claims": 1
+    }
+   },
+   "result": {
+    "detail": {
+     "accepted_begins": 1,
+     "accepted_cancellations": 0,
+     "accepted_closes": 0,
+     "ack_losses": 1,
+     "attempts_exact": true,
+     "canonical_closes": 0,
+     "lifecycle_exact": true,
+     "stale_worker_refusals": 0,
+     "task_state": "running"
+    },
+    "passed": false
+   }
+  }
+ ]
+}

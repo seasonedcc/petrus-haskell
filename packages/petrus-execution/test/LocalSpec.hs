@@ -15,14 +15,14 @@ import Data.Text qualified as T
 import GHC.Clock (getMonotonicTime)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
-import Petrus.Motus.Execution.Internal.Process (RunOutcome (..), runCaptured, spawnSpec)
+import Petrus.Motus.Execution.Internal.Process (RunOutcome (..), communicate, pollExit, runCaptured, runningPid, spawnCaptured, spawnSpec, waitExitWithin)
 import Petrus.Motus.Execution.Providers.Local
 import Support
 import System.Directory
 import System.Environment (setEnv, unsetEnv)
 import System.Posix.Files (createSymbolicLink, removeLink)
 import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, openFd)
-import System.Posix.Signals (Handler (Ignore), installHandler, openEndedPipe)
+import System.Posix.Signals (Handler (Ignore), installHandler, openEndedPipe, sigKILL, signalProcess)
 import System.Posix.Types (Fd (..))
 import System.Posix.Process (getProcessID)
 import Test.Hspec
@@ -255,6 +255,36 @@ spec = do
         bracket (installHandler openEndedPipe Ignore Nothing) (\previous -> installHandler openEndedPipe previous Nothing) $ \_ ->
           runCaptured (spawnSpec ["/bin/sh", "-c", "yes | head -c 4"]) 5
       (outcomeCode outcome, outcomeStdout outcome, outcomeStderr outcome) `shouldBe` (0, "y\ny\n", "")
+
+    it "wakes a waiter as soon as the child exits, reaping it once" $ do
+      running <- spawnCaptured (spawnSpec ["/bin/sh", "-c", "sleep 0.2; exit 7"])
+      start <- getMonotonicTime
+      code <- waitExitWithin running (Just 5)
+      elapsed <- subtract start <$> getMonotonicTime
+      code `shouldBe` Just 7
+      elapsed `shouldSatisfy` (< 1)
+      -- The status is cached: later polls and waits answer the same code.
+      pollExit running `shouldReturn` Just 7
+      waitExitWithin running Nothing `shouldReturn` Just 7
+
+    it "answers Nothing at the limit and still sees a later exit and signal" $ do
+      running <- spawnCaptured (spawnSpec ["/bin/sh", "-c", "sleep 10"])
+      start <- getMonotonicTime
+      waitExitWithin running (Just 0.1) `shouldReturn` Nothing
+      waitExitWithin running (Just 0) `shouldReturn` Nothing
+      elapsed <- subtract start <$> getMonotonicTime
+      elapsed `shouldSatisfy` (\e -> e >= 0.1 && e < 2)
+      signalProcess sigKILL (runningPid running)
+      waitExitWithin running Nothing `shouldReturn` Just (-9)
+      _ <- communicate running
+      pollExit running `shouldReturn` Just (-9)
+
+    it "lets concurrent waiters share one exit" $ do
+      running <- spawnCaptured (spawnSpec ["/bin/sh", "-c", "sleep 0.1; exit 3"])
+      results <- newEmptyMVar
+      mapM_ (\_ -> forkIO (waitExitWithin running (Just 5) >>= putMVar results)) [1 :: Int .. 4]
+      codes <- mapM (const (takeMVar results)) [1 :: Int .. 4]
+      codes `shouldBe` replicate 4 (Just 3)
 
   describe "test_private_file_transfer" $ do
     it "test_local_private_file_full_custody_route_is_bounded_and_workspace_free" $ withTempDir $ \tmp -> do

@@ -1,0 +1,26 @@
+petrus-motus-absurd
+Copyright 2026 Seasoned
+
+This package is an independent Haskell implementation that reproduces the
+observable behaviour of the pinned Petrus Python reference (see UPSTREAM.md
+at the repository root). Its SQL statements, task payload spelling, failure
+reason shape, and error messages are reproduced from that reference so that
+both implementations share one Absurd schema and one set of queues. The
+driver scripts in test/interop and bench run the reference itself from the
+pinned upstream virtual environment.
+
+Petrus
+  Copyright Seasoned
+  Licensed under the Apache License, Version 2.0
+
+Absurd 0.4.0 (absurd_schema/absurd-0.4.0.sql is the release's sql/absurd.sql,
+vendored verbatim and verified by its sha256 at every apply)
+  Copyright Earendil Works
+  Licensed under the Apache License, Version 2.0
+  https://github.com/earendil-works/absurd
+
+psycopg 3 (driven by the reference; its transaction and notification
+semantics are reproduced through petrus-postgres)
+  Copyright The Psycopg Team
+  Licensed under the GNU Lesser General Public License v3.0
+  https://www.psycopg.org

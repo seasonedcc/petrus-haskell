@@ -156,11 +156,13 @@ cd upstream/petrus
 
 See `bench/results-pi.md`:
 
-- Strict frame decoding is 4.5 times faster than the reference.
-- The SQLite ledger cycle is 1.1 times faster.
-- Session validation and the fingerprint are on par.
-- `start`-frame encoding is half the reference's speed, because of
-  `petrus-json`'s encoder.
+- Strict frame decoding is 5.0 times faster than the reference.
+- Session validation is 2.7 times faster, and the fingerprint 2.8 times.
+- `start`-frame encoding is 2.4 times faster.
+- The SQLite ledger cycle is 1.2 times faster.
+
+These are medians of five interleaved rounds. Haskell was faster in every
+round of every row.
 
 ## `tests/petrus/agenticus/runtime/test_pi_model_phase.py` (25 functions, 45 cases)
 

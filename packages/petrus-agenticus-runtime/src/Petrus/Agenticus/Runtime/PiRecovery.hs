@@ -64,6 +64,7 @@ import Data.Text qualified as T
 import Foreign.C.Error (eACCES, eAGAIN, eWOULDBLOCK, getErrno)
 import Foreign.C.Types (CInt (..))
 import Numeric (showHex)
+import Petrus.Json.Repr (pythonReprFloat)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.PyRepr (pyStrRepr)
 import Petrus.Agenticus.Internal.Sqlite
@@ -486,7 +487,7 @@ pyStr :: SqlValue -> Text
 pyStr = \case
   SQLText t -> t
   SQLInteger n -> T.pack (show n)
-  SQLFloat x -> T.pack (show x)
+  SQLFloat x -> T.pack (pythonReprFloat x)
   SQLNull -> "None"
   SQLBlob b -> pyBytesRepr b
 

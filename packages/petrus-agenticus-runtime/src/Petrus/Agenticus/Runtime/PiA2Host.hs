@@ -224,6 +224,7 @@ import Petrus.Agenticus.Thread.Identity (EpisodeId, TurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
+import Petrus.Json.Repr (pythonReprFloat)
 import Petrus.Motus.Execution
   ( Capability
   , EnvironmentProvider (..)
@@ -897,7 +898,7 @@ columnText :: SqlValue -> Text
 columnText = \case
   SQLText t -> t
   SQLInteger n -> T.pack (show n)
-  SQLFloat x -> T.pack (show x)
+  SQLFloat x -> T.pack (pythonReprFloat x)
   SQLBlob b -> TE.decodeUtf8Lenient b
   SQLNull -> "None"
 

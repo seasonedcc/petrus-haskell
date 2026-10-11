@@ -1,3 +1,5 @@
+{-# LANGUAGE MagicHash #-}
+
 -- | A serializer that reproduces CPython's @json.dumps@ byte for byte.
 --
 -- Every Petrus wire format is defined by the reference implementation's
@@ -24,15 +26,19 @@ module Petrus.Json.Encode
   , encodeErrorMessage
   ) where
 
-import Control.Exception (Exception, evaluate, throw, try)
+import Control.Exception (Exception, throw, throwIO, try)
+import Control.Monad (when)
 import Control.Monad.ST (stToIO)
 import Data.Bits (shiftR, (.&.))
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as B
+import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Internal qualified as BI
 import Data.ByteString.Unsafe qualified as BU
-import Data.Char (intToDigit, ord)
-import Data.List (sortOn)
+import Data.Char (ord)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.List (sortBy)
+import Data.Ord (comparing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Array qualified as TA
@@ -40,14 +46,19 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe qualified as TU
 import Data.Word (Word8)
+import Foreign.ForeignPtr (ForeignPtr)
+import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
 import Foreign.Marshal.Utils (copyBytes, fillBytes)
-import Foreign.Ptr (Ptr, castPtr, plusPtr)
+import Foreign.Ptr (Ptr, castPtr, minusPtr, plusPtr)
 import Foreign.Storable (pokeByteOff)
+import GHC.Exts (Int (I#))
+import GHC.ForeignPtr (unsafeWithForeignPtr)
 import GHC.Num (Integer (IS))
-import Numeric (floatToDigits, showHex)
+import Numeric (showHex)
+import Petrus.Json.Float (floatReprBuilder, maxFloatReprLength, pythonFloatRepr, writeFloatRepr)
 import Petrus.Json.Limits (defaultNestingLimit, intReprDigitsError, maxIntStrDigits)
 import Petrus.Json.Value
-import System.IO.Unsafe (unsafePerformIO)
+import System.IO.Unsafe (unsafeDupablePerformIO)
 
 -- | The subset of @json.dumps@ keyword arguments Petrus uses.
 data EncodeOptions = EncodeOptions
@@ -124,26 +135,16 @@ encodeErrorMessage = \case
 
 -- | Serialize to UTF-8 bytes.
 --
--- The document is measured exactly ('sized') and then written into one
--- buffer of that size ('written'); 'dumpsBuilder' is the streaming
--- equivalent and spells the same bytes. The measuring pass also checks
--- every value and abandons at the first refusal, so an accepted document is
--- walked only to measure and to write. A refused one then pays for the
--- search in writer order ('firstProblem'), which sorts keys under
--- 'sortKeys', so both entry points report the same refusal.
+-- One pass writes the document into a growing buffer ('written'), so every
+-- value is visited once and every string is scanned once; 'dumpsBuilder' is
+-- the streaming equivalent and spells the same bytes. The writer refuses as
+-- it goes, at the first value the options refuse in writer order (a
+-- container before its items, keys sorted under 'sortKeys'), which is the
+-- refusal 'dumpsBuilder' reports too.
 dumps :: EncodeOptions -> Json -> Either EncodeError BS.ByteString
-dumps options value = case measured layout value of
-  Left problem -> Left (maybe problem id (firstProblem options 0 value))
-  Right size -> Right (BI.unsafeCreate size (\pointer -> () <$ written layout pointer 0 0 value))
-  where
-    layout = layoutOf options
-
--- | The exact size of a value's spelling, or the refusal 'sized' met first.
-measured :: Layout -> Json -> Either EncodeError Int
-measured layout value =
-  unsafePerformIO $
-    either (\(Refused problem) -> Left problem) Right <$> try (evaluate (sized layout 0 value))
-{-# NOINLINE measured #-}
+dumps options value =
+  unsafeDupablePerformIO $
+    either (\(Refused problem) -> Left problem) Right <$> try (direct (layoutOf options) value)
 
 -- | Serialize to text.
 dumpsText :: EncodeOptions -> Json -> Either EncodeError Text
@@ -208,7 +209,7 @@ tooManyDigits limit i
   | otherwise = abs i >= 10 ^ max 0 limit
 
 ordered :: EncodeOptions -> [(Text, Json)] -> [(Text, Json)]
-ordered options members = if sortKeys options then sortOn fst members else members
+ordered options members = if sortKeys options then sortBy (comparing fst) members else members
 
 -- | The writer: a plain 'B.Builder' fold with no 'Either' threaded through
 -- it. It throws 'Refused' (caught by 'dumps') at the first value the
@@ -266,7 +267,7 @@ writer options = go 0
     floatB d
       | isNaN d = B.string7 "NaN"
       | isInfinite d = B.string7 (if d > 0 then "Infinity" else "-Infinity")
-      | otherwise = B.string7 (pythonFloatRepr d)
+      | otherwise = floatReprBuilder d
 
 -- * Direct writer --------------------------------------------------------------
 
@@ -297,77 +298,105 @@ layoutOf options =
     , layoutDepthLimit = nestingLimit options
     }
 
+-- | The output buffer and its capacity. It only grows, and every write
+-- first 'reserve's its room, so no pointer outlives the buffer it points
+-- into.
+data Buffer = Buffer {-# UNPACK #-} !(ForeignPtr Word8) {-# UNPACK #-} !Int
+
+-- | Write a whole document; answer exactly its bytes.
+direct :: Layout -> Json -> IO BS.ByteString
+direct layout value = do
+  first <- BI.mallocByteString initialCapacity
+  ref <- newIORef (Buffer first initialCapacity)
+  end <- written layout ref 0 0 value
+  Buffer final capacity <- readIORef ref
+  -- Keep the growth slack out of long-lived values.
+  if 4 * (capacity - end) > capacity
+    then BI.create end (\target -> unsafeWithForeignPtr final (\source -> copyBytes target source end))
+    else pure (BI.BS final end)
+
+initialCapacity :: Int
+initialCapacity = 2000
+
+-- | The base of a buffer with room for @size@ more bytes at @offset@.
+reserve :: IORef Buffer -> Int -> Int -> IO (Ptr Word8)
+reserve ref offset size = do
+  Buffer buffer capacity <- readIORef ref
+  if offset + size <= capacity
+    then pure (unsafeForeignPtrToPtr buffer)
+    else grow ref offset (offset + size)
+{-# INLINE reserve #-}
+
+grow :: IORef Buffer -> Int -> Int -> IO (Ptr Word8)
+grow ref used needed = do
+  Buffer old capacity <- readIORef ref
+  let capacity' = max needed (2 * capacity)
+  new <- BI.mallocByteString capacity'
+  unsafeWithForeignPtr new $ \target -> unsafeWithForeignPtr old $ \source -> copyBytes target source used
+  writeIORef ref (Buffer new capacity')
+  pure (unsafeForeignPtrToPtr new)
+{-# NOINLINE grow #-}
+
+-- | Members in writer order: by key under 'sortKeys' (stably, as
+-- @sorted(dict.items())@ on distinct keys), skipping the sort when they
+-- already are.
 orderedMembers :: Layout -> [(Text, Json)] -> [(Text, Json)]
-orderedMembers layout members = if layoutSorted layout then sortOn fst members else members
-
-newlineSize :: Layout -> Int -> Int
-newlineSize layout level = maybe 0 (\width -> 1 + width * level) (layoutIndent layout)
-
--- | The exact length of a value's spelling at a nesting level. It throws
--- 'Refused' (caught by 'measured') at the first value the options refuse,
--- in document order.
-sized :: Layout -> Int -> Json -> Int
-sized layout level = \case
-  Null -> 4
-  Bool True -> 4
-  Bool False -> 5
-  Int i
-    | Just limit <- layoutDigitLimit layout, tooManyDigits limit i -> throw (Refused (IntegerTooLarge limit))
-    | otherwise -> integerSize i
-  Float d
-    | not (layoutAllowNan layout), isNaN d || isInfinite d -> throw (Refused (NonFiniteNumber d))
-    | otherwise -> length (floatSpelling d)
-  String s -> stringSize (layoutAscii layout) s
-  Array [] -> 2
-  Object [] -> 2
-  Array items -> enter `seq` containerSize (map (sized layout (level + 1)) items)
-  Object members ->
-    enter `seq` containerSize
-      [ stringSize (layoutAscii layout) key + BS.length (layoutKeySep layout) + sized layout (level + 1) item
-      | (key, item) <- members
-      ]
+orderedMembers layout members
+  | layoutSorted layout, not (ascending members) = sortBy (comparing fst) members
+  | otherwise = members
   where
-    enter = case layoutDepthLimit layout of
-      Just limit | level >= limit -> throw (Refused (NestingTooDeep limit))
-      _ -> ()
-    containerSize sizes =
-      let count = length sizes
-       in 2
-            + sum sizes
-            + (count - 1) * BS.length (layoutItemSep layout)
-            + count * newlineSize layout (level + 1)
-            + newlineSize layout level
+    ascending = \case
+      (a, _) : rest@((b, _) : _) -> a <= b && ascending rest
+      _ -> True
 
--- | Write a value's spelling at an offset; answer the offset after it.
-written :: Layout -> Ptr Word8 -> Int -> Int -> Json -> IO Int
-written layout pointer = go
+-- | Write a value's spelling at an offset; answer the offset after it. It
+-- throws 'Refused' (caught by 'dumps') at the first value the options
+-- refuse, in writer order.
+written :: Layout -> IORef Buffer -> Int -> Int -> Json -> IO Int
+written layout ref = go
   where
+    asciiOnly = layoutAscii layout
+    go :: Int -> Int -> Json -> IO Int
     go level offset = \case
-      Null -> ascii offset "null"
-      Bool True -> ascii offset "true"
-      Bool False -> ascii offset "false"
-      Int i -> writeInteger pointer offset i
-      Float d -> ascii offset (floatSpelling d)
-      String s -> writeString (layoutAscii layout) pointer offset s
-      Array [] -> ascii offset "[]"
-      Object [] -> ascii offset "{}"
-      Array items -> container level offset 0x5B 0x5D (go (level + 1)) items
-      Object members -> container level offset 0x7B 0x7D member (orderedMembers layout members)
+      Null -> four offset 0x6E 0x75 0x6C 0x6C
+      Bool True -> four offset 0x74 0x72 0x75 0x65
+      Bool False -> do
+        end <- four offset 0x66 0x61 0x6C 0x73
+        byte end 0x65
+      Int i
+        | Just limit <- layoutDigitLimit layout, tooManyDigits limit i -> throwIO (Refused (IntegerTooLarge limit))
+        | otherwise -> writeInteger ref offset i
+      Float d
+        | isNaN d || isInfinite d ->
+            if layoutAllowNan layout
+              then bytes offset (if isNaN d then "NaN" else if d > 0 then "Infinity" else "-Infinity")
+              else throwIO (Refused (NonFiniteNumber d))
+        | otherwise -> do
+            base <- reserve ref offset maxFloatReprLength
+            end <- writeFloatRepr d (base `plusPtr` offset)
+            pure (end `minusPtr` base)
+      String s -> writeString asciiOnly ref offset s
+      Array [] -> two offset 0x5B 0x5D
+      Object [] -> two offset 0x7B 0x7D
+      Array items -> enter level >> container level offset 0x5B 0x5D (go (level + 1)) items
+      Object members -> enter level >> container level offset 0x7B 0x7D member (orderedMembers layout members)
         where
           member at (key, item) = do
-            afterKey <- writeString (layoutAscii layout) pointer at key
+            afterKey <- writeString asciiOnly ref at key
             afterSep <- bytes afterKey (layoutKeySep layout)
             go (level + 1) afterSep item
+    enter level = case layoutDepthLimit layout of
+      Just limit | level >= limit -> throwIO (Refused (NestingTooDeep limit))
+      _ -> pure ()
     container :: Int -> Int -> Word8 -> Word8 -> (Int -> a -> IO Int) -> [a] -> IO Int
     container level offset open close item items = do
-      pokeByteOff pointer offset open
-      first <- newline (level + 1) (offset + 1)
+      afterOpen <- byte offset open
+      first <- newline (level + 1) afterOpen
       end <- case items of
         [] -> pure first
         x : rest -> item first x >>= separated rest
       outer <- newline level end
-      pokeByteOff pointer outer close
-      pure (outer + 1)
+      byte outer close
       where
         separated [] at = pure at
         separated (x : rest) at = do
@@ -377,131 +406,145 @@ written layout pointer = go
     newline level offset = case layoutIndent layout of
       Nothing -> pure offset
       Just width -> do
-        pokeByteOff pointer offset (0x0A :: Word8)
         let spaces = width * level
-        fillBytes (pointer `plusPtr` (offset + 1)) 0x20 spaces
+        base <- reserve ref offset (1 + spaces)
+        pokeByteOff base offset (0x0A :: Word8)
+        fillBytes (base `plusPtr` (offset + 1)) 0x20 spaces
         pure (offset + 1 + spaces)
-    ascii offset spelling = do
-      let go' at = \case
-            [] -> pure at
-            c : rest -> pokeByteOff pointer at (fromIntegral (ord c) :: Word8) >> go' (at + 1) rest
-      go' offset spelling
+    byte offset w = do
+      base <- reserve ref offset 1
+      pokeByteOff base offset (w :: Word8)
+      pure (offset + 1)
+    two offset a b = do
+      base <- reserve ref offset 2
+      pokeByteOff base offset (a :: Word8)
+      pokeByteOff base (offset + 1) (b :: Word8)
+      pure (offset + 2)
+    four offset a b c d = do
+      base <- reserve ref offset 4
+      pokeByteOff base offset (a :: Word8)
+      pokeByteOff base (offset + 1) (b :: Word8)
+      pokeByteOff base (offset + 2) (c :: Word8)
+      pokeByteOff base (offset + 3) (d :: Word8)
+      pure (offset + 4)
     bytes offset chunk = do
-      BU.unsafeUseAsCStringLen chunk $ \(source, size) ->
-        copyBytes (pointer `plusPtr` offset) (castPtr source) size
-      pure (offset + BS.length chunk)
-
-floatSpelling :: Double -> String
-floatSpelling d
-  | isNaN d = "NaN"
-  | isInfinite d = if d > 0 then "Infinity" else "-Infinity"
-  | otherwise = pythonFloatRepr d
-
-integerSize :: Integer -> Int
-integerSize i
-  | i < 0 = 1 + integerSize (negate i)
-  | i < 10 = 1
-  | i < 1000000000000000000 = go 1 (fromInteger i :: Int)
-  | otherwise = length (show i)
-  where
-    go count n = if n < 10 then count else go (count + 1) (n `quot` 10)
-
-writeInteger :: Ptr Word8 -> Int -> Integer -> IO Int
-writeInteger pointer offset i
-  | i < 0 = do
-      pokeByteOff pointer offset (0x2D :: Word8)
-      writeInteger pointer (offset + 1) (negate i)
-  | i < 1000000000000000000 = do
-      let size = integerSize i
-          fill at n = do
-            pokeByteOff pointer at (fromIntegral (0x30 + n `rem` 10) :: Word8)
-            if n < 10 then pure () else fill (at - 1) (n `quot` 10)
-      fill (offset + size - 1) (fromInteger i :: Int)
+      let size = BS.length chunk
+      base <- reserve ref offset size
+      let copy i
+            | i >= size = pure ()
+            | otherwise = pokeByteOff base (offset + i) (BU.unsafeIndex chunk i) >> copy (i + 1)
+      copy 0
       pure (offset + size)
-  | otherwise = do
-      let digits = show i
-      mapM_ (\(at, c) -> pokeByteOff pointer at (fromIntegral (ord c) :: Word8)) (zip [offset ..] digits)
-      pure (offset + length digits)
 
--- | Whether every byte of a text spells itself inside a JSON string.
-plainText :: Bool -> Text -> Bool
-plainText asciiOnly (TI.Text array offset size) = go offset
-  where
-    end = offset + size
-    go i
-      | i >= end = True
-      | otherwise =
-          let w = TA.unsafeIndex array i
-           in w >= 0x20 && w /= 0x22 && w /= 0x5C && (not asciiOnly || w < 0x7F) && go (i + 1)
-
-stringSize :: Bool -> Text -> Int
-stringSize asciiOnly text@(TI.Text _ _ size)
-  | plainText asciiOnly text = size + 2
-  | otherwise = 2 + T.foldl' (\total c -> total + escapedSize c) 0 text
-  where
-    escapedSize c
-      | c == '"' || c == '\\' || c == '\n' || c == '\r' || c == '\t' || c == '\b' || c == '\f' = 2
-      | ord c < 0x20 = 6
-      | asciiOnly && ord c > 0x7e = if ord c > 0xFFFF then 12 else 6
-      | otherwise = utf8Size c
-    utf8Size c
-      | ord c < 0x80 = 1
-      | ord c < 0x800 = 2
-      | ord c < 0x10000 = 3
-      | otherwise = 4
-
-writeString :: Bool -> Ptr Word8 -> Int -> Text -> IO Int
-writeString asciiOnly pointer offset text@(TI.Text array from size) = do
-  pokeByteOff pointer offset (0x22 :: Word8)
-  end <-
-    if plainText asciiOnly text
+writeInteger :: IORef Buffer -> Int -> Integer -> IO Int
+writeInteger ref offset = \case
+  IS n -> do
+    base <- reserve ref offset 20
+    let value = I# n
+    if value < 0
       then do
-        stToIO (TA.copyToPointer array from (pointer `plusPtr` (offset + 1)) size)
-        pure (offset + 1 + size)
-      else chars from (offset + 1)
-  pokeByteOff pointer end (0x22 :: Word8)
-  pure (end + 1)
+        pokeByteOff base offset (0x2D :: Word8)
+        unsigned base (offset + 1) (negate (fromIntegral value))
+      else unsigned base offset (fromIntegral value)
+  i -> do
+    let digits = BC.pack (show i)
+        size = BS.length digits
+    base <- reserve ref offset size
+    BU.unsafeUseAsCString digits (\source -> copyBytes (base `plusPtr` offset) (castPtr source) size)
+    pure (offset + size)
+  where
+    unsigned :: Ptr Word8 -> Int -> Word -> IO Int
+    unsigned base at value = do
+      let size = wordDigits 1 value
+          fill i v = do
+            let (q, r) = v `quotRem` 10
+            pokeByteOff base i (fromIntegral (0x30 + r) :: Word8)
+            if q == 0 then pure () else fill (i - 1) q
+      fill (at + size - 1) value
+      pure (at + size)
+    wordDigits :: Int -> Word -> Int
+    wordDigits n v = if v < 10 then n else wordDigits (n + 1) (v `quot` 10)
+
+-- | A JSON string: CPython's @py_encode_basestring@, or
+-- @py_encode_basestring_ascii@ under 'ensureAscii'.
+--
+-- The text is scanned once, by UTF-8 byte: every byte of a multi-byte
+-- sequence is at least 0x80, so the escape tests never match inside one.
+-- Runs that need no escape are copied whole.
+writeString :: Bool -> IORef Buffer -> Int -> Text -> IO Int
+writeString asciiOnly ref offset (TI.Text array from size)
+  | firstSpecial == stop = do
+      base <- reserve ref offset (size + 2)
+      pokeByteOff base offset (0x22 :: Word8)
+      stToIO (TA.copyToPointer array from (base `plusPtr` (offset + 1)) size)
+      pokeByteOff base (offset + size + 1) (0x22 :: Word8)
+      pure (offset + size + 2)
+  | otherwise = do
+      -- The longest escape spells one input byte in six output bytes.
+      base <- reserve ref offset (6 * size + 2)
+      pokeByteOff base offset (0x22 :: Word8)
+      end <- runs base from firstSpecial (offset + 1)
+      pokeByteOff base end (0x22 :: Word8)
+      pure (end + 1)
   where
     stop = from + size
-    chars i at
-      | i >= stop = pure at
-      | otherwise = do
-          let TU.Iter c delta = TU.iterArray array i
-          next <- escaped c i delta at
-          chars (i + delta) next
-    escaped c i delta at = case c of
-      '"' -> two at 0x22
-      '\\' -> two at 0x5C
-      '\n' -> two at 0x6E
-      '\r' -> two at 0x72
-      '\t' -> two at 0x74
-      '\b' -> two at 0x62
-      '\f' -> two at 0x66
-      _
-        | ord c < 0x20 -> unicodeEscape at (ord c)
-        | asciiOnly && ord c > 0x7e ->
-            if ord c > 0xFFFF
-              then do
-                let v = ord c - 0x10000
-                middle <- unicodeEscape at (0xD800 + v `div` 0x400)
-                unicodeEscape middle (0xDC00 + v `mod` 0x400)
-              else unicodeEscape at (ord c)
-        | otherwise -> do
-            stToIO (TA.copyToPointer array i (pointer `plusPtr` at) delta)
-            pure (at + delta)
-    two at w = do
-      pokeByteOff pointer at (0x5C :: Word8)
-      pokeByteOff pointer (at + 1) (w :: Word8)
-      pure (at + 2)
-    unicodeEscape at n = do
-      pokeByteOff pointer at (0x5C :: Word8)
-      pokeByteOff pointer (at + 1) (0x75 :: Word8)
+    -- A byte to escape: a C0 control, a quote, a backslash and, under
+    -- 'ensureAscii', anything from 0x7F up.
+    limit = if asciiOnly then 0x7F - 0x20 else 0x100 - 0x20 :: Word
+    special w = (fromIntegral w - 0x20 :: Word) >= limit || w == 0x22 || w == 0x5C
+    scan i
+      | i >= stop = i
+      | special (TA.unsafeIndex array i) = i
+      | otherwise = scan (i + 1)
+    firstSpecial = scan from
+    -- Copy the plain run [start, at), then escape the character at @at@.
+    runs :: Ptr Word8 -> Int -> Int -> Int -> IO Int
+    runs base start at out = do
+      let plain = at - start
+      when (plain > 0) (stToIO (TA.copyToPointer array start (base `plusPtr` out) plain))
+      let out' = out + plain
+      if at >= stop
+        then pure out'
+        else do
+          let w = TA.unsafeIndex array at
+          if w < 0x80
+            then do
+              out'' <- escapeByte base out' w
+              runs base (at + 1) (scan (at + 1)) out''
+            else do
+              let TU.Iter c delta = TU.iterArray array at
+                  n = ord c
+              out'' <-
+                if n > 0xFFFF
+                  then do
+                    let v = n - 0x10000
+                    middle <- unicodeEscape base out' (0xD800 + v `shiftR` 10)
+                    unicodeEscape base middle (0xDC00 + v .&. 0x3FF)
+                  else unicodeEscape base out' n
+              runs base (at + delta) (scan (at + delta)) out''
+    escapeByte base out w = case w of
+      0x22 -> twoAt base out 0x22
+      0x5C -> twoAt base out 0x5C
+      0x0A -> twoAt base out 0x6E
+      0x0D -> twoAt base out 0x72
+      0x09 -> twoAt base out 0x74
+      0x08 -> twoAt base out 0x62
+      0x0C -> twoAt base out 0x66
+      _ -> unicodeEscape base out (fromIntegral w)
+    twoAt base out w = do
+      pokeByteOff base out (0x5C :: Word8)
+      pokeByteOff base (out + 1) (w :: Word8)
+      pure (out + 2)
+    unicodeEscape :: Ptr Word8 -> Int -> Int -> IO Int
+    unicodeEscape base out n = do
+      pokeByteOff base out (0x5C :: Word8)
+      pokeByteOff base (out + 1) (0x75 :: Word8)
       let digit k = let d = (n `shiftR` (4 * k)) .&. 0xF in fromIntegral (if d < 10 then 0x30 + d else 0x57 + d) :: Word8
-      pokeByteOff pointer (at + 2) (digit 3)
-      pokeByteOff pointer (at + 3) (digit 2)
-      pokeByteOff pointer (at + 4) (digit 1)
-      pokeByteOff pointer (at + 5) (digit 0)
-      pure (at + 6)
+      pokeByteOff base (out + 2) (digit 3)
+      pokeByteOff base (out + 3) (digit 2)
+      pokeByteOff base (out + 4) (digit 1)
+      pokeByteOff base (out + 5) (digit 0)
+      pure (out + 6)
 
 -- | CPython's JSON string encoding (@py_encode_basestring@ /
 -- @py_encode_basestring_ascii@).
@@ -538,33 +581,6 @@ stringB asciiOnly text = B.char7 '"' <> chunks text <> B.char7 '"'
       | otherwise = unicodeEscape n
     unicodeEscape n = B.string7 "\\u" <> B.string7 (pad4 (showHex n ""))
     pad4 digits = replicate (4 - length digits) '0' ++ digits
-
--- | CPython's @float.__repr__@ for a finite double: the shortest digits that
--- round-trip, in positional form when the decimal exponent is in
--- @[-4, 16)@ and in exponent form otherwise.
-pythonFloatRepr :: Double -> String
-pythonFloatRepr d
-  | d == 0 = if isNegativeZero d then "-0.0" else "0.0"
-  | d < 0 = '-' : pythonFloatRepr (negate d)
-  | otherwise =
-      let (digits, decpt) = floatToDigits 10 d
-          ds = map intToDigit digits
-       in if decpt <= -4 || decpt > 16
-            then scientific ds (decpt - 1)
-            else positional ds decpt
-  where
-    scientific ds expo =
-      let mantissa = case ds of
-            [single] -> [single]
-            first : rest -> first : '.' : rest
-            [] -> "0"
-          sign = if expo < 0 then '-' else '+'
-          magnitude = show (abs expo)
-       in mantissa ++ "e" ++ [sign] ++ (if length magnitude < 2 then '0' : magnitude else magnitude)
-    positional ds decpt
-      | decpt <= 0 = "0." ++ replicate (negate decpt) '0' ++ ds
-      | decpt >= length ds = ds ++ replicate (decpt - length ds) '0' ++ ".0"
-      | otherwise = let (whole, fraction) = splitAt decpt ds in whole ++ "." ++ fraction
 
 -- | The smallest integer with more than 'maxIntStrDigits' digits.
 intDigitBound :: Integer
