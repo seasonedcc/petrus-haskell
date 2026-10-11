@@ -19,8 +19,12 @@ and in the pinned Python reference (`scripts/bench.py`, `timeit`).
 | fold the queue-story process progress into its result | 557 µs | 256 µs | 2.2× |
 | replay the 18 Engine-world fixtures through real Engine profiles | 162 ms | 81.3 ms | 2.0× |
 | author the 18 Engine worlds (the reference's `build_*_artifact`) | 228 ms | 107 ms | 2.1× |
+| one isolated PostgreSQL database (create, both schemas, drop) | 60.3 ms | 59.3 ms | 1.0× |
+| replay the 33 joined fixtures, each in a fresh isolated database | 3.93 s | 3.74 s | 1.05× |
+| author the 33 joined worlds, each in a fresh isolated database | 4.09 s | 3.70 s | 1.10× |
 
-Haskell is faster on every workload.
+Haskell is faster on every workload. On the joined rows the margin is small, because the
+PostgreSQL server does most of the work (below).
 
 The two Engine rows were measured later the same day, with many other builds running on the
 machine (load average between 60 and 200), so their absolute times are much noisier than the
@@ -30,6 +34,18 @@ LocalDispatch (`retry_world` and `generated_runtime_world`), which is why they c
 fixture than the History-only worlds. An earlier, quieter run over the 14 History-only worlds
 measured 61.4 ms against 23.2 ms for replay (2.6×) and 62.7 ms against 21.3 ms for authoring
 (2.9×).
+
+The three joined rows were measured later still (2026-10-10, load average 3 to 5) on a private
+PostgreSQL 17 server (`fsync=off`) on the same machine, in wall-clock time (`--time-mode wall`;
+these workloads wait on the server, which CPU time would not count). Haskell and Python ran
+interleaved, twice each; the table shows the second pair. The first pair measured 4.37 s against
+3.62 s for replay and 4.15 s against 3.56 s for authoring. An earlier run at a higher load had
+Haskell 5% behind on replay (4.71 s against 4.48 s), within the spread between runs.
+
+The joined worlds are bound by the PostgreSQL server, not by either runtime. The isolated
+database alone (`CREATE DATABASE`, the Impetus and Absurd schemas, `DROP DATABASE … WITH (FORCE)`)
+costs about 60 ms on both sides, which is 2 of the 3.7 s; the rest is the Engine's, the Workers'
+and the probes' round trips. Haskell's CPU time for the whole replay workload is 0.37 s.
 
 What each workload covers:
 
@@ -53,6 +69,13 @@ What each workload covers:
   - Python uses the reference's own `tests.dst.replay_world.replay_path`. It registers every
     Engine profile per fixture, constructors only: History and Dispatch files open lazily.
   - Haskell registers the profiles of that fixture's world module.
+- **Joined replay**: each of the 33 `joined-*` fixtures is strictly decoded and replayed
+  through a fresh profile (`Spec.JoinedWorlds.joinedCases`) in a fresh isolated database: the
+  real Absurd Engine over PostgreSQL History, with Absurd Workers. Python uses
+  `transcript_vectors.joined_replay`, the reference's profile and checker classes over
+  `isolated_absurd_database`, exactly as its retained-fixture tests do.
+- **Joined authoring**: each of the 33 joined stories in a fresh isolated database. Python calls
+  the reference's 33 `build_joined_*_artifact(dsn)` functions.
 - **Engine authoring**: every `Spec.EngineWorlds.authorCases` story runs on a fresh History.
   This covers the executable, seeded, and failure stories of `engine_world`, `delayed_world`,
   `delivery_world`, `timer_world`, `lifecycle_world`, `retry_world` (over LocalDispatch) and
@@ -78,8 +101,23 @@ cabal build petrus-dst:bench:petrus-dst-bench
 cd packages/petrus-dst && $(cabal list-bin petrus-dst:bench:petrus-dst-bench) --stdev 5
 ```
 
+The joined rows run only with `PETRUS_TEST_POSTGRES` set to a server where the role may create
+databases, on both sides; measure them in wall-clock time:
+
+```sh
+cd packages/petrus-dst && PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@localhost:5432/postgres \
+  $(cabal list-bin petrus-dst:bench:petrus-dst-bench) -p joined --stdev 5 --time-mode wall +RTS -M2G -RTS
+```
+
 Python, from `upstream/petrus`:
 
 ```sh
 PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/bench.py
+```
+
+and the joined rows alone (the argument filters workloads by name):
+
+```sh
+PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@localhost:5432/postgres \
+  PYTHONPATH=. uv run --frozen python ../../packages/petrus-dst/scripts/bench.py joined/
 ```
