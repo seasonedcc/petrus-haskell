@@ -15,7 +15,13 @@ into a Python string holding a lone surrogate. Haskell `Text` cannot hold
 one. Such a document is refused with `UnsupportedLoneSurrogate: a string
 holds a lone surrogate, which this implementation cannot represent`, where
 the reference would carry the surrogate through and write it back as an
-escape.
+escape. Only a surrogate that reaches the Python objects counts: one in a
+repeated member that a later value overwrites is dropped, as CPython drops
+it (`CorpusSpec`'s `json.loads` examples).
+
+`json.loads` itself is petrus-json's parser with CPython's options, and
+petrus-json's `Petrus.Json.Python.Scanner` for the text of a refusal; the
+package keeps no JSON scanner of its own for it.
 
 Files read through `from_filename` use jiter, which never yields a lone
 surrogate, so they are unaffected. The corpus marks the operations involved

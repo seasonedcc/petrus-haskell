@@ -20,7 +20,6 @@ module Petrus.EngineFile.PyText
   ) where
 
 import Control.Exception (IOException, bracket, try)
-import Data.Bits ((.&.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
@@ -32,8 +31,8 @@ import Foreign.C.Error (Errno (..), eACCES, eISDIR, eNOENT, eNOTDIR, ePERM)
 import Foreign.C.String (CString, peekCString)
 import Foreign.C.Types (CInt (..))
 import GHC.IO.Exception (IOException (..))
-import Numeric (showHex)
 import Petrus.EngineFile.Validate (PyException (..))
+import Petrus.Json.Python.Decode (utf8DecodeError)
 import Petrus.Json.PythonText (pythonStrRepr)
 import System.Posix.ByteString (RawFilePath)
 import System.Posix.Files.ByteString (FileStatus, getFdStatus, isDirectory)
@@ -150,85 +149,9 @@ foreign import ccall unsafe "string.h strerror"
 -- | Strict UTF-8 decoding with CPython's @UnicodeDecodeError@, then
 -- universal newlines (@\\r\\n@ and @\\r@ become @\\n@).
 decodeText :: ByteString -> Either PyException ByteString
-decodeText bytes = case invalidUtf8 bytes of
+decodeText bytes = case utf8DecodeError bytes of
   Nothing -> Right (translateNewlines bytes)
-  Just (start, end, reason) ->
-    Left
-      ( PyException
-          "UnicodeDecodeError"
-          ( if end - start == 1
-              then
-                "'utf-8' codec can't decode byte 0x"
-                  <> hex2 (BS.index bytes start)
-                  <> " in position "
-                  <> T.pack (show start)
-                  <> ": "
-                  <> reason
-              else
-                "'utf-8' codec can't decode bytes in position "
-                  <> T.pack (show start)
-                  <> "-"
-                  <> T.pack (show (end - 1))
-                  <> ": "
-                  <> reason
-          )
-      )
-  where
-    hex2 w = T.pack (let s = showHex w "" in if length s < 2 then '0' : s else s)
-
--- | The first error CPython's UTF-8 decoder reports: start, end and reason.
-invalidUtf8 :: ByteString -> Maybe (Int, Int, Text)
-invalidUtf8 bytes = go 0
-  where
-    len = BS.length bytes
-    at i = BS.index bytes i
-    cont w = w .&. 0xC0 == 0x80
-    go i
-      | i >= len = Nothing
-      | b < 0x80 = go (i + 1)
-      | b < 0xC2 = invalidStart
-      | b < 0xE0 =
-          if remaining < 2
-            then endOfData
-            else if cont (at (i + 1)) then go (i + 2) else continuation 1
-      | b < 0xF0 =
-          let bad2 c2 = not (cont c2) || (if c2 < 0xA0 then b == 0xE0 else b == 0xED)
-           in if remaining < 3
-                then
-                  if remaining < 2
-                    then endOfData
-                    else if bad2 (at (i + 1)) then continuation 1 else endOfData
-                else
-                  if bad2 (at (i + 1))
-                    then continuation 1
-                    else if not (cont (at (i + 2))) then continuation 2 else go (i + 3)
-      | b < 0xF5 =
-          let bad2 c2 = not (cont c2) || (if c2 < 0x90 then b == 0xF0 else b == 0xF4)
-           in if remaining < 4
-                then
-                  if remaining < 2
-                    then endOfData
-                    else
-                      if bad2 (at (i + 1))
-                        then continuation 1
-                        else
-                          if remaining < 3
-                            then endOfData
-                            else if not (cont (at (i + 2))) then continuation 2 else endOfData
-                else
-                  if bad2 (at (i + 1))
-                    then continuation 1
-                    else
-                      if not (cont (at (i + 2)))
-                        then continuation 2
-                        else if not (cont (at (i + 3))) then continuation 3 else go (i + 4)
-      | otherwise = invalidStart
-      where
-        b = at i
-        remaining = len - i
-        invalidStart = Just (i, i + 1, "invalid start byte")
-        endOfData = Just (i, len, "unexpected end of data")
-        continuation k = Just (i, i + k, "invalid continuation byte")
+  Just message -> Left (PyException "UnicodeDecodeError" message)
 
 -- | Universal newlines on decoded UTF-8.
 translateNewlines :: ByteString -> ByteString
