@@ -7,7 +7,8 @@ everything it could depend on is identical.
     scripts/ci-tests plan --out PLAN [--full] [--ledgers DIR] [--max-shards N] [--target SECONDS]
                                              # which suites run, which are reused, in which shard
     scripts/ci-tests run-shard PLAN NAME     # cabal test the shard's suites; write results-NAME.json
-    scripts/ci-tests wrap SELECTION BIN ...  # (cabal's --test-wrapper in run-shard)
+    scripts/ci-tests test-flags              # the cabal test flags of CI's build and test jobs
+    scripts/ci-tests wrap SELECTION BIN ...  # (scripts/ci-test-wrapper, cabal's --test-wrapper)
     scripts/ci-tests run-viewer PLAN         # scripts/interop --viewer petrus-viewer-server
     scripts/ci-tests ledger --plan PLAN --results DIR --out FILE
                                              # this run's ledger: every suite known green, by hash
@@ -377,7 +378,7 @@ def shard(units: List[dict], max_shards: int, target: float) -> List[dict]:
 def plan(args: List[str]) -> int:
     full = "--full" in args
     ledgers_dir = Path(args[args.index("--ledgers") + 1]) if "--ledgers" in args else None
-    max_shards = int(args[args.index("--max-shards") + 1]) if "--max-shards" in args else 8
+    max_shards = int(args[args.index("--max-shards") + 1]) if "--max-shards" in args else 10
     target = float(args[args.index("--target") + 1]) if "--target" in args else 120.0
     out = Path(args[args.index("--out") + 1]) if "--out" in args else None
 
@@ -457,8 +458,8 @@ def write_results(name: str, document: dict, outcome: Dict[str, bool]) -> None:
 def run_shard(args: List[str]) -> int:
     """PLAN NAME: `cabal test` this shard's suites (in parallel, as
     scripts/check-all does), each restricted to its part: cabal runs every
-    test binary through `ci-tests wrap` (--test-wrapper), which adds the
-    part's hspec --match/--skip arguments. (hspec takes no --match from a
+    test binary through scripts/ci-test-wrapper (--test-wrapper), which adds
+    the part's hspec --match/--skip arguments from CI_TESTS_SELECTION. (hspec takes no --match from a
     .hspec file or HSPEC_OPTIONS, and --test-options would apply to every
     suite of the invocation.)"""
     plan_file, name = args[0], args[1]
@@ -478,20 +479,27 @@ def run_shard(args: List[str]) -> int:
     scratch = Path(tempfile.mkdtemp(prefix="ci-tests-", dir=os.environ.get("RUNNER_TEMP")))
     selection_file = scratch / "selection.json"
     selection_file.write_text(json.dumps(selection))
-    wrapper = scratch / "wrap"
-    wrapper.write_text(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(Path(__file__).resolve()))} wrap {shlex.quote(str(selection_file))} \"$@\"\n")
-    wrapper.chmod(0o755)
     jobs = os.environ.get("CI_TEST_JOBS", "-j")
-    command = ["cabal", "test", jobs, *targets, "--keep-going", "--test-show-details=direct",
-               f"--test-wrapper={wrapper}", "--test-options=+RTS -M2G -RTS"]
+    command = ["cabal", "test", jobs, *targets, "--keep-going", *test_flags()]
     print("$ " + " ".join(shlex.quote(c) for c in command), flush=True)
     try:
-        status = subprocess.call(command, cwd=ROOT)
+        status = subprocess.call(command, cwd=ROOT, env={**os.environ, "CI_TESTS_SELECTION": str(selection_file)})
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     outcome = {u["id"]: passed(document["inputs"][u["suite"]]["package"], u["suite"]) for u in units}
     write_results(name, document, outcome)
     return status if status != 0 else (0 if all(outcome.values()) else 1)
+
+
+def test_flags() -> List[str]:
+    """The test flags of every cabal command in CI's build and test jobs.
+    cabal records them in each local package's configuration, so the build
+    job builds with the same ones, and `cabal test` in the test jobs then
+    neither reconfigures nor relinks anything. The wrapper
+    (scripts/ci-test-wrapper) runs a test binary unchanged unless
+    CI_TESTS_SELECTION names a selection file."""
+    return ["--test-show-details=direct", f"--test-wrapper={ROOT / 'scripts' / 'ci-test-wrapper'}",
+            "--test-option=+RTS", "--test-option=-M2G", "--test-option=-RTS"]
 
 
 def wrap(args: List[str]) -> int:
@@ -568,6 +576,7 @@ def main(argv: List[str]) -> int:
         "run-shard": lambda: run_shard(rest),
         "run-viewer": lambda: run_viewer(rest),
         "wrap": lambda: wrap(rest),
+        "test-flags": lambda: print(" ".join(test_flags())) or 0,
         "ledger": lambda: ledger(rest),
         "fetch-ledgers": lambda: fetch_ledgers(Path(rest[0])),
     }

@@ -88,7 +88,9 @@ jobs:
           key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
           restore-keys: ${{ env.DIST_KEY_PREFIX }}
       - name: Build (all packages, -Werror)
-        run: cabal update -v0 && cabal build all -j
+        # With the test jobs' test flags, which cabal records in each
+        # package's configuration: `cabal test` there then rebuilds nothing.
+        run: cabal update -v0 && cabal build all -j $(scripts/ci-tests test-flags)
       - name: Save the cabal store
         if: steps.toolchain.outputs.store-hit != 'true'
         uses: actions/cache/save@v4
@@ -187,6 +189,31 @@ jobs:
           path: results-*.json
           retention-days: 30
 
+  diag:
+    # TEMPORARY: why petrus-posix's waitForProcess sees ECHILD on these runners.
+    needs: build
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain
+      - uses: actions/cache/restore@v4
+        with:
+          path: dist-newstyle
+          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+          fail-on-cache-miss: true
+      - run: scripts/upstream-python petrus >/dev/null && sudo apt-get install -y -qq strace >/dev/null
+      - name: strace the Flock group
+        run: |
+          bin=$(cabal list-bin -v0 petrus-posix:test:petrus-posix-test)
+          cd packages/petrus-posix
+          "$bin" --match /Flock/ +RTS -M2G -RTS || true
+          strace -f -tt -e trace=wait4,waitid,kill,rt_sigaction,clone,clone3,vfork,exit_group,ptrace -o "$RUNNER_TEMP/st.txt" "$bin" --match "/Flock/is released by the kernel" +RTS -M2G -RTS || true
+          grep -v "rt_sigaction(SIG\(RT\|INT\|PIPE\|VTALRM\|ALRM\|USR\)" "$RUNNER_TEMP/st.txt" | tail -80
+          uname -a; cat /proc/sys/kernel/pid_max; ps -eo pid,ppid,comm | head -40
+
   viewer:
     needs: build
     if: needs.build.outputs.viewer == 'true'
@@ -226,6 +253,11 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Upstream Python environment
         run: scripts/upstream-python petrus >/dev/null
+      - name: Network (TEMPORARY diagnostic)
+        run: |
+          getent ahosts localhost || true
+          for v in -4 -6; do curl $v -sS -o /dev/null -w "jsdelivr $v %{time_namelookup} %{time_connect} %{time_total}\n" https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js || true; done
+          nproc
       - name: The petrus-viewer suites against the Haskell backend
         run: scripts/ci-tests run-viewer plan.json
       - uses: actions/upload-artifact@v4

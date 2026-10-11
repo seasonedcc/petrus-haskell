@@ -1,0 +1,9 @@
+#!/bin/sh
+# cabal's --test-wrapper in CI (scripts/ci-tests test-flags): runs a test
+# binary with its arguments. When CI_TESTS_SELECTION names a selection file
+# (scripts/ci-tests run-shard), the binary's suite part's hspec --match and
+# --skip arguments are added first.
+if [ -n "${CI_TESTS_SELECTION:-}" ]; then
+  exec python3 "$(dirname "$0")/ci-tests" wrap "$CI_TESTS_SELECTION" "$@"
+fi
+exec "$@"

@@ -316,8 +316,9 @@ local fake (`scripts/container-smoke.d/fake-op`). The checks:
   execution), and that neither Node process inherited a credential.
 
 The `container` job of `.github/workflows/ci.yml` runs the same script on
-every push to `main` and every pull request, after building the image with
-`docker/build-push-action`. The layers come from the GitHub Actions cache.
+every push to `main` and every pull request, after building the image on
+Blacksmith's persistent Docker builder (`useblacksmith/setup-docker-builder`
+and `useblacksmith/build-push-action`), which keeps the layers between runs.
 The Containerfile builds every Hackage dependency in a layer keyed only on
 the `.cabal` files, `cabal.project` and `cabal.project.freeze`, so a
 source-only change rebuilds the local packages and nothing else.
@@ -350,3 +351,64 @@ probing for `.venv` or `bin/python`, `pending` on a missing Python or
 upstream checkout, guarding a test on whether an upstream file exists, and
 `pytest.skip` or import fallbacks in the Python drivers. A line that
 legitimately needs one says so with `-- lint-skips: allow <reason>`.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main`, every pull request,
+nightly (04:17 UTC) and on demand (`workflow_dispatch`, with a `full`
+input). It runs the steps of `scripts/check-all --viewer`, plus the container
+job, spread over Blacksmith runners so that they run side by side:
+
+| CI job | Runner | `scripts/check-all` step |
+| --- | --- | --- |
+| `lint` | 2 vCPU | 1 `check-pins`, 2 `lint-skips`, 7 `bench --check`, 8 `check-parity` |
+| `build` | 16 vCPU | 4 `cabal build all` (`-Werror`); then plans the test shards |
+| `checks` | 4 vCPU | 5 `scripts/interop --check` |
+| `test (1)` … `test (N)` | 8 vCPU | 3 and 6: `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest) |
+| `viewer` | 8 vCPU | `--viewer`: `scripts/interop --viewer petrus-viewer-server`, with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium |
+| `container` | 16 vCPU | none (Docker): the image and `scripts/container-smoke` ([The container image](#the-container-image)) |
+| `ci` | 2 vCPU | the verdict: green only when every job above is |
+
+Branch protection needs only the `ci` check.
+
+**Caches.** The GHC and cabal install (`~/.ghcup`) is cached by their
+versions. The cabal store and package index are cached by `cabal.project`,
+`cabal.project.freeze` and the `.cabal` files, falling back to the latest
+entry. `dist-newstyle` is cached by commit, falling back to the latest
+entry, so `build` recompiles only what changed since: cabal decides that
+from the sources' content, not from timestamps. A branch or pull request
+reads its own entries and those of `main`. The test jobs and `checks`
+restore the `dist-newstyle` that `build` saved for the commit and build
+nothing.
+
+**Shards.** `scripts/ci-tests plan` spreads the suites over about ten
+`test` jobs, balancing their measured times (`.github/ci/test-times.json`).
+A suite much longer than the rest is split into parts, each a set of hspec
+`--match` patterns, plus a rest part that `--skip`s all of them, so every
+example runs whatever the patterns select; two parts of one
+suite never share a job. A suite passes only when all its parts pass. Stale
+times only unbalance the jobs.
+
+**Reusing results.** Each run's `ci` job uploads a test ledger: for every
+suite known green at that commit, its input hash and the run where it
+passed. `build` reads the ledgers of the latest runs on the same branch and
+on `main`, and a suite is not run again when its input hash equals one in
+those ledgers. The hash covers, as committed: every file of the suite's
+package, of every local package it depends on (any component, transitively,
+from cabal's plan) and of every local package its files name; every file
+outside `packages/` (the cabal project and freeze file, `scripts/`, the
+submodule pins, `spec/`, `deployment/`, `.github/`, ...) except README.md,
+PARITY.md, SCOPE.md, `docs/` and `bench-results/`; and the toolchain and
+runner image (GHC, cabal, uv, Node, Python and Docker versions, the system
+libraries). `scripts/ci-tests inputs` prints each suite's hash and the
+packages it covers. The `build` log and the run summary list every reused
+suite with the run it comes from. The nightly run and a dispatch with `full`
+reuse nothing and run every suite:
+
+```sh
+gh workflow run CI --ref main -f full=true
+```
+
+When a `test` job fails on a flaky test, rerunning the failed jobs reruns
+only those shards; the ledger counts a part as passed when an attempt of the
+run passed it.
