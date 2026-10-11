@@ -548,8 +548,9 @@ officialExecute s prompt options = do
         _ <- sidecarSend sidecar (String "close")
         void (timeout (micros s.grace) (awaitFrame "closed"))
         void (sidecarClose sidecar s.grace)
-  -- A value the sidecar cannot represent arrives as @{"opaque": type}@,
-  -- which equals no string or boolean the admission compares against.
+  -- A value the sidecar cannot represent arrives as
+  -- @{"opaque": type, "hashable": bool}@, which equals no string or boolean
+  -- the admission compares against.
   pure AmpEventStream {next = pull, abort = cancelStream, close = closeStream}
 
 -- ---------------------------------------------------------------------------
@@ -622,9 +623,11 @@ admitStep config continuationThread state event = do
              in pure (AmpCandidate TurnFailed 0 code (Just thread) Nothing True)
       (Bool True, subtype) | unhashable subtype -> Left "client-failed"
       _ -> Left "malformed-terminal"
+    -- A JSON list or object (a Python list or dict), or an opaque sidecar
+    -- value whose type has no @__hash__@.
     unhashable = \case
       Array _ -> True
-      Object _ -> True
+      Object members -> lookup "hashable" members /= Just (Bool True) || isNothing (lookup "opaque" members)
       _ -> False
 
 -- | @_read_stream@ over a complete event list (the corpus's pure view).

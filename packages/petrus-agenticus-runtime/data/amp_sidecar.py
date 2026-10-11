@@ -16,7 +16,8 @@ Usage: ``python -I -B amp_sidecar.py MODE [SYS_PATH ...]``
 Every event is reduced to exactly what upstream's adapter reads from it: the
 ``_event_size`` byte count (``null`` when it is malformed) and the five
 ``_event_value`` attributes, with values that are not JSON scalars replaced
-by an opaque marker. End of stdin aborts and closes the stream.
+by an opaque ``{"opaque": type, "hashable": bool}`` marker. End of stdin
+aborts and closes the stream.
 """
 
 import asyncio
@@ -37,9 +38,20 @@ def _emit(value):
 
 
 def _scalar(value):
-    if value is None or type(value) in (str, bool, int, float):
+    # Subclasses (a StrEnum event type, say) compare like their base value
+    # upstream, so they cross as that value.
+    if value is None or isinstance(value, bool):
         return value
-    return {"opaque": type(value).__name__}
+    if isinstance(value, str):
+        return str(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    # Anything else equals no string or boolean the admission compares
+    # against; whether it is hashable decides between upstream's protocol
+    # code and the TypeError of ``value in {...}``.
+    return {"opaque": type(value).__name__, "hashable": type(value).__hash__ is not None}
 
 
 def _event_value(event, name):
@@ -71,7 +83,7 @@ def _describe(event):
         try:
             values[name] = _scalar(_event_value(event, name))
         except Exception:
-            values[name] = {"opaque": "error"}
+            values[name] = {"opaque": "error", "hashable": True}
     return {"event": {"size": size, "values": values}}
 
 

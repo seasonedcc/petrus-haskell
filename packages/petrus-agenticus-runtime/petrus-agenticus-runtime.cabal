@@ -21,6 +21,13 @@ extra-doc-files:    PARITY.md
                     parity/pi.md
                     divergences/pi.md
                     bench/results-pi.md
+                    parity/codex.md
+                    parity/claude-a2.md
+                    parity/amp.md
+                    divergences/codex.md
+                    divergences/claude-a2.md
+                    divergences/amp.md
+                    bench/results-hosts.md
 data-files:         data/*.mjs
                     data/*.py
 extra-source-files: differential/*.json
