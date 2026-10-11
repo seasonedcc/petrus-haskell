@@ -3,9 +3,11 @@
 This page takes a fresh machine to a full rerun of what this repository
 claims: the build, the test suites (unit, conformance and interop with the
 pinned Python), the cross-language suites on their own, the benchmarks
-against the pinned Python, and the parity table. CI runs the same
-`scripts/check-all` on every push to `main` and every pull request
-(`.github/workflows/ci.yml`).
+against the pinned Python, and the parity table. `scripts/check-all` runs all of it but
+the benchmarks and, unless asked with `--viewer`, the upstream petrus-viewer
+suites. CI (`.github/workflows/ci.yml`) runs the same steps, `--viewer`
+included, on every push to `main` and every pull request, spread over
+several runners ([Continuous integration](#continuous-integration)).
 
 ## Prerequisites
 
@@ -19,7 +21,8 @@ against the pinned Python, and the parity table. CI runs the same
 | git | with submodule support | the pinned upstream projects are submodules |
 | libzmq, libpq, SQLite | system packages | the ZeroMQ, PostgreSQL and SQLite bindings |
 | PostgreSQL 17 (`initdb`, `pg_ctl`) **or** Docker | 17.x | the PostgreSQL suites and benchmarks |
-| Node.js | 22 | the Gondolin sidecar and Pi helper suites; the petrus-viewer suites and the viewer benchmark (with pnpm) |
+| Node.js | 22 (CI pins 22.19.0) | the Gondolin sidecar and Pi helper suites; the petrus-viewer suites and the viewer benchmark (with pnpm) |
+| pnpm | 11.5.1 | the petrus-viewer suites (`--viewer`) and the viewer benchmark |
 | Graphviz (`dot`) | any | petrus-impetus's diagram rendering tests |
 | bash | 4.4 or later | hamsterdan-operator's secret-launch tests (macOS ships bash 3.2). They use `$PETRUS_BASH` when it is set, else the first bash of at least 4.4 among `bash` on `PATH`, `/opt/homebrew/bin/bash` and `/usr/local/bin/bash` |
 
@@ -121,6 +124,10 @@ It runs, in order, and stops at the first failing step:
 10. `scripts/check-parity`: the parity table's claims hold.
 
 `-j2` limits cabal's parallelism; leave it out to use every core.
+`--viewer` adds, after the tests, the upstream petrus-viewer suites against
+the Haskell backend (`scripts/interop --viewer petrus-viewer-server`, below);
+they need Node 22, pnpm, `pnpm install --frozen-lockfile && pnpm build` in
+`upstream/petrus-viewer`, and `npx playwright install chromium`.
 
 One package's suite, or one group in it:
 
@@ -141,7 +148,8 @@ scripts/interop --viewer        # also the upstream petrus-viewer test suites ag
 ```
 
 `scripts/check-all` already runs these groups as part of each package's
-suite. `scripts/interop` runs only them: the live interop against reference
+suite (the `--viewer` suites only when given `--viewer` too).
+`scripts/interop` runs only them: the live interop against reference
 processes over shared files, databases and sockets, the byte-for-byte
 comparisons with the reference's servers and CLIs, the committed
 differential corpora, and the conformance suites shared with the reference.
@@ -155,7 +163,10 @@ The committed differential corpora, fixture databases and generated modules
 are themselves reference output. `scripts/check-corpora` (also part of
 `scripts/check-all`) reruns every generator against the pinned references
 and fails on any file that no longer matches, so a corpus cannot go stale
-behind a passing replay:
+behind a passing replay. The corpora are recorded on macOS and checked on
+Linux too (CI), so the comparison leaves out the two platform facts that
+differ: the SQLite library version in a database's header, and EOVERFLOW's
+errno and message in hamsterdan-github's HTTP corpus.
 
 ```sh
 scripts/check-corpora                  # every generator (about 40 s)
@@ -333,11 +344,17 @@ local fake (`scripts/container-smoke.d/fake-op`). The checks:
   execution), and that neither Node process inherited a credential.
 
 The `container` job of `.github/workflows/ci.yml` runs the same script on
-every push to `main` and every pull request, after building the image with
-`docker/build-push-action`. The layers come from the GitHub Actions cache.
+every push to `main` and every pull request, after building the image on
+Blacksmith's persistent Docker builder (`useblacksmith/setup-docker-builder`
+and `useblacksmith/build-push-action`), which keeps the layers between runs.
 The Containerfile builds every Hackage dependency in a layer keyed only on
 the `.cabal` files, `cabal.project` and `cabal.project.freeze`, so a
-source-only change rebuilds the local packages and nothing else.
+source-only change rebuilds the local packages and nothing else. The cabal
+store and the local packages' `dist-newstyle` are build cache mounts, which
+the persistent builder keeps: a source change recompiles only the changed
+packages and those that depend on them, and a `.cabal` change finds the
+Hackage dependencies already built. A builder without that cache (a local
+`scripts/container-smoke --build`) builds everything.
 
 ## Parity
 
@@ -367,3 +384,94 @@ probing for `.venv` or `bin/python`, `pending` on a missing Python or
 upstream checkout, guarding a test on whether an upstream file exists, and
 `pytest.skip` or import fallbacks in the Python drivers. A line that
 legitimately needs one says so with `-- lint-skips: allow <reason>`.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main`, every pull request,
+nightly (04:17 UTC) and on demand (`workflow_dispatch`, with a `full`
+input). It runs the steps of `scripts/check-all --viewer`, plus the container
+job, spread over Blacksmith runners so that they run side by side:
+
+| CI job | Runner | `scripts/check-all` step |
+| --- | --- | --- |
+| `lint` | 2 vCPU | `check-pins`, `lint-skips`, `lint-hamsterdan-architecture`, `bench --check`, `check-parity`, the runtime test ledgers (`parity_check.py`) |
+| `build` | 16 vCPU | `cabal build all` (`-Werror`); then plans the test shards |
+| `checks` | 4 vCPU | `scripts/interop --check` (with the PostgreSQL and Docker variables set, so that the selection counts those examples too); `scripts/check-corpora`, with PostgreSQL 17 |
+| `test (1)` … `test (N)` | 8 vCPU | the upstream Python environments, then `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest); then `scripts/check-pending` on their output (a suite with a pending example outside the declared opt-ins does not count as passed) |
+| `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium |
+| `container` | 16 vCPU | none (Docker): the image and `scripts/container-smoke` ([The container image](#the-container-image)) |
+| `ci` | 2 vCPU | the verdict: green only when every job above is |
+
+Branch protection needs only the `ci` check. CI steps carry the names of
+the `check-all` steps they run, and `lint` first runs
+`scripts/ci-tests check-steps`, which fails when a `check-all` step (other
+than the opt-in benchmarks) has no CI step of that name: a check added to
+`check-all` fails CI until CI runs it too.
+
+**Caches.** The GHC and cabal install (`~/.ghcup`) is cached by their
+versions. The cabal store and package index are cached by `cabal.project`,
+`cabal.project.freeze` and the `.cabal` files, falling back to the latest
+entry. `dist-newstyle` is cached by commit, falling back to the latest
+entry, so `build` recompiles only what changed since: cabal decides that
+from the sources' content, not from timestamps. A branch or pull request
+reads its own entries and those of `main`. The test jobs and `checks`
+restore the `dist-newstyle` that `build` saved for the commit and build
+nothing. Three things would make cabal reconfigure (and relink) anyway, and
+every job avoids them: test flags that differ between commands (so CI's
+test flags, `--test-show-details=direct`, the `scripts/ci-test-wrapper`
+wrapper and the `+RTS -M2G -RTS` heap cap, come from a `cabal.project.local`
+that `scripts/ci-tests configure` writes in every job, not from command
+lines); a `PATH` unlike the build's (so every job installs the same
+toolchain, Node included); and `.cabal` files newer than the restored
+configuration (Cabal's own check, which a fresh checkout always trips; the
+jobs set the `.cabal` files' timestamps back after checkout, and
+cabal-install still notices a changed `.cabal` file by its content).
+
+**Shards.** `scripts/ci-tests plan` spreads the suites over about ten
+`test` jobs, balancing their measured times (`.github/ci/test-times.json`).
+A suite much longer than the rest is split into parts, each a set of hspec
+`--match` patterns, plus a rest part that `--skip`s all of them, so every
+example runs whatever the patterns select; two parts of one
+suite never share a job. `build` checks the parts against the built test
+binaries (`scripts/ci-tests check-parts`, hspec dry runs): each part
+selects an example, and the parts' counts add up to the suite's. A suite passes only when all its parts pass. Stale
+times only unbalance the jobs.
+
+**Reusing results.** Each run's `ci` job uploads a test ledger: for every
+suite known green at that commit, its input hash and the run where it
+passed. `build` reads the ledgers of the latest runs on the same branch and
+on `main`, and a suite is not run again when its input hash equals one in
+those ledgers. The hash covers, as committed: every file of the suite's
+package, of every local package it depends on (any component, transitively,
+from cabal's plan) and of every local package its files name; every file
+outside `packages/` (the cabal project and freeze file, `scripts/`, the
+submodule pins, `spec/`, `deployment/`, `.github/`, ...) except README.md,
+PARITY.md, SCOPE.md, `docs/` and `bench-results/`; and the toolchain and
+runner image (GHC, cabal, uv, Node, Python and Docker versions, the system
+libraries). `scripts/ci-tests inputs` prints each suite's hash and the
+packages it covers. The `build` log and the run summary list every reused
+suite with the run it comes from. The nightly run and a dispatch with `full`
+reuse nothing and run every suite:
+
+```sh
+gh workflow run CI --ref main -f full=true
+```
+
+When a `test` job fails on a flaky test, rerunning the failed jobs reruns
+only those shards; the ledger counts a part as passed when an attempt of the
+run passed it.
+
+**Timings** (October 2026, wall clock from the first job's start to the
+`ci` verdict):
+
+| Run | Total | Notes |
+| --- | --- | --- |
+| Cold: no cache at all, every suite | about 10 min | GHC and cabal install 1 min, build 5.5 min, test jobs 1.5 to 2 min, container 6.5 min (side by side with the build) |
+| Warm, every suite (a change outside `packages/`) | about 4 min | build job 1 min, test jobs 1.5 to 2 min, `viewer` 2.5 min |
+| Warm, a change to a package many suites depend on | 4 to 5.5 min | build 1 to 3 min, depending on how much recompiles |
+| Warm, a change to a leaf package | about 3 to 4 min | its suites only |
+
+The single-runner workflow this replaced took about 50 minutes. Within a
+warm run, the longest jobs are `viewer` (the upstream petrus-viewer suites,
+about 1:45) and the shards holding parts of `hamsterdan-testing` (its
+World runs).

@@ -81,8 +81,8 @@ def petrus(name: str, script: str, outputs: Dict[str, str], args: Optional[List[
     return Generator(name, "petrus", script, ["{out}"] if args is None else args, outputs, **kwargs)
 
 
-def hamsterdan(name: str, script: str, outputs: List[str]) -> Generator:
-    return Generator(name, "hamsterdan", script, [], {path: path for path in outputs}, cwd=".", in_place=True)
+def hamsterdan(name: str, script: str, outputs: List[str], **kwargs) -> Generator:
+    return Generator(name, "hamsterdan", script, [], {path: path for path in outputs}, cwd=".", in_place=True, **kwargs)
 
 
 IMPETUS = "packages/petrus-impetus/differential"
@@ -93,6 +93,32 @@ CORE = "packages/petrus-agenticus-core/differential"
 RUNTIME = "packages/petrus-agenticus-runtime"
 EXECUTION = "packages/petrus-execution/test/fixtures"
 PI_TESTS = "upstream/petrus/tests/petrus/agenticus/runtime"
+
+
+def sqlite_writer_free(content: bytes) -> bytes:
+    """An SQLite database's header records, at offset 96, the version of the
+    SQLite library that last wrote it: the pinned Python's bundled SQLite,
+    which differs between platforms and builds (3.53.4 on macOS, 3.53.1 on
+    CI's Linux) for the same pinned Python version. Leave those four bytes
+    out of the comparison; every other byte must match."""
+    if content.startswith(b"SQLite format 3\x00") and len(content) >= 100:
+        return content[:96] + b"\x00\x00\x00\x00" + content[100:]
+    return content
+
+
+# The same OSError on each platform: EOVERFLOW's number and message differ
+# between macOS (where the committed corpora are recorded) and Linux (CI).
+PLATFORM_ERRORS = [
+    (b"[Errno 84] Value too large to be stored in data type", b"[Errno EOVERFLOW]"),
+    (b"[Errno 75] Value too large for defined data type", b"[Errno EOVERFLOW]"),
+]
+
+
+def platform_errors_free(content: bytes) -> bytes:
+    """Replace each platform's text for the same OSError by one marker."""
+    for platform_text, marker in PLATFORM_ERRORS:
+        content = content.replace(platform_text, marker)
+    return content
 
 
 def scratch_root_free(content: bytes) -> bytes:
@@ -325,7 +351,12 @@ GENERATORS: List[Generator] = [
     ),
     hamsterdan("hamsterdan-github/gen_config_corpus", "packages/hamsterdan-github/scripts/gen_config_corpus.py", ["packages/hamsterdan-github/test/corpus/config.jsonl"]),
     hamsterdan("hamsterdan-github/gen_effects_corpus", "packages/hamsterdan-github/scripts/gen_effects_corpus.py", ["packages/hamsterdan-github/test/corpus/effects.jsonl"]),
-    hamsterdan("hamsterdan-github/gen_http_corpus", "packages/hamsterdan-github/scripts/gen_http_corpus.py", ["packages/hamsterdan-github/test/corpus/http.jsonl"]),
+    hamsterdan(
+        "hamsterdan-github/gen_http_corpus",
+        "packages/hamsterdan-github/scripts/gen_http_corpus.py",
+        ["packages/hamsterdan-github/test/corpus/http.jsonl"],
+        normalize={"packages/hamsterdan-github/test/corpus/http.jsonl": platform_errors_free},
+    ),
     hamsterdan("hamsterdan-github/gen_webhook_corpus", "packages/hamsterdan-github/scripts/gen_webhook_corpus.py", ["packages/hamsterdan-github/test/corpus/webhooks.jsonl"]),
     hamsterdan("hamsterdan-readiness/gen_board_corpus", "packages/hamsterdan-readiness/scripts/gen_board_corpus.py", ["packages/hamsterdan-readiness/test/corpus/board.jsonl"]),
     hamsterdan("hamsterdan-readiness/gen_fold_corpus", "packages/hamsterdan-readiness/scripts/gen_fold_corpus.py", ["packages/hamsterdan-readiness/test/corpus/folds.jsonl"]),
@@ -405,7 +436,10 @@ def run_generator(generator: Generator, python: str, postgres: Optional[str], up
                 if not fresh_path.exists():
                     return Result(generator, time.monotonic() - started, [], f"did not write {fresh_path}")
                 fresh = fresh_path.read_bytes()
-                same = generator.normalize.get(path, lambda content: content)
+                normalize = generator.normalize.get(path, lambda content: content)
+
+                def same(content: bytes, normalize=normalize) -> bytes:
+                    return normalize(sqlite_writer_free(content))
                 if committed is None or same(committed) != same(fresh):
                     stale.append((path, describe_difference(path, same(committed or b"{}"), same(fresh))))
                     if update and not generator.in_place:

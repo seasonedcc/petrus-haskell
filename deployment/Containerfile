@@ -47,7 +47,13 @@ COPY --from=cabal-files /opt/hamsterdan/src/packages ./packages
 # Plan the three executables from the .cabal files, then build every Hackage
 # library of that plan into the store through a project of one empty
 # package that depends on them, with the same freeze and package options.
-RUN cabal update \
+# The cabal store, and below the local packages' dist-newstyle, are build
+# cache mounts: a builder that keeps its cache (CI's persistent builder)
+# rebuilds only what changed, even when a .cabal file change invalidates this
+# layer; a builder without one builds everything, as before. They hold build
+# outputs only: the image takes the stripped binaries.
+RUN --mount=type=cache,id=hamsterdan-cabal-state,target=/root/.local/state/cabal,sharing=locked \
+    cabal update \
     && cabal build --dry-run --disable-tests --disable-benchmarks \
        exe:hamsterdan-host exe:hamsterdan-operator exe:hamsterdan-export \
     && mkdir -p /opt/hamsterdan/dependencies \
@@ -57,7 +63,9 @@ RUN cabal update \
     && printf 'packages: .\n\npackage *\n  ghc-options: -fhide-source-paths\n' > /opt/hamsterdan/dependencies/cabal.project \
     && cabal build --project-dir=/opt/hamsterdan/dependencies --only-dependencies all
 COPY packages ./packages
-RUN cabal build --disable-tests --disable-benchmarks \
+RUN --mount=type=cache,id=hamsterdan-cabal-state,target=/root/.local/state/cabal,sharing=locked \
+    --mount=type=cache,id=hamsterdan-dist-newstyle,target=/opt/hamsterdan/src/dist-newstyle,sharing=locked \
+    cabal build --disable-tests --disable-benchmarks \
        exe:hamsterdan-host exe:hamsterdan-operator exe:hamsterdan-export \
     && mkdir -p /opt/hamsterdan/bin \
     && for executable in hamsterdan-host hamsterdan-operator hamsterdan-export; do \

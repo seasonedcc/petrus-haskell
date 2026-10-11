@@ -1,0 +1,796 @@
+#!/usr/bin/env python3
+"""Plan CI's test shards, and reuse a suite's earlier green result only when
+everything it could depend on is identical.
+
+    scripts/ci-tests check-steps             # every scripts/check-all step is a CI step
+    scripts/ci-tests check-parts             # the split suites' parts select each example once (needs the build)
+    scripts/ci-tests inputs                  # each suite's input hash and the packages in it
+    scripts/ci-tests fetch-ledgers DIR       # the test ledgers of recent runs on this branch and main
+    scripts/ci-tests plan --out PLAN [--full] [--ledgers DIR] [--max-shards N] [--target SECONDS]
+                                             # which suites run, which are reused, in which shard
+    scripts/ci-tests run-shard PLAN NAME [--logs DIR]
+                                             # cabal test the shard's suites (no pending example but the
+                                             # opt-ins); write results-NAME.json, each suite's output to DIR
+    scripts/ci-tests configure               # write CI's cabal.project.local (its test flags; CI only)
+    scripts/ci-tests wrap SELECTION BIN ...  # (scripts/ci-test-wrapper, cabal's --test-wrapper)
+    scripts/ci-tests run-viewer PLAN         # scripts/interop --viewer petrus-viewer-server
+    scripts/ci-tests ledger --plan PLAN --results DIR --out FILE
+                                             # this run's ledger: every suite known green, by hash
+
+`scripts/check-all` runs every suite every time; this script is only CI's
+way of spreading `cabal test` over several runners and of not rerunning a
+suite whose inputs have not changed since a run where it passed.
+
+A suite's input hash covers, as committed in HEAD (git object ids, so
+content, not timestamps):
+
+* every file of its package and of each local package it depends on,
+  transitively, through any component (libraries, executables, tests,
+  benchmarks, build-tool-depends), as cabal's plan (dist-newstyle/cache/
+  plan.json) records them;
+* every file of any other local package whose name appears anywhere in those
+  packages' files (tests read other packages' fixtures, drivers and keys by
+  path), with that package's own closure, until nothing new appears;
+* every file outside packages/ (cabal.project and its freeze, scripts/, the
+  upstream submodule pins, spec/, deployment/, .github/, UPSTREAM.md, ...),
+  except the prose and benchmark records no test reads: README.md,
+  PARITY.md, SCOPE.md, docs/ and bench-results/;
+* the environment: GHC, cabal, uv, Node, Python and Docker versions, the
+  runner image, the system libraries' package versions, and this script's
+  schema version.
+
+Packages' benchmark records (packages/*/bench/RESULTS.md) are left out too;
+`scripts/bench --check` and `scripts/check-parity` read them on every run.
+
+Any change to any of these reruns the suite. Ledgers are JSON artifacts
+(`test-ledger`) that the aggregate job of every CI run uploads: for each
+suite known green at that commit, its input hash and the run where it
+actually ran and passed. Only ledgers from this workflow's runs on the same
+branch or on main are read. A full run (`--full`: the nightly schedule, or a
+manual dispatch with `full`) reuses nothing.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import math
+import os
+import re
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import zipfile
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Set, Tuple
+
+ROOT = Path(__file__).resolve().parent.parent
+SCHEMA = "ci-tests-v1"
+TIMES = ROOT / ".github" / "ci" / "test-times.json"
+VIEWER = "petrus-viewer-upstream-suites"
+
+# Outside packages/: prose and benchmark records that no test reads.
+EXCLUDED_TOP = ("README.md", "PARITY.md", "SCOPE.md", "docs/", "bench-results/")
+# Inside a package: its benchmark record (prose and figures, read by
+# scripts/bench --check and scripts/check-parity, which run every time).
+EXCLUDED_IN_PACKAGE = ("bench/RESULTS.md",)
+
+
+def git(*args: str) -> str:
+    return subprocess.run(["git", *args], cwd=ROOT, check=True, stdout=subprocess.PIPE, text=True).stdout
+
+
+def tree_entries() -> List[Tuple[str, str]]:
+    """(path, object id) of every entry of HEAD, submodule gitlinks included."""
+    entries = []
+    for line in git("ls-tree", "-r", "-z", "--full-tree", "HEAD").split("\0"):
+        if not line:
+            continue
+        meta, path = line.split("\t", 1)
+        _mode, _kind, oid = meta.split()
+        entries.append((path, oid))
+    return entries
+
+
+def plan_graph() -> Tuple[Dict[str, Set[str]], Dict[str, List[str]]]:
+    """Local package -> local packages any component of it depends on; and
+    local package -> its test-suite components."""
+    plan_path = ROOT / "dist-newstyle" / "cache" / "plan.json"
+    if not plan_path.exists():
+        raise SystemExit("dist-newstyle/cache/plan.json is missing: run `cabal build all --dry-run` first")
+    plan = json.loads(plan_path.read_text())
+    local = {u["id"]: u for u in plan["install-plan"] if u.get("style") == "local"}
+    names = {i: u["pkg-name"] for i, u in local.items()}
+    deps: Dict[str, Set[str]] = {}
+    suites: Dict[str, List[str]] = {}
+    for unit in local.values():
+        name = unit["pkg-name"]
+        components = unit.get("components") or {unit.get("component-name", "lib"): unit}
+        found = deps.setdefault(name, set())
+        for component_name, component in components.items():
+            for dep in component.get("depends", []) + component.get("exe-depends", []):
+                if dep in names and names[dep] != name:
+                    found.add(names[dep])
+            if component_name.startswith("test:"):
+                suites.setdefault(name, []).append(component_name[len("test:"):])
+        if unit.get("component-name", "").startswith("test:"):
+            suites.setdefault(name, []).append(unit["component-name"][len("test:"):])
+    return deps, {k: sorted(set(v)) for k, v in suites.items()}
+
+
+def MENTION(names: List[str]) -> "re.Pattern[str]":
+    """A local package's name as a whole word, but not as the name of an
+    upstream project (upstream/petrus-engine, github.com/henriquebastos/...),
+    which several local packages share."""
+    alternatives = "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
+    return re.compile(r"(?<![A-Za-z0-9_-])(?<!upstream/)(?<!henriquebastos/)(" + alternatives + r")(?![A-Za-z0-9_-])")
+
+
+def scanned(path: str) -> bool:
+    """Files a test could read or run: everything but prose (Markdown, NOTICE,
+    LICENSE) and benchmark sources (bench/), which no test suite reads. They
+    still count as their own package's input."""
+    name = path.rsplit("/", 1)[-1]
+    return not (name.endswith(".md") or name in ("NOTICE", "LICENSE") or "/bench/" in path)
+
+
+def without_line_comments(path: str, text: str) -> str:
+    """Drop whole-line comments of Haskell and Python sources (a path a test
+    reads is a string literal, never a comment)."""
+    marker = "--" if path.endswith((".hs", ".cabal")) else "#" if path.endswith(".py") else None
+    if marker is None:
+        return text
+    return "\n".join(line for line in text.split("\n") if not line.lstrip().startswith(marker))
+
+
+def mentions(packages: Iterable[str], files: Dict[str, List[Tuple[str, str]]]) -> Dict[str, Set[str]]:
+    """Package -> the other local packages whose name appears in its files."""
+    names = sorted(files)
+    pattern = MENTION(names)
+    result = {}
+    for package in packages:
+        seen: Set[str] = set()
+        for path, _oid in files[package]:
+            if not scanned(path):
+                continue
+            try:
+                text = (ROOT / path).read_bytes().decode("utf-8", errors="ignore")
+            except (FileNotFoundError, IsADirectoryError):
+                continue
+            text = without_line_comments(path, text)
+            seen.update(pattern.findall(text))
+        seen.discard(package)
+        result[package] = seen
+    return result
+
+
+def environment_fingerprint() -> List[str]:
+    def version(command: List[str]) -> str:
+        try:
+            out = subprocess.run(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60)
+            return out.stdout.strip().splitlines()[0] if out.stdout.strip() else f"exit {out.returncode}"
+        except (OSError, subprocess.TimeoutExpired):
+            return "missing"
+
+    lines = [
+        f"schema {SCHEMA}",
+        f"image {os.environ.get('ImageOS', '?')} {os.environ.get('ImageVersion', '?')}",
+        f"ghc {version(['ghc', '--numeric-version'])}",
+        f"cabal {version(['cabal', '--numeric-version'])}",
+        f"uv {version(['uv', '--version'])}",
+        f"node {version(['node', '--version'])}",
+        f"python3 {version(['python3', '--version'])}",
+        f"docker {version(['docker', 'version', '--format', '{{.Server.Version}}'])}",
+        f"git {version(['git', '--version'])}",
+        f"psql-image {os.environ.get('PETRUS_POSTGRES_IMAGE', '?')}",
+    ]
+    packages = ["libzmq3-dev", "libpq-dev", "libpq5", "libsqlite3-dev", "libsqlite3-0", "graphviz", "libc6", "zlib1g", "libgmp10", "openssl"]
+    dpkg = version(["dpkg-query", "-W", "-f", "${Package}=${Version};"] + packages)
+    lines.append(f"dpkg {dpkg}")
+    return lines
+
+
+def compute_inputs() -> Tuple[Dict[str, dict], List[str]]:
+    status = git("status", "--porcelain", "--untracked-files=no", "--ignore-submodules=untracked")
+    if status.strip():
+        raise SystemExit("the working tree differs from HEAD; the input hashes cover committed content only:\n" + status)
+    deps, suites = plan_graph()
+    entries = tree_entries()
+    package_files: Dict[str, List[Tuple[str, str]]] = {p: [] for p in deps}
+    common: List[Tuple[str, str]] = []
+    for path, oid in entries:
+        if path.startswith("packages/"):
+            package, _, rest = path[len("packages/"):].partition("/")
+            if package not in package_files:
+                # A directory under packages/ that is not a package of the plan: everyone's input.
+                common.append((path, oid))
+            elif rest not in EXCLUDED_IN_PACKAGE:
+                package_files[package].append((path, oid))
+        elif not any(path == e or (e.endswith("/") and path.startswith(e)) for e in EXCLUDED_TOP):
+            common.append((path, oid))
+    mentioned = mentions(package_files, package_files)
+    env = environment_fingerprint()
+
+    def closure(package: str) -> Set[str]:
+        result = {package}
+        frontier = [package]
+        while frontier:
+            current = frontier.pop()
+            for nxt in deps.get(current, set()) | mentioned.get(current, set()):
+                if nxt not in result:
+                    result.add(nxt)
+                    frontier.append(nxt)
+        return result
+
+    common_digest = hashlib.sha256("".join(f"{p}\0{o}\n" for p, o in sorted(common)).encode()).hexdigest()
+    package_digest = {
+        p: hashlib.sha256("".join(f"{path}\0{oid}\n" for path, oid in sorted(files)).encode()).hexdigest()
+        for p, files in package_files.items()
+    }
+    env_digest = hashlib.sha256("\n".join(env).encode()).hexdigest()
+    result = {}
+    for package, names in sorted(suites.items()):
+        packages = sorted(closure(package))
+        h = hashlib.sha256()
+        h.update(f"{SCHEMA}\ncommon {common_digest}\nenv {env_digest}\n".encode())
+        for p in packages:
+            h.update(f"package {p} {package_digest[p]}\n".encode())
+        for suite in names:
+            result[suite] = {"package": package, "hash": h.hexdigest() + "-" + suite, "packages": packages}
+    # The upstream petrus-viewer suites (scripts/interop --viewer), run by
+    # CI's viewer job: petrus-viewer-server's inputs (the submodule, the
+    # workflow's Node and pnpm pins and this script are common inputs).
+    viewer = result.get("petrus-viewer-server-test")
+    if viewer:
+        result[VIEWER] = {"package": "petrus-viewer-server", "hash": viewer["hash"] + "-" + VIEWER, "packages": viewer["packages"]}
+    return result, env
+
+
+# ---------------------------------------------------------------------------
+# Ledgers
+
+
+def read_ledgers(directory: Optional[Path]) -> List[dict]:
+    if directory is None or not directory.is_dir():
+        return []
+    ledgers = []
+    for path in sorted(directory.glob("*.json")):
+        try:
+            ledgers.append(json.loads(path.read_text()))
+        except (OSError, ValueError):
+            print(f"ignoring unreadable ledger {path}", file=sys.stderr)
+    return ledgers
+
+
+def gh_json(path: str) -> dict:
+    return json.loads(subprocess.run(["gh", "api", path], check=True, stdout=subprocess.PIPE, text=True).stdout)
+
+
+def fetch_ledgers(directory: Path) -> int:
+    """Download the test-ledger artifacts of this workflow's latest runs on
+    this branch and on main (GITHUB_REPOSITORY, GITHUB_REF_NAME or
+    GITHUB_HEAD_REF, GH_TOKEN). A ledger that cannot be read is skipped: the
+    suites it would have vouched for run again."""
+    repo = os.environ["GITHUB_REPOSITORY"]
+    workflow = os.environ.get("CI_WORKFLOW_FILE", "ci.yml")
+    branch = os.environ.get("GITHUB_HEAD_REF") or os.environ.get("GITHUB_REF_NAME", "")
+    current_run = os.environ.get("GITHUB_RUN_ID", "")
+    directory.mkdir(parents=True, exist_ok=True)
+    fetched = 0
+    for b in [b for b in dict.fromkeys([branch, "main"]) if b]:
+        try:
+            runs = gh_json(f"repos/{repo}/actions/workflows/{workflow}/runs?branch={b}&per_page=20")["workflow_runs"]
+        except (subprocess.CalledProcessError, KeyError, ValueError) as problem:
+            print(f"could not list the runs on {b}: {problem}", file=sys.stderr)
+            continue
+        taken = 0
+        for run in runs:
+            if str(run["id"]) == current_run or (run.get("head_repository") or {}).get("full_name") != repo:
+                continue
+            try:
+                artifacts = [a for a in gh_json(f"repos/{repo}/actions/runs/{run['id']}/artifacts?name=test-ledger")["artifacts"] if not a.get("expired")]
+            except (subprocess.CalledProcessError, KeyError, ValueError):
+                continue
+            if not artifacts:
+                continue
+            blob = subprocess.run(["gh", "api", artifacts[0]["archive_download_url"]], stdout=subprocess.PIPE, check=False).stdout
+            try:
+                with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+                    data = json.loads(archive.read("ledger.json"))
+            except (zipfile.BadZipFile, KeyError, ValueError):
+                continue
+            (directory / f"{run['id']}.json").write_text(json.dumps(data))
+            print(f"ledger of run {run['id']} ({b}, {run['head_sha'][:12]}): {len(data.get('suites', {}))} suites")
+            fetched += 1
+            taken += 1
+            if taken >= 3:
+                break
+    print(f"{fetched} ledgers")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Units and shards
+#
+# A unit is what one shard runs of one suite: the whole suite, or one part
+# of it. .github/ci/test-times.json can split a long suite into parts, each a
+# list of hspec --match patterns; the suite's remaining part ("rest") skips
+# every pattern of the other parts. So every example belongs to a part that
+# matches it or to the rest, and runs at least once: a pattern that selects
+# nothing leaves its examples to the rest. A suite counts as passed only when
+# all its units passed.
+
+
+def load_times() -> dict:
+    try:
+        return json.loads(TIMES.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def units_of(suite: str, times: dict) -> List[dict]:
+    parts = times.get("parts", {}).get(suite)
+    seconds = times.get("seconds", {})
+    if not parts:
+        return [{"id": suite, "suite": suite, "args": [], "seconds": float(seconds.get(suite, 60))}]
+    units = []
+    every = []
+    for name, part in parts.items():
+        patterns = part["match"]
+        every += patterns
+        args = [a for p in patterns for a in ("--match", p)]
+        units.append({"id": f"{suite}#{name}", "suite": suite, "args": args, "seconds": float(part["seconds"])})
+    rest = float(seconds.get(suite, 60)) - sum(u["seconds"] for u in units)
+    units.append({"id": f"{suite}#rest", "suite": suite, "args": [a for p in every for a in ("--skip", p)], "seconds": max(rest, 1.0)})
+    return units
+
+
+def check_parts() -> int:
+    """The parts of every split suite, as hspec dry runs of the built test
+    binaries: each part selects at least one example, and the parts plus the
+    rest select the suite's examples exactly once each (their counts add up
+    to the suite's: an overlap would add more)."""
+    times = load_times()
+    bad = 0
+    for suite in sorted(times.get("parts", {})):
+        package = suite.removesuffix("-test")
+        binary = subprocess.run(["cabal", "list-bin", "-v0", f"{package}:test:{suite}"], cwd=ROOT, check=True,
+                                capture_output=True, text=True).stdout.strip()
+
+        def selected(args: List[str]) -> int:
+            out = subprocess.run([binary, "--dry-run", *args], cwd=ROOT / "packages" / package,
+                                 capture_output=True).stdout
+            found = SUMMARY.findall(out)
+            return int(found[-1][0]) if found else -1
+
+        total = selected([])
+        counts = {u["id"]: selected(u["args"]) for u in units_of(suite, times)}
+        for unit, n in counts.items():
+            print(f"{unit}: {n} examples")
+            if n < 1:
+                print(f"ci-tests: {unit} selects no example", file=sys.stderr)
+                bad += 1
+        if sum(counts.values()) != total:
+            print(f"ci-tests: the parts of {suite} select {sum(counts.values())} examples, the suite has {total}",
+                  file=sys.stderr)
+            bad += 1
+        else:
+            print(f"{suite}: {len(counts)} parts select its {total} examples once each")
+    return 1 if bad else 0
+
+
+def shard(units: List[dict], max_shards: int, target: float) -> List[dict]:
+    """Longest processing time first, over as few shards as keep each near
+    the target, at most max_shards; two units of one suite never share a shard
+    (each shard gives a suite one selection)."""
+    if not units:
+        return []
+    total = sum(u["seconds"] for u in units)
+    per_suite: Dict[str, int] = {}
+    for u in units:
+        per_suite[u["suite"]] = per_suite.get(u["suite"], 0) + 1
+    widest = max(per_suite.values())
+    count = min(len(units), max(min(max_shards, math.ceil(total / target)), widest, 1))
+    bins: List[List[dict]] = [[] for _ in range(count)]
+    loads = [0.0] * count
+    for unit in sorted(units, key=lambda u: (-u["seconds"], u["id"])):
+        candidates = [i for i in range(count) if all(other["suite"] != unit["suite"] for other in bins[i])]
+        i = min(candidates, key=lambda j: loads[j])
+        bins[i].append(unit)
+        loads[i] += unit["seconds"]
+    shards = []
+    for i, (members, load) in enumerate(sorted(zip(bins, loads), key=lambda x: -x[1])):
+        members = sorted(members, key=lambda u: u["id"])
+        shards.append({
+            "name": str(i + 1),
+            "units": [u["id"] for u in members],
+            "suites": " ".join(u["id"] for u in members),
+            "estimate": round(load),
+        })
+    return shards
+
+
+def plan(args: List[str]) -> int:
+    full = "--full" in args
+    ledgers_dir = Path(args[args.index("--ledgers") + 1]) if "--ledgers" in args else None
+    max_shards = int(args[args.index("--max-shards") + 1]) if "--max-shards" in args else 10
+    target = float(args[args.index("--target") + 1]) if "--target" in args else 120.0
+    out = Path(args[args.index("--out") + 1]) if "--out" in args else None
+
+    inputs, env = compute_inputs()
+    known: Dict[str, dict] = {}
+    if not full:
+        for ledger_doc in read_ledgers(ledgers_dir):
+            if ledger_doc.get("schema") != SCHEMA:
+                continue
+            for suite, entry in ledger_doc.get("suites", {}).items():
+                if suite in inputs and entry.get("hash") == inputs[suite]["hash"]:
+                    known.setdefault(suite, entry)
+
+    reused = {s: known[s] for s in sorted(known)}
+    to_run = sorted(s for s in inputs if s not in known)
+    times = load_times()
+    units = [u for s in to_run if s != VIEWER for u in units_of(s, times)]
+    shards = shard(units, max_shards, target)
+
+    print("environment:\n  " + "\n  ".join(env))
+    print(f"\n{'full run: nothing reused' if full else 'reuse allowed'}; {len(inputs)} suites, {len(to_run)} to run, {len(reused)} reused\n")
+    for suite, entry in reused.items():
+        print(f"  reused  {suite:42} passed in {entry.get('run_url', entry.get('run_id'))} at {entry.get('sha', '?')[:12]}")
+    for s in shards:
+        print(f"  shard {s['name']} (~{s['estimate']} s): {s['suites']}")
+    print(f"  viewer: {'runs' if VIEWER in to_run else 'reused' if VIEWER in inputs else 'absent'}")
+
+    document = {
+        "schema": SCHEMA,
+        "full": full,
+        "inputs": {s: {"hash": v["hash"], "package": v["package"]} for s, v in inputs.items()},
+        "reused": reused,
+        "units": {u["id"]: u for u in units} | ({VIEWER: {"id": VIEWER, "suite": VIEWER, "args": [], "seconds": 0}} if VIEWER in to_run else {}),
+        "shards": shards,
+        "viewer": VIEWER in to_run,
+    }
+    if out:
+        out.write_text(json.dumps(document, indent=1, sort_keys=True))
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a") as f:
+            f.write(f"### Test plan\n\n{len(inputs)} suites: {len(to_run)} run ({len(shards)} shards"
+                    f"{', plus the viewer job' if VIEWER in to_run else ''}), {len(reused)} reused"
+                    f"{' (full run: nothing reused)' if full else ''}.\n\n")
+            if reused:
+                f.write("| reused suite | passed in | commit |\n|---|---|---|\n")
+                for suite, entry in reused.items():
+                    f.write(f"| {suite} | {entry.get('run_url', entry.get('run_id'))} | {entry.get('sha', '?')[:12]} |\n")
+            f.write("\n| shard | estimate (s) | suites |\n|---|---|---|\n")
+            for s in shards:
+                f.write(f"| {s['name']} | {s['estimate']} | {s['suites']} |\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Running a shard
+
+
+def suite_logs(package: str, suite: str) -> List[Path]:
+    return list((ROOT / "dist-newstyle" / "build").glob(f"*/*/{package}-*/t/{suite}/test/*-{suite}.log"))
+
+
+def passed(package: str, suite: str) -> bool:
+    logs = suite_logs(package, suite)
+    text = "\n".join(log.read_text(errors="replace") for log in logs)
+    return bool(logs) and f"Test suite {suite}: PASS" in text and f"Test suite {suite}: FAIL" not in text
+
+
+def no_pending(log: Path, scratch: Path) -> bool:
+    """scripts/check-pending on this one suite's output: no pending example
+    but the declared opt-ins."""
+    if not log.is_file():
+        return False
+    alone = Path(tempfile.mkdtemp(prefix="pending-", dir=scratch))
+    shutil.copy(log, alone / log.name)
+    return subprocess.call([str(ROOT / "scripts" / "check-pending"), str(alone)], cwd=ROOT) == 0
+
+
+SUMMARY = re.compile(rb"(\d+) examples?, (\d+) failures?(?:, (\d+) pending)?")
+
+
+def counts(directory: Path, suite: str) -> Dict[str, int]:
+    """The suite's hspec summary (examples, failures, pending), as the
+    wrapper recorded it in DIRECTORY (with --test-show-details=direct the
+    suite's log leaves it out)."""
+    recorded = directory / f"{suite}.json"
+    return json.loads(recorded.read_text()) if recorded.is_file() else {}
+
+
+def write_results(name: str, document: dict, outcome: Dict[str, bool], tallies: Optional[Dict[str, Dict[str, int]]] = None) -> None:
+    tallies = tallies or {}
+    results = {u: {"suite": document["units"][u]["suite"], "hash": document["inputs"][document["units"][u]["suite"]]["hash"],
+                   "passed": ok, **tallies.get(u, {})}
+               for u, ok in outcome.items()}
+    Path(f"results-{name}.json").write_text(json.dumps(results, indent=1, sort_keys=True))
+    for u, ok in sorted(outcome.items()):
+        tally = tallies.get(u, {})
+        detail = f" ({tally['examples']} examples, {tally['pending']} pending)" if tally else ""
+        print(f"{u}: {'passed' if ok else 'FAILED'}{detail}")
+
+
+def run_shard(args: List[str]) -> int:
+    """PLAN NAME: `cabal test` this shard's suites (in parallel, as
+    scripts/check-all does), each restricted to its part: cabal runs every
+    test binary through scripts/ci-test-wrapper (--test-wrapper), which adds
+    the part's hspec --match/--skip arguments from CI_TESTS_SELECTION
+    (hspec takes no --match from a .hspec file or HSPEC_OPTIONS, and
+    --test-options would apply to every suite of the invocation).
+
+    With --logs DIR, each suite's output is kept as DIR/SUITE.log. A suite
+    passes only when its binary passed and scripts/check-pending finds no
+    pending example in its output but the declared opt-ins, as in
+    scripts/check-all; CI's next step runs scripts/check-pending over DIR
+    too."""
+    plan_file, name = args[0], args[1]
+    logs = Path(args[args.index("--logs") + 1]) if "--logs" in args else None
+    # As scripts/check-all: in CI the PostgreSQL and Docker suites must run
+    # (the Docker ones would otherwise pend as a declared opt-in).
+    if os.environ.get("CI") and (not os.environ.get("PETRUS_TEST_POSTGRES") or os.environ.get("PETRUS_TEST_DOCKER") != "1"):
+        print("ci-tests: CI is set but PETRUS_TEST_POSTGRES is unset or PETRUS_TEST_DOCKER is not 1:"
+              " the PostgreSQL or Docker suites would be skipped", file=sys.stderr)
+        return 2
+    document = json.loads(Path(plan_file).read_text())
+    shard_doc = next(s for s in document["shards"] if s["name"] == name)
+    units = [document["units"][u] for u in shard_doc["units"]]
+    selection: Dict[str, List[str]] = {}
+    targets = []
+    for unit in units:
+        package = document["inputs"][unit["suite"]]["package"]
+        targets.append(f"{package}:test:{unit['suite']}")
+        for log in suite_logs(package, unit["suite"]):
+            log.unlink()
+        if unit["args"]:
+            selection[unit["suite"]] = unit["args"]
+            print(f"{unit['id']}: {' '.join(shlex.quote(a) for a in unit['args'])}")
+    scratch = Path(tempfile.mkdtemp(prefix="ci-tests-", dir=os.environ.get("RUNNER_TEMP")))
+    logs = logs or scratch / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    for unit in units:
+        (logs / f"{unit['suite']}.log").unlink(missing_ok=True)
+    selection_file = scratch / "selection.json"
+    selection_file.write_text(json.dumps({"args": selection, "counts": str(scratch), "logs": str(logs)}))
+    jobs = os.environ.get("CI_TEST_JOBS", "-j")
+    if not PROJECT_LOCAL.exists() or PROJECT_LOCAL.read_text() != project_config():
+        print("ci-tests: run `scripts/ci-tests configure` first (CI's test flags come from cabal.project.local)",
+              file=sys.stderr)
+        return 2
+    command = ["cabal", "test", jobs, *targets, "--keep-going"]
+    print("$ " + " ".join(shlex.quote(c) for c in command), flush=True)
+    try:
+        status = subprocess.call(command, cwd=ROOT, env={**os.environ, "CI_TESTS_SELECTION": str(selection_file)})
+        tallies = {u["id"]: counts(scratch, u["suite"]) for u in units}
+        outcome = {u["id"]: passed(document["inputs"][u["suite"]]["package"], u["suite"])
+                   and no_pending(logs / f"{u['suite']}.log", scratch) for u in units}
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    write_results(name, document, outcome, tallies)
+    return status if status != 0 else (0 if all(outcome.values()) else 1)
+
+
+PROJECT_LOCAL = ROOT / "cabal.project.local"
+PROJECT_LOCAL_HEADER = "-- Written by scripts/ci-tests configure"
+
+
+def project_config() -> str:
+    """CI's cabal.project.local: the test flags of every cabal command in
+    every CI job. cabal records them in each local package's configuration,
+    and a flag given on one command line but not another makes cabal
+    reconfigure (and relink) every package; from the project file, `cabal
+    build` in the build job, `cabal test` in the test jobs and
+    scripts/interop's builds in the checks and viewer jobs all share one
+    configuration and rebuild nothing. The wrapper (scripts/ci-test-wrapper)
+    runs a test binary unchanged unless CI_TESTS_SELECTION names a
+    selection file. Every test binary runs with a 2 GiB heap cap, as in
+    scripts/check-all."""
+    return (f"{PROJECT_LOCAL_HEADER} (CI only; see that script).\n"
+            "test-show-details: direct\n"
+            f"test-wrapper: {ROOT / 'scripts' / 'ci-test-wrapper'}\n"
+            "test-options: +RTS -M2G -RTS\n")
+
+
+def configure() -> int:
+    """Write CI's cabal.project.local (project_config). It refuses to replace
+    a cabal.project.local that it did not write."""
+    if PROJECT_LOCAL.exists() and not PROJECT_LOCAL.read_text().startswith(PROJECT_LOCAL_HEADER):
+        print(f"ci-tests: {PROJECT_LOCAL} exists and is not CI's; not replacing it", file=sys.stderr)
+        return 1
+    PROJECT_LOCAL.write_text(project_config())
+    print(f"ci-tests: wrote {PROJECT_LOCAL.name}:\n{project_config()}", end="")
+    return 0
+
+
+def wrap(args: List[str]) -> int:
+    """SELECTION BINARY ARGS...: run a test binary (cabal's --test-wrapper)
+    with its suite's part selection from SELECTION added to its arguments,
+    pass its output through, keep it as SELECTION's logs directory's
+    SUITE.log (for scripts/check-pending), and record its hspec summary in
+    SELECTION's counts directory (a shard runs at most one part of a
+    suite)."""
+    selection = json.loads(Path(args[0]).read_text())
+    binary, rest = args[1], args[2:]
+    suite = Path(binary).name
+    extra = selection["args"].get(suite, [])
+    if extra:
+        print(f"{suite}: {' '.join(shlex.quote(a) for a in extra)}", file=sys.stderr, flush=True)
+    child = subprocess.Popen([binary, *extra, *rest], stdout=subprocess.PIPE)
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, lambda s, _frame: child.send_signal(s))
+    tail = b""
+    with open(Path(selection["logs"]) / f"{suite}.log", "wb") as log:
+        while True:
+            chunk = os.read(child.stdout.fileno(), 65536)
+            if not chunk:
+                break
+            sys.stdout.buffer.write(chunk)
+            sys.stdout.buffer.flush()
+            log.write(chunk)
+            tail = (tail + chunk)[-65536:]
+    code = child.wait()
+    found = SUMMARY.findall(tail)
+    if found:
+        examples, failures, pending = found[-1]
+        record = {"examples": int(examples), "failures": int(failures), "pending": int(pending or 0)}
+        (Path(selection["counts"]) / f"{suite}.json").write_text(json.dumps(record))
+    return code if code >= 0 else 128 - code
+
+
+# The upstream petrus-viewer suites (packages/petrus-viewer-server/
+# upstream-tests/run.mjs), in groups that run side by side: wire waits out
+# quiet windows, the browser suites wait on Chromium, and neither uses much
+# CPU. Together they are every suite run.mjs knows.
+VIEWER_GROUPS = [
+    ["wire"],
+    ["playwright", "live"],
+    ["relay", "endpoints", "url-cache", "cli", "mcp", "mcp-haskell-relay", "collab", "protocol", "differential", "history"],
+]
+
+
+def run_viewer(args: List[str]) -> int:
+    """PLAN: what scripts/interop --viewer petrus-viewer-server runs: the
+    package's interop group, then every upstream petrus-viewer suite against
+    the Haskell backend (in VIEWER_GROUPS, side by side, on one build of the
+    executables)."""
+    document = json.loads(Path(args[0]).read_text())
+    status = subprocess.call([str(ROOT / "scripts" / "interop"), "-j", "petrus-viewer-server"], cwd=ROOT)
+    run_mjs = ROOT / "packages" / "petrus-viewer-server" / "upstream-tests" / "run.mjs"
+    block = re.search(r"^const SUITES = \{\n(.*?)^\};", run_mjs.read_text(), re.S | re.M)
+    listed = sorted(re.findall(r'^  "?([a-z-]+)"?: \{', block.group(1), re.M)) if block else []
+    if listed != sorted(s for g in VIEWER_GROUPS for s in g):
+        print(f"ci-tests: VIEWER_GROUPS does not name exactly run.mjs's suites ({', '.join(listed)})", file=sys.stderr)
+        write_results("viewer", document, {VIEWER: False})
+        return 1
+    scratch = Path(tempfile.mkdtemp(prefix="ci-viewer-", dir=os.environ.get("RUNNER_TEMP")))
+    bins = scratch / "bin"
+    bins.mkdir()
+    test = "petrus-viewer-server:test:petrus-viewer-server-test"
+    exes = ["petrus", "petrus-mcp", "petrus-collab", "petrus-viewer-oracle"]
+    subprocess.run(["cabal", "build", "-v1", "-j", "--enable-tests", "petrus-viewer-server:exes", test], cwd=ROOT, check=True)
+    for name, target in [(e, f"petrus-viewer-server:exe:{e}") for e in exes] + [("petrus-viewer-server-test", test)]:
+        built = subprocess.run(["cabal", "list-bin", "-v0", "--enable-tests", target], cwd=ROOT, check=True,
+                               capture_output=True, text=True).stdout.strip()
+        shutil.copy2(built, bins / name)
+    procs = []
+    for i, group in enumerate(VIEWER_GROUPS):
+        out = open(scratch / f"group-{i}.log", "w")
+        procs.append((group, out, subprocess.Popen(["node", str(run_mjs), "--bin-dir", str(bins), *group],
+                                                   cwd=ROOT, stdout=out, stderr=subprocess.STDOUT)))
+    for group, out, proc in procs:
+        proc.wait()
+        out.close()
+    for i, (group, out, proc) in enumerate(procs):
+        print(f"\n==> upstream petrus-viewer suites {', '.join(group)}: exit {proc.returncode}", flush=True)
+        print((scratch / f"group-{i}.log").read_text(), flush=True)
+        status = status or proc.returncode
+    shutil.rmtree(scratch, ignore_errors=True)
+    write_results("viewer", document, {VIEWER: status == 0})
+    return status
+
+
+def ledger(args: List[str]) -> int:
+    plan_file = Path(args[args.index("--plan") + 1])
+    results_dir = Path(args[args.index("--results") + 1])
+    out = Path(args[args.index("--out") + 1])
+    document = json.loads(plan_file.read_text())
+    run_id = os.environ.get("GITHUB_RUN_ID", "local")
+    run_url = f"{os.environ.get('GITHUB_SERVER_URL', '')}/{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/{run_id}"
+    sha = os.environ.get("GITHUB_SHA", "")
+    unit_passed: Dict[str, bool] = {}
+    unit_examples: Dict[str, int] = {}
+    for path in sorted(results_dir.rglob("results-*.json")):
+        for unit, status in json.loads(path.read_text()).items():
+            suite = status["suite"]
+            if unit not in document["units"] or status["hash"] != document["inputs"].get(suite, {}).get("hash"):
+                continue
+            unit_passed[unit] = unit_passed.get(unit, False) or bool(status["passed"])
+            if status["passed"] and "examples" in status:
+                unit_examples[unit] = status["examples"]
+    suites = dict(document["reused"])
+    by_suite: Dict[str, List[str]] = {}
+    for unit in document["units"].values():
+        by_suite.setdefault(unit["suite"], []).append(unit["id"])
+    failed = []
+    for suite, units in sorted(by_suite.items()):
+        if all(unit_passed.get(u, False) for u in units):
+            suites[suite] = {"hash": document["inputs"][suite]["hash"], "run_id": run_id, "run_url": run_url, "sha": sha}
+            if all(u in unit_examples for u in units):
+                suites[suite]["examples"] = sum(unit_examples[u] for u in units)
+        else:
+            failed.append(suite)
+    out.write_text(json.dumps({"schema": SCHEMA, "suites": suites}, indent=1, sort_keys=True))
+    print(f"ledger: {len(suites)} of {len(document['inputs'])} suites known green "
+          f"({len(document['reused'])} reused, {len(by_suite) - len(failed)} ran and passed in this run)")
+    for suite in sorted(by_suite):
+        if suite in suites:
+            print(f"  {suite:42} {suites[suite].get('examples', '?')} examples")
+    known = [entry["examples"] for entry in suites.values() if "examples" in entry]
+    print(f"  {'total':42} {sum(known)} examples in {len(known)} suites")
+    missing = sorted(set(document["inputs"]) - set(suites))
+    if missing:
+        print("not green in this run: " + ", ".join(missing), file=sys.stderr)
+        return 1
+    return 0
+
+
+def inputs_cmd() -> int:
+    inputs, env = compute_inputs()
+    print("environment:\n  " + "\n  ".join(env))
+    for suite, entry in sorted(inputs.items()):
+        print(f"{suite:42} {entry['hash'][:16]}  {len(entry['packages'])} packages: {' '.join(entry['packages'])}")
+    return 0
+
+
+# check-all steps CI does not run: the benchmarks are opt-in (--bench).
+NOT_IN_CI = {"Benchmarks"}
+
+
+def check_steps() -> int:
+    """Every step of scripts/check-all is a step of CI (.github/workflows/
+    ci.yml), by name: a step whose name starts with the check-all step's.
+    A check added to check-all then fails CI until CI runs it too."""
+    steps = re.findall(r'^\s*step "([^"]+)"', (ROOT / "scripts" / "check-all").read_text(), re.M)
+    names = [n.strip().strip('"') for n in re.findall(r"^\s*-? *name: (.+)$", (ROOT / ".github" / "workflows" / "ci.yml").read_text(), re.M)]
+    missing = [s for s in steps if s not in NOT_IN_CI and not any(n.startswith(s) for n in names)]
+    for s in missing:
+        print(f"ci-tests: scripts/check-all step {s!r} has no CI step of that name (.github/workflows/ci.yml)", file=sys.stderr)
+    if not missing:
+        print(f"ci-tests: CI runs all {len(steps) - len(NOT_IN_CI & set(steps))} scripts/check-all steps"
+              f" (not: {', '.join(sorted(NOT_IN_CI))})")
+    return 1 if missing else 0
+
+
+def main(argv: List[str]) -> int:
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    command, rest = argv[0], argv[1:]
+    commands = {
+        "inputs": lambda: inputs_cmd(),
+        "plan": lambda: plan(rest),
+        "run-shard": lambda: run_shard(rest),
+        "run-viewer": lambda: run_viewer(rest),
+        "wrap": lambda: wrap(rest),
+        "configure": lambda: configure(),
+        "ledger": lambda: ledger(rest),
+        "fetch-ledgers": lambda: fetch_ledgers(Path(rest[0])),
+        "check-steps": lambda: check_steps(),
+        "check-parts": lambda: check_parts(),
+    }
+    if command not in commands:
+        print(f"unknown command {command}", file=sys.stderr)
+        return 2
+    return commands[command]()
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
