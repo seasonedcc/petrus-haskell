@@ -49,7 +49,6 @@ module Hamsterdan.Python.Text
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Unsafe qualified as BU
-import Data.Char (ord)
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -61,6 +60,7 @@ import Petrus.Json.Python
   , pythonError
   , isPythonPrintable
   , isPythonSpace
+  , parsePythonInt
   , pythonDecimal
   , pythonLstrip
   , pythonRstrip
@@ -180,45 +180,9 @@ intText value = case pyIntBase 10 value of
   where
     digits = T.length (T.filter (isJust . pythonDecimal) value)
 
--- | @int(value, base)@ for bases 10 and 16: surrounding whitespace, a sign,
--- the @0x@ prefix in base 16, Unicode decimal digits, and single
--- underscores between digits.
---
--- The whitespace is not @str.strip@'s: CPython maps non-ASCII whitespace
--- to a space and then skips C's @isspace@ set, so @\\x1c@–@\\x1f@ (which
--- @str.isspace@ accepts) are not stripped.
+-- | @int(value, base)@: petrus-json's 'parsePythonInt'.
 pyIntBase :: Int -> Text -> Maybe Integer
-pyIntBase base input = do
-  let trimmed = T.dropAround intSpace input
-      intSpace c = if c < '\x80' then c `elem` (" \t\n\v\f\r" :: String) else isSpace c
-  (sign, unsigned) <- case T.uncons trimmed of
-    Just ('-', rest) -> Just (negate, rest)
-    Just ('+', rest) -> Just (id, rest)
-    _ -> Just (id, trimmed)
-  (afterPrefix, prefixed) <-
-    if base == 16 && (T.isPrefixOf "0x" unsigned || T.isPrefixOf "0X" unsigned)
-      then Just (T.drop 2 unsigned, True)
-      else Just (unsigned, False)
-  digits <- groups prefixed (T.unpack afterPrefix)
-  if null digits then Nothing else Just (sign (foldl (\total d -> total * toInteger base + toInteger d) 0 digits))
-  where
-    -- Underscores may separate digits, and may follow a base prefix.
-    groups prefixed = \case
-      '_' : rest | prefixed -> body rest
-      chars -> body chars
-    body = \case
-      [] -> Nothing
-      chars -> go chars
-    go = \case
-      [] -> Just []
-      c : '_' : rest -> case rest of
-        next : _ | next /= '_' -> (:) <$> digit c <*> go rest
-        _ -> Nothing
-      c : rest -> (:) <$> digit c <*> go rest
-    digit c
-      | base == 16 && c >= 'a' && c <= 'f' = Just (ord c - ord 'a' + 10)
-      | base == 16 && c >= 'A' && c <= 'F' = Just (ord c - ord 'A' + 10)
-      | otherwise = pythonDecimal c
+pyIntBase = parsePythonInt
 
 -- | @str(uuid.UUID(value))@: the canonical lowercase spelling, or 'Nothing'
 -- where the constructor raises @ValueError@.

@@ -45,7 +45,7 @@ import Data.ByteString.Unsafe qualified as BU
 import Data.Int (Int8)
 import Data.Word (Word8)
 import Numeric (showOct)
-import Petrus.Json.Python (isPythonSpace)
+import Petrus.Json.Python (fsDecode, isPythonSpace, parsePythonInt)
 import Petrus.Motus.Execution.Internal.PyText
 
 -- ---------------------------------------------------------------------------
@@ -545,8 +545,8 @@ procPax member = do
       then do
         let mapValue = lookupKey "GNU.sparse.map" paxHeaders
         numbers <- forM (BC.split ',' mapValue) $ \piece -> do
-          let text = decodeSurrogateEscape piece
-          maybe (failWith (PyErr "ValueError" (pyIntError text))) pure (pyInt text)
+          let text = fsDecode piece
+          maybe (failWith (PyErr "ValueError" (pyIntError text))) pure (parsePythonInt 10 text)
         pure next0 {memberSparse = Just (pairs numbers)}
       else
         if hasKey "GNU.sparse.size" paxHeaders
@@ -576,7 +576,7 @@ procPax member = do
     pairs _ = []
     strictInt value
       | not (isStrictUtf8 value) = invalid
-      | otherwise = maybe invalid pure (pyInt (decodeSurrogateEscape value))
+      | otherwise = maybe invalid pure (parsePythonInt 10 (fsDecode value))
 
 parseRecords :: ByteString -> Int -> [(Integer, ByteString, ByteString)] -> Either Failure [(Integer, ByteString, ByteString)]
 parseRecords buf pos acc
@@ -640,12 +640,12 @@ applyPaxInfo headers member0 = go member0 headers
       "uid" -> go member {memberUid = intOrZero value} rest
       "gid" -> go member {memberGid = intOrZero value} rest
       "mtime" ->
-        go member {memberMtime = maybe (MTimeInt 0) MTimeFloat (pyFloat (decodeSurrogateEscape value))} rest
+        go member {memberMtime = maybe (MTimeInt 0) MTimeFloat (pyFloat (fsDecode value))} rest
       _ -> go member rest
-    intOrZero value = maybe 0 id (pyInt (decodeSurrogateEscape value))
+    intOrZero value = maybe 0 id (parsePythonInt 10 (fsDecode value))
     sparseSize member value =
-      let text = decodeSurrogateEscape value
-       in case pyInt text of
+      let text = fsDecode value
+       in case parsePythonInt 10 text of
             Just n -> pure member {memberSize = n}
             Nothing -> failWith (PyErr "ValueError" (pyIntError text))
 

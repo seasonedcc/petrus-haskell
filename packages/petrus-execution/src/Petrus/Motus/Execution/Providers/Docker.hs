@@ -36,7 +36,6 @@ import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive
 import Petrus.Motus.Execution.Internal.Common
 import Petrus.Motus.Execution.Internal.Process
 import Petrus.Json.Python (decodeUtf8Python, jsonTypeName, loadsText, pythonExceptionStr, pythonSplit, pythonStrRepr, pythonStrip)
-import Petrus.Motus.Execution.Internal.PyText (pyStrRepr)
 import System.Environment (getEnvironment)
 import System.IO.Temp (withSystemTempDirectory)
 
@@ -87,13 +86,9 @@ provision :: DockerEnvironment -> Text -> EnvironmentSpec -> IO EnvironmentLease
 provision = create
 
 -- | The @(argv)@ tuple repr used by @CalledProcessError@ / @TimeoutExpired@.
-argvRepr :: [String] -> String
-argvRepr [single] = "(" <> pyStrRepr single <> ",)"
-argvRepr items = "(" <> joinWith ", " (map pyStrRepr items) <> ")"
-  where
-    joinWith _ [] = ""
-    joinWith _ [x] = x
-    joinWith sep (x : xs) = x <> sep <> joinWith sep xs
+argvRepr :: [Text] -> Text
+argvRepr [single] = "(" <> pythonStrRepr single <> ",)"
+argvRepr items = "(" <> T.intercalate ", " (map pythonStrRepr items) <> ")"
 
 -- | @subprocess.run(("docker", *args), capture_output=True, check=check, ...)@.
 -- Raises @CalledProcessError@ / @TimeoutExpired@ (as 'OtherError') and
@@ -101,7 +96,7 @@ argvRepr items = "(" <> joinWith ", " (map pyStrRepr items) <> ")"
 docker :: DockerEnvironment -> [Text] -> Bool -> Maybe ByteString -> Double -> IO RunOutcome
 docker env args check input seconds = do
   let config = dockerConfig env
-      shown = "docker" : map T.unpack args
+      shown = "docker" : args
   host <- getEnvironment
   executable <- resolveExecutable [(T.pack k, T.pack v) | (k, v) <- host] (T.pack (dockerExecutable config))
   outcome <-
@@ -111,7 +106,7 @@ docker env args check input seconds = do
       | errorKind failure == TimeoutError ->
           throwExecution
             (OtherError "TimeoutExpired")
-            (T.pack ("Command '" <> argvRepr shown <> "' timed out after " <> showSeconds seconds <> " seconds"))
+            ("Command '" <> argvRepr shown <> "' timed out after " <> T.pack (showSeconds seconds) <> " seconds")
       | otherwise -> throwIO failure
     Right result -> do
       -- @text=True@ (no input) decodes both streams in @communicate@,
@@ -122,14 +117,7 @@ docker env args check input seconds = do
       when (check && outcomeCode result /= 0) $
         throwExecution
           (OtherError "CalledProcessError")
-          ( T.pack
-              ( "Command '"
-                  <> argvRepr shown
-                  <> "' returned non-zero exit status "
-                  <> show (outcomeCode result)
-                  <> "."
-              )
-          )
+          ("Command '" <> argvRepr shown <> "' returned non-zero exit status " <> T.pack (show (outcomeCode result)) <> ".")
       pure result
   where
     showSeconds s = if s == fromIntegral (round s :: Integer) then show (round s :: Integer) else show s
@@ -216,7 +204,7 @@ dockerLookup env operation = do
       when bind (throwExecution RuntimeError "execution container unexpectedly has a bind mount")
       running <- truthy <$> (index "Running" =<< index "State" info)
       Just <$> either throwIO pure (mkEnvironmentLease operation providerLabel container dockerCapabilities (if running then Ready else Terminal))
-    _ -> throwExecution RuntimeError (T.pack ("operation " <> pyStrRepr (T.unpack operation) <> " resolves to multiple containers"))
+    _ -> throwExecution RuntimeError ("operation " <> pythonStrRepr operation <> " resolves to multiple containers")
 
 create :: DockerEnvironment -> Text -> EnvironmentSpec -> IO EnvironmentLease
 create env operation spec = do

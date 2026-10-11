@@ -5,10 +5,13 @@
 -- is provisioned by @scripts/upstream-python@; the examples never skip.
 module Petrus.Agenticus.CustodyInteropSpec (spec) where
 
+import Control.Exception (finally, try)
 import Control.Monad (forM_)
 import Data.ByteString.Char8 qualified as BC
+import Petrus.Agenticus.Connection.Storage (ConnectionStorage (..), StorageSnapshot (..), openSqliteConnectionStorage)
 import Petrus.Agenticus.ConnectionSupport (withScratch)
 import Petrus.Agenticus.CustodyScript
+import Petrus.Agenticus.Error (AgenticusError (..), errorClassName)
 import Petrus.Agenticus.Support (loadJson, packageFile)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
@@ -16,11 +19,58 @@ import Petrus.TestSupport.Python (pythonExecutable)
 import Petrus.TestSupport.Repo (upstreamPetrus)
 import System.Directory (makeAbsolute)
 import System.Exit (ExitCode (..))
+import System.FilePath ((</>))
 import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
 import Test.Hspec
 
 spec :: Spec
-spec = describe "interop: custody sessions across implementations" $ do
+spec = do
+  sessionsSpec
+  revisionCellSpec
+
+-- | A tampered revision cell: the reference's store sets it to an SQL
+-- expression and loads (@differential/storage_revision.py@), then the port
+-- loads the same file. @int(row[0])@ must read every SQLite type the same
+-- way: CPython's @int()@ on text and blobs (Unicode digits, underscores,
+-- the whitespace it skips and the whitespace it does not), on reals (NaN
+-- and infinities refused), and the same refusal text.
+revisionCellSpec :: Spec
+revisionCellSpec = describe "interop: custody revision cells read as int(row[0])" $
+  forM_ expressions $ \expression -> it expression $ withReference $ \(python, root) -> withScratch $ \scratch -> do
+    script <- makeAbsolute =<< packageFile "differential/storage_revision.py"
+    let path = scratch </> "store" </> "custody.sqlite3"
+    (code, out, err) <- readCreateProcessWithExitCode (proc python ["-I", script, path, expression]) {cwd = Just root} ""
+    expected <- case code of
+      ExitSuccess -> either fail pure (J.parseJson J.pythonLoads (BC.pack out))
+      ExitFailure n -> fail ("storage_revision.py exited " <> show n <> ":\n" <> out <> err)
+    storage <- openSqliteConnectionStorage path
+    outcome <- try storage.load `finally` storage.close
+    let got = case outcome of
+          Right snapshot -> Object [("revision", Int snapshot.revision)]
+          Left (failure :: AgenticusError) -> Object [("class", String (errorClassName failure.errorClass)), ("message", String failure.errorMessage)]
+    got `shouldBe` expected
+  where
+    expressions =
+      [ "0"
+      , "' 0 '"
+      , "'0_0'"
+      , "char(1632)"
+      , "char(133) || '0' || char(12288)"
+      , "char(28) || '0'"
+      , "'+0'"
+      , "'abc'"
+      , "'x' || hex(zeroblob(150))"
+      , "x'30'"
+      , "x'2030'"
+      , "x'ff'"
+      , "0.5"
+      , "9e999"
+      , "-9e999"
+      , "1"
+      ]
+
+sessionsSpec :: Spec
+sessionsSpec = describe "interop: custody sessions across implementations" $ do
   corpus <- runIO (loadJson "differential/custody_corpus.json")
   let sessions = take 6 (members (member "sessions" corpus))
   forM_ sessions $ \session -> do

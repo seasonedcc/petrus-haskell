@@ -63,6 +63,7 @@ import Petrus.Agenticus.Internal.Sqlite
 import Petrus.Agenticus.Internal.Validate (pyIsSpace, sha256Hex)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
+import Petrus.Json.Python (parsePythonInt, pythonReprBytes, pythonStrRepr)
 import System.Directory (createDirectoryIfMissing, doesPathExist)
 import System.FilePath (takeDirectory)
 import System.IO.Error (isAlreadyExistsError, isDoesNotExistError)
@@ -313,19 +314,21 @@ ensureOpen = \case
   Just handle -> pure handle
   Nothing -> throwIO (AgenticusError (OtherError "ProgrammingError") "Cannot operate on a closed database.")
 
--- | @int(row[0])@.
+-- | @int(row[0])@, for each type @sqlite3@ returns.
 pythonInt :: SQLData -> IO Integer
 pythonInt = \case
   SQLInteger value -> pure (toInteger value)
-  SQLFloat value -> pure (truncate value)
-  SQLText text
-    | Just value <- readInteger (T.strip text) -> pure value
-    | otherwise -> throwIO (valueError ("invalid literal for int() with base 10: " <> T.pack (show text)))
-  _ -> throwIO (typeError "int() argument must be a string, a bytes-like object or a real number, not 'NoneType'")
+  SQLFloat value
+    | isNaN value -> throwIO (valueError "cannot convert float NaN to integer")
+    | isInfinite value -> throwIO (AgenticusError (OtherError "OverflowError") "cannot convert float infinity to integer")
+    | otherwise -> pure (truncate value)
+  SQLText text -> maybe (throwIO (valueError (invalid (T.take 200 (pythonStrRepr text))))) pure (parsePythonInt 10 text)
+  SQLBlob bytes
+    | B.all (< 0x80) bytes, Just value <- parsePythonInt 10 (TE.decodeLatin1 bytes) -> pure value
+    | otherwise -> throwIO (valueError (invalid (T.take 200 (T.pack (pythonReprBytes bytes)))))
+  SQLNull -> throwIO (typeError "int() argument must be a string, a bytes-like object or a real number, not 'NoneType'")
   where
-    readInteger text = case reads (T.unpack text) of
-      [(value, "")] -> Just value
-      _ -> Nothing
+    invalid shown = "invalid literal for int() with base 10: " <> shown
 
 preparePath :: FilePath -> IO ()
 preparePath path = do

@@ -16,7 +16,7 @@ tests also carry the pytest parameter id.
 | Thread lifecycle, program descriptors, runtime values | `thread/`, `program/descriptor.py`, `program/seam.py`, `runtime/{installation,result,operation}.py` | [parity/thread.md](parity/thread.md) | thread, program and `test_foundation.py` tests (see the fragment) | at parity |
 | Connection custody, materialization, storage and key | `connection/` | [parity/custody.md](parity/custody.md) | `test_custody.py` (21 functions, 24 cases) | at parity |
 
-The full suite has 642 examples and 0 failures. It includes the
+The full suite has 666 examples and 0 failures. It includes the
 differential corpora and the Python and Haskell custody interop sessions.
 
 ## Property-based tests (Hypothesis → QuickCheck)
@@ -54,6 +54,11 @@ reference. Each fragment gives the rerun command.
   `KeyContext`, 86 payload cases and 30 sessions of 50 steps each.
   `custody_interop.py` hands sessions between the two implementations in
   both directions.
+- `differential/storage_revision.py`: a store whose revision cell was
+  tampered with (16 SQL values: text with Unicode digits, underscores and
+  the whitespace `int()` skips or not, blobs, reals, infinities), loaded by
+  both implementations: the same revision, or `int(row[0])`'s class and
+  text.
 
 ## Gaps
 

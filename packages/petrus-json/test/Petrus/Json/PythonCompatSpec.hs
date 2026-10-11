@@ -19,6 +19,10 @@
 --   quotes, the space separators (U+00A0), characters new in Unicode 16.0
 --   (U+105C0) and lone surrogates: @repr@, @strip@, @lstrip@, @rstrip@,
 --   @split()@, @splitlines()@ and @isprintable()@;
+-- * on those strings and on generated numerals (decimal digits of several
+--   scripts, hexadecimal letters and prefixes, signs, underscores, the
+--   whitespace @int()@ skips and the whitespace it does not): @int(s)@ and
+--   @int(s, 16)@ ('parsePythonInt');
 -- * @repr(bytes)@, and @repr(float)@ (non-finite values included);
 -- * @repr@, @str@ and @type(...).__name__@ of what @json.loads@ returns;
 -- * the text of @json.loads@'s refusals (@JSONDecodeError@ with line,
@@ -125,6 +129,12 @@ pyChar =
 -- | A string, now and then holding a lone surrogate.
 pyString :: Gen String
 pyString = resize 16 (listOf (frequency [(30, pyChar), (1, choose ('\xd800', '\xdfff'))]))
+
+-- | Strings dense in what @int()@ decides on: ASCII and other decimal
+-- digits, hexadecimal letters and prefixes, signs, underscores, and the
+-- whitespace it skips and the whitespace it does not.
+numeral :: Gen String
+numeral = resize 8 (listOf (elements "0123456789__-+ \t\v\x1c\x1f\x85\xa0\x3000\x2028\x660\x669\xff10\xff19\&abcfABCFxXob.e"))
 
 -- | Bytes dense in what a UTF-8 decoder classifies: valid sequences of every
 -- length, encoded surrogates, overlong and out-of-range starts, stray
@@ -233,7 +243,7 @@ pairsOf = \case
 -- * Corpora ---------------------------------------------------------------------
 
 strings :: [String]
-strings = nub (["", " ", "\xa0", "\x105C0", "a\r\nb\rc\n", " \t x  y \x3000", "it's", "a\"b'c", "\x16D70\x16D79"] ++ sigmas ++ escapes ++ [generate seed pyString | seed <- [1 .. 2500]])
+strings = nub (["", " ", "\xa0", "\x105C0", "a\r\nb\rc\n", " \t x  y \x3000", "it's", "a\"b'c", "\x16D70\x16D79"] ++ sigmas ++ escapes ++ [generate seed pyString | seed <- [1 .. 2500]] ++ [generate seed numeral | seed <- [1 .. 1500]])
 
 -- | The final-sigma rule's contexts: cased and case-ignorable neighbours
 -- on either side, at either end.
@@ -389,6 +399,8 @@ check c answer = case (c, answer) of
       ++ compareAs ("casefold " ++ show s) (asString (member "casefold" got)) (T.unpack (pythonCasefold (fromCodePoints s)))
       ++ compareAs ("fsencode " ++ show s) (fsEncoded (member "fsencode" got)) (either (Left . pythonExceptionStr) (Right . hexOf) (fsEncode (fromCodePoints s)))
       ++ compareAs ("backslashreplace " ++ show s) (member "backslashreplace" got) (String (hexOf (utf8BackslashReplace (fromCodePoints s))))
+      ++ compareAs ("int " ++ show s) (member "int" got) (maybe Null Int (parsePythonInt 10 (fromCodePoints s)))
+      ++ compareAs ("int(_, 16) " ++ show s) (member "int16" got) (maybe Null Int (parsePythonInt 16 (fromCodePoints s)))
       ++ if any (\ch -> ord ch >= 0xD800 && ord ch <= 0xDFFF) s
         then []
         else
@@ -466,7 +478,7 @@ spec = describe "Petrus.Json.Python against the pinned CPython" $ do
         length mine `shouldSatisfy` (> 0)
         take 10 (concatMap (uncurry check) mine) `shouldBe` []
   group "agrees on every code point (isprintable, isspace, line boundaries, decimal, isdigit, lower, upper, casefold)" $ \case UnicodeCase -> True; _ -> False
-  group "agrees on repr, strip, split, splitlines, isprintable, lower, upper, casefold, os.fsencode and backslashreplace of generated strings" $ \case StringCase _ -> True; _ -> False
+  group "agrees on repr, strip, split, splitlines, isprintable, lower, upper, casefold, os.fsencode, backslashreplace and int() of generated strings" $ \case StringCase _ -> True; _ -> False
   group "agrees on repr(bytes)" $ \case BytesReprCase _ -> True; _ -> False
   group "agrees on repr(float)" $ \case FloatReprCase _ -> True; _ -> False
   group "agrees on repr, str and type name of json.loads values" $ \case JsonReprCase _ -> True; _ -> False

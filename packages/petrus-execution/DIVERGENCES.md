@@ -46,6 +46,12 @@ file, embedded verbatim.
   raises `RuntimeError` with `str()` of whatever `error` holds (an object, a list, `null`, a
   number), as `RuntimeError(response.get("error"))` does. `test/ProviderAnswersSpec.hs` runs 60
   answers through the pinned reference and the port (PARITY.md, "Provider answers").
+- **Pax number fields with C0 separators.** `int()` and `float()` of a pax `size`, `mtime`,
+  `uid` or `gid` skip Unicode whitespace but not `\x1c`–`\x1f` (CPython skips C's `isspace` set
+  after mapping non-ASCII whitespace to a space); the port skipped everything `str.isspace`
+  accepts, so `mtime=\x1c12.5` read as 12.5 where `tarfile` reads 0. Both now use petrus-json's
+  `parsePythonInt` and `isPythonNumberSpace`; `ArchiveSpec`'s "pax number fields" group checks
+  19 values against the live `tarfile`.
 
 ## Not applicable
 

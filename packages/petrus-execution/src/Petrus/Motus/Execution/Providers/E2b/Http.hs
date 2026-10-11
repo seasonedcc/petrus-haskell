@@ -72,7 +72,7 @@ import Network.HTTP.Client.TLS (getGlobalManager)
 import Network.HTTP.Types (Header, Method, ResponseHeaders, Status (..), renderQuery)
 import Petrus.Json
 import Petrus.Motus.Execution.Error
-import Petrus.Motus.Execution.Internal.PyText (pyBytesRepr)
+import Petrus.Json.Python (pythonReprBytes)
 import Petrus.Motus.Execution.Providers.E2b.Sdk
 import System.Environment (lookupEnv)
 import System.Timeout (timeout)
@@ -138,7 +138,7 @@ apiError status content = case (message, status) of
   (_, 429) -> sdkError "RateLimitException" (withMessage "429: Rate limit exceeded, please try again later.")
   (_, 503) -> sdkError "ServiceBusyException" (withMessage "503: Service temporarily unavailable, please retry.")
   (Just text, _) -> sdkError "SandboxException" (T.pack (show status) <> ": " <> text)
-  (Nothing, _) -> sdkError "SandboxException" (T.pack (show status) <> ": " <> T.pack (pyBytesRepr content))
+  (Nothing, _) -> sdkError "SandboxException" (T.pack (show status) <> ": " <> T.pack (pythonReprBytes content))
   where
     message = case parseJson pythonLoads content of
       Right body | Just (String text) <- lookupMember "message" body -> Just text

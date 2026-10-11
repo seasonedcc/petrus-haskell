@@ -29,8 +29,13 @@ import Petrus.Motus.Execution.Archive
 import Petrus.Motus.Execution.Archive.Tar
 import Petrus.Motus.Execution.Error
 import Petrus.Motus.Execution.Internal.PosixPath (RealpathMode (..), fromRawPath, realpath, toRawPath)
+import Petrus.Json.Python (loadsBytes)
+import Petrus.TestSupport.Python (pythonExecutable)
+import Petrus.TestSupport.Repo (upstreamPetrus)
 import Support
-import System.Directory (createDirectory)
+import System.Directory (createDirectory, makeAbsolute)
+import System.Exit (ExitCode (..))
+import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
 import System.FilePath ((</>))
 import System.Info (os)
 import System.Posix.Directory.ByteString qualified as PD
@@ -41,6 +46,7 @@ import Test.Hspec
 spec :: Spec
 spec = do
   fixtures <- runIO (loadFixture ("archive_fixtures-" <> os <> ".json"))
+  paxNumbersSpec
   describe "workspace_archive (differential, CPython tarfile)" $
     forM_ (listField "workspaces" fixtures) $ \fixture ->
       it (T.unpack (textField "name" fixture)) $ withTempDir $ \tmp -> do
@@ -331,3 +337,58 @@ normalizeItem = \case
   Object members -> Object (sortOn fst members)
   other -> other
 
+
+-- | A pax header's number fields (@size@, @mtime@, @uid@, @gid@) as the
+-- pinned interpreter's @tarfile@ reads them (@test/interop/pax_numbers.py@
+-- writes the archive and prints its reading): @int()@ and @float()@ skip
+-- Unicode whitespace but not @\\x1c@–@\\x1f@, read every decimal script,
+-- and a value they refuse becomes 0.
+paxNumbersSpec :: Spec
+paxNumbersSpec =
+  describe "pax number fields (differential, live CPython tarfile)" $
+    forM_ cases $ \(key, value) -> it (key <> "=" <> show value) $ withTempDir $ \tmp -> do
+      python <- pythonExecutable
+      script <- makeAbsolute ("test" </> "interop" </> "pax_numbers.py")
+      root <- upstreamPetrus
+      let out = tmp </> "pax.tar"
+          hex = concatMap (\b -> [hexDigit (b `div` 16), hexDigit (b `mod` 16)]) (B.unpack (TE.encodeUtf8 (T.pack value)))
+          hexDigit d = "0123456789abcdef" !! fromIntegral d
+      (code, printed, err) <- readCreateProcessWithExitCode (proc python ["-I", script, out, key, hex]) {cwd = Just root} ""
+      when (code /= ExitSuccess) $ expectationFailure ("reference exited with " <> show code <> ":\n" <> err)
+      expected <- either (fail . show) pure (loadsBytes (BC.pack printed))
+      archive <- B.readFile out
+      case readTar archive of
+        Left failure -> expectationFailure ("the port refused the archive: " <> show failure)
+        Right members -> Array (map describe' members) `shouldBe` expected
+  where
+    describe' member =
+      Array
+        [ Int (memberSize member)
+        , case memberMtime member of
+            MTimeInt n -> Int n
+            MTimeFloat d -> Float d
+        , String (case memberMtime member of MTimeInt _ -> "int"; MTimeFloat _ -> "float")
+        , Int (memberUid member)
+        , Int (memberGid member)
+        ]
+    cases =
+      [ ("mtime", "12.5")
+      , ("mtime", " 12.5\t")
+      , ("mtime", "\x85\&12.5\x3000")
+      , ("mtime", "\x1c\&12.5")
+      , ("mtime", "12.5\x1f")
+      , ("mtime", "1_2.5")
+      , ("mtime", "1__2")
+      , ("mtime", "\x661\x662")
+      , ("mtime", "-Infinity")
+      , ("uid", "7")
+      , ("uid", "\x1f\&7")
+      , ("uid", "\xa0\&7\x2028")
+      , ("uid", "+1_000")
+      , ("uid", "0x7")
+      , ("gid", "\x667")
+      , ("gid", "\x1d\&7")
+      , ("size", "\x85\&3")
+      , ("size", "\x1c\&3")
+      , ("size", "3_")
+      ]

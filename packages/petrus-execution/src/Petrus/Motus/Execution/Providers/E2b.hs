@@ -51,7 +51,7 @@ import GHC.Clock (getMonotonicTime)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
 import Petrus.Motus.Execution.Internal.Common
-import Petrus.Motus.Execution.Internal.PyText (pyStrRepr)
+import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Motus.Execution.Providers.E2b.Http (httpSdkLoader)
 import Petrus.Motus.Execution.Providers.E2b.Sdk
 import System.Environment (lookupEnv)
@@ -154,7 +154,7 @@ lookupLease env operation = do
       let state = T.toLower (infoState info)
           leaseStateValue = if state `elem` ["running", "paused"] then Ready else Terminal
       Just <$> either throwIO pure (mkEnvironmentLease operation providerLabel (infoSandboxId info) e2bCapabilities leaseStateValue)
-    _ -> throwExecution RuntimeError (T.pack ("operation " <> pyStrRepr (T.unpack operation) <> " resolves to multiple E2B sandboxes"))
+    _ -> throwExecution RuntimeError ("operation " <> pythonStrRepr operation <> " resolves to multiple E2B sandboxes")
 
 create :: E2bEnvironment -> Text -> EnvironmentSpec -> IO EnvironmentLease
 create env operation spec = do

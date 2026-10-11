@@ -38,7 +38,7 @@ import Petrus.Motus.Execution.Internal.PosixPath
   , realpath
   , toRawPath
   )
-import Petrus.Motus.Execution.Internal.PyText (pyListRepr)
+import Petrus.Json.Python (pythonListRepr, pythonStrRepr)
 import Petrus.Posix.File (AtomicWrite (..), TempNaming (..), atomicWriteFile, defaultAtomicWrite)
 import Crypto.Random (getRandomBytes)
 import Control.Exception (throwIO)
@@ -72,7 +72,7 @@ checkOperationId value =
 -- | @f"unsupported capabilities: {sorted(missing)}"@.
 missingCapabilitiesError :: Set Capability -> ExecutionError
 missingCapabilitiesError missing =
-  valueError ("unsupported capabilities: " <> T.pack (pyListRepr (map (T.unpack . capabilityKey) (Set.toAscList missing))))
+  valueError ("unsupported capabilities: " <> pythonListRepr (map (pythonStrRepr . capabilityKey) (Set.toAscList missing)))
 
 requireSupportedCapabilities :: Set Capability -> EnvironmentSpec -> IO ()
 requireSupportedCapabilities supported spec = do

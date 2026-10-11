@@ -67,7 +67,16 @@ def string_methods(argument):
         "casefold": points(value.casefold()),
         "fsencode": fs_encode(value),
         "backslashreplace": value.encode("utf-8", "backslashreplace").hex(),
+        "int": int_of(value, 10),
+        "int16": int_of(value, 16),
     }
+
+
+def int_of(value: str, base: int):
+    try:
+        return int(value, base)
+    except ValueError:
+        return None
 
 
 def fs_encode(value: str):

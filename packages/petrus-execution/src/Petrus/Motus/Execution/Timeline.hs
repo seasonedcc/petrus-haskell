@@ -53,8 +53,7 @@ import Data.Time (UTCTime (..), getCurrentTime, toGregorian, timeToTimeOfDay, Ti
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, parseJson, pythonLoads)
 import Petrus.Motus.Execution.Error
 import Petrus.Motus.Execution.Internal.Common (newUuid4, replaceFile, shortTempName)
-import Petrus.Json.Python (isPythonSpace, pythonRepr, pythonStr, pythonStrRepr)
-import Petrus.Motus.Execution.Internal.PyText (pyInt)
+import Petrus.Json.Python (isPythonSpace, parsePythonInt, pythonRepr, pythonStr, pythonStrRepr)
 import System.Directory (createDirectoryIfMissing, doesPathExist, removeFile)
 import System.FilePath (takeDirectory)
 import System.IO.Error (isDoesNotExistError)
@@ -285,7 +284,7 @@ newTimeline path retain = do
       Int n -> pure (fromInteger n)
       Bool b -> pure (if b then 1 else 0)
       Float d -> pure (truncate d)
-      String t | Just n <- pyInt (T.unpack t) -> pure (fromInteger n)
+      String t | Just n <- parsePythonInt 10 t -> pure (fromInteger n)
       other -> throwExecution ValueError ("invalid literal for int() with base 10: " <> pythonRepr other)
 
 -- | The keyword arguments of @Timeline.observe@.

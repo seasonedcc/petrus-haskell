@@ -58,6 +58,7 @@ import Petrus.Motus.Execution.Archive.Tar
 import Petrus.Motus.Execution.Error
 import Petrus.Motus.Execution.Internal.PosixPath
 import Petrus.Motus.Execution.Internal.PyText
+import Petrus.Json.Python (fsDecode, pythonStringRepr)
 import System.Posix.Directory.ByteString (closeDirStream, createDirectory, openDirStream, readDirStream)
 import System.Posix.Files.ByteString
   ( FileStatus
@@ -307,7 +308,7 @@ openArchive bytes = do
             Left (True, ReadFailure message) -> Right (Left (readErrorRepr message))
             Left (_, failure) -> Left (fromFailure failure)
       | otherwise = Right (Left (readErrorRepr "not a gzip file"))
-    readErrorRepr message = "ReadError(" <> pyStrRepr message <> ")"
+    readErrorRepr message = "ReadError(" <> T.unpack (pythonStringRepr message) <> ")"
     fromFailure = \case
       ReadFailure message -> ExecutionError TarError (T.pack message)
       PythonFailure cls message -> ExecutionError (pythonKind cls) (T.pack message)
@@ -405,7 +406,7 @@ validatedMembers allowLinks forbiddenRoots members = do
     go _ _ [] = Right ()
     go seen extracted (member : rest) = do
       let raw = memberName member
-          shown = T.pack (pyStrRepr (decodeSurrogateEscape raw))
+          shown = nameRepr raw
           (anchor, parts) = purePosixNormalize raw
           normalized =
             let joined = anchor <> B.intercalate "/" parts
@@ -511,10 +512,10 @@ data Filtered = Filtered
   }
 
 memberRepr :: Member -> String
-memberRepr = pyStrRepr . decodeSurrogateEscape . memberName
+memberRepr = T.unpack . nameRepr . memberName
 
 pathRepr :: ByteString -> String
-pathRepr = pyStrRepr . decodeSurrogateEscape
+pathRepr = T.unpack . nameRepr
 
 filterError :: String -> IO a
 filterError = throwExecution TarError . T.pack
@@ -525,7 +526,7 @@ realpathOrRaise path = do
   case result of
     Right resolved -> pure resolved
     Left (OsError errno failing) ->
-      throwExecution OSError (T.pack (pythonErrnoMessage errno (Just (decodeSurrogateEscape failing))))
+      throwExecution OSError (T.pack (pythonErrnoMessage errno (Just (T.unpack (fsDecode failing)))))
 
 -- | @tarfile.data_filter@.
 dataFilter :: Member -> ByteString -> IO Filtered

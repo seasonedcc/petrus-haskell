@@ -25,7 +25,7 @@ import Foreign.C.Error (Errno (..), errnoToIOError)
 import Foreign.C.Types (CInt)
 import GHC.IO.Exception (IOException (..))
 import Data.ByteString.Char8 qualified as BC
-import Petrus.Motus.Execution.Internal.PyText (decodeSurrogateEscape, pyStrRepr)
+import Petrus.Json.Python (fsDecode, pythonStringRepr)
 
 -- | The Python exception class an upstream failure surfaces as.
 data ErrorKind
@@ -81,13 +81,13 @@ osErrorFromRawIO :: IOException -> ExecutionError
 osErrorFromRawIO e = ExecutionError OSError (T.pack rendered)
   where
     rendered = case ioe_errno e of
-      Just errno -> pythonErrnoMessage errno (fmap (decodeSurrogateEscape . BC.pack) (ioe_filename e))
+      Just errno -> pythonErrnoMessage errno (fmap (T.unpack . fsDecode . BC.pack) (ioe_filename e))
       Nothing -> ioe_description e
 
 -- | @[Errno N] strerror: 'path'@ with CPython's strerror text.
 pythonErrnoMessage :: CInt -> Maybe String -> String
 pythonErrnoMessage errno path =
-  "[Errno " <> show errno <> "] " <> strerror <> maybe "" (\p -> ": " <> pyStrRepr p) path
+  "[Errno " <> show errno <> "] " <> strerror <> maybe "" (\p -> ": " <> T.unpack (pythonStringRepr p)) path
   where
     strerror = ioe_description (errnoToIOError "" (Errno errno) Nothing Nothing)
 

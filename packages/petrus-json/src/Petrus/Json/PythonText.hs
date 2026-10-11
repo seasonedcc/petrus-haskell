@@ -24,6 +24,9 @@ module Petrus.Json.PythonText
   , isPythonSpace
   , isPythonLineBreak
   , pythonDecimal
+  , isPythonNumberSpace
+    -- * @int()@
+  , parsePythonInt
     -- * @str@ methods
   , pythonStrip
   , pythonLstrip
@@ -104,6 +107,49 @@ pythonDecimal c
       _ -> Nothing
   where
     n = ord c
+
+-- | The whitespace @int()@ and @float()@ skip around a @str@ argument.
+-- CPython turns each non-ASCII code point that @str.isspace@ accepts into a
+-- space and then skips C's @isspace@ set, so @\\x1c@–@\\x1f@, which
+-- @str.isspace@ accepts, are not skipped.
+isPythonNumberSpace :: Char -> Bool
+isPythonNumberSpace c
+  | c < '\x80' = c == ' ' || (c >= '\t' && c <= '\r')
+  | otherwise = isPythonSpace c
+
+-- | CPython's @int(text, base)@ for a @str@ and a base from 2 to 36:
+-- 'Nothing' where it raises @ValueError@. It skips 'isPythonNumberSpace'
+-- around an optional sign, admits the base's prefix (@0x@, @0o@, @0b@,
+-- either case), any Unicode decimal digit and ASCII letters as digits, and
+-- single underscores between digits or after the prefix. The 4300-digit
+-- conversion limit is the caller's.
+parsePythonInt :: Int -> Text -> Maybe Integer
+parsePythonInt base input = do
+  let trimmed = T.dropAround isPythonNumberSpace input
+  (sign, unsigned) <- case T.uncons trimmed of
+    Just ('-', rest) -> Just (negate, rest)
+    Just ('+', rest) -> Just (id, rest)
+    _ -> Just (id, trimmed)
+  let (body, prefixed) = case T.unpack (T.toLower (T.take 2 unsigned)) of
+        ['0', p] | Just base == lookup p [('x', 16), ('o', 8), ('b', 2)] -> (T.drop 2 unsigned, True)
+        _ -> (unsigned, False)
+  digits <- case T.unpack body of
+    '_' : rest | prefixed -> grouped rest
+    chars -> grouped chars
+  Just (sign (foldl (\total d -> total * toInteger base + toInteger d) 0 digits))
+  where
+    -- At least one digit; an underscore only between two digits.
+    grouped [] = Nothing
+    grouped chars = go chars
+    go [] = Just []
+    go (c : '_' : rest@(next : _)) | next /= '_' = (:) <$> digit c <*> go rest
+    go (_ : '_' : _) = Nothing
+    go (c : rest) = (:) <$> digit c <*> go rest
+    digit c = valueOf c >>= \value -> if value < base then Just value else Nothing
+    valueOf c
+      | c >= 'a' && c <= 'z' = Just (ord c - ord 'a' + 10)
+      | c >= 'A' && c <= 'Z' = Just (ord c - ord 'A' + 10)
+      | otherwise = pythonDecimal c
 
 -- | @str.strip()@ (no argument): drop CPython whitespace at both ends.
 pythonStrip :: Text -> Text
