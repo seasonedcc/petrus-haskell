@@ -53,21 +53,86 @@ Haskell times are tasty-bench means. Python times are medians of 7 batches.
 
 Every row is at least as fast as the reference.
 
-Not benchmarked:
+Not benchmarked: **the A3 runtime service round trip.** One Unix-socket
+request plus a SQLite ledger commit (`synchronous = FULL`), dominated by
+fsync.
 
-- **Whole Turns.** A Local Codex Turn runs the fake `codex` CLI and the
-  private helper as Python subprocesses, and a Gondolin Turn adds the
-  fake SDK under `node`. Claude and Amp Turns run the official SDK in a
-  Python sidecar (the port) or in-process (the reference). Interpreter
-  start-up and file-system work dominate all of these, so they would measure
-  the fixtures, not the hosts.
-- **The A3 runtime service round trip.** One Unix-socket request plus a
-  SQLite ledger commit (`synchronous = FULL`), dominated by fsync.
+## Whole Turns
+
+These rows take one whole Turn through each host: prompt in, events
+streamed, ledger and stores written, settlement out, cleanup verified. The
+twins are `bench/TurnsBench.hs` and `bench/python_bench.py`, which drives the
+reference's own adapters. Both sides run the same fakes from `test/fixtures`
+under the pinned CPython (`scripts/upstream-python`), with a fresh operation
+id every call:
+
+- `codex-turn`: open a Local Motus territory and its Episode Attachment,
+  `start` (real connection custody over a SQLite ledger: materialize and
+  activate; the fake `codex` CLI and the private helper's `collect` run as
+  Python subprocesses; checkpoint and admission), `wait`, `close`, and
+  settle the attachment (archive export and lease cleanup).
+- `claude-turn`: open a Local Motus territory, its Episode Attachment, the
+  Hands gateway and a grant, then `start` (custody materialization; the
+  official `ClaudeSDKClient` of the fake `claude_agent_sdk`: its PreToolUse
+  hook twice, one `workspace_read` through the gateway, the session store's
+  `append`, three messages), `wait`, `close`, and settle the attachment.
+- `amp-turn`: an Episode Attachment over the provider-managed binding, then
+  `start` (the official `execute` of the fake `amp_sdk`: `system/init`, an
+  assistant event and the `success` result), `wait`, `close`, and settle.
+
+The reference imports each SDK into its own interpreter. The port reaches
+it through one shared sidecar process per SDK (`data/claude_sidecar.py`,
+`data/amp_sidecar.py`), with one channel per client or stream, so every
+SDK call, hook, tool call and event crosses a pipe. The connection keys are
+reversible stand-ins on both sides, so the cipher is not measured.
+
+Method: `scripts/bench-compare petrus-agenticus-runtime 5`, five
+interleaved repetitions of the Haskell bench (tasty-bench wall-clock means,
+`--stdev 5`) and `python_bench.py` (median of 10 batches of 0.2 s), commit
+`aa613ac`, 2026-10-11 03:08–03:30 local, load average 3.9 to 5.3 (the
+machine was shared). The table gives the medians over the repetitions and
+the lowest single-repetition ratio.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition |
+| --- | ---: | ---: | ---: | ---: |
+| codex-turn | 57.1 ms | 68.7 ms | 1.20× | 1.10× |
+| claude-turn | 10.5 ms | 14.1 ms | 1.34× | 1.25× |
+| amp-turn | 163 µs | 213 µs | 1.31× | 1.15× |
+
+What it took:
+
+- **One sidecar per SDK, not one per Turn.** The first version started a
+  Python process per Claude client and per Amp stream: 193 ms and 172 ms a
+  Turn, against 26 ms and 0.49 ms for the reference (0.13× and 0.003×),
+  almost all of it interpreter start-up and SDK import. A shared sidecar
+  imports the SDK once, as the reference does.
+- **Eager pulls and fewer round trips.** The sidecar runs each SDK call as
+  an eagerly started asyncio task on one loop that reads stdin through
+  `add_reader`, and writes each answer straight to the pipe. The first Amp
+  pull travels with the stream's request; a stream whose generator has
+  stopped closes itself (its `athrow` and `aclose` would run no SDK code);
+  the Claude `receive_response()` request is not awaited.
+- **No retained thread stacks.** The Amp operation kept its worker's and
+  consumer's `ThreadId` after they finished. A retained `ThreadId` keeps the
+  thread's stack alive, about 64 KB per remembered operation, which
+  exhausted the 2 GB heap within seconds of this benchmark.
+- **One reusable read buffer** in the sidecar reader, where `hGetSome`
+  allocated and pinned 64 KB per read.
+
+Codex runs the same two Python subprocesses on both sides (about 20 ms of
+interpreter start-up each), so its ratio is bounded by them. Its first
+interleaved run had one Haskell repetition at 126 ms (load average 8.6),
+the noise these subprocess-bound rows are open to on a shared machine.
 
 ## Rerun
 
 ```sh
 cabal bench petrus-agenticus-runtime-bench \
-  --benchmark-options="-p '/codex-/ || /claude-/ || /amp-/' +RTS -M2G -RTS"
+  --benchmark-options="-p '/codex-/ || /claude-/ || /amp-/' --time-mode wall +RTS -M2G -RTS"
 cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-runtime/bench/python_hosts.py
+cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-runtime/bench/python_bench.py
 ```
+
+The pattern also selects the whole-Turn rows. For the interleaved
+comparison of those rows, run `scripts/bench-compare petrus-agenticus-runtime 5`
+from the repository root.

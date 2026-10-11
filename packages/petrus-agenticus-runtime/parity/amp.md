@@ -88,7 +88,9 @@ by `HostsDifferentialSpec`:
 ## Benchmarks
 
 See `bench/results-hosts.md`: `amp-stream-admit` 3.5× and
-`amp-final-text` 1.8× the reference's speed.
+`amp-final-text` 1.8× the reference's speed. A whole Turn through the
+official `execute` and the shared sidecar (`amp-turn`) is 1.31× (lowest
+interleaved repetition 1.15×).
 
 ## `tests/petrus/agenticus/runtime/test_amp_real.py` (1 function)
 
