@@ -22,6 +22,10 @@ module Petrus.Testing.Dst.Campaign.Support
   , tshow
   , pyRepr
 
+    -- * Strict schemas
+  , pListLen
+  , pStrLen
+
     -- * Repository
   , repositoryRoot
   , upstreamRoot
@@ -39,6 +43,7 @@ import Data.Text qualified as T
 import Data.Version (showVersion)
 import Paths_petrus_dst qualified as Paths
 import Petrus.Json (EncodeOptions (..), Json (..), compact, defaultDumps, dumps, lookupMember)
+import Petrus.Testing.Dst.Decode (Parser, Path, failAt, pList, pStr)
 import Petrus.Testing.Dst.PyRepr (pyStrRepr)
 import System.Directory (doesFileExist, getCurrentDirectory, makeAbsolute)
 import System.FilePath (takeDirectory, (</>))
@@ -105,6 +110,39 @@ tshow = T.pack . show
 -- | Python's @repr()@ of a string.
 pyRepr :: Text -> Text
 pyRepr = pyStrRepr
+
+-- ---------------------------------------------------------------------------
+-- Strict schemas
+
+-- | A list field with pydantic's @min_length@ / @max_length@.
+pListLen :: Maybe Int -> Maybe Int -> (Path -> Json -> Parser a) -> Path -> Json -> Parser [a]
+pListLen lo hi p at v = do
+  items <- pList p at v
+  let n = length items
+  case lo of
+    Just l | n < l -> failAt at "too_short" ("List should have at least " <> tshow l <> " item" <> plural l <> " after validation, not " <> tshow n)
+    _ -> Right ()
+  case hi of
+    Just h | n > h -> failAt at "too_long" ("List should have at most " <> tshow h <> " item" <> plural h <> " after validation, not " <> tshow n)
+    _ -> Right ()
+  Right items
+  where
+    plural k = if k == 1 then "" else "s" :: Text
+
+-- | A string field with pydantic's @min_length@ / @max_length@.
+pStrLen :: Maybe Int -> Maybe Int -> Path -> Json -> Parser Text
+pStrLen lo hi at v = do
+  s <- pStr at v
+  let n = T.length s
+  case lo of
+    Just l | n < l -> failAt at "string_too_short" ("String should have at least " <> tshow l <> " character" <> plural l)
+    _ -> Right ()
+  case hi of
+    Just h | n > h -> failAt at "string_too_long" ("String should have at most " <> tshow h <> " character" <> plural h)
+    _ -> Right ()
+  Right s
+  where
+    plural k = if k == 1 then "" else "s" :: Text
 
 -- ---------------------------------------------------------------------------
 -- Repository

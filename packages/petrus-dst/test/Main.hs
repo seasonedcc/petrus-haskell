@@ -1,12 +1,18 @@
 module Main (main) where
 
 import Petrus.Testing.Dst.Runner (processChildHook)
+import Spec.Boundaries qualified
+import Spec.Campaigns qualified
 import Spec.Choice qualified
 import Spec.Codec qualified
 import Spec.EngineCheckers qualified
 import Spec.EngineWorlds qualified
+import Spec.Failure qualified
 import Spec.JoinedWorlds qualified
+import Spec.LegacyReplay qualified
+import Spec.ManualReplay qualified
 import Spec.Properties qualified
+import Spec.Qualification qualified
 import Spec.Runner qualified
 import Spec.Stories qualified
 import Spec.Transcript qualified
@@ -25,3 +31,9 @@ main = do
     Spec.EngineCheckers.spec
     Spec.JoinedWorlds.spec
     Spec.Properties.spec
+    Spec.ManualReplay.spec
+    Spec.LegacyReplay.spec
+    Spec.Qualification.spec
+    Spec.Campaigns.spec
+    Spec.Failure.spec
+    Spec.Boundaries.spec

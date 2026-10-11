@@ -36,20 +36,21 @@ module Petrus.Testing.Dst.LegacyReplay
   ) where
 
 import Control.Exception (Exception (..), SomeException, throwIO, try)
-import Control.Monad (forM, forM_, unless, when)
+import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.Foldable (toList)
 import Data.IORef
-import Data.List (find, findIndex, nub, sort, sortOn)
+import Data.List (findIndex, nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), invocation)
+import Petrus.Activity (invocation)
+import Petrus.Activity qualified as Activity (ActivityInvocation (..))
 import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (bindingTokens, handlerTokens)
+import Petrus.Impetus.Binding (BoundHandler, handlerTokens)
 import Petrus.Impetus.History.Records (ActivityRequested (..), Record (..), recordName)
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
 import Petrus.Impetus.Instance (ImplementationRef (..))
@@ -57,7 +58,7 @@ import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch.InMemory (InMemoryDispatch, completeOccurrence, failOccurrence, inMemoryDispatch, newInMemoryDispatch, pending)
 import Petrus.Testing.Dst (loadStrictJson)
-import Petrus.Testing.Dst.Campaign.Support (canonicalDumps, member, orRefuse, pyRepr, refuse, sha256Digest, tshow)
+import Petrus.Testing.Dst.Campaign.Support (canonicalDumps, member, orRefuse, pListLen, pyRepr, refuse, sha256Digest, tshow)
 import Petrus.Testing.Dst.Decode
 import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
 import Petrus.Testing.Dst.Engine.Common (engineCurrent, path, pythonError, runtimeErrorText)
@@ -235,20 +236,6 @@ pIntIn lo hi = pIntRange (Just lo) (Just hi)
 pIntMin :: Integer -> Path -> Json -> Parser Integer
 pIntMin lo = pIntRange (Just lo) Nothing
 
-pListLen :: Maybe Int -> Maybe Int -> (Path -> Json -> Parser a) -> Path -> Json -> Parser [a]
-pListLen lo hi p at v = do
-  items <- pList p at v
-  let n = length items
-  case lo of
-    Just l | n < l -> failAt at "too_short" ("List should have at least " <> tshow l <> " item" <> plural l <> " after validation, not " <> tshow n)
-    _ -> Right ()
-  case hi of
-    Just h | n > h -> failAt at "too_long" ("List should have at most " <> tshow h <> " item" <> plural h <> " after validation, not " <> tshow n)
-    _ -> Right ()
-  Right items
-  where
-    plural k = if k == 1 then "" else "s"
-
 pTokenValue :: Path -> Json -> Parser TokenValue
 pTokenValue at v = do
   f <- model "TokenValue" ["color", "data"] at v
@@ -286,8 +273,8 @@ pEvent =
       body f
 
 -- | @ScenarioFault@ and its @allowed_cut@ validator.
-pFault :: Path -> Json -> Parser Fault
-pFault at v = do
+pScenarioFault :: Path -> Json -> Parser Fault
+pScenarioFault at v = do
   f <- model "ScenarioFault" ["kind", "cut", "count", "error"] at v
   fault <-
     Fault
@@ -323,7 +310,7 @@ pStep at v = do
   Step
     <$> field f "position" (pIntIn 0 511)
     <*> field f "event" pEvent
-    <*> field f "faults" (pListLen Nothing (Just 64) pFault)
+    <*> field f "faults" (pListLen Nothing (Just 64) pScenarioFault)
     <*> field f "expect" pExpect
   where
     pExpect p j = do
@@ -408,7 +395,7 @@ pExpected at v = do
     <$> field f "disposition" (pLit ["quiescent", "terminal", "quarantined", "bounded_exhaustion", "external_wait"])
     <*> field f "history_record_types" (pList pStr)
     <*> field f "snapshot" pSnapshot
-    <*> field f "observations" (pList pObservation)
+    <*> field f "observations" (pList pExpectedObservation)
     <*> field f "checks" (pListLen (Just 1) Nothing pCheck)
   where
     pSnapshot p j = do
@@ -418,7 +405,7 @@ pExpected at v = do
         <*> field s "status" (pLit ["running", "terminated", "completed", "stuck", "awaiting"])
         <*> field s "watermark" (pIntIn 0 1000000000)
         <*> field s "in_flight" (pList pInt)
-    pObservation p j = do
+    pExpectedObservation p j = do
       o <- model "ExpectedObservation" ["name", "value"] p j
       (,) <$> field o "name" pStrMin <*> field o "value" (\_ x -> Right x)
     pCheck p j = do
@@ -636,7 +623,7 @@ data Bridge = Bridge {prepared :: IORef Int, projected :: IORef Int, projectionE
 newBridge :: IO Bridge
 newBridge = Bridge <$> newIORef 0 <*> newIORef 0 <*> newIORef Nothing
 
-bridgeHandler :: Bridge -> BoundHandler'
+bridgeHandler :: Bridge -> BoundHandler
 bridgeHandler bridge =
   observed
     ObservedHandler
@@ -652,8 +639,6 @@ bridgeHandler bridge =
             Just message -> Left (runtimeErrorText message)
             Nothing -> Right (handlerTokens [(done, [Token (Just "Done") result])])
       }
-
-type BoundHandler' = Petrus.Impetus.Binding.BoundHandler
 
 -- | @ReplayReport@.
 data ReplayReport = ReplayReport
@@ -936,6 +921,3 @@ replayScenario scenario = do
   where
     repr = Py.pyRepr . jsonToPy
     optionalRepr = maybe "None" pyRepr
-
-_unusedFind :: ()
-_unusedFind = const () (find @[] @Int, forM @[] @IO @Int @Int)
