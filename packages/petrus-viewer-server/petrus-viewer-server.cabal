@@ -19,6 +19,8 @@ build-type:         Simple
 extra-doc-files:    NOTICE
                     README.md
                     DIVERGENCES.md
+                    PARITY.md
+                    bench/RESULTS.md
 data-files:         test/fixtures/*.txt
                     test/fixtures/*.json
                     test/chain_producer.py

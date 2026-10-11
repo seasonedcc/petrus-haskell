@@ -1,4 +1,4 @@
-"""Test fixture: the Python reference twin of petrus-viewer-producer.
+"""Test fixture: the Python reference twin of test/ChainProducer.hs.
 
 Usage: python -I chain_producer.py INSTANCE
 
