@@ -209,6 +209,7 @@ test-suite petrus-dst-test
                     Spec.Runner
                     Spec.Stories
                     Spec.Support
+                    Spec.Surface
                     Spec.Tooling
                     Spec.ToolingInterop
                     Spec.Transcript
