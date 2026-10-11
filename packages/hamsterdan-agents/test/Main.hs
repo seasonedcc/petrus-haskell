@@ -7,6 +7,7 @@ import PiA2Spec qualified
 import PiSpec qualified
 import PiWorkspaceSpec qualified
 import ProtocolSpec qualified
+import ResultDifferentialSpec qualified
 import Test.Hspec
 
 main :: IO ()
@@ -18,3 +19,4 @@ main = hspec $ do
   PiA2FactorySpec.spec
   PiWorkspaceSpec.spec
   InteropSpec.spec
+  ResultDifferentialSpec.spec

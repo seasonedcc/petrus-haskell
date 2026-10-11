@@ -19,22 +19,23 @@ Below are the differences that remain, with their rationale.
 
 ## Observable
 
-1. **Lone surrogate escapes in a Pi result are refused at parse time.**
-   - `json.loads` accepts `"\ud800"` into a `str`. `Data.Text` holds
-     Unicode scalar values only, so `parseResult` refuses the document as
-     `result is malformed JSON` (a protocol failure), as petrus-json does
-     everywhere (`../petrus-json/DIVERGENCES.md`).
-   - The reference parses such a document, then `_validate_result` raises
-     `UnicodeEncodeError` when it encodes the string as UTF-8 to measure
-     it. That error is not an `AgentError`, so the runner does not classify
-     it as a protocol failure.
-   - Either way the result is refused and nothing is published. Only the
-     failure's class differs.
-2. **A History file that cannot be stat'ed is "malformed" during route
-   repair.** The reference calls `path.stat()` outside its `try`, so a
-   dangling `history.jsonl` symbolic link raises `FileNotFoundError`. The
-   port reports `agent route repair History is malformed`, as it does when
-   the file cannot be read. The host refuses to start in both cases.
+1. **Lone surrogate escapes in a Pi result: resolved, no longer a
+   difference.** `parseResult` keeps them in their `str` (WTF-8,
+   "Petrus.Json.Wtf8"), as `json.loads` does, and `_text` and
+   `_safe_path` raise the `UnicodeEncodeError` the reference raises when
+   it encodes such a string to measure it (a built-in failure the runner
+   sanitizes as the reference's `except Exception` does). Every other
+   check meets them where the reference does: a status outside its
+   vocabulary, a correlation mismatch, an extra key named in the refusal.
+   `ResultDifferentialSpec` runs such results through the reference's
+   `_parse_result` and `_validate_result`.
+2. **A History path that cannot be stat'ed during route repair: resolved,
+   no longer a difference.** Like `pathlib`'s glob, route repair matches a
+   `history.jsonl` that is a dangling symbolic link (it used to skip it),
+   and `path.stat()`'s `OSError` propagates (`FileNotFoundError`, the
+   `OSError` of a symbolic-link loop), as in the reference. `InteropSpec`
+   compares dangling, looping and working links, a directory and an
+   unreadable file with the reference's `_terminal_operations`.
 3. **Settled workspace archives are read by petrus-motus's tar reader.**
    - The reference opens them with `tarfile`. The port uses
      `Petrus.Motus.Execution.Archive.Tar`, the reader Petrus's own Pi A2

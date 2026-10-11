@@ -17,6 +17,11 @@ prints one JSON document on stdout.
 * ``terminal ROOT``: ``_terminal_operations(ROOT)``, the agent operations
   with a known terminal record in the Histories under ``ROOT``; prints
   ``{"operations": sorted}`` or the refusal.
+* ``results - < cases.json``: for each ``{"request": asdict(ReviewRequest),
+  "raw": text}``, ``_validate_result("review", _parse_result(raw),
+  request)``; prints one report per case: ``{"accepted": true}``, the
+  ``AgentProtocolError`` (``{"refused": reason, "category": ...}``) or any
+  other exception (``{"raised": class, "message": str}``).
 
 ``InteropSpec`` runs the same operations through the Haskell port on the
 same directories, in both directions.
@@ -31,6 +36,8 @@ from pathlib import Path
 
 from petrus.agenticus.connection.key import KeyContext
 
+from hamsterdan.agents.pi import _parse_result
+from hamsterdan.agents.protocol import AgentProtocolError, ReviewRequest, _validate_result
 from hamsterdan.host.agenticus import AgentRouteStore, _terminal_operations, compose_agent
 from hamsterdan.host.pi_a2 import PersistentKeyOperations
 
@@ -80,6 +87,21 @@ def dump(root: Path) -> dict:
         return {"user_version": database.execute("PRAGMA user_version").fetchone()[0], "tables": tables}
 
 
+def results(cases: list[dict]) -> list[dict]:
+    reports: list[dict] = []
+    for case in cases:
+        request = ReviewRequest(**case["request"])
+        try:
+            _validate_result("review", _parse_result(case["raw"]), request)
+            reports.append({"accepted": True})
+        except AgentProtocolError as error:
+            category = error.result_category
+            reports.append({"refused": str(error), "category": None if category is None else str(category)})
+        except Exception as error:  # noqa: BLE001 - reported for comparison
+            reports.append({"raised": type(error).__name__, "message": str(error)})
+    return reports
+
+
 def main() -> None:
     command, root, arguments = sys.argv[1], Path(sys.argv[2]), sys.argv[3:]
     if command == "seal":
@@ -93,6 +115,8 @@ def main() -> None:
             result = {"refused": type(error).__name__, "message": str(error)}
     elif command == "routes":
         result = routes(root, json.load(sys.stdin))
+    elif command == "results":
+        result = results(json.load(sys.stdin))
     elif command == "dump":
         result = dump(root)
     elif command == "terminal":

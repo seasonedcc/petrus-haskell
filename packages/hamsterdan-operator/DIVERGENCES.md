@@ -21,10 +21,14 @@ Below are the differences that remain, with their rationale.
    - The bounded failures (`{"command": ..., "ok": false, "error": ...}`,
      exit 1) and argparse errors (exit 2) are identical.
    - One exception has no reference text: an operating-system error the
-     reference would not catch either, other than a failed spawn (which
-     prints `FileNotFoundError`/`PermissionError` like the reference). For
+     reference would not catch either, other than a failed spawn or a
+     failed read of a file (which print CPython's `OSError` line for the
+     errno: its subclass, `[Errno n]`, the description and the path,
+     hamsterdan-contracts' `Hamsterdan.Python.Exception.ioException`). For
      example, the disk filling while `create` writes a scenario file prints
      GHC's description of the `IOException`, not CPython's `OSError` line.
+     No test can make the disk fill on both sides alike, so this stays as
+     it is.
 2. **Type-enforced refusals.** Some reference checks guard against values a
    dynamically typed caller could pass: a `None`, `0`, `False` or `[]`
    category, a `str` subclass as a ref, an assertion that returns

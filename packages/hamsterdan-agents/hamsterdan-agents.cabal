@@ -82,6 +82,7 @@ test-suite hamsterdan-agents-test
                     PiA2FactorySpec
                     PiWorkspaceSpec
                     InteropSpec
+                    ResultDifferentialSpec
   build-depends:    base
                   , bytestring
                   , ram

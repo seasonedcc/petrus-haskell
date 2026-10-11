@@ -59,7 +59,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Agents.Protocol
 import Hamsterdan.Contracts.Codec (Contract, pythonDict, spelling, unspelling)
-import Hamsterdan.Python.Text (strip, utf8Length)
+import Hamsterdan.Python.Exception (PythonException (..), pythonExceptionStr)
+import Hamsterdan.Python.Text (strip, utf8Encode)
 import Hamsterdan.PyLiteral (PyValue (..), repr)
 import Petrus.Impetus.Instance.FailureText qualified as FT
 import Petrus.Json (Json (..), defaultDumps, dumps)
@@ -199,24 +200,39 @@ loginMatch value =
 text :: Json -> Text -> Bool -> Int -> V Text
 text value name empty limit = case value of
   String s
-    | (empty || not (T.null s)) && utf8Length s <= limit && not (T.elem '\0' s) -> Right s
-  _ -> refuse ("invalid " <> name)
+    | empty || not (T.null s) -> do
+        size <- measured s
+        if size <= limit && not (T.elem '\0' s) then Right s else invalid
+  _ -> invalid
+  where
+    invalid = refuse ("invalid " <> name)
+
+-- | @len(value.encode())@: the @UnicodeEncodeError@ a lone surrogate (kept
+-- from a JSON escape) raises propagates, a built-in failure.
+measured :: Text -> V Int
+measured value = case utf8Encode value of
+  Right bytes -> Right (BS.length bytes)
+  Left failure@(PythonException cls _) -> foreignFailure cls (pythonExceptionStr failure)
 
 -- | @_safe_path(value)@. @PurePosixPath(".").parts[0]@ raises
 -- @IndexError@, so a relative path with no parts is a foreign failure.
 safePath :: Json -> V Bool
 safePath = \case
   String value
-    | T.null value || utf8Length value > maxPath || T.elem '\\' value || T.elem '\0' value -> Right False
-    | "/" `T.isPrefixOf` value -> Right False
-    | otherwise ->
-        let parts = filter (`notElem` ["", "."]) (T.splitOn "/" value)
-         in if ".." `elem` parts
-              then Right False
-              else case parts of
-                first : _ -> Right (first `notElem` [".git", ".impetus"])
-                [] -> foreignFailure "IndexError" "tuple index out of range"
+    | T.null value -> Right False
+    | otherwise -> measured value >>= \size -> checked value size
   _ -> Right False
+  where
+    checked value size
+      | size > maxPath || T.elem '\\' value || T.elem '\0' value = Right False
+      | "/" `T.isPrefixOf` value = Right False
+      | otherwise =
+          let parts = filter (`notElem` ["", "."]) (T.splitOn "/" value)
+           in if ".." `elem` parts
+                then Right False
+                else case parts of
+                  first : _ -> Right (first `notElem` [".git", ".impetus"])
+                  [] -> foreignFailure "IndexError" "tuple index out of range"
 
 -- | @_list(value, name)@.
 pythonList :: Json -> Text -> V [Json]

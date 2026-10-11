@@ -57,31 +57,9 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error (lenientDecode)
 import Database.SQLite3.Direct qualified as Direct
-import Foreign.C.Error
-  ( Errno (..)
-  , eACCES
-  , eAGAIN
-  , eALREADY
-  , eCHILD
-  , eCONNABORTED
-  , eCONNREFUSED
-  , eCONNRESET
-  , eEXIST
-  , eINPROGRESS
-  , eINTR
-  , eISDIR
-  , eNOENT
-  , eNOTDIR
-  , ePERM
-  , ePIPE
-  , eSHUTDOWN
-  , eSRCH
-  , eTIMEDOUT
-  , eWOULDBLOCK
-  )
-import Foreign.C.String (CString, peekCString)
-import Foreign.C.Types (CInt (..))
+import Foreign.C.Error (Errno (..), eISDIR, eNOENT)
 import GHC.IO.Exception (IOException (..))
+import Hamsterdan.Python.Exception qualified as Exc
 import Hamsterdan.Python.Object (PV (..), PyError (..), fromPython, raise, raiseEither)
 import Hamsterdan.Python.Text (strRepr, utf8Encode)
 import Petrus.EngineFile.PyText (decodeText)
@@ -148,30 +126,7 @@ decodeMessage = TE.decodeUtf8With lenientDecode
 
 -- | The @OSError@ subclass and text CPython raises for an errno on a path.
 osError :: Text -> Errno -> IO PyError
-osError path errno@(Errno n) = do
-  description <- c_strerror n >>= peekCString
-  pure (PyError (errnoClass errno) ("[Errno " <> T.pack (show n) <> "] " <> T.pack description <> ": " <> strRepr path))
-
-errnoClass :: Errno -> Text
-errnoClass errno
-  | errno == eNOENT = "FileNotFoundError"
-  | errno == eEXIST = "FileExistsError"
-  | errno == eISDIR = "IsADirectoryError"
-  | errno == eNOTDIR = "NotADirectoryError"
-  | errno == eACCES || errno == ePERM = "PermissionError"
-  | errno `elem` [eAGAIN, eALREADY, eWOULDBLOCK, eINPROGRESS] = "BlockingIOError"
-  | errno == eCHILD = "ChildProcessError"
-  | errno == ePIPE || errno == eSHUTDOWN = "BrokenPipeError"
-  | errno == eCONNABORTED = "ConnectionAbortedError"
-  | errno == eCONNREFUSED = "ConnectionRefusedError"
-  | errno == eCONNRESET = "ConnectionResetError"
-  | errno == eINTR = "InterruptedError"
-  | errno == eSRCH = "ProcessLookupError"
-  | errno == eTIMEDOUT = "TimeoutError"
-  | otherwise = "OSError"
-
-foreign import ccall unsafe "string.h strerror"
-  c_strerror :: CInt -> IO CString
+osError path errno = fromPython <$> Exc.osError errno path
 
 -- | Run a system call, raising the @OSError@ CPython raises for its errno.
 onPath :: Text -> IO a -> IO a
@@ -328,7 +283,7 @@ readBytes path = do
   fd <- onPath path (PIO.openFd raw PIO.ReadOnly PIO.defaultFileFlags)
   flip finally (PIO.closeFd fd) $ do
     status <- onPath path (Files.getFdStatus fd)
-    when (Files.isDirectory status) $ osError path (Errno 21) >>= raise
+    when (Files.isDirectory status) $ osError path eISDIR >>= raise
     onPath path (readAll fd)
   where
     readAll fd = do

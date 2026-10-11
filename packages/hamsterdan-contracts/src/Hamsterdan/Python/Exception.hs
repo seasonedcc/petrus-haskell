@@ -20,11 +20,39 @@ module Hamsterdan.Python.Exception
   , raise
   , dumpsError
   , raisingDumps
+  , osError
+  , ioException
   ) where
 
-import Control.Exception (throw, throwIO)
+import Control.Exception (IOException, throw, throwIO)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Foreign.C.Error
+  ( Errno (..)
+  , eACCES
+  , eAGAIN
+  , eALREADY
+  , eCHILD
+  , eCONNABORTED
+  , eCONNREFUSED
+  , eCONNRESET
+  , eEXIST
+  , eINPROGRESS
+  , eINTR
+  , eISDIR
+  , eNOENT
+  , eNOTDIR
+  , ePERM
+  , ePIPE
+  , eSHUTDOWN
+  , eSRCH
+  , eTIMEDOUT
+  , eWOULDBLOCK
+  )
+import Foreign.C.String (CString, peekCString)
+import Foreign.C.Types (CInt (..))
+import GHC.IO.Exception (IOErrorType (..), IOException (..))
+import System.IO.Error (isDoesNotExistError, isPermissionError)
 import Petrus.Json (EncodeError (..), encodeErrorMessage)
 import Petrus.Json.Python
   ( PythonArg (..)
@@ -33,6 +61,7 @@ import Petrus.Json.Python
   , pythonExceptionRepr
   , pythonExceptionStr
   , pythonFailureText
+  , pythonStrRepr
   , unicodeDecodeError
   , unicodeEncodeError
   )
@@ -60,3 +89,48 @@ dumpsError refusal = pythonError cls (T.pack (encodeErrorMessage refusal))
 -- 'dumpsError' of the refusal propagates as CPython's exception would.
 raisingDumps :: Either EncodeError a -> a
 raisingDumps = either (throw . dumpsError) id
+
+-- | The @OSError@ CPython raises for an errno on a path: the subclass the
+-- errno selects (@FileNotFoundError@, @PermissionError@, ...) and its
+-- @str()@, @[Errno n] strerror: 'path'@. It is held as a one-argument
+-- exception, so its @str()@ is CPython's (its @repr()@ is not: CPython's
+-- @args@ are the errno and the description).
+osError :: Errno -> Text -> IO PythonException
+osError errno@(Errno n) path = do
+  description <- c_strerror n >>= peekCString
+  pure (pythonError (errnoClass errno) ("[Errno " <> T.pack (show n) <> "] " <> T.pack description <> ": " <> pythonStrRepr path))
+
+-- | 'osError' for a failed system call on a path, by its errno. GHC
+-- raises a few without one: a missing file, a refused permission, and
+-- opening a directory as a file (@InappropriateType@), which are the
+-- errnos the call failed with; any other keeps GHC's description.
+ioException :: Text -> IOException -> IO PythonException
+ioException path e = case ioe_errno e of
+  Just n -> osError (Errno n) path
+  Nothing
+    | isDoesNotExistError e -> osError eNOENT path
+    | isPermissionError e -> osError eACCES path
+    | ioe_type e == InappropriateType -> osError eISDIR path
+    | otherwise -> pure (pythonError "OSError" (T.pack (show e)))
+
+-- | CPython's @errno@-to-subclass table (PEP 3151).
+errnoClass :: Errno -> Text
+errnoClass errno
+  | errno == eNOENT = "FileNotFoundError"
+  | errno == eEXIST = "FileExistsError"
+  | errno == eISDIR = "IsADirectoryError"
+  | errno == eNOTDIR = "NotADirectoryError"
+  | errno == eACCES || errno == ePERM = "PermissionError"
+  | errno `elem` [eAGAIN, eALREADY, eWOULDBLOCK, eINPROGRESS] = "BlockingIOError"
+  | errno == eCHILD = "ChildProcessError"
+  | errno == ePIPE || errno == eSHUTDOWN = "BrokenPipeError"
+  | errno == eCONNABORTED = "ConnectionAbortedError"
+  | errno == eCONNREFUSED = "ConnectionRefusedError"
+  | errno == eCONNRESET = "ConnectionResetError"
+  | errno == eINTR = "InterruptedError"
+  | errno == eSRCH = "ProcessLookupError"
+  | errno == eTIMEDOUT = "TimeoutError"
+  | otherwise = "OSError"
+
+foreign import ccall unsafe "string.h strerror"
+  c_strerror :: CInt -> IO CString

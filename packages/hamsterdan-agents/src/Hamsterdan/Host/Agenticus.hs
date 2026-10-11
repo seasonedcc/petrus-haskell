@@ -52,7 +52,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Agents.Pi (PiNativeRunner, PiRuntime, PiWorkspaceProvider, defaultPiRunnerOptions, newPiNativeRunner, piAgentRunner, unavailablePiRunner)
 import Hamsterdan.Agents.Protocol (AgentRunner (..), CodingRequest (..), Invocation (..))
-import Hamsterdan.Python.Exception (raisingDumps)
+import Hamsterdan.Python.Exception (ioException, raisingDumps)
 import Hamsterdan.Python.Text (isAscii, isPrintable, pyIntBase, splitlinesUtf8, utf8Length)
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Sql
@@ -93,9 +93,10 @@ import Petrus.Impetus.History.Codec (decodeRecord)
 import Petrus.Impetus.History.Records (ActivityCompleted (..), ActivityFailed (..), ActivityRequested (..), Record (..))
 import Petrus.Impetus.Petrinet.Schema (netPathText)
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json.Wtf8 (fromCodePoints)
 import Petrus.Motus.Worker (ValueError (..))
 import Petrus.Posix.File (makeDirectories)
-import System.Directory (doesDirectoryExist, doesPathExist, listDirectory)
+import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath (splitDirectories, takeDirectory, (</>))
 import System.Posix.Files qualified as Posix
 
@@ -477,9 +478,11 @@ historyPaths histories = do
       level2 <- concat <$> traverse children level1
       level3 <- concat <$> traverse children level2
       fmap concat . forM level3 $ \directory -> do
+        -- pathlib matches the literal last part with lstat: a dangling
+        -- symbolic link is a match.
         let candidate = directory </> "history.jsonl"
-        exists <- doesPathExist candidate
-        pure [candidate | exists]
+        exists <- try @IOError (Posix.getSymbolicLinkStatus candidate)
+        pure [candidate | either (const False) (const True) exists]
   where
     children directory = do
       isDirectory <- doesDirectoryExist directory
@@ -509,11 +512,13 @@ terminalOperations :: FilePath -> IO (Set.Set Text)
 terminalOperations histories = do
   paths <- historyPaths histories
   fmap Set.unions . forM paths $ \path -> do
+    -- @path.stat()@ runs outside the reference's @try@: its OSError
+    -- propagates.
     size <- try @IOError (Posix.fileSize <$> Posix.getFileStatus path)
     case size of
       Right bytes | bytes > 16 * 1024 * 1024 -> refuse "agent route repair History exceeds its bound"
       Right _ -> pure ()
-      Left _ -> malformed
+      Left e -> ioException (fromCodePoints path) e >>= throwIO
     contents <- try @IOError (BS.readFile path)
     bytes <- case contents of
       Right bytes | Right _ <- TE.decodeUtf8' bytes -> pure bytes

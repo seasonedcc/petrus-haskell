@@ -36,7 +36,8 @@ import Petrus.TestSupport.Repo (repoRoot)
 import System.Directory (createDirectoryIfMissing, listDirectory)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import System.Posix.Files (fileMode, fileSize, getFileStatus)
+import Hamsterdan.Python.Exception (PythonException (..), pythonExceptionStr)
+import System.Posix.Files (createSymbolicLink, fileMode, fileSize, getFileStatus, setFileMode)
 import System.Process (proc, readCreateProcessWithExitCode)
 import Test.Hspec
 
@@ -225,15 +226,42 @@ spec = describe "on-disk interop with the reference agent stores" $ do
           directory = root </> "1" </> "2" </> "3"
       createDirectoryIfMissing True directory
       BS.writeFile (directory </> "history.jsonl") bytes
-      expected <- reference ["terminal", root] ""
-      outcome <- try @SomeException (terminalOperations root)
-      let actual = case outcome of
-            Right operations -> Object [("operations", Array (map String (Set.toAscList operations)))]
-            Left e
-              | Just (AgentCompositionError message) <- fromException e ->
-                  Object [("message", String message), ("refused", String "AgentCompositionError")]
-              | otherwise -> Object [("message", String (T.pack (show e))), ("refused", String "Exception")]
-      sameJson label expected actual
+      sameTerminal label root
+
+  it "reads route-repair History paths that are not plain files as the reference does" . withTmp $ \tmp -> do
+    let operation = "review:github:1:2:pr:3:" <> T.replicate 40 "b" <> ":i1"
+        line record = TE.encodeUtf8 (either (error . show) id (dumpsText defaultDumps record)) <> "\n"
+        history = line (repairRequest operation) <> line (repairTerminal "plain")
+        layouts :: [(String, FilePath -> IO ())]
+        layouts =
+          [ ("a dangling symbolic link", \directory -> createSymbolicLink (directory </> "missing.jsonl") (directory </> "history.jsonl"))
+          , ("a symbolic link loop", \directory -> createSymbolicLink (directory </> "history.jsonl") (directory </> "history.jsonl"))
+          , ("a symbolic link to a History", \directory -> BS.writeFile (directory </> "real.jsonl") history >> createSymbolicLink (directory </> "real.jsonl") (directory </> "history.jsonl"))
+          , ("a directory", \directory -> createDirectoryIfMissing True (directory </> "history.jsonl"))
+          , ("an unreadable file", \directory -> BS.writeFile (directory </> "history.jsonl") history >> setFileMode (directory </> "history.jsonl") 0)
+          ]
+    forM_ (zip [1 :: Int ..] layouts) $ \(index, (label, layout)) -> do
+      let root = tmp </> ("layout-" <> show index)
+          directory = root </> "1" </> "2" </> "3"
+      createDirectoryIfMissing True directory
+      layout directory
+      sameTerminal label root
+
+-- | The reference's @_terminal_operations(root)@ against the port's: the
+-- operations, or the exception's class and @str()@.
+sameTerminal :: String -> FilePath -> Expectation
+sameTerminal label root = do
+  expected <- reference ["terminal", root] ""
+  outcome <- try @SomeException (terminalOperations root)
+  let actual = case outcome of
+        Right operations -> Object [("operations", Array (map String (Set.toAscList operations)))]
+        Left e
+          | Just (AgentCompositionError message) <- fromException e ->
+              Object [("message", String message), ("refused", String "AgentCompositionError")]
+          | Just failure@(PythonException name _) <- fromException e ->
+              Object [("message", String (pythonExceptionStr failure)), ("refused", String name)]
+          | otherwise -> Object [("message", String (T.pack (show e))), ("refused", String "Exception")]
+  sameJson label expected actual
 
 -- | A review-agent request for route repair.
 repairRequest :: Text -> Json

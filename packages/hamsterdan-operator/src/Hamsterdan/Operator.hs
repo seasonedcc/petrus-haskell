@@ -124,12 +124,14 @@ import Hamsterdan.Operator.Posix (Stat (..), effectiveUid, isDirectory, isRegula
 import Hamsterdan.Operator.Posix qualified as Posix
 import Hamsterdan.Operator.Python
 import Petrus.Json.Python (fsEncode, utf8BackslashReplace)
+import Petrus.Json.Wtf8 (fromCodePoints)
+import Hamsterdan.Python.Exception (ioException)
 import System.Directory (canonicalizePath, doesFileExist, getTemporaryDirectory)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO (Handle, hFlush, stderr, stdout)
-import System.IO.Error (ioeGetErrorType, isDoesNotExistError, isPermissionError)
+import System.IO.Error (isDoesNotExistError)
 import System.IO.Temp (createTempDirectory, withTempDirectory)
 import System.Posix.Directory qualified as PosixDir
 import System.Posix.Files qualified as PosixFiles
@@ -137,7 +139,6 @@ import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileF
 import System.Posix.IO.ByteString (fdRead, fdWrite)
 import System.Process.Typed qualified as P
 import System.Timeout (timeout)
-import GHC.IO.Exception (IOErrorType (..))
 
 -- ---------------------------------------------------------------------------
 -- Constants
@@ -311,7 +312,8 @@ commandRunner command cwd = case command of
             $ P.proc program argv
     outcome <- try (P.readProcess config)
     case outcome of
-      Left (e :: IOException) -> throwIO (spawnError executable e)
+      -- The OSError subprocess raises when the executable cannot run.
+      Left (e :: IOException) -> ioException executable e >>= throwIO . fromPython
       Right (code, out, err) -> do
         decodedOut <- py (decodeOutput (BL.toStrict out))
         decodedErr <- py (decodeOutput (BL.toStrict err))
@@ -334,13 +336,6 @@ exitInt :: ExitCode -> Int
 exitInt = \case
   ExitSuccess -> 0
   ExitFailure n -> n
-
--- | The @OSError@ @subprocess@ raises when the executable cannot run.
-spawnError :: Text -> IOException -> PyError
-spawnError executable e
-  | isDoesNotExistError e = PyError "FileNotFoundError" ("[Errno 2] No such file or directory: " <> PyV.pyRepr (PStr executable))
-  | isPermissionError e = PyError "PermissionError" ("[Errno 13] Permission denied: " <> PyV.pyRepr (PStr executable))
-  | otherwise = PyError "OSError" (T.pack (show e))
 
 -- | What the reference's module-level hooks and globals provide, so tests
 -- can replace them as the reference's tests monkeypatch them.
@@ -1024,27 +1019,20 @@ create op scenario = do
         ]
     )
 
--- | @str(Path(path))@.
+-- | @str(Path(path))@. A 'FilePath' holds an undecodable byte as its
+-- lone surrogate (the file-system encoding round-trips it), which
+-- 'fromCodePoints' keeps.
 pathString :: FilePath -> FilePath
-pathString = T.unpack . pathText . T.pack
+pathString = T.unpack . pathText . fromCodePoints
 
--- | @Path.read_text(encoding="utf-8")@.
+-- | @Path.read_text(encoding="utf-8")@: the @OSError@ a failed open
+-- raises for the path, or the text.
 readText :: FilePath -> IO Text
 readText path = do
   outcome <- try (BS.readFile path)
   case outcome of
-    Left (e :: IOException) -> throwIO (fileError path e)
+    Left (e :: IOException) -> ioException (fromCodePoints path) e >>= throwIO . fromPython
     Right bytes -> py (decodeOutput bytes)
-
--- | The @OSError@ a failed open raises for a path.
-fileError :: FilePath -> IOException -> PyError
-fileError path e
-  | isDoesNotExistError e = PyError "FileNotFoundError" ("[Errno 2] No such file or directory: " <> quoted)
-  | isPermissionError e = PyError "PermissionError" ("[Errno 13] Permission denied: " <> quoted)
-  | ioeGetErrorType e == InappropriateType = PyError "IsADirectoryError" ("[Errno 21] Is a directory: " <> quoted)
-  | otherwise = PyError "OSError" (T.pack (show e))
-  where
-    quoted = PyV.pyRepr (PStr (T.pack path))
 
 -- | @prepare_broker(runner)@.
 prepareBroker :: Operator -> IO PV

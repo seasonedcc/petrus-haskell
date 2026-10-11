@@ -78,6 +78,8 @@ workspace receiver, and selects the Pi runner after an exact READY probe.
 | `InteropSpec`: sealed keys | 1 | Each side seals connection state, and the other opens it, both ways (`differential/agents_reference.py`). The key file is 32 bytes with mode `0600` on both sides. Opening under the wrong context, and opening tampered state, are refused the same way on both sides (`KeyOperationError`). |
 | `InteropSpec`: route database | 1 | Two phases of claims and settlements on one `agent-routes.sqlite3`, in all four pairings (Python/Python, Haskell/Haskell, Python/Haskell, Haskell/Python). Every pairing must leave the same rows and schema. Settled work must be refused with `resolved agent work cannot be redispatched`, and unsettled work must resume. |
 | `InteropSpec`: route-repair Histories | 1 | `_terminal_operations` (the History scan of agent-route repair) on the same bytes on both sides, 17 Histories: two records joined by each of `str.splitlines()`'s 11 line boundaries (`\n`, `\r\n`, `\r`, `\v`, `\f`, `\x1c`–`\x1e`, U+0085, U+2028, U+2029), non-boundary multi-byte text, no final boundary, a U+2028 or U+0085 inside a record, an empty line and invalid UTF-8. Both sides must report the same operations or the same refusal. The port finds the boundaries in the UTF-8 bytes rather than decoding each line to text (the scan was 10 times slower that way; see hamsterdan-host's bench/RESULTS.md). |
+| `InteropSpec`: route-repair History paths | 1 | The same scan where `history.jsonl` is a dangling symbolic link, a symbolic-link loop, a link to a History, a directory, or a file that cannot be read: the same operations, refusal, or propagated `OSError` (class and text). |
+| `ResultDifferentialSpec` | 1 | 16 Pi review results through the reference's `_parse_result` and `_validate_result` and the port's: a valid one, then one value replaced, mostly by strings with lone surrogate escapes (titles, bodies, the empty-allowed suggestion, ids, paths, related locations, lineage, status, head, repository, extra keys) and a surrogate pair. Each must be accepted, refused with the same reason and category, or raise the same built-in exception. |
 | hamsterdan-host `InteropSpec`: agent state | 1 | A full journey through `serve`'s composed agent on both hosts, over Petrus's scripted Pi runtime. Phase one reviews the first head at epoch 1; phase two reviews a new head at epoch 2. Phase one runs on one host and phase two on the other, in all four pairings. Every file under the state root must match the Python-only run: `agent-routes.sqlite3`, `pi-a2/installation`, and the runtime host's `operations.sqlite3` and `bodies.sqlite3`, alongside the host's own files. The provider calls, the reviews and the dashboard comment must match too. |
 
 ## Benchmarks
@@ -103,13 +105,15 @@ of seven interleaved repetitions on 2026-10-11 (06:14–06:26, load
 
 ## Divergences
 
-[DIVERGENCES.md](DIVERGENCES.md) lists them. Four are observable, each only
-in which failure is raised:
+[DIVERGENCES.md](DIVERGENCES.md) lists them. Two remain observable, each
+only in which failure is raised:
 
-- lone surrogates in a Pi result;
-- a History file that cannot be stat'ed during route repair;
 - the tar reader's tolerance of malformed headers;
 - the one-line uncaught traceback.
+
+Lone surrogates in a Pi result and History paths that cannot be stat'ed
+used to differ; both now match the reference (`ResultDifferentialSpec`,
+`InteropSpec`).
 
 ## Not covered
 
