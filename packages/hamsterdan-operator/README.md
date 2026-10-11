@@ -32,7 +32,7 @@ so the usage, help, abbreviations and errors are also the reference's.
 
 The package also carries the Haskell image's runtime contract:
 `deployment/Containerfile`, `deployment/python-shim`, `.dockerignore`,
-`deployment/cabal.project.freeze`, and the reference's
+`cabal.project.freeze`, and the reference's
 `scripts/with-runtime-secrets`, `deployment/config` and `deployment/pi`,
 copied byte for byte. The tests live here; the files are at the repository
 root, where the image build expects them.

@@ -116,7 +116,7 @@ Below are the differences that remain, with their rationale.
     that is none of those does not run in this image.
 - **Toolchain pins.** The base images are the reference's, pinned by
   digest. GHC (9.10.3) and cabal (3.16.1.0) are pinned by version, and the
-  Haskell dependency plan by `deployment/cabal.project.freeze` (an
+  Haskell dependency plan by `cabal.project.freeze` (an
   `index-state` plus every package version). The `ghcup` binary that
   installs them is fetched unpinned from downloads.haskell.org. Pinning it
   by digest means picking a release to trust, so that is left to whoever

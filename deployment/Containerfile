@@ -33,7 +33,7 @@ RUN mkdir -p /opt/toolchain/.ghcup/bin \
     && ghcup install cabal "${CABAL_VERSION}" --set
 WORKDIR /opt/hamsterdan/src
 COPY cabal.project LICENSE NOTICE ./
-COPY deployment/cabal.project.freeze ./cabal.project.freeze
+COPY cabal.project.freeze ./cabal.project.freeze
 COPY packages ./packages
 RUN cabal update \
     && cabal build --disable-tests --disable-benchmarks \

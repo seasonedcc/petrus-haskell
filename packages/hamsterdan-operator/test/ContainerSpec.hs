@@ -129,7 +129,7 @@ spec = do
       Set.fromList (drop 1 ignore)
         `shouldBe` Set.fromList
           [ "!deployment/Containerfile"
-          , "!deployment/cabal.project.freeze"
+          , "!cabal.project.freeze"
           , "!deployment/pi/"
           , "!deployment/pi/package-lock.json"
           , "!deployment/pi/package.json"
@@ -166,7 +166,7 @@ spec = do
       forM_ ["--mount=type=secret", "PETRUS_GITHUB_TOKEN", "ARG PETRUS_GITHUB_TOKEN"] \forbidden ->
         (forbidden `T.isInfixOf` containerfile) `shouldBe` False
       -- uv sync --frozen --no-dev: the frozen plan, without test or benchmark components.
-      ("COPY deployment/cabal.project.freeze ./cabal.project.freeze" `T.isInfixOf` containerfile) `shouldBe` True
+      ("COPY cabal.project.freeze ./cabal.project.freeze" `T.isInfixOf` containerfile) `shouldBe` True
       ("cabal build --disable-tests --disable-benchmarks" `T.isInfixOf` containerfile) `shouldBe` True
       ("npm ci" `T.isInfixOf` containerfile) `shouldBe` True
       ("USER hamsterdan" `T.isInfixOf` containerfile) `shouldBe` True
@@ -174,7 +174,7 @@ spec = do
 
     it "test_public_petrus_revision_is_exact_and_locked: the Haskell dependency plan is frozen" do
       root <- repoRoot
-      freeze <- T.lines <$> readText (root </> "deployment" </> "cabal.project.freeze")
+      freeze <- T.lines <$> readText (root </> "cabal.project.freeze")
       filter ("index-state: hackage.haskell.org " `T.isPrefixOf`) freeze `shouldSatisfy` ((== 1) . length)
       let pins = mapMaybe (\line -> T.stripPrefix "any." (T.dropWhile (== ' ') (T.dropWhile (/= ' ') line))) freeze
           names = [T.takeWhile (/= ' ') p | p <- pins]

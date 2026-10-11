@@ -18,7 +18,7 @@ reference is missing. It is never skipped.
 | `operator.py`: `parser` and `main` (argparse, the JSON report, exit statuses) | `Hamsterdan.Operator.runOperator`, `app/Main.hs` (`hamsterdan-operator`), hamsterdan-cli's `Hamsterdan.Cli.Argparse` | `OperatorSpec` and `DifferentialSpec`, which runs the binary |
 | `src/hamsterdan/host/publication_qualification.py`: the publication assertions, the agent result and cleanup fences, `AtomicSetupPush`, the setup qualification sequence and its sanitized evidence | `Hamsterdan.Host.PublicationQualification` | `PublicationQualificationSpec`, `TypeGuaranteeSpec` and `QualificationSetupLocalSpec` |
 | The CPython calls these make: `os.open`/`fstat`/`lstat`/`stat(dir_fd=..., follow_symlinks=False)`, `os.path.abspath`/`normpath`, `pathlib` parents and names, `shutil.which`, `shutil.rmtree`, `tempfile`, `json.loads` | `Hamsterdan.Operator.Posix` (with `cbits/stat.c` and `cbits/rmtree.c`), `Hamsterdan.Operator.Python`, `Hamsterdan.Operator.FastJson` | the suites above, `FastJsonSpec` and `RmtreeSpec` against CPython |
-| `deployment/Containerfile`, `.dockerignore`, `deployment/config`, `deployment/pi`, `scripts/with-runtime-secrets` | the files of the same names at the repository root, plus `deployment/python-shim` and `deployment/cabal.project.freeze` | `ContainerSpec` and `SecretLaunchSpec`; see "Container runtime contract" below |
+| `deployment/Containerfile`, `.dockerignore`, `deployment/config`, `deployment/pi`, `scripts/with-runtime-secrets` | the files of the same names at the repository root, plus `deployment/python-shim` and `cabal.project.freeze` | `ContainerSpec` and `SecretLaunchSpec`; see "Container runtime contract" below |
 
 The package reuses:
 
@@ -84,7 +84,7 @@ binary).
 - **`test_public_petrus_revision_is_exact_and_locked`** checks the
   reference's `pyproject.toml` pin and `uv.lock`. This repository has
   neither. The port checks the equivalent: the Haskell dependency plan is
-  frozen (`deployment/cabal.project.freeze` has an `index-state`, pins the
+  frozen (`cabal.project.freeze` has an `index-state`, pins the
   network, SQLite, crypto, process and text libraries, and pins no local
   package).
 

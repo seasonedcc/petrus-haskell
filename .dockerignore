@@ -1,6 +1,6 @@
 **
 !deployment/Containerfile
-!deployment/cabal.project.freeze
+!cabal.project.freeze
 !deployment/pi/
 !deployment/pi/package-lock.json
 !deployment/pi/package.json
