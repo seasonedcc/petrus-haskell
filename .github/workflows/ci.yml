@@ -173,48 +173,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: test-plan
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.19.0
       - name: Upstream Python environments
         run: for p in petrus petrus-engine hamsterdan; do scripts/upstream-python "$p" >/dev/null; done
       - name: Tests (${{ matrix.suites }})
-        run: |
-          grep -E '^Sig(Ign|Blk|Cgt)' /proc/self/status
-          scripts/ci-tests run-shard plan.json "${{ matrix.name }}"
+        run: scripts/ci-tests run-shard plan.json "${{ matrix.name }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results-${{ matrix.name }}-${{ github.run_attempt }}
           path: results-*.json
           retention-days: 30
-
-  diag:
-    # TEMPORARY: why `cabal test` in the test jobs reconfigures every package.
-    needs: build
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: ./.github/actions/toolchain
-      - uses: actions/cache/restore@v4
-        with:
-          path: dist-newstyle
-          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
-          fail-on-cache-miss: true
-      - name: What changed in the configuration
-        run: |
-          pkg=dist-newstyle/build/x86_64-linux/ghc-9.10.3/petrus-json-0.1.0.0
-          ls -la "$pkg" "$pkg/cache" dist-newstyle/cache || true
-          mkdir -p "$RUNNER_TEMP/before"
-          cp -r "$pkg/cache" "$RUNNER_TEMP/before/pkg" || true
-          cp -r dist-newstyle/cache "$RUNNER_TEMP/before/project"
-          ls -la ~/.cabal ~/.config/cabal 2>/dev/null || true
-          cabal build -v2 -j petrus-json:lib:petrus-json $(scripts/ci-tests test-flags) 2>&1 | tail -40
-          for f in $(ls "$RUNNER_TEMP/before/pkg"); do echo "== pkg $f"; diff <(strings -n 4 "$RUNNER_TEMP/before/pkg/$f") <(strings -n 4 "$pkg/cache/$f") | head -40; done
-          for f in $(ls "$RUNNER_TEMP/before/project"); do echo "== project $f"; diff <(strings -n 4 "$RUNNER_TEMP/before/project/$f") <(strings -n 4 "dist-newstyle/cache/$f") | head -40; done
 
   viewer:
     needs: build
@@ -233,14 +201,19 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: test-plan
-      - uses: pnpm/action-setup@v4
+      # pnpm goes into the toolchain's Node directory, already on PATH: a
+      # PATH unlike the build job's would make cabal reconfigure.
+      - name: pnpm
+        id: pnpm
+        run: |
+          npm install -g --silent pnpm@11.5.1
+          echo "store=$(cd upstream/petrus-viewer && pnpm store path)" >> "$GITHUB_OUTPUT"
+      - name: Restore the pnpm store
+        uses: actions/cache@v4
         with:
-          version: 11.5.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.19.0
-          cache: pnpm
-          cache-dependency-path: upstream/petrus-viewer/pnpm-lock.yaml
+          path: ${{ steps.pnpm.outputs.store }}
+          key: pnpm-store-v1-${{ runner.os }}-${{ hashFiles('upstream/petrus-viewer/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-v1-${{ runner.os }}-
       - name: Restore the Playwright browsers
         id: playwright
         uses: actions/cache@v4
@@ -255,14 +228,13 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Upstream Python environment
         run: scripts/upstream-python petrus >/dev/null
-      - name: Network (TEMPORARY diagnostic)
+      - name: The browser against the Haskell backend (TEMPORARY diagnostic)
         run: |
-          getent ahosts localhost || true
-          for v in -4 -6; do curl $v -sS -o /dev/null -w "jsdelivr $v %{time_namelookup} %{time_connect} %{time_total}\n" https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js || true; done
-          nproc
-      - name: The upstream Vite backend's own Playwright suite (TEMPORARY diagnostic)
-        working-directory: upstream/petrus-viewer
-        run: timeout 180 pnpm test:playwright || true
+          cabal build -v0 -j petrus-viewer-server:exe:petrus $(scripts/ci-tests test-flags)
+          cp .github/ci-diag/viewer-diag.mjs upstream/petrus-viewer/
+          cd upstream/petrus-viewer
+          timeout 120 node viewer-diag.mjs "$(cd ../.. && cabal list-bin -v0 petrus-viewer-server:exe:petrus)" "$PWD/dist" || true
+          rm viewer-diag.mjs
       - name: The petrus-viewer suites against the Haskell backend
         run: scripts/ci-tests run-viewer plan.json
       - uses: actions/upload-artifact@v4

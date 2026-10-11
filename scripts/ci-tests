@@ -447,21 +447,35 @@ def passed(package: str, suite: str) -> bool:
     return bool(logs) and f"Test suite {suite}: PASS" in text and f"Test suite {suite}: FAIL" not in text
 
 
-def write_results(name: str, document: dict, outcome: Dict[str, bool]) -> None:
-    results = {u: {"suite": document["units"][u]["suite"], "hash": document["inputs"][document["units"][u]["suite"]]["hash"], "passed": ok}
+def counts(package: str, suite: str) -> Dict[str, int]:
+    """hspec's summary line in the suite's log: examples, failures, pending."""
+    text = "\n".join(log.read_text(errors="replace") for log in suite_logs(package, suite))
+    found = re.findall(r"(\d+) examples?, (\d+) failures?(?:, (\d+) pending)?", text)
+    if not found:
+        return {}
+    examples, failures, pending = found[-1]
+    return {"examples": int(examples), "failures": int(failures), "pending": int(pending or 0)}
+
+
+def write_results(name: str, document: dict, outcome: Dict[str, bool], tallies: Optional[Dict[str, Dict[str, int]]] = None) -> None:
+    tallies = tallies or {}
+    results = {u: {"suite": document["units"][u]["suite"], "hash": document["inputs"][document["units"][u]["suite"]]["hash"],
+                   "passed": ok, **tallies.get(u, {})}
                for u, ok in outcome.items()}
     Path(f"results-{name}.json").write_text(json.dumps(results, indent=1, sort_keys=True))
     for u, ok in sorted(outcome.items()):
-        print(f"{u}: {'passed' if ok else 'FAILED'}")
+        tally = tallies.get(u, {})
+        detail = f" ({tally['examples']} examples, {tally['pending']} pending)" if tally else ""
+        print(f"{u}: {'passed' if ok else 'FAILED'}{detail}")
 
 
 def run_shard(args: List[str]) -> int:
     """PLAN NAME: `cabal test` this shard's suites (in parallel, as
     scripts/check-all does), each restricted to its part: cabal runs every
     test binary through scripts/ci-test-wrapper (--test-wrapper), which adds
-    the part's hspec --match/--skip arguments from CI_TESTS_SELECTION. (hspec takes no --match from a
-    .hspec file or HSPEC_OPTIONS, and --test-options would apply to every
-    suite of the invocation.)"""
+    the part's hspec --match/--skip arguments from CI_TESTS_SELECTION
+    (hspec takes no --match from a .hspec file or HSPEC_OPTIONS, and
+    --test-options would apply to every suite of the invocation)."""
     plan_file, name = args[0], args[1]
     document = json.loads(Path(plan_file).read_text())
     shard_doc = next(s for s in document["shards"] if s["name"] == name)
@@ -487,7 +501,8 @@ def run_shard(args: List[str]) -> int:
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     outcome = {u["id"]: passed(document["inputs"][u["suite"]]["package"], u["suite"]) for u in units}
-    write_results(name, document, outcome)
+    tallies = {u["id"]: counts(document["inputs"][u["suite"]]["package"], u["suite"]) for u in units}
+    write_results(name, document, outcome, tallies)
     return status if status != 0 else (0 if all(outcome.values()) else 1)
 
 
@@ -531,12 +546,15 @@ def ledger(args: List[str]) -> int:
     run_url = f"{os.environ.get('GITHUB_SERVER_URL', '')}/{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/{run_id}"
     sha = os.environ.get("GITHUB_SHA", "")
     unit_passed: Dict[str, bool] = {}
+    unit_examples: Dict[str, int] = {}
     for path in sorted(results_dir.rglob("results-*.json")):
         for unit, status in json.loads(path.read_text()).items():
             suite = status["suite"]
             if unit not in document["units"] or status["hash"] != document["inputs"].get(suite, {}).get("hash"):
                 continue
             unit_passed[unit] = unit_passed.get(unit, False) or bool(status["passed"])
+            if status["passed"] and "examples" in status:
+                unit_examples[unit] = status["examples"]
     suites = dict(document["reused"])
     by_suite: Dict[str, List[str]] = {}
     for unit in document["units"].values():
@@ -545,11 +563,18 @@ def ledger(args: List[str]) -> int:
     for suite, units in sorted(by_suite.items()):
         if all(unit_passed.get(u, False) for u in units):
             suites[suite] = {"hash": document["inputs"][suite]["hash"], "run_id": run_id, "run_url": run_url, "sha": sha}
+            if all(u in unit_examples for u in units):
+                suites[suite]["examples"] = sum(unit_examples[u] for u in units)
         else:
             failed.append(suite)
     out.write_text(json.dumps({"schema": SCHEMA, "suites": suites}, indent=1, sort_keys=True))
     print(f"ledger: {len(suites)} of {len(document['inputs'])} suites known green "
           f"({len(document['reused'])} reused, {len(by_suite) - len(failed)} ran and passed in this run)")
+    for suite in sorted(by_suite):
+        if suite in suites:
+            print(f"  {suite:42} {suites[suite].get('examples', '?')} examples")
+    known = [entry["examples"] for entry in suites.values() if "examples" in entry]
+    print(f"  {'total':42} {sum(known)} examples in {len(known)} suites")
     missing = sorted(set(document["inputs"]) - set(suites))
     if missing:
         print("not green in this run: " + ", ".join(missing), file=sys.stderr)

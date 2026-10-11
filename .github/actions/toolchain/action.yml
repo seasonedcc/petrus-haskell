@@ -56,6 +56,14 @@ runs:
       shell: bash
       run: sudo apt-get update -qq && sudo apt-get install -y -qq libzmq3-dev libpq-dev libsqlite3-dev graphviz
     - uses: astral-sh/setup-uv@v6
+    # Node, for the suites that drive upstream JavaScript and for the viewer
+    # job's pnpm. Every job sets it up here, in the same place, because cabal
+    # reconfigures every local package when PATH differs from the build
+    # job's: a test job would then spend its first seconds reconfiguring,
+    # and relink some test binaries.
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22.19.0
     - name: Restore the cabal store and package index
       id: store
       uses: actions/cache/restore@v4
