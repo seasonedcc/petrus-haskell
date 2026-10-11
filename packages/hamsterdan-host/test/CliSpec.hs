@@ -6,8 +6,11 @@
 -- calls against a recording fake GitHub.
 module CliSpec (spec) where
 
-import Control.Exception (throwIO)
-import Control.Monad (forM, forM_, unless, when)
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
+import Control.Exception (bracket, throwIO)
+import Data.Char (toLower)
+import Control.Monad (forM, forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
@@ -37,7 +40,12 @@ import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import ServiceSupport (envelope, hostClientsOf, hostConfig, newFakeClients, receiveSigned, sqlExec)
-import System.Directory (createDirectory, createDirectoryIfMissing, createDirectoryLink, removeFile)
+import System.Directory (createDirectory, createDirectoryIfMissing, createDirectoryLink, doesFileExist, removeFile)
+import System.Posix.Signals (raiseSignal, sigTERM)
+import Network.Socket (close)
+import Network.Wai.Handler.Warp qualified as Warp
+import RawHttp (RawResponse (..), parseResponse)
+import RawHttp qualified
 import System.FilePath ((</>))
 import System.IO (Handle, IOMode (..), openFile, withFile)
 import System.Posix.Files (createSymbolicLink, setFileMode)
@@ -148,6 +156,34 @@ spec = do
       createDirectoryIfMissing True (tmp </> "applications" </> "44" </> "31")
       createDirectoryLink (tmp </> "target") (tmp </> "applications" </> "44" </> "31" </> "7")
       inspectInstance tmp 44 31 7 `shouldRaiseValue` "not a real directory"
+
+  describe "serve (uvicorn.run)" $
+    it "composes the real agent, serves h11's status line to HTTP/1.0, and stops on SIGTERM" . withTempRoot $ \tmp -> do
+      repo <- repoRoot
+      privateKey <- BS.readFile (repo </> "packages" </> "hamsterdan-github" </> "test" </> "corpus" </> "app-test-key.pem")
+      withFakeGitHub registrationRoutes $ \githubPort _ -> do
+        side <- prepareSide (tmp </> "serve") privateKey
+        port <- bracket Warp.openFreePort (close . snd) (pure . fst)
+        probed <- newEmptyMVar
+        silent <- discard tmp
+        let probe = do
+              raw <- RawHttp.exchange port "GET /healthz HTTP/1.0\r\nhost: testserver\r\n\r\n"
+              putMVar probed (parseResponse raw)
+              raiseSignal sigTERM
+            cli =
+              (testEnvironment (Map.insert "HAMSTERDAN_PORT" (show port) side.configured) silent)
+                { clientOptions = do
+                    exchange' <- newPlainExchangeAt "127.0.0.1" githubPort
+                    pure ClientOptions {exchange = exchange', clock = realToFrac <$> getPOSIXTime, metadataHook = Nothing}
+                , onServing = \_ -> void (forkIO probe)
+                }
+        runCli cli ["serve"] `shouldReturn` ExitSuccess
+        response <- takeMVar probed
+        response.statusLine `shouldBe` "HTTP/1.1 200 OK"
+        lookup "connection" [(BC.map toLower name, value) | (name, value) <- response.headers] `shouldBe` Just "close"
+        -- The owned runtime and the route store exist and were released.
+        doesFileExist (lookupState side </> "agent-routes.sqlite3") `shouldReturn` True
+        doesFileExist (lookupState side </> "pi-a2" </> "installation") `shouldReturn` True
 
   describe "the command line against the reference (python -m hamsterdan.host)" $
     it "prints, exits, changes state and calls GitHub exactly as the reference" . withTempRoot $ \tmp -> do
@@ -469,3 +505,7 @@ discard tmp = do
   let path = tmp </> "discarded.txt"
   BS.writeFile path ""
   openFile path AppendMode
+
+-- | The side's service state root.
+lookupState :: Side -> FilePath
+lookupState side = fromMaybe "" (Map.lookup "HAMSTERDAN_STATE_PATH" side.configured)
