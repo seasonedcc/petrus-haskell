@@ -31,6 +31,9 @@ module Petrus.Testing.Dst.Engine.GeneratedRuntime
   , defaultStoryOptions
   , executeGeneratedRuntimeStory
   , buildGeneratedRuntimeArtifact
+  , buildGeneratedRuntimeArtifactWith
+  , drainNow
+  , drainAll
   ) where
 
 import Control.Exception (throwIO, try)
@@ -1220,10 +1223,14 @@ executeGeneratedRuntimeStory opts = do
 
 -- | @build_generated_runtime_artifact(history_path, dispatch_path)@.
 buildGeneratedRuntimeArtifact :: FilePath -> FilePath -> IO (Either DstFailure AnyArtifact)
-buildGeneratedRuntimeArtifact historyPath dispatchPath = do
+buildGeneratedRuntimeArtifact = buildGeneratedRuntimeArtifactWith defaultStoryOptions
+
+-- | @build_generated_runtime_artifact(history_path, dispatch_path, **options)@.
+buildGeneratedRuntimeArtifactWith :: StoryOptions -> FilePath -> FilePath -> IO (Either DstFailure AnyArtifact)
+buildGeneratedRuntimeArtifactWith opts historyPath dispatchPath = do
   p <- generatedRuntimeProfile historyPath dispatchPath
   let checker = generatedRuntimeChecker
   World.withWorld
     WorldConfig {profile = p.profile, budget = worldBudget, checkers = [checker], seed = Nothing, progress = Nothing}
-    (executeGeneratedRuntimeStory defaultStoryOptions >> World.artifact scenarioId)
+    (executeGeneratedRuntimeStory opts >> World.artifact scenarioId)
 

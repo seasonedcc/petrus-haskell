@@ -76,8 +76,10 @@ library engine-worlds
                     Petrus.Testing.Dst.Engine.Delayed
                     Petrus.Testing.Dst.Engine.Delivery
                     Petrus.Testing.Dst.Engine.GeneratedRuntime
+                    Petrus.Testing.Dst.Engine.GeneratedRuntimeQualification
                     Petrus.Testing.Dst.Engine.Lifecycle
                     Petrus.Testing.Dst.Engine.Projection
+                    Petrus.Testing.Dst.Engine.ReplayWorld
                     Petrus.Testing.Dst.Engine.Retry
                     Petrus.Testing.Dst.Engine.Timer
   build-depends:    base >=4.18 && <5
@@ -94,6 +96,7 @@ library engine-worlds
                   , petrus-json
                   , petrus-motus
                   , petrus-observation
+                  , temporary >=1.3
                   , text >=2.0
 
 -- The joined History/Dispatch transaction-fault worlds: the Haskell twins
