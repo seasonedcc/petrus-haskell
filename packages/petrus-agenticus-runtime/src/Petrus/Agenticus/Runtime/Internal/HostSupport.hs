@@ -9,7 +9,7 @@
 -- modes). 'SidecarChannel' is one channel of a shared, long-lived sidecar
 -- that serves every SDK stream or client of this process, so the SDK is
 -- imported once per process, as upstream imports it once.
-module Petrus.Agenticus.Runtime.HostSupport
+module Petrus.Agenticus.Runtime.Internal.HostSupport
   ( -- * Text
     stripAnsi
   , pyStrip

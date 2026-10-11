@@ -19,8 +19,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Agenticus.Connection.Custody (mkConnectionIdentity)
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), mkRuntimeOperationCleanup)
-import Petrus.Agenticus.Runtime.Pi
-import Petrus.Agenticus.Runtime.PiRecovery
+import Petrus.Agenticus.Runtime.Pi.Internal
+import Petrus.Agenticus.Runtime.PiRecovery.Internal
 import Petrus.Agenticus.Runtime.Result (mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Identity (mkEpisodeId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))

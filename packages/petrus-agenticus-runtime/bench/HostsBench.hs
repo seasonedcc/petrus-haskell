@@ -19,7 +19,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Agenticus.Runtime.Amp
+import Petrus.Agenticus.Runtime.Amp.Internal
 import Petrus.Agenticus.Runtime.Claude (canonicalInput, decodeTranscript, encodeTranscript, sanitize)
 import Petrus.Agenticus.Runtime.Codex (Candidate (..), parseHelper, parseJsonl)
 import Petrus.Agenticus.Runtime.CodexGondolin (jsonBytes, parseTerminal)

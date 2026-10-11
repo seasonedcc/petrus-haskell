@@ -2,7 +2,7 @@
 
 These choices are deliberate. `differential/pi_corpus.json` pins the wire
 bytes, validator results, fingerprints, records and ledger files on both
-sides of each one. Its single accepted difference is item 6.
+sides of each one, and every case matches.
 
 1. **Protocols are records of operations.** The reference's structural
    protocols are records here, whose fields are the protocol's methods:
@@ -228,9 +228,10 @@ sides of each one. Its single accepted difference is item 6.
    type built only by the composers, so the reference's
    `TypeError("Protocols cannot be instantiated")` cannot occur. The private
    attributes its tests reach (`_provider`, `_adapter`, `_ledger`, `_bodies`,
-   `_storage`, `_fingerprint`, `_territory_operation`) are exported
-   accessors, and `type(host._adapter._factory)` is `hostFactoryKind`.
-   Monkeypatching `host._bodies.publish` becomes `PiA2HostHooks.publishBodies`.
+   `_storage`, `_fingerprint`, `_territory_operation`) are accessors that
+   `PiA2Host.Internal` exports, and `type(host._adapter._factory)` is
+   `hostFactoryKind`. Monkeypatching `host._bodies.publish` becomes
+   `PiA2HostHooks.publishBodies`.
 2. **Fixed types.** These checks have no port, because the types rule them
    out:
    - `TypeError` for a `workspace_archive` that is not `bytes`;

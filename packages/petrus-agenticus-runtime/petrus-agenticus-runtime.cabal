@@ -1,14 +1,17 @@
 cabal-version:      3.4
 name:               petrus-agenticus-runtime
 version:            0.1.0.0
-synopsis:           Petrus Agenticus runtime hosts: the Local Agent-as-a-Net runner
+synopsis:           Petrus Agenticus runtime hosts: the Agent-as-a-Net runner and provider runtimes
 description:
-  A Haskell port of host runtimes from @petrus.agenticus.runtime@. The
-  first is the durable Local Agent-as-a-Net runner: Engine History alone
-  schedules the loop, and every committed fact is projected exactly once
-  into Thread accounting through a compare-and-save JSON repository, with
+  A Haskell port of @petrus.agenticus.runtime@. The durable Local
+  Agent-as-a-Net runner lets Engine History alone schedule the loop and
+  projects every committed fact exactly once into Thread accounting, with
   the Episode Attachment settled before the Thread outcome is recorded.
-  Provider hosts (Pi, Codex, Claude, Amp) are tracked in PARITY.md.
+  The provider runtimes are Pi (native A2/A4, the A5 application, the model
+  phase, recovery and the A2 host), Codex (local and Gondolin), Claude and
+  Amp. PARITY.md maps each upstream test, and DIVERGENCES.md lists what
+  differs. A module's @.Internal@ companion holds what only its tests and
+  the differential corpus reach.
 license:            Apache-2.0
 license-file:       LICENSE
 copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
@@ -64,19 +67,25 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Runtime.AgentNetRunner
                     Petrus.Agenticus.Runtime.Amp
+                    Petrus.Agenticus.Runtime.Amp.Internal
                     Petrus.Agenticus.Runtime.Claude
                     Petrus.Agenticus.Runtime.Codex
                     Petrus.Agenticus.Runtime.CodexGondolin
                     Petrus.Agenticus.Runtime.Custody
-                    Petrus.Agenticus.Runtime.HostSupport
                     Petrus.Agenticus.Runtime.Internal.Lifecycle
                     Petrus.Agenticus.Runtime.Internal.Process
                     Petrus.Agenticus.Runtime.Pi
+                    Petrus.Agenticus.Runtime.Pi.Internal
                     Petrus.Agenticus.Runtime.PiA2Host
+                    Petrus.Agenticus.Runtime.PiA2Host.Internal
                     Petrus.Agenticus.Runtime.PiApplication
+                    Petrus.Agenticus.Runtime.PiApplication.Internal
                     Petrus.Agenticus.Runtime.PiModelPhase
+                    Petrus.Agenticus.Runtime.PiModelPhase.Internal
                     Petrus.Agenticus.Runtime.PiRecovery
+                    Petrus.Agenticus.Runtime.PiRecovery.Internal
   other-modules:    Paths_petrus_agenticus_runtime
+                    Petrus.Agenticus.Runtime.Internal.HostSupport
   autogen-modules:  Paths_petrus_agenticus_runtime
   build-depends:    base >=4.18 && <5
                   , async >=2.2

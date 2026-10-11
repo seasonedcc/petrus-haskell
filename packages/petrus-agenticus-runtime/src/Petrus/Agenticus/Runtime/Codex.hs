@@ -153,7 +153,7 @@ import Petrus.Agenticus.Program.Descriptor
   )
 import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Internal.Process (runBounded)
-import Petrus.Agenticus.Runtime.HostSupport (observedPlatform, pyJsonLoadsBytes, pyStrip, stripAnsi)
+import Petrus.Agenticus.Runtime.Internal.HostSupport (observedPlatform, pyJsonLoadsBytes, pyStrip, stripAnsi)
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation

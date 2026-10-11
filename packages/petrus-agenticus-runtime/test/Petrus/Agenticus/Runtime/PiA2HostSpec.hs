@@ -46,7 +46,7 @@ import Petrus.Agenticus.Runtime.Pi
   , adapterConfig
   , piDurableWorkFingerprint
   )
-import Petrus.Agenticus.Runtime.PiA2Host
+import Petrus.Agenticus.Runtime.PiA2Host.Internal
 import Petrus.Agenticus.Runtime.PiRecovery (ledgerAdmit, ledgerClose, ledgerLookup, recordSettlement)
 import Petrus.Agenticus.Runtime.PiSupport (aesKeys, claimed, ok, raises, waitUntil, withTemp)
 import Petrus.Agenticus.Runtime.Profiles (piNativeA2Local)

@@ -195,7 +195,7 @@ import Petrus.Agenticus.Program.Descriptor
   )
 import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Internal.Process (runBounded, micros)
-import Petrus.Agenticus.Runtime.HostSupport
+import Petrus.Agenticus.Runtime.Internal.HostSupport
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation
@@ -214,7 +214,7 @@ import Petrus.Agenticus.Runtime.Operation
   , runtimeProtocolError
   , runtimeProtocolErrorCode
   )
-import Petrus.Agenticus.Runtime.Pi (canonicalUuid, piToolSchemas)
+import Petrus.Agenticus.Runtime.Pi.Internal (canonicalUuid, piToolSchemas)
 import Petrus.Agenticus.Runtime.Profiles (claudeA2Local)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation

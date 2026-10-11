@@ -13,7 +13,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Runtime.Amp
+import Petrus.Agenticus.Runtime.Amp.Internal
 import Petrus.Agenticus.Runtime.Claude
 import Petrus.Agenticus.Runtime.Codex
 import Petrus.Agenticus.Runtime.CodexGondolin (jsonBytes, parseTerminal)

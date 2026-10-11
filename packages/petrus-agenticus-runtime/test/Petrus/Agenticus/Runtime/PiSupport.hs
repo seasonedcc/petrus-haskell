@@ -111,7 +111,7 @@ import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspac
 import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
-import Petrus.Agenticus.Runtime.Pi
+import Petrus.Agenticus.Runtime.Pi.Internal
 import Petrus.Agenticus.Runtime.Profiles (piNativeA2Local, piNativeA4E2b, piNativeA4Gondolin)
 import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationState (..), mkContinuation)
 import Petrus.Agenticus.Thread.Identity (mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)

@@ -48,8 +48,8 @@ import Petrus.Agenticus.Program.AgentNet
 import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Internal.Process (runBounded)
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
-import Petrus.Agenticus.Runtime.Pi (pyB64DecodeText, strictLoad)
-import Petrus.Agenticus.Runtime.PiModelPhase
+import Petrus.Agenticus.Runtime.Pi.Internal (pyB64DecodeText, strictLoad)
+import Petrus.Agenticus.Runtime.PiModelPhase.Internal
 import Petrus.Agenticus.Runtime.PiSupport (fixture, raises, raisesValueLike, withTemp)
 import Petrus.Engine qualified as Engine
 import Petrus.Impetus.HistoryStore (inMemoryHistoryStore)

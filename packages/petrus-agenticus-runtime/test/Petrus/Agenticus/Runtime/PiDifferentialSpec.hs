@@ -30,8 +30,8 @@ import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (parseToolMethod)
 import Petrus.Agenticus.Internal.Sqlite
 import Petrus.Agenticus.Runtime.Operation (mkRuntimeOperationCleanup, runtimeProtocolError)
-import Petrus.Agenticus.Runtime.Pi
-import Petrus.Agenticus.Runtime.PiRecovery
+import Petrus.Agenticus.Runtime.Pi.Internal
+import Petrus.Agenticus.Runtime.PiRecovery.Internal
 import Petrus.Agenticus.Runtime.PiSupport (invocation, newRig, rigOptions, withTemp)
 import Petrus.Agenticus.Runtime.Result (mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation (ContinuationState (..), mkContinuation)

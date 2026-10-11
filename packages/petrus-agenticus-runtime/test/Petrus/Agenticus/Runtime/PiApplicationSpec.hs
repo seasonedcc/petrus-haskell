@@ -50,8 +50,8 @@ import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), Program
 import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..), runtimeProtocolError)
 import Petrus.Agenticus.Runtime.Pi (piApiKeyCatalog, piSdkSourceCommit)
-import Petrus.Agenticus.Runtime.Pi qualified as Pi
-import Petrus.Agenticus.Runtime.PiApplication
+import Petrus.Agenticus.Runtime.Pi.Internal qualified as Pi
+import Petrus.Agenticus.Runtime.PiApplication.Internal
 import Petrus.Agenticus.Runtime.PiSupport
   ( FakeCustody (..)
   , Territory (..)

@@ -47,7 +47,7 @@ import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), Program
 import Petrus.Agenticus.Runtime.Custody (HostMaterialization (..))
 import Petrus.Agenticus.Runtime.Internal.Process (spawnPiped)
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperation (..), RuntimeOperationCleanup (..), cleanupVerified)
-import Petrus.Agenticus.Runtime.Pi
+import Petrus.Agenticus.Runtime.Pi.Internal
 import Petrus.Agenticus.Runtime.PiRecovery
 import Petrus.Agenticus.Runtime.PiSupport
 import Petrus.Agenticus.Runtime.Profiles (piNativeA2Local, piNativeA4E2b, piNativeA4Gondolin)

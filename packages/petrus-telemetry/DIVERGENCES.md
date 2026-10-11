@@ -61,8 +61,14 @@ Pinned reference: `upstream/petrus` (`src/petrus/telemetry.py`).
 11. **`increment` and `accumulateTime` on a non-numeric field throw
     `NonNumericTelemetryField`.**
 12. **statm parsing accepts ASCII digits only.**
-13. **`newSpan` and `runSpan` let a span exist before it starts.**
-14. **The `TelemetryLogger` constructor is exported.**
+13. **`newSpan` and `runSpan` let a span exist before it starts.** The
+    reference's `Span` is built before `__enter__`, and its `elapsed_ms`
+    raises `span has not started` until then; the two functions keep that
+    state, so the reference's test of that error ports. `withSpan` and
+    `withChildSpan` are the usual entry points.
+14. **The `TelemetryLogger` constructor is exported,** so a test can set a
+    logger's `clock` (`logger {clock = tick}`), where the reference
+    monkeypatches `time.perf_counter`.
 
 ## The instrumentation (`impetus_*` events)
 

@@ -75,7 +75,7 @@ import Petrus.Agenticus.Runtime.Codex
   , startCodex
   , waitCodexOperation
   )
-import Petrus.Agenticus.Runtime.HostSupport (pyJsonLoadsBytes)
+import Petrus.Agenticus.Runtime.Internal.HostSupport (pyJsonLoadsBytes)
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition
   , RuntimeOperationCleanup (..)
