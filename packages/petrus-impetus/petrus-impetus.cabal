@@ -165,7 +165,6 @@ benchmark petrus-impetus-bench
   build-depends:    base
                   , bytestring
                   , containers
-                  , petrus-activity
                   , petrus-impetus
                   , petrus-json
                   , tasty-bench >=0.3.2
