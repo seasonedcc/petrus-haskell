@@ -89,7 +89,7 @@ import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.HistoryStore.Jsonl (HistoryStoreError (..))
+import Petrus.HistoryStore (HistoryStoreError (..))
 import Petrus.Impetus.History.Codec (decodeRecord, encodeRecord)
 import Petrus.Impetus.History.Records (Record, recordName, recordOccurrence, recordTerminalFamily, terminalFamilyNames)
 import Petrus.Impetus.HistoryStore

@@ -102,38 +102,43 @@ historySchemaVersion = 1
 -- | @_DDL@, verbatim: the reference validates these objects by their stored
 -- @sqlite_master.sql@ text, so they are created from the same strings.
 historyDdl :: [Text]
-historyDdl =
-  [ "CREATE TABLE impetus_history_schema (\n\
-    \    component TEXT PRIMARY KEY CHECK (component = 'history'),\n\
-    \    version INTEGER NOT NULL\n\
-    \)"
-  , "INSERT INTO impetus_history_schema (component, version) VALUES ('history', 1)"
-  , "CREATE TABLE impetus_history_events (\n\
-    \    instance TEXT NOT NULL,\n\
-    \    position INTEGER NOT NULL CHECK (position >= 0),\n\
-    \    event_id TEXT NOT NULL UNIQUE,\n\
-    \    record_type TEXT NOT NULL,\n\
-    \    occurrence INTEGER,\n\
-    \    payload TEXT NOT NULL,\n\
-    \    recorded_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\n\
-    \    PRIMARY KEY (instance, position)\n\
-    \)"
-  , "CREATE UNIQUE INDEX impetus_history_one_firing_terminal\n\
-    \    ON impetus_history_events (instance, occurrence)\n\
-    \    WHERE record_type IN ('FiringCompleted', 'FiringFailed')"
-  , "CREATE UNIQUE INDEX impetus_history_one_activity_terminal\n\
-    \    ON impetus_history_events (instance, occurrence)\n\
-    \    WHERE record_type IN ('ActivityCompleted', 'ActivityFailed')"
-  ]
+historyDdl = [schemaTable, schemaRow, eventsTable, oneFiringTerminal, oneActivityTerminal]
+
+schemaTable, schemaRow, eventsTable, oneFiringTerminal, oneActivityTerminal :: Text
+schemaTable =
+  "CREATE TABLE impetus_history_schema (\n\
+  \    component TEXT PRIMARY KEY CHECK (component = 'history'),\n\
+  \    version INTEGER NOT NULL\n\
+  \)"
+schemaRow = "INSERT INTO impetus_history_schema (component, version) VALUES ('history', 1)"
+eventsTable =
+  "CREATE TABLE impetus_history_events (\n\
+  \    instance TEXT NOT NULL,\n\
+  \    position INTEGER NOT NULL CHECK (position >= 0),\n\
+  \    event_id TEXT NOT NULL UNIQUE,\n\
+  \    record_type TEXT NOT NULL,\n\
+  \    occurrence INTEGER,\n\
+  \    payload TEXT NOT NULL,\n\
+  \    recorded_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),\n\
+  \    PRIMARY KEY (instance, position)\n\
+  \)"
+oneFiringTerminal =
+  "CREATE UNIQUE INDEX impetus_history_one_firing_terminal\n\
+  \    ON impetus_history_events (instance, occurrence)\n\
+  \    WHERE record_type IN ('FiringCompleted', 'FiringFailed')"
+oneActivityTerminal =
+  "CREATE UNIQUE INDEX impetus_history_one_activity_terminal\n\
+  \    ON impetus_history_events (instance, occurrence)\n\
+  \    WHERE record_type IN ('ActivityCompleted', 'ActivityFailed')"
 
 -- | The DDL each stored object must match, by name.
 expectedSql :: Map Text Text
 expectedSql =
   Map.fromList
-    [ ("impetus_history_schema", historyDdl !! 0)
-    , ("impetus_history_events", historyDdl !! 2)
-    , ("impetus_history_one_firing_terminal", historyDdl !! 3)
-    , ("impetus_history_one_activity_terminal", historyDdl !! 4)
+    [ ("impetus_history_schema", schemaTable)
+    , ("impetus_history_events", eventsTable)
+    , ("impetus_history_one_firing_terminal", oneFiringTerminal)
+    , ("impetus_history_one_activity_terminal", oneActivityTerminal)
     ]
 
 expectedObjects :: Map Text SQLData

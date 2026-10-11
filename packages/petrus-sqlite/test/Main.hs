@@ -121,7 +121,7 @@ profileSpec = describe "Connection profiles" $ do
       `shouldBe` [ Pragma "PRAGMA busy_timeout = 5000"
                  , Pragma "PRAGMA foreign_keys = ON"
                  , Pragma "PRAGMA synchronous = FULL"
-                 , RequireWal "PRAGMA journal_mode = WAL" (RetryLocked 5 0.01) False
+                 , RequireWal "PRAGMA journal_mode = WAL" (RetryLocked 5 0.01) CaseInsensitive
                  ]
     source <- readUpstream "src/petrus/motus/dispatch/local.py"
     forM_ [s | Pragma s <- setup localDispatchProfile] $ \statement ->
@@ -144,7 +144,7 @@ profileSpec = describe "Connection profiles" $ do
     withConnection ledgerProfile path $ \connection -> execute_ connection "CREATE TABLE t (x)"
     withPython (exclusiveHolder path) [] $ \holder -> do
       expectLine holder "held"
-      let impatient = Profile {busyTimeoutMs = 0, isolationLevel = Autocommit, setup = [RequireWal "PRAGMA journal_mode = WAL" (RetryLocked 0.3 0.01) False]}
+      let impatient = Profile {busyTimeoutMs = 0, isolationLevel = Autocommit, setup = [RequireWal "PRAGMA journal_mode = WAL" (RetryLocked 0.3 0.01) CaseInsensitive]}
       start <- getMonotonicTime
       result <- try (open impatient path) :: IO (Either SQLError Connection)
       elapsed <- subtract start <$> getMonotonicTime
@@ -153,7 +153,7 @@ profileSpec = describe "Connection profiles" $ do
         Right connection -> close connection >> expectationFailure "opened while locked"
       done <- newEmptyMVar
       void . forkIO $ do
-        outcome <- try (withConnection impatient {setup = [RequireWal "PRAGMA journal_mode = WAL" (RetryLocked 5 0.01) False]} path (\c -> queryFirst c "PRAGMA journal_mode" []))
+        outcome <- try (withConnection impatient {setup = [RequireWal "PRAGMA journal_mode = WAL" (RetryLocked 5 0.01) CaseInsensitive]} path (\c -> queryFirst c "PRAGMA journal_mode" []))
         putMVar done (outcome :: Either SomeException (Maybe [SQLData]))
       threadDelay 200000
       sendLine holder "release"

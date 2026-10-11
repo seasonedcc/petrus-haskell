@@ -51,7 +51,7 @@ module Petrus.Impetus.Binding
   ) where
 
 import Control.DeepSeq (NFData (..))
-import Control.Monad (forM, forM_, unless, when)
+import Control.Monad (foldM, forM, forM_, unless, when)
 import Data.List (find, findIndex)
 import Data.Set (Set)
 import Data.Text (Text)
@@ -267,7 +267,7 @@ derivedActivityHandler net transitionPath activityName parameters resultColor = 
                     <> ", found "
                     <> pythonIntRepr found
                 )
-        Right (invocation activityName (objectOf members))
+        Right (invocation activityName (Object members))
       project' _ result =
         let produced = Token (Just resultColor) result
          in Right (handlerTokens (coalesce [(a.target, [produced]) | a <- resultArcs]))
@@ -438,8 +438,6 @@ coalesce = foldl add []
       Just i -> [if j == i then (q, us ++ ts) else (q, us) | (j, (q, us)) <- zip [0 :: Int ..] acc]
       Nothing -> acc ++ [(p, ts)]
 
-objectOf :: [(Text, Json)] -> Json
-objectOf = Object
-
+-- | 'foldM' with the step last, for a trailing lambda.
 foldlM' :: b -> [a] -> (b -> a -> Either Text b) -> Either Text b
-foldlM' z xs f = foldl (\acc x -> acc >>= \b -> f b x) (Right z) xs
+foldlM' z xs f = foldM f z xs
