@@ -28,6 +28,7 @@ module Petrus.Json.Python.Decode
     -- * @json.loads(bytes)@
   , detectEncoding
   , decodeJsonBytes
+  , jsonBytesFailure
   ) where
 
 import Data.Bits (shiftL, (.&.), (.|.))
@@ -120,8 +121,8 @@ encodeFailureText text failure
       | code <= 0xFFFF = "\\u" <> T.justifyRight 4 '0' (T.pack digits)
       | otherwise = "\\U" <> T.justifyRight 8 '0' (T.pack digits)
 
-codecError :: Text -> ByteString -> Int -> Int -> Text -> Either Text a
-codecError name bytes from to why = Left (decodeFailureText bytes (CodecFailure name from to why))
+codecError :: Text -> Int -> Int -> Text -> Either CodecFailure a
+codecError name from to why = Left (CodecFailure name from to why)
 
 hex2 :: Word8 -> Text
 hex2 w = let digits = showHex w "" in T.pack (replicate (2 - length digits) '0' ++ digits)
@@ -246,7 +247,13 @@ detectEncoding b
 -- "Petrus.Json.Wtf8"), or CPython's 'UnicodeDecodeError' message. A
 -- signature (BOM) selects its codec and is not part of the text.
 decodeJsonBytes :: ByteString -> Either Text Text
-decodeJsonBytes b = case detectEncoding b of
+decodeJsonBytes b = either (Left . uncurry decodeFailureText) Right (jsonBytesFailure b)
+
+-- | 'decodeJsonBytes' with the 'UnicodeDecodeError''s arguments: the
+-- object the codec was given (the bytes, past a UTF-8 signature) and the
+-- failure.
+jsonBytesFailure :: ByteString -> Either (ByteString, CodecFailure) Text
+jsonBytesFailure b = case detectEncoding b of
   -- The signature selects the endian codec, which then names itself in
   -- its errors.
   "utf-32"
@@ -264,13 +271,13 @@ decodeJsonBytes b = case detectEncoding b of
   where
     utf8 body = case TE.decodeUtf8' body of
       Right text -> Right text
-      Left _ -> either (Left . decodeFailureText body) (Right . fromCodePoints) (utf8CodePoints True body)
-    utf16 codec bigEndian offset = fromCodePoints <$> utf16CodePoints codec bigEndian b offset
-    utf32 codec bigEndian offset = fromCodePoints <$> utf32CodePoints codec bigEndian b offset
+      Left _ -> either (Left . (body,)) (Right . fromCodePoints) (utf8CodePoints True body)
+    utf16 codec bigEndian offset = either (Left . (b,)) (Right . fromCodePoints) (utf16CodePoints codec bigEndian b offset)
+    utf32 codec bigEndian offset = either (Left . (b,)) (Right . fromCodePoints) (utf32CodePoints codec bigEndian b offset)
 
 -- | CPython's UTF-16 decoder with @surrogatepass@, from @offset@ (past a
 -- signature); error positions count from the start of @whole@.
-utf16CodePoints :: Text -> Bool -> ByteString -> Int -> Either Text String
+utf16CodePoints :: Text -> Bool -> ByteString -> Int -> Either CodecFailure String
 utf16CodePoints codec bigEndian whole offset = go offset
   where
     len = BS.length whole
@@ -280,7 +287,7 @@ utf16CodePoints codec bigEndian whole offset = go offset
        in if bigEndian then a `shiftL` 8 .|. z else z `shiftL` 8 .|. a
     go i
       | i == len = Right []
-      | i + 1 >= len = codecError codec whole i len "truncated data"
+      | i + 1 >= len = codecError codec i len "truncated data"
       | otherwise =
           let u = unit i
            in if u >= 0xD800 && u <= 0xDBFF && i + 3 < len && unit (i + 2) >= 0xDC00 && unit (i + 2) <= 0xDFFF
@@ -288,7 +295,7 @@ utf16CodePoints codec bigEndian whole offset = go offset
                 else (chr u :) <$> go (i + 2)
 
 -- | CPython's UTF-32 decoder with @surrogatepass@, as 'utf16CodePoints'.
-utf32CodePoints :: Text -> Bool -> ByteString -> Int -> Either Text String
+utf32CodePoints :: Text -> Bool -> ByteString -> Int -> Either CodecFailure String
 utf32CodePoints codec bigEndian whole offset = go offset
   where
     len = BS.length whole
@@ -299,6 +306,6 @@ utf32CodePoints codec bigEndian whole offset = go offset
         else byte (i + 3) `shiftL` 24 .|. byte (i + 2) `shiftL` 16 .|. byte (i + 1) `shiftL` 8 .|. byte i
     go i
       | i == len = Right []
-      | i + 3 >= len = codecError codec whole i len "truncated data"
-      | unit i > 0x10FFFF = codecError codec whole i (i + 4) "code point not in range(0x110000)"
+      | i + 3 >= len = codecError codec i len "truncated data"
+      | unit i > 0x10FFFF = codecError codec i (i + 4) "code point not in range(0x110000)"
       | otherwise = (chr (unit i) :) <$> go (i + 4)

@@ -27,6 +27,9 @@
 --   (@KeyError@'s and the codec errors' own @__str__@ included);
 -- * @json.detect_encoding@ and the @surrogatepass@ decoding @json.loads@
 --   applies to bytes, in every encoding it detects, intact and damaged;
+-- * @json.loads(bytes)@ whole ('loadsBytes'): the value's @repr@, or the
+--   exception's class, @repr@ and @str@, over the same bytes and the
+--   refusal documents;
 -- * @uuid.uuid4()@'s spelling (@str@ and @hex@) from given random bytes.
 module Petrus.Json.PythonCompatSpec (spec) where
 
@@ -284,6 +287,7 @@ data Case
   | Utf8EncodeCase String
   | ExceptionCase PythonException
   | JsonBytesCase BS.ByteString
+  | LoadsBytesCase BS.ByteString
   | UuidCase BS.ByteString
 
 cases :: [Case]
@@ -300,6 +304,7 @@ cases =
     ++ map Utf8EncodeCase strings
     ++ [ExceptionCase (generate seed exceptionOf) | seed <- [1 .. 1500]]
     ++ map JsonBytesCase jsonByteStrings
+    ++ map LoadsBytesCase (jsonByteStrings ++ map TE.encodeUtf8 loadsDocuments)
     ++ map UuidCase uuidSeeds
 
 encodeCase :: Case -> BS.ByteString
@@ -316,6 +321,7 @@ encodeCase = \case
   Utf8EncodeCase s -> request "utf8-encode" (codePoints s)
   ExceptionCase e -> request "exception" (Array [String e.name, Array (map exceptionArgument e.args)])
   JsonBytesCase b -> request "json-bytes" (String (hexOf b))
+  LoadsBytesCase b -> request "json-loads-bytes" (String (hexOf b))
   UuidCase b -> request "uuid4" (String (hexOf b))
 
 -- | The case's disagreements with the oracle's answer (empty when none).
@@ -366,6 +372,17 @@ check c answer = case (c, answer) of
       ++ case lookupMember "error" got of
         Just (String message) -> compareAs ("json bytes " ++ show b) (Left message) (T.unpack <$> decodeJsonBytes b)
         _ -> compareAs ("json bytes " ++ show b) (Right (asString (member "text" got))) (T.unpack <$> decodeJsonBytes b)
+  (LoadsBytesCase b, Right got) -> case (lookupMember "exception" got, loadsBytes b) of
+    (Just name, Left e) ->
+      -- The repr is compared where CPython's args are the failure's (see
+      -- loadsBytes: after surrogatepass passed a surrogate they are not).
+      compareAs ("loads class " ++ show b) name (String e.name)
+        ++ compareAs ("loads str " ++ show b) (T.pack (asString (member "str" got))) (pythonExceptionStr e)
+        ++ (if surrogatePassed then [] else compareAs ("loads repr " ++ show b) (T.pack (asString (member "repr" got))) (pythonExceptionRepr e))
+    (Nothing, Right value) -> compareAs ("loads " ++ show b) (T.pack (asString (member "repr" got))) (pythonRepr value)
+    (_, mine) -> ["json.loads " ++ show b ++ ": CPython " ++ show got ++ ", petrus-json " ++ show mine]
+    where
+      surrogatePassed = member "consistent" got == Bool False
   (UuidCase b, Right got) ->
     compareAs ("uuid4 " ++ show b) (member "str" got) (String (uuid4Text b))
       ++ compareAs ("uuid4 hex " ++ show b) (member "hex" got) (String (uuid4HexText b))
@@ -406,6 +423,7 @@ spec = describe "Petrus.Json.Python against the pinned CPython" $ do
   group "agrees on str.encode('utf-8') errors" $ \case Utf8EncodeCase _ -> True; _ -> False
   group "agrees on repr and str of exceptions" $ \case ExceptionCase _ -> True; _ -> False
   group "agrees on json.loads(bytes) decoding (detect_encoding, surrogatepass)" $ \case JsonBytesCase _ -> True; _ -> False
+  group "agrees on json.loads(bytes): the value or the exception" $ \case LoadsBytesCase _ -> True; _ -> False
   group "agrees on uuid4's spelling" $ \case UuidCase _ -> True; _ -> False
   it "covers both outcomes" $ do
     let refusals = length [() | (LoadsCase _, Left _) <- described]

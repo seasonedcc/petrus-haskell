@@ -154,6 +154,17 @@ def json_bytes(argument):
         return {"encoding": encoding, "error": str(error)}
 
 
+def json_loads_bytes(argument):
+    try:
+        value = json.loads(bytes.fromhex(argument))
+    except (ValueError, RecursionError) as error:
+        # A UnicodeDecodeError raised after surrogatepass passed a surrogate
+        # keeps the first error's args; its attributes name the failure.
+        consistent = not isinstance(error, UnicodeDecodeError) or error.args[2:5] == (error.start, error.end, error.reason)
+        return {"exception": type(error).__name__, "repr": points(repr(error)), "str": points(str(error)), "consistent": consistent}
+    return {"repr": points(repr(value))}
+
+
 def uuid4_text(argument):
     value = uuid.UUID(bytes=bytes.fromhex(argument), version=4)
     return {"str": str(value), "hex": value.hex}
@@ -172,6 +183,7 @@ OPERATIONS = {
     "utf8-encode": utf8_encode,
     "exception": exception_text,
     "json-bytes": json_bytes,
+    "json-loads-bytes": json_loads_bytes,
     "uuid4": uuid4_text,
 }
 

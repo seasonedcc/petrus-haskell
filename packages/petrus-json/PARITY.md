@@ -117,7 +117,10 @@ profiles of `loadsProfiles`:
   generated argument lists, `KeyError`'s and the codec errors' own `__str__`
   included, out-of-range positions too; `json.detect_encoding`
   and the `surrogatepass` decoding `json.loads(bytes)` applies, in every
-  encoding, intact and damaged; and `uuid.uuid4()`'s spelling.
+  encoding, intact and damaged; `json.loads(bytes)` whole (`loadsBytes`:
+  the value's `repr`, or the exception's class and `str()`, and its `repr()`
+  where CPython's `args` agree with its attributes) over those bytes and the
+  refusal documents; and `uuid.uuid4()`'s spelling.
 - **Retired copies.** Packages that carried their own `repr(str)` now call
   this layer, and the copies that had drifted are fixed, each with a test in
   its package: petrus-motus decided printability with GHC's `isPrint`, which

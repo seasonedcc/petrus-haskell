@@ -31,6 +31,7 @@ module Petrus.Json.Python.Scanner
   , defaultHooks
   , strictHooks
   , loads
+  , decode
   , jsonDecodeError
   , loadsError
   , decodeErrorText
@@ -38,14 +39,18 @@ module Petrus.Json.Python.Scanner
   , defaultFloat
   , isSurrogate
   , rawText
+  , rawJson
   ) where
 
 import Data.Bits ((.|.), shiftL)
 import Data.Char (chr, isDigit, ord)
+import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json.Limits (intStrDigitsError, maxIntStrDigits)
+import Petrus.Json.Value (Json (..))
+import Petrus.Json.Wtf8 (fromCodePoints)
 import Petrus.Json.PythonText (pythonStringRepr)
 
 tshow :: Show a => a -> Text
@@ -71,6 +76,26 @@ data Raw
 -- scalar values ('Data.Text.Text' cannot hold a surrogate).
 rawText :: String -> Text
 rawText = T.pack
+
+-- | The value @json.loads@ builds from a scanned one: a repeated member
+-- keeps its first position and takes its last value (a @dict@), and a
+-- string keeps a lone surrogate as WTF-8 ("Petrus.Json.Wtf8"), as
+-- 'Petrus.Json.KeepLoneSurrogates' does.
+rawJson :: Raw -> Json
+rawJson = \case
+  RNull -> Null
+  RBool b -> Bool b
+  RInt i -> Int i
+  RFloat d -> Float d
+  RStr s -> String (fromCodePoints s)
+  RList items -> Array (map rawJson items)
+  RDict members ->
+    let final = Map.fromList [(key, value) | (key, value) <- members]
+        go _ [] = []
+        go seen ((key, _) : rest)
+          | Set.member key seen = go seen rest
+          | otherwise = (fromCodePoints key, rawJson (final Map.! key)) : go (Set.insert key seen) rest
+     in Object (go Set.empty members)
 
 -- | Whether a code point is a UTF-16 surrogate.
 isSurrogate :: Char -> Bool
@@ -146,17 +171,25 @@ loadsError hooks text = case loads hooks text of
   Left (HookError message) -> Just message
   Right _ -> Nothing
 
--- | @json.loads(text, ...)@ with the given hooks.
+-- | @json.loads(text, ...)@ with the given hooks, for a @str@ (which
+-- @json.loads@ refuses when it starts with a byte order mark).
 loads :: Hooks e -> Text -> Either (ScanError e) Raw
-loads hooks text = case T.unpack text of
-  '\xFEFF' : _ -> Left (DecodeError "Unexpected UTF-8 BOM (decode using utf-8-sig)" 0)
-  chars -> do
-    let (start, rest) = skipWs 0 chars
-    (value, end, remaining) <- scanOnce hooks start rest
-    let (end', remaining') = skipWs end remaining
-    case remaining' of
-      [] -> Right value
-      _ -> Left (DecodeError "Extra data" end')
+loads hooks text
+  | "\xFEFF" `T.isPrefixOf` text = Left (DecodeError "Unexpected UTF-8 BOM (decode using utf-8-sig)" 0)
+  | otherwise = decode hooks text
+
+-- | @JSONDecoder.decode@: the scan of a whole document, which is what
+-- @json.loads@ applies to the text it decoded from @bytes@ (no byte order
+-- mark check: a U+FEFF that survives decoding is just an unexpected
+-- character).
+decode :: Hooks e -> Text -> Either (ScanError e) Raw
+decode hooks text = do
+  let (start, rest) = skipWs 0 (T.unpack text)
+  (value, end, remaining) <- scanOnce hooks start rest
+  let (end', remaining') = skipWs end remaining
+  case remaining' of
+    [] -> Right value
+    _ -> Left (DecodeError "Extra data" end')
 
 -- | CPython's 'JSONDecodeError' text: the message with its line, column, and
 -- character offset in the document.

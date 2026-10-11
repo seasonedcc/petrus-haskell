@@ -36,6 +36,7 @@ library
                     Petrus.Json.Python
                     Petrus.Json.Python.Decode
                     Petrus.Json.Python.Exception
+                    Petrus.Json.Python.Loads
                     Petrus.Json.Python.Scanner
                     Petrus.Json.Python.Uuid
                     Petrus.Json.PythonText
