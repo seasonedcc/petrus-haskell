@@ -50,7 +50,7 @@ PATTERNS: Dict[str, List[str]] = {
     "hamsterdan-testing": ["oracle corpus"],
     "petrus-agenticus": ["differential/"],
     "petrus-agenticus-core": ["differential", "interop: custody", "hands/test_conformance.py"],
-    "petrus-agenticus-runtime": ["differential/"],
+    "petrus-agenticus-runtime": ["differential/", "hosts differential corpus", "verbatim and interop"],
     "petrus-cel": ["differential corpus"],
     "petrus-dsl": ["differential corpus"],
     "petrus-dst": ["Python-authored", "Python-recorded", "Engine-backed worlds", "Joined History/Dispatch worlds"],

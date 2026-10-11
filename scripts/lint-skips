@@ -16,13 +16,16 @@ This lint scans every test and differential source under ``packages/`` for
 the ways around that convention:
 
 1. a hard-coded ``.venv`` or ``bin/python`` path in Haskell code (not
-   comments): use ``upstreamPythonExecutable``;
+   comments): use ``upstreamPythonExecutable``. A system interpreter under
+   ``/usr/`` (say, the interpreter a launcher under test is configured
+   with) is not the reference and is not flagged;
 2. ``pending``/``pendingWith`` whose message mentions Python, a venv, uv or
    upstream: a missing reference must fail, not go pending;
 3. an existence probe (``doesFileExist``, ``doesDirectoryExist``,
    ``doesPathExist``) of an ``upstream`` path, which lets a test branch
    around a missing checkout: use ``upstreamPath``/``readUpstream``, or read
-   the file and let a missing one fail;
+   the file and let a missing one fail. Probing for ``scripts/upstream-python``
+   to find the repository root is not such a probe;
 4. ``findExecutable`` of ``python``/``python3``/``uv``: the reference
    interpreter comes from scripts/upstream-python;
 5. in the Python helpers the tests run: ``pytest.skip``, ``unittest.skip``,
@@ -45,13 +48,13 @@ ROOT = Path(__file__).resolve().parent.parent
 ALLOW = re.compile(r"(--|#)\s*lint-skips:\s*allow\s+\S")
 
 HASKELL_RULES = [
-    (re.compile(r'"[^"]*(\.venv|bin/python)[^"]*"'), "hard-coded reference interpreter path; use upstreamPythonExecutable"),
+    (re.compile(r'"(?!/usr/)[^"]*(\.venv|bin/python)[^"]*"'), "hard-coded reference interpreter path; use upstreamPythonExecutable"),
     (
         re.compile(r"\bpending(With)?\b.*(python|venv|\buv\b|upstream)", re.IGNORECASE),
         "pending on a missing Python reference; a missing reference must fail",
     ),
     (
-        re.compile(r"\bdoes(File|Directory|Path)Exist\b.*upstream", re.IGNORECASE),
+        re.compile(r"\bdoes(File|Directory|Path)Exist\b.*upstream(?!-python)", re.IGNORECASE),
         "existence probe of an upstream path; use upstreamPath/readUpstream so a missing checkout fails",
     ),
     (
