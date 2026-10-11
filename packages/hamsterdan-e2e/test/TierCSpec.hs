@@ -16,6 +16,11 @@
 --   holds no secret.
 -- * Live-shaped tapes (@live_style.py@): converge steps and sticky reads,
 --   replayed into both hosts, which must agree.
+-- * The normalizing comparator (@compare_tier_c.py@) on synthetic captures
+--   (@test_compare_tier_c.py@), including ones that must fail.
+-- * @scripts/e2e@: every command's @--dry-run@ runs nothing (a @gh@, @git@,
+--   @curl@ or @cabal@ on PATH fails the test if called), writes nothing,
+--   prints no secret, and prints what docs/e2e.md promises.
 module TierCSpec (spec) where
 
 import Control.Monad (forM, forM_, unless)
@@ -31,8 +36,9 @@ import Hamsterdan.E2E.Agents (CarriedRunner (..), carriedRunner, replaceStrings)
 import Hamsterdan.E2E.Tape (Tape (..), canonical, integer, list, member, readTape, text)
 import Petrus.Json (Json (..))
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
+import Petrus.TestSupport.Repo (repoRoot)
 import Support
-import System.Directory (createDirectoryIfMissing, findExecutable)
+import System.Directory (createDirectoryIfMissing, doesPathExist, findExecutable)
 import System.Environment (getEnvironment)
 import System.FilePath ((</>))
 import System.Posix.Files (setFileMode)
@@ -45,6 +51,8 @@ spec = describe "tier C tooling, against fakes" $ do
   operators
   rehearsal
   liveStyle
+  comparator
+  dryRuns
 
 -- ---------------------------------------------------------------------------
 -- The carried agent
@@ -273,3 +281,74 @@ liveStyle = describe "live-shaped tapes (converge steps, sticky reads)" $
       case member "writes" (member "haskell" (member "summary" report)) of
         Int writes -> writes `shouldSatisfy` (> 0)
         other -> expectationFailure ("no write count: " <> show other)
+
+-- ---------------------------------------------------------------------------
+-- The comparator
+
+comparator :: Spec
+comparator = describe "the normalizing comparator (compare_tier_c.py)" $
+  it "passes and fails synthetic captures as docs/hamsterdan.md §5.2 tier C step 5 says" $ do
+    interpreter <- upstreamPythonExecutable "hamsterdan"
+    path <- scriptPath "test_compare_tier_c.py"
+    (status, _, err) <- readProcess (proc interpreter ["-I", "-B", path])
+    unless (status == ExitSuccess) $ expectationFailure ("test_compare_tier_c.py:\n" <> BC.unpack (BL.toStrict err))
+    BC.unpack (BL.toStrict err) `shouldContain` "OK"
+
+-- ---------------------------------------------------------------------------
+-- scripts/e2e --dry-run
+
+dryRuns :: Spec
+dryRuns = describe "scripts/e2e --dry-run" $
+  it "runs nothing, writes nothing, prints no secret, and prints the plan" $ withRoot $ \dir -> do
+    interpreter <- upstreamPythonExecutable "hamsterdan"
+    root <- repoRoot
+    let bin = dir </> "bin"
+        called = dir </> "called"
+        e2e = root </> "scripts" </> "e2e"
+        config = dir </> "config.json"
+        secret = "sk-tier-c-dry-run-must-not-print"
+    createDirectoryIfMissing True bin
+    forM_ ["gh", "git", "curl", "cabal"] $ \tool -> do
+      BS.writeFile (bin </> tool) (BC.pack ("#!/bin/sh\necho " <> tool <> " \"$@\" >> '" <> called <> "'\nexit 1\n"))
+      setFileMode (bin </> tool) 0o700
+    inherited <- getEnvironment
+    let environment =
+          [("PATH", bin <> ":" <> maybe "/usr/bin:/bin" id (lookup "PATH" inherited)), ("HAMSTERDAN_PI_API_KEY", secret)]
+            <> [(key, value) | (key, value) <- inherited, key `notElem` ["PATH", "HAMSTERDAN_PI_API_KEY"]]
+        e2eRun arguments = do
+          (status, out, err) <- readProcess (setEnv environment (proc interpreter (["-I", "-B", e2e, "--config", config] <> arguments)))
+          unless (status == ExitSuccess) $ expectationFailure (unwords arguments <> ":\n" <> BC.unpack (BL.toStrict err))
+          pure (BC.unpack (BL.toStrict out))
+    _ <- e2eRun ["init"]
+    template <- BS.readFile config
+    BS.writeFile config (TE.encodeUtf8 (T.replace "\"e2e-work\"" (T.pack (show (dir </> "work"))) (TE.decodeUtf8 template)))
+    prepare <- e2eRun ["prepare-repos", "--dry-run"]
+    prepare `shouldContain` "a83e9223f7ffc6b0af919b0b8261fa2578261b41"
+    prepare `shouldContain` "gh repo create seasonedcc/demo-pr-readiness-py --public"
+    prepare `shouldContain` "hamster-dan[bot] -> hamster-dan-hs[bot]"
+    prepare `shouldContain` "\"required_review_thread_resolution\": true"
+    manifests <- e2eRun ["manifests", "--dry-run"]
+    manifests `shouldContain` "https://github.com/organizations/seasonedcc/settings/apps/new?state=hamsterdan-e2e-haskell"
+    forM_ ["\"issue_comment\"", "\"pull_request_review_thread\"", "\"workflow_run\"", "\"administration\": \"read\"", "\"contents\": \"write\"", "\"pull_requests\": \"write\""] $ \needle ->
+      manifests `shouldContain` needle
+    convert <- e2eRun ["convert-manifest", "--side", "python", "--code", "abc123", "--dry-run"]
+    convert `shouldContain` "https://api.github.com/app-manifests/abc123/conversions"
+    hosts <- e2eRun ["start-hosts", "--dry-run"]
+    forM_ ["HAMSTERDAN_REMINDER_SECONDS=300", "HAMSTERDAN_GITHUB_PRIVATE_KEY=<redacted>", "HAMSTERDAN_PI_API_KEY=<redacted>", "e2e_host.py validate", "hamsterdan-e2e-host) serve"] $ \needle ->
+      hosts `shouldContain` needle
+    stop <- e2eRun ["stop-hosts", "--dry-run"]
+    stop `shouldContain` "kill -TERM"
+    scenarios <- forM ["clean-green", "first-attempt-flake", "hero-review", "draft-ready", "collaboration-approval", "stale-base", "true-conflict"] $ \scenario ->
+      e2eRun ["run-scenario", "--scenario", scenario, "--dry-run"]
+    concat scenarios `shouldContain` "e2e_operator.py"
+    concat scenarios `shouldContain` "hamsterdan-e2e-operator)"
+    concat scenarios `shouldContain` "gh pr review '<pr:main>' --repo seasonedcc/demo-pr-readiness-hs --approve"
+    captured <- e2eRun ["capture", "--scenario", "hero-review", "--checkpoint", "final", "--dry-run"]
+    forM_ ["inspect --pr", "hamsterdan.host.export", "/healthz", "reviewThreads"] $ \needle ->
+      captured `shouldContain` needle
+    rehearse <- e2eRun ["rehearse", "--dry-run"]
+    rehearse `shouldContain` "rehearse_hosts.py"
+    let printed = concat ([prepare, manifests, convert, hosts, stop, captured, rehearse] <> scenarios)
+    printed `shouldNotContain` secret
+    doesPathExist called `shouldReturn` False
+    doesPathExist (dir </> "work") `shouldReturn` False

@@ -8,3 +8,4 @@ dist-newstyle/
 /bench-results/tmp/
 /.claude/
 __pycache__/
+/e2e-work/

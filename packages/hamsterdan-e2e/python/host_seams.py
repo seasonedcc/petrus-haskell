@@ -14,7 +14,11 @@ and ``GitHubAppClients`` takes an httpx transport; this module supplies:
 - ``StepClock``: the clock each step of the tape recorded;
 - ``Redirect``: an httpx transport that sends GitHub requests to a local
   port;
-- ``RecordingHost``: the step log (deliveries, processing, pumps, close).
+- ``RecordingHost``: the step log (deliveries, processing, pumps, close);
+- ``CarriedRunner`` (tier C): an ``AgentRunner`` answering from another
+  run's agent calls, carried to this host's repository and SHAs;
+- ``LiveRecorder`` (tier C): the step log of a live host (registration,
+  the webhook tee, sweeps, converging pumps, close).
 
 Runs in the reference's environment (``scripts/upstream-python hamsterdan``).
 """
