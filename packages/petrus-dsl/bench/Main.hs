@@ -17,6 +17,7 @@ import Data.Text qualified as T
 import Petrus.Impetus.Dsl
 import Petrus.Impetus.NetDefinition (projectNetDefinition, serializeNetDefinition)
 import Petrus.Impetus.Petrinet.Schema (netArcs)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 -- | A flat chain of @size@ places and @size@ transitions.
@@ -66,7 +67,10 @@ main = do
   forM_ [("chain", chain, [1000, 10000]), ("stamped", stamped, [10, 100, 1000])] $ \(name, make, sizes) ->
     forM_ sizes $ \size ->
       putStrLn (name <> "-" <> show size <> ": " <> show (builtArcs make size) <> " arcs, " <> show (serializedBytes make size) <> " bytes")
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup "chain" [workload "chain" chain size | size <- [1000, 10000]]
     , bgroup "stamped" [workload "stamped" stamped size | size <- [10, 100, 1000]]
     ]

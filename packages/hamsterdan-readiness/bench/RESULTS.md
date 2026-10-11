@@ -54,10 +54,20 @@ that row measures call overhead only.
 
 From the repository root, alternating the two sides:
 
+<!-- scripts/bench: rerun -->
 ```sh
 cabal bench hamsterdan-readiness -j2 --benchmark-options='+RTS -M2G -RTS'
-upstream/hamsterdan/.venv/bin/python -I -B packages/hamsterdan-readiness/bench/bench.py
+"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-readiness/bench/bench.py
 ```
+
+`scripts/bench hamsterdan-readiness` runs exactly this block once;
+`scripts/upstream-python hamsterdan` provisions the pinned Hamsterdan.
+
+Haskell times are wall-clock time (`localOption WallTime` in `bench/Main.hs`),
+like the Python side's `time.perf_counter`. The table above was taken before
+that switch, in tasty-bench's default CPU time; this workload is
+single-threaded and does no I/O inside the timed region, so the two agree
+(see [CPU and wall-clock time](../../../docs/reproducing.md#cpu-and-wall-clock-time)).
 
 `cabal bench` runs in the package directory. `bench.py` finds the corpora
 relative to itself. Note `uptime` before and after each run.

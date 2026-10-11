@@ -60,12 +60,26 @@ other work (load average 3.7 to 5.8).
 | pi-tool-call-decode | 377 ns | 1.87 µs | 5.0× | 4.4× |
 | pi-session-validate | 168 µs | 460 µs | 2.7× | 2.5× |
 | pi-fingerprint | 2.32 µs | 6.46 µs | 2.8× | 2.6× |
-| pi-ledger-cycle | 794 µs | 923 µs | 1.2× | 1.1× |
+| pi-ledger-cycle | 1.07 ms | 902 µs | 0.84× | 0.81× |
 | pi-a2-fingerprint | 2.49 µs | 6.25 µs | 2.5× | 2.5× |
 | pi-a2-scripted-turn | 10.4 ms | 29.2 ms | 2.8× | 2.7× |
 
 "Slowest round" is the lowest Python / Haskell ratio of a single round.
-Haskell was faster in every round of every row. The batches of the scripted
+
+**`pi-ledger-cycle` is slower than Python in wall-clock time.** The five
+rounds timed Haskell in tasty-bench's default CPU time. That leaves out the
+time blocked in the ledger's SQLite commits, and read 794 µs against 923 µs
+(1.2×). The row above comes from three wall-clock rounds instead
+(`--time-mode wall`, as the rerun block in [RESULTS.md](RESULTS.md) passes),
+interleaved with `python_pi.py` on 2026-10-10, 22:41–22:43 local (UTC-3),
+at commit `57106c2`, load average 2.7–3.7: Haskell 1.07, 1.07 and
+0.934 ms, Python 1.05, 0.869 and 0.902 ms. Where the extra time goes (the
+SQLite builds differ: direct-sqlite bundles 3.45.0, CPython links 3.53.4)
+has not been measured. The other rows do no IO in the timed region, so the
+two clocks agree on them, except `pi-a2-scripted-turn`, which both sides time
+with the monotonic clock.
+
+Haskell was faster in every round of every other row. The batches of the scripted
 turn ranged from 7.3 to 15.0 ms across the five rounds.
 
 Before these changes, the committed figures were 0.5× for frame encoding,
@@ -110,8 +124,12 @@ Notes on the results:
 
 ## Rerun
 
+`scripts/bench petrus-agenticus-runtime` runs these rows with the rest of the
+package, in wall-clock time (the rerun block in [RESULTS.md](RESULTS.md)). To
+run only the Pi rows:
+
 ```sh
-cabal bench petrus-agenticus-runtime-bench --benchmark-options='--stdev 3 +RTS -A32m -M2G -RTS'
-cd upstream/petrus && .venv/bin/python -I -B ../../packages/petrus-agenticus-runtime/bench/python_pi.py
-cd upstream/petrus && .venv/bin/python -I -B ../../packages/petrus-agenticus-runtime/bench/python_pi_a2.py
+cabal bench -j2 petrus-agenticus-runtime --benchmark-options='-p /pi-/ --time-mode wall --stdev 3 +RTS -A32m -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi.py)
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi_a2.py)
 ```

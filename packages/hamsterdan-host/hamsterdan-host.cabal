@@ -185,7 +185,7 @@ benchmark hamsterdan-host-bench
                   , petrus-impetus
                   , petrus-json
                   , tasty
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
                   , text
                   , wai
   ghc-options:      -O2 -threaded -rtsopts

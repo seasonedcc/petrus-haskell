@@ -89,17 +89,30 @@ rounds (`PETRUS_BENCH_ONLY=none`, which skips the archive workloads):
 
 ## Rerunning
 
-From the repository root, with the upstream virtualenv in place (`uv sync --project upstream/petrus`):
+From the repository root (`scripts/bench petrus-execution` runs exactly this block; it sets
+`BENCH_TMP` to a directory under the git-ignored `bench-results/tmp/`):
+
+<!-- scripts/bench: rerun -->
+```sh
+cabal build -j2 petrus-execution:bench:petrus-execution-bench
+# Everything, interleaved; the work directory receives about 330 MiB of workloads.
+"$(scripts/upstream-python)" -B packages/petrus-execution/bench/compare.py "${BENCH_TMP:-bench-results/tmp/petrus-execution}/workloads" 5
+rm -rf "${BENCH_TMP:-bench-results/tmp/petrus-execution}/workloads"
+```
+
+Both harnesses read the monotonic clock, so both sides are wall-clock time.
+
+By hand:
 
 ```
 cabal build petrus-execution:bench:petrus-execution-bench
 
 # Everything, interleaved (WORKDIR receives about 330 MiB of workloads):
-upstream/petrus/.venv/bin/python packages/petrus-execution/bench/compare.py WORKDIR 5
+"$(scripts/upstream-python)" packages/petrus-execution/bench/compare.py WORKDIR 5
 
 # Individual harnesses (one JSON line per benchmark):
 python3 packages/petrus-execution/bench/make_workloads.py WORKDIR
-upstream/petrus/.venv/bin/python packages/petrus-execution/bench/python_bench.py \
+"$(scripts/upstream-python)" packages/petrus-execution/bench/python_bench.py \
   WORKDIR packages/petrus-execution/test/fixtures/fake_gondolin.mjs
 cabal run -v0 petrus-execution:bench:petrus-execution-bench -- \
   WORKDIR packages/petrus-execution/test/fixtures/fake_gondolin.mjs

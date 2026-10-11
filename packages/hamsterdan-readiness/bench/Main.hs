@@ -25,6 +25,7 @@ import Petrus.Impetus.Dsl (BuiltNet (..))
 import Petrus.Impetus.Petrinet (Binding (..), NetPath, Token (..))
 import Petrus.Impetus.Petrinet.Schema (Arc, handlerUri, netPath, outputs)
 import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 -- | One fold call: the handler, its binding, and its output arcs.
@@ -39,7 +40,10 @@ main = do
   let logs = [[e | String e <- items] | row <- boards, Just (Array items) <- [member "entries" row]]
       loops = nub [loop | Call loop _ _ _ <- calls]
       run selected = [f binding arcs | Call _ f binding arcs <- selected]
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup
         "folding"
         ( bench ("every corpus fold (" <> show (length calls) <> " calls)") (nf run calls)

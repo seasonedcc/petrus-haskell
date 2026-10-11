@@ -15,29 +15,25 @@ module Petrus.Viewer.FileIO
   , readFileBytes
   ) where
 
-import Control.Exception (bracket)
-import Data.Bits ((.|.))
+import Control.Exception (finally, mask)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Internal qualified as BI
 import Data.Word (Word8)
 import Foreign.C.Error (eINTR, getErrno, throwErrnoPath)
 import Foreign.C.String (CString)
-import Foreign.C.Types (CInt (..), CSize (..))
+import Foreign.C.Types (CInt (..), CLong (..), CSize (..))
+import Foreign.Marshal.Alloc (alloca)
 import Foreign.Ptr (Ptr, plusPtr)
+import Foreign.Storable (peek)
 import System.Posix.Internals (withFilePath)
-import System.Posix.Types (COff (..), CSsize (..))
+import System.Posix.Types (CSsize (..))
 
-foreign import capi unsafe "fcntl.h open" c_open :: CString -> CInt -> IO CInt
+foreign import ccall unsafe "petrus_open_read" c_openRead :: CString -> Ptr CLong -> IO CInt
 foreign import capi unsafe "unistd.h read" c_read :: CInt -> Ptr Word8 -> CSize -> IO CSsize
 foreign import capi unsafe "unistd.h close" c_close :: CInt -> IO CInt
-foreign import capi unsafe "unistd.h lseek" c_lseek :: CInt -> COff -> CInt -> IO COff
 foreign import capi unsafe "unistd.h access" c_access :: CString -> CInt -> IO CInt
-foreign import capi "fcntl.h value O_RDONLY" oRdonly :: CInt
-foreign import capi "fcntl.h value O_CLOEXEC" oCloexec :: CInt
 foreign import capi "unistd.h value F_OK" fOk :: CInt
-foreign import capi "unistd.h value SEEK_SET" seekSet :: CInt
-foreign import capi "unistd.h value SEEK_END" seekEnd :: CInt
 
 -- | @fs.existsSync@: @access(path, F_OK)@ succeeds (symlinks followed).
 pathExists :: FilePath -> IO Bool
@@ -45,23 +41,27 @@ pathExists path = withFilePath path $ \p -> (== 0) <$> c_access p fOk
 
 -- | The whole file. Errors are 'IOError's built from @errno@, with the
 -- path, like 'System.IO.readFile'.
+--
+-- Like @readFileSync@: a regular file of known size is read up to that
+-- size (fewer bytes if it shrinks, no more if it grows); anything else
+-- (an empty or special file) is read in chunks until end of file.
 readFileBytes :: FilePath -> IO ByteString
-readFileBytes path =
-  bracket
-    (withFilePath path $ \p -> retryPath "openFile" path (c_open p (oRdonly .|. oCloexec)))
-    c_close
-    $ \fd -> do
-      -- the size is a hint (a file can change, and devices report 0)
-      end <- c_lseek fd 0 seekEnd
-      _ <- c_lseek fd 0 seekSet
-      let hint = if end > 0 then fromIntegral end + 1 else 16384
-          readChunk n = BI.createAndTrim n $ \buf -> fill fd buf n 0
-          go acc n = do
-            chunk <- readChunk n
-            if B.length chunk < n
-              then pure (B.concat (reverse (chunk : acc)))
-              else go (chunk : acc) (max 16384 n)
-      go [] hint
+readFileBytes path = mask $ \restore -> do
+  (fd, size) <- withFilePath path $ \p -> alloca $ \sizePtr -> do
+    fd <- c_openRead p sizePtr
+    if fd < 0 then throwErrnoPath "openFile" path else (fd,) <$> peek sizePtr
+  restore
+    ( if size > 0
+        then BI.createAndTrim (fromIntegral size) $ \buf -> fill fd buf (fromIntegral size) 0
+        else
+          let go acc = do
+                chunk <- BI.createAndTrim 16384 $ \buf -> fill fd buf 16384 0
+                if B.length chunk < 16384
+                  then pure (B.concat (reverse (chunk : acc)))
+                  else go (chunk : acc)
+           in go []
+    )
+    `finally` c_close fd
   where
     -- read until the buffer is full or end of file
     fill fd buf n off

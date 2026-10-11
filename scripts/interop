@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""Run the cross-language suites: interop, conformance, differential, corpus, live.
+
+    scripts/interop                # every package's cross-language groups
+    scripts/interop PKG [PKG ...]  # only these packages
+    scripts/interop --list [PKG]   # show what each pattern selects (hspec --dry-run)
+    scripts/interop --check        # fail if a pattern selects nothing (dry run; check-all runs this)
+    scripts/interop --viewer       # also the upstream petrus-viewer suites against the Haskell
+                                   # backend (needs `pnpm install` in upstream/petrus-viewer)
+    scripts/interop -j2 ...        # cabal parallelism (default -j2)
+
+These are the groups where Haskell meets the pinned reference: live interop
+with reference processes over shared files, databases and sockets;
+byte-for-byte comparisons with the reference's servers and CLIs; the
+committed differential corpora and fixtures the reference recorded; and the
+conformance suites that run the same checks against both implementations.
+`scripts/check-all` already runs them as part of every package's suite; this
+script runs only them, which is the quick way to recheck interop after
+moving a pin (UPSTREAM.md) or changing a wire format.
+
+Each package's groups are selected with hspec ``--match`` patterns (the
+table below; a pattern matches a substring of the ``describe/.../it`` path).
+Every run passes ``--fail-on=empty,pending``: a pattern that selects nothing,
+or a selected example that goes pending, fails the run. Packages run one at a
+time, each test binary with ``+RTS -M2G``.
+
+The reference environments come from scripts/upstream-python (provisioned
+first). When PETRUS_TEST_POSTGRES is unset and a selected package needs
+PostgreSQL, the run happens under scripts/with-postgres, which starts a
+throwaway server with initdb/pg_ctl or Docker, and fails clearly when it can
+do neither.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+ROOT = Path(__file__).resolve().parent.parent
+
+# Package -> hspec --match patterns for its cross-language groups.
+PATTERNS: Dict[str, List[str]] = {
+    "hamsterdan-contracts": ["differential corpora"],
+    "hamsterdan-agents": [
+        "on-disk interop with the reference agent stores",
+        "test_restarted_executing_operation_is_indeterminate_without_authority",
+    ],
+    "hamsterdan-host": [
+        "state interop with the reference host",
+        "the HTTP surface against the reference (uvicorn)",
+        "the command line against the reference",
+        "reference_bytes",
+    ],
+    "hamsterdan-github": ["configuration corpus", "reads, effects and GraphQL corpus", "HTTP client corpus", "webhook, inbox and routing corpus"],
+    "hamsterdan-readiness": ["fold corpus", "board corpus"],
+    "hamsterdan-testing": ["oracle corpus"],
+    "petrus-agenticus": ["differential/"],
+    "petrus-agenticus-core": ["differential", "interop: custody", "hands/test_conformance.py"],
+    "petrus-agenticus-runtime": ["differential/", "hosts differential corpus", "verbatim and interop"],
+    "petrus-cel": ["differential corpus"],
+    "petrus-dsl": ["differential corpus"],
+    "petrus-dst": ["Python-authored", "Python-recorded", "Engine-backed worlds", "Joined History/Dispatch worlds"],
+    "petrus-engine": ["Engine interop with the reference", "test_worker_topology.py"],
+    "petrus-engine-absurd": ["Absurd Engine interop with the reference", "test_worker_topology.py"],
+    "petrus-engine-file": ["differential corpus", "live differential", "petrus-format-json against python"],
+    "petrus-engine-postgres": ["PostgreSQL Engine interop with the reference"],
+    "petrus-engine-sqlite": ["SQLite Engine interop with the reference"],
+    "petrus-execution": ["(differential"],
+    "petrus-fabric": ["Fabric conformance", "Fabric interop", "CV5 Fabric demo", "the fast canonical encoder"],
+    "petrus-history-postgres": ["PostgreSQL History interop with the reference"],
+    "petrus-history-store": ["JSONL interop with the reference", "SQLite History interop with the reference"],
+    "petrus-http-core": ["CPython"],
+    "petrus-impetus": ["differential corpus", "golden traces", "spec/ fixtures", "firing_failure_text"],
+    "petrus-json": ["CPython", "Python"],
+    "petrus-motus": ["Local Dispatch interop with the reference", "Worker CLI"],
+    "petrus-motus-absurd": ["interop with the pinned reference"],
+    "petrus-motus-zeromq": ["ZeroMQ interop with the reference"],
+    "petrus-observation": ["differential corpus"],
+    "petrus-observation-http": ["byte-identical to the upstream server", "Python urllib clients", "petrus --observation"],
+    "petrus-posix": ["Python", "upstream"],
+    "petrus-postgres": ["psycopg", "Python", "upstream"],
+    "petrus-processes": ["Process lifecycle conformance", "Process lifecycle interop", "CV5.DS2 lifecycle demo"],
+    "petrus-simulation": ["byte-identical to the upstream server", "differential corpus against the upstream runner", "upstream Python clients"],
+    "petrus-sqlite": ["Python", "upstream"],
+    "petrus-telemetry": ["CPython", "Python's repr"],
+    "petrus-telemetry-instrumentation": ["differential/telemetry_scenarios.py"],
+    "petrus-viewer-server": ["upstream", "the Python reference Engine, with the same answers at every step"],
+}
+
+POSTGRES_MARKERS = re.compile(r"PETRUS_TEST_POSTGRES|postgresSpec|withScratchDatabase|lookupPostgresUrl")
+
+
+def environment() -> Dict[str, str]:
+    env = dict(os.environ)
+    extra = [str(Path.home() / ".ghcup" / "bin"), str(Path.home() / ".local" / "bin")]
+    env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")])
+    return env
+
+
+ENV = environment()
+
+
+def needs_postgres(package: str) -> bool:
+    for path in (ROOT / "packages" / package / "test").rglob("*.hs"):
+        if POSTGRES_MARKERS.search(path.read_text(encoding="utf-8", errors="replace")):
+            return True
+    return False
+
+
+def test_binary(package: str, jobs: str) -> str:
+    target = f"{package}:test:{package}-test"
+    subprocess.run(["cabal", "build", "-v1", jobs, target], cwd=ROOT, env=ENV, check=True, stdout=sys.stderr)
+    return subprocess.run(
+        ["cabal", "list-bin", "-v0", target], cwd=ROOT, env=ENV, check=True, stdout=subprocess.PIPE, text=True
+    ).stdout.strip()
+
+
+def dry_run(package: str, binary: str, pattern: str) -> Tuple[int, str]:
+    completed = subprocess.run(
+        [binary, "--dry-run", "--no-color", "-m", pattern, "+RTS", "-M2G", "-RTS"],
+        cwd=ROOT / "packages" / package,
+        env=ENV,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    match = re.search(r"(\d+) examples?,", completed.stdout)
+    return (int(match.group(1)) if match else 0), completed.stdout
+
+
+def check(packages: List[str], jobs: str, show: bool) -> int:
+    empty = []
+    total = 0
+    for package in packages:
+        binary = test_binary(package, jobs)
+        for pattern in PATTERNS[package]:
+            count, output = dry_run(package, binary, pattern)
+            total += count
+            if show:
+                print(f"## {package} -m {pattern!r}: {count} examples\n{output}")
+            if count == 0:
+                empty.append(f"{package}: -m {pattern!r}")
+    if empty:
+        print("interop patterns that select no example (a group was renamed or removed?):", file=sys.stderr)
+        for line in empty:
+            print("  " + line, file=sys.stderr)
+        return 1
+    patterns = sum(len(PATTERNS[p]) for p in packages)
+    print(f"interop: {patterns} patterns over {len(packages)} packages select {total} examples")
+    return 0
+
+
+def run(packages: List[str], jobs: str) -> int:
+    projects = ["petrus", "petrus-engine"] + (["hamsterdan"] if any(p.startswith("hamsterdan-") for p in packages) else [])
+    for project in projects:
+        subprocess.run([str(ROOT / "scripts" / "upstream-python"), project], cwd=ROOT, env=ENV, check=True, stdout=subprocess.DEVNULL)
+    failed = []
+    for package in packages:
+        options = []
+        for pattern in PATTERNS[package]:
+            options += ["--test-option=-m", f"--test-option={pattern}"]
+        options += ["--test-option=--fail-on=empty,pending", "--test-option=+RTS", "--test-option=-M2G", "--test-option=-RTS"]
+        print(f"\n==> {package}: {', '.join(PATTERNS[package])}", flush=True)
+        status = subprocess.call(
+            ["cabal", "test", jobs, package, "--test-show-details=direct", *options], cwd=ROOT, env=ENV
+        )
+        if status != 0:
+            failed.append(package)
+    if failed:
+        print(f"\ninterop failed: {', '.join(failed)}", file=sys.stderr)
+        return 1
+    print(f"\ninterop: {len(packages)} packages passed")
+    return 0
+
+
+def viewer() -> int:
+    if not (ROOT / "upstream" / "petrus-viewer" / "node_modules").is_dir():
+        print("--viewer needs `pnpm install` in upstream/petrus-viewer (and `pnpm build` plus "
+              "`npx playwright install chromium` for the browser suites)", file=sys.stderr)
+        return 1
+    print("\n==> upstream petrus-viewer suites against the Haskell backend", flush=True)
+    return subprocess.call(["node", str(ROOT / "packages" / "petrus-viewer-server" / "upstream-tests" / "run.mjs")], cwd=ROOT, env=ENV)
+
+
+def main(argv: List[str]) -> int:
+    jobs = next((a for a in argv if re.fullmatch(r"-j\d*", a)), "-j2")
+    flags = [a for a in argv if a.startswith("-") and not re.fullmatch(r"-j\d*", a)]
+    packages = [a for a in argv if not a.startswith("-")]
+    known = {"--list", "--check", "--viewer", "-h", "--help"}
+    if any(f not in known for f in flags) or "-h" in flags or "--help" in flags:
+        print(__doc__, file=sys.stderr)
+        return 0 if ("-h" in flags or "--help" in flags) else 2
+    unknown = [p for p in packages if p not in PATTERNS]
+    if unknown:
+        print(f"no interop patterns for: {', '.join(unknown)} (see the table in scripts/interop)", file=sys.stderr)
+        return 2
+    selected = packages or sorted(PATTERNS)
+    if "--check" in flags or "--list" in flags:
+        return check(selected, jobs, show="--list" in flags)
+    if not os.environ.get("PETRUS_TEST_POSTGRES") and any(needs_postgres(p) for p in selected):
+        return subprocess.call([str(ROOT / "scripts" / "with-postgres"), sys.executable, __file__, *argv], env=ENV)
+    status = run(selected, jobs)
+    if "--viewer" in flags:
+        status = viewer() or status
+    return status
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

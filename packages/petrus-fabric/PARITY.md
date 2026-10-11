@@ -107,6 +107,9 @@ more than 100000 doubles and on escaped strings and keys.
 
 ## Performance
 
-[bench/RESULTS.md](bench/RESULTS.md): Haskell is faster on every row:
-2.1× on the 16 KiB canonical encoding, 6–9× on envelope work, and 3.7–4.1×
-on the store operations.
+[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time: Haskell is 2.2×
+faster on the 16 KiB canonical encoding and 6–10× on envelope work. The store
+operations are round trips to the server and come out level: 0.86×
+(`postgres.discover`) to 1.09×, with `postgres.submit` at 0.97×. Earlier
+figures of 3.7–4.1× there were tasty-bench CPU time, which leaves out the
+wait for the server.

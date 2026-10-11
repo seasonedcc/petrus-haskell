@@ -29,6 +29,7 @@ import Petrus.Impetus.Instance (InstanceConfig (..), defaultInstanceConfig, newI
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch)
 import Petrus.Telemetry
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 emits, chainLength, chainTokens :: Int
@@ -106,7 +107,10 @@ main = do
   firings <- instanceChain
   records' <- engineChain
   putStrLn ("sizes: instance-run " <> show firings <> ", engine-advance " <> show records')
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup
         "emit-x1000"
         ( [bench name (whnfIO (configured c emitBatch)) | c@(Configuration name _ _) <- configurations]

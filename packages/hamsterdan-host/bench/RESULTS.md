@@ -39,16 +39,16 @@ that the state interop tests use (`differential/state_reference.py`, and
 
 ## Results
 
-The machine was an Apple M4 (10 cores), macOS 26.3.1, shared with other
-work. The load average was 5.3–5.8 during these runs (`uptime` after each
-run).
+<!-- parity: rows below 1.0× belong to "V5 timers" -->
 
-- **Haskell:** GHC 9.10.3 with `-O2`, `tasty-bench`, run with `-j1` and
-  `+RTS -M2G`, every row in wall-clock time (`localOption WallTime`), as
-  `bench.py` measures. The reconciliation and agent rows wait on SQLite,
-  the file system and git child processes, which tasty-bench's default CPU
-  time does not count. Each cell is that benchmark's mean, taken from the
-  CSV.
+The machine was an Apple M4 (10 cores), macOS 26.3.1, shared with other
+work. The load average was 5.3–5.8 during these runs (2026-10-11,
+00:16–00:17 local, UTC-3; `uptime` after each run).
+
+- **Haskell:** GHC 9.10.3 with `-O2`, `tasty-bench`, every row in
+  wall-clock time (`localOption WallTime` in the benchmark, the same as
+  `--time-mode wall`), run with `-j1` and `+RTS -M2G`. Each cell is that
+  benchmark's mean, taken from the CSV.
 - **Python:** CPython 3.14.6 with pydantic 2.13.4 and SQLite 3.53.4. Each
   cell is the best of 5 `timeit` repeats, each about half a second of
   passes.
@@ -64,46 +64,64 @@ run).
 | timer rebuild (333-fact History) | 4.58 ms | 8.54 ms | 1.86× |
 | fresh timer store open (no History) | 1.51 ms | 1.63 ms | 1.08× |
 
-Haskell is faster on every row.
-
 The other rounds were: Haskell 6.14 ms, 36.1 ms, 175 ms, 2.98 µs, 5.25 ms
 and 1.73 ms; Python 23.5 ms, 185 ms, 349 ms, 56 µs, 8.86 ms and 1.68 ms.
 
-The fresh open row is within noise: Haskell's slower round (1.73 ms) is
-above Python's slower round (1.68 ms). Almost all of that time is spent in
-SQLite creating the file, switching to WAL, and running the schema DDL.
-That work is the same on both sides.
+**The fresh open is not reliably faster than Python.** In these rounds it
+was 1.08× and 0.97×. In the wall-clock rounds of 2026-10-10 (commit
+`aaafd62`, load 4.0–4.3) it was 0.81× on the better rounds (Haskell
+1.81 ms against Python 1.46 ms; 2.01 ms against 1.52 ms in the other round),
+and 0.94× in a third run through `scripts/bench`. Almost all of that time
+is spent in SQLite creating the file, switching to WAL, and running the
+schema DDL, which waits on the file system. Whether the gap is the SQLite
+build (direct-sqlite bundles 3.45.0, CPython links 3.53.4) or the binding's
+own work has not been measured. The row belongs to the "V5 timers"
+component, which stays in progress until it is settled.
 
-Earlier versions of this table took the Haskell side in tasty-bench's
-default CPU time; the rows above are wall-clock time on both sides.
+The other rows of those 2026-10-10 rounds were: ingest 4.27 ms against
+11.4 ms (2.7×), reconciliation 30.2 ms against 181 ms (6.0×),
+classification 2.65 µs against 53 µs (20×), and rebuild 5.15 ms against
+8.31 ms (1.61×). The agent turn row did not exist yet.
 
-Both sides keep their scratch directory at its resolved path: the host
-refuses a state root with a symbolic link among its ancestors (as the
-reference does), and macOS's temporary directory is under `/var`, which is
-a symbolic link.
+The figures committed before those timed Haskell in tasty-bench's default
+CPU time, which leaves out the time spent waiting on the file system: for
+example 1.59 ms for the fresh open, and 40.9 ms for the reconciliation step,
+which reads lower in wall-clock time because the threaded runtime's CPU
+time adds up every OS thread of the process.
 
 The timer rebuild row was once slower in Haskell: 13.5–14.7 ms against
 Python's 8.6 ms. The cause was parsing every timestamp and generation digit
 with `read`. Folding the digits instead fixed it, and the on-disk bytes
 did not change.
 
-The webhook ingest row moved the most between rounds: 18.1 ms, then
-23.5 ms in Python, and 5.31 ms, then 6.14 ms in Haskell.
-
 ## Rerun
 
-From the repository root, alternating the two sides:
+From the repository root (`scripts/bench hamsterdan-host` runs exactly this
+block; `scripts/upstream-python hamsterdan` provisions the pinned
+reference). `--time-mode wall` makes tasty-bench measure wall-clock time,
+like Python's `timeit`; the benchmark also sets it for every row.
 
+Both sides keep their scratch state at its resolved path. The host refuses
+a state root with a symbolic link among its ancestors, as the reference
+does, and macOS's default temporary directory is under `/var`, which is a
+symbolic link to `/private/var`. That refusal, not a clash with another
+checkout, is why the reconciliation row once failed with "the dashboard was
+not posted" under the shared `TMPDIR`. The block still gives each run a
+private `TMPDIR`, because the Haskell scratch directory has a fixed name.
+
+<!-- scripts/bench: rerun -->
 ```sh
-cabal bench hamsterdan-host -j2 --benchmark-options='-j1 --csv hs.csv +RTS -M2G -RTS'
-upstream/hamsterdan/.venv/bin/python -I -B packages/hamsterdan-host/bench/bench.py
+export TMPDIR="$BENCH_TMP/tmp" && mkdir -p "$TMPDIR"
+cabal bench -j2 hamsterdan-host --benchmark-options="-j1 --time-mode wall --csv $BENCH_TMP/hamsterdan-host.csv +RTS -M2G -RTS"
+cat "$BENCH_TMP/hamsterdan-host.csv"
+"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-host/bench/bench.py
 ```
 
 `cabal bench` runs in the package directory. Read the Haskell numbers from
-`hs.csv`, not from the console. The reconciliation row sends stdout to
-`/dev/null` while it runs, so the console can show a row's name over its
-neighbour's time. `bench.py` finds its inputs and doubles relative to
-itself.
+the CSV, not from the console. The reconciliation and agent rows send
+stdout to `/dev/null` while they run, so the console can show a row's name
+over its neighbour's time. `bench.py` finds its inputs and doubles relative
+to itself.
 
 Run `make_inputs.py` with the same interpreter to regenerate `inputs.json`.
 Note `uptime` before and after each run.

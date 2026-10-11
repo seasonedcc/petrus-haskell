@@ -143,6 +143,7 @@ benchmark petrus-agenticus-core-bench
                   , ram
                   , petrus-agenticus-core
                   , petrus-json
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
+                  , tasty
                   , text
   ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A32m"

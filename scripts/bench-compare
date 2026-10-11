@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Interleave a package's Haskell and Python benchmarks and tabulate them.
+
+    scripts/bench-compare <package> [REPETITIONS]   # default 2 repetitions
+
+For packages whose ``bench/python_bench.py`` prints ``name,nanoseconds`` lines
+(scripts/bench_timing.py) named like the package's tasty-bench benchmarks.
+Each repetition runs ``cabal bench <package>`` (tasty-bench ``--csv``,
+``--stdev 5``, ``+RTS -M2G``) and ``python_bench.py`` (in the pinned
+upstream environment from scripts/upstream-python, from ``upstream/petrus``)
+back to back, alternating which goes first, and records the 1-minute load
+average around every run. Benchmarks that read ``PETRUS_TEST_POSTGRES`` get
+a throwaway server from scripts/with-postgres when it is unset.
+
+It prints a Markdown table: the median over repetitions of each row
+(tasty-bench means for Haskell, bench_timing medians for Python), their
+ratio, the lowest per-repetition ratio, and every repetition's figures. The
+same table is written to ``bench-results/tmp/<package>.compare.md``, and the
+raw CSV files to ``bench-results/tmp/`` (ignored by git). It never writes a
+package's RESULTS.md: those are curated by hand from runs like this one.
+
+Every Haskell benchmark measures wall-clock time (``localOption WallTime`` in
+its bench/Main.hs), as bench_timing.py does for Python.
+"""
+
+from __future__ import annotations
+
+import csv
+import os
+import statistics
+import subprocess
+import sys
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+ROOT = Path(__file__).resolve().parent.parent
+TMP = ROOT / "bench-results" / "tmp"
+UPSTREAM = ROOT / "upstream" / "petrus"
+
+
+def environment() -> Dict[str, str]:
+    env = dict(os.environ)
+    extra = [str(Path.home() / ".ghcup" / "bin"), str(Path.home() / ".local" / "bin")]
+    env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")])
+    return env
+
+
+def upstream_python() -> str:
+    return subprocess.run(
+        [str(ROOT / "scripts" / "upstream-python"), "petrus"],
+        env=environment(),
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+
+
+def haskell(package: str, repetition: int) -> Dict[str, float]:
+    output = TMP / f"{package}.haskell.{repetition}.csv"
+    if output.exists():
+        output.unlink()
+    options = f"--csv {output} --stdev 5 --timeout 300 +RTS -M2G -RTS"
+    print(f"+ cabal bench {package} -j2 --benchmark-options '{options}'", file=sys.stderr, flush=True)
+    subprocess.run(
+        ["cabal", "bench", package, "-j2", "--benchmark-options", options],
+        cwd=ROOT,
+        env=environment(),
+        check=True,
+        stdout=sys.stderr,
+    )
+    results = {}
+    with output.open(newline="") as stream:
+        for row in csv.DictReader(stream):
+            name = row["Name"]
+            if name.startswith("All."):
+                name = name[len("All.") :]
+            results[name] = float(row["Mean (ps)"]) / 1000.0
+    return results
+
+
+def python(package: str, interpreter: str, repetition: int) -> Dict[str, float]:
+    script = ROOT / "packages" / package / "bench" / "python_bench.py"
+    print(f"+ {interpreter} -I -B {script.relative_to(ROOT)}", file=sys.stderr, flush=True)
+    completed = subprocess.run(
+        [interpreter, "-I", "-B", str(script)],
+        cwd=UPSTREAM,
+        env=environment(),
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    (TMP / f"{package}.python.{repetition}.csv").write_text(completed.stdout)
+    results = {}
+    for line in completed.stdout.splitlines():
+        name, _, value = line.rpartition(",")
+        if name:
+            results[name] = float(value)
+    return results
+
+
+def human(ns: Optional[float]) -> str:
+    if ns is None:
+        return "—"
+    for unit, scale in (("s", 1e9), ("ms", 1e6), ("µs", 1e3)):
+        if ns >= scale:
+            return f"{ns / scale:.3g} {unit}"
+    return f"{ns:.3g} ns"
+
+
+def main() -> int:
+    arguments = sys.argv[1:]
+    if not arguments or arguments[0].startswith("-"):
+        print(__doc__, file=sys.stderr)
+        return 2
+    package = arguments[0]
+    repetitions = int(arguments[1]) if len(arguments) > 1 else 2
+    main_hs = ROOT / "packages" / package / "bench" / "Main.hs"
+    if not (ROOT / "packages" / package / "bench" / "python_bench.py").exists():
+        print(f"{package} has no bench/python_bench.py", file=sys.stderr)
+        return 2
+    if "PETRUS_TEST_POSTGRES" in main_hs.read_text() and not os.environ.get("PETRUS_TEST_POSTGRES"):
+        # Re-run under a throwaway server; scripts/with-postgres stops it.
+        return subprocess.call([str(ROOT / "scripts" / "with-postgres"), sys.executable, __file__, *arguments])
+    TMP.mkdir(parents=True, exist_ok=True)
+    interpreter = upstream_python()
+    runs: List[Tuple[Dict[str, float], Dict[str, float]]] = []
+    loads: List[float] = []
+    for repetition in range(1, repetitions + 1):
+        loads.append(os.getloadavg()[0])
+        if repetition % 2:
+            ours = haskell(package, repetition)
+            loads.append(os.getloadavg()[0])
+            theirs = python(package, interpreter, repetition)
+        else:
+            theirs = python(package, interpreter, repetition)
+            loads.append(os.getloadavg()[0])
+            ours = haskell(package, repetition)
+        loads.append(os.getloadavg()[0])
+        runs.append((ours, theirs))
+        print(f"repetition {repetition} done, load average {loads[-3]:.2f} / {loads[-2]:.2f} / {loads[-1]:.2f}", file=sys.stderr)
+    lines = [
+        f"{package}: {repetitions} interleaved repetitions; load average (1 min) {min(loads):.2f} to {max(loads):.2f}.",
+        "",
+        "| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |",
+        "|---|---:|---:|---:|---:|---|---|",
+    ]
+    names = list(runs[0][0]) + [name for name in runs[0][1] if name not in runs[0][0]]
+    for name in names:
+        ours = [run[0][name] for run in runs if name in run[0]]
+        theirs = [run[1][name] for run in runs if name in run[1]]
+        h = statistics.median(ours) if ours else None
+        p = statistics.median(theirs) if theirs else None
+        ratio = f"{p / h:.2f}×" if h and p else "—"
+        paired = [run[1][name] / run[0][name] for run in runs if name in run[0] and name in run[1]]
+        lowest = f"{min(paired):.2f}×" if paired else "—"
+        lines.append(
+            f"| `{name}` | {human(h)} | {human(p)} | {ratio} | {lowest} | "
+            f"{', '.join(human(x) for x in ours)} | {', '.join(human(x) for x in theirs)} |"
+        )
+    text = "\n".join(lines) + "\n"
+    (TMP / f"{package}.compare.md").write_text(text)
+    sys.stdout.write(text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

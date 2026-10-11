@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # Rebuild and verify everything from a clean checkout: build, unit tests,
-# conformance, interop against the pinned Python upstream, and the parity table.
+# conformance, interop against the pinned Python upstream, the benchmark
+# bookkeeping, and the parity table. CI runs exactly this.
 #
 #   scripts/check-all            # everything except benchmarks
 #   scripts/check-all -j2        # limit cabal's parallelism (passed to cabal)
-#   scripts/check-all --bench    # also run benchmarks against Python
+#   scripts/check-all --bench    # also rerun every benchmark against Python (slow)
 #
 # Every test binary runs with a 2 GiB heap cap (+RTS -M2G -RTS), as locally.
 # Any build or test failure fails the script; cabal keeps going past a failing
-# suite so one run reports every failure.
+# suite so one run reports every failure. When PETRUS_TEST_POSTGRES is unset,
+# the tests run against a throwaway PostgreSQL server (scripts/with-postgres:
+# initdb/pg_ctl or Docker), so the PostgreSQL suites run instead of going
+# pending; with neither available the script stops and says so.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # ghcup's toolchain, and uv's default install location (the interop suites
@@ -29,6 +33,9 @@ step() { printf '\n==> %s\n' "$*"; }
 
 step "Upstream pins"
 scripts/check-pins
+
+step "No silent skips on a missing Python reference"
+scripts/lint-skips
 
 step "Upstream Python environment"
 if ! command -v uv >/dev/null 2>&1; then
@@ -51,14 +58,20 @@ fi
 step "Build (all packages, -Werror)"
 cabal build all ${cabal_flags[@]+"${cabal_flags[@]}"}
 
+step "Interop selection (scripts/interop patterns still select their groups)"
+scripts/interop --check ${cabal_flags[@]+"${cabal_flags[@]}"}
+
 step "Tests (unit, conformance, interop)"
-cabal test all ${cabal_flags[@]+"${cabal_flags[@]}"} --keep-going \
+scripts/with-postgres cabal test all ${cabal_flags[@]+"${cabal_flags[@]}"} --keep-going \
   --test-show-details=direct --test-options='+RTS -M2G -RTS'
 
 if [[ "$run_bench" == 1 ]]; then
   step "Benchmarks"
   scripts/bench
 fi
+
+step "Benchmark bookkeeping (rerun blocks, bench-results/summary.md)"
+scripts/bench --check
 
 step "Parity table"
 scripts/check-parity

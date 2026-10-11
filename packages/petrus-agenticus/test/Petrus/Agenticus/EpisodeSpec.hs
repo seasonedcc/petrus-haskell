@@ -1,10 +1,10 @@
 -- | Port of @tests/petrus/agenticus/attachment/test_episode.py@.
 module Petrus.Agenticus.EpisodeSpec (spec) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar
 import Control.Exception (SomeException, throwIO, try)
-import Control.Monad (forM_, void)
+import Control.Monad (forM_, void, when)
 import Data.IORef
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -113,6 +113,13 @@ done box = maybe False (const True) <$> tryReadMVar box
 waitFor :: MVar () -> IO ()
 waitFor signal = timeout 2_000_000 (readMVar signal) >>= maybe (fail "event not set") pure
 
+-- | Wait (bounded like 'waitFor') until a settlement in progress has closed
+-- the attachment's admission, its first ordered step.
+admissionClosed :: EpisodeAttachment -> IO ()
+admissionClosed a = timeout 2_000_000 loop >>= maybe (fail "settlement did not close admission") pure
+  where
+    loop = fenceSnapshot a (episodeEpoch a) >>= \fence -> when fence.open (threadDelay 100 >> loop)
+
 readRequest :: Text -> Text -> Text -> Integer -> Integer -> Text -> Json
 readRequest callId episodeText attachment' epoch' grantEpoch' path =
   Object
@@ -184,7 +191,12 @@ spec = describe "attachment/test_episode.py" $ do
   -- The reference delays the grant ledger's @consume@ by monkeypatching it.
   -- The Haskell ledger is not patchable, so the claimed call blocks inside
   -- the adapter instead: the call is in flight either way when settlement
-  -- starts.
+  -- starts. The reference releases the call right after submitting
+  -- settlement and relies on the settlement thread having closed admission
+  -- by then; nothing orders the two. Here the release waits until
+  -- settlement has observably closed admission (and is therefore draining
+  -- the claimed call), otherwise the call can finish first, legitimately
+  -- succeed, and leave nothing to wait for.
   it "test_settlement_waits_for_every_claimed_call_before_export_and_destroy" $ do
     s <- scripted [Verified True]
     current <- attachment s
@@ -195,6 +207,7 @@ spec = describe "attachment/test_episode.py" $ do
     submitted <- async' (submit gw (readRequest "settlement-race" "episode-1" "attachment-1" 1 grant.grantEpoch "README.md"))
     waitFor entered
     settledBox <- async' (settle current 2)
+    admissionClosed current
     done settledBox `shouldReturn` False
     readIORef s.events `shouldReturn` []
     putMVar release ()

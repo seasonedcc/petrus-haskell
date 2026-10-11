@@ -85,9 +85,7 @@ argument, so that call does not compile.
 | `InteropSpec`: "resumes each other's agent state" | 1 | A journey through `serve`'s composed agent on both hosts, over Petrus's scripted Pi runtime and a repository with fixed commits. Phase one reviews the first head (epoch 1); phase two moves the head and reviews again (epoch 2). The test runs phase one on one host and phase two on the other, in all four pairings, and each must match the Python-only run file by file. That includes `agent-routes.sqlite3`, `pi-a2/installation`, and the runtime host's `operations.sqlite3` and `bodies.sqlite3`. It also compares the provider calls, the reviews and the dashboard. |
 | `ApiSpec`: "the HTTP surface against the reference (uvicorn)" | 1 | 43 requests, sent over a raw socket to the reference under uvicorn and to the port under warp. They cover health, the FastAPI pages, routing fallbacks (405 with `allow`, 307, 404), percent-encoding, HTTP/1.0, pipelining, and webhook accept, duplicate and refusals. The status line (h11's `HTTP/1.1`, also for HTTP/1.0), every header in order (only the `date` value is blanked), and the body bytes must match. |
 | `CliSpec`: "serve (uvicorn.run)" | 1 | `serve` on a free port, with the composed agent: an HTTP/1.0 health check gets `HTTP/1.1 200 OK` and `Connection: close`, `SIGTERM` stops it with exit status 0, and `agent-routes.sqlite3` and `pi-a2/installation` exist. |
-| `CliSpec`: "the command line against the reference" | 1 | 105 cases through `python -m hamsterdan.host`'s `main()` and through the port. They cover argparse parsing, usage and help at nine `COLUMNS` widths, configuration failures, `inspect-instance` over hostile histories, startup refusals, `inbox`/`requeue` against a parked delivery, the Pi configuration refusals of the agent composition, and `validate`
-against a recording fake GitHub. Both sides compose the real agent over an
-installed-package fixture. Each case must give the same stdout, stderr, exit status, state effects and GitHub requests. |
+| `CliSpec`: "the command line against the reference" | 1 | 105 cases through `python -m hamsterdan.host`'s `main()` and through the port. They cover argparse parsing, usage and help at nine `COLUMNS` widths, configuration failures, `inspect-instance` over hostile histories, startup refusals, `inbox`/`requeue` against a parked delivery, the Pi configuration refusals of the agent composition, and `validate` against a recording fake GitHub. Both sides compose the real agent over an installed-package fixture. Each case must give the same stdout, stderr, exit status, state effects and GitHub requests. |
 | `InlineRecoverySpec` | 5 | The five restart-convergence cases of `tests/unit/readiness/net_v5/test_inline_recovery.py`, against the real host gates. This closes the gap that hamsterdan-readiness's PARITY.md recorded. |
 | `MutationSpec`: `reference_bytes` | 3 | The mutation ref and payload digest match Python for `change`, `repair` and `update_base`. |
 
@@ -142,7 +140,8 @@ Every file under the state root is byte-compatible in both directions.
 
 ## Benchmarks
 
-[bench/RESULTS.md](bench/RESULTS.md). Haskell is faster on every row:
+[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time on both sides.
+Haskell is faster on every row but the fresh timer-store open:
 
 | Row | Haskell | Python | Speedup |
 | --- | ---: | ---: | ---: |
@@ -151,9 +150,11 @@ Every file under the state root is byte-compatible in both directions.
 | agent turn (one webhook through the scripted Pi agent) | 175 ms | 348 ms | 2.0× |
 | gate classification | 2.92 µs | 56 µs | 19× |
 | timer rebuild | 4.58 ms | 8.54 ms | 1.86× |
-| fresh timer-store open | 1.51 ms | 1.63 ms | 1.08× (within noise) |
+| fresh timer-store open | 1.51 ms | 1.63 ms | 1.08× |
 
-Both sides are measured in wall-clock time.
+The fresh open is not reliably faster: 1.08× and 0.97× in these rounds,
+0.81× and 0.94× in the rounds of 2026-10-10 (SQLite file creation, WAL
+and schema; see RESULTS.md). It belongs to the "V5 timers" component.
 
 ## Divergences
 

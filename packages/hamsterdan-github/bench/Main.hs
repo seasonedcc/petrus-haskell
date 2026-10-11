@@ -30,6 +30,7 @@ import Hamsterdan.GitHub.Webhooks (Observation (..), Receipt (..), closeCustody,
 import Numeric (showHex)
 import Petrus.Json (Json (..), parseJson, pythonLoads)
 import System.IO.Temp (withSystemTempDirectory)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 secretText :: Text
@@ -170,7 +171,10 @@ main = withSystemTempDirectory "hamsterdan-bench" $ \state -> do
       authority = either (error . show) id (G.githubAuthority fake "owner/repo" 7 Nothing)
       publisher = either (error . show) id (E.commentPublisher fake "owner/repo" 7 "hamster-dan[bot]" (\_ _ _ _ _ -> pure ()) Nothing (\_ -> pure ()))
       lastBody = "Finding 99: the dashboard and the gate disagree about readiness."
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bench "webhook verify (HMAC-SHA256, 10 KB)" $ nf (verifyWith keyed webhookBody) signature
     , bench "webhook verify, key state per call" $ nf (verify secretText webhookBody) signature
     , bench "webhook parse (issue_comment, 10 KB)" $

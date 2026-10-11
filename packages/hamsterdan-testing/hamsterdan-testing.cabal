@@ -69,6 +69,7 @@ benchmark hamsterdan-testing-bench
                   , bytestring
                   , hamsterdan-testing
                   , petrus-json
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
+                  , tasty
                   , text
   ghc-options:      -O2 -rtsopts

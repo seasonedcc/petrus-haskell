@@ -129,6 +129,7 @@ benchmark hamsterdan-readiness-bench
                   , petrus-dsl
                   , petrus-impetus
                   , petrus-json
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
+                  , tasty
                   , text
   ghc-options:      -O2 -rtsopts

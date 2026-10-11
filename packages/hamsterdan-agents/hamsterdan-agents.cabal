@@ -126,6 +126,6 @@ benchmark hamsterdan-agents-bench
                   , petrus-json
                   , ram
                   , tasty
-                  , tasty-bench >=0.3
+                  , tasty-bench >=0.3.2
                   , text
   ghc-options:      -O2 -threaded -rtsopts

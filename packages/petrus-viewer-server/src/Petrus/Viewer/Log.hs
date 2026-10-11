@@ -7,6 +7,7 @@ module Petrus.Viewer.Log
   , Logger
   , newLogger
   , newAsyncLogger
+  , newStdoutLogger
   , logLine
   ) where
 
@@ -14,17 +15,25 @@ import Control.Concurrent (forkOn, yield)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Concurrent.STM
 import Control.Exception (SomeException, try)
-import Control.Monad (forever, void)
+import Control.Monad (forever, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Char8 qualified as BC
 import Data.Time.Calendar (toGregorian)
 import Data.Time.Clock (UTCTime (..), diffTimeToPicoseconds, getCurrentTime)
 import Data.ByteString.Internal qualified as BI
+import Data.ByteString.Unsafe qualified as BU
 import Data.Word (Word8)
+import Foreign.C.Error (eINTR, getErrno)
+import Foreign.C.Types (CInt (..), CSize (..))
+import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import Foreign.Storable (pokeByteOff)
 import GHC.Clock (getMonotonicTimeNSec)
-import System.IO (Handle, hFlush)
+import System.IO (Handle, hFlush, stdout)
+import System.Posix.Files (getFdStatus, isCharacterDevice, isRegularFile)
+import System.Posix.Types (CSsize (..))
+
+foreign import ccall safe "write" c_write :: CInt -> Ptr Word8 -> CSize -> IO CSsize
 
 -- | @new Date().toISOString()@: millisecond precision, UTC, @Z@ suffix.
 isoTimestamp :: IO ByteString
@@ -74,6 +83,8 @@ data Logger
   = SyncLogger Handle (MVar ())
   | -- | lines are written by a background thread, batched
     AsyncLogger (TQueue ByteString)
+  | -- | each line is one @write@ to the descriptor, from the logging thread
+    DirectLogger CInt (MVar ())
 
 -- | Each 'logLine' writes and flushes before returning.
 newLogger :: Handle -> IO Logger
@@ -98,6 +109,37 @@ newAsyncLogger cap h = do
     void (try @SomeException (B.hPut h (B.concat (concatMap (\l -> [l, "\n"]) ls)) >> hFlush h))
   pure (AsyncLogger q)
 
+-- | The relay timing log on standard output, written the way Node's
+-- @console.log@ writes it. Node writes synchronously to files and
+-- terminals, and asynchronously to pipes (macOS) and sockets: to a file or
+-- a character device (a terminal, @/dev/null@) each line is one @write@
+-- from the thread that logs it (the relay's loop, so the line costs a
+-- system call and no thread hand-off); to anything else the lines go
+-- through 'newAsyncLogger', so a slow reader never stalls the relay.
+newStdoutLogger :: Int -> IO Logger
+newStdoutLogger cap = do
+  status <- try @SomeException (getFdStatus 1)
+  case status of
+    Right st
+      | isRegularFile st || isCharacterDevice st -> do
+          -- lines already buffered in the Handle go first
+          hFlush stdout
+          DirectLogger 1 <$> newMVar ()
+    _ -> newAsyncLogger cap stdout
+
 logLine :: Logger -> ByteString -> IO ()
 logLine (SyncLogger h lock) line = withMVar lock $ \() -> BC.hPutStrLn h line >> hFlush h
 logLine (AsyncLogger q) line = atomically (writeTQueue q line)
+logLine (DirectLogger fd lock) line = withMVar lock $ \() ->
+  BU.unsafeUseAsCStringLen (line <> "\n") $ \(p, n) -> writeAll (castPtr p) n
+  where
+    -- a closed or broken stream drops the line, as the async logger does
+    writeAll p n
+      | n <= 0 = pure ()
+      | otherwise = do
+          r <- c_write fd p (fromIntegral n)
+          if r >= 0
+            then writeAll (p `plusPtr` fromIntegral r) (n - fromIntegral r)
+            else do
+              e <- getErrno
+              when (e == eINTR) (writeAll p n)

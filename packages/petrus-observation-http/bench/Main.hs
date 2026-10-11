@@ -94,7 +94,10 @@ main = do
   withObservation engine $ \port -> case args of
     "load" : rest -> load (case rest of [n] -> read n; _ -> 5) port
     _ ->
-      defaultMain
+      -- Wall-clock time for every benchmark, as the Python twins measure it
+      -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+      -- time spent waiting on the kernel, servers and child processes.
+      defaultMain . map (localOption WallTime) $
         [ -- each iteration is a new TCP connection through the kernel and
           -- the scheduler: allow a wider spread than the global --stdev
           localOption (RelStDev 0.2) $

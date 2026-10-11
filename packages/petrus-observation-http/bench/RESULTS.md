@@ -8,7 +8,8 @@ back to `a`, advanced 100 times, which gives 201 History records
 `test/reference_observation.py`). Ratios above 1 mean Haskell is faster.
 Haskell is faster on every row.
 
-- Date: 2026-10-10. Commit: `146bfdd`.
+- Date: 2026-10-10. Round trips: 21:13–21:14 local (UTC-3), commit `74e6b1e` with the switch
+  to wall-clock time in `bench/Main.hs`. Load: commit `146bfdd`.
 - Machine: Darwin arm64, Apple M4 (10 cores, 24 GB). Other work was running
   on the machine, so the 1-minute load averages for each table are given
   with it.
@@ -17,17 +18,20 @@ Haskell is faster on every row.
 
 ## How to rerun
 
-From the repository root, with `~/.ghcup/bin` on `PATH`:
+From the repository root (`scripts/bench petrus-observation-http` runs exactly this block, once;
+`scripts/upstream-python` provisions the pinned reference):
 
-```bash
-# Round trips: alternates cabal bench and bench/python_bench.py, 3 repetitions
-python3 packages/petrus-observation-http/bench/interleave.py 3
+<!-- scripts/bench: rerun -->
+```sh
+# Round trips: the Haskell rows, then the Python twin
+cabal bench -j2 petrus-observation-http --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-observation-http/bench/python_bench.py)
 # Load: one Haskell client drives both servers, 5 interleaved repetitions
-cabal bench petrus-observation-http -j2 --benchmark-options "load 5 +RTS -M2G -RTS"
+cabal bench -j2 petrus-observation-http --benchmark-options='load 5 +RTS -M2G -RTS'
 ```
 
-`scripts/bench petrus-observation-http` runs the round-trip rows once (not
-interleaved) and replaces this file with its plain table.
+`scripts/bench-compare petrus-observation-http 3` interleaves three runs of the round-trip rows on
+both sides and prints the table below.
 
 ## Round trips
 
@@ -36,9 +40,9 @@ the response to the end. The connection is closed with a reset
 (`SO_LINGER` 0), so `TIME_WAIT` sockets do not pile up. Each language uses
 its own client:
 
-- Haskell: `network` in tasty-bench, giving the mean;
+- Haskell: `network` in tasty-bench, giving the mean in wall-clock time;
 - Python: `socket`, through `scripts/bench_timing.py`, giving the median of
-  timed batches.
+  timed batches (wall-clock time).
 
 The requests are:
 
@@ -47,15 +51,23 @@ The requests are:
 - `GET /v1/history?after=0&limit=100`;
 - `POST /v1/snapshot`, which is refused with 405.
 
-The table gives the median over three interleaved repetitions. The
-1-minute load average was 2.98 to 4.31.
+The table gives the median over three interleaved repetitions
+(`scripts/bench-compare petrus-observation-http 3`). The 1-minute load average
+was 2.86 to 2.98.
 
 | Benchmark | Haskell | Python | Python / Haskell | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---|---|
-| `roundtrip.snapshot` | 61.2 µs | 227 µs | 3.71× | 61.2 µs, 58.5 µs, 62.7 µs | 227 µs, 232 µs, 221 µs |
-| `roundtrip.document` | 8.03 ms | 23.9 ms | 2.98× | 7.88 ms, 8.03 ms, 8.22 ms | 23.9 ms, 24.1 ms, 23.5 ms |
-| `roundtrip.history-100` | 314 µs | 597 µs | 1.90× | 314 µs, 380 µs, 296 µs | 602 µs, 597 µs, 590 µs |
-| `roundtrip.refused-405` | 44.4 µs | 134 µs | 3.01× | 41.7 µs, 59.9 µs, 44.4 µs | 134 µs, 143 µs, 123 µs |
+| `roundtrip.snapshot` | 70.6 µs | 221 µs | 3.13× | 70.6 µs, 67.2 µs, 73.8 µs | 221 µs, 215 µs, 226 µs |
+| `roundtrip.document` | 4.72 ms | 23.9 ms | 5.07× | 4.72 ms, 4.88 ms, 4.63 ms | 24.2 ms, 23.9 ms, 23 ms |
+| `roundtrip.history-100` | 192 µs | 592 µs | 3.08× | 183 µs, 202 µs, 192 µs | 593 µs, 591 µs, 592 µs |
+| `roundtrip.refused-405` | 61.4 µs | 126 µs | 2.05× | 61.5 µs, 59.1 µs, 61.4 µs | 127 µs, 116 µs, 126 µs |
+
+The round trips were first measured at `146bfdd` with tasty-bench's default
+CPU time, which leaves out the time the client waits on the kernel: the two
+small requests then read 61.2 µs and 44.4 µs, against 70.6 µs and 61.4 µs in
+wall-clock time now. The document and History rows are faster now than then
+(8.03 ms and 314 µs) despite the stricter clock, most likely from the
+petrus-json speed work merged since; the load table below predates it.
 
 ## Load
 
@@ -96,7 +108,7 @@ identical requests. The client therefore costs the same on both sides.
   the shared client costs the Haskell side, not the Python one.
 - **The document does not scale with clients on either server.** Each
   request projects the whole History into a Net document, about 8 ms of CPU
-  in Haskell and 23 ms in Python, and neither server can overlap that work.
+  in Haskell at `146bfdd` (4.7 ms now) and 23 ms in Python, and neither server can overlap that work.
   Only the per-request cost differs.
 - **History has the smallest lead.** Each page reads History from the
   in-memory store and re-encodes 100 canonical records, and much of that

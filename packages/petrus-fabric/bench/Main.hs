@@ -35,6 +35,7 @@ import Petrus.TestSupport (PostgresTarget (..), withScratchDatabase)
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 payload :: Json
@@ -108,7 +109,10 @@ run connection = do
         pure (DoorFired (FiringOutcome path (n + 1) [] [] []))
       inbox = FabricInbox (inboxClient drainer) door
       required = Just (Object [("model", String "large")])
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup
         "envelope"
         [ bench "build" (whnf (forced . build "delivery-1" "recipient") payload)

@@ -77,14 +77,23 @@ Two rows were once slower in Haskell:
 
 ## Rerun
 
-From the repository root, alternating the two sides:
+From the repository root, alternating the two sides (`scripts/bench
+hamsterdan-agents` runs exactly this block; `scripts/upstream-python
+hamsterdan` provisions the pinned reference). The benchmark measures every
+row in wall-clock time; `--time-mode wall` says so on the command line too.
+The Haskell scratch directory has a fixed name under `TMPDIR`, so the block
+gives each run a private one.
 
+<!-- scripts/bench: rerun -->
 ```sh
-cabal bench hamsterdan-agents -j2 --benchmark-options='-j1 --csv agents.csv +RTS -M2G -RTS'
-upstream/hamsterdan/.venv/bin/python -I -B packages/hamsterdan-agents/bench/bench.py
+export TMPDIR="$BENCH_TMP/tmp" && mkdir -p "$TMPDIR"
+cabal bench -j2 hamsterdan-agents --benchmark-options="-j1 --time-mode wall --csv $BENCH_TMP/hamsterdan-agents.csv +RTS -M2G -RTS"
+cat "$BENCH_TMP/hamsterdan-agents.csv"
+"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-agents/bench/bench.py
 ```
 
 `cabal bench` runs in the package directory, where the benchmark reads
-`bench/inputs.json`. `bench.py` finds its inputs relative to itself. Run
-`make_inputs.py` with the same interpreter to regenerate `inputs.json`.
-Note `uptime` before and after each run.
+`bench/inputs.json`. Read the Haskell numbers from the CSV. `bench.py` finds
+its inputs relative to itself. Run `make_inputs.py` with the same
+interpreter to regenerate `inputs.json`. Note `uptime` before and after
+each run.

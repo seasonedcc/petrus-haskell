@@ -31,6 +31,7 @@ import Petrus.Json
 import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch)
 import Petrus.Observation
 import Petrus.Observation.Engine qualified as Observe
+import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 data Workload = Workload {records :: Int, tokens :: Int}
@@ -169,7 +170,10 @@ main = do
     putStrLn ("digest engine.net_document " <> label w <> " " <> digest value)
   -- Each Engine group runs right after its Instance twin, so both see the
   -- same heap (the net_document groups grow it).
-  defaultMain
+  -- Wall-clock time for every benchmark, as the Python twins measure it
+  -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
+  -- time spent waiting on the kernel, servers and child processes.
+  defaultMain . map (localOption WallTime) $
     [ bgroup "snapshot" [bench (label w) (nfIO (forceJson . orFail . snapshot <$> capture inst)) | (w, inst) <- snapshots]
     , bgroup "engine snapshot" [bench (label w) (nfIO (forceJson <$> Observe.snapshot engine)) | (w, engine) <- engineSnapshots]
     , bgroup
