@@ -163,6 +163,32 @@ committing one by one. The port now creates the schema in one transaction
 them against the reference's. Haskell was ahead in all seven repetitions,
 by 1.01× at the least, when the load rose to 3.9.
 
+The process-level rows of the same file (`bench/Process.hs`, eleven
+interleaved runs, 2026-10-11, load average 4.0–5.8) measure restart,
+housekeeping, the operator's commands and the effects against the
+reference's processes, with a 20-PR state directory of 1,228-record
+Histories and one fake GitHub for both sides:
+
+| Row | Haskell | Python | Speedup |
+| --- | ---: | ---: | ---: |
+| `validate` (fresh process) | 140 ms | 1.07 s | 7.65× |
+| `inbox` (fresh process) | 129 ms | 786 ms | 6.09× |
+| `inspect-instance` (fresh process, 2,001 records) | 42.0 ms | 593 ms | 14.1× |
+| `serve` start to the first `200` on `/healthz` | 164 ms | 941 ms | 5.75× |
+| 100 signed POSTs to a running `serve` (warp against uvicorn) | 18.0 ms | 41.8 ms | 2.33× |
+| `sweep("periodic")`, 20 loaded Instances | 17.0 ms | 1.70 s | 100× |
+| `sweep("periodic")`, 20 unloaded Instances | 232 ms | 3.25 s | 14.0× |
+| immutable comment publication | 12.1 µs | 25.1 µs | 2.08× |
+| native review batch (8 findings) | 189 µs | 389 µs | 2.06× |
+| GraphQL ref compare-and-swap | 2.3 µs | 3.9 µs | 1.68× |
+| Git publication (local authority) | 307 ms | 355 ms | 1.16× |
+
+`validate`, `inbox` and `serve` were behind (0.65–0.69×) until
+agent-route repair stopped decoding each History to text to split its
+lines (hamsterdan-agents' `terminalOperations`, 988 ms to 105 ms over the
+20 Histories). The Git publication row is mostly Git's own processes on
+both sides; it read 1.03× in one three-run round.
+
 ## Divergences
 
 See [DIVERGENCES.md](DIVERGENCES.md). One divergence is observable on
