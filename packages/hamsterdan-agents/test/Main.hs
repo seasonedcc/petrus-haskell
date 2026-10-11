@@ -1,6 +1,7 @@
 module Main (main) where
 
 import AgenticusSpec qualified
+import PiA2FactorySpec qualified
 import PiA2Spec qualified
 import PiSpec qualified
 import ProtocolSpec qualified
@@ -12,3 +13,4 @@ main = hspec $ do
   PiSpec.spec
   AgenticusSpec.spec
   PiA2Spec.spec
+  PiA2FactorySpec.spec

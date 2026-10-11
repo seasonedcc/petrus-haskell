@@ -366,7 +366,8 @@ composeOwnedPiA2With hooks statePath installation = do
   supplier <-
     newOneShotApiKeySupplier $ case installation of
       Nothing -> throwIO (RuntimeError "Pi A2 direct authority is not enabled")
-      Just selected -> pure (BA.convert (TE.encodeUtf8 selected.directKey))
+      -- @bytearray(installation.direct_key, "ascii")@: a fresh buffer.
+      Just selected -> BA.copy (BA.convert (TE.encodeUtf8 selected.directKey) :: ScrubbedBytes) (\_ -> pure ())
   authority <- throwLeft (mkPiA2DirectAuthority identity keys supplier)
   let config =
         (piA2RuntimeHostConfig (root </> "runtime-host") workspace provider model "hamsterdan-pi-a2" ownedCapabilities)

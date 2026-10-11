@@ -75,6 +75,7 @@ test-suite hamsterdan-agents-test
                     PiDoubles
                     AgenticusSpec
                     PiA2Spec
+                    PiA2FactorySpec
   build-depends:    base
                   , bytestring
                   , ram
@@ -91,8 +92,10 @@ test-suite hamsterdan-agents-test
                   , petrus-agenticus-core
                   , petrus-agenticus-runtime
                   , petrus-json
+                  , petrus-execution
                   , petrus-motus
                   , petrus-test-support
+                  , process
                   , temporary >=1.3
                   , text
   ghc-options:      -threaded -rtsopts
