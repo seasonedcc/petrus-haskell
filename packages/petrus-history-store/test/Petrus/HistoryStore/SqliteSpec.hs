@@ -275,7 +275,7 @@ spec = do
             path'
             ["INSERT INTO impetus_history_events (instance, position, event_id, record_type, occurrence, payload) VALUES ('one', 0, 'elsewhere', 'TokensProduced', 1, '{}')"]
           Store.append history.history initialized
-            `shouldThrow` (== UnexplainedConflict "insert of event one:0 conflicted but no stored row explains it")
+            `shouldThrow` (== Store.UnverifiableConflict "insert of event one:0 conflicted but no stored row explains it")
 
     it "the exotic record's payload is the compact ASCII spelling" $ withScratch $ \dir -> do
       let path = dir </> "history.sqlite3"

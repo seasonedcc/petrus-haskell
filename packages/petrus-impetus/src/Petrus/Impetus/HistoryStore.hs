@@ -36,9 +36,12 @@ module Petrus.Impetus.HistoryStore
   , mirroredHistoryStore
     -- * Verify-on-conflict
   , Admission (..)
-  , ConflictVerdict (..)
-  , verifyConflict
+  , UnverifiableConflict (..)
   ) where
+
+import Control.Exception (Exception (..))
+import Data.Text (Text)
+import Data.Text qualified as T
 
 import Data.Foldable (toList)
 import Data.IORef
@@ -49,7 +52,6 @@ import GHC.STRef (STRef (..))
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Petrus.Impetus.History.Records (Record)
-import Petrus.Json (Json)
 
 -- | Who commits a batch: the backend itself, or the caller's transaction
 -- that the backend joined.
@@ -144,22 +146,12 @@ mirroredHistoryStore commitMode loaded durable = do
       , mode = commitMode
       }
 
--- | The outcome of verifying a conflicting insert against the stored row.
-data ConflictVerdict
-  = -- | Equal payload at the same position: the record fills it.
-    FillsPosition
-  | -- | Equal payload at another position: acknowledged elsewhere.
-    Acknowledged
-  | -- | A different payload: a conflicting fact (the reference's @ValueError@).
-    Conflicting
+-- | A transactional backend's insert conflicted and no stored row explains
+-- it (the reference's @RuntimeError@): the conflict cannot be verified, so
+-- it is never acknowledged. (A conflict is verified with the 'Eq' instance
+-- of 'Petrus.Json.Json', Python value equality on the decoded payloads.)
+newtype UnverifiableConflict = UnverifiableConflict Text
   deriving stock (Eq, Show)
 
--- | Verify-on-conflict with Python value equality on the decoded payloads
--- (@1 == 1.0 == true@, objects order-insensitive): the 'Eq' instance of
--- 'Json'. The 'Bool' says whether the stored row sits at the attempted
--- position.
-verifyConflict :: Bool -> Json -> Json -> ConflictVerdict
-verifyConflict samePosition stored attempted
-  | stored /= attempted = Conflicting
-  | samePosition = FillsPosition
-  | otherwise = Acknowledged
+instance Exception UnverifiableConflict where
+  displayException (UnverifiableConflict message) = T.unpack message

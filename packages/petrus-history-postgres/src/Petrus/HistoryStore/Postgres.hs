@@ -81,7 +81,7 @@ module Petrus.HistoryStore.Postgres
   , UnverifiableConflict (..)
   ) where
 
-import Control.Exception (Exception (..), throwIO, try)
+import Control.Exception (throwIO, try)
 import Control.Monad (forM, forM_, when)
 import Data.ByteString (ByteString)
 import Data.Sequence (Seq)
@@ -91,11 +91,12 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.HistoryStore.Jsonl (HistoryStoreError (..))
 import Petrus.Impetus.History.Codec (decodeRecord, encodeRecord)
-import Petrus.Impetus.History.Records (Record, recordName, recordOccurrence)
+import Petrus.Impetus.History.Records (Record, recordName, recordOccurrence, recordTerminalFamily, terminalFamilyNames)
 import Petrus.Impetus.HistoryStore
   ( Admission (..)
   , CommitMode (..)
   , HistoryStore (..)
+  , UnverifiableConflict (..)
   , mirroredHistoryStore
   )
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, encodeErrorMessage, parseJson, pythonLoads)
@@ -132,11 +133,6 @@ import System.IO (fixIO)
 -- | An insert conflicted and no stored row explains it (the reference's
 -- @RuntimeError@): the conflict cannot be verified, so it is never
 -- acknowledged.
-newtype UnverifiableConflict = UnverifiableConflict Text
-  deriving stock (Eq, Show)
-
-instance Exception UnverifiableConflict where
-  displayException (UnverifiableConflict message) = T.unpack message
 
 -- ---------------------------------------------------------------------------
 -- The schema
@@ -352,13 +348,13 @@ verifyConflict connection instanceId identity event = do
                 )
             )
     _ -> do
-      terminal <- case terminalFamily event.recordType of
+      terminal <- case terminalFamilyNames <$> recordTerminalFamily event.record of
         Nothing -> pure Nothing
-        Just family ->
+        Just (completed, failed) ->
           queryFirst
             connection
             terminalStatement
-            [textParam instanceId, maybe nullParam (intParam . fromIntegral) event.occurrence, textArrayParam family]
+            [textParam instanceId, maybe nullParam (intParam . fromIntegral) event.occurrence, textArrayParam [completed, failed]]
       case terminal of
         Just [Just storedEvent, Just storedType, Just storedPayload] -> do
           value <- storedJson storedPayload
@@ -394,13 +390,3 @@ verifyConflict connection instanceId identity event = do
             )
   where
     storedJson bytes = either (throwIO . HistoryStoreError . T.pack) pure (parseJson pythonLoads bytes)
-
--- | The one-terminal disciplines, by record family.
-terminalFamily :: Text -> Maybe [Text]
-terminalFamily recordType
-  | recordType `elem` firing = Just firing
-  | recordType `elem` activity = Just activity
-  | otherwise = Nothing
-  where
-    firing = ["FiringCompleted", "FiringFailed"]
-    activity = ["ActivityCompleted", "ActivityFailed"]

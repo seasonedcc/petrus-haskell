@@ -47,6 +47,9 @@ module Petrus.Impetus.History.Records
   , recordInstant
   , recordOccurrence
   , recordScope
+  , TerminalFamily (..)
+  , recordTerminalFamily
+  , terminalFamilyNames
   , reprRecord
   , reprFieldValue
   , encodeFieldValue
@@ -522,6 +525,45 @@ recordOccurrence = \case
   RFiringCompleted r -> Just r.occurrence
   RActivityFailed r -> Just r.occurrence
   RFiringFailed r -> Just r.occurrence
+
+-- | The one-terminal disciplines: an occurrence ends in exactly one firing
+-- terminal (@FiringCompleted@ or @FiringFailed@), and an Activity in
+-- exactly one Activity terminal (@ActivityCompleted@ or @ActivityFailed@).
+data TerminalFamily = FiringTerminal | ActivityTerminal
+  deriving stock (Eq, Show)
+
+-- | The terminal family a record belongs to, if any.
+recordTerminalFamily :: Record -> Maybe TerminalFamily
+recordTerminalFamily = \case
+  RFiringCompleted _ -> Just FiringTerminal
+  RFiringFailed _ -> Just FiringTerminal
+  RActivityCompleted _ -> Just ActivityTerminal
+  RActivityFailed _ -> Just ActivityTerminal
+  RInstanceCreated _ -> Nothing
+  RTokensInitialized _ -> Nothing
+  RScopeOpened _ -> Nothing
+  RScopeClosed _ -> Nothing
+  RScopeReset _ -> Nothing
+  RCandidateSelected _ -> Nothing
+  RExternalEventDelivered _ -> Nothing
+  RScopedDeliveryDropped _ -> Nothing
+  RScopedDeliveryQuarantined _ -> Nothing
+  RDeliveryRegistrationOpened _ -> Nothing
+  RDeliveryRegistrationClosed _ -> Nothing
+  RTimerMatured _ -> Nothing
+  RFiringBegun _ -> Nothing
+  RTokensConsumed _ -> Nothing
+  RTokensRead _ -> Nothing
+  RActivityRequested _ -> Nothing
+  RActivityTerminalQuarantined _ -> Nothing
+  RTokensProduced _ -> Nothing
+
+-- | The record names of a terminal family (the stores' @record_type@
+-- values), completion first.
+terminalFamilyNames :: TerminalFamily -> (Text, Text)
+terminalFamilyNames = \case
+  FiringTerminal -> ("FiringCompleted", "FiringFailed")
+  ActivityTerminal -> ("ActivityCompleted", "ActivityFailed")
 
 -- | The optional lifecycle scope of the provenance-carrying records.
 recordScope :: Record -> Maybe LifecycleScope

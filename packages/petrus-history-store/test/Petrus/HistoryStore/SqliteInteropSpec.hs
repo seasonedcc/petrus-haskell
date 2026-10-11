@@ -57,7 +57,7 @@ outcome action =
     Right n -> pure ("ok " <> BC.pack (show n))
     Left (failure :: SomeException)
       | Just (HistoryStoreError message) <- fromException failure -> pure ("ValueError: " <> TE.encodeUtf8 message)
-      | Just (UnexplainedConflict message) <- fromException failure -> pure ("RuntimeError: " <> TE.encodeUtf8 message)
+      | Just (Store.UnverifiableConflict message) <- fromException failure -> pure ("RuntimeError: " <> TE.encodeUtf8 message)
       | otherwise -> pure ("unexpected: " <> BC.pack (show failure))
 
 -- | @open PATH INSTANCE@ on this side.

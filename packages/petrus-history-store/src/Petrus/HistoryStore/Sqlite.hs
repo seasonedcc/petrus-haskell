@@ -81,7 +81,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.HistoryStore.Internal (HistoryStoreError (..), decodeStored, pythonDiagnostic)
 import Petrus.Impetus.History.Codec (encodeRecord, historyLoads)
-import Petrus.Impetus.History.Records (Record, recordName)
+import Petrus.Impetus.History.Records (Record, recordName, recordTerminalFamily, terminalFamilyNames)
 import Petrus.Impetus.HistoryStore
 import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, encodeErrorMessage, jsonTypeName, lookupMember, parseJson)
 import Petrus.Posix.Path (purePath)
@@ -146,9 +146,6 @@ expectedObjects =
     , ("impetus_history_one_activity_terminal", SQLText "index")
     ]
 
-firingTerminals, activityTerminals :: (Text, Text)
-firingTerminals = ("FiringCompleted", "FiringFailed")
-activityTerminals = ("ActivityCompleted", "ActivityFailed")
 
 -- | One record's row values, encoded before any IO.
 data EncodedRow = EncodedRow
@@ -201,17 +198,15 @@ encodeRows = traverse encodeOne
 
 -- | The store's failures that the reference raises as something other than
 -- @ValueError@ (which is 'HistoryStoreError').
+-- (An insert conflict no stored row explains is the kernel's
+-- 'UnverifiableConflict'.)
 data SqliteHistoryStoreFailure
-  = -- | @RuntimeError@: an insert conflicted and no stored row explains it.
-    UnexplainedConflict Text
-  | -- | @sqlite3.ProgrammingError@: the store was used after 'close'.
+  = -- | @sqlite3.ProgrammingError@: the store was used after 'close'.
     ClosedDatabase
   deriving stock (Eq, Show)
 
 instance Exception SqliteHistoryStoreFailure where
-  displayException = \case
-    UnexplainedConflict message -> T.unpack message
-    ClosedDatabase -> "Cannot operate on a closed database."
+  displayException ClosedDatabase = "Cannot operate on a closed database."
 
 -- ---------------------------------------------------------------------------
 -- The store
@@ -487,9 +482,9 @@ verifyInsert connection instanceId eventId row = do
   case stored of
     Just [storedType, storedPayload] -> do
       json <- either refuse pure (loadsColumn storedPayload)
-      case verifyConflict True json row.value of
-        FillsPosition -> pure True
-        _ ->
+      if json == row.value
+        then pure True
+        else
           refuse
             ( "event "
                 <> eventId
@@ -500,12 +495,7 @@ verifyInsert connection instanceId eventId row = do
                 <> ")"
             )
     _ -> do
-      let family
-            | row.recordType `elemOf` firingTerminals = Just firingTerminals
-            | row.recordType `elemOf` activityTerminals = Just activityTerminals
-            | otherwise = Nothing
-          elemOf name (a, b) = name == a || name == b
-      terminal <- case family of
+      terminal <- case terminalFamilyNames <$> recordTerminalFamily row.record of
         Nothing -> pure Nothing
         Just (a, b) ->
           Sql.queryFirst
@@ -515,9 +505,9 @@ verifyInsert connection instanceId eventId row = do
       case terminal of
         Just [storedEvent, storedType, storedPayload] -> do
           json <- either refuse pure (loadsColumn storedPayload)
-          case verifyConflict False json row.value of
-            Acknowledged -> pure False
-            _ ->
+          if json == row.value
+            then pure False
+            else
               refuse
                 ( "occurrence "
                     <> pythonStr row.occurrence
@@ -533,4 +523,4 @@ verifyInsert connection instanceId eventId row = do
                     <> eventId
                     <> ")"
                 )
-        _ -> throwIO (UnexplainedConflict ("insert of event " <> eventId <> " conflicted but no stored row explains it"))
+        _ -> throwIO (UnverifiableConflict ("insert of event " <> eventId <> " conflicted but no stored row explains it"))

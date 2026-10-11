@@ -10,7 +10,7 @@
 -- * "Petrus.HistoryStore.Sqlite" — the reference's @SqliteHistoryStore@:
 --   one short @BEGIN IMMEDIATE@ transaction per batch over the same DDL,
 --   rows and payload spelling, with verify-on-conflict
---   ('verifyConflict'); 'BackendOwned' commits. It also re-exports the
+--   ('UnverifiableConflict'); 'BackendOwned' commits. It also re-exports the
 --   SQLite writer fence that production hosts take before loading (the
 --   SQLite Engine provider, @petrus-engine-sqlite@).
 --
@@ -34,8 +34,7 @@ module Petrus.HistoryStore
     HistoryStore (..)
   , CommitMode (..)
   , Admission (..)
-  , ConflictVerdict (..)
-  , verifyConflict
+  , UnverifiableConflict (..)
   , append
   , records
   , size
