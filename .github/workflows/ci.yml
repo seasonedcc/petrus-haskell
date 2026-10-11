@@ -53,3 +53,21 @@ jobs:
           restore-keys: cabal-${{ runner.os }}-
       - name: Check everything
         run: scripts/check-all
+
+  # The image's static checks (the Haskell port's container runtime contract;
+  # ContainerSpec in hamsterdan-operator compares it with the reference's):
+  # shell lint of the launcher and the interpreter-path shim, and
+  # Containerfile lint. The image itself is not built here (see
+  # packages/hamsterdan-operator/PARITY.md).
+  container:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint the launcher and the interpreter-path shim
+        run: shellcheck scripts/with-runtime-secrets && shellcheck --shell=sh deployment/python-shim
+      - name: Lint the Containerfile
+        run: |
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/hadolint" \
+            https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          chmod 0755 "$RUNNER_TEMP/hadolint"
+          "$RUNNER_TEMP/hadolint" --failure-threshold error deployment/Containerfile

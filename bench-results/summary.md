@@ -12,8 +12,10 @@ slower. Historical columns and tables (marked *before*) are left out.
 | Package | Results | Rows | Worst | Best | |
 | --- | --- | ---: | ---: | ---: | --- |
 | `hamsterdan-contracts` | [RESULTS.md](../packages/hamsterdan-contracts/bench/RESULTS.md) | 7 | 1.50× | 3.30× |  |
+| `hamsterdan-export` | [RESULTS.md](../packages/hamsterdan-export/bench/RESULTS.md) | 6 | 1.25× | 20.7× |  |
 | `hamsterdan-github` | [RESULTS.md](../packages/hamsterdan-github/bench/RESULTS.md) | 8 | 1.08× | 92.0× |  |
 | `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | 5 | 0.81× | 20.0× | **below 1.0×**: fresh timer store open (no History) |
+| `hamsterdan-operator` | [RESULTS.md](../packages/hamsterdan-operator/bench/RESULTS.md) | 7 | 1.06× | 22.9× |  |
 | `hamsterdan-readiness` | [RESULTS.md](../packages/hamsterdan-readiness/bench/RESULTS.md) | 13 | 3.70× | 11.0× |  |
 | `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | 3 | 1.70× | 22.8× |  |
 | `petrus-agenticus` | [RESULTS.md](../packages/petrus-agenticus/bench/RESULTS.md) | 5 | 1.23× | 5.50× |  |
@@ -53,4 +55,4 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | 2 | 2.50× | 8.00× |  |
 | `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | 16 | 0.87× | 4.50× | **below 1.0×**: open-file POST+GET, 16 clients |
 
-41 results files; 9 with a row below 1.0×.
+43 results files; 9 with a row below 1.0×.

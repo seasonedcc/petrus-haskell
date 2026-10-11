@@ -221,9 +221,12 @@ parseCommandLine :: Text -> Integer -> [Text] -> Parsed
 parseCommandLine hostDefault portDefault argv =
   case run of
     Left stop -> stop
-    Right namespace -> case namespace of
-      (_, extras@(_ : _)) -> ParseError ("unrecognized arguments: " <> T.unwords extras)
-      (ns, []) -> either id Parsed (finish ns)
+    -- parse_known_args reports a missing required argument before
+    -- parse_args reports the extras.
+    Right (ns, extras) -> case (finish ns, extras) of
+      (Left stop, _) -> stop
+      (Right _, _ : _) -> ParseError ("unrecognized arguments: " <> T.unwords extras)
+      (Right arguments, []) -> Parsed arguments
   where
     strings = argv
     pattern' = classify argv

@@ -53,7 +53,9 @@ same state directory. Each case must give:
 - the same package tree, file by file and byte for byte, including the
   partial tree a failure part-way leaves.
 
-The suite collects every mismatch before failing. The cases are:
+The suite collects every mismatch before failing. There are 115 cases: 11
+upstream fixtures, 4 host-driven, and 100 hostile state directories and
+command lines.
 
 - **Upstream fixtures (11):** the reference test suite's own state
   directories, built by its helpers. They cover the default fixture,
