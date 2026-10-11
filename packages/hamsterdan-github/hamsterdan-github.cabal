@@ -42,7 +42,6 @@ library
                     Hamsterdan.GitHub.Http
                     Hamsterdan.GitHub.Jwt
                     Hamsterdan.GitHub.Models
-                    Hamsterdan.GitHub.Python
                     Hamsterdan.GitHub.Routing
                     Hamsterdan.GitHub.Transport
                     Hamsterdan.GitHub.Url

@@ -57,12 +57,11 @@ module Hamsterdan.Testing.Journeys
   ) where
 
 import Control.Exception (SomeException, throwIO, try)
-import Hamsterdan.PyText (raisingDumps)
+import Hamsterdan.Python.Exception (raisingDumps)
+import Hamsterdan.Python.Hashlib (sha256Hex)
 import Control.Monad (forM_, unless, void, when)
-import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Base64 qualified as Base64
 import Data.ByteString.Lazy qualified as BL
 import Data.IORef
@@ -137,7 +136,7 @@ installationToken = "ghs_installation-parity-canary"
 
 -- | @FAILURE_FINGERPRINT@: the digest of @[["build","failure"]]@.
 failureFingerprint :: Text
-failureFingerprint = TE.decodeUtf8 (Base16.encode (SHA256.hash "[[\"build\",\"failure\"]]"))
+failureFingerprint = sha256Hex "[[\"build\",\"failure\"]]"
 
 findingId :: Text
 findingId = "F-mergeability-guard"

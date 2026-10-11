@@ -53,7 +53,7 @@ import Petrus.Impetus.Petrinet.Marking (Token (..))
 import Petrus.Impetus.Petrinet.Schema (netPathText)
 import Petrus.Json (Json)
 import Hamsterdan.Contracts.ReadinessV5
-import Hamsterdan.GitHub.Python (isAscii, isPrintable, utf8Length)
+import Hamsterdan.Python (isAscii, isPrintable, utf8Length)
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Python

@@ -20,7 +20,7 @@ missing. It is never skipped.
 
 | Upstream | Haskell | Evidence |
 | --- | --- | --- |
-| `agents/pi.py`: the prompt envelope, `_parse_result`, `PiNativeRunner` | `Hamsterdan.Agents.Pi`, `Hamsterdan.Agents.Url` | `PiSpec`, plus hamsterdan-host's `PiActivitySpec`. |
+| `agents/pi.py`: the prompt envelope, `_parse_result`, `PiNativeRunner` | `Hamsterdan.Agents.Pi`, hamsterdan-contracts' `Hamsterdan.Python.Url` | `PiSpec`, plus hamsterdan-host's `PiActivitySpec`. |
 | `agents/protocol.py`: the validators (the types are in hamsterdan-contracts) | `Hamsterdan.Agents.Validate` | `ProtocolSpec`, `PiSpec`. |
 | `host/agenticus.py`: catalog resolution, runner selection, `AgentRouteStore`, History repair | `Hamsterdan.Host.Agenticus` | `AgenticusSpec`, plus the route-database interop. |
 | `host/pi_a2.py`: the installation config and binding, persistent keys, `compose_owned_pi_a2` | `Hamsterdan.Host.PiA2` | `PiA2Spec`, `PiA2FactorySpec`, plus the sealed-key interop. |

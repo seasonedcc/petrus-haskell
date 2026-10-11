@@ -26,7 +26,7 @@ import Data.Text qualified as T
 import Hamsterdan.GitHub.Client
 import Hamsterdan.GitHub.Config (AccountConfig (..), HostConfig (..), revealSecret)
 import Hamsterdan.GitHub.Models
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.Python qualified as Py
 import Hamsterdan.GitHub.Transport (request)
 import Hamsterdan.PyLiteral (PyValue (..), repr)
 import Petrus.Json (Json (..))

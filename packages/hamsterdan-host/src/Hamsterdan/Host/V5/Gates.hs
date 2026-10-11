@@ -49,9 +49,9 @@ import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.GitHub.Effects (CommentPublisher)
 import Hamsterdan.GitHub.Effects qualified as Effects
 import Hamsterdan.GitHub.Models (FailureClass (..), FindingPublication (..), GitHubBoundaryError (..), PublicationResult (..), PublicationStatus (..), publicationStatusText)
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.Python qualified as Py
 import Hamsterdan.Host.Errors (Caught (..), UnstagedCustodyError (..), catchGate)
-import Hamsterdan.Host.Python (TypeError (..), ValueError (..), raiseFailureText, sha256HexText)
+import Hamsterdan.Host.Python (TypeError (..), ValueError (..), raisePython, sha256HexText)
 import Hamsterdan.Host.V5.Claim (ClaimReader, CurrentClaim (..))
 import Hamsterdan.Readiness.NetV5.Board (renderBoard)
 import Hamsterdan.Readiness.NetV5.Gating (Variant, markerOperation, variantOf)
@@ -434,7 +434,7 @@ dashGate g work = do
             , faulted = work.faulted
             }
     else do
-      board <- either renderFailure pure (renderBoard work.entries)
+      board <- either raisePython pure (renderBoard work.entries)
       outcome <-
         catchGate
           (Right <$> g.publisher.dashboard ("dash:" <> work.digest) 0 (T.replicate 40 "0") board)
@@ -450,8 +450,3 @@ dashGate g work = do
           UnprovenBlocked -> blocked
           UnprovenFault reason -> fault reason
           Proven -> v DashLanded {entries = work.entries, digest = work.digest, desiredEntries = work.desiredEntries, desiredDigest = work.desiredDigest}
-
--- | The board renderer's recorded failure text, raised as the exception
--- the reference's @render_board@ raises.
-renderFailure :: Text -> IO a
-renderFailure = raiseFailureText

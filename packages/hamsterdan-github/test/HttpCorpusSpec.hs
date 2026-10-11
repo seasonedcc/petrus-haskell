@@ -28,7 +28,7 @@ import Hamsterdan.GitHub.Client
 import Hamsterdan.GitHub.Config (AccountConfig (..), HostConfig (..), secret)
 import Hamsterdan.GitHub.Http (Exchange (..), HttpRequest (..), RawResponse (..), transportFailure)
 import Hamsterdan.GitHub.Models
-import Hamsterdan.GitHub.Python (PythonFault (..))
+import Hamsterdan.Python (PythonException (..))
 import Hamsterdan.GitHub.Transport qualified as Transport
 import Petrus.Json (Json (..))
 import Test.Hspec (Spec, describe, it, runIO)
@@ -238,5 +238,5 @@ actualOutcome = \case
             ]
     | Just (ContractRefused message) <- fromException e ->
         canonical (Object [("error", Object [("class", String "RuntimeError"), ("message", String message)])])
-    | Just (PythonFault cls _) <- fromException e -> canonical (Object [("error", Object [("class", String cls)])])
+    | Just (PythonException cls _) <- fromException e -> canonical (Object [("error", Object [("class", String cls)])])
     | otherwise -> canonical (Object [("error", Object [("class", String "HaskellException"), ("detail", String (T.pack (show e)))])])

@@ -17,7 +17,7 @@ import Corpus
 import Hamsterdan.Contracts.Codec (dump)
 import Hamsterdan.GitHub.Config (AccountConfig (..))
 import Hamsterdan.GitHub.Models (InstallationInventory (..))
-import Hamsterdan.GitHub.Python (PythonFault (..))
+import Hamsterdan.Python (PythonException (..), pythonExceptionStr)
 import Hamsterdan.GitHub.Routing (InventoryMismatch (..), Route (..))
 import Hamsterdan.GitHub.Routing qualified as Routing
 import Hamsterdan.Sqlite (SQLData (..))
@@ -115,7 +115,7 @@ apply custody registry setClock step = case textOf (field "op" step) of
               Just item -> [("admitted", maybe Null dump (admitConversation "hamster-dan" "hamster-dan[bot]" item))]
       Left (e :: SomeException)
         | Just (WebhookRejected reason) <- fromException e -> Object [("outcome", String "rejected"), ("reason", String reason)]
-        | Just (PythonFault cls _) <- fromException e -> Object [("outcome", String "error"), ("class", String cls)]
+        | Just (PythonException cls _) <- fromException e -> Object [("outcome", String "error"), ("class", String cls)]
         | otherwise -> Object [("outcome", String "haskell-exception"), ("detail", String (T.pack (show e)))]
   "pending" -> do
     let subject = case field "subject" step of
@@ -177,7 +177,7 @@ routing routes op step = do
   pure $ case outcome of
     Right value -> value
     Left (e :: SomeException)
-      | Just (PythonFault cls detail) <- fromException e -> pythonError cls detail
+      | Just fault@(PythonException cls _) <- fromException e -> pythonError cls (pythonExceptionStr fault)
       | Just (InventoryMismatch message) <- fromException e -> pythonError "ValueError" message
       | otherwise -> Object [("haskell-exception", String (T.pack (show e)))]
   where

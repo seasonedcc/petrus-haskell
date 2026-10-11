@@ -33,7 +33,7 @@ import Hamsterdan.GitHub.Models
   , RerunRefused (..)
   )
 import Hamsterdan.Agents.Protocol (AgentProtocolError (..))
-import Hamsterdan.GitHub.Python (PythonFault (..))
+import Hamsterdan.Python (PythonException (..), pythonExceptionRepr, pythonExceptionStr)
 import Hamsterdan.Host.Agenticus (AgentCompositionError (..))
 import Hamsterdan.Host.GitPublish (GitPublishError (..))
 import Petrus.Agenticus.Error (AgenticusError (..), errorClassName, isSubclassOf)
@@ -86,9 +86,10 @@ caught err
   | Just PublicationCollision <- fromException err =
       Just (CaughtFault "stable publication operation collided with a different payload")
   | Just (PublicationRejected op) <- fromException err = Just (CaughtFault ("GitHub rejected " <> op))
-  | Just (PythonFault cls detail) <- fromException err
+  | Just failure@(PythonException cls _) <- fromException err
   , cls `elem` valueFamily || cls `elem` runtimeFamily =
-      Just (CaughtFault (orRepr cls detail))
+      let message = pythonExceptionStr failure
+       in Just (CaughtFault (if T.null message then pythonExceptionRepr failure else message))
   | otherwise = Nothing
   where
     valueFamily = ["ValueError", "UnicodeError", "UnicodeDecodeError", "UnicodeEncodeError", "JSONDecodeError"]

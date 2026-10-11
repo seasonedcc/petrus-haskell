@@ -14,7 +14,7 @@ import Hamsterdan.Agents.Protocol (AgentCleanupCategory, AgentResultCategory (Ou
 import Hamsterdan.Agents.Protocol qualified as Agents
 import Hamsterdan.Contracts.Codec (Contract (..), encode)
 import Hamsterdan.Contracts.Readiness (ChangeResult (..))
-import Hamsterdan.Export.Python (PV (..), PyError (..))
+import Hamsterdan.Python.Object (PV (..), PyError (..))
 import Hamsterdan.Host.GitPublish (GitPublishError (..), PublicationCategory (GitOperation, Idempotency, PatchAdmission, RefCas), categoryName)
 import Hamsterdan.Host.PublicationQualification
 import Hamsterdan.Operator.Posix (Stat (..), isDirectory, permissionBits)

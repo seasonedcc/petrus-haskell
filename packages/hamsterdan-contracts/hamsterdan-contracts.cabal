@@ -38,17 +38,24 @@ library
                     Hamsterdan.Contracts.ReadinessProjection
                     Hamsterdan.Contracts.ReadinessV5
                     Hamsterdan.PyLiteral
-                    Hamsterdan.PyLiteral.Printable
-                    Hamsterdan.PyText
+                    Hamsterdan.Python
+                    Hamsterdan.Python.Exception
+                    Hamsterdan.Python.Hashlib
+                    Hamsterdan.Python.Json
+                    Hamsterdan.Python.Object
+                    Hamsterdan.Python.Text
+                    Hamsterdan.Python.Url
+                    Hamsterdan.Python.Value
                     Hamsterdan.Sqlite
   build-depends:    base >=4.18 && <5
                   , array >=0.5
                   , base16-bytestring >=1.0
                   , bytestring >=0.11
-                  , cryptohash-sha256 >=0.11
                   , containers >=0.6
+                  , crypton >=1.0
                   , direct-sqlite >=2.3.27
                   , petrus-json
+                  , ram >=0.20
                   , text >=2.0
   ghc-options:      -O2
 
@@ -65,6 +72,7 @@ test-suite hamsterdan-contracts-test
                     RoundTripSpec
                     ProtocolSpec
                     PyLiteralSpec
+                    PythonSpec
                     PyTextSpec
   build-depends:    base
                   , bytestring
@@ -75,6 +83,7 @@ test-suite hamsterdan-contracts-test
                   , hedgehog >=1.4
                   , hspec >=2.10
                   , petrus-json
+                  , petrus-test-support
                   , QuickCheck >=2.14
                   , text
   ghc-options:      -threaded -rtsopts

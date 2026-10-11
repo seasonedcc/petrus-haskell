@@ -68,8 +68,8 @@ import Hamsterdan.GitHub.Models
   , PullRequestSnapshot (..)
   , RepositoryPolicy (..)
   )
-import Hamsterdan.GitHub.Python (canonicalUuid, casefold, utf8Length)
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.Python (canonicalUuid, casefold, utf8Length)
+import Hamsterdan.Python qualified as Py
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Python

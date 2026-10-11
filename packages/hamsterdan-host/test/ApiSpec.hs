@@ -123,7 +123,7 @@ spec = do
       forM_ apps $ \app -> readIORef app.closed `shouldReturn` 1
 
   -- CPython's json.loads keeps a lone surrogate escape in a str, and so does
-  -- the provider path (Hamsterdan.GitHub.Python.providerLoads). The
+  -- the provider path (Hamsterdan.Python.loads). The
   -- webhook corpus checks the stored bytes against the reference; the
   -- surface below checks both answers against uvicorn.
   describe "lone surrogate escapes in a webhook payload" $ do

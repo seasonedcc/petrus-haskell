@@ -9,6 +9,7 @@ module Hamsterdan.Host.Python
   , ValueError (..)
   , TypeError (..)
   , LookupError (..)
+  , raisePython
   , raiseFailureText
 
     -- * @except Exception@
@@ -56,22 +57,19 @@ import Control.Exception
 import Data.Maybe (isJust)
 import Data.Typeable (cast, typeOf)
 import Hamsterdan.GitHub.Models (GitHubBoundaryError (..))
-import Hamsterdan.GitHub.Python (PythonFault (..))
 import Petrus.Activity (ActivityError)
 import Hamsterdan.Host.Agenticus (AgentCompositionError)
 import Petrus.Agenticus.Error (AgenticusError (..), errorClassName)
 import System.Exit (ExitCode)
 import Control.Monad (unless, void)
-import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
-import Data.ByteString.Base16 qualified as Base16
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.PyLiteral (literalEval)
 import Hamsterdan.PyLiteral qualified as PyLit
-import Hamsterdan.PyText (raisingDumps)
+import Hamsterdan.Python.Exception (raisingDumps)
+import Hamsterdan.Python.Hashlib (sha256Hex, sha256HexText)
 import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Petrus.Json (EncodeOptions (..), Json, compact, defaultDumps, dumps, dumpsText)
@@ -95,12 +93,17 @@ raiseFailureText text =
       message = case literalEval (T.dropEnd 1 (T.drop 1 rest)) of
         Right (PyLit.PyStr m) -> Just m
         _ -> Nothing
-   in case (name, message) of
-        ("TypeError", Just m) -> throwIO (TypeError m)
-        ("ValueError", Just m) -> throwIO (ValueError m)
-        ("RuntimeError", Just m) -> throwIO (RuntimeError m)
-        (_, Just m) -> throwIO (PythonException name [PyStr m])
-        _ -> throwIO (PythonException name [])
+   in raisePython (PythonException name (maybe [] (pure . PyStr) message))
+
+-- | @raise error@: the host's own type for the built-in classes it raises
+-- with one message (so its catchers match them as they match the host's
+-- own raises), the 'PythonException' itself for any other.
+raisePython :: PythonException -> IO a
+raisePython failure = case failure of
+  PythonException "TypeError" [PyStr m] -> throwIO (TypeError m)
+  PythonException "ValueError" [PyStr m] -> throwIO (ValueError m)
+  PythonException "RuntimeError" [PyStr m] -> throwIO (RuntimeError m)
+  _ -> throwIO failure
 
 -- ---------------------------------------------------------------------------
 -- @except Exception@
@@ -148,7 +151,6 @@ tryPython action = (Right <$> action) `catchPython` (pure . Left)
 exceptionClass :: SomeException -> Text
 exceptionClass e
   | Just (PythonException name _) <- fromException e = name
-  | Just (fault :: PythonFault) <- fromException e = fault.pythonClass
   | Just (_ :: GitHubBoundaryError) <- fromException e = "GitHubBoundaryError"
   | Just (_ :: ActivityError) <- fromException e = "ActivityError"
   | Just (_ :: AgentCompositionError) <- fromException e = "AgentCompositionError"
@@ -181,14 +183,6 @@ dumpsCompactSortedText value = raisingDumps (dumpsText compact {sortKeys = True}
 -- | @json.dumps(value)@.
 dumpsDefault :: Json -> Text
 dumpsDefault value = raisingDumps (dumpsText defaultDumps value)
-
--- | @hashlib.sha256(bytes).hexdigest()@.
-sha256Hex :: ByteString -> Text
-sha256Hex = TE.decodeUtf8 . Base16.encode . SHA256.hash
-
--- | @hashlib.sha256(text.encode()).hexdigest()@.
-sha256HexText :: Text -> Text
-sha256HexText = sha256Hex . TE.encodeUtf8
 
 -- | @BEGIN IMMEDIATE@ ... @COMMIT@, rolling back on any exception, under
 -- the connection lock.

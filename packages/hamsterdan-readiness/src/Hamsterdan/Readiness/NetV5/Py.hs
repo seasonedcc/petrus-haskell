@@ -50,6 +50,7 @@ import Hamsterdan.PyLiteral qualified as Lit
 import Hamsterdan.Readiness.NetV5.Folding (pyError, typeError, validationError)
 import Petrus.Impetus.Instance.FailureText (PythonArg (..))
 import Petrus.Json (Json (..))
+import Hamsterdan.Python.Value (truthy)
 
 -- | A computation that may raise a Python exception (its recorded text).
 type Py = Either Text
@@ -64,17 +65,6 @@ typeName = \case
   String _ -> "str"
   Array _ -> "list"
   Object _ -> "dict"
-
--- | Python truthiness.
-truthy :: Json -> Bool
-truthy = \case
-  Null -> False
-  Bool b -> b
-  Int i -> i /= 0
-  Float d -> d /= 0
-  String s -> not (T.null s)
-  Array xs -> not (null xs)
-  Object xs -> not (null xs)
 
 isNone :: Json -> Bool
 isNone = \case

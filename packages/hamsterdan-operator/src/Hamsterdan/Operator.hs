@@ -10,7 +10,7 @@
 -- no command reproduces provider prose or command output.
 --
 -- Provider JSON is read with the reference's dynamic Python semantics
--- ("Hamsterdan.Export.Python"): where the reference would raise an
+-- ("Hamsterdan.Python.Object"): where the reference would raise an
 -- exception it does not catch (an @AttributeError@ for a list where a dict
 -- belongs, say), the port raises the same 'PyError', and the command line
 -- prints the last line of the reference's traceback.
@@ -101,9 +101,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
-import Crypto.Hash (SHA256 (..), hashWith)
 import Hamsterdan.Cli.Argparse
-import Hamsterdan.Export.Python
+import Hamsterdan.Python.Object
   ( PV (..)
   , PyError (..)
   , errorLine
@@ -116,8 +115,9 @@ import Hamsterdan.Export.Python
   , raiseEither
   , truthy
   )
-import Hamsterdan.Export.Python qualified as PyV
-import Hamsterdan.Host.GitPublish (pySplitlines)
+import Hamsterdan.Python.Object qualified as PyV
+import Hamsterdan.Python.Hashlib (sha256HexText)
+import Hamsterdan.Python.Text (splitlines)
 import Hamsterdan.Host.PublicationQualification
 import Hamsterdan.Operator.Posix (Stat (..), effectiveUid, isDirectory, isRegular, normpath, pathParent, permissionBits)
 import Hamsterdan.Operator.Posix qualified as Posix
@@ -135,8 +135,6 @@ import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileF
 import System.Posix.IO.ByteString (fdRead, fdWrite)
 import System.Process.Typed qualified as P
 import System.Timeout (timeout)
-import Data.ByteArray qualified as BA
-import Data.ByteString.Base16 qualified as Base16
 import GHC.IO.Exception (IOErrorType (..))
 
 -- ---------------------------------------------------------------------------
@@ -819,7 +817,7 @@ brokerStatus op text validator
 -- | @_broker_digest(source)@.
 brokerSourceDigest :: Text -> Text
 brokerSourceDigest source =
-  TE.decodeLatin1 (Base16.encode (BA.convert (hashWith SHA256 (TE.encodeUtf8 (pyStrip (T.replace "\r\n" "\n" source))))))
+  sha256HexText (pyStrip (T.replace "\r\n" "\n" source))
 
 -- | @_check(name, passed, observed)@.
 check :: Text -> Bool -> PV -> PV
@@ -928,7 +926,7 @@ clone op root = do
 -- | @_assert_only(runner, checkout, admitted)@.
 assertOnly :: Operator -> FilePath -> Set.Set Text -> IO ()
 assertOnly op checkout admitted = do
-  changed <- Set.fromList . pySplitlines <$> run op ["git", "diff", "--name-only", "origin/main...HEAD"] (Just checkout)
+  changed <- Set.fromList . splitlines <$> run op ["git", "diff", "--name-only", "origin/main...HEAD"] (Just checkout)
   when (changed /= admitted) $
     operatorError ("refusing unexpected changed paths: " <> listRepr (Set.toAscList changed))
 
@@ -952,8 +950,8 @@ create op scenario = do
             pure (Set.fromList [s | PStr s <- items])
       _ -> operatorError "scenario preparation returned malformed admitted paths"
     void (inCheckout ["python", "tools/scenario_control.py", "--attempt", "2"])
-    modified <- pySplitlines <$> inCheckout ["git", "diff", "--name-only"]
-    untracked <- pySplitlines <$> inCheckout ["git", "ls-files", "--others", "--exclude-standard"]
+    modified <- splitlines <$> inCheckout ["git", "diff", "--name-only"]
+    untracked <- splitlines <$> inCheckout ["git", "ls-files", "--others", "--exclude-standard"]
     let changed = Set.fromList (modified <> untracked)
     when (Set.null changed || not (changed `Set.isSubsetOf` admittedPaths)) $
       operatorError ("refusing unexpected changed paths: " <> listRepr (Set.toAscList changed))

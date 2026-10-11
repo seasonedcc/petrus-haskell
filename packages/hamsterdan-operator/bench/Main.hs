@@ -37,7 +37,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Fakes qualified
 import GHC.Clock (getMonotonicTime)
-import Hamsterdan.Export.Python (PV (..), dumpsLine)
+import Hamsterdan.Python.Object (PV (..), dumpsLine)
 import Hamsterdan.Operator
 import Petrus.Json (Json (..), compact, dumps)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)

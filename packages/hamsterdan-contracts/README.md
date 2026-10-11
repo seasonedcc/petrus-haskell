@@ -23,8 +23,15 @@ diverges.
 | `Hamsterdan.Contracts.Readiness` (generated) | the dataclasses of `contracts/readiness.py` | 43 records and enumerations, `models` |
 | `Hamsterdan.Contracts.ReadinessProjection` | `project_readiness`, `dashboard_projection_digest`, `workflow_wait`, `workflow_gates_ready` | `Concerns`, `projectReadiness`, `dashboardProjectionDigest`, `workflowWait`, `workflowGatesReady` |
 | `Hamsterdan.Agents.Protocol` | `agents/protocol.py` types | request and result records, `AgentRequest`, `AgentResult`, `AgentResultCategory`, `AgentCleanupCategory`, `AgentProtocolError` (an `Exception`), `AgentRunner` (the runner seam), `Invocation` |
-| `Hamsterdan.PyLiteral` | CPython `repr` and `ast.literal_eval` for the modeled types | `PyValue`, `pyEq`, `repr`, `strRepr`, `dictEntry` (`f"{kind}:{body}"`), `sortedItemsDigest` (`f"{kind}:{sorted(body.items())!r}"`), `literalEval`, `LiteralError` / `LiteralErrorKind` (`Malformed`, `Unhashable`, `Unsupported`), `fromJson`, `toJson` |
-| `Hamsterdan.PyLiteral.Printable` (generated) | CPython's `str.isprintable` for non-ASCII code points (Unicode 16.0.0) | `isPrintableNonAscii` |
+| `Hamsterdan.PyLiteral` | CPython `repr` and `ast.literal_eval` for the modeled types | `PyValue`, `pyEq`, `repr`, `dictEntry` (`f"{kind}:{body}"`), `sortedItemsDigest` (`f"{kind}:{sorted(body.items())!r}"`), `literalEval`, `LiteralError` / `LiteralErrorKind` (`Malformed`, `Unhashable`, `Unsupported`), `fromJson`, `toJson` |
+| `Hamsterdan.Python` | the standard-library semantics every subsystem shares, on petrus-json's CPython layer (`Petrus.Json.Python`, CPython 3.14 / Unicode 16.0) | re-exports the modules below except `Url` |
+| `Hamsterdan.Python.Text` | `str` methods, `repr(str)`, `int(str)`, `uuid.UUID`, strict UTF-8 | `isSpace`, `isPrintable`, `strip`, `split`, `splitlines`, `splitlinesUtf8`, `casefold`, `strRepr`, `intText`, `pyIntBase`, `canonicalUuid`, `utf8Decode`, `utf8Encode` |
+| `Hamsterdan.Python.Value` | built-ins over `json.loads` results | `truthy`, `get`, `getOr`, `subscript`, `iterate'`, `str`, `repr`, `intOf`, `typeName` |
+| `Hamsterdan.Python.Json` | `json.loads` of a `str` or `bytes` (`detect_encoding`, `surrogatepass`) | `loads`, `loadsBytes` |
+| `Hamsterdan.Python.Exception` | the one exception value | `PythonException`, `pythonError`, `keyError`, `raise`, `pythonExceptionStr`, `pythonFailureText`, `dumpsError`, `raisingDumps` |
+| `Hamsterdan.Python.Hashlib` | `hashlib.sha256(...).hexdigest()` | `sha256Hex`, `sha256HexText` |
+| `Hamsterdan.Python.Url` | `urllib.parse` | `urlsplit`, `urlunsplit`, `hostname`, `port`, `username`, `password`, `quote`, `unquote` |
+| `Hamsterdan.Python.Object` | the dynamic object model the exporter and the operator read untrusted values with | `PV`, `PyError` (traceback-qualified class), `pyStr`, `pyRepr`, `pyInt`, `pyEq`, `loadsText`, `loadsValue`, `toJson`, `fromPython` |
 
 ## How the codecs work
 
@@ -54,7 +61,6 @@ drift from the pin. To regenerate:
 
 ```sh
 upstream/hamsterdan/.venv/bin/python packages/hamsterdan-contracts/scripts/gen_models.py
-upstream/hamsterdan/.venv/bin/python packages/hamsterdan-contracts/scripts/gen_printable.py
 ```
 
 ## Python literals

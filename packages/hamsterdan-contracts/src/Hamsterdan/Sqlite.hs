@@ -27,7 +27,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Database.SQLite3 (Database, SQLData (..), Statement, StepResult (..))
 import Database.SQLite3 qualified as S
-import Hamsterdan.PyText (PythonFault (..), utf8EncodeError)
+import Hamsterdan.Python.Text (utf8Encode)
 
 -- | A connection guarded by a lock (CPython's @threading.RLock@ around the
 -- shared connection).
@@ -91,10 +91,8 @@ execute connection sql parameters = withStatement connection sql $ \statement ->
 -- surrogate a JSON reader kept from an escape), as CPython's @sqlite3@ does.
 bindChecked :: Statement -> [SQLData] -> IO ()
 bindChecked statement parameters = do
-  mapM_ refuse [failure | SQLText value <- parameters, Just failure <- [utf8EncodeError value]]
+  mapM_ throwIO [failure | SQLText value <- parameters, Left failure <- [utf8Encode value]]
   S.bind statement parameters
-  where
-    refuse failure = throwIO (PythonFault "UnicodeEncodeError" failure)
 
 -- | Run with a cached prepared statement for this SQL (preparing it on
 -- first use). The statement is checked out of the cache while in use, so

@@ -4,20 +4,18 @@ module PiWorkspaceSpec (spec, ustar, TarEntry (..)) where
 
 import Control.Exception (Exception, throwIO, try)
 import Control.Monad (forM_)
-import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.ByteString.Base16 qualified as B16
 import Data.ByteString.Char8 qualified as BC
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Hamsterdan.Agents.Pi (PiWorkspaceError (..), PiWorkspaceProvider (..), PreparedPiWorkspace (..), PromptKind (..))
 import Hamsterdan.Agents.Protocol
 import Hamsterdan.Host.PiWorkspace
-import Hamsterdan.PyText (PythonFault (..))
+import Hamsterdan.Python.Exception (PythonException (..), pythonExceptionStr)
+import Hamsterdan.Python.Hashlib (sha256Hex)
 import Numeric (showOct)
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..))
 import Petrus.Agenticus.Runtime.PiA2Host (PiA2RuntimePolicy (..))
@@ -98,9 +96,6 @@ openWith receiver kind source = let PiWorkspaceProvider open = gitPiWorkspacePro
 
 emptyRoot :: GitPiWorkspaceProvider -> Expectation
 emptyRoot receiver = listDirectory (providerRoot receiver) `shouldReturn` []
-
-sha256Hex :: ByteString -> Text
-sha256Hex = TE.decodeLatin1 . B16.encode . SHA256.hash
 
 isWorkspaceError :: PiWorkspaceError -> Bool
 isWorkspaceError = const True
@@ -255,7 +250,7 @@ spec = describe "tests/integration/host/test_pi_workspace.py" $ do
       BS.writeFile (result </> "latin1.txt") "caf\xe9\n"
       _ <- prepared.reconcile =<< workspaceArchive result
       expectationFailure "an undecodable patch must not be returned")
-      `shouldThrow` (== PythonFault "UnicodeDecodeError" expected)
+      `shouldThrow` (\e -> e.name == "UnicodeDecodeError" && pythonExceptionStr e == expected)
     emptyRoot receiver
 
   describe "test_review_inputs_never_overwrite_a_tracked_file" $

@@ -46,7 +46,6 @@ module Hamsterdan.Host.GitPublish
   , validateCommitMessage
   , hasConflictMarkers
   , payloadDigest
-  , pySplitlines
   ) where
 
 import Control.Exception (Exception (..), IOException, SomeAsyncException, SomeException, catch, throwIO, try)
@@ -70,7 +69,7 @@ import Hamsterdan.GitHub.Models
   , GraphQLTransport (..)
   , PullRequestSnapshot (..)
   )
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.Python qualified as Py
 import Hamsterdan.Host.Python (ValueError (..), dumpsSortedText, sha256HexText)
 import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
 import Petrus.Json (Json)
@@ -306,11 +305,11 @@ reconcileUnhooked p operation digest expectedHead baseHead mergeBase selfCausedH
     let root = T.pack (temporary </> "repository")
     _ <- runGit ["clone", "--quiet", "--no-checkout", "--", p.cloneUrl, root] Nothing
     let destination = "refs/heads/" <> pull.headRef
-    remote <- pySplitlines <$> runGit ["-C", root, "ls-remote", "--heads", "origin", destination] Nothing
+    remote <- Py.splitlines <$> runGit ["-C", root, "ls-remote", "--heads", "origin", destination] Nothing
     line <- case remote of
       [one] -> pure one
       _ -> failWith BoundaryUnavailable "Git remote ref lookup is incoherent"
-    let fields = pyWords line
+    let fields = Py.split line
         firstField = case fields of
           f : _ -> f
           [] -> ""
@@ -332,14 +331,14 @@ reconcileUnhooked p operation digest expectedHead baseHead mergeBase selfCausedH
         digestLine = "Hamsterdan-Payload-Digest: " <> digest
     matches <-
       fmap concat . forM (triples history) $ \(commit, rawParents, body) -> do
-        let trailers = pySplitlines body
+        let trailers = Py.splitlines body
             count x = length (filter (== x) trailers)
         if operationLine `notElem` trailers
           then pure []
           else do
             when (count operationLine /= 1 || count digestLine /= 1) $
               failWith Idempotency "stable operation was reused with a different payload"
-            pure [(commit, pyWords rawParents)]
+            pure [(commit, Py.split rawParents)]
     case matches of
       _ : _ : _ -> failWith Idempotency "stable operation identifies multiple commits"
       [] -> pure (GitReconciliation OperationAbsent observedHead "" [])
@@ -363,7 +362,7 @@ validateStagedTree root = do
   entries <-
     fmap concat . forM (filter (not . T.null) (T.splitOn "\0" raw)) $ \entry -> do
       let (metadata, rest) = T.breakOn "\t" entry
-          fields = pyWords metadata
+          fields = Py.split metadata
       case fields of
         [mode, _, stage] | not (T.null rest) -> pure [(T.drop 1 rest, (mode, stage))]
         _ -> unsafeMode
@@ -389,7 +388,7 @@ createCommit p root baseTree expectedTree changed parents message = do
         let stripped = fromMaybe index (T.stripSuffix "\0" index)
             (metadata, rest) = T.breakOn "\t" stripped
             observed = T.drop 1 rest
-            fields = pyWords metadata
+            fields = Py.split metadata
         case fields of
           [mode, _, "0"] | not (T.null rest) && observed == path -> do
             bytes <- BS.readFile (root </> T.unpack path)
@@ -518,7 +517,7 @@ validateDeclaredPaths paths =
 -- | @_validate_commit_message(message)@.
 validateCommitMessage :: Text -> IO ()
 validateCommitMessage message =
-  when (any reserved (pySplitlines message)) $
+  when (any reserved (Py.splitlines message)) $
     failWith PatchAdmission "proposed commit message contains a reserved publication trailer"
   where
     reserved line =
@@ -541,7 +540,7 @@ samePull a b =
 
 -- | @_has_conflict_markers(diff)@.
 hasConflictMarkers :: Text -> Bool
-hasConflictMarkers diff = any marker (pySplitlines diff)
+hasConflictMarkers diff = any marker (Py.splitlines diff)
   where
     marker line = any (`T.isPrefixOf` line) ["+<<<<<<<", "+=======", "+>>>>>>>"]
 
@@ -549,22 +548,3 @@ hasConflictMarkers diff = any marker (pySplitlines diff)
 payloadDigest :: Json -> Text
 payloadDigest = sha256HexText . dumpsSortedText
 
--- | @str.splitlines()@.
-pySplitlines :: Text -> [Text]
-pySplitlines text
-  | T.null text = []
-  | otherwise = go text
-  where
-    go s
-      | T.null s = []
-      | otherwise =
-          let (line, rest) = T.break boundary s
-           in case T.uncons rest of
-                Nothing -> [line]
-                Just ('\r', more) | Just ('\n', after) <- T.uncons more -> line : go after
-                Just (_, after) -> line : go after
-    boundary c = c `elem` ("\n\r\v\f\x1c\x1d\x1e\x85\x2028\x2029" :: String)
-
--- | @str.split()@.
-pyWords :: Text -> [Text]
-pyWords = filter (not . T.null) . T.split Py.isSpace

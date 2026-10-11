@@ -62,7 +62,8 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import Hamsterdan.GitHub.Cache (CacheRequest (..), CacheResponse (..), CacheStore, cachedSend, newCacheStore)
 import Hamsterdan.GitHub.Http
 import Hamsterdan.GitHub.Jwt (SigningKey, appJwt, loadSigningKey)
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.Python (PythonException (..), pythonExceptionStr)
+import Hamsterdan.Python qualified as Py
 import Hamsterdan.GitHub.Url qualified as Url
 import Petrus.Json (Json (..), parseJson, pythonLoads)
 
@@ -430,7 +431,7 @@ checkRateLimit response content = do
       _ -> pure False
     throwIO (githubFailure (if secondary then "SecondaryRateLimitExceeded" else "PrimaryRateLimitExceeded") "rate limit exceeded")
   where
-    pyIntValue value = maybe (Left (valueFailure "ValueError" ("invalid literal for int() with base 10: " <> value))) Right (Py.pyIntBase 10 value)
+    pyIntValue value = either (\failure@(PythonException cls _) -> Left (valueFailure cls (pythonExceptionStr failure))) Right (Py.intText value)
     checkTimedelta seconds =
       when (seconds > 86399999999999 || seconds < -86399999913600) $
         throwIO (uncaught "OverflowError" "days must have magnitude <= 999999999")

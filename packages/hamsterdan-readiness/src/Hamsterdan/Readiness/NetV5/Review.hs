@@ -36,9 +36,7 @@ module Hamsterdan.Readiness.NetV5.Review
   ) where
 
 import Control.Monad (filterM)
-import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString qualified as BS
-import Data.ByteString.Base16 qualified as Base16
 import Data.Char (isAscii, isAlphaNum)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -51,6 +49,7 @@ import Hamsterdan.Readiness.NetV5.Wiring
 import Petrus.Impetus.Dsl (Author)
 import Petrus.Impetus.Petrinet (NetPath, Token)
 import Petrus.Json (Json (..))
+import Hamsterdan.Python.Hashlib (sha256HexText)
 
 gates :: [(Text, (Text, [Text]))]
 gates =
@@ -131,7 +130,7 @@ publishable h base policy incarnation findings mem = do
       op
         | markerOperation plain = plain
         | otherwise =
-            let digest = TE.decodeUtf8 (Base16.encode (SHA256.hash (TE.encodeUtf8 (h <> "\0" <> showT incarnation))))
+            let digest = sha256HexText (h <> "\0" <> showT incarnation)
              in "findings:sha256:" <> digest <> ":i" <> showT incarnation
       pending =
         [ ("phase", String "pending")

@@ -21,7 +21,7 @@ import Data.Text.Encoding qualified as TE
 import Hamsterdan.Contracts.Codec (dump)
 import Hamsterdan.GitHub.Config
 import Hamsterdan.GitHub.Models (InstallationInventory (..))
-import Hamsterdan.PyText (PythonFault (..), dumpsFault)
+import Hamsterdan.Python (PythonException (..), dumpsError)
 import Hamsterdan.GitHub.Routing (InventoryMismatch (..))
 import Hamsterdan.GitHub.Routing qualified as Routing
 import Hamsterdan.Sqlite qualified as Db
@@ -336,7 +336,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       let deep = iterate (\value -> Array [value]) Null !! 100001
           item = (observation (deliveries !! 3) "pull_request") {action = deep}
       case encodeObservation item of
-        Left refusal -> case dumpsFault refusal of PythonFault cls _ -> cls `shouldBe` "RecursionError"
+        Left refusal -> case dumpsError refusal of PythonException cls _ -> cls `shouldBe` "RecursionError"
         Right _ -> expectationFailure "expected the encoder to refuse"
 
     it "delays retries and eventually parks the delivery" $ withTemp $ \directory -> do

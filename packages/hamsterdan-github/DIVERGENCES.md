@@ -48,7 +48,8 @@ differential corpora compare these byte for byte with the pinned Python (see
 
    Where the reference would let a CPython exception escape (a `KeyError`,
    `TypeError`, `AttributeError` or `ValueError` from malformed provider
-   data), the port throws `PythonFault` carrying that class name. The class is
+   data), the port throws hamsterdan-contracts' `PythonException` (petrus-json's
+   class name and `args`, the value every Hamsterdan port raises). The class is
    compared with the corpus; the message is not (see 12).
 5. **Effect hooks are plain functions.** The fence, the fault hook and
    `retry_delay` are `Fence`, `EffectFault` and `Double -> IO ()`. A fence or
@@ -58,13 +59,13 @@ differential corpora compare these byte for byte with the pinned Python (see
 
 6. **Lone surrogates in provider JSON: resolved, no longer a difference.**
    - CPython's `json.loads` keeps a lone surrogate escape (`"\ud800"`) in a
-     `str`. `Hamsterdan.GitHub.Python.providerLoads`, which parses every
-     provider document (webhook payloads, the observations the inbox stores,
-     and response bodies), now keeps it too, as a WTF-8 `Text` (petrus-json's
-     `KeepLoneSurrogates`).
+     `str`. `Hamsterdan.Python.loads` and `loadsBytes` (petrus-json's
+     `loadsText` and `loadsBytes`), which parse every provider document
+     (webhook payloads, the observations the inbox stores, and response
+     bodies), keep it too, as a WTF-8 `Text`.
    - A lone surrogate in an `issue_comment` body is refused with 400, as the
      reference's `len(text.encode())` raises `UnicodeEncodeError` (a
-     `ValueError`): `Hamsterdan.PyText.utf8EncodeError`.
+     `ValueError`): `Hamsterdan.Python.Text.utf8EncodeError`.
    - Anywhere else the delivery is accepted with 202, and the stored
      observation is written with `ensure_ascii`, which escapes it again as
      `\ud800`, the reference's bytes. `pending` reads it back with the same
@@ -115,12 +116,17 @@ differential corpora compare these byte for byte with the pinned Python (see
      missing `full_name`, …) is accepted here and refused by pydantic.
    - The HTTP corpus covers `repositories` values of `[]`, a string, `null`
      and `[5]`, and both sides agree on every one.
-9. **`urllib.parse.urlsplit`'s NFKC netloc check is not reproduced.**
+9. **`urllib.parse.urlsplit`'s NFKC netloc check: resolved, no longer a
+   difference.**
    - CPython refuses a non-ASCII netloc whose NFKC normalization introduces
-     `/`, `?`, `#`, `@` or `:`. The port does not normalize.
-   - The transport refuses every origin other than `https://api.github.com`
-     anyway, so such a URL is refused either way. Only the error text differs
-     (`ValueError` vs. the origin refusal).
+     `/`, `?`, `#`, `@` or `:`. The transport's `urlsplit` is now
+     hamsterdan-contracts' `Hamsterdan.Python.Url`, which the Pi prompt
+     envelope already used: it makes the check (from the Unicode 16.0
+     table), and quotes the host in the bracketed-host `ValueError` and the
+     `port` error as CPython does.
+   - `hamsterdan-contracts`' `PythonSpec` checks `urlsplit`, `hostname`,
+     `port`, `username`, `password` and `urlunsplit` against the pinned
+     interpreter.
 10. **httpx's IDNA host validation is not reproduced.**
     - `httpx.URL` encodes non-ASCII hosts with IDNA and raises `InvalidURL` for
       invalid labels. `Hamsterdan.GitHub.Url.httpxUrl` admits them unchecked.
@@ -140,7 +146,7 @@ differential corpora compare these byte for byte with the pinned Python (see
 
 12. **The messages of uncaught CPython exceptions are not compared.**
     - The corpora record the class of a `KeyError`, `TypeError`, …
-      (`PythonFault`) and compare it.
+      (`PythonException`) and compare it.
     - The message is CPython's own text, such as `'NoneType' object is not
       subscriptable`. Nothing downstream reads it.
     - Every message Hamsterdan writes itself is compared exactly:

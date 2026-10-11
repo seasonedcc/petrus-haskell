@@ -1,19 +1,41 @@
--- | CPython 3.14's @urllib.parse.urlsplit@ and @urlunsplit@ for @str@
--- input, as @encode_prompt@ uses them, including the @ValueError@ cases
--- (bracketed hosts and NFKC-expanding netlocs) and the @username@ and
--- @password@ properties.
-module Hamsterdan.Agents.Url
+{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE NoFieldSelectors #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+
+-- | CPython 3.14's @urllib.parse@ for @str@ input, as the Hamsterdan
+-- reference uses it: @urlsplit@ (with its @ValueError@ cases: bracketed
+-- hosts and NFKC-expanding netlocs) and @urlunsplit@, the @hostname@,
+-- @port@, @username@ and @password@ properties, and @quote@ and
+-- @unquote@. The Pi prompt envelope and the GitHub transport's origin
+-- check and @Link@ headers share it.
+module Hamsterdan.Python.Url
   ( SplitResult (..)
   , urlsplit
   , urlunsplit
+  , hostname
+  , port
   , username
   , password
+  , quote
+  , unquote
+
+    -- * Shared with other URL parsers
+  , ipv4
+  , ipv6
+  , percent
   ) where
 
 import Control.Monad (forM_, unless, when)
-import Data.Char (isAlpha, isAscii, isAsciiLower, isAsciiUpper, isDigit, isHexDigit)
+import Data.Bits (shiftR, (.&.))
+import Data.ByteString qualified as BS
+import Data.Char (chr, isAlpha, isAscii, isAsciiLower, isAsciiUpper, isDigit, isHexDigit)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
+import Data.Text.Encoding.Error qualified as TEE
+import Data.Word (Word8)
+import Numeric (readHex)
+import Petrus.Json.Python (pythonStrRepr)
 
 -- | @SplitResult(scheme, netloc, path, query, fragment)@.
 data SplitResult = SplitResult
@@ -63,16 +85,16 @@ checkBracketedNetloc :: Text -> Either Text ()
 checkBracketedNetloc location = do
   let hostAndPort = snd (rpartition "@" location)
       (before, bracket) = T.breakOn "[" hostAndPort
-  hostname <-
+  host <-
     if not (T.null bracket)
       then do
         unless (T.null before) $ Left "Invalid IPv6 URL"
-        let (host, closing) = T.breakOn "]" (T.drop 1 bracket)
-            port = T.drop 1 closing
-        when (not (T.null port) && not (":" `T.isPrefixOf` port)) $ Left "Invalid IPv6 URL"
-        pure host
+        let (inside, closing) = T.breakOn "]" (T.drop 1 bracket)
+            afterBracket = T.drop 1 closing
+        when (not (T.null afterBracket) && not (":" `T.isPrefixOf` afterBracket)) $ Left "Invalid IPv6 URL"
+        pure inside
       else pure (fst (T.breakOn ":" hostAndPort))
-  checkBracketedHost hostname
+  checkBracketedHost host
 
 rpartition :: Text -> Text -> (Text, Text)
 rpartition separator value = case T.breakOnEnd separator value of
@@ -81,14 +103,14 @@ rpartition separator value = case T.breakOnEnd separator value of
 
 -- | @_check_bracketed_host(hostname)@.
 checkBracketedHost :: Text -> Either Text ()
-checkBracketedHost hostname
-  | "v" `T.isPrefixOf` hostname =
-      let (digits, rest) = T.span isHexAscii (T.drop 1 hostname)
+checkBracketedHost host
+  | "v" `T.isPrefixOf` host =
+      let (digits, rest) = T.span isHexAscii (T.drop 1 host)
        in unless (not (T.null digits) && "." `T.isPrefixOf` rest && T.length rest > 1 && not (T.elem '\n' (T.drop 1 rest))) $
             Left "IPvFuture address is invalid"
-  | ipv4 hostname = Left "An IPv4 address cannot be in brackets"
-  | ipv6 hostname = Right ()
-  | otherwise = Left ("'" <> hostname <> "' does not appear to be an IPv4 or IPv6 address")
+  | ipv4 host = Left "An IPv4 address cannot be in brackets"
+  | ipv6 host = Right ()
+  | otherwise = Left (pythonStrRepr host <> " does not appear to be an IPv4 or IPv6 address")
   where
     isHexAscii c = isAscii c && isHexDigit c
 
@@ -217,6 +239,38 @@ usesNetlocSchemes =
   , "itms-services"
   ]
 
+-- | The @(hostname, port)@ text of @_hostinfo@.
+hostinfo :: SplitResult -> (Text, Maybe Text)
+hostinfo r =
+  let info = snd (rpartition "@" r.netloc)
+   in case T.breakOn "[" info of
+        (_, after)
+          | not (T.null after) ->
+              let (host, rest) = T.breakOn "]" (T.drop 1 after)
+               in (host, nonEmpty (T.drop 1 (snd (T.breakOn ":" (T.drop 1 rest)))))
+        _ ->
+          let (host, rest) = T.breakOn ":" info
+           in (host, nonEmpty (T.drop 1 rest))
+  where
+    nonEmpty t = if T.null t then Nothing else Just t
+
+-- | @SplitResult.hostname@: lowercased (a scoped IPv6 address keeps its
+-- zone as written), 'Nothing' when empty.
+hostname :: SplitResult -> Maybe Text
+hostname r = case fst (hostinfo r) of
+  "" -> Nothing
+  host -> let (address, zone) = T.breakOn "%" host in Just (T.toLower address <> zone)
+
+-- | @SplitResult.port@: 'Left' is the @ValueError@ message.
+port :: SplitResult -> Either Text (Maybe Integer)
+port r = case snd (hostinfo r) of
+  Nothing -> Right Nothing
+  Just text
+    | T.all (\c -> c >= '0' && c <= '9') text ->
+        let value = read (T.unpack text) :: Integer
+         in if value <= 65535 then Right (Just value) else Left "Port out of range 0-65535"
+    | otherwise -> Left ("Port could not be cast to integer value as " <> pythonStrRepr text)
+
 -- | @SplitResult.username@ ('Nothing' is @None@).
 username :: SplitResult -> Maybe Text
 username r = case T.breakOnEnd "@" r.netloc of
@@ -231,3 +285,41 @@ password r = case T.breakOnEnd "@" r.netloc of
         let (_, rest) = T.breakOn ":" (T.dropEnd 1 before)
          in if T.null rest then Nothing else Just (T.drop 1 rest)
   _ -> Nothing
+
+-- | @urllib.parse.quote(value, safe=safe)@.
+quote :: Text -> Text -> Text
+quote safe value = TE.decodeLatin1 (BS.concatMap escape (TE.encodeUtf8 value))
+  where
+    escape byte
+      | alwaysSafe byte || (byte < 0x80 && T.any (== chr (fromIntegral byte)) safe) = BS.singleton byte
+      | otherwise = percent byte
+    alwaysSafe byte =
+      let c = chr (fromIntegral byte)
+       in isAsciiUpper c || isAsciiLower c || isDigit c || c `elem` ['_', '.', '-', '~']
+
+percent :: Word8 -> BS.ByteString
+percent byte = BS.pack [37, hexDigit (byte `shiftR` 4), hexDigit (byte .&. 15)]
+  where
+    hexDigit n = if n < 10 then 48 + n else 55 + n
+
+-- | @urllib.parse.unquote(value)@: UTF-8 with replacement.
+unquote :: Text -> Text
+unquote value
+  | not (T.any (== '%') value) = value
+  | otherwise = T.concat (map decodeRun (T.groupBy (\a b -> (a < '\x80') == (b < '\x80')) value))
+  where
+    decodeRun run
+      | T.all (< '\x80') run = TE.decodeUtf8With TEE.lenientDecode (unquoteBytes (TE.encodeUtf8 run))
+      | otherwise = run
+
+unquoteBytes :: BS.ByteString -> BS.ByteString
+unquoteBytes bytes = case BS.elemIndex 37 bytes of
+  Nothing -> bytes
+  Just index ->
+    let (before, rest) = BS.splitAt index bytes
+        hex = BS.take 2 (BS.drop 1 rest)
+     in if BS.length hex == 2 && BS.all (isHexDigit . chr . fromIntegral) hex
+          then case readHex (map (chr . fromIntegral) (BS.unpack hex)) of
+            [(n, "")] -> before <> BS.singleton (fromIntegral (n :: Int)) <> unquoteBytes (BS.drop 3 rest)
+            _ -> before <> BS.take 1 rest <> unquoteBytes (BS.drop 1 rest)
+          else before <> BS.take 1 rest <> unquoteBytes (BS.drop 1 rest)

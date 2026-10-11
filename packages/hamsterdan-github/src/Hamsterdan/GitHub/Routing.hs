@@ -28,7 +28,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.GitHub.Config (AccountConfig (..))
 import Hamsterdan.GitHub.Models (InstallationInventory (..))
-import Hamsterdan.GitHub.Python (PythonFault (..), isAscii, isPrintable, strip)
+import Hamsterdan.Python (PythonException, isAscii, isPrintable, pythonError, strip)
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Db
 import Petrus.Json (Json (..), jsonTypeName)
@@ -138,9 +138,9 @@ installation registry action installationValue accountValue =
 
 -- | CPython 3.14's @TypeError@ for a list or object action tested for
 -- membership in a set literal.
-unhashableAction :: Json -> PythonFault
+unhashableAction :: Json -> PythonException
 unhashableAction value =
-  PythonFault "TypeError" ("cannot use '" <> name <> "' as a set element (unhashable type: '" <> name <> "')")
+  pythonError "TypeError" ("cannot use '" <> name <> "' as a set element (unhashable type: '" <> name <> "')")
   where
     name = jsonTypeName value
 

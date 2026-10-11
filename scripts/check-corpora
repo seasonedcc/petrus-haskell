@@ -349,11 +349,6 @@ GENERATORS: List[Generator] = [
             "packages/hamsterdan-contracts/test/Generators/Readiness.hs",
         ],
     ),
-    hamsterdan(
-        "hamsterdan-contracts/gen_printable",
-        "packages/hamsterdan-contracts/scripts/gen_printable.py",
-        ["packages/hamsterdan-contracts/src/Hamsterdan/PyLiteral/Printable.hs"],
-    ),
     hamsterdan("hamsterdan-github/gen_config_corpus", "packages/hamsterdan-github/scripts/gen_config_corpus.py", ["packages/hamsterdan-github/test/corpus/config.jsonl"]),
     hamsterdan("hamsterdan-github/gen_effects_corpus", "packages/hamsterdan-github/scripts/gen_effects_corpus.py", ["packages/hamsterdan-github/test/corpus/effects.jsonl"]),
     hamsterdan(

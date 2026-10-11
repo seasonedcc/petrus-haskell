@@ -4,7 +4,9 @@ module BoardCorpusSpec (spec) where
 
 import Data.Text (Text)
 import Corpus
+import Data.Bifunctor (first)
 import Hamsterdan.PyLiteral (repr)
+import Hamsterdan.Python (pythonFailureText)
 import Hamsterdan.Readiness.NetV5.Board (gateFactsValue, renderBoard)
 import Petrus.Json (Json (..))
 import Test.Hspec
@@ -30,9 +32,9 @@ spec = describe "board corpus" $ do
           , got /= want
           ]
   it ("render_board matches every row (" <> show (length rows) <> ")") $
-    check "board" renderBoard
+    check "board" (first pythonFailureText . renderBoard)
   it ("repr(gate_facts) matches every row (" <> show (length rows) <> ")") $
-    check "facts" (fmap repr . gateFactsValue)
+    check "facts" (either (Left . pythonFailureText) (Right . repr) . gateFactsValue)
   it "covers refusals as well as renders" $ do
     let refusals = [() | row <- rows, Just _ <- [member "board_error" row]]
     length refusals `shouldSatisfy` (> 0)

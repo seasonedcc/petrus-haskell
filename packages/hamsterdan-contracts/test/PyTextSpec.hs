@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedRecordDot #-}
+
 -- | 'utf8DecodeError' and 'utf8EncodeError' against CPython 3.14.6: each
 -- expected text is the @str()@ of the exception the pinned interpreter
 -- raised (and 'Nothing' where it succeeded).
@@ -13,7 +15,8 @@ import Data.Text (Text)
 import Data.Text.Foreign qualified as TF
 import Data.Word (Word8)
 import Foreign.Ptr (castPtr)
-import Hamsterdan.PyText (PythonFault (..), utf8DecodeError, utf8EncodeError)
+import Hamsterdan.Python.Exception (PythonException (..), pythonExceptionStr)
+import Hamsterdan.Python.Text (utf8DecodeError, utf8EncodeError)
 import Hamsterdan.Sqlite (SQLData (..))
 import Hamsterdan.Sqlite qualified as Db
 import Test.Hspec
@@ -75,10 +78,10 @@ wtf8 points = BU.unsafeUseAsCStringLen bytes (\(pointer, size) -> TF.fromPtr (ca
 
 spec :: Spec
 spec = do
-  describe "Hamsterdan.PyText.utf8DecodeError (CPython's UnicodeDecodeError text)" $
+  describe "Hamsterdan.Python.Text.utf8DecodeError (CPython's UnicodeDecodeError text)" $
     forM_ decoding $ \(bytes, expected) ->
       it (show bytes) $ utf8DecodeError bytes `shouldBe` expected
-  describe "Hamsterdan.PyText.utf8EncodeError (CPython's UnicodeEncodeError text)" $
+  describe "Hamsterdan.Python.Text.utf8EncodeError (CPython's UnicodeEncodeError text)" $
     forM_ encoding $ \(points, expected) ->
       it (show points) $ (utf8EncodeError <$> wtf8 points) `shouldReturn` expected
   describe "Hamsterdan.Sqlite binds as CPython's sqlite3 does" $
@@ -86,4 +89,4 @@ spec = do
       value <- wtf8 points
       bracket (Db.open ":memory:") Db.close $ \connection -> case expected of
         Nothing -> Db.query connection "SELECT length(?)" [SQLText value] `shouldReturn` [[SQLInteger (fromIntegral (length points))]]
-        Just failure -> Db.query connection "SELECT ?" [SQLText value] `shouldThrow` (== PythonFault "UnicodeEncodeError" failure)
+        Just failure -> Db.query connection "SELECT ?" [SQLText value] `shouldThrow` (\e -> e.name == "UnicodeEncodeError" && pythonExceptionStr e == failure)

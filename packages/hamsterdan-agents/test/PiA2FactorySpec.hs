@@ -12,13 +12,12 @@ import Control.Monad (when)
 import Data.ByteArray qualified as BA
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.ByteString.Base16 qualified as B16
 import Data.IORef
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Crypto.Hash.SHA256 qualified as SHA256
+import Hamsterdan.Python.Hashlib (sha256Hex)
 import GHC.Clock (getMonotonicTime)
 import Hamsterdan.Agents.Pi
 import Hamsterdan.Agents.Pi.Doubles (piPackageFixture)
@@ -53,8 +52,6 @@ withTmp = withSystemTempDirectory "pi-a2-factory"
 trueCommand :: IO Text
 trueCommand = doesFileExist "/bin/true" >>= \exists -> pure (if exists then "/bin/true" else "/usr/bin/true")
 
-sha256Hex :: ByteString -> Text
-sha256Hex = TE.decodeLatin1 . B16.encode . SHA256.hash
 
 readPolicy, codePolicy :: PiA2RuntimePolicy
 readPolicy = either (error . show) id (mkPiA2RuntimePolicy [WorkspaceRead, WorkspaceSearch] [] 8 [])

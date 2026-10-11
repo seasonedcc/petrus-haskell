@@ -52,7 +52,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Calendar (fromGregorianValid, toModifiedJulianDay)
 import Hamsterdan.GitHub.Http (ClientError (..), Headers, runtimeFailure, valueFailure)
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.Python qualified as Py
 
 -- | A request as hishel sees it: the method, @str(url)@ and the request
 -- headers (lowercase names, one value each).

@@ -63,8 +63,8 @@ import Foreign.C.Types (CInt (..), CULong (..))
 import Foreign.Marshal.Alloc (allocaBytes)
 import Foreign.Ptr (Ptr)
 import Foreign.Storable (peekElemOff)
-import Hamsterdan.PyText qualified as Py
-import Hamsterdan.PyLiteral (strRepr)
+import Hamsterdan.Python.Text (strRepr)
+import Hamsterdan.Python.Text qualified as Py
 
 -- ---------------------------------------------------------------------------
 -- Declarations
@@ -801,11 +801,10 @@ wrapChunks width = go []
 -- ---------------------------------------------------------------------------
 -- Python semantics
 
--- | @int(text)@ (base 10), with CPython's 4300-digit conversion limit.
+-- | @int(text)@ (base 10), with CPython's 4300-digit conversion limit;
+-- 'Nothing' where it raises @ValueError@.
 pythonInt :: Text -> Maybe Integer
-pythonInt text = do
-  value <- Py.pyIntBase 10 text
-  if T.length (T.filter (\c -> c /= '_' && not (Py.isSpace c) && c /= '+' && c /= '-') text) > 4300 then Nothing else Just value
+pythonInt = either (const Nothing) Just . Py.intText
 
 -- | @str(pathlib.PurePosixPath(text))@: repeated slashes collapsed, @.@
 -- components dropped, a trailing slash removed, @//@ kept as a root, and

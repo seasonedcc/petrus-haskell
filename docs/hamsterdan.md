@@ -1301,7 +1301,7 @@ deterministic. Only tier C touches real GitHub.
 The packages follow the upstream architecture so the import rules become
 package boundaries (checked by `scripts/lint-hamsterdan-architecture`; the
 CPython `str` and `sqlite3` semantics several siblings share live in
-`hamsterdan-contracts`, as `Hamsterdan.PyText` and `Hamsterdan.Sqlite`). Names follow the existing `petrus-*` convention.
+`hamsterdan-contracts`, as `Hamsterdan.Python.*` and `Hamsterdan.Sqlite`). Names follow the existing `petrus-*` convention.
 
 | # | Package | Ports | Petrus components needed first | Can start |
 | --- | --- | --- | --- | --- |

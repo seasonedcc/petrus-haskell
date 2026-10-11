@@ -32,10 +32,8 @@ module Hamsterdan.Agents.Pi.Doubles
   ) where
 
 import Control.Exception (ErrorCall (..), throw, throwIO)
-import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.ByteString.Base16 qualified as Base16
 import Data.IORef
 import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
@@ -52,6 +50,7 @@ import Petrus.Agenticus.Runtime.Pi (piAiVersion, piSdkVersion)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.Posix.Files (setFileMode)
+import Hamsterdan.Python.Hashlib (sha256Hex)
 
 -- | @URL@.
 testUrl :: Text
@@ -148,7 +147,7 @@ fakeProvider w = PiWorkspaceProvider $ \kind _ _ operationId body -> do
   body
     PreparedPiWorkspace
       { archive = testWorkspaceArchive
-      , digest = TE.decodeUtf8 (Base16.encode (SHA256.hash testWorkspaceArchive))
+      , digest = sha256Hex testWorkspaceArchive
       , correlation = "synthetic-workspace"
       , policy = readPolicy
       , reconcile = \archive -> do

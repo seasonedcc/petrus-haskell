@@ -37,7 +37,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.GitHub.Python (casefold, isAscii, isAsciiDecimal, isPrintable, strip)
+import Hamsterdan.Python (casefold, isAscii, isAsciiDecimal, isPrintable, strip)
 import System.Posix.Files qualified as Posix
 import System.Posix.IO qualified as PosixIO
 import System.Posix.IO.ByteString qualified as PosixBS

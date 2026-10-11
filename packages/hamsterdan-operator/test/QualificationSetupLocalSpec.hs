@@ -13,7 +13,7 @@ import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Export.Python (PV (..), PyError (..))
+import Hamsterdan.Python.Object (PV (..), PyError (..))
 import Hamsterdan.Host.PublicationQualification
 import Hamsterdan.Operator (SetupCompleted (..), qualificationSetup)
 import Support (at, encoded)

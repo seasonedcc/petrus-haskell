@@ -23,7 +23,7 @@ import Control.Monad (unless, void, when)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import Hamsterdan.GitHub.Python (utf8Length)
+import Hamsterdan.Python (utf8Length)
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Petrus.Motus.Worker (RuntimeError (..), ValueError (..))

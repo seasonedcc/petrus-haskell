@@ -5,6 +5,7 @@ module BoardSpec (spec) where
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.PyLiteral (PyValue (..), repr)
+import Hamsterdan.Python (pythonFailureText)
 import Hamsterdan.Readiness.NetV5.Board (gateFacts, renderBoard)
 import Test.Hspec
 
@@ -49,7 +50,7 @@ checks :: Text -> Text
 checks status = entry "checks" [("status", s status)]
 
 render :: [Text] -> IO Text
-render entries = either (fail . T.unpack) pure (renderBoard entries)
+render entries = either (fail . T.unpack . pythonFailureText) pure (renderBoard entries)
 
 row :: Text -> Text -> IO Text
 row board gate = case filter (T.isPrefixOf ("| " <> gate <> " |")) (T.lines board) of
@@ -77,7 +78,7 @@ pendingPush = entry "mutation_pending" [("op", s "repair"), ("op_key", s "k1")]
 settledPush = entry "mutation_settled" [("op", s "repair"), ("op_key", s "k1")]
 
 kindsOf :: [Text] -> IO [(Text, [(PyValue, PyValue)])]
-kindsOf entries = either (fail . T.unpack) pure (gateFacts entries)
+kindsOf entries = either (fail . T.unpack . pythonFailureText) pure (gateFacts entries)
 
 spec :: Spec
 spec = describe "board" $ do

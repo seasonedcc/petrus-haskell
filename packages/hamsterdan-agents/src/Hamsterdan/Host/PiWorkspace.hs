@@ -31,13 +31,10 @@ module Hamsterdan.Host.PiWorkspace
 
 import Control.Exception (IOException, SomeAsyncException, SomeException, fromException, mask, onException, throw, throwIO, try)
 import Control.Monad (forM, forM_, unless, when)
-import Crypto.Hash.SHA256 qualified as SHA256
-import Hamsterdan.Host.Random (urandom)
 import Data.Bits ((.&.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.ByteString.Base16 qualified as B16
 import Data.ByteString.Char8 qualified as BC
 import Data.List (sort)
 import Data.Maybe (fromMaybe, isJust)
@@ -47,8 +44,10 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Agents.Pi (PiWorkspaceError (..), PiWorkspaceProvider (..), PreparedPiWorkspace (..), PromptKind (..))
 import Hamsterdan.Agents.Protocol
-import Hamsterdan.PyText (PythonFault (..), utf8DecodeError)
-import Hamsterdan.PyText qualified as Py
+import Hamsterdan.Python.Exception (raise)
+import Hamsterdan.Python.Hashlib (sha256Hex)
+import Hamsterdan.Python.Text (utf8Decode)
+import Hamsterdan.Python.Text qualified as Py
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..))
 import Petrus.Agenticus.Runtime.PiA2Host (PiA2RuntimePolicy, mkPiA2RuntimePolicy)
 import Petrus.Motus.Execution.Archive (workspaceArchive)
@@ -67,6 +66,7 @@ import System.Posix.User (getEffectiveUserID)
 import System.Posix.Types (FileMode)
 import System.Process.Typed (closed, proc, readProcess, setEnv, setStdin)
 import System.Timeout (timeout)
+import Petrus.Json.Python (randomBytes)
 
 -- ---------------------------------------------------------------------------
 -- Limits
@@ -142,7 +142,7 @@ makeOperationRoot root = go (100 :: Int)
   where
     alphabet = "abcdefghijklmnopqrstuvwxyz0123456789_" :: String
     go attempts = do
-      random <- urandom 8
+      random <- randomBytes 8
       let path = root </> ("operation-" <> [alphabet !! (fromIntegral byte `mod` length alphabet) | byte <- BS.unpack random])
       created <- try (PosixDir.createDirectory path 0o700)
       case created of
@@ -158,8 +158,6 @@ requestFacts = \case
   AgentConversation r -> (r.repository, r.pullRequest, r.epoch, r.head, r.base)
   AgentCoding r -> (r.repository, r.pullRequest, r.epoch, r.head, r.base)
 
-sha256Hex :: ByteString -> Text
-sha256Hex = TE.decodeLatin1 . B16.encode . SHA256.hash
 
 -- | @GitPiWorkspaceProvider.open(kind, repository_url, request, operation_id)@.
 openWorkspace :: GitPiWorkspaceProvider -> PromptKind -> Text -> AgentRequest -> Text -> (PreparedPiWorkspace -> IO a) -> IO a
@@ -266,7 +264,7 @@ reviewInputs checkout destination request = do
           Left _ -> [path <> "\n", "[binary file; no numbered text]\n"]
           Right text ->
             (path <> "\n")
-              : [T.pack (show line) <> ": " <> content <> "\n" | (line, content) <- zip [1 :: Int ..] (splitLines (universalNewlines text))]
+              : [T.pack (show line) <> ": " <> content <> "\n" | (line, content) <- zip [1 :: Int ..] (Py.splitlines (universalNewlines text))]
   forM_ (zip paths [patch, T.concat numbered]) $ \(path, content) -> do
     let encoded = TE.encodeUtf8 content
     when (BS.length encoded > maxPatchBytes) $ failWith "review input exceeds its bound"
@@ -488,8 +486,7 @@ runGit root arguments extra = do
 gitText :: Maybe FilePath -> [Text] -> Maybe [(String, String)] -> IO Text
 gitText root arguments extra = do
   (code, stdout, stderr) <- runGit root arguments extra
-  forM_ [stdout, stderr] $ \bytes -> forM_ (utf8DecodeError bytes) $ \message ->
-    throwIO (PythonFault "UnicodeDecodeError" message)
+  forM_ [stdout, stderr] (either raise (const (pure ())) . utf8Decode)
   case code of
     ExitSuccess -> pure (universalNewlines (TE.decodeUtf8 stdout))
     _ -> gitFailed
@@ -504,18 +501,3 @@ gitPaths root arguments = do
 universalNewlines :: Text -> Text
 universalNewlines = T.replace "\r" "\n" . T.replace "\r\n" "\n"
 
--- | @str.splitlines()@.
-splitLines :: Text -> [Text]
-splitLines text
-  | T.null text = []
-  | otherwise = go text
-  where
-    go s
-      | T.null s = []
-      | otherwise =
-          let (line, rest) = T.break boundary s
-           in case T.uncons rest of
-                Nothing -> [line]
-                Just ('\r', more) | Just ('\n', after) <- T.uncons more -> line : go after
-                Just (_, after) -> line : go after
-    boundary c = c `elem` ("\n\r\v\f\x1c\x1d\x1e\x85\x2028\x2029" :: String)

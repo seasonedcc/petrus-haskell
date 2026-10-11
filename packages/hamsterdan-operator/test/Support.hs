@@ -36,7 +36,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Hamsterdan.Export.Python (PV (..), pyEq)
+import Hamsterdan.Python.Object (PV (..), pyEq)
 import Hamsterdan.Operator
 import Hamsterdan.Operator.Python (dumpsPlain)
 import Test.Hspec

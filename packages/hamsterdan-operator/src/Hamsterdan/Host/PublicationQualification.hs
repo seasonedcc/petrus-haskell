@@ -76,7 +76,7 @@ import Data.Word (Word64)
 import Hamsterdan.Agents.Protocol (AgentCleanupCategory, AgentResultCategory)
 import Hamsterdan.Contracts.Codec (Contract (..), encode)
 import Hamsterdan.Contracts.Readiness (ChangeResult (..), RepairResult (..))
-import Hamsterdan.Export.Python (PV (..))
+import Hamsterdan.Python.Object (PV (..))
 import Hamsterdan.Host.GitPublish (GitPublishError (..), PublicationCategory, categoryName)
 import Hamsterdan.Operator.Posix (Stat (..), effectiveUid, isDirectory, isRegular, isSymlink, pathName, pathParent, permissionBits)
 import Hamsterdan.Operator.Posix qualified as Posix

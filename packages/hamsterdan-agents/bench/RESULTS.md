@@ -65,8 +65,8 @@ Two rows were once slower in Haskell:
 
 - **Sealed key** measured 131 µs at first, against Python's 43 µs. crypton's
   `getRandomBytes` in `IO` opens `/dev/random` and `/dev/urandom` on every
-  call, and every seal draws a fresh nonce. `Hamsterdan.Host.Random.urandom`
-  calls `getentropy(2)`, as `os.urandom` does. Every key load also encoded
+  call, and every seal draws a fresh nonce. petrus-json's `randomBytes`
+  (then `Hamsterdan.Host.Random.urandom`) calls `getentropy(2)`, as `os.urandom` does. Every key load also encoded
   the key path from a `FilePath` for each POSIX call; the store now encodes
   its root once and stats and opens the key by its raw path. On both sides
   most of what remains is macOS's `open(2)`.

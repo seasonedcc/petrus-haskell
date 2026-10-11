@@ -1,5 +1,5 @@
 -- | The CPython operations the operator applies to provider JSON and
--- command output, beyond those "Hamsterdan.Export.Python" already spells:
+-- command output, beyond those "Hamsterdan.Python.Object" already spells:
 -- @dict.get(key, default)@, @value[key]@, @value[:n]@, set membership,
 -- @urllib.parse.quote@, @shlex.quote@, and text-mode decoding.
 module Hamsterdan.Operator.Python
@@ -28,16 +28,15 @@ module Hamsterdan.Operator.Python
   ) where
 
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
-import Data.Char (chr, isAsciiLower, isAsciiUpper, isDigit, toUpper)
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Export.Python (PV (..), PyError (..), hashCheck, loadsText, loadsValue, pyEq, toJson, typeName)
-import Hamsterdan.PyText qualified as Py
+import Hamsterdan.Python.Object (PV (..), PyError (..), hashCheck, loadsText, loadsValue, pyEq, toJson, typeName)
+import Hamsterdan.Python.Text qualified as Py
+import Hamsterdan.Python.Url qualified as Url
 import Hamsterdan.Operator.FastJson (fastLoads)
-import Hamsterdan.PyLiteral (strRepr)
-import Numeric (showHex)
+import Hamsterdan.Python.Text (strRepr)
 import Petrus.EngineFile.PyText (decodeText)
 import Petrus.EngineFile.Validate (PyException (..))
 import Petrus.Json (EncodeError (..), defaultDumps, dumps, encodeErrorMessage)
@@ -90,12 +89,7 @@ dictKeys = \case
 
 -- | @urllib.parse.quote(text, safe="")@.
 urlQuote :: Text -> Text
-urlQuote = T.concat . map escape . BS.unpack . TE.encodeUtf8
-  where
-    escape w
-      | unreserved (chr (fromIntegral w)) = T.singleton (chr (fromIntegral w))
-      | otherwise = "%" <> T.justifyRight 2 '0' (T.map toUpper (T.pack (showHex w "")))
-    unreserved c = c < '\x80' && (isAsciiLower c || isAsciiUpper c || isDigit c || c `elem` ("_.-~" :: String))
+urlQuote = Url.quote ""
 
 -- | @shlex.quote(text)@.
 shlexQuote :: Text -> Text

@@ -78,7 +78,7 @@ import Hamsterdan.Contracts.ReadinessV5
   , TimerCommandApplied (..)
   , TimerDue (..)
   )
-import Hamsterdan.Host.Python (RuntimeError (..), TypeError (..), ValueError (..), dumpsCompactSorted, mkdirPrivate, raiseFailureText, sha256Hex, sha256HexText)
+import Hamsterdan.Host.Python (RuntimeError (..), TypeError (..), ValueError (..), dumpsCompactSorted, mkdirPrivate, raiseFailureText, raisePython, sha256Hex, sha256HexText)
 import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Ingress (IngressEntry (..), ingressFrom)
 import Hamsterdan.Host.V5.Timers (TimerFact, timerHistory, timerValue)
@@ -598,7 +598,7 @@ conversationContext runtime = do
           String entry -> pure entry
           _ -> throwIO (TypeError "V5 board entries are malformed")
         _ -> throwIO (PythonException "KeyError" [PyStr "entries"])
-      view <- either raiseFailureText pure (gateFacts entries)
+      view <- either raisePython pure (gateFacts entries)
       forM view $ \(kind, body) -> do
         bodyJson <- maybe (throwIO (TypeError "V5 board fact is not JSON")) pure (toJson (PyDict body))
         pure (Object [("kind", String kind), ("body", bodyJson)])

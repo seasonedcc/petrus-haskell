@@ -52,7 +52,6 @@ import Hamsterdan.Cli.Argparse
   , option
   , parseArgs
   , positional
-  , pythonInt
   , terminalColumns
   )
 import Hamsterdan.Host.Agenticus (AgentCompositionError (..))
@@ -63,8 +62,8 @@ import Hamsterdan.GitHub.Client (AppCredentials (..), ClientOptions, defaultClie
 import Hamsterdan.GitHub.Config (ConfigurationError (..), HostConfig (..), fromEnvironment, revealSecret)
 import Hamsterdan.GitHub.Http (ClientError (..), ClientErrorKind (..))
 import Hamsterdan.GitHub.Models (ContractRefused (..), GitHubBoundaryError (..), InvalidRequest (..))
-import Hamsterdan.GitHub.Python (PythonFault (..), isAscii, isPrintable, utf8Length)
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.Python (intText, isAscii, isPrintable, pythonExceptionStr, splitlines, strRepr, utf8Length)
+import Hamsterdan.Python qualified as Py
 import Hamsterdan.GitHub.Webhooks (Failure (..))
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Api (ServeOptions (..), serve)
@@ -80,7 +79,6 @@ import Hamsterdan.Host.Service
   , serviceOptions
   )
 import Hamsterdan.Host.Service qualified as Service
-import Hamsterdan.PyLiteral (strRepr)
 import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
 import Petrus.Json (Json (..), defaultDumps, dumpsText, parseJson, pythonLoads)
 import Petrus.Json qualified as Json
@@ -277,18 +275,7 @@ identifier value message = case value of
     | 0 < utf8Length text && utf8Length text <= maxIdentifierBytes && isAscii text && isPrintable text -> pure text
   _ -> throwIO (ValueError message)
 
--- | @str.splitlines()@.
-splitLines :: Text -> [Text]
-splitLines text
-  | T.null text = []
-  | otherwise =
-      let (line, rest) = T.break boundary text
-       in line : case T.uncons rest of
-            Nothing -> []
-            Just ('\r', more) | Just ('\n', after) <- T.uncons more -> splitLines after
-            Just (_, more) -> splitLines more
-  where
-    boundary c = c `elem` ("\n\r\v\f\x1c\x1d\x1e\x85\x2028\x2029" :: String)
+
 
 -- | A History instant: an @int@ or a finite @float@ (never a @bool@).
 data Instant = IntInstant Integer | FloatInstant Double
@@ -320,7 +307,7 @@ inspectInstance statePath installationId repositoryId pullRequest = do
       decode bytes = either (const (throwIO unsafe)) pure (TE.decodeUtf8' bytes)
       loads text = either (const (throwIO unsafe)) pure (parseJson pythonLoads (TE.encodeUtf8 text))
   boundValue <- decode boundBytes >>= loads
-  records <- decode raw >>= mapM loads . splitLines
+  records <- decode raw >>= mapM loads . splitlines
   bound <- either (const (throwIO (ValueError "Instance state binding is malformed"))) pure (parseInstanceBinding boundValue)
   let wellFormed = \case
         Object members | Just (String _) <- lookup' "record" members -> True
@@ -516,12 +503,9 @@ handledMessage e
   | Just (failure :: ClientError) <- fromException e
   , failure.kind `elem` [ValueKind, RuntimeKind] =
       Just failure.detail
-  | Just (fault :: PythonFault) <- fromException e
-  , fault.pythonClass == "ValueError" =
-      Just fault.pythonDetail
-  | Just (PythonException name args) <- fromException e
+  | Just failure@(PythonException name _) <- fromException e
   , name `elem` ["ValueError", "RuntimeError", "UnicodeDecodeError", "JSONDecodeError"] =
-      Just (case args of [PyStr m] -> m; _ -> "")
+      Just (pythonExceptionStr failure)
   | otherwise = Nothing
 
 -- | @main()@ with @sys.argv[1:]@; the exit status.
@@ -534,9 +518,9 @@ runCli env argv = do
         pure (ExitFailure 1)
       hostDefault = maybe "127.0.0.1" T.pack (Map.lookup "HAMSTERDAN_HOST" env.environment)
       portText = maybe "8000" T.pack (Map.lookup "HAMSTERDAN_PORT" env.environment)
-  case pythonInt portText of
-    Nothing -> escaped (toException (PythonException "ValueError" [PyStr ("invalid literal for int() with base 10: " <> strRepr portText)]))
-    Just portDefault -> do
+  case intText portText of
+    Left failure -> escaped (toException failure)
+    Right portDefault -> do
       let parser = hostParser hostDefault portDefault
           -- @parser().error(message)@.
           usageError message = do
@@ -670,7 +654,7 @@ runCli env argv = do
 -- ending in this line).
 uncaughtText :: SomeException -> Text
 uncaughtText e = case fromException e of
-  Just (PythonException name args) -> name <> ": " <> (case args of [PyStr m] -> m; _ -> "") <> "\n"
+  Just failure@(PythonException name _) -> name <> (case pythonExceptionStr failure of "" -> ""; message -> ": " <> message) <> "\n"
   _ -> case fromException e of
     Just (RuntimeError m) -> "RuntimeError: " <> m <> "\n"
     _ -> case fromException e of

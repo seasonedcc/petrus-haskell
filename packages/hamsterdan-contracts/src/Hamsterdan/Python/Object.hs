@@ -1,3 +1,7 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NoFieldSelectors #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+
 -- | The Python objects the exporter handles, and the built-in operations
 -- the reference applies to them with CPython 3.14's semantics and
 -- exception texts.
@@ -9,16 +13,21 @@
 -- reference raises, these operations raise the same exception class with
 -- the same text ('PyError'), which the command line prints as the last
 -- line of the reference's traceback.
-module Hamsterdan.Export.Python
+--
+-- The exporter and the operator both read untrusted values this way; the
+-- model lives here, beside the rest of the CPython layer, so neither
+-- depends on the other for it.
+module Hamsterdan.Python.Object
   ( -- * Values
     PV (..)
   , typeName
-  , fromValue
+  , fromJson
   , forceValue
   , toJson
 
     -- * Exceptions
   , PyError (..)
+  , fromPython
   , raise
   , raiseEither
   , typeError
@@ -53,21 +62,18 @@ module Hamsterdan.Export.Python
 import Control.Exception (Exception, throwIO)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Char (GeneralCategory (..), chr, generalCategory, isLowerCase, isUpperCase, ord)
+import Data.Char (GeneralCategory (..), generalCategory, isLowerCase, isUpperCase)
 import Data.List (find, sortOn)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Word (Word8)
-import Hamsterdan.GitHub.Python qualified as Py
-import Hamsterdan.PyLiteral (strRepr)
-import Numeric (showHex)
-import Petrus.EngineFile.PyJson (PyJsonError (..), pyLoads, renderPyJsonError)
-import Petrus.EngineFile.PyText (decodeText)
-import Petrus.EngineFile.Validate (PyException (..))
-import Petrus.EngineFile.Value (Value (..))
-import Petrus.Json (EncodeError (..), EncodeOptions (..), Json (..), defaultDumps, dumps, encodeErrorMessage, pythonFloatRepr)
-import Petrus.Json.Limits (intStrDigitsError, maxIntStrDigits)
+import Hamsterdan.Python.Exception (PythonException (..), pythonExceptionStr)
+import Hamsterdan.Python.Text (strRepr)
+import Hamsterdan.Python.Text qualified as Py
+import Petrus.Json (EncodeError (..), EncodeOptions (..), Json (..), defaultDumps, dumps, encodeErrorMessage)
+import Petrus.Json.Python (loadsUtf8, pythonBytesRepr, pythonDoubleRepr)
+import Petrus.Json.Python qualified as Python
+import Petrus.Json.Wtf8 (holdsLoneSurrogate)
 
 -- ---------------------------------------------------------------------------
 -- Values
@@ -98,18 +104,17 @@ typeName = \case
   PList _ -> "list"
   PDict _ -> "dict"
 
--- | The Python object @json.loads@ builds from a parsed value (a repeated
--- member keeps its first position and takes its last value: @pyLoads@
--- has already settled that).
-fromValue :: Value -> PV
-fromValue = \case
-  VNull -> PNone
-  VBool b -> PBool b
-  VInt i _ -> PInt i
-  VFloat d -> PFloat d
-  VStr s -> PStr s
-  VList items -> PList (map fromValue items)
-  VDict members -> PDict [(k, fromValue v) | (k, v) <- members]
+-- | The Python object @json.loads@ builds (a repeated member keeps its
+-- first position and takes its last value: the parser has settled that).
+fromJson :: Json -> PV
+fromJson = \case
+  Null -> PNone
+  Bool b -> PBool b
+  Int i -> PInt i
+  Float d -> PFloat d
+  String s -> PStr s
+  Array items -> PList (map fromJson items)
+  Object members -> PDict [(k, fromJson v) | (k, v) <- members]
 
 -- | Evaluate a value completely.
 forceValue :: PV -> ()
@@ -167,6 +172,16 @@ typeError = PyError "TypeError"
 valueError :: Text -> PyError
 valueError = PyError "ValueError"
 
+-- | The 'PyError' of an exception the shared CPython layer
+-- ("Hamsterdan.Python") raises, its class qualified as the traceback
+-- prints it.
+fromPython :: PythonException -> PyError
+fromPython failure@(PythonException name _) = PyError (qualified name) (pythonExceptionStr failure)
+  where
+    qualified = \case
+      "JSONDecodeError" -> "json.decoder.JSONDecodeError"
+      other -> other
+
 -- | @KeyError(key)@, whose @str@ is the key's @repr@.
 keyError :: Text -> PyError
 keyError key = PyError "KeyError" (strRepr key)
@@ -192,32 +207,15 @@ pyRepr = \case
   PBool True -> "True"
   PBool False -> "False"
   PInt i -> T.pack (show i)
-  PFloat d -> floatRepr d
+  PFloat d -> pythonDoubleRepr d
   PStr s -> strRepr s
   PBytes b -> bytesRepr b
   PList items -> "[" <> T.intercalate ", " (map pyRepr items) <> "]"
   PDict members -> "{" <> T.intercalate ", " [strRepr k <> ": " <> pyRepr v | (k, v) <- members] <> "}"
 
-floatRepr :: Double -> Text
-floatRepr d
-  | isNaN d = "nan"
-  | isInfinite d = if d > 0 then "inf" else "-inf"
-  | otherwise = T.pack (pythonFloatRepr d)
-
 -- | CPython's @repr(bytes)@.
 bytesRepr :: ByteString -> Text
-bytesRepr bytes = "b" <> T.singleton quote <> T.concat (map escape (BS.unpack bytes)) <> T.singleton quote
-  where
-    quote = if BS.elem 39 bytes && not (BS.elem 34 bytes) then '"' else '\''
-    escape :: Word8 -> Text
-    escape w
-      | w == 92 = "\\\\"
-      | w == fromIntegral (ord quote) = "\\" <> T.singleton quote
-      | w == 9 = "\\t"
-      | w == 10 = "\\n"
-      | w == 13 = "\\r"
-      | w < 32 || w >= 127 = "\\x" <> T.justifyRight 2 '0' (T.pack (showHex w ""))
-      | otherwise = T.singleton (chr (fromIntegral w))
+bytesRepr = pythonBytesRepr
 
 -- | @bool(value)@.
 truthy :: PV -> Bool
@@ -268,11 +266,14 @@ pyInt = \case
     | isInfinite d -> Left (PyError "OverflowError" "cannot convert float infinity to integer")
     | otherwise -> Right (truncate d)
   PStr s -> intText s
-  PBytes b ->
-    let asText = T.pack (map (chr . fromIntegral) (BS.unpack b))
-     in if BS.all (< 0x80) b
-          then either (const (Left (invalidBytes b))) Right (intDigits (T.unpack (T.dropAround asciiSpace asText)))
-          else Left (invalidBytes b)
+  -- @bytes@ strip ASCII whitespace only, and hold ASCII digits only.
+  PBytes b
+    | BS.all (< 0x80) b
+    , let digits = T.dropAround asciiSpace (TE.decodeLatin1 b)
+    , not (T.any Py.isSpace digits)
+    , Just _ <- Py.pyIntBase 10 digits ->
+        intText digits
+    | otherwise -> Left (invalidBytes b)
   other ->
     Left
       ( typeError
@@ -286,44 +287,7 @@ pyInt = \case
 -- decimal digits, single underscores between digits, and the 4300-digit
 -- conversion limit.
 intText :: Text -> Either PyError Integer
-intText s = either (const (Left invalid)) Right (intDigits (map ascii (T.unpack (Py.strip s))))
-  where
-    invalid = valueError ("invalid literal for int() with base 10: " <> strRepr s)
-    ascii c
-      | c < '\x80' = c
-      | generalCategory c == DecimalNumber = chr (ord '0' + decimalValue c)
-      | otherwise = c
-    -- Unicode lays decimal digits out in runs that start at zero.
-    decimalValue c = run 0 c `mod` 10
-    run :: Int -> Char -> Int
-    run n ch = if ch > '\0' && generalCategory (pred ch) == DecimalNumber then run (n + 1) (pred ch) else n
-
--- | Parse an ASCII signed decimal; 'Left' with the limit error when it is
--- well formed but too long, 'Left' with an empty text when malformed.
-intDigits :: String -> Either PyError Integer
-intDigits input = do
-  let (negative, unsigned) = case input of
-        '-' : rest -> (True, rest)
-        '+' : rest -> (False, rest)
-        _ -> (False, input)
-  digits <- groups unsigned
-  if length digits > maxIntStrDigits
-    then Left (valueError (T.pack (intStrDigitsError maxIntStrDigits (length digits))))
-    else
-      let value = foldl (\total d -> total * 10 + toInteger (ord d - ord '0')) 0 digits
-       in Right (if negative then negate value else value)
-  where
-    malformed = Left (PyError "" "")
-    isDigit c = c >= '0' && c <= '9'
-    groups = \case
-      [] -> malformed
-      c : rest | isDigit c -> (c :) <$> after rest
-      _ -> malformed
-    after = \case
-      [] -> Right []
-      '_' : c : rest | isDigit c -> (c :) <$> after rest
-      c : rest | isDigit c -> (c :) <$> after rest
-      _ -> malformed
+intText = either (Left . fromPython) Right . Py.intText
 
 -- | @str.lower()@: full case mapping, with the final-sigma rule.
 pyLower :: Text -> Text
@@ -391,45 +355,26 @@ iterateValue = \case
 
 -- | @json.loads(text)@ for a @str@ given as its UTF-8 bytes.
 loadsText :: ByteString -> Either PyError PV
-loadsText bytes = case pyLoads bytes of
-  Right value -> Right (fromValue value)
-  Left e@(DecodeError _) -> Left (PyError "json.decoder.JSONDecodeError" (renderPyJsonError e))
-  Left e@(IntegerTooLong _) -> Left (valueError (renderPyJsonError e))
-  Left e@LoneSurrogate -> Left (PyError "UnsupportedLoneSurrogate" (renderPyJsonError e))
+loadsText = loaded . loadsUtf8
 
 -- | @json.loads(value)@ for any value: a @str@, @bytes@ decoded by
--- @json.detect_encoding@, or the @TypeError@ for anything else.
+-- @json.detect_encoding@ (UTF-8, UTF-16 or UTF-32, with @surrogatepass@),
+-- or the @TypeError@ for anything else.
 loadsValue :: PV -> Either PyError PV
 loadsValue = \case
   PStr s -> loadsText (TE.encodeUtf8 s)
-  PBytes b
-    | BS.isPrefixOf "\xEF\xBB\xBF" b -> utf8 (BS.drop 3 b)
-    | otherwise -> case detected b of
-        Nothing -> utf8 b
-        Just encoding ->
-          Left
-            ( PyError
-                "UnsupportedJsonEncoding"
-                ("json.loads would decode these bytes as " <> encoding <> ", which this implementation does not")
-            )
+  PBytes b -> loaded (Python.loadsBytes b)
   other -> Left (typeError ("the JSON object must be str, bytes or bytearray, not " <> typeName other))
-  where
-    utf8 bytes = case decodeText bytes of
-      Left (PyException name text) -> Left (PyError name text)
-      Right _ -> loadsText bytes
-    detected bytes
-      | any (`BS.isPrefixOf` bytes) ["\x00\x00\xFE\xFF", "\xFF\xFE\x00\x00"] = Just "utf-32"
-      | any (`BS.isPrefixOf` bytes) ["\xFE\xFF", "\xFF\xFE"] = Just "utf-16"
-      | BS.length bytes >= 4 =
-          if BS.index bytes 0 == 0
-            then Just (if BS.index bytes 1 /= 0 then "utf-16-be" else "utf-32-be")
-            else
-              if BS.index bytes 1 == 0
-                then Just (if BS.index bytes 2 /= 0 || BS.index bytes 3 /= 0 then "utf-16-le" else "utf-32-le")
-                else Nothing
-      | BS.length bytes == 2 =
-          if BS.index bytes 0 == 0 then Just "utf-16-be" else if BS.index bytes 1 == 0 then Just "utf-16-le" else Nothing
-      | otherwise = Nothing
+
+-- | The object, or the exception as the traceback prints it. A string
+-- holding a lone surrogate, which CPython keeps in a @str@, is refused
+-- (DIVERGENCES.md, 3).
+loaded :: Either PythonException Json -> Either PyError PV
+loaded = \case
+  Right json
+    | holdsLoneSurrogate json -> Left (PyError "UnsupportedLoneSurrogate" "a string holds a lone surrogate, which this implementation cannot represent")
+    | otherwise -> Right (fromJson json)
+  Left failure -> Left (fromPython failure)
 
 -- | @json.dumps(value, indent=2, sort_keys=True)@ (@sorted@ is
 -- @sort_keys@).

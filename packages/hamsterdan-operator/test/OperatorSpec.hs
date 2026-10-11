@@ -25,7 +25,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Hamsterdan.Cli.Argparse (Action (..), Behavior (..), Outcome (..), Parser (..), lookupBool, lookupText, parseArgs)
-import Hamsterdan.Export.Python (PV (..), pyEq, toJson, truthy)
+import Hamsterdan.Python.Object (PV (..), pyEq, toJson, truthy)
 import Hamsterdan.GitHub.Gateway (derivePolicy)
 import Hamsterdan.Operator
 import Petrus.Json (Json (..))

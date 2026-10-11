@@ -67,9 +67,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.GitHub.Gateway (GitHubAuthority, pullRequest, workflowRuns)
 import Hamsterdan.GitHub.Models
-import Hamsterdan.GitHub.Python (PyFailure (..), PythonFault (..))
-import Hamsterdan.GitHub.Python qualified as Py
-import Hamsterdan.GitHub.Transport (pyFault)
+import Hamsterdan.Python (PythonException, keyError, pythonError, raise)
+import Hamsterdan.Python qualified as Py
 import Hamsterdan.GitHub.Url qualified as Url
 import Petrus.Json (Json (..))
 
@@ -185,23 +184,23 @@ findMarked items botLogin wanted =
   find (\item -> login item == Just botLogin && finalMarker (Py.str (fromMaybe (String "") (lookup "body" item))) wanted) items
 
 -- | @_reference(value)@.
-reference :: Json -> Either PyFailure CommentReference
+reference :: Json -> Either PythonException CommentReference
 reference = \case
   Object members -> case lookup "id" members of
-    Nothing -> Left (PyFailure Py.KeyError "'id'")
+    Nothing -> Left (keyError "id")
     Just identifier -> do
       number <- Py.intOf identifier
       pure CommentReference {id = number, url = Py.str (fromMaybe (String "") (lookup "html_url" members))}
-  Array _ -> Left (PyFailure Py.TypeError "list indices must be integers or slices, not str")
-  String _ -> Left (PyFailure Py.TypeError "string indices must be integers, not 'str'")
-  Null -> Left (PyFailure Py.TypeError "'NoneType' object is not subscriptable")
-  Bool _ -> Left (PyFailure Py.TypeError "'bool' object is not subscriptable")
-  Int _ -> Left (PyFailure Py.TypeError "'int' object is not subscriptable")
-  Float _ -> Left (PyFailure Py.TypeError "'float' object is not subscriptable")
+  Array _ -> Left (pythonError "TypeError" "list indices must be integers or slices, not str")
+  String _ -> Left (pythonError "TypeError" "string indices must be integers, not 'str'")
+  Null -> Left (pythonError "TypeError" "'NoneType' object is not subscriptable")
+  Bool _ -> Left (pythonError "TypeError" "'bool' object is not subscriptable")
+  Int _ -> Left (pythonError "TypeError" "'int' object is not subscriptable")
+  Float _ -> Left (pythonError "TypeError" "'float' object is not subscriptable")
 
 -- | @_reference(value)@ where the reference lets the failure propagate.
 referenceIO :: Item -> IO CommentReference
-referenceIO item = either pyFault pure (reference (Object item))
+referenceIO item = either raise pure (reference (Object item))
 
 -- | @_lenient_reference(value)@.
 lenientReference :: Json -> Maybe CommentReference
@@ -390,7 +389,7 @@ dashboard publisher operation epoch head' body = do
       | bodyOf item == String payload -> existing . Just <$> referenceIO item
       | otherwise -> do
           fenceNow
-          identifier <- maybe (throwIO (PythonFault "KeyError" "'id'")) pure (lookup "id" item)
+          identifier <- maybe (throwIO (keyError "id")) pure (lookup "id" item)
           outcome <-
             try (publisher.transport.request "PATCH" (publisher.editRoot <> "/" <> Py.str identifier) (Just [("body", String payload)]))
           case outcome of
@@ -752,7 +751,7 @@ inlineFailureClass response
 inlineRejection :: WireResponse -> FailureClass -> IO a
 inlineRejection response failureClass = do
   unless (response.status >= 100 && response.status <= 599) $
-    throwIO (PythonFault "ValueError" "provider status must be an HTTP status")
+    throwIO (pythonError "ValueError" "provider status must be an HTTP status")
   throwIO
     GitHubBoundaryError
       { kind = Boundary

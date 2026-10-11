@@ -5,6 +5,7 @@ import CorpusSpec qualified
 import ProtocolSpec qualified
 import PyLiteralSpec qualified
 import PyTextSpec qualified
+import PythonSpec qualified
 import RoundTripSpec qualified
 import Test.Hspec (hspec)
 
@@ -15,4 +16,5 @@ main = hspec $ do
   CorpusSpec.spec
   ProtocolSpec.spec
   PyTextSpec.spec
+  PythonSpec.spec
   RoundTripSpec.spec

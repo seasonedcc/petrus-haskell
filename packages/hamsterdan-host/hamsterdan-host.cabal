@@ -55,10 +55,8 @@ library
                     Hamsterdan.Host.V5.Claim
                     Hamsterdan.Host.Agents
   build-depends:    base >=4.18 && <5
-                  , base16-bytestring >=1.0
                   , bytestring >=0.11
                   , case-insensitive >=1.2
-                  , cryptohash-sha256 >=0.11
                   , direct-sqlite >=2.3.27
                   , hamsterdan-agents
                   , hamsterdan-cli

@@ -59,11 +59,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Agents.Protocol
 import Hamsterdan.Contracts.Codec (Contract, pythonDict, spelling, unspelling)
-import Hamsterdan.PyText (strip, utf8Length)
+import Hamsterdan.Python.Text (strip, utf8Length)
 import Hamsterdan.PyLiteral (PyValue (..), repr)
 import Petrus.Impetus.Instance.FailureText qualified as FT
 import Petrus.Json (Json (..), defaultDumps, dumps)
 import Data.ByteString qualified as BS
+import Hamsterdan.Python.Value (truthy)
 
 -- | Why validation stopped.
 data Failure
@@ -278,17 +279,6 @@ confidence = \case
   Int i -> i >= 0 && i <= 1
   Float d -> d >= 0 && d <= 1
   _ -> False
-
--- | Python truthiness.
-truthy :: Json -> Bool
-truthy = \case
-  Null -> False
-  Bool b -> b
-  Int i -> i /= 0
-  Float d -> d /= 0
-  String s -> not (T.null s)
-  Array items -> not (null items)
-  Object members -> not (null members)
 
 -- | @value.get(name, fallback)@ on a request dict.
 getOr :: [(Text, Json)] -> Text -> Json -> Json

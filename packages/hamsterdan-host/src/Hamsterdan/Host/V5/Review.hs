@@ -55,7 +55,7 @@ import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.GitHub.Gateway (GitHubAuthority)
 import Hamsterdan.GitHub.Gateway qualified as Gateway
 import Hamsterdan.GitHub.Models (ActionsJobSnapshot (..), ActionsRunSnapshot (..))
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.Python qualified as Py
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Errors (catchBoundary)

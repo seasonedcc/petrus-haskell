@@ -33,11 +33,7 @@ module Hamsterdan.Export
 
 import Control.Exception (Exception, SomeException, fromException, throwIO, try)
 import Control.Monad (foldM, forM, forM_, unless, when)
-import Crypto.Hash (SHA256 (..), hashWith)
 import Data.ByteString qualified as BS
-import Data.ByteArray qualified as BA
-import Data.ByteString.Base16 qualified as Base16
-import Data.ByteString.Unsafe qualified as BU
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Containers.ListUtils (nubOrd)
 import Data.List (nub, sort, sortOn)
@@ -65,9 +61,11 @@ import Hamsterdan.Cli.Argparse
   )
 import Hamsterdan.Export.Files
 import Hamsterdan.Export.Parallel (parallelMap, writeFiles)
-import Hamsterdan.Export.Python
-import Hamsterdan.GitHub.Python qualified as Py
-import Hamsterdan.PyLiteral (PyValue (..), literalEval, strRepr)
+import Hamsterdan.Python.Object
+import Hamsterdan.PyLiteral (PyValue (..))
+import Hamsterdan.Python.Hashlib (sha256Hex)
+import Hamsterdan.Python.Text (splitlinesUtf8, strRepr)
+import Hamsterdan.Python.Text qualified as Py
 import Hamsterdan.PyLiteral qualified as Lit
 import Hamsterdan.Readiness.NetV5.Board (renderBoard)
 import Petrus.Json (Json (..))
@@ -227,9 +225,6 @@ agentOperationId operation attempt =
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
 
-sha256Hex :: BS.ByteString -> Text
-sha256Hex bytes = TE.decodeUtf8 (Base16.encode (BA.convert (hashWith SHA256 bytes)))
-
 -- ---------------------------------------------------------------------------
 -- Reading the state directory
 
@@ -299,7 +294,7 @@ readHistory path = do
   bytes <- readText path
   -- Every line parses on its own, so they parse at once; the first bad
   -- one in file order is still the one reported.
-  parsed <- parallelMap 256 forceParsed parseLine (zip [1 :: Integer ..] (splitLines bytes))
+  parsed <- parallelMap 256 forceParsed parseLine (zip [1 :: Integer ..] (splitlinesUtf8 bytes))
   fmap concat . forM parsed $ \(seq', outcome) -> case outcome of
     Nothing -> pure []
     Just (Left e) | e.cls == "json.decoder.JSONDecodeError" -> refuse ("History record " <> tshow seq' <> " is not JSON")
@@ -320,29 +315,7 @@ readHistory path = do
       | otherwise = T.null (Py.strip (TE.decodeUtf8 line))
     asciiSpace b = (b >= 0x09 && b <= 0x0D) || (b >= 0x1C && b <= 0x20)
 
--- | @str.splitlines()@ over UTF-8 text, on its bytes: the line breaks are
--- @\\n \\v \\f \\r \\x1c \\x1d \\x1e@ (one byte each), @\\x85@ (C2 85) and
--- @\\u2028 \\u2029@ (E2 80 A8, E2 80 A9), and @\\r\\n@ breaks once.
-splitLines :: BS.ByteString -> [BS.ByteString]
-splitLines bytes = go 0 0
-  where
-    size = BS.length bytes
-    at i = BU.unsafeIndex bytes i
-    candidate b = (b >= 0x0A && b <= 0x0D) || (b >= 0x1C && b <= 0x1E) || b == 0xC2 || b == 0xE2
-    slice start end = BU.unsafeTake (end - start) (BU.unsafeDrop start bytes)
-    -- @start@ begins the current line; @from@ is where to look for its end.
-    go !start !from = case BS.findIndex candidate (BU.unsafeDrop from bytes) of
-      Nothing -> [slice start size | size > start]
-      Just offset ->
-        let i = from + offset
-         in case breakWidth i (at i) of
-              0 -> go start (i + 1)
-              width -> slice start i : go (i + width) (i + width)
-    breakWidth i b
-      | b == 0x0D = if i + 1 < size && at (i + 1) == 0x0A then 2 else 1
-      | b == 0xC2 = if i + 1 < size && at (i + 1) == 0x85 then 2 else 0
-      | b == 0xE2 = if i + 2 < size && at (i + 1) == 0x80 && (at (i + 2) == 0xA8 || at (i + 2) == 0xA9) then 3 else 0
-      | otherwise = 1 :: Int
+
 
 recordKind :: Record -> PV
 recordKind record = fromMaybe PNone (getKey "record" record)
@@ -882,22 +855,9 @@ writeBoards out records reporter = do
       let name = T.justifyRight 4 '0' (tshow ordinal) <> ".md"
           board = do
             items <- subscript "entries" result >>= iterateValue
-            either (Left . boardFailure) Right (renderBoard (map pyStr items))
+            either (Left . fromPython) Right (renderBoard (map pyStr items))
        in (name, seq', result, board)
     forceRendered (_, _, _, board) = either (`seq` ()) (`seq` ()) board
-
--- | The board renderer's recorded failure text (@Name('message')@) as the
--- exception it stands for.
-boardFailure :: Text -> PyError
-boardFailure text =
-  let (name, rest) = T.breakOn "(" text
-      arguments = T.dropEnd 1 (T.drop 1 rest)
-   in case literalEval ("[" <> arguments <> "]") of
-        Right (PyList [PyStr message]) | name /= "KeyError" -> PyError name message
-        Right (PyList [single]) -> PyError name (Lit.repr single)
-        Right (PyList []) -> PyError name ""
-        Right (PyList many) -> PyError name (Lit.repr (PyTuple many))
-        _ -> PyError name arguments
 
 credentialNamed :: Text -> Bool
 credentialNamed path =

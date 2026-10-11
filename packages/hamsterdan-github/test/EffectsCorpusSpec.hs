@@ -22,7 +22,7 @@ import Corpus
 import Hamsterdan.GitHub.Effects qualified as E
 import Hamsterdan.GitHub.Gateway qualified as G
 import Hamsterdan.GitHub.Models
-import Hamsterdan.GitHub.Python (PythonFault (..))
+import Hamsterdan.Python (PythonException (..))
 import Hamsterdan.GitHub.Transport (githubGraphQL)
 import Petrus.Json (Json (..), compact, dumps)
 import Test.Hspec (Spec, describe, it, runIO)
@@ -235,7 +235,7 @@ errorJson e
   | Just (PublicationRejected operation) <- fromException e = refusal "ValueError" ("GitHub rejected " <> operation)
   | Just (RerunRefused message) <- fromException e = refusal "RerunRefusedError" message
   | Just FenceRefused <- fromException e = refusal "FenceRefused" "stale authority"
-  | Just (PythonFault cls _) <- fromException e = Object [("class", String cls)]
+  | Just (PythonException cls _) <- fromException e = Object [("class", String cls)]
   | otherwise = refusal "HaskellException" (T.pack (show e))
   where
     refusal cls message = Object [("class", String cls), ("message", String message)]

@@ -30,16 +30,20 @@ Below are the differences that remain, with their rationale.
    - The port decodes such names leniently (U+FFFD). An export over such a
      directory entry, or with such an argument, can name it differently.
    - Lone surrogates inside JSON (`"\ud800"`) raise
-     `UnsupportedLoneSurrogate` instead of being carried through.
+     `UnsupportedLoneSurrogate` instead of being carried through: the
+     dynamic value model (`Hamsterdan.Python.Object`) holds `str` as `Text`.
    - The host never writes either.
-4. **JSON stored as UTF-16 or UTF-32 bytes.** `json.loads(bytes)` detects
-   those encodings. The port raises `UnsupportedJsonEncoding` instead. A
-   UTF-8 BOM is handled exactly as the reference handles it.
-5. **Unicode tables.** `str.lower()`, `str.isspace()` and `int()` over
-   non-ASCII text use GHC's Unicode tables (`base` for GHC 9.10) rather than
-   CPython 3.14's (Unicode 16.0). Characters assigned between those versions
-   can case-fold or count as digits differently. The fixtures and the
-   hostile cases use characters both versions agree on.
+4. **JSON stored as UTF-16 or UTF-32 bytes: resolved, no longer a
+   difference.** `json.loads(bytes)` is petrus-json's `loadsBytes`, which
+   runs CPython's `detect_encoding` and decodes with `surrogatepass`, so
+   such files load as in the reference (they used to raise
+   `UnsupportedJsonEncoding`). `Hamsterdan.Python.Object`'s tests cover it.
+5. **`str.lower()` uses GHC's Unicode tables.** Over non-ASCII text it uses
+   `base`'s tables for GHC 9.10 (Unicode 15.1) rather than CPython 3.14's
+   (Unicode 16.0); a character assigned in between can lower-case
+   differently. The fixtures and the hostile cases use characters both
+   versions agree on. `str.isspace()`, `str.isprintable()` (in `repr`) and
+   `int()` now come from petrus-json's CPython 3.14 tables and match.
 
 ## Internal (no observable difference)
 

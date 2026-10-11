@@ -115,7 +115,8 @@ import Hamsterdan.GitHub.Models
   , Transport
   , boundary
   )
-import Hamsterdan.GitHub.Python (PythonFault (..), casefold, pyIntBase, utf8Length)
+import Hamsterdan.Python (PythonArg (..), PythonException (..), casefold, pyIntBase, utf8Length)
+import Hamsterdan.Python qualified as Py
 import Hamsterdan.GitHub.Routing (InstallationRegistry, Route (..), activeCount, activeInstallationCount, closeRegistry, openRegistry)
 import Hamsterdan.GitHub.Routing qualified as Routing
 import Hamsterdan.GitHub.Transport (githubGraphQL, githubTransport)
@@ -489,7 +490,9 @@ loadedInOrder service = sortOn (.ordinal) . Map.elems <$> readIORef service.load
 loadedAt :: HostService -> InstanceKey -> IO Loaded
 loadedAt service key =
   Map.lookup key <$> readIORef service.loaded
-    >>= maybe (throwIO (PythonFault "KeyError" ("(" <> T.intercalate ", " (map tshow (keyMembers key)) <> ")"))) pure
+    -- @KeyError((installation, repository, pull))@: its @str()@ is the
+    -- tuple's repr, which the three arguments spell.
+    >>= maybe (throwIO (PythonException "KeyError" (map PyInt (keyMembers key)))) pure
 
 keyMembers :: InstanceKey -> [Integer]
 keyMembers key = [key.installation, key.repository, key.pullRequest]
@@ -590,22 +593,14 @@ tshow = T.pack . show
 applicationRoot :: HostService -> InstanceKey -> FilePath
 applicationRoot service key = service.root </> "applications" </> show key.installation </> show key.repository </> show key.pullRequest
 
--- | Python's @str()@ of a provider-given identifier.
-pyStrId :: Json -> Text
-pyStrId = \case
-  Int n -> tshow n
-  String s -> s
-  Bool b -> if b then "True" else "False"
-  Float d -> tshow d
-  Null -> "None"
-  other -> tshow other
+
 
 -- | @_instance(item)@.
 observationInstance :: Observation -> Maybe Text
 observationInstance item
   | item.installationId == Null || item.repositoryId == Null || item.pullRequestNumber == Null = Nothing
   | otherwise =
-      Just ("github:" <> pyStrId item.installationId <> ":" <> pyStrId item.repositoryId <> ":pr:" <> pyStrId item.pullRequestNumber)
+      Just ("github:" <> Py.str item.installationId <> ":" <> Py.str item.repositoryId <> ":pr:" <> Py.str item.pullRequestNumber)
 
 -- | @registry.route(item.installation_id, item.repository_id)@ for
 -- provider-given values.
@@ -911,11 +906,11 @@ retryObservation service item err = do
         <> " event="
         <> item.event
         <> " installation_id="
-        <> pyStrId item.installationId
+        <> Py.str item.installationId
         <> " repository_id="
-        <> pyStrId item.repositoryId
+        <> Py.str item.repositoryId
         <> " pull_request_number="
-        <> pyStrId item.pullRequestNumber
+        <> Py.str item.pullRequestNumber
         <> " disposition=retry error_class="
         <> exceptionClass err
     )

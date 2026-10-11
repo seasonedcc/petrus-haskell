@@ -51,10 +51,8 @@ module Hamsterdan.Testing.World.Contract
   ) where
 
 import Control.Exception (Exception (..), throw)
-import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.ByteString.Base16 qualified as Base16
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.List (sort)
 import Data.Map.Strict (Map)
@@ -63,9 +61,9 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Petrus.Json (Json (..))
 import Petrus.Testing.Dst (Budget (..), BudgetV4 (..), CheckerIdentity, Identity (..), ProfileIdentity, canonicalBytes, digestJson)
+import Hamsterdan.Python.Hashlib (sha256Hex)
 
 -- ---------------------------------------------------------------------------
 -- Fixtures
@@ -361,8 +359,6 @@ canonical :: Json -> ByteString
 canonical = either (throw . PyError "ValueError") id . canonicalBytes
 
 -- | Lowercase hex SHA-256.
-sha256Hex :: ByteString -> Text
-sha256Hex = TE.decodeUtf8 . Base16.encode . SHA256.hash
 
 -- | @strict_digest(value)@.
 strictDigest :: Json -> Text

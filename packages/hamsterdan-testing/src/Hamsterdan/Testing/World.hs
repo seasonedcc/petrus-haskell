@@ -168,6 +168,7 @@ import System.FilePath (makeRelative, takeExtension, (</>))
 import System.Mem (performMajorGC)
 import System.Mem.Weak (Weak, deRefWeak)
 import Text.Printf (printf)
+import Hamsterdan.Python.Value (truthy)
 
 -- ---------------------------------------------------------------------------
 -- JSON access
@@ -1718,16 +1719,6 @@ gitCustodyMismatches state disclosed = acceptances <> concatMap perPublication p
                      , terminal .: "result_head" /= expectedHead
                      ]
        in recoveryCheck <> requestCheck <> headCheck <> requestFields <> terminalChecks
-
-truthy :: Json -> Bool
-truthy = \case
-  Null -> False
-  Bool b -> b
-  Int i -> i /= 0
-  Float d -> d /= 0
-  String s -> not (T.null s)
-  Array xs -> not (null xs)
-  Object xs -> not (null xs)
 
 -- | @_timer_custody_mismatches(state)@.
 timerCustodyMismatches :: Json -> [Json]

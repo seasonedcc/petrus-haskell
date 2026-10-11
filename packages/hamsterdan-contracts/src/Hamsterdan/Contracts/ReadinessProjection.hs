@@ -18,13 +18,12 @@ module Hamsterdan.Contracts.ReadinessProjection
   , workflowGatesReady
   ) where
 
-import Crypto.Hash.SHA256 qualified as SHA256
-import Data.ByteString.Base16 qualified as Base16
 import Data.Text (Text)
-import Data.Text.Encoding qualified as TE
 import Hamsterdan.Contracts.Codec (Contract, dump, pythonDict)
 import Hamsterdan.Contracts.Readiness
+import Hamsterdan.Python.Hashlib (sha256Hex)
 import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps)
+import Hamsterdan.Python.Value (truthy)
 
 -- | The independently owned state a readiness snapshot merges.
 data Concerns = Concerns
@@ -136,7 +135,7 @@ projectReadiness concerns = build (workflowWait (build ""))
 -- bookkeeping.
 dashboardProjectionDigest :: Concerns -> Text
 dashboardProjectionDigest concerns =
-  TE.decodeUtf8 (Base16.encode (SHA256.hash canonical))
+  sha256Hex canonical
   where
     facts =
       pythonDict
@@ -240,14 +239,3 @@ workflowGatesReady control =
       let get key = lookup key (pythonDict finding)
        in maybe False truthy (get "blocking")
             && get "disposition" `elem` map (Just . String) ["new", "still_open"]
-
--- | Python truthiness of a JSON value.
-truthy :: Json -> Bool
-truthy = \case
-  Null -> False
-  Bool value -> value
-  Int value -> value /= 0
-  Float value -> value /= 0
-  String value -> value /= ""
-  Array values -> not (null values)
-  Object found -> not (null found)

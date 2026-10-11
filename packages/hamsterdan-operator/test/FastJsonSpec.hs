@@ -12,7 +12,7 @@ import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Export.Python (loadsText)
+import Hamsterdan.Python.Object (loadsText)
 import Hamsterdan.Operator.FastJson (fastLoads)
 import Hamsterdan.Operator.Python (dumpsPlain)
 import Petrus.Json (Json (..), compact, dumps)

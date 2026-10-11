@@ -9,10 +9,12 @@
 -- WTF-8 ("Petrus.Json.Wtf8"), as CPython keeps it in a @str@.
 module Petrus.Json.Python.Loads
   ( loadsText
+  , loadsUtf8
   , loadsBytes
   ) where
 
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -30,8 +32,21 @@ import Petrus.Json.Wtf8 (hasLoneSurrogate)
 -- DIVERGENCES.md).
 loadsText :: Text -> Either PythonException Json
 loadsText text
-  | "\xFEFF" `T.isPrefixOf` text = Left (pythonError "JSONDecodeError" "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)")
+  | "\xFEFF" `T.isPrefixOf` text = Left unexpectedBom
   | otherwise = decodeText text
+
+-- | 'loadsText' for a @str@ given as its UTF-8 encoding, parsed in place:
+-- valid UTF-8 holds no raw lone surrogate, so only a refusal is decoded
+-- (leniently, should the bytes not be UTF-8) for the scanner.
+loadsUtf8 :: ByteString -> Either PythonException Json
+loadsUtf8 bytes
+  | "\xEF\xBB\xBF" `BS.isPrefixOf` bytes = Left unexpectedBom
+  | otherwise = case parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates} bytes of
+      Right value -> Right value
+      Left _ -> decodeText (TE.decodeUtf8Lenient bytes)
+
+unexpectedBom :: PythonException
+unexpectedBom = pythonError "JSONDecodeError" "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)"
 
 -- | @json.loads@ past its @str@ checks: 'Scanner.decode'.
 decodeText :: Text -> Either PythonException Json

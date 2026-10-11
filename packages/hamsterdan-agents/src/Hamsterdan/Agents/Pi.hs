@@ -41,10 +41,8 @@ import Control.Exception
   , try
   )
 import Control.Monad (void, when)
-import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.ByteString.Base16 qualified as Base16
 import Data.IORef
 import Data.List (isPrefixOf)
 import Data.Maybe (isJust)
@@ -54,10 +52,11 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
 import Hamsterdan.Agents.Protocol
-import Hamsterdan.Agents.Url qualified as Url
 import Hamsterdan.Agents.Validate
 import Hamsterdan.Contracts.Codec (contract, encode)
-import Hamsterdan.PyText (utf8Length)
+import Hamsterdan.Python.Hashlib (sha256HexText)
+import Hamsterdan.Python.Text (utf8Length)
+import Hamsterdan.Python.Url qualified as Url
 import Hamsterdan.PyLiteral (PyValue (..), repr)
 import Petrus.Agenticus.Error (AgenticusError, ErrorClass (RuntimeProtocolError, TimeoutError), isInstanceOf)
 import Petrus.Agenticus.Runtime.Operation (RuntimeOperationCleanup (..), cleanupVerified)
@@ -370,12 +369,10 @@ newPiNativeRunner runtime workspaces options
   where
     invalid = Left "Pi runner timeout and poll interval must be positive and ordered"
 
-sha256Hex :: Text -> Text
-sha256Hex = TE.decodeUtf8 . Base16.encode . SHA256.hash . TE.encodeUtf8
 
 -- | @pi:{sha256(f"{operation}\0{attempt}")}@.
 piOperationId :: Text -> Integer -> Text
-piOperationId operation attempt = "pi:" <> sha256Hex (operation <> "\0" <> T.pack (show attempt))
+piOperationId operation attempt = "pi:" <> sha256HexText (operation <> "\0" <> T.pack (show attempt))
 
 agentError :: Text -> AgentResultCategory -> AgentProtocolError
 agentError reason category = (protocolError reason) {resultCategory = Just category}
@@ -447,7 +444,7 @@ runPi runner kind repositoryUrl request invocation = do
 runWorkspace
   :: PiNativeRunner -> PromptKind -> Text -> AgentRequest -> Text -> Maybe (IO Bool) -> PreparedPiWorkspace -> IO AgentResult
 runWorkspace runner kind prompt request operationId isCurrent workspace = do
-  let identity = sha256Hex operationId
+  let identity = sha256HexText operationId
   started <- trySync $ do
     start <-
       newPiA2RuntimeStart

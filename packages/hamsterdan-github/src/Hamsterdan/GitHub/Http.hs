@@ -56,7 +56,7 @@ import Codec.Compression.Zlib.Internal qualified as Z
 import Network.HTTP.Client qualified as Client
 import Network.HTTP.Client.TLS qualified as TLS
 import Network.HTTP.Types qualified as HttpTypes
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.Python qualified as Py
 
 -- | One request as httpx puts it on the wire: lowercase header names in
 -- httpx's order (including @host@ and, with a body, @content-length@).

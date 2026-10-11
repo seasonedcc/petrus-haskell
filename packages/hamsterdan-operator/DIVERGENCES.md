@@ -75,7 +75,7 @@ Below are the differences that remain, with their rationale.
   deep, integers up to 4000 digits) in place. Within that subset
   `json.loads` has exactly one result. For any other document it returns
   nothing and the reference loader
-  (`Hamsterdan.Export.Python.loadsText`) decides, with CPython's values and
+  (`Hamsterdan.Python.Object.loadsText`) decides, with CPython's values and
   errors. `FastJsonSpec` checks 3000 generated documents and the hand-made
   edge cases against both the reference loader and CPython.
 - **Plain system calls.** `shutil.which` is ported directly

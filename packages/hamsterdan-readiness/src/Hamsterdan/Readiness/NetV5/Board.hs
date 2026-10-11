@@ -11,7 +11,7 @@
 -- list instead of faulting the upsert. Entry bodies are Python literals
 -- of any shape, so every read below reproduces the reference's dynamic
 -- semantics (@str()@, truthiness, @int()@, @==@); where the reference
--- raises, the render answers 'Left' with the exception's recorded text.
+-- raises, the render answers 'Left' with the exception it raises.
 module Hamsterdan.Readiness.NetV5.Board
   ( renderBoard
   , gateFacts
@@ -19,18 +19,20 @@ module Hamsterdan.Readiness.NetV5.Board
   , pyInt
   ) where
 
-import Data.Char (GeneralCategory (..), generalCategory, isSpace, ord)
 import Data.List (find)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Hamsterdan.PyLiteral (LiteralError (..), LiteralErrorKind (..), PyValue (..), literalEval, pyEq, repr, strRepr)
-import Hamsterdan.Readiness.NetV5.Folding (pyError, typeError, valueError)
-import Petrus.Impetus.Instance.FailureText qualified as F
+import Hamsterdan.PyLiteral (LiteralError (..), LiteralErrorKind (..), PyValue (..), literalEval, pyEq, repr)
+import Hamsterdan.Python (PythonException, intText, pythonError)
+
+typeError, valueError :: Text -> PythonException
+typeError = pythonError "TypeError"
+valueError = pythonError "ValueError"
 
 type Body = [(PyValue, PyValue)]
 
 -- | Body or parse refusal: 'Nothing' for an unrecognized entry.
-parsed :: Text -> Either Text (Maybe (Text, Body))
+parsed :: Text -> Either PythonException (Maybe (Text, Body))
 parsed entry = case T.breakOn ":" entry of
   (_, "") -> Right Nothing
   (kind, rest) -> case literalEval (T.drop 1 rest) of
@@ -67,57 +69,25 @@ truthy = \case
   PyDict xs -> not (null xs)
 
 -- | @int(value or 0)@.
-intOr0 :: PyValue -> Either Text Integer
+intOr0 :: PyValue -> Either PythonException Integer
 intOr0 v = if truthy v then pyInt v else Right 0
 
 -- | @int(value)@ for a literal value.
-pyInt :: PyValue -> Either Text Integer
+pyInt :: PyValue -> Either PythonException Integer
 pyInt = \case
   PyBool b -> Right (if b then 1 else 0)
   PyInt i -> Right i
   PyFloat d
     | isNaN d -> Left (valueError "cannot convert float NaN to integer")
-    | isInfinite d -> Left (pyError "OverflowError" [F.PyStr "cannot convert float infinity to integer"])
+    | isInfinite d -> Left (pythonError "OverflowError" "cannot convert float infinity to integer")
     | otherwise -> Right (truncate d)
-  PyStr s -> maybe (Left (valueError ("invalid literal for int() with base 10: " <> strRepr s))) Right (parseInt s)
+  PyStr s -> intText s
   PyNone -> Left (notReal "NoneType")
   PyList _ -> Left (notReal "list")
   PyTuple _ -> Left (notReal "tuple")
   PyDict _ -> Left (notReal "dict")
   where
     notReal t = typeError ("int() argument must be a string, a bytes-like object or a real number, not '" <> t <> "'")
-
--- | CPython's base-10 @int(str)@: surrounding whitespace, an optional
--- sign, and Unicode decimal digits with single underscores between them.
-parseInt :: Text -> Maybe Integer
-parseInt raw = do
-  let stripped = T.dropWhileEnd isSpace (T.dropWhile isSpace raw)
-  (negative, digits) <- case T.uncons stripped of
-    Just ('-', rest) -> Just (True, rest)
-    Just ('+', rest) -> Just (False, rest)
-    Just _ -> Just (False, stripped)
-    Nothing -> Nothing
-  values <- groups digits
-  let n = foldl (\acc d -> acc * 10 + toInteger d) 0 values
-  Just (if negative then negate n else n)
-  where
-    groups t
-      | T.null t = Nothing
-      | otherwise = concat <$> traverse group (T.splitOn "_" t)
-    group g
-      | T.null g = Nothing
-      | otherwise = traverse decimal (T.unpack g)
-
--- | The value of a Unicode decimal digit: digits come in ascending runs
--- that start at zero.
-decimal :: Char -> Maybe Int
-decimal c
-  | generalCategory c /= DecimalNumber = Nothing
-  | otherwise = Just ((ord c - runStart (ord c)) `mod` 10)
-  where
-    runStart n
-      | n > 0 && generalCategory (toEnum (n - 1)) == DecimalNumber = runStart (n - 1)
-      | otherwise = n
 
 -- | Insert or replace in place, as a Python dict assignment does.
 assign :: (Eq k) => k -> v -> [(k, v)] -> [(k, v)]
@@ -137,7 +107,7 @@ data Facts = Facts
   , unparsed :: [Text]
   }
 
-collect :: [Text] -> Either Text Facts
+collect :: [Text] -> Either PythonException Facts
 collect = go (Facts [] [] [] Nothing [])
   where
     go facts [] = Right facts
@@ -168,7 +138,7 @@ short = T.take 7 . str
 is :: Text -> Maybe PyValue -> Bool
 is expected = maybe False (pyEq (PyStr expected))
 
-verdict :: Facts -> Either Text Text
+verdict :: Facts -> Either PythonException Text
 verdict facts
   | is "terminal" (getV "phase" state) = Right "closed — this board is frozen."
   | is "quiescent" (getV "phase" state) = Right "paused — draft PR. I resume when it leaves draft."
@@ -243,7 +213,7 @@ reviewCellOf = \case
   "unable" -> "⚠️ unable"
   other -> "⚠️ " <> other
 
-reviewCell :: Facts -> Either Text Text
+reviewCell :: Facts -> Either PythonException Text
 reviewCell facts
   | status == "unable" =
       let category = str (getOr "category" (PyStr "") review)
@@ -273,7 +243,7 @@ humanCell facts
       | truthy (getOr "approval" PyNone human) = "✅ approved"
       | otherwise = "⏳ not approved"
 
-rows :: Facts -> Either Text [(Text, Text)]
+rows :: Facts -> Either PythonException [(Text, Text)]
 rows facts = do
   review <- reviewCell facts
   Right
@@ -300,7 +270,7 @@ attention facts =
 
 -- | @gate_facts(entries)@: the same distilled fold the rendered board
 -- shows, as data — @(kind, body)@ pairs in the reference's order.
-gateFacts :: [Text] -> Either Text [(Text, Body)]
+gateFacts :: [Text] -> Either PythonException [(Text, Body)]
 gateFacts entries = do
   facts <- collect entries
   let derived = ["fault", "mutation_pending", "mutation_settled", "human_needed"]
@@ -313,13 +283,13 @@ gateFacts entries = do
 
 -- | 'gateFacts' as the Python value @gate_facts@ returns
 -- (@[{"kind": ..., "body": {...}}, ...]@).
-gateFactsValue :: [Text] -> Either Text PyValue
+gateFactsValue :: [Text] -> Either PythonException PyValue
 gateFactsValue entries = do
   view <- gateFacts entries
   Right (PyList [PyDict [(PyStr "kind", PyStr kind), (PyStr "body", PyDict body)] | (kind, body) <- view])
 
 -- | @render_board(entries)@.
-renderBoard :: [Text] -> Either Text Text
+renderBoard :: [Text] -> Either PythonException Text
 renderBoard entries = do
   facts <- collect entries
   table <- T.intercalate "\n" . map (\(g, c) -> "| " <> g <> " | " <> c <> " |") <$> rows facts

@@ -26,7 +26,6 @@ module Hamsterdan.PyLiteral
 
     -- * Printing (@repr@)
   , repr
-  , strRepr
   , dictEntry
   , sortedItemsDigest
 
@@ -47,10 +46,9 @@ import Data.Text qualified as T
 import Data.Text.Array qualified as TA
 import Data.Text.Internal qualified as TI
 import Hamsterdan.Contracts.Codec (pythonDict)
-import Hamsterdan.PyLiteral.Printable (isPrintableNonAscii)
-import Numeric (showHex)
 import Petrus.Json (Json)
 import Petrus.Json qualified as Json
+import Petrus.Json.Python (pythonDoubleRepr, pythonStrRepr)
 
 -- | A Python value of a modeled type. 'PyDict' keeps insertion order and
 -- never holds two Python-equal keys.
@@ -154,7 +152,7 @@ reprChunks = \case
   PyBool True -> ("True" :)
   PyBool False -> ("False" :)
   PyInt value -> (intText value :)
-  PyFloat value -> (T.pack (floatRepr value) :)
+  PyFloat value -> (pythonDoubleRepr value :)
   PyStr value -> strChunks value
   PyList values -> ("[" :) . commaSeparated (map reprChunks values) . ("]" :)
   PyTuple [single] -> ("(" :) . reprChunks single . (",)" :)
@@ -182,49 +180,8 @@ smallInts = listArray (0, fromInteger smallIntCount - 1) [T.pack (show i) | i <-
 smallIntCount :: Integer
 smallIntCount = 1024
 
-floatRepr :: Double -> String
-floatRepr value
-  | isNaN value = "nan"
-  | isInfinite value = if value > 0 then "inf" else "-inf"
-  | otherwise = Json.pythonFloatRepr value
-
--- | CPython's @repr(str)@: single quotes unless the text contains a single
--- quote and no double quote; @\\\\@, the chosen quote, @\\t@, @\\n@, @\\r@
--- escaped; other C0 controls and DEL as @\\xhh@; non-printable non-ASCII
--- as @\\xhh@, @\\uhhhh@, or @\\Uhhhhhhhh@.
-strRepr :: Text -> Text
-strRepr value = T.concat (strChunks value [])
-
 strChunks :: Text -> Chunks
-strChunks value rest
-  -- Fast path (one pass): printable ASCII without quotes or backslashes.
-  | simpleAscii value = "'" : value : "'" : rest
-  | T.all plain value = quoteText : value : quoteText : rest
-  | otherwise = quoteText : runs value
-  where
-    doubleQuoted = T.any (== '\'') value && not (T.any (== '"') value)
-    quote = if doubleQuoted then '"' else '\''
-    quoteText = if doubleQuoted then "\"" else "'"
-    plain c
-      | c < '\DEL' = c >= ' ' && c /= quote && c /= '\\'
-      | otherwise = c /= '\DEL' && isPrintableNonAscii (ord c)
-    runs remaining =
-      let (run, after) = T.span plain remaining
-       in run : case T.uncons after of
-            Nothing -> quoteText : rest
-            Just (c, more) -> escape c : runs more
-    escape c
-      | c == quote = if doubleQuoted then "\\\"" else "\\'"
-      | c == '\\' = "\\\\"
-      | c == '\t' = "\\t"
-      | c == '\n' = "\\n"
-      | c == '\r' = "\\r"
-      | ord c <= 0xff = "\\x" <> hex 2 c
-      | ord c <= 0xffff = "\\u" <> hex 4 c
-      | otherwise = "\\U" <> hex 8 c
-    hex width c =
-      let digits = showHex (ord c) ""
-       in T.pack (replicate (width - length digits) '0' ++ digits)
+strChunks value = (pythonStrRepr value :)
 
 -- | Whether a text is printable ASCII without quotes or backslashes (its
 -- @repr@ is the text in single quotes), tested on the UTF-8 bytes.
@@ -309,7 +266,7 @@ writeJson array offset = \case
   Json.Bool True -> writeText array offset "True"
   Json.Bool False -> writeText array offset "False"
   Json.Int value -> writeText array offset (intText value)
-  Json.Float value -> writeText array offset (T.pack (floatRepr value))
+  Json.Float value -> writeText array offset (pythonDoubleRepr value)
   Json.String value -> writeString array offset value
   Json.Array values -> do
     TA.unsafeWrite array offset 0x5B
@@ -353,7 +310,7 @@ writeString array offset value
       end <- writeText array (offset + 1) value
       TA.unsafeWrite array end 0x27
       pure (end + 1)
-  | otherwise = writeText array offset (strRepr value)
+  | otherwise = writeText array offset (pythonStrRepr value)
 
 -- * Parsing ------------------------------------------------------------------
 

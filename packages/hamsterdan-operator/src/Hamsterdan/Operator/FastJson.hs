@@ -8,7 +8,7 @@
 -- which is what 'fastLoads' returns. For anything else (floats, @NaN@ and
 -- the infinities, repeated keys, surrogate escapes, every malformed
 -- document) it returns 'Nothing' and the caller uses the reference loader,
--- 'Hamsterdan.Export.Python.loadsText', which reproduces CPython's values
+-- 'Hamsterdan.Python.Object.loadsText', which reproduces CPython's values
 -- and errors in full. The test suite checks the two agree, and agree with
 -- CPython, on every document the fast path accepts.
 --
@@ -26,7 +26,7 @@ import Data.Text qualified as T
 import Data.Text.Array qualified as A
 import Data.Text.Internal (Text (..))
 import Data.Word (Word8)
-import Hamsterdan.Export.Python (PV (..))
+import Hamsterdan.Python.Object (PV (..))
 
 -- | A parsed value and the offset after it, or a refusal.
 data Step a = Step a {-# UNPACK #-} !Int | Refused

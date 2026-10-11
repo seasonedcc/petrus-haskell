@@ -8,7 +8,7 @@
 -- Every read goes through a 'Transport' (the effect seam), issues the
 -- reference's requests in the reference's order, and refuses provider
 -- evidence with the reference's messages. Where CPython would raise an
--- exception the reference does not catch, 'PythonFault' carries its class.
+-- exception the reference does not catch, it raises CPython's 'PythonException'.
 module Hamsterdan.GitHub.Gateway
   ( -- * Authority
     GitHubAuthority (..)
@@ -60,9 +60,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.GitHub.Models
-import Hamsterdan.GitHub.Python (PythonFault (..))
-import Hamsterdan.GitHub.Python qualified as Py
-import Hamsterdan.GitHub.Transport (digest, pyFault)
+import Hamsterdan.Python (PythonException (..), keyError, pythonError, raise)
+import Hamsterdan.Python qualified as Py
+import Hamsterdan.GitHub.Transport (digest)
 import Hamsterdan.GitHub.Url qualified as Url
 import Petrus.Json (Json (..))
 
@@ -193,7 +193,7 @@ item key = \case
 guarded :: Text -> IO a -> IO a
 guarded message action =
   (action `catch` \Escape -> malformed message)
-    `catch` \fault@(PythonFault cls _) -> if caughtByKeyTypeValue cls then malformed message else throwIO fault
+    `catch` \fault@(PythonException cls _) -> if caughtByKeyTypeValue cls then malformed message else throwIO fault
 
 -- | @pull_request()@.
 pullRequest :: GitHubAuthority -> IO PullRequestSnapshot
@@ -207,7 +207,7 @@ pullRequest authority = do
     headValue <- item "head" value
     baseValue <- item "base" value
     user <- item "user" value
-    repo <- either pyFault pure (Py.get "repo" headValue)
+    repo <- either raise pure (Py.get "repo" headValue)
     let headRepository = case repo of
           Object members -> maybe Null id (lookup "full_name" members)
           _ -> Null
@@ -395,7 +395,7 @@ humanReview authority = do
   requested <- getOk authority (root authority <> "/pulls/" <> T.pack (show authority.prNumber) <> "/requested_reviewers")
   users <- case requested of
     Object members -> case lookup "users" members of
-      Nothing -> throwIO (PythonFault "KeyError" "'users'")
+      Nothing -> throwIO (keyError "users")
       Just (Array items) -> pure items
       Just _ -> malformed "GitHub requested-reviewer evidence is malformed"
     _ -> malformed "GitHub requested-reviewer evidence is malformed"
@@ -412,7 +412,7 @@ humanReview authority = do
   keyed <- forM reviews $ \review -> do
     let value = Object review
         submitted = Py.str (maybe (String "") id (lookup "submitted_at" review))
-    identifier <- either pyFault pure (Py.intOf (maybe (Int 0) id (lookup "id" review)))
+    identifier <- either raise pure (Py.intOf (maybe (Int 0) id (lookup "id" review)))
     pure ((submitted, identifier), value)
   latestRef <- newIORef (Map.empty :: Map.Map Text Text)
   let ordered = map snd (sortOn fst keyed)
@@ -426,7 +426,7 @@ humanReview authority = do
         Left _ -> pure (Nothing, "threads_unavailable")
         Right threads -> do
           counted <- forM threads $ \thread -> do
-            resolved <- either pyFault pure (Py.get "isResolved" thread)
+            resolved <- either raise pure (Py.get "isResolved" thread)
             pure (not (Py.truthy resolved) && not (viewerThread thread))
           pure (Just (length (filter id counted)), "available")
   pure
@@ -493,14 +493,14 @@ resolveStaleFindingThreads authority currentHead = case authority.graphql of
     foldM (resolveOne graphql) 0 threads
   where
     resolveOne graphql resolved thread = do
-      isResolved <- either pyFault pure (Py.get "isResolved" thread)
+      isResolved <- either raise pure (Py.get "isResolved" thread)
       if Py.truthy isResolved || not (viewerThread thread)
         then pure resolved
         else do
           let body = maybe "" (\first -> Py.str (maybe (String "") id (lookup "body" first))) (firstComment thread)
           case findingMarkerHead body of
             Just head' | head' /= currentHead -> do
-              identifier <- maybe (throwIO (PythonFault "KeyError" "'id'")) pure (lookup' "id" thread)
+              identifier <- maybe (throwIO (keyError "id")) pure (lookup' "id" thread)
               graphql.resolveReviewThread (Py.str identifier)
               pure (resolved + 1)
             _ -> pure resolved
@@ -515,7 +515,7 @@ baseCurrent authority pull = do
     _ -> malformed message
   let status = maybe Null id (lookup "status" members)
   unless (Py.hashable status) $
-    throwIO (PythonFault "TypeError" ("unhashable type: '" <> (if Py.isList status then "list" else "dict") <> "'"))
+    throwIO (pythonError "TypeError" ("unhashable type: '" <> (if Py.isList status then "list" else "dict") <> "'"))
   unless (any (Py.pyEqText status) ["ahead", "behind", "diverged", "identical"]) (malformed message)
   case lookup "behind_by" members of
     Just (Int behind) | behind >= 0 -> pure (behind == 0)

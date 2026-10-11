@@ -80,10 +80,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Contracts.Readiness (AdmittedConversation (..))
-import Hamsterdan.GitHub.Python
-  ( PyClass (..)
-  , PyFailure (..)
-  , PythonFault (..)
+import Hamsterdan.Python
+  ( PythonException (..)
+  , dumpsError
+  , keyError
+  , pythonError
+  , utf8EncodeError
   , canonicalUuid
   , casefold
   , get
@@ -93,20 +95,18 @@ import Hamsterdan.GitHub.Python
   , iterate'
   , lstrip
   , orEmpty
-  , pyClassName
   , pyEqText
   , strip
   , subscript
   , upper
   , utf8Length
   )
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.Python qualified as Py
 import Hamsterdan.GitHub.Routing (InstallationRegistry)
 import Hamsterdan.GitHub.Routing qualified as Routing
-import Hamsterdan.PyText (dumpsFault, utf8EncodeError)
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Db
-import Petrus.Json (EncodeError, EncodeOptions (..), Json (..), defaultDumps, dumpsText, lookupMember, parseJson)
+import Petrus.Json (EncodeError, EncodeOptions (..), Json (..), defaultDumps, dumpsText, lookupMember)
 
 -- | @MAX_BODY_BYTES@.
 maxBodyBytes :: Int
@@ -397,7 +397,7 @@ closeCustody custody = Db.close custody.connection
 -- | Receive one delivery.
 --
 -- Throws 'WebhookRejected' for every refusal the reference answers with
--- HTTP 400, and 'PythonFault' where the reference raises an uncaught
+-- HTTP 400, and CPython's 'PythonException' where the reference raises an uncaught
 -- exception (HTTP 500): a provider value of the wrong container type where
 -- it calls @.get@, or an unhashable lifecycle action. An observation the
 -- encoder refuses would be the reference's @RecursionError@ (see
@@ -426,9 +426,9 @@ receive custody headers body = do
   unless (verifyWith custody.verifier body signature) $ reject "signature verification failed"
   item <- case parseObservation delivery event body of
     Left (Left ()) -> reject "webhook envelope is malformed"
-    Left (Right (PyFailure cls detail)) -> throwIO (PythonFault (pyClassName cls) detail)
+    Left (Right failure) -> throwIO failure
     Right value -> pure value
-  encoded <- either (throwIO . dumpsFault) pure (encodeObservation item)
+  encoded <- either (throwIO . dumpsError) pure (encodeObservation item)
   Db.withLock custody.connection $ Db.transaction custody.connection $ do
     existing <- Db.query custody.connection "SELECT 1 FROM inbox WHERE delivery_id=?" [SQLText delivery]
     if not (null existing)
@@ -475,7 +475,7 @@ applyLifecycle custody item = case custody.options.registry of
 -- where the reference fails. 'Left (Left ())' is a refusal (the reference's
 -- caught @JSONDecodeError@, @KeyError@, @TypeError@ and @ValueError@);
 -- 'Left (Right failure)' is an exception the reference does not catch.
-parseObservation :: Text -> Text -> ByteString -> Either (Either () PyFailure) Observation
+parseObservation :: Text -> Text -> ByteString -> Either (Either () PythonException) Observation
 parseObservation delivery event body = do
   value <- case Py.loadsBytes body of
     Left _ -> refused
@@ -565,13 +565,13 @@ parseObservation delivery event body = do
     -- AttributeError (and anything else) propagates.
     py = \case
       Right result -> Right result
-      Left failure@(PyFailure cls _)
-        | cls `elem` [KeyError, TypeError, ValueError, IndexError] -> Left (Left ())
+      Left failure@(PythonException cls _)
+        | cls `elem` ["KeyError", "TypeError", "ValueError", "IndexError"] -> Left (Left ())
         | otherwise -> Left (Right failure)
     -- @item[name]@.
     key name = \case
-      Object members -> maybe (Left (PyFailure KeyError name)) Right (lookup name members)
-      _ -> Left (PyFailure TypeError "indices must be integers")
+      Object members -> maybe (Left (keyError name)) Right (lookup name members)
+      _ -> Left (pythonError "TypeError" "indices must be integers")
 
 -- | One PR Instance's subject: the reference's
 -- @(installation_id, repository_id, pull_request_number)@ tuple, with each
@@ -613,11 +613,12 @@ pending custody requested subject = do
         Just _ -> takeWhile (\row -> nextAttempt row <= now) rows
   forM due $ \case
     SQLText raw : SQLInteger attempts : _ ->
-      case parseJson Py.providerLoads (TE.encodeUtf8 raw) >>= maybe (Left "observation") Right . observationFromJson (fromIntegral attempts) of
-        Right item -> pure item
-        Left _ -> throwIO (PythonFault "TypeError" "stored observation is malformed")
-    _ -> throwIO (PythonFault "TypeError" "stored observation is malformed")
+      case either (const Nothing) (observationFromJson (fromIntegral attempts)) (Py.loads raw) of
+        Just item -> pure item
+        Nothing -> malformed
+    _ -> malformed
   where
+    malformed = throwIO (pythonError "TypeError" "stored observation is malformed")
     nextAttempt = \case
       [_, _, SQLFloat at] -> at
       [_, _, SQLInteger at] -> fromIntegral at

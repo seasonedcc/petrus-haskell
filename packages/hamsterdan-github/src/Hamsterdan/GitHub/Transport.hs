@@ -33,7 +33,6 @@ module Hamsterdan.GitHub.Transport
   , updateRefsMutation
 
     -- * Python faults
-  , pyFault
   ) where
 
 import Control.Exception (throwIO, try)
@@ -49,8 +48,8 @@ import Data.Text qualified as T
 import Hamsterdan.GitHub.Client (ClientResponse (..), GitHubClient, sendRequest)
 import Hamsterdan.GitHub.Http
 import Hamsterdan.GitHub.Models
-import Hamsterdan.GitHub.Python (PyFailure (..), PythonFault (..), pyClassName)
-import Hamsterdan.GitHub.Python qualified as Py
+import Hamsterdan.Python (PythonException (..), pythonError, pythonExceptionStr, raise)
+import Hamsterdan.Python qualified as Py
 import Hamsterdan.GitHub.Url qualified as Url
 import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps)
 
@@ -65,10 +64,6 @@ maxRequestBytes = 65536
 -- | @MAX_PAGES@.
 maxPages :: Int
 maxPages = 20
-
--- | Raise a CPython failure the reference does not catch.
-pyFault :: PyFailure -> IO a
-pyFault (PyFailure cls message) = throwIO (PythonFault (pyClassName cls) message)
 
 -- | @GitHubKitTransport(client)@ as the REST capability.
 githubTransport :: GitHubClient -> Transport
@@ -85,7 +80,7 @@ foreignPath :: Text -> IO Bool
 foreignPath path
   | not ("/" `T.isPrefixOf` path) || "//" `T.isPrefixOf` path = pure True
   | otherwise = case Url.urlsplit path of
-      Left message -> throwIO (PythonFault "ValueError" message)
+      Left message -> throwIO (pythonError "ValueError" message)
       Right split -> pure (not (T.null split.netloc))
 
 -- | @GitHubKitTransport.request@.
@@ -114,15 +109,17 @@ request client method path body = do
         then pure Null
         else case Py.loadsBytes raw of
           Right value -> pure value
-          Left Py.UndecodableText -> throwIO (valueFailure "UnicodeDecodeError" "response is not decodable")
-          Left (Py.MalformedJson message) -> throwIO (ClientError ValueKind "JSONDecodeError" (T.pack message))
-          Left Py.IntegerTooLong -> throwIO (valueFailure "ValueError" "Exceeds the limit (4300 digits) for integer string conversion")
+          -- @UnicodeDecodeError@, @JSONDecodeError@ and the digit-limit
+          -- @ValueError@ are value failures; @RecursionError@ is a
+          -- @RuntimeError@.
+          Left failure@(PythonException cls _) ->
+            throwIO (ClientError (if cls == "RecursionError" then RuntimeKind else ValueKind) cls (pythonExceptionStr failure))
     next <- nextPath (lookupHeader "link" response.headers)
     pure WireResponse {status = response.status, body = value, nextPath = next}
   case outcome of
     Right response -> pure response
     Left (failure :: ClientError) -> case failure.kind of
-      UncaughtKind -> throwIO (PythonFault failure.pythonClass failure.detail)
+      UncaughtKind -> throwIO (pythonError failure.pythonClass failure.detail)
       _ -> throwIO (boundaryWith "GitHub request failed without a proven outcome" (requestDetail failure))
 
 -- | @_transport_failure_detail@.
@@ -171,7 +168,7 @@ download client path limit = do
       TransportKind -> throwIO (boundaryWith "GitHub download failed without a proven outcome" "http_transport")
       HttpKind -> throwIO (boundaryWith "GitHub download failed without a proven outcome" "value_error")
       GitHubKind -> throwIO (boundaryWith "GitHub download failed without a proven outcome" "github_exception")
-      _ -> throwIO (PythonFault failure.pythonClass failure.detail)
+      _ -> throwIO (pythonError failure.pythonClass failure.detail)
 
 -- | @GitHubKitTransport.pages@.
 pages :: GitHubClient -> Text -> IO [[(Text, Json)]]
@@ -307,9 +304,9 @@ resolveReviewThread transport threadId = do
   case subscripts ["data", "resolveReviewThread", "thread"] response.body of
     Nothing -> refused
     Just thread -> do
-      identifier <- either pyFault pure (Py.get "id" thread)
+      identifier <- either raise pure (Py.get "id" thread)
       unless (Py.pyEqText identifier threadId) refused
-      resolved <- either pyFault pure (Py.get "isResolved" thread)
+      resolved <- either raise pure (Py.get "isResolved" thread)
       unless (resolved == Bool True) refused
 
 compareAndSwapRef :: Transport -> Text -> Text -> Text -> Text -> IO ()

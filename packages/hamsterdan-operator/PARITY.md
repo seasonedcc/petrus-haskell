@@ -22,16 +22,18 @@ reference is missing. It is never skipped.
 
 The package reuses:
 
-- hamsterdan-export (`Hamsterdan.Export.Python`, the dynamic Python value
-  model: `json.loads`, `json.dumps(sort_keys=True)`, the exception lines);
+- hamsterdan-contracts' `Hamsterdan.Python.Object` (the dynamic Python value
+  model the exporter shares: `json.loads`, `json.dumps(sort_keys=True)`, the
+  exception lines) and `Hamsterdan.Python.*` (`str` built-ins, `hashlib`,
+  `urllib.parse.quote`);
 - hamsterdan-cli (`argparse`);
 - hamsterdan-contracts (`ChangeResult` and the readiness vocabulary);
-- hamsterdan-github (`Hamsterdan.GitHub.Python`'s `str` built-ins,
-  `derivePolicy` for the authority inspection, and
-  `Hamsterdan.GitHub.Config` for the launcher's child);
-- hamsterdan-host (`pySplitlines`, and the `hamsterdan-host` binary that the
-  shim tests run);
-- petrus-json and crypton (SHA-256).
+- hamsterdan-host (`Hamsterdan.Host.GitPublish`'s publication categories, and
+  the `hamsterdan-host` binary that the shim tests run);
+- petrus-json and petrus-engine-file.
+
+The test suite also uses hamsterdan-github (`derivePolicy` for the authority
+inspection, and `Hamsterdan.GitHub.Config` for the launcher's child).
 
 ## Upstream tests
 

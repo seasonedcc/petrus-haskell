@@ -22,6 +22,7 @@ module Petrus.Json.Python.Exception
   , pythonFailureText
   ) where
 
+import Control.DeepSeq (NFData (..))
 import Control.Exception (Exception (..))
 import Data.ByteString (ByteString)
 import Data.Text (Text)
@@ -41,6 +42,9 @@ data PythonException = PythonException
 instance Exception PythonException where
   displayException = T.unpack . pythonFailureText
 
+instance NFData PythonException where
+  rnf (PythonException className arguments) = rnf className `seq` rnf arguments
+
 -- | One exception argument, by the Python type the reference distinguishes.
 data PythonArg
   = PyNone
@@ -53,6 +57,16 @@ data PythonArg
     -- instance of a @str@ or @int@ subclass is one of these too).
     PyObject Text Text
   deriving stock (Eq, Show)
+
+instance NFData PythonArg where
+  rnf = \case
+    PyNone -> ()
+    PyBool b -> rnf b
+    PyInt i -> rnf i
+    PyFloat d -> rnf d
+    PyStr s -> rnf s
+    PyBytes b -> rnf b
+    PyObject m q -> rnf m `seq` rnf q
 
 -- | @Name(message)@: an exception raised with one string argument, the
 -- shape of nearly every exception the ports raise.
