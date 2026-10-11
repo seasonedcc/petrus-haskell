@@ -1,0 +1,20 @@
+hamsterdan-cli
+Copyright 2026 Seasoned
+
+This package ports the parts of CPython 3.14's argparse module that the
+Hamsterdan command lines use (https://github.com/henriquebastos/hamsterdan,
+pinned under upstream/hamsterdan): parsing, abbreviations, subcommands,
+usage and help formatting, and the error messages.
+
+The package itself is licensed under the Apache License, Version 2.0 (see
+LICENSE). The upstream projects whose behavior it follows are:
+
+  hamsterdan
+  Copyright Henrique Bastos and contributors
+  Licensed under the Apache License, Version 2.0
+  https://github.com/henriquebastos/hamsterdan
+
+  CPython (Lib/argparse.py)
+  Copyright Python Software Foundation
+  Licensed under the Python Software Foundation License Version 2
+  https://www.python.org/

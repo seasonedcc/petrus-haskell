@@ -373,6 +373,62 @@ connectionSpec = describe "connections" $ do
       errorClass failure `shouldBe` OperationalError
       isBroken victim `shouldReturn` True
 
+  it "prepares statements as psycopg's cache does: same names, statements, types and discards" $ \target ->
+    withConn target False $ \connection -> withAgent target False $ \agent -> do
+      let both statement params pythonParams = do
+            void (executeResults connection (sql statement) params)
+            answer <- agentExecute agent statement pythonParams
+            member "error" answer `shouldBe` Null
+          times n statement params pythonParams = forM_ [1 .. n :: Int] (const (both statement params pythonParams))
+          end op = do
+            (if op == "commit" then commit else rollback) connection
+            void (ask agent [("op", String op)])
+          snapshot = do
+            let statement = "SELECT name, statement, parameter_types::text FROM pg_prepared_statements ORDER BY name" :: Text
+            ours <- query connection (sql statement) []
+            theirs <- agentExecute agent statement []
+            let shape = Array . map (Array . map (maybe Null (String . TE.decodeUtf8)))
+            shape ours `shouldBe` member "rows" theirs
+            pure (length ours)
+      times 7 "SELECT %s::int + 1" [intParam 1] [Int 1]
+      times 7 "SELECT 1" [] []
+      times 7 "SELECT 1; SELECT 2" [] []
+      times 6 "SELECT %s" [intParam 1] [Int 1]
+      times 6 "SELECT %s" [intParam 100000] [Int 100000]
+      times 6 "SELECT %s" [textParam "x"] [String "x"]
+      times 3 "SELECT %s, %s" [textParam "x", nullParam] [String "x", Null]
+      end "commit"
+      snapshot `shouldReturn` 5
+      -- A rollback deallocates every prepared statement.
+      both "SELECT 2" [] []
+      end "rollback"
+      snapshot `shouldReturn` 0
+      times 6 "SELECT %s::int + 1" [intParam 1] [Int 1]
+      snapshot `shouldReturn` 1
+      -- So does a newly seen statement answering DROP.
+      both "CREATE TEMP TABLE prepared_scratch (n int)" [] []
+      both "DROP TABLE prepared_scratch" [] []
+      snapshot `shouldReturn` 0
+      times 6 "SELECT %s::int + 1" [intParam 1] [Int 1]
+      end "commit"
+      snapshot `shouldReturn` 1
+
+  it "evicts the least recently used prepared statement beyond prepared_max" $ \target ->
+    bracket (connectWith defaultConnectOptions {autocommitMode = True, prepareThresholdOption = Just 0, preparedMaxOption = 3} (dsn target)) close $ \connection -> do
+      forM_ [1 .. 3 :: Int] $ \n -> execute_ connection (sql ("SELECT " <> T.pack (show n))) []
+      execute_ connection "SELECT 1" []
+      execute_ connection "SELECT 4" []
+      -- SELECT 2 went out with SELECT 4; the listing is prepared before it
+      -- runs, and its own eviction of SELECT 3 follows its results.
+      let listing = "SELECT statement FROM pg_prepared_statements ORDER BY name"
+      rows <- query connection (sql listing) []
+      rows `shouldBe` [[Just "SELECT 1"], [Just "SELECT 3"], [Just "SELECT 4"], [Just (TE.encodeUtf8 listing)]]
+      query connection "SELECT count(*) FROM pg_prepared_statements WHERE statement = 'SELECT 3'" [] `shouldReturn` [[Just "0"]]
+      -- With the cache off, nothing is prepared.
+      bracket (connectWith defaultConnectOptions {autocommitMode = True, prepareThresholdOption = Nothing} (dsn target)) close $ \plain -> do
+        forM_ [1 .. 7 :: Int] (const (execute_ plain "SELECT 1" []))
+        query plain "SELECT count(*) FROM pg_prepared_statements" [] `shouldReturn` [[Just "0"]]
+
 -- * Errors
 
 errorSpec :: SpecWith PostgresTarget

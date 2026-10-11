@@ -117,7 +117,7 @@ const SUITES = {
     own: ["differential.test.mjs"],
   },
   wire: {
-    own: ["ws-wire.test.mjs"],
+    own: ["ws-wire.test.mjs", "http-wire.test.mjs"],
   },
   playwright: {
     browser: true,
