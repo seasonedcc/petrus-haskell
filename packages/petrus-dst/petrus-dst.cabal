@@ -116,8 +116,10 @@ library campaigns
                     Petrus.Testing.Dst.Failure
                     Petrus.Testing.Dst.LegacyReplay
   other-modules:    Paths_petrus_dst
+                    Petrus.Testing.Dst.Process
   autogen-modules:  Paths_petrus_dst
   build-depends:    base >=4.18 && <5
+                  , async >=2.2
                   , barbies >=2.0
                   , bytestring >=0.11
                   , containers >=0.6
