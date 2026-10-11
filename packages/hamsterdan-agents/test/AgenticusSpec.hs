@@ -3,7 +3,7 @@
 module AgenticusSpec (spec, compositionFor) where
 
 import Control.Exception (throwIO)
-import Control.Monad (forM_, void)
+import Control.Monad (forM_, void, when)
 import Data.ByteString qualified as BS
 import Data.IORef
 import Data.Set qualified as Set
@@ -29,7 +29,9 @@ import Petrus.Agenticus.Runtime.Installation
 import Petrus.Agenticus.Runtime.Pi (piApiKeyCatalog)
 import Petrus.Agenticus.Runtime.Profiles (agentAsNetA5Local, ampA1, piNativeA2Local)
 import Petrus.Json (Json (..), defaultDumps, dumps)
-import Petrus.Motus.Worker (RuntimeError (..))
+import Hamsterdan.Host.AgentRuntime (closeOwnedResources, composeAgentRuntimeWith)
+import Hamsterdan.Host.PiA2 (installationFromEnvironment)
+import Petrus.Motus.Worker (RuntimeError (..), ValueError (..))
 import Petrus.TestSupport.Repo (repoRoot)
 import ProtocolSpec (reviewRequest)
 import System.Directory (createDirectoryIfMissing)
@@ -261,6 +263,32 @@ spec = describe "tests/unit/host/test_agenticus.py" $ do
       isPi runner `shouldBe` False
       readIORef runtime.probes `shouldReturn` 1
       readIORef runtime.starts `shouldReturn` 0
+
+  it "test_production_runtime_constructs_workspace_before_owned_runtime" . withTmp $ \tmp -> do
+    let environment =
+          [ ("HAMSTERDAN_PI_PROVIDER", "anthropic")
+          , ("HAMSTERDAN_PI_MODEL", "claude-sonnet-4-5")
+          , ("HAMSTERDAN_PI_API_KEY", "synthetic-direct-authority")
+          , ("HAMSTERDAN_PI_CLI_PATH", T.pack (tmp </> "cli"))
+          , ("HAMSTERDAN_PI_NODE_PATH", T.pack (tmp </> "node"))
+          , ("HAMSTERDAN_PI_PACKAGE_ROOT", T.pack (tmp </> "package"))
+          ]
+    installation <- installationFromEnvironment environment Nothing
+    runtimes <- newIORef (0 :: Int)
+    let compose _ _ = modifyIORef' runtimes (+ 1)
+        workspaces _ = throwIO (ValueError "synthetic workspace failure") :: IO ()
+    composeAgentRuntimeWith workspaces compose (tmp </> "state") installation
+      `shouldThrow` (== ValueError "synthetic workspace failure")
+    readIORef runtimes `shouldReturn` 0
+
+  it "test_startup_cleanup_attempts_every_independently_owned_resource" $ do
+    closed <- newIORef []
+    let resource name failing = do
+          modifyIORef' closed (<> [name :: Text])
+          when failing $ throwIO (RuntimeError "synthetic")
+    closeOwnedResources Nothing (Just (resource "runtime" True)) (Just (resource "routes" False))
+      `shouldThrow` (\(RuntimeError message) -> "cleanup is unverified" `T.isInfixOf` message)
+    readIORef closed `shouldReturn` ["runtime", "routes"]
 
   it "test_snapshot_persists_and_claim_reconstructs_same_route_after_restart" . withTmp $ \tmp -> do
     composition <- defaultComposition
