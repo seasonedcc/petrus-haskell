@@ -11,23 +11,66 @@ Both sides do the following:
 - provision the pinned History and Absurd schemas;
 - drop the database afterwards.
 
-Ratios above 1 mean Haskell is faster. Haskell is faster than Python on every row, in every round.
+Ratios above 1 mean Haskell is faster. Haskell is faster than Python on every row. Statements now
+run prepared from their sixth execution on a connection, as psycopg's do (petrus-postgres's
+prepared-statement cache).
 
-- Date: 2026-10-10, about 20:05 local (UTC-3).
-- Machine: Darwin arm64, Apple M4, shared with other agents. The 1-minute load average was taken
-  before, between and after every run:
-  - round 1: 3.3 → 4.3;
-  - round 2: 4.3 → 4.1;
-  - round 3: 4.1 → 6.0 / 5.7.
-- Server: a private PostgreSQL 17 (Postgres.app binaries, `fsync=off`) on 127.0.0.1, over TCP with
-  trust auth. It was started for the runs and stopped afterwards.
+- Date: 2026-10-11 02:21–02:25 local (UTC-3), on the commit that adds petrus-postgres's
+  prepared-statement cache.
+- Machine: Darwin arm64, Apple M4, heavily shared with other agents. 1-minute load average
+  4.6–5.8 around the run.
+- Server: a private PostgreSQL 17.7 (Postgres.app binaries, `fsync=off`, as for the superseded
+  table below) on 127.0.0.1, over TCP with trust auth. It was started for the runs and stopped
+  afterwards.
 - Haskell: GHC 9.10.3 `-O2 -threaded`, tasty-bench mean (`--stdev 5`), run with
   `+RTS -M2G -RTS`. Both rows use wall-clock time (`localOption WallTime` in `Main.hs`).
-- Python: CPython 3.14.6 with psycopg 3 (binary), in the pinned upstream venv. The figure is the
-  median of 10 timed batches (`scripts/bench_timing.py`) of at least 0.5 s each.
-- The runs were interleaved: Haskell, then Python, three times.
+- Python: CPython 3.14.6 with psycopg 3.3.4 (binary), in the pinned upstream venv. The figure is
+  the median of 10 timed batches (`scripts/bench_timing.py`) of at least 0.5 s each.
+- Interleaved by `scripts/bench-compare petrus-engine-absurd 6` with `PETRUS_TEST_POSTGRES`
+  naming that server, alternating Haskell first and Python first. The figures are the medians
+  of the six repetitions; "lowest" is the worst single repetition's ratio, and the last column
+  counts the repetitions Haskell won.
 
-| Benchmark | Haskell (rounds 1 / 2 / 3) | Python (rounds 1 / 2 / 3) | Python / Haskell |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
+|---|---:|---:|---:|---:|---:|
+| `engine.create-close` | 3.36 ms | 3.88 ms | 1.15× | 0.97× | 5/6 |
+| `roundtrip.issue-to-completion` | 10.9 ms | 14.5 ms | 1.33× | 1.00× | 6/6 |
+
+### Under `fsync=on` and heavy load
+
+A run twenty minutes earlier (01:35–01:50, load 4.3–5.8) used `scripts/with-postgres`'s
+throwaway server, whose `initdb` defaults keep `fsync` on. The round trip commits ten times on
+the Engine's connection and three times on the Worker's, and with other agents' builds
+contending for the disk the figures swung far more than the clients differ: Haskell's round trip
+ranged from 10.5 ms to 33.6 ms over six repetitions and Python's from 14.0 ms to 32.4 ms, and
+the medians came out at 6.01 ms against 5.99 ms (1.00×) for `engine.create-close` and 25.8 ms
+against 18.6 ms (0.72×) for the round trip. Haskell won the round trip in the second, third and sixth
+repetitions (1.13×, 1.47× and 1.36×; in the third and sixth both sides ran fast) and lost the
+other three.
+
+Two checks point at the server rather than the client:
+
+- **The statements are the same.** With `log_statement = all`, every round-trip Engine
+  connection sent the same 58 statements with the same 10 commits on both sides, prepared at
+  the same points and ending with the same
+  `ROLLBACK` and `DEALLOCATE ALL`. Haskell spells `BEGIN ISOLATION LEVEL READ COMMITTED` where
+  psycopg sends `BEGIN` (see petrus-postgres's DIVERGENCES). The Worker's connection sent 13
+  statements per Instance on both sides.
+- **The cache neither helps nor hurts here.** The same Haskell bench built with the cache off
+  (`prepareThresholdOption = Nothing`) and on, alternated six times on the `fsync=off` server,
+  measured the round trip at 12.2 ms off against 11.8 ms on (medians; the cache was faster in
+  four of the six pairs) and `engine.create-close` at 3.96 ms against 3.52 ms. Each Engine
+  opens fresh connections, so few of its statements reach a sixth execution.
+
+### Before the prepared-statement cache
+
+<!-- bench: superseded -->
+
+2026-10-10, about 20:05 local, a private PostgreSQL 17 (`fsync=off`), interleaved Haskell, then
+Python, three times. The 1-minute load average went 3.3 → 4.3 in round 1, 4.3 → 4.1 in round 2
+and 4.1 → 6.0 / 5.7 in round 3.
+
+| Benchmark | Haskell (rounds 1 / 2 / 3) | Python (rounds 1 / 2 / 3) | Python / Haskell (before) |
 |---|---:|---:|---:|
 | `engine.create-close` | 2.91 / 2.94 / 3.13 ms | 3.43 / 3.39 / 3.83 ms | 1.18× / 1.15× / 1.22× |
 | `roundtrip.issue-to-completion` | 9.20 / 9.36 / 11.34 ms | 11.82 / 13.04 / 11.78 ms | 1.28× / 1.39× / 1.04× |

@@ -110,8 +110,12 @@ schema, and call and spawn each other.
 
 ## Performance
 
-[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time: Haskell is 2.9–15×
-faster on values and the Activity. The registry operations are round trips
-to the server: 1.21–1.65×, and `postgres.child-of` level at 0.97×. Earlier
-figures of 3–5.5× there were tasty-bench CPU time, which leaves out the wait
+[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time, twelve interleaved
+repetitions: Haskell is 2.8–14× faster on values and the Activity, and
+1.39–1.88× on the registry operations, which are round trips to the server
+(`postgres.child-of` 1.50×, winning 11 of 12 repetitions on a heavily loaded
+machine). `postgres.child-of` used to come out level at 0.97×: both clients
+send the same statements, but psycopg executes them by name once they have run
+five times, and petrus-postgres now keeps the same prepared-statement cache.
+Earlier figures of 3–5.5× were tasty-bench CPU time, which leaves out the wait
 for the server.

@@ -107,9 +107,15 @@ more than 100000 doubles and on escaped strings and keys.
 
 ## Performance
 
-[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time: Haskell is 2.2×
-faster on the 16 KiB canonical encoding and 6–10× on envelope work. The store
-operations are round trips to the server and come out level: 0.86×
-(`postgres.discover`) to 1.09×, with `postgres.submit` at 0.97×. Earlier
-figures of 3.7–4.1× there were tasty-bench CPU time, which leaves out the
-wait for the server.
+[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time, twelve interleaved
+repetitions: Haskell is faster on every row. It is 2.3× faster on the 16 KiB
+canonical encoding and 6.8–9.6× on envelope work. The store operations are
+round trips to the server and come out 1.9–2.4× faster (`postgres.discover`
+1.94×, `postgres.submit` 2.27×), each losing at most two repetitions of twelve
+on a heavily loaded machine. They used to trail Python (`postgres.discover`
+0.86×, `postgres.submit` 0.97×) because psycopg executes a statement by name
+once it has run five times on a connection, sparing the server the parse and
+plan, while petrus-postgres sent every statement unnamed. petrus-postgres now
+keeps the same prepared-statement cache, and the two clients' statement logs
+are identical. Earlier figures of 3.7–4.1× were tasty-bench CPU time, which
+leaves out the wait for the server.

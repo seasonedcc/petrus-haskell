@@ -30,27 +30,27 @@ slower. Historical columns and tables (marked *before*) are left out.
 | `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | 10 | 2.80× | 6.00× |  |
 | `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | 11 | 1.00× | 2.90× |  |
 | `petrus-engine` | [RESULTS.md](../packages/petrus-engine/bench/RESULTS.md) | 5 | 5.00× | 13.7× |  |
-| `petrus-engine-absurd` | [RESULTS.md](../packages/petrus-engine-absurd/bench/RESULTS.md) | 2 | 1.04× | 1.39× |  |
+| `petrus-engine-absurd` | [RESULTS.md](../packages/petrus-engine-absurd/bench/RESULTS.md) | 2 | 1.15× | 1.33× |  |
 | `petrus-engine-file` | [RESULTS.md](../packages/petrus-engine-file/bench/RESULTS.md) | 15 | 1.40× | 5.30× |  |
-| `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | 3 | 1.10× | 7.93× |  |
+| `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | 3 | 1.21× | 7.34× |  |
 | `petrus-engine-sqlite` | [RESULTS.md](../packages/petrus-engine-sqlite/bench/RESULTS.md) | 4 | 1.12× | 7.27× |  |
-| `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | 15 | 0.98× | 7.97× | **below 1.0×**: sidecar/execute-round-trip |
-| `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | 8 | 0.86× | 9.89× | **below 1.0×**: `postgres.discover`; `postgres.submit` |
-| `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | 7 | 1.05× | 2.51× |  |
+| `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | 21 | 0.98× | 7.97× | **below 1.0×**: sidecar/execute-round-trip |
+| `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | 8 | 1.94× | 9.60× |  |
+| `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | 7 | 1.24× | 2.61× |  |
 | `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | 14 | 0.81× | 9 000× | **below 1.0×**: append-batches-of-8 (250 fsynced transactions); append-per-record (2 000 fsynced transactions); in-memory append, one record at a time |
 | `petrus-http-core` | [RESULTS.md](../packages/petrus-http-core/bench/RESULTS.md) | 6 | 1.59× | 18.7× |  |
 | `petrus-impetus` | [RESULTS.md](../packages/petrus-impetus/bench/RESULTS.md) | 10 | 1.60× | 97.0× |  |
 | `petrus-motus` | [RESULTS.md](../packages/petrus-motus/bench/RESULTS.md) | 14 | 1.02× | 78.0× |  |
-| `petrus-motus-absurd` | [RESULTS.md](../packages/petrus-motus-absurd/bench/RESULTS.md) | 4 | 1.00× | 3.70× |  |
+| `petrus-motus-absurd` | [RESULTS.md](../packages/petrus-motus-absurd/bench/RESULTS.md) | 4 | 1.16× | 3.68× |  |
 | `petrus-motus-zeromq` | [RESULTS.md](../packages/petrus-motus-zeromq/bench/RESULTS.md) | 8 | 1.06× | 1.67× |  |
 | `petrus-observation` | [RESULTS.md](../packages/petrus-observation/bench/RESULTS.md) | 21 | 3.10× | 23.0× |  |
 | `petrus-observation-http` | [RESULTS.md](../packages/petrus-observation-http/bench/RESULTS.md) | 11 | 1.61× | 5.07× |  |
 | `petrus-posix` | [RESULTS.md](../packages/petrus-posix/bench/RESULTS.md) | 7 | 0.93× | 2.29× | **below 1.0×**: `flock.open-tryLock-close`; `flock.tryLock-unlock` |
-| `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | 8 | 1.01× | 14.4× |  |
-| `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | 11 | 0.97× | 14.9× | **below 1.0×**: `postgres.child-of` |
+| `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | 8 | 1.19× | 14.7× |  |
+| `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | 11 | 1.39× | 14.2× |  |
 | `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | 17 | 1.64× | 34.2× |  |
 | `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | 7 | 0.98× | 1.75× | **below 1.0×**: `fence.acquire-release` |
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | 2 | 2.50× | 8.00× |  |
 | `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | 16 | 0.87× | 4.50× | **below 1.0×**: open-file POST+GET, 16 clients |
 
-41 results files; 9 with a row below 1.0×.
+41 results files; 7 with a row below 1.0×.
