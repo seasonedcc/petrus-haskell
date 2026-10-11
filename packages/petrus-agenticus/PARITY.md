@@ -135,7 +135,7 @@ Module: `Petrus.Agenticus.Attachment.Episode`. Spec: `test/Petrus/Agenticus/Epis
 | `test_settlement_is_ordered_and_successor_is_a_new_episode_attachment` | same label | |
 | `test_unverified_custody_blocks_progress_until_destroy_retry_verifies` | same label | |
 | `test_raising_binding_settlement_records_uncertain_custody_and_can_retry` | same label | |
-| `test_settlement_waits_for_every_claimed_call_before_export_and_destroy` | same label | The reference delays `GrantLedger.consume` with a monkeypatch. The Haskell ledger cannot be patched, so the claimed call blocks inside the scripted adapter instead. Either way the call is in flight when settlement starts, and the assertions are the same. |
+| `test_settlement_waits_for_every_claimed_call_before_export_and_destroy` | same label | The reference delays `GrantLedger.consume` with a monkeypatch. The Haskell ledger cannot be patched, so the claimed call blocks inside the scripted adapter instead. Either way the call is in flight when settlement starts, and the assertions are the same. The reference releases the call without waiting for settlement to close admission; the port waits until the attachment fence reports admission closed before releasing, because otherwise the call can finish first and succeed (the CI flake this fixed: on a busy runner, or always on `-N4`). |
 | `test_concurrent_settlement_cannot_export_or_destroy_one_binding_twice` | same label | |
 | `test_cancellation_is_serialized_before_settlement_and_is_too_late_afterward` | same label | |
 | `test_cancellation_cannot_enter_after_settlement_has_started` | same label | |

@@ -53,8 +53,10 @@ import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))
 import System.Directory (canonicalizePath, createDirectory, findExecutable, removeDirectoryRecursive)
+import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Posix.Files (setFileMode)
+import System.Process (readProcessWithExitCode)
 import System.Timeout (timeout)
 import Test.Hspec
 
@@ -139,8 +141,21 @@ setFactory rig f = modifyAdapterRuntime rig.adapter (\r -> r {installation = r.i
 setHooks :: Rig -> PiAdapterHooks -> IO ()
 setHooks rig = setAdapterHooks rig.adapter
 
+-- | Run a helper test with Node, started once beforehand.
+--
+-- The helper tests bound one protocol run by the reference's wall-clock
+-- budgets (the 3 s run deadline, the 5 s Episode deadline), which are
+-- already running while the helper process loads. The first Node start in a
+-- CI job is a cold one (binary and builtins paged in from disk): on an idle
+-- runner it costs ~150 ms against ~20 ms warm, but while the other suites run
+-- alongside it has taken over 2 s, and once more than the whole 3 s. That
+-- start-up is not what these tests bound, so it is paid here, outside them.
 withNode :: (FilePath -> IO ()) -> IO ()
-withNode body = findExecutable "node" >>= maybe (pendingWith "Node is required for the private helper protocol test") body
+withNode body = findExecutable "node" >>= maybe (pendingWith "Node is required for the private helper protocol test") (\node -> warm node >> body node)
+  where
+    warm node = do
+      (code, _, _) <- readProcessWithExitCode node ["-e", ""] ""
+      when (code /= ExitSuccess) $ expectationFailure "node did not start"
 
 privateDirectory :: FilePath -> IO ()
 privateDirectory path = createDirectory path >> setFileMode path 0o700
