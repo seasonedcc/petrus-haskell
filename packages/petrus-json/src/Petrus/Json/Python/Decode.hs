@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE MultiWayIf #-}
 
 -- | CPython's byte decoders, error text for error text: strict
@@ -16,7 +17,9 @@ module Petrus.Json.Python.Decode
   ( -- * Strict UTF-8
     decodeUtf8Python
   , utf8DecodeError
-  , codecErrorText
+  , DecodeFailure (..)
+  , utf8DecodeFailure
+  , decodeFailureText
   , decodeUtf8Replace
     -- * @json.loads(bytes)@
   , detectEncoding
@@ -45,16 +48,36 @@ decodeUtf8Python bytes = case TE.decodeUtf8' bytes of
 -- | The 'UnicodeDecodeError' message of strict UTF-8 decoding, or 'Nothing'
 -- when the bytes are UTF-8.
 utf8DecodeError :: ByteString -> Maybe Text
-utf8DecodeError bytes = either Just (const Nothing) (utf8CodePoints False bytes)
+utf8DecodeError bytes = decodeFailureText bytes <$> utf8DecodeFailure bytes
 
--- | CPython's @UnicodeDecodeError.__str__@: one byte names its value, a
--- longer range its first and last positions.
-codecErrorText :: Text -> ByteString -> Int -> Int -> Text -> Text
-codecErrorText codec bytes start end reason
-  | end - start == 1 =
-      "'" <> codec <> "' codec can't decode byte 0x" <> hex2 (BS.index bytes start) <> " in position " <> tshow start <> ": " <> reason
+-- | A 'UnicodeDecodeError''s arguments besides the object decoded: the
+-- codec, the malformed range @[start, end)@, and the reason.
+data DecodeFailure = DecodeFailure
+  { failureCodec :: Text
+  , failureStart :: Int
+  , failureEnd :: Int
+  , failureReason :: Text
+  }
+  deriving stock (Eq, Show)
+
+-- | The first malformed sequence strict UTF-8 decoding meets, as CPython's
+-- decoder classifies it, or 'Nothing' when the bytes are UTF-8.
+utf8DecodeFailure :: ByteString -> Maybe DecodeFailure
+utf8DecodeFailure bytes
+  | BS.isValidUtf8 bytes = Nothing
+  | otherwise = either Just (const Nothing) (utf8CodePoints False bytes)
+
+-- | CPython's @UnicodeDecodeError.__str__@ for the bytes decoded: one byte
+-- names its value, a longer range its first and last positions.
+decodeFailureText :: ByteString -> DecodeFailure -> Text
+decodeFailureText bytes failure
+  | failure.failureEnd - failure.failureStart == 1 =
+      "'" <> failure.failureCodec <> "' codec can't decode byte 0x" <> hex2 (BS.index bytes failure.failureStart) <> " in position " <> tshow failure.failureStart <> ": " <> failure.failureReason
   | otherwise =
-      "'" <> codec <> "' codec can't decode bytes in position " <> tshow start <> "-" <> tshow (end - 1) <> ": " <> reason
+      "'" <> failure.failureCodec <> "' codec can't decode bytes in position " <> tshow failure.failureStart <> "-" <> tshow (failure.failureEnd - 1) <> ": " <> failure.failureReason
+
+codecError :: Text -> ByteString -> Int -> Int -> Text -> Either Text a
+codecError name bytes from to why = Left (decodeFailureText bytes (DecodeFailure name from to why))
 
 hex2 :: Word8 -> Text
 hex2 w = let digits = showHex w "" in T.pack (replicate (2 - length digits) '0' ++ digits)
@@ -65,7 +88,7 @@ tshow = T.pack . show
 -- | CPython's UTF-8 decoder: the code points, or the message for the first
 -- malformed sequence. With @surrogatepass@, an encoded surrogate
 -- (@ED A0..BF 80..BF@) decodes to its code point.
-utf8CodePoints :: Bool -> ByteString -> Either Text String
+utf8CodePoints :: Bool -> ByteString -> Either DecodeFailure String
 utf8CodePoints surrogatePass bytes = go 0
   where
     n = BS.length bytes
@@ -116,9 +139,9 @@ utf8CodePoints surrogatePass bytes = go 0
                 | otherwise -> invalidStart i
     badSecond3 b w = not (cont w) || (if w < 0xA0 then b == 0xE0 else b == 0xED)
     badSecond4 b w = not (cont w) || (if w < 0x90 then b == 0xF0 else b == 0xF4)
-    invalidStart i = Left (codecErrorText "utf-8" bytes i (i + 1) "invalid start byte")
-    invalid i len = Left (codecErrorText "utf-8" bytes i (i + len) "invalid continuation byte")
-    endOfData i = Left (codecErrorText "utf-8" bytes i n "unexpected end of data")
+    invalidStart i = Left (DecodeFailure "utf-8" i (i + 1) "invalid start byte")
+    invalid i len = Left (DecodeFailure "utf-8" i (i + len) "invalid continuation byte")
+    endOfData i = Left (DecodeFailure "utf-8" i n "unexpected end of data")
 
 -- | @bytes.decode("utf-8", "replace")@: each maximal ill-formed subpart
 -- (Unicode §3.9) becomes one U+FFFD, as CPython substitutes; the byte that
@@ -197,7 +220,7 @@ decodeJsonBytes b = case detectEncoding b of
   where
     utf8 body = case TE.decodeUtf8' body of
       Right text -> Right text
-      Left _ -> fromCodePoints <$> utf8CodePoints True body
+      Left _ -> either (Left . decodeFailureText body) (Right . fromCodePoints) (utf8CodePoints True body)
     utf16 codec bigEndian offset = fromCodePoints <$> utf16CodePoints codec bigEndian b offset
     utf32 codec bigEndian offset = fromCodePoints <$> utf32CodePoints codec bigEndian b offset
 
@@ -213,7 +236,7 @@ utf16CodePoints codec bigEndian whole offset = go offset
        in if bigEndian then a `shiftL` 8 .|. z else z `shiftL` 8 .|. a
     go i
       | i == len = Right []
-      | i + 1 >= len = Left (codecErrorText codec whole i len "truncated data")
+      | i + 1 >= len = codecError codec whole i len "truncated data"
       | otherwise =
           let u = unit i
            in if u >= 0xD800 && u <= 0xDBFF && i + 3 < len && unit (i + 2) >= 0xDC00 && unit (i + 2) <= 0xDFFF
@@ -232,6 +255,6 @@ utf32CodePoints codec bigEndian whole offset = go offset
         else byte (i + 3) `shiftL` 24 .|. byte (i + 2) `shiftL` 16 .|. byte (i + 1) `shiftL` 8 .|. byte i
     go i
       | i == len = Right []
-      | i + 3 >= len = Left (codecErrorText codec whole i len "truncated data")
-      | unit i > 0x10FFFF = Left (codecErrorText codec whole i (i + 4) "code point not in range(0x110000)")
+      | i + 3 >= len = codecError codec whole i len "truncated data"
+      | unit i > 0x10FFFF = codecError codec whole i (i + 4) "code point not in range(0x110000)"
       | otherwise = (chr (unit i) :) <$> go (i + 4)

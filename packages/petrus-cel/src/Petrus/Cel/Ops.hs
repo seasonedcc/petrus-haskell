@@ -73,7 +73,7 @@ import Data.Word (Word8)
 import Numeric (showHex)
 
 import Petrus.Cel.Python
-import Petrus.Json.Python (pythonBytesRepr, pythonStrRepr)
+import Petrus.Json.Python (DecodeFailure (..), decodeFailureText, pythonBytesRepr, pythonStrRepr, utf8DecodeFailure)
 import Petrus.Cel.Regex (compileRegex, compileRegexBytes, searchBytes, searchText)
 import Petrus.Cel.Time
 import Petrus.Cel.Value
@@ -1572,48 +1572,24 @@ stringTypeNew src
   | Just t <- asText src = Right (VString t)
   | otherwise = Right (VString (valueStr src))
 
--- | @bytes.decode('utf-8')@ with CPython's error message.
+-- | @bytes.decode('utf-8')@: CPython's @UnicodeDecodeError@ for the first
+-- malformed sequence, with its arguments @(encoding, object, start, end,
+-- reason)@.
 decodeUtf8 :: ByteString -> Either Exc Text
-decodeUtf8 b = case TE.decodeUtf8' b of
-  Right t -> Right t
-  Left _ ->
-    let (position, byte, reason) = firstInvalid 0 (BS.unpack b)
-     in Left
-          ( pyExc
-              UnicodeDecodeError
-              ( "'utf-8' codec can't decode byte 0x" <> T.justifyRight 2 '0' (T.pack (showHex byte ""))
-                  <> " in position "
-                  <> T.pack (show position)
-                  <> ": "
-                  <> reason
-              )
-          )
-  where
-    firstInvalid :: Int -> [Word8] -> (Int, Word8, Text)
-    firstInvalid i = \case
-      [] -> (i, 0, "unexpected end of data")
-      c : rest
-        | c < 0x80 -> firstInvalid (i + 1) rest
-        | c >= 0xc2 && c <= 0xdf -> continuation 1 c rest
-        | c >= 0xe0 && c <= 0xef -> continuation 2 c rest
-        | c >= 0xf0 && c <= 0xf4 -> continuation 3 c rest
-        | otherwise -> (i, c, "invalid start byte")
-      where
-        continuation n c rest =
-          let (cs, after) = splitAt n rest
-              ok k x = case (c, k :: Int) of
-                (0xe0, 0) -> x >= 0xa0 && x <= 0xbf
-                (0xed, 0) -> x >= 0x80 && x <= 0x9f
-                (0xf0, 0) -> x >= 0x90 && x <= 0xbf
-                (0xf4, 0) -> x >= 0x80 && x <= 0x8f
-                _ -> x >= 0x80 && x <= 0xbf
-              valid = and (zipWith ok [0 ..] cs)
-           in if not valid
-                then (i, c, "invalid continuation byte")
-                else
-                  if length cs < n
-                    then (i, c, "unexpected end of data")
-                    else firstInvalid (i + n + 1) after
+decodeUtf8 b = case utf8DecodeFailure b of
+  Nothing -> Right (TE.decodeUtf8 b)
+  Just failure ->
+    Left
+      ( PyExc
+          UnicodeDecodeError
+          (decodeFailureText b failure)
+          [ pythonStrRepr (failureCodec failure)
+          , pythonBytesRepr b
+          , T.pack (show (failureStart failure))
+          , T.pack (show (failureEnd failure))
+          , pythonStrRepr (failureReason failure)
+          ]
+      )
 
 -- | @BytesType(source)@.
 bytesTypeNew :: Value -> Either Exc Value

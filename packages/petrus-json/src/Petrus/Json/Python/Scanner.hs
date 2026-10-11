@@ -29,8 +29,10 @@ module Petrus.Json.Python.Scanner
   , Hooks (..)
   , ScanError (..)
   , defaultHooks
+  , strictHooks
   , loads
   , jsonDecodeError
+  , loadsError
   , decodeErrorText
   , defaultInt
   , defaultFloat
@@ -40,9 +42,11 @@ module Petrus.Json.Python.Scanner
 
 import Data.Bits ((.|.), shiftL)
 import Data.Char (chr, isDigit, ord)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json.Limits (intStrDigitsError, maxIntStrDigits)
+import Petrus.Json.PythonText (pythonStringRepr)
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show
@@ -106,12 +110,38 @@ defaultHooks =
     , objectPairs = const (Right ())
     }
 
+-- | The Petrus strict loader's hooks (the reference's
+-- @object_pairs_hook=_strict_object, parse_constant=_refuse_constant@):
+-- an object refuses its first repeated key (@duplicate JSON field 'k'@)
+-- when it closes, and @NaN@, @Infinity@ and @-Infinity@ are refused
+-- (@non-finite JSON number NaN@) when scanned.
+strictHooks :: Hooks Text
+strictHooks =
+  defaultHooks
+    { parseConstant = \spelling -> Left ("non-finite JSON number " <> T.pack spelling)
+    , objectPairs = \pairs -> case firstRepeat (map fst pairs) of
+        Just key -> Left ("duplicate JSON field " <> pythonStringRepr key)
+        Nothing -> Right ()
+    }
+  where
+    firstRepeat = go Set.empty
+      where
+        go _ [] = Nothing
+        go seen (k : rest)
+          | Set.member k seen = Just k
+          | otherwise = go (Set.insert k seen) rest
+
 -- | The text of the 'ValueError' plain @json.loads(text)@ raises for a
 -- document, or 'Nothing' when it admits the document: a 'JSONDecodeError'
 -- with its line, column and character offset, or @int()@'s digit-limit
 -- refusal.
 jsonDecodeError :: Text -> Maybe Text
-jsonDecodeError text = case loads defaultHooks text of
+jsonDecodeError = loadsError defaultHooks
+
+-- | The text of the 'ValueError' @json.loads(text, ...)@ with these hooks
+-- raises for a document, or 'Nothing' when it admits the document.
+loadsError :: Hooks Text -> Text -> Maybe Text
+loadsError hooks text = case loads hooks text of
   Left (DecodeError message position) -> Just (decodeErrorText text message position)
   Left (HookError message) -> Just message
   Right _ -> Nothing

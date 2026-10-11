@@ -11,6 +11,7 @@ import Control.Concurrent
 import Control.Exception
 import Control.Monad (forM_, void, when)
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.IORef
 import Data.List (nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
@@ -41,7 +42,7 @@ import Petrus.Motus.Transport.ZeroMQ qualified as Z
 import Petrus.Motus.Transport.ZeroMQ.Native qualified as N
 import Petrus.Motus.Transport.ZeroMQ.Socket (RawDealer (..), RpcSocket (..), SocketFactory (..), TransportFailure (..))
 import Petrus.Motus.Transport.ZeroMQ.Support
-import Petrus.Motus.Transport.ZeroMQ.Wire (WireError (..), decodeAttempt, encodeAttempt)
+import Petrus.Motus.Transport.ZeroMQ.Wire (WireError (..), decodeAttempt, decodeMessage, encodeAttempt)
 import Petrus.Motus.Worker (WorkerOptions (..), asyncWorkerFromAccess, defaultWorkerOptions, runAsyncWorker, stopAsyncWorker)
 import Petrus.Motus.Worker qualified as W
 import System.Exit (ExitCode (..))
@@ -429,6 +430,18 @@ spec = do
         `shouldThrow` valueErrorMatching "rejects TCP CURVE"
       void (localServer endpoint (tmp </> "db") ["default"] (Just "server") (Just "clients"))
         `shouldThrow` valueErrorMatching "rejects TCP CURVE"
+
+  -- Beyond the reference suite: @_decode_message@'s refusals, as the
+  -- pinned CPython words them. An integer past the digit limit raises
+  -- before the syntax error that follows it.
+  describe "malformed messages are refused with CPython's text" $
+    it "decodeMessage" $ do
+      let refusal = either (Just . (\case WireValue m -> m; WireType m -> "TypeError: " <> m)) (const Nothing) . decodeMessage
+      refusal ("{\"a\": " <> BS.replicate 4301 0x31 <> ", }")
+        `shouldBe` Just "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit"
+      refusal "{\"a\": 1, }" `shouldBe` Just "invalid ZeroMQ Dispatch JSON message: Illegal trailing comma before end of object: line 1 column 8 (char 7)"
+      refusal "{\"a\": \"\xff\"}" `shouldBe` Just "invalid ZeroMQ Dispatch JSON message: 'utf-8' codec can't decode byte 0xff in position 7: invalid start byte"
+      refusal "[1]" `shouldBe` Just "ZeroMQ Dispatch message must be a JSON object"
 
   describe "non-finite request, terminal, and drain timeouts are refused" $
     forM_ [("nan", 0 / 0), ("inf", 1 / 0), ("-inf", -1 / 0)] $ \(label, seconds :: Double) ->

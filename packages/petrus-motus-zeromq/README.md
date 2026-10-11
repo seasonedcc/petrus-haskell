@@ -24,7 +24,6 @@ directions:
 | `…ZeroMQ.Client` | `ZeroMQWorkerDispatch`, `AsyncZeroMQWorkerAccess` | the synchronous, thread-confined Worker client (a `WorkerDispatch`) and the native asynchronous `WorkerAccess` with bounded in-flight sockets |
 | `…ZeroMQ.Server` | `ZeroMQDispatchServer` | the ROUTER server: request validation, the provider cache per client, drain, stop, the IPC lock and CURVE/ZAP set-up |
 | `…ZeroMQ.Wire` | `_encode_*`, `_decode_*`, `_parse_request` | the v2 wire codec and its limits |
-| `…ZeroMQ.PythonDecode` | CPython's `bytes.decode` and `json.loads` | the exact UTF-8 and JSON error texts that the protocol quotes |
 | `…ZeroMQ.Curve` | `zmq.auth` | certificate files, client and server security checks, and the ZAP handler |
 | `…ZeroMQ.Socket` | `_open_socket` | the client socket seam (`SocketFactory`) and its options |
 | `…ZeroMQ.Native` | pyzmq | the libzmq binding (see below) |

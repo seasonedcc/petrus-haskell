@@ -138,3 +138,14 @@ spec = describe "properties" $ do
       rendered "('x' + '\\uD800\\uDC00').matches('.')"
         `shouldBe` "CELEvalError(*('return error for overflow', <class 'UnicodeEncodeError'>, ('utf-8', 'x\\ud800\\udc00', 1, 3, 'surrogates not allowed')))"
       rendered "bytes('\\uD800') == b'' || true" `shouldBe` "BoolType(True)"
+
+  -- string(bytes) raises CPython's UnicodeDecodeError with the range of the
+  -- first malformed sequence (the expected texts are celpy 0.5.0's own).
+  describe "undecodable bytes" $
+    it "raise UnicodeDecodeError with CPython's arguments" $ do
+      let rendered source = either (error . show) (either excRepr valueRepr . (`evaluateJson` [])) (compile source)
+          decodeError arguments = "CELEvalError(*('return error for overflow', <class 'UnicodeDecodeError'>, ('utf-8', " <> arguments <> ")))"
+      rendered "string(b'\\xff')" `shouldBe` decodeError "b'\\xff', 0, 1, 'invalid start byte'"
+      rendered "string(b'\\xe2\\x82')" `shouldBe` decodeError "b'\\xe2\\x82', 0, 2, 'unexpected end of data'"
+      rendered "string(b'\\xe2\\x82A')" `shouldBe` decodeError "b'\\xe2\\x82A', 0, 2, 'invalid continuation byte'"
+      rendered "string(b'a\\xf0\\x9f\\x98')" `shouldBe` decodeError "b'a\\xf0\\x9f\\x98', 1, 4, 'unexpected end of data'"

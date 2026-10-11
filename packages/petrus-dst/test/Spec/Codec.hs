@@ -169,6 +169,21 @@ spec = describe "artifact codec" $ do
     fmap artifactScenarioId (decodeArtifact "{\"value\":NaN}")
       `shouldBe` Left (DecodeRefused "invalid strict DST JSON: non-finite JSON number NaN")
 
+  -- The strict loader is petrus-json's CPython layer; the copy this package
+  -- carried named a signature-selected codec "utf-16" (CPython names the
+  -- endian codec), refused a lone surrogate escape with petrus-json's own
+  -- text, compared lone-surrogate keys as U+FFFD (a false duplicate), and
+  -- refused surrogate bytes before CPython's scanner could report a
+  -- syntax error.
+  it "refuses what CPython's strict loader refuses, with its text" $ do
+    let refusal = fmap artifactScenarioId . decodeArtifact
+    refusal "\xff\xfe{\x00}"
+      `shouldBe` Left (DecodeRefused "invalid strict DST JSON: 'utf-16-le' codec can't decode byte 0x7d in position 4: truncated data")
+    refusal "{\"a\":\"\xed\xa0\x80\""
+      `shouldBe` Left (DecodeRefused "invalid strict DST JSON: Expecting ',' delimiter: line 1 column 9 (char 8)")
+    refusal "{\"a\":\"\\ud800\"}" `shouldBe` Left (DecodeRefused loneSurrogateRefusal)
+    refusal "{\"\\ud800\":1,\"\\ud801\":2}" `shouldBe` Left (DecodeRefused loneSurrogateRefusal)
+
   -- repr() keeps characters Unicode 16.0 assigned (CPython 3.14) and
   -- escapes the space separators: the copy this package carried used GHC's
   -- Unicode 15.1 general categories and escaped U+105C0.

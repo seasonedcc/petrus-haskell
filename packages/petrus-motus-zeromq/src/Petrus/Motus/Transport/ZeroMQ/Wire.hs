@@ -60,10 +60,10 @@ import Data.Text.Encoding qualified as TE
 import Petrus.Activity
 import Petrus.Json
 import Petrus.Motus.Dispatch (ActivityAttempt (..), AttemptFailure (..), activityAttempt)
-import Petrus.Json.Python (pythonStrListRepr)
+import Petrus.Json.Python (decodeUtf8Python, pythonStrListRepr)
+import Petrus.Json.Python.Scanner qualified as Scanner
 import Petrus.Motus.PythonException (PythonException (..), pythonExceptionRepr)
 import Petrus.Motus.Transport.ZeroMQ.Errors
-import Petrus.Motus.Transport.ZeroMQ.PythonDecode (pythonJsonLoads)
 
 -- ---------------------------------------------------------------------------
 -- Constants
@@ -313,12 +313,22 @@ encodeMessage v = case dumps compact {sortKeys = True} v of
     | otherwise -> Right bytes
 
 -- | @_decode_message@: a JSON object, with CPython's decode error text.
+-- "Petrus.Json" admits the document; only a refusal is re-scanned for the
+-- message CPython raises: a @UnicodeDecodeError@ or @JSONDecodeError@ is
+-- reported with the transport's prefix, @int()@'s digit-limit
+-- @ValueError@ without it.
 decodeMessage :: ByteString -> Either WireError [(Text, Json)]
-decodeMessage bytes = case pythonJsonLoads bytes of
-  Left (True, problem) -> value ("invalid ZeroMQ Dispatch JSON message: " <> problem)
-  Left (False, problem) -> value problem
-  Right (Object members) -> Right members
-  Right _ -> value "ZeroMQ Dispatch message must be a JSON object"
+decodeMessage bytes = case decodeUtf8Python bytes of
+  Left problem -> invalidJson problem
+  Right text -> case parseJson pythonLoads bytes of
+    Right (Object members) -> Right members
+    Right _ -> value "ZeroMQ Dispatch message must be a JSON object"
+    Left problem -> case Scanner.loads Scanner.defaultHooks text of
+      Left (Scanner.DecodeError message position) -> invalidJson (Scanner.decodeErrorText text message position)
+      Left (Scanner.HookError digitLimit) -> value digitLimit
+      Right _ -> invalidJson (T.pack problem)
+  where
+    invalidJson problem = value ("invalid ZeroMQ Dispatch JSON message: " <> problem)
 
 -- | How a response refuses the request: the reference's @ValueError@
 -- (decode errors and @refused@ replies) or @RuntimeError@.

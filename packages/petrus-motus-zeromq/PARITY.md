@@ -131,7 +131,8 @@ These examples run the pinned reference with
    The answers must count exactly 2 `ok`, 70 `protocol`, 7 `refused` and 1
    `service`. The error texts quote CPython's `UnicodeDecodeError` and
    `JSONDecodeError` messages, so the Haskell server reproduces them
-   (`Petrus.Motus.Transport.ZeroMQ.PythonDecode`).
+   (petrus-json's `Petrus.Json.Python.Decode` and
+   `Petrus.Json.Python.Scanner`).
 4. **Process death across implementations.** This is the added
    parametrization above: a Haskell client's uncertain completion is
    redelivered exactly once to a reference replacement server. A

@@ -183,28 +183,6 @@ loadsDocument =
 
 -- | The duplicate-refusing, constant-refusing hooks the oracle's strict
 -- profile installs.
-strictHooks :: Scanner.Hooks Text
-strictHooks =
-  Scanner.defaultHooks
-    { Scanner.parseConstant = \spelling -> Left ("non-finite JSON number " <> T.pack spelling)
-    , Scanner.objectPairs = \pairs -> case duplicates (map fst pairs) of
-        key : _ -> Left ("duplicate JSON field " <> pythonStringRepr key)
-        [] -> Right ()
-    }
-  where
-    duplicates = go []
-      where
-        go _ [] = []
-        go seen (k : rest)
-          | k `elem` seen = [k]
-          | otherwise = go (k : seen) rest
-
-strictLoadsError :: Text -> Maybe Text
-strictLoadsError text = case Scanner.loads strictHooks text of
-  Left (Scanner.DecodeError message position) -> Just (Scanner.decodeErrorText text message position)
-  Left (Scanner.HookError message) -> Just message
-  Right _ -> Nothing
-
 rangesOf :: (Char -> Bool) -> [(Int, Int)]
 rangesOf predicate = foldr add [] [code | code <- [0 .. 0x10FFFF], predicate (chr code)]
   where
@@ -317,7 +295,7 @@ check c answer = case (c, answer) of
       , compareAs ("type " ++ show value) (member "type" got) (String (jsonTypeName value))
       ]
   (LoadsCase text, _) -> compareAs ("json.loads " ++ show text) (either Just (const Nothing) answer) (Scanner.jsonDecodeError text)
-  (StrictLoadsCase text, _) -> compareAs ("strict json.loads " ++ show text) (either Just (const Nothing) answer) (strictLoadsError text)
+  (StrictLoadsCase text, _) -> compareAs ("strict json.loads " ++ show text) (either Just (const Nothing) answer) (Scanner.loadsError Scanner.strictHooks text)
   (Utf8Case b, _) ->
     compareAs ("decode " ++ show b) (either Just (const Nothing) answer) (utf8DecodeError b)
       ++ compareAs ("decodeUtf8Python " ++ show b) (either Left (Right . T.pack . asString) answer) (decodeUtf8Python b)

@@ -40,7 +40,6 @@ library
                      Petrus.Motus.Transport.ZeroMQ.Curve
                      Petrus.Motus.Transport.ZeroMQ.Errors
                      Petrus.Motus.Transport.ZeroMQ.Native
-                     Petrus.Motus.Transport.ZeroMQ.PythonDecode
                      Petrus.Motus.Transport.ZeroMQ.Server
                      Petrus.Motus.Transport.ZeroMQ.Socket
                      Petrus.Motus.Transport.ZeroMQ.Wire
