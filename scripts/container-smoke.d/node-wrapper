@@ -1,0 +1,21 @@
+#!/bin/sh
+# A recording wrapper around the image's Pi runtime Node, for
+# scripts/container-smoke. The smoke run mounts it read-only at
+# /run/smoke/node-wrapper and points HAMSTERDAN_PI_NODE_PATH at it for the
+# serve container, so every Node process the host starts (the version check
+# and the Pi helper's READY probe at startup) runs the real Node and is
+# logged to /tmp/smoke-node.log: its arguments, which credential variables
+# it inherited (names only), its exit status and its standard output.
+set -u
+real=/opt/hamsterdan/pi/node_modules/node/bin/node
+log=/tmp/smoke-node.log
+inherited=$(env | sed -n 's/^\(HAMSTERDAN_GITHUB_PRIVATE_KEY\|HAMSTERDAN_GITHUB_WEBHOOK_SECRET\|HAMSTERDAN_PI_API_KEY\|OP_SERVICE_ACCOUNT_TOKEN\)=.*/\1/p' | tr '\n' ' ')
+out=$("$real" "$@")
+status=$?
+{
+    printf 'argv:'
+    for argument in "$@"; do printf ' %s' "$argument"; done
+    printf '\ninherited: %s\nstatus: %s\nstdout: %s\n' "$inherited" "$status" "$out"
+} >> "$log"
+printf '%s\n' "$out"
+exit "$status"

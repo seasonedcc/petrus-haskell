@@ -143,8 +143,13 @@ has cases. The cases:
 
 ## Container runtime contract
 
-The image is never built here: no container runtime may run on this
-machine. What stands in for a build, and exactly what it checks:
+No container runtime may run on the development machine, so the image is
+built and run in CI: the `container` job of
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml), on every push
+to `main` and every pull request, builds `deployment/Containerfile` for
+`linux/amd64` and runs [`scripts/container-smoke`](../../scripts/container-smoke)
+against it (see "The image at run time" below). Before that, `ContainerSpec`
+checks the image's definition against the reference's:
 
 - **Byte-identical inputs.** `ContainerSpec` checks that
   `scripts/with-runtime-secrets`, `deployment/config/installations.toml`,
@@ -157,8 +162,10 @@ machine. What stands in for a build, and exactly what it checks:
     `npm ci`), and the same runtime base image and digest;
   - every instruction of the reference's runtime stage, in order, except
     the two that install the application:
-    - the `.venv` `COPY` is replaced by the binaries' `COPY` and the shim's
-      `COPY`;
+    - the `.venv` `COPY` is replaced by the binaries' `COPY`, the shim's
+      `COPY`, and the `COPY` of petrus-agenticus-runtime's `data/`
+      (exactly its `data-files`) with the `ENV` that points the binaries at
+      them (DIVERGENCES.md, "The Pi helpers");
     - the `RUN` runs the same commands, and its package list is a superset
       that adds exactly `libffi8`, `libgmp10` and `zlib1g`, the shared
       libraries GHC's binaries link.
@@ -187,19 +194,85 @@ machine. What stands in for a build, and exactly what it checks:
     2.
 - **Linked libraries.** `otool -L` on the three binaries built here lists
   only system libraries (`libSystem`, `libz`, `libiconv`, `libffi`,
-  `libcharset`, the Security framework). On Linux, GHC also links `libgmp`
-  dynamically. The runtime stage installs `libffi8`, `libgmp10` and
-  `zlib1g` for these.
-- **CI.** The `container` job in `.github/workflows/ci.yml` runs
-  `shellcheck` on the launcher and on the shim (as POSIX `sh`), and
-  `hadolint` v2.12.0 on the Containerfile with `--failure-threshold error`.
-  Neither tool ran locally. ShellCheck is the only one installed here: the
-  shim is clean under it, and the launcher is the reference's file.
+  `libcharset`, the Security framework). In the image, `ldd` shows they
+  link `libm`, `libz`, `libgmp` and `libc` (below).
+- **Lint.** The CI job runs `shellcheck` on the launcher, the shim (as
+  POSIX `sh`) and the smoke scripts, and `hadolint` v2.12.0 on the
+  Containerfile with `--failure-threshold error`.
 
-Not verified: that the image builds, which needs the network for `ghcup`,
-`cabal update` and the frozen plan's downloads. Also not verified: that
-the built image starts, serves and runs the launcher under bookworm's
-bash. The status in the top-level PARITY.md says so.
+### The image at run time
+
+`scripts/container-smoke IMAGE` (or `--build`, which builds the image
+first) checks, against the built image, what the reference's
+`deployment/release.py verify`, Ansible candidate and runtime playbooks,
+systemd unit (`hamsterdan.service.j2`) and deployment README expect of it.
+[docs/reproducing.md](../../docs/reproducing.md#the-container-image)
+lists every check; in short:
+
+- **Image configuration:** `linux/amd64`, user `hamsterdan`, working
+  directory, `ENTRYPOINT`, `CMD`, `EXPOSE 8000`, the OCI labels (revision
+  and version equal to the build arguments), the reference's environment.
+  No credential appears in the image's environment or build history.
+- **Filesystem:** uid and gid 10001 with the reference's passwd entry,
+  `/var/lib/hamsterdan` at `0700`, owned by `hamsterdan` and writable;
+  the ownership of the binaries, shim, Pi runtime and launcher; the
+  launcher, the shim and the runtime data files byte for byte the repository's.
+- **Shared libraries:** `ldd` resolves every library of `hamsterdan-host`,
+  `hamsterdan-operator`, `hamsterdan-export` (`libm`, `libz`, `libgmp`,
+  `libc`) and of the Pi runtime's `node`.
+- **Pi runtime:** Node `v22.19.0` and Pi `0.83.0` at the reference's paths,
+  and the `HAMSTERDAN_PI_*` paths exist.
+- **The interpreter path:** the default `ENTRYPOINT` answers `--help` with
+  the host's usage, and with its default `CMD` starts the host's `serve`,
+  which refuses the missing configuration as the host does. The version
+  probe, the version assertion (matching and not), an unknown module, any
+  other invocation and each module's `--help` answer as `ContainerSpec`
+  checks against the reference interpreter.
+- **Secrets from files:** the launcher runs as the entrypoint with the
+  systemd unit's flags (read-only root, no capabilities,
+  `no-new-privileges`, the private `/tmp` tmpfs), the settings file the
+  runtime playbook installs, and the token-file, `op` and configuration
+  mounts at the unit's paths. A fake `op` (`scripts/container-smoke.d/fake-op`)
+  checks it gets the Environment, the bootstrap from the mounted token
+  file, `--config /tmp/hamsterdan-op` (which it creates on the tmpfs) and
+  none of the scrubbed credential families. The application sees the
+  Environment's values (the multiline key intact) and neither the
+  bootstrap nor credentials planted in the container's environment. No
+  Environment, a malformed Environment ID and a symlinked token file are
+  refused, under bookworm's bash 5.2.
+- **`validate`**, as the runtime and configure playbooks run it, with
+  `deployment/config/installations.toml` mounted at
+  `/run/config/hamsterdan`: against a fake GitHub served over TLS as
+  `api.github.com` (`scripts/container-smoke.d/fake-github.py`), it
+  reconciles 1 installation and admits 1 repository, the values the
+  playbooks assert.
+- **`serve`**, as the systemd unit runs it: `GET /healthz` is
+  `HTTP/1.1 200 OK` with uvicorn's `server` header and a healthy service
+  whose configured installation is reconciled; `/openapi.json` answers
+  200, an unknown path `404 {"detail":"Not Found"}`, an unsigned webhook
+  delivery 400. PID 1 is `hamsterdan-host serve --host 0.0.0.0 --port
+  8000` as uid 10001 (the launcher, `op`, `env` and the shim each exec
+  into the next), and nothing else runs. Through a recording Node wrapper
+  (`HAMSTERDAN_PI_NODE_PATH`), the host is seen checking Node's version
+  and running the Pi helper's READY probe, which answers
+  `{"type":"probe","ok":true}`, so the host selects Pi execution; neither
+  Node process inherits a credential. `docker stop` ends the host with
+  status 0.
+
+The first green run is
+[38117536511](https://github.com/seasonedcc/petrus-haskell/actions/runs/38117536511)
+(a cold build and every check took 23 minutes in an earlier run; with the
+Hackage layer cached, a source change takes about 10 minutes and a
+documentation-only change under 3). The first image CI built failed the
+Pi probe check: the binaries looked
+for the Pi helpers at the build stage's source path. The image now ships
+them (DIVERGENCES.md, "The Pi helpers").
+
+What this does not cover: an agent turn against a real model provider,
+real GitHub, and the real 1Password CLI; the smoke run replaces each with a
+local fake. GitHub-facing behaviour and the launcher's contract with `op`
+are checked against the reference by `DifferentialSpec`, hamsterdan-host's
+suites and `SecretLaunchSpec`.
 
 ## Benchmarks
 

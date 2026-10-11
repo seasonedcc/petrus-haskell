@@ -308,7 +308,7 @@ scripted answers = do
 operatorFor :: Map Text [Text] -> IO Operator
 operatorFor answers = do
   answer <- scripted answers
-  let Operator {stamp, withTemporary, brokerDigest, validatorDigest} = defaultOperator
+  let Operator {stamp, withTemporary, brokerDigest, validatorDigest, fixture} = defaultOperator
   pure
     Operator
       { runner = \command _ -> (\out -> Completed {returncode = 0, stdout = out, stderr = ""}) <$> answer (T.unwords command)
@@ -316,6 +316,7 @@ operatorFor answers = do
       , withTemporary
       , brokerDigest
       , validatorDigest
+      , fixture
       }
 
 data Sides = Sides {setupPrivate :: FilePath, git :: Text, gh :: Text}

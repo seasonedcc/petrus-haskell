@@ -15,6 +15,15 @@ WORKDIR /opt/hamsterdan/pi
 COPY deployment/pi/package.json deployment/pi/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
+# The local packages' .cabal files alone. The build stage copies them before
+# the sources, so its dependency layer (every Hackage package of the frozen
+# plan) is reused from the build cache until a .cabal file, cabal.project or
+# the freeze changes.
+FROM python:3.14.7-slim-bookworm@sha256:23c59390fc717bf09f9336908199a0ae75d9c4264bf296123f94ad772fea3b52 AS cabal-files
+COPY packages /opt/hamsterdan/src/packages
+RUN find /opt/hamsterdan/src/packages -type f ! -name '*.cabal' -delete \
+    && find /opt/hamsterdan/src/packages -mindepth 1 -depth -type d -empty -delete
+
 FROM python:3.14.7-slim-bookworm@sha256:23c59390fc717bf09f9336908199a0ae75d9c4264bf296123f94ad772fea3b52 AS build
 ARG GHC_VERSION=9.10.3
 ARG CABAL_VERSION=3.16.1.0
@@ -34,9 +43,21 @@ RUN mkdir -p /opt/toolchain/.ghcup/bin \
 WORKDIR /opt/hamsterdan/src
 COPY cabal.project LICENSE NOTICE ./
 COPY cabal.project.freeze ./cabal.project.freeze
-COPY packages ./packages
+COPY --from=cabal-files /opt/hamsterdan/src/packages ./packages
+# Plan the three executables from the .cabal files, then build every Hackage
+# library of that plan into the store through a project of one empty
+# package that depends on them, with the same freeze and package options.
 RUN cabal update \
-    && cabal build --disable-tests --disable-benchmarks \
+    && cabal build --dry-run --disable-tests --disable-benchmarks \
+       exe:hamsterdan-host exe:hamsterdan-operator exe:hamsterdan-export \
+    && mkdir -p /opt/hamsterdan/dependencies \
+    && python3 -c 'import json; plan = json.load(open("dist-newstyle/cache/plan.json")); names = sorted({unit["pkg-name"] for unit in plan["install-plan"] if unit.get("style") == "global" and unit.get("component-name", "lib") == "lib"}); print("cabal-version: 3.0\nname: hamsterdan-dependencies\nversion: 0\nbuild-type: Simple\n\nlibrary\n  default-language: Haskell2010\n  build-depends: " + ", ".join(names))' \
+       > /opt/hamsterdan/dependencies/hamsterdan-dependencies.cabal \
+    && cp cabal.project.freeze /opt/hamsterdan/dependencies/cabal.project.freeze \
+    && printf 'packages: .\n\npackage *\n  ghc-options: -fhide-source-paths\n' > /opt/hamsterdan/dependencies/cabal.project \
+    && cabal build --project-dir=/opt/hamsterdan/dependencies --only-dependencies all
+COPY packages ./packages
+RUN cabal build --disable-tests --disable-benchmarks \
        exe:hamsterdan-host exe:hamsterdan-operator exe:hamsterdan-export \
     && mkdir -p /opt/hamsterdan/bin \
     && for executable in hamsterdan-host hamsterdan-operator hamsterdan-export; do \
@@ -63,6 +84,11 @@ RUN apt-get update \
 WORKDIR /opt/hamsterdan
 COPY --from=build --chown=hamsterdan:hamsterdan /opt/hamsterdan/bin ./bin
 COPY --chown=hamsterdan:hamsterdan --chmod=0755 deployment/python-shim ./.venv/bin/python
+# petrus-agenticus-runtime's data files (the Pi helpers the agent runtime
+# runs under Node, and the provider sidecars). The binaries find them
+# through Cabal's <package>_datadir override; the path compiled in is the
+# build stage's.
+COPY --chown=hamsterdan:hamsterdan packages/petrus-agenticus-runtime/data ./share/petrus-agenticus-runtime/data
 COPY --from=pi --chown=hamsterdan:hamsterdan /opt/hamsterdan/pi ./pi
 COPY --chmod=0755 scripts/with-runtime-secrets /opt/hamsterdan/with-runtime-secrets
 ENV PATH="/opt/hamsterdan/.venv/bin:${PATH}" \
@@ -71,6 +97,7 @@ ENV PATH="/opt/hamsterdan/.venv/bin:${PATH}" \
     HAMSTERDAN_PI_NODE_PATH="/opt/hamsterdan/pi/node_modules/node/bin/node" \
     HAMSTERDAN_PI_PACKAGE_ROOT="/opt/hamsterdan/pi/node_modules/@earendil-works/pi-coding-agent" \
     HAMSTERDAN_STATE_PATH="/var/lib/hamsterdan"
+ENV petrus_agenticus_runtime_datadir="/opt/hamsterdan/share/petrus-agenticus-runtime"
 USER hamsterdan
 EXPOSE 8000
 ENTRYPOINT ["/opt/hamsterdan/.venv/bin/python", "-m", "hamsterdan.host"]

@@ -91,6 +91,18 @@ Below are the differences that remain, with their rationale.
   follows no link, as the reference does. `RmtreeSpec` builds six trees
   (links inside, a linked top, a missing top, a file top, an entry that
   cannot be unlinked) and checks both sides' outcome and what is left.
+- **The HBNetwork fixture is configuration.** The reference hard-codes
+  the fixture repository, organization and repository ids, App slug, hero
+  reviewer and delegated broker digests as module constants
+  (`operator.py:35-87`, and `/orgs/HBNetwork` inside `preflight`). The port
+  keeps them in `Operator`: a `Fixture` (`hbNetworkFixture` by default,
+  the reference's values) and the two digests, from which the bot login,
+  the broker authorization and `--bot-login`'s default derive. The
+  `hamsterdan-operator` binary always runs the default, so nothing changes.
+  Tier C (`packages/hamsterdan-e2e`, docs/e2e.md) runs
+  `hamsterdan-e2e-operator FIXTURE.json`, which sets another fixture; its
+  reference twin `e2e_operator.py` rebinds the same constants as a
+  runtime overlay, and the e2e suite runs both against a scripted `gh`.
 - **Runtime options.** The binary runs with a 16 MB allocation area
   (`-with-rtsopts=-A16m`), which removes most minor collections from a
   command's run.
@@ -114,17 +126,36 @@ Below are the differences that remain, with their rationale.
   - It refuses an unknown module as CPython does (`No module named ...`,
     status 1) and any other invocation with status 2. A Python one-liner
     that is none of those does not run in this image.
+- **The Pi helpers.** The binaries run petrus-agenticus-runtime's data
+  files (the Node Pi helpers and the provider sidecars, `data/`, exactly the
+  package's `data-files`), which the reference ships inside its virtual
+  environment. Cabal compiles the build stage's source path into the
+  binaries, so the runtime stage copies `data/` to
+  `/opt/hamsterdan/share/petrus-agenticus-runtime/data` and sets
+  `petrus_agenticus_runtime_datadir` (Cabal's data-directory override) to
+  that directory. These are the only runtime-stage instructions besides
+  the binaries' and the shim's `COPY` that the reference does not have.
+  Without them the host's Pi READY probe cannot find its helper, and the
+  host silently runs with no agent runner, as the reference would with a
+  broken Pi installation; `scripts/container-smoke` caught exactly that in
+  the first image CI built.
 - **Toolchain pins.** The base images are the reference's, pinned by
   digest. GHC (9.10.3) and cabal (3.16.1.0) are pinned by version, and the
   Haskell dependency plan by `cabal.project.freeze` (an
   `index-state` plus every package version). The `ghcup` binary that
   installs them is fetched unpinned from downloads.haskell.org. Pinning it
-  by digest means picking a release to trust, so that is left to whoever
-  first builds the image in CI.
+  by digest means picking a release to trust; it is not done yet.
 - **The build stage** installs the `-dev` packages of every local package
   (`libpq`, `libzmq`, SQLite, `libffi`, `gmp`, `zlib`), because cabal plans
-  the whole project, though only the three executables are built.
-- **Not built here.** No container runtime may run on the development
-  machine. PARITY.md, "Container runtime contract", records what is checked
-  instead. The CI job lints the Containerfile and the shell scripts, and
-  does not build the image either.
+  the whole project, though only the three executables are built. It
+  builds in two steps so the build cache can keep the slow one: a
+  `cabal-files` stage reduces `packages/` to its `.cabal` files, the build
+  stage plans the three executables from those alone and builds every
+  Hackage library of that plan through a one-package project with the same
+  freeze and options, and only then copies the sources and builds the
+  executables. A change to the sources rebuilds the local packages only.
+- **Built in CI, not on the development machine.** No container runtime may
+  run on the development machine. The `container` job of
+  `.github/workflows/ci.yml` builds the image and runs
+  `scripts/container-smoke` against it (PARITY.md, "Container runtime
+  contract").

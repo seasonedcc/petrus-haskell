@@ -550,7 +550,7 @@ spec = describe "tests/unit/test_operator.py" do
     source `shouldSatisfy` T.isInfixOf "[\"git\", \"ls-files\", \"--others\", \"--exclude-standard\"]"
     source `shouldSatisfy` T.isInfixOf "assertOnly op checkout changed"
     source `shouldSatisfy` T.isInfixOf "assertOnly op checkout (Set.singleton brokerPath)"
-    source `shouldSatisfy` T.isInfixOf "\"reviewers[]=\" <> heroReviewer"
+    source `shouldSatisfy` T.isInfixOf "\"reviewers[]=\" <> op.fixture.heroReviewer"
 
   it "test_hero_creation_admits_multiple_fixture_paths_and_requests_cris" do
     let branch = "hamsterdan/hero-review-20260803-010203"

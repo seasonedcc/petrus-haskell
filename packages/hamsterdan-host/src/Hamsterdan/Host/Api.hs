@@ -53,7 +53,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.CaseInsensitive qualified as CI
 import Data.Char (isAlphaNum, toLower)
-import Data.IORef (IORef, atomicModifyIORef', newIORef)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (find)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -74,7 +74,7 @@ import Network.Socket (Socket, SocketOption (NoDelay), accept, close, setCloseOn
 import Network.Wai.Handler.Warp qualified as Warp
 import Network.Wai.Handler.Warp.Internal (Connection (..), Settings (..), runSettingsConnection, socketConnection)
 import Petrus.Json (Json (..), compact, dumps)
-import System.Posix.Signals (Handler (..), installHandler, sigINT, sigTERM)
+import System.Posix.Signals (Handler (..), Signal, installHandler, sigINT, sigTERM)
 
 -- ---------------------------------------------------------------------------
 -- Responses
@@ -278,22 +278,32 @@ data ServeOptions = ServeOptions
 
 -- | @uvicorn.run(create_app(service), host=host, port=port)@: serve until
 -- SIGINT or SIGTERM, then shut down gracefully through the lifespan.
-serve :: HostService -> ServeOptions -> IO ()
-serve service options = withLifespan service True $ do
-  let settings =
+--
+-- The signal that stopped it, if one did. uvicorn's @capture_signals@
+-- restores the previous handlers after the shutdown and raises the
+-- captured signal again (@signal.raise_signal@), so the reference process
+-- then ends the way that signal ends it; the caller does the same with
+-- what this returns.
+serve :: HostService -> ServeOptions -> IO (Maybe Signal)
+serve service options = do
+  captured <- newIORef Nothing
+  let capture signal closeSocket = CatchOnce (atomicModifyIORef' captured (const (Just signal, ())) >> closeSocket)
+      settings =
         Warp.setHost (fromString options.host)
           . Warp.setPort options.port
           . Warp.setBeforeMainLoop options.onStarted
           . Warp.setInstallShutdownHandler
             ( \closeSocket -> do
-                void (installHandler sigTERM (CatchOnce closeSocket) Nothing)
-                void (installHandler sigINT (CatchOnce closeSocket) Nothing)
+                void (installHandler sigTERM (capture sigTERM closeSocket) Nothing)
+                void (installHandler sigINT (capture sigINT closeSocket) Nothing)
             )
           $ hostSettings
-  -- @Warp.runSettings@, over 'runHostSocket'.
-  bracket (bindPortTCP options.port (fromString options.host)) close $ \socket -> do
-    withFdSocket socket setCloseOnExecIfNeeded
-    runHostSocket settings socket (hostServerApplication service)
+  withLifespan service True $
+    -- @Warp.runSettings@, over 'runHostSocket'.
+    bracket (bindPortTCP options.port (fromString options.host)) close $ \socket -> do
+      withFdSocket socket setCloseOnExecIfNeeded
+      runHostSocket settings socket (hostServerApplication service)
+  readIORef captured
 
 -- | @Warp.runSettingsSocket@ with h11's status line: an HTTP/1.0 request's
 -- response starts @HTTP/1.1@, as uvicorn writes it, where warp echoes the

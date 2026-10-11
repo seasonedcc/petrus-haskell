@@ -88,6 +88,7 @@ import System.IO.Error (catchIOError, isEOFError)
 import System.Posix.Files qualified as Posix
 import System.Posix.IO qualified as PosixIO
 import System.Posix.IO.ByteString qualified as PosixBS
+import System.Posix.Signals (Handler (Default), Signal, installHandler, raiseSignal, sigTERM)
 
 -- ---------------------------------------------------------------------------
 -- The parser
@@ -846,6 +847,14 @@ data CliEnvironment = CliEnvironment
   , errors :: Handle
   , onServing :: Int -> IO ()
   -- ^ Called once @serve@ listens, with the port.
+  , reraise :: Signal -> IO ()
+  -- ^ After SIGTERM stopped @serve@ gracefully: uvicorn's
+  -- @signal.raise_signal@ with the previous (default) handler restored. In
+  -- the process ('productionEnvironment') the default action, so the
+  -- process ends by SIGTERM as the reference's does. It returns only when
+  -- the kernel ignores that default action, as it does for PID 1 of a
+  -- container; then @uvicorn.run@ returns, as the reference's does there,
+  -- and 'runCli' ends with status 0.
   }
 
 -- | The process's own environment: the real network, the real Pi A2
@@ -870,6 +879,7 @@ productionEnvironment environment =
     , output = stdout
     , errors = stderr
     , onServing = \_ -> pure ()
+    , reraise = \signal -> installHandler signal Default Nothing >> raiseSignal signal
     }
 
 -- | Why the reference's @except (ConfigurationError, RuntimeError,
@@ -997,7 +1007,23 @@ runCli env argv = do
                             , port = fromInteger arguments.port
                             , onStarted = env.onServing (fromInteger arguments.port)
                             }
-                    pure (either (const (ExitFailure 3)) (const ExitSuccess) served)
+                    case served of
+                      Left _ -> pure (ExitFailure 3)
+                      -- SIGTERM, raised again: the default action, at once
+                      -- (the @finally@ never runs; the lifespan has already
+                      -- closed the service). When the process survives it
+                      -- (PID 1 of a container, where the kernel ignores a
+                      -- signal's default action), @uvicorn.run@ returns,
+                      -- the @finally@ runs, status 0, as for SIGINT.
+                      Right (Just signal)
+                        | signal == sigTERM -> do
+                            env.reraise signal
+                            pure ExitSuccess
+                      -- SIGINT, raised again under @asyncio.run@'s own
+                      -- handler, which only cancels uvicorn's main task, by
+                      -- then finished: @uvicorn.run@ returns, the @finally@
+                      -- runs, status 0.
+                      Right _ -> pure ExitSuccess
                 -- @finally: _close_owned_resources(service, pi_runtime,
                 -- route_store)@, after the @except@ clause has printed its
                 -- usage error.

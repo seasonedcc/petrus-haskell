@@ -1,0 +1,44 @@
+#!/bin/bash
+# A stand-in for the pinned 1Password CLI, for scripts/container-smoke. The
+# smoke run bind-mounts it read-only at /usr/local/bin/op, where the
+# systemd unit and the Ansible validation runs mount the real CLI, and
+# /opt/hamsterdan/with-runtime-secrets execs it as
+#
+#   op run --environment ID --config /tmp/hamsterdan-op -- env -u ... COMMAND...
+#
+# It checks what the launcher hands the real CLI: the selected Environment,
+# the bootstrap read from the mounted token file (not from the container's
+# environment), the configuration directory as an option, and none of the
+# credential families the launcher scrubs. It then creates the
+# configuration directory (the read-only image's /tmp tmpfs must take it),
+# exports each file of the fixture's Environment (one file per variable,
+# multiline values intact) and execs the command, as `op run` does.
+set -euo pipefail
+
+fixture=/run/smoke/op
+fail() {
+    printf 'fake op: %s\n' "$*" >&2
+    exit 97
+}
+
+[[ $# -ge 6 && $1 == run && $2 == --environment ]] || fail "unexpected invocation"
+[[ $3 == "$(< "$fixture/environment-id")" ]] || fail "not the selected Environment"
+shift 3
+[[ $1 == --config && $2 == /tmp/hamsterdan-op ]] || fail "no --config /tmp/hamsterdan-op"
+shift 2
+[[ $1 == -- ]] || fail "no -- before the command"
+shift
+
+[[ ${OP_SERVICE_ACCOUNT_TOKEN:-} == "$(< "$fixture/bootstrap")" ]] || fail "the bootstrap is not the token file's"
+for name in OP_CONFIG_DIR OP_SA_HAMSTERDAN_DEV HAMSTERDAN_OP_TOKEN_FILE HAMSTERDAN_OP_COMMAND \
+    HAMSTERDAN_GITHUB_APP_ID HAMSTERDAN_GITHUB_PRIVATE_KEY HAMSTERDAN_GITHUB_WEBHOOK_SECRET \
+    HAMSTERDAN_PI_API_KEY GH_TOKEN GITHUB_TOKEN ANTHROPIC_API_KEY OPENAI_API_KEY PETRUS_GITHUB_TOKEN; do
+    [[ -z ${!name+set} ]] || fail "$name reached the secret provider"
+done
+
+[[ -d /tmp/hamsterdan-op ]] || mkdir -m 0700 /tmp/hamsterdan-op
+for file in "$fixture"/environment/*; do
+    value=$(cat "$file" && printf x)
+    export "${file##*/}=${value%x}"
+done
+exec "$@"

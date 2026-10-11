@@ -54,20 +54,50 @@ jobs:
       - name: Check everything
         run: scripts/check-all
 
-  # The image's static checks (the Haskell port's container runtime contract;
-  # ContainerSpec in hamsterdan-operator compares it with the reference's):
-  # shell lint of the launcher and the interpreter-path shim, and
-  # Containerfile lint. The image itself is not built here (see
-  # packages/hamsterdan-operator/PARITY.md).
+  # The Haskell port's container runtime contract (PARITY.md, "Container
+  # runtime contract"): lint the launcher, the interpreter-path shim, the
+  # smoke scripts and the Containerfile; build deployment/Containerfile for
+  # linux/amd64 with the reference's build arguments, reusing layers from
+  # the GitHub Actions cache; then run scripts/container-smoke against the
+  # built image. It checks at run time what the reference's release
+  # verification, Ansible playbooks and systemd unit expect of the image.
   container:
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - name: Lint the launcher and the interpreter-path shim
-        run: shellcheck scripts/with-runtime-secrets && shellcheck --shell=sh deployment/python-shim
+      - name: Lint the launcher, the interpreter-path shim and the smoke scripts
+        run: |
+          shellcheck scripts/with-runtime-secrets scripts/container-smoke scripts/container-smoke.d/fake-op scripts/container-smoke.d/node-wrapper
+          shellcheck --shell=sh deployment/python-shim
       - name: Lint the Containerfile
         run: |
           curl --fail --silent --show-error --location --output "$RUNNER_TEMP/hadolint" \
             https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
           chmod 0755 "$RUNNER_TEMP/hadolint"
           "$RUNNER_TEMP/hadolint" --failure-threshold error deployment/Containerfile
+      - name: Image build arguments
+        id: source
+        run: |
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=$(sed -n 's/^version=//p' deployment/python-shim)" >> "$GITHUB_OUTPUT"
+          echo "created=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployment/Containerfile
+          platforms: linux/amd64
+          load: true
+          tags: hamsterdan:ci
+          build-args: |
+            SOURCE_REVISION=${{ steps.source.outputs.revision }}
+            SOURCE_VERSION=${{ steps.source.outputs.version }}
+            SOURCE_CREATED=${{ steps.source.outputs.created }}
+          cache-from: type=gha,scope=hamsterdan-image
+          cache-to: type=gha,scope=hamsterdan-image,mode=max
+      - name: Check the runtime contract
+        run: |
+          scripts/container-smoke hamsterdan:ci \
+            --revision "${{ steps.source.outputs.revision }}" --version "${{ steps.source.outputs.version }}"

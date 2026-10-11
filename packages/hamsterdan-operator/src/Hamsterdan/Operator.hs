@@ -15,8 +15,14 @@
 -- belongs, say), the port raises the same 'PyError', and the command line
 -- prints the last line of the reference's traceback.
 module Hamsterdan.Operator
-  ( -- * Constants
-    repository
+  ( -- * The fixture
+    Fixture (..)
+  , hbNetworkFixture
+  , fixtureBotLogin
+  , fixtureBrokerAuthorization
+
+    -- * Constants
+  , repository
   , orgId
   , repositoryId
   , appBotLogin
@@ -69,6 +75,7 @@ module Hamsterdan.Operator
 
     -- * Command line
   , operatorParser
+  , operatorParserFor
   , OperatorEnvironment (..)
   , productionEnvironment
   , runOperator
@@ -133,12 +140,51 @@ import GHC.IO.Exception (IOErrorType (..))
 -- ---------------------------------------------------------------------------
 -- Constants
 
+-- | The repository, organization and App the demo commands act on: the
+-- reference's module constants @REPOSITORY@, @ORG_ID@, @REPOSITORY_ID@,
+-- @APP_SLUG@ (with @APP_BOT_LOGIN@ and @APP_BROKER_AUTHORIZATION@ derived
+-- from it), @HERO_REVIEWER@ and the organization of @preflight@'s
+-- @/orgs/HBNetwork@. 'hbNetworkFixture' is the reference's, and the one
+-- 'defaultOperator' and the command line use. A tier C run
+-- (docs/e2e.md) acts on its own copies through 'Operator.fixture'; the
+-- delegated broker digests are 'Operator.brokerDigest' and
+-- 'Operator.validatorDigest'.
+data Fixture = Fixture
+  { repository :: Text
+  , organization :: Text
+  , orgId :: Integer
+  , repositoryId :: Integer
+  , appSlug :: Text
+  , heroReviewer :: Text
+  }
+  deriving stock (Eq, Show)
+
+hbNetworkFixture :: Fixture
+hbNetworkFixture =
+  Fixture
+    { repository = "HBNetwork/demo-pr-readiness"
+    , organization = "HBNetwork"
+    , orgId = 108842540
+    , repositoryId = 1316665126
+    , appSlug = "hamster-dan"
+    , heroReviewer = "crisbastos"
+    }
+
+-- | @APP_BOT_LOGIN = f"{APP_SLUG}[bot]"@.
+fixtureBotLogin :: Fixture -> Text
+fixtureBotLogin fixture = fixture.appSlug <> "[bot]"
+
+-- | @APP_BROKER_AUTHORIZATION@.
+fixtureBrokerAuthorization :: Fixture -> Text
+fixtureBrokerAuthorization fixture =
+  "github.event.comment.user.type == 'Bot' &&\n      github.event.comment.user.login == '" <> fixtureBotLogin fixture <> "' &&"
+
 repository :: Text
-repository = "HBNetwork/demo-pr-readiness"
+repository = hbNetworkFixture.repository
 
 orgId, repositoryId :: Integer
-orgId = 108842540
-repositoryId = 1316665126
+orgId = hbNetworkFixture.orgId
+repositoryId = hbNetworkFixture.repositoryId
 
 defaultBranch :: Text
 defaultBranch = "main"
@@ -147,7 +193,7 @@ workflows :: [Text]
 workflows = ["ci", "rerun-broker"]
 
 appBotLogin :: Text
-appBotLogin = "hamster-dan[bot]"
+appBotLogin = fixtureBotLogin hbNetworkFixture
 
 scenarioPath :: Text
 scenarioPath = ".pr-lab/scenario.json"
@@ -156,7 +202,7 @@ creatableScenarios :: [Text]
 creatableScenarios = ["clean-green", "first-attempt-flake", "hero-review"]
 
 heroReviewer :: Text
-heroReviewer = "crisbastos"
+heroReviewer = hbNetworkFixture.heroReviewer
 
 brokerPath, brokerValidatorPath :: Text
 brokerPath = ".github/workflows/rerun-broker.yml"
@@ -177,8 +223,7 @@ legacyBrokerAuthorization =
   "contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.comment.author_association) &&"
 
 appBrokerAuthorization :: Text
-appBrokerAuthorization =
-  "github.event.comment.user.type == 'Bot' &&\n      github.event.comment.user.login == '" <> appBotLogin <> "' &&"
+appBrokerAuthorization = fixtureBrokerAuthorization hbNetworkFixture
 
 heroSuggestionLocation, heroConceptualLocation, heroRelatedLocation :: (Text, Integer)
 heroSuggestionLocation = ("scenario-fixtures/hero_review/gate.py", 10)
@@ -293,6 +338,8 @@ data Operator = Operator
   -- ^ @DELEGATED_BROKER_DIGEST@.
   , validatorDigest :: Text
   -- ^ @DELEGATED_VALIDATOR_DIGEST@.
+  , fixture :: Fixture
+  -- ^ The repository, organization and App acted on.
   }
 
 -- | @with tempfile.TemporaryDirectory(prefix=prefix) as temporary@.
@@ -311,6 +358,7 @@ defaultOperator =
         withTempDirectory parent prefix action
     , brokerDigest = delegatedBrokerDigest
     , validatorDigest = delegatedValidatorDigest
+    , fixture = hbNetworkFixture
     }
 
 -- | @_run(runner, command, cwd)@.
@@ -761,7 +809,7 @@ brokerStatus op text validator
     newPrefix = "startsWith(github.event.comment.body, '<!-- hamsterdan-rerun ')" `T.isInfixOf` text
     newRegex = "<!-- hamsterdan-rerun run=" `T.isInfixOf` text
     legacyAuth = T.count legacyBrokerAuthorization text == 1
-    appAuth = T.count appBrokerAuthorization text == 1
+    appAuth = T.count (fixtureBrokerAuthorization op.fixture) text == 1
     delegated = case validator of
       Nothing -> False
       Just source -> brokerSourceDigest text == op.brokerDigest && brokerSourceDigest source == op.validatorDigest
@@ -781,13 +829,13 @@ preflight op healthUrl = do
   auth <- op.runner ["gh", "auth", "status"] Nothing
   let authCheck = check "gh_auth" (auth.returncode == 0) (PStr (if auth.returncode == 0 then "authenticated" else "unavailable"))
   inventory <- try do
-    org <- api op "/orgs/HBNetwork"
-    repo <- api op ("/repos/" <> repository)
-    workflowList <- api op ("/repos/" <> repository <> "/actions/workflows?per_page=100")
+    org <- api op ("/orgs/" <> op.fixture.organization)
+    repo <- api op ("/repos/" <> op.fixture.repository)
+    workflowList <- api op ("/repos/" <> op.fixture.repository <> "/actions/workflows?per_page=100")
     broker <-
       run
         op
-        ["gh", "api", "/repos/" <> repository <> "/contents/" <> brokerPath <> "?ref=" <> defaultBranch, "-H", "Accept: application/vnd.github.raw+json"]
+        ["gh", "api", "/repos/" <> op.fixture.repository <> "/contents/" <> brokerPath <> "?ref=" <> defaultBranch, "-H", "Accept: application/vnd.github.raw+json"]
         Nothing
     validator <-
       if "tools/rerun_broker.py" `T.isInfixOf` broker
@@ -797,7 +845,7 @@ preflight op healthUrl = do
               op
               [ "gh"
               , "api"
-              , "/repos/" <> repository <> "/contents/" <> brokerValidatorPath <> "?ref=" <> defaultBranch
+              , "/repos/" <> op.fixture.repository <> "/contents/" <> brokerValidatorPath <> "?ref=" <> defaultBranch
               , "-H"
               , "Accept: application/vnd.github.raw+json"
               ]
@@ -817,8 +865,8 @@ preflight op healthUrl = do
     privateDefaulted <- py (getOr "private" (PBool True) repo)
     branch <- py (getMaybe "default_branch" repo)
     pure
-      [ check "organization_identity" (pyEq orgIdValue (PInt orgId)) orgIdValue
-      , check "repository_identity" (pyEq repoIdValue (PInt repositoryId)) repoIdValue
+      [ check "organization_identity" (pyEq orgIdValue (PInt op.fixture.orgId)) orgIdValue
+      , check "repository_identity" (pyEq repoIdValue (PInt op.fixture.repositoryId)) repoIdValue
       , check "repository_public" (case private of PBool False -> True; _ -> False) (PBool (not (truthy privateDefaulted)))
       , check "default_branch" (pyEq branch (PStr defaultBranch)) branch
       , check "required_workflows" (all (`Set.member` strings) workflows) (PList (map PStr (Set.toAscList strings)))
@@ -871,7 +919,7 @@ scenarioValue scenario = do
 clone :: Operator -> FilePath -> IO FilePath
 clone op root = do
   let checkout = root </> "demo-pr-readiness"
-  void (run op ["git", "clone", "--origin", "origin", "https://github.com/" <> repository <> ".git", T.pack checkout] Nothing)
+  void (run op ["git", "clone", "--origin", "origin", "https://github.com/" <> op.fixture.repository <> ".git", T.pack checkout] Nothing)
   void (run op ["git", "fetch", "origin", defaultBranch] (Just checkout))
   pure checkout
 
@@ -917,7 +965,7 @@ create op scenario = do
           , "pr"
           , "create"
           , "--repo"
-          , repository
+          , op.fixture.repository
           , "--base"
           , defaultBranch
           , "--head"
@@ -928,7 +976,7 @@ create op scenario = do
           , "Controlled Hamsterdan qualification scenario. Do not merge automatically."
           ]
       )
-    pr <- jsonOf op ["gh", "pr", "view", branch, "--repo", repository, "--json", "number,url,headRefName"] (Just checkout)
+    pr <- jsonOf op ["gh", "pr", "view", branch, "--repo", op.fixture.repository, "--json", "number,url,headRefName"] (Just checkout)
     when (scenario == "hero-review") do
       number <- py (subscriptKey "number" pr)
       void
@@ -937,9 +985,9 @@ create op scenario = do
             , "api"
             , "--method"
             , "POST"
-            , "/repos/" <> repository <> "/pulls/" <> pyStr number <> "/requested_reviewers"
+            , "/repos/" <> op.fixture.repository <> "/pulls/" <> pyStr number <> "/requested_reviewers"
             , "-f"
-            , "reviewers[]=" <> heroReviewer
+            , "reviewers[]=" <> op.fixture.heroReviewer
             ]
         )
     head' <- inCheckout ["git", "rev-parse", "HEAD"]
@@ -954,7 +1002,7 @@ create op scenario = do
         , ("url", url)
         , ("head", PStr head')
         , ("branch", PStr branch)
-        , ("requested_reviewer", if scenario == "hero-review" then PStr heroReviewer else PNone)
+        , ("requested_reviewer", if scenario == "hero-review" then PStr op.fixture.heroReviewer else PNone)
         ]
     )
 
@@ -990,7 +1038,7 @@ prepareBroker op = do
       , "pr"
       , "list"
       , "--repo"
-      , repository
+      , op.fixture.repository
       , "--state"
       , "open"
       , "--search"
@@ -1040,11 +1088,11 @@ prepareBroker op = do
             when (state /= "legacy" || T.count oldMarker source /= 2 || T.count legacyBrokerAuthorization source /= 1) $
               operatorError "default broker is malformed; refusing automated preparation"
             void (inCheckout ["git", "switch", "--create", branch, "origin/main"])
-            let target = T.replace legacyBrokerAuthorization appBrokerAuthorization (T.replace oldMarker newMarker source)
+            let target = T.replace legacyBrokerAuthorization (fixtureBrokerAuthorization op.fixture) (T.replace oldMarker newMarker source)
             when
               ( brokerStatus op target Nothing /= "hamsterdan"
                   || T.count newMarker target /= 2
-                  || T.count appBrokerAuthorization target /= 1
+                  || T.count (fixtureBrokerAuthorization op.fixture) target /= 1
               )
               $ operatorError "broker transformation did not produce strict Hamsterdan grammar"
             BS.writeFile sourcePath (TE.encodeUtf8 target)
@@ -1058,7 +1106,7 @@ prepareBroker op = do
                   , "pr"
                   , "create"
                   , "--repo"
-                  , repository
+                  , op.fixture.repository
                   , "--base"
                   , defaultBranch
                   , "--head"
@@ -1069,7 +1117,7 @@ prepareBroker op = do
                   , "Merge only after the Hamsterdan App host is ready; never run legacy and App writers together."
                   ]
               )
-            Just <$> jsonOf op ["gh", "pr", "view", branch, "--repo", repository, "--json", "number,url,headRefName"] (Just checkout)
+            Just <$> jsonOf op ["gh", "pr", "view", branch, "--repo", op.fixture.repository, "--json", "number,url,headRefName"] (Just checkout)
       case outcome of
         Nothing -> pure (PDict [("command", PStr "prepare-broker"), ("ok", PBool True), ("status", PStr "current"), ("changed", PBool False)])
         Just pr -> do
@@ -1305,7 +1353,7 @@ inspect :: Operator -> Integer -> InspectOptions -> IO PV
 inspect op prNumber options = do
   when (prNumber < 1) $ operatorError "PR number must be positive"
   let number = T.pack (show prNumber)
-      prefix = "/repos/" <> repository
+      prefix = "/repos/" <> op.fixture.repository
   pull <- api op (prefix <> "/pulls/" <> number)
   comments <- api op (prefix <> "/issues/" <> number <> "/comments?per_page=100")
   reviewComments <- api op (prefix <> "/pulls/" <> number <> "/comments?per_page=100")
@@ -1355,7 +1403,7 @@ inspect op prNumber options = do
   baseRepoId <- py (getOr "base" (PDict []) pull >>= getOr "repo" (PDict []) >>= getMaybe "id")
   let readinessPresent = "readiness" `Set.member` kinds
       checks =
-        [ check "pull_identity" (pyEq baseRepoId (PInt repositoryId)) baseRepoId
+        [ check "pull_identity" (pyEq baseRepoId (PInt op.fixture.repositoryId)) baseRepoId
         , check "hamsterdan_comment_ownership" (owned && markerOwned) (PStr options.botLogin)
         , check "dashboard_present" ("dashboard" `Set.member` kinds) (PBool ("dashboard" `Set.member` kinds))
         , check
@@ -1393,7 +1441,7 @@ inspect op prNumber options = do
   pure
     ( PDict
         [ ("command", PStr "inspect")
-        , ("repository", PStr repository)
+        , ("repository", PStr op.fixture.repository)
         , ("number", PInt prNumber)
         , ( "pull"
           , PDict
@@ -1504,7 +1552,7 @@ latestReviews value = case value of
 -- decision.
 reviewFacts :: Operator -> Integer -> IO (Integer, PV)
 reviewFacts op prNumber = do
-  let (owner, rest) = T.breakOn "/" repository
+  let (owner, rest) = T.breakOn "/" op.fixture.repository
   value <-
     jsonOf
       op
@@ -1554,7 +1602,7 @@ inspectAuthority op prNumber expected = do
   when (prNumber < 1) $ operatorError "PR number must be positive"
   unless (expected `elem` authorityExpectations) $ operatorError "unsupported authority expectation"
   let number = T.pack (show prNumber)
-      prefix = "/repos/" <> repository
+      prefix = "/repos/" <> op.fixture.repository
       dig root keys = either (const Nothing) Just (foldl (\acc key -> acc >>= subscriptKey key) (Right root) keys)
       isHexSha s = T.length s == 40 && T.all (\c -> isDigit c || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) s
   pull <- api op (prefix <> "/pulls/" <> number)
@@ -1644,7 +1692,7 @@ inspectAuthority op prNumber expected = do
   pure
     ( PDict
         [ ("command", PStr "inspect-authority")
-        , ("repository", PStr repository)
+        , ("repository", PStr op.fixture.repository)
         , ("number", PInt prNumber)
         , ("url", url)
         , ("expectation", PStr expected)
@@ -1659,7 +1707,11 @@ inspectAuthority op prNumber expected = do
 
 -- | @parser()@.
 operatorParser :: Parser
-operatorParser =
+operatorParser = operatorParserFor hbNetworkFixture
+
+-- | @parser()@ over a fixture: @inspect --bot-login@ defaults to its bot.
+operatorParserFor :: Fixture -> Parser
+operatorParserFor fixture =
   newParser
     prog
     Nothing
@@ -1673,7 +1725,7 @@ operatorParser =
           ( "inspect"
           ,
             [ (option ["--pr"]) {valueType = AsInt, required = True}
-            , (option ["--bot-login"]) {defaultValue = Just (Str appBotLogin)}
+            , (option ["--bot-login"]) {defaultValue = Just (Str (fixtureBotLogin fixture))}
             , (option ["--expect-hero-review"]) {behavior = StoreTrue, defaultValue = Just (BoolValue False)}
             , (option ["--expect-readiness"]) {choices = Just ["present", "absent"], defaultValue = Just (Str "present")}
             ]
@@ -1718,7 +1770,7 @@ productionEnvironment = do
 runOperator :: OperatorEnvironment -> [Text] -> IO ExitCode
 runOperator env argv = do
   width <- subtract 2 <$> terminalColumns env.environment
-  case parseArgs width operatorParser argv of
+  case parseArgs width (operatorParserFor env.operator.fixture) argv of
     Exited status printed problems -> do
       emit env.output printed
       emit env.errors problems
