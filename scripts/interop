@@ -49,6 +49,7 @@ PATTERNS: Dict[str, List[str]] = {
         "on-disk interop with the reference agent stores",
         "test_restarted_executing_operation_is_indeterminate_without_authority",
     ],
+    "hamsterdan-export": ["differential: python -m hamsterdan.host.export"],
     "hamsterdan-host": [
         "state interop with the reference host",
         "the HTTP surface against the reference (uvicorn)",
@@ -56,6 +57,12 @@ PATTERNS: Dict[str, List[str]] = {
         "reference_bytes",
     ],
     "hamsterdan-github": ["configuration corpus", "reads, effects and GraphQL corpus", "HTTP client corpus", "webhook, inbox and routing corpus"],
+    "hamsterdan-operator": [
+        "differential against python -m hamsterdan.operator",
+        "the interpreter-path shim answers as the reference interpreter",
+        "CPython's json.loads value",
+        "shutil.rmtree, as the setup cleanup runs it, against CPython's",
+    ],
     "hamsterdan-readiness": ["fold corpus", "board corpus"],
     "hamsterdan-testing": ["oracle corpus"],
     "petrus-activity": ["differential against the pinned petrus.motus.activity"],
