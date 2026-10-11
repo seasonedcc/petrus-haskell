@@ -21,6 +21,7 @@ module InteropSpec (spec) where
 import Control.Exception (SomeException, throwIO, try)
 import Control.Monad (forM_, unless)
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.IORef
@@ -29,14 +30,20 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Text.Encoding.Error (lenientDecode)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import Hamsterdan.Agents.Protocol (AgentRunner (..), Invocation (..), ReviewRequest (..), ReviewResult (..))
 import Hamsterdan.GitHub.Models (Transport (..), WireResponse (..))
 import Hamsterdan.GitHub.Webhooks (Observation (..), Receipt (..), dispositionName)
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Cli (inspectInstance)
 import Hamsterdan.Host.Python (ValueError (..))
-import Hamsterdan.Host.Service (HostService (..), ServiceOptions (..), noAgentCustody, openHostService, serviceOptions, v5ApplicationFactory)
+import Hamsterdan.GitHub.Client (AppCredentials (..), ClientOptions (..), newAppClients)
+import Hamsterdan.GitHub.Config (HostConfig (..), secret)
+import Hamsterdan.GitHub.Http (newPlainExchangeAt)
+import Hamsterdan.Host.Service (HostService (..), ServiceOptions (..), gitHubHostClients, noAgentCustody, openHostService, serviceOptions, v5ApplicationFactory)
 import Hamsterdan.Host.Service qualified as Host
+import FakeGitHub (Recorded (..), comparableCall, takeCalls, withFakeGitHubIO)
 import IngressApplicationSpec (objectRunner)
 import Petrus.Impetus.Instance.FailureText (PythonException (..))
 import Petrus.Json (Json (..), compact, defaultDumps, dumps, dumpsText, parseJson, pythonLoads)
@@ -111,10 +118,15 @@ phaseTwo =
 data Side = Python | Haskell
   deriving stock (Eq, Show)
 
+-- | What the host talks to: the @V5Provider@ double behind the GitHub
+-- transport, or the real client stack against the fake GitHub on a local
+-- port (with the App's PEM).
+data Network = Doubles | GitHubAt Int Text
+
 -- | Run one phase on a state directory with one implementation.
-drive :: Side -> FilePath -> ProviderState -> [Step] -> IO Json
-drive Python root state steps = pythonDrive root state steps
-drive Haskell root state steps = haskellDrive root state steps
+drive :: Side -> Network -> FilePath -> ProviderState -> [Step] -> IO Json
+drive Python = pythonDrive
+drive Haskell = haskellDrive
 
 -- | The phase's outcome, and where it left the provider.
 providerAfter :: Json -> ProviderState
@@ -130,9 +142,9 @@ spec = describe "state interop with the reference host" $ do
     let start = ProviderState firstHead []
         run first second = do
           let root = tmp </> (show first <> "-" <> show second)
-          one <- drive first root start phaseOne
+          one <- drive first Doubles root start phaseOne
           afterOne <- referenceDump root
-          two <- drive second root (providerAfter one) phaseTwo
+          two <- drive second Doubles root (providerAfter one) phaseTwo
           afterTwo <- referenceDump root
           pure (one, afterOne, two, afterTwo)
     (pOne, pDumpOne, pTwo, pDumpTwo) <- run Python Python
@@ -151,7 +163,47 @@ spec = describe "state interop with the reference host" $ do
       sameJson (label <> ": state after phase one") pDumpOne dumpOne
       sameJson (label <> ": phase two") pTwo two
       sameJson (label <> ": state after phase two") pDumpTwo dumpTwo
+
+  it "makes the same GitHub requests as the reference, header for header and body for body" . withTempRoot $ \tmp -> do
+    repo <- repoRoot
+    pem <- TE.decodeUtf8 <$> BS.readFile (repo </> "packages" </> "hamsterdan-github" </> "test" </> "corpus" </> "app-test-key.pem")
+    let journey side = do
+          state <- FakeState <$> newIORef firstHead <*> newIORef []
+          withFakeGitHubIO (v5GitHub state) $ \port recorded -> do
+            let root = tmp </> ("github-" <> show side)
+                network = GitHubAt port pem
+                untouched = ProviderState firstHead []
+            one <- drive side network root untouched phaseOne
+            callsOne <- takeCalls recorded
+            writeIORef state.fakeHead secondHead
+            two <- drive side network root untouched phaseTwo
+            callsTwo <- takeCalls recorded
+            dumped <- referenceDump root
+            comments <- readIORef state.fakeComments
+            pure (one, callsOne, two, callsTwo, dumped, comments)
+    (pOne, pCallsOne, pTwo, pCallsTwo, pDump, pComments) <- journey Python
+    -- The reference's journey through the real client stack does the work:
+    -- an installation token, the PR reads, the dashboard comment.
+    map (\call -> (call.method, call.target)) pCallsOne
+      `shouldContain` [("POST", "/app/installations/44/access_tokens"), ("GET", "/repos/owner/one/pulls/7")]
+    length pComments `shouldBe` 1
+    reviewedHeads pTwo `shouldBe` [secondHead]
+    (hOne, hCallsOne, hTwo, hCallsTwo, hDump, hComments) <- journey Haskell
+    sameJson "GitHub requests in phase one" (requests pCallsOne) (requests hCallsOne)
+    sameJson "GitHub requests in phase two" (requests pCallsTwo) (requests hCallsTwo)
+    sameJson "phase one" pOne hOne
+    sameJson "phase two" pTwo hTwo
+    sameJson "state" pDump hDump
+    sameJson "comments on the PR" (Array (map Object pComments)) (Array (map Object hComments))
   where
+    requests = Array . map (request . comparableCall)
+    request call =
+      Object
+        [ ("method", String (TE.decodeUtf8 call.method))
+        , ("target", String (TE.decodeUtf8 call.target))
+        , ("headers", Array [Array [String (TE.decodeUtf8 n), String (TE.decodeUtf8 v)] | (n, v) <- call.headers])
+        , ("body", String (TE.decodeUtf8With lenientDecode call.body))
+        ]
     calls = \case
       Object members | Just (Array items) <- lookup "calls" members -> items
       _ -> []
@@ -210,14 +262,64 @@ parsed bytes = case parseJson pythonLoads bytes of
   Right value -> pure value
   Left problem -> expectationFailure ("unreadable reference output: " <> problem) >> pure Null
 
-pythonDrive :: FilePath -> ProviderState -> [Step] -> IO Json
-pythonDrive root (ProviderState sha comments) steps = do
-  let document = Object [("head", String sha), ("comments", Array comments), ("steps", Array (map stepJson steps))]
+pythonDrive :: Network -> FilePath -> ProviderState -> [Step] -> IO Json
+pythonDrive network root (ProviderState sha comments) steps = do
+  let github = case network of
+        Doubles -> []
+        GitHubAt port pem -> [("github_port", Int (toInteger port)), ("private_key", String pem)]
+      document = Object ([("head", String sha), ("comments", Array comments), ("steps", Array (map stepJson steps))] <> github)
   reference ["drive", root] (either (error . show) id (dumps compact document)) >>= parsed
 
 -- | @state_reference.py dump@: the state directory as the reference reads it.
 referenceDump :: FilePath -> IO Json
 referenceDump root = reference ["dump", root] "" >>= parsed
+
+-- ---------------------------------------------------------------------------
+-- The fake GitHub
+
+data FakeState = FakeState
+  { fakeHead :: IORef Text
+  , fakeComments :: IORef [[(Text, Json)]]
+  }
+
+-- | @V5Provider@'s answers over HTTP, plus installation 44's token.
+v5GitHub :: FakeState -> Recorded -> IO (Maybe (Int, [(ByteString, ByteString)], ByteString))
+v5GitHub state call = do
+  headSha <- readIORef state.fakeHead
+  let path = TE.decodeUtf8 call.target
+      json status value = pure (Just (status, [], either (error . show) id (dumps compact value)))
+  case (call.method, path) of
+    ("POST", "/app/installations/44/access_tokens") ->
+      json 201 (Object [("token", String "ghs_installation44"), ("expires_at", String "2099-01-01T00:00:00Z"), ("repository_selection", String "selected")])
+    ("GET", "/repos/owner/one/pulls/7") -> json 200 (pullRequest headSha)
+    ("GET", "/repos/owner/one/git/ref/heads/main") -> json 200 (Object [("object", Object [("sha", String baseSha)])])
+    ("GET", p)
+      | p == "/repos/owner/one/compare/" <> baseSha <> "..." <> headSha ->
+          json 200 (Object [("status", String "ahead"), ("behind_by", Int 0)])
+    ("GET", "/repos/owner/one/pulls/7/requested_reviewers") -> json 200 (Object [("users", Array [])])
+    ("GET", "/repos/owner/one/pulls/7/reviews?per_page=100") -> json 200 (Array [])
+    ("GET", p)
+      | "/repos/owner/one/actions/workflows/.github%2Fworkflows%2Fci.yml/runs?" `T.isPrefixOf` p ->
+          json 200 (Object [("total_count", Int 0), ("workflow_runs", Array [])])
+    ("POST", "/graphql") -> json 200 noReviewThreads
+    ("GET", "/repos/owner/one/issues/7/comments?per_page=100") -> readIORef state.fakeComments >>= json 200 . Array . map Object
+    ("POST", "/repos/owner/one/issues/7/comments") | Just members <- body -> do
+      n <- length <$> readIORef state.fakeComments
+      let comment = newComment (toInteger n + 1) members
+      modifyIORef' state.fakeComments (<> [comment])
+      json 201 (Object comment)
+    ("PATCH", p)
+      | Just identifierText <- T.stripPrefix "/repos/owner/one/issues/comments/" p
+      , Just members <- body -> do
+          let identifier = Int (read (T.unpack identifierText))
+          modifyIORef' state.fakeComments (map (editComment identifier members))
+          found <- find (\comment -> lookup "id" comment == Just identifier) <$> readIORef state.fakeComments
+          maybe (pure Nothing) (json 200 . Object) found
+    _ -> pure Nothing
+  where
+    body = case parseJson pythonLoads call.body of
+      Right (Object members) -> Just members
+      _ -> Nothing
 
 -- ---------------------------------------------------------------------------
 -- The same journey through this host
@@ -230,6 +332,60 @@ data Provider = Provider
 
 baseSha :: Text
 baseSha = T.replicate 40 "b"
+
+-- | PR 7 of @owner/one@: open, clean, at the given head.
+pullRequest :: Text -> Json
+pullRequest headSha =
+  Object
+    [ ("state", String "open")
+    , ("draft", Bool False)
+    , ("mergeable", Bool True)
+    , ("mergeable_state", String "clean")
+    , ("merged", Bool False)
+    , ("html_url", String "https://example.test/owner/one/pull/7")
+    , ("user", Object [("login", String "author")])
+    , ("head", Object [("sha", String headSha), ("ref", String "feature"), ("repo", Object [("full_name", String "owner/one")])])
+    , ("base", Object [("sha", String baseSha), ("ref", String "main")])
+    ]
+
+noReviewThreads :: Json
+noReviewThreads =
+  Object
+    [ ( "data"
+      , Object
+          [ ( "repository"
+            , Object
+                [ ( "pullRequest"
+                  , Object
+                      [ ( "reviewThreads"
+                        , Object
+                            [ ("nodes", Array [])
+                            , ("pageInfo", Object [("hasNextPage", Bool False), ("endCursor", Null)])
+                            ]
+                        )
+                      ]
+                  )
+                ]
+            )
+          ]
+      )
+    ]
+
+-- | The comment the App posts as comment number @identifier@.
+newComment :: Integer -> [(Text, Json)] -> [(Text, Json)]
+newComment identifier members =
+  [ ("id", Int identifier)
+  , ("html_url", String ("https://example.test/comments/" <> T.pack (show identifier)))
+  , ("body", maybe (String "") id (lookup "body" members))
+  , ("user", Object [("login", String "hamsterdan-test[bot]")])
+  ]
+
+-- | A comment after the App edits comment @identifier@.
+editComment :: Json -> [(Text, Json)] -> [(Text, Json)] -> [(Text, Json)]
+editComment identifier members comment
+  | lookup "id" comment == Just identifier =
+      [(k, if k == "body" then maybe (String "") id (lookup "body" members) else v) | (k, v) <- comment]
+  | otherwise = comment
 
 -- | @V5Provider@ of @state_reference.py@ (the @test_service.py@ double
 -- plus comment edits).
@@ -250,19 +406,7 @@ providerTransport provider =
     record parts = modifyIORef' provider.calls (<> [Array (map String parts)])
     ok value = pure (WireResponse 200 value Nothing)
     answer headSha method path body = case (method, path) of
-      ("GET", "/repos/owner/one/pulls/7") ->
-        ok $
-          Object
-            [ ("state", String "open")
-            , ("draft", Bool False)
-            , ("mergeable", Bool True)
-            , ("mergeable_state", String "clean")
-            , ("merged", Bool False)
-            , ("html_url", String "https://example.test/owner/one/pull/7")
-            , ("user", Object [("login", String "author")])
-            , ("head", Object [("sha", String headSha), ("ref", String "feature"), ("repo", Object [("full_name", String "owner/one")])])
-            , ("base", Object [("sha", String baseSha), ("ref", String "main")])
-            ]
+      ("GET", "/repos/owner/one/pulls/7") -> ok (pullRequest headSha)
       ("GET", "/repos/owner/one/git/ref/heads/main") -> ok (Object [("object", Object [("sha", String baseSha)])])
       ("GET", "/repos/owner/one/rules/branches/main") -> pure (WireResponse 404 (Object []) Nothing)
       ("GET", "/repos/owner/one/branches/main/protection") -> pure (WireResponse 404 (Object []) Nothing)
@@ -273,57 +417,26 @@ providerTransport provider =
       ("GET", p)
         | "/repos/owner/one/actions/workflows/.github%2Fworkflows%2Fci.yml/runs?" `T.isPrefixOf` p ->
             ok (Object [("total_count", Int 0), ("workflow_runs", Array [])])
-      ("POST", "/graphql") ->
-        ok $
-          Object
-            [ ( "data"
-              , Object
-                  [ ( "repository"
-                    , Object
-                        [ ( "pullRequest"
-                          , Object
-                              [ ( "reviewThreads"
-                                , Object
-                                    [ ("nodes", Array [])
-                                    , ("pageInfo", Object [("hasNextPage", Bool False), ("endCursor", Null)])
-                                    ]
-                                )
-                              ]
-                          )
-                        ]
-                    )
-                  ]
-              )
-            ]
+      ("POST", "/graphql") -> ok noReviewThreads
       ("POST", "/repos/owner/one/issues/7/comments")
         | Just members <- body -> do
             n <- length <$> readIORef provider.comments
-            let identifier = toInteger n + 1
-                comment =
-                  [ ("id", Int identifier)
-                  , ("html_url", String ("https://example.test/comments/" <> T.pack (show identifier)))
-                  , ("body", maybe (String "") id (lookup "body" members))
-                  , ("user", Object [("login", String "hamsterdan-test[bot]")])
-                  ]
+            let comment = newComment (toInteger n + 1) members
             modifyIORef' provider.comments (<> [comment])
             pure (WireResponse 201 (Object comment) Nothing)
       ("PATCH", p)
         | Just identifierText <- T.stripPrefix "/repos/owner/one/issues/comments/" p
         , Just members <- body -> do
             let identifier = Int (read (T.unpack identifierText))
-                edited comment
-                  | lookup "id" comment == Just identifier =
-                      [(k, if k == "body" then maybe (String "") id (lookup "body" members) else v) | (k, v) <- comment]
-                  | otherwise = comment
-            modifyIORef' provider.comments (map edited)
+            modifyIORef' provider.comments (map (editComment identifier members))
             found <- find (\comment -> lookup "id" comment == Just identifier) <$> readIORef provider.comments
             case found of
               Just comment -> ok (Object comment)
               Nothing -> throwIO (PythonException "AssertionError" [])
       _ -> throwIO (PythonException "AssertionError" [])
 
-haskellDrive :: FilePath -> ProviderState -> [Step] -> IO Json
-haskellDrive root (ProviderState sha initialComments) steps = do
+haskellDrive :: Network -> FilePath -> ProviderState -> [Step] -> IO Json
+haskellDrive network root (ProviderState sha initialComments) steps = do
   provider <-
     Provider
       <$> newIORef sha
@@ -336,13 +449,35 @@ haskellDrive root (ProviderState sha initialComments) steps = do
               modifyIORef' reviews (<> [Array [String url, String request.head, String inv.operation, Int inv.attempt]])
               pure (ReviewResult request.repository request.pullRequest request.epoch request.head request.base "clear" [] [])
           }
-  clients <- newFakeClients
-  writeIORef clients.operationTransport (Just (providerTransport provider))
+  let configured = hostConfig root [(31, "owner/one"), (32, "owner/two")] mempty
+  (config, clients) <- case network of
+    Doubles -> do
+      doubles <- newFakeClients
+      writeIORef doubles.operationTransport (Just (providerTransport provider))
+      pure (configured, hostClientsOf doubles)
+    GitHubAt port pem -> do
+      exchange <- newPlainExchangeAt "127.0.0.1" port
+      appClients <-
+        newAppClients
+          AppCredentials {appId = configured.appId, clientId = configured.clientId, privateKey = pem}
+          ClientOptions {exchange, clock = realToFrac <$> getPOSIXTime, metadataHook = Nothing}
+      let keyed =
+            HostConfig
+              { appId = configured.appId
+              , appSlug = configured.appSlug
+              , clientId = configured.clientId
+              , accounts = configured.accounts
+              , statePath = configured.statePath
+              , watchedAuthors = configured.watchedAuthors
+              , privateKey = secret pem
+              , webhookSecret = configured.webhookSecret
+              }
+      pure (keyed, gitHubHostClients appClients)
   host <-
     openHostService
-      (hostConfig root [(31, "owner/one"), (32, "owner/two")] mempty)
+      config
       (serviceOptions runner noAgentCustody)
-        { clients = Just (hostClientsOf clients)
+        { clients = Just clients
         , applicationFactory = v5ApplicationFactory
         }
   reports <- newIORef []

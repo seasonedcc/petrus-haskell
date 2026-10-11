@@ -6,6 +6,7 @@ module FakeGitHub
   ( Recorded (..)
   , Route
   , withFakeGitHub
+  , withFakeGitHubIO
   , takeCalls
   , comparableCall
   , registrationRoutes
@@ -36,7 +37,12 @@ data Recorded = Recorded
 type Route = ByteString -> ByteString -> Maybe (Int, [(ByteString, ByteString)], ByteString)
 
 withFakeGitHub :: Route -> (Int -> IORef [Recorded] -> IO a) -> IO a
-withFakeGitHub routes action = do
+withFakeGitHub routes = withFakeGitHubIO (\call -> pure (routes call.method call.target))
+
+-- | A fake whose answers may depend on what it was sent before (for
+-- example the comments a client has posted).
+withFakeGitHubIO :: (Recorded -> IO (Maybe (Int, [(ByteString, ByteString)], ByteString))) -> (Int -> IORef [Recorded] -> IO a) -> IO a
+withFakeGitHubIO routes action = do
   calls <- newIORef []
   let app request respond = do
         payload <- BL.toStrict <$> strictRequestBody request
@@ -49,7 +55,8 @@ withFakeGitHub routes action = do
                 , body = payload
                 }
         atomicModifyIORef' calls (\known -> (known <> [recorded], ()))
-        respond $ case routes (requestMethod request) target of
+        answer <- routes recorded
+        respond $ case answer of
           Just (status, extra, content) ->
             responseLBS (mkStatus status "") ([("content-type", "application/json; charset=utf-8")] <> map (\(n, v) -> (CI.mk n, v)) extra) (BL.fromStrict content)
           Nothing -> responseLBS (mkStatus 404 "") [("content-type", "application/json; charset=utf-8")] "{\"message\":\"Not Found\"}"

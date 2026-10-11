@@ -12,6 +12,11 @@ calls, the provider's final state, and one report per ``report`` step.
 The provider's starting state (head, comments) comes in with the steps, so a
 run can resume where a run of either implementation left the provider.
 
+With ``github_port`` (and ``private_key``, the App's PEM) in the document,
+the host instead composes the real GitHub client stack and sends every
+request to the recording fake GitHub on ``127.0.0.1:github_port``; the
+``V5Provider`` then stays unused.
+
 ``dump`` prints every file under ROOT in a comparable form: SQLite
 databases as their schema and sorted rows, every other file as text.
 
@@ -29,7 +34,10 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import httpx
+
 from hamsterdan.agents.protocol import ReviewResult
+from hamsterdan.github_app.auth import GitHubAppClients
 from hamsterdan.github_app.config import AccountConfig, HostConfig
 from hamsterdan.github_app.models import WireResponse
 from hamsterdan.host import service as service_module
@@ -147,14 +155,14 @@ class V5Runner:
         )
 
 
-def config(root: Path) -> HostConfig:
+def config(root: Path, private_key: str = "private-key-secret") -> HostConfig:
     return HostConfig(
         app_id=17,
         app_slug="hamsterdan-test",
         client_id="Iv1.client-secret-looking",
         accounts=(AccountConfig(23, "Owner", ((31, "owner/one"), (32, "owner/two"))),),
         state_path=root,
-        private_key="private-key-secret",
+        private_key=private_key,
         webhook_secret="hook-secret",
         watched_authors=frozenset(),
     )
@@ -179,16 +187,38 @@ def inspected(root: Path) -> object:
         return {"refused": str(error)}
 
 
+class Redirect(httpx.HTTPTransport):
+    """Send every request to the recording fake GitHub on a local port."""
+
+    def __init__(self, port: int) -> None:
+        super().__init__()
+        self.port = port
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        request.url = request.url.copy_with(scheme="http", host="127.0.0.1", port=self.port)
+        return super().handle_request(request)
+
+
 def drive(root: Path, document: dict) -> dict:
     provider = V5Provider(document["head"], document["comments"])
     runner = V5Runner()
-    service_module.GitHubKitTransport = lambda client: provider
+    port = document.get("github_port")
+    if port is None:
+        service_module.GitHubKitTransport = lambda client: provider
+        clients, settings = Clients(), config(root)
+    else:
+        # The real GitHub client stack (App JWT, installation token,
+        # githubkit, httpx) against the fake GitHub on 127.0.0.1:port.
+        service_module.GitHubAppClients = lambda configured, **kwargs: GitHubAppClients(
+            configured, transport=Redirect(int(port)), **kwargs
+        )
+        clients, settings = None, config(root, document["private_key"])
     composition = compose_agent()
     routes = AgentRouteStore(root / "test-agent-routes.sqlite3")
     routes.activate(composition, root / "applications")
     host = HostService(
-        config(root),
-        clients=Clients(),
+        settings,
+        clients=clients,
         runner=runner,
         agent_composition=composition,
         agent_routes=routes,
