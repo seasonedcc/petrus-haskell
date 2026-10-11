@@ -176,17 +176,7 @@ jobs:
       - name: Upstream Python environments
         run: for p in petrus petrus-engine hamsterdan; do scripts/upstream-python "$p" >/dev/null; done
       - name: Tests (${{ matrix.suites }})
-        run: |
-          # TEMPORARY diagnostic: memory overcommit while the suites start
-          echo "overcommit_memory $(cat /proc/sys/vm/overcommit_memory) ratio $(cat /proc/sys/vm/overcommit_ratio) max_map_count $(cat /proc/sys/vm/max_map_count) stack $(ulimit -s) data $(ulimit -d) as $(ulimit -v)"
-          grep -E 'CommitLimit|Committed_AS|SwapTotal' /proc/meminfo
-          (peak=0; while sleep 0.2; do c=$(awk '/Committed_AS/ {print $2}' /proc/meminfo); if [ "$c" -gt "$peak" ]; then peak=$c; echo "Committed_AS peak $c kB at $(date +%T.%N)" > "$RUNNER_TEMP/commit-peak"; fi; done) &
-          sampler=$!
-          status=0
-          scripts/ci-tests run-shard plan.json "${{ matrix.name }}" || status=$?
-          kill "$sampler"
-          cat "$RUNNER_TEMP/commit-peak" || true
-          exit "$status"
+        run: scripts/ci-tests run-shard plan.json "${{ matrix.name }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
