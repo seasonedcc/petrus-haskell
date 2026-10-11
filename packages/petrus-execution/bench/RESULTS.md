@@ -1,5 +1,7 @@
 # petrus-execution benchmark results
 
+<!-- scripts/bench: measured sources 8a25aedff830bc24 at 22f5fe81f32a -->
+
 The Haskell port compared with upstream Python Petrus (`petrus.motus.execution` /
 `_execution` at the pin in [UPSTREAM.md](../../../UPSTREAM.md)). Both harnesses run the same
 workloads, iteration counts and operations:
@@ -177,6 +179,16 @@ cabal build -j2 petrus-execution:bench:petrus-execution-bench
 # Everything, interleaved; the work directory receives about 330 MiB of workloads.
 "$(scripts/upstream-python)" -B packages/petrus-execution/bench/compare.py "${BENCH_TMP:-bench-results/tmp/petrus-execution}/workloads" 5
 rm -rf "${BENCH_TMP:-bench-results/tmp/petrus-execution}/workloads"
+```
+
+CI's nightly smoke run (`scripts/bench --smoke`, not a measurement): the
+Haskell harness on the `medium` workload only, plus its process and local
+rows.
+
+<!-- scripts/bench: smoke -->
+```sh
+python3 packages/petrus-execution/bench/make_workloads.py "$BENCH_TMP/workloads"
+cd packages/petrus-execution && PETRUS_BENCH_ONLY=medium "$BENCH_BIN" "$BENCH_TMP/workloads" +RTS -M2G -RTS
 ```
 
 Both harnesses read the monotonic clock, so both sides are wall-clock time.

@@ -1,5 +1,7 @@
 # agenticus-catalog benchmark results
 
+<!-- scripts/bench: measured sources 479d741849778ff1 at 9126e1be67f7 -->
+
 These are twin workloads: `bench/Bench/Catalog.hs` (tasty-bench) and
 `bench/python_catalog.py`, which runs the pinned reference
 (`upstream/petrus` @ 3f85fc2).

@@ -1,5 +1,7 @@
 # Benchmark results
 
+<!-- scripts/bench: measured sources 5a6cc9cc23fd0b07 at db35a07b61f1 -->
+
 The Haskell backend against the upstream Node backend at the pin in
 [UPSTREAM.md](../../../UPSTREAM.md), driven by one load client
 (`petrus-viewer-bench`, a Haskell program) for every server.
@@ -13,6 +15,15 @@ From the repository root (`scripts/bench petrus-viewer-server` runs exactly this
 test -d upstream/petrus-viewer/node_modules || (cd upstream/petrus-viewer && pnpm install --frozen-lockfile)
 test -f upstream/petrus-viewer/dist/index.html || (cd upstream/petrus-viewer && pnpm build)
 node packages/petrus-viewer-server/bench/run.mjs
+```
+
+CI's nightly smoke run (`scripts/bench --smoke`, not a measurement): the
+in-process `micro` rows, a few iterations each (the scenario runner needs the
+upstream viewer's `pnpm install`, which CI's `viewer` job covers).
+
+<!-- scripts/bench: smoke -->
+```sh
+"$BENCH_BIN" micro --file upstream/petrus-viewer/examples/sample-net.json --iters 50 +RTS -M2G -RTS
 ```
 
 Other ways to run it:

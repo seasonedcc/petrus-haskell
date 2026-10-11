@@ -1,5 +1,7 @@
 # petrus-agenticus benchmark results
 
+<!-- scripts/bench: measured sources 79db379d4b25f7d4 at 7fc4ecb1d671 -->
+
 These are twin workloads: `bench/Bench/AgentNet.hs` (tasty-bench) and
 `bench/python_agent_net.py`, which runs the pinned reference
 (`upstream/petrus` @ 3f85fc2).

@@ -1,5 +1,7 @@
 # ZeroMQ Dispatch transport benchmarks: Haskell vs the Python reference
 
+<!-- scripts/bench: measured sources 817e565ff26b9b4b at bd4a0085b979 -->
+
 `bench/Main.hs` and `bench/python_bench.py` time the same workloads. On each
 side the client runs in the bench process and the server is a separate
 process of the same implementation, reached over IPC:
@@ -47,6 +49,14 @@ From the repository root (`scripts/bench petrus-motus-zeromq` runs exactly this;
 ```sh
 cabal bench -j2 petrus-motus-zeromq --benchmark-options '+RTS -M2G -RTS'
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-motus-zeromq/bench/python_bench.py)
+```
+
+CI's nightly smoke run (`scripts/bench --smoke`, not a measurement): the
+Haskell harness once.
+
+<!-- scripts/bench: smoke -->
+```sh
+cd packages/petrus-motus-zeromq && "$BENCH_BIN" +RTS -M2G -RTS
 ```
 
 Both harnesses read the monotonic clock around each timed run, so both sides are wall-clock time.

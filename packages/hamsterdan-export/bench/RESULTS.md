@@ -1,5 +1,7 @@
 # hamsterdan-export benchmarks
 
+<!-- scripts/bench: measured sources 3065c49862aff3a1 at 96eda46a7fc2 -->
+
 One export of pull request 7, from three state directories:
 
 - **fixture:** the upstream test suite's default state directory
@@ -69,6 +71,13 @@ above.
 <!-- scripts/bench: rerun -->
 ```sh
 cabal bench -j2 hamsterdan-export --benchmark-options="--runs 21 +RTS -M2G -RTS"
+```
+
+CI's nightly smoke run (`scripts/bench --smoke`, not a measurement):
+
+<!-- scripts/bench: smoke -->
+```sh
+cd packages/hamsterdan-export && "$BENCH_BIN" --runs 1 +RTS -M2G -RTS
 ```
 
 Note `uptime` before and after each run. `--repeat STATE OWNER/NAME N`

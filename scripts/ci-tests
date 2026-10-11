@@ -119,7 +119,34 @@ def plan_graph() -> Tuple[Dict[str, Set[str]], Dict[str, List[str]]]:
                 suites.setdefault(name, []).append(component_name[len("test:"):])
         if unit.get("component-name", "").startswith("test:"):
             suites.setdefault(name, []).append(unit["component-name"][len("test:"):])
-    return deps, {k: sorted(set(v)) for k, v in suites.items()}
+    suites = {k: sorted(set(v)) for k, v in suites.items()}
+    check_plan_is_current(set(deps), suites)
+    return deps, suites
+
+
+def check_plan_is_current(packages: Set[str], suites: Dict[str, List[str]]) -> None:
+    """The plan must describe the checked-out package descriptions: every
+    packages/*/*.cabal is a local package of it, with exactly the test
+    suites that file declares. A stale plan.json (one cabal did not rewrite
+    after a .cabal file changed) would otherwise leave a new suite unplanned
+    and unrun while the ledger and the verdict pass."""
+    declared: Dict[str, List[str]] = {}
+    for cabal_file in sorted((ROOT / "packages").glob("*/*.cabal")):
+        text = cabal_file.read_text()
+        name = re.search(r"^name:\s*(\S+)", text, re.M | re.I)
+        tests = re.findall(r"^test-suite\s+(\S+)", text, re.M | re.I)
+        declared[name.group(1) if name else cabal_file.stem] = sorted(set(tests))
+    problems = []
+    for package in sorted(set(declared) | packages):
+        if package not in packages:
+            problems.append(f"{package}: in packages/ but not in the plan")
+        elif package not in declared:
+            problems.append(f"{package}: in the plan but has no packages/*/*.cabal")
+        elif declared[package] != suites.get(package, []):
+            problems.append(f"{package}: its .cabal declares test suites {declared[package]}, the plan has {suites.get(package, [])}")
+    if problems:
+        raise SystemExit("dist-newstyle/cache/plan.json does not match the package descriptions"
+                         " (rerun `cabal build all --dry-run`):\n  " + "\n  ".join(problems))
 
 
 def MENTION(names: List[str]) -> "re.Pattern[str]":
@@ -750,7 +777,8 @@ def inputs_cmd() -> int:
     return 0
 
 
-# check-all steps CI does not run: the benchmarks are opt-in (--bench).
+# check-all steps CI does not run: the benchmark measurements are opt-in
+# (--bench); CI only smoke-runs them nightly (scripts/bench --smoke).
 NOT_IN_CI = {"Benchmarks"}
 
 

@@ -1,5 +1,7 @@
 # hamsterdan-host benchmarks
 
+<!-- scripts/bench: measured sources ebfe964448b62b0a at 671c1cfa4738 -->
+
 These are the host's hot paths:
 
 - **Webhook ingest:** 100 signed `pull_request` deliveries, each sent as a

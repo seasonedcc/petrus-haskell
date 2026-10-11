@@ -1,5 +1,7 @@
 # DSL benchmarks: Haskell vs the Python reference
 
+<!-- scripts/bench: measured sources 605204f83453caa4 at 335f5f150bae -->
+
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same two
 workloads. Both are the `chain` and `stamped` builders of
 `differential/dsl_corpus.py`. The differential corpus checks the Haskell twins

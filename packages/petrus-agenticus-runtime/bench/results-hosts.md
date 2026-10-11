@@ -1,5 +1,7 @@
 # Codex, Claude and Amp host benchmark results
 
+<!-- scripts/bench: measured sources baf81cf78b32471f at f12e7471cb61 -->
+
 These are twin workloads, run by the tasty-bench runner `bench/Main.hs`
 (`bench/HostsBench.hs`) and by `bench/python_hosts.py` against the pinned
 reference (`upstream/petrus` @ 3f85fc2). They cover the hosts' own protocol

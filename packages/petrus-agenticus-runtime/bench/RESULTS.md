@@ -1,5 +1,7 @@
 # petrus-agenticus-runtime benchmark results
 
+<!-- scripts/bench: measured sources a188d6e584673ddc at 0eaa52516f65 -->
+
 The Pi benchmarks (frame codec, session validation, fingerprints, the
 operation ledger and a scripted A2 turn) are in [results-pi.md](results-pi.md).
 This file covers the Local Agent-as-a-Net runner.
