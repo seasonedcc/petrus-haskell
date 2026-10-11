@@ -342,7 +342,12 @@ GENERATORS: List[Generator] = [
     hamsterdan(
         "hamsterdan-contracts/gen_models",
         "packages/hamsterdan-contracts/scripts/gen_models.py",
-        ["packages/hamsterdan-contracts/src/Hamsterdan/Contracts/ReadinessV5.hs", "packages/hamsterdan-contracts/src/Hamsterdan/Contracts/Readiness.hs"],
+        [
+            "packages/hamsterdan-contracts/src/Hamsterdan/Contracts/ReadinessV5.hs",
+            "packages/hamsterdan-contracts/src/Hamsterdan/Contracts/Readiness.hs",
+            "packages/hamsterdan-contracts/test/Generators/ReadinessV5.hs",
+            "packages/hamsterdan-contracts/test/Generators/Readiness.hs",
+        ],
     ),
     hamsterdan(
         "hamsterdan-contracts/gen_printable",

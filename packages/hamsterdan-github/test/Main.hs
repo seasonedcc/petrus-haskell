@@ -5,6 +5,7 @@ import ConfigCorpusSpec qualified
 import EffectsCorpusSpec qualified
 import GitHubSpec qualified
 import HttpCorpusSpec qualified
+import SignatureSpec qualified
 import Test.Hspec (hspec)
 import WebhookCorpusSpec qualified
 
@@ -15,4 +16,5 @@ main = hspec $ do
   EffectsCorpusSpec.spec
   GitHubSpec.spec
   HttpCorpusSpec.spec
+  SignatureSpec.spec
   WebhookCorpusSpec.spec
