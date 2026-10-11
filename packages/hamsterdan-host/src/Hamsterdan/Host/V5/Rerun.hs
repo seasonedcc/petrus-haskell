@@ -19,7 +19,7 @@ import Data.Text (Text)
 import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.GitHub.Effects (CommentRerunBroker)
 import Hamsterdan.GitHub.Effects qualified as Effects
-import Hamsterdan.GitHub.Models (ActionsRunSnapshot (..), PublicationResult (..), RerunIssue (..))
+import Hamsterdan.GitHub.Models (ActionsRunSnapshot (..), PublicationResult (..), PublicationStatus (..), RerunIssue (..), publicationStatusText)
 import Hamsterdan.Host.Errors (Caught (..), catchGate, caughtReason)
 import Hamsterdan.Host.V5.Claim (ClaimReader, CurrentClaim (..))
 import Hamsterdan.Readiness.NetV5.Gating (Variant, variantOf)
@@ -91,7 +91,7 @@ rerunGate g work = do
             }
       faulted :: forall a. Caught -> IO (Step a)
       faulted = pure . Done . fault . caughtReason
-      expected = CurrentClaim "running" work.incarnation work.head work.base work.policy
+      expected = CurrentClaim PhaseRunning work.incarnation work.head work.base work.policy
   first <-
     catchGate
       ( do
@@ -120,9 +120,9 @@ rerunGate g work = do
                   Done terminal -> terminal
                   Go answer
                     | not answer.result.capabilityAvailable -> fault "the provider proved it cannot publish the rerun request"
-                    | answer.result.status == "existing" -> existing
-                    | answer.result.status /= "requested" ->
-                        fault ("unclassified rerun status " <> pythonStrRepr answer.result.status)
+                    | answer.result.status == PublicationExisting -> existing
+                    | answer.result.status /= PublicationRequested ->
+                        fault ("unclassified rerun status " <> pythonStrRepr (publicationStatusText answer.result.status))
                     | otherwise ->
                         variantOf
                           RerunLanded

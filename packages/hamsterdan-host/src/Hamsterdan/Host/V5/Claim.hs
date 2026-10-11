@@ -2,17 +2,19 @@
 -- (@host/v5/claim.py@).
 module Hamsterdan.Host.V5.Claim
   ( CurrentClaim (..)
+  , Phase (..)
   , ClaimReader
   , claimAsMap
   ) where
 
 import Data.Text (Text)
+import Hamsterdan.Contracts.Codec (spelling)
+import Hamsterdan.Contracts.ReadinessV5 (Phase (..))
 import Petrus.Json (Json (..))
 
 -- | @CurrentClaim(phase, incarnation, head, base, policy)@.
 data CurrentClaim = CurrentClaim
-  { phase :: Text
-  -- ^ @running@, @quiescent@, or @terminal@.
+  { phase :: Phase
   , incarnation :: Integer
   , head :: Text
   , base :: Text
@@ -27,7 +29,7 @@ type ClaimReader = IO CurrentClaim
 claimAsMap :: CurrentClaim -> Json
 claimAsMap c =
   Object
-    [ ("phase", String c.phase)
+    [ ("phase", String (spelling c.phase))
     , ("incarnation", Int c.incarnation)
     , ("head", String c.head)
     , ("base", String c.base)

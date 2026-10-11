@@ -470,7 +470,7 @@ haskellDrive network agent root (ProviderState sha initialComments) steps = do
           swept <- Host.sweep host trigger
           report (Object [("swept", Int (toInteger swept))])
         Report deliveries -> do
-          statuses <- traverse (\delivery -> (delivery,) . maybe Null String <$> Custody.status host.custody delivery) deliveries
+          statuses <- traverse (\delivery -> (delivery,) . maybe Null (String . Custody.inboxStatusText) <$> Custody.status host.custody delivery) deliveries
           counts <- Custody.counts host.custody
           subject <- Host.subjectState host 44 31 7
           inspected <-

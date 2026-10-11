@@ -56,6 +56,7 @@ module Hamsterdan.Contracts.Codec
   , validate
   , validateJson
   , spelling
+  , unspelling
   , Model (..)
   , modelOf
 
@@ -396,6 +397,10 @@ spelling :: (Contract a) => a -> Text
 spelling value = case dump value of
   String spelled -> spelled
   _ -> error "Hamsterdan.Contracts.Codec.spelling: not a string literal"
+
+-- | The enumeration value the text spells, if any.
+unspelling :: (Contract a) => Text -> Maybe a
+unspelling = either (const Nothing) Just . validate . String
 
 -- | A model with its type erased, for differential tests and registries.
 data Model = Model

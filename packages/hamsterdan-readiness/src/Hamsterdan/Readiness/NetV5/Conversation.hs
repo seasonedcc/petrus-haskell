@@ -89,12 +89,6 @@ startedText =
   , ("resolve_conflict", "On it — I'm resolving the conflict and will push the result.")
   ]
 
-strDict :: [(Text, Text)] -> Json
-strDict members = Object [(k, String v) | (k, v) <- members]
-
-faultedDict :: [(Text, [(Text, Text)])] -> Json
-faultedDict members = Object [(k, strDict v) | (k, v) <- members]
-
 -- | The routed fact for a note intent, or nothing for pure notes.
 noteRoutes :: IntentFact -> [Emit]
 noteRoutes intent = case intent.kind of
@@ -110,7 +104,7 @@ classify b outs = do
   if intent.id `elem` mem.served
     then Right (route outs [emit "conv.memory" [mem]])
     else do
-      served <- vupdate mem [("served", texts (mem.served ++ [intent.id]))]
+      let served = mem {served = mem.served ++ [intent.id]} :: ConvMemory
       (text, routes) <- case lookup intent.kind grades of
         Just grade | intent.authorized -> case grade of
           Pure -> Right (if T.null intent.arg then pureFallbackText else intent.arg, [])
@@ -149,7 +143,7 @@ classify b outs = do
                         }
                 Right (started, [emit "mut.requests" [req]])
         _ -> Right (noChangeText, [])
-      memory <- vupdate served [("pending", strDict (pairInsert intent.id text served.pending))]
+      let memory = served {pending = pairInsert intent.id text served.pending} :: ConvMemory
       Right
         ( route
             outs
@@ -164,14 +158,8 @@ pairInsert k v members
 foldReplied :: Fold
 foldReplied b outs = do
   (out, mem) <- values2 @Replied @ConvMemory b
-  updated <-
-    vupdate
-      mem
-      [ ("pending", strDict (without out.id mem.pending))
-      , ("blocked", strDict (without out.id mem.blocked))
-      , ("faulted", faultedDict (without out.id mem.faulted))
-      ]
-  let facts =
+  let updated = mem {pending = without out.id mem.pending, blocked = without out.id mem.blocked, faulted = without out.id mem.faulted} :: ConvMemory
+      facts =
         [ GateFact
             { kind = "fault"
             , incarnation = 0
@@ -184,24 +172,16 @@ foldReplied b outs = do
 foldBlocked :: Fold
 foldBlocked b outs = do
   (out, mem) <- values2 @ReplyBlocked @ConvMemory b
-  updated <-
-    vupdate
-      mem
-      [ ("pending", strDict (without out.id mem.pending))
-      , ("blocked", strDict (pairInsert out.id out.text mem.blocked))
-      ]
+  let updated = mem {pending = without out.id mem.pending, blocked = pairInsert out.id out.text mem.blocked} :: ConvMemory
   Right (route outs [emit "conv.memory" [updated]])
 
 foldFault :: Fold
 foldFault b outs = do
   (out, mem) <- values2 @ReplyFault @ConvMemory b
-  updated <-
-    vupdate
-      mem
-      [ ("pending", strDict (without out.id mem.pending))
-      , ("faulted", faultedDict (pairInsert out.id [("text", out.text), ("reason", out.reason)] mem.faulted))
-      ]
-  let fact =
+  let updated =
+        mem {pending = without out.id mem.pending, faulted = pairInsert out.id [("text", out.text), ("reason", out.reason)] mem.faulted}
+          :: ConvMemory
+      fact =
         GateFact
           { kind = "fault"
           , incarnation = 0
@@ -231,12 +211,7 @@ recover b outs = do
               case found of
                 Nothing -> keep
                 Just text -> do
-                  updated <-
-                    vupdate
-                      mem
-                      [ ("pending", strDict (pairInsert replyId text mem.pending))
-                      , ("blocked", strDict (without replyId mem.blocked))
-                      ]
+                  let updated = mem {pending = pairInsert replyId text mem.pending, blocked = without replyId mem.blocked} :: ConvMemory
                   Right (route outs [emit "conv.memory" [updated], emit "conv.reply_req" [ReplyReq {id = replyId, text = text}]])
     _ -> keep
 

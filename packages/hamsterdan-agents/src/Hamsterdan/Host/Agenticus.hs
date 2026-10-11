@@ -52,7 +52,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Agents.Pi (PiNativeRunner, PiRuntime, PiWorkspaceProvider, defaultPiRunnerOptions, newPiNativeRunner, piAgentRunner, unavailablePiRunner)
 import Hamsterdan.Agents.Protocol (AgentRunner (..), CodingRequest (..), Invocation (..))
-import Hamsterdan.PyText (isAscii, isPrintable, pyIntBase, utf8Length)
+import Hamsterdan.PyText (isAscii, isPrintable, pyIntBase, raisingDumps, utf8Length)
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Binding (InstanceBinding (..), readInstanceBinding)
@@ -196,7 +196,7 @@ sortedCompact = defaultDumps {itemSeparator = Just ",", keySeparator = ":", sort
 
 -- | @_snapshot_data(snapshot)@.
 snapshotData :: ResolutionSnapshot -> Text
-snapshotData snapshot = either (error . show) id (dumpsText sortedCompact (snapshotToData snapshot))
+snapshotData snapshot = raisingDumps (dumpsText sortedCompact (snapshotToData snapshot))
 
 -- ---------------------------------------------------------------------------
 -- Runner selection

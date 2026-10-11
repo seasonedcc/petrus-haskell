@@ -33,11 +33,6 @@ import Petrus.Json (Json (..))
 gates :: [(Text, (Text, [Text]))]
 gates = [("esc.rerun_gate", ("rerun_gate", ["RerunLanded", "RerunMoved", "RerunFault"]))]
 
-objectOf :: Json -> Object
-objectOf = \case
-  Object members -> members
-  _ -> []
-
 keepLadder :: Ladder -> [Emit]
 keepLadder ladder = [emit "esc.ladder" [ladder]]
 
@@ -66,7 +61,7 @@ decide b outs = do
                   , incarnation = failure.incarnation
                   , runId = failure.runId
                   , attempt = failure.attempt
-                  , mem = objectOf (dump ladder)
+                  , mem = dumpObject ladder
                   }
           Right (route outs [emit "esc.rerun_req" [req]])
         else do
@@ -82,13 +77,10 @@ decide b outs = do
                     r <- getItem blocked "run_id"
                     a <- getItem blocked "attempt"
                     tupleCompare Gt evidence [r, a]
-              ladder' <-
-                if newer
-                  then do
-                    let retained = insert "blocked" (dump failure) held
-                    vupdate ladder [("rerun_faults", Object (insert key (Object retained) [(k, Object v) | (k, v) <- ladder.rerunFaults]))]
-                  else Right ladder
-              let fact =
+              let ladder'
+                    | newer = ladder {rerunFaults = insert key (insert "blocked" (dump failure) held) ladder.rerunFaults} :: Ladder
+                    | otherwise = ladder
+                  fact =
                     GateFact
                       { kind = "human_needed"
                       , incarnation = failure.incarnation
@@ -116,8 +108,8 @@ decide b outs = do
                               , ("run_id", Int failure.runId)
                               , ("attempt", Int failure.attempt)
                               ]
-                      held <- vupdate ladder [("repairs", Object (insert key pending ladder.repairs))]
-                      let req =
+                      let held = ladder {repairs = insert key pending ladder.repairs} :: Ladder
+                          req =
                             MutationRequest
                               { op = "repair:" <> key
                               , rid = "repair:" <> key
@@ -175,7 +167,7 @@ recover b outs = do
           then inert
           else do
             held <- maybe (Left (keyError k)) (Right . Object) (lookup k faults)
-            cleared <- vupdate ladder [("reruns", Object (without k ladder.reruns))]
+            let cleared = ladder {reruns = without k ladder.reruns} :: Ladder
             args <- traverse (\name -> (name,) <$> getItem held name) ["fp", "op", "head", "base", "policy", "incarnation", "run_id", "attempt"]
             req <- construct @RerunReq (("fingerprint", String k) : args ++ [("mem", dump cleared)])
             Right (route outs [emit "esc.rerun_req" [req]])
@@ -208,12 +200,7 @@ foldRerunLanded b outs = do
     [x, y] -> Right (x, y)
     _ -> Left validationError
   let rung = Object [("state", String "done"), ("run_id", w0), ("attempt", w1)]
-  ladder <-
-    vupdate
-      mem
-      [ ("reruns", Object (insert key rung mem.reruns))
-      , ("rerun_faults", Object [(k, Object v) | (k, v) <- faults])
-      ]
+      ladder = mem {reruns = insert key rung mem.reruns, rerunFaults = faults} :: Ladder
   resolved <- case held of
     Nothing -> Right []
     Just h -> do
@@ -235,7 +222,7 @@ foldRerunMoved b outs = do
   case lookup out.fingerprint mem.rerunFaults of
     Nothing -> Right (route outs [emit "ci.echo" [echo], emit "esc.ladder" [mem]])
     Just h -> do
-      mem' <- vupdate mem [("rerun_faults", Object [(k, Object v) | (k, v) <- without out.fingerprint mem.rerunFaults])]
+      let mem' = mem {rerunFaults = without out.fingerprint mem.rerunFaults} :: Ladder
       fact <- resolvedRerun (Object h)
       Right
         ( route
@@ -253,25 +240,24 @@ foldRerunFault b outs = do
   mem <- revive @Ladder (Object out.mem)
   blocked <- get (Object (maybe [] id (lookup out.fingerprint mem.rerunFaults))) "blocked"
   let retained =
-        Object
-          [ ("op", String out.op)
-          , ("reason", String out.reason)
-          , ("fp", String out.fp)
-          , ("head", String out.head)
-          , ("base", String out.base)
-          , ("policy", String out.policy)
-          , ("incarnation", Int out.incarnation)
-          , ("run_id", Int out.runId)
-          , ("attempt", Int out.attempt)
-          , ("blocked", blocked)
-          ]
-  ladder <-
-    vupdate
-      mem
-      [ ("reruns", Object (insert out.fingerprint (Object [("state", String "fault")]) mem.reruns))
-      , ("rerun_faults", Object (insert out.fingerprint retained [(k, Object v) | (k, v) <- mem.rerunFaults]))
-      ]
-  let fact = FaultRaisedFact {body = BodyOperationFault OperationFaultBody {where_ = SiteRerun, op = out.op, reason = out.reason}}
+        [ ("op", String out.op)
+        , ("reason", String out.reason)
+        , ("fp", String out.fp)
+        , ("head", String out.head)
+        , ("base", String out.base)
+        , ("policy", String out.policy)
+        , ("incarnation", Int out.incarnation)
+        , ("run_id", Int out.runId)
+        , ("attempt", Int out.attempt)
+        , ("blocked", blocked)
+        ]
+      ladder =
+        mem
+          { reruns = insert out.fingerprint (Object [("state", String "fault")]) mem.reruns
+          , rerunFaults = insert out.fingerprint retained mem.rerunFaults
+          }
+          :: Ladder
+      fact = FaultRaisedFact {body = BodyOperationFault OperationFaultBody {where_ = SiteRerun, op = out.op, reason = out.reason}}
   Right (route outs [emit "esc.ladder" [ladder], emit "ready.fault_raised_facts" [fact], emit "dash.facts" [fact]])
 
 pendingRepairs :: Object -> Py Bool
@@ -311,9 +297,7 @@ foldSettled b outs = do
             closing <- retiring ladder repairs
             case closing of
               Just reason -> Right (route outs (retire ladder repairs reason))
-              Nothing -> do
-                updated <- vupdate ladder [("repairs", Object repairs)]
-                Right (route outs [emit "esc.ladder" [updated]])
+              Nothing -> Right (route outs [emit "esc.ladder" [ladder {repairs = repairs} :: Ladder]])
       case settled.outcome of
         OutcomeLanded -> stamped "done" >>= finish
         OutcomeDeclined -> stamped "declined" >>= finish
@@ -325,8 +309,7 @@ foldSettled b outs = do
             Nothing -> do
               args <- traverse (\name -> (name,) <$> getItem entry name) ["fp", "head", "base", "policy", "incarnation"]
               echo <- construct @EscMoved args
-              updated <- vupdate ladder [("repairs", Object repairs)]
-              Right (route outs [emit "esc.ladder" [updated], emit "ci.echo" [echo]])
+              Right (route outs [emit "esc.ladder" [ladder {repairs = repairs} :: Ladder], emit "ci.echo" [echo]])
         OutcomeFaulted -> stamped "fault" >>= finish
     _ -> Right (route outs (keepLadder ladder))
 
@@ -335,9 +318,7 @@ end b outs = do
   (close, ladder) <- values2 @CloseFact @Ladder b
   pendingLeft <- pendingRepairs ladder.repairs
   if pendingLeft
-    then do
-      closing <- vupdate ladder [("closing", String close.reason)]
-      Right (route outs (keepLadder closing))
+    then Right (route outs (keepLadder ladder {closing = Just close.reason}))
     else
       Right (route outs [emit "esc.done" [LadderEnded {reruns = ladder.reruns, repairs = ladder.repairs, reason = close.reason}]])
 

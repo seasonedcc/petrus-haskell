@@ -208,7 +208,7 @@ spec = describe "test_v5_ingress (store and normalizer)" $ do
     original <- I.stage store identity subject (projection identity "on_draft" aaa)
     replayed <- I.stage store identity subject (projection identity "on_ready" (T.replicate 40 "c"))
     replayed `shouldBe` original
-    ((.phase) <$> I.claim store subject) `shouldReturn` "quiescent"
+    ((.phase) <$> I.claim store subject) `shouldReturn` PhaseQuiescent
     ((.head) <$> I.claim store subject) `shouldReturn` aaa
     I.close store
 
@@ -281,7 +281,7 @@ spec = describe "test_v5_ingress (store and normalizer)" $ do
     second.sourceId `shouldNotBe` first.sourceId
     (first.entries !! 1).identity `shouldNotBe` (second.entries !! 1).identity
     c <- I.claim store subject
-    (c.phase, c.incarnation) `shouldBe` ("quiescent", 2)
+    (c.phase, c.incarnation) `shouldBe` (PhaseQuiescent, 2)
     I.close store
 
   it "test_pending_webhook_custody_wins_reconciliation_stage_without_manifest_or_grant" . withTempRoot $ \tmp -> do
@@ -374,7 +374,7 @@ spec = describe "test_v5_ingress (store and normalizer)" $ do
     readied <- newDelivery
     _ <- I.stage store drafted subject (projection drafted "on_draft" aaa)
     _ <- I.stage store readied subject (projection readied "on_ready" aaa)
-    I.claim store subject `shouldReturn` CurrentClaim "running" 2 aaa (T.replicate 40 "b") "policy-1"
+    I.claim store subject `shouldReturn` CurrentClaim PhaseRunning 2 aaa (T.replicate 40 "b") "policy-1"
     I.close store
 
   it "test_manifest_and_grant_roll_back_as_one_transaction" . withTempRoot $ \tmp -> do
@@ -507,7 +507,7 @@ spec = describe "test_v5_ingress (store and normalizer)" $ do
     _ <- I.stage store drafted subject draftEntries
     _ <- I.stage store readied subject readyEntries
     c <- I.claim store subject
-    (c.phase, c.incarnation) `shouldBe` ("running", 2)
+    (c.phase, c.incarnation) `shouldBe` (PhaseRunning, 2)
     I.close store
 
   forM_ [(True, False, "closed"), (True, True, "merged")] $ \(closed, merged, reason) ->

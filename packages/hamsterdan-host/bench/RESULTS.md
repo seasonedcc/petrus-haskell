@@ -33,7 +33,7 @@ These are the host's hot paths:
   file work (create, WAL, schema) from the History replay.
 
 The restart and housekeeping paths (`serve` start, the periodic sweep),
-the operator's commands (`validate`, `inbox`, `inspect-instance`), ingest
+the operator's commands (`validate`, `inbox`, `requeue`, `inspect-instance`), ingest
 through the real HTTP servers, and the GitHub and Git effects on their own
 are measured at process level, in the section after these results.
 
@@ -298,8 +298,8 @@ before every run. Both sides call it over plain HTTP.
 
 **The rows.**
 
-- **CLI (fresh process):** `validate`, `inbox` and `inspect-instance`, each
-  a fresh process, from spawn to exit. The reference side is
+- **CLI (fresh process):** `validate`, `inbox`, `requeue` and
+  `inspect-instance`, each a fresh process, from spawn to exit. The reference side is
   `python -I -B bench/cli_child.py ARGS`: the reference's `main()` with
   `GitHubAppClients` sent to the fake, as `differential/cli_reference.py`
   does. The port's side is the benchmark executable's `--cli` mode, which
@@ -307,6 +307,9 @@ before every run. Both sides call it over plain HTTP.
   fake. Both sides compose the real Pi A2 agent over the Pi package fixture
   and run preflight, agent-route repair (which reads every History), and
   the service open. Interpreter and runtime start-up are included.
+  `requeue --delivery` starts from a copy of the template with one more
+  `pull_request` delivery in the inbox, parked as `failed` by exhausting
+  its attempts, and resets it (`"requeued": true`, status 0).
   `inspect-instance` reads a 2,001-record History of 1,000 requested and
   settled Activities written for it. Both sides refuse the V5 Histories
   above with `Activity operation is malformed`, since their first Activity
@@ -347,30 +350,31 @@ outcome.
 
 ### Results of the process rows
 
-Eleven runs per row on 2026-10-11, 10:59–11:03 local (UTC-3), load average
-4.04–5.79 (`uptime` before and after), on the machine described above
+Eleven runs per row on 2026-10-11, 14:19–14:23 local (UTC-3), load average
+3.39–4.19 (`uptime` before and after), on the machine described above
 (Apple M4, 10 cores, macOS 26.3.1, shared with other work); CPython 3.14.6.
 Each cell is the median of the eleven runs, with the fastest in brackets.
 
 | Workload | Shape | Haskell median (fastest) | Python median (fastest) | Python / Haskell |
 | --- | --- | ---: | ---: | ---: |
-| `validate` (20 Instances) | CLI (fresh process) | 140 ms (119 ms) | 1.07 s (836 ms) | 7.65× |
-| `inbox` (20 Instances) | CLI (fresh process) | 129 ms (117 ms) | 786 ms (716 ms) | 6.09× |
-| `inspect-instance` (a 2,001-record History) | CLI (fresh process) | 42.0 ms (39.5 ms) | 593 ms (567 ms) | 14.1× |
-| `serve` start to the first `200` on `/healthz` (20 Instances) | process | 164 ms (151 ms) | 941 ms (864 ms) | 5.75× |
-| 100 signed deliveries POSTed to `serve` (inactive route) | socket | 18.0 ms (14.8 ms) | 41.8 ms (38.6 ms) | 2.33× |
-| `sweep("periodic")` over 20 loaded Instances | in process; 20 reconciled, 180 provider calls | 17.0 ms (15.0 ms) | 1.70 s (1.61 s) | 100× |
-| `sweep("periodic")` over 20 unloaded Instances (fresh host) | in process; 20 reconciled, 180 provider calls | 232 ms (219 ms) | 3.25 s (3.23 s) | 14.0× |
-| immutable comment publication (100 bot comments) | in process; created | 12.1 µs (11.6 µs) | 25.1 µs (24.7 µs) | 2.08× |
-| native review batch of 8 findings (100 issue + 100 review comments) | in process; 8 created | 189 µs (188 µs) | 389 µs (387 µs) | 2.06× |
-| GraphQL ref compare-and-swap | in process; ok | 2.3 µs (2.2 µs) | 3.9 µs (3.9 µs) | 1.68× |
-| Git publication through the local authority | in process; not recovered | 307 ms (303 ms) | 355 ms (348 ms) | 1.16× |
+| `validate` (20 Instances) | CLI (fresh process) | 125 ms (117 ms) | 792 ms (784 ms) | 6.35× |
+| `inbox` (20 Instances) | CLI (fresh process) | 122 ms (109 ms) | 690 ms (660 ms) | 5.64× |
+| `requeue` of a parked delivery (20 Instances) | CLI (fresh process) | 130 ms (118 ms) | 697 ms (667 ms) | 5.36× |
+| `inspect-instance` (a 2,001-record History) | CLI (fresh process) | 37.3 ms (32.7 ms) | 484 ms (465 ms) | 13.0× |
+| `serve` start to the first `200` on `/healthz` (20 Instances) | process | 187 ms (163 ms) | 870 ms (829 ms) | 4.65× |
+| 100 signed deliveries POSTed to `serve` (inactive route) | socket | 16.8 ms (13.1 ms) | 38.8 ms (36.0 ms) | 2.31× |
+| `sweep("periodic")` over 20 loaded Instances | in process; 20 reconciled, 180 provider calls | 15.0 ms (13.9 ms) | 1.54 s (1.49 s) | 103× |
+| `sweep("periodic")` over 20 unloaded Instances (fresh host) | in process; 20 reconciled, 180 provider calls | 275 ms (251 ms) | 3.53 s (3.46 s) | 12.8× |
+| immutable comment publication (100 bot comments) | in process; created | 12.7 µs (12.2 µs) | 25.6 µs (25.4 µs) | 2.01× |
+| native review batch of 8 findings (100 issue + 100 review comments) | in process; 8 created | 197 µs (191 µs) | 400 µs (393 µs) | 2.03× |
+| GraphQL ref compare-and-swap | in process; ok | 2.6 µs (2.5 µs) | 4.0 µs (3.9 µs) | 1.54× |
+| Git publication through the local authority | in process; not recovered | 311 ms (306 ms) | 354 ms (348 ms) | 1.14× |
 
 The Git publication row is the closest to level because almost all of it
 is Git itself: both sides run the same sequence of Git commands with the
 same environment, and the process spawns and Git's own work dominate. In a
 three-run round at 10:55 (load 4.6–5.2) it read 1.03×; on the fastest runs
-above it is 1.15×.
+above it is 1.14×.
 
 ### Route repair, before the change
 

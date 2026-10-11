@@ -5,9 +5,12 @@ Run from the repository root against the pinned upstream environment:
     uv run --project upstream/hamsterdan --frozen --python 3.14 \
         python packages/hamsterdan-contracts/scripts/gen_models.py
 
-It rewrites src/Hamsterdan/Contracts/ReadinessV5.hs and Readiness.hs. The
-output is deterministic; the test suite's corpus check (gen_corpus.py) is
-what proves the generated codecs agree with pydantic byte for byte.
+It rewrites src/Hamsterdan/Contracts/ReadinessV5.hs and Readiness.hs, and
+the Hedgehog generators of their records under test/Generators/ (one per
+model, for the round-trip law validate . dump == Right that
+RoundTripSpec checks over every model). The output is deterministic; the
+test suite's corpus check (gen_corpus.py) is what proves the generated
+codecs agree with pydantic byte for byte.
 """
 
 from __future__ import annotations
@@ -160,6 +163,9 @@ class Generator:
         self.unions: dict[tuple, str] = {}
         self.decls: list[str] = []
         self.uses_json = False
+        # Hedgehog generators (test/Generators/*.hs), one per model and union.
+        self.gen_decls: list[str] = []
+        self.gen_unions: set[tuple] = set()
 
     # -- types ---------------------------------------------------------------
 
@@ -186,6 +192,50 @@ class Generator:
             self.decls.append("\n".join(lines) + "\n")
             self.unions[members] = name
         return name, "contract"
+
+    def gen_union(self, members: tuple[str, ...]) -> str:
+        name, ctors = self.union_table[members]
+        if members not in self.gen_unions:
+            alternatives = [f"{c} <$> gen{m}" for c, m in zip(ctors, members)]
+            self.gen_decls.append(
+                f"gen{name} :: Gen {name}\ngen{name} =\n  Gen.choice\n"
+                + "".join(("    [ " if i == 0 else "    , ") + a + "\n" for i, a in enumerate(alternatives))
+                + "    ]\n"
+            )
+            self.gen_unions.add(members)
+        return f"gen{name}"
+
+    def gen(self, annotation: str) -> str:
+        """The Hedgehog generator of a field annotation (mirrors resolve)."""
+        t = annotation.strip()
+        simple = {
+            "str": "genText",
+            "int": "genInteger",
+            "bool": "Gen.bool",
+            "dict": "genObject",
+            "dict[str, Any]": "genObject",
+            "tuple[int, int] | tuple[()]": "genPairOrEmpty",
+        }
+        if t in simple:
+            return simple[t]
+        if t.endswith(" | None"):
+            return f"(Gen.maybe {wrap(self.gen(t[: -len(' | None')]))})"
+        if re.fullmatch(r"Literal\[(.*)\]", t, re.S):
+            return "Gen.enumBounded"
+        if m := re.fullmatch(r"(?:list|tuple)\[(.*?)(?:, \.\.\.)?\]", t):
+            return f"(genList {wrap(self.gen(m.group(1)))})"
+        if m := re.fullmatch(r"dict\[str, (.*)\]", t):
+            return f"(genDict {wrap(self.gen(m.group(1)))})"
+        if " | " in t:
+            return self.gen_union(tuple(part.strip() for part in t.split(" | ")))
+        target = getattr(self.module, t, None)
+        if isinstance(target, typing.TypeAliasType):
+            return self.gen_union(tuple(arg.__name__ for arg in typing.get_args(target.__value__)))
+        if typing.get_origin(target) is typing.Literal:
+            return "Gen.enumBounded"
+        if isinstance(target, type) and dataclasses.is_dataclass(target):
+            return f"gen{t}"
+        raise SystemExit(f"unsupported annotation {t!r}")
 
     def resolve(self, annotation: str) -> tuple[str, str]:
         t = annotation.strip()
@@ -245,6 +295,7 @@ class Generator:
         record_fields: list[str] = []
         steps: list[str] = []
         positional: list[str] = []
+        generators: list[str] = []
         applied = False
         for f in dataclasses.fields(cls):
             annotation = str(f.type)
@@ -270,6 +321,7 @@ class Generator:
                     applied = True
                     continue
             hs_type, codec = self.resolve(annotation)
+            generators.append(self.gen(annotation))
             record_fields.append(f"{camel(f.name)} :: {hs_type}")
             operator = "<*>" if steps else "<$>"
             if has_default:
@@ -298,6 +350,11 @@ class Generator:
             )
         else:
             body = f'    record "{name}" (pure {name})\n'
+        built = f"{name}\n    <$> " + "\n    <*> ".join(generators) if generators else f"pure {name}"
+        settle = GEN_SPECIAL.get(name)
+        if settle:
+            built = f"{settle} <$> ({built})"
+        self.gen_decls.append(f"gen{name} :: Gen {name}\ngen{name} =\n  {built}\n")
         wrapper = SPECIAL.get(name)
         if wrapper:
             indented = "".join("  " + line + "\n" for line in body.splitlines())
@@ -324,7 +381,22 @@ class Generator:
             extra = "import Data.Text qualified as T\n" + extra
         out = HEADER.format(module=module, source=source, doc=doc, extra_imports=extra)
         out += "\n" + "\n".join(models) + "\n-- * Literal enumerations and unions\n\n" + "\n".join(self.decls) + "\n" + registry
+        self.model_names = names
         return out
+
+    def render_generators(self, module: str, source_module: str) -> str:
+        """The test module of Hedgehog generators, one per model and union,
+        and the round-trip property of every model (render must run first)."""
+        properties = (
+            "-- | @validate . dump == Right@ for every model, in declaration order.\n"
+            "roundTrips :: [(String, Property)]\n"
+            "roundTrips =\n"
+            + "".join(
+                ("  [ " if i == 0 else "  , ") + f'("{n}", roundTrip gen{n})\n' for i, n in enumerate(self.model_names)
+            )
+            + "  ]\n"
+        )
+        return GEN_HEADER.format(module=module, source=source_module) + "\n" + "\n".join(self.gen_decls) + "\n" + properties
 
 
 def wrap(codec: str) -> str:
@@ -361,6 +433,26 @@ settleObservation value
 }
 
 
+# Models whose codec normalizes (SPECIAL): a decoded value is always settled,
+# so the generator settles too.
+GEN_SPECIAL = {"ActionsObservation": "settleObservation"}
+
+GEN_HEADER = """\
+-- | GENERATED by packages/hamsterdan-contracts/scripts/gen_models.py. Do not
+-- edit by hand.
+--
+-- A Hedgehog generator for every record and union of
+-- "{source}", drawing only values the codec can admit:
+-- untyped members hold finite JSON with distinct keys (what a
+-- decoded pydantic value holds), and normalized models are settled.
+module {module} (roundTrips) where
+
+import Generators.Json
+import {source}
+import Hedgehog (Gen, Property)
+import Hedgehog.Gen qualified as Gen
+"""
+
 PRAGMAS = "{-# LANGUAGE DuplicateRecordFields #-}\n{-# LANGUAGE NoFieldSelectors #-}\n{-# LANGUAGE OverloadedRecordDot #-}\n\n"
 
 
@@ -375,6 +467,10 @@ def main() -> None:
             "The V5 actor-loop PR-readiness tokens: ingress observations, loop\n-- batons, and directed facts.",
         )
     )
+    tests = ROOT / "test" / "Generators"
+    (tests / "ReadinessV5.hs").write_text(
+        v5.render_generators("Generators.ReadinessV5", "Hamsterdan.Contracts.ReadinessV5")
+    )
     legacy = Generator("hamsterdan.contracts.readiness", LEGACY_ENUMS, {})
     (out / "Readiness.hs").write_text(
         PRAGMAS
@@ -384,6 +480,7 @@ def main() -> None:
             "The readiness values of @contracts/readiness.py@. Its projection functions\n-- (@project_readiness@, @dashboard_projection_digest@, @workflow_wait@,\n-- @workflow_gates_ready@) are in \"Hamsterdan.Contracts.ReadinessProjection\".",
         )
     )
+    (tests / "Readiness.hs").write_text(legacy.render_generators("Generators.Readiness", "Hamsterdan.Contracts.Readiness"))
 
 
 if __name__ == "__main__":

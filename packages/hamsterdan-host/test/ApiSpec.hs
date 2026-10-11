@@ -67,7 +67,7 @@ spec = do
         response.status `shouldBe` 202
         jsonBody response
           `shouldBe` Object [("custody", String "durable"), ("delivery_id", String delivery), ("disposition", String "accepted")]
-        Custody.status h.host.custody delivery `shouldReturn` Just "pending"
+        Custody.status h.host.custody delivery `shouldReturn` Just Custody.InboxPending
         made h >>= (`shouldBe` 0) . length
         duplicate <- post port envelope (signed envelope delivery "pull_request")
         duplicate.status `shouldBe` 202
@@ -134,7 +134,7 @@ spec = do
         response <- post port surrogateAction (signed surrogateAction delivery "pull_request")
         response.status `shouldBe` 202
         lookupKey "disposition" (jsonBody response) `shouldBe` Just (String "accepted")
-        Custody.status h.host.custody delivery `shouldReturn` Just "pending"
+        Custody.status h.host.custody delivery `shouldReturn` Just Custody.InboxPending
         -- Read back from the inbox, where it was stored escaped.
         Custody.pending h.host.custody 100 Nothing >>= \case
           [item] -> item.action `shouldBe` loneSurrogate

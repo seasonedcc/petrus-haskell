@@ -51,6 +51,8 @@ module Hamsterdan.GitHub
   , commentPublisher
   , Fence
   , EffectFault
+  , CallPhase (..)
+  , callPhaseText
   , CommentRerunBroker (..)
 
     -- * Webhooks and routing
@@ -90,7 +92,7 @@ import Hamsterdan.GitHub.Config
   , revealSecret
   , secret
   )
-import Hamsterdan.GitHub.Effects (CommentPublisher, CommentRerunBroker (..), EffectFault, Fence, commentPublisher)
+import Hamsterdan.GitHub.Effects (CallPhase (..), CommentPublisher, CommentRerunBroker (..), EffectFault, Fence, callPhaseText, commentPublisher)
 import Hamsterdan.GitHub.Gateway (GitHubAuthority, githubAuthority)
 import Hamsterdan.GitHub.Http (Exchange (..), newRealExchange)
 import Hamsterdan.GitHub.Models

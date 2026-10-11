@@ -50,7 +50,7 @@ module Hamsterdan.Testing.World.Contract
   , pyListRepr
   ) where
 
-import Control.Exception (Exception (..))
+import Control.Exception (Exception (..), throw)
 import Crypto.Hash.SHA256 qualified as SHA256
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -176,8 +176,9 @@ intObject = Object . map (fmap Int)
 texts :: [Text] -> Json
 texts = Array . map String
 
+-- | @digest_json(value)@, raising its @ValueError@ (a non-finite float).
 digestOf :: Json -> Text
-digestOf = either (error . T.unpack) id . digestJson
+digestOf = either (throw . PyError "ValueError") id . digestJson
 
 -- | @PROFILE_IDENTITY@.
 profileIdentity :: ProfileIdentity
@@ -357,7 +358,7 @@ strictObject value keys label = case value of
 
 -- | @json.dumps(value, sort_keys=True, separators=(",", ":"))@ (ASCII).
 canonical :: Json -> ByteString
-canonical = either (error . T.unpack) id . canonicalBytes
+canonical = either (throw . PyError "ValueError") id . canonicalBytes
 
 -- | Lowercase hex SHA-256.
 sha256Hex :: ByteString -> Text

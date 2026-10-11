@@ -28,12 +28,13 @@ import Hamsterdan.GitHub.Models
   ( ActionsRunSnapshot (..)
   , FindingPublication (..)
   , PublicationResult (..)
+  , PublicationStatus (..)
   , RerunIssue (..)
   , publication
   )
-import Hamsterdan.Host.GitPublish (GitPublishResult (..), GitReconciliation (..))
+import Hamsterdan.Host.GitPublish (GitPublishResult (..), GitReconciliation (..), OperationDisposition (..))
 import Hamsterdan.Host.Python (ValueError (..))
-import Hamsterdan.Host.V5.Claim (CurrentClaim (..))
+import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Gates (PublicationProvider (..), publicationGates, publishGate, reminderGate)
 import Hamsterdan.Host.V5.Mutation (MutationPublisher (..), V5MutationGate (..), gitGate)
 import Hamsterdan.Host.V5.Rerun (RerunBroker (..), V5RerunGate (..), rerunGate)
@@ -71,7 +72,7 @@ baseSha = T.replicate 40 "b"
 newHead = T.replicate 40 "c"
 
 claimValue :: CurrentClaim
-claimValue = CurrentClaim "running" 3 headSha baseSha "policy-1"
+claimValue = CurrentClaim PhaseRunning 3 headSha baseSha "policy-1"
 
 model :: forall a. (Contract a) => Json -> a
 model raw = either (error . T.unpack . renderDecodeError) id (validate @a raw)
@@ -452,7 +453,7 @@ spec = describe "test_inline_recovery (host gates)" $ do
     held <- newIORef (Map.empty :: Map Text (Text, Text))
     posts <- newIORef (0 :: Int)
     let unexpected = expectationFailure "unexpected publisher call" >> error "unreachable"
-        existingInline = PublicationResult "existing" Nothing True True
+        existingInline = PublicationResult PublicationExisting Nothing True True
         provider =
           PublicationProvider
             { find = \_ _ _ _ _ -> unexpected
@@ -468,7 +469,7 @@ spec = describe "test_inline_recovery (host gates)" $ do
                   Nothing -> do
                     modifyIORef' posts (+ 1)
                     modifyIORef' held (Map.insert pub.operation (head', pub.text))
-                    pure (PublicationResult "created" Nothing True True)
+                    pure (PublicationResult PublicationCreated Nothing True True)
             , findings = \_ _ _ _ -> unexpected
             , findingFind = \operation head' -> do
                 prior <- Map.lookup operation <$> readIORef held
@@ -501,16 +502,16 @@ spec = describe "test_inline_recovery (host gates)" $ do
             { held = \runId head' operation -> do
                 (runId, head') `shouldBe` (rerunReq.runId, headSha)
                 present <- Set.member operation <$> readIORef heldOperations
-                pure (if present then Just (publication "existing" Nothing) else Nothing)
+                pure (if present then Just (publication PublicationExisting Nothing) else Nothing)
             , issue = \run epoch operation -> do
                 (run.id, run.head, epoch) `shouldBe` (rerunReq.runId, headSha, 3)
                 present <- Set.member operation <$> readIORef heldOperations
                 if present
-                  then pure (RerunIssue (publication "existing" Nothing) run.id run.attempt)
+                  then pure (RerunIssue (publication PublicationExisting Nothing) run.id run.attempt)
                   else do
                     modifyIORef' posts (+ 1)
                     modifyIORef' heldOperations (Set.insert operation)
-                    pure (RerunIssue (publication "requested" Nothing) run.id run.attempt)
+                    pure (RerunIssue (publication PublicationRequested Nothing) run.id run.attempt)
             }
         runs head' = do
           unreadable runsReadable "lookup-first recovery read workflow runs"
@@ -545,12 +546,12 @@ spec = describe "test_inline_recovery (host gates)" $ do
             , reminderOperation = \op recipientContext -> do
                 present <- Set.member op <$> readIORef heldOperations
                 if present
-                  then pure (publication "existing" Nothing)
+                  then pure (publication PublicationExisting Nothing)
                   else do
                     recipientContext `shouldReturn` (3, headSha, Nothing, "author")
                     modifyIORef' posts (+ 1)
                     modifyIORef' heldOperations (Set.insert op)
-                    pure (publication "created" Nothing)
+                    pure (publication PublicationCreated Nothing)
             , finding = \_ _ _ _ -> unexpected
             , findings = \_ _ _ _ -> unexpected
             , findingFind = \_ _ -> unexpected
@@ -615,10 +616,10 @@ spec = describe "test_inline_recovery (host gates)" $ do
             { reconcile = \operation digest expectedHead _ _ -> do
                 prior <- Map.lookup operation <$> readIORef heldRefs
                 case prior of
-                  Nothing -> pure (GitReconciliation "absent" expectedHead "" [])
+                  Nothing -> pure (GitReconciliation OperationAbsent expectedHead "" [])
                   Just (storedDigest, commit) -> do
                     storedDigest `shouldBe` digest
-                    pure (GitReconciliation "existing" commit commit [expectedHead])
+                    pure (GitReconciliation OperationExisting commit commit [expectedHead])
             , publish = \_ operation digest expectedHead _ _ -> do
                 crash <- readIORef crashBeforePublish
                 if crash

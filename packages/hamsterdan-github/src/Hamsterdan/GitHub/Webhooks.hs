@@ -34,6 +34,7 @@ module Hamsterdan.GitHub.Webhooks
   , verifyWith
 
     -- * The inbox
+  , InstanceKey (..)
   , WebhookCustody
   , CustodyOptions (..)
   , defaultCustodyOptions
@@ -46,6 +47,8 @@ module Hamsterdan.GitHub.Webhooks
   , acknowledge
   , retry
   , ErrorClass (..)
+  , InboxStatus (..)
+  , inboxStatusText
   , status
   , counts
   , Failure (..)
@@ -70,6 +73,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -99,10 +103,10 @@ import Hamsterdan.GitHub.Python
 import Hamsterdan.GitHub.Python qualified as Py
 import Hamsterdan.GitHub.Routing (InstallationRegistry)
 import Hamsterdan.GitHub.Routing qualified as Routing
-import Hamsterdan.PyText (utf8EncodeError)
+import Hamsterdan.PyText (dumpsFault, utf8EncodeError)
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Db
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, lookupMember, parseJson)
+import Petrus.Json (EncodeError, EncodeOptions (..), Json (..), defaultDumps, dumpsText, lookupMember, parseJson)
 
 -- | @MAX_BODY_BYTES@.
 maxBodyBytes :: Int
@@ -214,11 +218,14 @@ observationJson item =
     ]
 
 -- | The stored spelling: @json.dumps(asdict(o), separators=(",", ":"),
--- sort_keys=True)@ (ASCII-escaped, NaN admitted).
-encodeObservation :: Observation -> Text
+-- sort_keys=True)@ (ASCII-escaped, NaN admitted). The provider controls
+-- the members, so the encoding can be refused: a value nested deeper than
+-- the encoder's limit is 'NestingTooDeep' (CPython's @RecursionError@). The
+-- parser refuses bodies past the same limit and no member sits deeper here
+-- than in the body, so a parsed observation always encodes.
+encodeObservation :: Observation -> Either EncodeError Text
 encodeObservation item =
-  either (const (error "observation encoding admits non-finite numbers")) id $
-    dumpsText defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortKeys = True} (observationJson item)
+  dumpsText defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortKeys = True} (observationJson item)
 
 -- | @Observation(**json.loads(raw) | {"repositories": ..., "attempts": n})@.
 observationFromJson :: Int -> Json -> Maybe Observation
@@ -392,7 +399,9 @@ closeCustody custody = Db.close custody.connection
 -- Throws 'WebhookRejected' for every refusal the reference answers with
 -- HTTP 400, and 'PythonFault' where the reference raises an uncaught
 -- exception (HTTP 500): a provider value of the wrong container type where
--- it calls @.get@, or an unhashable lifecycle action.
+-- it calls @.get@, or an unhashable lifecycle action. An observation the
+-- encoder refuses would be the reference's @RecursionError@ (see
+-- 'encodeObservation' and DIVERGENCES.md, deep nesting).
 receive :: WebhookCustody -> [(Text, Text)] -> ByteString -> IO Receipt
 receive custody headers body = do
   projected <- either throwIO pure (projectHeaders headers)
@@ -419,7 +428,7 @@ receive custody headers body = do
     Left (Left ()) -> reject "webhook envelope is malformed"
     Left (Right (PyFailure cls detail)) -> throwIO (PythonFault (pyClassName cls) detail)
     Right value -> pure value
-  let encoded = encodeObservation item
+  encoded <- either (throwIO . dumpsFault) pure (encodeObservation item)
   Db.withLock custody.connection $ Db.transaction custody.connection $ do
     existing <- Db.query custody.connection "SELECT 1 FROM inbox WHERE delivery_id=?" [SQLText delivery]
     if not (null existing)
@@ -564,12 +573,26 @@ parseObservation delivery event body = do
       Object members -> maybe (Left (PyFailure KeyError name)) Right (lookup name members)
       _ -> Left (PyFailure TypeError "indices must be integers")
 
+-- | One PR Instance's subject: the reference's
+-- @(installation_id, repository_id, pull_request_number)@ tuple, with each
+-- position named.
+data InstanceKey = InstanceKey
+  { installation :: Integer
+  , repository :: Integer
+  , pullRequest :: Integer
+  }
+  deriving stock (Eq, Ord, Show)
+
+-- | The subject's members as the query parameters 'subjectQuery' binds.
+subjectParameters :: InstanceKey -> [SQLData]
+subjectParameters key = map integer [key.installation, key.repository, key.pullRequest]
+
 -- | Stored observations ready for processing, in arrival order.
 --
--- With a subject @(installation, repository, pull request)@, processing is
--- strict row order: an earlier deferred failure fences every later
--- observation for that subject until it is due again.
-pending :: WebhookCustody -> Int -> Maybe (Integer, Integer, Integer) -> IO [Observation]
+-- With a subject, processing is strict row order: an earlier deferred
+-- failure fences every later observation for that subject until it is due
+-- again.
+pending :: WebhookCustody -> Int -> Maybe InstanceKey -> IO [Observation]
 pending custody requested subject = do
   let limit = max 1 (min requested 1000)
   now <- custody.options.clock
@@ -579,12 +602,12 @@ pending custody requested subject = do
         custody.connection
         "SELECT observation,attempts,next_attempt_at FROM inbox WHERE status='pending' AND next_attempt_at<=? ORDER BY rowid LIMIT ?"
         [SQLFloat now, SQLInteger (fromIntegral limit)]
-    Just (installationId, repositoryId, number) ->
+    Just key ->
       Db.query
         custody.connection
         "SELECT observation,attempts,next_attempt_at FROM inbox WHERE status='pending' AND json_extract(observation,'$.installation_id')=?\
         \ AND json_extract(observation,'$.repository_id')=? AND json_extract(observation,'$.pull_request_number')=? ORDER BY rowid LIMIT ?"
-        [integer installationId, integer repositoryId, integer number, SQLInteger (fromIntegral limit)]
+        (subjectParameters key <> [SQLInteger (fromIntegral limit)])
   let due = case subject of
         Nothing -> rows
         Just _ -> takeWhile (\row -> nextAttempt row <= now) rows
@@ -610,20 +633,20 @@ subjectQuery =
   \ AND json_extract(observation,'$.pull_request_number')=?"
 
 -- | Whether the subject has any pending delivery.
-hasPending :: WebhookCustody -> (Integer, Integer, Integer) -> IO Bool
-hasPending custody (installationId, repositoryId, number) = Db.withLock custody.connection $ do
+hasPending :: WebhookCustody -> InstanceKey -> IO Bool
+hasPending custody key = Db.withLock custody.connection $ do
   rows <-
     Db.query
       custody.connection
       ("SELECT 1 FROM inbox WHERE status='pending'" <> subjectQuery <> " LIMIT 1")
-      [integer installationId, integer repositoryId, integer number]
+      (subjectParameters key)
   pure (not (null rows))
 
 -- | Whether a custodied delivery is the due head of its subject's row
 -- order. Uncustodied deliveries remain eligible; a terminal or later pending
 -- delivery never bypasses the earliest pending row.
-eligible :: WebhookCustody -> Text -> (Integer, Integer, Integer) -> IO Bool
-eligible custody deliveryId (installationId, repositoryId, number) = do
+eligible :: WebhookCustody -> Text -> InstanceKey -> IO Bool
+eligible custody deliveryId key = do
   now <- custody.options.clock
   Db.withLock custody.connection $ do
     target <- Db.query custody.connection "SELECT status FROM inbox WHERE delivery_id=?" [SQLText deliveryId]
@@ -634,7 +657,7 @@ eligible custody deliveryId (installationId, repositoryId, number) = do
           Db.query
             custody.connection
             ("SELECT delivery_id,next_attempt_at FROM inbox WHERE status='pending'" <> subjectQuery <> " ORDER BY rowid LIMIT 1")
-            [integer installationId, integer repositoryId, integer number]
+            (subjectParameters key)
         pure $ case earliest of
           [SQLText first, at] : _ -> first == deliveryId && real at <= now
           _ -> False
@@ -683,13 +706,31 @@ retry custody deliveryId (ErrorClass className) = Db.withLock custody.connection
             [SQLInteger (fromIntegral attempts), SQLFloat (now + fromIntegral delay), errorClass, SQLText deliveryId]
     _ -> pure ()
 
+-- | An inbox row's @status@. Every writer, here and in the reference, stores
+-- one of the three named statuses. The column itself is unconstrained
+-- @TEXT@ and the reference compares it as a string, so a row some other
+-- writer left reads as 'InboxUnrecognized' and matches none of them.
+data InboxStatus = InboxPending | InboxTerminal | InboxFailed | InboxUnrecognized Text
+  deriving stock (Eq, Show)
+
+-- | The status's spelling in the @status@ column.
+inboxStatusText :: InboxStatus -> Text
+inboxStatusText = \case
+  InboxPending -> "pending"
+  InboxTerminal -> "terminal"
+  InboxFailed -> "failed"
+  InboxUnrecognized other -> other
+
 -- | A delivery's status, if custodied.
-status :: WebhookCustody -> Text -> IO (Maybe Text)
+status :: WebhookCustody -> Text -> IO (Maybe InboxStatus)
 status custody deliveryId = Db.withLock custody.connection $ do
   rows <- Db.query custody.connection "SELECT status FROM inbox WHERE delivery_id=?" [SQLText deliveryId]
   pure $ case rows of
-    [SQLText value] : _ -> Just value
+    [SQLText value] : _ -> Just (spelled value)
     _ -> Nothing
+  where
+    spelled value =
+      fromMaybe (InboxUnrecognized value) (lookup value [(inboxStatusText known, known) | known <- [InboxPending, InboxTerminal, InboxFailed]])
 
 -- | Deliveries per status.
 counts :: WebhookCustody -> IO (Map Text Int)

@@ -22,11 +22,9 @@ module Hamsterdan.Readiness.NetV5.Life
 
 import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.Readiness.NetV5.Folding
-import Hamsterdan.Readiness.NetV5.Py
 import Hamsterdan.Readiness.NetV5.Wiring
 import Petrus.Impetus.Dsl (Author)
 import Petrus.Impetus.Petrinet (NetPath, Token)
-import Petrus.Json (Json (..))
 
 -- -- folds ---------------------------------------------------------------
 
@@ -71,16 +69,16 @@ admitHead b outs = do
     PhaseQuiescent -> do
       -- dormancy absorbs every head observation with no work emission;
       -- resume re-admits under a fresh incarnation
-      recorded <-
-        vupdate
-          st
-          [ ("head", String seen.head)
-          , ("base", String seen.base)
-          , ("mergeable", Bool seen.mergeable)
-          , ("policy", String seen.policy)
-          , ("strict_base", Bool seen.strictBase)
-          , ("base_current", Bool seen.baseCurrent)
-          ]
+      let recorded =
+            st
+              { head = seen.head
+              , base = seen.base
+              , mergeable = seen.mergeable
+              , policy = seen.policy
+              , strictBase = seen.strictBase
+              , baseCurrent = seen.baseCurrent
+              }
+              :: LifeState
       Right (route outs (keep recorded))
     PhaseRunning
       | seen.head == st.head -> do
@@ -94,16 +92,16 @@ admitHead b outs = do
             then Right (route outs (keep st))
             else do
               -- base/policy refresh: same lifetime, no incarnation bump
-              current <-
-                vupdate
-                  st
-                  [ ("base", String seen.base)
-                  , ("mergeable", Bool seen.mergeable)
-                  , ("policy", String seen.policy)
-                  , ("strict_base", Bool seen.strictBase)
-                  , ("base_current", Bool seen.baseCurrent)
-                  ]
-              let work =
+              let current =
+                    st
+                      { base = seen.base
+                      , mergeable = seen.mergeable
+                      , policy = seen.policy
+                      , strictBase = seen.strictBase
+                      , baseCurrent = seen.baseCurrent
+                      }
+                      :: LifeState
+                  work =
                     HeadWork
                       { incarnation = current.incarnation
                       , head = current.head
@@ -152,8 +150,8 @@ admitDraft b outs = do
   if st.phase /= PhaseRunning
     then Right (route outs (keep st))
     else do
-      quiescent <- vupdate st [("phase", String "quiescent")]
-      let fact = stateFact quiescent
+      let quiescent = st {phase = PhaseQuiescent} :: LifeState
+          fact = stateFact quiescent
       Right $
         route
           outs
@@ -170,16 +168,8 @@ admitReady b outs = do
     then Right (route outs (keep st))
     else do
       -- resume clears any provisional expectation and lineage
-      resumed <-
-        vupdate
-          st
-          [ ("phase", String "running")
-          , ("incarnation", Int (st.incarnation + 1))
-          , ("expected", String "")
-          , ("expected_op", String "")
-          , ("lineage", String "")
-          ]
-      let work =
+      let resumed = st {phase = PhaseRunning, incarnation = st.incarnation + 1, expected = "", expectedOp = "", lineage = ""} :: LifeState
+          work =
             HeadWork
               { incarnation = resumed.incarnation
               , head = resumed.head
@@ -196,8 +186,8 @@ admitClose b outs = do
   if st.phase == PhaseTerminal
     then Right (route outs (keep st))
     else do
-      terminal <- vupdate st [("phase", String "terminal")]
-      let close = CloseFact {reason = seen.reason}
+      let terminal = st {phase = PhaseTerminal} :: LifeState
+          close = CloseFact {reason = seen.reason}
       Right $
         route
           outs
@@ -268,8 +258,7 @@ noteProvisional b outs = do
   if st.phase /= PhaseRunning || st.head /= note.fromHead
     then Right (route outs (keep st))
     else do
-      noted <- vupdate st [("expected", String note.expected), ("expected_op", String note.op), ("lineage", String note.lineage)]
-      Right (route outs (keep noted))
+      Right (route outs (keep st {expected = note.expected, expectedOp = note.op, lineage = note.lineage}))
 
 -- -- topology ------------------------------------------------------------
 
