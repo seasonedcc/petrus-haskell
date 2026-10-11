@@ -6,7 +6,11 @@ Status of every in-scope upstream component against the pins in
 A component is **at parity** only when all of these hold at the current pin:
 
 1. **Tests** — every behavior its upstream tests check is checked by a Haskell
-   test (or recorded as enforced by the Haskell types).
+   test (or recorded as enforced by the Haskell types), by the same method:
+   where upstream generates inputs (Hypothesis strategies, stateful machines),
+   the Haskell test generates them too (Hedgehog or QuickCheck), with the
+   same settings, the same explicit examples, and a fixed seed where upstream
+   derandomizes. Deterministic enumeration may be added on top, never instead.
 2. **Conformance** — everything `upstream/petrus/spec/` (and this repo's
    `spec/`) specifies for it holds.
 3. **Interop** — where it has a wire format or protocol, Haskell and Python
