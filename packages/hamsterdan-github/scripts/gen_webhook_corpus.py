@@ -528,6 +528,70 @@ def routing_case() -> dict[str, object]:
     return {"kind": "routing", "registry": True, "maximum": 1_048_576, "steps": steps}
 
 
+def surrogate_cases() -> list[dict[str, object]]:
+    """Fixed rows: lone surrogate escapes in provider JSON.
+
+    CPython's ``json.loads`` keeps ``"\\ud800"`` in a ``str``. A comment body
+    holding one is refused (``len(text.encode())`` raises
+    ``UnicodeEncodeError``, a ``ValueError``); anywhere else the delivery is
+    accepted and its observation is stored with ``ensure_ascii``, which
+    escapes it again. These rows come after the seeded ones and draw nothing
+    from ``rng``, so the seeded rows are unchanged.
+    """
+    serial = iter(range(1, 1000))
+
+    def receive(event: str, value: object) -> dict[str, object]:
+        body = json.dumps(value).encode()  # ensure_ascii: the escape travels as written
+        delivery = str(uuid.UUID(int=0x5D800000000000000000000000000000 + next(serial)))
+        return {"op": "receive", "headers": headers_for(body, event, delivery), "body": base64.b64encode(body).decode()}
+
+    installed = {"id": 44, "account": {"id": 23, "login": "Owner"}}
+    repo = {"id": 31, "full_name": "owner/one"}
+    pull = {"number": 7, "head": {"sha": "a" * 40}}
+
+    def comment(body: str, login: str = "alice", association: str = "OWNER") -> dict[str, object]:
+        return {
+            "action": "created",
+            "installation": installed,
+            "repository": repo,
+            "issue": {"number": 7, "pull_request": {"url": "https://api.github.com/x"}},
+            "comment": {"id": 9, "body": body, "author_association": association, "user": {"id": 5, "login": login, "type": "User"}},
+            "sender": {"id": 5, "login": login, "type": "User"},
+        }
+
+    accepted = [
+        receive("pull_request", {"action": "\ud800", "installation": installed, "repository": {"id": 31, "full_name": "owner/\udc00"}, "pull_request": pull}),
+        receive("pull_request", {"action": "synchronize", "installation": installed, "repository": repo, "pull_request": pull, "\udfff": ["\ud83d"]}),
+        receive("issue_comment", comment("@hamster-dan explain", login="\ud800bob", association="\udc00")),
+        receive("issue_comment", comment("@hamster-dan \ud83d\ude00 a pair is fine")),
+        {"op": "pending", "limit": 100, "subject": None},
+    ]
+    refused = [
+        receive("issue_comment", comment("@hamster-dan \ud800 why")),
+        receive("issue_comment", comment("\ude00\ud83d reversed")),
+        receive("pull_request_review_comment", {"action": "created", "installation": installed, "repository": repo, "pull_request": pull, "comment": {"id": 5, "body": "\ud800"}}),
+        {"op": "pending", "limit": 100, "subject": None},
+    ]
+    routing = [
+        receive(
+            "installation_repositories",
+            {
+                "action": "added",
+                "installation": installed,
+                "repositories_added": [{"id": 31, "full_name": "owner/\ud800"}, {"id": 32, "full_name": "owner/two"}],
+                "repositories_removed": [],
+            },
+        ),
+        receive("installation", {"action": "created", "installation": installed, "repositories": [{"id": 33, "full_name": "\udc00/three"}]}),
+        {"op": "pending", "limit": 100, "subject": None},
+    ]
+    return [
+        {"kind": "receive", "registry": registry, "maximum": 1_048_576, "steps": steps}
+        for steps in (accepted, refused, routing)
+        for registry in (False, True)
+    ]
+
+
 class Clock:
     def __init__(self) -> None:
         self.now = 100.0
@@ -627,6 +691,7 @@ def apply(step: dict[str, object], custody: WebhookCustody, registry: Installati
 
 def main() -> None:
     cases = [receive_case() for _ in range(1000)] + [inbox_case() for _ in range(200)] + [routing_case() for _ in range(300)]
+    cases += surrogate_cases()
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with OUT.open("w") as handle:
         for case in cases:
