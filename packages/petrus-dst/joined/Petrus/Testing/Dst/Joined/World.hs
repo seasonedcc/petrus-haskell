@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# OPTIONS_GHC -fno-full-laziness -fno-cse #-}
 
 -- | The joined History/Dispatch transaction-fault profiles: a port of the
 -- profile classes of the reference's @tests/dst/joined_world.py@,
@@ -48,7 +47,7 @@ import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.Engine.Absurd (AbsurdEngineOptions (..), absurdSession, defaultAbsurdEngineOptions, openAbsurdEngine)
 import Petrus.Engine.Provider (OpenMode (..))
-import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), HandlerResult (..), handlerTokens)
+import Petrus.Impetus.Binding (HandlerResult (..), handlerTokens)
 import Petrus.Impetus.History.Records
   ( DeliveryRegistration (..)
   , DeliveryRegistrationClosed (..)
@@ -86,17 +85,14 @@ import Petrus.Motus.Dispatch.Absurd
 import Petrus.Motus.Dispatch.Absurd qualified as Worker
 import Petrus.Postgres qualified as Pg
 import Petrus.Testing.Dst hiding (dispositionText)
+import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Testing.Dst.Joined.Identities qualified as Id
 import Petrus.Testing.Dst.Joined.Support
 import Petrus.Testing.Dst.PyRepr (pyStrRepr)
-import System.IO.Unsafe (unsafePerformIO)
 
 -- ---------------------------------------------------------------------------
 -- Constants and nets
-
-path :: Text -> NetPath
-path = either (error . T.unpack) id . netPath
 
 sourcePlace, inputPlace, donePlace, projectTransition :: NetPath
 sourcePlace = path "source"
@@ -305,10 +301,6 @@ data JoinedProfile = JoinedProfile
   , scopedDeliveryAttempts :: IORef [Json]
   }
 
-effectful :: IO a -> a
-effectful = unsafePerformIO
-{-# NOINLINE effectful #-}
-
 -- | Run a door, returning its refusal instead of raising it.
 tryScenario :: Scenario IO a -> Scenario IO (Either ProfileError a)
 tryScenario body = catchError (Right <$> body) (pure . Left)
@@ -380,16 +372,16 @@ joinedProfile family dsn = do
         JoinedGeneration engine connection <$> newIORef Nothing <*> newIORef Nothing <*> newIORef False
 
       bridgeHandler =
-        ActivityBound
-          ActivityHandler
-            { prepare = \b -> effectful $ do
+        observed
+          ObservedHandler
+            { prepare = \b -> do
                 bump "prepare_calls"
                 pure $ case bindingTokens b of
                   t : _ -> Right (invocation "calculate" t.payload)
                   [] -> Left "IndexError('tuple index out of range')"
             , project = \_ result ->
                 let base = handlerTokens [(donePlace, [Token (Just "Done") result])]
-                 in Right $
+                 in pure . Right $
                       if
                         | isRegistration family ->
                             base
@@ -398,7 +390,6 @@ joinedProfile family dsn = do
                               }
                         | isSeal family -> base {opens = [DeliveryRegistration sourcePlace "subscription"]}
                         | otherwise -> base
-            , projectFailure = Nothing
             }
 
       -- _configure_faults

@@ -20,6 +20,7 @@ import Petrus.Testing.Dst
   , ReplayResult (..)
   , ScenarioArtifactV4 (..)
   , ScenarioExpected (..)
+  , pureCheck
   )
 import ReadinessWorldSpec (PathKey (..), replayed, setPath, withRoot)
 import System.FilePath ((</>))
@@ -108,7 +109,7 @@ spec = describe "tests/integration/testing/test_readiness_coverage.py" $ do
           if (case attempts of Int n -> n >= 2; _ -> False)
             then Right CheckResult {passed = False, detail = Object [("forced", String "duplicate boundary failure")]}
             else Right result
-    rw <- newReadinessWorldWith (root </> "live") defaultBudget Nothing (const (pure ())) readinessChecker {check = failDuplicate}
+    rw <- newReadinessWorldWith (root </> "live") defaultBudget Nothing (const (pure ())) readinessChecker {check = pureCheck failDuplicate}
     t <- timeline rw
     delivery <- cleanGreen t False
     drain t
