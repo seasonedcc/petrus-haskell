@@ -52,8 +52,6 @@ test-suite petrus-observation-http-test
                     UpstreamSpec
                     WireSpec
                     PythonClientSpec
-                    ViewerSpec
-  build-tool-depends: petrus-viewer-server:petrus
   build-depends:    base
                   , bytestring
                   , containers
@@ -70,7 +68,6 @@ test-suite petrus-observation-http-test
                   , hspec >=2.10
                   , process
                   , text
-                  , typed-process
   ghc-options:      -threaded -rtsopts
 
 benchmark petrus-observation-http-bench

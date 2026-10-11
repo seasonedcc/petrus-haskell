@@ -48,6 +48,7 @@ library
                     Petrus.Viewer.Relay.Frame
                     Petrus.Viewer.Relay.Handshake
                     Petrus.Viewer.Endpoints
+                    Petrus.Viewer.HttpFront
                     Petrus.Viewer.Static
                     Petrus.Viewer.Proxy
                     Petrus.Viewer.History.Observation
@@ -86,6 +87,7 @@ library
   c-sources:        cbits/json_escape.c
                     cbits/file_io.c
                     cbits/relay_io.c
+                    cbits/http_front.c
   cc-options:       -O3 -Wall
 
 executable petrus
@@ -127,11 +129,10 @@ test-suite petrus-viewer-server-test
   import:           warnings
   type:             exitcode-stdio-1.0
   -- The History specs serve a Haskell Engine with petrus-observation-http.
-  -- That package's own tests use this package's petrus executable as a
-  -- build tool, so depending on it would be a package cycle; its single
-  -- module is compiled in from its source directory instead (the same
-  -- code, linked into this test executable).
-  hs-source-dirs:   test ../petrus-observation-http/src
+  -- The end-to-end test of the viewer against that package lives here
+  -- (HistorySpec), not in petrus-observation-http's suite, so that package
+  -- never needs this one and the dependency stays one way.
+  hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    JsonSpec
                     UrlSpec
@@ -144,7 +145,6 @@ test-suite petrus-viewer-server-test
                     ObservationSpec
                     HistorySpec
                     ChainProducer
-                    Petrus.Observation.Http
                     ServerSpec
                     TestSupport
   build-depends:    base
@@ -163,6 +163,7 @@ test-suite petrus-viewer-server-test
                   , petrus-http-core
                   , petrus-motus
                   , petrus-observation
+                  , petrus-observation-http
                   , petrus-test-support
                   , petrus-viewer-server
                   , process
@@ -190,7 +191,7 @@ benchmark petrus-viewer-bench
                   , directory
                   , filepath
                   , http-client
-                  , http-types
+                  , network
                   , petrus-viewer-server
                   , stm
                   , text

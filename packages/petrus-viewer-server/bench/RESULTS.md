@@ -9,10 +9,10 @@ The Haskell backend against the upstream Node backend at the pin in
 ```bash
 # from the repository root; needs `pnpm install` in upstream/petrus-viewer
 node packages/petrus-viewer-server/bench/run.mjs                 # builds, 5 reps
-node packages/petrus-viewer-server/bench/run.mjs --reps 7 --json out.json   # the runs below
+node packages/petrus-viewer-server/bench/run.mjs --reps 15 --json out.json  # the runs below
 node packages/petrus-viewer-server/bench/run.mjs --bin-dir DIR   # prebuilt petrus, petrus-collab, petrus-viewer-bench
 node packages/petrus-viewer-server/bench/run.mjs --quick         # 1 short rep
-node packages/petrus-viewer-server/bench/run.mjs --only relay    # one scenario family
+node packages/petrus-viewer-server/bench/run.mjs --only "open-file|resolve-ref"  # scenarios by name
 node packages/petrus-viewer-server/bench/run.mjs --rts "-N4"     # other RTS options for petrus
 cabal run petrus-viewer-bench -- micro --file upstream/petrus-viewer/examples/sample-net.json
 ```
@@ -42,9 +42,32 @@ only.
 | Scenario | One op |
 | --- | --- |
 | relay round trip, N pairs | an agent sends a petrus-agent `request` targeted at its browser client, which answers with a `response` (2.4 KB result) targeted back; N pairs at once |
-| open-file POST+GET | `POST /__petrus/open-file {path}` then `GET /__petrus/open-file` (reads the 3.3 KB sample net) |
+| open-file POST+GET | `POST /__petrus/open-file {path}` then `GET /__petrus/open-file` (reads the 3.3 KB sample net); with 16 clients, in lockstep rounds (below) |
 | resolve-ref | `POST /__petrus/resolve-ref {ref: "./B.json", basePath: "file:///…/A.json"}` (resolves the URL, reads the file, returns it as a JSON string) |
 | collab fan-out, P peers x M msgs | one peer sends M cursor messages; one op = one delivery to one of the P other peers |
+
+The HTTP scenarios give every server the same work, and the runner checks
+it: every run of a scenario must have the same counts of 200, 204 and
+other statuses, or it prints `WORKLOAD DIFFERS` with the counts of each
+server and exits non-zero. open-file keeps one pending file for the whole
+server, so with 16 free-running clients the work depended on how each
+server interleaved them: a `GET` read the file only if no other `GET` had
+consumed it since the last `POST`, and otherwise answered 204 with no
+body. With 16 clients the load client therefore runs open-file in
+lockstep rounds: every client `POST`s, all wait, every client `GET`s, all
+wait. Each round is one `POST` per client (200), one `GET` that reads the
+file (200), and 15 `GET`s that find nothing pending (204), on every
+server: 68000 / 60000 / 0 over the 64000 ops of a run. The time spent
+waiting for the other clients is not counted in the latencies.
+
+Since run E the load client speaks HTTP/1.1 itself: one keep-alive
+connection per client, a fixed request, and the response read by its
+`Content-Length`. Runs A–D used `http-client`, which costs more per
+request than these servers do. At 16 clients it set the pace: every
+server landed in the same band, and the servers' differences were lost in
+its noise. Runs E and F are 20000 ops per run with 1 client and 64000 with 16
+(runs A–D: 5000 and 32000), so that every run lasts about a second or two
+rather than a fraction of one.
 
 ## Results
 
@@ -64,35 +87,113 @@ machine's drift between rounds.
 Everything here is wall-clock time: ops/s is completed operations over the
 load client's elapsed time, and latencies are per-operation wall times.
 
-### Before and after this round of work
+### Before and after
 
-Median Haskell / Node (best of each side; run B is the previous state):
+Median Haskell / Node (best of each side). Runs B–D used `http-client` as
+the load client and runs E–F the lean HTTP/1.1 client, so absolute ops/s
+are comparable only within a run, not across that change. Run E ran the
+previous server (700c623) and the new one side by side; its endpoint rows
+are in the "run E" columns.
 
-| scenario | run B (9a4d2b4) | run C (bbab9aa) | run D (9a5969c, final) |
-|---|---:|---:|---:|
-| relay round trip, 1 pair | 1.05x | 1.41x | 1.40x |
-| relay round trip, 16 pairs | 0.85x | 1.17x | 1.31x |
-| open-file POST+GET, 1 client | 1.09x | 1.00x | 1.10x |
-| open-file POST+GET, 16 clients | 1.25x | 1.10x | 1.00x |
-| resolve-ref, 1 client | 1.07x | 1.07x | 1.07x |
-| resolve-ref, 16 clients | 0.69x | 1.16x | 1.17x |
-| collab fan-out, 50 peers x 1000 msgs | 3.87x | 4.17x | 4.27x |
-| collab fan-out, 200 peers x 200 msgs | 3.44x | 3.93x | 4.50x |
+| scenario | run B (9a4d2b4) | run C (bbab9aa) | run D (9a5969c) | run E, previous server | run E, HTTP front | run F (HTTP front, final) |
+|---|---:|---:|---:|---:|---:|---:|
+| relay round trip, 1 pair | 1.05x | 1.41x | 1.40x | | | 1.32x |
+| relay round trip, 16 pairs | 0.85x | 1.17x | 1.31x | | | 1.09x |
+| open-file POST+GET, 1 client | 1.09x | 1.00x | 1.10x | 1.03x | 1.14x | 1.20x |
+| open-file POST+GET, 16 clients | 1.25x | 1.10x | 1.00x | 1.12x | 1.39x | 1.54x |
+| resolve-ref, 1 client | 1.07x | 1.07x | 1.07x | 1.08x | 1.17x | 1.16x |
+| resolve-ref, 16 clients | 0.69x | 1.16x | 1.17x | 1.16x | 1.31x | 1.37x |
+| collab fan-out, 50 peers x 1000 msgs | 3.87x | 4.17x | 4.27x | | | 4.37x |
+| collab fan-out, 200 peers x 200 msgs | 3.44x | 3.93x | 4.50x | | | 4.04x |
+
+The open-file 16-client rows of runs B–D are free-running clients
+sharing one pending file, so the servers did not do the same work;
+from run E on they run in lockstep.
 
 Lowest Haskell / Node ratio within a round:
 
-| scenario | run C | run D |
-|---|---:|---:|
-| relay round trip, 1 pair | 1.09x | 1.23x |
-| relay round trip, 16 pairs | 1.07x | 1.07x |
-| open-file POST+GET, 1 client | 0.79x | 0.97x |
-| open-file POST+GET, 16 clients | 0.77x | 0.58x |
-| resolve-ref, 1 client | 1.07x | 0.96x |
-| resolve-ref, 16 clients | 1.01x | 0.84x |
-| collab fan-out, 50 peers x 1000 msgs | 3.87x | 3.91x |
-| collab fan-out, 200 peers x 200 msgs | 3.78x | 3.92x |
+| scenario | run C | run D | run E, HTTP front | run F |
+|---|---:|---:|---:|---:|
+| relay round trip, 1 pair | 1.09x | 1.23x | | 1.01x |
+| relay round trip, 16 pairs | 1.07x | 1.07x | | 1.02x |
+| open-file POST+GET, 1 client | 0.79x | 0.97x | 0.66x | 0.78x |
+| open-file POST+GET, 16 clients | 0.77x | 0.58x | 0.94x | 0.97x |
+| resolve-ref, 1 client | 1.07x | 0.96x | 0.83x | 1.01x |
+| resolve-ref, 16 clients | 1.01x | 0.84x | 1.07x | 1.06x |
+| collab fan-out, 50 peers x 1000 msgs | 3.87x | 3.91x | | 3.79x |
+| collab fan-out, 200 peers x 200 msgs | 3.78x | 3.92x | | 3.21x |
 
-### Run D (final code, commit 9a5969c; 7 reps; load average 5.0 → 6.4)
+### Run F (the HTTP front, final code; 15 reps; load average 5.1 → 9.0)
+
+| scenario | haskell (petrus) | haskell (petrus, relay log off) | node (vite dev server) | node (bare baseline) | haskell (petrus-collab) | node (server/collab.mjs) | Haskell / Node |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| relay round trip, 1 pair | 14249 (66 / 141) | 15806 (59 / 136) | 10585 (89 / 198) | 11965 (78 / 169) |  |  | 1.32x |
+| relay round trip, 16 pairs | 37227 (417 / 807) | 39277 (390 / 753) | 25674 (613 / 1014) | 35949 (424 / 827) |  |  | 1.09x |
+| open-file POST+GET, 1 client | 14068 (66 / 159) |  | 11612 (81 / 183) | 11719 (81 / 160) |  |  | 1.20x |
+| open-file POST+GET, 16 clients in lockstep | 46897 (152 / 418) |  | 30135 (253 / 562) | 30475 (255 / 622) |  |  | 1.54x |
+| resolve-ref, 1 client | 20280 (45 / 132) |  | 17043 (55 / 113) | 17456 (53 / 110) |  |  | 1.16x |
+| resolve-ref, 16 clients | 37224 (377 / 872) |  | 25962 (527 / 1505) | 27244 (525 / 1250) |  |  | 1.37x |
+| collab fan-out, 50 peers x 1000 msgs | 840887 (25555 / 47583) |  |  |  | 876317 (36428 / 52857) | 200711 (109719 / 233158) | 4.37x |
+| collab fan-out, 200 peers x 200 msgs | 808832 (34302 / 49073) |  |  |  | 790373 (42479 / 49952) | 200254 (94295 / 195530) | 4.04x |
+| server RSS after run (MiB) | 55 | 18 | 46 | 39 | 49 | 88 | |
+
+Cells: median ops/s over 15 interleaved runs (p50 / p99 latency in us).
+
+| scenario (best of 15) | haskell (petrus) | haskell (petrus, relay log off) | node (vite dev server) | node (bare baseline) | haskell (petrus-collab) | node (server/collab.mjs) | Haskell / Node |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| relay round trip, 1 pair | 15180 | 16672 | 10909 | 12897 |  |  | 1.29x |
+| relay round trip, 16 pairs | 56112 | 67013 | 32827 | 41274 |  |  | 1.62x |
+| open-file POST+GET, 1 client | 16861 |  | 11949 | 14359 |  |  | 1.17x |
+| open-file POST+GET, 16 clients in lockstep | 59991 |  | 33563 | 34075 |  |  | 1.76x |
+| resolve-ref, 1 client | 21979 |  | 17772 | 18476 |  |  | 1.19x |
+| resolve-ref, 16 clients | 39492 |  | 28616 | 28609 |  |  | 1.38x |
+| collab fan-out, 50 peers x 1000 msgs | 1000140 |  |  |  | 1102657 | 228321 | 4.83x |
+| collab fan-out, 200 peers x 200 msgs | 945247 |  |  |  | 994283 | 265940 | 3.74x |
+
+| scenario | Haskell / Node in each round (best of each side) | min |
+|---|---|---:|
+| relay round trip, 1 pair | 1.48 1.20 1.26 1.32 1.74 1.49 1.25 1.21 1.01 1.35 1.44 1.36 1.36 1.34 1.42 | 1.01x |
+| relay round trip, 16 pairs | 1.09 1.06 1.15 1.02 1.11 1.36 1.19 1.18 1.17 1.88 1.93 1.52 1.46 1.36 1.68 | 1.02x |
+| open-file POST+GET, 1 client | 1.05 1.17 0.78 0.87 0.79 0.97 1.26 1.35 1.23 1.27 1.24 1.13 1.17 1.16 1.24 | 0.78x |
+| open-file POST+GET, 16 clients in lockstep | 1.43 0.97 1.41 1.02 1.50 1.65 1.18 1.53 1.50 1.89 1.55 1.49 1.76 1.50 1.40 | 0.97x |
+| resolve-ref, 1 client | 1.08 1.09 1.17 1.13 1.17 1.19 1.19 1.40 1.15 1.11 1.05 1.22 1.17 1.01 1.16 | 1.01x |
+| resolve-ref, 16 clients | 1.30 1.38 1.43 1.38 1.36 1.39 1.34 1.32 1.32 1.30 1.06 1.23 1.88 1.47 1.59 | 1.06x |
+| collab fan-out, 50 peers x 1000 msgs | 4.52 4.06 3.86 4.70 5.20 5.22 4.38 4.10 5.43 4.61 5.07 4.06 3.79 4.89 5.41 | 3.79x |
+| collab fan-out, 200 peers x 200 msgs | 3.21 3.52 7.44 4.21 3.76 3.80 4.39 4.89 5.93 4.04 3.54 3.48 5.22 4.85 5.22 | 3.21x |
+
+### Run E (the HTTP front against the previous Warp server and Node, interleaved; 15 reps; load average 6.1–6.7)
+
+The endpoint scenarios only, with one more target: `haskell before` is
+`petrus` at commit 700c623 (Warp serves every request), started and run
+in the same rotation as the others. The ratio column compares the new
+`petrus` with the best Node server.
+
+| scenario | haskell (petrus) | haskell before (700c623, Warp) | node (vite dev server) | node (bare baseline) | Haskell / Node |
+|---|---:|---:|---:|---:|---:|
+| open-file POST+GET, 1 client | 13027 (72 / 161) | 11717 (80 / 170) | 11382 (86 / 136) | 11097 (85 / 171) | 1.14x |
+| open-file POST+GET, 16 clients in lockstep | 47626 (146 / 429) | 38581 (185 / 504) | 34363 (214 / 546) | 33915 (218 / 567) | 1.39x |
+| resolve-ref, 1 client | 20886 (45 / 96) | 19324 (49 / 96) | 17329 (55 / 114) | 17905 (52 / 104) | 1.17x |
+| resolve-ref, 16 clients | 37856 (377 / 856) | 33610 (457 / 762) | 27588 (521 / 1161) | 28871 (501 / 1099) | 1.31x |
+| server RSS after run (MiB) | 50 | 67 | 61 | 55 | |
+
+Cells: median ops/s over 15 interleaved runs (p50 / p99 latency in us).
+
+| scenario | new / Node in each round | min | before / Node, median |
+|---|---|---:|---:|
+| open-file POST+GET, 1 client | 1.23 1.01 0.98 0.66 0.80 1.06 1.18 1.22 1.19 1.11 1.29 1.10 1.25 1.10 1.03 | 0.66x | 1.03x |
+| open-file POST+GET, 16 clients in lockstep | 1.09 1.36 1.27 1.34 1.26 1.11 1.44 1.40 1.16 0.94 1.83 1.46 1.42 0.95 1.40 | 0.94x | 1.12x |
+| resolve-ref, 1 client | 1.13 1.25 1.26 1.16 1.22 1.00 1.05 1.08 1.13 1.13 1.13 1.14 1.11 0.83 1.20 | 0.83x | 1.08x |
+| resolve-ref, 16 clients | 1.28 1.25 1.34 1.17 1.35 1.07 1.33 1.28 1.35 1.29 1.32 1.39 1.38 1.34 1.35 | 1.07x | 1.16x |
+
+The previous server failed the workload check: in at least 4 of its 15
+16-client open-file runs, 1 to 6 `GET`s too many read the file (68001,
+68002, 68003 and 68006 statuses 200). Its `GET` read the pending file and cleared
+it afterwards, so two Warp threads could both serve the same pending
+file, which Node's single thread never does. The new code takes the
+pending file atomically before reading it, and every run of the new
+server and of both Node servers had exactly 68000 / 60000 / 0.
+
+### Run D (commit 9a5969c, before the HTTP front; 7 reps; load average 5.0 → 6.4)
 
 | scenario | haskell (petrus) | haskell (petrus, relay log off) | node (vite dev server) | node (bare baseline) | haskell (petrus-collab) | node (server/collab.mjs) | Haskell / Node |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -232,37 +333,45 @@ log off on both sides (interleaved, 5 reps, load average about 5): 16 pairs
 
 ## Reading the results
 
-- **Collaboration fan-out: Haskell is 3.9–4.5x Node** in every run and
-  every round.
+- **Collaboration fan-out: Haskell is 3.9–4.5x Node** by median in runs
+  C, D and F, and at least 3.2x in every round.
 - **Agent relay: Haskell is ahead of the bare-`ws` Node relay**, Node's
-  best case: 1.17–1.41x median and at least 1.07x in every round of runs C
-  and D (it was 0.81–0.98x on 16 pairs in run B). With the timing log on,
-  `petrus` is 1.38x the Vite relay that `bin/petrus.mjs` runs (run D).
-- **resolve-ref: ahead in the median, 1.07x (1 client) and 1.16–1.17x
-  (16 clients) in both runs.** Every round of run C is at or above 1.0x
-  (lowest 1.07x and 1.01x). Run D, under heavier outside load, has rounds
-  at 0.96x and 0.84x. A guarantee of ≥ 1.0x in every round is beyond what
-  this machine can show. A request costs about 43 µs end to end with a
-  lean sequential client (Haskell 42.9 µs, Node 43.5 µs). Most of that is
-  kernel work both servers pay alike: loopback TCP in both directions, the
-  `open`/`read`/`close` of the file (`open` alone is the largest single
-  item in both profiles), and the readiness wait. The user-space part
-  where the implementations differ is a few microseconds, so the margin
-  is a few percent per request. That is far less than the swing a single
-  round takes when another agent's build or benchmark lands on it (in run
-  D, the bare Node baseline's 16-client open-file rounds range from 10.7k
-  to 29.1k ops/s). At 16 clients the load client, not the server, sets the
-  pace: the server was 35–65% busy in profiles.
-- **open-file: parity, not reliably ahead.** The medians are 1.00–1.10x,
-  but single rounds drop to 0.58–0.97x. Its requests do almost nothing,
-  so the fixed cost per HTTP request decides the ratio. With the lean
-  sequential client, Haskell takes 17.0 µs per `GET` (204) where Node
-  takes 16.5 µs, and 22.6 µs per `POST` where Node takes 22.1 µs. That
-  difference comes from Warp's request loop and GHC's I/O manager: one
-  kqueue registration and one wake-up per wait, where libuv keeps sockets
-  registered. At 16 clients the workload is also not fixed: every client
-  shares one pending file, so how many `GET`s read it (and how many answer
-  204) depends on how each server interleaves requests.
+  best case: 1.09–1.41x median and at least 1.01x in every round of runs
+  C, D and F (it was 0.81–0.98x on 16 pairs in run B). With the timing log
+  on, `petrus` is 1.35x the Vite relay that `bin/petrus.mjs` runs (1 pair, run F).
+  The HTTP front only sees a relay connection's upgrade request, which it
+  hands to Warp; after that the relay loop owns the socket as before.
+- **open-file and resolve-ref: ahead in every median** of runs E and F:
+  open-file 1.14–1.20x (1 client) and 1.39–1.54x (16 clients),
+  resolve-ref 1.16–1.17x and 1.31–1.37x. In run E the previous server
+  (Warp) was 1.03x, 1.12x, 1.08x and 1.16x against the same Node servers
+  in the same rounds, so the HTTP front adds 8–23% to every scenario.
+  With the lean C client, a request is now cheaper than Node's: a `GET`
+  that answers 204 takes 11.7 µs (Node about 19 µs, Warp 18.8 µs), a
+  refused `POST` 14 µs (Node 25–31 µs), and 16 threads of resolve-ref get
+  33.7k req/s (Node 21.9k, Warp 24.5k).
+- **The lowest rounds.** 16-client rounds stay at or above 0.94x, and
+  every resolve-ref round of run F is at or above 1.01x. The 1-client
+  scenarios are the most exposed: a run is one request in flight at a
+  time, so it runs at the speed of whichever core the scheduler gives the
+  server and the client for that second. This machine has 4 performance
+  and 6 efficiency cores, and other agents kept the load at 5–9. In the
+  low rounds, servers drop together to about half speed. In run E, rounds
+  2–4 of open-file at 1 client have three or four of the four servers at
+  5.9–7.8k ops/s against 11–15k in most other rounds; the 0.66x is the
+  round where only Node bare escaped. In run F, the 0.78x and 0.79x
+  rounds are rounds 3 and 5. In round 5, Node bare itself fell to 5.6k
+  while Vite kept 11.6k and `petrus` had 9.2k. In round 3, `petrus` had
+  10.9k against Node bare's 14.0k. The same server's 1-client runs range
+  over 9.2–16.9k (`petrus`) and 5.6–14.4k (Node bare) within run F. No
+  server is slower in every round; each one loses some rounds to the
+  machine. The 16-client scenarios keep several requests in flight and
+  are much less exposed.
+- **Runs A–D measured the load client more than the servers at 16
+  clients.** With `http-client`, every server landed in the same band (about
+  10–38k ops/s) and single rounds swung by tens of percent, which is why open-file and resolve-ref
+  looked like parity there. The lean client runs the same requests, so
+  the ratios of runs E and F are the servers' own.
 
 ## What the Haskell side does to get there
 
@@ -293,8 +402,24 @@ log off on both sides (interleaved, 5 reps, load average about 5): 16 pairs
   thread writes the lines. Run C still used the background thread
   everywhere; its hand-off cost `petrus` with the log on about 25% of the
   1-pair throughput.
-- **HTTP.** Warp's request loop, with file reads as unsafe foreign calls
-  shaped like `readFileSync`: one call opens the file and learns its size
+- **The HTTP front.** `/__petrus/open-file` and `/__petrus/resolve-ref`
+  are served by one event-loop thread (`Petrus.Viewer.HttpFront`,
+  `cbits/http_front.c`), built like the relays. It owns the listening
+  sockets and every connection in one kqueue/epoll set. Sockets stay
+  registered, and a turn polls without blocking before it waits. Each
+  ready connection gets one `recv`, its requests are parsed in place, and
+  the answers go out in one `writev`. The front writes Node's framing
+  byte for byte (status line, header order, `Date`, `Connection` /
+  `Keep-Alive`, `Content-Length`, `100 Continue`, the 5 s idle close).
+  It parses conservatively, and anything else hands the whole connection
+  to Warp with the bytes already read: another path, an upgrade, a
+  chunked body, an unusual request, or a resolve-ref that must fetch a
+  URL. Warp paid a thread wake-up and a one-shot kqueue registration
+  through GHC's I/O manager on every wait. With the lean C client, a
+  `GET` that answers 204 now takes 11.7 µs (Warp: 18.8 µs, Node: about
+  19 µs).
+- **HTTP handlers.** File reads are unsafe foreign calls shaped like
+  `readFileSync`: one call opens the file and learns its size
   (`cbits/file_io.c`), then the file is read up to that size. `resolve-ref`
   resolves plain relative paths against `file:///` bases without the URL
   state machine (property-tested against it). JSON string escaping is a
@@ -304,7 +429,12 @@ log off on both sides (interleaved, 5 reps, load average about 5): 16 pairs
   and I/O bound, and every extra capability adds cross-thread wake-ups to
   each request: `resolve-ref` at 16 clients ran 22.9–25.9k ops/s with
   `-N2` and 27.9k with `-N1` (bare Node: 26.1k), and `-N4` was slower
-  still. A 16 MB allocation area makes collections rare. Override with
+  still. A 16 MB allocation area makes collections rare. With the HTTP
+  front, a 2 MB area (`-A2m`, which fits an efficiency core's cache) was
+  measured against it in the same interleaved rounds (11 reps). The
+  medians moved by −13% (open-file, 1 client), +2% (open-file, 16
+  clients), −2% (resolve-ref, 1 client) and +9% (resolve-ref, 16
+  clients). That is no consistent gain, so the defaults stay. Override with
   `+RTS … -RTS` (or `--rts` in the runner).
-- **Memory.** `petrus` holds 82–86 MiB after the runs; Vite holds 89–108
+- **Memory.** `petrus` holds 82–86 MiB after runs A–D and 50–55 MiB after runs E–F; Vite holds 46–108
   MiB. `+RTS -M…` caps it if needed.
