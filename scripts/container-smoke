@@ -230,6 +230,8 @@ openssl x509 -req -days 2 -in "$work/server.csr" -CA "$work/smoke/ca.pem" -CAkey
 cp "$root/scripts/container-smoke.d/fake-github.py" "$work/github/"
 cp "$root/deployment/config/installations.toml" "$work/config/installations.toml"
 cp "$root/scripts/container-smoke.d/fake-op" "$work/op"
+cp "$root/scripts/container-smoke.d/node-wrapper" "$work/smoke/node-wrapper"
+chmod 0755 "$work/smoke/node-wrapper"
 chmod 0755 "$work/op"
 
 environment_id=smoke0environment0id000000
@@ -347,7 +349,11 @@ host=$prefix-host
 containers+=("$host")
 new_state serve
 read_args < <(launch "$state")
+# HAMSTERDAN_PI_NODE_PATH points at the recording wrapper around the image's
+# Node (scripts/container-smoke.d/node-wrapper), so the Node processes the
+# host starts can be inspected.
 docker run --detach --name "$host" "${args[@]}" --publish 127.0.0.1::8000 \
+    -e HAMSTERDAN_PI_NODE_PATH=/run/smoke/node-wrapper \
     "$image" /opt/hamsterdan/.venv/bin/python -m hamsterdan.host serve --host 0.0.0.0 --port 8000 > /dev/null
 port=$(docker port "$host" 8000/tcp | head -n 1 | sed 's/.*://')
 url=http://127.0.0.1:$port
@@ -371,8 +377,7 @@ expect "an unsigned webhook delivery is refused" \
     "$(curl --silent --output /dev/null --write-out '%{http_code}' --request POST --header 'content-type: application/json' --data '{}' "$url/github/webhooks")" "400"
 
 # What runs inside: PID 1 is the Haskell host (the launcher, op, env and the
-# shim each exec'd into the next), as user 10001; no other process inherits
-# a credential (the host removes them from its environment once parsed).
+# shim each exec'd into the next), as user 10001, alone once started.
 processes=$(docker exec "$host" /bin/sh -c '
     for directory in /proc/[0-9]*; do
         pid=${directory#/proc/}
@@ -385,13 +390,17 @@ printf '%s\n' "$processes" | sed 's/^/     process: /'
 expect "PID 1 is the Haskell host, as user 10001" "$(grep '^1 ' <<< "$processes")" "1 10001 /opt/hamsterdan/bin/hamsterdan-host"
 expect "PID 1 runs serve on 0.0.0.0:8000" "$(docker exec "$host" /bin/sh -c "tr '\0' ' ' < /proc/1/cmdline")" \
     "/opt/hamsterdan/.venv/bin/../../bin/hamsterdan-host serve --host 0.0.0.0 --port 8000 "
-inherited=$(docker exec "$host" /bin/sh -c '
-    for directory in /proc/[0-9]*; do
-        pid=${directory#/proc/}
-        [ "$pid" = 1 ] || [ "$pid" = "$$" ] && continue
-        tr "\0" "\n" < "$directory/environ" 2>/dev/null | grep -E "^(HAMSTERDAN_GITHUB_PRIVATE_KEY|HAMSTERDAN_GITHUB_WEBHOOK_SECRET|HAMSTERDAN_PI_API_KEY|OP_SERVICE_ACCOUNT_TOKEN)=" | sed "s/=.*//;s/^/$pid /"
-    done' 2>&1 || true)
-expect "no child process inherits a credential" "$inherited" ""
+expect "no other process runs once the host serves" "$(grep -vc '^1 ' <<< "$processes")" "0"
+# The Pi runtime at startup (compose_agent_runner): the host checks Node's
+# version, then runs the Pi helper's READY probe against the image's Pi
+# package; Pi execution is selected only when that probe answers ok.
+nodes=$(docker exec "$host" /bin/cat /tmp/smoke-node.log 2>&1)
+printf '%s\n' "$nodes" | sed 's/^/     node: /'
+if grep -qx 'argv: --version' <<< "$nodes"; then pass "the host checked the Pi runtime's Node version"; else fail "the host checked the Pi runtime's Node version" "$nodes"; fi
+probe=$(grep -A3 '^argv: .*/data/pi_helper\.mjs /opt/hamsterdan/pi/node_modules/@earendil-works/pi-coding-agent/dist/index\.js --probe ' <<< "$nodes")
+if [[ -n $probe ]]; then pass "the host ran the Pi helper's probe from its data directory"; else fail "the host ran the Pi helper's probe from its data directory" "$nodes"; fi
+expect "the Pi probe answered READY" "$(sed -n -E 's/^(status|stdout): //p' <<< "$probe" | tr '\n' ' ')" '0 {"type":"probe","ok":true} '
+expect "no Node process the host started inherited a credential" "$(sed -n 's/^inherited: //p' <<< "$nodes" | tr -d ' \n')" ""
 
 docker stop --time 30 "$host" > /dev/null
 expect "SIGTERM stops the host cleanly" "$(docker inspect --format '{{.State.ExitCode}}' "$host")" "0"

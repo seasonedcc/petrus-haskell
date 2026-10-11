@@ -68,7 +68,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Lint the launcher, the interpreter-path shim and the smoke scripts
         run: |
-          shellcheck scripts/with-runtime-secrets scripts/container-smoke scripts/container-smoke.d/fake-op
+          shellcheck scripts/with-runtime-secrets scripts/container-smoke scripts/container-smoke.d/fake-op scripts/container-smoke.d/node-wrapper
           shellcheck --shell=sh deployment/python-shim
       - name: Lint the Containerfile
         run: |
