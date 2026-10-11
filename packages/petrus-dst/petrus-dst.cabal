@@ -205,6 +205,7 @@ test-suite petrus-dst-test
                     Spec.Stories
                     Spec.Support
                     Spec.Tooling
+                    Spec.ToolingInterop
                     Spec.Transcript
                     Toy
   build-tool-depends: petrus-dst:petrus-dst-world

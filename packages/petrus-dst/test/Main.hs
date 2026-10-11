@@ -15,6 +15,7 @@ import Spec.Properties qualified
 import Spec.Qualification qualified
 import Spec.Runner qualified
 import Spec.Stories qualified
+import Spec.ToolingInterop qualified
 import Spec.Transcript qualified
 import Test.Hspec
 
@@ -37,3 +38,4 @@ main = do
     Spec.Campaigns.spec
     Spec.Failure.spec
     Spec.Boundaries.spec
+    Spec.ToolingInterop.spec
