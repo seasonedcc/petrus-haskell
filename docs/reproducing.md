@@ -366,7 +366,7 @@ job, spread over Blacksmith runners so that they run side by side:
 
 | CI job | Runner | `scripts/check-all` step |
 | --- | --- | --- |
-| `lint` | 2 vCPU | 1 `check-pins`, 2 `lint-skips`, 7 `bench --check`, 8 `check-parity` |
+| `lint` | 2 vCPU | 1 `check-pins`, 2 `lint-skips`, 7 `bench --check`, 8 `check-parity`, 9 the runtime test ledgers (`parity_check.py`) |
 | `build` | 16 vCPU | 4 `cabal build all` (`-Werror`); then plans the test shards |
 | `checks` | 4 vCPU | 5 `scripts/interop --check` |
 | `test (1)` … `test (N)` | 8 vCPU | 3 and 6: `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest) |

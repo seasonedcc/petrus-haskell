@@ -4,7 +4,9 @@ name: CI
 # `scripts/check-all --viewer`), spread over several Blacksmith runners:
 #
 #   lint       scripts/check-pins, scripts/lint-skips, scripts/bench --check,
-#              scripts/check-parity (none needs a build)
+#              scripts/check-parity, the runtime test ledgers
+#              (packages/petrus-engine/scripts/parity_check.py); none needs a
+#              build
 #   build      cabal build all (-Werror), incrementally from the latest cached
 #              dist-newstyle; then scripts/ci-tests plan decides which test
 #              suites run and spreads them over the test shards
@@ -68,6 +70,8 @@ jobs:
         run: scripts/bench --check
       - name: Parity table
         run: scripts/check-parity
+      - name: Runtime test ledgers (every in-scope upstream test accounted for)
+        run: python3 packages/petrus-engine/scripts/parity_check.py
 
   build:
     runs-on: blacksmith-16vcpu-ubuntu-2404
