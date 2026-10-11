@@ -1,0 +1,113 @@
+cabal-version:      3.4
+name:               hamsterdan-e2e
+version:            0.1.0.0
+synopsis:           Hamsterdan end-to-end tooling: tier B record and replay, tier C live runs
+description:
+  Tier B of docs/hamsterdan.md §5.2: tapes recorded from the reference
+  Hamsterdan host (every GitHub exchange, webhook delivery, agent call, Git
+  publisher outcome and step clock), a fake GitHub server answering from a
+  tape, replay drivers for both hosts and the comparison of their writes,
+  History and comment sets. Tier C: the tooling for a live run of both hosts
+  against real GitHub Apps (operator parameterization, scripts, capture and
+  the normalizing comparator). See README.md and docs/e2e.md.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Testing
+build-type:         Simple
+extra-doc-files:    README.md
+extra-source-files: NOTICE
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Hamsterdan.E2E.Tape
+                    Hamsterdan.E2E.Replay
+                    Hamsterdan.E2E.Agents
+                    Hamsterdan.E2E.Fixture
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , hamsterdan-agents
+                  , hamsterdan-contracts
+                  , hamsterdan-github
+                  , hamsterdan-host
+                  , hamsterdan-operator
+                  , petrus-json
+                  , text >=2.0
+                  , time >=1.12
+
+executable hamsterdan-e2e-replay
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Replay.hs
+  build-depends:    base
+                  , bytestring
+                  , hamsterdan-e2e
+                  , petrus-json
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+executable hamsterdan-e2e-host
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Host.hs
+  build-depends:    base
+                  , containers
+                  , hamsterdan-e2e
+                  , hamsterdan-github
+                  , hamsterdan-host
+                  , text
+                  , time
+  ghc-options:      -threaded -rtsopts
+
+executable hamsterdan-e2e-operator
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Operator.hs
+  build-depends:    base
+                  , hamsterdan-e2e
+                  , hamsterdan-operator
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+test-suite hamsterdan-e2e-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    Support
+                    TierBSpec
+                    TierCSpec
+  build-tool-depends: hamsterdan-e2e:hamsterdan-e2e-host
+                    , hamsterdan-e2e:hamsterdan-e2e-operator
+  build-depends:    base
+                  , base16-bytestring
+                  , bytestring
+                  , cryptohash-sha256
+                  , directory
+                  , filepath
+                  , hamsterdan-e2e
+                  , hspec >=2.10
+                  , petrus-json
+                  , petrus-test-support
+                  , temporary >=1.3
+                  , text
+                  , typed-process
+                  , unix
+  ghc-options:      -threaded -rtsopts

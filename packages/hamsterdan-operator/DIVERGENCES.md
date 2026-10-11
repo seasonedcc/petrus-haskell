@@ -91,6 +91,18 @@ Below are the differences that remain, with their rationale.
   follows no link, as the reference does. `RmtreeSpec` builds six trees
   (links inside, a linked top, a missing top, a file top, an entry that
   cannot be unlinked) and checks both sides' outcome and what is left.
+- **The HBNetwork fixture is configuration.** The reference hard-codes
+  the fixture repository, organization and repository ids, App slug, hero
+  reviewer and delegated broker digests as module constants
+  (`operator.py:35-87`, and `/orgs/HBNetwork` inside `preflight`). The port
+  keeps them in `Operator`: a `Fixture` (`hbNetworkFixture` by default,
+  the reference's values) and the two digests, from which the bot login,
+  the broker authorization and `--bot-login`'s default derive. The
+  `hamsterdan-operator` binary always runs the default, so nothing changes.
+  Tier C (`packages/hamsterdan-e2e`, docs/e2e.md) runs
+  `hamsterdan-e2e-operator FIXTURE.json`, which sets another fixture; its
+  reference twin `e2e_operator.py` rebinds the same constants as a
+  runtime overlay, and the e2e suite runs both against a scripted `gh`.
 - **Runtime options.** The binary runs with a 16 MB allocation area
   (`-with-rtsopts=-A16m`), which removes most minor collections from a
   command's run.

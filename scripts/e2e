@@ -1,0 +1,997 @@
+#!/usr/bin/env python3
+"""Tier C: the Python and Haskell Hamsterdan hosts, live, side by side.
+
+    scripts/e2e init                               # write a config template
+    scripts/e2e prepare-repos   [--dry-run]        # the two fixture copies
+    scripts/e2e manifests       [--dry-run]        # the two App manifests
+    scripts/e2e convert-manifest --side S --code C [--dry-run]
+    scripts/e2e start-hosts     [--dry-run] [--side S] [--record NAME]
+    scripts/e2e stop-hosts      [--dry-run] [--side S] [--into SCENARIO/CHECKPOINT]
+    scripts/e2e run-scenario --scenario NAME [--dry-run] [--from STEP]
+    scripts/e2e capture --scenario NAME --checkpoint C [--dry-run]
+    scripts/e2e compare --scenario NAME [--checkpoint C] [--real-agent]
+    scripts/e2e rehearse                           # offline: both hosts against fakes
+    scripts/e2e scenarios                          # list the scenario plans
+
+docs/e2e.md is the runbook: what the operator provides, and the order. Every
+command but ``init``, ``compare``, ``rehearse`` and ``scenarios`` acts on
+GitHub (through the configured actors' ``gh`` logins) or on the hosts;
+``--dry-run`` prints exactly what it would run, with secrets redacted, and
+runs nothing. Without a config file a dry run uses the built-in example.
+
+Everything a run produces lives under the config's ``work`` directory
+(default ``e2e-work/``, git-ignored): the fixture checkouts and fixture files,
+the App credentials (mode 0600), the hosts' state directories and logs, the
+scenario run records and the checkpoint captures.
+
+Each side is one App, one public copy of the fixture repository and one
+host: ``python`` is the reference host (``e2e_host.py`` under the pinned
+reference environment) with the reference operator over a runtime overlay
+(``e2e_operator.py``); ``haskell`` is ``hamsterdan-e2e-host`` with
+``hamsterdan-e2e-operator``. Scenario steps run on both sides concurrently.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shlex
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.request
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+
+REPO = Path(__file__).resolve().parents[1]
+E2E = REPO / "packages" / "hamsterdan-e2e" / "python"
+sys.path.insert(0, str(E2E))
+
+import fake_github  # noqa: E402  (APP_PERMISSIONS, APP_EVENTS: docs/hamsterdan.md §5.1)
+import fixture as fixtures  # noqa: E402
+
+SIDES = ("python", "haskell")
+FIXTURE_SOURCE = "https://github.com/HBNetwork/demo-pr-readiness.git"
+UPSTREAM_REPOSITORY = "HBNetwork/demo-pr-readiness"
+BROKER_FILES = (".github/workflows/rerun-broker.yml", "tools/rerun_broker.py")
+SECRET_VARIABLES = ("HAMSTERDAN_GITHUB_PRIVATE_KEY", "HAMSTERDAN_GITHUB_WEBHOOK_SECRET", "HAMSTERDAN_PI_API_KEY")
+REQUIRED_CHECKS = ("lint", "type", "unit", "build", "integration")
+
+EXAMPLE_CONFIG: Dict[str, Any] = {
+    "work": "e2e-work",
+    "organization": "seasonedcc",
+    "homepage": "https://github.com/seasonedcc/petrus-haskell",
+    "fixture_source": FIXTURE_SOURCE,
+    "fixture_commit": fixtures.FIXTURE_COMMIT,
+    "actors": {
+        "author": {"login": "AUTHOR-LOGIN", "gh_config_dir": "~/.config/gh-e2e-author"},
+        "reviewer": {"login": "REVIEWER-LOGIN", "gh_config_dir": "~/.config/gh-e2e-reviewer"},
+    },
+    "watch_authors": "AUTHOR-LOGIN",
+    "workflow_path": ".github/workflows/ci.yml",
+    "reminder_seconds": 300,
+    "pi": {
+        "provider": "openai",
+        "model": "gpt-5.6-sol",
+        "cli_path": "/ABSOLUTE/pi-coding-agent/dist/cli.js",
+        "node_path": "/ABSOLUTE/node-v22.19.0/bin/node",
+        "package_root": "/ABSOLUTE/pi-coding-agent",
+    },
+    "agents_tape": None,
+    "manifest_redirect": "http://127.0.0.1:9/hamsterdan-e2e-manifest",
+    "wait": {"timeout_seconds": 1800, "interval_seconds": 30},
+    "sides": {
+        "python": {
+            "repository": "seasonedcc/demo-pr-readiness-py",
+            "app_slug": "hamster-dan-py",
+            "port": 8101,
+            "public_url": "https://PYTHON-HOST.example.net",
+        },
+        "haskell": {
+            "repository": "seasonedcc/demo-pr-readiness-hs",
+            "app_slug": "hamster-dan-hs",
+            "port": 8102,
+            "public_url": "https://HASKELL-HOST.example.net",
+        },
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Configuration
+
+
+class Config:
+    def __init__(self, value: Dict[str, Any], path: Optional[Path]) -> None:
+        self.value = value
+        self.path = path
+        self.work = (REPO / value.get("work", "e2e-work")).resolve()
+        self.organization = str(value["organization"])
+        self.actors = value["actors"]
+        self.sides = value["sides"]
+
+    def side(self, name: str) -> Dict[str, Any]:
+        return self.sides[name]
+
+    def bot(self, name: str) -> str:
+        return f"{self.side(name)['app_slug']}[bot]"
+
+    def fixture_path(self, name: str) -> Path:
+        return self.work / "fixtures" / f"{name}.json"
+
+    def credentials_path(self, name: str) -> Path:
+        return self.work / "credentials" / f"{name}.json"
+
+    def state(self, name: str) -> Path:
+        return self.work / "state" / name
+
+    def logs(self, name: str) -> Path:
+        return self.work / "logs" / name
+
+    def gh_env(self, actor: str) -> Dict[str, str]:
+        return {"GH_CONFIG_DIR": os.path.expanduser(str(self.actors[actor]["gh_config_dir"]))}
+
+
+def load_config(path: Path, dry_run: bool) -> Config:
+    if path.exists():
+        return Config(json.loads(path.read_text(encoding="utf-8")), path)
+    if dry_run:
+        return Config(json.loads(json.dumps(EXAMPLE_CONFIG)), None)
+    raise SystemExit(f"{path}: no config (scripts/e2e init writes a template; docs/e2e.md explains it)")
+
+
+# ---------------------------------------------------------------------------
+# Running, or printing what would run
+
+
+class Runner:
+    def __init__(self, dry_run: bool) -> None:
+        self.dry_run = dry_run
+        self.lock = threading.Lock()
+
+    def say(self, side: str, text: str) -> None:
+        with self.lock:
+            print(f"[{side}] {text}", flush=True)
+
+    def command_text(self, argv: List[str], env: Dict[str, str], cwd: Optional[Path]) -> str:
+        shown = " ".join(f"{key}={'<redacted>' if key in SECRET_VARIABLES else shlex.quote(value)}" for key, value in sorted(env.items()))
+        where = f"(cd {shlex.quote(str(cwd))} && " if cwd else ""
+        # Dry-run placeholders such as $(cabal list-bin ...) stay readable.
+        line = re.sub(r"'(\$\([^']*\))'", r"\1", shlex.join(argv))
+        return f"$ {where}{shown + ' ' if shown else ''}{line}{')' if cwd else ''}"
+
+    def run(
+        self,
+        side: str,
+        argv: List[str],
+        env: Optional[Dict[str, str]] = None,
+        cwd: Optional[Path] = None,
+        placeholder: str = "",
+        check: bool = True,
+        stdin: Optional[str] = None,
+    ) -> str:
+        env = env or {}
+        self.say(side, self.command_text(argv, env, cwd) + (" <<'JSON'" if stdin is not None else ""))
+        if stdin is not None:
+            self.say(side, f"  | {stdin}")
+            self.say(side, "  | JSON")
+        if self.dry_run:
+            return placeholder
+        completed = subprocess.run(argv, env={**os.environ, **env}, cwd=cwd, capture_output=True, text=True, input=stdin)
+        if check and completed.returncode:
+            raise SystemExit(f"[{side}] failed ({completed.returncode}): {shlex.join(argv)}\n{completed.stderr[-2000:]}")
+        return completed.stdout
+
+    def write(self, side: str, path: Path, content: str, mode: int = 0o644, secret: bool = False) -> None:
+        self.say(side, f"write {path} (mode {mode:o}){' <redacted>' if secret else ''}")
+        if self.dry_run:
+            if not secret:
+                for line in content.rstrip("\n").splitlines():
+                    self.say(side, f"  | {line}")
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            output.write(content)
+        os.chmod(path, mode)
+
+
+def both(action: Callable[[str], None], sides: Optional[List[str]] = None) -> None:
+    """Run ``action`` for each side, concurrently; re-raise the first failure."""
+    failures: List[BaseException] = []
+
+    def guarded(name: str) -> None:
+        try:
+            action(name)
+        except BaseException as error:  # noqa: BLE001 - reported below
+            failures.append(error)
+
+    threads = [threading.Thread(target=guarded, args=(name,)) for name in (sides or list(SIDES))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    if failures:
+        raise failures[0]
+
+
+def reference_python(runner: Runner) -> str:
+    if runner.dry_run:
+        return "$(scripts/upstream-python hamsterdan)"
+    return subprocess.run([str(REPO / "scripts" / "upstream-python"), "hamsterdan"], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def cabal_bin(runner: Runner, name: str) -> str:
+    if runner.dry_run:
+        return f"$(cabal list-bin {name})"
+    subprocess.run(["nice", "-n", "10", "cabal", "build", "-j2", f"hamsterdan-e2e:{name}"], check=True, cwd=REPO)
+    return subprocess.run(["cabal", "list-bin", name], check=True, capture_output=True, text=True, cwd=REPO).stdout.strip()
+
+
+def export_command(runner: Runner, name: str) -> List[str]:
+    if name == "python":
+        return [reference_python(runner), "-I", "-B", "-m", "hamsterdan.host.export"]
+    if runner.dry_run:
+        return ["$(cabal list-bin hamsterdan-export)"]
+    subprocess.run(["nice", "-n", "10", "cabal", "build", "-j2", "hamsterdan-export:exe:hamsterdan-export"], check=True, cwd=REPO)
+    return [subprocess.run(["cabal", "list-bin", "hamsterdan-export"], check=True, capture_output=True, text=True, cwd=REPO).stdout.strip()]
+
+
+def operator_command(runner: Runner, config: Config, name: str) -> List[str]:
+    fixture = str(config.fixture_path(name))
+    if name == "python":
+        return [reference_python(runner), "-I", "-B", str(E2E / "e2e_operator.py"), fixture]
+    return [cabal_bin(runner, "hamsterdan-e2e-operator"), fixture]
+
+
+# ---------------------------------------------------------------------------
+# init
+
+
+def command_init(config_path: Path) -> None:
+    if config_path.exists():
+        raise SystemExit(f"{config_path} exists")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(EXAMPLE_CONFIG, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {config_path}; fill in every placeholder (docs/e2e.md)")
+
+
+# ---------------------------------------------------------------------------
+# prepare-repos
+
+
+def ruleset(config: Config) -> Dict[str, Any]:
+    """The fixture's branch ruleset (docs/hamsterdan.md §5.1): strict
+    required checks, one approval, thread resolution."""
+    return {
+        "name": "hamsterdan-e2e-main",
+        "target": "branch",
+        "enforcement": "active",
+        "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+        "rules": [
+            {
+                "type": "pull_request",
+                "parameters": {
+                    "required_approving_review_count": 1,
+                    "dismiss_stale_reviews_on_push": False,
+                    "require_code_owner_review": False,
+                    "require_last_push_approval": False,
+                    "required_review_thread_resolution": True,
+                },
+            },
+            {
+                "type": "required_status_checks",
+                "parameters": {
+                    "strict_required_status_checks_policy": True,
+                    "required_status_checks": [{"context": check} for check in REQUIRED_CHECKS],
+                },
+            },
+        ],
+    }
+
+
+def command_prepare_repos(config: Config, runner: Runner, sides: List[str]) -> None:
+    source = str(config.value.get("fixture_source", FIXTURE_SOURCE))
+    commit = str(config.value.get("fixture_commit", fixtures.FIXTURE_COMMIT))
+    author = config.gh_env("author")
+
+    def prepare(name: str) -> None:
+        side = config.side(name)
+        repository, bot = str(side["repository"]), config.bot(name)
+        checkout = config.work / "repos" / name
+        runner.run(name, ["git", "clone", "--no-checkout", "--origin", "upstream", source, str(checkout)])
+        runner.run(name, ["git", "checkout", "--detach", commit], cwd=checkout)
+        head = runner.run(name, ["git", "rev-parse", "HEAD"], cwd=checkout, placeholder=commit).strip()
+        if head != commit:
+            raise SystemExit(f"[{name}] checkout is at {head}, not {commit}")
+        sources: Dict[str, str] = {}
+        for relative in BROKER_FILES:
+            path = checkout / relative
+            runner.say(name, f"substitute {fixtures.UPSTREAM_BOT_LOGIN} -> {bot} and {UPSTREAM_REPOSITORY} -> {repository} in {relative}")
+            if runner.dry_run:
+                sources[relative] = ""
+                continue
+            original = path.read_text(encoding="utf-8")
+            if fixtures.UPSTREAM_BOT_LOGIN not in original:
+                raise SystemExit(f"[{name}] {relative} does not name {fixtures.UPSTREAM_BOT_LOGIN}")
+            rebound = fixtures.substitute_bot(original, bot).replace(UPSTREAM_REPOSITORY, repository)
+            path.write_text(rebound, encoding="utf-8")
+            sources[relative] = rebound
+        runner.run(name, ["git", "switch", "--force-create", "main"], cwd=checkout)
+        runner.run(name, ["git", "add", "--", *BROKER_FILES], cwd=checkout)
+        runner.run(
+            name,
+            ["git", "-c", "user.name=hamsterdan-e2e", "-c", "user.email=hamsterdan-e2e@users.noreply.github.com", "commit", "-m", f"Rebind the rerun broker to {bot}"],
+            cwd=checkout,
+        )
+        leftovers = runner.run(name, ["git", "grep", "-n", "-e", "HBNetwork", "-e", "hamster-dan\\[bot\\]"], cwd=checkout, check=False)
+        if leftovers.strip():
+            runner.say(name, "still naming HBNetwork or its bot (review before the run):\n" + leftovers)
+        runner.run(name, ["gh", "repo", "create", repository, "--public", "--disable-wiki", "--description", "Hamsterdan tier C fixture copy"], env=author)
+        runner.run(name, ["git", "remote", "add", "origin", f"https://github.com/{repository}.git"], cwd=checkout)
+        runner.run(name, ["git", "push", "--set-upstream", "origin", "main"], cwd=checkout, env=author)
+        runner.run(
+            name,
+            ["gh", "api", "--method", "POST", f"/repos/{repository}/rulesets", "--input", "-"],
+            env=author,
+            placeholder="{}",
+            stdin=json.dumps(ruleset(config), sort_keys=True),
+        )
+        org = json.loads(runner.run(name, ["gh", "api", f"/orgs/{config.organization}"], env=author, placeholder='{"id": 0}'))
+        repo = json.loads(runner.run(name, ["gh", "api", f"/repos/{repository}"], env=author, placeholder='{"id": 0}'))
+        value = {
+            "repository": repository,
+            "organization": config.organization,
+            "org_id": org["id"] or "<org id>",
+            "repository_id": repo["id"] or "<repository id>",
+            "app_slug": side["app_slug"],
+            "hero_reviewer": config.actors["reviewer"]["login"],
+            "broker_digest": fixtures.broker_digest(sources[BROKER_FILES[0]]) if not runner.dry_run else "<sha256 of the rebound rerun-broker.yml>",
+            "validator_digest": fixtures.broker_digest(sources[BROKER_FILES[1]]) if not runner.dry_run else "<sha256 of the rebound rerun_broker.py>",
+        }
+        if not runner.dry_run:
+            fixtures.parse(value)
+        runner.write(name, config.fixture_path(name), json.dumps(value, indent=2, sort_keys=True) + "\n")
+
+    both(prepare, sides)
+
+
+# ---------------------------------------------------------------------------
+# manifests
+
+
+def manifest(config: Config, name: str) -> Dict[str, Any]:
+    side = config.side(name)
+    return {
+        "name": side["app_slug"],
+        "url": config.value.get("homepage", EXAMPLE_CONFIG["homepage"]),
+        "hook_attributes": {"url": str(side["public_url"]).rstrip("/") + "/github/webhooks", "active": True},
+        "redirect_url": config.value.get("manifest_redirect", EXAMPLE_CONFIG["manifest_redirect"]),
+        "public": False,
+        "request_oauth_on_install": False,
+        "setup_on_update": False,
+        "default_permissions": dict(fake_github.APP_PERMISSIONS),
+        "default_events": list(fake_github.APP_EVENTS),
+    }
+
+
+def manifest_url(config: Config, name: str) -> str:
+    return f"https://github.com/organizations/{config.organization}/settings/apps/new?state=hamsterdan-e2e-{name}"
+
+
+def command_manifests(config: Config, runner: Runner, sides: List[str]) -> None:
+    for name in sides:
+        value = manifest(config, name)
+        url = manifest_url(config, name)
+        html = (
+            "<!doctype html>\n<meta charset=\"utf-8\">\n<title>Register " + value["name"] + "</title>\n"
+            f"<form id=\"register\" action=\"{url}\" method=\"post\">\n"
+            "<p>Registers the private GitHub App <b>" + value["name"] + "</b> for docs/e2e.md (manifest flow).</p>\n"
+            "<input type=\"hidden\" name=\"manifest\" value='" + json.dumps(value, sort_keys=True).replace("'", "&#39;") + "'>\n"
+            "<button type=\"submit\">Create the App on GitHub</button>\n</form>\n"
+        )
+        runner.write(name, config.work / "manifests" / f"{name}.json", json.dumps(value, indent=2, sort_keys=True) + "\n")
+        runner.write(name, config.work / "manifests" / f"{name}.html", html)
+        runner.say(name, f"manifest flow: open {config.work / 'manifests' / (name + '.html')} in a browser signed in as an owner of {config.organization}")
+        runner.say(name, f"  it POSTs the manifest to {url}")
+        runner.say(name, f"  then GitHub redirects to {value['redirect_url']}?code=CODE&state=hamsterdan-e2e-{name}; run:")
+        runner.say(name, f"  scripts/e2e convert-manifest --side {name} --code CODE")
+
+
+def command_convert_manifest(config: Config, runner: Runner, name: str, code: str) -> None:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", code):
+        raise SystemExit("--code: the code GitHub put in the redirect URL")
+    url = f"https://api.github.com/app-manifests/{code}/conversions"
+    runner.say(name, f"$ POST {url} (no authentication; the answer holds the App's PEM and webhook secret)")
+    if runner.dry_run:
+        runner.write(name, config.credentials_path(name), "", mode=0o600, secret=True)
+        return
+    request = urllib.request.Request(url, method="POST", headers={"Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        value = json.loads(response.read())
+    kept = {key: value[key] for key in ("id", "slug", "client_id", "pem", "webhook_secret", "owner")}
+    if kept["slug"] != config.side(name)["app_slug"]:
+        runner.say(name, f"GitHub assigned the slug {kept['slug']!r}; set sides.{name}.app_slug to it and rerun prepare-repos")
+    runner.write(name, config.credentials_path(name), json.dumps(kept, indent=2) + "\n", mode=0o600, secret=True)
+    runner.say(name, f"install the App on {config.side(name)['repository']} only: https://github.com/apps/{kept['slug']}/installations/new")
+
+
+# ---------------------------------------------------------------------------
+# Hosts
+
+
+def host_environment(config: Config, runner: Runner, name: str) -> Dict[str, str]:
+    """The §1.8 environment of one host. Secrets come from the credentials
+    file and the caller's HAMSTERDAN_PI_API_KEY; nothing secret is written."""
+    side = config.side(name)
+    pi = config.value["pi"]
+    if runner.dry_run and not config.credentials_path(name).exists():
+        credentials = {"id": "<app id>", "slug": side["app_slug"], "client_id": "<client id>", "pem": "", "webhook_secret": ""}
+    else:
+        credentials = json.loads(config.credentials_path(name).read_text(encoding="utf-8"))
+    api_key = os.environ.get("HAMSTERDAN_PI_API_KEY", "")
+    if not api_key and not runner.dry_run:
+        raise SystemExit("HAMSTERDAN_PI_API_KEY: export the provider key for the catalog pair before start-hosts")
+    return {
+        "HAMSTERDAN_STATE_PATH": str(config.state(name)),
+        "HAMSTERDAN_GITHUB_APP_ID": str(credentials["id"]),
+        "HAMSTERDAN_GITHUB_APP_SLUG": str(credentials["slug"]),
+        "HAMSTERDAN_GITHUB_CLIENT_ID": str(credentials["client_id"]),
+        "HAMSTERDAN_GITHUB_PRIVATE_KEY": str(credentials["pem"]),
+        "HAMSTERDAN_GITHUB_WEBHOOK_SECRET": str(credentials["webhook_secret"]),
+        "HAMSTERDAN_GITHUB_INSTALLATIONS_FILE": str(config.work / "installations" / f"{name}.toml"),
+        "HAMSTERDAN_WATCH_AUTHORS": str(config.value.get("watch_authors", "")),
+        "HAMSTERDAN_PI_PROVIDER": str(pi["provider"]),
+        "HAMSTERDAN_PI_MODEL": str(pi["model"]),
+        "HAMSTERDAN_PI_API_KEY": api_key,
+        "HAMSTERDAN_PI_CLI_PATH": str(pi["cli_path"]),
+        "HAMSTERDAN_PI_NODE_PATH": str(pi["node_path"]),
+        "HAMSTERDAN_PI_PACKAGE_ROOT": str(pi["package_root"]),
+        "HAMSTERDAN_WORKFLOW_PATH": str(config.value.get("workflow_path", ".github/workflows/ci.yml")),
+        "HAMSTERDAN_REMINDER_SECONDS": str(config.value.get("reminder_seconds", 300)),
+        "HAMSTERDAN_HOST": "127.0.0.1",
+        "HAMSTERDAN_PORT": str(side["port"]),
+    }
+
+
+def installations_toml(config: Config, name: str, runner: Runner) -> str:
+    if runner.dry_run and not config.fixture_path(name).exists():
+        org_id, repository_id = "<org id>", "<repository id>"
+    else:
+        value = json.loads(config.fixture_path(name).read_text(encoding="utf-8"))
+        org_id, repository_id = value["org_id"], value["repository_id"]
+    repository = config.side(name)["repository"]
+    return f'[[accounts]]\nid = {org_id}\nlogin = "{config.organization}"\nrepositories = ["{repository_id}:{repository}"]\n'
+
+
+def host_command(config: Config, runner: Runner, name: str) -> List[str]:
+    if name == "python":
+        return [reference_python(runner), "-I", "-B", str(E2E / "e2e_host.py")]
+    return [cabal_bin(runner, "hamsterdan-e2e-host")]
+
+
+def command_start_hosts(config: Config, runner: Runner, sides: List[str], record: Optional[str]) -> None:
+    for name in sides:
+        env = host_environment(config, runner, name)
+        tape = config.value.get("agents_tape")
+        if tape:
+            env["HAMSTERDAN_E2E_AGENTS"] = str((REPO / tape).resolve())
+        if record and name == "python":
+            env["HAMSTERDAN_E2E_RECORD"] = str(config.work / "tapes" / record)
+        runner.write(name, Path(env["HAMSTERDAN_GITHUB_INSTALLATIONS_FILE"]), installations_toml(config, name, runner), mode=0o600)
+        command = host_command(config, runner, name)
+        runner.run(name, [*command, "validate"], env=env)
+        log = config.logs(name) / "host.log"
+        # A capture copies the last stop's output; a new run starts without one.
+        runner.say(name, f"forget {config.logs(name) / 'shutdown.log'}")
+        runner.say(name, runner.command_text([*command, "serve"], env, None) + f" >> {log} 2>&1 &")
+        if runner.dry_run:
+            continue
+        (config.logs(name) / "shutdown.log").unlink(missing_ok=True)
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("ab") as output:
+            process = subprocess.Popen([*command, "serve"], env={**os.environ, **env}, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+        (config.logs(name) / "host.pid").write_text(f"{process.pid}\n")
+        health = f"http://127.0.0.1:{config.side(name)['port']}/healthz"
+        for _ in range(600):
+            try:
+                with urllib.request.urlopen(health, timeout=2) as response:
+                    runner.say(name, f"healthy: {response.read().decode()}")
+                    break
+            except OSError:
+                if process.poll() is not None:
+                    raise SystemExit(f"[{name}] the host exited ({process.returncode}); see {log}")
+                time.sleep(0.5)
+        runner.say(name, f"webhooks: {config.side(name)['public_url']}/github/webhooks must forward to 127.0.0.1:{config.side(name)['port']}")
+
+
+def command_stop_hosts(config: Config, runner: Runner, sides: List[str], into: Optional[str]) -> None:
+    """Stop the hosts and keep what each printed while stopping. ``into``
+    (``SCENARIO/CHECKPOINT``) also adds it to that capture, for the known
+    ``host-cleanup-uncertain`` defect (compare_tier_c.py)."""
+    for name in sides:
+        pid_file, log = config.logs(name) / "host.pid", config.logs(name) / "host.log"
+        runner.say(name, f"$ kill -TERM $(cat {pid_file})   # then keep the output from here on as {config.logs(name) / 'shutdown.log'}")
+        target = config.work / "captures" / into / name / "shutdown.log" if into else None
+        if target is not None:
+            runner.say(name, f"copy {config.logs(name) / 'shutdown.log'} to {target}")
+        if runner.dry_run:
+            continue
+        if target is not None and not target.parent.is_dir():
+            raise SystemExit(f"--into {into}: no capture at {target.parent}")
+        pid = int(pid_file.read_text().strip())
+        offset = log.stat().st_size if log.exists() else 0
+        os.kill(pid, signal.SIGTERM)
+        for _ in range(600):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.1)
+        with log.open("rb") as stream:
+            stream.seek(offset)
+            (config.logs(name) / "shutdown.log").write_bytes(stream.read())
+        pid_file.unlink()
+        if target is not None:
+            target.write_bytes((config.logs(name) / "shutdown.log").read_bytes())
+
+
+# ---------------------------------------------------------------------------
+# Scenarios
+#
+# A plan is a list of steps run on both sides concurrently. Each step names
+# the actor whose gh login acts. ``{slug}``, ``{pr}`` (the scenario's main
+# PR), ``{pr:LABEL}``, ``{reviewer}``, ``{base}`` and ``{repository}`` are
+# filled per side.
+
+HERO_FIX = "@{slug} please fix all three findings"
+STATUS = "@{slug} status"
+
+
+def scenario_plans() -> Dict[str, List[Dict[str, Any]]]:
+    created = lambda scenario: {"do": "create", "scenario": scenario, "actor": "author"}  # noqa: E731
+    settle = lambda *flags: {"do": "wait", "inspect": list(flags)}  # noqa: E731
+    capture = lambda checkpoint, *flags: {"do": "capture", "checkpoint": checkpoint, "inspect": list(flags)}  # noqa: E731
+    close = {"do": "close", "actor": "author"}
+    review = lambda event, body: {"do": "review", "event": event, "body": body, "actor": "reviewer"}  # noqa: E731
+    comment = lambda body: {"do": "comment", "body": body, "actor": "author"}  # noqa: E731
+    return {
+        "clean-green": [created("clean-green"), settle(), capture("final"), close],
+        "first-attempt-flake": [created("first-attempt-flake"), settle(), capture("final"), close],
+        "hero-review": [
+            created("hero-review"),
+            settle("--expect-hero-review", "--expect-readiness", "absent"),
+            capture("findings", "--expect-hero-review", "--expect-readiness", "absent"),
+            review("REQUEST_CHANGES", "Please address the review findings before merge."),
+            comment(HERO_FIX),
+            {"do": "wait", "app_commits": 1},
+            settle("--expect-readiness", "absent"),
+            capture("repaired", "--expect-readiness", "absent"),
+            comment(STATUS),
+            {"do": "wait", "replies": 2},
+            capture("status", "--expect-readiness", "absent"),
+            review("APPROVE", "Approved after the repair."),
+            settle(),
+            capture("final"),
+            close,
+        ],
+        "draft-ready": [
+            {"do": "branch", "label": "main", "edit": "readme", "draft": True, "actor": "author"},
+            {"do": "authority", "expect": "non-draft", "pass": False},
+            capture("draft", "--expect-readiness", "absent"),
+            {"do": "ready", "actor": "author"},
+            {"do": "authority", "expect": "non-draft"},
+            review("APPROVE", "Approved."),
+            settle(),
+            capture("final"),
+            close,
+        ],
+        "collaboration-approval": [
+            {"do": "branch", "label": "main", "edit": "readme", "actor": "author"},
+            {"do": "request-review", "actor": "author"},
+            {"do": "authority", "expect": "review-requested"},
+            {"do": "inline-review", "event": "REQUEST_CHANGES", "path": "README.md", "body": "Please clarify this line.", "actor": "reviewer"},
+            {"do": "authority", "expect": "changes-requested"},
+            {"do": "authority", "expect": "unresolved-thread"},
+            capture("changes-requested", "--expect-readiness", "absent"),
+            review("APPROVE", "Approved."),
+            {"do": "resolve-threads", "actor": "author"},
+            {"do": "authority", "expect": "collaboration-clear"},
+            settle(),
+            capture("final"),
+            close,
+        ],
+        "stale-base": [
+            {"do": "base-branch", "actor": "author"},
+            {"do": "branch", "label": "advance", "edit": "docstring:advance", "base": "{base}", "actor": "author"},
+            {"do": "branch", "label": "main", "edit": "readme", "base": "{base}", "actor": "author"},
+            {"do": "review", "label": "advance", "event": "APPROVE", "body": "Approved.", "actor": "reviewer"},
+            {"do": "merge", "label": "advance", "actor": "author"},
+            {"do": "authority", "expect": "strict-stale"},
+            settle("--expect-readiness", "absent"),
+            capture("stale", "--expect-readiness", "absent"),
+            {"do": "close", "label": "main", "actor": "author"},
+        ],
+        "true-conflict": [
+            {"do": "base-branch", "actor": "author"},
+            {"do": "branch", "label": "advance", "edit": "docstring:advance", "base": "{base}", "actor": "author"},
+            {"do": "branch", "label": "main", "edit": "docstring:conflict", "base": "{base}", "actor": "author"},
+            {"do": "review", "label": "advance", "event": "APPROVE", "body": "Approved.", "actor": "reviewer"},
+            {"do": "merge", "label": "advance", "actor": "author"},
+            {"do": "authority", "expect": "conflict"},
+            settle("--expect-readiness", "absent"),
+            capture("conflict", "--expect-readiness", "absent"),
+            {"do": "close", "label": "main", "actor": "author"},
+        ],
+    }
+
+
+class ScenarioRun:
+    """One side's record of a scenario run: PR numbers by label, the base."""
+
+    def __init__(self, config: Config, scenario: str, name: str, runner: Runner) -> None:
+        self.path = config.work / "runs" / scenario / f"{name}.json"
+        self.runner = runner
+        self.value: Dict[str, Any] = json.loads(self.path.read_text()) if self.path.exists() else {"prs": {}, "base": "main"}
+
+    def pr(self, label: str = "main") -> str:
+        return str(self.value["prs"].get(label, f"<pr:{label}>"))
+
+    def save(self) -> None:
+        if not self.runner.dry_run:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps(self.value, indent=2, sort_keys=True) + "\n")
+
+
+EDITS = {
+    "readme": "append one unique line to README.md",
+    "docstring:advance": "replace the first module docstring of src/pr_fixture/__init__.py (base advance)",
+    "docstring:conflict": "replace the same docstring with different text (true conflict)",
+}
+
+
+def apply_edit(checkout: Path, edit: str, stamp: str) -> List[str]:
+    if edit == "readme":
+        with (checkout / "README.md").open("a", encoding="utf-8") as output:
+            output.write(f"\nTier C run {stamp}.\n")
+        return ["README.md"]
+    path = checkout / "src" / "pr_fixture" / "__init__.py"
+    text = path.read_text(encoding="utf-8")
+    replacement = '"""Advanced fixture package."""' if edit == "docstring:advance" else '"""Conflicting fixture package."""'
+    changed = re.sub(r'\A"""(?:.|\n)*?"""', replacement, text, count=1)
+    if changed == text:
+        raise SystemExit(f"{path}: no leading docstring to replace")
+    path.write_text(changed, encoding="utf-8")
+    return ["src/pr_fixture/__init__.py"]
+
+
+def run_step(config: Config, runner: Runner, scenario: str, name: str, step: Dict[str, Any], run: ScenarioRun) -> None:
+    side = config.side(name)
+    repository, slug = str(side["repository"]), str(side["app_slug"])
+    actor = step.get("actor", "author")
+    env = config.gh_env(actor)
+    label = step.get("label", "main")
+    pr = run.pr(label)
+
+    def fill(text: str) -> str:
+        return text.replace("{slug}", slug).replace("{pr}", pr).replace("{repository}", repository).replace("{reviewer}", config.actors["reviewer"]["login"]).replace("{base}", str(run.value.get("base", "main")))
+
+    operator = operator_command(runner, config, name)
+    do = step["do"]
+    if do == "create":
+        out = runner.run(name, [*operator, "create", "--scenario", step["scenario"]], env=env, placeholder='{"number": "<pr:main>"}')
+        run.value["prs"][label] = json.loads(out)["number"]
+    elif do == "wait":
+        wait(config, runner, name, step, run, operator, env)
+    elif do == "capture":
+        capture(config, runner, scenario, step["checkpoint"], name, run, step.get("inspect", []), step.get("authority", []))
+    elif do == "close":
+        runner.run(name, ["gh", "pr", "close", pr, "--repo", repository], env=env)
+    elif do == "review":
+        flag = {"APPROVE": "--approve", "REQUEST_CHANGES": "--request-changes", "COMMENT": "--comment"}[step["event"]]
+        runner.run(name, ["gh", "pr", "review", pr, "--repo", repository, flag, "--body", fill(step["body"])], env=env)
+    elif do == "comment":
+        runner.run(name, ["gh", "pr", "comment", pr, "--repo", repository, "--body", fill(step["body"])], env=env)
+    elif do == "ready":
+        runner.run(name, ["gh", "pr", "ready", pr, "--repo", repository], env=env)
+    elif do == "request-review":
+        runner.run(name, ["gh", "api", "--method", "POST", f"/repos/{repository}/pulls/{pr}/requested_reviewers", "-f", f"reviewers[]={config.actors['reviewer']['login']}"], env=env)
+    elif do == "inline-review":
+        head = json.loads(runner.run(name, ["gh", "api", f"/repos/{repository}/pulls/{pr}"], env=env, placeholder='{"head": {"sha": "<head>"}}'))["head"]["sha"]
+        body = {"commit_id": head, "event": step["event"], "body": fill(step["body"]), "comments": [{"path": step["path"], "line": 1, "side": "RIGHT", "body": fill(step["body"])}]}
+        runner.run(name, ["gh", "api", "--method", "POST", f"/repos/{repository}/pulls/{pr}/reviews", "--input", "-"], env=env, stdin=json.dumps(body, sort_keys=True))
+    elif do == "resolve-threads":
+        owner, repo_name = repository.split("/", 1)
+        query = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{id isResolved}}}}}"
+        out = runner.run(name, ["gh", "api", "graphql", "-f", f"query={query}", "-F", f"owner={owner}", "-F", f"name={repo_name}", "-F", f"number={pr}"], env=env, placeholder='{"data": {"repository": {"pullRequest": {"reviewThreads": {"nodes": [{"id": "<thread>", "isResolved": false}]}}}}}')
+        for thread in json.loads(out)["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]:
+            if not thread["isResolved"]:
+                runner.run(name, ["gh", "api", "graphql", "-f", "query=mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}", "-F", f"id={thread['id']}"], env=env)
+    elif do == "authority":
+        out = runner.run(name, [*operator, "inspect-authority", "--pr", pr, "--expect", step["expect"]], env=env, placeholder='{"ok": true}', check=False)
+        if not runner.dry_run and json.loads(out).get("ok") is not step.get("pass", True):
+            raise SystemExit(f"[{name}] inspect-authority --expect {step['expect']}: {out}")
+        run.value.setdefault("authority", {})[step["expect"]] = json.loads(out)
+    elif do == "base-branch":
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        base = f"e2e-authority-{stamp}"
+        main_sha = json.loads(runner.run(name, ["gh", "api", f"/repos/{repository}/git/ref/heads/main"], env=env, placeholder='{"object": {"sha": "<main>"}}'))["object"]["sha"]
+        runner.run(name, ["gh", "api", "--method", "POST", f"/repos/{repository}/git/refs", "-f", f"ref=refs/heads/{base}", "-f", f"sha={main_sha}"], env=env)
+        rules = ruleset(config)
+        rules["name"] = f"hamsterdan-e2e-{base}"
+        rules["conditions"]["ref_name"]["include"] = [f"refs/heads/{base}"]
+        runner.run(name, ["gh", "api", "--method", "POST", f"/repos/{repository}/rulesets", "--input", "-"], env=env, stdin=json.dumps(rules, sort_keys=True))
+        run.value["base"] = base
+    elif do == "branch":
+        base = fill(step.get("base", "main"))
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        branch = f"e2e/{scenario}-{label}-{stamp}"
+        with tempfile.TemporaryDirectory(prefix="hamsterdan-e2e-") as temporary:
+            checkout = Path(temporary) / "checkout"
+            runner.run(name, ["git", "clone", "--branch", base, f"https://github.com/{repository}.git", str(checkout)], env=env)
+            runner.run(name, ["git", "switch", "--create", branch], cwd=checkout)
+            runner.say(name, f"edit: {EDITS[step['edit']]}")
+            changed = apply_edit(checkout, step["edit"], stamp) if not runner.dry_run else ["<edited path>"]
+            runner.run(name, ["git", "add", "--", *changed], cwd=checkout)
+            runner.run(name, ["git", "commit", "-m", f"Tier C {scenario}: {label}"], cwd=checkout)
+            runner.run(name, ["git", "push", "--set-upstream", "origin", branch], cwd=checkout, env=env)
+        runner.run(name, ["gh", "pr", "create", "--repo", repository, "--base", base, "--head", branch, "--title", f"Tier C {scenario}: {label}", "--body", "Controlled Hamsterdan tier C scenario. Do not merge automatically.", *(["--draft"] if step.get("draft") else [])], env=env)
+        out = runner.run(name, ["gh", "pr", "view", branch, "--repo", repository, "--json", "number"], env=env, placeholder=f'{{"number": "<pr:{label}>"}}')
+        run.value["prs"][label] = json.loads(out)["number"]
+    elif do == "merge":
+        # The isolated base's ruleset requires the checks first.
+        runner.run(name, ["gh", "pr", "checks", pr, "--repo", repository, "--watch", "--required", "--interval", "30"], env=env)
+        runner.run(name, ["gh", "pr", "merge", pr, "--repo", repository, "--squash"], env=env)
+    else:
+        raise SystemExit(f"unknown step {do!r}")
+    run.save()
+
+
+def wait(config: Config, runner: Runner, name: str, step: Dict[str, Any], run: ScenarioRun, operator: List[str], env: Dict[str, str]) -> None:
+    repository, pr = str(config.side(name)["repository"]), run.pr()
+    timing = config.value.get("wait", EXAMPLE_CONFIG["wait"])
+    if "inspect" in step:
+        argv = [*operator, "inspect", "--pr", pr, *step["inspect"]]
+        what = "operator inspect passes"
+    elif "app_commits" in step:
+        argv = ["gh", "api", f"/repos/{repository}/pulls/{pr}/commits?per_page=100"]
+        what = f"{step['app_commits']} App commit(s)"
+    else:
+        argv = ["gh", "api", f"/repos/{repository}/issues/{pr}/comments?per_page=100"]
+        what = f"{step['replies']} App replies"
+    runner.say(name, f"wait (every {timing['interval_seconds']}s, at most {timing['timeout_seconds']}s) until {what}:")
+    if runner.dry_run:
+        runner.run(name, argv, env=env)
+        return
+    deadline = time.monotonic() + float(timing["timeout_seconds"])
+    bot = config.bot(name)
+    while True:
+        out = runner.run(name, argv, env=env, check=False)
+        try:
+            value = json.loads(out)
+        except json.JSONDecodeError:
+            value = None
+        if "inspect" in step:
+            done = isinstance(value, dict) and value.get("ok") is True
+        elif "app_commits" in step:
+            done = isinstance(value, list) and sum(1 for item in value if (item.get("author") or {}).get("login") == bot) >= step["app_commits"]
+        else:
+            done = isinstance(value, list) and sum(1 for item in value if (item.get("user") or {}).get("login") == bot and "<!-- hamsterdan:conversation " in str(item.get("body"))) >= step["replies"]
+        if done:
+            return
+        if time.monotonic() > deadline:
+            raise SystemExit(f"[{name}] timed out waiting until {what}")
+        time.sleep(float(timing["interval_seconds"]))
+
+
+def command_run_scenario(config: Config, runner: Runner, scenario: str, start: int) -> None:
+    plans = scenario_plans()
+    if scenario not in plans:
+        raise SystemExit(f"unknown scenario {scenario!r}; scripts/e2e scenarios lists them")
+    runs = {name: ScenarioRun(config, scenario, name, runner) for name in SIDES}
+    for index, step in enumerate(plans[scenario]):
+        if index < start:
+            continue
+        print(f"== step {index}: {json.dumps(step, sort_keys=True)}", flush=True)
+        both(lambda name: run_step(config, runner, scenario, name, step, runs[name]))
+
+
+# ---------------------------------------------------------------------------
+# capture
+
+
+THREADS_QUERY = (
+    "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){"
+    "reviewThreads(first:100){nodes{isResolved path line originalLine resolvedBy{login} comments(first:1){nodes{author{login} body}}}}}}}"
+)
+
+
+def capture(config: Config, runner: Runner, scenario: str, checkpoint: str, name: str, run: ScenarioRun, inspect_flags: List[str], authority: List[str]) -> None:
+    side = config.side(name)
+    repository, pr = str(side["repository"]), run.pr()
+    out = config.work / "captures" / scenario / checkpoint / name
+    env = config.gh_env("author")
+    operator = operator_command(runner, config, name)
+    runner.write(
+        name,
+        out / "meta.json",
+        json.dumps({"side": name, "repository": repository, "organization": config.organization, "app_slug": side["app_slug"], "pr": pr, "checkpoint": checkpoint}, sort_keys=True) + "\n",
+    )
+
+    def keep(relative: str, argv: List[str], placeholder: str = "null", check: bool = True) -> str:
+        text = runner.run(name, argv, env=env, placeholder=placeholder, check=check)
+        if not runner.dry_run:
+            path = out / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        return text
+
+    keep("inspect.json", [*operator, "inspect", "--pr", pr, *inspect_flags], check=False)
+    found = dict(run.value.get("authority", {}))
+    for expectation in authority:
+        found[expectation] = json.loads(runner.run(name, [*operator, "inspect-authority", "--pr", pr, "--expect", expectation], env=env, placeholder="{}", check=False) or "{}")
+    if found:
+        runner.write(name, out / "inspect-authority.json", json.dumps(found, sort_keys=True) + "\n")
+    keep("github/pull.json", ["gh", "api", f"/repos/{repository}/pulls/{pr}"])
+    keep("github/issue-comments.json", ["gh", "api", "--paginate", "--slurp", f"/repos/{repository}/issues/{pr}/comments?per_page=100"], "[]")
+    keep("github/review-comments.json", ["gh", "api", "--paginate", "--slurp", f"/repos/{repository}/pulls/{pr}/comments?per_page=100"], "[]")
+    keep("github/reviews.json", ["gh", "api", "--paginate", "--slurp", f"/repos/{repository}/pulls/{pr}/reviews?per_page=100"], "[]")
+    owner, repo_name = repository.split("/", 1)
+    threads = keep("github/threads.raw.json", ["gh", "api", "graphql", "-f", f"query={THREADS_QUERY}", "-F", f"owner={owner}", "-F", f"name={repo_name}", "-F", f"number={pr}"], '{"data": {"repository": {"pullRequest": {"reviewThreads": {"nodes": []}}}}}')
+    keep("github/commits.json", ["gh", "api", "--paginate", "--slurp", f"/repos/{repository}/pulls/{pr}/commits?per_page=100"], "[]")
+    keep("github/runs.json", ["gh", "api", f"/repos/{repository}/actions/runs?event=pull_request&per_page=100"], '{"workflow_runs": []}')
+    if not runner.dry_run:
+        # --slurp wraps each page in an outer list.
+        for relative in ("github/issue-comments.json", "github/review-comments.json", "github/reviews.json", "github/commits.json"):
+            pages = json.loads((out / relative).read_text())
+            (out / relative).write_text(json.dumps([item for page in pages for item in page]))
+        nodes = json.loads(threads)["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+        (out / "github" / "threads.json").write_text(json.dumps(nodes))
+        bot = config.bot(name)
+        for commit in json.loads((out / "github" / "commits.json").read_text()):
+            if bot in ((commit.get("author") or {}).get("login"), (commit.get("committer") or {}).get("login")):
+                tree = commit["commit"]["tree"]["sha"]
+                listing = json.loads(runner.run(name, ["gh", "api", f"/repos/{repository}/git/trees/{tree}?recursive=1"], env=env))
+                (out / "github" / "trees").mkdir(parents=True, exist_ok=True)
+                (out / "github" / "trees" / f"{commit['sha']}.json").write_text(json.dumps(listing))
+    else:
+        runner.say(name, "for each App commit: gh api /repos/<repository>/git/trees/<tree>?recursive=1 > github/trees/<sha>.json")
+    health = f"http://127.0.0.1:{side['port']}/healthz"
+    runner.say(name, f"$ GET {health} > {out / 'healthz.json'}")
+    if not runner.dry_run:
+        with urllib.request.urlopen(health, timeout=10) as response:
+            (out / "healthz.json").write_bytes(response.read())
+    runner.run(name, [*export_command(runner, name), "--state-dir", str(config.state(name)), "--out", str(out / "export"), "--repository", repository, "--pull-request", pr])
+    shutdown = config.logs(name) / "shutdown.log"
+    runner.say(name, f"copy {shutdown} to {out / 'shutdown.log'} when it exists (after stop-hosts)")
+    if not runner.dry_run and shutdown.exists():
+        (out / "shutdown.log").write_bytes(shutdown.read_bytes())
+
+
+def command_capture(config: Config, runner: Runner, scenario: str, checkpoint: str, inspect_flags: List[str], authority: List[str]) -> None:
+    runs = {name: ScenarioRun(config, scenario, name, runner) for name in SIDES}
+    both(lambda name: capture(config, runner, scenario, checkpoint, name, runs[name], inspect_flags, authority))
+
+
+# ---------------------------------------------------------------------------
+# compare, rehearse
+
+
+def command_compare(config: Config, scenario: str, checkpoint: Optional[str], extra: List[str]) -> int:
+    root = config.work / "captures" / scenario
+    checkpoints = [checkpoint] if checkpoint else sorted(path.name for path in root.iterdir() if path.is_dir()) if root.exists() else []
+    if not checkpoints:
+        raise SystemExit(f"{root}: no captures")
+    status = 0
+    for name in checkpoints:
+        argv = [sys.executable, "-B", str(E2E / "compare_tier_c.py"), "--python", str(root / name / "python"), "--haskell", str(root / name / "haskell"), *extra]
+        completed = subprocess.run(argv, capture_output=True, text=True)
+        (root / name / "comparison.json").write_text(completed.stdout)
+        print(f"{scenario}/{name}: {'same' if completed.returncode == 0 else 'DIFFERENT'} ({root / name / 'comparison.json'})")
+        status = status or completed.returncode
+    return status
+
+
+def command_rehearse(config: Config, runner: Runner) -> int:
+    work = config.work / "rehearse"
+    argv = [
+        sys.executable,
+        "-B",
+        str(E2E / "rehearse_hosts.py"),
+        "--work",
+        str(work),
+        "--reference",
+        reference_python(runner),
+        "--haskell-host",
+        cabal_bin(runner, "hamsterdan-e2e-host"),
+    ]
+    runner.say("both", runner.command_text(argv, {}, None))
+    if runner.dry_run:
+        return 0
+    return subprocess.run(argv).returncode
+
+
+# ---------------------------------------------------------------------------
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__.split("\n\n", 1)[1])
+    parser.add_argument("--config", type=Path, default=REPO / "e2e-work" / "config.json")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("init")
+    commands.add_parser("scenarios")
+    for name in ("prepare-repos", "manifests", "start-hosts", "stop-hosts"):
+        sub = commands.add_parser(name)
+        sub.add_argument("--dry-run", action="store_true")
+        sub.add_argument("--side", choices=SIDES, action="append")
+        if name == "start-hosts":
+            sub.add_argument("--record", metavar="NAME", help="the reference host also records a tape under work/tapes/NAME")
+        if name == "stop-hosts":
+            sub.add_argument("--into", metavar="SCENARIO/CHECKPOINT", help="also add the shutdown output to that capture")
+    convert = commands.add_parser("convert-manifest")
+    convert.add_argument("--dry-run", action="store_true")
+    convert.add_argument("--side", choices=SIDES, required=True)
+    convert.add_argument("--code", required=True)
+    scenario = commands.add_parser("run-scenario")
+    scenario.add_argument("--dry-run", action="store_true")
+    scenario.add_argument("--scenario", required=True)
+    scenario.add_argument("--from", dest="start", type=int, default=0, help="resume at this step number")
+    take = commands.add_parser("capture")
+    take.add_argument("--dry-run", action="store_true")
+    take.add_argument("--scenario", required=True)
+    take.add_argument("--checkpoint", required=True)
+    take.add_argument("--inspect", action="append", default=[], help="an extra operator inspect argument")
+    take.add_argument("--authority", action="append", default=[], help="an inspect-authority expectation")
+    compare = commands.add_parser("compare")
+    compare.add_argument("--scenario", required=True)
+    compare.add_argument("--checkpoint")
+    compare.add_argument("--real-agent", action="store_true")
+    compare.add_argument("--allow-failed-activities", action="store_true")
+    rehearse = commands.add_parser("rehearse")
+    rehearse.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    if args.command == "init":
+        command_init(args.config)
+        return 0
+    if args.command == "scenarios":
+        for name, plan in scenario_plans().items():
+            print(f"{name}:")
+            for index, step in enumerate(plan):
+                print(f"  {index:2d}. {json.dumps(step, sort_keys=True)}")
+        return 0
+    dry_run = getattr(args, "dry_run", False)
+    config = load_config(args.config, dry_run)
+    runner = Runner(dry_run)
+    if dry_run:
+        print(f"# dry run: nothing is executed{'' if config.path else ' (the built-in example config)'}", flush=True)
+    sides = getattr(args, "side", None) or list(SIDES)
+    if args.command == "prepare-repos":
+        command_prepare_repos(config, runner, sides)
+    elif args.command == "manifests":
+        command_manifests(config, runner, sides)
+    elif args.command == "convert-manifest":
+        command_convert_manifest(config, runner, args.side, args.code)
+    elif args.command == "start-hosts":
+        command_start_hosts(config, runner, sides, args.record)
+    elif args.command == "stop-hosts":
+        command_stop_hosts(config, runner, sides, args.into)
+    elif args.command == "run-scenario":
+        command_run_scenario(config, runner, args.scenario, args.start)
+    elif args.command == "capture":
+        command_capture(config, runner, args.scenario, args.checkpoint, args.inspect, args.authority)
+    elif args.command == "compare":
+        extra = (["--real-agent"] if args.real_agent else []) + (["--allow-failed-activities"] if args.allow_failed_activities else [])
+        return command_compare(config, args.scenario, args.checkpoint, extra)
+    elif args.command == "rehearse":
+        return command_rehearse(config, runner)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

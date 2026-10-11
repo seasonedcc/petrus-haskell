@@ -41,13 +41,13 @@ import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import ServiceSupport (envelope, hostClientsOf, hostConfig, newFakeClients, receiveSigned, sqlExec)
 import System.Directory (createDirectory, createDirectoryIfMissing, createDirectoryLink, doesFileExist, removeFile)
-import System.Posix.Signals (raiseSignal, sigTERM)
+import System.Posix.Signals (raiseSignal, sigINT, sigTERM)
 import Network.Socket (close)
 import Network.Wai.Handler.Warp qualified as Warp
 import RawHttp (RawResponse (..), parseResponse)
 import RawHttp qualified
 import System.FilePath ((</>))
-import System.IO (Handle, IOMode (..), openFile, withFile)
+import System.IO (Handle, IOMode (..), hClose, openFile, withFile)
 import System.Posix.Files (createSymbolicLink, setFileMode)
 import System.Process.Typed
 import Test.Hspec
@@ -157,27 +157,35 @@ spec = do
       createDirectoryLink (tmp </> "target") (tmp </> "applications" </> "44" </> "31" </> "7")
       inspectInstance tmp 44 31 7 `shouldRaiseValue` "not a real directory"
 
-  describe "serve (uvicorn.run)" $
-    it "composes the real agent, serves h11's status line to HTTP/1.0, and stops on SIGTERM" . withTempRoot $ \tmp -> do
+  describe "serve (uvicorn.run)" $ forM_ [("SIGTERM", sigTERM, ExitFailure 143, [sigTERM]), ("SIGINT", sigINT, ExitSuccess, [])] $ \(signalName, signal, status, again) ->
+    it ("composes the real agent, serves h11's status line to HTTP/1.0, and stops on " <> signalName) . withTempRoot $ \tmp -> do
       repo <- repoRoot
       privateKey <- BS.readFile (repo </> "packages" </> "hamsterdan-github" </> "test" </> "corpus" </> "app-test-key.pem")
       withFakeGitHub registrationRoutes $ \githubPort _ -> do
         side <- prepareSide (tmp </> "serve") privateKey
         port <- bracket Warp.openFreePort (close . snd) (pure . fst)
         probed <- newEmptyMVar
+        reraised <- newIORef []
         silent <- discard tmp
         let probe = do
               raw <- RawHttp.exchange port "GET /healthz HTTP/1.0\r\nhost: testserver\r\n\r\n"
               putMVar probed (parseResponse raw)
-              raiseSignal sigTERM
+              raiseSignal signal
             cli =
               (testEnvironment (Map.insert "HAMSTERDAN_PORT" (show port) side.configured) silent)
                 { clientOptions = do
                     exchange' <- newPlainExchangeAt "127.0.0.1" githubPort
                     pure ClientOptions {exchange = exchange', clock = realToFrac <$> getPOSIXTime, metadataHook = Nothing}
                 , onServing = \_ -> void (forkIO probe)
+                , reraise = \raised -> modifyIORef reraised (<> [raised])
                 }
-        runCli cli ["serve"] `shouldReturn` ExitSuccess
+        -- uvicorn raises the captured signal again once shut down: SIGTERM
+        -- then ends the reference at once, by SIGTERM; SIGINT meets
+        -- asyncio.run's handler, and the command ends normally.
+        runCli cli ["serve"] `shouldReturn` status
+        readIORef reraised `shouldReturn` again
+        hClose silent
+        BS.readFile (tmp </> "discarded.txt") `shouldReturn` ""
         response <- takeMVar probed
         response.statusLine `shouldBe` "HTTP/1.1 200 OK"
         lookup "connection" [(BC.map toLower name, value) | (name, value) <- response.headers] `shouldBe` Just "close"
@@ -498,6 +506,7 @@ testEnvironment environment handle =
     , output = handle
     , errors = handle
     , onServing = \_ -> pure ()
+    , reraise = \_ -> pure ()
     }
 
 discard :: FilePath -> IO Handle

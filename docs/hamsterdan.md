@@ -1083,6 +1083,23 @@ The 11 journeys in `tests/integration/host/test_readiness_scenarios.py` are:
 
 ## 5. End-to-end against a real GitHub App
 
+**Status.**
+- **Tier A** is done. It lives in `packages/hamsterdan-testing`, with the
+  eleven journeys byte-exact in all four pairings.
+- **Tier B** is done offline, in `packages/hamsterdan-e2e`. All eleven
+  journeys, plus three fault cases, are recorded from the reference and
+  replayed into both hosts.
+- **Tier C** tooling is ready and tested against fakes:
+  - the operator fixture parameterization;
+  - the deterministic carried agent;
+  - `scripts/e2e`, for repositories, App manifests, hosts, scenarios and
+    captures;
+  - the normalizing comparator.
+
+  It needs only the credentials and accounts listed in
+  [docs/e2e.md](e2e.md), which is the runbook. The harness lives in
+  `packages/hamsterdan-e2e` and `scripts/e2e`, not in `interop/hamsterdan/`.
+
 ### 5.1 What upstream needs
 
 **GitHub App** (`docs/operator/README.md:33-88`; checked at startup by
@@ -1152,6 +1169,14 @@ The rerun-broker workflow and the operator constants (`REPOSITORY`, `ORG_ID`,
 `operator.py:35-87`) hard-code HBNetwork values. We need a small
 parameterization patch, kept in this repo as a harness overlay and not pushed
 upstream, or a forked broker with the bot login substituted.
+
+Both are done without patching upstream:
+- The reference operator runs under a runtime overlay,
+  `packages/hamsterdan-e2e/python/e2e_operator.py`.
+- The Haskell operator takes the fixture as configuration
+  (`Operator.fixture`, through `hamsterdan-e2e-operator`).
+- `scripts/e2e prepare-repos` rebinds the broker's two files to each App's
+  bot login. It commits that rebinding on top of the fixture commit.
 
 Two Apps on one repository would both comment and both trigger the broker, so
 each App gets its own repository copy.
@@ -1337,11 +1362,18 @@ schemas, environment variables, CLI JSON):
 ## 8. Open questions
 
 1. **Tier C organization and Apps.** Do we register our own Apps in
-   `seasonedcc`, or ask upstream for access to HBNetwork?
+   `seasonedcc`, or ask upstream for access to HBNetwork? *Partly answered:*
+   the tooling assumes our own Apps in `seasonedcc`, registered through the
+   manifest flow ([docs/e2e.md](e2e.md)). An owner still has to approve
+   them.
 2. **Which LLM provider key do we use for the real-agent smoke pass?** It must
-   be a catalog pair.
+   be a catalog pair. *Open:* the config defaults to production's
+   `openai`/`gpt-5.6-sol`, and the key is the one input only the user can
+   supply.
 3. **Do we port the operator, or keep the Python one?** The Python operator
-   needs parameterization either way.
+   needs parameterization either way. *Answered:* both are used. Each host's
+   scenarios run through its own operator: the reference under a runtime
+   overlay, and the port with the fixture as configuration.
 4. **When does hamsterdan2 enter scope?** Upstream CV22 cutover would make a
    new net and storage layout production. If that lands before our port
    finishes, moving the Hamsterdan pin follows the UPSTREAM.md procedure.

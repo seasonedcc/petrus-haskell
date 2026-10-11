@@ -151,6 +151,7 @@ operatorWith runner (brokerDigest, validatorDigest) =
     , withTemporary = defaultWithTemporary
     , brokerDigest
     , validatorDigest
+    , fixture = hbNetworkFixture
     }
   where
     Operator {stamp = defaultStamp, withTemporary = defaultWithTemporary} = defaultOperator

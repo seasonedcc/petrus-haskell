@@ -102,6 +102,19 @@ Below are the differences that remain, with their rationale.
   status line) have their version replaced with `HTTP/1.1`, as h11 writes
   it. The headers, including the final `Connection: close`, and the body
   are warp's, unchanged.
+- **The end-to-end seams (`packages/hamsterdan-e2e`).** Tier B replays a
+  tape into this host through seams it already had: `ServiceOptions.clock`
+  and `clients` (`gitHubHostClients` over `newPlainExchangeAt`, the
+  configurable API base), the agent runner and custody of `serviceOptions`,
+  and `ApplicationOptions.mutationPublisher` (the Git publisher, replayed at
+  its boundary) through `v5ApplicationFactory`. Tier C's
+  `hamsterdan-e2e-host` is this command line with `CliEnvironment`'s
+  `composeAgent` (the carried agent) and `clientOptions` (a fake GitHub,
+  for tests only) replaced. The one seam added for them is
+  `CliEnvironment.reraise`: `serve` returns the signal that stopped it,
+  and the command line raises SIGTERM again with the default action, as
+  uvicorn does (the tier C host rehearsal found the exit status differing).
+  Production raises it; `CliSpec` records it instead.
 
 ## Changes made in sibling packages
 
