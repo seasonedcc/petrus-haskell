@@ -69,7 +69,7 @@ import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch.Absurd (Session (..))
 import Petrus.Postgres (Connection, quoteIdentifier, sql, sqlSource, textParam)
 import Petrus.Postgres qualified as Pg
-import Petrus.Testing.Dst.Engine.Common (PyException (..))
+import Petrus.Testing.Dst.Engine.Common (PyException (..), strs)
 
 -- ---------------------------------------------------------------------------
 -- Faults
@@ -438,9 +438,6 @@ mergeObject :: Json -> [(Text, Json)] -> Json
 mergeObject base extra = case base of
   Object members -> Object ([(k, v) | (k, v) <- members, k `notElem` map fst extra] <> extra)
   _ -> Object extra
-
-strs :: [Text] -> Json
-strs = Array . map String
 
 isPyObject :: Json -> Bool
 isPyObject = \case

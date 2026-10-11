@@ -1,6 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# OPTIONS_GHC -fno-full-laziness -fno-cse #-}
 
 -- | Public-Engine worlds over production LocalDispatch custody: a port of
 -- the reference's @tests/dst/retry_world.py@.
@@ -76,7 +75,7 @@ import Petrus.Activity
 import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), handlerTokens)
+import Petrus.Impetus.Binding (BoundHandler, handlerTokens)
 import Petrus.Impetus.History.Records (recordName)
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
 import Petrus.Impetus.Instance (FiringOutcome (..), ImplementationRef (..))
@@ -86,11 +85,11 @@ import Petrus.Motus.Dispatch (ActivityAttempt (epoch, instance', invocation, que
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), LocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Testing.Dst
+import Petrus.Testing.Dst.Engine.Bridge (ObservedHandler (..), observed)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Testing.Dst.PyRepr (pyStrRepr)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
-import System.IO.Unsafe (unsafePerformIO)
 
 -- ---------------------------------------------------------------------------
 -- Constants
@@ -99,9 +98,6 @@ inputPlace, done, work :: NetPath
 inputPlace = path "input"
 done = path "done"
 work = path "work"
-
-path :: Text -> NetPath
-path = either (error . T.unpack) id . netPath
 
 instanceId, scenarioId, terminalScenarioId, delayedRetryScenarioId :: Text
 instanceId = "dst-world-retry-recovery"
@@ -112,9 +108,6 @@ delayedRetryScenarioId = "delayed-retry-crash-recovery-world-v3"
 -- | @RETRY_AVAILABLE_INSTANT@.
 retryAvailableInstant :: Integer
 retryAvailableInstant = 5
-
-strs :: [Text] -> Json
-strs = Array . map String
 
 identityOf :: Text -> Json -> Identity k
 identityOf name definition = Identity {name, version = 1, digest = digestOf definition}
@@ -283,9 +276,9 @@ data Bridge = Bridge {prepared :: IORef Int, projected :: IORef Int}
 -- pure function; the effects run when the Engine forces the result.
 bridgeHandler :: Integer -> Bridge -> BoundHandler
 bridgeHandler interval bridge =
-  ActivityBound
-    ActivityHandler
-      { prepare = \b -> effectful $ do
+  observed
+    ObservedHandler
+      { prepare = \b -> do
           modifyIORef' bridge.prepared (+ 1)
           pure $ case bindingTokens b of
             t : _ -> do
@@ -303,15 +296,10 @@ bridgeHandler interval bridge =
                     }
               Right ActivityInvocation {activity = "work", input = t.payload, policy, correlation = Nothing, idempotency = Nothing}
             [] -> Left "IndexError('tuple index out of range')"
-      , project = \_ result -> effectful $ do
+      , project = \_ result -> do
           modifyIORef' bridge.projected (+ 1)
           pure (Right (handlerTokens [(done, [Token (Just "Done") result])]))
-      , projectFailure = Nothing
       }
-
-effectful :: IO a -> a
-effectful = unsafePerformIO
-{-# NOINLINE effectful #-}
 
 -- ---------------------------------------------------------------------------
 -- Profiles
@@ -413,12 +401,6 @@ attemptView attempt =
     ]
   where
     inv = attempt.invocation
-
--- | @int(attempt.epoch)@.
-epochOf :: ActivityAttempt -> Integer
-epochOf attempt = case reads (T.unpack attempt.epoch) of
-  [(n, "")] -> n
-  _ -> error ("non-integer Activity attempt epoch " <> show attempt.epoch)
 
 newRetryProfile :: RetryKind -> FilePath -> FilePath -> IO RetryProfile
 newRetryProfile kind historyPath dispatchPath = do
@@ -699,11 +681,6 @@ newRetryProfile kind historyPath dispatchPath = do
 -- ---------------------------------------------------------------------------
 -- Checkers
 
-listOf :: Text -> Json -> [Json]
-listOf key value = case member key value of
-  Array xs -> xs
-  _ -> []
-
 intOf :: Text -> Json -> Integer
 intOf key value = maybe 0 id (lookupInt key value)
 
@@ -757,7 +734,7 @@ retryAuthorityChecker =
   Checker
     { identity = checkerIdentity
     , request = ObservationRequest {name = "engine.retry-authority", payload = Object []}
-    , check = \o -> let (passed, detail) = retryVerdict o.value in Right CheckResult {passed, detail = Object detail}
+    , check = pureCheck $ \o -> let (passed, detail) = retryVerdict o.value in Right CheckResult {passed, detail = Object detail}
     }
 
 -- | @DelayedRetryAuthorityChecker@.
@@ -766,7 +743,7 @@ delayedRetryAuthorityChecker =
   Checker
     { identity = delayedRetryCheckerIdentity
     , request = ObservationRequest {name = "engine.delayed-retry-authority", payload = Object []}
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         let (authority, detail) = retryVerdict o.value
             claimChecks = listOf "claim_checks" o.value
             attempts = listOf "attempts" o.value
@@ -801,7 +778,7 @@ terminalAuthorityChecker =
   Checker
     { identity = terminalCheckerIdentity
     , request = ObservationRequest {name = "engine.local-terminal-authority", payload = Object []}
-    , check = \o -> do
+    , check = pureCheck $ \o -> do
         let value = o.value
             reports = listOf "terminal_reports" value
             acceptedResults = listOf "accepted_results" value

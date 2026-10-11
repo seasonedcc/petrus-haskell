@@ -215,6 +215,8 @@ data WorldState g = WorldState
   , inFair :: Bool
   , ending :: Maybe Disposition
   , streams :: Maybe ChoiceStreams
+  , liveCheckers :: [Checker]
+  -- ^ The checkers as of the next check: each carries its own memory.
   }
 
 -- | One deterministic interpreter over an application-owned profile.
@@ -286,7 +288,7 @@ newWorld config = case validateConfig of
             , checkers = config.checkers
             , progress = config.progress
             , seed = config.seed
-            , state = initialState choices
+            , state = initialState choices config.checkers
             }
     (result, world') <- runWorldT construct world
     case result of
@@ -317,8 +319,8 @@ newWorld config = case validateConfig of
         profile <- askW (\w -> w.profile)
         runDoor (profile.closeGeneration g)
 
-initialState :: Maybe ChoiceStreams -> WorldState g
-initialState choices =
+initialState :: Maybe ChoiceStreams -> [Checker] -> WorldState g
+initialState choices checkers =
   WorldState
     { clock = 0
     , live = Nothing
@@ -336,6 +338,7 @@ initialState choices =
     , inFair = False
     , ending = Nothing
     , streams = choices
+    , liveCheckers = checkers
     }
 
 -- | Construct a World, run a computation, and always close it afterwards
@@ -927,12 +930,14 @@ type Captured = (Checker, Observation, CheckResult, Text)
 captureChecks :: (Monad m) => Text -> Integer -> g -> Integer -> WorldT m g [Captured]
 captureChecks trigger sequence' g liveId = do
   world <- askW id
-  forM world.checkers $ \checker -> do
+  checkers <- getsW (\s -> s.liveCheckers)
+  forM (zip [0 :: Int ..] checkers) $ \(index, checker) -> do
     value <- scenarioDoor (world.profile.observe g checker.request) >>= strictValue "checker observation"
     current <- getsW (\s -> s.clock)
     let observation =
           Observation {name = checker.request.name, value, instant = current, generation = liveId, sequence = sequence'}
-    result <- either (throwWorld . ProfileRaised) pure (checker.check observation)
+    (result, advanced) <- either (throwWorld . ProfileRaised) pure (runChecker checker observation)
+    modifyW (\s -> s {liveCheckers = [if i == index then advanced else c | (i, c) <- zip [0 ..] s.liveCheckers]})
     profileModel "CheckResult" pCheckResult (toJson result)
     pure (checker, observation, result, trigger)
 
