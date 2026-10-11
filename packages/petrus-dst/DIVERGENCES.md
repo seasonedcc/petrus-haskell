@@ -163,6 +163,16 @@ represent`.
 
 The raw-bytes corpus pins exactly which inputs this affects. No committed fixture contains one.
 
+Why it stays: admitting them is not enough to match the reference. petrus-json can keep a lone
+surrogate (as WTF-8), and with it the loader, the validators and the canonical encoder agree with
+the reference on surrogates in string values. But the reference re-encodes an artifact through
+pydantic-core's `model_dump(mode="json")`, which treats keys differently: a `JsonValue` object
+key holding a lone surrogate is written with one U+FFFD per byte of the surrogate's
+`surrogatepass` encoding (so `"\ud83d"` becomes `"���"`, and keys that collide
+that way merge, the last value winning), and a typed `dict[str, int]` key holding one raises
+`UnicodeEncodeError`. Matching that means reproducing pydantic-core's serializer field by field;
+a clean refusal is the smaller and safer difference.
+
 ## Additions
 
 None of these change behavior.
