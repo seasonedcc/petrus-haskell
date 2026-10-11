@@ -96,6 +96,12 @@ jobs:
           path: dist-newstyle
           key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
           restore-keys: ${{ env.DIST_KEY_PREFIX }}
+      - name: Keep the restored configuration
+        # The checkout leaves every .cabal file newer than the restored
+        # build, so Cabal would reconfigure every component (and relink
+        # some). cabal-install compares the .cabal files by content and
+        # still reconfigures a package whose .cabal file changed.
+        run: find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
       - name: Build (all packages, -Werror)
         # With the test jobs' test flags, which cabal records in each
         # package's configuration: `cabal test` there then rebuilds nothing.
@@ -147,6 +153,10 @@ jobs:
           path: dist-newstyle
           key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
           fail-on-cache-miss: true
+      - name: Keep the build job's configuration
+        # As in the build job: the checkout leaves every .cabal file newer
+        # than the restored build.
+        run: find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
       - name: Interop selection (scripts/interop patterns still select their groups)
         # With the test jobs' opt-in variables, so that the selection counts
         # the PostgreSQL and Docker examples too (a dry run connects to
@@ -187,6 +197,9 @@ jobs:
           path: dist-newstyle
           key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
           fail-on-cache-miss: true
+      - name: Keep the build job's configuration
+        # See the checks job.
+        run: find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
       - uses: actions/download-artifact@v4
         with:
           name: test-plan
@@ -215,6 +228,9 @@ jobs:
           path: dist-newstyle
           key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
           fail-on-cache-miss: true
+      - name: Keep the build job's configuration
+        # See the checks job.
+        run: find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
       - uses: actions/download-artifact@v4
         with:
           name: test-plan
