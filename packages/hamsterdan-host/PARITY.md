@@ -113,7 +113,7 @@ scope.
 | `tests/unit/host/test_publication_qualification.py` | 52 | `hamsterdan-operator` (8): `host/publication_qualification.py` |
 | `tests/unit/host/test_secret_launch.py` | 10 | `hamsterdan-operator` (8): `operator.py` |
 | `tests/integration/host/test_qualification_setup_local.py` | 7 | `hamsterdan-operator` (8) |
-| `tests/integration/host/test_readiness_scenarios.py` | 11 | `hamsterdan-testing` (6): the 11 journeys over `host/testing` (the World) |
+| `tests/integration/host/test_readiness_scenarios.py` | 11 | `hamsterdan-testing` (6): the 11 journeys, ported there over this host |
 
 The upstream counts are:
 
@@ -140,21 +140,23 @@ Every file under the state root is byte-compatible in both directions.
 
 ## Benchmarks
 
-[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time on both sides.
+[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time on both sides,
+five interleaved rounds against the twin protocol (median of batches).
 Haskell is faster on every row but the fresh timer-store open:
 
 | Row | Haskell | Python | Speedup |
 | --- | ---: | ---: | ---: |
-| webhook ingest (100 deliveries) | 5.31 ms | 18.1 ms | 3.4× |
-| reconciliation step | 36.1 ms | 184 ms | 5.1× |
-| agent turn (one webhook through the scripted Pi agent) | 175 ms | 348 ms | 2.0× |
-| gate classification | 2.92 µs | 56 µs | 19× |
-| timer rebuild | 4.58 ms | 8.54 ms | 1.86× |
-| fresh timer-store open | 1.51 ms | 1.63 ms | 1.08× |
+| webhook ingest (100 deliveries) | 4.15 ms | 10.8 ms | 2.61× |
+| reconciliation step | 27.7 ms | 180 ms | 6.50× |
+| agent turn (one webhook through the scripted Pi agent) | 146 ms | 312 ms | 2.13× |
+| gate classification | 2.75 µs | 54.7 µs | 19.9× |
+| timer rebuild | 3.97 ms | 7.37 ms | 1.86× |
+| fresh timer-store open | 1.25 ms | 1.24 ms | 0.99× |
 
-The fresh open is not reliably faster: 1.08× and 0.97× in these rounds,
-0.81× and 0.94× in the rounds of 2026-10-10 (SQLite file creation, WAL
-and schema; see RESULTS.md). It belongs to the "V5 timers" component.
+The fresh open is level, not faster: 0.99× here, 0.95× in the previous
+twin-protocol rounds, 0.81–1.08× in earlier ones. Its SQLite work (file
+creation, WAL and schema) is level with Python's in a probe; see
+RESULTS.md. It belongs to the "V5 timers" component.
 
 ## Divergences
 

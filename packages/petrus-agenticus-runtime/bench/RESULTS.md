@@ -70,4 +70,9 @@ cabal bench -j2 petrus-agenticus-runtime --benchmark-options='--time-mode wall +
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi.py)
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi_a2.py)
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_hosts.py)
+(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_bench.py)
 ```
+
+`bench/python_bench.py` holds the whole-Turn twins (`codex-turn`,
+`claude-turn`, `amp-turn`; see [results-hosts.md](results-hosts.md)), so
+`scripts/bench-compare petrus-agenticus-runtime N` interleaves those rows.

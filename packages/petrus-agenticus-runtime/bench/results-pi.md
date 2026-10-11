@@ -41,7 +41,8 @@ Environment:
 Method: five interleaved rounds. Each round ran the Haskell bench, then
 `python_pi.py` and `python_pi_a2.py`, so both saw the same machine state.
 The table gives the median of the five rounds. The machine was shared with
-other work (load average 3.7 to 5.8).
+other work (load average 3.7 to 5.8). The `pi-ledger-cycle` row comes from a
+later wall-clock run, described below the table.
 
 - A Haskell value is a tasty-bench mean (`--stdev 3`), except for
   `pi-a2-scripted-turn`.
@@ -60,24 +61,48 @@ other work (load average 3.7 to 5.8).
 | pi-tool-call-decode | 377 ns | 1.87 µs | 5.0× | 4.4× |
 | pi-session-validate | 168 µs | 460 µs | 2.7× | 2.5× |
 | pi-fingerprint | 2.32 µs | 6.46 µs | 2.8× | 2.6× |
-| pi-ledger-cycle | 1.07 ms | 902 µs | 0.84× | 0.81× |
+| pi-ledger-cycle | 1.01 ms | 1.09 ms | 1.08× | 0.47× |
 | pi-a2-fingerprint | 2.49 µs | 6.25 µs | 2.5× | 2.5× |
 | pi-a2-scripted-turn | 10.4 ms | 29.2 ms | 2.8× | 2.7× |
 
 "Slowest round" is the lowest Python / Haskell ratio of a single round.
 
-**`pi-ledger-cycle` is slower than Python in wall-clock time.** The five
-rounds timed Haskell in tasty-bench's default CPU time. That leaves out the
-time blocked in the ledger's SQLite commits, and read 794 µs against 923 µs
-(1.2×). The row above comes from three wall-clock rounds instead
-(`--time-mode wall`, as the rerun block in [RESULTS.md](RESULTS.md) passes),
-interleaved with `python_pi.py` on 2026-10-10, 22:41–22:43 local (UTC-3),
-at commit `57106c2`, load average 2.7–3.7: Haskell 1.07, 1.07 and
-0.934 ms, Python 1.05, 0.869 and 0.902 ms. Where the extra time goes (the
-SQLite builds differ: direct-sqlite bundles 3.45.0, CPython links 3.53.4)
-has not been measured. The other rows do no IO in the timed region, so the
+**`pi-ledger-cycle` now runs level with Python or slightly ahead, at 1.08×.**
+Its row comes from a separate run of five wall-clock rounds,
+`scripts/bench-compare petrus-agenticus-runtime 5 --python python_pi.py
+--pattern '/pi-/' --stdev 3`, on 2026-10-11 at 01:50–02:05 local (UTC-3),
+with the ledger's statement cache (commit `3f31d2e`), load average
+4.6–7.3. Each round ran the Haskell bench, then `python_pi.py`. Haskell took
+1.07, 1.00, 0.955, 1.01 and 2.20 ms; Python took 1.07, 1.09, 1.09, 1.11 and
+1.02 ms. Haskell was ahead in three rounds and level in one. It was behind
+in the last round, where its 2.20 ms mean was one disturbed run (the
+"slowest round" figure of 0.47× is that round).
+
+Before this change the row was 0.84× (Haskell 1.07, 1.07 and 0.934 ms
+against Python 1.05, 0.869 and 0.902 ms, three wall-clock rounds on
+2026-10-10). The cause was the port's ledger, not SQLite:
+
+- `SqlitePiOperationLedger` prepared, ran and finalized every statement on
+  every call. That means four write transactions and a read per cycle, each
+  re-parsing its `BEGIN IMMEDIATE`, DML, `COMMIT` and `SELECT`.
+- CPython's `sqlite3` keeps a per-connection statement cache, so the
+  reference parses each of those strings once.
+
+The ledger now keeps its prepared statements in a per-ledger cache. They are
+reset after each use and finalized when the ledger closes, as CPython's
+cache does. That saved about 100 µs per cycle. The SQL, the transactions and
+the durability are unchanged: `journal_mode = DELETE` and `synchronous = FULL`
+on both sides. The SQLite builds differ (direct-sqlite bundles 3.45.0,
+CPython links 3.53.4). A probe of 2 000 single-insert fsynced commits (WAL,
+the History store's posture) showed no difference beyond noise between
+them. It ran on the bundled build, on the
+system SQLite through direct-sqlite's `systemlib` flag, and on CPython.
+
+The other rows do no IO in the timed region, so the
 two clocks agree on them, except `pi-a2-scripted-turn`, which both sides time
-with the monotonic clock.
+with the monotonic clock. The same run's figures for them agree with the
+table: frame encoding 2.33×, tool-call decoding 4.28×, session validation
+2.54×, fingerprint 2.60×.
 
 Haskell was faster in every round of every other row. The batches of the scripted
 turn ranged from 7.3 to 15.0 ms across the five rounds.
@@ -103,7 +128,8 @@ Notes on the results:
   still go through the scanner, so the outcome is the reference's.
 - **The ledger cycle** is four SQLite write transactions plus one read, each
   committed with the journal in `delete` mode. File-system work dominates it
-  in both languages.
+  in both languages. Its statements come from a per-ledger cache, as in
+  CPython (see above).
 - **The scripted A2 turn** is mostly Local territory work:
   - creating the lease directory;
   - extracting and exporting the archive through `/bin/sh` commands;
@@ -132,4 +158,10 @@ run only the Pi rows:
 cabal bench -j2 petrus-agenticus-runtime --benchmark-options='-p /pi-/ --time-mode wall --stdev 3 +RTS -A32m -M2G -RTS'
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi.py)
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi_a2.py)
+```
+
+To interleave the native rows with `python_pi.py` and print a table:
+
+```sh
+scripts/bench-compare petrus-agenticus-runtime 5 --python python_pi.py --pattern '/pi-/' --stdev 3
 ```

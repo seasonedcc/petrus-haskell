@@ -21,6 +21,15 @@ Continuation payload's transcript is produced by `encodeTranscript`, which
    `ClaudeOptions` (the session store and the stderr policy), and the
    sidecar rebuilds them on its side.
 
+   One sidecar process serves every client of a Haskell process (per
+   interpreter and search path), each on its own channel, so the SDK is
+   imported once, as upstream imports it once into its interpreter. Its
+   clients share one asyncio loop, where upstream gives each operation a
+   loop on its own thread, and each operation starts as an eagerly started
+   task, as upstream awaits it directly. The process inherits the
+   environment it was started with, so environment changes made later by
+   the Haskell process do not reach the SDK.
+
 2. **Protocols are records of operations.** `_Client` and `_ClientFactory`
    are `ClaudeClient` and `ClaudeClientFactory`. `_OfficialFactory` is
    `officialFactory` over a `ClaudeSdk` record, whose default is
@@ -28,12 +37,18 @@ Continuation payload's transcript is produced by `encodeTranscript`, which
    `ClaudeTurnOperations`. Connection custody is the `PiConnectionCustody`
    record the Pi and Codex hosts share.
 
-3. **The client's process is released explicitly.** Upstream, the official
+3. **The client is released explicitly.** Upstream, the official
    client's resources go when the object is garbage-collected after
    `disconnect`. `ClaudeClient` has one more operation, `release`, which
-   stops the sidecar process and answers `False` when that is not proven.
-   An unproven release downgrades the cleanup to unverified, the same
-   outcome upstream reports for a surviving child.
+   ends the client's channel: the sidecar cancels the client's pending
+   operations, disconnects it when it was connected and not disconnected,
+   and then ends the channel. `release` answers `False` when that has not
+   happened within the grace. An unproven release downgrades the cleanup to
+   unverified, the same outcome upstream reports for a surviving child. A
+   client stuck past the grace stays in the shared process, which is not
+   killed for it, since other clients share it. When the Haskell process
+   exits, the sidecar's input closes; it then gives every open channel 10
+   seconds to tear down and exits.
 
 4. **Monkeypatched seams are explicit hooks.** The probe's
    `importlib.metadata.version` and `importlib.import_module` are

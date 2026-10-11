@@ -51,7 +51,7 @@ module Petrus.Agenticus.Runtime.PiRecovery
 
 import Control.Concurrent.MVar
 import Prelude hiding (sequence)
-import Control.Exception (SomeAsyncException, SomeException, bracket, finally, fromException, mask, onException, throwIO, try)
+import Control.Exception (SomeAsyncException, SomeException, finally, fromException, mask, onException, throwIO, try)
 import Control.Monad (forM, unless, void, when)
 import Data.Char (GeneralCategory (..), generalCategory, isHexDigit, isSpace)
 import Data.IORef
@@ -60,6 +60,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.Text (Text)
+import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Foreign.C.Error (eACCES, eAGAIN, eWOULDBLOCK, getErrno)
 import Foreign.C.Types (CInt (..))
@@ -233,6 +234,9 @@ data SqlitePiOperationLedger = SqlitePiOperationLedger
   , lock :: MVar ()
   , database :: Database
   , closed :: IORef Bool
+  , statements :: IORef (Map.Map Text Statement)
+  -- ^ Prepared statements by SQL text, as CPython's @sqlite3@ statement
+  -- cache keeps them; used and changed only under 'lock'.
   }
 
 ledgerPath :: SqlitePiOperationLedger -> FilePath
@@ -301,6 +305,7 @@ openSqlitePiOperationLedger path = do
   fence <- openWriterFence path
   lock <- newMVar ()
   closed <- newIORef False
+  statements <- newIORef Map.empty
   ( do
       db <- openDatabase path
       ( do
@@ -309,7 +314,7 @@ openSqlitePiOperationLedger path = do
           execute_ db "PRAGMA journal_mode = DELETE"
           execute_ db "PRAGMA synchronous = FULL"
           execute_ db createTableSql
-          pure SqlitePiOperationLedger {path, fence, lock, database = db, closed}
+          pure SqlitePiOperationLedger {path, fence, lock, database = db, closed, statements}
         )
         `onException` closeDatabase db
     )
@@ -451,7 +456,10 @@ ledgerClose :: SqlitePiOperationLedger -> IO ()
 ledgerClose l = do
   withLock l $ do
     wasClosed <- atomicModifyIORef' l.closed (True,)
-    unless wasClosed $ closeDatabase l.database
+    unless wasClosed $ do
+      cached <- atomicModifyIORef' l.statements (Map.empty,)
+      mapM_ finalizeStatement cached
+      closeDatabase l.database
   closeFence l.fence
 
 required :: SqlitePiOperationLedger -> Text -> IO PiOperationRecord
@@ -461,26 +469,41 @@ required l operationId =
 -- | @_write@: one immediate transaction with an exact row count.
 write :: SqlitePiOperationLedger -> Text -> [SqlValue] -> Maybe Int -> IO ()
 write l sql parameters expectedRows = do
-  execute_ l.database "BEGIN IMMEDIATE"
+  control "BEGIN IMMEDIATE"
   ( do
-      bracket (prepareStatement l.database sql) finalizeStatement (`runStatement` parameters)
+      statement <- cachedStatement l sql
+      runStatement statement parameters
       changed <- changedRows l.database
       case expectedRows of
         Just n | changed /= n -> throwAgenticus StorageError "Pi operation ledger write lost its expected state"
         _ -> pure ()
-      execute_ l.database "COMMIT"
+      control "COMMIT"
     )
     `onException` rollback
   where
+    control statement = cachedStatement l statement >>= (`runStatement` [])
     rollback = do
       active <- inTransaction l.database
-      when active $ execute_ l.database "ROLLBACK"
+      when active $ control "ROLLBACK"
+
+-- | The prepared statement for this SQL, prepared on first use and kept
+-- (reset after each use) until 'ledgerClose', as CPython's statement cache
+-- keeps the reference's. The ledger runs a fixed handful of statements, so
+-- the cache needs no eviction. Callers hold the ledger's lock.
+cachedStatement :: SqlitePiOperationLedger -> Text -> IO Statement
+cachedStatement l sql =
+  Map.lookup sql <$> readIORef l.statements >>= \case
+    Just statement -> pure statement
+    Nothing -> do
+      statement <- prepareStatement l.database sql
+      modifyIORef' l.statements (Map.insert sql statement)
+      pure statement
 
 selectOne :: SqlitePiOperationLedger -> Text -> [SqlValue] -> IO (Maybe [SqlValue])
-selectOne l sql parameters = bracket (prepareStatement l.database sql) finalizeStatement (`queryRow` parameters)
+selectOne l sql parameters = cachedStatement l sql >>= (`queryRow` parameters)
 
 selectAll :: SqlitePiOperationLedger -> Text -> [SqlValue] -> IO [[SqlValue]]
-selectAll l sql parameters = bracket (prepareStatement l.database sql) finalizeStatement (`queryRows` parameters)
+selectAll l sql parameters = cachedStatement l sql >>= (`queryRows` parameters)
 
 -- | @str(value)@ of a column value.
 pyStr :: SqlValue -> Text

@@ -1,12 +1,16 @@
 cabal-version:      3.4
 name:               hamsterdan-testing
 version:            0.1.0.0
-synopsis:           Hamsterdan's independent expected-readiness oracle
+synopsis:           Hamsterdan's independent expected-readiness oracle and readiness journeys
 description:
   The @ReadinessModel@ oracle of Hamsterdan (@src/hamsterdan/testing/readiness.py@):
   topology-neutral normalized facts with strict pydantic-identical JSON
   codecs, the expected readiness verdict they imply, and the fair-environment
-  liveness classification used by deterministic simulation.
+  liveness classification used by deterministic simulation; the eleven
+  deterministic readiness journeys of
+  @tests/integration/host/test_readiness_scenarios.py@ over the real V5 host;
+  and the deterministic readiness World (@host/testing/*@) over Petrus DST v4,
+  with its checker, replay and semantic coverage report.
 license:            Apache-2.0
 license-file:       LICENSE
 author:             Seasoned
@@ -33,12 +37,32 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Hamsterdan.Testing.Readiness
+                    Hamsterdan.Testing.Journeys
+                    Hamsterdan.Testing.World
+                    Hamsterdan.Testing.World.Contract
+                    Hamsterdan.Testing.World.Coverage
+                    Hamsterdan.Testing.World.Provider
+                    Hamsterdan.Testing.World.Scenarios
   build-depends:    base >=4.18 && <5
+                  , base16-bytestring >=1.0
+                  , base64-bytestring >=1.2
                   , bytestring >=0.11
                   , containers >=0.6
+                  , cryptohash-sha256 >=0.11
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , hamsterdan-agents
                   , hamsterdan-contracts
+                  , hamsterdan-github
+                  , hamsterdan-host
+                  , mtl >=2.3
+                  , petrus-dst
+                  , petrus-impetus
                   , petrus-json
+                  , petrus-motus
                   , text >=2.0
+                  , transformers >=0.6
+                  , typed-process >=0.2.11
   ghc-options:      -O2
 
 test-suite hamsterdan-testing-test
@@ -47,17 +71,30 @@ test-suite hamsterdan-testing-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    OracleCorpusSpec
+                    ReadinessCampaignSpec
+                    ReadinessCoverageSpec
                     ReadinessModelSpec
+                    ReadinessScenariosSpec
+                    ReadinessWorldSpec
+                    WorldInteropSpec
   build-depends:    base
                   , base16-bytestring
                   , bytestring
                   , cryptohash-sha256
+                  , directory
+                  , filepath
+                  , containers
                   , hamsterdan-contracts
+                  , hamsterdan-github
+                  , hamsterdan-host
                   , hamsterdan-testing
                   , hspec >=2.10
                   , petrus-dst
                   , petrus-json
+                  , petrus-test-support
+                  , temporary >=1.3
                   , text
+                  , typed-process
   ghc-options:      -threaded -rtsopts
 
 benchmark hamsterdan-testing-bench
@@ -68,8 +105,10 @@ benchmark hamsterdan-testing-bench
   build-depends:    base
                   , bytestring
                   , hamsterdan-testing
+                  , petrus-dst
                   , petrus-json
                   , tasty-bench >=0.3.2
                   , tasty
+                  , temporary >=1.3
                   , text
-  ghc-options:      -O2 -rtsopts
+  ghc-options:      -O2 -threaded -rtsopts

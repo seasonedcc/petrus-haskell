@@ -18,6 +18,17 @@ stream admission are pinned against the reference by
    `aclose()`). The sidecar injects the cancellation into the SDK generator
    just as upstream does, so the pinned SDK reaps its CLI.
 
+   One sidecar process serves every stream of a Haskell process (per
+   interpreter and search path), each on its own channel, so the SDK is
+   imported once, as upstream imports it once into its interpreter. Its
+   streams share one asyncio loop, where upstream gives each operation's
+   coroutine a loop on its own thread. A pull runs as an eagerly started
+   task, as upstream awaits `__anext__` directly, and the first pull is
+   requested together with the stream (upstream starts iterating as soon as
+   `execute` returns). The process inherits the environment it was started
+   with, so environment changes made later by the Haskell process do not
+   reach the SDK, where upstream's in-process SDK would see them.
+
 2. **Events cross the pipe reduced to what admission reads.** Each event
    crosses as two things:
    - its `_event_size` byte count (`model_dump_json` length, or
@@ -36,11 +47,32 @@ stream admission are pinned against the reference by
    - A hashable one gets upstream's protocol code (`unknown-event`,
      `malformed-terminal`).
 
-   One difference remains. Upstream, an exception raised by
-   `model_dump_json` or by an attribute read escapes to `_run` and settles
-   `client-failed`. The sidecar reports `null` (`malformed-event`) or an
-   opaque value instead. Neither the corpus nor the fake SDK covers this
-   path.
+   An exception raised while computing the size or reading one attribute
+   crosses in place of that part as `{"raised": kind}`, and admission
+   raises it exactly where upstream's `_read_stream` would read that part
+   (after the count bound, before the byte bounds; `type` before `subtype`
+   in `_admit_initial`, `session_id` before `type` in `_admit_later`, and so
+   on), so a part upstream never reaches never matters. `_run` then settles
+   it as upstream does: a `TimeoutError` is `deadline-exceeded`, a
+   `CancelledError` a cancelled Turn, anything else `client-failed`; an
+   `AttributeError` is `getattr`'s default, `None`. A pull that raises
+   crosses the same way. The sidecar example `settles events that raise
+   where upstream reads them as the reference does` runs 22 such streams
+   through the reference's own adapter and through the port, against the
+   same fake SDK, and compares outcome, appends, termination code and
+   cleanup code.
+
+   What remains:
+   - The sidecar reads every part of an event once, as it arrives. A part
+     upstream never reaches is still read (its exception is dropped), so a
+     property with side effects runs where upstream's would not.
+   - An exception that is not an `Exception` (a `KeyboardInterrupt`,
+     `SystemExit` or `GeneratorExit` from a property) settles
+     `client-failed`. Upstream it escapes `_run` and ends the worker thread
+     without a settlement.
+   - An SDK that raises Petrus's own `RuntimeProtocolError` from a property
+     would settle with that error's code upstream; the port settles
+     `client-failed`.
 
 3. **Protocols are records of operations.** Storage is
    `AmpContinuationOperations` and `AmpTurnOperations`. The probe's

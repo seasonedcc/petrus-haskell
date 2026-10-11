@@ -64,7 +64,7 @@ PATTERNS: Dict[str, List[str]] = {
         "shutil.rmtree, as the setup cleanup runs it, against CPython's",
     ],
     "hamsterdan-readiness": ["fold corpus", "board corpus"],
-    "hamsterdan-testing": ["oracle corpus"],
+    "hamsterdan-testing": ["oracle corpus", "journeys against the reference", "World interop against the reference"],
     "petrus-activity": ["differential against the pinned petrus.motus.activity"],
     "petrus-agenticus": ["differential/"],
     "petrus-agenticus-core": ["differential", "interop: custody", "hands/test_conformance.py"],

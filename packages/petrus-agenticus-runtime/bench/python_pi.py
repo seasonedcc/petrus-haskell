@@ -6,7 +6,8 @@ Run from the pinned upstream checkout with its virtual environment:
     .venv/bin/python ../../packages/petrus-agenticus-runtime/bench/python_pi.py
 
 Each line prints the median per-operation time over 7 batches, after one
-warm-up call.
+warm-up call: readable on stderr, and as ``name,nanoseconds`` on stdout for
+``scripts/bench-compare``.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import base64
 import itertools
 import json
 import statistics
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -89,7 +91,10 @@ def timed(label: str, operation, batches: int = 7, per_batch: int = 200) -> None
         samples.append((time.perf_counter() - start) / per_batch)
     median = statistics.median(samples)
     unit, scale = ("ms", 1e3) if median >= 1e-3 else ("µs", 1e6) if median >= 1e-6 else ("ns", 1e9)
-    print(f"{label:<28} {median * scale:8.3f} {unit}")
+    # The readable line goes to stderr; stdout carries ``name,nanoseconds``
+    # for scripts/bench-compare.
+    print(f"{label:<28} {median * scale:8.3f} {unit}", file=sys.stderr, flush=True)
+    print(f"{label},{median * 1e9:.1f}", flush=True)
 
 
 CONFIG: pi.PiRuntimeConfig

@@ -23,6 +23,8 @@ module Hamsterdan.Host.GitPublish
 
     -- * The publisher
   , HostGitPublisher (..)
+  , ReconcileHook
+  , noReconcileHook
   , hostGitPublisher
   , hostGitPublisherWith
   , publish
@@ -180,7 +182,21 @@ data HostGitPublisher = HostGitPublisher
   , cloneUrl :: Text
   , commitName :: Text
   , commitEmail :: Text
+  , reconcileHook :: ReconcileHook
+  -- ^ Test seam around every reconciliation, the ones 'publish' makes
+  -- included ('noReconcileHook' by default).
   }
+
+-- | Wraps one reconciliation: its @operation@, @payload_digest@,
+-- @expected_head@, @base_head@, @merge_base@ and @self_caused_head@ (empty
+-- when the caller passed none), and the reconciliation itself. The
+-- reference's tests patch @HostGitPublisher.reconcile@, which @publish@'s
+-- own @self.reconcile@ calls reach too; this seam reaches the same calls.
+type ReconcileHook = Text -> Text -> Text -> Text -> Bool -> Text -> IO GitReconciliation -> IO GitReconciliation
+
+-- | Run the reconciliation unobserved.
+noReconcileHook :: ReconcileHook
+noReconcileHook _ _ _ _ _ _ reconciliation = reconciliation
 
 hostGitPublisher :: PublicationAuthority -> Text -> IO HostGitPublisher
 hostGitPublisher authority cloneUrl =
@@ -193,7 +209,7 @@ hostGitPublisherWith authority cloneUrl commitName commitEmail = do
     throwIO (ValueError "a credential-free clone URL is required")
   when (T.null (Py.strip commitName) || T.null (Py.strip commitEmail) || "\n" `T.isInfixOf` (commitName <> commitEmail)) $
     throwIO (ValueError "explicit commit metadata is invalid")
-  pure HostGitPublisher {authority, cloneUrl, commitName, commitEmail}
+  pure HostGitPublisher {authority, cloneUrl, commitName, commitEmail, reconcileHook = noReconcileHook}
 
 -- | @publish(result, operation=, payload_digest=, expected_head=,
 -- base_head=, merge_base=)@.
@@ -270,7 +286,12 @@ reconcile p operation digest expectedHead baseHead mergeBase =
 -- | 'reconcile' with @self_caused_head@: the one commit this publication
 -- just created, whose lagging PR projection alone is tolerated.
 reconcileSelfCaused :: HostGitPublisher -> Text -> Text -> Text -> Text -> Bool -> Text -> IO GitReconciliation
-reconcileSelfCaused p operation digest expectedHead baseHead mergeBase selfCausedHead = do
+reconcileSelfCaused p operation digest expectedHead baseHead mergeBase selfCausedHead =
+  p.reconcileHook operation digest expectedHead baseHead mergeBase selfCausedHead $
+    reconcileUnhooked p operation digest expectedHead baseHead mergeBase selfCausedHead
+
+reconcileUnhooked :: HostGitPublisher -> Text -> Text -> Text -> Text -> Bool -> Text -> IO GitReconciliation
+reconcileUnhooked p operation digest expectedHead baseHead mergeBase selfCausedHead = do
   pull <-
     p.authority.pullRequest `catch` \(_ :: GitHubBoundaryError) ->
       failWith BoundaryUnavailable "GitHub PR projection is unavailable"

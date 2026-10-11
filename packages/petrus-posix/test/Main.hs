@@ -7,7 +7,7 @@ import Control.Monad (forM_, replicateM, void, when)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Char (isDigit, isHexDigit, isLower)
-import Data.List (isPrefixOf, isSuffixOf, sort)
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf, nub, sort)
 import Data.Text qualified as T
 import Petrus.Json (Json (..), pythonFloatRepr)
 import Petrus.Posix
@@ -23,7 +23,7 @@ import System.Directory
   , withCurrentDirectory
   )
 import System.FilePath ((</>))
-import System.IO.Error (isAlreadyExistsError, isDoesNotExistError)
+import System.IO.Error (ioeGetErrorType, isAlreadyExistsError, isDoesNotExistError)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Info (os)
 import System.Posix.Env qualified as Env
@@ -145,6 +145,21 @@ flockSpec = describe "Flock" $ do
     withLockFd path (const (pure ()))
     status <- statAt Nothing path FollowLinks
     permissionBits status `shouldBe` 0o600
+
+  it "marshals paths like os.open: NUL refused, non-ASCII and long names intact" $ withTemp $ \dir -> do
+    let nulError err = show (ioeGetErrorType err) == "invalid argument" && "embedded null byte" `isInfixOf` show err
+    openLockFile (dir </> "a\0b") `shouldThrow` nulError
+    openLockFile (dir </> "é\0") `shouldThrow` nulError
+    forM_ ["é.lock", replicate 200 'n'] $ \name -> openLockFile (dir </> name) >>= closeFd
+    openLockFile (dir </> replicate 1100 'y') `shouldThrow` \err -> "too long" `isInfixOf` show (err :: IOError)
+    -- Reused and fresh path values, alternating, each reach their own file.
+    let first = dir </> "first"
+        second = dir </> "secnd"
+    forM_ [first, second, first, dir </> "first", second, dir </> "third", first] $ \path ->
+      openLockFile path >>= closeFd
+    listDirectory dir >>= (`shouldBe` sort ["é.lock", replicate 200 'n', "first", "secnd", "third"]) . sort
+    inodes <- mapM (\path -> statInode <$> statAt Nothing path FollowLinks) [first, second, dir </> "third"]
+    length (nub inodes) `shouldBe` 3
 
   it "revalidates the inode after waiting (Gondolin _locked)" $ withTemp $ \dir -> do
     let path = dir </> "lock"

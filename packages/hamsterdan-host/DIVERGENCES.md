@@ -50,8 +50,25 @@ Below are the differences that remain, with their rationale.
    - `ArithException` is `ArithmeticError`;
    - `ArrayException` is `IndexError`;
    - anything else gets its Haskell type name.
+5. **A conversation request's allowed intents come in source order.** The
+   reference spreads `_MUTATIONS`, a `frozenset` of strings, into the V5
+   application's `_ALLOWED`. So the last three intents a conversation
+   request declares come in the process's string-hash order, which changes
+   from run to run. The port always declares them in source order:
+   `change`, `update_base`, `resolve_conflict`. That is one of the orders
+   the reference produces. The hamsterdan-testing journeys pin the
+   reference to it so that the two can be compared byte for byte.
 
 ## Internal (no observable difference)
+
+- **`HostGitPublisher.reconcileHook` is a test seam.** Upstream tests
+  observe the publisher by monkeypatching `HostGitPublisher.reconcile`,
+  which also catches the reconciliations `publish` makes internally. The
+  record field `reconcileHook` gives Haskell tests the same view: it wraps
+  every reconciliation, including those inside `publish`, and receives the
+  `self_caused_head` keyword (empty when it is not passed). It defaults to
+  `noReconcileHook`, which changes nothing. The hamsterdan-testing journeys
+  use it.
 
 - **Stores are closed when the application fails to construct.**
   `openApplication` closes the stores it had already opened when a later

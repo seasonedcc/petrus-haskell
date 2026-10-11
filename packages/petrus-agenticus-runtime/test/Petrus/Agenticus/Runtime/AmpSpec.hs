@@ -37,7 +37,7 @@ import Petrus.Agenticus.Thread.Continuation (Continuation (..), ContinuationDesc
 import Petrus.Agenticus.Thread.Identity (mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))
-import Petrus.TestSupport.Python (pythonExecutable)
+import Petrus.TestSupport.Python (pythonExecutable, pythonJson)
 import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -560,3 +560,37 @@ spec = describe "test_amp" $ do
       result.outcome `shouldBe` TurnCancelled
       doesFileExist marker `shouldReturn` True
       ((.code) <$> closeAmpOperation operation) `shouldReturn` "provider-state-uncertain"
+
+    -- divergences/amp.md: upstream reads each event's size and attributes
+    -- in the SDK's own process, where reading can raise; the sidecar
+    -- reports where it raised and admission meets it where upstream would.
+    it "settles events that raise where upstream reads them as the reference does" $ do
+      sidecar <- fixtureSidecar
+      root <- makeAbsolute ("test" </> "fixtures" </> "amp")
+      script <- makeAbsolute ("test" </> "fixtures" </> "amp-raising-reference.py")
+      reference <- pythonJson "import runpy, sys\nsys.argv = sys.argv[1:]\nrunpy.run_path(sys.argv[0], run_name='__main__')" [script, root]
+      scenarios <- case reference of
+        Object members -> pure members
+        other -> fail ("unexpected reference output: " <> show other)
+      length scenarios `shouldSatisfy` (>= 20)
+      forM_ scenarios $ \(name, expected) -> do
+        continuations <- newContinuations
+        turns <- newTurns
+        (_, hooks) <- readyHooks
+        adapter <-
+          newAmpRuntimeAdapter
+            (ampRuntimeConfig ("raise:" <> name))
+            (ampContinuationCodec (continuationOperations continuations))
+            (turnOperations turns)
+            AmpAdapterOptions {sdkExecute = officialExecute sidecar, clock = pure 1, hooks}
+        void (probeAmp adapter)
+        operation <- start adapter request
+        result <- waitFor operation 30
+        cleanup <- closeAmpOperation operation
+        let outcome = case result.outcome of
+              TurnCompleted -> "completed"
+              TurnFailed -> "failed"
+              TurnCancelled -> "cancelled"
+              TurnIndeterminate -> "indeterminate" :: Text
+        (name, Array [String outcome, Int result.acceptedAppends, String result.terminationCode, String cleanup.code])
+          `shouldBe` (name, expected)

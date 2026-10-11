@@ -149,7 +149,8 @@ cd upstream/petrus
 
 See `bench/results-hosts.md`: `codex-jsonl-parse` 1.8×,
 `codex-helper-parse` 2.7×, `codex-terminal-encode` 1.2× and
-`codex-terminal-parse` 2.1× the reference's speed.
+`codex-terminal-parse` 2.1× the reference's speed. A whole Local Turn
+(`codex-turn`) is 1.20× (lowest interleaved repetition 1.10×).
 
 ## `tests/petrus/agenticus/runtime/test_codex_real.py` (2 functions)
 
