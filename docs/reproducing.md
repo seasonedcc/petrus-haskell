@@ -163,7 +163,10 @@ median and ratio. `--python SCRIPT` picks another twin in the package's
 twins in another pinned project's environment (`hamsterdan` for
 `hamsterdan-host`), `--pattern P` limits the Haskell side to the rows that
 tasty-bench's `-p P` selects, and `--stdev PERCENT` sets tasty-bench's target
-deviation:
+deviation. It builds the benchmark once and runs its executable directly in
+each repetition (in the package directory, with the environment variables
+`cabal bench` would set), as the Python twins run, because a benchmark started
+by `cabal bench` measured about 1% slower on syscall-bound rows:
 
 ```sh
 scripts/bench-compare petrus-agenticus-runtime 5 --python python_pi.py --pattern '/pi-/' --stdev 3
