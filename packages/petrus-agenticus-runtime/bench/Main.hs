@@ -32,6 +32,7 @@ import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
+import HostsBench (hostsBenchmarks)
 import PiA2Bench (piA2Benchmarks)
 import PiBench (piBenchmarks)
 import Test.Tasty.Bench
@@ -123,5 +124,6 @@ main = withSystemTempDirectory "pi-bench" $ \tmp -> do
       ]
         <> pi'
         <> a2
+        <> hostsBenchmarks
     )
     `finally` closeA2

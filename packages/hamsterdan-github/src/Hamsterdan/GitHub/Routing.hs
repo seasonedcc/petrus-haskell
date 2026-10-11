@@ -59,12 +59,14 @@ openRegistry path accounts = do
   connection <- Db.open (T.pack path)
   Db.script
     connection
-    "PRAGMA journal_mode=WAL;\n\
-    \CREATE TABLE IF NOT EXISTS installations (\n\
-    \  installation_id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL, active INTEGER NOT NULL);\n\
-    \CREATE TABLE IF NOT EXISTS repositories (\n\
-    \  installation_id INTEGER NOT NULL, repository_id INTEGER NOT NULL, full_name TEXT NOT NULL,\n\
-    \  active INTEGER NOT NULL, PRIMARY KEY (installation_id, repository_id));"
+    "\n\
+    \            PRAGMA journal_mode=WAL;\n\
+    \            CREATE TABLE IF NOT EXISTS installations (\n\
+    \              installation_id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL, active INTEGER NOT NULL);\n\
+    \            CREATE TABLE IF NOT EXISTS repositories (\n\
+    \              installation_id INTEGER NOT NULL, repository_id INTEGER NOT NULL, full_name TEXT NOT NULL,\n\
+    \              active INTEGER NOT NULL, PRIMARY KEY (installation_id, repository_id));\n\
+    \        "
   pure
     InstallationRegistry
       { allowed = Map.fromList [(account.accountId, Map.fromList account.repositories) | account <- accounts]

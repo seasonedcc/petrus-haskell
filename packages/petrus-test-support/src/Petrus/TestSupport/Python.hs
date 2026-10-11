@@ -80,7 +80,7 @@ pythonExecutable :: IO FilePath
 pythonExecutable = upstreamPythonExecutable "petrus"
 
 -- | The interpreter of another pinned upstream project's environment
--- (@"petrus"@ or @"petrus-engine"@), provisioned the same way as
+-- (@"petrus"@, @"petrus-engine"@ or @"hamsterdan"@), provisioned the same way as
 -- 'pythonExecutable'.
 upstreamPythonExecutable :: String -> IO FilePath
 upstreamPythonExecutable project = modifyMVar interpreters $ \known ->
