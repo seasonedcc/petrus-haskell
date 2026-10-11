@@ -1,0 +1,8 @@
+hamsterdan-e2e
+Copyright 2026 Seasoned
+
+This package holds the end-to-end tooling for the Haskell port of Hamsterdan
+(https://github.com/henriquebastos/hamsterdan), pinned under
+upstream/hamsterdan: tier B record and replay (docs/hamsterdan.md §5.2) and
+the tier C live-run tooling. Its Python drivers run the upstream host
+through its own injection points; nothing upstream is patched.

@@ -49,6 +49,7 @@ PATTERNS: Dict[str, List[str]] = {
         "on-disk interop with the reference agent stores",
         "test_restarted_executing_operation_is_indeterminate_without_authority",
     ],
+    "hamsterdan-e2e": ["tier B: the reference recorded, both hosts replayed"],
     "hamsterdan-export": ["differential: python -m hamsterdan.host.export"],
     "hamsterdan-host": [
         "state interop with the reference host",
