@@ -1,0 +1,180 @@
+cabal-version:      3.4
+name:               hamsterdan-host
+version:            0.1.0.0
+synopsis:           Hamsterdan's durable PR-readiness host
+description:
+  The Hamsterdan host (@src/hamsterdan/host@): webhook ingress into durable
+  V5 readiness Instances, authority fencing, the publication, rerun,
+  review, and mutation gates, durable timers, the runnable index, the
+  HTTP surface, and the operator CLI. Every on-disk format is the
+  reference's, byte for byte, so the Haskell and Python hosts can resume
+  each other's state directories.
+license:            Apache-2.0
+license-file:       LICENSE
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    README.md
+                    PARITY.md
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Hamsterdan.Host.Binding
+                    Hamsterdan.Host.Python
+                    Hamsterdan.Host.Runnable
+                    Hamsterdan.Host.V5.Timers
+                    Hamsterdan.Host.Cli
+                    Hamsterdan.Host.Service
+                    Hamsterdan.Host.Api
+                    Hamsterdan.Host.Api.Documents
+                    Hamsterdan.Host.V5.Application
+                    Hamsterdan.Host.V5.Runtime
+                    Hamsterdan.Host.V5.Mutation
+                    Hamsterdan.Host.GitPublish
+                    Hamsterdan.Host.V5.Review
+                    Hamsterdan.Host.V5.Rerun
+                    Hamsterdan.Host.V5.Gates
+                    Hamsterdan.Host.Errors
+                    Hamsterdan.Host.V5.Ingress
+                    Hamsterdan.Host.V5.Claim
+  build-depends:    base >=4.18 && <5
+                  , base16-bytestring >=1.0
+                  , bytestring >=0.11
+                  , case-insensitive >=1.2
+                  , cryptohash-sha256 >=0.11
+                  , direct-sqlite >=2.3.27
+                  , hamsterdan-contracts
+                  , petrus-activity
+                  , petrus-cel
+                  , petrus-dsl
+                  , petrus-engine
+                  , petrus-history-store
+                  , petrus-impetus
+                  , containers >=0.6
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , hamsterdan-github
+                  , hamsterdan-readiness
+                  , http-types >=0.12
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-posix
+                  , process >=1.6
+                  , stm >=2.5
+                  , temporary >=1.3
+                  , text >=2.0
+                  , time >=1.12
+                  , unix >=2.8
+                  , wai >=3.2
+                  , warp >=3.3
+  ghc-options:      -O2
+
+executable hamsterdan-host
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  build-depends:    base
+                  , containers
+                  , hamsterdan-host
+                  , text
+  ghc-options:      -threaded -rtsopts
+
+test-suite hamsterdan-host-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    BindingSpec
+                    RunnableSpec
+                    TestSupport
+                    TimersSpec
+                    V5Doubles
+                    InteropSpec
+                    ArchitectureSpec
+                    CliSpec
+                    ApiSpec
+                    RawHttp
+                    FakeGitHub
+                    ServiceSpec
+                    ServiceSupport
+                    TestUpdates
+                    InlineRecoverySpec
+                    IngressApplicationSpec
+                    MutationSpec
+                    GitPublishSpec
+                    ReviewSpec
+                    RerunSpec
+                    GatesSpec
+                    IngressSpec
+  build-depends:    base
+                  , base64-bytestring
+                  , bytestring
+                  , containers
+                  , direct-sqlite
+                  , directory
+                  , filepath
+                  , hamsterdan-github
+                  , hamsterdan-contracts
+                  , hamsterdan-host
+                  , hamsterdan-readiness
+                  , petrus-activity
+                  , petrus-cel
+                  , petrus-dsl
+                  , petrus-engine
+                  , petrus-history-store
+                  , petrus-impetus
+                  , hspec >=2.10
+                  , petrus-json
+                  , petrus-motus
+                  , petrus-posix
+                  , process
+                  , temporary >=1.3
+                  , text
+                  , time
+                  , case-insensitive
+                  , network
+                  , petrus-test-support
+                  , typed-process
+                  , wai
+                  , http-types
+                  , warp
+                  , unix
+  ghc-options:      -threaded -rtsopts
+
+benchmark hamsterdan-host-bench
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   bench test
+  main-is:          Main.hs
+  other-modules:    V5Doubles
+  build-depends:    base
+                  , bytestring
+                  , case-insensitive
+                  , directory
+                  , filepath
+                  , hamsterdan-contracts
+                  , hamsterdan-github
+                  , hamsterdan-host
+                  , hamsterdan-readiness
+                  , http-types
+                  , petrus-impetus
+                  , petrus-json
+                  , tasty-bench >=0.3
+                  , text
+                  , wai
+  ghc-options:      -O2 -threaded -rtsopts

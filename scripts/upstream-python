@@ -3,8 +3,8 @@
 #
 #   scripts/upstream-python                 # upstream/petrus (the default)
 #   scripts/upstream-python petrus-engine   # upstream/petrus-engine
-#   scripts/upstream-python hamsterdan      # upstream/hamsterdan (its benchmarks
-#                                           # and corpus generators)
+#   scripts/upstream-python hamsterdan      # upstream/hamsterdan (its benchmarks,
+#                                           # corpus generators and host interop)
 #
 # Each environment is upstream/<project>/.venv, synced from that project's own
 # frozen uv.lock (upstream/petrus with the postgres extra; upstream/hamsterdan
@@ -16,7 +16,7 @@
 # The Python version is pinned here, exactly, the single place for it (the
 # test suites, scripts/check-all, scripts/bench and CI all provision through
 # this script). Upstream only says requires-python >= 3.14 (petrus) or
-# >= 3.12 (petrus-engine), so without a pin uv picks whatever is newest: on a
+# >= 3.12 (petrus-engine) or >= 3.14 (hamsterdan), so without a pin uv picks whatever is newest: on a
 # machine without a 3.14 interpreter that is a freshly downloaded CPython
 # 3.15, for which upstream/petrus's locked psycopg-binary 3.3.4 has no wheel,
 # and the sync fails. The patch level matters too: several ports are
@@ -44,7 +44,7 @@ case "$project" in
     ;;
   hamsterdan)
     sync_args=()
-    imports="hamsterdan, httpx"
+    imports="hamsterdan, fastapi, httpx"
     ;;
   *)
     echo "unknown upstream project: $project (petrus, petrus-engine or hamsterdan)" >&2
