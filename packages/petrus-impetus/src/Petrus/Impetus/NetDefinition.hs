@@ -68,7 +68,10 @@ module Petrus.Impetus.NetDefinition
     -- * Model values
   , netDefinitionToJson
   , netDefinitionFromJson
+    -- * JSON Schema
+  , netDefinitionV3JsonSchema
     -- * Internals shared with "Petrus.Impetus.NetDocument"
+  , netDefinitionSchemaModels
   , validateDefinitionModel
   , dumpDefinition
   , compileAdmitted
@@ -76,6 +79,7 @@ module Petrus.Impetus.NetDefinition
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
+import Petrus.Impetus.Internal.JsonSchema qualified as S
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.List (sort)
@@ -88,7 +92,7 @@ import Petrus.Impetus.Internal.PyJson
 import Petrus.Impetus.Internal.Pydantic
 import Petrus.Impetus.Petrinet.Schema hiding (validatePlace, validateTransition)
 import Petrus.Impetus.Petrinet.Schema qualified as Schema
-import Petrus.Json (Json (..), defaultDumps, dumps, dumpsText, indented, safeIntegerMax, safeIntegerMin)
+import Petrus.Json (Json (..), defaultDumps, dumps, dumpsText, holdsLoneSurrogate, indented, safeIntegerMax, safeIntegerMin)
 
 -- ---------------------------------------------------------------------------
 -- Documents
@@ -199,6 +203,79 @@ data TimerDefinition
 jsonSafeIntegerMin, jsonSafeIntegerMax :: Integer
 jsonSafeIntegerMin = safeIntegerMin
 jsonSafeIntegerMax = safeIntegerMax
+
+-- ---------------------------------------------------------------------------
+-- JSON Schema
+
+-- | @NetDefinitionV3.model_json_schema()@: the JSON Schema the reference's
+-- Pydantic models publish for the wire format (spec/net-definition-v3.md,
+-- "JSON Schema"). Strict and versioned: every object is closed
+-- (@additionalProperties: false@), @format@ and @version@ are constants, and
+-- every variable integer carries the interoperable bounds. Serialized with
+-- @json.dumps(…, indent=2)@ it is byte-identical to the reference's
+-- (@differential/json_schema.py@).
+netDefinitionV3JsonSchema :: Json
+netDefinitionV3JsonSchema = S.modelJsonSchema netDefinitionSchemaModels
+
+-- | The Net definition's models, the root ('NetDefinitionV3') first.
+netDefinitionSchemaModels :: [S.ModelSpec]
+netDefinitionSchemaModels =
+  [ S.ModelSpec
+      "NetDefinitionV3"
+      (Just "One canonical flat, complete, implementation-free Net definition.")
+      [ S.field "format" (S.ConstStr "petrus-net-definition")
+      , S.field "version" (S.ConstInt 3)
+      , S.field "definition" (S.Ref "NetDefinitionBody")
+      ]
+  , S.ModelSpec
+      "NetDefinitionBody"
+      Nothing
+      [ S.field "name" (S.Nullable S.Str)
+      , S.field "time_domain" (S.ConstStr "integer")
+      , S.field "places" (S.ListOf (S.Ref "PlaceDefinition"))
+      , S.field "transitions" (S.ListOf (S.Ref "TransitionDefinition"))
+      , S.field "arcs" (S.ListOf (S.Ref "ArcDefinition"))
+      , S.field "completion" (S.Nullable pureExpression)
+      ]
+  , S.ModelSpec "PlaceDefinition" Nothing [S.field "path" S.Str, S.field "color" (S.Nullable S.Str)]
+  , S.ModelSpec
+      "TransitionDefinition"
+      Nothing
+      [ S.field "path" S.Str
+      , S.field "handler" (S.Nullable (S.Tagged [("symbol", "SymbolBehavior"), ("anonymous", "AnonymousBehavior")]))
+      , S.field "guards" (S.ListOf (S.Tagged [("symbol", "SymbolBehavior"), ("cel", "CelBehavior"), ("anonymous", "AnonymousBehavior")]))
+      , S.field "timers" (S.ListOf (S.Tagged [("delay", "DelayDefinition"), ("until", "UntilDefinition")]))
+      ]
+  , S.ModelSpec
+      "ArcDefinition"
+      Nothing
+      [ S.field "position" (S.IntIn 0 jsonSafeIntegerMax)
+      , S.field "source" S.Str
+      , S.field "target" S.Str
+      , S.field "mode" (S.Enum ["consume", "read", "inhibit"])
+      , S.field "weight" (S.IntIn 1 jsonSafeIntegerMax)
+      , S.field "color" (S.Nullable S.Str)
+      , S.field "filter" (S.Nullable pureExpression)
+      ]
+  , S.ModelSpec "SymbolExpression" Nothing [S.field "kind" (S.ConstStr "symbol"), S.field "name" S.Str]
+  , S.ModelSpec "CelExpression" Nothing [S.field "kind" (S.ConstStr "cel"), S.field "expression" S.Str]
+  , S.ModelSpec "SymbolBehavior" Nothing [S.field "kind" (S.ConstStr "symbol"), S.field "name" S.Str, S.field "uri" S.Str]
+  , S.ModelSpec
+      "CelBehavior"
+      Nothing
+      [S.field "kind" (S.ConstStr "cel"), S.field "expression" S.Str, S.field "uri" S.Str]
+  , S.ModelSpec "AnonymousBehavior" Nothing [S.field "kind" (S.ConstStr "anonymous"), S.field "uri" S.Str]
+  , S.ModelSpec
+      "DelayDefinition"
+      Nothing
+      [S.field "kind" (S.ConstStr "delay"), S.field "duration" (S.IntIn jsonSafeIntegerMin jsonSafeIntegerMax)]
+  , S.ModelSpec
+      "UntilDefinition"
+      Nothing
+      [S.field "kind" (S.ConstStr "until"), S.field "instant" (S.IntIn jsonSafeIntegerMin jsonSafeIntegerMax)]
+  ]
+  where
+    pureExpression = S.Tagged [("symbol", "SymbolExpression"), ("cel", "CelExpression")]
 
 -- ---------------------------------------------------------------------------
 -- Parsing
@@ -884,18 +961,24 @@ projectNet declaredWeights net = do
         , color = a.color
         , filter = fmap projectFilter a.filter
         }
-  Right
-    NetDefinitionV3
-      { definition =
-          NetDefinitionBody
-            { name = netName net
-            , timeDomain = IntegerTimeDomain
-            , places = ps
-            , transitions = ts
-            , arcs = arcs'
-            , completion = fmap projectCompletion (netCompletion net)
-            }
-      }
+  let document =
+        NetDefinitionV3
+          { definition =
+              NetDefinitionBody
+                { name = netName net
+                , timeDomain = IntegerTimeDomain
+                , places = ps
+                , transitions = ts
+                , arcs = arcs'
+                , completion = fmap projectCompletion (netCompletion net)
+                }
+          }
+  -- @_validate_unicode(document.model_dump(mode="python"))@: a 'Text' holds
+  -- a lone surrogate only as WTF-8 ("Petrus.Json.Wtf8"), and then it is
+  -- refused here as the reference refuses its @str@.
+  when (holdsLoneSurrogate (netDefinitionToJson document)) $
+    Left "JSON strings must contain Unicode scalar values"
+  Right document
   where
     projectFilter = \case
       FilterSymbol symbol -> SymbolExpression symbol

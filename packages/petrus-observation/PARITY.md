@@ -45,7 +45,7 @@ parameters are separate Hspec examples where they are ported.
 | engine/test_observation.py (19) | 15 | 3 | 1 | 0 |
 | engine/test_observation_http.py (7) | 7 (in `petrus-observation-http`) | | | 0 |
 
-`cabal test petrus-observation` runs 74 examples, with 0 failures:
+`cabal test petrus-observation` runs 75 examples, with 0 failures:
 
 - 22 port upstream tests through Instance doors (`ObservationSpec`;
   parametrized cases are separate examples).
@@ -56,6 +56,11 @@ parameters are separate Hspec examples where they are ported.
   `status`; a closed Engine refuses every view with the reference's text).
 - 3 test the Haskell seam.
 - 26 come from the differential corpus: 10 scenarios and 16 refusals.
+- 1 is a live round trip beyond upstream (`LiveSpec`): every scenario's
+  observed Net document and History page records, as Haskell writes them,
+  go to the pinned reference's own `parse_net_document` and
+  `decode_record`, which must accept them and serialize them back byte for
+  byte (selected by `scripts/interop`; without the reference it fails).
 
 ## engine/test_observation.py
 

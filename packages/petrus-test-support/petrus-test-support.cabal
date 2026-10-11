@@ -5,7 +5,9 @@ synopsis:           Internal test helpers for the Petrus port
 description:
   Shared test infrastructure for the Petrus packages: locating the pinned
   upstream checkout and its fixtures, running Python reference snippets in the
-  upstream virtual environment for differential tests, and a PostgreSQL
+  upstream virtual environment for differential tests, live round trips of
+  Haskell-produced Net definitions, Net documents and History records through
+  the reference's own parsers and serializers, and a PostgreSQL
   resource that creates and drops a scratch database per test run (configured
   by the @PETRUS_TEST_POSTGRES@ connection string). Not meant for use outside
   this repository's test suites.
@@ -34,8 +36,10 @@ library
                     Petrus.TestSupport.Boundary
                     Petrus.TestSupport.Postgres
                     Petrus.TestSupport.Python
+                    Petrus.TestSupport.Reference
                     Petrus.TestSupport.Repo
   build-depends:    base >=4.18 && <5
+                  , base64-bytestring >=1.2
                   , bytestring >=0.11
                   , directory >=1.3.8
                   , filepath >=1.4

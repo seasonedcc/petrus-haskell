@@ -8,7 +8,6 @@ module Corpus
   , load
   , spec
   , decodeCorpusJson
-  , knownDeviations
   ) where
 
 import Control.Monad (forM_)
@@ -62,15 +61,6 @@ decodeCorpusJson = \case
   Object members -> Object [(k, decodeCorpusJson v) | (k, v) <- members]
   j -> j
 
--- | Corpus cases this package deliberately does not reproduce, with why.
--- Every other recorded case must match exactly.
-knownDeviations :: [(Text, String)]
-knownDeviations =
-  [ ( "'\\uD800'"
-    , "a lone surrogate cannot exist in Data.Text; the literal decodes to U+FFFD"
-    )
-  ]
-
 -- | Check every case of a group, reporting up to ten mismatches at once.
 checkAll :: [(Text, Maybe String)] -> Expectation
 checkAll results = case [T.unpack label <> "\n    " <> problem | (label, Just problem) <- results] of
@@ -94,7 +84,6 @@ spec corpus = describe "differential corpus (cel-python 0.5.0)" $ do
           [ (label c, checkCase environments c)
           | c <- cases
           , textField "group" c == group
-          , textField "expr" c `notElem` map fst knownDeviations
           ]
   it "free variables (Petrus free_variables)" $
     checkAll [(label c, checkFree c) | c <- arrayField "free_variables" main']

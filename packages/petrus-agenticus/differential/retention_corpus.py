@@ -37,6 +37,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 
 from petrus.agenticus.attachment._retention import SqliteTerritoryCustody, TerritoryCustodyPhase
@@ -281,7 +282,15 @@ def rows(scratch: Path) -> list[dict[str, object]]:
     return output
 
 
+def _seeded_uuid4(rng: random.Random = random.Random(SEED)) -> uuid.UUID:
+    """``uuid.uuid4`` drawn from a seeded stream, so the fixture's lease ids
+    (``LocalProcessEnvironment`` mints them with ``uuid.uuid4()``) and so the
+    whole fixture are reproducible byte for byte."""
+    return uuid.UUID(int=rng.getrandbits(128), version=4)
+
+
 def main() -> None:
+    uuid.uuid4 = _seeded_uuid4
     directory = Path(sys.argv[1])
     scratch = Path(tempfile.mkdtemp(prefix="retention-corpus-"))
     os.chmod(scratch, 0o700)

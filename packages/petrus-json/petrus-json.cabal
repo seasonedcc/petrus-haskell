@@ -37,10 +37,12 @@ library
                     Petrus.Json.PythonText.Printable
                     Petrus.Json.Repr
                     Petrus.Json.Value
+                    Petrus.Json.Wtf8
   build-depends:    base >=4.18 && <5
                   , array >=0.5
                   , bytestring >=0.11
                   , containers >=0.6
+                  , deepseq >=1.4
                   , text >=2.0
   ghc-options:      -O2
 

@@ -10,7 +10,7 @@ import Data.Text qualified as T
 import Petrus.Impetus.NetDocument
 import Petrus.Impetus.TestSupport
 import Petrus.Impetus.WireSupport
-import Petrus.Json (Json (..), lookupMember)
+import Petrus.Json (Json (..), fromCodePoints, lookupMember)
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec
 
@@ -165,6 +165,13 @@ spec = describe "Petrus.Impetus.NetDocument lineage" $ do
     it "refuses a non-finite number" $
       mkMarkingToken Nothing (Object [("number", Float (1 / 0))])
         `shouldFailWith` pydantic "MarkingToken" "data" "Value error, JSON numbers must be finite" "value_error" "{'number': inf}" "dict"
+    -- beyond upstream: a lone surrogate (a WTF-8 'Text', "Petrus.Json.Wtf8")
+    -- in a value or a member name, refused as the reference refuses its str
+    it "refuses a lone surrogate in a string or a member name" $ do
+      mkMarkingToken Nothing (Object [("s", String (fromCodePoints "a\xD800"))])
+        `shouldFailWith` pydantic "MarkingToken" "data" "Value error, JSON strings must contain Unicode scalar values" "value_error" "{'s': 'a\\ud800'}" "dict"
+      mkMarkingToken Nothing (Object [(fromCodePoints "\xDC00", Int 1)])
+        `shouldFailWith` pydantic "MarkingToken" "data" "Value error, JSON strings must contain Unicode scalar values" "value_error" "{'\\udc00': 1}" "dict"
     -- test_direct_token_data_must_already_be_strict_json[2**53]
     it "refuses an unsafe integer" $
       mkMarkingToken Nothing (Object [("number", Int (2 ^ (53 :: Int)))])

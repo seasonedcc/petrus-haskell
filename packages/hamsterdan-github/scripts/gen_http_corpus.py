@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import base64
 import datetime as _datetime
+import functools
 import gzip
 import hashlib
 import json
@@ -43,6 +44,7 @@ sys.path.insert(0, str(ROOT / "upstream" / "hamsterdan" / "src"))
 import githubkit.auth.app  # noqa: E402
 import githubkit.cache.mem_cache  # noqa: E402
 import httpx  # noqa: E402
+import jwt.algorithms  # noqa: E402
 
 from hamsterdan.github_app.auth import GitHubAppClients  # noqa: E402
 from hamsterdan.github_app.config import AccountConfig, HostConfig  # noqa: E402
@@ -69,6 +71,11 @@ class FrozenDatetime(_datetime.datetime):
 githubkit.auth.app.datetime = FrozenDatetime  # type: ignore[attr-defined, misc]
 githubkit.cache.mem_cache.datetime = FrozenDatetime  # type: ignore[attr-defined, misc]
 time.time = lambda: CLOCK[0]
+
+# Every row mints its App JWT from the same committed key, and parsing (and
+# validating) the PEM dominates the run; PKCS#1 v1.5 signing is
+# deterministic, so one parsed key signs exactly what a fresh parse would.
+jwt.algorithms.load_pem_private_key = functools.lru_cache(maxsize=None)(jwt.algorithms.load_pem_private_key)
 
 
 def pick(values: list[Any]) -> Any:

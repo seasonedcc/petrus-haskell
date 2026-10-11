@@ -58,8 +58,11 @@
 --   string/bytes operands are \"no such overload\"; @matches@ is RE2 with
 --   RE2\'s Unicode 15.1 tables (see "Petrus.Cel.Regex").
 --
--- One deliberate deviation: a string literal spelling a lone surrogate
--- (@\'\\uD800\'@) decodes to U+FFFD, because 'Text' cannot hold a surrogate.
+-- A string literal spelling a lone surrogate (@\'\\uD800\'@) keeps it, as
+-- Python's @str@ does: 'Text' carries it in WTF-8 ("Petrus.Json.Wtf8"),
+-- its @size@ and @repr@ are CPython's, and where cel-python encodes the
+-- string (@bytes(s)@, @matches@) it raises CPython's @UnicodeEncodeError@
+-- with the same arguments.
 module Petrus.Cel
   ( -- * Programs
     Program
@@ -68,6 +71,7 @@ module Petrus.Cel
   , programExpr
   , ParseError (..)
   , freeVariables
+  , macros
     -- * Evaluation
   , evaluateJson
   , evaluateValues
@@ -116,6 +120,11 @@ compile source = Program source <$> parseCel source
 -- macro's variable is the first identifier of its first argument in lark's
 -- @find_data@ order. (@reduce@ and @min@ bind nothing here, exactly as in
 -- Petrus.)
+-- | @MACROS@ of @binding/cel.py@: the macros whose variable 'freeVariables'
+-- subtracts.
+macros :: Set Text
+macros = Set.fromList ["exists", "all", "exists_one", "map", "filter"]
+
 freeVariables :: Program -> Set Text
 freeVariables program = Set.fromList (findIdents tree) `Set.difference` bound
   where
@@ -125,7 +134,7 @@ freeVariables program = Set.fromList (findIdents tree) `Set.difference` bound
     macroVariable = \case
       LarkTree "member_dot_arg" children
         | (method : _) <- [name | LarkToken _ name <- children]
-        , method `elem` ["exists", "all", "exists_one", "map", "filter"]
+        , method `Set.member` macros
         , (LarkTree _ (LarkNode firstArgument : _) : _) <- [t | LarkNode t@(LarkTree "exprlist" _) <- children]
         , (variable : _) <- findIdents firstArgument ->
             [variable]

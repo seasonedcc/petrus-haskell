@@ -28,7 +28,7 @@ The port aims to be:
 | `docs/` | How to reproduce the checks, the audits, and the historical port plans, such as [docs/runtime.md](docs/runtime.md) for everything outside the kernel (current status: [PARITY.md](PARITY.md)). |
 | `spec/` | Language-neutral contracts this repo adds (Fabric, processes). The upstream specs live in `upstream/petrus/spec/`. |
 | `upstream/` | Git submodules of the pinned upstream projects (the Python reference). |
-| `scripts/` | `check-all`, `interop`, `bench`, `check-parity` and their helpers. |
+| `scripts/` | `check-all`, `interop`, `check-corpora`, `bench`, `check-parity` and their helpers. |
 | `bench-results/` | [summary.md](bench-results/summary.md): every package's benchmarks against Python at a glance. |
 
 ## Building and checking
@@ -41,7 +41,8 @@ suites, the benchmarks and the parity check. In short:
 ```sh
 git clone --recursive https://github.com/seasonedcc/petrus-haskell.git
 cd petrus-haskell
-scripts/check-all -j2      # build, tests, conformance, interop, parity table (what CI runs)
+scripts/check-all -j2      # build, tests, conformance, interop, corpora, parity table (what CI runs)
+scripts/check-corpora      # rerun every committed-corpus generator against the pinned Python
 scripts/interop            # only the cross-language suites, against the pinned Python
 scripts/bench PACKAGE      # rerun a package's benchmarks against the pinned Python
 scripts/check-parity       # the parity table's claims against the committed evidence

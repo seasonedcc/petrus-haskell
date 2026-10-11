@@ -301,7 +301,7 @@ spec = describe "Petrinet.Dot" $ do
             it ("for " <> show theme') $ do
               graphviz <- findExecutable "dot"
               case graphviz of
-                Nothing -> pendingWith "Graphviz 'dot' is not installed"
+                Nothing -> expectationFailure "Graphviz 'dot' is not on PATH: this example renders with the real Graphviz"
                 Just _ ->
                   withScratch $ \dir -> do
                     target <- render goldenNet (dir </> "net.svg") Nothing defaultDotOptions {theme = theme'} >>= expectRight

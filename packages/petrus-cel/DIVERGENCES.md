@@ -1,0 +1,118 @@
+# petrus-cel: divergences from the Python reference
+
+The contract is cel-python's (`celpy` 0.5.0) observable behaviour on every
+expression a Petrus net can carry, and `petrus.impetus.binding.cel`'s
+environments on top of it (pinned reference: `upstream/petrus` 3f85fc2).
+That behaviour covers parse trees and parse errors, values with their
+`repr` and truthiness, CEL error texts, and Python exception classes and
+messages. Where cel-python departs from the CEL specification, this package
+follows cel-python; the module documentation of `Petrus.Cel` lists those
+departures, and the differential corpus records each one. Those are not
+divergences.
+
+The differential corpus replays all of its 1996 expressions with no
+exclusion. The divergences left are the ones listed under "Open" below. None
+of them is reachable from an expression a Petrus net would realistically
+carry.
+
+## Resolved
+
+### 1. A string literal spelling a lone surrogate
+
+`'\uD800'` is a valid CEL string literal, and cel-python keeps it as a
+Python `str` holding the lone surrogate.
+
+Before the audit's IMP-2 and IMP-7, `Data.Text` could not hold a surrogate,
+so the Haskell lexer decoded such a literal to U+FFFD. Three things changed
+because of that: the value's `repr` (`'�'` against `'\ud800'`), its
+equality with other strings, and the errors cel-python raises when it
+encodes the string. The corpus runner excluded the one recorded case,
+`'\uD800'`.
+
+This is now resolved. The lexer builds literals with
+`Petrus.Json.Wtf8.fromCodePoints`, the same WTF-8 representation
+`petrus-json` uses for lone surrogates in JSON strings (IMP-2). The literal
+keeps its surrogate, and size, concatenation, comparison and `repr` agree
+with CPython.
+
+Where cel-python encodes a string to UTF-8, CPython raises
+`UnicodeEncodeError`, and `Petrus.Cel.Ops.encodeUtf8Strict` raises the same
+error with the same arguments. These places are:
+
+- `bytes(s)`;
+- both the pattern and the text of `matches`.
+
+Evidence:
+
+- the corpus group `literal.string.surrogates` (18 expressions), with no
+  case skipped;
+- the "lone-surrogate strings" example in `test/Properties.hs`, which checks
+  all of the exception's arguments as celpy renders them.
+
+## Open
+
+### 2. Object identity is not tracked
+
+CPython's `list.__eq__` and dict lookup first compare by identity, so the
+same NaN object can equal itself inside a container. Haskell values have no
+identity, so these shortcuts are never taken.
+
+The only observable case is one NaN object reached twice inside a
+container. A Petrus expression builds NaN only with `double('nan')`, and
+each call gives a new object, so the case does not arise.
+
+Source: `Petrus.Cel.Ops`.
+
+### 3. Repeating a sequence beyond 2^31 elements
+
+A plain Python string, bytes or list that leaks out of celtypes arithmetic
+can be repeated with `*`. Past 2^31 elements, CPython tries the allocation,
+and that fails with `MemoryError` or exhausts the machine. The Haskell
+evaluator raises `MemoryError` at once, without allocating.
+
+Source: `Petrus.Cel.Ops`.
+
+### 4. `\C` in a regular expression
+
+RE2's `\C` matches one byte of the UTF-8 encoding. Here it matches one code
+point. The two differ only on non-ASCII text matched byte by byte.
+
+Source: `Petrus.Cel.Regex`.
+
+### 5. RE2's program-size limit is approximate
+
+RE2 refuses patterns whose compiled program exceeds its size limit, for
+example `\pL{500}`. The Haskell compiler estimates RE2's program size, so a
+pattern very close to the limit can be accepted on one side and refused on
+the other.
+
+Source: `Petrus.Cel.Regex`.
+
+### 6. Clock-dependent timestamps
+
+In cel-python, two inputs read the current clock, so their results are not
+reproducible:
+
+- `timestamp('now')`;
+- a time-only string such as `timestamp('12:00')`, which pendulum completes
+  with today's date.
+
+The Haskell evaluator refuses both with a `ValueError` that names the
+reason. Petrus evaluation is deterministic: a guard or filter must give the
+same answer on replay.
+
+Source: `Petrus.Cel.Time`.
+
+### 7. Time zones in the `get*` functions
+
+`getHours('America/Sao_Paulo')` and the other accessors take a time zone
+name. Two kinds of zone are accepted:
+
+- UTC-like IANA names;
+- the fixed-offset `Etc/GMT±N` zones.
+
+Zones with daylight-saving rules are refused. They would need the tz
+database at evaluation time, and their answer would change when that
+database changes.
+
+Source: `Petrus.Cel.Time`.

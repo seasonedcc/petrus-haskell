@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Fail when a test suite left an example pending, except the declared opt-ins.
+
+    scripts/check-pending LOG_DIR
+
+scripts/check-all runs every test suite with cabal's
+``--test-show-details=streaming --test-log=LOG_DIR/...``. Each suite's
+output then lands in its own file. This script reads those files and fails
+when a test went pending. A pending example is a test that did not run, and a
+green run must not hide one. A missing tool such as `dot` or `node`, or a
+missing PostgreSQL server, therefore fails the run.
+
+The only pending examples allowed are the ones in ``OPT_INS`` below:
+- Docker tests, gated on ``PETRUS_TEST_DOCKER``, which CI sets (scripts/check-all
+  refuses to run in CI without it);
+- the reference's own opt-in acceptance tests, which reach authenticated
+  external providers or exactly installed external toolchains. The reference
+  marks them ``real_provider_acceptance``, ``real_gondolin_acceptance`` or
+  ``qualification_installation``, and skips them unless they are opted in.
+
+Each entry is matched by its exact ``# PENDING:`` text. A new pending
+example, or a changed message, fails until it is reviewed here.
+
+The pending examples hspec counts in each suite's summary must also match the
+``# PENDING:`` lines found in that suite. A suite whose log has neither
+cannot hide one.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+OPT_INS: Dict[str, str] = {
+    "skipped: set PETRUS_TEST_DOCKER=1 to run against a real Docker daemon":
+        "petrus-agenticus WorkspaceSpec: Docker opt-in (CI sets PETRUS_TEST_DOCKER)",
+    "skipped: set PETRUS_TEST_DOCKER=1 (and optionally PETRUS_TEST_DOCKER_IMAGE) to run against a real Docker daemon":
+        "petrus-execution DockerSpec: Docker opt-in (CI sets PETRUS_TEST_DOCKER)",
+    "skipped: there is no Haskell E2B SDK binding; the provider is exercised through the E2bSdk seam":
+        "petrus-execution E2bSpec: test_live_e2b_vm_provider_is_explicitly_opt_in "
+        "(real_provider_acceptance; needs E2B_API_KEY)",
+    "skipped: set PETRUS_REAL_GONDOLIN_SDK_MODULE and PETRUS_REAL_GONDOLIN_IMAGE (and PETRUS_REAL_GONDOLIN_NODE "
+    "to a Node >= 23.6) to run against real Gondolin; see PARITY.md":
+        "petrus-execution GondolinSpec: test_real_gondolin_lifecycle_is_explicitly_opt_in (real_gondolin_acceptance)",
+    "exact Pi qualification packages required":
+        "petrus-agenticus-runtime PiModelPhaseSpec: test_exact_installed_model_phase_probe (qualification_installation)",
+    "requires the exact Pi qualification packages under /tmp/petrus-pi-a2-probe (the reference skips too)":
+        "petrus-agenticus-runtime PiApplicationSpec: "
+        "test_exact_helper_core_loop_fake_stream_is_one_turn_delta_only_and_authority_free (qualification_installation)",
+    "requires PETRUS_CV16_PI_APPLICATION_QUALIFY=1 and the exact installed packages (the reference skips too)":
+        "petrus-agenticus-runtime PiApplicationSpec: test_exact_installed_application_package_probe "
+        "(qualification_installation)",
+}
+
+PENDING = re.compile(r"^\s*# PENDING: (.*)$")
+SUMMARY = re.compile(r"^\d+ examples?, \d+ failures?(?:, (\d+) pending)?$")
+
+
+def scan(path: Path) -> Tuple[List[str], int, bool]:
+    """The pending messages, the summary's pending total, and whether a summary was found."""
+    messages: List[str] = []
+    counted = 0
+    summarised = False
+    for line in path.read_text(errors="replace").splitlines():
+        pending = PENDING.match(line)
+        if pending:
+            messages.append(pending.group(1).strip())
+            continue
+        summary = SUMMARY.match(line.strip())
+        if summary:
+            summarised = True
+            counted += int(summary.group(1) or 0)
+    return messages, counted, summarised
+
+
+def main(argv: List[str]) -> int:
+    if len(argv) != 2:
+        print(__doc__.strip().splitlines()[2].strip(), file=sys.stderr)
+        return 2
+    directory = Path(argv[1])
+    logs = sorted(directory.glob("*.log"))
+    if not logs:
+        print(f"check-pending: no test logs in {directory}", file=sys.stderr)
+        return 1
+    problems: List[str] = []
+    allowed = 0
+    for log in logs:
+        messages, counted, summarised = scan(log)
+        if summarised and counted != len(messages):
+            problems.append(f"{log.name}: hspec counts {counted} pending, the log shows {len(messages)}")
+        for message in messages:
+            if message in OPT_INS:
+                allowed += 1
+            else:
+                problems.append(f"{log.name}: pending: {message}")
+    if problems:
+        print("check-pending: examples went pending (a pending test did not run):", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        print("Install what they need, or set the opt-in, and rerun; only the opt-ins in "
+              "scripts/check-pending may stay pending.", file=sys.stderr)
+        return 1
+    print(f"check-pending: {len(logs)} suite logs, no pending example "
+          f"except {allowed} declared opt-in{'s' if allowed != 1 else ''}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

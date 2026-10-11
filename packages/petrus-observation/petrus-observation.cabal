@@ -54,6 +54,7 @@ test-suite petrus-observation-test
                     Petrus.Observation.ObservationSpec
                     Petrus.Observation.CorpusSpec
                     Petrus.Observation.EngineSpec
+                    Petrus.Observation.LiveSpec
   build-depends:    base
                   , bytestring
                   , containers
@@ -66,6 +67,7 @@ test-suite petrus-observation-test
                   , petrus-json
                   , petrus-motus
                   , petrus-observation
+                  , petrus-test-support
                   , text
   ghc-options:      -threaded -rtsopts
 

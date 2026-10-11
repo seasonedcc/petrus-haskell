@@ -8,6 +8,8 @@ module Petrus.HistoryStore.Support
   , storeErrorContaining
   , runPython
   , withReference
+  , surrogateRecords
+  , surrogatePayment
   ) where
 
 import Control.Exception (bracket)
@@ -15,9 +17,10 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.HistoryStore.Jsonl
 import Petrus.Impetus.HistoryStore (HistoryStore)
+import Petrus.Impetus.History
 import Petrus.Impetus.Petrinet (NetPath, Token)
 import Petrus.Impetus.TestSupport (np, tokD)
-import Petrus.Json (Json (..))
+import Petrus.Json (Json (..), fromCodePoints)
 import Petrus.TestSupport.Python (pythonExecutable)
 import Petrus.TestSupport.Repo (upstreamPetrus)
 import System.Directory
@@ -80,3 +83,25 @@ withReference body = do
   python <- pythonExecutable
   root <- upstreamPetrus
   body (python, root)
+
+-- | The drivers' @surrogate_records()@: lone surrogates (WTF-8 'Text', the
+-- reference's @str@) in token data, a member name, a delivery identity, an
+-- Activity result and a failure text.
+surrogateRecords :: [Record]
+surrogateRecords =
+  [ RExternalEventDelivered (ExternalEventDelivered (np "intake") tokens (fromCodePoints "evt-\xDFFF") 1 Nothing 1)
+  , RTokensProduced (TokensProduced (np "queue") tokens 1 [] Nothing 1)
+  , RActivityCompleted
+      (ActivityCompleted (np "work") (Object [("note", String (fromCodePoints "\xDBFF!")), (fromCodePoints "\xD800", Null)]) 2 3)
+  , RFiringFailed (FiringFailed (np "work") (fromCodePoints "boom \xD800") 2 4)
+  ]
+  where
+    tokens =
+      [ tokD "Payment" (String (fromCodePoints "\xD800"))
+      , tokD "Payment" (Object [(fromCodePoints "\xDC00x", Array [String (fromCodePoints "a\xD83D"), Int 1, String (fromCodePoints "\xDFFF\xD800")])])
+      ]
+
+-- | The drivers' @surrogate_payment()@: a payment whose memo holds lone
+-- surrogates.
+surrogatePayment :: Token
+surrogatePayment = tokD "Payment" (Object [("amount", Int 100), ("memo", String (fromCodePoints "\xD800 \xDC00"))])

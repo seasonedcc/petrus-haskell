@@ -22,12 +22,18 @@
 --   @Exceeds the limit …@), in writer order;
 -- * @loads@: acceptance, then the exact value (integer versus float, @-0.0@,
 --   member order, the last duplicate's value at the first position), and the
---   exact 4300-digit refusal text where CPython raises it. Two documented
---   divergences ("DIVERGENCES.md") are checked as such: a document CPython
---   admits with a lone surrogate escape is refused with petrus-json's
---   surrogate message, and other refusals are compared as refusals (CPython's
---   @JSONDecodeError@ texts carry line and column, petrus-json's a byte
---   offset).
+--   exact 4300-digit refusal text where CPython raises it. With
+--   'KeepLoneSurrogates', the plain profile admits exactly what CPython does,
+--   lone surrogates included (as WTF-8, "Petrus.Json.Wtf8"), value for value.
+--   Two documented divergences ("DIVERGENCES.md") are checked as such: under
+--   the default 'RefuseLoneSurrogates' a document CPython admits with a lone
+--   surrogate escape is refused with the surrogate message, and other
+--   refusals are compared as refusals (CPython's @JSONDecodeError@ texts
+--   carry line and column, petrus-json's a byte offset).
+--
+-- The @dumps@ corpus holds strings with lone surrogates too: under
+-- @ensure_ascii@ both sides escape them, otherwise both write the @str@'s
+-- WTF-8 bytes (the oracle encodes with @surrogatepass@).
 module Petrus.Json.CPythonDifferentialSpec (spec) where
 
 import Control.Monad (forM_, unless, when)
@@ -80,6 +86,11 @@ dumpsConfigurations =
   where
     tight = defaultDumps {itemSeparator = Just ",", keySeparator = ":"}
 
+-- | The plain profile keeping lone surrogates: compared with the oracle's
+-- plain answer, value for value.
+keepingSurrogates :: ParseOptions
+keepingSurrogates = pythonLoads {loneSurrogates = KeepLoneSurrogates}
+
 -- | The @json.loads@ admission profiles, in the oracle's order.
 loadsProfiles :: [(String, ParseOptions)]
 loadsProfiles =
@@ -108,7 +119,8 @@ tag = \case
   where
     pad16 s = replicate (16 - length s) '0' ++ s
 
--- | A tagged value back; 'Nothing' when a string holds a lone surrogate.
+-- | A tagged value back (strings with lone surrogates as WTF-8); 'Nothing'
+-- when bytes are not even generalized UTF-8.
 untag :: Json -> Maybe Json
 untag = \case
   Array [String "N"] -> Just Null
@@ -124,7 +136,7 @@ untag = \case
     member = \case
       Array [String key, value] -> (,) <$> utf8 key <*> untag value
       other -> error ("bad tagged member " ++ show other)
-    utf8 text = either (const Nothing) Just (TE.decodeUtf8' (unhex (T.unpack text)))
+    utf8 text = fromWtf8 (unhex (T.unpack text))
 
 readSignedHex :: String -> Integer
 readSignedHex = \case
@@ -187,8 +199,10 @@ richChar =
     , (1, choose ('\x80', '\x10ffff') `suchThat` (\c -> c < '\xd800' || c > '\xdfff'))
     ]
 
+-- | Text for the @dumps@ corpus: 'richChar', and now and then a lone
+-- surrogate (a WTF-8 'Text', as 'KeepLoneSurrogates' parses one).
 richText :: Gen Text
-richText = T.pack <$> resize 12 (listOf richChar)
+richText = fromCodePoints <$> resize 12 (listOf (frequency [(40, richChar), (1, choose ('\xd800', '\xdfff'))]))
 
 richInteger :: Gen Integer
 richInteger =
@@ -364,13 +378,13 @@ spec = describe "differential against CPython's json (the pinned reference)" $ d
                 (Answered tagged, _) -> case parseJson pythonLoads tagged of
                   Left problem -> Just ("unreadable oracle value: " ++ problem)
                   Right t -> case untag t of
-                    -- CPython admits a lone surrogate escape; petrus-json refuses it.
-                    Nothing
-                      | ours == Left surrogateRefusal -> Nothing
-                      | otherwise -> Just ("CPython admits a lone surrogate, petrus-json answers " ++ show ours)
-                    Just expected -> case ours of
-                      Right value | exactEq value expected -> Nothing
-                      _ -> Just ("CPython admits " ++ show expected ++ ", petrus-json answers " ++ show ours)
+                    Nothing -> Just ("oracle value is not generalized UTF-8: " ++ show t)
+                    Just expected
+                      -- CPython admits a lone surrogate escape; the default refuses it.
+                      | holdsLoneSurrogate expected, ours == Left surrogateRefusal -> Nothing
+                      | otherwise -> case ours of
+                          Right value | exactEq value expected -> Nothing
+                          _ -> Just ("CPython admits " ++ show expected ++ ", petrus-json answers " ++ show ours)
                 (Refused _ message, Left problem)
                   | profile == "plain"
                   , "Exceeds the limit" `T.isPrefixOf` message
@@ -386,6 +400,24 @@ spec = describe "differential against CPython's json (the pinned reference)" $ d
           ]
         problems = [(name, document, problem) | (name, document, Just problem, _) <- verdicts]
     take 3 problems `shouldBe` []
+    -- Keeping lone surrogates, the plain profile is CPython's json.loads:
+    -- the same admissions, value for value, lone surrogates included.
+    let plainLines = [line | (n, _, _, line) <- verdicts, n == "plain"]
+        kept =
+          [ (document, problem)
+          | (document, line) <- zip loadsCorpus plainLines
+          , Just problem <- [check ("plain" :: String) keepingSurrogates document line]
+          ]
+        surrogateAdmissions =
+          length
+            [ ()
+            | (document, line) <- zip loadsCorpus plainLines
+            , Right value <- [parseJson keepingSurrogates document]
+            , holdsLoneSurrogate value
+            , BC.isPrefixOf "=" line
+            ]
+    take 3 kept `shouldBe` []
+    surrogateAdmissions `shouldSatisfy` (> 200)
     -- Every profile both admits and refuses a substantial share.
     forM_ loadsProfiles $ \(name, _) -> do
       let mine = [line | (n, _, _, line) <- verdicts, n == name]

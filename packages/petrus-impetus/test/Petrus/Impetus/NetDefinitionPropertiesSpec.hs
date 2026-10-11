@@ -2,7 +2,7 @@
 -- formats over generated nets: every valid net projects to a canonical
 -- definition that is a fixed point of serialize/parse and of compile/project,
 -- and a document's identity never depends on its view.
-module Petrus.Impetus.NetDefinitionPropertiesSpec (spec) where
+module Petrus.Impetus.NetDefinitionPropertiesSpec (spec, nets, nodePaths, coordinate) where
 
 import Data.List (nub)
 import Data.Text (Text)
