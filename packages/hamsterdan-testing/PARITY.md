@@ -17,7 +17,7 @@ The Haskell suite compares bytes.
 
 | Upstream | Haskell | Evidence |
 | --- | --- | --- |
-| `testing/readiness.py` vocabularies (`Lifecycle`, `CheckStatus`, …, `LivenessDisposition`) | sum types with `spell` (`Spelled`) | **Oracle corpus.** Every spelling is admitted and dumped through the corpus. |
+| `testing/readiness.py` vocabularies (`Lifecycle`, `CheckStatus`, …, `LivenessDisposition`) | sum types with `spelling` (contracts' `Enumeration`) | **Oracle corpus.** Every spelling is admitted and dumped through the corpus. |
 | The 14 `StrictValue` dataclasses, with their defaults and `__post_init__` rules | `Hamsterdan.Testing.Readiness` records, each with a strict `Contract` codec. `load`, `loadJson` and `dump` are `StrictValue.load` and `StrictValue.dump`. `checked` is the validating constructor. | **`test/corpus/oracle.jsonl`:** 2000 documents. Each must be admitted or refused as the reference does. The 8 construction rules are named: when a rule is the sole refusal, its exact message must appear. Each admitted document's strict dump must match by SHA-256 of its compact spelling. |
 | `ReadinessModel.evaluate` | `evaluate` | **Oracle corpus.** 1658 admitted documents cover all six dispositions, every blocker family and every violation family. Each must produce the reference's `ReadinessExpectation` dump, byte for byte. |
 | `evaluate_liveness` | `evaluateLiveness` | **Oracle corpus.** Each verdict is checked under six environments (all conditions declared, then each one withheld) times both budget flags. |

@@ -69,7 +69,7 @@ judge row = case (load (TE.encodeUtf8 row.input) :: Either Text ReadinessFacts, 
     factsDigest = TE.decodeUtf8 (Base16.encode (SHA256.hash (spelled (dump facts))))
     expected = evaluate facts
     verdict = dump expected
-    judged = [spell (evaluateLiveness expected environment budget) | environment <- environments, budget <- [False, True]]
+    judged = [spelling (evaluateLiveness expected environment budget) | environment <- environments, budget <- [False, True]]
  where
   mismatch :: (Show a, Show b) => a -> b -> Maybe String
   mismatch want got = Just (T.unpack row.input <> "\n  expected " <> show want <> "\n  got      " <> show got)
@@ -89,4 +89,4 @@ spec = describe "oracle corpus" $ do
     length refused `shouldSatisfy` (> 0)
     length ruled `shouldSatisfy` (> 0)
     let dispositions = [found | Row _ (Right (_, expectation, _)) <- rows, Just (String found) <- [member "disposition" expectation]]
-    mapM_ (\d -> spell d `shouldSatisfy` (`elem` dispositions)) [minBound .. maxBound :: ReadinessDisposition]
+    mapM_ (\d -> spelling d `shouldSatisfy` (`elem` dispositions)) [minBound .. maxBound :: ReadinessDisposition]

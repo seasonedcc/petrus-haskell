@@ -122,7 +122,7 @@ import Hamsterdan.Host.Service
   )
 import Hamsterdan.Host.Service qualified as Host
 import Hamsterdan.Host.V5.Application (ApplicationOptions (..))
-import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus, Lifecycle (..), ReadinessFacts, ReviewStatus, Spelled (..), dump, evaluate, loadJson)
+import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus, Lifecycle (..), ReadinessFacts, ReviewStatus, Enumeration (..), dump, evaluate, loadJson)
 import Hamsterdan.Testing.World.Contract
 import Hamsterdan.Testing.World.Provider hiding (setHumanComment)
 import Hamsterdan.Testing.World.Provider qualified as Provider
@@ -358,8 +358,8 @@ data ReadinessCommand
 data AgentStatus = AgentClear | AgentBlocking | AgentUnable | AgentChanged | AgentUnchanged
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled AgentStatus where
-  spell = \case
+instance Enumeration AgentStatus where
+  spelling = \case
     AgentClear -> "clear"
     AgentBlocking -> "blocking"
     AgentUnable -> "unable"
@@ -370,17 +370,17 @@ instance Spelled AgentStatus where
 data AgentFixture = FixtureReview | FixtureConversationChange | FixtureConversationRecover | FixtureCoding
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled AgentFixture where
-  spell = \case
+instance Enumeration AgentFixture where
+  spelling = \case
     FixtureReview -> "review"
     FixtureConversationChange -> "conversation_change"
     FixtureConversationRecover -> "conversation_recover"
     FixtureCoding -> "coding"
 
 -- | The member of a closed vocabulary a JSON string spells.
-spelledAs :: (Spelled a) => Json -> Maybe a
+spelledAs :: (Enumeration a) => Json -> Maybe a
 spelledAs = \case
-  String s -> find ((== s) . spell) [minBound .. maxBound]
+  String s -> find ((== s) . spelling) [minBound .. maxBound]
   _ -> Nothing
 
 -- | @validate(command)@, parsing as it checks: the same checks, in the
@@ -502,11 +502,11 @@ renderCommand = \case
   SetCi sha required checks ->
     subjectCommand "readiness.github.ci.set" [("head", String sha), ("required_checks", Array (map String required)), ("checks", Array (map ciCheckJson checks))]
   SetReview sha status found ->
-    subjectCommand "readiness.github.review.set" [("head", String sha), ("status", String (spell status)), ("findings", Array found)]
+    subjectCommand "readiness.github.review.set" [("head", String sha), ("status", String (spelling status)), ("findings", Array found)]
   HumanReview reviewer sha review state ->
     subjectCommand
       "readiness.github.human.review"
-      [("review", Int review), ("reviewer", String reviewer), ("head", String sha), ("state", String (spell state))]
+      [("review", Int review), ("reviewer", String reviewer), ("head", String sha), ("state", String (spelling state))]
   ResolveThread thread resolver resolved ->
     subjectCommand "readiness.github.human.resolve_thread" [("thread", String thread), ("resolver", String resolver), ("resolved", Bool resolved)]
   HumanComment comment author fixture ->
@@ -522,9 +522,9 @@ renderCommand = \case
       "readiness.agent.terminal"
       [ ("operation", String operation)
       , ("attempt", Int attempt)
-      , ("status", String (spell status))
-      , ("fixture", String (spell fixture))
-      , ("digest", String (strictDigest (Object [("fixture", String (spell fixture)), ("status", String (spell status))])))
+      , ("status", String (spelling status))
+      , ("fixture", String (spelling fixture))
+      , ("digest", String (strictDigest (Object [("fixture", String (spelling fixture)), ("status", String (spelling status))])))
       ]
   EmitWebhook delivery event fixture ->
     subjectCommand
@@ -674,7 +674,7 @@ applyOne p g parsed now = case parsed of
     modifyIORef' ref (\t -> t {requiredChecks = required, checks, reviewHead = sha})
     pure (Object [("checks", int (toInteger (length checks)))], Applied)
   SetReview sha status found -> do
-    let spelled = String (spell status)
+    let spelled = String (spelling status)
     modifyIORef' ref $ \t ->
       t
         { reviewHead = sha
@@ -685,7 +685,7 @@ applyOne p g parsed now = case parsed of
     pure (Object [("status", spelled), ("findings", int (toInteger (length found)))], Applied)
   HumanReview reviewer _ _ state -> do
     modifyIORef' ref (\t -> t {humanReviews = Map.insert reviewer (T.pack (printf "%020d" now), state) t.humanReviews})
-    pure (Object [("reviewer", String reviewer), ("state", String (spell state))], Applied)
+    pure (Object [("reviewer", String reviewer), ("state", String (spelling state))], Applied)
   ResolveThread thread _ resolved -> do
     modifyIORef' ref (\t -> t {reviewThreads = Map.insert thread resolved t.reviewThreads})
     pure (Object [("thread", String thread), ("resolved", Bool resolved)], Applied)
@@ -699,16 +699,16 @@ applyOne p g parsed now = case parsed of
             Map.insert
               operation
               ( Object
-                  [ ("kind", String (spell fixture))
+                  [ ("kind", String (spelling fixture))
                   , ("operation", String operation)
                   , ("attempt", Int attempt)
-                  , ("status", String (spell status))
+                  , ("status", String (spelling status))
                   , ("findings", Array [])
                   ]
               )
               t.agentTerminals
         }
-    pure (Object [("operation", String operation), ("status", String (spell status))], Applied)
+    pure (Object [("operation", String operation), ("status", String (spelling status))], Applied)
   EmitWebhook delivery event fixture -> do
     t <- readIORef ref
     let action = T.drop 1 (snd (T.breakOn ":" fixture))
@@ -1053,7 +1053,7 @@ factsOf t timers = loadJson value
         [ ("subject", String subject)
         , ("authority", Object [("generation", Int (generationCount admissions)), ("admitted", admittedClaim), ("provider", dump t.authority)])
         , ("admitted_observations", Array [String (identityOf' e) | e <- admissions])
-        , ("ci", Object [("head", String t.reviewHead), ("required_checks", Array (map String t.requiredChecks)), ("checks", Array [Object [("name", String c.name), ("status", String (spell c.status))] | c <- t.checks])])
+        , ("ci", Object [("head", String t.reviewHead), ("required_checks", Array (map String t.requiredChecks)), ("checks", Array [Object [("name", String c.name), ("status", String (spelling c.status))] | c <- t.checks])])
         , ("review", review)
         ,
           ( "human"

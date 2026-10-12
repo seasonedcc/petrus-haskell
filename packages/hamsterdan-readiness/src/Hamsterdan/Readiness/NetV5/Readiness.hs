@@ -153,7 +153,7 @@ applyState snap0 fact
   | otherwise =
       Just
         ( snap
-            { phase = spell body.phase
+            { phase = spelling body.phase
             , head = body.head
             , base = body.base
             , mergeable = body.mergeable
@@ -176,7 +176,7 @@ applyWhenCurrent :: Snapshot -> Integer -> (Snapshot -> Snapshot) -> Maybe Snaps
 applyWhenCurrent snap incarnation change = change snap <$ guard (current snap incarnation)
 
 applyChecks :: Snapshot -> ChecksFact -> Maybe Snapshot
-applyChecks snap fact = applyWhenCurrent snap fact.incarnation (\s -> s {checks = spell fact.body.status} :: Snapshot)
+applyChecks snap fact = applyWhenCurrent snap fact.incarnation (\s -> s {checks = spelling fact.body.status} :: Snapshot)
 
 reviewStatus :: ReviewFactBody -> ReviewStatus
 reviewStatus = \case
@@ -207,7 +207,7 @@ applyMutationSettled snap fact =
 raisedKey :: FaultRaisedFactBody -> (Text, Text)
 raisedKey = \case
   BodyPublicationFault body -> ("review:" <> body.op, body.reason)
-  BodyOperationFault body -> (spell body.where_ <> ":" <> body.op, body.reason)
+  BodyOperationFault body -> (spelling body.where_ <> ":" <> body.op, body.reason)
 
 applyFaultRaised :: Snapshot -> FaultRaisedFact -> Maybe Snapshot
 applyFaultRaised snap fact =
@@ -216,7 +216,7 @@ applyFaultRaised snap fact =
 
 applyFaultCleared :: Snapshot -> FaultClearedFact -> Maybe Snapshot
 applyFaultCleared snap fact =
-  let key = spell fact.body.where_ <> ":" <> fact.body.op
+  let key = spelling fact.body.where_ <> ":" <> fact.body.op
    in Just (snap {faults = without key snap.faults} :: Snapshot)
 
 foldWith :: forall (f :: Type). (Typeable f) => (Snapshot -> f -> Maybe Snapshot) -> Fold

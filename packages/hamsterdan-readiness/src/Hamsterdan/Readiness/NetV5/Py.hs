@@ -38,14 +38,14 @@ module Hamsterdan.Readiness.NetV5.Py
   , dumpObject
   , strictText
   , strictInteger
-  , spell
+  , spelling
   , unspell
   , texts
   ) where
 
 import Data.Text (Text)
 import Data.Text qualified as T
-import Hamsterdan.Contracts.Codec (Contract, dump, spelling, validate)
+import Hamsterdan.Contracts.Codec (Contract, Enumeration (..), dump, validate)
 import Hamsterdan.PyLiteral qualified as Lit
 import Hamsterdan.Readiness.NetV5.Folding (PythonException, pyError, typeError, validationError)
 import Petrus.Impetus.Instance.FailureText (PythonArg (..))
@@ -270,10 +270,6 @@ dumpObject :: (Contract a) => a -> [(Text, Json)]
 dumpObject value = case dump value of
   Object members -> members
   _ -> []
-
--- | The wire spelling of a literal value.
-spell :: (Contract a) => a -> Text
-spell = spelling
 
 -- | A literal value from its spelling (strict, as a constructor would).
 unspell :: forall a. (Contract a) => Text -> Py a

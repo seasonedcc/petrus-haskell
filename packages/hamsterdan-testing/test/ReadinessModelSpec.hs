@@ -124,11 +124,11 @@ spec = describe "ReadinessModel" $ do
 
   describe "incarnation-bound effects remain valid after provider authority moves" $
     mapM_
-      ( \kind -> it (T.unpack (spell kind)) $ do
+      ( \kind -> it (T.unpack (spelling kind)) $ do
           let authorityB = headed c40
               facts =
                 (withAuthority (AuthorityFacts 2 (Just authorityB) authorityB) readyFacts)
-                  { effects = [effect kind (spell kind <> ":incarnation-1") claim (Just authorityB) "incarnation-bound-effect" EffectSettled Nothing]
+                  { effects = [effect kind (spelling kind <> ":incarnation-1") claim (Just authorityB) "incarnation-bound-effect" EffectSettled Nothing]
                   }
           (verdict facts).violations `shouldBe` []
       )
@@ -209,7 +209,7 @@ spec = describe "ReadinessModel" $ do
 
   describe "coding and git mutation require explicit human authorization" $
     mapM_
-      ( \kind -> it (T.unpack (spell kind)) $ do
+      ( \kind -> it (T.unpack (spelling kind)) $ do
           let facts =
                 readyFacts
                   { mutation = mutating MutationInFlight "push:comment:1" a40 Nothing
@@ -300,9 +300,9 @@ spec = describe "ReadinessModel" $ do
 
   describe "readiness cannot be published outside an active lifecycle" $
     mapM_
-      ( \lifecycle -> it (T.unpack (spell lifecycle)) $ do
+      ( \lifecycle -> it (T.unpack (spelling lifecycle)) $ do
           let authority = living lifecycle
-              operation = "ready:" <> spell lifecycle
+              operation = "ready:" <> spelling lifecycle
               facts =
                 (withAuthority (AuthorityFacts 1 (Just authority) authority) readyFacts)
                   { effects = [effect EffectReadiness operation authority (Just authority) "ready" EffectSettled Nothing]

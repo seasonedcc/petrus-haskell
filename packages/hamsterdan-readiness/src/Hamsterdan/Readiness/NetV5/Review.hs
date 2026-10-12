@@ -339,7 +339,7 @@ foldBlocked b outs = do
               , ("policy", String out.policy)
               , ("incarnation", Int out.incarnation)
               , ("findings", objects out.findings)
-              , ("failure_class", String (spell out.failureClass))
+              , ("failure_class", String (spelling out.failureClass))
               , ("provider_status", maybe Null Int out.providerStatus)
               , ("provider_detail", String out.providerDetail)
               ]

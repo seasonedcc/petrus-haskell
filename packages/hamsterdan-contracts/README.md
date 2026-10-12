@@ -18,7 +18,7 @@ diverges.
 
 | Module | Ports | Key API |
 | --- | --- | --- |
-| `Hamsterdan.Contracts.Codec` | pydantic strict dataclasses (`TypeAdapter`) | `Codec a`, `Contract a` (`contract`), `validate`, `validateJson`, `dump`, `colorOf`, `spelling`; record combinators `record`, `recordWith`, `field`, `fieldDefault`, `constField`; leaves `text`, `integer`, `bool`, `anyJson`, `object`, `list`, `dict`, `nullable`, `enum`, `union`, `pairOrEmpty`; `Model` / `modelOf` for type-erased registries |
+| `Hamsterdan.Contracts.Codec` | pydantic strict dataclasses (`TypeAdapter`) | `Codec a`, `Contract a` (`contract`), `validate`, `validateJson`, `dump`, `colorOf`; `Enumeration a` (`spelling`, total) with `enumeration` and `unspelling`; record combinators `record`, `recordWith`, `field`, `fieldDefault`, `constField`; leaves `text`, `integer`, `bool`, `anyJson`, `object`, `list`, `dict`, `nullable`, `union`, `pairOrEmpty`; `Model` / `modelOf` for type-erased registries |
 | `Hamsterdan.Contracts.ReadinessV5` (generated) | `contracts/readiness_v5.py` | 116 records, their `Literal` enumerations and unions, `models` |
 | `Hamsterdan.Contracts.Readiness` (generated) | the dataclasses of `contracts/readiness.py` | 43 records and enumerations, `models` |
 | `Hamsterdan.Contracts.ReadinessProjection` | `project_readiness`, `dashboard_projection_digest`, `workflow_wait`, `workflow_gates_ready` | `Concerns`, `projectReadiness`, `dashboardProjectionDigest`, `workflowWait`, `workflowGatesReady` |

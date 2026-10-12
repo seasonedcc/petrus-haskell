@@ -39,7 +39,9 @@ module Hamsterdan.Contracts.Codec
   , dict
   , nullable
   , literalInteger
-  , enum
+  , Enumeration (..)
+  , enumeration
+  , unspelling
   , union
   , mapCodec
   , refine
@@ -55,8 +57,6 @@ module Hamsterdan.Contracts.Codec
   , dump
   , validate
   , validateJson
-  , spelling
-  , unspelling
   , Model (..)
   , modelOf
 
@@ -322,19 +322,32 @@ literalInteger :: Integer -> Codec ()
 literalInteger expected = leaf "Literal" (const (Int expected)) (literal (Int expected))
 
 -- | A string @Literal[...]@ as a Haskell enumeration: every constructor has
--- exactly one spelling, and only those spellings are admitted.
-enum :: (Bounded a, Enum a) => Text -> (a -> Text) -> Codec a
-enum name spell =
+-- exactly one wire spelling.
+class (Bounded a, Enum a) => Enumeration a where
+  spelling :: a -> Text
+
+-- | The codec of an 'Enumeration' under its pydantic name: only the
+-- spellings are admitted.
+enumeration :: forall a. (Enumeration a) => Text -> Codec a
+enumeration name =
   Codec
     { codecName = name
     , codecFields = []
-    , encoder = String . spell
+    , encoder = String . spelling
     , decoder = \case
         String spelled | Just value <- Map.lookup spelled table -> Right value
         _ -> failAt ("input should be one of " <> T.intercalate ", " (Map.keys table))
     }
   where
-    table = Map.fromList [(spell value, value) | value <- [minBound .. maxBound]]
+    table = spellings @a
+
+-- | Every member by its spelling.
+spellings :: (Enumeration a) => Map.Map Text a
+spellings = Map.fromList [(spelling value, value) | value <- [minBound .. maxBound]]
+
+-- | The member the text spells, if any.
+unspelling :: (Enumeration a) => Text -> Maybe a
+unspelling spelled = Map.lookup spelled spellings
 
 -- | A pydantic smart-mode union of disjoint members: the first member that
 -- admits the input wins; encoding dispatches on the Haskell constructor.
@@ -392,16 +405,6 @@ validateJson :: (Contract a) => ByteString -> Either DecodeError a
 validateJson bytes = case parseJson surrogateRefusingLoads bytes of
   Left problem -> Left (DecodeError [] ("invalid JSON: " <> T.pack problem))
   Right value -> validate value
-
--- | The wire spelling of an enumeration value.
-spelling :: (Contract a) => a -> Text
-spelling value = case dump value of
-  String spelled -> spelled
-  _ -> error "Hamsterdan.Contracts.Codec.spelling: not a string literal"
-
--- | The enumeration value the text spells, if any.
-unspelling :: (Contract a) => Text -> Maybe a
-unspelling = either (const Nothing) Just . validate . String
 
 -- | A model with its type erased, for differential tests and registries.
 data Model = Model

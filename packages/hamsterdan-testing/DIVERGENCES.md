@@ -30,9 +30,9 @@ corpus checks the following byte for byte against the pinned Python (see
      whenever that rule is the reference's only refusal.
 3. **`Literal` vocabularies are enumerations.** For example, `Lifecycle`,
    `EffectKind` and `ReadinessDisposition` are sum types with one
-   constructor per spelling. Their wire spelling is `spell`. An invalid
-   spelling cannot be constructed, and decoding refuses exactly what
-   pydantic refuses.
+   constructor per spelling. Their wire spelling is `spelling` (contracts'
+   `Enumeration`). An invalid spelling cannot be constructed, and decoding
+   refuses exactly what pydantic refuses.
 4. **The model is two functions.**
    - The stateless class `ReadinessModel().evaluate` is `evaluate`.
    - `evaluate_liveness(…, budget_exhausted=b)` is
