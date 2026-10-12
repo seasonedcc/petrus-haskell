@@ -94,3 +94,13 @@ input, is meant to be identical. The live differential
    the `ValueError` the reference's constructor raises there. *Why:* the
    same refusals, at the same point, without a second representation of
    the value; every construction site states how it handles them.
+
+9. **NaN `Number`s compare totally.** In Python `<`, `<=`, `==`, `>=`
+   and `>` with a NaN are all `False`, `nan == nan` included. `Number`'s `Ord` puts NaN after
+   everything and equal to itself, and its `Eq` is that order's
+   equivalence. Comparisons without a NaN are Python's, exact across int
+   and float. *Why:* `Eq` and `Ord` have to agree for
+   `Map` and `Set` to work. The policy and failure constructors check
+   that a number is finite before they compare it, so a NaN never reaches
+   their comparisons. `Show` stays Python's `repr` (`reprNumber`), the
+   spelling the refusal messages quote.

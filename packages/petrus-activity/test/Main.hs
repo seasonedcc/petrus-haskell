@@ -35,6 +35,14 @@ main = hspec $ do
     it "orders exactly across int and float" $
       property $ \(a :: Integer) (b :: Double) ->
         compare (IntNumber a) (FloatNumber b) == compare (toRational a) (toRational b)
+    it "has an Eq that agrees with its Ord, NaN and infinities included" $ do
+      let nan = FloatNumber (0 / 0)
+          inf = FloatNumber (1 / 0)
+          samples = [nan, inf, negate inf, FloatNumber 0, FloatNumber (-0.0), IntNumber 0, IntNumber 1, FloatNumber 1, FloatNumber 1.5]
+      [(a, b) | a <- samples, b <- samples, (a == b) /= (compare a b == EQ)] `shouldBe` []
+      nan `shouldBe` nan
+      nan `shouldNotBe` IntNumber 0
+      inf `shouldNotBe` IntNumber (2 ^ (1100 :: Int))
 
   describe "ExecutionPolicy" $ do
     it "accepts the defaults" $ do
