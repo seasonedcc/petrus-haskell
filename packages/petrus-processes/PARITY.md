@@ -98,6 +98,21 @@ schema, and call and spawn each other.
   other converges on one lineage row (P-080). The demo's parent spawns
   children through a `process.spawn` worker of the other implementation, in
   both directions.
+
+  That worker speaks a line protocol of its own, not a Dispatch. It is
+  equivalent for P-079 because P-079 compares what the Activity returns. A
+  line carries the invocation's fields (activity, input, correlation,
+  idempotency) and the registry's coordinates. Each side's worker rebuilds
+  the invocation through its own refusals and runs its own `SpawnActivity`
+  over its own Postgres registry and the demo's provisioner. It answers
+  the outcome JSON or `f"{type(error).__name__}: {error}"`. A Dispatch
+  would add custody: claims, attempts, and the recording of outcomes and
+  refusals. The reference demo has no custody either: `DemoInlineDispatch`
+  runs its Activities inline. Custody is checked across implementations
+  elsewhere:
+  - Local custody records a refused `process.spawn` or `fabric.send` as the
+    reference does, in both directions (`WorkerRefusalSpec`);
+  - a retry crossing implementations converges (P-080).
 - **Replies, failures and lifecycle rows.** These behave the same across the
   pairs: unrelated replies (P-033), correlated errors (P-035), offline
   callees (P-032), lost spawn completions (P-077), replay (P-036), credential
