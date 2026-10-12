@@ -85,23 +85,24 @@ workspace receiver, and selects the Pi runner after an exact READY probe.
 ## Benchmarks
 
 [bench/RESULTS.md](bench/RESULTS.md) has the method and rerun commands.
-Both sides were measured in wall-clock time and interleaved. Haskell is
-faster on every row:
+Both sides were measured in wall-clock time and interleaved; the figures
+are the medians of three repetitions on 2026-10-12. Haskell is faster on
+every row:
 
 | Row | Haskell | Python | Speedup |
 | --- | ---: | ---: | ---: |
-| prompt (review envelope) | 10.8 µs | 32.0 µs | 3.0× |
-| result (parse and validate 8 findings) | 24.4 µs | 49.8 µs | 2.0× |
-| archive admission (200 files) | 871 µs | 3.41 ms | 3.9× |
-| sealed key (seal then open) | 31.4 µs | 39.0 µs | 1.24× |
-| route claim (claim then settle) | 113 µs | 172 µs | 1.52× |
-| agent turn (one scripted Pi review) | 127 ms | 146 ms | 1.15× |
+| prompt (review envelope) | 9.54 µs | 31.3 µs | 3.3× |
+| result (parse and validate 8 findings) | 25.3 µs | 47.7 µs | 1.9× |
+| archive admission (200 files) | 607 µs | 3.24 ms | 5.3× |
+| sealed key (seal then open) | 40.2 µs | 41.0 µs | 1.02× |
+| route claim (claim then settle) | 95.8 µs | 169 µs | 1.76× |
+| agent turn (one scripted Pi review) | 109 ms | 126 ms | 1.16× |
 
 hamsterdan-host's [bench](../hamsterdan-host/bench/RESULTS.md) adds a full
 scripted agent turn through the host: one webhook to quiescence through the
-composed agent. Haskell takes 147 ms and Python 317 ms (2.15×), the median
-of seven interleaved repetitions on 2026-10-11 (06:14–06:26, load
-1.96–3.91; Haskell ahead in each, by 1.94× at the least).
+composed agent. Haskell takes 141 ms and Python 309 ms (2.20×), the median
+of three interleaved repetitions on 2026-10-12 (Haskell ahead in each, by
+2.17× at the least).
 
 ## Divergences
 

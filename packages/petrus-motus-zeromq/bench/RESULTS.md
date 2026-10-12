@@ -68,7 +68,53 @@ same rows to stderr, and `name,nanoseconds` lines to stdout for
 
 Every figure is the median of 10 timed runs after one warm-up run.
 
+## Current figures
+
+Measured on 2026-10-12, 05:21 local (UTC-3), at commit `fc3e42b` with
+the `zmq_poll` wait described below, on the Apple M4 (Darwin arm64) with a
+1-minute load average of 2.40–2.45: three interleaved repetitions,
+alternating which side goes first, of
+
+    scripts/bench-compare petrus-motus-zeromq 3
+
+Haskell figures are the bench's own medians of 10 timed runs, run directly
+in the package directory with `+RTS -M2G`; Python figures are the twin's
+own timing (CPython 3.14.6). Each figure is the median over the
+repetitions, and the ratio is Python ÷ Haskell (above 1 means Haskell is
+faster). Haskell is faster on every row, in every repetition: the
+synchronous memory rows (the transport alone) by 1.09× and 1.17×, the
+native asynchronous access by 1.60× and 2.01×, and the Local-backed rows by
+1.64–1.77×.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `zeromq/local/claim-empty-100` | 21.1 ms | 34.7 ms | 1.64× | 1.64× | 20.9 ms, 21.1 ms, 21.1 ms | 34.6 ms, 34.8 ms, 34.7 ms |
+| `zeromq/local/roundtrip-20` | 18 ms | 31.3 ms | 1.73× | 1.69× | 17.9 ms, 18 ms, 18.5 ms | 31.1 ms, 31.5 ms, 31.3 ms |
+| `zeromq/local-held-open/claim-empty-100` | 20.8 ms | 34.6 ms | 1.67× | 1.65× | 20.8 ms, 20.4 ms, 20.8 ms | 34.8 ms, 34.6 ms, 34.3 ms |
+| `zeromq/local-held-open/roundtrip-20` | 17.8 ms | 31.6 ms | 1.77× | 1.76× | 17.6 ms, 18 ms, 17.8 ms | 31.8 ms, 31.6 ms, 31.5 ms |
+| `zeromq/memory/claim-empty-100` | 19.3 ms | 21.1 ms | 1.09× | 1.07× | 19.6 ms, 19.3 ms, 19.3 ms | 21.1 ms, 21.2 ms, 20.9 ms |
+| `zeromq/memory/custody-20` | 12 ms | 14.1 ms | 1.17× | 1.14× | 12.3 ms, 12 ms, 12 ms | 14.1 ms, 14.1 ms, 13.9 ms |
+| `zeromq/memory/async-claim-empty-100-c1` | 19.6 ms | 31.3 ms | 1.60× | 1.59× | 19.7 ms, 19.4 ms, 19.6 ms | 31.3 ms, 31.4 ms, 31.3 ms |
+| `zeromq/memory/async-claim-empty-100-c8` | 10.9 ms | 22 ms | 2.01× | 1.99× | 11 ms, 10.8 ms, 10.9 ms | 21.9 ms, 22.1 ms, 22 ms |
+
+**The socket waits now poll in libzmq.** The threaded runtime (which the
+server and the bench use) waits for a socket with an interruptible
+`zmq_poll` on the calling OS thread, as pyzmq's blocking receive does,
+instead of through the GHC IO manager on the socket's `ZMQ_FD`. Each wake
+through the IO manager costs an event-manager hand-off, and each
+`System.Timeout.timeout` a timer-manager registration; on the Linux CI
+runners that was enough to put a request round trip behind pyzmq's. The
+poll still composes with `timeout` and asynchronous exceptions, which
+interrupt the foreign call. The non-threaded runtime keeps the
+`threadWaitRead` wait. A run of the same rows earlier the same night with
+the IO-manager wait (load 3.22–3.46) read, in the order above, 1.60×,
+1.61×, 1.60×, 1.66×, 1.14×, 1.21×, 1.71× and 1.71×: on macOS the change
+moves the rows by a few per cent either way, and the eight-way
+asynchronous row gains most (12.9 ms to 10.9 ms).
+
 ## Results
+
+<!-- bench: superseded -->
 
 The runs took place on 2026-10-10 on an Apple M4 with 24 GB of memory:
 - GHC 9.10.3 (`-O2`, `-A32m`), with libzmq 4.3.5 from Homebrew and

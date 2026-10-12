@@ -30,6 +30,42 @@ its repository with fixed identities and dates
 (`Hamsterdan.Host.Scripted.deterministicRepository` and its twin in
 `bench.py`), so both sides review the same commits.
 
+## Current figures
+
+Measured on 2026-10-12, 04:36–04:37 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.32–2.76:
+three interleaved repetitions, alternating which side goes first, of
+
+    TMPDIR="$PWD/bench-results/tmp" scripts/bench-compare hamsterdan-agents 3 --haskell-arg=-j1 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-agents/bench/bench.py'
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `agents.prompt/encode a review prompt` | 9.54 µs | 31.3 µs | 3.28× | 3.20× | 9.54 µs, 9.51 µs, 9.75 µs | 31.4 µs, 31.3 µs, 31.2 µs |
+| `agents.result/parse and validate an 8-finding review result` | 25.3 µs | 47.7 µs | 1.89× | 1.86× | 25.3 µs, 25.3 µs, 25.1 µs | 47.8 µs, 47 µs, 47.7 µs |
+| `agents.archive/admit a 200-file settled workspace archive` | 607 µs | 3.24 ms | 5.34× | 5.27× | 616 µs, 607 µs, 607 µs | 3.25 ms, 3.2 ms, 3.24 ms |
+| `agents.keys/seal and open connection state` | 40.2 µs | 41 µs | 1.02× | 1.01× | 40.6 µs, 40.1 µs, 40.2 µs | 41 µs, 41.8 µs, 41 µs |
+| `agents.routes/claim and settle one operation` | 95.8 µs | 169 µs | 1.76× | 1.70× | 95.3 µs, 95.8 µs, 98.1 µs | 169 µs, 169 µs, 167 µs |
+| `agents.agent turn/one scripted Pi review through the Pi native runner` | 109 ms | 126 ms | 1.16× | 1.15× | 109 ms, 108 ms, 110 ms | 127 ms, 126 ms, 126 ms |
+
+The `keys` row is close to level (1.02×), and its Haskell figure is higher
+than the 31.4 µs of the table below. Most of that is where the row's key
+files live, not the code: the row seals connection state into files under
+`TMPDIR`, which this run pointed into the checkout. Run on its own
+straight after (05:22, load 2.4), three times a side, the row read
+33.6–34.4 µs in Haskell and 36.0–36.8 µs in Python with the default
+`TMPDIR` (`/var/folders/…`), and 37.2–38.2 µs against 39.2–40.8 µs with
+`TMPDIR` in the checkout: both sides about 10% slower there, and Haskell
+ahead by 1.06–1.07× in each pairing. (The Python figures are the best of
+five repeats, the Haskell ones tasty-bench means.)
+
 ## Results
 
 The machine was an Apple M4 (10 cores), macOS 26.3.1, shared with other
@@ -45,6 +81,8 @@ run).
   is the best of 5 `timeit` repeats, each about half a second of passes.
 - **Interleaving:** two rounds per side, run as Haskell, Python, Haskell,
   Python. The table shows each side's better round.
+
+<!-- bench: superseded -->
 
 | Operation (one pass) | Haskell | Python | Python / Haskell |
 | --- | ---: | ---: | ---: |

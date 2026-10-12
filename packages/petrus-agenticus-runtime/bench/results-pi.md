@@ -33,6 +33,47 @@ and by scripts against the pinned reference (`upstream/petrus` @ 3f85fc2):
   cipher is not measured. Authority is supplied once, on the first
   iteration.
 
+## Current figures
+
+Measured on 2026-10-12, 02:57–03:06 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.26–2.93:
+five interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-agenticus-runtime 5 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `pi-a2-scripted-turn` | 9.19 ms | 27.4 ms | 2.99× | 2.99× | 8.82 ms, 9.19 ms, 9.21 ms, 8.66 ms, 9.49 ms | 27.2 ms, 27.4 ms, 29.2 ms, 27.1 ms, 28.3 ms |
+| `pi-start-frame-encode` | 4.02 µs | 7.67 µs | 1.91× | 1.87× | 4.03 µs, 4.03 µs, 4 µs, 4.02 µs, 4.02 µs | 7.77 µs, 7.53 µs, 7.67 µs, 7.75 µs, 7.64 µs |
+| `pi-tool-call-decode` | 362 ns | 1.83 µs | 5.05× | 4.86× | 368 ns, 360 ns, 362 ns, 366 ns, 361 ns | 1.79 µs, 1.83 µs, 1.8 µs, 1.84 µs, 1.86 µs |
+| `pi-session-validate` | 152 µs | 457 µs | 3.00× | 2.95× | 153 µs, 152 µs, 153 µs, 152 µs, 152 µs | 452 µs, 457 µs, 457 µs, 449 µs, 463 µs |
+| `pi-fingerprint` | 2.23 µs | 6.29 µs | 2.82× | 2.80× | 2.22 µs, 2.23 µs, 2.24 µs, 2.24 µs, 2.23 µs | 6.28 µs, 6.31 µs, 6.27 µs, 6.3 µs, 6.29 µs |
+| `pi-a2-fingerprint` | 2.39 µs | 6.1 µs | 2.55× | 2.47× | 2.38 µs, 2.4 µs, 2.38 µs, 2.44 µs, 2.39 µs | 6.14 µs, 6.1 µs, 6.13 µs, 6.03 µs, 6.07 µs |
+| `pi-native-turn` | 39 ms | 44.1 ms | 1.13× | 1.11× | 39 ms, 39 ms, 39.2 ms, 39.6 ms, 38.9 ms | 44.1 ms, 45 ms, 43.5 ms, 45.5 ms, 43.5 ms |
+| `pi-a5-turn` | 37.3 ms | 43 ms | 1.15× | 1.14× | 37.6 ms, 37 ms, 37.7 ms, 37.3 ms, 37.3 ms | 44.2 ms, 43.6 ms, 43 ms, 42.9 ms, 42.4 ms |
+| `pi-model-phase-turn` | 26.7 ms | 28.7 ms | 1.08× | 1.07× | 26.7 ms, 26.7 ms, 26.6 ms, 26.8 ms, 26.7 ms | 28.9 ms, 28.7 ms, 28.6 ms, 28.7 ms, 29 ms |
+
+The `pi-ledger-cycle` row of that run read 0.98× (911 µs against 894 µs,
+0.95× at the lowest), within the noise of a row whose time is four
+fsyncs. Its own run, 15 interleaved repetitions on 2026-10-12, 04:26–04:27
+local, load average 2.43–2.60, of
+
+    scripts/bench-compare petrus-agenticus-runtime 15 --pattern pi-ledger-cycle --python python_pi.py --python-only pi-ledger-cycle
+
+gives:
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `pi-ledger-cycle` | 820 µs | 877 µs | 1.07× | 0.98× | 826 µs, 826 µs, 852 µs, 876 µs, 855 µs, 750 µs, 820 µs, 823 µs, 817 µs, 873 µs, 796 µs, 815 µs, 799 µs, 782 µs, 793 µs | 975 µs, 867 µs, 877 µs, 862 µs, 888 µs, 817 µs, 890 µs, 894 µs, 886 µs, 892 µs, 845 µs, 874 µs, 806 µs, 863 µs, 910 µs |
+
 ## Results
 
 Environment:
@@ -58,6 +99,8 @@ later wall-clock run, described below the table.
   tasty-bench doubles its iteration count until the estimate settles, so on
   this workload it measured turns from much fuller ledgers than the twin
   did. `bench/PiA2Bench.hs` explains this in more detail.
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Slowest round |
 | --- | ---: | ---: | ---: | ---: |
@@ -203,6 +246,8 @@ tasty-bench wall-clock means (`--stdev 5`); Python values are
 `scripts/bench_timing.py` medians of 10 batches of at least 0.2 s. The
 table gives the medians over the rounds and the lowest single-round ratio.
 Haskell was ahead in every round of every row.
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Slowest round |
 | --- | ---: | ---: | ---: | ---: |

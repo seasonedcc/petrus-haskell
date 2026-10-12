@@ -30,6 +30,17 @@ analysis that came with them.
 | `load.10k` | 32.4 ms | 60.8 ms | 1.88× | 1.87× | 32.4 ms, 32.4 ms, 32.5 ms | 63.4 ms, 60.8 ms, 60.8 ms |
 | `verify.conflict-acknowledge` | 61.4 µs | 88.6 µs | 1.44× | 1.44× | 61.4 µs, 61.5 µs, 60.8 µs | 88.4 µs, 88.6 µs, 89.1 µs |
 
+A note on the loads. The Haskell `load.*` rows got slower between the
+earlier figures below and these: `load.1k` 2.29 → 2.86 ms, `load.10k`
+26.4 → 32.4 ms, about a quarter, while the Python side stayed put (5.98 →
+5.74 ms, 65.1 → 60.8 ms) and the round-trip rows got faster. The load is
+where each payload goes through petrus-json's `json.loads` reading and the
+record decoders, and those changed in between for CPython fidelity: lone
+surrogates kept as `json.loads` keeps them (`2d7fe58`, `3a25ff7`), one
+CPython `float()`/`int()` of a `str` (`62bfaf5`, `e9a3269`) and one
+`timestamptz` codec in petrus-postgres (`30c4118`). The slowdown has not
+been bisected to one of them. Haskell still leads both rows by 1.9–2.0×.
+
 ## Earlier figures
 
 - Date: 2026-10-11 01:05–01:09 local (UTC-3), on the commit that adds petrus-postgres's prepared-statement cache

@@ -29,7 +29,59 @@ Haskell numbers are tasty-bench means (± 2σ). Python numbers are the median of
 24 GB of memory, using GHC 9.10.3 (`-O2`) and CPython 3.14.6. The reference
 was pinned at `upstream/petrus` 3f85fc2.
 
+## Current figures
+
+Measured on 2026-10-12, 05:11–05:17 local (UTC-3), at commit `fc3e42b`
+with the benchmark built `-threaded` (see below), on the Apple M4 (Darwin
+arm64) with a 1-minute load average of 1.57–2.74: three interleaved
+repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-impetus 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `candidates.wide-fanin` | 21.2 µs | 663 µs | 31.22× | 30.97× | 20.5 µs, 21.2 µs, 21.4 µs | 693 µs, 663 µs, 662 µs |
+| `candidates.long-fifo` | 1.32 ms | 13.7 ms | 10.34× | 10.16× | 1.28 ms, 1.32 ms, 1.34 ms | 14.1 ms, 13.5 ms, 13.7 ms |
+| `candidates.weight-3` | 262 µs | 4.76 ms | 18.21× | 17.87× | 258 µs, 262 µs, 269 µs | 4.75 ms, 4.76 ms, 4.82 ms |
+| `instance-run.wide-fanout` | 22.4 ms | 1.98 s | 88.51× | 87.46× | 21.6 ms, 22.5 ms, 22.4 ms | 1.98 s, 1.97 s, 1.98 s |
+| `instance-run.long-fifo` | 64.3 ms | 1.13 s | 17.52× | 17.49× | 62.5 ms, 64.3 ms, 64.4 ms | 1.13 s, 1.13 s, 1.13 s |
+| `history.encode` | 7.59 ms | 39.1 ms | 5.15× | 5.12× | 7.44 ms, 7.64 ms, 7.59 ms | 42.2 ms, 39.1 ms, 39.1 ms |
+| `history.dumps-only` | 6.18 ms | — | — | — | 6.13 ms, 6.22 ms, 6.18 ms |  |
+| `history.parse-only` | 24.3 ms | — | — | — | 23.9 ms, 24.4 ms, 24.3 ms |  |
+| `history.decode` | 46.4 ms | 86.9 ms | 1.87× | 1.86× | 45.3 ms, 46.4 ms, 46.7 ms | 92.2 ms, 86.6 ms, 86.9 ms |
+| `history.records-only` | 13.8 ms | — | — | — | 13.6 ms, 13.8 ms, 13.9 ms |  |
+| `history.replay-marking` | 230 ms | 3.44 s | 14.97× | 14.81× | 227 ms, 230 ms, 233 ms | 3.44 s, 3.44 s, 3.45 s |
+| `net-definition.serialize` | 960 µs | 9.24 ms | 9.63× | 9.51× | 949 µs, 972 µs, 960 µs | 9.49 ms, 9.24 ms, 9.22 ms |
+| `net-definition.parse` | 4.57 ms | 10.6 ms | 2.31× | 2.27× | 4.47 ms, 4.58 ms, 4.57 ms | 10.7 ms, 10.4 ms, 10.6 ms |
+| `net-definition.compile` | 734 µs | 6.63 ms | 9.03× | 8.98× | 715 µs, 734 µs, 734 µs | 6.73 ms, 6.59 ms, 6.63 ms |
+| `net-document.serialize` | 2 ms | 13.6 ms | 6.81× | 6.72× | 1.95 ms, 2 ms, 2 ms | 13.6 ms, 13.4 ms, 14.7 ms |
+| `net-document.parse` | 7.59 ms | 13 ms | 1.72× | 1.71× | 7.45 ms, 7.59 ms, 7.63 ms | 13 ms, 13 ms, 13.2 ms |
+| `timers.delay-ring` | 9.19 ms | 109 ms | 11.86× | 11.75× | 9.04 ms, 9.19 ms, 9.27 ms | 110 ms, 109 ms, 109 ms |
+| `lifecycle-scope.fill` | 422 µs | 23.3 ms | 55.27× | 55.07× | 411 µs, 423 µs, 422 µs | 23.6 ms, 23.3 ms, 23.3 ms |
+| `lifecycle-scope.close` | 445 µs | 23.5 ms | 52.71× | 52.36× | 438 µs, 448 µs, 445 µs | 23.6 ms, 23.5 ms, 23.3 ms |
+| `lifecycle-scope.reset` | 447 µs | 23.3 ms | 52.08× | 50.94× | 441 µs, 447 µs, 454 µs | 23.3 ms, 23.4 ms, 23.1 ms |
+
+The benchmark is now built with `-threaded`. Built without it, it twice
+stopped for good partway through a `scripts/bench-compare` run on
+2026-10-12: the process sat at 0% CPU with its main thread in the
+non-threaded RTS's deadlock path (`awaitUserSignals`, from `sample`), even
+with standard input from `/dev/null`. The threaded build ran through. A
+complete non-threaded run from earlier the same night (04:31–04:36, load
+2.35–3.05) gave the same figures within a few per cent on every row except
+`history.replay-marking` (200 ms, 17.2×) and `history.decode` (42.3 ms,
+2.09×), where the threaded build is 10–15% slower.
+
 ## Results
+
+<!-- bench: superseded -->
 
 | workload | size | Python | Haskell | speed-up |
 | --- | --- | ---: | ---: | ---: |

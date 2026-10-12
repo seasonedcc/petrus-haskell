@@ -44,6 +44,31 @@ that the state interop tests use (`differential/state_reference.py`, and
 `test/V5Doubles.hs`). Each side sends the Worker's progress lines to
 `/dev/null`.
 
+## Current figures
+
+Measured on 2026-10-12, 04:37–04:40 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.54–3.46:
+three interleaved repetitions, alternating which side goes first, of
+
+    TMPDIR="$PWD/bench-results/tmp" scripts/bench-compare hamsterdan-host 3 --upstream hamsterdan --haskell-arg=-j1
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `webhook ingest.100 deliveries through POST /github/webhooks` | 4.2 ms | 10.3 ms | 2.46× | 2.34× | 4.2 ms, 4.43 ms, 4.13 ms | 10.3 ms, 10.4 ms, 10.3 ms |
+| `reconciliation.one webhook to quiescence on a fresh Instance` | 25.9 ms | 173 ms | 6.67× | 6.60× | 26.7 ms, 25.9 ms, 25.9 ms | 176 ms, 173 ms, 172 ms |
+| `agent turn.one webhook to quiescence through the scripted Pi agent` | 141 ms | 309 ms | 2.20× | 2.17× | 140 ms, 142 ms, 141 ms | 307 ms, 309 ms, 316 ms |
+| `gates.24 classifications (reply, reminder, dash x 8 outcomes)` | 2.46 µs | 55 µs | 22.35× | 21.74× | 2.53 µs, 2.46 µs, 2.45 µs | 55 µs, 54.4 µs, 55.6 µs |
+| `timers.rebuild from a 333-fact History` | 3.52 ms | 7.13 ms | 2.02× | 2.00× | 3.52 ms, 3.42 ms, 3.57 ms | 7.06 ms, 7.13 ms, 7.13 ms |
+| `timers.open a fresh store with no History` | 911 µs | 1.32 ms | 1.45× | 1.41× | 926 µs, 911 µs, 910 µs | 1.32 ms, 1.29 ms, 1.32 ms |
+
 ## Results
 
 Seven interleaved repetitions on 2026-10-11, 06:14–06:26 local (UTC-3), at
@@ -65,6 +90,8 @@ load average 1.96–3.91, on the same machine as below:
   against Haskell's mean.
 - Each figure is the median of the seven repetitions. Repetitions alternate
   which side goes first.
+
+<!-- bench: superseded -->
 
 | Operation (one pass) | Haskell | Python | Python / Haskell | Lowest per repetition |
 | --- | ---: | ---: | ---: | ---: |

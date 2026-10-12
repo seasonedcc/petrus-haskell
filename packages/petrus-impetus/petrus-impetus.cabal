@@ -171,4 +171,7 @@ benchmark petrus-impetus-bench
                   , tasty-bench >=0.3.2
                   , tasty
                   , text
-  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"
+  -- -threaded: built without it, the benchmark intermittently stopped for
+  -- good in the non-threaded RTS's deadlock path (awaitUserSignals, 0% CPU)
+  -- partway through scripts/bench-compare runs on macOS (2026-10-12).
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A32m"

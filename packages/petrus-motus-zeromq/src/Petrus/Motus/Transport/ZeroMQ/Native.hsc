@@ -1,16 +1,24 @@
 {-# LANGUAGE CApiFFI #-}
+{-# LANGUAGE InterruptibleFFI #-}
 
 -- | A thin binding to the few libzmq 4.x functions the Dispatch transport
 -- uses.
 --
 -- Every send and receive is non-blocking at the C level (@ZMQ_DONTWAIT@).
--- When libzmq answers @EAGAIN@, the calling Haskell thread waits on the
--- socket's @ZMQ_FD@ through the GHC IO manager ('threadWaitRead'), so a wait
--- never blocks an OS thread, composes with 'System.Timeout.timeout' and
--- asynchronous exceptions, and many sockets can wait at once. Because
--- @ZMQ_FD@ is an edge-triggered signal, every wake re-checks @ZMQ_EVENTS@
--- and retries the operation, and each fd wait is capped at 50 ms so that a
--- missed edge can only delay, never hang, an operation.
+-- When libzmq answers @EAGAIN@, the calling Haskell thread waits for the
+-- socket and retries. With the threaded runtime the wait is an
+-- interruptible @zmq_poll@ on the calling OS thread, as pyzmq's blocking
+-- receive waits: it wakes as soon as libzmq signals, where a wait through
+-- the GHC IO manager costs an event-manager hand-off per wake-up and a
+-- timer-manager registration per 'System.Timeout.timeout' (on Linux, enough
+-- to put a request round trip behind pyzmq's). It still composes with
+-- 'System.Timeout.timeout' and asynchronous exceptions, which interrupt
+-- the call, and many sockets can wait at once, each on its own OS thread.
+-- The non-threaded runtime waits on the socket's @ZMQ_FD@ through the IO
+-- manager ('threadWaitRead'); because @ZMQ_FD@ is an edge-triggered
+-- signal, every wake re-checks @ZMQ_EVENTS@ and retries the operation, and
+-- each fd wait is capped at 50 ms so that a missed edge can only delay,
+-- never hang, an operation.
 --
 -- A socket must be used by one Haskell thread at a time; libzmq tolerates a
 -- socket moving between OS threads, which the GHC scheduler may do, because
@@ -54,7 +62,7 @@ module Petrus.Motus.Transport.ZeroMQ.Native
 
 #include <zmq.h>
 
-import Control.Concurrent (threadWaitRead, yield)
+import Control.Concurrent (rtsSupportsBoundThreads, threadWaitRead, yield)
 import Control.Exception (Exception (..), throwIO)
 import Control.Monad (unless, void, when)
 import Data.Bits ((.&.), (.|.))
@@ -68,11 +76,11 @@ import Data.Text qualified as T
 import Data.Word (Word8)
 import Foreign.C.ConstPtr (ConstPtr (..))
 import Foreign.C.String (CString, peekCString, withCString)
-import Foreign.C.Types (CChar, CInt (..), CSize (..))
+import Foreign.C.Types (CChar, CInt (..), CLong (..), CShort (..), CSize (..))
 import Foreign.Marshal.Alloc (alloca, allocaBytes, allocaBytesAligned)
 import Foreign.Marshal.Utils (with)
 import Foreign.Ptr (Ptr, castPtr, nullPtr)
-import Foreign.Storable (peek, sizeOf)
+import Foreign.Storable (peek, pokeByteOff, sizeOf)
 import GHC.Clock (getMonotonicTimeNSec)
 import Petrus.Json.Python.Exception (IsPythonException (..), pythonExceptionFromException, pythonExceptionToException, raised)
 import System.IO.Unsafe (unsafePerformIO)
@@ -328,9 +336,30 @@ awaitEvent s wanted deadline = loop
           if remaining <= 0
             then pure False
             else do
-              fd <- socketDescriptor s
-              void (timeout (min 50000 remaining) (threadWaitRead fd))
+              if rtsSupportsBoundThreads
+                then pollFor s wanted (maybe (-1) (const ((remaining + 999) `div` 1000)) deadline)
+                else do
+                  fd <- socketDescriptor s
+                  void (timeout (min 50000 remaining) (threadWaitRead fd))
               loop
+
+-- | @zmq_poll@ on one socket for the wanted events, for at most the given
+-- milliseconds (-1: no limit), on the calling OS thread. An interrupted
+-- poll (an asynchronous exception, or a signal) returns to the caller,
+-- which re-checks the socket.
+pollFor :: Socket -> CInt -> Int -> IO ()
+pollFor s wanted milliseconds =
+  allocaBytesAligned #{size zmq_pollitem_t} #{alignment zmq_pollitem_t} $ \item -> do
+    #{poke zmq_pollitem_t, socket} item s.pointer
+    #{poke zmq_pollitem_t, fd} item (0 :: CInt)
+    #{poke zmq_pollitem_t, events} item (fromIntegral wanted :: CShort)
+    #{poke zmq_pollitem_t, revents} item (0 :: CShort)
+    rc <- c_zmq_poll item 1 (fromIntegral milliseconds)
+    when (rc < 0) $ do
+      code <- c_zmq_errno
+      unless (code == #{const EINTR}) (throwLast "zmq_poll")
+
+foreign import capi interruptible "zmq.h zmq_poll" c_zmq_poll :: Ptr () -> CInt -> CLong -> IO CInt
 
 -- | Wait up to the given microseconds for an incoming message.
 waitReadable :: Socket -> Int -> IO Bool
