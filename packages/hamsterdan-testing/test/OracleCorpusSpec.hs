@@ -15,7 +15,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Testing.Readiness
-import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Test.Hspec
 
 -- | The six environments of the generator: every condition declared, then
@@ -78,7 +78,7 @@ spec :: Spec
 spec = describe "oracle corpus" $ do
   rows <- runIO $ do
     bytes <- BS.readFile "test/corpus/oracle.jsonl"
-    traverse (either fail pure . (decodeRow <=< parseJson pythonLoads)) (filter (not . BS.null) (BS8.split '\n' bytes))
+    traverse (either fail pure . (decodeRow <=< parseJson surrogateRefusingLoads)) (filter (not . BS.null) (BS8.split '\n' bytes))
   let refused = [() | Row _ (Left _) <- rows]
       ruled = [() | Row _ (Left (Just _)) <- rows]
   it ("admission, facts dump, expectation, and liveness match every row (" <> show (length rows) <> ")") $ do

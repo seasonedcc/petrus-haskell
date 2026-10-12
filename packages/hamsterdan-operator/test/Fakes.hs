@@ -30,7 +30,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.GitHub.Config (HostConfig (..), fromEnvironment, revealSecret)
-import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Wtf8 (fromCodePoints)
 import System.Directory
   ( copyFile
@@ -122,7 +122,7 @@ fakeProvider root name arguments = do
       count = length [() | l <- previous, keyOf l == Just key]
   BS.appendFile logPath (line <> "\n")
   scripted <- BS.readFile (root </> "responses.json")
-  let answers = case parseJson pythonLoads scripted of
+  let answers = case parseJson surrogateRefusingLoads scripted of
         Right (Object members) -> case lookup key members of
           Just (Array items) | not (null items) -> Just (items !! min count (length items - 1))
           Just single@(Object _) -> Just single
@@ -149,7 +149,7 @@ fakeProvider root name arguments = do
         _ -> pure ()
     Just _ -> exitWith (ExitFailure 1)
   where
-    keyOf l = case parseJson pythonLoads l of
+    keyOf l = case parseJson surrogateRefusingLoads l of
       Right (Object members) | Just (Array argv) <- lookup "argv" members -> Just (T.unwords [s | String s <- argv])
       _ -> Nothing
 
@@ -207,7 +207,7 @@ fakeOp arguments = do
     Right () -> pure ()
   when (Map.lookup "TEST_DENIED" environment == Just "1") $ exitWith (ExitFailure 23)
   source <- BS.readFile (fromMaybe "" (Map.lookup "TEST_SOURCE" environment))
-  let added = case parseJson pythonLoads source of
+  let added = case parseJson surrogateRefusingLoads source of
         Right (Object members) -> Map.fromList [(T.unpack k, T.unpack v) | (k, String v) <- members]
         _ -> Map.empty
       command = drop 1 (dropWhile (/= "--") arguments)

@@ -242,7 +242,7 @@ endToEndSpec = describe "end-to-end Instances (test/corpus/cel-instance.json)" $
 celInstanceCases :: IO [Json]
 celInstanceCases = do
   raw <- BS.readFile "test/corpus/cel-instance.json"
-  pure $ case parseJson pythonLoads raw of
+  pure $ case parseJson surrogateRefusingLoads raw of
     Right corpus | Just (Array xs) <- lookupMember "cases" corpus -> xs
     _ -> error "cel-instance corpus: no cases"
 

@@ -17,7 +17,7 @@ import Hamsterdan.Contracts.Readiness qualified as Legacy
 import Hamsterdan.Contracts.ReadinessProjection
 import Hamsterdan.Contracts.ReadinessV5 qualified as V5
 import Hamsterdan.PyLiteral
-import Petrus.Json (Json (..), LoneSurrogates (..), ParseOptions (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, dumps, parseJson, pythonJsonLoads, surrogateRefusingLoads)
 import Test.Hspec
 
 -- | The rows of a JSONL corpus.
@@ -26,7 +26,7 @@ readCorpus path = do
   bytes <- BS.readFile ("test/corpus/" <> path)
   traverse row (filter (not . BS.null) (BS8.split '\n' bytes))
   where
-    row line = either (fail . ("corpus row: " <>)) pure (parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates} line)
+    row line = either (fail . ("corpus row: " <>)) pure (parseJson pythonJsonLoads line)
 
 member :: Text -> Json -> Maybe Json
 member key = \case
@@ -57,7 +57,7 @@ allModels :: Map.Map Text Model
 allModels = Map.fromList [(m.modelName, m) | m <- V5.models <> Legacy.models]
 
 roundTrip :: Model -> BS.ByteString -> Either Text Json
-roundTrip model input = case parseJson pythonLoads input of
+roundTrip model input = case parseJson surrogateRefusingLoads input of
   Left problem -> Left ("json: " <> T.pack problem)
   Right value -> either (Left . renderDecodeError) Right (model.modelRoundTrip value)
 
@@ -80,7 +80,7 @@ contractsSpec = describe "contracts.jsonl (TypeAdapter validate_json / dump_pyth
           outcome = roundTrip model input
           -- pydantic ignores member order; reversing the members also
           -- moves the input off the positional fast path ('recordWith').
-          reordered = case parseJson pythonLoads input of
+          reordered = case parseJson surrogateRefusingLoads input of
             Right (Object members) -> Just (model.modelRoundTrip (Object (reverse members)))
             _ -> Nothing
        in case (member "ok" row, outcome) of
@@ -158,7 +158,7 @@ reprSpec = describe "repr.jsonl (CPython repr)" $ do
   it ("spells " <> show (length entries) <> " dashboard entries and digests") $
     expectNone (concatMap checkEntry entries)
   where
-    checkEntry row = case parseJson pythonLoads (TE.encodeUtf8 (text "body" row)) of
+    checkEntry row = case parseJson surrogateRefusingLoads (TE.encodeUtf8 (text "body" row)) of
       Right (Object body) ->
         let kind = text "kind" row
          in concat

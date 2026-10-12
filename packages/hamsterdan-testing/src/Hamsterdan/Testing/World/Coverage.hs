@@ -41,7 +41,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Testing.World.Contract (PyError (..), canonical, checkerIdentity, profileIdentity)
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Json.Float (shortestDigits)
 import Petrus.Testing.Dst
   ( AcceptedOperation (..)
@@ -752,11 +752,12 @@ readinessState o = do
 -- ---------------------------------------------------------------------------
 -- Loading
 
--- | @load_readiness_coverage(data)@.
+-- | @load_readiness_coverage(data)@: pydantic's @model_validate_json@, whose
+-- JSON parser (jiter) refuses a lone surrogate escape, as this one does.
 loadReadinessCoverage :: ByteString -> Either PyError CoverageReport
 loadReadinessCoverage bytes = do
   when (BS.length bytes > maxReportBytes) $ valueErr "readiness coverage report exceeds its byte bound"
-  value <- case parseJson pythonLoads bytes of
+  value <- case parseJson surrogateRefusingLoads bytes of
     Right v -> Right v
     Left problem -> Left (PyError "ValidationError" ("1 validation error for ReadinessCoverageReport\n  Invalid JSON: " <> T.pack problem <> " [type=json_invalid]"))
   schema "ReadinessCoverageReport" (pReport [] value)

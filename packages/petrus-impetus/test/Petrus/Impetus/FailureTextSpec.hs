@@ -103,7 +103,7 @@ haskellTwin c = case c.arguments of
 
 loadCorpus :: ByteString -> Either String [Case]
 loadCorpus raw = do
-  corpus <- parseJson pythonLoads raw
+  corpus <- parseJson surrogateRefusingLoads raw
   items <- case lookupMember "cases" corpus of
     Just (Array items) -> Right items
     _ -> Left "corpus has no cases"

@@ -17,7 +17,7 @@ module Petrus.TestSupport.Repo
 import Control.Exception (Exception, throwIO)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Petrus.Json (Json, parseJson, pythonLoads)
+import Petrus.Json (Json, parseJson, surrogateRefusingLoads)
 import System.Directory (doesDirectoryExist, doesFileExist, getCurrentDirectory, makeAbsolute)
 import System.FilePath (takeDirectory, (</>))
 
@@ -79,4 +79,4 @@ readUpstream relative = upstreamPath relative >>= BS.readFile
 upstreamJson :: FilePath -> IO Json
 upstreamJson relative = do
   bytes <- readUpstream relative
-  either (throwIO . MissingUpstream . (("upstream/petrus/" ++ relative ++ ": ") ++)) pure (parseJson pythonLoads bytes)
+  either (throwIO . MissingUpstream . (("upstream/petrus/" ++ relative ++ ": ") ++)) pure (parseJson surrogateRefusingLoads bytes)

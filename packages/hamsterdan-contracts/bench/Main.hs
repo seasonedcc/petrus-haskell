@@ -15,14 +15,14 @@ import Data.Text.Encoding qualified as TE
 import Hamsterdan.Contracts.Codec (DecodeError, dump, validateJson)
 import Hamsterdan.Contracts.ReadinessV5 qualified as V5
 import Hamsterdan.PyLiteral (dictEntry, literalEval, sortedItemsDigest)
-import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
 main :: IO ()
 main = do
   inputs <- BS.readFile "bench/inputs.json"
-  (snapshotBytes, gateBytes, kind) <- case parseJson pythonLoads inputs of
+  (snapshotBytes, gateBytes, kind) <- case parseJson surrogateRefusingLoads inputs of
     Right (Object members)
       | Just (String snapshotText) <- lookup "snapshot" members
       , Just (String gateText) <- lookup "gate_fact" members

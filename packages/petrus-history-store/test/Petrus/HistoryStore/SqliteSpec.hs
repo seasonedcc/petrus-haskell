@@ -27,7 +27,7 @@ import Petrus.Impetus.HistoryStore qualified as Store
 import Petrus.Impetus.HistorySupport (everyRecordCategory)
 import Petrus.Impetus.Petrinet (NetPath, black)
 import Petrus.Impetus.TestSupport (np, tokD)
-import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Posix.Path (purePath)
 import Petrus.Sqlite.Connection (SQLData (..))
 import System.FilePath ((</>))
@@ -126,7 +126,7 @@ spec = do
       recordsAt path "one" `shouldReturn` everyRecordCategory
       ([SQLText payload] : _) <- rawQuery path "SELECT payload FROM impetus_history_events ORDER BY position"
       (firstRecord : _) <- pure everyRecordCategory
-      parseJson pythonLoads (TE.encodeUtf8 payload) `shouldBe` Right (encodeRecord firstRecord)
+      parseJson surrogateRefusingLoads (TE.encodeUtf8 payload) `shouldBe` Right (encodeRecord firstRecord)
       -- and the bytes are the reference's spelling of every record
       payloads <- rawQuery path "SELECT payload FROM impetus_history_events ORDER BY position"
       payloads

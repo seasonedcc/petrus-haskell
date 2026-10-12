@@ -9,7 +9,7 @@ import Data.ByteString qualified as BS
 import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Testing.Dst (AnyArtifact, artifactFromJson, decodeErrorMessage, loadArtifact, toJson)
 import Petrus.Testing.Dst.Campaign.Support (ToolError (..), canonicalDumps)
 import Petrus.Testing.Dst.Failure
@@ -93,7 +93,7 @@ spec = describe "test_failure.py (failure retention, replay, and promotion)" $ a
     (code, out, err) <- runWorldCommand ["failure", "replay", bundle]
     code `shouldBe` ExitSuccess
     err `shouldBe` ""
-    parseJson pythonLoads out `shouldBe` Right replayed
+    parseJson surrogateRefusingLoads out `shouldBe` Right replayed
 
   describe "test_failure_retention_refuses_credential_shaped_data_before_writing" $
     forM_
@@ -127,7 +127,7 @@ spec = describe "test_failure.py (failure retention, replay, and promotion)" $ a
       let mismatched = dir </> "mismatched"
       copyBundle bundle mismatched
       raw <- BS.readFile (mismatched </> "manifest.json")
-      manifest <- either fail pure (parseJson pythonLoads raw)
+      manifest <- either fail pure (parseJson surrogateRefusingLoads raw)
       let bumped = case member "discovery_seed" manifest of
             Int seed -> setMember "discovery_seed" (Int (seed + 1)) manifest
             other -> error (show other)

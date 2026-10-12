@@ -18,7 +18,7 @@ import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Json.Parse (LoneSurrogates (..), ParseOptions (..), parseJson, pythonLoads)
+import Petrus.Json.Parse (parseJson, pythonJsonLoads)
 import Petrus.Json.Python.Decode (jsonBytesFailure)
 import Petrus.Json.Python.Exception (PythonException, pythonError, unicodeDecodeError)
 import Petrus.Json.Python.Scanner qualified as Scanner
@@ -41,7 +41,7 @@ loadsText text
 loadsUtf8 :: ByteString -> Either PythonException Json
 loadsUtf8 bytes
   | "\xEF\xBB\xBF" `BS.isPrefixOf` bytes = Left unexpectedBom
-  | otherwise = case parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates} bytes of
+  | otherwise = case parseJson pythonJsonLoads bytes of
       Right value -> Right value
       Left _ -> decodeText (TE.decodeUtf8Lenient bytes)
 
@@ -62,7 +62,7 @@ decodeText text = case parsed of
     surrogates = hasLoneSurrogate text
     parsed
       | surrogates = Left "a raw lone surrogate"
-      | otherwise = parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates} (TE.encodeUtf8 text)
+      | otherwise = parseJson pythonJsonLoads (TE.encodeUtf8 text)
 
 -- | @json.loads(b)@ for @bytes@: decoded as 'jsonBytesFailure' decodes them
 -- (@json.detect_encoding@, @surrogatepass@), or their @UnicodeDecodeError@,

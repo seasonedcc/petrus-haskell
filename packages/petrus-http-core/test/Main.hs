@@ -31,7 +31,7 @@ import Network.Socket
 import Network.Socket qualified as Socket
 import Network.Socket.ByteString (recv, sendAll)
 import Petrus.Http.Core
-import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (readLine, runPython, withPython, PythonResult (..))
 import Petrus.TestSupport.Repo (repoRoot)
 import System.Timeout (timeout)
@@ -592,7 +592,7 @@ jsonInput = either (error . show) id . dumps defaultDumps
 pythonJsonOut :: Text -> ByteString -> IO Json
 pythonJsonOut code input = do
   result <- runPython code [] input
-  case parseJson pythonLoads (resultStdout result) of
+  case parseJson surrogateRefusingLoads (resultStdout result) of
     Right value -> pure value
     Left problem -> do
       expectationFailure ("Python failed: " <> problem <> "\n" <> BC.unpack (resultStderr result))

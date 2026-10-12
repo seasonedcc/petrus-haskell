@@ -65,7 +65,7 @@ import Hamsterdan.GitHub.Jwt (SigningKey, appJwt, loadSigningKey)
 import Hamsterdan.Python (PythonException (..), pythonExceptionStr)
 import Hamsterdan.Python qualified as Py
 import Hamsterdan.GitHub.Url qualified as Url
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 
 -- | The App identity GitHubKit authenticates as.
 data AppCredentials = AppCredentials
@@ -449,9 +449,11 @@ checkRateLimit response content = do
 -- JSON: the token and @expires_at@ strings, and the optional members'
 -- types (each may be @null@). Items of @repositories@ must be objects,
 -- but their members are not validated (see DIVERGENCES.md). 'Left' describes the failure.
+-- GitHubKit validates the body with pydantic's @validate_json@, whose JSON
+-- parser (jiter) refuses a lone surrogate escape, as this one does.
 validateInstallationToken :: ByteString -> Either Text (Text, Text)
 validateInstallationToken content = do
-  document <- either (Left . ("Invalid JSON: " <>) . T.pack) Right (parseJson pythonLoads content)
+  document <- either (Left . ("Invalid JSON: " <>) . T.pack) Right (parseJson surrogateRefusingLoads content)
   members <- case document of
     Object members -> Right members
     _ -> Left "Input should be an object"

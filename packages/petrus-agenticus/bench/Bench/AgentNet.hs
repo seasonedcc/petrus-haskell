@@ -80,7 +80,7 @@ richState =
 roundtrip :: LoopState -> LoopState
 roundtrip s =
   let bytes = ok (J.dumps J.defaultDumps (loopStateToData s))
-   in ok (loopStateFromData (ok (J.parseJson J.pythonLoads bytes)))
+   in ok (loopStateFromData (ok (J.parseJson J.surrogateRefusingLoads bytes)))
 
 -- | Both twins must do the same work: the reference run ends with 122
 -- History records.

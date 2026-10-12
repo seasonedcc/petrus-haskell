@@ -93,7 +93,7 @@ sha256Hex = T.pack . concatMap byte . BS.unpack . SHA256.hash
 
 loadCorpus :: ByteString -> Either String [Case]
 loadCorpus raw = do
-  corpus <- parseJson pythonLoads raw
+  corpus <- parseJson surrogateRefusingLoads raw
   bases <- case lookupMember "bases" corpus of
     Just (Object members) -> traverse (traverse text) members
     _ -> Left "corpus has no bases"
@@ -141,7 +141,7 @@ rebuild bases value
       n <- maybe (Left "repeat lacks n") integer (lookupMember "n" r)
       Right (TE.encodeUtf8 (prefix <> T.replicate n unit <> middle <> T.replicate n closing <> suffix))
   | Just m <- lookupMember "mutation" value = do
-      base <- baseBytes m >>= parseJson pythonLoads
+      base <- baseBytes m >>= parseJson surrogateRefusingLoads
       op <- maybe (Left "mutation lacks op") text (lookupMember "op" m)
       steps <- case lookupMember "path" m of
         Just (Array items) -> Right items

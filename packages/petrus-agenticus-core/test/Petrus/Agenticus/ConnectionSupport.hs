@@ -172,7 +172,7 @@ providerEncode state =
     J.dumps J.defaultDumps {J.itemSeparator = Just ",", J.keySeparator = ":", J.sortKeys = True} (Object state)
 
 providerParse :: ByteString -> [(Text, Json)]
-providerParse bytes = case J.parseJson J.pythonLoads bytes of
+providerParse bytes = case J.parseJson J.surrogateRefusingLoads bytes of
   Right (Object members) -> members
   other -> error ("provider state is not an object: " <> show other)
 

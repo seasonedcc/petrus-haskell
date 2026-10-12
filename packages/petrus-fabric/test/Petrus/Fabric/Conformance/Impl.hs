@@ -55,7 +55,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time (UTCTime, defaultTimeLocale, formatTime, parseTimeM)
 import Petrus.Fabric.Error
-import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Postgres (PostgresError)
 import Petrus.TestSupport (pythonExecutable, upstreamPetrus)
 import System.Directory (makeAbsolute)
@@ -122,7 +122,7 @@ pythonCall lock input output op args = modifyMVar lock $ \() -> do
     timeout 60000000 (BC.hGetLine output) >>= \case
       Just l -> pure l
       Nothing -> hClose input >> error ("the conformance driver did not answer " <> T.unpack op)
-  answer <- case parseJson pythonLoads line of
+  answer <- case parseJson surrogateRefusingLoads line of
     Left problem -> error ("the conformance driver answered invalid JSON: " <> problem <> ": " <> show line)
     Right value -> pure (decodeAnswer value)
   pure ((), answer)

@@ -96,6 +96,6 @@ newReopen = do
     encodeLine record = case jsonLine record of
       Left err -> Left (ErrorCall ("cannot encode " <> T.unpack (recordName record) <> ": " <> show err))
       Right line -> Right line
-    decodeLine line = case parseJson pythonLoads (TE.encodeUtf8 line) of
+    decodeLine line = case parseJson surrogateRefusingLoads (TE.encodeUtf8 line) of
       Left err -> Left (T.pack err)
       Right payload -> decodeRecord payload

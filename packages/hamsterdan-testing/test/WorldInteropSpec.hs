@@ -15,7 +15,7 @@ import Data.Text qualified as T
 import Hamsterdan.Testing.World (replayReadiness)
 import Hamsterdan.Testing.World.Coverage (CoverageRun (..), collectReadinessCoverage, encodeReadinessCoverage, modelDumpJsonLength)
 import Hamsterdan.Testing.World.Scenarios (Scenario (..), authorScenario, scenarios)
-import Petrus.Json (Json (..), defaultDumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumpsText, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Encode (EncodeOptions (..))
 import Petrus.Testing.Dst (AnyReplayResult (..), decodeArtifact, encodeReplayResult)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
@@ -42,7 +42,7 @@ spec = describe "World interop against the reference" $ do
   it "measures an artifact as len(model_dump_json().encode()) does (2045 generated values)" $ do
     lines' <- BC.lines <$> referenceScript "dump_json_lengths.py" [] ""
     length lines' `shouldBe` 2045
-    let measured line = case parseJson pythonLoads line of
+    let measured line = case parseJson surrogateRefusingLoads line of
           Right (Array [value, Int expected]) -> (value, fromIntegral (modelDumpJsonLength value), expected)
           other -> error ("bad line: " <> show other)
     take 5 [(value, ours) | (value, ours, theirs) <- map measured lines', ours /= theirs] `shouldBe` []
@@ -118,7 +118,7 @@ sameBytes label expected actual = unless (expected == actual) $ do
     createDirectoryIfMissing True dir
     BS.writeFile (dir </> (label <> ".reference.json")) expected
     BS.writeFile (dir </> (label <> ".haskell.json")) actual)
-  let lined bytes = case parseJson pythonLoads bytes of
+  let lined bytes = case parseJson surrogateRefusingLoads bytes of
         Right (value :: Json) -> either (const [T.pack (BC.unpack bytes)]) T.lines (dumpsText defaultDumps {sortKeys = True, indent = Just 1, ensureAscii = False} value)
         Left _ -> [T.pack (BC.unpack bytes)]
       left = lined expected

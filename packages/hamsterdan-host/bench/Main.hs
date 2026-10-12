@@ -68,7 +68,7 @@ import Network.HTTP.Types (http11, statusCode)
 import Network.Wai (Application, RequestBodyLength (..), defaultRequest, responseStatus, setRequestBodyChunks)
 import Network.Wai qualified as Wai
 import Network.Wai.Internal (ResponseReceived (..))
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import System.Directory (canonicalizePath, createDirectoryIfMissing, getTemporaryDirectory, removeDirectoryRecursive, removePathForcibly)
 import System.FilePath ((</>))
 import GHC.IO.Handle (hDuplicate, hDuplicateTo)
@@ -327,7 +327,7 @@ classifyAll = do
 timerHistory :: FilePath -> IO [T5.TimerFact]
 timerHistory file = do
   bytes <- BS.readFile file
-  case parseJson pythonLoads bytes of
+  case parseJson surrogateRefusingLoads bytes of
     Right (Object members) | Just (Array rows) <- lookup "timer_history" members -> traverse fact rows
     other -> fail ("unreadable timer history: " <> show other)
   where

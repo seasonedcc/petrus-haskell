@@ -99,7 +99,7 @@ import Petrus.Impetus.HistoryStore
   , UnverifiableConflict (..)
   , mirroredHistoryStore
   )
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, encodeErrorMessage, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, encodeErrorMessage, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Repr (pythonReprText)
 import Petrus.Postgres
   ( Connection
@@ -252,7 +252,7 @@ loadPostgresHistory connection instanceId = do
   where
     undecodable event problem =
       "event " <> TE.decodeUtf8Lenient event <> " does not decode as an event history record: " <> problem
-    decodeRow bytes = either (Left . T.pack) Right (parseJson pythonLoads bytes) >>= decodeRecord
+    decodeRow bytes = either (Left . T.pack) Right (parseJson surrogateRefusingLoads bytes) >>= decodeRecord
 
 -- ---------------------------------------------------------------------------
 -- The store
@@ -386,4 +386,4 @@ verifyConflict connection instanceId identity event = do
                 )
             )
   where
-    storedJson bytes = either (throwIO . HistoryStoreError . T.pack) pure (parseJson pythonLoads bytes)
+    storedJson bytes = either (throwIO . HistoryStoreError . T.pack) pure (parseJson surrogateRefusingLoads bytes)

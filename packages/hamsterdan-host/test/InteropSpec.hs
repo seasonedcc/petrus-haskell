@@ -63,7 +63,7 @@ import Hamsterdan.Host.Scripted (clearReviewText, deterministicRepository, local
 import Hamsterdan.Host.Python (ValueError (..))
 import Hamsterdan.Host.Service (HostService (..), ServiceOptions (..), gitHubHostClients, noAgentCustody, openHostService, serviceOptions, v5ApplicationFactory)
 import Hamsterdan.Host.Service qualified as Host
-import Petrus.Json (Json (..), compact, defaultDumps, dumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, defaultDumps, dumps, dumpsText, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Encode (EncodeOptions (..))
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
@@ -349,7 +349,7 @@ reference arguments input = do
       [] -> ""
 
 parsed :: ByteString -> IO Json
-parsed bytes = case parseJson pythonLoads bytes of
+parsed bytes = case parseJson surrogateRefusingLoads bytes of
   Right value -> pure value
   Left problem -> expectationFailure ("unreadable reference output: " <> problem) >> pure Null
 
@@ -422,7 +422,7 @@ v5GitHub state call = do
           maybe (pure Nothing) (json 200 . Object) found
     _ -> pure Nothing
   where
-    body = case parseJson pythonLoads call.body of
+    body = case parseJson surrogateRefusingLoads call.body of
       Right (Object members) -> Just members
       _ -> Nothing
 

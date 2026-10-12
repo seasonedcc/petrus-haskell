@@ -29,7 +29,7 @@ import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.E2E.Replay (ReplayOptions (..), runReplay)
 import Hamsterdan.E2E.Tape (member)
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import System.Directory (canonicalizePath, createDirectoryIfMissing, listDirectory)
@@ -102,7 +102,7 @@ compareSides interpreter tape recording sides extra = do
         <> concatMap side sides
         <> ["--skip-context", "publisher"]
         <> extra
-  case parseJson pythonLoads (BL.toStrict out) of
+  case parseJson surrogateRefusingLoads (BL.toStrict out) of
     Right report -> pure (status, report)
     Left problem -> expectationFailure ("unreadable comparison (" <> problem <> "):\n" <> BC.unpack (BL.toStrict err)) >> pure (status, Null)
 
@@ -140,7 +140,7 @@ script interpreter name arguments = do
 -- | The last line that is a JSON document (the Petrus Worker also prints).
 lastJson :: BS.ByteString -> Maybe Json
 lastJson out = case reverse (filter (not . BC.null) (BC.lines out)) of
-  line : _ -> either (const Nothing) Just (parseJson pythonLoads line)
+  line : _ -> either (const Nothing) Just (parseJson surrogateRefusingLoads line)
   [] -> Nothing
 
 historyFiles :: FilePath -> IO [FilePath]
@@ -155,7 +155,7 @@ render :: Json -> String
 render value = either show (BC.unpack . TE.encodeUtf8) (dumpsText defaultDumps {sortKeys = True, indent = Just 1} value)
 
 readJson :: BS.ByteString -> IO Json
-readJson bytes = case parseJson pythonLoads bytes of
+readJson bytes = case parseJson surrogateRefusingLoads bytes of
   Right value -> pure value
   Left problem -> expectationFailure ("not JSON (" <> problem <> "): " <> BC.unpack (BS.take 2000 bytes)) >> pure Null
 

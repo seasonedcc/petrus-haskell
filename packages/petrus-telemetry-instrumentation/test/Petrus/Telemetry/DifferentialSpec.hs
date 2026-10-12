@@ -24,7 +24,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Foreign.C.Error (Errno (..), errnoToIOError)
 import Petrus.HistoryStore.Support (withReference, runPython, withScratch)
-import Petrus.Json (Json (..), exactEq, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), exactEq, lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Telemetry
 import Petrus.Impetus.Instance (exceptionFailureText)
 import Petrus.Telemetry.Scenarios (scenarios)
@@ -39,7 +39,7 @@ generator :: FilePath
 generator = "differential/telemetry_scenarios.py"
 
 loadFixture :: FilePath -> IO Json
-loadFixture path = BS.readFile path >>= either (fail . ("fixture: " <>)) pure . parseJson pythonLoads
+loadFixture path = BS.readFile path >>= either (fail . ("fixture: " <>)) pure . parseJson surrogateRefusingLoads
 
 member :: Text -> Json -> Json
 member key value = maybe (error ("fixture: missing " <> T.unpack key)) id (lookupMember key value)
@@ -128,7 +128,7 @@ spec = do
 
   describe "the Python class vocabulary (error_type, FiringFailed.error)" $ do
     it "names every errno's OSError subclass and spells its failure text as the pinned reference does" $ withReference $ \python -> do
-      reference <- runPython python "differential/error_types.py" [] >>= either fail pure . parseJson pythonLoads . TE.encodeUtf8 . T.pack
+      reference <- runPython python "differential/error_types.py" [] >>= either fail pure . parseJson surrogateRefusingLoads . TE.encodeUtf8 . T.pack
       let errnos = array (member "errnos" reference)
       length errnos `shouldSatisfy` (> 50)
       forM_ errnos $ \entry -> do
@@ -140,7 +140,7 @@ spec = do
           `shouldBe` (number, text (member "error_type" entry), text (member "text" entry))
 
     it "names the other mapped exceptions as the pinned reference does" $ withReference $ \python -> do
-      reference <- runPython python "differential/error_types.py" [] >>= either fail pure . parseJson pythonLoads . TE.encodeUtf8 . T.pack
+      reference <- runPython python "differential/error_types.py" [] >>= either fail pure . parseJson surrogateRefusingLoads . TE.encodeUtf8 . T.pack
       let others = member "others" reference
           haskell =
             [ ("user_error", toException (userError "boom"))

@@ -46,7 +46,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Database.SQLite3 qualified as S
 import Hamsterdan.Export (agentOperationId)
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeDirectory, (</>))
 
@@ -182,7 +182,7 @@ dumpsIndent2 :: Json -> ByteString
 dumpsIndent2 = either (error . show) id . dumps defaultDumps {indent = Just 2}
 
 loadJson :: ByteString -> Json
-loadJson bytes = either (\e -> error ("not JSON: " <> show e)) id (parseJson pythonLoads bytes)
+loadJson bytes = either (\e -> error ("not JSON: " <> show e)) id (parseJson surrogateRefusingLoads bytes)
 
 -- | @value[key]@ on an object.
 member :: Text -> Json -> Json

@@ -1,20 +1,24 @@
 -- | A strict JSON parser with the admission knobs the Petrus wire formats need.
 --
--- 'pythonLoads' accepts what CPython's @json.loads@ accepts, except that it
--- refuses lone surrogate escapes (@"\\ud800"@) unless the reader asks for
--- them with 'KeepLoneSurrogates'. The Petrus formats that admit them (the
--- event History: JSONL lines and SQLite payloads hold whatever @json.dumps@
--- wrote for token data, activity payloads and texts) ask for them and get
--- the string as a WTF-8 'Text' ("Petrus.Json.Wtf8") that
--- 'Petrus.Json.Encode.dumps' writes back byte for byte; the formats that
--- refuse them (Net definitions and documents, simulation HTTP, Pi, DST, …)
--- keep the default refusal, whose text is the reference's own. 'ParseOptions'
+-- 'pythonJsonLoads' accepts exactly what CPython's @json.loads@ accepts,
+-- lone surrogate escapes (@"\\ud800"@) included: the string comes back as
+-- a WTF-8 'Text' ("Petrus.Json.Wtf8") that 'Petrus.Json.Encode.dumps'
+-- writes back byte for byte. Every reader whose reference is @json.loads@
+-- (History lines, stored observations, manifests, snapshots, bindings)
+-- uses it, and leaves a refusal to the place the reference refuses: where
+-- the string is encoded as UTF-8 (a SQLite bind, @str.encode@).
+--
+-- 'surrogateRefusingLoads' is the same profile refusing lone surrogate
+-- escapes with @JSON strings must contain Unicode scalar values@. It is
+-- for the formats whose reference refuses them itself with that text (Net
+-- definitions and documents, simulation HTTP, Pi, DST, …) and for
+-- pydantic's @validate_json@ (jiter refuses them too). 'ParseOptions'
 -- then tighten admission the way the reference's @object_pairs_hook@,
 -- @parse_int@, @parse_float@, and @parse_constant@ hooks do: refuse duplicate
 -- members, non-finite constants, decimal or exponent number spellings, or
 -- integers outside the interoperable range.
 --
--- Both presets also apply CPython's resource limits (see "Petrus.Json.Limits"):
+-- Every preset also applies CPython's resource limits (see "Petrus.Json.Limits"):
 -- integer tokens longer than 4300 digits are refused with CPython's exact
 -- message, and documents nested deeper than 'defaultNestingLimit' are refused
 -- instead of exhausting memory.
@@ -22,7 +26,8 @@ module Petrus.Json.Parse
   ( ParseOptions (..)
   , DuplicateMembers (..)
   , LoneSurrogates (..)
-  , pythonLoads
+  , pythonJsonLoads
+  , surrogateRefusingLoads
   , strictLoads
   , parseJson
   , safeIntegerMin
@@ -95,9 +100,9 @@ data ParseOptions = ParseOptions
   }
   deriving stock (Eq, Show)
 
--- | CPython's @json.loads@ defaults.
-pythonLoads :: ParseOptions
-pythonLoads =
+-- | CPython's @json.loads@ defaults, lone surrogate escapes kept as WTF-8.
+pythonJsonLoads :: ParseOptions
+pythonJsonLoads =
   ParseOptions
     { duplicateMembers = LastWins
     , allowNonFiniteConstants = True
@@ -106,13 +111,18 @@ pythonLoads =
     , finiteFloatsOnly = False
     , maxIntegerDigits = Just maxIntStrDigits
     , maxNestingDepth = Just defaultNestingLimit
-    , loneSurrogates = RefuseLoneSurrogates
+    , loneSurrogates = KeepLoneSurrogates
     }
+
+-- | 'pythonJsonLoads' refusing lone surrogate escapes: only for readers
+-- whose reference refuses them too (see the module header).
+surrogateRefusingLoads :: ParseOptions
+surrogateRefusingLoads = pythonJsonLoads {loneSurrogates = RefuseLoneSurrogates}
 
 -- | Duplicate-free, finite JSON: the common strict admission of Petrus formats.
 strictLoads :: ParseOptions
 strictLoads =
-  pythonLoads
+  surrogateRefusingLoads
     { duplicateMembers = RejectDuplicates
     , allowNonFiniteConstants = False
     , finiteFloatsOnly = True

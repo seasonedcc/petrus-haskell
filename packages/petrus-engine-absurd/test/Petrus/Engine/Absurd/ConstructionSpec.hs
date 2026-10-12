@@ -21,7 +21,7 @@ import Petrus.Impetus.History.Records
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
 import Petrus.Impetus.Instance (FiringOccurrence (..), Status (..))
 import Petrus.Impetus.Petrinet
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch.Absurd (Session (..))
 import Petrus.Postgres (isClosed, textParam)
 import Petrus.Postgres qualified as Pg
@@ -40,7 +40,7 @@ constructionSpec = do
     requested <- firstOne . requestedOf <$> Engine.records session
     (policyFields requested.policy).heartbeatTimeout `shouldBe` 4
     params <- scalarText fixture (sqlOf ["SELECT params FROM absurd.t_", capability, " WHERE idempotency_key = %s"]) [textParam (keyFor instanceId requested.occurrence)]
-    let parsed = params >>= either (const Nothing) Just . parseJson pythonLoads . BC.pack . T.unpack
+    let parsed = params >>= either (const Nothing) Just . parseJson surrogateRefusingLoads . BC.pack . T.unpack
     (parsed >>= lookupMember "policy" >>= lookupMember "heartbeat_timeout") `shouldBe` Just (Int 4)
     closeSession session
 

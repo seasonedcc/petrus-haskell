@@ -22,7 +22,7 @@ import Data.IORef (IORef, modifyIORef')
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Json (EncodeOptions (..), Json (..), LoneSurrogates (..), ParseOptions (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, parseJson, pythonJsonLoads)
 import Test.Hspec (Expectation, expectationFailure)
 
 -- | The rows of a JSONL corpus under @test/corpus@.
@@ -33,7 +33,7 @@ readCorpus path = do
   where
     -- The rows are CPython's @json.dumps@ output, so a lone surrogate the
     -- reference held in a @str@ appears escaped; keep it, as @json.loads@ does.
-    row line = either (fail . ("corpus row: " <>)) pure (parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates} line)
+    row line = either (fail . ("corpus row: " <>)) pure (parseJson pythonJsonLoads line)
 
 member :: Text -> Json -> Maybe Json
 member key = \case

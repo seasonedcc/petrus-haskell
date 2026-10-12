@@ -48,7 +48,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Activity
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Json.Python (uuid4Hex)
 import Petrus.Motus.Dispatch (DispatchError (..))
 import Petrus.Motus.Dispatch.Absurd
@@ -205,7 +205,7 @@ rowsOf :: Connection -> Pg.Sql -> [Param] -> IO [[Maybe Text]]
 rowsOf connection statement params = map (map (fmap decode)) <$> query connection statement params
 
 jsonOf :: Text -> Json
-jsonOf = either error id . parseJson pythonLoads . TE.encodeUtf8
+jsonOf = either error id . parseJson surrogateRefusingLoads . TE.encodeUtf8
 
 textOf :: Maybe Text -> Text
 textOf = maybe "" id

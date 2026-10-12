@@ -572,7 +572,7 @@ probeModelPhase a packageRoot = do
       exists <- doesFileExist path
       directory <- doesDirectoryExist path
       if exists || directory then canonicalizePath path else invalid
-    readJson path = B.readFile path >>= either (const invalid) pure . J.parseJson J.pythonLoads
+    readJson path = B.readFile path >>= either (const invalid) pure . J.parseJson J.surrogateRefusingLoads
     field name = \case
       Object members -> fromMaybe Null (lookup name members)
       _ -> Null

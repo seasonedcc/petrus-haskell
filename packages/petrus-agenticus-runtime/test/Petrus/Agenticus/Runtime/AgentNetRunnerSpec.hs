@@ -201,7 +201,7 @@ spec = describe "runtime/test_agent_net_runner.py" $ do
     durable <- (jsonThreadRepository (tmp </> "thread.json")).load
     durable `shouldBe` Just projection
     threadText <- B.readFile (tmp </> "thread.json")
-    let value = ok (J.parseJson J.pythonLoads threadText)
+    let value = ok (J.parseJson J.surrogateRefusingLoads threadText)
         members = case value of
           Object ms -> ms
           _ -> []
@@ -398,7 +398,7 @@ spec = describe "runtime/test_agent_net_runner.py" $ do
     void (advance runner)
     raises (repository.save (Just stale) stale) AgentNetRunnerError "changed concurrently"
     bytes <- B.readFile (tmp </> "thread.json")
-    case ok (J.parseJson J.pythonLoads bytes) of
+    case ok (J.parseJson J.surrogateRefusingLoads bytes) of
       Object members ->
         sort (map fst members)
           `shouldBe` sort ["schema_version", "instance_id", "initial", "thread", "attachment", "appends", "hands", "terminal", "halt"]

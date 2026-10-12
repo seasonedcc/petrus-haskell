@@ -30,7 +30,7 @@ import Hamsterdan.Host.PiA2 (persistentKeyOperations)
 import Petrus.Agenticus.Catalog.Resolution (snapshotToData)
 import Petrus.Agenticus.Connection.Key (KeyOperations (..), ScrubbedBytes, mkKeyContext)
 import Petrus.Agenticus.Error (AgenticusError (..), errorClassName, throwLeft)
-import Petrus.Json (EncodeOptions (..), Json (..), compact, defaultDumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), compact, defaultDumps, dumpsText, parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import System.Directory (createDirectoryIfMissing, listDirectory)
@@ -51,7 +51,7 @@ reference arguments input = do
   repo <- repoRoot
   let script = repo </> "packages" </> "hamsterdan-agents" </> "differential" </> "agents_reference.py"
   (_, out, err) <- readCreateProcessWithExitCode (proc executable (["-I", "-B", script] <> arguments)) input
-  case parseJson pythonLoads (TE.encodeUtf8 (T.pack out)) of
+  case parseJson surrogateRefusingLoads (TE.encodeUtf8 (T.pack out)) of
     Right value -> pure value
     Left problem -> expectationFailure ("the reference agents driver failed: " <> problem <> "\n" <> err) >> pure Null
 
@@ -220,7 +220,14 @@ spec = describe "on-disk interop with the reference agent stores" $ do
                , ("a U+0085 inside a record", request <> "\n" <> terminal "split\133here" <> "\n")
                , ("an empty line", request <> "\r\r\n" <> terminal "plain" <> "\n")
                , ("invalid UTF-8", request <> "\n" <> terminal "plain" <> "\255\n")
+               , -- @json.loads@ keeps a lone surrogate escape.
+                 ("a lone surrogate escape", request <> "\n" <> escaped "\\ud800" <> "\n")
+               , ("a reversed surrogate pair", request <> "\n" <> escaped "\\udc00\\ud800x" <> "\n")
                ]
+        -- The terminal with its note spelled as the given JSON escapes.
+        escaped spelling =
+          let (prefix, rest) = BS.breakSubstring "LONE" (terminal "LONE")
+           in prefix <> spelling <> BS.drop 4 rest
     forM_ (zip [1 :: Int ..] cases) $ \(index, (label, bytes)) -> do
       let root = tmp </> ("histories-" <> show index)
           directory = root </> "1" </> "2" </> "3"

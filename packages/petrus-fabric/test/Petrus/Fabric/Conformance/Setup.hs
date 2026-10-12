@@ -53,7 +53,7 @@ import Data.Time (NominalDiffTime, UTCTime, addUTCTime)
 import Petrus.Fabric.Conformance.Impl
 import Petrus.Fabric (Category, FabricError, errorCategory, errorMessage)
 import Petrus.Fabric.Postgres (parseTimestamptz)
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Postgres (Param, Sql)
 import Petrus.Postgres qualified as Pg
 import Petrus.TestSupport (PostgresTarget (..), lookupPostgresUrl, repoRoot, skipMessage, withScratchDatabase)
@@ -216,7 +216,7 @@ withArgs base overrides =
 
 -- | A JSON literal.
 js :: Text -> Json
-js text = either (error . ("bad JSON literal: " <>)) id (parseJson pythonLoads (TE.encodeUtf8 text))
+js text = either (error . ("bad JSON literal: " <>)) id (parseJson surrogateRefusingLoads (TE.encodeUtf8 text))
 
 scalar :: Pg.Connection -> Sql -> [Param] -> IO (Maybe ByteString)
 scalar c statement params =

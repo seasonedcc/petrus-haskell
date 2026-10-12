@@ -87,7 +87,7 @@ import Petrus.Impetus.History.Records (DeliveryRegistration (..), recordName)
 import Petrus.Impetus.Instance (ImplementationRef (..), Status (..), statusText)
 import Petrus.Impetus.Instance.Firing (FiringOccurrence (..))
 import Petrus.Impetus.Petrinet
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (Dispatch (..))
 import Petrus.Motus.Dispatch.Inline (Activity, inlineDispatch, newInlineDispatch)
 import Petrus.Postgres (Connection)
@@ -524,7 +524,7 @@ waitEvent running wanted = do
           else do
             line <- BC.hGetLine running.out
             modifyIORef' seen (line :)
-            case parseJson pythonLoads line of
+            case parseJson surrogateRefusingLoads line of
               Right event | lookupMember "event" event == Just (String wanted) -> pure (Just event)
               _ -> loop
   found <- timeout 35000000 loop
@@ -668,7 +668,7 @@ demoMain = do
   let flag name = lookup name (pairs arguments)
       commandOf name = case flag name of
         Nothing -> pure [self, "--internal-role"]
-        Just raw -> case parseJson pythonLoads (BC.pack raw) of
+        Just raw -> case parseJson surrogateRefusingLoads (BC.pack raw) of
           Right (Array items) | Just strings <- mapM stringOf items, not (null strings) -> pure strings
           _ -> hPutStrLn stderr (name <> " takes a JSON array of strings") >> exitFailure
       stringOf = \case

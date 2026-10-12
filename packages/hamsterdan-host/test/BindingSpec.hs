@@ -23,7 +23,7 @@ import Hamsterdan.Host.V5.Application (inactiveActivityResult)
 import Hamsterdan.Readiness.NetV5.Gating (GateDefinition (..), annotation, variantPayloadConverter)
 import Petrus.Activity (ActivityDefinition (..), ActivityInvocation (..), activityDeclaration, declarationName, defaultExecutionPolicy)
 import Petrus.Impetus.Instance.FailureText (PythonException (..))
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import System.Directory (createDirectory, createDirectoryIfMissing, createDirectoryLink, createFileLink)
 import System.FilePath ((</>))
 import Test.Hspec
@@ -107,7 +107,7 @@ spec = describe "test_binding" $ do
     binding.legacy `shouldBe` False
     bytes <- BS.readFile (root </> "binding.json")
     bytes `shouldBe` "{\"instance_id\":\"github:44:31:pr:7\",\"pull_request\":7,\"repository\":\"owner/repo\",\"topology\":\"v5\"}"
-    parseJson pythonLoads bytes
+    parseJson surrogateRefusingLoads bytes
       `shouldBe` Right
         (Object [("instance_id", instance'), ("pull_request", Int 7), ("repository", String "owner/repo"), ("topology", String "v5")])
     ensureInstanceBinding root "github:44:31:pr:7" "owner/other" 7

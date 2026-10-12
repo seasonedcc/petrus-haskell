@@ -59,7 +59,7 @@ threadWriter = defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortK
 -- | @object_pairs_hook@ refusing duplicates, @parse_constant@ refusing: the
 -- Net document reader.
 documentReader :: ParseOptions
-documentReader = pythonLoads {duplicateMembers = RejectDuplicates, allowNonFiniteConstants = False}
+documentReader = surrogateRefusingLoads {duplicateMembers = RejectDuplicates, allowNonFiniteConstants = False}
 
 main :: IO ()
 main = do
@@ -67,27 +67,27 @@ main = do
   history <- filter (not . BS.null) . BC.lines <$> BS.readFile (dir </> "history.jsonl")
   document <- BS.readFile (dir </> "net-document.json")
   threads <- filter (not . BS.null) . BC.lines <$> BS.readFile (dir </> "threads.jsonl")
-  let records = map (either error id . parseJson pythonLoads) history
-      documentValue = either error id (parseJson pythonLoads document)
-      threadValues = map (either error id . parseJson pythonLoads) threads
+  let records = map (either error id . parseJson surrogateRefusingLoads) history
+      documentValue = either error id (parseJson surrogateRefusingLoads document)
+      threadValues = map (either error id . parseJson surrogateRefusingLoads) threads
   sum (map size records) `seq` size documentValue `seq` sum (map size threadValues) `seq` pure ()
   -- Wall-clock time, as the Python twin measures it (time.perf_counter_ns).
   defaultMain . map (localOption WallTime) $
     [ bgroup
         "history"
-        [ bench "loads" (whnf (parseAll pythonLoads) history)
+        [ bench "loads" (whnf (parseAll surrogateRefusingLoads) history)
         , bench "dumps" (whnf (dumpAll historyWriter) records)
         , bench "dumps-canonical" (whnf (dumpAll compact {sortKeys = True}) records)
         ]
     , bgroup
         "net-document"
-        [ bench "loads" (whnf (parseAll pythonLoads) [document])
+        [ bench "loads" (whnf (parseAll surrogateRefusingLoads) [document])
         , bench "loads-strict" (whnf (parseAll documentReader) [document])
         , bench "dumps" (whnf (dumpAll indented) [documentValue])
         ]
     , bgroup
         "thread"
-        [ bench "loads" (whnf (parseAll pythonLoads) threads)
+        [ bench "loads" (whnf (parseAll surrogateRefusingLoads) threads)
         , bench "dumps" (whnf (dumpAll threadWriter) threadValues)
         ]
     ]

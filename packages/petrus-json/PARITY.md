@@ -53,8 +53,8 @@ profiles of `loadsProfiles`:
 
 | `json.loads` hooks | uses | petrus-json |
 | --- | ---: | --- |
-| none | 78 | `pythonLoads` |
-| `object_pairs_hook` refusing duplicate members, `parse_constant` refusing | 7 (`simulation_http.py`, `net_document.py`, `pi`, `dst`) | `pythonLoads {duplicateMembers = RejectDuplicates, allowNonFiniteConstants = False}` |
+| none | 78 | `surrogateRefusingLoads` |
+| `object_pairs_hook` refusing duplicate members, `parse_constant` refusing | 7 (`simulation_http.py`, `net_document.py`, `pi`, `dst`) | `surrogateRefusingLoads {duplicateMembers = RejectDuplicates, allowNonFiniteConstants = False}` |
 | the same, then a strict UTF-8 `json.dumps(..., allow_nan=False)` round trip (`simulation_http._strict_loads`) | 1 | `strictLoads` |
 | `object_pairs_hook`, `parse_int` (safe-integer range), `parse_float` and `parse_constant` refusing (`net_definition.py` v3) | 1 | `strictLoads {integerTokensOnly = True, integerRange = Just (safeIntegerMin, safeIntegerMax)}` |
 

@@ -69,7 +69,7 @@ import Database.SQLite3 (SQLData (..), StepResult (..))
 import Database.SQLite3 qualified as Sql
 import GHC.Clock (getMonotonicTime)
 import Petrus.Activity hiding (invocation)
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityAttempt (..), WorkerDispatch (..))
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchOptions (..), LocalWorkerOptions (..), defaultLocalDispatchOptions, defaultLocalWorkerOptions, openLocalDispatch, openLocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
@@ -175,13 +175,13 @@ rawDetails path =
       Sql.step statement >>= \case
         Row ->
           Sql.columns statement >>= \case
-            [SQLText text] -> either fail pure (parseJson pythonLoads (TE.encodeUtf8 text))
+            [SQLText text] -> either fail pure (parseJson surrogateRefusingLoads (TE.encodeUtf8 text))
             other -> fail ("unexpected details " <> show other)
         Done -> fail "no task row"
 
 -- | @json.loads(attempt.attempt_id)[1]@.
 occurrenceOf :: ActivityAttempt -> Int
-occurrenceOf attempt = case parseJson pythonLoads (TE.encodeUtf8 attempt.attemptId) of
+occurrenceOf attempt = case parseJson surrogateRefusingLoads (TE.encodeUtf8 attempt.attemptId) of
   Right (Array [_, Int o]) -> fromInteger o
   other -> error ("unexpected attempt id " <> show other)
 
@@ -302,7 +302,7 @@ startServerProcess which arguments = do
   (_, Just out, _, handle) <- createProcess process {std_out = CreatePipe}
   hSetBinaryMode out True
   line <- timeout 10000000 (hGetLine out)
-  case line >>= either (const Nothing) Just . parseJson pythonLoads . BC.pack of
+  case line >>= either (const Nothing) Just . parseJson surrogateRefusingLoads . BC.pack of
     Just readiness -> pure ServerProcess {handle, readiness}
     Nothing -> do
       killProcess handle
@@ -439,4 +439,4 @@ runInterop python arguments = do
   waitForProcess handle >>= \case
     ExitSuccess -> pure ()
     ExitFailure n -> expectationFailure ("zeromq_interop.py " <> unwords arguments <> " exited " <> show n)
-  either (\e -> error ("zeromq_interop.py printed invalid JSON: " <> e)) pure (parseJson pythonLoads bytes)
+  either (\e -> error ("zeromq_interop.py printed invalid JSON: " <> e)) pure (parseJson surrogateRefusingLoads bytes)

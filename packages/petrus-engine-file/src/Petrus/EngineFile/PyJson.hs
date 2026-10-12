@@ -25,7 +25,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.EngineFile.Value (Value (..))
-import Petrus.Json (Json (..), LoneSurrogates (..), ParseOptions (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), ParseOptions (..), parseJson, pythonJsonLoads)
 import Petrus.Json.Python.Scanner qualified as Scanner
 import Petrus.Json.Wtf8 (holdsLoneSurrogate)
 
@@ -67,7 +67,7 @@ pyLoads input = case parseJson options input of
     Left (Scanner.HookError message) -> IntegerTooLong message
     Right _ -> DecodeError (T.pack problem)
   where
-    options = pythonLoads {maxNestingDepth = Nothing, loneSurrogates = KeepLoneSurrogates}
+    options = pythonJsonLoads {maxNestingDepth = Nothing}
     text = TE.decodeUtf8Lenient input
 
 fromJson :: Json -> Value

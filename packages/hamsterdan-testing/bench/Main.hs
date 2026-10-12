@@ -31,7 +31,7 @@ import Hamsterdan.Testing.Journeys (journeyName, runJourney)
 import Hamsterdan.Testing.Readiness
 import Hamsterdan.Testing.World (replayReadiness)
 import Hamsterdan.Testing.World.Scenarios (Scenario (..), authorScenario, scenarios)
-import Petrus.Json (Json (..), compact, dumps, encodeErrorMessage, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, dumps, encodeErrorMessage, parseJson, surrogateRefusingLoads)
 import Petrus.Testing.Dst (decodeArtifact, encodeReplayResult)
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (localOption)
@@ -40,7 +40,7 @@ import Test.Tasty.Bench
 main :: IO ()
 main = do
   bytes <- BS.readFile "test/corpus/oracle.jsonl"
-  rows <- traverse (either fail pure . parseJson pythonLoads) (filter (not . BS.null) (BS8.split '\n' bytes))
+  rows <- traverse (either fail pure . parseJson surrogateRefusingLoads) (filter (not . BS.null) (BS8.split '\n' bytes))
   let inputs = [TE.encodeUtf8 input | Object row <- rows, Just (String input) <- [lookup "input" row], lookup "expectation" row /= Nothing]
   facts <- traverse (either (fail . show) pure . (load :: BS.ByteString -> Either Text ReadinessFacts)) inputs
   let expectations = map evaluate facts

@@ -62,7 +62,7 @@ import Hamsterdan.GitHub.Client (AppCredentials (..), ClientOptions, defaultClie
 import Hamsterdan.GitHub.Config (ConfigurationError (..), HostConfig (..), fromEnvironment, revealSecret)
 import Hamsterdan.GitHub.Http (ClientError (..), ClientErrorKind (..))
 import Hamsterdan.GitHub.Models (ContractRefused (..), GitHubBoundaryError (..), InvalidRequest (..))
-import Hamsterdan.Python (intText, isAscii, isPrintable, pythonExceptionStr, splitlines, strRepr, utf8Length)
+import Hamsterdan.Python (intText, isAscii, isPrintable, pythonExceptionStr, splitlines, strRepr, utf8Encode)
 import Hamsterdan.Python qualified as Py
 import Hamsterdan.GitHub.Webhooks (Failure (..))
 import Hamsterdan.GitHub.Webhooks qualified as Custody
@@ -80,7 +80,7 @@ import Hamsterdan.Host.Service
   )
 import Hamsterdan.Host.Service qualified as Service
 import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
-import Petrus.Json (Json (..), defaultDumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumpsText, parseJson, pythonJsonLoads)
 import Petrus.Json qualified as Json
 import Petrus.Motus.Worker (RuntimeError (..), ValueError (..))
 import System.Environment (unsetEnv)
@@ -271,8 +271,13 @@ requireRealDirectories paths = do
 -- | @_identifier(value, error)@.
 identifier :: Json -> Text -> IO Text
 identifier value message = case value of
-  String text
-    | 0 < utf8Length text && utf8Length text <= maxIdentifierBytes && isAscii text && isPrintable text -> pure text
+  String text -> do
+    -- @value.encode()@ raises @UnicodeEncodeError@ for a lone surrogate
+    -- @json.loads@ kept, before any check.
+    encoded <- either throwIO pure (utf8Encode text)
+    if 0 < BS.length encoded && BS.length encoded <= maxIdentifierBytes && isAscii text && isPrintable text
+      then pure text
+      else throwIO (ValueError message)
   _ -> throwIO (ValueError message)
 
 
@@ -305,7 +310,7 @@ inspectInstance statePath installationId repositoryId pullRequest = do
   boundBytes <- readBoundedRegular (root </> "binding.json") maxBindingBytes
   let unsafe = ValueError "Instance state cannot be inspected safely"
       decode bytes = either (const (throwIO unsafe)) pure (TE.decodeUtf8' bytes)
-      loads text = either (const (throwIO unsafe)) pure (parseJson pythonLoads (TE.encodeUtf8 text))
+      loads text = either (const (throwIO unsafe)) pure (parseJson pythonJsonLoads (TE.encodeUtf8 text))
   boundValue <- decode boundBytes >>= loads
   records <- decode raw >>= mapM loads . splitlines
   bound <- either (const (throwIO (ValueError "Instance state binding is malformed"))) pure (parseInstanceBinding boundValue)
@@ -504,7 +509,7 @@ handledMessage e
   , failure.kind `elem` [ValueKind, RuntimeKind] =
       Just failure.detail
   | Just failure@(PythonException name _) <- fromException e
-  , name `elem` ["ValueError", "RuntimeError", "UnicodeDecodeError", "JSONDecodeError"] =
+  , name `elem` ["ValueError", "RuntimeError", "UnicodeError", "UnicodeDecodeError", "UnicodeEncodeError", "JSONDecodeError"] =
       Just (pythonExceptionStr failure)
   | otherwise = Nothing
 

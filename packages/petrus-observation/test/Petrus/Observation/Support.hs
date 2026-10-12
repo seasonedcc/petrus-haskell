@@ -48,7 +48,7 @@ import Petrus.Activity (ActivityInvocation (..), invocation)
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), CelCompilers (..), handlerTokens)
 import Petrus.Impetus.Instance
 import Petrus.Impetus.Petrinet hiding (candidates)
-import Petrus.Json (Json (..), dumps, exactEq, indented, parseJson, pythonLoads)
+import Petrus.Json (Json (..), dumps, exactEq, indented, parseJson, surrogateRefusingLoads)
 import System.Directory (doesDirectoryExist, doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
@@ -198,4 +198,4 @@ corpusFile =
 readJsonFile :: FilePath -> IO Json
 readJsonFile path = do
   raw <- BS.readFile path
-  either (error . (("cannot parse " <> path <> ": ") <>)) pure (parseJson pythonLoads raw)
+  either (error . (("cannot parse " <> path <> ": ") <>)) pure (parseJson surrogateRefusingLoads raw)

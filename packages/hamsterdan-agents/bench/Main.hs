@@ -51,7 +51,7 @@ import Hamsterdan.Host.Scripted (clearReviewText, deterministicRepository, local
 import Petrus.Agenticus.Connection.Key (KeyOperations (..), mkKeyContext)
 import Petrus.Agenticus.Error (throwLeft)
 import Petrus.Agenticus.Runtime.PiA2Host (closeHost)
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import System.Directory (createDirectoryIfMissing, getTemporaryDirectory, removeDirectoryRecursive, removePathForcibly)
 import System.FilePath ((</>))
 import Test.Tasty (localOption)
@@ -69,7 +69,7 @@ data Inputs = Inputs
 readInputs :: FilePath -> IO Inputs
 readInputs file = do
   bytes <- BS.readFile file
-  case parseJson pythonLoads bytes of
+  case parseJson surrogateRefusingLoads bytes of
     Right (Object members)
       | Just requestJson <- lookup "request" members
       , Right request <- validate requestJson

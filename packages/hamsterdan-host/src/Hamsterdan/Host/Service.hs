@@ -156,7 +156,7 @@ import Hamsterdan.Readiness.NetV5.Gating (GateDefinition (..), durablePublicatio
 import Petrus.Activity (ActivityError (..), ActivityFailureFields (..), activityError, callActivity)
 import Petrus.Activity.Number (Number (..))
 import Petrus.Engine qualified as Engine
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, pythonJsonLoads)
 import Petrus.Motus.Dispatch.Inline (Activity)
 import System.Directory (doesDirectoryExist, doesFileExist, doesPathExist, listDirectory)
 import System.FilePath ((</>))
@@ -224,7 +224,7 @@ qualificationFaultFromEnvironment = \case
         malformed = throwIO (ValueError "qualification fault configuration is malformed")
         size = utf8Length raw
     unless (0 < size && size <= 4096) malformed
-    members <- case parseJson pythonLoads (TE.encodeUtf8 raw) of
+    members <- case parseJson pythonJsonLoads (TE.encodeUtf8 raw) of
       Right (Object members) -> pure members
       _ -> malformed
     let names = Set.fromList ["repository", "pull_request", "boundary", "phase", "kind", "operation"]

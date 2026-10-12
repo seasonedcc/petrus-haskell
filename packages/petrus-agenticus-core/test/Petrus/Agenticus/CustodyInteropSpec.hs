@@ -41,7 +41,7 @@ revisionCellSpec = describe "interop: custody revision cells read as int(row[0])
     let path = scratch </> "store" </> "custody.sqlite3"
     (code, out, err) <- readCreateProcessWithExitCode (proc python ["-I", script, path, expression]) {cwd = Just root} ""
     expected <- case code of
-      ExitSuccess -> either fail pure (J.parseJson J.pythonLoads (BC.pack out))
+      ExitSuccess -> either fail pure (J.parseJson J.surrogateRefusingLoads (BC.pack out))
       ExitFailure n -> fail ("storage_revision.py exited " <> show n <> ":\n" <> out <> err)
     storage <- openSqliteConnectionStorage path
     outcome <- try storage.load `finally` storage.close
@@ -102,7 +102,7 @@ continueInPython (python, root) seed workdir start stop = do
   let arguments = [script, corpusPath, show seed, workdir, show start, show stop]
   (code, out, err) <- readCreateProcessWithExitCode (proc python arguments) {cwd = Just root} ""
   case code of
-    ExitSuccess -> either fail (pure . members) (J.parseJson J.pythonLoads (BC.pack out))
+    ExitSuccess -> either fail (pure . members) (J.parseJson J.surrogateRefusingLoads (BC.pack out))
     ExitFailure n -> fail ("custody_interop.py exited " <> show n <> ":\n" <> out <> err)
 
 -- | Run the example against the pinned reference: its interpreter

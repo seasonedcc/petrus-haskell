@@ -32,7 +32,7 @@ import Petrus.Engine.Absurd.Support
 import Petrus.Impetus.History.Codec (encodeRecord)
 import Petrus.Impetus.History.Records (ActivityRequested (..))
 import Petrus.Impetus.Instance (DeliveryScope (..), ScopeClosure (..), Status (..))
-import Petrus.Json (Json (..), defaultDumps, dumpsText, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumpsText, lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Postgres (textParam)
 import Petrus.TestSupport (PythonFailure (..), pythonExecutable, upstreamPetrus)
 import System.Directory (makeAbsolute)
@@ -54,7 +54,7 @@ py fixture command arguments = do
   (code, out, err) <- readCreateProcessWithExitCode (proc exe ("-I" : path : command : BC.unpack fixture.dsn : arguments)) {cwd = Just root} ""
   case code of
     ExitFailure n -> throwIO (PythonFailure (script <> " " <> command <> " exited " <> show n) (BC.pack out) (BC.pack err))
-    ExitSuccess -> either (\problem -> throwIO (PythonFailure ("invalid JSON: " <> problem) (BC.pack out) (BC.pack err))) pure (parseJson pythonLoads (BC.pack out))
+    ExitSuccess -> either (\problem -> throwIO (PythonFailure ("invalid JSON: " <> problem) (BC.pack out) (BC.pack err))) pure (parseJson surrogateRefusingLoads (BC.pack out))
 
 jsonArg :: Json -> String
 jsonArg value = either (error . show) T.unpack (dumpsText defaultDumps value)

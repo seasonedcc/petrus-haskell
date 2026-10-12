@@ -297,7 +297,7 @@ tagged = \case
 
 loadCorpus :: ByteString -> Either String Corpus
 loadCorpus raw = do
-  corpus <- parseJson pythonLoads raw
+  corpus <- parseJson surrogateRefusingLoads raw
   let get key = maybe (Left ("corpus lacks " <> T.unpack key)) Right (lookupMember key corpus)
   definitionBase <- get "definition"
   documentBase <- get "document"

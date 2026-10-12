@@ -23,7 +23,7 @@ import Hamsterdan.Host.Python (RuntimeError (..))
 import Hamsterdan.Host.Service
 import Hamsterdan.Host.Service qualified as Host
 import IngressSpec (newDelivery)
-import Petrus.Json (Json (..), LoneSurrogates (..), ParseOptions (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, pythonJsonLoads, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import RawHttp
@@ -53,7 +53,7 @@ get :: Int -> ByteString -> IO RawResponse
 get port target = parseResponse <$> exchange port (rawRequest "GET" target [] "")
 
 jsonBody :: RawResponse -> Json
-jsonBody response = either error id (parseJson pythonLoads response.body)
+jsonBody response = either error id (parseJson surrogateRefusingLoads response.body)
 
 spec :: Spec
 spec = do
@@ -261,7 +261,7 @@ surrogateComment = commentEnvelope "9" "@hamster-dan \\ud800 why"
 
 -- | The string CPython's @json.loads@ makes of @"\\ud800"@.
 loneSurrogate :: Json
-loneSurrogate = either error id (parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates} (BC.pack "\"\\ud800\""))
+loneSurrogate = either error id (parseJson pythonJsonLoads (BC.pack "\"\\ud800\""))
 
 signedWire :: ByteString -> Text -> Text -> [(ByteString, ByteString)]
 signedWire payload delivery event =

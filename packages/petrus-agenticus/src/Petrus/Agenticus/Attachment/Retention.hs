@@ -170,7 +170,7 @@ decodeRow row
   | otherwise = do
       let at i = row !! i
       capabilityText <- columnText (at 10)
-      capabilities <- case J.parseJson J.pythonLoads (TE.encodeUtf8 capabilityText) of
+      capabilities <- case J.parseJson J.surrogateRefusingLoads (TE.encodeUtf8 capabilityText) of
         Left _ -> Left Malformed
         Right (Array items) | Just values <- traverse stringItem items -> Right values
         Right _ -> Left (Storage "territory custody capabilities are malformed")

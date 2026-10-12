@@ -124,7 +124,7 @@ import Petrus.Activity qualified as Activity
 import Petrus.Impetus.History.Records
 import Petrus.Impetus.Instance (ImplementationRef (..))
 import Petrus.Impetus.Petrinet
-import Petrus.Json (Json (..), dumps, defaultDumps, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), dumps, defaultDumps, lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Python (uuid4Hex)
 import Petrus.Motus.Dispatch.Absurd (ensureAbsurdSchema)
 import Petrus.Postgres (Connection, query, textParam)
@@ -566,7 +566,7 @@ nextEvent worker = do
   r <- try @SomeException (BC.hGetLine worker.out)
   pure $ case r of
     Left _ -> Nothing
-    Right line -> Just (line, either (const Nothing) Just (parseJson pythonLoads line))
+    Right line -> Just (line, either (const Nothing) Just (parseJson surrogateRefusingLoads line))
 
 workerDiagnostics :: Worker -> IO String
 workerDiagnostics worker = BC.unpack . BS.concat . reverse <$> readIORef worker.diagnostics

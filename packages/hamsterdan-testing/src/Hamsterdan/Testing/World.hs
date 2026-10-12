@@ -126,7 +126,7 @@ import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus, Lifecycle
 import Hamsterdan.Testing.World.Contract
 import Hamsterdan.Testing.World.Provider hiding (setHumanComment)
 import Hamsterdan.Testing.World.Provider qualified as Provider
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, pythonJsonLoads)
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst
   ( ActionDisposition (..)
@@ -1266,7 +1266,7 @@ historyRecords root = do
     else do
       bytes <- BS.readFile path
       forM (filter (not . BS.null) (BC.lines bytes)) $ \line ->
-        either (\message -> throwPy "JSONDecodeError" (T.pack message)) pure (parseJson pythonLoads line)
+        either (\message -> throwPy "JSONDecodeError" (T.pack message)) pure (parseJson pythonJsonLoads line)
 
 -- | @_history(root)@: the History summary and the terminal operations.
 historySummary :: FilePath -> IO (Json, [Text])

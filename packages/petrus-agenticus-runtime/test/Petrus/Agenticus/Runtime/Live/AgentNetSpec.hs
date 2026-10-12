@@ -227,7 +227,7 @@ probeExact adapter = do
   code `shouldBe` ExitSuccess
   T.strip (T.pack out) `shouldBe` "v22.19.0"
   let manifest path = do
-        value <- either (failWith . show) pure . J.parseJson J.pythonLoads =<< B.readFile path
+        value <- either (failWith . show) pure . J.parseJson J.surrogateRefusingLoads =<< B.readFile path
         pure (member "name" value, member "version" value)
   manifest (package </> "package.json") `shouldReturn` (Just (String "@earendil-works/pi-coding-agent"), Just (String piSdkVersion))
   manifest (package </> "node_modules/@earendil-works/pi-ai/package.json") `shouldReturn` (Just (String "@earendil-works/pi-ai"), Just (String piAiVersion))
@@ -250,7 +250,7 @@ normalized = \case
   value -> value
 
 parse :: ByteString -> IO Json
-parse = either (failWith . show) pure . J.parseJson J.pythonLoads
+parse = either (failWith . show) pure . J.parseJson J.surrogateRefusingLoads
 
 spec :: Spec
 spec = describe "test_agent_net_real" $ do

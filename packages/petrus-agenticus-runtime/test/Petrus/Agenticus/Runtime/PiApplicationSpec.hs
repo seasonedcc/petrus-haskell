@@ -194,7 +194,7 @@ runClient c prior afterRun =
                         ]
                     )
             pure [result]
-        let previous = case J.parseJson J.pythonLoads (maybe "[]" (.transcriptJson) prior) of
+        let previous = case J.parseJson J.surrogateRefusingLoads (maybe "[]" (.transcriptJson) prior) of
               Right (Array items) -> items
               _ -> []
             messages =
@@ -416,7 +416,7 @@ writeModules tmp coreFixture = do
   pure (coding, core, ai)
 
 transcriptMessages :: ByteString -> [Json]
-transcriptMessages raw = case J.parseJson J.pythonLoads raw of
+transcriptMessages raw = case J.parseJson J.surrogateRefusingLoads raw of
   Right (Array items) -> items
   _ -> error "transcript is not an array"
 
@@ -678,7 +678,7 @@ framedSpecs = do
           attachmentId = Episode.episodeAttachmentId rig.attachment
       forM_ accepted $ \previous -> take (length previous) transcript `shouldBe` previous
       projection <- case member "content" (transcript !! (length transcript - 2)) of
-        Array (first : _) | String body <- member "text" first -> either (fail . show) pure (J.parseJson J.pythonLoads (TE.encodeUtf8 body))
+        Array (first : _) | String body <- member "text" first -> either (fail . show) pure (J.parseJson J.surrogateRefusingLoads (TE.encodeUtf8 body))
         other -> fail ("unexpected tool content " <> show other)
       projection
         `shouldBe` Object [("version", Int 1), ("ok", Bool True), ("data", Object [("content", String "before")]), ("error", Null)]

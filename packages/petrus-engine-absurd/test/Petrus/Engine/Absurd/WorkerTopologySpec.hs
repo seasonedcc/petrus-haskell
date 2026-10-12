@@ -24,7 +24,7 @@ import GHC.Clock (getMonotonicTime)
 import Petrus.Activity (ActivityInvocation (..), defaultExecutionPolicy)
 import Petrus.Engine.Absurd.Helpers
 import Petrus.Engine.Absurd.Support
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch.Absurd
   ( defaultAbsurdDispatchOptions
   , defaultAbsurdWorkerOptions
@@ -174,7 +174,7 @@ unregisteredSpec kind =
           other -> expectationFailure ("unexpected failure_reason " <> show other)
       other -> expectationFailure ("unexpected rows " <> show other)
   where
-    parseReason reason = either (const Nothing) (lookupMember "message") (parseJson pythonLoads (TE.encodeUtf8 reason))
+    parseReason reason = either (const Nothing) (lookupMember "message") (parseJson surrogateRefusingLoads (TE.encodeUtf8 reason))
 
 -- ---------------------------------------------------------------------------
 -- TestDispatchDoorbell

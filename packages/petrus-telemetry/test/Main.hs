@@ -12,7 +12,7 @@ import Control.Monad (void)
 import Data.ByteString (ByteString)
 import Data.IORef (atomicModifyIORef', modifyIORef', newIORef, readIORef)
 import Data.Text qualified as T
-import Petrus.Json (Json (..), exactEq, parseJson, pythonLoads)
+import Petrus.Json (Json (..), exactEq, parseJson, surrogateRefusingLoads)
 import Foreign.C.Error (eACCES, eAGAIN, eNOENT, eNOSPC, ePIPE, errnoToIOError)
 import Petrus.Telemetry
 import System.Exit (ExitCode (..))
@@ -52,7 +52,7 @@ withRoutedLines block = do
   reverse <$> readIORef ref
 
 loggedPayloads :: [ByteString] -> [[(T.Text, Json)]]
-loggedPayloads = map $ \line -> case parseJson pythonLoads line of
+loggedPayloads = map $ \line -> case parseJson surrogateRefusingLoads line of
   Right (Object members) -> members
   other -> error ("not a JSON object line: " <> show other)
 

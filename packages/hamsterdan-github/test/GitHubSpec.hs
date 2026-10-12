@@ -33,7 +33,7 @@ import Hamsterdan.GitHub.Gateway qualified as G
 import Hamsterdan.GitHub.Http (Exchange (..), HttpRequest (..), RawResponse (..), transportFailure)
 import Hamsterdan.GitHub.Models
 import Hamsterdan.GitHub.Transport qualified as Transport
-import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec hiding (pending)
@@ -44,7 +44,7 @@ baseSha = T.replicate 40 "b"
 
 -- | JSON written with single quotes (no value here contains one).
 j :: Text -> Json
-j = either error id . parseJson pythonLoads . TE.encodeUtf8 . T.replace "'" "\""
+j = either error id . parseJson surrogateRefusingLoads . TE.encodeUtf8 . T.replace "'" "\""
 
 members :: Json -> [(Text, Json)]
 members = \case

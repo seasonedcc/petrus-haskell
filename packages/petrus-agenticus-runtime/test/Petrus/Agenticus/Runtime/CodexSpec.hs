@@ -826,7 +826,7 @@ awaitReady handle out = do
   hSetBinaryMode out True
   line <- timeout 10000000 (hGetLine out)
   case line of
-    Just text | Right (Object members) <- J.parseJson J.pythonLoads (BC.pack text), lookup "ready" members == Just (Bool True) -> pure ()
+    Just text | Right (Object members) <- J.parseJson J.surrogateRefusingLoads (BC.pack text), lookup "ready" members == Just (Bool True) -> pure ()
     other -> killProcess handle >> expectationFailure ("Codex Local Worker did not become ready: " <> show other)
 
 -- | Kill one worker this test started, by its exact PID.
@@ -846,7 +846,7 @@ exchange endpoint frame =
     Socket.connect client (Socket.SockAddrUnix endpoint)
     SocketBytes.sendAll client frame
     reply <- SocketBytes.recv client 4096
-    pure (ok (J.parseJson J.pythonLoads reply))
+    pure (ok (J.parseJson J.surrogateRefusingLoads reply))
 
 errorReply :: Text -> Json
 errorReply code = Object [("ok", Bool False), ("error", String code)]
@@ -1513,7 +1513,7 @@ gondolinSpecs = do
     closeTerritoryCustody custody
     result <- runPython replacementHostScript [g.gondolinRoot, g.sdk, ledgerPath, resultPath] ""
     (result.resultExit, result.resultStderr) `shouldBe` (ExitSuccess, "")
-    written <- ok . J.parseJson J.pythonLoads <$> B.readFile resultPath
+    written <- ok . J.parseJson J.surrogateRefusingLoads <$> B.readFile resultPath
     let field name = case written of
           Object members -> fromMaybe Null (lookup name members)
           _ -> Null
@@ -2034,7 +2034,7 @@ verbatimSpecs = describe "verbatim and interop" $ do
 
   it "keeps the reference's exact runtime service DDL and error set" $ do
     out <- pythonOut "import json, sys\nfrom petrus.agenticus.runtime import _codex_gondolin_service as s\nsys.stdout.write(json.dumps([s._DDL, sorted(s._ERRORS), s._ACTIVITY, s._ENDPOINT_ENV, s._TOKEN_ENV, s._MAX_REQUEST, s._MAX_RESPONSE]))" []
-    ok (J.parseJson J.pythonLoads out)
+    ok (J.parseJson J.surrogateRefusingLoads out)
       `shouldBe` Array
         [ String serviceDdl
         , Array (map String (Set.toAscList (Set.fromList terminalErrors)))
@@ -2075,10 +2075,10 @@ verbatimSpecs = describe "verbatim and interop" $ do
         \rows = db.execute('SELECT operation_id, terminal, episode_id, turn_id FROM operations ORDER BY operation_id').fetchall()\n\
         \print(json.dumps([[o, _parse_terminal(bytes(t) + b'\\n', operation_id=o, episode_id=EpisodeId(e), turn_id=TurnId(u))] for o, t, e, u in rows]))\n"
         [ledger]
-    ok (J.parseJson J.pythonLoads out)
+    ok (J.parseJson J.surrogateRefusingLoads out)
       `shouldBe` Array
         [ Array [String "interop-failed", errorReply "runtime-failed"]
-        , Array [String "interop-success", ok (J.parseJson J.pythonLoads terminal)]
+        , Array [String "interop-success", ok (J.parseJson J.surrogateRefusingLoads terminal)]
         ]
     -- A ledger the reference wrote is admitted here.
     let pythonState = tmp </> "p"

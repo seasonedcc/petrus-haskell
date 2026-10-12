@@ -40,7 +40,7 @@ import Test.Hspec
 loadCorpus :: IO Json
 loadCorpus = do
   bytes <- B.readFile "differential/runner_corpus.json"
-  either (fail . ("runner_corpus.json: " <>)) pure (J.parseJson J.pythonLoads bytes)
+  either (fail . ("runner_corpus.json: " <>)) pure (J.parseJson J.surrogateRefusingLoads bytes)
 
 member :: Text -> Json -> Json
 member key = \case
@@ -208,7 +208,7 @@ extraAt path value = error ("cannot extend " <> show path <> " in " <> show valu
 checkProjection :: [Json] -> Json -> Maybe String
 checkProjection runs entry =
   let run' = runs !! fromInteger (int "run" entry)
-      base = ok (J.parseJson J.pythonLoads (TE.encodeUtf8 (texts (member "steps" run') !! fromInteger (int "step" entry))))
+      base = ok (J.parseJson J.surrogateRefusingLoads (TE.encodeUtf8 (texts (member "steps" run') !! fromInteger (int "step" entry))))
       path = items (member "path" entry)
       input = case text "op" entry of
         "none" -> base

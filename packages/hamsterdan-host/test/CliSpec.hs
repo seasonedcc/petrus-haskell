@@ -37,7 +37,7 @@ import Hamsterdan.Host.Python (ValueError (..))
 import Hamsterdan.Host.Service (noAgentCustody, openHostService, serviceOptions)
 import Hamsterdan.Host.Service qualified as Host
 import IngressApplicationSpec (objectRunner)
-import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import ServiceSupport (envelope, hostClientsOf, hostConfig, newFakeClients, receiveSigned, sqlExec)
@@ -309,6 +309,17 @@ prepareSide base privateKey = do
   createDirectoryIfMissing True floats
   BS.writeFile (floats </> "binding.json") "{\"instance_id\": \"github:44:31:pr:9\", \"repository\": \"owner/one\", \"pull_request\": 9, \"topology\": \"v5\"}"
   BS.writeFile (floats </> "history.jsonl") "{\"record\": \"InstanceCreated\", \"instant\": 1}\r\n{\"record\": \"ActivityCompleted\", \"occurrence\": 2, \"instant\": 1.0}\r{\"record\": \"Other\", \"instant\": 2.25, \"occurrence\": true}\n"
+  -- A History holding lone surrogate escapes, which @json.loads@ keeps.
+  let surrogates = inspected </> "applications" </> "44" </> "31" </> "11"
+  createDirectoryIfMissing True surrogates
+  BS.writeFile (surrogates </> "binding.json") "{\"instance_id\": \"github:44:31:pr:11\", \"repository\": \"owner/one\", \"pull_request\": 11, \"topology\": \"v5\"}"
+  BS.writeFile (surrogates </> "history.jsonl") "{\"record\": \"InstanceStarted\", \"instant\": 1, \"note\": \"\\ud800\"}\n{\"record\": \"ActivityRequested\", \"occurrence\": 2, \"instant\": 2, \"transition\": \"execute.x\", \"activity\": \"x\", \"input\": {\"work\": {\"operation\": \"op\", \"\\udfff\\ud800x\": \"\\ud83d\"}}}\n"
+  -- An @ActivityRequested@ whose operation holds one: @_identifier@'s
+  -- @value.encode()@ refuses it.
+  let unencodable = inspected </> "applications" </> "44" </> "31" </> "12"
+  createDirectoryIfMissing True unencodable
+  BS.writeFile (unencodable </> "binding.json") "{\"instance_id\": \"github:44:31:pr:12\", \"repository\": \"owner/one\", \"pull_request\": 12, \"topology\": \"v5\"}"
+  BS.writeFile (unencodable </> "history.jsonl") "{\"record\": \"ActivityRequested\", \"occurrence\": 2, \"instant\": 2, \"transition\": \"execute.x\", \"activity\": \"x\", \"input\": {\"work\": {\"operation\": \"op\\ud800\"}}}\n"
   pure Side {configured, inspection = Map.insert "HAMSTERDAN_STATE_PATH" inspected configured}
 
 cases :: Side -> Int -> [Case]
@@ -328,7 +339,7 @@ cases side githubPort =
     <> [Case ["validate"] (Map.insert "HAMSTERDAN_GITHUB_APP_ID" "0" side.configured) Nothing]
     -- inspect-instance.
     <> [ Case ["inspect-instance", "--installation", "44", "--repository", "31", "--pr", pr] side.inspection Nothing
-       | pr <- ["7", "8", "9", "10", "-7", "0"]
+       | pr <- ["7", "8", "9", "10", "11", "12", "-7", "0"]
        ]
     <> [Case ["--inst", "4_4", "--repo", "31", "--pr", " 7 ", "inspect-instance"] side.inspection Nothing]
     <> [Case ["validate"] side.inspection Nothing]
@@ -437,7 +448,7 @@ runReference tmp theCases = do
   (status, stdoutBytes, stderrBytes) <- readProcess config
   unless (status == ExitSuccess) $
     expectationFailure ("the reference driver failed: " <> BC.unpack (BL.toStrict stderrBytes))
-  case parseJson pythonLoads (BL.toStrict stdoutBytes) of
+  case parseJson surrogateRefusingLoads (BL.toStrict stdoutBytes) of
     Right (Array results) -> pure (map outcomeOf results)
     other -> expectationFailure ("unreadable reference results: " <> show other) >> pure []
   where

@@ -26,13 +26,13 @@ The rows:
 
 | row | upstream call it stands for | petrus-json call |
 | --- | --- | --- |
-| `history.loads` | `json.loads(line)` per History line (`petrus.impetus.history_store.jsonl`) | `parseJson pythonLoads` |
+| `history.loads` | `json.loads(line)` per History line (`petrus.impetus.history_store.jsonl`) | `parseJson surrogateRefusingLoads` |
 | `history.dumps` | `json.dumps(record, allow_nan=False)` per record (the same writer) | `dumps defaultDumps {allowNan = False}` |
 | `history.dumps-canonical` | `json.dumps(…, allow_nan=False, ensure_ascii=False, sort_keys=True, separators=(",", ":"))`, the canonical spelling of conflict judgments (simulation, observation, fabric) | `dumps compact {sortKeys = True}` |
-| `net-document.loads` | `json.loads(document)` | `parseJson pythonLoads` |
-| `net-document.loads-strict` | `parse_net_document`: `object_pairs_hook` refusing duplicate members, `parse_constant` refusing `NaN`/`Infinity` | `parseJson pythonLoads {duplicateMembers = RejectDuplicates, allowNonFiniteConstants = False}` |
+| `net-document.loads` | `json.loads(document)` | `parseJson surrogateRefusingLoads` |
+| `net-document.loads-strict` | `parse_net_document`: `object_pairs_hook` refusing duplicate members, `parse_constant` refusing `NaN`/`Infinity` | `parseJson surrogateRefusingLoads {duplicateMembers = RejectDuplicates, allowNonFiniteConstants = False}` |
 | `net-document.dumps` | `serialize_net_document`: `indent=2, ensure_ascii=False, allow_nan=False` | `dumps indented` |
-| `thread.loads` | `json.loads(text)` per Thread document | `parseJson pythonLoads` |
+| `thread.loads` | `json.loads(text)` per Thread document | `parseJson surrogateRefusingLoads` |
 | `thread.dumps` | the Thread repository's writer: `allow_nan=False, separators=(",", ":"), sort_keys=True` (ASCII) | `dumps defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortKeys = True, allowNan = False}` |
 
 Every row starts from bytes and ends in bytes or a fully evaluated value: the

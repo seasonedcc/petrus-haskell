@@ -78,7 +78,7 @@ category = \case
 throughText :: Record -> Either Text Record
 throughText record = case jsonLine record of
   Left err -> Left ("unencodable: " <> T.pack (show err))
-  Right line -> case parseJson pythonLoads (TE.encodeUtf8 line) of
+  Right line -> case parseJson surrogateRefusingLoads (TE.encodeUtf8 line) of
     Left err -> Left ("unparsable: " <> T.pack err)
     Right payload -> decodeRecord payload
 
@@ -493,7 +493,7 @@ spec = describe "History codec" $ do
             , RCandidateSelected (CandidateSelected t 1 2)
             ]
       mapM jsonLine records' `shouldBe` Right fixture
-      mapM (either (Left . show) (either (Left . show) Right . decodeRecord) . parseJson pythonLoads . TE.encodeUtf8) fixture
+      mapM (either (Left . show) (either (Left . show) Right . decodeRecord) . parseJson surrogateRefusingLoads . TE.encodeUtf8) fixture
         `shouldBe` Right records'
 
     -- TestJsonlHistoryStore.test_direct_firing_lifecycle_jsonl_bytes_are_stable

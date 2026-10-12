@@ -53,7 +53,7 @@ import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), LocalDispatchOptions, LocalWorkerDispatch, closeLocalDispatch, openLocalDispatch, LocalWorkerOptions (..), defaultLocalWorkerOptions, openLocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Data.ByteString qualified as BS
-import Petrus.Json (parseJson, pythonLoads)
+import Petrus.Json (parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (pythonExecutable)
 import Petrus.TestSupport.Repo (upstreamPetrus)
 import System.Directory (createDirectory, getTemporaryDirectory, makeAbsolute, removeDirectoryRecursive, removeFile)
@@ -317,4 +317,4 @@ runPython python arguments = startPython python arguments >>= finishPython argum
 
 -- | The script's JSON output, parsed as the reference's @json.loads@ would.
 parsedJson :: BS.ByteString -> Json
-parsedJson = either error id . parseJson pythonLoads
+parsedJson = either error id . parseJson surrogateRefusingLoads

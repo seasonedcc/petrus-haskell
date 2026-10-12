@@ -49,7 +49,7 @@ wire :: EncodeOptions
 wire = defaultDumps {itemSeparator = Just ",", keySeparator = ":", ensureAscii = False, reprDigitLimit = Nothing}
 
 reading :: ParseOptions
-reading = pythonLoads {maxIntegerDigits = Nothing}
+reading = surrogateRefusingLoads {maxIntegerDigits = Nothing}
 
 spell :: EncodeOptions -> Json -> BS.ByteString
 spell options = either (error . show) id . dumps options

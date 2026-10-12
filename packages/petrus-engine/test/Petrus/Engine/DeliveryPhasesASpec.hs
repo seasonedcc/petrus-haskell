@@ -34,7 +34,7 @@ import Petrus.Impetus.Instance (AcceptedDelivery (..), DeliveryAnswer (..), Deli
 import Petrus.Impetus.Petrinet hiding (token)
 import Petrus.Impetus.Scope (lifecycleScope)
 import Petrus.Impetus.TestSupport (netOf, np, tok, tokD)
-import Petrus.Json (Json (..), defaultDumps, dumps, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumps, lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (Dispatch)
 import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch)
 import System.Directory (createDirectory, getTemporaryDirectory, removeDirectoryRecursive, removeFile)
@@ -115,7 +115,7 @@ writeLines :: FilePath -> [BS.ByteString] -> IO ()
 writeLines path lines' = BS.writeFile path (BS.intercalate "\n" lines' <> "\n")
 
 loads :: HasCallStack => BS.ByteString -> Json
-loads line = either (error . ("json.loads: " <>)) id (parseJson pythonLoads line)
+loads line = either (error . ("json.loads: " <>)) id (parseJson surrogateRefusingLoads line)
 
 jsonDumps :: Json -> BS.ByteString
 jsonDumps value = either (error . show) id (dumps defaultDumps value)

@@ -38,7 +38,7 @@ import Petrus.Impetus.History.Records
 import Petrus.Impetus.Instance (AcceptedDelivery (..), PriorAcknowledgement (..), firingOccurrenceIdInt)
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.TestSupport (netOf, np, tokD)
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityOutcome (..), Dispatch (..))
 import Petrus.Postgres
   ( Connection
@@ -280,7 +280,7 @@ doorbellProvider joinedConnection listening instanceId pollInterval = do
         raw <- query listening "SELECT occurrence, result::text FROM public.interop_results WHERE instance_id = %s ORDER BY occurrence" [textParam instanceId]
         seen <- readIORef collected
         pure
-          [ (occurrence, either error id (parseJson pythonLoads result))
+          [ (occurrence, either error id (parseJson surrogateRefusingLoads result))
           | [Just o, Just result] <- raw
           , let occurrence = read (BC.unpack o) :: Int
           , not (Set.member occurrence seen)

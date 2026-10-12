@@ -38,7 +38,7 @@ import Petrus.HistoryStore.Postgres (openPostgresHistoryStore)
 import Petrus.Impetus.History.Codec (encodeRecord)
 import Petrus.Impetus.History.Records (Record)
 import Petrus.Impetus.HistoryStore qualified as Store
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Postgres (Connection)
 import Petrus.Postgres qualified as Pg
 import Test.Hspec
@@ -119,7 +119,7 @@ waitFor seconds message condition = do
 readJsonFile :: FilePath -> IO Json
 readJsonFile p = do
   bytes <- BC.readFile p
-  either (\problem -> expectationFailure problem >> ioError (userError problem)) pure (parseJson pythonLoads bytes)
+  either (\problem -> expectationFailure problem >> ioError (userError problem)) pure (parseJson surrogateRefusingLoads bytes)
 
 member :: Text -> Json -> Json
 member key value = fromMaybe Null (lookupMember key value)

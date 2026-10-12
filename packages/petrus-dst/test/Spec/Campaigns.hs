@@ -15,7 +15,7 @@ import Data.List (nub)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hedgehog.Internal.Report (Report (..), Result (..))
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Testing.Dst (decodeErrorMessage, loadArtifact)
 import Petrus.Testing.Dst.Campaign
 import Petrus.Testing.Dst.Campaign.Machines (checkCampaign, renderFailure)
@@ -55,7 +55,7 @@ zeroRepository :: IO Json
 zeroRepository = pure (Object [("commit", String (T.replicate 40 "0")), ("dirty", Bool False)])
 
 readReport :: FilePath -> IO Json
-readReport file = BS.readFile file >>= either fail pure . parseJson pythonLoads
+readReport file = BS.readFile file >>= either fail pure . parseJson surrogateRefusingLoads
 
 spec :: Spec
 spec = do
@@ -96,7 +96,7 @@ spec = do
         artifact <- loadArtifact minimizedFixture >>= either (fail . T.unpack . decodeErrorMessage) pure
         withEnv [(casePathEnv, cases), (seedEnv, "19003")] (recordCampaignCase "runtime-focused" artifact)
         encoded <- BS.readFile cases
-        summary <- either fail pure (parseJson pythonLoads encoded)
+        summary <- either fail pure (parseJson surrogateRefusingLoads encoded)
         fixtureBytes <- BS.readFile minimizedFixture
         member "campaign_profile" summary `shouldBe` String "runtime-focused"
         member "campaign_seed" summary `shouldBe` Int 19003

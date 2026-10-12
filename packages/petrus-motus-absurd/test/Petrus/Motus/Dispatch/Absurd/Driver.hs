@@ -16,7 +16,7 @@ import Control.Exception (bracket, throwIO)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
-import Petrus.Json (Json, parseJson, pythonLoads)
+import Petrus.Json (Json, parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport (PythonFailure (..), pythonExecutable, upstreamPetrus)
 import System.Directory (makeAbsolute)
 import System.Exit (ExitCode (..))
@@ -60,7 +60,7 @@ runDriverJson :: FilePath -> [String] -> IO Json
 runDriverJson script arguments = runDriver script arguments >>= parsed
 
 parsed :: ByteString -> IO Json
-parsed bytes = either (\problem -> throwIO (PythonFailure ("invalid JSON: " <> problem) bytes "")) pure (parseJson pythonLoads bytes)
+parsed bytes = either (\problem -> throwIO (PythonFailure ("invalid JSON: " <> problem) bytes "")) pure (parseJson surrogateRefusingLoads bytes)
 
 -- | A running interactive script.
 data Interactive = Interactive Handle Handle ProcessHandle

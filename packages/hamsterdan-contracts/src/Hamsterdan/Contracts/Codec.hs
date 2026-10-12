@@ -70,7 +70,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 
 -- | A JSON object's members in order.
 type Object = [(Text, Json)]
@@ -386,9 +386,10 @@ dump = encoder contract
 validate :: (Contract a) => Json -> Either DecodeError a
 validate = decoder contract
 
--- | @TypeAdapter(T).validate_json(bytes)@ in strict mode.
+-- | @TypeAdapter(T).validate_json(bytes)@ in strict mode. pydantic's JSON
+-- parser (jiter) refuses a lone surrogate escape, so this one does too.
 validateJson :: (Contract a) => ByteString -> Either DecodeError a
-validateJson bytes = case parseJson pythonLoads bytes of
+validateJson bytes = case parseJson surrogateRefusingLoads bytes of
   Left problem -> Left (DecodeError [] ("invalid JSON: " <> T.pack problem))
   Right value -> validate value
 

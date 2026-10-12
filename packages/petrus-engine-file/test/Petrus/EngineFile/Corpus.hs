@@ -24,7 +24,7 @@ import Petrus.EngineFile.Duration (Timedelta (..))
 import Petrus.EngineFile.PyText (readText)
 import Petrus.Json.Encode (defaultDumps, dumps)
 import Petrus.Json.Encode qualified as E
-import Petrus.Json.Parse (parseJson, pythonLoads)
+import Petrus.Json.Parse (parseJson, surrogateRefusingLoads)
 import Petrus.Json.Value (Json)
 import Petrus.Json.Value qualified as J
 import System.Directory (createDirectoryIfMissing, withCurrentDirectory)
@@ -58,7 +58,7 @@ readCorpus path = BS.readFile path >>= either fail pure . readCorpusBytes
 
 readCorpusBytes :: ByteString -> Either String [Case]
 readCorpusBytes bytes = do
-  top <- parseJson pythonLoads bytes
+  top <- parseJson surrogateRefusingLoads bytes
   cases <- field "cases" top >>= array
   traverse decodeCase cases
   where

@@ -11,7 +11,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word64, Word8)
 import Petrus.Http.Core.Url
-import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Python (decodeUtf8Replace)
 import Petrus.TestSupport.Python (PythonResult (..), runPython)
 import Test.Hspec
@@ -23,7 +23,7 @@ urlSpec = describe "Petrus.Http.Core.Url (differential against CPython 3.14)" $ 
     let cases = corpus
         input = encode (Array (map String cases))
     result <- runPython reference [] input
-    case parseJson pythonLoads (resultStdout result) of
+    case parseJson surrogateRefusingLoads (resultStdout result) of
       Left problem -> expectationFailure ("Python printed invalid JSON: " <> problem <> "\n" <> show (resultStderr result))
       Right (Array expected) -> do
         length expected `shouldBe` length cases
@@ -39,7 +39,7 @@ urlSpec = describe "Petrus.Http.Core.Url (differential against CPython 3.14)" $ 
         "import sys, json, urllib.parse\nprint(json.dumps([[bytes.fromhex(h).decode('utf-8', 'replace'), urllib.parse.unquote(''.join('%' + h[i:i + 2] for i in range(0, len(h), 2)))] for h in json.load(sys.stdin)]))"
         []
         (encode (Array (map String hexes)))
-    case parseJson pythonLoads (resultStdout result) of
+    case parseJson surrogateRefusingLoads (resultStdout result) of
       Right (Array expected) -> do
         length expected `shouldBe` length blobs
         forM_ (zip3 hexes blobs expected) $ \(hex, blob, theirs) ->

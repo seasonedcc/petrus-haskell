@@ -211,7 +211,7 @@ main = do
       definition = fromRight (error "project") (projectNetDefinition chain)
       payload = fromRight (error "serialize") (serializeNetDefinition definition)
       documentPayload = fromRight (error "serialize document") (serializeNetDocument chainDocument)
-      decodeAll raw = case parseJson pythonLoads raw of
+      decodeAll raw = case parseJson surrogateRefusingLoads raw of
         Right (Array xs) -> either (error . T.unpack) length (traverse decodeRecord xs)
         _ -> error "decode"
   -- Wall-clock time for every benchmark, as the Python twins measure it
@@ -233,7 +233,7 @@ main = do
         "history"
         [ bench "encode" (nf (\h -> either (error "encode") BS.length (dumps defaultDumps (Array (encodeHistory h)))) history)
         , bench "dumps-only" (nf (either (error "encode") BS.length . dumps defaultDumps) recordValues)
-        , bench "parse-only" (nf (either error jsonWeight . parseJson pythonLoads) encoded)
+        , bench "parse-only" (nf (either error jsonWeight . parseJson surrogateRefusingLoads) encoded)
         , bench "decode" (nf decodeAll encoded)
         , bench "records-only" (nf (either (error . T.unpack) length . traverse decodeRecord) (encodeHistory history))
         , bench "replay-marking" (nf (either (error . T.unpack) tokenCount . replayMarking) history)

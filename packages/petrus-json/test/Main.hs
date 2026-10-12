@@ -44,7 +44,7 @@ main = hspec $ do
     it "round-trips through the parser" $
       property $ \d ->
         not (isNaN d || isInfinite d) ==>
-          case parseJson pythonLoads (BC.pack (pythonFloatRepr d)) of
+          case parseJson surrogateRefusingLoads (BC.pack (pythonFloatRepr d)) of
             Right (Float d') -> d' == (d :: Double) && isNegativeZero d' == isNegativeZero d
             _ -> False
 
@@ -80,7 +80,7 @@ main = hspec $ do
               )
 
   describe "parseJson" $ do
-    let parse = parseJson pythonLoads . BC.pack
+    let parse = parseJson surrogateRefusingLoads . BC.pack
         strict = parseJson strictLoads . BC.pack
     it "keeps integers and floats apart" $ do
       fmap exactEq' (parse "[1, 1.0, 1e2]") `shouldBe` Right [Int 1, Float 1, Float 100]
@@ -96,7 +96,7 @@ main = hspec $ do
     it "rejects lone surrogates by default" $
       parse "\"\\ud800\"" `shouldBe` Left "JSON strings must contain Unicode scalar values"
     describe "lone surrogates kept (KeepLoneSurrogates, WTF-8)" $ do
-      let keep = parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates}
+      let keep = parseJson pythonJsonLoads
           ascii = either (error . show) id . dumps defaultDumps
           raw = either (error . show) id . dumps defaultDumps {ensureAscii = False}
       it "keeps a lone surrogate as one WTF-8 code point" $ do
@@ -133,7 +133,7 @@ main = hspec $ do
         pythonStrRepr (fromCodePoints "a\xD800\&b") `shouldBe` "'a\\ud800b'"
       it "the default presets are unchanged" $ do
         strict "\"\\ud800\"" `shouldSatisfy` isLeft
-        loneSurrogates pythonLoads `shouldBe` RefuseLoneSurrogates
+        loneSurrogates surrogateRefusingLoads `shouldBe` RefuseLoneSurrogates
     it "decodes surrogate pairs" $
       parse "\"\\ud83d\\ude00\"" `shouldBe` Right (String "\x1F600")
     it "rejects raw control characters" $
@@ -150,16 +150,16 @@ main = hspec $ do
     it "round-trips strings through every escaping mode" $
       property $ \(StringChars chars) ->
         let value = String (T.pack chars)
-            roundTrip options = (parseJson pythonLoads =<< either (Left . show) Right (dumps options value)) == Right value
+            roundTrip options = (parseJson surrogateRefusingLoads =<< either (Left . show) Right (dumps options value)) == Right value
          in roundTrip defaultDumps && roundTrip compact
     it "round-trips strings at every offset (word-at-a-time scan)" $
       property $ \(StringChars chars) (Small pad) ->
         let value = Array [Int (abs pad), String (T.pack chars)]
             spelled = BC.replicate (fromInteger (abs pad `mod` 9)) ' ' <> either (error . show) id (dumps compact value)
-         in fmap show (parseJson pythonLoads spelled) == Right (show value)
+         in fmap show (parseJson surrogateRefusingLoads spelled) == Right (show value)
     it "round-trips integers of every size" $
       property $ \(Large small) wide ->
-        let check i = parseJson pythonLoads (BC.pack (show i)) `exactlyIs` Int i
+        let check i = parseJson surrogateRefusingLoads (BC.pack (show i)) `exactlyIs` Int i
          in check (toInteger (small :: Int)) .&&. check (wide :: Integer) .&&. check (wide * 10 ^ (17 :: Int)) .&&. check (wide * 10 ^ (19 :: Int))
     it "keeps the first position and last value of repeated members" $
       property $ \(KeyedMembers members) ->
@@ -168,7 +168,7 @@ main = hspec $ do
             lastValue key = last [value | (k, value) <- members, k == key]
             firstPositions = foldl (\seen (key, _) -> if key `elem` seen then seen else seen ++ [key]) []
             distinct = length (firstPositions members) == length members
-         in fmap show (parseJson pythonLoads spelled) == Right (show expected)
+         in fmap show (parseJson surrogateRefusingLoads spelled) == Right (show expected)
               .&&. (if distinct then parseJson strictLoads spelled `exactlyIs'` expected else property (isLeft (parseJson strictLoads spelled)))
 
   describe "parseJson against the pre-optimization reader" $ do
@@ -249,16 +249,16 @@ main = hspec $ do
                 ++ " digits; use sys.set_int_max_str_digits() to increase the limit"
             )
     it "parses 4300 digits" $
-      fmap (\case Int i -> length (show i); _ -> 0) (parseJson pythonLoads (digits 4300)) `shouldBe` Right 4300
+      fmap (\case Int i -> length (show i); _ -> 0) (parseJson surrogateRefusingLoads (digits 4300)) `shouldBe` Right 4300
     it "refuses 4301 digits with CPython's message, sign excluded" $ do
-      parseJson pythonLoads (digits 4301) `shouldBe` tooMany 4301
-      parseJson pythonLoads ("-" <> digits 4301) `shouldBe` tooMany 4301
+      parseJson surrogateRefusingLoads (digits 4301) `shouldBe` tooMany 4301
+      parseJson surrogateRefusingLoads ("-" <> digits 4301) `shouldBe` tooMany 4301
       parseJson strictLoads ("[" <> digits 4400 <> "]") `shouldBe` tooMany 4400
     it "does not limit float tokens" $ do
-      parseJson pythonLoads (digits 5000 <> ".0") `shouldBe` Right (Float (1 / 0))
-      parseJson pythonLoads (digits 5000 <> "e1") `shouldBe` Right (Float (1 / 0))
+      parseJson surrogateRefusingLoads (digits 5000 <> ".0") `shouldBe` Right (Float (1 / 0))
+      parseJson surrogateRefusingLoads (digits 5000 <> "e1") `shouldBe` Right (Float (1 / 0))
     it "can be lifted" $
-      parseJson pythonLoads {maxIntegerDigits = Nothing} (digits 5000) `shouldSatisfy` either (const False) (const True)
+      parseJson surrogateRefusingLoads {maxIntegerDigits = Nothing} (digits 5000) `shouldSatisfy` either (const False) (const True)
     it "refuses to print more than 4300 digits, sign excluded" $ do
       fmap BC.length (dumps defaultDumps (Int (10 ^ (4300 :: Int) - 1))) `shouldBe` Right 4300
       fmap BC.length (dumps defaultDumps (Int (negate (10 ^ (4300 :: Int) - 1)))) `shouldBe` Right 4301
@@ -278,14 +278,14 @@ main = hspec $ do
     it "accepts the depths upstream exercises" $
       parseJson strictLoads (arrays 1200) `shouldSatisfy` either (const False) (const True)
     it "accepts exactly the limit" $
-      parseJson pythonLoads (arrays defaultNestingLimit) `shouldSatisfy` either (const False) (const True)
+      parseJson surrogateRefusingLoads (arrays defaultNestingLimit) `shouldSatisfy` either (const False) (const True)
     it "refuses one level deeper, naming the container" $ do
-      parseJson pythonLoads (arrays (defaultNestingLimit + 1))
+      parseJson surrogateRefusingLoads (arrays (defaultNestingLimit + 1))
         `shouldBe` Left "maximum nesting depth (100000) exceeded while decoding a JSON array from a unicode string"
-      parseJson pythonLoads {maxNestingDepth = Just 3} (objects 4)
+      parseJson surrogateRefusingLoads {maxNestingDepth = Just 3} (objects 4)
         `shouldBe` Left "maximum nesting depth (3) exceeded while decoding a JSON object from a unicode string"
     it "survives input far deeper than any stack" $
-      parseJson pythonLoads (arrays 1000000) `shouldSatisfy` isLeft
+      parseJson surrogateRefusingLoads (arrays 1000000) `shouldSatisfy` isLeft
     it "bounds the encoder too, where empty containers do not recurse (as in CPython)" $ do
       let nested n = iterate (Array . pure) (Array []) !! (n - 1)
           len = fmap BC.length . dumps compact
@@ -406,10 +406,10 @@ instance Arbitrary KeyedMembers where
 
 parserOptions :: [ParseOptions]
 parserOptions =
-  [ pythonLoads
+  [ surrogateRefusingLoads
   , strictLoads
   , strictLoads {integerTokensOnly = True, integerRange = Just (safeIntegerMin, safeIntegerMax)}
-  , pythonLoads {finiteFloatsOnly = True}
+  , surrogateRefusingLoads {finiteFloatsOnly = True}
   ]
 
 -- | The same value, spelling for spelling, or the same refusal text.

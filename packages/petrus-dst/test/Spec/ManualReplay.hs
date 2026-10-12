@@ -7,7 +7,7 @@ module Spec.ManualReplay (spec) where
 
 import Control.Monad (forM_)
 import Data.Text (Text)
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
 import Spec.Support (fixturesDir, member, readJson)
 import Spec.Tooling (runWorldCommand)
 import System.Exit (ExitCode (..))
@@ -54,7 +54,7 @@ spec = describe "manual replay routes (petrus-dst-world replay)" $
     (code, code') `shouldBe` (ExitSuccess, ExitSuccess)
     (firstErr, secondErr) `shouldBe` ("", "")
     first `shouldBe` second
-    result <- either fail pure (parseJson pythonLoads first)
+    result <- either fail pure (parseJson surrogateRefusingLoads first)
     artifact <- readJson fixture
     member "scenario_id" result `shouldBe` member "scenario_id" artifact
     member "outcome" result `shouldBe` String "pass"

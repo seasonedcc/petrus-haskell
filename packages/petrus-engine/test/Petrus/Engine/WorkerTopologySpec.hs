@@ -47,7 +47,7 @@ import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
 import Petrus.HistoryStore.Support (withReference, runPython, withScratch)
 import Petrus.Impetus.History.Records (ActivityCompleted (..), ActivityRequested (..), Record (..))
 import Petrus.Impetus.Instance (Status (Awaiting))
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityOutcome (..))
 import Petrus.Motus.Dispatch.Inline (Activity)
 import Petrus.Motus.Dispatch.Local (defaultLocalDispatchOptions, defaultLocalWorkerOptions, openLocalWorkerDispatch, toDispatch)
@@ -143,7 +143,7 @@ awaitEvent process predicate = do
         case line of
           Nothing -> expectationFailure ("worker barrier timeout or exit; saw " <> show (reverse seen)) >> pure Null
           Just Nothing -> expectationFailure ("worker exited early; saw " <> show (reverse seen)) >> pure Null
-          Just (Just text) -> case parseJson pythonLoads (BC.pack text) of
+          Just (Just text) -> case parseJson surrogateRefusingLoads (BC.pack text) of
             Right event | predicate event -> pure event
             _ -> loop (text : seen)
   loop []

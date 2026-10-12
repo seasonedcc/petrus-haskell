@@ -91,7 +91,7 @@ oracle requests = do
     ExitSuccess | BL.null err -> pure (map answer (filter (not . BS.null) (BC.lines (BL.toStrict out))))
     _ -> fail ("the CPython oracle failed: " ++ BC.unpack (BL.toStrict err))
   where
-    answer line = case parseJson pythonLoads line of
+    answer line = case parseJson surrogateRefusingLoads line of
       Right (Array [String "ok", value]) -> Right value
       Right (Array [String "error", String message]) -> Left message
       other -> error ("bad oracle answer " ++ show other)
@@ -347,7 +347,7 @@ cases =
     ++ map StringCase strings
     ++ map BytesReprCase byteStrings
     ++ map FloatReprCase doubles
-    ++ [JsonReprCase value | document <- reprDocuments, Right value <- [parseJson pythonLoads document]]
+    ++ [JsonReprCase value | document <- reprDocuments, Right value <- [parseJson surrogateRefusingLoads document]]
     ++ map LoadsCase loadsDocuments
     ++ map StrictLoadsCase loadsDocuments
     ++ map Utf8Case byteStrings

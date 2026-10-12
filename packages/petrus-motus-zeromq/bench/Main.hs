@@ -30,7 +30,7 @@ import Data.Text qualified as T
 import Database.SQLite3 qualified as Sql
 import GHC.Clock (getMonotonicTime)
 import Petrus.Activity
-import Petrus.Json (Json (..), defaultDumps, dumps, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumps, lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityAttempt, WorkerDispatch (..), activityAttempt)
 import Petrus.Motus.Dispatch.Local (defaultLocalDispatchOptions, withLocalDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
@@ -191,7 +191,7 @@ withServer mode arguments action = do
         hClose out
   ( do
       line <- hGetLine out
-      endpoint <- case parseJson pythonLoads (BC.pack line) of
+      endpoint <- case parseJson surrogateRefusingLoads (BC.pack line) of
         Right event | Just (String e) <- lookupMember "endpoint" event -> pure e
         other -> throwIO (userError ("no readiness line: " <> show other))
       action endpoint

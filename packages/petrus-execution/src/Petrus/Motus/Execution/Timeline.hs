@@ -50,7 +50,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time (UTCTime (..), getCurrentTime, toGregorian, timeToTimeOfDay, TimeOfDay (..))
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Execution.Error
 import Petrus.Motus.Execution.Internal.Common (newUuid4, replaceFile, shortTempName)
 import Petrus.Json.Python (isPythonSpace, parsePythonInt, pythonRepr, pythonStr, pythonStrRepr)
@@ -273,7 +273,7 @@ newTimeline path retain = do
   Timeline path retain <$> newMVar state
   where
     register line sequences = do
-      record <- either (throwExecution ValueError . T.pack) pure (parseJson pythonLoads (TE.encodeUtf8 line))
+      record <- either (throwExecution ValueError . T.pack) pure (parseJson surrogateRefusingLoads (TE.encodeUtf8 line))
       producer <- pythonStr <$> member "producer" record
       nextSequence <- member "producer_sequence" record >>= pythonInt
       pure (Map.insertWith max producer nextSequence sequences)
@@ -423,7 +423,7 @@ emitTelemetry handler message =
     Just (async :: SomeAsyncException) -> throwIO async
     Nothing -> pure ()
   where
-    mirror = case parseJson pythonLoads (TE.encodeUtf8 message) of
+    mirror = case parseJson surrogateRefusingLoads (TE.encodeUtf8 message) of
       Right (Object members) | Just (String kind) <- lookup "event" members -> do
         let payload = [(k, v) | (k, v) <- dictPairs members, k /= "event", k /= "ts"]
             correlation =
