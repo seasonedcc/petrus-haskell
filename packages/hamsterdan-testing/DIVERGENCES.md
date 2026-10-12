@@ -136,8 +136,9 @@ byte for byte, in both directions (see [PARITY.md](PARITY.md)).
      property over upstream's strategies (seed `0..2^53-1`, path, and
      before/after lists of at most one action) with `max_examples=6`.
    - **delivery recovery machine:** a Hedgehog state machine
-     (`Gen.sequential`/`executeSequential`) with `max_examples=12` and up
-     to `stateful_step_count=5` rules. `start` draws its seed as
+     (`Gen.sequential`/`executeSequential`) with `max_examples=12` whose
+     every run has exactly `stateful_step_count=5` steps, as Hypothesis's
+     runs do: `start` and 4 rules (`Range.singleton`). `start` draws its seed as
      `@initialize` does. Upstream's rule preconditions read the live
      timeline. "Execute one disclosed action" and "redeliver after
      quiescence" partition its states, so the machine has two rules: `Act`,
@@ -154,7 +155,11 @@ byte for byte, in both directions (see [PARITY.md](PARITY.md)).
      then a Hedgehog property over upstream's strategies with
      `max_examples=5`. For the timer, upstream's `assume` becomes a
      `discard`. On top of these come exhaustive enumerations: all 40 timer
-     cases the `assume` admits, and all 16 Git cases. Each enumeration
+     cases the `assume` admits, and the 14 Git cases upstream's test body
+     passes. The other 2 Git cases (no response loss, crash after
+     acceptance) are a test-oracle divergence: the Git property discards
+     them, and a separate test asserts the reference World's own invariant
+     failure there (see PARITY.md). Each enumeration
      covers every generated dimension except the World seed, which is the
      case's index.
 

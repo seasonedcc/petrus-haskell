@@ -154,21 +154,30 @@ spec = describe "tests/integration/testing/test_readiness_campaign.py" $ do
         lost <- forAll Gen.bool
         cut <- forAll (Gen.element ["none", "before_delivery", "after_acceptance", "after_head"])
         redeliver <- forAll Gen.bool
+        -- Upstream's own test body fails on this sub-domain (see
+        -- 'unrecoveredAfterAcceptance'), so it is checked by its own test
+        -- below, against the reference World's verdict.
+        when (unrecoveredAfterAcceptance lost cut) H.discard
         label (event "git_response_lost" (tshow lost))
         label (event "git_crash_cut" cut)
         label (event "git_redeliver" (tshow redeliver))
         evalIO (git (seed, lost, cut, redeliver))
-    it "every loss, cut and redelivery (enumeration)" $ do
+    it "every loss, cut and redelivery upstream's test body passes (enumeration)" $ do
       let examples =
             [ (lost, cut, redeliver)
             | lost <- [False, True]
             , cut <- ["none", "before_delivery", "after_acceptance", "after_head"]
             , redeliver <- [False, True]
+            , not (unrecoveredAfterAcceptance lost cut)
             ]
+      length examples `shouldBe` 14
       forM_ (zip [0 ..] examples) $ \(seed, (lost, cut, redeliver)) -> git (seed, lost, cut, redeliver)
+    it "an unrecovered crash after the ref is accepted fails the reference World's own invariant (test-oracle divergence)" $
+      forM_ (zip [14 ..] [False, True]) $ \(seed, redeliver) ->
+        labelled ["git-refusal", tshow seed, tshow redeliver] (gitRefusal seed False "after_acceptance" redeliver)
 
   describe "test_generated_delivery_recovery_schedules_replay_exactly" $ do
-    it "max_examples=12 machines of up to stateful_step_count=5 rules (Hedgehog state machine, fixed seed)" $ do
+    it "max_examples=12 machines of exactly stateful_step_count=5 steps, start and 4 rules (Hedgehog state machine, fixed seed)" $ do
       retained <- retainedPath "readiness-counterexample-v4.json"
       withSlot $ \slot -> hedgehog 12 (deliveryProperty slot False retained 12 5)
 
@@ -203,9 +212,7 @@ spec = describe "tests/integration/testing/test_readiness_campaign.py" $ do
     labelled ["timer", tshow seed, path, cut, tshow lost, tshow redeliver] (timerExample seed path cut lost redeliver)
   git (seed, lost, cut, redeliver) =
     labelled ["git", tshow seed, tshow lost, cut, tshow redeliver] $
-      if unrecoveredAfterAcceptance lost cut
-        then gitRefusal seed lost cut redeliver
-        else retainedPath "readiness-v5-git-publication-v4.json" >>= \retained -> gitExample retained seed lost cut redeliver
+      retainedPath "readiness-v5-git-publication-v4.json" >>= \retained -> gitExample retained seed lost cut redeliver
 
 -- ---------------------------------------------------------------------------
 -- Hedgehog
@@ -629,14 +636,15 @@ data Machine = Machine
   , directory :: FilePath
   }
 
--- | The property: draw @start@'s seed and up to @steps@ rules, then run
--- them on a fresh machine with the invariant after @start@ and after every
+-- | The property: draw @start@'s seed and exactly @steps - 1@ rules (a
+-- Hypothesis machine runs exactly @stateful_step_count@ steps, and the
+-- @initialize@ rule @start@ is one of them), then run them on a fresh machine with the invariant after @start@ and after every
 -- rule, and the teardown's convergence and replay. Everything is drawn
 -- before anything runs, so a shrunk case reruns from a fresh World.
 deliveryProperty :: Slot -> Bool -> FilePath -> Int -> Int -> Property
 deliveryProperty slot force failurePath examples steps = H.withTests (fromIntegral examples) . property $ do
   seed <- forAll worldSeed
-  actions <- forAll (Gen.sequential (Range.constant 1 steps) Model (if force then [rule slot Act] else [rule slot Act, rule slot Restart]))
+  actions <- forAll (Gen.sequential (Range.singleton (steps - 1)) Model (if force then [rule slot Act] else [rule slot Act, rule slot Restart]))
   machine <- evalIO (startMachine slot force failurePath seed)
   label (event "response_lost" (tshow machine.lost))
   label (event "redeliver_at_finish" (tshow machine.redeliverAtFinish))
