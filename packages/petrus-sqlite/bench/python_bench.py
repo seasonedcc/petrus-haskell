@@ -102,12 +102,20 @@ def tx_rows(group: str, connection: sqlite3.Connection) -> None:
 
 def main() -> None:
     directory, database, connection = seeded(None)
-    # The tx rows again over a database on a memory-backed file system, when
-    # PETRUS_BENCH_TMPFS names a directory on one (scripts/with-tmpfs), as
-    # bench/Main.hs does.
-    memory_parent = os.environ.get("PETRUS_BENCH_TMPFS")
-    memory = seeded(memory_parent) if memory_parent else None
     try:
+        # The tx rows again over a database on a memory-backed file system,
+        # when PETRUS_BENCH_TMPFS names a directory on one (scripts/with-tmpfs),
+        # first, and that database closed before the other rows, as
+        # bench/Main.hs does: in CPython's SQLite a connection left open after
+        # the tx rows' work slows another connection's transactions.
+        memory_parent = os.environ.get("PETRUS_BENCH_TMPFS")
+        if memory_parent:
+            memory_directory, _, memory = seeded(memory_parent)
+            try:
+                tx_rows("tx-tmpfs", memory)
+            finally:
+                memory.close()
+                shutil.rmtree(memory_directory)
 
         def connect_close():
             _connect(Path(database)).close()
@@ -137,14 +145,9 @@ def main() -> None:
         )
         report("schema.normalize-ddl", lambda: normalize(_DDL[2]))
         report("fence.acquire-release", fence)
-        if memory:
-            tx_rows("tx-tmpfs", memory[2])
     finally:
         connection.close()
         shutil.rmtree(directory)
-        if memory:
-            memory[2].close()
-            shutil.rmtree(memory[0])
 
 
 if __name__ == "__main__":
