@@ -19,11 +19,15 @@ node packages/petrus-viewer-server/bench/run.mjs
 
 CI's nightly smoke run (`scripts/bench --smoke`, not a measurement): the
 in-process `micro` rows, a few iterations each (the scenario runner needs the
-upstream viewer's `pnpm install`, which CI's `viewer` job covers).
+upstream viewer's `pnpm install`, which CI's `viewer` job covers). `micro`
+reads the `--file` it is given and a `B.json` next to it (the file a
+`resolve-ref` from it would read), so the net is copied to both names.
 
 <!-- scripts/bench: smoke -->
 ```sh
-"$BENCH_BIN" micro --file upstream/petrus-viewer/examples/sample-net.json --iters 50 +RTS -M2G -RTS
+cp upstream/petrus-viewer/examples/sample-net.json "$BENCH_TMP/A.json"
+cp upstream/petrus-viewer/examples/sample-net.json "$BENCH_TMP/B.json"
+"$BENCH_BIN" micro --file "$BENCH_TMP/A.json" --iters 50 +RTS -M2G -RTS
 ```
 
 Other ways to run it:
@@ -37,7 +41,7 @@ node packages/petrus-viewer-server/bench/run.mjs --quick         # 1 short rep
 node packages/petrus-viewer-server/bench/run.mjs --only "open-file|resolve-ref"  # scenarios by name
 node packages/petrus-viewer-server/bench/run.mjs --only "GET /|GET the|MCP|cold start"  # run G
 node packages/petrus-viewer-server/bench/run.mjs --rts "-N4"     # other RTS options for petrus
-cabal run petrus-viewer-bench -- micro --file upstream/petrus-viewer/examples/sample-net.json
+cabal run petrus-viewer-bench -- micro --file DIR/A.json             # with a DIR/B.json beside it
 ```
 
 The runner starts every server once on its own non-default port (from

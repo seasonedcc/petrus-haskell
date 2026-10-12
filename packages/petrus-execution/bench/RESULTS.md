@@ -182,12 +182,12 @@ rm -rf "${BENCH_TMP:-bench-results/tmp/petrus-execution}/workloads"
 ```
 
 CI's nightly smoke run (`scripts/bench --smoke`, not a measurement): the
-Haskell harness on the `medium` workload only, plus its process and local
-rows.
+Haskell harness on the `medium` workload only (the only one it creates),
+plus its process and local rows.
 
 <!-- scripts/bench: smoke -->
 ```sh
-python3 packages/petrus-execution/bench/make_workloads.py "$BENCH_TMP/workloads"
+"$(scripts/upstream-python)" -B -c 'import sys; sys.path.insert(0, "packages/petrus-execution/bench"); import make_workloads as m; m.WORKLOADS = {"medium": m.WORKLOADS["medium"]}; m.main()' "$BENCH_TMP/workloads"
 cd packages/petrus-execution && PETRUS_BENCH_ONLY=medium "$BENCH_BIN" "$BENCH_TMP/workloads" +RTS -M2G -RTS
 ```
 

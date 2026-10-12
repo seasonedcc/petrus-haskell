@@ -242,6 +242,20 @@ def smoke_block(package: str) -> str:
     return f'cd packages/{package} && "$BENCH_BIN" --stdev Infinity +RTS -M2G -RTS\n'
 
 
+def bench_tools(cabal_text: str) -> List[str]:
+    """The executables the benchmark stanza's build-tool-depends names, as
+    cabal targets (`pkg:exe:name`)."""
+    stanza = re.search(r"^benchmark\s+\S+\s*\n((?:[ \t].*\n|\s*\n)*)", cabal_text, re.MULTILINE)
+    field = re.search(r"^\s*build-tool-depends:\s*((?:.*\n)(?:\s+,.*\n)*)", stanza.group(1) if stanza else "", re.MULTILINE)
+    tools = []
+    for item in (field.group(1).replace("\n", " ").split(",") if field else []):
+        name = item.strip().split()[0] if item.strip() else ""
+        if ":" in name:
+            package, exe = name.split(":", 1)
+            tools.append(f"{package}:exe:{exe}")
+    return tools
+
+
 def smoke(packages: List[str]) -> int:
     """Build every selected benchmark and run its smoke block: proof that the
     benchmarks still build and run to the end, not a measurement. In CI the
@@ -249,22 +263,31 @@ def smoke(packages: List[str]) -> int:
     reconfigure every package."""
     env = dict(os.environ) if os.environ.get("CI") else environment()
     targets = {}
+    tools = {}
     for package in packages:
-        cabal_file = next((ROOT / "packages" / package).glob("*.cabal"))
-        stanza = re.search(r"^benchmark\s+(\S+)", cabal_file.read_text(), re.MULTILINE)
+        cabal_text = next((ROOT / "packages" / package).glob("*.cabal")).read_text()
+        stanza = re.search(r"^benchmark\s+(\S+)", cabal_text, re.MULTILINE)
         targets[package] = f"{package}:bench:{stanza.group(1)}"
+        tools[package] = bench_tools(cabal_text)
     subprocess.run(["cabal", "build", "-j", "--enable-benchmarks", *targets.values()], cwd=ROOT, env=env, check=True)
+
+    def list_bin(target: str) -> str:
+        return subprocess.run(["cabal", "list-bin", "-v0", "--enable-benchmarks", target], cwd=ROOT, env=env,
+                              check=True, stdout=subprocess.PIPE, text=True).stdout.strip()
+
     failed = []
     for package, target in targets.items():
-        binary = subprocess.run(["cabal", "list-bin", "-v0", "--enable-benchmarks", target], cwd=ROOT, env=env,
-                                check=True, stdout=subprocess.PIPE, text=True).stdout.strip()
+        binary = list_bin(target)
+        # like cabal bench, the build-tool-depends executables come first on PATH
+        tool_dirs = [str(Path(list_bin(tool)).parent) for tool in tools[package]]
         block = smoke_block(package)
         scratch = TMP / f"smoke-{package}"
         if scratch.exists():
             shutil.rmtree(scratch)
         scratch.mkdir(parents=True)
         run_env = dict(env, BENCH_BIN=binary, BENCH_TMP=str(scratch),
-                       HASKELL_DIST_DIR=str(Path(binary).parent.parent.parent))
+                       HASKELL_DIST_DIR=str(Path(binary).parent.parent.parent),
+                       PATH=os.pathsep.join([*tool_dirs, env.get("PATH", "")]))
         run_env[f"{package.replace('-', '_')}_datadir"] = str(ROOT / "packages" / package) + "/."
         argv = ["bash", "-e", "-o", "pipefail", "-c", block]
         if needs_postgres(package, block) and not env.get("PETRUS_TEST_POSTGRES"):
