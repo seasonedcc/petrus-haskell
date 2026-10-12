@@ -31,9 +31,6 @@ run-name: ${{ inputs.sha && format('CI for {0}', inputs.sha) || '' }}
 #              repetitions; fails when Haskell did not win most of a row's
 #              repetitions (scripts/bench-gate)
 #   container  the image and its runtime contract (scripts/container-smoke)
-#   every-commit  on a push to main of several commits: dispatches a run
-#              of this workflow for each commit but the tip (which this run
-#              tests), so every commit on main gets a run of its own
 #   ci         the verdict: green only when every job above is; it also
 #              records this run's test ledger
 #
@@ -58,16 +55,14 @@ on:
         type: boolean
         default: false
       sha:
-        description: Test this commit (of the chosen branch) instead of its tip; set by every-commit
+        description: Test this commit (of the chosen branch) instead of its tip
         type: string
         default: ""
 
 # A newer push to a branch or pull request cancels its older run. Every
-# commit pushed to main gets a complete run of its own: the push's run
-# tests the tip, every-commit dispatches one for each earlier commit of the
-# push, and each run on main has a group of its own, so that neither
-# cancelling nor GitHub's replacing of a pending run in the same group
-# skips one.
+# push to main gets a complete run of its tip, and each run on main has a
+# group of its own, so that neither cancelling nor GitHub's replacing of a
+# pending run in the same group skips one.
 concurrency:
   group: ${{ github.ref == 'refs/heads/main' && format('ci-main-{0}', github.run_id) || format('ci-{0}', github.ref) }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -490,40 +485,8 @@ jobs:
           scripts/container-smoke hamsterdan:ci \
             --revision "${{ steps.source.outputs.revision }}" --version "${{ steps.source.outputs.version }}"
 
-  # A push of several commits to main runs CI on its tip only; this job
-  # dispatches a run for each earlier commit of the push (oldest first),
-  # with the commit as the `sha` input. Those runs show under main's tip in
-  # GitHub's list, named "CI for <sha>"; each checks out, builds and tests
-  # its own commit and records it in its ledger.
-  every-commit:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - name: Dispatch a run for each earlier commit of the push
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.event.after }}
-          FORCED: ${{ github.event.forced }}
-        run: |
-          if [ "$FORCED" = true ] || [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
-            echo "a forced push or a new branch: no earlier commit to dispatch"
-            exit 0
-          fi
-          commits=$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" --jq '.commits[].sha')
-          for sha in $commits; do
-            if [ "$sha" != "$AFTER" ]; then
-              echo "dispatching CI for $sha"
-              gh workflow run ci.yml -R "$REPO" --ref main -f sha="$sha"
-            fi
-          done
-
   ci:
-    needs: [lint, build, checks, test, viewer, bench-smoke, bench-gate, container, every-commit]
+    needs: [lint, build, checks, test, viewer, bench-smoke, bench-gate, container]
     if: always()
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
@@ -564,7 +527,7 @@ jobs:
           ok = True
           for job, data in needs.items():
               result = data["result"]
-              allowed = ("success", "skipped") if job in ("test", "viewer", "bench-smoke", "bench-gate", "every-commit") else ("success",)
+              allowed = ("success", "skipped") if job in ("test", "viewer", "bench-smoke", "bench-gate") else ("success",)
               print(f"{job}: {result}")
               ok = ok and result in allowed
           if os.environ["LEDGER"] != "success":
