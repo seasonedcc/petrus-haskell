@@ -48,7 +48,7 @@ suites marked "ours" were written for this port.
 | `differential` | ours: JSON and URL ports against V8 and Node | 4/4 |
 | `wire` | ours: WebSocket bytes against the `ws` relays, and HTTP endpoint bytes against `node:http` | 20/20 |
 | `playwright` | `tests/playwright/bridge-live.test.mjs` | 4/4 |
-| `live` | ours: every MCP tool through a headless browser | 12/12 |
+| `live` | ours: every MCP tool through a headless browser; plain `petrus FILE` serves no collaboration relay | 13/13 |
 | `history` | ours: replay and live watching in the browser from real producers | 8/8 |
 
 ## Capabilities
@@ -76,7 +76,7 @@ Each ratio compares the best Haskell server with the best Node server.
 - Upstream `cli` (5/5).
 - Upstream `playwright` (4/4): the upstream browser suite against
   `petrus`.
-- Upstream `live` (12/12).
+- Upstream `live` (13/13).
 
 **Performance** (run G), against `node bin/petrus.mjs` and `vite preview`:
 
@@ -111,7 +111,7 @@ Vite (see [DIVERGENCES.md](DIVERGENCES.md)).
   the V8 `JSON.parse` and WHATWG URL corpora (`scripts/check-corpora`).
 - Upstream `mcp` (7/7) and `mcp-haskell-relay` (7/7); `mcp-node-haskell-relay` (7/7), the
   other direction: the upstream Node MCP server on the `petrus` relay.
-- `live` (12/12): every tool, through `petrus-mcp` (Haskell), the `petrus`
+- `live` (13/13): every tool, through `petrus-mcp` (Haskell), the `petrus`
   relay (Haskell) and the built UI in headless Chromium.
 
 **Performance** (run G), `petrus-mcp` against `node server/mcp.mjs`, both
@@ -143,7 +143,7 @@ Per call, `petrus-mcp` uses about a third of Node's CPU time.
     headers, versions, keys, and methods;
   - frames, close codes and reasons, and protocol errors, also byte for
     byte.
-- `live` (12/12).
+- `live` (13/13).
 
 **Performance**, against the Node relay on bare `ws` (Node's fastest
 case), both without the timing log:
@@ -166,6 +166,9 @@ log on, `petrus` is 1.35x the Vite relay that `bin/petrus.mjs` runs
 - `test/CollabSpec.hs` (6 examples).
 - Upstream `collab` (6/6).
 - `wire` (`ws-wire.test.mjs`, 2/2): every byte against `server/collab.mjs`.
+- `live`: a plain `petrus FILE` refuses `/collab-ws`, as Vite without
+  `--host` does, and the UI loads its file; `test/ServerSpec.hs` checks
+  the same at the socket.
 
 **Performance:** fan-out to 50 or 200 peers is 3.9–4.5x Node by median
 (runs C, D and F), and at least 3.21x in every round.

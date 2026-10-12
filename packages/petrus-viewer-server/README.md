@@ -25,7 +25,7 @@ Routes served by `petrus`:
 | `GET/POST/OPTIONS /__petrus/open-file` | `server/openFileEndpoint.mjs` | Pending file, consumed once by the UI. |
 | `POST/OPTIONS /__petrus/resolve-ref` | `server/openFileEndpoint.mjs` | `$ref` resolution: local files, and http(s) refs fetched and cached with the GitHub URL normalization (`raw.githubusercontent.com`, `blob/` URLs) of `server/urlCache.mjs`. |
 | `/ws/agent` (WebSocket) | `agentRelay` Vite plugin | Browser ↔ agents relay, `[petrus-relay-perf]` timing log. |
-| `/collab-ws` (WebSocket) | `server/collab.mjs` behind Vite's proxy | Collaboration relay, in process. |
+| `/collab-ws` (WebSocket) | `server/collab.mjs` behind Vite's proxy (only with `vite --host`) | Collaboration relay, in process, only with `--host`. |
 | `/temporal/*` | Vite proxy to `localhost:7243` | Reverse proxy to the Temporal HTTP API; optionally answered from Petrus observation producers (below). |
 | everything else | Vite static serving | The built UI (`--ui-dir`), with SPA fallback to `index.html`. |
 
@@ -46,7 +46,8 @@ cabal run petrus -- --ui-dir upstream/petrus-viewer/dist upstream/petrus-viewer/
 `petrus --help` lists the options. The upstream ones (`--no-open`, `-h`,
 file and URL arguments, `PETRUS_OPEN_FILE`, `PETRUS_SOURCE_URL`) behave as
 upstream. Server options: `--port` (default 5173, next free port like Vite),
-`--strict-port`, `--host` (default `localhost`), `--ui-dir` /
+`--strict-port`, `--host` (default `localhost`; like `vite --host`, it also
+serves `/collab-ws`), `--ui-dir` /
 `PETRUS_UI_DIR` (default: `./dist` when it holds a build, else a build next
 to the executable: `<prefix>/share/petrus-viewer/ui` for executables in
 `<prefix>/bin`, or `upstream/petrus-viewer/dist` in the checkout they were

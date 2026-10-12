@@ -12,7 +12,7 @@ listed here.
 | Upstream | Haskell | Why |
 | --- | --- | --- |
 | `bin/petrus.mjs` starts the Vite dev server, which serves the UI from source and adds the backend through Vite plugins. | `petrus` is one server: it serves the **built** UI (`pnpm build` output) from `--ui-dir` / `PETRUS_UI_DIR`, else `./dist` when it holds a build, else a build next to the executable (`<prefix>/share/petrus-viewer/ui` beside `<prefix>/bin`, or `upstream/petrus-viewer/dist` in the checkout it was built in; `Petrus.Viewer.UiDir`), plus every backend route. | The UI stays TypeScript; there is no reason to run a bundler in production. Without a UI directory, non-API paths answer `404 Petrus UI not configured: …`. |
-| The collaboration relay is a separate process (`node server/collab.mjs`, port 4567), proxied by Vite at `/collab-ws` only when Vite runs with `--host`. | The relay runs inside `petrus` at `/collab-ws` (any query string), always on. `petrus-collab [port]` is the standalone equivalent of `server/collab.mjs`. | One process, no port 4567 to collide on. The browser build decides whether to use collaboration (`VITE_COLLAB_ENABLED`), as before. |
+| The collaboration relay is a separate process (`node server/collab.mjs`, port 4567), proxied by Vite at `/collab-ws` only when Vite runs with `--host`. | The relay runs inside `petrus` at `/collab-ws` (any query string), and, as with Vite, only when `petrus` runs with `--host`; otherwise `/collab-ws` is an unknown path (an upgrade is refused). `petrus-collab [port]` is the standalone equivalent of `server/collab.mjs`. | One process, no port 4567 to collide on. At the pin the UI never connects either way: `vite.config.ts` defines `VITE_COLLAB_ENABLED` as the boolean `true`, which `App.tsx` compares with the string `"true"`, so every build (and the dev server) compiles the collaboration client out. |
 | The MCP server's auto-start runs `pnpm run dev` in the viewer checkout. | It runs `petrus --no-open` (the executable next to `petrus-mcp`, else on `PATH`), or `PETRUS_MCP_DEV_COMMAND` through `sh -c`. Like upstream, what it serves does not depend on the working directory: `PETRUS_UI_DIR` when set, else the build found next to `petrus-mcp` or `petrus` (as above), passed as `--ui-dir`. | There is no viewer checkout to run `pnpm` in. |
 | The Vite `ngrokTunnel` plugin (`NGROK=1`). | Not provided. | Tunnelling is an operator concern; run `ngrok http <port>` against `petrus`. |
 
@@ -20,7 +20,8 @@ listed here.
 
 - `petrus` flags: `--port <n>` (default 5173, next free port like Vite;
   `0` picks any free port), `--strict-port`, `--host <addr>` (default
-  `localhost`: both 127.0.0.1 and ::1), `--ui-dir <dir>`,
+  `localhost`: both 127.0.0.1 and ::1; like `vite --host`, it also turns
+  on the collaboration relay), `--ui-dir <dir>`,
   `--temporal-target <url>` (default `http://localhost:7243`, Vite's proxy
   target), `--observation <url>` (repeatable). The upstream `--no-open`,
   `-h/--help`, file and URL arguments are unchanged; unknown dashed

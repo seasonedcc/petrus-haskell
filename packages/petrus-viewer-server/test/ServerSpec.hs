@@ -9,6 +9,7 @@ import Data.ByteString qualified as B
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Either (isLeft)
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Network.Socket qualified as S
 import Network.Socket.ByteString qualified as SB
@@ -59,7 +60,7 @@ spec = do
       BL.take 26 (httpBody r) `shouldBe` "Petrus UI not configured: "
 
   describe "WebSocket paths" $ do
-    it "answers plain HTTP on /collab-ws with 426" $ withViewer id $ \h -> do
+    it "answers plain HTTP on /collab-ws with 426 when collaboration is on" $ withViewer collabOn $ \h -> do
       r <- httpRequest "GET" ("http://localhost:" <> show (handlePort h) <> "/collab-ws") Nothing
       httpStatus r `shouldBe` 426
 
@@ -67,12 +68,19 @@ spec = do
       r <- try @SomeException (WS.runClient "127.0.0.1" (handlePort h) "/ws/other" (\c -> WS.sendTextData c ("x" :: Text)))
       r `shouldSatisfy` isLeft
 
-    it "accepts upgrades on /ws/agent and /collab-ws (with a query)" $ withViewer id $ \h -> do
+    it "accepts upgrades on /ws/agent and /collab-ws (with a query)" $ withViewer collabOn $ \h -> do
       withWs (handlePort h) "/ws/agent" $ \c -> (textField "type" <$> recvJson c) `shouldReturn` Just "welcome"
       withWs (handlePort h) "/collab-ws?room=a" $ \c -> (textField "type" <$> recvJson c) `shouldReturn` Just "welcome"
 
+    -- Vite proxies /collab-ws only with --host.
+    it "refuses /collab-ws upgrades when collaboration is off (the default)" $ withViewer id $ \h -> do
+      isNothing (handleCollabRelay h) `shouldBe` True
+      r <- try @SomeException (WS.runClient "127.0.0.1" (handlePort h) "/collab-ws" (\c -> WS.sendTextData c ("x" :: Text)))
+      r `shouldSatisfy` isLeft
+      withWs (handlePort h) "/ws/agent" $ \c -> (textField "type" <$> recvJson c) `shouldReturn` Just "welcome"
+
   describe "HTTP front" $ do
-    it "hands a connection to Warp after serving endpoint requests on it" $ withViewer id $ \h ->
+    it "hands a connection to Warp after serving endpoint requests on it" $ withViewer collabOn $ \h ->
       withRaw (handlePort h) $ \s -> do
         -- pipelined: the front answers the first, Warp the second
         SB.sendAll s (get "/__petrus/open-file" <> get "/collab-ws")
@@ -93,6 +101,7 @@ spec = do
         late <- timeout 3000000 (SB.recv s 4096)
         late `shouldBe` Just ""
   where
+    collabOn c = c {serverCollab = True}
     get path = "GET " <> path <> " HTTP/1.1\r\nHost: x\r\n\r\n"
     statusLines = filter ("HTTP/1.1 " `B.isPrefixOf`) . map (BC.filter (/= '\r')) . BC.lines
 

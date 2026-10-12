@@ -11,7 +11,7 @@
  *   node-bare   bench/node-baseline.mjs: upstream endpoint + relay on bare
  *               node:http, no perf log (Node's best case)
  * Collaboration fan-out:
- *   haskell     petrus /collab-ws, and petrus-collab P
+ *   haskell     petrus --host localhost /collab-ws, and petrus-collab P
  *   node        node server/collab.mjs P
  * Static UI (the `pnpm build` output) and the /temporal proxy:
  *   haskell     petrus --ui-dir upstream/petrus-viewer/dist
@@ -198,7 +198,8 @@ const runsOn = (t, s) => t.groups.includes(s.group) && (!t.match || s.name.inclu
 // kind: "server" (started here, measured over HTTP/WebSocket), "process"
 // (the load client spawns the command; `start` gives the helper it talks to)
 const TARGETS = [
-  { name: "haskell (petrus)", groups: ["viewer", "collab", "static", "temporal"], wsPath: "/collab-ws", start: () => start(PETRUS, (p) => ["--no-open", "--strict-port", "--port", String(p), "--ui-dir", DIST, ...rtsArgs], scratch) },
+  // --host serves /collab-ws, as `vite --host` does
+  { name: "haskell (petrus)", groups: ["viewer", "collab", "static", "temporal"], wsPath: "/collab-ws", start: () => start(PETRUS, (p) => ["--no-open", "--strict-port", "--port", String(p), "--host", "localhost", "--ui-dir", DIST, ...rtsArgs], scratch) },
   // like for like with the bare Node baseline, which prints no relay lines
   { name: "haskell (petrus, relay log off)", groups: ["viewer"], match: "relay", start: () => start(PETRUS, (p) => ["--no-open", "--strict-port", "--port", String(p), ...rtsArgs], scratch, { PETRUS_RELAY_PERF: "0" }) },
   // serves the UI from source: no built bundle
