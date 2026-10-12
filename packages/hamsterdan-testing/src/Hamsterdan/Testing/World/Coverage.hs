@@ -40,7 +40,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Hamsterdan.Testing.World.Contract (PyError (..), canonical, checkerIdentity, profileIdentity)
+import Hamsterdan.Testing.World.Contract (PythonException, canonical, pythonError, checkerIdentity, profileIdentity)
 import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Json.Float (shortestDigits)
 import Petrus.Testing.Dst
@@ -391,11 +391,11 @@ encodeReadinessCoverage = canonical . coverageJson
 -- ---------------------------------------------------------------------------
 -- Collection
 
-valueErr :: Text -> Either PyError a
-valueErr = Left . PyError "ValueError"
+valueErr :: Text -> Either PythonException a
+valueErr = Left . pythonError "ValueError"
 
 -- | @collect_readiness_coverage(runs)@.
-collectReadinessCoverage :: [CoverageRun] -> Either PyError CoverageReport
+collectReadinessCoverage :: [CoverageRun] -> Either PythonException CoverageReport
 collectReadinessCoverage runs = do
   when (null runs || length runs > maxRuns) $
     valueErr ("readiness coverage requires 1 to at most " <> tshow maxRuns <> " scenario runs")
@@ -439,13 +439,13 @@ collectReadinessCoverage runs = do
     valueErr "readiness coverage report exceeds its byte bound"
   Right report
 
-requireCompatible :: ScenarioArtifactV4 -> Either PyError ()
+requireCompatible :: ScenarioArtifactV4 -> Either PythonException ()
 requireCompatible a = do
   unless (a.profile == profileIdentity) $ valueErr "readiness coverage artifact has a foreign profile"
   unless (a.checkers == [checkerIdentity]) $ valueErr "readiness coverage artifact has a foreign checker catalog"
   unless (digestMatches a.expected.journalDigest) $ valueErr "readiness coverage artifact has an invalid journal digest"
 
-requireExactReplay :: ScenarioArtifactV4 -> ReplayResult -> Either PyError Bool
+requireExactReplay :: ScenarioArtifactV4 -> ReplayResult -> Either PythonException Bool
 requireExactReplay a r = do
   unless (r.scenarioId == a.scenarioId) $ valueErr "replay scenario does not match coverage artifact"
   unless (r.disposition == a.expected.disposition) $ valueErr "replay disposition does not match coverage artifact"
@@ -512,7 +512,7 @@ data Checkpoint = Checkpoint
   }
 
 -- | @_object(value, label)@.
-object :: Json -> Text -> Either PyError [(Text, Json)]
+object :: Json -> Text -> Either PythonException [(Text, Json)]
 object value label = case value of
   Object members -> Right members
   _ -> valueErr (label <> " must be a strict object")
@@ -521,7 +521,7 @@ get :: Text -> [(Text, Json)] -> Json
 get key members = maybe Null id (lookup key members)
 
 -- | @_extract_checkpoints(artifact, replayed=...)@.
-extractCheckpoints :: ScenarioArtifactV4 -> Bool -> Either PyError [Checkpoint]
+extractCheckpoints :: ScenarioArtifactV4 -> Bool -> Either PythonException [Checkpoint]
 extractCheckpoints a isReplayed = do
   let byPosition = Map.fromList [(operationPosition op, op) | op <- a.operations]
       visit (points, certified, allPassed, fairChecked) entry = do
@@ -580,11 +580,11 @@ foldlE f = go
     go acc [] = Right acc
     go acc (x : xs) = f acc x >>= \acc' -> go acc' xs
 
-schema :: Text -> Parser x -> Either PyError x
-schema modelName = either (\e -> Left (PyError "ValidationError" (renderSchemaError modelName e))) Right
+schema :: Text -> Parser x -> Either PythonException x
+schema modelName = either (\e -> Left (pythonError "ValidationError" (renderSchemaError modelName e))) Right
 
 -- | @_operation_signals(artifact, prefix_position, observations)@.
-operationSignals :: ScenarioArtifactV4 -> Integer -> [Observation] -> Either PyError Signals
+operationSignals :: ScenarioArtifactV4 -> Integer -> [Observation] -> Either PythonException Signals
 operationSignals a prefix observations = do
   let visit (adapters, outcomes, authorities, lifecycles, deliveries) op
         | operationPosition op > prefix = Right (adapters, outcomes, authorities, lifecycles, deliveries)
@@ -664,7 +664,7 @@ operationSignals a prefix observations = do
   Right (Signals adapters2 Set.empty outcomes4)
 
 -- | @_checker_signals(trigger, result)@.
-checkerSignals :: Text -> CheckResult -> Either PyError (Set Text)
+checkerSignals :: Text -> CheckResult -> Either PythonException (Set Text)
 checkerSignals trigger result = do
   detail <- object result.detail "checker detail"
   let at k = get k detail
@@ -682,7 +682,7 @@ checkerSignals trigger result = do
       <> ["readiness.fair_boundary" | trigger == "begin_fair"]
 
 -- | @_state_outcomes(states, outcomes, adapters)@.
-stateOutcomes :: [[(Text, Json)]] -> Set Text -> Set Text -> Either PyError ([Integer], Set Text, Set Text, Set Text)
+stateOutcomes :: [[(Text, Json)]] -> Set Text -> Set Text -> Either PythonException ([Integer], Set Text, Set Text, Set Text)
 stateOutcomes states outcomes0 adapters0 = foldlE visit ([], Set.empty, outcomes0, adapters0) states
   where
     isDict = \case
@@ -744,7 +744,7 @@ stateOutcomes states outcomes0 adapters0 = foldlE visit ([], Set.empty, outcomes
       Right (generations', lifecycles', outcomes <> Set.fromList added, adapters')
 
 -- | @_readiness_state(observation)@.
-readinessState :: Observation -> Either PyError [(Text, Json)]
+readinessState :: Observation -> Either PythonException [(Text, Json)]
 readinessState o = do
   unless (o.name == "readiness.state") $ valueErr "readiness coverage encountered a foreign observation"
   object o.value "readiness observation"
@@ -754,12 +754,12 @@ readinessState o = do
 
 -- | @load_readiness_coverage(data)@: pydantic's @model_validate_json@, whose
 -- JSON parser (jiter) refuses a lone surrogate escape, as this one does.
-loadReadinessCoverage :: ByteString -> Either PyError CoverageReport
+loadReadinessCoverage :: ByteString -> Either PythonException CoverageReport
 loadReadinessCoverage bytes = do
   when (BS.length bytes > maxReportBytes) $ valueErr "readiness coverage report exceeds its byte bound"
   value <- case parseJson surrogateRefusingLoads bytes of
     Right v -> Right v
-    Left problem -> Left (PyError "ValidationError" ("1 validation error for ReadinessCoverageReport\n  Invalid JSON: " <> T.pack problem <> " [type=json_invalid]"))
+    Left problem -> Left (pythonError "ValidationError" ("1 validation error for ReadinessCoverageReport\n  Invalid JSON: " <> T.pack problem <> " [type=json_invalid]"))
   schema "ReadinessCoverageReport" (pReport [] value)
 
 -- | A string field with pydantic's length bounds and (unanchored) pattern.

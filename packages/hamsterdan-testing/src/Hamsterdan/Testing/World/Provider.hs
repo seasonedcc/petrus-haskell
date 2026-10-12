@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE MultiWayIf #-}
 
 -- | Modeled external truth and boundary-faithful adapters for readiness
@@ -90,12 +91,12 @@ import Hamsterdan.GitHub.Config (HostConfig)
 import Hamsterdan.GitHub.Models (InstallationInventory (..), RegistrationInventory (..), Transport (..), WireResponse (..), boundary)
 import Hamsterdan.Host.GitPublish (GitPublishError (..), GitPublishResult (..), GitReconciliation (..), OperationDisposition (..), PublicationCategory (..))
 import Hamsterdan.Host.ExceptionClass (exceptionClass)
-import Hamsterdan.Host.Python (RuntimeError (..), TypeError (..), ValueError (..))
+import Hamsterdan.Host.Python (RuntimeError (..), pattern TypeError, ValueError (..))
 import Hamsterdan.Host.Service (HostClients (..))
 import Hamsterdan.Host.V5.Mutation (MutationPublisher (..))
 import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus (..), Lifecycle (..), ReviewStatus (..), Spelled (..), dump)
 import Hamsterdan.Testing.World.Contract
-import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
+import Petrus.Impetus.Instance.FailureText (PythonArg (..))
 import Petrus.Json (Json (..), lookupMember)
 import Petrus.Testing.Dst (Fault (..), ProfileError (..), ScenarioContext (..), faults, runScenario)
 
@@ -114,7 +115,6 @@ throwPy cls message = case cls of
 -- | The reference class and @str()@ of a raised exception.
 pyException :: SomeException -> (Text, Text)
 pyException e
-  | Just (PyError cls message) <- fromException e = (cls, message)
   | Just (PythonException cls args) <- fromException e = (cls, case args of [PyStr m] -> m; _ -> "")
   | otherwise = (exceptionClass e, T.pack (displayException e))
 

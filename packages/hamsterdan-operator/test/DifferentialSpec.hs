@@ -349,6 +349,9 @@ inspectCases =
       replace ("gh api " <> repoPath ("/actions/runs?event=pull_request&head_sha=" <> sha 'a' <> "&per_page=100")) [value (obj [("workflow_runs", list [obj [("id", int 5), ("run_attempt", str "x")]])])]
   , inspecting appBotLogin (base "inspect with a run lacking its id" ["inspect", "--pr", "7"] 1) $
       replace ("gh api " <> repoPath ("/actions/runs?event=pull_request&head_sha=" <> sha 'a' <> "&per_page=100")) [value (obj [("workflow_runs", list [obj [("name", str "ci")]])])]
+  , -- @runs.get("workflow_runs", [])[:20]@ on a dict: @KeyError: slice(None, 20, None)@.
+    inspecting appBotLogin (base "inspect with workflow runs given as an object" ["inspect", "--pr", "7"] 1) $
+      replace ("gh api " <> repoPath ("/actions/runs?event=pull_request&head_sha=" <> sha 'a' <> "&per_page=100")) [value (obj [("workflow_runs", obj [("id", int 5)])])]
   , inspecting appBotLogin (base "inspect with a run on another head" ["inspect", "--pr", "7"] 1) $
       replace ("gh api " <> repoPath ("/actions/runs?event=pull_request&head_sha=" <> sha 'a' <> "&per_page=100")) [value (obj [("workflow_runs", list [obj [("id", int 8), ("run_attempt", PFloat 1.0), ("head_sha", str (sha 'b'))]])])]
         . ((repoPath' "/actions/runs/8/attempts/1/jobs?per_page=100", [value (obj [("jobs", list [])])]) :)

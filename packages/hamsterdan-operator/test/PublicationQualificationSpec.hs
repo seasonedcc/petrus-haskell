@@ -14,7 +14,7 @@ import Hamsterdan.Agents.Protocol (AgentCleanupCategory, AgentResultCategory (Ou
 import Hamsterdan.Agents.Protocol qualified as Agents
 import Hamsterdan.Contracts.Codec (Contract (..), encode)
 import Hamsterdan.Contracts.Readiness (ChangeResult (..))
-import Hamsterdan.Python.Object (PV (..), PyError (..))
+import Hamsterdan.Python.Object (PV (..), pythonError)
 import Hamsterdan.Host.GitPublish (GitPublishError (..), PublicationCategory (GitOperation, Idempotency, PatchAdmission, RefCas), categoryName)
 import Hamsterdan.Host.PublicationQualification
 import Hamsterdan.Operator.Posix (Stat (..), isDirectory, permissionBits)
@@ -264,7 +264,7 @@ spec = describe "tests/unit/host/test_publication_qualification.py" do
           diagnostic = "credential-and-coordinate-private-diagnostic"
           spent = root </> "push-spent"
           timeout' command =
-            throwIO (PyError "subprocess.TimeoutExpired" ("Command '" <> T.pack (show command) <> "' timed out after 1 seconds: " <> diagnostic <> coordinate))
+            throwIO (pythonError "TimeoutExpired" ("Command '" <> T.pack (show command) <> "' timed out after 1 seconds: " <> diagnostic <> coordinate))
       outcome <- push (atomicSetupPush spent) ("https://github.com/" <> coordinate <> ".git") a40 b40 timeout'
       let retained = T.pack (show outcome <> show (pushSanitized outcome))
       outcome.category `shouldBe` Just BoundaryUnavailable
@@ -430,7 +430,7 @@ spec = describe "tests/unit/host/test_publication_qualification.py" do
         diagnostic = "private-provider-diagnostic"
     outcome <-
       observeSetupBoundary
-        (throwIO (PyError "subprocess.TimeoutExpired" ("Command 'gh api repos/" <> coordinate <> "/branches' timed out after 30 seconds: " <> diagnostic)))
+        (throwIO (pythonError "TimeoutExpired" ("Command 'gh api repos/" <> coordinate <> "/branches' timed out after 30 seconds: " <> diagnostic)))
     let retained = T.pack (show outcome <> show (observationSanitized outcome))
     outcome.confirmed `shouldBe` False
     outcome.category `shouldBe` Just BoundaryUnavailable

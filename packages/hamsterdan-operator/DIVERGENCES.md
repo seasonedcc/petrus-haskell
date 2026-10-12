@@ -81,7 +81,7 @@ Below are the differences that remain, with their rationale.
   them, but their memory is not overwritten. The credential still never
   leaves the bounded child environment, and it never reaches the output.
 - **`RuntimeError` and the other exceptions the setup sequence catches**
-  are `PyError` values carrying the reference's class name. The sequence
+  are `PythonException` values carrying the reference's class name. The sequence
   turns them into the same evidence categories.
 - **JSON fast path.** Provider answers are parsed by
   `Hamsterdan.Operator.FastJson`, which decodes the common subset of JSON

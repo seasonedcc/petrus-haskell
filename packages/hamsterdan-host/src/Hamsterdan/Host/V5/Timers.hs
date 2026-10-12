@@ -207,7 +207,7 @@ recoverable :: SomeException -> Maybe Recoverable
 recoverable e
   | Sql.isDatabaseError e = Just (Recoverable e)
   | isJust (fromException @RuntimeError e) = Just (Recoverable e)
-  | isJust (fromException @TypeError e) = Just (Recoverable e)
+  | isTypeError e = Just (Recoverable e)
   | isJust (fromException @ValueError e) = Just (Recoverable e)
   | otherwise = Nothing
 

@@ -62,6 +62,7 @@ import Hamsterdan.GitHub.Config (ConfigurationError (..), HostConfig (..), fromE
 import Hamsterdan.GitHub.Http (ClientError (..), ClientErrorKind (..))
 import Hamsterdan.GitHub.Models (ContractRefused (..), GitHubBoundaryError (..), InvalidRequest (..))
 import Hamsterdan.Python (intText, isAscii, isPrintable, pythonExceptionStr, splitlines, strRepr, utf8Encode)
+import Hamsterdan.Python.Object (errorLine)
 import Hamsterdan.GitHub.Webhooks (Failure (..))
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Api (ServeOptions (..), serve)
@@ -608,7 +609,7 @@ runCli env argv = do
 -- ending in this line).
 uncaughtText :: SomeException -> Text
 uncaughtText e = case fromException e of
-  Just failure@(PythonException name _) -> name <> (case pythonExceptionStr failure of "" -> ""; message -> ": " <> message) <> "\n"
+  Just failure -> errorLine failure <> "\n"
   _ -> case fromException e of
     Just (RuntimeError m) -> "RuntimeError: " <> m <> "\n"
     _ -> case fromException e of

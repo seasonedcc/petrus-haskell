@@ -338,6 +338,7 @@ exceptionArgument = \case
   PyStr s -> Array [String "str", codePoints (T.unpack s)]
   PyBytes b -> Array [String "bytes", String (hexOf b)]
   PyObject _ _ -> error "not generated"
+  PySlice {} -> error "not generated"
 
 pad16 :: String -> String
 pad16 s = replicate (16 - length s) '0' ++ s

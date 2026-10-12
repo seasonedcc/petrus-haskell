@@ -33,7 +33,6 @@ module Hamsterdan.Export
 
 import Control.Exception (Exception, SomeException, fromException, throwIO, try)
 import Control.Monad (foldM, forM, forM_, unless, when)
-import Data.Bifunctor (bimap)
 import Data.ByteString qualified as BS
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Containers.ListUtils (nubOrd)
@@ -225,9 +224,9 @@ agentOperationId operation attempt = "pi:" <> sha256Hex (TE.encodeUtf8 (operatio
 
 -- | 'agentOperationId', or the @UnicodeEncodeError@ the reference's
 -- @.encode()@ raises for an operation holding a lone surrogate.
-checkedOperationId :: Text -> Integer -> Either PyError Text
+checkedOperationId :: Text -> Integer -> Either PythonException Text
 checkedOperationId operation attempt =
-  bimap fromPython (("pi:" <>) . sha256Hex) (Py.utf8Encode (operationKey operation attempt))
+  fmap (("pi:" <>) . sha256Hex) (Py.utf8Encode (operationKey operation attempt))
 
 operationKey :: Text -> Integer -> Text
 operationKey operation attempt = operation <> "\0" <> tshow attempt
@@ -258,7 +257,7 @@ findInstance stateDir repository pullRequest = do
     stated <- fromMaybe (PStr "") <$> raiseEither (get "repository" binding)
     statedText <- case stated of
       PStr s -> pure s
-      other -> raise (PyError "AttributeError" ("'" <> typeName other <> "' object has no attribute 'lower'"))
+      other -> raise (pythonError "AttributeError" ("'" <> typeName other <> "' object has no attribute 'lower'"))
     let members = case binding of
           PDict m -> m
           _ -> []
@@ -307,7 +306,7 @@ readHistory path = do
   let parsed = parallelMap 256 forceParsed parseLine (zip [1 :: Integer ..] (splitlinesUtf8 bytes))
   fmap concat . forM parsed $ \(seq', outcome) -> case outcome of
     Nothing -> pure []
-    Just (Left e) | e.cls == "json.decoder.JSONDecodeError" -> refuse ("History record " <> tshow seq' <> " is not JSON")
+    Just (Left e) | e.name == "JSONDecodeError" -> refuse ("History record " <> tshow seq' <> " is not JSON")
     Just (Left e) -> raise e
     Just (Right (PDict members)) | contains "record" members -> pure [members]
     Just (Right _) -> refuse ("History record " <> tshow seq' <> " has no record kind")
@@ -846,7 +845,7 @@ writeBoards out records reporter = do
     -- write_text opens (truncates) the file, then encodes.
     case Py.utf8Encode (text <> "\n") of
       Right bytes -> modifyIORef' planned ((joinPath out name, bytes) :)
-      Left failure -> modifyIORef' planned ((joinPath out name, "") :) >> raise (fromPython failure)
+      Left failure -> modifyIORef' planned ((joinPath out name, "") :) >> raise failure
     pure
       ( "- ["
           <> name
@@ -871,7 +870,7 @@ writeBoards out records reporter = do
       let name = T.justifyRight 4 '0' (tshow ordinal) <> ".md"
           board = do
             items <- subscript "entries" result >>= iterateValue
-            either (Left . fromPython) Right (renderBoard (map pyStr items))
+            renderBoard (map pyStr items)
        in (name, seq', result, board)
     forceRendered (_, _, _, board) = either (`seq` ()) (`seq` ()) board
 
@@ -1050,7 +1049,7 @@ adoptUnattributed operations bodies reporter = do
 
 -- | Write the evidence package and return what it holds and lacks.
 --
--- Raises 'EvidenceExportError' where the reference refuses, and 'PyError'
+-- Raises 'EvidenceExportError' where the reference refuses, and 'PythonException'
 -- where the reference raises anything else.
 exportPackage :: ExportRequest -> IO Report
 exportPackage request = do
@@ -1103,7 +1102,7 @@ exportPackage request = do
   writeText (joinPath request.out "README.md") (readme inst report)
   pure report
 
-dumpsIndentedJson :: Json -> Either PyError Text
+dumpsIndentedJson :: Json -> Either PythonException Text
 dumpsIndentedJson = dumpsIndented True . fromJsonValue
 
 fromJsonValue :: Json -> PV
@@ -1440,7 +1439,7 @@ runExport env argv = do
           | Just (EvidenceExportError message) <- fromException e -> do
               emit env.errors ("export failed: " <> message <> "\n")
               pure (ExitFailure 2)
-          | Just (problem :: PyError) <- fromException e -> do
+          | Just (problem :: PythonException) <- fromException e -> do
               emit env.errors (errorLine problem <> "\n")
               pure (ExitFailure 1)
           | otherwise -> do
@@ -1460,4 +1459,4 @@ emit handle text = BS.hPut handle (utf8BackslashReplace text)
 printOut :: ExportEnvironment -> Text -> IO Bool
 printOut env text = case Py.utf8Encode text of
   Right bytes -> True <$ BS.hPut env.output bytes
-  Left failure -> False <$ emit env.errors (errorLine (fromPython failure) <> "\n")
+  Left failure -> False <$ emit env.errors (errorLine failure <> "\n")

@@ -48,8 +48,7 @@ import Hamsterdan.GitHub.Webhooks (WebhookRejected)
 import Hamsterdan.Host.Agenticus (AgentCompositionError)
 import Hamsterdan.Host.Errors (UnstagedCustodyError)
 import Hamsterdan.Host.GitPublish (GitPublishError)
-import Hamsterdan.Host.Python (LookupError, RuntimeError, TypeError, ValueError)
-import Hamsterdan.Python.Object (PyError (..))
+import Hamsterdan.Host.Python (LookupError, RuntimeError, ValueError)
 import Petrus.Activity (ActivityError)
 import Petrus.Agenticus.Error (AgenticusError (..), errorClassName)
 import Petrus.Json.Python (PythonException (..))
@@ -97,11 +96,7 @@ classes =
   , named @GitPublishError "GitPublishError"
   , named @RuntimeError "RuntimeError"
   , named @ValueError "ValueError"
-  , named @TypeError "TypeError"
   , named @LookupError "LookupError"
-  , -- The class a traceback qualifies (@sqlite3.OperationalError@) is
-    -- named by its last component.
-    listed @PyError (\failure -> T.takeWhileEnd (/= '.') failure.cls)
   , -- Failures only Haskell raises: the nearest built-in class.
     named @IOException "OSError"
   , named @ErrorCall "RuntimeError"

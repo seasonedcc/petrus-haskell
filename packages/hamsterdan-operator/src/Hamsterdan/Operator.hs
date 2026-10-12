@@ -12,7 +12,7 @@
 -- Provider JSON is read with the reference's dynamic Python semantics
 -- ("Hamsterdan.Python.Object"): where the reference would raise an
 -- exception it does not catch (an @AttributeError@ for a list where a dict
--- belongs, say), the port raises the same 'PyError', and the command line
+-- belongs, say), the port raises the same 'PythonException', and the command line
 -- prints the last line of the reference's traceback.
 module Hamsterdan.Operator
   ( -- * The fixture
@@ -104,9 +104,8 @@ import Data.Time.Format (defaultTimeLocale, formatTime)
 import Hamsterdan.Cli.Argparse
 import Hamsterdan.Python.Object
   ( PV (..)
-  , PyError (..)
+  , PythonException (..)
   , errorLine
-  , fromPython
   , hashCheck
   , intText
   , iterateValue
@@ -125,7 +124,7 @@ import Hamsterdan.Operator.Posix qualified as Posix
 import Hamsterdan.Operator.Python
 import Petrus.Json.Python (fsEncode, pythonStrListRepr, utf8BackslashReplace)
 import Petrus.Json.Wtf8 (fromCodePoints)
-import Hamsterdan.Python.Exception (ioException)
+import Hamsterdan.Python.Exception (ioException, pythonError)
 import System.Directory (canonicalizePath, doesFileExist, getTemporaryDirectory)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
@@ -281,7 +280,7 @@ operatorError :: Text -> IO a
 operatorError = throwIO . OperatorError
 
 -- | Raise what the reference raises, or continue.
-py :: Either PyError a -> IO a
+py :: Either PythonException a -> IO a
 py = raiseEither
 
 -- ---------------------------------------------------------------------------
@@ -302,7 +301,7 @@ type Runner = [Text] -> Maybe FilePath -> IO Completed
 -- capture_output=True, check=False)@.
 commandRunner :: Runner
 commandRunner command cwd = case command of
-  [] -> throwIO (PyError "IndexError" "list index out of range")
+  [] -> throwIO (pythonError "IndexError" "list index out of range")
   executable : arguments -> do
     (program, argv) <- execStrings executable arguments
     let config =
@@ -313,7 +312,7 @@ commandRunner command cwd = case command of
     outcome <- try (P.readProcess config)
     case outcome of
       -- The OSError subprocess raises when the executable cannot run.
-      Left (e :: IOException) -> ioException executable e >>= throwIO . fromPython
+      Left (e :: IOException) -> ioException executable e >>= throwIO
       Right (code, out, err) -> do
         decodedOut <- py (decodeOutput (BL.toStrict out))
         decodedErr <- py (decodeOutput (BL.toStrict err))
@@ -330,7 +329,7 @@ execStrings executable arguments = (,) <$> execString executable <*> mapM execSt
 -- 'Char', which the process library's foreign encoding (UTF-8//ROUNDTRIP,
 -- set by the executable's @main@) turns back into the byte.
 execString :: Text -> IO String
-execString text = either (throwIO . fromPython) (const (pure (T.unpack text))) (fsEncode text)
+execString text = either throwIO (const (pure (T.unpack text))) (fsEncode text)
 
 exitInt :: ExitCode -> Int
 exitInt = \case
@@ -422,7 +421,7 @@ type SetupRunner = [Text] -> FilePath -> [(Text, Text)] -> Maybe ByteString -> I
 -- call raises, as @subprocess.TimeoutExpired@ does).
 setupSubprocess :: SetupRunner
 setupSubprocess command cwd environment input = case command of
-  [] -> throwIO (PyError "IndexError" "tuple index out of range")
+  [] -> throwIO (pythonError "IndexError" "tuple index out of range")
   executable : arguments -> do
     variables <- mapM (\(k, v) -> (,) <$> execString k <*> execString v) environment
     (program, argv) <- execStrings executable arguments
@@ -435,7 +434,7 @@ setupSubprocess command cwd environment input = case command of
             $ P.proc program argv
     finished <- timeout 30000000 (P.readProcess config)
     case finished of
-      Nothing -> throwIO (PyError "subprocess.TimeoutExpired" "Command timed out after 30 seconds")
+      Nothing -> throwIO (pythonError "TimeoutExpired" "Command timed out after 30 seconds")
       Just (code, out, err) ->
         pure SetupCompleted {returncode = exitInt code, stdout = BL.toStrict out, stderr = BL.toStrict err}
 
@@ -736,10 +735,10 @@ qualificationSetup runner credentialFile targetFile spentPath = do
                                 )
                             ghJson endpoint = do
                               result <- rawRun [ghExecutable, "api", endpoint] root environment
-                              when (result.returncode /= 0) $ throwIO (PyError "RuntimeError" "")
+                              when (result.returncode /= 0) $ throwIO (pythonError "RuntimeError" "")
                               case loadsJson (PBytes result.stdout) of
                                 Loaded value -> pure value
-                                Malformed -> throwIO (PyError "json.decoder.JSONDecodeError" "")
+                                Malformed -> throwIO (pythonError "JSONDecodeError" "")
                                 Raised e -> throwIO e
                             identityCheck = do
                               value <- ghJson "/user"
@@ -1031,7 +1030,7 @@ readText :: FilePath -> IO Text
 readText path = do
   outcome <- try (BS.readFile path)
   case outcome of
-    Left (e :: IOException) -> ioException (fromCodePoints path) e >>= throwIO . fromPython
+    Left (e :: IOException) -> ioException (fromCodePoints path) e >>= throwIO
     Right bytes -> py (decodeOutput bytes)
 
 -- | @prepare_broker(runner)@.
@@ -1857,7 +1856,7 @@ runOperator env argv = do
           hFlush env.output
           pure (if ok then ExitSuccess else ExitFailure 1)
         Left (e :: SomeException)
-          | Just (problem :: PyError) <- fromException e -> do
+          | Just (problem :: PythonException) <- fromException e -> do
               emit env.errors (errorLine problem <> "\n")
               pure (ExitFailure 1)
           | otherwise -> do
@@ -1875,5 +1874,5 @@ emit handle text = BS.hPut handle (utf8BackslashReplace text)
 printOut :: OperatorEnvironment -> Text -> IO Bool
 printOut env text = case utf8Encode text of
   Right bytes -> True <$ BS.hPut env.output bytes
-  Left failure -> False <$ emit env.errors (errorLine (fromPython failure) <> "\n")
+  Left failure -> False <$ emit env.errors (errorLine failure <> "\n")
 

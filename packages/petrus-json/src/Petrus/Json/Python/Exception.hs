@@ -56,6 +56,9 @@ data PythonArg
   | -- | Any other value: its type's @__module__@ and @__qualname__@ (an
     -- instance of a @str@ or @int@ subclass is one of these too).
     PyObject Text Text
+  | -- | @slice(start, stop, step)@: the key of the @KeyError@ slicing a
+    -- @dict@ raises (@{}[:20]@).
+    PySlice (Maybe Integer) (Maybe Integer) (Maybe Integer)
   deriving stock (Eq, Show)
 
 instance NFData PythonArg where
@@ -67,6 +70,7 @@ instance NFData PythonArg where
     PyStr s -> rnf s
     PyBytes b -> rnf b
     PyObject m q -> rnf m `seq` rnf q
+    PySlice a b c -> rnf a `seq` rnf b `seq` rnf c
 
 -- | @Name(message)@: an exception raised with one string argument, the
 -- shape of nearly every exception the ports raise.
@@ -105,6 +109,7 @@ pythonArgRepr = \case
   PyStr s -> pythonStrRepr s
   PyBytes b -> pythonBytesRepr b
   PyObject modul qualname -> "<" <> modul <> "." <> qualname <> ">"
+  PySlice {} -> "<builtins.slice>"
 
 -- | @repr(exception)@: @Name(arg, ...)@.
 pythonExceptionRepr :: PythonException -> Text
@@ -113,18 +118,26 @@ pythonExceptionRepr e = e.name <> "(" <> T.intercalate ", " (map pythonArgRepr e
 -- | @str(exception)@: @BaseException.__str__@ (nothing for no argument,
 -- @str(arg)@ for one, the @args@ tuple's @repr@ for more), with the
 -- overrides of @KeyError@ (@repr(arg)@) and of @UnicodeDecodeError@ and
--- @UnicodeEncodeError@ (the codec's message).
+-- @UnicodeEncodeError@ (the codec's message). A slice is spelled as its
+-- @repr@ here (@KeyError: slice(None, 20, None)@), not by the failure
+-- text's marker.
 pythonExceptionStr :: PythonException -> Text
 pythonExceptionStr e = case (e.name, e.args) of
   (_, []) -> ""
-  ("KeyError", [arg]) -> pythonArgRepr arg
+  ("KeyError", [arg]) -> argStr arg
   ("UnicodeDecodeError", [PyStr codec, PyBytes bytes, PyInt start, PyInt end, PyStr reason]) ->
     decodeFailureText bytes (CodecFailure codec (fromInteger start) (fromInteger end) reason)
   ("UnicodeEncodeError", [PyStr codec, PyStr text, PyInt start, PyInt end, PyStr reason]) ->
     encodeFailureText text (CodecFailure codec (fromInteger start) (fromInteger end) reason)
   (_, [PyStr s]) -> s
-  (_, [arg]) -> pythonArgRepr arg
-  (_, many) -> pythonTupleRepr (map pythonArgRepr many)
+  (_, [arg]) -> argStr arg
+  (_, many) -> pythonTupleRepr (map argStr many)
+  where
+    -- @repr(arg)@ (a slice's @str@ is its @repr@), which the failure
+    -- text's marker stands for.
+    argStr = \case
+      PySlice start stop step -> "slice(" <> T.intercalate ", " (map (maybe "None" pythonIntRepr) [start, stop, step]) <> ")"
+      other -> pythonArgRepr other
 
 -- | The reference's @firing_failure_text(error)@ for a Python exception:
 -- its 'pythonExceptionRepr' bounded to 4096 characters, or @Exception@

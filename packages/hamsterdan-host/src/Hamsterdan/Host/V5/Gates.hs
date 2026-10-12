@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 -- | Provider-backed publication gates for the V5 topology
 -- (@host/v5/gates.py@).
 --
@@ -51,7 +53,7 @@ import Hamsterdan.GitHub.Effects qualified as Effects
 import Hamsterdan.GitHub.Models (FailureClass (..), FindingPublication (..), GitHubBoundaryError (..), PublicationResult (..), PublicationStatus (..), publicationStatusText)
 import Hamsterdan.Python qualified as Py
 import Hamsterdan.Host.Errors (Caught (..), UnstagedCustodyError (..), catchGate)
-import Hamsterdan.Host.Python (TypeError (..), ValueError (..), raisePython, sha256HexText)
+import Hamsterdan.Host.Python (pattern TypeError, ValueError (..), raisePython, sha256HexText)
 import Hamsterdan.Host.V5.Claim (ClaimReader, CurrentClaim (..))
 import Hamsterdan.Readiness.NetV5.Board (renderBoard)
 import Hamsterdan.Readiness.NetV5.Gating (Variant, markerOperation, variantOf)

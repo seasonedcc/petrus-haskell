@@ -1,13 +1,17 @@
--- | The host's Python-compatible building blocks: the built-in exception
--- types the reference raises (so their 'Data.Typeable' names, which reach
--- History through failure texts, are the reference's class names), its
+{-# LANGUAGE PatternSynonyms #-}
+
+-- | The host's Python-compatible building blocks: the built-in exceptions
+-- the reference raises (petrus-motus's @RuntimeError@, @ValueError@ and
+-- @LookupError@, which its worker catches, and 'TypeError', a
+-- 'PythonException'), its
 -- JSON spellings, @hashlib.sha256@ hex digests, and SQLite transactions as
 -- the reference runs them on @isolation_level=None@ connections.
 module Hamsterdan.Host.Python
   ( -- * Exceptions
     RuntimeError (..)
   , ValueError (..)
-  , TypeError (..)
+  , pattern TypeError
+  , isTypeError
   , LookupError (..)
   , raisePython
 
@@ -55,7 +59,6 @@ import System.Exit (ExitCode)
 import Control.Monad (unless, void)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
-import Data.Text qualified as T
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Python.Exception (raisingDumps)
 import Hamsterdan.Python.Hashlib (sha256Hex, sha256HexText)
@@ -67,17 +70,23 @@ import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.FilePath (takeDirectory)
 import System.Posix.Directory qualified as PosixDir
 
--- | The reference's @TypeError@.
-newtype TypeError = TypeError Text deriving stock (Eq, Show)
+-- | The reference's @TypeError@ raised with one message.
+pattern TypeError :: Text -> PythonException
+pattern TypeError message = PythonException "TypeError" [PyStr message]
 
-instance Exception TypeError where displayException (TypeError m) = T.unpack m
+-- | @except TypeError@.
+isTypeError :: SomeException -> Bool
+isTypeError e = case fromException e of
+  Just (PythonException "TypeError" _) -> True
+  _ -> False
 
--- | @raise error@: the host's own type for the built-in classes it raises
--- with one message (so its catchers match them as they match the host's
--- own raises), the 'PythonException' itself for any other.
+-- | @raise error@: petrus-motus's type for a @ValueError@ or
+-- @RuntimeError@ raised with one message (the worker, and the host's
+-- catchers, match those types), the 'PythonException' itself for any
+-- other. The motus types are petrus-motus's API, which its own catchers
+-- and its other ports use, so the bridge stays at this one point.
 raisePython :: PythonException -> IO a
 raisePython failure = case failure of
-  PythonException "TypeError" [PyStr m] -> throwIO (TypeError m)
   PythonException "ValueError" [PyStr m] -> throwIO (ValueError m)
   PythonException "RuntimeError" [PyStr m] -> throwIO (RuntimeError m)
   _ -> throwIO failure

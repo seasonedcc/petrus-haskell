@@ -260,8 +260,8 @@ droppedGenerationsAlive p = do
   weaks <- readIORef p.dropped
   length . filter isJust <$> mapM deRefWeak weaks
 
-toProfileError :: PyError -> ProfileError
-toProfileError (PyError cls message) = ProfileError cls message
+toProfileError :: PythonException -> ProfileError
+toProfileError = uncurry ProfileError . classAndStr
 
 -- | Run an IO body as a profile door: exceptions become the reference
 -- class and message, and (with a holder) the World's context is held for
@@ -385,7 +385,7 @@ spelledAs = \case
 
 -- | @validate(command)@, parsing as it checks: the same checks, in the
 -- same order, with the same messages.
-parseCommand :: Command -> Either PyError ReadinessCommand
+parseCommand :: Command -> Either PythonException ReadinessCommand
 parseCommand c = do
   keys <- maybe (fails ("unknown readiness command " <> pythonStrRepr c.name)) Right (Map.lookup c.name commandKeys)
   _ <- boundedJson c.payload (profileLimit PayloadBytes) c.name
@@ -482,8 +482,8 @@ parseCommand c = do
     -- 'commandKeys' names exactly the commands above.
     _ -> fails ("unknown readiness command " <> pythonStrRepr name)
   where
-    fails :: Text -> Either PyError a
-    fails = Left . PyError "ValueError"
+    fails :: Text -> Either PythonException a
+    fails = Left . pythonError "ValueError"
     exactUuid = \case
       String s | validUuid s -> Right s
       _ -> fails "webhook delivery must be an exact UUID"
@@ -558,14 +558,14 @@ changesProviderTruth = \case
 
 
 -- | @parse_authority(value)@.
-parseAuthority :: Json -> Either PyError AuthorityClaim
-parseAuthority value = either (Left . PyError "ValidationError") Right (loadJson value)
+parseAuthority :: Json -> Either PythonException AuthorityClaim
+parseAuthority value = either (Left . pythonError "ValidationError") Right (loadJson value)
 
 -- | @validate_fault(fault)@.
-validateFault :: Fault -> Either PyError Fault
+validateFault :: Fault -> Either PythonException Fault
 validateFault f = do
   _ <- boundedJson f.payload 4096 f.name
-  let fails = Left . PyError "ValueError"
+  let fails = Left . pythonError "ValueError"
   if f.name == "readiness.git.publish"
     then do
       unless ("git:" `T.isPrefixOf` f.target && f.disposition == Raise) $ fails "unsupported readiness Git publication fault"
@@ -639,7 +639,7 @@ start p = do
 applyCommand :: ReadinessProfile -> Generation -> Command -> Scenario IO ApplyResult
 applyCommand p g c = contextDoor p (Just g.context) $ \now -> do
   -- The World applies only what 'parseCommand' accepted as @validate@.
-  parsed <- either (\(PyError cls m) -> throwPy cls m) pure (parseCommand c)
+  parsed <- either (uncurry throwPy . classAndStr) pure (parseCommand c)
   modifyIORef' g.proposed (Set.delete (c.name, now))
   when (changesProviderTruth parsed) $
     modifyIORef' p.truth (\t -> t {providerTruthChanges = t.providerTruthChanges + 1})
@@ -954,7 +954,7 @@ readinessState p g now = do
           , ("work", work)
           , ("bounds", Object [("limits", Object [(k, Int v) | (k, v) <- profileResourceLimits]), ("usage", Object [(k, Int v) | (k, v) <- Map.toAscList usage.values])])
           ]
-  either (\(PyError cls m) -> throwPy cls m) (const (pure state)) (boundedJson state (profileLimit ObservationBytes) "readiness observation")
+  either (uncurry throwPy . classAndStr) (const (pure state)) (boundedJson state (profileLimit ObservationBytes) "readiness observation")
 
 -- | @resource_usage(generation)@ (@_usage@).
 profileResourceUsage :: ReadinessProfile -> Maybe Generation -> IO ResourceUsage
@@ -1562,7 +1562,7 @@ checkReadiness o = do
       neutral = hostState .: "ready" == Null
       readyParity = readinessParity && actualParity && neutral
       parity = readyParity && snapshotParity && timerParity && gitParity
-  retained <- either (\(PyError cls m) -> Left (ProfileError cls m)) (Right . TE.decodeUtf8) (boundedJson state (profileLimit ObservationBytes) "checker observation")
+  retained <- either (Left . toProfileError) (Right . TE.decodeUtf8) (boundedJson state (profileLimit ObservationBytes) "checker observation")
   let sensitive =
         [ label
         | (label, value) <- [("client_id", clientId), ("private_key", privateKey), ("webhook_secret", webhookSecret)]

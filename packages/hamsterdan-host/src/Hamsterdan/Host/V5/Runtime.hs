@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 -- | The durable Petrus runtime for one cohabited V5 PR Instance
 -- (@host/v5/runtime.py@): one Engine whose JSONL History is the workflow
 -- authority.
@@ -78,7 +80,7 @@ import Hamsterdan.Contracts.ReadinessV5
   , TimerCommandApplied (..)
   , TimerDue (..)
   )
-import Hamsterdan.Host.Python (RuntimeError (..), TypeError (..), ValueError (..), dumpsCompactSorted, mkdirPrivate, raisePython, sha256Hex, sha256HexText)
+import Hamsterdan.Host.Python (RuntimeError (..), pattern TypeError, ValueError (..), dumpsCompactSorted, mkdirPrivate, raisePython, sha256Hex, sha256HexText)
 import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Ingress (IngressEntry (..), ingressFrom)
 import Hamsterdan.Host.V5.Timers (TimerFact, timerHistory, timerValue)

@@ -6,7 +6,7 @@ import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Testing.World hiding (PullRequest (..))
-import Hamsterdan.Testing.World.Contract (PyError (..), defaultBudget)
+import Hamsterdan.Testing.World.Contract (PythonException, classAndStr, defaultBudget)
 import Hamsterdan.Testing.World.Coverage
 import Hamsterdan.Testing.World.Scenarios (cleanGreen, drain)
 import Petrus.Json (Json (..), defaultDumps, dumps)
@@ -136,14 +136,14 @@ renamed scenarioId run =
 encodePlain :: Json -> BS.ByteString
 encodePlain = either (error . show) id . dumps defaultDumps
 
-validationError :: Text -> Either PyError CoverageReport -> Bool
+validationError :: Text -> Either PythonException CoverageReport -> Bool
 validationError fragment = \case
-  Left (PyError cls message) -> cls == "ValidationError" && fragment `T.isInfixOf` message
+  Left e -> let (cls, message) = classAndStr e in cls == "ValidationError" && fragment `T.isInfixOf` message
   Right _ -> False
 
-valueError :: Text -> Either PyError CoverageReport -> Bool
+valueError :: Text -> Either PythonException CoverageReport -> Bool
 valueError fragment = \case
-  Left (PyError cls message) -> cls == "ValueError" && fragment `T.isInfixOf` message
+  Left e -> let (cls, message) = classAndStr e in cls == "ValueError" && fragment `T.isInfixOf` message
   Right _ -> False
 
 -- | @pytest.raises(InvariantViolation, match="independent-model")@.

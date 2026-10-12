@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 -- | 'exceptionClass' is closed and names the reference's classes.
 --
 -- * Every exception type the Hamsterdan packages under the host declare is
@@ -41,7 +43,7 @@ import Hamsterdan.Host.Agenticus (AgentCompositionError (..))
 import Hamsterdan.Host.Errors (UnstagedCustodyError (..))
 import Hamsterdan.Host.ExceptionClass (exceptionClass, listedExceptionTypes, unlistedExceptionTypes)
 import Hamsterdan.Host.GitPublish (GitPublishError (..), PublicationCategory (..))
-import Hamsterdan.Host.Python (LookupError (..), RuntimeError (..), TypeError (..), ValueError (..))
+import Hamsterdan.Host.Python (LookupError (..), RuntimeError (..), pattern TypeError, ValueError (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Petrus.Json (Json (..), defaultDumps, dumpsText, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Python (PythonException, pythonExceptionStr)
