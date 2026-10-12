@@ -53,7 +53,12 @@ noise, not the port). They are petrus-sqlite's
 counts the same syncs, and the twin's SQLite syncs with ``fsync`` too;
 0.89-1.08x and 0.96-1.12x over five runs), and petrus-dst's
 ``joined.one isolated database`` (``CREATE DATABASE``, the schemas and
-``DROP DATABASE``, all server time; 0.97-1.02x). petrus-execution's
+``DROP DATABASE``, all server time; 0.97-1.02x). petrus-history-store's
+``sqlite.append-per-record`` is 2 000 fsynced ``BEGIN IMMEDIATE`` commits
+on both sides, the same commit petrus-sqlite's ``tx.immediate-insert-commit``
+times, and read 1.01x and then 0.96x/0.95x in two gate runs on the same
+sources; ``sqlite.append-one-batch`` (one commit, 20 002 inserts) is gated
+in its place. petrus-execution's
 ``archive/one-large/extract`` is out too: on the runner both sides spend
 nearly all of it in ``write(2)`` (a bare 256 MiB write loop takes 58-60 ms
 there, the extractions 57-59 ms), and Haskell came out 0.88-0.98x in five
@@ -187,7 +192,7 @@ ENTRIES = [
     pair("petrus-history-postgres", [("All.append.joined-1-commit", "append.joined-1-commit")],
          petrus("petrus-history-postgres"), only=r"^append\.joined-1-commit$"),
     pair("petrus-history-store",
-         [("All.sqlite.append-per-record", "sqlite.append-per-record"),
+         [("All.sqlite.append-one-batch", "sqlite.append-one-batch"),
           ("All.jsonl.append-per-record", "jsonl.append-per-record"),
           ("All.jsonl.append-one-batch", "jsonl.append-one-batch"),
           ("All.store.in-memory-append", "store.in-memory-append")],
