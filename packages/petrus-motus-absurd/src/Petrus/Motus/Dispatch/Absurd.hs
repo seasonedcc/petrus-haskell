@@ -116,7 +116,6 @@ module Petrus.Motus.Dispatch.Absurd
 import Control.Exception (catch, onException, throwIO, try)
 import Control.Monad (forM, forM_, unless, void, when)
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isDigit)
 import Data.IORef
 import Data.Int (Int64)
@@ -428,11 +427,12 @@ guardedClaim g queue timeout = do
         task <- case columns of
           Just run' : Just task' : Just attempt' : Just name : Just params' : _ -> do
             parsedParams <- refuse (jsonColumn params')
+            attemptNumber <- intColumn attempt'
             pure
               ClaimedTask
                 { runId = utf8 run'
                 , taskId = utf8 task'
-                , attempt = intColumn attempt'
+                , attempt = fromIntegral attemptNumber
                 , taskName = utf8 name
                 , params = parsedParams
                 , petrusInstance = Nothing
@@ -522,7 +522,7 @@ guardedTerminal g queue taskId' runId' report = do
                 (sql ("SELECT attempt, (extract(epoch FROM absurd.current_time()) * 1000000)::int8 FROM " <> rq <> " WHERE run_id=%s"))
                 [textParam runId']
             (attempt', nowMicros) <- case runRow of
-              Just [Just a, Just micros] -> pure (intColumn a, int64Column micros)
+              Just [Just a, Just micros] -> (,) <$> (fromIntegral <$> intColumn a) <*> intColumn micros
               _ -> throwIO (AbsurdError "stale Activity Attempt: run disappeared while guarded")
             paramsRow <-
               first
@@ -1299,7 +1299,8 @@ collect d = do
           _ -> do
             reason <- refuse (optionalJsonColumn failure)
             Failed <$> refuse (decodeFailure reason)
-        pure (int64Column <$> terminalAt, occurrence, outcome)
+        at' <- traverse intColumn terminalAt
+        pure (at', occurrence, outcome)
       other -> throwIO (AbsurdError ("unexpected Absurd collect row " <> showT other))
   let ordered = sortOn (\(at', occurrence, _) -> (at', occurrence)) arrived
   modifyIORef' d.collected (Set.union (Set.fromList [occurrence | (_, occurrence, _) <- ordered]))
@@ -1388,16 +1389,21 @@ optionalJson = \case
   value : _ -> optionalJsonColumn value
   [] -> Right Null
 
-intColumn :: ByteString -> Int
-intColumn raw = maybe 0 fst (readInt raw)
-
-int64Column :: ByteString -> Int64
-int64Column raw = maybe 0 (fromIntegral . fst) (readInt raw)
-
-readInt :: ByteString -> Maybe (Int, ByteString)
-readInt raw = case reads (T.unpack (utf8 raw)) of
-  [(n, "")] -> Just (n, BS.empty)
-  _ -> Nothing
+-- | An integer column, decoded as psycopg loads it. A value that is not
+-- an integer raises a 'DataError' instead of being read as 0.
+intColumn :: ByteString -> IO Int64
+intColumn raw = either (throwIO . undecodable) pure (Pg.decodeInt raw)
+  where
+    undecodable problem =
+      PostgresError
+        { errorClass = DataError
+        , errorSqlState = Nothing
+        , errorMessage = T.pack problem
+        , errorSeverity = Nothing
+        , errorPrimary = Nothing
+        , errorDetail = Nothing
+        , errorHint = Nothing
+        }
 
 -- | @timedelta(seconds=delay)@ in microseconds: an int exactly; a float as
 -- its whole seconds plus the fraction's microseconds rounded half to even.
