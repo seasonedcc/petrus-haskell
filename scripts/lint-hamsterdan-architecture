@@ -24,7 +24,7 @@ their upstream files are under ``host/``):
     Hamsterdan.Testing.Readiness                 testing
     Hamsterdan.Operator*                         operator (operator.py)
     Hamsterdan.PyLiteral*, Hamsterdan.Python*,
-    Hamsterdan.Sqlite, Hamsterdan.Cli.*          contracts (the port's shared
+    Hamsterdan.Sqlite                            contracts (the port's shared
                                                  foundation: what CPython's
                                                  standard library is upstream)
 
@@ -105,7 +105,6 @@ def owner(module: str) -> str | None:
         or under("Hamsterdan.PyLiteral")
         or under("Hamsterdan.Python")
         or under("Hamsterdan.Sqlite")
-        or under("Hamsterdan.Cli")
     ):
         return "contracts"
     return "unknown"

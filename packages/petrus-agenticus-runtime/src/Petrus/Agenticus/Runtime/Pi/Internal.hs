@@ -490,10 +490,9 @@ strictFrameLoad bytes = case TE.decodeUtf8' bytes of
 -- refusing @parse_constant@.
 strictParseOptions :: J.ParseOptions
 strictParseOptions =
-  J.pythonLoads
+  J.pythonJsonLoads
     { J.duplicateMembers = J.RejectDuplicates
     , J.allowNonFiniteConstants = False
-    , J.loneSurrogates = J.KeepLoneSurrogates
     }
 
 bare :: AgenticusError
@@ -1584,7 +1583,7 @@ probeInstalled a paths cli node = do
   let config = a.config
   let invalid = throwIO (valueError "probe")
       strict path = doesPathExist path >>= \exists -> if exists then canonicalizePath path else invalid
-      readJson path = BS.readFile path >>= either (const invalid) pure . J.parseJson J.pythonLoads
+      readJson path = BS.readFile path >>= either (const invalid) pure . J.parseJson J.surrogateRefusingLoads
       field name = \case
         Object members -> fromMaybe Null (lookup name members)
         _ -> Null

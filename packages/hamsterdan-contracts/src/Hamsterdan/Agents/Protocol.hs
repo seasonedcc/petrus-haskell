@@ -65,30 +65,39 @@ import Hamsterdan.Contracts.Codec
 data ReviewVerdict = VerdictClear | VerdictBlocking | VerdictUnable
   deriving stock (Bounded, Enum, Eq, Ord, Show)
 
-instance Contract ReviewVerdict where
-  contract = enum "ReviewVerdict" $ \case
+instance Enumeration ReviewVerdict where
+  spelling = \case
     VerdictClear -> "clear"
     VerdictBlocking -> "blocking"
     VerdictUnable -> "unable"
+
+instance Contract ReviewVerdict where
+  contract = enumeration "ReviewVerdict"
 
 -- | @CodingResult.status@: @changed@, @unchanged@ or @unable@.
 data CodingOutcome = CodingChanged | CodingUnchanged | CodingUnable
   deriving stock (Bounded, Enum, Eq, Ord, Show)
 
-instance Contract CodingOutcome where
-  contract = enum "CodingOutcome" $ \case
+instance Enumeration CodingOutcome where
+  spelling = \case
     CodingChanged -> "changed"
     CodingUnchanged -> "unchanged"
     CodingUnable -> "unable"
+
+instance Contract CodingOutcome where
+  contract = enumeration "CodingOutcome"
 
 -- | @CodingRequest.kind@ (and @CodingResult.kind@): @change@ or @repair@.
 data CodingRequestKind = RequestChange | RequestRepair
   deriving stock (Bounded, Enum, Eq, Ord, Show)
 
-instance Contract CodingRequestKind where
-  contract = enum "CodingRequestKind" $ \case
+instance Enumeration CodingRequestKind where
+  spelling = \case
     RequestChange -> "change"
     RequestRepair -> "repair"
+
+instance Contract CodingRequestKind where
+  contract = enumeration "CodingRequestKind"
 
 -- | @ReviewRequest@.
 data ReviewRequest = ReviewRequest
@@ -313,8 +322,8 @@ data AgentResultCategory
   | WorkspaceReconciliation
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Contract AgentResultCategory where
-  contract = enum "AgentResultCategory" $ \case
+instance Enumeration AgentResultCategory where
+  spelling = \case
     RuntimeLifecycle -> "runtime_lifecycle"
     OutputSchema -> "output_schema"
     Correlation -> "correlation"
@@ -322,14 +331,20 @@ instance Contract AgentResultCategory where
     Unable -> "unable"
     WorkspaceReconciliation -> "workspace_reconciliation"
 
+instance Contract AgentResultCategory where
+  contract = enumeration "AgentResultCategory"
+
 -- | @AgentCleanupCategory@: cleanup uncertainty retained separately from
 -- result admission.
 data AgentCleanupCategory = CleanupUnverified
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Contract AgentCleanupCategory where
-  contract = enum "AgentCleanupCategory" $ \case
+instance Enumeration AgentCleanupCategory where
+  spelling = \case
     CleanupUnverified -> "cleanup_unverified"
+
+instance Contract AgentCleanupCategory where
+  contract = enumeration "AgentCleanupCategory"
 
 -- | @AgentProtocolError@. Python's constructor rejects a category outside
 -- the closed vocabulary with @TypeError@; here the vocabulary is a type, so

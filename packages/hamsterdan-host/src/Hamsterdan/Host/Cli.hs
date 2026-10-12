@@ -1,17 +1,16 @@
 -- | The standalone host command line (@host/__main__.py@):
 -- @serve@, @validate@, @inbox@, @requeue@ and @inspect-instance@.
 --
--- The reference's @argparse@ parser is declared with
--- "Hamsterdan.Cli.Argparse" (CPython 3.14's parsing, messages, usage and
--- help, wrapped to @COLUMNS@, else the terminal, else 80, minus 2; help on
--- stdout with 0, errors on stderr with 2), and its namespace is decoded
--- once into a 'HostCommand', with the reference's checks after
--- @parse_args@ as the decoder's refusals.
+-- The reference's @argparse@ parser is declared with "Petrus.Argparse"
+-- (CPython 3.14's parsing, messages, usage and help, wrapped to @COLUMNS@,
+-- else the terminal, else 80, minus 2, and colored as @_colorize@ decides;
+-- help on stdout with 0, errors on stderr with 2). The declaration decodes
+-- to a 'HostCommand', with the reference's checks after @parse_args@ as
+-- its refusals.
 module Hamsterdan.Host.Cli
   ( -- * The command line
     HostCommand (..)
   , hostParser
-  , decodeCommand
   , pythonFloat
 
     -- * @inspect-instance@
@@ -24,11 +23,10 @@ module Hamsterdan.Host.Cli
   , handledMessage
   ) where
 
-import Control.Exception (Exception (..), IOException, SomeException, finally, fromException, throwIO, try)
-import Control.Monad (forM, unless, when)
+import Control.Exception (Exception (..), IOException, SomeException (..), finally, fromException, throwIO, try)
+import Control.Monad (forM, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Char (GeneralCategory (..), generalCategory, isDigit, ord, toLower)
 import Data.IORef
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -38,35 +36,37 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Agents.Protocol (AgentRunner (..))
-import Hamsterdan.Cli.Argparse
-  ( Action (..)
-  , Namespace
+import Petrus.Argparse
+  ( ArgumentParser (..)
+  , Arg
   , Outcome (..)
-  , Parser (..)
-  , Value (..)
-  , ValueType (..)
-  , formatUsage
-  , lookupInteger
-  , lookupText
-  , newParser
+  , choice
+  , defaulted
+  , errorText
+  , formattingOf
+  , help
+  , int
   , option
-  , parseArgs
+  , parse
   , positional
+  , str
   , terminalColumns
   )
 import Hamsterdan.Host.Agenticus (AgentCompositionError (..))
 import Hamsterdan.Host.Agents (OwnedAgent, closeOwnedAgent, composeHostAgent, newOwnedAgent, productionAgentSeams)
-import Petrus.Agenticus.Error (AgenticusError (..), errorClassName, isSubclassOf)
+import Petrus.Agenticus.Error (AgenticusError (..), isSubclassOf)
 import Petrus.Agenticus.Error qualified as AE
 import Hamsterdan.GitHub.Client (AppCredentials (..), ClientOptions, defaultClientOptions, newAppClients)
 import Hamsterdan.GitHub.Config (ConfigurationError (..), HostConfig (..), fromEnvironment, revealSecret)
 import Hamsterdan.GitHub.Http (ClientError (..), ClientErrorKind (..))
 import Hamsterdan.GitHub.Models (ContractRefused (..), GitHubBoundaryError (..), InvalidRequest (..))
-import Hamsterdan.Python (intText, isAscii, isPrintable, pythonExceptionStr, splitlines, strRepr, utf8Length)
-import Hamsterdan.Python qualified as Py
+import Hamsterdan.Python (intText, isAscii, isPrintable, pythonExceptionStr, splitlines, strRepr, utf8Encode)
+import Hamsterdan.Python.Object (errorLine, tracebackName)
+import Hamsterdan.Host.ExceptionClass (exceptionClass)
 import Hamsterdan.GitHub.Webhooks (Failure (..))
 import Hamsterdan.GitHub.Webhooks qualified as Custody
-import Hamsterdan.Host.Api (ServeOptions (..), serve)
+import Hamsterdan.Host.Api (ServeOptions (..), Served (..), serve)
+import Hamsterdan.Host.Uvicorn (UvicornLog (..))
 import Hamsterdan.Host.Binding (InstanceBinding (..), parseInstanceBinding, preflightV5State, topologyText)
 import Hamsterdan.Host.Service
   ( AgentCustody
@@ -80,13 +80,14 @@ import Hamsterdan.Host.Service
   )
 import Hamsterdan.Host.Service qualified as Service
 import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
-import Petrus.Json (Json (..), defaultDumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumpsText, parseJson, pythonJsonLoads)
 import Petrus.Json qualified as Json
+import Petrus.Json.Python (parsePythonFloat)
 import Petrus.Motus.Worker (RuntimeError (..), ValueError (..))
 import System.Environment (unsetEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
-import System.IO (Handle, hFlush, stderr, stdout)
+import System.IO (Handle, hFlush, hIsTerminalDevice, stderr, stdout)
 import System.IO.Error (catchIOError, isEOFError)
 import System.Posix.Files qualified as Posix
 import System.Posix.IO qualified as PosixIO
@@ -108,111 +109,52 @@ data HostCommand
     InspectInstance Integer Integer Integer
   deriving stock (Eq, Show)
 
--- | @parser()@. The @--host@ default is @HAMSTERDAN_HOST@ or @127.0.0.1@;
--- the @--port@ default, @int(HAMSTERDAN_PORT or "8000")@, is passed in
--- already converted.
-hostParser :: Text -> Integer -> Parser
+-- | The @command@ choices, in the reference's order.
+data CommandName = ServeName | ValidateName | InboxName | RequeueName | InspectInstanceName
+  deriving stock (Eq)
+
+-- | @parser()@, decoded. The @--host@ default is @HAMSTERDAN_HOST@ or
+-- @127.0.0.1@; the @--port@ default, @int(HAMSTERDAN_PORT or "8000")@, is
+-- passed in already converted. A 'Left' is the reference's
+-- @parser().error(...)@ after @parse_args@.
+hostParser :: Text -> Integer -> ArgumentParser (Either Text HostCommand)
 hostParser hostDefault portDefault =
-  newParser
-    "python -m hamsterdan.host"
-    (Just "Run or validate the Hamsterdan GitHub App host. Credentials are supplied by the selected Environment.")
-    [ (positional "command") {choices = Just (map fst commands)}
-    , (option ["--delivery"]) {help = Just "canonical failed GitHub delivery UUID to requeue"}
-    , (option ["--installation"]) {valueType = AsInt}
-    , (option ["--repository"]) {valueType = AsInt}
-    , (option ["--pr"]) {valueType = AsInt}
-    , (option ["--host"]) {defaultValue = Just (Str hostDefault)}
-    , (option ["--port"]) {valueType = AsInt, defaultValue = Just (IntValue portDefault)}
-    ]
-
--- | The command choices, in the reference's order, each with how it reads
--- the namespace. A 'Left' is the reference's @parser().error(...)@ after
--- @parse_args@.
-commands :: [(Text, Namespace -> Either Text HostCommand)]
-commands =
-  [ ("serve", \namespace -> Right (Serve (text "host" namespace) (integer "port" namespace)))
-  , ("validate", const (Right Validate))
-  , ("inbox", const (Right Inbox))
-  , ("requeue", \namespace -> if T.null (text "delivery" namespace) then Left "requeue requires --delivery" else Right (Requeue (text "delivery" namespace)))
-  ,
-    ( "inspect-instance"
-    , \namespace ->
+  ArgumentParser
+    { prog = "python -m hamsterdan.host"
+    , description = Just "Run or validate the Hamsterdan GitHub App host. Credentials are supplied by the selected Environment."
+    , arguments
+    }
+  where
+    arguments :: Arg (Either Text HostCommand)
+    arguments =
+      decode
+        <$> positional
+          (choice [("serve", ServeName), ("validate", ValidateName), ("inbox", InboxName), ("requeue", RequeueName), ("inspect-instance", InspectInstanceName)])
+          "command"
+          []
+        <*> option str ["--delivery"] [help "canonical failed GitHub delivery UUID to requeue"]
+        <*> option int ["--installation"] []
+        <*> option int ["--repository"] []
+        <*> option int ["--pr"] []
+        <*> defaulted str ["--host"] hostDefault []
+        <*> defaulted int ["--port"] portDefault []
+    decode name delivery installation repository pr host port = case name of
+      ServeName -> Right (Serve host port)
+      ValidateName -> Right Validate
+      InboxName -> Right Inbox
+      -- An absent @--delivery@ is @None@, which the reference's @not
+      -- args.delivery@ refuses like the empty string.
+      RequeueName -> case delivery of
+        Just given | not (T.null given) -> Right (Requeue given)
+        _ -> Left "requeue requires --delivery"
+      InspectInstanceName ->
         maybe (Left "inspect-instance requires --installation, --repository, and --pr") Right $
-          InspectInstance <$> lookupInteger "installation" namespace <*> lookupInteger "repository" namespace <*> lookupInteger "pr" namespace
-    )
-  ]
-  where
-    -- @--host@ and @--port@ always hold their defaults; an absent
-    -- @--delivery@ is @None@, which the reference's @not args.delivery@
-    -- refuses like the empty string.
-    text name = fromMaybe "" . lookupText name
-    integer name = fromMaybe 0 . lookupInteger name
+          InspectInstance <$> installation <*> repository <*> pr
 
--- | The namespace of 'hostParser' as a 'HostCommand', or the usage error
--- the reference reports after parsing. @command@ is a required choice of
--- 'commands', so the parse always holds one.
-decodeCommand :: Namespace -> Either Text HostCommand
-decodeCommand namespace = case lookupText "command" namespace >>= (`lookup` commands) of
-  Just decode -> decode namespace
-  Nothing -> Left "the following arguments are required: command"
-
--- | @float(text)@: 'Left' with CPython's message when it does not convert.
+-- | @float(text)@: 'Left' with CPython's message when it does not convert
+-- (petrus-json's 'parsePythonFloat', the one @float()@ emulation).
 pythonFloat :: Text -> Either Text Double
-pythonFloat original = maybe (Left ("could not convert string to float: " <> strRepr original)) Right (parse (T.unpack (T.map ascii (Py.strip original))))
-  where
-    ascii c
-      | c > '\x7f' && generalCategory c == DecimalNumber = toEnum (ord '0' + digitValue c)
-      | Py.isSpace c = ' '
-      | otherwise = c
-    digitValue c = (ord c - runStart (ord c)) `mod` 10
-    runStart n = if n > 0 && generalCategory (toEnum (n - 1)) == DecimalNumber then runStart (n - 1) else n
-    parse text = do
-      let (sign, unsigned) = case text of
-            '-' : rest -> (negate, rest)
-            '+' : rest -> (id, rest)
-            _ -> (id, text)
-      case map toLower unsigned of
-        "inf" -> Just (sign (1 / 0))
-        "infinity" -> Just (sign (1 / 0))
-        "nan" -> Just (sign (0 / 0))
-        _ -> sign <$> decimal unsigned
-    decimal text = do
-      (whole, rest) <- digitsOf text True
-      (fraction, rest') <- case rest of
-        '.' : after -> digitsOf after True
-        _ -> Just ("", rest)
-      when (null whole && null fraction) Nothing
-      when (null whole && take 1 rest /= ".") Nothing
-      exponent' <- case rest' of
-        [] -> Just 0
-        e : after | e `elem` ("eE" :: String) -> do
-          let (esign, digitsText) = case after of
-                '-' : more -> (negate, more)
-                '+' : more -> (id, more)
-                _ -> (id, after)
-          (digits, leftover) <- digitsOf digitsText False
-          unless (null leftover && not (null digits)) Nothing
-          Just (esign (read digits :: Integer))
-        _ -> Nothing
-      let mantissa = read ('0' : whole <> fraction) :: Integer
-          scale = exponent' - toInteger (length fraction)
-          magnitude = toInteger (length (show mantissa)) + scale
-      pure $
-        if mantissa == 0
-          then 0
-          else
-            if magnitude > 400
-              then 1 / 0
-              else
-                if magnitude < -400
-                  then 0
-                  else fromRational (fromInteger mantissa * (10 ^^ scale))
-    -- Digits with single underscores between them; 'Nothing' for a
-    -- misplaced underscore.
-    digitsOf text _ =
-      let (run, rest) = span (\c -> isDigit c || c == '_') text
-       in if valid run then Just (filter (/= '_') run, rest) else Nothing
-    valid run = not ("__" `T.isInfixOf` T.pack run) && take 1 run /= "_" && take 1 (reverse run) /= "_"
+pythonFloat original = maybe (Left ("could not convert string to float: " <> strRepr original)) Right (parsePythonFloat original)
 
 -- ---------------------------------------------------------------------------
 -- inspect-instance
@@ -271,8 +213,13 @@ requireRealDirectories paths = do
 -- | @_identifier(value, error)@.
 identifier :: Json -> Text -> IO Text
 identifier value message = case value of
-  String text
-    | 0 < utf8Length text && utf8Length text <= maxIdentifierBytes && isAscii text && isPrintable text -> pure text
+  String text -> do
+    -- @value.encode()@ raises @UnicodeEncodeError@ for a lone surrogate
+    -- @json.loads@ kept, before any check.
+    encoded <- either throwIO pure (utf8Encode text)
+    if 0 < BS.length encoded && BS.length encoded <= maxIdentifierBytes && isAscii text && isPrintable text
+      then pure text
+      else throwIO (ValueError message)
   _ -> throwIO (ValueError message)
 
 
@@ -305,7 +252,7 @@ inspectInstance statePath installationId repositoryId pullRequest = do
   boundBytes <- readBoundedRegular (root </> "binding.json") maxBindingBytes
   let unsafe = ValueError "Instance state cannot be inspected safely"
       decode bytes = either (const (throwIO unsafe)) pure (TE.decodeUtf8' bytes)
-      loads text = either (const (throwIO unsafe)) pure (parseJson pythonLoads (TE.encodeUtf8 text))
+      loads text = either (const (throwIO unsafe)) pure (parseJson pythonJsonLoads (TE.encodeUtf8 text))
   boundValue <- decode boundBytes >>= loads
   records <- decode raw >>= mapM loads . splitlines
   bound <- either (const (throwIO (ValueError "Instance state binding is malformed"))) pure (parseInstanceBinding boundValue)
@@ -330,7 +277,7 @@ inspectInstance statePath installationId repositoryId pullRequest = do
         Object members -> do
           instant <- case fromMaybe (Int 0) (lookup' "instant" members) of
             Int i
-              | abs i > maxFloatInteger -> throwIO (PythonException "OverflowError" [PyStr "int too large to convert to float"])
+              | abs i >= floatOverflowInteger -> throwIO (PythonException "OverflowError" [PyStr "int too large to convert to float"])
               | otherwise -> pure (IntInstant i)
             Float d
               | isNaN d || isInfinite d -> malformedInstant
@@ -413,8 +360,11 @@ inspectInstance statePath installationId repositoryId pullRequest = do
       , ("ok", Bool True)
       ]
   where
-    -- The largest integer @float()@ converts without @OverflowError@.
-    maxFloatInteger = truncate (1.7976931348623157e308 :: Double) :: Integer
+    -- The smallest magnitude CPython's int-to-float conversion refuses with
+    -- @OverflowError@: 2^1024 - 2^970, the halfway point between DBL_MAX
+    -- (2^1024 - 2^971) and 2^1024. Below it the integer rounds (half to
+    -- even) to a finite double, at it the rounding reaches 2^1024.
+    floatOverflowInteger = 2 ^ (1024 :: Int) - 2 ^ (970 :: Int) :: Integer
 
 -- | @dict.get@: duplicate members resolve to the last one, as
 -- @json.loads@ builds the dict.
@@ -449,7 +399,7 @@ data CliEnvironment = CliEnvironment
   , output :: Handle
   , errors :: Handle
   , onServing :: Int -> IO ()
-  -- ^ Called once @serve@ listens, with the port.
+  -- ^ Called once @serve@ listens, with the bound port.
   , reraise :: Signal -> IO ()
   -- ^ After SIGTERM stopped @serve@ gracefully: uvicorn's
   -- @signal.raise_signal@ with the previous (default) handler restored. In
@@ -504,14 +454,14 @@ handledMessage e
   , failure.kind `elem` [ValueKind, RuntimeKind] =
       Just failure.detail
   | Just failure@(PythonException name _) <- fromException e
-  , name `elem` ["ValueError", "RuntimeError", "UnicodeDecodeError", "JSONDecodeError"] =
+  , name `elem` ["ValueError", "RuntimeError", "UnicodeError", "UnicodeDecodeError", "UnicodeEncodeError", "JSONDecodeError"] =
       Just (pythonExceptionStr failure)
   | otherwise = Nothing
 
 -- | @main()@ with @sys.argv[1:]@; the exit status.
 runCli :: CliEnvironment -> [Text] -> IO ExitCode
 runCli env argv = do
-  width <- subtract 2 <$> env.columns
+  formatting <- formattingOf env.environment <$> env.columns <*> hIsTerminalDevice env.output
   let say handle text = BS.hPut handle (TE.encodeUtf8 text) >> hFlush handle
       escaped e = do
         say env.errors (uncaughtText e)
@@ -524,7 +474,7 @@ runCli env argv = do
       let parser = hostParser hostDefault portDefault
           -- @parser().error(message)@.
           usageError message = do
-            say env.errors (formatUsage width parser <> parser.prog <> ": error: " <> message <> "\n")
+            say env.errors (errorText formatting parser message)
             pure (ExitFailure 2)
           run command = do
             service <- newIORef Nothing
@@ -570,24 +520,28 @@ runCli env argv = do
                       pure (if requeued then ExitSuccess else ExitFailure 1)
                     Serve host port -> do
                       opened <- open config
+                      colors <- hIsTerminalDevice env.output
                       served <-
-                        try @IOException $
-                          serve
-                            opened
-                            ServeOptions
-                              { host = T.unpack host
-                              , port = fromInteger port
-                              , onStarted = env.onServing (fromInteger port)
-                              }
+                        serve
+                          opened
+                          ServeOptions
+                            { host = T.unpack host
+                            , port = fromInteger port
+                            , log = UvicornLog {errors = env.errors, access = env.output, colors}
+                            , forwardedAllowIps = maybe "127.0.0.1" T.pack (Map.lookup "FORWARDED_ALLOW_IPS" env.environment)
+                            , failureLine = tracebackLine
+                            , onStarted = env.onServing
+                            }
                       case served of
-                        Left _ -> pure (ExitFailure 3)
+                        -- @sys.exit(STARTUP_FAILURE)@.
+                        StartupFailed -> pure (ExitFailure 3)
                         -- SIGTERM, raised again: the default action, at once
                         -- (the @finally@ never runs; the lifespan has already
                         -- closed the service). When the process survives it
                         -- (PID 1 of a container, where the kernel ignores a
                         -- signal's default action), @uvicorn.run@ returns,
                         -- the @finally@ runs, status 0, as for SIGINT.
-                        Right (Just signal)
+                        ShutDown (Just signal)
                           | signal == sigTERM -> do
                               env.reraise signal
                               pure ExitSuccess
@@ -595,7 +549,7 @@ runCli env argv = do
                         -- handler, which only cancels uvicorn's main task, by
                         -- then finished: @uvicorn.run@ returns, the @finally@
                         -- runs, status 0.
-                        Right _ -> pure ExitSuccess
+                        ShutDown _ -> pure ExitSuccess
                 -- Everything after @inspect-instance@'s early return: the
                 -- topology check, the agent composition and @HostService@.
                 open config = do
@@ -641,22 +595,54 @@ runCli env argv = do
             case closing of
               Left failure -> escaped failure
               Right () -> either escaped pure settled
-      case parseArgs width parser argv of
+      case parse formatting parser argv of
         Exited status printed problems -> do
           say env.output printed
           say env.errors problems
           pure (if status == 0 then ExitSuccess else ExitFailure status)
-        Parsed namespace -> either usageError run (decodeCommand namespace)
+        Parsed decoded -> either usageError run decoded
   where
     dumpsSorted value = either (const "null") id (dumpsText defaultDumps {Json.sortKeys = True} value)
 
 -- | What an uncaught exception prints (the reference prints a traceback
 -- ending in this line).
 uncaughtText :: SomeException -> Text
-uncaughtText e = case fromException e of
-  Just failure@(PythonException name _) -> name <> (case pythonExceptionStr failure of "" -> ""; message -> ": " <> message) <> "\n"
-  _ -> case fromException e of
-    Just (RuntimeError m) -> "RuntimeError: " <> m <> "\n"
-    _ -> case fromException e of
-      Just (failure :: AgenticusError) -> errorClassName failure.errorClass <> ": " <> failure.errorMessage <> "\n"
-      _ -> T.pack (displayException e) <> "\n"
+uncaughtText e = tracebackLine e <> "\n"
+
+-- | The last line of the traceback the reference prints for an exception
+-- (@traceback.format_exception_only@): its class ('exceptionClass'),
+-- qualified by its module unless it is a builtin, then @": "@ and
+-- @str(error)@ when that is not empty.
+tracebackLine :: SomeException -> Text
+tracebackLine e@(SomeException inner)
+  | Just failure <- fromException e = errorLine failure
+  | otherwise = qualified (exceptionClass e) <> (if T.null message then "" else ": " <> message)
+  where
+    message
+      | Just (failure :: AgenticusError) <- fromException e = failure.errorMessage
+      | Just (failure :: ClientError) <- fromException e = failure.detail
+      | otherwise = T.pack (displayException inner)
+    qualified name = case lookup name modules of
+      Just owner -> owner <> "." <> name
+      Nothing
+        | Just (failure :: ClientError) <- fromException e
+        , failure.kind `elem` [TransportKind, HttpKind] ->
+            "httpx." <> name
+        | Just (failure :: ClientError) <- fromException e
+        , failure.kind == GitHubKind ->
+            "githubkit.exception." <> name
+        | otherwise -> tracebackName name
+    modules =
+      [ ("GitHubBoundaryError", "hamsterdan.github_app.models")
+      , ("RerunRefusedError", "hamsterdan.github_app.models")
+      , ("GitHubObjectWriteError", "hamsterdan.github_app.gateway")
+      , ("ConfigurationError", "hamsterdan.github_app.config")
+      , ("WebhookRejected", "hamsterdan.github_app.webhooks")
+      , ("UnstagedCustodyError", "hamsterdan.host.v5.gates")
+      , ("AgentCompositionError", "hamsterdan.host.agenticus")
+      , ("GitPublishError", "hamsterdan.host.git_publish")
+      , ("AgentProtocolError", "hamsterdan.agents.protocol")
+      , ("PiWorkspaceError", "hamsterdan.agents.pi")
+      , ("PiWorkspaceCleanupError", "hamsterdan.agents.pi")
+      , ("ActivityError", "petrus.motus.activity")
+      ]

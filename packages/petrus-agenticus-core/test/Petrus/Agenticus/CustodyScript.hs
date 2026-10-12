@@ -291,7 +291,7 @@ interpret session step = case text "op" step of
     if B.null current
       then pure (String "empty")
       else do
-        state <- either fail pure (J.parseJson J.pythonLoads current)
+        state <- either fail pure (J.parseJson J.surrogateRefusingLoads current)
         let generation = integer "generation" state + 1
         replaceMaterialized m.home (providerState (text "account" state) generation)
         pure (Int generation)

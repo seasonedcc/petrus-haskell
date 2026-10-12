@@ -17,7 +17,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import System.Directory (canonicalizePath, createDirectoryIfMissing, createFileLink, executable, findExecutable, getPermissions, listDirectory)
@@ -188,8 +188,8 @@ spec = do
 
     it "test_pi_runtime_is_locked_to_the_qualified_node_and_agent_versions" do
       root <- repoRoot
-      Right package <- parseJson pythonLoads <$> BS.readFile (root </> "deployment" </> "pi" </> "package.json")
-      Right lock <- parseJson pythonLoads <$> BS.readFile (root </> "deployment" </> "pi" </> "package-lock.json")
+      Right package <- parseJson surrogateRefusingLoads <$> BS.readFile (root </> "deployment" </> "pi" </> "package.json")
+      Right lock <- parseJson surrogateRefusingLoads <$> BS.readFile (root </> "deployment" </> "pi" </> "package-lock.json")
       let at key = \case
             Object members -> maybe Null id (lookup key members)
             _ -> Null

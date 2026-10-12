@@ -92,7 +92,7 @@ import Petrus.Agenticus.Runtime.Profiles (agentAsNetA5Local, ampA1, piNativeA2Lo
 import Petrus.Impetus.History.Codec (decodeRecord)
 import Petrus.Impetus.History.Records (ActivityCompleted (..), ActivityFailed (..), ActivityRequested (..), Record (..))
 import Petrus.Impetus.Petrinet.Schema (netPathText)
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, pythonJsonLoads)
 import Petrus.Json.Wtf8 (fromCodePoints)
 import Petrus.Motus.Worker (ValueError (..))
 import Petrus.Posix.File (makeDirectories)
@@ -422,7 +422,7 @@ loadRoute store operation = do
   rows <- Sql.query store.database "SELECT profile, snapshot, resolved FROM agent_routes WHERE operation = ?" [SQLText operation]
   case rows of
     [SQLText profile, SQLText snapshot, resolved] : _ -> do
-      value <- either (throwIO . ValueError . T.pack) pure (parseJson pythonLoads (TE.encodeUtf8 snapshot))
+      value <- either (throwIO . ValueError . T.pack) pure (parseJson pythonJsonLoads (TE.encodeUtf8 snapshot))
       decoded <- throwLeft (snapshotFromData value)
       pure OperationRoute {operation, profile, snapshot = decoded, resolved = truthy resolved}
     [] -> refuse "agent operation route is not persisted"
@@ -494,7 +494,7 @@ historyPaths histories = do
 -- exactly what 'parseJson' reads.
 decodeLine :: BS.ByteString -> Either () Record
 decodeLine line = do
-  value <- either (const (Left ())) Right (parseJson pythonLoads line)
+  value <- either (const (Left ())) Right (parseJson pythonJsonLoads line)
   case value of
     Object _ -> either (const (Left ())) Right (decodeRecord value)
     _ -> Left ()

@@ -74,7 +74,7 @@ import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Python
 import Hamsterdan.Host.V5.Claim
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, pythonJsonLoads)
 
 -- ---------------------------------------------------------------------------
 -- Doors
@@ -811,7 +811,7 @@ reconciliationManifest store sourceId subject = do
     row : _ -> case row of
       [SQLText storedSubject, SQLInteger revision, SQLText digest, SQLText "v5", SQLInteger 1, SQLText encoded]
         | storedSubject == subject -> do
-            raw <- case parseJson pythonLoads (TE.encodeUtf8 encoded) of
+            raw <- case parseJson pythonJsonLoads (TE.encodeUtf8 encoded) of
               Left _ -> throwIO (RuntimeError "V5 reconciliation manifest is malformed")
               Right value -> pure value
             values <- case raw of
@@ -826,7 +826,7 @@ loadManifest :: Text -> [SQLData] -> IO IngressManifest
 loadManifest deliveryId = \case
   [SQLText subject, SQLInteger revision, SQLText "v5", SQLInteger 1, SQLText encoded]
     | revision >= 1 -> do
-        raw <- case parseJson pythonLoads (TE.encodeUtf8 encoded) of
+        raw <- case parseJson pythonJsonLoads (TE.encodeUtf8 encoded) of
           Left _ -> throwIO (RuntimeError "V5 ingress manifest is malformed")
           Right value -> pure value
         values <- case raw of

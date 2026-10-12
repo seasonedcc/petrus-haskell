@@ -3353,13 +3353,15 @@ data RunConclusion
   | RunFailure
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration RunConclusion where
+  spelling = \case
+    RunQueued -> "queued"
+    RunInProgress -> "in_progress"
+    RunSuccess -> "success"
+    RunFailure -> "failure"
+
 instance Contract RunConclusion where
-  contract =
-    enum "RunConclusion" $ \case
-      RunQueued -> "queued"
-      RunInProgress -> "in_progress"
-      RunSuccess -> "success"
-      RunFailure -> "failure"
+  contract = enumeration "RunConclusion"
 
 data Phase
   = PhaseRunning
@@ -3367,12 +3369,14 @@ data Phase
   | PhaseTerminal
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration Phase where
+  spelling = \case
+    PhaseRunning -> "running"
+    PhaseQuiescent -> "quiescent"
+    PhaseTerminal -> "terminal"
+
 instance Contract Phase where
-  contract =
-    enum "Phase" $ \case
-      PhaseRunning -> "running"
-      PhaseQuiescent -> "quiescent"
-      PhaseTerminal -> "terminal"
+  contract = enumeration "Phase"
 
 data ReviewStatus
   = ReviewPending
@@ -3381,24 +3385,28 @@ data ReviewStatus
   | ReviewUnable
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration ReviewStatus where
+  spelling = \case
+    ReviewPending -> "pending"
+    ReviewClear -> "clear"
+    ReviewBlocking -> "blocking"
+    ReviewUnable -> "unable"
+
 instance Contract ReviewStatus where
-  contract =
-    enum "ReviewStatus" $ \case
-      ReviewPending -> "pending"
-      ReviewClear -> "clear"
-      ReviewBlocking -> "blocking"
-      ReviewUnable -> "unable"
+  contract = enumeration "ReviewStatus"
 
 data MutPhase
   = MutIdle
   | MutFaulted
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration MutPhase where
+  spelling = \case
+    MutIdle -> "idle"
+    MutFaulted -> "faulted"
+
 instance Contract MutPhase where
-  contract =
-    enum "MutPhase" $ \case
-      MutIdle -> "idle"
-      MutFaulted -> "faulted"
+  contract = enumeration "MutPhase"
 
 data HeadRelation
   = RelationNew
@@ -3408,14 +3416,16 @@ data HeadRelation
   | RelationRefreshed
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration HeadRelation where
+  spelling = \case
+    RelationNew -> "new"
+    RelationSuperseded -> "superseded"
+    RelationConfirmed -> "confirmed"
+    RelationResumed -> "resumed"
+    RelationRefreshed -> "refreshed"
+
 instance Contract HeadRelation where
-  contract =
-    enum "HeadRelation" $ \case
-      RelationNew -> "new"
-      RelationSuperseded -> "superseded"
-      RelationConfirmed -> "confirmed"
-      RelationResumed -> "resumed"
-      RelationRefreshed -> "refreshed"
+  contract = enumeration "HeadRelation"
 
 data MutationKind
   = KindRepair
@@ -3424,13 +3434,15 @@ data MutationKind
   | KindResolveConflict
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration MutationKind where
+  spelling = \case
+    KindRepair -> "repair"
+    KindChange -> "change"
+    KindUpdateBase -> "update_base"
+    KindResolveConflict -> "resolve_conflict"
+
 instance Contract MutationKind where
-  contract =
-    enum "MutationKind" $ \case
-      KindRepair -> "repair"
-      KindChange -> "change"
-      KindUpdateBase -> "update_base"
-      KindResolveConflict -> "resolve_conflict"
+  contract = enumeration "MutationKind"
 
 data SettledOutcome
   = OutcomeLanded
@@ -3439,13 +3451,15 @@ data SettledOutcome
   | OutcomeFaulted
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration SettledOutcome where
+  spelling = \case
+    OutcomeLanded -> "landed"
+    OutcomeDeclined -> "declined"
+    OutcomeMoved -> "moved"
+    OutcomeFaulted -> "faulted"
+
 instance Contract SettledOutcome where
-  contract =
-    enum "SettledOutcome" $ \case
-      OutcomeLanded -> "landed"
-      OutcomeDeclined -> "declined"
-      OutcomeMoved -> "moved"
-      OutcomeFaulted -> "faulted"
+  contract = enumeration "SettledOutcome"
 
 data ChecksStatus
   = StatusPending
@@ -3455,14 +3469,16 @@ data ChecksStatus
   | StatusFailure
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration ChecksStatus where
+  spelling = \case
+    StatusPending -> "pending"
+    StatusQueued -> "queued"
+    StatusInProgress -> "in_progress"
+    StatusSuccess -> "success"
+    StatusFailure -> "failure"
+
 instance Contract ChecksStatus where
-  contract =
-    enum "ChecksStatus" $ \case
-      StatusPending -> "pending"
-      StatusQueued -> "queued"
-      StatusInProgress -> "in_progress"
-      StatusSuccess -> "success"
-      StatusFailure -> "failure"
+  contract = enumeration "ChecksStatus"
 
 data ReviewUnableCategory
   = UnableRuntimeLifecycle
@@ -3477,19 +3493,21 @@ data ReviewUnableCategory
   | UnableProtocol
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration ReviewUnableCategory where
+  spelling = \case
+    UnableRuntimeLifecycle -> "runtime_lifecycle"
+    UnableOutputSchema -> "output_schema"
+    UnableCorrelation -> "correlation"
+    UnableUnchanged -> "unchanged"
+    UnableUnable -> "unable"
+    UnableWorkspaceReconciliation -> "workspace_reconciliation"
+    UnableCanceled -> "canceled"
+    UnableTimedOut -> "timed_out"
+    UnableCleanupUnverified -> "cleanup_unverified"
+    UnableProtocol -> "protocol"
+
 instance Contract ReviewUnableCategory where
-  contract =
-    enum "ReviewUnableCategory" $ \case
-      UnableRuntimeLifecycle -> "runtime_lifecycle"
-      UnableOutputSchema -> "output_schema"
-      UnableCorrelation -> "correlation"
-      UnableUnchanged -> "unchanged"
-      UnableUnable -> "unable"
-      UnableWorkspaceReconciliation -> "workspace_reconciliation"
-      UnableCanceled -> "canceled"
-      UnableTimedOut -> "timed_out"
-      UnableCleanupUnverified -> "cleanup_unverified"
-      UnableProtocol -> "protocol"
+  contract = enumeration "ReviewUnableCategory"
 
 data ReviewFactBody
   = BodyReviewStatus ReviewStatusFactBody
@@ -3513,11 +3531,13 @@ data OperationSite
   | SiteRerun
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration OperationSite where
+  spelling = \case
+    SiteMutation -> "mutation"
+    SiteRerun -> "rerun"
+
 instance Contract OperationSite where
-  contract =
-    enum "OperationSite" $ \case
-      SiteMutation -> "mutation"
-      SiteRerun -> "rerun"
+  contract = enumeration "OperationSite"
 
 data FaultRaisedFactBody
   = BodyPublicationFault PublicationFaultBody
@@ -3542,45 +3562,53 @@ data FaultSite
   | FaultRerun
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration FaultSite where
+  spelling = \case
+    FaultReview -> "review"
+    FaultMutation -> "mutation"
+    FaultRerun -> "rerun"
+
 instance Contract FaultSite where
-  contract =
-    enum "FaultSite" $ \case
-      FaultReview -> "review"
-      FaultMutation -> "mutation"
-      FaultRerun -> "rerun"
+  contract = enumeration "FaultSite"
 
 data FaultResolution
   = FaultResolved
   | FaultCancelled
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration FaultResolution where
+  spelling = \case
+    FaultResolved -> "resolved"
+    FaultCancelled -> "cancelled"
+
 instance Contract FaultResolution where
-  contract =
-    enum "FaultResolution" $ \case
-      FaultResolved -> "resolved"
-      FaultCancelled -> "cancelled"
+  contract = enumeration "FaultResolution"
 
 data SnoozeMode
   = ModeSnooze
   | ModeClear
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration SnoozeMode where
+  spelling = \case
+    ModeSnooze -> "snooze"
+    ModeClear -> "clear"
+
 instance Contract SnoozeMode where
-  contract =
-    enum "SnoozeMode" $ \case
-      ModeSnooze -> "snooze"
-      ModeClear -> "clear"
+  contract = enumeration "SnoozeMode"
 
 data RerunDisposition
   = DispositionRequested
   | DispositionExisting
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration RerunDisposition where
+  spelling = \case
+    DispositionRequested -> "requested"
+    DispositionExisting -> "existing"
+
 instance Contract RerunDisposition where
-  contract =
-    enum "RerunDisposition" $ \case
-      DispositionRequested -> "requested"
-      DispositionExisting -> "existing"
+  contract = enumeration "RerunDisposition"
 
 data ProviderFailureClass
   = FailureTransportAmbiguity
@@ -3590,14 +3618,16 @@ data ProviderFailureClass
   | FailureProviderRejection
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration ProviderFailureClass where
+  spelling = \case
+    FailureTransportAmbiguity -> "transport_ambiguity"
+    FailureTransientHttpRejection -> "transient_http_rejection"
+    FailureCapabilityDenial -> "capability_denial"
+    FailurePayloadRejection -> "payload_rejection"
+    FailureProviderRejection -> "provider_rejection"
+
 instance Contract ProviderFailureClass where
-  contract =
-    enum "ProviderFailureClass" $ \case
-      FailureTransportAmbiguity -> "transport_ambiguity"
-      FailureTransientHttpRejection -> "transient_http_rejection"
-      FailureCapabilityDenial -> "capability_denial"
-      FailurePayloadRejection -> "payload_rejection"
-      FailureProviderRejection -> "provider_rejection"
+  contract = enumeration "ProviderFailureClass"
 
 data ReminderCommand
   = CommandArm ArmReminder

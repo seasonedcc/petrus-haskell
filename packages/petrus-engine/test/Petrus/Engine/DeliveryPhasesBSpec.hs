@@ -41,7 +41,7 @@ import Petrus.Impetus.Instance
 import Petrus.Impetus.Petrinet hiding (candidates)
 import Petrus.Impetus.Scope (lifecycleScope)
 import Petrus.Impetus.TestSupport (netOf, np, tok, tokD)
-import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (Dispatch)
 import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch, pending)
 import System.Directory (createDirectory, getTemporaryDirectory, removeDirectoryRecursive, removeFile)
@@ -129,7 +129,7 @@ enc :: Json -> BS.ByteString
 enc = either (error . show) id . dumps defaultDumps
 
 dec :: BS.ByteString -> Json
-dec = either error id . parseJson pythonLoads
+dec = either error id . parseJson surrogateRefusingLoads
 
 setMember :: Text -> Json -> Json -> Json
 setMember key value = \case

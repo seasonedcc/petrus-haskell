@@ -179,7 +179,7 @@ least these `json.dumps` spellings, and every one is expressible with
 | --- | --- | --- | --- |
 | JSONL History store lines | defaults (`", "`, `": "`, `ensure_ascii=True`), `allow_nan=False`, `\n` per record | `defaultDumps {allowNan = False}` | 4 |
 | SQLite History store `payload` | `separators=(",",":")`, `ensure_ascii=True`, `allow_nan=False` | `compact {ensureAscii = True}` (not `compact`) | 4 |
-| Postgres History store | sent as `::jsonb`; Postgres normalizes, so bytes do not matter on write; **read the column as text** and parse with `pythonLoads` | — | 4 |
+| Postgres History store | sent as `::jsonb`; Postgres normalizes, so bytes do not matter on write; **read the column as text** and parse with `surrogateRefusingLoads` | — | 4 |
 | Fabric envelope digest, process child ids, canonical conflict text | `sort_keys=True, separators=(",",":"), ensure_ascii=False, allow_nan=False` | `canonicalText` | 4 |
 | Local Dispatch stored JSON (compared as text) | same as canonical | `canonicalText` | 7 |
 | ZeroMQ Worker transport frames | same as canonical, UTF-8 | `canonicalText` | 8 |
@@ -197,7 +197,7 @@ least these `json.dumps` spellings, and every one is expressible with
 
 Decoding is just as specific:
 
-- Stores and wire readers use CPython `json.loads` defaults (`pythonLoads`):
+- Stores and wire readers use CPython `json.loads` defaults (`surrogateRefusingLoads`):
   NaN and Infinity accepted, last duplicate key wins. Strict decoders (net
   documents, simulation requests) use `strictLoads`.
 - CPython refuses integers longer than 4,300 digits when *parsing* (and
@@ -522,7 +522,7 @@ non-finite doubles. Keep the `NonFiniteNumber` path and the message shape (tests
     JSON is invalid. The next append would then glue onto that line. Reproduce this posture; do not
     "repair".
   - Load uses `json.loads` **defaults**: `NaN`/`Infinity` literals are accepted and duplicate keys are
-    last-wins. Use petrus-json `pythonLoads`, not `strictLoads`.
+    last-wins. Use petrus-json `surrogateRefusingLoads`, not `strictLoads`.
   - A complete-line prefix that splits a commit batch loads, but resume refuses it later (replay
     divergence). That is a kernel concern.
 - **Locking: none.** The instance is the single writer. Concurrent appends are out of scope
@@ -688,7 +688,7 @@ Payload equality and jsonb fidelity:
     aborts the transaction, and in joined mode it aborts the caller's transaction.
 - **Haskell requirements:**
   - Read `payload` as text (`payload::text`, or the raw text result format) and parse it with
-    petrus-json `pythonLoads`, preserving the server's member order.
+    petrus-json `surrogateRefusingLoads`, preserving the server's member order.
   - Do **not** decode it through aeson `Value`, which loses order and the int/float distinction.
 
 **Engine fence for Postgres** (`engine/_postgres.py:29-56`), listed here because it is the store's
@@ -741,7 +741,7 @@ single-writer guarantee:
 
 | Python | Use | Haskell suggestion |
 | --- | --- | --- |
-| `json` (stdlib) | codec spelling, value equality | **`petrus-json`** (`defaultDumps` variants above, `pythonLoads`, `Eq` = `pythonEq`). No aeson on these paths. |
+| `json` (stdlib) | codec spelling, value equality | **`petrus-json`** (`defaultDumps` variants above, `surrogateRefusingLoads`, `Eq` = `pythonEq`). No aeson on these paths. |
 | `sqlite3` (stdlib) | SQLite store | **`direct-sqlite`** (bundled amalgamation ≥ 3.24 for target-less `ON CONFLICT DO NOTHING`; `changes` gives rowcount; `exec` for PRAGMAs/BEGIN), optionally with `sqlite-simple` for row decoding. Verify the bundled SQLite has WAL and partial indexes (it does). |
 | `fcntl.flock`, `os.register_at_fork` | writer fence | Direct FFI `flock(2)` (a 3-line `foreign import ccall "flock"`) plus `unix` `openFd` with mode 0600. The `filelock` package also uses `flock` on POSIX but does not control the file mode. **Do not use GHC's `hLock`** (`GHC.IO.Handle.Lock`): on Linux it uses OFD `fcntl` locks, which do **not** conflict with `flock`, so Python and Haskell writers would both "win". Fork handling is not needed: Haskell does not fork. Keep `ensure()` as a PID check only if a `forkProcess` API is exposed. |
 | `hashlib.sha256` | lock names, fence key | `crypton` (`Crypto.Hash`) or `cryptohash-sha256`; `base16-bytestring` for hex |
@@ -3591,7 +3591,7 @@ The Worker owns no durable schema. Its external contracts are: (a) the CLI flags
 | `argparse` | `optparse-applicative` — but note it exits **1** on parse errors by default; set `prefs`/use `execParserPure` + `exitWith (ExitFailure 2)` to keep argparse's exit 2, and reproduce the usage prefix `usage: python -m petrus.motus.worker` only if `--help` text parity is required (suggest: document divergence, keep flag names/semantics identical) |
 | `importlib` registry `module:attribute` | no dynamic import in Haskell: expose `workerMain :: Map Text Registry -> IO ()` so applications build their own worker executable; `--registry NAME` selects from the compiled-in table (accept the `module:attribute` spelling as an opaque key for command-line parity) |
 | `signal.signal(SIGTERM, ...)` | `unix` `installHandler sigTERM (Catch (atomically (writeTVar stop True)))` |
-| `json` | `petrus-json` (`defaultDumps` for stdout lines, `pythonLoads`/`compact` for result faithfulness) |
+| `json` | `petrus-json` (`defaultDumps` for stdout lines, `surrogateRefusingLoads`/`compact` for result faithfulness) |
 | `resource.getrusage` (max_rss_mb) | `GHC.Stats`/`unix` `getrusage` via `System.Posix.Resource` or a tiny FFI |
 
 #### 5. Upstream tests
@@ -3687,7 +3687,7 @@ One `zmq.Context` per client object (sync) / `zmq.asyncio.Context` per async acc
 - Server reception (`_receive_request`, `:580-595`): reads the route, then drains all remaining frames counting them; keeps the body only if it is the single frame and `<= max_message_bytes`. `frame_count != 1` → protocol error `"request must contain exactly one application frame"` (so a REQ peer, which prepends an empty delimiter, is refused); total > limit → `"request exceeds the maximum message size"`. Frames larger than 1 MiB are dropped by libzmq (`MAXMSGSIZE`) and the peer is disconnected — no reply.
 
 **JSON encoding** (`_encode_message`, `:966-970`): `json.dumps(value, allow_nan=False, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()` (UTF-8) — **recursively sorted keys**, compact, raw non-ASCII, Python float repr (`1.0`, `1e-07`, `1e+16`), arbitrary ints; encoded size > 1 MiB → `ValueError("ZeroMQ Dispatch message exceeds the maximum size")` (raised client-side before sending; server-side it turns into a `refused` reply). Haskell: exactly `Petrus.Json.canonicalText` / `dumps compact{sortKeys=True}`.
-**JSON decoding** (`_decode_message`, `:973-980`): `json.loads(payload.decode("utf-8"))` = CPython defaults (accepts `NaN`/`Infinity`/`-Infinity`, duplicate keys last-wins, BOM refused) → `Petrus.Json.parseJson pythonLoads`. Errors → `ValueError(f"invalid ZeroMQ Dispatch JSON message: {error}")` with CPython's `JSONDecodeError` text (e.g. `Expecting value: line 1 column 1 (char 0)`); non-object → `"ZeroMQ Dispatch message must be a JSON object"`.
+**JSON decoding** (`_decode_message`, `:973-980`): `json.loads(payload.decode("utf-8"))` = CPython defaults (accepts `NaN`/`Infinity`/`-Infinity`, duplicate keys last-wins, BOM refused) → `Petrus.Json.parseJson surrogateRefusingLoads`. Errors → `ValueError(f"invalid ZeroMQ Dispatch JSON message: {error}")` with CPython's `JSONDecodeError` text (e.g. `Expecting value: line 1 column 1 (char 0)`); non-object → `"ZeroMQ Dispatch message must be a JSON object"`.
 
 **Request envelope (v2)** — base fields, all required, no others except per-operation fields (exact-set check):
 
@@ -3799,7 +3799,7 @@ No environment variables are read by the transport.
 | `zmq.asyncio` futures with `SNDTIMEO` / `asyncio.wait_for` | zeromq4-haskell send/receive use `ZMQ_DONTWAIT` + `threadWaitRead/Write` on `ZMQ_FD`, so they compose with the GHC IO manager (threaded RTS): wrap `receiveMulti` in `System.Timeout.timeout`; keep each socket used by one thread at a time. |
 | `fcntl.flock` | `unix` ≥ 2.8 has no flock; use `lukko` (`Lukko.FLock`, OFD/flock) or a 5-line FFI to `flock(2)`; must be BSD `flock`, not `fcntl` locks, for cross-implementation exclusion. |
 | `uuid.uuid4` | `uuid` (`Data.UUID.V4.nextRandom`), lowercase hyphenated `toText`. |
-| `json` | `petrus-json`: `canonicalText`/`dumps compact{sortKeys=True}` to encode, `parseJson pythonLoads` to decode, `defaultDumps` for the readiness line. |
+| `json` | `petrus-json`: `canonicalText`/`dumps compact{sortKeys=True}` to encode, `parseJson surrogateRefusingLoads` to decode, `defaultDumps` for the readiness line. |
 | `argparse`, `signal` | `optparse-applicative` (exit code 2 on parse error to match), `unix` signal handlers. |
 
 Alternative if zeromq4-haskell proves unbuildable: a thin hand-written FFI to the ~15 libzmq functions used (ctx, socket, setsockopt, bind/connect, msg send/recv, getsockopt RCVMORE/FD/EVENTS/LAST_ENDPOINT, z85). There is no reason to keep a Python helper here.

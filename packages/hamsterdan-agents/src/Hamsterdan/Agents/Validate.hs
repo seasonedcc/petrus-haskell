@@ -58,7 +58,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Agents.Protocol
-import Hamsterdan.Contracts.Codec (Contract, pythonDict, spelling, unspelling)
+import Hamsterdan.Contracts.Codec (Enumeration (..), pythonDict, unspelling)
 import Hamsterdan.Python.Exception (PythonException (..), pythonExceptionStr)
 import Hamsterdan.Python.Text (strip, utf8Encode)
 import Hamsterdan.PyLiteral (PyValue (..), repr)
@@ -141,7 +141,7 @@ codingStatuses = spellings [minBound .. maxBound :: CodingOutcome]
 reproductionStatuses = Set.fromList ["unknown", "confirmed", "not_reproduced", "not_attempted"]
 
 -- | Every spelling of a closed vocabulary.
-spellings :: (Contract a) => [a] -> Set.Set Text
+spellings :: (Enumeration a) => [a] -> Set.Set Text
 spellings = Set.fromList . map spelling
 
 -- | @_FINDING_ID_PATTERN@.
@@ -266,7 +266,7 @@ exact members names =
 
 -- | @value in VOCABULARY@ for a closed vocabulary: the member the value
 -- spells, if any. An unhashable value raises, as 'memberOf'.
-spelledMember :: (Contract a) => Json -> V (Maybe a)
+spelledMember :: (Enumeration a) => Json -> V (Maybe a)
 spelledMember = \case
   String s -> Right (unspelling s)
   Array _ -> unhashable "list"

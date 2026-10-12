@@ -140,7 +140,7 @@ apiError status content = case (message, status) of
   (Just text, _) -> sdkError "SandboxException" (T.pack (show status) <> ": " <> text)
   (Nothing, _) -> sdkError "SandboxException" (T.pack (show status) <> ": " <> T.pack (pythonReprBytes content))
   where
-    message = case parseJson pythonLoads content of
+    message = case parseJson surrogateRefusingLoads content of
       Right body | Just (String text) <- lookupMember "message" body -> Just text
       _ -> Nothing
     withMessage base = maybe base (\text -> base <> " - " <> text) message
@@ -161,7 +161,7 @@ envdApiError override status body = case (override, status) of
 
 -- | @get_message@: the string @message@ of a JSON object body, else its text.
 responseMessage :: ByteString -> Text
-responseMessage body = case parseJson pythonLoads body of
+responseMessage body = case parseJson surrogateRefusingLoads body of
   Right value | Just (String text) <- lookupMember "message" value -> text
   _ -> TE.decodeUtf8With lenientDecode body
 
@@ -193,7 +193,7 @@ deadlineError message =
 -- | @PLAIN_HTTP_ERROR_CODES@: a non-Connect error response (a proxy
 -- answering instead of envd), or a Connect unary error body.
 connectFailureFrom :: Int -> ByteString -> ConnectFailure
-connectFailureFrom status body = case parseJson pythonLoads body of
+connectFailureFrom status body = case parseJson surrogateRefusingLoads body of
   Right value
     | Just (String code) <- lookupMember "code" value, code `elem` connectCodes ->
         ConnectFailure code (maybe "" textOf (lookupMember "message" value))
@@ -248,7 +248,7 @@ encodeJson :: Json -> ByteString
 encodeJson value = either (error . encodeErrorMessage) id (dumps compact value)
 
 parseBody :: Text -> ByteString -> IO Json
-parseBody what body = case parseJson pythonLoads body of
+parseBody what body = case parseJson surrogateRefusingLoads body of
   Right value -> pure value
   Left problem -> throwSdk "SandboxException" ("invalid JSON in " <> what <> ": " <> T.pack problem)
 
@@ -662,7 +662,7 @@ decodeEvent payload = do
 
 -- | The trailing message of a Connect stream: its error, if any.
 endStreamFailure :: ByteString -> Maybe ConnectFailure
-endStreamFailure payload = case parseJson pythonLoads payload of
+endStreamFailure payload = case parseJson surrogateRefusingLoads payload of
   Right value | Just failure <- lookupMember "error" value ->
     let text key = case lookupMember key failure of
           Just (String t) -> t

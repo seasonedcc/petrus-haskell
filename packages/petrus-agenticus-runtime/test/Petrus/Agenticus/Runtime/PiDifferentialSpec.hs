@@ -47,7 +47,7 @@ import Test.Hspec
 loadCorpus :: IO Json
 loadCorpus = do
   bytes <- B.readFile "differential/pi_corpus.json"
-  either (fail . ("pi_corpus.json: " <>)) pure (J.parseJson J.pythonLoads bytes)
+  either (fail . ("pi_corpus.json: " <>)) pure (J.parseJson J.surrogateRefusingLoads bytes)
 
 referenceLedger :: FilePath
 referenceLedger = "differential/pi_reference_ledger.sqlite3"
@@ -210,7 +210,7 @@ startCases corpus root = do
         expectedBytes = unb64 (text "ok" expected)
         session = case optionalText "session_id" c of
           Just s -> s
-          Nothing -> text "session_id" (ok (J.parseJson J.pythonLoads expectedBytes))
+          Nothing -> text "session_id" (ok (J.parseJson J.surrogateRefusingLoads expectedBytes))
         prior =
           ok . mkPiContinuationPayloadV1 (text "session_id" c) (workingBinding cwd) . unb64
             <$> optionalText "prior" c

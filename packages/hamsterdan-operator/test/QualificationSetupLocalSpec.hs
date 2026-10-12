@@ -13,7 +13,7 @@ import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Python.Object (PV (..), PyError (..))
+import Hamsterdan.Python.Object (PV (..), pythonError)
 import Hamsterdan.Host.PublicationQualification
 import Hamsterdan.Operator (SetupCompleted (..), qualificationSetup)
 import Support (at, encoded)
@@ -115,7 +115,7 @@ setupOrchestration tmp overrides = do
   pure (outcome, recorded, directory </> "spent")
 
 timeoutExpired :: Text -> IO a
-timeoutExpired detail = throwIO (PyError "subprocess.TimeoutExpired" detail)
+timeoutExpired detail = throwIO (pythonError "TimeoutExpired" detail)
 
 -- | Set environment variables for the action, restoring them afterwards
 -- (@monkeypatch.setenv@).

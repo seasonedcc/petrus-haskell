@@ -591,7 +591,7 @@ data PiA2ScriptedCall = PiA2ScriptedCall
   deriving stock (Eq, Show)
 
 parseParams :: Text -> Either () Json
-parseParams = either (const (Left ())) Right . J.parseJson J.pythonLoads . TE.encodeUtf8
+parseParams = either (const (Left ())) Right . J.parseJson J.surrogateRefusingLoads . TE.encodeUtf8
 
 mkPiA2ScriptedCall :: ToolMethod -> Text -> Bool -> Either AgenticusError PiA2ScriptedCall
 mkPiA2ScriptedCall method paramsJson expectedOk = do

@@ -26,8 +26,3 @@ The differences are confined to tapes the reference never writes:
    (the parameter is a `Literal` that Python does not check); the Haskell
    error holds a `FailureClass`, so another spelling is refused as a
    `TapeError`. The recorder only writes the five classes.
-3. **A tape line holding a lone surrogate escape is refused at load.**
-   `tape.read` uses `json.loads`, which accepts `"\ud800"`; `readTape`
-   uses `pythonLoads`, which refuses it. The recorder writes decoded HTTP
-   bodies and agent results, which come from UTF-8 and so hold no lone
-   surrogates.

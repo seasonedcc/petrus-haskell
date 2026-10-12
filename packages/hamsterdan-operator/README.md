@@ -27,8 +27,9 @@ hamsterdan-operator qualification-setup --credential-file FILE --target-file FIL
 Each command prints one sorted-key JSON object and exits 0 when it reports
 `"ok": true`, 1 otherwise. That object, the exit status, every `gh` and
 `git` command line in order, and the files written are the reference's,
-byte for byte. The command-line parser is hamsterdan-cli's `argparse` port,
-so the usage, help, abbreviations and errors are also the reference's.
+byte for byte. The command-line parser is petrus-argparse's `argparse`
+port, so the usage, help, abbreviations, errors and colors are also the
+reference's.
 
 The package also carries the Haskell image's runtime contract:
 `deployment/Containerfile`, `deployment/python-shim`, `.dockerignore`,

@@ -20,7 +20,7 @@ import Data.Text qualified as T
 import Petrus.Activity hiding (invocation)
 import Petrus.Activity qualified as A
 import Petrus.TestSupport (valid)
-import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityAttempt (..), ActivityOutcome (..), AttemptFailure (..), CancellationDisposition (..), cancellationInstruction)
 import Petrus.Motus.Dispatch qualified as D
 import Petrus.Motus.Dispatch.Local qualified as Local
@@ -56,7 +56,7 @@ encoded :: Json -> ByteString
 encoded = either (error . show) id . dumps defaultDumps
 
 parsed :: ByteString -> Json
-parsed = either error id . parseJson pythonLoads
+parsed = either error id . parseJson surrogateRefusingLoads
 
 member :: Text -> Json -> Json
 member key = \case

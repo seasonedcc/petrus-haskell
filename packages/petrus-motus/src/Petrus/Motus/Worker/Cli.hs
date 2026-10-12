@@ -17,7 +17,6 @@ module Petrus.Motus.Worker.Cli
   , CustodyAccess (..)
   , WorkerArguments (..)
   , workerParser
-  , parseWorkerArguments
   , subscribedQueues
   , validateProviderArguments
     -- * Registries and providers
@@ -29,6 +28,7 @@ module Petrus.Motus.Worker.Cli
   , workerMainWith
   ) where
 
+import Control.Applicative ((<|>))
 import Control.Monad (when)
 import Data.List (nub)
 import Data.Map.Strict (Map)
@@ -38,7 +38,20 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Motus.Dispatch (WorkerDispatch)
 import Petrus.Motus.Dispatch.Local (LocalWorkerOptions (..), openLocalWorkerDispatch, toWorkerDispatch)
-import Petrus.Motus.Internal.Argparse
+import Petrus.Argparse
+  ( ArgumentParser (..)
+  , appended
+  , choice
+  , defaulted
+  , exitWithMessage
+  , float
+  , help
+  , int
+  , option
+  , required
+  , runArgumentParser
+  , str
+  )
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Motus.Worker
 import System.Environment (getArgs, lookupEnv)
@@ -73,57 +86,31 @@ data WorkerArguments = WorkerArguments
   }
   deriving stock (Eq, Show)
 
--- | The reference's parser, under the given program name.
-workerParser :: Text -> ArgumentParser
-workerParser prog =
+-- | The reference's parser, under the given program name, decoded;
+-- @$IMPETUS_DSN@ (given) is @--dsn@'s default.
+workerParser :: Text -> Maybe Text -> ArgumentParser WorkerArguments
+workerParser prog environmentDsn =
   ArgumentParser
     { prog
     , description = Just "Provider and transport selection for the Worker process entry point."
-    , options =
-        [ (option "--provider") {choices = Just ["local", "absurd", "zeromq"], required = True}
-        , (option "--registry") {required = True, help = Just "module:attribute of the Activity registry"}
-        , (option "--queue") {repeatable = True, help = Just "subscribed queue (repeatable)"}
-        , (option "--worker-id") {help = Just "optional operational Worker label"}
-        , (option "--execution-mode") {choices = Just ["sync", "async"]}
-        , (option "--custody-access") {choices = Just ["sync-bridge", "native-zeromq"]}
-        , (option "--concurrency") {kind = IntOption, help = Just "positive AsyncWorker Activity-slot concurrency"}
-        , (option "--max-operation-sockets") {kind = IntOption, help = Just "native ZeroMQ in-flight socket bound"}
-        , (option "--claim-timeout") {kind = IntOption, help = Just "Absurd initial claim lease in seconds"}
-        , (option "--poll-interval") {kind = FloatOption}
-        , (option "--path") {help = Just "Local SQLite Dispatch path"}
-        , (option "--dsn") {help = Just "Absurd PostgreSQL DSN"}
-        , (option "--endpoint") {help = Just "ZeroMQ Dispatch server endpoint"}
-        , (option "--client-secret-certificate") {help = Just "ZeroMQ CURVE client .key_secret file"}
-        , (option "--server-public-certificate") {help = Just "ZeroMQ CURVE server public .key file"}
-        ]
+    , arguments =
+        WorkerArguments
+          <$> required (choice [("local", LocalProvider), ("absurd", AbsurdProvider), ("zeromq", ZeroMQProvider)]) ["--provider"] []
+          <*> required str ["--registry"] [help "module:attribute of the Activity registry"]
+          <*> appended str ["--queue"] [help "subscribed queue (repeatable)"]
+          <*> option str ["--worker-id"] [help "optional operational Worker label"]
+          <*> defaulted (choice [("sync", SyncExecution), ("async", AsyncExecution)]) ["--execution-mode"] SyncExecution []
+          <*> defaulted (choice [("sync-bridge", SyncBridge), ("native-zeromq", NativeZeroMQ)]) ["--custody-access"] SyncBridge []
+          <*> (fromInteger <$> defaulted int ["--concurrency"] 1 [help "positive AsyncWorker Activity-slot concurrency"])
+          <*> (fromInteger <$> defaulted int ["--max-operation-sockets"] 8 [help "native ZeroMQ in-flight socket bound"])
+          <*> (fromInteger <$> defaulted int ["--claim-timeout"] 30 [help "Absurd initial claim lease in seconds"])
+          <*> defaulted float ["--poll-interval"] 0.25 []
+          <*> option str ["--path"] [help "Local SQLite Dispatch path"]
+          <*> ((<|> environmentDsn) <$> option str ["--dsn"] [help "Absurd PostgreSQL DSN"])
+          <*> option str ["--endpoint"] [help "ZeroMQ Dispatch server endpoint"]
+          <*> option str ["--client-secret-certificate"] [help "ZeroMQ CURVE client .key_secret file"]
+          <*> option str ["--server-public-certificate"] [help "ZeroMQ CURVE server public .key file"]
     }
-
--- | Build the namespace from parsed values; @$IMPETUS_DSN@ is @--dsn@'s
--- default.
-parseWorkerArguments :: Maybe Text -> Parsed -> WorkerArguments
-parseWorkerArguments environmentDsn parsed =
-  WorkerArguments
-    { provider = case value "--provider" parsed of
-        Just "absurd" -> AbsurdProvider
-        Just "zeromq" -> ZeroMQProvider
-        _ -> LocalProvider
-    , registry = fromMaybe "" (value "--registry" parsed)
-    , queue = values "--queue" parsed
-    , workerId = value "--worker-id" parsed
-    , executionMode = if value "--execution-mode" parsed == Just "async" then AsyncExecution else SyncExecution
-    , custodyAccess = if value "--custody-access" parsed == Just "native-zeromq" then NativeZeroMQ else SyncBridge
-    , concurrency = intOr 1 "--concurrency"
-    , maxOperationSockets = intOr 8 "--max-operation-sockets"
-    , claimTimeout = intOr 30 "--claim-timeout"
-    , pollInterval = maybe 0.25 (fromMaybe 0.25 . pythonFloat) (value "--poll-interval" parsed)
-    , path = value "--path" parsed
-    , dsn = maybe environmentDsn Just (value "--dsn" parsed)
-    , endpoint = value "--endpoint" parsed
-    , clientSecretCertificate = value "--client-secret-certificate" parsed
-    , serverPublicCertificate = value "--server-public-certificate" parsed
-    }
-  where
-    intOr fallback key = maybe fallback (maybe fallback fromInteger . pythonInt) (value key parsed)
 
 -- | @tuple(dict.fromkeys(arguments.queue)) or ("default",)@.
 subscribedQueues :: WorkerArguments -> [Text]
@@ -181,9 +168,8 @@ workerMain prog registries plugins = do
 -- | @main(argv)@ with an explicit @$IMPETUS_DSN@.
 workerMainWith :: Text -> Registries -> ProviderPlugins -> [String] -> Maybe Text -> IO ()
 workerMainWith prog registries plugins argv environmentDsn = do
-  parsed <- runParser (workerParser prog) argv
-  let arguments = parseWorkerArguments environmentDsn parsed
-      queues = subscribedQueues arguments
+  arguments <- runArgumentParser (workerParser prog environmentDsn) argv
+  let queues = subscribedQueues arguments
   activities <- loadRegistry registries arguments.registry
   either exitWithMessage pure (validateProviderArguments arguments)
   let factory = providerFactory plugins arguments queues

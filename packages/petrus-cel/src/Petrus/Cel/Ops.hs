@@ -1527,10 +1527,13 @@ pyFloatConvert v
   | Just n <- asInteger v = intToDouble n
   | Just t <- asText v = maybe (Left (couldNot (valueRepr v))) Right (parseFloatText t)
   | Just b <- asBytes v =
-      maybe (Left (couldNot (valueRepr v))) Right (parseFloatText (T.pack (map (chr . fromIntegral) (BS.unpack b))))
+      maybe (Left (couldNot (valueRepr v))) Right (parseFloatText (T.pack (map asciiByte (BS.unpack b))))
   | otherwise = Left (typeErr ("float() argument must be a string or a real number, not " <> quoted (tpName v)))
   where
     couldNot shown = valueErr ("could not convert string to float: " <> shown)
+    -- @float(bytes)@ skips the ASCII transform: a non-ASCII byte (even
+    -- @\xa0@ or @\x85@) never parses.
+    asciiByte w = if w < 0x80 then chr (fromIntegral w) else '?'
 
 -- | @int(text, 16)@ for the @0x@-prefixed strings @IntType@ accepts.
 hexInt :: Text -> Either Exc Integer

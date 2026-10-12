@@ -17,7 +17,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json (Json (..), defaultDumps, dumps)
-import Petrus.Motus.Internal.Argparse
+import Petrus.Argparse (ArgumentParser (..), appended, defaulted, float, help, option, required, runArgumentParser, str)
 import Petrus.Motus.PythonException (pythonException, pythonExceptionStr)
 import Petrus.Motus.PythonException qualified as Python (PythonException (..))
 import Petrus.Motus.Transport.ZeroMQ.Client
@@ -29,20 +29,30 @@ import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import System.Posix.Process (getProcessID)
 import System.Posix.Signals (Handler (..), installHandler, sigTERM)
 
--- | The reference's server parser, under the given program name.
-serverParser :: Text -> ArgumentParser
+-- | The server's command line.
+data ServerArguments = ServerArguments
+  { path :: Text
+  , bind :: Text
+  , queue :: [Text]
+  , serverSecretCertificate :: Maybe Text
+  , allowedClientKeys :: Maybe Text
+  , drainTimeout :: Double
+  }
+
+-- | The reference's server parser, under the given program name, decoded.
+serverParser :: Text -> ArgumentParser ServerArguments
 serverParser prog =
   ArgumentParser
     { prog
     , description = Just "Optional ZeroMQ transport for the synchronous Worker Dispatch contract."
-    , options =
-        [ (option "--path") {required = True, help = Just "Local SQLite Dispatch path owned by this execution host"}
-        , (option "--bind") {required = True, help = Just "ipc:// or tcp:// bind endpoint"}
-        , (option "--queue") {repeatable = True, help = Just "allowed Worker queue (repeatable)"}
-        , (option "--server-secret-certificate") {help = Just "CURVE server .key_secret file (TCP)"}
-        , (option "--allowed-client-keys") {help = Just "directory of allowed client public .key files (TCP)"}
-        , (option "--drain-timeout") {kind = FloatOption}
-        ]
+    , arguments =
+        ServerArguments
+          <$> required str ["--path"] [help "Local SQLite Dispatch path owned by this execution host"]
+          <*> required str ["--bind"] [help "ipc:// or tcp:// bind endpoint"]
+          <*> appended str ["--queue"] [help "allowed Worker queue (repeatable)"]
+          <*> option str ["--server-secret-certificate"] [help "CURVE server .key_secret file (TCP)"]
+          <*> option str ["--allowed-client-keys"] [help "directory of allowed client public .key files (TCP)"]
+          <*> defaulted float ["--drain-timeout"] 30.0 []
     }
 
 -- | @main()@ with the process arguments.
@@ -68,20 +78,18 @@ uncaught e
 
 serve :: Text -> [String] -> IO ()
 serve prog argv = do
-  parsed <- runParser (serverParser prog) argv
-  let required key = fromMaybe "" (value key parsed)
-      queues = case nub (values "--queue" parsed) of
+  arguments <- runArgumentParser (serverParser prog) argv
+  let queues = case nub arguments.queue of
         [] -> ["default"]
         given -> given
-      drainTimeout = maybe 30.0 (fromMaybe 30.0 . pythonFloat) (value "--drain-timeout" parsed)
   server <-
     localServer
-      (required "--bind")
-      (T.unpack (required "--path"))
+      arguments.bind
+      (T.unpack arguments.path)
       queues
-      (T.unpack <$> value "--server-secret-certificate" parsed)
-      (T.unpack <$> value "--allowed-client-keys" parsed)
-  _ <- installHandler sigTERM (Catch (void (try @SomeException (requestDrain server drainTimeout)))) Nothing
+      (T.unpack <$> arguments.serverSecretCertificate)
+      (T.unpack <$> arguments.allowedClientKeys)
+  _ <- installHandler sigTERM (Catch (void (try @SomeException (requestDrain server arguments.drainTimeout)))) Nothing
   withAsync (announce server) (\_ -> serveForever server)
 
 announce :: ZeroMQDispatchServer -> IO ()

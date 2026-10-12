@@ -89,13 +89,13 @@ dumpsConfigurations =
 -- | The plain profile keeping lone surrogates: compared with the oracle's
 -- plain answer, value for value.
 keepingSurrogates :: ParseOptions
-keepingSurrogates = pythonLoads {loneSurrogates = KeepLoneSurrogates}
+keepingSurrogates = pythonJsonLoads
 
 -- | The @json.loads@ admission profiles, in the oracle's order.
 loadsProfiles :: [(String, ParseOptions)]
 loadsProfiles =
-  [ ("plain", pythonLoads)
-  , ("unique-no-constants", pythonLoads {duplicateMembers = RejectDuplicates, allowNonFiniteConstants = False})
+  [ ("plain", surrogateRefusingLoads)
+  , ("unique-no-constants", surrogateRefusingLoads {duplicateMembers = RejectDuplicates, allowNonFiniteConstants = False})
   , ("simulation-http", strictLoads)
   , ("net-definition-v3", strictLoads {integerTokensOnly = True, integerRange = Just (safeIntegerMin, safeIntegerMax)})
   ]
@@ -169,7 +169,7 @@ data Answer = Answered BS.ByteString | Refused Text Text
 answer :: BS.ByteString -> Answer
 answer line = case BC.uncons line of
   Just ('=', rest) -> Answered rest
-  Just ('!', rest) -> case parseJson pythonLoads rest of
+  Just ('!', rest) -> case parseJson surrogateRefusingLoads rest of
     Right (Array [String cls, String message]) -> Refused cls message
     other -> error ("bad refusal line " ++ show other)
   _ -> error ("bad oracle line " ++ show line)
@@ -375,7 +375,7 @@ spec = describe "differential against CPython's json (the pinned reference)" $ d
     let check profile options document line =
           let ours = parseJson options document
            in case (answer line, ours) of
-                (Answered tagged, _) -> case parseJson pythonLoads tagged of
+                (Answered tagged, _) -> case parseJson surrogateRefusingLoads tagged of
                   Left problem -> Just ("unreadable oracle value: " ++ problem)
                   Right t -> case untag t of
                     Nothing -> Just ("oracle value is not generalized UTF-8: " ++ show t)

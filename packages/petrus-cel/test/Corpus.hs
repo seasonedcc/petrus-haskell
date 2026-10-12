@@ -32,7 +32,7 @@ data Corpus = Corpus
 load :: IO Corpus
 load = Corpus <$> readCorpus "test/corpus/cel-corpus.json" <*> readCorpus "test/corpus/cel-operators.json"
   where
-    readCorpus path = either (fail . ((path <> ": ") <>)) pure . parseJson pythonLoads =<< BS.readFile path
+    readCorpus path = either (fail . ((path <> ": ") <>)) pure . parseJson surrogateRefusingLoads =<< BS.readFile path
 
 field :: Text -> Json -> Maybe Json
 field = lookupMember

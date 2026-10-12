@@ -27,7 +27,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.GitHub.Webhooks (sign)
-import Petrus.Json (Json (..), canonicalText, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), canonicalText, lookupMember, parseJson, pythonJsonLoads)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 
@@ -56,7 +56,7 @@ readTape root = do
       if present
         then BS.readFile path >>= mapM (parsed path) . filter (not . BC.all (== ' ')) . BC.lines
         else pure []
-    parsed path bytes = either (\problem -> ioError (userError (path <> ": " <> problem))) pure (parseJson pythonLoads bytes)
+    parsed path bytes = either (\problem -> ioError (userError (path <> ": " <> problem))) pure (parseJson pythonJsonLoads bytes)
 
 -- | A tape record the replay cannot read: a member it must have is
 -- missing (Python's @record["name"]@ raises @KeyError@), or a member

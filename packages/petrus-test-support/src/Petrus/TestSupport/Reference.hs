@@ -30,7 +30,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (PythonFailure (..), PythonResult (..), runPython)
 import System.Exit (ExitCode (..))
 import Test.Hspec (Expectation, expectationFailure)
@@ -78,7 +78,7 @@ referenceRoundTrips payloads = do
       NetDefinitionSubject -> "definition"
       NetDocumentSubject -> "document"
       HistoryRecordSubject -> "record"
-    verdict line = case parseJson pythonLoads line of
+    verdict line = case parseJson surrogateRefusingLoads line of
       Right value
         | Just (String encoded) <- lookupMember "ok" value
         , Right bytes <- B64.decode (TE.encodeUtf8 encoded) ->

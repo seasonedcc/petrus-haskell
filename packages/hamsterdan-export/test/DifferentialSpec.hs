@@ -34,7 +34,7 @@ import Data.Text.Encoding qualified as TE
 import Database.SQLite3 qualified as S
 import Fixtures
 import Numeric (showHex)
-import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Python (fsEncode)
 import Petrus.Json.Wtf8 (fromCodePoints)
 import GHC.Foreign qualified
@@ -623,7 +623,7 @@ runReference repo cases = do
   (status, stdoutBytes, stderrBytes) <-
     readProcess (setStdin (byteStringInput (BL.fromStrict payload)) (proc python ["-I", "-B", script, "run"]))
   unless (status == ExitSuccess) $ expectationFailure ("the reference driver failed: " <> show stderrBytes)
-  case parseJson pythonLoads (BL.toStrict stdoutBytes) of
+  case parseJson surrogateRefusingLoads (BL.toStrict stdoutBytes) of
     Right (Array results) -> pure (map outcomeOf results)
     other -> fail ("unreadable reference results: " <> show other)
   where

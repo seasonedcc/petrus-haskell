@@ -26,7 +26,7 @@ import Hamsterdan.Sqlite (SQLData (..))
 import Hamsterdan.Host.Python (RuntimeError (..), dumpsSortedText, sha256Hex, dumpsSorted)
 import Hamsterdan.Host.V5.Claim
 import Hamsterdan.Host.V5.Ingress qualified as I
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Data.Text.Encoding qualified as TE
 import Petrus.Posix.File (uuid4Hex)
 import System.FilePath ((</>))
@@ -194,7 +194,7 @@ spec = describe "test_v5_ingress (store and normalizer)" $ do
     stored <- withDb path $ \db -> rows db "SELECT topology,schema_version,entries FROM v5_ingress_manifests WHERE delivery_id=?" [SQLText identity]
     case stored of
       [[SQLText "v5", SQLInteger 1, SQLText encoded]] -> do
-        let values = case parseJson pythonLoads (TE.encodeUtf8 encoded) of
+        let values = case parseJson surrogateRefusingLoads (TE.encodeUtf8 encoded) of
               Right (Array vs) -> vs
               _ -> []
         [i | Object ms <- values, Just (String i) <- [lookup "identity" ms]]

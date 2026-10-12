@@ -66,7 +66,7 @@ decimalInteger digits
   where
     isDigit c = c >= '0' && c <= '9'
 
--- | The nesting bound 'Petrus.Json.Parse.pythonLoads' and
+-- | The nesting bound 'Petrus.Json.Parse.surrogateRefusingLoads' and
 -- 'Petrus.Json.Encode.defaultDumps' apply: 100,000 nested arrays or objects.
 defaultNestingLimit :: Int
 defaultNestingLimit = 100000

@@ -10,7 +10,7 @@ import Data.List (nub)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.GeneratedRuntime
   ( GeneratedRuntimeProfile (..)
@@ -103,7 +103,7 @@ spec = describe "test_generated_runtime_qualification.py (fair liveness, shrinki
       (code, out, err) <- runWorldCommand ["replay", minimizedFixture]
       code `shouldBe` ExitSuccess
       err `shouldBe` ""
-      manual <- either fail pure (parseJson pythonLoads out)
+      manual <- either fail pure (parseJson surrogateRefusingLoads out)
       member "scenario_id" manual `shouldBe` String minimizedScenarioId
       member "outcome" manual `shouldBe` String "pass"
       member "disposition" manual `shouldBe` String "quiescent"

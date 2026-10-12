@@ -13,7 +13,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
 import Petrus.Motus.Execution.Artifacts
@@ -236,7 +236,7 @@ waitFor condition = go (50 :: Int)
     go n = condition >>= \ok -> if ok then pure () else threadDelay 100000 >> go (n - 1)
 
 bindMounts :: String -> Int
-bindMounts info = case parseJson pythonLoads (BC.pack info) of
+bindMounts info = case parseJson surrogateRefusingLoads (BC.pack info) of
   Right (Array (item : _)) -> case lookupMember "Mounts" item of
     Just (Array mounts) -> length [() | m <- mounts, lookupMember "Type" m == Just (String "bind")]
     _ -> 0
@@ -260,7 +260,7 @@ fakeOnlySpec = do
     -- "agent" does not exist on the host: the fake's exec fails, but the
     -- host-side invocation is what this test inspects.
     resultReturncode result `shouldNotBe` 0
-    entries <- map (rightOr . parseJson pythonLoads) . BC.lines <$> B.readFile logPath
+    entries <- map (rightOr . parseJson surrogateRefusingLoads) . BC.lines <$> B.readFile logPath
     let execs = [e | e <- entries, argvOf e `startsWith` ["exec", "--workdir"]]
     case execs of
       [entry] -> do

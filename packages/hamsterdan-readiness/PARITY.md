@@ -61,8 +61,9 @@ the converter half of `tests/unit/readiness/test_payloads.py`.
 | `TopologySpec` | 11 | The fingerprint gate: bytes, sha256, size, gate list and handler binding. It also checks the seed-marking corpus, the subject refusals and the 900-byte subject bound. |
 | `FoldCorpusSpec` | 18 | Every row of `folds.jsonl`, grouped by loop and by call kind (folds, gate handlers). |
 | `BoardCorpusSpec` | 3 | Every row of `board.jsonl`, for both `render_board` and `gate_facts`, and that refusals are covered. |
+| `IncarnationSpec` | 4 | Incarnation fencing of the readiness snapshot, as properties: a fact from a stale incarnation never changes the snapshot, and a current or global one applies. |
 
-**Suite total:** 335 examples, 0 failures.
+**Suite total:** 339 examples, 0 failures.
 
 ### Inline recovery and the host gates
 

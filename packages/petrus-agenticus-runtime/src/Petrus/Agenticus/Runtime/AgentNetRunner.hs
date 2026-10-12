@@ -488,7 +488,7 @@ jsonThreadRepository path' = AgentNetThreadRepository {load = loadJson, save = s
 decodeProjection :: ByteString -> Maybe AgentNetThreadProjection
 decodeProjection bytes = case TE.decodeUtf8' bytes of
   Left _ -> Nothing
-  Right _ -> case J.parseJson J.pythonLoads bytes of
+  Right _ -> case J.parseJson J.surrogateRefusingLoads bytes of
     Left _ -> Nothing
     Right value -> either (const Nothing) Just (projectionFromData value)
 

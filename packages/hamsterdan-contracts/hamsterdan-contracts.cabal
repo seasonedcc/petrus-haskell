@@ -55,6 +55,7 @@ library
                   , crypton >=1.0
                   , direct-sqlite >=2.3.27
                   , petrus-json
+                  , petrus-sqlite
                   , ram >=0.20
                   , text >=2.0
   ghc-options:      -O2

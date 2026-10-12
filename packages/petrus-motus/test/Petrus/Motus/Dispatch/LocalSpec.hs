@@ -15,7 +15,7 @@ import Data.Text qualified as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Database.SQLite3 (SQLData (..), SQLError)
 import Petrus.Activity
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch.Local (LocalDispatchClock (..), LocalDispatchOptions (..), defaultLocalDispatchOptions, openLocalDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
@@ -61,7 +61,7 @@ retryableFailure :: Text -> Text -> Json -> Maybe Number -> ActivityFailure
 retryableFailure message kind details delay = failure (ActivityFailureFields message kind details True delay)
 
 parsed :: Text -> Json
-parsed = either error id . parseJson pythonLoads . TE.encodeUtf8
+parsed = either error id . parseJson surrogateRefusingLoads . TE.encodeUtf8
 
 spec :: Spec
 spec = do

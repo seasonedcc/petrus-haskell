@@ -28,7 +28,7 @@ import Hamsterdan.GitHub.Models
 import Hamsterdan.GitHub.Transport qualified as Transport
 import Hamsterdan.GitHub.Webhooks (Observation (..), Receipt (..), closeCustody, defaultCustodyOptions, dispositionName, encodeObservation, openCustody, parseObservation, receive, sign, verifier, verify, verifyWith)
 import Numeric (showHex)
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (localOption)
 import Test.Tasty.Bench
@@ -116,11 +116,11 @@ benchExchange pullBody = Exchange $ \request continue -> do
 
 main :: IO ()
 main = withSystemTempDirectory "hamsterdan-bench" $ \state -> do
-  inputs <- either fail pure . parseJson pythonLoads =<< BS.readFile "bench/inputs.json"
+  inputs <- either fail pure . parseJson surrogateRefusingLoads =<< BS.readFile "bench/inputs.json"
   key <- TE.decodeUtf8 <$> BS.readFile "test/corpus/app-test-key.pem"
   let webhookBody = TE.encodeUtf8 (textOf (field "webhook_body" inputs))
       pullBody = TE.encodeUtf8 (textOf (field "pull_body" inputs))
-      pullValue = either error id (parseJson pythonLoads pullBody)
+      pullValue = either error id (parseJson surrogateRefusingLoads pullBody)
       comments = case field "comments" inputs of
         Array items -> map objectOf items
         _ -> error "bench/inputs.json: comments"

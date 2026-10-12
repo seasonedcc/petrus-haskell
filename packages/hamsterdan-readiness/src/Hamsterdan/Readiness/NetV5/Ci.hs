@@ -95,7 +95,7 @@ rank = \case
 assess :: Fold
 assess b outs = do
   (run, st) <- values2 @RunWork @CiState b
-  let conclusion = spell run.conclusion
+  let conclusion = spelling run.conclusion
       inert = Right (route outs [emit "ci.state" [st]])
       proceed = do
         let updated = st {best = Just (run.runId, run.attempt), status = conclusion, fingerprint = run.fingerprint, parked = []} :: CiState

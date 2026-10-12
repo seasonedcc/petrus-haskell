@@ -40,7 +40,7 @@ kernelCases :: IO [Json]
 kernelCases = do
   path <- findExisting ["differential/kernel_corpus.json", "packages/petrus-impetus/differential/kernel_corpus.json"]
   raw <- BS.readFile path
-  pure $ case parseJson pythonLoads raw of
+  pure $ case parseJson surrogateRefusingLoads raw of
     Right corpus | Array xs <- member "cases" corpus -> xs
     Right _ -> error "kernel corpus: no cases"
     Left problem -> error ("kernel corpus: " <> problem)

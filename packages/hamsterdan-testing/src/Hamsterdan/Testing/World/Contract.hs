@@ -42,7 +42,9 @@ module Hamsterdan.Testing.World.Contract
   , isPolicy
 
     -- * Strict helpers
-  , PyError (..)
+  , PythonException (..)
+  , pythonError
+  , classAndStr
   , strictObject
   , strictDigest
   , boundedText
@@ -51,7 +53,7 @@ module Hamsterdan.Testing.World.Contract
   , sha256Hex
   ) where
 
-import Control.Exception (Exception (..), throw)
+import Control.Exception (throw)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
@@ -63,7 +65,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json (Json (..))
-import Petrus.Json.Python (pythonStrListRepr)
+import Petrus.Json.Python (PythonException (..), pythonError, pythonExceptionStr, pythonStrListRepr)
 import Petrus.Testing.Dst (Budget (..), BudgetV4 (..), CheckerIdentity, Identity (..), ProfileIdentity, canonicalBytes, digestJson)
 import Hamsterdan.Python.Hashlib (sha256Hex)
 
@@ -230,7 +232,7 @@ texts = Array . map String
 
 -- | @digest_json(value)@, raising its @ValueError@ (a non-finite float).
 digestOf :: Json -> Text
-digestOf = either (throw . PyError "ValueError") id . digestJson
+digestOf = either (throw . pythonError "ValueError") id . digestJson
 
 -- | @PROFILE_IDENTITY@.
 profileIdentity :: ProfileIdentity
@@ -391,23 +393,20 @@ isOperation = leadingThen (\c -> isAsciiLetter c || isDigit c || c `elem` ("_./:
 -- ---------------------------------------------------------------------------
 -- Strict helpers
 
--- | A Python exception the profile raises: class name and message.
-data PyError = PyError Text Text
-  deriving stock (Eq, Show)
-
-instance Exception PyError where
-  displayException (PyError cls message) = T.unpack (cls <> ": " <> message)
+-- | The class and @str()@ of an exception the profile raises.
+classAndStr :: PythonException -> (Text, Text)
+classAndStr e@(PythonException cls _) = (cls, pythonExceptionStr e)
 
 
 -- | @strict_object(value, keys, label)@.
-strictObject :: Json -> Set Text -> Text -> Either PyError [(Text, Json)]
+strictObject :: Json -> Set Text -> Text -> Either PythonException [(Text, Json)]
 strictObject value keys label = case value of
   Object members | Set.fromList (map fst members) == keys && length members == Set.size keys -> Right members
-  _ -> Left (PyError "ValueError" (label <> " requires exact fields " <> pythonStrListRepr (Set.toAscList keys)))
+  _ -> Left (pythonError "ValueError" (label <> " requires exact fields " <> pythonStrListRepr (Set.toAscList keys)))
 
 -- | @json.dumps(value, sort_keys=True, separators=(",", ":"))@ (ASCII).
 canonical :: Json -> ByteString
-canonical = either (throw . PyError "ValueError") id . canonicalBytes
+canonical = either (throw . pythonError "ValueError") id . canonicalBytes
 
 -- | Lowercase hex SHA-256.
 
@@ -416,16 +415,16 @@ strictDigest :: Json -> Text
 strictDigest = sha256Hex . canonical
 
 -- | @bounded_text(value, label, pattern=pattern)@.
-boundedText :: Json -> Text -> Maybe (Text -> Bool) -> Either PyError Text
+boundedText :: Json -> Text -> Maybe (Text -> Bool) -> Either PythonException Text
 boundedText value label pattern = case value of
   String t | not (T.null t), T.length t <= 20000, maybe True ($ t) pattern -> Right t
-  _ -> Left (PyError "ValueError" (label <> " is outside its closed bounded vocabulary"))
+  _ -> Left (pythonError "ValueError" (label <> " is outside its closed bounded vocabulary"))
 
 -- | @bounded_json(value, limit, label)@.
-boundedJson :: Json -> Integer -> Text -> Either PyError ByteString
+boundedJson :: Json -> Integer -> Text -> Either PythonException ByteString
 boundedJson value limit label = case canonicalBytes value of
-  Left message -> Left (PyError "ValueError" message)
+  Left message -> Left (pythonError "ValueError" message)
   Right encoded
     | toInteger (BS.length encoded) > limit ->
-        Left (PyError "ValueError" (label <> " has " <> T.pack (show (BS.length encoded)) <> " bytes; limit is " <> T.pack (show limit)))
+        Left (pythonError "ValueError" (label <> " has " <> T.pack (show (BS.length encoded)) <> " bytes; limit is " <> T.pack (show limit)))
     | otherwise -> Right encoded

@@ -212,7 +212,7 @@ sidecarReceive (Sidecar h) =
     Nothing -> do
       atomically (unGetTQueue h.received Nothing)
       pure Nothing
-    Just line -> pure (either (const Nothing) Just (J.parseJson J.pythonLoads line))
+    Just line -> pure (either (const Nothing) Just (J.parseJson J.surrogateRefusingLoads line))
 
 -- | 'sidecarReceive' bounded by a number of seconds.
 sidecarReceiveWithin :: Sidecar -> Double -> IO (Maybe Json)
@@ -251,7 +251,7 @@ runSidecarOnce command seconds =
     collect h acc =
       atomically (readTQueue h.received) >>= \case
         Nothing -> pure (reverse acc)
-        Just line -> case J.parseJson J.pythonLoads line of
+        Just line -> case J.parseJson J.surrogateRefusingLoads line of
           Right value -> collect h (value : acc)
           Left _ -> collect h acc
 
@@ -407,7 +407,7 @@ spawnShared command = do
         let (complete, rest) = splitLines (if B.null pending then chunk else pending <> chunk)
         mapM_ (dispatch s) complete
         readFrames s h buffer rest
-    dispatch s line = case J.parseJson J.pythonLoads line of
+    dispatch s line = case J.parseJson J.surrogateRefusingLoads line of
       Right (Array [Int n, value]) -> atomically $ do
         known <- readTVar s.slots
         forM_ (Map.lookup n known) (\slot -> writeTQueue slot.inbox (Just value))

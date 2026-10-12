@@ -22,7 +22,8 @@
 -- * on those strings and on generated numerals (decimal digits of several
 --   scripts, hexadecimal letters and prefixes, signs, underscores, the
 --   whitespace @int()@ skips and the whitespace it does not): @int(s)@ and
---   @int(s, 16)@ ('parsePythonInt');
+--   @int(s, 16)@ ('parsePythonInt'), and @repr(float(s))@
+--   ('parsePythonFloat');
 -- * @repr(bytes)@, and @repr(float)@ (non-finite values included);
 -- * @repr@, @str@ and @type(...).__name__@ of what @json.loads@ returns;
 -- * the text of @json.loads@'s refusals (@JSONDecodeError@ with line,
@@ -91,7 +92,7 @@ oracle requests = do
     ExitSuccess | BL.null err -> pure (map answer (filter (not . BS.null) (BC.lines (BL.toStrict out))))
     _ -> fail ("the CPython oracle failed: " ++ BC.unpack (BL.toStrict err))
   where
-    answer line = case parseJson pythonLoads line of
+    answer line = case parseJson surrogateRefusingLoads line of
       Right (Array [String "ok", value]) -> Right value
       Right (Array [String "error", String message]) -> Left message
       other -> error ("bad oracle answer " ++ show other)
@@ -134,6 +135,14 @@ pyString = resize 16 (listOf (frequency [(30, pyChar), (1, choose ('\xd800', '\x
 -- whitespace it skips and the whitespace it does not.
 numeral :: Gen String
 numeral = resize 8 (listOf (elements "0123456789__-+ \t\v\x1c\x1f\x85\xa0\x3000\x2028\x660\x669\xff10\xff19\&abcfABCFxXob.e"))
+
+-- | Strings dense in what @float()@ decides on: digits of several scripts
+-- (Sunuwar and Ol Onal are new in Unicode 16.0), a point, exponents,
+-- signs, underscores, the letters of @inf@, @infinity@ and @nan@ in both
+-- cases and with a dotted capital I, and the whitespace it skips and the
+-- whitespace it does not.
+floatNumeral :: Gen String
+floatNumeral = resize 10 (listOf (frequency [(6, elements "0123456789"), (3, elements ".eE_-+"), (2, elements "infINFtyTYaA\x130"), (1, elements " \t\v\x1c\x1f\x7f\x85\xa0\x3000\x2028\x660\x669\xff10\x11BF1\x1E5F1\x1E5F0")]))
 
 -- | Bytes dense in what a UTF-8 decoder classifies: valid sequences of every
 -- length, encoded surrogates, overlong and out-of-range starts, stray
@@ -242,7 +251,17 @@ pairsOf = \case
 -- * Corpora ---------------------------------------------------------------------
 
 strings :: [String]
-strings = nub (["", " ", "\xa0", "\x105C0", "a\r\nb\rc\n", " \t x  y \x3000", "it's", "a\"b'c", "\x16D70\x16D79"] ++ sigmas ++ escapes ++ [generate seed pyString | seed <- [1 .. 2500]] ++ [generate seed numeral | seed <- [1 .. 1500]])
+strings = nub (["", " ", "\xa0", "\x105C0", "a\r\nb\rc\n", " \t x  y \x3000", "it's", "a\"b'c", "\x16D70\x16D79"] ++ sigmas ++ escapes ++ [generate seed pyString | seed <- [1 .. 2500]] ++ [generate seed numeral | seed <- [1 .. 1500]] ++ floats ++ [generate seed floatNumeral | seed <- [1 .. 1500]])
+
+-- | @float()@ spellings at its edges: the special values, underscores,
+-- overflow and underflow, the subnormal rounding boundary, non-ASCII
+-- digits and spaces.
+floats :: [String]
+floats =
+  [ "inf", "-Infinity", "+nAn", "\x130nf", "infinit", "1e309", "-1e309", "1e-400", "2.4703282292062328e-324", "2.4703282292062327e-324"
+  , "4.9406564584124654e-324", "1.7976931348623157e308", "1.7976931348623158e308", "1.7976931348623159e308", "0.1", "1_0.5e1_0", "1_e1", "1._5", "1__0"
+  , "_1", "1_", ".5", "5.", ".", "e1", "1e", "1e+", "\x1c\&1", "1\x1f", "\x85\&1\x85", "\xa0\x661.\x662\xa0", "\x11BF1", "\x1E5F1", "0x10", "1.5e+0_1", "9" ++ replicate 400 '0', "0." ++ replicate 400 '0' ++ "1e400"
+  ]
 
 -- | The final-sigma rule's contexts: cased and case-ignorable neighbours
 -- on either side, at either end.
@@ -319,6 +338,7 @@ exceptionArgument = \case
   PyStr s -> Array [String "str", codePoints (T.unpack s)]
   PyBytes b -> Array [String "bytes", String (hexOf b)]
   PyObject _ _ -> error "not generated"
+  PySlice {} -> error "not generated"
 
 pad16 :: String -> String
 pad16 s = replicate (16 - length s) '0' ++ s
@@ -347,7 +367,7 @@ cases =
     ++ map StringCase strings
     ++ map BytesReprCase byteStrings
     ++ map FloatReprCase doubles
-    ++ [JsonReprCase value | document <- reprDocuments, Right value <- [parseJson pythonLoads document]]
+    ++ [JsonReprCase value | document <- reprDocuments, Right value <- [parseJson surrogateRefusingLoads document]]
     ++ map LoadsCase loadsDocuments
     ++ map StrictLoadsCase loadsDocuments
     ++ map Utf8Case byteStrings
@@ -400,6 +420,7 @@ check c answer = case (c, answer) of
       ++ compareAs ("backslashreplace " ++ show s) (member "backslashreplace" got) (String (hexOf (utf8BackslashReplace (fromCodePoints s))))
       ++ compareAs ("int " ++ show s) (member "int" got) (maybe Null Int (parsePythonInt 10 (fromCodePoints s)))
       ++ compareAs ("int(_, 16) " ++ show s) (member "int16" got) (maybe Null Int (parsePythonInt 16 (fromCodePoints s)))
+      ++ compareAs ("float " ++ show s) (member "float" got) (maybe Null (String . pythonDoubleRepr) (parsePythonFloat (fromCodePoints s)))
       ++ if any (\ch -> ord ch >= 0xD800 && ord ch <= 0xDFFF) s
         then []
         else
@@ -474,7 +495,7 @@ spec = describe "Petrus.Json.Python against the pinned CPython" $ do
           length mine `shouldSatisfy` (> 0)
           take 10 (concatMap (uncurry check) mine) `shouldBe` []
     group "agrees on every code point (isprintable, isspace, line boundaries, decimal, isdigit, lower, upper, casefold)" $ \case UnicodeCase -> True; _ -> False
-    group "agrees on repr, strip, split, splitlines, isprintable, lower, upper, casefold, os.fsencode, backslashreplace and int() of generated strings" $ \case StringCase _ -> True; _ -> False
+    group "agrees on repr, strip, split, splitlines, isprintable, lower, upper, casefold, os.fsencode, backslashreplace, int() and float() of generated strings" $ \case StringCase _ -> True; _ -> False
     group "agrees on repr(bytes)" $ \case BytesReprCase _ -> True; _ -> False
     group "agrees on repr(float)" $ \case FloatReprCase _ -> True; _ -> False
     group "agrees on repr, str and type name of json.loads values" $ \case JsonReprCase _ -> True; _ -> False

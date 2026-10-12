@@ -46,7 +46,6 @@ module Hamsterdan.Export.Files
 
 import Control.Exception (IOException, SomeException, bracket, finally, try)
 import Control.Monad (filterM, forM, unless, void, when)
-import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.List (sortOn)
@@ -57,10 +56,11 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error (lenientDecode)
 import Database.SQLite3.Direct qualified as Direct
+import Petrus.Sqlite.Connection (pythonSqliteClass)
 import Foreign.C.Error (Errno (..), eISDIR, eNOENT)
 import GHC.IO.Exception (IOException (..))
 import Hamsterdan.Python.Exception qualified as Exc
-import Hamsterdan.Python.Object (PV (..), PyError (..), fromPython, raise, raiseEither)
+import Hamsterdan.Python.Object (PV (..), PythonException (..), pythonError, raise, raiseEither)
 import Hamsterdan.Python.Text (strRepr, utf8Encode)
 import Petrus.EngineFile.PyText (decodeText)
 import Petrus.EngineFile.Validate (PyException (..))
@@ -111,7 +111,7 @@ pathSuffix path =
 
 -- | @os.fsencode(path)@, raising its @UnicodeEncodeError@.
 rawPath :: Text -> IO RawFilePath
-rawPath = raiseEither . first fromPython . fsEncode
+rawPath = raiseEither . fsEncode
 
 -- | A directory entry's name, as @os.listdir@ decodes it.
 decodeName :: ByteString -> Text
@@ -125,8 +125,8 @@ decodeMessage = TE.decodeUtf8With lenientDecode
 -- Exceptions
 
 -- | The @OSError@ subclass and text CPython raises for an errno on a path.
-osError :: Text -> Errno -> IO PyError
-osError path errno = fromPython <$> Exc.osError errno path
+osError :: Text -> Errno -> IO PythonException
+osError path errno = Exc.osError errno path
 
 -- | Run a system call, raising the @OSError@ CPython raises for its errno.
 onPath :: Text -> IO a -> IO a
@@ -135,7 +135,7 @@ onPath path action =
     Right value -> pure value
     Left (e :: IOException) -> case ioe_errno e of
       Just n -> osError path (Errno n) >>= raise
-      Nothing -> raise (PyError "OSError" (T.pack (show e)))
+      Nothing -> raise (pythonError "OSError" (T.pack (show e)))
 
 -- ---------------------------------------------------------------------------
 -- Queries
@@ -192,7 +192,7 @@ iterdir path = map (joinPath path . decodeName) <$> listNames path
 -- | Like 'listNames', but an unreadable directory lists nothing (the way
 -- @glob@ ignores @OSError@).
 quietNames :: Text -> IO [Text]
-quietNames path = either (\(_ :: PyError) -> []) (map decodeName) <$> try (listNames path)
+quietNames path = either (\(_ :: PythonException) -> []) (map decodeName) <$> try (listNames path)
 
 -- | @sorted(state_dir.glob(f"applications/*/*/{pull_request}/binding.json"))@.
 globBindings :: Text -> Text -> IO [Text]
@@ -256,7 +256,7 @@ mkdirParents path = do
       unless directory (failWith e)
     failWith e = case ioe_errno e of
       Just n -> osError path (Errno n) >>= raise
-      Nothing -> raise (PyError "OSError" (T.pack (show e)))
+      Nothing -> raise (pythonError "OSError" (T.pack (show e)))
 
 -- | @tempfile.TemporaryDirectory(prefix=prefix)@ in @tempfile.gettempdir()@.
 withScratch :: Text -> (Text -> IO a) -> IO a
@@ -296,7 +296,7 @@ readText :: Text -> IO ByteString
 readText path = do
   bytes <- readBytes path
   case decodeText bytes of
-    Left (PyException name text) -> raise (PyError name text)
+    Left (PyException name text) -> raise (pythonError name text)
     Right text -> pure text
 
 -- | @open(path, "wb").write(bytes)@.
@@ -309,7 +309,7 @@ writeBytes path bytes = withFd path (\fd -> writeAll path fd bytes)
 writeText :: Text -> Text -> IO ()
 writeText path text = case utf8Encode text of
   Right bytes -> writeBytes path bytes
-  Left failure -> writeBytes path "" >> raise (fromPython failure)
+  Left failure -> writeBytes path "" >> raise failure
 
 -- | @open(path, "w")@, then the action's writes; the file is closed (and
 -- what was written stays) whatever the action does. Like the reference's
@@ -350,23 +350,23 @@ copyFile src dst = do
     (Just a, Just b)
       | Files.deviceID a == Files.deviceID b && Files.fileID a == Files.fileID b ->
           raise
-            ( PyError
-                "shutil.SameFileError"
+            ( pythonError
+                "SameFileError"
                 ("PosixPath(" <> strRepr src <> ") and PosixPath(" <> strRepr dst <> ") are the same file")
             )
     _ -> pure ()
   forM_' [(src, sourceStatus), (dst, targetStatus)] $ \(name, status) ->
     case status of
-      Just s | Files.isNamedPipe s -> raise (PyError "shutil.SpecialFileError" ("`" <> name <> "` is a named pipe"))
+      Just s | Files.isNamedPipe s -> raise (pythonError "SpecialFileError" ("`" <> name <> "` is a named pipe"))
       _ -> pure ()
   bytes <- readBytes src
   attempt <- try (writeBytes dst bytes)
   case attempt of
     Right () -> pure ()
-    Left (e :: PyError)
-      | e.cls == "IsADirectoryError" -> do
+    Left (e :: PythonException)
+      | e.name == "IsADirectoryError" -> do
           present <- exists dst
-          if present then raise e else raise (PyError "FileNotFoundError" ("Directory does not exist: " <> dst))
+          if present then raise e else raise (pythonError "FileNotFoundError" ("Directory does not exist: " <> dst))
       | otherwise -> raise e
   where
     forM_' xs f = mapM_ f xs
@@ -385,7 +385,7 @@ queryRows path query = do
   raw <- rawPath path
   opened <- Direct.open (Direct.Utf8 raw)
   case opened of
-    Left (code, Direct.Utf8 text) -> raise (PyError (sqliteClass code) (decodeMessage text))
+    Left (code, Direct.Utf8 text) -> raise (pythonError (pythonSqliteClass code) (decodeMessage text))
     Right database -> flip finally (Direct.close database) $ do
       prepared <- Direct.prepare database (Direct.Utf8 (TE.encodeUtf8 query))
       case prepared of
@@ -404,7 +404,7 @@ queryRows path query = do
   where
     failure database code = do
       Direct.Utf8 text <- Direct.errmsg database
-      raise (PyError (sqliteClass code) (decodeMessage text))
+      raise (pythonError (pythonSqliteClass code) (decodeMessage text))
 
 readRow :: Direct.Statement -> IO [(Text, PV)]
 readRow statement = do
@@ -423,8 +423,8 @@ readRow statement = do
           Right text -> pure (PStr text)
           Left _ ->
             raise
-              ( PyError
-                  "sqlite3.OperationalError"
+              ( pythonError
+                  "OperationalError"
                   ( "Could not decode to UTF-8 column '"
                       <> name
                       <> "' with text '"
@@ -435,35 +435,3 @@ readRow statement = do
     pure (name, value)
   pure (pyDict members)
 
--- | The exception class CPython's @sqlite3@ raises for a result code
--- (@get_exception_class@ in @Modules/_sqlite/util.c@).
-sqliteClass :: Direct.Error -> Text
-sqliteClass = \case
-  Direct.ErrorInternal -> "sqlite3.InternalError"
-  Direct.ErrorNotFound -> "sqlite3.InternalError"
-  Direct.ErrorNoMemory -> "MemoryError"
-  code
-    | code `elem` operational -> "sqlite3.OperationalError"
-  Direct.ErrorCorrupt -> "sqlite3.DatabaseError"
-  Direct.ErrorTooBig -> "sqlite3.DataError"
-  Direct.ErrorConstraint -> "sqlite3.IntegrityError"
-  Direct.ErrorMismatch -> "sqlite3.IntegrityError"
-  Direct.ErrorMisuse -> "sqlite3.InterfaceError"
-  Direct.ErrorRange -> "sqlite3.InterfaceError"
-  _ -> "sqlite3.DatabaseError"
-  where
-    operational =
-      [ Direct.ErrorError
-      , Direct.ErrorPermission
-      , Direct.ErrorAbort
-      , Direct.ErrorBusy
-      , Direct.ErrorLocked
-      , Direct.ErrorReadOnly
-      , Direct.ErrorInterrupt
-      , Direct.ErrorIO
-      , Direct.ErrorFull
-      , Direct.ErrorCan'tOpen
-      , Direct.ErrorProtocol
-      , Direct.ErrorEmpty
-      , Direct.ErrorSchema
-      ]

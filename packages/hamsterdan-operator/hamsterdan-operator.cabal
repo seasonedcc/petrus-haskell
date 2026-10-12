@@ -49,7 +49,7 @@ library
                   , containers >=0.6
                   , directory >=1.3
                   , filepath >=1.4
-                  , hamsterdan-cli
+                  , petrus-argparse
                   , hamsterdan-contracts
                   , hamsterdan-host
                   , petrus-engine-file
@@ -96,7 +96,8 @@ test-suite hamsterdan-operator-test
                   , containers
                   , directory
                   , filepath
-                  , hamsterdan-cli
+                  , hamsterdan-agents
+                  , petrus-argparse
                   , hamsterdan-contracts
                   , hamsterdan-github
                   , hamsterdan-host
@@ -123,6 +124,7 @@ benchmark hamsterdan-operator-bench
                   , containers
                   , directory
                   , filepath
+                  , hamsterdan-agents
                   , hamsterdan-contracts
                   , hamsterdan-github
                   , hamsterdan-operator

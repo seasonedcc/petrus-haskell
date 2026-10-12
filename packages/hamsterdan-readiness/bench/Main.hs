@@ -24,7 +24,7 @@ import Petrus.Impetus.Binding (BoundHandler (..), HandlerResult)
 import Petrus.Impetus.Dsl (BuiltNet (..))
 import Petrus.Impetus.Petrinet (Binding (..), NetPath, Token (..))
 import Petrus.Impetus.Petrinet.Schema (Arc, handlerUri, netPath, outputs)
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
@@ -62,7 +62,7 @@ main = do
 corpus :: FilePath -> IO [Json]
 corpus file = do
   bytes <- BS.readFile file
-  traverse (either fail pure . parseJson pythonLoads) (filter (not . BS.null) (BS8.split '\n' bytes))
+  traverse (either fail pure . parseJson surrogateRefusingLoads) (filter (not . BS.null) (BS8.split '\n' bytes))
 
 member :: Text -> Json -> Maybe Json
 member key = \case

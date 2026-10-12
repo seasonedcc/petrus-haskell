@@ -13,7 +13,7 @@ import Data.ByteString qualified as BS
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Testing.Dst.Boundaries
 import Petrus.Testing.Dst.Campaign.Support (ToolError (..))
 import Petrus.TestSupport.Postgres (lookupPostgresUrl, skipMessage)
@@ -27,7 +27,7 @@ refusing :: Text -> ToolError -> Bool
 refusing needle (ToolError message) = needle `T.isInfixOf` message
 
 readReport :: FilePath -> IO Json
-readReport file = BS.readFile file >>= either fail pure . parseJson pythonLoads
+readReport file = BS.readFile file >>= either fail pure . parseJson surrogateRefusingLoads
 
 timeoutRunner :: BoundaryRunner
 timeoutRunner =

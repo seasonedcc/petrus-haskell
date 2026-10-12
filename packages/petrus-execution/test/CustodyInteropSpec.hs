@@ -30,7 +30,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
 import Petrus.Motus.Execution.Providers.Docker (defaultDockerConfig, dockerProvider, newDockerEnvironmentWith)
@@ -97,7 +97,7 @@ scenario = \case
 resume :: String -> Text -> ByteString -> IO ()
 resume name operation provisionedJson = do
   (provider, wanted, other) <- scenario name
-  provisioned <- either fail pure (parseJson pythonLoads provisionedJson >>= leaseFromJson)
+  provisioned <- either fail pure (parseJson surrogateRefusingLoads provisionedJson >>= leaseFromJson)
   reconciled <- providerReconcile provider operation
   looked <- providerLookup provider operation
   lease <- providerCreate provider operation wanted
@@ -278,7 +278,7 @@ spec = describe "Execution custody interop with the reference" $ do
 
 -- | A provisioned lease without its (fresh) identity.
 shape :: ByteString -> Json
-shape provisioned = case parseJson pythonLoads provisioned of
+shape provisioned = case parseJson surrogateRefusingLoads provisioned of
   Right (Object members) -> Object [(key, value) | (key, value) <- members, key `notElem` ["operation_id", "lease_id"]]
   other -> error ("provision printed " <> show other)
 
@@ -337,7 +337,7 @@ leftovers setting name = do
   case name of
     "docker" -> do
       state <- B.readFile (contextDockerState setting </> "state.json")
-      (lookupMember "containers" =<< either (const Nothing) Just (parseJson pythonLoads state)) `shouldBe` Just (Object [])
+      (lookupMember "containers" =<< either (const Nothing) Just (parseJson surrogateRefusingLoads state)) `shouldBe` Just (Object [])
     "gondolin" -> listDirectory (contextGondolinRoot setting) `shouldReturn` []
     _ -> pure ()
   where

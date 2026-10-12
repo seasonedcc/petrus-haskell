@@ -63,7 +63,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Clock (diffUTCTime, getCurrentTime)
-import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Testing.Dst (AnyArtifact, encodeArtifact, toJson)
 import Petrus.Testing.Dst.Campaign.Support
 import Petrus.Testing.Dst.Process (Finish (..), captureWithin, killNow)
@@ -475,7 +475,7 @@ loadCases path limit = do
         then pure (Left ("DST campaign case log has " <> tshow size <> " bytes; limit is " <> tshow limit))
         else do
           bytes <- BS.readFile path
-          pure $ forM (BC.lines bytes) $ \line -> case parseJson pythonLoads line of
+          pure $ forM (BC.lines bytes) $ \line -> case parseJson surrogateRefusingLoads line of
             Right v@(Object _) -> Right v
             Right _ -> Left "DST campaign case must be a JSON object"
             Left problem -> Left (T.pack problem)

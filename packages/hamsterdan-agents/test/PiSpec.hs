@@ -22,7 +22,7 @@ import Petrus.Agenticus.Error (ErrorClass (TimeoutError), agenticusError)
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
 import Petrus.Agenticus.Runtime.PiA2Host (PiA2RuntimeStart (..))
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, surrogateRefusingLoads)
 import PiDoubles
 import Test.Hspec
 
@@ -98,7 +98,7 @@ sortedCompact :: EncodeOptions
 sortedCompact = defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortKeys = True}
 
 parse :: Text -> Json
-parse = either error id . parseJson pythonLoads . TE.encodeUtf8
+parse = either error id . parseJson surrogateRefusingLoads . TE.encodeUtf8
 
 keys :: Json -> [Text]
 keys = \case

@@ -43,7 +43,7 @@ import IngressSpec (newDelivery)
 import IngressApplicationSpec (reviewClear)
 import Petrus.Activity
 import Petrus.Impetus.History.Records (ExternalEventDelivered (..), Record (..))
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityOutcome (..))
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Worker (WorkerOptions (..), closeWorker, defaultWorkerOptions, newWorker, runAvailable)
@@ -119,7 +119,7 @@ historyDeliveries path = do
   pure
     [ (identity, source)
     | line <- BC.lines content
-    , Right (Object members) <- [parseJson pythonLoads line]
+    , Right (Object members) <- [parseJson surrogateRefusingLoads line]
     , lookup "record" members == Just (String "ExternalEventDelivered")
     , Just (String identity) <- [lookup "identity" members]
     , let source = case lookup "source" members of
@@ -1048,7 +1048,7 @@ spec = describe "tests/integration/host/test_service.py" $ do
     evidence <- reconcileRegistration h.host
     Host.close h.host
     let masked = foldl (\text identity -> T.replace identity "<concealed by 1Password>" text) (dumpsSortedText evidence) ["17", "hamsterdan-test"]
-    Right parsed <- pure (parseJson pythonLoads (TE.encodeUtf8 masked))
+    Right parsed <- pure (parseJson surrogateRefusingLoads (TE.encodeUtf8 masked))
     member "reconciled_installations" parsed `shouldBe` Int 1
     member "admitted_repositories" parsed `shouldBe` Int 2
 

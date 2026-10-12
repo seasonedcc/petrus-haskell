@@ -5,7 +5,10 @@
 -- scripts, parameterized statements, and @with connection:@ transactions
 -- that commit on success and roll back on any exception. Binding a text
 -- CPython cannot encode as UTF-8 raises its @UnicodeEncodeError@ before the
--- statement runs, as CPython's @sqlite3@ does.
+-- statement runs, as CPython's @sqlite3@ does, and every SQLite failure
+-- raises the 'PythonException' of the @sqlite3@ class CPython raises for
+-- its result code (petrus-sqlite's 'pythonSqliteClass'), with SQLite's
+-- message, so a stored or printed class name is the reference's.
 module Hamsterdan.Sqlite
   ( Connection
   , SQLData (..)
@@ -16,10 +19,11 @@ module Hamsterdan.Sqlite
   , execute
   , transaction
   , withLock
+  , isDatabaseError
   ) where
 
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
-import Control.Exception (SomeException, finally, mask, onException, throwIO, try)
+import Control.Exception (SomeException, catch, finally, fromException, mask, onException, throwIO, try)
 import Control.Monad (void)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.Map.Strict (Map)
@@ -28,6 +32,8 @@ import Data.Text (Text)
 import Database.SQLite3 (Database, SQLData (..), Statement, StepResult (..))
 import Database.SQLite3 qualified as S
 import Hamsterdan.Python.Text (utf8Encode)
+import Petrus.Json.Python (PythonException (..), pythonError)
+import Petrus.Sqlite.Connection (SQLError (..), pythonSqliteClass)
 
 -- | A connection guarded by a lock (CPython's @threading.RLock@ around the
 -- shared connection).
@@ -42,7 +48,7 @@ data Connection = Connection
 
 -- | @sqlite3.connect(path)@.
 open :: Text -> IO Connection
-open path = do
+open path = translated $ do
   database <- S.open path
   -- CPython's default @timeout=5.0@.
   S.exec database "PRAGMA busy_timeout=5000"
@@ -58,8 +64,9 @@ close connection = withLock connection $ do
       writeIORef connection.closed True
       cached <- readIORef connection.statements
       writeIORef connection.statements Map.empty
-      mapM_ S.finalize (Map.elems cached)
-      S.close connection.database
+      translated $ do
+        mapM_ S.finalize (Map.elems cached)
+        S.close connection.database
 
 -- | Hold the connection's lock.
 withLock :: Connection -> IO a -> IO a
@@ -67,11 +74,11 @@ withLock connection action = withMVar connection.lock (const action)
 
 -- | @executescript@: several statements, outside any transaction.
 script :: Connection -> Text -> IO ()
-script connection = S.exec connection.database
+script connection = translated . S.exec connection.database
 
 -- | Run one statement and return its rows.
 query :: Connection -> Text -> [SQLData] -> IO [[SQLData]]
-query connection sql parameters = withStatement connection sql $ \statement -> do
+query connection sql parameters = translated . withStatement connection sql $ \statement -> do
   let collect acc =
         S.step statement >>= \case
           Done -> pure (reverse acc)
@@ -82,7 +89,7 @@ query connection sql parameters = withStatement connection sql $ \statement -> d
 
 -- | Run one statement and return the number of rows it changed.
 execute :: Connection -> Text -> [SQLData] -> IO Int
-execute connection sql parameters = withStatement connection sql $ \statement -> do
+execute connection sql parameters = translated . withStatement connection sql $ \statement -> do
   bindChecked statement parameters
   void (S.step statement)
   S.changes connection.database
@@ -118,9 +125,9 @@ withStatement connection sql use = mask $ \restore -> do
 -- | @with connection:@: begin, run, commit; roll back if the action throws.
 transaction :: Connection -> IO a -> IO a
 transaction connection action = mask $ \restore -> do
-  S.exec connection.database "BEGIN"
+  translated (S.exec connection.database "BEGIN")
   result <- restore action `onException` rollback
-  S.exec connection.database "COMMIT"
+  translated (S.exec connection.database "COMMIT")
   pure result
   where
     rollback = do
@@ -128,3 +135,20 @@ transaction connection action = mask $ \restore -> do
       case outcome of
         Left (_ :: SomeException) -> pure ()
         Right () -> pure ()
+
+-- | Raise a driver failure as the @sqlite3@ exception CPython raises for
+-- it: @_pysqlite_seterror@'s class for the result code, with
+-- @sqlite3_errmsg@ as its one argument.
+translated :: IO a -> IO a
+translated action =
+  action `catch` \(failure :: SQLError) ->
+    throwIO (pythonError (pythonSqliteClass failure.sqlError) failure.sqlErrorDetails)
+
+-- | @except sqlite3.DatabaseError@: an exception of that class or one of
+-- its subclasses (@InterfaceError@ and @MemoryError@ are not).
+isDatabaseError :: SomeException -> Bool
+isDatabaseError e = case fromException e of
+  Just (PythonException name _) -> name `elem` databaseErrors
+  Nothing -> False
+  where
+    databaseErrors = ["DatabaseError", "OperationalError", "IntegrityError", "DataError", "InternalError", "ProgrammingError", "NotSupportedError"] :: [Text]

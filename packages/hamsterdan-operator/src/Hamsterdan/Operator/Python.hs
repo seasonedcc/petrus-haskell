@@ -31,44 +31,44 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Python.Object (PV (..), PyError (..), hashCheck, loadsValue, pyEq, toJson, typeName)
+import Hamsterdan.Python.Exception (PythonArg (..), PythonException (..), dumpsError, keyError, pythonError)
+import Hamsterdan.Python.Object (PV (..), hashCheck, loadsValue, pyEq, toJson, typeName)
 import Hamsterdan.Python.Text qualified as Py
 import Hamsterdan.Python.Url qualified as Url
 import Hamsterdan.Operator.FastJson (fastLoads)
-import Hamsterdan.Python.Text (strRepr)
 import Petrus.EngineFile.PyText (decodeText)
 import Petrus.EngineFile.Validate (PyException (..))
-import Petrus.Json (EncodeError (..), defaultDumps, dumps, encodeErrorMessage)
+import Petrus.Json (defaultDumps, dumps)
 
 -- | @value.get(key, default)@ on what must be a dict.
-getOr :: Text -> PV -> PV -> Either PyError PV
+getOr :: Text -> PV -> PV -> Either PythonException PV
 getOr key fallback = \case
   PDict members -> Right (maybe fallback id (lookup key members))
-  other -> Left (PyError "AttributeError" ("'" <> typeName other <> "' object has no attribute 'get'"))
+  other -> Left (pythonError "AttributeError" ("'" <> typeName other <> "' object has no attribute 'get'"))
 
 -- | @value.get(key)@ ('PNone' when absent).
-getMaybe :: Text -> PV -> Either PyError PV
+getMaybe :: Text -> PV -> Either PythonException PV
 getMaybe key = getOr key PNone
 
 -- | @value[key]@ for a @str@ key.
-subscriptKey :: Text -> PV -> Either PyError PV
+subscriptKey :: Text -> PV -> Either PythonException PV
 subscriptKey key = \case
-  PDict members -> maybe (Left (PyError "KeyError" (strRepr key))) Right (lookup key members)
-  PStr _ -> Left (PyError "TypeError" "string indices must be integers, not 'str'")
-  PList _ -> Left (PyError "TypeError" "list indices must be integers or slices, not str")
-  other -> Left (PyError "TypeError" ("'" <> typeName other <> "' object is not subscriptable"))
+  PDict members -> maybe (Left (keyError key)) Right (lookup key members)
+  PStr _ -> Left (pythonError "TypeError" "string indices must be integers, not 'str'")
+  PList _ -> Left (pythonError "TypeError" "list indices must be integers or slices, not str")
+  other -> Left (pythonError "TypeError" ("'" <> typeName other <> "' object is not subscriptable"))
 
 -- | The items @for item in value[:n]@ visits.
-sliceItems :: Int -> PV -> Either PyError [PV]
+sliceItems :: Int -> PV -> Either PythonException [PV]
 sliceItems n = \case
   PList items -> Right (take n items)
   PStr s -> Right (map (PStr . T.singleton) (T.unpack (T.take n s)))
-  PDict _ -> Left (PyError "KeyError" ("slice(None, " <> T.pack (show n) <> ", None)"))
-  other -> Left (PyError "TypeError" ("'" <> typeName other <> "' object is not subscriptable"))
+  PDict _ -> Left (PythonException "KeyError" [PySlice Nothing (Just (toInteger n)) Nothing])
+  other -> Left (pythonError "TypeError" ("'" <> typeName other <> "' object is not subscriptable"))
 
 -- | @value in {a, b, ...}@: an unhashable probe raises; otherwise equality
 -- as @==@ decides (so @1 in {True}@).
-inSet :: PV -> [PV] -> Either PyError Bool
+inSet :: PV -> [PV] -> Either PythonException Bool
 inSet value members = do
   hashCheck value
   Right (any (pyEq value) members)
@@ -102,9 +102,9 @@ shlexQuote s
 
 -- | What @subprocess.run(..., text=True)@ makes of captured bytes: strict
 -- UTF-8 and universal newlines, or its @UnicodeDecodeError@.
-decodeOutput :: ByteString -> Either PyError Text
+decodeOutput :: ByteString -> Either PythonException Text
 decodeOutput bytes = case decodeText bytes of
-  Left (PyException name text) -> Left (PyError name text)
+  Left (PyException name text) -> Left (pythonError name text)
   Right decoded -> Right (TE.decodeUtf8 decoded)
 
 pyStrip :: Text -> Text
@@ -125,27 +125,23 @@ data JsonOutcome
   | -- | @json.JSONDecodeError@.
     Malformed
   | -- | Any other exception (it propagates).
-    Raised PyError
+    Raised PythonException
 
 -- | @json.loads(text)@ for a @str@ or @bytes@ value.
 loadsJson :: PV -> JsonOutcome
 loadsJson value = case (case value of PStr s -> loadsStr s; _ -> loadsValue value) of
   Right loaded -> Loaded loaded
   Left e
-    | e.cls == "json.decoder.JSONDecodeError" -> Malformed
+    | e.name == "JSONDecodeError" -> Malformed
     | otherwise -> Raised e
 
 -- | @json.loads@ of a @str@: the fast path when the document is in its
 -- subset, the reference loader otherwise.
-loadsStr :: Text -> Either PyError PV
+loadsStr :: Text -> Either PythonException PV
 loadsStr text = maybe (loadsValue (PStr text)) Right (fastLoads text)
 
 -- | @json.dumps(value)@ (unsorted, default separators).
-dumpsPlain :: PV -> Either PyError Text
+dumpsPlain :: PV -> Either PythonException Text
 dumpsPlain value = do
   json <- toJson False value
-  either (Left . refusal) (Right . TE.decodeUtf8) (dumps defaultDumps json)
-  where
-    refusal e = case e of
-      NestingTooDeep _ -> PyError "RecursionError" (T.pack (encodeErrorMessage e))
-      _ -> PyError "ValueError" (T.pack (encodeErrorMessage e))
+  either (Left . dumpsError) (Right . TE.decodeUtf8) (dumps defaultDumps json)

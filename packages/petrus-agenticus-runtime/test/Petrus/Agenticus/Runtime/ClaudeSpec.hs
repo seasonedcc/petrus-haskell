@@ -714,7 +714,7 @@ spec = describe "test_claude" $ do
     (code, _, err) <- readCreateProcessWithExitCode (proc wrapper [output]) {env = Just environment} ""
     (code, err) `shouldBe` (ExitSuccess, "")
     names <- B.readFile output
-    let found = case ok (J.parseJson J.pythonLoads names) of
+    let found = case ok (J.parseJson J.surrogateRefusingLoads names) of
           Array values -> Set.fromList [n | String n <- values]
           _ -> Set.empty
     Set.fromList ["ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR", "HOME", "PATH", "LANG", "LC_ALL"] `Set.isSubsetOf` found `shouldBe` True
@@ -968,7 +968,7 @@ spec = describe "test_claude" $ do
       [] -> fail "no workspace_read tool"
     response <- readTool.handler input
     body <- case member "content" response of
-      Array (first : _) | String text <- member "text" first -> pure (ok (J.parseJson J.pythonLoads (TE.encodeUtf8 text)))
+      Array (first : _) | String text <- member "text" first -> pure (ok (J.parseJson J.surrogateRefusingLoads (TE.encodeUtf8 text)))
       other -> fail (show other)
     (member "ok" body, member "call_id" body) `shouldBe` (Bool True, String "provider-tool-call")
     ((.adapterEntries) <$> counters invoked.invocation.gateway) `shouldReturn` 1

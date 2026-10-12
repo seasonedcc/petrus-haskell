@@ -42,7 +42,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json, parseJson, pythonLoads)
+import Petrus.Json (Json, parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Repo (repoRoot, upstreamPetrus)
 import System.FilePath ((</>))
 import System.IO (Handle, hClose, hFlush, hSetBuffering, BufferMode (..))
@@ -146,7 +146,7 @@ python code args = do
 pythonJson :: Text -> [String] -> IO Json
 pythonJson code args = do
   out <- python code args
-  case parseJson pythonLoads out of
+  case parseJson surrogateRefusingLoads out of
     Right value -> pure value
     Left problem -> throwIO (PythonFailure ("Python snippet printed invalid JSON: " ++ problem) out "")
 

@@ -49,7 +49,7 @@ size = \case
 -- | The resumed, all-tools api-key @start@ frame of the corpus, as sent.
 startFrameValue :: IO Json
 startFrameValue = do
-  corpus <- either fail pure . J.parseJson J.pythonLoads =<< B.readFile "differential/pi_corpus.json"
+  corpus <- either fail pure . J.parseJson J.surrogateRefusingLoads =<< B.readFile "differential/pi_corpus.json"
   let start = case member "starts" (member "frames" corpus) of
         Array (_ : resumed : _) -> resumed
         other -> error (show other)
@@ -57,7 +57,7 @@ startFrameValue = do
         String t -> t
         other -> error (show other)
       bytes = ok (pyB64DecodeStrict (B.pack (map (fromIntegral . fromEnum) (T.unpack encoded))))
-  either fail pure (J.parseJson J.pythonLoads (B.init bytes))
+  either fail pure (J.parseJson J.surrogateRefusingLoads (B.init bytes))
 
 toolCall :: ByteString
 toolCall = "{\"type\":\"tool_call\",\"id\":\"call-1\",\"method\":\"workspace_read\",\"params\":{\"path\":\"README.md\"}}"

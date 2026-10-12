@@ -24,7 +24,7 @@ import Data.Text qualified as T
 import Petrus.Activity hiding (invocation)
 import Petrus.TestSupport (valid)
 import Data.Map.Strict qualified as Map
-import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityAttempt (..), ActivityOutcome (..), AttemptFailure (..), DispatchError (..), activityAttempt)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Transport.ZeroMQ
@@ -210,7 +210,7 @@ spec = do
           (request, ours') `shouldBe` (request, reply)
         -- The corpus reaches every answer class, not just the parser.
         let outcome frames = case frames of
-              [frame] | Right v <- parseJson pythonLoads frame -> case (at ["ok"] v, at ["error", "kind"] v) of
+              [frame] | Right v <- parseJson surrogateRefusingLoads frame -> case (at ["ok"] v, at ["error", "kind"] v) of
                 (Bool True, _) -> "ok"
                 (_, String kind) -> kind
                 _ -> "?"

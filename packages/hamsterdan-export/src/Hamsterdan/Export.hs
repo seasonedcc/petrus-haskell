@@ -33,7 +33,6 @@ module Hamsterdan.Export
 
 import Control.Exception (Exception, SomeException, fromException, throwIO, try)
 import Control.Monad (foldM, forM, forM_, unless, when)
-import Data.Bifunctor (bimap)
 import Data.ByteString qualified as BS
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Containers.ListUtils (nubOrd)
@@ -45,21 +44,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Cli.Argparse
-  ( Action (..)
-  , Behavior (..)
-  , Outcome (..)
-  , Parser
-  , Value (..)
-  , ValueType (..)
-  , lookupInteger
-  , lookupList
-  , lookupText
-  , newParser
-  , option
-  , parseArgs
-  , terminalColumns
-  )
+import Petrus.Argparse (ArgumentParser (..), Outcome (..), formattingFor, parse)
+import Petrus.Argparse qualified as Argparse
 import Hamsterdan.Export.Files
 import Hamsterdan.Export.Parallel (parallelMap, writeFiles)
 import Hamsterdan.Python.Object
@@ -225,9 +211,9 @@ agentOperationId operation attempt = "pi:" <> sha256Hex (TE.encodeUtf8 (operatio
 
 -- | 'agentOperationId', or the @UnicodeEncodeError@ the reference's
 -- @.encode()@ raises for an operation holding a lone surrogate.
-checkedOperationId :: Text -> Integer -> Either PyError Text
+checkedOperationId :: Text -> Integer -> Either PythonException Text
 checkedOperationId operation attempt =
-  bimap fromPython (("pi:" <>) . sha256Hex) (Py.utf8Encode (operationKey operation attempt))
+  fmap (("pi:" <>) . sha256Hex) (Py.utf8Encode (operationKey operation attempt))
 
 operationKey :: Text -> Integer -> Text
 operationKey operation attempt = operation <> "\0" <> tshow attempt
@@ -258,7 +244,7 @@ findInstance stateDir repository pullRequest = do
     stated <- fromMaybe (PStr "") <$> raiseEither (get "repository" binding)
     statedText <- case stated of
       PStr s -> pure s
-      other -> raise (PyError "AttributeError" ("'" <> typeName other <> "' object has no attribute 'lower'"))
+      other -> raise (pythonError "AttributeError" ("'" <> typeName other <> "' object has no attribute 'lower'"))
     let members = case binding of
           PDict m -> m
           _ -> []
@@ -304,10 +290,10 @@ readHistory path = do
   bytes <- readText path
   -- Every line parses on its own, so they parse at once; the first bad
   -- one in file order is still the one reported.
-  parsed <- parallelMap 256 forceParsed parseLine (zip [1 :: Integer ..] (splitlinesUtf8 bytes))
+  let parsed = parallelMap 256 forceParsed parseLine (zip [1 :: Integer ..] (splitlinesUtf8 bytes))
   fmap concat . forM parsed $ \(seq', outcome) -> case outcome of
     Nothing -> pure []
-    Just (Left e) | e.cls == "json.decoder.JSONDecodeError" -> refuse ("History record " <> tshow seq' <> " is not JSON")
+    Just (Left e) | e.name == "JSONDecodeError" -> refuse ("History record " <> tshow seq' <> " is not JSON")
     Just (Left e) -> raise e
     Just (Right (PDict members)) | contains "record" members -> pure [members]
     Just (Right _) -> refuse ("History record " <> tshow seq' <> " has no record kind")
@@ -839,14 +825,14 @@ writeBoards out records reporter = do
   mkdirParents out
   -- The boards render at once; each still fails where the reference's
   -- loop would, after the boards before it are written.
-  rendered <- parallelMap 4 forceRendered render (zip [1 :: Int ..] landed)
+  let rendered = parallelMap 4 forceRendered render (zip [1 :: Int ..] landed)
   planned <- newIORef []
   outcome <- try . forM rendered $ \(name, seq', result, board) -> do
     text <- either raise pure board
     -- write_text opens (truncates) the file, then encodes.
     case Py.utf8Encode (text <> "\n") of
       Right bytes -> modifyIORef' planned ((joinPath out name, bytes) :)
-      Left failure -> modifyIORef' planned ((joinPath out name, "") :) >> raise (fromPython failure)
+      Left failure -> modifyIORef' planned ((joinPath out name, "") :) >> raise failure
     pure
       ( "- ["
           <> name
@@ -871,7 +857,7 @@ writeBoards out records reporter = do
       let name = T.justifyRight 4 '0' (tshow ordinal) <> ".md"
           board = do
             items <- subscript "entries" result >>= iterateValue
-            either (Left . fromPython) Right (renderBoard (map pyStr items))
+            renderBoard (map pyStr items)
        in (name, seq', result, board)
     forceRendered (_, _, _, board) = either (`seq` ()) (`seq` ()) board
 
@@ -1050,7 +1036,7 @@ adoptUnattributed operations bodies reporter = do
 
 -- | Write the evidence package and return what it holds and lacks.
 --
--- Raises 'EvidenceExportError' where the reference refuses, and 'PyError'
+-- Raises 'EvidenceExportError' where the reference refuses, and 'PythonException'
 -- where the reference raises anything else.
 exportPackage :: ExportRequest -> IO Report
 exportPackage request = do
@@ -1103,7 +1089,7 @@ exportPackage request = do
   writeText (joinPath request.out "README.md") (readme inst report)
   pure report
 
-dumpsIndentedJson :: Json -> Either PyError Text
+dumpsIndentedJson :: Json -> Either PythonException Text
 dumpsIndentedJson = dumpsIndented True . fromJsonValue
 
 fromJsonValue :: Json -> PV
@@ -1380,30 +1366,26 @@ productionEnvironment = do
   environment <- Map.fromList <$> getEnvironment
   pure ExportEnvironment {environment, output = stdout, errors = stderr}
 
--- | The reference's @ArgumentParser@.
-exportParser :: Parser
+-- | The reference's @ArgumentParser@, decoded.
+exportParser :: ArgumentParser ExportRequest
 exportParser =
-  newParser
-    "python -m hamsterdan.host.export"
-    (Just "Export one PR's durable Hamsterdan state as an offline evidence package.")
-    [ (option ["--state-dir"]) {valueType = AsPath, required = True, help = Just "local copy of /var/lib/hamsterdan"}
-    , (option ["--out"]) {valueType = AsPath, required = True, help = Just "package directory to create"}
-    , (option ["--repository"]) {required = True, help = Just "owner/name of the monitored repository"}
-    , (option ["--pull-request"]) {valueType = AsInt, required = True, help = Just "pull request number"}
-    , (option ["--identity"])
-        { valueType = AsPath
-        , behavior = Append
-        , defaultValue = Just (List [])
-        , help = Just "extra run-identity file to copy into identity/ (repeatable)"
-        }
-    , (option ["--webhook-deliveries"])
-        { valueType = AsPath
-        , behavior = Append
-        , defaultValue = Just (List [])
-        , dest = "webhook_deliveries"
-        , help = Just "directory of raw GitHub delivery records named <delivery_id>-<event>.json (repeatable)"
-        }
-    ]
+  ArgumentParser
+    { prog = "python -m hamsterdan.host.export"
+    , description = Just "Export one PR's durable Hamsterdan state as an offline evidence package."
+    , arguments =
+        ExportRequest
+          <$> Argparse.required Argparse.path ["--state-dir"] [Argparse.help "local copy of /var/lib/hamsterdan"]
+          <*> Argparse.required Argparse.path ["--out"] [Argparse.help "package directory to create"]
+          <*> Argparse.required Argparse.str ["--repository"] [Argparse.help "owner/name of the monitored repository"]
+          <*> Argparse.required Argparse.int ["--pull-request"] [Argparse.help "pull request number"]
+          <*> Argparse.appended Argparse.path ["--identity"] [Argparse.help "extra run-identity file to copy into identity/ (repeatable)"]
+          <*> Argparse.appended
+            Argparse.path
+            ["--webhook-deliveries"]
+            [ Argparse.dest "webhook_deliveries"
+            , Argparse.help "directory of raw GitHub delivery records named <delivery_id>-<event>.json (repeatable)"
+            ]
+    }
 
 -- | @main(argv)@ as @python -m hamsterdan.host.export@ runs it: the exit
 -- status, with every line the reference prints. An exception the
@@ -1411,22 +1393,13 @@ exportParser =
 -- exits 1.
 runExport :: ExportEnvironment -> [Text] -> IO ExitCode
 runExport env argv = do
-  width <- subtract 2 <$> terminalColumns env.environment
-  case parseArgs width exportParser argv of
+  formatting <- formattingFor env.environment env.output
+  case parse formatting exportParser argv of
     Exited status printed problems -> do
       printed' <- printOut env printed
       emit env.errors problems
       pure (if not printed' then ExitFailure 1 else if status == 0 then ExitSuccess else ExitFailure status)
-    Parsed namespace -> do
-      let request =
-            ExportRequest
-              { stateDir = fromMaybe "." (lookupText "state_dir" namespace)
-              , out = fromMaybe "." (lookupText "out" namespace)
-              , repository = fromMaybe "" (lookupText "repository" namespace)
-              , pullRequest = fromMaybe 0 (lookupInteger "pull_request" namespace)
-              , identity = [p | Str p <- lookupList "identity" namespace]
-              , webhookDeliveries = [p | Str p <- lookupList "webhook_deliveries" namespace]
-              }
+    Parsed request -> do
       outcome <- try (exportPackage request)
       case outcome of
         Right report -> do
@@ -1440,7 +1413,7 @@ runExport env argv = do
           | Just (EvidenceExportError message) <- fromException e -> do
               emit env.errors ("export failed: " <> message <> "\n")
               pure (ExitFailure 2)
-          | Just (problem :: PyError) <- fromException e -> do
+          | Just (problem :: PythonException) <- fromException e -> do
               emit env.errors (errorLine problem <> "\n")
               pure (ExitFailure 1)
           | otherwise -> do
@@ -1460,4 +1433,4 @@ emit handle text = BS.hPut handle (utf8BackslashReplace text)
 printOut :: ExportEnvironment -> Text -> IO Bool
 printOut env text = case Py.utf8Encode text of
   Right bytes -> True <$ BS.hPut env.output bytes
-  Left failure -> False <$ emit env.errors (errorLine (fromPython failure) <> "\n")
+  Left failure -> False <$ emit env.errors (errorLine failure <> "\n")

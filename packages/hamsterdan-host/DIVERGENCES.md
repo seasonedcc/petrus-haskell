@@ -17,48 +17,71 @@ Below are the differences that remain, with their rationale.
 
 ## Observable
 
-1. **uvicorn's own log lines are not written.**
-   - `serve` does not print uvicorn's startup and shutdown lines (`Started
-     server process`, `Uvicorn running on …`, `Application startup
-     complete.`, and so on) to stderr.
-   - It does not print the access log lines (`INFO:     127.0.0.1:… - "POST
-     /github/webhooks HTTP/1.1" 202 Accepted`) to stdout.
-   - The host's own warnings are written to stderr exactly as Python
-     logging's last-resort handler writes them: the bare message, one per
-     line. These are `webhook_retry`, `application_sweep_retry`,
-     `scheduler_instance_degraded`, `shutdown_terminal_settlement_failed`,
-     `qualification_fault` and `V5 review agent unavailable`.
-   - The host's `LOG.info` lines are not written on either side, because no
-     handler enables INFO for the host's loggers. That includes the
-     GitHub request-metadata hook, so the port does not install that hook.
-   - Why it stays: these lines are uvicorn 0.52's and h11's own
-     operational log, not hamsterdan's. Matching them means emulating that
-     stack's logging: `dictConfig`'s formatters with click colors chosen by
-     each stream's `isatty`, the lifespan and bind-failure messages, the
-     access line's client address and status phrase, and h11's protocol
-     warnings (`Invalid HTTP request received.`) and ASGI tracebacks. The
-     last two have no counterpart under warp, which parses and refuses
-     malformed requests itself, so a port could only match the steady-state
-     lines. Nothing in the reference or its tests reads them.
-2. **An uncaught exception prints only its last traceback line.** The
-   command line prints `Class: message` with exit status 1. The reference
-   prints the whole Python traceback, which ends in that same line.
-3. **Help and usage text has no color.**
-   - CPython 3.14's `argparse` colors help when the stream is a terminal and
-     `NO_COLOR` / `PYTHON_COLORS` allow it.
-   - The port writes the plain text, which is what the reference writes to
-     a pipe. That is the differential test's setting.
-   - The width is the same: `COLUMNS`, else the terminal, else 80.
+1. **A few of uvicorn's and h11's log lines are not written.**
+   `serve` writes uvicorn 0.52's log as the reference's `uvicorn.run`
+   does (`Hamsterdan.Host.Uvicorn`):
+   - the server lines on stderr (`Started server process`, the lifespan's
+     lines, `Uvicorn running on …`, `Shutting down`, `Finished server
+     process`), and the bind failure and lifespan failure lines, with exit
+     status 3;
+   - an access line per response on stdout, after the proxy headers
+     middleware (`FORWARDED_ALLOW_IPS`) has set the client and scheme;
+   - `Exception in ASGI application` when a route raises;
+   - colors when stdout is a terminal, as uvicorn chooses them.
+
+   The host's own warnings are written to stderr exactly as Python
+   logging's last-resort handler writes them: the bare message, one per
+   line. These are `webhook_retry`, `application_sweep_retry`,
+   `scheduler_instance_degraded`, `shutdown_terminal_settlement_failed`,
+   `qualification_fault` and `V5 review agent unavailable`. The host's
+   `LOG.info` lines are not written on either side, because no handler
+   enables INFO for the host's loggers. That includes the GitHub
+   request-metadata hook, so the port does not install that hook.
+
+   What remains:
+   - h11's `Invalid HTTP request received.` warning. warp parses and
+     refuses a malformed request (or a target h11 refuses, such as one with
+     non-ASCII bytes) itself, and logs nothing.
+   - On shutdown, uvicorn closes idle keep-alive connections at once.
+     warp lets them end on their own, within its 30 s graceful timeout.
+   - A second CTRL+C does not force the shutdown.
+   - A logged traceback is reduced to its header and last line (item 2).
+
+   Why these stay: the first has no counterpart under warp. The others are
+   uvicorn's connection management and Python's traceback frames. They do
+   not depend on hamsterdan, and nothing in the reference or its tests reads
+   them.
+2. **A traceback has only its last line.** An uncaught exception makes the
+   command line print `module.Class: message` with exit status 1, the line
+   that ends the reference's Python traceback. The class is
+   module-qualified as Python qualifies it, and no GHC backtrace is
+   appended. The tracebacks `serve` logs (a lifespan failure, `Exception in
+   ASGI application`) are the header and that same line. The reference
+   prints the frames as well.
+3. **Help and usage colors: resolved, no longer a difference.**
+   petrus-argparse colors help, usage and errors as CPython 3.14's
+   `_colorize` decides (`PYTHON_COLORS`, `NO_COLOR`, `FORCE_COLOR`,
+   `TERM=dumb`, then whether standard output is a terminal), with the
+   reference's theme. The width is the same: `COLUMNS`, else the terminal,
+   else 80. The differential runs `FORCE_COLOR` cases.
 4. **Haskell-native failures get the nearest Python class name.** Where a
-   failure class reaches History or a log line (`error_class=…`), the
-   port's own exception types carry the reference's class names
-   (`RuntimeError`, `ValueError`, `TypeError`, `PythonException name`).
-   Failures that only Haskell can raise are named by `exceptionClass`:
-   - `IOException` is `OSError`;
-   - `ErrorCall` is `RuntimeError`;
-   - `ArithException` is `ArithmeticError`;
-   - `ArrayException` is `IndexError`;
-   - anything else gets its Haskell type name.
+   failure class reaches History, the inbox (`error_class`), the status
+   document or a log line (`error_class=…`), `Hamsterdan.Host.ExceptionClass`
+   names it from a closed list:
+   - every exception type the Hamsterdan packages declare carries its
+     reference class (`GitHubBoundaryError`, `RerunRefusedError`,
+     `ValueError`, …), checked against the pinned reference's modules;
+   - a SQLite failure is named as CPython's `sqlite3` names it
+     (`OperationalError`, `IntegrityError`, `DatabaseError`, …), checked
+     against the pinned interpreter for the same statements;
+   - failures that only Haskell can raise get the nearest built-in class:
+     `IOException` is `OSError`, `ErrorCall` is `RuntimeError`,
+     `ArithException` is `ArithmeticError`, `ArrayException` is
+     `IndexError`.
+
+   A declared type missing from the list fails the host's test suite. Only
+   a library's own exception, which the reference cannot raise, keeps its
+   Haskell type name.
 5. **A conversation request's allowed intents come in source order.** The
    reference spreads `_MUTATIONS`, a `frozenset` of strings, into the V5
    application's `_ALLOWED`. So the last three intents a conversation

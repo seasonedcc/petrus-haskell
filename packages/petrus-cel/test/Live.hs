@@ -102,6 +102,6 @@ timeZoneSpec = describe "time zones against the pinned reference" $
         )
   where
     expression = "[timestamp(s).getFullYear(z), timestamp(s).getDayOfYear(z), timestamp(s).getHours(z), timestamp(s).getMinutes(z), timestamp(s).getSeconds(z)]"
-    row line = case parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates} line of
+    row line = case parseJson pythonJsonLoads line of
       Right (Array [String key, String at, String want]) -> (key, at, want)
       other -> error ("tz-differential.py printed an unexpected line: " <> show (BC.unpack line) <> " " <> show (fmap (const ()) other))

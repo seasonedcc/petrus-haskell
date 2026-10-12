@@ -20,10 +20,13 @@ Below are the differences that remain, with their rationale.
      lines.
    - `export failed: ...` (exit 2) and argparse errors (exit 2) are
      identical.
-2. **Help and usage text has no color.** CPython 3.14's `argparse` colors
-   help on a terminal when `NO_COLOR` and `PYTHON_COLORS` allow it. The port
-   writes the plain text, which is what the reference writes to a pipe. The
-   width is the same: `COLUMNS`, else the terminal, else 80.
+2. **Help and usage colors: resolved, no longer a difference.**
+   petrus-argparse colors help, usage and errors as CPython 3.14's
+   `_colorize` decides (`PYTHON_COLORS`, `NO_COLOR`, `FORCE_COLOR`,
+   `TERM=dumb`, then whether standard output is a terminal), with the
+   reference's theme, checked against the pinned interpreter in
+   petrus-argparse's suite. The width is the same: `COLUMNS`, else the
+   terminal, else 80.
 3. **Names and text that are not UTF-8: resolved, no longer a
    difference.**
    - Arguments and directory entries are decoded with `surrogateescape`

@@ -15,7 +15,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Testing.Readiness
-import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Test.Hspec
 
 -- | The six environments of the generator: every condition declared, then
@@ -69,7 +69,7 @@ judge row = case (load (TE.encodeUtf8 row.input) :: Either Text ReadinessFacts, 
     factsDigest = TE.decodeUtf8 (Base16.encode (SHA256.hash (spelled (dump facts))))
     expected = evaluate facts
     verdict = dump expected
-    judged = [spell (evaluateLiveness expected environment budget) | environment <- environments, budget <- [False, True]]
+    judged = [spelling (evaluateLiveness expected environment budget) | environment <- environments, budget <- [False, True]]
  where
   mismatch :: (Show a, Show b) => a -> b -> Maybe String
   mismatch want got = Just (T.unpack row.input <> "\n  expected " <> show want <> "\n  got      " <> show got)
@@ -78,7 +78,7 @@ spec :: Spec
 spec = describe "oracle corpus" $ do
   rows <- runIO $ do
     bytes <- BS.readFile "test/corpus/oracle.jsonl"
-    traverse (either fail pure . (decodeRow <=< parseJson pythonLoads)) (filter (not . BS.null) (BS8.split '\n' bytes))
+    traverse (either fail pure . (decodeRow <=< parseJson surrogateRefusingLoads)) (filter (not . BS.null) (BS8.split '\n' bytes))
   let refused = [() | Row _ (Left _) <- rows]
       ruled = [() | Row _ (Left (Just _)) <- rows]
   it ("admission, facts dump, expectation, and liveness match every row (" <> show (length rows) <> ")") $ do
@@ -89,4 +89,4 @@ spec = describe "oracle corpus" $ do
     length refused `shouldSatisfy` (> 0)
     length ruled `shouldSatisfy` (> 0)
     let dispositions = [found | Row _ (Right (_, expectation, _)) <- rows, Just (String found) <- [member "disposition" expectation]]
-    mapM_ (\d -> spell d `shouldSatisfy` (`elem` dispositions)) [minBound .. maxBound :: ReadinessDisposition]
+    mapM_ (\d -> spelling d `shouldSatisfy` (`elem` dispositions)) [minBound .. maxBound :: ReadinessDisposition]

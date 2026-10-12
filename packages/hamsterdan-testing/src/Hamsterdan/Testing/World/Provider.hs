@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE MultiWayIf #-}
 
 -- | Modeled external truth and boundary-faithful adapters for readiness
@@ -89,12 +90,13 @@ import Hamsterdan.Agents.Protocol qualified as Protocol
 import Hamsterdan.GitHub.Config (HostConfig)
 import Hamsterdan.GitHub.Models (InstallationInventory (..), RegistrationInventory (..), Transport (..), WireResponse (..), boundary)
 import Hamsterdan.Host.GitPublish (GitPublishError (..), GitPublishResult (..), GitReconciliation (..), OperationDisposition (..), PublicationCategory (..))
-import Hamsterdan.Host.Python (RuntimeError (..), TypeError (..), ValueError (..), exceptionClass)
+import Hamsterdan.Host.ExceptionClass (exceptionClass)
+import Hamsterdan.Host.Python (RuntimeError (..), pattern TypeError, ValueError (..))
 import Hamsterdan.Host.Service (HostClients (..))
 import Hamsterdan.Host.V5.Mutation (MutationPublisher (..))
-import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus (..), Lifecycle (..), ReviewStatus (..), Spelled (..), dump)
+import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus (..), Lifecycle (..), ReviewStatus (..), Enumeration (..), dump)
 import Hamsterdan.Testing.World.Contract
-import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
+import Petrus.Impetus.Instance.FailureText (PythonArg (..))
 import Petrus.Json (Json (..), lookupMember)
 import Petrus.Testing.Dst (Fault (..), ProfileError (..), ScenarioContext (..), faults, runScenario)
 
@@ -113,7 +115,6 @@ throwPy cls message = case cls of
 -- | The reference class and @str()@ of a raised exception.
 pyException :: SomeException -> (Text, Text)
 pyException e
-  | Just (PyError cls message) <- fromException e = (cls, message)
   | Just (PythonException cls args) <- fromException e = (cls, case args of [PyStr m] -> m; _ -> "")
   | otherwise = (exceptionClass e, T.pack (displayException e))
 
@@ -195,14 +196,14 @@ data CiCheck = CiCheck
 
 -- | The check's dict.
 ciCheckJson :: CiCheck -> Json
-ciCheckJson c = Object [("name", String c.name), ("run", Int c.run), ("attempt", Int c.attempt), ("status", String (spell c.status))]
+ciCheckJson c = Object [("name", String c.name), ("run", Int c.run), ("attempt", Int c.attempt), ("status", String (spelling c.status))]
 
 -- | A human review's state.
 data HumanReviewState = HumanApproved | HumanChangesRequested | HumanDismissed
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled HumanReviewState where
-  spell = \case
+instance Enumeration HumanReviewState where
+  spelling = \case
     HumanApproved -> "APPROVED"
     HumanChangesRequested -> "CHANGES_REQUESTED"
     HumanDismissed -> "DISMISSED"
@@ -595,7 +596,7 @@ pages ref path = do
         pure
           [ [ ("id", Int index)
             , ("submitted_at", String submitted)
-            , ("state", String (spell state))
+            , ("state", String (spelling state))
             , ("user", Object [("login", String reviewer)])
             ]
           | (index, (reviewer, (submitted, state))) <- zip [1 ..] (Map.toAscList t.humanReviews)
@@ -729,9 +730,9 @@ retainedBytes t =
       , ("required_checks", Array (map String t.requiredChecks))
       , ("checks", Array (map ciCheckJson t.checks))
       , ("review_head", String t.reviewHead)
-      , ("review_status", String (spell t.reviewStatus))
+      , ("review_status", String (spelling t.reviewStatus))
       , ("findings", Array t.findings)
-      , ("human_reviews", Object [(k, Array [String a, String (spell b)]) | (k, (a, b)) <- Map.toAscList t.humanReviews])
+      , ("human_reviews", Object [(k, Array [String a, String (spelling b)]) | (k, (a, b)) <- Map.toAscList t.humanReviews])
       , ("review_threads", Object [(k, Bool v) | (k, v) <- Map.toAscList t.reviewThreads])
       , ("comments", Array t.comments)
       , ("human_comments", Array t.humanComments)

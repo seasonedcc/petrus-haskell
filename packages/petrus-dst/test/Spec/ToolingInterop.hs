@@ -10,7 +10,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Text qualified as T
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Testing.Dst (AnyArtifact, DstFailure, encodeArtifact, failureMessage)
 import Petrus.Testing.Dst.Engine.GeneratedRuntimeQualification
   ( buildBroadOnlyArtifact
@@ -93,7 +93,7 @@ keysOf = \case
   _ -> []
 
 parse :: ByteString -> IO Json
-parse = either fail pure . parseJson pythonLoads
+parse = either fail pure . parseJson surrogateRefusingLoads
 
 spec :: Spec
 spec = describe "DST tooling interop with the reference" $ do

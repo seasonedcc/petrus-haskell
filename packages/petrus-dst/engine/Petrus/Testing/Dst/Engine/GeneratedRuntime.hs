@@ -83,7 +83,7 @@ import Petrus.Impetus.Instance (DeliveryScope (..), FiringOutcome (..))
 import Petrus.Impetus.Petrinet hiding (Delay)
 import Petrus.Impetus.Petrinet qualified as Petrinet
 import Petrus.Impetus.Scope (scopeGeneration)
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityAttempt (attemptId, epoch, invocation, queue), AttemptFailure (..), Dispatch (..))
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), LocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
@@ -356,7 +356,7 @@ data GeneratedRuntimeProfile = GeneratedRuntimeProfile
 -- | @_attempt_occurrence@: the occurrence of a LocalDispatch attempt
 -- identity (@[instance, occurrence]@).
 attemptOccurrence :: ActivityAttempt -> Either Text Integer
-attemptOccurrence attempt = case parseJson pythonLoads (TE.encodeUtf8 attempt.attemptId) of
+attemptOccurrence attempt = case parseJson surrogateRefusingLoads (TE.encodeUtf8 attempt.attemptId) of
   Right (Array [_, Int occurrence]) -> Right occurrence
   _ -> Left "generated runtime received a malformed LocalDispatch attempt identity"
 

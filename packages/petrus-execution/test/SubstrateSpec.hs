@@ -14,7 +14,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time (UTCTime (..), fromGregorian, getCurrentTime, picosecondsToDiffTime)
-import Petrus.Json (Json (..), canonicalText, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), canonicalText, lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Execution.Artifacts
 import Petrus.Motus.Execution.Error
 import Petrus.Motus.Execution.Timeline
@@ -25,7 +25,7 @@ import System.Posix.Files (fileMode, getFileStatus)
 import Test.Hspec
 
 decodeLine :: B.ByteString -> Json
-decodeLine bytes = either error id (parseJson pythonLoads bytes)
+decodeLine bytes = either error id (parseJson surrogateRefusingLoads bytes)
 
 readLines :: FilePath -> IO [Json]
 readLines path = map decodeLine . filter (not . B.null) . B.split 10 <$> B.readFile path

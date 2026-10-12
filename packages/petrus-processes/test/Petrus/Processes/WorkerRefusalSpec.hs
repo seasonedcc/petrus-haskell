@@ -21,7 +21,7 @@ import Data.Map.Strict qualified as Map
 import Petrus.Activity (ActivityFailureFields (..), failureFields, invocationFromJson)
 import Petrus.Fabric.Postgres (postgresFabric, submit)
 import Petrus.Fabric.Send (sendActivity)
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityOutcome (..))
 import Petrus.Motus.Dispatch.Local (collect, defaultLocalDispatchOptions, defaultLocalWorkerOptions, dispatch, openLocalWorkerDispatch, toWorkerDispatch, withLocalDispatch)
 import Petrus.Motus.Worker (WorkerOptions (..), closeWorker, defaultWorkerOptions, newWorker, runAvailable)
@@ -83,7 +83,7 @@ outcomeJson = \case
      in Object [("failed", Object [("error", String fields.failureError), ("kind", String fields.failureKind), ("retryable", Bool fields.failureRetryable)])]
 
 jsonOf :: String -> IO Json
-jsonOf printed = either (throwIO . userError) pure (parseJson pythonLoads (BC.pack printed))
+jsonOf printed = either (throwIO . userError) pure (parseJson surrogateRefusingLoads (BC.pack printed))
 
 -- | Run a subcommand of the reference's half and return its stdout.
 reference :: [String] -> IO String

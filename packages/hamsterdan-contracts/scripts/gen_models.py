@@ -174,8 +174,9 @@ class Generator:
         if values not in self.enums:
             ctors = [prefix + pascal(value) for value in values]
             lines = [f"data {name}", "  = " + "\n  | ".join(ctors), "  deriving stock (Eq, Ord, Show, Bounded, Enum)", ""]
-            lines += [f"instance Contract {name} where", "  contract =", f'    enum "{name}" $ \\case']
-            lines += [f'      {ctor} -> "{value}"' for ctor, value in zip(ctors, values)]
+            lines += [f"instance Enumeration {name} where", "  spelling = \\case"]
+            lines += [f'    {ctor} -> "{value}"' for ctor, value in zip(ctors, values)]
+            lines += ["", f"instance Contract {name} where", f'  contract = enumeration "{name}"']
             self.decls.append("\n".join(lines) + "\n")
             self.enums[values] = name
         return name, "contract"

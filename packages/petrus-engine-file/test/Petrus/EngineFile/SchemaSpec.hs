@@ -37,7 +37,7 @@ import Petrus.EngineFile.Corpus (Case (..))
 import Petrus.EngineFile.CorpusSpec (corpusPath)
 import Petrus.EngineFile.Corpus qualified as Corpus
 import Petrus.EngineFile.LiveSpec (repoRoot)
-import Petrus.Json.Parse (parseJson, pythonLoads)
+import Petrus.Json.Parse (parseJson, surrogateRefusingLoads)
 import Petrus.Json.Value (Json (..), exactEq, lookupMember)
 import System.FilePath ((</>))
 import Test.Hspec
@@ -47,7 +47,7 @@ schemaPath :: IO FilePath
 schemaPath = (</> "upstream" </> "petrus-engine" </> "src" </> "petrus" </> "net_file_schema.json") <$> repoRoot
 
 readJson :: BS.ByteString -> Json
-readJson = either error id . parseJson pythonLoads
+readJson = either error id . parseJson surrogateRefusingLoads
 
 -- Validation -------------------------------------------------------------------
 

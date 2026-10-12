@@ -300,7 +300,7 @@ classifiedFailure = \case
 faithful :: Text -> Json -> Either WireError Json
 faithful noun v = case dumps defaultDumps {allowNan = False, ensureAscii = False} v of
   Left problem -> value (noun <> " must be JSON-faithful: " <> T.pack (encodeErrorMessage problem))
-  Right bytes -> either (value . ((noun <> " must be JSON-faithful: ") <>) . T.pack) Right (parseJson pythonLoads bytes)
+  Right bytes -> either (value . ((noun <> " must be JSON-faithful: ") <>) . T.pack) Right (parseJson surrogateRefusingLoads bytes)
 
 -- ---------------------------------------------------------------------------
 -- Messages
@@ -321,7 +321,7 @@ encodeMessage v = case dumps compact {sortKeys = True} v of
 decodeMessage :: ByteString -> Either WireError [(Text, Json)]
 decodeMessage bytes = case decodeUtf8Python bytes of
   Left problem -> invalidJson problem
-  Right text -> case parseJson pythonLoads bytes of
+  Right text -> case parseJson surrogateRefusingLoads bytes of
     Right (Object members) -> Right members
     Right _ -> value "ZeroMQ Dispatch message must be a JSON object"
     Left problem -> case Scanner.loads Scanner.defaultHooks text of

@@ -24,7 +24,7 @@ import Test.Hspec
 loadJson :: FilePath -> IO Json
 loadJson file = do
   bytes <- BS.readFile file
-  either (\e -> throwIO (userError (file <> ": " <> show e))) pure (J.parseJson J.pythonLoads bytes)
+  either (\e -> throwIO (userError (file <> ": " <> show e))) pure (J.parseJson J.surrogateRefusingLoads bytes)
 
 member :: Text -> Json -> Json
 member key = \case

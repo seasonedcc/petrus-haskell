@@ -40,7 +40,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.HistoryStore.Postgres (HistoryStoreError (..), ensureSchema)
-import Petrus.Json (Json, parseJson, pythonLoads)
+import Petrus.Json (Json, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Python (uuid4)
 import Petrus.Postgres (Connection, close, connect, query, textParam)
 import Petrus.TestSupport (PostgresTarget (..), PythonFailure (..), pythonExecutable, upstreamPetrus)
@@ -100,7 +100,7 @@ rows connection instanceId = do
   where
     decode = \case
       [Just e, Just t, o, Just p] ->
-        Row (TE.decodeUtf8 e) (TE.decodeUtf8 t) (fmap (read . BC.unpack) o) (either error id (parseJson pythonLoads p))
+        Row (TE.decodeUtf8 e) (TE.decodeUtf8 t) (fmap (read . BC.unpack) o) (either error id (parseJson surrogateRefusingLoads p))
       other -> error ("unexpected row " <> show other)
 
 -- | @re.search@ of a pattern made of literal pieces joined by @.*@.
@@ -166,7 +166,7 @@ runScriptJson :: FilePath -> [String] -> IO Json
 runScriptJson script arguments = runScript script arguments >>= parsed
 
 parsed :: ByteString -> IO Json
-parsed bytes = either (\problem -> throwIO (PythonFailure ("invalid JSON: " <> problem) bytes "")) pure (parseJson pythonLoads bytes)
+parsed bytes = either (\problem -> throwIO (PythonFailure ("invalid JSON: " <> problem) bytes "")) pure (parseJson surrogateRefusingLoads bytes)
 
 -- | A running interactive script.
 data Interactive = Interactive

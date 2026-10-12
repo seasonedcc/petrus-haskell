@@ -24,7 +24,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Hamsterdan.Cli.Argparse (Action (..), Behavior (..), Outcome (..), Parser (..), lookupBool, lookupText, parseArgs)
+import Petrus.Argparse (parser)
+import Petrus.Argparse.Parser (Action (..), Behavior (..), Formatting (..), Outcome (..), Parser (..), lookupBool, lookupText, parseArgs, plainTheme)
 import Hamsterdan.Python.Object (PV (..), pyEq, toJson, truthy)
 import Hamsterdan.GitHub.Gateway (derivePolicy)
 import Hamsterdan.Operator
@@ -134,12 +135,12 @@ sha :: Char -> Text
 sha = T.replicate 40 . T.singleton
 
 subparser :: Text -> Parser
-subparser name = case [p | Action {behavior = Subcommands parsers} <- operatorParser.actions, (n, p) <- parsers, n == name] of
+subparser name = case [p | Action {behavior = Subcommands parsers} <- (parser operatorParser).actions, (n, p) <- parsers, n == name] of
   p : _ -> p
   [] -> error "no subparser"
 
 parsed :: [Text] -> (Text -> Maybe Text, Text -> Bool)
-parsed argv = case parseArgs 80 operatorParser argv of
+parsed argv = case parseArgs Formatting {width = 78, theme = plainTheme} (parser operatorParser) argv of
   Parsed namespace -> ((`lookupText` namespace), (`lookupBool` namespace))
   Exited {} -> error "parse failed"
 

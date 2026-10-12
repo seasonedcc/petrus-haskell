@@ -30,9 +30,9 @@ corpus checks the following byte for byte against the pinned Python (see
      whenever that rule is the reference's only refusal.
 3. **`Literal` vocabularies are enumerations.** For example, `Lifecycle`,
    `EffectKind` and `ReadinessDisposition` are sum types with one
-   constructor per spelling. Their wire spelling is `spell`. An invalid
-   spelling cannot be constructed, and decoding refuses exactly what
-   pydantic refuses.
+   constructor per spelling. Their wire spelling is `spelling` (contracts'
+   `Enumeration`). An invalid spelling cannot be constructed, and decoding
+   refuses exactly what pydantic refuses.
 4. **The model is two functions.**
    - The stateless class `ReadinessModel().evaluate` is `evaluate`.
    - `evaluate_liveness(…, budget_exhausted=b)` is
@@ -74,15 +74,13 @@ Python journey's, byte for byte, whole and cross-resumed (see
      patches `_ALLOWED` to source order (`change`, `update_base`,
      `resolve_conflict`). That is the order the Haskell host always uses
      (`mutations` in `Hamsterdan.Host.V5.Application`).
-2. **The publisher clones the fixture's remote by its `file://` URL.**
-   Upstream gives the real `HostGitPublisher` the public clone URL
-   `https://github.com/owner/repo.git`. Its Git environment then rewrites
-   that URL to the local bare repository with a `url.<remote>.insteadOf`
-   entry (`GIT_CONFIG_KEY_2`). The Haskell host's Git environment is a
-   constant, with no seam to patch, so the journeys hand the publisher the
-   remote's `file://` URL directly. The publisher runs the same `git`
-   commands against the same repository. The URL does not appear in any
-   result, state file or History record.
+2. **The publisher's clone URL: resolved, no longer a difference.** As
+   upstream does, the journeys give the real `HostGitPublisher` the public
+   clone URL `https://github.com/owner/repo.git`, and a
+   `url.<remote>.insteadOf` entry (`GIT_CONFIG_KEY_2`) rewrites it to the
+   local bare repository. Upstream patches `_git_environment()`; the
+   Haskell publisher takes the entry through its `extraGitConfig` field,
+   which is empty in production.
 3. **The publication is observed through `reconcileHook`.** Upstream
    monkeypatches `HostGitPublisher.reconcile` and `.publish` to record each
    call. Because `publish` calls `self.reconcile`, the record also holds
@@ -136,8 +134,9 @@ byte for byte, in both directions (see [PARITY.md](PARITY.md)).
      property over upstream's strategies (seed `0..2^53-1`, path, and
      before/after lists of at most one action) with `max_examples=6`.
    - **delivery recovery machine:** a Hedgehog state machine
-     (`Gen.sequential`/`executeSequential`) with `max_examples=12` and up
-     to `stateful_step_count=5` rules. `start` draws its seed as
+     (`Gen.sequential`/`executeSequential`) with `max_examples=12` whose
+     every run has exactly `stateful_step_count=5` steps, as Hypothesis's
+     runs do: `start` and 4 rules (`Range.singleton`). `start` draws its seed as
      `@initialize` does. Upstream's rule preconditions read the live
      timeline. "Execute one disclosed action" and "redeliver after
      quiescence" partition its states, so the machine has two rules: `Act`,
@@ -154,7 +153,11 @@ byte for byte, in both directions (see [PARITY.md](PARITY.md)).
      then a Hedgehog property over upstream's strategies with
      `max_examples=5`. For the timer, upstream's `assume` becomes a
      `discard`. On top of these come exhaustive enumerations: all 40 timer
-     cases the `assume` admits, and all 16 Git cases. Each enumeration
+     cases the `assume` admits, and the 14 Git cases upstream's test body
+     passes. The other 2 Git cases (no response loss, crash after
+     acceptance) are a test-oracle divergence: the Git property discards
+     them, and a separate test asserts the reference World's own invariant
+     failure there (see PARITY.md). Each enumeration
      covers every generated dimension except the World seed, which is the
      case's index.
 

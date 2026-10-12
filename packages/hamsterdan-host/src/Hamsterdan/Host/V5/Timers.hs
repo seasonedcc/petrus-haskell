@@ -46,7 +46,6 @@ import Data.Time.Calendar (fromGregorianValid, toGregorian)
 import Data.Time.Calendar.OrdinalDate ()
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Time.Calendar (Day (..))
-import Database.SQLite3 (SQLError)
 import Hamsterdan.Contracts.Codec (Contract, dump, validate, validateJson)
 import Petrus.Impetus.History.Records (ExternalEventDelivered (..), Record (..))
 import Petrus.Impetus.Petrinet.Marking (Token (..))
@@ -206,14 +205,14 @@ data Recoverable = Recoverable SomeException
 
 recoverable :: SomeException -> Maybe Recoverable
 recoverable e
-  | isJust (fromException @SQLError e) = Just (Recoverable e)
+  | Sql.isDatabaseError e = Just (Recoverable e)
   | isJust (fromException @RuntimeError e) = Just (Recoverable e)
-  | isJust (fromException @TypeError e) = Just (Recoverable e)
+  | isTypeError e = Just (Recoverable e)
   | isJust (fromException @ValueError e) = Just (Recoverable e)
   | otherwise = Nothing
 
 databaseOrRuntime :: SomeException -> Bool
-databaseOrRuntime e = isJust (fromException @SQLError e) || isJust (fromException @RuntimeError e)
+databaseOrRuntime e = Sql.isDatabaseError e || isJust (fromException @RuntimeError e)
 
 -- | @V5TimerStore.open(path, subject, history=..., outstanding=...)@ with
 -- the wall clock.

@@ -44,7 +44,7 @@ import Petrus.Json
 -- read back as a WTF-8 'Text' ("Petrus.Json.Wtf8") and written again byte
 -- for byte, so a History either implementation wrote loads in the other.
 historyLoads :: ParseOptions
-historyLoads = pythonLoads {loneSurrogates = KeepLoneSurrogates}
+historyLoads = pythonJsonLoads
 
 -- | The only schema this kernel writes and reads.
 schemaVersion :: Integer

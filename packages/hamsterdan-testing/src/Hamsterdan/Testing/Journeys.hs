@@ -1222,9 +1222,9 @@ publicationKeywords operation digest expectedHead baseHead mergeBase =
   ]
 
 -- | The V5 application with @_run_journey@'s publisher substitutions: the
--- observed real publisher for the journeys that publish (cloning the
--- fixture's remote; the reference reaches the same remote through an
--- @insteadOf@ rewrite of the public clone URL), the reconcile/publish
+-- observed real publisher for the journeys that publish (given the public
+-- clone URL, which an @insteadOf@ entry rewrites to the fixture's remote,
+-- as the reference's Git environment does), the reconcile/publish
 -- doubles for the CI-failure and conversational-change journeys, and the
 -- unpatched publisher otherwise.
 journeyApplications :: Flags -> IORef ProviderState -> ApplicationFactory
@@ -1234,8 +1234,13 @@ journeyApplications flags truth root instanceId authority runner options = do
     if
       | repairing flags, Just remote <- provider.gitRemote -> do
           absolute <- makeAbsolute remote
-          real <- hostGitPublisher (publicationAuthority authority) ("file://" <> T.pack absolute)
-          let observed = real {reconcileHook = observeReconcile}
+          let publicUrl = "https://github.com/owner/repo.git"
+          real <- hostGitPublisher (publicationAuthority authority) publicUrl
+          let observed =
+                real
+                  { reconcileHook = observeReconcile
+                  , extraGitConfig = [("url.file://" <> T.pack absolute <> ".insteadOf", publicUrl)]
+                  }
           pure . Just $
             MutationPublisher
               { reconcile = Git.reconcile observed

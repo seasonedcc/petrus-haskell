@@ -122,11 +122,11 @@ import Hamsterdan.Host.Service
   )
 import Hamsterdan.Host.Service qualified as Host
 import Hamsterdan.Host.V5.Application (ApplicationOptions (..))
-import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus, Lifecycle (..), ReadinessFacts, ReviewStatus, Spelled (..), dump, evaluate, loadJson)
+import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus, Lifecycle (..), ReadinessFacts, ReviewStatus, Enumeration (..), dump, evaluate, loadJson)
 import Hamsterdan.Testing.World.Contract
 import Hamsterdan.Testing.World.Provider hiding (setHumanComment)
 import Hamsterdan.Testing.World.Provider qualified as Provider
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, pythonJsonLoads)
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Testing.Dst
   ( ActionDisposition (..)
@@ -260,8 +260,8 @@ droppedGenerationsAlive p = do
   weaks <- readIORef p.dropped
   length . filter isJust <$> mapM deRefWeak weaks
 
-toProfileError :: PyError -> ProfileError
-toProfileError (PyError cls message) = ProfileError cls message
+toProfileError :: PythonException -> ProfileError
+toProfileError = uncurry ProfileError . classAndStr
 
 -- | Run an IO body as a profile door: exceptions become the reference
 -- class and message, and (with a holder) the World's context is held for
@@ -358,8 +358,8 @@ data ReadinessCommand
 data AgentStatus = AgentClear | AgentBlocking | AgentUnable | AgentChanged | AgentUnchanged
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled AgentStatus where
-  spell = \case
+instance Enumeration AgentStatus where
+  spelling = \case
     AgentClear -> "clear"
     AgentBlocking -> "blocking"
     AgentUnable -> "unable"
@@ -370,22 +370,22 @@ instance Spelled AgentStatus where
 data AgentFixture = FixtureReview | FixtureConversationChange | FixtureConversationRecover | FixtureCoding
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled AgentFixture where
-  spell = \case
+instance Enumeration AgentFixture where
+  spelling = \case
     FixtureReview -> "review"
     FixtureConversationChange -> "conversation_change"
     FixtureConversationRecover -> "conversation_recover"
     FixtureCoding -> "coding"
 
 -- | The member of a closed vocabulary a JSON string spells.
-spelledAs :: (Spelled a) => Json -> Maybe a
+spelledAs :: (Enumeration a) => Json -> Maybe a
 spelledAs = \case
-  String s -> find ((== s) . spell) [minBound .. maxBound]
+  String s -> find ((== s) . spelling) [minBound .. maxBound]
   _ -> Nothing
 
 -- | @validate(command)@, parsing as it checks: the same checks, in the
 -- same order, with the same messages.
-parseCommand :: Command -> Either PyError ReadinessCommand
+parseCommand :: Command -> Either PythonException ReadinessCommand
 parseCommand c = do
   keys <- maybe (fails ("unknown readiness command " <> pythonStrRepr c.name)) Right (Map.lookup c.name commandKeys)
   _ <- boundedJson c.payload (profileLimit PayloadBytes) c.name
@@ -482,8 +482,8 @@ parseCommand c = do
     -- 'commandKeys' names exactly the commands above.
     _ -> fails ("unknown readiness command " <> pythonStrRepr name)
   where
-    fails :: Text -> Either PyError a
-    fails = Left . PyError "ValueError"
+    fails :: Text -> Either PythonException a
+    fails = Left . pythonError "ValueError"
     exactUuid = \case
       String s | validUuid s -> Right s
       _ -> fails "webhook delivery must be an exact UUID"
@@ -502,11 +502,11 @@ renderCommand = \case
   SetCi sha required checks ->
     subjectCommand "readiness.github.ci.set" [("head", String sha), ("required_checks", Array (map String required)), ("checks", Array (map ciCheckJson checks))]
   SetReview sha status found ->
-    subjectCommand "readiness.github.review.set" [("head", String sha), ("status", String (spell status)), ("findings", Array found)]
+    subjectCommand "readiness.github.review.set" [("head", String sha), ("status", String (spelling status)), ("findings", Array found)]
   HumanReview reviewer sha review state ->
     subjectCommand
       "readiness.github.human.review"
-      [("review", Int review), ("reviewer", String reviewer), ("head", String sha), ("state", String (spell state))]
+      [("review", Int review), ("reviewer", String reviewer), ("head", String sha), ("state", String (spelling state))]
   ResolveThread thread resolver resolved ->
     subjectCommand "readiness.github.human.resolve_thread" [("thread", String thread), ("resolver", String resolver), ("resolved", Bool resolved)]
   HumanComment comment author fixture ->
@@ -522,9 +522,9 @@ renderCommand = \case
       "readiness.agent.terminal"
       [ ("operation", String operation)
       , ("attempt", Int attempt)
-      , ("status", String (spell status))
-      , ("fixture", String (spell fixture))
-      , ("digest", String (strictDigest (Object [("fixture", String (spell fixture)), ("status", String (spell status))])))
+      , ("status", String (spelling status))
+      , ("fixture", String (spelling fixture))
+      , ("digest", String (strictDigest (Object [("fixture", String (spelling fixture)), ("status", String (spelling status))])))
       ]
   EmitWebhook delivery event fixture ->
     subjectCommand
@@ -558,14 +558,14 @@ changesProviderTruth = \case
 
 
 -- | @parse_authority(value)@.
-parseAuthority :: Json -> Either PyError AuthorityClaim
-parseAuthority value = either (Left . PyError "ValidationError") Right (loadJson value)
+parseAuthority :: Json -> Either PythonException AuthorityClaim
+parseAuthority value = either (Left . pythonError "ValidationError") Right (loadJson value)
 
 -- | @validate_fault(fault)@.
-validateFault :: Fault -> Either PyError Fault
+validateFault :: Fault -> Either PythonException Fault
 validateFault f = do
   _ <- boundedJson f.payload 4096 f.name
-  let fails = Left . PyError "ValueError"
+  let fails = Left . pythonError "ValueError"
   if f.name == "readiness.git.publish"
     then do
       unless ("git:" `T.isPrefixOf` f.target && f.disposition == Raise) $ fails "unsupported readiness Git publication fault"
@@ -639,7 +639,7 @@ start p = do
 applyCommand :: ReadinessProfile -> Generation -> Command -> Scenario IO ApplyResult
 applyCommand p g c = contextDoor p (Just g.context) $ \now -> do
   -- The World applies only what 'parseCommand' accepted as @validate@.
-  parsed <- either (\(PyError cls m) -> throwPy cls m) pure (parseCommand c)
+  parsed <- either (uncurry throwPy . classAndStr) pure (parseCommand c)
   modifyIORef' g.proposed (Set.delete (c.name, now))
   when (changesProviderTruth parsed) $
     modifyIORef' p.truth (\t -> t {providerTruthChanges = t.providerTruthChanges + 1})
@@ -674,7 +674,7 @@ applyOne p g parsed now = case parsed of
     modifyIORef' ref (\t -> t {requiredChecks = required, checks, reviewHead = sha})
     pure (Object [("checks", int (toInteger (length checks)))], Applied)
   SetReview sha status found -> do
-    let spelled = String (spell status)
+    let spelled = String (spelling status)
     modifyIORef' ref $ \t ->
       t
         { reviewHead = sha
@@ -685,7 +685,7 @@ applyOne p g parsed now = case parsed of
     pure (Object [("status", spelled), ("findings", int (toInteger (length found)))], Applied)
   HumanReview reviewer _ _ state -> do
     modifyIORef' ref (\t -> t {humanReviews = Map.insert reviewer (T.pack (printf "%020d" now), state) t.humanReviews})
-    pure (Object [("reviewer", String reviewer), ("state", String (spell state))], Applied)
+    pure (Object [("reviewer", String reviewer), ("state", String (spelling state))], Applied)
   ResolveThread thread _ resolved -> do
     modifyIORef' ref (\t -> t {reviewThreads = Map.insert thread resolved t.reviewThreads})
     pure (Object [("thread", String thread), ("resolved", Bool resolved)], Applied)
@@ -699,16 +699,16 @@ applyOne p g parsed now = case parsed of
             Map.insert
               operation
               ( Object
-                  [ ("kind", String (spell fixture))
+                  [ ("kind", String (spelling fixture))
                   , ("operation", String operation)
                   , ("attempt", Int attempt)
-                  , ("status", String (spell status))
+                  , ("status", String (spelling status))
                   , ("findings", Array [])
                   ]
               )
               t.agentTerminals
         }
-    pure (Object [("operation", String operation), ("status", String (spell status))], Applied)
+    pure (Object [("operation", String operation), ("status", String (spelling status))], Applied)
   EmitWebhook delivery event fixture -> do
     t <- readIORef ref
     let action = T.drop 1 (snd (T.breakOn ":" fixture))
@@ -954,7 +954,7 @@ readinessState p g now = do
           , ("work", work)
           , ("bounds", Object [("limits", Object [(k, Int v) | (k, v) <- profileResourceLimits]), ("usage", Object [(k, Int v) | (k, v) <- Map.toAscList usage.values])])
           ]
-  either (\(PyError cls m) -> throwPy cls m) (const (pure state)) (boundedJson state (profileLimit ObservationBytes) "readiness observation")
+  either (uncurry throwPy . classAndStr) (const (pure state)) (boundedJson state (profileLimit ObservationBytes) "readiness observation")
 
 -- | @resource_usage(generation)@ (@_usage@).
 profileResourceUsage :: ReadinessProfile -> Maybe Generation -> IO ResourceUsage
@@ -1053,7 +1053,7 @@ factsOf t timers = loadJson value
         [ ("subject", String subject)
         , ("authority", Object [("generation", Int (generationCount admissions)), ("admitted", admittedClaim), ("provider", dump t.authority)])
         , ("admitted_observations", Array [String (identityOf' e) | e <- admissions])
-        , ("ci", Object [("head", String t.reviewHead), ("required_checks", Array (map String t.requiredChecks)), ("checks", Array [Object [("name", String c.name), ("status", String (spell c.status))] | c <- t.checks])])
+        , ("ci", Object [("head", String t.reviewHead), ("required_checks", Array (map String t.requiredChecks)), ("checks", Array [Object [("name", String c.name), ("status", String (spelling c.status))] | c <- t.checks])])
         , ("review", review)
         ,
           ( "human"
@@ -1266,7 +1266,7 @@ historyRecords root = do
     else do
       bytes <- BS.readFile path
       forM (filter (not . BS.null) (BC.lines bytes)) $ \line ->
-        either (\message -> throwPy "JSONDecodeError" (T.pack message)) pure (parseJson pythonLoads line)
+        either (\message -> throwPy "JSONDecodeError" (T.pack message)) pure (parseJson pythonJsonLoads line)
 
 -- | @_history(root)@: the History summary and the terminal operations.
 historySummary :: FilePath -> IO (Json, [Text])
@@ -1562,7 +1562,7 @@ checkReadiness o = do
       neutral = hostState .: "ready" == Null
       readyParity = readinessParity && actualParity && neutral
       parity = readyParity && snapshotParity && timerParity && gitParity
-  retained <- either (\(PyError cls m) -> Left (ProfileError cls m)) (Right . TE.decodeUtf8) (boundedJson state (profileLimit ObservationBytes) "checker observation")
+  retained <- either (Left . toProfileError) (Right . TE.decodeUtf8) (boundedJson state (profileLimit ObservationBytes) "checker observation")
   let sensitive =
         [ label
         | (label, value) <- [("client_id", clientId), ("private_key", privateKey), ("webhook_secret", webhookSecret)]

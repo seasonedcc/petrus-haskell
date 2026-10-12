@@ -14,7 +14,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import GHC.Clock (getMonotonicTime)
-import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Postgres
 import Petrus.TestSupport
 import System.Timeout (timeout)
@@ -46,7 +46,7 @@ texts :: [Text] -> Json
 texts = Array . map String
 
 decode :: ByteString -> Json
-decode = either error id . parseJson pythonLoads
+decode = either error id . parseJson surrogateRefusingLoads
 
 member :: Text -> Json -> Json
 member key = \case

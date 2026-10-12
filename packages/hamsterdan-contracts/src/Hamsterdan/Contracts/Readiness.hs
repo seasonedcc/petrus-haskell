@@ -1807,13 +1807,15 @@ data GenerationRelation
   | RelationResumed
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration GenerationRelation where
+  spelling = \case
+    RelationNew -> "new"
+    RelationConfirmed -> "confirmed"
+    RelationSuperseded -> "superseded"
+    RelationResumed -> "resumed"
+
 instance Contract GenerationRelation where
-  contract =
-    enum "GenerationRelation" $ \case
-      RelationNew -> "new"
-      RelationConfirmed -> "confirmed"
-      RelationSuperseded -> "superseded"
-      RelationResumed -> "resumed"
+  contract = enumeration "GenerationRelation"
 
 data StopStatus
   = StoppedDraft
@@ -1821,23 +1823,27 @@ data StopStatus
   | StoppedClosed
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration StopStatus where
+  spelling = \case
+    StoppedDraft -> "draft"
+    StoppedMerged -> "merged"
+    StoppedClosed -> "closed"
+
 instance Contract StopStatus where
-  contract =
-    enum "StopStatus" $ \case
-      StoppedDraft -> "draft"
-      StoppedMerged -> "merged"
-      StoppedClosed -> "closed"
+  contract = enumeration "StopStatus"
 
 data Boundary
   = BoundaryStart
   | BoundaryStop
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration Boundary where
+  spelling = \case
+    BoundaryStart -> "start"
+    BoundaryStop -> "stop"
+
 instance Contract Boundary where
-  contract =
-    enum "Boundary" $ \case
-      BoundaryStart -> "start"
-      BoundaryStop -> "stop"
+  contract = enumeration "Boundary"
 
 data AdmissionRelation
   = AdmissionNew
@@ -1847,14 +1853,16 @@ data AdmissionRelation
   | AdmissionSameHeadBasisChanged
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration AdmissionRelation where
+  spelling = \case
+    AdmissionNew -> "new"
+    AdmissionConfirmed -> "confirmed"
+    AdmissionSuperseded -> "superseded"
+    AdmissionSameHead -> "same_head"
+    AdmissionSameHeadBasisChanged -> "same_head_basis_changed"
+
 instance Contract AdmissionRelation where
-  contract =
-    enum "AdmissionRelation" $ \case
-      AdmissionNew -> "new"
-      AdmissionConfirmed -> "confirmed"
-      AdmissionSuperseded -> "superseded"
-      AdmissionSameHead -> "same_head"
-      AdmissionSameHeadBasisChanged -> "same_head_basis_changed"
+  contract = enumeration "AdmissionRelation"
 
 data ActionsPhase
   = ActionsDiscovering
@@ -1872,22 +1880,24 @@ data ActionsPhase
   | ActionsUnavailable
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration ActionsPhase where
+  spelling = \case
+    ActionsDiscovering -> "discovering"
+    ActionsCapabilityUnavailable -> "capability_unavailable"
+    ActionsRunning -> "running"
+    ActionsWaiting -> "waiting"
+    ActionsGreen -> "green"
+    ActionsFlakyGreen -> "flaky_green"
+    ActionsFailed -> "failed"
+    ActionsReproduced -> "reproduced"
+    ActionsRerunRequested -> "rerun_requested"
+    ActionsQueued -> "queued"
+    ActionsRequested -> "requested"
+    ActionsCanceled -> "canceled"
+    ActionsUnavailable -> "unavailable"
+
 instance Contract ActionsPhase where
-  contract =
-    enum "ActionsPhase" $ \case
-      ActionsDiscovering -> "discovering"
-      ActionsCapabilityUnavailable -> "capability_unavailable"
-      ActionsRunning -> "running"
-      ActionsWaiting -> "waiting"
-      ActionsGreen -> "green"
-      ActionsFlakyGreen -> "flaky_green"
-      ActionsFailed -> "failed"
-      ActionsReproduced -> "reproduced"
-      ActionsRerunRequested -> "rerun_requested"
-      ActionsQueued -> "queued"
-      ActionsRequested -> "requested"
-      ActionsCanceled -> "canceled"
-      ActionsUnavailable -> "unavailable"
+  contract = enumeration "ActionsPhase"
 
 data ReviewStatus
   = ReviewPending
@@ -1896,24 +1906,28 @@ data ReviewStatus
   | ReviewUnable
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration ReviewStatus where
+  spelling = \case
+    ReviewPending -> "pending"
+    ReviewClear -> "clear"
+    ReviewBlocking -> "blocking"
+    ReviewUnable -> "unable"
+
 instance Contract ReviewStatus where
-  contract =
-    enum "ReviewStatus" $ \case
-      ReviewPending -> "pending"
-      ReviewClear -> "clear"
-      ReviewBlocking -> "blocking"
-      ReviewUnable -> "unable"
+  contract = enumeration "ReviewStatus"
 
 data TerminalStatus
   = TerminalSuccess
   | TerminalAbort
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration TerminalStatus where
+  spelling = \case
+    TerminalSuccess -> "success"
+    TerminalAbort -> "abort"
+
 instance Contract TerminalStatus where
-  contract =
-    enum "TerminalStatus" $ \case
-      TerminalSuccess -> "success"
-      TerminalAbort -> "abort"
+  contract = enumeration "TerminalStatus"
 
 data ReviewOutcome
   = OutcomeClear
@@ -1921,12 +1935,14 @@ data ReviewOutcome
   | OutcomeUnable
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration ReviewOutcome where
+  spelling = \case
+    OutcomeClear -> "clear"
+    OutcomeBlocking -> "blocking"
+    OutcomeUnable -> "unable"
+
 instance Contract ReviewOutcome where
-  contract =
-    enum "ReviewOutcome" $ \case
-      OutcomeClear -> "clear"
-      OutcomeBlocking -> "blocking"
-      OutcomeUnable -> "unable"
+  contract = enumeration "ReviewOutcome"
 
 data ActionsConclusion
   = ConclusionUnavailable
@@ -1939,17 +1955,19 @@ data ActionsConclusion
   | ConclusionCanceled
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration ActionsConclusion where
+  spelling = \case
+    ConclusionUnavailable -> "unavailable"
+    ConclusionQueued -> "queued"
+    ConclusionRequested -> "requested"
+    ConclusionWaiting -> "waiting"
+    ConclusionInProgress -> "in_progress"
+    ConclusionSuccess -> "success"
+    ConclusionFailure -> "failure"
+    ConclusionCanceled -> "canceled"
+
 instance Contract ActionsConclusion where
-  contract =
-    enum "ActionsConclusion" $ \case
-      ConclusionUnavailable -> "unavailable"
-      ConclusionQueued -> "queued"
-      ConclusionRequested -> "requested"
-      ConclusionWaiting -> "waiting"
-      ConclusionInProgress -> "in_progress"
-      ConclusionSuccess -> "success"
-      ConclusionFailure -> "failure"
-      ConclusionCanceled -> "canceled"
+  contract = enumeration "ActionsConclusion"
 
 data IntentKind
   = IntentReply
@@ -1966,21 +1984,23 @@ data IntentKind
   | IntentRecoverPublication
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
+instance Enumeration IntentKind where
+  spelling = \case
+    IntentReply -> "reply"
+    IntentStatus -> "status"
+    IntentAcknowledge -> "acknowledge"
+    IntentDismiss -> "dismiss"
+    IntentDefer -> "defer"
+    IntentSnooze -> "snooze"
+    IntentResume -> "resume"
+    IntentReassign -> "reassign"
+    IntentChange -> "change"
+    IntentUpdateBase -> "update_base"
+    IntentResolveConflict -> "resolve_conflict"
+    IntentRecoverPublication -> "recover_publication"
+
 instance Contract IntentKind where
-  contract =
-    enum "IntentKind" $ \case
-      IntentReply -> "reply"
-      IntentStatus -> "status"
-      IntentAcknowledge -> "acknowledge"
-      IntentDismiss -> "dismiss"
-      IntentDefer -> "defer"
-      IntentSnooze -> "snooze"
-      IntentResume -> "resume"
-      IntentReassign -> "reassign"
-      IntentChange -> "change"
-      IntentUpdateBase -> "update_base"
-      IntentResolveConflict -> "resolve_conflict"
-      IntentRecoverPublication -> "recover_publication"
+  contract = enumeration "IntentKind"
 
 -- | Every model of the module, in declaration order.
 models :: [Model]

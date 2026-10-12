@@ -96,7 +96,7 @@ writerBytes value = either (error . show) id (dumps indented value) <> "\n"
 
 -- | @json.loads(bytes)@ for bytes known to be valid JSON.
 mustJson :: ByteString -> Json
-mustJson = either error id . parseJson pythonLoads
+mustJson = either error id . parseJson surrogateRefusingLoads
 
 -- | The upstream tests' feature-complete net: every declaration kind, every
 -- arc mode, timers, a completion condition, and a name.

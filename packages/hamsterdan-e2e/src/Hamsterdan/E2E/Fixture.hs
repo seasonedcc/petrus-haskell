@@ -13,7 +13,7 @@ import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Operator (Fixture (..), Operator (..), defaultOperator)
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, pythonJsonLoads)
 
 -- | The operator over a fixture: 'defaultOperator' with its fixture and
 -- delegated broker digests.
@@ -24,7 +24,7 @@ fixtureOperator (fixture, (brokerDigest, validatorDigest)) =
 readFixture :: FilePath -> IO (Fixture, (Text, Text))
 readFixture path = do
   bytes <- BS.readFile path
-  either (ioError . userError . ((path <> ": ") <>)) pure (parseJson pythonLoads bytes >>= parseFixture)
+  either (ioError . userError . ((path <> ": ") <>)) pure (parseJson pythonJsonLoads bytes >>= parseFixture)
 
 -- | @fixture.parse@: exactly the eight members, positive ids, non-empty
 -- strings, and a repository inside the organization.

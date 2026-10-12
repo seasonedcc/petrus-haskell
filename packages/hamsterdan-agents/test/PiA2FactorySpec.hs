@@ -35,7 +35,7 @@ import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationState (..), mkContinuation)
 import Petrus.Agenticus.Thread.Identity (mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Execution.Archive (workspaceArchive)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import System.Directory (createDirectory, createDirectoryIfMissing, doesFileExist)
@@ -296,7 +296,7 @@ spec = describe "tests/integration/host/test_pi_a2_factory.py" $ do
         operationId = piOperationId logical 1
         identity = sha256Hex (TE.encodeUtf8 operationId)
     current <- case encodePrompt ReviewKind repositoryUrl (AgentReview reviewRequest) of
-      Right prompt -> either (throwIO . userError) pure (parseJson pythonLoads (TE.encodeUtf8 prompt))
+      Right prompt -> either (throwIO . userError) pure (parseJson surrogateRefusingLoads (TE.encodeUtf8 prompt))
       Left failure -> throwIO (userError (show failure))
     let members = case current of
           Object fields -> fields

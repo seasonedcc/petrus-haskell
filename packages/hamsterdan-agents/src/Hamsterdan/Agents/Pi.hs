@@ -76,7 +76,7 @@ import Petrus.Agenticus.Runtime.PiA2Host
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Identity (literalEpisodeId, literalTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))
-import Petrus.Json (EncodeOptions (..), Json (..), LoneSurrogates (..), ParseOptions (..), defaultDumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, pythonJsonLoads)
 
 -- ---------------------------------------------------------------------------
 -- Prompts
@@ -578,7 +578,7 @@ parseResult :: Text -> V [(Text, Json)]
 parseResult raw = do
   let bytes = TE.encodeUtf8 raw
   when (BS.length bytes > maxResultBytes) $ refuse "Pi result exceeded limit"
-  value <- case parseJson pythonLoads {loneSurrogates = KeepLoneSurrogates} bytes of
+  value <- case parseJson pythonJsonLoads bytes of
     Right value -> Right value
     Left message
       | "maximum nesting depth" `isPrefixOf` message -> foreignFailure "RecursionError" "maximum recursion depth exceeded"

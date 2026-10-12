@@ -27,7 +27,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Python.Exception (raisingDumps)
 import Hamsterdan.Python.Text (isAscii, isPrintable, pyIntBase, utf8Length)
-import Petrus.Json (Json (..), dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), dumps, parseJson, pythonJsonLoads)
 import Petrus.Json qualified as Json
 import Petrus.Motus.Worker (RuntimeError (..), ValueError (..))
 import Petrus.Posix.File (AtomicWrite (..), atomicWriteFile, prefixNaming)
@@ -130,7 +130,7 @@ readInstanceBinding path = do
   case outcome of
     Right (Just bytes)
       | Right _ <- TE.decodeUtf8' bytes
-      , Right value <- parseJson pythonLoads bytes
+      , Right value <- parseJson pythonJsonLoads bytes
       , Right binding <- parseInstanceBinding value ->
           pure binding
     _ -> throwIO unreadable

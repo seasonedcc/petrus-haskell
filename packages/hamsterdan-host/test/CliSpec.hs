@@ -6,10 +6,10 @@
 -- calls against a recording fake GitHub.
 module CliSpec (spec) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Control.Exception (bracket, throwIO)
-import Data.Char (toLower)
+import Control.Exception (bracket, finally, throwIO)
+import Data.Char (isDigit, toLower)
 import Control.Monad (forM, forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -32,18 +32,19 @@ import Hamsterdan.GitHub.Http (newPlainExchangeAt)
 import Hamsterdan.Agents.Pi.Doubles (piPackageFixture)
 import Hamsterdan.Host.Agents (composeHostAgent, productionAgentSeams)
 import Hamsterdan.Host.Cli
-import Hamsterdan.Cli.Argparse (environmentColumns)
+import Petrus.Argparse (environmentColumns)
 import Hamsterdan.Host.Python (ValueError (..))
 import Hamsterdan.Host.Service (noAgentCustody, openHostService, serviceOptions)
 import Hamsterdan.Host.Service qualified as Host
 import IngressApplicationSpec (objectRunner)
-import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import ServiceSupport (envelope, hostClientsOf, hostConfig, newFakeClients, receiveSigned, sqlExec)
 import System.Directory (createDirectory, createDirectoryIfMissing, createDirectoryLink, doesFileExist, removeFile)
-import System.Posix.Signals (raiseSignal, sigINT, sigTERM)
-import Network.Socket (close)
+import System.Posix.Signals (raiseSignal, sigINT, sigTERM, signalProcess)
+import System.Timeout (timeout)
+import Network.Socket (Family (AF_INET), SockAddr (SockAddrInet), Socket, SocketType (Stream), bind, close, defaultProtocol, listen, socket, socketPort, tupleToHostAddress)
 import Network.Wai.Handler.Warp qualified as Warp
 import RawHttp (RawResponse (..), parseResponse)
 import RawHttp qualified
@@ -189,13 +190,88 @@ spec = do
         runCli cli ["serve"] `shouldReturn` ExitSuccess
         readIORef reraised `shouldReturn` again
         hClose silent
-        BS.readFile (tmp </> "discarded.txt") `shouldReturn` ""
+        -- uvicorn's lines, stdout and stderr alike written to the one
+        -- handle (the differential case below compares them with the
+        -- reference's).
+        logged <- TE.decodeUtf8 <$> BS.readFile (tmp </> "discarded.txt")
+        T.lines (normalizeLog [port] logged)
+          `shouldBe` [ "INFO:     Started server process [PID]"
+                     , "INFO:     Waiting for application startup."
+                     , "INFO:     Application startup complete."
+                     , "INFO:     Uvicorn running on http://127.0.0.1:PORT (Press CTRL+C to quit)"
+                     , "INFO:     127.0.0.1:CLIENT - \"GET /healthz HTTP/1.0\" 200 OK"
+                     , "INFO:     Shutting down"
+                     , "INFO:     Waiting for application shutdown."
+                     , "INFO:     Application shutdown complete."
+                     , "INFO:     Finished server process [PID]"
+                     ]
         response <- takeMVar probed
         response.statusLine `shouldBe` "HTTP/1.1 200 OK"
         lookup "connection" [(BC.map toLower name, value) | (name, value) <- response.headers] `shouldBe` Just "close"
         -- The owned runtime and the route store exist and were released.
         doesFileExist (lookupState side </> "agent-routes.sqlite3") `shouldReturn` True
         doesFileExist (lookupState side </> "pi-a2" </> "installation") `shouldReturn` True
+
+  describe "serve against the reference (uvicorn's log lines)" $ do
+    let forwardedEnvironment side port =
+          Map.insert "FORWARDED_ALLOW_IPS" "10.0.0.0/8, 127.0.0.1,::1 , unix:/tmp/x" (Map.insert "HAMSTERDAN_PORT" (show port) side.configured)
+        withSides tmp action = do
+          repo <- repoRoot
+          privateKey <- BS.readFile (repo </> "packages" </> "hamsterdan-github" </> "test" </> "corpus" </> "app-test-key.pem")
+          withFakeGitHub registrationRoutes $ \githubPort _ -> do
+            referenceSide <- prepareSide (tmp </> "reference") privateKey
+            portSide <- prepareSide (tmp </> "port") privateKey
+            action githubPort referenceSide portSide
+    it "logs startup, an access line per response and shutdown as the reference does" . withTempRoot $ \tmp ->
+      withSides tmp $ \githubPort referenceSide portSide -> do
+        referencePort <- freePort
+        reference <- serveReference tmp githubPort (forwardedEnvironment referenceSide referencePort) serveRequests
+        ourPort <- freePort
+        ours <- servePort tmp githubPort (forwardedEnvironment portSide ourPort) serveRequests
+        -- The reference ends by SIGTERM, raised again after the shutdown.
+        reference.code `shouldBe` (-15)
+        length (T.lines reference.out) `shouldBe` length serveRequestBytes
+        normalizedOutcome [ourPort] ours `shouldBe` normalizedOutcome [referencePort] reference
+    it "logs a bind failure, shuts the lifespan down and exits 3 as the reference does" . withTempRoot $ \tmp ->
+      withSides tmp $ \githubPort referenceSide portSide ->
+        bracket occupiedPort (close . snd) $ \(busy, _) -> do
+          reference <- serveReference tmp githubPort (forwardedEnvironment referenceSide busy) (\_ -> pure ())
+          ours <- servePort tmp githubPort (forwardedEnvironment portSide busy) (\_ -> pure ())
+          reference.code `shouldBe` 3
+          normalizedOutcome [busy] ours `shouldBe` normalizedOutcome [busy] reference
+    it "answers a failing route 500 and logs its exception as the reference does" . withTempRoot $ \tmp ->
+      withSides tmp $ \githubPort referenceSide portSide -> do
+        -- With the inbox table renamed away under the running server,
+        -- @/healthz@'s inbox count raises sqlite3's OperationalError. The
+        -- worker's next pump (every 0.25 s) raises it too, and the
+        -- lifespan's shutdown re-raises it on both sides; waiting a second
+        -- before the SIGTERM makes that pump certain rather than a race.
+        let failing side port = do
+              sqlExec (lookupState side </> "webhooks.sqlite3") "ALTER TABLE inbox RENAME TO inbox_gone" []
+              void (RawHttp.exchange port (RawHttp.rawRequest "GET" "/healthz" [] ""))
+              threadDelay 1000000
+        referencePort <- freePort
+        reference <- serveReference tmp githubPort (forwardedEnvironment referenceSide referencePort) (failing referenceSide)
+        ourPort <- freePort
+        ours <- servePort tmp githubPort (forwardedEnvironment portSide ourPort) (failing portSide)
+        reference.code `shouldBe` (-15)
+        reference.out `shouldSatisfy` T.isInfixOf "\"GET /healthz HTTP/1.1\" 500 Internal Server Error"
+        reference.err `shouldSatisfy` T.isInfixOf "ERROR:    Exception in ASGI application\n"
+        reference.err `shouldSatisfy` T.isInfixOf "ERROR:    Application shutdown failed. Exiting.\n"
+        normalizedOutcome [ourPort] ours `shouldBe` normalizedOutcome [referencePort] reference
+    it "logs a lifespan startup failure and exits 3 as the reference does" . withTempRoot $ \tmp -> do
+      repo <- repoRoot
+      privateKey <- BS.readFile (repo </> "packages" </> "hamsterdan-github" </> "test" </> "corpus" </> "app-test-key.pem")
+      -- A GitHub that knows no App: the startup registration check fails.
+      withFakeGitHub (\_ _ -> Nothing) $ \githubPort _ -> do
+        referenceSide <- prepareSide (tmp </> "reference") privateKey
+        portSide <- prepareSide (tmp </> "port") privateKey
+        referencePort <- freePort
+        reference <- serveReference tmp githubPort (forwardedEnvironment referenceSide referencePort) (\_ -> pure ())
+        ourPort <- freePort
+        ours <- servePort tmp githubPort (forwardedEnvironment portSide ourPort) (\_ -> pure ())
+        reference.code `shouldBe` 3
+        normalizedOutcome [ourPort] ours `shouldBe` normalizedOutcome [referencePort] reference
 
   describe "the command line against the reference (python -m hamsterdan.host)" $
     it "prints, exits, changes state and calls GitHub exactly as the reference" . withTempRoot $ \tmp -> do
@@ -219,6 +295,9 @@ spec = do
             piRefusals = [o | (c, o) <- outcomes, any (`Map.member` c.env) ["HAMSTERDAN_PI_API_KEY_FILE"] || not (Map.member "HAMSTERDAN_PI_PROVIDER" c.env && Map.member "HAMSTERDAN_PI_API_KEY" c.env) && Map.member "HAMSTERDAN_STATE_PATH" c.env, o.code == 2]
         length succeeded `shouldSatisfy` (>= 4)
         length piRefusals `shouldSatisfy` (>= 3)
+        -- FORCE_COLOR colors the help and both usage errors, even with
+        -- TERM=dumb; NO_COLOR refuses.
+        length [o | o <- references, "\ESC[" `T.isInfixOf` (o.out <> o.err)] `shouldBe` 6
         forM_ (zip3 referenceCases references ours) $ \(theCase, expected, actual) ->
           unless (expected == actual) $
             expectationFailure
@@ -309,6 +388,25 @@ prepareSide base privateKey = do
   createDirectoryIfMissing True floats
   BS.writeFile (floats </> "binding.json") "{\"instance_id\": \"github:44:31:pr:9\", \"repository\": \"owner/one\", \"pull_request\": 9, \"topology\": \"v5\"}"
   BS.writeFile (floats </> "history.jsonl") "{\"record\": \"InstanceCreated\", \"instant\": 1}\r\n{\"record\": \"ActivityCompleted\", \"occurrence\": 2, \"instant\": 1.0}\r{\"record\": \"Other\", \"instant\": 2.25, \"occurrence\": true}\n"
+  -- A History holding lone surrogate escapes, which @json.loads@ keeps.
+  let surrogates = inspected </> "applications" </> "44" </> "31" </> "11"
+  createDirectoryIfMissing True surrogates
+  BS.writeFile (surrogates </> "binding.json") "{\"instance_id\": \"github:44:31:pr:11\", \"repository\": \"owner/one\", \"pull_request\": 11, \"topology\": \"v5\"}"
+  BS.writeFile (surrogates </> "history.jsonl") "{\"record\": \"InstanceStarted\", \"instant\": 1, \"note\": \"\\ud800\"}\n{\"record\": \"ActivityRequested\", \"occurrence\": 2, \"instant\": 2, \"transition\": \"execute.x\", \"activity\": \"x\", \"input\": {\"work\": {\"operation\": \"op\", \"\\udfff\\ud800x\": \"\\ud83d\"}}}\n"
+  -- An @ActivityRequested@ whose operation holds one: @_identifier@'s
+  -- @value.encode()@ refuses it.
+  let unencodable = inspected </> "applications" </> "44" </> "31" </> "12"
+  createDirectoryIfMissing True unencodable
+  BS.writeFile (unencodable </> "binding.json") "{\"instance_id\": \"github:44:31:pr:12\", \"repository\": \"owner/one\", \"pull_request\": 12, \"topology\": \"v5\"}"
+  BS.writeFile (unencodable </> "history.jsonl") "{\"record\": \"ActivityRequested\", \"occurrence\": 2, \"instant\": 2, \"transition\": \"execute.x\", \"activity\": \"x\", \"input\": {\"work\": {\"operation\": \"op\\ud800\"}}}\n"
+  -- Integer instants on either side of CPython's int-to-float overflow
+  -- threshold, 2^1024 - 2^970: the first rounds to DBL_MAX, the second
+  -- raises @OverflowError@.
+  forM_ [(13, 2 ^ (1024 :: Int) - 2 ^ (970 :: Int) - 1), (14, 2 ^ (1024 :: Int) - 2 ^ (970 :: Int))] $ \(pr, instant) -> do
+    let huge = inspected </> "applications" </> "44" </> "31" </> show (pr :: Int)
+    createDirectoryIfMissing True huge
+    BS.writeFile (huge </> "binding.json") (BC.pack ("{\"instance_id\": \"github:44:31:pr:" <> show pr <> "\", \"repository\": \"owner/one\", \"pull_request\": " <> show pr <> ", \"topology\": \"v5\"}"))
+    BS.writeFile (huge </> "history.jsonl") (BC.pack ("{\"record\": \"InstanceCreated\", \"instant\": " <> show (instant :: Integer) <> "}\n"))
   pure Side {configured, inspection = Map.insert "HAMSTERDAN_STATE_PATH" inspected configured}
 
 cases :: Side -> Int -> [Case]
@@ -317,6 +415,12 @@ cases side githubPort =
   [Case args (Map.fromList [("COLUMNS", "80")]) Nothing | args <- parsing]
     <> [Case ["-h"] (Map.fromList [("COLUMNS", columns)]) Nothing | columns <- widths]
     <> [Case ["bogus"] (Map.fromList [("COLUMNS", columns)]) Nothing | columns <- widths]
+    -- Colors (@_colorize@; the runner's @-I@ ignores @PYTHON_COLORS@): help,
+    -- a parse error and an error after parsing.
+    <> [ Case args (Map.fromList (("COLUMNS", "80") : colors)) Nothing
+       | args <- [["-h"], ["bogus"], ["requeue"]]
+       , colors <- [[("FORCE_COLOR", "1")], [("FORCE_COLOR", "1"), ("NO_COLOR", "1")], [("FORCE_COLOR", "1"), ("TERM", "dumb")]]
+       ]
     <> [ Case ["serve"] (Map.fromList [("HAMSTERDAN_PORT", "x")]) Nothing
        , Case ["serve"] (Map.fromList [("HAMSTERDAN_PORT", "")]) Nothing
        , Case ["-h"] (Map.fromList [("HAMSTERDAN_PORT", " 9_000 "), ("HAMSTERDAN_HOST", "")]) Nothing
@@ -328,7 +432,7 @@ cases side githubPort =
     <> [Case ["validate"] (Map.insert "HAMSTERDAN_GITHUB_APP_ID" "0" side.configured) Nothing]
     -- inspect-instance.
     <> [ Case ["inspect-instance", "--installation", "44", "--repository", "31", "--pr", pr] side.inspection Nothing
-       | pr <- ["7", "8", "9", "10", "-7", "0"]
+       | pr <- ["7", "8", "9", "10", "11", "12", "13", "14", "-7", "0"]
        ]
     <> [Case ["--inst", "4_4", "--repo", "31", "--pr", " 7 ", "inspect-instance"] side.inspection Nothing]
     <> [Case ["validate"] side.inspection Nothing]
@@ -437,7 +541,7 @@ runReference tmp theCases = do
   (status, stdoutBytes, stderrBytes) <- readProcess config
   unless (status == ExitSuccess) $
     expectationFailure ("the reference driver failed: " <> BC.unpack (BL.toStrict stderrBytes))
-  case parseJson pythonLoads (BL.toStrict stdoutBytes) of
+  case parseJson surrogateRefusingLoads (BL.toStrict stdoutBytes) of
     Right (Array results) -> pure (map outcomeOf results)
     other -> expectationFailure ("unreadable reference results: " <> show other) >> pure []
   where
@@ -512,6 +616,157 @@ testEnvironment environment handle =
     , onServing = \_ -> pure ()
     , reraise = \_ -> pure ()
     }
+
+-- ---------------------------------------------------------------------------
+-- Serving against the reference
+
+-- | The requests both servers answer in the serve comparison, one
+-- connection each: methods, versions, redirects, a refused webhook,
+-- quoting of the logged path, and @X-Forwarded-For@ / @X-Forwarded-Proto@
+-- from a trusted peer.
+serveRequestBytes :: [ByteString]
+serveRequestBytes =
+  [ RawHttp.rawRequest "GET" "/healthz" [] ""
+  , "GET /healthz HTTP/1.0\r\nhost: testserver\r\n\r\n"
+  , RawHttp.rawRequest "HEAD" "/healthz" [] ""
+  , RawHttp.rawRequest "POST" "/healthz" [] ""
+  , RawHttp.rawRequest "GET" "/healthz/?a=b%20c" [] ""
+  , RawHttp.rawRequest "GET" "/healthz?x=1" [] ""
+  , RawHttp.rawRequest "GET" "/caf%C3%A9/x%2Fy%zz%FF?q=%20" [] ""
+  , RawHttp.rawRequest "POST" "/github/webhooks" [] "{}"
+  , RawHttp.rawRequest "GET" "/nope" [("x-forwarded-for", "203.0.113.9, 10.1.2.3")] ""
+  , RawHttp.rawRequest "GET" "/nope" [("x-forwarded-for", "[2001:db8::1]:4711")] ""
+  , RawHttp.rawRequest "GET" "/nope" [("x-forwarded-for", "198.51.100.7:+8_0")] ""
+  , RawHttp.rawRequest "GET" "/nope" [("x-forwarded-for", "unix:/tmp/x"), ("X-Forwarded-For", "")] ""
+  , RawHttp.rawRequest "GET" "/nope" [("x-forwarded-for", "unix:/tmp/x, 10.9.9.9")] ""
+  , RawHttp.rawRequest "GET" "/healthz/" [("x-forwarded-proto", " https ")] ""
+  ]
+
+serveRequests :: Int -> IO ()
+serveRequests port = mapM_ (void . RawHttp.exchange port) serveRequestBytes
+
+freePort :: IO Int
+freePort = bracket Warp.openFreePort (close . snd) (pure . fst)
+
+-- | A port another socket listens on.
+occupiedPort :: IO (Int, Socket)
+occupiedPort = do
+  listener <- socket AF_INET Stream defaultProtocol
+  bind listener (SockAddrInet 0 (tupleToHostAddress (127, 0, 0, 1)))
+  listen listener 1
+  port <- socketPort listener
+  pure (fromIntegral port, listener)
+
+-- | @python -m hamsterdan.host serve@ (@differential/serve_reference.py@)
+-- with the given environment, its stdout and stderr to files: once it says
+-- it is running, the requests, then SIGTERM to its exact process.
+serveReference :: FilePath -> Int -> Map String String -> (Int -> IO ()) -> IO Outcome
+serveReference tmp githubPort environment requests = do
+  executable <- upstreamPythonExecutable "hamsterdan"
+  repo <- repoRoot
+  let script = repo </> "packages" </> "hamsterdan-host" </> "differential" </> "serve_reference.py"
+      outPath = tmp </> "reference-serve-stdout.txt"
+      errPath = tmp </> "reference-serve-stderr.txt"
+      port = maybe 8000 read (Map.lookup "HAMSTERDAN_PORT" environment)
+      payload =
+        either (error . show) id $
+          dumps
+            compact
+            ( Object
+                [ ("env", Object [(T.pack k, String (T.pack v)) | (k, v) <- Map.toList environment])
+                , ("github_port", Int (toInteger githubPort))
+                ]
+            )
+  -- The driver points its own stdout and stderr at the files, so the test
+  -- holds no handle on them (GHC locks a file open for writing) and reads
+  -- them while it runs.
+  BS.writeFile outPath ""
+  BS.writeFile errPath ""
+  let config =
+        setStdin (byteStringInput (BL.fromStrict payload))
+          . setStdout nullStream
+          . setStderr nullStream
+          $ proc executable ["-I", "-B", script, outPath, errPath]
+  status <- withProcessTerm config $ \server -> do
+    let waitRunning = do
+          logged <- BS.readFile errPath
+          exited <- getExitCode server
+          if "Uvicorn running on" `BS.isInfixOf` logged
+            then pure True
+            else case exited of
+              Just _ -> pure False
+              Nothing -> threadDelay 50000 >> waitRunning
+    running <- timeout 120000000 waitRunning
+    case running of
+      Just True -> do
+        requests port
+        getPid server >>= mapM_ (signalProcess sigTERM)
+      Just False -> pure ()
+      Nothing -> expectationFailure "the reference server did not start"
+    waitExitCode server
+  outcomeFiles status outPath errPath
+
+-- | The port's @serve@ with the given environment, its stdout and stderr
+-- to files: once it listens, the requests, then SIGTERM. A SIGTERM it
+-- raises again is reported as the reference's death by that signal.
+servePort :: FilePath -> Int -> Map String String -> (Int -> IO ()) -> IO Outcome
+servePort tmp githubPort environment requests = do
+  let outPath = tmp </> "port-serve-stdout.txt"
+      errPath = tmp </> "port-serve-stderr.txt"
+  reraised <- newIORef []
+  status <-
+    withFile outPath WriteMode $ \outHandle ->
+      withFile errPath WriteMode $ \errHandle ->
+        runCli
+          (testEnvironment environment outHandle)
+            { errors = errHandle
+            , clientOptions = do
+                exchange' <- newPlainExchangeAt "127.0.0.1" githubPort
+                pure ClientOptions {exchange = exchange', clock = realToFrac <$> getPOSIXTime, metadataHook = Nothing}
+            , onServing = \port -> void (forkIO (requests port `finally` raiseSignal sigTERM))
+            , reraise = \raised -> modifyIORef reraised (<> [raised])
+            }
+          ["serve"]
+  raised <- readIORef reraised
+  outcomeFiles (if raised == [sigTERM] then ExitFailure (-15) else status) outPath errPath
+
+outcomeFiles :: ExitCode -> FilePath -> FilePath -> IO Outcome
+outcomeFiles status outPath errPath = do
+  outText <- TE.decodeUtf8 <$> BS.readFile outPath
+  errText <- TE.decodeUtf8 <$> BS.readFile errPath
+  pure Outcome {code = case status of ExitSuccess -> 0; ExitFailure n -> n, out = outText, err = errText}
+
+normalizedOutcome :: [Int] -> Outcome -> Outcome
+normalizedOutcome ports outcome = outcome {out = normalizeLog ports outcome.out, err = normalizeLog ports outcome.err}
+
+-- | uvicorn's log text with what varies from run to run replaced: the
+-- process id, the server's port, and the client's port; and each logged
+-- traceback reduced to its header and last line, with the blank lines after
+-- it (the port logs only those, host DIVERGENCES item 2).
+normalizeLog :: [Int] -> Text -> Text
+normalizeLog ports = T.intercalate "\n" . map line . tracebacks . T.splitOn "\n"
+  where
+    tracebacks = \case
+      header : rest
+        | "Traceback (most recent call last):" `T.isSuffixOf` header ->
+            let (block, others) = break record rest
+                (blank, frames) = span T.null (reverse block)
+                lastLine = take 1 frames
+             in header : lastLine <> blank <> tracebacks others
+      l : rest -> l : tracebacks rest
+      [] -> []
+    record l = any (`T.isPrefixOf` l) ["INFO:", "ERROR:", "WARNING:"]
+    line = client . flip (foldr server) ports . pid
+    pid l = case T.breakOn "server process [" l of
+      (prefix, rest)
+        | not (T.null rest) -> prefix <> "server process [PID" <> T.dropWhile (/= ']') rest
+        | otherwise -> l
+    server port =
+      T.replace ("127.0.0.1:" <> T.pack (show port) <> " ") "127.0.0.1:PORT "
+        . T.replace ("'127.0.0.1', " <> T.pack (show port) <> ")") "'127.0.0.1', PORT)"
+    client l = case T.stripPrefix "INFO:     127.0.0.1:" l of
+      Just rest -> "INFO:     127.0.0.1:CLIENT" <> T.dropWhile isDigit rest
+      Nothing -> l
 
 discard :: FilePath -> IO Handle
 discard tmp = do

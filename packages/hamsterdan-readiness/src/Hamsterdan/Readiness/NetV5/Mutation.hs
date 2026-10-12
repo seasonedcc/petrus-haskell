@@ -27,7 +27,7 @@ import Data.Text qualified as T
 import Hamsterdan.Contracts.Codec (dump)
 import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.Readiness.NetV5.Folding
-import Hamsterdan.Readiness.NetV5.Py (spell)
+import Hamsterdan.Readiness.NetV5.Py (spelling)
 import Hamsterdan.Readiness.NetV5.Wiring
 import Petrus.Impetus.Dsl (Author)
 import Petrus.Impetus.Petrinet (NetPath, Token)
@@ -94,7 +94,7 @@ start b outs = do
               , policy = req.policy
               , incarnation = req.incarnation
               , lineage = lineageOf req.op
-              , kind = spell req.kind
+              , kind = spelling req.kind
               , instruction = req.instruction
               , runId = req.runId
               , attempt = req.attempt
@@ -187,7 +187,7 @@ recover b outs = do
 end :: Fold
 end b outs = do
   (close, st) <- values2 @CloseFact @MutState b
-  Right (route outs [emit "mut.done" [MutEnded {state = spell st.state, reason = close.reason}]])
+  Right (route outs [emit "mut.done" [MutEnded {state = spelling st.state, reason = close.reason}]])
 
 drainRecover :: Fold
 drainRecover b outs = do

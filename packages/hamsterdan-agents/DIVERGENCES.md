@@ -52,9 +52,11 @@ Below are the differences that remain, with their rationale.
      unchanged.
    - Headers that only one reader tolerates are still refused as
      `settled workspace archive is malformed` by the other. Examples are a
-     bad checksum, a truncated final block, and GNU or PAX extensions the
-     Pi runtime never writes.
-   - The Pi runtime writes plain ustar, which both readers read the same.
+     bad checksum, a truncated final block, and GNU extensions the Pi
+     runtime never writes.
+   - The Pi runtime writes `tarfile.PAX_FORMAT` (ustar headers, plus pax
+     extended headers for long or non-ASCII names), which both readers
+     read the same.
 4. **Exceptions the composition cannot classify print one line.** When the
    startup composition or its cleanup fails, `serve` prints
    `Class: message` with exit status 1, as hamsterdan-host's DIVERGENCES

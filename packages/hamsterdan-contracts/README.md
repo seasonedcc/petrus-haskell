@@ -18,7 +18,7 @@ diverges.
 
 | Module | Ports | Key API |
 | --- | --- | --- |
-| `Hamsterdan.Contracts.Codec` | pydantic strict dataclasses (`TypeAdapter`) | `Codec a`, `Contract a` (`contract`), `validate`, `validateJson`, `dump`, `colorOf`, `spelling`; record combinators `record`, `recordWith`, `field`, `fieldDefault`, `constField`; leaves `text`, `integer`, `bool`, `anyJson`, `object`, `list`, `dict`, `nullable`, `enum`, `union`, `pairOrEmpty`; `Model` / `modelOf` for type-erased registries |
+| `Hamsterdan.Contracts.Codec` | pydantic strict dataclasses (`TypeAdapter`) | `Codec a`, `Contract a` (`contract`), `validate`, `validateJson`, `dump`, `colorOf`; `Enumeration a` (`spelling`, total) with `enumeration` and `unspelling`; record combinators `record`, `recordWith`, `field`, `fieldDefault`, `constField`; leaves `text`, `integer`, `bool`, `anyJson`, `object`, `list`, `dict`, `nullable`, `union`, `pairOrEmpty`; `Model` / `modelOf` for type-erased registries |
 | `Hamsterdan.Contracts.ReadinessV5` (generated) | `contracts/readiness_v5.py` | 116 records, their `Literal` enumerations and unions, `models` |
 | `Hamsterdan.Contracts.Readiness` (generated) | the dataclasses of `contracts/readiness.py` | 43 records and enumerations, `models` |
 | `Hamsterdan.Contracts.ReadinessProjection` | `project_readiness`, `dashboard_projection_digest`, `workflow_wait`, `workflow_gates_ready` | `Concerns`, `projectReadiness`, `dashboardProjectionDigest`, `workflowWait`, `workflowGatesReady` |
@@ -31,7 +31,7 @@ diverges.
 | `Hamsterdan.Python.Exception` | the one exception value | `PythonException`, `pythonError`, `keyError`, `raise`, `pythonExceptionStr`, `pythonFailureText`, `dumpsError`, `raisingDumps` |
 | `Hamsterdan.Python.Hashlib` | `hashlib.sha256(...).hexdigest()` | `sha256Hex`, `sha256HexText` |
 | `Hamsterdan.Python.Url` | `urllib.parse` | `urlsplit`, `urlunsplit`, `hostname`, `port`, `username`, `password`, `quote`, `unquote` |
-| `Hamsterdan.Python.Object` | the dynamic object model the exporter and the operator read untrusted values with | `PV`, `PyError` (traceback-qualified class), `pyStr`, `pyRepr`, `pyInt`, `pyEq`, `loadsText`, `loadsValue`, `toJson`, `fromPython` |
+| `Hamsterdan.Python.Object` | the dynamic object model the exporter and the operator read untrusted values with | `PV`, `pyStr`, `pyRepr`, `pyInt`, `pyEq`, `loadsText`, `loadsValue`, `toJson`; its failures are `PythonException`s, printed by `errorLine` (the class qualified by `tracebackName`) |
 
 ## How the codecs work
 

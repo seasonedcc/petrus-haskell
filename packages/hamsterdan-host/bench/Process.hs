@@ -90,7 +90,7 @@ import Hamsterdan.Host.Service qualified as Host
 import Network.Socket (close)
 import Network.Wai.Handler.Warp qualified as Warp
 import Petrus.Impetus.Instance.FailureText (PythonException (..))
-import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import RawHttp qualified
@@ -278,7 +278,7 @@ fakeRoute m call = case registrationRoutes call.method call.target of
         items <- multiPages m target
         pure (Just (200, [], encode (Array (map Object items))))
       else do
-        body <- case parseJson pythonLoads call.body of
+        body <- case parseJson surrogateRefusingLoads call.body of
           Right (Object members) -> pure (Just members)
           _ -> pure Nothing
         answer <- multiAnswer m method target body
@@ -853,7 +853,7 @@ askRun :: Companion -> Text -> IO Measured
 askRun server name = do
   hPutStrLn server.toServer ("run " <> T.unpack name)
   answer <- hGetLine server.fromServer
-  case parseJson pythonLoads (BC.pack answer) of
+  case parseJson surrogateRefusingLoads (BC.pack answer) of
     Right (Object [("check", String check), ("seconds", Float seconds)]) -> pure (seconds, check)
     Right (Object [("check", String check), ("seconds", Int seconds)]) -> pure (fromInteger seconds, check)
     _ -> fail ("process_bench.py answered " <> answer)

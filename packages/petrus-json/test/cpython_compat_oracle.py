@@ -69,7 +69,15 @@ def string_methods(argument):
         "backslashreplace": value.encode("utf-8", "backslashreplace").hex(),
         "int": int_of(value, 10),
         "int16": int_of(value, 16),
+        "float": float_of(value),
     }
+
+
+def float_of(value: str):
+    try:
+        return repr(float(value))
+    except ValueError:
+        return None
 
 
 def int_of(value: str, base: int):

@@ -141,7 +141,7 @@ stdoutEvents event = case dumps defaultDumps event of
 normalizeResult :: Json -> IO Json
 normalizeResult result = case dumps defaultDumps {allowNan = False} result of
   Left problem -> throwIO (ValueError (T.pack (encodeErrorMessage problem)))
-  Right bytes -> either (throwIO . ValueError . T.pack) pure (parseJson pythonLoads bytes)
+  Right bytes -> either (throwIO . ValueError . T.pack) pure (parseJson surrogateRefusingLoads bytes)
 
 validateRegistry :: Map Text Activity -> Maybe Resolver -> Text -> IO (Map Text Activity)
 validateRegistry activities resolver' emptyMessage = do

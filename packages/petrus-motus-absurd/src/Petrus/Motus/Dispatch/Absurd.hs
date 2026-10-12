@@ -1380,7 +1380,7 @@ headMay = \case
   [] -> Nothing
 
 jsonColumn :: ByteString -> Either Text Json
-jsonColumn raw = either (Left . T.pack) Right (parseJson pythonLoads raw)
+jsonColumn raw = either (Left . T.pack) Right (parseJson surrogateRefusingLoads raw)
 
 optionalJsonColumn :: Maybe ByteString -> Either Text Json
 optionalJsonColumn = maybe (Right Null) jsonColumn

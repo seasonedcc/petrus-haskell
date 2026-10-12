@@ -23,7 +23,7 @@ import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
 import Data.Time (UTCTime (..), addUTCTime, fromGregorian, picosecondsToDiffTime)
 import Data.Word (Word8)
-import Petrus.Json (Json, parseJson, pythonLoads)
+import Petrus.Json (Json, parseJson, surrogateRefusingLoads)
 import Text.Read (readMaybe)
 
 -- | @text@, @varchar@, @uuid@ and every other type psycopg loads as @str@.
@@ -59,7 +59,7 @@ decodeDouble = \case
 
 -- | @json@ and @jsonb@, loaded as @json.loads@ loads them.
 decodeJson :: ByteString -> Either String Json
-decodeJson = parseJson pythonLoads
+decodeJson = parseJson surrogateRefusingLoads
 
 -- | @bytea@ in the hex output format (@\\x…@, PostgreSQL's default).
 decodeBytea :: ByteString -> Either String ByteString

@@ -18,8 +18,9 @@ module Hamsterdan.Host.Runnable
   , close
   ) where
 
-import Control.Exception (SomeException, mask, onException, throwIO, try)
+import Control.Exception (SomeException, fromException, mask, onException, throwIO, try)
 import Control.Monad (unless, void, when)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
@@ -66,9 +67,12 @@ openRunnableIndexWith path clock = do
           (validate db >> pure db) `onException` Sql.close db
         case candidate of
           Right db -> pure db
-          Left _ -> do
-            replaceDisposable path
-            Sql.open (T.pack path)
+          -- @except sqlite3.DatabaseError, RuntimeError@.
+          Left e
+            | Sql.isDatabaseError e || isJust (fromException @RuntimeError e) -> do
+                replaceDisposable path
+                Sql.open (T.pack path)
+            | otherwise -> throwIO e
       else Sql.open (T.pack path)
   Sql.script
     connection

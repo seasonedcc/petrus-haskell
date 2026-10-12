@@ -116,6 +116,12 @@ differential corpora compare these byte for byte with the pinned Python (see
      missing `full_name`, …) is accepted here and refused by pydantic.
    - The HTTP corpus covers `repositories` values of `[]`, a string, `null`
      and `[5]`, and both sides agree on every one.
+   - Why it stays: the response comes only from api.github.com over TLS,
+     which always sends well-formed repository objects, and Hamsterdan
+     reads no member of them (the reference neither). Validating them would
+     mean porting GitHubKit's generated `Repository` model, about 90
+     members with their nested models, to refuse a response no real
+     provider sends.
 9. **`urllib.parse.urlsplit`'s NFKC netloc check: resolved, no longer a
    difference.**
    - CPython refuses a non-ASCII netloc whose NFKC normalization introduces

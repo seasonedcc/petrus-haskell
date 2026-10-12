@@ -17,7 +17,7 @@ import Hamsterdan.Agents.Pi (parseResult)
 import Hamsterdan.Agents.Protocol
 import Hamsterdan.Agents.Validate (Failure (..), ResultKind (..), validateResult)
 import Hamsterdan.Contracts.Codec (contract, encode)
-import Petrus.Json (EncodeOptions (..), Json (..), compact, defaultDumps, dumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (EncodeOptions (..), Json (..), compact, defaultDumps, dumps, dumpsText, parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import PiDoubles (baseSha, headSha)
@@ -100,7 +100,7 @@ spec = describe "Pi review results against the reference's _parse_result and _va
         input = Array [Object [("raw", String raw), ("request", request)] | (_, raw) <- cases]
         encoded = either (error . show) id (dumps compact input)
     (_, out, err) <- readCreateProcessWithExitCode (proc executable ["-I", "-B", script, "results", "-"]) (T.unpack (TE.decodeUtf8 encoded))
-    reports <- case parseJson pythonLoads (TE.encodeUtf8 (T.pack out)) of
+    reports <- case parseJson surrogateRefusingLoads (TE.encodeUtf8 (T.pack out)) of
       Right (Array reports) | length reports == length cases -> pure reports
       other -> fail ("the reference driver failed: " <> show other <> "\n" <> err)
     forM_ (zip cases reports) $ \((label, raw), expected) -> do

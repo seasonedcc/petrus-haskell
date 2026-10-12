@@ -28,7 +28,7 @@ module Hamsterdan.Testing.Readiness
   , TimerStatus (..)
   , ReadinessDisposition (..)
   , LivenessDisposition (..)
-  , Spelled (..)
+  , Enumeration (..)
 
     -- * Facts
   , AuthorityClaim (..)
@@ -76,7 +76,8 @@ import Hamsterdan.Contracts.Codec
   , Contract (..)
   , bool
   , dump
-  , enum
+  , Enumeration (..)
+  , enumeration
   , field
   , fieldDefault
   , integer
@@ -94,18 +95,14 @@ import Petrus.Json (Json)
 -- ---------------------------------------------------------------------------
 -- Vocabularies (the reference's @Literal[...]@ aliases)
 
--- | The exact @Literal@ spelling of a vocabulary member.
-class (Bounded a, Enum a) => Spelled a where
-  spell :: a -> Text
-
-vocabulary :: (Spelled a) => Text -> Codec a
-vocabulary name = enum name spell
+vocabulary :: (Enumeration a) => Text -> Codec a
+vocabulary = enumeration
 
 data Lifecycle = Active | Draft | Merged | Closed
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled Lifecycle where
-  spell = \case
+instance Enumeration Lifecycle where
+  spelling = \case
     Active -> "active"
     Draft -> "draft"
     Merged -> "merged"
@@ -114,8 +111,8 @@ instance Spelled Lifecycle where
 data CheckStatus = Queued | Running | Success | Failure | Canceled | Unavailable
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled CheckStatus where
-  spell = \case
+instance Enumeration CheckStatus where
+  spelling = \case
     Queued -> "queued"
     Running -> "running"
     Success -> "success"
@@ -126,8 +123,8 @@ instance Spelled CheckStatus where
 data CiRecovery = RecoveryNone | RecoveryAutomatic | RecoveryHumanAuthorization | RecoveryBlocked
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled CiRecovery where
-  spell = \case
+instance Enumeration CiRecovery where
+  spelling = \case
     RecoveryNone -> "none"
     RecoveryAutomatic -> "automatic"
     RecoveryHumanAuthorization -> "human_authorization"
@@ -136,8 +133,8 @@ instance Spelled CiRecovery where
 data ReviewStatus = ReviewPending | ReviewClear | ReviewBlocking | ReviewUnable
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled ReviewStatus where
-  spell = \case
+instance Enumeration ReviewStatus where
+  spelling = \case
     ReviewPending -> "pending"
     ReviewClear -> "clear"
     ReviewBlocking -> "blocking"
@@ -146,8 +143,8 @@ instance Spelled ReviewStatus where
 data FindingDisposition = FindingOpen | FindingDismissed | FindingResolved
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled FindingDisposition where
-  spell = \case
+instance Enumeration FindingDisposition where
+  spelling = \case
     FindingOpen -> "open"
     FindingDismissed -> "dismissed"
     FindingResolved -> "resolved"
@@ -161,8 +158,8 @@ data MutationStatus
   | MutationBlocked
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled MutationStatus where
-  spell = \case
+instance Enumeration MutationStatus where
+  spelling = \case
     MutationIdle -> "idle"
     MutationRequested -> "requested"
     MutationInFlight -> "in_flight"
@@ -173,8 +170,8 @@ instance Spelled MutationStatus where
 data ChangeIntent = IntentChange | IntentRepair
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled ChangeIntent where
-  spell = \case
+instance Enumeration ChangeIntent where
+  spelling = \case
     IntentChange -> "change"
     IntentRepair -> "repair"
 
@@ -190,8 +187,8 @@ data EffectKind
   | EffectCoding
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled EffectKind where
-  spell = \case
+instance Enumeration EffectKind where
+  spelling = \case
     EffectDashboard -> "dashboard"
     EffectFindings -> "findings"
     EffectConversation -> "conversation"
@@ -212,8 +209,8 @@ data EffectStatus
   | EffectCanceled
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled EffectStatus where
-  spell = \case
+instance Enumeration EffectStatus where
+  spelling = \case
     EffectRequested -> "requested"
     EffectAccepted -> "accepted"
     EffectAmbiguous -> "ambiguous"
@@ -225,8 +222,8 @@ instance Spelled EffectStatus where
 data TimerStatus = TimerScheduled | TimerDue | TimerAcknowledged | TimerCanceled
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled TimerStatus where
-  spell = \case
+instance Enumeration TimerStatus where
+  spelling = \case
     TimerScheduled -> "scheduled"
     TimerDue -> "due"
     TimerAcknowledged -> "acknowledged"
@@ -235,8 +232,8 @@ instance Spelled TimerStatus where
 data ReadinessDisposition = Ready | Progressing | HumanWait | ExternalWait | Terminal | Quarantined
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled ReadinessDisposition where
-  spell = \case
+instance Enumeration ReadinessDisposition where
+  spelling = \case
     Ready -> "ready"
     Progressing -> "progressing"
     HumanWait -> "human_wait"
@@ -247,8 +244,8 @@ instance Spelled ReadinessDisposition where
 data LivenessDisposition = NotApplicable | InProgress | Converged | Livelock
   deriving stock (Eq, Ord, Show, Bounded, Enum)
 
-instance Spelled LivenessDisposition where
-  spell = \case
+instance Enumeration LivenessDisposition where
+  spelling = \case
     NotApplicable -> "not_applicable"
     InProgress -> "in_progress"
     Converged -> "converged"
@@ -726,12 +723,12 @@ humanBlockers human =
 workBlockers :: ReadinessFacts -> [Text]
 workBlockers facts =
   mutationBlocker facts.mutation.status
-    <> [ "effect_" <> spell effect.status <> ":" <> effect.operation
+    <> [ "effect_" <> spelling effect.status <> ":" <> effect.operation
        | effect <- facts.effects
        , effect.blocksReadiness
        , effect.status `notElem` [EffectSettled, EffectCanceled]
        ]
-    <> [ "timer_" <> spell timer.status <> ":" <> timer.identity
+    <> [ "timer_" <> spelling timer.status <> ":" <> timer.identity
        | timer <- facts.timers
        , timer.blocksReadiness
        , timer.status `notElem` [TimerAcknowledged, TimerCanceled]

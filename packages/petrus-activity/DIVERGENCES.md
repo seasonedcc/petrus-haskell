@@ -69,7 +69,7 @@ input, is meant to be identical. The live differential
    member name occurs once, and its doors return `json.loads(json.dumps(value))`.
    A Haskell `Object` is a member list, and a door that accepts one returns
    it unchanged, duplicates included. *Why:* a value read from JSON has
-   already been through petrus-json's `pythonLoads`, which collapses
+   already been through petrus-json's `surrogateRefusingLoads`, which collapses
    duplicates as CPython's `dict` does (or a strict reader that refuses
    them). Only a Haskell caller that builds an `Object` with a repeated name
    by hand can get one through, and re-parsing on every call would cost time

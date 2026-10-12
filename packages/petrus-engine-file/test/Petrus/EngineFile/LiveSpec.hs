@@ -20,7 +20,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.EngineFile.Corpus
 import Petrus.EngineFile.CorpusSpec (checkCase, corpusPath)
-import Petrus.Json.Parse (parseJson, pythonLoads)
+import Petrus.Json.Parse (parseJson, surrogateRefusingLoads)
 import Petrus.Json.Value qualified as J
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo qualified as TestSupport
@@ -103,7 +103,7 @@ spec = describe "live differential against petrus-engine" $ do
 -- | One @{"name", "expect"}@ line of @reference.py@.
 parseLine :: String -> (Text, [Text])
 parseLine line = fromMaybe (error ("bad reference line: " <> line)) $ do
-  value <- either (const Nothing) Just (parseJson pythonLoads (TE.encodeUtf8 (T.pack line)))
+  value <- either (const Nothing) Just (parseJson surrogateRefusingLoads (TE.encodeUtf8 (T.pack line)))
   J.String name <- J.lookupMember "name" value
   J.Array items <- J.lookupMember "expect" value
   expect <- traverse (\case J.String s -> Just s; _ -> Nothing) items

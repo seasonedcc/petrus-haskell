@@ -32,12 +32,12 @@ traces name = specFile ("traces/" <> name)
 loadFixture :: Text -> IO Json
 loadFixture name = do
   raw <- BS.readFile (traces (T.unpack name <> ".json"))
-  either fail pure (parseJson pythonLoads raw)
+  either fail pure (parseJson surrogateRefusingLoads raw)
 
 manifestEntries :: IO [Json]
 manifestEntries = do
   raw <- BS.readFile (traces "manifest.json")
-  case parseJson pythonLoads raw of
+  case parseJson surrogateRefusingLoads raw of
     Right manifest | Just (Array xs) <- lookupMember "fixtures" manifest -> pure xs
     _ -> fail "manifest.json has no fixtures"
 
@@ -58,7 +58,7 @@ spec = describe "Impetus golden traces" $ do
   -- test_manifest_hashes_every_normative_fixture
   it "the manifest hashes every normative fixture" $ do
     raw <- BS.readFile (traces "manifest.json")
-    manifest <- either fail pure (parseJson pythonLoads raw)
+    manifest <- either fail pure (parseJson surrogateRefusingLoads raw)
     at "format" manifest `shouldBe` String "petrus-impetus-golden-trace-manifest"
     at "version" manifest `shouldBe` Int 2
     entries <- manifestEntries
@@ -73,7 +73,7 @@ spec = describe "Impetus golden traces" $ do
       payload <- BS.readFile (traces (T.unpack (str (at "file" entry))))
       String (sha256Hex payload) `shouldBe` at "sha256" entry
       BS.length (SHA256.hash payload) `shouldBe` 32
-      value <- either fail pure (parseJson pythonLoads payload)
+      value <- either fail pure (parseJson surrogateRefusingLoads payload)
       Int (fromIntegral (length (arr (at "walk" value)))) `shouldBe` at "walkSteps" entry
 
   -- test_migration_contracts_are_visible_in_raw_fixtures

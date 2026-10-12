@@ -65,13 +65,13 @@ control fake path body = do
   base <- H.parseRequest (T.unpack (fakeUrl fake <> path))
   let request = base {H.method = "POST", H.requestBody = H.RequestBodyBS (rightOr (dumps compact body))}
   response <- H.httpLbs request (fakeManager fake)
-  pure (rightOr (parseJson pythonLoads (BL.toStrict (H.responseBody response))))
+  pure (rightOr (parseJson surrogateRefusingLoads (BL.toStrict (H.responseBody response))))
 
 requestLog :: Fake -> IO [Json]
 requestLog fake = do
   base <- H.parseRequest (T.unpack (fakeUrl fake <> "/_fake/requests"))
   response <- H.httpLbs base (fakeManager fake)
-  case rightOr (parseJson pythonLoads (BL.toStrict (H.responseBody response))) of
+  case rightOr (parseJson surrogateRefusingLoads (BL.toStrict (H.responseBody response))) of
     Array entries -> pure entries
     other -> fail ("unexpected request log " <> show other)
 

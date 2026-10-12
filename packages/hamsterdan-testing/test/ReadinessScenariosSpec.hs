@@ -50,7 +50,7 @@ import Hamsterdan.Testing.Readiness
   , humanFacts
   , readinessFacts
   )
-import Petrus.Json (Json (..), compact, defaultDumps, dumps, dumpsText, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, defaultDumps, dumps, dumpsText, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Encode (EncodeOptions (..))
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
@@ -142,7 +142,7 @@ reference arguments input = do
   -- The Petrus Worker reports each processed Activity on stdout; the
   -- driver's document is the last line.
   case reverse (filter (not . BC.null) (BC.lines (BL.toStrict out))) of
-    line : _ -> case parseJson pythonLoads line of
+    line : _ -> case parseJson surrogateRefusingLoads line of
       Right value -> pure value
       Left problem -> expectationFailure ("unreadable reference output: " <> problem) >> pure Null
     [] -> expectationFailure "the reference journey driver printed nothing" >> pure Null

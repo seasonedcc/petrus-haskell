@@ -136,4 +136,4 @@ corpus and the cross-implementation interop spec pin that (see
     into an `OverflowError` elsewhere stays an `Integer` here.
 
 15. **Duplicate members** use last-wins, like `json.loads`, through
-    petrus-json's `pythonLoads`. That includes duplicate detail names.
+    petrus-json's `surrogateRefusingLoads`. That includes duplicate detail names.

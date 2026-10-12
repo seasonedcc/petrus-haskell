@@ -16,7 +16,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
 import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
-import Petrus.Json (Json (..), compact, dumps, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Test.Hspec
 
 -- | The rows of a JSONL corpus.
@@ -25,7 +25,7 @@ readCorpus path = do
   bytes <- readCorpusFile path
   traverse row (filter (not . BS.null) (BS8.split '\n' bytes))
   where
-    row line = either (fail . ("corpus row: " <>)) pure (parseJson pythonLoads line)
+    row line = either (fail . ("corpus row: " <>)) pure (parseJson surrogateRefusingLoads line)
 
 readCorpusFile :: FilePath -> IO BS.ByteString
 readCorpusFile path = BS.readFile ("test/corpus/" <> path)

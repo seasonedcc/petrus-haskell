@@ -21,7 +21,7 @@ import Hamsterdan.Python.Url (SplitResult)
 import Hamsterdan.Python.Url qualified as Url
 import Hamsterdan.Python.Value qualified as Value
 import Numeric (showHex)
-import Petrus.Json (Json (..), defaultDumps, dumps, encodeErrorMessage, parseJson, pythonLoads)
+import Petrus.Json (Json (..), defaultDumps, dumps, encodeErrorMessage, parseJson, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (PythonResult (..), runPython)
 import System.Exit (ExitCode (..))
 import Test.Hspec
@@ -66,7 +66,7 @@ live :: Text -> [Json] -> IO [Json]
 live script inputs = do
   input <- either (fail . encodeErrorMessage) pure (dumps defaultDumps (Array inputs))
   result <- runPython (prelude <> script) [] input
-  case (result.resultExit, parseJson pythonLoads result.resultStdout) of
+  case (result.resultExit, parseJson surrogateRefusingLoads result.resultStdout) of
     (ExitSuccess, Right (Array answers)) -> pure answers
     _ -> fail ("the reference failed: " <> show result)
 

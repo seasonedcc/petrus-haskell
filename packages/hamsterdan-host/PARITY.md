@@ -19,7 +19,7 @@ reference fails when the reference is missing. It is never skipped.
 | Upstream | Haskell | Evidence |
 | --- | --- | --- |
 | `host/service.py` (custody, pump, sweep, scheduler, lifecycle) | `Hamsterdan.Host.Service` | `ServiceSpec` and the interop tests below. |
-| `host/api.py` (FastAPI, served by uvicorn) | `Hamsterdan.Host.Api` (WAI, served by warp), `Hamsterdan.Host.Api.Documents` | `ApiSpec`. The surface test compares every response with the reference served by uvicorn, byte for byte except the `date` value. |
+| `host/api.py` (FastAPI, served by uvicorn) | `Hamsterdan.Host.Api` (WAI, served by warp), `Hamsterdan.Host.Api.Documents`; uvicorn's logging, proxy headers middleware and binding in `Hamsterdan.Host.Uvicorn` (`Hamsterdan.Host.Uvicorn.IpAddress`: CPython's `ipaddress`) | `ApiSpec`. The surface test compares every response with the reference served by uvicorn, byte for byte except the `date` value. `UvicornSpec`, and `CliSpec`'s serve comparisons for the log. |
 | `host/binding.py` | `Hamsterdan.Host.Binding` (in hamsterdan-agents, which the Pi A2 installation binding needs) | `BindingSpec`, plus the interop tests (`binding.json`). |
 | `host/runnable.py` | `Hamsterdan.Host.Runnable` | `RunnableSpec`, plus the interop tests (`runnable.sqlite3`). |
 | `host/protocol.py` (`ReadinessApplication`, `DurableActivityResolver`) | `Hamsterdan.Host.Service.HostApplication` (the protocol as a record of operations; `hostApplication` wraps the V5 application in it), `Hamsterdan.Host.V5.Runtime.DurableActivityResolver` | Every `ServiceSpec` case runs the host through this record, over the real V5 application and over the test doubles upstream's `test_service.py` passes as `ReadinessApplication`s; the resolver by `ServiceSpec`'s `test_scoped_resolver_*` and `test_durable_activity_resolver_*` cases. |
@@ -84,19 +84,24 @@ argument, so that call does not compile.
 | `InteropSpec`: "resumes each other's state" | 1 | Phase one is a webhook to quiescence. Phase two is a new head, a second synchronize, a `workflow_run`, then startup and periodic sweeps, each to quiescence. The test runs phase one on one host and phase two on the other, in all three pairings: Haskell/Haskell, Python/Haskell and Haskell/Python. Each pairing must match the Python-only run file by file. That covers every file under the state root (`differential/state_reference.py` dumps them): `webhooks.sqlite3` (the inbox and the V5 ingress tables), `routes.sqlite3`, `runnable.sqlite3` and `activity-dispatch.sqlite3`; and, for each Instance, `binding.json`, `history.jsonl`, `review-requests.sqlite3` and `timers.sqlite3`. For each SQLite file it compares the schema text and every row. It also compares the command outputs (`inspect-instance`, status, counts) and the provider calls. Run identifiers, instants and epochs are normalized. |
 | `InteropSpec`: "makes the same GitHub requests as the reference" | 1 | The same two phases, with both hosts' real client stacks (JWT, installation token, REST, GraphQL) pointed at one recording fake GitHub. The tests compare the request line, the headers in order, and the body bytes of every request, plus the outputs, the state dump and the resulting PR comments. |
 | `InteropSpec`: "resumes each other's agent state" | 1 | A journey through `serve`'s composed agent on both hosts, over Petrus's scripted Pi runtime and a repository with fixed commits. Phase one reviews the first head (epoch 1); phase two moves the head and reviews again (epoch 2). The test runs phase one on one host and phase two on the other, in all four pairings, and each must match the Python-only run file by file. That includes `agent-routes.sqlite3`, `pi-a2/installation`, and the runtime host's `operations.sqlite3` and `bodies.sqlite3`. It also compares the provider calls, the reviews and the dashboard. |
-| `ApiSpec`: "the HTTP surface against the reference (uvicorn)" | 1 | 43 requests, sent over a raw socket to the reference under uvicorn and to the port under warp. They cover health, the FastAPI pages, routing fallbacks (405 with `allow`, 307, 404), percent-encoding, HTTP/1.0, pipelining, and webhook accept, duplicate and refusals. The status line (h11's `HTTP/1.1`, also for HTTP/1.0), every header in order (only the `date` value is blanked), and the body bytes must match. |
+| `ApiSpec`: "the HTTP surface against the reference (uvicorn)" | 1 | 47 requests, sent over a raw socket to the reference under uvicorn and to the port under warp. They cover health, the FastAPI pages, routing fallbacks (405 with `allow`, 307, 404, the 307's scheme from a trusted `X-Forwarded-Proto`), percent-encoding, HTTP/1.0, pipelining, and webhook accept, duplicate and refusals. The status line (h11's `HTTP/1.1`, also for HTTP/1.0), every header in order (only the `date` value is blanked), and the body bytes must match. |
 | `CliSpec`: "serve (uvicorn.run)" | 2 | `serve` on a free port, with the composed agent: an HTTP/1.0 health check gets `HTTP/1.1 200 OK` and `Connection: close`, and `agent-routes.sqlite3` and `pi-a2/installation` exist. Stopped by `SIGTERM`, the command raises it again after the graceful shutdown (uvicorn's `capture_signals`; the reference process ends by SIGTERM, status -15, without its `finally`). As PID 1 of a container, which the kernel exempts from a signal's default action, the process survives that SIGTERM: `uvicorn.run` returns, the `finally` runs, and both end with status 0 ([scripts/container-smoke](../../scripts/container-smoke) checks it under `docker stop`). Stopped by `SIGINT`, it ends with status 0 (the re-raised SIGINT meets `asyncio.run`'s handler). Found by the tier C host rehearsal (`packages/hamsterdan-e2e`, `rehearse_hosts.py`), which checks both statuses against the reference process. |
-| `CliSpec`: "the command line against the reference" | 1 | 105 cases through `python -m hamsterdan.host`'s `main()` and through the port. They cover argparse parsing, usage and help at nine `COLUMNS` widths, configuration failures, `inspect-instance` over hostile histories, startup refusals, `inbox`/`requeue` against a parked delivery, the Pi configuration refusals of the agent composition, and `validate` against a recording fake GitHub. Both sides compose the real agent over an installed-package fixture. Each case must give the same stdout, stderr, exit status, state effects and GitHub requests. |
+| `CliSpec`: "serve against the reference (uvicorn's log lines)" | 4 | `python -m hamsterdan.host serve` (`differential/serve_reference.py`, the real uvicorn) and the port's `serve`, each with stdout and stderr to files and the same `FORWARDED_ALLOW_IPS`. Fourteen requests (methods, HTTP/1.0, redirects, a refused webhook, quoting of the logged path, trusted `X-Forwarded-For` / `X-Forwarded-Proto`) then SIGTERM; an occupied port; a route that raises (the inbox table renamed away under `/healthz`); a GitHub that knows no App, so the lifespan's startup fails. Both logs must match line for line, with the pid and ports blanked and each traceback cut to its header and last line, and so must the exit status. |
+| `UvicornSpec` | 1 | One live run of the pinned uvicorn and CPython: `ipaddress` parsing of 600 generated and curated strings, `_parse_host_port`, `_TrustedHosts` membership, `get_trusted_client_address`, `HTTPStatus` phrases 0–999, the default and access formatters with and without color, the server messages, and `get_path_with_query_string`. |
+| `CliSpec`: "the command line against the reference" | 1 | 114 cases through `python -m hamsterdan.host`'s `main()` and through the port. They cover argparse parsing, usage and help at nine `COLUMNS` widths and under `FORCE_COLOR` / `NO_COLOR` / `TERM=dumb`, configuration failures, `inspect-instance` over hostile histories, startup refusals, `inbox`/`requeue` against a parked delivery, the Pi configuration refusals of the agent composition, and `validate` against a recording fake GitHub. Both sides compose the real agent over an installed-package fixture. Each case must give the same stdout, stderr, exit status, state effects and GitHub requests. |
 | `InlineRecoverySpec` | 5 | The five restart-convergence cases of `tests/unit/readiness/net_v5/test_inline_recovery.py`, against the real host gates. This closes the gap that hamsterdan-readiness's PARITY.md recorded. |
 | `MutationSpec`: `reference_bytes` | 3 | The mutation ref and payload digest match Python for `change`, `repair` and `update_base`. |
 
-The full suite has 380 examples:
+The full suite has 392 examples:
 
 - 357 port upstream cases of this package's scope;
 - 9 port the coding-activity cases of `test_pi.py` (`PiActivitySpec`);
 - 3 are `reference_bytes`;
 - 5 are inline recovery;
-- 6 are differential and interop tests.
+- 10 are differential and interop tests (the table above);
+- 1 is the architecture test, 2 run `serve` end to end, 3 check
+  `exceptionClass` against the reference's classes, and 2 check lone
+  surrogate escapes in a webhook payload.
 
 ## Not ported here
 
@@ -167,15 +172,17 @@ The process-level rows of the same file (`bench/Process.hs`, eleven
 interleaved runs, 2026-10-11, load average 4.0–5.8) measure restart,
 housekeeping, the operator's commands and the effects against the
 reference's processes, with a 20-PR state directory of 1,228-record
-Histories and one fake GitHub for both sides:
+Histories and one fake GitHub for both sides (the two `serve` rows are from
+the later round under load 6.5–7.2 that RESULTS.md describes, after the
+port began writing uvicorn's log lines):
 
 | Row | Haskell | Python | Speedup |
 | --- | ---: | ---: | ---: |
 | `validate` (fresh process) | 140 ms | 1.07 s | 7.65× |
 | `inbox` (fresh process) | 129 ms | 786 ms | 6.09× |
 | `inspect-instance` (fresh process, 2,001 records) | 42.0 ms | 593 ms | 14.1× |
-| `serve` start to the first `200` on `/healthz` | 164 ms | 941 ms | 5.75× |
-| 100 signed POSTs to a running `serve` (warp against uvicorn) | 18.0 ms | 41.8 ms | 2.33× |
+| `serve` start to the first `200` on `/healthz` | 346 ms | 1.08 s | 3.12× |
+| 100 signed POSTs to a running `serve` (warp against uvicorn) | 24.4 ms | 72.9 ms | 2.99× |
 | `sweep("periodic")`, 20 loaded Instances | 17.0 ms | 1.70 s | 100× |
 | `sweep("periodic")`, 20 unloaded Instances | 232 ms | 3.25 s | 14.0× |
 | immutable comment publication | 12.1 µs | 25.1 µs | 2.08× |
@@ -191,8 +198,9 @@ both sides; it read 1.03× in one three-run round.
 
 ## Divergences
 
-See [DIVERGENCES.md](DIVERGENCES.md). One divergence is observable on
-the HTTP side: uvicorn's own log lines, which the port does not write.
+See [DIVERGENCES.md](DIVERGENCES.md). `serve` writes uvicorn's log lines
+(`CliSpec`'s serve comparisons, `UvicornSpec`). What it does not write is
+h11's `Invalid HTTP request received.` warning: warp refuses a malformed
+request itself.
 
-The CLI also differs in two ways: the one-line uncaught traceback, and no
-color in help.
+The CLI also differs in one way: tracebacks have only their last line.

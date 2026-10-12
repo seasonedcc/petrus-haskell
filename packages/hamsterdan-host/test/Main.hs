@@ -15,8 +15,10 @@ import InlineRecoverySpec qualified
 import ServiceSpec qualified
 import ApiSpec qualified
 import CliSpec qualified
+import ExceptionClassSpec qualified
 import ArchitectureSpec qualified
 import InteropSpec qualified
+import UvicornSpec qualified
 import Test.Hspec
 
 main :: IO ()
@@ -36,5 +38,7 @@ main = hspec $ do
   ServiceSpec.spec
   ApiSpec.spec
   CliSpec.spec
+  ExceptionClassSpec.spec
   ArchitectureSpec.spec
   InteropSpec.spec
+  UvicornSpec.spec

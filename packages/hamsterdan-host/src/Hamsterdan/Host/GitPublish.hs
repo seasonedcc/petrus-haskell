@@ -189,6 +189,11 @@ data HostGitPublisher = HostGitPublisher
   , reconcileHook :: ReconcileHook
   -- ^ Test seam around every reconciliation, the ones 'publish' makes
   -- included ('noReconcileHook' by default).
+  , extraGitConfig :: [(Text, Text)]
+  -- ^ Test seam: Git configuration entries after the two fixed ones
+  -- (@GIT_CONFIG_KEY_2@ on), as the reference's tests extend
+  -- @_git_environment()@ (a @url.<remote>.insteadOf@ rewrite). Empty in
+  -- production.
   }
 
 -- | Wraps one reconciliation: its @operation@, @payload_digest@,
@@ -213,7 +218,7 @@ hostGitPublisherWith authority cloneUrl commitName commitEmail = do
     throwIO (ValueError "a credential-free clone URL is required")
   when (T.null (Py.strip commitName) || T.null (Py.strip commitEmail) || "\n" `T.isInfixOf` (commitName <> commitEmail)) $
     throwIO (ValueError "explicit commit metadata is invalid")
-  pure HostGitPublisher {authority, cloneUrl, commitName, commitEmail, reconcileHook = noReconcileHook}
+  pure HostGitPublisher {authority, cloneUrl, commitName, commitEmail, reconcileHook = noReconcileHook, extraGitConfig = []}
 
 -- | @publish(result, operation=, payload_digest=, expected_head=,
 -- base_head=, merge_base=)@.
@@ -235,22 +240,22 @@ publish p result operation digest expectedHead baseHead mergeBase = do
       withPublicationDirectory $ \temporary -> do
         let root = temporary </> "repository"
             rootT = T.pack root
-        _ <- runGit ["clone", "--quiet", "--no-checkout", "--", p.cloneUrl, rootT] Nothing
-        _ <- runGit ["-C", rootT, "checkout", "--quiet", "--detach", expectedHead] Nothing
+        _ <- gitIn p ["clone", "--quiet", "--no-checkout", "--", p.cloneUrl, rootT] Nothing
+        _ <- gitIn p ["-C", rootT, "checkout", "--quiet", "--detach", expectedHead] Nothing
         let parents = expectedHead : [baseHead | mergeBase]
         when (pull.head /= expectedHead || pull.base /= baseHead) $
           failWith CurrentAuthority "stale or incorrectly correlated Git publication"
         when mergeBase $ do
-          _ <- runGit ["-C", rootT, "cat-file", "-e", baseHead <> "^{commit}"] Nothing
+          _ <- gitIn p ["-C", rootT, "cat-file", "-e", baseHead <> "^{commit}"] Nothing
           pure ()
         let patch = temporary </> "change.patch"
         BS.writeFile patch (TE.encodeUtf8 result.diff)
-        _ <- runGit ["-C", rootT, "apply", "--binary", "--index", "--", T.pack patch] Nothing
+        _ <- gitIn p ["-C", rootT, "apply", "--binary", "--index", "--", T.pack patch] Nothing
         changed <- validateStagedTree root
         when (changed /= result.changedFiles || null changed) $
           failWith PatchAdmission "agent patch files differ from its declared result"
-        tree <- Py.strip <$> runGit ["-C", rootT, "write-tree"] Nothing
-        baseTree <- Py.strip <$> runGit ["-C", rootT, "rev-parse", expectedHead <> "^{tree}"] Nothing
+        tree <- Py.strip <$> gitIn p ["-C", rootT, "write-tree"] Nothing
+        baseTree <- Py.strip <$> gitIn p ["-C", rootT, "rev-parse", expectedHead <> "^{tree}"] Nothing
         let message =
               result.proposedCommitMessage <> "\n\n" <> "Hamsterdan-Operation: " <> operation
                 <> "\nHamsterdan-Payload-Digest: "
@@ -303,9 +308,9 @@ reconcileUnhooked p operation digest expectedHead baseHead mergeBase selfCausedH
     failWith RepositoryRef "fork or unsafe pull-request ref is not publishable"
   withPublicationDirectory $ \temporary -> do
     let root = T.pack (temporary </> "repository")
-    _ <- runGit ["clone", "--quiet", "--no-checkout", "--", p.cloneUrl, root] Nothing
+    _ <- gitIn p ["clone", "--quiet", "--no-checkout", "--", p.cloneUrl, root] Nothing
     let destination = "refs/heads/" <> pull.headRef
-    remote <- Py.splitlines <$> runGit ["-C", root, "ls-remote", "--heads", "origin", destination] Nothing
+    remote <- Py.splitlines <$> gitIn p ["-C", root, "ls-remote", "--heads", "origin", destination] Nothing
     line <- case remote of
       [one] -> pure one
       _ -> failWith BoundaryUnavailable "Git remote ref lookup is incoherent"
@@ -321,8 +326,8 @@ reconcileUnhooked p operation digest expectedHead baseHead mergeBase selfCausedH
     unless (length fields == 2 && fields !! 1 == destination && (firstField == pull.head || lagging)) $
       failWith BoundaryUnavailable "Git remote ref differs from the current PR projection"
     let observedHead = firstField
-    _ <- runGit ["-C", root, "fetch", "--quiet", "origin", observedHead] Nothing
-    raw <- runGit ["-C", root, "log", "--first-parent", "-z", "--format=%H%x00%P%x00%B", observedHead] Nothing
+    _ <- gitIn p ["-C", root, "fetch", "--quiet", "origin", observedHead] Nothing
+    raw <- gitIn p ["-C", root, "log", "--first-parent", "-z", "--format=%H%x00%P%x00%B", observedHead] Nothing
     let pieces = T.splitOn "\0" raw
         (history, final) = (init pieces, last pieces)
     when (not (T.null final) || length history `mod` 3 /= 0) $
@@ -381,7 +386,7 @@ validateStagedTree root = do
 createCommit :: HostGitPublisher -> FilePath -> Text -> Text -> [Text] -> [Text] -> Text -> IO Text
 createCommit p root baseTree expectedTree changed parents message = do
   entries <- forM changed $ \path -> do
-    index <- runGit ["-C", T.pack root, "ls-files", "--stage", "-z", "--", path] Nothing
+    index <- gitIn p ["-C", T.pack root, "ls-files", "--stage", "-z", "--", path] Nothing
     if T.null index
       then pure (path, "100644", Nothing)
       else do
@@ -418,21 +423,23 @@ advanceRef p ref expectedHead commit = do
 -- ---------------------------------------------------------------------------
 -- Git subprocesses
 
--- | @_git_environment()@.
-gitEnvironment :: [(String, String)]
-gitEnvironment =
+-- | @_git_environment()@, with these configuration entries after its two.
+gitEnvironment :: [(Text, Text)] -> [(String, String)]
+gitEnvironment extra =
   [ ("PATH", "/bin:/usr/bin")
   , ("LANG", "C.UTF-8")
   , ("LC_ALL", "C.UTF-8")
   , ("HOME", "/dev/null")
   , ("GIT_CONFIG_NOSYSTEM", "1")
   , ("GIT_TERMINAL_PROMPT", "0")
-  , ("GIT_CONFIG_COUNT", "2")
-  , ("GIT_CONFIG_KEY_0", "credential.helper")
-  , ("GIT_CONFIG_VALUE_0", "")
-  , ("GIT_CONFIG_KEY_1", "core.hooksPath")
-  , ("GIT_CONFIG_VALUE_1", "/dev/null")
+  , ("GIT_CONFIG_COUNT", show (length entries))
   ]
+    <> concat
+      [ [("GIT_CONFIG_KEY_" <> show index, T.unpack key), ("GIT_CONFIG_VALUE_" <> show index, T.unpack value)]
+      | (index, (key, value)) <- zip [0 :: Int ..] entries
+      ]
+  where
+    entries = [("credential.helper", ""), ("core.hooksPath", "/dev/null")] <> extra
 
 -- | @git@ resolved on the child's @PATH@ (@os.defpath@), as
 -- @subprocess@ resolves it.
@@ -455,12 +462,19 @@ gitExecutable = firstExisting ["/bin/git", "/usr/bin/git"]
 -- exits without reading it is not an error, as with @subprocess.run@),
 -- drains both outputs, and terminates the child if the timeout fires.
 runGit :: [Text] -> Maybe Text -> IO Text
-runGit arguments input = do
+runGit = runGitWith []
+
+-- | 'runGit' with the publisher's 'extraGitConfig'.
+gitIn :: HostGitPublisher -> [Text] -> Maybe Text -> IO Text
+gitIn p = runGitWith p.extraGitConfig
+
+runGitWith :: [(Text, Text)] -> [Text] -> Maybe Text -> IO Text
+runGitWith extra arguments input = do
   executable <- gitExecutable
   path <- maybe gitFailed pure executable
   let process =
         setStdin (byteStringInput (BL.fromStrict (TE.encodeUtf8 (fromMaybe "" input))))
-          . setEnv gitEnvironment
+          . setEnv (gitEnvironment extra)
           $ proc path (map T.unpack arguments)
   outcome <- try @SomeException (timeout 60000000 (readProcess process))
   case outcome of

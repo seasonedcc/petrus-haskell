@@ -37,15 +37,17 @@ module Hamsterdan.Host.Api
 
     -- * Serving
   , ServeOptions (..)
+  , Served (..)
   , hostSettings
   , serve
   , runHostSocket
   , withHostServer
   ) where
 
-import Control.Concurrent (ThreadId, forkIO, forkIOWithUnmask, killThread, myThreadId)
+import Control.Concurrent (ThreadId, forkIO, killThread, myThreadId, threadDelay)
+import Control.Concurrent.Async (mapConcurrently_, wait, withAsync)
 import Control.Concurrent.MVar
-import Control.Exception (IOException, SomeException, bracket, catch, finally, mask, throwIO, try)
+import Control.Exception (IOException, SomeException, bracket, bracket_, finally, onException, throwIO, try)
 import Control.Monad (void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -57,9 +59,9 @@ import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (find)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Streaming.Network (bindPortTCP)
-import Data.String (fromString)
+import Data.Functor ((<&>))
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Hamsterdan.GitHub.Webhooks (Receipt (..), WebhookRejected (..), dispositionName)
@@ -67,13 +69,33 @@ import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Api.Documents (oauth2RedirectDocument, openApiDocument, redocDocument, swaggerDocument)
 import Hamsterdan.Host.Service (HostService (..))
 import Hamsterdan.Host.Service qualified as Service
+import Hamsterdan.Host.Uvicorn
+  ( BindFailure (..)
+  , Level (..)
+  , Scope (..)
+  , TrustedHosts
+  , UvicornLog
+  , accessLog
+  , bindServer
+  , finishedMessage
+  , logMessage
+  , plainMessage
+  , proxyHeaders
+  , requestScope
+  , runningMessage
+  , startedMessage
+  , tracebackMessage
+  , asgiFailureMessage
+  , trustedHosts
+  )
 import Network.HTTP.Types (Status, http10, http11, status200, status202, status307, status400, status404, status405, status500, urlDecode)
 import Network.HTTP.Types.Header (Header)
 import Network.Wai (Application, Middleware, Request, Response, getRequestBodyChunk, httpVersion, mapResponseHeaders, rawPathInfo, rawQueryString, requestHeaderHost, requestHeaders, requestMethod, responseLBS)
-import Network.Socket (Socket, SocketOption (NoDelay), accept, close, setCloseOnExecIfNeeded, setSocketOption, withFdSocket)
+import Network.Socket (Socket, SocketOption (NoDelay), accept, close, setCloseOnExecIfNeeded, setSocketOption, socketPort, withFdSocket)
 import Network.Wai.Handler.Warp qualified as Warp
 import Network.Wai.Handler.Warp.Internal (Connection (..), Settings (..), runSettingsConnection, socketConnection)
 import Petrus.Json (Json (..), compact, dumps)
+import System.Posix.Process (getProcessID)
 import System.Posix.Signals (Handler (..), Signal, installHandler, sigINT, sigTERM)
 
 -- ---------------------------------------------------------------------------
@@ -140,13 +162,23 @@ endpoints =
 
 -- | The application over one service.
 hostWaiApplication :: HostService -> Application
-hostWaiApplication service request send = do
-  response <- route service request `catch` \(_ :: SomeException) -> pure internalError
-  send response
+hostWaiApplication = reportingApplication (\_ -> pure ())
 
--- | 'hostWaiApplication' as uvicorn serves it ('uvicornHeaders').
-hostServerApplication :: HostService -> Application
-hostServerApplication = uvicornHeaders . hostWaiApplication
+-- | 'hostWaiApplication', reporting what a route raised after its 500 is
+-- sent, as uvicorn logs the exception Starlette's @ServerErrorMiddleware@
+-- raises again after answering.
+reportingApplication :: (SomeException -> IO ()) -> HostService -> Application
+reportingApplication report service request send = do
+  outcome <- try @SomeException (route service request)
+  case outcome of
+    Right response -> send response
+    Left failure -> send internalError <* report failure
+
+-- | 'hostWaiApplication' as uvicorn serves it: behind its proxy headers
+-- middleware over the trusted hosts ('proxyHeaders'), with its headers
+-- ('uvicornHeaders').
+hostServerApplication :: TrustedHosts -> HostService -> Application
+hostServerApplication trusted = proxyHeaders trusted . uvicornHeaders . hostWaiApplication
 
 -- | What uvicorn's h11 protocol writes around an application's headers:
 -- @date@ and @server: uvicorn@ before them, and @Connection: close@ after
@@ -181,9 +213,11 @@ route service request =
   where
     -- uvicorn's @scope["path"]@: the percent-decoded request path.
     path' = urlDecode False (rawPathInfo request)
-    -- @str(URL(scope=redirect_scope))@ under @RedirectResponse@'s quoting.
+    -- @str(URL(scope=redirect_scope))@ under @RedirectResponse@'s quoting,
+    -- with the scope's scheme ('proxyHeaders' may have set it).
     location redirected =
-      "http://"
+      TE.encodeUtf8 (requestScope request).scheme
+        <> "://"
         <> maybe "" id (requestHeaderHost request)
         <> quote redirected
         <> rawQueryString request
@@ -245,26 +279,19 @@ readBounded request limit = go 0 []
 -- worker beside the action, then stop the service, wait for the worker,
 -- and close the service. A worker failure is re-raised after the action;
 -- the service is closed in every case.
+--
+-- The worker is owned ('withAsync'): it is always stopped and awaited (or,
+-- if the wait itself is interrupted, cancelled) before the service closes.
 withLifespan :: HostService -> Bool -> IO a -> IO a
-withLifespan service reconcileStartup action = do
-  task <- newEmptyMVar
-  let body = do
-        when reconcileStartup $ void (Service.reconcileRegistration service)
-        done <- newEmptyMVar
-        _ <- mask $ \_ -> forkIOWithUnmask $ \unmask -> try @SomeException (unmask (Service.worker service)) >>= putMVar done
-        putMVar task done
-        action
-      finish = do
-        Service.stop service
-        ( tryReadMVar task >>= \case
-            Nothing -> pure ()
-            Just done -> readMVar done >>= either throwIO pure
-          )
-          `finally` Service.close service
-  result <- try @SomeException body
-  case result of
-    Left failure -> finish >> throwIO failure
-    Right value -> value <$ finish
+withLifespan service reconcileStartup action = flip finally (Service.close service) $ do
+  when reconcileStartup (void (Service.reconcileRegistration service)) `onException` Service.stop service
+  withAsync (Service.worker service) $ \worker -> do
+    result <- try @SomeException action
+    Service.stop service
+    -- @await task@ in the @finally@: a worker failure replaces the
+    -- action's, as Python's does.
+    wait worker
+    either throwIO pure result
 
 -- ---------------------------------------------------------------------------
 -- Serving
@@ -272,38 +299,138 @@ withLifespan service reconcileStartup action = do
 data ServeOptions = ServeOptions
   { host :: String
   , port :: Int
-  , onStarted :: IO ()
-  -- ^ After the lifespan's startup, once the socket listens.
+  , log :: UvicornLog
+  , forwardedAllowIps :: Text
+  -- ^ @FORWARDED_ALLOW_IPS@, else @127.0.0.1@ (uvicorn's default).
+  , failureLine :: SomeException -> Text
+  -- ^ The last line of the traceback the reference logs for a lifespan
+  -- or route failure (the line the command line prints for an uncaught
+  -- exception).
+  , onStarted :: Int -> IO ()
+  -- ^ Once the sockets listen, with the bound port.
   }
 
--- | @uvicorn.run(create_app(service), host=host, port=port)@: serve until
--- SIGINT or SIGTERM, then shut down gracefully through the lifespan.
+-- | How 'serve' ended.
+data Served
+  = -- | @sys.exit(STARTUP_FAILURE)@: the lifespan's startup failed, or
+    -- binding did (after the lifespan's shutdown).
+    StartupFailed
+  | -- | Shut down, by the signal it captured.
+    ShutDown (Maybe Signal)
+  deriving stock (Eq, Show)
+
+-- | Where 'serve' is, for its signal handlers.
+data Phase
+  = Starting
+  | Serving (IO ())
+  | Stopping Signal
+
+-- | @uvicorn.run(create_app(service), host=host, port=port)@: uvicorn's
+-- @Server.serve@ with its log lines ("Hamsterdan.Host.Uvicorn"), over the
+-- reference's lifespan:
 --
--- The signal that stopped it, if one did. uvicorn's @capture_signals@
--- restores the previous handlers after the shutdown and raises the
--- captured signal again (@signal.raise_signal@), so the reference process
--- then ends the way that signal ends it; the caller does the same with
--- what this returns.
-serve :: HostService -> ServeOptions -> IO (Maybe Signal)
+-- * @Started server process@; the lifespan's startup (reconcile the
+--   registration, start the inbox worker); on failure the service is
+--   stopped and closed, the failure logged, and 'StartupFailed'.
+-- * Bind every address of the host ('bindServer'); on failure the error is
+--   logged, the lifespan shut down, and 'StartupFailed'.
+-- * @Uvicorn running on …@, then serve, with an access line per response
+--   and @FORWARDED_ALLOW_IPS@'s proxy headers, until SIGINT or SIGTERM. A
+--   route's failure is answered 500 and logged (@Exception in ASGI
+--   application@).
+-- * @Shutting down@: stop listening, wait 0.1 s (and say so when requests
+--   are still in flight), let warp finish them; then the lifespan's
+--   shutdown (stop the service, wait for the worker, close the service;
+--   a failure is logged, not raised) and @Finished server process@.
+--
+-- uvicorn's @capture_signals@ raises the captured signal again after the
+-- shutdown (@signal.raise_signal@), so the reference process then ends the
+-- way that signal ends it; the caller does the same with the signal
+-- 'ShutDown' carries.
+serve :: HostService -> ServeOptions -> IO Served
 serve service options = do
-  captured <- newIORef Nothing
-  let capture signal closeSocket = CatchOnce (atomicModifyIORef' captured (const (Just signal, ())) >> closeSocket)
-      settings =
-        Warp.setHost (fromString options.host)
-          . Warp.setPort options.port
-          . Warp.setBeforeMainLoop options.onStarted
-          . Warp.setInstallShutdownHandler
-            ( \closeSocket -> do
-                void (installHandler sigTERM (capture sigTERM closeSocket) Nothing)
-                void (installHandler sigINT (capture sigINT closeSocket) Nothing)
-            )
-          $ hostSettings
-  withLifespan service True $
-    -- @Warp.runSettings@, over 'runHostSocket'.
-    bracket (bindPortTCP options.port (fromString options.host)) close $ \socket -> do
-      withFdSocket socket setCloseOnExecIfNeeded
-      runHostSocket settings socket (hostServerApplication service)
-  readIORef captured
+  pid <- fromIntegral <$> getProcessID
+  phase <- newIORef Starting
+  drained <- newEmptyMVar
+  let say = logMessage options.log
+      lifespanFailure failure = say Error (tracebackMessage (options.failureLine failure))
+      capture signal = CatchOnce $ do
+        stopping <- atomicModifyIORef' phase $ \case
+          Serving stop -> (Stopping signal, stop >> putMVar drained ())
+          Starting -> (Stopping signal, pure ())
+          stopped@(Stopping _) -> (stopped, pure ())
+        stopping
+  mapM_ (\signal -> installHandler signal (capture signal) Nothing) [sigTERM, sigINT]
+  say Info (startedMessage pid)
+  say Info (plainMessage "Waiting for application startup.")
+  startup <- try @SomeException (void (Service.reconcileRegistration service))
+  case startup of
+    Left failure -> do
+      -- The lifespan's @finally@: stop and close the service.
+      closing <- try @SomeException (Service.stop service >> Service.close service)
+      lifespanFailure (either id (const failure) closing)
+      say Error (plainMessage "Application startup failed. Exiting.")
+      pure StartupFailed
+    Right () -> withAsync (Service.worker service) $ \worker -> do
+      say Info (plainMessage "Application startup complete.")
+      let shutdownLifespan = do
+            say Info (plainMessage "Waiting for application shutdown.")
+            outcome <- try @SomeException ((Service.stop service >> wait worker) `finally` Service.close service)
+            case outcome of
+              Left failure -> do
+                lifespanFailure failure
+                say Error (plainMessage "Application shutdown failed. Exiting.")
+              Right () -> say Info (plainMessage "Application shutdown complete.")
+      bound <- bindServer options.host options.port
+      case bound of
+        Left (BindFailure message) -> do
+          say Error (plainMessage message)
+          shutdownLifespan
+          pure StartupFailed
+        Right sockets -> flip finally (mapM_ close sockets) $ do
+          port <- case sockets of
+            listener : _ -> fromIntegral <$> socketPort listener
+            [] -> pure options.port
+          say Info (runningMessage (T.pack options.host) port)
+          inFlight <- newIORef (0 :: Int)
+          let shuttingDown = do
+                say Info (plainMessage "Shutting down")
+                mapM_ close sockets
+                threadDelay 100000
+                busy <- readIORef inFlight
+                when (busy > 0) $
+                  say Info (plainMessage "Waiting for connections to close. (CTRL+C to force quit)")
+              app =
+                counted inFlight
+                  . proxyHeaders (trustedHosts options.forwardedAllowIps)
+                  . accessLog options.log
+                  . uvicornHeaders
+                  $ reportingApplication (say Error . asgiFailureMessage . options.failureLine) service
+          serving <- atomicModifyIORef' phase $ \case
+            Starting -> (Serving shuttingDown, True)
+            other -> (other, False)
+          if serving
+            then do
+              options.onStarted port
+              mapConcurrently_ (\listener -> runHostSocket hostSettings listener app) sockets
+              readIORef phase >>= \case
+                Stopping _ -> takeMVar drained
+                _ -> pure ()
+            else shuttingDown
+          shutdownLifespan
+          say Info (finishedMessage pid)
+          readIORef phase <&> \case
+            Stopping signal -> ShutDown (Just signal)
+            _ -> ShutDown Nothing
+
+-- | Count the requests in flight (h11's connections with a response
+-- cycle under way).
+counted :: IORef Int -> Middleware
+counted inFlight app request send =
+  bracket_
+    (atomicModifyIORef' inFlight (\n -> (n + 1, ())))
+    (atomicModifyIORef' inFlight (\n -> (n - 1, ())))
+    (app request send)
 
 -- | @Warp.runSettingsSocket@ with h11's status line: an HTTP/1.0 request's
 -- response starts @HTTP/1.1@, as uvicorn writes it, where warp echoes the

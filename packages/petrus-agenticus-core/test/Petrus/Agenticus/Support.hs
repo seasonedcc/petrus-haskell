@@ -21,7 +21,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Agenticus.Error
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import System.Directory (doesFileExist)
 import Test.Hspec
 import Test.Hspec.QuickCheck (modifyMaxSuccess)
@@ -42,10 +42,10 @@ loadJson :: FilePath -> IO Json
 loadJson relative = do
   path <- packageFile relative
   bytes <- B.readFile path
-  either fail pure (parseJson pythonLoads bytes)
+  either fail pure (parseJson surrogateRefusingLoads bytes)
 
 parseJsonText :: Text -> Json
-parseJsonText t = either error id (parseJson pythonLoads (TE.encodeUtf8 t))
+parseJsonText t = either error id (parseJson surrogateRefusingLoads (TE.encodeUtf8 t))
 
 -- | The value fails with an error that is an instance of the class.
 shouldRaise :: (Show a) => Either AgenticusError a -> ErrorClass -> Expectation

@@ -38,7 +38,7 @@ import Test.Hspec
 loadFixture :: FilePath -> IO Json
 loadFixture name = do
   bytes <- B.readFile ("test/fixtures" </> name)
-  either (fail . ("fixture parse error: " <>)) pure (parseJson pythonLoads bytes)
+  either (fail . ("fixture parse error: " <>)) pure (parseJson surrogateRefusingLoads bytes)
 
 field :: Text -> Json -> Json
 field key value = case lookupMember key value of

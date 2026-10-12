@@ -1222,7 +1222,7 @@ encodeInvocation = encodeJson "Activity invocation" . invocationJson
 -- "corrupt durable Activity invocation: ".
 decodeInvocation :: Text -> Either Text ActivityInvocation
 decodeInvocation text = either (Left . ("corrupt durable Activity invocation: " <>)) Right $ do
-  value <- either (Left . T.pack) Right (parseJson pythonLoads (TE.encodeUtf8 text))
+  value <- either (Left . T.pack) Right (parseJson surrogateRefusingLoads (TE.encodeUtf8 text))
   either (Left . refusal) Right (invocationFromJson value)
   where
     refusal problem = flip fromMaybe (invocationRefusal pythonRepr problem) $ case problem of
@@ -1275,7 +1275,7 @@ failedOutcome :: ActivityFailure -> Json
 failedOutcome failure = Object [("kind", String "failed"), ("failure", failureJson failure)]
 
 parseColumn :: Text -> Either Text Json
-parseColumn text = either (Left . T.pack) Right (parseJson pythonLoads (TE.encodeUtf8 text))
+parseColumn text = either (Left . T.pack) Right (parseJson surrogateRefusingLoads (TE.encodeUtf8 text))
 
 parseText :: Text -> Maybe Json
 parseText = either (const Nothing) Just . parseColumn

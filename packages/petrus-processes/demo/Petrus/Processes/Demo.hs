@@ -81,7 +81,7 @@ import Petrus.Impetus.History.Codec (encodeRecord)
 import Petrus.Impetus.History.Records (ActivityCompleted (..), DeliveryRegistration (..), Record (..))
 import Petrus.Impetus.Instance (ImplementationRef (..), Status (..))
 import Petrus.Impetus.Petrinet
-import Petrus.Json (Json (..), compact, defaultDumps, dumps, lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), compact, defaultDumps, dumps, lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityOutcome (..), Dispatch (..))
 import Petrus.Postgres (Connection, textArrayParam, textParam)
 import Petrus.Postgres qualified as Pg
@@ -451,7 +451,7 @@ spawnWorker = do
         eof <- hIsEOF stdin
         unless eof $ do
           line <- BC.hGetLine stdin
-          answer <- either (\e -> pure (Object [("error", String (T.pack e)), ("ensure_calls", Int 0)])) serve (parseJson pythonLoads line)
+          answer <- either (\e -> pure (Object [("error", String (T.pack e)), ("ensure_calls", Int 0)])) serve (parseJson surrogateRefusingLoads line)
           BC.putStrLn (either (error . show) id (dumps compact answer))
           hFlush stdout
           loop
@@ -510,7 +510,7 @@ viaWorker w dsn parent credential key calls inv = withMVar w.lock $ \_ -> do
   BC.hPutStrLn w.input (either (error . show) id (dumps compact (workerRequest dsn parent credential key inv)))
   hFlush w.input
   line <- BC.hGetLine w.output
-  answer <- either (throwIO . userError) pure (parseJson pythonLoads line)
+  answer <- either (throwIO . userError) pure (parseJson surrogateRefusingLoads line)
   case lookupMember "ensure_calls" answer of
     Just (Int n) -> modifyIORef' calls (+ fromInteger n)
     _ -> pure ()
@@ -723,7 +723,7 @@ demoMain = do
   let flag name = lookup name (pairs arguments)
       commandOf name = case flag name of
         Nothing -> pure Nothing
-        Just raw -> case parseJson pythonLoads (BC.pack raw) of
+        Just raw -> case parseJson surrogateRefusingLoads (BC.pack raw) of
           Right (Array items) | Just strings <- mapM stringOf items, not (null strings) -> pure (Just strings)
           _ -> hPutStrLn stderr (name <> " takes a JSON array of strings") >> exitFailure
       stringOf = \case

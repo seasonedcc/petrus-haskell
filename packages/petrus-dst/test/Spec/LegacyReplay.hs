@@ -9,7 +9,7 @@ import Control.Exception (evaluate, try)
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.Text qualified as T
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Testing.Dst.Campaign.Support (ToolError (..), canonicalDumps)
 import Petrus.Testing.Dst.LegacyReplay
 import Spec.Support (fixturesDir, member, readJson)
@@ -98,7 +98,7 @@ spec = describe "test_replay.py (strict scenario contract and replay route)" $ d
     err `shouldBe` ""
     out' `shouldBe` out
     err' `shouldBe` ""
-    result <- either fail pure (parseJson pythonLoads out)
+    result <- either fail pure (parseJson surrogateRefusingLoads out)
     member "format" result `shouldBe` String "petrus-dst-replay-result"
     member "scenario_id" result `shouldBe` String "projection-crash-recovery-v1"
     member "outcome" result `shouldBe` String "pass"

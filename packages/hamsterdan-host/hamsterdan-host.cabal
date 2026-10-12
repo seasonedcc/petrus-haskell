@@ -37,12 +37,15 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Hamsterdan.Host.Python
+                    Hamsterdan.Host.ExceptionClass
                     Hamsterdan.Host.Runnable
                     Hamsterdan.Host.V5.Timers
                     Hamsterdan.Host.Cli
                     Hamsterdan.Host.Service
                     Hamsterdan.Host.Api
                     Hamsterdan.Host.Api.Documents
+                    Hamsterdan.Host.Uvicorn
+                    Hamsterdan.Host.Uvicorn.IpAddress
                     Hamsterdan.Host.V5.Application
                     Hamsterdan.Host.V5.Runtime
                     Hamsterdan.Host.V5.Mutation
@@ -55,11 +58,12 @@ library
                     Hamsterdan.Host.V5.Claim
                     Hamsterdan.Host.Agents
   build-depends:    base >=4.18 && <5
+                  , async >=2.2
                   , bytestring >=0.11
                   , case-insensitive >=1.2
                   , direct-sqlite >=2.3.27
                   , hamsterdan-agents
-                  , hamsterdan-cli
+                  , petrus-argparse
                   , hamsterdan-contracts
                   , petrus-activity
                   , petrus-agenticus-core
@@ -76,6 +80,7 @@ library
                   , hamsterdan-readiness
                   , http-types >=0.12
                   , petrus-json
+                  , petrus-sqlite
                   , petrus-execution
                   , petrus-motus
                   , petrus-posix
@@ -88,6 +93,7 @@ library
                   , typed-process >=0.2
                   , time >=1.12
                   , unix >=2.8
+                  , vault >=0.3
                   , wai >=3.2
                   , warp >=3.3
   ghc-options:      -O2
@@ -115,6 +121,7 @@ test-suite hamsterdan-host-test
                     InteropSpec
                     ArchitectureSpec
                     CliSpec
+                    ExceptionClassSpec
                     ApiSpec
                     RawHttp
                     FakeGitHub
@@ -130,6 +137,7 @@ test-suite hamsterdan-host-test
                     GatesSpec
                     IngressSpec
                     PiActivitySpec
+                    UvicornSpec
   build-depends:    base
                   , base64-bytestring
                   , bytestring
@@ -139,7 +147,7 @@ test-suite hamsterdan-host-test
                   , filepath
                   , hamsterdan-agents
                   , hamsterdan-github
-                  , hamsterdan-cli
+                  , petrus-argparse
                   , hamsterdan-contracts
                   , hamsterdan-host
                   , hamsterdan-readiness

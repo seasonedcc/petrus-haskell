@@ -17,7 +17,7 @@ import Petrus.Agenticus.Effect.Model
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Validate (canonicalBytes)
 import Petrus.Agenticus.Support hiding (shouldRaiseMatchingIO)
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
 import Petrus.Json qualified as J
 import Test.Hspec
 import Test.QuickCheck
@@ -201,7 +201,7 @@ contractSpec = do
         let reordered = case payload of
               Object members -> Object (reverse members)
               other -> other
-            replayed = either error id (parseJson pythonLoads (either (error . show) id (J.dumps J.compact payload)))
+            replayed = either error id (parseJson surrogateRefusingLoads (either (error . show) id (J.dumps J.compact payload)))
             p = proposalWith payload
          in digestPayloadJson payload === digestPayloadJson reordered
               .&&. digestPayloadJson payload === digestPayloadJson replayed

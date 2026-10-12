@@ -33,7 +33,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import GHC.Clock (getMonotonicTime)
 import Petrus.Activity
-import Petrus.Json (Json (..), parseJson, pythonLoads)
+import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch
 import Petrus.Motus.Worker
 import System.Directory (doesFileExist)
@@ -155,7 +155,7 @@ startLocalWorker path = do
   line <- timeout 10000000 (hGetLine out)
   case line of
     Nothing -> stopProcess handle >> expectationFailure "Local Worker did not become ready"
-    Just text -> case parseJson pythonLoads (BS.pack (map (toEnum . fromEnum) text)) of
+    Just text -> case parseJson surrogateRefusingLoads (BS.pack (map (toEnum . fromEnum) text)) of
       Right (Object members) | lookup "ready" members == Just (Bool True) -> pure ()
       other -> stopProcess handle >> expectationFailure ("unexpected ready line: " <> show other)
   pure (handle, out)

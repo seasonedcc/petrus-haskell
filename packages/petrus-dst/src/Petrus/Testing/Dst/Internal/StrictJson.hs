@@ -32,7 +32,7 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Json (DuplicateMembers (..), Json, ParseOptions (..), parseJson, pythonLoads)
+import Petrus.Json (DuplicateMembers (..), Json, ParseOptions (..), parseJson, surrogateRefusingLoads)
 import Petrus.Json.Python (decodeJsonBytes)
 import Petrus.Json.Python.Scanner qualified as Scanner
 
@@ -54,7 +54,7 @@ loadStrictJson payload = do
 
 options :: ParseOptions
 options =
-  pythonLoads
+  surrogateRefusingLoads
     { duplicateMembers = RejectDuplicates
     , allowNonFiniteConstants = False
     }

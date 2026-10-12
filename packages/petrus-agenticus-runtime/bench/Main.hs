@@ -121,7 +121,7 @@ roundtrip bytes =
   ok
     ( J.dumps
         J.defaultDumps {J.itemSeparator = Just ",", J.keySeparator = ":", J.sortKeys = True, J.allowNan = False}
-        (projectionToData (ok (projectionFromData (ok (J.parseJson J.pythonLoads bytes)))))
+        (projectionToData (ok (projectionFromData (ok (J.parseJson J.surrogateRefusingLoads bytes)))))
     )
 
 main :: IO ()

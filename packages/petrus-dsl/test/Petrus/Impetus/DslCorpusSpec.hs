@@ -29,7 +29,7 @@ import Petrus.Impetus.Petrinet.Schema
   , netTransitionOrder
   , netUriText
   )
-import Petrus.Json (Json (..), lookupMember, parseJson, pythonLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
 import System.Directory (doesFileExist)
 import Test.Hspec
 
@@ -80,7 +80,7 @@ spec = describe "differential corpus (dsl_corpus.json, from the reference DSL)" 
   expected <- runIO $ do
     path <- locate "differential/dsl_corpus.json"
     bytes <- BS.readFile path
-    either fail pure (parseJson pythonLoads bytes)
+    either fail pure (parseJson surrogateRefusingLoads bytes)
   let cases = case expected of
         Object members -> members
         _ -> []
