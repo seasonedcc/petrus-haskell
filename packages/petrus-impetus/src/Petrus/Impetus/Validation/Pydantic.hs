@@ -132,12 +132,11 @@ at step = first (map (\err -> err {loc = step : err.loc}))
 model :: Text -> [Text] -> ([(Text, PV)] -> PV -> Collect a) -> PV -> Validated a
 model className fields build = \case
   whole@(PDict members) ->
-    let extras =
-          [ LineError [Key k] "Extra inputs are not permitted" "extra_forbidden" v
-          | (k, v) <- members
-          , k `notElem` fields
-          ]
-        unreadable = [k | (k, _) <- members, hasLoneSurrogate k]
+    let unknown = [(k, v) | (k, v) <- members, k `notElem` fields]
+        extras = [LineError [Key k] "Extra inputs are not permitted" "extra_forbidden" v | (k, v) <- unknown]
+        -- A declared field's name is never unreadable, so only the unknown
+        -- members (usually none) are scanned.
+        unreadable = [k | (k, _) <- unknown, hasLoneSurrogate k]
      in case (collect (build members whole), extras) of
           (Left es, _) | any (\err -> err.errorType == fatalType) es -> Left es
           _ | k : _ <- unreadable -> Left [Pydantic.stringUnicode (PStr k)]
