@@ -70,7 +70,7 @@ eNOTCAPABLE :: Maybe Errno
 #if defined(darwin_HOST_OS) || defined(freebsd_HOST_OS)
 eNOTCAPABLE = Just (Errno c_ENOTCAPABLE)
 
-foreign import capi "errno.h value ENOTCAPABLE" c_ENOTCAPABLE :: CInt
+foreign import capi unsafe "errno.h value ENOTCAPABLE" c_ENOTCAPABLE :: CInt
 #else
 eNOTCAPABLE = Nothing
 #endif

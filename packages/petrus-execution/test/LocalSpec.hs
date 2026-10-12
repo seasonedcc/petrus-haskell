@@ -513,7 +513,7 @@ foreign import capi unsafe "signal.h sigaction"
 foreign import capi unsafe "signal.h signal"
   c_signal :: CInt -> FunPtr (CInt -> IO ()) -> IO (FunPtr (CInt -> IO ()))
 
-foreign import capi "signal.h value SIG_IGN"
+foreign import capi unsafe "signal.h value SIG_IGN"
   c_sigIgn :: FunPtr (CInt -> IO ())
 
 attachDir :: EnvironmentProvider -> EnvironmentLease -> FilePath -> Text -> IO ExecutionAttachment

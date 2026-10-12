@@ -689,9 +689,9 @@ foreign import capi unsafe "unistd.h write"
 foreign import capi unsafe "unistd.h linkat"
   c_linkat :: CInt -> CString -> CInt -> CString -> CInt -> IO CInt
 
-foreign import capi "fcntl.h value AT_FDCWD" atFdcwd :: CInt
+foreign import capi unsafe "fcntl.h value AT_FDCWD" atFdcwd :: CInt
 
-foreign import capi "fcntl.h value AT_SYMLINK_FOLLOW" atSymlinkFollow :: CInt
+foreign import capi unsafe "fcntl.h value AT_SYMLINK_FOLLOW" atSymlinkFollow :: CInt
 
 -- | @os.link(src, dst)@ (which follows a symlinked source).
 hardLink :: ByteString -> ByteString -> IO ()

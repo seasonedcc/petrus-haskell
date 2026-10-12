@@ -189,7 +189,7 @@ realpathRaw filename = do
 
 foreign import capi unsafe "unistd.h confstr" c_confstr :: CInt -> CString -> CSize -> IO CSize
 
-foreign import capi "unistd.h value _CS_PATH" csPathName :: CInt
+foreign import capi unsafe "unistd.h value _CS_PATH" csPathName :: CInt
 
 -- | @os.confstr("CS_PATH")@: the system's default command search path
 -- (@shutil.which@'s fallback when @PATH@ is unset), or 'Nothing' when the

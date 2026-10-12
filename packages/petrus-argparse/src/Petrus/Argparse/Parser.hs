@@ -1062,7 +1062,7 @@ environmentColumns environment =
 
 foreign import capi unsafe "sys/ioctl.h ioctl" c_ioctl :: CInt -> CULong -> Ptr Word16 -> IO CInt
 
-foreign import capi "sys/ioctl.h value TIOCGWINSZ" tiocgwinsz :: CULong
+foreign import capi unsafe "sys/ioctl.h value TIOCGWINSZ" tiocgwinsz :: CULong
 
 windowColumns :: CInt -> IO Int
 windowColumns fd = allocaBytes 8 $ \size -> do
