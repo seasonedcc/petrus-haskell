@@ -1,19 +1,19 @@
 # petrus-posix benchmarks
 
-<!-- scripts/bench: measured sources 956a5562bc09bd47 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources d19535d4acafe368 at 2eb0f2ab4a41 -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
 names and values. Both are wall-clock time, and both sides work in a fresh
 directory under the same `TMPDIR`. Ratios above 1 mean Haskell is faster.
-**Every row is level or faster.** `flock.open-tryLock-close` is level, at
-1.00× (13.4 µs on both sides; the repetitions' ratios 0.999, 1.000, 0.997,
-0.994 and 0.974×, so the median repetition is 0.997×, 0.3% behind): both
-sides spend it in the kernel's `open`, below, and it read 1.003× over nine
-repetitions in the table before this one.
+**Every row is level or faster, and Haskell is ahead in most repetitions
+of every row.** `flock.open-tryLock-close` is level, at 1.01× (13.2 µs
+against 13.3 µs; Haskell ahead in 4 of 5 repetitions, 0.98× in the fifth):
+both sides spend it in the kernel's `open`, below. `atomic.write-1KiB-fsync`
+is fsync-bound, 1.01× (4 of 5).
 
-- Date: 2026-10-12 01:22–01:24 local (UTC-3), at commit `81bbdc5`
-- Machine: Darwin arm64, Apple M4; 1-minute load average 2.06–2.37 around
+- Date: 2026-10-12 19:15–19:18 local (UTC-3), at commit `4d6410b`
+- Machine: Darwin arm64, Apple M4; 1-minute load average 2.63–3.10 around
   the runs
 - Haskell: GHC 9.10.3 (-O2), tasty-bench mean in wall-clock time,
   `--stdev 5`, `+RTS -M2G -RTS`, the benchmark executable run directly
@@ -22,25 +22,26 @@ repetitions in the table before this one.
   (scripts/bench_timing.py)
 - Interleaved by `scripts/bench-compare petrus-posix 5`, alternating which
   side goes first. The figures are the medians of the five repetitions; the
-  last two columns give each repetition.
+  last columns give each repetition and the repetitions Haskell won.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `flock.tryLock-unlock` | 454 ns | 587 ns | 1.29× | 1.28× | 453 ns, 463 ns, 454 ns, 455 ns, 453 ns | 599 ns, 602 ns, 587 ns, 582 ns, 585 ns |
-| `flock.open-tryLock-close` | 13.4 µs | 13.4 µs | 1.00× | 0.97× | 13.4 µs, 13.4 µs, 13.4 µs, 13.4 µs, 13.7 µs | 13.4 µs, 13.4 µs, 13.4 µs, 13.4 µs, 13.3 µs |
-| `path.resolve-symlinked` | 8.79 µs | 16 µs | 1.82× | 1.80× | 8.68 µs, 8.85 µs, 8.84 µs, 8.75 µs, 8.79 µs | 16 µs, 16 µs, 15.9 µs, 15.9 µs, 16 µs |
-| `path.expanduser-resolve` | 10.8 µs | 16.1 µs | 1.49× | 1.48× | 10.6 µs, 10.8 µs, 10.8 µs, 10.7 µs, 10.9 µs | 16.1 µs, 16 µs, 16 µs, 16.1 µs, 16.1 µs |
-| `at.stat-nofollow` | 746 ns | 894 ns | 1.20× | 1.19× | 744 ns, 746 ns, 762 ns, 749 ns, 739 ns | 883 ns, 913 ns, 915 ns, 894 ns, 881 ns |
-| `atomic.write-1KiB-fsync` | 128 µs | 133 µs | 1.04× | 0.94× | 127 µs, 141 µs, 128 µs, 131 µs, 127 µs | 133 µs, 132 µs, 134 µs, 134 µs, 131 µs |
-| `resource.max_rss_mb` | 192 ns | 432 ns | 2.25× | 2.10× | 194 ns, 192 ns, 194 ns, 186 ns, 188 ns | 409 ns, 432 ns, 437 ns, 435 ns, 430 ns |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `flock.tryLock-unlock` | 457 ns | 591 ns | 1.29× | 1.25× | 5 of 5 | 456 ns, 457 ns, 457 ns, 472 ns, 460 ns | 598 ns, 599 ns, 588 ns, 590 ns, 591 ns |
+| `flock.open-tryLock-close` | 13.2 µs | 13.3 µs | 1.01× | 0.98× | 4 of 5 | 13.2 µs, 13.1 µs, 13.3 µs, 13.2 µs, 13.7 µs | 13.7 µs, 13.3 µs, 13.3 µs, 13.3 µs, 13.4 µs |
+| `path.resolve-symlinked` | 8.93 µs | 16.2 µs | 1.81× | 1.79× | 5 of 5 | 8.71 µs, 8.98 µs, 8.93 µs, 8.96 µs, 8.92 µs | 16 µs, 16.2 µs, 16.2 µs, 16.1 µs, 16.2 µs |
+| `path.expanduser-resolve` | 11 µs | 16.2 µs | 1.47× | 1.44× | 5 of 5 | 11 µs, 11.3 µs, 10.9 µs, 11 µs, 11.1 µs | 16.1 µs, 16.3 µs, 16.2 µs, 16.2 µs, 16.2 µs |
+| `at.stat-nofollow` | 762 ns | 904 ns | 1.19× | 1.16× | 5 of 5 | 742 ns, 777 ns, 769 ns, 762 ns, 761 ns | 908 ns, 904 ns, 896 ns, 917 ns, 882 ns |
+| `atomic.write-1KiB-fsync` | 137 µs | 139 µs | 1.01× | 0.98× | 4 of 5 | 141 µs, 137 µs, 137 µs, 135 µs, 136 µs | 138 µs, 138 µs, 142 µs, 139 µs, 140 µs |
+| `resource.max_rss_mb` | 192 ns | 439 ns | 2.29× | 2.19× | 5 of 5 | 191 ns, 190 ns, 200 ns, 192 ns, 193 ns | 434 ns, 438 ns, 439 ns, 440 ns, 468 ns |
 
-`atomic.write-1KiB-fsync` is fsync-bound: 1.049, 0.938, 1.046, 1.028 and
-1.033× by repetition; the 0.94× is the one repetition where the Haskell
-side read 141 µs.
+`atomic.write-1KiB-fsync` is one `fsync` per call on both sides; its
+repetitions read 0.98–1.04×.
 
-The table before this one (2026-10-11 06:32–06:38, at `573e8d6`, load
-2.28–2.77, nine repetitions) read 1.29×, 1.00×, 1.81×, 1.48×, 1.13×, 1.04×
-and 2.27×, in the order of the rows above.
+The table before this one (2026-10-12 01:22–01:24, at `81bbdc5`, load
+2.06–2.37, five repetitions) read 1.29×, 1.00×, 1.82×, 1.49×, 1.20×, 1.04×
+and 2.25×, in the order of the rows above; the one before that (2026-10-11
+06:32–06:38, at `573e8d6`, load 2.28–2.77, nine repetitions) 1.29×, 1.00×,
+1.81×, 1.48×, 1.13×, 1.04× and 2.27×.
 
 ## The `flock` constants were foreign calls
 
@@ -77,9 +78,8 @@ outside tasty-bench, in fixed loops:
   took about 12.3 µs, the Haskell library's `openLockFile`, `tryLock` and
   `closeFd` 12.6–13.1 µs, and Python's loop 13.0–13.5 µs, alternated.
 
-So the row moves with the kernel, not with either client: at 1.00× here
-(0.997× by repetition) and in the table before, 0.97–0.99× in the earlier
-tables, where the Haskell side also ran under `cabal bench` (below).
+So the row moves with the kernel, not with either client: at 1.01× here,
+1.00× in the two tables before, 0.97–0.99× in the earlier tables, where the Haskell side also ran under `cabal bench` (below).
 
 ## How bench-compare runs the Haskell side
 
