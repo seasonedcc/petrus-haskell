@@ -37,7 +37,6 @@ module Hamsterdan.Readiness.NetV5.Py
   , construct
   , dumpObject
   , strictText
-  , strictInteger
   , spelling
   , unspell
   , texts
@@ -240,11 +239,6 @@ construct fields = either (const (Left validationError)) Right (validate @a (Obj
 strictText :: Json -> Py Text
 strictText = \case
   String s -> Right s
-  _ -> Left validationError
-
-strictInteger :: Json -> Py Integer
-strictInteger = \case
-  Int i -> Right i
   _ -> Left validationError
 
 -- | A model's dump as the members of the @dict@ that holds it (a model

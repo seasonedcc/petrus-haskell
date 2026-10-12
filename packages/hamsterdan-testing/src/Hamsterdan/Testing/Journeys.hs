@@ -23,10 +23,8 @@ module Hamsterdan.Testing.Journeys
   ( -- * Journeys
     Journey (..)
   , journeyName
-  , journeyFromName
   , Phase (..)
   , phasesOf
-  , phaseName
   , runJourney
   , driveJourney
 
@@ -294,9 +292,6 @@ journeyName = \case
   TrueConflictResolution -> "true_conflict_resolution"
   CollaborationApproval -> "collaboration_approval"
 
-journeyFromName :: Text -> Maybe Journey
-journeyFromName name = find ((== name) . journeyName) [minBound .. maxBound]
-
 -- | @_run_journey@'s keyword arguments.
 data Flags = Flags
   { rerunConclusion :: Maybe Text
@@ -338,14 +333,6 @@ repairing flags = flags.agentRepair || baseMutation flags
 -- | One of @_run_journey@'s spans between convergences.
 data Phase = Open | Draft | StaleBase | Collaboration | FollowUp
   deriving stock (Eq, Show)
-
-phaseName :: Phase -> Text
-phaseName = \case
-  Open -> "open"
-  Draft -> "draft"
-  StaleBase -> "stale_base"
-  Collaboration -> "collaboration"
-  FollowUp -> "follow_up"
 
 -- | The journey's phases in @_run_journey@'s order.
 phasesOf :: Journey -> [Phase]

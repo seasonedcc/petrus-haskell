@@ -39,10 +39,6 @@ module Hamsterdan.Readiness.NetV5.Gating
   , gatePolicy
     -- * Routing handlers
   , VariantRouting
-  , routingTransition
-  , routingParameter
-  , routingSource
-  , routingTargets
   , variantRouting
   , routingHandler
   , prepareRouting
@@ -200,18 +196,6 @@ data VariantRouting = VariantRouting
   , source :: NetPath
   , targets :: [(Text, NetPath)]
   }
-
-routingTransition :: VariantRouting -> NetPath
-routingTransition r = r.transition
-
-routingParameter :: VariantRouting -> Text
-routingParameter r = r.parameter
-
-routingSource :: VariantRouting -> NetPath
-routingSource r = r.source
-
-routingTargets :: VariantRouting -> [(Text, NetPath)]
-routingTargets r = r.targets
 
 pyList :: [Text] -> Text
 pyList = pyRepr . Array . map String

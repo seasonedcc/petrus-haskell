@@ -64,7 +64,6 @@ module Hamsterdan.Testing.World
   , faultEffect
   , faultGitPublication
   , advanceTime
-  , revealEffect
   , observe
   , runUntil
   , crash
@@ -1950,9 +1949,6 @@ advanceTime t seconds = do
         when (now < target) (inWorld t.owner World.step >> loop)
   loop
   pure result
-
-revealEffect :: ReadinessTimeline -> Text -> IO ApplyResult
-revealEffect t operation = submit t (RevealEffect operation)
 
 observe :: ReadinessTimeline -> IO Observation
 observe t = inWorld t.owner (Timeline.observeWith t.timeline' "readiness.state" (Object []))

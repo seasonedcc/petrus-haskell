@@ -12,7 +12,8 @@
 -- The reference's constructor seams are explicit here: the application
 -- factory ('ApplicationFactory'), the GitHub clients ('HostClients'), the
 -- agent route custody ('AgentCustody'), the clock, and the transport
--- factory. Its tests' instance monkeypatches are 'ServiceHooks'.
+-- factory. Its tests' instance monkeypatches are 'ServiceHooks', a test
+-- seam production never changes.
 module Hamsterdan.Host.Service
   ( -- * Qualification faults
     QualificationFault (..)
@@ -54,7 +55,6 @@ module Hamsterdan.Host.Service
   , guardDurableActivity
   , reconcileRegistration
   , application
-  , applicationKeys
   , loadedApplication
   , sweep
   , process
@@ -425,7 +425,17 @@ serviceOptions runner agents =
     , timerClockUs = Nothing
     }
 
--- | The reference tests' instance monkeypatches.
+-- | The reference tests' instance monkeypatches, a test seam.
+--
+-- The reference tests replace a running service's methods
+-- (@monkeypatch.setattr(service, "_record_posture", ...)@) and restore
+-- them mid-test, between sweeps of the same service. So the hooks live in
+-- a mutable 'HostService' field ('hooks') rather than in the
+-- construction-time 'ServiceOptions'. 'openHostService' installs
+-- 'defaultServiceHooks', which run the real methods. Only test code (the
+-- test suites and hamsterdan-testing's world) writes them. Each @around@
+-- hook receives the real action; an @Override@ replaces the method when
+-- set.
 data ServiceHooks = ServiceHooks
   { aroundRecordPosture :: Text -> Maybe Double -> IO () -> IO ()
   , aroundAcknowledgeObservation :: Observation -> Maybe Text -> IO () -> IO ()
@@ -436,6 +446,7 @@ data ServiceHooks = ServiceHooks
   , workerOverride :: Maybe (IO ())
   }
 
+-- | Every method as the reference defines it.
 defaultServiceHooks :: ServiceHooks
 defaultServiceHooks =
   ServiceHooks
@@ -468,6 +479,7 @@ data HostService = HostService
   , runnable :: RunnableIndex
   , dispatchPath :: FilePath
   , hooks :: IORef ServiceHooks
+  -- ^ Test seam: 'defaultServiceHooks' unless a test replaces them.
   }
 
 -- | One loaded PR Instance: its application and the lock that serializes
@@ -706,10 +718,6 @@ application service i r p = applicationWith service i r p False
 -- | The loaded application of one key, if any (@_apps.get(key)@).
 loadedApplication :: HostService -> InstanceKey -> IO (Maybe HostApplication)
 loadedApplication service key = fmap (.app) . Map.lookup key <$> readIORef service.loaded
-
--- | The loaded keys in load order.
-applicationKeys :: HostService -> IO [InstanceKey]
-applicationKeys service = map (.key) <$> loadedInOrder service
 
 applicationWith :: HostService -> Integer -> Integer -> Integer -> Bool -> IO HostApplication
 applicationWith service i r p allowInactiveBinding = withMVar service.applicationLock $ \() -> do

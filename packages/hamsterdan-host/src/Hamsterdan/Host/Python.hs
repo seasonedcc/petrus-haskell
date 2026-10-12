@@ -27,7 +27,6 @@ module Hamsterdan.Host.Python
   , dumpsSorted
   , dumpsSortedText
   , dumpsCompactSorted
-  , dumpsCompactSortedText
   , dumpsDefault
 
     -- * Hashes
@@ -36,7 +35,6 @@ module Hamsterdan.Host.Python
 
     -- * SQLite
   , immediate
-  , rowValue
 
     -- * Files
   , mkdirPrivate
@@ -59,7 +57,7 @@ import System.Exit (ExitCode)
 import Control.Monad (unless, void)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
-import Hamsterdan.Sqlite (Connection, SQLData (..))
+import Hamsterdan.Sqlite (Connection)
 import Hamsterdan.Python.Exception (raisingDumps)
 import Hamsterdan.Python.Hashlib (sha256Hex, sha256HexText)
 import Petrus.Impetus.Instance.FailureText (PyObject (..), PythonException (..))
@@ -148,9 +146,6 @@ dumpsSortedText value = raisingDumps (dumpsText sortedAscii value)
 dumpsCompactSorted :: Json -> ByteString
 dumpsCompactSorted value = raisingDumps (dumps compact {sortKeys = True} value)
 
-dumpsCompactSortedText :: Json -> Text
-dumpsCompactSortedText value = raisingDumps (dumpsText compact {sortKeys = True} value)
-
 -- | @json.dumps(value)@.
 dumpsDefault :: Json -> Text
 dumpsDefault value = raisingDumps (dumpsText defaultDumps value)
@@ -163,12 +158,6 @@ immediate db action = Sql.withLock db $ mask $ \restore -> do
   result <- restore action `onException` void (try @SomeException (Sql.script db "ROLLBACK"))
   Sql.script db "COMMIT"
   pure result
-
--- | The first column of the first row.
-rowValue :: [[SQLData]] -> Maybe SQLData
-rowValue = \case
-  (value : _) : _ -> Just value
-  _ -> Nothing
 
 -- | @path.mkdir(mode=0o700, parents=True, exist_ok=True)@: only the leaf
 -- gets @0700@; created parents get the default mode, as @pathlib@ does.

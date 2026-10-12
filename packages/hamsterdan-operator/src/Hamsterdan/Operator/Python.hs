@@ -13,7 +13,6 @@ module Hamsterdan.Operator.Python
   , isStr
   , isInt
   , isBool
-  , dictKeys
   , urlQuote
   , shlexQuote
   , decodeOutput
@@ -78,11 +77,6 @@ isStr = \case PStr _ -> True; _ -> False
 -- | @type(value) is int@.
 isInt = \case PInt _ -> True; _ -> False
 isBool = \case PBool _ -> True; _ -> False
-
-dictKeys :: PV -> [Text]
-dictKeys = \case
-  PDict members -> map fst members
-  _ -> []
 
 -- | @urllib.parse.quote(text, safe="")@.
 urlQuote :: Text -> Text

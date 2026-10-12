@@ -39,7 +39,6 @@ module Hamsterdan.Agents.Validate
 
     -- * Validation
   , ResultKind (..)
-  , resultKindText
   , validateRequest
   , validateResult
   , text
@@ -385,12 +384,6 @@ correlate members request names = forM_ names $ \name -> do
 -- | The @kind@ argument of @_validate_result@.
 data ResultKind = KindReview | KindConversation | KindCoding
   deriving stock (Eq, Show)
-
-resultKindText :: ResultKind -> Text
-resultKindText = \case
-  KindReview -> "review"
-  KindConversation -> "conversation"
-  KindCoding -> "coding"
 
 -- | @_validate_result(kind, data, request, changed)@.
 validateResult :: ResultKind -> Json -> AgentRequest -> Maybe [Text] -> V AgentResult

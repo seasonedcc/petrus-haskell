@@ -33,17 +33,14 @@ module Hamsterdan.Contracts.Codec
   , text
   , integer
   , bool
-  , anyJson
   , object
   , list
   , dict
   , nullable
-  , literalInteger
   , Enumeration (..)
   , enumeration
   , unspelling
   , union
-  , mapCodec
   , refine
   , leaf
   , normalizing
@@ -256,12 +253,6 @@ bool = leaf "bool" Bool $ \case
   Bool value -> Right value
   _ -> failAt "input should be a valid boolean"
 
--- | @Any@: every JSON value, kept as is. Dumping spells a non-finite float
--- as @null@ (pydantic's @ser_json_inf_nan="null"@); the decoded value keeps
--- it, as the Python object does.
-anyJson :: Codec Json
-anyJson = leaf "Any" finiteJson Right
-
 -- | @dict[str, Any]@ (and bare @dict@): an object, member order kept, each
 -- key once (at its first position, with its last value, as a Python dict).
 object :: Codec Object
@@ -300,10 +291,6 @@ nullable inner = leaf (codecName inner <> " | None") (maybe Null (encoder inner)
   Null -> Right Nothing
   value -> Just <$> decoder inner value
 
--- | @Literal[n]@ for one integer.
-literalInteger :: Integer -> Codec ()
-literalInteger expected = leaf "Literal" (const (Int expected)) (literal (Int expected))
-
 -- | A string @Literal[...]@ as a Haskell enumeration: every constructor has
 -- exactly one wire spelling.
 class (Bounded a, Enum a) => Enumeration a where
@@ -339,10 +326,6 @@ union name encodeWith alternatives = leaf name encodeWith $ \value ->
   case [decoded | Right decoded <- map ($ value) alternatives] of
     decoded : _ -> Right decoded
     [] -> failAt ("input does not match any member of " <> name)
-
--- | Change a codec's Haskell type with a total isomorphism.
-mapCodec :: (a -> b) -> (b -> a) -> Codec a -> Codec b
-mapCodec to from codec = codec {encoder = encoder codec . from, decoder = fmap to . decoder codec}
 
 -- | Post-validate (pydantic @__post_init__@) after decoding.
 refine :: (a -> Either Text a) -> Codec a -> Codec a

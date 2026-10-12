@@ -25,7 +25,6 @@ module Hamsterdan.Readiness.NetV5.Folding
   , values3
   , revive
   , sortKeysDeep
-  , tokenColors
     -- * Emission
   , Emit
   , emit
@@ -94,10 +93,6 @@ registry =
     , entry @SummaryPublished, entry @TimerArmed, entry @TimerCancelled, entry @TimerCommand
     , entry @TimerCommandApplied, entry @TimerDue
     ]
-
--- | The registered token colors (the reference's 106 adapter names).
-tokenColors :: [Text]
-tokenColors = Map.keys registry
 
 -- | @json.dumps(value, sort_keys=True)@ followed by a parse: every object's
 -- members in code-point order of their keys.
