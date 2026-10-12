@@ -1,6 +1,6 @@
 # Observation benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 1b088c4dd1c26315 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources ff91c130d1d26659 at b1b7c1ed40ea -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` build the same
 workload. It is a two-place loop (`a → t1 → b → t2 → a`) holding M tokens
@@ -65,11 +65,11 @@ same time, so treat the numbers as indicative to within about 10–20%.
 
 ## Current figures
 
-Measured on 2026-10-12, 02:30–02:39 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.26–3.22:
-three interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-12, 18:44–18:59 local (UTC-3), at commit `e8c1097`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.88–2.77:
+five interleaved repetitions, alternating which side goes first, of
 
-    scripts/bench-compare petrus-observation 3
+    scripts/bench-compare petrus-observation 5
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
@@ -79,29 +79,29 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `snapshot.N=1000 M=10` | 10.5 µs | 131 µs | 12.44× | 12.35× | 11 µs, 10.5 µs, 10.5 µs | 334 µs, 130 µs, 131 µs |
-| `snapshot.N=1000 M=1000` | 478 µs | 3.85 ms | 8.05× | 7.98× | 481 µs, 478 µs, 477 µs | 3.92 ms, 3.82 ms, 3.85 ms |
-| `snapshot.N=10000 M=10` | 10.6 µs | 154 µs | 14.55× | 14.55× | 10.6 µs, 10.6 µs, 10.5 µs | 155 µs, 154 µs, 153 µs |
-| `snapshot.N=10000 M=1000` | 481 µs | 4.29 ms | 8.91× | 8.60× | 481 µs, 481 µs, 498 µs | 4.29 ms, 4.29 ms, 4.28 ms |
-| `engine snapshot.N=1000 M=10` | 10.7 µs | 137 µs | 12.79× | 12.51× | 10.7 µs, 10.7 µs, 10.7 µs | 137 µs, 134 µs, 137 µs |
-| `engine snapshot.N=1000 M=1000` | 476 µs | 3.87 ms | 8.13× | 8.07× | 476 µs, 476 µs, 479 µs | 3.87 ms, 3.84 ms, 3.87 ms |
-| `engine snapshot.N=10000 M=10` | 10.7 µs | 153 µs | 14.24× | 14.22× | 10.6 µs, 10.7 µs, 10.8 µs | 156 µs, 153 µs, 153 µs |
-| `engine snapshot.N=10000 M=1000` | 487 µs | 4.19 ms | 8.61× | 8.37× | 484 µs, 496 µs, 487 µs | 4.21 ms, 4.16 ms, 4.19 ms |
-| `history_page(0,1000).N=1000 M=10` | 214 µs | 2.9 ms | 13.56× | 13.56× | 214 µs, 215 µs, 213 µs | 2.9 ms, 2.99 ms, 2.9 ms |
-| `history_page(0,1000).N=10000 M=10` | 215 µs | 2.94 ms | 13.71× | 13.51× | 216 µs, 215 µs, 212 µs | 2.96 ms, 2.9 ms, 2.94 ms |
-| `engine history_page(0,1000).N=1000 M=10` | 207 µs | 2.9 ms | 14.02× | 13.44× | 213 µs, 207 µs, 204 µs | 2.87 ms, 2.9 ms, 2.92 ms |
-| `engine history_page(0,1000).N=10000 M=10` | 207 µs | 2.95 ms | 14.26× | 14.13× | 209 µs, 207 µs, 207 µs | 2.95 ms, 2.95 ms, 2.97 ms |
-| `full-scan.N=1000 M=10` | 216 µs | 2.92 ms | 13.53× | 13.30× | 218 µs, 216 µs, 214 µs | 2.92 ms, 2.87 ms, 2.93 ms |
-| `full-scan.N=10000 M=10` | 2.12 ms | 30.1 ms | 14.23× | 13.88× | 2.12 ms, 2.09 ms, 2.18 ms | 29.9 ms, 30.1 ms, 30.3 ms |
-| `engine full-scan.N=1000 M=10` | 209 µs | 2.93 ms | 14.01× | 13.87× | 211 µs, 209 µs, 207 µs | 2.93 ms, 2.93 ms, 2.97 ms |
-| `engine full-scan.N=10000 M=10` | 2.93 ms | 30.8 ms | 10.52× | 10.45× | 2.95 ms, 2.92 ms, 2.93 ms | 30.8 ms, 30.7 ms, 31.5 ms |
-| `net_document.N=1000 M=10` | 30 ms | 127 ms | 4.23× | 4.23× | 30 ms, 29.9 ms, 30.1 ms | 129 ms, 127 ms, 127 ms |
-| `net_document.N=10000 M=10` | 361 ms | 1.63 s | 4.52× | 4.50× | 361 ms, 358 ms, 365 ms | 1.63 s, 1.63 s, 1.64 s |
-| `net_document.N=1000 M=1000` | 2.75 s | 12.8 s | 4.66× | 4.63× | 2.75 s, 2.75 s, 2.73 s | 12.9 s, 12.7 s, 12.8 s |
-| `engine net_document.N=1000 M=10` | 30.1 ms | 126 ms | 4.19× | 4.18× | 30.1 ms, 30 ms, 30.3 ms | 126 ms, 126 ms, 127 ms |
-| `engine net_document.N=10000 M=10` | 360 ms | 1.71 s | 4.76× | 4.75× | 361 ms, 360 ms, 359 ms | 1.72 s, 1.71 s, 1.71 s |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `snapshot.N=1000 M=10` | 7.9 µs | 131 µs | 16.57× | 16.53× | 5 of 5 | 7.8 µs, 7.91 µs, 7.9 µs, 7.91 µs, 7.83 µs | 129 µs, 131 µs, 131 µs, 131 µs, 130 µs |
+| `snapshot.N=1000 M=1000` | 416 µs | 3.84 ms | 9.25× | 9.19× | 5 of 5 | 409 µs, 416 µs, 416 µs, 419 µs, 415 µs | 3.85 ms, 3.84 ms, 3.83 ms, 3.85 ms, 3.84 ms |
+| `snapshot.N=10000 M=10` | 7.82 µs | 153 µs | 19.57× | 19.08× | 5 of 5 | 7.82 µs, 7.93 µs, 7.91 µs, 7.8 µs, 7.82 µs | 153 µs, 153 µs, 151 µs, 155 µs, 155 µs |
+| `snapshot.N=10000 M=1000` | 412 µs | 4.2 ms | 10.21× | 10.18× | 5 of 5 | 409 µs, 413 µs, 416 µs, 412 µs, 411 µs | 4.2 ms, 4.2 ms, 4.28 ms, 4.2 ms, 4.27 ms |
+| `engine snapshot.N=1000 M=10` | 7.94 µs | 134 µs | 16.87× | 16.58× | 5 of 5 | 7.94 µs, 8.02 µs, 7.97 µs, 7.94 µs, 7.83 µs | 138 µs, 133 µs, 136 µs, 134 µs, 134 µs |
+| `engine snapshot.N=1000 M=1000` | 413 µs | 3.83 ms | 9.25× | 9.12× | 5 of 5 | 412 µs, 417 µs, 424 µs, 413 µs, 413 µs | 3.89 ms, 3.82 ms, 3.87 ms, 3.83 ms, 3.79 ms |
+| `engine snapshot.N=10000 M=10` | 7.9 µs | 152 µs | 19.25× | 19.07× | 5 of 5 | 7.83 µs, 8.02 µs, 7.9 µs, 7.92 µs, 7.83 µs | 152 µs, 153 µs, 155 µs, 151 µs, 152 µs |
+| `engine snapshot.N=10000 M=1000` | 415 µs | 4.16 ms | 10.03× | 9.99× | 5 of 5 | 415 µs, 416 µs, 417 µs, 414 µs, 415 µs | 4.16 ms, 4.16 ms, 4.23 ms, 4.15 ms, 4.16 ms |
+| `history_page(0,1000).N=1000 M=10` | 187 µs | 2.93 ms | 15.71× | 15.47× | 5 of 5 | 187 µs, 187 µs, 187 µs, 187 µs, 185 µs | 3 ms, 2.89 ms, 2.93 ms, 2.92 ms, 2.94 ms |
+| `history_page(0,1000).N=10000 M=10` | 187 µs | 2.98 ms | 15.92× | 15.61× | 5 of 5 | 186 µs, 187 µs, 188 µs, 187 µs, 186 µs | 3.06 ms, 2.92 ms, 2.98 ms, 2.96 ms, 2.99 ms |
+| `engine history_page(0,1000).N=1000 M=10` | 180 µs | 2.93 ms | 16.25× | 16.02× | 5 of 5 | 181 µs, 183 µs, 180 µs, 180 µs, 179 µs | 2.9 ms, 2.93 ms, 2.95 ms, 2.91 ms, 2.96 ms |
+| `engine history_page(0,1000).N=10000 M=10` | 181 µs | 2.98 ms | 16.43× | 16.12× | 5 of 5 | 181 µs, 181 µs, 185 µs, 181 µs, 180 µs | 2.94 ms, 2.98 ms, 2.98 ms, 2.96 ms, 3 ms |
+| `full-scan.N=1000 M=10` | 187 µs | 2.95 ms | 15.74× | 15.48× | 5 of 5 | 189 µs, 187 µs, 188 µs, 187 µs, 185 µs | 3.05 ms, 2.9 ms, 2.95 ms, 2.92 ms, 2.96 ms |
+| `full-scan.N=10000 M=10` | 1.82 ms | 30.1 ms | 16.56× | 16.42× | 5 of 5 | 1.81 ms, 1.83 ms, 1.83 ms, 1.82 ms, 1.8 ms | 30.9 ms, 30 ms, 30.1 ms, 30.2 ms, 30 ms |
+| `engine full-scan.N=1000 M=10` | 183 µs | 2.94 ms | 16.13× | 16.11× | 5 of 5 | 181 µs, 183 µs, 183 µs, 179 µs, 183 µs | 2.92 ms, 2.94 ms, 2.96 ms, 2.94 ms, 2.98 ms |
+| `engine full-scan.N=10000 M=10` | 4.81 ms | 30.7 ms | 6.37× | 6.24× | 5 of 5 | 4.85 ms, 4.81 ms, 4.93 ms, 4.8 ms, 4.8 ms | 30.6 ms, 30.5 ms, 30.8 ms, 30.7 ms, 30.8 ms |
+| `net_document.N=1000 M=10` | 27.3 ms | 127 ms | 4.65× | 4.62× | 5 of 5 | 27.3 ms, 27.4 ms, 27.4 ms, 27.2 ms, 27 ms | 127 ms, 126 ms, 126 ms, 128 ms, 127 ms |
+| `net_document.N=10000 M=10` | 298 ms | 1.62 s | 5.45× | 5.39× | 5 of 5 | 298 ms, 299 ms, 298 ms, 299 ms, 296 ms | 1.64 s, 1.64 s, 1.62 s, 1.61 s, 1.62 s |
+| `net_document.N=1000 M=1000` | 2.18 s | 12.9 s | 5.92× | 5.78× | 5 of 5 | 2.2 s, 2.13 s, 2.21 s, 2.16 s, 2.18 s | 13 s, 12.9 s, 12.8 s, 12.8 s, 12.9 s |
+| `engine net_document.N=1000 M=10` | 27.3 ms | 126 ms | 4.62× | 4.56× | 5 of 5 | 27.3 ms, 27.5 ms, 27.4 ms, 27.3 ms, 27.1 ms | 126 ms, 126 ms, 125 ms, 126 ms, 126 ms |
+| `engine net_document.N=10000 M=10` | 299 ms | 1.7 s | 5.68× | 5.64× | 5 of 5 | 301 ms, 297 ms, 299 ms, 300 ms, 296 ms | 1.7 s, 1.7 s, 1.7 s, 1.7 s, 1.71 s |
 
 ## Results: projections
 
