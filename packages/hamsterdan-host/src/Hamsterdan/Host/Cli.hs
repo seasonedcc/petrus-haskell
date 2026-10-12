@@ -25,10 +25,9 @@ module Hamsterdan.Host.Cli
   ) where
 
 import Control.Exception (Exception (..), IOException, SomeException, finally, fromException, throwIO, try)
-import Control.Monad (forM, unless, when)
+import Control.Monad (forM, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Char (GeneralCategory (..), generalCategory, isDigit, ord, toLower)
 import Data.IORef
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -63,7 +62,6 @@ import Hamsterdan.GitHub.Config (ConfigurationError (..), HostConfig (..), fromE
 import Hamsterdan.GitHub.Http (ClientError (..), ClientErrorKind (..))
 import Hamsterdan.GitHub.Models (ContractRefused (..), GitHubBoundaryError (..), InvalidRequest (..))
 import Hamsterdan.Python (intText, isAscii, isPrintable, pythonExceptionStr, splitlines, strRepr, utf8Encode)
-import Hamsterdan.Python qualified as Py
 import Hamsterdan.GitHub.Webhooks (Failure (..))
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Api (ServeOptions (..), serve)
@@ -82,6 +80,7 @@ import Hamsterdan.Host.Service qualified as Service
 import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
 import Petrus.Json (Json (..), defaultDumps, dumpsText, parseJson, pythonJsonLoads)
 import Petrus.Json qualified as Json
+import Petrus.Json.Python (parsePythonFloat)
 import Petrus.Motus.Worker (RuntimeError (..), ValueError (..))
 import System.Environment (unsetEnv)
 import System.Exit (ExitCode (..))
@@ -156,63 +155,10 @@ decodeCommand namespace = case lookupText "command" namespace >>= (`lookup` comm
   Just decode -> decode namespace
   Nothing -> Left "the following arguments are required: command"
 
--- | @float(text)@: 'Left' with CPython's message when it does not convert.
+-- | @float(text)@: 'Left' with CPython's message when it does not convert
+-- (petrus-json's 'parsePythonFloat', the one @float()@ emulation).
 pythonFloat :: Text -> Either Text Double
-pythonFloat original = maybe (Left ("could not convert string to float: " <> strRepr original)) Right (parse (T.unpack (T.map ascii (Py.strip original))))
-  where
-    ascii c
-      | c > '\x7f' && generalCategory c == DecimalNumber = toEnum (ord '0' + digitValue c)
-      | Py.isSpace c = ' '
-      | otherwise = c
-    digitValue c = (ord c - runStart (ord c)) `mod` 10
-    runStart n = if n > 0 && generalCategory (toEnum (n - 1)) == DecimalNumber then runStart (n - 1) else n
-    parse text = do
-      let (sign, unsigned) = case text of
-            '-' : rest -> (negate, rest)
-            '+' : rest -> (id, rest)
-            _ -> (id, text)
-      case map toLower unsigned of
-        "inf" -> Just (sign (1 / 0))
-        "infinity" -> Just (sign (1 / 0))
-        "nan" -> Just (sign (0 / 0))
-        _ -> sign <$> decimal unsigned
-    decimal text = do
-      (whole, rest) <- digitsOf text True
-      (fraction, rest') <- case rest of
-        '.' : after -> digitsOf after True
-        _ -> Just ("", rest)
-      when (null whole && null fraction) Nothing
-      when (null whole && take 1 rest /= ".") Nothing
-      exponent' <- case rest' of
-        [] -> Just 0
-        e : after | e `elem` ("eE" :: String) -> do
-          let (esign, digitsText) = case after of
-                '-' : more -> (negate, more)
-                '+' : more -> (id, more)
-                _ -> (id, after)
-          (digits, leftover) <- digitsOf digitsText False
-          unless (null leftover && not (null digits)) Nothing
-          Just (esign (read digits :: Integer))
-        _ -> Nothing
-      let mantissa = read ('0' : whole <> fraction) :: Integer
-          scale = exponent' - toInteger (length fraction)
-          magnitude = toInteger (length (show mantissa)) + scale
-      pure $
-        if mantissa == 0
-          then 0
-          else
-            if magnitude > 400
-              then 1 / 0
-              else
-                if magnitude < -400
-                  then 0
-                  else fromRational (fromInteger mantissa * (10 ^^ scale))
-    -- Digits with single underscores between them; 'Nothing' for a
-    -- misplaced underscore.
-    digitsOf text _ =
-      let (run, rest) = span (\c -> isDigit c || c == '_') text
-       in if valid run then Just (filter (/= '_') run, rest) else Nothing
-    valid run = not ("__" `T.isInfixOf` T.pack run) && take 1 run /= "_" && take 1 (reverse run) /= "_"
+pythonFloat original = maybe (Left ("could not convert string to float: " <> strRepr original)) Right (parsePythonFloat original)
 
 -- ---------------------------------------------------------------------------
 -- inspect-instance

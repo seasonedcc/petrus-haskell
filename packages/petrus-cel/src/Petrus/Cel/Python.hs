@@ -22,23 +22,26 @@ module Petrus.Cel.Python
   , roundHalfEven
   ) where
 
-import Data.Char (chr, isAsciiLower, isAsciiUpper, isDigit, ord, toLower)
+import Data.Char (chr, isAsciiLower, isAsciiUpper, isDigit, ord)
 import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
 
-import Petrus.Json.Python (isPythonSpace, pythonDecimal)
+import Petrus.Json.Python (isPythonSpace, parsePythonFloat, pythonDecimal)
 
--- | CPython's @_PyUnicode_TransformDecimalAndSpaceToASCII@: Unicode
--- whitespace becomes a space, Unicode decimal digits become ASCII digits,
--- and any other non-ASCII character becomes @?@ (so it can never parse).
+-- | CPython's @_PyUnicode_TransformDecimalAndSpaceToASCII@: a code point
+-- below @\x7f@ stays, any other that @str.isspace@ accepts becomes a
+-- space, a Unicode decimal digit its ASCII digit, and anything else @?@ (so
+-- it can never parse). ASCII stays first, so @\x1c@-@\x1f@ (which
+-- @str.isspace@ accepts) are not turned into spaces and @int()@ refuses
+-- them.
 asciiTransform :: Text -> String
 asciiTransform = map one . T.unpack
   where
     one c
+      | c < '\x7f' = c
       | isPythonSpace c = ' '
       | Just d <- pythonDecimal c = chr (ord '0' + d)
-      | ord c < 128 = c
       | otherwise = '?'
 
 isAsciiSpace :: Char -> Bool
@@ -94,58 +97,10 @@ parseIntDigits base input =
 dropWhileEnd' :: (a -> Bool) -> [a] -> [a]
 dropWhileEnd' p = reverse . dropWhile p . reverse
 
--- | CPython's @float()@ of a string: surrounding whitespace, underscores only
--- between digits, @inf@/@infinity@/@nan@ in any case, and a correctly
--- rounded decimal otherwise.
+-- | CPython's @float()@ of a string (petrus-json's 'parsePythonFloat', the
+-- one @float()@ emulation).
 parseFloatText :: Text -> Maybe Double
-parseFloatText text = parseFloatAscii (asciiTransform text)
-
-parseFloatAscii :: String -> Maybe Double
-parseFloatAscii input = do
-  let trimmed = dropWhileEnd' isAsciiSpace (dropWhile isAsciiSpace input)
-  cleaned <- underscores trimmed
-  let (negative, unsigned) = case cleaned of
-        '+' : rest -> (False, rest)
-        '-' : rest -> (True, rest)
-        rest -> (False, rest)
-      signed v = if negative then negate v else v
-  signed <$> case map toLower unsigned of
-    "inf" -> Just (1 / 0)
-    "infinity" -> Just (1 / 0)
-    "nan" -> Just (0 / 0)
-    _ -> decimal unsigned
-  where
-    underscores s = go Nothing s
-      where
-        go _ [] = Just []
-        go prev ('_' : rest) = case (prev, rest) of
-          (Just p, n : _) | isDigit p && isDigit n -> go Nothing rest
-          _ -> Nothing
-        go _ (c : rest) = (c :) <$> go (Just c) rest
-    decimal s = do
-      let (intPart, afterInt) = span isDigit s
-      (fracPart, afterFrac) <- case afterInt of
-        '.' : rest -> Just (span isDigit rest)
-        rest -> Just ("", rest)
-      if null intPart && null fracPart then Nothing else Just ()
-      expPart <- case afterFrac of
-        [] -> Just 0
-        e : rest | e == 'e' || e == 'E' -> case rest of
-          '+' : ds | not (null ds), all isDigit ds -> Just (read ds)
-          '-' : ds | not (null ds), all isDigit ds -> Just (negate (read ds))
-          ds | not (null ds), all isDigit ds -> Just (read ds)
-          _ -> Nothing
-        _ -> Nothing
-      let digits = dropWhile (== '0') (intPart <> fracPart)
-          mantissa = if null digits then 0 else read digits :: Integer
-          exponent' = (expPart :: Integer) - fromIntegral (length fracPart)
-      pure (scaled mantissa exponent')
-    scaled 0 _ = 0
-    scaled m e
-      | e + fromIntegral (length (show m)) > 400 = 1 / 0
-      | e + fromIntegral (length (show m)) < -400 = 0
-      | e >= 0 = fromRational (fromIntegral (m * 10 ^ e))
-      | otherwise = fromRational (fromIntegral m / fromIntegral (10 ^ negate e :: Integer))
+parseFloatText = parsePythonFloat
 
 -- | The modulus of CPython's numeric hash, @2**61 - 1@.
 hashModulus :: Integer

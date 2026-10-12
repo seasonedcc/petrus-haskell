@@ -16,7 +16,9 @@ import Test.QuickCheck
 
 import Petrus.Cel
 import Petrus.Cel.Value (Value (..))
-import Petrus.Json (Json (..))
+import Petrus.Cel.Python (asciiTransform, parseFloatText, parseIntDigits)
+import Petrus.Json (Json (..), defaultDumps, dumpsText)
+import Petrus.TestSupport.Python (pythonJson)
 
 -- | A source text made of CEL tokens, mostly ill-formed.
 newtype Soup = Soup Text
@@ -64,6 +66,11 @@ intOf = \case
 
 spec :: Spec
 spec = describe "properties" $ do
+  it "int() and float() of a str agree with the pinned CPython (the ASCII transform keeps ASCII first)" $ do
+    let inputs = ["\x1c\&1", "\x1f\&1\x1f", "\x85\&1\x85", "\xa0\&1", "\x7f\&1", "\x661\x662", "\x3000\&1_0\x3000", " -1 ", "1__0", "0x1f", "1.5", "\x661.5e1", "-inf", "\x2028\&2"] :: [Text]
+    reference <- pythonJson "import json, sys\ndef attempt(f, v):\n    try:\n        return f(v)\n    except ValueError:\n        return None\nprint(json.dumps([[attempt(int, v), attempt(float, v)] for v in json.loads(sys.argv[1])]))" [either (error . show) T.unpack (dumpsText defaultDumps (Array (map String inputs)))]
+    let mine = Array [Array [either (const Null) Int (parseIntDigits 10 (asciiTransform t)), maybe Null Float (parseFloatText t)] | t <- inputs]
+    mine `shouldBe` reference
   prop "compile and evaluate are total on token soup" $ \(Soup source) ->
     case compile source of
       Left err -> T.length (parseErrorMessage err) >= 0

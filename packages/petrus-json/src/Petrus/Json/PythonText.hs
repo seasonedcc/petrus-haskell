@@ -25,8 +25,9 @@ module Petrus.Json.PythonText
   , isPythonLineBreak
   , pythonDecimal
   , isPythonNumberSpace
-    -- * @int()@
+    -- * @int()@ and @float()@
   , parsePythonInt
+  , parsePythonFloat
     -- * @str@ methods
   , pythonStrip
   , pythonLstrip
@@ -150,6 +151,75 @@ parsePythonInt base input = do
       | c >= 'a' && c <= 'z' = Just (ord c - ord 'a' + 10)
       | c >= 'A' && c <= 'Z' = Just (ord c - ord 'A' + 10)
       | otherwise = pythonDecimal c
+
+-- | CPython's @float(text)@ for a @str@: 'Nothing' where it raises
+-- @ValueError@ (@could not convert string to float@).
+--
+-- CPython first applies @_PyUnicode_TransformDecimalAndSpaceToASCII@: a
+-- non-ASCII code point that @str.isspace@ accepts becomes a space, a
+-- Unicode decimal digit ('pythonDecimal') its ASCII digit, and anything
+-- else non-ASCII (@\\x7f@ included) a character no spelling admits. It then
+-- skips C's @isspace@ set at both ends ('isPythonNumberSpace': so
+-- @\\x1c@-@\\x1f@, which @str.isspace@ accepts, are refused) and reads an
+-- optional sign, then @inf@, @infinity@ or @nan@ in any ASCII case, or a
+-- decimal with an optional fraction and exponent, single underscores only
+-- between two digits. The decimal is rounded to the nearest double, ties
+-- to even (GHC's 'fromRational' rounds as @strtod@ does).
+parsePythonFloat :: Text -> Maybe Double
+parsePythonFloat input = do
+  ascii <- traverse toAscii (T.unpack (T.dropAround isPythonNumberSpace input))
+  cleaned <- underscores Nothing ascii
+  let (negative, unsigned) = case cleaned of
+        '+' : rest -> (False, rest)
+        '-' : rest -> (True, rest)
+        rest -> (False, rest)
+  magnitude <- case map asciiLower unsigned of
+    "inf" -> Just (1 / 0)
+    "infinity" -> Just (1 / 0)
+    "nan" -> Just (0 / 0)
+    _ -> decimal unsigned
+  pure (if negative then negate magnitude else magnitude)
+  where
+    toAscii c
+      | c < '\x7f' = Just c
+      | isPythonSpace c = Just ' '
+      | otherwise = (\d -> toEnum (ord '0' + d)) <$> pythonDecimal c
+    asciiLower c = if c >= 'A' && c <= 'Z' then toEnum (ord c + 32) else c
+    digit c = c >= '0' && c <= '9'
+    -- Drop each underscore that sits between two digits; refuse any other.
+    underscores _ [] = Just []
+    underscores previous ('_' : rest) = case (previous, rest) of
+      (Just p, n : _) | digit p && digit n -> underscores Nothing rest
+      _ -> Nothing
+    underscores _ (c : rest) = (c :) <$> underscores (Just c) rest
+    decimal text = do
+      let (whole, afterWhole) = span digit text
+          (fraction, afterFraction) = case afterWhole of
+            '.' : rest -> span digit rest
+            rest -> ("", rest)
+      if null whole && null fraction then Nothing else Just ()
+      exponent' <- case afterFraction of
+        [] -> Just 0
+        e : rest | e == 'e' || e == 'E' -> case rest of
+          '+' : ds | not (null ds), all digit ds -> Just (read ds)
+          '-' : ds | not (null ds), all digit ds -> Just (negate (read ds))
+          ds | not (null ds), all digit ds -> Just (read ds)
+          _ -> Nothing
+        _ -> Nothing
+      let significant = dropWhile (== '0') (whole <> fraction)
+          mantissa = if null significant then 0 else read significant :: Integer
+          scale = (exponent' :: Integer) - toInteger (length fraction)
+          magnitude = scale + toInteger (length significant)
+      pure (scaled mantissa scale magnitude)
+    scaled :: Integer -> Integer -> Integer -> Double
+    scaled mantissa scale magnitude
+      | mantissa == 0 = 0
+      -- Past every double's decimal exponent: no need to build the
+      -- (possibly enormous) exact value.
+      | magnitude > 400 = 1 / 0
+      | magnitude < -400 = 0
+      | scale >= 0 = fromRational (fromInteger (mantissa * 10 ^ scale))
+      | otherwise = fromRational (fromInteger mantissa / fromInteger (10 ^ negate scale))
 
 -- | @str.strip()@ (no argument): drop CPython whitespace at both ends.
 pythonStrip :: Text -> Text

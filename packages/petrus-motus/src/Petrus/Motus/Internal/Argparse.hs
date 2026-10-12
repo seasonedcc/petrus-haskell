@@ -30,10 +30,9 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python (parsePythonFloat, parsePythonInt, pythonStrRepr)
 import System.Exit (ExitCode (..), exitWith)
 import System.IO (hFlush, stderr, stdout)
-import Text.Read (readMaybe)
 
 -- | How an option's value is converted (and refused).
 data OptionKind = TextOption | IntOption | FloatOption
@@ -77,69 +76,14 @@ value key parsed = case values key parsed of
   [] -> Nothing
   given -> Just (last given)
 
--- | @int(text)@: optional surrounding whitespace and sign, ASCII digits with
--- single underscores between them.
+-- | @int(text)@ (petrus-json's 'parsePythonInt' in base 10).
 pythonInt :: Text -> Maybe Integer
-pythonInt raw =
-  let stripped = T.strip raw
-      (sign, digits) = case T.uncons stripped of
-        Just ('-', rest) -> (negate, rest)
-        Just ('+', rest) -> (id, rest)
-        _ -> (id, stripped)
-   in if validDigits digits then sign <$> readMaybe (T.unpack (T.filter (/= '_') digits)) else Nothing
+pythonInt = parsePythonInt 10
 
-validDigits :: Text -> Bool
-validDigits digits =
-  not (T.null digits)
-    && T.all (\c -> isDigit c || c == '_') digits
-    && T.head digits /= '_'
-    && T.last digits /= '_'
-    && not ("__" `T.isInfixOf` digits)
-
--- | @float(text)@: decimal and exponent spellings, @inf@/@infinity@/@nan@
--- in any case, optional sign and surrounding whitespace.
+-- | @float(text)@ (petrus-json's 'parsePythonFloat', the one @float()@
+-- emulation).
 pythonFloat :: Text -> Maybe Double
-pythonFloat raw =
-  let stripped = T.toLower (T.strip raw)
-      (sign, body) = case T.uncons stripped of
-        Just ('-', rest) -> (negate, rest)
-        Just ('+', rest) -> (id, rest)
-        _ -> (id, stripped)
-   in sign <$> case body of
-        "inf" -> Just (1 / 0)
-        "infinity" -> Just (1 / 0)
-        "nan" -> Just (0 / 0)
-        _ -> decimal body
-  where
-    decimal body =
-      let (mantissa, exponentPart) = T.break (== 'e') body
-          (whole, fraction) = T.break (== '.') mantissa
-          fractionDigits = T.drop 1 fraction
-          okMantissa =
-            (validDigits whole || T.null whole)
-              && (T.null fraction || T.null fractionDigits || validDigits fractionDigits)
-              && not (T.null whole && T.null fractionDigits)
-          okExponent = case T.uncons exponentPart of
-            Nothing -> True
-            Just (_, e) ->
-              let digits = case T.uncons e of
-                    Just (c, rest) | c == '+' || c == '-' -> rest
-                    _ -> e
-               in validDigits digits
-          clean = T.unpack (T.filter (/= '_') body)
-          normalized =
-            let (m, e) = break (== 'e') clean
-                (w, f) = break (== '.') m
-                w' = if null w then "0" else w
-                f' = case f of
-                  "." -> ".0"
-                  "" -> ".0"
-                  _ -> f
-                e' = case e of
-                  'e' : '+' : rest -> 'e' : rest
-                  _ -> e
-             in w' ++ f' ++ e'
-       in if okMantissa && okExponent then readMaybe normalized else Nothing
+pythonFloat = parsePythonFloat
 
 -- | Parse a command line as @parse_args@ would (stopping at the first
 -- error, as it does).
