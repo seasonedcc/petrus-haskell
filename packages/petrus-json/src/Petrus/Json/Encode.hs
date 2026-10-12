@@ -149,28 +149,31 @@ dumps options value =
   unsafeDupablePerformIO $
     either (\(Refused problem) -> Left problem) Right <$> try (direct (layoutOf options) value)
 
--- | 'dumps' of each value in turn: every spelling, or the first refusal with
--- the (0-based) index of the value refused.
+-- | 'dumps' of each item's value in turn, for a batch written together:
+-- every item with its spelling, or the first item refused with its
+-- problem. The answer equals @traverse@ over 'dumps' (same bytes, same
+-- first refusal); the test suite checks it.
 --
--- The spellings are written back to back into one buffer and answered as
--- slices of it, so a batch costs one growing allocation rather than a
--- buffer per value, and its spellings hold no per-value memory. They keep
--- the whole buffer alive: use it for values encoded together and dropped
--- together (a write batch), not for spellings kept apart.
-dumpsMany :: EncodeOptions -> [Json] -> Either (Int, EncodeError) [BS.ByteString]
-dumpsMany options values = unsafeDupablePerformIO $ do
+-- The spellings are written back to back into one growing buffer and
+-- answered as slices of it, instead of a 2 000-byte buffer and an exact-size
+-- copy per value. Each slice keeps the whole buffer alive, so this is for
+-- spellings that are used together and dropped together, such as the
+-- payloads of one database write batch (the History store's batch commit),
+-- not for spellings kept apart.
+dumpsMany :: EncodeOptions -> (a -> Json) -> [a] -> Either (a, EncodeError) [(a, BS.ByteString)]
+dumpsMany options valueOf items = unsafeDupablePerformIO $ do
   first <- BI.mallocByteString initialCapacity
   ref <- newIORef (Buffer first initialCapacity)
   let layout = layoutOf options
-      go !index !offset ends = \case
+      go !offset ends = \case
         [] -> do
           Buffer final _ <- readIORef ref
-          pure (Right (slices final ends))
-        value : rest ->
-          try (written layout ref 0 offset value) >>= \case
-            Left (Refused problem) -> pure (Left (index, problem))
-            Right end -> go (index + 1) end (end : ends) rest
-  go (0 :: Int) 0 [] values
+          pure (Right (zip items (slices final ends)))
+        item : rest ->
+          try (written layout ref 0 offset (valueOf item)) >>= \case
+            Left (Refused problem) -> pure (Left (item, problem))
+            Right end -> go end (end : ends) rest
+  go 0 [] items
   where
     -- The end offsets come newest first; each value starts where the one
     -- before it ends.

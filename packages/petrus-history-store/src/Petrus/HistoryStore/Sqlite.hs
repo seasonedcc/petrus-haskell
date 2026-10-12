@@ -69,9 +69,6 @@ import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, withMVar)
 import Control.Exception (Exception (..), bracket, mask, onException, throwIO, try)
 import Control.Monad (foldM, unless, when)
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
-import Data.ByteString.Internal qualified as BI
-import Data.ByteString.Unsafe qualified as BU
 import Data.Int (Int64)
 import Data.List (intercalate)
 import Data.Map.Strict (Map)
@@ -81,11 +78,6 @@ import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Word (Word8)
-import Foreign.Marshal.Utils (copyBytes)
-import Foreign.Ptr (Ptr, castPtr, plusPtr)
-import Foreign.Storable (pokeByteOff)
-import GHC.ForeignPtr (unsafeWithForeignPtr)
 import Petrus.HistoryStore.Internal (HistoryStoreError (..), decodeStored, pythonDiagnostic)
 import Petrus.Impetus.History.Codec (encodeRecord, historyLoads)
 import Petrus.Impetus.History.Records (Record, recordName, recordOccurrence, recordTerminalFamily, terminalFamilyNames)
@@ -184,23 +176,29 @@ encodeRow r = encodeRows [r] >>= \case
   _ -> Left "cannot durably encode: no row"
 
 -- | Encode a batch's rows before any IO (@_commit@'s @batch = [...]@): the
--- first refused record's text, in batch order, or every row. The payloads
--- are slices of one buffer ('dumpsMany'): a batch's rows are written
--- together and dropped together.
+-- first refused record's text, in batch order, or every row.
+--
+-- The payloads are encoded together ('dumpsMany': one buffer for the
+-- batch, each payload a slice of it) because they are written together and
+-- dropped together. Measured on the one-batch append (20 002 records, Apple
+-- M4, 2026-10-12), this took the row from 69.0 to 59.3 ms against a 'dumps'
+-- per record, which allocates a 2 000-byte buffer and an exact-size copy
+-- for each.
 encodeRows :: [Record] -> Either Text [EncodedRow]
-encodeRows batch = case dumpsMany payloadOptions (map encodeRecord batch) of
-  Left (index, problem) -> Left (refusal (batch !! index) problem)
-  Right payloads -> Right (zipWith row batch payloads)
+encodeRows batch = case dumpsMany payloadOptions encodeRecord batch of
+  Left (r, problem) ->
+    Left
+      ( "cannot durably encode "
+          <> recordName r
+          <> ": "
+          <> T.pack (encodeErrorMessage problem)
+          <> " — durable instants, token data, and activity input/result must be JSON-faithful values"
+      )
+  Right encoded -> Right [row r bytes | (r, bytes) <- encoded]
   where
     -- @encoded.get("occurrence")@ is the record's occurrence: every record
     -- that carries one encodes it under that key, as an integer or null.
     row r bytes = EncodedRow r (encodeRecord r) (recordName r) (maybe SQLNull (SQLInteger . fromIntegral) (recordOccurrence r)) bytes
-    refusal r problem =
-      "cannot durably encode "
-        <> recordName r
-        <> ": "
-        <> T.pack (encodeErrorMessage problem)
-        <> " — durable instants, token data, and activity input/result must be JSON-faithful values"
 
 -- ---------------------------------------------------------------------------
 -- Errors
@@ -373,7 +371,7 @@ loadRows shown instanceId connection = do
       loadRow :: Integer -> [SQLData] -> IO Record
       loadRow expected = \case
         [position, eventId, recordType, occurrence', payload'] -> do
-          let expectedId = instanceId <> ":" <> T.pack (show expected)
+          let expectedId = eventIdentity instanceId expected
           unless (sameInteger position expected && eventId == SQLText expectedId) $
             refuse
               ( shown
@@ -450,63 +448,38 @@ insertStatement =
 
 -- | @_commit@: encode the whole batch, then one @BEGIN IMMEDIATE@
 -- transaction inserting each record from the mirror's next position.
---
--- Each insert binds its six values as they are: the instance and record
--- type from their 'Text's, the event identity written into one buffer the
--- batch reuses, and the payload from the batch's encoded bytes (ASCII, so
--- already the UTF-8 text the reference binds).
 commitBatch :: Text -> MVar (Maybe Connection) -> Int -> [Record] -> IO [Admission]
 commitBatch instanceId guard' start batch = do
   rows <- either refuse pure (encodeRows batch)
   withMVar guard' $ \case
     Nothing -> throwIO ClosedDatabase
-    Just connection -> do
-      withEventId <- eventIdWriter instanceId
-      Sql.withImmediateTransaction connection $ do
-        -- tail recursive: the admissions accumulate in reverse (a 20 000-row
-        -- batch would otherwise build as deep a stack)
-        let go !_ admitted [] = pure (reverse admitted)
-            go position admitted (row : rest) = do
-              changed <- withEventId position $ \eventId ->
-                Sql.executeWith connection insertStatement $ \statement -> do
-                  Sql.bindTextParam statement 1 instanceId
-                  Sql.bindInt64Param statement 2 (fromIntegral position)
-                  Sql.bindUtf8Param statement 3 eventId
-                  Sql.bindTextParam statement 4 row.recordType
-                  Sql.bindParam statement 5 row.occurrence
-                  Sql.bindUtf8Param statement 6 row.payload
-              entered <-
-                if changed /= 0
-                  then pure True
-                  else verifyInsert connection instanceId (instanceId <> ":" <> T.pack (show position)) row
-              if entered
-                then go (position + 1) (Entered : admitted) rest
-                else go position (AcknowledgedElsewhere : admitted) rest
-        go start [] rows
+    Just connection -> Sql.withImmediateTransaction connection $ do
+      -- tail recursive: the admissions accumulate in reverse (a 20 000-row
+      -- batch would otherwise build as deep a stack)
+      let go !_ admitted [] = pure (reverse admitted)
+          go position admitted (row : rest) = do
+            let eventId = eventIdentity instanceId (toInteger position)
+            changed <-
+              Sql.execute
+                connection
+                insertStatement
+                [ SQLText instanceId
+                , SQLInteger (fromIntegral position)
+                , SQLText eventId
+                , SQLText row.recordType
+                , row.occurrence
+                , SQLText (TE.decodeLatin1 row.payload)
+                ]
+            entered <- if changed /= 0 then pure True else verifyInsert connection instanceId eventId row
+            if entered
+              then go (position + 1) (Entered : admitted) rest
+              else go position (AcknowledgedElsewhere : admitted) rest
+      go start [] rows
 
--- | The event identities @"<instance>:<position>"@ of a batch, spelled into
--- one buffer: the instance prefix once, each position's digits in turn. The
--- bytes handed to the action are valid only during it (SQLite copies a
--- bound text).
-eventIdWriter :: Text -> IO (Int -> (ByteString -> IO a) -> IO a)
-eventIdWriter instanceId = do
-  let prefix = TE.encodeUtf8 instanceId <> ":"
-      prefixSize = BS.length prefix
-  buffer <- BI.mallocByteString (prefixSize + 20)
-  unsafeWithForeignPtr buffer $ \target -> BU.unsafeUseAsCString prefix $ \source -> copyBytes target (castPtr source) prefixSize
-  pure $ \position action -> do
-    digits <- unsafeWithForeignPtr buffer $ \target -> writeDecimal (target `plusPtr` prefixSize) position
-    action (BI.BS buffer (prefixSize + digits))
-
--- | Write a non-negative 'Int' in decimal; answer the digit count.
-writeDecimal :: Ptr Word8 -> Int -> IO Int
-writeDecimal target value = fill (count 1 value - 1) value >> pure (count 1 value)
-  where
-    count !n v = if v < 10 then n else count (n + 1) (v `quot` 10)
-    fill i v = do
-      let (q, r) = v `quotRem` 10
-      pokeByteOff target i (fromIntegral (0x30 + r) :: Word8)
-      if q == 0 then pure () else fill (i - 1) q
+-- | The event identity of a History position, @f"{instance}:{position}"@:
+-- written on insert, and checked on load.
+eventIdentity :: Text -> Integer -> Text
+eventIdentity instanceId position = instanceId <> ":" <> T.pack (show position)
 
 -- | @_verify_conflict@: 'True' when an equal fact holds this event identity
 -- (the record fills the position), 'False' when an equal terminal is held

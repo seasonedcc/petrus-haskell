@@ -333,6 +333,12 @@ main = hspec $ do
             message = either (Left . encodeErrorMessage) Right
          in message (dumps options value) === message built
 
+  describe "dumpsMany" $
+    it "equals traverse over dumps: the same bytes, the same first refusal (property)" $
+      property $ \(Refusables values) sorted nanAllowed ascii ->
+        let options = compact {sortKeys = sorted, allowNan = nanAllowed, ensureAscii = ascii, reprDigitLimit = Just 30}
+         in dumpsManyOutcome options values === traverseOutcome options values
+
   describe "encodeErrorMessage" $
     it "matches CPython's allow_nan=False text" $
       map (encodeErrorMessage . NonFiniteNumber) [0 / 0, 1 / 0, -1 / 0]
@@ -468,6 +474,17 @@ instance Arbitrary Refusable where
           , Float <$> elements [1.5, 0 / 0, 1 / 0, -1 / 0]
           , pure (String "s")
           ]
+
+-- | A batch for 'dumpsMany': up to a dozen values, some dense in what an
+-- encoder may refuse ('Refusable'), some general and large enough to grow
+-- the shared buffer ('jsonValue', non-ASCII text included).
+newtype Refusables = Refusables [Json]
+  deriving stock (Show)
+
+instance Arbitrary Refusables where
+  arbitrary = do
+    k <- choose (0, 12)
+    Refusables <$> vectorOf k (oneof [(\(Refusable value) -> value) <$> arbitrary, jsonValue 3])
 
 -- | Finite values over a small key alphabet, so objects often repeat keys,
 -- with numbers among 0, 1 and 2 in every numeric spelling.

@@ -53,13 +53,6 @@ module Petrus.Sqlite.Connection
     -- * Statements
   , execute
   , execute_
-  , executeWith
-  , Statement
-  , bindParam
-  , bindTextParam
-  , bindUtf8Param
-  , bindInt64Param
-  , bindNullParam
   , executeMany
   , query
   , queryFirst
@@ -88,7 +81,6 @@ module Petrus.Sqlite.Connection
 import Control.Concurrent (threadDelay)
 import Control.Exception (Exception, SomeException, bracket, catch, mask, onException, throwIO, try)
 import Control.Monad (forM_, void, when, zipWithM_)
-import Data.ByteString (ByteString)
 import Data.Char (isSpace)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.Int (Int64)
@@ -415,18 +407,10 @@ isDml sql = any (`T.isPrefixOf` T.toLower (T.take 7 (skipNoise sql))) ["insert",
 -- | Execute one statement with positional parameters and return
 -- @sqlite3_changes()@ (Python's @cursor.rowcount@ for DML statements).
 execute :: Connection -> Text -> [SQLData] -> IO Int
-execute connection sql params = executeWith connection sql (`bindAll` params)
-
--- | 'execute' with the parameters bound by an action ('bindParam',
--- 'bindTextParam', 'bindUtf8Param', 'bindInt64Param', 'bindNullParam')
--- instead of from a list, for a statement run once per row of a batch. The
--- action must bind every parameter of the statement (one left unbound is
--- @NULL@).
-executeWith :: Connection -> Text -> (Statement -> IO ()) -> IO Int
-executeWith connection sql binder = do
+execute connection sql params = do
   implicitBegin connection sql
   withPrepared connection sql $ \statement -> do
-    binder statement
+    bindAll statement params
     drain statement
   S.changes (connectionDatabase connection)
   where
@@ -436,7 +420,8 @@ executeWith connection sql binder = do
         Done -> pure ()
 
 -- | Bind every parameter from a list, refusing a list of the wrong length
--- (direct-sqlite's 'S.bind', with text bound by 'bindTextParam').
+-- (direct-sqlite's 'S.bind', with the same message), text by
+-- 'bindTextParam'.
 bindAll :: Statement -> [SQLData] -> IO ()
 bindAll statement params = do
   Direct.ParamIndex count <- Direct.bindParameterCount statement
@@ -448,49 +433,30 @@ bindAll statement params = do
           ++ show (length params)
           ++ " given"
       )
-  zipWithM_ (bindParam statement) [1 ..] params
-
--- | Bind one parameter (1-based), as direct-sqlite's 'S.bindSQLData' does,
--- text by 'bindTextParam'.
-bindParam :: Statement -> Int -> SQLData -> IO ()
-bindParam statement index = \case
-  SQLText text -> bindTextParam statement index text
-  datum -> S.bindSQLData statement (fromIntegral index) datum
+  zipWithM_ bindParam [1 ..] params
+  where
+    bindParam index = \case
+      SQLText text -> bindTextParam statement index text
+      datum -> S.bindSQLData statement (fromIntegral index) datum
 
 foreign import ccall unsafe "petrus_sqlite_bind_text"
   c_petrus_sqlite_bind_text :: Ptr CStatement -> CInt -> ByteArray# -> Int -> CInt -> IO CInt
 
--- | Bind a text parameter (1-based) from the 'Text''s own UTF-8 bytes,
--- which SQLite copies (as CPython binds a @str@), without the intermediate
--- UTF-8 copy of direct-sqlite's 'S.bindText'.
+-- | Bind a text parameter (1-based) from the 'Text''s own UTF-8 array,
+-- which SQLite copies before returning (@SQLITE_TRANSIENT@, as CPython binds
+-- a @str@), instead of direct-sqlite's 'S.bindText', which first copies the
+-- text into a pinned UTF-8 buffer of its own. Measured on the History
+-- store's one-batch append (20 002 inserts of six parameters, Apple M4,
+-- 2026-10-12): 4–6% of the row (73.5 to 69.0 ms with per-record encoding,
+-- 61.8 to 59.3 ms with 'Petrus.Json.dumpsMany').
 bindTextParam :: Statement -> Int -> Text -> IO ()
 bindTextParam statement@(Direct.Statement handle) index (TI.Text (TA.ByteArray array) offset size) =
-  c_petrus_sqlite_bind_text handle (fromIntegral index) array offset (fromIntegral size) >>= bound statement "bind text"
-
--- | Bind a text parameter (1-based) from bytes that are already UTF-8.
-bindUtf8Param :: Statement -> Int -> ByteString -> IO ()
-bindUtf8Param statement index bytes =
-  Direct.bindText statement (fromIntegral index) (Direct.Utf8 bytes) >>= either (failed statement "bind text") pure
-
--- | Bind an integer parameter (1-based).
-bindInt64Param :: Statement -> Int -> Int64 -> IO ()
-bindInt64Param statement index value = S.bindInt64 statement (fromIntegral index) value
-
--- | Bind @NULL@ to a parameter (1-based).
-bindNullParam :: Statement -> Int -> IO ()
-bindNullParam statement index = S.bindNull statement (fromIntegral index)
-
-bound :: Statement -> Text -> CInt -> IO ()
-bound statement context = \case
-  0 -> pure ()
-  code -> failed statement context (decodeError (CError code))
-
--- | direct-sqlite's error for a failed call on a statement.
-failed :: Statement -> Text -> Error -> IO a
-failed statement context err = do
-  database <- Direct.getStatementDatabase statement
-  Direct.Utf8 details <- Direct.errmsg database
-  throwIO SQLError {sqlError = err, sqlErrorDetails = TE.decodeUtf8With lenientDecode details, sqlErrorContext = context}
+  c_petrus_sqlite_bind_text handle (fromIntegral index) array offset (fromIntegral size) >>= \case
+    0 -> pure ()
+    code -> do
+      database <- Direct.getStatementDatabase statement
+      Direct.Utf8 details <- Direct.errmsg database
+      throwIO SQLError {sqlError = decodeError (CError code), sqlErrorDetails = TE.decodeUtf8With lenientDecode details, sqlErrorContext = "bind text"}
 
 -- | Execute one statement without parameters, ignoring rows.
 execute_ :: Connection -> Text -> IO ()

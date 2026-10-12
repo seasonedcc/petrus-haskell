@@ -7,6 +7,8 @@ module Petrus.Json.Generators
   , mutated
   , soup
   , numberSpelling
+  , dumpsManyOutcome
+  , traverseOutcome
   ) where
 
 import Data.ByteString qualified as BS
@@ -15,6 +17,22 @@ import Data.Text qualified as T
 import Data.Word (Word8)
 import Petrus.Json
 import Test.QuickCheck
+
+-- | 'dumpsMany' of a batch, as comparable data: the spellings in order
+-- (each still paired with its own value, checked here), or the position of
+-- the first refused value with the refusal's text (a NaN refusal is not
+-- equal to itself, so refusals compare by text).
+dumpsManyOutcome :: EncodeOptions -> [Json] -> Either (Int, String) [BS.ByteString]
+dumpsManyOutcome options batch = case dumpsMany options snd (zip [0 :: Int ..] batch) of
+  Left ((position, _), problem) -> Left (position, encodeErrorMessage problem)
+  Right encoded
+    | map (fst . fst) encoded == take (length batch) [0 ..] -> Right (map snd encoded)
+    | otherwise -> Left (-1, "dumpsMany paired a spelling with the wrong value")
+
+-- | @traverse@ over 'dumps' of a batch, in the shape of 'dumpsManyOutcome'.
+traverseOutcome :: EncodeOptions -> [Json] -> Either (Int, String) [BS.ByteString]
+traverseOutcome options batch =
+  traverse (\(position, value) -> either (\problem -> Left (position, encodeErrorMessage problem)) Right (dumps options value)) (zip [0 :: Int ..] batch)
 
 -- | A JSON document written by one of the encoder spellings Petrus uses.
 documentText :: Gen BS.ByteString

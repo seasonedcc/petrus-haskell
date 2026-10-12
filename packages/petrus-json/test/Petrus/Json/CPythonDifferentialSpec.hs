@@ -50,7 +50,7 @@ import Data.Word (Word8)
 import GHC.Float (castDoubleToWord64, castWord64ToDouble)
 import Numeric (readHex, showHex)
 import Petrus.Json
-import Petrus.Json.Generators (documentText, mutated, numberSpelling, soup)
+import Petrus.Json.Generators (documentText, dumpsManyOutcome, mutated, numberSpelling, soup, traverseOutcome)
 import Petrus.Json.Reference (repositoryRoot, upstreamPython)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -368,16 +368,11 @@ spec = describe "differential against CPython's json (the pinned reference)" $ d
     refusals `shouldSatisfy` (> 1000)
     length results `shouldSatisfy` (>= 32000)
 
-  it "dumpsMany: dumps of each value of a batch, refusal for refusal (the first, with its index)" $ do
+  it "dumpsMany: dumps of each value of a batch, refusal for refusal (the first, with its value)" $ do
     -- (refusals compared by their text: a NaN refusal is not equal to itself)
-    let expected options batch =
-          case [(index, encodeErrorMessage problem) | (index, Left problem) <- zip [0 :: Int ..] (map (dumps options) batch)] of
-            refused : _ -> Left refused
-            [] -> Right [bytes | Right bytes <- map (dumps options) batch]
-        actual options batch = either (\(index, problem) -> Left (index, encodeErrorMessage problem)) Right (dumpsMany options batch)
     forM_ dumpsConfigurations $ \(name, options) ->
       forM_ ([] : chunksOf 7 dumpsCorpus) $ \batch ->
-        (name, actual options batch) `shouldBe` (name, expected options batch)
+        (name, dumpsManyOutcome options batch) `shouldBe` (name, traverseOutcome options batch)
 
   it "json.loads: every admission profile upstream uses, value for value" $ do
     let request = "loads\n" <> BL.intercalate "\n" (map (\document -> "x" <> B.toLazyByteString (B.byteStringHex document)) loadsCorpus) <> "\n"
