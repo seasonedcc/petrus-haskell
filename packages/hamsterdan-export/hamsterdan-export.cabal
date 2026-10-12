@@ -48,6 +48,7 @@ library
                   , hamsterdan-readiness
                   , petrus-engine-file
                   , petrus-json
+                  , petrus-sqlite
                   , text >=2.0
                   , unix >=2.8
   ghc-options:      -O2

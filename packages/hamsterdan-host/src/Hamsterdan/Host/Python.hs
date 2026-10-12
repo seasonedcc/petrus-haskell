@@ -18,7 +18,6 @@ module Hamsterdan.Host.Python
   , isPythonException
   , catchPython
   , tryPython
-  , exceptionClass
 
     -- * JSON
   , dumpsSorted
@@ -40,10 +39,7 @@ module Hamsterdan.Host.Python
   ) where
 
 import Control.Exception
-  ( ArithException
-  , ArrayException
-  , ErrorCall
-  , Exception (..)
+  ( Exception (..)
   , IOException
   , SomeAsyncException
   , SomeException (..)
@@ -54,11 +50,7 @@ import Control.Exception
   , try
   )
 import Data.Maybe (isJust)
-import Data.Typeable (cast, typeOf)
-import Hamsterdan.GitHub.Models (GitHubBoundaryError (..))
-import Petrus.Activity (ActivityError)
-import Hamsterdan.Host.Agenticus (AgentCompositionError)
-import Petrus.Agenticus.Error (AgenticusError (..), errorClassName)
+import Data.Typeable (cast)
 import System.Exit (ExitCode)
 import Control.Monad (unless, void)
 import Data.ByteString (ByteString)
@@ -130,21 +122,6 @@ catchPython action handler = action `catch` \e -> if isPythonException e then ha
 
 tryPython :: IO a -> IO (Either SomeException a)
 tryPython action = (Right <$> action) `catchPython` (pure . Left)
-
--- | @type(error).__name__@: the reference class a caught exception stands
--- for.
-exceptionClass :: SomeException -> Text
-exceptionClass e
-  | Just (PythonException name _) <- fromException e = name
-  | Just (_ :: GitHubBoundaryError) <- fromException e = "GitHubBoundaryError"
-  | Just (_ :: ActivityError) <- fromException e = "ActivityError"
-  | Just (_ :: AgentCompositionError) <- fromException e = "AgentCompositionError"
-  | Just (failure :: AgenticusError) <- fromException e = errorClassName failure.errorClass
-  | Just (_ :: IOException) <- fromException e = "OSError"
-  | Just (_ :: ErrorCall) <- fromException e = "RuntimeError"
-  | Just (_ :: ArithException) <- fromException e = "ArithmeticError"
-  | Just (_ :: ArrayException) <- fromException e = "IndexError"
-  | SomeException inner <- e = T.pack (show (typeOf inner))
 
 sortedAscii :: EncodeOptions
 sortedAscii = defaultDumps {itemSeparator = Just ",", keySeparator = ":", sortKeys = True}

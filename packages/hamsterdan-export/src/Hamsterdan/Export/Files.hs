@@ -57,6 +57,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error (lenientDecode)
 import Database.SQLite3.Direct qualified as Direct
+import Petrus.Sqlite.Connection (pythonSqliteClass)
 import Foreign.C.Error (Errno (..), eISDIR, eNOENT)
 import GHC.IO.Exception (IOException (..))
 import Hamsterdan.Python.Exception qualified as Exc
@@ -435,35 +436,9 @@ readRow statement = do
     pure (name, value)
   pure (pyDict members)
 
--- | The exception class CPython's @sqlite3@ raises for a result code
--- (@get_exception_class@ in @Modules/_sqlite/util.c@).
+-- | The exception class CPython's @sqlite3@ raises for a result code, as
+-- a traceback names it (petrus-sqlite's 'pythonSqliteClass', qualified).
 sqliteClass :: Direct.Error -> Text
-sqliteClass = \case
-  Direct.ErrorInternal -> "sqlite3.InternalError"
-  Direct.ErrorNotFound -> "sqlite3.InternalError"
-  Direct.ErrorNoMemory -> "MemoryError"
-  code
-    | code `elem` operational -> "sqlite3.OperationalError"
-  Direct.ErrorCorrupt -> "sqlite3.DatabaseError"
-  Direct.ErrorTooBig -> "sqlite3.DataError"
-  Direct.ErrorConstraint -> "sqlite3.IntegrityError"
-  Direct.ErrorMismatch -> "sqlite3.IntegrityError"
-  Direct.ErrorMisuse -> "sqlite3.InterfaceError"
-  Direct.ErrorRange -> "sqlite3.InterfaceError"
-  _ -> "sqlite3.DatabaseError"
-  where
-    operational =
-      [ Direct.ErrorError
-      , Direct.ErrorPermission
-      , Direct.ErrorAbort
-      , Direct.ErrorBusy
-      , Direct.ErrorLocked
-      , Direct.ErrorReadOnly
-      , Direct.ErrorInterrupt
-      , Direct.ErrorIO
-      , Direct.ErrorFull
-      , Direct.ErrorCan'tOpen
-      , Direct.ErrorProtocol
-      , Direct.ErrorEmpty
-      , Direct.ErrorSchema
-      ]
+sqliteClass code = case pythonSqliteClass code of
+  "MemoryError" -> "MemoryError"
+  name -> "sqlite3." <> name

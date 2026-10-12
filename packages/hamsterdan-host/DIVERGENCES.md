@@ -50,15 +50,23 @@ Below are the differences that remain, with their rationale.
      a pipe. That is the differential test's setting.
    - The width is the same: `COLUMNS`, else the terminal, else 80.
 4. **Haskell-native failures get the nearest Python class name.** Where a
-   failure class reaches History or a log line (`error_class=…`), the
-   port's own exception types carry the reference's class names
-   (`RuntimeError`, `ValueError`, `TypeError`, `PythonException name`).
-   Failures that only Haskell can raise are named by `exceptionClass`:
-   - `IOException` is `OSError`;
-   - `ErrorCall` is `RuntimeError`;
-   - `ArithException` is `ArithmeticError`;
-   - `ArrayException` is `IndexError`;
-   - anything else gets its Haskell type name.
+   failure class reaches History, the inbox (`error_class`), the status
+   document or a log line (`error_class=…`), `Hamsterdan.Host.ExceptionClass`
+   names it from a closed list:
+   - every exception type the Hamsterdan packages declare carries its
+     reference class (`GitHubBoundaryError`, `RerunRefusedError`,
+     `ValueError`, …), checked against the pinned reference's modules;
+   - a SQLite failure is named as CPython's `sqlite3` names it
+     (`OperationalError`, `IntegrityError`, `DatabaseError`, …), checked
+     against the pinned interpreter for the same statements;
+   - failures that only Haskell can raise get the nearest built-in class:
+     `IOException` is `OSError`, `ErrorCall` is `RuntimeError`,
+     `ArithException` is `ArithmeticError`, `ArrayException` is
+     `IndexError`.
+
+   A declared type missing from the list fails the host's test suite. Only
+   a library's own exception, which the reference cannot raise, keeps its
+   Haskell type name.
 5. **A conversation request's allowed intents come in source order.** The
    reference spreads `_MUTATIONS`, a `frozenset` of strings, into the V5
    application's `_ALLOWED`. So the last three intents a conversation

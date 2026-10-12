@@ -37,6 +37,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Hamsterdan.Host.Python
+                    Hamsterdan.Host.ExceptionClass
                     Hamsterdan.Host.Runnable
                     Hamsterdan.Host.V5.Timers
                     Hamsterdan.Host.Cli
@@ -76,6 +77,7 @@ library
                   , hamsterdan-readiness
                   , http-types >=0.12
                   , petrus-json
+                  , petrus-sqlite
                   , petrus-execution
                   , petrus-motus
                   , petrus-posix
@@ -115,6 +117,7 @@ test-suite hamsterdan-host-test
                     InteropSpec
                     ArchitectureSpec
                     CliSpec
+                    ExceptionClassSpec
                     ApiSpec
                     RawHttp
                     FakeGitHub

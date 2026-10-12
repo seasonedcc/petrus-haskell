@@ -29,9 +29,8 @@ import Control.Exception (catch, throwIO)
 import Control.Monad (void)
 import Data.Text (Text)
 import Database.SQLite3 qualified as Sql
-import Database.SQLite3.Direct qualified as Direct
 import Petrus.Agenticus.Error
-import Petrus.Sqlite.Connection (Connection, IsolationLevel (..), SQLData (..), SQLError (..))
+import Petrus.Sqlite.Connection (Connection, IsolationLevel (..), SQLData (..), SQLError (..), pythonSqliteClass)
 import Petrus.Sqlite.Connection qualified as Connection
 
 -- | An open ledger connection.
@@ -83,19 +82,3 @@ translated :: IO a -> IO a
 translated action =
   action `catch` \(failure :: SQLError) ->
     throwIO (AgenticusError (OtherError (pythonSqliteClass failure.sqlError)) failure.sqlErrorDetails)
-
--- | The @sqlite3@ exception class CPython raises for a result code.
-pythonSqliteClass :: Direct.Error -> Text
-pythonSqliteClass = \case
-  Direct.ErrorInternal -> "InternalError"
-  Direct.ErrorNotFound -> "InternalError"
-  Direct.ErrorNoMemory -> "MemoryError"
-  Direct.ErrorCorrupt -> "DatabaseError"
-  Direct.ErrorTooBig -> "DataError"
-  Direct.ErrorConstraint -> "IntegrityError"
-  Direct.ErrorMismatch -> "IntegrityError"
-  Direct.ErrorMisuse -> "InterfaceError"
-  Direct.ErrorRange -> "InterfaceError"
-  Direct.ErrorNotADatabase -> "DatabaseError"
-  Direct.ErrorFormat -> "DatabaseError"
-  _ -> "OperationalError"

@@ -69,6 +69,7 @@ module Petrus.Sqlite.Connection
   , historyWalRefusal
   , localDispatchWalRefusal
   , isLockedError
+  , pythonSqliteClass
   , SQLError (..)
   , Error (..)
   , SQLData (..)
@@ -239,6 +240,36 @@ localDispatchWalRefusal refusal = purePath (refusedPath refusal) ++ ": SQLite re
 -- @locked@ (case-insensitively), e.g. @database is locked@.
 isLockedError :: SQLError -> Bool
 isLockedError err = "locked" `T.isInfixOf` T.toLower (sqlErrorDetails err)
+
+-- | The @sqlite3@ exception class CPython raises for a primary result code
+-- (@get_exception_class@ in @Modules/_sqlite/util.c@): its
+-- @type(error).__name__@, whose module is @sqlite3@ except for
+-- @MemoryError@ (a built-in).
+pythonSqliteClass :: Error -> Text
+pythonSqliteClass = \case
+  ErrorInternal -> "InternalError"
+  ErrorNotFound -> "InternalError"
+  ErrorNoMemory -> "MemoryError"
+  ErrorError -> "OperationalError"
+  ErrorPermission -> "OperationalError"
+  ErrorAbort -> "OperationalError"
+  ErrorBusy -> "OperationalError"
+  ErrorLocked -> "OperationalError"
+  ErrorReadOnly -> "OperationalError"
+  ErrorInterrupt -> "OperationalError"
+  ErrorIO -> "OperationalError"
+  ErrorFull -> "OperationalError"
+  ErrorCan'tOpen -> "OperationalError"
+  ErrorProtocol -> "OperationalError"
+  ErrorEmpty -> "OperationalError"
+  ErrorSchema -> "OperationalError"
+  ErrorCorrupt -> "DatabaseError"
+  ErrorTooBig -> "DataError"
+  ErrorConstraint -> "IntegrityError"
+  ErrorMismatch -> "IntegrityError"
+  ErrorMisuse -> "InterfaceError"
+  ErrorRange -> "InterfaceError"
+  _ -> "DatabaseError"
 
 -- | @sqlite3.connect(path, timeout=…)@ only: open (creating if needed) and
 -- set the busy timeout, without the profile's setup statements.

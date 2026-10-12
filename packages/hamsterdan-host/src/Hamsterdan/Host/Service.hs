@@ -133,11 +133,11 @@ import Hamsterdan.GitHub.Webhooks
 import Hamsterdan.GitHub.Webhooks qualified as Custody
 import Hamsterdan.Host.Agenticus (AgentCompositionError (..))
 import Hamsterdan.Host.Binding (InstanceBinding (..), Topology (..), preflightV5State, readInstanceBinding)
+import Hamsterdan.Host.ExceptionClass (exceptionClass)
 import Hamsterdan.Host.Python
   ( RuntimeError (..)
   , ValueError (..)
   , catchPython
-  , exceptionClass
   , mkdirPrivate
   , tryPython
   )
