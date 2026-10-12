@@ -42,7 +42,7 @@ import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocationFields 
 import Petrus.Agenticus.Attachment.Binding (bindingExecution, motusBinding, openMotusBinding)
 import Petrus.Agenticus.Attachment.Episode (episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
-import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
+import Petrus.Agenticus.Catalog.Descriptor (DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Catalog.Resolution (mkResolutionSnapshot)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
@@ -54,9 +54,9 @@ import Petrus.Agenticus.Connection.Custody
   )
 import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..), allToolMethods)
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), grantSpec, openGrant)
+import Petrus.Agenticus.Hands.Grants (GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
-import Petrus.Agenticus.Program.AgentNet (ModelSettlement (..), StopReason (..), loopStateToData, mkLoopState, modelPhaseActivity, modelSettlementFromData)
+import Petrus.Agenticus.Program.AgentNet (StopReason (..), loopStateToData, mkLoopState, modelPhaseActivity, modelSettlementFromData)
 import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)
 import Petrus.Agenticus.Runtime.Pi.Internal
