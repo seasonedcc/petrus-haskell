@@ -258,9 +258,8 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
     `PythonTextSpec` checks all 1,114,112 code points against the committed
     vector `packages/petrus-json/test/python-printable.txt`. This is at
     parity; GHC's own `isPrint` (Unicode 15.1, and it admits space
-    separators such as U+00A0) is no longer used for it. Other packages'
-    own `repr` helpers (`petrus-motus`, `petrus-execution`, `petrus-dst`)
-    still use GHC's tables.
+    separators such as U+00A0) is no longer used for it, here or in any
+    other package's `repr`.
 
 ## Telemetry (`petrus-telemetry`)
 

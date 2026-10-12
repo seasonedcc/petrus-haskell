@@ -1,5 +1,5 @@
--- | Parity: @tests/integration/test_golden_replay.py@,
--- @tests/integration/test_passthrough_chain.py@, and the replay harness
+-- | Parity: @tests/petrus/impetus/petrinet/test_golden_replay.py@,
+-- @tests/petrus/impetus/instance/test_passthrough_chain.py@, and the replay harness
 -- @tests/harness.py@; plus the byte-identity of the regenerated corpus
 -- (@scripts/gen-golden-traces.py@ ported as "Petrus.Impetus.GoldenTraces").
 module Petrus.Impetus.GoldenTracesSpec (spec) where

@@ -103,7 +103,7 @@ differences are in how the API is spelled and in what the types rule out.
     - `mirroredHistoryStore` skips its admission filter when every record
       entered.
 
-    Semantics are unchanged, and the kernel suite (2 762 examples) passes.
+    Semantics are unchanged, and the kernel suite passes.
 12. **`EngineOptions.handlerObserver` is a port-only option.** The
     reference's Activity handlers are objects that may count their calls or
     read an injected fault (its tests' bridges do both). Here handlers stay
