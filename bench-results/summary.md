@@ -41,7 +41,7 @@ lists the files whose package sources have changed since.
 | `petrus-engine-absurd` | [RESULTS.md](../packages/petrus-engine-absurd/bench/RESULTS.md) | `5a73d7a` | 2 | 1.15× | 1.29× |  |
 | `petrus-engine-file` | [RESULTS.md](../packages/petrus-engine-file/bench/RESULTS.md) | `5a73d7a` | 19 | 1.24× | 6.22× |  |
 | `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | `5a73d7a` | 5 | 1.08× | 7.50× |  |
-| `petrus-engine-sqlite` | [RESULTS.md](../packages/petrus-engine-sqlite/bench/RESULTS.md) | `5a73d7a` | 4 | 1.37× | 7.35× |  |
+| `petrus-engine-sqlite` | [RESULTS.md](../packages/petrus-engine-sqlite/bench/RESULTS.md) | `cb654fd` | 4 | 1.43× | 8.48× |  |
 | `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | `5a73d7a` | 13 | 1.01× | 10.7× |  |
 | `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | `5a73d7a` | 12 | 1.35× | 10.1× |  |
 | `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | `5a73d7a` | 7 | 1.20× | 2.01× |  |

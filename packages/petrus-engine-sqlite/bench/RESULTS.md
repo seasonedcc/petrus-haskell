@@ -1,6 +1,6 @@
 # SQLite Engine benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 0b669301849584c7 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 329376335c252a61 at cb654fd876d4 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` drive the same
 workloads through the public SQLite Engine composition: the reference's
@@ -28,11 +28,11 @@ The workloads:
 
 ## Current figures
 
-Measured on 2026-10-12, 01:56–01:57 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.65–3.15:
-three interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-12, 17:53–17:55 local (UTC-3), at commit `cb654fd`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.89–2.90:
+five interleaved repetitions, alternating which side goes first, of
 
-    scripts/bench-compare petrus-engine-sqlite 3
+    scripts/bench-compare petrus-engine-sqlite 5
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
@@ -42,12 +42,12 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `engine-sqlite.orders-small-sqlite` | 3.8 ms | 6.23 ms | 1.64× | 1.53× | 3.69 ms, 3.85 ms, 3.8 ms | 6.23 ms, 5.9 ms, 6.59 ms |
-| `engine-sqlite.orders-large-sqlite` | 197 ms | 895 ms | 4.55× | 4.35× | 196 ms, 206 ms, 197 ms | 894 ms, 895 ms, 932 ms |
-| `engine-sqlite.load-sqlite` | 16 ms | 118 ms | 7.35× | 7.30× | 16 ms, 16 ms, 16.3 ms | 118 ms, 117 ms, 121 ms |
-| `engine-sqlite.open-close` | 343 µs | 470 µs | 1.37× | 1.32× | 354 µs, 342 µs, 343 µs | 467 µs, 470 µs, 483 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `engine-sqlite.orders-small-sqlite` | 4.15 ms | 6.86 ms | 1.66× | 1.52× | 5 of 5 | 4.22 ms, 4.14 ms, 3.77 ms, 4.15 ms, 4.19 ms | 6.39 ms, 6.86 ms, 6.77 ms, 7.33 ms, 6.99 ms |
+| `engine-sqlite.orders-large-sqlite` | 182 ms | 908 ms | 4.99× | 4.77× | 5 of 5 | 178 ms, 190 ms, 182 ms, 181 ms, 186 ms | 903 ms, 908 ms, 915 ms, 900 ms, 916 ms |
+| `engine-sqlite.load-sqlite` | 13.9 ms | 118 ms | 8.48× | 8.38× | 5 of 5 | 14 ms, 13.9 ms, 13.7 ms, 13.7 ms, 13.9 ms | 117 ms, 118 ms, 118 ms, 118 ms, 118 ms |
+| `engine-sqlite.open-close` | 334 µs | 478 µs | 1.43× | 1.34× | 5 of 5 | 355 µs, 355 µs, 330 µs, 334 µs, 333 µs | 479 µs, 477 µs, 478 µs, 471 µs, 483 µs |
 
 ## How to rerun
 
