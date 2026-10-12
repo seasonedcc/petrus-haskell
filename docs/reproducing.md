@@ -92,17 +92,12 @@ export PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@127.0.0.1:5432/postgr
 ## Clone
 
 ```sh
-gh repo clone seasonedcc/petrus-haskell -- --recurse-submodules
+git clone --recursive https://github.com/seasonedcc/petrus-haskell.git
 cd petrus-haskell
 ```
 
-The repository is private, so the clone needs an account with access to it:
-`gh` (GitHub's CLI, logged in with `gh auth login`) supplies the
-credentials, or clone over SSH with a key the account knows
-(`git clone --recursive git@github.com:seasonedcc/petrus-haskell.git`). An
-anonymous `https://` clone is refused.
-
-`--recurse-submodules` (`--recursive`) checks out the four pinned upstream projects under
+The repository and the upstream projects are public, so no account is needed.
+`--recursive` checks out the four pinned upstream projects under
 `upstream/` ([UPSTREAM.md](../UPSTREAM.md)). In an existing clone,
 `git submodule update --init --recursive` does the same.
 
