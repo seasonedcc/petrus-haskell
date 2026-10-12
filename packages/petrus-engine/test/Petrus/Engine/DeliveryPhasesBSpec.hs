@@ -95,10 +95,10 @@ loadJsonl net identity path options = do
   port <- memPort
   Engine.load net identity store port options
 
-accept :: Engine.Engine -> NetPath -> Token -> Text -> Maybe DeliveryScope -> IO DeliveryAnswer
+accept :: Engine.Engine -> NetPath -> Token -> Text -> Maybe DeliveryScope -> IO (DeliveryAnswer AcceptedDelivery)
 accept engine source parcel = Engine.acceptDelivery engine source [parcel]
 
-accepted :: HasCallStack => DeliveryAnswer -> IO AcceptedDelivery
+accepted :: HasCallStack => DeliveryAnswer AcceptedDelivery -> IO AcceptedDelivery
 accepted = \case
   DeliveryAccepted carrier -> pure carrier
   other -> expectationFailure ("expected an AcceptedDelivery, got " <> show other) >> error "unreachable"

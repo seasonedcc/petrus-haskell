@@ -1,5 +1,7 @@
 # petrus-cel benchmark results
 
+<!-- scripts/bench: measured sources fe4b9b3e21f59bfc at 9410710252ee -->
+
 Typical Petrus CEL expressions, compiled and evaluated through the Impetus
 kernel seam: `Petrus.Cel.Impetus.celCompilers` in Haskell and
 `petrus.impetus.binding.cel` (cel-python 0.5.0) in Python. Both sides run the

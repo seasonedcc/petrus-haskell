@@ -41,6 +41,7 @@ module Petrus.Telemetry
   , parseLevel
   , levelEnvVar
   , levelFromEnv
+  , validateTelemetryEnvironment
   , level
   , setLevel
   , atLevel
@@ -182,19 +183,36 @@ levelEnvVar = "IMPETUS_TELEMETRY_LEVEL"
 levelFromEnv :: Maybe Text -> Either Text Level
 levelFromEnv = maybe (Right Facts) parseLevel
 
--- | The process-wide level. The reference reads and validates the environment
--- at module import, so a bad value fails the import. Haskell has no import
--- side effects, so the read happens the first time anything consults the
--- level ('level', 'setLevel', 'atLevel', 'emit', 'withSpan', 'capture'):
--- an invalid value throws 'UnknownTelemetryLevel' there, and keeps throwing
--- on every later use, because the failed CAF re-raises. Telemetry is still
--- refused loud, just at first use rather than at load.
-levelRef :: IORef Level
-levelRef = unsafePerformIO $ do
+-- | What 'levelEnvVar' asks for, read once per process: the initial level,
+-- or the refusal for a value outside the ladder.
+environmentLevel :: Either TelemetryError Level
+environmentLevel = unsafePerformIO $ do
   raw <- lookupEnv levelEnvVar
-  case levelFromEnv (T.pack <$> raw) of
-    Right initial -> newIORef initial
-    Left _ -> throwIO (UnknownTelemetryLevel (maybe "" T.pack raw))
+  pure $ case levelFromEnv (T.pack <$> raw) of
+    Right initial -> Right initial
+    Left _ -> Left (UnknownTelemetryLevel (maybe "" T.pack raw))
+{-# NOINLINE environmentLevel #-}
+
+-- | Refuse an invalid 'levelEnvVar' with 'UnknownTelemetryLevel'; return
+-- at once otherwise. The reference validates the variable when
+-- @petrus.telemetry@ is imported, so a bad value aborts every program that
+-- loads an instrumented module before it can write anything. Haskell has no
+-- import-time effects, so each constructor of an instrumented runtime (the
+-- History stores, the Instance, the Engine and its Coordinator, the
+-- dispatches, the Worker, the PostgreSQL fabric and processes) calls this
+-- first, before any I/O: a misconfigured process is refused before its
+-- first durable write, never half way through a transition.
+validateTelemetryEnvironment :: IO ()
+validateTelemetryEnvironment = either throwIO (const (pure ())) environmentLevel
+
+-- | The process-wide level, starting from 'environmentLevel'. Reading it is
+-- total: an invalid environment value reads as 'Off' here, so 'emit' and
+-- 'withSpan' never throw for configuration after an effect has happened
+-- ("telemetry failure must never break a run"); the refusal belongs to
+-- 'validateTelemetryEnvironment', which every instrumented constructor
+-- runs before it touches anything.
+levelRef :: IORef Level
+levelRef = unsafePerformIO (newIORef (either (const Off) id environmentLevel))
 {-# NOINLINE levelRef #-}
 
 -- | The process-wide telemetry level.

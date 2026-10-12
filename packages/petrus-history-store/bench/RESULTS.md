@@ -1,5 +1,7 @@
 # History store benchmarks: Haskell vs the Python reference
 
+<!-- scripts/bench: measured sources 99a1fa46e4b9f5b0 at 24b53d77b9c7 -->
+
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` build the same
 History: 20 002 records from a drained 4 000-token FIFO. They time the same
 workloads over it. Each Python line prints a result size (a record count),

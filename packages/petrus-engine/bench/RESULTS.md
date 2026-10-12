@@ -1,5 +1,7 @@
 # Engine benchmarks: Haskell vs the Python reference
 
+<!-- scripts/bench: measured sources d968a10ff45d22c5 at 7fc4ecb1d671 -->
+
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` drive the same
 workloads end to end through the public Engine: `create`/`load`, `deliver`,
 and one-action `advance` turns until the Engine is at rest, then `records`

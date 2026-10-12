@@ -49,6 +49,14 @@ spec = describe "Petrinet.Schema" $ do
       netPath ".a" `shouldFailWith` "NetPath segments must be non-empty, got '.a'"
     it "rejects a trailing empty segment" $
       netPath "a." `shouldFailWith` "NetPath segments must be non-empty, got 'a.'"
+    -- The total, segment-wise combinators the DSL builds its scopes from.
+    it "joins, strips and enumerates prefixes segment-wise" $ do
+      childPath (np "review") (np "start.now") `shouldBe` np "review.start.now"
+      stripPathPrefix (np "review") (np "review.start.now") `shouldBe` Just (np "start.now")
+      stripPathPrefix (np "review") (np "review") `shouldBe` Nothing
+      stripPathPrefix (np "rev") (np "review.start") `shouldBe` Nothing
+      pathPrefixes (np "a.b.c") `shouldBe` [np "a.b.c", np "a.b", np "a"]
+      pathPrefixes (np "a") `shouldBe` [np "a"]
 
   describe "NetUri" $ do
     it "addresses arcs with and without occurrences" $ do

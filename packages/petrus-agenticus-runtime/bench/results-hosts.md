@@ -1,5 +1,7 @@
 # Codex, Claude and Amp host benchmark results
 
+<!-- scripts/bench: measured sources baf81cf78b32471f at f12e7471cb61 -->
+
 These are twin workloads, run by the tasty-bench runner `bench/Main.hs`
 (`bench/HostsBench.hs`) and by `bench/python_hosts.py` against the pinned
 reference (`upstream/petrus` @ 3f85fc2). They cover the hosts' own protocol
@@ -81,7 +83,8 @@ id every call:
   fake Gondolin SDK (`test/fixtures/codex/fake_gondolin_codex.mjs`, under
   the system `node`; its guest commands run on the host) and its Episode
   Attachment, and probe the guest `codex`. Start the service on a fresh
-  private state directory under `/private/tmp`, with its fence and SQLite
+  private state directory under the platform's temporary directory
+  (`TMPDIR`, else `/tmp`), with its fence and SQLite
   replay ledger. Send one request through the Worker-side Activity client
   over the Unix socket: the service records the operation, runs one Codex
   Turn with the same custody as `codex-turn`, and stores and returns the

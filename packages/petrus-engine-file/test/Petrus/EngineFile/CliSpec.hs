@@ -77,12 +77,31 @@ scenarios =
   , Scenario "usage: unknown option" [] ["--frobnicate"] ""
   , Scenario "usage: missing value" [] ["--indent"] ""
   , Scenario "usage: -- ends options" [("-x.json", messy)] ["--", "-x.json"] ""
+  , Scenario "lone surrogate: in the net name, from stdin" [] [] "{\"fileVersion\": \"2\", \"net\": \"n\\ud800\",  \"places\": {}}"
+  , Scenario "lone surrogate: in names, keys and metadata, in place" [("a.json", surrogates)] ["a.json"] ""
+  , Scenario "lone surrogate: through --infile and --outfile" [("in.json", surrogates)] ["--infile", "in.json", "--outfile", "out.json"] ""
+  , Scenario "lone surrogate: in an arc endpoint" [] [] "{\"net\": \"m\", \"places\": {\"p\": {}}, \"transitions\": {\"t\\ud800\": {}}, \"arcs\": [{\"source\": \"p\", \"target\": \"t\\ud800\"}, {\"source\": [\"t\\udfff\", 1], \"target\": \"p\"}]}"
+  , Scenario "lone surrogate: unpaired around a valid pair" [] [] "{\"net\": \"\\ud800\\u0041\\udc00\\ud83d\\ude00\\ud800\", \"description\": \"\\udbff\"}"
+  , Scenario "lone surrogate: quoted by a validation error" [] [] "{\"net\": \"m\", \"places\": {\"p\": {\"initial\": \"\\ud800\"}}}"
+  , Scenario "lone surrogate: where a number, enum, literal or duration is parsed" [] [] "{\"net\": \"m\", \"places\": {\"p\": {\"initial\": \"1\\ud800\", \"interface\": \"\\udc00\"}}, \"transitions\": {\"t\": {\"delay\": \"1s\\ud800\"}}, \"arcs\": [{\"source\": \"p\", \"target\": \"t\", \"weight\": \"\\ud800\", \"kind\": \"read\\udfff\"}], \"viewState\": {\"zoom\": \"\\ud800\", \"pan\": [\"\\ud800\", 1], \"layout\": {\"p\": [\"\\udc00\", 0]}}}"
+  , Scenario "lone surrogate: in a key the error location names" [] [] "{\"net\": \"m\", \"places\": {\"p\\ud800q\": {\"initial\": \"x\"}, \"a.\\udc00\": {\"initial\": []}}, \"viewState\": {\"arcWaypoints\": {\"a\\udfff\": [[\"\\ud800\", 1]]}}}"
+  , Scenario "lone surrogate: in keys the model ignores" [] [] "{\"net\": \"m\", \"\\ud800\": 1, \"places\": {\"p\": {\"\\udc00\": 2}}, \"arcs\": [{\"source\": \"p\", \"target\": \"t\", \"\\ud800\": 3}], \"refs\": {\"r\\ud800\": {\"ref\": \"x\\udc00.json\", \"\\ud800\": 1}}, \"viewState\": {\"\\ud800\": 4, \"selected\": [\"p\\ud800\"]}}"
+  , Scenario "lone surrogate: in the file version" [] [] "{\"fileVersion\": \"\\ud800\", \"net\": \"m\"}"
+  , Scenario "lone surrogate: as the net itself" [] [] "{\"net\": {\"\\ud800\": 1}}"
+  , Scenario "lone surrogate: overwritten by a repeated key" [] [] "{\"net\": \"\\ud800\", \"net\": \"m\"}"
   , Scenario "recursion: lists nested 990 deep" [] [] (deepLists 986)
   , Scenario "recursion: lists nested 991 deep" [] [] (deepLists 987)
   , Scenario "recursion: objects nested 990 deep" [] [] (deepObjects 985)
   , Scenario "recursion: objects nested 991 deep" [("a.json", deepObjects 986)] ["a.json"] ""
   , Scenario "recursion: arc metadata nested 991 deep" [] [] ("{\"net\": \"m\", \"arcs\": [{\"source\": \"a\", \"target\": \"b\", \"metadata\": {\"x\": " <> BC.replicate 987 '[' <> BC.replicate 987 ']' <> "}}]}")
   ]
+
+-- | Lone surrogates (escaped, as JSON text can only spell them) in place
+-- and transition names, metadata keys and values, and the view state.
+surrogates :: ByteString
+surrogates =
+  "{\"net\": \"m\\udc00\", \"places\": {\"p\\udc00\": {\"initial\": 1, \"metadata\": {\"k\\ud83d\": \"\\udfff x\", \"\\ud800\": [\"\\udbff\"]}}}, \
+  \\"transitions\": {\"t\": {\"metadata\": {\"\\ud801\": null}}}, \"viewState\": {\"note\": \"\\udc80\"}}"
 
 -- | Place metadata holding @n@ nested lists (the document nests @n + 4@
 -- containers deep).

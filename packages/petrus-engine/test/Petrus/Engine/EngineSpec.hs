@@ -2,7 +2,7 @@
 -- one-Instance Engine composition.
 module Petrus.Engine.EngineSpec (spec) where
 
-import Control.Exception (IOException, throwIO)
+import Control.Exception (IOException, fromException, throwIO)
 import Control.Monad (forM_, void)
 import Data.Foldable (toList)
 import Data.IORef
@@ -14,7 +14,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity (ExecutionPolicyFields (..), activityDeclaration, invocation, policyFields)
 import Petrus.Engine qualified as Engine
-import Petrus.Engine.Internal (selectionState)
+import Petrus.Engine.Internal (selectionState, sleepNanoseconds)
 import Petrus.Engine.Provider (EngineResources (..), OpenMode (..), openEngine)
 import Petrus.Engine.TestSupport
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), handlerTokens)
@@ -25,7 +25,7 @@ import Petrus.Impetus.Instance (DeliveryScope (..), FiringOutcome (..), ScopeClo
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.Scope (LifecycleScope, scopeGeneration, scopeName)
 import Petrus.Impetus.Selection (roundRobin)
-import Petrus.Impetus.TestSupport (netOf, np, tok, tokD)
+import Petrus.Impetus.TestSupport (mustNet, netOf, np, tok, tokD)
 import Petrus.Json (Json (..), lookupMember)
 import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch.InMemory
@@ -254,6 +254,41 @@ neutralSurface = describe "TestNeutralEngineSurface" $ do
     recorded <- Store.records history
     Engine.records loaded `shouldReturn` recorded
     Engine.close loaded
+
+  -- Port-only (the final audit's FA-K-3): the reference imports its CEL
+  -- compilers unconditionally, so every Engine runs inline CEL. The
+  -- default options carry petrus-cel's compilers, cel-python's semantics.
+  it "default options compile and evaluate inline CEL guards, filters and completions" $ do
+    let payments = np "payments"
+        accepted = np "accepted"
+        rejected = np "rejected"
+        accept = np "accept"
+        reject = np "reject"
+        guarded path expression = Transition path Nothing [GuardCel (unsafeCel expression)] []
+        big = tokD "Payment" (Object [("amount", Int 150), ("at", String "2024-07-01T15:00:00Z")])
+        small = tokD "Payment" (Object [("amount", Int 50), ("at", String "2024-07-01T15:00:00Z")])
+        net =
+          mustNet
+            ( netSpec
+                [place payments, place accepted, place rejected]
+                [ guarded accept "payments[0].data.amount >= 100 && timestamp(payments[0].data.at).getHours('America/Sao_Paulo') == 12"
+                , guarded reject "payments[0].data.amount < 100"
+                ]
+                [ (arc payments accept) {filter = Just (FilterCel (unsafeCel "amount > 0"))}
+                , arc payments reject
+                , arc accept accepted
+                , arc reject rejected
+                ]
+            )
+              { completion = Just (CompletionCel (unsafeCel "size(payments) == 0"))
+              }
+    history <- inMemoryHistoryStore
+    port <- inMemoryDispatch <$> newInMemoryDispatch
+    engine <- Engine.create net "cel" history port Engine.defaultEngineOptions {Engine.marking = markingFromList [(payments, [big, small])]}
+    _ <- advanceUntilRest engine
+    Engine.marking engine `shouldReturn` markingFromList [(accepted, [big]), (rejected, [small])]
+    Engine.status engine `shouldReturn` Completed
+    Engine.close engine
 
   it "create advance close and load preserve one canonical history" $ do
     history <- inMemoryHistoryStore
@@ -660,6 +695,27 @@ neutralSurfaceContinued = describe "TestNeutralEngineSurfaceContinued" $ do
     completeOccurrence pool occurrence (Object [("value", Int 3)])
     waiting (advanceUntilRest engine) `shouldReturn` False
     Engine.status engine `shouldReturn` Terminated
+    Engine.close engine
+
+  -- Not an upstream test: the neutral wait is time.sleep(timeout), whose
+  -- refusals (probed on CPython 3.14) it keeps.
+  it "wait refuses the timeouts time.sleep refuses, with its classes and texts" $ do
+    history <- inMemoryHistoryStore
+    pool <- newInMemoryDispatch
+    engine <- createWith activityNet "sleepless" history (inMemoryDispatch pool) input3
+    let exactValueError text = \case Engine.EngineValueError m -> m == text; _ -> False
+        overflow (Engine.OverflowError m) = m == "timestamp out of range for platform time_t"
+    Engine.wait engine (-1) `shouldThrow` exactValueError "sleep length must be non-negative"
+    Engine.wait engine (-1e-300) `shouldThrow` exactValueError "sleep length must be non-negative"
+    Engine.wait engine (0 / 0) `shouldThrow` exactValueError "Invalid value NaN (not a number)"
+    forM_ [1 / 0, -1 / 0, 1e300, -1e300, 1e10, -9223372037] $ \timeout ->
+      Engine.wait engine timeout `shouldThrow` overflow
+    Engine.wait engine (-0.0) `shouldReturn` False
+    -- The bounds: the nanoseconds, rounded away from zero, fit an Int64.
+    let verdict :: Double -> Either Text Integer
+        verdict t = either (\err -> Left (maybe "OverflowError" (const "ValueError") (fromException err :: Maybe Engine.EngineError))) Right (sleepNanoseconds t)
+    map verdict [-9223372036.854776, 9223372036.854776, 9223372036.854775, 1e-10, 0.25]
+      `shouldBe` [Left "ValueError", Left "OverflowError", Right 9223372036854774784, Right 1, Right 250000000]
     Engine.close engine
 
   it "deliver seal and close are isolated between two neutral engines" $ do

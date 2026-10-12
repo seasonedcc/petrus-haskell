@@ -429,7 +429,7 @@ joinedProfile family dsn = do
         disposition <-
           tryScenario (io (Engine.deliver g.engine sourcePlace [Token (Just "External") value] identity Nothing)) >>= \case
             Left failure -> refusedWith g failure expected >> pure RefusedExpected
-            Right (Engine.DeliveredPrior _) -> pure Idempotent
+            Right (Engine.DeliveryPrior _) -> pure Idempotent
             Right _ -> pure Applied
         let attempt' = Object [("disposition", String (actionDispositionText disposition)), ("identity", String identity), ("value", value)]
         liftIO (modifyIORef' deliveryAttempts (<> [attempt']))
@@ -609,7 +609,7 @@ joinedProfile family dsn = do
             Left failure -> do
               refusedWith g failure expected
               pure (RefusedExpected, [("error", String failure.errorMessage)])
-            Right (Engine.DeliveredScoped ack) -> do
+            Right (Engine.DeliveryScoped ack) -> do
               let wanted = if quarantine then Instance.Quarantined else Dropped
               when (ack.disposition /= wanted) $
                 raise "AssertionError" (if quarantine then "future generation was not quarantined" else "stale generation was not dropped")

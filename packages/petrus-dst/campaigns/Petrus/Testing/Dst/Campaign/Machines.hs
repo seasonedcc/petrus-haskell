@@ -27,7 +27,9 @@
 --
 -- The World and its scratch directory are created after 'forAll', so a
 -- shrink re-runs the whole example from a fresh World, as a Hypothesis
--- example does.
+-- example does. Everything after the 'forAll' runs as one 'TestT' inside
+-- 'bracketExample', so the example's World closes when that example ends,
+-- passed or failed, as the reference's @teardown@ in a @finally@ closes it.
 module Petrus.Testing.Dst.Campaign.Machines
   ( campaignProperty
   , checkCampaign
@@ -36,7 +38,7 @@ module Petrus.Testing.Dst.Campaign.Machines
   ) where
 
 import Barbies (FunctorB, TraversableB)
-import Control.Exception (finally)
+import Control.Exception (bracket)
 import Control.Monad (unless, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Foldable (traverse_)
@@ -53,6 +55,7 @@ import Hedgehog
   , Command (..)
   , Gen
   , PropertyT
+  , TestT
   , evalIO
   , executeSequential
   , failure
@@ -60,13 +63,14 @@ import Hedgehog
   , forAll
   , label
   , property
+  , test
   , withTests
   , (===)
   )
 import Hedgehog qualified
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Internal.Config (UseColor (..))
-import Hedgehog.Internal.Property (Property (..))
+import Hedgehog.Internal.Property (Property (..), mkTestT, runTestT)
 import Hedgehog.Internal.Report (Report (..), Result (..), renderResult)
 import Hedgehog.Internal.Runner (checkReport)
 import Hedgehog.Internal.Seed qualified as Seed
@@ -87,23 +91,21 @@ import System.IO.Temp (createTempDirectory, withSystemTempDirectory)
 
 -- | The profile's property under its campaign settings, with its examples
 -- under @scratch@.
-campaignProperty :: CampaignSettings -> FilePath -> Opened -> Property
-campaignProperty settings scratch opened =
+campaignProperty :: CampaignSettings -> FilePath -> Property
+campaignProperty settings scratch =
   withTests (fromIntegral settings.maxExamples) $ case settings.profile.name of
-    "delivery-broad" -> deliveryProperty Broad settings scratch opened
-    "delivery-focused" -> deliveryProperty Focused settings scratch opened
-    "runtime-broad" -> broadRuntimeProperty settings scratch opened
-    _ -> focusedRuntimeProperty settings scratch opened
+    "delivery-broad" -> deliveryProperty Broad settings scratch
+    "delivery-focused" -> deliveryProperty Focused settings scratch
+    "runtime-broad" -> broadRuntimeProperty settings scratch
+    _ -> focusedRuntimeProperty settings scratch
 
 -- | @run_state_machine_as_test(Machine, settings=campaign_settings(name))@:
 -- run the profile's examples from its settings' seed.
 checkCampaign :: CampaignSettings -> IO (Report Result)
 checkCampaign settings =
   withSystemTempDirectory "petrus-dst-campaign-profile-" $ \scratch -> do
-    opened <- newIORef (pure ())
-    let p = campaignProperty settings scratch opened
+    let p = campaignProperty settings scratch
     checkReport p.propertyConfig 0 (Seed.from (fromInteger settings.seed)) p.propertyTest (const (pure ()))
-      `finally` closeOpened opened
 
 -- | The @campaign-profile NAME@ child: settings from the environment, the
 -- profile's examples, and a failure report on standard error.
@@ -128,7 +130,7 @@ type Live g = IORef (Maybe (World IO g))
 
 -- | Run a World action against the example's World; a 'DstFailure' fails
 -- the example, as the reference's raised exception fails its rule.
-inWorld :: Live g -> WorldT IO g a -> PropertyT IO a
+inWorld :: Live g -> WorldT IO g a -> TestT IO a
 inWorld live body = do
   current <- liftIO (readIORef live)
   world <- maybe (footnote "no live DST World" >> failure) pure current
@@ -140,17 +142,12 @@ inWorld live body = do
       failure
     Right a -> pure a
 
--- | The close action of the current example's World. The reference's
--- @teardown@ closes its World in a @finally@; a Hedgehog example that fails
--- stops before its teardown, so the next example, or the end of the run,
--- closes it instead.
-type Opened = IORef (IO ())
-
-closeOpened :: Opened -> IO ()
-closeOpened opened = do
-  close <- readIORef opened
-  writeIORef opened (pure ())
-  close
+-- | Run the rest of an example (everything after its 'forAll') with a
+-- resource released when the example ends, whether it passed, failed (a
+-- Hedgehog failure stops the example before its own teardown), or threw:
+-- the reference's @teardown@ in a @finally@.
+bracketExample :: IO r -> (r -> IO ()) -> (r -> TestT IO a) -> PropertyT IO a
+bracketExample acquire release body = test (mkTestT (bracket acquire release (runTestT . body)))
 
 -- | @world.close()@.
 closeLive :: Live g -> IO ()
@@ -158,7 +155,7 @@ closeLive live = do
   readIORef live >>= traverse_ (void . World.runWorldT World.close)
   writeIORef live Nothing
 
-startWorld :: Live g -> WorldConfig IO g -> PropertyT IO ()
+startWorld :: Live g -> WorldConfig IO g -> TestT IO ()
 startWorld live cfg = do
   constructed <- evalIO (World.newWorld cfg)
   case constructed of
@@ -182,7 +179,7 @@ assign k v xs
   | otherwise = xs <> [(k, v)]
 
 -- | The common fresh-registry replay of a teardown.
-replayExactly :: Registry IO -> AnyArtifact -> Text -> PropertyT IO ()
+replayExactly :: Registry IO -> AnyArtifact -> Text -> TestT IO ()
 replayExactly registry artifact disposition = do
   replayed <- evalIO (replay registry artifact)
   result <- case replayed of
@@ -194,14 +191,14 @@ replayExactly registry artifact disposition = do
   member "operations" result === Int (toInteger (length (listOf "operations" value)))
   member "journal_digest" result === member "journal_digest" (member "expected" value)
 
-registryOf :: Profile IO g -> [Checker] -> PropertyT IO (Registry IO)
+registryOf :: Profile IO g -> [Checker] -> TestT IO (Registry IO)
 registryOf profile checkers =
   either (\f -> footnote (T.unpack (failureMessage f)) >> failure) pure $ do
     withProfile <- registerProfile profile emptyRegistry
     foldr (\c r -> r >>= registerChecker c) (Right withProfile) checkers
 
 -- | A fresh example directory under the run's scratch directory.
-exampleRoot :: FilePath -> String -> PropertyT IO FilePath
+exampleRoot :: FilePath -> String -> TestT IO FilePath
 exampleRoot scratch prefix = evalIO (createTempDirectory scratch prefix)
 
 -- ---------------------------------------------------------------------------
@@ -252,8 +249,8 @@ data DeliveryEnv = DeliveryEnv
   , nextIdentity :: IORef Int
   }
 
-deliveryProperty :: DeliveryKind -> CampaignSettings -> FilePath -> Opened -> Property
-deliveryProperty kind settings scratch opened = property $ do
+deliveryProperty :: DeliveryKind -> CampaignSettings -> FilePath -> Property
+deliveryProperty kind settings scratch = property $ do
   envRef <- liftIO (newIORef Nothing)
   let steps = settings.statefulStepCount
       commands = deliveryCommands kind envRef
@@ -262,42 +259,40 @@ deliveryProperty kind settings scratch opened = property $ do
     Focused -> do
       value <- Gen.integral (Range.constantFrom 0 (-1) 1)
       (Just value,) <$> Gen.sequential (Range.singleton (steps - 1)) (deliveryInitial (Just value)) commands
-  -- __init__
-  liftIO (closeOpened opened)
-  root <- exampleRoot scratch "petrus-generated-delivery-"
-  profile <- evalIO (Delivery.deliveryEngineProfile (root <> "/author-history.jsonl"))
-  live <- liftIO (newIORef Nothing)
-  liftIO (writeIORef opened (closeLive live))
-  startWorld live WorldConfig {profile = profile.profile, budget = generatedWorldBudget, checkers = [Delivery.deliveryAuthorityChecker], seed = Nothing, progress = Nothing}
-  timeline <- inWorld live World.timeline
-  env <- liftIO $ DeliveryEnv live <$> newIORef timeline <*> newIORef [] <*> newIORef False <*> newIORef Set.empty <*> newIORef 0
-  liftIO (writeIORef envRef (Just env))
-  case initial of
-    Nothing -> deliveryInvariant env
-    Just value -> do
-      -- establish_targeted_boundary_coverage
-      deliver env "focused-event-1" value
-      deliver env "focused-event-1" value
-      deliver env "focused-event-1" (value + 1)
-      crashReload env "focused-generated-conflict"
-      deliveryInvariant env
-  executeSequential (deliveryInitial initial) actions
-  -- teardown
-  poisoned <- liftIO (readIORef env.poisoned)
-  when poisoned (crashReload env "generated-conflict-recovery")
-  current <- liftIO (readIORef env.timeline)
-  inWorld live (Timeline.finish current ExternalWait)
-  artifact <- inWorld live (World.artifact "generated-identified-delivery-world-v3")
-  covered <- liftIO (readIORef env.coverage)
-  let required = if kind == Focused then focusedCoverage else Set.empty
-  unless (required `Set.isSubsetOf` covered) $ do
-    footnote ("missing coverage " <> show (Set.toList (required `Set.difference` covered)))
-    failure
-  replayProfile <- evalIO (Delivery.deliveryEngineProfile (root <> "/replay-history.jsonl"))
-  registry <- registryOf replayProfile.profile [Delivery.deliveryAuthorityChecker]
-  replayExactly registry artifact "external_wait"
-  evalIO (recordCampaignCase settings.profile.name artifact)
-  liftIO (closeLive live)
+  bracketExample (newIORef Nothing) closeLive $ \live -> do
+    -- __init__
+    root <- exampleRoot scratch "petrus-generated-delivery-"
+    profile <- evalIO (Delivery.deliveryEngineProfile (root <> "/author-history.jsonl"))
+    startWorld live WorldConfig {profile = profile.profile, budget = generatedWorldBudget, checkers = [Delivery.deliveryAuthorityChecker], seed = Nothing, progress = Nothing}
+    timeline <- inWorld live World.timeline
+    env <- liftIO $ DeliveryEnv live <$> newIORef timeline <*> newIORef [] <*> newIORef False <*> newIORef Set.empty <*> newIORef 0
+    liftIO (writeIORef envRef (Just env))
+    case initial of
+      Nothing -> deliveryInvariant env
+      Just value -> do
+        -- establish_targeted_boundary_coverage
+        deliver env "focused-event-1" value
+        deliver env "focused-event-1" value
+        deliver env "focused-event-1" (value + 1)
+        crashReload env "focused-generated-conflict"
+        deliveryInvariant env
+    executeSequential (deliveryInitial initial) actions
+    -- teardown
+    poisoned <- liftIO (readIORef env.poisoned)
+    when poisoned (crashReload env "generated-conflict-recovery")
+    current <- liftIO (readIORef env.timeline)
+    inWorld live (Timeline.finish current ExternalWait)
+    artifact <- inWorld live (World.artifact "generated-identified-delivery-world-v3")
+    covered <- liftIO (readIORef env.coverage)
+    let required = if kind == Focused then focusedCoverage else Set.empty
+    unless (required `Set.isSubsetOf` covered) $ do
+      footnote ("missing coverage " <> show (Set.toList (required `Set.difference` covered)))
+      failure
+    replayProfile <- evalIO (Delivery.deliveryEngineProfile (root <> "/replay-history.jsonl"))
+    registry <- registryOf replayProfile.profile [Delivery.deliveryAuthorityChecker]
+    replayExactly registry artifact "external_wait"
+    evalIO (recordCampaignCase settings.profile.name artifact)
+    liftIO (closeLive live)
   where
     focusedCoverage =
       Set.fromList ["delivery:applied", "delivery:idempotent", "delivery:refused_expected", "lifecycle:crash", "lifecycle:reload"]
@@ -309,7 +304,7 @@ deliveryInitial = \case
   Nothing -> DeliveryModel [] False 0
   Just value -> DeliveryModel [("focused-event-1", value)] False 0
 
-deliveryCommands :: DeliveryKind -> IORef (Maybe DeliveryEnv) -> [Command Gen (PropertyT IO) DeliveryModel]
+deliveryCommands :: DeliveryKind -> IORef (Maybe DeliveryEnv) -> [Command Gen (TestT IO) DeliveryModel]
 deliveryCommands kind envRef = case kind of
   Broad ->
     [ rule (\m -> not m.modelPoisoned) $ \_ ->
@@ -325,7 +320,7 @@ deliveryCommands kind envRef = case kind of
     , rule (\m -> m.modelPoisoned) $ \_ -> pure (CrashAndReload "focused-generated-conflict")
     ]
   where
-    rule :: (forall v. DeliveryModel v -> Bool) -> (DeliveryModel Symbolic' -> Gen (DeliveryStep Symbolic')) -> Command Gen (PropertyT IO) DeliveryModel
+    rule :: (forall v. DeliveryModel v -> Bool) -> (DeliveryModel Symbolic' -> Gen (DeliveryStep Symbolic')) -> Command Gen (TestT IO) DeliveryModel
     rule precondition draw =
       Command
         (\m -> if precondition m then Just (draw m) else Nothing)
@@ -356,7 +351,7 @@ modelDeliver identity value m = case lookup identity m.modelAccepted of
   Just v | v == value -> m
   Just _ -> m {modelPoisoned = True}
 
-executeDeliveryStep :: IORef (Maybe DeliveryEnv) -> DeliveryStep Hedgehog.Concrete -> PropertyT IO ([(Text, Integer)], Bool)
+executeDeliveryStep :: IORef (Maybe DeliveryEnv) -> DeliveryStep Hedgehog.Concrete -> TestT IO ([(Text, Integer)], Bool)
 executeDeliveryStep envRef step = do
   env <- liftIO (readIORef envRef) >>= maybe (footnote "no delivery machine" >> failure) pure
   accepted <- liftIO (readIORef env.accepted)
@@ -374,7 +369,7 @@ executeDeliveryStep envRef step = do
     valueOf identity = maybe 0 id . lookup identity
 
 -- | @_deliver(identity, value)@.
-deliver :: DeliveryEnv -> Text -> Integer -> PropertyT IO ()
+deliver :: DeliveryEnv -> Text -> Integer -> TestT IO ()
 deliver env identity value = do
   accepted <- liftIO (readIORef env.accepted)
   expected <- case lookup identity accepted of
@@ -393,7 +388,7 @@ deliver env identity value = do
   event name
 
 -- | @_crash_reload(cut)@.
-crashReload :: DeliveryEnv -> Text -> PropertyT IO ()
+crashReload :: DeliveryEnv -> Text -> TestT IO ()
 crashReload env cut = do
   timeline <- liftIO (readIORef env.timeline)
   inWorld env.live (Timeline.crash timeline cut)
@@ -405,7 +400,7 @@ crashReload env cut = do
   event "lifecycle:crash-reload"
 
 -- | @detached_history_agrees_with_the_external_authority_model@.
-deliveryInvariant :: DeliveryEnv -> PropertyT IO ()
+deliveryInvariant :: DeliveryEnv -> TestT IO ()
 deliveryInvariant env = do
   timeline <- liftIO (readIORef env.timeline)
   observation <- inWorld env.live (Timeline.observe timeline "engine.delivery-authority")
@@ -439,27 +434,27 @@ newRuntimeEnv root =
     <*> pure root
 
 -- | @_install(world, profile)@.
-install :: RuntimeEnv -> Runtime.GeneratedRuntimeProfile -> PropertyT IO ()
+install :: RuntimeEnv -> Runtime.GeneratedRuntimeProfile -> TestT IO ()
 install env profile = do
   liftIO (writeIORef env.profile (Just profile))
   timeline <- inWorld env.live World.timeline
   liftIO (writeIORef env.timeline (Just timeline))
 
-currentTimeline :: RuntimeEnv -> PropertyT IO Timeline
+currentTimeline :: RuntimeEnv -> TestT IO Timeline
 currentTimeline env = liftIO (readIORef env.timeline) >>= maybe (footnote "no live Timeline" >> failure) pure
 
-currentProfile :: RuntimeEnv -> PropertyT IO Runtime.GeneratedRuntimeProfile
+currentProfile :: RuntimeEnv -> TestT IO Runtime.GeneratedRuntimeProfile
 currentProfile env = liftIO (readIORef env.profile) >>= maybe (footnote "no runtime profile" >> failure) pure
 
-drops :: RuntimeEnv -> PropertyT IO Int
+drops :: RuntimeEnv -> TestT IO Int
 drops env = currentProfile env >>= \p -> liftIO (readIORef p.drops)
 
 -- | @_drain()@.
-drain :: RuntimeEnv -> PropertyT IO ()
+drain :: RuntimeEnv -> TestT IO ()
 drain env = inWorld env.live Runtime.drainAll
 
 -- | @_crash_reload(cut)@.
-runtimeCrashReload :: RuntimeEnv -> Text -> PropertyT IO ()
+runtimeCrashReload :: RuntimeEnv -> Text -> TestT IO ()
 runtimeCrashReload env cut = do
   timeline <- currentTimeline env
   inWorld env.live (Timeline.crash timeline cut)
@@ -469,7 +464,7 @@ runtimeCrashReload env cut = do
   Hedgehog.assert (generation > timeline.generation)
 
 -- | @detached_delivery_authority_remains_exact@.
-runtimeInvariant :: RuntimeEnv -> PropertyT IO ()
+runtimeInvariant :: RuntimeEnv -> TestT IO ()
 runtimeInvariant env =
   liftIO (readIORef env.timeline) >>= \case
     Nothing -> pure ()
@@ -479,7 +474,7 @@ runtimeInvariant env =
       canonicalPairs observation.value === modelPairs accepted
 
 -- | @teardown()@ of @_ReplayableRuntimeMachine@.
-runtimeTeardown :: CampaignSettings -> RuntimeEnv -> PropertyT IO ()
+runtimeTeardown :: CampaignSettings -> RuntimeEnv -> TestT IO ()
 runtimeTeardown settings env = do
   drain env
   timeline <- currentTimeline env
@@ -491,7 +486,7 @@ runtimeTeardown settings env = do
   evalIO (recordCampaignCase settings.profile.name artifact)
   liftIO (closeLive env.live)
 
-inspect :: RuntimeEnv -> PropertyT IO ()
+inspect :: RuntimeEnv -> TestT IO ()
 inspect env = do
   timeline <- currentTimeline env
   observation <- inWorld env.live (Timeline.observe timeline "generated-runtime-state")
@@ -510,8 +505,8 @@ data FocusedStep (v :: Type -> Type) = ReloadQuiescentRuntime | InspectDetachedR
   deriving stock (Show, Generic)
   deriving anyclass (FunctorB, TraversableB)
 
-focusedRuntimeProperty :: CampaignSettings -> FilePath -> Opened -> Property
-focusedRuntimeProperty settings scratch opened = property $ do
+focusedRuntimeProperty :: CampaignSettings -> FilePath -> Property
+focusedRuntimeProperty settings scratch = property $ do
   envRef <- liftIO (newIORef Nothing)
   -- The story's two crashes have dropped two generations when the
   -- generated rules start.
@@ -534,30 +529,27 @@ focusedRuntimeProperty settings scratch opened = property $ do
     second <- Gen.integral (Range.constantFrom 0 (-3) 3)
     retryError <- Gen.element ["worker unavailable", "lease interrupted"]
     (,) (first, second, retryError) <$> Gen.sequential (Range.singleton (settings.statefulStepCount - 1)) initialModel commands
-  liftIO (closeOpened opened)
-  root <- exampleRoot scratch "petrus-generated-runtime-"
-  env <- liftIO (newRuntimeEnv root)
-  liftIO (writeIORef envRef (Just env))
-  liftIO (writeIORef opened (closeLive env.live))
-  -- establish_cross_layer_spine
-  let (first, second, retryError) = spine
-  profile <- evalIO (Runtime.generatedRuntimeProfile (root <> "/author-history.jsonl") (root <> "/author-dispatch.db"))
-  startWorld env.live (runtimeWorld profile)
-  inWorld
-    env.live
-    ( Runtime.executeGeneratedRuntimeStory
-        Runtime.defaultStoryOptions {Runtime.firstValue = first, Runtime.secondValue = second, Runtime.retryError = retryError, Runtime.finish = False}
-    )
-  install env profile
-  liftIO (writeIORef env.accepted [("generated-event-1", first), ("generated-event-2", second)])
-  event "runtime:two-fault-cross-layer-spine"
-  runtimeInvariant env
-  spineDrops <- drops env
-  spineDrops === initialModel.focusedDrops
-  executeSequential initialModel actions
-  runtimeTeardown settings env
+  bracketExample (newRuntimeEnv =<< createTempDirectory scratch "petrus-generated-runtime-") (closeLive . (.live)) $ \env -> do
+    liftIO (writeIORef envRef (Just env))
+    -- establish_cross_layer_spine
+    let (first, second, retryError) = spine
+    profile <- evalIO (Runtime.generatedRuntimeProfile (env.root <> "/author-history.jsonl") (env.root <> "/author-dispatch.db"))
+    startWorld env.live (runtimeWorld profile)
+    inWorld
+      env.live
+      ( Runtime.executeGeneratedRuntimeStory
+          Runtime.defaultStoryOptions {Runtime.firstValue = first, Runtime.secondValue = second, Runtime.retryError = retryError, Runtime.finish = False}
+      )
+    install env profile
+    liftIO (writeIORef env.accepted [("generated-event-1", first), ("generated-event-2", second)])
+    event "runtime:two-fault-cross-layer-spine"
+    runtimeInvariant env
+    spineDrops <- drops env
+    spineDrops === initialModel.focusedDrops
+    executeSequential initialModel actions
+    runtimeTeardown settings env
 
-focusedStep :: IORef (Maybe RuntimeEnv) -> FocusedStep Hedgehog.Concrete -> PropertyT IO Int
+focusedStep :: IORef (Maybe RuntimeEnv) -> FocusedStep Hedgehog.Concrete -> TestT IO Int
 focusedStep envRef step = do
   env <- liftIO (readIORef envRef) >>= maybe (footnote "no runtime machine" >> failure) pure
   case step of
@@ -602,8 +594,8 @@ data BroadStep (v :: Type -> Type)
 worldReloads :: Int
 worldReloads = 4
 
-broadRuntimeProperty :: CampaignSettings -> FilePath -> Opened -> Property
-broadRuntimeProperty settings scratch opened = property $ do
+broadRuntimeProperty :: CampaignSettings -> FilePath -> Property
+broadRuntimeProperty settings scratch = property $ do
   envRef <- liftIO (newIORef Nothing)
   let initialModel = BroadModel 0 False [] 0
       ensure = Ensure (\_ after _ real -> real === after.broadDrops)
@@ -632,21 +624,18 @@ broadRuntimeProperty settings scratch opened = property $ do
           <*> Gen.bool
           <*> Gen.bool
   actions <- forAll (Gen.sequential (Range.singleton (settings.statefulStepCount - 1)) initialModel commands)
-  liftIO (closeOpened opened)
   -- __init__
-  root <- exampleRoot scratch "petrus-generated-runtime-"
-  env <- liftIO (newRuntimeEnv root)
-  liftIO (writeIORef envRef (Just env))
-  liftIO (writeIORef opened (closeLive env.live))
-  profile <- evalIO (Runtime.generatedRuntimeProfile (root <> "/author-history.jsonl") (root <> "/author-dispatch.db"))
-  startWorld env.live (runtimeWorld profile)
-  install env profile
-  -- open_runtime_scope
-  timeline <- currentTimeline env
-  _ <- inWorld env.live (Timeline.command timeline "scope.open" (Object [("name", String Runtime.scopeName)]))
-  runtimeInvariant env
-  executeSequential initialModel actions
-  runtimeTeardown settings env
+  bracketExample (newRuntimeEnv =<< createTempDirectory scratch "petrus-generated-runtime-") (closeLive . (.live)) $ \env -> do
+    liftIO (writeIORef envRef (Just env))
+    profile <- evalIO (Runtime.generatedRuntimeProfile (env.root <> "/author-history.jsonl") (env.root <> "/author-dispatch.db"))
+    startWorld env.live (runtimeWorld profile)
+    install env profile
+    -- open_runtime_scope
+    timeline <- currentTimeline env
+    _ <- inWorld env.live (Timeline.command timeline "scope.open" (Object [("name", String Runtime.scopeName)]))
+    runtimeInvariant env
+    executeSequential initialModel actions
+    runtimeTeardown settings env
 
 -- | The model's view of a broad rule.
 updateBroad :: BroadModel v -> BroadStep v' -> BroadModel v
@@ -662,7 +651,7 @@ updateBroad m = \case
   RedeliverExternalFact _ -> m
   InspectRuntimeWithoutAdvancingIt -> m
 
-broadStep :: IORef (Maybe RuntimeEnv) -> BroadStep Hedgehog.Concrete -> PropertyT IO Int
+broadStep :: IORef (Maybe RuntimeEnv) -> BroadStep Hedgehog.Concrete -> TestT IO Int
 broadStep envRef step = do
   env <- liftIO (readIORef envRef) >>= maybe (footnote "no runtime machine" >> failure) pure
   case step of
@@ -684,7 +673,7 @@ broadStep envRef step = do
   drops env
 
 -- | @run_one_external_activity@.
-runOneExternalActivity :: RuntimeEnv -> Integer -> Bool -> Bool -> Bool -> Bool -> Bool -> PropertyT IO ()
+runOneExternalActivity :: RuntimeEnv -> Integer -> Bool -> Bool -> Bool -> Bool -> Bool -> TestT IO ()
 runOneExternalActivity env value dispatchFault crashAfterRequest retry projectionFault resetBeforeTerminal = do
   profile <- currentProfile env
   activities <- liftIO (readIORef env.activities)
@@ -778,7 +767,7 @@ runOneExternalActivity env value dispatchFault crashAfterRequest retry projectio
   drain env
   event "runtime:activity-converged"
 
-workFiringCount :: RuntimeEnv -> PropertyT IO Int
+workFiringCount :: RuntimeEnv -> TestT IO Int
 workFiringCount env = do
   timeline <- currentTimeline env
   workFirings . (.value) <$> inWorld env.live (Timeline.observe timeline "generated-runtime-state")

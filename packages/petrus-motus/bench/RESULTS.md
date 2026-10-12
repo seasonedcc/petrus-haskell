@@ -1,5 +1,7 @@
 # Local Dispatch benchmarks: Haskell vs the Python reference
 
+<!-- scripts/bench: measured sources e063fde9edf80479 at 7fc4ecb1d671 -->
+
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` drive the same
 custody round trips through the public Local Dispatch surface:
 `LocalDispatch(path, instance=...)`, `dispatch`, a `LocalWorkerDispatch`'s

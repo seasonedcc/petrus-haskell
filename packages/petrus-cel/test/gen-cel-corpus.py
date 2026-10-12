@@ -33,12 +33,20 @@ Outcome encoding (shared by both files):
     Evaluation returned a value; ``repr`` is Python's ``repr`` (function
     addresses normalised) and ``truthy`` is ``bool(value)`` -- the reading
     Petrus applies to filters, guards, and completion conditions.
-``{"cel_error": message}``
-    Evaluation raised ``CELEvalError``; ``message`` is ``args[0]`` with the
-    unbounded activation dump of "undeclared reference" messages cut off.
-``{"py_error": class, "message": text}``
+``{"cel_error": rendering}``
+    Evaluation raised ``CELEvalError``; ``rendering`` is its whole ``repr()``:
+    the message, the wrapped exception's class, and that exception's
+    arguments. Petrus puts this text into guard, filter, and completion
+    diagnostics.
+``{"py_error": class, "message": text, "repr": rendering}``
     Evaluation raised some other Python exception (cel-python leaks these for
-    several malformed expressions).
+    several malformed expressions): its class name, ``str()`` and ``repr()``.
+
+Function addresses are normalised in every recorded text, and
+``Activation.__repr__`` is replaced by the fixed text ``<Activation>``.
+Otherwise an "undeclared reference" error would dump the whole activation,
+addresses included. ``<Activation>`` is what the Haskell evaluator prints
+there.
 
 Every parseable case also records ``free``: Petrus' ``free_variables`` of the
 compiled tree (sorted).
@@ -50,9 +58,11 @@ import json
 import math
 import re
 import sys
+import zoneinfo
 from pathlib import Path
 
 import celpy
+import celpy.evaluation
 import lark
 from petrus.impetus.binding.cel import compile_completion, compile_filter, compile_guard, free_variables
 from petrus.impetus.petrinet import Binding, Cel, Marking, NetPath, Token
@@ -62,14 +72,29 @@ OUT = Path(sys.argv[1]) if __name__ == "__main__" and len(sys.argv) > 1 else ROO
 
 ENV = celpy.Environment()
 
+# Time zones come from the pinned tzdata package only, never from the host's
+# tz database (which ZoneInfo would search first): petrus-cel embeds that
+# package, and the corpus must not depend on the machine that records it.
+zoneinfo.reset_tzpath(to=[])
+
+celpy.evaluation.Activation.__repr__ = lambda self: "<Activation>"
+
 FUNCTION_ADDRESS = re.compile(r"<function (\w+) at 0x[0-9a-f]+>")
-ACTIVATION_DUMP = " (in activation '"
+OBJECT_ADDRESS = re.compile(r"<([\w.]+) object at 0x[0-9a-f]+>")
 
 
 def normalise(text: str) -> str:
-    text = FUNCTION_ADDRESS.sub(r"<function \1>", text)
-    cut = text.find(ACTIVATION_DUMP)
-    return text if cut < 0 else text[:cut]
+    return OBJECT_ADDRESS.sub(r"<\1 object>", FUNCTION_ADDRESS.sub(r"<function \1>", text))
+
+
+def error_outcome(error: BaseException) -> dict:
+    """The whole rendering of a raised exception (see the module docstring)."""
+    if isinstance(error, celpy.CELEvalError):
+        try:
+            return {"cel_error": normalise(repr(error))}
+        except Exception as failure:
+            return {"cel_error_args": normalise(repr(error.args)), "repr_raises": f"{type(failure).__name__}: {failure}"}
+    return {"py_error": type(error).__name__, "message": normalise(str(error)), "repr": normalise(repr(error))}
 
 
 def jsonable(value):
@@ -103,14 +128,8 @@ def outcome(expression: str, bindings: dict | None, with_tree: bool = False) -> 
     try:
         activation = {name: celpy.json_to_cel(value) for name, value in (bindings or {}).items()}
         value = program.evaluate(activation)
-    except celpy.CELEvalError as error:
-        record["cel_error"] = normalise(str(error.args[0]))
-        return record
-    except RecursionError as error:  # pragma: no cover - not expected in the corpus
-        record.update({"py_error": "RecursionError", "message": str(error)})
-        return record
     except Exception as error:
-        record.update({"py_error": type(error).__name__, "message": normalise(str(error))})
+        record.update(error_outcome(error))
         return record
     record.update({"value": normalise(repr(value)), "truthy": bool(value)})
     return record
@@ -674,6 +693,73 @@ add("literal.string.surrogates", [
     r"'<U>D800'.matches('.')", r"bytes('<U>D800')", r"type('<U>D800')",
 ])
 
+# Error renderings: the class and arguments of the wrapped exception, which
+# Petrus diagnostics show in full.
+add("errors.rendering", [
+    "duration('abc')", "duration('1x')", "duration('-1x')", "duration('+abc')", "duration('.s')", "duration('1.s')",
+    "duration('1s2x')", "duration('-1s2x')", "duration(('a' + 'b'))", "duration(('1' + 'x'))",
+    "duration(('-' + '1x'))", "timestamp('2024-02-30')", "timestamp('2024-07-01T25:00:00Z')", "timestamp('')",
+    "timestamp('2024-07-01T15:00:00Z').getHours('Not/AZone')", "timestamp('2024-07-01T15:00:00Z').getHours(('a' + 'b'))",
+    "'a'.matches({})", "'a'.matches(1.5)", "'a'.matches(duration('1s'))", "'a'.matches(timestamp('2020-01-01T00:00:00Z'))",
+    "{'a': 1}.matches('a')", "1.5.matches('a')", "duration('1s').matches('a')", "('a' + 'b').matches(['a'])",
+    "['a', 'b'].matches('a')", "(['a'] + []).matches('a')",
+    "duration('2s') * 4611686018427387904", "duration('-1s') * 2u", "duration('1s') * 9223372036854775807u",
+    "duration('2s') * (true + 4611686018427387903)", "duration('1000s') * (true + 99999999)",
+    "duration('1s') * (true + 999999999)", "double(b'ab')", "double(b'')", "int(b'ab')",
+    "duration('1s').getHours('UTC')", "duration('1s').getMinutes(null)",
+    "timestamp('2020/13/01')", "timestamp('2020/02/30')", "timestamp('2021/02/29')", "timestamp('2020/01/01 24:00')",
+    "timestamp('2020/01/01 23:60')", "timestamp('2020/01/01 23:59:60')", "timestamp('0000')", "timestamp('0000/01/01')",
+])
+
+# Time zones: every getter in IANA zones, at instants before the first
+# transition, inside the transition table, at and around DST changes, and
+# past the last transition (the TZ string rule).
+ZONES = [
+    "America/Sao_Paulo", "Europe/Berlin", "America/New_York", "Australia/Lord_Howe", "Antarctica/Troll",
+    "America/Santiago", "Africa/Casablanca", "Pacific/Apia", "Europe/Dublin", "Asia/Kolkata", "Factory",
+    "EST5EDT", "Etc/GMT+5", "Asia/Kathmandu", "Pacific/Chatham", "America/St_Johns", "America/Nuuk",
+    "Asia/Gaza", "Europe/London", "US/Pacific", "Australia/Adelaide", "Pacific/Kiritimati", "UTC", "Etc/UTC",
+]
+INSTANTS = [
+    "0001-01-01T12:00:00Z", "1850-06-01T00:00:00Z", "1900-01-01T00:00:00Z", "1970-01-01T00:00:00Z",
+    "2024-01-15T12:00:00Z", "2024-07-01T15:00:00Z", "2024-03-10T06:59:59.999Z", "2024-03-10T07:00:00Z",
+    "2024-11-03T05:59:59Z", "2024-11-03T06:00:00Z", "2024-03-31T00:59:59Z", "2024-03-31T01:00:00Z",
+    "2024-10-27T00:59:59Z", "2024-10-27T01:00:00Z", "2050-03-13T06:59:59Z", "2050-03-13T07:00:00Z",
+    "2050-03-27T00:59:59Z", "2050-03-27T01:00:00Z", "2050-10-30T00:59:59Z", "2050-10-30T01:00:00Z",
+    "2100-07-01T00:00:00Z", "2400-02-29T12:00:00Z", "9999-12-31T12:00:00Z",
+]
+GETTERS = "[{t}.getFullYear({z}), {t}.getMonth({z}), {t}.getDate({z}), {t}.getDayOfWeek({z}), " \
+    "{t}.getDayOfYear({z}), {t}.getHours({z}), {t}.getMinutes({z}), {t}.getSeconds({z})]"
+add("timestamp.zones", [
+    GETTERS.format(t=f"timestamp('{instant}')", z=f"'{zone}'") for zone in ZONES for instant in INSTANTS
+])
+# Zone keys as ZoneInfo resolves them from the tzdata package: aliases,
+# validation, dotted package imports, resources that are not zones, and the
+# offset fallback. (Keys differing from a zone only in case are left out:
+# on a case-insensitive file system the reference finds them.)
+add("timestamp.zone_keys", [f"timestamp('2024-07-01T15:00:00Z').getHours({z})" for z in [
+    "'utc'", "'uTc'", "'zone.tab'", "'iso3166.tab'", "'tzdata.zi'", "'leapseconds'", "'__init__.py'",
+    "'America/__init__.py'", "'America'", "'America/'", "'/etc'", "'../x'", "'../_/x'", "'America/../Europe/Berlin'",
+    "'./UTC'", "'Europe//Berlin'", "'europe/berlin'", "'a<U>0000b'", "'America/Sao_Paulo<U>0000'",
+    "'a<U>0000/UTC'", "'<U>d800'", "'<U>dcff'", "'<U>dcff<U>0000'", "'<U>d800<U>0000'", "'Factory'",
+    "'+05:30'", "'05:30'", "'-5:00'", "'+24:00'", "'-24:00'", "'+99:59'", "'-30:00'", "'posixrules'", "'UTC '", "'UTC\\n'", "'America.Argentina/Buenos_Aires'",
+    "'America./Sao_Paulo'", "'.America/Sao_Paulo'", "'America..Argentina/Salta'", "'__init__/UTC'",
+    "'America/__init__/Sao_Paulo'", "'America.__init__/Sao_Paulo'", "'America/__init__.Sao_Paulo/X'",
+    "'__init__.America/Sao_Paulo'", "'.'", "'..'", "'x/.'", "'Etc'", "'Etc/'", "'America/Argentina'",
+    "'zone.tab/x'", "'__init__'", "'America/__init__'", "'x<U>005cy'", "'Amer ica/X'",
+    "b'UTC'", "b'a/../b'", "b'/x'", "['a/../b']", "{'a/../b': 1}", "['UTC']", "1", "1.5", "true",
+    "[b'a/../b', 1u, 2.5, null, true]", "[timestamp('2024-07-01T15:00:00Z'), duration('1s'), 'a/../b']",
+    "['<U>00e9/../b']", "[int, 'a//b']",
+]])
+add("timestamp.zone_overflow", [
+    "timestamp('0001-01-01T01:00:00+05:00').getHours('+06:00')", "timestamp('0001-01-01T01:00:00+05:00').getHours('Asia/Dhaka')",
+    "timestamp('0001-01-01T01:00:00+05:00').getHours('UTC')", "timestamp('0001-01-01T01:00:00+05:00').getHours()",
+    "timestamp('0001-01-01T00:00:00Z').getHours('America/Sao_Paulo')", "timestamp('0001-01-01T05:00:00Z').getHours('America/Sao_Paulo')",
+    "timestamp('9999-12-31T23:00:00Z').getHours('Asia/Tokyo')", "timestamp('9999-12-31T23:00:00Z').getHours('UTC')",
+    "timestamp('9999-12-31T23:00:00Z').getHours('utc')", "timestamp('9999-12-31T23:00:00Z').getHours('Etc/UTC')",
+    "timestamp('9999-12-31T23:00:00-05:00').getHours('Etc/UTC')", "timestamp('9999-12-31T20:00:00-05:00').getHours('Etc/GMT-1')",
+])
+
 # ---------------------------------------------------------------------------
 # Petrus adapter cases
 # ---------------------------------------------------------------------------
@@ -715,10 +801,8 @@ def petrus_outcome(kind: str, expression: str, places, inputs):
                 marking = Marking({NetPath(p): tuple(token_from(t) for t in ts) for p, ts in item})
                 value = implementation(marking)
             results.append({"value": value})
-        except celpy.CELEvalError as error:
-            results.append({"cel_error": normalise(str(error.args[0]))})
         except Exception as error:
-            results.append({"py_error": type(error).__name__, "message": normalise(str(error))})
+            results.append(error_outcome(error))
     return {"results": results}
 
 

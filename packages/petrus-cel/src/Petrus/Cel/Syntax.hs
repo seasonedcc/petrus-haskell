@@ -53,7 +53,7 @@ module Petrus.Cel.Syntax
   , mulOpRule
   ) where
 
-import Data.Foldable (toList)
+import Data.Foldable (foldlM, toList)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -359,35 +359,57 @@ larkRepr = \case
 
 -- | celpy's @tree_dump@ (its @DumpAST@ visitor): a lossy, stack-based
 -- re-rendering of a tree used inside @CELEvalError@ reprs. The visitor's
--- quirks (for instance @[]@ inside a larger expression wrapping the previous
--- stack entry) are reproduced.
-treeDump :: LarkTree -> Text
-treeDump t = case visit t [] of
-  x : _ -> x
-  [] -> ""
+-- quirks are reproduced: @[]@ inside a larger expression wraps the previous
+-- stack entry, and a message's field names are paired with its values in
+-- reverse. So is its failure: where the visitor pops an empty stack, or
+-- reads the first entry of one, Python raises @IndexError@, and 'Left'
+-- carries that error's message.
+treeDump :: LarkTree -> Either Text Text
+treeDump t = visit t [] >>= \case
+  x : _ -> Right x
+  [] -> Left "list index out of range"
   where
-    visit :: LarkTree -> [Text] -> [Text]
-    visit tree@(LarkTree _ children) stack =
-      let stack' = foldl (\s c -> case c of LarkNode sub -> visit sub s; LarkToken _ _ -> s) stack children
-       in step tree stack'
+    visit :: LarkTree -> [Text] -> Either Text [Text]
+    visit tree@(LarkTree _ children) stack = do
+      stack' <- foldlM (\s c -> case c of LarkNode sub -> visit sub s; LarkToken _ _ -> Right s) stack children
+      step tree stack'
     tokenAt i children = case drop i children of
       LarkToken _ v : _ -> v
       _ -> ""
-    binary sep = \case
-      right : left : rest -> (left <> sep <> right) : rest
-      s -> s
+    pop = \case
+      x : rest -> Right (x, rest)
+      [] -> Left "pop from empty list"
+    pops n stack
+      | n <= (0 :: Int) = Right ([], stack)
+      | otherwise = do
+          (x, s1) <- pop stack
+          (xs, s2) <- pops (n - 1) s1
+          Right (x : xs, s2)
+    binary sep stack = do
+      (right, s1) <- pop stack
+      (left, s2) <- pop s1
+      Right ((left <> sep <> right) : s2)
+    suffix s stack = do
+      (left, rest) <- pop stack
+      Right ((left <> s) : rest)
+    -- @[f(x) for x in children if ...]@ only when the rule has more than one
+    -- child: a single child is passed through.
+    combining children f stack
+      | length children == 1 = Right stack
+      | otherwise = f stack
+    optionalPop present stack = if present then pop stack else Right ("", stack)
     step (LarkTree rule children) stack = case rule of
-      "expr"
-        | length children == 1 -> stack
-        | otherwise -> case stack of
-            right : left : cond : rest -> (cond <> " ? " <> left <> " : " <> right) : rest
-            s -> s
-      "conditionalor" | length children == 2 -> binary " || " stack
-      "conditionaland" | length children == 2 -> binary " && " stack
-      "relation" | length children == 2 -> binary " " stack
-      "addition" | length children == 2 -> binary " " stack
-      "multiplication" | length children == 2 -> binary " " stack
-      "unary" | length children == 2 -> binary " " stack
+      "expr" -> flip (combining children) stack $ \s -> do
+        (right, s1) <- pop s
+        (left, s2) <- pop s1
+        (cond, s3) <- pop s2
+        Right ((cond <> " ? " <> left <> " : " <> right) : s3)
+      "conditionalor" -> combining children (binary " || ") stack
+      "conditionaland" -> combining children (binary " && ") stack
+      "relation" -> combining children (binary " ") stack
+      "addition" -> combining children (binary " ") stack
+      "multiplication" -> combining children (binary " ") stack
+      "unary" -> combining children (binary " ") stack
       "relation_lt" -> suffix " < " stack
       "relation_le" -> suffix " <= " stack
       "relation_gt" -> suffix " > " stack
@@ -400,64 +422,58 @@ treeDump t = case visit t [] of
       "multiplication_mul" -> suffix " * " stack
       "multiplication_div" -> suffix " / " stack
       "multiplication_mod" -> suffix " % " stack
-      "unary_not" -> "!" : stack
-      "unary_neg" -> "-" : stack
-      "member_dot" -> case stack of
+      "unary_not" -> Right ("!" : stack)
+      "unary_neg" -> Right ("-" : stack)
+      "member_dot" -> Right $ case stack of
         left : rest -> (left <> "." <> tokenAt 1 children) : rest
         [] -> []
-      "member_dot_arg" ->
-        let (args, s1) = if length children == 3 then pop stack else ("", stack)
-            (left, s2) = pop s1
-         in (left <> "." <> tokenAt 1 children <> "(" <> args <> ")") : s2
-      "member_index" ->
-        let (right, s1) = pop stack
-            (left, s2) = pop s1
-         in (left <> "[" <> right <> "]") : s2
-      "member_object" ->
-        let (fields, s1) = if length children == 2 then pop stack else ("", stack)
-            (left, s2) = pop s1
-         in (left <> "{" <> fields <> "}") : s2
-      "dot_ident_arg" ->
-        let (args, s1) = if length children == 2 then pop stack else ("", stack)
-         in ("." <> tokenAt 0 children <> "(" <> args <> ")") : s1
-      "dot_ident" -> ("." <> tokenAt 0 children) : stack
-      "ident_arg" ->
-        let (args, s1) = if length children == 2 then pop stack else ("", stack)
-         in (tokenAt 0 children <> "(" <> args <> ")") : s1
-      "ident" -> tokenAt 0 children : stack
-      "paren_expr" -> case stack of
+      "member_dot_arg" -> do
+        (args, s1) <- optionalPop (length children == 3) stack
+        (left, s2) <- pop s1
+        Right ((left <> "." <> tokenAt 1 children <> "(" <> args <> ")") : s2)
+      "member_index" -> do
+        (right, s1) <- pop stack
+        (left, s2) <- pop s1
+        Right ((left <> "[" <> right <> "]") : s2)
+      "member_object" -> do
+        (fields, s1) <- optionalPop (length children == 2) stack
+        (left, s2) <- pop s1
+        Right ((left <> "{" <> fields <> "}") : s2)
+      "dot_ident_arg" -> do
+        (args, s1) <- optionalPop (length children == 2) stack
+        Right (("." <> tokenAt 0 children <> "(" <> args <> ")") : s1)
+      "dot_ident" -> Right (("." <> tokenAt 0 children) : stack)
+      "ident_arg" -> do
+        (args, s1) <- optionalPop (length children == 2) stack
+        Right ((tokenAt 0 children <> "(" <> args <> ")") : s1)
+      "ident" -> Right (tokenAt 0 children : stack)
+      "paren_expr" -> Right $ case stack of
         left : rest -> ("(" <> left <> ")") : rest
         [] -> []
-      "list_lit" -> case stack of
+      "list_lit" -> Right $ case stack of
         left : rest -> ("[" <> left <> "]") : rest
         [] -> [""]
-      "map_lit" -> case stack of
+      "map_lit" -> Right $ case stack of
         left : rest -> ("{" <> left <> "}") : rest
         [] -> ["{}"]
-      "exprlist" ->
-        let n = length children
-         in T.intercalate ", " (reverse (take n stack)) : drop n stack
-      "fieldinits" ->
+      "exprlist" -> do
+        (items, rest) <- pops (length children) stack
+        Right (T.intercalate ", " (reverse items) : rest)
+      "fieldinits" -> do
+        -- Each name is paired with the next value popped (the last value
+        -- first), and the pairs are then reversed.
         let names = [v | (i, LarkToken _ v) <- zip [0 :: Int ..] children, even i]
-            n = length names
-            values = reverse (take n stack)
-         in T.intercalate ", " [name <> ": " <> value | (name, value) <- zip names values] : drop n stack
-      "mapinits" ->
-        let n = length children `div` 2
-            popped = take (2 * n) stack
-            pairs = reverse (pairUp popped)
-         in T.intercalate ", " [k <> ": " <> v | (k, v) <- pairs] : drop (2 * n) stack
-      "literal" -> case children of
+            pairs = length children `div` 2
+        (values, rest) <- pops pairs stack
+        Right (T.intercalate ", " (reverse [name <> ": " <> value | (name, value) <- zip names values]) : rest)
+      "mapinits" -> do
+        -- Each pair pops its value, then its key; the pairs are then reversed.
+        (popped, rest) <- pops (2 * (length children `div` 2)) stack
+        Right (T.intercalate ", " (reverse [k <> ": " <> v | (k, v) <- pairUp popped]) : rest)
+      "literal" -> Right $ case children of
         LarkToken _ v : _ -> v : stack
         _ -> stack
-      _ -> stack
-    suffix s = \case
-      left : rest -> (left <> s) : rest
-      [] -> []
-    pop = \case
-      x : rest -> (x, rest)
-      [] -> ("", [])
-    -- The stack holds value then key for each pair (value popped first).
+      _ -> Right stack
     pairUp = \case
       v : k : rest -> (k, v) : pairUp rest
       _ -> []

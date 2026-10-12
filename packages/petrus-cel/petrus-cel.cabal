@@ -51,7 +51,9 @@ library
                     Petrus.Cel.Syntax
                     Petrus.Cel.Time
                     Petrus.Cel.Value
-  other-modules:    Petrus.Cel.Unicode
+  other-modules:    Petrus.Cel.Tz
+                    Petrus.Cel.Tz.Tables
+                    Petrus.Cel.Unicode
                     Petrus.Cel.Unicode.Tables
   build-depends:    base >=4.18 && <5
                   , array >=0.5

@@ -134,6 +134,7 @@ test-suite petrus-agenticus-runtime-test
                     Petrus.Agenticus.Runtime.PiModelPhaseSpec
                     Petrus.Agenticus.Runtime.PiSpec
                     Petrus.Agenticus.Runtime.PiSupport
+                    Petrus.Agenticus.Runtime.PinnedSdkSpec
                     Petrus.Agenticus.Runtime.RunnerDifferentialSpec
   build-depends:    base
                   , bytestring

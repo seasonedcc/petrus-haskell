@@ -18,12 +18,11 @@ module Petrus.EngineFile.Validate
   , validateFile
   , validationError
   , renderLineErrors
-  , truncateRepr
   , coerceNetPath
   , newNetPath
   ) where
 
-import Data.ByteString qualified as BS
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -31,6 +30,8 @@ import Petrus.EngineFile.Duration
 import Petrus.EngineFile.Number (IntParse (..), strAsFloat, strAsInt)
 import Petrus.EngineFile.Types
 import Petrus.EngineFile.Value
+import Petrus.Json.Python.Pydantic qualified as Pydantic
+import Petrus.Json.Wtf8 (hasLoneSurrogate)
 
 -- | Which pydantic entry point is validating.
 data Mode = JsonMode | PythonMode
@@ -55,6 +56,7 @@ data ErrorKind
   | ListType
   | TupleType
   | StringType
+  | StringUnicode
   | IntType
   | IntParsing
   | IntFromFloat
@@ -121,7 +123,16 @@ vStr = \case
   VStr s -> Ok s
   v -> failWith StringType v
 
+-- | pydantic-core reads a @str@ it must parse (as a number, an enum or
+-- literal member, or a duration) as UTF-8 first, which a string holding a
+-- lone surrogate is not.
+unparsable :: Value -> Maybe (V a)
+unparsable = \case
+  v@(VStr s) | hasLoneSurrogate s -> Just (failWith StringUnicode v)
+  _ -> Nothing
+
 vInt :: Value -> V Integer
+vInt v | Just refused <- unparsable v = refused
 vInt v = case v of
   VInt i _ -> Ok i
   VBool b -> Ok (if b then 1 else 0)
@@ -145,6 +156,7 @@ intToDouble i
   | otherwise = fromRational (toRational i)
 
 vFloat :: Mode -> Value -> V Double
+vFloat _ v | Just refused <- unparsable v = refused
 vFloat mode v = case v of
   VFloat d -> Ok d
   VInt i _ -> case mode of
@@ -157,6 +169,7 @@ vFloat mode v = case v of
   _ -> failWith FloatType v
 
 vTimedelta :: Mode -> Value -> V Timedelta
+vTimedelta _ v | Just refused <- unparsable v = refused
 vTimedelta mode v = case v of
   VStr s -> duration (parseDuration (TE.encodeUtf8 s))
   VInt i big -> case mode of
@@ -179,20 +192,22 @@ vTimedelta mode v = case v of
         Exc (PyException "OverflowError" ("days=" <> T.pack (show d) <> "; must have magnitude <= 999999999"))
       Left e -> failWith (TimeDeltaParsing (durationErrorDoc e)) v
 
+-- | A member's spelling is never unparsable, so only a refused value is
+-- scanned (here and in 'vInterface').
 vArcKind :: Value -> V ArcKind
-vArcKind = \case
+vArcKind v = case v of
   VStr "normal" -> Ok Normal
   VStr "inhibitor" -> Ok Inhibitor
   VStr "read" -> Ok Read
-  v -> failWith EnumError v
+  _ -> fromMaybe (failWith EnumError v) (unparsable v)
 
 vInterface :: Value -> V Interface
-vInterface = \case
+vInterface v = case v of
   VStr "input" -> Ok InputInterface
   VStr "output" -> Ok OutputInterface
   VStr "awaiting" -> Ok AwaitingInterface
   VStr "control" -> Ok ControlInterface
-  v -> failWith LiteralError v
+  _ -> fromMaybe (failWith LiteralError v) (unparsable v)
 
 nullable :: (Value -> V a) -> Value -> V (Maybe a)
 nullable f = \case
@@ -385,50 +400,15 @@ validateFile mode v = case vFlatNetFile mode v of
 validationError :: Mode -> [LineError] -> PyException
 validationError mode es = PyException "ValidationError" (renderLineErrors "FlatNetFile" mode es)
 
--- | @str(ValidationError)@.
+-- | @str(ValidationError)@ ("Petrus.Json.Python.Pydantic"), the input
+-- quoted as the Python object it is.
 renderLineErrors :: Text -> Mode -> [LineError] -> Text
-renderLineErrors title mode es =
-  T.pack (show (length es))
-    <> " validation error"
-    <> (if length es == 1 then "" else "s")
-    <> " for "
-    <> title
-    <> "\n"
-    <> T.intercalate "\n" (map line es)
+renderLineErrors title mode es = Pydantic.renderValidationError title (map line es)
   where
-    line e =
-      locLine e.loc
-        <> "  "
-        <> messageOf mode e.kind
-        <> " [type="
-        <> typeOf e.kind
-        <> ", input_value="
-        <> truncateRepr (pyRepr e.input)
-        <> ", input_type="
-        <> pyTypeName e.input
-        <> "]\n    For further information visit https://errors.pydantic.dev/2.13/v/"
-        <> typeOf e.kind
-    locLine [] = ""
-    locLine items = T.intercalate "." (map locText items) <> "\n"
-    locText = \case
-      LocKey k
-        | T.isInfixOf "." k -> "`" <> k <> "`"
-        | otherwise -> k
-      LocIndex i -> T.pack (show i)
-
--- | pydantic's @write_truncated_to_limited_bytes(repr, 50)@.
-truncateRepr :: Text -> Text
-truncateRepr t
-  | BS.length bytes <= 50 = t
-  | otherwise =
-      TE.decodeUtf8 (BS.take (floorBoundary 25) bytes)
-        <> "..."
-        <> TE.decodeUtf8 (BS.drop (ceilBoundary (BS.length bytes - 24)) bytes)
-  where
-    bytes = TE.encodeUtf8 t
-    isContinuation i = i < BS.length bytes && let b = BS.index bytes i in b >= 0x80 && b < 0xC0
-    floorBoundary i = if isContinuation i then floorBoundary (i - 1) else i
-    ceilBoundary i = if isContinuation i then ceilBoundary (i + 1) else i
+    line e = Pydantic.LineError (map locStep e.loc) (messageOf mode e.kind) (typeOf e.kind) (toPyObject e.input)
+    locStep = \case
+      LocKey k -> Pydantic.Key k
+      LocIndex i -> Pydantic.Index i
 
 typeOf :: ErrorKind -> Text
 typeOf = \case
@@ -438,6 +418,7 @@ typeOf = \case
   ListType -> "list_type"
   TupleType -> "tuple_type"
   StringType -> "string_type"
+  StringUnicode -> "string_unicode"
   IntType -> "int_type"
   IntParsing -> "int_parsing"
   IntFromFloat -> "int_from_float"
@@ -461,6 +442,7 @@ messageOf mode = \case
   ListType -> json "Input should be a valid array" "Input should be a valid list"
   TupleType -> json "Input should be a valid array" "Input should be a valid tuple"
   StringType -> "Input should be a valid string"
+  StringUnicode -> "Input should be a valid string, unable to parse raw data as a unicode string"
   IntType -> "Input should be a valid integer"
   IntParsing -> "Input should be a valid integer, unable to parse string as an integer"
   IntFromFloat -> "Input should be a valid integer, got a number with a fractional part"

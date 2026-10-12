@@ -9,11 +9,13 @@
 -- @json.loads@ builds, where a repeated member has already collapsed to its
 -- last value at its first position. 'Value' carries both; 'pyDict' and
 -- 'toPython' turn a jiter value into the Python object pydantic hands to
--- plain validators, @Any@ fields, and error reprs.
+-- plain validators and @Any@ fields, and 'toPyObject' into petrus-json's
+-- 'PyObject', which error reprs and type names are spelled from.
 module Petrus.EngineFile.Value
   ( Value (..)
   , pyDict
   , toPython
+  , toPyObject
   , pyRepr
   , pyTypeName
   , fitsI64
@@ -26,9 +28,8 @@ import GHC.Generics (Generic)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
-import Data.Text qualified as T
-import Petrus.Json.Repr (pythonReprFloat)
-import Petrus.Json.PythonText (pythonStrRepr)
+import Petrus.Json.Python.Pydantic (PyObject (..))
+import Petrus.Json.Python.Pydantic qualified as Pydantic
 
 -- | A parsed JSON value.
 data Value
@@ -68,29 +69,31 @@ toPython = \case
   VDict members -> VDict [(k, toPython v) | (k, v) <- pyDict members]
   v -> v
 
+-- | The Python object for a value, as petrus-json models it.
+toPyObject :: Value -> PyObject
+toPyObject = \case
+  VNull -> PNone
+  VBool b -> PBool b
+  VInt i _ -> PInt i
+  VFloat d -> PFloat d
+  VStr s -> PStr s
+  VList items -> PList (map toPyObject items)
+  VDict members -> PDict [(k, toPyObject v) | (k, v) <- pyDict members]
+
 -- | @repr()@ of the Python object.
 pyRepr :: Value -> Text
-pyRepr = \case
-  VNull -> "None"
-  VBool True -> "True"
-  VBool False -> "False"
-  VInt i _ -> T.pack (show i)
-  VFloat d -> T.pack (pythonReprFloat d)
-  VStr s -> pythonStrRepr s
-  VList items -> "[" <> T.intercalate ", " (map pyRepr items) <> "]"
-  VDict members ->
-    "{" <> T.intercalate ", " [pythonStrRepr k <> ": " <> pyRepr v | (k, v) <- pyDict members] <> "}"
+pyRepr = Pydantic.pyRepr . toPyObject
 
 -- | @type(x).__qualname__@ of the Python object.
 pyTypeName :: Value -> Text
 pyTypeName = \case
-  VNull -> "NoneType"
-  VBool _ -> "bool"
-  VInt _ _ -> "int"
-  VFloat _ -> "float"
-  VStr _ -> "str"
-  VList _ -> "list"
-  VDict _ -> "dict"
+  VNull -> Pydantic.pyTypeName PNone
+  VBool b -> Pydantic.pyTypeName (PBool b)
+  VInt i _ -> Pydantic.pyTypeName (PInt i)
+  VFloat d -> Pydantic.pyTypeName (PFloat d)
+  VStr s -> Pydantic.pyTypeName (PStr s)
+  VList _ -> Pydantic.pyTypeName (PList [])
+  VDict _ -> Pydantic.pyTypeName (PDict [])
 
 -- | Whether an integer fits a signed 64-bit integer.
 fitsI64 :: Integer -> Bool

@@ -15,6 +15,7 @@ import Spec.Properties qualified
 import Spec.Qualification qualified
 import Spec.Runner qualified
 import Spec.Stories qualified
+import Spec.Surface qualified
 import Spec.ToolingInterop qualified
 import Spec.Transcript qualified
 import Test.Hspec
@@ -26,6 +27,7 @@ main = do
     Spec.Choice.spec
     Spec.Codec.spec
     Spec.Stories.spec
+    Spec.Surface.spec
     Spec.Runner.spec
     Spec.Transcript.spec
     Spec.EngineWorlds.spec

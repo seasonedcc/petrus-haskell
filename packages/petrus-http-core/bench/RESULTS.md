@@ -1,5 +1,7 @@
 # petrus-http-core benchmarks
 
+<!-- scripts/bench: measured sources b9f810f5692a1b68 at 7fc4ecb1d671 -->
+
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
 names and values. Both are wall-clock time. Ratios above 1 mean Haskell is

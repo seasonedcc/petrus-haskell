@@ -32,6 +32,7 @@ module Petrus.Json.Wtf8
   , fromWtf8
   , hasLoneSurrogate
   , holdsLoneSurrogate
+  , lossyUtf8
   , surrogateText
   , unsafeTextFromBytes
   ) where
@@ -98,6 +99,19 @@ hasLoneSurrogate text = go 0
       | i + 1 >= size = False
       | BU.unsafeIndex bytes i == 0xED && BU.unsafeIndex bytes (i + 1) >= 0xA0 = True
       | otherwise = go (i + 1)
+
+-- | Rust's @String::from_utf8_lossy@ of the string's WTF-8 bytes: each
+-- surrogate's three bytes are three invalid sequences, so each becomes
+-- three U+FFFD (how pydantic-core spells such a string in an error's
+-- location).
+lossyUtf8 :: Text -> Text
+lossyUtf8 text
+  | hasLoneSurrogate text = T.concatMap spell text
+  | otherwise = text
+  where
+    spell c
+      | ord c >= 0xD800 && ord c <= 0xDFFF = T.replicate 3 (T.singleton '\xFFFD')
+      | otherwise = T.singleton c
 
 -- | Whether any string of a value (member names included) holds a
 -- surrogate code point.

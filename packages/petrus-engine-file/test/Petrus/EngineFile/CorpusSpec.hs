@@ -3,7 +3,7 @@
 -- and text) must equal what petrus-engine recorded.
 module Petrus.EngineFile.CorpusSpec (spec, corpusPath, checkCase) where
 
-import Control.Monad (forM_, unless, when)
+import Control.Monad (forM_, when)
 import Data.ByteString qualified as BS
 import Data.Text qualified as T
 import Petrus.EngineFile (PyException (..), loads)
@@ -34,13 +34,13 @@ spec = describe "differential corpus (petrus-engine verdicts)" $ do
 -- | Beyond the corpus: @json.loads@ keeps the last of repeated members, so
 -- a lone surrogate in an overwritten value never reaches a Python object
 -- (the pinned CPython: @json.loads('{"a": "\\ud800", "a": 1}') == {'a': 1}@),
--- while one that survives is the documented refusal.
+-- while one that survives is a @str@ holding it.
 loadsSpec :: Spec
 loadsSpec = describe "json.loads" $ do
   it "admits a lone surrogate in an overwritten member, as CPython does" $
     fmap pyRepr (loads "{\"a\": \"\\ud800\", \"a\": 1}") `shouldBe` Right "{'a': 1}"
-  it "refuses a lone surrogate that reaches a value" $
-    fmap pyRepr (loads "[1, \"\\ud800\"]") `shouldSatisfy` either ((== "UnsupportedLoneSurrogate") . (.exceptionClass)) (const False)
+  it "keeps a lone surrogate that reaches a value, as CPython does" $
+    fmap pyRepr (loads "[1, \"\\ud800\", {\"\\udfff\": \"a\\udc00b\"}]") `shouldBe` Right "[1, '\\ud800', {'\\udfff': 'a\\udc00b'}]"
   it "raises the digit limit before a later syntax error" $
     fmap pyRepr (loads ("{\"a\": 1" <> BS.replicate 4300 0x31 <> ", }"))
       `shouldBe` Left (PyException "ValueError" "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit")
@@ -51,9 +51,5 @@ checkCase c = do
   let expected = c.expect
   actual <- runCase c
   length actual `shouldBe` length expected
-  forM_ (zip3 [0 :: Int ..] c.ops (zip actual expected)) $ \(i, op, (got, want)) ->
-    if i `elem` c.loneSurrogateOps
-      then
-        unless ("UnsupportedLoneSurrogate" `T.isInfixOf` got) $
-          expectationFailure (show op <> ": expected the documented lone-surrogate refusal, got " <> T.unpack got)
-      else when (got /= want) $ expectationFailure (show op <> "\n  got:  " <> T.unpack got <> "\n  want: " <> T.unpack want)
+  forM_ (zip c.ops (zip actual expected)) $ \(op, (got, want)) ->
+    when (got /= want) $ expectationFailure (show op <> "\n  got:  " <> T.unpack got <> "\n  want: " <> T.unpack want)

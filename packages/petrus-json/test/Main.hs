@@ -11,6 +11,7 @@ import Petrus.Json
 import Petrus.Json.CPythonDifferentialSpec qualified as CPythonDifferentialSpec
 import Petrus.Json.FloatReprSpec qualified as FloatReprSpec
 import Petrus.Json.Generators
+import Petrus.Json.Python.Pydantic qualified as Pydantic
 import Petrus.Json.PythonText (pythonStrRepr)
 import Petrus.Json.PythonCompatSpec qualified as PythonCompatSpec
 import Petrus.Json.PythonTextSpec qualified as PythonTextSpec
@@ -24,6 +25,28 @@ main = hspec $ do
   PythonCompatSpec.spec
   FloatReprSpec.spec
   CPythonDifferentialSpec.spec
+  describe "Petrus.Json.Python.Pydantic" $ do
+    -- Lines as pydantic 2.13.4 prints them (the engine-file and impetus
+    -- corpora pin every other shape).
+    it "renders a ValidationError: dotted and surrogate keys, truncated input" $
+      Pydantic.renderValidationError
+        "M"
+        [ Pydantic.LineError [Pydantic.Key "a.b", Pydantic.Index 0, Pydantic.Key (fromCodePoints "k\xD800")] "Field required" "missing" (Pydantic.PDict [])
+        , Pydantic.LineError [] "Input should be a valid string" "string_type" (Pydantic.PStr (T.replicate 30 "\xE9"))
+        ]
+        `shouldBe` T.intercalate
+          "\n"
+          [ "2 validation errors for M"
+          , "`a.b`.0.k\xFFFD\xFFFD\xFFFD"
+          , "  Field required [type=missing, input_value={}, input_type=dict]"
+          , "    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+          , "  Input should be a valid string [type=string_type, input_value='" <> T.replicate 12 "\xE9" <> "..." <> T.replicate 11 "\xE9" <> "', input_type=str]"
+          , "    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+          ]
+    it "spells Python reprs and type names" $ do
+      map Pydantic.pyRepr [Pydantic.PTuple [Pydantic.PInt 1], Pydantic.PFloat (0 / 0), Pydantic.PDict [("a", Pydantic.PNone)]]
+        `shouldBe` ["(1,)", "nan", "{'a': None}"]
+      map Pydantic.pyTypeName [Pydantic.PNone, Pydantic.PInstance "Net" "Net()"] `shouldBe` ["NoneType", "Net"]
   describe "pythonFloatRepr" $ do
     let cases =
           [ (1e16, "1e+16")
@@ -126,6 +149,9 @@ main = hspec $ do
         fromWtf8 "\xC0\x80" `shouldBe` Nothing
         fromWtf8 "\xED\xA0" `shouldBe` Nothing
         map hasLoneSurrogate [fromCodePoints "x\xDBFF", "\xD7FF\xE000\x1F600"] `shouldBe` [True, False]
+      it "lossyUtf8 spells each surrogate as Rust's from_utf8_lossy does" $ do
+        lossyUtf8 (fromCodePoints "a\xD800.\xDFFF\x1F600") `shouldBe` "a\xFFFD\xFFFD\xFFFD.\xFFFD\xFFFD\xFFFD\x1F600"
+        lossyUtf8 "plain \xE000" `shouldBe` "plain \xE000"
       it "dumpsText answers the str CPython's json.dumps returns" $ do
         dumpsText compact (Array [String (fromCodePoints "a\xD800")]) `shouldBe` Right (fromCodePoints "[\"a\xD800\"]")
         dumpsText defaultDumps (String (fromCodePoints "a\xD800")) `shouldBe` Right "\"a\\ud800\""

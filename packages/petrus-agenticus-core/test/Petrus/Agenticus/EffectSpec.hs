@@ -106,10 +106,15 @@ recoveryOf d = maybe (error "no evidence") (.recovery) d.evidence
 -- ---------------------------------------------------------------------------
 -- QuickCheck generators (hypothesis @_JSON@)
 
+-- | @st.text(max_size=n)@: Hypothesis's default alphabet is every code
+-- point outside the surrogate block, unassigned ones included (QuickCheck's
+-- @arbitraryUnicodeChar@ would leave those out).
 genText :: Int -> Gen Text
 genText maxSize = do
   n <- chooseInt (0, maxSize)
-  T.pack <$> vectorOf n arbitraryUnicodeChar
+  T.pack <$> vectorOf n codePoint
+  where
+    codePoint = choose ('\0', '\x10FFFF') `suchThat` \c -> c < '\xD800' || c > '\xDFFF'
 
 -- | @st.recursive(base, extend, max_leaves=20)@: a tree of at most
 -- @maxLeaves@ scalar leaves overall, at any depth, whose containers are

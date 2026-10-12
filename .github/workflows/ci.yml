@@ -9,13 +9,17 @@ name: CI
 #              (packages/petrus-engine/scripts/parity_check.py); none needs a
 #              build
 #   build      cabal build all (-Werror), incrementally from the latest cached
-#              dist-newstyle; then scripts/ci-tests plan decides which test
-#              suites run and spreads them over the test shards
+#              dist-newstyle (from none on a full run), re-planned from the
+#              .cabal files' content (.github/actions/cabal-dist); then
+#              scripts/ci-tests plan decides which test suites run and
+#              spreads them over the test shards
 #   checks     scripts/interop --check against the build; scripts/check-corpora
 #   test (N)   cabal test for the suites of shard N, with PostgreSQL 17, then
 #              scripts/check-pending on their output
 #   viewer     scripts/interop --viewer petrus-viewer-server (the upstream
 #              petrus-viewer suites against the Haskell backend)
+#   bench-smoke  nightly and `full` only: every benchmark builds and runs once
+#              (scripts/bench --smoke); stale benchmark results are listed
 #   container  the image and its runtime contract (scripts/container-smoke)
 #   ci         the verdict: green only when every job above is; it also
 #              records this run's test ledger
@@ -24,7 +28,8 @@ name: CI
 # every local package it depends on or names, everything outside packages/
 # but prose and benchmark records, and the toolchain and runner image) equals
 # the hash of a run where it passed (scripts/ci-tests explains the hash). The
-# nightly schedule and a dispatch with `full` rerun everything.
+# nightly schedule and a dispatch with `full` build from an empty
+# dist-newstyle and rerun everything.
 # docs/reproducing.md, "Continuous integration", has the details.
 
 on:
@@ -40,9 +45,13 @@ on:
         type: boolean
         default: false
 
+# A newer push to a branch or pull request cancels its older run. Every
+# commit pushed to main gets a complete run of its own: a group per run, so
+# that neither cancelling nor GitHub's replacing of a pending run in the
+# same group skips one.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.ref == 'refs/heads/main' && format('ci-main-{0}', github.run_id) || format('ci-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -56,6 +65,13 @@ env:
   CABAL_DIR: /home/runner/.cabal
   PETRUS_POSTGRES_IMAGE: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
   DIST_KEY_PREFIX: dist-v1-Linux-ghc-9.10.3-
+  # The nightly run and a `full` dispatch build from an empty dist-newstyle
+  # and reuse no test result.
+  FULL_RUN: ${{ (github.event_name == 'schedule' || inputs.full) && 'true' || 'false' }}
+  # The dist-newstyle the build job saves and the later jobs restore; a full
+  # run has a key of its own, so that its later jobs never restore an
+  # incremental build saved earlier for the same commit.
+  DIST_KEY: dist-v1-Linux-ghc-9.10.3-${{ (github.event_name == 'schedule' || inputs.full) && format('full-{0}-', github.run_id) || '' }}${{ github.sha }}
 
 jobs:
   lint:
@@ -72,7 +88,7 @@ jobs:
         run: scripts/lint-skips
       - name: Hamsterdan import boundaries (upstream tests/test_architecture.py)
         run: scripts/lint-hamsterdan-architecture
-      - name: Benchmark bookkeeping (rerun blocks, bench-results/summary.md)
+      - name: Benchmark bookkeeping (rerun blocks, measured sources, bench-results/summary.md)
         run: scripts/bench --check
       - name: Parity table
         run: scripts/check-parity
@@ -90,23 +106,13 @@ jobs:
           submodules: recursive
       - uses: ./.github/actions/toolchain
         id: toolchain
-      - name: Restore dist-newstyle (this commit's, else the latest)
+      - name: dist-newstyle (this commit's, else the latest; none on a full run)
         id: dist
-        uses: actions/cache/restore@v4
+        uses: ./.github/actions/cabal-dist
         with:
-          path: dist-newstyle
-          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+          key: ${{ env.DIST_KEY }}
           restore-keys: ${{ env.DIST_KEY_PREFIX }}
-      - name: Keep the restored configuration
-        # Every job configures cabal alike, or cabal would reconfigure (and
-        # relink) packages: CI's test flags come from cabal.project.local
-        # (scripts/ci-tests configure), the same in every job; and the
-        # checkout leaves every .cabal file newer than the restored build,
-        # which Cabal takes as a change, so they get an old timestamp
-        # (cabal-install still compares the .cabal files by content).
-        run: |
-          scripts/ci-tests configure
-          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+          fresh: ${{ env.FULL_RUN }}
       - name: Build (all packages, -Werror)
         run: cabal update -v0 && cabal build all -j
       - name: The split suites' parts select each example once
@@ -124,9 +130,9 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: dist-newstyle
-          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
+          key: ${{ env.DIST_KEY }}
       - name: Earlier test ledgers
-        if: ${{ !(github.event_name == 'schedule' || inputs.full) }}
+        if: env.FULL_RUN != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/ci-tests fetch-ledgers "$RUNNER_TEMP/ledgers"
@@ -134,7 +140,7 @@ jobs:
         id: plan
         run: |
           scripts/ci-tests plan --out plan.json --ledgers "$RUNNER_TEMP/ledgers" \
-            ${{ (github.event_name == 'schedule' || inputs.full) && '--full' || '' }}
+            ${{ env.FULL_RUN == 'true' && '--full' || '' }}
           echo "shards=$(python3 -c 'import json; print(json.dumps(json.load(open("plan.json"))["shards"]))')" >> "$GITHUB_OUTPUT"
           echo "viewer=$(python3 -c 'import json; print(str(json.load(open("plan.json"))["viewer"]).lower())')" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
@@ -159,16 +165,11 @@ jobs:
         with:
           submodules: recursive
       - uses: ./.github/actions/toolchain
-      - uses: actions/cache/restore@v4
+      - name: The build job's dist-newstyle
+        uses: ./.github/actions/cabal-dist
         with:
-          path: dist-newstyle
-          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
-          fail-on-cache-miss: true
-      - name: Keep the build job's configuration
-        # As in the build job, so that cabal rebuilds nothing.
-        run: |
-          scripts/ci-tests configure
-          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+          key: ${{ env.DIST_KEY }}
+          fail-on-cache-miss: "true"
       - name: Interop selection (scripts/interop patterns still select their groups)
         # With the test jobs' opt-in variables, so that the selection counts
         # the PostgreSQL and Docker examples too (a dry run connects to
@@ -208,21 +209,16 @@ jobs:
         with:
           submodules: recursive
       - uses: ./.github/actions/toolchain
-      - uses: actions/cache/restore@v4
+      - name: The build job's dist-newstyle
+        uses: ./.github/actions/cabal-dist
         with:
-          path: dist-newstyle
-          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
-          fail-on-cache-miss: true
-      - name: Keep the build job's configuration
-        # As in the build job, so that cabal rebuilds nothing.
-        run: |
-          scripts/ci-tests configure
-          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+          key: ${{ env.DIST_KEY }}
+          fail-on-cache-miss: "true"
       - uses: actions/download-artifact@v4
         with:
           name: test-plan
-      - name: Upstream Python environment (petrus, petrus-engine, hamsterdan)
-        run: for p in petrus petrus-engine hamsterdan; do scripts/upstream-python "$p" >/dev/null; done
+      - name: Upstream Python environment (petrus, petrus-engine, hamsterdan, petrus-sdks)
+        run: for p in petrus petrus-engine hamsterdan petrus-sdks; do scripts/upstream-python "$p" >/dev/null; done
       - name: "Tests (unit, conformance, interop): ${{ matrix.suites }}"
         # A suite counts as passed only with no pending example but the
         # declared opt-ins (run-shard runs scripts/check-pending on each).
@@ -245,16 +241,11 @@ jobs:
         with:
           submodules: recursive
       - uses: ./.github/actions/toolchain
-      - uses: actions/cache/restore@v4
+      - name: The build job's dist-newstyle
+        uses: ./.github/actions/cabal-dist
         with:
-          path: dist-newstyle
-          key: ${{ env.DIST_KEY_PREFIX }}${{ github.sha }}
-          fail-on-cache-miss: true
-      - name: Keep the build job's configuration
-        # As in the build job, so that cabal rebuilds nothing.
-        run: |
-          scripts/ci-tests configure
-          find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+          key: ${{ env.DIST_KEY }}
+          fail-on-cache-miss: "true"
       - uses: actions/download-artifact@v4
         with:
           name: test-plan
@@ -287,6 +278,8 @@ jobs:
         run: scripts/upstream-python petrus >/dev/null
       - name: The upstream petrus-viewer suites against the Haskell backend
         run: scripts/ci-tests run-viewer plan.json
+      - name: The MCP golden transcript (re-recorded through the upstream Node MCP server)
+        run: node packages/petrus-viewer-server/test/record-mcp-transcript.mjs --check
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -299,6 +292,50 @@ jobs:
           name: viewer-tap-${{ github.run_attempt }}
           path: /tmp/petrus-hs-upstream-tests-*/*.tap
           retention-days: 7
+
+  # The nightly run and a `full` dispatch only: every benchmark builds and
+  # runs to the end once (scripts/bench --smoke; not a measurement), and the
+  # results files whose package sources changed since they were measured are
+  # listed in the run summary (scripts/bench --stale; informational).
+  bench-smoke:
+    needs: build
+    if: github.event_name == 'schedule' || inputs.full
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 1s --health-timeout 5s --health-retries 60
+    env:
+      PETRUS_TEST_POSTGRES: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain
+      - name: The build job's dist-newstyle
+        uses: ./.github/actions/cabal-dist
+        with:
+          key: ${{ env.DIST_KEY }}
+          fail-on-cache-miss: "true"
+      - name: Upstream Python environments (petrus, petrus-engine, hamsterdan)
+        run: for p in petrus petrus-engine hamsterdan; do scripts/upstream-python "$p" >/dev/null; done
+      - name: Every benchmark builds and runs once
+        run: scripts/bench --smoke
+      - name: Results measured on sources that changed since
+        if: always()
+        run: |
+          {
+            echo "### Benchmark results measured on sources that changed since"
+            echo
+            echo '```'
+            scripts/bench --stale 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # The Haskell port's container runtime contract (PARITY.md, "Container
   # runtime contract"): lint the launcher, the interpreter-path shim, the
@@ -350,7 +387,7 @@ jobs:
             --revision "${{ steps.source.outputs.revision }}" --version "${{ steps.source.outputs.version }}"
 
   ci:
-    needs: [lint, build, checks, test, viewer, container]
+    needs: [lint, build, checks, test, viewer, bench-smoke, container]
     if: always()
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
@@ -387,7 +424,7 @@ jobs:
           ok = True
           for job, data in needs.items():
               result = data["result"]
-              allowed = ("success", "skipped") if job in ("test", "viewer") else ("success",)
+              allowed = ("success", "skipped") if job in ("test", "viewer", "bench-smoke") else ("success",)
               print(f"{job}: {result}")
               ok = ok and result in allowed
           if os.environ["LEDGER"] != "success":

@@ -15,7 +15,10 @@ module Petrus.Agenticus.Runtime.Profiles
   , archetypeText
   , QualificationExpectation (..)
   , expectationText
-  , RuntimeTerritoryProfile (..)
+  , Qualification (..)
+  , qualificationExpectation
+  , RuntimeTerritoryProfile
+  , mkRuntimeTerritoryProfile
   , territoryIdentity
   , runtimeTerritoryProfile
   , runtimeTerritoryProfiles
@@ -39,7 +42,9 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Catalog.Descriptor
+import Petrus.Agenticus.Error (AgenticusError, valueError)
 
 data RuntimeFamily = Amp | Codex | Claude | PiNative | PiApplicationOwned | AgentAsNet
   deriving stock (Eq, Ord, Show, Enum, Bounded)
@@ -80,19 +85,68 @@ expectationText = \case
   Unqualified -> "unqualified"
   Unsupported -> "unsupported"
 
--- | One explicit runtime-family × Episode-Hands-territory qualification
--- cell.  Binding targets carry an archetype and descriptor; other cells
--- carry neither (upstream's @__post_init__@ invariant, kept by the table's
--- two constructors below).
-data RuntimeTerritoryProfile = RuntimeTerritoryProfile
-  { family :: RuntimeFamily
-  , territory :: TerritoryProfile
-  , expectation :: QualificationExpectation
-  , reason :: Text
-  , archetype :: Maybe EmbodimentArchetype
-  , descriptor :: Maybe CapabilityDescriptor
-  }
+-- | A cell's qualification. Only a binding target carries an archetype and
+-- a runtime descriptor, and it always carries both: upstream's
+-- @__post_init__@ refusals "a binding runtime profile needs an archetype
+-- and descriptor" and "an unqualified or unsupported cell must not expose a
+-- runtime descriptor" cannot arise.
+data Qualification
+  = BindingCell EmbodimentArchetype CapabilityDescriptor
+  | UnqualifiedCell
+  | UnsupportedCell
   deriving stock (Eq, Show)
+
+-- | The reference's @expectation@ field.
+qualificationExpectation :: Qualification -> QualificationExpectation
+qualificationExpectation = \case
+  BindingCell _ _ -> BindingTarget
+  UnqualifiedCell -> Unqualified
+  UnsupportedCell -> Unsupported
+
+-- | One explicit runtime-family × Episode-Hands-territory qualification
+-- cell. The constructor is hidden: a value comes from the table or from
+-- 'mkRuntimeTerritoryProfile', so its reason is non-empty. The reference's
+-- fields read with record dot syntax: @family@, @territory@, @reason@,
+-- @qualification@, and, derived from the qualification, @expectation@,
+-- @archetype@ and @descriptor@ (Nothing outside binding targets). There are
+-- no field names to update a value through.
+data RuntimeTerritoryProfile
+  = RuntimeTerritoryProfile RuntimeFamily TerritoryProfile Text Qualification
+  deriving stock (Eq, Show)
+
+instance HasField "family" RuntimeTerritoryProfile RuntimeFamily where
+  getField (RuntimeTerritoryProfile f _ _ _) = f
+
+instance HasField "territory" RuntimeTerritoryProfile TerritoryProfile where
+  getField (RuntimeTerritoryProfile _ t _ _) = t
+
+instance HasField "reason" RuntimeTerritoryProfile Text where
+  getField (RuntimeTerritoryProfile _ _ r _) = r
+
+instance HasField "qualification" RuntimeTerritoryProfile Qualification where
+  getField (RuntimeTerritoryProfile _ _ _ q) = q
+
+instance HasField "expectation" RuntimeTerritoryProfile QualificationExpectation where
+  getField cell = qualificationExpectation cell.qualification
+
+instance HasField "archetype" RuntimeTerritoryProfile (Maybe EmbodimentArchetype) where
+  getField cell = case cell.qualification of
+    BindingCell a _ -> Just a
+    _ -> Nothing
+
+instance HasField "descriptor" RuntimeTerritoryProfile (Maybe CapabilityDescriptor) where
+  getField cell = case cell.qualification of
+    BindingCell _ d -> Just d
+    _ -> Nothing
+
+-- | @RuntimeTerritoryProfile(family, territory, expectation, reason,
+-- archetype, descriptor)@: refuses an empty reason with the reference's
+-- @ValueError@, its one refusal the types leave possible.
+mkRuntimeTerritoryProfile
+  :: RuntimeFamily -> TerritoryProfile -> Qualification -> Text -> Either AgenticusError RuntimeTerritoryProfile
+mkRuntimeTerritoryProfile f t q r
+  | T.null r = Left (valueError "runtime profile reason must be non-empty")
+  | otherwise = Right (RuntimeTerritoryProfile f t r q)
 
 -- | The exact version-1 Episode Hands territory envelope identity.
 territoryIdentity :: TerritoryProfile -> DescriptorIdentity
@@ -263,45 +317,47 @@ agentAsNetA5Local =
     )
     []
 
+-- The table's two shapes. Every reason below is a non-empty literal (the
+-- table test checks each one), so the cells use the constructor directly.
 binding :: RuntimeFamily -> TerritoryProfile -> EmbodimentArchetype -> CapabilityDescriptor -> Text -> RuntimeTerritoryProfile
-binding f t a d r = RuntimeTerritoryProfile f t BindingTarget r (Just a) (Just d)
+binding f t a d r = RuntimeTerritoryProfile f t r (BindingCell a d)
 
-open :: RuntimeFamily -> TerritoryProfile -> QualificationExpectation -> Text -> RuntimeTerritoryProfile
-open f t e r = RuntimeTerritoryProfile f t e r Nothing Nothing
+open :: RuntimeFamily -> TerritoryProfile -> Qualification -> Text -> RuntimeTerritoryProfile
+open f t q r = RuntimeTerritoryProfile f t r q
 
 -- | The complete 6 × 5 table, in upstream order.
 runtimeTerritoryProfiles :: [RuntimeTerritoryProfile]
 runtimeTerritoryProfiles =
   [ binding Amp ProviderManaged A1 ampA1 "DS9 binding Amp A1 provider-managed cell"
-  , open Amp Local Unqualified "CV10 private evidence is not an independently leased Agenticus profile"
-  , open Amp Docker Unqualified "CV10 private evidence is not an independently leased Agenticus profile"
-  , open Amp Gondolin Unqualified "CV10 cell is credential-blocked and A1 has no external Hands claim"
-  , open Amp E2b Unqualified "CV10 private evidence is not an independently leased Agenticus profile"
-  , open Codex ProviderManaged Unqualified "no provider-managed Codex profile is qualified"
+  , open Amp Local UnqualifiedCell "CV10 private evidence is not an independently leased Agenticus profile"
+  , open Amp Docker UnqualifiedCell "CV10 private evidence is not an independently leased Agenticus profile"
+  , open Amp Gondolin UnqualifiedCell "CV10 cell is credential-blocked and A1 has no external Hands claim"
+  , open Amp E2b UnqualifiedCell "CV10 private evidence is not an independently leased Agenticus profile"
+  , open Codex ProviderManaged UnqualifiedCell "no provider-managed Codex profile is qualified"
   , binding Codex Local A2 codexA2Local "DS9 binding Codex A2 cell"
-  , open Codex Docker Unqualified "possible A3 cell; not binding"
+  , open Codex Docker UnqualifiedCell "possible A3 cell; not binding"
   , binding Codex Gondolin A3 codexA3Gondolin "DS9 binding Codex A3 cell grounded by ES-049"
-  , open Codex E2b Unqualified "possible A3 cell; not binding"
-  , open Claude ProviderManaged Unqualified "no provider-managed Claude profile is qualified"
+  , open Codex E2b UnqualifiedCell "possible A3 cell; not binding"
+  , open Claude ProviderManaged UnqualifiedCell "no provider-managed Claude profile is qualified"
   , binding Claude Local A2 claudeA2Local "DS9 binding Claude A2 cell"
-  , open Claude Docker Unqualified "A3 needs provider qualification"
-  , open Claude Gondolin Unqualified "A3 needs provider qualification"
-  , open Claude E2b Unqualified "A3 needs provider qualification"
-  , open PiNative ProviderManaged Unqualified "no provider-managed Pi native profile is qualified"
+  , open Claude Docker UnqualifiedCell "A3 needs provider qualification"
+  , open Claude Gondolin UnqualifiedCell "A3 needs provider qualification"
+  , open Claude E2b UnqualifiedCell "A3 needs provider qualification"
+  , open PiNative ProviderManaged UnqualifiedCell "no provider-managed Pi native profile is qualified"
   , binding PiNative Local A2 piNativeA2Local "DS9 binding Pi A2 cell"
-  , open PiNative Docker Unqualified "possible A4 Hands; not binding"
+  , open PiNative Docker UnqualifiedCell "possible A4 Hands; not binding"
   , binding PiNative Gondolin A4 piNativeA4Gondolin "DS9 binding Pi A4 Gondolin Hands cell"
   , binding PiNative E2b A4 piNativeA4E2b "DS9 binding Pi A4 E2B Hands cell"
-  , open PiApplicationOwned ProviderManaged Unsupported "application-owned progression requires host-owned Hands"
-  , open PiApplicationOwned Local Unqualified "possible A5 Hands; DS9 binds the ES-049 replacement pair"
-  , open PiApplicationOwned Docker Unqualified "possible A5 Hands; DS9 binds the ES-049 replacement pair"
+  , open PiApplicationOwned ProviderManaged UnsupportedCell "application-owned progression requires host-owned Hands"
+  , open PiApplicationOwned Local UnqualifiedCell "possible A5 Hands; DS9 binds the ES-049 replacement pair"
+  , open PiApplicationOwned Docker UnqualifiedCell "possible A5 Hands; DS9 binds the ES-049 replacement pair"
   , binding PiApplicationOwned Gondolin A5 piApplicationA5Gondolin "DS9 binding Pi A5 Gondolin Hands cell"
   , binding PiApplicationOwned E2b A5 piApplicationA5E2b "DS9 binding Pi A5 E2B Hands cell"
-  , open AgentAsNet ProviderManaged Unsupported "Net-owned progression requires an Agenticus Hands attachment"
+  , open AgentAsNet ProviderManaged UnsupportedCell "Net-owned progression requires an Agenticus Hands attachment"
   , binding AgentAsNet Local A5 agentAsNetA5Local "DS10 binding future Net-owned A5 profile"
-  , open AgentAsNet Docker Unqualified "future DS10 pressure"
-  , open AgentAsNet Gondolin Unqualified "future DS10 pressure"
-  , open AgentAsNet E2b Unqualified "future DS10 pressure"
+  , open AgentAsNet Docker UnqualifiedCell "future DS10 pressure"
+  , open AgentAsNet Gondolin UnqualifiedCell "future DS10 pressure"
+  , open AgentAsNet E2b UnqualifiedCell "future DS10 pressure"
   ]
 
 -- | The binding-target descriptors, in table order.

@@ -6,7 +6,7 @@ module Petrus.Fabric.Engine
   ) where
 
 import Control.Exception (throwIO)
-import Petrus.Engine (Delivered (..), Engine)
+import Petrus.Engine (DeliveryAnswer (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.Fabric.Error (FabricError (..))
 import Petrus.Fabric.Ingress
@@ -19,9 +19,9 @@ engineDoor :: Engine -> DeliveryDoor
 engineDoor engine = DeliveryDoor $ \source tokens identity -> do
   path <- either (throwIO . InvalidValue) pure (netPath source)
   Engine.deliver engine path tokens identity Nothing >>= \case
-    Delivered outcome -> pure (DoorFired outcome)
-    DeliveredPrior prior -> pure (DoorPrior prior)
-    DeliveredScoped _ -> throwIO (InvalidType "delivery door must return FiringOutcome or PriorAcknowledgement")
+    DeliveryAccepted outcome -> pure (DoorFired outcome)
+    DeliveryPrior prior -> pure (DoorPrior prior)
+    DeliveryScoped _ -> throwIO (InvalidType "delivery door must return FiringOutcome or PriorAcknowledgement")
 
 -- | @FabricInbox(client, engine)@.
 engineInbox :: InboxClient -> Engine -> FabricInbox

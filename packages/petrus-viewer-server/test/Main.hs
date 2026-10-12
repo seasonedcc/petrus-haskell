@@ -8,6 +8,7 @@ import HistorySpec qualified
 import JsonSpec qualified
 import McpSpec qualified
 import ObservationSpec qualified
+import ProxySpec qualified
 import ProtocolSpec qualified
 import RelaySpec qualified
 import ServerSpec qualified
@@ -32,6 +33,7 @@ specs = hspec $ do
   describe "Endpoints" EndpointsSpec.spec
   describe "Server" ServerSpec.spec
   describe "Observation" ObservationSpec.spec
+  describe "Proxy" ProxySpec.spec
   describe "History" HistorySpec.spec
   describe "Cli" CliSpec.spec
   describe "Mcp" McpSpec.spec

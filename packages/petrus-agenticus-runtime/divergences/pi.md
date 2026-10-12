@@ -207,18 +207,18 @@ sides of each one, and every case matches.
    `subprocessFactoryInstalled` flag.
 3. **The helper process.** A reader thread feeds a queue that is polled every
    50 ms, in place of the `selectors` loop. The abort, grace, frame, event and
-   tool bounds are unchanged. When the helper does not exit within the grace,
-   the reference raises `subprocess.TimeoutExpired`, and `_execute` turns it
-   into `runtime-failed`. The port reports `helper-exit-inconsistent`, as the
-   native port does. Neither one publishes.
-4. **Unhashable methods.** A `tool_call` whose `method` is an array or an
-   object makes the reference's `method not in _METHODS` raise `TypeError`,
-   so the run ends as `runtime-failed`. The port reports
-   `malformed-tool-call`. Neither one reaches the gateway.
-5. **Configuration numbers.** The three durations are `Double`s, so a bool
+   tool bounds are unchanged. The settlement edges where the reference raises
+   something other than `RuntimeProtocolError` are reproduced: a helper that
+   outlives the grace raises `TimeoutExpired`, and an array or object where
+   a set-membership test needs a hashable value (`type`, a `failed` frame's
+   `code`, a `tool_call`'s `method` once the earlier checks pass) raises
+   CPython 3.14's `TypeError`; `_execute` settles both as `runtime-failed`.
+   `PiApplicationSpec` checks twelve such scenarios against the pinned
+   reference running the same forged helper.
+4. **Configuration numbers.** The three durations are `Double`s, so a bool
    cannot be passed. `repr` also differs for an integral duration: the
    reference renders the `int` it was given (`1`), and the port renders `1.0`.
-6. **`probe` fails closed on any synchronous exception.** When `package.json`
+5. **`probe` fails closed on any synchronous exception.** When `package.json`
    is not an object, the reference lets an `AttributeError` escape. The port
    reports `protocol-unavailable`.
 

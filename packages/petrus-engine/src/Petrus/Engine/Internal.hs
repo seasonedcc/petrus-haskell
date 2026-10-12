@@ -19,8 +19,10 @@ module Petrus.Engine.Internal
     -- * Driving
   , advance
   , wait
+  , OverflowError (..)
+  , sleepNanoseconds
     -- * Writing doors
-  , Delivered (..)
+  , Delivered
   , deliver
   , acceptDelivery
   , completeDelivery
@@ -44,7 +46,7 @@ module Petrus.Engine.Internal
 
 import Control.Concurrent (ThreadId, myThreadId, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, putMVar, takeMVar)
-import Control.Exception (SomeException, bracket_, finally, onException, throwIO, try)
+import Control.Exception (Exception (..), SomeException, bracket_, finally, onException, throwIO, try)
 import Control.Monad (unless, when)
 import Data.Foldable (toList)
 import Data.IORef
@@ -54,6 +56,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
+import Data.Text qualified as T
 import Petrus.Activity
   ( ActivityDeclaration
   , ActivityInvocationFields (..)
@@ -64,10 +67,11 @@ import Petrus.Activity
   , executionPolicy
   , policyFields
   )
+import Petrus.Cel.Impetus qualified as Cel
 import Petrus.Engine.Coordinator (Coordinator, cancelClosure, drive, newCoordinator, selectionStateText, supportsCancellation)
 import Petrus.Engine.Coordinator qualified as Coordinator
 import Petrus.Engine.Vocabulary
-import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), CelCompilers, Completion, HandlerObserver, noCelCompilers)
+import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), CelCompilers, Completion, HandlerObserver)
 import Petrus.Impetus.History.Records (Record (..), ScopeReset (..))
 import Petrus.Impetus.HistoryStore (CommitMode (..), HistoryStore (..))
 import Petrus.Impetus.HistoryStore qualified as Store
@@ -80,11 +84,8 @@ import Petrus.Impetus.Instance
   , ImplementationRef
   , Instance
   , InstanceConfig (..)
-  , PriorAcknowledgement
   , ScopeClosure (..)
-  , ScopedDeliveryAcknowledgement
   , Status
-  , canonicalAcceptedDelivery
   , defaultInstanceConfig
   , instanceHistory
   , instanceIdentity
@@ -96,7 +97,7 @@ import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Impetus.Petrinet (Filter, Guard, Instant, Marking, Net, NetPath, Token, emptyMarking)
 import Petrus.Impetus.Scope (LifecycleScope)
 import Petrus.Motus.Dispatch (Dispatch)
-import Petrus.Telemetry (EventSink)
+import Petrus.Telemetry (EventSink, validateTelemetryEnvironment)
 
 -- ---------------------------------------------------------------------------
 -- Configuration
@@ -113,6 +114,9 @@ data EngineOptions = EngineOptions
   , filters :: Map ImplementationRef Filter
   , completions :: Map Text Completion
   , celCompilers :: CelCompilers
+  -- ^ How inline CEL guards, filters and completions compile. The default
+  -- is petrus-cel's, cel-python's semantics, as the reference has CEL
+  -- built in; a host may inject another.
   , policy :: DrivingPolicy
   , selection :: EngineSelection
   , clock :: Maybe Clock
@@ -136,7 +140,7 @@ defaultEngineOptions =
     , guards = Map.empty
     , filters = Map.empty
     , completions = Map.empty
-    , celCompilers = noCelCompilers
+    , celCompilers = Cel.celCompilers
     , policy = conservativePolicy
     , selection = defaultSelection
     , clock = Nothing
@@ -224,6 +228,7 @@ openEngine mode net identity store port options resources =
   where
     fate = resources.rollback `finally` (resources.release `finally` resources.close)
     construct = do
+      validateTelemetryEnvironment
       -- A joined store's appends ride the provider's transaction: without a
       -- commit point they would never become durable. (A port-only guard;
       -- a backend-owned store may still take a commit hook, as the
@@ -376,45 +381,65 @@ advance :: Engine -> IO DriveOutcome
 advance e = guarded e (drive e.coordinator)
 
 -- | Wait for a provider wake hint, or sleep the bounded neutral polling
--- interval (seconds) and answer 'False'.
+-- interval (seconds) and answer 'False'. The sleep is @time.sleep@'s: a
+-- timeout it refuses ('sleepNanoseconds') is refused with its class and
+-- text.
 wait :: Engine -> Double -> IO Bool
 wait e timeout = do
   waiter <- readDoor True e (pure e.resources.wait)
   case waiter of
     Just hint -> hint timeout
     Nothing -> do
-      when (timeout > 0) $ threadDelay (round (timeout * 1000000))
+      nanoseconds <- either throwIO pure (sleepNanoseconds timeout)
+      -- threadDelay counts microseconds; round up, never sleeping short.
+      when (nanoseconds > 0) $ threadDelay (fromInteger ((nanoseconds + 999) `div` 1000))
       pure False
+
+-- | The reference's @OverflowError@: a value past what the platform's
+-- clock arithmetic holds.
+newtype OverflowError = OverflowError Text
+  deriving stock (Eq, Show)
+
+instance Exception OverflowError where
+  displayException (OverflowError message) = T.unpack message
+
+-- | CPython's @time.sleep(seconds)@ argument check: NaN is a @ValueError@;
+-- the nanoseconds, rounded away from zero, must fit a signed 64-bit
+-- integer (else @OverflowError@); and they must not be negative (else
+-- @ValueError@). The answer is the nanoseconds to sleep.
+sleepNanoseconds :: Double -> Either SomeException Integer
+sleepNanoseconds seconds
+  | isNaN seconds = Left (toException (EngineValueError "Invalid value NaN (not a number)"))
+  | isInfinite scaled || rounded < -limit || rounded >= limit =
+      Left (toException (OverflowError "timestamp out of range for platform time_t"))
+  | rounded < 0 = Left (toException (EngineValueError "sleep length must be non-negative"))
+  | otherwise = Right rounded
+  where
+    scaled = seconds * 1e9
+    rounded = if scaled >= 0 then ceiling scaled else floor scaled
+    limit = 2 ^ (63 :: Int)
 
 -- ---------------------------------------------------------------------------
 -- Writing doors
 
--- | What 'deliver' answers: the completed source firing, or the door's
--- acknowledgement of a prior or scoped delivery.
-data Delivered
-  = Delivered FiringOutcome
-  | DeliveredPrior PriorAcknowledgement
-  | DeliveredScoped ScopedDeliveryAcknowledgement
-  deriving stock (Eq, Show)
+-- | What 'deliver' answers: the completed source firing
+-- ('DeliveryAccepted'), or the door's acknowledgement of a prior or scoped
+-- delivery.
+type Delivered = DeliveryAnswer FiringOutcome
 
 -- | Accept and complete one identified external delivery across two
 -- durable boundaries.
 deliver :: Engine -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> IO Delivered
-deliver e source tokens identity scope = guarded e $
-  acceptIdentified e source tokens identity scope >>= \case
-    DeliveryAccepted accepted -> do
-      completed <- completeAccepted e accepted
-      committed e
-      pure (Delivered completed)
-    DeliveryPrior prior -> pure (DeliveredPrior prior)
-    DeliveryScoped scoped -> pure (DeliveredScoped scoped)
+deliver e source tokens identity scope = guarded e $ do
+  answer <- acceptIdentified e source tokens identity scope
+  traverse (\accepted -> completeAccepted e accepted <* committed e) answer
 
 -- | Durably accept and begin one identified source delivery without
 -- completing it.
-acceptDelivery :: Engine -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> IO DeliveryAnswer
+acceptDelivery :: Engine -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> IO (DeliveryAnswer AcceptedDelivery)
 acceptDelivery e source tokens identity scope = guarded e (acceptIdentified e source tokens identity scope)
 
-acceptIdentified :: Engine -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> IO DeliveryAnswer
+acceptIdentified :: Engine -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> IO (DeliveryAnswer AcceptedDelivery)
 acceptIdentified e source tokens identity scope = do
   before <- historyLength e
   now <- e.engineClock.now
@@ -432,9 +457,7 @@ completeDelivery e accepted = guarded e $ do
   pure completed
 
 completeAccepted :: Engine -> AcceptedDelivery -> IO FiringOutcome
-completeAccepted e raw = do
-  accepted <- either (throwIO . EngineValueError) pure (canonicalAcceptedDelivery raw)
-  Coordinator.completeAccepted e.coordinator accepted
+completeAccepted e = Coordinator.completeAccepted e.coordinator
 
 -- | Open and commit the next lifecycle generation for the name.
 openScope :: Engine -> Text -> IO LifecycleScope

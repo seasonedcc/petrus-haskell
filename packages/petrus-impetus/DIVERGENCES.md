@@ -34,8 +34,10 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
    exception, as the reference does. Store exceptions anywhere else propagate
    as IO exceptions.
 3. **`fail` is `failFiring`,** because `fail` is a Prelude method.
-   `_commit_completion` is `commitCompletion`, and
-   `_canonical_accepted_delivery` is `canonicalAcceptedDelivery`.
+   `_commit_completion` is `commitCompletion`. `_canonical_accepted_delivery`
+   has no counterpart: it snapshots an `AcceptedDelivery` through its field
+   constructors, and here the fields are validated newtypes, so every
+   carrier is canonical by construction.
 4. **Warnings are explicit diagnostics.** The reference emits
    `GuardEvaluationWarning`, `FilterEvaluationWarning`, and
    `CompletionEvaluationWarning` through `warnings.warn`. Here
@@ -258,9 +260,8 @@ Pinned reference: `upstream/petrus` (`src/petrus/impetus/`).
     `PythonTextSpec` checks all 1,114,112 code points against the committed
     vector `packages/petrus-json/test/python-printable.txt`. This is at
     parity; GHC's own `isPrint` (Unicode 15.1, and it admits space
-    separators such as U+00A0) is no longer used for it. Other packages'
-    own `repr` helpers (`petrus-motus`, `petrus-execution`, `petrus-dst`)
-    still use GHC's tables.
+    separators such as U+00A0) is no longer used for it, here or in any
+    other package's `repr`.
 
 ## Telemetry (`petrus-telemetry`)
 

@@ -30,6 +30,9 @@ module Petrus.Impetus.Petrinet.Schema
   , lastSegment
   , firstSegment
   , segmentCount
+  , childPath
+  , stripPathPrefix
+  , pathPrefixes
     -- * URIs
   , NetUri
   , netUri
@@ -192,6 +195,23 @@ firstSegment (NetPath text) = fst (T.breakOn "." text)
 -- | The number of segments (@len(path)@).
 segmentCount :: NetPath -> Int
 segmentCount (NetPath text) = T.count "." text + 1
+
+-- | A path below another (@NetPath((*parent, *child))@): the parent's
+-- segments, then the child's. Two valid paths always join to a valid one.
+childPath :: NetPath -> NetPath -> NetPath
+childPath (NetPath parent) (NetPath child) = NetPath (parent <> "." <> child)
+
+-- | The path below a prefix, segment-wise: 'Nothing' unless the prefix's
+-- segments start the path's and some segment remains.
+stripPathPrefix :: NetPath -> NetPath -> Maybe NetPath
+stripPathPrefix (NetPath prefix) (NetPath text) = NetPath <$> T.stripPrefix (prefix <> ".") text
+
+-- | Every leading run of a path's segments, longest (the path itself)
+-- first.
+pathPrefixes :: NetPath -> [NetPath]
+pathPrefixes at@(NetPath text) = at : [NetPath (T.take i text) | i <- reverse dots]
+  where
+    dots = [i | (i, c) <- zip [0 :: Int ..] (T.unpack text), c == '.']
 
 -- ---------------------------------------------------------------------------
 -- URIs

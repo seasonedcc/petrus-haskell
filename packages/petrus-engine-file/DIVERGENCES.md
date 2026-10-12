@@ -7,27 +7,7 @@ accepted and what is refused, the error classes and texts, the bytes
 written, and the resolved nets and schemas. Each difference below is either
 outside what a net file can reach or a deliberate scope decision.
 
-## 1. Lone surrogates in `json.loads` strings
-
-`reformat_content` (the format CLI) and `FlatNet.from_dict` take their input
-from `json.loads`. That parser turns an unpaired escape such as `"\ud800"`
-into a Python string holding a lone surrogate. Haskell `Text` cannot hold
-one. Such a document is refused with `UnsupportedLoneSurrogate: a string
-holds a lone surrogate, which this implementation cannot represent`, where
-the reference would carry the surrogate through and write it back as an
-escape. Only a surrogate that reaches the Python objects counts: one in a
-repeated member that a later value overwrites is dropped, as CPython drops
-it (`CorpusSpec`'s `json.loads` examples).
-
-`json.loads` itself is petrus-json's parser with CPython's options, and
-petrus-json's `Petrus.Json.Python.Scanner` for the text of a refusal; the
-package keeps no JSON scanner of its own for it.
-
-Files read through `from_filename` use jiter, which never yields a lone
-surrogate, so they are unaffected. The corpus marks the operations involved
-(`lone_surrogate_ops`), and the test requires this refusal for them.
-
-## 2. Recursion limits
+## 1. Recursion limits
 
 `compact_json` recurses in Python once per nesting level. Under
 `python -m petrus.cli.format_json`, a document nested more than 990
@@ -48,7 +28,12 @@ the formatter's limit above instead.
 Files read through `from_filename` are limited to 200 levels by jiter, and
 that refusal is reproduced exactly.
 
-## 3. Sorting arcs whose paths hold lists
+`json.loads` itself is petrus-json's parser with CPython's options (lone
+surrogates kept, as WTF-8 `Text`), and petrus-json's
+`Petrus.Json.Python.Scanner` gives the text of a refusal; the package keeps
+no JSON scanner of its own for it.
+
+## 2. Sorting arcs whose paths hold lists
 
 `FlatNet` sorts arcs by `(source, target)`. A file can only produce a
 non-string path segment by writing an arc endpoint as a JSON array. When
@@ -66,7 +51,7 @@ differ.
 When every segment is a string, which is every file the viewer writes, the
 order is exact at any size.
 
-## 4. The format CLI's surface
+## 3. The format CLI's surface
 
 `petrus-format-json` matches the reference's options, behavior, exit
 statuses, stdout, written files, and the final line of every error. It
@@ -84,7 +69,7 @@ differs in these ways:
   locale. Under the C/POSIX locale Python would use `surrogateescape`
   instead.
 
-## 5. Kernel nets
+## 4. Kernel nets
 
 The reference has no kernel. petrus-engine runs a `FlatSchema` in its own
 `PetriNetRuntime`, and Petrus's v3 net definition states that there is no v2
@@ -115,7 +100,7 @@ Running the net follows the kernel's semantics, not `PetriNetRuntime`'s:
 - a delay matures from its youngest selected token's entry instant, not from
   the start of an enablement epoch.
 
-## 6. Scope
+## 5. Scope
 
 - **Other file versions.** petrus-engine stores `fileVersion` as an
   unrestricted string and reads every file with the v2 models; this package

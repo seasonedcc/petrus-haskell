@@ -48,7 +48,6 @@ module Petrus.Impetus.Instance
     -- * Delivery and terminal values
   , AcceptedDelivery (instanceId, source, identity, occurrence)
   , acceptedDelivery
-  , canonicalAcceptedDelivery
   , PriorAcknowledgement (..)
   , DeliveryScope (..)
   , DeliveryDisposition (..)
@@ -149,7 +148,7 @@ import Petrus.Impetus.Petrinet.Marking (Marking, Token (..), emptyMarking, empty
 import Petrus.Impetus.Petrinet.Schema
 import Petrus.Impetus.Scope
 import Petrus.Json (Json (..), compact, dumps, encodeErrorMessage)
-import Petrus.Telemetry (EventSink, Payload, TelemetryLogger, bind, emit, getLogger)
+import Petrus.Telemetry (EventSink, Payload, TelemetryLogger, bind, emit, getLogger, validateTelemetryEnvironment)
 
 -- ---------------------------------------------------------------------------
 -- Errors
@@ -213,12 +212,6 @@ acceptedDelivery :: Text -> NetPath -> Text -> Int -> Either Text AcceptedDelive
 acceptedDelivery owner path ident o =
   AcceptedDelivery <$> mkInstanceIdentity owner <*> pure path <*> mkDeliveryIdentity ident <*> mkFiringOccurrenceId o
 
--- | @_canonical_accepted_delivery@: snapshot one carrier through its field
--- constructors. The fields are already validated newtypes and the
--- exact-type check is the type's, so every carrier is canonical.
-canonicalAcceptedDelivery :: AcceptedDelivery -> Either Text AcceptedDelivery
-canonicalAcceptedDelivery = Right
-
 -- | The delivery door's answer to redelivery after the accepted occurrence
 -- ended: not a firing, and minting one appends nothing.
 data PriorAcknowledgement = PriorAcknowledgement
@@ -244,13 +237,15 @@ data ScopedDeliveryAcknowledgement = ScopedDeliveryAcknowledgement
   }
   deriving stock (Eq, Show)
 
--- | The three answers of 'acceptDelivery' (the reference tells them apart by
--- type).
-data DeliveryAnswer
-  = DeliveryAccepted AcceptedDelivery
+-- | The three answers of a delivery door (the reference tells them apart by
+-- type): the accepted delivery's @a@ ('acceptDelivery' answers the
+-- 'AcceptedDelivery' carrier, the Engine's @deliver@ the completed
+-- firing), or the acknowledgement of a prior or scoped delivery.
+data DeliveryAnswer a
+  = DeliveryAccepted a
   | DeliveryPrior PriorAcknowledgement
   | DeliveryScoped ScopedDeliveryAcknowledgement
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor, Foldable, Traversable)
 
 -- | The canonical terminal-report door's result.
 data TerminalDisposition = TerminalAccepted | TerminalAcknowledged | TerminalQuarantined
@@ -630,6 +625,7 @@ instanceLogger net ident sink =
 -- | @Instance(net, ...)@: record the construction batch to a fresh History.
 newInstance :: Net -> InstanceConfig -> IO (Either InstanceError Instance)
 newInstance net cfg = runExceptT $ do
+  liftIO validateTelemetryEnvironment
   ident <- instanceIdentityText <$> (orRefuse . mkInstanceIdentity =<< maybe (liftIO uuid7Hex) pure cfg.suppliedIdentity)
   let logger = instanceLogger net ident cfg.telemetrySink
       at = cfg.constructionInstant
@@ -691,6 +687,7 @@ newInstance net cfg = runExceptT $ do
 -- appending to the same store.
 resume :: Net -> HistoryStore -> InstanceConfig -> IO (Either InstanceError Instance)
 resume net store cfg = runExceptT $ do
+  liftIO validateTelemetryEnvironment
   history <- liftIO (Store.records store)
   when (null history) $
     refuse "cannot resume from an empty history: nothing is recorded — construct an Instance instead"
@@ -1602,7 +1599,7 @@ reprTarget = \case
 -- 'PriorAcknowledgement' after), appending nothing; a changed source,
 -- payload, or scope is a conflict. A delivery to an inactive scope is
 -- durably dropped or quarantined instead of firing.
-acceptDelivery :: Instance -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> Maybe Instant -> IO (Either InstanceError DeliveryAnswer)
+acceptDelivery :: Instance -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> Maybe Instant -> IO (Either InstanceError (DeliveryAnswer AcceptedDelivery))
 acceptDelivery inst path tokens ident target at = locked inst $ do
   let net = inst.iNet
   case target of
@@ -1724,8 +1721,10 @@ acceptDelivery inst path tokens ident target at = locked inst $ do
 
 -- | Complete only the pure source occurrence an 'AcceptedDelivery' names.
 completeDelivery :: Instance -> AcceptedDelivery -> Maybe Instant -> IO (Either InstanceError FiringOutcome)
-completeDelivery inst carrier at = locked inst $ do
-  a <- orRefuse (canonicalAcceptedDelivery carrier)
+completeDelivery inst a at = locked inst $ do
+  -- The reference's _canonical_accepted_delivery snapshots the carrier
+  -- through its field constructors; its fields are validated newtypes here,
+  -- so every carrier already is canonical.
   let owner = instanceIdentityText a.instanceId
       ident = deliveryIdentityText a.identity
       occ = firingOccurrenceIdInt a.occurrence

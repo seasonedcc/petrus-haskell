@@ -105,8 +105,13 @@ listed here.
   agent) asks Temporal to close every connection and answers the browser
   with `Connection: close`, so each proxied request opens two new TCP
   connections. `petrus` keeps both the browser's connection and its
-  connections to Temporal alive, and streams the body with chunked
-  transfer coding instead of copying Temporal's `Content-Length`.
+  connections to Temporal alive. It streams Temporal's answer to the
+  browser as it arrives, with chunked transfer coding instead of copying
+  Temporal's `Content-Length`. It reads the browser's request body whole
+  before forwarding it (with its length), where Vite pipes it. Content
+  codings pass through as in Vite: the browser's `Accept-Encoding` goes to
+  Temporal as sent (none when it sent none), and Temporal's body comes back
+  undecompressed with its `Content-Encoding` (`test/ProxySpec.hs`).
 - **Response framing.** `/__petrus/open-file` and `/__petrus/resolve-ref`
   answer with Node's bytes: status line, headers in Node's order (the
   handler's, `Date`, `Connection: keep-alive` + `Keep-Alive: timeout=5` or
@@ -145,7 +150,9 @@ against Node on recorded corpora and on thousands of generated inputs
   carry it exactly (tests: `test/JsonSpec.hs`, `test/EndpointsSpec.hs`,
   the `jsonRoundTrip` and HTTP-wire differentials against Node; one entry of
   `test/fixtures/json-parse-v8.json` had been recorded with the surrogate
-  repaired and is re-recorded from Node 22). **Still open:** a history or
+  repaired and is re-recorded from Node 22; `test/record-node-corpora.mjs`
+  now re-records every result of that corpus from Node in
+  `scripts/check-corpora`). **Still open:** a history or
   observation server answering malformed JSON yields a message that the
   history tools fold into `Text` errors, where the half-pair becomes
   U+FFFD. Why it stays: it needs a third-party server's malformed answer

@@ -102,15 +102,17 @@ It runs, in order, and stops at the first failing step:
 1. `scripts/check-pins`: the submodules sit at the commits UPSTREAM.md pins.
 2. `scripts/lint-skips`: no test goes pending, or skips, because a Python
    reference is missing (see [No silent skips](#no-silent-skips)).
-3. Provisioning of the Python references (`scripts/upstream-python petrus`
-   and `petrus-engine`): CPython 3.14.6 and each project's frozen `uv.lock`,
-   in `upstream/<project>/.venv`.
-4. `cabal build all` (every package is `-Werror`).
-5. `scripts/interop --check`: every pattern `scripts/interop` uses still
+3. `scripts/lint-hamsterdan-architecture`: the Hamsterdan packages keep the
+   import boundaries of upstream `tests/test_architecture.py`.
+4. Provisioning of the Python references (`scripts/upstream-python petrus`,
+   `petrus-engine` and `hamsterdan`): CPython 3.14.6 and each project's
+   frozen `uv.lock`, in `upstream/<project>/.venv`.
+5. `cabal build all` (every package is `-Werror`).
+6. `scripts/interop --check`: every pattern `scripts/interop` uses still
    selects tests.
-6. `cabal test all` under `scripts/with-postgres`, every test binary with
+7. `cabal test all` under `scripts/with-postgres`, every test binary with
    `+RTS -M2G -RTS`. This includes the conformance and interop groups.
-7. `scripts/check-pending`: no example went pending in step 6. A pending
+8. `scripts/check-pending`: no example went pending in step 7. A pending
    example is a test that did not run, so a missing tool (Graphviz `dot`,
    `node`) or server fails the run. The only examples that may stay pending
    are listed in the script: the Docker tests, which wait for
@@ -118,11 +120,19 @@ It runs, in order, and stops at the first failing step:
    without it), and the reference's own opt-in acceptance tests. Those
    acceptance tests need provider credentials or exactly installed external
    toolchains, and the reference skips them too.
-8. `scripts/check-corpora`: every committed corpus is regenerated against the
-   pinned references and must come out unchanged.
-9. `scripts/bench --check`: every package's benchmark results document how
-   to rerun them, and `bench-results/summary.md` matches them.
-10. `scripts/check-parity`: the parity table's claims hold.
+9. `scripts/check-corpora`: every committed corpus is regenerated against the
+   pinned references (and Node 22, for the viewer's V8 and WHATWG URL
+   corpora) and must come out unchanged.
+10. With `--viewer` only: the upstream petrus-viewer suites against the
+    Haskell backend, then `record-mcp-transcript.mjs --check`, which
+    re-records the MCP golden transcript through the upstream Node MCP server.
+11. With `--bench` only: `scripts/bench`, every benchmark against Python.
+12. `scripts/bench --check`: every package's benchmark results document how
+    to rerun them and which sources they measured, and
+    `bench-results/summary.md` matches them.
+13. `scripts/check-parity`: the parity table's claims hold.
+14. `packages/petrus-engine/scripts/parity_check.py`: the runtime test
+    ledgers account for every in-scope upstream test.
 
 `-j2` limits cabal's parallelism; leave it out to use every core.
 `--viewer` adds, after the tests, the upstream petrus-viewer suites against
@@ -164,7 +174,13 @@ The committed differential corpora, fixture databases and generated modules
 are themselves reference output. `scripts/check-corpora` (also part of
 `scripts/check-all`) reruns every generator against the pinned references
 and fails on any file that no longer matches, so a corpus cannot go stale
-behind a passing replay. The corpora are recorded on macOS and checked on
+behind a passing replay. The viewer's two Node-recorded corpora (V8's
+`JSON.parse` results and messages, WHATWG `new URL` results) are rerun the
+same way, through Node 22
+(`packages/petrus-viewer-server/test/record-node-corpora.mjs`). Its MCP
+golden transcript needs the upstream viewer's `pnpm install`, so it is
+re-recorded with the viewer suites (`--viewer`, and CI's `viewer` job)
+instead. The corpora are recorded on macOS and checked on
 Linux too (CI), so the comparison leaves out the two platform facts that
 differ: the SQLite library version in a database's header, and EOVERFLOW's
 errno and message in hamsterdan-github's HTTP corpus.
@@ -222,6 +238,41 @@ slower. It is generated from the results files:
 ```sh
 scripts/bench --summary         # rewrite bench-results/summary.md
 ```
+
+### Which code the figures measured
+
+Every results file records the code its figures measured, in a marker:
+
+```
+<!-- scripts/bench: measured sources FINGERPRINT at COMMIT -->
+```
+
+FINGERPRINT hashes the package's files as committed (git blob ids, so
+content): every file but its prose (`*.md`, LICENSE, NOTICE) and its tests
+(`test/`, `differential/`, `upstream-tests/`). COMMIT is the commit those
+sources were at. Changes in the package's dependencies are not tracked.
+`summary.md` shows each file's commit. The markers of the files measured
+before this rule existed were set to the last commit that changed one of
+the file's table rows.
+
+- `scripts/bench --check` (CI's `lint` job, every push) fails on a results
+  file without the marker, and notes how many files measured sources that
+  have changed since.
+- `scripts/bench --stale` lists those files, and exits 1 when there is one.
+  Their figures may no longer hold: rerun them before relying on them.
+- Refreshing a package's results: on an idle machine, from a clean commit,
+  run `scripts/bench PKG` (or `scripts/bench-compare`), update the tables by
+  hand, then `scripts/bench --stamp PKG` (for one of several results files,
+  `scripts/bench --stamp PKG results-x.md`). That records HEAD's fingerprint
+  and regenerates `summary.md`. Commit the result.
+
+CI never measures: a push reruns no benchmark. The nightly run and a `full`
+dispatch run `scripts/bench --smoke` (the `bench-smoke` job), which builds
+every benchmark and runs it once: each tasty-bench row measured once
+(`--stdev Infinity`), or, for the custom harnesses, the sh block after a
+`<!-- scripts/bench: smoke -->` marker in the package's RESULTS.md. So a
+benchmark cannot silently stop building or running. The same job lists the
+stale results files in its run summary.
 
 ### CPU and wall-clock time
 
@@ -399,11 +450,18 @@ job, spread over Blacksmith runners so that they run side by side:
 | `build` | 16 vCPU | `cabal build all` (`-Werror`); then plans the test shards |
 | `checks` | 4 vCPU | `scripts/interop --check` (with the PostgreSQL and Docker variables set, so that the selection counts those examples too); `scripts/check-corpora`, with PostgreSQL 17 |
 | `test (1)` … `test (N)` | 8 vCPU | the upstream Python environments, then `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest); then `scripts/check-pending` on their output (a suite with a pending example outside the declared opt-ins does not count as passed) |
-| `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium |
+| `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium; then the MCP golden transcript re-recorded through the upstream Node MCP server |
+| `bench-smoke` | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench --smoke` (every benchmark builds and runs once; not a measurement) and the list of stale results files ([Which code the figures measured](#which-code-the-figures-measured)) |
 | `container` | 16 vCPU | none (Docker): the image and `scripts/container-smoke` ([The container image](#the-container-image)) |
 | `ci` | 2 vCPU | the verdict: green only when every job above is |
 
-Branch protection needs only the `ci` check. CI steps carry the names of
+Every commit pushed to `main` gets a complete run of its own: on `main`,
+each run has its own concurrency group, so a newer push neither cancels it
+nor replaces it while it waits. On a branch or pull request a newer push
+cancels the older run. `main` has no branch protection rule: commits land on
+it without waiting for CI, and the run of each commit, red or green, is what
+verifies it. The `ci` job is the single verdict to require if a protection
+rule is added. CI steps carry the names of
 the `check-all` steps they run, and `lint` first runs
 `scripts/ci-tests check-steps`, which fails when a `check-all` step (other
 than the opt-in benchmarks) has no CI step of that name: a check added to
@@ -413,20 +471,35 @@ than the opt-in benchmarks) has no CI step of that name: a check added to
 versions. The cabal store and package index are cached by `cabal.project`,
 `cabal.project.freeze` and the `.cabal` files, falling back to the latest
 entry. `dist-newstyle` is cached by commit, falling back to the latest
-entry, so `build` recompiles only what changed since: cabal decides that
-from the sources' content, not from timestamps. A branch or pull request
-reads its own entries and those of `main`. The test jobs and `checks`
-restore the `dist-newstyle` that `build` saved for the commit and build
-nothing. Three things would make cabal reconfigure (and relink) anyway, and
-every job avoids them: test flags that differ between commands (so CI's
-test flags, `--test-show-details=direct`, the `scripts/ci-test-wrapper`
-wrapper and the `+RTS -M2G -RTS` heap cap, come from a `cabal.project.local`
-that `scripts/ci-tests configure` writes in every job, not from command
-lines); a `PATH` unlike the build's (so every job installs the same
-toolchain, Node included); and `.cabal` files newer than the restored
-configuration (Cabal's own check, which a fresh checkout always trips; the
-jobs set the `.cabal` files' timestamps back after checkout, and
-cabal-install still notices a changed `.cabal` file by its content).
+entry, so `build` recompiles only what changed since. The nightly run and a
+dispatch with `full` restore no `dist-newstyle` and build every package from
+scratch (under a cache key of their own, so their later jobs never restore
+an incremental build). A branch or pull request reads its own entries and
+those of `main`. The test jobs and `checks` restore the `dist-newstyle` that
+`build` saved for the commit and build nothing. Every job prepares the
+restored `dist-newstyle` the same way, in one composite action
+(`.github/actions/cabal-dist`):
+
+- CI's test flags (`--test-show-details=direct`, the
+  `scripts/ci-test-wrapper` wrapper and the `+RTS -M2G -RTS` heap cap) come
+  from a `cabal.project.local` that `scripts/ci-tests configure` writes, not
+  from command lines: flags that differ between commands make cabal
+  reconfigure and relink every package. A `PATH` unlike the build's does
+  too, so every job installs the same toolchain, Node included.
+- A checkout leaves every `.cabal` file newer than the restored build, which
+  the Cabal library takes as a change that forces reconfiguring, so the
+  `.cabal` files get a fixed old timestamp.
+- That fixed timestamp is also the one cabal-install recorded when it last
+  planned the project, and cabal-install does not hash a monitored file whose
+  timestamp is unchanged: on its own, the timestamp would hide an edited
+  `.cabal` file (a new test suite, a dropped `build-depends`). So the action
+  then deletes `dist-newstyle/cache`, the project-level plan. cabal solves
+  and elaborates the plan again from the files' content and rewrites
+  `dist-newstyle/cache/plan.json`. Each package's own build cache stays: a
+  package whose elaborated configuration and sources are unchanged is not
+  rebuilt, and one whose `.cabal` file changed is reconfigured and rebuilt.
+  `scripts/ci-tests plan` also checks that the plan lists every package
+  under `packages/` with exactly the test suites its `.cabal` file declares.
 
 **Shards.** `scripts/ci-tests plan` spreads the suites over about ten
 `test` jobs, balancing their measured times (`.github/ci/test-times.json`).

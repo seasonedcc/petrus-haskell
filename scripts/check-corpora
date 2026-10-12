@@ -204,6 +204,16 @@ GENERATORS: List[Generator] = [
         cwd=".",
     ),
     petrus("petrus-cel/gen-cel-instance", f"{CEL}/gen-cel-instance.py", {f"{CEL}/corpus/cel-instance.json": "cel-instance.json"}),
+    # petrus-cel: the pinned tzdata package, embedded for the get* accessors
+    Generator(
+        "petrus-cel/tz tables",
+        "petrus",
+        "packages/petrus-cel/gen/gen-tz-tables.py",
+        [],
+        {"packages/petrus-cel/src/Petrus/Cel/Tz/Tables.hs": ""},
+        cwd=".",
+        in_place=True,
+    ),
     # petrus-dst (the generated identities module included)
     dst("codec_vectors", "test/data/codec-vectors.json"),
     dst("world_stories", "test/data/world-stories.json"),
@@ -367,6 +377,17 @@ GENERATORS: List[Generator] = [
         [f"packages/hamsterdan-readiness/test/corpus/{name}" for name in ("net_definition.sha256", "seed_marking.jsonl", "gates.json")],
     ),
     hamsterdan("hamsterdan-testing/gen_oracle_corpus", "packages/hamsterdan-testing/scripts/gen_oracle_corpus.py", ["packages/hamsterdan-testing/test/corpus/oracle.jsonl"]),
+    # petrus-viewer-server: V8's JSON.parse and WHATWG URL results, from Node
+    # (the MCP transcript needs the upstream viewer's node_modules, so its
+    # recorder runs with the viewer suites instead: scripts/check-all --viewer)
+    Generator(
+        "petrus-viewer-server/record-node-corpora",
+        "node",
+        "packages/petrus-viewer-server/test/record-node-corpora.mjs",
+        ["{out}"],
+        {f"packages/petrus-viewer-server/test/fixtures/{name}": name for name in ("json-parse-v8.json", "url-whatwg-node.json")},
+        cwd=".",
+    ),
 ]
 
 
@@ -382,6 +403,16 @@ ENV = environment()
 
 
 def interpreter(project: str) -> str:
+    """The pinned Python of an upstream project, or Node for the generators
+    that record Node's own behaviour (project "node"; Node 22, as in CI)."""
+    if project == "node":
+        node = shutil.which("node", path=ENV["PATH"])
+        if node is None:
+            raise SystemExit("check-corpora: node is not on PATH (the viewer's Node-recorded corpora need Node 22)")
+        version = subprocess.run([node, "--version"], env=ENV, check=True, stdout=subprocess.PIPE, text=True).stdout.strip()
+        if not version.startswith("v22."):
+            raise SystemExit(f"check-corpora: the viewer's Node-recorded corpora need Node 22, not {version}")
+        return node
     return subprocess.run(
         [str(ROOT / "scripts" / "upstream-python"), project], cwd=ROOT, env=ENV, check=True, stdout=subprocess.PIPE, text=True
     ).stdout.strip()
@@ -422,7 +453,7 @@ def run_generator(generator: Generator, python: str, postgres: Optional[str], up
                 target = ROOT / path
                 saved[path] = target.read_bytes() if target.exists() else None
         args = [arg.replace("{out}", str(out)).replace("{postgres}", postgres or "") for arg in generator.args]
-        command = [python, "-B", str(ROOT / generator.script), *args]
+        command = [python, *([] if generator.project == "node" else ["-B"]), str(ROOT / generator.script), *args]
         try:
             completed = subprocess.run(
                 command, cwd=ROOT / generator.cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True

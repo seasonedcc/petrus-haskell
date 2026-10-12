@@ -1,5 +1,7 @@
 # petrus-simulation benchmarks
 
+<!-- scripts/bench: measured sources a42102a12ca8df07 at 7fc4ecb1d671 -->
+
 This compares the Haskell runner and service with upstream
 `petrus.simulation` and `petrus.simulation_http` at the pin in
 [UPSTREAM.md](../../../UPSTREAM.md). Ratios above 1 mean Haskell is faster.

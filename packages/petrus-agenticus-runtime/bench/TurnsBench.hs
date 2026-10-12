@@ -14,8 +14,9 @@
 --   runtime service: open a Gondolin Motus territory (the fake Gondolin SDK
 --   @test/fixtures/codex/fake_gondolin_codex.mjs@, whose guest commands run
 --   on the host) and its Episode Attachment, probe the guest @codex@, start
---   the service on a fresh private state directory under @/private/tmp@
---   (a Unix socket path has at most 104 bytes on macOS): its fence and
+--   the service on a fresh private state directory under the platform's
+--   temporary directory (@TMPDIR@, else @/tmp@; the Unix socket path in it
+--   must stay within 104 bytes on macOS, 108 on Linux): its fence and
 --   SQLite replay ledger; send one request through the Worker-side Activity client over
 --   the Unix socket (the service records the operation, runs one Codex Turn
 --   with the same custody as @codex-turn@, stores and replies the terminal),
@@ -108,7 +109,7 @@ import Petrus.Motus.Execution.Archive (workspaceArchive)
 import Petrus.Motus.Execution.Providers.Gondolin (GondolinConfig (..), gondolinConfig, gondolinProvider, newGondolinEnvironment)
 import Petrus.Motus.Execution.Providers.Local (localProvider, newLocalProcessEnvironment)
 import Petrus.TestSupport.Python (pythonExecutable)
-import System.Directory (createDirectory, makeAbsolute, removeDirectoryRecursive)
+import System.Directory (createDirectory, getTemporaryDirectory, makeAbsolute, removeDirectoryRecursive)
 import System.Environment (lookupEnv, setEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (createTempDirectory)
@@ -307,7 +308,7 @@ codexA3ServiceTurn python root = do
     attachment <- newEpisodeAttachment (ok (mkEpisodeId ("episode-" <> n))) selected (motusBinding binding) ("attachment-" <> n) (now + 30) episodeOptions
     ready =<< probeCodexGondolin adapter (Just attachment)
     connection <- lookupConnection custody "codex-bench"
-    state <- createTempDirectory "/private/tmp" "petrus-a3-"
+    state <- getTemporaryDirectory >>= (`createTempDirectory` "petrus-a3-")
     let endpoint = state </> "runtime.sock"
     service <- newCodexGondolinRuntimeService endpoint (state </> "runtime-ledger.db") token adapter connection attachment
     startCodexGondolinRuntimeService service

@@ -1,5 +1,7 @@
 # fileVersion 2 benchmarks: Haskell vs petrus-engine
 
+<!-- scripts/bench: measured sources b13b5e034dbd1ad1 at db35a07b61f1 -->
+
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same steps
 on the same input texts. `bench/process_bench.py` times the format command
 as a process, `petrus-format-json` against `python -m

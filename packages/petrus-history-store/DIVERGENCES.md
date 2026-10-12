@@ -22,7 +22,23 @@ differences:
    throws `HistoryStoreError` with the reference's exact message text. A
    load refusal is raised when the store is opened, before any Engine or
    Instance sees the records. The reference raises `ValueError` at the same
-   point.
+   point. Two corrupt inputs are refused at the same point but not with the
+   same error:
+   - A byte that is not UTF-8. The reference's text-mode line iterator
+     raises a bare `UnicodeDecodeError` (`'utf-8' codec can't decode byte
+     0xff in position N: ...`) outside its decoding `try`, where `N` counts
+     from the start of whichever chunk `TextIOWrapper` was decoding; the
+     chunking depends on the buffer sizes and the text decoded so far, so
+     the position is the file offset only in a small file, and a JSON error
+     on an earlier line wins only when it sits in an earlier chunk. The port
+     decodes line by line and throws `HistoryStoreError "<path>: line <n>
+     does not decode as an event history record: ..."` with CPython's
+     diagnostic for that line.
+   - A path that exists but is not a readable file, such as a directory.
+     Both fail when the store is opened (the reference's `Path.exists()` is
+     true, then `open()` raises `IsADirectoryError`); the port throws the
+     operating system's `IOException`, as it does for any other OS failure
+     of the store.
 3. **Unencodable data is only non-finite numbers.** Token data, activity
    payloads and instants are `Json` and `Number`. The reference's other
    unencodable values (`object()`, sets) cannot be built, so the refusal path

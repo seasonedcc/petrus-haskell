@@ -57,7 +57,7 @@ fi
 # Provision every reference once, before the suites run in parallel and
 # each would (scripts/upstream-python also serializes a lazy sync with a
 # lock, so a suite that provisions on first use is safe too).
-for project in petrus petrus-engine hamsterdan; do
+for project in petrus petrus-engine hamsterdan petrus-sdks; do
   python=$(scripts/upstream-python "$project")
   echo "upstream/$project: $("$python" -I -c 'import sys; print(sys.version)')"
 done
@@ -95,6 +95,8 @@ scripts/check-corpora
 if [[ "$run_viewer" == 1 ]]; then
   step "The upstream petrus-viewer suites against the Haskell backend"
   scripts/interop --viewer petrus-viewer-server ${cabal_flags[@]+"${cabal_flags[@]}"}
+  step "The MCP golden transcript (re-recorded through the upstream Node MCP server)"
+  node packages/petrus-viewer-server/test/record-mcp-transcript.mjs --check
 fi
 
 if [[ "$run_bench" == 1 ]]; then
@@ -102,7 +104,7 @@ if [[ "$run_bench" == 1 ]]; then
   scripts/bench
 fi
 
-step "Benchmark bookkeeping (rerun blocks, bench-results/summary.md)"
+step "Benchmark bookkeeping (rerun blocks, measured sources, bench-results/summary.md)"
 scripts/bench --check
 
 step "Parity table"

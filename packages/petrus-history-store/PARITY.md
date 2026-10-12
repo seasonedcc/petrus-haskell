@@ -13,13 +13,13 @@ that every in-scope upstream test is accounted for, run:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-`cabal test petrus-history-store` runs 134 examples, with 0 failures and 0
+`cabal test petrus-history-store` runs 135 examples, with 0 failures and 0
 pending. The interop examples fail, never skip, when `upstream/petrus/.venv`
 cannot be provisioned. By file:
 
 | spec | examples |
 | --- | ---: |
-| JsonlSpec (JSONL, upstream and beyond) | 26 |
+| JsonlSpec (JSONL, upstream and beyond) | 27 |
 | BackendContractSpec (jsonl and sqlite, 14 each: 13 upstream, 1 beyond) | 28 |
 | InteropSpec (JSONL interop) | 8 |
 | SqliteSpec (`test_sqlite_history.py` 14, beyond upstream 5) | 19 |
@@ -93,12 +93,14 @@ The `reopen` fixture's sqlite parameter runs the same 13 examples through
 
   The Engine suite adds whole-Engine JSONL interop: identical bytes, plus
   cross-process crash and resume in both directions.
-- **Load edges of the reference's text-mode reader** (5 examples):
+- **Load edges of the reference's text-mode reader** (6 examples):
   - a final line without a terminator;
   - CRLF and CR read as universal newlines;
   - an empty file;
   - a blank line, refused with CPython's diagnostic;
-  - a record decode failure that carries the codec's message.
+  - a record decode failure that carries the codec's message;
+  - a directory at the path, refused at construction (DIVERGENCES.md, 2,
+    for the error).
 - **`jsonl_commit` telemetry.** There is one event per durable commit, with
   its batch size and bytes, as `jsonl.py` emits.
 - **`PowerFailure` durability.** It writes the same bytes; fsync is the only

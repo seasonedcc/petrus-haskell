@@ -13,6 +13,7 @@
 --   @scripts/engine_authored.py@ in @test/data/engine-authored.json@), and
 --   the authored artifact must replay through fresh profiles with outcome
 --   @pass@.
+-- * Engine-profile world tests of @tests/dst/test_world.py@.
 module Spec.EngineWorlds
   ( spec
   , ReplayCase (..)
@@ -36,6 +37,8 @@ import Petrus.Testing.Dst.Engine.Lifecycle qualified as Lifecycle
 import Petrus.Testing.Dst.Engine.Projection qualified as Projection
 import Petrus.Testing.Dst.Engine.Retry qualified as Retry
 import Petrus.Testing.Dst.Engine.Timer qualified as Timer
+import Petrus.Testing.Dst.Timeline qualified as Timeline
+import Petrus.Testing.Dst.World qualified as World
 import Spec.Support
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -244,3 +247,27 @@ spec = describe "Engine-backed worlds (real Haskell Engine profiles)" $ do
           reg <- c.registry dir
           replay reg artifact
         fmap (member "outcome") (resultJson replayed) `shouldBe` Right (String "pass")
+  describe "the Engine-profile world (test_world.py)" $
+    it "ends the predicate-poll budget explicitly" $
+      withSystemTempDirectory "petrus-dst-engine" $ \dir -> do
+        base <- Projection.engineProfile (dir </> "bounded-history.jsonl")
+        let limits =
+              Budget
+                { actions = 3
+                , queuedCommands = 2
+                , timerAdvances = 0
+                , logicalInstant = 0
+                , reloads = 0
+                , predicatePolls = 1
+                , artifactBytes = 65536
+                }
+        (refused, ending) <- withToy (config base.profile (SomeBudget limits) [] Nothing) $ do
+          t <- World.timeline
+          refused <- World.tryWorld (Timeline.runUntil t "activity-requested" (const False))
+          (refused,) <$> World.disposition
+        case refused of
+          Left failure -> do
+            failureClass failure `shouldBe` "BudgetExhausted"
+            T.unpack (failureMessage failure) `shouldContain` "predicate_polls"
+          Right _ -> expectationFailure "run_until returned past an exhausted predicate-poll budget"
+        ending `shouldBe` Just DBudgetExhausted

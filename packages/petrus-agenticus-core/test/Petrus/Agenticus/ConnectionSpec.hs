@@ -172,6 +172,7 @@ spec = describe "connection/test_custody.py" $ do
                     throwAgenticus RuntimeError "synthetic lost publication acknowledgement"
                   else pure published
             , close = inner.close
+            , trustedLoad = Nothing
             }
     materializer <- newPrivateFileMaterializer (rig.root </> "uncertain-materialized")
     let uncertain = agentConnectionCustody storage rig.keys.operations materializer (readIORef rig.clock)
@@ -199,6 +200,7 @@ spec = describe "connection/test_custody.py" $ do
             { load = inner.load
             , compareAndSwap = \_ _ -> modifyIORef' attempts (+ 1) >> pure False
             , close = inner.close
+            , trustedLoad = Nothing
             }
     materializer <- newPrivateFileMaterializer (rig.root </> "refusing-materialized")
     let custody = agentConnectionCustody storage rig.keys.operations materializer (readIORef rig.clock)
@@ -594,6 +596,7 @@ barrierStorage inner barrier revision = do
             barrierWait barrier
           inner.compareAndSwap expected replacement
       , close = inner.close
+      , trustedLoad = Nothing
       }
 
 head', last' :: [a] -> a

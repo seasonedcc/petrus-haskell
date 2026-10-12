@@ -2,18 +2,16 @@
 -- cel-python's @DurationType@ and @TimestampType@ use them, plus the
 -- @pendulum.parse@ pipeline behind @timestamp(string)@.
 --
--- Every time zone cel-python can attach is a fixed UTC offset (pendulum's
--- @FixedTimezone@, @datetime.timezone@, or UTC), so a 'Datetime' is a local
--- wall-clock reading plus an offset.
+-- Every time zone a cel-python timestamp carries is a fixed UTC offset
+-- (pendulum's @FixedTimezone@, @datetime.timezone@, or UTC), so a 'Datetime'
+-- is a local wall-clock reading plus an offset. The @get*@ accessors read a
+-- timestamp in any zone @pendulum.timezone@ accepts, IANA zones with their
+-- daylight-saving rules included ("Petrus.Cel.Tz"), through 'astimezone'.
 --
--- Deviations, all listed in the package's DIVERGENCES.md:
---
--- * @timestamp(\"now\")@ and time-only strings (which pendulum completes
---   with the current date) are impure in cel-python; here they fail with a
---   'ValueError';
--- * the timezone argument of the @get*@ functions accepts UTC-like IANA
---   names and the fixed-offset @Etc/GMT±N@ zones, not zones with daylight
---   saving rules.
+-- One deviation, listed in the package's DIVERGENCES.md:
+-- @timestamp(\"now\")@ and time-only strings (which pendulum completes with
+-- the current date) are impure in cel-python; here they fail with a
+-- 'ValueError'.
 module Petrus.Cel.Time
   ( -- * timedelta
     Timedelta (..)
@@ -35,12 +33,14 @@ module Petrus.Cel.Time
   , DatetimeFields (..)
   , isoWeekday
   , dayOfYear
-  , inOffset
+  , TimeZone (..)
+  , astimezone
     -- * Parsing
   , ParsedTimestamp (..)
   , parseTimestamp
   , parseDurationString
-  , timezoneOffset
+  , timezoneNamed
+  , namedZone
   , maxDurationSeconds
   ) where
 
@@ -48,10 +48,11 @@ import Data.Char (isAsciiLower, isDigit)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Time.Calendar (Day (..), fromGregorianValid, isLeapYear, toGregorian)
+import Data.Time.Calendar (Day (..), fromGregorianValid, gregorianMonthLength, isLeapYear, toGregorian)
 import Data.Time.Calendar.OrdinalDate (toOrdinalDate)
 
 import Petrus.Cel.Python (ExcClass (..), PyErr (..), parseFloatText)
+import Petrus.Cel.Tz (Zone, lookupZone, zoneUtcOffset)
 import Petrus.Json.Python (pythonDecimal, pythonStrRepr)
 
 -- timedelta ---------------------------------------------------------------
@@ -64,13 +65,17 @@ microsPerSecond, microsPerDay :: Integer
 microsPerSecond = 1000000
 microsPerDay = 86400 * microsPerSecond
 
--- | @timedelta@'s range check (@|days| <= 999999999@).
+-- | @timedelta@'s range check (@|days| <= 999999999@), after CPython's
+-- @microseconds_to_delta@ has converted the day count to a C @int@.
 checkTimedelta :: Integer -> Either PyErr Timedelta
-checkTimedelta micros =
-  let days = micros `div` microsPerDay
-   in if abs days > 999999999
-        then Left (PyErr OverflowError ("days=" <> T.pack (show days) <> "; must have magnitude <= 999999999"))
-        else Right (Timedelta micros)
+checkTimedelta micros
+  | days < -(2 ^ (31 :: Int)) || days >= 2 ^ (31 :: Int) =
+      Left (PyErr OverflowError "Python int too large to convert to C int")
+  | abs days > 999999999 =
+      Left (PyErr OverflowError ("days=" <> T.pack (show days) <> "; must have magnitude <= 999999999"))
+  | otherwise = Right (Timedelta micros)
+  where
+    days = micros `div` microsPerDay
 
 -- | @repr(timedelta)@: @datetime.timedelta(days=-1, seconds=86399)@.
 timedeltaRepr :: Timedelta -> Text
@@ -179,9 +184,27 @@ isoWeekday f = let w = fieldOrdinal f `mod` 7 in if w == 0 then 7 else w
 dayOfYear :: DatetimeFields -> Integer
 dayOfYear f = fromIntegral (snd (toOrdinalDate (fromOrdinal (fieldOrdinal f)))) - 1
 
--- | @astimezone@ to a fixed offset.
-inOffset :: Integer -> Datetime -> Either PyErr Datetime
-inOffset offset dt = checked (Datetime (datetimeUtcMicros dt + offset * microsPerSecond) offset)
+-- | A @tzinfo@ a timestamp can be read in.
+data TimeZone
+  = -- | UTC, @datetime.timezone@ or pendulum's @FixedTimezone@
+    FixedZone Integer
+  | -- | a @ZoneInfo@
+    NamedZone Zone
+
+-- | @datetime.astimezone(tz)@: @self - self.utcoffset()@ (which must stay
+-- in range), then @tz.fromutc@ adds the zone's offset at that instant.
+astimezone :: TimeZone -> Datetime -> Either PyErr Datetime
+astimezone zone dt = do
+  let utc = datetimeUtcMicros dt
+  _ <- checked (Datetime utc 0)
+  let offset = case zone of
+        FixedZone seconds -> seconds
+        NamedZone named -> toInteger (zoneUtcOffset named (fromInteger (utc `div` microsPerSecond - unixEpochSeconds)))
+  checked (Datetime (utc + offset * microsPerSecond) offset)
+
+-- | 1970-01-01T00:00, in seconds since 0001-01-01T00:00.
+unixEpochSeconds :: Integer
+unixEpochSeconds = 62135596800
 
 checked :: Datetime -> Either PyErr Datetime
 checked dt
@@ -221,13 +244,13 @@ datetimeTimestamp dt = timedeltaTotalSeconds (Timedelta (datetimeUtcMicros dt - 
 datetimeFromFields :: Integer -> [Integer] -> Either PyErr Datetime
 datetimeFromFields offset fields = case fields ++ replicate (7 - length fields) 0 of
   [y, m, d, h, mi, s, us]
-    | y < 1 || y > 9999 -> bad ("year " <> T.pack (show y) <> " is out of range")
-    | m < 1 || m > 12 -> bad "month must be in 1..12"
-    | Nothing <- day -> bad "day is out of range for month"
-    | h < 0 || h > 23 -> bad "hour must be in 0..23"
-    | mi < 0 || mi > 59 -> bad "minute must be in 0..59"
-    | s < 0 || s > 59 -> bad "second must be in 0..59"
-    | us < 0 || us > 999999 -> bad "microsecond must be in 0..999999"
+    | y < 1 || y > 9999 -> bad ("year must be in 1..9999, not " <> shown y)
+    | m < 1 || m > 12 -> bad ("month must be in 1..12, not " <> shown m)
+    | Nothing <- day -> bad ("day " <> shown d <> " must be in range 1.." <> shown (monthLength y m) <> " for month " <> shown m <> " in year " <> shown y)
+    | h < 0 || h > 23 -> bad ("hour must be in 0..23, not " <> shown h)
+    | mi < 0 || mi > 59 -> bad ("minute must be in 0..59, not " <> shown mi)
+    | s < 0 || s > 59 -> bad ("second must be in 0..59, not " <> shown s)
+    | us < 0 || us > 999999 -> bad ("microsecond must be in 0..999999, not " <> shown us)
     | abs offset >= 86400 -> bad "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24)"
     | Just dayValue <- day ->
         Right
@@ -240,6 +263,9 @@ datetimeFromFields offset fields = case fields ++ replicate (7 - length fields) 
   _ -> bad "function takes at most 8 arguments"
   where
     bad = Left . PyErr ValueError
+    shown :: Integer -> Text
+    shown = T.pack . show
+    monthLength y m = toInteger (gregorianMonthLength y (fromIntegral m))
 
 -- Parsing ----------------------------------------------------------------
 
@@ -282,7 +308,7 @@ parseTimestamp text
       | otherwise = Nothing
     validRust part = rustIso8601 (T.unpack part)
     common = case parseCommon (T.unpack text) of
-      Nothing -> Left (PyErr ValueError ("Unable to parse string [" <> text <> "]"))
+      Nothing -> Left (PyErr ParserError ("Unable to parse string [" <> text <> "]"))
       Just r -> r
 
 data RustResult
@@ -504,7 +530,7 @@ parseCommon input = case [caps | (rest, caps) <- run common input [], null rest]
        in case get "time" of
             Nothing -> case get "date" of
               Just _ -> ParsedDatetime <$> datetimeFromFields 0 (dateFields get)
-              Nothing -> Left (PyErr ValueError "empty")
+              Nothing -> ParsedDatetime <$> datetimeFromFields 0 [0, 1, 1]
             Just _ -> case get "minute" of
               Nothing -> Left (PyErr TypeError "int() argument must be a string, a bytes-like object or a real number, not 'NoneType'")
               Just minute
@@ -548,17 +574,22 @@ digits lo hi = Re $ \s caps ->
    in [(drop n s, caps) | n <- [available, available - 1 .. lo]]
 
 -- | celpy's @DurationType(str)@: @^[-+]?([0-9]*(\\.[0-9]*)?[a-z]+)+$@, then
--- the sum of each @number unit@ pair.
-parseDurationString :: Text -> Either PyErr Timedelta
-parseDurationString text = do
+-- the sum of each @number unit@ pair. @shown@ is @repr()@ of the source
+-- object (a @StringType@ or a plain @str@), which the error messages spell
+-- until a sign is consumed: slicing the sign off leaves a plain @str@.
+parseDurationString :: Text -> Text -> Either PyErr Timedelta
+parseDurationString shown text = do
   let s = T.unpack text
-      body = case s of
-        c : rest | c == '+' || c == '-' -> rest
-        _ -> s
+      (signed, body) = case s of
+        c : rest | c == '+' || c == '-' -> (True, rest)
+        _ -> (False, s)
       sign = if take 1 s == "-" then -1 else 1 :: Double
       bodyNoNewline = if not (null body) && last body == '\n' then init body else body
-  if validPattern bodyNoNewline then Right () else Left (PyErr ValueError ("Invalid duration " <> pythonStrRepr text))
-  terms <- traverse term (segments body)
+      -- The @KeyError@ of an unknown unit, re-raised with the string as it is
+      -- after the sign was consumed.
+      unknownUnit = PyErr ValueError ("Invalid duration " <> if signed then pythonStrRepr (T.pack body) else shown)
+  if validPattern bodyNoNewline then Right () else Left (PyErr ValueError ("Invalid duration " <> shown))
+  terms <- traverse (term unknownUnit) (segments body)
   let seconds = sign * fromRational (sum (map toRational terms))
   if abs seconds > fromIntegral maxDurationSeconds || isNaN seconds
     then Left (PyErr ValueError "range error: {seconds}")
@@ -579,13 +610,14 @@ parseDurationString text = do
       let (number, r1) = span (\c -> isDigit c || c == '.') str
           (unit, r2) = span isAsciiLower r1
        in if null unit then segments (drop 1 str) else (number, unit) : segments r2
-    term (number, unit) = do
-      scale <- maybe (Left (PyErr ValueError ("Invalid duration " <> pythonStrRepr text))) Right (lookup unit scales)
+    -- @float(number) * scale[unit]@: the number is converted first.
+    term unknownUnit (number, unit) = do
       value <-
         maybe
           (Left (PyErr ValueError ("could not convert string to float: " <> pythonStrRepr (T.pack number))))
           Right
           (if null number then Nothing else parseFloatText (T.pack number))
+      scale <- maybe (Left unknownUnit) Right (lookup unit scales)
       Right (value * scale)
     scales :: [(String, Double)]
     scales = [("ns", 1e-9), ("us", 1e-6), ("ms", 1e-3), ("s", 1), ("m", 60), ("h", 3600), ("d", 86400)]
@@ -594,31 +626,14 @@ parseDurationString text = do
 maxDurationSeconds :: Integer
 maxDurationSeconds = 315576000000
 
--- | @TimestampType.tz_parse@: the UTC offset (seconds) of a timezone name or
--- @[+-]hh:mm@ offset; 'Nothing' (or an empty name) is UTC.
-timezoneOffset :: Maybe Text -> Either PyErr Integer
-timezoneOffset = \case
-  Nothing -> Right 0
-  Just "" -> Right 0
-  Just name
-    | name `elem` utcNames -> Right 0
-    | Just hours <- etcGmt name -> Right (hours * 3600)
-    | Just hours <- lookup name fixedZones -> Right (hours * 3600)
-    | otherwise -> offsetPattern name
+-- | @TimestampType.tz_name_lookup@ of a @str@ (shown as its repr in
+-- the error): the zone @pendulum.timezone@ names, else a @[+-]hh:mm@
+-- offset (@tz_offset_parse@).
+timezoneNamed :: Text -> Text -> Either PyErr TimeZone
+timezoneNamed shown name = namedZone name >>= maybe (FixedZone <$> offsetPattern name) Right
   where
-    utcNames =
-      [ "UTC", "Etc/UTC", "GMT", "Etc/GMT", "Universal", "Etc/Universal", "Zulu", "Etc/Zulu", "UCT", "Etc/UCT"
-      , "Greenwich", "Etc/Greenwich", "GMT0", "Etc/GMT0", "GMT+0", "GMT-0", "Etc/GMT+0", "Etc/GMT-0"
-      ]
-    fixedZones = [("EST", -5), ("MST", -7), ("HST", -10)]
-    etcGmt name = case T.stripPrefix "Etc/GMT" name of
-      Just rest
-        | Just n <- T.stripPrefix "+" rest, valid n, read (T.unpack n) <= (12 :: Integer) -> Just (negate (read (T.unpack n)))
-        | Just n <- T.stripPrefix "-" rest, valid n, read (T.unpack n) <= (14 :: Integer) -> Just (read (T.unpack n))
-      _ -> Nothing
-    valid n = not (T.null n) && T.all isDigit n && T.length n <= 2 && T.head n /= '0'
-    offsetPattern name =
-      let s = T.unpack name
+    offsetPattern text =
+      let s = T.unpack text
           s' = if not (null s) && last s == '\n' then init s else s
           (sign, rest) = case s' of
             c : r | c == '+' || c == '-' -> (c, r)
@@ -633,6 +648,21 @@ timezoneOffset = \case
               , all (isJust . decimal) mm ->
                   let minutes = (value hh * 60 + value mm) * (if sign == '-' then -1 else 1)
                    in if abs minutes >= 24 * 60
-                        then Left (PyErr ValueError "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24).")
+                        then
+                          Left
+                            ( PyErr
+                                ValueError
+                                ( "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not "
+                                    <> timedeltaRepr (Timedelta (minutes * 60 * microsPerSecond))
+                                )
+                            )
                         else Right (minutes * 60)
-            _ -> Left (PyErr ValueError ("Unparsable timezone: " <> pythonStrRepr name))
+            _ -> Left (PyErr ValueError ("Unparsable timezone: " <> shown))
+
+-- | @pendulum.timezone(name)@: UTC for any casing of @utc@, else
+-- @ZoneInfo(name)@; 'Nothing' when no zone has that key
+-- (@InvalidTimezone@).
+namedZone :: Text -> Either PyErr (Maybe TimeZone)
+namedZone name
+  | T.toLower name == "utc" = Right (Just (FixedZone 0))
+  | otherwise = fmap NamedZone <$> lookupZone name

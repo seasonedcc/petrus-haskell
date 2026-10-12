@@ -659,6 +659,17 @@ applicationSubprocessClient c = ApplicationClient {run = runApplicationSubproces
 protocol :: Text -> IO a
 protocol = throwIO . runtimeProtocolError
 
+-- | A set-membership test over the value: CPython 3.14's @TypeError@ for a
+-- list or a dict (which @_execute@ settles as @runtime-failed@), nothing
+-- otherwise.
+unhashable :: Json -> IO ()
+unhashable = \case
+  Array _ -> refuse "list"
+  Object _ -> refuse "dict"
+  _ -> pure ()
+  where
+    refuse name = throwAgenticus TypeError ("cannot use '" <> name <> "' as a set element (unhashable type: '" <> name <> "')")
+
 -- | @_write@: every encoding, bound or pipe failure is @helper-pipe-failed@.
 writeFrame :: ApplicationSubprocessClient -> Json -> IO ()
 writeFrame c frame = do
@@ -693,10 +704,14 @@ runApplicationSubprocess c gateway' invocation current deadline = do
   terminal <- case final.terminal of
     Just value | B.null final.buffer -> pure value
     _ -> protocol "terminal-missing"
+  -- @self._process.wait(timeout=grace)@: a helper still running raises
+  -- @TimeoutExpired@, which no @except@ here catches, so @_execute@ settles
+  -- it as @runtime-failed@.
   exited <- waitExit c.helper.process cfg.cancellationGrace
   case exited of
     Just code | exitInt code == 0 -> pure terminal
-    _ -> protocol "helper-exit-inconsistent"
+    Just _ -> protocol "helper-exit-inconsistent"
+    Nothing -> throwAgenticus (OtherError "TimeoutExpired") "helper did not exit within the cancellation grace"
   where
     cfg = c.config
     stopped :: IO a
@@ -748,6 +763,9 @@ runApplicationSubprocess c gateway' invocation current deadline = do
     frame s fields = do
       let kind = lookup "type" fields
       when (s.abortSent && kind /= Just (String "failed")) stopped
+      -- @kind in {"tool_call", "guard_blocked"}@ cannot hash a list or a
+      -- dict (the @"ready"@ comparison before it is just false).
+      forM_ kind unhashable
       case kind of
         Just (String "ready") | not s.ready && keys fields == ["type"] -> pure s {ready = True}
         Just (String name) | name `elem` ["tool_call", "guard_blocked"] -> toolFrame s fields (name == "guard_blocked")
@@ -756,11 +774,14 @@ runApplicationSubprocess c gateway' invocation current deadline = do
           case complete (member "text" fields) (member "transcript" fields) of
             Right (text, combined) -> pure s {terminal = Just (ApplicationCandidate text combined (reverse s.results))}
             Left () -> protocol "malformed-complete"
-        Just (String "failed")
-          | keys fields == ["code", "type"]
-          , String code <- member "code" fields
-          , code `elem` ["aborted", "provider-failed", "protocol-failed"] ->
-              if code == "aborted" && s.abortSent then stopped else protocol code
+        Just (String "failed") | keys fields == ["code", "type"] -> do
+          -- @frame.get("code") in {...}@ cannot hash a list or a dict.
+          unhashable (member "code" fields)
+          case member "code" fields of
+            String code
+              | code `elem` ["aborted", "provider-failed", "protocol-failed"] ->
+                  if code == "aborted" && s.abortSent then stopped else protocol code
+            _ -> protocol "frame-order"
         _ -> protocol "frame-order"
     toolFrame s fields blocked = do
       let identity = member "id" fields
@@ -773,6 +794,17 @@ runApplicationSubprocess c gateway' invocation current deadline = do
           | s.ready && keys fields == ["id", "method", "params", "type"] && not (T.null i)
           , Just refusal <- encodeRefusal i ->
               throwIO refusal
+        _ -> pure ()
+      -- @method not in _METHODS@ (a frozenset) raises @TypeError@ for a
+      -- list or a dict, once every earlier operand of the @or@ is false.
+      case identity of
+        String i
+          | s.ready
+              && keys fields == ["id", "method", "params", "type"]
+              && not (T.null i)
+              && utf8Length i <= 128
+              && not (i `Set.member` s.seen) ->
+              unhashable method
         _ -> pure ()
       callId <- case (identity, method, params) of
         (String i, String m, Object _)
