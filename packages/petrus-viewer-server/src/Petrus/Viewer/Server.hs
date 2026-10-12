@@ -1,5 +1,3 @@
-{-# LANGUAGE MultiWayIf #-}
-
 -- | The viewer backend as one HTTP server: everything the browser UI and the
 -- agents talk to, in the precedence the Vite dev server gives it.
 --
@@ -13,12 +11,8 @@
 --   and the path is one it serves, else the Temporal HTTP API proxy.
 -- * Everything else → the built UI.
 --
--- Connections arrive at the HTTP front ("Petrus.Viewer.HttpFront"), one
--- event loop that answers the two endpoints itself with Node's framing (no
--- thread wake-up or I/O manager registration per request). A connection
--- that sends anything else, or a request the front does not parse
--- conservatively, is handed to Warp together with the bytes already read,
--- and stays with Warp from then on.
+-- Warp serves HTTP; a WebSocket upgrade's socket is handed to a relay loop
+-- ("Petrus.Viewer.Relay").
 module Petrus.Viewer.Server
   ( ServerConfig (..)
   , defaultServerConfig
@@ -34,7 +28,6 @@ module Petrus.Viewer.Server
   ) where
 
 import Control.Concurrent.Async (mapConcurrently_, withAsync)
-import Control.Concurrent.Chan (Chan, newChan, readChan, writeChan)
 import Control.Exception (IOException, bracket, bracketOnError, throwIO, try)
 import Control.Concurrent (forkOnWithUnmask, getNumCapabilities, threadDelay)
 import Control.Monad (forM, forever, void)
@@ -50,11 +43,9 @@ import Network.HTTP.Types qualified as H
 import Network.Socket qualified as S
 import Network.Wai qualified as W
 import Network.Wai.Handler.Warp qualified as Warp
-import Network.Wai.Handler.Warp.Internal qualified as WarpI
 import Data.CaseInsensitive qualified as CI
 import Petrus.Viewer.Endpoints
 import Petrus.Viewer.History.Observation
-import Petrus.Viewer.HttpFront
 import Petrus.Viewer.Log
 import Petrus.Viewer.Proxy
 import Petrus.Viewer.Relay
@@ -250,62 +241,23 @@ collabApp sockets relay req k
 -- round robin: a request then runs start to finish on one capability (with
 -- that capability's I/O manager), instead of being woken on whichever
 -- capability is free, and connections still spread over all of them.
--- A connection is forgotten in 'Sockets' when Warp is done with it.
-warpSettings :: Sockets -> IO Warp.Settings
-warpSettings (Sockets ref) = do
+--
+-- Accepted sockets are recorded in 'Sockets' until Warp is done with them.
+newWarpSettings :: Sockets -> IO Warp.Settings
+newWarpSettings (Sockets ref) = do
   counter <- newIORef (0 :: Int)
   let spread :: ((forall a. IO a -> IO a) -> IO ()) -> IO ()
       spread io = do
         caps <- getNumCapabilities
         n <- atomicModifyIORef' counter (\c -> (c + 1, c))
         void (forkOnWithUnmask (n `mod` caps) io)
-      forget addr = atomicModifyIORef' ref (\m -> (Map.delete addr m, ()))
-  pure . Warp.setFork spread . Warp.setOnClose forget . Warp.setOnException (\_ _ -> pure ()) $
-    Warp.setServerName "" Warp.defaultSettings
-
--- | 'warpSettings' for Warp's own accept loop: accepted sockets are
--- recorded in 'Sockets' until Warp is done with them.
-newWarpSettings :: Sockets -> IO Warp.Settings
-newWarpSettings sockets@(Sockets ref) = do
-  let accept listener = do
+      accept listener = do
         (s, addr) <- S.accept listener
         atomicModifyIORef' ref (\m -> (Map.insert addr s m, ()))
         pure (s, addr)
-  Warp.setAccept accept <$> warpSettings sockets
-
--- | Warp serving the connections the HTTP front hands it: each arrives
--- with the bytes the front already read, which Warp reads first.
-warpForHandOffs :: Sockets -> Warp.Settings -> Chan (S.Socket, S.SockAddr, B.ByteString) -> W.Application -> IO ()
-warpForHandOffs (Sockets ref) settings handOffs =
-  WarpI.runSettingsConnectionMaker settings $ do
-    (sock, peer, buffered) <- readChan handOffs
-    atomicModifyIORef' ref (\m -> (Map.insert peer sock m, ()))
-    let connect = do
-          conn <- WarpI.socketConnection settings sock
-          pending <- newIORef buffered
-          let recvFirst = do
-                b <- atomicModifyIORef' pending (B.empty,)
-                if B.null b then WarpI.connRecv conn else pure b
-          pure conn {WarpI.connRecv = recvFirst}
-    pure (connect, peer)
-
--- | What the HTTP front answers itself: the open-file and resolve-ref
--- requests that do not need the network.
-frontConfig :: OpenFileState -> (S.Socket -> S.SockAddr -> B.ByteString -> IO ()) -> FrontConfig
-frontConfig openState handOff =
-  FrontConfig
-    { frontClaims = \method target ->
-        target == openFilePath || (target == resolveRefPath && (method == "POST" || method == "OPTIONS"))
-    , frontHandle = \(Request method target body) ->
-        if
-          | target == openFilePath -> Respond <$> openFileReply openState method (pure body)
-          | method == "OPTIONS" -> pure (Respond resolveRefOptions)
-          | otherwise ->
-              resolveRefStep body >>= \case
-                ResolveDone r -> pure (Respond (resolveReply r))
-                ResolveFetch _ -> pure PassToWarp
-    , frontHandOff = handOff
-    }
+      forget addr = atomicModifyIORef' ref (\m -> (Map.delete addr m, ()))
+  pure . Warp.setFork spread . Warp.setAccept accept . Warp.setOnClose forget . Warp.setOnException (\_ _ -> pure ()) $
+    Warp.setServerName "" Warp.defaultSettings
 
 -- | Start the server, run the action with it, stop it afterwards.
 withServer :: ServerConfig -> (ServerHandle -> IO a) -> IO a
@@ -325,11 +277,10 @@ withServer cfg action = do
   withRelay AgentRelay logger $ \agent -> withCollab $ \collab ->
     bracket (bindListeners (serverHost cfg) (serverPort cfg) (serverStrictPort cfg)) (mapM_ S.close . snd) $ \(port, socks) -> do
       let app = viewerApp cfg mgr sockets agent collab openState observation
-      settings <- Warp.setPort port <$> warpSettings sockets
-      handOffs <- newChan
-      withAsync (warpForHandOffs sockets settings handOffs app) $ \_ ->
-        withFront socks (frontConfig openState (\s peer buffered -> writeChan handOffs (s, peer, buffered))) $
-          action (ServerHandle port agent collab openState)
+      settings <- newWarpSettings sockets
+      let serve s = Warp.runSettingsSocket (Warp.setPort port settings) s app
+      withAsync (mapConcurrently_ serve socks) $ \_ ->
+        action (ServerHandle port agent collab openState)
 
 -- | Serve until interrupted; @onReady@ runs once the sockets listen.
 runServer :: ServerConfig -> (Int -> IO ()) -> IO ()

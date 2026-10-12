@@ -51,7 +51,6 @@ library
                     Petrus.Viewer.Relay.Frame
                     Petrus.Viewer.Relay.Handshake
                     Petrus.Viewer.Endpoints
-                    Petrus.Viewer.HttpFront
                     Petrus.Viewer.Static
                     Petrus.Viewer.UiDir
                     Petrus.Viewer.Proxy
@@ -92,7 +91,6 @@ library
   c-sources:        cbits/json_escape.c
                     cbits/file_io.c
                     cbits/relay_io.c
-                    cbits/http_front.c
   cc-options:       -O3 -Wall
 
 executable petrus

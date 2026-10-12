@@ -100,7 +100,7 @@ listed here.
   socket, `petrus-mcp` puts it in non-blocking mode and serves it from its
   event loop, as libuv does for Node's pipes; a file or a terminal is read
   and written as before. `PETRUS_PERF` lines on standard error follow the
-  relay timing log's rule below: synchronous to a file or a terminal,
+  relay timing log's rule above: synchronous to a file or a terminal,
   written in batches by a background thread to a pipe.
 - **`/temporal` proxy connections.** Vite's proxy (`http-proxy` without an
   agent) asks Temporal to close every connection and answers the browser
@@ -113,18 +113,21 @@ listed here.
   codings pass through as in Vite: the browser's `Accept-Encoding` goes to
   Temporal as sent (none when it sent none), and Temporal's body comes back
   undecompressed with its `Content-Encoding` (`test/ProxySpec.hs`).
-- **Response framing.** `/__petrus/open-file` and `/__petrus/resolve-ref`
-  answer with Node's bytes: status line, headers in Node's order (the
-  handler's, `Date`, `Connection: keep-alive` + `Keep-Alive: timeout=5` or
-  `Connection: close`, `Content-Length`), body, `100 Continue` for
-  `Expect: 100-continue`, and Node's 5 s idle keep-alive close
-  (`upstream-tests/http-wire.test.mjs` compares them byte for byte). The
-  exceptions are requests the HTTP front leaves to Warp: chunked bodies,
-  malformed or unusual requests, and resolve-ref requests that must fetch
-  an `http(s)` URL. Those, and every other route, carry `Content-Length`
-  (as Node's `res.end(body)` does) but not Node's `Connection: keep-alive`
-  / `Keep-Alive: timeout=5` headers; HTTP/1.1 keep-alive is the default
-  either way.
+- **Response framing.** Warp frames every response, Node's endpoints
+  included. The status code, reason, the handler's headers (in Node's
+  order), and the body are Node's (`upstream-tests/http-wire.test.mjs`
+  compares them, with whether the connection closes); the framing around
+  them is Warp's:
+  - `Date` comes first, not after the handler's headers; there is no
+    `Connection: keep-alive` / `Keep-Alive: timeout=5` (HTTP/1.1
+    keep-alive is the default either way), and every response carries
+    `Content-Length`.
+  - An HTTP/1.0 request is answered with an `HTTP/1.0` status line. Node
+    answers `HTTP/1.1`, without `Content-Length`, and closes the
+    connection after every HTTP/1.0 response; Warp keeps a 1.0 connection
+    that asks for keep-alive.
+  - An idle keep-alive connection is closed after Warp's 30 s, not
+    Node's 5 s.
 - **Pipelined requests.** `petrus` answers pipelined requests strictly in
   order, each after the previous one's body has been read. Node runs a
   pipelined request's handler as soon as its head is parsed and delivers
