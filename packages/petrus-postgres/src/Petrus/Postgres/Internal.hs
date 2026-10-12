@@ -391,7 +391,9 @@ clearResults = mapM_ c_PQclear
 -- Result access goes through direct unsafe calls: these libpq functions only
 -- read the result (or the already-received input) and never block, and the
 -- per-value safe calls of postgresql-libpq's accessors cost microseconds
--- each on large results.
+-- each on large results: @query.select-1000-decoded@ took 14.09 ms with
+-- them against 672 µs this way and the reference's 1.34 ms (Apple M4,
+-- 2026-10-12; bench/RESULTS.md).
 data PGresult
 
 foreign import ccall unsafe "PQisBusy" c_PQisBusy :: Ptr PGconn -> IO CInt

@@ -445,10 +445,11 @@ foreign import ccall unsafe "petrus_sqlite_bind_text"
 -- | Bind a text parameter (1-based) from the 'Text''s own UTF-8 array,
 -- which SQLite copies before returning (@SQLITE_TRANSIENT@, as CPython binds
 -- a @str@), instead of direct-sqlite's 'S.bindText', which first copies the
--- text into a pinned UTF-8 buffer of its own. Measured on the History
--- store's one-batch append (20 002 inserts of six parameters, Apple M4,
--- 2026-10-12): 4–6% of the row (73.5 to 69.0 ms with per-record encoding,
--- 61.8 to 59.3 ms with 'Petrus.Json.dumpsMany').
+-- text into a pinned UTF-8 buffer of its own. That is worth 2–6% on the
+-- gated @tx.immediate-insert-100@ row, which sits within a few percent of
+-- the reference: 312 µs against 332 µs with 'S.bind' (medians of ten
+-- interleaved repetitions), then 328 against 333 µs beside CPython's 341 µs
+-- (six; Apple M4, 2026-10-12; bench/RESULTS.md).
 bindTextParam :: Statement -> Int -> Text -> IO ()
 bindTextParam statement@(Direct.Statement handle) index (TI.Text (TA.ByteArray array) offset size) =
   c_petrus_sqlite_bind_text handle (fromIntegral index) array offset (fromIntegral size) >>= \case

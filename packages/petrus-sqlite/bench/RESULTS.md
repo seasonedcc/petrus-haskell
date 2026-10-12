@@ -85,6 +85,26 @@ the same time, within noise, on both SQLite builds and from CPython.
 Durability is the same on both sides: `synchronous=FULL`, WAL, and plain
 `fsync`, never `F_FULLFSYNC`.
 
+### The direct text bind, measured again (2026-10-12)
+
+`execute` binds text parameters straight from the `Text`'s UTF-8 array
+(`cbits/petrus_sqlite.c`) instead of through direct-sqlite's `bind`, which
+first copies each text into a pinned buffer. Measured again against
+direct-sqlite's `bind`, on the Apple M4 at a load average of 3.1–5.6, each
+binary interleaved, alternating which goes first:
+
+- `tx.immediate-insert-100`, ten repetitions: 312 µs with the direct bind
+  against 332 µs with `bind` (the direct bind faster in all ten pairs);
+  then six more, three-way with the Python twin: 328 µs, 333 µs and
+  CPython's 341 µs (1.04× against 1.03×).
+- `tx.immediate-insert-commit` (33.5 µs both), `query.select-by-key` and
+  `query.select-1000`: level.
+
+`tx.immediate-insert-100` is one of the rows `scripts/bench-gate` gates on
+the Linux runners, and it is within a few percent of the reference either
+way (an `fsync` per commit on both sides), so the bind stays, with this
+figure in its comment.
+
 ## Wall-clock time, and the earlier figures
 
 The table before this one (2026-10-11, seven repetitions at load 3.9–5.1,

@@ -38,6 +38,37 @@ analysis that came with them.
 | `notify.roundtrip` | 19.6 µs | 28.6 µs | 1.46× | 1.40× | 20.5 µs, 19.6 µs, 19.5 µs | 28.8 µs, 28.6 µs, 28.2 µs |
 | `params.convert-placeholders` | 271 ns | 3.89 µs | 14.36× | 14.24× | 270 ns, 271 ns, 273 ns | 3.89 µs, 3.89 µs, 3.89 µs |
 
+### The socket wait and the result accessors, measured (2026-10-12)
+
+Two low-level choices were measured against the plain alternatives, three
+builds of this benchmark run interleaved over five repetitions (rotating
+which goes first) against one `scripts/with-postgres` server, on the
+Apple M4 at a load average of 5.9–9.0. Medians of the tasty-bench means:
+
+| Row | As built | IO manager wait | postgresql-libpq accessors | Python (table above) |
+|---|---:|---:|---:|---:|
+| `roundtrip.select-1` | 17.6 µs | 20.2 µs | 19.0 µs | 25.2 µs |
+| `roundtrip.select-param` | 17.7 µs | 20.9 µs | 18.8 µs | 26.4 µs |
+| `query.select-1000-decoded` | 672 µs | 698 µs | 14.09 ms | 1.34 ms |
+| `tx.join-insert-commit` | 56.4 µs | 68.3 µs | 59.7 µs | 69.6 µs |
+| `tx.owned-insert-10` | 276 µs | 325 µs | 285 µs | 359 µs |
+| `fence.acquire-release` | 35.3 µs | 46.2 µs | 41.7 µs | 53.8 µs |
+| `notify.roundtrip` | 20.8 µs | 45.2 µs | 22.0 µs | 28.6 µs |
+
+- **The wait** is petrus-posix's `waitReadable`, a `poll` on the calling OS
+  thread, as psycopg waits. Parking on GHC's IO manager instead
+  (`threadWaitRead`) costs an event round trip per wake-up: 15–31% on
+  every row that talks to the server, and twice the time on
+  `notify.roundtrip`, which put that row behind the reference (0.63×) and
+  the gated `tx.join-insert-commit` level with it (1.02×).
+- **The result accessors** are direct `unsafe` imports of libpq's
+  read-only accessors (`PQgetvalue`, `PQgetisnull`, …).
+  postgresql-libpq's own are safe calls on a `ForeignPtr`, three per value:
+  the 1 000-row decode took 14.09 ms with them, a tenth of the reference's
+  speed.
+
+Both stay, with these figures beside them in the code.
+
 ## Earlier figures
 
 - Date: 2026-10-11 01:02–01:05 local (UTC-3), on the commit that adds the

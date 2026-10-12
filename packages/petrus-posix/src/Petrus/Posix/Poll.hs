@@ -6,8 +6,10 @@
 --
 -- The callers (the Postgres client and the Gondolin control socket) wait
 -- on every round trip. Parking on GHC's IO manager instead costs an event
--- round trip of several microseconds per wake-up, which psycopg and CPython
--- do not pay. The wait is an @interruptible@ foreign call, which an
+-- round trip per wake-up, which psycopg and CPython do not pay: 15–31% on
+-- petrus-postgres's server rows and twice the time on @notify.roundtrip@,
+-- which then trailed psycopg (0.63×; Apple M4, 2026-10-12, that package's
+-- bench/RESULTS.md). The wait is an @interruptible@ foreign call, which an
 -- asynchronous exception interrupts. Under the non-threaded runtime, where
 -- such a call would stop every Haskell thread, it parks on the IO manager
 -- instead (some benchmark executables here are not threaded).
