@@ -22,7 +22,7 @@ several runners ([Continuous integration](#continuous-integration)).
 | libzmq, libpq, SQLite | system packages | the ZeroMQ, PostgreSQL and SQLite bindings |
 | PostgreSQL 17 (`initdb`, `pg_ctl`) **or** Docker | 17.x | the PostgreSQL suites and benchmarks |
 | Node.js | 22 (CI pins 22.19.0) | the Gondolin sidecar and Pi helper suites; the petrus-viewer suites and the viewer benchmark (with pnpm) |
-| pnpm | 11.5.1 | the petrus-viewer suites (`--viewer`) and the viewer benchmark |
+| pnpm | 11.5.1 exactly | the petrus-viewer suites (`--viewer`) and the viewer benchmark. It is the upstream viewer's `packageManager` pin, so `corepack enable` provides exactly it; CI installs `pnpm@11.5.1` |
 | Graphviz (`dot`) | any | petrus-impetus's diagram rendering tests |
 | bash | 4.4 or later | hamsterdan-operator's secret-launch tests (macOS ships bash 3.2). They use `$PETRUS_BASH` when it is set, else the first bash of at least 4.4 among `bash` on `PATH`, `/opt/homebrew/bin/bash` and `/usr/local/bin/bash` |
 
@@ -51,7 +51,10 @@ PostgreSQL 17 from the [PGDG apt repository](https://www.postgresql.org/download
 Haskell dependency versions are pinned in `cabal.project.freeze` (every
 Hackage package's exact version, plus the Hackage `index-state`), so a clean
 checkout builds against the same libraries CI and the committed benchmarks
-used. Run `cabal update` once so the index reaches that state. To move the
+used. Run `cabal update` once so the index reaches that state. (`cabal
+update` moves your user-wide package index to the latest state; this project
+still resolves at the freeze file's `index-state`, so other projects are
+unaffected unless they leave `index-state` unpinned.) To move the
 pins, run `cabal freeze`, keep only the version lines and the `index-state`
 (the flag lines describe the machine that ran it), and let CI confirm.
 
@@ -82,11 +85,17 @@ export PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@127.0.0.1:5432/postgr
 ## Clone
 
 ```sh
-git clone --recursive https://github.com/seasonedcc/petrus-haskell.git
+gh repo clone seasonedcc/petrus-haskell -- --recurse-submodules
 cd petrus-haskell
 ```
 
-`--recursive` checks out the four pinned upstream projects under
+The repository is private, so the clone needs an account with access to it:
+`gh` (GitHub's CLI, logged in with `gh auth login`) supplies the
+credentials, or clone over SSH with a key the account knows
+(`git clone --recursive git@github.com:seasonedcc/petrus-haskell.git`). An
+anonymous `https://` clone is refused.
+
+`--recurse-submodules` (`--recursive`) checks out the four pinned upstream projects under
 `upstream/` ([UPSTREAM.md](../UPSTREAM.md)). In an existing clone,
 `git submodule update --init --recursive` does the same.
 
@@ -98,6 +107,14 @@ scripts/check-all -j2
 
 It runs, in order, and stops at the first failing step:
 
+0. A preflight for the tools the later steps need: a bash of at least 4.4
+   (looked up as the secret-launch tests do: `$PETRUS_BASH`, `bash` on
+   `PATH`, `/opt/homebrew/bin/bash`, `/usr/local/bin/bash`), uv, and
+   `PETRUS_TEST_POSTGRES`, PostgreSQL's `initdb`/`pg_ctl` or Docker. A
+   missing one stops the script here, before the build, with what to
+   install, instead of failing the test step half an hour in and skipping
+   every step after it. On stock macOS that means `brew install bash` (or
+   `PETRUS_BASH=/path/to/bash`).
 1. `scripts/check-pins`: the submodules sit at the commits UPSTREAM.md pins.
 2. `scripts/lint-skips`: no test goes pending, or skips, because a Python
    reference is missing (see [No silent skips](#no-silent-skips)).
@@ -134,6 +151,29 @@ It runs, in order, and stops at the first failing step:
     ledgers account for every in-scope upstream test.
 
 `-j2` limits cabal's parallelism; leave it out to use every core.
+`--ghc-options=...` is passed to every cabal command that builds, so a heap
+cap for GHC itself goes there:
+
+```sh
+scripts/check-all -j2 --ghc-options='+RTS -M3G -RTS'
+```
+
+(The test binaries already run with `+RTS -M2G -RTS`.) What a full run
+takes, measured on an Apple M4 with 24 GB of memory at `-j2`, with the
+Hackage dependencies already in the cabal store (October 2026):
+
+- **Time**: about 25 minutes of wall-clock time for steps 0 to 7 (the build
+  about 11 minutes, the test suites most of the rest), and 2 to 3 minutes
+  for steps 8 to 14. A cold cabal store adds the Hackage dependencies' build,
+  roughly another 20 minutes.
+- **Disk**: about 6.5 GB for `dist-newstyle`, about 1 GB for the cabal
+  store's Hackage dependencies, about 1 GB for the four upstream Python
+  environments (plus uv's download cache), and about 3 GB for GHC itself;
+  keep at least 15 GB free.
+- **Memory**: GHC needs up to about 3 GB for the largest modules, so at
+  `-j2` allow about 8 GB for the build (with the `-M3G` cap above GHC fails
+  rather than swapping); the test step runs up to `-j` suites at once, each
+  capped at 2 GB.
 `--viewer` adds, after the tests, the upstream petrus-viewer suites against
 the Haskell backend (`scripts/interop --viewer petrus-viewer-server`, below);
 they need Node 22, pnpm, `pnpm install --frozen-lockfile && pnpm build` in

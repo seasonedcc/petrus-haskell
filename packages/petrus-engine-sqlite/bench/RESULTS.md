@@ -33,7 +33,7 @@ From the repository root (`scripts/bench petrus-engine-sqlite` runs exactly this
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-engine-sqlite --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-engine-sqlite --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-engine-sqlite/bench/python_bench.py)
 ```
 

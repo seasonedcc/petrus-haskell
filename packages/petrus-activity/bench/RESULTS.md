@@ -28,7 +28,7 @@ block; `scripts/upstream-python` provisions the pinned reference):
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-activity --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-activity --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-activity/bench/python_bench.py)
 ```
 

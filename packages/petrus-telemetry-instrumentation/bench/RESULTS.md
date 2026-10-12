@@ -117,7 +117,7 @@ reference):
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-telemetry-instrumentation --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-telemetry-instrumentation --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-telemetry-instrumentation/bench/python_bench.py)
 ```
 

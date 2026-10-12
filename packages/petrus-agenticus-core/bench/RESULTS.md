@@ -31,8 +31,8 @@ From the repository root (`scripts/bench petrus-agenticus-core` runs exactly thi
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-agenticus-core --benchmark-options='+RTS -M2G -RTS'
-cabal bench -j2 petrus-agenticus-core --benchmark-options='custody FULL 100 1000 +RTS -M2G -RTS'
+scripts/bench-run petrus-agenticus-core +RTS -M2G -RTS
+scripts/bench-run petrus-agenticus-core custody FULL 100 1000 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_catalog.py)
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_effect.py)
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_hands.py)
@@ -52,6 +52,6 @@ The custody workload is a stateful driver that runs outside tasty-bench and
 takes the sync mode and the cycle counts as arguments:
 
 ```sh
-cabal bench -j2 petrus-agenticus-core --benchmark-options='custody FULL 100 1000 +RTS -M2G -RTS'
+scripts/bench-run petrus-agenticus-core custody FULL 100 1000 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_custody.py FULL 100 1000)
 ```

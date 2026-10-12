@@ -118,6 +118,6 @@ is unset, both scripts start a throwaway one with `scripts/with-postgres`.
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-postgres --benchmark-options '--stdev 5 --timeout 300 +RTS -M2G -RTS'
+scripts/bench-run petrus-postgres --stdev 5 --timeout 300 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-postgres/bench/python_bench.py)
 ```

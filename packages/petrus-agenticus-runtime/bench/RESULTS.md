@@ -67,7 +67,7 @@ Python side's `time.perf_counter`:
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-agenticus-runtime --benchmark-options='--time-mode wall +RTS -M2G -RTS'
+scripts/bench-run petrus-agenticus-runtime --time-mode wall +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_runner.py)
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi.py)
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi_a2.py)

@@ -36,7 +36,7 @@ From the repository root (`scripts/bench petrus-dsl` runs exactly this;
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-dsl --benchmark-options='+RTS -M2G -RTS'
+scripts/bench-run petrus-dsl +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-dsl/bench/python_bench.py)
 ```
 

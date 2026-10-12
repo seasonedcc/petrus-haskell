@@ -59,7 +59,7 @@ From the repository root (`scripts/bench petrus-history-postgres` runs exactly t
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-history-postgres --benchmark-options '--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-history-postgres --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-history-postgres/bench/python_bench.py)
 ```
 

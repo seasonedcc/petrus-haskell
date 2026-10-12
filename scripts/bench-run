@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Build a package's benchmark once and run its executable with options.
+
+    scripts/bench-run PKG [BENCHMARK OPTIONS ...]
+    scripts/bench-run --no-build PKG [BENCHMARK OPTIONS ...]
+
+The way ``cabal bench PKG --benchmark-options='...'`` runs it, without
+putting the options into cabal's configuration: ``cabal bench`` records
+``--benchmark-options`` as part of the package's configuration, so every
+change of options reconfigured and relinked the package's whole local
+dependency closure (and a concurrent build could catch a half-written
+package database). This builds the benchmark with ``cabal build -j2
+--enable-benchmarks PKG:bench:NAME`` (a no-op when it is current), finds the
+executable with ``cabal list-bin``, and runs it in the package directory with
+the environment ``cabal bench`` sets (``HASKELL_DIST_DIR``,
+``<pkg>_datadir``, the benchmark's ``build-tool-depends`` executables first
+on ``PATH``), passing the options through unchanged. Its exit status is the
+benchmark's. The rerun blocks in the packages' ``bench/RESULTS.md`` use it;
+``scripts/bench --smoke`` and ``scripts/bench-compare`` run the executable
+the same way.
+"""
+
+from __future__ import annotations
+
+import importlib.machinery
+import importlib.util
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.dont_write_bytecode = True
+
+
+def load_bench():
+    loader = importlib.machinery.SourceFileLoader("petrus_bench", str(ROOT / "scripts" / "bench"))
+    spec = importlib.util.spec_from_loader("petrus_bench", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def main(argv: list[str]) -> int:
+    build = True
+    if argv and argv[0] == "--no-build":
+        build = False
+        argv = argv[1:]
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__, file=sys.stderr)
+        return 0 if argv else 2
+    package, options = argv[0], argv[1:]
+    bench = load_bench()
+    cabal_files = list((ROOT / "packages" / package).glob("*.cabal"))
+    if not cabal_files:
+        print(f"bench-run: no package {package}", file=sys.stderr)
+        return 2
+    cabal_text = cabal_files[0].read_text()
+    stanza = re.search(r"^benchmark\s+(\S+)", cabal_text, re.MULTILINE)
+    if stanza is None:
+        print(f"bench-run: {package} has no benchmark stanza", file=sys.stderr)
+        return 2
+    target = f"{package}:bench:{stanza.group(1)}"
+    env = dict(os.environ) if os.environ.get("CI") else bench.environment()
+    tools = bench.bench_tools(cabal_text)
+    if build:
+        subprocess.run(["cabal", "build", "-j2", "--enable-benchmarks", target, *tools], cwd=ROOT, env=env,
+                       check=True, stdout=sys.stderr)
+
+    def list_bin(component: str) -> str:
+        return subprocess.run(["cabal", "list-bin", "-v0", "--enable-benchmarks", component], cwd=ROOT, env=env,
+                              check=True, stdout=subprocess.PIPE, text=True).stdout.strip()
+
+    binary = list_bin(target)
+    tool_dirs = [str(Path(list_bin(tool)).parent) for tool in tools]
+    run_env = dict(env, HASKELL_DIST_DIR=str(Path(binary).parent.parent.parent),
+                   PATH=os.pathsep.join([*tool_dirs, env.get("PATH", "")]))
+    run_env[f"{package.replace('-', '_')}_datadir"] = str(ROOT / "packages" / package) + "/."
+    sys.stdout.flush()
+    return subprocess.call([binary, *options], cwd=ROOT / "packages" / package, env=run_env)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

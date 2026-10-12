@@ -51,7 +51,9 @@ from the repository root with ``BENCH_BIN`` set to the built executable), so
 that a benchmark cannot silently stop building or running. CI's nightly run
 does this.
 
-A block typically runs ``cabal bench <pkg>`` and then the Python twin once.
+A block typically runs ``scripts/bench-run <pkg> OPTIONS`` (the benchmark
+executable, built once; options never enter cabal's configuration) and then
+the Python twin once.
 For the packages whose ``bench/python_bench.py`` names its rows like the
 Haskell benchmarks, ``scripts/bench-compare <pkg> [N]`` interleaves N runs of
 both sides and prints the comparison table their results files show.

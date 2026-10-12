@@ -48,7 +48,7 @@ From the repository root (`scripts/bench petrus-json` runs exactly this block;
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-json --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-json --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-json/bench/python_bench.py)
 ```
 

@@ -89,7 +89,7 @@ status and error lines:
 ## Tests and benchmarks
 
     cabal test petrus-engine-file
-    cabal bench petrus-engine-file
+    scripts/bench-run petrus-engine-file
 
 The differential corpus and the live checks against the pinned petrus-engine
 are described in [PARITY.md](PARITY.md); the benchmark numbers are in

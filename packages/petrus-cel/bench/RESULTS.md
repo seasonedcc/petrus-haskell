@@ -22,7 +22,7 @@ From the repository root (`scripts/bench petrus-cel` runs exactly this;
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-cel --benchmark-options='+RTS -M2G -RTS'
+scripts/bench-run petrus-cel +RTS -M2G -RTS
 "$(scripts/upstream-python)" -B packages/petrus-cel/bench/time_cel.py
 ```
 

@@ -72,7 +72,7 @@ The Haskell `EffectProposal` caches its digest lazily.
 
 ```sh
 # Haskell (from the repository root)
-cabal bench petrus-agenticus-core-bench --benchmark-options='-p effect'
+scripts/bench-run petrus-agenticus-core -p effect
 
 # Python reference
 cd upstream/petrus

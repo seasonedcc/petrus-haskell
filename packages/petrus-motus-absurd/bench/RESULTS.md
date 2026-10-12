@@ -104,7 +104,7 @@ starts a throwaway one with `scripts/with-postgres`. A scratch database is creat
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-motus-absurd --benchmark-options '--stdev 5 --timeout 300 +RTS -M2G -RTS'
+scripts/bench-run petrus-motus-absurd --stdev 5 --timeout 300 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-motus-absurd/bench/python_bench.py)
 ```
 

@@ -14,7 +14,7 @@ From the repository root (`scripts/bench petrus-history-store` runs exactly this
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-history-store --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-history-store --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-history-store/bench/python_bench.py)
 ```
 
@@ -157,7 +157,7 @@ The workloads:
 
 The rerun block above covers these rows too. To run only the SQLite rows on the Haskell side:
 
-    cabal bench -j2 petrus-history-store --benchmark-options='-p sqlite +RTS -M2G -RTS'
+    scripts/bench-run petrus-history-store -p sqlite +RTS -M2G -RTS
 
 ### Results
 

@@ -14,7 +14,7 @@ From the repository root (`scripts/bench petrus-impetus` runs exactly this;
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-impetus --benchmark-options='+RTS -M2G -RTS'
+scripts/bench-run petrus-impetus +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-impetus/bench/python_bench.py)
 ```
 

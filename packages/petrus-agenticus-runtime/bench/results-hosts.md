@@ -212,8 +212,8 @@ the lowest single-repetition ratio.
 ## Rerun
 
 ```sh
-cabal bench petrus-agenticus-runtime-bench \
-  --benchmark-options="-p '/codex-/ || /claude-/ || /amp-/' --time-mode wall +RTS -M2G -RTS"
+scripts/bench-run petrus-agenticus-runtime \
+  -p '/codex-/ || /claude-/ || /amp-/' --time-mode wall +RTS -M2G -RTS
 cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-runtime/bench/python_hosts.py
 cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-runtime/bench/python_bench.py
 ```

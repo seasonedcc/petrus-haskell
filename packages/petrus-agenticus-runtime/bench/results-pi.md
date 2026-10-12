@@ -237,7 +237,7 @@ package, in wall-clock time (the rerun block in [RESULTS.md](RESULTS.md)). To
 run only the Pi rows:
 
 ```sh
-cabal bench -j2 petrus-agenticus-runtime --benchmark-options='-p /pi-/ --time-mode wall --stdev 3 +RTS -A32m -M2G -RTS'
+scripts/bench-run petrus-agenticus-runtime -p /pi-/ --time-mode wall --stdev 3 +RTS -A32m -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi.py)
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi_a2.py)
 ```

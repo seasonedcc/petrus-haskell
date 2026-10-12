@@ -39,7 +39,8 @@ libzmq, PostgreSQL 17 or Docker, Node.js), the build, the tests, the interop
 suites, the benchmarks and the parity check. In short:
 
 ```sh
-git clone --recursive https://github.com/seasonedcc/petrus-haskell.git
+gh repo clone seasonedcc/petrus-haskell -- --recurse-submodules   # a private repository: needs access
+# or: git clone --recursive git@github.com:seasonedcc/petrus-haskell.git
 cd petrus-haskell
 scripts/check-all -j2      # build, tests, conformance, interop, corpora, parity table
 scripts/check-all --viewer # also the upstream petrus-viewer suites (what CI runs)

@@ -24,10 +24,10 @@ From the repository root (`scripts/bench petrus-simulation` runs exactly this bl
 <!-- scripts/bench: rerun -->
 ```sh
 # simulate and round-trip rows: the Haskell rows, then the Python twin
-cabal bench -j2 petrus-simulation --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-simulation --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-simulation/bench/python_bench.py)
 # load: one Haskell client drives both services, 5 interleaved repetitions
-cabal bench -j2 petrus-simulation --benchmark-options='load 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-simulation load 5 +RTS -M2G -RTS
 ```
 
 `scripts/bench-compare petrus-simulation 3` interleaves three runs of the simulate and

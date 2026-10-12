@@ -106,7 +106,7 @@ provisions the pinned Hamsterdan and its environment:
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 hamsterdan-github --benchmark-options='+RTS -M2G -RTS'
+scripts/bench-run hamsterdan-github +RTS -M2G -RTS
 "$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-github/bench/bench.py
 ```
 

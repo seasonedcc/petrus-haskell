@@ -47,7 +47,7 @@ From the repository root (`scripts/bench petrus-motus-zeromq` runs exactly this;
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-motus-zeromq --benchmark-options '+RTS -M2G -RTS'
+scripts/bench-run petrus-motus-zeromq +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-motus-zeromq/bench/python_bench.py)
 ```
 

@@ -26,10 +26,10 @@ From the repository root (`scripts/bench petrus-observation-http` runs exactly t
 <!-- scripts/bench: rerun -->
 ```sh
 # Round trips: the Haskell rows, then the Python twin
-cabal bench -j2 petrus-observation-http --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-observation-http --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-observation-http/bench/python_bench.py)
 # Load: one Haskell client drives both servers, 5 interleaved repetitions
-cabal bench -j2 petrus-observation-http --benchmark-options='load 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-observation-http load 5 +RTS -M2G -RTS
 ```
 
 `scripts/bench-compare petrus-observation-http 3` interleaves three runs of the round-trip rows on

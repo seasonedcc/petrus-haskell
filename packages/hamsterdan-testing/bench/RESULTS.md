@@ -177,7 +177,7 @@ From the repository root, alternating the two sides:
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench hamsterdan-testing -j2 --benchmark-options='+RTS -M2G -RTS' | sed -E 's/[{]"(worker|ready)"[^}]*[}]//g' | grep -v '^ *$'
+scripts/bench-run hamsterdan-testing +RTS -M2G -RTS | sed -E 's/[{]"(worker|ready)"[^}]*[}]//g' | grep -v '^ *$'
 "$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-testing/bench/bench.py
 ```
 

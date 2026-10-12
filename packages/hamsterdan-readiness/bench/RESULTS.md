@@ -58,7 +58,7 @@ From the repository root, alternating the two sides:
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench hamsterdan-readiness -j2 --benchmark-options='+RTS -M2G -RTS'
+scripts/bench-run hamsterdan-readiness +RTS -M2G -RTS
 "$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-readiness/bench/bench.py
 ```
 

@@ -45,7 +45,7 @@ this; `scripts/upstream-python` provisions the pinned reference):
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-observation --benchmark-options='+RTS -M2G -RTS'
+scripts/bench-run petrus-observation +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-observation/bench/python_bench.py)
 ```
 

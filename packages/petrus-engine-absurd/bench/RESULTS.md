@@ -171,7 +171,7 @@ starts a throwaway one with `scripts/with-postgres`. A scratch database is creat
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-engine-absurd --benchmark-options '--stdev 5 --timeout 300 +RTS -M2G -RTS'
+scripts/bench-run petrus-engine-absurd --stdev 5 --timeout 300 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-engine-absurd/bench/python_bench.py)
 ```
 

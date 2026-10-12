@@ -10,6 +10,12 @@
     --pattern PATTERN   only the tasty-bench rows this pattern selects (-p);
                         the table then lists only those rows
     --stdev PERCENT     tasty-bench's target relative deviation (default 5)
+    --python-only REGEX only the twins' rows whose dotted names this regular
+                        expression matches (PETRUS_BENCH_ONLY; the twins'
+                        timing helpers honour it)
+    --json FILE         also write the medians, per-repetition figures and
+                        loads as JSON (scripts/bench-gate reads it)
+    --no-build          run the benchmark executable built already
 
 For packages whose Python twins print ``name,nanoseconds`` lines on stdout
 (scripts/bench_timing.py, or a script's own median) named like the package's
@@ -41,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import re
 import statistics
@@ -56,6 +63,10 @@ TMP = ROOT / "bench-results" / "tmp"
 
 def environment() -> Dict[str, str]:
     env = dict(os.environ)
+    if env.get("CI"):
+        # In CI the PATH stays as it is: a PATH unlike the build job's would
+        # make cabal reconfigure every package (as in scripts/bench --smoke).
+        return env
     extra = [str(Path.home() / ".ghcup" / "bin"), str(Path.home() / ".local" / "bin")]
     env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")])
     return env
@@ -71,7 +82,7 @@ def upstream_python(project: str) -> str:
     ).stdout.strip()
 
 
-def benchmark_binary(package: str) -> Tuple[Path, Dict[str, str]]:
+def benchmark_binary(package: str, build: bool = True) -> Tuple[Path, Dict[str, str]]:
     """Build the package's benchmark and return its executable and the
     environment ``cabal bench`` would run it with.
 
@@ -89,8 +100,9 @@ def benchmark_binary(package: str) -> Tuple[Path, Dict[str, str]]:
         raise SystemExit(f"{package} has no benchmark stanza")
     target = f"{package}:bench:{stanza.group(1)}"
     command = ["cabal", "build", "-j2", "--enable-benchmarks", target]
-    print("+ " + " ".join(shlex.quote(part) for part in command), file=sys.stderr, flush=True)
-    subprocess.run(command, cwd=ROOT, env=environment(), check=True, stdout=sys.stderr)
+    if build:
+        print("+ " + " ".join(shlex.quote(part) for part in command), file=sys.stderr, flush=True)
+        subprocess.run(command, cwd=ROOT, env=environment(), check=True, stdout=sys.stderr)
     binary = Path(
         subprocess.run(
             ["cabal", "list-bin", "-v0", "--enable-benchmarks", target],
@@ -145,16 +157,20 @@ def haskell(package: str, repetition: int, pattern: Optional[str], stdev: str, b
     return results
 
 
-def python(package: str, interpreter: str, upstream: str, scripts: List[str], repetition: int) -> Dict[str, float]:
+def python(package: str, interpreter: str, upstream: str, scripts: List[str], repetition: int,
+           only: Optional[str] = None) -> Dict[str, float]:
     results = {}
     outputs = []
     for name in scripts:
         script = ROOT / "packages" / package / "bench" / name
         print(f"+ {interpreter} -I -B {script.relative_to(ROOT)}", file=sys.stderr, flush=True)
+        env = environment()
+        if only:
+            env["PETRUS_BENCH_ONLY"] = only
         completed = subprocess.run(
             [interpreter, "-I", "-B", str(script)],
             cwd=ROOT / "upstream" / upstream,
-            env=environment(),
+            env=env,
             check=True,
             stdout=subprocess.PIPE,
             text=True,
@@ -191,6 +207,9 @@ def main() -> int:
     parser.add_argument("--upstream", default="petrus")
     parser.add_argument("--pattern")
     parser.add_argument("--stdev", default="5")
+    parser.add_argument("--python-only", dest="only")
+    parser.add_argument("--json")
+    parser.add_argument("--no-build", action="store_true")
     options = parser.parse_args(arguments)
     package = options.package
     repetitions = options.repetitions
@@ -205,7 +224,7 @@ def main() -> int:
         return subprocess.call([str(ROOT / "scripts" / "with-postgres"), sys.executable, __file__, *arguments])
     TMP.mkdir(parents=True, exist_ok=True)
     interpreter = upstream_python(options.upstream)
-    binary = benchmark_binary(package)
+    binary = benchmark_binary(package, build=not options.no_build)
     runs: List[Tuple[Dict[str, float], Dict[str, float]]] = []
     loads: List[float] = []
     for repetition in range(1, repetitions + 1):
@@ -213,9 +232,9 @@ def main() -> int:
         if repetition % 2:
             ours = haskell(package, repetition, options.pattern, options.stdev, binary)
             loads.append(os.getloadavg()[0])
-            theirs = python(package, interpreter, options.upstream, scripts, repetition)
+            theirs = python(package, interpreter, options.upstream, scripts, repetition, options.only)
         else:
-            theirs = python(package, interpreter, options.upstream, scripts, repetition)
+            theirs = python(package, interpreter, options.upstream, scripts, repetition, options.only)
             loads.append(os.getloadavg()[0])
             ours = haskell(package, repetition, options.pattern, options.stdev, binary)
         loads.append(os.getloadavg()[0])
@@ -230,6 +249,7 @@ def main() -> int:
     names = list(runs[0][0])
     if not options.pattern:
         names += [name for name in runs[0][1] if name not in runs[0][0]]
+    summary = {"package": package, "repetitions": repetitions, "loads": loads, "rows": {}}
     for name in names:
         ours = [run[0][name] for run in runs if name in run[0]]
         theirs = [run[1][name] for run in runs if name in run[1]]
@@ -238,12 +258,16 @@ def main() -> int:
         ratio = f"{p / h:.2f}×" if h and p else "—"
         paired = [run[1][name] / run[0][name] for run in runs if name in run[0] and name in run[1]]
         lowest = f"{min(paired):.2f}×" if paired else "—"
+        summary["rows"][name] = {"haskell": ours, "python": theirs, "haskell_median": h, "python_median": p,
+                                 "ratio": p / h if h and p else None, "paired": paired}
         lines.append(
             f"| `{name}` | {human(h)} | {human(p)} | {ratio} | {lowest} | "
             f"{', '.join(human(x) for x in ours)} | {', '.join(human(x) for x in theirs)} |"
         )
     text = "\n".join(lines) + "\n"
     (TMP / f"{package}.compare.md").write_text(text)
+    if options.json:
+        Path(options.json).write_text(json.dumps(summary, indent=1) + "\n")
     sys.stdout.write(text)
     return 0
 

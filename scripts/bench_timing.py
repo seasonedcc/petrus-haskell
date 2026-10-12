@@ -20,6 +20,7 @@ Haskell figures include the RTS's collections too.
 """
 
 import os
+import re
 import statistics
 import sys
 import time
@@ -51,10 +52,22 @@ def measure(fn, number: Optional[int] = None) -> float:
     return statistics.median(samples)
 
 
+ONLY = os.environ.get("PETRUS_BENCH_ONLY")
+
+
+def selected(name: str) -> bool:
+    """Whether to time the row: every row, or with ``PETRUS_BENCH_ONLY`` set
+    (scripts/bench-compare --python-only, scripts/bench-gate) only the rows
+    whose dotted name (``group.row``) the regular expression matches."""
+    return not ONLY or re.search(ONLY, name.replace("/", ".")) is not None
+
+
 def report(name: str, fn, number: Optional[int] = None) -> None:
     """Print ``name,nanoseconds``. Pass ``number`` for a stateful or
     fsync-bound row whose Haskell twin is timed with the same protocol and
     the same fixed batch (petrus-test-support's Petrus.TestSupport.BenchTwin),
     so both sides make exactly the same calls."""
+    if not selected(name):
+        return
     print(f"{name},{measure(fn, number):.1f}", flush=True)
     print(f"  {name}", file=sys.stderr, flush=True)

@@ -146,7 +146,7 @@ fixtures; `scripts/upstream-python` provisions the pinned reference.
 <!-- scripts/bench: rerun -->
 ```sh
 # Every row; the joined rows need PETRUS_TEST_POSTGRES.
-cabal bench -j2 petrus-dst --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-dst --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && PYTHONPATH=. "$(../../scripts/upstream-python)" -B ../../packages/petrus-dst/scripts/bench.py)
 ```
 

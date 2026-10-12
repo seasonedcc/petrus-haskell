@@ -104,6 +104,6 @@ From the repository root (`scripts/bench petrus-sqlite` runs exactly this block,
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-sqlite --benchmark-options '--stdev 5 --timeout 300 +RTS -M2G -RTS'
+scripts/bench-run petrus-sqlite --stdev 5 --timeout 300 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-sqlite/bench/python_bench.py)
 ```

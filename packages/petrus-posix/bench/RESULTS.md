@@ -176,6 +176,6 @@ From the repository root (`scripts/bench petrus-posix` runs exactly this block, 
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-posix --benchmark-options '--stdev 5 --timeout 300 +RTS -M2G -RTS'
+scripts/bench-run petrus-posix --stdev 5 --timeout 300 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-posix/bench/python_bench.py)
 ```

@@ -71,7 +71,7 @@ From the repository root (`scripts/bench petrus-agenticus` runs exactly this blo
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-agenticus --benchmark-options='+RTS -M2G -RTS'
+scripts/bench-run petrus-agenticus +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus/bench/python_agent_net.py)
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus/bench/python_retention.py)
 ```

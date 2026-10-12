@@ -106,7 +106,7 @@ against the reference") need the pinned Python, which
 
 ```sh
 cabal test hamsterdan-testing -j2 --test-options='+RTS -M2G -RTS'
-cabal bench hamsterdan-testing -j2 --benchmark-options='+RTS -M2G -RTS'
+scripts/bench-run hamsterdan-testing +RTS -M2G -RTS
 upstream/hamsterdan/.venv/bin/python -I -B packages/hamsterdan-testing/scripts/gen_oracle_corpus.py
 ```
 

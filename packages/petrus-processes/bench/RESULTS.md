@@ -123,7 +123,7 @@ unset, `scripts/bench` and `scripts/bench-compare` start a throwaway one with
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-processes --benchmark-options '--stdev 5 --timeout 300 +RTS -M2G -RTS'
+scripts/bench-run petrus-processes --stdev 5 --timeout 300 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-processes/bench/python_bench.py)
 ```
 

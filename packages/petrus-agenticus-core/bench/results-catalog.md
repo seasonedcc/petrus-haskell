@@ -57,6 +57,6 @@ refusals as the old encoder.
 ## Rerun
 
 ```sh
-cabal bench petrus-agenticus-core-bench --benchmark-options='-p catalog'
+scripts/bench-run petrus-agenticus-core -p catalog
 cd upstream/petrus && .venv/bin/python ../../packages/petrus-agenticus-core/bench/python_catalog.py
 ```

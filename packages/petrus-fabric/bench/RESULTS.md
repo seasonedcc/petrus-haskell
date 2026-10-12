@@ -116,7 +116,7 @@ need a server where the role may create databases in `PETRUS_TEST_POSTGRES`; whe
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-fabric --benchmark-options '--stdev 5 --timeout 300 +RTS -M2G -RTS'
+scripts/bench-run petrus-fabric --stdev 5 --timeout 300 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-fabric/bench/python_bench.py)
 ```
 

@@ -139,7 +139,7 @@ It prints the table above.
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 hamsterdan-operator --benchmark-options="--runs 21 +RTS -M2G -RTS"
+scripts/bench-run hamsterdan-operator --runs 21 +RTS -M2G -RTS
 ```
 
 CI's nightly smoke run (`scripts/bench --smoke`, not a measurement):

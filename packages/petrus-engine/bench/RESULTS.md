@@ -37,7 +37,7 @@ From the repository root (`scripts/bench petrus-engine` runs exactly this block;
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-engine --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-engine --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-engine/bench/python_bench.py)
 ```
 

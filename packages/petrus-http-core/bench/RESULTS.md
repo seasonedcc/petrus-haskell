@@ -57,6 +57,6 @@ From the repository root (`scripts/bench petrus-http-core` runs exactly this blo
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-http-core --benchmark-options '--stdev 5 --timeout 300 +RTS -M2G -RTS'
+scripts/bench-run petrus-http-core --stdev 5 --timeout 300 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-http-core/bench/python_bench.py)
 ```

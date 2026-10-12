@@ -51,7 +51,7 @@ history store. Hamsterdan's host does this in `hamsterdan-host`.
 
 ```sh
 cabal test hamsterdan-readiness -j2 --test-options='+RTS -M2G -RTS'
-cabal bench hamsterdan-readiness -j2 --benchmark-options='+RTS -M2G -RTS'
+scripts/bench-run hamsterdan-readiness +RTS -M2G -RTS
 ```
 
 To regenerate the corpora, run from the repository root against the pinned

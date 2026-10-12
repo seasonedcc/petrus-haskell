@@ -70,7 +70,7 @@ above.
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 hamsterdan-export --benchmark-options="--runs 21 +RTS -M2G -RTS"
+scripts/bench-run hamsterdan-export --runs 21 +RTS -M2G -RTS
 ```
 
 CI's nightly smoke run (`scripts/bench --smoke`, not a measurement):

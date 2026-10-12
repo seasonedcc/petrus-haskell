@@ -46,7 +46,7 @@ petrus-engine):
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-engine-file --benchmark-options='+RTS -M2G -RTS'
+scripts/bench-run petrus-engine-file +RTS -M2G -RTS
 "$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/python_bench.py
 cabal build -j2 -v0 petrus-engine-file:exe:petrus-format-json
 "$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/process_bench.py "$(cabal list-bin -v0 petrus-engine-file:exe:petrus-format-json)" 11

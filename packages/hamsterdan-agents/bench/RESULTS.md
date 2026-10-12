@@ -89,7 +89,7 @@ gives each run a private one.
 <!-- scripts/bench: rerun -->
 ```sh
 export TMPDIR="$BENCH_TMP/tmp" && mkdir -p "$TMPDIR"
-cabal bench -j2 hamsterdan-agents --benchmark-options="-j1 --time-mode wall --csv $BENCH_TMP/hamsterdan-agents.csv +RTS -M2G -RTS"
+scripts/bench-run hamsterdan-agents -j1 --time-mode wall --csv "$BENCH_TMP/hamsterdan-agents.csv" +RTS -M2G -RTS
 cat "$BENCH_TMP/hamsterdan-agents.csv"
 "$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-agents/bench/bench.py
 ```

@@ -52,7 +52,7 @@ From the repository root (`scripts/bench petrus-motus` runs exactly this block;
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-motus --benchmark-options='--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-motus --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-motus/bench/python_bench.py)
 ```
 

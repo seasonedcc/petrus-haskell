@@ -55,7 +55,7 @@ From the repository root (`scripts/bench petrus-engine-postgres` runs exactly th
 
 <!-- scripts/bench: rerun -->
 ```sh
-cabal bench -j2 petrus-engine-postgres --benchmark-options '--stdev 5 +RTS -M2G -RTS'
+scripts/bench-run petrus-engine-postgres --stdev 5 +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-engine-postgres/bench/python_bench.py)
 ```
 

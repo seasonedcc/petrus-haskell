@@ -454,7 +454,7 @@ private `TMPDIR`, because the Haskell scratch directory has a fixed name.
 <!-- scripts/bench: rerun -->
 ```sh
 export TMPDIR="$BENCH_TMP/tmp" && mkdir -p "$TMPDIR"
-cabal bench -j2 hamsterdan-host --benchmark-options="-j1 --time-mode wall --csv $BENCH_TMP/hamsterdan-host.csv +RTS -M2G -RTS"
+scripts/bench-run hamsterdan-host -j1 --time-mode wall --csv "$BENCH_TMP/hamsterdan-host.csv" +RTS -M2G -RTS
 cat "$BENCH_TMP/hamsterdan-host.csv"
 "$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-host/bench/bench.py
 ```
