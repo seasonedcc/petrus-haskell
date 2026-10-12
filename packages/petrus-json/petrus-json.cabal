@@ -1,12 +1,18 @@
 cabal-version:      3.4
 name:               petrus-json
 version:            0.1.0.0
-synopsis:           Strict, Python-compatible JSON values for Petrus wire formats
+synopsis:           CPython-exact JSON and the Python-compatibility layer of the Petrus ports
 description:
   A JSON value type that keeps the integer/float distinction, preserves object
   member order, and offers strict parsing (duplicate members, non-finite
   numbers, surrogates, integer-only documents) plus a serializer that is
   byte-for-byte identical to CPython's @json.dumps@ for every option Petrus uses.
+  .
+  It is also the one home of the CPython behaviour the ports reproduce
+  outside JSON ("Petrus.Json.Python"): @str@ predicates, case mapping and
+  @repr@, @int()@ and @float()@, codecs and @os.fsdecode@, @json.loads@'s
+  scanner, the Python object and exception model with @OSError@'s errno
+  subclasses, pydantic's @ValidationError@ text, and @uuid4@ / @uuid7@.
 license:            Apache-2.0
 license-file:       LICENSE
 copyright:          2026 Seasoned (see NOTICE)
@@ -33,11 +39,15 @@ library
                     Petrus.Json.Encode
                     Petrus.Json.Limits
                     Petrus.Json.Parse
+                    Petrus.Json.Parse.InPlace
                     Petrus.Json.Python
                     Petrus.Json.Python.Decode
                     Petrus.Json.Python.Exception
                     Petrus.Json.Python.Fs
+                    Petrus.Json.Python.JsonRepr
                     Petrus.Json.Python.Loads
+                    Petrus.Json.Python.Object
+                    Petrus.Json.Python.OsError
                     Petrus.Json.Python.Pydantic
                     Petrus.Json.Python.Scanner
                     Petrus.Json.Python.Uuid
@@ -54,6 +64,7 @@ library
                   , containers >=0.6
                   , deepseq >=1.4
                   , text >=2.0
+                  , time >=1.9
   ghc-options:      -O2
 
 test-suite petrus-json-test
@@ -64,9 +75,11 @@ test-suite petrus-json-test
   other-modules:    Petrus.Json.CPythonDifferentialSpec
                     Petrus.Json.FloatReprSpec
                     Petrus.Json.Generators
+                    Petrus.Json.InPlaceSpec
                     Petrus.Json.PythonCompatSpec
                     Petrus.Json.PythonTextSpec
                     Petrus.Json.Reference
+                    Petrus.Json.ReferenceEncode
                     Petrus.Json.ReferenceParse
   build-depends:    base
                   , bytestring

@@ -39,7 +39,6 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Hamsterdan.Operator
-                    Hamsterdan.Operator.FastJson
                     Hamsterdan.Operator.Posix
                     Hamsterdan.Operator.Python
                     Hamsterdan.Host.PublicationQualification
@@ -79,7 +78,6 @@ test-suite hamsterdan-operator-test
   other-modules:    ContainerSpec
                     DifferentialSpec
                     Fakes
-                    FastJsonSpec
                     OperatorSpec
                     PublicationQualificationSpec
                     QualificationSetupLocalSpec

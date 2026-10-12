@@ -6,7 +6,8 @@ module Petrus.EngineFile.CorpusSpec (spec, corpusPath, checkCase) where
 import Control.Monad (forM_, when)
 import Data.ByteString qualified as BS
 import Data.Text qualified as T
-import Petrus.EngineFile (PyException (..), loads)
+import Petrus.EngineFile (loads)
+import Petrus.Json.Python.Exception (pythonError)
 import Petrus.EngineFile.Value (pyRepr)
 import Petrus.EngineFile.Corpus
 import System.Directory (doesFileExist)
@@ -43,7 +44,7 @@ loadsSpec = describe "json.loads" $ do
     fmap pyRepr (loads "[1, \"\\ud800\", {\"\\udfff\": \"a\\udc00b\"}]") `shouldBe` Right "[1, '\\ud800', {'\\udfff': 'a\\udc00b'}]"
   it "raises the digit limit before a later syntax error" $
     fmap pyRepr (loads ("{\"a\": 1" <> BS.replicate 4300 0x31 <> ", }"))
-      `shouldBe` Left (PyException "ValueError" "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit")
+      `shouldBe` Left (pythonError "ValueError" "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit")
 
 -- | Run a case and compare each operation with the recorded verdict.
 checkCase :: Case -> Expectation

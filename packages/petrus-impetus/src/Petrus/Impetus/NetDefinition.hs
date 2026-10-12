@@ -582,41 +582,41 @@ field key validate value = Collect (at (Key key) (validate value))
 
 -- | @SymbolExpression(kind="symbol", name=...)@.
 mkSymbolExpression :: Text -> Either Text PureExpression
-mkSymbolExpression n = construct "SymbolExpression" (SymbolExpression <$> field "name" (checked symbolName strictStr) (PStr n))
+mkSymbolExpression n = construct "SymbolExpression" (SymbolExpression <$> field "name" (checked symbolName strictStr) (PyStr n))
 
 -- | @CelExpression(kind="cel", expression=...)@.
 mkCelExpression :: Text -> Either Text PureExpression
-mkCelExpression e = construct "CelExpression" (CelExpression <$> field "expression" (checked celText strictStr) (PStr e))
+mkCelExpression e = construct "CelExpression" (CelExpression <$> field "expression" (checked celText strictStr) (PyStr e))
 
 -- | @SymbolBehavior(kind="symbol", name=..., uri=...)@.
 mkSymbolBehavior :: Text -> Text -> Either Text SymbolBehavior
-mkSymbolBehavior n u = construct "SymbolBehavior" (SymbolBehavior <$> field "name" (checked symbolName strictStr) (PStr n) <*> pure u)
+mkSymbolBehavior n u = construct "SymbolBehavior" (SymbolBehavior <$> field "name" (checked symbolName strictStr) (PyStr n) <*> pure u)
 
 -- | @CelBehavior(kind="cel", expression=..., uri=...)@.
 mkCelBehavior :: Text -> Text -> Either Text CelBehavior
-mkCelBehavior e u = construct "CelBehavior" (CelBehavior <$> field "expression" (checked celText strictStr) (PStr e) <*> pure u)
+mkCelBehavior e u = construct "CelBehavior" (CelBehavior <$> field "expression" (checked celText strictStr) (PyStr e) <*> pure u)
 
 -- | @DelayDefinition(kind="delay", duration=...)@.
 mkDelayDefinition :: Integer -> Either Text TimerDefinition
-mkDelayDefinition d = construct "DelayDefinition" (DelayDefinition <$> field "duration" (intRange jsonSafeIntegerMin jsonSafeIntegerMax) (PInt d))
+mkDelayDefinition d = construct "DelayDefinition" (DelayDefinition <$> field "duration" (intRange jsonSafeIntegerMin jsonSafeIntegerMax) (PyInt d))
 
 -- | @UntilDefinition(kind="until", instant=...)@.
 mkUntilDefinition :: Integer -> Either Text TimerDefinition
-mkUntilDefinition i = construct "UntilDefinition" (UntilDefinition <$> field "instant" (intRange jsonSafeIntegerMin jsonSafeIntegerMax) (PInt i))
+mkUntilDefinition i = construct "UntilDefinition" (UntilDefinition <$> field "instant" (intRange jsonSafeIntegerMin jsonSafeIntegerMax) (PyInt i))
 
 -- | @PlaceDefinition(path=..., color=...)@.
 mkPlaceDefinition :: Text -> Maybe Text -> Either Text PlaceDefinition
 mkPlaceDefinition p c =
   construct "PlaceDefinition" $
     PlaceDefinition
-      <$> field "path" (checked canonicalPathError strictStr) (PStr p)
+      <$> field "path" (checked canonicalPathError strictStr) (PyStr p)
       <*> field "color" (checked (nonEmptyOrNull "place color must be non-empty or null") (optional strictStr)) (optStr c)
 
 -- | @TransitionDefinition(path=..., handler=..., guards=..., timers=...)@.
 mkTransitionDefinition :: Text -> Maybe HandlerDefinition -> [GuardDefinition] -> [TimerDefinition] -> Either Text TransitionDefinition
 mkTransitionDefinition p h gs ts =
   construct "TransitionDefinition" $
-    (\p' -> TransitionDefinition p' h gs ts) <$> field "path" (checked canonicalPathError strictStr) (PStr p)
+    (\p' -> TransitionDefinition p' h gs ts) <$> field "path" (checked canonicalPathError strictStr) (PyStr p)
 
 -- | @ArcDefinition(position=..., source=..., target=..., mode=..., weight=...,
 -- color=..., filter=...)@.
@@ -624,10 +624,10 @@ mkArcDefinition :: Integer -> Text -> Text -> ArcMode -> Integer -> Maybe Text -
 mkArcDefinition position' from to m w c f =
   construct "ArcDefinition" $
     (\p s' t' w' c' -> ArcDefinition p s' t' m w' c' f)
-      <$> field "position" (intRange 0 jsonSafeIntegerMax) (PInt position')
-      <*> field "source" (checked canonicalPathError strictStr) (PStr from)
-      <*> field "target" (checked canonicalPathError strictStr) (PStr to)
-      <*> field "weight" (intRange 1 jsonSafeIntegerMax) (PInt w)
+      <$> field "position" (intRange 0 jsonSafeIntegerMax) (PyInt position')
+      <*> field "source" (checked canonicalPathError strictStr) (PyStr from)
+      <*> field "target" (checked canonicalPathError strictStr) (PyStr to)
+      <*> field "weight" (intRange 1 jsonSafeIntegerMax) (PyInt w)
       <*> field "color" (checked (nonEmptyOrNull "arc color must be non-empty or null") (optional strictStr)) (optStr c)
 
 -- | @NetDefinitionBody(name=..., time_domain="integer", places=(...),
@@ -643,34 +643,34 @@ mkNetDefinitionBody n ps ts as c =
       Just "" -> Just "Net name must be non-empty or null"
       _ -> Nothing
     whole =
-      PDict
+      PyDict
         [ ("name", optStr n)
-        , ("time_domain", PStr "integer")
-        , ("places", PTuple (map placeInstance ps))
-        , ("transitions", PTuple (map transitionInstance ts))
-        , ("arcs", PTuple (map arcInstance as))
-        , ("completion", maybe PNone pureInstance c)
+        , ("time_domain", PyStr "integer")
+        , ("places", PyTuple (map placeInstance ps))
+        , ("transitions", PyTuple (map transitionInstance ts))
+        , ("arcs", PyTuple (map arcInstance as))
+        , ("completion", maybe PyNone pureInstance c)
         ]
 
 optStr :: Maybe Text -> PV
-optStr = maybe PNone PStr
+optStr = maybe PyNone PyStr
 
 -- | A model instance as Python spells it: @Name(field=repr, ...)@.
 instanceOf :: Text -> [(Text, PV)] -> PV
 instanceOf className fields =
-  PInstance className (className <> "(" <> T.intercalate ", " [k <> "=" <> pyRepr v | (k, v) <- fields] <> ")")
+  PyInstance "petrus.impetus.net_definition" className (className <> "(" <> T.intercalate ", " [k <> "=" <> pyRepr v | (k, v) <- fields] <> ")")
 
 placeInstance :: PlaceDefinition -> PV
-placeInstance p = instanceOf "PlaceDefinition" [("path", PStr p.path), ("color", optStr p.color)]
+placeInstance p = instanceOf "PlaceDefinition" [("path", PyStr p.path), ("color", optStr p.color)]
 
 transitionInstance :: TransitionDefinition -> PV
 transitionInstance t =
   instanceOf
     "TransitionDefinition"
-    [ ("path", PStr t.path)
-    , ("handler", maybe PNone handlerInstance t.handler)
-    , ("guards", PTuple (map guardInstance t.guards))
-    , ("timers", PTuple (map timerInstance t.timers))
+    [ ("path", PyStr t.path)
+    , ("handler", maybe PyNone handlerInstance t.handler)
+    , ("guards", PyTuple (map guardInstance t.guards))
+    , ("timers", PyTuple (map timerInstance t.timers))
     ]
   where
     handlerInstance = \case
@@ -678,31 +678,31 @@ transitionInstance t =
       AnonymousHandler b -> anonymousInstance b
     guardInstance = \case
       SymbolGuard b -> symbolInstance b
-      CelGuard b -> instanceOf "CelBehavior" [("kind", PStr "cel"), ("expression", PStr b.expression), ("uri", PStr b.uri)]
+      CelGuard b -> instanceOf "CelBehavior" [("kind", PyStr "cel"), ("expression", PyStr b.expression), ("uri", PyStr b.uri)]
       AnonymousGuard b -> anonymousInstance b
-    symbolInstance b = instanceOf "SymbolBehavior" [("kind", PStr "symbol"), ("name", PStr b.name), ("uri", PStr b.uri)]
-    anonymousInstance (AnonymousBehavior u) = instanceOf "AnonymousBehavior" [("kind", PStr "anonymous"), ("uri", PStr u)]
+    symbolInstance b = instanceOf "SymbolBehavior" [("kind", PyStr "symbol"), ("name", PyStr b.name), ("uri", PyStr b.uri)]
+    anonymousInstance (AnonymousBehavior u) = instanceOf "AnonymousBehavior" [("kind", PyStr "anonymous"), ("uri", PyStr u)]
     timerInstance = \case
-      DelayDefinition d -> instanceOf "DelayDefinition" [("kind", PStr "delay"), ("duration", PInt d)]
-      UntilDefinition i -> instanceOf "UntilDefinition" [("kind", PStr "until"), ("instant", PInt i)]
+      DelayDefinition d -> instanceOf "DelayDefinition" [("kind", PyStr "delay"), ("duration", PyInt d)]
+      UntilDefinition i -> instanceOf "UntilDefinition" [("kind", PyStr "until"), ("instant", PyInt i)]
 
 arcInstance :: ArcDefinition -> PV
 arcInstance a =
   instanceOf
     "ArcDefinition"
-    [ ("position", PInt a.position)
-    , ("source", PStr a.source)
-    , ("target", PStr a.target)
-    , ("mode", PStr (arcModeText a.mode))
-    , ("weight", PInt a.weight)
+    [ ("position", PyInt a.position)
+    , ("source", PyStr a.source)
+    , ("target", PyStr a.target)
+    , ("mode", PyStr (arcModeText a.mode))
+    , ("weight", PyInt a.weight)
     , ("color", optStr a.color)
-    , ("filter", maybe PNone pureInstance a.filter)
+    , ("filter", maybe PyNone pureInstance a.filter)
     ]
 
 pureInstance :: PureExpression -> PV
 pureInstance = \case
-  SymbolExpression n -> instanceOf "SymbolExpression" [("kind", PStr "symbol"), ("name", PStr n)]
-  CelExpression e -> instanceOf "CelExpression" [("kind", PStr "cel"), ("expression", PStr e)]
+  SymbolExpression n -> instanceOf "SymbolExpression" [("kind", PyStr "symbol"), ("name", PyStr n)]
+  CelExpression e -> instanceOf "CelExpression" [("kind", PyStr "cel"), ("expression", PyStr e)]
 
 -- ---------------------------------------------------------------------------
 -- Model dumps
@@ -716,27 +716,27 @@ netDefinitionToJson = pvJson . dumpDefinition False
 -- fields as tuples), which the reference revalidates.
 dumpDefinition :: Bool -> NetDefinitionV3 -> PV
 dumpDefinition tuples document =
-  PDict
-    [ ("format", PStr "petrus-net-definition")
-    , ("version", PInt 3)
+  PyDict
+    [ ("format", PyStr "petrus-net-definition")
+    , ("version", PyInt 3)
     , ( "definition"
-      , PDict
-          [ ("name", maybe PNone PStr body.name)
-          , ("time_domain", PStr "integer")
-          , ("places", seqOf [PDict [("path", PStr p.path), ("color", optStr p.color)] | p <- body.places])
+      , PyDict
+          [ ("name", maybe PyNone PyStr body.name)
+          , ("time_domain", PyStr "integer")
+          , ("places", seqOf [PyDict [("path", PyStr p.path), ("color", optStr p.color)] | p <- body.places])
           , ("transitions", seqOf (map transitionPV body.transitions))
           , ("arcs", seqOf (map arcPV body.arcs))
-          , ("completion", maybe PNone purePV body.completion)
+          , ("completion", maybe PyNone purePV body.completion)
           ]
       )
     ]
   where
     body = document.definition
-    seqOf = if tuples then PTuple else PList
+    seqOf = if tuples then PyTuple else PyList
     transitionPV t =
-      PDict
-        [ ("path", PStr t.path)
-        , ("handler", maybe PNone handlerPV t.handler)
+      PyDict
+        [ ("path", PyStr t.path)
+        , ("handler", maybe PyNone handlerPV t.handler)
         , ("guards", seqOf (map guardPV t.guards))
         , ("timers", seqOf (map timerPV t.timers))
         ]
@@ -745,39 +745,26 @@ dumpDefinition tuples document =
       AnonymousHandler b -> anonymousPV b
     guardPV = \case
       SymbolGuard b -> symbolPV b
-      CelGuard b -> PDict [("kind", PStr "cel"), ("expression", PStr b.expression), ("uri", PStr b.uri)]
+      CelGuard b -> PyDict [("kind", PyStr "cel"), ("expression", PyStr b.expression), ("uri", PyStr b.uri)]
       AnonymousGuard b -> anonymousPV b
-    symbolPV b = PDict [("kind", PStr "symbol"), ("name", PStr b.name), ("uri", PStr b.uri)]
-    anonymousPV (AnonymousBehavior u) = PDict [("kind", PStr "anonymous"), ("uri", PStr u)]
+    symbolPV b = PyDict [("kind", PyStr "symbol"), ("name", PyStr b.name), ("uri", PyStr b.uri)]
+    anonymousPV (AnonymousBehavior u) = PyDict [("kind", PyStr "anonymous"), ("uri", PyStr u)]
     timerPV = \case
-      DelayDefinition d -> PDict [("kind", PStr "delay"), ("duration", PInt d)]
-      UntilDefinition i -> PDict [("kind", PStr "until"), ("instant", PInt i)]
+      DelayDefinition d -> PyDict [("kind", PyStr "delay"), ("duration", PyInt d)]
+      UntilDefinition i -> PyDict [("kind", PyStr "until"), ("instant", PyInt i)]
     arcPV a =
-      PDict
-        [ ("position", PInt a.position)
-        , ("source", PStr a.source)
-        , ("target", PStr a.target)
-        , ("mode", PStr (arcModeText a.mode))
-        , ("weight", PInt a.weight)
+      PyDict
+        [ ("position", PyInt a.position)
+        , ("source", PyStr a.source)
+        , ("target", PyStr a.target)
+        , ("mode", PyStr (arcModeText a.mode))
+        , ("weight", PyInt a.weight)
         , ("color", optStr a.color)
-        , ("filter", maybe PNone purePV a.filter)
+        , ("filter", maybe PyNone purePV a.filter)
         ]
     purePV = \case
-      SymbolExpression n -> PDict [("kind", PStr "symbol"), ("name", PStr n)]
-      CelExpression e -> PDict [("kind", PStr "cel"), ("expression", PStr e)]
-
--- | The JSON value of a dumped model.
-pvJson :: PV -> Json
-pvJson = \case
-  PNone -> Null
-  PBool b -> Bool b
-  PInt i -> Int i
-  PFloat d -> Float d
-  PStr s -> String s
-  PList items -> Array (map pvJson items)
-  PTuple items -> Array (map pvJson items)
-  PDict members -> Object [(k, pvJson v) | (k, v) <- members]
-  PInstance _ text -> String text
+      SymbolExpression n -> PyDict [("kind", PyStr "symbol"), ("name", PyStr n)]
+      CelExpression e -> PyDict [("kind", PyStr "cel"), ("expression", PyStr e)]
 
 -- ---------------------------------------------------------------------------
 -- Serialization

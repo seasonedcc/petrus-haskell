@@ -124,18 +124,26 @@ server, so the store rows read 3.7–4.1× faster than Python (`postgres.submit`
 
 - `canonical.16KiB` first measured 326 µs, 2.4× slower than Python, with
   petrus-json's general encoder (Builder-based, with `floatToDigits`
-  float spelling). `Petrus.Fabric.Canonical` replaced it with two passes:
-  one measures an upper bound of the output and checks the refusals, and
-  one writes straight into a buffer of that size. Its floats use a port of
-  the reference Ryu algorithm (≈60 ns a float against ≈450 ns), and small
-  objects are sorted with an insertion sort. The same encoder serves every
-  digest and size check, so `envelope.*` gained 25–40% as well.
-- That Ryu port now lives in petrus-json (`Petrus.Json.Float`) and spells
-  every petrus-json float. A same-process A/B against the previous private
-  copy measured the 16 KiB payload at 68.0 µs against 66.1 µs, and 10 000
-  random doubles at 708 µs against 820 µs. A later run of this bench gave
-  `canonical.16KiB` 59.5 µs and `envelope.*` 1.29, 3.08 and 2.03 µs, in line
-  with the table.
+  float spelling). A dedicated encoder, `Petrus.Fabric.Canonical`, replaced
+  it. It ran two passes, one to bound the output and check the refusals and
+  one to write into a buffer of that size, and spelled floats with a port of
+  the reference Ryu algorithm. That Ryu port now lives in petrus-json
+  (`Petrus.Json.Float`) and spells every petrus-json float, and petrus-json's
+  `dumps` now writes straight into one buffer. So the dedicated encoder was
+  measured against plain `dumps` on 2026-10-12, on the Apple M4 at a
+  one-minute load average of about 5. Each variant's benchmark executable
+  ran five interleaved repetitions, and each cell below is the median of
+  the five tasty-bench means:
+
+  | row | dedicated encoder | petrus-json `dumps` (now) | Python | now vs Python |
+  | --- | ---: | ---: | ---: | ---: |
+  | `canonical.16KiB` | 66.2 µs | 90.3 µs | 135 µs | 1.49× |
+  | `envelope.build` | 1.41 µs | 1.82 µs | 12.0 µs | 6.6× |
+  | `envelope.digest` | 3.42 µs | 5.05 µs | 19.9 µs | 3.9× |
+  | `envelope.roundtrip` | 2.17 µs | 2.61 µs | 18.3 µs | 7.0× |
+
+  The general encoder clears CPython on every row, so `canonicalBytes` is
+  `dumps` and the dedicated encoder is gone.
 - The store rows include the round trips to the server. Both sides use one
   autocommit connection to the same server and the same SQL.
 

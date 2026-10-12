@@ -7,7 +7,6 @@ module Petrus.Cel.Python
     asciiTransform
   , parseIntDigits
   , parseFloatText
-  , intMaxStrDigits
     -- * Hashing
   , hashInteger
   , hashRational
@@ -27,6 +26,7 @@ import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
 
+import Petrus.Json.Limits (maxIntStrDigits)
 import Petrus.Json.Python (isPythonSpace, parsePythonFloat, pythonDecimal)
 
 -- | CPython's @_PyUnicode_TransformDecimalAndSpaceToASCII@: a code point
@@ -46,10 +46,6 @@ asciiTransform = map one . T.unpack
 
 isAsciiSpace :: Char -> Bool
 isAsciiSpace c = c `elem` (" \t\n\r\x0b\x0c" :: String)
-
--- | The default @sys.get_int_max_str_digits()@.
-intMaxStrDigits :: Int
-intMaxStrDigits = 4300
 
 -- | CPython's @PyLong_FromString@ for an explicit base (8, 10, or 16) over an
 -- already ASCII-transformed string: surrounding whitespace, a sign, the base
@@ -73,7 +69,7 @@ parseIntDigits base input =
    in case digitsOf body' of
         Nothing -> Left False
         Just ds
-          | base == 10 && length ds > intMaxStrDigits -> Left True
+          | base == 10 && length ds > maxIntStrDigits -> Left True
           | otherwise ->
               let v = foldl (\acc d -> acc * fromIntegral base + fromIntegral d) 0 ds
                in Right (if negative then negate v else v)

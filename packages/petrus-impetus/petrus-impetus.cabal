@@ -46,7 +46,6 @@ library
                     Petrus.Impetus.History.Replay
                     Petrus.Impetus.Internal.OMap
                     Petrus.Impetus.Internal.JsonSchema
-                    Petrus.Impetus.Internal.Uuid
                     Petrus.Impetus.NetDefinition
                     Petrus.Impetus.NetDocument
                     Petrus.Impetus.Petrinet

@@ -27,13 +27,13 @@ module Petrus.Testing.Dst.Codec
   ) where
 
 import Crypto.Hash (Digest, SHA256, hash)
+import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (EncodeOptions (..), Json (..), compact, lookupMember)
+import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, encodeErrorMessage, lookupMember)
 import Petrus.Testing.Dst.Decode
-import Petrus.Testing.Dst.Internal.Canonical (canonicalStrict)
 import Petrus.Testing.Dst.Internal.StrictJson (loadStrictJson)
 import Petrus.Testing.Dst.PyRepr (jsonToPy, pyRepr)
 import Petrus.Testing.Dst.Types
@@ -46,14 +46,7 @@ canonicalOptions = compact {sortKeys = True, ensureAscii = True}
 -- | Canonical bytes of strict JSON data; refuses non-finite numbers with
 -- CPython's message.
 canonicalBytes :: Json -> Either Text ByteString
-canonicalBytes value = case canonicalStrict value of
-  Right bytes -> Right bytes
-  Left d -> Left ("Out of range float values are not JSON compliant: " <> floatName d)
-  where
-    floatName d
-      | isNaN d = "nan"
-      | d > 0 = "inf"
-      | otherwise = "-inf"
+canonicalBytes = first (T.pack . encodeErrorMessage) . dumps canonicalOptions
 
 -- | @digest_json@: @sha256:@ and the hex SHA-256 of the canonical bytes.
 digestJson :: Json -> Either Text Text

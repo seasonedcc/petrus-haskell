@@ -16,10 +16,8 @@ module Spec.Properties (spec) where
 import Control.Monad (forM_, replicateM)
 import Control.Monad.State.Strict (StateT, evalStateT, get, lift, put)
 import Data.Text qualified as T
-import Data.Text (Text)
-import Petrus.Json (EncodeError (..), Json (..), dumps)
+import Petrus.Json (Json (..))
 import Petrus.Testing.Dst
-import Petrus.Testing.Dst.Internal.Canonical (canonicalStrict)
 import Generated
 import Spec.Support
 import Test.Hspec
@@ -94,15 +92,6 @@ spec = describe "properties" $ do
                         .&&. field "disposition" === canonText (String (maybe "" dispositionText ended))
                         .&&. field "journal_digest" === canonText (String (artifactJournalDigest artifact))
 
-  modifyMaxSuccess (const 2000) $
-    it "writes canonical bytes exactly as petrus-json's general encoder does" $
-      property $ \(Canonical value) ->
-        let general = either (Left . errorText) Right (dumps canonicalOptions value)
-            errorText = \case
-              NonFiniteNumber d -> show d
-              other -> show other
-         in either (Left . show) Right (canonicalStrict value) === general
-
   it "keeps each choice authority's stream independent of the others' draws" $
     property $ \(NonNegative seed) (draws :: [Int]) -> do
       let s = seed `mod` (2 ^ (53 :: Int))
@@ -131,41 +120,3 @@ spec = describe "properties" $ do
       (value, streams') <- lift (chooseIdentifier "noise" streams)
       put streams'
       pure value
-
--- | Arbitrary JSON, weighted toward what the canonical encoder must get
--- right: escapes, control characters, non-ASCII and astral text, key
--- order, extreme numbers, and non-finite floats.
-newtype Canonical = Canonical Json
-  deriving stock (Show)
-
-instance Arbitrary Canonical where
-  arbitrary = Canonical <$> sized json
-    where
-      json :: Int -> Gen Json
-      json n
-        | n <= 0 = scalar
-        | otherwise =
-            frequency
-              [ (4, scalar)
-              , (1, Array <$> (choose (0, 4) >>= \k -> vectorOf k (json (n `div` 3))))
-              , (1, Object <$> (choose (0, 4) >>= \k -> vectorOf k ((,) <$> text <*> json (n `div` 3))))
-              ]
-      scalar =
-        oneof
-          [ pure Null
-          , Bool <$> arbitrary
-          , Int <$> oneof [arbitrary, choose (-(2 ^ (70 :: Int)), 2 ^ (70 :: Int))]
-          , Float <$> oneof [arbitrary, elements [0 / 0, 1 / 0, -1 / 0, -0.0, 1e16, 1e-5, 1.5e300]]
-          , String <$> text
-          ]
-      text :: Gen Text
-      text =
-        T.pack
-          <$> listOf
-            ( frequency
-                [ (6, choose (' ', '~'))
-                , (1, elements "\"\\\n\r\t\b\f\0\x1f\x7f")
-                , (1, choose ('\x80', '\xffff'))
-                , (1, choose ('\x10000', '\x10ffff'))
-                ]
-            )

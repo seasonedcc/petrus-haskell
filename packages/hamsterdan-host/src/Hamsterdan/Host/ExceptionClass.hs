@@ -48,11 +48,11 @@ import Hamsterdan.GitHub.Webhooks (WebhookRejected)
 import Hamsterdan.Host.Agenticus (AgentCompositionError)
 import Hamsterdan.Host.Errors (UnstagedCustodyError)
 import Hamsterdan.Host.GitPublish (GitPublishError)
-import Hamsterdan.Host.Python (LookupError, RuntimeError, ValueError)
 import Petrus.Activity (ActivityError)
 import Petrus.Agenticus.Error (AgenticusError (..), errorClassName)
 import Petrus.Json.Python (PythonException (..))
 import Petrus.Json.Python.Exception (asPythonException)
+import Petrus.Json.Python.OsError (ioExceptionClass)
 import Petrus.Sqlite.Connection (SQLError (..), pythonSqliteClass)
 
 -- | @type(error).__name__@ of a caught exception.
@@ -97,12 +97,11 @@ classes =
       PiWorkspaceCleanupError _ -> "PiWorkspaceCleanupError"
   , listed @AgenticusError (\failure -> errorClassName failure.errorClass)
   , named @GitPublishError "GitPublishError"
-  , named @RuntimeError "RuntimeError"
-  , named @ValueError "ValueError"
-  , named @LookupError "LookupError"
+  , -- A failed system call: the OSError subclass CPython raises for its
+    -- errno (FileNotFoundError, PermissionError, ...).
+    listed @IOException ioExceptionClass
   , -- Failures only Haskell raises: the nearest built-in class.
-    named @IOException "OSError"
-  , named @ErrorCall "RuntimeError"
+    named @ErrorCall "RuntimeError"
   , named @ArithException "ArithmeticError"
   , named @ArrayException "IndexError"
   ]

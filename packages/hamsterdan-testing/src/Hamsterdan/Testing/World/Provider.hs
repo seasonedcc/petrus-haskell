@@ -96,7 +96,7 @@ import Hamsterdan.Host.Service (HostClients (..))
 import Hamsterdan.Host.V5.Mutation (MutationPublisher (..))
 import Hamsterdan.Testing.Readiness (AuthorityClaim (..), CheckStatus (..), Lifecycle (..), ReviewStatus (..), Enumeration (..), dump)
 import Hamsterdan.Testing.World.Contract
-import Petrus.Impetus.Instance.FailureText (PythonArg (..))
+import Petrus.Impetus.Instance.FailureText (PyObject (..))
 import Petrus.Json (Json (..), lookupMember)
 import Petrus.Testing.Dst (Fault (..), ProfileError (..), ScenarioContext (..), faults, runScenario)
 

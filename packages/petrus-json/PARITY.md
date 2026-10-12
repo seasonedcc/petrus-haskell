@@ -60,7 +60,7 @@ profiles of `loadsProfiles`:
 
 ## Tests
 
-`cabal test petrus-json`: 123 examples.
+`cabal test petrus-json`: 135 examples.
 
 - **Differential against CPython**
   ([`CPythonDifferentialSpec`](test/Petrus/Json/CPythonDifferentialSpec.hs),
@@ -91,6 +91,13 @@ profiles of `loadsProfiles`:
     does, value for value, lone surrogates included (more than 200 such
     admissions per run).
   - The tagged transport between the two sides is itself checked lossless.
+- **`json.loads` of a `str`, read in place**
+  ([`InPlaceSpec`](test/Petrus/Json/InPlaceSpec.hs)): `parseInPlace`, the
+  fast path of `loadsText`, accepts its subset and declines everything
+  else, including raw lone surrogates. On 3 000 generated documents and
+  the hand-made edges, each document it accepts gives the byte parser's
+  value and CPython's `json.loads` value, the latter compared through
+  `json.dumps`.
 - **Float `repr`** ([`FloatReprSpec`](test/Petrus/Json/FloatReprSpec.hs)):
   `pythonFloatRepr` against CPython's `repr` on more than 100 000 doubles
   (random bit patterns, powers of ten and two, the exponent-notation

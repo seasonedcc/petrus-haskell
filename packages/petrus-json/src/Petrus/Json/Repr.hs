@@ -1,16 +1,14 @@
--- | CPython's @repr()@ and @str()@ for the values upstream interpolates into
--- error messages with @!r@ and @{value}@: strings, bytes, floats, and
--- whatever @json.loads@ returns (@None@, @True@, @nan@, dicts and lists).
+-- | CPython's @repr()@ of the scalars upstream interpolates into error
+-- messages with @!r@ (strings, bytes, ints and floats), and of containers of
+-- already-rendered items. The @repr()@ and @str()@ of whole Python objects
+-- (what @json.loads@ returns among them) are "Petrus.Json.Python.Object"'s.
 --
 -- The 'Text' functions are the API; the 'String' spellings
 -- ('pythonReprText', 'pythonReprBytes', 'pythonReprFloat') remain for the
 -- SQLite and PostgreSQL layers, which build 'String' messages.
 module Petrus.Json.Repr
-  ( -- * Values @json.loads@ returns
-    pythonRepr
-  , pythonStr
-    -- * Scalars
-  , pythonIntRepr
+  ( -- * Scalars
+    pythonIntRepr
   , pythonOptionalStrRepr
   , pythonBytesRepr
   , pythonDoubleRepr
@@ -32,26 +30,6 @@ import Data.Text qualified as T
 import Numeric (showHex)
 import Petrus.Json.Encode (pythonFloatRepr)
 import Petrus.Json.PythonText (pythonStrRepr)
-import Petrus.Json.Value (Json (..))
-
--- | @repr(value)@ of the Python object @json.loads@ builds for a value.
-pythonRepr :: Json -> Text
-pythonRepr = \case
-  Null -> "None"
-  Bool True -> "True"
-  Bool False -> "False"
-  Int i -> pythonIntRepr i
-  Float d -> pythonDoubleRepr d
-  String s -> pythonStrRepr s
-  Array items -> pythonListRepr (map pythonRepr items)
-  Object members -> "{" <> T.intercalate ", " [pythonStrRepr k <> ": " <> pythonRepr v | (k, v) <- members] <> "}"
-
--- | @str(value)@ of the Python object @json.loads@ builds for a value: a
--- string itself, anything else its 'pythonRepr'.
-pythonStr :: Json -> Text
-pythonStr = \case
-  String s -> s
-  other -> pythonRepr other
 
 -- | @repr(int)@.
 pythonIntRepr :: Integral a => a -> Text

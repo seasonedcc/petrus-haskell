@@ -4,12 +4,20 @@
 -- | A Python exception as a value: its class name and its positional
 -- @args@, with CPython's @repr()@ and @str()@ of it.
 --
--- This is the one representation the Petrus and Hamsterdan ports use for
--- an exception the reference raises from Python code: the inline driver
+-- This is the representation the Petrus and Hamsterdan ports use for an
+-- exception the reference raises from Python code: the inline driver
 -- records it as a firing failure (@Petrus.Impetus.Instance.FailureText@),
 -- a Hamsterdan host raises it where the reference's exception propagates,
--- and a pure fold returns it. It is rendered to text only where the
--- reference renders it.
+-- the Net-file loader refuses with it, and a pure fold returns it. Its
+-- arguments are "Petrus.Json.Python.Object" values. It is rendered to text
+-- only where the reference renders it.
+--
+-- One evaluator keeps a closed set instead: petrus-cel models the
+-- exceptions celpy's evaluation raises and catches over its own @ExcClass@
+-- (@Petrus.Cel.Python@), because celpy branches on the class itself (a
+-- caught exception becomes a @CELEvalError@ holding @ex.__class__@, which
+-- later comparisons and its qualified @repr@, such as @re2._re2.Error@,
+-- read back).
 --
 -- = Exceptions that stand for Python exceptions
 --
@@ -24,7 +32,7 @@
 -- as the reference names it, without a closed list of known types.
 module Petrus.Json.Python.Exception
   ( PythonException (..)
-  , PythonArg (..)
+  , PyObject (..)
     -- * The Python exception hierarchy
   , IsPythonException (..)
   , SomePythonException (..)
@@ -35,7 +43,6 @@ module Petrus.Json.Python.Exception
   , pythonError
   , unicodeDecodeError
   , unicodeEncodeError
-  , pythonArgRepr
   , pythonExceptionRepr
   , pythonExceptionStr
   , pythonFailureText
@@ -48,14 +55,15 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json.Python.Decode (CodecFailure (..), decodeFailureText, encodeFailureText)
-import Petrus.Json.PythonText (pythonStrRepr)
-import Petrus.Json.Repr (pythonBytesRepr, pythonDoubleRepr, pythonIntRepr, pythonTupleRepr)
+import Petrus.Json.Limits (maxIntStrDigits)
+import Petrus.Json.Python.Object (PyObject (..), failureArgumentText, pyRepr)
+import Petrus.Json.Repr (pythonIntRepr, pythonTupleRepr)
 
 -- | A Python exception as user code would raise it: its class name and its
 -- positional @args@.
 data PythonException = PythonException
   { name :: Text
-  , args :: [PythonArg]
+  , args :: [PyObject]
   }
   deriving stock (Eq, Show)
 
@@ -107,33 +115,6 @@ raised className message = PythonException className [PyStr message | not (T.nul
 instance NFData PythonException where
   rnf (PythonException className arguments) = rnf className `seq` rnf arguments
 
--- | One exception argument, by the Python type the reference distinguishes.
-data PythonArg
-  = PyNone
-  | PyBool Bool
-  | PyInt Integer
-  | PyFloat Double
-  | PyStr Text
-  | PyBytes ByteString
-  | -- | Any other value: its type's @__module__@ and @__qualname__@ (an
-    -- instance of a @str@ or @int@ subclass is one of these too).
-    PyObject Text Text
-  | -- | @slice(start, stop, step)@: the key of the @KeyError@ slicing a
-    -- @dict@ raises (@{}[:20]@).
-    PySlice (Maybe Integer) (Maybe Integer) (Maybe Integer)
-  deriving stock (Eq, Show)
-
-instance NFData PythonArg where
-  rnf = \case
-    PyNone -> ()
-    PyBool b -> rnf b
-    PyInt i -> rnf i
-    PyFloat d -> rnf d
-    PyStr s -> rnf s
-    PyBytes b -> rnf b
-    PyObject m q -> rnf m `seq` rnf q
-    PySlice a b c -> rnf a `seq` rnf b `seq` rnf c
-
 -- | @Name(message)@: an exception raised with one string argument, the
 -- shape of nearly every exception the ports raise.
 pythonError :: Text -> Text -> PythonException
@@ -155,29 +136,13 @@ unicodeEncodeError text failure =
     "UnicodeEncodeError"
     [PyStr failure.failureCodec, PyStr text, PyInt (toInteger failure.failureStart), PyInt (toInteger failure.failureEnd), PyStr failure.failureReason]
 
--- | @repr(arg)@ as the reference's failure text spells it: @None@, @bool@,
--- @int@, @float@, @str@ and @bytes@ by their @repr@; an @int@ whose @repr@
--- passes CPython's 4300-digit conversion limit (which raises) and any other
--- object by the marker @<module.qualname>@ of its type.
-pythonArgRepr :: PythonArg -> Text
-pythonArgRepr = \case
-  PyNone -> "None"
-  PyBool True -> "True"
-  PyBool False -> "False"
-  PyInt i
-    | length (show (abs i)) > 4300 -> "<builtins.int>"
-    | otherwise -> pythonIntRepr i
-  PyFloat d -> pythonDoubleRepr d
-  PyStr s -> pythonStrRepr s
-  PyBytes b -> pythonBytesRepr b
-  PyObject modul qualname -> "<" <> modul <> "." <> qualname <> ">"
-  PySlice {} -> "<builtins.slice>"
-
--- | @repr(exception)@: @Name(arg, ...)@. An @OSError@ built from
+-- | @repr(exception)@ as the reference's failure text spells it:
+-- @Name(arg, ...)@, each argument by its @_failure_argument_text@
+-- ('failureArgumentText'). An @OSError@ built from
 -- @(errno, strerror, filename)@ keeps only @(errno, strerror)@ in its
 -- @args@, as CPython does.
 pythonExceptionRepr :: PythonException -> Text
-pythonExceptionRepr e = e.name <> "(" <> T.intercalate ", " (map pythonArgRepr shown) <> ")"
+pythonExceptionRepr e = e.name <> "(" <> T.intercalate ", " (map failureArgumentText shown) <> ")"
   where
     shown = case e.args of
       [errno@(PyInt _), strerror, _] | e.name `elem` osErrorClasses -> [errno, strerror]
@@ -188,9 +153,10 @@ pythonExceptionRepr e = e.name <> "(" <> T.intercalate ", " (map pythonArgRepr s
 -- overrides of @KeyError@ (@repr(arg)@), of @OSError@ and its subclasses
 -- built from @(errno, strerror[, filename])@ (@[Errno N] strerror@, then
 -- @: repr(filename)@), and of
--- @UnicodeDecodeError@ and @UnicodeEncodeError@ (the codec's message). A
--- slice is spelled as its @repr@ here (@KeyError: slice(None, 20, None)@),
--- not by the failure text's marker.
+-- @UnicodeDecodeError@ and @UnicodeEncodeError@ (the codec's message). An
+-- argument is spelled by its @repr@ here (@KeyError: slice(None, 20, None)@),
+-- not by the failure text's marker, except an @int@ past CPython's
+-- 4300-digit conversion limit, whose @repr@ raises.
 pythonExceptionStr :: PythonException -> Text
 pythonExceptionStr e = case (e.name, e.args) of
   (_, []) -> ""
@@ -205,11 +171,9 @@ pythonExceptionStr e = case (e.name, e.args) of
   (_, [arg]) -> argStr arg
   (_, many) -> pythonTupleRepr (map argRepr many)
   where
-    -- @repr(arg)@ (a slice's @str@ is its @repr@), which the failure
-    -- text's marker stands for.
     argRepr = \case
-      PySlice start stop step -> "slice(" <> T.intercalate ", " (map (maybe "None" pythonIntRepr) [start, stop, step]) <> ")"
-      other -> pythonArgRepr other
+      huge@(PyInt i) | length (show (abs i)) > maxIntStrDigits -> failureArgumentText huge
+      other -> pyRepr other
     argStr = \case
       PyStr s -> s
       other -> argRepr other

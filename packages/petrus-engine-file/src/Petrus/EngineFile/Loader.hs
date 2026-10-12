@@ -31,6 +31,7 @@ import Petrus.EngineFile.PyText (joinPath, parentPath, pathText, purePath, readT
 import Petrus.EngineFile.Types
 import Petrus.EngineFile.Validate
 import Petrus.EngineFile.Value
+import Petrus.Json.Python.Exception (PythonException, pythonError)
 import Petrus.Json.PythonText (pythonStrRepr)
 
 -- | Where the root net and its refs come from.
@@ -45,13 +46,13 @@ data Source
 
 -- | @FlatNetFile.from_filename(path)@ (@model_validate_json@ of
 -- @Path(path).read_text()@).
-readFileNet :: Text -> IO (Either PyException FlatNetFile)
+readFileNet :: Text -> IO (Either PythonException FlatNetFile)
 readFileNet path = do
   text <- readText path
   pure (text >>= validateJsonText)
 
 -- | @model_validate_json@ of a decoded text (UTF-8 bytes).
-validateJsonText :: ByteString -> Either PyException FlatNetFile
+validateJsonText :: ByteString -> Either PythonException FlatNetFile
 validateJsonText bytes = case parseJson bytes of
   Left err ->
     Left
@@ -62,12 +63,12 @@ validateJsonText bytes = case parseJson bytes of
   Right value -> validateFile JsonMode value
 
 -- | @FlatNetFile.from_dict(source)@ (@model_validate@).
-readDictNet :: Value -> Either PyException FlatNetFile
+readDictNet :: Value -> Either PythonException FlatNetFile
 readDictNet = validateFile PythonMode
 
 -- | @NetLoader(source).mounted_sources()@: every mounted file by mount
 -- path, the root at the empty path, in visiting order.
-mountedSources :: Source -> IO (Either PyException [(NetPath, FlatNetFile)])
+mountedSources :: Source -> IO (Either PythonException [(NetPath, FlatNetFile)])
 mountedSources source = case source of
   FileSource path ->
     mountedWith
@@ -77,12 +78,12 @@ mountedSources source = case source of
   DictSource root deps -> pure (mountedDict root deps)
 
 -- | 'mountedSources' of a 'DictSource', which reads nothing from disk.
-mountedDict :: Value -> [(Text, Value)] -> Either PyException [(NetPath, FlatNetFile)]
+mountedDict :: Value -> [(Text, Value)] -> Either PythonException [(NetPath, FlatNetFile)]
 mountedDict root deps = runIdentity (mountedWith True (Identity (readDictNet root)) (Identity . child))
   where
     child ref = case lookup ref (pyDict deps) of
       Just value | not (isNull value) -> readDictNet value
-      _ -> Left (PyException "ValueError" ("Unknown ref: " <> pythonStrRepr ref))
+      _ -> Left (pythonError "ValueError" ("Unknown ref: " <> pythonStrRepr ref))
     isNull = \case
       VNull -> True
       _ -> False
@@ -91,9 +92,9 @@ mountedDict root deps = runIdentity (mountedWith True (Identity (readDictNet roo
 mountedWith
   :: Monad m
   => Bool
-  -> m (Either PyException FlatNetFile)
-  -> (Text -> m (Either PyException FlatNetFile))
-  -> m (Either PyException [(NetPath, FlatNetFile)])
+  -> m (Either PythonException FlatNetFile)
+  -> (Text -> m (Either PythonException FlatNetFile))
+  -> m (Either PythonException [(NetPath, FlatNetFile)])
 mountedWith nanShared readRoot readChild = do
   rootRead <- readRoot
   case rootRead of
@@ -106,14 +107,14 @@ mountedWith nanShared readRoot readChild = do
       Just existing
         | pyEqFile nanShared existing file -> Right (catalog, existing)
         | otherwise ->
-            Left (PyException "ValueError" ("Net name " <> pythonStrRepr file.net <> " is declared by multiple sources"))
+            Left (pythonError "ValueError" ("Net name " <> pythonStrRepr file.net <> " is declared by multiple sources"))
       Nothing -> Right (Map.insert file.net file catalog, file)
     -- The mounted list is kept reversed.
     visit catalog mounted file prefix ancestors
       | file.net `elem` ancestors =
-          pure (Left (PyException "ValueError" ("Cyclic net reference: " <> T.intercalate " -> " (ancestors ++ [file.net]))))
+          pure (Left (pythonError "ValueError" ("Cyclic net reference: " <> T.intercalate " -> " (ancestors ++ [file.net]))))
       | any ((== prefixKey prefix) . prefixKey . fst) mounted =
-          pure (Left (PyException "ValueError" ("Duplicate mount NetPath: " <> T.intercalate "." (prefixKey prefix))))
+          pure (Left (pythonError "ValueError" ("Duplicate mount NetPath: " <> T.intercalate "." (prefixKey prefix))))
       | otherwise = children catalog ((prefix, file) : mounted) file.refs
       where
         children cat acc [] = pure (Right (cat, acc))
@@ -129,7 +130,7 @@ mountedWith nanShared readRoot readChild = do
 
 -- | @NetResolver(loaded).resolve()@ over mounted sources (from
 -- 'mountedSources'); the flag says whether NaNs are one shared object.
-resolve :: Bool -> [(NetPath, FlatNetFile)] -> Either PyException FlatNet
+resolve :: Bool -> [(NetPath, FlatNetFile)] -> Either PythonException FlatNet
 resolve nanShared loaded = do
   let rootNet = maybe "" (.net) (lookup' rootPath)
   (places, transitions, arcs) <- go [] [] [] loaded
@@ -195,7 +196,7 @@ prefixKey (NetPath segments) = [t | SegText t <- segments]
 -- comparisons (which can raise) are replayed in the order CPython's sort
 -- makes them, exactly for fewer than 64 arcs (one natural run extended by
 -- binary insertion) and with a stable merge sort beyond.
-sortArcs :: Bool -> [(NetPath, NetPath, a)] -> Either PyException [(NetPath, NetPath, a)]
+sortArcs :: Bool -> [(NetPath, NetPath, a)] -> Either PythonException [(NetPath, NetPath, a)]
 sortArcs nanShared arcs
   | all (\(s, t, _) -> allText s && allText t) arcs =
       Right (sortOn (\(s, t, _) -> (prefixKey s, prefixKey t)) arcs)
@@ -209,7 +210,7 @@ sortArcs nanShared arcs
       | otherwise = Right False
 
 -- | Tuple @<@ between two paths.
-pathLt :: Bool -> NetPath -> NetPath -> Either PyException Bool
+pathLt :: Bool -> NetPath -> NetPath -> Either PythonException Bool
 pathLt nanShared (NetPath a) (NetPath b) =
   case [(x, y) | (x, y) <- zip a b, not (segEq x y)] of
     [] -> Right (length a < length b)
@@ -221,7 +222,7 @@ pathLt nanShared (NetPath a) (NetPath b) =
       SegOther v -> v
 
 -- | Python @<@ between two objects @json@ can build.
-valueLt :: Bool -> Value -> Value -> Either PyException Bool
+valueLt :: Bool -> Value -> Value -> Either PythonException Bool
 valueLt nanShared a b = case (a, b) of
   (VStr x, VStr y) -> Right (x < y)
   (VList xs, VList ys) -> case [(x, y) | (x, y) <- zip xs ys, not (pyEqWith nanShared x y)] of
@@ -231,7 +232,7 @@ valueLt nanShared a b = case (a, b) of
     (Just x, Just y) -> Right (numLt x y)
     _ ->
       Left
-        ( PyException
+        ( pythonError
             "TypeError"
             ("'<' not supported between instances of '" <> pyTypeName a <> "' and '" <> pyTypeName b <> "'")
         )
@@ -334,7 +335,7 @@ mergeSortBy lt = go
       if yFirst then (y :) <$> merge (x : xs) ys else (x :) <$> merge xs (y : ys)
 
 -- | @FlatNet.to_schema()@.
-toSchema :: FlatNet -> Either PyException FlatSchema
+toSchema :: FlatNet -> Either PythonException FlatSchema
 toSchema flat = do
   let prefix = netPathFromText flat.net
       toPath (NetPath segments) = let NetPath p = prefix in newNetPath (p ++ segments)
@@ -366,4 +367,4 @@ toSchema flat = do
     hashable (NetPath segments) = case [v | SegOther v <- segments] of
       [] -> Right ()
       v : _ ->
-        Left (PyException "TypeError" ("cannot use 'tuple' as a dict key (unhashable type: '" <> pyTypeName v <> "')"))
+        Left (pythonError "TypeError" ("cannot use 'tuple' as a dict key (unhashable type: '" <> pyTypeName v <> "')"))

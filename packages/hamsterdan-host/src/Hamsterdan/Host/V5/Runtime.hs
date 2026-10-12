@@ -85,7 +85,7 @@ import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Ingress (IngressEntry (..), ingressFrom)
 import Hamsterdan.Host.V5.Timers (TimerFact, timerHistory, timerValue)
 import Hamsterdan.PyLiteral (PyValue (PyDict), toJson)
-import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
+import Petrus.Impetus.Instance.FailureText (PyObject (PyStr), PythonException (..))
 import Hamsterdan.Readiness.NetV5.Board (gateFacts)
 import Hamsterdan.Readiness.NetV5.Gating
   ( GateDefinition (..)

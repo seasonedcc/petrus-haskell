@@ -99,7 +99,7 @@ spec = describe "kernel nets" $ do
         `shouldBe` Just True
 
   it "keeps petrus-engine's refusals" $
-    either (\case LoadError e -> e.exceptionClass; KernelError _ -> "kernel") (const "accepted") (kernelOf "{\"net\": 5}")
+    either (\case LoadError e -> e.name; KernelError _ -> "kernel") (const "accepted") (kernelOf "{\"net\": 5}")
       `shouldBe` "ValidationError"
 
   it "every corpus net petrus-engine loads is a kernel net with its nodes and arcs, or a kernel refusal" $ do

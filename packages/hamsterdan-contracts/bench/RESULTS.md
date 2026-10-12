@@ -69,14 +69,43 @@ Haskell is faster on every operation. Getting there took these changes:
 
 - **`petrus-json` parser:**
   - an unboxed result instead of `Either`/tuple returns;
-  - an 8-bytes-at-a-time string scan;
   - machine-`Int` short integers;
-  - a duplicate-key check by small quadratic scan or hashed pre-check.
+  - an 8-bytes-at-a-time string scan and a hashed duplicate-key pre-check.
+    Both were later removed, because the plain parser clears CPython
+    without them (petrus-json's `bench/RESULTS.md`, "The parser's scans").
 - **`petrus-json` encoder:** exact sizing and one direct write.
 - **Generated positional decoders:** each record decodes by position when the
   input members arrive in declaration order.
 - **Literal printing:** the printer writes a JSON body straight into one
-  buffer.
+  buffer (below).
+
+### The literal printer
+
+<!-- bench: superseded -->
+
+`Hamsterdan.PyLiteral` prints a dashboard entry (`f"{kind}:{body}"`) and a
+projection digest (`f"{kind}:{sorted(body.items())!r}"`). Both are the
+`repr` of a JSON value, which petrus-json's `Petrus.Json.Python.JsonRepr`
+writes. A plain printer cannot keep up with CPython. That printer built
+difference lists of the pieces, joined them with one `T.concat`, and spelled
+each string with `pythonStrRepr`. So the exact-size writer stays, and it
+moved from this package into petrus-json, the lowest layer, behind
+`jsonRepr` and `jsonItemsRepr`.
+
+The A/Bs ran on 2026-10-12 on the Apple M4, at a one-minute load average
+of 5–6. The variants' benchmark executables ran alternately, five
+interleaved repetitions each (tasty-bench means in wall-clock time,
+`--stdev 5`, `+RTS -M2G`). Each cell is the median of the five means;
+Python is the "Current figures" column above.
+
+| row | plain printer | writer in this package | writer in petrus-json (now) | Python | plain vs Python | now vs Python |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| dashboard entry | 916 ns | 423 ns / 421 ns | 487 ns | 636 ns | 0.69× | 1.31× |
+| digest | 1.41 µs | 675 ns / 667 ns | 769 ns | 1.36 µs | 0.96× | 1.77× |
+
+The writer was measured twice: once against the plain printer, and once
+against its petrus-json home. Across the package boundary it is about 15%
+slower, and it still clears CPython with margin.
 
 ## Rerun
 

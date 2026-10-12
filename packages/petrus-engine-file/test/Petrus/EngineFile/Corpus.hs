@@ -25,6 +25,7 @@ import Petrus.EngineFile.PyText (readText)
 import Petrus.Json.Encode (defaultDumps, dumps)
 import Petrus.Json.Encode qualified as E
 import Petrus.Json.Parse (parseJson, surrogateRefusingLoads)
+import Petrus.Json.Python.Exception (pythonExceptionStr)
 import Petrus.Json.Value (Json)
 import Petrus.Json.Value qualified as J
 import System.Directory (createDirectoryIfMissing, withCurrentDirectory)
@@ -147,10 +148,10 @@ encode j = either (error . show) TE.decodeUtf8 (dumps defaultDumps {E.itemSepara
 opResultText :: Op -> IO Text
 opResultText op = encode <$> runOp op
 
-outcome :: Either PyException Json -> Json
+outcome :: Either PythonException Json -> Json
 outcome = \case
   Right j -> J.Object [("ok", j)]
-  Left e -> J.Object [("error", J.Array [J.String e.exceptionClass, J.String e.message])]
+  Left e -> J.Object [("error", J.Array [J.String e.name, J.String (pythonExceptionStr e)])]
 
 resolved :: FlatNet -> Json
 resolved net = J.Object [("net", netValue net), ("schema", outcome (schemaValue <$> toSchema net))]
