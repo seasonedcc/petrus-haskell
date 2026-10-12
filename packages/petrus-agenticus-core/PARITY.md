@@ -26,13 +26,16 @@ QuickCheck properties that use the same strategies and settings. Neither
 upstream test has an `@example` or a stateful machine, so the ports have none.
 
 Seed: upstream's `pyproject.toml` sets `addopts = "--randomly-seed=1729"`,
-and pytest-randomly seeds Hypothesis from it, so the reference draws the same
-examples on every run. `hypothesisSettings n` (test `Petrus.Agenticus.Support`)
-fixes QuickCheck's generator at `mkQCGen 1729` through hspec's `modifyArgs`,
-so the generator ignores hspec's `--seed` (that seed still orders the
-examples). It also sets `maxSuccess = n`. The ports draw from QuickCheck's
-generator, not from Hypothesis's, so the examples are not the same ones the
-reference draws.
+but pytest-randomly reseeds only `random`, factory_boy, Faker, NumPy and its
+entry points, never Hypothesis. Neither test sets `derandomize=True`, so
+Hypothesis seeds each run from OS entropy and the reference draws fresh
+examples on every run. The ports do the same: `hypothesisSettings n` (test
+`Petrus.Agenticus.Support`) sets only `maxSuccess = n`, and hspec's per-run
+seed drives QuickCheck's generator (a failure prints it, for `--seed`
+replay). The ports draw from QuickCheck's generator, not from Hypothesis's,
+so the examples are not the ones the reference draws. Only the upstream
+tests that set `derandomize=True` have ports with a fixed seed: petrus-impetus
+`InstanceReplayPropertiesSpec` and the hamsterdan readiness campaigns.
 
 | Upstream test | Hypothesis | Haskell (QuickCheck) |
 | --- | --- | --- |

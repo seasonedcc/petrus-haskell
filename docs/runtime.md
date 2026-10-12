@@ -5974,7 +5974,9 @@ startup. Haskell uses `tasty-bench`. The campaign doc's reference run (457 cases
 **`pyproject.toml` `[tool.pytest.ini_options]`:**
 
 - `addopts = "--randomly-seed=1729"`, from pytest-randomly. It shuffles order deterministically and reseeds
-  `random`, Faker, and NumPy per test; Hypothesis is seeded from it.
+  `random`, factory_boy, Faker and NumPy per test. It does not seed Hypothesis: a test without
+  `derandomize=True` draws fresh examples on every run (Hypothesis seeds it from OS entropy), and only the
+  tests that set `derandomize=True` draw the same examples every time.
 - `testpaths = ["tests"]`, `timeout = 180` (pytest-timeout, per test).
 - Markers: `real_provider_acceptance`, `real_gondolin_acceptance`, `qualification_installation`.
   - They are **not** deselected by default. `scripts/check` passes `-m "not real_provider_acceptance and not
@@ -6039,7 +6041,7 @@ startup. Haskell uses `tasty-bench`. The campaign doc's reference run (457 cases
 | --- | --- | --- |
 | pytest + markers | runner, opt-in suites | **tasty** (`tasty-hunit`, `tasty-hedgehog`, `tasty-golden`; `--pattern` / `-p '!/real_provider/'` for opt-in groups; built-in `--timeout`) or **hspec** (`--match`/`--skip`, `--randomize --seed 1729`, `--fail-on=pending,empty`) |
 | `--forbid-skips` | no silent skips | hspec `--fail-on=pending`. tasty has no skip concept; require opt-in groups to be excluded by pattern, never skipped at runtime. Docker absence must fail. |
-| pytest-randomly seed 1729 | order randomization plus RNG seeding | hspec `--randomize --seed 1729`; hedgehog/QuickCheck `--hedgehog-replay` / `--quickcheck-replay` seeds. tasty has no order randomization, which is acceptable. |
+| pytest-randomly seed 1729 | order randomization plus RNG seeding (not of Hypothesis) | hspec `--randomize --seed 1729` for order; a property keeps QuickCheck's or Hedgehog's per-run seed unless its upstream test sets `derandomize=True`, and then fixes one. tasty has no order randomization, which is acceptable. |
 | pytest-timeout 180 | per-test cap | tasty `--timeout 180s`; hspec: wrap with `System.Timeout.timeout`. |
 | pytest-xdist `-n 4 --dist loadscope` | parallel | tasty `-j4` / hspec `parallel` plus `+RTS -N4` |
 | hypothesis | properties, state machines | hedgehog (state machines), QuickCheck, falsify |

@@ -54,13 +54,12 @@ OPT_INS: Dict[str, str] = {
     "to a Node >= 23.6) to run against real Gondolin; see PARITY.md":
         "petrus-execution GondolinSpec: test_real_gondolin_lifecycle_is_explicitly_opt_in (real_gondolin_acceptance)",
     "exact Pi qualification packages required":
-        "petrus-agenticus-runtime PiModelPhaseSpec: test_exact_installed_model_phase_probe (qualification_installation)",
-    "requires the exact Pi qualification packages under /tmp/petrus-pi-a2-probe (the reference skips too)":
-        "petrus-agenticus-runtime PiApplicationSpec: "
-        "test_exact_helper_core_loop_fake_stream_is_one_turn_delta_only_and_authority_free (qualification_installation)",
-    "requires PETRUS_CV16_PI_APPLICATION_QUALIFY=1 and the exact installed packages (the reference skips too)":
+        "petrus-agenticus-runtime PiModelPhaseSpec: test_exact_installed_model_phase_probe, and PiApplicationSpec: "
+        "test_exact_helper_core_loop_fake_stream_is_one_turn_delta_only_and_authority_free "
+        "(qualification_installation; the reference's skip reason, when /tmp/petrus-pi-a2-probe lacks the packages)",
+    "set PETRUS_CV16_PI_APPLICATION_QUALIFY=1 for exact installed-package probe":
         "petrus-agenticus-runtime PiApplicationSpec: test_exact_installed_application_package_probe "
-        "(qualification_installation)",
+        "(qualification_installation; the reference's skipif reason)",
     "skipped: set PETRUS_CV16_CODEX_LIVE=1 for the authorized Codex A2 Local cell; see docs/live-provider-acceptance.md":
         "petrus-agenticus-runtime Live.CodexSpec: test_exact_codex_a2_local_fresh_then_native_resume (real_provider_acceptance)",
     "skipped: set PETRUS_CV16_CODEX_GONDOLIN_LIVE=1 for the authorized Codex A3 Gondolin cell; see docs/live-provider-acceptance.md":
