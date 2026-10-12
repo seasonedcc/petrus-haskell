@@ -1,4 +1,7 @@
 name: CI
+# A per-commit run (below) names the commit it tests; other runs keep
+# GitHub's default name.
+run-name: ${{ inputs.sha && format('CI for {0}', inputs.sha) || '' }}
 
 # The same checks as scripts/check-all (plus the petrus-viewer suites of
 # `scripts/check-all --viewer`), spread over several Blacksmith runners:
@@ -26,6 +29,9 @@ name: CI
 #              repetitions, rerun once when below 1.0x; fails when a row is
 #              below 1.0x twice (scripts/bench-gate)
 #   container  the image and its runtime contract (scripts/container-smoke)
+#   every-commit  on a push to main of several commits: dispatches a run
+#              of this workflow for each commit but the tip (which this run
+#              tests), so every commit on main gets a run of its own
 #   ci         the verdict: green only when every job above is; it also
 #              records this run's test ledger
 #
@@ -49,11 +55,17 @@ on:
         description: Rerun every test suite (reuse no earlier result)
         type: boolean
         default: false
+      sha:
+        description: Test this commit (of the chosen branch) instead of its tip; set by every-commit
+        type: string
+        default: ""
 
 # A newer push to a branch or pull request cancels its older run. Every
-# commit pushed to main gets a complete run of its own: a group per run, so
-# that neither cancelling nor GitHub's replacing of a pending run in the
-# same group skips one.
+# commit pushed to main gets a complete run of its own: the push's run
+# tests the tip, every-commit dispatches one for each earlier commit of the
+# push, and each run on main has a group of its own, so that neither
+# cancelling nor GitHub's replacing of a pending run in the same group
+# skips one.
 concurrency:
   group: ${{ github.ref == 'refs/heads/main' && format('ci-main-{0}', github.run_id) || format('ci-{0}', github.ref) }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -76,7 +88,7 @@ env:
   # The dist-newstyle the build job saves and the later jobs restore; a full
   # run has a key of its own, so that its later jobs never restore an
   # incremental build saved earlier for the same commit.
-  DIST_KEY: dist-v1-Linux-ghc-9.10.3-${{ (github.event_name == 'schedule' || inputs.full) && format('full-{0}-', github.run_id) || '' }}${{ github.sha }}
+  DIST_KEY: dist-v1-Linux-ghc-9.10.3-${{ (github.event_name == 'schedule' || inputs.full) && format('full-{0}-', github.run_id) || '' }}${{ inputs.sha || github.sha }}
 
 jobs:
   lint:
@@ -84,6 +96,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - name: CI runs every scripts/check-all step
         run: scripts/ci-tests check-steps
@@ -110,6 +123,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
         id: toolchain
@@ -170,6 +184,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
@@ -214,6 +229,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
@@ -246,6 +262,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
@@ -322,6 +339,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
@@ -385,6 +403,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
@@ -418,6 +437,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
       - name: Lint the launcher, the interpreter-path shim and the smoke scripts
         run: |
           shellcheck scripts/with-runtime-secrets scripts/container-smoke scripts/container-smoke.d/fake-op scripts/container-smoke.d/node-wrapper
@@ -454,12 +475,46 @@ jobs:
           scripts/container-smoke hamsterdan:ci \
             --revision "${{ steps.source.outputs.revision }}" --version "${{ steps.source.outputs.version }}"
 
+  # A push of several commits to main runs CI on its tip only; this job
+  # dispatches a run for each earlier commit of the push (oldest first),
+  # with the commit as the `sha` input. Those runs show under main's tip in
+  # GitHub's list, named "CI for <sha>"; each checks out, builds and tests
+  # its own commit and records it in its ledger.
+  every-commit:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Dispatch a run for each earlier commit of the push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+          FORCED: ${{ github.event.forced }}
+        run: |
+          if [ "$FORCED" = true ] || [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
+            echo "a forced push or a new branch: no earlier commit to dispatch"
+            exit 0
+          fi
+          commits=$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" --jq '.commits[].sha')
+          for sha in $commits; do
+            if [ "$sha" != "$AFTER" ]; then
+              echo "dispatching CI for $sha"
+              gh workflow run ci.yml -R "$REPO" --ref main -f sha="$sha"
+            fi
+          done
+
   ci:
-    needs: [lint, build, checks, test, viewer, bench-smoke, bench-gate, container]
+    needs: [lint, build, checks, test, viewer, bench-smoke, bench-gate, container, every-commit]
     if: always()
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
       - uses: actions/download-artifact@v4
         if: needs.build.result == 'success'
         with:
@@ -472,6 +527,8 @@ jobs:
       - name: This run's test ledger
         id: ledger
         if: needs.build.result == 'success'
+        env:
+          CI_SHA: ${{ inputs.sha || github.sha }}
         run: scripts/ci-tests ledger --plan plan.json --results results --out ledger.json
         continue-on-error: true
       - uses: actions/upload-artifact@v4
@@ -492,7 +549,7 @@ jobs:
           ok = True
           for job, data in needs.items():
               result = data["result"]
-              allowed = ("success", "skipped") if job in ("test", "viewer", "bench-smoke", "bench-gate") else ("success",)
+              allowed = ("success", "skipped") if job in ("test", "viewer", "bench-smoke", "bench-gate", "every-commit") else ("success",)
               print(f"{job}: {result}")
               ok = ok and result in allowed
           if os.environ["LEDGER"] != "success":

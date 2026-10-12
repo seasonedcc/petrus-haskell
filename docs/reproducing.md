@@ -563,7 +563,8 @@ legitimately needs one says so with `-- lint-skips: allow <reason>`.
 
 `.github/workflows/ci.yml` runs on every push to `main`, every pull request,
 nightly (04:17 UTC) and on demand (`workflow_dispatch`, with a `full`
-input). It runs the steps of `scripts/check-all --viewer`, plus the container
+input, and a `sha` input that tests that commit instead of the branch's
+tip). It runs the steps of `scripts/check-all --viewer`, plus the container
 job, spread over Blacksmith runners so that they run side by side:
 
 | CI job | Runner | `scripts/check-all` step |
@@ -576,11 +577,17 @@ job, spread over Blacksmith runners so that they run side by side:
 | `bench-smoke` | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench --smoke` (every benchmark builds and runs once; not a measurement) and the list of stale results files ([Which code the figures measured](#which-code-the-figures-measured)) |
 | `bench-gate` (4 shards) | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench-gate --shard N/4`, the gated rows against the pinned Python, 5 interleaved repetitions, failing on a row below 1.0× twice ([Which code the figures measured](#which-code-the-figures-measured)) |
 | `container` | 16 vCPU | none (Docker): the image and `scripts/container-smoke` ([The container image](#the-container-image)) |
+| `every-commit` | 2 vCPU | pushes to `main` only: dispatches a run for each commit of the push but its tip |
 | `ci` | 2 vCPU | the verdict: green only when every job above is |
 
-Every commit pushed to `main` gets a complete run of its own: on `main`,
-each run has its own concurrency group, so a newer push neither cancels it
-nor replaces it while it waits. On a branch or pull request a newer push
+Every commit pushed to `main` gets a complete run of its own. The push's
+run tests the tip; when the push brought several commits, its
+`every-commit` job dispatches the workflow once for each earlier one (its
+`sha` input; GitHub's compare API lists the push's commits, at most 250),
+and that run checks out, builds, tests and records that commit. GitHub
+lists such a run under `main`'s tip, named `CI for <sha>`. A forced push
+dispatches nothing. On `main`, each run has its own concurrency group, so a
+newer push neither cancels it nor replaces it while it waits. On a branch or pull request a newer push
 cancels the older run. `main` has no branch protection rule: commits land on
 it without waiting for CI, and the run of each commit, red or green, is what
 verifies it. The `ci` job is the single verdict to require if a protection
