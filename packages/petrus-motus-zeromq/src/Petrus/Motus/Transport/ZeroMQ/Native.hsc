@@ -6,19 +6,33 @@
 --
 -- Every send and receive is non-blocking at the C level (@ZMQ_DONTWAIT@).
 -- When libzmq answers @EAGAIN@, the calling Haskell thread waits for the
--- socket and retries. With the threaded runtime the wait is an
--- interruptible @zmq_poll@ on the calling OS thread, as pyzmq's blocking
--- receive waits: it wakes as soon as libzmq signals, where a wait through
--- the GHC IO manager costs an event-manager hand-off per wake-up and a
--- timer-manager registration per 'System.Timeout.timeout' (on Linux, enough
--- to put a request round trip behind pyzmq's). It still composes with
--- 'System.Timeout.timeout' and asynchronous exceptions, which interrupt
--- the call, and many sockets can wait at once, each on its own OS thread.
--- The non-threaded runtime waits on the socket's @ZMQ_FD@ through the IO
--- manager ('threadWaitRead'); because @ZMQ_FD@ is an edge-triggered
--- signal, every wake re-checks @ZMQ_EVENTS@ and retries the operation, and
--- each fd wait is capped at 50 ms so that a missed edge can only delay,
--- never hang, an operation.
+-- socket with an interruptible @zmq_poll@ on its OS thread, as pyzmq's
+-- blocking receive waits, and retries. Every poll is bounded at 50 ms and
+-- the wait loops until its deadline, so cancellation stays safe: an
+-- asynchronous exception ('System.Timeout.timeout', @cancel@) interrupts
+-- the call with a signal, but @zmq_poll@ is not one system call. When it
+-- wakes for a libzmq command (a peer's pipe ending, say) it handles the
+-- command in user space and polls again, and a signal that lands in that
+-- window is lost. An unbounded poll would then hold the exception until a
+-- message arrived, which at server shutdown is never; a bounded one only
+-- delays it, by 50 ms at most. The bound costs nothing measurable
+-- (bench/RESULTS.md), and the transport tests cancel waits in that window.
+--
+-- The clean wait is GHC's IO manager on the socket's @ZMQ_FD@. It holds
+-- no OS thread, but each wake-up costs an event-manager hand-off and each
+-- 'System.Timeout.timeout' a timer-manager registration. On macOS it
+-- cleared every row against pyzmq (bench/RESULTS.md); on the Linux CI
+-- runners it did not. Python ÷ Haskell in bench-gate run 38202655016 (job
+-- 114660170314, commit 81bbdc5, the IO-manager wait):
+-- @zeromq/memory/claim-empty-100@ 0.90× (rerun 0.95×),
+-- @zeromq/memory/custody-20@ 0.98× (rerun 0.98×). With the poll: 1.19× and
+-- 1.36×, 1.18× and 1.27× (run 38206418285), and 1.11× and 1.28× (run
+-- 38255030541, commit d869f62).
+--
+-- Each waiting socket holds an OS thread in a safe call, so the package
+-- needs the threaded runtime; every component that links it is built
+-- @-threaded@. (Under the non-threaded runtime each wait would stall every
+-- Haskell thread for up to 50 ms.)
 --
 -- A socket must be used by one Haskell thread at a time; libzmq tolerates a
 -- socket moving between OS threads, which the GHC scheduler may do, because
@@ -62,7 +76,7 @@ module Petrus.Motus.Transport.ZeroMQ.Native
 
 #include <zmq.h>
 
-import Control.Concurrent (rtsSupportsBoundThreads, threadWaitRead, yield)
+import Control.Concurrent (yield)
 import Control.Exception (Exception (..), throwIO)
 import Control.Monad (unless, void, when)
 import Data.Bits ((.&.), (.|.))
@@ -84,8 +98,6 @@ import Foreign.Storable (peek, pokeByteOff, sizeOf)
 import GHC.Clock (getMonotonicTimeNSec)
 import Petrus.Json.Python.Exception (IsPythonException (..), pythonExceptionFromException, pythonExceptionToException, raised)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Posix.Types (Fd (..))
-import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
 -- Errors
@@ -190,10 +202,9 @@ socketTypeCode = \case
   Router -> #{const ZMQ_ROUTER}
   Rep -> #{const ZMQ_REP}
 
--- | A libzmq socket and its signalling descriptor.
+-- | A libzmq socket.
 data Socket = Socket
   { pointer :: Ptr ()
-  , descriptor :: IORef (Maybe Fd)
   , open :: IORef Bool
   }
 
@@ -209,7 +220,7 @@ newSocket :: Context -> SocketType -> IO Socket
 newSocket (Context ctx) kind = do
   ptr <- c_zmq_socket ctx (socketTypeCode kind)
   when (ptr == nullPtr) (throwLast "zmq_socket")
-  Socket ptr <$> newIORef Nothing <*> newIORef True
+  Socket ptr <$> newIORef True
 
 -- | @zmq_close@; idempotent. Set linger first when it matters.
 closeSocket :: Socket -> IO ()
@@ -292,17 +303,6 @@ lastEndpoint s =
     check "zmq_getsockopt" (c_zmq_getsockopt s.pointer #{const ZMQ_LAST_ENDPOINT} (castPtr buffer) size)
     T.pack <$> peekCString (castPtr buffer :: Ptr CChar)
 
-socketDescriptor :: Socket -> IO Fd
-socketDescriptor s =
-  readIORef s.descriptor >>= \case
-    Just fd -> pure fd
-    Nothing -> do
-      fd <- alloca $ \value -> with (fromIntegral (sizeOf (0 :: CInt))) $ \size -> do
-        check "zmq_getsockopt" (c_zmq_getsockopt s.pointer #{const ZMQ_FD} (castPtr value) size)
-        Fd <$> peek value
-      writeIORef s.descriptor (Just fd)
-      pure fd
-
 events :: Socket -> IO CInt
 events s = getIntOption s #{const ZMQ_EVENTS}
 
@@ -322,7 +322,8 @@ nowMicros :: IO Int
 nowMicros = (\ns -> fromIntegral (ns `div` 1000)) <$> getMonotonicTimeNSec
 
 -- | Wait (at most until the deadline, in monotonic microseconds) for the
--- socket to signal; answers whether the wanted event is now set.
+-- socket to signal; answers whether the wanted event is now set. Each poll
+-- lasts at most 'pollBound', whatever the deadline (see the module header).
 awaitEvent :: Socket -> CInt -> Maybe Int -> IO Bool
 awaitEvent s wanted deadline = loop
   where
@@ -332,21 +333,20 @@ awaitEvent s wanted deadline = loop
         then pure True
         else do
           now <- nowMicros
-          let remaining = maybe 50000 (\d -> d - now) deadline
+          let remaining = maybe pollBound (\d -> d - now) deadline
           if remaining <= 0
             then pure False
-            else do
-              if rtsSupportsBoundThreads
-                then pollFor s wanted (maybe (-1) (const ((remaining + 999) `div` 1000)) deadline)
-                else do
-                  fd <- socketDescriptor s
-                  void (timeout (min 50000 remaining) (threadWaitRead fd))
-              loop
+            else pollFor s wanted ((min pollBound remaining + 999) `div` 1000) >> loop
+
+-- | The longest single @zmq_poll@, in microseconds: how late a lost
+-- interrupt can make an asynchronous exception.
+pollBound :: Int
+pollBound = 50000
 
 -- | @zmq_poll@ on one socket for the wanted events, for at most the given
--- milliseconds (-1: no limit), on the calling OS thread. An interrupted
--- poll (an asynchronous exception, or a signal) returns to the caller,
--- which re-checks the socket.
+-- milliseconds, on the calling OS thread. An interrupted poll (an
+-- asynchronous exception, or a signal) returns to the caller, which
+-- re-checks the socket.
 pollFor :: Socket -> CInt -> Int -> IO ()
 pollFor s wanted milliseconds =
   allocaBytesAligned #{size zmq_pollitem_t} #{alignment zmq_pollitem_t} $ \item -> do

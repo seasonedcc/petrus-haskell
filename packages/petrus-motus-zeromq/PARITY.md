@@ -4,12 +4,18 @@ This package ports `petrus/motus/transport/zeromq.py` and its server CLI.
 The upstream tests are in
 `tests/petrus/motus/transport/test_zeromq_dispatch_transport.py`.
 
-`cabal test petrus-motus-zeromq` runs 45 examples, with 0 failures and 0
+`cabal test petrus-motus-zeromq` runs 51 examples, with 0 failures and 0
 pending:
-- 32 in `test_zeromq_dispatch_transport.py`
-  (`test/Petrus/Motus/Transport/ZeroMQ/TransportSpec.hs`);
+- 35 in `test_zeromq_dispatch_transport.py`
+  (`test/Petrus/Motus/Transport/ZeroMQ/TransportSpec.hs`): the 32 of the
+  ledger below and 3 beyond the reference suite (the CPython wording of
+  `_decode_message`'s refusals; a CURVE server stopped while its clients
+  are connected; a receive with no deadline cancelled while peers come and
+  go, the last two for the 50 ms poll bound in README.md);
 - 12 in the interop suite (`test/Petrus/Motus/Transport/ZeroMQ/InteropSpec.hs`);
-- 1 boundary row (`test/Petrus/Motus/Transport/ZeroMQ/BoundarySpec.hs`).
+- 1 boundary row (`test/Petrus/Motus/Transport/ZeroMQ/BoundarySpec.hs`);
+- 3 properties of the wire codecs
+  (`test/Petrus/Motus/Transport/ZeroMQ/WirePropertiesSpec.hs`).
 
 The reference's processes are needed by the 12 interop examples and by the 2
 "the reference's server" cases. When `upstream/petrus/.venv` is not synced,
