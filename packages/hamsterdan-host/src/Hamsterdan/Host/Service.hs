@@ -115,7 +115,7 @@ import Hamsterdan.GitHub.Models
   , Transport
   , boundary
   )
-import Hamsterdan.Python (PythonArg (..), PythonException (..), casefold, pyIntBase, utf8Length)
+import Hamsterdan.Python (PyObject (..), PythonException (..), casefold, pyIntBase, utf8Length)
 import Hamsterdan.Python qualified as Py
 import Hamsterdan.GitHub.Routing (InstallationRegistry, Route (..), activeCount, activeInstallationCount, closeRegistry, openRegistry)
 import Hamsterdan.GitHub.Routing qualified as Routing

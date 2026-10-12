@@ -1,29 +1,21 @@
--- | The fast canonical encoder ("Petrus.Fabric.Canonical") writes exactly
--- what CPython writes for @json.dumps(allow_nan=False, ensure_ascii=False,
--- sort_keys=True, separators=(",", ":"))@, and exactly what petrus-json's
--- general encoder writes: both spell floats with petrus-json's shared
--- CPython repr, including the two classes where GHC's 'floatToDigits' does
--- not (@repr(1e23) == "1e+23"@, @repr(2**-25) == "2.9802322387695312e-08"@).
+-- | The canonical encoder ('canonicalBytes', petrus-json's 'dumps') writes
+-- exactly what CPython writes for @json.dumps(allow_nan=False,
+-- ensure_ascii=False, sort_keys=True, separators=(",", ":"))@, floats
+-- included (@repr(1e23) == "1e+23"@, @repr(2**-25) ==
+-- "2.9802322387695312e-08"@), and refuses what CPython refuses.
 module Petrus.Fabric.CanonicalSpec (spec) where
 
 import Data.Bits (shiftL, (.|.))
-import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
-import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word64)
 import GHC.Float (castDoubleToWord64, castWord64ToDouble)
 import Petrus.Fabric (canonicalBytes)
-import Petrus.Fabric.Canonical (canonicalFast)
 import Petrus.Json (Json (..), compact, dumps)
 import Petrus.Json.Encode (EncodeOptions (..))
 import Petrus.TestSupport (PythonResult (..), runPython)
 import System.Exit (ExitCode (..))
 import Test.Hspec
-import Test.QuickCheck
-
-general :: Json -> Maybe BS.ByteString
-general = either (const Nothing) Just . dumps compact {sortKeys = True}
 
 -- | At least 2^53 with an even significand, where CPython admits the
 -- rounding interval's ends.
@@ -35,11 +27,6 @@ ties :: [Double]
 ties = take 5000 [encodeFloat (2 ^ (52 :: Int) + r) k | (r, k) <- zip offsets (cycle [-25 .. -1]), odd r]
   where
     offsets = map (`mod` (2 ^ (52 :: Int))) (iterate (\x -> (x * 6364136223846793005 + 1) `mod` (2 ^ (64 :: Int))) 99)
-
--- | Finite doubles from uniformly random bit patterns (every exponent,
--- subnormals included).
-finiteDoubles :: Gen Double
-finiteDoubles = (castWord64ToDouble <$> (arbitrary :: Gen Word64)) `suchThat` (\d -> not (isNaN d || isInfinite d))
 
 -- | A deterministic stream of finite doubles from a 64-bit LCG.
 doublesFrom :: Word64 -> Int -> [Double]
@@ -57,53 +44,17 @@ edgeDoubles =
   ]
     <> [castWord64ToDouble (1 `shiftL` k .|. 1) | k <- [0 .. 62]]
 
-jsonValues :: Int -> Gen Json
-jsonValues size
-  | size <= 1 = scalars
-  | otherwise =
-      frequency
-        [ (3, scalars)
-        , (1, Array <$> resize 6 (listOf (jsonValues (size `div` 3))))
-        , (1, Object <$> resize 6 (listOf ((,) <$> texts <*> jsonValues (size `div` 3))))
-        ]
-  where
-    scalars =
-      oneof
-        [ pure Null
-        , Bool <$> arbitrary
-        , Int <$> arbitrary
-        , Int . toInteger <$> (arbitrary :: Gen Int)
-        , Int <$> elements [2 ^ (64 :: Int), -(2 ^ (63 :: Int)), -(2 ^ (63 :: Int)) - 1, 10 ^ (17 :: Int), 10 ^ (18 :: Int), -(10 ^ (18 :: Int)) + 1, 10 ^ (40 :: Int), 10 ^ (4299 :: Int)]
-        , Float <$> finiteDoubles
-        , Float <$> elements edgeDoubles
-        , String <$> texts
-        ]
-
-texts :: Gen Text
-texts = T.pack <$> listOf (frequency [(4, choose ('a', 'z')), (2, elements "\"\\\n\r\t\b\f\0\x1f\x7f /é\x2028\x1F600\xFFFD"), (1, arbitrary)])
-
 spec :: Spec
-spec = describe "the fast canonical encoder" $ do
-  it "writes petrus-json's bytes for generated values" $
-    property $ forAll (sized (jsonValues . max 1)) $ \value -> canonicalFast value === general value
-  it "writes petrus-json's bytes for 200000 random finite doubles" $
-    filter (\d -> canonicalFast (Float d) /= general (Float d)) (doublesFrom 20261010 200000) `shouldBe` []
-  it "writes petrus-json's bytes for the float edge cases" $
-    filter (\d -> canonicalFast (Float d) /= general (Float d)) (edgeDoubles <> map negate edgeDoubles) `shouldBe` []
-  it "writes every digit of 18- and 19-digit machine integers" $ do
-    let ints = [10 ^ (17 :: Int), 123456789012345678, 10 ^ (18 :: Int), 9223372036854775807, -9223372036854775808, -(10 ^ (18 :: Int))]
-    canonicalFast (Array (map Int ints)) `shouldBe` general (Array (map Int ints))
-    canonicalFast (Array [Int 123456789012345678]) `shouldBe` Just "[123456789012345678]"
-  it "spells 1e23 and 2^-25 as CPython does, like petrus-json" $ do
-    canonicalFast (Float 1e23) `shouldBe` Just "1e+23"
-    general (Float 1e23) `shouldBe` Just "1e+23"
-    canonicalFast (Float (2 ^^ (-25 :: Int))) `shouldBe` Just "2.9802322387695312e-08"
-    general (Float (2 ^^ (-25 :: Int))) `shouldBe` Just "2.9802322387695312e-08"
-  it "defers every refusal to the general encoder" $ do
-    canonicalFast (Object [("bad", Float (0 / 0))]) `shouldBe` Nothing
-    canonicalFast (Array [Float (1 / 0)]) `shouldBe` Nothing
-    canonicalFast (Int (10 ^ (4300 :: Int))) `shouldBe` Nothing
-    either (const True) (const False) (canonicalBytes (Object [("bad", Float (-1 / 0))])) `shouldBe` True
+spec = describe "the canonical encoder" $ do
+  it "spells 1e23 and 2^-25 as CPython does" $ do
+    canonicalBytes (Float 1e23) `shouldBe` Right "1e+23"
+    canonicalBytes (Float (2 ^^ (-25 :: Int))) `shouldBe` Right "2.9802322387695312e-08"
+  it "refuses non-finite floats and integers past CPython's digit limit" $ do
+    let refused = either (const True) (const False) . canonicalBytes
+    refused (Object [("bad", Float (0 / 0))]) `shouldBe` True
+    refused (Array [Float (1 / 0)]) `shouldBe` True
+    refused (Int (10 ^ (4300 :: Int))) `shouldBe` True
+    refused (Int (10 ^ (4299 :: Int))) `shouldBe` False
   it "writes CPython's bytes for 50000 random doubles, 20000 large even-significand ones, 5000 ties, 2000 subnormals, 10000 short decimals, powers of ten and two, the edge cases, and escaped strings" $ do
     let large = take 20000 (filter endAdmitted (doublesFrom 777 200000))
         powers = [10 ^^ k | k <- [-330 .. 310 :: Int]] <> [2 ^^ k | k <- [-1080 .. 1023 :: Int]]

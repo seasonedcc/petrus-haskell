@@ -74,8 +74,11 @@ Below are the differences that remain, with their rationale.
    - a SQLite failure is named as CPython's `sqlite3` names it
      (`OperationalError`, `IntegrityError`, `DatabaseError`, …), checked
      against the pinned interpreter for the same statements;
+   - an `IOException` is the `OSError` subclass CPython raises for its
+     errno (`FileNotFoundError`, `PermissionError`, …), or `OSError`
+     itself, from petrus-json's one errno table;
    - failures that only Haskell can raise get the nearest built-in class:
-     `IOException` is `OSError`, `ErrorCall` is `RuntimeError`,
+     `ErrorCall` is `RuntimeError`,
      `ArithException` is `ArithmeticError`, `ArrayException` is
      `IndexError`.
 

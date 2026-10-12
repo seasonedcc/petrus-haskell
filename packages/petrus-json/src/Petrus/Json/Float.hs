@@ -21,7 +21,6 @@
 module Petrus.Json.Float
   ( pythonFloatRepr
   , pythonFloatReprBytes
-  , floatReprBuilder
   , writeFloatRepr
   , maxFloatReprLength
   , shortestDigits
@@ -31,9 +30,6 @@ import Data.Array.Base (unsafeAt)
 import Data.Array.Unboxed (UArray, listArray)
 import Data.Bits (shiftL, shiftR, unsafeShiftL, unsafeShiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
-import Data.ByteString.Builder qualified as B
-import Data.ByteString.Builder.Prim qualified as BP
-import Data.ByteString.Builder.Prim.Internal (boundedPrim)
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Internal qualified as BI
 import Data.Word (Word8)
@@ -50,11 +46,6 @@ pythonFloatRepr = BC.unpack . pythonFloatReprBytes
 -- | 'pythonFloatRepr' as ASCII bytes.
 pythonFloatReprBytes :: Double -> ByteString
 pythonFloatReprBytes d = BI.unsafeCreateUptoN maxFloatReprLength (\p -> (`minusPtr` p) <$> writeFloatRepr d p)
-
--- | 'pythonFloatRepr' as a builder.
-floatReprBuilder :: Double -> B.Builder
-floatReprBuilder = BP.primBounded (boundedPrim maxFloatReprLength writeFloatRepr)
-{-# INLINE floatReprBuilder #-}
 
 -- | The digits behind 'pythonFloatRepr' without its layout: for a finite,
 -- nonzero double, @(digits, exponent)@ with @abs d@ spelled as

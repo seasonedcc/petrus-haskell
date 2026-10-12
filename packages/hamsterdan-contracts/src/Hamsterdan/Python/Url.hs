@@ -17,6 +17,7 @@ module Hamsterdan.Python.Url
   , username
   , password
   , quote
+  , quoteBytes
   , unquote
 
     -- * Shared with other URL parsers
@@ -288,7 +289,11 @@ password r = case T.breakOnEnd "@" r.netloc of
 
 -- | @urllib.parse.quote(value, safe=safe)@.
 quote :: Text -> Text -> Text
-quote safe value = TE.decodeLatin1 (BS.concatMap escape (TE.encodeUtf8 value))
+quote safe value = TE.decodeLatin1 (quoteBytes safe (TE.encodeUtf8 value))
+
+-- | @urllib.parse.quote(value, safe=safe)@ of @bytes@ (@quote_from_bytes@).
+quoteBytes :: Text -> BS.ByteString -> BS.ByteString
+quoteBytes safe = BS.concatMap escape
   where
     escape byte
       | alwaysSafe byte || (byte < 0x80 && T.any (== chr (fromIntegral byte)) safe) = BS.singleton byte

@@ -71,7 +71,7 @@ import Hamsterdan.GitHub.Models
   )
 import Hamsterdan.Python qualified as Py
 import Hamsterdan.Host.Python (ValueError (..), dumpsSortedText, sha256HexText)
-import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
+import Petrus.Impetus.Instance.FailureText (PyObject (..), PythonException (..))
 import Petrus.Json (Json)
 import System.Directory (doesFileExist)
 import System.Exit (ExitCode (..))

@@ -32,7 +32,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Python.Text (intText)
 import Petrus.Json (Json (..))
-import Petrus.Json.Python (PythonArg (..), PythonException (..), jsonTypeName, pythonError, pythonRepr, pythonStr)
+import Petrus.Json.Python (PyObject (..), PythonException (..), jsonTypeName, pythonError, pythonRepr, pythonStr)
 
 -- | Python truthiness (@bool(value)@).
 truthy :: Json -> Bool

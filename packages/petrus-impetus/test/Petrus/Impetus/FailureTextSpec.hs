@@ -41,7 +41,7 @@ newtype RuntimeError = RuntimeError String deriving stock (Show)
 
 instance Exception RuntimeError where displayException (RuntimeError m) = m
 
-data Case = Case {name :: Text, arguments :: [PythonArg], text :: Text}
+data Case = Case {name :: Text, arguments :: [PyObject], text :: Text}
 
 spec :: Spec
 spec = describe "FiringFailed.error for raised exceptions (firing_failure_text)" $ do
@@ -81,7 +81,7 @@ spec = describe "FiringFailed.error for raised exceptions (firing_failure_text)"
     it "records Name('message') for an exception with a message" $
       failing (\_ _ -> throw (KeyError "amount")) "KeyError('amount')"
     it "records a PythonException exactly" $
-      failing (\_ _ -> throw (PythonException "KeyError" [PyStr "amount", PyInt 3, PyObject "builtins" "object"])) "KeyError('amount', 3, <builtins.object>)"
+      failing (\_ _ -> throw (PythonException "KeyError" [PyStr "amount", PyInt 3, PyInstance "builtins" "object" "<object object>"])) "KeyError('amount', 3, <builtins.object>)"
 
 -- | The Haskell exception the reference's case corresponds to, when there
 -- is one: a known class name with no argument or one string argument.
@@ -120,7 +120,7 @@ loadCase value = do
   where
     member key = maybe (Left ("case lacks " <> T.unpack key)) Right (lookupMember key value)
 
-argument :: Json -> Either String PythonArg
+argument :: Json -> Either String PyObject
 argument = \case
   Object [("none", Null)] -> Right PyNone
   Object [("bool", Bool b)] -> Right (PyBool b)
@@ -128,7 +128,7 @@ argument = \case
   Object [("float", String spelled)] -> Right (PyFloat (float spelled))
   Object [("str", String s)] -> Right (PyStr s)
   Object [("bytes", String b)] -> Right (PyBytes (decodeBase64 b))
-  Object [("object", Array [String modul, String qualname])] -> Right (PyObject modul qualname)
+  Object [("object", Array [String modul, String qualname])] -> Right (PyInstance modul qualname ("<" <> modul <> "." <> qualname <> " object>"))
   other -> Left ("unknown argument " <> show other)
 
 string :: Json -> Either String Text

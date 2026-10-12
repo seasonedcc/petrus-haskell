@@ -9,7 +9,8 @@
 --
 -- * an 'IOException' carrying an @errno@ is the 'OSError' subclass CPython
 --   picks for that @errno@ (@FileNotFoundError@ for @ENOENT@,
---   @PermissionError@ for @EACCES@, ...), and @OSError@ without one;
+--   @PermissionError@ for @EACCES@, ...; petrus-json's
+--   "Petrus.Json.Python.OsError"), and @OSError@ without one;
 -- * 'UserInterrupt' is @KeyboardInterrupt@, @async@'s @AsyncCancelled@ is
 --   asyncio's @CancelledError@;
 -- * 'DivideByZero' is @ZeroDivisionError@, 'Overflow' is @OverflowError@;
@@ -30,7 +31,6 @@
 module Petrus.Telemetry.ErrorType
   ( pythonExceptionOf
   , pythonErrorType
-  , oserrorSubclass
   , haskellTypeName
   ) where
 
@@ -44,42 +44,10 @@ import Control.Exception
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Typeable (Typeable, tyConModule, tyConName, typeOf, typeRepTyCon)
-import Foreign.C.Error
-  ( Errno (..)
-  , eACCES
-  , eAGAIN
-  , eALREADY
-  , eCHILD
-  , eCONNABORTED
-  , eCONNREFUSED
-  , eCONNRESET
-  , eEXIST
-  , eINPROGRESS
-  , eINTR
-  , eISDIR
-  , eNOENT
-  , eNOTDIR
-  , ePERM
-  , ePIPE
-  , eSHUTDOWN
-  , eSRCH
-  , eTIMEDOUT
-  , eWOULDBLOCK
-  )
-import Foreign.C.Types (CInt (..))
 import GHC.IO.Exception (IOException (..))
-import Petrus.Json.Python.Exception (PythonArg (..), PythonException (..), asPythonException)
+import Petrus.Json.Python.Exception (PyObject (..), PythonException (..), asPythonException)
+import Petrus.Json.Python.OsError (ioExceptionClass)
 import System.Exit (ExitCode (..))
-import System.IO.Unsafe (unsafePerformIO)
-
-foreign import ccall unsafe "petrus_telemetry_enotcapable" c_enotcapable :: IO CInt
-
--- | @ENOTCAPABLE@ where the platform has one.
-eNOTCAPABLE :: Maybe Errno
-eNOTCAPABLE = case unsafePerformIO c_enotcapable of
-  n | n < 0 -> Nothing
-  n -> Just (Errno n)
-{-# NOINLINE eNOTCAPABLE #-}
 
 -- | The Python exception an exception stands for, as the reference would
 -- raise it: a member of the 'SomePythonException' hierarchy by its own
@@ -119,7 +87,7 @@ pythonErrorType some = case asPythonException some of
 -- | The class of an exception outside the hierarchy: see the module header.
 builtinName :: SomeException -> Text
 builtinName some
-  | Just (io :: IOException) <- fromException some = maybe "OSError" (oserrorSubclass . Errno) (ioe_errno io)
+  | Just (io :: IOException) <- fromException some = ioExceptionClass io
   | Just UserInterrupt <- fromException some = "KeyboardInterrupt"
   | Just DivideByZero <- fromException some = "ZeroDivisionError"
   | Just Overflow <- fromException some = "OverflowError"
@@ -132,26 +100,6 @@ builtinName some
       | otherwise = haskellTypeName inner
       where
         tc = typeRepTyCon (typeOf inner)
-
--- | CPython's @OSError(errno, ...)@ subclass for an @errno@
--- (@Objects/exceptions.c@, @_PyExc_InitState@'s table).
-oserrorSubclass :: Errno -> Text
-oserrorSubclass errno
-  | errno `elem` [eAGAIN, eALREADY, eWOULDBLOCK, eINPROGRESS] = "BlockingIOError"
-  | errno == eCHILD = "ChildProcessError"
-  | errno `elem` [ePIPE, eSHUTDOWN] = "BrokenPipeError"
-  | errno == eCONNABORTED = "ConnectionAbortedError"
-  | errno == eCONNREFUSED = "ConnectionRefusedError"
-  | errno == eCONNRESET = "ConnectionResetError"
-  | errno == eEXIST = "FileExistsError"
-  | errno == eNOENT = "FileNotFoundError"
-  | errno == eISDIR = "IsADirectoryError"
-  | errno == eNOTDIR = "NotADirectoryError"
-  | errno == eINTR = "InterruptedError"
-  | errno `elem` [eACCES, ePERM] || Just errno == eNOTCAPABLE = "PermissionError"
-  | errno == eSRCH = "ProcessLookupError"
-  | errno == eTIMEDOUT = "TimeoutError"
-  | otherwise = "OSError"
 
 -- | The 'Typeable' type constructor's name: what a Haskell exception with no
 -- Python counterpart is called.

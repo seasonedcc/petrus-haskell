@@ -54,7 +54,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.CaseInsensitive qualified as CI
-import Data.Char (isAlphaNum, toLower)
+import Data.Char (toLower)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (find)
 import Data.Set (Set)
@@ -94,6 +94,7 @@ import Network.Wai (Application, Middleware, Request, Response, getRequestBodyCh
 import Network.Socket (Socket, SocketOption (NoDelay), accept, close, setCloseOnExecIfNeeded, setSocketOption, socketPort, withFdSocket)
 import Network.Wai.Handler.Warp qualified as Warp
 import Network.Wai.Handler.Warp.Internal (Connection (..), Settings (..), runSettingsConnection, socketConnection)
+import Hamsterdan.Python.Url qualified as Url
 import Petrus.Json (Json (..), compact, dumps)
 import System.Posix.Process (getProcessID)
 import System.Posix.Signals (Handler (..), Signal, installHandler, sigINT, sigTERM)
@@ -219,20 +220,8 @@ route service request =
       TE.encodeUtf8 (requestScope request).scheme
         <> "://"
         <> maybe "" id (requestHeaderHost request)
-        <> quote redirected
+        <> Url.quoteBytes ":/%#?=@[]!$&'()*+,;" redirected
         <> rawQueryString request
-
--- | @urllib.parse.quote(url, safe=":/%#?=@[]!$&'()*+,;")@ of a path.
-quote :: ByteString -> ByteString
-quote = BS.concatMap escape
-  where
-    safe c = isAlphaNum c || c `elem` ("_.-~:/%#?=@[]!$&'()*+,;" :: String)
-    escape byte
-      | byte < 128 && safe (toEnum (fromIntegral byte)) = BS.singleton byte
-      | otherwise = BC.pack ('%' : hex (fromIntegral byte))
-    hex :: Int -> String
-    hex n = [digits !! (n `div` 16), digits !! (n `mod` 16)]
-    digits = "0123456789ABCDEF"
 
 -- | @POST /github/webhooks@.
 webhook :: HostService -> Request -> IO Response

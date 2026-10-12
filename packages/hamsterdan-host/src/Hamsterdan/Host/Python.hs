@@ -62,7 +62,7 @@ import Data.Text (Text)
 import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Python.Exception (raisingDumps)
 import Hamsterdan.Python.Hashlib (sha256Hex, sha256HexText)
-import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
+import Petrus.Impetus.Instance.FailureText (PyObject (..), PythonException (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Petrus.Json (EncodeOptions (..), Json, compact, defaultDumps, dumps, dumpsText)
 import Petrus.Motus.Worker (LookupError (..), RuntimeError (..), ValueError (..))

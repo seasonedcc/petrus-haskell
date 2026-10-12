@@ -36,7 +36,7 @@ import Data.Text qualified as T
 import Petrus.EngineFile.Duration (Timedelta (..), totalSeconds)
 import Petrus.EngineFile.Loader (Source (..), mountedSources, resolve, toSchema)
 import Petrus.EngineFile.Types
-import Petrus.EngineFile.Validate (PyException (..))
+import Petrus.Json.Python.Exception (PythonException (..))
 import Petrus.Impetus.Petrinet.Schema qualified as K
 
 -- | A kernel net and its initial token counts (places with tokens only, in
@@ -49,7 +49,7 @@ data KernelNet = KernelNet
 -- | Why a file did not become a kernel net: petrus-engine refused it, or
 -- the kernel refused the net it describes.
 data KernelError
-  = LoadError PyException
+  = LoadError PythonException
   | KernelError Text
   deriving stock (Eq, Show)
 

@@ -171,6 +171,37 @@ build with the walk still in this package, four interleaved full runs read
 1.05×, 1.02×, 1.02× and 1.04× with the walk in petrus-posix, and 1.02×,
 1.03×, 1.02× and 1.03× before (load 3.5–4.8): the same.
 
+## The JSON fast path
+
+Provider answers are parsed by `json.loads` of a `str`. The operator used
+to read them with its own subset parser, `Hamsterdan.Operator.FastJson`,
+before the shared loader. That parser is gone. Its in-place reading of a
+`Text` is now `Petrus.Json.Parse.InPlace`, which petrus-json's
+`loadsText` tries before its byte parser, so every port's `json.loads` of
+a `str` takes the same path. This A/B was measured on 2026-10-12 on the
+Apple M4, at a one-minute load average of 4.1–5.5, with the
+`inspect` row (`--repeat inspect 210`). The variants ran alternately, and
+each figure is the median of the runs' medians:
+
+| variant | `inspect` (210 runs, median of medians) | repetitions |
+| --- | ---: | ---: |
+| `FastJson` in the operator | 714 µs | 6 |
+| petrus-json's byte parser only (`parseJson`, then the scanner on a refusal) | 1.20 ms | 5 |
+| petrus-json's `loadsText` with the in-place reader (now) | 790 µs | 6 |
+
+Python's figure was 971.5 µs in "Current figures". So the byte parser alone
+would put the row at 0.81×. One harness run with Python interleaved
+(`--runs 5`, load 4.1) gave 746 µs against 1.02 ms (1.37×) for the
+in-place reader, and 747 µs against 1.06 ms (1.41×) for `FastJson`.
+
+On the 25 documents of one run (112 528 bytes), measured outside the
+harness:
+
+- the byte parser took 360 µs;
+- the in-place reader took 250 µs, including the conversion to Python
+  values;
+- `FastJson`, which built the operator's values directly, took 175 µs.
+
 ## Rerun
 
 From the repository root (`scripts/bench hamsterdan-operator` runs exactly

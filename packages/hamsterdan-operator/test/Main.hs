@@ -7,7 +7,6 @@ import ContainerSpec qualified
 import Control.Monad (unless)
 import DifferentialSpec qualified
 import Fakes qualified
-import FastJsonSpec qualified
 import OperatorSpec qualified
 import PublicationQualificationSpec qualified
 import QualificationSetupLocalSpec qualified
@@ -24,7 +23,6 @@ main = do
     OperatorSpec.spec
     PublicationQualificationSpec.spec
     TypeGuaranteeSpec.spec
-    FastJsonSpec.spec
     SecretLaunchSpec.spec
     QualificationSetupLocalSpec.spec
     DifferentialSpec.spec

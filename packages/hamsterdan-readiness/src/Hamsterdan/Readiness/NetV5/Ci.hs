@@ -23,7 +23,7 @@ import Hamsterdan.Readiness.NetV5.Folding
 import Hamsterdan.Readiness.NetV5.Py
 import Hamsterdan.Readiness.NetV5.Wiring
 import Petrus.Impetus.Dsl (Author)
-import Petrus.Impetus.Instance.FailureText (PythonArg (..))
+import Petrus.Impetus.Instance.FailureText (PyObject (..))
 import Petrus.Impetus.Petrinet (NetPath, Token)
 
 checksFact :: Integer -> Text -> Py ChecksFact

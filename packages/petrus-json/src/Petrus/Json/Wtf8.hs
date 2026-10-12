@@ -44,8 +44,10 @@ import Data.ByteString.Unsafe qualified as BU
 import Data.Char (ord)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Array qualified as TA
 import Data.Text.Encoding qualified as TE
 import Data.Text.Foreign qualified as TF
+import Data.Text.Internal qualified as TI
 import Data.Word (Word8)
 import Petrus.Json.Value (Json (..))
 import Foreign.Ptr (castPtr)
@@ -90,14 +92,15 @@ fromCodePoints chars
       | otherwise = BS.unpack (TE.encodeUtf8 (T.singleton c))
 
 -- | Whether a 'Text' holds a surrogate code point (only a WTF-8 'Text' can).
+-- It reads the text's own bytes: a surrogate's WTF-8 sequence starts
+-- @ED A0@ to @ED BF@, which no UTF-8 sequence does.
 hasLoneSurrogate :: Text -> Bool
-hasLoneSurrogate text = go 0
+hasLoneSurrogate (TI.Text array offset size) = go offset
   where
-    bytes = TE.encodeUtf8 text
-    size = BS.length bytes
+    end = offset + size
     go i
-      | i + 1 >= size = False
-      | BU.unsafeIndex bytes i == 0xED && BU.unsafeIndex bytes (i + 1) >= 0xA0 = True
+      | i + 1 >= end = False
+      | TA.unsafeIndex array i == 0xED && TA.unsafeIndex array (i + 1) >= 0xA0 = True
       | otherwise = go (i + 1)
 
 -- | Rust's @String::from_utf8_lossy@ of the string's WTF-8 bytes: each

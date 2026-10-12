@@ -27,10 +27,10 @@ import Test.Hspec
 vectors :: IO Json
 vectors = readJson (dataFile "codec-vectors.json")
 
--- | The lone-surrogate inputs CPython admits and this port refuses (see
--- DIVERGENCES.md).
-loneSurrogateRefusal :: Text
-loneSurrogateRefusal = "invalid strict DST JSON: the payload contains a lone UTF-16 surrogate, which this port cannot represent"
+-- | The refusal of a lone surrogate in an object key, which CPython admits
+-- (see DIVERGENCES.md).
+surrogateKeyRefusal :: Text
+surrogateKeyRefusal = "invalid strict DST JSON: the payload contains a lone UTF-16 surrogate in an object key, which this port cannot represent"
 
 -- | Compare one decode outcome with a Python verdict; 'Nothing' when they
 -- agree.
@@ -141,11 +141,12 @@ spec = describe "artifact codec" $ do
             ( \c ->
                 let payload = either (error . show) id (B16.decode (TE.encodeUtf8 (memberText "hex" c)))
                     expected = member "verdict" c
-                    divergent = BS.isInfixOf "\xed\xa0\x80" payload
+                    -- The corpus's one lone-surrogate key.
+                    divergent = BS.isInfixOf "\"record\\ud800types\"" payload
                  in if divergent
                       then case decodeArtifact payload of
-                        Left (DecodeRefused m) | m == loneSurrogateRefusal -> Nothing
-                        other -> Just ("lone surrogate: " <> T.pack (show (either (Left . decodeErrorMessage) (Right . artifactScenarioId) other)))
+                        Left (DecodeRefused m) | m == surrogateKeyRefusal -> Nothing
+                        other -> Just ("lone surrogate key: " <> T.pack (show (either (Left . decodeErrorMessage) (Right . artifactScenarioId) other)))
                       else fmap (\m -> memberText "hex" c <> ": " <> m) (mismatch payload expected)
             )
             (memberList "raw" v)
@@ -181,8 +182,8 @@ spec = describe "artifact codec" $ do
       `shouldBe` Left (DecodeRefused "invalid strict DST JSON: 'utf-16-le' codec can't decode byte 0x7d in position 4: truncated data")
     refusal "{\"a\":\"\xed\xa0\x80\""
       `shouldBe` Left (DecodeRefused "invalid strict DST JSON: Expecting ',' delimiter: line 1 column 9 (char 8)")
-    refusal "{\"a\":\"\\ud800\"}" `shouldBe` Left (DecodeRefused loneSurrogateRefusal)
-    refusal "{\"\\ud800\":1,\"\\ud801\":2}" `shouldBe` Left (DecodeRefused loneSurrogateRefusal)
+    refusal "{\"a\":\"\\ud800\"}" `shouldBe` Left (DecodeRefused "unsupported DST artifact version None")
+    refusal "{\"\\ud800\":1,\"\\ud801\":2}" `shouldBe` Left (DecodeRefused surrogateKeyRefusal)
 
   -- repr() keeps characters Unicode 16.0 assigned (CPython 3.14) and
   -- escapes the space separators: the copy this package carried used GHC's

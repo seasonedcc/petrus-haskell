@@ -1,8 +1,10 @@
--- | The JSON fast path ("Hamsterdan.Operator.FastJson") against the
--- reference loader and against CPython's @json.loads@ itself: on every
--- document it accepts, its value is the reference's, and it declines every
--- document outside its subset.
-module FastJsonSpec (spec) where
+{-# LANGUAGE BlockArguments #-}
+
+-- | The in-place reader ("Petrus.Json.Parse.InPlace") against the byte
+-- parser and against CPython's @json.loads@ itself: on every document it
+-- accepts, its value is theirs, and it declines every document outside its
+-- subset.
+module Petrus.Json.InPlaceSpec (spec) where
 
 import Control.Monad (forM_, unless)
 import Data.ByteString.Lazy qualified as BL
@@ -12,12 +14,12 @@ import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Python.Object (loadsText)
-import Hamsterdan.Operator.FastJson (fastLoads)
-import Hamsterdan.Operator.Python (dumpsPlain)
-import Petrus.Json (Json (..), compact, dumps)
-import Petrus.TestSupport.Python (upstreamPythonExecutable)
-import System.Process.Typed (byteStringInput, proc, readProcess, setStdin)
+import Petrus.Json (Json (..), compact, defaultDumps, dumps, parseJson, pythonJsonLoads)
+import Petrus.Json.Parse.InPlace (parseInPlace)
+import Petrus.Json.Python.Loads (loadsText)
+import Petrus.Json.Reference (upstreamPython)
+import Petrus.Json.Wtf8 (fromCodePoints)
+import System.Process.Typed (byteStringInput, proc, readProcess, setStdin, setWorkingDir)
 import Test.Hspec
 
 -- | Documents in the subset.
@@ -34,7 +36,7 @@ accepted =
   , "[[[[[]]]]]"
   , "{\"\": {\"\": []}, \"b\": \"\"}"
   , "\"\127 is fine\""
-  , T.replicate 4000 "9"
+  , T.replicate 4300 "9"
   ]
 
 -- | Documents outside the subset: the fast path declines, whatever the
@@ -61,9 +63,10 @@ declined =
   , "\"\\u12\""
   , "tru"
   , "-"
-  , T.replicate 501 "[" <> T.replicate 501 "]"
-  , T.replicate 4001 "9"
+  , T.replicate 100001 "[" <> T.replicate 100001 "]"
+  , T.replicate 4301 "9"
   , "\"unterminated"
+  , fromCodePoints "\"raw \xD800 surrogate\""
   ]
 
 -- ---------------------------------------------------------------------------
@@ -134,26 +137,28 @@ generated = take 3000 (go (randoms 20261011))
 -- ---------------------------------------------------------------------------
 
 spec :: Spec
-spec = describe "JSON fast path (Haskell port)" do
+spec = describe "Petrus.Json.Parse.InPlace" do
   it "accepts its subset" $
-    filter (isNothing . fastLoads) accepted `shouldBe` []
+    filter (isNothing . parseInPlace) accepted `shouldBe` []
   it "declines everything else" $
-    filter (isJust . fastLoads) declined `shouldBe` []
-  it "returns the reference loader's value on every document it accepts" do
+    filter (isJust . parseInPlace) declined `shouldBe` []
+  it "returns the byte parser's value on every document it accepts" do
     let documents = accepted <> declined <> generated
         disagreements =
-          [ (document', show fast, show (loadsText bytes))
+          [ (document', fast, parsed)
           | document' <- documents
-          , let bytes = TE.encodeUtf8 document'
-          , Just fast <- [fastLoads document']
-          , Right (show fast) /= fmap show (loadsText bytes)
+          , Just fast <- [parseInPlace document']
+          , let parsed = parseJson pythonJsonLoads (TE.encodeUtf8 document')
+          , Right (show fast) /= fmap show parsed
           ]
     disagreements `shouldBe` []
     -- The generated corpus exercises both outcomes.
-    length (filter (isJust . fastLoads) generated) `shouldSatisfy` (> 2000)
-    length (filter (isNothing . fastLoads) generated) `shouldSatisfy` (> 50)
+    length (filter (isJust . parseInPlace) generated) `shouldSatisfy` (> 2000)
+    length (filter (isNothing . parseInPlace) generated) `shouldSatisfy` (> 50)
+  it "leaves a raw lone surrogate to CPython's scanner" $
+    loadsText (fromCodePoints "[\"a\xD800\"]") `shouldBe` Right (Array [String (fromCodePoints "a\xD800")])
   it "returns CPython's json.loads value on every document it accepts" do
-    python <- upstreamPythonExecutable "hamsterdan"
+    (python, checkout) <- upstreamPython
     let documents = accepted <> generated
         payload = either (error . show) id (dumps compact (Array (map String documents)))
         script =
@@ -163,11 +168,11 @@ spec = describe "JSON fast path (Haskell port)" do
           \        print(json.dumps(json.loads(document)))\n\
           \    except Exception as error:\n\
           \        print(type(error).__name__)\n"
-    (_, out, err) <- readProcess (setStdin (byteStringInput (BL.fromStrict payload)) (proc python ["-I", "-B", "-c", script]))
+    (_, out, err) <- readProcess (setWorkingDir checkout (setStdin (byteStringInput (BL.fromStrict payload)) (proc python ["-I", "-B", "-c", script])))
     unless (BL.null err) $ expectationFailure (show err)
     let reference = T.lines (TE.decodeUtf8 (BL.toStrict out))
     length reference `shouldBe` length documents
     forM_ (zip documents reference) \(document', expected) ->
-      case fastLoads document' of
-        Just value -> (document', dumpsPlain value) `shouldBe` (document', Right expected)
+      case parseInPlace document' of
+        Just value -> (document', TE.decodeUtf8 <$> dumps defaultDumps value) `shouldBe` (document', Right expected)
         Nothing -> pure ()

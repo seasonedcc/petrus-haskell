@@ -219,7 +219,7 @@ There are also three Haskell-only rows (medians of the four rounds):
 - **The JSONL write encodes each line in one pass.** `encodePayload`
   encodes each record with petrus-json's `dumps` (`allowNan = False`),
   which writes the bytes and refuses a non-finite number in the same pass,
-  at the same first value `dumpsBuilder` would refuse; the lines are joined
+  at the same first value CPython's `json.dumps` refuses; the lines are joined
   into one `ByteString`, written with one `write`. The encoder alone
   (`diagnostic.encode-payload`) took about 85 ms when every record's
   `Builder` was held until the whole batch had been checked (the slowdown

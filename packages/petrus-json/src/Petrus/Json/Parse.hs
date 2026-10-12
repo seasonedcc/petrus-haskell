@@ -35,7 +35,7 @@ module Petrus.Json.Parse
   ) where
 
 import Control.Monad (when)
-import Data.Bits (complement, countTrailingZeros, shiftL, shiftR, xor, (.&.), (.|.))
+import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Unsafe qualified as BU
@@ -45,20 +45,10 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Text.Array qualified as TA
-import Data.Text.Foreign qualified as TF
-import Data.Text.Internal qualified as TI
-import Control.Monad.ST (ST, runST)
-import Data.Array.Base (unsafeRead, unsafeWrite)
-import Data.Array.ST (STUArray, newArray)
-import Foreign.Ptr (Ptr, castPtr)
-import Foreign.Storable (peekByteOff)
-import GHC.ByteOrder (ByteOrder (..), targetByteOrder)
-import System.IO.Unsafe (unsafeDupablePerformIO)
-import Data.Word (Word64, Word8)
+import Data.Word (Word8)
 import Petrus.Json.Limits (defaultNestingLimit, intStrDigitsError, maxIntStrDigits)
 import Petrus.Json.Value
-import Petrus.Json.Wtf8 (surrogateText)
+import Petrus.Json.Wtf8 (surrogateText, unsafeTextFromBytes)
 
 -- | How to treat a repeated object member.
 data DuplicateMembers
@@ -269,9 +259,7 @@ objectAt options input depth start = case at input first of
     duplicateFailure found = failed ("duplicate JSON member " ++ show (T.unpack (firstDuplicate Set.empty found)))
     hasDuplicates count found
       | count <= 8 = quadratic found
-      -- Distinct hashes prove distinct keys; only a collision needs the
-      -- exact (comparison-based) check.
-      | otherwise = hashesCollide count found && Set.size (Set.fromList (map fst found)) /= count
+      | otherwise = Set.size (Set.fromList (map fst found)) /= count
     quadratic [] = False
     quadratic ((key, _) : rest) = any ((== key) . fst) rest || quadratic rest
     -- The first member whose name an earlier member already used.
@@ -306,81 +294,20 @@ arrayAt options input depth start = case at input first of
                   0x5D -> Step (Array (reverse (value : acc))) (next + 1)
                   _ -> expecting "',' delimiter" next
 
--- | Whether two keys share a hash, via a small open-addressing table of
--- their FNV-1a hashes.
-hashesCollide :: Int -> [(Text, a)] -> Bool
-hashesCollide count found = runST $ do
-  let size = until (>= 2 * count) (* 2) 16
-      mask = size - 1
-  table <- newArray (0, size - 1) 0 :: ST s (STUArray s Int Int)
-  let insert [] = pure False
-      insert ((key, _) : rest) = do
-        -- 0 marks an empty slot.
-        let hash = case keyHash key of 0 -> 1; h -> h
-            probe slot = do
-              occupant <- unsafeRead table slot
-              if occupant == 0
-                then unsafeWrite table slot hash >> insert rest
-                else
-                  if occupant == hash
-                    then pure True
-                    else probe ((slot + 1) .&. mask)
-        probe (hash .&. mask)
-  insert found
-
--- | A cheap key hash for the duplicate pre-check: the length and up to the
--- first and last eight UTF-8 bytes. Equal keys always hash equally; a
--- collision only costs the exact check.
-keyHash :: Text -> Int
-keyHash (TI.Text array offset size) =
-  let byte i = fromIntegral (TA.unsafeIndex array i) :: Int
-      window from count = go from (from + count) 0
-        where
-          go i end acc
-            | i >= end = acc
-            | otherwise = go (i + 1) end (acc * 257 + byte i)
-      front = window offset (min 8 size)
-      back = if size > 8 then window (offset + max 8 (size - 8)) (min 8 (size - 8)) else 0
-   in ((size * 1099511628211) `xor` front) * 1099511628211 `xor` (back * 6364136223846793005)
-
 -- | The offset of the first byte at or after @from@ that ends a plain string
 -- run: a quote, a backslash, a control character, or a non-ASCII byte; the
--- input length when there is none. Eight bytes are tested at a time.
--- unsafeDupablePerformIO: a read-only scan of the input's own bytes.
+-- input length when there is none.
 findSpecial :: ByteString -> Int -> Int
-findSpecial input from
-  | targetByteOrder /= LittleEndian = bytewise from
-  | otherwise = unsafeDupablePerformIO (BU.unsafeUseAsCString input (\pointer -> wordwise (castPtr pointer) from))
+findSpecial input from = maybe (BS.length input) (+ from) (BS.findIndex special (BU.unsafeDrop from input))
   where
-    len = BS.length input
     special w = w == 0x22 || w == 0x5C || w < 0x20 || w >= 0x80
-    bytewise i
-      | i < len, not (special (BU.unsafeIndex input i)) = bytewise (i + 1)
-      | otherwise = i
-    wordwise :: Ptr Word8 -> Int -> IO Int
-    wordwise pointer i
-      | i + 8 <= len = do
-          word <- peekByteOff pointer i :: IO Word64
-          let flagged = flags word
-          if flagged == 0
-            then wordwise pointer (i + 8)
-            else pure (i + countTrailingZeros flagged `shiftR` 3)
-      | otherwise = pure (bytewise i)
-    ones = 0x0101010101010101 :: Word64
-    highs = 0x8080808080808080 :: Word64
-    zeroByte v = (v - ones) .&. complement v .&. highs
-    -- The lowest flagged byte is exact (borrows only reach higher bytes).
-    flags word =
-      (word .&. highs)
-        .|. ((word - 0x20 * ones) .&. complement word .&. highs)
-        .|. zeroByte (word `xor` (0x22 * ones))
-        .|. zeroByte (word `xor` (0x5C * ones))
 
 -- | Parse a string body starting just after the opening quote.
 stringAt :: LoneSurrogates -> ByteString -> Int -> TextStep
 stringAt surrogates input start
-  -- Fast path: plain ASCII up to the closing quote is one copy.
-  | end < BS.length input, BU.unsafeIndex input end == 0x22 = TextStep (copyAscii (slice start end)) (end + 1)
+  -- Fast path: plain ASCII up to the closing quote is one copy (ASCII is
+  -- valid UTF-8).
+  | end < BS.length input, BU.unsafeIndex input end == 0x22 = TextStep (unsafeTextFromBytes (slice start end)) (end + 1)
   | otherwise = case stringSlow surrogates input start of
       Left problem -> TextStep (T.pack problem) (-1)
       Right (text, after) -> TextStep text after
@@ -397,7 +324,7 @@ stringSlow surrogates input start = scanFrom True start
       | i >= len = Left ("Unterminated string starting at byte " ++ show (start - 1))
       | otherwise = case BU.unsafeIndex input i of
           0x22
-            | ascii -> Right (copyAscii (slice start i), i + 1)
+            | ascii -> Right (unsafeTextFromBytes (slice start i), i + 1)
             | otherwise -> do
                 text <- decodeSlice start i
                 Right (text, i + 1)
@@ -467,15 +394,6 @@ stringSlow surrogates input start = scanFrom True start
           | w >= 0x61 && w <= 0x66 = Right (fromIntegral w - 0x57)
           | w >= 0x41 && w <= 0x46 = Right (fromIntegral w - 0x37)
           | otherwise = Left ("Invalid \\uXXXX escape at byte " ++ show i)
-
--- | Copy bytes known to be ASCII (hence valid UTF-8) into a 'Text'.
--- unsafeDupablePerformIO: writes only the array this call allocates.
-copyAscii :: ByteString -> Text
-copyAscii bytes
-  | BS.null bytes = T.empty
-  | otherwise =
-      unsafeDupablePerformIO
-        (BU.unsafeUseAsCStringLen bytes (\(pointer, size) -> TF.fromPtr (castPtr pointer) (fromIntegral size)))
 
 -- | CPython's number grammar: @-?(0|[1-9]\d*)(\.\d+)?([eE][-+]?\d+)?@.
 numberAt :: ParseOptions -> ByteString -> Int -> Step

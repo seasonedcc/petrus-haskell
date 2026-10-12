@@ -23,8 +23,9 @@ module Petrus.Impetus.Validation.Pydantic
   , pyRepr
   , pyStrRepr
   , pyStringRepr
-  , pyStrValue
+  , pyStr
   , pyTypeName
+  , pvJson
     -- * Errors
   , Loc (..)
   , LineError (..)
@@ -53,7 +54,9 @@ module Petrus.Impetus.Validation.Pydantic
 import Data.Bifunctor (first)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json.Python.Pydantic (Loc (..), LineError (..), PyObject (..), fromJson, fromRaw, pyRepr, pyStrValue, pyTypeName)
+import Petrus.Json (Json (..))
+import Petrus.Json.Python.Object (PyObject (..), fromJson, fromRaw, pyRepr, pyStr, pyTypeName)
+import Petrus.Json.Python.Pydantic (Loc (..), LineError (..))
 import Petrus.Json.Python.Pydantic qualified as Pydantic
 import Petrus.Json.PythonText (pythonStrRepr, pythonStringRepr)
 import Petrus.Json.Wtf8 (hasLoneSurrogate, lossyUtf8)
@@ -64,6 +67,21 @@ import Petrus.Json.Wtf8 (hasLoneSurrogate, lossyUtf8)
 -- | A Python value as a model validator sees it (petrus-json's
 -- 'PyObject', whose @repr@ and type name every pydantic error quotes).
 type PV = PyObject
+
+-- | The JSON value of a dumped model (@model_dump(mode="json")@ of the
+-- models these validators build): a tuple as an array, and a model
+-- instance, which only an error quotes, by its @repr@.
+pvJson :: PV -> Json
+pvJson = \case
+  PyNone -> Null
+  PyBool b -> Bool b
+  PyInt i -> Int i
+  PyFloat d -> Float d
+  PyStr s -> String s
+  PyList items -> Array (map pvJson items)
+  PyTuple items -> Array (map pvJson items)
+  PyDict members -> Object [(k, pvJson v) | (k, v) <- members]
+  other -> String (pyRepr other)
 
 -- | CPython's @repr(str)@.
 pyStrRepr :: Text -> Text
@@ -88,7 +106,7 @@ valueError text = LineError [] ("Value error, " <> text) "value_error"
 -- the errors collected before it are discarded and nothing after it runs.
 -- Its text is the exception's own.
 fatalError :: Text -> LineError
-fatalError text = LineError [] text fatalType PNone
+fatalError text = LineError [] text fatalType PyNone
 
 fatalType :: Text
 fatalType = "<fatal>"
@@ -131,7 +149,7 @@ at step = first (map (\err -> err {loc = step : err.loc}))
 -- validation with that one @string_unicode@ error.
 model :: Text -> [Text] -> ([(Text, PV)] -> PV -> Collect a) -> PV -> Validated a
 model className fields build = \case
-  whole@(PDict members) ->
+  whole@(PyDict members) ->
     let unknown = [(k, v) | (k, v) <- members, k `notElem` fields]
         extras = [LineError [Key k] "Extra inputs are not permitted" "extra_forbidden" v | (k, v) <- unknown]
         -- A declared field's name is never unreadable, so only the unknown
@@ -139,7 +157,7 @@ model className fields build = \case
         unreadable = [k | (k, _) <- unknown, hasLoneSurrogate k]
      in case (collect (build members whole), extras) of
           (Left es, _) | any (\err -> err.errorType == fatalType) es -> Left es
-          _ | k : _ <- unreadable -> Left [Pydantic.stringUnicode (PStr k)]
+          _ | k : _ <- unreadable -> Left [Pydantic.stringUnicode (PyStr k)]
           (Right a, []) -> Right a
           (Right _, es) -> Left es
           (Left es, more) -> Left (es ++ more)
@@ -178,12 +196,12 @@ checked check validate value = do
 -- are located under its tag.
 tagged :: [(Text, PV -> Validated a)] -> PV -> Validated a
 tagged choices = \case
-  whole@(PDict members) -> case lookup "kind" members of
+  whole@(PyDict members) -> case lookup "kind" members of
     Nothing -> Left [LineError [] "Unable to extract tag using discriminator 'kind'" "union_tag_not_found" whole]
     Just tagValue ->
-      let tag = pyStrValue tagValue
+      let tag = pyStr tagValue
        in case (tagValue, lookup tag choices) of
-            (PStr _, Just validate) -> at (Key tag) (validate whole)
+            (PyStr _, Just validate) -> at (Key tag) (validate whole)
             _ ->
               Left
                 [ LineError
@@ -202,28 +220,28 @@ tagged choices = \case
 -- validator: a list or tuple, item by item.
 tupleOf :: (PV -> Validated a) -> PV -> Validated [a]
 tupleOf validate = \case
-  PList items -> each items
-  PTuple items -> each items
+  PyList items -> each items
+  PyTuple items -> each items
   other -> Left [LineError [] "Input should be a valid tuple" "tuple_type" other]
   where
     each items = collect (traverse (\(i, item) -> Collect (at (Index i) (validate item))) (zip [0 ..] items))
 
 strictStr :: PV -> Validated Text
 strictStr = \case
-  PStr s -> Right s
+  PyStr s -> Right s
   other -> Left [LineError [] "Input should be a valid string" "string_type" other]
 
 -- | @X | None@.
 optional :: (PV -> Validated a) -> PV -> Validated (Maybe a)
 optional validate = \case
-  PNone -> Right Nothing
+  PyNone -> Right Nothing
   other -> Just <$> validate other
 
 -- | @Literal["a", "b", ...]@.
 literalStr :: [Text] -> PV -> Validated Text
 literalStr options = \case
-  PStr s | s `elem` options -> Right s
-  other@(PStr s) | hasLoneSurrogate s -> Left [Pydantic.stringUnicode other]
+  PyStr s | s `elem` options -> Right s
+  other@(PyStr s) | hasLoneSurrogate s -> Left [Pydantic.stringUnicode other]
   other -> Left [LineError [] ("Input should be " <> spelled) "literal_error" other]
   where
     quoted = map (\o -> "'" <> o <> "'") options
@@ -235,15 +253,15 @@ literalStr options = \case
 -- | @Literal[n]@: Python equality, except that a @bool@ never matches.
 literalInt :: Integer -> PV -> Validated Integer
 literalInt expected = \case
-  PInt i | i == expected -> Right expected
-  PFloat d | not (isNaN d || isInfinite d) && toRational d == fromInteger expected -> Right expected
+  PyInt i | i == expected -> Right expected
+  PyFloat d | not (isNaN d || isInfinite d) && toRational d == fromInteger expected -> Right expected
   other -> Left [LineError [] ("Input should be " <> T.pack (show expected)) "literal_error" other]
 
 -- | A strict @int@ (never a @bool@ or @float@) within inclusive bounds.
 intRange :: Integer -> Integer -> PV -> Validated Integer
 intRange low high = \case
-  PInt i
-    | i < low -> Left [LineError [] ("Input should be greater than or equal to " <> T.pack (show low)) "greater_than_equal" (PInt i)]
-    | i > high -> Left [LineError [] ("Input should be less than or equal to " <> T.pack (show high)) "less_than_equal" (PInt i)]
+  PyInt i
+    | i < low -> Left [LineError [] ("Input should be greater than or equal to " <> T.pack (show low)) "greater_than_equal" (PyInt i)]
+    | i > high -> Left [LineError [] ("Input should be less than or equal to " <> T.pack (show high)) "less_than_equal" (PyInt i)]
     | otherwise -> Right i
   other -> Left [LineError [] "Input should be a valid integer" "int_type" other]

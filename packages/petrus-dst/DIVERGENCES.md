@@ -154,24 +154,23 @@ on the Python stack at the call. Past CPython's C stack limit, `json.loads` rais
 
 ## Input limits
 
-### Lone UTF-16 surrogates are refused
+### Lone UTF-16 surrogates in object keys are refused
 
-CPython's loader admits lone surrogates from `\ud800` escapes or `surrogatepass` decoding.
-Haskell `Text` cannot hold them. The strict loader refuses such input with
-`invalid strict DST JSON: the payload contains a lone UTF-16 surrogate, which this port cannot
-represent`.
+CPython's loader admits lone surrogates from `\ud800` escapes or `surrogatepass` decoding. The
+port admits them in string values too: petrus-json keeps such a string as WTF-8, and the loader,
+the validators and the canonical encoder agree with the reference on it byte for byte (the
+raw-bytes corpus and `Spec.ToolingInterop` exchange such an artifact both ways). A lone surrogate
+in an object key is refused with `invalid strict DST JSON: the payload contains a lone UTF-16
+surrogate in an object key, which this port cannot represent`. The raw-bytes corpus pins that
+case. No committed fixture contains one.
 
-The raw-bytes corpus pins exactly which inputs this affects. No committed fixture contains one.
-
-Why it stays: admitting them is not enough to match the reference. petrus-json can keep a lone
-surrogate (as WTF-8), and with it the loader, the validators and the canonical encoder agree with
-the reference on surrogates in string values. But the reference re-encodes an artifact through
-pydantic-core's `model_dump(mode="json")`, which treats keys differently: a `JsonValue` object
-key holding a lone surrogate is written with one U+FFFD per byte of the surrogate's
-`surrogatepass` encoding (so `"\ud83d"` becomes `"���"`, and keys that collide
-that way merge, the last value winning), and a typed `dict[str, int]` key holding one raises
-`UnicodeEncodeError`. Matching that means reproducing pydantic-core's serializer field by field;
-a clean refusal is the smaller and safer difference.
+Why it stays: the reference re-encodes an artifact through pydantic-core's
+`model_dump(mode="json")`, which treats keys differently from values: a `JsonValue` object key
+holding a lone surrogate is written with one U+FFFD per byte of the surrogate's `surrogatepass`
+encoding (so `"\ud83d"` becomes `"���"`, and keys that collide that way merge, the last value
+winning), and a typed `dict[str, int]` key holding one raises `UnicodeEncodeError`. Matching that
+means reproducing pydantic-core's serializer field by field; a clean refusal is the smaller and
+safer difference.
 
 ## Additions
 
@@ -181,9 +180,6 @@ None of these change behavior.
   was the stand-in for the Engine before the Haskell Engine existed. It now cross-checks every
   door call, including for the joined Postgres worlds, independently of the real profiles (see
   the Engine seam in [PARITY.md](PARITY.md)).
-- `Petrus.Testing.Dst.Internal.Canonical` is a specialized encoder for the canonical
-  `json.dumps` spelling. It produces exactly petrus-json's bytes, which a QuickCheck property
-  and every corpus check. It exists for speed (`bench/RESULTS.md`).
 
 ## Engine worlds (`petrus-dst:engine-worlds`)
 

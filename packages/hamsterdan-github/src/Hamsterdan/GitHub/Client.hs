@@ -225,12 +225,7 @@ apiRoute decoded = do
   when ("//" `T.isPrefixOf` route) (Left "Relative URLs cannot have a path starting with '//'")
   Right (Url.unquote route)
   where
-    asciiRepr c = case c of
-      '\t' -> "'\\t'"
-      '\n' -> "'\\n'"
-      '\r' -> "'\\r'"
-      _ -> let n = fromEnum c in T.pack ("'\\x" <> [hexDigit (n `div` 16), hexDigit (n `mod` 16)] <> "'")
-    hexDigit d = "0123456789abcdef" !! d
+    asciiRepr = Py.strRepr . T.singleton
 
 -- | GitHubKit's @BYPASS_REGEX@ (searched).
 bypassRoute :: Text -> Bool

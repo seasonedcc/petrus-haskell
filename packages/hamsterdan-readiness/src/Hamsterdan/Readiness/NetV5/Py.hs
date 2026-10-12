@@ -48,7 +48,7 @@ import Data.Text qualified as T
 import Hamsterdan.Contracts.Codec (Contract, Enumeration (..), dump, validate)
 import Hamsterdan.PyLiteral qualified as Lit
 import Hamsterdan.Readiness.NetV5.Folding (PythonException, pyError, typeError, validationError)
-import Petrus.Impetus.Instance.FailureText (PythonArg (..))
+import Petrus.Json.Python.Object (PyObject (..), fromJson)
 import Petrus.Json (Json (..))
 import Hamsterdan.Python.Value (truthy, typeName)
 import Hamsterdan.Python.Value qualified as Value
@@ -60,16 +60,6 @@ isNone :: Json -> Bool
 isNone = \case
   Null -> True
   _ -> False
-
--- | The Python spelling of a key in a @KeyError@.
-keyArg :: Json -> PythonArg
-keyArg = \case
-  Null -> PyNone
-  Bool b -> PyBool b
-  Int i -> PyInt i
-  Float d -> PyFloat d
-  String s -> PyStr s
-  other -> PyObject "builtins" (typeName other)
 
 -- | @container[key]@ for a string key.
 getItem :: Json -> Text -> Py Json
@@ -90,7 +80,7 @@ getKey container key = case container of
   Array _ -> Left (typeError ("list indices must be integers or slices, not " <> typeName key))
   other -> Left (typeError ("'" <> typeName other <> "' object is not subscriptable"))
   where
-    missing k = pyError "KeyError" [keyArg k]
+    missing k = pyError "KeyError" [fromJson k]
 
 hashable :: Json -> Py ()
 hashable = \case

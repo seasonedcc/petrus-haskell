@@ -72,8 +72,7 @@ import Foreign.C.Types (CInt (..), CULong (..))
 import Foreign.Marshal.Alloc (allocaBytes)
 import Foreign.Ptr (Ptr)
 import Foreign.Storable (peekElemOff)
-import Petrus.Json.Limits (maxIntStrDigits)
-import Petrus.Json.Python (isPythonSpace, parsePythonFloat, parsePythonInt, pythonDecimal, pythonStrRepr)
+import Petrus.Json.Python (isPythonSpace, parsePythonFloat, pythonInt, pythonStrRepr)
 
 -- ---------------------------------------------------------------------------
 -- Declarations
@@ -950,13 +949,6 @@ windowColumns fd = allocaBytes 8 $ \size -> do
 
 -- ---------------------------------------------------------------------------
 -- Python semantics
-
--- | @int(text)@ (base 10), with CPython's 4300-digit conversion limit;
--- 'Nothing' where it raises @ValueError@.
-pythonInt :: Text -> Maybe Integer
-pythonInt text = do
-  value <- parsePythonInt 10 text
-  if T.length (T.filter (isJust . pythonDecimal) text) > maxIntStrDigits then Nothing else Just value
 
 -- | @float(text)@ (petrus-json's 'parsePythonFloat', the one @float()@
 -- emulation); 'Nothing' where it raises @ValueError@.

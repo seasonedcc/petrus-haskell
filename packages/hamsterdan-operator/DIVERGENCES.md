@@ -85,15 +85,16 @@ Below are the differences that remain, with their rationale.
 - **`RuntimeError` and the other exceptions the setup sequence catches**
   are `PythonException` values carrying the reference's class name. The sequence
   turns them into the same evidence categories.
-- **JSON fast path.** Provider answers are parsed by
-  `Hamsterdan.Operator.FastJson`, which decodes the common subset of JSON
-  (no floats, no repeated keys, no surrogate escapes, at most 500 levels
-  deep, integers up to 4000 digits) in place. Within that subset
-  `json.loads` has exactly one result. For any other document it returns
-  nothing and the reference loader
-  (`Hamsterdan.Python.Object.loadsText`) decides, with CPython's values and
-  errors. `FastJsonSpec` checks 3000 generated documents and the hand-made
-  edge cases against both the reference loader and CPython.
+- **JSON fast path.** Provider answers go through `json.loads` as
+  petrus-json's `loadsText` reads a `str`. A document in the common subset
+  of JSON (no floats, no repeated keys, no surrogates) is read in place
+  (`Petrus.Json.Parse.InPlace`). Within that subset `json.loads` has
+  exactly one result. Every other document goes to the byte parser, and a
+  refusal to CPython's scanner, which give CPython's values and errors.
+  petrus-json's `InPlaceSpec` checks 3000 generated documents and the
+  hand-made edge cases against the byte parser and CPython. The A/B that
+  moved the path out of this package is in `bench/RESULTS.md`, "The JSON
+  fast path".
 - **Plain system calls.** `shutil.which` is ported directly
   (`Hamsterdan.Operator.Posix.which`: the same `PATH` walk, petrus-posix's
   `os.confstr("CS_PATH")` when `PATH` is unset, one `stat`, one

@@ -24,7 +24,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.EngineFile.Duration (totalSeconds)
 import Petrus.EngineFile.Types
-import Petrus.EngineFile.Validate (PyException (..))
+import Petrus.Json.Python.Exception (PythonException (..), pythonError)
 import Petrus.EngineFile.Value (Value (..), pyTypeName)
 import Petrus.Json.Encode (EncodeError, defaultDumps, dumps, encodeErrorMessage)
 import Petrus.Json.Value (Json)
@@ -39,22 +39,22 @@ arcKeyOrder :: [Text]
 arcKeyOrder = ["source", "target"]
 
 -- | @to_json(indent, max_inline)@ as text (always ASCII).
-toJson :: Int -> Int -> FlatNetFile -> Either PyException Text
+toJson :: Int -> Int -> FlatNetFile -> Either PythonException Text
 toJson indent maxInline file = TE.decodeLatin1 <$> toJsonBytes indent maxInline file
 
 -- | @to_json(indent, max_inline)@ as bytes.
-toJsonBytes :: Int -> Int -> FlatNetFile -> Either PyException ByteString
+toJsonBytes :: Int -> Int -> FlatNetFile -> Either PythonException ByteString
 toJsonBytes indent maxInline file = do
   dumped <- dumpFile file
   compactJson indent maxInline dumped
 
 -- | @str(path)@ as the path's plain serializer runs it.
-pathString :: NetPath -> Either PyException Text
+pathString :: NetPath -> Either PythonException Text
 pathString (NetPath segments) = case [(i, v) | (i, SegOther v) <- zip [0 :: Int ..] segments] of
   [] -> Right (T.intercalate "." [t | SegText t <- segments])
   (index, bad) : _ ->
     Left
-          ( PyException
+          ( pythonError
               "PydanticSerializationError"
               ( "Error calling function `str`: TypeError: sequence item "
                   <> T.pack (show index)
@@ -66,7 +66,7 @@ pathString (NetPath segments) = case [(i, v) | (i, SegOther v) <- zip [0 :: Int 
 
 -- | The dict @to_json@ formats: the model dump with @fileVersion@ and
 -- @net@ set.
-dumpFile :: FlatNetFile -> Either PyException Value
+dumpFile :: FlatNetFile -> Either PythonException Value
 dumpFile file = do
   arcsDump <- traverse arc file.arcs
   placesDump <- traverse (keyed place) file.places
@@ -131,22 +131,22 @@ dumpFile file = do
 
 -- | @compact_json(value, indent, max_inline, FLAT_NET_FILE_KEY_ORDER,
 -- ARC_KEY_ORDER)@.
-compactJson :: Int -> Int -> Value -> Either PyException ByteString
+compactJson :: Int -> Int -> Value -> Either PythonException ByteString
 compactJson indent maxInline = compactJsonWith indent maxInline flatNetFileKeyOrder arcKeyOrder
 
 -- | @compact_json(value, indent, max_inline, key_order, item_key_order)@
 -- (an empty order is Python's @None@).
-compactJsonWith :: Int -> Int -> [Text] -> [Text] -> Value -> Either PyException ByteString
+compactJsonWith :: Int -> Int -> [Text] -> [Text] -> Value -> Either PythonException ByteString
 compactJsonWith indent maxInline keyOrder itemKeyOrder top = do
   -- @clean@ and @json.dumps@ recurse once per nesting level; under
   -- @python -m petrus.cli.format_json@ a value nested more than
   -- 'recursionDepth' containers deep exhausts Python's recursion limit.
   when (containerDepth top > recursionDepth) $
-    Left (PyException "RecursionError" "maximum recursion depth exceeded")
+    Left (pythonError "RecursionError" "maximum recursion depth exceeded")
   body <- format 0 top
   Right (BL.toStrict (B.toLazyByteString (body <> B.char7 '\n')))
   where
-    format :: Int -> Value -> Either PyException B.Builder
+    format :: Int -> Value -> Either PythonException B.Builder
     format depth value
       | not (isContainer value) || not (hasNested value) = do
           compact <- encode (toJsonValue (clean value))
@@ -186,7 +186,7 @@ compactJsonWith indent maxInline keyOrder itemKeyOrder top = do
       VDict members -> VDict [(k, clean v) | (k, v) <- sortMembers (-1) members]
       VList items -> VList (map clean items)
       v -> v
-    encode :: Json -> Either PyException ByteString
+    encode :: Json -> Either PythonException ByteString
     encode j = either (Left . encodeFailure) Right (dumps defaultDumps j)
 
 -- | The deepest container nesting (the top value counting as 1) that
@@ -203,8 +203,8 @@ containerDepth = \case
   VDict members -> 1 + maximum (0 : map (containerDepth . snd) members)
   _ -> 0
 
-encodeFailure :: EncodeError -> PyException
-encodeFailure e = PyException "ValueError" (T.pack (encodeErrorMessage e))
+encodeFailure :: EncodeError -> PythonException
+encodeFailure e = pythonError "ValueError" (T.pack (encodeErrorMessage e))
 
 isContainer :: Value -> Bool
 isContainer = \case

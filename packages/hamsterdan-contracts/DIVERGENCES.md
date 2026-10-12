@@ -133,19 +133,28 @@ tests. They were needed to meet the benchmark bar:
 
 - The parser returns an unboxed `(value, offset)` product instead of
   `Either String (Json, Int)`.
-- Strings are scanned eight bytes at a time and plain ASCII is copied
-  directly.
+- Plain ASCII string runs are copied directly.
 - Short integers are parsed in machine `Int`.
 - Duplicate members are found by a quadratic check for at most 8 members, or
-  else by an open-addressing hash pre-check with an exact fallback.
-- `dumps` measures the document exactly and writes it into one buffer. The
-  streaming `dumpsBuilder` remains.
+  else by a set of the keys.
+- `dumps` writes the document straight into one buffer.
+
+The eight-bytes-at-a-time string scan and the hash pre-check for duplicates
+were later removed, and the `Builder` encoder moved to petrus-json's test
+suite: an A/B showed the plain versions still clear CPython (petrus-json's
+`bench/RESULTS.md`, "Optimizations kept and removed").
+
+The exact-size writer of a JSON value's `repr`, which prints dashboard entries
+and projection digests, moved from `Hamsterdan.PyLiteral` into petrus-json
+(`Petrus.Json.Python.JsonRepr`). A plain printer cannot keep up with CPython
+there ([bench/RESULTS.md](bench/RESULTS.md), "The literal printer").
 
 The new properties in `packages/petrus-json/test/Main.hs` cover:
 
 - string round trips at every offset and in every escaping mode;
 - integers of every size;
 - first-position/last-value duplicates, and rejection of duplicates;
-- `dumps` and `dumpsBuilder` spelling the same bytes under seven option sets.
+- `dumps` and the test suite's reference `Builder` encoder spelling the same
+  bytes under seven option sets.
   Those values include non-finite floats, huge integers, and every kind of
   escape.

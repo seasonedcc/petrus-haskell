@@ -18,7 +18,7 @@ import Petrus.Impetus.Petrinet.Schema (netPlaceOrder, netTransitionOrder)
 import Petrus.Json (Json (..))
 import Test.Hspec
 import Data.Bifunctor (first)
-import Hamsterdan.Python (PythonArg (..), PythonException (..), pythonExceptionStr, pythonFailureText)
+import Hamsterdan.Python (PyObject (..), PythonException (..), pythonExceptionStr, pythonFailureText)
 
 built :: BuiltNet
 built = either (error . show) id buildNetV5

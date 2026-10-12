@@ -1,21 +1,27 @@
--- | A fast path for @json.loads(text)@ over the documents providers return.
+-- | The common subset of JSON, read from a 'Text' in place: the fast path
+-- of 'Petrus.Json.Python.Loads.loadsText' (@json.loads@ of a @str@).
 --
--- 'fastLoads' decodes the common subset of JSON directly into Python
--- values: objects without repeated keys, arrays, strings whose escapes are
--- not surrogates and contain no control characters, integers of up to 4000
--- digits, @true@, @false@ and @null@, at most 500 levels deep, with JSON
--- whitespace around. Within that subset @json.loads@ has exactly one result,
--- which is what 'fastLoads' returns. For anything else (floats, @NaN@ and
--- the infinities, repeated keys, surrogate escapes, every malformed
--- document) it returns 'Nothing' and the caller uses the reference loader,
--- 'Hamsterdan.Python.Object.loadsText', which reproduces CPython's values
--- and errors in full. The test suite checks the two agree, and agree with
--- CPython, on every document the fast path accepts.
+-- 'parseInPlace' admits objects without repeated members, arrays, strings
+-- without surrogates (escaped or raw) or control characters, integers of
+-- up to 'maxIntStrDigits' digits, @true@, @false@ and @null@, nested less
+-- than 'defaultNestingLimit' deep, with JSON whitespace around. Within that
+-- subset @json.loads@ has exactly one result, the one 'parseInPlace'
+-- returns. For anything else (floats, @NaN@ and the infinities, repeated
+-- members, surrogates, every malformed document) it returns 'Nothing', and
+-- 'Petrus.Json.Python.Loads.loadsText' goes on to 'Petrus.Json.parseJson'
+-- and CPython's scanner, which decide every document.
 --
--- It reads the text's UTF-8 array in place: a string without escapes is a
--- slice of the document, not a copy.
-module Hamsterdan.Operator.FastJson
-  ( fastLoads
+-- The text is already valid UTF-8, so nothing is validated or copied: a
+-- string without escapes is a slice of the document (and keeps the
+-- document's array alive while it is). 'Petrus.Json.parseJson' reads bytes
+-- and must do both. On hamsterdan-operator's @inspect@ benchmark, whose
+-- provider answers are parsed this way, @json.loads@ through
+-- 'Petrus.Json.parseJson' alone took the workload to 1.20 ms against
+-- CPython's 971.5 µs (0.81×). With this path it takes 790 µs, and 746 µs
+-- against CPython's 1.02 ms (1.37×) in a run with the two interleaved (see
+-- hamsterdan-operator's @bench/RESULTS.md@, "The JSON fast path").
+module Petrus.Json.Parse.InPlace
+  ( parseInPlace
   ) where
 
 import Data.Bits (shiftL, (.|.))
@@ -24,16 +30,17 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Array qualified as A
-import Data.Text.Internal (Text (..))
+import Data.Text.Internal qualified as TI
 import Data.Word (Word8)
-import Hamsterdan.Python.Object (PV (..))
+import Petrus.Json.Limits (defaultNestingLimit, maxIntStrDigits)
+import Petrus.Json.Value (Json (..))
 
 -- | A parsed value and the offset after it, or a refusal.
 data Step a = Step a {-# UNPACK #-} !Int | Refused
 
 -- | The document's value, or 'Nothing' when it is outside the subset.
-fastLoads :: Text -> Maybe PV
-fastLoads (Text array offset len) = case value 0 (skip offset) of
+parseInPlace :: Text -> Maybe Json
+parseInPlace (TI.Text array offset len) = case value 0 (skip offset) of
   Step parsed end | skip end == limit -> Just parsed
   _ -> Nothing
   where
@@ -52,18 +59,18 @@ fastLoads (Text array offset len) = case value 0 (skip offset) of
 
     digit w = w >= 0x30 && w <= 0x39
 
-    value :: Int -> Int -> Step PV
+    value :: Int -> Int -> Step Json
     value !depth !i
       | i >= limit = Refused
       | otherwise = case at i of
           0x22 -> case string (i + 1) of
-            Step s j -> Step (PStr s) j
+            Step s j -> Step (String s) j
             Refused -> Refused
-          0x7b | depth < 500 -> object (depth + 1) (skip (i + 1))
-          0x5b | depth < 500 -> array' (depth + 1) (skip (i + 1))
-          0x74 | matches i "true" -> Step (PBool True) (i + 4)
-          0x66 | matches i "false" -> Step (PBool False) (i + 5)
-          0x6e | matches i "null" -> Step PNone (i + 4)
+          0x7b | depth < defaultNestingLimit -> object (depth + 1) (skip (i + 1))
+          0x5b | depth < defaultNestingLimit -> array' (depth + 1) (skip (i + 1))
+          0x74 | matches i "true" -> Step (Bool True) (i + 4)
+          0x66 | matches i "false" -> Step (Bool False) (i + 5)
+          0x6e | matches i "null" -> Step Null (i + 4)
           w | w == 0x2d || digit w -> integer i
           _ -> Refused
 
@@ -77,7 +84,7 @@ fastLoads (Text array offset len) = case value 0 (skip offset) of
           end = digits start
           count = end - start
        in if count == 0
-            || count > 4000
+            || count > maxIntStrDigits
             || (count > 1 && at start == 0x30)
             || (end < limit && (at end == 0x2e || at end == 0x65 || at end == 0x45))
             then Refused
@@ -85,7 +92,7 @@ fastLoads (Text array offset len) = case value 0 (skip offset) of
               let magnitude
                     | count <= 18 = toInteger (accumulate start end (0 :: Int))
                     | otherwise = accumulateBig start end 0
-               in Step (PInt (if negative then negate magnitude else magnitude)) end
+               in Step (Int (if negative then negate magnitude else magnitude)) end
 
     digits !j
       | j < limit, digit (at j) = digits (j + 1)
@@ -101,7 +108,7 @@ fastLoads (Text array offset len) = case value 0 (skip offset) of
       | otherwise = acc
 
     array' depth i
-      | i < limit, at i == 0x5d = Step (PList []) (i + 1)
+      | i < limit, at i == 0x5d = Step (Array []) (i + 1)
       | otherwise = items [] i
       where
         items acc j = case value depth j of
@@ -112,11 +119,11 @@ fastLoads (Text array offset len) = case value 0 (skip offset) of
                   then Refused
                   else case at l of
                     0x2c -> items (item : acc) (skip (l + 1))
-                    0x5d -> Step (PList (reverse (item : acc))) (l + 1)
+                    0x5d -> Step (Array (reverse (item : acc))) (l + 1)
                     _ -> Refused
 
     object depth i
-      | i < limit, at i == 0x7d = Step (PDict []) (i + 1)
+      | i < limit, at i == 0x7d = Step (Object []) (i + 1)
       | otherwise = members [] (0 :: Int) i
       where
         members acc !count j
@@ -137,10 +144,10 @@ fastLoads (Text array offset len) = case value 0 (skip offset) of
                                 else case at n of
                                   0x2c -> members acc' (count + 1) (skip (n + 1))
                                   0x7d
-                                    | count < 16 || distinct acc' -> Step (PDict (reverse acc')) (n + 1)
+                                    | count < 16 || distinct acc' -> Step (Object (reverse acc')) (n + 1)
                                   _ -> Refused
           where
-            -- Small objects check each key as it comes; larger ones once,
+            -- Small objects check each name as it comes; larger ones once,
             -- at the end.
             repeated key = count < 16 && any ((== key) . fst) acc
 
@@ -154,9 +161,9 @@ fastLoads (Text array offset len) = case value 0 (skip offset) of
         plain !j
           | j >= limit = Refused
           | otherwise = case at j of
-              0x22 -> Step (Text array start (j - start)) (j + 1)
-              0x5c -> escaped [Text array start (j - start)] j
-              w | w < 0x20 -> Refused
+              0x22 -> Step (TI.text array start (j - start)) (j + 1)
+              0x5c -> escaped [TI.text array start (j - start)] j
+              w | refusedByte w j -> Refused
               _ -> plain (j + 1)
         -- At a backslash, with the pieces so far, last first.
         escaped pieces !j
@@ -182,10 +189,14 @@ fastLoads (Text array offset len) = case value 0 (skip offset) of
         rest pieces !runStart !j
           | j >= limit = Refused
           | otherwise = case at j of
-              0x22 -> Step (T.concat (reverse (Text array runStart (j - runStart) : pieces))) (j + 1)
-              0x5c -> escaped (Text array runStart (j - runStart) : pieces) j
-              w | w < 0x20 -> Refused
+              0x22 -> Step (T.concat (reverse (TI.text array runStart (j - runStart) : pieces))) (j + 1)
+              0x5c -> escaped (TI.text array runStart (j - runStart) : pieces) j
+              w | refusedByte w j -> Refused
               _ -> rest pieces runStart (j + 1)
+
+    -- A control character, or the start of a surrogate's WTF-8 sequence
+    -- (@ED A0@ to @ED BF@), which only a WTF-8 'Text' holds.
+    refusedByte w j = w < 0x20 || (w == 0xed && j + 1 < limit && at (j + 1) >= 0xa0)
 
     hex4 j
       | j + 4 > limit = Nothing

@@ -22,14 +22,14 @@
 -- the representation every port shares.
 module Petrus.Impetus.Instance.FailureText
   ( PythonException (..)
-  , PythonArg (..)
+  , PyObject (..)
   , pythonFailureText
   , exceptionFailureText
   ) where
 
 import Control.Exception (SomeException)
 import Data.Text (Text)
-import Petrus.Json.Python.Exception (PythonArg (..), PythonException (..), pythonFailureText)
+import Petrus.Json.Python.Exception (PyObject (..), PythonException (..), pythonFailureText)
 import Petrus.Telemetry.ErrorType (pythonExceptionOf)
 
 -- | The recorded text of any exception user code threw

@@ -70,7 +70,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
+import Petrus.Json (Json (..), parseJson, pythonDict, surrogateRefusingLoads)
 
 -- | A JSON object's members in order.
 type Object = [(Text, Json)]
@@ -277,23 +277,6 @@ finiteJson = \case
   Array values -> Array (map finiteJson values)
   Object members -> Object [(key, finiteJson value) | (key, value) <- members]
   value -> value
-
--- | The members a Python @dict@ built from these pairs holds.
-pythonDict :: [(Text, a)] -> [(Text, a)]
-pythonDict members
-  | distinct = members
-  | otherwise = go Set.empty members
-  where
-    distinct = case drop 8 members of
-      [] -> pairwiseDistinct members
-      _ -> Map.size final == length members
-    pairwiseDistinct [] = True
-    pairwiseDistinct ((key, _) : rest) = all ((/= key) . fst) rest && pairwiseDistinct rest
-    final = Map.fromList members
-    go _ [] = []
-    go seen ((key, _) : rest)
-      | Set.member key seen = go seen rest
-      | otherwise = (key, final Map.! key) : go (Set.insert key seen) rest
 
 -- | @list[T]@ and @tuple[T, ...]@ (JSON arrays in both cases).
 list :: Codec a -> Codec [a]

@@ -2,7 +2,8 @@
 -- pinned reference: the same artifacts authored by both languages, each
 -- language replaying the other's artifacts and failure bundles, the
 -- legacy replay CLI byte for byte, and the campaign process runner's
--- reports side by side.
+-- reports side by side, and an artifact holding a lone surrogate exchanged
+-- both ways.
 module Spec.ToolingInterop (spec) where
 
 import Control.Monad (forM_)
@@ -11,7 +12,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Text qualified as T
 import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
-import Petrus.Testing.Dst (AnyArtifact, DstFailure, encodeArtifact, failureMessage)
+import Petrus.Testing.Dst (AnyArtifact, DstFailure, decodeArtifact, encodeArtifact, failureMessage)
 import Petrus.Testing.Dst.Engine.GeneratedRuntimeQualification
   ( buildBroadOnlyArtifact
   , buildLivelockFailureArtifact
@@ -70,6 +71,23 @@ pythonAuthoring =
     , "}"
     , "for name, artifact in artifacts.items():"
     , "    (root / f'{name}.json').write_bytes(encode_artifact(artifact) + b'\\n')"
+    ]
+
+-- | Both languages decode a fixture whose observation holds a lone
+-- surrogate and encode it (argv: the fixture, then where to write), and
+-- each decodes and re-encodes the other's artifact (argv: the other's
+-- artifact, then where to write).
+pythonSurrogateArtifact :: String
+pythonSurrogateArtifact =
+  unlines
+    [ "import sys"
+    , "from pathlib import Path"
+    , "from petrus.testing.dst import decode_artifact, encode_artifact"
+    , "seeded = Path(sys.argv[1]).read_bytes()"
+    , "mutated = seeded.replace(b'\"InstanceCreated\"', b'\"Instance\\\\ud800Created\"', 1)"
+    , "assert mutated != seeded"
+    , "Path(sys.argv[2]).write_bytes(encode_artifact(decode_artifact(mutated)))"
+    , "Path(sys.argv[4]).write_bytes(encode_artifact(decode_artifact(Path(sys.argv[3]).read_bytes())))"
     ]
 
 -- | The campaign report members both runners must agree on.
@@ -139,6 +157,26 @@ spec = describe "DST tooling interop with the reference" $ do
         byPython <- succeeded "python failure replay" =<< pythonModule "tests.dst.failure" ["replay", bundle]
         byHaskell <- succeeded "petrus-dst-world failure replay" =<< runWorldCommand ["failure", "replay", bundle]
         byHaskell `shouldBe` byPython
+
+  it "an artifact holding a lone surrogate crosses both ways unchanged" $
+    withSystemTempDirectory "petrus-dst-interop-" $ \scratch -> do
+      dir <- makeAbsolute scratch
+      fixture <- makeAbsolute (fixturesDir </> "seeded-projection-crash-recovery-world-v3.json")
+      seeded <- BS.readFile fixture
+      let (prefix, rest) = BS.breakSubstring "\"InstanceCreated\"" seeded
+          mutated = prefix <> "\"Instance\\ud800Created\"" <> BS.drop (BS.length "\"InstanceCreated\"") rest
+          roundTrip bytes = either (fail . show) pure (decodeArtifact bytes) >>= either (fail . T.unpack) pure . encodeArtifact
+      BS.null rest `shouldBe` False
+      haskellBytes <- roundTrip mutated
+      BS.isInfixOf "\"Instance\\ud800Created\"" haskellBytes `shouldBe` True
+      BS.writeFile (dir </> "haskell.json") haskellBytes
+      _ <-
+        succeeded "python surrogate artifact"
+          =<< runPythonScript pythonSurrogateArtifact [fixture, dir </> "python.json", dir </> "haskell.json", dir </> "python-of-haskell.json"]
+      pythonBytes <- BS.readFile (dir </> "python.json")
+      pythonBytes `shouldBe` haskellBytes
+      BS.readFile (dir </> "python-of-haskell.json") `shouldReturn` haskellBytes
+      roundTrip pythonBytes `shouldReturn` pythonBytes
 
   it "the legacy scenario replay CLI prints the reference's bytes" $ do
     fixture <- makeAbsolute (fixturesDir </> "projection-crash-recovery-v1.json")

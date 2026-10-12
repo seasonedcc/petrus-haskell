@@ -14,7 +14,7 @@ module Petrus.EngineFile
   ( -- * Models
     module Petrus.EngineFile.Types
   , Value (..)
-  , PyException (..)
+  , PythonException (..)
 
     -- * Reading one file
   , fromFilename
@@ -52,7 +52,7 @@ import Petrus.EngineFile.Kernel (KernelError (..), KernelNet (..), loadKernelFil
 import Petrus.EngineFile.Loader
 import Petrus.EngineFile.PyJson (pyJsonErrorClass, pyLoads, renderPyJsonError)
 import Petrus.EngineFile.Types
-import Petrus.EngineFile.Validate (PyException (..))
+import Petrus.Json.Python.Exception (PythonException (..), pythonError)
 import Petrus.EngineFile.Value (Value (..))
 
 -- | @to_json@'s default indent.
@@ -68,26 +68,26 @@ formatMaxInline :: Int
 formatMaxInline = 120
 
 -- | @FlatNetFile.from_filename(path)@.
-fromFilename :: Text -> IO (Either PyException FlatNetFile)
+fromFilename :: Text -> IO (Either PythonException FlatNetFile)
 fromFilename = readFileNet
 
 -- | @FlatNetFile.model_validate_json(text)@ on a text's UTF-8 bytes.
-fromJson :: ByteString -> Either PyException FlatNetFile
+fromJson :: ByteString -> Either PythonException FlatNetFile
 fromJson = validateJsonText
 
 -- | @FlatNetFile.from_dict(value)@ on objects @json.loads@ built.
-fromDict :: Value -> Either PyException FlatNetFile
+fromDict :: Value -> Either PythonException FlatNetFile
 fromDict = readDictNet
 
 -- | @json.loads(text)@ on a text's UTF-8 bytes.
-loads :: ByteString -> Either PyException Value
+loads :: ByteString -> Either PythonException Value
 loads bytes = case pyLoads bytes of
-  Left e -> Left (PyException (pyJsonErrorClass e) (renderPyJsonError e))
+  Left e -> Left (pythonError (pyJsonErrorClass e) (renderPyJsonError e))
   Right v -> Right v
 
 -- | @reformat_content(content, indent=, max_inline=)@: whether the content
 -- changed, and the canonical spelling.
-reformatContent :: Int -> Int -> ByteString -> Either PyException (Bool, ByteString)
+reformatContent :: Int -> Int -> ByteString -> Either PythonException (Bool, ByteString)
 reformatContent indent maxInline content = do
   raw <- loads content
   file <- fromDict raw
@@ -95,9 +95,9 @@ reformatContent indent maxInline content = do
   Right (formatted /= content, formatted)
 
 -- | @FlatNet.from_filename(path)@.
-loadFile :: Text -> IO (Either PyException FlatNet)
+loadFile :: Text -> IO (Either PythonException FlatNet)
 loadFile path = (>>= resolve False) <$> mountedSources (FileSource path)
 
 -- | @FlatNet.from_dict(root, deps)@.
-loadDict :: Value -> [(Text, Value)] -> Either PyException FlatNet
+loadDict :: Value -> [(Text, Value)] -> Either PythonException FlatNet
 loadDict root deps = mountedDict root deps >>= resolve True
