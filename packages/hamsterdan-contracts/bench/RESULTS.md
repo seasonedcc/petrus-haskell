@@ -1,5 +1,7 @@
 # hamsterdan-contracts benchmarks
 
+<!-- scripts/bench: measured sources 9029525bba640796 at 709012360d57 -->
+
 These are the hot paths Hamsterdan runs on every token:
 
 - strict contract decoding (`TypeAdapter(T).validate_json`);

@@ -58,7 +58,6 @@ data Tool = Tool
   { toolName :: Text
   , toolDescription :: Text
   , toolShape :: [(Text, Field)]
-  , toolPassthroughArgs :: Bool
   , toolRun :: McpServer -> JsObject -> IO ToolResult
   }
 
@@ -218,7 +217,7 @@ handleRequest s method params = case method of
       let name = jsStringText nameS
       case [t | t <- tools, toolName t == name] of
         [] -> pure (Right (toolResult (errorResult ("MCP error -32602: Tool " <> name <> " not found"))))
-        (t : _) -> case validate (SObject (toolShape t) (toolPassthroughArgs t)) (lookupKey "arguments" params) of
+        (t : _) -> case validate (SObject (toolShape t) False) (lookupKey "arguments" params) of
           Left issues ->
             pure . Right . toolResult . errorResult $
               "MCP error -32602: Input validation error: Invalid arguments for tool "
@@ -281,7 +280,6 @@ tools =
       "petrus_status"
       "Check MCP server health: whether the bridge WebSocket is connected and a browser UI is responding. Fast."
       []
-      False
       (\s _ -> statusTool s)
   , bridgeTool
       "petrus_inspect_document"
@@ -335,13 +333,11 @@ tools =
       "petrus_scenario_save"
       "Save the current simulation marking as a named scenario."
       [("name", req SString)]
-      False
       scenarioSave
   , Tool
       "petrus_scenario_compare"
       "Compare two saved scenarios by token distributions."
       [("scenarioA", req SString), ("scenarioB", req SString)]
-      False
       (\s args -> scenarioCompare s args)
   , bridgeToolIO
       "petrus_trace_import"
@@ -353,19 +349,16 @@ tools =
       "petrus_trace_scenarios"
       "Generate replayable scenarios from an imported trace."
       [("prefix", opt SString), ("checkpointSteps", opt (SArray SNumber)), ("includeAllSteps", opt SBoolean)]
-      False
       traceScenarios
   , Tool
       "petrus_screenshot"
       "Capture a PNG screenshot of the current Petrus canvas."
       []
-      False
       (\s _ -> screenshot s)
   , Tool
       "petrus_open_file"
       "Open a net file in Petrus by path. Reads the file from disk and loads it into the editor."
       [("path", described "Absolute or relative path to a .json net file" (req SString))]
-      False
       openFileTool
   ]
 
@@ -380,12 +373,12 @@ bridgeTool name description shape action transform =
 
 bridgeToolIO :: Text -> Text -> [(Text, Field)] -> RequestAction -> (McpServer -> JsObject -> IO JsObject) -> Tool
 bridgeToolIO name description shape action transform =
-  Tool name description shape False $ \s params -> do
+  Tool name description shape $ \s params -> do
     let actionT = str (requestActionName action)
     t0 <- monotonicMs
     perfLog (perfL s) "mcp-tool-start" [("tool", str name), ("action", actionT)]
     sent <- transform s params
-    r <- sendBridgeRequest (bridge s) (requestActionName action) sent
+    r <- sendBridgeRequest (bridge s) (ProtocolAction action) sent
     case r of
       Left e -> do
         ms <- elapsedSince t0
@@ -503,7 +496,7 @@ scenarioSave s args = do
   let name = maybe "" jsToString (lookupKey "name" args)
   t0 <- monotonicMs
   perfLog (perfL s) "mcp-tool-start" [("tool", str "petrus_scenario_save")]
-  r <- sendBridgeRequest (bridge s) "simulation.inspect" emptyObject
+  r <- sendBridgeRequest (bridge s) (ProtocolAction SimulationInspect) emptyObject
   let fail' e = do
         ms <- elapsedSince t0
         perfLog (perfL s) "mcp-tool-error" [("tool", str "petrus_scenario_save"), ("ms", ms), ("error", str e)]
@@ -585,7 +578,7 @@ scenarioCompare s args = do
 
 traceScenarios :: McpServer -> JsObject -> IO ToolResult
 traceScenarios s args = do
-  r <- sendBridgeRequest (bridge s) "simulation.inspect" emptyObject
+  r <- sendBridgeRequest (bridge s) (ProtocolAction SimulationInspect) emptyObject
   case r of
     Left e -> pure (errorResult e)
     Right state -> case getProp state "state" of
@@ -644,7 +637,7 @@ screenshot :: McpServer -> IO ToolResult
 screenshot s = do
   t0 <- monotonicMs
   perfLog (perfL s) "mcp-tool-start" [("tool", str "petrus_screenshot")]
-  r <- sendBridgeRequest (bridge s) "canvas.screenshot" emptyObject
+  r <- sendBridgeRequest (bridge s) CanvasScreenshot emptyObject
   let fail' e = do
         ms <- elapsedSince t0
         perfLog (perfL s) "mcp-tool-error" [("tool", str "petrus_screenshot"), ("ms", ms), ("error", str e)]
@@ -708,7 +701,7 @@ openFileTool s args = do
           Left e -> failJs e
           Right _ -> do
             b0 <- monotonicMs
-            r <- sendBridgeRequest (bridge s) "document.open" (objectFromList [(jsString "content", str text), (jsString "filePath", str absT)])
+            r <- sendBridgeRequest (bridge s) (ProtocolAction DocumentOpen) (objectFromList [(jsString "content", str text), (jsString "filePath", str absT)])
             case r of
               Left e -> fail' e
               Right result -> case getProp result "netName" of

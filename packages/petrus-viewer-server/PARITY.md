@@ -18,7 +18,7 @@ tables, the method and the commands.
 ## How to check
 
 ```bash
-cabal test petrus-viewer-server                               # 99 examples
+cabal test petrus-viewer-server                               # 114 examples
 node packages/petrus-viewer-server/upstream-tests/run.mjs     # upstream suites
 node packages/petrus-viewer-server/bench/run.mjs --reps 15    # benchmarks
 ```
@@ -42,6 +42,7 @@ suites marked "ours" were written for this port.
 | `cli` | `tests/petrusCli.test.mjs` | 5/5 |
 | `mcp` | `tests/mcpServer.test.mjs` | 7/7 |
 | `mcp-haskell-relay` | `tests/mcpServer.test.mjs` with the relay in `petrus` | 7/7 |
+| `mcp-node-haskell-relay` | `tests/mcpServer.test.mjs` with the upstream `server/mcp.mjs` on the relay in `petrus` | 7/7 |
 | `collab` | `tests/collab-server.test.mjs` | 6/6 |
 | `protocol` | `tests/agentProtocol.test.ts`, `tests/agentParseRegression.test.ts`, with `parseAgentMessage` answered by `Agent.Protocol` through `petrus-viewer-oracle` | 19/19 |
 | `differential` | ours: JSON and URL ports against V8 and Node | 4/4 |
@@ -71,7 +72,7 @@ Each ratio compares the best Haskell server with the best Node server.
 
 **Evidence:**
 
-- `test/CliSpec.hs` (8 examples).
+- `test/CliSpec.hs` (10 examples).
 - Upstream `cli` (5/5).
 - Upstream `playwright` (4/4): the upstream browser suite against
   `petrus`.
@@ -105,8 +106,11 @@ Vite (see [DIVERGENCES.md](DIVERGENCES.md)).
   past input validation (checked), plus validation failures, unknown
   tools and methods, a garbage line and version negotiation.
   `test/record-mcp-transcript.mjs` records the transcript from
-  `server/mcp.mjs` (`--check`: confirm it is current).
-- Upstream `mcp` (7/7) and `mcp-haskell-relay` (7/7).
+  `server/mcp.mjs`; its `--check` runs in CI's `viewer` job and in
+  `scripts/check-all --viewer`. `test/record-node-corpora.mjs` re-records
+  the V8 `JSON.parse` and WHATWG URL corpora (`scripts/check-corpora`).
+- Upstream `mcp` (7/7) and `mcp-haskell-relay` (7/7); `mcp-node-haskell-relay` (7/7), the
+  other direction: the upstream Node MCP server on the `petrus` relay.
 - `live` (12/12): every tool, through `petrus-mcp` (Haskell), the `petrus`
   relay (Haskell) and the built UI in headless Chromium.
 
@@ -279,7 +283,11 @@ the agent relay.
 **Status:** at parity. Simulation runs in the UI upstream as well.
 Upstream petrus-viewer never calls a simulation service:
 `simulation-http-v1`, ported in `petrus-simulation`, has no consumer in
-the pinned UI.
+the pinned UI. Its consumer upstream is plausibly Arx, the separately
+maintained editor and inspector that upstream's README names; upstream's
+`test_simulation_http.py` calls the service from the browser origin
+`http://localhost:5173`. Arx is private, so interop with it is untested
+(SCOPE.md).
 
 ### History replay and live watching (`/temporal`)
 
@@ -307,6 +315,11 @@ the pinned UI.
   - `petrus_trace_import` replays the finished run;
   - the UI ends up with the same history from both producers.
 - `live`: replay through `petrus_trace_import` with `PETRUS_HISTORY_URL`.
+- `test/ProxySpec.hs`: the `/temporal` proxy to a Temporal-like target
+  passes content codings through as Vite's http-proxy does. The browser's
+  `Accept-Encoding` arrives as sent, or absent when the browser sent none.
+  A `br`, `deflate` or `gzip` body comes back byte for byte, with its
+  `Content-Encoding`.
 
 **Performance:** the observation source has no Node counterpart: upstream
 proxies `/temporal` to Temporal. The proxy itself is benchmarked under the

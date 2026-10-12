@@ -22,8 +22,9 @@
  *   --skip-playwright   skip the headless-browser suites
  *   --keep              keep the scratch directory
  *
- * Suites: relay, endpoints, url-cache, cli, mcp, mcp-haskell-relay, collab,
- * protocol, differential, wire, playwright, live, history (default: all).
+ * Suites: relay, endpoints, url-cache, cli, mcp, mcp-haskell-relay,
+ * mcp-node-haskell-relay, collab, protocol, differential, wire, playwright,
+ * live, history (default: all).
  *
  * Requirements: Node 22.6 or later (the protocol suite runs TypeScript
  * through Node's type stripping); pnpm install (and pnpm build for the browser suites) in
@@ -107,6 +108,16 @@ const SUITES = {
     prepend: IMPORT_BACKEND,
     rewrites: [
       ['spawn(process.execPath, ["server/mcp.mjs"], {', "spawn(__haskell.PETRUS_MCP, [], {"],
+      ['import http from "node:http";', 'import http from "../shims/haskell-backend.mjs";'],
+      ["function attachBridgeRelay(httpServer) {\n", "function attachBridgeRelay(httpServer) {\n  if (httpServer.isHaskellBackend) return null; // the relay runs in petrus\n"],
+    ],
+  },
+  // the other direction: the upstream Node MCP server (server/mcp.mjs, run
+  // as upstream runs it) talking to the relay in the Haskell petrus
+  "mcp-node-haskell-relay": {
+    files: ["tests/mcpServer.test.mjs"],
+    dirs: ["server"],
+    rewrites: [
       ['import http from "node:http";', 'import http from "../shims/haskell-backend.mjs";'],
       ["function attachBridgeRelay(httpServer) {\n", "function attachBridgeRelay(httpServer) {\n  if (httpServer.isHaskellBackend) return null; // the relay runs in petrus\n"],
     ],
@@ -197,6 +208,9 @@ function prepareWorkdir() {
 
 function runSuite(work, name, suite, env) {
   const targets = [];
+  for (const dir of suite.dirs ?? []) {
+    fs.cpSync(path.join(VIEWER, dir), path.join(work, dir), { recursive: true });
+  }
   for (const file of suite.sources ?? []) {
     fs.mkdirSync(path.dirname(path.join(work, file)), { recursive: true });
     fs.copyFileSync(path.join(VIEWER, file), path.join(work, file));
@@ -252,7 +266,9 @@ function main() {
       throw new Error(`run pnpm build in ${VIEWER} first (needed by ${name})`);
     }
     const res = runSuite(work, name, suite, env);
-    const ok = res.fail === 0 && res.status === 0 && res.tests > 0;
+    // every test must pass: a skipped or todo test counts in `# tests` but
+    // not in `# pass`, and fails the suite (no silent skips)
+    const ok = res.fail === 0 && res.status === 0 && res.tests > 0 && res.pass === res.tests;
     if (!ok) failed++;
     rows.push([name, `${ok ? "PASS" : "FAIL"}  ${res.pass}/${res.tests} passed`]);
     log(`${ok ? "PASS" : "FAIL"} ${name}: ${res.pass}/${res.tests} passed`);

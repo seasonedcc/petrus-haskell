@@ -30,10 +30,13 @@ recorded in [PARITY.md](PARITY.md).
    (differential corpora, fixture databases, generated modules) against the
    new pin and lists each stale file with a diff. Review each diff, write the
    new files with `scripts/check-corpora --update NAME ...`, and let the
-   corpus's tests decide what the port must change. It does not run the
-   viewer's recorders, which run on Node; rerun those too, for example
-   `node packages/petrus-viewer-server/test/record-mcp-transcript.mjs` for
-   the MCP golden transcript (`--check` reports it stale).
+   corpus's tests decide what the port must change. That includes the
+   viewer's Node-recorded corpora (`json-parse-v8.json`,
+   `url-whatwg-node.json`, through `test/record-node-corpora.mjs`). The MCP
+   golden transcript is re-recorded through the upstream Node MCP server by
+   `node packages/petrus-viewer-server/test/record-mcp-transcript.mjs`;
+   `--check` (run by CI's viewer job and `scripts/check-all --viewer`)
+   reports it stale.
 5. Mark every affected component in [PARITY.md](PARITY.md) as `in progress`
    until its conformance, interop, and benchmark evidence pass again at the new
    pin.

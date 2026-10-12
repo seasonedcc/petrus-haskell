@@ -1,5 +1,7 @@
 # petrus-postgres benchmarks
 
+<!-- scripts/bench: measured sources ddd3613f65322093 at 14f6d69e9572 -->
+
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
 names and values. Both are wall-clock time. Ratios above 1 mean Haskell is

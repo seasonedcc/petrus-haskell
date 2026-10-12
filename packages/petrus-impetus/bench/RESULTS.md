@@ -1,5 +1,7 @@
 # Kernel benchmarks: Haskell vs the Python reference
 
+<!-- scripts/bench: measured sources 6a4b10b7a5bb7cba at 2cb1c2026e3e -->
+
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` build the same
 workloads: the same nets, markings, and sizes. Each Python line also prints a
 result size (bindings, firings, records, bytes), which is how you can see that

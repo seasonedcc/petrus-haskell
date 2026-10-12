@@ -1,5 +1,7 @@
 # Observation benchmarks: Haskell vs the Python reference
 
+<!-- scripts/bench: measured sources 2434e03ae6e97ff7 at d2f507b2ef57 -->
+
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` build the same
 workload. It is a two-place loop (`a → t1 → b → t2 → a`) holding M tokens
 (`{"i": k, "label": "token-k"}`), stepped until its History holds at least N

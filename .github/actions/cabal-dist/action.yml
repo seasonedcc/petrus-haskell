@@ -1,0 +1,64 @@
+name: dist-newstyle
+description: >-
+  Restore a cached dist-newstyle (or start from none) and prepare it so that
+  cabal rebuilds exactly what the checked-out content requires: nothing when
+  nothing changed, and every package whose .cabal file, cabal.project or
+  freeze file changed. Every CI job that runs cabal uses this, after the
+  toolchain action.
+inputs:
+  key:
+    description: The cache key to restore (and the key the build job saves under).
+    required: true
+  restore-keys:
+    description: Fallback key prefixes when `key` has no entry (the build job only).
+    required: false
+    default: ""
+  fresh:
+    description: >-
+      "true": restore nothing and build from an empty dist-newstyle (the
+      build job of the nightly run and of a `full` dispatch).
+    required: false
+    default: "false"
+  fail-on-cache-miss:
+    description: '"true": fail when `key` has no entry (the jobs after build).'
+    required: false
+    default: "false"
+outputs:
+  cache-hit:
+    description: Whether dist-newstyle was restored from exactly `key`.
+    value: ${{ steps.restore.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - name: Restore dist-newstyle
+      id: restore
+      if: inputs.fresh != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: dist-newstyle
+        key: ${{ inputs.key }}
+        restore-keys: ${{ inputs.restore-keys }}
+        fail-on-cache-miss: ${{ inputs.fail-on-cache-miss }}
+    - name: Configure as every job does, and re-plan from the checked-out content
+      shell: bash
+      # 1. CI's test flags come from cabal.project.local (scripts/ci-tests
+      #    configure), the same in every job: a flag given on one command
+      #    line but not another makes cabal reconfigure and relink.
+      # 2. A checkout leaves every .cabal file newer than the restored
+      #    build, which the Cabal library (Setup configure) takes as a
+      #    change that forces reconfiguring; the .cabal files therefore get
+      #    an old, fixed timestamp.
+      # 3. That fixed timestamp equals the one cabal-install recorded for
+      #    the .cabal files when it last planned, and cabal-install skips
+      #    hashing a monitored file whose timestamp is unchanged: a changed
+      #    .cabal file (a new test-suite, a dropped build-depends) would
+      #    then go unnoticed. So the project-level cache is removed:
+      #    cabal-install solves and elaborates the plan again from the
+      #    files' content and rewrites dist-newstyle/cache/plan.json (which
+      #    scripts/ci-tests plan reads). The packages' own build caches stay:
+      #    cabal compares each package's elaborated configuration and
+      #    hashes its sources, so an unchanged package is not rebuilt.
+      run: |
+        scripts/ci-tests configure
+        find packages -name '*.cabal' -exec touch -d '2000-01-01 00:00:00' {} +
+        rm -rf dist-newstyle/cache
