@@ -22,6 +22,7 @@ module Petrus.EngineFile.Validate
   , newNetPath
   ) where
 
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -191,22 +192,22 @@ vTimedelta mode v = case v of
         Exc (PyException "OverflowError" ("days=" <> T.pack (show d) <> "; must have magnitude <= 999999999"))
       Left e -> failWith (TimeDeltaParsing (durationErrorDoc e)) v
 
+-- | A member's spelling is never unparsable, so only a refused value is
+-- scanned (here and in 'vInterface').
 vArcKind :: Value -> V ArcKind
-vArcKind v | Just refused <- unparsable v = refused
 vArcKind v = case v of
   VStr "normal" -> Ok Normal
   VStr "inhibitor" -> Ok Inhibitor
   VStr "read" -> Ok Read
-  _ -> failWith EnumError v
+  _ -> fromMaybe (failWith EnumError v) (unparsable v)
 
 vInterface :: Value -> V Interface
-vInterface v | Just refused <- unparsable v = refused
 vInterface v = case v of
   VStr "input" -> Ok InputInterface
   VStr "output" -> Ok OutputInterface
   VStr "awaiting" -> Ok AwaitingInterface
   VStr "control" -> Ok ControlInterface
-  _ -> failWith LiteralError v
+  _ -> fromMaybe (failWith LiteralError v) (unparsable v)
 
 nullable :: (Value -> V a) -> Value -> V (Maybe a)
 nullable f = \case
