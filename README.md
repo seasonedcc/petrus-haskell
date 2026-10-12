@@ -17,6 +17,11 @@ The port aims to be:
 - **Better designed where Haskell allows**: every intentional API divergence is
   documented next to the package that makes it.
 
+Speed never comes at the cost of design. A low-level optimization is made only
+where a benchmark shows the clean version cannot keep up with the Python. It
+then lives behind a safe, total interface in the lowest layer that can hold it,
+with the measurement that justifies it recorded beside it.
+
 [SCOPE.md](SCOPE.md) lists what is in and out of scope and why;
 [PARITY.md](PARITY.md) shows which upstream components are at parity.
 
