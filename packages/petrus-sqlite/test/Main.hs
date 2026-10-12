@@ -25,6 +25,7 @@ import Test.Hspec
 main :: IO ()
 main = hspec $ do
   profileSpec
+  paramSpec
   transactionSpec
   poolSpec
   schemaSpec
@@ -199,6 +200,27 @@ pythonWriter =
     , "    except sqlite3.OperationalError as error:"
     , "        print('error: ' + str(error), flush=True)"
     ]
+
+paramSpec :: Spec
+paramSpec = describe "Parameters" $ do
+  it "binds UTF-8 bytes as the TEXT value their Text binds" $ withTemp $ \dir ->
+    withConnection historyStoreProfile (dir </> "p.sqlite3") $ \connection -> do
+      execute_ connection "CREATE TABLE t (k INTEGER, v TEXT)"
+      -- The last text is a slice (a non-zero offset into its array).
+      forM_ (zip [0 ..] ["", "{\"a\":1}", "caf\233 \128512", "nul\0inside", T.drop 2 "\233\233x\0y"]) $ \(k, text) -> do
+        void (executeParams connection "INSERT INTO t VALUES (?, ?)" [Datum (SQLInteger (2 * k)), Datum (SQLText text)])
+        void (executeParams connection "INSERT INTO t VALUES (?, ?)" [Datum (SQLInteger (2 * k + 1)), Utf8Text (TE.encodeUtf8 text)])
+      rows <- query connection "SELECT typeof(v), length(v), hex(v) FROM t ORDER BY k" []
+      length rows `shouldBe` 10
+      let pairs (a : b : rest) = (a, b) : pairs rest
+          pairs _ = []
+      forM_ (pairs rows) $ \(viaText, viaBytes) -> viaBytes `shouldBe` viaText
+
+  it "refuses a parameter list of the wrong length, UTF-8 text included" $ withTemp $ \dir ->
+    withConnection historyStoreProfile (dir </> "p.sqlite3") $ \connection -> do
+      execute_ connection "CREATE TABLE t (v TEXT)"
+      executeParams connection "INSERT INTO t VALUES (?)" [Utf8Text "a", Utf8Text "b"]
+        `shouldThrow` (== userError "mismatched parameter count for bind.  Prepared statement needs 1, 2 given")
 
 transactionSpec :: Spec
 transactionSpec = describe "Transactions" $ do

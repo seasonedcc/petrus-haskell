@@ -85,7 +85,7 @@ import Petrus.Impetus.History.Records (Record, recordName, recordOccurrence, rec
 import Petrus.Impetus.HistoryStore
 import Petrus.Json (EncodeOptions (..), Json (..), compact, dumpsMany, encodeErrorMessage, jsonTypeName, lookupMember, parseJson)
 import Petrus.Posix.Path (purePath)
-import Petrus.Sqlite.Connection (Connection, SQLData (..))
+import Petrus.Sqlite.Connection (Connection, Param (..), SQLData (..))
 import Petrus.Sqlite.Connection qualified as Sql
 import Petrus.Sqlite.PythonRepr (pythonReprBytes, pythonReprFloat, pythonReprSqlData, pythonReprText)
 import Petrus.Sqlite.Schema (normalizeDdl)
@@ -459,15 +459,15 @@ commitBatch instanceId guard' start batch = do
           go position admitted (row : rest) = do
             let eventId = eventIdentity instanceId (toInteger position)
             changed <-
-              Sql.execute
+              Sql.executeParams
                 connection
                 insertStatement
-                [ SQLText instanceId
-                , SQLInteger (fromIntegral position)
-                , SQLText eventId
-                , SQLText row.recordType
-                , row.occurrence
-                , SQLText (TE.decodeLatin1 row.payload)
+                [ Datum (SQLText instanceId)
+                , Datum (SQLInteger (fromIntegral position))
+                , Datum (SQLText eventId)
+                , Datum (SQLText row.recordType)
+                , Datum row.occurrence
+                , Utf8Text row.payload
                 ]
             entered <- if changed /= 0 then pure True else verifyInsert connection instanceId eventId row
             if entered

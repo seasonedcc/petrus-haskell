@@ -51,7 +51,9 @@ module Petrus.Sqlite.Connection
   , withConnection
 
     -- * Statements
+  , Param (..)
   , execute
+  , executeParams
   , execute_
   , executeMany
   , query
@@ -81,6 +83,7 @@ module Petrus.Sqlite.Connection
 import Control.Concurrent (threadDelay)
 import Control.Exception (Exception, SomeException, bracket, catch, mask, onException, throwIO, try)
 import Control.Monad (forM_, void, when, zipWithM_)
+import Data.ByteString (ByteString)
 import Data.Char (isSpace)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.Int (Int64)
@@ -407,7 +410,22 @@ isDml sql = any (`T.isPrefixOf` T.toLower (T.take 7 (skipNoise sql))) ["insert",
 -- | Execute one statement with positional parameters and return
 -- @sqlite3_changes()@ (Python's @cursor.rowcount@ for DML statements).
 execute :: Connection -> Text -> [SQLData] -> IO Int
-execute connection sql params = do
+execute connection sql = executeParams connection sql . map Datum
+
+-- | A positional statement parameter: any 'SQLData', or text the caller
+-- already holds as UTF-8 bytes.
+data Param
+  = Datum SQLData
+  | -- | A TEXT parameter given as its UTF-8 bytes, which SQLite stores as
+    -- they are (@sqlite3_bind_text@): what binding the Python @str@ those
+    -- bytes encode stores. It saves decoding bytes into a 'Text' only to
+    -- bind the 'Text''s own UTF-8 array, as the History store's payloads
+    -- (ASCII @json.dumps@ spellings) would otherwise be.
+    Utf8Text ByteString
+
+-- | 'execute' with 'Param's.
+executeParams :: Connection -> Text -> [Param] -> IO Int
+executeParams connection sql params = do
   implicitBegin connection sql
   withPrepared connection sql $ \statement -> do
     bindAll statement params
@@ -422,7 +440,7 @@ execute connection sql params = do
 -- | Bind every parameter from a list, refusing a list of the wrong length
 -- (direct-sqlite's 'S.bind', with the same message), text by
 -- 'bindTextParam'.
-bindAll :: Statement -> [SQLData] -> IO ()
+bindAll :: Statement -> [Param] -> IO ()
 bindAll statement params = do
   Direct.ParamIndex count <- Direct.bindParameterCount statement
   when (count /= length params) $
@@ -436,8 +454,11 @@ bindAll statement params = do
   zipWithM_ bindParam [1 ..] params
   where
     bindParam index = \case
-      SQLText text -> bindTextParam statement index text
-      datum -> S.bindSQLData statement (fromIntegral index) datum
+      Datum (SQLText text) -> bindTextParam statement index text
+      Datum datum -> S.bindSQLData statement (fromIntegral index) datum
+      Utf8Text bytes ->
+        Direct.bindText statement (Direct.ParamIndex index) (Direct.Utf8 bytes)
+          >>= either (textBindFailure statement) pure
 
 foreign import ccall unsafe "petrus_sqlite_bind_text"
   c_petrus_sqlite_bind_text :: Ptr CStatement -> CInt -> ByteArray# -> Int -> CInt -> IO CInt
@@ -454,10 +475,14 @@ bindTextParam :: Statement -> Int -> Text -> IO ()
 bindTextParam statement@(Direct.Statement handle) index (TI.Text (TA.ByteArray array) offset size) =
   c_petrus_sqlite_bind_text handle (fromIntegral index) array offset (fromIntegral size) >>= \case
     0 -> pure ()
-    code -> do
-      database <- Direct.getStatementDatabase statement
-      Direct.Utf8 details <- Direct.errmsg database
-      throwIO SQLError {sqlError = decodeError (CError code), sqlErrorDetails = TE.decodeUtf8With lenientDecode details, sqlErrorContext = "bind text"}
+    code -> textBindFailure statement (decodeError (CError code))
+
+-- | The 'SQLError' a refused text bind raises.
+textBindFailure :: Statement -> Error -> IO a
+textBindFailure statement failure = do
+  database <- Direct.getStatementDatabase statement
+  Direct.Utf8 details <- Direct.errmsg database
+  throwIO SQLError {sqlError = failure, sqlErrorDetails = TE.decodeUtf8With lenientDecode details, sqlErrorContext = "bind text"}
 
 -- | Execute one statement without parameters, ignoring rows.
 execute_ :: Connection -> Text -> IO ()
@@ -473,7 +498,7 @@ query :: Connection -> Text -> [SQLData] -> IO [[SQLData]]
 query connection sql params = do
   implicitBegin connection sql
   withPrepared connection sql $ \statement -> do
-    bindAll statement params
+    bindAll statement (map Datum params)
     -- The first step may wait for locks (the busy handler sleeps), so it is
     -- a safe call. Later steps of the same statement already hold the read
     -- snapshot and never wait, so they use the cheaper unsafe call.
@@ -490,7 +515,7 @@ queryFirst :: Connection -> Text -> [SQLData] -> IO (Maybe [SQLData])
 queryFirst connection sql params = do
   implicitBegin connection sql
   withPrepared connection sql $ \statement -> do
-    bindAll statement params
+    bindAll statement (map Datum params)
     S.step statement >>= \case
       Row -> Just <$> S.columns statement
       Done -> pure Nothing
