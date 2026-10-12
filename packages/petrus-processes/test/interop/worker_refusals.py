@@ -1,19 +1,23 @@
 """The reference's half of the Worker refusal interop check.
 
-A Python LocalDispatch publishes ``fabric.send`` and ``process.spawn``
-invocations that their Activities refuse; a Worker (this script's, or the
-Haskell suite's) executes them over Local custody; a Python LocalDispatch
-collects what custody recorded. The Haskell suite compares the failures the
-two Workers recorded.
+A LocalDispatch publishes ``fabric.send`` and ``process.spawn`` invocations
+that their Activities refuse; a Worker executes them over Local custody; the
+LocalDispatch collects what custody recorded. The Haskell suite runs every
+pairing it needs: this script's dispatcher with either Worker, and its own
+dispatcher (over the invocations ``cases`` prints) with this script's
+Worker, and compares the failures recorded.
 
 Subcommands:
+  cases              print every case as its invocation JSON
   publish PATH DSN   create the fabric schema and dispatch every case
-  work PATH DSN      run the reference Worker over every claimable case
+  work PATH DSN      create the fabric schema and run the reference Worker
+                     over every claimable case
   collect PATH       re-dispatch every case and print the collected outcomes
 """
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -103,7 +107,9 @@ def outcome_json(outcome: object) -> object:
 
 
 def main(command: str, arguments: list[str]) -> None:
-    if command == "publish":
+    if command == "cases":
+        print(json.dumps([dataclasses.asdict(call) for call in cases()]))
+    elif command == "publish":
         path, dsn = arguments
         with psycopg.connect(dsn, autocommit=True) as connection:
             ensure_fabric_schema(connection)
@@ -113,6 +119,7 @@ def main(command: str, arguments: list[str]) -> None:
     elif command == "work":
         path, dsn = arguments
         with psycopg.connect(dsn, autocommit=True) as connection:
+            ensure_fabric_schema(connection)
             activities = {
                 "fabric.send": SendActivity(connection, CLIENT, CREDENTIAL),
                 "process.spawn": SpawnActivity(None, None),
