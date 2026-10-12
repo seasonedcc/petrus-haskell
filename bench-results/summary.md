@@ -55,7 +55,7 @@ lists the files whose package sources have changed since.
 | `petrus-observation` | [RESULTS.md](../packages/petrus-observation/bench/RESULTS.md) | `b1b7c1e` | 21 | 4.62× | 19.6× |  |
 | `petrus-observation-http` | [RESULTS.md](../packages/petrus-observation-http/bench/RESULTS.md) | `a99bed8` | 11 | 1.95× | 5.91× |  |
 | `petrus-posix` | [RESULTS.md](../packages/petrus-posix/bench/RESULTS.md) | `2eb0f2a` | 7 | 1.01× | 2.29× |  |
-| `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | `4cf1bd5` | 8 | 1.22× | 14.5× |  |
+| `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | `b10764e` | 8 | 1.21× | 14.6× |  |
 | `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | `5a73d7a` | 12 | 1.51× | 15.3× |  |
 | `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | `5a73d7a` | 17 | 1.68× | 39.6× |  |
 | `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | `7d1b80c` | 7 | 1.03× | 1.86× |  |
