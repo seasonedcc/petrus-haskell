@@ -61,9 +61,11 @@ data Tool = Tool
   , toolRun :: McpServer -> JsObject -> IO ToolResult
   }
 
--- | The text of a tool result (already a JSON string) and whether it is
--- an error.
-data ToolResult = ToolResult JsString Bool
+-- | A tool's result: its text (already a JSON string), reported as a
+-- success or, with @isError: true@, as a tool error.
+data ToolResult
+  = ToolOk JsString
+  | ToolError JsString
 
 data McpServer = McpServer
   { bridge :: Bridge
@@ -253,19 +255,22 @@ invalidRequestParams key ex mv =
     ]
 
 toolResult :: ToolResult -> JsValue
-toolResult (ToolResult text isErr) =
-  obj ([("content", arr [obj [("type", str "text"), ("text", JsStr text)]])] ++ [("isError", JsBool True) | isErr])
+toolResult result = case result of
+  ToolOk text -> obj [content text]
+  ToolError text -> obj [content text, ("isError", JsBool True)]
+  where
+    content text = ("content", arr [obj [("type", str "text"), ("text", JsStr text)]])
 
 textResult :: Text -> ToolResult
-textResult t = ToolResult (jsString t) False
+textResult = ToolOk . jsString
 
 errorResult :: Text -> ToolResult
-errorResult t = ToolResult (jsString t) True
+errorResult = ToolError . jsString
 
 -- | A result whose text is @JSON.stringify(v, null, 2)@ (valid UTF-8, so
 -- it becomes a JSON string without a round trip through 'Text').
 prettyResult :: JsValue -> ToolResult
-prettyResult v = ToolResult (jsStringUtf8 (encodePretty v)) False
+prettyResult = ToolOk . jsStringUtf8 . encodePretty
 
 ------------------------------------------------------------------------------
 -- Tools
@@ -690,7 +695,7 @@ openFileTool s args = do
       let failJs e = do
             ms <- elapsedSince t0
             perfLog (perfL s) "mcp-tool-error" [("tool", str "petrus_open_file"), ("ms", ms), ("error", JsStr e)]
-            pure (ToolResult e True)
+            pure (ToolError e)
           fail' = failJs . jsString
       r0 <- monotonicMs
       content <- readFileNode absPath
