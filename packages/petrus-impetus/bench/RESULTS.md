@@ -45,7 +45,7 @@ most with it: the candidate rows (`long-fifo` 1.32 to 2.56 ms, `weight-3`
 262 to 412 µs) and the parses (`history.parse-only` 24.3 to 31.0 ms,
 `net-document.parse` 7.59 to 9.30 ms); the lifecycle, timer, replay and
 serialize rows got faster. The run at `cb654fd` (17:59–18:08, load
-1.84–3.69), before petrus-json's duplicate pre-check came back, read within
+1.84–3.69), before petrus-json's duplicate pre-check came back, read within about
 2% of this one on every row. Haskell is ahead in every repetition of every
 row; the closest is `net-document.parse`, 1.39×.
 
