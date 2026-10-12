@@ -103,4 +103,9 @@ benchmark petrus-history-store-bench
                   , tasty-bench >=0.3.2
                   , tasty
                   , text
-  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"
+  -- The RTS defaults (-A4m), as the executables that use these stores run
+  -- (hamsterdan-host sets no -A), not the -A32m of most benches here: a
+  -- 32 MB allocation area made the allocation-bound rows slower (the
+  -- in-memory append 306 against 246 µs, loads and resumes 10-15%;
+  -- bench/RESULTS.md, "Current figures").
+  ghc-options:      -O2 -rtsopts
