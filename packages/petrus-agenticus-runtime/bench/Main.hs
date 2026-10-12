@@ -29,7 +29,7 @@ import Petrus.Agenticus.Attachment.Episode
 import Petrus.Agenticus.Catalog.Descriptor (capabilityDescriptor)
 import Petrus.Agenticus.Catalog.Resolution (mkResolutionSnapshot)
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..), capabilityScopedHands)
-import Petrus.Agenticus.Hands.Gateway (HandsAdapter (..), StagedWrite (..), mkShellOutcome, mkStagedWrite, mkTestOutcome)
+import Petrus.Agenticus.Hands.Gateway (HandsAdapter (..), mkShellOutcome, mkStagedWrite, mkTestOutcome)
 import Petrus.Agenticus.Hands.Grants (GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Program.AgentNet
 import Petrus.Agenticus.Runtime.AgentNetRunner

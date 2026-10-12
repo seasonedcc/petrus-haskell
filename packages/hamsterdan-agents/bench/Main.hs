@@ -45,7 +45,7 @@ import Hamsterdan.Agents.Validate (ResultKind (..), validateResult)
 import Hamsterdan.Contracts.Codec (validate)
 import Hamsterdan.Host.AgentRuntime (composeAgentRuntimeWith)
 import Hamsterdan.Host.Agenticus (activateRoutes, claimRoute, composeAgent, openAgentRouteStore, settleRoutes)
-import Hamsterdan.Host.PiA2 (OwnedPiA2 (..), PiA2InstallationConfig (..), composeOwnedPiA2With, persistentKeyOperations)
+import Hamsterdan.Host.PiA2 (OwnedPiA2 (..), composeOwnedPiA2With, mkPiA2InstallationConfig, persistentKeyOperations)
 import Hamsterdan.Host.PiWorkspace (ArchiveEntry (..), gitPiWorkspaceProvider, newGitPiWorkspaceProvider, validatedEntries)
 import Hamsterdan.Host.Scripted (clearReviewText, deterministicRepository, localClone, scriptedAgentRunner, scriptedPiA2Hooks)
 import Petrus.Agenticus.Connection.Key (KeyOperations (..), mkKeyContext)
@@ -151,14 +151,8 @@ turnCase scratch template = do
   let request = template {epoch = 1, head = first, base, priorComments = []}
       text = clearReviewText request.repository request.pullRequest request.epoch request.head request.base
       installation =
-        PiA2InstallationConfig
-          { provider = "anthropic"
-          , model = "claude-sonnet-4-5"
-          , directKey = "synthetic-direct-authority"
-          , cliPath = "/opt/pi/cli.js"
-          , nodePath = "/opt/pi/node"
-          , packageRoot = "/opt/pi/package"
-          }
+        either (error . T.unpack) id $
+          mkPiA2InstallationConfig "anthropic" "claude-sonnet-4-5" "synthetic-direct-authority" "/opt/pi/cli.js" "/opt/pi/node" "/opt/pi/package"
   pure $ do
     let root = scratch </> "turn"
     (host, receiver) <-

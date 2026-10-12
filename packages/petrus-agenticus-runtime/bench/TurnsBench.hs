@@ -57,8 +57,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
 import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocationFields (..), activityInvocation, defaultExecutionPolicy)
-import Petrus.Agenticus.Attachment.Binding (AttachmentCoordinates (..), BindingSettlement (..), bindingExecution, motusBinding, openMotusBinding)
-import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment, episodeOptions, newEpisodeAttachment)
+import Petrus.Agenticus.Attachment.Binding (bindingExecution, motusBinding, openMotusBinding)
+import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment, episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Catalog.Resolution (mkResolutionSnapshot)
@@ -66,7 +66,6 @@ import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
   , AgentConnectionCustody
   , AttachmentFence (..)
-  , ConnectionIdentity (..)
   , ConnectionStatus (..)
   , ConnectionView (..)
   , ReleaseResult (..)
@@ -81,7 +80,7 @@ import Petrus.Agenticus.Connection.Key (KeyOperations (..), mkKeyErasureEvidence
 import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..), newPrivateFileMaterializer)
 import Petrus.Agenticus.Connection.Storage (openSqliteConnectionStorage)
 import Petrus.Agenticus.Hands.Contract (allToolMethods)
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), grantSpec, openGrant)
+import Petrus.Agenticus.Hands.Grants (GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
 import Petrus.Agenticus.Runtime.Amp
 import Petrus.Agenticus.Runtime.Claude
@@ -97,10 +96,10 @@ import Petrus.Agenticus.Runtime.CodexGondolin
   , tokenVariable
   )
 import Petrus.Agenticus.Runtime.Custody
-import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeProbeResult (..))
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeProbeResult)
 import Petrus.Agenticus.Runtime.Operation (RuntimeOperationCleanup, cleanupVerified)
 import Petrus.Agenticus.Runtime.Profiles (ampA1, claudeA2Local, codexA2Local, codexA3Gondolin)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Identity (lifecycleIdToData, mkEpisodeId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))
 import Petrus.Json (Json (..))

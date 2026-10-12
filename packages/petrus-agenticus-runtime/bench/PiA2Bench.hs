@@ -29,7 +29,6 @@ import Petrus.Agenticus.Connection.Key (KeyOperations (..), mkKeyErasureEvidence
 import Petrus.Agenticus.Hands.Contract (allToolMethods)
 import Petrus.Agenticus.Internal.Validate (sha256Hex)
 import Petrus.Agenticus.Runtime.PiA2Host
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Identity (mkEpisodeId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))
 import Petrus.Motus.Execution.Archive (workspaceArchive)
