@@ -34,21 +34,19 @@ module Petrus.Agenticus.Connection.Materialization
   , validateAttachmentId
   ) where
 
-import Control.Exception (IOException, evaluate, mask, onException, throwIO, try)
+import Control.Exception (IOException, evaluate, finally, onException, throwIO, try)
 import Control.Monad (unless, when)
 import Data.Bits ((.&.))
 import Data.ByteArray (ScrubbedBytes)
 import Data.ByteArray qualified as BA
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
-import Data.ByteString.Unsafe qualified as BU
 import Data.Text (Text)
 import Data.Text qualified as T
-import Foreign.Ptr (Ptr, plusPtr)
-import Data.Word (Word8)
 import Petrus.Agenticus.Connection.Key (eraseBuffer)
 import Petrus.Agenticus.Error
 import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Posix.File (fsyncFd, writeAll, writeAllBuffer)
 import System.Directory (createDirectoryIfMissing, doesPathExist)
 import System.FilePath ((</>))
 import System.IO.Error (isAlreadyExistsError, isDoesNotExistError)
@@ -73,11 +71,9 @@ import System.Posix.IO
   , closeFd
   , defaultFileFlags
   , fdReadBuf
-  , fdWriteBuf
   , openFd
   )
 import System.Posix.Types (Fd, FileMode)
-import System.Posix.Unistd (fileSynchronise)
 
 -- | Secret-free evidence for one cooperative local cleanup attempt.
 data CleanupEvidence = CleanupEvidence
@@ -185,10 +181,10 @@ materializeState materializer attachmentId plaintext = do
     Right fd -> pure fd
   ( do
       setFdMode descriptor 0o600
-      BA.withByteArray plaintext $ \pointer -> writeAll descriptor pointer (BA.length plaintext)
-      fileSynchronise descriptor
+      BA.withByteArray plaintext $ \pointer -> writeAllBuffer descriptor pointer (BA.length plaintext)
+      fsyncFd descriptor
     )
-    `finallyClose` descriptor
+    `finally` closeFd descriptor
   pure (materializedState materializer attachmentId)
 
 -- | The state file's bytes.
@@ -199,7 +195,7 @@ readState materializer attachmentId = readStateScrubbed materializer attachmentI
 readStateScrubbed :: PrivateFileMaterializer -> Text -> IO ScrubbedBytes
 readStateScrubbed materializer attachmentId = do
   descriptor <- openPrivateFile materializer attachmentId ReadOnly defaultFileFlags
-  readAll descriptor `finallyClose` descriptor
+  readAll descriptor `finally` closeFd descriptor
 
 -- | Overwrite the state file with the runtime's returned state.
 replaceState :: PrivateFileMaterializer -> Text -> ByteString -> IO ()
@@ -207,13 +203,10 @@ replaceState materializer attachmentId opaqueState = do
   when (B.null opaqueState) (throwIO (valueError "returned opaque state must be non-empty bytes"))
   descriptor <- openPrivateFile materializer attachmentId WriteOnly defaultFileFlags {trunc = True}
   ( do
-      BU.unsafeUseAsCStringLen opaqueState $ \(pointer, size) -> writeAll descriptor (castPointer pointer) size
-      fileSynchronise descriptor
+      writeAll descriptor opaqueState
+      fsyncFd descriptor
     )
-    `finallyClose` descriptor
-  where
-    castPointer :: Ptr a -> Ptr Word8
-    castPointer pointer = pointer `plusPtr` 0
+    `finally` closeFd descriptor
 
 -- | Zero-overwrite and unlink one state file; never raises for filesystem
 -- shapes, which become 'securityViolation' evidence instead.
@@ -244,7 +237,7 @@ cleanup materializer attachmentId = do
           let overwritten = fromIntegral (fileSize metadata) :: Int
           outcome <- try $ do
             descriptor <- openFd path WriteOnly defaultFileFlags {nofollow = True}
-            zeroFill descriptor overwritten `finallyClose` descriptor
+            zeroFill descriptor overwritten `finally` closeFd descriptor
             removeLink path
           pure $ case outcome of
             Left (_ :: IOException) -> evidence False False 0 True
@@ -328,19 +321,6 @@ isSymlink path = do
     Left (_ :: IOException) -> False
     Right metadata -> isSymbolicLink metadata
 
-finallyClose :: IO a -> Fd -> IO a
-finallyClose action descriptor = mask $ \restore -> do
-  result <- restore action `onException` closeFd descriptor
-  closeFd descriptor
-  pure result
-
-writeAll :: Fd -> Ptr Word8 -> Int -> IO ()
-writeAll descriptor pointer remaining
-  | remaining <= 0 = pure ()
-  | otherwise = do
-      written <- fromIntegral <$> fdWriteBuf descriptor pointer (fromIntegral remaining)
-      writeAll descriptor (pointer `plusPtr` written) (remaining - written)
-
 -- | Read the whole file into a fresh erasable buffer, erasing every
 -- intermediate buffer.
 readAll :: Fd -> IO ScrubbedBytes
@@ -368,10 +348,8 @@ zeroFill descriptor size = do
   let blockSize = min (max size 1) 65536
   let block = BA.zero blockSize :: ScrubbedBytes
   BA.withByteArray block $ \pointer ->
-    let loop remaining
-          | remaining <= 0 = pure ()
-          | otherwise = do
-              written <- fromIntegral <$> fdWriteBuf descriptor pointer (fromIntegral (min remaining blockSize))
-              loop (remaining - written)
+    let loop remaining = when (remaining > 0) $ do
+          writeAllBuffer descriptor pointer (min remaining blockSize)
+          loop (remaining - blockSize)
      in loop size
-  fileSynchronise descriptor
+  fsyncFd descriptor

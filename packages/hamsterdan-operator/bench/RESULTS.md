@@ -147,6 +147,30 @@ The row moved from below 1.0× to these figures when the cleanup's
 path-based removal, which resolved the full temporary path again for each
 of eleven removals.
 
+### Where the walk and the `stat` calls live (2026-10-12)
+
+The `stat` calls and the `shutil.rmtree` walk moved from this package's
+`cbits/` to petrus-posix (`Petrus.Posix.At`), the one system layer the
+other packages share. The walk was first rewritten there over the
+package's existing `openat` primitives, one foreign call per system call.
+Interleaved on the Apple M4 at load 3.5–8, that version cost the row its
+lead:
+
+- `--repeat setup 2000`, Haskell only: 944, 934 and 936 µs against 892,
+  873 and 874 µs for the C walk (medians of the calmer repetitions);
+- the full harness (`--runs 21`), four repetitions each: 1.00×, 1.00×,
+  1.00× and 1.00× against 1.05×, 1.02×, 1.05× and 1.03×.
+
+A `sample` profile put the difference in the walk, not the `stat` calls:
+each safe foreign call pauses the thread (`threadPaused`, 134 samples
+against 61), and more time went to reading the listings
+(`getdirentries64`, 50 samples against 19). So the walk
+stayed one C function, moved unchanged to petrus-posix (`petrus_rmtree`,
+whose comment points here), behind `Petrus.Posix.At.rmtree`. Against the
+build with the walk still in this package, four interleaved full runs read
+1.05×, 1.02×, 1.02× and 1.04× with the walk in petrus-posix, and 1.02×,
+1.03×, 1.02× and 1.03× before (load 3.5–4.8): the same.
+
 ## Rerun
 
 From the repository root (`scripts/bench hamsterdan-operator` runs exactly

@@ -76,7 +76,9 @@ Pinned reference: `upstream/petrus` (`src/petrus/telemetry.py`).
     `TypeError`.
 11. **`increment` and `accumulateTime` on a non-numeric field throw
     `NonNumericTelemetryField`.**
-12. **statm parsing accepts ASCII digits only.**
+12. **statm parsing accepts ASCII digits only** (petrus-posix's
+    `currentRssMbFrom`, where `int()` also takes other Unicode digits and
+    underscores).
 13. **A span exists only once it has started.** The reference's `Span` is
     built before `__enter__`, and its `elapsed_ms` raises `span has not
     started` until then. Here `withSpan`, `withSpanClassifying` and

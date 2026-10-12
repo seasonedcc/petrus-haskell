@@ -5470,9 +5470,9 @@ stay the same when lines are emitted.
 
 #### 8. Packaging
 
-- A new leaf package, `petrus-telemetry`. Dependencies: `base`, `text`, `bytestring`, `petrus-json`, `time`, plus a
-  tiny C/FFI shim for `getrusage`/`sysconf`.
-- **No Petrus dependencies**, mirroring the layer-zero rule. Every instrumented package (`petrus-impetus`, engine,
+- A new leaf package, `petrus-telemetry`. Dependencies: `base`, `text`, `bytestring`, `petrus-json`, `time`, and
+  `petrus-posix` for the `getrusage`/`sysconf` gauges.
+- **No Petrus dependencies above those two**, mirroring the layer-zero rule. Every instrumented package (`petrus-impetus`, engine,
   history stores, dispatch, worker, fabric, processes) depends on it.
 - It can be built now, in parallel with everything. The kernel ports should take the `Telemetry` handle from the
   start, so instrumentation is not retrofitted.
@@ -8508,12 +8508,12 @@ their own packages rather than modules inside `petrus-impetus`.
 | # | Package | Contents | Depends on | Kernel? |
 | --- | --- | --- | --- | --- |
 | 0 | `petrus-json` (exists) | JSON value, CPython encoder, parsers | — | no |
-| 1 | `petrus-telemetry` | levels, JSON logger, spans, recorder, RSS gauges | `petrus-json` | no |
-| 1 | `petrus-posix` | `flock`, `openat` shims, Python-compatible `resolve`, fsync and atomic replace, `getrusage`/`sysconf` | `unix`, `directory` | no |
+| 1 | `petrus-posix` | `flock`, `openat` shims, `rmtree`, Python-compatible `resolve`, fsync and atomic replace, `getrusage`/`sysconf` and the RSS gauges, `confstr`, descriptor readiness (`poll`), `getaddrinfo` error codes | `unix`, `directory` | no |
+| 1 | `petrus-telemetry` | levels, JSON logger, spans, recorder; re-exports the RSS gauges | `petrus-json`, `petrus-posix` | no |
 | 1 | `petrus-activity` | `ActivityInvocation`, `ExecutionPolicy`, `RetryPolicy`, `ActivityFailure`, `ActivityDefinition`, `ActivityDeclaration`, payload converters, heartbeat details, `@activity` equivalent | `petrus-json` | **below** the kernel |
 | 1 | `petrus-test-support` (internal) | Docker Postgres resource, fixture loaders pointing into `upstream/`, interop drivers | `petrus-json`, `typed-process`, `postgresql-libpq` | no |
 | 2 | `petrus-sqlite` | shared SQLite connection helper and DDL text check | `direct-sqlite`, `petrus-posix` | no |
-| 2 | `petrus-postgres` | shared connection layer: join mode, owned transactions, LISTEN/notifications, advisory writer fence | `postgresql-libpq`, `postgresql-simple`, `crypton` | no |
+| 2 | `petrus-postgres` | shared connection layer: join mode, owned transactions, LISTEN/notifications, advisory writer fence | `postgresql-libpq`, `petrus-json`, `petrus-posix`, `cryptohash-sha256` | no |
 | 2 | `petrus-http-core` | CPython-compatible HTTP/1.0 server core | `network`, `petrus-json` | no |
 | 3 | `petrus-motus` | Dispatch protocols, `InlineDispatch`, `InMemoryDispatch`, Local (SQLite) Dispatch, Worker runtime and CLI library | `petrus-activity`, `petrus-telemetry`, `petrus-sqlite` | no |
 | 3 | `petrus-execution` | territory contract, PAX archive codec, Local and Docker providers, Gondolin client + verbatim sidecar, private ArtifactStore/Timeline | `petrus-json`, `petrus-posix`, `typed-process`, `network` | no |

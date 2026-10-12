@@ -17,9 +17,9 @@ import Hamsterdan.Contracts.Readiness (ChangeResult (..))
 import Hamsterdan.Python.Object (PV (..), pythonError)
 import Hamsterdan.Host.GitPublish (GitPublishError (..), PublicationCategory (GitOperation, Idempotency, PatchAdmission, RefCas), categoryName)
 import Hamsterdan.Host.PublicationQualification
-import Hamsterdan.Operator.Posix (Stat (..), isDirectory, permissionBits)
-import Hamsterdan.Operator.Posix qualified as Posix
 import Petrus.Json (Json (..))
+import Petrus.Posix.At (FileStat (..), Follow (..), isDirectory, permissionBits)
+import Petrus.Posix.At qualified as At
 import Support (shouldEqualPy)
 import System.Directory (createDirectory, doesPathExist, renameDirectory)
 import System.FilePath ((</>))
@@ -254,8 +254,8 @@ spec = describe "tests/unit/host/test_publication_qualification.py" do
         `shouldReturn` [["git", "push", "--atomic", target, a40 <> ":refs/heads/main", b40 <> ":refs/heads/hamsterdan/ds11-live-v4"]]
       (outcome.commandSucceeded, outcome.attempted, outcome.category) `shouldBe` (True, True, Nothing)
       pushSanitized outcome `shouldEqualPy` PDict [("attempted", PBool True), ("command_succeeded", PBool True), ("category", PStr "")]
-      marker <- Posix.lstat (root </> "push-spent")
-      (marker.mode `mod` 0o1000) `shouldBe` 0o600
+      marker <- At.statAt Nothing (root </> "push-spent") NoFollowLinks
+      (marker.statMode `mod` 0o1000) `shouldBe` 0o600
 
   it "test_atomic_setup_timeout_is_closed_sanitized_and_durably_spent" do
     withSystemTempDirectory "qualification" \tmp -> do
@@ -362,7 +362,7 @@ spec = describe "tests/unit/host/test_publication_qualification.py" do
       root <- privateDirectory tmp "private"
       calls <- newIORef []
       let fs = systemFs {close = \fd -> do
-                            directory <- isDirectory <$> Posix.fdStat fd
+                            directory <- isDirectory <$> At.fdStat fd
                             systemFs.close fd
                             when directory $ ioError (userError "private close diagnostic")}
       outcome <- push AtomicSetupPush {spentPath = root </> "push-spent", fs} "https://github.com/owner/private-target.git" a40 b40 (pushCalls calls)
@@ -378,7 +378,7 @@ spec = describe "tests/unit/host/test_publication_qualification.py" do
       outcome <- push (atomicSetupPush (root </> "push-spent")) target a40 b40 (\_ -> pure 0)
       _ <- setFileCreationMask previous
       outcome.commandSucceeded `shouldBe` True
-      permissionBits <$> Posix.lstat (root </> "push-spent") `shouldReturn` 0o600
+      permissionBits <$> At.statAt Nothing (root </> "push-spent") NoFollowLinks `shouldReturn` 0o600
 
   it "test_atomic_setup_parent_substitution_never_runs" do
     withSystemTempDirectory "qualification" \tmp -> do
@@ -451,5 +451,5 @@ spec = describe "tests/unit/host/test_publication_qualification.py" do
           T.pack (show outcome <> show (observationSanitized outcome)) `shouldNotSatisfy` T.isInfixOf "private"
   where
     kindOf fd = do
-      metadata <- Posix.fdStat fd
+      metadata <- At.fdStat fd
       pure (if isDirectory metadata then "directory" else "file" :: Text)

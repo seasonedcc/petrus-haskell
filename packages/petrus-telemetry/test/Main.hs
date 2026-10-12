@@ -14,6 +14,7 @@ import Data.IORef (atomicModifyIORef', modifyIORef', newIORef, readIORef)
 import Data.Text qualified as T
 import Petrus.Json (Json (..), exactEq, parseJson, surrogateRefusingLoads)
 import Foreign.C.Error (eACCES, eAGAIN, eNOENT, eNOSPC, ePIPE, errnoToIOError)
+import Petrus.Posix.Resource (currentRssMbAt, currentRssMbFrom)
 import Petrus.Telemetry
 import System.Exit (ExitCode (..))
 import Test.Hspec
@@ -315,7 +316,7 @@ main = hspec . sequential $ do
     -- Adapted: mocking open/sysconf becomes the pure statm parser with an
     -- explicit page size.
     it "parses resident pages from statm" $
-      statmRssMb 4096 "300000 262144 5000 100 0 50000 0" `shouldBe` Just 1024.0
+      currentRssMbFrom 4096 "300000 262144 5000 100 0 50000 0" `shouldBe` Just 1024.0
 
     -- Adapted: open raising OSError becomes reading a path that does not exist.
     it "returns none when statm unavailable" $
@@ -387,6 +388,6 @@ main = hspec . sequential $ do
         `shouldBe` Left "unknown telemetry level '\233\\n\\x00\\u200b': one of off, facts, profile, debug"
 
     it "statm parsing refuses malformed contents" $ do
-      statmRssMb 4096 "300000" `shouldBe` Nothing
-      statmRssMb 4096 "300000 abc" `shouldBe` Nothing
-      statmRssMb 4096 "\xff\xfe 1" `shouldBe` Nothing
+      currentRssMbFrom 4096 "300000" `shouldBe` Nothing
+      currentRssMbFrom 4096 "300000 abc" `shouldBe` Nothing
+      currentRssMbFrom 4096 "\xff\xfe 1" `shouldBe` Nothing

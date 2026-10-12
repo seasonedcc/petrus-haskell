@@ -37,6 +37,7 @@ library
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , petrus-json
+                  , petrus-posix
                   , text >=2.0
                   , time >=1.12
   ghc-options:      -O2
@@ -50,6 +51,7 @@ test-suite petrus-telemetry-test
                   , bytestring
                   , hspec >=2.10
                   , petrus-json
+                  , petrus-posix
                   , petrus-telemetry
                   , text
   ghc-options:      -rtsopts

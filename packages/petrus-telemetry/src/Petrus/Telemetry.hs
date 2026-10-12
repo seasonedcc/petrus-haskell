@@ -12,7 +12,8 @@
 -- semantics. Telemetry failure must never break a run.
 --
 -- __Layer zero.__ This package depends on no other Petrus package except the
--- JSON value model, so every instrumented package may depend on it.
+-- JSON value model and the POSIX primitives (the memory gauges), so every
+-- instrumented package may depend on it.
 --
 -- __Process-global by design.__ The reference implementation keeps the level
 -- and the default sink as module globals, and its tests rely on that:
@@ -95,8 +96,6 @@ module Petrus.Telemetry
     -- * Memory gauges
   , maxRssMb
   , currentRssMb
-  , currentRssMbAt
-  , statmRssMb
 
     -- * Capture
   , capture
@@ -108,7 +107,6 @@ module Petrus.Telemetry
 
 import Control.Exception
   ( Exception (..)
-  , IOException
   , SomeAsyncException
   , SomeException (..)
   , bracket
@@ -116,32 +114,25 @@ import Control.Exception
   , finally
   , mask
   , throwIO
-  , try
   )
 import Control.Monad (unless)
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Foldable (for_, traverse_)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.List (nub, sort)
 import Data.Maybe (fromMaybe)
-import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
-import Data.Text.Read qualified as TR
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import Foreign.C.Error (throwErrnoIfMinus1)
-import Foreign.C.Types (CLong (..))
 import GHC.Clock (getMonotonicTimeNSec)
 import Petrus.Json (Json (..), defaultDumps, dumps)
 import Petrus.Json.PythonText (pythonStrRepr)
+import Petrus.Posix.Resource (currentRssMb, maxRssMb)
 import Petrus.Telemetry.ErrorType (pythonErrorType)
 import System.Environment (lookupEnv)
 import System.IO (stderr)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Info (os)
 
 -- ---------------------------------------------------------------------------
 -- Levels
@@ -549,53 +540,9 @@ elapsedMs tick started = (\now -> round ((now - started) * 1000)) <$> tick
 -- ---------------------------------------------------------------------------
 -- Memory gauges
 
-foreign import ccall unsafe "petrus_telemetry_max_rss" c_maxRss :: IO CLong
-
-foreign import ccall unsafe "petrus_telemetry_page_size" c_pageSize :: IO CLong
-
--- | The process's peak resident set in MB, to one decimal: @ru_maxrss@ is
--- bytes on Darwin and kilobytes elsewhere. (Not "GHC.Stats", which reports
--- the heap, not the resident set.)
-maxRssMb :: IO Double
-maxRssMb = do
-  raw <- throwErrnoIfMinus1 "getrusage" c_maxRss
-  let divisor = if os == "darwin" then 1024 * 1024 else 1024
-  pure (pythonRound1 (fromRational (toInteger raw % divisor)))
-
--- | The current resident set from @/proc/self/statm@, in MB: 'Nothing' where
--- /proc does not exist (macOS). Absent, never wrong.
-currentRssMb :: IO (Maybe Double)
-currentRssMb = currentRssMbAt "/proc/self/statm"
-
--- | 'currentRssMb' reading a given statm file; any read or parse failure is
--- 'Nothing'.
-currentRssMbAt :: FilePath -> IO (Maybe Double)
-currentRssMbAt path =
-  try (BS.readFile path) >>= \case
-    Left (_ :: IOException) -> pure Nothing
-    Right contents -> do
-      pageSize <- c_pageSize
-      pure $ if pageSize < 0 then Nothing else statmRssMb (toInteger pageSize) contents
-
--- | Parse statm contents (@size resident shared text lib data dt@, in pages)
--- into resident MB for a page size, to one decimal; 'Nothing' when the
--- second field is missing or not an integer.
-statmRssMb :: Integer -> ByteString -> Maybe Double
-statmRssMb pageSize contents = do
-  text <- either (const Nothing) Just (TE.decodeUtf8' contents)
-  field <- case T.words text of
-    _ : resident : _ -> Just resident
-    _ -> Nothing
-  pages <- case TR.signed TR.decimal field of
-    Right (n, rest) | T.null rest -> Just n
-    _ -> Nothing
-  pure (pythonRound1 (fromRational ((pages * pageSize) % (1024 * 1024))))
-
--- | Python's @round(x, 1)@: half-even on the exact binary value.
-pythonRound1 :: Double -> Double
-pythonRound1 x
-  | isNaN x || isInfinite x = x
-  | otherwise = fromRational (fromInteger (round (toRational x * 10)) / 10)
+-- The gauges are petrus-posix's: 'maxRssMb' (@max_rss_mb()@) and
+-- 'currentRssMb' (@current_rss_mb()@), re-exported here where upstream
+-- defines them.
 
 -- ---------------------------------------------------------------------------
 -- Capture

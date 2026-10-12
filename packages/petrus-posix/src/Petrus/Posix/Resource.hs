@@ -8,6 +8,7 @@ module Petrus.Posix.Resource
   , maxRssMb
   , pageSize
   , currentRssMb
+  , currentRssMbAt
   , currentRssMbFrom
   , pythonRound
   , roundTenthsOfPowerOfTwo
@@ -15,6 +16,8 @@ module Petrus.Posix.Resource
 
 import Control.Exception (IOException, try)
 import Data.Bits (bit, shiftR, (.&.))
+import Data.Char (isDigit)
+import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Int (Int64)
 import Data.Ratio ((%))
@@ -73,23 +76,39 @@ pageSize = toInteger <$> c_page_size
 -- size, in MB rounded to one decimal; 'Nothing' where @/proc@ does not exist
 -- (macOS) or the file does not parse.
 currentRssMb :: IO (Maybe Double)
-currentRssMb = do
-  contents <- try (BC.readFile "/proc/self/statm")
-  case contents of
+currentRssMb = currentRssMbAt "/proc/self/statm"
+
+-- | 'currentRssMb' reading the given file. Every failure upstream turns into
+-- @None@ (@OSError@, @ValueError@, @IndexError@) is 'Nothing': the file
+-- cannot be read, the page size is unavailable (@os.sysconf@ raises), or the
+-- contents do not parse.
+currentRssMbAt :: FilePath -> IO (Maybe Double)
+currentRssMbAt path =
+  try (BS.readFile path) >>= \case
     Left (_ :: IOException) -> pure Nothing
     Right statm -> do
       size <- pageSize
-      pure (currentRssMbFrom size statm)
+      pure (if size < 0 then Nothing else currentRssMbFrom size statm)
 
--- | The pure part of 'currentRssMb': parse a @statm@ line with the given page
--- size (@int(statm.read().split()[1])@).
+-- | The pure part of 'currentRssMb': parse a @statm@ text with the given page
+-- size (@int(statm.read().split()[1])@, the file read as UTF-8 text, so
+-- bytes that do not decode are a @ValueError@).
 currentRssMbFrom :: Integer -> BC.ByteString -> Maybe Double
 currentRssMbFrom size statm = case BC.words statm of
   _ : resident : _
-    | Just (pages, rest) <- BC.readInteger (BC.dropWhile (== '+') resident)
-    , BC.null rest ->
+    | BS.isValidUtf8 statm
+    , Just pages <- integer resident ->
         Just (pythonRound 1 (fromRational ((pages * size) % (1024 * 1024))))
   _ -> Nothing
+  where
+    -- int(field): one optional sign, then decimal digits.
+    integer field = case BC.uncons field of
+      Just ('-', digits) -> negate <$> natural digits
+      Just ('+', digits) -> natural digits
+      _ -> natural field
+    natural digits
+      | not (BC.null digits) && BC.all isDigit digits = fst <$> BC.readInteger digits
+      | otherwise = Nothing
 
 -- | Python's @round(x, ndigits)@ for a float: the exact binary value is
 -- rounded half-to-even at the given decimal place, and the decimal result is

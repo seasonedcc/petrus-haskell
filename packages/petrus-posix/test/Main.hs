@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO, killThread, threadDelay)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar, tryReadMVar)
 import Control.Exception (bracket, finally, try)
 import Control.Monad (forM, forM_, replicateM, void, when)
@@ -32,7 +32,9 @@ import System.FilePath ((</>))
 import System.IO.Error (ioeGetErrorType, isAlreadyExistsError, isDoesNotExistError)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Info (os)
+import GHC.Clock (getMonotonicTime)
 import System.Posix.Env qualified as Env
+import System.Posix.IO qualified as PosixIO
 import System.Posix.Types (Fd)
 import System.Timeout (timeout)
 import Test.Hspec
@@ -45,6 +47,8 @@ main = hspec $ do
   rmtreeSpec
   fileSpec
   resourceSpec
+  pollSpec
+  netdbSpec
 
 withTemp :: (FilePath -> IO a) -> IO a
 withTemp action = withSystemTempDirectory "petrus-posix" $ \dir -> realpath dir >>= action
@@ -226,7 +230,7 @@ haskellStrings f = mapM $ \input -> do
 
 pathSpec :: Spec
 pathSpec = describe "Path" $ do
-  it "reads os.confstr(\"CS_PATH\")" $ do
+  it "reads os.confstr(\"CS_PATH\") as Python does" $ do
     expected <- pythonJson "import json, os\nprint(json.dumps(os.confstr('CS_PATH')))" []
     confstrPath `shouldReturn` (case expected of String value -> Just (T.unpack value); _ -> Nothing)
 
@@ -427,7 +431,7 @@ treeContents side = sort . concat <$> walk ""
 -- (removed, @FileNotFoundError@, another @OSError@) and what is left on disk
 -- must agree.
 rmtreeSpec :: Spec
-rmtreeSpec = describe "rmtree, against shutil.rmtree" $
+rmtreeSpec = describe "rmtree, against CPython's shutil.rmtree" $
   forM_ rmtreeScenarios $ \scenario -> it (scenarioName scenario) $ withTemp $ \tmp -> do
     let hs = tmp </> "hs"
         py = tmp </> "py"
@@ -511,6 +515,60 @@ fileSpec = describe "File" $ do
     makeDirectories (dir </> "file" </> "sub") 0o700 `shouldThrow` anyIOException
     fsyncPath (dir </> "a")
 
+pollSpec :: Spec
+pollSpec = describe "Poll" $ do
+  let withPipe = bracket PosixIO.createPipe (\(r, w) -> PosixIO.closeFd r >> PosixIO.closeFd w)
+  it "times out on an empty pipe after the deadline, across several polls" $ withPipe $ \(r, _) -> do
+    start <- getMonotonicTime
+    waitReadable r (Just 0.12) `shouldReturn` False
+    end <- getMonotonicTime
+    (end - start) `shouldSatisfy` (>= 0.12)
+  it "answers at once when data is waiting" $ withPipe $ \(r, w) -> do
+    _ <- PosixIO.fdWrite w "x"
+    waitReadable r (Just 5) `shouldReturn` True
+  it "a wait without limit sees data written later" $ withPipe $ \(r, w) -> do
+    _ <- forkIO (threadDelay 120000 >> void (PosixIO.fdWrite w "x"))
+    timeout 5000000 (waitReadable r Nothing) `shouldReturn` Just True
+  it "a hang-up counts as readable" $ do
+    (r, w) <- PosixIO.createPipe
+    PosixIO.closeFd w
+    (waitReadable r (Just 5) `finally` PosixIO.closeFd r) `shouldReturn` True
+  it "a wait without limit is cancelled by an asynchronous exception" $ withPipe $ \(r, _) -> do
+    done <- newEmptyMVar
+    waiter <- forkIO (void (waitReadable r Nothing) `finally` putMVar done ())
+    threadDelay 20000
+    killThread waiter
+    timeout 2000000 (takeMVar done) `shouldReturn` Just ()
+
+netdbSpec :: Spec
+netdbSpec = describe "Netdb" $ do
+  it "recovers each EAI_* code from its gai_strerror message, as Python's ctypes reads them" $ do
+    table <-
+      pythonJson
+        ( T.unlines
+            [ "import ctypes, json, socket"
+            , "libc = ctypes.CDLL(None)"
+            , "libc.gai_strerror.restype = ctypes.c_char_p"
+            , "codes = sorted({v for k, v in vars(socket).items() if k.startswith('EAI_') and k != 'EAI_MAX'})"
+            , "print(json.dumps([[c, libc.gai_strerror(c).decode()] for c in codes]))"
+            ]
+        )
+        []
+    let described = [(fromInteger code, T.unpack message) | Array [Int code, String message] <- arrayItems table]
+    described `shouldSatisfy` (not . null)
+    forM_ described $ \(code, message) -> do
+      -- The code found is one Python knows, with this message (two codes
+      -- may share one).
+      found <- gaiErrorCode message
+      (found, found >>= (`lookup` described)) `shouldBe` (found, Just message)
+      when (length (filter ((== message) . snd) described) == 1) $ found `shouldBe` Just code
+  it "answers Nothing for another message" $
+    gaiErrorCode "not a getaddrinfo message" `shouldReturn` Nothing
+  where
+    arrayItems = \case
+      Array items -> items
+      _ -> []
+
 resourceSpec :: Spec
 resourceSpec = describe "Resource" $ do
   it "reports the peak resident set in MB with the platform divisor" $ do
@@ -535,7 +593,7 @@ resourceSpec = describe "Resource" $ do
     if os == "darwin" then current `shouldBe` Nothing else current `shouldSatisfy` maybe False (> 0)
 
   it "computes current_rss_mb from statm exactly like Python" $ do
-    let samples = ["1000 2560 3 4 0 5 0\n", "0 1 0", "9 123456789 1", "1", "", "x y", "1 -5 2", "1 +7 2"]
+    let samples = ["1000 2560 3 4 0 5 0\n", "0 1 0", "9 123456789 1", "1", "", "x y", "1 -5 2", "1 +7 2", "1 ++7 2", "1 +-7 2", "1 7x 2"]
     forM_ [4096, 16384] $ \size -> do
       value <-
         pythonJson
@@ -552,6 +610,12 @@ resourceSpec = describe "Resource" $ do
           )
           (show size : map BC.unpack samples)
       Array (map (maybe Null Float . currentRssMbFrom size) samples) `shouldBe` value
+
+  it "refuses statm contents that do not decode as UTF-8, as open() in text mode does" $
+    currentRssMbFrom 4096 "\xff\xfe 1" `shouldBe` Nothing
+
+  it "is absent when the statm file cannot be read" $
+    currentRssMbAt "/nonexistent/petrus-posix/statm" `shouldReturn` Nothing
 
   it "rounds exactly like Python's round(x, n)" $ do
     let values =

@@ -1,5 +1,3 @@
-{-# LANGUAGE CApiFFI #-}
-{-# LANGUAGE InterruptibleFFI #-}
 
 -- | Gondolin micro-VM territories (upstream @_execution/gondolin.py@).
 --
@@ -91,8 +89,6 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error qualified as TE
 import Data.Void (Void, absurd)
 import GHC.Clock (getMonotonicTime)
-import Foreign.C.Error (eINTR, getErrno)
-import Foreign.C.Types (CInt (..))
 import Network.Socket (Family (AF_UNIX), SockAddr (SockAddrUnix), Socket, SocketType (Stream), close, connect, defaultProtocol, socket, withFdSocket)
 import Network.Socket.ByteString (recv, sendAll)
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, pythonFloatRepr)
@@ -101,6 +97,7 @@ import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, maxWorkspaceArch
 import Petrus.Motus.Execution.Internal.Common (checkedGuestCwd, newUuid4, replaceFile, requireSupportedCapabilities, specFingerprint, uuidHex)
 import Petrus.Posix.At (FileStat (..), fdStat)
 import Petrus.Posix.Flock (LockKind (..), lock)
+import Petrus.Posix.Poll qualified as Poll
 import Petrus.Motus.Execution.Internal.Process (Child, StdioFd (..), childExitCode, childPid, resolveExecutable, signalChild, spawnChild)
 import Petrus.Json.Python (jsonTypeName, loadsBytes, loadsText, pythonExceptionStr, pythonStr, pythonStrRepr)
 import Petrus.Motus.Execution.Internal.PyText (textModeDecode)
@@ -133,7 +130,7 @@ import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileF
 import System.Posix.Process (getProcessStatus)
 import System.Posix.Signals (Signal, sigKILL, sigTERM, signalProcessGroup)
 import System.Posix.Temp (mkdtemp)
-import System.Posix.Types (Fd)
+import System.Posix.Types (Fd (..))
 import System.Posix.User (getRealUserID)
 import System.Process (proc, readCreateProcessWithExitCode)
 import System.Timeout (timeout)
@@ -540,26 +537,11 @@ exchange path tick payload onTick =
                 then Right <$> decodeResponse (BC.takeWhile (/= '\n') (B.concat (reverse chunks')))
                 else receive client chunks' size'
 
--- | Wait for the control socket to become readable on the calling thread
--- (@poll@ via an @interruptible@ call, like CPython's socket timeouts)
--- instead of parking on the IO manager.  'False' means the tick elapsed.
--- A poll failure other than @EINTR@ reports readiness so that the
--- following @recv@ raises the real socket error.
+-- | Wait for the control socket to become readable for at most @micros@,
+-- in @poll@ on the calling thread like CPython's socket timeouts
+-- ("Petrus.Posix.Poll"). 'False' means the tick elapsed.
 waitReadable :: Socket -> Int -> IO Bool
-waitReadable client micros = do
-  deadline <- (+ fromIntegral micros / 1000000) <$> getMonotonicTime
-  let loop = do
-        now <- getMonotonicTime
-        let remaining = max 0 (ceiling ((deadline - now) * 1000)) :: Int
-        status <- withFdSocket client $ \fd -> c_wait_readable fd (fromIntegral remaining)
-        case status of
-          1 -> pure True
-          0 -> pure False
-          _ -> getErrno >>= \errno -> if errno == eINTR then loop else pure True
-  loop
-
-foreign import capi interruptible "petrus_execution.h petrus_wait_readable"
-  c_wait_readable :: CInt -> CInt -> IO CInt
+waitReadable client micros = withFdSocket client $ \fd -> Poll.waitReadable (Fd fd) (Just (fromIntegral micros / 1000000))
 
 -- | @json.loads(frame)@ of the response line (its @JSONDecodeError@ or
 -- @UnicodeDecodeError@, both @ValueError@s, with CPython's text), which

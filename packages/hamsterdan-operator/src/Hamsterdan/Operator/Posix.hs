@@ -1,22 +1,11 @@
--- | The POSIX calls the qualification fences make (@os.fstat@, @os.lstat@,
--- @os.stat(name, dir_fd=..., follow_symlinks=False)@), @shutil.which@, and
--- the @pathlib@ and @os.path@ string rules the operator applies to its file
--- arguments.
+-- | The rest of the CPython the operator calls on its file arguments:
+-- @os.geteuid@, @shutil.which@, and the @pathlib@ and @os.path@ string
+-- rules. The descriptor-relative calls themselves (@os.fstat@, @os.stat(name,
+-- dir_fd=..., follow_symlinks=False)@, @shutil.rmtree@) are
+-- "Petrus.Posix.At"'s.
 module Hamsterdan.Operator.Posix
-  ( -- * Status
-    Stat (..)
-  , fdStat
-  , lstat
-  , statAt
-  , isDirectory
-  , isRegular
-  , isSymlink
-  , permissionBits
-  , effectiveUid
+  ( effectiveUid
   , which
-
-    -- * Removal
-  , rmtree
 
     -- * Paths
   , isAbsolute
@@ -26,108 +15,28 @@ module Hamsterdan.Operator.Posix
   ) where
 
 import Control.Exception (IOException, try)
-import Data.Bits ((.&.))
+import Data.Int (Int64)
 import Data.List (intercalate)
+import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
-import Data.Word (Word64)
-import Foreign.C.Error (Errno (..), errnoToIOError, throwErrnoPathIfMinus1_)
-import Foreign.C.String (CString, peekCString, withCString)
-import Foreign.C.Types (CChar, CInt (..), CSize (..))
-import Foreign.Marshal.Array (allocaArray, peekArray)
-import Foreign.Ptr (Ptr, nullPtr)
+import Petrus.Posix.Path (confstrPath)
 import System.Environment (lookupEnv)
 import System.Posix.Files (fileAccess, getFileStatus)
 import System.Posix.Files qualified as PosixFiles
-import System.Posix.Types (Fd (..))
 import System.Posix.User (getEffectiveUserID)
 
--- | The fields of a @struct stat@ the fences compare.
-data Stat = Stat
-  { mode :: Word64
-  , uid :: Word64
-  , dev :: Word64
-  , ino :: Word64
-  , nlink :: Word64
-  , size :: Word64
-  }
-  deriving stock (Eq, Show)
-
-foreign import ccall unsafe "hamsterdan_fstat"
-  c_fstat :: CInt -> Ptr Word64 -> IO CInt
-
-foreign import ccall unsafe "hamsterdan_lstat"
-  c_lstat :: CString -> Ptr Word64 -> IO CInt
-
-foreign import ccall unsafe "hamsterdan_fstatat_nofollow"
-  c_fstatat :: CInt -> CString -> Ptr Word64 -> IO CInt
-
-withStat :: String -> FilePath -> (Ptr Word64 -> IO CInt) -> IO Stat
-withStat call path action = allocaArray 6 $ \out -> do
-  throwErrnoPathIfMinus1_ call path (action out)
-  fields <- peekArray 6 out
-  case fields of
-    [m, u, d, i, n, s] -> pure Stat {mode = m, uid = u, dev = d, ino = i, nlink = n, size = s}
-    _ -> ioError (userError "stat: short result")
-
--- | @os.fstat(fd)@.
-fdStat :: Fd -> IO Stat
-fdStat (Fd fd) = withStat "fstat" "" (c_fstat fd)
-
--- | @os.lstat(path)@ (@Path.lstat()@, @Path.stat(follow_symlinks=False)@).
-lstat :: FilePath -> IO Stat
-lstat path = withCString path $ \cpath -> withStat "lstat" path (c_lstat cpath)
-
--- | @os.stat(name, dir_fd=fd, follow_symlinks=False)@.
-statAt :: Fd -> FilePath -> IO Stat
-statAt (Fd fd) name = withCString name $ \cname -> withStat "fstatat" name (c_fstatat fd cname)
-
-fileType :: Stat -> Word64
-fileType s = s.mode .&. 0o170000
-
-isDirectory, isRegular, isSymlink :: Stat -> Bool
-isDirectory s = fileType s == 0o040000
-isRegular s = fileType s == 0o100000
-isSymlink s = fileType s == 0o120000
-
--- | @stat.S_IMODE(mode)@.
-permissionBits :: Stat -> Word64
-permissionBits s = s.mode .&. 0o7777
-
--- | @os.geteuid()@.
-effectiveUid :: IO Word64
+-- | @os.geteuid()@, in the type of 'Petrus.Posix.At.statUid'.
+effectiveUid :: IO Int64
 effectiveUid = fromIntegral <$> getEffectiveUserID
 
-foreign import ccall safe "hamsterdan_rmtree"
-  c_rmtree :: CString -> IO CInt
-
--- | @shutil.rmtree(path)@ (CPython's descriptor-relative walk, which never
--- follows a symbolic link and resolves no path below the top twice). Raises
--- the first error the walk meets; a missing top is a does-not-exist error,
--- and a top that is a symbolic link raises like any other refusal.
-rmtree :: FilePath -> IO ()
-rmtree path = do
-  err <- withCString path c_rmtree
-  if err == 0 then pure () else ioError (errnoToIOError "rmtree" (Errno err) Nothing (Just path))
-
-foreign import ccall unsafe "hamsterdan_cs_path"
-  c_csPath :: Ptr CChar -> CSize -> IO CSize
-
--- | @os.confstr("CS_PATH")@, or @os.defpath@ when the system has none.
-csPath :: IO String
-csPath = do
-  size <- c_csPath nullPtr 0
-  if size == 0
-    then pure "/bin:/usr/bin"
-    else allocaArray (fromIntegral size) \buffer -> c_csPath buffer size >> peekCString buffer
-
 -- | @shutil.which(name)@ for a name without a directory part (POSIX):
--- along @PATH@ (@os.confstr("CS_PATH")@ when it is unset, nothing when it
--- is empty), each directory once, the first @os.path.join(directory,
+-- along @PATH@ (@os.confstr("CS_PATH")@ when it is unset; nothing when the
+-- search path is empty or the system defines none), each directory once, the first @os.path.join(directory,
 -- name)@ that exists, passes @os.access(_, os.X_OK)@ and is not a
 -- directory.
 which :: String -> IO (Maybe FilePath)
 which name = do
-  path <- lookupEnv "PATH" >>= maybe csPath pure
+  path <- lookupEnv "PATH" >>= maybe (fromMaybe "" <$> confstrPath) pure
   if null path then pure Nothing else search Set.empty (splitColon path)
   where
     search _ [] = pure Nothing

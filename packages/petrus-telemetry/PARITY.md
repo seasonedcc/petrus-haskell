@@ -1,7 +1,8 @@
 # petrus-telemetry: parity with the Python reference
 
 `petrus-telemetry` ports `petrus/telemetry.py`. It is layer zero: it depends
-on nothing in the runtime. The `impetus_*` events that the Instance, the
+on nothing in the runtime except the JSON value model and petrus-posix,
+whose memory gauges (`max_rss_mb`, `current_rss_mb`) it re-exports. The `impetus_*` events that the Instance, the
 Engine and the JSONL History store emit through it are checked by
 [`petrus-telemetry-instrumentation`](../petrus-telemetry-instrumentation/PARITY.md).
 That package exists only to hold tests and a benchmark, so the library never
