@@ -43,11 +43,17 @@ On Ubuntu 24.04 (what CI uses):
 sudo apt-get install -y build-essential libzmq3-dev libpq-dev libsqlite3-dev libbz2-dev liblzma-dev pkg-config graphviz
 curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
 curl -LsSf https://astral.sh/uv/install.sh | sh
+sudo apt-get install -y docker.io && sudo usermod -aG docker "$USER"   # or PostgreSQL 17, below
 ```
 
-plus Node.js 22 (for example from NodeSource) and either Docker or
-PostgreSQL 17 from the [PGDG apt repository](https://www.postgresql.org/download/linux/ubuntu/)
-(Ubuntu 24.04's own `postgresql` package is 16).
+plus Node.js 22 (for example from NodeSource) with pnpm 11.5.1
+(`corepack enable` inside `upstream/petrus-viewer`, or
+`npm install -g pnpm@11.5.1` as CI does), and, instead of Docker, PostgreSQL
+17 from the [PGDG apt repository](https://www.postgresql.org/download/linux/ubuntu/)
+also works (Ubuntu 24.04's own `postgresql` package is 16). Log in again after
+`usermod` so the `docker` group applies. The `--viewer` suites' Chromium also
+needs its system libraries: `npx playwright install --with-deps chromium`
+(below) installs them through apt.
 
 Haskell dependency versions are pinned in `cabal.project.freeze` (every
 Hackage package's exact version, plus the Hackage `index-state`), so a clean
@@ -194,7 +200,8 @@ Hackage dependencies already in the cabal store (October 2026):
 `--viewer` adds, after the tests, the upstream petrus-viewer suites against
 the Haskell backend (`scripts/interop --viewer petrus-viewer-server`, below);
 they need Node 22, pnpm, `pnpm install --frozen-lockfile && pnpm build` in
-`upstream/petrus-viewer`, and `npx playwright install chromium`.
+`upstream/petrus-viewer`, and `npx playwright install --with-deps chromium`
+(`--with-deps` also installs Chromium's system libraries on Linux; CI runs it).
 
 One package's suite, or one group in it:
 
@@ -224,7 +231,7 @@ It is the quick check after moving a pin or touching a wire format. Each run
 passes hspec's `--fail-on=empty,pending`, so a renamed group or a test that
 goes pending fails it. `--viewer` needs `pnpm install` in
 `upstream/petrus-viewer` (and `pnpm build` plus
-`npx playwright install chromium` for its browser suites).
+`npx playwright install --with-deps chromium` for its browser suites).
 
 The committed differential corpora, fixture databases and generated modules
 are themselves reference output. `scripts/check-corpora` (also part of
