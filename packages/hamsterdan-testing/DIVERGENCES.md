@@ -74,15 +74,13 @@ Python journey's, byte for byte, whole and cross-resumed (see
      patches `_ALLOWED` to source order (`change`, `update_base`,
      `resolve_conflict`). That is the order the Haskell host always uses
      (`mutations` in `Hamsterdan.Host.V5.Application`).
-2. **The publisher clones the fixture's remote by its `file://` URL.**
-   Upstream gives the real `HostGitPublisher` the public clone URL
-   `https://github.com/owner/repo.git`. Its Git environment then rewrites
-   that URL to the local bare repository with a `url.<remote>.insteadOf`
-   entry (`GIT_CONFIG_KEY_2`). The Haskell host's Git environment is a
-   constant, with no seam to patch, so the journeys hand the publisher the
-   remote's `file://` URL directly. The publisher runs the same `git`
-   commands against the same repository. The URL does not appear in any
-   result, state file or History record.
+2. **The publisher's clone URL: resolved, no longer a difference.** As
+   upstream does, the journeys give the real `HostGitPublisher` the public
+   clone URL `https://github.com/owner/repo.git`, and a
+   `url.<remote>.insteadOf` entry (`GIT_CONFIG_KEY_2`) rewrites it to the
+   local bare repository. Upstream patches `_git_environment()`; the
+   Haskell publisher takes the entry through its `extraGitConfig` field,
+   which is empty in production.
 3. **The publication is observed through `reconcileHook`.** Upstream
    monkeypatches `HostGitPublisher.reconcile` and `.publish` to record each
    call. Because `publish` calls `self.reconcile`, the record also holds
