@@ -857,6 +857,20 @@ again. The relays never went through the front (it handed their upgrades
 to Warp), and their rows moved by noise only. The framing differences
 Warp brings are in [DIVERGENCES.md](../DIVERGENCES.md).
 
+On Linux (GitHub's `ubuntu-latest` runner, `scripts/bench-gate
+petrus-viewer-server`, 5 rounds, 2026-10-12) the 1-client endpoint rows
+sit at parity for both designs, and the front does not lift them:
+
+| scenario | Warp, run 1 | Warp, run 2 | front |
+| --- | ---: | ---: | ---: |
+| open-file POST+GET, 1 client | 0.99x (2 of 5) | 1.09x (5 of 5) | 0.99x (2 of 5) |
+| resolve-ref, 1 client | 0.95x (2 of 5) | 1.01x (3 of 5) | 1.19x (3 of 5) |
+
+Single rounds there range over ±20% (the front's open-file rounds: 0.93,
+0.79, 1.24, 0.99, 1.15), so these two gate rows can fail a nightly run
+with either design; the relay, collab, MCP and static rows passed by
+wide margins in every run.
+
 **The rest, one removal at a time** (12:20–12:35 local, load average
 3.9 → 8.4; `--only "open-file|resolve-ref|MCP"`). Four builds, each
 removing one more piece from the one before:

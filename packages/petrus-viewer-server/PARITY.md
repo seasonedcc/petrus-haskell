@@ -212,9 +212,12 @@ The file reads (`FileIO`, `cbits/file_io.c`) and the string escaper
 (`cbits/json_escape.c`) stay: with the clean versions, resolve-ref fell
 behind Node (0.94x and 0.78x, then 0.87x and 0.69x). The two 1-client
 rounds below 1.0x are rounds in which every server slowed down (in the
-0.78x one, all three ran at about half speed).
+0.78x one, all three ran at about half speed). On GitHub's Linux runner
+the 1-client row came out at 0.95x (2 of 5 rounds) and 1.01x (3 of 5) in
+two nightly-gate runs, the HTTP front at 1.19x (3 of 5).
 
-**Status:** at parity: ahead in every median, by a thin margin.
+**Status:** at parity: ahead in every median on the Mac, by a thin
+margin; even with Node at 1 client on Linux.
 
 ### `open-file` endpoint (`server/openFileEndpoint.mjs`)
 
@@ -238,7 +241,10 @@ rounds below 1.0x are rounds in which every server slowed down (in the
 
 Warp serves the endpoint, as for resolve-ref above; in the A/B against
 the HTTP front of runs E to H it was 1.11x (1 client) and 1.13x (16
-clients) Node by median, the front 1.16x and 1.28x.
+clients) Node by median, the front 1.16x and 1.28x. On GitHub's Linux
+runner the 1-client row came out at 0.99x (2 of 5 rounds) and 1.09x
+(5 of 5) in two nightly-gate runs, and the front at 0.99x (2 of 5): the
+front does not lift it there.
 
 What changed:
 
@@ -265,7 +271,8 @@ and the bare Node server both fell to about half their speed (11.4k and
 server, the faster Node server in that round, did not. The
 details are in [bench/RESULTS.md](bench/RESULTS.md).
 
-**Status:** at parity: ahead in every median, by a thin margin.
+**Status:** at parity: ahead in every median on the Mac, by a thin
+margin; even with Node at 1 client on Linux.
 
 ### Simulation (browser UI)
 
