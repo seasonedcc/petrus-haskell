@@ -13,7 +13,7 @@ int petrus_at_removedir(void);
 int petrus_maxrss(int64_t *out);
 long petrus_page_size(void);
 void *petrus_fdopendir(int fd);
-const char *petrus_readdir(void *dir);
+const char *petrus_readdir(void *dir, int *kind);
 int petrus_closedir(void *dir);
 
 #endif

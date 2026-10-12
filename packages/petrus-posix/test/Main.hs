@@ -3,7 +3,7 @@ module Main (main) where
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar, tryReadMVar)
 import Control.Exception (bracket, finally, try)
-import Control.Monad (forM_, replicateM, void, when)
+import Control.Monad (forM, forM_, replicateM, void, when)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Char (isDigit, isHexDigit, isLower)
@@ -14,12 +14,18 @@ import Petrus.Posix
 import Petrus.TestSupport
 import System.Directory
   ( createDirectory
+  , createDirectoryIfMissing
   , createDirectoryLink
   , createFileLink
+  , doesDirectoryExist
   , doesPathExist
   , getCurrentDirectory
+  , getPermissions
   , listDirectory
+  , pathIsSymbolicLink
   , removeFile
+  , setOwnerWritable
+  , setPermissions
   , withCurrentDirectory
   )
 import System.FilePath ((</>))
@@ -36,6 +42,7 @@ main = hspec $ do
   flockSpec
   pathSpec
   atSpec
+  rmtreeSpec
   fileSpec
   resourceSpec
 
@@ -219,6 +226,10 @@ haskellStrings f = mapM $ \input -> do
 
 pathSpec :: Spec
 pathSpec = describe "Path" $ do
+  it "reads os.confstr(\"CS_PATH\")" $ do
+    expected <- pythonJson "import json, os\nprint(json.dumps(os.confstr('CS_PATH')))" []
+    confstrPath `shouldReturn` (case expected of String value -> Just (T.unpack value); _ -> Nothing)
+
   it "normalizes like PurePosixPath" $ do
     let inputs = ["", ".", "./", "a", "a/", "a//b", "a/./b/.", "/", "//", "///", "////a", "//a//b", "/../a", "a/../b", "...", "./.a", "~", "é/./ü//"]
     expected <- pythonStrings "str(PurePosixPath(p))" "/" inputs
@@ -360,6 +371,91 @@ atSpec = describe "At" $ do
     fchmod fd 0o640
     closeFd fd
     permissionBits <$> statAt Nothing (dir </> "f") FollowLinks `shouldReturn` 0o640
+
+-- | A tree under one side's directory: @root@ is what gets removed,
+-- @outside@ a sibling the tree may link to.
+data RmtreeScenario = RmtreeScenario {scenarioName :: String, build :: FilePath -> IO (), makeWritable :: FilePath -> IO ()}
+
+rmtreeScenarios :: [RmtreeScenario]
+rmtreeScenarios =
+  [ plain "nested directories, files and empty directories" $ \side -> do
+      createDirectoryIfMissing True (side </> "root" </> "a" </> "b" </> "c")
+      createDirectoryIfMissing True (side </> "root" </> "empty")
+      forM_ ["f", "a/g", "a/b/h", "a/b/c/i"] $ \file -> writeFile (side </> "root" </> file) file
+  , plain "a symbolic link inside is removed, never followed" $ \side -> do
+      outside side
+      createDirectory (side </> "root")
+      createDirectoryLink (side </> "outside") (side </> "root" </> "link")
+      createFileLink "missing" (side </> "root" </> "dangling")
+  , plain "a top that is a symbolic link is refused" $ \side -> do
+      outside side
+      createDirectoryLink (side </> "outside") (side </> "root")
+  , plain "a missing top raises FileNotFoundError" $ \_ -> pure ()
+  , plain "a top that is a regular file raises" $ \side -> writeFile (side </> "root") "file"
+  , RmtreeScenario
+      { scenarioName = "an entry that cannot be unlinked stops the walk"
+      , build = \side -> do
+          createDirectoryIfMissing True (side </> "root" </> "locked")
+          writeFile (side </> "root" </> "locked" </> "f") "f"
+          writeFile (side </> "root" </> "top") "top"
+          readOnly (side </> "root" </> "locked")
+      , makeWritable = \side -> do
+          exists <- doesDirectoryExist (side </> "root" </> "locked")
+          when exists $ getPermissions (side </> "root" </> "locked") >>= setPermissions (side </> "root" </> "locked") . setOwnerWritable True
+      }
+  ]
+  where
+    plain label construct = RmtreeScenario {scenarioName = label, build = construct, makeWritable = \_ -> pure ()}
+    outside side = do
+      createDirectory (side </> "outside")
+      writeFile (side </> "outside" </> "keep") "keep"
+    readOnly path = getPermissions path >>= setPermissions path . setOwnerWritable False
+
+-- | What is left under a side's directory, without following links.
+treeContents :: FilePath -> IO [String]
+treeContents side = sort . concat <$> walk ""
+  where
+    walk relative = do
+      names <- listDirectory (side </> relative)
+      forM names $ \entry -> do
+        let path = if null relative then entry else relative </> entry
+        link <- pathIsSymbolicLink (side </> path)
+        directory <- if link then pure False else doesDirectoryExist (side </> path)
+        if directory then ((path <> "/") :) . concat <$> walk path else pure [if link then path <> "@" else path]
+
+-- | Each tree is built twice and removed once by each side; the outcome
+-- (removed, @FileNotFoundError@, another @OSError@) and what is left on disk
+-- must agree.
+rmtreeSpec :: Spec
+rmtreeSpec = describe "rmtree, against shutil.rmtree" $
+  forM_ rmtreeScenarios $ \scenario -> it (scenarioName scenario) $ withTemp $ \tmp -> do
+    let hs = tmp </> "hs"
+        py = tmp </> "py"
+    forM_ [hs, py] $ \side -> createDirectory side >> build scenario side
+    mine <-
+      try (rmtree (hs </> "root")) >>= \case
+        Right () -> pure "removed"
+        Left e
+          | isDoesNotExistError e -> pure "FileNotFoundError"
+          | otherwise -> pure "OSError"
+    theirs <-
+      pythonJson
+        ( T.unlines
+            [ "import json, shutil, sys"
+            , "try:"
+            , "    shutil.rmtree(sys.argv[1])"
+            , "    print(json.dumps('removed'))"
+            , "except FileNotFoundError:"
+            , "    print(json.dumps('FileNotFoundError'))"
+            , "except OSError:"
+            , "    print(json.dumps('OSError'))"
+            ]
+        )
+        [py </> "root"]
+    forM_ [hs, py] (makeWritable scenario)
+    left <- treeContents hs
+    expected <- treeContents py
+    (String mine, left) `shouldBe` (theirs, expected)
 
 fileSpec :: Spec
 fileSpec = describe "File" $ do

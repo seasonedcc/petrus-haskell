@@ -1,3 +1,4 @@
+{-# LANGUAGE CApiFFI #-}
 {-# LANGUAGE MultiWayIf #-}
 
 -- | Python-compatible path normalization and resolution.
@@ -25,6 +26,9 @@ module Petrus.Posix.Path
     -- * os.path
   , realpath
   , expandUser
+
+    -- * os
+  , confstrPath
   ) where
 
 import Control.Exception (Exception, throwIO)
@@ -34,8 +38,11 @@ import Data.ByteString.Char8 qualified as BC
 import Data.List (dropWhileEnd, elemIndex, intercalate, isPrefixOf)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
+import Foreign.C.Error (eOK, getErrno, resetErrno, throwErrno)
 import Foreign.C.String (CString)
-import Foreign.C.Types (CInt (..))
+import Foreign.C.Types (CInt (..), CSize (..))
+import Foreign.Marshal.Alloc (allocaBytes)
+import Foreign.Ptr (nullPtr)
 import System.Environment (lookupEnv)
 import System.IO.Error (catchIOError)
 import System.Posix.Directory.ByteString (getWorkingDirectory)
@@ -179,3 +186,22 @@ realpathRaw filename = do
     parent path = case BC.elemIndexEnd '/' path of
       Nothing -> "/"
       Just i -> if i == 0 then "/" else BS.take i path
+
+foreign import capi unsafe "unistd.h confstr" c_confstr :: CInt -> CString -> CSize -> IO CSize
+
+foreign import capi "unistd.h value _CS_PATH" csPathName :: CInt
+
+-- | @os.confstr("CS_PATH")@: the system's default command search path
+-- (@shutil.which@'s fallback when @PATH@ is unset), or 'Nothing' when the
+-- system defines none.
+confstrPath :: IO (Maybe FilePath)
+confstrPath = do
+  resetErrno
+  size <- c_confstr csPathName nullPtr 0
+  if size == 0
+    then do
+      errno <- getErrno
+      if errno == eOK then pure Nothing else throwErrno "confstr"
+    else allocaBytes (fromIntegral size) $ \buffer -> do
+      _ <- c_confstr csPathName buffer size
+      Just <$> peekFilePath buffer

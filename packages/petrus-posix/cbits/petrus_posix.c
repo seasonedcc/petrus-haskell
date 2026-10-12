@@ -114,12 +114,19 @@ void *petrus_fdopendir(int fd)
     return dir;
 }
 
-/* The next entry name, or NULL at the end (errno 0) or on error (errno set). */
-const char *petrus_readdir(void *dir)
+/*
+ * The next entry name, or NULL at the end (errno 0) or on error (errno set).
+ * *kind is what d_type says of the entry without following a link: 1 a
+ * directory, 0 anything else, -1 not known (DT_UNKNOWN).
+ */
+const char *petrus_readdir(void *dir, int *kind)
 {
     errno = 0;
     struct dirent *entry = readdir((DIR *)dir);
-    return entry == NULL ? NULL : entry->d_name;
+    if (entry == NULL)
+        return NULL;
+    *kind = entry->d_type == DT_UNKNOWN ? -1 : entry->d_type == DT_DIR ? 1 : 0;
+    return entry->d_name;
 }
 
 int petrus_closedir(void *dir) { return closedir((DIR *)dir); }

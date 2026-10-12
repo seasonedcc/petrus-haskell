@@ -25,6 +25,7 @@ module Petrus.Posix.At
   , removeDirectoryAt
   , renameAt
   , listDirectoryFd
+  , rmtree
 
     -- * Metadata
   , Follow (..)
@@ -44,16 +45,20 @@ module Petrus.Posix.At
   , closeFd
   ) where
 
-import Control.Exception (bracket)
-import Control.Monad (unless, void)
+import Control.Exception (bracket, throwIO, try)
+import Control.Monad (forM, unless, void)
 import Data.Bits ((.&.))
 import Data.Int (Int64)
+import Data.Maybe (catMaybes)
 import Foreign.C.Error (eINTR, eOK, getErrno, throwErrno, throwErrnoIfMinus1Retry_, throwErrnoPath)
 import Foreign.C.String (CString)
 import Foreign.C.Types (CInt (..))
+import Foreign.Marshal.Alloc (alloca)
 import Foreign.Marshal.Array (allocaArray)
 import Foreign.Ptr (Ptr, nullPtr)
-import Foreign.Storable (peekElemOff)
+import Foreign.Storable (peek, peekElemOff)
+import GHC.IO.Exception (IOErrorType (InappropriateType))
+import System.IO.Error (isDoesNotExistError, mkIOError)
 import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, openFdAt)
 import Petrus.Posix.Internal (withPath)
 import System.Posix.Internals (peekFilePath)
@@ -78,7 +83,7 @@ foreign import capi unsafe "sys/stat.h fchmod" c_fchmod :: CInt -> CMode -> IO C
 
 foreign import ccall unsafe "petrus_posix.h petrus_fdopendir" c_fdopendir :: CInt -> IO (Ptr ())
 
-foreign import ccall unsafe "petrus_posix.h petrus_readdir" c_readdir :: Ptr () -> IO CString
+foreign import ccall unsafe "petrus_posix.h petrus_readdir" c_readdir :: Ptr () -> Ptr CInt -> IO CString
 
 foreign import ccall unsafe "petrus_posix.h petrus_closedir" c_closedir :: Ptr () -> IO CInt
 
@@ -150,24 +155,85 @@ renameAt fromDir from toDir to = do
 -- order, without @.@ and @..@. The descriptor stays open and owned by the
 -- caller (the listing uses a duplicate).
 listDirectoryFd :: Fd -> IO [FilePath]
-listDirectoryFd (Fd fd) =
+listDirectoryFd fd = map fst <$> scanDirectoryFd fd
+
+-- | 'listDirectoryFd' with what @d_type@ says of each entry, as
+-- @os.scandir(fd)@ keeps it: 'Just' whether it is a directory (a symbolic
+-- link is not), or 'Nothing' when the file system does not say.
+scanDirectoryFd :: Fd -> IO [(FilePath, Maybe Bool)]
+scanDirectoryFd (Fd fd) =
   bracket open (void . c_closedir) collect
   where
     open = do
       stream <- c_fdopendir fd
       if stream == nullPtr then throwErrno "fdopendir" else pure stream
-    collect stream = go []
-      where
-        go acc = do
-          entry <- c_readdir stream
-          if entry == nullPtr
-            then do
-              errno <- getErrno
-              unless (errno == eOK) (throwErrno "readdir")
-              pure (reverse acc)
-            else do
-              name <- peekFilePath entry
-              go (if name == "." || name == ".." then acc else name : acc)
+    collect stream = alloca $ \kind ->
+      let go acc = do
+            entry <- c_readdir stream kind
+            if entry == nullPtr
+              then do
+                errno <- getErrno
+                unless (errno == eOK) (throwErrno "readdir")
+                pure (reverse acc)
+              else do
+                name <- peekFilePath entry
+                directory <- peek kind
+                let known = case directory of
+                      1 -> Just True
+                      0 -> Just False
+                      _ -> Nothing
+                go (if name == "." || name == ".." then acc else (name, known) : acc)
+       in go []
+
+-- | @shutil.rmtree(path)@ as CPython 3.14 runs it on POSIX
+-- (@_rmtree_safe_fd@): @lstat@ the top, open it @O_RDONLY | O_NONBLOCK@,
+-- refuse it when @fstat@ does not name the same file (a symbolic link), list
+-- it, unlink every entry that is not a directory relative to it, descend into
+-- the directories (the last listed first) the same way, close it, and
+-- @rmdir@ it relative to its parent. Below the top every call is relative to
+-- an open directory, so no path is resolved twice and no symbolic link is
+-- followed.
+--
+-- The first error is raised. As in CPython, an entry that vanishes while the
+-- tree is walked is skipped; only the top's own absence raises (a
+-- does-not-exist error).
+rmtree :: FilePath -> IO ()
+rmtree path = removeTree Nothing path True
+
+removeTree :: Maybe Fd -> FilePath -> Bool -> IO ()
+removeTree parent name top = skipVanished $ do
+  original <- statAt parent name NoFollowLinks
+  bracket (openAt parent name ReadOnly defaultFileFlags {nonBlock = True, cloexec = True}) closeFd $ \fd -> do
+    opened <- fdStat fd
+    unless ((statDevice opened, statInode opened) == (statDevice original, statInode original)) $
+      ioError (mkIOError InappropriateType "Cannot call rmtree on a symbolic link" Nothing (Just name))
+    entries <- scanDirectoryFd fd
+    directories <- fmap catMaybes . forM entries $ \(entry, known) -> do
+      directory <- maybe (directoryAt fd entry) (pure . Just) known
+      case directory of
+        Just True -> pure (Just entry)
+        Just False -> Nothing <$ vanishing (unlinkAt (Just fd) entry)
+        Nothing -> pure Nothing
+    mapM_ (\entry -> removeTree (Just fd) entry False) (reverse directories)
+  removeDirectoryAt parent name
+  where
+    skipVanished = if top then id else vanishing
+    -- DirEntry.is_dir(follow_symlinks=False) when d_type said nothing: an
+    -- entry that vanished is skipped ('Nothing'), and one that cannot be
+    -- examined is unlinked like a file.
+    directoryAt fd entry =
+      try (statAt (Just fd) entry NoFollowLinks) >>= \case
+        Right stat -> pure (Just (isDirectory stat))
+        Left e
+          | isDoesNotExistError e -> pure Nothing
+          | otherwise -> pure (Just False)
+
+-- | Run the action, ignoring a does-not-exist error.
+vanishing :: IO () -> IO ()
+vanishing action =
+  try action >>= \case
+    Left e | not (isDoesNotExistError e) -> throwIO e
+    _ -> pure ()
 
 -- | Whether the final component of a path is followed when it is a symlink
 -- (@follow_symlinks=@ / @AT_SYMLINK_NOFOLLOW@).
