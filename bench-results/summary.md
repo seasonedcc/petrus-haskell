@@ -45,7 +45,7 @@ lists the files whose package sources have changed since.
 | `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | `5a73d7a` | 13 | 1.01× | 10.7× |  |
 | `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | `5a73d7a` | 12 | 1.35× | 10.1× |  |
 | `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | `5a73d7a` | 7 | 1.20× | 2.01× |  |
-| `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | `da94728` | 14 | 1.02× | 13 065× |  |
+| `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | `fae8539` | 14 | 1.12× | 12 600× |  |
 | `petrus-http-core` | [RESULTS.md](../packages/petrus-http-core/bench/RESULTS.md) | `5a73d7a` | 6 | 1.69× | 18.8× |  |
 | `petrus-impetus` | [RESULTS.md](../packages/petrus-impetus/bench/RESULTS.md) | `5a73d7a` | 17 | 1.72× | 88.5× |  |
 | `petrus-json` | [RESULTS.md](../packages/petrus-json/bench/RESULTS.md) | `d354c96` | 8 | 1.56× | 2.87× |  |

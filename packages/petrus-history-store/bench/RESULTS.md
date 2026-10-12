@@ -1,6 +1,6 @@
 # History store benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 65bb28d174db5e88 at da947286fe9c -->
+<!-- scripts/bench: measured sources 859bdb2af831784b at fae853953551 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` build the same
 History: 20 002 records from a drained 4 000-token FIFO. They time the same
@@ -53,8 +53,8 @@ got more rounds.
 
 ## Current figures
 
-Measured on 2026-10-12, 09:31–09:42 local (UTC-3), at commit `da94728`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 1.63–2.34:
+Measured on 2026-10-12, 17:40–17:52 local (UTC-3), at commit `fae8539`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.98–2.60:
 five interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-history-store 5
@@ -64,11 +64,20 @@ Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 directory, except `sqlite.append-per-record` (below); Python figures are the
 twin's own timing (CPython 3.14.6). Each figure is the median over the
 repetitions, and the ratio is Python ÷ Haskell (above 1 means Haskell is
-faster). The rows without a Python figure are Haskell-only (described under
-the first table below). The tables in the sections below are earlier
-measurements, kept with the analysis that came with them.
+faster). "Haskell ahead" counts the repetitions Haskell was faster in. The
+rows without a Python figure are Haskell-only (described under the first
+table below). The tables in the sections below are earlier measurements,
+kept with the analysis that came with them.
 
-Three changes since the previous figures (at `81bbdc5`):
+Since the figures at `da94728` (09:31–09:42 the same day), the packages
+under this one changed (petrus-json, petrus-posix, petrus-sqlite and
+petrus-impetus among them). No row moved beyond the file system's swing but `sqlite.append-one-batch` (57.2 to
+68.0 ms, still 1.88×) and `sqlite.append-batches-of-8` (1.31× to 1.18×),
+whose Python side moved with them (113 to 128 ms, 30.1 to 33.5 ms): both
+are a few `fsync`ed commits of many rows. `sqlite.append-per-record` read
+1.12×, Haskell ahead in every repetition.
+
+The three changes measured at `da94728`, against the figures at `81bbdc5`:
 
 - **`sqlite.append-one-batch` went from 1.32× to 1.98×** (83.3 ms to
   57.2 ms; on the Linux CI runners from 0.91–0.94× to 1.95–2.07×, CI run
@@ -94,7 +103,7 @@ Three changes since the previous figures (at `81bbdc5`):
   tasty-bench's mean took in every slow file-system period, which the
   twin's median of 3 leaves out, and the Python twin's own mean sits 9%
   (here) to 11–16% (Linux CI) above its median. Timed alike, the row is
-  level within the file system's noise: 1.02× in this run (0.99× in the
+  level within the file system's noise: 1.02× in that run (0.99× in the
   closest repetition), 1.15× in a run an hour earlier at `e113a93`; each
   side's figure swings by 10–15% between repetitions. The busy timeout,
   now set through `sqlite3_busy_timeout` (petrus-sqlite's DIVERGENCES),
@@ -114,25 +123,25 @@ Three changes since the previous figures (at `81bbdc5`):
   repetition), where `scripts/bench-gate` had failed it at 0.95× and 0.87×
   (run 38242016720).
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `sqlite.append-per-record` | 87.2 ms | 89.3 ms | 1.02× | 0.99× | 87.2 ms, 81.1 ms, 87.7 ms, 90.1 ms, 77 ms | 87 ms, 94.6 ms, 88.9 ms, 89.3 ms, 89.7 ms |
-| `jsonl.append-one-batch` | 20.9 ms | 60.3 ms | 2.89× | 2.79× | 20.9 ms, 21.6 ms, 20.2 ms, 21 ms, 19.7 ms | 60.2 ms, 60.3 ms, 59.8 ms, 60.9 ms, 60.6 ms |
-| `jsonl.append-per-record` | 49.2 ms | 68 ms | 1.38× | 1.27× | 50.4 ms, 47.8 ms, 47.8 ms, 50.1 ms, 49.2 ms | 63.8 ms, 68 ms, 65.7 ms, 68.5 ms, 70.1 ms |
-| `jsonl.load` | 26.8 ms | 94.2 ms | 3.51× | 3.41× | 26.5 ms, 26.9 ms, 27.2 ms, 26.8 ms, 26.5 ms | 94.9 ms, 94.2 ms, 92.7 ms, 94.3 ms, 93.8 ms |
-| `jsonl.resume` | 363 ms | 7.09 s | 19.54× | 19.34× | 361 ms, 361 ms, 363 ms, 366 ms, 366 ms | 7.1 s, 7.09 s, 7.11 s, 7.09 s, 7.09 s |
-| `sqlite.append-one-batch` | 57.2 ms | 113 ms | 1.98× | 1.93× | 56.3 ms, 58.4 ms, 57 ms, 57.2 ms, 57.9 ms | 113 ms, 113 ms, 113 ms, 113 ms, 111 ms |
-| `sqlite.append-batches-of-8` | 23 ms | 30.1 ms | 1.31× | 1.27× | 23.2 ms, 22.9 ms, 23.1 ms, 23 ms, 22.8 ms | 30.4 ms, 29.1 ms, 30.1 ms, 30.1 ms, 29.7 ms |
-| `sqlite.load` | 41.7 ms | 106 ms | 2.53× | 2.47× | 42.6 ms, 41.7 ms, 41.8 ms, 41.3 ms, 41.6 ms | 105 ms, 106 ms, 106 ms, 106 ms, 108 ms |
-| `sqlite.resume` | 372 ms | 7.12 s | 19.17× | 18.74× | 380 ms, 366 ms, 372 ms, 372 ms, 370 ms | 7.11 s, 7.12 s, 7.14 s, 7.13 s, 7.12 s |
-| `sqlite.terminal-resend-ack` | 6.47 ms | 1.12 s | 172.89× | 171.22× | 6.54 ms, 6.52 ms, 6.2 ms, 6.47 ms, 6.38 ms | 1.12 s, 1.12 s, 1.12 s, 1.13 s, 1.12 s |
-| `diagnostic.encode-payload` | 19.6 ms | — | — | — | 20 ms, 19.6 ms, 19.9 ms, 19.1 ms, 19.1 ms |  |
-| `diagnostic.decode-lines` | 26.5 ms | — | — | — | 26.6 ms, 26.5 ms, 26.4 ms, 26.4 ms, 26.6 ms |  |
-| `store.in-memory-append` | 249 µs | 422 µs | 1.70× | 1.67× | 249 µs, 246 µs, 249 µs, 248 µs, 249 µs | 432 µs, 413 µs, 422 µs, 414 µs, 425 µs |
-| `store.in-memory-records` | 3.66 ns | 44.5 µs | 12153.64× | 9638.53× | 3.66 ns, 3.81 ns, 3.73 ns, 3.64 ns, 3.59 ns | 45.9 µs, 36.8 µs, 44.6 µs, 36.7 µs, 44.5 µs |
-| `store.jsonl-records` | 3.39 ns | 44.3 µs | 13065.49× | 12401.12× | 3.39 ns, 3.58 ns, 3.4 ns, 3.32 ns, 3.32 ns | 44.4 µs, 44.4 µs, 44.3 µs, 44.2 µs, 43.9 µs |
-| `store.in-memory-iterate` | 22.9 µs | 210 µs | 9.16× | 9.05× | 23 µs, 22.9 µs, 22.9 µs, 23 µs, 22.9 µs | 212 µs, 208 µs, 210 µs, 210 µs, 207 µs |
-| `store.in-memory-records-list` | 35.2 µs | — | — | — | 36.2 µs, 35.6 µs, 35 µs, 35.2 µs, 34.4 µs |  |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `sqlite.append-per-record` | 93.4 ms | 104 ms | 1.12× | 1.03× | 5 of 5 | 93.4 ms, 102 ms, 95.9 ms, 87 ms, 87.6 ms | 104 ms, 105 ms, 103 ms, 98.3 ms, 109 ms |
+| `jsonl.append-one-batch` | 22.5 ms | 60.8 ms | 2.70× | 2.61× | 5 of 5 | 22.5 ms, 22.8 ms, 21.6 ms, 23.7 ms, 21 ms | 60.8 ms, 65.3 ms, 60.3 ms, 62 ms, 60.7 ms |
+| `jsonl.append-per-record` | 49.1 ms | 67 ms | 1.36× | 1.32× | 5 of 5 | 48.8 ms, 49.5 ms, 49.1 ms, 48.7 ms, 49.7 ms | 67 ms, 70 ms, 68.5 ms, 66.3 ms, 65.4 ms |
+| `jsonl.load` | 27.1 ms | 93.7 ms | 3.46× | 3.34× | 5 of 5 | 27 ms, 27.4 ms, 27 ms, 27.1 ms, 27.9 ms | 93.7 ms, 93.3 ms, 96.2 ms, 94 ms, 93.3 ms |
+| `jsonl.resume` | 364 ms | 7.1 s | 19.50× | 19.31× | 5 of 5 | 362 ms, 366 ms, 364 ms, 362 ms, 368 ms | 7.09 s, 7.09 s, 7.12 s, 7.11 s, 7.1 s |
+| `sqlite.append-one-batch` | 68 ms | 128 ms | 1.88× | 1.65× | 5 of 5 | 63.3 ms, 68.2 ms, 68.4 ms, 66.2 ms, 68 ms | 125 ms, 128 ms, 130 ms, 135 ms, 113 ms |
+| `sqlite.append-batches-of-8` | 28.4 ms | 33.5 ms | 1.18× | 1.08× | 5 of 5 | 28 ms, 28.5 ms, 28.4 ms, 28.2 ms, 29.1 ms | 30.5 ms, 33.5 ms, 42.6 ms, 36.3 ms, 31.4 ms |
+| `sqlite.load` | 42.1 ms | 106 ms | 2.52× | 2.49× | 5 of 5 | 41.9 ms, 42.1 ms, 42.6 ms, 41.9 ms, 42.2 ms | 106 ms, 106 ms, 106 ms, 106 ms, 105 ms |
+| `sqlite.resume` | 373 ms | 7.12 s | 19.11× | 18.62× | 5 of 5 | 368 ms, 382 ms, 373 ms, 373 ms, 373 ms | 7.11 s, 7.11 s, 7.14 s, 7.13 s, 7.12 s |
+| `sqlite.terminal-resend-ack` | 6.6 ms | 1.12 s | 170.26× | 168.31× | 5 of 5 | 6.7 ms, 6.58 ms, 6.69 ms, 6.6 ms, 6.56 ms | 1.13 s, 1.12 s, 1.13 s, 1.12 s, 1.12 s |
+| `diagnostic.encode-payload` | 19.8 ms | — | — | — | — | 19.5 ms, 19.5 ms, 19.9 ms, 19.8 ms, 20.2 ms |  |
+| `diagnostic.decode-lines` | 27.2 ms | — | — | — | — | 27.1 ms, 27 ms, 27.3 ms, 27.4 ms, 27.2 ms |  |
+| `store.in-memory-append` | 248 µs | 422 µs | 1.70× | 1.67× | 5 of 5 | 249 µs, 249 µs, 247 µs, 246 µs, 248 µs | 435 µs, 419 µs, 426 µs, 411 µs, 422 µs |
+| `store.in-memory-records` | 3.7 ns | 38.5 µs | 10416.71× | 10048.68× | 5 of 5 | 3.67 ns, 3.83 ns, 3.61 ns, 3.7 ns, 3.82 ns | 37.6 µs, 44.9 µs, 38.5 µs, 44.7 µs, 38.4 µs |
+| `store.jsonl-records` | 3.54 ns | 44.6 µs | 12600.00× | 11708.37× | 5 of 5 | 3.65 ns, 3.38 ns, 3.54 ns, 3.48 ns, 3.57 ns | 44.6 µs, 43.4 µs, 45 µs, 44.7 µs, 41.8 µs |
+| `store.in-memory-iterate` | 23.6 µs | 210 µs | 8.92× | 8.83× | 5 of 5 | 23.5 µs, 23.6 µs, 23.6 µs, 23.5 µs, 23.6 µs | 210 µs, 210 µs, 212 µs, 210 µs, 208 µs |
+| `store.in-memory-records-list` | 35.2 µs | — | — | — | — | 35.2 µs, 34.2 µs, 35.4 µs, 34.1 µs, 35.2 µs |  |
 
 ### Since these figures (2026-10-12, afternoon)
 
