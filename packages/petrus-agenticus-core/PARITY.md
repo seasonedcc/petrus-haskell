@@ -10,9 +10,9 @@ tests also carry the pytest parameter id.
 
 | Layer | Upstream | Fragment | Upstream tests | Status |
 | --- | --- | --- | --- | --- |
-| Catalog and runtime profiles | `catalog/descriptor.py`, `catalog/resolution.py`, `runtime/profiles.py` | [parity/catalog.md](parity/catalog.md) | `test_descriptor.py` (5 functions), `test_resolution.py` (13), `test_profiles.py` (6); `test_boundaries.py` is mapped in `petrus-agenticus` | at parity |
-| Effect | `effect/` | [parity/effect.md](parity/effect.md) | `test_contract.py` (15), `test_provider_neutrality.py` (2) | at parity |
-| Hands contract, gateway, grants and conformance | `hands/contract.py`, `hands/gateway.py`, `hands/grants.py`, `hands/conformance.py` | [parity/hands.md](parity/hands.md) | `test_contract_and_gateway.py` (20), `test_conformance.py` (4); `test_workspace.py` is ported in `petrus-agenticus` | at parity |
+| Catalog and runtime profiles | `catalog/descriptor.py`, `catalog/resolution.py`, `runtime/profiles.py` | [parity/catalog.md](parity/catalog.md) | `test_descriptor.py` (5 functions), `test_resolution.py` (13 tests), `test_profiles.py` (6 tests); `test_boundaries.py` is mapped in `petrus-agenticus` | at parity |
+| Effect | `effect/` | [parity/effect.md](parity/effect.md) | `test_contract.py` (15 tests), `test_provider_neutrality.py` (2 tests) | at parity |
+| Hands contract, gateway, grants and conformance | `hands/contract.py`, `hands/gateway.py`, `hands/grants.py`, `hands/conformance.py` | [parity/hands.md](parity/hands.md) | `test_contract_and_gateway.py` (20 tests), `test_conformance.py` (4 tests); `test_workspace.py` is ported in `petrus-agenticus` | at parity |
 | Thread lifecycle, program descriptors, runtime values | `thread/`, `program/descriptor.py`, `program/seam.py`, `runtime/{installation,result,operation}.py` | [parity/thread.md](parity/thread.md) | thread, program and `test_foundation.py` tests (see the fragment) | at parity |
 | Connection custody, materialization, storage and key | `connection/` | [parity/custody.md](parity/custody.md) | `test_custody.py` (21 functions, 24 cases) | at parity |
 

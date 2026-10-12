@@ -21,8 +21,8 @@ the examples that need a server are pending and say why, the same way upstream's
 
 | upstream test | Haskell spec | status |
 | --- | --- | --- |
-| test_postgres_history.py (21, all `postgres`-marked, none parametrized) | PostgresSpec / `TestEnsureSchema`, `TestBackendShape`, `TestTransactionalBatches`, `TestVerifyOnConflict`, `TestCallerTransactionJoin`, `TestDecodeFailsLoudAtLoad` | 21 ported |
-| test_history_backends.py (14), with `reopen` = postgres | the shared BackendContractSpec (compiled in from `petrus-history-store/test`), instantiated as `backend contract (postgres)` | 13 ported, 1 enforced by types |
+| test_postgres_history.py (21 tests, all `postgres`-marked, none parametrized) | PostgresSpec / `TestEnsureSchema`, `TestBackendShape`, `TestTransactionalBatches`, `TestVerifyOnConflict`, `TestCallerTransactionJoin`, `TestDecodeFailsLoudAtLoad` | 21 ported |
+| test_history_backends.py (14 tests), with `reopen` = postgres | the shared BackendContractSpec (compiled in from `petrus-history-store/test`), instantiated as `backend contract (postgres)` | 13 ported, 1 enforced by types |
 | test_package_boundaries.py, the 2 PostgreSQL History rows | BoundarySpec | 2 ported over Cabal metadata |
 | rules/history-store-postgres-provider-boundary.yml (ast-grep rule) | BoundarySpec / provider boundary | ported over the module's imports |
 

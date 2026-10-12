@@ -29,7 +29,7 @@ To check that every upstream test is accounted for:
 | upstream | collected | status |
 | --- | ---: | --- |
 | test_zeromq_dispatch_transport.py, 26 tests | 30 | 25 ported by name; 1 ported in part (below) |
-| test_package_boundaries.py `test_zeromq_transport_base_import_is_optional_and_deep_import_has_guidance` | 1 | ported over Cabal metadata (below) |
+| test_package_boundaries.py `test_zeromq_transport_base_import_is_optional_and_deep_import_has_guidance` | 1 of 20 | ported over Cabal metadata (below) |
 
 ### The boundary row
 

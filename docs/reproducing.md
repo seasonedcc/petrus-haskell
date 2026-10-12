@@ -165,10 +165,13 @@ It runs, in order, and stops at the first failing step:
     project and freeze file, the upstream pins or the twins' timing harness.
 14. `scripts/check-parity`: the parity table's claims hold: evidence for
     every component at parity, no cited benchmark row below 1.0×, and every
-    upstream test count it cites ("all 11 `test_sqlite_history.py` tests (14
-    cases)") equal to what pytest collects at the pinned upstream commits, as
+    upstream test count the parity ledgers cite (in `PARITY.md` and every
+    package's `PARITY.md` and `parity` files: "all 11 `test_sqlite_history.py`
+    tests (14 cases)", the Functions and Cases columns, the not-ported
+    tables) equal to what pytest collects at the pinned upstream commits, as
     recorded in `docs/upstream-test-counts.json` (`scripts/upstream-test-counts
-    --write` recollects it after a submodule moves). No document states how
+    --write` recollects all three projects after a submodule moves). A count
+    the script cannot read fails too, so none goes unchecked. No document states how
     many Haskell examples a suite has (`scripts/lint-example-counts`): such a
     number goes stale with the next test. `cabal test` prints each suite's
     count, and CI's `ci` job prints every suite's and records it in the

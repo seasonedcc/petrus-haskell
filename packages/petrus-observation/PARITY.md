@@ -42,8 +42,8 @@ parameters are separate Hspec examples where they are ported.
 
 | upstream file | ported | partly by types | by types | deferred |
 | --- | ---: | ---: | ---: | ---: |
-| engine/test_observation.py (19) | 15 | 3 | 1 | 0 |
-| engine/test_observation_http.py (7) | 7 (in `petrus-observation-http`) | | | 0 |
+| engine/test_observation.py (19 tests) | 15 | 3 | 1 | 0 |
+| engine/test_observation_http.py (7 tests) | 7 (in `petrus-observation-http`) | | | 0 |
 
 `cabal test petrus-observation` runs the suite with no failure and no pending example:
 

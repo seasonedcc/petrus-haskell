@@ -103,7 +103,7 @@ Statuses:
 | test_copy_snapshots_a_composed_specification_without_retaining_source_links | ported as `flatten`; "no source links" holds trivially | DslSpec | copy, copy.stamped |
 | test_stamped_specification_cannot_contribute_root_completion | ported | DslSpec | stamped-completion |
 
-In total, 42 upstream test functions:
+Of the 42 `test_petrinet_dsl.py` tests:
 
 - 32 ported, 5 of them partly enforced by types;
 - 8 enforced by types;

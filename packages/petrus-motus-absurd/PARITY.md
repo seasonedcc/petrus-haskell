@@ -37,8 +37,8 @@ provisions on first use; they fail, never skip, when it cannot be provisioned.
 | upstream file | Haskell spec | upstream count | status |
 | --- | --- | --- | --- |
 | `tests/petrus/motus/dispatch/test_absurd_adapter.py` | `Petrus.Motus.Dispatch.AbsurdSpec` | 78 functions, 103 cases | all 103 cases ported |
-| `tests/petrus/motus/dispatch/test_attempt_heartbeats.py`, the Absurd part | `Petrus.Motus.Dispatch.Absurd.HeartbeatSpec` | 2 functions, 8 cases | all 8 cases ported |
-| `tests/project/test_package_boundaries.py`, the 4 Absurd rows | `Petrus.Motus.Dispatch.Absurd.BoundarySpec` | 4 functions | ported over Cabal metadata and module sources |
+| `tests/petrus/motus/dispatch/test_attempt_heartbeats.py`, the Absurd part | `Petrus.Motus.Dispatch.Absurd.HeartbeatSpec` | 2 of 8 functions, 8 of 20 cases | all 8 cases ported |
+| `tests/project/test_package_boundaries.py`, the 4 Absurd rows | `Petrus.Motus.Dispatch.Absurd.BoundarySpec` | 4 of 20 functions | ported over Cabal metadata and module sources |
 | `tests/petrus/motus/worker/test_worker_topology.py` | `packages/petrus-engine-absurd` (`AbsurdSpec`, `Absurd.WorkerTopologySpec`) | 36 functions, 40 cases | see [petrus-engine-absurd's PARITY](../petrus-engine-absurd/PARITY.md) |
 
 The other six tests of `test_attempt_heartbeats.py` (the test-local attempt state model,

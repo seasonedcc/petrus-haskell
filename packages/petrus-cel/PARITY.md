@@ -86,7 +86,7 @@ expressions those tests write. `test/KernelSeam.hs` reruns each one, under
 its upstream name, with `Petrus.Cel.Impetus.celCompilers`, so the stub cannot
 hide a difference between the stub and cel-python:
 
-| upstream file | classes | tests |
+| upstream file | classes | tests using CEL |
 | --- | --- | ---: |
 | `tests/petrus/impetus/instance/test_completion.py` | `TestStatusResolution` (5), `TestCompletionValidation` (2) | 7 |
 | `tests/petrus/impetus/instance/test_cel_guards.py` | `TestCelGuardRouting` (2), `TestCelGuardCorrelation` (1), `TestMixedGuards` (3), `TestCelGuardValidation` (5), `TestCelGuardEvaluationErrors` (2) | 13 |

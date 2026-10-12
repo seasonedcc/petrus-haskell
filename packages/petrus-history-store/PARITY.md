@@ -29,8 +29,8 @@ pending example. The interop examples fail, never skip, when
 | --- | --- | --- |
 | test_persistence.py `TestDurableAppend` (2) | JsonlSpec / `TestDurableAppend` | ported |
 | test_persistence.py `TestJsonlHistoryStore` (10) | JsonlSpec / `TestJsonlHistoryStore` | ported |
-| test_history_backends.py (14), with `reopen` = jsonl | BackendContractSpec / `backend contract (jsonl)`: the shared suite (`historyStoreContract`, compiled in from `petrus-impetus/test/Petrus/Impetus/HistoryStoreContract.hs`) | 13 ported, 1 enforced by types |
-| test_history_backends.py (14), with `reopen` = sqlite | BackendContractSpec / `backend contract (sqlite)` | 13 ported, 1 enforced by types |
+| test_history_backends.py (14 tests), with `reopen` = jsonl | BackendContractSpec / `backend contract (jsonl)`: the shared suite (`historyStoreContract`, compiled in from `petrus-impetus/test/Petrus/Impetus/HistoryStoreContract.hs`) | 13 ported, 1 enforced by types |
+| test_history_backends.py (14 tests), with `reopen` = sqlite | BackendContractSpec / `backend contract (sqlite)` | 13 ported, 1 enforced by types |
 | test_sqlite_history.py (11 tests, 14 cases) | SqliteSpec / `test_sqlite_history.py` | 11/11 ported |
 
 The rows of `test_sqlite_history.py` keep the upstream names, with
@@ -65,7 +65,7 @@ The `reopen` fixture's sqlite parameter runs the same examples through
 - The other `test_persistence.py` classes are kernel tests, ported in
   `petrus-impetus`: `TestRecordCodec`, `TestInstanceDurableHistory`, and
   `TestARaisingAppendMovesNothingElse`.
-- `test_postgres_history.py` (21) is ported in `petrus-history-postgres`.
+- `test_postgres_history.py` (21 tests) is ported in `petrus-history-postgres`.
 - The SQLite writer fence's own tests are in petrus-sqlite, and the fenced
   Engine's (`test_sqlite_engine.py`) are in petrus-engine-sqlite.
 

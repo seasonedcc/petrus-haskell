@@ -45,25 +45,25 @@ parameters are separate Hspec examples where they are ported.
 
 | upstream file | Haskell spec(s) | ported | via CEL stub | by types | elsewhere | not at parity |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| petrinet/test_schema.py (45) | SchemaSpec | 42 | | 3 | | |
-| petrinet/test_marking.py (15) | MarkingSpec | 15 | | | | |
-| petrinet/test_token_queue.py (19) | MarkingSpec | 19 | | | | |
-| petrinet/test_enabledness.py (23) | EnablednessSpec | 23 | | | | |
-| petrinet/test_arc_filters.py (29) | ArcFiltersSpec, FiringSpec, FiringHistorySpec | 24 | 3 | 2 | | |
-| petrinet/test_arc_weights.py (4) | EnablednessSpec, FiringSpec | 4 | | | | |
-| petrinet/test_inhibitor_arc.py (3) | EnablednessSpec, FiringSpec | 3 | | | | |
-| petrinet/test_read_arc.py (8) | EnablednessSpec, FiringSpec, FiringHistorySpec | 8 | | | | |
-| petrinet/test_petrinet_dot.py (16) | DotSpec | 14 | | 2 | | |
-| petrinet/test_golden_replay.py (3) | GoldenTracesSpec | 3 | | | | |
-| instance/test_fifo_queue.py (2) | FifoQueueSpec | 2 | | | | |
-| instance/test_passthrough_chain.py (1) | GoldenTracesSpec | 1 | | | | |
+| petrinet/test_schema.py (45 tests) | SchemaSpec | 42 | | 3 | | |
+| petrinet/test_marking.py (15 tests) | MarkingSpec | 15 | | | | |
+| petrinet/test_token_queue.py (19 tests) | MarkingSpec | 19 | | | | |
+| petrinet/test_enabledness.py (23 tests) | EnablednessSpec | 23 | | | | |
+| petrinet/test_arc_filters.py (29 tests) | ArcFiltersSpec, FiringSpec, FiringHistorySpec | 24 | 3 | 2 | | |
+| petrinet/test_arc_weights.py (4 tests) | EnablednessSpec, FiringSpec | 4 | | | | |
+| petrinet/test_inhibitor_arc.py (3 tests) | EnablednessSpec, FiringSpec | 3 | | | | |
+| petrinet/test_read_arc.py (8 tests) | EnablednessSpec, FiringSpec, FiringHistorySpec | 8 | | | | |
+| petrinet/test_petrinet_dot.py (16 tests) | DotSpec | 14 | | 2 | | |
+| petrinet/test_golden_replay.py (3 tests) | GoldenTracesSpec | 3 | | | | |
+| instance/test_fifo_queue.py (2 tests) | FifoQueueSpec | 2 | | | | |
+| instance/test_passthrough_chain.py (1 tests) | GoldenTracesSpec | 1 | | | | |
 | instance/ — 10 files (135) | see `parity-instance-a.md` | 106 | 20 | 4 | 5 | 0 |
 | instance/ — 6 files (158) | see `parity-instance-b.md` | 148 | 3 | 7 | | 0 |
 | selection, history, history_store (in-memory), petrinet History halves | see `parity-history.md` | 61 | 3 | 3 | 11 | |
 | integration/test_activity_seam.py + binding/test_typed_bindings.py | see `parity-activity-seam.md` | 94 | 0 | 9 | 8 | |
-| test_net_definition.py (14) | NetDefinitionSpec, SpecFixturesSpec, JsonSchemaSpec | 13 | | 1 | | |
-| test_net_document.py (8) | NetDocumentSpec, SpecFixturesSpec, JsonSchemaSpec | 8 | | | | |
-| test_net_document_lineage.py (9) | NetDocumentLineageSpec | 9 | | | | |
+| test_net_definition.py (14 tests) | NetDefinitionSpec, SpecFixturesSpec, JsonSchemaSpec | 13 | | 1 | | |
+| test_net_document.py (8 tests) | NetDocumentSpec, SpecFixturesSpec, JsonSchemaSpec | 8 | | | | |
+| test_net_document_lineage.py (9 tests) | NetDocumentLineageSpec | 9 | | | | |
 | project/test_package_boundaries.py, the 4 Impetus rows (of 20) | BoundarySpec | 4 | | | | |
 
 Notes on the table:
@@ -122,10 +122,10 @@ Notes on the table:
 
 | upstream file | where |
 | --- | --- |
-| dsl/test_petrinet_dsl.py (42) | the DSL is its own package: ported in `petrus-dsl` (`packages/petrus-dsl/PARITY.md`) |
-| binding/test_cel.py (19) | CEL itself is the separate `petrus-cel` package; all 19 are ported there, in `packages/petrus-cel/test/Impetus.hs` |
-| history_store/test_sqlite_history.py (11) | the SQLite store is `petrus-history-store` (`packages/petrus-history-store/PARITY.md`) |
-| history_store/test_postgres_history.py (21) | the PostgreSQL store is `petrus-history-postgres` (`packages/petrus-history-postgres/PARITY.md`) |
+| dsl/test_petrinet_dsl.py (42 tests) | the DSL is its own package: ported in `petrus-dsl` (`packages/petrus-dsl/PARITY.md`) |
+| binding/test_cel.py (19 tests) | CEL itself is the separate `petrus-cel` package; all 19 are ported there, in `packages/petrus-cel/test/Impetus.hs` |
+| history_store/test_sqlite_history.py (11 tests) | the SQLite store is `petrus-history-store` (`packages/petrus-history-store/PARITY.md`) |
+| history_store/test_postgres_history.py (21 tests) | the PostgreSQL store is `petrus-history-postgres` (`packages/petrus-history-postgres/PARITY.md`) |
 
 ## Ported in other packages (24 upstream test functions)
 

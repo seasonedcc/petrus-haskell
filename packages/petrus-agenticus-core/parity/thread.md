@@ -50,7 +50,7 @@ Every upstream test function is ported under
 | `runtime/test_foundation.py::test_protocol_errors_expose_only_machine_codes` | `RuntimeFoundationSpec` | ported |
 | `runtime/test_foundation.py::test_foundation_imports_with_optional_provider_sdks_blocked` | `RuntimeFoundationSpec` | adapted: asserts the library stanza depends on no provider SDK package (Haskell links statically; there is no import hook to block) |
 
-24 upstream cases, one Haskell example each.
+Each of the 24 upstream cases above has one Haskell example.
 
 ## Differential corpus
 

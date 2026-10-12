@@ -30,9 +30,9 @@ never go pending, when it cannot be provisioned.
 
 | upstream file | Haskell spec(s) | ported | partial or analog | enforced by types |
 | --- | --- | ---: | ---: | ---: |
-| engine/test_engine.py (28) | EngineSpec | 23 | 5 | 0 |
-| engine/test_coordinator.py, 35 of 42 | CoordinatorSpec | 35 | 0 | 0 |
-| engine/test_execution.py (134) | ExecutionSpec, DeliveryPhasesA/B/CSpec | 98 | 10 | 26 |
+| engine/test_engine.py (28 tests) | EngineSpec | 23 | 5 | 0 |
+| engine/test_coordinator.py, 35 of 42 tests | CoordinatorSpec | 35 | 0 | 0 |
+| engine/test_execution.py (134 tests) | ExecutionSpec, DeliveryPhasesA/B/CSpec | 98 | 10 | 26 |
 | motus/dispatch/test_local_dispatch.py, the 3 Engine-level tests | LocalDispatchSpec | 3 | 0 | 0 |
 | motus/worker/test_worker_runtime.py, the Engine-level test (byte-identical inline and Local History) | WorkerTopologySpec (over the order net) | 0 | 1 | 0 |
 | motus/worker/test_worker_topology.py, 4 Worker cases of 36 | WorkerTopologySpec (over Local Dispatch; the rest are ledgered in `petrus-motus/PARITY.md`) | 0 | 4 | 0 |
@@ -192,9 +192,9 @@ module graph, not a Python import.
 
 | upstream file | reason |
 | --- | --- |
-| engine/test_observation.py (19), engine/test_observation_http.py (7) | `petrus-observation`, which builds the Engine's read doors (`Petrus.Observation.Engine`) on this package's seam (`Petrus.Engine.Observation.observeEngine`) and ports the Engine lock, re-entry and commit-poisoning tests against a real Engine (`petrus-observation/PARITY.md`). The re-entry test calls `Petrus.Engine.Internal.guarded`, exported for it. |
-| engine/test_simulation.py (19), engine/test_simulation_http.py (24) | `petrus.simulation`, built on the DSL |
-| engine/test_sqlite_engine.py (5), engine/test_postgres_engine.py (12) | the durable provider compositions. They plug into `Petrus.Engine.Provider`. |
+| engine/test_observation.py (19 tests), engine/test_observation_http.py (7 tests) | `petrus-observation`, which builds the Engine's read doors (`Petrus.Observation.Engine`) on this package's seam (`Petrus.Engine.Observation.observeEngine`) and ports the Engine lock, re-entry and commit-poisoning tests against a real Engine (`petrus-observation/PARITY.md`). The re-entry test calls `Petrus.Engine.Internal.guarded`, exported for it. |
+| engine/test_simulation.py (19 tests), engine/test_simulation_http.py (24 tests) | `petrus.simulation`, built on the DSL |
+| engine/test_sqlite_engine.py (5 tests), engine/test_postgres_engine.py (12 tests) | the durable provider compositions. They plug into `Petrus.Engine.Provider`. |
 
 ## Beyond upstream
 
