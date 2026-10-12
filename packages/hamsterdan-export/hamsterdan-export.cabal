@@ -39,6 +39,7 @@ library
                     Hamsterdan.Export.Files
                     Hamsterdan.Export.Parallel
   build-depends:    base >=4.18 && <5
+                  , async >=2.2
                   , bytestring >=0.11
                   , containers >=0.6
                   , direct-sqlite >=2.3.27

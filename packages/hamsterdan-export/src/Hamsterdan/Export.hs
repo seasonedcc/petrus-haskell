@@ -304,7 +304,7 @@ readHistory path = do
   bytes <- readText path
   -- Every line parses on its own, so they parse at once; the first bad
   -- one in file order is still the one reported.
-  parsed <- parallelMap 256 forceParsed parseLine (zip [1 :: Integer ..] (splitlinesUtf8 bytes))
+  let parsed = parallelMap 256 forceParsed parseLine (zip [1 :: Integer ..] (splitlinesUtf8 bytes))
   fmap concat . forM parsed $ \(seq', outcome) -> case outcome of
     Nothing -> pure []
     Just (Left e) | e.cls == "json.decoder.JSONDecodeError" -> refuse ("History record " <> tshow seq' <> " is not JSON")
@@ -839,7 +839,7 @@ writeBoards out records reporter = do
   mkdirParents out
   -- The boards render at once; each still fails where the reference's
   -- loop would, after the boards before it are written.
-  rendered <- parallelMap 4 forceRendered render (zip [1 :: Int ..] landed)
+  let rendered = parallelMap 4 forceRendered render (zip [1 :: Int ..] landed)
   planned <- newIORef []
   outcome <- try . forM rendered $ \(name, seq', result, board) -> do
     text <- either raise pure board

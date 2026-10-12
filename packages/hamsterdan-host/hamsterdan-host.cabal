@@ -56,6 +56,7 @@ library
                     Hamsterdan.Host.V5.Claim
                     Hamsterdan.Host.Agents
   build-depends:    base >=4.18 && <5
+                  , async >=2.2
                   , bytestring >=0.11
                   , case-insensitive >=1.2
                   , direct-sqlite >=2.3.27

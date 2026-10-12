@@ -43,9 +43,10 @@ module Hamsterdan.Host.Api
   , withHostServer
   ) where
 
-import Control.Concurrent (ThreadId, forkIO, forkIOWithUnmask, killThread, myThreadId)
+import Control.Concurrent (ThreadId, forkIO, killThread, myThreadId)
+import Control.Concurrent.Async (wait, withAsync)
 import Control.Concurrent.MVar
-import Control.Exception (IOException, SomeException, bracket, catch, finally, mask, throwIO, try)
+import Control.Exception (IOException, SomeException, bracket, catch, finally, onException, throwIO, try)
 import Control.Monad (void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -245,26 +246,19 @@ readBounded request limit = go 0 []
 -- worker beside the action, then stop the service, wait for the worker,
 -- and close the service. A worker failure is re-raised after the action;
 -- the service is closed in every case.
+--
+-- The worker is owned ('withAsync'): it is always stopped and awaited (or,
+-- if the wait itself is interrupted, cancelled) before the service closes.
 withLifespan :: HostService -> Bool -> IO a -> IO a
-withLifespan service reconcileStartup action = do
-  task <- newEmptyMVar
-  let body = do
-        when reconcileStartup $ void (Service.reconcileRegistration service)
-        done <- newEmptyMVar
-        _ <- mask $ \_ -> forkIOWithUnmask $ \unmask -> try @SomeException (unmask (Service.worker service)) >>= putMVar done
-        putMVar task done
-        action
-      finish = do
-        Service.stop service
-        ( tryReadMVar task >>= \case
-            Nothing -> pure ()
-            Just done -> readMVar done >>= either throwIO pure
-          )
-          `finally` Service.close service
-  result <- try @SomeException body
-  case result of
-    Left failure -> finish >> throwIO failure
-    Right value -> value <$ finish
+withLifespan service reconcileStartup action = flip finally (Service.close service) $ do
+  when reconcileStartup (void (Service.reconcileRegistration service)) `onException` Service.stop service
+  withAsync (Service.worker service) $ \worker -> do
+    result <- try @SomeException action
+    Service.stop service
+    -- @await task@ in the @finally@: a worker failure replaces the
+    -- action's, as Python's does.
+    wait worker
+    either throwIO pure result
 
 -- ---------------------------------------------------------------------------
 -- Serving
