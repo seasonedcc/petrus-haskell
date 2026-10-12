@@ -76,12 +76,11 @@ cabal bench -j2 petrus-agenticus-runtime --benchmark-options='--time-mode wall +
 ```
 
 CI's nightly smoke run (`scripts/bench --smoke`, not a measurement, on
-Linux): every row once except `codex-a3-service-turn`, whose state directory
-(and runtime socket) both twins put under macOS's `/private/tmp`.
+Linux): every row once.
 
 <!-- scripts/bench: smoke -->
 ```sh
-cd packages/petrus-agenticus-runtime && "$BENCH_BIN" --stdev Infinity -p '!/codex-a3-service-turn/' +RTS -M2G -RTS
+cd packages/petrus-agenticus-runtime && "$BENCH_BIN" --stdev Infinity +RTS -M2G -RTS
 ```
 
 `bench/python_bench.py` holds the whole-Turn twins (`codex-turn`,

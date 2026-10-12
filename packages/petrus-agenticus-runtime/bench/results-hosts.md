@@ -83,7 +83,8 @@ id every call:
   fake Gondolin SDK (`test/fixtures/codex/fake_gondolin_codex.mjs`, under
   the system `node`; its guest commands run on the host) and its Episode
   Attachment, and probe the guest `codex`. Start the service on a fresh
-  private state directory under `/private/tmp`, with its fence and SQLite
+  private state directory under the platform's temporary directory
+  (`TMPDIR`, else `/tmp`), with its fence and SQLite
   replay ledger. Send one request through the Worker-side Activity client
   over the Unix socket: the service records the operation, runs one Codex
   Turn with the same custody as `codex-turn`, and stores and returns the

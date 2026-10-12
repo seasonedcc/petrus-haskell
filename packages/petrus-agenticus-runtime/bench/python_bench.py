@@ -20,8 +20,9 @@ every call:
   runtime service: open a Gondolin Motus territory (the fake Gondolin SDK
   ``test/fixtures/codex/fake_gondolin_codex.mjs``, whose guest commands run on
   the host) and its Episode Attachment, probe the guest ``codex``, start the
-  service on a fresh private state directory under ``/private/tmp`` (a Unix
-  socket path has at most 104 bytes on macOS): its fence and SQLite replay
+  service on a fresh private state directory under the platform's temporary
+  directory (``TMPDIR``, else ``/tmp``; the Unix socket path in it must stay
+  within 104 bytes on macOS, 108 on Linux): its fence and SQLite replay
   ledger; send one request through the Worker-side Activity client over the
   Unix socket (the service records the operation, runs one Codex Turn with
   the same custody as ``codex-turn``, stores and replies the terminal), close
@@ -352,7 +353,7 @@ def codex_a3_service_turn(root: Path):
         )
         assert adapter.probe(attachment).disposition is ProbeDisposition.READY
         connection = custody.connection("codex-bench")
-        state = Path(tempfile.mkdtemp(prefix="petrus-a3-", dir="/private/tmp"))
+        state = Path(tempfile.mkdtemp(prefix="petrus-a3-"))
         endpoint = state / "runtime.sock"
         service = _CodexGondolinRuntimeService(
             endpoint, state / "runtime-ledger.db", token, adapter, connection, attachment
