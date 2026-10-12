@@ -55,11 +55,11 @@ lists the files whose package sources have changed since.
 | `petrus-observation` | [RESULTS.md](../packages/petrus-observation/bench/RESULTS.md) | `5a73d7a` | 21 | 4.19× | 14.6× |  |
 | `petrus-observation-http` | [RESULTS.md](../packages/petrus-observation-http/bench/RESULTS.md) | `5a73d7a` | 11 | 1.86× | 5.38× |  |
 | `petrus-posix` | [RESULTS.md](../packages/petrus-posix/bench/RESULTS.md) | `5a73d7a` | 7 | 1.00× | 2.25× |  |
-| `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | `5a73d7a` | 8 | 1.22× | 14.4× |  |
+| `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | `16e39fa` | 8 | 1.20× | 13.4× |  |
 | `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | `5a73d7a` | 12 | 1.51× | 15.3× |  |
 | `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | `5a73d7a` | 17 | 1.68× | 39.6× |  |
 | `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | `da94728` | 7 | 1.05× | 1.87× |  |
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | `5a73d7a` | 4 | 2.00× | 7.00× |  |
-| `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | `5a73d7a` | 36 | 1.11× | 38.9× |  |
+| `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | `37bf668` | 54 | 1.03× | 31.3× |  |
 
 46 results files; none with a row below 1.0×.
