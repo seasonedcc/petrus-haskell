@@ -103,12 +103,14 @@ blocking receive waits inside libzmq, instead of through the GHC IO
 manager on the socket's `ZMQ_FD`. Each wake through the IO manager costs
 an event-manager hand-off, and each `System.Timeout.timeout` a
 timer-manager registration; on the Linux CI runners that was enough to put
-a request round trip behind pyzmq's. The bench-gate figures (Python ÷
-Haskell, Blacksmith 8-vCPU Ubuntu 24.04 runners):
+a request round trip behind pyzmq's: bench-gate run 38202655016 (job
+114660170314, `81bbdc5`) failed `memory/claim-empty-100` at 0.90× (rerun
+0.95×) and `memory/custody-20` at 0.98× (rerun 0.98×) with the IO-manager
+wait. With `zmq_poll` (Python ÷ Haskell, Blacksmith 8-vCPU Ubuntu 24.04
+runners):
 
 | Run | Wait | `memory/claim-empty-100` | `memory/custody-20` |
 |---|---|---:|---:|
-| 38202655016, job 114660170314 (`81bbdc5`) | IO manager | 0.90× (rerun 0.95×): FAIL | 0.98× (rerun 0.98×): FAIL |
 | 38206418285, job 114671152637 | `zmq_poll` | 1.19× | 1.36× |
 | 38206418285, job 114671152691 | `zmq_poll` | 1.18× | 1.27× |
 | 38255030541, job 114832832210 (`d869f62`) | `zmq_poll` | 1.11× | 1.28× |
