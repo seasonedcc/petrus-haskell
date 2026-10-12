@@ -17,8 +17,7 @@ import Data.Bifunctor (first)
 import Data.Text qualified as T
 import Petrus.Activity (ActivityInvocation, ActivityInvocationFields (ActivityInvocationFields), activityInvocation, defaultExecutionPolicy)
 import Petrus.Fabric.Send (sendActivity)
-import Petrus.Impetus.History.Records (QuarantineScope (..))
-import Petrus.Impetus.Instance (DeliveryDisposition (..), PriorAcknowledgement (..), ScopedDeliveryAcknowledgement (..))
+import Petrus.Impetus.Instance (PriorAcknowledgement (..))
 import Petrus.Impetus.Instance.Firing (FiringOutcome (..))
 import Petrus.Impetus.Petrinet (Token (..), netPath)
 import Data.Map.Strict (Map)
@@ -235,7 +234,9 @@ fabricOps handles =
                   Just ("raise", k) | k == n -> throwIO (userError "door refused the delivery")
                   Just ("other", k)
                     | k == n ->
-                        pure (DoorScoped (ScopedDeliveryAcknowledgement identity Dropped (QuarantineName "other")))
+                        -- The reference's fake door answers an object of another type,
+                        -- which its bridge refuses; a port door refuses it itself.
+                        throwIO (InvalidType "delivery door must return FiringOutcome or PriorAcknowledgement")
                   _
                     | prior -> pure (DoorPrior (PriorAcknowledgement identity occurrence))
                     | otherwise -> do

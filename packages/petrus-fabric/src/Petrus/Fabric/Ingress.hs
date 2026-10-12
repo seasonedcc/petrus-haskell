@@ -12,11 +12,9 @@ module Petrus.Fabric.Ingress
   , envelopeToken
   ) where
 
-import Control.Exception (throwIO)
 import Data.Text (Text)
-import Petrus.Fabric.Error (FabricError (..))
 import Petrus.Fabric.Model (Envelope, Receipt, envelopeToData)
-import Petrus.Impetus.Instance (PriorAcknowledgement (..), ScopedDeliveryAcknowledgement)
+import Petrus.Impetus.Instance (PriorAcknowledgement (..))
 import Petrus.Impetus.Instance.Firing (FiringOutcome (..))
 import Petrus.Impetus.Petrinet (Token, token)
 
@@ -24,13 +22,15 @@ import Petrus.Impetus.Petrinet (Token, token)
 fabricEnvelopeColor :: Text
 fabricEnvelopeColor = "FabricEnvelope"
 
--- | What a delivery door answers. The bridge accepts only a firing outcome
--- or a prior acknowledgement; a scoped acknowledgement (or anything else a
--- door might produce) is the reference's @TypeError@ (§9.3).
+-- | What a delivery door answers: a firing outcome or a prior
+-- acknowledgement, the only answers the bridge accepts (§9.3). The
+-- reference checks the answer's type at run time and raises @TypeError@
+-- for anything else; here a door cannot answer anything else, and a door
+-- whose underlying call can produce another answer (the Engine's scoped
+-- acknowledgement) refuses it itself, as 'InvalidType'.
 data DoorAnswer
   = DoorFired FiringOutcome
   | DoorPrior PriorAcknowledgement
-  | DoorScoped ScopedDeliveryAcknowledgement
   deriving stock (Eq, Show)
 
 -- | @DeliveryDoor.deliver(source, tokens, identity=...)@.
@@ -59,8 +59,7 @@ drain inbox limit = do
   where
     one e = do
       answer <- inbox.door.deliver e.source [envelopeToken e] e.ingressIdentity
-      occurrence <- case answer of
-        DoorFired outcome -> pure outcome.occurrence
-        DoorPrior prior -> pure prior.occurrence
-        DoorScoped _ -> throwIO (InvalidType "delivery door must return FiringOutcome or PriorAcknowledgement")
+      let occurrence = case answer of
+            DoorFired outcome -> outcome.occurrence
+            DoorPrior prior -> prior.occurrence
       inbox.client.acknowledge e.sender e.deliveryId occurrence
