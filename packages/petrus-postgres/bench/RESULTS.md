@@ -1,13 +1,13 @@
 # petrus-postgres benchmarks
 
-<!-- scripts/bench: measured sources 86fcaeac67519f3e at 16e39fa0735a -->
+<!-- scripts/bench: measured sources c03509276fbb7b8c at 4cf1bd53d17f -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures come from `bench/Main.hs`, which uses the same names and
 values. Both are wall-clock time. Ratios above 1 mean Haskell is faster.
-Haskell is faster on every row, by 1.20× (`tx.join-insert-commit`, an insert
-and a commit that are almost all server time) to 2.0× on the client-side
-work, and 13× on placeholder conversion, which never leaves the process.
+Haskell is faster on every row, by 1.22× (`tx.join-insert-commit`, an insert
+and a commit that are almost all server time) to 2.2× on the client-side
+work, and 14× on placeholder conversion, which never leaves the process.
 Statements run prepared from their sixth execution, as psycopg's do (see
 below).
 
@@ -24,11 +24,9 @@ means.
 
 ## Current figures
 
-Measured on 2026-10-12, 12:39–12:42 local (UTC-3), on the commit that times
-the `tx`, `fence` and `notify` rows with the twin's protocol, on the Apple
-M4 (Darwin arm64) with a 1-minute load average of 3.66–8.37 (other agents
-were building): five interleaved repetitions, alternating which side goes
-first, of
+Measured on 2026-10-12, 18:38–18:41 local (UTC-3), at commit `0fccc8a`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.19–2.81:
+five interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-postgres 5
 
@@ -39,24 +37,21 @@ others, the benchmark executable run directly in the package directory with
 figure is the median over the repetitions, and the ratio is Python ÷
 Haskell (above 1 means Haskell is faster). The server was
 `scripts/with-postgres`'s throwaway PostgreSQL 17.7 on 127.0.0.1 over TCP
-(`initdb` defaults, `fsync` on). Haskell won every repetition of the `tx`
-rows and 4 of 5 of `fence` and `notify`; the two it lost were both in the
-first repetition, which Haskell ran first against the freshly started
-server, and in which its `fence` and `notify` rows took 1.6–2× their time
-in the other four. The tables
-in the sections below are earlier measurements, kept with the analysis that
-came with them.
+(`initdb` defaults, `fsync` on). Haskell won every repetition of every row;
+the closest is `tx.join-insert-commit` at 1.22× (1.20× in its closest
+repetition). The tables in the sections below are earlier measurements,
+kept with the analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `tx.join-insert-commit` | 54.3 µs | 65 µs | 1.20× | 1.13× | 57.4 µs, 54.3 µs, 55.9 µs, 51.1 µs, 53.2 µs | 65 µs, 71.5 µs, 68.7 µs, 64.9 µs, 64.9 µs |
-| `tx.owned-insert-10` | 256 µs | 333 µs | 1.30× | 1.12× | 256 µs, 265 µs, 238 µs, 245 µs, 280 µs | 368 µs, 333 µs, 356 µs, 307 µs, 315 µs |
-| `fence.acquire-release` | 34.9 µs | 50.9 µs | 1.46× | 0.91× | 55.7 µs, 38.5 µs, 34.9 µs, 34.1 µs, 34.3 µs | 50.9 µs, 61.1 µs, 53.9 µs, 48.2 µs, 48.3 µs |
-| `notify.roundtrip` | 26.6 µs | 34.9 µs | 1.31× | 0.61× | 50.8 µs, 26.9 µs, 19.9 µs, 24.3 µs, 26.6 µs | 31.2 µs, 39.6 µs, 28.3 µs, 35.7 µs, 34.9 µs |
-| `roundtrip.select-1` | 18.5 µs | 24.5 µs | 1.33× | 1.24× | 17.6 µs, 18.5 µs, 18.7 µs, 17.5 µs, 19 µs | 24.5 µs, 22.9 µs, 23.4 µs, 25.7 µs, 30.6 µs |
-| `roundtrip.select-param` | 17.8 µs | 25.1 µs | 1.41× | 0.97× | 17.5 µs, 19.3 µs, 22.2 µs, 17.8 µs, 17.7 µs | 25.1 µs, 24.7 µs, 21.6 µs, 26.9 µs, 29 µs |
-| `query.select-1000-decoded` | 679 µs | 1.38 ms | 2.03× | 1.38× | 664 µs, 704 µs, 1 ms, 679 µs, 651 µs | 1.37 ms, 1.38 ms, 1.38 ms, 1.39 ms, 1.43 ms |
-| `params.convert-placeholders` | 303 ns | 4.05 µs | 13.36× | 12.71× | 296 ns, 303 ns, 289 ns, 315 ns, 333 ns | 4.02 µs, 4.05 µs, 3.99 µs, 4.09 µs, 4.23 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `tx.join-insert-commit` | 57.2 µs | 70 µs | 1.22× | 1.20× | 5 of 5 | 58.2 µs, 57.2 µs, 57.4 µs, 56.9 µs, 56.8 µs | 70 µs, 70.1 µs, 70 µs, 70.3 µs, 69.5 µs |
+| `tx.owned-insert-10` | 272 µs | 360 µs | 1.32× | 1.32× | 5 of 5 | 266 µs, 272 µs, 273 µs, 273 µs, 272 µs | 356 µs, 360 µs, 361 µs, 361 µs, 359 µs |
+| `fence.acquire-release` | 35.9 µs | 54.2 µs | 1.51× | 1.51× | 5 of 5 | 35.6 µs, 35.9 µs, 36 µs, 35.9 µs, 35.9 µs | 53.8 µs, 54.3 µs, 54.5 µs, 54.2 µs, 54.2 µs |
+| `notify.roundtrip` | 20.5 µs | 29.4 µs | 1.44× | 1.40× | 5 of 5 | 20.7 µs, 20 µs, 20.6 µs, 19.9 µs, 20.5 µs | 29.4 µs, 29.5 µs, 29 µs, 30.3 µs, 28.8 µs |
+| `roundtrip.select-1` | 17.8 µs | 25.7 µs | 1.45× | 1.41× | 5 of 5 | 17.5 µs, 17.8 µs, 17.8 µs, 17.9 µs, 17.7 µs | 25.7 µs, 25.7 µs, 25.6 µs, 25.7 µs, 25.1 µs |
+| `roundtrip.select-param` | 17.8 µs | 26.8 µs | 1.50× | 1.48× | 5 of 5 | 17.8 µs, 17.8 µs, 17.8 µs, 18 µs, 17.7 µs | 27.2 µs, 26.8 µs, 26.8 µs, 26.6 µs, 26.6 µs |
+| `query.select-1000-decoded` | 664 µs | 1.43 ms | 2.15× | 2.11× | 5 of 5 | 659 µs, 661 µs, 671 µs, 664 µs, 665 µs | 1.43 ms, 1.43 ms, 1.42 ms, 1.43 ms, 1.41 ms |
+| `params.convert-placeholders` | 273 ns | 3.96 µs | 14.48× | 14.23× | 5 of 5 | 273 ns, 271 ns, 278 ns, 273 ns, 270 ns | 3.91 µs, 3.98 µs, 3.96 µs, 4 µs, 3.91 µs |
 
 ## The socket wait and the result accessors, measured (2026-10-12)
 
