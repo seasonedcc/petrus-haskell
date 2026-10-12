@@ -109,7 +109,17 @@ sides of each one, and every case matches.
    catches `OSError`, `ValueError`, `KeyError`, `JSONDecodeError` and
    `SubprocessError`, and reports `protocol-unavailable`. The port reports
    the same issue for every non-asynchronous exception and rethrows
-   asynchronous ones.
+   asynchronous ones. Why it stays: on every input where the reference's
+   `probe` returns, the port returns the same result. They differ only
+   where the reference's catch list misses an exception (an
+   `AttributeError` from a `package.json` that is not an object, say) and
+   `probe` itself crashes
+   instead of answering. A crash is not an outcome to reproduce, and the
+   five Python classes have no exact Haskell counterpart: file, JSON and
+   process failures are different exception types here, so a matching
+   catch list could not be written. `probe`'s job is to say whether the
+   installation is usable, and "not usable" is the answer the reference
+   gives for every failure it does classify.
 
 9. **Reprs.** `renderPiRuntimeConfig`, `renderPiRuntimeInvocation` and
    `renderPiRuntimeAdapter` reproduce the reference's dataclass reprs, with
@@ -175,8 +185,18 @@ sides of each one, and every case matches.
    materialization raises during cleanup, the reference lets the exception
    escape from `close()`, or records `clean = False` for release. The port
    records `clean = False` for both, so the outcome is `cleanup-unverified`.
+   Why it stays: in the reference, an exception from `client.close()`
+   escapes the `finally` block before its later steps run, so the private
+   root is not removed and the materialization is never released to
+   custody. That leaves a credential materialized with no record of it. The
+   real subprocess client's `close` catches its own `OSError` and
+   `TimeoutExpired`, so only an unexpected client failure reaches this
+   path. The port runs every cleanup step and reports the failure as the
+   reference reports every other cleanup failure: `cleanup-unverified`.
 6. **`probe` fails closed on any synchronous exception**, as item 8 above
-   describes for `pi.py`.
+   describes for `pi.py`, and it stays for the same reason: the results
+   agree wherever the reference's `probe` returns, and differ only where
+   an exception outside its catch list crashes it.
 
 ## Pi application (`Petrus.Agenticus.Runtime.PiApplication`)
 
@@ -220,7 +240,12 @@ sides of each one, and every case matches.
    reference renders the `int` it was given (`1`), and the port renders `1.0`.
 5. **`probe` fails closed on any synchronous exception.** When `package.json`
    is not an object, the reference lets an `AttributeError` escape. The port
-   reports `protocol-unavailable`.
+   reports `protocol-unavailable`. Why it stays: as for the native runtime's
+   `probe` (item 8 of the first section), the two agree on every input
+   where the reference's `probe` returns a result. A `package.json` that is
+   valid JSON but not an object is an installation that cannot be used, and
+   `protocol-unavailable` is what the reference reports for every other
+   malformed `package.json` (bad JSON, wrong name or version, missing keys).
 
 ## Pi A2 host (`Petrus.Agenticus.Runtime.PiA2Host`)
 

@@ -29,7 +29,7 @@ ported. None is skipped or pending.
 | `test_descriptor_decoder_refuses_ambiguous_or_noncanonical_data[0..3]` | same labels | Covers all four mutations, with the exact class and message. |
 | `test_compatibility_result_cannot_claim_success_without_a_candidate` | same label | |
 
-## `tests/petrus/agenticus/catalog/test_resolution.py` (13 functions, 37 cases)
+## `tests/petrus/agenticus/catalog/test_resolution.py` (13 functions, 35 cases)
 
 | Upstream test | Haskell | Notes |
 | --- | --- | --- |
@@ -47,7 +47,7 @@ ported. None is skipped or pending.
 | `test_every_planned_profile_refuses_a_different_explicit_hands_territory[×10]` | same labels | |
 | `test_all_permutations_of_inspection_are_canonical_for_a_small_catalog` | same label | Covers all 5040 permutations. |
 
-## `tests/petrus/agenticus/runtime/test_profiles.py` (6 functions, 42 cases)
+## `tests/petrus/agenticus/runtime/test_profiles.py` (6 functions, 44 cases)
 
 | Upstream test | Haskell | Notes |
 | --- | --- | --- |

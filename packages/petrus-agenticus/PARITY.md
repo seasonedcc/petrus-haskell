@@ -8,7 +8,7 @@ workspace adapter.
 Each `it` label in the Haskell specs is the upstream test name. Parametrized
 tests also carry the pytest parameter id.
 
-## `tests/petrus/agenticus/program/test_agent_net.py` (21 functions, 35 cases)
+## `tests/petrus/agenticus/program/test_agent_net.py` (21 functions, 34 cases)
 
 Module: `Petrus.Agenticus.Program.AgentNet`. Spec: `test/Petrus/Agenticus/AgentNetSpec.hs`.
 

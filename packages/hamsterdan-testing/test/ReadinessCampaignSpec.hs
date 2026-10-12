@@ -8,9 +8,11 @@
 -- * the authority lifecycle is a Hedgehog property over upstream's
 --   strategies, with its @max_examples@ and its explicit examples;
 -- * the delivery recovery machine is a Hedgehog state machine
---   ('Gen.sequential' / 'executeSequential') of up to
---   @stateful_step_count@ rules, its seed drawn as @\@initialize@ draws it
---   and its invariant checked after every rule;
+--   ('Gen.sequential' / 'executeSequential') of exactly
+--   @stateful_step_count@ steps, as Hypothesis runs it: the start step,
+--   which draws the seed as @\@initialize@ draws it, then
+--   @stateful_step_count - 1@ rules, with the invariant checked after the
+--   start and after every rule;
 -- * the timer and Git campaigns are Hedgehog properties over upstream's
 --   strategies with its @max_examples@ and explicit examples, plus an
 --   exhaustive enumeration of every generated dimension except the seed.
