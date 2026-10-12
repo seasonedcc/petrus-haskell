@@ -32,6 +32,8 @@ INSERT = (
 TX_COMMITS = 5000
 TX_BATCHES = 500
 
+PAYLOAD = '{"k":"value"},' * 20
+
 
 def history_connection(path: str) -> sqlite3.Connection:
     # SqliteHistoryStore.__init__ / _configure
@@ -52,50 +54,69 @@ def normalize(statement: str) -> str:
     return re.sub(r"\s+", " ", statement.strip()).lower()
 
 
-def main() -> None:
-    directory = os.path.realpath(tempfile.mkdtemp(prefix="petrus-sqlite-bench"))
-    try:
-        database = os.path.join(directory, "bench.sqlite3")
-        payload = '{"k":"value"},' * 20
-        connection = history_connection(database)
-        connection.execute(_DDL[2])
+def seeded(parent):
+    """A scratch directory under PARENT holding a database with the History
+    table and 1 000 seeded rows (bench/Main.hs's ``seeded``), and a connection
+    to it."""
+    directory = os.path.realpath(tempfile.mkdtemp(prefix="petrus-sqlite-bench", dir=parent))
+    database = os.path.join(directory, "bench.sqlite3")
+    connection = history_connection(database)
+    connection.execute(_DDL[2])
+    connection.execute("BEGIN IMMEDIATE")
+    for position in range(1000):
+        connection.execute(INSERT, row("seed", position, PAYLOAD))
+    connection.commit()
+    return directory, database, connection
+
+
+def tx_rows(group: str, connection: sqlite3.Connection) -> None:
+    """The two transaction rows of GROUP over CONNECTION (bench/Main.hs's
+    ``txRows``)."""
+    counter = itertools.count()
+
+    def transaction(statements):
         connection.execute("BEGIN IMMEDIATE")
-        for position in range(1000):
-            connection.execute(INSERT, row("seed", position, payload))
-        connection.commit()
-        counter = itertools.count()
+        try:
+            statements()
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+
+    def insert_one():
+        position = next(counter)
+        transaction(lambda: connection.execute(INSERT, row("single", position, PAYLOAD)).rowcount)
+
+    def insert_batch():
+        base = next(counter)
+
+        def statements():
+            for i in range(100):
+                connection.execute(INSERT, row("batch", base * 100 + i, PAYLOAD))
+
+        transaction(statements)
+
+    report(f"{group}.immediate-insert-commit", insert_one, TX_COMMITS)
+    report(f"{group}.immediate-insert-100", insert_batch, TX_BATCHES)
+
+
+def main() -> None:
+    directory, database, connection = seeded(None)
+    # The tx rows again over a database on a memory-backed file system, when
+    # PETRUS_BENCH_TMPFS names a directory on one (scripts/with-tmpfs), as
+    # bench/Main.hs does.
+    memory_parent = os.environ.get("PETRUS_BENCH_TMPFS")
+    memory = seeded(memory_parent) if memory_parent else None
+    try:
 
         def connect_close():
             _connect(Path(database)).close()
-
-        def transaction(statements):
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                statements()
-                connection.commit()
-            except BaseException:
-                connection.rollback()
-                raise
-
-        def insert_one():
-            position = next(counter)
-            transaction(lambda: connection.execute(INSERT, row("single", position, payload)).rowcount)
-
-        def insert_batch():
-            base = next(counter)
-
-            def statements():
-                for i in range(100):
-                    connection.execute(INSERT, row("batch", base * 100 + i, payload))
-
-            transaction(statements)
 
         def fence():
             _WriterFence(database, "bench").close()
 
         report("connect.local-dispatch-profile", connect_close)
-        report("tx.immediate-insert-commit", insert_one, TX_COMMITS)
-        report("tx.immediate-insert-100", insert_batch, TX_BATCHES)
+        tx_rows("tx", connection)
         report(
             "query.select-by-key",
             lambda: len(
@@ -116,9 +137,14 @@ def main() -> None:
         )
         report("schema.normalize-ddl", lambda: normalize(_DDL[2]))
         report("fence.acquire-release", fence)
-        connection.close()
+        if memory:
+            tx_rows("tx-tmpfs", memory[2])
     finally:
+        connection.close()
         shutil.rmtree(directory)
+        if memory:
+            memory[2].close()
+            shutil.rmtree(memory[0])
 
 
 if __name__ == "__main__":

@@ -37,7 +37,8 @@ parent process (tasty-bench ``--csv``, ``--stdev 5``,
 ``--time-mode wall``, ``+RTS -M2G``), and the twins (in the pinned upstream
 environment from scripts/upstream-python) back to back, alternating which
 goes first, and records the 1-minute load average around every run. Benchmarks that read ``PETRUS_TEST_POSTGRES`` get
-a throwaway server from scripts/with-postgres when it is unset.
+a throwaway server from scripts/with-postgres when it is unset; those that read ``PETRUS_BENCH_TMPFS`` a
+directory on a memory-backed file system from scripts/with-tmpfs.
 
 It prints a Markdown table: the median over repetitions of each row
 (tasty-bench means for Haskell, or the ``twin NAME NANOSECONDS`` figure of a
@@ -313,6 +314,9 @@ def main() -> int:
     if "PETRUS_TEST_POSTGRES" in sources + " ".join(options.twins or []) and not os.environ.get("PETRUS_TEST_POSTGRES"):
         # Re-run under a throwaway server; scripts/with-postgres stops it.
         return subprocess.call([str(ROOT / "scripts" / "with-postgres"), sys.executable, __file__, *arguments])
+    if "PETRUS_BENCH_TMPFS" in sources and not os.environ.get("PETRUS_BENCH_TMPFS"):
+        # Re-run with a memory-backed directory; scripts/with-tmpfs removes it.
+        return subprocess.call([str(ROOT / "scripts" / "with-tmpfs"), sys.executable, __file__, *arguments])
     TMP.mkdir(parents=True, exist_ok=True)
     interpreter = None if options.twins else upstream_python(options.upstream)
     binary = benchmark_binary(package, build=not options.no_build)

@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Run a command with PETRUS_BENCH_TMPFS naming a directory on a memory-backed
+# file system.
+#
+#   scripts/with-tmpfs <command> [args...]
+#
+# Benchmarks that time a database's transactions read it for a second copy of
+# those rows on memory, where an fsync costs next to nothing (petrus-sqlite's
+# `tx-tmpfs` rows; bench/RESULTS.md there). Both sides of a comparison read
+# the same variable, so they run on the same medium.
+#
+# When PETRUS_BENCH_TMPFS is already set, the command runs unchanged.
+# Otherwise this makes a scratch directory on memory, runs the command with
+# PETRUS_BENCH_TMPFS set to it, and removes it afterwards, whatever the
+# command's outcome:
+#
+#   - Linux: a directory under /dev/shm (which must be a tmpfs);
+#   - macOS: a 512 MiB RAM disk (`hdiutil attach -nomount ram://...`,
+#     formatted APFS), detached afterwards.
+#
+# The command's exit status is this script's exit status.
+set -euo pipefail
+
+if [[ $# -eq 0 ]]; then
+  echo "usage: scripts/with-tmpfs <command> [args...]" >&2
+  exit 2
+fi
+
+if [[ -n "${PETRUS_BENCH_TMPFS:-}" ]]; then
+  exec "$@"
+fi
+
+cleanup=""
+finish() {
+  local status=$?
+  if [[ -n "$cleanup" ]]; then
+    eval "$cleanup" >/dev/null 2>&1 || true
+  fi
+  exit "$status"
+}
+trap finish EXIT
+trap 'exit 130' INT TERM
+
+case "$(uname -s)" in
+  Linux)
+    if [[ "$(stat -f -c %T /dev/shm 2>/dev/null)" != "tmpfs" ]]; then
+      echo "with-tmpfs: /dev/shm is not a tmpfs" >&2
+      exit 1
+    fi
+    dir=$(mktemp -d /dev/shm/petrus-tmpfs.XXXXXX)
+    cleanup="rm -rf '$dir'"
+    echo "with-tmpfs: $dir (tmpfs)" >&2
+    ;;
+  Darwin)
+    # 512 MiB in 512-byte sectors.
+    device=$(hdiutil attach -nomount ram://1048576 | awk '{print $1}')
+    if [[ "$device" != /dev/disk* ]]; then
+      echo "with-tmpfs: hdiutil could not make a RAM disk" >&2
+      exit 1
+    fi
+    cleanup="hdiutil detach -force '$device'"
+    name="petrus-tmpfs-$$"
+    diskutil erasevolume APFS "$name" "$device" >/dev/null || {
+      echo "with-tmpfs: diskutil could not format $device" >&2
+      exit 1
+    }
+    dir="/Volumes/$name"
+    echo "with-tmpfs: $dir (RAM disk $device)" >&2
+    ;;
+  *)
+    echo "with-tmpfs: no memory-backed file system known on $(uname -s)" >&2
+    exit 1
+    ;;
+esac
+
+export PETRUS_BENCH_TMPFS="$dir"
+status=0
+"$@" || status=$?
+exit "$status"

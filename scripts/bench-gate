@@ -55,11 +55,22 @@ encoder alone, has no twin to compare with.
 Left out on purpose, with the package's next-thinnest row gated instead:
 rows whose time is the same kernel or server work on both sides, which the
 runner measured on either side of 1.0x from run to run (single-repetition
-noise, not the port). They are petrus-sqlite's
-``tx.immediate-insert-commit`` and petrus-posix's
-``atomic.write-1KiB-fsync`` (one ``fsync`` per call on both sides: strace
-counts the same syncs, and the twin's SQLite syncs with ``fsync`` too;
-0.89-1.08x and 0.96-1.12x over five runs), and petrus-dst's
+noise, not the port). A gate row exists to catch regressions in our code,
+and an fsync-dominated row can't do that. They are petrus-sqlite's
+``tx.immediate-insert-commit`` and ``tx.immediate-insert-100`` and
+petrus-posix's ``atomic.write-1KiB-fsync`` (one ``fsync`` per commit or call
+on both sides: strace counts the same syncs, and the twin's SQLite syncs
+with ``fsync`` too; counted on macOS by an interposed library over one batch
+and its warm-up, both sides make 5 062 ``fsync`` and 36 132 ``pwrite`` calls
+for the commit row, 541 and 27 105 for the 100-insert row; the commit row
+0.89-1.08x and the write 0.96-1.12x over five runs on the runner, the
+100-insert row 0.96-1.02x over runs of 5 to 20 repetitions on the Apple
+M4). petrus-sqlite times both transaction rows again on memory
+(``tx-tmpfs.*``: scripts/with-tmpfs, a directory under /dev/shm on Linux, a
+RAM disk on macOS, both sides on the same medium), where a sync costs next
+to nothing and the statements and the transaction are what is timed;
+``tx-tmpfs.immediate-insert-100`` is gated in their place. Also out:
+petrus-dst's
 ``joined.one isolated database`` (``CREATE DATABASE``, the schemas and
 ``DROP DATABASE``, all server time; 0.97-1.02x). petrus-execution's
 ``archive/one-large/extract`` is out too: on the runner both sides spend
@@ -245,12 +256,15 @@ ENTRIES = [
          only=r"^postgres\.claim-new$"),
     pair("petrus-simulation", [("All.http.options", "http.options")], petrus("petrus-simulation"),
          only=r"^http\.options$"),
+    # The transaction row on memory (scripts/with-tmpfs), not on the disk: a
+    # gate row exists to catch regressions in our code, and the disk's rows
+    # are fsync-bound, the same syncs on both sides (the docstring above).
     pair("petrus-sqlite",
-         [("All.tx.immediate-insert-100", "tx.immediate-insert-100"),
+         [("All.tx-tmpfs.immediate-insert-100", "tx-tmpfs.immediate-insert-100"),
           ("All.connect.local-dispatch-profile", "connect.local-dispatch-profile"),
           ("All.fence.acquire-release", "fence.acquire-release")],
          petrus("petrus-sqlite"),
-         only=r"^(tx\.immediate-insert-100|connect\.local-dispatch-profile|fence\.acquire-release)$"),
+         only=r"^(tx-tmpfs\.immediate-insert-100|connect\.local-dispatch-profile|fence\.acquire-release)$"),
     pair("petrus-telemetry-instrumentation",
          [("All.chain.engine-advance.facts-null-route", "chain/engine-advance/facts-null-handler")],
          petrus("petrus-telemetry-instrumentation")),
@@ -421,6 +435,9 @@ def main(argv: List[str]) -> int:
     postgres = any(BENCH.needs_postgres(e["package"], e.get("python", "") + e.get("command", "")) for e in entries)
     if postgres and not os.environ.get("PETRUS_TEST_POSTGRES"):
         return subprocess.call([str(ROOT / "scripts" / "with-postgres"), sys.executable, __file__, *argv])
+    tmpfs = any(BENCH.needs_tmpfs(e["package"], e.get("python", "") + e.get("command", "")) for e in entries)
+    if tmpfs and not os.environ.get("PETRUS_BENCH_TMPFS"):
+        return subprocess.call([str(ROOT / "scripts" / "with-tmpfs"), sys.executable, __file__, *argv])
     TMP.mkdir(parents=True, exist_ok=True)
     log_path = TMP / "bench-gate.log"
     rows = []

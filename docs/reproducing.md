@@ -275,7 +275,11 @@ scripts/bench-gate petrus-sqlite        # its gated rows against Python (CI's ni
 Each package's `bench/RESULTS.md` holds its committed figures, how they were
 taken, and a rerun block under a `<!-- scripts/bench: rerun -->` marker.
 `scripts/bench PKG` runs exactly that block from the repository root. It runs
-under `scripts/with-postgres` when the block needs PostgreSQL. Its output goes
+under `scripts/with-postgres` when the block needs PostgreSQL, and under
+`scripts/with-tmpfs` when its benchmarks read `PETRUS_BENCH_TMPFS` (a
+directory under `/dev/shm` on Linux, a RAM disk on macOS, for rows timed on
+memory as well as on the disk; `scripts/bench-compare` and
+`scripts/bench-gate` do the same). Its output goes
 to the terminal and to `bench-results/tmp/PKG.log`. It never rewrites a
 results file: those are curated by hand from runs like these, with the
 machine, the load and the date of the run they report.
