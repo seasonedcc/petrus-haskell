@@ -18,12 +18,10 @@ module Petrus.EngineFile.Validate
   , validateFile
   , validationError
   , renderLineErrors
-  , truncateRepr
   , coerceNetPath
   , newNetPath
   ) where
 
-import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -31,7 +29,8 @@ import Petrus.EngineFile.Duration
 import Petrus.EngineFile.Number (IntParse (..), strAsFloat, strAsInt)
 import Petrus.EngineFile.Types
 import Petrus.EngineFile.Value
-import Petrus.Json.Wtf8 (hasLoneSurrogate, lossyUtf8)
+import Petrus.Json.Python.Pydantic qualified as Pydantic
+import Petrus.Json.Wtf8 (hasLoneSurrogate)
 
 -- | Which pydantic entry point is validating.
 data Mode = JsonMode | PythonMode
@@ -400,52 +399,15 @@ validateFile mode v = case vFlatNetFile mode v of
 validationError :: Mode -> [LineError] -> PyException
 validationError mode es = PyException "ValidationError" (renderLineErrors "FlatNetFile" mode es)
 
--- | @str(ValidationError)@.
+-- | @str(ValidationError)@ ("Petrus.Json.Python.Pydantic"), the input
+-- quoted as the Python object it is.
 renderLineErrors :: Text -> Mode -> [LineError] -> Text
-renderLineErrors title mode es =
-  T.pack (show (length es))
-    <> " validation error"
-    <> (if length es == 1 then "" else "s")
-    <> " for "
-    <> title
-    <> "\n"
-    <> T.intercalate "\n" (map line es)
+renderLineErrors title mode es = Pydantic.renderValidationError title (map line es)
   where
-    line e =
-      locLine e.loc
-        <> "  "
-        <> messageOf mode e.kind
-        <> " [type="
-        <> typeOf e.kind
-        <> ", input_value="
-        <> truncateRepr (pyRepr e.input)
-        <> ", input_type="
-        <> pyTypeName e.input
-        <> "]\n    For further information visit https://errors.pydantic.dev/2.13/v/"
-        <> typeOf e.kind
-    locLine [] = ""
-    locLine items = T.intercalate "." (map locText items) <> "\n"
-    locText = \case
-      LocKey key
-        | T.isInfixOf "." k -> "`" <> k <> "`"
-        | otherwise -> k
-        where
-          k = lossyUtf8 key
-      LocIndex i -> T.pack (show i)
-
--- | pydantic's @write_truncated_to_limited_bytes(repr, 50)@.
-truncateRepr :: Text -> Text
-truncateRepr t
-  | BS.length bytes <= 50 = t
-  | otherwise =
-      TE.decodeUtf8 (BS.take (floorBoundary 25) bytes)
-        <> "..."
-        <> TE.decodeUtf8 (BS.drop (ceilBoundary (BS.length bytes - 24)) bytes)
-  where
-    bytes = TE.encodeUtf8 t
-    isContinuation i = i < BS.length bytes && let b = BS.index bytes i in b >= 0x80 && b < 0xC0
-    floorBoundary i = if isContinuation i then floorBoundary (i - 1) else i
-    ceilBoundary i = if isContinuation i then ceilBoundary (i + 1) else i
+    line e = Pydantic.LineError (map locStep e.loc) (messageOf mode e.kind) (typeOf e.kind) (toPyObject e.input)
+    locStep = \case
+      LocKey k -> Pydantic.Key k
+      LocIndex i -> Pydantic.Index i
 
 typeOf :: ErrorKind -> Text
 typeOf = \case

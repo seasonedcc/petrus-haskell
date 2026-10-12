@@ -8,14 +8,16 @@
 -- error's dotted location, message, error type, a truncated Python @repr@ of
 -- the offending input and its Python type, and the documentation URL. A
 -- conforming implementation must refuse with the same text, so this module
--- models the inputs as Python values ('PV') and the validators as small
+-- models the inputs as Python values ('PV', petrus-json's 'PyObject', which
+-- "Petrus.Json.Python.Pydantic" renders errors over) and the validators as small
 -- combinators that report errors in Pydantic's order: declared fields first
 -- (each field's errors in place), then forbidden extra members in input
 -- order, and model-level (\"after\") validators only when every field
 -- passed.
 module Petrus.Impetus.Validation.Pydantic
   ( -- * Python values
-    PV (..)
+    PV
+  , PyObject (..)
   , fromRaw
   , fromJson
   , pyRepr
@@ -49,96 +51,23 @@ module Petrus.Impetus.Validation.Pydantic
   ) where
 
 import Data.Bifunctor (first)
-import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
-import Petrus.Json.Python.Scanner (Raw (..), rawText)
-import Petrus.Json (Json (..), pythonFloatRepr)
-import Petrus.Json.PythonText (pythonStringRepr)
+import Petrus.Json.Python.Pydantic (Loc (..), LineError (..), PyObject (..), fromJson, fromRaw, pyRepr, pyStrValue, pyTypeName)
+import Petrus.Json.Python.Pydantic qualified as Pydantic
+import Petrus.Json.PythonText (pythonStrRepr, pythonStringRepr)
+import Petrus.Json.Wtf8 (hasLoneSurrogate, lossyUtf8)
 
 -- ---------------------------------------------------------------------------
 -- Python values
 
--- | A Python value as a model validator sees it: JSON-shaped, plus the
--- tuples a @model_dump(mode="python")@ produces and opaque model instances
--- (which appear in errors only through their @repr@).
-data PV
-  = PNone
-  | PBool Bool
-  | PInt Integer
-  | PFloat Double
-  | PStr Text
-  | PList [PV]
-  | PTuple [PV]
-  | PDict [(Text, PV)]
-  | -- | A model instance: its class name and its @repr@.
-    PInstance Text Text
-
--- | A scanned value whose strings are already admitted as scalar values.
-fromRaw :: Raw -> PV
-fromRaw = \case
-  RNull -> PNone
-  RBool b -> PBool b
-  RInt i -> PInt i
-  RFloat d -> PFloat d
-  RStr s -> PStr (rawText s)
-  RList items -> PList (map fromRaw items)
-  RDict members -> PDict [(rawText k, fromRaw v) | (k, v) <- members]
-
-fromJson :: Json -> PV
-fromJson = \case
-  Null -> PNone
-  Bool b -> PBool b
-  Int i -> PInt i
-  Float d -> PFloat d
-  String s -> PStr s
-  Array items -> PList (map fromJson items)
-  Object members -> PDict [(k, fromJson v) | (k, v) <- members]
-
--- | CPython's @repr@.
-pyRepr :: PV -> Text
-pyRepr = \case
-  PNone -> "None"
-  PBool True -> "True"
-  PBool False -> "False"
-  PInt i -> T.pack (show i)
-  PFloat d -> floatRepr d
-  PStr s -> pyStrRepr s
-  PList items -> "[" <> T.intercalate ", " (map pyRepr items) <> "]"
-  PTuple [single] -> "(" <> pyRepr single <> ",)"
-  PTuple items -> "(" <> T.intercalate ", " (map pyRepr items) <> ")"
-  PDict members -> "{" <> T.intercalate ", " [pyStrRepr k <> ": " <> pyRepr v | (k, v) <- members] <> "}"
-  PInstance _ text -> text
-
-floatRepr :: Double -> Text
-floatRepr d
-  | isNaN d = "nan"
-  | isInfinite d = if d > 0 then "inf" else "-inf"
-  | otherwise = T.pack (pythonFloatRepr d)
-
--- | CPython's @str()@ (which differs from @repr@ only for strings).
-pyStrValue :: PV -> Text
-pyStrValue = \case
-  PStr s -> s
-  other -> pyRepr other
-
--- | The Python type name Pydantic reports as @input_type@.
-pyTypeName :: PV -> Text
-pyTypeName = \case
-  PNone -> "NoneType"
-  PBool _ -> "bool"
-  PInt _ -> "int"
-  PFloat _ -> "float"
-  PStr _ -> "str"
-  PList _ -> "list"
-  PTuple _ -> "tuple"
-  PDict _ -> "dict"
-  PInstance name _ -> name
+-- | A Python value as a model validator sees it (petrus-json's
+-- 'PyObject', whose @repr@ and type name every pydantic error quotes).
+type PV = PyObject
 
 -- | CPython's @repr(str)@.
 pyStrRepr :: Text -> Text
-pyStrRepr = pyStringRepr . T.unpack
+pyStrRepr = pythonStrRepr
 
 -- | CPython's @repr(str)@ over code points, which may include lone
 -- surrogates (a scanned key can).
@@ -147,17 +76,6 @@ pyStringRepr = pythonStringRepr
 
 -- ---------------------------------------------------------------------------
 -- Errors
-
--- | One location step: a member name or an item index.
-data Loc = Key Text | Index Int
-
--- | One line of a 'ValidationError'.
-data LineError = LineError
-  { loc :: [Loc]
-  , message :: Text
-  , errorType :: Text
-  , input :: PV
-  }
 
 type Validated a = Either [LineError] a
 
@@ -175,49 +93,13 @@ fatalError text = LineError [] text fatalType PNone
 fatalType :: Text
 fatalType = "<fatal>"
 
--- | @str(ValidationError)@ for a model title and its errors, or the text of
--- the exception that aborted the validation.
+-- | @str(ValidationError)@ for a model title and its errors
+-- ('Pydantic.renderValidationError'), or the text of the exception that
+-- aborted the validation.
 renderValidationError :: Text -> [LineError] -> Text
 renderValidationError title errors = case [err.message | err <- errors, err.errorType == fatalType] of
   fatal : _ -> fatal
-  [] -> T.intercalate "\n" (header : concatMap line errors)
-  where
-    count = length errors
-    header =
-      T.pack (show count)
-        <> (if count == 1 then " validation error for " else " validation errors for ")
-        <> title
-    line err =
-      [renderLoc err.loc | not (null err.loc)]
-        ++ [ "  "
-               <> err.message
-               <> " [type="
-               <> err.errorType
-               <> ", input_value="
-               <> truncateRepr (pyRepr err.input)
-               <> ", input_type="
-               <> pyTypeName err.input
-               <> "]"
-           , "    For further information visit https://errors.pydantic.dev/2.13/v/" <> err.errorType
-           ]
-    -- pydantic-core quotes a key containing a dot so the path stays readable.
-    renderLoc = T.intercalate "." . map (\case Key k | T.any (== '.') k -> "`" <> k <> "`"; Key k -> k; Index i -> T.pack (show i))
-
--- | Pydantic shortens an input @repr@ longer than 50 UTF-8 bytes to its
--- first 25 bytes and last 24 bytes (moved to character boundaries).
-truncateRepr :: Text -> Text
-truncateRepr text
-  | BS.length bytes <= 50 = text
-  | otherwise = TE.decodeUtf8 (BS.take headEnd bytes) <> "..." <> TE.decodeUtf8 (BS.drop tailStart bytes)
-  where
-    bytes = TE.encodeUtf8 text
-    boundary i = i >= BS.length bytes || not (continuation (BS.index bytes i))
-    continuation w = w >= 0x80 && w < 0xC0
-    headEnd = last (filter boundary [0 .. 25])
-    tailStart = head' (filter boundary [BS.length bytes - 24 .. BS.length bytes])
-    head' = \case
-      x : _ -> x
-      [] -> BS.length bytes
+  [] -> Pydantic.renderValidationError title errors
 
 -- ---------------------------------------------------------------------------
 -- Validators
@@ -243,7 +125,10 @@ at :: Loc -> Validated a -> Validated a
 at step = first (map (\err -> err {loc = step : err.loc}))
 
 -- | A strict, @extra="forbid"@ model: the builder looks fields up by name;
--- unknown members are refused after every declared field.
+-- unknown members are refused after every declared field. pydantic-core
+-- reads each unknown member's name as UTF-8 while it looks for them, so a
+-- name holding a lone surrogate (a WTF-8 'Text') ends the model's
+-- validation with that one @string_unicode@ error.
 model :: Text -> [Text] -> ([(Text, PV)] -> PV -> Collect a) -> PV -> Validated a
 model className fields build = \case
   whole@(PDict members) ->
@@ -252,7 +137,10 @@ model className fields build = \case
           | (k, v) <- members
           , k `notElem` fields
           ]
+        unreadable = [k | (k, _) <- members, hasLoneSurrogate k]
      in case (collect (build members whole), extras) of
+          (Left es, _) | any (\err -> err.errorType == fatalType) es -> Left es
+          _ | k : _ <- unreadable -> Left [Pydantic.stringUnicode (PStr k)]
           (Right a, []) -> Right a
           (Right _, es) -> Left es
           (Left es, more) -> Left (es ++ more)
@@ -302,7 +190,7 @@ tagged choices = \case
                 [ LineError
                     []
                     ( "Input tag '"
-                        <> tag
+                        <> lossyUtf8 tag
                         <> "' found using 'kind' does not match any of the expected tags: "
                         <> T.intercalate ", " ["'" <> name <> "'" | (name, _) <- choices]
                     )
@@ -336,6 +224,7 @@ optional validate = \case
 literalStr :: [Text] -> PV -> Validated Text
 literalStr options = \case
   PStr s | s `elem` options -> Right s
+  other@(PStr s) | hasLoneSurrogate s -> Left [Pydantic.stringUnicode other]
   other -> Left [LineError [] ("Input should be " <> spelled) "literal_error" other]
   where
     quoted = map (\o -> "'" <> o <> "'") options
