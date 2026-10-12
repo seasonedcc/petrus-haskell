@@ -1,0 +1,6 @@
+some suite
+  does something [[33m‐[0m]
+[33m    # PENDING: a brand new undeclared reason[0m
+
+Finished in 0.0012 seconds
+[33m1 example, 0 failures, 1 pending[0m

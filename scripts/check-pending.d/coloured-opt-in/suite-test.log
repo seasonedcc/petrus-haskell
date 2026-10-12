@@ -1,0 +1,7 @@
+test_pi_model_phase
+  test_helper_syntax_and_exact_hands_bounds [[32m✔[0m]
+  test_exact_installed_model_phase_probe [[33m‐[0m]
+[33m    # PENDING: exact Pi qualification packages required[0m
+
+Finished in 0.0012 seconds
+[33m2 examples, 0 failures, 1 pending[0m

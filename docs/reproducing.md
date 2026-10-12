@@ -121,43 +121,50 @@ It runs, in order, and stops at the first failing step:
    reference is missing (see [No silent skips](#no-silent-skips)).
 3. `scripts/lint-hamsterdan-architecture`: the Hamsterdan packages keep the
    import boundaries of upstream `tests/test_architecture.py`.
-4. Provisioning of the Python references (`scripts/upstream-python petrus`,
-   `petrus-engine` and `hamsterdan`): CPython 3.14.6 and each project's
-   frozen `uv.lock`, in `upstream/<project>/.venv`.
-5. `cabal build all` (every package is `-Werror`).
-6. `scripts/interop --check`: every pattern `scripts/interop` uses still
+4. `scripts/check-pending --self-test`: the pending check of step 9 still
+   reads hspec's output, coloured or plain, from the fixture logs in
+   `scripts/check-pending.d/`.
+5. Provisioning of the Python references (`scripts/upstream-python petrus`,
+   `petrus-engine`, `hamsterdan` and `petrus-sdks`): CPython 3.14.6 and each
+   project's frozen `uv.lock`, in `upstream/<project>/.venv`. `petrus-sdks`
+   is `upstream/petrus` with the real Claude and Amp SDKs at the reference's
+   pins, kept apart in `dist-newstyle/upstream-python/petrus-sdks/.venv`.
+6. `cabal build all` (every package is `-Werror`).
+7. `scripts/interop --check`: every pattern `scripts/interop` uses still
    selects tests.
-7. `cabal test all` under `scripts/with-postgres`, every test binary with
+8. `cabal test all` under `scripts/with-postgres`, every test binary with
    `+RTS -M2G -RTS`. This includes the conformance and interop groups.
-8. `scripts/check-pending`: no example went pending in step 7. A pending
+9. `scripts/check-pending`: no example went pending in step 8. A pending
    example is a test that did not run, so a missing tool (Graphviz `dot`,
    `node`) or server fails the run. The only examples that may stay pending
    are listed in the script: the Docker tests, which wait for
    `PETRUS_TEST_DOCKER=1` (CI sets it, and check-all refuses to run in CI
    without it), and the reference's own opt-in acceptance tests. Those
    acceptance tests need provider credentials or exactly installed external
-   toolchains, and the reference skips them too.
-9. `scripts/check-corpora`: every committed corpus is regenerated against the
-   pinned references (and Node 22, for the viewer's V8 and WHATWG URL
-   corpora) and must come out unchanged.
-10. With `--viewer` only: the upstream petrus-viewer suites against the
+   toolchains, and the reference skips them too. A suite log without hspec's
+   summary line fails too, so a crashed suite or an unreadable log cannot
+   pass as "nothing pending".
+10. `scripts/check-corpora`: every committed corpus is regenerated against
+    the pinned references (and Node 22, for the viewer's V8 and WHATWG URL
+    corpora) and must come out unchanged.
+11. With `--viewer` only: the upstream petrus-viewer suites against the
     Haskell backend, then `record-mcp-transcript.mjs --check`, which
     re-records the MCP golden transcript through the upstream Node MCP server.
-11. With `--bench` only: `scripts/bench`, every benchmark against Python.
-12. `scripts/bench --check`: every package's benchmark results document how
+12. With `--bench` only: `scripts/bench`, every benchmark against Python.
+13. `scripts/bench --check`: every package's benchmark results document how
     to rerun them and which sources they measured, and
     `bench-results/summary.md` matches them. It also lists, as `STALE` (a
     warning), every results file measured on code that has changed since:
     the package's own sources, any local package it builds on, the cabal
     project and freeze file, the upstream pins or the twins' timing harness.
-13. `scripts/check-parity`: the parity table's claims hold: evidence for
+14. `scripts/check-parity`: the parity table's claims hold: evidence for
     every component at parity, no cited benchmark row below 1.0×, and every
     upstream test count it cites ("all 11 `test_sqlite_history.py` tests (14
     cases)") equal to what pytest collects at the pinned upstream commits, as
     recorded in `docs/upstream-test-counts.json` (`scripts/upstream-test-counts
     --write` recollects it after a submodule moves). It warns (`STALE
     evidence`) about components whose cited results are stale.
-14. `packages/petrus-engine/scripts/parity_check.py`: the runtime test
+15. `packages/petrus-engine/scripts/parity_check.py`: the runtime test
     ledgers account for every in-scope upstream test.
 
 `-j2` limits cabal's parallelism; leave it out to use every core.
@@ -172,9 +179,9 @@ scripts/check-all -j2 --ghc-options='+RTS -M3G -RTS'
 takes, measured on an Apple M4 with 24 GB of memory at `-j2`, with the
 Hackage dependencies already in the cabal store (October 2026):
 
-- **Time**: about 25 minutes of wall-clock time for steps 0 to 7 (the build
+- **Time**: about 25 minutes of wall-clock time for steps 0 to 8 (the build
   about 11 minutes, the test suites most of the rest), and 2 to 3 minutes
-  for steps 8 to 14. A cold cabal store adds the Hackage dependencies' build,
+  for steps 9 to 15. A cold cabal store adds the Hackage dependencies' build,
   roughly another 20 minutes.
 - **Disk**: about 6.5 GB for `dist-newstyle`, about 1 GB for the cabal
   store's Hackage dependencies, about 1 GB for the four upstream Python
@@ -554,7 +561,7 @@ job, spread over Blacksmith runners so that they run side by side:
 
 | CI job | Runner | `scripts/check-all` step |
 | --- | --- | --- |
-| `lint` | 2 vCPU | `check-pins`, `lint-skips`, `lint-hamsterdan-architecture`, `bench --check`, `check-parity`, the runtime test ledgers (`parity_check.py`) |
+| `lint` | 2 vCPU | `check-pins`, `lint-skips`, `lint-hamsterdan-architecture`, `check-pending --self-test`, `bench --check`, `check-parity`, the runtime test ledgers (`parity_check.py`) |
 | `build` | 16 vCPU | `cabal build all` (`-Werror`); then plans the test shards |
 | `checks` | 4 vCPU | `scripts/interop --check` (with the PostgreSQL and Docker variables set, so that the selection counts those examples too); `scripts/check-corpora`, with PostgreSQL 17 |
 | `test (1)` … `test (N)` | 8 vCPU | the upstream Python environments, then `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest); then `scripts/check-pending` on their output (a suite with a pending example outside the declared opt-ins does not count as passed) |

@@ -2,6 +2,7 @@
 """Fail when a test suite left an example pending, except the declared opt-ins.
 
     scripts/check-pending LOG_DIR
+    scripts/check-pending --self-test
 
 scripts/check-all runs every test suite with cabal's
 ``--test-show-details=streaming --test-log=LOG_DIR/...``. Each suite's
@@ -21,9 +22,17 @@ The only pending examples allowed are the ones in ``OPT_INS`` below:
 Each entry is matched by its exact ``# PENDING:`` text. A new pending
 example, or a changed message, fails until it is reviewed here.
 
-The pending examples hspec counts in each suite's summary must also match the
-``# PENDING:`` lines found in that suite. A suite whose log has neither
-cannot hide one.
+Every log must hold hspec's summary line ("N examples, M failures[, K
+pending]"), and the pending examples it counts must match the ``# PENDING:``
+lines found in that suite. A log without a summary fails: a suite that
+crashed, or output this script cannot read, must not pass as "nothing
+pending". ANSI colour sequences are removed before matching (hspec colours
+its output on GitHub Actions; scripts/ci-test-wrapper also sets
+HSPEC_COLOR=no).
+
+``--self-test`` runs the script over the fixture logs in
+scripts/check-pending.d/ (coloured and plain output, an undeclared pending
+example, a log without a summary) and checks each verdict.
 """
 
 from __future__ import annotations
@@ -75,6 +84,9 @@ OPT_INS: Dict[str, str] = {
 
 PENDING = re.compile(r"^\s*# PENDING: (.*)$")
 SUMMARY = re.compile(r"^\d+ examples?, \d+ failures?(?:, (\d+) pending)?$")
+# ECMA-48 control sequences (colours, cursor movement) and the bare escapes
+# a terminal formatter writes.
+ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]")
 
 
 def scan(path: Path) -> Tuple[List[str], int, bool]:
@@ -82,7 +94,8 @@ def scan(path: Path) -> Tuple[List[str], int, bool]:
     messages: List[str] = []
     counted = 0
     summarised = False
-    for line in path.read_text(errors="replace").splitlines():
+    for raw in path.read_text(errors="replace").splitlines():
+        line = ANSI.sub("", raw)
         pending = PENDING.match(line)
         if pending:
             messages.append(pending.group(1).strip())
@@ -94,20 +107,19 @@ def scan(path: Path) -> Tuple[List[str], int, bool]:
     return messages, counted, summarised
 
 
-def main(argv: List[str]) -> int:
-    if len(argv) != 2:
-        print(__doc__.strip().splitlines()[2].strip(), file=sys.stderr)
-        return 2
-    directory = Path(argv[1])
+def check(directory: Path, out=sys.stdout, err=sys.stderr) -> int:
     logs = sorted(directory.glob("*.log"))
     if not logs:
-        print(f"check-pending: no test logs in {directory}", file=sys.stderr)
+        print(f"check-pending: no test logs in {directory}", file=err)
         return 1
     problems: List[str] = []
     allowed = 0
     for log in logs:
         messages, counted, summarised = scan(log)
-        if summarised and counted != len(messages):
+        if not summarised:
+            problems.append(f"{log.name}: no hspec summary line (\"N examples, M failures\"): "
+                            "the suite did not finish, or its output is unreadable here")
+        elif counted != len(messages):
             problems.append(f"{log.name}: hspec counts {counted} pending, the log shows {len(messages)}")
         for message in messages:
             if message in OPT_INS:
@@ -115,15 +127,53 @@ def main(argv: List[str]) -> int:
             else:
                 problems.append(f"{log.name}: pending: {message}")
     if problems:
-        print("check-pending: examples went pending (a pending test did not run):", file=sys.stderr)
+        print("check-pending: examples went pending (a pending test did not run), or a log is unreadable:", file=err)
         for problem in problems:
-            print(f"  {problem}", file=sys.stderr)
+            print(f"  {problem}", file=err)
         print("Install what they need, or set the opt-in, and rerun; only the opt-ins in "
-              "scripts/check-pending may stay pending.", file=sys.stderr)
+              "scripts/check-pending may stay pending.", file=err)
         return 1
     print(f"check-pending: {len(logs)} suite logs, no pending example "
-          f"except {allowed} declared opt-in{'s' if allowed != 1 else ''}")
+          f"except {allowed} declared opt-in{'s' if allowed != 1 else ''}", file=out)
     return 0
+
+
+# The fixtures in scripts/check-pending.d/: each directory, its expected exit
+# status, and the text its verdict must contain.
+SELF_TEST = [
+    ("coloured-opt-in", 0, "except 1 declared opt-in"),
+    ("plain-opt-in", 0, "except 1 declared opt-in"),
+    ("coloured-undeclared", 1, "pending: a brand new undeclared reason"),
+    ("coloured-miscounted", 1, "hspec counts 2 pending, the log shows 1"),
+    ("no-summary", 1, "no hspec summary line"),
+]
+
+
+def self_test() -> int:
+    import io
+    fixtures = Path(__file__).resolve().parent / "check-pending.d"
+    failed = 0
+    for name, status, needle in SELF_TEST:
+        out, err = io.StringIO(), io.StringIO()
+        got = check(fixtures / name, out, err)
+        text = out.getvalue() + err.getvalue()
+        if got != status or needle not in text:
+            failed += 1
+            print(f"check-pending --self-test: {name}: expected exit {status} and {needle!r}, "
+                  f"got exit {got}:\n{text}", file=sys.stderr)
+    if failed:
+        return 1
+    print(f"check-pending --self-test: {len(SELF_TEST)} fixture logs read as expected")
+    return 0
+
+
+def main(argv: List[str]) -> int:
+    if argv[1:] == ["--self-test"]:
+        return self_test()
+    if len(argv) != 2:
+        print(__doc__.strip().splitlines()[2].strip(), file=sys.stderr)
+        return 2
+    return check(Path(argv[1]))
 
 
 if __name__ == "__main__":

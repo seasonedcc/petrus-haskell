@@ -4,7 +4,8 @@ name: CI
 # `scripts/check-all --viewer`), spread over several Blacksmith runners:
 #
 #   lint       scripts/check-pins, scripts/lint-skips,
-#              scripts/lint-hamsterdan-architecture, scripts/bench --check,
+#              scripts/lint-hamsterdan-architecture, scripts/check-pending
+#              --self-test, scripts/bench --check,
 #              scripts/check-parity, the runtime test ledgers
 #              (packages/petrus-engine/scripts/parity_check.py); none needs a
 #              build
@@ -92,6 +93,8 @@ jobs:
         run: scripts/lint-skips
       - name: Hamsterdan import boundaries (upstream tests/test_architecture.py)
         run: scripts/lint-hamsterdan-architecture
+      - name: The pending check reads hspec logs (coloured or plain fixtures)
+        run: scripts/check-pending --self-test
       - name: Benchmark bookkeeping (rerun blocks, measured sources, bench-results/summary.md)
         run: scripts/bench --check
       - name: Parity table
