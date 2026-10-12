@@ -1,6 +1,6 @@
 # Kernel benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources aa5aba8ca69374e9 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 24bc95ab03caede2 at 33f3581dd1c5 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` build the same
 workloads: the same nets, markings, and sizes. Each Python line also prints a
@@ -31,12 +31,20 @@ was pinned at `upstream/petrus` 3f85fc2.
 
 ## Current figures
 
-Measured on 2026-10-12, 05:11–05:17 local (UTC-3), at commit `fc3e42b`
+Measured on 2026-10-12, 17:59–18:08 local (UTC-3), at commit `cb654fd`
 with the benchmark built `-threaded` (see below), on the Apple M4 (Darwin
-arm64) with a 1-minute load average of 1.57–2.74: three interleaved
+arm64) with a 1-minute load average of 1.84–3.69: five interleaved
 repetitions, alternating which side goes first, of
 
-    scripts/bench-compare petrus-impetus 3
+    scripts/bench-compare petrus-impetus 5
+
+The benchmark now runs with the RTS defaults, as the executables that run
+this code do (no longer `-with-rtsopts=-A32m`; docs/reproducing.md, "The
+benchmarks' runtime options"). The rows that build large structures moved
+most with it: the candidate rows (`long-fifo` 1.32 to 2.56 ms, `weight-3`
+262 to 412 µs) and the parses (`history.parse-only` 24.3 to 31.0 ms,
+`net-document.parse` 7.59 to 9.30 ms); the lifecycle, timer, replay and
+serialize rows got faster.
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
@@ -46,28 +54,28 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `candidates.wide-fanin` | 21.2 µs | 663 µs | 31.22× | 30.97× | 20.5 µs, 21.2 µs, 21.4 µs | 693 µs, 663 µs, 662 µs |
-| `candidates.long-fifo` | 1.32 ms | 13.7 ms | 10.34× | 10.16× | 1.28 ms, 1.32 ms, 1.34 ms | 14.1 ms, 13.5 ms, 13.7 ms |
-| `candidates.weight-3` | 262 µs | 4.76 ms | 18.21× | 17.87× | 258 µs, 262 µs, 269 µs | 4.75 ms, 4.76 ms, 4.82 ms |
-| `instance-run.wide-fanout` | 22.4 ms | 1.98 s | 88.51× | 87.46× | 21.6 ms, 22.5 ms, 22.4 ms | 1.98 s, 1.97 s, 1.98 s |
-| `instance-run.long-fifo` | 64.3 ms | 1.13 s | 17.52× | 17.49× | 62.5 ms, 64.3 ms, 64.4 ms | 1.13 s, 1.13 s, 1.13 s |
-| `history.encode` | 7.59 ms | 39.1 ms | 5.15× | 5.12× | 7.44 ms, 7.64 ms, 7.59 ms | 42.2 ms, 39.1 ms, 39.1 ms |
-| `history.dumps-only` | 6.18 ms | — | — | — | 6.13 ms, 6.22 ms, 6.18 ms |  |
-| `history.parse-only` | 24.3 ms | — | — | — | 23.9 ms, 24.4 ms, 24.3 ms |  |
-| `history.decode` | 46.4 ms | 86.9 ms | 1.87× | 1.86× | 45.3 ms, 46.4 ms, 46.7 ms | 92.2 ms, 86.6 ms, 86.9 ms |
-| `history.records-only` | 13.8 ms | — | — | — | 13.6 ms, 13.8 ms, 13.9 ms |  |
-| `history.replay-marking` | 230 ms | 3.44 s | 14.97× | 14.81× | 227 ms, 230 ms, 233 ms | 3.44 s, 3.44 s, 3.45 s |
-| `net-definition.serialize` | 960 µs | 9.24 ms | 9.63× | 9.51× | 949 µs, 972 µs, 960 µs | 9.49 ms, 9.24 ms, 9.22 ms |
-| `net-definition.parse` | 4.57 ms | 10.6 ms | 2.31× | 2.27× | 4.47 ms, 4.58 ms, 4.57 ms | 10.7 ms, 10.4 ms, 10.6 ms |
-| `net-definition.compile` | 734 µs | 6.63 ms | 9.03× | 8.98× | 715 µs, 734 µs, 734 µs | 6.73 ms, 6.59 ms, 6.63 ms |
-| `net-document.serialize` | 2 ms | 13.6 ms | 6.81× | 6.72× | 1.95 ms, 2 ms, 2 ms | 13.6 ms, 13.4 ms, 14.7 ms |
-| `net-document.parse` | 7.59 ms | 13 ms | 1.72× | 1.71× | 7.45 ms, 7.59 ms, 7.63 ms | 13 ms, 13 ms, 13.2 ms |
-| `timers.delay-ring` | 9.19 ms | 109 ms | 11.86× | 11.75× | 9.04 ms, 9.19 ms, 9.27 ms | 110 ms, 109 ms, 109 ms |
-| `lifecycle-scope.fill` | 422 µs | 23.3 ms | 55.27× | 55.07× | 411 µs, 423 µs, 422 µs | 23.6 ms, 23.3 ms, 23.3 ms |
-| `lifecycle-scope.close` | 445 µs | 23.5 ms | 52.71× | 52.36× | 438 µs, 448 µs, 445 µs | 23.6 ms, 23.5 ms, 23.3 ms |
-| `lifecycle-scope.reset` | 447 µs | 23.3 ms | 52.08× | 50.94× | 441 µs, 447 µs, 454 µs | 23.3 ms, 23.4 ms, 23.1 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `candidates.wide-fanin` | 21.9 µs | 660 µs | 30.09× | 29.41× | 5 of 5 | 22.3 µs, 21.9 µs, 21.7 µs, 21.8 µs, 22.1 µs | 657 µs, 665 µs, 660 µs, 661 µs, 660 µs |
+| `candidates.long-fifo` | 2.56 ms | 13.8 ms | 5.38× | 5.35× | 5 of 5 | 2.56 ms, 2.56 ms, 2.56 ms, 2.55 ms, 2.58 ms | 13.8 ms, 13.7 ms, 13.9 ms, 13.6 ms, 13.8 ms |
+| `candidates.weight-3` | 412 µs | 4.78 ms | 11.60× | 11.58× | 5 of 5 | 412 µs, 412 µs, 415 µs, 412 µs, 412 µs | 4.77 ms, 4.77 ms, 4.85 ms, 4.78 ms, 4.83 ms |
+| `instance-run.wide-fanout` | 22.7 ms | 1.98 s | 87.55× | 86.98× | 5 of 5 | 22.5 ms, 22.9 ms, 22.7 ms, 22.7 ms, 22.6 ms | 2 s, 1.99 s, 1.98 s, 1.98 s, 1.98 s |
+| `instance-run.long-fifo` | 71.2 ms | 1.13 s | 15.88× | 15.83× | 5 of 5 | 71 ms, 71.3 ms, 71.1 ms, 71.2 ms, 71.2 ms | 1.13 s, 1.13 s, 1.14 s, 1.13 s, 1.14 s |
+| `history.encode` | 8.12 ms | 39.4 ms | 4.85× | 4.71× | 5 of 5 | 8.2 ms, 8.31 ms, 8.12 ms, 8.09 ms, 8.09 ms | 40.2 ms, 39.1 ms, 39.9 ms, 39.1 ms, 39.4 ms |
+| `history.dumps-only` | 7.22 ms | — | — | — | — | 7.43 ms, 7.22 ms, 7.34 ms, 7.19 ms, 7.19 ms |  |
+| `history.parse-only` | 31 ms | — | — | — | — | 31.5 ms, 31 ms, 31.1 ms, 30.8 ms, 30.9 ms |  |
+| `history.decode` | 45 ms | 87.6 ms | 1.95× | 1.92× | 5 of 5 | 44.9 ms, 45.3 ms, 45.5 ms, 45 ms, 44.9 ms | 87.6 ms, 87.6 ms, 87.5 ms, 89.3 ms, 88.5 ms |
+| `history.records-only` | 13.1 ms | — | — | — | — | 13.4 ms, 13.1 ms, 13.2 ms, 12.9 ms, 13 ms |  |
+| `history.replay-marking` | 199 ms | 3.46 s | 17.41× | 17.08× | 5 of 5 | 200 ms, 198 ms, 199 ms, 202 ms, 198 ms | 3.47 s, 3.46 s, 3.46 s, 3.46 s, 3.46 s |
+| `net-definition.serialize` | 843 µs | 9.34 ms | 11.08× | 10.79× | 5 of 5 | 839 µs, 846 µs, 838 µs, 843 µs, 862 µs | 9.34 ms, 9.31 ms, 9.37 ms, 9.41 ms, 9.3 ms |
+| `net-definition.parse` | 5.25 ms | 10.5 ms | 2.01× | 2.00× | 5 of 5 | 5.25 ms, 5.25 ms, 5.17 ms, 5.23 ms, 5.26 ms | 10.6 ms, 10.5 ms, 10.5 ms, 10.6 ms, 10.5 ms |
+| `net-definition.compile` | 644 µs | 6.6 ms | 10.25× | 10.09× | 5 of 5 | 650 µs, 644 µs, 636 µs, 636 µs, 644 µs | 6.56 ms, 6.63 ms, 6.62 ms, 6.6 ms, 6.58 ms |
+| `net-document.serialize` | 1.74 ms | 13.4 ms | 7.72× | 7.65× | 5 of 5 | 1.75 ms, 1.75 ms, 1.74 ms, 1.74 ms, 1.74 ms | 13.4 ms, 13.5 ms, 13.6 ms, 13.3 ms, 13.4 ms |
+| `net-document.parse` | 9.3 ms | 13.2 ms | 1.42× | 1.40× | 5 of 5 | 9.2 ms, 9.4 ms, 9.3 ms, 9.3 ms, 9.28 ms | 13.2 ms, 13.1 ms, 13.2 ms, 13.2 ms, 13.2 ms |
+| `timers.delay-ring` | 7.39 ms | 109 ms | 14.78× | 14.62× | 5 of 5 | 7.45 ms, 7.43 ms, 7.35 ms, 7.39 ms, 7.33 ms | 109 ms, 109 ms, 110 ms, 109 ms, 110 ms |
+| `lifecycle-scope.fill` | 380 µs | 23.3 ms | 61.46× | 60.51× | 5 of 5 | 380 µs, 381 µs, 377 µs, 378 µs, 382 µs | 23 ms, 23.3 ms, 23.1 ms, 23.4 ms, 23.6 ms |
+| `lifecycle-scope.close` | 402 µs | 23.5 ms | 58.39× | 57.48× | 5 of 5 | 402 µs, 402 µs, 401 µs, 404 µs, 406 µs | 23.1 ms, 23.6 ms, 23.4 ms, 23.5 ms, 23.5 ms |
+| `lifecycle-scope.reset` | 402 µs | 23.4 ms | 58.32× | 57.27× | 5 of 5 | 402 µs, 400 µs, 398 µs, 402 µs, 404 µs | 23.1 ms, 23.5 ms, 23.4 ms, 23.4 ms, 23.1 ms |
 
 The benchmark is now built with `-threaded`. Built without it, it twice
 stopped for good partway through a `scripts/bench-compare` run on
