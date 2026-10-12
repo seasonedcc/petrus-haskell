@@ -242,10 +242,17 @@ behind Node (0.94x and 0.78x, then 0.87x and 0.69x). The two 1-client
 rounds below 1.0x are rounds in which every server slowed down (in the
 0.78x one, all three ran at about half speed). On GitHub's Linux runner
 the 1-client row came out at 0.95x (2 of 5 rounds) and 1.01x (3 of 5) in
-two nightly-gate runs, the HTTP front at 1.19x (3 of 5).
+two nightly-gate runs, the HTTP front at 1.19x (3 of 5). Profiled there,
+every request made a safe foreign call (`F_OK`, imported without
+`unsafe`), which handed the capability to a second OS thread and back,
+and the 16 MB allocation area cost cache misses. With `F_OK` unsafe and
+GHC's default 4 MB area, the row is 1.10x (6 of 9 rounds) and 1.23x
+(6 of 9) on two Linux runners, and 16 clients 1.42x and 1.47x
+(bench/RESULTS.md, "Where a request spends its time on Linux"; the Mac
+figures above predate both changes).
 
-**Status:** at parity: ahead in every median on the Mac, by a thin
-margin; even with Node at 1 client on Linux.
+**Status:** at parity: ahead in every median, by a thin margin on the
+Mac (run I, before the two changes) and by at least 1.10x on Linux.
 
 ### `open-file` endpoint (`server/openFileEndpoint.mjs`)
 
@@ -272,7 +279,11 @@ the HTTP front of runs E to H it was 1.11x (1 client) and 1.13x (16
 clients) Node by median, the front 1.16x and 1.28x. On GitHub's Linux
 runner the 1-client row came out at 0.99x (2 of 5 rounds) and 1.09x
 (5 of 5) in two nightly-gate runs, and the front at 0.99x (2 of 5): the
-front does not lift it there.
+front does not lift it there. The two changes that lifted resolve-ref
+there (an unsafe `F_OK` for the `POST`'s existence check, and a 4 MB
+allocation area) lift this row too: 1.24x (8 of 9 rounds) and 1.36x
+(8 of 9) on two Linux runners, and 16 clients 1.29x and 1.34x
+(bench/RESULTS.md, "Where a request spends its time on Linux").
 
 What changed:
 
@@ -299,8 +310,8 @@ and the bare Node server both fell to about half their speed (11.4k and
 server, the faster Node server in that round, did not. The
 details are in [bench/RESULTS.md](bench/RESULTS.md).
 
-**Status:** at parity: ahead in every median on the Mac, by a thin
-margin; even with Node at 1 client on Linux.
+**Status:** at parity: ahead in every median, by a thin margin on the
+Mac (run I, before the two changes) and by at least 1.10x on Linux.
 
 ### Simulation (browser UI)
 

@@ -101,22 +101,25 @@ executable petrus
   -- One capability, like Node's one event loop: request handling is short
   -- and I/O bound, and every extra capability adds cross-thread wake-ups
   -- to each request (see bench/RESULTS.md). The relays run their own
-  -- event-loop OS threads either way. Override with +RTS -N<n> -RTS.
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N1 -qg -A16m"
+  -- event-loop OS threads either way. A 4 MB allocation area (GHC's own
+  -- default, stated because it was measured) served the endpoints faster
+  -- than 16 MB, on Linux and on the Mac (see bench/RESULTS.md). Override
+  -- with +RTS -N<n> -A<size> -RTS.
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N1 -qg -A4m"
 
 executable petrus-mcp
   import:           warnings
   hs-source-dirs:   app/petrus-mcp
   main-is:          Main.hs
   build-depends:    base, petrus-viewer-server
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N1 -qg -A16m"
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N1 -qg -A4m"
 
 executable petrus-collab
   import:           warnings
   hs-source-dirs:   app/petrus-collab
   main-is:          Main.hs
   build-depends:    base, petrus-viewer-server
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N1 -qg -A16m"
+  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N1 -qg -A4m"
 
 
 test-suite petrus-viewer-server-test

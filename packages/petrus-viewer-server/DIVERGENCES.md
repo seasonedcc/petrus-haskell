@@ -33,10 +33,10 @@ listed here.
   `PETRUS_RELAY_PERF=0`, which turns off the `[petrus-relay-perf]` lines
   the agent relay prints for every petrus-agent request and response
   (always on in Vite).
-- GHC runtime options: the executables accept `+RTS … -RTS`. `petrus` and
-  `petrus-collab` default to `-N1 -qg -A16m` (one capability, like Node's
-  one event loop; the relays run their own event-loop OS threads); see
-  [bench/RESULTS.md](bench/RESULTS.md) for why.
+- GHC runtime options: the executables accept `+RTS … -RTS`. `petrus`,
+  `petrus-collab` and `petrus-mcp` default to `-N1 -qg -A4m` (one
+  capability, like Node's one event loop; the relays run their own
+  event-loop OS threads); see [bench/RESULTS.md](bench/RESULTS.md) for why.
 - **History from Petrus observation producers.** With `--observation`,
   `/temporal/api/v1/namespaces/{ns}/workflows` and
   `…/workflows/{id}/query/get_state|get_schema` are answered from Petrus
