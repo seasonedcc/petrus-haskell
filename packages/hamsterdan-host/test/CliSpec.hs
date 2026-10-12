@@ -320,6 +320,14 @@ prepareSide base privateKey = do
   createDirectoryIfMissing True unencodable
   BS.writeFile (unencodable </> "binding.json") "{\"instance_id\": \"github:44:31:pr:12\", \"repository\": \"owner/one\", \"pull_request\": 12, \"topology\": \"v5\"}"
   BS.writeFile (unencodable </> "history.jsonl") "{\"record\": \"ActivityRequested\", \"occurrence\": 2, \"instant\": 2, \"transition\": \"execute.x\", \"activity\": \"x\", \"input\": {\"work\": {\"operation\": \"op\\ud800\"}}}\n"
+  -- Integer instants on either side of CPython's int-to-float overflow
+  -- threshold, 2^1024 - 2^970: the first rounds to DBL_MAX, the second
+  -- raises @OverflowError@.
+  forM_ [(13, 2 ^ (1024 :: Int) - 2 ^ (970 :: Int) - 1), (14, 2 ^ (1024 :: Int) - 2 ^ (970 :: Int))] $ \(pr, instant) -> do
+    let huge = inspected </> "applications" </> "44" </> "31" </> show (pr :: Int)
+    createDirectoryIfMissing True huge
+    BS.writeFile (huge </> "binding.json") (BC.pack ("{\"instance_id\": \"github:44:31:pr:" <> show pr <> "\", \"repository\": \"owner/one\", \"pull_request\": " <> show pr <> ", \"topology\": \"v5\"}"))
+    BS.writeFile (huge </> "history.jsonl") (BC.pack ("{\"record\": \"InstanceCreated\", \"instant\": " <> show (instant :: Integer) <> "}\n"))
   pure Side {configured, inspection = Map.insert "HAMSTERDAN_STATE_PATH" inspected configured}
 
 cases :: Side -> Int -> [Case]
@@ -339,7 +347,7 @@ cases side githubPort =
     <> [Case ["validate"] (Map.insert "HAMSTERDAN_GITHUB_APP_ID" "0" side.configured) Nothing]
     -- inspect-instance.
     <> [ Case ["inspect-instance", "--installation", "44", "--repository", "31", "--pr", pr] side.inspection Nothing
-       | pr <- ["7", "8", "9", "10", "11", "12", "-7", "0"]
+       | pr <- ["7", "8", "9", "10", "11", "12", "13", "14", "-7", "0"]
        ]
     <> [Case ["--inst", "4_4", "--repo", "31", "--pr", " 7 ", "inspect-instance"] side.inspection Nothing]
     <> [Case ["validate"] side.inspection Nothing]

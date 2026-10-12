@@ -335,7 +335,7 @@ inspectInstance statePath installationId repositoryId pullRequest = do
         Object members -> do
           instant <- case fromMaybe (Int 0) (lookup' "instant" members) of
             Int i
-              | abs i > maxFloatInteger -> throwIO (PythonException "OverflowError" [PyStr "int too large to convert to float"])
+              | abs i >= floatOverflowInteger -> throwIO (PythonException "OverflowError" [PyStr "int too large to convert to float"])
               | otherwise -> pure (IntInstant i)
             Float d
               | isNaN d || isInfinite d -> malformedInstant
@@ -418,8 +418,11 @@ inspectInstance statePath installationId repositoryId pullRequest = do
       , ("ok", Bool True)
       ]
   where
-    -- The largest integer @float()@ converts without @OverflowError@.
-    maxFloatInteger = truncate (1.7976931348623157e308 :: Double) :: Integer
+    -- The smallest magnitude CPython's int-to-float conversion refuses with
+    -- @OverflowError@: 2^1024 - 2^970, the halfway point between DBL_MAX
+    -- (2^1024 - 2^971) and 2^1024. Below it the integer rounds (half to
+    -- even) to a finite double, at it the rounding reaches 2^1024.
+    floatOverflowInteger = 2 ^ (1024 :: Int) - 2 ^ (970 :: Int) :: Integer
 
 -- | @dict.get@: duplicate members resolve to the last one, as
 -- @json.loads@ builds the dict.
