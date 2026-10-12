@@ -1,0 +1,27 @@
+petrus-argparse
+Copyright 2026 Seasoned
+
+This package ports the parts of CPython 3.14's argparse module that the
+reference command lines use: Petrus's process entry points
+(https://github.com/henriquebastos/petrus, pinned under upstream/petrus) and
+Hamsterdan's (https://github.com/henriquebastos/hamsterdan, pinned under
+upstream/hamsterdan). That covers parsing, abbreviations, subcommands,
+usage and help formatting with the _colorize theme, and the error messages.
+
+The package itself is licensed under the Apache License, Version 2.0 (see
+LICENSE). The upstream projects whose behavior it follows are:
+
+  petrus
+  Copyright Henrique Bastos and contributors
+  Licensed under the Apache License, Version 2.0
+  https://github.com/henriquebastos/petrus
+
+  hamsterdan
+  Copyright Henrique Bastos and contributors
+  Licensed under the Apache License, Version 2.0
+  https://github.com/henriquebastos/hamsterdan
+
+  CPython (Lib/argparse.py, Lib/_colorize.py)
+  Copyright Python Software Foundation
+  Licensed under the Python Software Foundation License Version 2
+  https://www.python.org/

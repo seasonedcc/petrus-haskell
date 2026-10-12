@@ -16,6 +16,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -71,6 +72,9 @@ data Case = Case
   , files :: [(FilePath, BS.ByteString, FileMode)]
   , directories :: [(FilePath, FileMode)]
   , columns :: Text
+  , environment :: [(String, String)]
+  -- ^ Set on both sides, over the inherited environment less its color
+  -- variables.
   , pythonCode :: Int
   -- ^ The reference's exit code: a guard that the case exercises the path
   -- it is meant to (a mis-scripted fake would fail both sides alike).
@@ -78,7 +82,7 @@ data Case = Case
 
 base :: String -> [Text] -> Int -> Case
 base name argv pythonCode =
-  Case {name, argv, responses = [], files = [], directories = [], columns = "80", pythonCode}
+  Case {name, argv, responses = [], files = [], directories = [], columns = "80", environment = [], pythonCode}
 
 with :: [(Text, [Json])] -> Case -> Case
 with extra c = c {responses = c.responses <> extra}
@@ -129,6 +133,10 @@ parsingCases =
   , base "--help" ["--help"] 0
   , base "-h, narrow" ["-h"] 0 `withColumns` "40"
   , base "unknown command" ["bogus"] 2
+  , base "--help, FORCE_COLOR" ["--help"] 0 `withEnvironment` [("FORCE_COLOR", "1")]
+  , base "inspect --help, FORCE_COLOR" ["inspect", "--help"] 0 `withEnvironment` [("FORCE_COLOR", "1")]
+  , base "unknown command, FORCE_COLOR" ["bogus"] 2 `withEnvironment` [("FORCE_COLOR", "1")]
+  , base "--help, FORCE_COLOR and NO_COLOR" ["--help"] 0 `withEnvironment` [("FORCE_COLOR", "1"), ("NO_COLOR", "1")]
   , base "preflight --help" ["preflight", "--help"] 0
   , base "create --help" ["create", "--help"] 0
   , base "inspect --help" ["inspect", "--help"] 0
@@ -149,6 +157,7 @@ parsingCases =
   ]
   where
     withColumns c columns = c {columns}
+    withEnvironment c environment = c {environment}
 
 -- ---------------------------------------------------------------------------
 -- preflight
@@ -577,6 +586,7 @@ setupCases =
           , files = [("private/credential", credential, 0o600), ("private/target.json", target, 0o600)]
           , directories = [("private", 0o700)]
           , columns = "80"
+          , environment = []
           , pythonCode = code
           }
 
@@ -615,7 +625,11 @@ runSide program prefix side c = do
   let path = side </> "bin" <> maybe "" (":" <>) (lookup "PATH" inherited)
       environment =
         [("PATH", path), ("TMPDIR", side </> "tmp"), ("COLUMNS", T.unpack c.columns)]
-          <> [(k, v) | (k, v) <- inherited, k `notElem` ["PATH", "TMPDIR", "COLUMNS", "LINES", "PYTHONPATH", "PYTHONHOME", "GH_TOKEN", "GITHUB_TOKEN"]]
+          <> c.environment
+          <> [ (k, v)
+             | (k, v) <- inherited
+             , k `notElem` ["PATH", "TMPDIR", "COLUMNS", "LINES", "PYTHONPATH", "PYTHONHOME", "GH_TOKEN", "GITHUB_TOKEN", "FORCE_COLOR", "NO_COLOR", "PYTHON_COLORS", "TERM"]
+             ]
   arguments <- mapM (argument . T.replace "<root>" (T.pack side)) c.argv
   (status, stdoutBytes, stderrBytes) <-
     readProcess (setStdin nullStream (setWorkingDir side (setEnv environment (proc program (prefix <> arguments)))))
@@ -703,6 +717,9 @@ differential c = it c.name do
     unless (reference.code == c.pythonCode) $
       expectationFailure ("the reference exited " <> show reference.code <> ", not " <> show c.pythonCode <> ": " <> show reference)
     ported `shouldBe` reference
+    -- A color case colors exactly when FORCE_COLOR is not refused.
+    let forced = lookup "FORCE_COLOR" c.environment == Just "1" && isNothing (lookup "NO_COLOR" c.environment)
+    ("\ESC[" `T.isInfixOf` (reference.out <> reference.err)) `shouldBe` forced
     leftover <- doesDirectoryExist (hs </> "tmp")
     leftover `shouldBe` True
 

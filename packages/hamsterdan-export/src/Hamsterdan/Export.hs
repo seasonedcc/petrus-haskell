@@ -44,21 +44,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Cli.Argparse
-  ( Action (..)
-  , Behavior (..)
-  , Outcome (..)
-  , Parser
-  , Value (..)
-  , ValueType (..)
-  , lookupInteger
-  , lookupList
-  , lookupText
-  , newParser
-  , option
-  , parseArgs
-  , terminalColumns
-  )
+import Petrus.Argparse (ArgumentParser (..), Outcome (..), formattingFor, parse)
+import Petrus.Argparse qualified as Argparse
 import Hamsterdan.Export.Files
 import Hamsterdan.Export.Parallel (parallelMap, writeFiles)
 import Hamsterdan.Python.Object
@@ -1379,30 +1366,26 @@ productionEnvironment = do
   environment <- Map.fromList <$> getEnvironment
   pure ExportEnvironment {environment, output = stdout, errors = stderr}
 
--- | The reference's @ArgumentParser@.
-exportParser :: Parser
+-- | The reference's @ArgumentParser@, decoded.
+exportParser :: ArgumentParser ExportRequest
 exportParser =
-  newParser
-    "python -m hamsterdan.host.export"
-    (Just "Export one PR's durable Hamsterdan state as an offline evidence package.")
-    [ (option ["--state-dir"]) {valueType = AsPath, required = True, help = Just "local copy of /var/lib/hamsterdan"}
-    , (option ["--out"]) {valueType = AsPath, required = True, help = Just "package directory to create"}
-    , (option ["--repository"]) {required = True, help = Just "owner/name of the monitored repository"}
-    , (option ["--pull-request"]) {valueType = AsInt, required = True, help = Just "pull request number"}
-    , (option ["--identity"])
-        { valueType = AsPath
-        , behavior = Append
-        , defaultValue = Just (List [])
-        , help = Just "extra run-identity file to copy into identity/ (repeatable)"
-        }
-    , (option ["--webhook-deliveries"])
-        { valueType = AsPath
-        , behavior = Append
-        , defaultValue = Just (List [])
-        , dest = "webhook_deliveries"
-        , help = Just "directory of raw GitHub delivery records named <delivery_id>-<event>.json (repeatable)"
-        }
-    ]
+  ArgumentParser
+    { prog = "python -m hamsterdan.host.export"
+    , description = Just "Export one PR's durable Hamsterdan state as an offline evidence package."
+    , arguments =
+        ExportRequest
+          <$> Argparse.required Argparse.path ["--state-dir"] [Argparse.help "local copy of /var/lib/hamsterdan"]
+          <*> Argparse.required Argparse.path ["--out"] [Argparse.help "package directory to create"]
+          <*> Argparse.required Argparse.str ["--repository"] [Argparse.help "owner/name of the monitored repository"]
+          <*> Argparse.required Argparse.int ["--pull-request"] [Argparse.help "pull request number"]
+          <*> Argparse.appended Argparse.path ["--identity"] [Argparse.help "extra run-identity file to copy into identity/ (repeatable)"]
+          <*> Argparse.appended
+            Argparse.path
+            ["--webhook-deliveries"]
+            [ Argparse.dest "webhook_deliveries"
+            , Argparse.help "directory of raw GitHub delivery records named <delivery_id>-<event>.json (repeatable)"
+            ]
+    }
 
 -- | @main(argv)@ as @python -m hamsterdan.host.export@ runs it: the exit
 -- status, with every line the reference prints. An exception the
@@ -1410,22 +1393,13 @@ exportParser =
 -- exits 1.
 runExport :: ExportEnvironment -> [Text] -> IO ExitCode
 runExport env argv = do
-  width <- subtract 2 <$> terminalColumns env.environment
-  case parseArgs width exportParser argv of
+  formatting <- formattingFor env.environment env.output
+  case parse formatting exportParser argv of
     Exited status printed problems -> do
       printed' <- printOut env printed
       emit env.errors problems
       pure (if not printed' then ExitFailure 1 else if status == 0 then ExitSuccess else ExitFailure status)
-    Parsed namespace -> do
-      let request =
-            ExportRequest
-              { stateDir = fromMaybe "." (lookupText "state_dir" namespace)
-              , out = fromMaybe "." (lookupText "out" namespace)
-              , repository = fromMaybe "" (lookupText "repository" namespace)
-              , pullRequest = fromMaybe 0 (lookupInteger "pull_request" namespace)
-              , identity = [p | Str p <- lookupList "identity" namespace]
-              , webhookDeliveries = [p | Str p <- lookupList "webhook_deliveries" namespace]
-              }
+    Parsed request -> do
       outcome <- try (exportPackage request)
       case outcome of
         Right report -> do

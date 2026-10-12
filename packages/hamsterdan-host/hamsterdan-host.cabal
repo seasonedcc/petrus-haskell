@@ -63,7 +63,7 @@ library
                   , case-insensitive >=1.2
                   , direct-sqlite >=2.3.27
                   , hamsterdan-agents
-                  , hamsterdan-cli
+                  , petrus-argparse
                   , hamsterdan-contracts
                   , petrus-activity
                   , petrus-agenticus-core
@@ -147,7 +147,7 @@ test-suite hamsterdan-host-test
                   , filepath
                   , hamsterdan-agents
                   , hamsterdan-github
-                  , hamsterdan-cli
+                  , petrus-argparse
                   , hamsterdan-contracts
                   , hamsterdan-host
                   , hamsterdan-readiness

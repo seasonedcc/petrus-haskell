@@ -13,6 +13,7 @@
   "petrus-activity-test": 2,
   "petrus-agenticus-core-test": 4,
   "petrus-agenticus-runtime-test": 21,
+  "petrus-argparse-test": 1,
   "petrus-agenticus-test": 12,
   "petrus-cel-test": 1,
   "petrus-dsl-test": 1,

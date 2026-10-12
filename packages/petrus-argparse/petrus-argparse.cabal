@@ -1,0 +1,64 @@
+cabal-version:      3.4
+name:               petrus-argparse
+version:            0.1.0.0
+synopsis:           CPython 3.14's argparse for the Petrus and Hamsterdan command lines
+description:
+  The parsing, help, usage and error behavior of CPython 3.14's
+  @argparse.ArgumentParser@ for the command lines of the Petrus process
+  entry points (@python -m petrus.motus.worker@, the ZeroMQ server) and of
+  Hamsterdan (@python -m hamsterdan.host@, its export, the operator):
+  store, append and flag options typed as @str@, @int@, @float@ or
+  @pathlib.Path@, choices, defaults, required options, positionals, the
+  automatic @-h/--help@ and subcommands, with @HelpFormatter@ and
+  @textwrap@ wrapping to the same width and @_colorize@'s colors.
+  "Petrus.Argparse" declares and decodes a command line as one typed,
+  applicative value.
+license:            Apache-2.0
+license-file:       LICENSE
+copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Console
+build-type:         Simple
+extra-doc-files:    NOTICE
+                    DIVERGENCES.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Argparse
+                    Petrus.Argparse.Parser
+  build-depends:    base >=4.18 && <5
+                  , array >=0.5
+                  , containers >=0.6
+                  , petrus-json
+                  , text >=2.0
+  ghc-options:      -O2
+
+test-suite petrus-argparse-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  build-depends:    base >=4.18 && <5
+                  , bytestring
+                  , containers
+                  , hspec >=2.10
+                  , petrus-argparse
+                  , petrus-json
+                  , petrus-test-support
+                  , text
+                  , typed-process
+  ghc-options:      -threaded -rtsopts

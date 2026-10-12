@@ -77,7 +77,6 @@ module Hamsterdan.Operator
   , operatorParser
   , operatorParserFor
   , OperatorCommand (..)
-  , decodeOperatorCommand
   , OperatorEnvironment (..)
   , productionEnvironment
   , runOperator
@@ -101,7 +100,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
-import Hamsterdan.Cli.Argparse
+import Petrus.Argparse (Arg, ArgumentParser (..), Outcome (..), formattingFor, parse, pathText)
+import Petrus.Argparse qualified as Argparse
 import Hamsterdan.Python.Object
   ( PV (..)
   , PythonException (..)
@@ -1710,19 +1710,18 @@ inspectAuthority op prNumber expected = do
 -- ---------------------------------------------------------------------------
 -- Command line
 
--- | @parser()@.
-operatorParser :: Parser
+-- | @parser()@, decoded: the subcommand's name with its 'OperatorCommand'.
+operatorParser :: ArgumentParser (Text, OperatorCommand)
 operatorParser = operatorParserFor hbNetworkFixture
 
 -- | @parser()@ over a fixture: @inspect --bot-login@ defaults to its bot.
-operatorParserFor :: Fixture -> Parser
+operatorParserFor :: Fixture -> ArgumentParser (Text, OperatorCommand)
 operatorParserFor fixture =
-  newParser
-    prog
-    Nothing
-    [subcommands prog "command" [(name, actions) | (name, actions, _) <- operatorCommands fixture]]
-  where
-    prog = "python -m hamsterdan.operator"
+  ArgumentParser
+    { prog = "python -m hamsterdan.operator"
+    , description = Nothing
+    , arguments = Argparse.subcommands "command" [(name, (name,) <$> arguments) | (name, arguments) <- operatorCommands fixture]
+    }
 
 -- | The decoded command line: each subcommand with what it reads.
 data OperatorCommand
@@ -1739,68 +1738,29 @@ data OperatorCommand
     QualificationSetup FilePath FilePath FilePath
 
 -- | The subcommands, in the reference's order: each name with its
--- arguments and how its namespace decodes. The parser and the decoder are
--- both read from here, so every name the parser admits has a decoder.
--- Required options and choices are enforced by @parse_args@ (status 2),
--- so a decoder only reads what the parse has already checked.
-operatorCommands :: Fixture -> [(Text, [Action], Namespace -> OperatorCommand)]
+-- arguments, which declare its parser and decode its namespace. Required
+-- options and choices are enforced by @parse_args@ (status 2).
+operatorCommands :: Fixture -> [(Text, Arg OperatorCommand)]
 operatorCommands fixture =
-  [ ("preflight", [option ["--health-url"]], Preflight . lookupText "health_url")
-  ,
-    ( "create"
-    , [(option ["--scenario"]) {choices = Just creatableScenarios, required = True}]
-    , Create . text "scenario"
-    )
-  , ("prepare-broker", [], const PrepareBroker)
+  [ ("preflight", Preflight <$> Argparse.option Argparse.str ["--health-url"] [])
+  , ("create", Create <$> Argparse.required (Argparse.oneOf creatableScenarios) ["--scenario"] [])
+  , ("prepare-broker", pure PrepareBroker)
   ,
     ( "inspect"
-    ,
-      [ (option ["--pr"]) {valueType = AsInt, required = True}
-      , (option ["--bot-login"]) {defaultValue = Just (Str (fixtureBotLogin fixture))}
-      , (option ["--expect-hero-review"]) {behavior = StoreTrue, defaultValue = Just (BoolValue False)}
-      , (option ["--expect-readiness"]) {choices = Just ["present", "absent"], defaultValue = Just (Str "present")}
-      ]
-    , \namespace ->
-        Inspect
-          (integer "pr" namespace)
-          InspectOptions
-            { botLogin = text "bot_login" namespace
-            , expectHeroReview = lookupBool "expect_hero_review" namespace
-            , expectReadiness = text "expect_readiness" namespace == "present"
-            }
+    , inspectCommand
+        <$> pr
+        <*> Argparse.defaulted Argparse.str ["--bot-login"] (fixtureBotLogin fixture) []
+        <*> Argparse.flag ["--expect-hero-review"] []
+        <*> Argparse.defaulted (Argparse.choice [("present", True), ("absent", False)]) ["--expect-readiness"] True []
     )
-  ,
-    ( "inspect-authority"
-    ,
-      [ (option ["--pr"]) {valueType = AsInt, required = True}
-      , (option ["--expect"]) {choices = Just authorityExpectations, required = True}
-      ]
-    , \namespace -> InspectAuthority (integer "pr" namespace) (text "expect" namespace)
-    )
-  ,
-    ( "qualification-setup"
-    ,
-      [ (option ["--credential-file"]) {valueType = AsPath, required = True}
-      , (option ["--target-file"]) {valueType = AsPath, required = True}
-      , (option ["--spent-marker"]) {valueType = AsPath, required = True}
-      ]
-    , \namespace -> QualificationSetup (path "credential_file" namespace) (path "target_file" namespace) (path "spent_marker" namespace)
-    )
+  , ("inspect-authority", InspectAuthority <$> pr <*> Argparse.required (Argparse.oneOf authorityExpectations) ["--expect"] [])
+  , ("qualification-setup", QualificationSetup <$> file ["--credential-file"] <*> file ["--target-file"] <*> file ["--spent-marker"])
   ]
   where
-    text key = fromMaybe "" . lookupText key
-    integer key = fromMaybe 0 . lookupInteger key
-    path key = T.unpack . text key
-
--- | The namespace of 'operatorParserFor' as the subcommand's name and its
--- 'OperatorCommand'. The subparsers are required and their names are
--- 'operatorCommands', so a parse always decodes; 'Nothing' is a namespace
--- from another parser.
-decodeOperatorCommand :: Fixture -> Namespace -> Maybe (Text, OperatorCommand)
-decodeOperatorCommand fixture namespace = do
-  name <- lookupText "command" namespace
-  decode <- listToMaybe [decode | (candidate, _, decode) <- operatorCommands fixture, candidate == name]
-  pure (name, decode namespace)
+    pr = Argparse.required Argparse.int ["--pr"] []
+    inspectCommand prNumber botLogin expectHeroReview expectReadiness =
+      Inspect prNumber InspectOptions {botLogin, expectHeroReview, expectReadiness}
+    file strings = T.unpack <$> Argparse.required Argparse.path strings []
 
 -- | Where the command line reads and writes.
 data OperatorEnvironment = OperatorEnvironment
@@ -1821,18 +1781,14 @@ productionEnvironment = do
 -- last line of its traceback and exits 1.
 runOperator :: OperatorEnvironment -> [Text] -> IO ExitCode
 runOperator env argv = do
-  width <- subtract 2 <$> terminalColumns env.environment
+  formatting <- formattingFor env.environment env.output
   let fixture = env.operator.fixture
-  case parseArgs width (operatorParserFor fixture) argv of
+  case parse formatting (operatorParserFor fixture) argv of
     Exited status printed problems -> do
       printed' <- printOut env printed
       emit env.errors problems
       pure (if not printed' then ExitFailure 1 else if status == 0 then ExitSuccess else ExitFailure status)
-    Parsed namespace -> case decodeOperatorCommand fixture namespace of
-      Nothing -> do
-        emit env.errors "the parsed namespace names no operator command\n"
-        pure (ExitFailure 2)
-      Just (name, command) -> dispatch name command
+    Parsed (name, command) -> dispatch name command
   where
     op = env.operator
     dispatch name command = do

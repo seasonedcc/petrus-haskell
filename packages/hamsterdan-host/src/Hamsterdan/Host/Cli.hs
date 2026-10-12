@@ -1,17 +1,16 @@
 -- | The standalone host command line (@host/__main__.py@):
 -- @serve@, @validate@, @inbox@, @requeue@ and @inspect-instance@.
 --
--- The reference's @argparse@ parser is declared with
--- "Hamsterdan.Cli.Argparse" (CPython 3.14's parsing, messages, usage and
--- help, wrapped to @COLUMNS@, else the terminal, else 80, minus 2; help on
--- stdout with 0, errors on stderr with 2), and its namespace is decoded
--- once into a 'HostCommand', with the reference's checks after
--- @parse_args@ as the decoder's refusals.
+-- The reference's @argparse@ parser is declared with "Petrus.Argparse"
+-- (CPython 3.14's parsing, messages, usage and help, wrapped to @COLUMNS@,
+-- else the terminal, else 80, minus 2, and colored as @_colorize@ decides;
+-- help on stdout with 0, errors on stderr with 2). The declaration decodes
+-- to a 'HostCommand', with the reference's checks after @parse_args@ as
+-- its refusals.
 module Hamsterdan.Host.Cli
   ( -- * The command line
     HostCommand (..)
   , hostParser
-  , decodeCommand
   , pythonFloat
 
     -- * @inspect-instance@
@@ -37,20 +36,20 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Agents.Protocol (AgentRunner (..))
-import Hamsterdan.Cli.Argparse
-  ( Action (..)
-  , Namespace
+import Petrus.Argparse
+  ( ArgumentParser (..)
+  , Arg
   , Outcome (..)
-  , Parser (..)
-  , Value (..)
-  , ValueType (..)
-  , formatUsage
-  , lookupInteger
-  , lookupText
-  , newParser
+  , choice
+  , defaulted
+  , errorText
+  , formattingOf
+  , help
+  , int
   , option
-  , parseArgs
+  , parse
   , positional
+  , str
   , terminalColumns
   )
 import Hamsterdan.Host.Agenticus (AgentCompositionError (..))
@@ -110,53 +109,47 @@ data HostCommand
     InspectInstance Integer Integer Integer
   deriving stock (Eq, Show)
 
--- | @parser()@. The @--host@ default is @HAMSTERDAN_HOST@ or @127.0.0.1@;
--- the @--port@ default, @int(HAMSTERDAN_PORT or "8000")@, is passed in
--- already converted.
-hostParser :: Text -> Integer -> Parser
+-- | The @command@ choices, in the reference's order.
+data CommandName = ServeName | ValidateName | InboxName | RequeueName | InspectInstanceName
+  deriving stock (Eq)
+
+-- | @parser()@, decoded. The @--host@ default is @HAMSTERDAN_HOST@ or
+-- @127.0.0.1@; the @--port@ default, @int(HAMSTERDAN_PORT or "8000")@, is
+-- passed in already converted. A 'Left' is the reference's
+-- @parser().error(...)@ after @parse_args@.
+hostParser :: Text -> Integer -> ArgumentParser (Either Text HostCommand)
 hostParser hostDefault portDefault =
-  newParser
-    "python -m hamsterdan.host"
-    (Just "Run or validate the Hamsterdan GitHub App host. Credentials are supplied by the selected Environment.")
-    [ (positional "command") {choices = Just (map fst commands)}
-    , (option ["--delivery"]) {help = Just "canonical failed GitHub delivery UUID to requeue"}
-    , (option ["--installation"]) {valueType = AsInt}
-    , (option ["--repository"]) {valueType = AsInt}
-    , (option ["--pr"]) {valueType = AsInt}
-    , (option ["--host"]) {defaultValue = Just (Str hostDefault)}
-    , (option ["--port"]) {valueType = AsInt, defaultValue = Just (IntValue portDefault)}
-    ]
-
--- | The command choices, in the reference's order, each with how it reads
--- the namespace. A 'Left' is the reference's @parser().error(...)@ after
--- @parse_args@.
-commands :: [(Text, Namespace -> Either Text HostCommand)]
-commands =
-  [ ("serve", \namespace -> Right (Serve (text "host" namespace) (integer "port" namespace)))
-  , ("validate", const (Right Validate))
-  , ("inbox", const (Right Inbox))
-  , ("requeue", \namespace -> if T.null (text "delivery" namespace) then Left "requeue requires --delivery" else Right (Requeue (text "delivery" namespace)))
-  ,
-    ( "inspect-instance"
-    , \namespace ->
-        maybe (Left "inspect-instance requires --installation, --repository, and --pr") Right $
-          InspectInstance <$> lookupInteger "installation" namespace <*> lookupInteger "repository" namespace <*> lookupInteger "pr" namespace
-    )
-  ]
+  ArgumentParser
+    { prog = "python -m hamsterdan.host"
+    , description = Just "Run or validate the Hamsterdan GitHub App host. Credentials are supplied by the selected Environment."
+    , arguments
+    }
   where
-    -- @--host@ and @--port@ always hold their defaults; an absent
-    -- @--delivery@ is @None@, which the reference's @not args.delivery@
-    -- refuses like the empty string.
-    text name = fromMaybe "" . lookupText name
-    integer name = fromMaybe 0 . lookupInteger name
-
--- | The namespace of 'hostParser' as a 'HostCommand', or the usage error
--- the reference reports after parsing. @command@ is a required choice of
--- 'commands', so the parse always holds one.
-decodeCommand :: Namespace -> Either Text HostCommand
-decodeCommand namespace = case lookupText "command" namespace >>= (`lookup` commands) of
-  Just decode -> decode namespace
-  Nothing -> Left "the following arguments are required: command"
+    arguments :: Arg (Either Text HostCommand)
+    arguments =
+      decode
+        <$> positional
+          (choice [("serve", ServeName), ("validate", ValidateName), ("inbox", InboxName), ("requeue", RequeueName), ("inspect-instance", InspectInstanceName)])
+          "command"
+          []
+        <*> option str ["--delivery"] [help "canonical failed GitHub delivery UUID to requeue"]
+        <*> option int ["--installation"] []
+        <*> option int ["--repository"] []
+        <*> option int ["--pr"] []
+        <*> defaulted str ["--host"] hostDefault []
+        <*> defaulted int ["--port"] portDefault []
+    decode name delivery installation repository pr host port = case name of
+      ServeName -> Right (Serve host port)
+      ValidateName -> Right Validate
+      InboxName -> Right Inbox
+      -- An absent @--delivery@ is @None@, which the reference's @not
+      -- args.delivery@ refuses like the empty string.
+      RequeueName -> case delivery of
+        Just given | not (T.null given) -> Right (Requeue given)
+        _ -> Left "requeue requires --delivery"
+      InspectInstanceName ->
+        maybe (Left "inspect-instance requires --installation, --repository, and --pr") Right $
+          InspectInstance <$> installation <*> repository <*> pr
 
 -- | @float(text)@: 'Left' with CPython's message when it does not convert
 -- (petrus-json's 'parsePythonFloat', the one @float()@ emulation).
@@ -468,7 +461,7 @@ handledMessage e
 -- | @main()@ with @sys.argv[1:]@; the exit status.
 runCli :: CliEnvironment -> [Text] -> IO ExitCode
 runCli env argv = do
-  width <- subtract 2 <$> env.columns
+  formatting <- formattingOf env.environment <$> env.columns <*> hIsTerminalDevice env.output
   let say handle text = BS.hPut handle (TE.encodeUtf8 text) >> hFlush handle
       escaped e = do
         say env.errors (uncaughtText e)
@@ -481,7 +474,7 @@ runCli env argv = do
       let parser = hostParser hostDefault portDefault
           -- @parser().error(message)@.
           usageError message = do
-            say env.errors (formatUsage width parser <> parser.prog <> ": error: " <> message <> "\n")
+            say env.errors (errorText formatting parser message)
             pure (ExitFailure 2)
           run command = do
             service <- newIORef Nothing
@@ -602,12 +595,12 @@ runCli env argv = do
             case closing of
               Left failure -> escaped failure
               Right () -> either escaped pure settled
-      case parseArgs width parser argv of
+      case parse formatting parser argv of
         Exited status printed problems -> do
           say env.output printed
           say env.errors problems
           pure (if status == 0 then ExitSuccess else ExitFailure status)
-        Parsed namespace -> either usageError run (decodeCommand namespace)
+        Parsed decoded -> either usageError run decoded
   where
     dumpsSorted value = either (const "null") id (dumpsText defaultDumps {Json.sortKeys = True} value)
 

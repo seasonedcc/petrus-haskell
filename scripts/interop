@@ -71,6 +71,7 @@ PATTERNS: Dict[str, List[str]] = {
     "petrus-agenticus": ["differential/"],
     "petrus-agenticus-core": ["differential", "interop: custody", "hands/test_conformance.py"],
     "petrus-agenticus-runtime": ["differential/", "hosts differential corpus", "verbatim and interop"],
+    "petrus-argparse": ["argparse against the pinned CPython"],
     "petrus-cel": ["differential corpus", "live round trip through the pinned reference"],
     "petrus-dsl": ["differential corpus", "live round trip through the pinned reference"],
     "petrus-dst": [

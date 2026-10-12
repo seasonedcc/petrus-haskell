@@ -58,12 +58,12 @@ Below are the differences that remain, with their rationale.
    appended. The tracebacks `serve` logs (a lifespan failure, `Exception in
    ASGI application`) are the header and that same line. The reference
    prints the frames as well.
-3. **Help and usage text has no color.**
-   - CPython 3.14's `argparse` colors help when the stream is a terminal and
-     `NO_COLOR` / `PYTHON_COLORS` allow it.
-   - The port writes the plain text, which is what the reference writes to
-     a pipe. That is the differential test's setting.
-   - The width is the same: `COLUMNS`, else the terminal, else 80.
+3. **Help and usage colors: resolved, no longer a difference.**
+   petrus-argparse colors help, usage and errors as CPython 3.14's
+   `_colorize` decides (`PYTHON_COLORS`, `NO_COLOR`, `FORCE_COLOR`,
+   `TERM=dumb`, then whether standard output is a terminal), with the
+   reference's theme. The width is the same: `COLUMNS`, else the terminal,
+   else 80. The differential runs `FORCE_COLOR` cases.
 4. **Haskell-native failures get the nearest Python class name.** Where a
    failure class reaches History, the inbox (`error_class`), the status
    document or a log line (`error_class=…`), `Hamsterdan.Host.ExceptionClass`

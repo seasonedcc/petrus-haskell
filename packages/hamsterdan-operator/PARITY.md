@@ -15,7 +15,7 @@ reference is missing. It is never skipped.
 | --- | --- | --- |
 | `src/hamsterdan/operator.py`: the demo commands (`preflight`, `create`, `prepare_broker`, `inspect`, `inspect_authority`) and their helpers | `Hamsterdan.Operator` | `OperatorSpec` and `DifferentialSpec` |
 | `operator.py`: `qualification_setup`, `_consume_private_file`, `_parse_setup_refs`, `_setup_subprocess` | `Hamsterdan.Operator` | `OperatorSpec`, `QualificationSetupLocalSpec` and `DifferentialSpec` |
-| `operator.py`: `parser` and `main` (argparse, the JSON report, exit statuses) | `Hamsterdan.Operator.runOperator`, `app/Main.hs` (`hamsterdan-operator`), hamsterdan-cli's `Hamsterdan.Cli.Argparse` | `OperatorSpec` and `DifferentialSpec`, which runs the binary |
+| `operator.py`: `parser` and `main` (argparse, the JSON report, exit statuses) | `Hamsterdan.Operator.runOperator`, `app/Main.hs` (`hamsterdan-operator`), petrus-argparse's `Petrus.Argparse` | `OperatorSpec` and `DifferentialSpec`, which runs the binary |
 | `src/hamsterdan/host/publication_qualification.py`: the publication assertions, the agent result and cleanup fences, `AtomicSetupPush`, the setup qualification sequence and its sanitized evidence | `Hamsterdan.Host.PublicationQualification` | `PublicationQualificationSpec`, `TypeGuaranteeSpec` and `QualificationSetupLocalSpec` |
 | The CPython calls these make: `os.open`/`fstat`/`lstat`/`stat(dir_fd=..., follow_symlinks=False)`, `os.path.abspath`/`normpath`, `pathlib` parents and names, `shutil.which`, `shutil.rmtree`, `tempfile`, `json.loads` | `Hamsterdan.Operator.Posix` (with `cbits/stat.c` and `cbits/rmtree.c`), `Hamsterdan.Operator.Python`, `Hamsterdan.Operator.FastJson` | the suites above, `FastJsonSpec` and `RmtreeSpec` against CPython |
 | `deployment/Containerfile`, `.dockerignore`, `deployment/config`, `deployment/pi`, `scripts/with-runtime-secrets` | the files of the same names at the repository root, plus `deployment/python-shim` and `cabal.project.freeze` | `ContainerSpec` and `SecretLaunchSpec`; see "Container runtime contract" below |
@@ -26,7 +26,7 @@ The package reuses:
   model the exporter shares: `json.loads`, `json.dumps(sort_keys=True)`, the
   exception lines) and `Hamsterdan.Python.*` (`str` built-ins, `hashlib`,
   `urllib.parse.quote`);
-- hamsterdan-cli (`argparse`);
+- petrus-argparse (`argparse`);
 - hamsterdan-contracts (`ChangeResult` and the readiness vocabulary);
 - hamsterdan-host (`Hamsterdan.Host.GitPublish`'s publication categories, and
   the `hamsterdan-host` binary that the shim tests run);
@@ -116,7 +116,7 @@ same files left).
 
 ## Differential suite
 
-`DifferentialSpec` runs 130 command lines through both
+`DifferentialSpec` runs 134 command lines through both
 `python -I -B -m hamsterdan.operator` and the `hamsterdan-operator` binary.
 Each side runs in its own directory, with `PATH` starting with scripted
 fakes of `gh`, `git`, `curl` and `python` (modes of the test binary that log
@@ -133,11 +133,12 @@ must give:
 
 Before comparing, it replaces each side's own root, temporary-directory
 suffixes and UTC time stamps with placeholders. The suite collects every
-mismatch before failing, and a 131st example checks that every subcommand
+mismatch before failing, and a 135th example checks that every subcommand
 has cases. The cases:
 
-- **Argument parsing (21):** help at several widths, every parser error
-  (undecodable arguments among them), each subcommand's help.
+- **Argument parsing (25):** help at several widths and under
+  `FORCE_COLOR` / `NO_COLOR`, every parser error (undecodable arguments
+  among them), each subcommand's help.
 - **`preflight` (16):** legacy, App and delegated brokers, missing
   authentication, missing or malformed provider answers, wrong
   repositories and workflows, healthy, malformed, unreachable, empty and

@@ -1,22 +1,21 @@
 {-# LANGUAGE CApiFFI #-}
 
--- | CPython 3.14's @argparse@, for the command lines Hamsterdan's operator
--- tools declare.
+-- | CPython 3.14's @argparse@ for the command lines the references declare.
+-- The typed way to declare and decode one is "Petrus.Argparse"; this module
+-- is the parser underneath it.
 --
 -- A 'Parser' is declared the way the reference declares its
 -- @ArgumentParser@: options that store, append or set a flag, typed as
--- @str@, @int@ or @pathlib.Path@, with choices, defaults and required
--- markers, the automatic @-h/--help@, and one required group of
+-- @str@, @int@, @float@ or @pathlib.Path@, with choices, defaults and
+-- required markers, the automatic @-h/--help@, and one required group of
 -- subcommands. 'parseArgs' then classifies and consumes the argument
 -- strings exactly as @ArgumentParser.parse_args@ does (prefix
 -- abbreviations, @--opt=value@, single-dash chaining, negative-number-like
 -- values, @--@, subparsers and their unrecognized arguments), and returns
 -- the same namespace or the same help, usage and error text, wrapped by
--- the same @HelpFormatter@ and @textwrap@ rules to the same width.
---
--- Help is never colored: the reference colors it only when the stream is a
--- terminal, and its plain text is what it writes to a pipe.
-module Hamsterdan.Cli.Argparse
+-- the same @HelpFormatter@ and @textwrap@ rules to the same width and
+-- colored by the same @_colorize@ theme.
+module Petrus.Argparse.Parser
   ( -- * Declaring a parser
     Parser (..)
   , Action (..)
@@ -31,22 +30,32 @@ module Hamsterdan.Cli.Argparse
     -- * Parsing
   , Namespace
   , Outcome (..)
+  , Formatting (..)
   , parseArgs
+  , errorText
   , lookupText
   , lookupInteger
   , lookupBool
   , lookupList
 
     -- * Formatting
+  , Theme (..)
+  , plainTheme
+  , colorTheme
+  , decolor
   , formatUsage
   , formatHelp
   , wrap
 
-    -- * Python semantics the parser relies on
-  , pythonInt
-  , pathText
+    -- * The terminal
+  , canColorize
   , terminalColumns
   , environmentColumns
+
+    -- * Python semantics the parser relies on
+  , pythonInt
+  , pythonFloat
+  , pathText
   ) where
 
 import Data.Array (Array, bounds, listArray, (!))
@@ -63,8 +72,8 @@ import Foreign.C.Types (CInt (..), CULong (..))
 import Foreign.Marshal.Alloc (allocaBytes)
 import Foreign.Ptr (Ptr)
 import Foreign.Storable (peekElemOff)
-import Hamsterdan.Python.Text (strRepr)
-import Hamsterdan.Python.Text qualified as Py
+import Petrus.Json.Limits (maxIntStrDigits)
+import Petrus.Json.Python (isPythonSpace, parsePythonFloat, parsePythonInt, pythonDecimal, pythonStrRepr)
 
 -- ---------------------------------------------------------------------------
 -- Declarations
@@ -75,6 +84,8 @@ data ValueType
     AsStr
   | -- | @int@: 'pythonInt', or @invalid int value@.
     AsInt
+  | -- | @float@: 'pythonFloat', or @invalid float value@.
+    AsFloat
   | -- | @pathlib.Path@: never fails; the namespace holds @str(Path(value))@.
     AsPath
   deriving stock (Eq, Show)
@@ -84,6 +95,7 @@ data Value
   = None
   | Str Text
   | IntValue Integer
+  | FloatValue Double
   | BoolValue Bool
   | List [Value]
   deriving stock (Eq, Show)
@@ -207,13 +219,21 @@ nargs action = case action.behavior of
 type Namespace = Map Text Value
 
 -- | What @parser.parse_args(argv)@ does.
-data Outcome
+data Outcome a
   = -- | The parse finished.
-    Parsed Namespace
+    Parsed a
   | -- | The parser exited: the status, what it wrote to stdout and what it
     -- wrote to stderr (help: status 0 on stdout; errors: status 2 on
     -- stderr).
     Exited Int Text Text
+  deriving stock (Eq, Show, Functor)
+
+-- | How @HelpFormatter@ lays text out: its width (@COLUMNS - 2@) and its
+-- theme (@_set_color@).
+data Formatting = Formatting
+  { width :: Int
+  , theme :: Theme
+  }
   deriving stock (Eq, Show)
 
 lookupText :: Text -> Namespace -> Maybe Text
@@ -253,26 +273,26 @@ actionName action
   | Just name <- action.metavar = Just name
   | otherwise = Just action.dest
 
--- | @parser.parse_args(argv)@ at a formatter width (@COLUMNS - 2@).
-parseArgs :: Int -> Parser -> [Text] -> Outcome
-parseArgs width parser argv = case parseKnownArgs width parser argv of
+-- | @parser.parse_args(argv)@.
+parseArgs :: Formatting -> Parser -> [Text] -> Outcome Namespace
+parseArgs formatting parser argv = case parseKnownArgs formatting parser argv of
   Left (Exit status out err) -> Exited status out err
-  Left (ArgumentError message) -> usageError width parser message
+  Left (ArgumentError message) -> Exited 2 "" (errorText formatting parser message)
   Right (namespace, extras)
     | null extras -> Parsed namespace
-    | otherwise -> usageError width parser ("unrecognized arguments: " <> T.unwords extras)
+    | otherwise -> Exited 2 "" (errorText formatting parser ("unrecognized arguments: " <> T.unwords extras))
 
-usageError :: Int -> Parser -> Text -> Outcome
-usageError width parser message = Exited 2 "" (formatUsage width parser <> parser.prog <> ": error: " <> message <> "\n")
+-- | What @parser.error(message)@ writes to stderr (it then exits 2): the
+-- usage and @prog: error: message@.
+errorText :: Formatting -> Parser -> Text -> Text
+errorText formatting parser message = formatUsage formatting parser <> parser.prog <> ": error: " <> message <> "\n"
 
 -- | @parse_known_args@: errors at this level already rendered with this
 -- parser's usage.
-parseKnownArgs :: Int -> Parser -> [Text] -> Either Stop (Namespace, [Text])
-parseKnownArgs width parser argv =
-  case parseKnownInner width parser argv defaults of
-    Left (ArgumentError message) -> case usageError width parser message of
-      Exited status out err -> Left (Exit status out err)
-      Parsed _ -> Left (ArgumentError message)
+parseKnownArgs :: Formatting -> Parser -> [Text] -> Either Stop (Namespace, [Text])
+parseKnownArgs formatting parser argv =
+  case parseKnownInner formatting parser argv defaults of
+    Left (ArgumentError message) -> Left (Exit 2 "" (errorText formatting parser message))
     Left stop -> Left stop
     Right result -> Right result
   where
@@ -290,8 +310,8 @@ data St = St
   , unrecognized :: [Text]
   }
 
-parseKnownInner :: Int -> Parser -> [Text] -> Namespace -> P (Namespace, [Text])
-parseKnownInner width parser argStrings initial = do
+parseKnownInner :: Formatting -> Parser -> [Text] -> Namespace -> P (Namespace, [Text])
+parseKnownInner formatting parser argStrings initial = do
   st <- mainLoop 0 St {namespace = initial, seen = Set.empty, extras = [], positionals = positionalIndices, unrecognized = []}
   let missing = [name | (index, action) <- indexed, not (Set.member index st.seen), action.required, Just name <- [actionName action]]
   if not (null missing)
@@ -412,7 +432,7 @@ parseKnownInner width parser argStrings initial = do
               if argCount == 0 && T.index string 1 /= '-' && not (T.null ex)
                 then
                   if maybe False (not . T.null) sep || T.head ex == '-'
-                    then argumentError action ("ignored explicit argument " <> strRepr ex)
+                    then argumentError action ("ignored explicit argument " <> pythonStrRepr ex)
                     else do
                       let acc' = acc <> [(index, [], string)]
                           next = T.pack ['-', T.head ex]
@@ -428,7 +448,7 @@ parseKnownInner width parser argStrings initial = do
                 else
                   if argCount == 1
                     then pure (acc <> [(index, [ex], string)], start + 1, [])
-                    else argumentError action ("ignored explicit argument " <> strRepr ex)
+                    else argumentError action ("ignored explicit argument " <> pythonStrRepr ex)
             Nothing -> do
               argCount <- matchArgument action (patternFrom (start + 1))
               pure (acc <> [(index, slice (start + 1) (start + 1 + argCount), string)], start + 1 + argCount, [])
@@ -470,7 +490,7 @@ parseKnownInner width parser argStrings initial = do
       let action = actionAt index
           st' = st {seen = Set.insert index st.seen}
       case action.behavior of
-        ShowHelp -> Left (Exit 0 (formatHelp width parser) "")
+        ShowHelp -> Left (Exit 0 (formatHelp formatting parser) "")
         StoreTrue -> pure st' {namespace = Map.insert action.dest (BoolValue True) st'.namespace}
         Store -> do
           value <- singleValue action args
@@ -489,7 +509,7 @@ parseKnownInner width parser argStrings initial = do
             case lookup name parsers of
               Nothing -> pure st' {namespace}
               Just sub -> do
-                (subNamespace, subExtras) <- parseKnownArgs width sub rest
+                (subNamespace, subExtras) <- parseKnownArgs formatting sub rest
                 pure st' {namespace = Map.union subNamespace namespace, unrecognized = st'.unrecognized <> subExtras}
 
     singleValue action = \case
@@ -505,7 +525,7 @@ parseKnownInner width parser argStrings initial = do
     checkChoice action text = case action.choices of
       Just names
         | text `notElem` names ->
-            argumentError action ("invalid choice: " <> strRepr text <> " (choose from " <> T.intercalate ", " (map strRepr names) <> ")")
+            argumentError action ("invalid choice: " <> pythonStrRepr text <> " (choose from " <> T.intercalate ", " (map pythonStrRepr names) <> ")")
       _ -> pure ()
 
     -- Defaults that are strings are converted by the action's type.
@@ -530,7 +550,10 @@ convert action text = case action.valueType of
   AsPath -> pure (Str (pathText text))
   AsInt -> case pythonInt text of
     Just value -> pure (IntValue value)
-    Nothing -> argumentError action ("invalid int value: " <> strRepr text)
+    Nothing -> argumentError action ("invalid int value: " <> pythonStrRepr text)
+  AsFloat -> case pythonFloat text of
+    Just value -> pure (FloatValue value)
+    Nothing -> argumentError action ("invalid float value: " <> pythonStrRepr text)
 
 -- | @_match_arguments_partial@ for the positional patterns.
 matchPartial :: [Action] -> String -> [Int]
@@ -584,9 +607,69 @@ headOr fallback = \case
 -- ---------------------------------------------------------------------------
 -- Formatting
 
--- | @parser.format_usage()@ at a formatter width (@COLUMNS - 2@).
-formatUsage :: Int -> Parser -> Text
-formatUsage width parser = "usage: " <> usageBody width parser <> "\n"
+-- | @_colorize.get_theme().argparse@: the escape sequences around each part
+-- of usage and help.
+data Theme = Theme
+  { usage :: Text
+  , prog :: Text
+  , heading :: Text
+  , summaryLongOption :: Text
+  , summaryShortOption :: Text
+  , summaryLabel :: Text
+  , summaryAction :: Text
+  , longOption :: Text
+  , shortOption :: Text
+  , label :: Text
+  , action :: Text
+  , reset :: Text
+  }
+  deriving stock (Eq, Show)
+
+-- | @get_theme(force_no_color=True).argparse@: every sequence empty.
+plainTheme :: Theme
+plainTheme = Theme "" "" "" "" "" "" "" "" "" "" "" ""
+
+-- | @get_theme(force_color=True).argparse@ (the default theme).
+colorTheme :: Theme
+colorTheme =
+  Theme
+    { usage = boldBlue
+    , prog = "\ESC[1;35m"
+    , heading = boldBlue
+    , summaryLongOption = "\ESC[36m"
+    , summaryShortOption = "\ESC[32m"
+    , summaryLabel = "\ESC[33m"
+    , summaryAction = "\ESC[32m"
+    , longOption = "\ESC[1;36m"
+    , shortOption = "\ESC[1;32m"
+    , label = "\ESC[1;33m"
+    , action = "\ESC[1;32m"
+    , reset = "\ESC[0m"
+    }
+  where
+    boldBlue = "\ESC[1;34m"
+
+-- | @_colorize.decolor@: the text without any of @ANSIColors@' sequences.
+decolor :: Text -> Text
+decolor text
+  | T.any (== '\ESC') text = foldr (`T.replace` "") text colorCodes
+  | otherwise = text
+
+-- | @_colorize.ColorCodes@.
+colorCodes :: [Text]
+colorCodes =
+  "\ESC[0m"
+    : "\ESC[1m"
+    : [ "\ESC[" <> prefix <> T.pack (show code) <> "m"
+      | (prefix, codes) <- [("", [30 .. 37 :: Int]), ("1;", [30 .. 37]), ("", [90 .. 97]), ("", [40 .. 47]), ("", [100 .. 107])]
+      , code <- codes
+      ]
+
+-- | @parser.format_usage()@.
+formatUsage :: Formatting -> Parser -> Text
+formatUsage formatting parser = t.usage <> "usage: " <> t.reset <> usageBody formatting parser <> "\n"
+  where
+    t = formatting.theme
 
 -- | @_format_args@ for the action, with its default metavar.
 formatArgs :: Action -> Text -> Text
@@ -600,46 +683,61 @@ metavarFor action fallback = case (action.metavar, action.choices) of
   (Nothing, Just names) -> "{" <> T.intercalate "," names <> "}"
   _ -> fallback
 
-usageParts :: Parser -> ([Text], [Text])
-usageParts parser = (map optionalPart optionals, map positionalPart positionals)
+-- | @_is_long_option@.
+isLongOption :: Text -> Bool
+isLongOption string = T.length string > 2
+
+-- | @_get_actions_usage_parts@: the optionals' parts, then the
+-- positionals', colored.
+usageParts :: Theme -> Parser -> ([Text], [Text])
+usageParts t parser = (map optionalPart optionals, map positionalPart positionals)
   where
     optionals = filter (not . null . (.optionStrings)) parser.actions
     positionals = filter (null . (.optionStrings)) parser.actions
     optionalPart action =
       let first = headOr "" action.optionStrings
-          part = if nargs action == NargsZero then first else first <> " " <> formatArgs action (T.toUpper action.dest)
+          color = if isLongOption first then t.summaryLongOption else t.summaryShortOption
+          part
+            | nargs action == NargsZero = color <> first <> t.reset
+            | otherwise = color <> first <> " " <> t.summaryLabel <> formatArgs action (T.toUpper action.dest) <> t.reset
        in if action.required then part else "[" <> part <> "]"
-    positionalPart action = formatArgs action action.dest
+    positionalPart action = t.summaryAction <> formatArgs action action.dest <> t.reset
 
-usageBody :: Int -> Parser -> Text
-usageBody width parser
-  | T.length prefix + T.length full <= textWidth = full
-  | fromIntegral (T.length prefix + progLength) <= (0.75 * fromIntegral textWidth :: Double) =
-      let indent = T.replicate (T.length prefix + progLength + 1) " "
-          lines'
-            | not (null optParts) = getLines (parser.prog : optParts) indent True <> getLines posParts indent False
-            | not (null posParts) = getLines (parser.prog : posParts) indent True
-            | otherwise = [parser.prog]
-       in T.intercalate "\n" lines'
-  | otherwise =
-      let indent = T.replicate (T.length prefix) " "
-          joined = getLines (optParts <> posParts) indent False
-          lines' = if length joined > 1 then getLines optParts indent False <> getLines posParts indent False else joined
-       in T.intercalate "\n" (parser.prog : lines')
+-- | @_format_usage@ after its prefix: the program (colored) and the parts,
+-- wrapped by their uncolored lengths.
+usageBody :: Formatting -> Parser -> Text
+usageBody formatting parser = t.prog <> parser.prog <> t.reset <> T.drop progLength plain
   where
+    t = formatting.theme
+    textWidth = formatting.width
     prefix = "usage: " :: Text
-    textWidth = width
     progLength = T.length parser.prog
-    (optParts, posParts) = usageParts parser
+    (optParts, posParts) = usageParts t parser
     full = T.unwords (parser.prog : optParts <> posParts)
+    plain
+      | T.length prefix + T.length (decolor full) <= textWidth = full
+      | fromIntegral (T.length prefix + progLength) <= (0.75 * fromIntegral textWidth :: Double) =
+          let indent = T.replicate (T.length prefix + progLength + 1) " "
+              lines'
+                | not (null optParts) = getLines (parser.prog : optParts) indent True <> getLines posParts indent False
+                | not (null posParts) = getLines (parser.prog : posParts) indent True
+                | otherwise = [parser.prog]
+           in T.intercalate "\n" lines'
+      | otherwise =
+          let indent = T.replicate (T.length prefix) " "
+              joined = getLines (optParts <> posParts) indent False
+              lines' = if length joined > 1 then getLines optParts indent False <> getLines posParts indent False else joined
+           in T.intercalate "\n" (parser.prog : lines')
     getLines parts indent withPrefix =
       let indentLength = T.length indent
           start = if withPrefix then T.length prefix - 1 else indentLength - 1
           go [] line _ acc = reverse (if null line then acc else (indent <> T.unwords (reverse line)) : acc)
           go (part : rest) line lineLen acc
-            | lineLen + 1 + T.length part > textWidth && not (null line) =
-                go rest [part] (indentLength - 1 + T.length part + 1) ((indent <> T.unwords (reverse line)) : acc)
-            | otherwise = go rest (part : line) (lineLen + T.length part + 1) acc
+            | lineLen + 1 + partLength > textWidth && not (null line) =
+                go rest [part] (indentLength - 1 + partLength + 1) ((indent <> T.unwords (reverse line)) : acc)
+            | otherwise = go rest (part : line) (lineLen + partLength + 1) acc
+            where
+              partLength = T.length (decolor part)
           result = go parts [] start []
        in if withPrefix
             then case result of
@@ -647,37 +745,43 @@ usageBody width parser
               [] -> []
             else result
 
--- | @parser.format_help()@ at a formatter width (@COLUMNS - 2@).
-formatHelp :: Int -> Parser -> Text
-formatHelp width parser =
+-- | @parser.format_help()@.
+formatHelp :: Formatting -> Parser -> Text
+formatHelp formatting parser =
   normalize $
     T.concat
-      [ formatUsage width parser <> "\n"
+      [ formatUsage formatting parser <> "\n"
       , maybe "" (\text -> T.intercalate "\n" (wrap (max width 11) (collapse text)) <> "\n\n") parser.description
       , section "positional arguments" positionals
       , section "options" optionals
       ]
   where
+    width = formatting.width
+    t = formatting.theme
     positionals = filter (null . (.optionStrings)) parser.actions
     optionals = filter (not . null . (.optionStrings)) parser.actions
     maxHelpPosition = min 24 (max (width - 20) 4)
+    -- @_format_action_invocation@.
     invocation action
-      | null action.optionStrings = metavarFor action action.dest
-      | nargs action == NargsZero = T.intercalate ", " action.optionStrings
-      | otherwise = T.intercalate ", " action.optionStrings <> " " <> formatArgs action (T.toUpper action.dest)
-    actionMaxLength = maximum (0 : map ((+ 2) . T.length . invocation) parser.actions)
+      | null action.optionStrings = t.action <> metavarFor action action.dest <> t.reset
+      | nargs action == NargsZero = strings
+      | otherwise = strings <> " " <> t.label <> formatArgs action (T.toUpper action.dest) <> t.reset
+      where
+        strings = T.intercalate ", " [(if isLongOption s then t.longOption else t.shortOption) <> s <> t.reset | s <- action.optionStrings]
+    actionMaxLength = maximum (0 : map ((+ 2) . T.length . decolor . invocation) parser.actions)
     helpPosition = min (actionMaxLength + 2) maxHelpPosition
     helpWidth = max (width - helpPosition) 11
     actionWidth = helpPosition - 2 - 2
     section _ [] = ""
-    section heading items = "\n" <> heading <> ":\n" <> T.concat (map entry items) <> "\n"
+    section title items = "\n" <> t.heading <> title <> ":" <> t.reset <> "\n" <> T.concat (map entry items) <> "\n"
     entry action =
       let header = invocation action
+          plainLength = T.length (decolor header)
        in case action.help of
             Just text
               | not (T.null text) ->
                   let (first, indentFirst)
-                        | T.length header <= actionWidth = ("  " <> T.justifyLeft actionWidth ' ' header <> "  ", 0)
+                        | plainLength <= actionWidth = ("  " <> header <> T.replicate (actionWidth - plainLength) " " <> "  ", 0)
                         | otherwise = ("  " <> header <> "\n", helpPosition)
                    in if T.null (T.strip text)
                         then if "\n" `T.isSuffixOf` first then first else first <> "\n"
@@ -760,7 +864,7 @@ wordChunks text = go 0
 wrapChunks :: Int -> [Text] -> [Text]
 wrapChunks width = go []
   where
-    blank = T.all Py.isSpace
+    blank = T.all isPythonSpace
     go lines' [] = reverse lines'
     go lines' chunks =
       let chunks' = case chunks of
@@ -799,27 +903,24 @@ wrapChunks width = go []
                 else (line, chunk : more)
 
 -- ---------------------------------------------------------------------------
--- Python semantics
+-- The terminal
 
--- | @int(text)@ (base 10), with CPython's 4300-digit conversion limit;
--- 'Nothing' where it raises @ValueError@.
-pythonInt :: Text -> Maybe Integer
-pythonInt = either (const Nothing) Just . Py.intText
-
--- | @str(pathlib.PurePosixPath(text))@: repeated slashes collapsed, @.@
--- components dropped, a trailing slash removed, @//@ kept as a root, and
--- the empty path spelled @.@.
-pathText :: Text -> Text
-pathText text
-  | T.null text = "."
-  | otherwise =
-      let (root, rest)
-            | "//" `T.isPrefixOf` text && not ("///" `T.isPrefixOf` text) = ("//", T.drop 2 text)
-            | "/" `T.isPrefixOf` text = ("/", T.dropWhile (== '/') text)
-            | otherwise = ("", text)
-          parts = filter (\part -> not (T.null part) && part /= ".") (T.splitOn "/" rest)
-          joined = root <> T.intercalate "/" parts
-       in if T.null joined then "." else joined
+-- | @_colorize.can_colorize()@ for standard output, in a process that reads
+-- its environment (no @-E@ or @-I@): @PYTHON_COLORS@ @0@ or @1@ decides;
+-- then a non-empty @NO_COLOR@ refuses and a non-empty @FORCE_COLOR@
+-- allows; then @TERM=dumb@ refuses; else whether standard output is a
+-- terminal.
+canColorize :: Map String String -> Bool -> Bool
+canColorize environment terminal
+  | Just "0" <- variable "PYTHON_COLORS" = False
+  | Just "1" <- variable "PYTHON_COLORS" = True
+  | given "NO_COLOR" = False
+  | given "FORCE_COLOR" = True
+  | variable "TERM" == Just "dumb" = False
+  | otherwise = terminal
+  where
+    variable name = Map.lookup name environment
+    given = maybe False (not . null) . variable
 
 -- | @shutil.get_terminal_size().columns@: @COLUMNS@ when it is a positive
 -- integer, else the width of the terminal on standard output, else 80.
@@ -846,3 +947,33 @@ windowColumns :: CInt -> IO Int
 windowColumns fd = allocaBytes 8 $ \size -> do
   result <- c_ioctl fd tiocgwinsz size
   if result /= 0 then pure 0 else fromIntegral <$> peekElemOff size 1
+
+-- ---------------------------------------------------------------------------
+-- Python semantics
+
+-- | @int(text)@ (base 10), with CPython's 4300-digit conversion limit;
+-- 'Nothing' where it raises @ValueError@.
+pythonInt :: Text -> Maybe Integer
+pythonInt text = do
+  value <- parsePythonInt 10 text
+  if T.length (T.filter (isJust . pythonDecimal) text) > maxIntStrDigits then Nothing else Just value
+
+-- | @float(text)@ (petrus-json's 'parsePythonFloat', the one @float()@
+-- emulation); 'Nothing' where it raises @ValueError@.
+pythonFloat :: Text -> Maybe Double
+pythonFloat = parsePythonFloat
+
+-- | @str(pathlib.PurePosixPath(text))@: repeated slashes collapsed, @.@
+-- components dropped, a trailing slash removed, @//@ kept as a root, and
+-- the empty path spelled @.@.
+pathText :: Text -> Text
+pathText text
+  | T.null text = "."
+  | otherwise =
+      let (root, rest)
+            | "//" `T.isPrefixOf` text && not ("///" `T.isPrefixOf` text) = ("//", T.drop 2 text)
+            | "/" `T.isPrefixOf` text = ("/", T.dropWhile (== '/') text)
+            | otherwise = ("", text)
+          parts = filter (\part -> not (T.null part) && part /= ".") (T.splitOn "/" rest)
+          joined = root <> T.intercalate "/" parts
+       in if T.null joined then "." else joined

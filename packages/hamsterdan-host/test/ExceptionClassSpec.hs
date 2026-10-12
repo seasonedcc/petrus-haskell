@@ -111,7 +111,7 @@ spec = describe "exceptionClass (type(error).__name__)" $ do
     parseJson surrogateRefusingLoads (BL.toStrict out) `shouldBe` Right (Array mine)
     exceptionClass (toException (S.SQLError S.ErrorBusy "database is locked" "step")) `shouldBe` "OperationalError"
   where
-    packages = ["hamsterdan-contracts", "hamsterdan-cli", "hamsterdan-github", "hamsterdan-agents", "hamsterdan-readiness", "hamsterdan-host"]
+    packages = ["hamsterdan-contracts", "hamsterdan-github", "hamsterdan-agents", "hamsterdan-readiness", "hamsterdan-host"]
     statements :: [(Text, [Text])]
     statements =
       [ ("store", ["CREATE TABLE t(id INTEGER PRIMARY KEY, v TEXT NOT NULL)", "INSERT INTO t VALUES(1, 'a')"])

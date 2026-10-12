@@ -14,7 +14,7 @@ reference is missing. It is never skipped.
 | Upstream | Haskell | Evidence |
 | --- | --- | --- |
 | `host/export.py`: `export_package` and every helper | `Hamsterdan.Export` | `ExportSpec` (all 41 upstream cases) and `DifferentialSpec`. |
-| `host/export.py`: `main` (argparse, the report, exit statuses) | `Hamsterdan.Export.runExport`, `app/Main.hs` (`hamsterdan-export`), hamsterdan-cli's `Hamsterdan.Cli.Argparse` | `ExportSpec` (`TestCommandLine`) and `DifferentialSpec`, which runs the binary. |
+| `host/export.py`: `main` (argparse, the report, exit statuses) | `Hamsterdan.Export.runExport`, `app/Main.hs` (`hamsterdan-export`), petrus-argparse's `Petrus.Argparse` | `ExportSpec` (`TestCommandLine`) and `DifferentialSpec`, which runs the binary. |
 | The CPython calls `export.py` makes: `pathlib` (joining, `exists`, `is_file`, `is_dir`, `iterdir`, `glob`, `rglob`, `mkdir`), `shutil.copyfile`, `tempfile.TemporaryDirectory`, `sqlite3`, `json`, `str`/`int` built-ins, and their exception texts | `Hamsterdan.Export.Files`, hamsterdan-contracts' `Hamsterdan.Python.Object` | `DifferentialSpec`'s hostile state directories. |
 
 The package reuses:

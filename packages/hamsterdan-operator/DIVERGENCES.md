@@ -48,10 +48,12 @@ Below are the differences that remain, with their rationale.
    The names show up only in the command lines the operator runs (a `git
    clone` destination, for example), and they are removed afterwards. The
    differential suite replaces both suffixes with a placeholder.
-4. **Help and usage text has no color.** CPython 3.14's `argparse` colors
-   help on a terminal when `NO_COLOR` and `PYTHON_COLORS` allow it. The port
-   writes the plain text, which is what the reference writes to a pipe. The
-   width is the same: `COLUMNS`, else the terminal, else 80.
+4. **Help and usage colors: resolved, no longer a difference.**
+   petrus-argparse colors help, usage and errors as CPython 3.14's
+   `_colorize` decides (`PYTHON_COLORS`, `NO_COLOR`, `FORCE_COLOR`,
+   `TERM=dumb`, then whether standard output is a terminal), with the
+   reference's theme. The width is the same: `COLUMNS`, else the terminal,
+   else 80. The differential runs `FORCE_COLOR` cases.
 5. **Names and text that are not UTF-8, and Unicode tables: resolved, no
    longer a difference.**
    - Arguments are decoded with `surrogateescape` (petrus-json's

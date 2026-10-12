@@ -26,8 +26,9 @@ hamsterdan-export --state-dir STATE --out PKG --repository OWNER/NAME --pull-req
   [--webhook-deliveries DIR]... [--identity FILE]...
 ```
 
-The command-line parser is hamsterdan-cli's `argparse` port: the same
-usage, help, abbreviations and error messages, wrapped to `COLUMNS`.
+The command-line parser is petrus-argparse's `argparse` port: the same
+usage, help, abbreviations, error messages and colors, wrapped to
+`COLUMNS`.
 
 Evidence and the remaining differences are in [PARITY.md](PARITY.md),
 [DIVERGENCES.md](DIVERGENCES.md) and [bench/RESULTS.md](bench/RESULTS.md).

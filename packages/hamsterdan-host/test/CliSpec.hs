@@ -32,7 +32,7 @@ import Hamsterdan.GitHub.Http (newPlainExchangeAt)
 import Hamsterdan.Agents.Pi.Doubles (piPackageFixture)
 import Hamsterdan.Host.Agents (composeHostAgent, productionAgentSeams)
 import Hamsterdan.Host.Cli
-import Hamsterdan.Cli.Argparse (environmentColumns)
+import Petrus.Argparse (environmentColumns)
 import Hamsterdan.Host.Python (ValueError (..))
 import Hamsterdan.Host.Service (noAgentCustody, openHostService, serviceOptions)
 import Hamsterdan.Host.Service qualified as Host
@@ -290,6 +290,9 @@ spec = do
             piRefusals = [o | (c, o) <- outcomes, any (`Map.member` c.env) ["HAMSTERDAN_PI_API_KEY_FILE"] || not (Map.member "HAMSTERDAN_PI_PROVIDER" c.env && Map.member "HAMSTERDAN_PI_API_KEY" c.env) && Map.member "HAMSTERDAN_STATE_PATH" c.env, o.code == 2]
         length succeeded `shouldSatisfy` (>= 4)
         length piRefusals `shouldSatisfy` (>= 3)
+        -- FORCE_COLOR colors the help and both usage errors, even with
+        -- TERM=dumb; NO_COLOR refuses.
+        length [o | o <- references, "\ESC[" `T.isInfixOf` (o.out <> o.err)] `shouldBe` 6
         forM_ (zip3 referenceCases references ours) $ \(theCase, expected, actual) ->
           unless (expected == actual) $
             expectationFailure
@@ -407,6 +410,12 @@ cases side githubPort =
   [Case args (Map.fromList [("COLUMNS", "80")]) Nothing | args <- parsing]
     <> [Case ["-h"] (Map.fromList [("COLUMNS", columns)]) Nothing | columns <- widths]
     <> [Case ["bogus"] (Map.fromList [("COLUMNS", columns)]) Nothing | columns <- widths]
+    -- Colors (@_colorize@; the runner's @-I@ ignores @PYTHON_COLORS@): help,
+    -- a parse error and an error after parsing.
+    <> [ Case args (Map.fromList (("COLUMNS", "80") : colors)) Nothing
+       | args <- [["-h"], ["bogus"], ["requeue"]]
+       , colors <- [[("FORCE_COLOR", "1")], [("FORCE_COLOR", "1"), ("NO_COLOR", "1")], [("FORCE_COLOR", "1"), ("TERM", "dumb")]]
+       ]
     <> [ Case ["serve"] (Map.fromList [("HAMSTERDAN_PORT", "x")]) Nothing
        , Case ["serve"] (Map.fromList [("HAMSTERDAN_PORT", "")]) Nothing
        , Case ["-h"] (Map.fromList [("HAMSTERDAN_PORT", " 9_000 "), ("HAMSTERDAN_HOST", "")]) Nothing

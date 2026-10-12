@@ -27,7 +27,8 @@ import Petrus.Motus.PythonException qualified as Python
 import Petrus.Motus.Worker
 import Petrus.Motus.Worker qualified as W
 import Petrus.Motus.Worker.Cli
-import Petrus.Motus.Internal.Argparse (ParseOutcome (..), parseArguments)
+import Petrus.Argparse (Formatting (..), Outcome (..), parse)
+import Petrus.Argparse.Parser (plainTheme)
 import Petrus.Motus.WorkerSupport
 import System.FilePath ((</>))
 import System.Timeout (timeout)
@@ -155,13 +156,13 @@ spec = do
     void (newWorker p (Map.fromList [("raw", raw)]) (quietOptions events))
 
   it "cli defaults to sync bridge and validates explicit native access" $ do
-    let parse argv = case parseArguments (workerParser "petrus-worker") argv of
-          Parsed parsed -> parseWorkerArguments Nothing parsed
-          other -> error (show other)
-        defaults = parse ["--provider", "local", "--path", "dispatch.db", "--registry", "fake:registry"]
+    let parseWorker argv = case parse Formatting {width = 78, theme = plainTheme} (workerParser "petrus-worker" Nothing) (map T.pack argv) of
+          Parsed arguments -> arguments
+          Exited status out err -> error (show (status, out, err))
+        defaults = parseWorker ["--provider", "local", "--path", "dispatch.db", "--registry", "fake:registry"]
     defaults.custodyAccess `shouldBe` SyncBridge
     defaults.maxOperationSockets `shouldBe` 8
-    let invalid = parse ["--provider", "local", "--path", "dispatch.db", "--registry", "fake:registry", "--custody-access", "native-zeromq"]
+    let invalid = parseWorker ["--provider", "local", "--path", "dispatch.db", "--registry", "fake:registry", "--custody-access", "native-zeromq"]
     validateProviderArguments invalid `shouldBe` Left "native-zeromq custody access requires async execution with the zeromq provider"
 
   it "sync and async workers validate the registry before custody" $ do
