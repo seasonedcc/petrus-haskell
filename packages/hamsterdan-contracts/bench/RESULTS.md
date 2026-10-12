@@ -1,6 +1,6 @@
 # hamsterdan-contracts benchmarks
 
-<!-- scripts/bench: measured sources 98bc8a2aa76a463b at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources e49b037e95d679dc at f3b300b62fa9 -->
 
 These are the hot paths Hamsterdan runs on every token:
 
@@ -17,11 +17,11 @@ Both sides run the same operations on the same inputs (`bench/inputs.json`):
 
 ## Current figures
 
-Measured on 2026-10-12, 03:34–03:34 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.22–2.47:
-three interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-12, 19:52–19:54 local (UTC-3), at commit `f3b300b`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.44–3.06:
+five interleaved repetitions, alternating which side goes first, of
 
-    scripts/bench-compare hamsterdan-contracts 3 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-contracts/bench/bench.py'
+    scripts/bench-compare hamsterdan-contracts 5 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-contracts/bench/bench.py'
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
@@ -31,15 +31,27 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `contract decode Snapshot (validate_json)` | 1.14 µs | 1.6 µs | 1.41× | 1.37× | 1.15 µs, 1.14 µs, 1.13 µs | 1.58 µs, 1.6 µs, 1.64 µs |
-| `contract encode Snapshot (dump + json.dumps)` | 1.41 µs | 4.18 µs | 2.96× | 2.92× | 1.43 µs, 1.41 µs, 1.41 µs | 4.18 µs, 4.22 µs, 4.17 µs |
-| `contract decode GateFact (validate_json)` | 514 ns | 799 ns | 1.55× | 1.51× | 511 ns, 528 ns, 514 ns | 796 ns, 799 ns, 806 ns |
-| `contract encode GateFact (dump + json.dumps)` | 508 ns | 2.73 µs | 5.37× | 5.36× | 509 ns, 503 ns, 508 ns | 2.73 µs, 2.73 µs, 2.72 µs |
-| `literal print dashboard entry (f'{kind}:{body}')` | 385 ns | 636 ns | 1.65× | 1.60× | 386 ns, 385 ns, 385 ns | 617 ns, 640 ns, 636 ns |
-| `literal print digest (sorted items repr)` | 617 ns | 1.36 µs | 2.21× | 2.20× | 617 ns, 614 ns, 620 ns | 1.36 µs, 1.36 µs, 1.39 µs |
-| `literal parse dashboard entry (literal_eval)` | 3.2 µs | 10.8 µs | 3.37× | 3.36× | 3.2 µs, 3.18 µs, 3.21 µs | 10.8 µs, 10.7 µs, 10.8 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `contract decode Snapshot (validate_json)` | 1.46 µs | 1.61 µs | 1.11× | 1.06× | 5 of 5 | 1.52 µs, 1.49 µs, 1.3 µs, 1.41 µs, 1.46 µs | 1.62 µs, 1.57 µs, 1.62 µs, 1.59 µs, 1.61 µs |
+| `contract encode Snapshot (dump + json.dumps)` | 1.42 µs | 4.16 µs | 2.92× | 2.85× | 5 of 5 | 1.42 µs, 1.42 µs, 1.42 µs, 1.43 µs, 1.41 µs | 4.05 µs, 4.16 µs, 4.05 µs, 4.17 µs, 4.21 µs |
+| `contract decode GateFact (validate_json)` | 612 ns | 830 ns | 1.36× | 1.28× | 5 of 5 | 635 ns, 644 ns, 566 ns, 582 ns, 612 ns | 830 ns, 824 ns, 813 ns, 842 ns, 847 ns |
+| `contract encode GateFact (dump + json.dumps)` | 499 ns | 2.74 µs | 5.49× | 5.43× | 5 of 5 | 505 ns, 498 ns, 510 ns, 496 ns, 499 ns | 2.74 µs, 2.72 µs, 2.77 µs, 2.73 µs, 2.79 µs |
+| `literal print dashboard entry (f'{kind}:{body}')` | 417 ns | 634 ns | 1.52× | 1.49× | 5 of 5 | 416 ns, 417 ns, 418 ns, 418 ns, 416 ns | 618 ns, 652 ns, 628 ns, 634 ns, 645 ns |
+| `literal print digest (sorted items repr)` | 648 ns | 1.36 µs | 2.10× | 2.09× | 5 of 5 | 644 ns, 654 ns, 650 ns, 648 ns, 642 ns | 1.35 µs, 1.39 µs, 1.36 µs, 1.36 µs, 1.36 µs |
+| `literal parse dashboard entry (literal_eval)` | 3.22 µs | 10.8 µs | 3.37× | 3.35× | 5 of 5 |
+
+Haskell was ahead in every repetition of every row. The closest row is
+`contract decode Snapshot`, 1.11× (lowest repetition 1.06×). Measured at
+`4d5049e` (19:24–19:26, five repetitions), before petrus-json's duplicate
+pre-check came back, it read 0.92× (1.77 µs against 1.62 µs, behind in 5 of
+5): the row parses a 21-member object, and petrus-json had replaced the
+pre-check with a `Data.Set` of the member names. The A/B that brought it
+back is in petrus-json's `bench/RESULTS.md` ("The duplicate-member
+pre-check"). The two decode rows are still slower than in the `81bbdc5`
+table (1.14 µs and 514 ns there, three repetitions at load 2.22–2.47), whose
+parser also had the eight-bytes-at-a-time string scan that petrus-json
+dropped; this run's Snapshot figures also spread more (1.30–1.52 µs). 3.21 µs, 3.21 µs, 3.22 µs, 3.22 µs, 3.23 µs | 10.8 µs, 10.9 µs, 10.8 µs, 10.9 µs, 10.8 µs |
 
 ## Results
 
