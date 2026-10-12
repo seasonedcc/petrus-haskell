@@ -82,6 +82,7 @@ benchmark petrus-sqlite-bench
                   , filepath
                   , petrus-posix
                   , petrus-sqlite
+                  , petrus-test-support
                   , tasty-bench >=0.3.2
                   , tasty
                   , temporary

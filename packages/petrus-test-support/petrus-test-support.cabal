@@ -33,6 +33,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.TestSupport
+                    Petrus.TestSupport.BenchTwin
                     Petrus.TestSupport.Boundary
                     Petrus.TestSupport.Postgres
                     Petrus.TestSupport.Python
@@ -48,6 +49,7 @@ library
                   , postgresql-libpq >=0.10
                   , process >=1.6
                   , random >=1.2
+                  , tasty >=1.4
                   , temporary >=1.3
                   , text >=2.0
                   , typed-process >=0.2.11

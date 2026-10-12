@@ -23,6 +23,7 @@ import os
 import statistics
 import sys
 import time
+from typing import Optional
 
 BATCH_SECONDS = float(os.environ.get("PETRUS_BENCH_BATCH_SECONDS", "0.2"))
 BATCHES = int(os.environ.get("PETRUS_BENCH_BATCHES", "10"))
@@ -35,19 +36,25 @@ def _batch(fn, number: int) -> int:
     return time.perf_counter_ns() - start
 
 
-def measure(fn) -> float:
-    """Median nanoseconds per call of ``fn()``."""
+def measure(fn, number: Optional[int] = None) -> float:
+    """Median nanoseconds per call of ``fn()``. With ``number``, every batch
+    is exactly that many calls (no calibration)."""
     fn()
-    number = 1
-    while True:
-        elapsed = _batch(fn, number)
-        if elapsed >= BATCH_SECONDS * 1e9 or number >= 1 << 30:
-            break
-        number *= 2 if elapsed == 0 else max(2, min(10, int(BATCH_SECONDS * 1e9 / max(elapsed, 1)) + 1))
+    if number is None:
+        number = 1
+        while True:
+            elapsed = _batch(fn, number)
+            if elapsed >= BATCH_SECONDS * 1e9 or number >= 1 << 30:
+                break
+            number *= 2 if elapsed == 0 else max(2, min(10, int(BATCH_SECONDS * 1e9 / max(elapsed, 1)) + 1))
     samples = [_batch(fn, number) / number for _ in range(BATCHES)]
     return statistics.median(samples)
 
 
-def report(name: str, fn) -> None:
-    print(f"{name},{measure(fn):.1f}", flush=True)
+def report(name: str, fn, number: Optional[int] = None) -> None:
+    """Print ``name,nanoseconds``. Pass ``number`` for a stateful or
+    fsync-bound row whose Haskell twin is timed with the same protocol and
+    the same fixed batch (petrus-test-support's Petrus.TestSupport.BenchTwin),
+    so both sides make exactly the same calls."""
+    print(f"{name},{measure(fn, number):.1f}", flush=True)
     print(f"  {name}", file=sys.stderr, flush=True)

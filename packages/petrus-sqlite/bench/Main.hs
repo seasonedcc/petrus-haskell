@@ -14,7 +14,8 @@ import Petrus.Sqlite
 import System.Directory (getTemporaryDirectory, removeDirectoryRecursive)
 import System.FilePath ((</>))
 import System.IO.Temp (createTempDirectory)
-import Test.Tasty (localOption)
+import Petrus.TestSupport.BenchTwin (twin)
+import Test.Tasty (localOption, testGroup)
 import Test.Tasty.Bench
 
 eventsDdl :: Text
@@ -24,6 +25,12 @@ eventsDdl =
 insertEvent :: Text
 insertEvent =
   "INSERT INTO impetus_history_events (instance, position, event_id, record_type, occurrence, payload) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING"
+
+-- | Calls per batch of the @tx@ rows, as python_bench.py's TX_COMMITS and
+-- TX_BATCHES: about 0.2 s a batch on a quiet machine.
+txCommits, txBatches :: Int
+txCommits = 5000
+txBatches = 500
 
 main :: IO ()
 main = do
@@ -46,20 +53,21 @@ main = do
           "connect"
           [ bench "local-dispatch-profile" (whnfIO (open localDispatchProfile database >>= close))
           ]
-      , -- Every iteration adds rows to one table, so the cost per commit grows
-        -- with the number of iterations run. The Python twin runs each row
-        -- for about 2 s (bench_timing.py). At the default --stdev 5 on a
-        -- noisy machine tasty-bench kept doubling the iterations for over a
-        -- minute and measured a table about 20 times larger (and twice as
-        -- slow per commit). A looser target lets these rows settle within
-        -- seconds, like the twin; a timeout did not work, since one slow
-        -- batch overran it and failed the row.
-        localOption (RelStDev 0.15) $ bgroup
+      , -- Every call adds rows to one table, so the cost per commit grows
+        -- with the calls before it, and every commit is an fsync. tasty-bench
+        -- ran as many iterations as the noise demanded (at --stdev 5 on a
+        -- noisy machine, a table about 20 times the twin's) and reported a
+        -- mean that one slow file-system period moves. These rows use the
+        -- twin's own protocol instead (Petrus.TestSupport.BenchTwin): one
+        -- warm-up call, then 10 batches of exactly the same number of calls
+        -- as python_bench.py's (TX_COMMITS, TX_BATCHES), median per call.
+        -- Both sides make the same inserts and take the same statistic.
+        testGroup
           "tx"
-          [ bench "immediate-insert-commit" $ whnfIO $ do
+          [ twin "tx.immediate-insert-commit" Nothing txCommits $ do
               position <- fresh
               withImmediateTransaction connection (execute connection insertEvent (row "single" position payload))
-          , bench "immediate-insert-100" $ whnfIO $ do
+          , twin "tx.immediate-insert-100" Nothing txBatches $ do
               base <- fresh
               withImmediateTransaction connection $
                 forM_ [0 .. 99] $ \i -> execute connection insertEvent (row "batch" (base * 100 + i) payload)

@@ -13,6 +13,13 @@
 #                                # Node 22, pnpm install and pnpm build in
 #                                # upstream/petrus-viewer, and Playwright's Chromium)
 #   scripts/check-all --bench    # also rerun every benchmark against Python (slow)
+#   scripts/check-all --ghc-options='+RTS -M3G -RTS'
+#                                # passed to every cabal build (e.g. a heap cap for GHC)
+#
+# Before building, it checks the tools the later steps need (uv, a bash of
+# at least 4.4 for hamsterdan-operator's secret-launch tests, PostgreSQL or
+# Docker for scripts/with-postgres) and stops with what to install, rather
+# than failing half an hour in.
 #
 # Every test binary runs with a 2 GiB heap cap (+RTS -M2G -RTS), as locally.
 # Any build or test failure fails the script; cabal keeps going past a failing
@@ -33,12 +40,64 @@ for arg in "$@"; do
   case "$arg" in
     --bench) run_bench=1 ;;
     --viewer) run_viewer=1 ;;
-    -j*) cabal_flags+=("$arg") ;;
+    -j*|--ghc-options=*) cabal_flags+=("$arg") ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
 
 step() { printf '\n==> %s\n' "$*"; }
+
+# (A preflight, not a step: CI's runners provide these tools by construction,
+# so `scripts/ci-tests check-steps` does not look for it in ci.yml.)
+printf '\n==> Required tools\n'
+# hamsterdan-operator's secret-launch tests run scripts/with-runtime-secrets
+# under the first bash of at least 4.4 among $PETRUS_BASH, bash on PATH and
+# Homebrew's (test/SecretLaunchSpec.hs); macOS ships bash 3.2. Look the same
+# way here, so a missing bash stops the gate now instead of failing the
+# test step and skipping every step after it.
+modern_bash() {
+  [[ -x "$1" ]] && "$1" -c '(( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) ))' 2>/dev/null
+}
+if [[ -n "${PETRUS_BASH:-}" ]]; then
+  candidates=("$PETRUS_BASH")
+else
+  candidates=("$(command -v bash || true)" /opt/homebrew/bin/bash /usr/local/bin/bash)
+fi
+found_bash=""
+for candidate in "${candidates[@]}"; do
+  if [[ -n "$candidate" ]] && modern_bash "$candidate"; then
+    found_bash=$candidate
+    break
+  fi
+done
+if [[ -z "$found_bash" ]]; then
+  if [[ -n "${PETRUS_BASH:-}" ]]; then
+    echo "PETRUS_BASH=$PETRUS_BASH is not a bash of version 4.4 or later" >&2
+  else
+    echo "no bash of version 4.4 or later (macOS ships 3.2): install one (Homebrew: brew install bash)" \
+      "or set PETRUS_BASH to its path; hamsterdan-operator's secret-launch tests need it (docs/reproducing.md)" >&2
+  fi
+  exit 1
+fi
+echo "bash for the secret-launch tests: $found_bash ($("$found_bash" -c 'echo $BASH_VERSION'))"
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is not on PATH; the interop suites need it to provision the upstream Python environments" >&2
+  exit 1
+fi
+# The same places scripts/with-postgres looks.
+postgres_found=""
+[[ -n "${PETRUS_TEST_POSTGRES:-}" ]] && postgres_found=1
+command -v initdb >/dev/null 2>&1 && command -v pg_ctl >/dev/null 2>&1 && postgres_found=1
+for candidate in /Applications/Postgres.app/Contents/Versions/17/bin /usr/lib/postgresql/17/bin \
+  /opt/homebrew/opt/postgresql@17/bin /usr/local/opt/postgresql@17/bin; do
+  [[ -x "$candidate/pg_ctl" && -x "$candidate/initdb" ]] && postgres_found=1
+done
+command -v docker >/dev/null 2>&1 && postgres_found=1
+if [[ -z "$postgres_found" ]]; then
+  echo "neither PETRUS_TEST_POSTGRES, PostgreSQL's initdb and pg_ctl, nor Docker is available:" \
+    "the PostgreSQL suites need one of them (scripts/with-postgres, docs/reproducing.md)" >&2
+  exit 1
+fi
 
 step "Upstream pins"
 scripts/check-pins
@@ -50,10 +109,6 @@ step "Hamsterdan import boundaries (upstream tests/test_architecture.py)"
 scripts/lint-hamsterdan-architecture
 
 step "Upstream Python environment"
-if ! command -v uv >/dev/null 2>&1; then
-  echo "uv is not on PATH; the interop suites need it to provision the upstream Python environments" >&2
-  exit 1
-fi
 # Provision every reference once, before the suites run in parallel and
 # each would (scripts/upstream-python also serializes a lazy sync with a
 # lock, so a suite that provisions on first use is safe too).

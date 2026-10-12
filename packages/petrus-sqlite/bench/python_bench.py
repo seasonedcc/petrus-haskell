@@ -26,6 +26,12 @@ INSERT = (
     "ON CONFLICT DO NOTHING"
 )
 
+# Calls per batch of the tx rows, as bench/Main.hs's txCommits and txBatches:
+# both sides make exactly the same inserts (the table grows with every call)
+# and take the same statistic (bench_timing.py's median of batches).
+TX_COMMITS = 5000
+TX_BATCHES = 500
+
 
 def history_connection(path: str) -> sqlite3.Connection:
     # SqliteHistoryStore.__init__ / _configure
@@ -88,8 +94,8 @@ def main() -> None:
             _WriterFence(database, "bench").close()
 
         report("connect.local-dispatch-profile", connect_close)
-        report("tx.immediate-insert-commit", insert_one)
-        report("tx.immediate-insert-100", insert_batch)
+        report("tx.immediate-insert-commit", insert_one, TX_COMMITS)
+        report("tx.immediate-insert-100", insert_batch, TX_BATCHES)
         report(
             "query.select-by-key",
             lambda: len(
