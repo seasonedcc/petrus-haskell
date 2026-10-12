@@ -38,7 +38,11 @@ foreign import ccall unsafe "petrus_open_read" c_openRead :: CString -> Ptr CLon
 foreign import capi unsafe "unistd.h read" c_read :: CInt -> Ptr Word8 -> CSize -> IO CSsize
 foreign import capi unsafe "unistd.h close" c_close :: CInt -> IO CInt
 foreign import capi unsafe "unistd.h access" c_access :: CString -> CInt -> IO CInt
-foreign import capi "unistd.h value F_OK" fOk :: CInt
+-- A value import is a foreign call made wherever the value is used, and a
+-- safe one unless marked @unsafe@: as a safe call, every 'pathExists' handed
+-- the capability over and took it back (bench/RESULTS.md, "Where a request
+-- spends its time on Linux").
+foreign import capi unsafe "unistd.h value F_OK" fOk :: CInt
 
 -- | @fs.existsSync@: @access(path, F_OK)@ succeeds (symlinks followed).
 pathExists :: FilePath -> IO Bool
