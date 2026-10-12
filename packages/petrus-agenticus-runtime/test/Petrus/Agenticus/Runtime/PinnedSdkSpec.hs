@@ -17,23 +17,20 @@
 --   (@test_exact_claude_a2_sdk_and_bundled_client@, which the reference
 --   gates on @PETRUS_CV16_CLAUDE_QUALIFY@) runs ungated here, over that
 --   interpreter, with the same body as "Live.ClaudeSpec".
--- * The Claude sidecar builds a @ClaudeSDKClient@ from production's option
---   keys and the Hands MCP server from production's tools, then releases it
---   without connecting: @ClaudeAgentOptions(**options)@,
---   @tool(...)@ and @create_sdk_mcp_server(...)@ on the real SDK.
+-- * The Claude sidecar builds a @ClaudeSDKClient@ from the options a turn
+--   passes ('claudeTurnOptions') and the Hands MCP server from production's
+--   tools ('claudeHandsTools'), then releases it without connecting:
+--   @ClaudeAgentOptions(**options)@, @tool(...)@ and
+--   @create_sdk_mcp_server(...)@ on the real SDK.
 -- * The Amp sidecar reads @amp-sdk@'s installed version and checks the
 --   @AmpOptions@ / @execute@ protocol (the SDK half of @_protocol_ready@).
 --   Starting an Amp stream runs the @amp@ CLI against Amp's service, so it
 --   stays with the opt-in @test_amp_real.py@.
 module Petrus.Agenticus.Runtime.PinnedSdkSpec (spec) where
 
-import Data.Maybe (fromMaybe)
-import Data.Text qualified as T
-import Petrus.Agenticus.Hands.Contract (allToolMethods, toolMethodText)
 import Petrus.Agenticus.Runtime.Amp (AmpProbeHooks (..), AmpSidecar (..), ampSdkVersion, ampSidecar, officialProbeHooks)
 import Petrus.Agenticus.Runtime.Claude
 import Petrus.Agenticus.Runtime.Live.ClaudeSpec (qualifyClaude)
-import Petrus.Agenticus.Runtime.Pi.Internal (piToolSchemas)
 import Petrus.Json (Json (..))
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import System.IO.Temp (withSystemTempDirectory)
@@ -59,42 +56,14 @@ spec = describe "the pinned provider SDKs (credential-free)" $ do
   it "builds a Claude SDK client and the Hands MCP server, and releases it unconnected" $
     withSystemTempDirectory "claude-sdk-smoke" $ \tmp -> do
       python <- sdkPython
-      store <- newSessionStore 10 4000 Nothing Nothing
-      let values =
-            [ ("tools", Array (map String claudeTools))
-            , ("allowed_tools", Array (map String claudeTools))
-            , ("strict_mcp_config", Bool True)
-            , ("permission_mode", String "dontAsk")
-            , ("setting_sources", Array [])
-            , ("skills", Array [])
-            , ("plugins", Array [])
-            , ("agents", Object [])
-            , ("model", String "claude-sonnet-4-5")
-            , ("fallback_model", Null)
-            , ("cwd", String (T.pack tmp))
-            , ("cli_path", String "/nonexistent/claude")
-            , ("env", Object [(k, String v) | (k, v) <- claudeAuthEnvironment])
-            , ("max_turns", Int 8)
-            , ("max_budget_usd", Null)
-            , ("max_buffer_size", Int 1048576)
-            , ("session_store_flush", String "eager")
-            , ("resume", Null)
-            ]
-          tools =
-            [ ClaudeTool
-                { name = toolMethodText method
-                , description = "Agenticus workspace capability"
-                , schema = fromMaybe (Object []) (lookup method piToolSchemas)
-                , handler = \_ -> pure Null
-                }
-            | method <- allToolMethods
-            ]
+      let config = claudeRuntimeConfig "claude-sonnet-4-5" tmp tmp
+      store <- newSessionStore config.maxMessages config.maxTranscriptBytes Nothing Nothing
       client <-
         (sidecarSdk (claudeOn python)).newClient
           ClaudeSdkRequest
-            { options = ClaudeOptions {values, sessionStore = store, stderr = DiscardProviderStderr}
+            { options = claudeTurnOptions config store tmp "/nonexistent/claude" "" Nothing
             , serverName = "petrus_hands"
-            , tools
+            , tools = claudeHandsTools (\_ _ _ -> pure Null)
             , preToolUse = \_ -> pure Null
             }
       client.release `shouldReturn` True

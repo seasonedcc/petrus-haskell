@@ -82,6 +82,8 @@ module Petrus.Agenticus.Runtime.Claude
   , ClaudeClient (..)
   , ClaudeClientFactory (..)
   , ClaudeTool (..)
+  , claudeTurnOptions
+  , claudeHandsTools
   , ClaudeSdkRequest (..)
   , ClaudeSdk (..)
   , officialFactory
@@ -152,9 +154,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
+import GHC.Records (HasField (..))
 import Paths_petrus_agenticus_runtime (getDataFileName)
 import Petrus.Agenticus.Attachment.Binding
-import GHC.Records (HasField (..))
   ( AttachmentBinding (..)
   , bindingExecution
   , bindingLeaseIdentity
@@ -180,7 +182,7 @@ import Petrus.Agenticus.Connection.Custody
   )
 import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Hands.Contract (allToolMethods, toolMethodText, toolResultToData)
+import Petrus.Agenticus.Hands.Contract (ToolMethod, allToolMethods, toolMethodText, toolResultToData)
 import Petrus.Agenticus.Hands.Gateway (HandsGateway, gatewayAttachmentEpoch, gatewayAttachmentId, gatewayEpisodeId)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (currentGrant)
@@ -534,8 +536,6 @@ data ClaudeContinuationPayloadV1 = ClaudeContinuationPayloadV1
   }
   deriving stock (Eq)
 
--- | Every field is @repr=False@ upstream.
-instance Show ClaudeContinuationPayloadV1 where
 instance HasField "sessionId" ClaudeContinuationPayloadV1 Text where
   getField r = r._sessionId
 
@@ -548,6 +548,8 @@ instance HasField "projectKey" ClaudeContinuationPayloadV1 Text where
 instance HasField "transcript" ClaudeContinuationPayloadV1 ByteString where
   getField r = r._transcript
 
+-- | Every field is @repr=False@ upstream.
+instance Show ClaudeContinuationPayloadV1 where
   show _ = "ClaudeContinuationPayloadV1(schema_version=1)"
 
 mkClaudeContinuationPayloadV1 :: Text -> Text -> Text -> ByteString -> Either AgenticusError ClaudeContinuationPayloadV1
@@ -1034,16 +1036,54 @@ officialFactory sdk = ClaudeClientFactory $ \options gateway invocation -> do
                   , ("is_error", Bool (not result.ok))
                   ]
               )
-      tools =
-        [ ClaudeTool
-            { name = toolMethodText method
-            , description = "Agenticus workspace capability"
-            , schema = fromMaybe (Object []) (lookup method piToolSchemas)
-            , handler = handler fullName method
-            }
-        | (fullName, method) <- zip claudeTools allToolMethods
+  sdk.newClient ClaudeSdkRequest {options, serverName = "petrus_hands", tools = claudeHandsTools handler, preToolUse = hook}
+
+-- | The Hands MCP server's tools (@sdk.tool(method.value, ...)(handler)@
+-- for each method): the handler answers a call with the tool's full name
+-- (one of 'claudeTools'), its method and its arguments.
+claudeHandsTools :: (Text -> ToolMethod -> Json -> IO Json) -> [ClaudeTool]
+claudeHandsTools handler =
+  [ ClaudeTool
+      { name = toolMethodText method
+      , description = "Agenticus workspace capability"
+      , schema = fromMaybe (Object []) (lookup method piToolSchemas)
+      , handler = handler fullName method
+      }
+  | (fullName, method) <- zip claudeTools allToolMethods
+  ]
+
+-- | The @options@ one turn hands @factory.create@: the configuration's
+-- limits, the turn's private root (@CLAUDE_CONFIG_DIR@), its CLI wrapper,
+-- the API key and the session to resume. The Hands server and the
+-- PreToolUse hook are added by the factory.
+claudeTurnOptions :: ClaudeRuntimeConfig -> SessionStore -> FilePath -> FilePath -> Text -> Maybe Text -> ClaudeOptions
+claudeTurnOptions config store root cliPath apiKey resume =
+  ClaudeOptions
+    { values =
+        [ ("tools", Array (map String claudeTools))
+        , ("allowed_tools", Array (map String claudeTools))
+        , ("strict_mcp_config", Bool True)
+        , ("permission_mode", String "dontAsk")
+        , ("setting_sources", Array [])
+        , ("skills", Array [])
+        , ("plugins", Array [])
+        , ("agents", Object [])
+        , ("model", String config.model)
+        , ("fallback_model", Null)
+        , ("cwd", String (T.pack config.workingDirectory))
+        , ("cli_path", String (T.pack cliPath))
+        , ("env", Object [(k, String v) | (k, v) <- environment])
+        , ("max_turns", Int (toInteger config.maxTurns))
+        , ("max_budget_usd", numberJson config.maxBudgetUsd)
+        , ("max_buffer_size", Int (toInteger config.maxMessageBytes))
+        , ("session_store_flush", String "eager")
+        , ("resume", maybe Null String resume)
         ]
-  sdk.newClient ClaudeSdkRequest {options, serverName = "petrus_hands", tools, preToolUse = hook}
+    , sessionStore = store
+    , stderr = DiscardProviderStderr
+    }
+  where
+    environment = claudeAuthEnvironment <> [("ANTHROPIC_API_KEY", apiKey), ("CLAUDE_CONFIG_DIR", T.pack root)]
 
 -- ---------------------------------------------------------------------------
 -- The official SDK sidecar
@@ -1638,32 +1678,7 @@ execute a operation = do
         set (\s -> s {root = Just (rootPath, Just (toInteger (Files.deviceID metadata), toInteger (Files.fileID metadata)))})
         cli <- (.cli) <$> readMVar a.readiness >>= maybe (protocol "runtime-not-ready") pure
         wrapper <- installCliWrapper a.interpreter rootPath cli
-        let environment = claudeAuthEnvironment <> [("ANTHROPIC_API_KEY", apiKey), ("CLAUDE_CONFIG_DIR", T.pack rootPath)]
-            options =
-              ClaudeOptions
-                { values =
-                    [ ("tools", Array (map String claudeTools))
-                    , ("allowed_tools", Array (map String claudeTools))
-                    , ("strict_mcp_config", Bool True)
-                    , ("permission_mode", String "dontAsk")
-                    , ("setting_sources", Array [])
-                    , ("skills", Array [])
-                    , ("plugins", Array [])
-                    , ("agents", Object [])
-                    , ("model", String config.model)
-                    , ("fallback_model", Null)
-                    , ("cwd", String (T.pack config.workingDirectory))
-                    , ("cli_path", String (T.pack wrapper))
-                    , ("env", Object [(k, String v) | (k, v) <- environment])
-                    , ("max_turns", Int (toInteger config.maxTurns))
-                    , ("max_budget_usd", numberJson config.maxBudgetUsd)
-                    , ("max_buffer_size", Int (toInteger config.maxMessageBytes))
-                    , ("session_store_flush", String "eager")
-                    , ("resume", maybe Null (String . (.sessionId)) prior)
-                    ]
-                , sessionStore = store
-                , stderr = DiscardProviderStderr
-                }
+        let options = claudeTurnOptions config store rootPath wrapper apiKey ((.sessionId) <$> prior)
         client <- operation.factory.create options inv.gateway inv
         set (\s -> s {client = Just client, created = Just client})
         remaining >>= \r -> within r client.connect
