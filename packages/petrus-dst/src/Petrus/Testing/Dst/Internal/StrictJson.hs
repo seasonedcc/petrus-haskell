@@ -20,21 +20,25 @@
 -- Admission uses the @petrus-json@ parser; only refusals take the slower
 -- scanner.
 --
--- One documented divergence remains: CPython admits lone UTF-16 surrogates
--- (from @\\ud800@ escapes or @surrogatepass@ decoding); the DST models hold
--- 'Data.Text.Text', so a payload CPython would admit with one is refused
--- here ('loneSurrogate').
+-- A lone UTF-16 surrogate in a string value is admitted, as CPython admits
+-- it (from a @\\ud800@ escape or @surrogatepass@ decoding), and kept as
+-- WTF-8 ("Petrus.Json.Wtf8"), which the validators and the canonical
+-- encoder carry back byte for byte. One documented divergence remains: a
+-- lone surrogate in an object /key/ is refused ('loneSurrogateKey'), since
+-- the reference's @model_dump@ rewrites such keys (see DIVERGENCES.md).
 module Petrus.Testing.Dst.Internal.StrictJson
   ( loadStrictJson
   ) where
 
+import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Json (DuplicateMembers (..), Json, ParseOptions (..), parseJson, surrogateRefusingLoads)
+import Petrus.Json (DuplicateMembers (..), Json (..), ParseOptions (..), parseJson, pythonJsonLoads)
 import Petrus.Json.Python (decodeJsonBytes)
 import Petrus.Json.Python.Scanner qualified as Scanner
+import Petrus.Json.Wtf8 (hasLoneSurrogate)
 
 -- | Load one strict DST JSON document. A refusal carries the text of the
 -- Python exception the reference wraps (without its
@@ -42,30 +46,38 @@ import Petrus.Json.Python.Scanner qualified as Scanner
 loadStrictJson :: ByteString -> Either Text Json
 loadStrictJson payload = do
   text <- decodeJsonBytes payload
-  case parseJson options (TE.encodeUtf8 text) of
+  value <- case parseJson options (TE.encodeUtf8 text) of
     Right value -> Right value
-    Left problem -> Left $ case Scanner.loads Scanner.strictHooks text of
-      Left (Scanner.DecodeError message position) -> Scanner.decodeErrorText text message position
-      Left (Scanner.HookError message) -> message
+    Left problem -> case Scanner.loads Scanner.strictHooks text of
+      Left (Scanner.DecodeError message position) -> Left (Scanner.decodeErrorText text message position)
+      Left (Scanner.HookError message) -> Left message
       Right raw
-        | holdsSurrogate raw -> loneSurrogate
+        -- petrus-json reads a surrogate from an escape only; one that the
+        -- payload's own bytes spelled (@surrogatepass@) comes from the
+        -- scanner, once petrus-json's limits admit the same document with
+        -- U+FFFD (as long in UTF-8) in its place.
+        | hasLoneSurrogate text ->
+            Scanner.rawJson raw <$ first T.pack (parseJson options (TE.encodeUtf8 (T.map unpaired text)))
         -- petrus-json's nesting guard refuses what CPython's scanner admits.
-        | otherwise -> T.pack problem
+        | otherwise -> Left (T.pack problem)
+  if surrogateKey value then Left loneSurrogateKey else Right value
+  where
+    unpaired c = if Scanner.isSurrogate c then '\xFFFD' else c
 
 options :: ParseOptions
 options =
-  surrogateRefusingLoads
+  pythonJsonLoads
     { duplicateMembers = RejectDuplicates
     , allowNonFiniteConstants = False
     }
 
--- | The refusal of a payload CPython admits with a lone surrogate.
-loneSurrogate :: Text
-loneSurrogate = "the payload contains a lone UTF-16 surrogate, which this port cannot represent"
+-- | The refusal of a payload CPython admits with a lone surrogate in an
+-- object key.
+loneSurrogateKey :: Text
+loneSurrogateKey = "the payload contains a lone UTF-16 surrogate in an object key, which this port cannot represent"
 
-holdsSurrogate :: Scanner.Raw -> Bool
-holdsSurrogate = \case
-  Scanner.RStr s -> any Scanner.isSurrogate s
-  Scanner.RList items -> any holdsSurrogate items
-  Scanner.RDict members -> any (\(k, v) -> any Scanner.isSurrogate k || holdsSurrogate v) members
+surrogateKey :: Json -> Bool
+surrogateKey = \case
+  Array items -> any surrogateKey items
+  Object members -> any (\(k, v) -> hasLoneSurrogate k || surrogateKey v) members
   _ -> False

@@ -249,6 +249,13 @@ def raw_cases() -> list[bytes]:
         b"\x00",
         b'{"a":"\\ud83d\\ude00"}',
         b'{"\\u00e9":1}',
+        # Lone surrogates in a string value: from an escape, from
+        # surrogatepass bytes, and as a reversed pair (two lone surrogates).
+        seeded.replace(b'"InstanceCreated"', b'"Instance\\ud800Created"', 1),
+        seeded.replace(b'"InstanceCreated"', b'"Instance\xed\xa0\x80Created"', 1),
+        seeded.replace(b'"InstanceCreated"', b'"Instance\\udc00\\ud83dCreated"', 1),
+        # A lone surrogate in a key, which the port refuses (DIVERGENCES.md).
+        seeded.replace(b'"record_types"', b'"record\\ud800types"', 1),
     ]
     return cases
 
