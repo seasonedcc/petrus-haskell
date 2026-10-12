@@ -15,6 +15,32 @@ Both sides run the same operations on the same inputs (`bench/inputs.json`):
 - a V5 `Snapshot` of 21 fields;
 - a `GateFact` whose body holds quotes and non-ASCII text.
 
+## Current figures
+
+Measured on 2026-10-12, 03:34–03:34 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.22–2.47:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare hamsterdan-contracts 3 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-contracts/bench/bench.py'
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `contract decode Snapshot (validate_json)` | 1.14 µs | 1.6 µs | 1.41× | 1.37× | 1.15 µs, 1.14 µs, 1.13 µs | 1.58 µs, 1.6 µs, 1.64 µs |
+| `contract encode Snapshot (dump + json.dumps)` | 1.41 µs | 4.18 µs | 2.96× | 2.92× | 1.43 µs, 1.41 µs, 1.41 µs | 4.18 µs, 4.22 µs, 4.17 µs |
+| `contract decode GateFact (validate_json)` | 514 ns | 799 ns | 1.55× | 1.51× | 511 ns, 528 ns, 514 ns | 796 ns, 799 ns, 806 ns |
+| `contract encode GateFact (dump + json.dumps)` | 508 ns | 2.73 µs | 5.37× | 5.36× | 509 ns, 503 ns, 508 ns | 2.73 µs, 2.73 µs, 2.72 µs |
+| `literal print dashboard entry (f'{kind}:{body}')` | 385 ns | 636 ns | 1.65× | 1.60× | 386 ns, 385 ns, 385 ns | 617 ns, 640 ns, 636 ns |
+| `literal print digest (sorted items repr)` | 617 ns | 1.36 µs | 2.21× | 2.20× | 617 ns, 614 ns, 620 ns | 1.36 µs, 1.36 µs, 1.39 µs |
+| `literal parse dashboard entry (literal_eval)` | 3.2 µs | 10.8 µs | 3.37× | 3.36× | 3.2 µs, 3.18 µs, 3.21 µs | 10.8 µs, 10.7 µs, 10.8 µs |
+
 ## Results
 
 The machine was an Apple M4 (10 cores), macOS 26.3, shared with other
@@ -26,6 +52,8 @@ builds; the load average was 5–6 during these runs.
   `timeit` repeats of 20000 calls.
 - Both suites were run twice, interleaved. The table shows each side's best
   run.
+
+<!-- bench: superseded -->
 
 | Operation | Haskell | Python | Python / Haskell |
 | --- | ---: | ---: | ---: |

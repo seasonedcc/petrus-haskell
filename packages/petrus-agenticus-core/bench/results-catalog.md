@@ -17,6 +17,29 @@ kinds with all ten capabilities.
 - `register+enable-1000` builds a fresh catalog: 1 000 registrations, each
   followed by an enable.
 
+## Current figures
+
+Measured on 2026-10-12, 03:07–03:16 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.18–2.54:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-agenticus-core 3 --python python_catalog.py --python python_effect.py --python python_hands.py --python python_thread.py
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The same three repetitions measured the other results files' rows (see [RESULTS.md](RESULTS.md)). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `catalog.resolve-6-kinds` | 2.43 µs | 14.9 µs | 6.12× | 5.96× | 2.43 µs, 2.48 µs, 2.43 µs | 14.9 µs, 14.9 µs, 14.5 µs |
+| `catalog.snapshot-to-json` | 6.81 µs | 14.4 µs | 2.12× | 2.09× | 6.81 µs, 6.83 µs, 6.75 µs | 14.7 µs, 14.4 µs, 14.1 µs |
+| `catalog.snapshot-from-data` | 57.3 µs | 109 µs | 1.91× | 1.81× | 61 µs, 57.1 µs, 57.3 µs | 111 µs, 109 µs, 109 µs |
+| `catalog.register+enable-1000` | 683 µs | 2.79 ms | 4.09× | 4.01× | 687 µs, 682 µs, 683 µs | 2.79 ms, 2.82 ms, 2.74 ms |
+
 ## Results
 
 Environment:
@@ -30,6 +53,8 @@ this script, so both saw the same machine state. A Haskell value is a
 tasty-bench mean (`--stdev 3`); a Python value is the script's median of 7
 batches. The table gives the median of the five rounds. The machine was
 shared with other work (load average 3.7 to 5.8).
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Slowest round |
 | --- | ---: | ---: | ---: | ---: |

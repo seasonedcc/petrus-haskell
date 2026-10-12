@@ -11,10 +11,10 @@ All runs: Apple M4, macOS (Darwin 25.3), GHC 9.10.3 `-O2`, CPython 3.14.6.
 
 | Layer | Results | Headline (Python / Haskell) |
 | --- | --- | --- |
-| Catalog | [results-catalog.md](results-catalog.md) | resolve 6.1×, `snapshot-to-json` 2.1×, `from_data` 1.8×, register+enable 3.9× (medians of five interleaved rounds) |
-| Effect | [results-effect.md](results-effect.md) | digests 2.2× to 3.0×; gateway execute and replay 9.1× and 9.6× |
-| Hands | [results-hands.md](results-hands.md) | parse 3.9×; gateway reads 3.5×; gateway writes 1.9× to 2.1× |
-| Thread | [results-thread.md](results-thread.md) | build about 1,350× (the reference is quadratic); `to-json` 2.5×, `dumps` alone 1.8×, `from_data` 3.6× (medians of five interleaved rounds) |
+| Catalog | [results-catalog.md](results-catalog.md) | resolve 6.1×, `snapshot-to-json` 2.1×, `from_data` 1.9×, register+enable 4.1× (medians of three interleaved repetitions, 2026-10-12) |
+| Effect | [results-effect.md](results-effect.md) | digests 3.3× to 4.4×; gateway execute and replay 12.6× and 12.5× (2026-10-12) |
+| Hands | [results-hands.md](results-hands.md) | parse 3.6×; gateway reads 2.8× to 3.1×; gateway writes 1.8× (2026-10-12, default RTS) |
+| Thread | [results-thread.md](results-thread.md) | build about 1,400× (the reference is quadratic); `to-json` 2.6×, `dumps` alone 1.8×, `from_data` 3.7× (medians of three interleaved repetitions, 2026-10-12) |
 | Connection custody | [results-custody.md](results-custody.md) | 2.7× to 4.7× on whole sessions (FULL and OFF sync, N = 100 to 5000) |
 
 ## Known slow path

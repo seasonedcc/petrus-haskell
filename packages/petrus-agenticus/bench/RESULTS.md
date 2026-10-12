@@ -27,6 +27,30 @@ archive:
 - `ledger-recover-100` runs `recover` over the 100 rows: one write
   transaction that decodes every record.
 
+## Current figures
+
+Measured on 2026-10-12, 03:06–03:07 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.31–2.73:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-agenticus 3 --python python_agent_net.py --python python_retention.py
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `agent-net.run-4-phases-6-tools` | 1.88 ms | 7.65 ms | 4.07× | 4.02× | 1.86 ms, 1.9 ms, 1.88 ms | 7.68 ms, 7.65 ms, 7.63 ms |
+| `agent-net.loop-state-roundtrip-16` | 41.7 µs | 128 µs | 3.08× | 3.04× | 41.8 µs, 41.6 µs, 41.7 µs | 127 µs, 128 µs, 129 µs |
+| `retention.decode-row-x1000` | 5.08 ms | 14.7 ms | 2.90× | 2.85× | 5.08 ms, 5.17 ms, 5.08 ms | 14.6 ms, 14.7 ms, 14.9 ms |
+| `retention.ledger-lookup-x200` | 2.42 ms | 4.53 ms | 1.87× | 1.87× | 2.42 ms, 2.41 ms, 2.42 ms | 4.52 ms, 4.59 ms, 4.53 ms |
+| `retention.ledger-recover-100` | 741 µs | 1.65 ms | 2.23× | 2.21× | 739 µs, 742 µs, 741 µs | 1.63 ms, 1.67 ms, 1.65 ms |
+
 ## Results
 
 Environment:
@@ -41,6 +65,8 @@ Haskell times are tasty-bench means in wall-clock time (`localOption
 WallTime`); Python times are medians of 7 batches (`time.perf_counter`). Two
 repetitions ran interleaved (Haskell, Python, then Python, Haskell); each
 figure is the median of the two.
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell |
 | --- | ---: | ---: | ---: |

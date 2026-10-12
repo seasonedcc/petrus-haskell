@@ -22,6 +22,27 @@ These are twin workloads: `bench/Main.hs` (tasty-bench) and
   and dumps the result back to compact sorted JSON. The input is that run's
   final `thread.json`.
 
+## Current figures
+
+Measured on 2026-10-12, 02:57–03:06 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.26–2.93:
+five interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-agenticus-runtime 5 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The same five repetitions measured the rows of [results-pi.md](results-pi.md) and [results-hosts.md](results-hosts.md), whose current figures are there. The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `runner-3-phases-3-reads` | 5.11 ms | 10.1 ms | 1.98× | 1.93× | 5.24 ms, 5.11 ms, 5.1 ms, 5.1 ms, 5.22 ms | 10.1 ms, 10.1 ms, 10.2 ms, 10.3 ms, 10.1 ms |
+| `projection-roundtrip` | 38.8 µs | 107 µs | 2.75× | 2.74× | 38.8 µs, 38.6 µs, 38.7 µs, 38.9 µs, 38.9 µs | 107 µs, 108 µs, 107 µs, 107 µs, 107 µs |
+
 ## Results
 
 Environment:
@@ -36,6 +57,8 @@ Python scripts. A Haskell value is a tasty-bench mean (`--stdev 3`); a
 Python value is the script's median of 7 batches. The table gives the median
 of the five rounds. The machine was shared with other work (load average 3.7
 to 5.8).
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Slowest round |
 | --- | ---: | ---: | ---: | ---: |

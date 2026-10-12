@@ -20,6 +20,31 @@ Twin workloads: `bench/Bench/Effect.hs` (tasty-bench) and
 - `gateway-replay`: the replay path, where the lookup finds the applied
   receipt.
 
+## Current figures
+
+Measured on 2026-10-12, 03:07–03:16 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.18–2.54:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-agenticus-core 3 --python python_catalog.py --python python_effect.py --python python_hands.py --python python_thread.py
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The same three repetitions measured the other results files' rows (see [RESULTS.md](RESULTS.md)). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `effect.digest-1KB` | 8.43 µs | 36.8 µs | 4.36× | 4.33× | 8.45 µs, 8.43 µs, 8.39 µs | 36.8 µs, 36.5 µs, 36.9 µs |
+| `effect.digest-100KB` | 723 µs | 2.85 ms | 3.94× | 3.91× | 721 µs, 723 µs, 725 µs | 2.88 ms, 2.83 ms, 2.85 ms |
+| `effect.digest-1MB` | 8.92 ms | 29.1 ms | 3.26× | 3.22× | 8.89 ms, 9.04 ms, 8.92 ms | 29.3 ms, 29.1 ms, 28.8 ms |
+| `effect.digest-1MB-strict-payload` | 5.05 ms | — | — | — | 5.04 ms, 5.09 ms, 5.05 ms |  |
+| `effect.gateway-execute` | 1.75 µs | 22.1 µs | 12.60× | 12.58× | 1.74 µs, 1.75 µs, 1.76 µs | 22.2 µs, 22.1 µs, 22.1 µs |
+| `effect.gateway-replay` | 1.71 µs | 21.5 µs | 12.54× | 12.50× | 1.72 µs, 1.71 µs, 1.71 µs | 21.4 µs, 21.5 µs, 21.5 µs |
+
 ## Results
 
 Environment:
@@ -29,6 +54,8 @@ Environment:
 - CPython 3.14.6.
 
 Haskell times are tasty-bench means; Python times are medians of 7 batches.
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell |
 | --- | ---: | ---: | ---: |

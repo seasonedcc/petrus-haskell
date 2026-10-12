@@ -29,6 +29,39 @@ work: the code that runs once per provider event, frame or Turn.
   directly, so no event loop is timed.
 - `amp-final-text`: `_safe_final_text` of the same 4 KB text.
 
+## Current figures
+
+Measured on 2026-10-12, 02:57–03:06 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.26–2.93:
+five interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-agenticus-runtime 5 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The same five repetitions measured the rows of [RESULTS.md](RESULTS.md) and [results-pi.md](results-pi.md). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `codex-jsonl-parse` | 114 µs | 223 µs | 1.95× | 1.93× | 114 µs, 114 µs, 115 µs, 114 µs, 114 µs | 222 µs, 227 µs, 221 µs, 224 µs, 223 µs |
+| `codex-helper-parse` | 442 ns | 944 ns | 2.14× | 2.10× | 442 ns, 436 ns, 440 ns, 442 ns, 442 ns | 939 ns, 953 ns, 924 ns, 947 ns, 944 ns |
+| `codex-terminal-encode` | 1.17 µs | 2.61 µs | 2.23× | 2.19× | 1.17 µs, 1.17 µs, 1.18 µs, 1.17 µs, 1.17 µs | 2.67 µs, 2.61 µs, 2.63 µs, 2.56 µs, 2.59 µs |
+| `codex-terminal-parse` | 4.78 µs | 12.9 µs | 2.69× | 2.64× | 4.74 µs, 4.78 µs, 4.89 µs, 4.78 µs, 4.81 µs | 13.1 µs, 12.7 µs, 12.9 µs, 12.9 µs, 12.9 µs |
+| `claude-transcript-encode` | 150 µs | 546 µs | 3.64× | 3.59× | 152 µs, 149 µs, 150 µs, 151 µs, 149 µs | 550 µs, 543 µs, 546 µs, 543 µs, 549 µs |
+| `claude-transcript-decode` | 326 µs | 1.09 ms | 3.35× | 3.32× | 325 µs, 327 µs, 326 µs, 329 µs, 325 µs | 1.09 ms, 1.09 ms, 1.09 ms, 1.09 ms, 1.1 ms |
+| `claude-canonical-input` | 499 ns | 1.64 µs | 3.28× | 3.26× | 501 ns, 495 ns, 500 ns, 499 ns, 497 ns | 1.66 µs, 1.66 µs, 1.63 µs, 1.64 µs, 1.64 µs |
+| `claude-sanitize` | 73.6 µs | 126 µs | 1.71× | 1.70× | 73.6 µs, 74 µs, 73.4 µs, 73.7 µs, 73.4 µs | 126 µs, 127 µs, 126 µs, 126 µs, 125 µs |
+| `amp-stream-admit` | 90.5 µs | 417 µs | 4.60× | 4.53× | 91.7 µs, 90.5 µs, 90 µs, 90.2 µs, 90.6 µs | 416 µs, 414 µs, 417 µs, 419 µs, 420 µs |
+| `amp-final-text` | 72 µs | 113 µs | 1.57× | 1.55× | 71.6 µs, 71.8 µs, 72 µs, 72.9 µs, 72.6 µs | 112 µs, 113 µs, 113 µs, 113 µs, 112 µs |
+| `codex-turn` | 46.4 ms | 62.7 ms | 1.35× | 1.31× | 46.4 ms, 46.1 ms, 47.8 ms, 46.4 ms, 47.4 ms | 62.7 ms, 63.1 ms, 62.4 ms, 63.1 ms, 62.2 ms |
+| `codex-a3-service-turn` | 1.12 s | 1.25 s | 1.12× | 1.10× | 1.14 s, 1.12 s, 1.12 s, 1.12 s, 1.12 s | 1.26 s, 1.25 s, 1.25 s, 1.26 s, 1.25 s |
+| `claude-turn` | 8.26 ms | 11 ms | 1.33× | 1.28× | 8.35 ms, 8.26 ms, 8.12 ms, 8.52 ms, 8.2 ms | 11 ms, 11 ms, 10.9 ms, 10.9 ms, 11 ms |
+| `amp-turn` | 168 µs | 192 µs | 1.14× | 1.13× | 169 µs, 168 µs, 167 µs, 168 µs, 168 µs | 192 µs, 190 µs, 193 µs, 191 µs, 192 µs |
+
 ## Results
 
 Environment:
@@ -39,6 +72,8 @@ Environment:
 - CPython 3.14.6.
 
 Haskell times are tasty-bench means. Python times are medians of 7 batches.
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell |
 | --- | ---: | ---: | ---: |
@@ -107,6 +142,8 @@ at least 0.2 s), alternating which side went first. That is what
 !/scripted/'` runs. The table gives the medians over the rounds and the
 lowest single-round ratio. Haskell was ahead in every round of every row
 except one `codex-a3-service-turn` round (0.96×).
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition |
 | --- | ---: | ---: | ---: | ---: |

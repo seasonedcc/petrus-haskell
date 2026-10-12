@@ -18,11 +18,37 @@ the barrier and commits.  `parse-5-methods` times `parseToolRequest` /
 `parse_tool_request` on one request of each method.  Divide a batch time by
 10 000 for the per-call cost.
 
+## Current figures
+
+Measured on 2026-10-12, 03:07–03:16 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.18–2.54:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-agenticus-core 3 --python python_catalog.py --python python_effect.py --python python_hands.py --python python_thread.py
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The same three repetitions measured the other results files' rows (see [RESULTS.md](RESULTS.md)). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `hands.parse-5-methods` | 7.22 µs | 25.8 µs | 3.57× | 3.53× | 7.22 µs, 7.34 µs, 7.13 µs | 25.6 µs, 25.9 µs, 25.8 µs |
+| `hands.gateway-read-10k-1-caller` | 32.8 ms | 100 ms | 3.06× | 3.02× | 32.8 ms, 33.1 ms, 32.6 ms | 99.1 ms, 101 ms, 100 ms |
+| `hands.gateway-read-10k-8-callers` | 35.9 ms | 102 ms | 2.84× | 2.78× | 35.9 ms, 35.9 ms, 35.9 ms | 99.9 ms, 102 ms, 104 ms |
+| `hands.gateway-write-10k-1-caller` | 70.8 ms | 130 ms | 1.84× | 1.82× | 71.2 ms, 70.8 ms, 70.4 ms | 130 ms, 129 ms, 133 ms |
+| `hands.gateway-write-10k-8-callers` | 73.5 ms | 131 ms | 1.78× | 1.74× | 75.2 ms, 73.5 ms, 73.3 ms | 131 ms, 131 ms, 132 ms |
+
 ## Results
 
 Times are per batch (per 5 parses for the first row); lower is better.
 Haskell rows are tasty-bench means, Python rows the median of 7 batches after
 one warm-up.
+
+<!-- bench: superseded -->
 
 | benchmark | Haskell `-N1` (default) | Haskell `-N8` | Python 3.14 | fastest Haskell vs Python |
 |---|---:|---:|---:|---:|
