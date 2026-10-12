@@ -2,6 +2,8 @@
 -- tests/openFileEndpoint.test.mjs and tests/resolveRefEndpoint.test.mjs.
 module EndpointsSpec (spec) where
 
+import Control.Concurrent.Async (mapConcurrently)
+import Control.Monad (forM_)
 import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Lazy.Char8 qualified as BLC
 import Data.Maybe (isJust)
@@ -86,6 +88,14 @@ spec = do
       r <- httpRequest "OPTIONS" (url <> "/__petrus/open-file") Nothing
       httpStatus r `shouldBe` 204
       lookup "Access-Control-Allow-Origin" (httpHeaders r) `shouldBe` Just "*"
+
+    -- Node serves one request at a time; Warp serves these on several
+    -- capabilities, and the GET takes the pending file atomically.
+    it "serves a pending file to one GET only, however many arrive at once" $ withNetFile sampleNet $ \path ->
+      server Nothing $ \url -> forM_ [1 .. 20 :: Int] $ \_ -> do
+        (httpStatus <$> post (url <> "/__petrus/open-file") (encodeJsLazy (obj [("path", str (T.pack path))]))) `shouldReturn` 200
+        statuses <- mapConcurrently (const (httpStatus <$> httpRequest "GET" (url <> "/__petrus/open-file") Nothing)) [1 .. 16 :: Int]
+        length (filter (== 200) statuses) `shouldBe` 1
 
   describe "/__petrus/resolve-ref (tests/resolveRefEndpoint.test.mjs)" $ do
     it "resolves a relative ref against a file:// basePath" $ withSystemTempDirectory "petrus-ref-test-" $ \dir -> do

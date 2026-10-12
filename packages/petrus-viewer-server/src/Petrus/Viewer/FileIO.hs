@@ -10,6 +10,11 @@
 -- price is the same as Node's: a path that blocks on open (a FIFO, a hung
 -- network mount) stalls the capability, as @readFileSync@ stalls Node's
 -- event loop.
+--
+-- Measured (bench/RESULTS.md, "Low-level code, measured"): with
+-- @directory@'s @doesPathExist@ and @bytestring@'s @readFile@ instead,
+-- resolve-ref served 0.80x the requests per second with 1 client and
+-- 0.66x with 16, and fell behind Node's (0.94x and 0.78x).
 module Petrus.Viewer.FileIO
   ( pathExists
   , readFileBytes
