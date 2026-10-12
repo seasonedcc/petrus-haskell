@@ -45,11 +45,11 @@ lists the files whose package sources have changed since.
 | `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | `5a73d7a` | 13 | 1.01× | 10.7× |  |
 | `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | `5a73d7a` | 8 | 1.35× | 10.1× |  |
 | `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | `5a73d7a` | 7 | 1.20× | 2.01× |  |
-| `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | `5a73d7a` | 14 | 1.12× | 10 058× |  |
+| `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | `da94728` | 14 | 1.02× | 13 065× |  |
 | `petrus-http-core` | [RESULTS.md](../packages/petrus-http-core/bench/RESULTS.md) | `5a73d7a` | 6 | 1.69× | 18.8× |  |
 | `petrus-impetus` | [RESULTS.md](../packages/petrus-impetus/bench/RESULTS.md) | `5a73d7a` | 17 | 1.72× | 88.5× |  |
 | `petrus-json` | [RESULTS.md](../packages/petrus-json/bench/RESULTS.md) | `5a73d7a` | 8 | 1.72× | 3.03× |  |
-| `petrus-motus` | [RESULTS.md](../packages/petrus-motus/bench/RESULTS.md) | `5a73d7a` | 14 | 1.02× | 77.4× |  |
+| `petrus-motus` | [RESULTS.md](../packages/petrus-motus/bench/RESULTS.md) | `da94728` | 14 | 1.01× | 77.6× |  |
 | `petrus-motus-absurd` | [RESULTS.md](../packages/petrus-motus-absurd/bench/RESULTS.md) | `5a73d7a` | 4 | 1.16× | 3.48× |  |
 | `petrus-motus-zeromq` | [RESULTS.md](../packages/petrus-motus-zeromq/bench/RESULTS.md) | `5a73d7a` | 8 | 1.09× | 2.01× |  |
 | `petrus-observation` | [RESULTS.md](../packages/petrus-observation/bench/RESULTS.md) | `5a73d7a` | 21 | 4.19× | 14.6× |  |
@@ -58,7 +58,7 @@ lists the files whose package sources have changed since.
 | `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | `5a73d7a` | 8 | 1.22× | 14.4× |  |
 | `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | `5a73d7a` | 12 | 1.51× | 15.3× |  |
 | `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | `5a73d7a` | 17 | 1.68× | 39.6× |  |
-| `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | `5a73d7a` | 7 | 1.03× | 1.87× |  |
+| `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | `da94728` | 7 | 1.05× | 1.87× |  |
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | `5a73d7a` | 4 | 2.00× | 7.00× |  |
 | `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | `5a73d7a` | 36 | 1.11× | 38.9× |  |
 

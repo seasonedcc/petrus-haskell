@@ -1,6 +1,6 @@
 # History store benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 64cfa539be134207 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 65bb28d174db5e88 at da947286fe9c -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` build the same
 History: 20 002 records from a drained 4 000-token FIFO. They time the same
@@ -19,9 +19,12 @@ scripts/bench-run petrus-history-store --stdev 5 +RTS -M2G -RTS
 ```
 
 Haskell numbers are tasty-bench means in wall-clock time (`localOption
-WallTime` in `bench/Main.hs`), `--stdev 5`, `+RTS -M2G`. Python numbers are the
+WallTime` in `bench/Main.hs`), `--stdev 5`, `+RTS -M2G`, except
+`sqlite.append-per-record`, which is timed with the twin's protocol (one
+warm-up, then the median of 3 runs; "Current figures"). Python numbers are the
 median of 3–20 runs after one warm-up (`time.perf_counter`). Both run on an
-Apple M4 with 24 GB of memory, using GHC 9.10.3 (`-O2`, `-A32m`) and CPython
+Apple M4 with 24 GB of memory, using GHC 9.10.3 (`-O2`; `-A32m` until
+2026-10-12, the RTS defaults since, see "Current figures") and CPython
 3.14.6; the Haskell SQLite is direct-sqlite 2.3.29 (bundled SQLite 3.45.0),
 CPython's is SQLite 3.53.4. The reference was pinned at `upstream/petrus`
 3f85fc2.
@@ -50,39 +53,86 @@ got more rounds.
 
 ## Current figures
 
-Measured on 2026-10-12, 01:24–01:35 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.22–2.54:
+Measured on 2026-10-12, 09:31–09:42 local (UTC-3), at commit `da94728`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.63–2.34:
 five interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-history-store 5
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
-directory; Python figures are the twin's own timing (CPython 3.14.6). Each
-figure is the median over the repetitions, and the ratio is Python ÷
-Haskell (above 1 means Haskell is faster). `jsonl.append-one-batch` went from 1.46× to 2.95× with the one-pass line encoder (Notes, below), and the `diagnostic.encode-payload` row from about 45 ms to 17 ms. The rows without a Python figure are Haskell-only (described under the first table below). The
-tables in the sections below are earlier measurements, kept with the
-analysis that came with them.
+directory, except `sqlite.append-per-record` (below); Python figures are the
+twin's own timing (CPython 3.14.6). Each figure is the median over the
+repetitions, and the ratio is Python ÷ Haskell (above 1 means Haskell is
+faster). The rows without a Python figure are Haskell-only (described under
+the first table below). The tables in the sections below are earlier
+measurements, kept with the analysis that came with them.
+
+Three changes since the previous figures (at `81bbdc5`):
+
+- **`sqlite.append-one-batch` went from 1.32× to 1.98×** (83.3 ms to
+  57.2 ms; on the Linux CI runners from 0.91–0.94× to 1.95–2.07×, CI run
+  38249569895, three interleaved repetitions on each of two runners). Each
+  change was measured on its own here, A/B against the others, on this row
+  (medians of interleaved runs):
+
+  | Change | Row before → after | Kept |
+  |---|---|---|
+  | A batch's payloads encoded into one growing buffer (petrus-json's `dumpsMany`, which answers what `traverse dumps` answers) instead of a 2 000-byte buffer and an exact-size copy per record | 69.0 → 59.3 ms (−14%) | yes |
+  | Text parameters bound straight from the `Text`'s UTF-8 array (copied by SQLite, `SQLITE_TRANSIENT`, as CPython binds a `str`) instead of through direct-sqlite's pinned copy, inside petrus-sqlite's `execute`, which still checks the parameter count | 73.5 → 69.0 ms, or 61.8 → 59.3 ms with `dumpsMany` (−4 to −6%) | yes |
+  | The event identities spelled into one reused buffer, and each row's values bound without an `SQLData` list | 59.3 → 57.7 ms (−2.7%) | no: it needed a mutable buffer and an unchecked positional binder in the store, and the row is well ahead without it |
+
+  The SQL, the bound values and the stored bytes are unchanged (the
+  interop suites compare them with the reference's).
+- **`sqlite.append-per-record` is timed with the twin's protocol**
+  (`Petrus.TestSupport.BenchTwin`): one warm-up run, then the median of 3
+  runs, as `python_bench.py` times it, so both sides are now measured the
+  same way. This is a correction of the measurement, not a speed-up. The
+  row is 2 000 fsynced commits; strace on Linux and a system-call count on
+  macOS show both sides making the same calls (a plain `fsync` per commit
+  on both), with the Haskell side spending less CPU around them.
+  tasty-bench's mean took in every slow file-system period, which the
+  twin's median of 3 leaves out, and the Python twin's own mean sits 9%
+  (here) to 11–16% (Linux CI) above its median. Timed alike, the row is
+  level within the file system's noise: 1.02× in this run (0.99× in the
+  closest repetition), 1.15× in a run an hour earlier at `e113a93`; each
+  side's figure swings by 10–15% between repetitions. The busy timeout,
+  now set through `sqlite3_busy_timeout` (petrus-sqlite's DIVERGENCES),
+  saves a statement per connection, not per commit.
+- **The bench runs with the RTS defaults** (`-rtsopts` only), as the
+  executables that use these stores do (`hamsterdan-host` sets no `-A`),
+  instead of the `-with-rtsopts=-A32m` most benches in this repository
+  use. A 32 MB allocation area made the allocation-bound rows slower here:
+  interleaved, `store.in-memory-append` ran at 306 µs with `-A32m` and
+  246 µs with the default `-A4m`, and the loads and resumes 10–15% slower;
+  the fsync-bound rows did not move (`sqlite.append-per-record` 79.3 ms
+  with `-A32m` against 78.0 ms, medians of six interleaved runs). That is
+  most of the move of `store.in-memory-append` from 1.38× to 1.70×, and of
+  the loads and resumes. On the Linux CI runners (run 38249569895) the
+  difference is larger: `store.in-memory-append` 1.66–1.68× with the
+  defaults against 1.05–1.07× with `-A32m` (0.83× in the closest
+  repetition), where `scripts/bench-gate` had failed it at 0.95× and 0.87×
+  (run 38242016720).
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---|---|
-| `jsonl.append-one-batch` | 20.4 ms | 60.1 ms | 2.95× | 2.88× | 20.4 ms, 20.6 ms, 20.2 ms, 20.3 ms, 20.8 ms | 60.5 ms, 60.2 ms, 60.1 ms, 60.1 ms, 59.9 ms |
-| `jsonl.append-per-record` | 49.6 ms | 64.5 ms | 1.30× | 1.27× | 50 ms, 49.9 ms, 49.5 ms, 49.6 ms, 49.5 ms | 63.7 ms, 64.5 ms, 66.6 ms, 64.9 ms, 63.5 ms |
-| `jsonl.load` | 31.2 ms | 93.8 ms | 3.01× | 2.86× | 31.2 ms, 31 ms, 31.3 ms, 32.8 ms, 31 ms | 96.3 ms, 94 ms, 93.5 ms, 93.6 ms, 93.8 ms |
-| `jsonl.resume` | 425 ms | 7.07 s | 16.65× | 16.55× | 428 ms, 424 ms, 425 ms, 427 ms, 425 ms | 7.1 s, 7.06 s, 7.09 s, 7.07 s, 7.07 s |
-| `sqlite.append-one-batch` | 83.3 ms | 110 ms | 1.32× | 1.27× | 83.3 ms, 82.4 ms, 83.6 ms, 87.1 ms, 82.4 ms | 110 ms, 110 ms, 111 ms, 110 ms, 110 ms |
-| `sqlite.append-per-record` | 82.1 ms | 91.9 ms | 1.12× | 1.09× | 85.3 ms, 83.8 ms, 79.3 ms, 82.1 ms, 79.7 ms | 93.4 ms, 94.5 ms, 88.9 ms, 90 ms, 91.9 ms |
-| `sqlite.append-batches-of-8` | 26.2 ms | 29.6 ms | 1.13× | 1.13× | 25.6 ms, 26.3 ms, 25.6 ms, 26.2 ms, 26.8 ms | 29 ms, 29.7 ms, 29.6 ms, 29.5 ms, 33.2 ms |
-| `sqlite.load` | 47 ms | 106 ms | 2.25× | 2.19× | 47 ms, 47.1 ms, 46.7 ms, 48.7 ms, 46.6 ms | 106 ms, 106 ms, 106 ms, 107 ms, 105 ms |
-| `sqlite.resume` | 452 ms | 7.1 s | 15.72× | 15.68× | 452 ms, 452 ms, 450 ms, 452 ms, 450 ms | 7.09 s, 7.1 s, 7.11 s, 7.11 s, 7.09 s |
-| `sqlite.terminal-resend-ack` | 7.03 ms | 1.11 s | 157.80× | 157.30× | 7.03 ms, 6.95 ms, 7.05 ms, 7.03 ms, 6.88 ms | 1.13 s, 1.11 s, 1.11 s, 1.11 s, 1.11 s |
-| `diagnostic.encode-payload` | 17 ms | — | — | — | 17.1 ms, 17.1 ms, 17 ms, 17 ms, 17 ms |  |
-| `diagnostic.decode-lines` | 30.8 ms | — | — | — | 31.2 ms, 30.7 ms, 30.8 ms, 32.2 ms, 30.6 ms |  |
-| `store.in-memory-append` | 305 µs | 414 µs | 1.36× | 1.32× | 315 µs, 305 µs, 305 µs, 305 µs, 307 µs | 414 µs, 405 µs, 415 µs, 428 µs, 412 µs |
-| `store.in-memory-records` | 4.52 ns | 43.8 µs | 9697.57× | 7979.23× | 4.67 ns, 4.5 ns, 4.62 ns, 4.52 ns, 4.49 ns | 37.3 µs, 44.8 µs, 44.9 µs, 37 µs, 43.8 µs |
-| `store.jsonl-records` | 4.35 ns | 43.8 µs | 10057.67× | 9795.83× | 4.33 ns, 4.35 ns, 4.46 ns, 4.39 ns, 4.31 ns | 43.8 µs, 44.4 µs, 43.7 µs, 43.2 µs, 44.3 µs |
-| `store.in-memory-iterate` | 25.8 µs | 210 µs | 8.13× | 7.91× | 25.8 µs, 25.8 µs, 25.7 µs, 26.4 µs, 26.2 µs | 214 µs, 210 µs, 214 µs, 209 µs, 208 µs |
-| `store.in-memory-records-list` | 39.7 µs | — | — | — | 40.6 µs, 40.1 µs, 39.5 µs, 39.4 µs, 39.7 µs |  |
+| `sqlite.append-per-record` | 87.2 ms | 89.3 ms | 1.02× | 0.99× | 87.2 ms, 81.1 ms, 87.7 ms, 90.1 ms, 77 ms | 87 ms, 94.6 ms, 88.9 ms, 89.3 ms, 89.7 ms |
+| `jsonl.append-one-batch` | 20.9 ms | 60.3 ms | 2.89× | 2.79× | 20.9 ms, 21.6 ms, 20.2 ms, 21 ms, 19.7 ms | 60.2 ms, 60.3 ms, 59.8 ms, 60.9 ms, 60.6 ms |
+| `jsonl.append-per-record` | 49.2 ms | 68 ms | 1.38× | 1.27× | 50.4 ms, 47.8 ms, 47.8 ms, 50.1 ms, 49.2 ms | 63.8 ms, 68 ms, 65.7 ms, 68.5 ms, 70.1 ms |
+| `jsonl.load` | 26.8 ms | 94.2 ms | 3.51× | 3.41× | 26.5 ms, 26.9 ms, 27.2 ms, 26.8 ms, 26.5 ms | 94.9 ms, 94.2 ms, 92.7 ms, 94.3 ms, 93.8 ms |
+| `jsonl.resume` | 363 ms | 7.09 s | 19.54× | 19.34× | 361 ms, 361 ms, 363 ms, 366 ms, 366 ms | 7.1 s, 7.09 s, 7.11 s, 7.09 s, 7.09 s |
+| `sqlite.append-one-batch` | 57.2 ms | 113 ms | 1.98× | 1.93× | 56.3 ms, 58.4 ms, 57 ms, 57.2 ms, 57.9 ms | 113 ms, 113 ms, 113 ms, 113 ms, 111 ms |
+| `sqlite.append-batches-of-8` | 23 ms | 30.1 ms | 1.31× | 1.27× | 23.2 ms, 22.9 ms, 23.1 ms, 23 ms, 22.8 ms | 30.4 ms, 29.1 ms, 30.1 ms, 30.1 ms, 29.7 ms |
+| `sqlite.load` | 41.7 ms | 106 ms | 2.53× | 2.47× | 42.6 ms, 41.7 ms, 41.8 ms, 41.3 ms, 41.6 ms | 105 ms, 106 ms, 106 ms, 106 ms, 108 ms |
+| `sqlite.resume` | 372 ms | 7.12 s | 19.17× | 18.74× | 380 ms, 366 ms, 372 ms, 372 ms, 370 ms | 7.11 s, 7.12 s, 7.14 s, 7.13 s, 7.12 s |
+| `sqlite.terminal-resend-ack` | 6.47 ms | 1.12 s | 172.89× | 171.22× | 6.54 ms, 6.52 ms, 6.2 ms, 6.47 ms, 6.38 ms | 1.12 s, 1.12 s, 1.12 s, 1.13 s, 1.12 s |
+| `diagnostic.encode-payload` | 19.6 ms | — | — | — | 20 ms, 19.6 ms, 19.9 ms, 19.1 ms, 19.1 ms |  |
+| `diagnostic.decode-lines` | 26.5 ms | — | — | — | 26.6 ms, 26.5 ms, 26.4 ms, 26.4 ms, 26.6 ms |  |
+| `store.in-memory-append` | 249 µs | 422 µs | 1.70× | 1.67× | 249 µs, 246 µs, 249 µs, 248 µs, 249 µs | 432 µs, 413 µs, 422 µs, 414 µs, 425 µs |
+| `store.in-memory-records` | 3.66 ns | 44.5 µs | 12153.64× | 9638.53× | 3.66 ns, 3.81 ns, 3.73 ns, 3.64 ns, 3.59 ns | 45.9 µs, 36.8 µs, 44.6 µs, 36.7 µs, 44.5 µs |
+| `store.jsonl-records` | 3.39 ns | 44.3 µs | 13065.49× | 12401.12× | 3.39 ns, 3.58 ns, 3.4 ns, 3.32 ns, 3.32 ns | 44.4 µs, 44.4 µs, 44.3 µs, 44.2 µs, 43.9 µs |
+| `store.in-memory-iterate` | 22.9 µs | 210 µs | 9.16× | 9.05× | 23 µs, 22.9 µs, 22.9 µs, 23 µs, 22.9 µs | 212 µs, 208 µs, 210 µs, 210 µs, 207 µs |
+| `store.in-memory-records-list` | 35.2 µs | — | — | — | 36.2 µs, 35.6 µs, 35 µs, 35.2 µs, 34.4 µs |  |
 
 ## Results
 
@@ -278,9 +328,13 @@ the five rounds of each.
 
   The insert loop is tail-recursive and the load is a strict fold. An earlier
   non-tail-recursive loop (`(x :) <$> go rest`) cost about 80 ms on this row
-  and ran it at 194 ms. Batching several rows into one multi-row `INSERT` and
-  building every payload into one buffer were both tried and gave nothing,
-  so they were dropped.
+  and ran it at 194 ms. Batching several rows into one multi-row `INSERT`
+  was tried and gave nothing, so it was dropped (it would also change the
+  SQL). The split above predates the 2026-10-12 write path ("Current
+  figures"): encoding the batch into one buffer and binding text without
+  copies took the row from about 83 ms to 57 ms here. Since then SQLite itself is about 70% of the row in
+  a profile, and the `recorded_at` default's `strftime`, which both sides
+  run per row, about 14%.
 - **terminal-resend-ack is fast in Haskell for a reason outside the port.**
   Both sides run the same statement to find an acknowledged terminal
   (`SELECT event_id, record_type, payload FROM impetus_history_events WHERE

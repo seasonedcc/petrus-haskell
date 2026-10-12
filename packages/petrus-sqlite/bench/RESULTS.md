@@ -1,17 +1,22 @@
 # petrus-sqlite benchmarks
 
-<!-- scripts/bench: measured sources 2135704b89b51e36 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 6ee59530634af78b at da947286fe9c -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
 names and values. Both are wall-clock time. Ratios above 1 mean Haskell is
-faster. **Haskell is faster on every row, in every repetition.** The two
-transaction rows are the closest, each fsync-bound:
-`tx.immediate-insert-commit` is 1.03× and `tx.immediate-insert-100` 1.05×,
-both now timed with the same number of iterations on both sides (below).
+faster. **Haskell is faster on every row.** The two transaction rows are
+the closest, each fsync-bound: `tx.immediate-insert-commit` is 1.05×
+(Haskell ahead in four repetitions, 0.97× in the fifth) and
+`tx.immediate-insert-100` 1.11×, both timed with the same number of
+iterations on both sides (below).
 
-- Date: 2026-10-12 01:19–01:21 local (UTC-3), at commit `81bbdc5`
-- Machine: Darwin arm64, Apple M4; 1-minute load average 2.17–2.38 around
+- Date: 2026-10-12 09:48–09:50 local (UTC-3), at commit `da94728`
+  (`connect` now sets the busy timeout with `sqlite3_busy_timeout`, as
+  `sqlite3.connect(timeout=…)` does, instead of a `PRAGMA busy_timeout`
+  statement; `execute` binds text parameters from the `Text`'s own UTF-8
+  array, still checking the parameter count)
+- Machine: Darwin arm64, Apple M4; 1-minute load average 2.08–2.26 around
   the runs
 - Haskell: GHC 9.10.3 (-O2), tasty-bench mean in wall-clock time,
   `--stdev 5`, `+RTS -M2G -RTS`; the two `tx` rows use the twin protocol
@@ -24,13 +29,13 @@ both now timed with the same number of iterations on both sides (below).
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---|---|
-| `tx.immediate-insert-commit` | 32.2 µs | 33.2 µs | 1.03× | 1.03× | 32.1 µs, 32.3 µs, 32.5 µs, 32 µs, 32.2 µs | 33.1 µs, 33.2 µs, 33.5 µs, 33.2 µs, 33.7 µs |
-| `tx.immediate-insert-100` | 298 µs | 313 µs | 1.05× | 1.04× | 297 µs, 299 µs, 298 µs, 298 µs, 295 µs | 313 µs, 310 µs, 313 µs, 309 µs, 313 µs |
-| `connect.local-dispatch-profile` | 48.3 µs | 56 µs | 1.16× | 1.15× | 48 µs, 48.3 µs, 48.2 µs, 48.3 µs, 48.6 µs | 55.9 µs, 55.9 µs, 56.6 µs, 56 µs, 56.1 µs |
-| `query.select-by-key` | 1.2 µs | 1.65 µs | 1.38× | 1.36× | 1.2 µs, 1.2 µs, 1.19 µs, 1.21 µs, 1.18 µs | 1.65 µs, 1.63 µs, 1.62 µs, 1.65 µs, 1.65 µs |
-| `query.select-1000` | 350 µs | 430 µs | 1.23× | 1.17× | 369 µs, 348 µs, 352 µs, 349 µs, 350 µs | 430 µs, 429 µs, 435 µs, 430 µs, 433 µs |
-| `schema.normalize-ddl` | 2.7 µs | 5.06 µs | 1.87× | 1.85× | 2.74 µs, 2.68 µs, 2.73 µs, 2.7 µs, 2.67 µs | 5.07 µs, 5.07 µs, 5.06 µs, 5.02 µs, 5.05 µs |
-| `fence.acquire-release` | 30 µs | 37.3 µs | 1.24× | 1.23× | 30 µs, 30 µs, 30 µs, 30.1 µs, 30.3 µs | 37.5 µs, 37.3 µs, 37.2 µs, 37.4 µs, 37.3 µs |
+| `tx.immediate-insert-commit` | 31.6 µs | 33 µs | 1.05× | 0.97× | 31.2 µs, 31.6 µs, 33.7 µs, 33.3 µs, 31.6 µs | 33 µs, 34.6 µs, 32.7 µs, 34.6 µs, 32.7 µs |
+| `tx.immediate-insert-100` | 284 µs | 314 µs | 1.11× | 1.04× | 301 µs, 297 µs, 283 µs, 282 µs, 284 µs | 314 µs, 315 µs, 319 µs, 311 µs, 310 µs |
+| `connect.local-dispatch-profile` | 47.4 µs | 56.2 µs | 1.19× | 1.16× | 47.4 µs, 47.4 µs, 47.2 µs, 47.9 µs, 47.5 µs | 56.3 µs, 56.2 µs, 56.2 µs, 55.4 µs, 56 µs |
+| `query.select-by-key` | 1.17 µs | 1.62 µs | 1.38× | 1.38× | 1.17 µs, 1.18 µs, 1.18 µs, 1.17 µs, 1.16 µs | 1.62 µs, 1.63 µs, 1.63 µs, 1.62 µs, 1.62 µs |
+| `query.select-1000` | 348 µs | 432 µs | 1.24× | 1.20× | 346 µs, 357 µs, 348 µs, 348 µs, 346 µs | 431 µs, 430 µs, 437 µs, 432 µs, 432 µs |
+| `schema.normalize-ddl` | 2.7 µs | 5.03 µs | 1.87× | 1.80× | 2.79 µs, 2.7 µs, 2.64 µs, 2.71 µs, 2.65 µs | 5.03 µs, 5.02 µs, 5.03 µs, 5.08 µs, 5.04 µs |
+| `fence.acquire-release` | 29.7 µs | 37.2 µs | 1.25× | 1.24× | 30 µs, 29.5 µs, 29.7 µs, 29.8 µs, 29.6 µs | 37.1 µs, 37.2 µs, 37.2 µs, 37.3 µs, 37.1 µs |
 
 ## What changed
 
