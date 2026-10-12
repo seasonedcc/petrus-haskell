@@ -39,7 +39,6 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.Fabric
-                    Petrus.Fabric.Canonical
                     Petrus.Fabric.Error
                     Petrus.Fabric.Model
                     Petrus.Fabric.Ingress

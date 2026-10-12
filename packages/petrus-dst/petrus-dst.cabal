@@ -38,7 +38,6 @@ library
                     Petrus.Testing.Dst.Choice
                     Petrus.Testing.Dst.Codec
                     Petrus.Testing.Dst.Decode
-                    Petrus.Testing.Dst.Internal.Canonical
                     Petrus.Testing.Dst.Internal.StrictJson
                     Petrus.Testing.Dst.Internal.World
                     Petrus.Testing.Dst.Profile

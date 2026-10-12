@@ -17,7 +17,7 @@ reference is missing. It is never skipped.
 | `operator.py`: `qualification_setup`, `_consume_private_file`, `_parse_setup_refs`, `_setup_subprocess` | `Hamsterdan.Operator` | `OperatorSpec`, `QualificationSetupLocalSpec` and `DifferentialSpec` |
 | `operator.py`: `parser` and `main` (argparse, the JSON report, exit statuses) | `Hamsterdan.Operator.runOperator`, `app/Main.hs` (`hamsterdan-operator`), petrus-argparse's `Petrus.Argparse` | `OperatorSpec` and `DifferentialSpec`, which runs the binary |
 | `src/hamsterdan/host/publication_qualification.py`: the publication assertions, the agent result and cleanup fences, `AtomicSetupPush`, the setup qualification sequence and its sanitized evidence | `Hamsterdan.Host.PublicationQualification` | `PublicationQualificationSpec`, `TypeGuaranteeSpec` and `QualificationSetupLocalSpec` |
-| The CPython calls these make: `os.open`/`fstat`/`lstat`/`stat(dir_fd=..., follow_symlinks=False)`, `os.path.abspath`/`normpath`, `pathlib` parents and names, `shutil.which`, `shutil.rmtree`, `tempfile`, `json.loads` | `Hamsterdan.Operator.Posix` (with `cbits/stat.c` and `cbits/rmtree.c`), `Hamsterdan.Operator.Python`, `Hamsterdan.Operator.FastJson` | the suites above, `FastJsonSpec` and `RmtreeSpec` against CPython |
+| The CPython calls these make: `os.open`/`fstat`/`lstat`/`stat(dir_fd=..., follow_symlinks=False)`, `os.path.abspath`/`normpath`, `pathlib` parents and names, `shutil.which`, `shutil.rmtree`, `tempfile`, `json.loads` | `Hamsterdan.Operator.Posix` (with `cbits/stat.c` and `cbits/rmtree.c`), `Hamsterdan.Operator.Python` (`json.loads` is petrus-json's `loadsText`) | the suites above and `RmtreeSpec` against CPython; petrus-json's `InPlaceSpec` for `json.loads` |
 | `deployment/Containerfile`, `.dockerignore`, `deployment/config`, `deployment/pi`, `scripts/with-runtime-secrets` | the files of the same names at the repository root, plus `deployment/python-shim` and `cabal.project.freeze` | `ContainerSpec` and `SecretLaunchSpec`; see "Container runtime contract" below |
 
 The package reuses:
@@ -109,8 +109,7 @@ binary).
 ## Suites with no upstream counterpart
 
 Besides the 133 ported examples, the suite has `DifferentialSpec` (below),
-`ContainerSpec`'s shim and Containerfile checks, `FastJsonSpec` (the JSON
-fast path against CPython's `json.loads`) and `RmtreeSpec` (six trees
+`ContainerSpec`'s shim and Containerfile checks, and `RmtreeSpec` (six trees
 removed by `shutil.rmtree` and by the port, with the same outcome and the
 same files left).
 

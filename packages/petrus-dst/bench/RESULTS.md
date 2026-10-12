@@ -186,14 +186,20 @@ What each workload covers:
   `generated_runtime_world`. Each produces and encodes its artifact. The Python side calls the reference's `build_*_artifact` functions.
 
 The first measurement had Haskell slower on encoding: 24.2 ms against 11.4 ms, and 1.05 ms
-against 571 µs for the digest. petrus-json's general `dumps` builds every string one character
-at a time and threads an `Either` through every node. `Petrus.Testing.Dst.Internal.Canonical`
-now specializes the one canonical spelling. It copies plain-ASCII strings in one piece, and it
-scans for non-finite floats once, up front. Two checks keep it byte-identical to `dumps`:
+against 571 µs for the digest. petrus-json's general `dumps` then built every string one
+character at a time and threaded an `Either` through every node, so a dedicated canonical
+encoder (`Petrus.Testing.Dst.Internal.Canonical`) was written here. Since then petrus-json's
+`dumps` writes straight into one buffer. An A/B on 2026-10-12 found it about twice as fast as
+the dedicated encoder, so `canonicalBytes` is `dumps` again and the dedicated encoder is gone.
+The A/B ran on the Apple M4 at a one-minute load average of about 5, with five interleaved
+repetitions of each variant's benchmark executable. Each cell is the median of the five
+tasty-bench means:
 
-- a QuickCheck property over generated JSON (escapes, control characters, astral text,
-  non-finite floats, key order);
-- the fixture and mutation corpora.
+| row | dedicated encoder | petrus-json `dumps` (now) | Python |
+| --- | ---: | ---: | ---: |
+| `codec.encode` | 5.05 ms | 2.48 ms | 10.5 ms |
+| `digest` | 206 µs | 95.3 µs | 533 µs |
+| decode and encode | 10.1 ms | 7.15 ms | 29.3 ms |
 
 ## Rerun
 

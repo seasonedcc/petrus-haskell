@@ -38,19 +38,17 @@ module Hamsterdan.PyLiteral
   ) where
 
 import Control.Monad (when)
-import Control.Monad.ST (ST, runST)
 import Data.Char (chr, isAlpha, isAlphaNum, isDigit, isHexDigit, isOctDigit, ord, toLower)
 import Data.Array (Array, listArray, (!))
 import Data.List (sortOn)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Array qualified as TA
-import Data.Text.Internal qualified as TI
 import Hamsterdan.Contracts.Codec (pythonDict)
 import Petrus.Json (Json)
 import Petrus.Json qualified as Json
 import Petrus.Json.Limits (maxIntStrDigits)
+import Petrus.Json.Python.JsonRepr (jsonItemsRepr, jsonRepr)
 import Petrus.Json.Python (pythonDoubleRepr, pythonExceptionStr, pythonStrRepr, unicodeEncodeError, utf8EncodeFailure)
 import Petrus.Json.Wtf8 (fromCodePoints)
 
@@ -187,134 +185,15 @@ smallIntCount = 1024
 strChunks :: Text -> Chunks
 strChunks value = (pythonStrRepr value :)
 
--- | Whether a text is printable ASCII without quotes or backslashes (its
--- @repr@ is the text in single quotes), tested on the UTF-8 bytes.
-simpleAscii :: Text -> Bool
-simpleAscii (TI.Text array offset size) = go offset
-  where
-    end = offset + size
-    go i
-      | i >= end = True
-      | otherwise =
-          let w = TA.unsafeIndex array i
-           in w >= 0x20 && w < 0x7F && w /= 0x27 && w /= 0x22 && w /= 0x5C && go (i + 1)
-
 -- | A dashboard entry: @f"{kind}:{body}"@ for a JSON object body.
 dictEntry :: Text -> [(Text, Json)] -> Text
-dictEntry kind body =
-  written (utf8Length kind + 1 + bound (Json.Object body)) $ \array -> do
-    afterKind <- writeText array 0 kind
-    TA.unsafeWrite array afterKind 0x3A
-    writeJson array (afterKind + 1) (Json.Object body)
+dictEntry kind body = T.concat [kind, ":", jsonRepr (Json.Object body)]
 
 -- | A dashboard digest: @f"{kind}:{sorted(body.items())!r}"@. Keys of a
 -- JSON object are distinct strings, so the sort is by key alone (code point
 -- order, which UTF-8 byte order preserves).
 sortedItemsDigest :: Text -> [(Text, Json)] -> Text
-sortedItemsDigest kind body =
-  written (utf8Length kind + 3 + sum [stringBound key + bound value + 6 | (key, value) <- sortedItems]) $ \array -> do
-    afterKind <- writeText array 0 kind
-    TA.unsafeWrite array afterKind 0x3A
-    TA.unsafeWrite array (afterKind + 1) 0x5B
-    end <- separated array (afterKind + 2) item sortedItems
-    TA.unsafeWrite array end 0x5D
-    pure (end + 1)
-  where
-    sortedItems = sortOn fst (pythonDict body)
-    item array offset (key, value) = do
-      TA.unsafeWrite array offset 0x28
-      afterKey <- writeString array (offset + 1) key
-      TA.unsafeWrite array afterKey 0x2C
-      TA.unsafeWrite array (afterKey + 1) 0x20
-      afterValue <- writeJson array (afterKey + 2) value
-      TA.unsafeWrite array afterValue 0x29
-      pure (afterValue + 1)
-
--- The JSON-body printer writes straight into one buffer sized by an upper
--- bound of the output ('bound'), then shrinks it: no intermediate pieces.
--- Its output is exactly 'repr' of 'fromJson' (the corpus and a property
--- test check both against CPython and each other).
-
--- | Run a writer over a buffer of at least the given size.
-written :: Int -> (forall s. TA.MArray s -> ST s Int) -> Text
-written size write = runST $ do
-  array <- TA.new size
-  end <- write array
-  TA.shrinkM array end
-  frozen <- TA.unsafeFreeze array
-  pure (TI.text frozen 0 end)
-
--- | The UTF-8 length of a text, in bytes.
-utf8Length :: Text -> Int
-utf8Length (TI.Text _ _ size) = size
-
--- | An upper bound of the UTF-8 length of a JSON value's @repr@.
-bound :: Json -> Int
-bound = \case
-  Json.Null -> 4
-  Json.Bool _ -> 5
-  Json.Int value -> utf8Length (intText value)
-  Json.Float _ -> 32
-  Json.String value -> stringBound value
-  Json.Array values -> 2 + sum [bound value + 2 | value <- values]
-  Json.Object members -> 2 + sum [stringBound key + bound value + 4 | (key, value) <- members]
-
--- | No character's escape is longer than four times its UTF-8 length
--- (a C0 control becomes @\\xhh@), plus the quotes.
-stringBound :: Text -> Int
-stringBound value = 4 * utf8Length value + 2
-
-writeJson :: TA.MArray s -> Int -> Json -> ST s Int
-writeJson array offset = \case
-  Json.Null -> writeText array offset "None"
-  Json.Bool True -> writeText array offset "True"
-  Json.Bool False -> writeText array offset "False"
-  Json.Int value -> writeText array offset (intText value)
-  Json.Float value -> writeText array offset (pythonDoubleRepr value)
-  Json.String value -> writeString array offset value
-  Json.Array values -> do
-    TA.unsafeWrite array offset 0x5B
-    end <- separated array (offset + 1) (\target at value -> writeJson target at value) values
-    TA.unsafeWrite array end 0x5D
-    pure (end + 1)
-  Json.Object members -> do
-    TA.unsafeWrite array offset 0x7B
-    end <- separated array (offset + 1) member (pythonDict members)
-    TA.unsafeWrite array end 0x7D
-    pure (end + 1)
-  where
-    member target at (key, value) = do
-      afterKey <- writeString target at key
-      TA.unsafeWrite target afterKey 0x3A
-      TA.unsafeWrite target (afterKey + 1) 0x20
-      writeJson target (afterKey + 2) value
-
--- | Write items separated by @", "@.
-separated :: TA.MArray s -> Int -> (TA.MArray s -> Int -> a -> ST s Int) -> [a] -> ST s Int
-separated array offset writeItem = \case
-  [] -> pure offset
-  first : rest -> writeItem array offset first >>= go rest
-  where
-    go [] at = pure at
-    go (next : more) at = do
-      TA.unsafeWrite array at 0x2C
-      TA.unsafeWrite array (at + 1) 0x20
-      writeItem array (at + 2) next >>= go more
-
-writeText :: TA.MArray s -> Int -> Text -> ST s Int
-writeText array offset (TI.Text source from size) = do
-  TA.copyI size array offset source from
-  pure (offset + size)
-
--- | Write @repr(str)@.
-writeString :: TA.MArray s -> Int -> Text -> ST s Int
-writeString array offset value
-  | simpleAscii value = do
-      TA.unsafeWrite array offset 0x27
-      end <- writeText array (offset + 1) value
-      TA.unsafeWrite array end 0x27
-      pure (end + 1)
-  | otherwise = writeText array offset (pythonStrRepr value)
+sortedItemsDigest kind body = T.concat [kind, ":", jsonItemsRepr (sortOn fst (pythonDict body))]
 
 -- * Parsing ------------------------------------------------------------------
 

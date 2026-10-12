@@ -180,9 +180,6 @@ None of these change behavior.
   was the stand-in for the Engine before the Haskell Engine existed. It now cross-checks every
   door call, including for the joined Postgres worlds, independently of the real profiles (see
   the Engine seam in [PARITY.md](PARITY.md)).
-- `Petrus.Testing.Dst.Internal.Canonical` is a specialized encoder for the canonical
-  `json.dumps` spelling. It produces exactly petrus-json's bytes, which a QuickCheck property
-  and every corpus check. It exists for speed (`bench/RESULTS.md`).
 
 ## Engine worlds (`petrus-dst:engine-worlds`)
 

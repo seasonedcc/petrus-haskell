@@ -112,7 +112,7 @@ The `reopen` fixture's sqlite parameter runs the same 13 examples through
   example per backend). An integer over CPython's 4300-digit limit in token
   data is refused with the backend's `cannot durably encode …` text, on
   JSONL, SQLite and PostgreSQL alike, and the stored history is unchanged;
-  JSONL's encoder is a single `Either` pass over `dumpsBuilder`, as
+  JSONL's encoder is a single `Either` pass of petrus-json's `dumps`, as
   `jsonl.py`'s `_encoded_line` catches every `json.dumps` error (it used to
   check only non-finite floats and write an empty line for the rest).
 

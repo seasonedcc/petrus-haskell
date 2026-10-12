@@ -22,6 +22,7 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json.Limits (maxIntStrDigits)
+import Petrus.Json.Python.JsonRepr (jsonRepr)
 import Petrus.Json.Python.Scanner (Raw (..))
 import Petrus.Json.PythonText (pythonStrRepr)
 import Petrus.Json.Repr (pythonBytesRepr, pythonDoubleRepr, pythonIntRepr, pythonListRepr, pythonTupleRepr)
@@ -132,7 +133,7 @@ pyType = \case
 
 -- | @repr(value)@ of the Python object @json.loads@ builds for a value.
 pythonRepr :: Json -> Text
-pythonRepr = pyRepr . fromJson
+pythonRepr = jsonRepr
 
 -- | @str(value)@ of the Python object @json.loads@ builds for a value: a
 -- string itself, anything else its 'pythonRepr'.

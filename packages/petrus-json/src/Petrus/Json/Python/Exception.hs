@@ -4,12 +4,20 @@
 -- | A Python exception as a value: its class name and its positional
 -- @args@, with CPython's @repr()@ and @str()@ of it.
 --
--- This is the one representation the Petrus and Hamsterdan ports use for
--- an exception the reference raises from Python code: the inline driver
+-- This is the representation the Petrus and Hamsterdan ports use for an
+-- exception the reference raises from Python code: the inline driver
 -- records it as a firing failure (@Petrus.Impetus.Instance.FailureText@),
 -- a Hamsterdan host raises it where the reference's exception propagates,
--- and a pure fold returns it. It is rendered to text only where the
--- reference renders it.
+-- the Net-file loader refuses with it, and a pure fold returns it. Its
+-- arguments are "Petrus.Json.Python.Object" values. It is rendered to text
+-- only where the reference renders it.
+--
+-- One evaluator keeps a closed set instead: petrus-cel models the
+-- exceptions celpy's evaluation raises and catches over its own @ExcClass@
+-- (@Petrus.Cel.Python@), because celpy branches on the class itself (a
+-- caught exception becomes a @CELEvalError@ holding @ex.__class__@, which
+-- later comparisons and its qualified @repr@, such as @re2._re2.Error@,
+-- read back).
 --
 -- = Exceptions that stand for Python exceptions
 --

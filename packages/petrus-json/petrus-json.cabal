@@ -39,10 +39,12 @@ library
                     Petrus.Json.Encode
                     Petrus.Json.Limits
                     Petrus.Json.Parse
+                    Petrus.Json.Parse.InPlace
                     Petrus.Json.Python
                     Petrus.Json.Python.Decode
                     Petrus.Json.Python.Exception
                     Petrus.Json.Python.Fs
+                    Petrus.Json.Python.JsonRepr
                     Petrus.Json.Python.Loads
                     Petrus.Json.Python.Object
                     Petrus.Json.Python.OsError
@@ -73,6 +75,7 @@ test-suite petrus-json-test
   other-modules:    Petrus.Json.CPythonDifferentialSpec
                     Petrus.Json.FloatReprSpec
                     Petrus.Json.Generators
+                    Petrus.Json.InPlaceSpec
                     Petrus.Json.PythonCompatSpec
                     Petrus.Json.PythonTextSpec
                     Petrus.Json.Reference

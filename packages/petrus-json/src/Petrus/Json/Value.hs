@@ -20,6 +20,7 @@ module Petrus.Json.Value
   , exactEq
   , typeExactEq
   , lookupMember
+  , pythonDict
   , isFiniteNumber
   , allFinite
   , jsonTypeName
@@ -27,6 +28,7 @@ module Petrus.Json.Value
 
 import Control.DeepSeq (NFData (..))
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Data.Text (Text)
 
 -- | A JSON value with CPython-compatible number and object semantics.
@@ -151,6 +153,25 @@ allFinite = \case
   Array items -> all allFinite items
   Object members -> all (allFinite . snd) members
   _ -> True
+
+-- | The members a Python @dict@ built from these pairs holds (@dict(pairs)@,
+-- as @json.loads@ keeps them): each key once, at its first position, with
+-- its last value.
+pythonDict :: [(Text, a)] -> [(Text, a)]
+pythonDict members
+  | distinct = members
+  | otherwise = go Set.empty members
+  where
+    distinct = case drop 8 members of
+      [] -> pairwiseDistinct members
+      _ -> Map.size final == length members
+    pairwiseDistinct [] = True
+    pairwiseDistinct ((key, _) : rest) = all ((/= key) . fst) rest && pairwiseDistinct rest
+    final = Map.fromList members
+    go _ [] = []
+    go seen ((key, _) : rest)
+      | Set.member key seen = go seen rest
+      | otherwise = (key, final Map.! key) : go (Set.insert key seen) rest
 
 -- | The CPython type name of a value (for diagnostics that mirror the
 -- reference's messages).

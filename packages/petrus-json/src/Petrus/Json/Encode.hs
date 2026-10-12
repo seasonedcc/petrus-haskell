@@ -21,6 +21,7 @@ module Petrus.Json.Encode
   , dumps
   , dumpsMany
   , dumpsText
+  , dumpsString
   , pythonFloatRepr
   , EncodeError (..)
   , encodeErrorMessage
@@ -153,12 +154,25 @@ dumps options value = unsafeDupablePerformIO $ do
   ref <- newBuffer
   try (written (layoutOf options) ref 0 0 value) >>= \case
     Left (Refused problem) -> pure (Left problem)
-    Right end -> do
-      Buffer final capacity <- readIORef ref
-      -- Keep the growth slack out of long-lived values.
-      if 4 * (capacity - end) > capacity
-        then Right <$> BI.create end (\target -> unsafeWithForeignPtr final (\source -> copyBytes target source end))
-        else pure (Right (BI.BS final end))
+    Right end -> Right <$> finished ref end
+
+-- | A string as 'dumps' spells it ('ensureAscii' is the one option that
+-- applies), for a writer that assembles a document around it. No option
+-- refuses a string.
+-- unsafeDupablePerformIO: as for 'dumps'.
+dumpsString :: EncodeOptions -> Text -> BS.ByteString
+dumpsString options text = unsafeDupablePerformIO $ do
+  ref <- newBuffer
+  writeString (ensureAscii options) ref 0 text >>= finished ref
+
+-- | The first bytes of the buffer, copied when most of it is growth slack
+-- (which a long-lived value should not keep).
+finished :: IORef Buffer -> Int -> IO BS.ByteString
+finished ref end = do
+  Buffer final capacity <- readIORef ref
+  if 4 * (capacity - end) > capacity
+    then BI.create end (\target -> unsafeWithForeignPtr final (\source -> copyBytes target source end))
+    else pure (BI.BS final end)
 
 -- | 'dumps' of each item's value in turn, for a batch written together:
 -- every item with its spelling, or the first item refused with its

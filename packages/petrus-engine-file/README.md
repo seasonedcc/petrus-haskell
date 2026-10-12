@@ -54,10 +54,11 @@ loader upstream, so they are out of scope (DIVERGENCES.md).
 | `toSchema flat` | `flat.to_schema()`, the executable projection |
 | `toKernel schema`, `loadKernelFile path` | (none) the schema as a validated kernel `Net` of `petrus-impetus`, with its initial marking |
 
-Refusals come back as `Left PyException {exceptionClass, message}` with the
-reference's class name (`ValidationError`, `ValueError`, `FileNotFoundError`,
-`TypeError`, ...) and its `str(exception)`, including pydantic's multi-line
-validation reports.
+Refusals come back as `Left PythonException` (petrus-json's
+`Petrus.Json.Python.Exception`) with the reference's class name
+(`ValidationError`, `ValueError`, `FileNotFoundError`, `TypeError`, ...) and
+arguments; `pythonExceptionStr` gives its `str(exception)`, including
+pydantic's multi-line validation reports.
 
 ### Kernel nets
 

@@ -13,6 +13,7 @@ import Petrus.Json
 import Petrus.Json.CPythonDifferentialSpec qualified as CPythonDifferentialSpec
 import Petrus.Json.FloatReprSpec qualified as FloatReprSpec
 import Petrus.Json.Generators
+import Petrus.Json.InPlaceSpec qualified as InPlaceSpec
 import Petrus.Json.Python (PythonException (..), pythonExceptionRepr, pythonExceptionStr, pythonInt)
 import Petrus.Json.Python.Object
 import Petrus.Json.Python.OsError (errnoClass, osError)
@@ -32,6 +33,7 @@ main = hspec $ do
   PythonCompatSpec.spec
   FloatReprSpec.spec
   CPythonDifferentialSpec.spec
+  InPlaceSpec.spec
   describe "Petrus.Json.Python.Pydantic" $ do
     -- Lines as pydantic 2.13.4 prints them (the engine-file and impetus
     -- corpora pin every other shape).

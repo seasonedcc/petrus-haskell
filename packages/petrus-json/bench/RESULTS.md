@@ -109,3 +109,56 @@ faster Haskell is).
 The strict reader is faster than CPython's by more than the plain one is,
 because CPython's `object_pairs_hook` calls back into Python once per object
 while petrus-json checks duplicates inside the parser.
+
+## Optimizations kept and removed
+
+Each A/B below ran the benchmark executables of the variants alternately,
+five interleaved repetitions with the order rotating every repetition
+(tasty-bench means in wall-clock time, `--stdev 5`, `+RTS -M2G`), on the
+Apple M4 at a one-minute load average of 2.0–2.6, on 2026-10-12. Each cell is
+the median of the five means; Python is the "Current figures" column above.
+
+### The direct writer
+
+<!-- bench: superseded -->
+
+`dumps` writes straight into one growing buffer (`Petrus.Json.Encode`). The
+plain alternative, a `Data.ByteString.Builder` encoder, cannot keep up with
+CPython's C encoder, so the writer stays and the `Builder` encoder lives on
+only as the test suite's oracle (`test/Petrus/Json/ReferenceEncode.hs`), which
+the properties compare `dumps` against.
+
+| row | `Builder` encoder | direct writer | Python | `Builder` vs Python |
+| --- | ---: | ---: | ---: | ---: |
+| `history.dumps` | 3.72 ms | 976 µs | 2.9 ms | 0.78× |
+| `history.dumps-canonical` | 4.01 ms | 1.42 ms | 3.79 ms | 0.94× |
+| `net-document.dumps` | 785 µs | 156 µs | 402 µs | 0.51× |
+| `thread.dumps` | 1.10 ms | 356 µs | 645 µs | 0.59× |
+
+### The parser's scans
+
+<!-- bench: superseded -->
+
+Three lower-level tricks in `Petrus.Json.Parse` were measured one at a time
+against the parser that had them all (A), then removed together (C):
+
+- B1: an eight-bytes-at-a-time (SWAR) scan for a string's end, replaced by
+  `Data.ByteString.findIndex`;
+- B2: an open-addressing hash pre-check for duplicate members of objects
+  over 8 members, replaced by a `Data.Set` of the keys;
+- B3: `copyAscii`, a private copy of an ASCII run into a `Text`, replaced by
+  `Data.Text.Encoding.decodeLatin1`. It was slower (1.04–1.07×), and
+  `copyAscii` was byte for byte petrus-json's own
+  `Wtf8.unsafeTextFromBytes`, so C uses that one definition instead.
+
+| row | A | B1 | B2 | B3 | C (all removed) | Python | C vs Python |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `history.loads` | 1.07 ms | 1.12× | 1.00× | 1.06× | 1.18 ms (1.10×) | 2.52 ms | 2.14× |
+| `net-document.loads` | 233 µs | 1.10× | 0.98× | 1.04× | 255 µs (1.09×) | 439 µs | 1.72× |
+| `net-document.loads-strict` | 233 µs | 1.10× | 0.98× | 1.05× | 253 µs (1.08×) | 567 µs | 2.24× |
+| `thread.loads` | 270 µs | 1.19× | 1.09× | 1.07× | 353 µs (1.31×) | 458 µs | 1.30× |
+
+The B and C columns are relative to A in the same run (above 1 is slower).
+The plain parser still clears CPython on every row, so the tricks are gone.
+`thread.loads` is now the thinnest margin, and `scripts/bench-gate` checks it
+beside `thread.dumps`.

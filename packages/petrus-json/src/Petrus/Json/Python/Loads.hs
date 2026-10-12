@@ -1,10 +1,11 @@
 -- | @json.loads@ with CPython's defaults, as a value or the exception it
 -- raises.
 --
--- A document is admitted by "Petrus.Json"'s parser; only a refusal (or a
--- text that holds a raw lone surrogate, which the byte parser cannot see)
+-- A @str@ in the common subset is read in place ("Petrus.Json.Parse.InPlace");
+-- any other document is admitted by "Petrus.Json"'s parser. Only a refusal
 -- goes through "Petrus.Json.Python.Scanner", CPython's scanner, which words
--- the exception exactly as the reference does. A lone surrogate, escaped
+-- the exception exactly as the reference does, or admits a text holding a
+-- raw lone surrogate (which the byte parser refuses as invalid UTF-8). A lone surrogate, escaped
 -- (@"\\ud800"@) or decoded from the bytes (@surrogatepass@), is kept as
 -- WTF-8 ("Petrus.Json.Wtf8"), as CPython keeps it in a @str@.
 module Petrus.Json.Python.Loads
@@ -19,6 +20,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Json.Parse (parseJson, pythonJsonLoads)
+import Petrus.Json.Parse.InPlace (parseInPlace)
 import Petrus.Json.Python.Decode (jsonBytesFailure)
 import Petrus.Json.Python.Exception (PythonException, pythonError, unicodeDecodeError)
 import Petrus.Json.Python.Scanner qualified as Scanner
@@ -50,19 +52,16 @@ unexpectedBom = pythonError "JSONDecodeError" "Unexpected UTF-8 BOM (decode usin
 
 -- | @json.loads@ past its @str@ checks: 'Scanner.decode'.
 decodeText :: Text -> Either PythonException Json
-decodeText text = case parsed of
-  Right value -> Right value
-  Left problem -> case Scanner.decode Scanner.defaultHooks text of
-    Left (Scanner.DecodeError message position) -> Left (pythonError "JSONDecodeError" (Scanner.decodeErrorText text message position))
-    Left (Scanner.HookError message) -> Left (pythonError "ValueError" message)
-    Right raw
-      | surrogates -> Right (Scanner.rawJson raw)
-      | otherwise -> Left (pythonError "RecursionError" (T.pack problem))
-  where
-    surrogates = hasLoneSurrogate text
-    parsed
-      | surrogates = Left "a raw lone surrogate"
-      | otherwise = parseJson pythonJsonLoads (TE.encodeUtf8 text)
+decodeText text = case parseInPlace text of
+  Just value -> Right value
+  Nothing -> case parseJson pythonJsonLoads (TE.encodeUtf8 text) of
+    Right value -> Right value
+    Left problem -> case Scanner.decode Scanner.defaultHooks text of
+      Left (Scanner.DecodeError message position) -> Left (pythonError "JSONDecodeError" (Scanner.decodeErrorText text message position))
+      Left (Scanner.HookError message) -> Left (pythonError "ValueError" message)
+      Right raw
+        | hasLoneSurrogate text -> Right (Scanner.rawJson raw)
+        | otherwise -> Left (pythonError "RecursionError" (T.pack problem))
 
 -- | @json.loads(b)@ for @bytes@: decoded as 'jsonBytesFailure' decodes them
 -- (@json.detect_encoding@, @surrogatepass@), or their @UnicodeDecodeError@,

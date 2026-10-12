@@ -35,7 +35,6 @@ import Hamsterdan.Python.Exception (PyObject (..), PythonException (..), dumpsEr
 import Hamsterdan.Python.Object (PV (..), hashCheck, loadsValue, pyEq, toJson, typeName)
 import Hamsterdan.Python.Text qualified as Py
 import Hamsterdan.Python.Url qualified as Url
-import Hamsterdan.Operator.FastJson (fastLoads)
 import Petrus.EngineFile.PyText (decodeText)
 import Petrus.Json (defaultDumps, dumps)
 
@@ -126,16 +125,11 @@ data JsonOutcome
 
 -- | @json.loads(text)@ for a @str@ or @bytes@ value.
 loadsJson :: PV -> JsonOutcome
-loadsJson value = case (case value of PStr s -> loadsStr s; _ -> loadsValue value) of
+loadsJson value = case loadsValue value of
   Right loaded -> Loaded loaded
   Left e
     | e.name == "JSONDecodeError" -> Malformed
     | otherwise -> Raised e
-
--- | @json.loads@ of a @str@: the fast path when the document is in its
--- subset, the reference loader otherwise.
-loadsStr :: Text -> Either PythonException PV
-loadsStr text = maybe (loadsValue (PStr text)) Right (fastLoads text)
 
 -- | @json.dumps(value)@ (unsorted, default separators).
 dumpsPlain :: PV -> Either PythonException Text

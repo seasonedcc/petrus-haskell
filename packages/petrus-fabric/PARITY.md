@@ -7,7 +7,7 @@ This package ports `petrus.fabric` at the pin in
 
 | Reference | Haskell |
 | --- | --- |
-| `petrus/fabric/model.py` | `Petrus.Fabric.Model`: values, limits and the canonical digest. `Petrus.Fabric.Canonical` is the canonical encoder. `Petrus.Fabric.Error` holds the §12 categories. |
+| `petrus/fabric/model.py` | `Petrus.Fabric.Model`: values, limits and the canonical digest (the canonical bytes are petrus-json's `dumps`). `Petrus.Fabric.Error` holds the §12 categories. |
 | `petrus/fabric/ingress.py` | `Petrus.Fabric.Ingress`: `FabricInbox` against an abstract `DeliveryDoor`. The `petrus-fabric:engine` sublibrary (`Petrus.Fabric.Engine`) makes an Engine the door. |
 | `petrus/fabric/postgres.py` | The `petrus-fabric:postgres` sublibrary (`Petrus.Fabric.Postgres`): the `impetus_fabric` schema and `PostgresFabric`. |
 | the demos' `SendActivity` (fabric.md §11) | `Petrus.Fabric.Send` |
@@ -31,7 +31,7 @@ side runs from the pinned upstream virtual environment
 | [DemoSpec](test/Petrus/Fabric/DemoSpec.hs) | 8 | The Engine checks against both implementations, the demo across implementations, and F-107: split roles in all four combinations. |
 | [TypedSpec](test/Petrus/Fabric/TypedSpec.hs) | 6 | The type-enforced refusals F-005, F-007, F-008, F-076, F-080 and F-091, each against the real signature under deferred type errors. |
 | [ReferenceSpec](test/Petrus/Fabric/ReferenceSpec.hs) | 13 | The upstream tests, one for one (see the ledger). |
-| [CanonicalSpec](test/Petrus/Fabric/CanonicalSpec.hs) | 6 | The canonical encoder against CPython and petrus-json. |
+| [CanonicalSpec](test/Petrus/Fabric/CanonicalSpec.hs) | 3 | The canonical bytes against CPython: float spellings, refusals, and doubles and escaped strings byte for byte. |
 
 ## Conformance
 
@@ -102,7 +102,7 @@ The evidence is [InteropSpec](test/Petrus/Fabric/InteropSpec.hs) and
 The golden vectors are checked against both implementations: the mixed
 canonical vector (F-012), key order (F-013), float spellings (F-014), the
 digest vectors (F-026), and the §15 worked examples. CanonicalSpec also
-compares the canonical encoder with CPython's `json.dumps` byte for byte on
+compares the canonical bytes with CPython's `json.dumps` byte for byte on
 more than 100000 doubles and on escaped strings and keys.
 
 ## Performance
