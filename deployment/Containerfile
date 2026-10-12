@@ -27,6 +27,12 @@ RUN find /opt/hamsterdan/src/packages -type f ! -name '*.cabal' -delete \
 FROM python:3.14.7-slim-bookworm@sha256:23c59390fc717bf09f9336908199a0ae75d9c4264bf296123f94ad772fea3b52 AS build
 ARG GHC_VERSION=9.10.3
 ARG CABAL_VERSION=3.16.1.0
+# ghcup itself is pinned by version and by the SHA-256 of each architecture's
+# binary, from downloads.haskell.org/~ghcup/0.2.6.2/SHA256SUMS (the x86_64
+# digest is CI's GHCUP_SHA256, .github/workflows/ci.yml).
+ARG GHCUP_VERSION=0.2.6.2
+ARG GHCUP_SHA256_X86_64=9ed5da5449b48043a0d17e767c05d2ef585e25a639bb934329496c6d2fad9cf8
+ARG GHCUP_SHA256_AARCH64=65a5f05120288ee4f1a81d28825374b6af317456a351a586adfce90c6dc29e3b
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
        build-essential ca-certificates curl git libbz2-dev libffi-dev libgmp-dev liblzma-dev libncurses-dev \
@@ -34,9 +40,17 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 ENV GHCUP_INSTALL_BASE_PREFIX=/opt/toolchain \
     PATH="/opt/toolchain/.ghcup/bin:${PATH}"
-RUN mkdir -p /opt/toolchain/.ghcup/bin \
+RUN arch="$(uname -m)" \
+    && case "$arch" in \
+         x86_64) digest="${GHCUP_SHA256_X86_64}" ;; \
+         aarch64) digest="${GHCUP_SHA256_AARCH64}" ;; \
+         *) echo "no pinned ghcup for $arch" >&2; exit 1 ;; \
+       esac \
+    && mkdir -p /opt/toolchain/.ghcup/bin \
     && curl --fail --silent --show-error --location --proto '=https' \
-       --output /opt/toolchain/.ghcup/bin/ghcup "https://downloads.haskell.org/~ghcup/$(uname -m)-linux-ghcup" \
+       --output /opt/toolchain/.ghcup/bin/ghcup \
+       "https://downloads.haskell.org/~ghcup/${GHCUP_VERSION}/${arch}-linux-ghcup-${GHCUP_VERSION}" \
+    && echo "${digest}  /opt/toolchain/.ghcup/bin/ghcup" | sha256sum --check --strict \
     && chmod 0755 /opt/toolchain/.ghcup/bin/ghcup \
     && ghcup install ghc "${GHC_VERSION}" --set \
     && ghcup install cabal "${CABAL_VERSION}" --set

@@ -200,13 +200,18 @@ differential corpora compare these byte for byte with the pinned Python (see
 
 ## Runtime environment
 
-14. **No environment-driven proxies or CA bundles.**
-    - httpx's `trust_env=True` honors `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`
-      and `SSL_CERT_FILE`, and otherwise verifies TLS against certifi's bundle.
-    - `newRealExchange` connects directly (`managerSetProxy noProxy`) and
-      verifies against the system trust store (http-client-tls).
-    - Hamsterdan's container image (`deployment/Containerfile`) sets none of
-      these variables.
+14. **The trusted CA certificates come from the system store.**
+    - Upstream builds every client, the App's and each installation's,
+      with `"trust_env": False` (`github_app/auth.py`), so httpx ignores
+      `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` and `SSL_CERT_FILE`, connects
+      directly and verifies TLS against certifi's bundle.
+    - `newRealExchange` also ignores those variables and connects directly
+      (`managerSetProxy noProxy`), as upstream does. It verifies against the
+      system trust store (http-client-tls) instead of certifi's bundle, the
+      only difference: Haskell has no certifi, and in Hamsterdan's container
+      image (`deployment/Containerfile`) the system store is Debian's
+      `ca-certificates`. Both it and certifi take their roots from
+      Mozilla's CA program, each at its own release.
 15. **No concurrency throttler.**
     - GitHubKit wraps each request in a `LocalThrottler(100)` semaphore per
       client, which bounds concurrent requests to 100.

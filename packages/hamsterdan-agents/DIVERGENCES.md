@@ -91,9 +91,9 @@ Below are the differences that remain, with their rationale.
 ## Internal (no observable difference)
 
 - **Random bytes come from `getentropy(2)`.** Key material, AES-GCM nonces
-  and temporary-file suffixes use `Hamsterdan.Host.Random.urandom`, which
-  draws from the system CSPRNG with one `getentropy` call per 256 bytes, as
-  `os.urandom` does. crypton's `getRandomBytes` in `IO` opens
+  and temporary-file suffixes use petrus-json's `Petrus.Json.Python.randomBytes`
+  (`os.urandom`), which draws from the system CSPRNG with one `getentropy`
+  call per 256 bytes, as `os.urandom` does. crypton's `getRandomBytes` in `IO` opens
   `/dev/random` and `/dev/urandom` on every call, which made the
   sealed-key path slower than Python's.
 - **Key paths are encoded once.** The persistent key store encodes its root
