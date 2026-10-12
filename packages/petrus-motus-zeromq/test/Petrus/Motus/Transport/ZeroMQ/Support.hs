@@ -74,6 +74,7 @@ import Petrus.Motus.Dispatch (ActivityAttempt (..), WorkerDispatch (..))
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchOptions (..), LocalWorkerOptions (..), defaultLocalDispatchOptions, defaultLocalWorkerOptions, openLocalDispatch, openLocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Transport.ZeroMQ.Native qualified as N
+import Petrus.TestSupport (valid)
 import Petrus.TestSupport.Python (pythonExecutable)
 import Petrus.TestSupport.Repo (upstreamPetrus)
 import Petrus.Motus.Transport.ZeroMQ (ConnectionError (..), RuntimeError (..), ValueError (..), ZeroMQDispatchServer, createCertificates, serveForever, stopServer, waitReady)
@@ -97,13 +98,14 @@ policyOf = either (error . T.unpack) id . executionPolicy
 -- | @invocation(*, attempts=2, heartbeat_timeout=2)@.
 invocationWith :: Integer -> Integer -> ActivityInvocation
 invocationWith attempts' heartbeat =
-  ActivityInvocation
-    { activity = "work"
-    , input = Object [("nested", Array [Int 1, Object [("faithful", Bool True)]])]
-    , policy = policyOf (policyFields defaultExecutionPolicy) {attempts = attempts', heartbeatTimeout = heartbeat}
-    , correlation = Just "correlation"
-    , idempotency = Just "idempotency"
-    }
+  valid . activityInvocation $
+    ActivityInvocationFields
+      { activity = "work"
+      , input = Object [("nested", Array [Int 1, Object [("faithful", Bool True)]])]
+      , policy = policyOf (policyFields defaultExecutionPolicy) {attempts = attempts', heartbeatTimeout = heartbeat}
+      , correlation = Just "correlation"
+      , idempotency = Just "idempotency"
+      }
 
 invocation :: ActivityInvocation
 invocation = invocationWith 2 2

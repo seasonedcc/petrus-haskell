@@ -45,7 +45,7 @@ charge mayPrepare =
           else case bindingTokens b of
             [issue] -> do
               amount <- field "amount" issue
-              Right (invocation "charge_card" (Object [("amount", amount)]))
+              invocation "charge_card" (Object [("amount", amount)])
             other -> Left ("expected one issue, got " <> T.pack (show other))
     , project = \_ result -> case lookupMember "status" result of
         Just s -> Right (handlerTokens [(out, [tokD "Receipt" (Object [("status", s)])])])

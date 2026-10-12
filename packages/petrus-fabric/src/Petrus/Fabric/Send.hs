@@ -12,11 +12,13 @@ module Petrus.Fabric.Send
 import Control.Exception (throwIO)
 import Data.Text (Text)
 import Petrus.Activity
-  ( ActivityInvocation (..)
+  ( ActivityInvocation
+  , ActivityInvocationFields (..)
   , defaultExecutionPolicy
   )
 import Petrus.Fabric.Error
 import Petrus.Fabric.Model
+import Petrus.Impetus.Binding (prepareInvocation)
 import Petrus.Json (Json (..))
 
 -- | @"fabric.send"@.
@@ -24,16 +26,19 @@ sendActivityName :: Text
 sendActivityName = "fabric.send"
 
 -- | The invocation a sending handler's @prepare@ returns: the envelope JSON
--- as input, its correlation, and its ingress identity as idempotency.
-sendInvocation :: Envelope -> ActivityInvocation
+-- as input, its correlation, and its ingress identity as idempotency (a
+-- 'Left' is @prepare@ raising the constructor's @ValueError@, which a
+-- valid 'Envelope' never meets).
+sendInvocation :: Envelope -> Either Text ActivityInvocation
 sendInvocation e =
-  ActivityInvocation
-    { activity = sendActivityName
-    , input = envelopeToData e
-    , policy = defaultExecutionPolicy
-    , correlation = Just e.correlation
-    , idempotency = Just e.ingressIdentity
-    }
+  prepareInvocation
+    ActivityInvocationFields
+      { activity = sendActivityName
+      , input = envelopeToData e
+      , policy = defaultExecutionPolicy
+      , correlation = Just e.correlation
+      , idempotency = Just e.ingressIdentity
+      }
 
 -- | The exact result object (§11).
 sendResult :: Envelope -> Submission -> Json

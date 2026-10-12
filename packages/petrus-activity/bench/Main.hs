@@ -57,9 +57,9 @@ order k =
     , ("coupon", Null)
     ]
 
-invocationInputs :: [ActivityInvocation]
+invocationInputs :: [ActivityInvocationFields]
 invocationInputs =
-  [ ActivityInvocation "charge_card" (order k) policy (Just ("c-" <> tshow k)) Nothing
+  [ ActivityInvocationFields "charge_card" (order k) policy (Just ("c-" <> tshow k)) Nothing
   | (k, fields) <- zip indices policyInputs
   , let policy = either (error . T.unpack) id (executionPolicy fields)
   ]
@@ -95,7 +95,7 @@ charge = defineActivity declaration ["order", "amount", "currency"] run
 
 callInputs :: [ActivityInvocation]
 callInputs =
-  [ invocation "charge" (Object [("order", order k), ("amount", Float 28.25), ("currency", String "BRL")])
+  [ either (error . T.unpack) id (invocation "charge" (Object [("order", order k), ("amount", Float 28.25), ("currency", String "BRL")]))
   | k <- indices
   ]
 

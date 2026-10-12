@@ -65,7 +65,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Petrus.Activity (ActivityInvocation (..), defaultExecutionPolicy)
+import Petrus.Activity (ActivityInvocation, ActivityInvocationFields (..), activityInvocation, defaultExecutionPolicy)
+import Petrus.Motus.PythonException (ValueError (..), pythonException, pythonExceptionStr)
+import Petrus.Motus.PythonException qualified as Python (PythonException (..))
 import Petrus.Engine (DriveOutcome (..), Engine, EngineOptions (..), defaultEngineOptions)
 import Petrus.Engine qualified as Engine
 import Petrus.Engine.Postgres (createEngine, loadEngine)
@@ -177,7 +179,7 @@ spawnHandler :: SpawnSpec -> BoundHandler
 spawnHandler spec =
   ActivityBound
     ActivityHandler
-      { prepare = \_ -> Right (spawnInvocation spec)
+      { prepare = \_ -> spawnInvocation spec
       , project = \_ result -> do
           outcome <- orFail (spawnOutcomeFromData result)
           Right (handlerTokens [(spawned, [token "SpawnReady" (spawnOutcomeToData outcome)])])
@@ -188,7 +190,7 @@ callHandler :: Envelope -> BoundHandler
 callHandler e =
   ActivityBound
     ActivityHandler
-      { prepare = \_ -> Right (sendInvocation e)
+      { prepare = \_ -> sendInvocation e
       , project = \_ result ->
           Right
             HandlerResult
@@ -244,7 +246,7 @@ respondHandler child outcome =
                 else do
                   value <- callError call.callId "delegated-refusal" "child refused delegated work" Null
                   errorEnvelope value request child Nothing
-          Right (sendInvocation reply)
+          sendInvocation reply
       , project = \_ result -> Right (handlerTokens [(childDone, [token "CallDone" (Object [("submission", result), ("outcome", String outcome)])])])
       , projectFailure = Nothing
       }
@@ -464,8 +466,8 @@ spawnWorker = do
           credential = textAt "parent_credential" request
           key = either (const "") id (Base16.decode (TE.encodeUtf8 (textAt "workspace_key" request)))
           raw = maybe Null id (lookupMember "invocation" request)
-          inv =
-            ActivityInvocation
+          fields =
+            ActivityInvocationFields
               { activity = textAt "activity" raw
               , input = maybe Null id (lookupMember "input" raw)
               , policy = defaultExecutionPolicy
@@ -473,13 +475,17 @@ spawnWorker = do
               , idempotency = case lookupMember "idempotency" raw of Just (String s) -> Just s; _ -> Nothing
               }
       counting <- countingProvisioner dsn credential key
-      result <- try $ Pg.withConnection dsn True $ \c -> do
-        registry <- postgresSpawnRegistry c parent credential
-        spawnActivity (spawnRegistry registry) counting.provisioner inv
+      result <- try $ do
+        inv <- either (throwIO . ValueError) pure (activityInvocation fields)
+        Pg.withConnection dsn True $ \c -> do
+          registry <- postgresSpawnRegistry c parent credential
+          spawnActivity (spawnRegistry registry) counting.provisioner inv
       calls <- readIORef counting.ensureCalls
       pure $ case result of
         Right outcome -> Object [("ok", outcome), ("ensure_calls", Int (toInteger calls))]
-        Left (err :: SomeException) -> Object [("error", String (T.pack (show err))), ("ensure_calls", Int (toInteger calls))]
+        Left err -> Object [("error", String (pythonErrorLine err)), ("ensure_calls", Int (toInteger calls))]
+    -- @f"{type(error).__name__}: {error}"@, as the reference's worker answers.
+    pythonErrorLine err = let python = pythonException err in python.name <> ": " <> pythonExceptionStr python
 
 -- | A running worker of some implementation, as a @process.spawn@ Activity.
 data Worker = Worker {input :: Handle, output :: Handle, process :: ProcessHandle, lock :: MVar ()}

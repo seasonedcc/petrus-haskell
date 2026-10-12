@@ -55,7 +55,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
-import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..), defaultExecutionPolicy)
+import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocationFields (..), activityInvocation, defaultExecutionPolicy)
 import Petrus.Agenticus.Attachment.Binding (AttachmentCoordinates (..), BindingSettlement (..), bindingExecution, motusBinding, openMotusBinding)
 import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment, episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
@@ -326,13 +326,14 @@ codexA3ServiceTurn python root = do
             , ("continuation", Null)
             ]
         invocation =
-          ActivityInvocation
-            { activity = serviceActivity
-            , input
-            , policy = defaultExecutionPolicy
-            , correlation = Nothing
-            , idempotency = Just ("operation-" <> n)
-            }
+          either (error . T.unpack) id . activityInvocation $
+            ActivityInvocationFields
+              { activity = serviceActivity
+              , input
+              , policy = defaultExecutionPolicy
+              , correlation = Nothing
+              , idempotency = Just ("operation-" <> n)
+              }
         variables name
           | name == endpointVariable = pure (Just (T.pack endpoint))
           | name == tokenVariable = pure (Just token)

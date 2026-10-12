@@ -22,6 +22,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity hiding (invocation)
+import Petrus.TestSupport (valid)
 import Data.Map.Strict qualified as Map
 import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
 import Petrus.Motus.Dispatch (ActivityAttempt (..), ActivityOutcome (..), AttemptFailure (..), DispatchError (..), activityAttempt)
@@ -47,28 +48,29 @@ import Test.Hspec hiding (context)
 -- | The driver's @scenario_call()@.
 scenarioCall :: ActivityInvocation
 scenarioCall =
-  ActivityInvocation
-    { activity = "work"
-    , input =
-        obj
-          [ ("nested", Array [Int 1, obj [("faithful", Bool True)]])
-          , ("text", String "caf\233 \9731")
-          , ("float", Float 1.5)
-          ]
-    , policy =
-        policyOf
-          (policyFields defaultExecutionPolicy)
-            { attempts = 3
-            , heartbeatTimeout = 4
-            , initialInterval = 5
-            , coefficient = 3
-            , maxInterval = 20
-            , startToClose = Just 40
-            , scheduleToClose = Just 90
-            }
-    , correlation = Just "correlation"
-    , idempotency = Just "idempotency"
-    }
+  valid . activityInvocation $
+    ActivityInvocationFields
+      { activity = "work"
+      , input =
+          obj
+            [ ("nested", Array [Int 1, obj [("faithful", Bool True)]])
+            , ("text", String "caf\233 \9731")
+            , ("float", Float 1.5)
+            ]
+      , policy =
+          policyOf
+            (policyFields defaultExecutionPolicy)
+              { attempts = 3
+              , heartbeatTimeout = 4
+              , initialInterval = 5
+              , coefficient = 3
+              , maxInterval = 20
+              , startToClose = Just 40
+              , scheduleToClose = Just 90
+              }
+      , correlation = Just "correlation"
+      , idempotency = Just "idempotency"
+      }
 
 invalid :: ActivityFailure
 invalid = failureOf (ActivityFailureFields "invalid" "InvalidRequest" (obj [("field", String "name")]) False (Just 7))

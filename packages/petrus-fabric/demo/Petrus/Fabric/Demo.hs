@@ -179,7 +179,7 @@ sendHandler :: Envelope -> Bool -> BoundHandler
 sendHandler e opensReply =
   ActivityBound
     ActivityHandler
-      { prepare = \_ -> Right (sendInvocation e)
+      { prepare = \_ -> sendInvocation e
       , project = \_ result ->
           Right
             HandlerResult
@@ -249,7 +249,7 @@ responseHandler =
                   (Object [("answer", String "pong"), ("request", String request.deliveryId)])
                   Nothing
               )
-          Right (sendInvocation reply)
+          sendInvocation reply
       , project = \_ result -> Right (handlerTokens [(done, [token "Done" result])])
       , projectFailure = Nothing
       }

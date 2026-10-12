@@ -99,7 +99,6 @@ import Hamsterdan.Readiness.NetV5.Review (liveFindings)
 import Hamsterdan.Readiness.NetV5.Topology (buildNetV5, derived, gates, seedMarkingWith)
 import Petrus.Activity
   ( ActivityDefinition (..)
-  , ActivityInvocation (..)
   , activityDeclaration
   , callActivity
   )

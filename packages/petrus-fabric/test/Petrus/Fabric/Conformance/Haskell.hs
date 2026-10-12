@@ -13,8 +13,9 @@ module Petrus.Fabric.Conformance.Haskell
 
 import Control.Exception (SomeException, fromException, throwIO, try)
 import Data.IORef (atomicModifyIORef', newIORef, readIORef)
+import Data.Bifunctor (first)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), invocation)
+import Petrus.Activity (ActivityInvocation, ActivityInvocationFields (ActivityInvocationFields), activityInvocation, defaultExecutionPolicy)
 import Petrus.Fabric.Send (sendActivity)
 import Petrus.Impetus.History.Records (QuarantineScope (..))
 import Petrus.Impetus.Instance (DeliveryDisposition (..), PriorAcknowledgement (..), ScopedDeliveryAcknowledgement (..))
@@ -75,7 +76,8 @@ invocationIn args = do
   let text key = case Map.lookup key args of
         Just (String s) -> Just s
         _ -> Nothing
-  pure (invocation name (arg args "input")) {correlation = text "correlation", idempotency = text "idempotency"}
+  orThrow . first InvalidValue $
+    activityInvocation (ActivityInvocationFields name (arg args "input") defaultExecutionPolicy (text "correlation") (text "idempotency"))
 
 stamp :: Maybe a -> (a -> Json) -> Json
 stamp value f = maybe Null f value

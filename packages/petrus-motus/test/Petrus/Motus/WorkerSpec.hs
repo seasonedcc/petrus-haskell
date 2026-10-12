@@ -28,12 +28,13 @@ import System.FilePath ((</>))
 import System.Posix.Signals (sigKILL, signalProcess)
 import System.Process
 import Test.Hspec hiding (context)
+import Petrus.TestSupport (valid)
 
 policyWith :: (ExecutionPolicyFields -> ExecutionPolicyFields) -> ExecutionPolicy
 policyWith tweak = either (error . T.unpack) id (executionPolicy (tweak (policyFields defaultExecutionPolicy)))
 
 withPolicy :: (ExecutionPolicyFields -> ExecutionPolicyFields) -> ActivityInvocation -> ActivityInvocation
-withPolicy tweak inv = inv {policy = policyWith tweak}
+withPolicy tweak inv = valid (activityInvocation (invocationFields inv) {policy = policyWith tweak})
 
 failureType :: AttemptFailure -> Text
 failureType = \case
@@ -135,7 +136,7 @@ spec = do
   it "local worker provider executes and engine collects" $ withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
     engine <- openScratchDispatch path "one" Local.defaultLocalDispatchOptions {Local.defaultQueue = "cpu"}
-    Local.dispatch engine 1 (withPolicy (\p -> p {A.attempts = 1}) (invocation "work" (Object [("value", Int 2)])))
+    Local.dispatch engine 1 (withPolicy (\p -> p {A.attempts = 1}) (valid (invocation "work" (Object [("value", Int 2)]))))
     provider <- openScratchWorker path Local.defaultLocalWorkerOptions {Local.workerQueues = ["cpu"], Local.workerId = Just "test"}
     events <- newEventLog
     worker <- newWorker (Local.toWorkerDispatch provider) (Map.fromList [("work", \inv _ -> pure inv.input)]) (quietOptions events)
@@ -146,8 +147,8 @@ spec = do
     let path = dir </> "dispatch.db"
     one <- openScratchDispatch path "one" Local.defaultLocalDispatchOptions
     two <- openScratchDispatch path "two" Local.defaultLocalDispatchOptions
-    Local.dispatch one 1 (invocation "publish" Null)
-    Local.dispatch two 1 (invocation "publish" Null)
+    Local.dispatch one 1 (valid (invocation "publish" Null))
+    Local.dispatch two 1 (valid (invocation "publish" Null))
     observed <- newIORef []
     let implementation label _ context = do
           modifyIORef' observed (++ [(label, context.instance')])
@@ -170,7 +171,7 @@ spec = do
   it "reconstructed worker resolves delayed retry from durable instance scope" $ withScratch $ \dir -> do
     let path = dir </> "dispatch.db"
     dispatch <- openScratchDispatch path "one" Local.defaultLocalDispatchOptions
-    Local.dispatch dispatch 1 (withPolicy (\p -> p {A.attempts = 2, initialInterval = FloatNumber 0.02, heartbeatTimeout = 1}) (invocation "publish" Null))
+    Local.dispatch dispatch 1 (withPolicy (\p -> p {A.attempts = 2, initialInterval = FloatNumber 0.02, heartbeatTimeout = 1}) (valid (invocation "publish" Null)))
     let resolver' inst activity = do
           (inst, activity) `shouldBe` ("one", "publish")
           pure . Just $ \_ context ->
@@ -229,7 +230,7 @@ spec = do
     Local.dispatch
       dispatch
       1
-      (withPolicy (\p -> p {A.attempts = 2, heartbeatTimeout = 1}) (invocation "work" (Object [("mode", String "crash"), ("barrier", String (T.pack barrier))])))
+      (withPolicy (\p -> p {A.attempts = 2, heartbeatTimeout = 1}) (valid (invocation "work" (Object [("mode", String "crash"), ("barrier", String (T.pack barrier))]))))
     bracket (startLocalWorker path) (stopProcess . fst) $ \(first, _) -> do
       waitForFile barrier first
       getPid first >>= maybe (pure ()) (signalProcess sigKILL)
@@ -246,7 +247,7 @@ spec = do
     Local.dispatch
       dispatch
       1
-      (withPolicy (\p -> p {A.attempts = 1}) (invocation "work" (Object [("mode", String "drain"), ("barrier", String (T.pack barrier))])))
+      (withPolicy (\p -> p {A.attempts = 1}) (valid (invocation "work" (Object [("mode", String "drain"), ("barrier", String (T.pack barrier))]))))
     bracket (startLocalWorker path) (stopProcess . fst) $ \(process, _) -> do
       waitForFile barrier process
       terminateProcess process

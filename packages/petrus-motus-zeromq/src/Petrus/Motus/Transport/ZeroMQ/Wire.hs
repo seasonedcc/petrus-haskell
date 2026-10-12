@@ -239,7 +239,7 @@ decodeInvocation raw = do
   policy' <- either value Right (policyFromMembers policyMembers)
   either value Right $
     activityInvocation
-      ActivityInvocation
+      ActivityInvocationFields
         { activity = activity'
         , input = member "input" members
         , policy = policy'

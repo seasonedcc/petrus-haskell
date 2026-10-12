@@ -47,6 +47,7 @@ library
                   , containers >=0.6
                   , petrus-activity
                   , petrus-fabric
+                  , petrus-impetus
                   , petrus-json
                   , text >=2.0
   ghc-options:      -O2

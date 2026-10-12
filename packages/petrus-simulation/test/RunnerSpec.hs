@@ -31,6 +31,7 @@ import Support
 import System.Directory (createDirectoryIfMissing, listDirectory, removeDirectoryRecursive)
 import System.FilePath ((</>))
 import Test.Hspec
+import Petrus.TestSupport (valid)
 
 -- | @strict_json(payload)@
 strictJson :: HasCallStack => BS.ByteString -> Json
@@ -258,7 +259,7 @@ spec = describe "test_simulation.py" $ do
       `shouldBe` Just (Array [Object [("place", String "a"), ("tokens", Array [Object [("color", String "X"), ("data", data')]])]])
 
   it "test_dispatch_is_structurally_impossible" $ do
-    outcome <- try (forbiddenDispatch.dispatch 0 (invocation "x" Null))
+    outcome <- try (forbiddenDispatch.dispatch 0 (valid (invocation "x" Null)))
     case outcome of
       Left (SimulationProfileException message) -> T.unpack message `shouldContain` "forbids Dispatch"
       Right () -> expectationFailure "dispatch was accepted"

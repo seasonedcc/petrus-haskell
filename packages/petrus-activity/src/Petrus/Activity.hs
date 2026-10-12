@@ -34,8 +34,11 @@ module Petrus.Activity
   , policyFromMembers
   , policyRetryPolicy
     -- * Invocations
-  , ActivityInvocation (..)
+  , ActivityInvocation
+  , ActivityInvocationFields (..)
   , activityInvocation
+  , invocationFields
+  , defaultInvocationFields
   , invocation
   , invocationJson
   , InvocationJsonError (..)
@@ -74,6 +77,7 @@ import Data.ByteString qualified as BS
 import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Activity.Number
 import Petrus.Json
 import Petrus.Json.PythonText (pythonStrRepr)
@@ -275,8 +279,9 @@ policyRetryPolicy (ExecutionPolicy f) = RetryPolicy (retryFields f)
 -- ---------------------------------------------------------------------------
 -- Invocations
 
--- | The stable, Petri-agnostic instruction offered to Dispatch.
-data ActivityInvocation = ActivityInvocation
+-- | The fields of an 'ActivityInvocation', in the reference's declaration
+-- order: what 'activityInvocation' validates.
+data ActivityInvocationFields = ActivityInvocationFields
   { activity :: Text
   , input :: Json
   , policy :: ExecutionPolicy
@@ -285,27 +290,81 @@ data ActivityInvocation = ActivityInvocation
   }
   deriving stock (Eq, Show)
 
-instance NFData ActivityInvocation where
-  rnf (ActivityInvocation activity' input' policy' correlation' idempotency') =
+instance NFData ActivityInvocationFields where
+  rnf (ActivityInvocationFields activity' input' policy' correlation' idempotency') =
     rnf activity' `seq` rnf input' `seq` rnf policy' `seq` rnf correlation' `seq` rnf idempotency'
 
--- | Validate an invocation as @ActivityInvocation.__post_init__@ does.
-activityInvocation :: ActivityInvocation -> Either Text ActivityInvocation
-activityInvocation value = do
-  when (T.null value.activity) $ Left "ActivityInvocation requires a non-empty string activity name, got ''"
-  forM_ [("correlation", value.correlation), ("idempotency", value.idempotency)] $ \(name, field) ->
+-- | The stable, Petri-agnostic instruction offered to Dispatch; only
+-- constructible through 'activityInvocation' (or decoded by
+-- 'invocationFromJson'), so every value passed @__post_init__@'s checks.
+-- Its fields read as @invocation.activity@, @invocation.input@,
+-- @invocation.policy@, @invocation.correlation@ and
+-- @invocation.idempotency@; 'invocationFields' gives them all, to build a
+-- changed invocation through 'activityInvocation' again.
+newtype ActivityInvocation = ActivityInvocation ActivityInvocationFields
+  deriving stock (Eq)
+
+-- | The reference dataclass's field spelling:
+-- @ActivityInvocation {activity = ..., input = ..., ...}@.
+instance Show ActivityInvocation where
+  showsPrec d (ActivityInvocation f) =
+    showParen (d >= 11) $
+      showString "ActivityInvocation {activity = "
+        . showsPrec 0 f.activity
+        . showString ", input = "
+        . showsPrec 0 f.input
+        . showString ", policy = "
+        . showsPrec 0 f.policy
+        . showString ", correlation = "
+        . showsPrec 0 f.correlation
+        . showString ", idempotency = "
+        . showsPrec 0 f.idempotency
+        . showChar '}'
+
+instance NFData ActivityInvocation where
+  rnf (ActivityInvocation fields) = rnf fields
+
+instance HasField "activity" ActivityInvocation Text where
+  getField (ActivityInvocation f) = f.activity
+
+instance HasField "input" ActivityInvocation Json where
+  getField (ActivityInvocation f) = f.input
+
+instance HasField "policy" ActivityInvocation ExecutionPolicy where
+  getField (ActivityInvocation f) = f.policy
+
+instance HasField "correlation" ActivityInvocation (Maybe Text) where
+  getField (ActivityInvocation f) = f.correlation
+
+instance HasField "idempotency" ActivityInvocation (Maybe Text) where
+  getField (ActivityInvocation f) = f.idempotency
+
+-- | The invocation's fields.
+invocationFields :: ActivityInvocation -> ActivityInvocationFields
+invocationFields (ActivityInvocation fields) = fields
+
+-- | @ActivityInvocation(...)@: validate as @__post_init__@ does, with its
+-- messages.
+activityInvocation :: ActivityInvocationFields -> Either Text ActivityInvocation
+activityInvocation fields = do
+  when (T.null fields.activity) $ Left "ActivityInvocation requires a non-empty string activity name, got ''"
+  forM_ [("correlation", fields.correlation), ("idempotency", fields.idempotency)] $ \(name, field) ->
     when (field == Just "") $
       Left
         ( "ActivityInvocation "
             <> name
             <> " must be a non-empty string, or None for the writer to derive at begin, got ''"
         )
-  Right value
+  Right (ActivityInvocation fields)
 
--- | @ActivityInvocation(activity, input=input)@: the default policy and
--- writer-derived identities.
-invocation :: Text -> Json -> ActivityInvocation
-invocation name payload = ActivityInvocation name payload defaultExecutionPolicy Nothing Nothing
+-- | The fields of @ActivityInvocation(activity, input=input)@: the default
+-- policy and writer-derived identities.
+defaultInvocationFields :: Text -> Json -> ActivityInvocationFields
+defaultInvocationFields name payload = ActivityInvocationFields name payload defaultExecutionPolicy Nothing Nothing
+
+-- | @ActivityInvocation(activity, input=input)@.
+invocation :: Text -> Json -> Either Text ActivityInvocation
+invocation name payload = activityInvocation (defaultInvocationFields name payload)
 
 -- | Why a JSON value is not an encoded invocation, by the first check that
 -- failed. The shape checks are the Dispatches' own, each spelled in its own
@@ -336,7 +395,7 @@ data InvocationJsonError
 invocationFromJson :: Json -> Either InvocationJsonError ActivityInvocation
 invocationFromJson value = do
   members <- case value of
-    Object ms | sort (map fst ms) == sort invocationFields -> Right ms
+    Object ms | sort (map fst ms) == sort invocationKeys -> Right ms
     _ -> Left InvocationFieldsNotExact
   let field key = maybe Null id (lookup key members)
   policyMembers <- case field "policy" of
@@ -354,9 +413,9 @@ invocationFromJson value = do
         other -> Left (IdentityRefused label other)
   correlation' <- identity "correlation"
   idempotency' <- identity "idempotency"
-  Right ActivityInvocation {activity = activity', input = field "input", policy = policy', correlation = correlation', idempotency = idempotency'}
+  Right (ActivityInvocation ActivityInvocationFields {activity = activity', input = field "input", policy = policy', correlation = correlation', idempotency = idempotency'})
   where
-    invocationFields = ["activity", "input", "policy", "correlation", "idempotency"]
+    invocationKeys = ["activity", "input", "policy", "correlation", "idempotency"]
 
 -- | The value constructors' refusal text for an 'InvocationJsonError', given
 -- a Python @repr@ of JSON values (the shape errors have no constructor text

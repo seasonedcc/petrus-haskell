@@ -49,6 +49,7 @@ import Petrus.Impetus.Petrinet hiding (candidates, candidatesWithDiagnostics, ne
 import Petrus.Impetus.TestSupport (expectRight, netOf, np, obj, tok, tokD)
 import Petrus.Json (Json (..), compact, dumps, lookupMember, parseJson, strictLoads)
 import Test.Hspec hiding (before)
+import Petrus.TestSupport (valid)
 
 -- ---------------------------------------------------------------------------
 -- Fixtures
@@ -96,7 +97,7 @@ chargeCardWith correlation' idempotency' =
     { prepare = \b -> case bindingTokens b of
         [p] -> do
           amount <- member "amount" p.payload
-          Right (ActivityInvocation "charge_card" (obj [("amount", amount)]) defaultExecutionPolicy correlation' idempotency')
+          activityInvocation (ActivityInvocationFields "charge_card" (obj [("amount", amount)]) defaultExecutionPolicy correlation' idempotency')
         _ -> Left "ValueError('too many values to unpack')"
     , project = \_ result -> do
         s <- member "status" result
@@ -459,7 +460,7 @@ publicSurface = describe "the public surface" $ do
   -- test_canonical_activity_and_history_codec_imports_are_public
   it "exposes the canonical activity values and the History codec" $ do
     (failureFields (simple "boom")).failureError `shouldBe` "boom"
-    (invocation "work" Null).policy `shouldBe` defaultExecutionPolicy
+    (valid (invocation "work" Null)).policy `shouldBe` defaultExecutionPolicy
     store <- inMemoryHistoryStore
     Store.size store `shouldReturn` 0
     schemaVersion `shouldBe` 5
@@ -749,20 +750,20 @@ activityValues = describe "the seam's value objects" $ do
   describe "ActivityInvocation" $ do
     -- TestActivityInvocation.test_defaults_are_the_conservative_resolution
     it "defaults are the conservative resolution" $ do
-      let inv = invocation "charge_card" Null
+      let inv = valid (invocation "charge_card" Null)
       Right inv.policy `shouldBe` policyWith (\f -> f {attempts = 1})
       inv.correlation `shouldBe` Nothing
       inv.idempotency `shouldBe` Nothing
 
     -- TestActivityInvocation.test_an_empty_activity_name_is_rejected
     it "an empty activity name is rejected" $
-      activityInvocation (invocation "" Null) `shouldBe` Left "ActivityInvocation requires a non-empty string activity name, got ''"
+      invocation "" Null `shouldBe` Left "ActivityInvocation requires a non-empty string activity name, got ''"
 
     -- TestActivityInvocation.test_an_empty_supplied_identity_is_rejected
     it "an empty supplied identity is rejected" $ do
-      activityInvocation (ActivityInvocation "charge_card" Null defaultExecutionPolicy (Just "") Nothing)
+      activityInvocation (ActivityInvocationFields "charge_card" Null defaultExecutionPolicy (Just "") Nothing)
         `shouldBe` Left "ActivityInvocation correlation must be a non-empty string, or None for the writer to derive at begin, got ''"
-      activityInvocation (ActivityInvocation "charge_card" Null defaultExecutionPolicy Nothing (Just ""))
+      activityInvocation (ActivityInvocationFields "charge_card" Null defaultExecutionPolicy Nothing (Just ""))
         `shouldBe` Left "ActivityInvocation idempotency must be a non-empty string, or None for the writer to derive at begin, got ''"
 
 purity :: Spec
@@ -799,7 +800,7 @@ beginFreezes = describe "begin freezes the request" $ do
   -- TestBeginFreezesTheRequest.test_the_begin_batch_carries_the_activity_request_after_the_reads
   it "the begin batch carries the activity request after the reads" $ do
     let config = tokD "Config" (obj [("mode", String "strict")])
-        readingCharge = chargeCard {prepare = \_ -> Right (invocation "charge_card" (obj [("amount", Int 100)]))}
+        readingCharge = chargeCard {prepare = \_ -> invocation "charge_card" (obj [("amount", Int 100)])}
         net =
           netOf
             [place a', place gate, place b']
@@ -828,9 +829,9 @@ beginFreezes = describe "begin freezes the request" $ do
                          3
                      )
                  ]
-    o.invocation
+    fmap invocationFields o.invocation
       `shouldBe` Just
-        (ActivityInvocation "charge_card" (obj [("amount", Int 100)]) defaultExecutionPolicy (Just "occurrence-1") (Just "occurrence-1"))
+        (ActivityInvocationFields "charge_card" (obj [("amount", Int 100)]) defaultExecutionPolicy (Just "occurrence-1") (Just "occurrence-1"))
 
   -- TestBeginFreezesTheRequest.test_a_pure_occurrence_carries_no_invocation
   it "a pure occurrence carries no invocation" $ do
@@ -1291,9 +1292,9 @@ killWindows = describe "the kill windows, over the durable record" $ do
     resumed <- resumeWith poisonedPrepare durable
     [rebuilt] <- inFlight resumed
     rebuilt `shouldBe` o
-    rebuilt.invocation
+    fmap invocationFields rebuilt.invocation
       `shouldBe` Just
-        (ActivityInvocation "charge_card" (obj [("amount", Int 100)]) defaultExecutionPolicy (Just "occurrence-1") (Just "occurrence-1"))
+        (ActivityInvocationFields "charge_card" (obj [("amount", Int 100)]) defaultExecutionPolicy (Just "occurrence-1") (Just "occurrence-1"))
 
   -- TestKillWindowOne.test_the_rebuilt_invocation_is_redispatchable_to_completion
   it "window one: the rebuilt invocation is redispatchable to completion" $ do
@@ -1511,7 +1512,7 @@ canonicalPayloads = describe "canonical payload snapshots at the writer" $ do
   it "a non-JSON-faithful input fails loud at begin, appending nothing" $ do
     -- A Token cannot be a Json value; the door's reachable refusal is a
     -- non-finite number, with the same message prefix.
-    let leakyPrepare = chargeCard {prepare = \_ -> Right (invocation "charge_card" (obj [("amount", Float (0 / 0))]))}
+    let leakyPrepare = chargeCard {prepare = \_ -> invocation "charge_card" (obj [("amount", Float (0 / 0))])}
     inst <- seamInstance leakyPrepare Nothing
     before <- historyOf inst
     [b] <- candidates inst

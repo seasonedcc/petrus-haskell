@@ -108,7 +108,8 @@ import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
 import Petrus.Activity
   ( ActivityDeclaration
-  , ActivityInvocation (..)
+  , ActivityInvocationFields (..)
+  , activityInvocation
   , defaultExecutionPolicy
   , executionPolicy
   , policyFields
@@ -203,8 +204,8 @@ topologyHandlers attempts poisoned =
             { prepare = \binding -> case bindingTokens binding of
                 [held] -> do
                   policy <- executionPolicy (policyFields defaultExecutionPolicy) {Activity.attempts = attempts}
-                  Right
-                    ActivityInvocation
+                  activityInvocation
+                    ActivityInvocationFields
                       { activity = "spark_work"
                       , input = held.payload
                       , policy

@@ -44,7 +44,7 @@ import Data.Map.Strict qualified as Map
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), invocation)
+import Petrus.Activity (ActivityInvocationFields (..), activityInvocation, defaultInvocationFields)
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), CelCompilers (..), handlerTokens)
 import Petrus.Impetus.Instance
 import Petrus.Impetus.Petrinet hiding (candidates)
@@ -67,8 +67,8 @@ bridge =
   ActivityHandler
     { prepare = \binding -> case bindingTokens binding of
         t : _ ->
-          Right
-            (invocation "canonical.activity" (Object [("nested", Array [t.payload])]))
+          activityInvocation
+            (defaultInvocationFields "canonical.activity" (Object [("nested", Array [t.payload])]))
               { correlation = Just "canonical-correlation"
               , idempotency = Just "canonical-idempotency"
               }

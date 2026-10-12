@@ -66,7 +66,7 @@ import Data.IORef
 import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), ExecutionPolicy)
+import Petrus.Activity (ActivityInvocation, ExecutionPolicy)
 import Petrus.Activity.Number (Number (..))
 import Petrus.Engine (Clock (..), Engine, EngineError (..))
 import Petrus.Engine.Observation (observeEngine)

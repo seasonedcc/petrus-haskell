@@ -17,7 +17,7 @@ Every name in the module's `__all__`, and where it lives in Haskell:
 | `ExecutionPolicy`, its `__post_init__` | `ExecutionPolicy` (opaque), `ExecutionPolicyFields`, `executionPolicy`, `defaultExecutionPolicy`, `policyFields` | differential `ExecutionPolicy` |
 | `ExecutionPolicy.retry_policy` | `policyRetryPolicy` | `test/Main.hs` |
 | `dataclasses.asdict(ExecutionPolicy)` (History's `policy` object) | `policyJson` | differential (wire bytes) |
-| `ActivityInvocation` | `ActivityInvocation`, `activityInvocation`, `invocation` (the keyword defaults) | differential `ActivityInvocation` |
+| `ActivityInvocation`, its `__post_init__` | `ActivityInvocation` (opaque, read through its field names), `ActivityInvocationFields`, `activityInvocation`, `invocationFields`, `defaultInvocationFields` and `invocation` (the keyword defaults) | differential `ActivityInvocation` |
 | `dataclasses.asdict(ActivityInvocation)` | `invocationJson` | differential (wire bytes) |
 | the three dispatch backends' invocation decoders (`local.py` `_decode_invocation`, `absurd.py` `decode_invocation`, `zeromq.py` `_decode_invocation`) | one `invocationFromJson` (with `policyFromMembers` and the `InvocationJsonError` it reports), which Local, Absurd and ZeroMQ each word as their reference does (`invocationRefusal`) | `test/Main.hs` (round trip, legacy two-field policy, first refusing check); each backend's own decode tests and interop |
 | `ActivityFailure` (with `_failure_details`) | `ActivityFailure` (opaque), `ActivityFailureFields`, `activityFailure`, `simpleFailure`, `failureFields` | differential `ActivityFailure` |

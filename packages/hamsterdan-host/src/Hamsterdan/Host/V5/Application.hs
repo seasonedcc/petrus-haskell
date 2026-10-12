@@ -131,7 +131,7 @@ import Hamsterdan.Host.V5.Timers (TimerMaturity (..), V5TimerStore)
 import Hamsterdan.Host.V5.Timers qualified as Timers
 import Hamsterdan.Readiness.NetV5.Gating (Annotation (..), GateDefinition (..), Variant (..), decodeDataclass, encodeVariant, variantOf)
 import Hamsterdan.Readiness.NetV5.Py (pyRepr)
-import Petrus.Activity (ActivityDefinition (..), ActivityInvocation (..), declarationName)
+import Petrus.Activity (ActivityDefinition (..), ActivityInvocation, declarationName)
 import Petrus.Activity.Number (Number (..))
 import Petrus.Engine qualified as Engine
 import Petrus.Json (Json (..))

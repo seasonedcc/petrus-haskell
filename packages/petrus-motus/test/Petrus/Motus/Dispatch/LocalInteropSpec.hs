@@ -36,6 +36,7 @@ import Petrus.Telemetry (capture, recorded)
 import System.Directory (copyFile)
 import System.FilePath ((</>))
 import Test.Hspec
+import Petrus.TestSupport (valid)
 
 -- | The script's @work(value, attempts=2)@.
 work :: Integer -> ActivityInvocation
@@ -82,14 +83,15 @@ attemptJson attempt =
 -- | The script's @scenario_invocation@.
 scenarioInvocation :: Text -> Json -> Integer -> (ExecutionPolicyFields -> ExecutionPolicyFields) -> ActivityInvocation
 scenarioInvocation name value attempts' tweak =
-  ActivityInvocation
-    { activity = name
-    , input = Object [("value", value), ("label", String "ünïcode ✓")]
-    , policy =
-        either (error . T.unpack) id (executionPolicy (tweak (policyFields defaultExecutionPolicy) {attempts = attempts', heartbeatTimeout = 30}))
-    , correlation = Just ("corr-" <> name)
-    , idempotency = Nothing
-    }
+  valid . activityInvocation $
+    ActivityInvocationFields
+      { activity = name
+      , input = Object [("value", value), ("label", String "ünïcode ✓")]
+      , policy =
+          either (error . T.unpack) id (executionPolicy (tweak (policyFields defaultExecutionPolicy) {attempts = attempts', heartbeatTimeout = 30}))
+      , correlation = Just ("corr-" <> name)
+      , idempotency = Nothing
+      }
 
 -- | The Haskell twin of the script's @scenario PATH@, step for step.
 scenario :: FilePath -> IO Json

@@ -161,7 +161,7 @@ invocationOf :: Json -> Either Text ActivityInvocation
 invocationOf v = do
   resolved <- member "policy" v >>= policyFieldsOf >>= executionPolicy
   value <-
-    ActivityInvocation
+    ActivityInvocationFields
       <$> (member "activity" v >>= text)
       <*> member "input" v
       <*> pure resolved
@@ -239,7 +239,7 @@ invocationCase (name, payload, f, correlation', idempotency') =
     (Array [String "invocation", String name, payload, Array (policyArgs f), optionalArg String correlation', optionalArg String idempotency'])
     ( pure $ do
         policy' <- executionPolicy f
-        invocationJson <$> activityInvocation (ActivityInvocation name payload policy' correlation' idempotency')
+        invocationJson <$> activityInvocation (ActivityInvocationFields name payload policy' correlation' idempotency')
     )
     (fmap invocationJson . invocationOf)
 
@@ -273,7 +273,7 @@ callCase (name, parameters', activity', payload, result) =
   where
     run = case activityDeclaration name Nothing of
       Left refusal -> pure (Left refusal)
-      Right declaration' -> case activityInvocation (invocation activity' payload) of
+      Right declaration' -> case invocation activity' payload of
         Left refusal -> pure (Left refusal)
         Right inv -> callActivity (defineActivity declaration' parameters' (\arguments _ -> pure (fromMaybe (Object arguments) result))) inv attemptContext
     attemptContext = ActivityExecutionContext "attempt" "1" "claimant" Nothing (pure Null) (const (pure Null))

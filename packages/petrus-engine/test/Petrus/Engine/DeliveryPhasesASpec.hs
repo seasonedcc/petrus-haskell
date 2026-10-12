@@ -569,7 +569,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
             rearm =
               ActivityBound
                 ActivityHandler
-                  { prepare = \_ -> Right (invocation "rearm" (Object [("event", Int 7)]))
+                  { prepare = \_ -> invocation "rearm" (Object [("event", Int 7)])
                   , project = \_ _ -> Right (HandlerResult [(b, [tok "Projected"])] [forged] [])
                   , projectFailure = Nothing
                   }
@@ -626,7 +626,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
         work =
           ActivityBound
             ActivityHandler
-              { prepare = \_ -> Right (invocation "work" Null)
+              { prepare = \_ -> invocation "work" Null
               , project = \_ _ -> Right (handlerTokens [(b, [tok "Done"])])
               , projectFailure = Nothing
               }

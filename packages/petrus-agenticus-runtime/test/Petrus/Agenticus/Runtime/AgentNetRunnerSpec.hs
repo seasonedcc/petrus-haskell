@@ -15,7 +15,7 @@ import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..))
+import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation)
 import Petrus.Agenticus.Attachment.Binding
 import Petrus.Agenticus.Attachment.Episode
 import Petrus.Agenticus.Catalog.Descriptor (capabilityDescriptor)

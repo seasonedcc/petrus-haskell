@@ -71,8 +71,10 @@ import Petrus.Activity
   ( ActivityDefinition (..)
   , ActivityFailure
   , ActivityFailureFields (..)
-  , ActivityInvocation (..)
+  , ActivityInvocation
+  , ActivityInvocationFields (..)
   , ExecutionPolicy
+  , activityInvocation
   , PayloadConverter
   , declarationName
   , defaultExecutionPolicy
@@ -276,7 +278,7 @@ basePrepare r b = case b.consumed of
               )
           )
     | otherwise -> case tokens of
-        [tok] -> Right (invocation (declarationName r.definition.activity.declaration) (Object [(r.parameter, tok.payload)]))
+        [tok] -> first valueError (invocation (declarationName r.definition.activity.declaration) (Object [(r.parameter, tok.payload)]))
         _ -> Left (valueError "unreachable")
   [] -> Left (valueError "not enough values to unpack (expected 1, got 0)")
   many -> Left (valueError ("too many values to unpack (expected 1, got " <> T.pack (show (length many)) <> ")"))
@@ -308,7 +310,7 @@ prepareRouting r b = do
     DurablePublication -> do
       req <- decodeRequest r inv
       operation <- durableOperation req
-      Right (identified operation inv)
+      identified operation inv
     IdentifiedInline -> do
       req <- decodeRequest r inv
       let name = declarationName r.definition.activity.declaration
@@ -316,9 +318,10 @@ prepareRouting r b = do
       let grammar = if name `elem` ["publish_gate", "rerun_gate", "reminder_gate"] then markerOperation else graphicOperation
       unless (grammar operation) $
         Left (valueError ("V5 identified inline gate " <> pyRepr (String name) <> " operation identity is malformed"))
-      Right (identified operation inv)
+      identified operation inv
   where
-    identified operation inv = ActivityInvocation inv.activity inv.input gatePolicy (Just operation) (Just operation)
+    identified operation inv =
+      first valueError (activityInvocation (ActivityInvocationFields inv.activity inv.input gatePolicy (Just operation) (Just operation)))
 
 durableOperation :: Request -> Either PythonException Text
 durableOperation req

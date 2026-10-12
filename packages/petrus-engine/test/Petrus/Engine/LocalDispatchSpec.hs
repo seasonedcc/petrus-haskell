@@ -9,7 +9,7 @@ import Data.IORef
 import Data.List (isInfixOf)
 import Data.Text.Encoding qualified as TE
 import Data.Text qualified as T
-import Petrus.Activity (ActivityFailureFields (..), ActivityInvocation (..))
+import Petrus.Activity (ActivityFailureFields (..), ActivityInvocationFields (..), invocationFields)
 import Petrus.Engine qualified as Engine
 import Petrus.Engine.TestSupport (counting, runtimeError, symbols)
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
@@ -123,8 +123,8 @@ spec = do
     ((.waiting) <$> Engine.advance resumed) `shouldReturn` True
     attempt <- fixedWorker (dir </> "dispatch.db") "worker" >>= requireClaim
 
-    attempt.invocation
-      `shouldBe` ActivityInvocation
+    invocationFields attempt.invocation
+      `shouldBe` ActivityInvocationFields
         { activity = request.activity
         , input = request.input
         , policy = request.policy

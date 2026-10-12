@@ -51,7 +51,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Activity
   ( ActivityFailureFields (..)
-  , ActivityInvocation (..)
+  , ActivityInvocationFields (..)
   , ExecutionPolicyFields (..)
   , activityFailure
   , executionPolicy
@@ -60,7 +60,7 @@ import Petrus.Activity
 import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (handlerTokens)
+import Petrus.Impetus.Binding (handlerTokens, prepareInvocation)
 import Petrus.Impetus.History.Records
   ( ActivityRequested (..)
   , ActivityTerminalQuarantined (..)
@@ -267,7 +267,7 @@ bridged prepared projected =
                     , startToClose = Nothing
                     , scheduleToClose = Nothing
                     }
-              Right ActivityInvocation {activity = "calculate", input = t.payload, policy, correlation = Nothing, idempotency = Nothing}
+              prepareInvocation ActivityInvocationFields {activity = "calculate", input = t.payload, policy, correlation = Nothing, idempotency = Nothing}
             [] -> Left "IndexError('tuple index out of range')"
     , project = \_ value -> Right (handlerTokens [(result, [Token (Just "Result") value])])
     , onPrepare = Right () <$ modifyIORef' prepared (+ 1)

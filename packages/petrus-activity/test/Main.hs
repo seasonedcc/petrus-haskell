@@ -9,6 +9,7 @@ import Petrus.Activity
 import Petrus.Activity.DifferentialSpec qualified as DifferentialSpec
 import Petrus.Activity.HeartbeatSpec qualified as HeartbeatSpec
 import Petrus.Json (Json (..))
+import Petrus.TestSupport (valid)
 import Test.Hspec
 import Test.QuickCheck
 
@@ -73,9 +74,9 @@ main = hspec $ do
 
   describe "ActivityInvocation" $ do
     it "requires a non-empty activity name" $
-      activityInvocation (invocation "" Null) `shouldBe` Left "ActivityInvocation requires a non-empty string activity name, got ''"
+      invocation "" Null `shouldBe` Left "ActivityInvocation requires a non-empty string activity name, got ''"
     it "requires non-empty correlation and idempotency when supplied" $
-      activityInvocation (invocation "a" Null) {correlation = Just ""}
+      activityInvocation (defaultInvocationFields "a" Null) {correlation = Just ""}
         `shouldBe` Left "ActivityInvocation correlation must be a non-empty string, or None for the writer to derive at begin, got ''"
     it "decodes its own encoding (invocationFromJson . invocationJson)" $
       property $ \(Positive attempts') (Positive heartbeat) (NonNegative interval) start name correlation' payload ->
@@ -89,13 +90,14 @@ main = hspec $ do
                     , startToClose = fmap (\(Positive s) -> IntNumber (min s 1000)) start
                     }
             value =
-              ActivityInvocation
-                { activity = "a" <> T.pack name
-                , input = Int payload
-                , policy = policy'
-                , correlation = fmap (("c" <>) . T.pack) correlation'
-                , idempotency = Nothing
-                }
+              valid . activityInvocation $
+                ActivityInvocationFields
+                  { activity = "a" <> T.pack name
+                  , input = Int payload
+                  , policy = policy'
+                  , correlation = fmap (("c" <>) . T.pack) correlation'
+                  , idempotency = Nothing
+                  }
          in invocationFromJson (invocationJson value) === Right value
     it "decodes a legacy two-field policy with the current defaults" $
       invocationFromJson
@@ -107,9 +109,9 @@ main = hspec $ do
             , ("idempotency", Null)
             ]
         )
-        `shouldBe` Right (invocation "a" Null) {policy = either (error . T.unpack) id (policyWith (\p -> p {attempts = 2, heartbeatTimeout = 5}))}
+        `shouldBe` Right (valid (activityInvocation (defaultInvocationFields "a" Null) {policy = valid (policyWith (\p -> p {attempts = 2, heartbeatTimeout = 5}))}))
     it "names the first check that refuses" $ do
-      let encoded = invocationJson (invocation "a" Null)
+      let encoded = invocationJson (valid (invocation "a" Null))
           with key v = case encoded of
             Object ms -> Object [(k, if k == key then v else old) | (k, old) <- ms]
             other -> other
@@ -149,26 +151,26 @@ main = hspec $ do
           _ -> pure Null
     it "executes with exactly the declared parameters" $ do
       ctx <- executionContext
-      callActivity definition (invocation "add" (Object [("b", Int 2), ("a", Int 1)])) ctx `shouldReturn` Right (Int 3)
+      callActivity definition (valid (invocation "add" (Object [("b", Int 2), ("a", Int 1)]))) ctx `shouldReturn` Right (Int 3)
     it "refuses a different activity or parameter set" $ do
       ctx <- executionContext
-      callActivity definition (invocation "sub" (Object [])) ctx
+      callActivity definition (valid (invocation "sub" (Object []))) ctx
         `shouldReturn` Left "Activity 'add' cannot execute invocation for 'sub'"
-      callActivity definition (invocation "add" (Object [("a", Int 1)])) ctx
+      callActivity definition (valid (invocation "add" (Object [("a", Int 1)]))) ctx
         `shouldReturn` Left "Activity 'add' requires parameters ['a', 'b'], got ['a']"
     it "spells names with Python's repr" $ do
       ctx <- executionContext
-      callActivity definition (invocation "it's" Null) ctx
+      callActivity definition (valid (invocation "it's" Null)) ctx
         `shouldReturn` Left "Activity 'add' cannot execute invocation for \"it's\""
-      callActivity definition (invocation "add" (Array [])) ctx
+      callActivity definition (valid (invocation "add" (Array []))) ctx
         `shouldReturn` Left "Activity 'add' parameter payload must be a mapping, got list"
     it "refuses a result json.dumps refuses, with its message" $ do
       ctx <- executionContext
       let nan = defineActivity declaration [] (\_ _ -> pure (Array [Float (0 / 0)]))
-      callActivity nan (invocation "add" (Object [])) ctx
+      callActivity nan (valid (invocation "add" (Object []))) ctx
         `shouldReturn` Left "Activity payload is not JSON-faithful: Out of range float values are not JSON compliant: nan"
       let huge = defineActivity declaration [] (\_ _ -> pure (Int (10 ^ (4300 :: Int))))
-      callActivity huge (invocation "add" (Object [])) ctx
+      callActivity huge (valid (invocation "add" (Object []))) ctx
         `shouldReturn` Left "Activity payload is not JSON-faithful: Exceeds the limit (4300 digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit"
 
   describe "heartbeat details" $ do

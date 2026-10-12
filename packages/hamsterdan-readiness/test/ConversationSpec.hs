@@ -5,7 +5,6 @@ module ConversationSpec (spec) where
 import Data.List (sortOn)
 import Data.Text (Text)
 import Harness
-import Petrus.Activity (ActivityInvocation (..))
 import Petrus.Json (Json (..))
 import Test.Hspec
 

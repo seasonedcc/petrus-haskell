@@ -119,14 +119,14 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (invocation)
+import Petrus.Activity (defaultInvocationFields)
 import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorIdentity, DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (allRejectionCategories, rejectionCategoryText)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor, ProgramOwnership (..), agentProgramDescriptor, continuationRequirement)
 import Petrus.Agenticus.Thread.Continuation (ContinuationDescriptor, continuationDescriptor)
 import Petrus.Agenticus.Internal.Validate (encodeRefusal, hasDuplicates, isTrimmed, sortedUnique, utf8Length)
-import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), Handler, HandlerResult, handlerTokens)
+import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), Handler, HandlerResult, handlerTokens, prepareInvocation)
 import Petrus.Impetus.Dsl
   ( BuiltNet (..)
   , CompletionDeclaration (..)
@@ -902,7 +902,7 @@ modelActivityHandler =
     { prepare = \b -> do
         tok <- onlyToken b
         void (raise (loopStateFromData tok.payload))
-        Right (invocation modelPhaseActivity tok.payload)
+        prepareInvocation (defaultInvocationFields modelPhaseActivity tok.payload)
     , project = \b value -> do
         tok <- onlyToken b
         raise $ do
@@ -921,8 +921,8 @@ handsActivityHandler =
     { prepare = \b -> do
         tok <- onlyToken b
         w <- raise (toolWorkFromData tok.payload)
-        Right
-          ( invocation
+        prepareInvocation
+          ( defaultInvocationFields
               handsActivity
               ( Object
                   [ ("version", Int agentNetVersion)

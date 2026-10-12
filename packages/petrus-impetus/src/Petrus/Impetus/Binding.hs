@@ -30,6 +30,7 @@ module Petrus.Impetus.Binding
     -- * Handlers
   , Handler
   , ActivityHandler (..)
+  , prepareInvocation
   , BoundHandler (..)
   , isActivityBound
   , HandlerCall (..)
@@ -57,9 +58,11 @@ import Data.Maybe (listToMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityFailure, ActivityInvocation, invocation)
+import Data.Bifunctor (first)
+import Petrus.Activity (ActivityFailure, ActivityInvocation, ActivityInvocationFields, activityInvocation, defaultInvocationFields)
 import Petrus.Impetus.History.Records (DeliveryRegistration (..))
 import Petrus.Json.Python (pythonIntRepr, pythonStrRepr)
+import Petrus.Json.Python.Exception (pythonFailureText, raised)
 import Petrus.Impetus.Petrinet.Enabledness (Binding (..), Filter, Guard, bindingTokens)
 import Petrus.Impetus.Petrinet.Marking (Marking, Token (..))
 import Petrus.Impetus.Petrinet.Routing (route)
@@ -113,6 +116,12 @@ data ActivityHandler = ActivityHandler
   , project :: Binding -> Json -> Either Text HandlerResult
   , projectFailure :: Maybe (Binding -> ActivityFailure -> Either Text HandlerResult)
   }
+
+-- | @ActivityInvocation(...)@ inside @prepare@: the invocation, or the
+-- recorded text of the @ValueError@ the reference's constructor raises
+-- from the handler.
+prepareInvocation :: ActivityInvocationFields -> Either Text ActivityInvocation
+prepareInvocation = first (pythonFailureText . raised "ValueError") . activityInvocation
 
 -- | A transition's bound implementation, classified by construction.
 data BoundHandler
@@ -268,7 +277,7 @@ derivedActivityHandler net transitionPath activityName parameters resultColor = 
                     <> ", found "
                     <> pythonIntRepr found
                 )
-        Right (invocation activityName (Object members))
+        prepareInvocation (defaultInvocationFields activityName (Object members))
       project' _ result =
         let produced = Token (Just resultColor) result
          in Right (handlerTokens (coalesce [(a.target, [produced]) | a <- resultArcs]))

@@ -64,7 +64,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
 import Paths_petrus_agenticus_runtime (getDataFileName)
-import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..))
+import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
   , AttachmentFence (..)

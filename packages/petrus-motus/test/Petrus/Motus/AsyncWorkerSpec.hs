@@ -32,6 +32,7 @@ import Petrus.Motus.WorkerSupport
 import System.FilePath ((</>))
 import System.Timeout (timeout)
 import Test.Hspec hiding (context)
+import Petrus.TestSupport (valid)
 
 -- | The reference's @SharedProviders@: one provider per lane, recording
 -- every thread that touched it.
@@ -516,7 +517,7 @@ spec = do
   it "real local async worker concurrently completes and preserves heartbeat details" $ withScratch $ \dir -> do
     let path = dir </> "dispatch.sqlite3"
     dispatch <- openScratchDispatch path "async-local" Local.defaultLocalDispatchOptions {Local.defaultQueue = "io"}
-    forM_ [0 .. 2 :: Integer] $ \n -> Local.dispatch dispatch (fromInteger n + 1) (invocation "io" (Object [("number", Int n)]))
+    forM_ [0 .. 2 :: Integer] $ \n -> Local.dispatch dispatch (fromInteger n + 1) (valid (invocation "io" (Object [("number", Int n)])))
     entered <- newIORef (0 :: Int)
     peak <- newIORef (0 :: Int)
     workerRef <- newEmptyMVar

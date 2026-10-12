@@ -14,7 +14,7 @@ import Control.Exception (ErrorCall (..), throwIO)
 import Data.IORef
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), invocation)
+import Petrus.Activity (ActivityInvocationFields (..), invocation, invocationFields)
 import Petrus.Engine qualified as Engine
 import Petrus.Engine.TestSupport
 import Petrus.Impetus.Binding
@@ -124,7 +124,7 @@ spec = do
       consulted <- newIORef []
       let charge =
             ActivityHandler
-              { prepare = \_ -> Right (invocation "charge" (Object [("n", Int 1)]))
+              { prepare = \_ -> invocation "charge" (Object [("n", Int 1)])
               , project = \_ result -> Right (handlerTokens [(b, [tokD "X" result])])
               , projectFailure = Nothing
               }
@@ -137,8 +137,8 @@ spec = do
       seen <- readIORef consulted
       case seen of
         [first] ->
-          first
-            `shouldBe` ActivityInvocation "charge" (Object [("n", Int 1)]) first.policy (Just "occurrence-1") (Just "occurrence-1")
+          invocationFields first
+            `shouldBe` ActivityInvocationFields "charge" (Object [("n", Int 1)]) first.policy (Just "occurrence-1") (Just "occurrence-1")
         other -> expectationFailure ("expected one invocation, got " <> show other)
       recorded <- Store.records history
       [() | RActivityCompleted _ <- recorded] `shouldSatisfy` (not . null)

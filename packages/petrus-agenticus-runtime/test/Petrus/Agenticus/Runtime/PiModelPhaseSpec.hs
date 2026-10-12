@@ -14,7 +14,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
-import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..), invocation)
+import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocationFields (..), activityInvocation, defaultInvocationFields)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
   , AttachmentFence (..)
@@ -62,6 +62,7 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Posix.Files (setFileMode)
 import Test.Hspec
+import Petrus.TestSupport (valid)
 
 spec :: Spec
 spec = describe "test_pi_model_phase" $ do
@@ -364,7 +365,7 @@ invokeRaw :: Rig -> LoopState -> (Maybe Json -> IO Json) -> IO Json
 invokeRaw rig value heartbeat =
   modelPhaseAdapterActivity
     rig.adapter
-    (invocation modelPhaseActivity (loopStateToData value)) {idempotency = Just "operation"}
+    (valid (activityInvocation (defaultInvocationFields modelPhaseActivity (loopStateToData value)) {idempotency = Just "operation"}))
     (phaseContext heartbeat)
 
 invoke :: Rig -> LoopState -> IO ModelSettlement

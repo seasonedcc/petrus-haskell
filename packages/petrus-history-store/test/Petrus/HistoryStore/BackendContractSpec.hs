@@ -10,7 +10,7 @@ module Petrus.HistoryStore.BackendContractSpec (spec, backendContract) where
 
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), invocation)
+import Petrus.Activity (ActivityInvocationFields (ActivityInvocationFields), invocation, invocationFields)
 import Petrus.HistoryStore.Jsonl (HistoryStoreError (..))
 import Petrus.HistoryStore.Support (jsonlReopen, withScratch)
 import Petrus.Impetus.History
@@ -23,6 +23,7 @@ import Petrus.Impetus.Petrinet hiding (candidates)
 import Petrus.Impetus.TestSupport hiding (enabledTransitions)
 import Petrus.Json
 import Test.Hspec
+import Petrus.TestSupport (valid)
 
 intake, queue, work, out :: NetPath
 intake = np "intake"
@@ -39,7 +40,7 @@ charge =
     { prepare = \b -> case bindingTokens b of
         [issue] -> do
           amount <- field "amount" issue
-          Right (invocation "charge_card" (Object [("amount", amount)]))
+          invocation "charge_card" (Object [("amount", amount)])
         other -> Left ("expected one issue, got " <> T.pack (show other))
     , project = \_ result -> case lookupMember "status" result of
         Just s -> Right (handlerTokens [(out, [tokD "Receipt" (Object [("status", s)])])])
@@ -248,9 +249,9 @@ backendContract backend withReopen = describe ("backend contract (" <> backend <
       -- correlation="occurrence-1", idempotency="occurrence-1"); built
       -- positionally because correlation/idempotency are also History
       -- record fields (an ambiguous record update).
-      let requested = invocation "charge_card" (Object [("amount", Int 100)])
-      rebuilt.invocation
-        `shouldBe` Just (ActivityInvocation requested.activity requested.input requested.policy (Just "occurrence-1") (Just "occurrence-1"))
+      let requested = valid (invocation "charge_card" (Object [("amount", Int 100)]))
+      fmap invocationFields rebuilt.invocation
+        `shouldBe` Just (ActivityInvocationFields requested.activity requested.input requested.policy (Just "occurrence-1") (Just "occurrence-1"))
       _ <- expectOk (recordActivityCompletion back rebuilt (Object [("status", String "captured")]) (Just 9))
       _ <- expectOk (complete back rebuilt Nothing (Just 9))
       -- prepared == 0 is refusingPrepare never refusing; projected == 1 is

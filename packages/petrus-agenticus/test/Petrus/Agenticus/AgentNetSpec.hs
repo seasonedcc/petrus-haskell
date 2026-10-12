@@ -15,7 +15,6 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Activity (ActivityInvocation (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Program.AgentNet
 import Petrus.Agenticus.Catalog.Descriptor qualified as Catalog

@@ -56,8 +56,9 @@ import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Petrus.Activity
   ( ActivityDeclaration
-  , ActivityInvocation (..)
+  , ActivityInvocationFields (..)
   , ExecutionPolicyFields (..)
+  , activityInvocation
   , declarationHeartbeatTimeout
   , declarationName
   , executionPolicy
@@ -290,7 +291,7 @@ resolveTimeouts fallback declared = \case
             inv <- h.prepare b
             let timeout = fromMaybe fallback (Map.lookup inv.activity declared >>= declarationHeartbeatTimeout)
             resolved <- either (Left . valueError) Right (executionPolicy (policyFields inv.policy) {heartbeatTimeout = timeout})
-            Right (ActivityInvocation inv.activity inv.input resolved inv.correlation inv.idempotency)
+            either (Left . valueError) Right (activityInvocation (ActivityInvocationFields inv.activity inv.input resolved inv.correlation inv.idempotency))
         }
   where
     valueError m = "ValueError(" <> pythonStrRepr m <> ")"

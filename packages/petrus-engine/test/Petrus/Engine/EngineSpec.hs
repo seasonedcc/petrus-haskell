@@ -12,7 +12,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), ExecutionPolicyFields (..), activityDeclaration, invocation, policyFields)
+import Petrus.Activity (ExecutionPolicyFields (..), activityDeclaration, invocation, policyFields)
 import Petrus.Engine qualified as Engine
 import Petrus.Engine.Internal (selectionState)
 import Petrus.Engine.Provider (EngineResources (..), OpenMode (..), openEngine)
@@ -286,7 +286,7 @@ neutralSurface = describe "TestNeutralEngineSurface" $ do
           ActivityBound
             ActivityHandler
               { prepare = \binding -> case bindingTokens binding of
-                  t : _ -> Right (invocation "activity" t.payload)
+                  t : _ -> invocation "activity" t.payload
                   [] -> Left "IndexError('tuple index out of range')"
               , project = \_ result -> Right (handlerTokens [(b, [tokD "Done" result])])
               , projectFailure = Nothing
@@ -573,7 +573,7 @@ neutralSurfaceContinued = describe "TestNeutralEngineSurfaceContinued" $ do
         fetchHandler =
           ActivityHandler
             { prepare = \binding -> case bindingTokens binding of
-                first : _ -> Right (invocation "fetch" (Object [("id", first.payload)]))
+                first : _ -> invocation "fetch" (Object [("id", first.payload)])
                 [] -> Left "IndexError('tuple index out of range')"
             , project = \_ result -> Right (handlerTokens [(fetched, [tokD "Fetched" result])])
             , projectFailure = Nothing
