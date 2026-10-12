@@ -1,6 +1,6 @@
 # petrus-json benchmarks: Haskell vs CPython's C-accelerated `json`
 
-<!-- scripts/bench: measured sources d0554ed1502e9147 at d354c961785e -->
+<!-- scripts/bench: measured sources b50365a7e6663385 at 2ee3287c635f -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` parse and write the
 same realistic Petrus documents with the options of the upstream call site
@@ -43,31 +43,32 @@ the Haskell side forces every node of a parsed value.
 
 ## Current figures
 
-Measured on 2026-10-12, 13:14–13:20 local (UTC-3), at commit `d354c96`
-(the plain parser and the in-place `str` reader), on the Apple M4 (Darwin
-arm64), with a 1-minute load average of 5.6–11.4 (other builds were running).
-Three interleaved repetitions of
+Measured on 2026-10-12, 19:18–19:22 local (UTC-3), at commit `2eb0f2a`, on
+the Apple M4 (Darwin arm64), with a 1-minute load average of 2.80–3.25.
+Five interleaved repetitions of
 
-    scripts/bench-compare petrus-json 3
+    scripts/bench-compare petrus-json 5
 
 alternated which side went first. Haskell figures are tasty-bench means in
 wall-clock time (`--stdev 5`, `+RTS -M2G`), with the benchmark executable
 run directly in the package directory. Python figures are the twin's own
 timing (CPython 3.14.6). Each figure is the median over the repetitions.
-The ratio is Python ÷ Haskell, so above 1 means Haskell is faster. The
-tables in the sections below are earlier measurements, kept with the
-analysis that came with them.
+The ratio is Python ÷ Haskell, so above 1 means Haskell is faster; Haskell
+was ahead in every repetition of every row, by 1.40× (`thread.loads`) to
+2.97×. The previous table (`d354c96`, three repetitions at load 5.6–11.4)
+read 1.56–2.87×. The tables in the sections below are earlier
+measurements, kept with the analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `history.loads` | 1.34 ms | 2.88 ms | 2.14× | 1.65× | 1.75 ms, 1.34 ms, 1.23 ms | 2.88 ms, 3.24 ms, 2.76 ms |
-| `history.dumps` | 1.16 ms | 3.32 ms | 2.87× | 2.21× | 1.36 ms, 1.16 ms, 1.14 ms | 3.01 ms, 3.46 ms, 3.32 ms |
-| `history.dumps-canonical` | 2.05 ms | 4.37 ms | 2.14× | 1.85× | 2.05 ms, 1.62 ms, 2.14 ms | 4.39 ms, 4.37 ms, 3.97 ms |
-| `net-document.loads` | 260 µs | 480 µs | 1.85× | 1.84× | 260 µs, 264 µs, 259 µs | 477 µs, 519 µs, 480 µs |
-| `net-document.loads-strict` | 252 µs | 658 µs | 2.61× | 2.41× | 249 µs, 262 µs, 252 µs | 1.26 ms, 658 µs, 608 µs |
-| `net-document.dumps` | 168 µs | 461 µs | 2.75× | 2.52× | 164 µs, 174 µs, 168 µs | 502 µs, 461 µs, 423 µs |
-| `thread.loads` | 361 µs | 565 µs | 1.56× | 1.44× | 361 µs, 372 µs, 343 µs | 574 µs, 565 µs, 493 µs |
-| `thread.dumps` | 390 µs | 723 µs | 1.85× | 1.80× | 376 µs, 399 µs, 390 µs | 883 µs, 723 µs, 702 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `history.loads` | 1.13 ms | 2.58 ms | 2.27× | 2.26× | 5 of 5 | 1.11 ms, 1.13 ms, 1.14 ms, 1.11 ms, 1.15 ms | 2.57 ms, 2.58 ms, 2.57 ms, 2.58 ms, 2.59 ms |
+| `history.dumps` | 978 µs | 2.9 ms | 2.97× | 2.92× | 5 of 5 | 986 µs, 981 µs, 969 µs, 978 µs, 972 µs | 2.92 ms, 2.93 ms, 2.9 ms, 2.85 ms, 2.9 ms |
+| `history.dumps-canonical` | 1.41 ms | 3.82 ms | 2.70× | 2.67× | 5 of 5 | 1.43 ms, 1.4 ms, 1.41 ms, 1.41 ms, 1.45 ms | 3.88 ms, 3.82 ms, 3.8 ms, 3.78 ms, 3.89 ms |
+| `net-document.loads` | 244 µs | 466 µs | 1.91× | 1.89× | 5 of 5 | 244 µs, 243 µs, 243 µs, 245 µs, 244 µs | 468 µs, 472 µs, 464 µs, 464 µs, 466 µs |
+| `net-document.loads-strict` | 244 µs | 588 µs | 2.41× | 2.39× | 5 of 5 | 243 µs, 246 µs, 242 µs, 244 µs, 244 µs | 589 µs, 589 µs, 588 µs, 584 µs, 583 µs |
+| `net-document.dumps` | 155 µs | 417 µs | 2.69× | 2.65× | 5 of 5 | 157 µs, 155 µs, 156 µs, 155 µs, 155 µs | 417 µs, 419 µs, 415 µs, 417 µs, 415 µs |
+| `thread.loads` | 336 µs | 471 µs | 1.40× | 1.38× | 5 of 5 | 332 µs, 336 µs, 326 µs, 344 µs, 337 µs | 471 µs, 471 µs, 479 µs, 475 µs, 466 µs |
+| `thread.dumps` | 353 µs | 663 µs | 1.88× | 1.83× | 5 of 5 | 361 µs, 353 µs, 352 µs, 352 µs, 359 µs | 663 µs, 660 µs, 663 µs, 664 µs, 659 µs |
 
 ## How to rerun
 

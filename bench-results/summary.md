@@ -48,7 +48,7 @@ lists the files whose package sources have changed since.
 | `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | `fae8539` | 14 | 1.12× | 12 600× |  |
 | `petrus-http-core` | [RESULTS.md](../packages/petrus-http-core/bench/RESULTS.md) | `5a73d7a` | 6 | 1.69× | 18.8× |  |
 | `petrus-impetus` | [RESULTS.md](../packages/petrus-impetus/bench/RESULTS.md) | `33f3581` | 17 | 1.42× | 87.5× |  |
-| `petrus-json` | [RESULTS.md](../packages/petrus-json/bench/RESULTS.md) | `d354c96` | 8 | 1.56× | 2.87× |  |
+| `petrus-json` | [RESULTS.md](../packages/petrus-json/bench/RESULTS.md) | `2ee3287` | 8 | 1.40× | 2.97× |  |
 | `petrus-motus` | [RESULTS.md](../packages/petrus-motus/bench/RESULTS.md) | `4d6410b` | 14 | 1.02× | 102× |  |
 | `petrus-motus-absurd` | [RESULTS.md](../packages/petrus-motus-absurd/bench/RESULTS.md) | `5a73d7a` | 4 | 1.16× | 3.48× |  |
 | `petrus-motus-zeromq` | [RESULTS.md](../packages/petrus-motus-zeromq/bench/RESULTS.md) | `c7ad649` | 11 | 1.08× | 1.98× |  |
