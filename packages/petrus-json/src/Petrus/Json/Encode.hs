@@ -20,6 +20,7 @@ module Petrus.Json.Encode
   , canonicalText
   , dumps
   , dumpsBuilder
+  , dumpsMany
   , dumpsText
   , pythonFloatRepr
   , EncodeError (..)
@@ -52,7 +53,7 @@ import Foreign.Marshal.Utils (copyBytes, fillBytes)
 import Foreign.Ptr (Ptr, castPtr, minusPtr, plusPtr)
 import Foreign.Storable (pokeByteOff)
 import GHC.Exts (Int (I#))
-import GHC.ForeignPtr (unsafeWithForeignPtr)
+import GHC.ForeignPtr (plusForeignPtr, unsafeWithForeignPtr)
 import GHC.Num (Integer (IS))
 import Numeric (showHex)
 import Petrus.Json.Float (floatReprBuilder, maxFloatReprLength, pythonFloatRepr, writeFloatRepr)
@@ -147,6 +148,39 @@ dumps :: EncodeOptions -> Json -> Either EncodeError BS.ByteString
 dumps options value =
   unsafeDupablePerformIO $
     either (\(Refused problem) -> Left problem) Right <$> try (direct (layoutOf options) value)
+
+-- | 'dumps' of each value in turn: every spelling, or the first refusal with
+-- the (0-based) index of the value refused.
+--
+-- The spellings are written back to back into one buffer and answered as
+-- slices of it, so a batch costs one growing allocation rather than a
+-- buffer per value, and its spellings hold no per-value memory. They keep
+-- the whole buffer alive: use it for values encoded together and dropped
+-- together (a write batch), not for spellings kept apart.
+dumpsMany :: EncodeOptions -> [Json] -> Either (Int, EncodeError) [BS.ByteString]
+dumpsMany options values = unsafeDupablePerformIO $ do
+  first <- BI.mallocByteString initialCapacity
+  ref <- newIORef (Buffer first initialCapacity)
+  let layout = layoutOf options
+      go !index !offset ends = \case
+        [] -> do
+          Buffer final _ <- readIORef ref
+          pure (Right (slices final ends))
+        value : rest ->
+          try (written layout ref 0 offset value) >>= \case
+            Left (Refused problem) -> pure (Left (index, problem))
+            Right end -> go (index + 1) end (end : ends) rest
+  go (0 :: Int) 0 [] values
+  where
+    -- The end offsets come newest first; each value starts where the one
+    -- before it ends.
+    slices final = build []
+      where
+        build acc = \case
+          [] -> acc
+          [end] -> slice 0 end : acc
+          end : rest@(start : _) -> let !piece = slice start end in build (piece : acc) rest
+        slice start end = BI.BS (plusForeignPtr final start) (end - start)
 
 -- | Serialize to text: CPython's @json.dumps@ @str@. The bytes 'dumps'
 -- writes are UTF-8 by construction, or WTF-8 where a string holds a lone

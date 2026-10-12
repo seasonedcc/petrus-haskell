@@ -1,3 +1,6 @@
+{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE UnliftedFFITypes #-}
+
 -- | SQLite connections opened exactly as upstream opens them.
 --
 -- Every upstream SQLite store calls @sqlite3.connect(path, timeout=…,
@@ -50,6 +53,13 @@ module Petrus.Sqlite.Connection
     -- * Statements
   , execute
   , execute_
+  , executeWith
+  , Statement
+  , bindParam
+  , bindTextParam
+  , bindUtf8Param
+  , bindInt64Param
+  , bindNullParam
   , executeMany
   , query
   , queryFirst
@@ -77,7 +87,8 @@ module Petrus.Sqlite.Connection
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (Exception, SomeException, bracket, catch, mask, onException, throwIO, try)
-import Control.Monad (forM_, void, when)
+import Control.Monad (forM_, void, when, zipWithM_)
+import Data.ByteString (ByteString)
 import Data.Char (isSpace)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.Int (Int64)
@@ -85,6 +96,10 @@ import Data.List (isPrefixOf)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Array qualified as TA
+import Data.Text.Encoding qualified as TE
+import Data.Text.Encoding.Error (lenientDecode)
+import Data.Text.Internal qualified as TI
 import Database.SQLite3
   ( Database
   , Error (..)
@@ -96,7 +111,11 @@ import Database.SQLite3
   , StepResult (..)
   )
 import Database.SQLite3 qualified as S
+import Database.SQLite3.Bindings.Types (CDatabase, CError (..), CStatement, decodeError)
 import Database.SQLite3.Direct qualified as Direct
+import Foreign.C.Types (CInt (..))
+import Foreign.Ptr (Ptr)
+import GHC.Exts (ByteArray#)
 import GHC.Clock (getMonotonicTime)
 import Petrus.Posix.Path (purePath)
 import Petrus.Sqlite.PythonRepr (pythonReprSqlData)
@@ -281,8 +300,21 @@ connect path timeoutMs isolation = do
   database <- S.open2 (T.pack name) [SQLOpenReadWrite, SQLOpenCreate] SQLVFSDefault
   cache <- newIORef Map.empty
   let connection = Connection path database isolation cache
-  (S.exec database ("PRAGMA busy_timeout = " <> T.pack (show timeoutMs))) `onException` S.close database
+  setBusyTimeout database timeoutMs `onException` S.close database
   pure connection
+
+foreign import ccall unsafe "sqlite3_busy_timeout"
+  c_sqlite3_busy_timeout :: Ptr CDatabase -> CInt -> IO CInt
+
+-- | @sqlite3_busy_timeout@, as @sqlite3.connect(timeout=…)@ sets it: the
+-- C call, not a @PRAGMA busy_timeout@ statement (the same setting, without
+-- preparing and running a statement on every connect).
+setBusyTimeout :: Database -> Int -> IO ()
+setBusyTimeout database@(Direct.Database handle) timeoutMs = do
+  code <- c_sqlite3_busy_timeout handle (fromIntegral timeoutMs)
+  when (code /= 0) $ do
+    Direct.Utf8 details <- Direct.errmsg database
+    throwIO SQLError {sqlError = decodeError (CError code), sqlErrorDetails = TE.decodeUtf8With lenientDecode details, sqlErrorContext = "sqlite3_busy_timeout"}
 
 -- | Open a connection and run the profile's setup statements in order. On
 -- any failure the connection is closed and the error rethrown (a refused
@@ -383,10 +415,18 @@ isDml sql = any (`T.isPrefixOf` T.toLower (T.take 7 (skipNoise sql))) ["insert",
 -- | Execute one statement with positional parameters and return
 -- @sqlite3_changes()@ (Python's @cursor.rowcount@ for DML statements).
 execute :: Connection -> Text -> [SQLData] -> IO Int
-execute connection sql params = do
+execute connection sql params = executeWith connection sql (`bindAll` params)
+
+-- | 'execute' with the parameters bound by an action ('bindParam',
+-- 'bindTextParam', 'bindUtf8Param', 'bindInt64Param', 'bindNullParam')
+-- instead of from a list, for a statement run once per row of a batch. The
+-- action must bind every parameter of the statement (one left unbound is
+-- @NULL@).
+executeWith :: Connection -> Text -> (Statement -> IO ()) -> IO Int
+executeWith connection sql binder = do
   implicitBegin connection sql
   withPrepared connection sql $ \statement -> do
-    S.bind statement params
+    binder statement
     drain statement
   S.changes (connectionDatabase connection)
   where
@@ -394,6 +434,63 @@ execute connection sql params = do
       S.step statement >>= \case
         Row -> drain statement
         Done -> pure ()
+
+-- | Bind every parameter from a list, refusing a list of the wrong length
+-- (direct-sqlite's 'S.bind', with text bound by 'bindTextParam').
+bindAll :: Statement -> [SQLData] -> IO ()
+bindAll statement params = do
+  Direct.ParamIndex count <- Direct.bindParameterCount statement
+  when (count /= length params) $
+    fail
+      ( "mismatched parameter count for bind.  Prepared statement needs "
+          ++ show count
+          ++ ", "
+          ++ show (length params)
+          ++ " given"
+      )
+  zipWithM_ (bindParam statement) [1 ..] params
+
+-- | Bind one parameter (1-based), as direct-sqlite's 'S.bindSQLData' does,
+-- text by 'bindTextParam'.
+bindParam :: Statement -> Int -> SQLData -> IO ()
+bindParam statement index = \case
+  SQLText text -> bindTextParam statement index text
+  datum -> S.bindSQLData statement (fromIntegral index) datum
+
+foreign import ccall unsafe "petrus_sqlite_bind_text"
+  c_petrus_sqlite_bind_text :: Ptr CStatement -> CInt -> ByteArray# -> Int -> CInt -> IO CInt
+
+-- | Bind a text parameter (1-based) from the 'Text''s own UTF-8 bytes,
+-- which SQLite copies (as CPython binds a @str@), without the intermediate
+-- UTF-8 copy of direct-sqlite's 'S.bindText'.
+bindTextParam :: Statement -> Int -> Text -> IO ()
+bindTextParam statement@(Direct.Statement handle) index (TI.Text (TA.ByteArray array) offset size) =
+  c_petrus_sqlite_bind_text handle (fromIntegral index) array offset (fromIntegral size) >>= bound statement "bind text"
+
+-- | Bind a text parameter (1-based) from bytes that are already UTF-8.
+bindUtf8Param :: Statement -> Int -> ByteString -> IO ()
+bindUtf8Param statement index bytes =
+  Direct.bindText statement (fromIntegral index) (Direct.Utf8 bytes) >>= either (failed statement "bind text") pure
+
+-- | Bind an integer parameter (1-based).
+bindInt64Param :: Statement -> Int -> Int64 -> IO ()
+bindInt64Param statement index value = S.bindInt64 statement (fromIntegral index) value
+
+-- | Bind @NULL@ to a parameter (1-based).
+bindNullParam :: Statement -> Int -> IO ()
+bindNullParam statement index = S.bindNull statement (fromIntegral index)
+
+bound :: Statement -> Text -> CInt -> IO ()
+bound statement context = \case
+  0 -> pure ()
+  code -> failed statement context (decodeError (CError code))
+
+-- | direct-sqlite's error for a failed call on a statement.
+failed :: Statement -> Text -> Error -> IO a
+failed statement context err = do
+  database <- Direct.getStatementDatabase statement
+  Direct.Utf8 details <- Direct.errmsg database
+  throwIO SQLError {sqlError = err, sqlErrorDetails = TE.decodeUtf8With lenientDecode details, sqlErrorContext = context}
 
 -- | Execute one statement without parameters, ignoring rows.
 execute_ :: Connection -> Text -> IO ()
@@ -409,7 +506,7 @@ query :: Connection -> Text -> [SQLData] -> IO [[SQLData]]
 query connection sql params = do
   implicitBegin connection sql
   withPrepared connection sql $ \statement -> do
-    S.bind statement params
+    bindAll statement params
     -- The first step may wait for locks (the busy handler sleeps), so it is
     -- a safe call. Later steps of the same statement already hold the read
     -- snapshot and never wait, so they use the cheaper unsafe call.
@@ -426,7 +523,7 @@ queryFirst :: Connection -> Text -> [SQLData] -> IO (Maybe [SQLData])
 queryFirst connection sql params = do
   implicitBegin connection sql
   withPrepared connection sql $ \statement -> do
-    S.bind statement params
+    bindAll statement params
     S.step statement >>= \case
       Row -> Just <$> S.columns statement
       Done -> pure Nothing

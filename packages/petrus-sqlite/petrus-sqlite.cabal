@@ -21,6 +21,7 @@ build-type:         Simple
 extra-doc-files:    NOTICE
                     bench/RESULTS.md
                     DIVERGENCES.md
+extra-source-files: cbits/petrus_sqlite.c
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -40,6 +41,7 @@ library
                     Petrus.Sqlite.PythonRepr
                     Petrus.Sqlite.Schema
                     Petrus.Sqlite.WriterFence
+  c-sources:        cbits/petrus_sqlite.c
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
