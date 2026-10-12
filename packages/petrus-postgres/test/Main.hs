@@ -12,6 +12,7 @@ import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import GHC.Clock (getMonotonicTime)
 import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, pythonLoads)
 import Petrus.Postgres
@@ -541,6 +542,18 @@ parameterSpec = describe "parameters and values" $ do
         other -> expectationFailure ("unexpected row " ++ show other)
       special <- queryFirst connection "SELECT %s::float8, %s::float8, %s::float8" [floatParam (1 / 0), floatParam (-1 / 0), floatParam 1e300]
       fmap (map (column decodeDouble)) special `shouldBe` Just [Right (1 / 0), Right (-1 / 0), Right 1e300]
+
+  it "sends a timestamptz as a UTC literal to the microsecond and reads it back in any session time zone" $ \target ->
+    withConn target True $ \connection -> do
+      let instant = posixSecondsToUTCTime 1791653580.4312349
+          truncated = posixSecondsToUTCTime 1791653580.431234
+      paramValue (timestamptzParam instant) `shouldBe` Just "2026-10-10 17:33:00.431234+00:00"
+      paramValue (timestamptzParam (posixSecondsToUTCTime 0)) `shouldBe` Just "1970-01-01 00:00:00+00:00"
+      forM_ ["UTC", "America/Sao_Paulo", "Asia/Kolkata", "Pacific/Chatham"] $ \zone -> do
+        execute_ connection (sql ("SET TIME ZONE '" <> zone <> "'")) []
+        row <- queryFirst connection "SELECT %s, '1969-12-31 23:59:59.5+00'::timestamptz" [timestamptzParam instant]
+        fmap (map (column decodeTimestamptz)) row
+          `shouldBe` Just [Right truncated, Right (posixSecondsToUTCTime (-0.5))]
 
   it "quotes identifiers as psycopg's sql.Identifier" $ \target ->
     withAgent target True $ \agent -> forM_ ["t_default", "Mixed Case", "quote\"d", "\233", ""] $ \name -> do

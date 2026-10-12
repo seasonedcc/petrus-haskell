@@ -36,9 +36,6 @@ module Petrus.Fabric.Postgres
   , receipt
   , pruneAccepted
   , inboxClient
-    -- * Timestamps
-  , parseTimestamptz
-  , formatTimestamptz
   ) where
 
 import Control.Exception (throwIO)
@@ -48,21 +45,12 @@ import Data.Bits (xor, (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Base64.URL qualified as Base64
-import Data.ByteString.Char8 qualified as BC
-import Data.Char (isDigit)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe qualified as TU
-import Data.Time
-  ( UTCTime (..)
-  , addUTCTime
-  , defaultTimeLocale
-  , formatTime
-  , fromGregorian
-  , picosecondsToDiffTime
-  )
+import Data.Time (UTCTime)
 import Petrus.Fabric.Error
 import Petrus.Fabric.Ingress (InboxClient (..))
 import Petrus.Fabric.Model
@@ -75,6 +63,7 @@ import Petrus.Postgres
   , decodeInt
   , decodeJson
   , decodeText
+  , decodeTimestamptz
   , execute
   , execute_
   , intParam
@@ -84,7 +73,7 @@ import Petrus.Postgres
   , queryFirst
   , textArrayParam
   , textParam
-  , typedParam
+  , timestamptzParam
   , withTransaction
   )
 import Petrus.Postgres qualified as Pg
@@ -350,7 +339,7 @@ priorRow = \case
       ( (,,)
           <$> column decodeText d
           <*> (fmap (fmap fromIntegral) (nullable decodeInt o))
-          <*> nullable parseTimestamptz a
+          <*> nullable decodeTimestamptz a
       )
   other -> unexpectedRow other
 
@@ -484,7 +473,7 @@ acknowledge client sender' deliveryId' occurrence = do
                 <*> column decodeText c
                 <*> column decodeText d
                 <*> fmap (fmap fromIntegral) (nullable decodeInt o)
-                <*> nullable parseTimestamptz a
+                <*> nullable decodeTimestamptz a
                 <*> column decodeBool k
             )
         case (prior, at) of
@@ -515,7 +504,7 @@ acknowledge client sender' deliveryId' occurrence = do
                 "UPDATE impetus_fabric.deliveries SET accepted_occurrence = %s, accepted_at = clock_timestamp()\n                    WHERE sender = %s AND delivery_id = %s RETURNING accepted_at"
                 [intParam (fromIntegral occurrence), textParam sender, textParam deliveryId]
             stamp <- case updated of
-              Just [value] -> decodeRow (nullable parseTimestamptz value)
+              Just [value] -> decodeRow (nullable decodeTimestamptz value)
               other -> unexpectedRow other
             pure (recipient, source, correlation, digest, stamp, retained)
       Just other -> unexpectedRow other
@@ -552,7 +541,7 @@ receipt client deliveryId' = do
               <*> column decodeText s
               <*> column decodeText d
               <*> fmap (fmap fromIntegral) (nullable decodeInt o)
-              <*> nullable parseTimestamptz a
+              <*> nullable decodeTimestamptz a
               <*> column decodeBool k
           )
       let state = maybe Pending (const Accepted) acceptedAt
@@ -569,7 +558,7 @@ pruneAccepted client before = do
     execute
       client.connection
       "UPDATE impetus_fabric.deliveries SET envelope = NULL\n            WHERE recipient = %s AND accepted_at < %s AND envelope IS NOT NULL"
-      [textParam client.instanceId, typedParam 1184 (formatTimestamptz before)]
+      [textParam client.instanceId, timestamptzParam before]
   emit log' "fabric_pruned" [("instance", String client.instanceId), ("deliveries", Int (fromIntegral pruned))]
   pure pruned
 
@@ -577,58 +566,3 @@ pruneAccepted client before = do
 inboxClient :: PostgresFabric -> InboxClient
 inboxClient client = InboxClient {pending = pending client, acknowledge = acknowledge client}
 
--- ---------------------------------------------------------------------------
--- Timestamps
-
--- | A cutoff as an ISO-8601 @timestamptz@ literal at microsecond precision
--- (the resolution of a Python @datetime@ and of PostgreSQL).
-formatTimestamptz :: UTCTime -> ByteString
-formatTimestamptz time =
-  let micros = floor (toRational (utctDayTime time) * 1000000) :: Integer
-      truncated = time {utctDayTime = picosecondsToDiffTime (micros * 1000000)}
-   in BC.pack (formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S%Q+00:00" truncated)
-
--- | A @timestamptz@ in PostgreSQL's ISO output style
--- (@2026-10-10 17:33:00.431234-03@, the offset optionally with minutes and
--- seconds).
-parseTimestamptz :: ByteString -> Either String UTCTime
-parseTimestamptz raw = maybe (Left ("not an ISO timestamptz: " <> show raw)) Right $ do
-  let text = BC.unpack raw
-  (year, rest1) <- number text
-  rest2 <- expect '-' rest1
-  (month, rest3) <- number rest2
-  rest4 <- expect '-' rest3
-  (day, rest5) <- number rest4
-  rest6 <- expect ' ' rest5
-  (hour, rest7) <- number rest6
-  rest8 <- expect ':' rest7
-  (minute, rest9) <- number rest8
-  rest10 <- expect ':' rest9
-  (second, rest11) <- number rest10
-  let (fraction, rest12) = case rest11 of
-        '.' : more -> let (digits, after) = span isDigit more in (digits, after)
-        _ -> ("", rest11)
-      picos = if null fraction then 0 else read (take 12 (fraction ++ replicate 12 '0')) :: Integer
-  (sign, rest13) <- case rest12 of
-    '+' : more -> Just (1, more)
-    '-' : more -> Just (-1, more)
-    _ -> Nothing
-  (offsetHours, rest14) <- number rest13
-  (offsetMinutes, rest15) <- optionalPart rest14
-  (offsetSeconds, rest16) <- optionalPart rest15
-  unless (null rest16) Nothing
-  let local =
-        UTCTime
-          (fromGregorian year (fromIntegral month) (fromIntegral day))
-          (picosecondsToDiffTime ((hour * 3600 + minute * 60 + second) * 1000000000000 + picos))
-      offset = sign * (offsetHours * 3600 + offsetMinutes * 60 + offsetSeconds)
-  pure (addUTCTime (fromIntegral (negate offset)) local)
-  where
-    number s = case span isDigit s of
-      ("", _) -> Nothing
-      (digits, rest) -> Just (read digits :: Integer, rest)
-    expect c (x : rest) | x == c = Just rest
-    expect _ _ = Nothing
-    optionalPart = \case
-      ':' : more -> number more
-      other -> Just (0, other)

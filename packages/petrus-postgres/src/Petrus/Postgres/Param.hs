@@ -35,6 +35,7 @@ module Petrus.Postgres.Param
   , jsonbRawParam
   , textArrayParam
   , intArrayParam
+  , timestamptzParam
   , typedParam
 
     -- * Type OIDs
@@ -57,6 +58,7 @@ import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Time (UTCTime (..), defaultTimeLocale, formatTime, picosecondsToDiffTime)
 import Data.Word (Word32)
 import Petrus.Json (EncodeError, Json, defaultDumps, dumps, pythonFloatRepr)
 
@@ -241,3 +243,13 @@ intArrayParam items = Param arrayOid (Just (BC.pack ("{" ++ commaSeparated ++ "}
 -- | A value in PostgreSQL's text input syntax with an explicit type OID.
 typedParam :: Word32 -> ByteString -> Param
 typedParam oid value = Param oid (Just value) TextFormat
+
+-- | An aware UTC @datetime@ as @timestamptz@ (OID 1184): an ISO-8601
+-- literal truncated to microseconds, the resolution of a Python
+-- @datetime@ and of PostgreSQL (@2026-10-10 17:33:00.431234+00:00@, the
+-- fraction without trailing zeros).
+timestamptzParam :: UTCTime -> Param
+timestamptzParam time =
+  let micros = floor (toRational (utctDayTime time) * 1000000) :: Integer
+      truncated = time {utctDayTime = picosecondsToDiffTime (micros * 1000000)}
+   in typedParam 1184 (BC.pack (formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S%Q+00:00" truncated))

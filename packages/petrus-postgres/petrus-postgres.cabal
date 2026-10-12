@@ -50,6 +50,7 @@ library
                   , petrus-json
                   , postgresql-libpq >=0.10
                   , text >=2.0
+                  , time >=1.12
 
 test-suite petrus-postgres-test
   import:           warnings
@@ -64,6 +65,7 @@ test-suite petrus-postgres-test
                   , petrus-postgres
                   , petrus-test-support
                   , text
+                  , time
 
 benchmark petrus-postgres-bench
   import:           warnings

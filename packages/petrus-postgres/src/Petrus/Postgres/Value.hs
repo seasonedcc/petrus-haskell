@@ -8,6 +8,7 @@ module Petrus.Postgres.Value
   , decodeDouble
   , decodeJson
   , decodeBytea
+  , decodeTimestamptz
   , column
   , nullable
   ) where
@@ -16,9 +17,11 @@ import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
+import Data.Char (isDigit)
 import Data.Int (Int64)
 import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
+import Data.Time (UTCTime (..), addUTCTime, fromGregorian, picosecondsToDiffTime)
 import Data.Word (Word8)
 import Petrus.Json (Json, parseJson, pythonLoads)
 import Text.Read (readMaybe)
@@ -76,6 +79,51 @@ decodeBytea bytes = case BS.stripPrefix "\\x" bytes of
       | w >= 97 && w <= 102 = Just (w - 87)
       | w >= 65 && w <= 70 = Just (w - 55)
       | otherwise = Nothing
+
+-- | @timestamptz@ in PostgreSQL's ISO output style
+-- (@2026-10-10 17:33:00.431234-03@, the offset optionally with minutes and
+-- seconds), as the aware @datetime@ psycopg loads, in UTC.
+decodeTimestamptz :: ByteString -> Either String UTCTime
+decodeTimestamptz raw = maybe (Left ("not an ISO timestamptz: " <> show raw)) Right $ do
+  let text = BC.unpack raw
+  (year, rest1) <- number text
+  rest2 <- expect '-' rest1
+  (month, rest3) <- number rest2
+  rest4 <- expect '-' rest3
+  (day, rest5) <- number rest4
+  rest6 <- expect ' ' rest5
+  (hour, rest7) <- number rest6
+  rest8 <- expect ':' rest7
+  (minute, rest9) <- number rest8
+  rest10 <- expect ':' rest9
+  (second, rest11) <- number rest10
+  let (fraction, rest12) = case rest11 of
+        '.' : more -> span isDigit more
+        _ -> ("", rest11)
+      picos = if null fraction then 0 else read (take 12 (fraction ++ replicate 12 '0')) :: Integer
+  (sign, rest13) <- case rest12 of
+    '+' : more -> Just (1, more)
+    '-' : more -> Just (-1, more)
+    _ -> Nothing
+  (offsetHours, rest14) <- number rest13
+  (offsetMinutes, rest15) <- optionalPart rest14
+  (offsetSeconds, rest16) <- optionalPart rest15
+  if null rest16 then Just () else Nothing
+  let local =
+        UTCTime
+          (fromGregorian year (fromIntegral month) (fromIntegral day))
+          (picosecondsToDiffTime ((hour * 3600 + minute * 60 + second) * 1000000000000 + picos))
+      offset = sign * (offsetHours * 3600 + offsetMinutes * 60 + offsetSeconds)
+  pure (addUTCTime (fromIntegral (negate offset)) local)
+  where
+    number s = case span isDigit s of
+      ("", _) -> Nothing
+      (digits, rest) -> Just (read digits :: Integer, rest)
+    expect c (x : rest) | x == c = Just rest
+    expect _ _ = Nothing
+    optionalPart = \case
+      ':' : more -> number more
+      other -> Just (0, other)
 
 -- | Decode a non-null column value, failing on @NULL@.
 column :: (ByteString -> Either String a) -> Maybe ByteString -> Either String a

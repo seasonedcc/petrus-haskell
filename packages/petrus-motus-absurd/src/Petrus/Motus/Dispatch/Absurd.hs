@@ -118,7 +118,6 @@ import Control.Monad (forM, forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isDigit)
-import Data.Fixed (Pico)
 import Data.IORef
 import Data.Int (Int64)
 import Data.List (nub, sortOn)
@@ -130,8 +129,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Data.Time.Format (defaultTimeLocale, formatTime)
 import Petrus.Activity hiding (ActivityExecutionContext (..))
 import Petrus.Json
 import Petrus.Motus.Dispatch
@@ -170,7 +169,7 @@ import Petrus.Postgres
   , sql
   , textArrayParam
   , textParam
-  , typedParam
+  , timestamptzParam
   , waitForNotification
   )
 import Petrus.Postgres qualified as Pg
@@ -539,7 +538,7 @@ guardedTerminal g queue taskId' runId' report = do
                 floor' = fromMaybe (IntNumber 0) f.failureRetryAfter
                 delay = if floor' > backoff then floor' else backoff
                 retryAt
-                  | f.failureRetryable = typedParam 1184 (TE.encodeUtf8 (timestampText (nowMicros + delayMicros delay)))
+                  | f.failureRetryable = timestamptzParam (microsTime (nowMicros + delayMicros delay))
                   | otherwise = nullParam
             unless f.failureRetryable $
               run_
@@ -1410,11 +1409,9 @@ delayMicros = \case
         fraction = seconds - fromInteger whole
      in fromInteger (whole * 1000000 + round (fraction * 1e6))
 
--- | A UTC timestamptz literal for microseconds since the epoch.
-timestampText :: Int64 -> Text
-timestampText micros =
-  let seconds = fromRational (toRational micros / 1000000) :: Pico
-   in T.pack (formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S%Q+00:00" (posixSecondsToUTCTime (realToFrac seconds)))
+-- | Microseconds since the epoch as a UTC time.
+microsTime :: Int64 -> UTCTime
+microsTime micros = posixSecondsToUTCTime (fromRational (toRational micros / 1000000))
 
 showT :: (Show a) => a -> Text
 showT = T.pack . show
