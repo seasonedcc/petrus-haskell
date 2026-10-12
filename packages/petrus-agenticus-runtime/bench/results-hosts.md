@@ -197,7 +197,15 @@ What it took:
   thread's stack alive, about 64 KB per remembered operation, which
   exhausted the 2 GB heap within seconds of this benchmark.
 - **One reusable read buffer** in the sidecar reader, where `hGetSome`
-  allocated and pinned 64 KB per read.
+  allocated and pinned 64 KB per read. Removed on 2026-10-12: measured
+  again, five repetitions of each binary interleaved (Apple M4, load
+  average 3.3–3.8), `amp-turn` read 180.3 µs with the buffer and 181.0 µs
+  with `hGetSome` (per repetition 173.4, 180.3, 180.3, 183.4, 186.2 µs
+  against 175.8, 181.0, 183.4, 184.8, 178.2 µs) and `claude-turn` 8.92 ms
+  against 9.17 ms (8.55–9.12 against 8.65–9.92 ms): level within the
+  noise, so the reader uses `hGetSome` again. At this load both binaries
+  sat at 1.06× of the reference's 192 µs on `amp-turn`, the row's margin
+  either way.
 
 Codex runs the same two Python subprocesses on both sides (about 20 ms of
 interpreter start-up each), so its ratio is bounded by them. Its first

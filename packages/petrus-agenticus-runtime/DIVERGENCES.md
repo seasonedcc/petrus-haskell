@@ -57,10 +57,11 @@ hosts are covered in [divergences/codex.md](divergences/codex.md),
    descriptors that are open. With `close_fds`, the `process` package falls
    back to fork and closes every descriptor up to `RLIMIT_NOFILE`. That costs
    about 0.1 s per spawn at macOS's 1 048 576, and made each Pi Turn about
-   three times slower than the reference's. `spawnPiped` serves the native,
-   application and model-phase Pi helpers and the Codex, Claude and Amp
-   sidecars. It uses petrus-execution's `posix_spawn` instead (see that
-   package's DIVERGENCES.md): only stdio survives, the child leads a new
+   three times slower than the reference's. `spawnPiped` (petrus-execution's
+   `Petrus.Motus.Execution.Spawn`) serves the native, application and
+   model-phase Pi helpers and the Codex, Claude and Amp sidecars. It uses
+   petrus-execution's `posix_spawn` instead (see that package's
+   DIVERGENCES.md): only stdio survives, the child leads a new
    session, and SIGPIPE and SIGXFSZ are restored as under
    `restore_signals=True`. The child is then adopted as an ordinary
    `ProcessHandle`. The parent's pipe ends are non-blocking handles, as the
