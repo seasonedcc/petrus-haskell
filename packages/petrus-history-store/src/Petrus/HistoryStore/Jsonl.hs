@@ -30,7 +30,8 @@
 --
 -- = Loading
 --
--- A missing file is an empty History (construction never creates it). An
+-- A missing path is an empty History (construction never creates it); any
+-- other path is read at construction, so a directory fails there. An
 -- existing file is read with universal newlines, and every line must decode
 -- as a record — a blank line or a torn tail refuses the whole load with
 -- @"<path>: line <n> does not decode as an event history record: <error>"@,
@@ -77,7 +78,7 @@ import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsBuilder, e
 import Petrus.Posix.File (fsyncFd, fsyncPath, writeAll)
 import Petrus.Telemetry (EventSink, emit, getLogger)
 import Petrus.Telemetry qualified as Telemetry
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Directory (createDirectoryIfMissing, doesFileExist, doesPathExist)
 import System.FilePath (takeDirectory)
 import System.Posix.IO
   ( OpenFileFlags (..)
@@ -223,10 +224,13 @@ splitLines content
         | BS.null after -> [before]
         | otherwise -> before : splitOnCrLf (BS.drop 2 after)
 
--- | Load a JSONL History: a missing file is empty.
+-- | Load a JSONL History: a missing path is empty. A path that exists is
+-- read (the reference's @Path.exists()@ then @open()@), so one that is not a
+-- readable file (a directory, say) fails here, at construction, with the
+-- operating system's 'IOError'.
 loadJsonlHistory :: FilePath -> IO (Seq Record)
 loadJsonlHistory path = do
-  exists <- doesFileExist path
+  exists <- doesPathExist path
   if not exists
     then pure Seq.empty
     else do

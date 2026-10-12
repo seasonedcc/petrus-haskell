@@ -21,6 +21,7 @@ import Petrus.Json (Json (..))
 import Petrus.Telemetry (newRecorder, recorded, recorderSink)
 import System.Directory (doesDirectoryExist, doesFileExist)
 import System.FilePath ((</>))
+import GHC.IO.Exception (IOErrorType (InappropriateType), IOException (ioe_type))
 import Test.Hspec
 
 initialized :: Record
@@ -131,6 +132,11 @@ spec = do
       doesDirectoryExist (dir </> "nested") `shouldReturn` False
       Store.append history initialized
       doesFileExist path `shouldReturn` True
+
+    -- Not an upstream test: the reference's Path.exists() is true for a
+    -- directory, so its open() raises IsADirectoryError at construction.
+    it "a directory at the path fails at construction" $ withScratch $ \dir -> do
+      openJsonlHistoryStore dir `shouldThrow` \(e :: IOException) -> ioe_type e == InappropriateType
 
     it "a v1-encoded line fails loud at load naming the migration" $ withScratch $ \dir -> do
       let path = dir </> "history.jsonl"
