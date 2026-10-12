@@ -20,6 +20,10 @@ name: CI
 #              petrus-viewer suites against the Haskell backend)
 #   bench-smoke  nightly and `full` only: every benchmark builds and runs once
 #              (scripts/bench --smoke); stale benchmark results are listed
+#   bench-gate (N)  nightly and `full` only: the thin-margin and headline rows
+#              of every package against its Python twin, 5 interleaved
+#              repetitions, rerun once when below 1.0x; fails when a row is
+#              below 1.0x twice (scripts/bench-gate)
 #   container  the image and its runtime contract (scripts/container-smoke)
 #   ci         the verdict: green only when every job above is; it also
 #              records this run's test ledger
@@ -337,6 +341,56 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Performance against the pinned Python, on the code at HEAD: the rows of
+  # scripts/bench-gate (every package with a Python twin, its thinnest
+  # margins first), 5 interleaved repetitions each, spread over four
+  # runners. A row below 1.0x is measured again; the job fails when the
+  # rerun is below 1.0x too. Not on ordinary pushes: it takes runner time
+  # and the committed results files are what a push is checked against
+  # (scripts/bench --check, scripts/check-parity).
+  bench-gate:
+    needs: build
+    if: github.event_name == 'schedule' || inputs.full
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    name: bench-gate (${{ matrix.shard }})
+    services:
+      postgres:
+        image: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 1s --health-timeout 5s --health-retries 60
+    env:
+      PETRUS_TEST_POSTGRES: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/toolchain
+      - name: The build job's dist-newstyle
+        uses: ./.github/actions/cabal-dist
+        with:
+          key: ${{ env.DIST_KEY }}
+          fail-on-cache-miss: "true"
+      - name: Upstream Python environments (petrus, petrus-engine, hamsterdan)
+        run: for p in petrus petrus-engine hamsterdan; do scripts/upstream-python "$p" >/dev/null; done
+      - name: Haskell against the pinned Python
+        run: scripts/bench-gate --shard ${{ matrix.shard }}/4 --json bench-gate.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-gate-${{ matrix.shard }}
+          path: |
+            bench-gate.json
+            bench-results/tmp/gate/bench-gate.log
+          retention-days: 30
+
   # The Haskell port's container runtime contract (PARITY.md, "Container
   # runtime contract"): lint the launcher, the interpreter-path shim, the
   # smoke scripts and the Containerfile; build deployment/Containerfile for
@@ -387,7 +441,7 @@ jobs:
             --revision "${{ steps.source.outputs.revision }}" --version "${{ steps.source.outputs.version }}"
 
   ci:
-    needs: [lint, build, checks, test, viewer, bench-smoke, container]
+    needs: [lint, build, checks, test, viewer, bench-smoke, bench-gate, container]
     if: always()
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
@@ -424,7 +478,7 @@ jobs:
           ok = True
           for job, data in needs.items():
               result = data["result"]
-              allowed = ("success", "skipped") if job in ("test", "viewer", "bench-smoke") else ("success",)
+              allowed = ("success", "skipped") if job in ("test", "viewer", "bench-smoke", "bench-gate") else ("success",)
               print(f"{job}: {result}")
               ok = ok and result in allowed
           if os.environ["LEDGER"] != "success":

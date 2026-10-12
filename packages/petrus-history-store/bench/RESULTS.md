@@ -107,11 +107,16 @@ There are also three Haskell-only rows (medians of the four rounds):
   `Seq Record` behind one `IORef`. A read hands out the current value: no
   copy, no lock. Python's `records` copies the list into a tuple on every
   call.
-- **The JSONL write is streamed.** `encodePayload` first runs the refusal
-  check (non-finite numbers) over every record. Then one `Builder` produces
-  the whole payload in a single `ByteString`, which is written with one
-  `write`. The earlier per-record `dumps` kept every encoded
-  `Json` alive and ran at 80–97 ms.
+- **The JSONL write encodes each line in one pass.** `encodePayload`
+  encodes each record with petrus-json's `dumps` (`allowNan = False`),
+  which writes the bytes and refuses a non-finite number in the same pass,
+  at the same first value `dumpsBuilder` would refuse; the lines are joined
+  into one `ByteString`, written with one `write`. The encoder alone
+  (`diagnostic.encode-payload`) took about 85 ms when every record's
+  `Builder` was held until the whole batch had been checked (the slowdown
+  the final audit found at `e47ce6b`, FA-V-1), about 45 ms with a refusal
+  check followed by one streamed `Builder` (as at `9728cf6`), and about
+  22 ms this way.
 - **In-memory append.** The kernel's `inMemoryHistoryStore` is a direct
   `IORef (Seq Record)` with a strict compare-and-swap snoc. It has a
   single-record fast path, which is what `append` produces. It no longer goes

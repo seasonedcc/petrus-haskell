@@ -13,13 +13,23 @@
     --python-only REGEX only the twins' rows whose dotted names this regular
                         expression matches (PETRUS_BENCH_ONLY; the twins'
                         timing helpers honour it)
-    --json FILE         also write the medians, per-repetition figures and
-                        loads as JSON (scripts/bench-gate reads it)
     --no-build          run the benchmark executable built already
+    --twin COMMAND      a shell command, run from the repository root, that
+                        runs the twin (repeatable; instead of --python), such
+                        as the Python line of the package's rerun block
+    --map HASKELL=TWIN  the twin's name for a Haskell row (repeatable), when
+                        the automatic matching below does not find it
+    --haskell-arg ARG   one more option for the benchmark executable
+                        (repeatable), such as -j1
 
-For packages whose Python twins print ``name,nanoseconds`` lines on stdout
-(scripts/bench_timing.py, or a script's own median) named like the package's
-tasty-bench benchmarks; other output lines are ignored. The package's
+The twins' rows are read from what they print (`figures`): ``name,nanoseconds``
+lines (scripts/bench_timing.py), ``NAME VALUE UNIT`` lines (``ns``, ``us``
+or ``µs``, ``ms``, ``s``, optionally followed by ``/op``, ``per ...`` or a
+parenthesised note) and ``NAME  key: VALUE UNIT  key: VALUE UNIT`` lines
+(rows ``NAME.key``); other lines are ignored. A twin's row is matched to the
+Haskell row with the same name, or, comparing names in lower case with
+``/``, spaces and ``.`` alike, the same name or the Haskell name ending in
+the twin's (``All.agents.keys/seal`` and ``keys/seal``). The package's
 benchmark is built once with ``cabal build``; each repetition then runs its
 executable directly, the way ``cabal bench <package>`` would (in the package
 directory, with cabal's environment variables) but without cabal as the
@@ -47,7 +57,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import os
 import re
 import statistics
@@ -119,12 +128,13 @@ def benchmark_binary(package: str, build: bool = True) -> Tuple[Path, Dict[str, 
     return binary, env
 
 
-def haskell(package: str, repetition: int, pattern: Optional[str], stdev: str, binary: Tuple[Path, Dict[str, str]]) -> Dict[str, float]:
+def haskell(package: str, repetition: int, pattern: Optional[str], stdev: str, binary: Tuple[Path, Dict[str, str]],
+            extra: Optional[List[str]] = None) -> Dict[str, float]:
     output = TMP / f"{package}.haskell.{repetition}.csv"
     if output.exists():
         output.unlink()
     selection = ["-p", pattern] if pattern else []
-    options = selection + ["--csv", str(output), "--stdev", stdev, "--timeout", "300", "--time-mode", "wall", "+RTS", "-M2G", "-RTS"]
+    options = selection + ["--csv", str(output), "--stdev", stdev, "--timeout", "300", "--time-mode", "wall"] + (extra or []) + ["+RTS", "-M2G", "-RTS"]
     executable, env = binary
     command = [str(executable)] + options
     print("+ " + " ".join(shlex.quote(part) for part in command), file=sys.stderr, flush=True)
@@ -137,24 +147,106 @@ def haskell(package: str, repetition: int, pattern: Optional[str], stdev: str, b
         text=True,
     )
     sys.stderr.write(completed.stdout)
-    results = {}
-    with output.open(newline="") as stream:
-        for row in csv.DictReader(stream):
-            name = row["Name"]
-            if name.startswith("All."):
-                name = name[len("All.") :]
-            results[name] = float(row["Mean (ps)"]) / 1000.0
-    # Rows timed with the twins' own protocol (bench/Twin.hs in
-    # petrus-agenticus-runtime) are not tasty-bench measurements, so the CSV
-    # leaves them out; they report "twin NAME NANOSECONDS" instead.
-    for line in completed.stdout.splitlines():
+    # Rows timed with the twins' own protocol (Petrus.TestSupport.BenchTwin,
+    # bench/Twin.hs in petrus-agenticus-runtime) are not tasty-bench
+    # measurements, so the CSV leaves them out; they print "twin NAME
+    # NANOSECONDS" instead. A custom harness prints NAME VALUE UNIT lines.
+    results = figures(completed.stdout)
+    if output.exists():
+        with output.open(newline="") as stream:
+            for row in csv.DictReader(stream):
+                name = row["Name"]
+                if name.startswith("All."):
+                    name = name[len("All.") :]
+                results[name] = float(row["Mean (ps)"]) / 1000.0
+    return results
+
+
+UNITS = {"ns": 1.0, "us": 1e3, "µs": 1e3, "μs": 1e3, "ms": 1e6, "s": 1e9}
+VALUE = r"(\d+(?:\.\d+)?)\s*(ns|us|µs|μs|ms|s)\b"
+HUMAN = re.compile(r"^\s*(\S.*?)\s*:?\s+" + VALUE + r"(?:/\w+| per \w+)?(?:\s+\(.*\))?\s*$")
+KEYED = re.compile(r"([\w+]+):\s+" + VALUE)
+
+
+def figures(text: str) -> Dict[str, float]:
+    """Nanoseconds by row name from a benchmark's printed lines: ``name,ns``,
+    ``twin NAME NS``, ``NAME VALUE UNIT ...`` and ``NAME  key: VALUE UNIT
+    ...`` (rows ``NAME.key``). The first two win over the others."""
+    loose: Dict[str, float] = {}
+    exact: Dict[str, float] = {}
+    for line in text.splitlines():
         parts = line.split()
         if len(parts) == 3 and parts[0] == "twin":
             try:
-                results[parts[1]] = float(parts[2])
+                exact[parts[1]] = float(parts[2])
             except ValueError:
-                continue
-    return results
+                pass
+            continue
+        row, comma, value = line.rpartition(",")
+        if comma and row.strip() and re.fullmatch(r"\s*\d+(?:\.\d+)?\s*", value):
+            exact[row.strip()] = float(value)
+            continue
+        keyed = KEYED.findall(line)
+        if len(keyed) > 1:
+            name = line[: line.index(keyed[0][0] + ":")].strip()
+            for key, number, unit in keyed:
+                loose[f"{name}.{key}"] = float(number) * UNITS[unit]
+            continue
+        match = HUMAN.match(line)
+        if match and "±" not in line:  # not tasty-bench's own "1.64 μs ± 459 ns"
+            loose[match.group(1).strip()] = float(match.group(2)) * UNITS[match.group(3)]
+    loose.update(exact)
+    return loose
+
+
+def normal(name: str) -> str:
+    name = name.lower()
+    if name.startswith("all."):
+        name = name[len("all."):]
+    return re.sub(r"[/. ]+", ".", name).strip(".")
+
+
+def matching(haskell_names: List[str], twin_names: List[str], explicit: Dict[str, str]) -> Dict[str, str]:
+    """Twin row -> Haskell row: EXPLICIT (Haskell -> twin) first, then the
+    same name, then the same normalized name, then a Haskell name whose
+    normalized form ends with the twin's. Each Haskell row is matched once."""
+    result: Dict[str, str] = {}
+    taken = set()
+    for h, t in explicit.items():
+        h = h[len("All."):] if h.startswith("All.") else h
+        result[t] = h
+        taken.add(h)
+    for t in twin_names:
+        if t in result:
+            continue
+        if t in haskell_names and t not in taken:
+            result[t] = t
+            taken.add(t)
+    for t in twin_names:
+        if t in result:
+            continue
+        candidates = [h for h in haskell_names if h not in taken and normal(h) == normal(t)]
+        if not candidates:
+            candidates = [h for h in haskell_names if h not in taken and normal(h).endswith("." + normal(t))]
+        if len(candidates) == 1:
+            result[t] = candidates[0]
+            taken.add(candidates[0])
+    return result
+
+
+def twin_commands(package: str, commands: List[str], repetition: int, only: Optional[str]) -> Dict[str, float]:
+    outputs = []
+    env = environment()
+    if only:
+        env["PETRUS_BENCH_ONLY"] = only
+    for command in commands:
+        print(f"+ {command}", file=sys.stderr, flush=True)
+        completed = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", command], cwd=ROOT, env=env, check=True,
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        outputs.append(completed.stdout)
+    text = "".join(outputs)
+    (TMP / f"{package}.python.{repetition}.csv").write_text(text)
+    return figures(text)
 
 
 def python(package: str, interpreter: str, upstream: str, scripts: List[str], repetition: int,
@@ -176,12 +268,7 @@ def python(package: str, interpreter: str, upstream: str, scripts: List[str], re
             text=True,
         )
         outputs.append(completed.stdout)
-        for line in completed.stdout.splitlines():
-            row, _, value = line.rpartition(",")
-            try:
-                results[row] = float(value)
-            except ValueError:
-                continue
+        results.update(figures(completed.stdout))
     (TMP / f"{package}.python.{repetition}.csv").write_text("".join(outputs))
     return results
 
@@ -208,36 +295,50 @@ def main() -> int:
     parser.add_argument("--pattern")
     parser.add_argument("--stdev", default="5")
     parser.add_argument("--python-only", dest="only")
-    parser.add_argument("--json")
     parser.add_argument("--no-build", action="store_true")
+    parser.add_argument("--twin", action="append", dest="twins")
+    parser.add_argument("--map", action="append", default=[])
+    parser.add_argument("--haskell-arg", action="append", dest="haskell_args", default=[])
     options = parser.parse_args(arguments)
+    explicit = dict(m.split("=", 1) for m in options.map)
     package = options.package
     repetitions = options.repetitions
     scripts = options.scripts or ["python_bench.py"]
-    main_hs = ROOT / "packages" / package / "bench" / "Main.hs"
-    for name in scripts:
+    sources = " ".join(h.read_text() for h in (ROOT / "packages" / package / "bench").rglob("*.hs"))
+    for name in ([] if options.twins else scripts):
         if not (ROOT / "packages" / package / "bench" / name).exists():
             print(f"{package} has no bench/{name}", file=sys.stderr)
             return 2
-    if "PETRUS_TEST_POSTGRES" in main_hs.read_text() and not os.environ.get("PETRUS_TEST_POSTGRES"):
+    if "PETRUS_TEST_POSTGRES" in sources + " ".join(options.twins or []) and not os.environ.get("PETRUS_TEST_POSTGRES"):
         # Re-run under a throwaway server; scripts/with-postgres stops it.
         return subprocess.call([str(ROOT / "scripts" / "with-postgres"), sys.executable, __file__, *arguments])
     TMP.mkdir(parents=True, exist_ok=True)
-    interpreter = upstream_python(options.upstream)
+    interpreter = None if options.twins else upstream_python(options.upstream)
     binary = benchmark_binary(package, build=not options.no_build)
+
+    def theirs_now(repetition: int) -> Dict[str, float]:
+        if options.twins:
+            return twin_commands(package, options.twins, repetition, options.only)
+        return python(package, interpreter, options.upstream, scripts, repetition, options.only)
+
+    def ours_now(repetition: int) -> Dict[str, float]:
+        return haskell(package, repetition, options.pattern, options.stdev, binary, options.haskell_args)
+
     runs: List[Tuple[Dict[str, float], Dict[str, float]]] = []
     loads: List[float] = []
     for repetition in range(1, repetitions + 1):
         loads.append(os.getloadavg()[0])
         if repetition % 2:
-            ours = haskell(package, repetition, options.pattern, options.stdev, binary)
+            ours = ours_now(repetition)
             loads.append(os.getloadavg()[0])
-            theirs = python(package, interpreter, options.upstream, scripts, repetition, options.only)
+            theirs = theirs_now(repetition)
         else:
-            theirs = python(package, interpreter, options.upstream, scripts, repetition, options.only)
+            theirs = theirs_now(repetition)
             loads.append(os.getloadavg()[0])
-            ours = haskell(package, repetition, options.pattern, options.stdev, binary)
+            ours = ours_now(repetition)
         loads.append(os.getloadavg()[0])
+        names_of = matching(list(ours), list(theirs), explicit)
+        theirs = {names_of.get(name, name): value for name, value in theirs.items()}
         runs.append((ours, theirs))
         print(f"repetition {repetition} done, load average {loads[-3]:.2f} / {loads[-2]:.2f} / {loads[-1]:.2f}", file=sys.stderr)
     lines = [
@@ -249,7 +350,6 @@ def main() -> int:
     names = list(runs[0][0])
     if not options.pattern:
         names += [name for name in runs[0][1] if name not in runs[0][0]]
-    summary = {"package": package, "repetitions": repetitions, "loads": loads, "rows": {}}
     for name in names:
         ours = [run[0][name] for run in runs if name in run[0]]
         theirs = [run[1][name] for run in runs if name in run[1]]
@@ -258,16 +358,12 @@ def main() -> int:
         ratio = f"{p / h:.2f}×" if h and p else "—"
         paired = [run[1][name] / run[0][name] for run in runs if name in run[0] and name in run[1]]
         lowest = f"{min(paired):.2f}×" if paired else "—"
-        summary["rows"][name] = {"haskell": ours, "python": theirs, "haskell_median": h, "python_median": p,
-                                 "ratio": p / h if h and p else None, "paired": paired}
         lines.append(
             f"| `{name}` | {human(h)} | {human(p)} | {ratio} | {lowest} | "
             f"{', '.join(human(x) for x in ours)} | {', '.join(human(x) for x in theirs)} |"
         )
     text = "\n".join(lines) + "\n"
     (TMP / f"{package}.compare.md").write_text(text)
-    if options.json:
-        Path(options.json).write_text(json.dumps(summary, indent=1) + "\n")
     sys.stdout.write(text)
     return 0
 

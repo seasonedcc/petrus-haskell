@@ -1,0 +1,425 @@
+#!/usr/bin/env python3
+"""Remeasure a headline row of every package against its Python twin, and fail
+when Haskell is slower.
+
+    scripts/bench-gate                      # every entry below
+    scripts/bench-gate --shard 2/4          # every fourth entry, from the second (CI's matrix)
+    scripts/bench-gate PKG [PKG ...]        # only these packages' entries
+    scripts/bench-gate --list               # the entries and their rows
+    options: --reps N (default 5), --no-build, --json FILE
+
+CI runs it nightly and on a dispatch with ``full`` (the ``bench-gate`` job),
+never on an ordinary push: the figures need minutes of machine time and a
+quiet runner. The committed results files (``packages/*/bench/*.md``) are
+measured by hand, on a quiet machine, with more repetitions; this gate is the
+check that their headline rows still hold for the code at HEAD.
+
+**What it measures.** ENTRIES names, for every package with a Python twin,
+one or more rows, chosen where the margin is thinnest (the rows a regression
+would push below 1.0× first) and, for a package without a thin row, its
+headline row. A *pair* entry runs the package's benchmark executable
+(selected to its rows with tasty's ``-p``; tasty-bench mean in wall-clock
+time, ``--stdev 5``, ``+RTS -M2G``) and the Python twin's command (the one
+in the package's rerun block, restricted to the rows when the twin can be),
+back to back, REPS times, alternating which side goes first. A row's ratio
+is the median of the Python figures over the median of the Haskell figures.
+A *table* entry runs a harness that interleaves both sides itself (21 runs or
+5 rounds) and prints a Markdown table; its ratio is read from the row's
+ratio cell.
+
+**When it fails.** A row whose ratio is below 1.0 is measured again, from
+scratch (its whole entry, REPS more repetitions or one more harness run). The
+gate fails only when the rerun is below 1.0 too, or when a row could not be
+measured or read. Every row's figures are printed as a Markdown table, which
+also goes to ``$GITHUB_STEP_SUMMARY`` in CI.
+
+**Reading the figures.** Haskell figures are tasty-bench means (or the
+``twin NAME NANOSECONDS`` lines of rows timed with the twin's protocol, or a
+custom harness's own ``NAME VALUE UNIT`` lines); Python figures are what the
+twin prints, read as scripts/bench-compare reads them (its ``figures``). Each
+entry names both sides' rows explicitly.
+
+petrus-history-store's ``jsonl.append-one-batch`` is the row the final
+audit's FA-V-1 found 1.7× slower (its encoder held every record's
+``Builder``); its Haskell-only ``diagnostic.encode-payload`` row, the
+encoder alone, has no twin to compare with.
+
+Left out: petrus-viewer-server, whose twin is the upstream Node server (its
+benchmark, ``bench/run.mjs``, needs the built viewer; the nightly ``viewer``
+job runs its suites), and the second harness of packages that have two
+(petrus-agenticus-core's custody mode, petrus-engine-file's process rows,
+the load modes of petrus-observation-http and petrus-simulation), whose other
+rows are gated. Entries whose benchmarks read ``PETRUS_TEST_POSTGRES`` run
+under scripts/with-postgres when it is unset.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shutil
+import statistics
+import subprocess
+import sys
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+ROOT = Path(__file__).resolve().parent.parent
+TMP = ROOT / "bench-results" / "tmp" / "gate"
+sys.dont_write_bytecode = True
+
+
+def petrus(package: str, script: str = "python_bench.py", arguments: str = "") -> str:
+    return (f'(cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/{package}/bench/{script}'
+            + (f" {arguments}" if arguments else "") + ")")
+
+
+def hamsterdan(package: str, script: str = "bench.py", arguments: str = "") -> str:
+    return (f'"$(scripts/upstream-python hamsterdan)" -I -B packages/{package}/bench/{script}'
+            + (f" {arguments}" if arguments else ""))
+
+
+def engine(package: str, script: str = "python_bench.py") -> str:
+    return f'"$(scripts/upstream-python petrus-engine)" -B packages/{package}/bench/{script}'
+
+
+def pair(package: str, rows: List[Tuple[str, str]], python: str, only: Optional[str] = None,
+         haskell: Optional[List[str]] = None, tmpdir: bool = False) -> dict:
+    """ROWS: (Haskell name, Python name). Haskell names are tasty paths
+    ("All.group.row") or the names a custom harness prints. ONLY sets
+    PETRUS_BENCH_ONLY for twins timed by scripts/bench_timing.py."""
+    return {"kind": "pair", "package": package, "rows": rows, "python": python, "only": only,
+            "haskell": haskell or [], "tmpdir": tmpdir}
+
+
+def table(package: str, rows: List[str], command: str) -> dict:
+    """ROWS: regular expressions, each matching one line of the table COMMAND prints."""
+    return {"kind": "table", "package": package, "rows": rows, "command": command}
+
+
+ENTRIES = [
+    pair("hamsterdan-agents",
+         [("All.agents.agent turn/one scripted Pi review through the Pi native runner",
+           "agent turn/one scripted Pi review through the Pi native runner"),
+          ("All.agents.keys/seal and open connection state", "keys/seal and open connection state")],
+         hamsterdan("hamsterdan-agents"), haskell=["-j1"], tmpdir=True),
+    pair("hamsterdan-contracts",
+         [("All.contract decode Snapshot (validate_json)", "contract decode Snapshot (validate_json)")],
+         hamsterdan("hamsterdan-contracts")),
+    table("hamsterdan-export", [r"^\| fixture \| in process \|", r"^\| host-driven \| in process \|"],
+          "scripts/bench-run --no-build hamsterdan-export --runs 21 +RTS -M2G -RTS"),
+    pair("hamsterdan-github",
+         [("All.webhook verify (HMAC-SHA256, 10 KB)", "webhook verify (HMAC-SHA256, 10 KB)")],
+         hamsterdan("hamsterdan-github")),
+    pair("hamsterdan-host",
+         [("All.timers.open a fresh store with no History", "timers.open a fresh store with no History")],
+         hamsterdan("hamsterdan-host", "python_bench.py"), only=r"^timers\.open", haskell=["-j1"], tmpdir=True),
+    table("hamsterdan-operator", [r"^\| qualification-setup "],
+          "scripts/bench-run --no-build hamsterdan-operator --runs 21 +RTS -M2G -RTS"),
+    pair("hamsterdan-readiness",
+         [("All.board.render_board over every corpus log (1569 logs)",
+           "board/render_board over every corpus log (1569 logs)")],
+         hamsterdan("hamsterdan-readiness")),
+    pair("hamsterdan-testing",
+         [("All.oracle.load and evaluate every admitted corpus document (1658)",
+           "oracle/load and evaluate every admitted corpus document (1658)")],
+         hamsterdan("hamsterdan-testing", arguments="oracle/load")),
+    pair("petrus-activity", [("All.policy.delay", "policy.delay")], petrus("petrus-activity"), only=r"^policy\.delay$"),
+    pair("petrus-agenticus",
+         [("All.retention.ledger-lookup-x200", "ledger-lookup-x200")],
+         petrus("petrus-agenticus", "python_retention.py")),
+    pair("petrus-agenticus-core",
+         [("All.catalog.snapshot-from-data", "catalog/snapshot-from-data")],
+         petrus("petrus-agenticus-core", "python_catalog.py")),
+    pair("petrus-agenticus-core",
+         [("All.thread.dumps-only-1000x4", "thread/dumps-only-1000x4")],
+         petrus("petrus-agenticus-core", "python_thread.py")),
+    pair("petrus-agenticus-runtime",
+         [("All.codex-a3-service-turn", "codex-a3-service-turn"), ("All.pi-model-phase-turn", "pi-model-phase-turn")],
+         petrus("petrus-agenticus-runtime"), only=r"^(codex-a3-service-turn|pi-model-phase-turn)$"),
+    pair("petrus-agenticus-runtime", [("All.pi-ledger-cycle", "pi-ledger-cycle")],
+         petrus("petrus-agenticus-runtime", "python_pi.py")),
+    pair("petrus-agenticus-runtime", [("All.runner-3-phases-3-reads", "runner-3-phases-3-reads")],
+         petrus("petrus-agenticus-runtime", "python_runner.py")),
+    pair("petrus-cel", [("All.filter/regex.evaluate", "filter/regex.evaluate")],
+         '"$(scripts/upstream-python)" -B packages/petrus-cel/bench/time_cel.py'),
+    pair("petrus-dsl", [("All.chain.chain-10000.build", "build/chain-10000")], petrus("petrus-dsl")),
+    pair("petrus-dst", [("All.joined.one isolated database (create, both schemas, drop)", "joined/one isolated database")],
+         '(cd upstream/petrus && PYTHONPATH=. "$(../../scripts/upstream-python)" -B'
+         ' ../../packages/petrus-dst/scripts/bench.py "joined/one isolated")'),
+    pair("petrus-engine", [("All.engine.orders-large-jsonl", "engine/orders-large-jsonl")], petrus("petrus-engine")),
+    pair("petrus-engine-absurd", [("All.engine.create-close", "engine.create-close")], petrus("petrus-engine-absurd"),
+         only=r"^engine\.create-close$"),
+    pair("petrus-engine-file", [("All.mounted-1000.load", "mounted-1000/load")], engine("petrus-engine-file")),
+    pair("petrus-engine-postgres", [("All.engine.create-close", "engine.create-close")], petrus("petrus-engine-postgres"),
+         only=r"^engine\.create-close$"),
+    pair("petrus-engine-sqlite",
+         [("All.engine-sqlite.open-close", "engine-sqlite/open-close"),
+          ("All.engine-sqlite.orders-small-sqlite", "engine-sqlite/orders-small-sqlite")],
+         petrus("petrus-engine-sqlite", arguments="open-close orders-small-sqlite")),
+    table("petrus-execution", [r"^\| sidecar/execute-round-trip \|", r"^\| archive/one-large/extract \|"],
+          'cabal build -v0 -j2 petrus-execution:bench:petrus-execution-bench && "$(scripts/upstream-python)" -B'
+          ' packages/petrus-execution/bench/compare.py "$BENCH_TMP/workloads" 5'),
+    pair("petrus-fabric", [("All.postgres.discover", "postgres.discover")], petrus("petrus-fabric"),
+         only=r"^postgres\.discover$"),
+    pair("petrus-history-postgres", [("All.append.joined-1-commit", "append.joined-1-commit")],
+         petrus("petrus-history-postgres"), only=r"^append\.joined-1-commit$"),
+    pair("petrus-history-store",
+         [("All.sqlite.append-per-record", "sqlite.append-per-record"),
+          ("All.jsonl.append-per-record", "jsonl.append-per-record"),
+          ("All.jsonl.append-one-batch", "jsonl.append-one-batch"),
+          ("All.store.in-memory-append", "store.in-memory-append")],
+         petrus("petrus-history-store")),
+    pair("petrus-http-core", [("All.roundtrip.refused-version", "roundtrip.refused-version")], petrus("petrus-http-core"),
+         only=r"^roundtrip\.refused-version$"),
+    pair("petrus-impetus", [("All.history.encode", "history/encode")], petrus("petrus-impetus")),
+    pair("petrus-json", [("All.thread.dumps", "thread.dumps")], petrus("petrus-json"), only=r"^thread\.dumps$"),
+    pair("petrus-motus", [("All.local.open-fresh", "local/open-fresh"), ("All.local.roundtrip-1", "local/roundtrip-1")],
+         petrus("petrus-motus")),
+    pair("petrus-motus-absurd", [("All.dispatch.spawn-commit", "dispatch.spawn-commit")], petrus("petrus-motus-absurd"),
+         only=r"^dispatch\.spawn-commit$"),
+    pair("petrus-motus-zeromq",
+         [("zeromq/memory/claim-empty-100", "zeromq/memory/claim-empty-100"),
+          ("zeromq/memory/custody-20", "zeromq/memory/custody-20")],
+         petrus("petrus-motus-zeromq")),
+    pair("petrus-observation", [("All.net_document.N=10000 M=10", "net_document N=10000 M=10")],
+         petrus("petrus-observation")),
+    pair("petrus-observation-http", [("All.roundtrip.refused-405", "roundtrip.refused-405")],
+         petrus("petrus-observation-http"), only=r"^roundtrip\.refused-405$"),
+    pair("petrus-posix",
+         [("All.flock.open-tryLock-close", "flock.open-tryLock-close"),
+          ("All.atomic.write-1KiB-fsync", "atomic.write-1KiB-fsync")],
+         petrus("petrus-posix"), only=r"^(flock\.open-tryLock-close|atomic\.write-1KiB-fsync)$"),
+    pair("petrus-postgres", [("All.tx.join-insert-commit", "tx.join-insert-commit")], petrus("petrus-postgres"),
+         only=r"^tx\.join-insert-commit$"),
+    pair("petrus-processes", [("All.postgres.claim-new", "postgres.claim-new")], petrus("petrus-processes"),
+         only=r"^postgres\.claim-new$"),
+    pair("petrus-simulation", [("All.http.options", "http.options")], petrus("petrus-simulation"),
+         only=r"^http\.options$"),
+    pair("petrus-sqlite",
+         [("All.tx.immediate-insert-commit", "tx.immediate-insert-commit"),
+          ("All.tx.immediate-insert-100", "tx.immediate-insert-100"),
+          ("All.fence.acquire-release", "fence.acquire-release")],
+         petrus("petrus-sqlite"), only=r"^(tx\.immediate-insert-commit|tx\.immediate-insert-100|fence\.acquire-release)$"),
+    pair("petrus-telemetry-instrumentation",
+         [("All.chain.engine-advance.facts-null-route", "chain/engine-advance/facts-null-handler")],
+         petrus("petrus-telemetry-instrumentation")),
+]
+
+RATIO = re.compile(r"^\**\s*(\d+(?:\.\d+)?)\s*[×x]\s*\**$")
+
+
+def load(name: str, path: Path):
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+COMPARE = load("petrus_bench_compare", ROOT / "scripts" / "bench-compare")
+BENCH = load("petrus_bench", ROOT / "scripts" / "bench")
+
+
+def tasty_pattern(names: List[str]) -> List[str]:
+    paths = [n for n in names if n.startswith("All.")]
+    if not paths:
+        return []
+    quoted = ['"' + n.replace("\\", "\\\\").replace('"', '\\"') + '"' for n in paths]
+    return ["-p", " || ".join(f"$0 == {q}" for q in quoted)]
+
+
+def shell(command: str, env: Dict[str, str], log) -> str:
+    log.write(f"+ {command}\n")
+    log.flush()
+    completed = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", command], cwd=ROOT, env=env,
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    log.write(completed.stdout)
+    if completed.returncode != 0:
+        raise RuntimeError(f"`{command}` exited {completed.returncode}")
+    return completed.stdout
+
+
+def scratch(entry: dict) -> Path:
+    directory = TMP / entry["package"]
+    shutil.rmtree(directory, ignore_errors=True)
+    (directory / "tmp").mkdir(parents=True)
+    return directory
+
+
+def run_pair(entry: dict, reps: int, binary, log) -> Dict[str, dict]:
+    executable, haskell_env = binary
+    directory = scratch(entry)
+    env = dict(BENCH.environment()) if not os.environ.get("CI") else dict(os.environ)
+    env["BENCH_TMP"] = str(directory)
+    if entry["only"]:
+        env["PETRUS_BENCH_ONLY"] = entry["only"]
+    haskell_env = dict(haskell_env)
+    if entry["tmpdir"]:
+        env["TMPDIR"] = haskell_env["TMPDIR"] = str(directory / "tmp")
+    names = [h for h, _ in entry["rows"]]
+    ours: Dict[str, List[float]] = {h: [] for h in names}
+    theirs: Dict[str, List[float]] = {h: [] for h in names}
+    for rep in range(1, reps + 1):
+        for side in (("haskell", "python") if rep % 2 else ("python", "haskell")):
+            if side == "haskell":
+                output = directory / f"haskell.{rep}.csv"
+                command = ([str(executable)] + tasty_pattern(names) + ["--csv", str(output), "--stdev", "5",
+                           "--timeout", "300", "--time-mode", "wall"] + entry["haskell"] + ["+RTS", "-M2G", "-RTS"])
+                log.write("+ " + " ".join(command) + "\n")
+                log.flush()
+                completed = subprocess.run(command, cwd=ROOT / "packages" / entry["package"], env=haskell_env,
+                                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                log.write(completed.stdout)
+                if completed.returncode != 0:
+                    raise RuntimeError(f"{executable.name} exited {completed.returncode}")
+                found = COMPARE.figures(completed.stdout)
+                if output.exists():
+                    with output.open(newline="") as stream:
+                        for row in csv.DictReader(stream):
+                            found[row["Name"]] = float(row["Mean (ps)"]) / 1000.0
+                for h in names:
+                    value = found.get(h, found.get(h[len("All."):] if h.startswith("All.") else None))
+                    if value is not None:
+                        ours[h].append(value)
+            else:
+                found = COMPARE.figures(shell(entry["python"], env, log))
+                for h, p in entry["rows"]:
+                    if p in found:
+                        theirs[h].append(found[p])
+    shutil.rmtree(directory, ignore_errors=True)
+    result = {}
+    for h, p in entry["rows"]:
+        if len(ours[h]) != reps or len(theirs[h]) != reps:
+            result[h] = {"error": f"measured {len(ours[h])} Haskell and {len(theirs[h])} Python figures of {reps}"
+                                  f" (Haskell row `{h}`, Python row `{p}`)"}
+            continue
+        hm, pm = statistics.median(ours[h]), statistics.median(theirs[h])
+        result[h] = {"haskell": hm, "python": pm, "ratio": pm / hm, "haskell_runs": ours[h], "python_runs": theirs[h]}
+    return result
+
+
+def run_table(entry: dict, log) -> Dict[str, dict]:
+    directory = scratch(entry)
+    env = dict(BENCH.environment()) if not os.environ.get("CI") else dict(os.environ)
+    env["BENCH_TMP"] = str(directory)
+    try:
+        output = shell(entry["command"], env, log)
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+    result = {}
+    for pattern in entry["rows"]:
+        line = next((l for l in output.splitlines() if re.search(pattern, l)), None)
+        cells = [c.strip() for c in line.strip().strip("|").split("|")] if line else []
+        ratio = next((float(RATIO.match(c).group(1)) for c in cells[1:] if RATIO.match(c)), None)
+        name = cells[0] if cells else pattern
+        if ratio is None:
+            result[name] = {"error": f"no row matching `{pattern}` with a ratio in the harness's table"}
+        else:
+            result[name] = {"ratio": ratio, "line": line.strip()}
+    return result
+
+
+def measure(entry: dict, reps: int, build: bool, log) -> Dict[str, dict]:
+    try:
+        if entry["kind"] == "table":
+            if build:
+                COMPARE.benchmark_binary(entry["package"], build=True)
+            return run_table(entry, log)
+        binary = COMPARE.benchmark_binary(entry["package"], build=build)
+        return run_pair(entry, reps, binary, log)
+    except (RuntimeError, subprocess.CalledProcessError, OSError) as problem:
+        names = [h for h, _ in entry["rows"]] if entry["kind"] == "pair" else entry["rows"]
+        return {name: {"error": str(problem)} for name in names}
+
+
+def human(ns: Optional[float]) -> str:
+    return COMPARE.human(ns) if ns is not None else "—"
+
+
+def main(argv: List[str]) -> int:
+    parser = argparse.ArgumentParser(usage=__doc__)
+    parser.add_argument("packages", nargs="*")
+    parser.add_argument("--reps", type=int, default=5)
+    parser.add_argument("--shard")
+    parser.add_argument("--list", action="store_true")
+    parser.add_argument("--no-build", action="store_true")
+    parser.add_argument("--json")
+    options = parser.parse_args(argv)
+    entries = [e for e in ENTRIES if not options.packages or e["package"] in options.packages]
+    unknown = set(options.packages) - {e["package"] for e in ENTRIES}
+    if unknown:
+        print(f"bench-gate: no entry for {', '.join(sorted(unknown))}", file=sys.stderr)
+        return 2
+    if options.shard:
+        index, count = (int(x) for x in options.shard.split("/"))
+        entries = [e for i, e in enumerate(entries) if i % count == index - 1]
+    if options.list:
+        for e in entries:
+            rows = [h for h, _ in e["rows"]] if e["kind"] == "pair" else e["rows"]
+            print(f"{e['package']} ({e['kind']}): " + "; ".join(rows))
+        return 0
+    postgres = any(BENCH.needs_postgres(e["package"], e.get("python", "") + e.get("command", "")) for e in entries)
+    if postgres and not os.environ.get("PETRUS_TEST_POSTGRES"):
+        return subprocess.call([str(ROOT / "scripts" / "with-postgres"), sys.executable, __file__, *argv])
+    TMP.mkdir(parents=True, exist_ok=True)
+    log_path = TMP / "bench-gate.log"
+    rows = []
+    with log_path.open("w") as log:
+        for entry in entries:
+            print(f"==> {entry['package']}", file=sys.stderr, flush=True)
+            load_before = os.getloadavg()[0]
+            first = measure(entry, options.reps, not options.no_build, log)
+            again = {}
+            if any("error" not in r and r["ratio"] < 1.0 for r in first.values()):
+                print(f"    a row is below 1.0×; measuring {entry['package']} again", file=sys.stderr, flush=True)
+                again = measure(entry, options.reps, False, log)
+            load_after = os.getloadavg()[0]
+            for name, result in first.items():
+                second = again.get(name)
+                if "error" in result:
+                    verdict = "error"
+                elif result["ratio"] >= 1.0:
+                    verdict = "ok"
+                elif second and "error" not in second and second["ratio"] >= 1.0:
+                    verdict = "ok on the rerun"
+                else:
+                    verdict = "FAIL"
+                rows.append({"package": entry["package"], "row": name, "first": result, "rerun": second,
+                             "verdict": verdict, "load": [load_before, load_after]})
+                shown = f"{result['ratio']:.2f}×" if "ratio" in result else result["error"]
+                print(f"    {name}: {shown}" + (f", rerun {second['ratio']:.2f}×" if second and "ratio" in second else "")
+                      + f" — {verdict}", file=sys.stderr, flush=True)
+    lines = [
+        f"### Benchmark gate ({options.reps} interleaved repetitions per pair; harness tables as printed)",
+        "",
+        "| Package | Row | Haskell | Python | Python / Haskell | Rerun | Load (1 min) | Verdict |",
+        "| --- | --- | ---: | ---: | ---: | ---: | --- | --- |",
+    ]
+    for r in rows:
+        first, second = r["first"], r["rerun"]
+        ratio = f"{first['ratio']:.2f}×" if "ratio" in first else "—"
+        rerun = f"{second['ratio']:.2f}×" if second and "ratio" in second else "—"
+        detail = first.get("error", "")
+        lines.append(f"| `{r['package']}` | {r['row']} | {human(first.get('haskell'))} | {human(first.get('python'))} | "
+                     f"{ratio} | {rerun} | {r['load'][0]:.1f}–{r['load'][1]:.1f} | {r['verdict']}"
+                     + (f": {detail}" if detail else "") + " |")
+    failed = [r for r in rows if r["verdict"] in ("FAIL", "error")]
+    lines += ["", f"{len(rows)} rows, {len(failed)} failed. Log: `{log_path.relative_to(ROOT)}`.", ""]
+    text = "\n".join(lines)
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+            summary.write(text + "\n")
+    if options.json:
+        Path(options.json).write_text(json.dumps(rows, indent=1) + "\n")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

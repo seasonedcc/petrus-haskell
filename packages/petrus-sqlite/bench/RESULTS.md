@@ -45,22 +45,39 @@ table before this one, is now 1.17× and was ahead in all seven repetitions.
   marshalling now takes one pass and remembers the most recent path (see
   [petrus-posix's results](../../petrus-posix/bench/RESULTS.md)). That took
   the fence row from 0.98× to 1.17×.
-- **The `tx` rows' stopping rule.** Every iteration adds rows to one table,
-  so a commit costs more the more iterations have run. The Python twin runs
-  each row for about 2 s. At `--stdev 5` on a loaded machine, tasty-bench
-  kept doubling the iteration count: one run of `immediate-insert-commit`
-  took 78 s, about 20 times the twin's rows, at 82 µs per commit against
-  Python's 39–60 µs at the same time. The `tx` rows now use a 15% target
-  (`localOption (RelStDev 0.15)`), so they settle in a few seconds as the
-  twin does. A per-row timeout was tried first. It failed rows: one slow
-  batch overran it.
+- **The `tx` rows: the same iterations on both sides.** Every iteration
+  adds rows to one table, so a commit costs more the more iterations have
+  run, and a side that runs more iterations measures a bigger table.
+  tasty-bench chooses its iteration count from the spread it sees (it kept
+  doubling it on a loaded machine: one run of `immediate-insert-commit` took
+  78 s, about 20 times the twin's iterations), and the 15% target that
+  replaced it still left the counts to chance. Both rows are now timed with
+  the twin's protocol on both sides (`twin` from
+  `Petrus.TestSupport.BenchTwin`; `report(name, fn, number)` in
+  `scripts/bench_timing.py`): one warm-up call, then 10 batches of a fixed
+  number of calls, 5 000 for `immediate-insert-commit` and 500 for
+  `immediate-insert-100`, and the median per call. Each side's database
+  therefore grows by exactly the same rows. The Haskell rows print `twin
+  NAME NANOSECONDS`, which `scripts/bench-compare` reads.
 
-Measured and ruled out: the SQLite build. A probe of 2 000 single-insert
-fsynced commits in WAL mode took the same time, within noise, on the bundled
-3.45.0, on the system SQLite through direct-sqlite's `systemlib` flag, and
-from CPython with 3.53.4. A threaded and a non-threaded build of the probe
-also agreed. Durability is the same on both sides: `synchronous=FULL`, WAL,
-and plain `fsync`, never `F_FULLFSYNC`.
+Measured and ruled out: the SQLite build. `PRAGMA compile_options` of
+direct-sqlite's bundled 3.45.0 and of CPython's 3.53.4 agree on everything
+that bears on these rows: `THREADSAFE=1`, `MUTEX_PTHREADS`,
+`SYSTEM_MALLOC`, `DEFAULT_SYNCHRONOUS=2`, `DEFAULT_WAL_SYNCHRONOUS=2`,
+`DEFAULT_WAL_AUTOCHECKPOINT=1000`, `DEFAULT_MMAP_SIZE=0`, `TEMP_STORE=1`,
+`DEFAULT_PAGE_SIZE=4096`, `DIRECT_OVERFLOW_READ`; the effective
+`synchronous` (2), `fullfsync` and `checkpoint_fullfsync` (0) and page
+cache (`-2000`) are the same. CPython's build adds features the rows do not
+use (`ENABLE_STAT4`, `ENABLE_RTREE`, `ENABLE_SESSION`,
+`ENABLE_PREUPDATE_HOOK`, `ENABLE_API_ARMOR`, ...). The bench built against
+the system SQLite (Homebrew 3.5x, direct-sqlite's `systemlib` flag) was
+not faster than the bundled build in three interleaved rounds: 33–34 µs
+against 33 µs per commit, 320–324 µs against 300–310 µs for 100 inserts,
+378–384 µs against 353–359 µs for `query.select-1000`. So the bundled build
+stays. A probe of 2 000 single-insert fsynced commits in WAL mode also took
+the same time, within noise, on both SQLite builds and from CPython.
+Durability is the same on both sides: `synchronous=FULL`, WAL, and plain
+`fsync`, never `F_FULLFSYNC`.
 
 ## Wall-clock time, and the earlier figures
 

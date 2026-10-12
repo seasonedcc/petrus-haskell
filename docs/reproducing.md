@@ -247,6 +247,8 @@ scripts/bench --list            # the packages with benchmarks
 scripts/bench petrus-sqlite     # rerun one package, Haskell and Python
 scripts/bench                   # every package, one at a time (slow)
 scripts/bench-compare petrus-sqlite 3   # interleave 3 Haskell and Python runs, tabulate
+scripts/bench-run petrus-sqlite --stdev 5 +RTS -M2G -RTS   # one package's benchmark, with options
+scripts/bench-gate petrus-sqlite        # its gated rows against Python (CI's nightly gate)
 ```
 
 Each package's `bench/RESULTS.md` holds its committed figures, how they were
@@ -257,10 +259,35 @@ to the terminal and to `bench-results/tmp/PKG.log`. It never rewrites a
 results file: those are curated by hand from runs like these, with the
 machine, the load and the date of the run they report.
 
-`scripts/bench-compare` serves the packages whose `bench/python_bench.py`
-names its rows like the Haskell benchmarks. It alternates the two sides for a
+The rerun blocks run the Haskell side with `scripts/bench-run PKG OPTIONS`,
+not `cabal bench PKG --benchmark-options=...`: cabal records benchmark
+options in the package's configuration, so each new set of options
+reconfigured and relinked the package and its local dependencies.
+`scripts/bench-run` builds the benchmark (`cabal build`, a no-op when it is
+current), finds the executable with `cabal list-bin` and runs it in the
+package directory with the environment `cabal bench` sets, passing the
+options through; `--no-build` skips the build.
+
+Rows whose cost grows with every iteration (each one adds rows to a
+database, as petrus-sqlite's `tx` rows do) are timed with the twins' own
+protocol instead of tasty-bench's, so that both sides run the same number of
+iterations: `twin` from `Petrus.TestSupport.BenchTwin` runs one warm-up call,
+then 10 batches (`PETRUS_BENCH_BATCHES`) of a fixed number of calls, and
+reports the median per call, as `scripts/bench_timing.py`'s `report(name, fn,
+number)` does with the same number. Such a row prints `twin NAME
+NANOSECONDS`, which `scripts/bench-compare` and `scripts/bench-gate` read
+(tasty-bench's CSV leaves it out).
+
+`scripts/bench-compare` alternates a package's benchmark and its twin for a
 number of repetitions, recording the load average, and tabulates each row's
-median and ratio. `--python SCRIPT` picks another twin in the package's
+median and ratio. It reads the twin's rows from what it prints
+(`name,nanoseconds` lines, or `NAME VALUE UNIT` lines) and matches them to
+the Haskell rows by name (the same name, or the Haskell name ending in the
+twin's, comparing `/`, `.` and spaces alike); `--map HASKELL=TWIN` names a
+pair it does not find. By default the twin is `bench/python_bench.py`;
+`--twin COMMAND` runs any shell command from the repository root instead,
+such as the Python line of the package's rerun block, and `--haskell-arg`
+passes one more option to the benchmark (`-j1`). `--python SCRIPT` picks another twin in the package's
 `bench/` directory (for example `python_pi.py`), `--upstream PROJECT` runs the
 twins in another pinned project's environment (`hamsterdan` for
 `hamsterdan-host`), `--pattern P` limits the Haskell side to the rows that
@@ -296,17 +323,19 @@ Every results file records the code its figures measured, in a marker:
 <!-- scripts/bench: measured sources FINGERPRINT at COMMIT -->
 ```
 
-FINGERPRINT hashes the package's files as committed (git blob ids, so
-content): every file but its prose (`*.md`, LICENSE, NOTICE) and its tests
-(`test/`, `differential/`, `upstream-tests/`). COMMIT is the commit those
-sources were at. Changes in the package's dependencies are not tracked.
-`summary.md` shows each file's commit. The markers of the files measured
-before this rule existed were set to the last commit that changed one of
-the file's table rows.
+FINGERPRINT hashes, as committed (git blob ids, so content): the package's
+files but its prose (`*.md`, LICENSE, NOTICE) and its tests (`test/`,
+`differential/`, `upstream-tests/`); the same files of every local package
+it builds on (the packages its .cabal file's stanzas other than test suites
+name, transitively; their benchmarks aside); `cabal.project` and its freeze
+file; the pinned `upstream/` commits; and `scripts/bench_timing.py`. COMMIT
+is the commit those sources were at. `summary.md` shows each file's commit.
 
 - `scripts/bench --check` (CI's `lint` job, every push) fails on a results
-  file without the marker, and notes how many files measured sources that
-  have changed since.
+  file without the marker, and lists as `STALE` (a warning, with a GitHub
+  annotation in CI) every file whose fingerprint has changed since.
+  `scripts/check-parity` names, as `STALE evidence`, every component at
+  parity that cites such a file.
 - `scripts/bench --stale` lists those files, and exits 1 when there is one.
   Their figures may no longer hold: rerun them before relying on them.
 - Refreshing a package's results: on an idle machine, from a clean commit,
@@ -315,13 +344,31 @@ the file's table rows.
   `scripts/bench --stamp PKG results-x.md`). That records HEAD's fingerprint
   and regenerates `summary.md`. Commit the result.
 
-CI never measures: a push reruns no benchmark. The nightly run and a `full`
-dispatch run `scripts/bench --smoke` (the `bench-smoke` job), which builds
-every benchmark and runs it once: each tasty-bench row measured once
-(`--stdev Infinity`), or, for the custom harnesses, the sh block after a
-`<!-- scripts/bench: smoke -->` marker in the package's RESULTS.md. So a
-benchmark cannot silently stop building or running. The same job lists the
-stale results files in its run summary.
+A push reruns no benchmark. The nightly run and a `full` dispatch run
+`scripts/bench --smoke` (the `bench-smoke` job), which builds every
+benchmark and runs it once: each tasty-bench row measured once (`--stdev
+Infinity`), or, for the custom harnesses, the sh block after a `<!--
+scripts/bench: smoke -->` marker in the package's RESULTS.md. So a benchmark
+cannot silently stop building or running. The same job lists the stale
+results files in its run summary.
+
+They also run `scripts/bench-gate` (the `bench-gate` jobs, four shards),
+which measures. Its `ENTRIES` name, for every package with a Python twin,
+the rows with the thinnest margin (and, where every margin is wide, the
+headline row): 41 entries over 38 packages. Each pair of Haskell and Python
+runs is repeated 5 times, alternating which side goes first, and a row's
+ratio is the median of the Python figures over the median of the Haskell
+ones; the harnesses that interleave both sides themselves
+(hamsterdan-export, hamsterdan-operator, petrus-execution's `compare.py`)
+run once and their table's ratio is read. A row below 1.0× is measured
+again from scratch, and the job fails when the rerun is below 1.0× too, or
+when a row cannot be measured. The table goes to the run summary, the
+figures and the log to the `bench-gate-N` artifacts. Left out:
+petrus-viewer-server (its twin is the upstream Node server) and the second
+harness of packages that have two; `scripts/bench-gate --list` prints the
+rows. CI runners are not the machine the results files were measured on,
+so the gate checks the direction (Haskell not slower), not the committed
+ratios.
 
 ### CPU and wall-clock time
 
@@ -501,6 +548,7 @@ job, spread over Blacksmith runners so that they run side by side:
 | `test (1)` … `test (N)` | 8 vCPU | the upstream Python environments, then `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest); then `scripts/check-pending` on their output (a suite with a pending example outside the declared opt-ins does not count as passed) |
 | `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium; then the MCP golden transcript re-recorded through the upstream Node MCP server |
 | `bench-smoke` | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench --smoke` (every benchmark builds and runs once; not a measurement) and the list of stale results files ([Which code the figures measured](#which-code-the-figures-measured)) |
+| `bench-gate` (4 shards) | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench-gate --shard N/4`, the gated rows against the pinned Python, 5 interleaved repetitions, failing on a row below 1.0× twice ([Which code the figures measured](#which-code-the-figures-measured)) |
 | `container` | 16 vCPU | none (Docker): the image and `scripts/container-smoke` ([The container image](#the-container-image)) |
 | `ci` | 2 vCPU | the verdict: green only when every job above is |
 
