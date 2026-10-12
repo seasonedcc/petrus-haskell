@@ -32,7 +32,7 @@ module Petrus.Engine
   , wait
   , DriveOutcome (..)
     -- * Writing doors
-  , Delivered (..)
+  , Delivered
   , deliver
   , acceptDelivery
   , DeliveryAnswer (..)

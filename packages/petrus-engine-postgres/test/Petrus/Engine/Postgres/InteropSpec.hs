@@ -141,7 +141,7 @@ turnsSpec = do
     stateOf resumed `shouldReturn` theirs
     -- the reference's identity is remembered across the language boundary
     Engine.deliver resumed source' [black] "py-second" Nothing >>= \case
-      Engine.DeliveredPrior prior -> prior.identity `shouldBe` "py-second"
+      Engine.DeliveryPrior prior -> prior.identity `shouldBe` "py-second"
       other -> expectationFailure ("expected a prior acknowledgement, got " <> show other)
     Engine.close resumed
 

@@ -89,7 +89,7 @@ projecting h = Engine.defaultEngineOptions {Engine.handlers = symbols [("project
 outputTokens :: Engine -> IO [Token]
 outputTokens engine = toList . placeTokens output <$> Engine.marking engine
 
-accepted' :: DeliveryAnswer -> IO AcceptedDelivery
+accepted' :: DeliveryAnswer AcceptedDelivery -> IO AcceptedDelivery
 accepted' = \case
   DeliveryAccepted a -> pure a
   other -> expectationFailure ("expected an acceptance, got " <> show other) >> fail "unreachable"

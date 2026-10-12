@@ -248,7 +248,7 @@ deliveryEngineProfile historyPath = do
                 Right delivered -> do
                   ioScenario (refresh g)
                   pure $ case delivered of
-                    Engine.DeliveredPrior _ -> Idempotent
+                    Engine.DeliveryPrior _ -> Idempotent
                     _ -> Applied
               let attempt =
                     Object

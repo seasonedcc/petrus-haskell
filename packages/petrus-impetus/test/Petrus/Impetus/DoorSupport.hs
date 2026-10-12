@@ -44,7 +44,7 @@ pureHandler name h = symbols [(name, PureHandler h)]
 
 -- | The answer is an 'AcceptedDelivery' (the reference's
 -- @assert isinstance(accepted, AcceptedDelivery)@).
-expectAccepted :: HasCallStack => DeliveryAnswer -> IO AcceptedDelivery
+expectAccepted :: HasCallStack => DeliveryAnswer AcceptedDelivery -> IO AcceptedDelivery
 expectAccepted = \case
   DeliveryAccepted a -> pure a
   other -> expectationFailure ("expected an AcceptedDelivery, got " <> show other) >> error "unreachable"

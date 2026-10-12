@@ -20,7 +20,7 @@ module Petrus.Engine.Internal
   , advance
   , wait
     -- * Writing doors
-  , Delivered (..)
+  , Delivered
   , deliver
   , acceptDelivery
   , completeDelivery
@@ -80,11 +80,8 @@ import Petrus.Impetus.Instance
   , ImplementationRef
   , Instance
   , InstanceConfig (..)
-  , PriorAcknowledgement
   , ScopeClosure (..)
-  , ScopedDeliveryAcknowledgement
   , Status
-  , canonicalAcceptedDelivery
   , defaultInstanceConfig
   , instanceHistory
   , instanceIdentity
@@ -392,32 +389,24 @@ wait e timeout = do
 -- ---------------------------------------------------------------------------
 -- Writing doors
 
--- | What 'deliver' answers: the completed source firing, or the door's
--- acknowledgement of a prior or scoped delivery.
-data Delivered
-  = Delivered FiringOutcome
-  | DeliveredPrior PriorAcknowledgement
-  | DeliveredScoped ScopedDeliveryAcknowledgement
-  deriving stock (Eq, Show)
+-- | What 'deliver' answers: the completed source firing
+-- ('DeliveryAccepted'), or the door's acknowledgement of a prior or scoped
+-- delivery.
+type Delivered = DeliveryAnswer FiringOutcome
 
 -- | Accept and complete one identified external delivery across two
 -- durable boundaries.
 deliver :: Engine -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> IO Delivered
-deliver e source tokens identity scope = guarded e $
-  acceptIdentified e source tokens identity scope >>= \case
-    DeliveryAccepted accepted -> do
-      completed <- completeAccepted e accepted
-      committed e
-      pure (Delivered completed)
-    DeliveryPrior prior -> pure (DeliveredPrior prior)
-    DeliveryScoped scoped -> pure (DeliveredScoped scoped)
+deliver e source tokens identity scope = guarded e $ do
+  answer <- acceptIdentified e source tokens identity scope
+  traverse (\accepted -> completeAccepted e accepted <* committed e) answer
 
 -- | Durably accept and begin one identified source delivery without
 -- completing it.
-acceptDelivery :: Engine -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> IO DeliveryAnswer
+acceptDelivery :: Engine -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> IO (DeliveryAnswer AcceptedDelivery)
 acceptDelivery e source tokens identity scope = guarded e (acceptIdentified e source tokens identity scope)
 
-acceptIdentified :: Engine -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> IO DeliveryAnswer
+acceptIdentified :: Engine -> NetPath -> [Token] -> Text -> Maybe DeliveryScope -> IO (DeliveryAnswer AcceptedDelivery)
 acceptIdentified e source tokens identity scope = do
   before <- historyLength e
   now <- e.engineClock.now
@@ -435,9 +424,7 @@ completeDelivery e accepted = guarded e $ do
   pure completed
 
 completeAccepted :: Engine -> AcceptedDelivery -> IO FiringOutcome
-completeAccepted e raw = do
-  accepted <- either (throwIO . EngineValueError) pure (canonicalAcceptedDelivery raw)
-  Coordinator.completeAccepted e.coordinator accepted
+completeAccepted e = Coordinator.completeAccepted e.coordinator
 
 -- | Open and commit the next lifecycle generation for the name.
 openScope :: Engine -> Text -> IO LifecycleScope

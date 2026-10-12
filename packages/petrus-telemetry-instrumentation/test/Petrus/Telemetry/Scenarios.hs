@@ -188,7 +188,7 @@ untilRest engine = do
 inMemory :: IO Dispatch
 inMemory = inMemoryDispatch <$> newInMemoryDispatch
 
-accepted :: DeliveryAnswer -> IO AcceptedDelivery
+accepted :: DeliveryAnswer AcceptedDelivery -> IO AcceptedDelivery
 accepted = \case
   DeliveryAccepted a -> pure a
   other -> fail ("expected an accepted delivery, got " <> show other)
