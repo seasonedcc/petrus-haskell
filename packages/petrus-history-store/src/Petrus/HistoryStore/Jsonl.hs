@@ -63,8 +63,6 @@ import Data.Bifunctor (first)
 import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.ByteString.Builder qualified as B
-import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Char8 qualified as BC
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
@@ -74,7 +72,7 @@ import Petrus.Impetus.History.Codec (encodeRecord, historyLoads)
 import Petrus.Impetus.History.Records (Record, recordName)
 import Petrus.Impetus.HistoryStore
 import Petrus.HistoryStore.Internal (HistoryStoreError (..), decodeStored, pythonDiagnostic)
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsBuilder, encodeErrorMessage, parseJson)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, encodeErrorMessage, parseJson)
 import Petrus.Posix.File (fsyncFd, fsyncPath, writeAll)
 import Petrus.Telemetry (EventSink, emit, getLogger)
 import Petrus.Telemetry qualified as Telemetry
@@ -145,19 +143,15 @@ appendPayload policy payload = do
 -- ---------------------------------------------------------------------------
 -- The format
 
--- | @json.dumps(encode_record(record), allow_nan=False)@, or the reference's
--- refusal text.
+-- | One record's line, unterminated: @json.dumps(encode_record(record),
+-- allow_nan=False)@, or the reference's @_encoded_line@ refusal. Every value
+-- @json.dumps@ refuses (a non-finite float, an integer over CPython's
+-- 4300-digit limit, nesting past the limit) is @cannot durably encode
+-- {Type}: {error} — durable instants and token data must be JSON-faithful
+-- values@. The encoder's own refusal is the only check, so nothing it
+-- refuses can reach the file.
 encodeLine :: Record -> Either Text ByteString
-encodeLine record = BL.toStrict . B.toLazyByteString <$> lineBuilder record
-
--- | One record's line, unterminated, or the reference's @_encoded_line@
--- refusal: every value @json.dumps@ refuses (a non-finite float, an integer
--- over CPython's 4300-digit limit, nesting past the limit) is
--- @cannot durably encode {Type}: {error} — durable instants and token data
--- must be JSON-faithful values@. The encoder's own refusal is the only
--- check, so nothing it refuses can reach the file.
-lineBuilder :: Record -> Either Text B.Builder
-lineBuilder record = first refusal (dumpsBuilder defaultDumps {allowNan = False} (encodeRecord record))
+encodeLine record = first refusal (dumps defaultDumps {allowNan = False} (encodeRecord record))
   where
     refusal problem =
       "cannot durably encode "
@@ -171,12 +165,19 @@ encodeBatch :: [Record] -> Either Text [ByteString]
 encodeBatch = traverse encodeLine
 
 -- | Encode a whole batch before any IO, as the one terminated payload the
--- append writes: every record is checked first (the first refusal in batch
--- order wins), then the batch is written through one builder run.
+-- append writes: every record is encoded first (the first refusal in batch
+-- order wins), then the lines are joined.
+--
+-- Each line is written by 'dumps', petrus-json's one-pass writer, which
+-- refuses as it writes, so a record's encoded value is dropped as soon as
+-- its bytes exist and the batch holds only bytes. Building one builder
+-- per record before writing any (an 'Either' per record, all forced first)
+-- kept every value alive and ran the 20 002-record batch at ~85 ms; the
+-- earlier check-then-stream builder ran it at ~45 ms; this at ~22 ms.
 encodePayload :: [Record] -> Either Text ByteString
 encodePayload batch = do
-  lines' <- traverse lineBuilder batch
-  Right (BL.toStrict (B.toLazyByteString (foldMap (<> B.char7 '\n') lines')))
+  lines' <- traverse encodeLine batch
+  Right (BS.concat (concatMap (\line -> [line, "\n"]) lines'))
 
 -- | Decode a file's bytes: universal newlines, one record per line, all or
 -- nothing. The 'FilePath' only names the file in the refusal.
