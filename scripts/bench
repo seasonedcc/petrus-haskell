@@ -28,10 +28,8 @@ results file by hand and run ``scripts/bench --summary``.
 
 When the block or the package's benchmark sources mention
 ``PETRUS_TEST_POSTGRES`` and it is unset, the block runs under
-``scripts/with-postgres``, which starts a throwaway server for it; likewise
-``PETRUS_BENCH_TMPFS`` and ``scripts/with-tmpfs``, which makes a directory on
-a memory-backed file system. Packages run one after another, never in
-parallel.
+``scripts/with-postgres``, which starts a throwaway server for it. Packages
+run one after another, never in parallel.
 
 Each results file also records which code its figures measured, in a marker
 
@@ -129,34 +127,12 @@ def rerun_block(package: str) -> Optional[str]:
     return None
 
 
-def reads(variable: str, package: str, block: str) -> bool:
-    """Whether the block, or the package's benchmark sources, read VARIABLE."""
-    if variable in block:
-        return True
-    bench = ROOT / "packages" / package / "bench"
-    return any(variable in source.read_text(encoding="utf-8", errors="replace") for source in bench.rglob("*.hs"))
-
-
 def needs_postgres(package: str, block: str) -> bool:
     """Whether the block, or the package's benchmark sources, read PETRUS_TEST_POSTGRES."""
-    return reads("PETRUS_TEST_POSTGRES", package, block)
-
-
-def needs_tmpfs(package: str, block: str) -> bool:
-    """Whether the block, or the package's benchmark sources, read PETRUS_BENCH_TMPFS."""
-    return reads("PETRUS_BENCH_TMPFS", package, block)
-
-
-def wrappers(package: str, block: str, env: dict) -> list:
-    """The scripts to run the block under: scripts/with-postgres when it reads
-    PETRUS_TEST_POSTGRES and that is unset, scripts/with-tmpfs likewise for
-    PETRUS_BENCH_TMPFS."""
-    prefix = []
-    if needs_postgres(package, block) and not env.get("PETRUS_TEST_POSTGRES"):
-        prefix.append(str(ROOT / "scripts" / "with-postgres"))
-    if needs_tmpfs(package, block) and not env.get("PETRUS_BENCH_TMPFS"):
-        prefix.append(str(ROOT / "scripts" / "with-tmpfs"))
-    return prefix
+    if "PETRUS_TEST_POSTGRES" in block:
+        return True
+    bench = ROOT / "packages" / package / "bench"
+    return any("PETRUS_TEST_POSTGRES" in source.read_text(encoding="utf-8", errors="replace") for source in bench.rglob("*.hs"))
 
 
 def run(package: str) -> int:
@@ -171,7 +147,8 @@ def run(package: str) -> int:
     env = environment()
     env["BENCH_TMP"] = str(scratch)
     argv = ["bash", "-e", "-o", "pipefail", "-c", block]
-    argv = wrappers(package, block, env) + argv
+    if needs_postgres(package, block) and not env.get("PETRUS_TEST_POSTGRES"):
+        argv = [str(ROOT / "scripts" / "with-postgres")] + argv
     log = TMP / f"{package}.log"
     print(f"==> {package}\n{block}", file=sys.stderr, flush=True)
     with log.open("w") as sink:
@@ -320,7 +297,8 @@ def smoke(packages: List[str]) -> int:
                        PATH=os.pathsep.join([*tool_dirs, env.get("PATH", "")]))
         run_env[f"{package.replace('-', '_')}_datadir"] = str(ROOT / "packages" / package) + "/."
         argv = ["bash", "-e", "-o", "pipefail", "-c", block]
-        argv = wrappers(package, block, env) + argv
+        if needs_postgres(package, block) and not env.get("PETRUS_TEST_POSTGRES"):
+            argv = [str(ROOT / "scripts" / "with-postgres")] + argv
         print(f"==> smoke {package}\n{block}", file=sys.stderr, flush=True)
         started = time.monotonic()
         status = subprocess.call(argv, cwd=ROOT, env=run_env)
