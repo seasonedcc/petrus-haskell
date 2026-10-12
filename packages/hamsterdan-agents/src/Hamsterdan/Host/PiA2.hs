@@ -10,7 +10,7 @@
 -- data, so either host opens the other's sealed connection state.
 module Hamsterdan.Host.PiA2
   ( -- * Installation
-    PiA2InstallationConfig (..)
+    PiA2InstallationConfig
   , mkPiA2InstallationConfig
   , installationFromEnvironment
 
@@ -43,6 +43,7 @@ import Control.Monad (forM, unless, void, when)
 import Crypto.Cipher.AES (AES256)
 import Crypto.Cipher.Types (AEADMode (AEAD_GCM), AuthTag (..), aeadInit, aeadSimpleDecrypt, aeadSimpleEncrypt, cipherInit)
 import Crypto.Error (CryptoFailable (..))
+import GHC.Records (HasField (..))
 import Hamsterdan.Python.Hashlib (sha256HexText)
 import Petrus.Json.Python (randomBytes)
 import Data.Bits ((.&.))
@@ -60,8 +61,7 @@ import GHC.Clock (getMonotonicTime)
 import Hamsterdan.Host.Agenticus (piModel, piProvider)
 import Petrus.Agenticus.Connection.Custody (mkConnectionIdentity)
 import Petrus.Agenticus.Connection.Key
-  ( KeyContext (..)
-  , KeyOperations (..)
+  ( KeyOperations (..)
   , ScrubbedBytes
   , authenticatedData
   , keyOperationError
@@ -149,14 +149,32 @@ syncDirectoryWith hooks = hooks.syncDirectory real
 -- | @PiA2InstallationConfig@: installation-owned runtime paths and redacted
 -- direct authority.
 data PiA2InstallationConfig = PiA2InstallationConfig
-  { provider :: Text
-  , model :: Text
-  , directKey :: Text
-  , cliPath :: FilePath
-  , nodePath :: FilePath
-  , packageRoot :: FilePath
+  { _provider :: Text
+  , _model :: Text
+  , _directKey :: Text
+  , _cliPath :: FilePath
+  , _nodePath :: FilePath
+  , _packageRoot :: FilePath
   }
   deriving stock (Eq)
+
+instance HasField "provider" PiA2InstallationConfig Text where
+  getField r = r._provider
+
+instance HasField "model" PiA2InstallationConfig Text where
+  getField r = r._model
+
+instance HasField "directKey" PiA2InstallationConfig Text where
+  getField r = r._directKey
+
+instance HasField "cliPath" PiA2InstallationConfig FilePath where
+  getField r = r._cliPath
+
+instance HasField "nodePath" PiA2InstallationConfig FilePath where
+  getField r = r._nodePath
+
+instance HasField "packageRoot" PiA2InstallationConfig FilePath where
+  getField r = r._packageRoot
 
 -- | @field(repr=False)@: the direct key never appears.
 instance Show PiA2InstallationConfig where
@@ -179,7 +197,7 @@ mkPiA2InstallationConfig provider model directKey cliPath nodePath packageRoot
   | (provider, model) `notElem` piApiKeyCatalog = Left "Agenticus requires an exact qualified Pi provider/model pair"
   | T.length directKey < 16 || T.length directKey > maxApiKeyBytes || T.any (\c -> c < '\x21' || c > '\x7e') directKey =
       Left "Pi API-key material is malformed"
-  | otherwise = Right PiA2InstallationConfig {provider, model, directKey, cliPath, nodePath, packageRoot}
+  | otherwise = Right (PiA2InstallationConfig provider model directKey cliPath nodePath packageRoot)
 
 -- | @str(Path(value))@: POSIX pure-path normalization.
 purePosixPath :: Text -> FilePath

@@ -20,20 +20,20 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Agenticus.Attachment.Binding (AttachmentBinding (..), BindingSettlement (..))
-import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment, episodeOptions, newEpisodeAttachment)
+import Petrus.Agenticus.Attachment.Binding (AttachmentBinding (..))
+import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment, episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
-import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
+import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot, mkResolutionSnapshot)
 import Petrus.Agenticus.Connection.Custody (ConnectionStatus (..), ConnectionView (..), mkConnectionIdentity)
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ContinuationRequirement (..), ProgramOwnership (..))
+import Petrus.Agenticus.Program.Descriptor (ProgramOwnership (..))
 import Petrus.Agenticus.Runtime.Amp
-import Petrus.Agenticus.Runtime.Installation (InstalledComponent (..), ProbeDisposition (..), ProbeIssue (..), RuntimeInstallation (..), RuntimeProbeResult (..))
-import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..))
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..))
+import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..))
 import Petrus.Agenticus.Runtime.Profiles (ampA1)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
-import Petrus.Agenticus.Thread.Continuation (Continuation (..), ContinuationDescriptor (..), ContinuationState (..), mkContinuation)
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement)
+import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationState (..), mkContinuation)
 import Petrus.Agenticus.Thread.Identity (mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))

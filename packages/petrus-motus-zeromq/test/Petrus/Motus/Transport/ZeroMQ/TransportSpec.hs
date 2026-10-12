@@ -21,7 +21,7 @@ import Petrus.Activity hiding (invocation)
 import Petrus.Activity qualified as A
 import Petrus.TestSupport (valid)
 import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
-import Petrus.Motus.Dispatch (ActivityAttempt (..), ActivityOutcome (..), AttemptFailure (..), CancellationDisposition (..), cancellationInstruction)
+import Petrus.Motus.Dispatch (ActivityAttempt, ActivityOutcome (..), AttemptFailure (..), CancellationDisposition (..), cancellationInstruction)
 import Petrus.Motus.Dispatch qualified as D
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Transport.ZeroMQ
@@ -699,22 +699,15 @@ spec = do
       withClient endpoint id $ \client -> do
         attempt <- Z.claim client >>= requireJust
         let longer = (policyFields defaultExecutionPolicy) {attempts = 2, heartbeatTimeout = 3600}
+            altered epoch claimant queue invocation' =
+              either (error . T.unpack) id $
+                D.activityAttempt attempt.attemptId epoch claimant queue invocation' attempt.latestDetails attempt.instance'
         forM_
-          [ attempt {D.epoch = "2"}
-          , attempt {D.claimant = "other"}
-          , attempt {D.queue = "other"}
-          , either
-              (error . T.unpack)
-              id
-              ( D.activityAttempt
-                  attempt.attemptId
-                  attempt.epoch
-                  attempt.claimant
-                  attempt.queue
-                  (valid (activityInvocation (invocationFields attempt.invocation) {policy = policyOf longer}))
-                  attempt.latestDetails
-                  attempt.instance'
-              )
+          [ altered "2" attempt.claimant attempt.queue attempt.invocation
+          , altered attempt.epoch "other" attempt.queue attempt.invocation
+          , altered attempt.epoch attempt.claimant "other" attempt.invocation
+          , altered attempt.epoch attempt.claimant attempt.queue $
+              valid (activityInvocation (invocationFields attempt.invocation) {policy = policyOf longer})
           ]
           $ \stale -> Z.heartbeat client stale Nothing `shouldThrow` valueErrorMatching "stale Activity attempt"
         Z.complete client attempt (String "done")

@@ -30,7 +30,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.GitHub.Config (HostConfig (..), fromEnvironment, revealSecret)
-import Hamsterdan.Host.PiA2 (PiA2InstallationConfig (..), installationFromEnvironment)
+import Hamsterdan.Host.PiA2 (installationFromEnvironment)
 import Petrus.Json (Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Wtf8 (fromCodePoints)
 import System.Directory

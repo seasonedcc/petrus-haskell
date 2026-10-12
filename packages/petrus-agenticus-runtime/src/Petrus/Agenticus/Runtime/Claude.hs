@@ -50,7 +50,7 @@ module Petrus.Agenticus.Runtime.Claude
   , cliWrapperSource
   , installCliWrapper
     -- * Continuations
-  , ClaudeContinuationPayloadV1 (sessionId, projectBinding, projectKey, transcript)
+  , ClaudeContinuationPayloadV1
   , mkClaudeContinuationPayloadV1
   , ClaudeContinuationOperations (..)
   , ClaudeTurnOperations (..)
@@ -154,8 +154,8 @@ import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
 import Paths_petrus_agenticus_runtime (getDataFileName)
 import Petrus.Agenticus.Attachment.Binding
+import GHC.Records (HasField (..))
   ( AttachmentBinding (..)
-  , AttachmentCoordinates (..)
   , bindingExecution
   , bindingLeaseIdentity
   , bindingProvider
@@ -163,8 +163,8 @@ import Petrus.Agenticus.Attachment.Binding
 import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Descriptor
-  ( CapabilityDescriptor (..)
-  , DescriptorIdentity (..)
+  ( CapabilityDescriptor
+  , DescriptorIdentity
   , DescriptorKind (..)
   , capabilityDescriptor
   , descriptorIdentity
@@ -173,7 +173,6 @@ import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
   , AttachmentFence (..)
-  , ConnectionIdentity (..)
   , ConnectionStatus (..)
   , ConnectionView (..)
   , LeaseMode (..)
@@ -181,10 +180,10 @@ import Petrus.Agenticus.Connection.Custody
   )
 import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Hands.Contract (ToolResult (..), allToolMethods, toolMethodText, toolResultToData)
+import Petrus.Agenticus.Hands.Contract (allToolMethods, toolMethodText, toolResultToData)
 import Petrus.Agenticus.Hands.Gateway (HandsGateway, gatewayAttachmentEpoch, gatewayAttachmentId, gatewayEpisodeId)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
+import Petrus.Agenticus.Hands.Grants (currentGrant)
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Json.Python (pythonExceptionStr, pythonStrRepr)
 import Petrus.Json.Python qualified as Python
@@ -201,7 +200,7 @@ import Petrus.Agenticus.Runtime.Internal.HostSupport
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation
-  , RuntimeProbeResult (..)
+  , RuntimeProbeResult
   , mkInstalledComponent
   , mkProbeIssue
   , mkRuntimeInstallation
@@ -218,9 +217,9 @@ import Petrus.Agenticus.Runtime.Operation
   )
 import Petrus.Agenticus.Runtime.Pi.Internal (canonicalUuid, piToolSchemas)
 import Petrus.Agenticus.Runtime.Profiles (claudeA2Local)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement, mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation
-  ( Continuation (..)
+  ( Continuation
   , ContinuationDescriptor
   , ContinuationState (..)
   , continuationDescriptor
@@ -528,15 +527,27 @@ isWhole d = not (isNaN d || isInfinite d) && abs d < 1e16 && fromInteger (round 
 
 -- | One accepted Claude main transcript behind a native Continuation.
 data ClaudeContinuationPayloadV1 = ClaudeContinuationPayloadV1
-  { sessionId :: Text
-  , projectBinding :: Text
-  , projectKey :: Text
-  , transcript :: ByteString
+  { _sessionId :: Text
+  , _projectBinding :: Text
+  , _projectKey :: Text
+  , _transcript :: ByteString
   }
   deriving stock (Eq)
 
 -- | Every field is @repr=False@ upstream.
 instance Show ClaudeContinuationPayloadV1 where
+instance HasField "sessionId" ClaudeContinuationPayloadV1 Text where
+  getField r = r._sessionId
+
+instance HasField "projectBinding" ClaudeContinuationPayloadV1 Text where
+  getField r = r._projectBinding
+
+instance HasField "projectKey" ClaudeContinuationPayloadV1 Text where
+  getField r = r._projectKey
+
+instance HasField "transcript" ClaudeContinuationPayloadV1 ByteString where
+  getField r = r._transcript
+
   show _ = "ClaudeContinuationPayloadV1(schema_version=1)"
 
 mkClaudeContinuationPayloadV1 :: Text -> Text -> Text -> ByteString -> Either AgenticusError ClaudeContinuationPayloadV1

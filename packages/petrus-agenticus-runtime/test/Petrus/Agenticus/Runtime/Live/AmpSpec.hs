@@ -12,10 +12,9 @@ import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment, episodeOptions, n
 import Petrus.Agenticus.Catalog.Resolution (mkResolutionSnapshot)
 import Petrus.Agenticus.Connection.Custody (ConnectionStatus (..), ConnectionView (..), mkConnectionIdentity)
 import Petrus.Agenticus.Runtime.Amp
-import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeProbeResult (..))
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..))
 import Petrus.Agenticus.Runtime.Live.Support
 import Petrus.Agenticus.Runtime.Profiles (ampA1)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Continuation (ContinuationState (..), mkContinuation)
 import Petrus.Agenticus.Thread.Identity (EpisodeId, mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))

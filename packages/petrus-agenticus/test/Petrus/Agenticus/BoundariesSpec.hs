@@ -68,7 +68,7 @@ dependencies cabal = go False (T.lines cabal)
     names text = [T.takeWhile (\c -> c /= ' ' && c /= ',') (T.strip piece) | piece <- T.splitOn "," text, not (T.null (T.strip piece))]
 
 spec :: Spec
-spec = projectBoundariesSpec >> agenticusBoundariesSpec
+spec = projectBoundariesSpec >> agenticusBoundariesSpec >> validatedValuesSpec
 
 agenticusBoundariesSpec :: Spec
 agenticusBoundariesSpec = describe "test_boundaries.py" $ do
@@ -288,3 +288,64 @@ projectBoundariesSpec = describe "tests/project/test_package_boundaries.py" $
             , "client = retire"
             ]
     lifecycleCalls planted `shouldBe` (Set.fromList ["releaseTo"], Set.fromList ["providerLookup"])
+
+-- | The export entries of a module that name record fields or class
+-- methods: @T (a, b)@, as @(T, [a, b])@. An entry exporting a field lets any
+-- importer update a value with record syntax, past the type's validating
+-- constructor.
+fieldExports :: Text -> [(Text, [Text])]
+fieldExports source = go header
+  where
+    -- The export list: the module header up to @where@, comments dropped.
+    header =
+      T.unwords
+        [ fst (T.breakOn "--" l)
+        | l <- takeWhile (not . (" where" `T.isSuffixOf`) . T.stripEnd) (T.lines source)
+        ]
+    -- An innermost parenthesized group and the word before it.
+    go text = case T.breakOn "(" text of
+      (_, rest) | T.null rest -> []
+      (preceding, rest) ->
+        let following = T.drop 1 rest
+            (inner, close) = T.break (\c -> c == '(' || c == ')') following
+         in if ")" `T.isPrefixOf` close
+              then entry preceding inner <> go (T.drop 1 close)
+              else go following
+    entry preceding inner =
+      let owner = case reverse (T.words (T.map (\c -> if c == ',' then ' ' else c) preceding)) of
+            w : _ -> w
+            [] -> ""
+          members = filter (not . T.null) (map T.strip (T.splitOn "," inner))
+          named m = isLower (T.head m) || T.head m == '_'
+       in [(owner, members) | startsUpper owner, not (null members), all named members]
+    startsUpper t = maybe False (\(c, _) -> c >= 'A' && c <= 'Z') (T.uncons t)
+
+-- | Haskell-specific: values that only a validating constructor builds stay
+-- that way outside their module. The reference's frozen dataclasses refuse
+-- assignment and @dataclasses.replace@ re-runs @__post_init__@; here the
+-- types are exported abstractly with read-only fields ('GHC.Records.HasField'),
+-- so record-update syntax does not compile (divergences/catalog.md item 4).
+validatedValuesSpec :: Spec
+validatedValuesSpec = describe "Haskell: validated values" $ do
+  it "exports no LoopState field, so loopState {phaseLimit = 0} does not compile and the runner's EpisodeBudget cannot fail" $ do
+    source <- TIO.readFile "src/Petrus/Agenticus/Program/AgentNet.hs"
+    [(owner, members) | (owner, members) <- fieldExports source, owner == "LoopState"] `shouldBe` []
+    -- The check sees a planted field export.
+    fieldExports "module M\n  ( LoopState (episodeId, phaseLimit)\n  , mkLoopState\n  , Kind (..)\n  ) where\n"
+      `shouldBe` [("LoopState", ["episodeId", "phaseLimit"])]
+
+  it "exports the fields of no agenticus type but outcome records and class methods" $ do
+    sources <- agenticusSources
+    sources `shouldNotBe` []
+    exported <- concat <$> forM sources (\path -> map ((,) path) . fieldExports <$> TIO.readFile path)
+    -- Transition outcomes pair an already validated value with a
+    -- disposition and have no invariant of their own; the rest are classes.
+    let allowed =
+          [ "EpisodeCancellation"
+          , "EpisodeSettlement"
+          , "ThreadCancellation"
+          , "ThreadSettlement"
+          , "StrEnum"
+          , "LifecycleId"
+          ]
+    [(path, owner) | (path, (owner, _)) <- exported, owner `notElem` allowed] `shouldBe` []

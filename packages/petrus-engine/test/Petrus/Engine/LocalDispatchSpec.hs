@@ -21,7 +21,7 @@ import Petrus.Impetus.Instance (DeliveryScope (..), FiringOutcome (..))
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.TestSupport (netOf, np, tokD)
 import Petrus.Json (Json (..))
-import Petrus.Motus.Dispatch (ActivityAttempt (..), AttemptFailure (..), Dispatch (..))
+import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..), Dispatch (..))
 import Petrus.Motus.Dispatch.Local (LocalDispatchClock (..), LocalDispatchOptions (..), defaultLocalDispatchOptions, toDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Dispatch.LocalSupport (callWith, closingScratch, failure, fixedWorker, openScratchDispatch, parsedJson, rawExec, requireClaim, withScratch)

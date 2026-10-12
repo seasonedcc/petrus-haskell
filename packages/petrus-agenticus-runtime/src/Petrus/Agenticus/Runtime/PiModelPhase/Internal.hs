@@ -10,12 +10,12 @@ module Petrus.Agenticus.Runtime.PiModelPhase.Internal
   , maxMessages
   , maxFrameBytes
     -- * Payloads and publications
-  , PiModelPhaseContinuationPayloadV1 (transcriptJson)
+  , PiModelPhaseContinuationPayloadV1
   , mkPiModelPhaseContinuationPayloadV1
-  , PiModelPhaseOutputPayloadV1 (assistantJson)
+  , PiModelPhaseOutputPayloadV1
   , mkPiModelPhaseOutputPayloadV1
   , payloadSchemaVersion
-  , PiModelPhasePublication (outputReference, continuationReference)
+  , PiModelPhasePublication
   , mkPiModelPhasePublication
   , PiModelPhaseOperations (..)
   , PiModelPhaseCustody (..)
@@ -63,12 +63,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
+import GHC.Records (HasField (..))
 import Paths_petrus_agenticus_runtime (getDataFileName)
 import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
   , AttachmentFence (..)
-  , ConnectionIdentity (..)
   , ConnectionStatus (..)
   , ConnectionView (..)
   , LeaseMode (..)
@@ -79,9 +79,8 @@ import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Validate (encodeRefusal, hasControlOrDel, isTrimmed, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.AgentNet
-  ( LoopState (..)
-  , ModelResult (..)
-  , Proposal (..)
+  ( LoopState
+  , Proposal
   , StopReason
   , loopStateFromData
   , maxProposals
@@ -191,8 +190,11 @@ isObject = \case
 -- Payloads and publications
 
 -- | The private transcript a Continuation reference names.
-newtype PiModelPhaseContinuationPayloadV1 = PiModelPhaseContinuationPayloadV1 {transcriptJson :: ByteString}
+newtype PiModelPhaseContinuationPayloadV1 = PiModelPhaseContinuationPayloadV1 {_transcriptJson :: ByteString}
   deriving stock (Eq)
+
+instance HasField "transcriptJson" PiModelPhaseContinuationPayloadV1 ByteString where
+  getField r = r._transcriptJson
 
 instance Show PiModelPhaseContinuationPayloadV1 where
   show _ = "PiModelPhaseContinuationPayloadV1(schema_version=1)"
@@ -202,8 +204,11 @@ mkPiModelPhaseContinuationPayloadV1 value =
   PiModelPhaseContinuationPayloadV1 <$> payload value maxTranscriptBytes "transcript"
 
 -- | The private assistant message an output reference names.
-newtype PiModelPhaseOutputPayloadV1 = PiModelPhaseOutputPayloadV1 {assistantJson :: ByteString}
+newtype PiModelPhaseOutputPayloadV1 = PiModelPhaseOutputPayloadV1 {_assistantJson :: ByteString}
   deriving stock (Eq)
+
+instance HasField "assistantJson" PiModelPhaseOutputPayloadV1 ByteString where
+  getField r = r._assistantJson
 
 instance Show PiModelPhaseOutputPayloadV1 where
   show _ = "PiModelPhaseOutputPayloadV1(schema_version=1)"
@@ -216,10 +221,16 @@ payloadSchemaVersion :: Integer
 payloadSchemaVersion = 1
 
 data PiModelPhasePublication = PiModelPhasePublication
-  { outputReference :: Text
-  , continuationReference :: Text
+  { _outputReference :: Text
+  , _continuationReference :: Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "outputReference" PiModelPhasePublication Text where
+  getField r = r._outputReference
+
+instance HasField "continuationReference" PiModelPhasePublication Text where
+  getField r = r._continuationReference
 
 mkPiModelPhasePublication :: Text -> Text -> Either AgenticusError PiModelPhasePublication
 mkPiModelPhasePublication output continuation =

@@ -15,15 +15,15 @@ module Petrus.Agenticus.Hands.Gateway
   , withBarrier
   , holdsBarrier
     -- * Adapter values
-  , ShellOutcome (returncode, stdout, stderr, truncated)
+  , ShellOutcome
   , mkShellOutcome
-  , StagedWrite (callId, path, digest)
+  , StagedWrite
   , mkStagedWrite
-  , TestOutcome (passed, evidenceDigest)
+  , TestOutcome
   , mkTestOutcome
   , HandsAdapter (..)
     -- * Fences and seams
-  , CallFence (open, aborted, deadline)
+  , CallFence
   , mkCallFence
   , callFence
   , CallFenceSource (..)
@@ -62,6 +62,7 @@ import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Clock (getMonotonicTime)
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract
 import Petrus.Agenticus.Hands.Grants
@@ -146,12 +147,24 @@ digestValue name value
 
 -- | Bounded, provider-neutral process outcome; never raw provider state.
 data ShellOutcome = ShellOutcome
-  { returncode :: Integer
-  , stdout :: Text
-  , stderr :: Text
-  , truncated :: Bool
+  { _returncode :: Integer
+  , _stdout :: Text
+  , _stderr :: Text
+  , _truncated :: Bool
   }
   deriving stock (Eq, Show)
+
+instance HasField "returncode" ShellOutcome Integer where
+  getField r = r._returncode
+
+instance HasField "stdout" ShellOutcome Text where
+  getField r = r._stdout
+
+instance HasField "stderr" ShellOutcome Text where
+  getField r = r._stderr
+
+instance HasField "truncated" ShellOutcome Bool where
+  getField r = r._truncated
 
 mkShellOutcome :: Integer -> Text -> Text -> Bool -> Either AgenticusError ShellOutcome
 mkShellOutcome code out err cut = do
@@ -162,11 +175,20 @@ mkShellOutcome code out err cut = do
 -- | One authoritative stage token; the stage lives outside every final
 -- target.
 data StagedWrite = StagedWrite
-  { callId :: Text
-  , path :: Text
-  , digest :: Text
+  { _callId :: Text
+  , _path :: Text
+  , _digest :: Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "callId" StagedWrite Text where
+  getField r = r._callId
+
+instance HasField "path" StagedWrite Text where
+  getField r = r._path
+
+instance HasField "digest" StagedWrite Text where
+  getField r = r._digest
 
 mkStagedWrite :: Text -> Text -> Text -> Either AgenticusError StagedWrite
 mkStagedWrite call path' digest' =
@@ -177,10 +199,16 @@ mkStagedWrite call path' digest' =
 
 -- | One fixed-verifier outcome with digest evidence only.
 data TestOutcome = TestOutcome
-  { passed :: Bool
-  , evidenceDigest :: Text
+  { _passed :: Bool
+  , _evidenceDigest :: Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "passed" TestOutcome Bool where
+  getField r = r._passed
+
+instance HasField "evidenceDigest" TestOutcome Text where
+  getField r = r._evidenceDigest
 
 mkTestOutcome :: Bool -> Text -> Either AgenticusError TestOutcome
 mkTestOutcome passed' digest' = TestOutcome passed' <$> digestValue "test outcome evidence_digest" digest'
@@ -209,11 +237,20 @@ data HandsAdapter = HandsAdapter
 
 -- | One snapshot of the dynamic attachment state a call must satisfy.
 data CallFence = CallFence
-  { open :: Bool
-  , aborted :: Bool
-  , deadline :: Double
+  { _open :: Bool
+  , _aborted :: Bool
+  , _deadline :: Double
   }
   deriving stock (Eq, Show)
+
+instance HasField "open" CallFence Bool where
+  getField r = r._open
+
+instance HasField "aborted" CallFence Bool where
+  getField r = r._aborted
+
+instance HasField "deadline" CallFence Double where
+  getField r = r._deadline
 
 mkCallFence :: Bool -> Bool -> Double -> Either AgenticusError CallFence
 mkCallFence open' aborted' deadline'

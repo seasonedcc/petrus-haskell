@@ -74,7 +74,7 @@ import Petrus.Impetus.History.Records (FieldValue (FPolicy), encodeFieldValue, r
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
 import Petrus.Json (Json (..), lookupMember)
 import Petrus.Impetus.Petrinet.Schema (NetPath, netPath)
-import Petrus.Motus.Dispatch (ActivityAttempt (epoch), DispatchError (..))
+import Petrus.Motus.Dispatch (ActivityAttempt, DispatchError (..))
 import Petrus.Observation qualified as Observation
 import Petrus.Testing.Dst
 import Petrus.Json.Python (pythonStrRepr)

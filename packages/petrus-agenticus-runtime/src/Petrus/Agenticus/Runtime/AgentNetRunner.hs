@@ -11,23 +11,23 @@ module Petrus.Agenticus.Runtime.AgentNetRunner
   ( -- * Projection values
     HaltCode (..)
   , haltCodeText
-  , ProjectedAppend (occurrence, outputReference, continuationReference)
+  , ProjectedAppend
   , mkProjectedAppend
   , projectedAppendToData
   , projectedAppendFromData
-  , ProjectedHands (occurrence, callId)
+  , ProjectedHands
   , mkProjectedHands
   , projectedHandsToData
   , projectedHandsFromData
-  , AgentNetAttachmentFence (episodeId, attachmentId, attachmentEpoch, grantEpoch)
+  , AgentNetAttachmentFence
   , mkAgentNetAttachmentFence
   , attachmentFenceToData
   , attachmentFenceFromData
-  , AgentNetHalt (code, activity, occurrence)
+  , AgentNetHalt
   , mkAgentNetHalt
   , haltToData
   , haltFromData
-  , AgentNetThreadProjection (instanceId, initial, thread, attachment, appends, hands, terminal, halt)
+  , AgentNetThreadProjection
   , mkAgentNetThreadProjection
   , projectionSettled
   , projectionToData
@@ -70,22 +70,18 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Agenticus.Attachment.Binding (AttachmentCoordinates (..), BindingSettlement (..))
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Attachment.Episode
-import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorIdentity (..))
 import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Hands.Contract (ToolResult (..), capabilityScopedHands, toolMethodText, toolResultToModelData)
+import Petrus.Agenticus.Hands.Contract (capabilityScopedHands, toolMethodText, toolResultToModelData)
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Json.Python (pythonRepr, pythonStrListRepr)
 import Petrus.Agenticus.Hands.Gateway (HandsAdapter, HandsGateway, submit)
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
+import Petrus.Agenticus.Hands.Grants (currentGrant)
 import Petrus.Agenticus.Program.AgentNet
-  ( LoopState (..)
-  , ModelResult (..)
-  , ModelSettlement (..)
-  , Proposal (..)
-  , Terminal (..)
+  ( LoopState
+  , Terminal
   , TerminalCode (..)
   , agentAsNetContinuationDescriptor
   , agentAsNetProgram
@@ -106,18 +102,16 @@ import Petrus.Agenticus.Program.AgentNet
   , terminalToData
   )
 import Petrus.Agenticus.Runtime.Profiles (TerritoryProfile (..), agentAsNetA5Local, territoryIdentity)
-import Petrus.Agenticus.Thread.Continuation (Continuation (..), ContinuationState (..), mkContinuation)
+import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationState (..), mkContinuation)
 import Petrus.Agenticus.Thread.Identity (lifecycleIdText, mkContinuationId, mkEpisodeId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle
-  ( Episode (..)
-  , EpisodeOutcome (..)
-  , Thread (..)
+  ( EpisodeOutcome (..)
+  , Thread
   , ThreadCancellation (..)
   , ThreadSettlement (..)
-  , Turn (..)
   , TurnOutcome (..)
   , acceptAppend
-  , episodeBudget
+  , mkEpisodeBudget
   , requestCancellation
   , settleEpisode
   , settleTurn
@@ -217,11 +211,20 @@ parseHaltCode value = case [c | c <- [minBound .. maxBound], String (haltCodeTex
 
 -- | One committed model-phase append projected into Thread accounting.
 data ProjectedAppend = ProjectedAppend
-  { occurrence :: Integer
-  , outputReference :: Text
-  , continuationReference :: Text
+  { _occurrence :: Integer
+  , _outputReference :: Text
+  , _continuationReference :: Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "occurrence" ProjectedAppend Integer where
+  getField r = r._occurrence
+
+instance HasField "outputReference" ProjectedAppend Text where
+  getField r = r._outputReference
+
+instance HasField "continuationReference" ProjectedAppend Text where
+  getField r = r._continuationReference
 
 mkProjectedAppend :: Integer -> Text -> Text -> Either AgenticusError ProjectedAppend
 mkProjectedAppend o out cont = do
@@ -255,10 +258,16 @@ projectedAppendFromData raw = do
 
 -- | One committed Hands result observed by the Thread projector.
 data ProjectedHands = ProjectedHands
-  { occurrence :: Integer
-  , callId :: Text
+  { _occurrence :: Integer
+  , _callId :: Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "occurrence" ProjectedHands Integer where
+  getField r = r._occurrence
+
+instance HasField "callId" ProjectedHands Text where
+  getField r = r._callId
 
 mkProjectedHands :: Integer -> Text -> Either AgenticusError ProjectedHands
 mkProjectedHands o c = do
@@ -282,12 +291,24 @@ projectedHandsFromData raw = do
 -- | The exact host-only Attachment coordinates expected across
 -- reconstruction.
 data AgentNetAttachmentFence = AgentNetAttachmentFence
-  { episodeId :: Text
-  , attachmentId :: Text
-  , attachmentEpoch :: Integer
-  , grantEpoch :: Integer
+  { _episodeId :: Text
+  , _attachmentId :: Text
+  , _attachmentEpoch :: Integer
+  , _grantEpoch :: Integer
   }
   deriving stock (Eq, Show)
+
+instance HasField "episodeId" AgentNetAttachmentFence Text where
+  getField r = r._episodeId
+
+instance HasField "attachmentId" AgentNetAttachmentFence Text where
+  getField r = r._attachmentId
+
+instance HasField "attachmentEpoch" AgentNetAttachmentFence Integer where
+  getField r = r._attachmentEpoch
+
+instance HasField "grantEpoch" AgentNetAttachmentFence Integer where
+  getField r = r._grantEpoch
 
 mkAgentNetAttachmentFence :: Text -> Text -> Integer -> Integer -> Either AgenticusError AgentNetAttachmentFence
 mkAgentNetAttachmentFence e a ae ge = do
@@ -322,11 +343,20 @@ attachmentFenceFromData raw = do
 -- Halts
 
 data AgentNetHalt = AgentNetHalt
-  { code :: HaltCode
-  , activity :: Text
-  , occurrence :: Integer
+  { _code :: HaltCode
+  , _activity :: Text
+  , _occurrence :: Integer
   }
   deriving stock (Eq, Show)
+
+instance HasField "code" AgentNetHalt HaltCode where
+  getField r = r._code
+
+instance HasField "activity" AgentNetHalt Text where
+  getField r = r._activity
+
+instance HasField "occurrence" AgentNetHalt Integer where
+  getField r = r._occurrence
 
 mkAgentNetHalt :: HaltCode -> Text -> Integer -> Either AgenticusError AgentNetHalt
 mkAgentNetHalt c a o = AgentNetHalt c <$> activityName (String a) <*> positiveInt "halt occurrence" o
@@ -348,16 +378,40 @@ haltFromData raw = do
 -- | The durable Thread authority plus its idempotent History projection
 -- cursor.
 data AgentNetThreadProjection = AgentNetThreadProjection
-  { instanceId :: Text
-  , initial :: LoopState
-  , thread :: Thread
-  , attachment :: AgentNetAttachmentFence
-  , appends :: [ProjectedAppend]
-  , hands :: [ProjectedHands]
-  , terminal :: Maybe Terminal
-  , halt :: Maybe AgentNetHalt
+  { _instanceId :: Text
+  , _initial :: LoopState
+  , _thread :: Thread
+  , _attachment :: AgentNetAttachmentFence
+  , _appends :: [ProjectedAppend]
+  , _hands :: [ProjectedHands]
+  , _terminal :: Maybe Terminal
+  , _halt :: Maybe AgentNetHalt
   }
   deriving stock (Eq, Show)
+
+instance HasField "instanceId" AgentNetThreadProjection Text where
+  getField r = r._instanceId
+
+instance HasField "initial" AgentNetThreadProjection LoopState where
+  getField r = r._initial
+
+instance HasField "thread" AgentNetThreadProjection Thread where
+  getField r = r._thread
+
+instance HasField "attachment" AgentNetThreadProjection AgentNetAttachmentFence where
+  getField r = r._attachment
+
+instance HasField "appends" AgentNetThreadProjection [ProjectedAppend] where
+  getField r = r._appends
+
+instance HasField "hands" AgentNetThreadProjection [ProjectedHands] where
+  getField r = r._hands
+
+instance HasField "terminal" AgentNetThreadProjection (Maybe Terminal) where
+  getField r = r._terminal
+
+instance HasField "halt" AgentNetThreadProjection (Maybe AgentNetHalt) where
+  getField r = r._halt
 
 mkAgentNetThreadProjection
   :: Text
@@ -631,7 +685,8 @@ createRunnerWith repository' root instanceId' thread' initial' attachment' model
   turnId' <- orThrow (mkTurnId initial'.turnId)
   running <-
     orThrow $
-      startEpisode episodeId' agentAsNetProgram agentAsNetA5Local.identity (episodeBudget 1 initial'.phaseLimit) thread'
+      mkEpisodeBudget 1 initial'.phaseLimit
+        >>= \budget -> startEpisode episodeId' agentAsNetProgram agentAsNetA5Local.identity budget thread'
         >>= startTurn turnId'
   fence <- attachmentFence initial' attachment'
   projection' <- orThrow (mkAgentNetThreadProjection instanceId' initial' running fence [] [] Nothing Nothing)
@@ -833,7 +888,7 @@ projectCommitted r = do
               when (projectionSettled current) $ runnerError "new model append follows settled Thread projection"
               turnId' <- orThrow (mkTurnId current.initial.turnId)
               thread' <- orThrow (acceptAppend turnId' current.thread)
-              next <- rebuild current {thread = thread', appends = current.appends <> [projected]}
+              next <- rebuild current {_thread = thread', _appends = current.appends <> [projected]}
               saveProjection r next
       | requested.activity == handsActivity -> do
           result <- handsResult requested record.result
@@ -843,7 +898,7 @@ projectCommitted r = do
               when (prior /= projected) $ runnerError "committed Hands result conflicts with its Thread projection"
             [] -> do
               when (projectionSettled current) $ runnerError "new Hands result follows settled Thread projection"
-              next <- rebuild current {hands = current.hands <> [projected]}
+              next <- rebuild current {_hands = current.hands <> [projected]}
               saveProjection r next
       | otherwise -> runnerError "Agent-as-a-Net History contains an unsupported Activity"
 
@@ -875,7 +930,7 @@ settleRecordedFailure r = do
         turnId' <- orThrow (mkTurnId current.initial.turnId)
         thread' <- orThrow (settleTurn turnId' TurnFailed current.thread >>= fmap (.thread) . settleEpisode EpisodeFailed Nothing)
         halt' <- orThrow (mkAgentNetHalt ActivityFailedHalt activity' (toInteger failure.occurrence))
-        next <- rebuild current {thread = thread', halt = Just halt'}
+        next <- rebuild current {_thread = thread', _halt = Just halt'}
         saveProjection r next
 
 settleTerminal :: AgentNetRunner -> IO ()
@@ -918,7 +973,7 @@ settleTerminal r = do
                 pure (settledTurn, outcome)
           next' <- continuationFor current terminal'
           settledThread <- orThrow ((.thread) <$> settleEpisode episodeOutcome (Just next') thread')
-          next <- rebuild current {thread = settledThread, terminal = Just terminal'}
+          next <- rebuild current {_thread = settledThread, _terminal = Just terminal'}
           saveProjection r next
     _ -> runnerError "Agent-as-a-Net terminal marking is invalid"
 
@@ -947,7 +1002,7 @@ fenceReconstructedActivities r = do
         thread' <-
           orThrow (settleTurn turnId' TurnIndeterminate current.thread >>= fmap (.thread) . settleEpisode EpisodeIndeterminate Nothing)
         halt' <- orThrow (mkAgentNetHalt Indeterminate activity' (toInteger occurrence'.occurrence))
-        next <- rebuild current {thread = thread', halt = Just halt'}
+        next <- rebuild current {_thread = thread', _halt = Just halt'}
         saveProjection r next
       _ -> runnerError "sequential Agent-as-a-Net History reconstructed multiple Activities"
 

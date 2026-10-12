@@ -22,7 +22,6 @@ import Petrus.Impetus.HistoryStore qualified as Store
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.TestSupport (netOf, np, tokD)
 import Petrus.Json (Json (..))
-import Petrus.Motus.Dispatch (ActivityAttempt (..))
 import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch)
 import Petrus.Motus.Dispatch.Local (defaultLocalDispatchOptions, toDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local

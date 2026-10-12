@@ -19,12 +19,12 @@ module Petrus.Agenticus.Runtime.PiModelPhase
   , maxMessages
   , maxFrameBytes
     -- * Payloads and publications
-  , PiModelPhaseContinuationPayloadV1 (transcriptJson)
+  , PiModelPhaseContinuationPayloadV1
   , mkPiModelPhaseContinuationPayloadV1
-  , PiModelPhaseOutputPayloadV1 (assistantJson)
+  , PiModelPhaseOutputPayloadV1
   , mkPiModelPhaseOutputPayloadV1
   , payloadSchemaVersion
-  , PiModelPhasePublication (outputReference, continuationReference)
+  , PiModelPhasePublication
   , mkPiModelPhasePublication
   , PiModelPhaseOperations (..)
   , PiModelPhaseCustody (..)

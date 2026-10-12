@@ -36,7 +36,7 @@ import Hamsterdan.Host.Agenticus
   , openAgentRouteStore
   , settleRoutes
   )
-import Hamsterdan.Host.PiA2 (OwnedPiA2 (..), PiA2Hooks, PiA2InstallationConfig (..), composeOwnedPiA2With, defaultPiA2Hooks, installationFromEnvironment)
+import Hamsterdan.Host.PiA2 (OwnedPiA2 (..), PiA2Hooks, composeOwnedPiA2With, defaultPiA2Hooks, installationFromEnvironment)
 import Hamsterdan.Host.PiWorkspace (GitPiWorkspaceProvider, gitPiWorkspaceProvider, newGitPiWorkspaceProvider)
 import Hamsterdan.Host.Service (AgentCustody (..))
 import Petrus.Agenticus.Runtime.PiA2Host (PiA2RuntimeHost, closeHost, probeHost)

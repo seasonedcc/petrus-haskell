@@ -13,7 +13,7 @@ module Hamsterdan.Host.Agenticus
   , hostFencedEffect
   , agenticusDescriptors
   , AgentCompositionError (..)
-  , AgentComposition (..)
+  , AgentComposition
   , mkAgentComposition
   , resolveAgenticus
   , composeAgent
@@ -50,6 +50,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import GHC.Records (HasField (..))
 import Hamsterdan.Agents.Pi (PiNativeRunner, PiRuntime, PiWorkspaceProvider, defaultPiRunnerOptions, newPiNativeRunner, piAgentRunner, unavailablePiRunner)
 import Hamsterdan.Agents.Protocol (AgentRunner (..), CodingRequest (..), Invocation (..))
 import Hamsterdan.Python.Exception (ioException, raisingDumps)
@@ -58,15 +59,14 @@ import Hamsterdan.Sqlite (Connection, SQLData (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Binding (InstanceBinding (..), readInstanceBinding)
 import Petrus.Agenticus.Catalog.Descriptor
-  ( CapabilityDescriptor (..)
-  , DescriptorIdentity (..)
+  ( CapabilityDescriptor
+  , DescriptorIdentity
   , DescriptorKind (..)
   , capabilityDescriptor
   , descriptorIdentity
   )
 import Petrus.Agenticus.Catalog.Resolution
   ( CatalogState
-  , Resolution (..)
   , ResolutionSnapshot
   , emptyCatalogState
   , enableState
@@ -77,9 +77,8 @@ import Petrus.Agenticus.Catalog.Resolution
   , snapshotFromData
   , snapshotToData
   )
-import Petrus.Agenticus.Catalog.Result (CompatibilityIssue (..), CompatibilityResult (..))
 import Petrus.Agenticus.Error (throwLeft)
-import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeInstallation (..), RuntimeProbeResult (..))
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeProbeResult)
 import Petrus.Agenticus.Runtime.Pi
   ( piApiKeyCatalog
   , piCollocatedHands
@@ -133,19 +132,31 @@ instance Exception AgentCompositionError
 
 -- | @AgentComposition@.
 data AgentComposition = AgentComposition
-  { provider :: Text
-  , model :: Text
-  , profile :: Text
-  , snapshot :: ResolutionSnapshot
+  { _provider :: Text
+  , _model :: Text
+  , _profile :: Text
+  , _snapshot :: ResolutionSnapshot
   }
   deriving stock (Eq, Show)
+
+instance HasField "provider" AgentComposition Text where
+  getField r = r._provider
+
+instance HasField "model" AgentComposition Text where
+  getField r = r._model
+
+instance HasField "profile" AgentComposition Text where
+  getField r = r._profile
+
+instance HasField "snapshot" AgentComposition ResolutionSnapshot where
+  getField r = r._snapshot
 
 -- | @AgentComposition(...)@ with its @__post_init__@ check.
 mkAgentComposition :: Text -> Text -> Text -> ResolutionSnapshot -> Either Text AgentComposition
 mkAgentComposition provider model profile snapshot
   | (provider, model) `notElem` piApiKeyCatalog || profile /= expected =
       Left "Agenticus composition requires the exact qualified profile and snapshot"
-  | otherwise = Right AgentComposition {provider, model, profile, snapshot}
+  | otherwise = Right (AgentComposition provider model profile snapshot)
   where
     expected = "pi-native-a2-local-" <> provider <> "-" <> model <> "-api-key"
 

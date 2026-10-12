@@ -33,23 +33,23 @@ module Petrus.Agenticus.Effect.Model
   , isCode
   , isDigest
     -- * Targets
-  , TargetIdentity (targetType, targetId)
+  , TargetIdentity
   , mkTargetIdentity
   , targetToData
   , targetFromData
     -- * Proposals
-  , EffectProposal (proposalId, effectType, effectVersion, payloadDigest, target, requestedAuthorityClass, digest)
+  , EffectProposal
   , mkEffectProposal
   , proposalToData
   , proposalFromData
     -- * Fences
-  , EffectFence (proposalId, proposalDigest, authorityEpoch, targetHead, episodeId, attachmentId, attachmentEpoch)
+  , EffectFence
   , mkEffectFence
   , fenceToData
   , fenceFromData
   , matches
     -- * Receipts
-  , EffectReceipt (proposalId, proposalDigest, payloadDigest, target, receiptDigest)
+  , EffectReceipt
   , mkEffectReceipt
   , receiptToData
   , receiptFromData
@@ -66,7 +66,7 @@ module Petrus.Agenticus.Effect.Model
   , EvidenceOutcome (..)
   , outcomeRecovery
   , outcomeReceiptDigest
-  , EffectEvidence (proposalId, proposalDigest, payloadDigest, target, fence, outcome)
+  , EffectEvidence
   , mkEffectEvidence
   , evidenceToData
   , evidenceFromData
@@ -303,10 +303,16 @@ canonicalDigest value = "sha256:" <> sha256Hex (canonicalBytes value)
 
 -- | Host-defined external target identity with no provider-specific type.
 data TargetIdentity = TargetIdentity
-  { targetType :: Text
-  , targetId :: Text
+  { _targetType :: Text
+  , _targetId :: Text
   }
   deriving stock (Eq, Ord, Show)
+
+instance HasField "targetType" TargetIdentity Text where
+  getField r = r._targetType
+
+instance HasField "targetId" TargetIdentity Text where
+  getField r = r._targetId
 
 mkTargetIdentity :: Text -> Text -> Either AgenticusError TargetIdentity
 mkTargetIdentity targetType targetId =
@@ -327,16 +333,37 @@ targetFromData json = do
 -- separately.  'digest' (@EffectProposal.digest@) is computed once, on first
 -- use.
 data EffectProposal = EffectProposal
-  { proposalId :: Text
-  , effectType :: Text
-  , effectVersion :: Integer
-  , payloadDigest :: Text
-  , target :: TargetIdentity
-  , requestedAuthorityClass :: Text
-  , digest :: ~Text
+  { _proposalId :: Text
+  , _effectType :: Text
+  , _effectVersion :: Integer
+  , _payloadDigest :: Text
+  , _target :: TargetIdentity
+  , _requestedAuthorityClass :: Text
+  , _digest :: ~Text
   -- ^ Binds approval and evidence to every exact field of this proposal.
   }
   deriving stock (Show)
+
+instance HasField "proposalId" EffectProposal Text where
+  getField r = r._proposalId
+
+instance HasField "effectType" EffectProposal Text where
+  getField r = r._effectType
+
+instance HasField "effectVersion" EffectProposal Integer where
+  getField r = r._effectVersion
+
+instance HasField "payloadDigest" EffectProposal Text where
+  getField r = r._payloadDigest
+
+instance HasField "target" EffectProposal TargetIdentity where
+  getField r = r._target
+
+instance HasField "requestedAuthorityClass" EffectProposal Text where
+  getField r = r._requestedAuthorityClass
+
+instance HasField "digest" EffectProposal Text where
+  getField r = r._digest
 
 -- | Field equality; the cached digest is a function of the fields.
 instance Eq EffectProposal where
@@ -398,15 +425,36 @@ proposalFromData json = do
 -- | Frozen proposal, authority, target, Episode, and attachment
 -- preconditions.
 data EffectFence = EffectFence
-  { proposalId :: Text
-  , proposalDigest :: Text
-  , authorityEpoch :: Integer
-  , targetHead :: Text
-  , episodeId :: Text
-  , attachmentId :: Text
-  , attachmentEpoch :: Integer
+  { _proposalId :: Text
+  , _proposalDigest :: Text
+  , _authorityEpoch :: Integer
+  , _targetHead :: Text
+  , _episodeId :: Text
+  , _attachmentId :: Text
+  , _attachmentEpoch :: Integer
   }
   deriving stock (Eq, Show)
+
+instance HasField "proposalId" EffectFence Text where
+  getField r = r._proposalId
+
+instance HasField "proposalDigest" EffectFence Text where
+  getField r = r._proposalDigest
+
+instance HasField "authorityEpoch" EffectFence Integer where
+  getField r = r._authorityEpoch
+
+instance HasField "targetHead" EffectFence Text where
+  getField r = r._targetHead
+
+instance HasField "episodeId" EffectFence Text where
+  getField r = r._episodeId
+
+instance HasField "attachmentId" EffectFence Text where
+  getField r = r._attachmentId
+
+instance HasField "attachmentEpoch" EffectFence Integer where
+  getField r = r._attachmentEpoch
 
 -- | The constructor, validating in @__post_init__@ order.
 mkEffectFence :: Text -> Text -> Integer -> Text -> Text -> Text -> Integer -> Either AgenticusError EffectFence
@@ -460,13 +508,28 @@ matches f p = f.proposalId == p.proposalId && f.proposalDigest == p.digest
 -- | Digest-only provider evidence correlated to one complete proposal
 -- identity.
 data EffectReceipt = EffectReceipt
-  { proposalId :: Text
-  , proposalDigest :: Text
-  , payloadDigest :: Text
-  , target :: TargetIdentity
-  , receiptDigest :: Text
+  { _proposalId :: Text
+  , _proposalDigest :: Text
+  , _payloadDigest :: Text
+  , _target :: TargetIdentity
+  , _receiptDigest :: Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "proposalId" EffectReceipt Text where
+  getField r = r._proposalId
+
+instance HasField "proposalDigest" EffectReceipt Text where
+  getField r = r._proposalDigest
+
+instance HasField "payloadDigest" EffectReceipt Text where
+  getField r = r._payloadDigest
+
+instance HasField "target" EffectReceipt TargetIdentity where
+  getField r = r._target
+
+instance HasField "receiptDigest" EffectReceipt Text where
+  getField r = r._receiptDigest
 
 mkEffectReceipt :: Text -> Text -> Text -> TargetIdentity -> Text -> Either AgenticusError EffectReceipt
 mkEffectReceipt pid pdigest payload tgt receipt =
@@ -614,14 +677,32 @@ outcomeReceiptDigest = \case
 -- | Secret-free exact correlation and lookup- or fence-derived recovery
 -- evidence.
 data EffectEvidence = EffectEvidence
-  { proposalId :: Text
-  , proposalDigest :: Text
-  , payloadDigest :: Text
-  , target :: TargetIdentity
-  , fence :: EffectFence
-  , outcome :: EvidenceOutcome
+  { _proposalId :: Text
+  , _proposalDigest :: Text
+  , _payloadDigest :: Text
+  , _target :: TargetIdentity
+  , _fence :: EffectFence
+  , _outcome :: EvidenceOutcome
   }
   deriving stock (Eq, Show)
+
+instance HasField "proposalId" EffectEvidence Text where
+  getField r = r._proposalId
+
+instance HasField "proposalDigest" EffectEvidence Text where
+  getField r = r._proposalDigest
+
+instance HasField "payloadDigest" EffectEvidence Text where
+  getField r = r._payloadDigest
+
+instance HasField "target" EffectEvidence TargetIdentity where
+  getField r = r._target
+
+instance HasField "fence" EffectEvidence EffectFence where
+  getField r = r._fence
+
+instance HasField "outcome" EffectEvidence EvidenceOutcome where
+  getField r = r._outcome
 
 instance HasField "recovery" EffectEvidence (Maybe LookupDisposition) where
   getField e = outcomeRecovery e.outcome

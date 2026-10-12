@@ -32,13 +32,13 @@ module Petrus.Agenticus.Thread.Lifecycle
   , episodeBudgetExceeded
   , budgetExceededDimension
     -- * Budgets
-  , EpisodeBudget (maxTurns, maxAcceptedAppends)
+  , EpisodeBudget
   , mkEpisodeBudget
   , episodeBudget
   , episodeBudgetToData
   , episodeBudgetFromData
     -- * Turns
-  , Turn (id, episode, ordinal, state, acceptedAppends, outcome)
+  , Turn
   , mkTurn
   , turnAcceptAppend
   , turnSettle
@@ -46,19 +46,6 @@ module Petrus.Agenticus.Thread.Lifecycle
   , turnFromData
     -- * Episodes
   , Episode
-      ( id
-      , thread
-      , program
-      , runtime
-      , budget
-      , expectedContinuation
-      , continuation
-      , state
-      , turns
-      , acceptedAppends
-      , settlement
-      , nextContinuation
-      )
   , mkEpisode
   , activeTurn
   , budgetExhausted
@@ -72,7 +59,7 @@ module Petrus.Agenticus.Thread.Lifecycle
   , EpisodeCancellation (episode, disposition)
   , EpisodeSettlement (episode, disposition)
     -- * Threads
-  , Thread (id, state, episodes, continuation)
+  , Thread
   , mkThread
   , newThread
   , activeEpisode
@@ -96,12 +83,13 @@ import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Catalog.Descriptor
 import Petrus.Agenticus.Catalog.Result (CompatibilityResult)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Shape
 import Petrus.Agenticus.Internal.Validate
-import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..))
+import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor)
 import Petrus.Agenticus.Thread.Continuation
 import Petrus.Agenticus.Thread.Identity
 import Petrus.Json (Json (..))
@@ -210,10 +198,16 @@ check ok message = if ok then Right () else Left (valueError message)
 
 -- | The exact progression bounds owned by an Episode.
 data EpisodeBudget = EpisodeBudget
-  { maxTurns :: Integer
-  , maxAcceptedAppends :: Integer
+  { _maxTurns :: Integer
+  , _maxAcceptedAppends :: Integer
   }
   deriving stock (Eq, Show)
+
+instance HasField "maxTurns" EpisodeBudget Integer where
+  getField r = r._maxTurns
+
+instance HasField "maxAcceptedAppends" EpisodeBudget Integer where
+  getField r = r._maxAcceptedAppends
 
 mkEpisodeBudget :: Integer -> Integer -> Either AgenticusError EpisodeBudget
 mkEpisodeBudget t a =
@@ -250,14 +244,32 @@ episodeBudgetFromData raw = do
 
 -- | One progression step and only its provider-neutral lifecycle facts.
 data Turn = Turn
-  { id :: TurnId
-  , episode :: EpisodeId
-  , ordinal :: Integer
-  , state :: TurnState
-  , acceptedAppends :: Integer
-  , outcome :: Maybe TurnOutcome
+  { _id :: TurnId
+  , _episode :: EpisodeId
+  , _ordinal :: Integer
+  , _state :: TurnState
+  , _acceptedAppends :: Integer
+  , _outcome :: Maybe TurnOutcome
   }
   deriving stock (Eq, Show)
+
+instance HasField "id" Turn TurnId where
+  getField r = r._id
+
+instance HasField "episode" Turn EpisodeId where
+  getField r = r._episode
+
+instance HasField "ordinal" Turn Integer where
+  getField r = r._ordinal
+
+instance HasField "state" Turn TurnState where
+  getField r = r._state
+
+instance HasField "acceptedAppends" Turn Integer where
+  getField r = r._acceptedAppends
+
+instance HasField "outcome" Turn (Maybe TurnOutcome) where
+  getField r = r._outcome
 
 -- | @Turn(id, episode, ordinal, state, accepted_appends, outcome)@.
 mkTurn
@@ -315,20 +327,56 @@ turnFromData raw = do
 
 -- | One bounded execution with no workspace, process, or transcript custody.
 data Episode = Episode
-  { id :: EpisodeId
-  , thread :: ThreadId
-  , program :: DescriptorIdentity
-  , runtime :: DescriptorIdentity
-  , budget :: EpisodeBudget
-  , expectedContinuation :: Maybe DescriptorIdentity
-  , continuation :: Maybe Continuation
-  , state :: EpisodeState
-  , turns :: Seq Turn
-  , acceptedAppends :: Integer
-  , settlement :: Maybe EpisodeOutcome
-  , nextContinuation :: Maybe Continuation
+  { _id :: EpisodeId
+  , _thread :: ThreadId
+  , _program :: DescriptorIdentity
+  , _runtime :: DescriptorIdentity
+  , _budget :: EpisodeBudget
+  , _expectedContinuation :: Maybe DescriptorIdentity
+  , _continuation :: Maybe Continuation
+  , _state :: EpisodeState
+  , _turns :: Seq Turn
+  , _acceptedAppends :: Integer
+  , _settlement :: Maybe EpisodeOutcome
+  , _nextContinuation :: Maybe Continuation
   }
   deriving stock (Eq, Show)
+
+instance HasField "id" Episode EpisodeId where
+  getField r = r._id
+
+instance HasField "thread" Episode ThreadId where
+  getField r = r._thread
+
+instance HasField "program" Episode DescriptorIdentity where
+  getField r = r._program
+
+instance HasField "runtime" Episode DescriptorIdentity where
+  getField r = r._runtime
+
+instance HasField "budget" Episode EpisodeBudget where
+  getField r = r._budget
+
+instance HasField "expectedContinuation" Episode (Maybe DescriptorIdentity) where
+  getField r = r._expectedContinuation
+
+instance HasField "continuation" Episode (Maybe Continuation) where
+  getField r = r._continuation
+
+instance HasField "state" Episode EpisodeState where
+  getField r = r._state
+
+instance HasField "turns" Episode (Seq Turn) where
+  getField r = r._turns
+
+instance HasField "acceptedAppends" Episode Integer where
+  getField r = r._acceptedAppends
+
+instance HasField "settlement" Episode (Maybe EpisodeOutcome) where
+  getField r = r._settlement
+
+instance HasField "nextContinuation" Episode (Maybe Continuation) where
+  getField r = r._nextContinuation
 
 data EpisodeCancellation = EpisodeCancellation
   { episode :: Episode
@@ -589,12 +637,24 @@ episodeFromData raw = do
 
 -- | Durable related-work lineage across sequential Episodes and runtimes.
 data Thread = Thread
-  { id :: ThreadId
-  , state :: ThreadState
-  , episodes :: Seq Episode
-  , continuation :: Maybe Continuation
+  { _id :: ThreadId
+  , _state :: ThreadState
+  , _episodes :: Seq Episode
+  , _continuation :: Maybe Continuation
   }
   deriving stock (Eq, Show)
+
+instance HasField "id" Thread ThreadId where
+  getField r = r._id
+
+instance HasField "state" Thread ThreadState where
+  getField r = r._state
+
+instance HasField "episodes" Thread (Seq Episode) where
+  getField r = r._episodes
+
+instance HasField "continuation" Thread (Maybe Continuation) where
+  getField r = r._continuation
 
 data ThreadCancellation = ThreadCancellation
   { thread :: Thread

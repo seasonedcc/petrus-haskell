@@ -8,17 +8,6 @@
 module Petrus.Agenticus.Hands.Grants
   ( -- * Grants
     CapabilityGrant
-      ( attachmentId
-      , attachmentEpoch
-      , grantEpoch
-      , capabilities
-      , writablePaths
-      , allowedArgv
-      , deadline
-      , maxCalls
-      , writableRoots
-      , deniedWritableRoots
-      )
   , mkCapabilityGrant
   , permits
   , permitsWritePath
@@ -26,7 +15,7 @@ module Petrus.Agenticus.Hands.Grants
   , GrantSpec (..)
   , grantSpec
     -- * The ledger
-  , GrantLedger (attachmentId, attachmentEpoch)
+  , GrantLedger
   , newGrantLedger
   , currentGrant
   , openGrant
@@ -43,6 +32,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..), maxArgvPartChars, maxArgvParts, maxPathChars)
 import Petrus.Agenticus.Internal.Validate
@@ -50,18 +40,48 @@ import Petrus.Agenticus.Internal.Validate
 -- | One immutable, finite, deadline-bounded authority for one attachment
 -- epoch.
 data CapabilityGrant = CapabilityGrant
-  { attachmentId :: Text
-  , attachmentEpoch :: Integer
-  , grantEpoch :: Integer
-  , capabilities :: Set ToolMethod
-  , writablePaths :: Set Text
-  , allowedArgv :: Set [Text]
-  , deadline :: Double
-  , maxCalls :: Integer
-  , writableRoots :: Set Text
-  , deniedWritableRoots :: Set Text
+  { _attachmentId :: Text
+  , _attachmentEpoch :: Integer
+  , _grantEpoch :: Integer
+  , _capabilities :: Set ToolMethod
+  , _writablePaths :: Set Text
+  , _allowedArgv :: Set [Text]
+  , _deadline :: Double
+  , _maxCalls :: Integer
+  , _writableRoots :: Set Text
+  , _deniedWritableRoots :: Set Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "attachmentId" CapabilityGrant Text where
+  getField r = r._attachmentId
+
+instance HasField "attachmentEpoch" CapabilityGrant Integer where
+  getField r = r._attachmentEpoch
+
+instance HasField "grantEpoch" CapabilityGrant Integer where
+  getField r = r._grantEpoch
+
+instance HasField "capabilities" CapabilityGrant (Set ToolMethod) where
+  getField r = r._capabilities
+
+instance HasField "writablePaths" CapabilityGrant (Set Text) where
+  getField r = r._writablePaths
+
+instance HasField "allowedArgv" CapabilityGrant (Set [Text]) where
+  getField r = r._allowedArgv
+
+instance HasField "deadline" CapabilityGrant Double where
+  getField r = r._deadline
+
+instance HasField "maxCalls" CapabilityGrant Integer where
+  getField r = r._maxCalls
+
+instance HasField "writableRoots" CapabilityGrant (Set Text) where
+  getField r = r._writableRoots
+
+instance HasField "deniedWritableRoots" CapabilityGrant (Set Text) where
+  getField r = r._deniedWritableRoots
 
 identity :: Text -> Text -> Either AgenticusError Text
 identity name = checkedText maxTextBytes (valueError (name <> " must be a bounded non-empty identity string"))
@@ -127,16 +147,16 @@ mkCapabilityGrant attachment attachmentEpoch' grantEpoch' caps paths argv deadli
   ds <- traverse writableRoot denied
   Right
     CapabilityGrant
-      { attachmentId = a
-      , attachmentEpoch = ae
-      , grantEpoch = ge
-      , capabilities = Set.fromList caps
-      , writablePaths = Set.fromList ps
-      , allowedArgv = Set.fromList av
-      , deadline = deadline'
-      , maxCalls = mc
-      , writableRoots = Set.fromList rs
-      , deniedWritableRoots = Set.fromList ds
+      { _attachmentId = a
+      , _attachmentEpoch = ae
+      , _grantEpoch = ge
+      , _capabilities = Set.fromList caps
+      , _writablePaths = Set.fromList ps
+      , _allowedArgv = Set.fromList av
+      , _deadline = deadline'
+      , _maxCalls = mc
+      , _writableRoots = Set.fromList rs
+      , _deniedWritableRoots = Set.fromList ds
       }
 
 permits :: CapabilityGrant -> ToolMethod -> Bool
@@ -190,10 +210,19 @@ data LedgerState = LedgerState
 -- authority survives attachment replacement.  Every operation is one atomic
 -- update of a single reference (upstream's @RLock@).
 data GrantLedger = GrantLedger
-  { attachmentId :: Text
-  , attachmentEpoch :: Integer
-  , state :: IORef LedgerState
+  { _attachmentId :: Text
+  , _attachmentEpoch :: Integer
+  , _state :: IORef LedgerState
   }
+
+instance HasField "attachmentId" GrantLedger Text where
+  getField r = r._attachmentId
+
+instance HasField "attachmentEpoch" GrantLedger Integer where
+  getField r = r._attachmentEpoch
+
+instance HasField "state" GrantLedger (IORef LedgerState) where
+  getField r = r._state
 
 newGrantLedger :: Text -> Integer -> IO GrantLedger
 newGrantLedger attachment epoch = do

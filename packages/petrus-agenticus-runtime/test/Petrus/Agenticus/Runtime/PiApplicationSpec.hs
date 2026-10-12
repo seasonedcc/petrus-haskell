@@ -23,19 +23,17 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
-import Petrus.Agenticus.Attachment.Binding (AttachmentCoordinates (..), BindingSettlement (..), MotusAttachmentBinding, bindingExecution, motusBinding, openMotusBinding)
-import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment, episodeOptions, newEpisodeAttachment)
+import Petrus.Agenticus.Attachment.Binding (MotusAttachmentBinding, bindingExecution, motusBinding, openMotusBinding)
+import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment, episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
-import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorIdentity (..), DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
+import Petrus.Agenticus.Catalog.Descriptor (DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot, mkResolutionSnapshot, snapshotDescriptor)
 import Petrus.Agenticus.Connection.Custody (ConnectionStatus (..), ConnectionView (..), mkConnectionIdentity)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Conformance qualified as Conformance
 import Petrus.Agenticus.Hands.Contract
   ( RejectionCategory (..)
-  , ToolError (..)
   , ToolMethod (..)
-  , ToolResult (..)
   , mkToolError
   , mkToolResult
   , toolMethodText
@@ -44,11 +42,11 @@ import Petrus.Agenticus.Hands.Contract
   )
 import Petrus.Agenticus.Hands.Gateway (CallEvidence (..), GatewayCounters (..), HandsGateway, counters)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), closeGrant, grantSpec, openGrant)
+import Petrus.Agenticus.Hands.Grants (GrantSpec (..), closeGrant, grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
-import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ProgramOwnership (..))
+import Petrus.Agenticus.Program.Descriptor (ProgramOwnership (..))
 import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)
-import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..), runtimeProtocolError, runtimeProtocolErrorCode)
+import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup, runtimeProtocolError, runtimeProtocolErrorCode)
 import Petrus.Agenticus.Runtime.Pi (piApiKeyCatalog, piSdkSourceCommit)
 import Petrus.Agenticus.Runtime.Pi.Internal qualified as Pi
 import Petrus.Agenticus.Runtime.PiApplication.Internal
@@ -67,7 +65,7 @@ import Petrus.Agenticus.Runtime.PiSupport
   , withTemp
   )
 import Petrus.Agenticus.Runtime.Profiles (piApplicationA5E2b, piApplicationA5Gondolin)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationDescriptor, ContinuationState (..), continuationDescriptor, mkContinuation)
 import Petrus.Agenticus.Thread.Identity (mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))

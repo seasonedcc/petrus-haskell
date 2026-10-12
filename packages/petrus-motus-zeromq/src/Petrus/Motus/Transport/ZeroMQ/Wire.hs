@@ -59,7 +59,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Activity
 import Petrus.Json
-import Petrus.Motus.Dispatch (ActivityAttempt (..), AttemptFailure (..), activityAttempt)
+import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..), activityAttempt)
 import Petrus.Json.Python (decodeUtf8Python, pythonStrListRepr)
 import Petrus.Json.Python.Scanner qualified as Scanner
 import Petrus.Motus.PythonException (pythonException, pythonExceptionRepr)

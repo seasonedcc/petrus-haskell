@@ -33,10 +33,20 @@ The differential corpus pins both.
 3. **Wire integers are `Integer`.** They are unbounded, like Python `int`.
    Python's 4300-digit `int`-parsing limit is not reproduced.
 
-4. **Records hide their constructors.** Fields can be read with
-   `OverloadedRecordDot`, but the data constructor is not exported. Every
+4. **Validated records are read-only.** The type is exported without its
+   data constructor or fields. Its fields are named `_field` inside the
+   module, and a `HasField` instance reads each one, so `value.field`
+   works with `OverloadedRecordDot`. Neither construction nor record
+   update (`value {field = ...}`) can skip the smart constructor. Every
    value has passed its constructor's validation, which is what the
    reference's frozen dataclasses with `__post_init__` provide.
+   (`petrus-agenticus`'s `BoundariesSpec` checks that no agenticus module
+   exports such fields.)
+
+   Only transition outcomes keep exported fields:
+   `EpisodeCancellation`, `EpisodeSettlement`, `ThreadCancellation` and
+   `ThreadSettlement`. Each pairs an already validated value with a
+   disposition and has no invariant of its own.
 
    `RuntimeTerritoryProfile` goes further. Its archetype and descriptor
    live in a `Qualification` sum (`BindingCell archetype descriptor`,

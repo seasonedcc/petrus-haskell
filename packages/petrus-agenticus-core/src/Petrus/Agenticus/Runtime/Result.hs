@@ -3,18 +3,11 @@
 module Petrus.Agenticus.Runtime.Result
   ( safeTerminationCode
   , RuntimeTurnSettlement
-      ( episodeId
-      , turnId
-      , outcome
-      , acceptedAppends
-      , terminationCode
-      , outputReference
-      , continuationReference
-      )
   , mkRuntimeTurnSettlement
   ) where
 
 import Data.Text (Text)
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Shape
 import Petrus.Agenticus.Internal.Validate
@@ -40,15 +33,36 @@ safeTerminationCode value
 -- diagnostics remain behind the opaque references and profile-specific
 -- custody.  'Show' never renders the two references.
 data RuntimeTurnSettlement = RuntimeTurnSettlement
-  { episodeId :: EpisodeId
-  , turnId :: TurnId
-  , outcome :: TurnOutcome
-  , acceptedAppends :: Integer
-  , terminationCode :: Text
-  , outputReference :: Maybe Text
-  , continuationReference :: Maybe Text
+  { _episodeId :: EpisodeId
+  , _turnId :: TurnId
+  , _outcome :: TurnOutcome
+  , _acceptedAppends :: Integer
+  , _terminationCode :: Text
+  , _outputReference :: Maybe Text
+  , _continuationReference :: Maybe Text
   }
   deriving stock (Eq)
+
+instance HasField "episodeId" RuntimeTurnSettlement EpisodeId where
+  getField r = r._episodeId
+
+instance HasField "turnId" RuntimeTurnSettlement TurnId where
+  getField r = r._turnId
+
+instance HasField "outcome" RuntimeTurnSettlement TurnOutcome where
+  getField r = r._outcome
+
+instance HasField "acceptedAppends" RuntimeTurnSettlement Integer where
+  getField r = r._acceptedAppends
+
+instance HasField "terminationCode" RuntimeTurnSettlement Text where
+  getField r = r._terminationCode
+
+instance HasField "outputReference" RuntimeTurnSettlement (Maybe Text) where
+  getField r = r._outputReference
+
+instance HasField "continuationReference" RuntimeTurnSettlement (Maybe Text) where
+  getField r = r._continuationReference
 
 instance Show RuntimeTurnSettlement where
   showsPrec d r =

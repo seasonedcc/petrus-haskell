@@ -90,7 +90,7 @@ import GHC.Clock (getMonotonicTime)
 import Petrus.Agenticus.Attachment.Binding (MotusAttachmentBinding, bindingExecution, motusBinding, openMotusBinding)
 import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment, episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
-import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
+import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot, mkResolutionSnapshot)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
@@ -106,7 +106,7 @@ import Petrus.Agenticus.Connection.Key (KeyErasureEvidence, KeyOperations (..), 
 import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..), allToolMethods)
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), grantSpec, openGrant)
+import Petrus.Agenticus.Hands.Grants (GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
 import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)

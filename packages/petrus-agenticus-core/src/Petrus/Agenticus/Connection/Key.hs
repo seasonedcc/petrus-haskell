@@ -7,11 +7,11 @@
 -- place (the role upstream's @bytearray@ plays).
 module Petrus.Agenticus.Connection.Key
   ( -- * Context
-    KeyContext (connectionId, authorityEpoch, stateVersion)
+    KeyContext
   , mkKeyContext
   , authenticatedData
     -- * Erasure evidence
-  , KeyErasureEvidence (connectionId, erased)
+  , KeyErasureEvidence
   , mkKeyErasureEvidence
     -- * The host boundary
   , KeyOperations (..)
@@ -28,22 +28,32 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Foreign.Marshal.Utils (fillBytes)
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Error
 
 -- | Nonsecret authenticated context for one encrypted state version.
 data KeyContext = KeyContext
-  { connectionId :: Text
-  , authorityEpoch :: Integer
-  , stateVersion :: Integer
+  { _connectionId :: Text
+  , _authorityEpoch :: Integer
+  , _stateVersion :: Integer
   }
   deriving stock (Eq, Ord, Show)
+
+instance HasField "connectionId" KeyContext Text where
+  getField r = r._connectionId
+
+instance HasField "authorityEpoch" KeyContext Integer where
+  getField r = r._authorityEpoch
+
+instance HasField "stateVersion" KeyContext Integer where
+  getField r = r._stateVersion
 
 mkKeyContext :: Text -> Integer -> Integer -> Either AgenticusError KeyContext
 mkKeyContext connectionId authorityEpoch stateVersion
   | T.null connectionId = Left (valueError "key context connection identity must not be empty")
   | authorityEpoch <= 0 = Left (valueError "key context authority epoch must be a positive integer")
   | stateVersion <= 0 = Left (valueError "key context state version must be a positive integer")
-  | otherwise = Right KeyContext {connectionId, authorityEpoch, stateVersion}
+  | otherwise = Right KeyContext {_connectionId = connectionId, _authorityEpoch = authorityEpoch, _stateVersion = stateVersion}
 
 -- | @petrus-agenticus-connection/v1\\0{connection}\\0{epoch}\\0{version}@,
 -- UTF-8 encoded.
@@ -60,16 +70,22 @@ authenticatedData context =
 
 -- | Secret-free host evidence that a connection's decrypting key was erased.
 data KeyErasureEvidence = KeyErasureEvidence
-  { connectionId :: Text
-  , erased :: Bool
+  { _connectionId :: Text
+  , _erased :: Bool
   }
   deriving stock (Eq, Show)
+
+instance HasField "connectionId" KeyErasureEvidence Text where
+  getField r = r._connectionId
+
+instance HasField "erased" KeyErasureEvidence Bool where
+  getField r = r._erased
 
 mkKeyErasureEvidence :: Text -> Bool -> Either AgenticusError KeyErasureEvidence
 mkKeyErasureEvidence connectionId erased
   | T.null connectionId = Left (valueError "key erasure connection identity must not be empty")
   | not erased = Left (valueError "key erasure evidence must affirm completed erasure")
-  | otherwise = Right KeyErasureEvidence {connectionId, erased}
+  | otherwise = Right KeyErasureEvidence {_connectionId = connectionId, _erased = erased}
 
 -- | The pluggable host boundary that never hands key material to Agenticus.
 data KeyOperations = KeyOperations

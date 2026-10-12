@@ -7,10 +7,11 @@
 module Petrus.Agenticus.Program.Seam
   ( ProgramSteering
   , ProgramEvaluator
-  , ProgramSeams (descriptor, steering, evaluator)
+  , ProgramSeams
   , mkProgramSeams
   ) where
 
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Validate (require)
 import Petrus.Agenticus.Program.Descriptor
@@ -25,10 +26,19 @@ type ProgramEvaluator trace evaluation = EpisodeId -> trace -> IO evaluation
 -- | Concrete optional seams whose ownership is declared by the program: a
 -- seam is present exactly when the descriptor owns it.
 data ProgramSeams directive trace evaluation = ProgramSeams
-  { descriptor :: AgentProgramDescriptor
-  , steering :: Maybe (ProgramSteering directive)
-  , evaluator :: Maybe (ProgramEvaluator trace evaluation)
+  { _descriptor :: AgentProgramDescriptor
+  , _steering :: Maybe (ProgramSteering directive)
+  , _evaluator :: Maybe (ProgramEvaluator trace evaluation)
   }
+
+instance HasField "descriptor" (ProgramSeams directive trace evaluation) AgentProgramDescriptor where
+  getField r = r._descriptor
+
+instance HasField "steering" (ProgramSeams directive trace evaluation) (Maybe (ProgramSteering directive)) where
+  getField r = r._steering
+
+instance HasField "evaluator" (ProgramSeams directive trace evaluation) (Maybe (ProgramEvaluator trace evaluation)) where
+  getField r = r._evaluator
 
 mkProgramSeams
   :: AgentProgramDescriptor

@@ -7,21 +7,13 @@ module Petrus.Agenticus.Program.Descriptor
   , parseOwnership
   , allOwnerships
     -- * Continuation requirements
-  , ContinuationRequirement (identity, program)
+  , ContinuationRequirement
   , mkContinuationRequirement
   , continuationRequirement
   , continuationRequirementToData
   , continuationRequirementFromData
     -- * Descriptors
   , AgentProgramDescriptor
-      ( identity
-      , ownership
-      , acceptsFreshStart
-      , acceptedContinuations
-      , producedContinuation
-      , ownsSteering
-      , ownsEvaluation
-      )
   , mkAgentProgramDescriptor
   , agentProgramDescriptor
   , simpleProgram
@@ -32,6 +24,7 @@ module Petrus.Agenticus.Program.Descriptor
 import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Catalog.Descriptor
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Shape
@@ -64,10 +57,16 @@ allOwnerships = [minBound .. maxBound]
 -- | One exact Continuation identity and the program that produced it.
 -- Ordered like the @order=True@ dataclass: by identity, then program.
 data ContinuationRequirement = ContinuationRequirement
-  { identity :: DescriptorIdentity
-  , program :: DescriptorIdentity
+  { _identity :: DescriptorIdentity
+  , _program :: DescriptorIdentity
   }
   deriving stock (Eq, Ord, Show)
+
+instance HasField "identity" ContinuationRequirement DescriptorIdentity where
+  getField r = r._identity
+
+instance HasField "program" ContinuationRequirement DescriptorIdentity where
+  getField r = r._program
 
 mkContinuationRequirement :: DescriptorIdentity -> DescriptorIdentity -> Either AgenticusError ContinuationRequirement
 mkContinuationRequirement i p =
@@ -97,15 +96,36 @@ continuationRequirementFromData raw = do
 -- | Stable ownership and Continuation contract for one Agent Program.
 -- @acceptedContinuations@ is unique and sorted.
 data AgentProgramDescriptor = AgentProgramDescriptor
-  { identity :: DescriptorIdentity
-  , ownership :: ProgramOwnership
-  , acceptsFreshStart :: Bool
-  , acceptedContinuations :: [ContinuationRequirement]
-  , producedContinuation :: Maybe DescriptorIdentity
-  , ownsSteering :: Bool
-  , ownsEvaluation :: Bool
+  { _identity :: DescriptorIdentity
+  , _ownership :: ProgramOwnership
+  , _acceptsFreshStart :: Bool
+  , _acceptedContinuations :: [ContinuationRequirement]
+  , _producedContinuation :: Maybe DescriptorIdentity
+  , _ownsSteering :: Bool
+  , _ownsEvaluation :: Bool
   }
   deriving stock (Eq, Show)
+
+instance HasField "identity" AgentProgramDescriptor DescriptorIdentity where
+  getField r = r._identity
+
+instance HasField "ownership" AgentProgramDescriptor ProgramOwnership where
+  getField r = r._ownership
+
+instance HasField "acceptsFreshStart" AgentProgramDescriptor Bool where
+  getField r = r._acceptsFreshStart
+
+instance HasField "acceptedContinuations" AgentProgramDescriptor [ContinuationRequirement] where
+  getField r = r._acceptedContinuations
+
+instance HasField "producedContinuation" AgentProgramDescriptor (Maybe DescriptorIdentity) where
+  getField r = r._producedContinuation
+
+instance HasField "ownsSteering" AgentProgramDescriptor Bool where
+  getField r = r._ownsSteering
+
+instance HasField "ownsEvaluation" AgentProgramDescriptor Bool where
+  getField r = r._ownsEvaluation
 
 -- | @AgentProgramDescriptor(identity, ownership, accepts_fresh_start,
 -- accepted_continuations, produced_continuation, owns_steering,
@@ -125,13 +145,13 @@ mkAgentProgramDescriptor i o fresh accepted produced steering evaluation = do
   _ <- traverse (identityOfKind KindContinuation "produced_continuation") produced
   pure
     AgentProgramDescriptor
-      { identity = i
-      , ownership = o
-      , acceptsFreshStart = fresh
-      , acceptedContinuations = sort accepted
-      , producedContinuation = produced
-      , ownsSteering = steering
-      , ownsEvaluation = evaluation
+      { _identity = i
+      , _ownership = o
+      , _acceptsFreshStart = fresh
+      , _acceptedContinuations = sort accepted
+      , _producedContinuation = produced
+      , _ownsSteering = steering
+      , _ownsEvaluation = evaluation
       }
 
 -- | 'mkAgentProgramDescriptor' for literals known to be valid.

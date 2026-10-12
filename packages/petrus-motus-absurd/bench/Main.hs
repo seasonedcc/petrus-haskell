@@ -34,7 +34,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity (ActivityInvocation, ActivityInvocationFields (..), activityInvocation, defaultExecutionPolicy)
 import Petrus.Json (Json (..))
-import Petrus.Motus.Dispatch (ActivityAttempt (..))
 import Petrus.Motus.Dispatch.Absurd
   ( AbsurdDispatch
   , AbsurdDispatchOptions (..)

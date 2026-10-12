@@ -71,8 +71,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (POSIXTime)
 import GHC.Clock (getMonotonicTime)
-import Petrus.Agenticus.Attachment.Binding (BindingSettlement (..))
-import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment)
+import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement, EpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Connection.Custody
@@ -89,7 +88,7 @@ import Petrus.Agenticus.Connection.Custody
   , opaqueStateErased
   , revoke
   )
-import Petrus.Agenticus.Connection.Key (KeyContext (..), KeyOperations (..), authenticatedData, mkKeyErasureEvidence)
+import Petrus.Agenticus.Connection.Key (KeyContext, KeyOperations (..), authenticatedData, mkKeyErasureEvidence)
 import Petrus.Agenticus.Connection.Materialization (materializerRoot, newPrivateFileMaterializer)
 import Petrus.Agenticus.Connection.Storage (ConnectionStorage (..), StorageSnapshot (..), StoredLease (..), openSqliteConnectionStorage)
 import Petrus.Agenticus.Error

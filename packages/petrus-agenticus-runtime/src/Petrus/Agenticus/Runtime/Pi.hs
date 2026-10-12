@@ -44,7 +44,7 @@ module Petrus.Agenticus.Runtime.Pi
   , piE2bTerritory
   , piToolSchemas
     -- * Continuation payloads
-  , PiContinuationPayloadV1 (sessionId, workingDirectoryBinding, sessionJsonl)
+  , PiContinuationPayloadV1
   , mkPiContinuationPayloadV1
   , payloadSchemaVersion
   , PiContinuationOperations (..)

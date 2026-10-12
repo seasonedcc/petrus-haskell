@@ -29,8 +29,8 @@ import Petrus.Agenticus.Error
 import Petrus.Agenticus.Program.AgentNet
   ( LoopState
   , ModelResult
-  , ModelSettlement (..)
-  , Proposal (..)
+  , ModelSettlement
+  , Proposal
   , StopReason (..)
   , agentNet
   , agentNetOptions

@@ -66,7 +66,7 @@ import Petrus.Agenticus.Internal.Validate (checkedText)
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
   , RuntimeOperation (..)
-  , RuntimeOperationCleanup (..)
+  , RuntimeOperationCleanup
   , mkRuntimeOperationCleanup
   , runtimeProtocolError
   , runtimeProtocolErrorCode
@@ -82,7 +82,7 @@ import Petrus.Agenticus.Runtime.Pi
   , receiptPi
   , startPi
   )
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement, safeTerminationCode)
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement, mkRuntimeTurnSettlement, safeTerminationCode)
 import Petrus.Agenticus.Thread.Identity (EpisodeId, LifecycleId (..), TurnId, mkEpisodeId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), StrEnum (..), TurnOutcome (..), parseStrEnum)
 import System.Directory (createDirectoryIfMissing, doesPathExist)

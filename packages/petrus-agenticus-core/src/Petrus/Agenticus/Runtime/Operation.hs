@@ -4,7 +4,7 @@ module Petrus.Agenticus.Runtime.Operation
   ( -- * Cleanup evidence
     RuntimeCleanupDisposition (..)
   , cleanupDispositionText
-  , RuntimeOperationCleanup (operationId, disposition, code, physicalErasureGuaranteed)
+  , RuntimeOperationCleanup
   , mkRuntimeOperationCleanup
   , cleanupVerified
     -- * Protocol errors
@@ -16,6 +16,7 @@ module Petrus.Agenticus.Runtime.Operation
 
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Shape
 import Petrus.Agenticus.Internal.Validate
@@ -42,12 +43,24 @@ cleanupDispositionText = enumText
 
 -- | Secret-free local/runtime cleanup evidence for one operation handle.
 data RuntimeOperationCleanup = RuntimeOperationCleanup
-  { operationId :: Text
-  , disposition :: RuntimeCleanupDisposition
-  , code :: Text
-  , physicalErasureGuaranteed :: Bool
+  { _operationId :: Text
+  , _disposition :: RuntimeCleanupDisposition
+  , _code :: Text
+  , _physicalErasureGuaranteed :: Bool
   }
   deriving stock (Eq, Show)
+
+instance HasField "operationId" RuntimeOperationCleanup Text where
+  getField r = r._operationId
+
+instance HasField "disposition" RuntimeOperationCleanup RuntimeCleanupDisposition where
+  getField r = r._disposition
+
+instance HasField "code" RuntimeOperationCleanup Text where
+  getField r = r._code
+
+instance HasField "physicalErasureGuaranteed" RuntimeOperationCleanup Bool where
+  getField r = r._physicalErasureGuaranteed
 
 -- | @RuntimeOperationCleanup(operation_id, disposition, code,
 -- physical_erasure_guaranteed)@.

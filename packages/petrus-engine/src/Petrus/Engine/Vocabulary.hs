@@ -12,7 +12,7 @@
 --   @RuntimeError@ refusals, and a handler's failure.
 module Petrus.Engine.Vocabulary
   ( -- * Deliveries
-    Delivery (source, tokens, identity, scope)
+    Delivery
   , delivery
   , sameDelivery
     -- * Time and ingress
@@ -49,6 +49,7 @@ import Data.IORef
 import Data.List (find)
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Impetus.Instance
   ( DeliveryScope (..)
@@ -152,12 +153,24 @@ orThrowInstance door = door >>= either throwInstanceError pure
 -- | A sensor's parcel: one external delivery for a driver to accept before
 -- source projection. Only constructible through 'delivery'.
 data Delivery = Delivery
-  { source :: NetPath
-  , tokens :: [Token]
-  , identity :: Text
-  , scope :: Maybe DeliveryScope
+  { _source :: NetPath
+  , _tokens :: [Token]
+  , _identity :: Text
+  , _scope :: Maybe DeliveryScope
   }
   deriving stock (Eq, Show)
+
+instance HasField "source" Delivery NetPath where
+  getField r = r._source
+
+instance HasField "tokens" Delivery [Token] where
+  getField r = r._tokens
+
+instance HasField "identity" Delivery Text where
+  getField r = r._identity
+
+instance HasField "scope" Delivery (Maybe DeliveryScope) where
+  getField r = r._scope
 
 -- | Validate a parcel as @Delivery.__post_init__@ does: a non-empty
 -- identity and, for a bare scope name, a non-empty name without NUL. (The

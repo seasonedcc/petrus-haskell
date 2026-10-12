@@ -25,7 +25,7 @@ import Petrus.Activity hiding (invocation)
 import Petrus.TestSupport (valid)
 import Data.Map.Strict qualified as Map
 import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
-import Petrus.Motus.Dispatch (ActivityAttempt (..), ActivityOutcome (..), AttemptFailure (..), DispatchError (..), activityAttempt)
+import Petrus.Motus.Dispatch (ActivityOutcome (..), AttemptFailure (..), DispatchError (..), activityAttempt)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Transport.ZeroMQ
   ( ClientOptions (..)

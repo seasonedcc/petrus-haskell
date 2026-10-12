@@ -47,12 +47,12 @@ module Petrus.Motus.Dispatch
   , outcomeFailure
   , isCancellable
     -- * Recoverable cancellation
-  , CancellationInstruction (occurrence, invocation, historyPosition)
+  , CancellationInstruction
   , cancellationInstruction
   , CancellationDisposition (..)
   , dispositionText
     -- * Worker custody
-  , ActivityAttempt (attemptId, epoch, claimant, queue, invocation, latestDetails, instance')
+  , ActivityAttempt
   , activityAttempt
   , AttemptFailure (..)
   , WorkerDispatch (..)
@@ -65,6 +65,7 @@ import Control.Exception (Exception (..), SomeException, throwIO)
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Activity
 import Petrus.Json (Json)
 import Petrus.Json.Python.Exception (IsPythonException (..), pythonExceptionFromException, pythonExceptionToException, raised)
@@ -106,11 +107,20 @@ isCancellable d = isJust d.cancel
 -- | Recoverable fence for one exact logical invocation after canonical
 -- commit; only constructible through 'cancellationInstruction'.
 data CancellationInstruction = CancellationInstruction
-  { occurrence :: Int
-  , invocation :: ActivityInvocation
-  , historyPosition :: Int
+  { _occurrence :: Int
+  , _invocation :: ActivityInvocation
+  , _historyPosition :: Int
   }
   deriving stock (Eq, Show)
+
+instance HasField "occurrence" CancellationInstruction Int where
+  getField r = r._occurrence
+
+instance HasField "invocation" CancellationInstruction ActivityInvocation where
+  getField r = r._invocation
+
+instance HasField "historyPosition" CancellationInstruction Int where
+  getField r = r._historyPosition
 
 -- | Validate as @CancellationInstruction.__post_init__@ does.
 cancellationInstruction :: Int -> ActivityInvocation -> Int -> Either Text CancellationInstruction
@@ -143,15 +153,36 @@ dispositionText = \case
 -- | A detached, provider-neutral fenced claim on one Activity invocation;
 -- only constructible through 'activityAttempt'.
 data ActivityAttempt = ActivityAttempt
-  { attemptId :: Text
-  , epoch :: Text
-  , claimant :: Text
-  , queue :: Text
-  , invocation :: ActivityInvocation
-  , latestDetails :: Json
-  , instance' :: Maybe Text
+  { _attemptId :: Text
+  , _epoch :: Text
+  , _claimant :: Text
+  , _queue :: Text
+  , _invocation :: ActivityInvocation
+  , _latestDetails :: Json
+  , _instance' :: Maybe Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "attemptId" ActivityAttempt Text where
+  getField r = r._attemptId
+
+instance HasField "epoch" ActivityAttempt Text where
+  getField r = r._epoch
+
+instance HasField "claimant" ActivityAttempt Text where
+  getField r = r._claimant
+
+instance HasField "queue" ActivityAttempt Text where
+  getField r = r._queue
+
+instance HasField "invocation" ActivityAttempt ActivityInvocation where
+  getField r = r._invocation
+
+instance HasField "latestDetails" ActivityAttempt Json where
+  getField r = r._latestDetails
+
+instance HasField "instance'" ActivityAttempt (Maybe Text) where
+  getField r = r._instance'
 
 -- | Validate as @ActivityAttempt.__post_init__@ does: a present instance is
 -- non-empty, and the latest heartbeat details are snapshotted.

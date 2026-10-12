@@ -50,12 +50,12 @@ module Petrus.Agenticus.Program.AgentNet
   , parseTerminalCode
   , errorCategories
     -- * Proposals
-  , Proposal (id, method, params)
+  , Proposal
   , mkProposal
   , proposalToData
   , proposalFromData
     -- * Model results
-  , ModelResult (id, ok, payload, failure)
+  , ModelResult
   , mkModelResult
   , succeeded
   , failed
@@ -65,28 +65,28 @@ module Petrus.Agenticus.Program.AgentNet
   , modelResultFromData
   , modelResultFromModelData
     -- * Loop state
-  , LoopState (episodeId, turnId, phase, phaseLimit, toolCount, toolLimit, outputRef, continuationRef, grantEpoch, capabilities, results)
+  , LoopState
   , mkLoopState
   , loopStateToData
   , loopStateFromData
     -- * Model settlements
-  , ModelSettlement (state, stop, assistantDigest, outputRef, continuationRef, proposals)
+  , ModelSettlement
   , mkModelSettlement
   , modelSettlementToData
   , modelSettlementFromData
     -- * Tool work
-  , ToolWork (state, assistantDigest, proposals, index)
+  , ToolWork
   , mkToolWork
   , toolWorkProposal
   , toolWorkToData
   , toolWorkFromData
     -- * Hands settlements
-  , HandsSettlement (work, result)
+  , HandsSettlement
   , mkHandsSettlement
   , handsSettlementToData
   , handsSettlementFromData
     -- * Terminals
-  , Terminal (episodeId, turnId, code, phases, tools, outputRef, continuationRef)
+  , Terminal
   , mkTerminal
   , terminalToData
   , terminalFromData
@@ -119,6 +119,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Activity (defaultInvocationFields)
 import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorIdentity, DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Error
@@ -345,11 +346,20 @@ optional = maybe Null String
 -- | One model-proposed tool call: an identity unique within its model
 -- phase, a method, and a JSON object of parameters.
 data Proposal = Proposal
-  { id :: Text
-  , method :: Text
-  , params :: Json
+  { _id :: Text
+  , _method :: Text
+  , _params :: Json
   }
   deriving stock (Eq, Show)
+
+instance HasField "id" Proposal Text where
+  getField r = r._id
+
+instance HasField "method" Proposal Text where
+  getField r = r._method
+
+instance HasField "params" Proposal Json where
+  getField r = r._params
 
 -- | @Proposal(id, method, params)@.
 mkProposal :: Text -> Text -> Json -> Either AgenticusError Proposal
@@ -380,14 +390,26 @@ proposalFromData d = do
 -- exact @{"category", "detail"}@ error object (kept as given, so its key
 -- order survives a round trip).
 data ModelResult = ModelResult
-  { id :: Text
-  , ok :: Bool
-  , payload :: Json
+  { _id :: Text
+  , _ok :: Bool
+  , _payload :: Json
   -- ^ The object data when 'ok', otherwise @null@.
-  , failure :: Maybe Json
+  , _failure :: Maybe Json
   -- ^ The exact error object when not 'ok'.
   }
   deriving stock (Eq, Show)
+
+instance HasField "id" ModelResult Text where
+  getField r = r._id
+
+instance HasField "ok" ModelResult Bool where
+  getField r = r._ok
+
+instance HasField "payload" ModelResult Json where
+  getField r = r._payload
+
+instance HasField "failure" ModelResult (Maybe Json) where
+  getField r = r._failure
 
 -- | @ModelResult(id, ok, data, error)@ ('Nothing' is @None@).
 mkModelResult :: Text -> Bool -> Json -> Maybe Json -> Either AgenticusError ModelResult
@@ -462,20 +484,53 @@ modelResultFromModelData identity d = do
 
 -- | The loop's durable state between transitions.
 data LoopState = LoopState
-  { episodeId :: Text
-  , turnId :: Text
-  , phase :: Integer
-  , phaseLimit :: Integer
-  , toolCount :: Integer
-  , toolLimit :: Integer
-  , outputRef :: Maybe Text
-  , continuationRef :: Maybe Text
-  , grantEpoch :: Integer
-  , capabilities :: [Text]
+  { _episodeId :: Text
+  , _turnId :: Text
+  , _phase :: Integer
+  , _phaseLimit :: Integer
+  , _toolCount :: Integer
+  , _toolLimit :: Integer
+  , _outputRef :: Maybe Text
+  , _continuationRef :: Maybe Text
+  , _grantEpoch :: Integer
+  , _capabilities :: [Text]
   -- ^ Sorted and unique.
-  , results :: [ModelResult]
+  , _results :: [ModelResult]
   }
   deriving stock (Eq, Show)
+
+instance HasField "episodeId" LoopState Text where
+  getField r = r._episodeId
+
+instance HasField "turnId" LoopState Text where
+  getField r = r._turnId
+
+instance HasField "phase" LoopState Integer where
+  getField r = r._phase
+
+instance HasField "phaseLimit" LoopState Integer where
+  getField r = r._phaseLimit
+
+instance HasField "toolCount" LoopState Integer where
+  getField r = r._toolCount
+
+instance HasField "toolLimit" LoopState Integer where
+  getField r = r._toolLimit
+
+instance HasField "outputRef" LoopState (Maybe Text) where
+  getField r = r._outputRef
+
+instance HasField "continuationRef" LoopState (Maybe Text) where
+  getField r = r._continuationRef
+
+instance HasField "grantEpoch" LoopState Integer where
+  getField r = r._grantEpoch
+
+instance HasField "capabilities" LoopState [Text] where
+  getField r = r._capabilities
+
+instance HasField "results" LoopState [ModelResult] where
+  getField r = r._results
 
 -- | @LoopState(episode_id, turn_id, phase, phase_limit, tool_count,
 -- tool_limit, output_ref, continuation_ref, grant_epoch, capabilities,
@@ -578,14 +633,32 @@ rebuild s ph tc o c =
 -- assistant message digest, the new output and Continuation references,
 -- and the ordered proposals.
 data ModelSettlement = ModelSettlement
-  { state :: LoopState
-  , stop :: StopReason
-  , assistantDigest :: Text
-  , outputRef :: Text
-  , continuationRef :: Text
-  , proposals :: [Proposal]
+  { _state :: LoopState
+  , _stop :: StopReason
+  , _assistantDigest :: Text
+  , _outputRef :: Text
+  , _continuationRef :: Text
+  , _proposals :: [Proposal]
   }
   deriving stock (Eq, Show)
+
+instance HasField "state" ModelSettlement LoopState where
+  getField r = r._state
+
+instance HasField "stop" ModelSettlement StopReason where
+  getField r = r._stop
+
+instance HasField "assistantDigest" ModelSettlement Text where
+  getField r = r._assistantDigest
+
+instance HasField "outputRef" ModelSettlement Text where
+  getField r = r._outputRef
+
+instance HasField "continuationRef" ModelSettlement Text where
+  getField r = r._continuationRef
+
+instance HasField "proposals" ModelSettlement [Proposal] where
+  getField r = r._proposals
 
 mkModelSettlement :: LoopState -> StopReason -> Text -> Text -> Text -> [Proposal] -> Either AgenticusError ModelSettlement
 mkModelSettlement s r dg o c = modelSettlementFrom s r (String dg) (String o) (String c)
@@ -633,15 +706,30 @@ modelSettlementFromData d = do
 -- | One position in a proposal batch, with the state carrying exactly the
 -- results of the preceding proposals.
 data ToolWork = ToolWork
-  { state :: LoopState
-  , assistantDigest :: Text
-  , proposals :: [Proposal]
-  , index :: Int
-  , indexSpelling :: Json
+  { _state :: LoopState
+  , _assistantDigest :: Text
+  , _proposals :: [Proposal]
+  , _index :: Int
+  , _indexSpelling :: Json
   -- ^ The index as the wire spelled it: an integer, or a boolean the
   -- reference accepts as one (@0 <= True@) and writes back unchanged.
   }
   deriving stock (Eq, Show)
+
+instance HasField "state" ToolWork LoopState where
+  getField r = r._state
+
+instance HasField "assistantDigest" ToolWork Text where
+  getField r = r._assistantDigest
+
+instance HasField "proposals" ToolWork [Proposal] where
+  getField r = r._proposals
+
+instance HasField "index" ToolWork Int where
+  getField r = r._index
+
+instance HasField "indexSpelling" ToolWork Json where
+  getField r = r._indexSpelling
 
 mkToolWork :: LoopState -> Text -> [Proposal] -> Int -> Either AgenticusError ToolWork
 mkToolWork s dg ps i = toolWorkFrom s (String dg) ps (Int (toInteger i))
@@ -706,10 +794,16 @@ toolWorkFromData d = do
 -- HandsSettlement
 
 data HandsSettlement = HandsSettlement
-  { work :: ToolWork
-  , result :: ModelResult
+  { _work :: ToolWork
+  , _result :: ModelResult
   }
   deriving stock (Eq, Show)
+
+instance HasField "work" HandsSettlement ToolWork where
+  getField r = r._work
+
+instance HasField "result" HandsSettlement ModelResult where
+  getField r = r._result
 
 mkHandsSettlement :: ToolWork -> ModelResult -> Either AgenticusError HandsSettlement
 mkHandsSettlement w r
@@ -731,15 +825,36 @@ handsSettlementFromData d = do
 -- Terminal
 
 data Terminal = Terminal
-  { episodeId :: Text
-  , turnId :: Text
-  , code :: TerminalCode
-  , phases :: Integer
-  , tools :: Integer
-  , outputRef :: Text
-  , continuationRef :: Text
+  { _episodeId :: Text
+  , _turnId :: Text
+  , _code :: TerminalCode
+  , _phases :: Integer
+  , _tools :: Integer
+  , _outputRef :: Text
+  , _continuationRef :: Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "episodeId" Terminal Text where
+  getField r = r._episodeId
+
+instance HasField "turnId" Terminal Text where
+  getField r = r._turnId
+
+instance HasField "code" Terminal TerminalCode where
+  getField r = r._code
+
+instance HasField "phases" Terminal Integer where
+  getField r = r._phases
+
+instance HasField "tools" Terminal Integer where
+  getField r = r._tools
+
+instance HasField "outputRef" Terminal Text where
+  getField r = r._outputRef
+
+instance HasField "continuationRef" Terminal Text where
+  getField r = r._continuationRef
 
 mkTerminal :: Text -> Text -> TerminalCode -> Integer -> Integer -> Text -> Text -> Either AgenticusError Terminal
 mkTerminal e tu c ph tl o co = terminalFrom (String e) (String tu) c (Int ph) (Int tl) (String o) (String co)

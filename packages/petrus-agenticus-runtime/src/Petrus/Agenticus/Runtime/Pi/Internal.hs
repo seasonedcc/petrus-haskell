@@ -33,7 +33,7 @@ module Petrus.Agenticus.Runtime.Pi.Internal
   , piE2bTerritory
   , piToolSchemas
     -- * Continuation payloads
-  , PiContinuationPayloadV1 (sessionId, workingDirectoryBinding, sessionJsonl)
+  , PiContinuationPayloadV1
   , mkPiContinuationPayloadV1
   , payloadSchemaVersion
   , PiContinuationOperations (..)
@@ -155,11 +155,11 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import GHC.Clock (getMonotonicTime)
+import GHC.Records (HasField (..))
 import Numeric (showHex)
 import Paths_petrus_agenticus_runtime (getDataFileName)
 import Petrus.Agenticus.Attachment.Binding
   ( AttachmentBinding (..)
-  , AttachmentCoordinates (..)
   , bindingExecution
   , bindingLeaseIdentity
   , bindingProvider
@@ -167,8 +167,8 @@ import Petrus.Agenticus.Attachment.Binding
 import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Descriptor
-  ( CapabilityDescriptor (..)
-  , DescriptorIdentity (..)
+  ( CapabilityDescriptor
+  , DescriptorIdentity
   , DescriptorKind (..)
   , capabilityDescriptor
   , descriptorIdentity
@@ -177,7 +177,7 @@ import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
   , AttachmentFence (..)
-  , ConnectionIdentity (..)
+  , ConnectionIdentity
   , ConnectionStatus (..)
   , ConnectionView (..)
   , LeaseMode (..)
@@ -202,7 +202,7 @@ import Petrus.Agenticus.Hands.Contract
   )
 import Petrus.Agenticus.Hands.Gateway (HandsGateway, gatewayAttachmentEpoch, gatewayAttachmentId, gatewayEpisodeId)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant)
+import Petrus.Agenticus.Hands.Grants (currentGrant)
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Validate (checkedText, encodeRefusal, isBoundedText, sha256Hex, utf8Length)
@@ -219,7 +219,7 @@ import Petrus.Agenticus.Runtime.Internal.Lifecycle qualified as Lifecycle
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation
-  , RuntimeProbeResult (..)
+  , RuntimeProbeResult
   , mkInstalledComponent
   , mkProbeIssue
   , mkRuntimeInstallation
@@ -233,9 +233,9 @@ import Petrus.Agenticus.Runtime.Operation
   , runtimeProtocolErrorCode
   )
 import Petrus.Agenticus.Runtime.Profiles (piNativeA2Local, piNativeA4E2b, piNativeA4Gondolin)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement, mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation
-  ( Continuation (..)
+  ( Continuation
   , ContinuationDescriptor
   , ContinuationState (..)
   , continuationDescriptor
@@ -652,11 +652,20 @@ workingBinding = sha256Hex . TE.encodeUtf8 . T.pack
 
 -- | One opaque native Pi session revision. 'Show' renders no field.
 data PiContinuationPayloadV1 = PiContinuationPayloadV1
-  { sessionId :: Text
-  , workingDirectoryBinding :: Text
-  , sessionJsonl :: ByteString
+  { _sessionId :: Text
+  , _workingDirectoryBinding :: Text
+  , _sessionJsonl :: ByteString
   }
   deriving stock (Eq)
+
+instance HasField "sessionId" PiContinuationPayloadV1 Text where
+  getField r = r._sessionId
+
+instance HasField "workingDirectoryBinding" PiContinuationPayloadV1 Text where
+  getField r = r._workingDirectoryBinding
+
+instance HasField "sessionJsonl" PiContinuationPayloadV1 ByteString where
+  getField r = r._sessionJsonl
 
 instance Show PiContinuationPayloadV1 where
   show _ = "PiContinuationPayloadV1(schema_version=1)"

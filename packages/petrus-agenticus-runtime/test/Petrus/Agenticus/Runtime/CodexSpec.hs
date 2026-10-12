@@ -37,8 +37,6 @@ import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation, Execu
 import Petrus.Activity qualified as Activity
 import Petrus.Agenticus.Attachment.Binding
   ( AttachmentBinding (..)
-  , AttachmentCoordinates (..)
-  , BindingSettlement (..)
   , MotusAttachmentBinding
   , bindingCleanupResult
   , bindingLeaseIdentity
@@ -46,16 +44,15 @@ import Petrus.Agenticus.Attachment.Binding
   , openMotusBinding
   , withBindingOperation
   )
-import Petrus.Agenticus.Attachment.Episode (AttachmentRelease (..), AttachmentSettlement (..), EpisodeAttachment, episodeOptions, newEpisodeAttachment)
+import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment, episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
-import Petrus.Agenticus.Attachment.Retention (TerritoryCustodyPhase (..), TerritoryCustodyRecord (..), closeTerritoryCustody, lookupCustody, openTerritoryCustodyWith, reclaim, retire)
+import Petrus.Agenticus.Attachment.Retention (TerritoryCustodyPhase (..), closeTerritoryCustody, lookupCustody, openTerritoryCustodyWith, reclaim, retire)
 import Petrus.Agenticus.Attachment.Retention qualified as Retention
-import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorIdentity (..), DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
+import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot, mkResolutionSnapshot)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
   , AttachmentFence (..)
-  , ConnectionIdentity (..)
   , ConnectionStatus (..)
   , ConnectionView (..)
   , LeaseMode (..)
@@ -76,16 +73,16 @@ import Petrus.Agenticus.Connection.Storage (openSqliteConnectionStorage)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Sqlite qualified as Sql
 import Petrus.Agenticus.Internal.Validate (sha256Hex)
-import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ProgramOwnership (..))
+import Petrus.Agenticus.Program.Descriptor (ProgramOwnership (..))
 import Petrus.Agenticus.Runtime.Codex
 import Petrus.Agenticus.Runtime.CodexGondolin
 import Petrus.Agenticus.Runtime.Custody
-import Petrus.Agenticus.Runtime.Installation (InstalledComponent (..), ProbeDisposition (..), ProbeIssue (..), RuntimeInstallation (..), RuntimeProbeResult (..))
-import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..), cleanupVerified)
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..))
+import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), cleanupVerified)
 import Petrus.Agenticus.Runtime.PiSupport (aesKeys)
 import Petrus.Agenticus.Runtime.Profiles (codexA2Local, codexA3Gondolin)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
-import Petrus.Agenticus.Thread.Continuation (Continuation (..), ContinuationState (..), continuationToData, mkContinuation)
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement)
+import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationState (..), continuationToData, mkContinuation)
 import Petrus.Agenticus.Thread.Identity (LifecycleId (..), lifecycleIdToData, mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))

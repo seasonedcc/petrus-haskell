@@ -13,8 +13,8 @@ import Data.ByteString qualified as B
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Clock (getMonotonicTime)
-import Petrus.Agenticus.Attachment.Binding (BindingSettlement (..), MotusAttachmentBinding, motusBinding, openMotusBinding)
-import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment, episodeOptions, newEpisodeAttachment)
+import Petrus.Agenticus.Attachment.Binding (MotusAttachmentBinding, motusBinding, openMotusBinding)
+import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement, EpisodeAttachment, episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor)
 import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot, mkResolutionSnapshot)
@@ -22,11 +22,11 @@ import Petrus.Agenticus.Connection.Custody (ConnectionStatus (..), ConnectionVie
 import Petrus.Agenticus.Connection.Storage (ConnectionStorage (..))
 import Petrus.Agenticus.Runtime.Codex
 import Petrus.Agenticus.Runtime.Custody
-import Petrus.Agenticus.Runtime.Installation (InstalledComponent (..), ProbeDisposition (..), RuntimeInstallation (..), RuntimeProbeResult (..))
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..))
 import Petrus.Agenticus.Runtime.Live.Support
 import Petrus.Agenticus.Runtime.Operation (cleanupVerified)
 import Petrus.Agenticus.Runtime.Profiles (codexA2Local, codexA3Gondolin)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation (ContinuationState (..), mkContinuation)
 import Petrus.Agenticus.Thread.Identity (mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))

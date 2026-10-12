@@ -17,10 +17,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Program.AgentNet
-import Petrus.Agenticus.Catalog.Descriptor qualified as Catalog
-import Petrus.Agenticus.Program.Descriptor qualified as Program
 import Petrus.Agenticus.Program.Descriptor (ProgramOwnership (..))
-import Petrus.Agenticus.Thread.Continuation qualified as Continuation
 import Petrus.Agenticus.TestSupport
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (encodeLine)

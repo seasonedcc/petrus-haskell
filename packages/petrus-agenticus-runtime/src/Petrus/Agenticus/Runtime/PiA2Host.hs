@@ -18,15 +18,15 @@ module Petrus.Agenticus.Runtime.PiA2Host
     PiA2RuntimeHostConfig (..)
   , piA2RuntimeHostConfig
   , newPiA2RuntimeHostConfig
-  , PiA2RuntimePolicy (capabilities, writablePaths, maxToolCalls, writableRoots)
+  , PiA2RuntimePolicy
   , mkPiA2RuntimePolicy
   , PiA2RuntimeStart (..)
   , newPiA2RuntimeStart
   , piA2DurableFingerprint
-  , PiA2DirectAuthority (connection, keyOperations, supplyApiKey)
+  , PiA2DirectAuthority
   , mkPiA2DirectAuthority
     -- * Scripted conformance
-  , PiA2ScriptedCall (method, paramsJson, expectedOk)
+  , PiA2ScriptedCall
   , mkPiA2ScriptedCall
   , PiA2ScriptedTurn (..)
   , piA2ScriptedTurn

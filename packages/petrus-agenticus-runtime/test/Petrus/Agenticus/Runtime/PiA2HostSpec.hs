@@ -23,21 +23,19 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
-import Petrus.Agenticus.Attachment.Binding (AttachmentCoordinates (..))
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
-import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorIdentity (..))
 import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
 import Petrus.Agenticus.Connection.Custody (ConnectionIdentity, mkConnectionIdentity)
 import Petrus.Agenticus.Connection.Key (KeyOperations (..), ScrubbedBytes)
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Hands.Contract (ToolMethod (..), ToolResult (..), allToolMethods)
+import Petrus.Agenticus.Hands.Contract (ToolMethod (..), allToolMethods)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Internal.Validate (sha256Hex)
-import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeProbeResult (..))
-import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..), cleanupVerified, runtimeProtocolError, runtimeProtocolErrorCode)
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..))
+import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup, cleanupVerified, runtimeProtocolError, runtimeProtocolErrorCode)
 import Petrus.Agenticus.Runtime.Pi
   ( PiCandidate (..)
-  , PiContinuationPayloadV1 (..)
+  , PiContinuationPayloadV1
   , PiHelperArgs (..)
   , PiHelperClient (..)
   , PiHelperFactory (..)
@@ -50,7 +48,7 @@ import Petrus.Agenticus.Runtime.PiA2Host.Internal
 import Petrus.Agenticus.Runtime.PiRecovery (ledgerAdmit, ledgerClose, ledgerLookup, recordSettlement)
 import Petrus.Agenticus.Runtime.PiSupport (aesKeys, claimed, ok, raises, waitUntil, withTemp)
 import Petrus.Agenticus.Runtime.Profiles (piNativeA2Local)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement)
 import Petrus.Agenticus.Connection.Storage (ConnectionStorage (..))
 import Petrus.Agenticus.Thread.Continuation (Continuation)
 import Petrus.Agenticus.Thread.Identity (mkEpisodeId, mkTurnId)

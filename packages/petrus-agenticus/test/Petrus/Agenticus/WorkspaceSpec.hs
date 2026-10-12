@@ -13,7 +13,6 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Agenticus.Attachment.Binding
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Hands.Gateway (ShellOutcome (..), StagedWrite (..), TestOutcome (..))
 import Petrus.Agenticus.Hands.Workspace
 import Petrus.Agenticus.Hands.Workspace qualified as Workspace
 import Petrus.Agenticus.TestSupport

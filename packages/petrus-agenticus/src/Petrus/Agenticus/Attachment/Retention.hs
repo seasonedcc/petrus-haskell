@@ -12,7 +12,7 @@
 module Petrus.Agenticus.Attachment.Retention
   ( TerritoryCustodyPhase (..)
   , phaseText
-  , TerritoryCustodyRecord (..)
+  , TerritoryCustodyRecord
   , SqliteTerritoryCustody
   , custodyPath
   , openTerritoryCustody
@@ -45,6 +45,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Attachment.Binding
 import Petrus.Agenticus.Attachment.Episode
 import Petrus.Agenticus.Catalog.Descriptor (DescriptorKind (..))
@@ -100,21 +101,60 @@ parseCleanup value = lookup value [(cleanupDispositionText d, d) | d <- [minBoun
 -- | One durable custody row. Only the ledger builds these: every record
 -- comes out of the closed-state validation in 'decodeRow'.
 data TerritoryCustodyRecord = TerritoryCustodyRecord
-  { custodyId :: Text
-  , ownerId :: Text
-  , generation :: Integer
-  , phase :: TerritoryCustodyPhase
-  , source :: AttachmentCoordinates
-  , lease :: EnvironmentLease
-  , retainUntil :: Double
-  , archive :: Maybe ByteString
-  , archiveDigest :: Maybe Text
-  , targetEpisodeId :: Maybe Text
-  , targetAttachmentId :: Maybe Text
-  , targetEpoch :: Maybe Integer
-  , cleanup :: Maybe CleanupDisposition
+  { _custodyId :: Text
+  , _ownerId :: Text
+  , _generation :: Integer
+  , _phase :: TerritoryCustodyPhase
+  , _source :: AttachmentCoordinates
+  , _lease :: EnvironmentLease
+  , _retainUntil :: Double
+  , _archive :: Maybe ByteString
+  , _archiveDigest :: Maybe Text
+  , _targetEpisodeId :: Maybe Text
+  , _targetAttachmentId :: Maybe Text
+  , _targetEpoch :: Maybe Integer
+  , _cleanup :: Maybe CleanupDisposition
   }
   deriving stock (Eq, Show)
+
+instance HasField "custodyId" TerritoryCustodyRecord Text where
+  getField r = r._custodyId
+
+instance HasField "ownerId" TerritoryCustodyRecord Text where
+  getField r = r._ownerId
+
+instance HasField "generation" TerritoryCustodyRecord Integer where
+  getField r = r._generation
+
+instance HasField "phase" TerritoryCustodyRecord TerritoryCustodyPhase where
+  getField r = r._phase
+
+instance HasField "source" TerritoryCustodyRecord AttachmentCoordinates where
+  getField r = r._source
+
+instance HasField "lease" TerritoryCustodyRecord EnvironmentLease where
+  getField r = r._lease
+
+instance HasField "retainUntil" TerritoryCustodyRecord Double where
+  getField r = r._retainUntil
+
+instance HasField "archive" TerritoryCustodyRecord (Maybe ByteString) where
+  getField r = r._archive
+
+instance HasField "archiveDigest" TerritoryCustodyRecord (Maybe Text) where
+  getField r = r._archiveDigest
+
+instance HasField "targetEpisodeId" TerritoryCustodyRecord (Maybe Text) where
+  getField r = r._targetEpisodeId
+
+instance HasField "targetAttachmentId" TerritoryCustodyRecord (Maybe Text) where
+  getField r = r._targetAttachmentId
+
+instance HasField "targetEpoch" TerritoryCustodyRecord (Maybe Integer) where
+  getField r = r._targetEpoch
+
+instance HasField "cleanup" TerritoryCustodyRecord (Maybe CleanupDisposition) where
+  getField r = r._cleanup
 
 -- ---------------------------------------------------------------------------
 -- Validation (the reference's @_text@ / @_exact_int@ family)

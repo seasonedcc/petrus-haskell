@@ -27,10 +27,10 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
-import Petrus.Agenticus.Attachment.Binding (BindingSettlement (..), bindingExecution, motusBinding, openMotusBinding)
-import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment, episodeOptions, newEpisodeAttachment)
+import Petrus.Agenticus.Attachment.Binding (bindingExecution, motusBinding, openMotusBinding)
+import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment, episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
-import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorIdentity (..), DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
+import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot, mkResolutionSnapshot)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
@@ -45,17 +45,17 @@ import Petrus.Agenticus.Connection.Materialization (CleanupEvidence (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (allToolMethods)
 import Petrus.Agenticus.Hands.Gateway (GatewayCounters (..), counters)
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), grantSpec, openGrant)
+import Petrus.Agenticus.Hands.Grants (GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
-import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ProgramOwnership (..))
+import Petrus.Agenticus.Program.Descriptor (ProgramOwnership (..))
 import Petrus.Agenticus.Runtime.Claude
 import Petrus.Agenticus.Runtime.Custody
-import Petrus.Agenticus.Runtime.Installation (InstalledComponent (..), ProbeDisposition (..), RuntimeInstallation (..), RuntimeProbeResult (..), mkInstalledComponent, mkRuntimeInstallation)
-import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..), cleanupVerified)
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), mkInstalledComponent, mkRuntimeInstallation)
+import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), cleanupVerified)
 import Petrus.Agenticus.Runtime.PiSupport (Territory (..), newTerritory)
 import Petrus.Agenticus.Runtime.Profiles (claudeA2Local)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
-import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationDescriptor (..), ContinuationState (..), mkContinuation)
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement)
+import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationState (..), mkContinuation)
 import Petrus.Agenticus.Thread.Identity (mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))

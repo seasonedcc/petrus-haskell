@@ -7,18 +7,18 @@ module Petrus.Agenticus.Catalog.Descriptor
   , kindText
   , parseKind
     -- * Identities
-  , DescriptorIdentity (kind, name, contractVersion)
+  , DescriptorIdentity
   , mkDescriptorIdentity
   , descriptorIdentity
   , identityToData
   , identityFromData
     -- * Requirements
-  , CompatibilityRequirement (kind, name, contractVersion, capabilities)
+  , CompatibilityRequirement
   , mkCompatibilityRequirement
   , requirementToData
   , requirementFromData
     -- * Descriptors
-  , CapabilityDescriptor (identity, offers, requires)
+  , CapabilityDescriptor
   , mkCapabilityDescriptor
   , capabilityDescriptor
   , descriptorToData
@@ -33,6 +33,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Validate
 import Petrus.Json (Json (..))
@@ -93,11 +94,20 @@ textJson label = \case
 -- | Stable identity and contract version for one registered component.
 -- Ordered like the frozen dataclass: by kind value, name, then version.
 data DescriptorIdentity = DescriptorIdentity
-  { kind :: DescriptorKind
-  , name :: Text
-  , contractVersion :: Integer
+  { _kind :: DescriptorKind
+  , _name :: Text
+  , _contractVersion :: Integer
   }
   deriving stock (Eq, Ord, Show)
+
+instance HasField "kind" DescriptorIdentity DescriptorKind where
+  getField r = r._kind
+
+instance HasField "name" DescriptorIdentity Text where
+  getField r = r._name
+
+instance HasField "contractVersion" DescriptorIdentity Integer where
+  getField r = r._contractVersion
 
 mkDescriptorIdentity :: DescriptorKind -> Text -> Integer -> Either AgenticusError DescriptorIdentity
 mkDescriptorIdentity k n v =
@@ -145,12 +155,24 @@ capabilitiesJson label items = do
 
 -- | One exact-kind requirement with opaque capability keys.
 data CompatibilityRequirement = CompatibilityRequirement
-  { kind :: DescriptorKind
-  , name :: Maybe Text
-  , contractVersion :: Integer
-  , capabilities :: Set Text
+  { _kind :: DescriptorKind
+  , _name :: Maybe Text
+  , _contractVersion :: Integer
+  , _capabilities :: Set Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "kind" CompatibilityRequirement DescriptorKind where
+  getField r = r._kind
+
+instance HasField "name" CompatibilityRequirement (Maybe Text) where
+  getField r = r._name
+
+instance HasField "contractVersion" CompatibilityRequirement Integer where
+  getField r = r._contractVersion
+
+instance HasField "capabilities" CompatibilityRequirement (Set Text) where
+  getField r = r._capabilities
 
 mkCompatibilityRequirement
   :: DescriptorKind -> Maybe Text -> Integer -> [Text] -> Either AgenticusError CompatibilityRequirement
@@ -194,11 +216,20 @@ requirementKey r = (kindText r.kind, maybe "" id r.name, r.contractVersion, Set.
 -- | One registration envelope with opaque offers and typed requirements.
 -- @requires@ is stored in canonical order.
 data CapabilityDescriptor = CapabilityDescriptor
-  { identity :: DescriptorIdentity
-  , offers :: Set Text
-  , requires :: [CompatibilityRequirement]
+  { _identity :: DescriptorIdentity
+  , _offers :: Set Text
+  , _requires :: [CompatibilityRequirement]
   }
   deriving stock (Eq, Show)
+
+instance HasField "identity" CapabilityDescriptor DescriptorIdentity where
+  getField r = r._identity
+
+instance HasField "offers" CapabilityDescriptor (Set Text) where
+  getField r = r._offers
+
+instance HasField "requires" CapabilityDescriptor [CompatibilityRequirement] where
+  getField r = r._requires
 
 mkCapabilityDescriptor
   :: DescriptorIdentity -> [Text] -> [CompatibilityRequirement] -> Either AgenticusError CapabilityDescriptor

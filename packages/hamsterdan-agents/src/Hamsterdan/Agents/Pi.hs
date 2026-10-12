@@ -59,7 +59,7 @@ import Hamsterdan.Python.Text (utf8Length)
 import Hamsterdan.Python.Url qualified as Url
 import Hamsterdan.PyLiteral (PyValue (..), repr)
 import Petrus.Agenticus.Error (AgenticusError, ErrorClass (RuntimeProtocolError, TimeoutError), isInstanceOf)
-import Petrus.Agenticus.Runtime.Operation (RuntimeOperationCleanup (..), cleanupVerified)
+import Petrus.Agenticus.Runtime.Operation (RuntimeOperationCleanup, cleanupVerified)
 import Petrus.Agenticus.Runtime.PiA2Host
   ( PiA2RuntimeHost
   , PiA2RuntimePolicy
@@ -73,7 +73,7 @@ import Petrus.Agenticus.Runtime.PiA2Host
   , startHost
   , waitPiA2
   )
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Identity (literalEpisodeId, literalTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumpsText, parseJson, pythonJsonLoads)

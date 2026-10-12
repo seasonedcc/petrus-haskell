@@ -11,14 +11,14 @@ module Petrus.Agenticus.Catalog.Resolution
   , issueCodeText
     -- * Values
   , CatalogEntry (..)
-  , ResolutionRequest (selections)
+  , ResolutionRequest
   , mkResolutionRequest
-  , ResolutionSnapshot (catalogRevision, descriptors)
+  , ResolutionSnapshot
   , mkResolutionSnapshot
   , snapshotDescriptor
   , snapshotToData
   , snapshotFromData
-  , Resolution (request, results, snapshot)
+  , Resolution
   , resolutionCompatible
   , incompatibilities
     -- * Pure registry
@@ -48,6 +48,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Catalog.Descriptor
 import Petrus.Agenticus.Catalog.Result
 import Petrus.Agenticus.Error
@@ -89,8 +90,11 @@ identityKey i = (kindText i.kind, i.name, i.contractVersion)
 
 -- | Exact component selections for one prospective Episode: at most one per
 -- kind, always naming the runtime, stored in canonical order.
-newtype ResolutionRequest = ResolutionRequest {selections :: [DescriptorIdentity]}
+newtype ResolutionRequest = ResolutionRequest {_selections :: [DescriptorIdentity]}
   deriving stock (Eq, Show)
+
+instance HasField "selections" ResolutionRequest [DescriptorIdentity] where
+  getField r = r._selections
 
 mkResolutionRequest :: [DescriptorIdentity] -> Either AgenticusError ResolutionRequest
 mkResolutionRequest picks
@@ -106,10 +110,16 @@ mkResolutionRequest picks
 
 -- | The immutable, portable descriptor plan captured for one resolved Episode.
 data ResolutionSnapshot = ResolutionSnapshot
-  { catalogRevision :: Integer
-  , descriptors :: [CapabilityDescriptor]
+  { _catalogRevision :: Integer
+  , _descriptors :: [CapabilityDescriptor]
   }
   deriving stock (Eq, Show)
+
+instance HasField "catalogRevision" ResolutionSnapshot Integer where
+  getField r = r._catalogRevision
+
+instance HasField "descriptors" ResolutionSnapshot [CapabilityDescriptor] where
+  getField r = r._descriptors
 
 mkResolutionSnapshot :: Integer -> [CapabilityDescriptor] -> Either AgenticusError ResolutionSnapshot
 mkResolutionSnapshot revision ds
@@ -159,11 +169,20 @@ snapshotFromData raw = do
 -- | One deterministic plan or its complete candidate-local incompatibilities.
 -- The snapshot exists exactly when every candidate is compatible.
 data Resolution = Resolution
-  { request :: ResolutionRequest
-  , results :: [CompatibilityResult]
-  , snapshot :: Maybe ResolutionSnapshot
+  { _request :: ResolutionRequest
+  , _results :: [CompatibilityResult]
+  , _snapshot :: Maybe ResolutionSnapshot
   }
   deriving stock (Eq, Show)
+
+instance HasField "request" Resolution ResolutionRequest where
+  getField r = r._request
+
+instance HasField "results" Resolution [CompatibilityResult] where
+  getField r = r._results
+
+instance HasField "snapshot" Resolution (Maybe ResolutionSnapshot) where
+  getField r = r._snapshot
 
 resolutionCompatible :: Resolution -> Bool
 resolutionCompatible r = r.snapshot /= Nothing

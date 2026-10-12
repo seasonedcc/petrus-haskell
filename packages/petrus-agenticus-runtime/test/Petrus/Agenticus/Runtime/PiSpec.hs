@@ -16,13 +16,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
-import Petrus.Agenticus.Attachment.Binding (BindingSettlement (..))
-import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment, episodeDeadline)
+import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment, episodeDeadline)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
-import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorIdentity (..), DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
+import Petrus.Agenticus.Catalog.Descriptor (DescriptorKind (..), capabilityDescriptor, descriptorIdentity)
 import Petrus.Agenticus.Connection.Custody
   ( AttachmentFence (..)
-  , ConnectionIdentity (..)
+  , ConnectionIdentity
   , ConnectionStatus (..)
   , ConnectionView (..)
   , LeaseMode (..)
@@ -43,15 +42,15 @@ import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (RejectionCategory (..), ToolMethod (..), allToolMethods, toolMethodText, toolResultToData)
 import Petrus.Agenticus.Hands.Gateway (CallEvidence (..), GatewayCounters (..), counters, evidence, gatewayAttachmentId)
 import Petrus.Agenticus.Hands.Grants (closeGrant, grantSpec, openGrant)
-import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ProgramOwnership (..))
+import Petrus.Agenticus.Program.Descriptor (ProgramOwnership (..))
 import Petrus.Agenticus.Runtime.Custody (HostMaterialization (..))
 import Petrus.Motus.Execution.Spawn (spawnPiped)
-import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperation (..), RuntimeOperationCleanup (..), cleanupVerified)
+import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperation (..), RuntimeOperationCleanup, cleanupVerified)
 import Petrus.Agenticus.Runtime.Pi.Internal
 import Petrus.Agenticus.Runtime.PiRecovery
 import Petrus.Agenticus.Runtime.PiSupport
 import Petrus.Agenticus.Runtime.Profiles (piNativeA2Local, piNativeA4E2b, piNativeA4Gondolin)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J

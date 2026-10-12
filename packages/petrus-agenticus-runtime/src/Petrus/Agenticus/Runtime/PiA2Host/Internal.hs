@@ -8,15 +8,15 @@ module Petrus.Agenticus.Runtime.PiA2Host.Internal
     PiA2RuntimeHostConfig (..)
   , piA2RuntimeHostConfig
   , newPiA2RuntimeHostConfig
-  , PiA2RuntimePolicy (capabilities, writablePaths, maxToolCalls, writableRoots)
+  , PiA2RuntimePolicy
   , mkPiA2RuntimePolicy
   , PiA2RuntimeStart (..)
   , newPiA2RuntimeStart
   , piA2DurableFingerprint
-  , PiA2DirectAuthority (connection, keyOperations, supplyApiKey)
+  , PiA2DirectAuthority
   , mkPiA2DirectAuthority
     -- * Scripted conformance
-  , PiA2ScriptedCall (method, paramsJson, expectedOk)
+  , PiA2ScriptedCall
   , mkPiA2ScriptedCall
   , PiA2ScriptedTurn (..)
   , piA2ScriptedTurn
@@ -104,11 +104,12 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Unique (Unique, newUnique)
 import GHC.Clock (getMonotonicTime)
-import Petrus.Agenticus.Attachment.Binding (AttachmentCoordinates (..), BindingSettlement (..), bindingExecution, motusBinding, openMotusBinding)
-import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment, EpisodeOptions (..), newEpisodeAttachment)
+import GHC.Records (HasField (..))
+import Petrus.Agenticus.Attachment.Binding (bindingExecution, motusBinding, openMotusBinding)
+import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement, EpisodeAttachment, EpisodeOptions (..), newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Descriptor
-  ( CapabilityDescriptor (..)
+  ( CapabilityDescriptor
   , DescriptorKind (..)
   , capabilityDescriptor
   , descriptorIdentity
@@ -116,7 +117,7 @@ import Petrus.Agenticus.Catalog.Descriptor
 import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot, mkResolutionSnapshot)
 import Petrus.Agenticus.Connection.Custody
   ( AgentConnectionCustody
-  , ConnectionIdentity (..)
+  , ConnectionIdentity
   , ConnectionStatus (..)
   , ConnectionView (..)
   , ErasureResult (..)
@@ -134,24 +135,24 @@ import Petrus.Agenticus.Connection.Custody
   , rotate
   )
 import Petrus.Agenticus.Connection.Custody qualified as Custody
-import Petrus.Agenticus.Connection.Key (KeyErasureEvidence (..), KeyOperations, ScrubbedBytes, eraseBuffer)
+import Petrus.Agenticus.Connection.Key (KeyOperations, ScrubbedBytes, eraseBuffer)
 import Petrus.Agenticus.Connection.Materialization (CleanupSummary (..), newPrivateFileMaterializer)
 import Petrus.Agenticus.Connection.Storage (ConnectionStorage (..), StorageSnapshot (..), StoredConnection (..), openSqliteConnectionStorage)
 import Petrus.Agenticus.Error
-import Petrus.Agenticus.Hands.Contract (ToolMethod (..), ToolResult (..), toolMethodText)
+import Petrus.Agenticus.Hands.Contract (ToolMethod (..), toolMethodText)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), mkCapabilityGrant, openGrant)
+import Petrus.Agenticus.Hands.Grants (GrantSpec (..), mkCapabilityGrant, openGrant)
 import Petrus.Agenticus.Hands.Workspace (newMotusWorkspaceAdapter, stageDirectory, workspaceHandsAdapter)
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Sqlite
 import Petrus.Agenticus.Internal.Validate (sha256Hex, utf8Length)
 import Petrus.Agenticus.Runtime.Custody
 import Petrus.Agenticus.Runtime.Internal.Process (micros)
-import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeInstallation (..), RuntimeProbeResult (..))
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeProbeResult)
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
   , RuntimeOperation (..)
-  , RuntimeOperationCleanup (..)
+  , RuntimeOperationCleanup
   , cleanupVerified
   , mkRuntimeOperationCleanup
   , runtimeProtocolError
@@ -160,7 +161,7 @@ import Petrus.Agenticus.Runtime.Operation
 import Petrus.Agenticus.Runtime.Pi.Internal
   ( PiCandidate (..)
   , PiContinuationOperations (..)
-  , PiContinuationPayloadV1 (sessionId, sessionJsonl, workingDirectoryBinding)
+  , PiContinuationPayloadV1
   , PiHelperArgs (..)
   , PiHelperClient (..)
   , PiHelperFactory (..)
@@ -207,8 +208,8 @@ import Petrus.Agenticus.Runtime.PiRecovery
   , recordSettlement
   )
 import Petrus.Agenticus.Runtime.Profiles (piNativeA2Local)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
-import Petrus.Agenticus.Thread.Continuation (Continuation (..), ContinuationState (..))
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement, mkRuntimeTurnSettlement)
+import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationState (..))
 import Petrus.Agenticus.Thread.Identity (EpisodeId, TurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))
@@ -463,12 +464,24 @@ newPiA2RuntimeHostConfig c = do
 -- | @PiA2RuntimePolicy@: one operation's exact attachment-scoped Hands
 -- authority. Built only through 'mkPiA2RuntimePolicy'.
 data PiA2RuntimePolicy = PiA2RuntimePolicy
-  { capabilities :: Set ToolMethod
-  , writablePaths :: Set Text
-  , maxToolCalls :: Int
-  , writableRoots :: Set Text
+  { _capabilities :: Set ToolMethod
+  , _writablePaths :: Set Text
+  , _maxToolCalls :: Int
+  , _writableRoots :: Set Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "capabilities" PiA2RuntimePolicy (Set ToolMethod) where
+  getField r = r._capabilities
+
+instance HasField "writablePaths" PiA2RuntimePolicy (Set Text) where
+  getField r = r._writablePaths
+
+instance HasField "maxToolCalls" PiA2RuntimePolicy Int where
+  getField r = r._maxToolCalls
+
+instance HasField "writableRoots" PiA2RuntimePolicy (Set Text) where
+  getField r = r._writableRoots
 
 -- | @PiA2RuntimePolicy(capabilities, writable_paths, max_tool_calls,
 -- writable_roots)@.
@@ -484,10 +497,10 @@ mkPiA2RuntimePolicy caps paths maxCalls roots = do
     Left (valueError "Pi A2 writable policy must exclude workspace control roots")
   pure
     PiA2RuntimePolicy
-      { capabilities = Set.fromList caps
-      , writablePaths = normalized.writablePaths
-      , maxToolCalls = maxCalls
-      , writableRoots = normalized.writableRoots
+      { _capabilities = Set.fromList caps
+      , _writablePaths = normalized.writablePaths
+      , _maxToolCalls = maxCalls
+      , _writableRoots = normalized.writableRoots
       }
 
 -- | @PiA2RuntimeStart@: stable work identity, exact workspace, and bounded
@@ -569,26 +582,44 @@ piA2DurableFingerprint config start inner = do
 -- most once per composer. The supplier returns an erasable buffer, which the
 -- host zeroes after copying it into custody.
 data PiA2DirectAuthority = PiA2DirectAuthority
-  { connection :: ConnectionIdentity
-  , keyOperations :: KeyOperations
-  , supplyApiKey :: IO ScrubbedBytes
+  { _connection :: ConnectionIdentity
+  , _keyOperations :: KeyOperations
+  , _supplyApiKey :: IO ScrubbedBytes
   }
+
+instance HasField "connection" PiA2DirectAuthority ConnectionIdentity where
+  getField r = r._connection
+
+instance HasField "keyOperations" PiA2DirectAuthority KeyOperations where
+  getField r = r._keyOperations
+
+instance HasField "supplyApiKey" PiA2DirectAuthority (IO ScrubbedBytes) where
+  getField r = r._supplyApiKey
 
 mkPiA2DirectAuthority :: ConnectionIdentity -> KeyOperations -> IO ScrubbedBytes -> Either AgenticusError PiA2DirectAuthority
 mkPiA2DirectAuthority connection keyOperations supplyApiKey
   | connection.profile /= "api-key" = Left (valueError "Pi A2 authority requires a direct API-key ConnectionIdentity")
-  | otherwise = Right PiA2DirectAuthority {connection, keyOperations, supplyApiKey}
+  | otherwise = Right PiA2DirectAuthority {_connection = connection, _keyOperations = keyOperations, _supplyApiKey = supplyApiKey}
 
 -- ---------------------------------------------------------------------------
 -- Scripted conformance
 
 -- | @PiA2ScriptedCall@: one finite Hands request in a scripted turn.
 data PiA2ScriptedCall = PiA2ScriptedCall
-  { method :: ToolMethod
-  , paramsJson :: Text
-  , expectedOk :: Bool
+  { _method :: ToolMethod
+  , _paramsJson :: Text
+  , _expectedOk :: Bool
   }
   deriving stock (Eq, Show)
+
+instance HasField "method" PiA2ScriptedCall ToolMethod where
+  getField r = r._method
+
+instance HasField "paramsJson" PiA2ScriptedCall Text where
+  getField r = r._paramsJson
+
+instance HasField "expectedOk" PiA2ScriptedCall Bool where
+  getField r = r._expectedOk
 
 parseParams :: Text -> Either () Json
 parseParams = either (const (Left ())) Right . J.parseJson J.surrogateRefusingLoads . TE.encodeUtf8
@@ -597,7 +628,7 @@ mkPiA2ScriptedCall :: ToolMethod -> Text -> Bool -> Either AgenticusError PiA2Sc
 mkPiA2ScriptedCall method paramsJson expectedOk = do
   params <- either (const (Left (valueError "scripted Pi call params must be JSON"))) Right (parseParams paramsJson)
   case params of
-    Object _ | utf8Length paramsJson <= 8192 -> Right PiA2ScriptedCall {method, paramsJson, expectedOk}
+    Object _ | utf8Length paramsJson <= 8192 -> Right PiA2ScriptedCall {_method = method, _paramsJson = paramsJson, _expectedOk = expectedOk}
     _ -> Left (valueError "scripted Pi call params must be a bounded JSON object")
 
 -- | @PiA2ScriptedTurn@: finite data interpreted by Petrus's credential-free

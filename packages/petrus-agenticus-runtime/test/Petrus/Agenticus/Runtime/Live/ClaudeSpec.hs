@@ -12,23 +12,22 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Clock (getMonotonicTime)
-import Petrus.Agenticus.Attachment.Binding (BindingSettlement (..), bindingExecution, motusBinding, openMotusBinding)
-import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment, episodeDeadline, episodeOptions, newEpisodeAttachment)
+import Petrus.Agenticus.Attachment.Binding (bindingExecution, motusBinding, openMotusBinding)
+import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment, episodeDeadline, episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot, mkResolutionSnapshot)
 import Petrus.Agenticus.Connection.Custody (ConnectionStatus (..), ConnectionView (..), RevocationResult (..), ErasureResult (..), erase, lookupConnection, mkConnectionIdentity, revoke)
 import Petrus.Agenticus.Connection.Storage (ConnectionStorage (..))
 import Petrus.Agenticus.Hands.Contract (allToolMethods)
 import Petrus.Agenticus.Hands.Gateway (GatewayCounters (..), HandsGateway, counters)
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), grantSpec, openGrant)
+import Petrus.Agenticus.Hands.Grants (CapabilityGrant, GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
 import Petrus.Agenticus.Runtime.Claude
 import Petrus.Agenticus.Runtime.Custody
-import Petrus.Agenticus.Runtime.Installation (InstalledComponent (..), ProbeDisposition (..), RuntimeInstallation (..), RuntimeProbeResult (..))
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..))
 import Petrus.Agenticus.Runtime.Live.Support
 import Petrus.Agenticus.Runtime.Operation (cleanupVerified)
 import Petrus.Agenticus.Runtime.Profiles (claudeA2Local)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Continuation (ContinuationState (..), mkContinuation)
 import Petrus.Agenticus.Thread.Identity (EpisodeId, mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (TurnOutcome (..))

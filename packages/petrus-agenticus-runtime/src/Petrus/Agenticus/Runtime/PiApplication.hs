@@ -31,9 +31,9 @@ module Petrus.Agenticus.Runtime.PiApplication
   , piApplicationHands
     -- * Payloads
   , applicationTranscript
-  , PiApplicationContinuationPayloadV1 (workingDirectoryBinding, transcriptJson)
+  , PiApplicationContinuationPayloadV1
   , mkPiApplicationContinuationPayloadV1
-  , PiApplicationStepPayloadV1 (profile, results, finalText)
+  , PiApplicationStepPayloadV1
   , mkPiApplicationStepPayloadV1
   , applicationPayloadSchemaVersion
   , PiApplicationContinuationOperations (..)

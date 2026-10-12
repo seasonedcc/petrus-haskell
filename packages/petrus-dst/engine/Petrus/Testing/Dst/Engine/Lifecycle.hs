@@ -56,7 +56,7 @@ import Petrus.Impetus.Instance (DeliveryScope (..), FiringOutcome (..))
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.Scope (scopeGeneration, scopeName)
 import Petrus.Json (Json (..))
-import Petrus.Motus.Dispatch (CancellationInstruction (..), Dispatch (..), dispositionText)
+import Petrus.Motus.Dispatch (CancellationInstruction, Dispatch (..), dispositionText)
 import Petrus.Motus.Dispatch.InMemory (InMemoryDispatch, completeOccurrence, inMemoryDispatch, newInMemoryDispatch, pending)
 import Petrus.Testing.Dst hiding (dispositionText)
 import Petrus.Testing.Dst.Engine.Bridge (Bridged (..), withBridge)

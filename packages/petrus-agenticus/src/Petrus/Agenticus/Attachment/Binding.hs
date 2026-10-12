@@ -17,10 +17,10 @@
 module Petrus.Agenticus.Attachment.Binding
   ( motusBindingKind
     -- * Coordinates
-  , AttachmentCoordinates (episodeId, attachmentId, attachmentEpoch)
+  , AttachmentCoordinates
   , mkAttachmentCoordinates
     -- * Settlement evidence
-  , BindingSettlement (bindingKind, disposition, verified, detail)
+  , BindingSettlement
   , mkBindingSettlement
   , validBindingKind
     -- * The binding protocol
@@ -55,6 +55,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Validate (isTrimmed, utf8Length)
@@ -107,11 +108,20 @@ validBindingKind value = case T.uncons value of
 -- | The exact current coordinates an Effect fence construction needs:
 -- identity only.
 data AttachmentCoordinates = AttachmentCoordinates
-  { episodeId :: Text
-  , attachmentId :: Text
-  , attachmentEpoch :: Integer
+  { _episodeId :: Text
+  , _attachmentId :: Text
+  , _attachmentEpoch :: Integer
   }
   deriving stock (Eq, Ord, Show)
+
+instance HasField "episodeId" AttachmentCoordinates Text where
+  getField r = r._episodeId
+
+instance HasField "attachmentId" AttachmentCoordinates Text where
+  getField r = r._attachmentId
+
+instance HasField "attachmentEpoch" AttachmentCoordinates Integer where
+  getField r = r._attachmentEpoch
 
 mkAttachmentCoordinates :: Text -> Text -> Integer -> Either AgenticusError AttachmentCoordinates
 mkAttachmentCoordinates episode attachment epoch = do
@@ -126,12 +136,24 @@ mkAttachmentCoordinates episode attachment epoch = do
 -- | Independently consumable, fail-closed settlement evidence of one
 -- binding. 'verified' is the only gate an Episode Attachment trusts.
 data BindingSettlement = BindingSettlement
-  { bindingKind :: Text
-  , disposition :: Text
-  , verified :: Bool
-  , detail :: Text
+  { _bindingKind :: Text
+  , _disposition :: Text
+  , _verified :: Bool
+  , _detail :: Text
   }
   deriving stock (Eq)
+
+instance HasField "bindingKind" BindingSettlement Text where
+  getField r = r._bindingKind
+
+instance HasField "disposition" BindingSettlement Text where
+  getField r = r._disposition
+
+instance HasField "verified" BindingSettlement Bool where
+  getField r = r._verified
+
+instance HasField "detail" BindingSettlement Text where
+  getField r = r._detail
 
 -- | The detail is secret-safe but host-only: it is left out of 'Show' as
 -- the reference leaves it out of @repr@.

@@ -122,7 +122,7 @@ import Petrus.Impetus.Petrinet (Binding (..), NetPath, Token (..), netPathText, 
 import Petrus.Impetus.Petrinet.Schema (netPath)
 import Petrus.Impetus.Selection (SelectionPolicy (..), defaultPipeline)
 import Petrus.Json (Json (..))
-import Petrus.Motus.Dispatch (CancellationInstruction (..), Dispatch (..))
+import Petrus.Motus.Dispatch (Dispatch (..))
 import Petrus.Motus.Dispatch.Inline (Activity, inlineDispatch, newInlineDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Worker (Worker, WorkerOptions (..), closeWorker, defaultWorkerOptions, newWorker, runAvailable, stopWorker)

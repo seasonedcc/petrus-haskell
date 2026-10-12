@@ -18,9 +18,9 @@ module Petrus.Agenticus.Runtime.PiApplication.Internal
   , piApplicationHands
     -- * Payloads
   , applicationTranscript
-  , PiApplicationContinuationPayloadV1 (workingDirectoryBinding, transcriptJson)
+  , PiApplicationContinuationPayloadV1
   , mkPiApplicationContinuationPayloadV1
-  , PiApplicationStepPayloadV1 (profile, results, finalText)
+  , PiApplicationStepPayloadV1
   , mkPiApplicationStepPayloadV1
   , applicationPayloadSchemaVersion
   , PiApplicationContinuationOperations (..)
@@ -103,13 +103,14 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
+import GHC.Records (HasField (..))
 import Paths_petrus_agenticus_runtime (getDataFileName)
-import Petrus.Agenticus.Attachment.Binding (AttachmentBinding (..), AttachmentCoordinates (..), bindingExecution, bindingLeaseIdentity, bindingProvider)
+import Petrus.Agenticus.Attachment.Binding (AttachmentBinding (..), bindingExecution, bindingLeaseIdentity, bindingProvider)
 import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Descriptor
-  ( CapabilityDescriptor (..)
-  , DescriptorIdentity (..)
+  ( CapabilityDescriptor
+  , DescriptorIdentity
   , DescriptorKind (..)
   , capabilityDescriptor
   , descriptorIdentity
@@ -118,7 +119,6 @@ import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
   , AttachmentFence (..)
-  , ConnectionIdentity (..)
   , ConnectionStatus (..)
   , ConnectionView (..)
   , LeaseMode (..)
@@ -138,7 +138,7 @@ import Petrus.Agenticus.Hands.Contract
   )
 import Petrus.Agenticus.Hands.Gateway (HandsGateway, gatewayAttachmentEpoch, gatewayAttachmentId, gatewayEpisodeId)
 import Petrus.Agenticus.Hands.Gateway qualified as Gateway
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), currentGrant, permits)
+import Petrus.Agenticus.Hands.Grants (currentGrant, permits)
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Validate (encodeRefusal, sha256Hex, utf8Length)
@@ -148,7 +148,7 @@ import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), 
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation
-  , RuntimeProbeResult (..)
+  , RuntimeProbeResult
   , mkInstalledComponent
   , mkProbeIssue
   , mkRuntimeInstallation
@@ -177,8 +177,8 @@ import Petrus.Agenticus.Runtime.Pi.Internal
   , strictLoad
   )
 import Petrus.Agenticus.Runtime.Profiles (piApplicationA5E2b, piApplicationA5Gondolin)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
-import Petrus.Agenticus.Thread.Continuation (Continuation (..), ContinuationDescriptor, ContinuationState (..), continuationDescriptor)
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement, mkRuntimeTurnSettlement)
+import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationDescriptor, ContinuationState (..), continuationDescriptor)
 import Petrus.Agenticus.Thread.Identity (EpisodeId, LifecycleId (..), TurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))
@@ -263,10 +263,16 @@ applicationPayloadSchemaVersion = 1
 
 -- | One application-owned transcript revision. 'Show' renders no field.
 data PiApplicationContinuationPayloadV1 = PiApplicationContinuationPayloadV1
-  { workingDirectoryBinding :: Text
-  , transcriptJson :: ByteString
+  { _workingDirectoryBinding :: Text
+  , _transcriptJson :: ByteString
   }
   deriving stock (Eq)
+
+instance HasField "workingDirectoryBinding" PiApplicationContinuationPayloadV1 Text where
+  getField r = r._workingDirectoryBinding
+
+instance HasField "transcriptJson" PiApplicationContinuationPayloadV1 ByteString where
+  getField r = r._transcriptJson
 
 instance Show PiApplicationContinuationPayloadV1 where
   show _ = "PiApplicationContinuationPayloadV1(schema_version=1)"
@@ -280,11 +286,20 @@ mkPiApplicationContinuationPayloadV1 binding transcript = do
 
 -- | One application step's public evidence. 'Show' renders only the profile.
 data PiApplicationStepPayloadV1 = PiApplicationStepPayloadV1
-  { profile :: Text
-  , results :: [ToolResult]
-  , finalText :: Text
+  { _profile :: Text
+  , _results :: [ToolResult]
+  , _finalText :: Text
   }
   deriving stock (Eq)
+
+instance HasField "profile" PiApplicationStepPayloadV1 Text where
+  getField r = r._profile
+
+instance HasField "results" PiApplicationStepPayloadV1 [ToolResult] where
+  getField r = r._results
+
+instance HasField "finalText" PiApplicationStepPayloadV1 Text where
+  getField r = r._finalText
 
 instance Show PiApplicationStepPayloadV1 where
   show p = "PiApplicationStepPayloadV1(profile=" <> T.unpack (pythonStrRepr p.profile) <> ", schema_version=1)"
@@ -293,7 +308,7 @@ mkPiApplicationStepPayloadV1 :: Text -> [ToolResult] -> Text -> Either Agenticus
 mkPiApplicationStepPayloadV1 profile results finalText = do
   unless (profile `elem` ["gondolin", "e2b"]) $ Left (valueError "Pi application step profile is unsupported")
   when (utf8Length finalText > 1000000) $ Left (valueError "Pi application final text exceeds its bound")
-  pure PiApplicationStepPayloadV1 {profile, results, finalText}
+  pure PiApplicationStepPayloadV1 {_profile = profile, _results = results, _finalText = finalText}
 
 -- | @PiApplicationContinuationOperations@.
 data PiApplicationContinuationOperations = PiApplicationContinuationOperations

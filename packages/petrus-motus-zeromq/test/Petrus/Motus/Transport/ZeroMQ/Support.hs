@@ -70,7 +70,7 @@ import Database.SQLite3 qualified as Sql
 import GHC.Clock (getMonotonicTime)
 import Petrus.Activity hiding (invocation)
 import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
-import Petrus.Motus.Dispatch (ActivityAttempt (..), WorkerDispatch (..))
+import Petrus.Motus.Dispatch (ActivityAttempt, WorkerDispatch (..))
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchOptions (..), LocalWorkerOptions (..), defaultLocalDispatchOptions, defaultLocalWorkerOptions, openLocalDispatch, openLocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Motus.Transport.ZeroMQ.Native qualified as N

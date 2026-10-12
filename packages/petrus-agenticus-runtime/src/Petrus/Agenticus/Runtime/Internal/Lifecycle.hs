@@ -43,7 +43,7 @@ import Data.Text (Text)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Runtime.Internal.Process (micros)
 import Petrus.Agenticus.Runtime.Operation
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import System.Timeout (timeout)
 

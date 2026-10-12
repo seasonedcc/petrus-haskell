@@ -1,12 +1,12 @@
 -- | Shared result shape for compatibility checks
 -- (@petrus.agenticus.catalog.result@).
 module Petrus.Agenticus.Catalog.Result
-  ( CompatibilityIssue (code, subject)
+  ( CompatibilityIssue
   , mkCompatibilityIssue
   , compatibilityIssue
   , issueToData
   , issueFromData
-  , CompatibilityResult (candidate, issues)
+  , CompatibilityResult
   , mkCompatibilityResult
   , compatible
   , resultToData
@@ -16,6 +16,7 @@ module Petrus.Agenticus.Catalog.Result
 import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Catalog.Descriptor
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Validate
@@ -25,10 +26,16 @@ import Petrus.Json (Json (..))
 -- code is open text: decoders accept codes outside Catalog's own vocabulary.
 -- Ordered by @(code, subject)@.
 data CompatibilityIssue = CompatibilityIssue
-  { code :: Text
-  , subject :: Text
+  { _code :: Text
+  , _subject :: Text
   }
   deriving stock (Eq, Ord, Show)
+
+instance HasField "code" CompatibilityIssue Text where
+  getField r = r._code
+
+instance HasField "subject" CompatibilityIssue Text where
+  getField r = r._subject
 
 issueText :: Text -> Text -> Either AgenticusError Text
 issueText label = boundedText (label <> " must be a non-empty, trimmed string of at most 256 UTF-8 bytes")
@@ -58,10 +65,16 @@ issueFromData raw = do
 -- | A candidate-local compatibility result; success is structurally derived.
 -- Issues are unique and sorted.
 data CompatibilityResult = CompatibilityResult
-  { candidate :: Maybe DescriptorIdentity
-  , issues :: [CompatibilityIssue]
+  { _candidate :: Maybe DescriptorIdentity
+  , _issues :: [CompatibilityIssue]
   }
   deriving stock (Eq, Show)
+
+instance HasField "candidate" CompatibilityResult (Maybe DescriptorIdentity) where
+  getField r = r._candidate
+
+instance HasField "issues" CompatibilityResult [CompatibilityIssue] where
+  getField r = r._issues
 
 mkCompatibilityResult :: Maybe DescriptorIdentity -> [CompatibilityIssue] -> Either AgenticusError CompatibilityResult
 mkCompatibilityResult c is

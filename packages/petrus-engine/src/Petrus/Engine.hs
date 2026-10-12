@@ -67,7 +67,7 @@ module Petrus.Engine
   , Clock (..)
   , simulatedClock
   , Sensor
-  , Delivery (source, tokens, identity, scope)
+  , Delivery
   , delivery
     -- * Errors
   , EngineError (..)

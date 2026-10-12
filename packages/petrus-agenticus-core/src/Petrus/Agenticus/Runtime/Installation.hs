@@ -5,22 +5,23 @@ module Petrus.Agenticus.Runtime.Installation
     ProbeDisposition (..)
   , probeDispositionText
     -- * Installed components
-  , InstalledComponent (name, version, sourceIdentity)
+  , InstalledComponent
   , mkInstalledComponent
     -- * Probe issues
-  , ProbeIssue (code, component)
+  , ProbeIssue
   , mkProbeIssue
     -- * Installations
-  , RuntimeInstallation (runtime, adapterContractVersion, components, platform, architecture, capabilities)
+  , RuntimeInstallation
   , mkRuntimeInstallation
     -- * Probe results
-  , RuntimeProbeResult (runtime, disposition, installation, issues)
+  , RuntimeProbeResult
   , mkRuntimeProbeResult
   ) where
 
 import Data.List (sort)
 import Data.Set (Set)
 import Data.Text (Text)
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Catalog.Descriptor
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Shape
@@ -60,11 +61,20 @@ probeDispositionText = enumText
 -- | One observed package/client pin without an executable or home path.
 -- Ordered like the @order=True@ dataclass.
 data InstalledComponent = InstalledComponent
-  { name :: Text
-  , version :: Text
-  , sourceIdentity :: Text
+  { _name :: Text
+  , _version :: Text
+  , _sourceIdentity :: Text
   }
   deriving stock (Eq, Ord, Show)
+
+instance HasField "name" InstalledComponent Text where
+  getField r = r._name
+
+instance HasField "version" InstalledComponent Text where
+  getField r = r._version
+
+instance HasField "sourceIdentity" InstalledComponent Text where
+  getField r = r._sourceIdentity
 
 mkInstalledComponent :: Text -> Text -> Text -> Either AgenticusError InstalledComponent
 mkInstalledComponent n v s =
@@ -77,10 +87,16 @@ mkInstalledComponent n v s =
 -- private.  Ordered by @(code, component)@ with an absent component first
 -- (see @divergences/thread.md@).
 data ProbeIssue = ProbeIssue
-  { code :: Text
-  , component :: Maybe Text
+  { _code :: Text
+  , _component :: Maybe Text
   }
   deriving stock (Eq, Ord, Show)
+
+instance HasField "code" ProbeIssue Text where
+  getField r = r._code
+
+instance HasField "component" ProbeIssue (Maybe Text) where
+  getField r = r._component
 
 mkProbeIssue :: Text -> Maybe Text -> Either AgenticusError ProbeIssue
 mkProbeIssue c comp =
@@ -91,14 +107,32 @@ mkProbeIssue c comp =
 -- | Exact qualified installation facts, with no authority, content, or path
 -- fields.  Components are sorted.
 data RuntimeInstallation = RuntimeInstallation
-  { runtime :: DescriptorIdentity
-  , adapterContractVersion :: Integer
-  , components :: [InstalledComponent]
-  , platform :: Text
-  , architecture :: Text
-  , capabilities :: Set Text
+  { _runtime :: DescriptorIdentity
+  , _adapterContractVersion :: Integer
+  , _components :: [InstalledComponent]
+  , _platform :: Text
+  , _architecture :: Text
+  , _capabilities :: Set Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "runtime" RuntimeInstallation DescriptorIdentity where
+  getField r = r._runtime
+
+instance HasField "adapterContractVersion" RuntimeInstallation Integer where
+  getField r = r._adapterContractVersion
+
+instance HasField "components" RuntimeInstallation [InstalledComponent] where
+  getField r = r._components
+
+instance HasField "platform" RuntimeInstallation Text where
+  getField r = r._platform
+
+instance HasField "architecture" RuntimeInstallation Text where
+  getField r = r._architecture
+
+instance HasField "capabilities" RuntimeInstallation (Set Text) where
+  getField r = r._capabilities
 
 mkRuntimeInstallation
   :: DescriptorIdentity
@@ -121,12 +155,24 @@ mkRuntimeInstallation r v cs p a caps = do
 -- | One strict probe verdict produced before Agent Connection
 -- materialization.  Issues are unique and sorted.
 data RuntimeProbeResult = RuntimeProbeResult
-  { runtime :: DescriptorIdentity
-  , disposition :: ProbeDisposition
-  , installation :: Maybe RuntimeInstallation
-  , issues :: [ProbeIssue]
+  { _runtime :: DescriptorIdentity
+  , _disposition :: ProbeDisposition
+  , _installation :: Maybe RuntimeInstallation
+  , _issues :: [ProbeIssue]
   }
   deriving stock (Eq, Show)
+
+instance HasField "runtime" RuntimeProbeResult DescriptorIdentity where
+  getField r = r._runtime
+
+instance HasField "disposition" RuntimeProbeResult ProbeDisposition where
+  getField r = r._disposition
+
+instance HasField "installation" RuntimeProbeResult (Maybe RuntimeInstallation) where
+  getField r = r._installation
+
+instance HasField "issues" RuntimeProbeResult [ProbeIssue] where
+  getField r = r._issues
 
 mkRuntimeProbeResult
   :: DescriptorIdentity

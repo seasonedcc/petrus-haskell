@@ -30,7 +30,7 @@ module Petrus.Agenticus.Hands.Contract
   , allRejectionCategories
   , rejectionCategoryText
   , parseRejectionCategory
-  , ToolRequestRejected (category, detail)
+  , ToolRequestRejected
   , mkToolRequestRejected
   , rejectedMessage
   , rejectedError
@@ -42,15 +42,15 @@ module Petrus.Agenticus.Hands.Contract
   , WriteParams (..)
   , ToolParams (..)
   , paramsMethod
-  , ToolRequest (callId, episodeId, attachmentId, attachmentEpoch, grantEpoch, method, params)
+  , ToolRequest
   , mkToolRequest
   , parseToolRequest
   , toolRequestToData
     -- * Results
-  , ToolError (category, detail)
+  , ToolError
   , mkToolError
   , toolErrorToData
-  , ToolResult (callId, attachmentId, epoch, ok, resultData, resultError)
+  , ToolResult
   , mkToolResult
   , toolResultToData
   , toolResultToModelData
@@ -62,6 +62,7 @@ module Petrus.Agenticus.Hands.Contract
 import Data.Char (ord)
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Catalog.Descriptor
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Validate
@@ -187,10 +188,16 @@ parseRejectionCategory value = lookup value [(rejectionCategoryText c, c) | c <-
 -- parser stays pure and the gateway maps it to a result without exception
 -- plumbing; 'rejectedError' gives the exception form.
 data ToolRequestRejected = ToolRequestRejectedValue
-  { category :: RejectionCategory
-  , detail :: Text
+  { _category :: RejectionCategory
+  , _detail :: Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "category" ToolRequestRejected RejectionCategory where
+  getField r = r._category
+
+instance HasField "detail" ToolRequestRejected Text where
+  getField r = r._detail
 
 -- | @_detail@: the fixed safe vocabulary bounds (an @AssertionError@ upstream).
 checkDetail :: Text -> Either AgenticusError Text
@@ -292,15 +299,36 @@ paramsTypeName = \case
 
 -- | One parsed, bound-checked version-1 tool call with full call identity.
 data ToolRequest = ToolRequest
-  { callId :: Text
-  , episodeId :: Text
-  , attachmentId :: Text
-  , attachmentEpoch :: Integer
-  , grantEpoch :: Integer
-  , method :: ToolMethod
-  , params :: ToolParams
+  { _callId :: Text
+  , _episodeId :: Text
+  , _attachmentId :: Text
+  , _attachmentEpoch :: Integer
+  , _grantEpoch :: Integer
+  , _method :: ToolMethod
+  , _params :: ToolParams
   }
   deriving stock (Eq, Show)
+
+instance HasField "callId" ToolRequest Text where
+  getField r = r._callId
+
+instance HasField "episodeId" ToolRequest Text where
+  getField r = r._episodeId
+
+instance HasField "attachmentId" ToolRequest Text where
+  getField r = r._attachmentId
+
+instance HasField "attachmentEpoch" ToolRequest Integer where
+  getField r = r._attachmentEpoch
+
+instance HasField "grantEpoch" ToolRequest Integer where
+  getField r = r._grantEpoch
+
+instance HasField "method" ToolRequest ToolMethod where
+  getField r = r._method
+
+instance HasField "params" ToolRequest ToolParams where
+  getField r = r._params
 
 -- | @ToolRequest(...)@: identities and epochs are validated (failing as
 -- @ToolRequestRejected@ with category @schema@, as upstream), and the params
@@ -438,10 +466,16 @@ toolRequestToData r =
 
 -- | One rendered secret-safe error with a fixed category and bounded detail.
 data ToolError = ToolError
-  { category :: RejectionCategory
-  , detail :: Text
+  { _category :: RejectionCategory
+  , _detail :: Text
   }
   deriving stock (Eq, Show)
+
+instance HasField "category" ToolError RejectionCategory where
+  getField r = r._category
+
+instance HasField "detail" ToolError Text where
+  getField r = r._detail
 
 mkToolError :: RejectionCategory -> Text -> Either AgenticusError ToolError
 mkToolError c d = ToolError c <$> checkDetail d
@@ -453,14 +487,32 @@ toolErrorToData e = Object [("category", String (rejectionCategoryText e.categor
 -- identity.  @resultData@ is upstream's @data@ and @resultError@ its
 -- @error@.
 data ToolResult = ToolResult
-  { callId :: Text
-  , attachmentId :: Text
-  , epoch :: Integer
-  , ok :: Bool
-  , resultData :: Maybe Fields
-  , resultError :: Maybe ToolError
+  { _callId :: Text
+  , _attachmentId :: Text
+  , _epoch :: Integer
+  , _ok :: Bool
+  , _resultData :: Maybe Fields
+  , _resultError :: Maybe ToolError
   }
   deriving stock (Eq, Show)
+
+instance HasField "callId" ToolResult Text where
+  getField r = r._callId
+
+instance HasField "attachmentId" ToolResult Text where
+  getField r = r._attachmentId
+
+instance HasField "epoch" ToolResult Integer where
+  getField r = r._epoch
+
+instance HasField "ok" ToolResult Bool where
+  getField r = r._ok
+
+instance HasField "resultData" ToolResult (Maybe Fields) where
+  getField r = r._resultData
+
+instance HasField "resultError" ToolResult (Maybe ToolError) where
+  getField r = r._resultError
 
 -- | @_strict_data@: only null, strings of at most 4096 UTF-8 bytes, booleans,
 -- integers, arrays and objects, checked depth-first in order.

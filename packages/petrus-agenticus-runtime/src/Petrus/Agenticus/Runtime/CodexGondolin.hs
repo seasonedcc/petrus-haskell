@@ -56,10 +56,9 @@ import Data.Text.Encoding qualified as TE
 import Network.Socket qualified as Socket
 import Network.Socket.ByteString qualified as SocketBytes
 import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation, ExecutionPolicyFields (..), policyFields)
-import Petrus.Agenticus.Attachment.Binding (AttachmentCoordinates (..))
 import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
-import Petrus.Agenticus.Connection.Custody (ConnectionIdentity (..), ConnectionStatus (..), ConnectionView (..))
+import Petrus.Agenticus.Connection.Custody (ConnectionStatus (..), ConnectionView (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Sqlite qualified as Sql
@@ -78,13 +77,13 @@ import Petrus.Agenticus.Runtime.Codex
 import Petrus.Agenticus.Runtime.Internal.HostSupport (pyJsonLoadsBytes)
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition
-  , RuntimeOperationCleanup (..)
+  , RuntimeOperationCleanup
   , cleanupDispositionText
   , mkRuntimeOperationCleanup
   , runtimeProtocolError
   , runtimeProtocolErrorCode
   )
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement, mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation (continuationFromData)
 import Petrus.Agenticus.Thread.Identity (EpisodeId, LifecycleId (..), TurnId, lifecycleIdFromData, lifecycleIdToData)
 import Petrus.Agenticus.Thread.Lifecycle (StrEnum (..), TurnOutcome)

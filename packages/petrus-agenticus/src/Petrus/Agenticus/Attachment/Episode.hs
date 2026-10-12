@@ -20,9 +20,9 @@ module Petrus.Agenticus.Attachment.Episode
   , custodyAdmissionSource
   , custodyResultAdmission
     -- * Evidence
-  , AttachmentSettlement (attachmentId, epoch, stagesDiscarded, archive, archiveDigest, settlement)
+  , AttachmentSettlement
   , mkAttachmentSettlement
-  , AttachmentRelease (attachmentId, epoch, stagesDiscarded, archive, archiveDigest, territory)
+  , AttachmentRelease
   , mkAttachmentRelease
   , ReleaseAdmission (..)
     -- * The attachment
@@ -62,6 +62,7 @@ import Data.IORef
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Clock (getMonotonicTime)
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Attachment.Binding
 import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor, DescriptorKind (..))
 import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot, snapshotDescriptor)
@@ -131,14 +132,32 @@ custodyResultAdmission source fence =
 
 -- | Evidence of one ordered epoch settlement for the host to consume.
 data AttachmentSettlement = AttachmentSettlement
-  { attachmentId :: Text
-  , epoch :: Integer
-  , stagesDiscarded :: Int
-  , archive :: ByteString
-  , archiveDigest :: Text
-  , settlement :: BindingSettlement
+  { _attachmentId :: Text
+  , _epoch :: Integer
+  , _stagesDiscarded :: Int
+  , _archive :: ByteString
+  , _archiveDigest :: Text
+  , _settlement :: BindingSettlement
   }
   deriving stock (Eq)
+
+instance HasField "attachmentId" AttachmentSettlement Text where
+  getField r = r._attachmentId
+
+instance HasField "epoch" AttachmentSettlement Integer where
+  getField r = r._epoch
+
+instance HasField "stagesDiscarded" AttachmentSettlement Int where
+  getField r = r._stagesDiscarded
+
+instance HasField "archive" AttachmentSettlement ByteString where
+  getField r = r._archive
+
+instance HasField "archiveDigest" AttachmentSettlement Text where
+  getField r = r._archiveDigest
+
+instance HasField "settlement" AttachmentSettlement BindingSettlement where
+  getField r = r._settlement
 
 -- | The archive is evidence, not something to print.
 instance Show AttachmentSettlement where
@@ -165,14 +184,32 @@ mkAttachmentSettlement attachment epoch' stages archive' digest evidence = do
 -- | Evidence that one closed Attachment transferred an exact lease to its
 -- host.
 data AttachmentRelease = AttachmentRelease
-  { attachmentId :: Text
-  , epoch :: Integer
-  , stagesDiscarded :: Int
-  , archive :: ByteString
-  , archiveDigest :: Text
-  , territory :: LeaseIdentity
+  { _attachmentId :: Text
+  , _epoch :: Integer
+  , _stagesDiscarded :: Int
+  , _archive :: ByteString
+  , _archiveDigest :: Text
+  , _territory :: LeaseIdentity
   }
   deriving stock (Eq)
+
+instance HasField "attachmentId" AttachmentRelease Text where
+  getField r = r._attachmentId
+
+instance HasField "epoch" AttachmentRelease Integer where
+  getField r = r._epoch
+
+instance HasField "stagesDiscarded" AttachmentRelease Int where
+  getField r = r._stagesDiscarded
+
+instance HasField "archive" AttachmentRelease ByteString where
+  getField r = r._archive
+
+instance HasField "archiveDigest" AttachmentRelease Text where
+  getField r = r._archiveDigest
+
+instance HasField "territory" AttachmentRelease LeaseIdentity where
+  getField r = r._territory
 
 instance Show AttachmentRelease where
   showsPrec d r =

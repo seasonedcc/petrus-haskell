@@ -22,14 +22,13 @@ import Petrus.Agenticus.Catalog.Descriptor (capabilityDescriptor)
 import Petrus.Agenticus.Catalog.Resolution (mkResolutionSnapshot)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..), capabilityScopedHands)
-import Petrus.Agenticus.Hands.Gateway (HandsAdapter (..), StagedWrite (..), mkShellOutcome, mkStagedWrite, mkTestOutcome)
+import Petrus.Agenticus.Hands.Gateway (HandsAdapter (..), mkShellOutcome, mkStagedWrite, mkTestOutcome)
 import Petrus.Agenticus.Hands.Grants (GrantSpec (..), grantSpec, openGrant)
 import Petrus.Agenticus.Program.AgentNet
 import Petrus.Agenticus.Runtime.AgentNetRunner
 import Petrus.Agenticus.Runtime.Profiles (TerritoryProfile (..), agentAsNetA5Local, territoryIdentity)
-import Petrus.Agenticus.Thread.Continuation (Continuation (..))
 import Petrus.Agenticus.Thread.Identity (mkEpisodeId, mkThreadId)
-import Petrus.Agenticus.Thread.Lifecycle (Episode (..), EpisodeOutcome (..), Thread (..), Turn (..), TurnOutcome (..), newThread)
+import Petrus.Agenticus.Thread.Lifecycle (Episode, EpisodeOutcome (..), Thread, Turn, TurnOutcome (..), newThread)
 import Petrus.Engine qualified as Engine
 import Petrus.Impetus.History.Records (ActivityCompleted (..), ActivityRequested (..), Record (..))
 import Petrus.Impetus.Instance.Firing (FiringOccurrence (..))

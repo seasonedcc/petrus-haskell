@@ -20,8 +20,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
-import Petrus.Agenticus.Attachment.Binding (AttachmentCoordinates (..), BindingSettlement (..), MotusAttachmentBinding, bindingCancel, bindingCleanupResult, bindingExecution, bindingSettle, motusBinding, openMotusBinding)
-import Petrus.Agenticus.Attachment.Episode (AttachmentSettlement (..), EpisodeAttachment, episodeDeadline, episodeOptions, newEpisodeAttachment)
+import Petrus.Agenticus.Attachment.Binding (MotusAttachmentBinding, bindingCancel, bindingCleanupResult, bindingExecution, bindingSettle, motusBinding, openMotusBinding)
+import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment, episodeDeadline, episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Descriptor (capabilityDescriptor)
 import Petrus.Agenticus.Catalog.Resolution (mkResolutionSnapshot)
@@ -39,13 +39,11 @@ import Petrus.Agenticus.Connection.Custody
 import Petrus.Agenticus.Connection.Key (KeyOperations (..))
 import Petrus.Agenticus.Connection.Storage (ConnectionStorage (..))
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..), capabilityScopedHands)
-import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), grantSpec, openGrant)
+import Petrus.Agenticus.Hands.Grants (grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (newMotusWorkspaceAdapter, defaultCommandTimeout, workspaceHandsAdapter)
-import Petrus.Agenticus.Program.AgentNet (StopReason (..), Terminal (..), handsActivity, mkLoopState, modelPhaseActivity, stopReasonText, terminalCodeText)
+import Petrus.Agenticus.Program.AgentNet (StopReason (..), handsActivity, mkLoopState, modelPhaseActivity, stopReasonText, terminalCodeText)
 import Petrus.Agenticus.Runtime.AgentNetRunner
   ( AgentNetRunner
-  , AgentNetThreadProjection (..)
-  , ProjectedAppend (..)
   , closeRunner
   , createRunner
   , drain
@@ -58,11 +56,11 @@ import Petrus.Agenticus.Runtime.Pi (piAiVersion, piSdkVersion)
 import Petrus.Agenticus.Runtime.PiModelPhase
   ( PiModelPhaseAdapter
   , PiModelPhaseConfig (..)
-  , PiModelPhaseContinuationPayloadV1 (..)
+  , PiModelPhaseContinuationPayloadV1
   , PiModelPhaseCustody (..)
   , PiModelPhaseOperations (..)
-  , PiModelPhaseOutputPayloadV1 (..)
-  , PiModelPhasePublication (..)
+  , PiModelPhaseOutputPayloadV1
+  , PiModelPhasePublication
   , mkPiModelPhasePublication
   , modelPhaseAdapterActivity
   , newPiModelPhaseAdapter
@@ -71,9 +69,8 @@ import Petrus.Agenticus.Runtime.PiModelPhase
   , probeModelPhase
   )
 import Petrus.Agenticus.Runtime.Profiles (TerritoryProfile (..), agentAsNetA5Local, territoryIdentity)
-import Petrus.Agenticus.Thread.Continuation (Continuation (..))
 import Petrus.Agenticus.Thread.Identity (mkEpisodeId, mkThreadId)
-import Petrus.Agenticus.Thread.Lifecycle (Episode (..), EpisodeOutcome (..), Thread (..), Turn (..), TurnOutcome (..), newThread)
+import Petrus.Agenticus.Thread.Lifecycle (EpisodeOutcome (..), TurnOutcome (..), newThread)
 import Petrus.Engine qualified as Engine
 import Petrus.Impetus.History.Records (ActivityRequested (..), Record (..))
 import Petrus.Json (Json (..))

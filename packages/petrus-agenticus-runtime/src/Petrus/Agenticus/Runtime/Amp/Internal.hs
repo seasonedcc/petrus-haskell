@@ -118,18 +118,18 @@ import Data.Text.Encoding qualified as TE
 import Data.Unique (Unique, newUnique)
 import GHC.Clock (getMonotonicTime)
 import Paths_petrus_agenticus_runtime (getDataFileName)
-import Petrus.Agenticus.Attachment.Binding (AttachmentBinding (..), AttachmentCoordinates (..), BindingSettlement, mkBindingSettlement)
+import Petrus.Agenticus.Attachment.Binding (AttachmentBinding (..), BindingSettlement, mkBindingSettlement)
 import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Descriptor
-  ( CapabilityDescriptor (..)
-  , DescriptorIdentity (..)
+  ( CapabilityDescriptor
+  , DescriptorIdentity
   , DescriptorKind (..)
   , capabilityDescriptor
   , descriptorIdentity
   )
 import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
-import Petrus.Agenticus.Connection.Custody (ConnectionIdentity (..), ConnectionStatus (..), ConnectionView (..))
+import Petrus.Agenticus.Connection.Custody (ConnectionStatus (..), ConnectionView (..))
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Json.Python (pythonStrRepr)
@@ -144,7 +144,7 @@ import Petrus.Agenticus.Runtime.Internal.HostSupport
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation
-  , RuntimeProbeResult (..)
+  , RuntimeProbeResult
   , mkInstalledComponent
   , mkProbeIssue
   , mkRuntimeInstallation
@@ -163,7 +163,7 @@ import Petrus.Agenticus.Runtime.Operation
   )
 import Petrus.Agenticus.Runtime.Profiles (ampA1)
 import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement, mkRuntimeTurnSettlement)
-import Petrus.Agenticus.Thread.Continuation (Continuation (..), ContinuationDescriptor, continuationDescriptor)
+import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationDescriptor, continuationDescriptor)
 import Petrus.Agenticus.Thread.Identity (EpisodeId, LifecycleId (..), TurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))
 import Petrus.Json (Json (..))

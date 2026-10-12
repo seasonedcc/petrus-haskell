@@ -80,7 +80,7 @@ import Petrus.Impetus.HistoryStore (HistoryStore (..))
 import Petrus.Impetus.Instance (FiringOutcome (..))
 import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..))
-import Petrus.Motus.Dispatch (ActivityAttempt (epoch, instance', invocation, queue), AttemptFailure (..), DispatchError (..))
+import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..), DispatchError (..))
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), LocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Testing.Dst

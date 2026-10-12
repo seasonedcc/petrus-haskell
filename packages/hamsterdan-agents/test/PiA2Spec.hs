@@ -13,15 +13,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Hamsterdan.Host.PiA2
-import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorIdentity (..))
-import Petrus.Agenticus.Connection.Custody (ConnectionIdentity (..))
-import Petrus.Agenticus.Connection.Key (KeyContext, KeyErasureEvidence (..), KeyOperations (..), mkKeyContext)
+import Petrus.Agenticus.Connection.Key (KeyContext, KeyOperations (..), mkKeyContext)
 import Petrus.Agenticus.Error (AgenticusError (..), throwLeft)
 import Petrus.Agenticus.Error qualified as AE
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..))
 import Petrus.Agenticus.Runtime.PiA2Host
-  ( PiA2DirectAuthority (..)
-  , PiA2RuntimeHostConfig (..)
+  ( PiA2RuntimeHostConfig (..)
   , closeHost
   , hostAuthorityRequested
   , hostConfig

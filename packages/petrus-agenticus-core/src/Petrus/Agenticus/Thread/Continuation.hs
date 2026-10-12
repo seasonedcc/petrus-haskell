@@ -6,13 +6,13 @@ module Petrus.Agenticus.Thread.Continuation
   , continuationStateText
   , parseContinuationState
     -- * Descriptors
-  , ContinuationDescriptor (identity, program)
+  , ContinuationDescriptor
   , mkContinuationDescriptor
   , continuationDescriptor
   , continuationDescriptorToData
   , continuationDescriptorFromData
     -- * Continuations
-  , Continuation (id, thread, descriptor, stateReference, state)
+  , Continuation
   , mkContinuation
   , newContinuation
   , claimContinuation
@@ -32,6 +32,7 @@ module Petrus.Agenticus.Thread.Continuation
 import Control.Exception (Exception)
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Records (HasField (..))
 import Petrus.Agenticus.Catalog.Descriptor
 import Petrus.Agenticus.Catalog.Result
 import Petrus.Agenticus.Error
@@ -64,10 +65,16 @@ parseContinuationState = parseStrEnum
 
 -- | The exact provider/program-specific contract behind opaque state.
 data ContinuationDescriptor = ContinuationDescriptor
-  { identity :: DescriptorIdentity
-  , program :: DescriptorIdentity
+  { _identity :: DescriptorIdentity
+  , _program :: DescriptorIdentity
   }
   deriving stock (Eq, Ord, Show)
+
+instance HasField "identity" ContinuationDescriptor DescriptorIdentity where
+  getField r = r._identity
+
+instance HasField "program" ContinuationDescriptor DescriptorIdentity where
+  getField r = r._program
 
 mkContinuationDescriptor :: DescriptorIdentity -> DescriptorIdentity -> Either AgenticusError ContinuationDescriptor
 mkContinuationDescriptor i p =
@@ -103,13 +110,28 @@ continuationDescriptorFromData raw = do
 -- reference.  'Show' never renders the reference (upstream's
 -- @field(repr=False)@).
 data Continuation = Continuation
-  { id :: ContinuationId
-  , thread :: ThreadId
-  , descriptor :: ContinuationDescriptor
-  , stateReference :: Text
-  , state :: ContinuationState
+  { _id :: ContinuationId
+  , _thread :: ThreadId
+  , _descriptor :: ContinuationDescriptor
+  , _stateReference :: Text
+  , _state :: ContinuationState
   }
   deriving stock (Eq)
+
+instance HasField "id" Continuation ContinuationId where
+  getField r = r._id
+
+instance HasField "thread" Continuation ThreadId where
+  getField r = r._thread
+
+instance HasField "descriptor" Continuation ContinuationDescriptor where
+  getField r = r._descriptor
+
+instance HasField "stateReference" Continuation Text where
+  getField r = r._stateReference
+
+instance HasField "state" Continuation ContinuationState where
+  getField r = r._state
 
 instance Show Continuation where
   showsPrec d c =
@@ -144,7 +166,7 @@ newContinuation i t d ref = mkContinuation i t d ref ContinuationAvailable
 
 claimContinuation :: Continuation -> Either AgenticusError Continuation
 claimContinuation c
-  | c.state == ContinuationAvailable = Right c {state = ContinuationInUse}
+  | c.state == ContinuationAvailable = Right c {_state = ContinuationInUse}
   | otherwise =
       Left
         ( agenticusError
@@ -153,11 +175,11 @@ claimContinuation c
         )
 
 retireContinuation :: Continuation -> Continuation
-retireContinuation c = c {state = ContinuationRetired}
+retireContinuation c = c {_state = ContinuationRetired}
 
 -- | Upstream @_same_continuation_revision@: equal up to custody state.
 sameRevision :: Maybe Continuation -> Maybe Continuation -> Bool
-sameRevision (Just a) (Just b) = a {state = ContinuationAvailable} == b {state = ContinuationAvailable}
+sameRevision (Just a) (Just b) = a {_state = ContinuationAvailable} == b {_state = ContinuationAvailable}
 sameRevision Nothing Nothing = True
 sameRevision _ _ = False
 

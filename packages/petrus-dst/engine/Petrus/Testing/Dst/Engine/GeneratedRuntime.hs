@@ -84,7 +84,7 @@ import Petrus.Impetus.Petrinet hiding (Delay)
 import Petrus.Impetus.Petrinet qualified as Petrinet
 import Petrus.Impetus.Scope (scopeGeneration)
 import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
-import Petrus.Motus.Dispatch (ActivityAttempt (attemptId, epoch, invocation, queue), AttemptFailure (..), Dispatch (..))
+import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..), Dispatch (..))
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), LocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Petrus.Observation qualified as Observation

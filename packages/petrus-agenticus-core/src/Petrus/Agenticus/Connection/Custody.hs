@@ -25,7 +25,7 @@ module Petrus.Agenticus.Connection.Custody
   , eraseOpaqueState
   , renderOpaqueState
     -- * Values
-  , ConnectionIdentity (connectionId, provider, accountFingerprint, profile)
+  , ConnectionIdentity
   , mkConnectionIdentity
   , ConnectionView (..)
   , AttachmentFence (..)
@@ -67,6 +67,7 @@ module Petrus.Agenticus.Connection.Custody
   , casAttempts
   ) where
 
+import GHC.Records (HasField (..))
 import Prelude hiding (sequence)
 
 import Control.Exception (SomeException, evaluate, finally, onException, throwIO, try)
@@ -176,12 +177,24 @@ borrow state = do
 
 -- | Stable logical connection identity and nonsecret provider metadata.
 data ConnectionIdentity = ConnectionIdentity
-  { connectionId :: Text
-  , provider :: Text
-  , accountFingerprint :: Text
-  , profile :: Text
+  { _connectionId :: Text
+  , _provider :: Text
+  , _accountFingerprint :: Text
+  , _profile :: Text
   }
   deriving stock (Eq, Ord, Show)
+
+instance HasField "connectionId" ConnectionIdentity Text where
+  getField r = r._connectionId
+
+instance HasField "provider" ConnectionIdentity Text where
+  getField r = r._provider
+
+instance HasField "accountFingerprint" ConnectionIdentity Text where
+  getField r = r._accountFingerprint
+
+instance HasField "profile" ConnectionIdentity Text where
+  getField r = r._profile
 
 mkConnectionIdentity :: Text -> Text -> Text -> Text -> Either AgenticusError ConnectionIdentity
 mkConnectionIdentity connectionId provider accountFingerprint profile = do
@@ -189,7 +202,7 @@ mkConnectionIdentity connectionId provider accountFingerprint profile = do
   identityText provider "provider"
   identityText accountFingerprint "account fingerprint"
   identityText profile "profile"
-  pure ConnectionIdentity {..}
+  pure (ConnectionIdentity connectionId provider accountFingerprint profile)
 
 data ConnectionView = ConnectionView
   { identity :: ConnectionIdentity

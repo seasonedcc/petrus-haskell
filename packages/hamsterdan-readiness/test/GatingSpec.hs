@@ -26,7 +26,7 @@ import Petrus.Impetus.History.Records (ActivityFailed (..), ActivityRequested (.
 import Petrus.Impetus.Dsl (BuiltNet (..))
 import Petrus.Impetus.Petrinet (Marking, NetPath, Token (..), consume, deposit, emptyMarking, netPath, placeTokens)
 import Petrus.Json (Json (..))
-import Petrus.Motus.Dispatch (ActivityAttempt (..), AttemptFailure (..))
+import Petrus.Motus.Dispatch (AttemptFailure (..))
 import Petrus.Motus.Dispatch.Local qualified as Local
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)

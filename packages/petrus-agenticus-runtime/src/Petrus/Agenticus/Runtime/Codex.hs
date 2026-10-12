@@ -49,7 +49,7 @@ module Petrus.Agenticus.Runtime.Codex
   , Candidate (..)
   , parseJsonl
     -- * Continuations
-  , CodexContinuationPayloadV1 (threadId, rolloutPath, rollout)
+  , CodexContinuationPayloadV1
   , mkCodexContinuationPayloadV1
   , CodexContinuationOperations (..)
   , CodexTurnOperations (..)
@@ -110,10 +110,10 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
+import GHC.Records (HasField (..))
 import Paths_petrus_agenticus_runtime (getDataFileName)
 import Petrus.Agenticus.Attachment.Binding
   ( AttachmentBinding (..)
-  , AttachmentCoordinates (..)
   , MotusAttachmentBinding
   , bindingExecute
   , bindingExecution
@@ -124,8 +124,8 @@ import Petrus.Agenticus.Attachment.Binding
 import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
 import Petrus.Agenticus.Catalog.Descriptor
-  ( CapabilityDescriptor (..)
-  , DescriptorIdentity (..)
+  ( CapabilityDescriptor
+  , DescriptorIdentity
   , DescriptorKind (..)
   , capabilityDescriptor
   , descriptorIdentity
@@ -134,7 +134,6 @@ import Petrus.Agenticus.Catalog.Resolution (snapshotDescriptor)
 import Petrus.Agenticus.Connection.Custody
   ( AdmissionResult (..)
   , AttachmentFence (..)
-  , ConnectionIdentity (..)
   , ConnectionStatus (..)
   , ConnectionView (..)
   , LeaseMode (..)
@@ -158,7 +157,7 @@ import Petrus.Agenticus.Runtime.Internal.HostSupport (observedPlatform, outputEr
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation
-  , RuntimeProbeResult (..)
+  , RuntimeProbeResult
   , mkInstalledComponent
   , mkProbeIssue
   , mkRuntimeInstallation
@@ -174,9 +173,9 @@ import Petrus.Agenticus.Runtime.Operation
   , runtimeProtocolErrorCode
   )
 import Petrus.Agenticus.Runtime.Profiles (codexA2Local, codexA3Gondolin)
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..), mkRuntimeTurnSettlement)
+import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement, mkRuntimeTurnSettlement)
 import Petrus.Agenticus.Thread.Continuation
-  ( Continuation (..)
+  ( Continuation
   , ContinuationDescriptor
   , ContinuationState (..)
   , continuationDescriptor
@@ -524,11 +523,20 @@ member name = \case
 
 -- | One accepted native rollout behind a Codex Continuation.
 data CodexContinuationPayloadV1 = CodexContinuationPayloadV1
-  { threadId :: Text
-  , rolloutPath :: Text
-  , rollout :: ByteString
+  { _threadId :: Text
+  , _rolloutPath :: Text
+  , _rollout :: ByteString
   }
   deriving stock (Eq)
+
+instance HasField "threadId" CodexContinuationPayloadV1 Text where
+  getField r = r._threadId
+
+instance HasField "rolloutPath" CodexContinuationPayloadV1 Text where
+  getField r = r._rolloutPath
+
+instance HasField "rollout" CodexContinuationPayloadV1 ByteString where
+  getField r = r._rollout
 
 -- | @rollout@ is @repr=False@ upstream.
 instance Show CodexContinuationPayloadV1 where

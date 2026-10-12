@@ -73,7 +73,7 @@ import Petrus.Impetus.Instance
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.Scope (LifecycleScope, lifecycleScope, scopeGeneration, scopeName)
 import Petrus.Json (Json (..))
-import Petrus.Motus.Dispatch (ActivityAttempt (..), AttemptFailure (..))
+import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..))
 import Petrus.Motus.Dispatch.Absurd
   ( AbsurdError (..)
   , AbsurdWorkerDispatch

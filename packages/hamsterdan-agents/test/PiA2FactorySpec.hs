@@ -26,12 +26,10 @@ import Hamsterdan.Host.PiA2
 import Petrus.Agenticus.Connection.Custody (mkConnectionIdentity)
 import Petrus.Agenticus.Error (AgenticusError (..), ErrorClass (..), throwLeft)
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..))
-import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), RuntimeProbeResult (..))
-import Petrus.Agenticus.Catalog.Descriptor (DescriptorIdentity (..))
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..))
 import Petrus.Agenticus.Runtime.Operation (cleanupVerified)
 import Petrus.Agenticus.Runtime.Pi (piContinuationDescriptor)
 import Petrus.Agenticus.Runtime.PiA2Host
-import Petrus.Agenticus.Runtime.Result (RuntimeTurnSettlement (..))
 import Petrus.Agenticus.Thread.Continuation (Continuation, ContinuationState (..), mkContinuation)
 import Petrus.Agenticus.Thread.Identity (mkContinuationId, mkEpisodeId, mkThreadId, mkTurnId)
 import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutcome (..))

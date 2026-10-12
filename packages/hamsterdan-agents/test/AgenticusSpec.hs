@@ -15,8 +15,8 @@ import Hamsterdan.Agents.Protocol
 import Hamsterdan.Sqlite (SQLData (..))
 import Hamsterdan.Sqlite qualified as Sql
 import Hamsterdan.Host.Agenticus
-import Petrus.Agenticus.Catalog.Descriptor (CapabilityDescriptor (..), DescriptorIdentity (..), DescriptorKind (..), capabilityDescriptor)
-import Petrus.Agenticus.Catalog.Resolution (ResolutionSnapshot (..), mkResolutionSnapshot, snapshotFromData, snapshotToData)
+import Petrus.Agenticus.Catalog.Descriptor (DescriptorKind (..), capabilityDescriptor)
+import Petrus.Agenticus.Catalog.Resolution (mkResolutionSnapshot, snapshotFromData, snapshotToData)
 import Petrus.Agenticus.Error (throwLeft)
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
@@ -62,7 +62,7 @@ applications tmp = tmp </> "applications"
 changedComposition :: AgentComposition -> IO AgentComposition
 changedComposition composition = do
   snapshot <- throwLeft (mkResolutionSnapshot (composition.snapshot.catalogRevision + 1) composition.snapshot.descriptors)
-  pure (AgentComposition composition.provider composition.model composition.profile snapshot)
+  either (throwIO . userError . T.unpack) pure (mkAgentComposition composition.provider composition.model composition.profile snapshot)
 
 -- | @json.dumps(encode_record(ActivityRequested(...)))@ with the default
 -- policy fields and instant.
