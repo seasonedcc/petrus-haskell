@@ -1,7 +1,7 @@
 /**
  * `src/agent/protocol.ts` with `parseAgentMessage` answered by the Haskell
- * port (Petrus.Viewer.Agent.Protocol) through the petrus-viewer-oracle
- * executable. Everything else (the constructors, `serializeAgentMessage`,
+ * port (Petrus.Viewer.Agent.Protocol) through the test executable's
+ * oracle mode (`petrus-viewer-server-test --oracle`). Everything else (the constructors, `serializeAgentMessage`,
  * `createProtocolFixtures`, `selectedEdgeToRef`) is the upstream module
  * itself: it builds the messages the browser side sends, and the browser
  * side stays TypeScript.

@@ -12,7 +12,12 @@ For each capability, this file gives:
 - the benchmark against the Node implementation.
 
 [DIVERGENCES.md](DIVERGENCES.md) lists every behavior that differs on
-purpose. [bench/RESULTS.md](bench/RESULTS.md) has the full benchmark
+purpose. Two of them are known gaps in the JavaScript emulation, kept
+deliberately and each with its reason
+([Faithfulness limits](DIVERGENCES.md#faithfulness-limits-of-the-javascript-emulation)):
+a `$ref` host with compatibility characters (`ﬀ`) is not UTS #46 mapped as
+Node maps it, and a malformed-JSON message from a history server loses a
+surrogate cut in half. [bench/RESULTS.md](bench/RESULTS.md) has the full benchmark
 tables, the method and the commands.
 
 ## How to check
@@ -26,7 +31,7 @@ node packages/petrus-viewer-server/bench/run.mjs --reps 15    # benchmarks
 The upstream suites need:
 
 - `pnpm install` and `pnpm build` in `upstream/petrus-viewer`;
-- `npx playwright install chromium` for the browser suites;
+- `npx playwright install --with-deps chromium` for the browser suites;
 - the pinned Python reference (`scripts/upstream-python`) for `history`.
 
 `run.mjs` copies the upstream test files unchanged. It rewrites only the
@@ -44,12 +49,36 @@ suites marked "ours" were written for this port.
 | `mcp-haskell-relay` | `tests/mcpServer.test.mjs` with the relay in `petrus` | 7/7 |
 | `mcp-node-haskell-relay` | `tests/mcpServer.test.mjs` with the upstream `server/mcp.mjs` on the relay in `petrus` | 7/7 |
 | `collab` | `tests/collab-server.test.mjs` | 6/6 |
-| `protocol` | `tests/agentProtocol.test.ts`, `tests/agentParseRegression.test.ts`, with `parseAgentMessage` answered by `Agent.Protocol` through `petrus-viewer-oracle` | 19/19 |
+| `protocol` | `tests/agentProtocol.test.ts`, `tests/agentParseRegression.test.ts`, with `parseAgentMessage` answered by `Agent.Protocol` through the test executable's oracle mode (`petrus-viewer-server-test --oracle`) | 19/19 |
 | `differential` | ours: JSON and URL ports against V8 and Node | 4/4 |
 | `wire` | ours: WebSocket bytes against the `ws` relays, and HTTP endpoint bytes against `node:http` | 20/20 |
 | `playwright` | `tests/playwright/bridge-live.test.mjs` | 4/4 |
 | `live` | ours: every MCP tool through a headless browser | 12/12 |
 | `history` | ours: replay and live watching in the browser from real producers | 8/8 |
+
+### Upstream tests not run here: the UI's own
+
+The other upstream test files test the browser UI's TypeScript, which this
+port does not replace: `petrus` serves the upstream bundle unchanged, so
+these tests would exercise exactly the code upstream's own runs exercise
+(vitest, in upstream's CI), with no Haskell in the path. They are not
+ported, and not run here. Where a file covers code that talks to the
+backend, the right column names the evidence that the Haskell backend
+answers that code as Node does.
+
+| Upstream file | What it tests (UI side) | Haskell-side evidence for the backend it talks to |
+| --- | --- | --- |
+| `tests/temporalClient.test.ts` | `queryWorkflowSchema` and the Temporal HTTP client | `history` (the UI's Temporal client against `/temporal` served from real producers); `test/ProxySpec.hs` (the `/temporal` proxy) and `test/HistorySpec.hs` (`/temporal` answered from observation producers) |
+| `tests/temporalState.test.ts` | parsing and normalizing a workflow's runtime state | `history` (the same parser fed by the Haskell `/temporal` answers) |
+| `tests/temporalSchema.test.ts` | converting a workflow schema to a net file | `history` |
+| `tests/openFileBoot.test.ts` | `parseNetFile` on the payloads the UI boots from | `endpoints` (`tests/openFileEndpoint.test.mjs`, the payloads it parses), `test/EndpointsSpec.hs`, `wire` (the endpoint bytes against `node:http`) |
+| `tests/resolveRef.test.ts`, `tests/unifiedRefLoader.test.ts`, `tests/githubUrl.test.ts` | the browser's `$ref` path resolution, its loader over `/__petrus/resolve-ref`, and its own `normalizeGitHubUrl` | `endpoints` (`tests/resolveRefEndpoint.test.mjs`), `url-cache` (the server's `normalizeGitHubUrl` and cache), `test/UrlSpec.hs`, `differential` (URL resolution against Node), `live` (`petrus_open_file` with refs in a browser) |
+| `tests/agentE2e.test.ts`, `tests/agentHost.test.ts`, `tests/agentStoreAdapter.test.ts` | the browser's agent host and store adapter | `live` (every MCP tool through the Haskell relay in a browser), `relay`, `mcp*`, `wire` |
+| `tests/agentHighlightWiring.test.ts`, `tests/agentHighlights.test.ts`, `tests/agentMutationAffected.test.ts`, `tests/agentMutationExecutor.test.ts`, `tests/agentMutationOps.test.ts`, `tests/agentUndoRedo.test.ts` | applying agent mutations and highlights to the editor state | none needed: browser state only (`live` drives them end to end) |
+| `tests/autoLayout.test.ts`, `tests/compactJson.test.ts`, `tests/computeEnabled-fireTransition.test.ts`, `tests/edgeRouting.test.ts`, `tests/namespace.test.ts`, `tests/netFileSlim.test.ts`, `tests/netpath.test.ts`, `tests/toReactFlow.test.ts` | layout, serialization, simulation and rendering helpers of the editor | none needed: browser-only code (simulation stays in the UI, see Simulation below) |
+| `tests/ui/**` (`App`, `ArcPieMenu`, `CollabPopover`, `PlaceNode`, `RemoteCursors`, `TemporalConnect`, `Toolbar`, `TransitionNode`, `collabStore`, `collaboration`, `idbSession`, `loadFileSession`, `sessionPersistence`) | React components, collaboration store and session persistence (jsdom) | `collab` and `wire` for the collaboration relay the store talks to; `playwright`, `live` and `history` drive the real UI against `petrus` |
+
+`tests/helpers.ts` and `tests/ui/setup.ts` are shared helpers, not tests.
 
 ## Capabilities
 

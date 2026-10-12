@@ -739,7 +739,7 @@ def run_viewer(args: List[str]) -> int:
     bins = scratch / "bin"
     bins.mkdir()
     test = "petrus-viewer-server:test:petrus-viewer-server-test"
-    exes = ["petrus", "petrus-mcp", "petrus-collab", "petrus-viewer-oracle"]
+    exes = ["petrus", "petrus-mcp", "petrus-collab"]  # the test binary is also the oracle
     subprocess.run(["cabal", "build", "-v1", "-j", "--enable-tests", "petrus-viewer-server:exes", test], cwd=ROOT, check=True)
     for name, target in [(e, f"petrus-viewer-server:exe:{e}") for e in exes] + [("petrus-viewer-server-test", test)]:
         built = subprocess.run(["cabal", "list-bin", "-v0", "--enable-tests", target], cwd=ROOT, check=True,

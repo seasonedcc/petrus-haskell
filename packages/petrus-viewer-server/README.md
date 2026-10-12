@@ -16,7 +16,12 @@ and why.
 | `petrus` | `bin/petrus.mjs` + the Vite dev server's backend plugins | Serves the built UI and every backend route (below), opens the browser, accepts a file or URL argument. |
 | `petrus-mcp` | `server/mcp.mjs` | MCP stdio server: the 16 `petrus_*` tools with the upstream schemas and results, bridge URL resolution (`PETRUS_AGENT_URL`, else the upstream default URLs), auto-start of `petrus` when no bridge answers. |
 | `petrus-collab` | `server/collab.mjs` | Standalone collaboration relay (`petrus-collab [port]`, default 4567). |
-| `petrus-viewer-oracle` | none | Test helper: the upstream Node tests and differential fuzzing call the Haskell JSON/URL ports through it. |
+
+The upstream Node tests in `upstream-tests/` also call two test helpers, both
+modes of the test suite's binary so that `cabal install` never installs them:
+`petrus-viewer-server-test --oracle` answers calls to the Haskell JSON, URL,
+relay and protocol ports, and `--chain-producer` serves a Haskell observation
+chain.
 
 Routes served by `petrus`:
 

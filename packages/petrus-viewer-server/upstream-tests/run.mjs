@@ -16,7 +16,7 @@
  *
  * Options:
  *   --bin-dir <dir>     use these executables (petrus, petrus-mcp,
- *                       petrus-collab, petrus-viewer-oracle,
+ *                       petrus-collab,
  *                       petrus-viewer-server-test) instead of
  *                       building with cabal
  *   --skip-playwright   skip the headless-browser suites
@@ -28,7 +28,7 @@
  *
  * Requirements: Node 22.6 or later (the protocol suite runs TypeScript
  * through Node's type stripping); pnpm install (and pnpm build for the browser suites) in
- * upstream/petrus-viewer; `npx playwright install chromium` for playwright;
+ * upstream/petrus-viewer; `npx playwright install --with-deps chromium` for playwright;
  * the history suite also runs the pinned Python reference producer through
  * scripts/upstream-python.
  */
@@ -43,9 +43,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE = path.resolve(HERE, "..");
 const REPO = path.resolve(PACKAGE, "../..");
 const VIEWER = path.join(REPO, "upstream/petrus-viewer");
-const EXECUTABLES = ["petrus", "petrus-mcp", "petrus-collab", "petrus-viewer-oracle"];
+const EXECUTABLES = ["petrus", "petrus-mcp", "petrus-collab"];
 // the test executable doubles as the Haskell observation producer
-// (--chain-producer, test/ChainProducer.hs) for the history suite
+// (--chain-producer, test/ChainProducer.hs) for the history suite and as
+// the oracle the url-cache, protocol and differential suites call
+// (--oracle, test/Oracle.hs)
 const TEST_EXECUTABLE = "petrus-viewer-server-test";
 
 const args = process.argv.slice(2);
