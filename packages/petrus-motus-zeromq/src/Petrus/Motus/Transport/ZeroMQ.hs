@@ -11,10 +11,10 @@
 -- the ZAP domain, and the IPC ownership lock file are the same.
 --
 -- > server <- localServer "ipc:///run/app/dispatch.sock" "app/dispatch.db" ["default"] Nothing Nothing
--- > _ <- forkIO (serveForever server)
--- > endpoint <- waitReady server 5
--- > client <- newZeroMQWorkerDispatch endpoint defaultClientOptions
--- > attempt <- claim client
+-- > withAsync (serveForever server) $ \_ -> do
+-- >   endpoint <- waitReady server 5
+-- >   client <- newZeroMQWorkerDispatch endpoint defaultClientOptions
+-- >   attempt <- claim client
 module Petrus.Motus.Transport.ZeroMQ
   ( -- * Protocol constants
     protocolVersion

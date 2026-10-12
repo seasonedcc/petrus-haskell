@@ -8,7 +8,7 @@ module Petrus.Motus.Transport.ZeroMQ.Cli
   , zeromqPlugins
   ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent.Async (withAsync)
 import Control.Exception (SomeAsyncException, SomeException, catch, fromException, throwIO, try)
 import Control.Monad (void)
 import Data.ByteString qualified as BS
@@ -82,8 +82,7 @@ serve prog argv = do
       (T.unpack <$> value "--server-secret-certificate" parsed)
       (T.unpack <$> value "--allowed-client-keys" parsed)
   _ <- installHandler sigTERM (Catch (void (try @SomeException (requestDrain server drainTimeout)))) Nothing
-  _ <- forkIO (announce server)
-  serveForever server
+  withAsync (announce server) (\_ -> serveForever server)
 
 announce :: ZeroMQDispatchServer -> IO ()
 announce server =

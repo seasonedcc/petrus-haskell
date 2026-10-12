@@ -37,10 +37,10 @@ A Worker executable that should speak ZeroMQ passes `zeromqPlugins` to
 `Petrus.Motus.Worker.Cli.workerMain`.
 
     server <- localServer "ipc:///run/app/dispatch.sock" "app/dispatch.db" ["default"] Nothing Nothing
-    _ <- forkIO (serveForever server)
-    endpoint <- waitReady server 5
-    client <- newZeroMQWorkerDispatch endpoint defaultClientOptions
-    attempt <- claim client
+    withAsync (serveForever server) $ \_ -> do
+      endpoint <- waitReady server 5
+      client <- newZeroMQWorkerDispatch endpoint defaultClientOptions
+      attempt <- claim client
 
 ## Why a direct libzmq binding
 

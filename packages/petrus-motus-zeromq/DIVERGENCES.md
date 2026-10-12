@@ -110,4 +110,8 @@ requests no conforming peer can produce.
    The ZAP handler that enforces the CURVE allowlist is this package's
    equivalent of pyzmq's `ThreadAuthenticator`. It runs on its own thread
    and gives the same answers: an unknown client key is refused, so the
-   stranger's request times out.
+   stranger's request times out. The thread is linked to the server's: if
+   it ever fails, `serveForever` ends with that failure (and `waitReady`
+   reports it), where pyzmq's thread would print a traceback and die,
+   leaving every later CURVE handshake to time out unexplained. The server
+   stops it by cancellation.

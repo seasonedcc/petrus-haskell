@@ -17,14 +17,12 @@ module Petrus.Motus.Transport.ZeroMQ.Curve
   , zapReply
   ) where
 
-import Control.Concurrent (forkIO)
-import Control.Concurrent.MVar
+import Control.Concurrent.Async (Async, asyncWithUnmask, cancel, link)
 import Control.Exception (SomeException, finally, throwIO, try)
-import Control.Monad (forM, unless, when)
+import Control.Monad (forM, forever, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
-import Data.IORef
 import Data.List (isSuffixOf, sort)
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Set (Set)
@@ -191,11 +189,8 @@ keyFiles includeHidden directory = do
 -- ---------------------------------------------------------------------------
 -- ZAP
 
--- | A running ZAP handler.
-data Authenticator = Authenticator
-  { stopping :: IORef Bool
-  , finished :: MVar ()
-  }
+-- | A running ZAP handler: the thread that owns its socket.
+newtype Authenticator = Authenticator (Async ())
 
 -- | Start a ZAP handler on @inproc://zeromq.zap.01@ in the context, as
 -- pyzmq's @ThreadAuthenticator(context).start()@ followed by
@@ -203,6 +198,10 @@ data Authenticator = Authenticator
 -- are the public keys of the directory's @*.key@ files, read once now (a
 -- directory that cannot be read leaves the domain unknown, as pyzmq logs
 -- and continues).
+--
+-- The handler is linked to the calling thread (the server's): if it fails,
+-- the failure is rethrown there instead of leaving later CURVE handshakes
+-- to time out.
 startAuthenticator :: Z.Context -> Text -> FilePath -> IO Authenticator
 startAuthenticator context domain directory = do
   socket <- Z.newSocket context Z.Rep
@@ -215,29 +214,24 @@ startAuthenticator context domain directory = do
       pure (if BS.null public then Nothing else Just public)
     pure (Set.fromList (catMaybes keys))
   let domains = either (const []) (\keys -> [(domain, keys)]) loaded
-  stopping <- newIORef False
-  finished <- newEmptyMVar
-  let loop = do
-        stop <- readIORef stopping
-        unless stop $ do
-          Z.receiveFrames socket (Just 100000) >>= \case
+  let serve = forever $
+        Z.receiveFrames socket Nothing >>= \case
+          Nothing -> pure ()
+          Just frames -> case zapReply domains frames of
             Nothing -> pure ()
-            Just frames -> case zapReply domains frames of
-              Nothing -> pure ()
-              Just reply -> () <$ Z.sendFrames socket reply (Just 1000)
-          loop
-  _ <- forkIO (loop `finally` (Z.closeSocket socket >> putMVar finished ()))
-  pure (Authenticator stopping finished)
+            Just reply -> () <$ Z.sendFrames socket reply (Just 1000)
+  thread <- asyncWithUnmask (\unmask -> unmask serve `finally` Z.closeSocket socket)
+  link thread
+  pure (Authenticator thread)
   where
     onError action cleanup = do
       result <- try @SomeException action
       either (\e -> cleanup >> throwIO e) pure result
 
--- | Stop the handler and wait until its socket is closed.
+-- | Stop the handler (cancelling its wait) and wait until its socket is
+-- closed.
 stopAuthenticator :: Authenticator -> IO ()
-stopAuthenticator a = do
-  writeIORef a.stopping True
-  readMVar a.finished
+stopAuthenticator (Authenticator thread) = cancel thread
 
 -- | pyzmq's @Authenticator.handle_zap_message@ for a CURVE-only
 -- configuration: the reply frames, or 'Nothing' when there is too little
