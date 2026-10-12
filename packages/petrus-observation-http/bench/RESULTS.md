@@ -1,5 +1,7 @@
 # petrus-observation-http benchmarks
 
+<!-- scripts/bench: measured sources a1b138adf022aa8e at 7fc4ecb1d671 -->
+
 This compares the Haskell observation server with the upstream
 `petrus.engine.observation_http` at the pin in [UPSTREAM.md](../../../UPSTREAM.md).
 Both serve the same Engine: the upstream test's Net with its move looping

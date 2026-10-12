@@ -1,5 +1,7 @@
 # petrus-activity benchmarks: Haskell vs the pinned `petrus.motus.activity`
 
+<!-- scripts/bench: measured sources 6daa0cba5c7038c1 at c04dccc09e2c -->
+
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` run the Activity
 value doors on the same inputs. Every row runs one door over 100 distinct
 inputs, so each figure is the time for 100 calls.

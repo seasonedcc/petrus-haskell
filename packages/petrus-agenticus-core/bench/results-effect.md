@@ -1,5 +1,7 @@
 # agenticus-effect benchmark results
 
+<!-- scripts/bench: measured sources 2a4f7fce681fe31a at c76ae2d20d51 -->
+
 Twin workloads: `bench/Bench/Effect.hs` (tasty-bench) and
 `bench/python_effect.py` (the pinned reference, `upstream/petrus` @ 3f85fc2).
 

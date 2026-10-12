@@ -1,5 +1,7 @@
 # Thread lifecycle benchmark results
 
+<!-- scripts/bench: measured sources 479d741849778ff1 at 9126e1be67f7 -->
+
 Workload: 1000 Episodes × 4 Turns on one Thread (each Turn accepts one
 append and settles completed; each Episode settles completed with a fresh
 Continuation). Both sides run the same five measurements.

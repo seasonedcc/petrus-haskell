@@ -5,7 +5,12 @@
     scripts/bench PKG [PKG ...]     # only these packages
     scripts/bench --list [PKG ...]  # print the rerun commands instead of running them
     scripts/bench --summary         # rewrite bench-results/summary.md from the results files
-    scripts/bench --check           # every bench documents a rerun; summary.md is current
+    scripts/bench --check           # every bench documents a rerun and the sources it measured;
+                                    # summary.md is current
+    scripts/bench --stale           # the results files whose package sources changed since measured
+    scripts/bench --stamp PKG [FILE.md ...]
+                                    # after a rerun: record that PKG's figures measure HEAD's sources
+    scripts/bench --smoke [PKG ...] # build every benchmark and run it once, quickly (CI's nightly run)
 
 Each package's results (``packages/<pkg>/bench/RESULTS.md``) are curated by
 hand: the workloads, the machine, how both sides were measured, and the
@@ -26,6 +31,26 @@ When the block or the package's benchmark sources mention
 ``scripts/with-postgres``, which starts a throwaway server for it. Packages
 run one after another, never in parallel.
 
+Each results file also records which code its figures measured, in a marker
+
+    <!-- scripts/bench: measured sources FINGERPRINT at COMMIT -->
+
+FINGERPRINT hashes the package's files as committed (git blob ids), all but
+its prose (``*.md``) and its test suite (``test/``); COMMIT is where they
+were. ``--check`` fails on a results file without the marker and notes how
+many are stale; ``--stale`` lists every results file whose package's
+fingerprint has changed since (changes in its dependencies are not tracked).
+After rerunning a package and updating its figures, ``--stamp PKG`` (or
+``--stamp PKG results-x.md`` for one of several files) records HEAD's
+fingerprint and regenerates the summary.
+
+``--smoke`` is not a measurement: it builds every benchmark and runs it once
+(tasty-bench's ``--stdev Infinity``, or the sh block after a
+``<!-- scripts/bench: smoke -->`` marker in the package's RESULTS.md, run
+from the repository root with ``BENCH_BIN`` set to the built executable), so
+that a benchmark cannot silently stop building or running. CI's nightly run
+does this.
+
 A block typically runs ``cabal bench <pkg>`` and then the Python twin once.
 For the packages whose ``bench/python_bench.py`` names its rows like the
 Haskell benchmarks, ``scripts/bench-compare <pkg> [N]`` interleaves N runs of
@@ -39,6 +64,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -130,23 +156,160 @@ def run(package: str) -> int:
     return status
 
 
+def stale() -> List[str]:
+    """The results files whose package's measured sources differ from the
+    ones their figures measured (their `measured` marker)."""
+    found = []
+    fingerprints: Dict[str, str] = {}
+    for path in bench_results.results_files():
+        marker = bench_results.measured(path)
+        package = path.parent.parent.name
+        if package not in fingerprints:
+            fingerprints[package] = bench_results.sources_fingerprint(package)
+        if marker and marker[0] != fingerprints[package]:
+            found.append(f"{path.relative_to(ROOT)} (measured at {marker[1]})")
+    return found
+
+
 def check() -> int:
     status = 0
     for package in benchmark_packages():
         if rerun_block(package) is None:
             print(f"{package}: bench/RESULTS.md has no `{MARKER}` sh block", file=sys.stderr)
             status = 1
+    for path in bench_results.results_files():
+        if bench_results.measured(path) is None:
+            print(f"{path.relative_to(ROOT)}: no `<!-- scripts/bench: measured sources ... -->` marker"
+                  f" (after a rerun, `scripts/bench --stamp {path.parent.parent.name}`)", file=sys.stderr)
+            status = 1
     if bench_results.main(["summary", "--check"]) != 0:
         status = 1
     if status == 0:
-        print(f"{len(benchmark_packages())} benchmark packages document their rerun; bench-results/summary.md is current")
+        print(f"{len(benchmark_packages())} benchmark packages document their rerun and the sources they measured;"
+              " bench-results/summary.md is current")
+        changed = stale()
+        if changed:
+            print(f"note: {len(changed)} results files measured sources that have changed since"
+                  " (`scripts/bench --stale` lists them; their figures may no longer hold)")
     return status
+
+
+def stamp(packages: List[str], files: List[str]) -> int:
+    """Record, in each results file of the packages (or only FILES), that its
+    figures measure the package's sources as committed in HEAD. Run it after
+    rerunning a package's benchmarks and updating its figures, from a commit
+    whose package sources are the ones measured."""
+    head = bench_results.subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True,
+                                        stdout=bench_results.subprocess.PIPE, text=True).stdout.strip()
+    for path in bench_results.results_files():
+        package = path.parent.parent.name
+        if package not in packages or (files and path.name not in files):
+            continue
+        line = bench_results.measured_line(bench_results.sources_fingerprint(package), head)
+        text = path.read_text(encoding="utf-8")
+        if bench_results.MEASURED.search(text):
+            text = bench_results.MEASURED.sub(line, text, count=1)
+        else:
+            first, _, rest = text.partition("\n")
+            text = f"{first}\n\n{line}\n{rest}"
+        path.write_text(text, encoding="utf-8")
+        print(f"{path.relative_to(ROOT)}: {line}")
+    return bench_results.main(["summary", "--write"])
+
+
+SMOKE = "<!-- scripts/bench: smoke -->"
+
+
+def smoke_block(package: str) -> str:
+    """The package's smoke run: the sh block after the smoke marker in its
+    RESULTS.md, or else one quick pass of every tasty-bench row (each
+    measured once: `--stdev Infinity`). It runs from the repository root with
+    BENCH_BIN, the built benchmark executable, and cabal bench's environment."""
+    results = ROOT / "packages" / package / "bench" / "RESULTS.md"
+    lines = results.read_text(encoding="utf-8").splitlines() if results.exists() else []
+    for index, line in enumerate(lines):
+        if line.strip() == SMOKE:
+            rest = [l for l in lines[index + 1:]]
+            while rest and not rest[0].strip():
+                rest = rest[1:]
+            if rest and re.match(r"^```(sh|bash)\s*$", rest[0].strip()):
+                body = []
+                for code in rest[1:]:
+                    if code.strip() == "```":
+                        return "\n".join(body) + "\n"
+                    body.append(code)
+            raise SystemExit(f"{package}: the `{SMOKE}` marker is not followed by an sh block")
+    return f'cd packages/{package} && "$BENCH_BIN" --stdev Infinity +RTS -M2G -RTS\n'
+
+
+def bench_tools(cabal_text: str) -> List[str]:
+    """The executables the benchmark stanza's build-tool-depends names, as
+    cabal targets (`pkg:exe:name`)."""
+    stanza = re.search(r"^benchmark\s+\S+\s*\n((?:[ \t].*\n|\s*\n)*)", cabal_text, re.MULTILINE)
+    field = re.search(r"^\s*build-tool-depends:\s*((?:.*\n)(?:\s+,.*\n)*)", stanza.group(1) if stanza else "", re.MULTILINE)
+    tools = []
+    for item in (field.group(1).replace("\n", " ").split(",") if field else []):
+        name = item.strip().split()[0] if item.strip() else ""
+        if ":" in name:
+            package, exe = name.split(":", 1)
+            tools.append(f"{package}:exe:{exe}")
+    return tools
+
+
+def smoke(packages: List[str]) -> int:
+    """Build every selected benchmark and run its smoke block: proof that the
+    benchmarks still build and run to the end, not a measurement. In CI the
+    PATH stays as it is: a PATH unlike the build job's would make cabal
+    reconfigure every package."""
+    env = dict(os.environ) if os.environ.get("CI") else environment()
+    targets = {}
+    tools = {}
+    for package in packages:
+        cabal_text = next((ROOT / "packages" / package).glob("*.cabal")).read_text()
+        stanza = re.search(r"^benchmark\s+(\S+)", cabal_text, re.MULTILINE)
+        targets[package] = f"{package}:bench:{stanza.group(1)}"
+        tools[package] = bench_tools(cabal_text)
+    subprocess.run(["cabal", "build", "-j", "--enable-benchmarks", *targets.values()], cwd=ROOT, env=env, check=True)
+
+    def list_bin(target: str) -> str:
+        return subprocess.run(["cabal", "list-bin", "-v0", "--enable-benchmarks", target], cwd=ROOT, env=env,
+                              check=True, stdout=subprocess.PIPE, text=True).stdout.strip()
+
+    failed = []
+    for package, target in targets.items():
+        binary = list_bin(target)
+        # like cabal bench, the build-tool-depends executables come first on PATH
+        tool_dirs = [str(Path(list_bin(tool)).parent) for tool in tools[package]]
+        block = smoke_block(package)
+        scratch = TMP / f"smoke-{package}"
+        if scratch.exists():
+            shutil.rmtree(scratch)
+        scratch.mkdir(parents=True)
+        run_env = dict(env, BENCH_BIN=binary, BENCH_TMP=str(scratch),
+                       HASKELL_DIST_DIR=str(Path(binary).parent.parent.parent),
+                       PATH=os.pathsep.join([*tool_dirs, env.get("PATH", "")]))
+        run_env[f"{package.replace('-', '_')}_datadir"] = str(ROOT / "packages" / package) + "/."
+        argv = ["bash", "-e", "-o", "pipefail", "-c", block]
+        if needs_postgres(package, block) and not env.get("PETRUS_TEST_POSTGRES"):
+            argv = [str(ROOT / "scripts" / "with-postgres")] + argv
+        print(f"==> smoke {package}\n{block}", file=sys.stderr, flush=True)
+        started = time.monotonic()
+        status = subprocess.call(argv, cwd=ROOT, env=run_env)
+        shutil.rmtree(scratch, ignore_errors=True)
+        print(f"<== smoke {package}: exit {status} after {time.monotonic() - started:.0f} s", file=sys.stderr, flush=True)
+        if status != 0:
+            failed.append(package)
+    if failed:
+        print(f"benchmark smoke failed: {', '.join(failed)}", file=sys.stderr)
+        return 1
+    print(f"{len(targets)} benchmarks built and ran to the end")
+    return 0
 
 
 def main(argv: List[str]) -> int:
     flags = [a for a in argv if a.startswith("-")]
     packages = [a for a in argv if not a.startswith("-")]
-    unknown_flags = [f for f in flags if f not in ("--list", "--summary", "--check", "-h", "--help")]
+    unknown_flags = [f for f in flags if f not in ("--list", "--summary", "--check", "--stale", "--stamp", "--smoke", "-h", "--help")]
     if unknown_flags or "-h" in flags or "--help" in flags:
         print(__doc__, file=sys.stderr)
         return 2 if unknown_flags else 0
@@ -154,12 +317,28 @@ def main(argv: List[str]) -> int:
         return bench_results.main(["summary", "--write"])
     if "--check" in flags:
         return check()
+    if "--stale" in flags:
+        changed = stale()
+        for line in changed:
+            print(line)
+        print(f"{len(changed)} results files measured package sources that have changed since", file=sys.stderr)
+        return 1 if changed else 0
+    files = [p for p in packages if p.endswith(".md")]
+    packages = [p for p in packages if not p.endswith(".md")]
     available = benchmark_packages()
     unknown = [p for p in packages if p not in available]
     if unknown:
         print(f"no benchmark stanza in: {', '.join(unknown)}", file=sys.stderr)
         return 2
+    if "--stamp" in flags:
+        if not packages:
+            print("--stamp needs the packages whose figures were just measured", file=sys.stderr)
+            return 2
+        return stamp(packages, files)
     selected = packages or available
+    if "--smoke" in flags:
+        TMP.mkdir(parents=True, exist_ok=True)
+        return smoke(selected)
     if "--list" in flags:
         for package in selected:
             print(f"## {package}\n{rerun_block(package) or '(no rerun block)'}")

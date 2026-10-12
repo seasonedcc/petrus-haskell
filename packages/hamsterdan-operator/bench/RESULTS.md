@@ -1,5 +1,7 @@
 # hamsterdan-operator benchmarks
 
+<!-- scripts/bench: measured sources 0b35786f91a35631 at ccc5c9b8230d -->
+
 Seven workloads, in two shapes, all timed by wall clock (monotonic) on
 both sides.
 
@@ -138,6 +140,13 @@ It prints the table above.
 <!-- scripts/bench: rerun -->
 ```sh
 cabal bench -j2 hamsterdan-operator --benchmark-options="--runs 21 +RTS -M2G -RTS"
+```
+
+CI's nightly smoke run (`scripts/bench --smoke`, not a measurement):
+
+<!-- scripts/bench: smoke -->
+```sh
+cd packages/hamsterdan-operator && "$BENCH_BIN" --runs 1 +RTS -M2G -RTS
 ```
 
 Note `uptime` before and after each run. For profiling,

@@ -1,5 +1,7 @@
 # hamsterdan-testing benchmarks
 
+<!-- scripts/bench: measured sources 0aa75ac95f5bccb3 at 4b4fcde3cc48 -->
+
 Three groups of workloads, all timed in wall-clock time on both sides:
 
 - **The oracle** that a deterministic simulation consults at every

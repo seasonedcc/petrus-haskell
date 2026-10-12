@@ -1,5 +1,7 @@
 # petrus-motus-absurd benchmarks
 
+<!-- scripts/bench: measured sources d02fcdd312e388a9 at 14f6d69e9572 -->
+
 The Haskell side is [`bench/Main.hs`](Main.hs). The Python twin is
 [`bench/python_bench.py`](python_bench.py), which runs the reference's
 `petrus.motus.dispatch.absurd` with the same invocations, queues and doors. Both create a scratch

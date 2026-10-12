@@ -22,9 +22,10 @@ extra-doc-files:    NOTICE
                     DIVERGENCES.md
                     PARITY.md
                     bench/RESULTS.md
-data-files:         test/fixtures/*.txt
+extra-source-files: test/fixtures/*.txt
                     test/fixtures/*.json
                     test/chain_producer.py
+                    test/*.mjs
 
 common warnings
   ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
@@ -147,6 +148,7 @@ test-suite petrus-viewer-server-test
                     CliSpec
                     McpSpec
                     ObservationSpec
+                    ProxySpec
                     HistorySpec
                     ChainProducer
                     ServerSpec

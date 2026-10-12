@@ -41,7 +41,9 @@ parity``, and not to be the component being checked.
 
 from __future__ import annotations
 
+import hashlib
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -125,6 +127,47 @@ def ratios(path: Path) -> List[Ratio]:
     return found
 
 
+MEASURED = re.compile(r"<!-- scripts/bench: measured sources ([0-9a-f]{16}) at ([0-9a-f]{12}) -->")
+
+
+def measured(path: Path) -> Optional[Tuple[str, str]]:
+    """(sources fingerprint, commit) of the results file's marker: the
+    package's sources its current figures measured, and the commit they were
+    at."""
+    match = MEASURED.search(path.read_text(encoding="utf-8"))
+    return (match.group(1), match.group(2)) if match else None
+
+
+def measured_line(fingerprint: str, commit: str) -> str:
+    return f"<!-- scripts/bench: measured sources {fingerprint} at {commit[:12]} -->"
+
+
+def counted(package: str, relative: str) -> bool:
+    """Whether a file of the package (path relative to it) is one of the
+    sources its benchmark measures: everything but prose (*.md, LICENSE,
+    NOTICE) and the tests (test/, differential/, upstream-tests/)."""
+    return not (relative.endswith(".md") or relative in ("LICENSE", "NOTICE")
+                or relative.startswith(("test/", "differential/", "upstream-tests/")))
+
+
+def sources_fingerprint(package: str, treeish: str = "HEAD") -> str:
+    """A hash of the package's measured sources (`counted`) as committed at
+    TREEISH: their paths and git blob ids, so content, not timestamps."""
+    listing = subprocess.run(
+        ["git", "ls-tree", "-r", "-z", treeish, "--", f"packages/{package}/"],
+        cwd=ROOT, check=True, stdout=subprocess.PIPE, text=True,
+    ).stdout
+    entries = []
+    prefix = f"packages/{package}/"
+    for record in listing.split("\0"):
+        if not record:
+            continue
+        meta, path = record.split("\t", 1)
+        if path.startswith(prefix) and counted(package, path[len(prefix):]):
+            entries.append(f"{path}\0{meta.split()[2]}\n")
+    return hashlib.sha256("".join(sorted(entries)).encode()).hexdigest()[:16]
+
+
 def results_files() -> List[Path]:
     files = sorted(ROOT.glob("packages/*/bench/RESULTS.md"))
     files += sorted(ROOT.glob("packages/*/bench/results-*.md"))
@@ -152,16 +195,22 @@ def summary() -> str:
         "Node, for `petrus-viewer-server`) on that row; below 1.0× Haskell is",
         "slower. Historical columns and tables (marked *before*) are left out.",
         "",
-        "| Package | Results | Rows | Worst | Best | |",
-        "| --- | --- | ---: | ---: | ---: | --- |",
+        "*Measured at* is the commit whose package sources the file's figures",
+        "measured (its `scripts/bench: measured` marker). `scripts/bench --stale`",
+        "lists the files whose package sources have changed since.",
+        "",
+        "| Package | Results | Measured at | Rows | Worst | Best | |",
+        "| --- | --- | --- | ---: | ---: | ---: | --- |",
     ]
     below = []
     for path in results_files():
         found = ratios(path)
         package = path.parent.parent.name
         link = f"[{path.name}](../{path.relative_to(ROOT).as_posix()})"
+        marker = measured(path)
+        at = f"`{marker[1][:7]}`" if marker else "—"
         if not found:
-            lines.append(f"| `{package}` | {link} | 0 | — | — | no ratio table |")
+            lines.append(f"| `{package}` | {link} | {at} | 0 | — | — | no ratio table |")
             continue
         worst = min(found, key=lambda r: r.value)
         best = max(found, key=lambda r: r.value)
@@ -171,7 +220,7 @@ def summary() -> str:
             flag = "**below 1.0×**: " + "; ".join(slow)
             below.append(package)
         rows = len({r.line for r in found})
-        lines.append(f"| `{package}` | {link} | {rows} | {fmt(worst.value)} | {fmt(best.value)} | {flag} |")
+        lines.append(f"| `{package}` | {link} | {at} | {rows} | {fmt(worst.value)} | {fmt(best.value)} | {flag} |")
     lines += [
         "",
         f"{len(results_files())} results files; "

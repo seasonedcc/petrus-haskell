@@ -1,5 +1,7 @@
 # petrus-agenticus-runtime benchmark results
 
+<!-- scripts/bench: measured sources a188d6e584673ddc at 0eaa52516f65 -->
+
 The Pi benchmarks (frame codec, session validation, fingerprints, the
 operation ledger and a scripted A2 turn) are in [results-pi.md](results-pi.md).
 This file covers the Local Agent-as-a-Net runner.
@@ -71,6 +73,15 @@ cabal bench -j2 petrus-agenticus-runtime --benchmark-options='--time-mode wall +
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_pi_a2.py)
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_hosts.py)
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_bench.py)
+```
+
+CI's nightly smoke run (`scripts/bench --smoke`, not a measurement, on
+Linux): every row once except `codex-a3-service-turn`, whose state directory
+(and runtime socket) both twins put under macOS's `/private/tmp`.
+
+<!-- scripts/bench: smoke -->
+```sh
+cd packages/petrus-agenticus-runtime && "$BENCH_BIN" --stdev Infinity -p '!/codex-a3-service-turn/' +RTS -M2G -RTS
 ```
 
 `bench/python_bench.py` holds the whole-Turn twins (`codex-turn`,
