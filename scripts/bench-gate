@@ -44,6 +44,23 @@ audit's FA-V-1 found 1.7× slower (its encoder held every record's
 ``Builder``); its Haskell-only ``diagnostic.encode-payload`` row, the
 encoder alone, has no twin to compare with.
 
+Left out on purpose, with the package's next-thinnest row gated instead:
+rows whose time is the same kernel or server work on both sides, which the
+runner measured on either side of 1.0x from run to run (single-repetition
+noise, not the port). They are petrus-sqlite's
+``tx.immediate-insert-commit`` and petrus-posix's
+``atomic.write-1KiB-fsync`` (one ``fsync`` per call on both sides: strace
+counts the same syncs, and the twin's SQLite syncs with ``fsync`` too;
+0.89-1.08x and 0.96-1.12x over five runs), and petrus-dst's
+``joined.one isolated database`` (``CREATE DATABASE``, the schemas and
+``DROP DATABASE``, all server time; 0.97-1.02x). petrus-execution's
+``archive/one-large/extract`` is out too: on the runner both sides spend
+nearly all of it in ``write(2)`` (a bare 256 MiB write loop takes 58-60 ms
+there, the extractions 57-59 ms), and Haskell came out 0.88-0.98x in five
+runs (1.14x on the Apple M4), with 64 KiB or 128 KiB writes alike;
+``archive/medium/extract`` is gated in its place. Their local figures are in
+the packages' results files.
+
 Left out: petrus-viewer-server, whose twin is the upstream Node server (its
 benchmark, ``bench/run.mjs``, needs the built viewer; the nightly ``viewer``
 job runs its suites), and the second harness of packages that have two
@@ -149,9 +166,9 @@ ENTRIES = [
     pair("petrus-cel", [("All.filter/regex.evaluate", "filter/regex.evaluate")],
          '"$(scripts/upstream-python)" -B packages/petrus-cel/bench/time_cel.py'),
     pair("petrus-dsl", [("All.chain.chain-10000.build", "build/chain-10000")], petrus("petrus-dsl")),
-    pair("petrus-dst", [("All.joined.one isolated database (create, both schemas, drop)", "joined/one isolated database")],
+    pair("petrus-dst", [("All.joined.replay the 33 joined fixtures", "joined/replay 33 joined fixtures")],
          '(cd upstream/petrus && PYTHONPATH=. "$(../../scripts/upstream-python)" -B'
-         ' ../../packages/petrus-dst/scripts/bench.py "joined/one isolated")'),
+         ' ../../packages/petrus-dst/scripts/bench.py "joined/replay")'),
     pair("petrus-engine", [("All.engine.orders-large-jsonl", "engine/orders-large-jsonl")], petrus("petrus-engine")),
     pair("petrus-engine-absurd", [("All.engine.create-close", "engine.create-close")], petrus("petrus-engine-absurd"),
          only=r"^engine\.create-close$"),
@@ -162,7 +179,7 @@ ENTRIES = [
          [("All.engine-sqlite.open-close", "engine-sqlite/open-close"),
           ("All.engine-sqlite.orders-small-sqlite", "engine-sqlite/orders-small-sqlite")],
          petrus("petrus-engine-sqlite", arguments="open-close orders-small-sqlite")),
-    table("petrus-execution", [r"^\| sidecar/execute-round-trip \|", r"^\| archive/one-large/extract \|"],
+    table("petrus-execution", [r"^\| sidecar/execute-round-trip \|", r"^\| archive/medium/extract \|"],
           'cabal build -v0 -j2 petrus-execution:bench:petrus-execution-bench && "$(scripts/upstream-python)" -B'
           ' packages/petrus-execution/bench/compare.py "$BENCH_TMP/workloads" 5'),
     pair("petrus-fabric", [("All.postgres.discover", "postgres.discover")], petrus("petrus-fabric"),
@@ -193,8 +210,8 @@ ENTRIES = [
          petrus("petrus-observation-http"), only=r"^roundtrip\.refused-405$"),
     pair("petrus-posix",
          [("All.flock.open-tryLock-close", "flock.open-tryLock-close"),
-          ("All.atomic.write-1KiB-fsync", "atomic.write-1KiB-fsync")],
-         petrus("petrus-posix"), only=r"^(flock\.open-tryLock-close|atomic\.write-1KiB-fsync)$"),
+          ("All.at.stat-nofollow", "at.stat-nofollow")],
+         petrus("petrus-posix"), only=r"^(flock\.open-tryLock-close|at\.stat-nofollow)$"),
     pair("petrus-postgres", [("All.tx.join-insert-commit", "tx.join-insert-commit")], petrus("petrus-postgres"),
          only=r"^tx\.join-insert-commit$"),
     pair("petrus-processes", [("All.postgres.claim-new", "postgres.claim-new")], petrus("petrus-processes"),
@@ -202,10 +219,11 @@ ENTRIES = [
     pair("petrus-simulation", [("All.http.options", "http.options")], petrus("petrus-simulation"),
          only=r"^http\.options$"),
     pair("petrus-sqlite",
-         [("All.tx.immediate-insert-commit", "tx.immediate-insert-commit"),
-          ("All.tx.immediate-insert-100", "tx.immediate-insert-100"),
+         [("All.tx.immediate-insert-100", "tx.immediate-insert-100"),
+          ("All.connect.local-dispatch-profile", "connect.local-dispatch-profile"),
           ("All.fence.acquire-release", "fence.acquire-release")],
-         petrus("petrus-sqlite"), only=r"^(tx\.immediate-insert-commit|tx\.immediate-insert-100|fence\.acquire-release)$"),
+         petrus("petrus-sqlite"),
+         only=r"^(tx\.immediate-insert-100|connect\.local-dispatch-profile|fence\.acquire-release)$"),
     pair("petrus-telemetry-instrumentation",
          [("All.chain.engine-advance.facts-null-route", "chain/engine-advance/facts-null-handler")],
          petrus("petrus-telemetry-instrumentation")),

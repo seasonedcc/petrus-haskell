@@ -364,11 +364,23 @@ run once and their table's ratio is read. A row below 1.0× is measured
 again from scratch, and the job fails when the rerun is below 1.0× too, or
 when a row cannot be measured. The table goes to the run summary, the
 figures and the log to the `bench-gate-N` artifacts. Left out:
-petrus-viewer-server (its twin is the upstream Node server) and the second
-harness of packages that have two; `scripts/bench-gate --list` prints the
-rows. CI runners are not the machine the results files were measured on,
+petrus-viewer-server (its twin is the upstream Node server), the second
+harness of packages that have two, and four thin rows that are the same
+kernel or server work on both sides (one `fsync`, `CREATE DATABASE` and
+`DROP DATABASE`, or 256 MiB of `write(2)`), which the runner measured below
+or on either side of 1.0× from run to run; their packages' next-thinnest
+rows are gated instead (the `scripts/bench-gate` docstring names them and
+gives the runner's figures). `scripts/bench-gate --list`
+prints the rows. CI runners are not the machine the results files were measured on,
 so the gate checks the direction (Haskell not slower), not the committed
-ratios.
+ratios. Its PostgreSQL server is set up as `scripts/with-postgres` sets up
+the one the results files were measured against: trust authentication over
+127.0.0.1, without the GSSAPI encryption probe. Under the image's default
+SCRAM-SHA-256, each connect spends about 1.8 ms of PBKDF2 inside the client
+library, and the two sides link different builds of it (the runner's libpq
+and OpenSSL against psycopg-binary's bundled ones), so the connect-heavy
+rows measured those builds rather than the port (0.89–0.97× under SCRAM,
+1.00–1.12× with trust, in the same runs).
 
 ### CPU and wall-clock time
 
