@@ -13,6 +13,29 @@ Both sides do the following:
 - provision the pinned History and Absurd schemas;
 - drop the database afterwards.
 
+## Current figures
+
+Measured on 2026-10-12, 01:57–01:58 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.85–3.17:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-engine-absurd 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The server was `scripts/with-postgres`'s throwaway PostgreSQL 17.7 (`initdb` defaults, so `fsync` on); the `fsync=off` table below was not rerun. The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `engine.create-close` | 2.73 ms | 3.13 ms | 1.15× | 1.13× | 2.78 ms, 2.73 ms, 2.73 ms | 3.13 ms, 3.09 ms, 3.18 ms |
+| `roundtrip.issue-to-completion` | 8.72 ms | 11.2 ms | 1.29× | 1.26× | 8.64 ms, 8.89 ms, 8.72 ms | 11.3 ms, 11.2 ms, 11.2 ms |
+
+## Earlier figures
+
 Ratios above 1 mean Haskell is faster. Haskell is faster than Python on every row, on a server
 with `fsync` on and with it off, in every repetition. Statements run prepared from their sixth
 execution on a connection, as psycopg's do (petrus-postgres's prepared-statement cache).
@@ -35,6 +58,8 @@ execution on a connection, as psycopg's do (petrus-postgres's prepared-statement
 **`fsync` on** (`scripts/with-postgres`'s throwaway PostgreSQL 17.7, `initdb` defaults,
 07:05–07:08, load 1.48–2.31):
 
+<!-- bench: superseded -->
+
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
 |---|---:|---:|---:|---:|---:|
 | `engine.create-close` | 3.03 ms | 3.50 ms | 1.16× | 1.14× | 7/7 |
@@ -42,6 +67,8 @@ execution on a connection, as psycopg's do (petrus-postgres's prepared-statement
 
 **`fsync` off** (a private PostgreSQL 17.7 started with `-c fsync=off`, TCP only, 07:08–07:11,
 load 2.02–2.54):
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
 |---|---:|---:|---:|---:|---:|

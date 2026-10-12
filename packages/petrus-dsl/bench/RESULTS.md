@@ -51,7 +51,38 @@ Haskell numbers are tasty-bench means (± 2σ). Python numbers are the median of
 24 GB of memory, using GHC 9.10.3 (`-O2`) and CPython 3.14.6. The reference
 was pinned at `upstream/petrus` 3f85fc2.
 
-## Results
+## Current figures
+
+Measured on 2026-10-12, 02:55–02:57 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.49–2.84:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-dsl 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `chain.chain-1000.build` | 9.01 ms | 29.1 ms | 3.23× | 3.22× | 8.98 ms, 9.01 ms, 9.1 ms | 29.1 ms, 29.1 ms, 29.3 ms |
+| `chain.chain-1000.build+v3` | 18.6 ms | 111 ms | 5.97× | 5.94× | 18.7 ms, 18.6 ms, 18.6 ms | 111 ms, 112 ms, 111 ms |
+| `chain.chain-10000.build` | 147 ms | 334 ms | 2.27× | 2.27× | 146 ms, 147 ms, 147 ms | 334 ms, 333 ms, 335 ms |
+| `chain.chain-10000.build+v3` | 273 ms | 1.24 s | 4.54× | 4.48× | 273 ms, 277 ms, 273 ms | 1.24 s, 1.24 s, 1.23 s |
+| `stamped.stamped-10.build` | 242 µs | 1.44 ms | 5.95× | 5.95× | 242 µs, 242 µs, 242 µs | 1.44 ms, 1.44 ms, 1.44 ms |
+| `stamped.stamped-10.build+v3` | 667 µs | 6.37 ms | 9.55× | 9.49× | 667 µs, 671 µs, 662 µs | 6.37 ms, 6.37 ms, 6.32 ms |
+| `stamped.stamped-100.build` | 3.81 ms | 15.3 ms | 4.02× | 3.98× | 3.84 ms, 3.81 ms, 3.81 ms | 15.3 ms, 15.3 ms, 15.3 ms |
+| `stamped.stamped-100.build+v3` | 9.36 ms | 63.9 ms | 6.83× | 6.83× | 9.35 ms, 9.4 ms, 9.36 ms | 63.9 ms, 64.3 ms, 63.9 ms |
+| `stamped.stamped-1000.build` | 73.2 ms | 255 ms | 3.48× | 3.47× | 73.5 ms, 73.2 ms, 73 ms | 260 ms, 254 ms, 255 ms |
+| `stamped.stamped-1000.build+v3` | 143 ms | 779 ms | 5.45× | 5.43× | 143 ms, 143 ms, 143 ms | 789 ms, 779 ms, 777 ms |
+
+## Earlier figures
+
+<!-- bench: superseded -->
 
 | workload | step | Python | Haskell | speed-up |
 | --- | --- | ---: | ---: | ---: |
@@ -72,4 +103,5 @@ was pinned at `upstream/petrus` 3f85fc2.
   can be rolled back (`attempt`). Building is one pass that composes the
   stamps, lowers the result, and hands it to the kernel's `mkNet`.
 - **Growth is slightly superlinear on both sides.** Going from 1 000 to
-  10 000 chain links costs 13× on the Python side and 15× here.
+  10 000 chain links costs 11× on the Python side and 16× here (13× and 15×
+  in the earlier figures).

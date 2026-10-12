@@ -10,6 +10,31 @@ back to `a`, advanced 100 times, which gives 201 History records
 `test/reference_observation.py`). Ratios above 1 mean Haskell is faster.
 Haskell is faster on every row.
 
+## Current figures
+
+Measured on 2026-10-12, 02:39–02:40 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.86–3.03:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-observation-http 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `roundtrip.snapshot` | 60.6 µs | 213 µs | 3.51× | 3.49× | 58 µs, 60.6 µs, 61.2 µs | 210 µs, 213 µs, 214 µs |
+| `roundtrip.document` | 4.19 ms | 22.4 ms | 5.35× | 5.27× | 4.16 ms, 4.25 ms, 4.19 ms | 22.6 ms, 22.4 ms, 22.4 ms |
+| `roundtrip.history-100` | 130 µs | 534 µs | 4.10× | 3.83× | 124 µs, 139 µs, 130 µs | 541 µs, 534 µs, 529 µs |
+| `roundtrip.refused-405` | 51.5 µs | 123 µs | 2.39× | 1.95× | 49.2 µs, 63.3 µs, 51.5 µs | 122 µs, 123 µs, 124 µs |
+
+## Earlier figures
+
 - Date: 2026-10-10. Round trips: 21:13–21:14 local (UTC-3), commit `74e6b1e` with the switch
   to wall-clock time in `bench/Main.hs`. Load: commit `146bfdd`.
 - Machine: Darwin arm64, Apple M4 (10 cores, 24 GB). Other work was running
@@ -57,6 +82,8 @@ The table gives the median over three interleaved repetitions
 (`scripts/bench-compare petrus-observation-http 3`). The 1-minute load average
 was 2.86 to 2.98.
 
+<!-- bench: superseded -->
+
 | Benchmark | Haskell | Python | Python / Haskell | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---|---|
 | `roundtrip.snapshot` | 70.6 µs | 221 µs | 3.13× | 70.6 µs, 67.2 µs, 73.8 µs | 221 µs, 215 µs, 226 µs |
@@ -90,6 +117,8 @@ identical requests. The client therefore costs the same on both sides.
 - **Figures.** The tables give the median over 5 repetitions of throughput
   and of the per-request p50 and p99 latencies. The 1-minute load average
   was 2.47 to 4.30.
+
+<!-- bench: superseded -->
 
 | Scenario | Clients | Haskell req/s | Haskell p50 / p99 | Python req/s | Python p50 / p99 | Haskell / Python |
 |---|---:|---:|---:|---:|---:|---:|

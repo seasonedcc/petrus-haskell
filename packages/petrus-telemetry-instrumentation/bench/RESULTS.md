@@ -27,14 +27,15 @@ same bytes as the reference's `JsonLogger`.
 | | |
 |---|---|
 | Machine | Apple M4, 24 GB, macOS (Darwin 25.3) |
-| Load | 3.5–3.7 load average during the runs (other agents were idle or building elsewhere); both sides ran back to back on 2026-10-11 |
-| Haskell | GHC 9.10.3, benchmark `-O2 -with-rtsopts=-A32m`, libraries at their own `-O2`; tasty-bench `--stdev 5` |
+| Load | 2.1–2.8 load average (1-minute) during the runs, on 2026-10-12, 02:52–02:55 local (UTC-3), at commit `81bbdc5`: three interleaved repetitions of `scripts/bench-compare petrus-telemetry-instrumentation 3`, alternating which side goes first; each figure is the median of the three |
+| Haskell | GHC 9.10.3, benchmark `-O2 -with-rtsopts=-A32m`, libraries at their own `-O2`; tasty-bench `--stdev 5`, run with `+RTS -M2G` |
 | Python | CPython 3.14.6, the upstream `.venv` at pin `3f85fc2` |
 | Timing (Python) | emits and lines: median of 50 runs; chains: median of 15 (instance) or 11 (engine) interleaved rounds after one warm-up round |
 
 Numbers move by about ±10% between runs. Read the ratios, not the last
 digit. An earlier run at a load average of 6.5–9 gave Haskell and Python
-figures 1.1–3× higher than these, in the same order.
+figures 1.1–3× higher than these, in the same order; the run before this
+one (2026-10-11, load 3.5–3.7) was within about 10% of these figures.
 
 ## (a) Per-emit cost
 
@@ -45,16 +46,16 @@ One 6-field payload (`transition`, `occurrence`, `instant`, `records`,
 | Configuration | Haskell | Python | Notes |
 |---|---:|---:|---|
 | level `off` | 0.003 µs | 0.17 µs | one level read, then return |
-| `facts`, no route / no handler (the default) | 0.057 µs | 2.6 µs | Haskell never formats an unrouted line; Python runs `json.dumps` and creates a `LogRecord` that the logger then drops |
+| `facts`, no route / no handler (the default) | 0.056 µs | 2.5 µs | Haskell never formats an unrouted line; Python runs `json.dumps` and creates a `LogRecord` that the logger then drops |
 | `facts`, null route / `NullHandler` | 2.5 µs | 4.5 µs | the line is formatted and stamped with `ts`, then dropped |
-| `facts` under `capture()` (recorder) | 0.069 µs | 0.67 µs | the payload is kept as a value and never formatted |
+| `facts` under `capture()` (recorder) | 0.068 µs | 0.68 µs | the payload is kept as a value and never formatted |
 
 The cost of formatting one line, on the full 9-field payload plus `ts`:
 
 | Step | Haskell | Python |
 |---|---:|---:|
-| render the line (`telemetryLine` / `json.dumps`) | 0.78 µs | 1.8 µs |
-| read the wall clock (`wallClockMs` / `time.time()`) | 0.23 µs | 0.05 µs |
+| render the line (`telemetryLine` / `json.dumps`) | 0.77 µs | 1.8 µs |
+| read the wall clock (`wallClockMs` / `time.time()`) | 0.22 µs | 0.05 µs |
 
 A routed Haskell emit costs about 1.8× less than the reference's, and the
 line itself about 2.3× less.
@@ -81,32 +82,32 @@ every applied action. An Instance emits nothing more at `profile` than at
 
 | Workload | Configuration | Haskell | Python |
 |---|---|---:|---:|
-| instance-run | off | 20.9 ms | 199 ms |
-| | facts, no route / no handler | 22.1 ms (+5.7%, noise) | 204 ms (+2.6%) |
-| | facts, null route / `NullHandler` | 25.4 ms (**+22%**) | 217 ms (**+8.9%**) |
-| | profile, no route / no handler | 20.1 ms (−3.8%, noise) | 207 ms (+4.0%) |
-| | profile, null route / `NullHandler` | 25.7 ms (**+23%**) | 218 ms (**+9.2%**) |
-| engine-advance | off | 49.9 ms | 409 ms |
-| | facts, no route / no handler | 51.4 ms (+3.0%) | 428 ms (+4.5%) |
-| | facts, null route / `NullHandler` | 63.3 ms (**+27%**) | 449 ms (**+9.7%**) |
-| | profile, no route / no handler | 54.5 ms (+9.2%) | 434 ms (+5.9%) |
-| | profile, null route / `NullHandler` | 74.7 ms (**+50%**) | 462 ms (**+12.7%**) |
+| instance-run | off | 19.4 ms | 193 ms |
+| | facts, no route / no handler | 19.5 ms (+0.5%, noise) | 202 ms (+4.7%) |
+| | facts, null route / `NullHandler` | 23.7 ms (**+22%**) | 213 ms (**+10%**) |
+| | profile, no route / no handler | 19.5 ms (+0.5%, noise) | 202 ms (+4.7%) |
+| | profile, null route / `NullHandler` | 23.6 ms (**+22%**) | 213 ms (**+10%**) |
+| engine-advance | off | 45.5 ms | 400 ms |
+| | facts, no route / no handler | 46.3 ms (+1.8%) | 418 ms (+4.5%) |
+| | facts, null route / `NullHandler` | 57.7 ms (**+27%**) | 438 ms (**+9.5%**) |
+| | profile, no route / no handler | 49.4 ms (+8.6%) | 427 ms (+6.8%) |
+| | profile, null route / `NullHandler` | 68.0 ms (**+49%**) | 450 ms (**+12.5%**) |
 
 The routed overhead is a larger *percentage* in Haskell, because the work
-it is measured against is 8–10× cheaper. In absolute terms, routed
+it is measured against is 9–10× cheaper. In absolute terms, routed
 telemetry costs:
 
 | Workload | Configuration | Haskell | Python | Haskell is |
 |---|---|---:|---:|---|
-| instance-run | facts | ~4.5 µs per firing | ~18 µs per firing | ~4× cheaper |
-| engine-advance | facts | ~13 µs per firing | ~40 µs per firing | ~3× cheaper |
-| engine-advance | profile | ~25 µs per firing | ~52 µs per firing | ~2× cheaper |
-| engine-advance | profile, unrouted | ~4.6 µs per firing | ~24 µs per firing | ~5× cheaper |
+| instance-run | facts | ~4.3 µs per firing | ~20 µs per firing | ~4.5× cheaper |
+| engine-advance | facts | ~12 µs per firing | ~38 µs per firing | ~3× cheaper |
+| engine-advance | profile | ~23 µs per firing | ~50 µs per firing | ~2× cheaper |
+| engine-advance | profile, unrouted | ~3.9 µs per firing | ~27 µs per firing | ~7× cheaper |
 
 With the default configuration (no route), Haskell `facts` telemetry is
 within noise of `off`, because unrouted lines are never formatted.
 Unrouted `profile` still computes the Engine's gauges after each action,
-so it costs about 9% on the Engine chain (Python: about 6%, at five times
+so it costs about 9% on the Engine chain (Python: about 7%, at seven times
 the absolute cost).
 
 ## Rerun
@@ -122,7 +123,8 @@ scripts/bench-run petrus-telemetry-instrumentation --stdev 5 +RTS -M2G -RTS
 ```
 
 Haskell times are wall-clock time (`localOption WallTime` in `bench/Main.hs`),
-like the Python side's `time.perf_counter`. The table above was taken before
-that switch, in tasty-bench's default CPU time; this workload is
-single-threaded and does no I/O inside the timed region, so the two agree
+like the Python side's `time.perf_counter`; the tables above are in
+wall-clock time. The run before them was taken in tasty-bench's default CPU
+time; this workload is single-threaded and does no I/O inside the timed
+region, so the two agree
 (see [CPU and wall-clock time](../../../docs/reproducing.md#cpu-and-wall-clock-time)).

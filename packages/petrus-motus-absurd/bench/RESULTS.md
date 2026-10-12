@@ -6,9 +6,34 @@ The Haskell side is [`bench/Main.hs`](Main.hs). The Python twin is
 [`bench/python_bench.py`](python_bench.py), which runs the reference's
 `petrus.motus.dispatch.absurd` with the same invocations, queues and doors. Both create a scratch
 database, provision the pinned Absurd schema, and drop the database afterwards. Ratios above 1
-mean Haskell is faster. Haskell is faster on every row: 1.16–1.34× on the PostgreSQL rows, whose
+mean Haskell is faster. Haskell is faster on every row: 1.16–1.45× on the PostgreSQL rows, whose
 statements now run prepared from their sixth execution as psycopg's do (petrus-postgres's
-prepared-statement cache), and 3.7× on the pure wire row.
+prepared-statement cache), and 3.5× on the pure wire row.
+
+## Current figures
+
+Measured on 2026-10-12, 02:27–02:30 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.15–3.64:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-motus-absurd 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `wire.encode-decode` | 993 ns | 3.46 µs | 3.48× | 3.43× | 984 ns, 993 ns, 1.01 µs | 3.45 µs, 3.48 µs, 3.46 µs |
+| `calibration.select-1` | 17.7 µs | 25.8 µs | 1.45× | 1.43× | 17.7 µs, 17.3 µs, 17.8 µs | 26.3 µs, 25.8 µs, 25.5 µs |
+| `dispatch.spawn-commit` | 256 µs | 336 µs | 1.31× | 1.29× | 250 µs, 256 µs, 261 µs | 334 µs, 336 µs, 336 µs |
+| `roundtrip.dispatch-claim-complete-collect` | 1.39 ms | 1.61 ms | 1.16× | 1.16× | 1.39 ms, 1.39 ms, 1.38 ms | 1.62 ms, 1.61 ms, 1.61 ms |
+
+## Earlier figures
 
 - Date: 2026-10-11 01:11–01:34 local (UTC-3), on the commit that adds petrus-postgres's
   prepared-statement cache
@@ -23,6 +48,8 @@ prepared-statement cache), and 3.7× on the pure wire row.
 - Interleaved by `scripts/bench-compare petrus-motus-absurd 6`, alternating Haskell first and
   Python first. The figures are the medians of the six repetitions; "lowest" is the worst
   single repetition's ratio, and the last column counts the repetitions Haskell won.
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
 |---|---:|---:|---:|---:|---:|

@@ -5,9 +5,38 @@
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
 names, values and store operations. Both are wall-clock time. Ratios above 1
-mean Haskell is faster. Haskell is faster on every row: 1.9–2.4× on the store
-operations, which now run as prepared statements as psycopg's do (see below),
-and 2.3–9.6× on the in-memory work.
+mean Haskell is faster. Haskell is faster on every row: 1.35–1.55× on the
+store operations, which run as prepared statements as psycopg's do (see
+below), and 2.3–10× on the in-memory work.
+
+## Current figures
+
+Measured on 2026-10-12, 01:59–02:01 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.65–2.80:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-fabric 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The store rows ran on `scripts/with-postgres`'s throwaway PostgreSQL 17.7 on 127.0.0.1 (`initdb` defaults). On this quiet machine the store rows read 1.35–1.55×; the 1.9–2.4× of the earlier table below came from runs at load 4.3–7.7, which slowed the Python side more than the Haskell side. The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `envelope.build` | 1.19 µs | 12 µs | 10.05× | 9.57× | 1.19 µs, 1.26 µs, 1.19 µs | 12 µs, 12.1 µs, 12 µs |
+| `envelope.digest` | 2.91 µs | 19.9 µs | 6.85× | 6.72× | 2.96 µs, 2.91 µs, 2.87 µs | 19.9 µs, 20.1 µs, 19.8 µs |
+| `envelope.roundtrip` | 1.85 µs | 18.3 µs | 9.91× | 9.89× | 1.85 µs, 1.86 µs, 1.83 µs | 18.3 µs, 18.4 µs, 18.3 µs |
+| `canonical.16KiB` | 57.8 µs | 135 µs | 2.34× | 2.33× | 58.1 µs, 57.7 µs, 57.8 µs | 135 µs, 134 µs, 136 µs |
+| `postgres.submit` | 146 µs | 222 µs | 1.52× | 1.52× | 145 µs, 146 µs, 148 µs | 221 µs, 222 µs, 228 µs |
+| `postgres.submit-duplicate` | 78.3 µs | 106 µs | 1.35× | 1.35× | 78.3 µs, 77.4 µs, 78.5 µs | 106 µs, 106 µs, 106 µs |
+| `postgres.send-drain` | 294 µs | 454 µs | 1.54× | 1.52× | 294 µs, 293 µs, 302 µs | 454 µs, 451 µs, 458 µs |
+| `postgres.discover` | 46.2 µs | 71.7 µs | 1.55× | 1.52× | 47.1 µs, 44.3 µs, 46.2 µs | 71.7 µs, 71.9 µs, 71.6 µs |
+
+## Earlier figures
 
 - Date: 2026-10-10 23:54 to 2026-10-11 00:35 local (UTC-3), two runs of
   `scripts/bench-compare petrus-fabric 6` (23:54–00:08 and 00:22–00:35), on the commit
@@ -23,6 +52,8 @@ and 2.3–9.6× on the in-memory work.
 - Interleaved: each run alternates Haskell first and Python first over six repetitions. The
   figures are the medians of all twelve repetitions; "lowest" is the worst single
   repetition's ratio, and the last column counts the repetitions Haskell won.
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
 |---|---:|---:|---:|---:|---:|

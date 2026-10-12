@@ -26,6 +26,29 @@ The workloads:
 - **open-close.** `load` of an empty instance's database over
   `InMemoryDispatch` (fence + store open + Engine open), `records`, `close`.
 
+## Current figures
+
+Measured on 2026-10-12, 01:56–01:57 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.65–3.15:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-engine-sqlite 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `engine-sqlite.orders-small-sqlite` | 3.8 ms | 6.23 ms | 1.64× | 1.53× | 3.69 ms, 3.85 ms, 3.8 ms | 6.23 ms, 5.9 ms, 6.59 ms |
+| `engine-sqlite.orders-large-sqlite` | 197 ms | 895 ms | 4.55× | 4.35× | 196 ms, 206 ms, 197 ms | 894 ms, 895 ms, 932 ms |
+| `engine-sqlite.load-sqlite` | 16 ms | 118 ms | 7.35× | 7.30× | 16 ms, 16 ms, 16.3 ms | 118 ms, 117 ms, 121 ms |
+| `engine-sqlite.open-close` | 343 µs | 470 µs | 1.37× | 1.32× | 354 µs, 342 µs, 343 µs | 467 µs, 470 µs, 483 µs |
+
 ## How to rerun
 
 From the repository root (`scripts/bench petrus-engine-sqlite` runs exactly this block;
@@ -52,6 +75,8 @@ with other agents (1-minute load average 3.1–4.3):
 - the reference pinned at `upstream/petrus` 3f85fc2.
 
 Each cell is the median of the two repetitions.
+
+<!-- bench: superseded -->
 
 | workload | size (records) | Python | Haskell | speed-up |
 | --- | ---: | ---: | ---: | ---: |

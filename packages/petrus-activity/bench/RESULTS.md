@@ -21,6 +21,32 @@ allocates the frozen dataclass; in Haskell the record exists before the door
 validates it. The difference shows most on `invocation.construct`, where
 the validation itself is two string checks.
 
+## Current figures
+
+Measured on 2026-10-12, 01:53–01:55 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.29–2.86:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-activity 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `policy.construct` | 7.86 µs | 154 µs | 19.56× | 19.53× | 7.86 µs, 7.87 µs, 7.8 µs | 155 µs, 154 µs, 154 µs |
+| `policy.delay` | 6.91 µs | 16.7 µs | 2.42× | 2.41× | 6.88 µs, 6.91 µs, 6.92 µs | 16.8 µs, 16.7 µs, 16.7 µs |
+| `invocation.construct` | 521 ns | 44.1 µs | 84.54× | 81.47× | 514 ns, 521 ns, 536 ns | 44.1 µs, 44.6 µs, 43.7 µs |
+| `failure.construct` | 45.4 µs | 314 µs | 6.92× | 6.86× | 45.8 µs, 45.4 µs, 45.3 µs | 318 µs, 312 µs, 314 µs |
+| `heartbeat.snapshot` | 58.7 µs | 497 µs | 8.48× | 8.44× | 57.7 µs, 58.7 µs, 58.7 µs | 502 µs, 497 µs, 496 µs |
+| `payload.convert` | 90.4 µs | 380 µs | 4.21× | 4.17× | 90.6 µs, 90.4 µs, 90.2 µs | 378 µs, 381 µs, 380 µs |
+| `definition.call` | 165 µs | 950 µs | 5.76× | 5.75× | 165 µs, 165 µs, 165 µs | 964 µs, 950 µs, 950 µs |
+
 ## How to rerun
 
 From the repository root (`scripts/bench petrus-activity` runs exactly this
@@ -45,6 +71,8 @@ means in wall-clock time (`localOption WallTime`, `--stdev 5`, `+RTS -M2G`);
 Python figures are `scripts/bench_timing.py` medians
 (`time.perf_counter_ns`). Each cell is the median over the repetitions;
 ratios read Python ÷ Haskell (how many times faster Haskell is).
+
+<!-- bench: superseded -->
 
 | row (100 calls) | Haskell | Python | Python ÷ Haskell | lowest repetition |
 |---|---:|---:|---:|---:|

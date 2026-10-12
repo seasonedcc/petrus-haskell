@@ -6,38 +6,41 @@ Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
 names and values. Both are wall-clock time, and both sides work in a fresh
 directory under the same `TMPDIR`. Ratios above 1 mean Haskell is faster.
-**No row is slower than Python.** `flock.open-tryLock-close` is level, at
-1.00× (13.29 µs against 13.30 µs; Haskell ahead in five of nine
-repetitions, the median repetition 1.003×, the lowest 0.96×): both sides
-spend it in the kernel's `open`, below.
+**Every row is level or faster.** `flock.open-tryLock-close` is level, at
+1.00× (13.4 µs on both sides; the repetitions' ratios 0.999, 1.000, 0.997,
+0.994 and 0.974×, so the median repetition is 0.997×, 0.3% behind): both
+sides spend it in the kernel's `open`, below, and it read 1.003× over nine
+repetitions in the table before this one.
 
-- Date: 2026-10-11 06:32–06:38 local (UTC-3), at commit `573e8d6` (this
-  package as of `2935191`: the constants below)
-- Machine: Darwin arm64, Apple M4, shared with other agents; 1-minute load
-  average 2.28–2.77 around the runs
+- Date: 2026-10-12 01:22–01:24 local (UTC-3), at commit `81bbdc5`
+- Machine: Darwin arm64, Apple M4; 1-minute load average 2.06–2.37 around
+  the runs
 - Haskell: GHC 9.10.3 (-O2), tasty-bench mean in wall-clock time,
   `--stdev 5`, `+RTS -M2G -RTS`, the benchmark executable run directly
   (below)
 - Python: CPython 3.14.6 (upstream venv), median of 10 timed batches of 0.2 s
   (scripts/bench_timing.py)
-- Interleaved by `scripts/bench-compare petrus-posix 9`, alternating which
-  side goes first. The figures are the medians of the nine repetitions; the
+- Interleaved by `scripts/bench-compare petrus-posix 5`, alternating which
+  side goes first. The figures are the medians of the five repetitions; the
   last two columns give each repetition.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---|---|
-| `flock.tryLock-unlock` | 454 ns | 587 ns | 1.29× | 1.19× | 443 ns, 490 ns, 456 ns, 454 ns, 454 ns, 454 ns, 453 ns, 454 ns, 491 ns | 583 ns, 590 ns, 587 ns, 585 ns, 588 ns, 583 ns, 589 ns, 588 ns, 585 ns |
-| `flock.open-tryLock-close` | 13.3 µs | 13.3 µs | 1.00× | 0.96× | 13.2 µs, 13.3 µs, 13.3 µs, 13.3 µs, 13.2 µs, 13.3 µs, 13.8 µs, 13.3 µs, 13.4 µs | 13.3 µs, 13.3 µs, 13.3 µs, 13.3 µs, 13.4 µs, 13.3 µs, 13.3 µs, 13.3 µs, 13.3 µs |
-| `path.resolve-symlinked` | 8.80 µs | 15.9 µs | 1.81× | 1.67× | 9.4 µs, 8.8 µs, 8.77 µs, 8.78 µs, 8.84 µs, 8.73 µs, 8.86 µs, 8.7 µs, 8.8 µs | 15.7 µs, 15.9 µs, 16 µs, 15.9 µs, 15.9 µs, 16 µs, 16.1 µs, 16 µs, 15.8 µs |
-| `path.expanduser-resolve` | 10.8 µs | 16.0 µs | 1.48× | 1.44× | 10.8 µs, 10.8 µs, 10.8 µs, 10.8 µs, 11.1 µs, 11 µs, 10.9 µs, 10.8 µs, 10.7 µs | 15.8 µs, 16 µs, 16.1 µs, 15.9 µs, 16 µs, 16.1 µs, 16 µs, 16.1 µs, 16.1 µs |
-| `at.stat-nofollow` | 789 ns | 895 ns | 1.13× | 1.11× | 782 ns, 791 ns, 815 ns, 786 ns, 789 ns, 786 ns, 793 ns, 789 ns, 790 ns | 867 ns, 889 ns, 903 ns, 920 ns, 896 ns, 894 ns, 896 ns, 895 ns, 883 ns |
-| `atomic.write-1KiB-fsync` | 129 µs | 134 µs | 1.04× | 0.98× | 134 µs, 135 µs, 130 µs, 129 µs, 130 µs, 129 µs, 128 µs, 128 µs, 129 µs | 133 µs, 132 µs, 138 µs, 136 µs, 134 µs, 134 µs, 134 µs, 141 µs, 133 µs |
-| `resource.max_rss_mb` | 192 ns | 436 ns | 2.27× | 2.01× | 209 ns, 214 ns, 197 ns, 189 ns, 192 ns, 193 ns, 191 ns, 188 ns, 188 ns | 432 ns, 430 ns, 436 ns, 437 ns, 441 ns, 446 ns, 442 ns, 436 ns, 432 ns |
+| `flock.tryLock-unlock` | 454 ns | 587 ns | 1.29× | 1.28× | 453 ns, 463 ns, 454 ns, 455 ns, 453 ns | 599 ns, 602 ns, 587 ns, 582 ns, 585 ns |
+| `flock.open-tryLock-close` | 13.4 µs | 13.4 µs | 1.00× | 0.97× | 13.4 µs, 13.4 µs, 13.4 µs, 13.4 µs, 13.7 µs | 13.4 µs, 13.4 µs, 13.4 µs, 13.4 µs, 13.3 µs |
+| `path.resolve-symlinked` | 8.79 µs | 16 µs | 1.82× | 1.80× | 8.68 µs, 8.85 µs, 8.84 µs, 8.75 µs, 8.79 µs | 16 µs, 16 µs, 15.9 µs, 15.9 µs, 16 µs |
+| `path.expanduser-resolve` | 10.8 µs | 16.1 µs | 1.49× | 1.48× | 10.6 µs, 10.8 µs, 10.8 µs, 10.7 µs, 10.9 µs | 16.1 µs, 16 µs, 16 µs, 16.1 µs, 16.1 µs |
+| `at.stat-nofollow` | 746 ns | 894 ns | 1.20× | 1.19× | 744 ns, 746 ns, 762 ns, 749 ns, 739 ns | 883 ns, 913 ns, 915 ns, 894 ns, 881 ns |
+| `atomic.write-1KiB-fsync` | 128 µs | 133 µs | 1.04× | 0.94× | 127 µs, 141 µs, 128 µs, 131 µs, 127 µs | 133 µs, 132 µs, 134 µs, 134 µs, 131 µs |
+| `resource.max_rss_mb` | 192 ns | 432 ns | 2.25× | 2.10× | 194 ns, 192 ns, 194 ns, 186 ns, 188 ns | 409 ns, 432 ns, 437 ns, 435 ns, 430 ns |
 
-`flock.open-tryLock-close`, repetition by repetition (Python / Haskell, from
-the CSVs): 1.003, 1.003, 1.003, 0.998, 1.010, 1.003, 0.963, 0.997 and
-0.996×. The row is level: the spread of single repetitions is wider than
-the difference between the sides.
+`atomic.write-1KiB-fsync` is fsync-bound: 1.049, 0.938, 1.046, 1.028 and
+1.033× by repetition; the 0.94× is the one repetition where the Haskell
+side read 141 µs.
+
+The table before this one (2026-10-11 06:32–06:38, at `573e8d6`, load
+2.28–2.77, nine repetitions) read 1.29×, 1.00×, 1.81×, 1.48×, 1.13×, 1.04×
+and 2.27×, in the order of the rows above.
 
 ## The `flock` constants were foreign calls
 
@@ -74,9 +77,9 @@ outside tasty-bench, in fixed loops:
   took about 12.3 µs, the Haskell library's `openLockFile`, `tryLock` and
   `closeFd` 12.6–13.1 µs, and Python's loop 13.0–13.5 µs, alternated.
 
-So the row moves with the kernel, not with either client: at 1.00× here,
-0.97–0.99× in the earlier tables, where the Haskell side also ran under
-`cabal bench` (below).
+So the row moves with the kernel, not with either client: at 1.00× here
+(0.997× by repetition) and in the table before, 0.97–0.99× in the earlier
+tables, where the Haskell side also ran under `cabal bench` (below).
 
 ## How bench-compare runs the Haskell side
 
@@ -172,7 +175,7 @@ In a scratch directory:
 ## Rerun
 
 From the repository root (`scripts/bench petrus-posix` runs exactly this block, once;
-`scripts/bench-compare petrus-posix 9` interleaves the two sides and prints the table above).
+`scripts/bench-compare petrus-posix 5` interleaves the two sides and prints the table above).
 
 <!-- scripts/bench: rerun -->
 ```sh

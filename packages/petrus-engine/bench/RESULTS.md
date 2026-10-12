@@ -30,6 +30,30 @@ The workloads:
 - **load-jsonl.** `Engine.load` of the finished 200-order JSONL History,
   which covers decode, replay and reconcile, then one `advance`.
 
+## Current figures
+
+Measured on 2026-10-12, 01:55–01:56 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.39–2.86:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-engine 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `engine.orders-small` | 196 µs | 2.48 ms | 12.66× | 12.64× | 197 µs, 196 µs, 196 µs | 2.54 ms, 2.47 ms, 2.48 ms |
+| `engine.orders-large` | 98.3 ms | 777 ms | 7.90× | 7.87× | 98.6 ms, 98.3 ms, 98.3 ms | 777 ms, 774 ms, 783 ms |
+| `engine.orders-large-jsonl` | 158 ms | 881 ms | 5.58× | 5.51× | 159 ms, 158 ms, 158 ms | 881 ms, 902 ms, 871 ms |
+| `engine.chain` | 46.1 ms | 420 ms | 9.11× | 9.05× | 46.4 ms, 46.1 ms, 45.9 ms | 420 ms, 424 ms, 418 ms |
+| `engine.load-jsonl` | 12.8 ms | 114 ms | 8.89× | 8.65× | 13.1 ms, 12.8 ms, 12.8 ms | 113 ms, 116 ms, 114 ms |
+
 ## How to rerun
 
 From the repository root (`scripts/bench petrus-engine` runs exactly this block;
@@ -53,6 +77,8 @@ The machine was shared with other agents (load average 4.3–5.8).
 ## Results
 
 Each cell is the median of the two repetitions.
+
+<!-- bench: superseded -->
 
 | workload | size (records) | Python | Haskell | speed-up |
 | --- | ---: | ---: | ---: | ---: |

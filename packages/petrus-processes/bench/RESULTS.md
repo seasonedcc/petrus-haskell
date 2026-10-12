@@ -5,9 +5,42 @@
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
 names, values and store operations. Both are wall-clock time. Ratios above 1
-mean Haskell is faster. Haskell is faster on every row: 1.39–1.88× on the
+mean Haskell is faster. Haskell is faster on every row: 1.51–2.23× on the
 registry operations, which now run as prepared statements as psycopg's do,
-and 2.8–14× on values and the Activity.
+and 2.8–15× on values and the Activity.
+
+## Current figures
+
+Measured on 2026-10-12, 02:41–02:44 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.58–2.87:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-processes 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The server was `scripts/with-postgres`'s throwaway PostgreSQL 17.7 on 127.0.0.1 over TCP (`initdb` defaults, `fsync` on). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `model.child-identity` | 628 ns | 1.75 µs | 2.79× | 2.75× | 635 ns, 628 ns, 618 ns | 1.75 µs, 1.75 µs, 1.78 µs |
+| `model.spawn-spec-digest` | 2.56 µs | 15.3 µs | 5.99× | 5.98× | 2.56 µs, 2.5 µs, 2.56 µs | 15.3 µs, 15.3 µs, 15.4 µs |
+| `model.spawn-spec-roundtrip` | 1.14 µs | 13.9 µs | 12.22× | 12.14× | 1.15 µs, 1.14 µs, 1.14 µs | 14 µs, 13.9 µs, 13.9 µs |
+| `call.request-envelope` | 1.34 µs | 14.4 µs | 10.76× | 10.67× | 1.34 µs, 1.33 µs, 1.34 µs | 14.3 µs, 14.4 µs, 14.4 µs |
+| `call.result-envelope` | 1.45 µs | 15.1 µs | 10.40× | 10.30× | 1.46 µs, 1.45 µs, 1.45 µs | 15.1 µs, 15.1 µs, 15.1 µs |
+| `call.reply-from-envelope` | 760 ns | 11.6 µs | 15.27× | 15.23× | 759 ns, 760 ns, 761 ns | 11.6 µs, 11.6 µs, 11.6 µs |
+| `call.roundtrip-postgres` | 603 µs | 949 µs | 1.58× | 1.54× | 591 µs, 614 µs, 603 µs | 978 µs, 946 µs, 949 µs |
+| `spawn.activity` | 5.68 µs | 45.8 µs | 8.05× | 7.95× | 5.76 µs, 5.68 µs, 5.66 µs | 45.8 µs, 45.8 µs, 45.8 µs |
+| `postgres.claim-prior` | 65.1 µs | 112 µs | 1.72× | 1.61× | 64.6 µs, 65.1 µs, 66 µs | 112 µs, 112 µs, 107 µs |
+| `postgres.child-of` | 39.9 µs | 60.4 µs | 1.51× | 1.48× | 40 µs, 39.8 µs, 39.9 µs | 59 µs, 60.8 µs, 60.4 µs |
+| `postgres.claim-new` | 79.8 µs | 132 µs | 1.65× | 1.65× | 79.8 µs, 79.8 µs, 76.1 µs | 132 µs, 132 µs, 129 µs |
+| `postgres.spawn-activity` | 82 µs | 183 µs | 2.23× | 2.19× | 82 µs, 85.2 µs, 81.6 µs | 183 µs, 187 µs, 183 µs |
+
+## Earlier figures
 
 - Date: 2026-10-11 00:08–00:46 local (UTC-3), two runs of
   `scripts/bench-compare petrus-processes 6` (00:08–00:19 and 00:37–00:46), on the commit
@@ -23,6 +56,8 @@ and 2.8–14× on values and the Activity.
 - Interleaved: each run alternates Haskell first and Python first over six repetitions. The
   figures are the medians of all twelve repetitions; "lowest" is the worst single
   repetition's ratio, and the last column counts the repetitions Haskell won.
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
 |---|---:|---:|---:|---:|---:|
@@ -73,6 +108,8 @@ It was added after the table above, and timed on 2026-10-11 10:46–10:50
 local, on the commit that adds it. The run was a separate interleaved
 `scripts/bench-compare petrus-processes 6` restricted to this row (Haskell
 first, then Python first, alternately). The 1-minute load average was 4.1–7.2:
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
 |---|---:|---:|---:|---:|---:|

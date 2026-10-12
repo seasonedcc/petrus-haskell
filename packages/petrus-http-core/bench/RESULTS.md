@@ -8,6 +8,33 @@ names and values. Both are wall-clock time. Ratios above 1 mean Haskell is
 faster. Haskell is faster on every row: 1.6–2.0× on the loopback round trips and
 2.4–19× on parsing and rendering.
 
+## Current figures
+
+Measured on 2026-10-12, 02:03–02:04 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.48–3.03:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-http-core 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `roundtrip.get-snapshot` | 56.5 µs | 116 µs | 2.05× | 2.04× | 56.5 µs, 55.1 µs, 57 µs | 115 µs, 116 µs, 117 µs |
+| `roundtrip.post-1k` | 58.4 µs | 118 µs | 2.02× | 1.92× | 61.2 µs, 58.4 µs, 57.9 µs | 117 µs, 118 µs, 119 µs |
+| `roundtrip.refused-version` | 54.7 µs | 92.4 µs | 1.69× | 1.62× | 54.7 µs, 57.1 µs, 53.2 µs | 92.4 µs, 92.2 µs, 93.3 µs |
+| `parse.request-head` | 703 ns | 13.2 µs | 18.81× | 18.59× | 708 ns, 703 ns, 700 ns | 13.2 µs, 13.2 µs, 13.4 µs |
+| `render.send-error` | 1.79 µs | 4.28 µs | 2.39× | 2.37× | 1.76 µs, 1.79 µs, 1.79 µs | 4.34 µs, 4.24 µs, 4.28 µs |
+| `render.response` | 822 ns | 3.4 µs | 4.13× | 4.07× | 818 ns, 829 ns, 822 ns | 3.4 µs, 3.4 µs, 3.34 µs |
+
+## Earlier figures
+
 - Date: 2026-10-10 21:12–21:13 local (UTC-3), commit `74e6b1e` with the switch to wall-clock
   time in `bench/Main.hs` (the library code is unchanged)
 - Machine: Darwin arm64, Apple M4, shared with other agents; 1-minute load average 2.9–3.7
@@ -17,6 +44,8 @@ faster. Haskell is faster on every row: 1.6–2.0× on the loopback round trips 
   (scripts/bench_timing.py)
 - Interleaved by `scripts/bench-compare petrus-http-core 2`: Haskell, Python, then Python, Haskell. The figures are the
   medians of the 2 repetitions; the last two columns give each repetition.
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---|---|

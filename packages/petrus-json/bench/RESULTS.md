@@ -41,6 +41,33 @@ Every row starts from bytes and ends in bytes or a fully evaluated value: the
 Python side reads `bytes` and calls `.encode()` on what `dumps` returns, and
 the Haskell side forces every node of a parsed value.
 
+## Current figures
+
+Measured on 2026-10-12, 02:25–02:27 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.61–2.23:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-json 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `history.loads` | 1.05 ms | 2.52 ms | 2.39× | 2.39× | 1.02 ms, 1.05 ms, 1.05 ms | 2.49 ms, 2.52 ms, 2.52 ms |
+| `history.dumps` | 959 µs | 2.9 ms | 3.03× | 3.03× | 931 µs, 959 µs, 964 µs | 2.85 ms, 2.9 ms, 2.94 ms |
+| `history.dumps-canonical` | 1.4 ms | 3.79 ms | 2.71× | 2.59× | 1.35 ms, 1.47 ms, 1.4 ms | 3.71 ms, 3.79 ms, 3.79 ms |
+| `net-document.loads` | 229 µs | 439 µs | 1.92× | 1.92× | 223 µs, 229 µs, 230 µs | 437 µs, 439 µs, 453 µs |
+| `net-document.loads-strict` | 229 µs | 567 µs | 2.48× | 2.48× | 225 µs, 229 µs, 230 µs | 561 µs, 567 µs, 579 µs |
+| `net-document.dumps` | 156 µs | 402 µs | 2.58× | 2.58× | 154 µs, 156 µs, 158 µs | 397 µs, 402 µs, 407 µs |
+| `thread.loads` | 266 µs | 458 µs | 1.72× | 1.67× | 262 µs, 266 µs, 274 µs | 457 µs, 468 µs, 458 µs |
+| `thread.dumps` | 358 µs | 645 µs | 1.80× | 1.77× | 351 µs, 358 µs, 369 µs | 640 µs, 645 µs, 653 µs |
+
 ## How to rerun
 
 From the repository root (`scripts/bench petrus-json` runs exactly this block;
@@ -65,6 +92,8 @@ time (`localOption WallTime`, `--stdev 5`, `+RTS -M2G`); Python figures are
 `scripts/bench_timing.py` medians (`time.perf_counter_ns`). Each cell is the
 median over the repetitions; ratios read Python ÷ Haskell (how many times
 faster Haskell is).
+
+<!-- bench: superseded -->
 
 | row | Haskell | Python | Python ÷ Haskell | lowest repetition |
 |---|---:|---:|---:|---:|

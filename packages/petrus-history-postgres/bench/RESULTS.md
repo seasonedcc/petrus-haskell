@@ -2,7 +2,35 @@
 
 <!-- scripts/bench: measured sources 512d76e69b2e284f at 14f6d69e9572 -->
 
-The Haskell side is `bench/Main.hs`. The Python twin is `bench/python_bench.py`, which runs the reference's `PostgresHistoryStore` with the same names, records, and statements. Both create a scratch database and drop it afterwards. Ratios above 1 mean Haskell is faster. Haskell is faster on every row: 1.24–1.52× on the round-trip rows, whose statements now run prepared from their sixth execution as psycopg's do (petrus-postgres's prepared-statement cache), and 2.5–2.6× on the loads.
+The Haskell side is `bench/Main.hs`. The Python twin is `bench/python_bench.py`, which runs the reference's `PostgresHistoryStore` with the same names, records, and statements. Both create a scratch database and drop it afterwards. Ratios above 1 mean Haskell is faster. Haskell is faster on every row: 1.20–1.44× on the round-trip rows, whose statements now run prepared from their sixth execution as psycopg's do (petrus-postgres's prepared-statement cache), and 1.9–2.0× on the loads (2.5–2.6× in the earlier figures: the Haskell load got slower since, see the note under the current figures).
+
+## Current figures
+
+Measured on 2026-10-12, 02:01–02:03 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.57–2.73:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-history-postgres 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The server was `scripts/with-postgres`'s throwaway PostgreSQL 17.7 on 127.0.0.1 over TCP (`initdb` defaults, `fsync` on). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `append.autocommit-1` | 67 µs | 83 µs | 1.24× | 1.23× | 67.6 µs, 67 µs, 66.8 µs | 83 µs, 87.4 µs, 82.4 µs |
+| `append.autocommit-8` | 362 µs | 482 µs | 1.33× | 1.31× | 368 µs, 362 µs, 361 µs | 482 µs, 530 µs, 478 µs |
+| `append.joined-1-commit` | 67.3 µs | 81.1 µs | 1.20× | 1.19× | 67.9 µs, 67.3 µs, 67 µs | 81.1 µs, 84 µs, 80.4 µs |
+| `append.joined-8-commit` | 362 µs | 477 µs | 1.32× | 1.31× | 362 µs, 362 µs, 360 µs | 477 µs, 521 µs, 473 µs |
+| `load.1k` | 2.86 ms | 5.74 ms | 2.01× | 2.00× | 2.86 ms, 2.84 ms, 2.87 ms | 5.8 ms, 5.74 ms, 5.74 ms |
+| `load.10k` | 32.4 ms | 60.8 ms | 1.88× | 1.87× | 32.4 ms, 32.4 ms, 32.5 ms | 63.4 ms, 60.8 ms, 60.8 ms |
+| `verify.conflict-acknowledge` | 61.4 µs | 88.6 µs | 1.44× | 1.44× | 61.4 µs, 61.5 µs, 60.8 µs | 88.4 µs, 88.6 µs, 89.1 µs |
+
+## Earlier figures
 
 - Date: 2026-10-11 01:05–01:09 local (UTC-3), on the commit that adds petrus-postgres's prepared-statement cache
 - Machine: Darwin arm64, Apple M4; shared with other agents. Load average 2.7–3.8 (1-minute) around the run.
@@ -10,6 +38,8 @@ The Haskell side is `bench/Main.hs`. The Python twin is `bench/python_bench.py`,
 - Haskell: GHC 9.10.3 `-O2 -threaded`, tasty-bench mean in **wall-clock time** (`--stdev 5`, per-group `RelStDev 0.2`), run with `+RTS -M2G -RTS`
 - Python: CPython 3.14.6, psycopg 3.3.4 (binary, bundled libpq 18), the pinned upstream venv; median of 10 timed batches of 0.2 s (scripts/bench_timing.py)
 - Interleaved by `scripts/bench-compare petrus-history-postgres 6`, alternating Haskell first and Python first. The figures are the medians of the six repetitions; "lowest" is the worst single repetition's ratio, and the last column counts the repetitions Haskell won.
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Repetitions Haskell faster |
 |---|---:|---:|---:|---:|---:|

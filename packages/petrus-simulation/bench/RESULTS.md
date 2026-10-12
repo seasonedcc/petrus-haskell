@@ -7,6 +7,38 @@ This compares the Haskell runner and service with upstream
 [UPSTREAM.md](../../../UPSTREAM.md). Ratios above 1 mean Haskell is faster.
 Haskell is faster on every row.
 
+## Current figures
+
+Measured on 2026-10-12, 02:44–02:52 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.57–2.89:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-simulation 3
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `simulate.fixture-32` | 171 µs | 2.77 ms | 16.17× | 16.17× | 171 µs, 170 µs, 171 µs | 2.77 ms, 2.76 ms, 2.77 ms |
+| `simulate.loop-24x256` | 42 ms | 1.66 s | 39.65× | 39.10× | 42 ms, 42 ms, 42.7 ms | 1.66 s, 1.66 s, 1.67 s |
+| `simulate.loop-512x256-oversized` | 670 ms | 6.51 s | 9.72× | 9.62× | 675 ms, 670 ms, 668 ms | 6.49 s, 6.53 s, 6.51 s |
+| `simulate.scan-480x16` | 152 ms | 960 ms | 6.33× | 6.29× | 152 ms, 152 ms, 151 ms | 955 ms, 960 ms, 962 ms |
+| `simulate.payload-990k-rest` | 10.6 ms | 184 ms | 17.33× | 17.27× | 10.6 ms, 10.7 ms, 10.6 ms | 186 ms, 184 ms, 184 ms |
+| `simulate.payload-400k-fire` | 12 ms | 225 ms | 18.81× | 18.52× | 11.9 ms, 12 ms, 12 ms | 225 ms, 226 ms, 222 ms |
+| `simulate.refused-scan-bound` | 98.9 µs | 1.37 ms | 13.88× | 13.68× | 99.6 µs, 98.7 µs, 98.9 µs | 1.36 ms, 1.38 ms, 1.37 ms |
+| `http.profile` | 69.9 µs | 118 µs | 1.68× | 1.66× | 69.9 µs, 69.5 µs, 70.8 µs | 118 µs, 118 µs, 117 µs |
+| `http.options` | 67.8 µs | 121 µs | 1.79× | 1.76× | 67.8 µs, 70.5 µs, 67.6 µs | 121 µs, 124 µs, 121 µs |
+| `http.invalid-400` | 67.9 µs | 135 µs | 1.99× | 1.97× | 69.4 µs, 66.6 µs, 67.9 µs | 137 µs, 135 µs, 134 µs |
+| `http.simulate-fixture-32` | 259 µs | 3.06 ms | 11.84× | 11.17× | 259 µs, 274 µs, 258 µs | 3.06 ms, 3.06 ms, 3.09 ms |
+
+## Earlier figures
+
 - Date: 2026-10-10. Runner and round trips: 21:14–21:22 local (UTC-3), commit `74e6b1e` with
   the switch to wall-clock time in `bench/Main.hs`. Load: commit `146bfdd`.
 - Machine: Darwin arm64, Apple M4 (10 cores, 24 GB). Other work was running
@@ -63,6 +95,8 @@ The table gives the median over three interleaved repetitions
 2.98 to 9.86 (other work spiked during the run); the three repetitions agree
 closely on both sides.
 
+<!-- bench: superseded -->
+
 | Benchmark | Haskell | Python | Python / Haskell | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---|---|
 | `simulate.fixture-32` | 166 µs | 2.85 ms | 17.12× | 166 µs, 174 µs, 166 µs | 2.85 ms, 2.84 ms, 2.86 ms |
@@ -115,6 +149,8 @@ both sides.
 The table gives the median over 5 repetitions of throughput and of the
 per-request p50 and p99 latencies. The 1-minute load average was 2.95 to
 3.12.
+
+<!-- bench: superseded -->
 
 | Scenario | Clients | Haskell req/s | Haskell p50 / p99 | Python req/s | Python p50 / p99 | Haskell / Python |
 |---|---:|---:|---:|---:|---:|---:|

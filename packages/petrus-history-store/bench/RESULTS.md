@@ -48,12 +48,50 @@ described with them (see "Rerun of the append rows" below). The file-system rows
 swing by 20–50% between rounds on this machine, which is why the closest rows
 got more rounds.
 
+## Current figures
+
+Measured on 2026-10-12, 01:24–01:35 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.22–2.54:
+five interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare petrus-history-store 5
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). `jsonl.append-one-batch` went from 1.46× to 2.95× with the one-pass line encoder (Notes, below), and the `diagnostic.encode-payload` row from about 45 ms to 17 ms. The rows without a Python figure are Haskell-only (described under the first table below). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `jsonl.append-one-batch` | 20.4 ms | 60.1 ms | 2.95× | 2.88× | 20.4 ms, 20.6 ms, 20.2 ms, 20.3 ms, 20.8 ms | 60.5 ms, 60.2 ms, 60.1 ms, 60.1 ms, 59.9 ms |
+| `jsonl.append-per-record` | 49.6 ms | 64.5 ms | 1.30× | 1.27× | 50 ms, 49.9 ms, 49.5 ms, 49.6 ms, 49.5 ms | 63.7 ms, 64.5 ms, 66.6 ms, 64.9 ms, 63.5 ms |
+| `jsonl.load` | 31.2 ms | 93.8 ms | 3.01× | 2.86× | 31.2 ms, 31 ms, 31.3 ms, 32.8 ms, 31 ms | 96.3 ms, 94 ms, 93.5 ms, 93.6 ms, 93.8 ms |
+| `jsonl.resume` | 425 ms | 7.07 s | 16.65× | 16.55× | 428 ms, 424 ms, 425 ms, 427 ms, 425 ms | 7.1 s, 7.06 s, 7.09 s, 7.07 s, 7.07 s |
+| `sqlite.append-one-batch` | 83.3 ms | 110 ms | 1.32× | 1.27× | 83.3 ms, 82.4 ms, 83.6 ms, 87.1 ms, 82.4 ms | 110 ms, 110 ms, 111 ms, 110 ms, 110 ms |
+| `sqlite.append-per-record` | 82.1 ms | 91.9 ms | 1.12× | 1.09× | 85.3 ms, 83.8 ms, 79.3 ms, 82.1 ms, 79.7 ms | 93.4 ms, 94.5 ms, 88.9 ms, 90 ms, 91.9 ms |
+| `sqlite.append-batches-of-8` | 26.2 ms | 29.6 ms | 1.13× | 1.13× | 25.6 ms, 26.3 ms, 25.6 ms, 26.2 ms, 26.8 ms | 29 ms, 29.7 ms, 29.6 ms, 29.5 ms, 33.2 ms |
+| `sqlite.load` | 47 ms | 106 ms | 2.25× | 2.19× | 47 ms, 47.1 ms, 46.7 ms, 48.7 ms, 46.6 ms | 106 ms, 106 ms, 106 ms, 107 ms, 105 ms |
+| `sqlite.resume` | 452 ms | 7.1 s | 15.72× | 15.68× | 452 ms, 452 ms, 450 ms, 452 ms, 450 ms | 7.09 s, 7.1 s, 7.11 s, 7.11 s, 7.09 s |
+| `sqlite.terminal-resend-ack` | 7.03 ms | 1.11 s | 157.80× | 157.30× | 7.03 ms, 6.95 ms, 7.05 ms, 7.03 ms, 6.88 ms | 1.13 s, 1.11 s, 1.11 s, 1.11 s, 1.11 s |
+| `diagnostic.encode-payload` | 17 ms | — | — | — | 17.1 ms, 17.1 ms, 17 ms, 17 ms, 17 ms |  |
+| `diagnostic.decode-lines` | 30.8 ms | — | — | — | 31.2 ms, 30.7 ms, 30.8 ms, 32.2 ms, 30.6 ms |  |
+| `store.in-memory-append` | 305 µs | 414 µs | 1.36× | 1.32× | 315 µs, 305 µs, 305 µs, 305 µs, 307 µs | 414 µs, 405 µs, 415 µs, 428 µs, 412 µs |
+| `store.in-memory-records` | 4.52 ns | 43.8 µs | 9697.57× | 7979.23× | 4.67 ns, 4.5 ns, 4.62 ns, 4.52 ns, 4.49 ns | 37.3 µs, 44.8 µs, 44.9 µs, 37 µs, 43.8 µs |
+| `store.jsonl-records` | 4.35 ns | 43.8 µs | 10057.67× | 9795.83× | 4.33 ns, 4.35 ns, 4.46 ns, 4.39 ns, 4.31 ns | 43.8 µs, 44.4 µs, 43.7 µs, 43.2 µs, 44.3 µs |
+| `store.in-memory-iterate` | 25.8 µs | 210 µs | 8.13× | 7.91× | 25.8 µs, 25.8 µs, 25.7 µs, 26.4 µs, 26.2 µs | 214 µs, 210 µs, 214 µs, 209 µs, 208 µs |
+| `store.in-memory-records-list` | 39.7 µs | — | — | — | 40.6 µs, 40.1 µs, 39.5 µs, 39.4 µs, 39.7 µs |  |
+
 ## Results
 
 <!-- parity: rows below 1.0× belong to "History stores: memory", "History stores: SQLite, and the SQLite writer fence" -->
 
 The three append rows of this table come from the seven-repetition run in "Rerun of the append
 rows" below; the other rows, and the rounds listed under the table, from the earlier rounds.
+
+<!-- bench: superseded -->
 
 | workload | size | Python | Haskell | speed-up |
 | --- | --- | ---: | ---: | ---: |
@@ -170,6 +208,8 @@ The three append rows come from the seven-repetition run (see "Rerun
 of the append rows" below); the rounds listed after the table are the earlier ones. The other rows come from the same rounds as the
 rows above.
 
+<!-- bench: superseded -->
+
 | workload | size | Python | Haskell | speed-up |
 | --- | ---: | ---: | ---: | ---: |
 | append-one-batch (one fsynced transaction) | 20 002 records | 112 ms | 85.6 ms | 1.31× |
@@ -269,6 +309,8 @@ runs in full and prints `name,nanoseconds` lines for `bench-compare`. Each
 figure is the median of the seven repetitions; bench-compare starts the
 benchmark executable directly. Haskell was ahead in every repetition of
 every row.
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition |
 |---|---:|---:|---:|---:|

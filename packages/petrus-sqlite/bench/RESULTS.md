@@ -5,31 +5,32 @@
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
 names and values. Both are wall-clock time. Ratios above 1 mean Haskell is
-faster. **Haskell is faster on every row.** The two transaction rows are
-close: `tx.immediate-insert-commit` is 1.04× and `tx.immediate-insert-100`
-1.01×, each fsync-bound. `fence.acquire-release`, level at 0.98× in the
-table before this one, is now 1.17× and was ahead in all seven repetitions.
+faster. **Haskell is faster on every row, in every repetition.** The two
+transaction rows are the closest, each fsync-bound:
+`tx.immediate-insert-commit` is 1.03× and `tx.immediate-insert-100` 1.05×,
+both now timed with the same number of iterations on both sides (below).
 
-- Date: 2026-10-11 03:23–03:28 local (UTC-3), at commit `3f31d2e` (cached transaction
-  control) plus petrus-posix's path marshalling and the bench changes below
-- Machine: Darwin arm64, Apple M4, shared with other agents; 1-minute load average 3.9–5.1
-  around the runs
-- Haskell: GHC 9.10.3 (-O2), tasty-bench mean in wall-clock time, `--stdev 5` (15 for the
-  `tx` rows, see below), `+RTS -M2G -RTS`
+- Date: 2026-10-12 01:19–01:21 local (UTC-3), at commit `81bbdc5`
+- Machine: Darwin arm64, Apple M4; 1-minute load average 2.17–2.38 around
+  the runs
+- Haskell: GHC 9.10.3 (-O2), tasty-bench mean in wall-clock time,
+  `--stdev 5`, `+RTS -M2G -RTS`; the two `tx` rows use the twin protocol
+  (below)
 - Python: CPython 3.14.6 (upstream venv), median of 10 timed batches of 0.2 s
   (scripts/bench_timing.py)
-- Interleaved by `scripts/bench-compare petrus-sqlite 7`, alternating which side goes first. The figures are the
-  medians of the 7 repetitions; the last two columns give each repetition.
+- Interleaved by `scripts/bench-compare petrus-sqlite 5`, alternating which
+  side goes first. The figures are the medians of the 5 repetitions; the
+  last two columns give each repetition.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---|---|
-| `connect.local-dispatch-profile` | 51.8 µs | 59.5 µs | 1.15× | 1.08× | 49.6 µs, 52.8 µs, 53.1 µs, 51.1 µs, 50.7 µs, 54 µs, 51.8 µs | 59.4 µs, 60.6 µs, 59.5 µs, 61.1 µs, 58.8 µs, 58.4 µs, 59.9 µs |
-| `tx.immediate-insert-commit` | 34.6 µs | 36.1 µs | 1.04× | 0.90× | 33.6 µs, 34.2 µs, 38.9 µs, 34.6 µs, 34.5 µs, 37.3 µs, 36.4 µs | 36.1 µs, 36.2 µs, 35.1 µs, 37 µs, 35.3 µs, 35 µs, 37 µs |
-| `tx.immediate-insert-100` | 333 µs | 338 µs | 1.01× | 0.96× | 313 µs, 338 µs, 349 µs, 333 µs, 320 µs, 340 µs, 326 µs | 331 µs, 345 µs, 335 µs, 346 µs, 333 µs, 338 µs, 341 µs |
-| `query.select-by-key` | 1.26 µs | 1.72 µs | 1.37× | 1.33× | 1.24 µs, 1.28 µs, 1.27 µs, 1.24 µs, 1.24 µs, 1.26 µs, 1.26 µs | 1.72 µs, 1.74 µs, 1.69 µs, 1.75 µs, 1.69 µs, 1.71 µs, 1.79 µs |
-| `query.select-1000` | 368 µs | 451 µs | 1.22× | 1.18× | 372 µs, 379 µs, 368 µs, 364 µs, 365 µs, 380 µs, 364 µs | 446 µs, 451 µs, 454 µs, 455 µs, 446 µs, 448 µs, 452 µs |
-| `schema.normalize-ddl` | 3.13 µs | 5.3 µs | 1.69× | 1.64× | 3.2 µs, 3.1 µs, 3.24 µs, 2.97 µs, 3.02 µs, 3.13 µs, 3.18 µs | 5.26 µs, 5.3 µs, 5.3 µs, 5.31 µs, 5.27 µs, 5.32 µs, 5.31 µs |
-| `fence.acquire-release` | 33.8 µs | 39.6 µs | 1.17× | 1.10× | 35.9 µs, 34.7 µs, 34.9 µs, 33 µs, 33 µs, 33.8 µs, 33.6 µs | 39.5 µs, 39.5 µs, 41 µs, 39.6 µs, 39.4 µs, 40.3 µs, 40.1 µs |
+| `tx.immediate-insert-commit` | 32.2 µs | 33.2 µs | 1.03× | 1.03× | 32.1 µs, 32.3 µs, 32.5 µs, 32 µs, 32.2 µs | 33.1 µs, 33.2 µs, 33.5 µs, 33.2 µs, 33.7 µs |
+| `tx.immediate-insert-100` | 298 µs | 313 µs | 1.05× | 1.04× | 297 µs, 299 µs, 298 µs, 298 µs, 295 µs | 313 µs, 310 µs, 313 µs, 309 µs, 313 µs |
+| `connect.local-dispatch-profile` | 48.3 µs | 56 µs | 1.16× | 1.15× | 48 µs, 48.3 µs, 48.2 µs, 48.3 µs, 48.6 µs | 55.9 µs, 55.9 µs, 56.6 µs, 56 µs, 56.1 µs |
+| `query.select-by-key` | 1.2 µs | 1.65 µs | 1.38× | 1.36× | 1.2 µs, 1.2 µs, 1.19 µs, 1.21 µs, 1.18 µs | 1.65 µs, 1.63 µs, 1.62 µs, 1.65 µs, 1.65 µs |
+| `query.select-1000` | 350 µs | 430 µs | 1.23× | 1.17× | 369 µs, 348 µs, 352 µs, 349 µs, 350 µs | 430 µs, 429 µs, 435 µs, 430 µs, 433 µs |
+| `schema.normalize-ddl` | 2.7 µs | 5.06 µs | 1.87× | 1.85× | 2.74 µs, 2.68 µs, 2.73 µs, 2.7 µs, 2.67 µs | 5.07 µs, 5.07 µs, 5.06 µs, 5.02 µs, 5.05 µs |
+| `fence.acquire-release` | 30 µs | 37.3 µs | 1.24× | 1.23× | 30 µs, 30 µs, 30 µs, 30.1 µs, 30.3 µs | 37.5 µs, 37.3 µs, 37.2 µs, 37.4 µs, 37.3 µs |
 
 ## What changed
 
@@ -44,7 +45,7 @@ table before this one, is now 1.17× and was ahead in all seven repetitions.
   `.impetus-sqlite-locks/<name>.lock` through petrus-posix. Its path
   marshalling now takes one pass and remembers the most recent path (see
   [petrus-posix's results](../../petrus-posix/bench/RESULTS.md)). That took
-  the fence row from 0.98× to 1.17×.
+  the fence row from 0.98× to 1.17× (1.24× now).
 - **The `tx` rows: the same iterations on both sides.** Every iteration
   adds rows to one table, so a commit costs more the more iterations have
   run, and a side that runs more iterations measures a bigger table.
@@ -81,10 +82,13 @@ Durability is the same on both sides: `synchronous=FULL`, WAL, and plain
 
 ## Wall-clock time, and the earlier figures
 
-The table before this one (2026-10-10, two repetitions, commit `74e6b1e`)
-read 1.19× for the connection, 1.08× and 1.09× for the two transaction rows,
-1.37× and 1.24× for the queries, 1.75× for the DDL normalization and 0.98×
-for the fence (39.1 µs against 38.3 µs).
+The table before this one (2026-10-11, seven repetitions at load 3.9–5.1,
+commit `3f31d2e`, with tasty-bench choosing the `tx` rows' iteration
+counts) read 1.15× for the connection, 1.04× and 1.01× for the two
+transaction rows, 1.37× and 1.22× for the queries, 1.69× for the DDL
+normalization and 1.17× for the fence. The one before that (2026-10-10, two
+repetitions, commit `74e6b1e`) read 1.19×, 1.08×, 1.09×, 1.37×, 1.24×, 1.75×
+and 0.98× for the fence (39.1 µs against 38.3 µs).
 
 That table replaced one generated by the old `scripts/bench`, which timed Haskell
 in tasty-bench's default CPU time against Python's wall-clock time. CPU time
@@ -117,7 +121,7 @@ CPython 3.14.6 links SQLite 3.53.4.
 ## Rerun
 
 From the repository root (`scripts/bench petrus-sqlite` runs exactly this block, once;
-`scripts/bench-compare petrus-sqlite 7` interleaves the two sides and prints the table above).
+`scripts/bench-compare petrus-sqlite 5` interleaves the two sides and prints the table above).
 
 <!-- scripts/bench: rerun -->
 ```sh
