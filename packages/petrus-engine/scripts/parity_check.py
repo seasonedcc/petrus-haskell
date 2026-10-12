@@ -192,9 +192,26 @@ def upstream_tests(
     ]
 
 
+def test_sources(package: Path) -> set[Path]:
+    """The package's test tree, plus the modules its test suites compile in
+    from other packages' test trees (the shared History backend contract)."""
+    sources = set((package / "test").rglob("*.hs"))
+    for cabal in package.glob("*.cabal"):
+        for stanza in re.split(r"\n(?=\S)", cabal.read_text()):
+            dirs = re.search(r"hs-source-dirs:\s*([^\n]+)", stanza)
+            if not stanza.startswith("test-suite") or not dirs:
+                continue
+            for module in set(re.findall(r"\b[A-Z]\w*(?:\.[A-Z]\w*)*\b", stanza)):
+                for directory in dirs.group(1).split():
+                    source = package / directory / (module.replace(".", "/") + ".hs")
+                    if source.is_file():
+                        sources.add(source.resolve())
+    return sources
+
+
 def examples(package: Path) -> list[tuple[str, ...]]:
     texts: list[tuple[str, ...]] = []
-    for source in (package / "test").rglob("*.hs"):
+    for source in test_sources(package):
         for match in re.finditer(r'\b(?:it|describe) \(?"([^"]+)"', source.read_text()):
             texts.append(words(match.group(1)))
     return texts

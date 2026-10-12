@@ -41,15 +41,15 @@ workspace receiver, and selects the Pi runner after an exact READY probe.
 - **Examples:** hspec examples. A parametrized test is one `describe`
   named after the test, with one example per parameter.
 
-| Upstream file | Functions | Cases | Haskell spec | Examples |
-| --- | ---: | ---: | --- | ---: |
-| `tests/unit/agents/test_pi.py` | 28 | 46 | `PiSpec` (33), hamsterdan-host `PiActivitySpec` (9) | 42 (+4 compile-time) |
-| `tests/unit/agents/test_protocol.py` | 10 | 20 | `ProtocolSpec` | 20 |
-| `tests/unit/host/test_agenticus.py` | 26 | 33 | `AgenticusSpec` | 33 |
-| `tests/unit/host/test_pi_a2.py` | 15 | 24 | `PiA2Spec` | 24 |
-| `tests/integration/host/test_pi_workspace.py` | 12 | 20 | `PiWorkspaceSpec` | 20 (+2 beyond upstream) |
-| `tests/integration/host/test_pi_a2_factory.py` | 8 | 8 | `PiA2FactorySpec` | 8 |
-| **Total** | **99** | **151** | | **147** (+4 compile-time, +2 beyond upstream) |
+| Upstream file | Functions | Cases | Haskell spec |
+| --- | ---: | ---: | --- |
+| `tests/unit/agents/test_pi.py` | 28 | 46 | `PiSpec` (33), hamsterdan-host `PiActivitySpec` (9) |
+| `tests/unit/agents/test_protocol.py` | 10 | 20 | `ProtocolSpec` |
+| `tests/unit/host/test_agenticus.py` | 26 | 33 | `AgenticusSpec` |
+| `tests/unit/host/test_pi_a2.py` | 15 | 24 | `PiA2Spec` |
+| `tests/integration/host/test_pi_workspace.py` | 12 | 20 | `PiWorkspaceSpec` |
+| `tests/integration/host/test_pi_a2_factory.py` | 8 | 8 | `PiA2FactorySpec` |
+| **Total** | **99** | **151** | |
 
 - **Compile-time cases.** Four `test_pi.py` cases pass a `bool` or a `str`
   as the runner's timeout or poll interval. They do not compile in Haskell,
@@ -73,14 +73,14 @@ workspace receiver, and selects the Pi runner after an exact READY probe.
 
 ## Interop (no upstream counterpart)
 
-| Spec | Examples | What it checks |
-| --- | ---: | --- |
-| `InteropSpec`: sealed keys | 1 | Each side seals connection state, and the other opens it, both ways (`differential/agents_reference.py`). The key file is 32 bytes with mode `0600` on both sides. Opening under the wrong context, and opening tampered state, are refused the same way on both sides (`KeyOperationError`). |
-| `InteropSpec`: route database | 1 | Two phases of claims and settlements on one `agent-routes.sqlite3`, in all four pairings (Python/Python, Haskell/Haskell, Python/Haskell, Haskell/Python). Every pairing must leave the same rows and schema. Settled work must be refused with `resolved agent work cannot be redispatched`, and unsettled work must resume. |
-| `InteropSpec`: route-repair Histories | 1 | `_terminal_operations` (the History scan of agent-route repair) on the same bytes on both sides, 17 Histories: two records joined by each of `str.splitlines()`'s 11 line boundaries (`\n`, `\r\n`, `\r`, `\v`, `\f`, `\x1c`–`\x1e`, U+0085, U+2028, U+2029), non-boundary multi-byte text, no final boundary, a U+2028 or U+0085 inside a record, an empty line and invalid UTF-8. Both sides must report the same operations or the same refusal. The port finds the boundaries in the UTF-8 bytes rather than decoding each line to text (the scan was 10 times slower that way; see hamsterdan-host's bench/RESULTS.md). |
-| `InteropSpec`: route-repair History paths | 1 | The same scan where `history.jsonl` is a dangling symbolic link, a symbolic-link loop, a link to a History, a directory, or a file that cannot be read: the same operations, refusal, or propagated `OSError` (class and text). |
-| `ResultDifferentialSpec` | 1 | 16 Pi review results through the reference's `_parse_result` and `_validate_result` and the port's: a valid one, then one value replaced, mostly by strings with lone surrogate escapes (titles, bodies, the empty-allowed suggestion, ids, paths, related locations, lineage, status, head, repository, extra keys) and a surrogate pair. Each must be accepted, refused with the same reason and category, or raise the same built-in exception. |
-| hamsterdan-host `InteropSpec`: agent state | 1 | A full journey through `serve`'s composed agent on both hosts, over Petrus's scripted Pi runtime. Phase one reviews the first head at epoch 1; phase two reviews a new head at epoch 2. Phase one runs on one host and phase two on the other, in all four pairings. Every file under the state root must match the Python-only run: `agent-routes.sqlite3`, `pi-a2/installation`, and the runtime host's `operations.sqlite3` and `bodies.sqlite3`, alongside the host's own files. The provider calls, the reviews and the dashboard comment must match too. |
+| Spec | What it checks |
+| --- | --- |
+| `InteropSpec`: sealed keys | Each side seals connection state, and the other opens it, both ways (`differential/agents_reference.py`). The key file is 32 bytes with mode `0600` on both sides. Opening under the wrong context, and opening tampered state, are refused the same way on both sides (`KeyOperationError`). |
+| `InteropSpec`: route database | Two phases of claims and settlements on one `agent-routes.sqlite3`, in all four pairings (Python/Python, Haskell/Haskell, Python/Haskell, Haskell/Python). Every pairing must leave the same rows and schema. Settled work must be refused with `resolved agent work cannot be redispatched`, and unsettled work must resume. |
+| `InteropSpec`: route-repair Histories | `_terminal_operations` (the History scan of agent-route repair) on the same bytes on both sides, 17 Histories: two records joined by each of `str.splitlines()`'s 11 line boundaries (`\n`, `\r\n`, `\r`, `\v`, `\f`, `\x1c`–`\x1e`, U+0085, U+2028, U+2029), non-boundary multi-byte text, no final boundary, a U+2028 or U+0085 inside a record, an empty line and invalid UTF-8. Both sides must report the same operations or the same refusal. The port finds the boundaries in the UTF-8 bytes rather than decoding each line to text (the scan was 10 times slower that way; see hamsterdan-host's bench/RESULTS.md). |
+| `InteropSpec`: route-repair History paths | The same scan where `history.jsonl` is a dangling symbolic link, a symbolic-link loop, a link to a History, a directory, or a file that cannot be read: the same operations, refusal, or propagated `OSError` (class and text). |
+| `ResultDifferentialSpec` | 16 Pi review results through the reference's `_parse_result` and `_validate_result` and the port's: a valid one, then one value replaced, mostly by strings with lone surrogate escapes (titles, bodies, the empty-allowed suggestion, ids, paths, related locations, lineage, status, head, repository, extra keys) and a surrogate pair. Each must be accepted, refused with the same reason and category, or raise the same built-in exception. |
+| hamsterdan-host `InteropSpec`: agent state | A full journey through `serve`'s composed agent on both hosts, over Petrus's scripted Pi runtime. Phase one reviews the first head at epoch 1; phase two reviews a new head at epoch 2. Phase one runs on one host and phase two on the other, in all four pairings. Every file under the state root must match the Python-only run: `agent-routes.sqlite3`, `pi-a2/installation`, and the runtime host's `operations.sqlite3` and `bodies.sqlite3`, alongside the host's own files. The provider calls, the reviews and the dashboard comment must match too. |
 
 ## Benchmarks
 

@@ -22,9 +22,9 @@ closes before it propagates.
 Run `python3 packages/petrus-engine/scripts/parity_check.py` to cross-check
 the ledger.
 
-`cabal test petrus-engine-postgres` runs 31 examples. With
-`PETRUS_TEST_POSTGRES` set (CI sets it), all 31 pass. Without it, the 30
-examples that need a server are pending and say why. Each group of examples
+`cabal test petrus-engine-postgres` runs the suite. With
+`PETRUS_TEST_POSTGRES` set (CI sets it), every example passes. Without it,
+the examples that need a server are pending and say why. Each group of examples
 gets its own scratch database.
 
 ## Ledger
@@ -42,13 +42,13 @@ How the reference's test doubles are spelled here:
 
 ## Beyond upstream
 
-- **PostgresSpec / beyond upstream** (5 examples):
+- **PostgresSpec / beyond upstream**:
   - closing releases the fence at once;
   - a poisoned Engine has already released its fence and closed its connection;
   - `postgres_commit` reaches the Engine's telemetry sink;
   - a construction the Engine refuses (unknown instance) leaves the fence free;
   - `withEngine` closes the Engine and its connection.
-- **Interop with the reference process** (InteropSpec, 12 examples). These
+- **Interop with the reference process** (InteropSpec). These
   run `test/interop/postgres_engine_interop.py`, plus the History suite's
   listener script, under the pinned `upstream/petrus/.venv` on the same
   scratch database. Every reference Engine is upstream's own

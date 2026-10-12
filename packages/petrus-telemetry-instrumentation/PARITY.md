@@ -10,7 +10,7 @@ The full map from every upstream telemetry test to its Haskell example is in
 [`petrus-telemetry/PARITY.md`](../petrus-telemetry/PARITY.md). Divergences
 are in [`petrus-telemetry/DIVERGENCES.md`](../petrus-telemetry/DIVERGENCES.md).
 
-`cabal test petrus-telemetry-instrumentation` runs 56 examples, 0 failures.
+`cabal test petrus-telemetry-instrumentation` runs the suite with no failure and no pending example.
 
 ## The port: `test/Petrus/Telemetry/InstrumentationSpec.hs`
 
@@ -111,7 +111,7 @@ texts in `petrus-impetus`'s `exceptionFailureText`.
 with `bench/python_bench.py`:
 
 - a routed emit costs 2.5 µs against the reference's 4.5 µs;
-- the default (no route) costs 0.057 µs against 2.6 µs;
+- the default (no route) costs 0.056 µs against 2.5 µs;
 - on a 1 000-firing chain, routed telemetry costs about 4× less per firing
   through `run` and about 3× less through `Engine.advance` at `facts`, and
   about 2× less through `Engine.advance` at `profile`.

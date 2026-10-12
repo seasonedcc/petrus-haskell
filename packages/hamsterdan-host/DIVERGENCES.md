@@ -44,13 +44,26 @@ Below are the differences that remain, with their rationale.
      non-ASCII bytes) itself, and logs nothing.
    - On shutdown, uvicorn closes idle keep-alive connections at once.
      warp lets them end on their own, within its 30 s graceful timeout.
-   - A second CTRL+C does not force the shutdown.
+   - A second signal during shutdown. `serve` handles SIGINT and SIGTERM
+     once (`CatchOnce`); the handler then reverts to the default, so a
+     second SIGINT or SIGTERM ends the process at once, by that signal:
+     open connections are cut, the lifespan shutdown and `Service.close`
+     do not run, and nothing more is logged. uvicorn 0.52 forces the exit
+     only on a second SIGINT (a second SIGTERM changes nothing): it stops
+     waiting for connections and tasks, skips the lifespan shutdown (so
+     the host's `Service.close` does not run either), logs `Finished
+     server process [pid]`, then raises the captured signals again, which
+     ends the process through `KeyboardInterrupt`. Both sides therefore
+     skip the application's own shutdown on a forced exit; the port also
+     omits the last log line and treats SIGTERM like SIGINT.
    - A logged traceback is reduced to its header and last line (item 2).
 
    Why these stay: the first has no counterpart under warp. The others are
-   uvicorn's connection management and Python's traceback frames. They do
-   not depend on hamsterdan, and nothing in the reference or its tests reads
-   them.
+   uvicorn's connection management and signal handling and Python's
+   traceback frames. They do not depend on hamsterdan, the forced exit
+   leaves the durable state in the same condition on both sides (the
+   application's shutdown runs on neither), and nothing in the reference or
+   its tests reads them.
 2. **A traceback has only its last line.** An uncaught exception makes the
    command line print `module.Class: message` with exit status 1, the line
    that ends the reference's Python traceback. The class is

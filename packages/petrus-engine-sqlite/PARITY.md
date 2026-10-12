@@ -13,14 +13,13 @@ that every in-scope upstream test is accounted for, run:
 
     python3 packages/petrus-engine/scripts/parity_check.py
 
-`cabal test petrus-engine-sqlite` runs 20 examples, with 0 failures and 0
-pending. The interop examples are pending only when
-`upstream/petrus/.venv` is not synced. By file:
+`cabal test petrus-engine-sqlite` runs the suite with no failure and no pending example.
+The interop examples provision the pinned reference through
+`scripts/upstream-python` and fail, never go pending, when they cannot. By
+file:
 
-| spec | examples |
-| --- | ---: |
-| SqliteSpec (`test_sqlite_engine.py` 5, beyond upstream 9) | 14 |
-| SqliteInteropSpec (interop with the reference process) | 6 |
+- SqliteSpec (`test_sqlite_engine.py`'s 5 tests, and checks beyond upstream);
+- SqliteInteropSpec (interop with the reference process).
 
 ## Ledger
 
@@ -36,7 +35,7 @@ pending. The interop examples are pending only when
 
 ## Beyond upstream
 
-- **SqliteSpec** (9 examples):
+- **SqliteSpec**:
   - an empty instance id is refused before anything is created;
   - create refuses an existing Instance, and load refuses an absent one, and
     each releases the fence;
@@ -46,7 +45,7 @@ pending. The interop examples are pending only when
   - the order scenario runs, crashes mid-flight and resumes over SQLite;
   - the Engine, its History and the Local Dispatch share one database file;
   - a holder in another process gets the reference's refusal text.
-- **Interop with the reference process** (SqliteInteropSpec, 6 examples).
+- **Interop with the reference process** (SqliteInteropSpec).
   These run `test/interop/engine_sqlite_interop.py` under
   `upstream/petrus/.venv`, with petrus-engine's order scenario on both sides:
   - the same scenario writes identical History rows (DDL, schema row, and

@@ -15,7 +15,7 @@ license:            Apache-2.0
 license-file:       LICENSE
 copyright:          2026 Seasoned (see NOTICE)
 author:             Seasoned
-maintainer:         danielweinmann@avatarnaturalfoods.com
+maintainer:         daniel@seasoned.cc
 category:           Testing
 build-type:         Simple
 extra-doc-files:    NOTICE

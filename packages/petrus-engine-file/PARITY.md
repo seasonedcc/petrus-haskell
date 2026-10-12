@@ -161,16 +161,14 @@ DIVERGENCES.md lists what the kernel refuses that petrus-engine runs.
 
     cabal test petrus-engine-file
 
-The run prints 1004 examples and 0 failures:
+It ends with no failure and no pending example. The groups:
 
-| Group | Examples |
-| --- | ---: |
-| `UpstreamSpec` | 3 |
-| `CorpusSpec` (923 cases, a coverage check and three `json.loads` examples) | 927 |
-| `KernelSpec` | 12 |
-| `SchemaSpec` | 5 |
-| `LiveSpec` | 5 |
-| `CliSpec` | 52 |
+- `UpstreamSpec`;
+- `CorpusSpec` (923 cases, a coverage check and three `json.loads` examples);
+- `KernelSpec`;
+- `SchemaSpec`;
+- `LiveSpec`;
+- `CliSpec`.
 
 The live and CLI examples provision the reference venv on first use and fail
 if they cannot.

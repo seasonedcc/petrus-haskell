@@ -10,9 +10,9 @@ RuntimeSpec, AwaitingTerminationSpec, CompletionSpec, EnvironmentSignalSpec, Ins
 GuardBranchSpec, CelGuardsSpec}.hs`, with helpers in `InstanceSupport.hs` and the test-local CEL
 compiler in `CelStub.hs`.
 
-Totals: 135 upstream tests — 106 ported, 20 ported via CEL stub, 4 enforced by types, 5 ported
-in `petrus-cel`, 0 not at parity. 128 Hspec examples (the 126 ported cases plus 2 door-level
-companions of the two Instance record-authoring contracts).
+Totals over the 135 upstream tests above: 106 ported, 20 ported via CEL stub, 4 enforced by types, 5 ported
+in `petrus-cel`, 0 not at parity. One Hspec example per ported case, plus 2 door-level
+companions of the two Instance record-authoring contracts.
 
 Kernel fix made for parity: `src/Petrus/Impetus/Internal/Uuid.hs` minted UUIDv7 ids with random
 bits inside a millisecond, so two instances built in the same millisecond were creation-ordered

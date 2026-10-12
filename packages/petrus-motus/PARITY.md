@@ -26,9 +26,10 @@ that every in-scope upstream test is accounted for, run:
 The script covers this package, `petrus-motus-zeromq`, the History stores,
 and the Engines.
 
-`cabal test petrus-motus` runs 140 examples, with 0 failures and 0 pending.
-The interop examples (8 Local Dispatch, 9 Worker CLI) are marked pending
-when `upstream/petrus/.venv` is not synced.
+`cabal test petrus-motus` runs the suite with no failure and no pending example.
+The interop examples (Local Dispatch, Worker CLI) provision the pinned
+reference through `scripts/upstream-python` and fail, never go pending,
+when they cannot.
 
 ## Ledger
 
@@ -38,12 +39,12 @@ when `upstream/petrus/.venv` is not synced.
 | test_coordinator.py `TestInlineDispatch` (2) | `TestInlineDispatch (coordinator)` / same names | ported |
 | test_activity_seam.py `TestInlineDispatch` (8) | `TestInlineDispatch (activity seam)` / same names | 7 ported, 1 not applicable |
 | test_attempt_heartbeats.py `test_inline_context_has_synthetic_identity_and_detached_omitted_null_details` | `inline heartbeat context` / has synthetic identity and detached omitted/null details | ported (renamed) |
-| test_local_dispatch.py, the 32 non-Engine tests (37 collected) | `test_local_dispatch.py` / same names (34 examples) | 32 ported; 3 parameter cases enforced by types |
+| test_local_dispatch.py, the 32 non-Engine tests (37 collected) | `test_local_dispatch.py` / same names | 32 ported; 3 parameter cases enforced by types |
 | test_local_dispatch.py `test_sqlite_history_tables_coexist_untouched` | `Local Dispatch interop with the reference` / sqlite history tables coexist untouched | ported, against the reference's `SqliteHistoryStore` |
 | test_local_dispatch.py, the 3 Engine-level tests (`test_engine_*`) | `packages/petrus-engine/test/Petrus/Engine/LocalDispatchSpec.hs` / same names | ported in petrus-engine |
 | test_worker_runtime.py, 11 of 12 tests | `test_worker_runtime.py` / same names (`WorkerSpec`) | ported |
 | test_worker_runtime.py `test_controlled_sequential_local_execution_is_byte_identical_to_inline_history` | `packages/petrus-engine/test/Petrus/Engine/WorkerTopologySpec.hs` / same name | ported in petrus-engine (over the order net; see below) |
-| test_async_worker.py, 23 of 26 tests (29 collected) | `test_async_worker.py` / same names (`AsyncWorkerSpec`, 24 examples) | 22 ported, 1 renamed; 2 parameter cases enforced by types |
+| test_async_worker.py, 23 of 26 tests (29 collected) | `test_async_worker.py` / same names (`AsyncWorkerSpec`) | 22 ported, 1 renamed; 2 parameter cases enforced by types |
 | test_async_worker.py `test_sync_and_async_workers_cross_reject_before_custody` | `sync and async workers validate the registry before custody` | renamed: there is no colour to cross-reject, so it checks the shared registry validation still precedes custody |
 | test_async_worker.py `test_async_decorator_rejects_sync_and_untyped_signatures`, `test_cli_rejects_wrong_mode_registry_before_provider_factory` | none | not applicable (see below) |
 | test_worker_topology.py, 36 tests (40 cases) | over Absurd custody, as upstream runs it: `packages/petrus-engine-absurd/test/Petrus/Engine/AbsurdSpec.hs` (27 cases) and `packages/petrus-engine-absurd/test/Petrus/Engine/Absurd/WorkerTopologySpec.hs` (13 cases); over Local custody: `packages/petrus-engine/test/Petrus/Engine/WorkerTopologySpec.hs` (4), `WorkerSpec` (1), `WorkerCliSpec` (1) | all ported; every Worker-backed case runs against the reference's Worker process and a Haskell one (see below) |
@@ -246,7 +247,7 @@ without a database.
 These examples pin behavior that the reference implements without a direct
 test.
 
-- **InMemoryDispatch cancellation** (5 examples):
+- **InMemoryDispatch cancellation**:
   - It retires pending work, acknowledges a repeat, and reports a conflict
     for a different instruction.
   - It refuses to retire pending work under a different invocation.
@@ -254,7 +255,7 @@ test.
   - It drops a fenced redispatch of the same invocation and refuses a
     different one.
   - It settles a fenced occurrence without it being pending.
-- **InlineDispatch cancellation** (1 example).
+- **InlineDispatch cancellation**.
 - **`CancellationInstruction` and `ActivityAttempt`** construction refusals,
   with the reference's exact texts, and the disposition wire spellings.
 - **InlineDispatch edge cases:**
@@ -265,7 +266,7 @@ test.
     attempts.
   - Non-finite heartbeat details are refused.
 
-- **Local Dispatch** (9 examples):
+- **Local Dispatch**:
   - It refuses the reference's other name, occurrence, queue, timeout and
     clock-option inputs, and its other corrupt-invocation shapes, with the
     reference's messages.
@@ -279,7 +280,7 @@ test.
     `Petrus.Telemetry.capture`.
   - A generated claimant is the worker label plus a version-4 UUID.
 
-- **The Worker CLI** (`WorkerCliSpec`, 17 examples beyond the boundary and
+- **The Worker CLI** (`WorkerCliSpec`, beyond the boundary and
   queue-defaulting tests):
   - every provider's argument validation, with the reference's messages;
   - `int()` and `float()` argument conversions;

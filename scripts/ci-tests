@@ -739,7 +739,7 @@ def run_viewer(args: List[str]) -> int:
     bins = scratch / "bin"
     bins.mkdir()
     test = "petrus-viewer-server:test:petrus-viewer-server-test"
-    exes = ["petrus", "petrus-mcp", "petrus-collab", "petrus-viewer-oracle"]
+    exes = ["petrus", "petrus-mcp", "petrus-collab"]  # the test binary is also the oracle
     subprocess.run(["cabal", "build", "-v1", "-j", "--enable-tests", "petrus-viewer-server:exes", test], cwd=ROOT, check=True)
     for name, target in [(e, f"petrus-viewer-server:exe:{e}") for e in exes] + [("petrus-viewer-server-test", test)]:
         built = subprocess.run(["cabal", "list-bin", "-v0", "--enable-tests", target], cwd=ROOT, check=True,
@@ -769,7 +769,9 @@ def ledger(args: List[str]) -> int:
     document = json.loads(plan_file.read_text())
     run_id = os.environ.get("GITHUB_RUN_ID", "local")
     run_url = f"{os.environ.get('GITHUB_SERVER_URL', '')}/{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/{run_id}"
-    sha = os.environ.get("GITHUB_SHA", "")
+    # CI_SHA: the commit a per-commit run tests (ci.yml's `sha` input);
+    # GITHUB_SHA is then main's tip at dispatch.
+    sha = os.environ.get("CI_SHA") or os.environ.get("GITHUB_SHA", "")
     unit_passed: Dict[str, bool] = {}
     unit_examples: Dict[str, int] = {}
     for path in sorted(results_dir.rglob("results-*.json")):

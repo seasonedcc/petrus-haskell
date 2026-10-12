@@ -10,9 +10,11 @@ this package follows cel-python; the module documentation of `Petrus.Cel`
 lists those departures, and the differential corpus records each one. Those
 are not divergences.
 
-The differential corpus replays all of its 2673 expressions with no
-exclusion. The divergences left are the ones listed under "Open" below.
-Items 8 and 9 can be reached from a realistic net. None of the others can.
+The differential corpus replays all of its expressions with no exclusion.
+The divergences left are the ones listed under "Open" below; item 9 can be
+reached from a realistic net, and none of the others can. Item 8, under "By
+design", can be reached too, but it is not a gap: there the port follows the
+specification where the reference crashes.
 
 ## API shape
 
@@ -174,25 +176,6 @@ same answer on replay.
 
 Source: `Petrus.Cel.Time`.
 
-### 8. A diagnostic whose rendering raises
-
-celpy renders a `CELEvalError` raised at a tree with `tree_dump`, and that
-visitor pops an empty stack on some trees: an empty list or map literal as
-an operand of a failing comparison or operator, such as `x.tags == []` when
-`tags` holds a string. `repr()` of the error then raises
-`IndexError("pop from empty list")`. The reference builds its filter, guard
-and completion warnings with `{error!r}`, so the `IndexError` escapes the
-enabledness or completion evaluation and the Instance call fails.
-
-The kernel's CEL seam (`CelCompilers`) carries a diagnostic as a value and
-has no way to abort the call. So `Binding.diagnostic` renders such an error
-without its tree, and the kernel warns and reads the expression as not
-satisfied, as for any other error. `excReprStrict` reproduces the raise
-itself, and the corpus checks it on 1 616 cases. Matching the reference
-here needs a seam that lets a diagnostic abort the call.
-
-Source: `Petrus.Cel.Value` (`excRepr`, `excReprStrict`).
-
 ### 9. The reference's time zones depend on its host
 
 The reference's answer to a zone name depends on the machine it runs on:
@@ -215,3 +198,36 @@ corpus is recorded that way (`zoneinfo.reset_tzpath(to=[])`), and the live
 differential generates no case variants and no `__pycache__` keys.
 
 Source: `Petrus.Cel.Tz`.
+
+## By design
+
+### 8. A diagnostic whose rendering raises: the specification over the reference
+
+celpy renders a `CELEvalError` raised at a tree with `tree_dump`, and that
+visitor pops an empty stack on some trees: an empty list or map literal as
+an operand of a failing comparison or operator, such as `x.tags == []`
+when `tags` holds a string, `x.tags + [] == 1` or `x.n > {}`. `repr()` of
+the error then raises `IndexError("pop from empty list")`. The reference
+builds its filter, guard and completion warnings with `{error!r}`
+(`impetus/petrinet/enabledness.py`, `impetus/instance/__init__.py`), so the
+`IndexError` escapes the enabledness or completion evaluation and the
+Instance call fails.
+
+The specification rules otherwise. `upstream/petrus/spec/firing-semantics.md`
+("Evaluation errors in this pipeline are ruled", lines 36-48, [DR 2026-07-08
+guard-filter-evaluation-errors]): a runtime evaluation error on a concrete
+token means that binding is not satisfied, the candidate is skipped,
+enablement computation continues, and the error is surfaced as a
+diagnostic. The reference's crash is not a rule; it is celpy's `tree_dump`
+bug reaching the warning's `repr`. So the port follows the specification:
+`Binding.diagnostic` renders such an error without its tree, and the
+kernel warns and reads the expression as not satisfied, as for any other
+evaluation error.
+
+The corpus still pins celpy's behavior exactly: `excReprStrict` reproduces
+the raise, and the corpus checks it on every case whose rendering raises.
+`KernelSeam` ("skips the binding when the reference's rendering of the
+error raises") checks the kernel's skip and the diagnostic it surfaces.
+
+Source: `Petrus.Cel.Value` (`excRepr`, `excReprStrict`),
+`Petrus.Cel.Binding.diagnostic`.

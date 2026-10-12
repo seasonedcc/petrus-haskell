@@ -29,7 +29,7 @@ ported. None is skipped or pending.
 | `test_descriptor_decoder_refuses_ambiguous_or_noncanonical_data[0..3]` | same labels | Covers all four mutations, with the exact class and message. |
 | `test_compatibility_result_cannot_claim_success_without_a_candidate` | same label | |
 
-## `tests/petrus/agenticus/catalog/test_resolution.py` (13 functions, 37 cases)
+## `tests/petrus/agenticus/catalog/test_resolution.py` (13 functions, 35 cases)
 
 | Upstream test | Haskell | Notes |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ ported. None is skipped or pending.
 | `test_catalog_never_substitutes_enabled_provider_account_runtime_territory_or_continuation` | same label | |
 | `test_successful_episode_snapshot_is_immutable_across_later_catalog_changes` | same label | |
 | `test_resolution_snapshot_decoder_refuses_noncanonical_data[0..3]` | same labels | |
-| `test_registration_and_selection_order_are_deterministic` | same label | A QuickCheck property mirroring `st.permutations` twice: `max_examples=40`, with the generator fixed at seed 1729. See the Hypothesis mapping in `../PARITY.md`. |
+| `test_registration_and_selection_order_are_deterministic` | same label | A QuickCheck property mirroring `st.permutations` twice: `max_examples=40`, with fresh random inputs on every run, as the reference (which does not derandomize) draws them. See the Hypothesis mapping in `../PARITY.md`. |
 | `test_every_planned_runtime_territory_profile_resolves_from_exact_ds1_envelopes[×10]` | same labels | |
 | `test_every_planned_profile_refuses_a_different_explicit_hands_territory[×10]` | same labels | |
 | `test_all_permutations_of_inspection_are_canonical_for_a_small_catalog` | same label | Covers all 5040 permutations. |
 
-## `tests/petrus/agenticus/runtime/test_profiles.py` (6 functions, 42 cases)
+## `tests/petrus/agenticus/runtime/test_profiles.py` (6 functions, 44 cases)
 
 | Upstream test | Haskell | Notes |
 | --- | --- | --- |

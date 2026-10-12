@@ -2,10 +2,10 @@
 
 This document specifies **Fabric**, the inter-Instance protocol plane that lets
 independently authoritative Petrus net Instances address, authorize, deliver,
-acknowledge, and retain messages between each other. It is written so that a
-second implementation (the Haskell port) can share one PostgreSQL database
-with the Python reference implementation and exchange deliveries with it in
-both directions.
+acknowledge, and retain messages between each other. It is written so that
+any conforming implementation can share one PostgreSQL database with the
+Python reference implementation (or with another conforming implementation)
+and exchange deliveries with it in both directions.
 
 Upstream has no language-neutral Fabric specification. This document is
 derived from the pinned Python reference
@@ -17,8 +17,10 @@ derived from the pinned Python reference
 - `src/petrus/fabric/ingress.py`: the bridge into an Engine's delivery door;
 - `tests/petrus/fabric/test_fabric.py` and `scripts/cv5-fabric-demo.py`:
   executable evidence;
-- decision records `2026-07-20T1114Z-process-fabric-is-an-inter-authority-protocol-plane`
-  and `2026-07-23T1851Z-fabric-public-term`.
+- the decision records
+  [DR 2026-07-20 process-fabric-is-an-inter-authority-protocol-plane]
+  and [DR 2026-07-23 fabric-public-term] (citations follow the
+  convention of [README.md §1b](README.md#1b-sources-and-citation-convention)).
 
 Process `call` and `spawn` are specified separately in
 [processes.md](processes.md). The conformance checklist for this document is
@@ -44,6 +46,13 @@ classify behavior:
   a conforming implementation SHOULD do instead, when that matters.
 - **OPEN**: an unresolved point. Do not rely on a default.
 
+**OPEN** is upstream's `**OPEN:**` marker with its meaning unchanged
+(upstream `spec/README.md` §1c). **CONTRACT** and **ACCIDENT** extend that
+convention: upstream's specifications are written from the design, while
+this one is derived from an implementation, so each derived behavior says
+whether a second implementation must reproduce it
+([README.md §1c](README.md#1c-marker-conventions)).
+
 Fabric is neither Petri-kernel semantics nor an application host. Fabric
 rows are delivery and routing truth. They never enter any Instance's canonical
 History, except through the recipient's own delivery door (§9). Fabric does
@@ -57,9 +66,10 @@ any such principal can read and write every Fabric table directly.
 
 ### 1.1 Revisions
 
-These are changes made after the Haskell port ran every check against the
-pinned reference. Each change makes this document say what the pinned
-reference does. None of them changes the wire format or the schema.
+These are changes made after the first complete run of
+[fabric-conformance.md](fabric-conformance.md) against the pinned reference.
+Each change makes this document say what the pinned reference does. None of
+them changes the wire format or the schema.
 
 - §3.3 item 6 now states how `float.__repr__` chooses among several shortest
   digit strings: the nearest one, ties to even, and interval ends admitted for
@@ -327,8 +337,8 @@ gives the prefix `fabric:2:é😀:`. The length prefix makes the
 
 The ingress identity is the delivery identity that the recipient's Engine
 records on its `ExternalEventDelivered` History fact (§9). It is therefore
-persisted in the recipient's canonical History. A Python-written History
-resumed by Haskell, or the reverse, depends on it being bit-identical.
+persisted in the recipient's canonical History. A History written by one
+implementation and resumed by another depends on it being bit-identical.
 
 ### 4.3 Endpoint
 
@@ -919,10 +929,10 @@ implementation recovers the same way.
 The Python library ships **no** send activity. Senders submit from inside an
 impure handler's Activity, so the send is frozen in the sender's History before
 it happens. Both reference demos (`cv5-fabric-demo.py`,
-`cv5-lifecycle-demo.py`) use one identical profile. This port adopts it as the
-interoperable profile (**CONTRACT for this port**; upstream: demo convention).
-It matters whenever a Python Engine's Activity may be executed by a Haskell
-worker, or the reverse:
+`cv5-lifecycle-demo.py`) use one identical profile. This specification adopts
+it as the interoperable profile (**CONTRACT**; upstream: demo convention). It
+matters whenever one implementation's Engine may have its Activity executed
+by another implementation's worker:
 
 - Activity name: `"fabric.send"`.
 - `ActivityInvocation.input`: the envelope JSON form (§4.2).

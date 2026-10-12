@@ -7,8 +7,8 @@ Upstream files:
 
 Haskell specs:
 
-- `test/Petrus/Impetus/ActivitySeamSpec.hs` (`describe "Activity invocation seam"`, 86 examples)
-- `test/Petrus/Impetus/TypedBindingsSpec.hs` (`describe "typed bindings"`, 8 examples)
+- `test/Petrus/Impetus/ActivitySeamSpec.hs` (`describe "Activity invocation seam"`)
+- `test/Petrus/Impetus/TypedBindingsSpec.hs` (`describe "typed bindings"`)
 
 Translation conventions (also in each module header):
 

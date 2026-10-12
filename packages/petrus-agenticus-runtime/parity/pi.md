@@ -235,13 +235,16 @@ Module: `Petrus.Agenticus.Runtime.PiApplication` (`pi_application.py`), with
 the verbatim `data/pi_application_helper.mjs`. Spec:
 `test/Petrus/Agenticus/Runtime/PiApplicationSpec.hs`.
 
-Every pytest id is an `it` label, parameters included. 39 cases pass. Two are
-pending for the same reason the reference skips them:
+Every pytest id is an `it` label, parameters included. 39 cases run
+everywhere. Two are the reference's `qualification_installation` tests, with
+their full bodies, behind the reference's own gates; where a gate is closed
+they pend with the reference's skip reason (both reasons are declared opt-ins
+in `scripts/check-pending`):
 
 - `test_exact_helper_core_loop_fake_stream_is_one_turn_delta_only_and_authority_free`
-  needs the exact Pi packages under `/tmp/petrus-pi-a2-probe`;
-- `test_exact_installed_application_package_probe` needs them too, and also
-  `PETRUS_CV16_PI_APPLICATION_QUALIFY=1`.
+  runs when the exact Pi packages are under `/tmp/petrus-pi-a2-probe`;
+- `test_exact_installed_application_package_probe` runs when
+  `PETRUS_CV16_PI_APPLICATION_QUALIFY=1` (and then needs those packages).
 
 **Fixtures.**
 
@@ -294,8 +297,8 @@ pending for the same reason the reference skips them:
 | `test_idempotent_redelivery_and_operation_conflict` | 1 | `is first` becomes the operation's identity equality. |
 | `test_unsupported_provider_model_or_territory` | 3 | |
 | `test_package_source_versions_node_syntax_and_credential_free_probe_shape` | 1 | Runs `node --check` over the shipped helper. |
-| `test_exact_helper_core_loop_fake_stream_is_one_turn_delta_only_and_authority_free` | 1 | Pending unless the qualification packages are installed. |
-| `test_exact_installed_application_package_probe` | 1 | Pending, as upstream, unless the packages and the opt-in variable are present. |
+| `test_exact_helper_core_loop_fake_stream_is_one_turn_delta_only_and_authority_free` | 1 | Runs the shipped helper's `--test-probe` under the qualification Node when `/tmp/petrus-pi-a2-probe` holds the exact packages; otherwise pends with the reference's skip reason, as upstream skips. |
+| `test_exact_installed_application_package_probe` | 1 | Runs `probeApplication` over the installed CLI, Node and package root when `PETRUS_CV16_PI_APPLICATION_QUALIFY=1`; otherwise pends with the reference's `skipif` reason. As upstream, the opted-in test fails when the packages are missing. |
 
 No differential corpus or benchmark covers the application runtime. Its pure
 pieces (the strict loader, base64 and the transcript bound) are the ones the

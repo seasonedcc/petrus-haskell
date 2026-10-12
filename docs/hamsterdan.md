@@ -1,11 +1,17 @@
 # Hamsterdan port plan
 
-This is the plan of record for porting
+This was the plan of record for porting
 [Hamsterdan](https://github.com/henriquebastos/hamsterdan) to Haskell. It
 describes what the pinned upstream does end to end, every Petrus API it
 depends on, its external dependencies, its test suites, what an end-to-end
-comparison against a real GitHub App requires, and how the port decomposes into
-packages that can be sequenced against the Petrus ports.
+comparison against a real GitHub App requires, and how the port was to
+decompose into packages sequenced against the Petrus ports.
+
+The port is built: every Hamsterdan row of [PARITY.md](../PARITY.md) is at
+parity, and the packages' ledgers and DIVERGENCES files describe what exists.
+Sections 0 to 2, 4 and 5 remain the reference description of the upstream.
+Sections 3 and 6 are the plan as it was written, kept for its reasoning, and
+each says where the built port differs.
 
 Unless noted, paths are relative to `upstream/hamsterdan/` at the pin in
 [UPSTREAM.md](../UPSTREAM.md) (`5d38246`). Petrus paths are relative to
@@ -939,6 +945,14 @@ and `tests/test_architecture.py`.
 
 ## 3. External dependencies and Haskell equivalents
 
+*Historical: the plan's suggestions, before the port.* The built packages
+differ in a few places. SQLite goes through `direct-sqlite` and
+petrus-sqlite, not `sqlite-simple`. The webhook server is plain `warp` and
+`wai`, with no servant. The installation-token cache is an `IORef` store
+(`Hamsterdan.GitHub.Cache`), not a `TVar`. Random bytes come from
+petrus-json's `getentropy` binding, and the tests use `hspec` with
+`hedgehog` and QuickCheck. Each package's `.cabal` file lists what it uses.
+
 | Python dependency | Used for | Suggested Haskell equivalent |
 | --- | --- | --- |
 | `githubkit[auth-app]==0.16.0` | App JWT, installation-token minting and caching, raw request building, `webhooks.verify`, Link pagination | Hand-written client over `http-client` + `http-client-tls`; JWT RS256 via `jose` or `crypton` (PKCS#1 v1.5 SHA-256); token cache in `TVar`. Avoid the `github` package: requests must be byte-controlled. |
@@ -1297,6 +1311,16 @@ deterministic. Only tier C touches real GitHub.
    - Pi cleanup `host-cleanup-uncertain` errors at shutdown.
 
 ## 6. Port decomposition and sequencing
+
+*Historical: the plan as written, before the port.* What was built differs
+from it in these ways:
+
+- Every package exists, `hamsterdan-operator` included: it is ported and at
+  parity, not optional or last.
+- There is no `interop/hamsterdan/` harness. The Python and Haskell
+  comparisons live in each package's `differential/` directory and test
+  suite (driven by `scripts/interop`), and the tier C live comparison is
+  `hamsterdan-e2e` ([docs/e2e.md](e2e.md)).
 
 The packages follow the upstream architecture so the import rules become
 package boundaries (checked by `scripts/lint-hamsterdan-architecture`; the

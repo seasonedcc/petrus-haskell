@@ -25,8 +25,8 @@ PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@localhost:5432/postgres \
   cabal test petrus-motus-absurd --test-options='+RTS -M2G -RTS'
 ```
 
-`cabal test petrus-motus-absurd` runs 127 examples. With `PETRUS_TEST_POSTGRES` set (CI sets
-it), all 127 pass. Without it, the 98 examples that need a server are pending and say why, the
+`cabal test petrus-motus-absurd` runs the suite. With `PETRUS_TEST_POSTGRES` set (CI sets
+it), every example passes. Without it, the examples that need a server are pending and say why, the
 way upstream's `postgres` marker skips. The suite provisions one scratch database with the
 pinned schema and drops it afterwards. The interop examples run the pinned reference's
 environment (`upstream/petrus/.venv` on CPython 3.14.6), which `scripts/upstream-python`
@@ -37,12 +37,13 @@ provisions on first use; they fail, never skip, when it cannot be provisioned.
 | upstream file | Haskell spec | upstream count | status |
 | --- | --- | --- | --- |
 | `tests/petrus/motus/dispatch/test_absurd_adapter.py` | `Petrus.Motus.Dispatch.AbsurdSpec` | 78 functions, 103 cases | all 103 cases ported |
-| `tests/petrus/motus/dispatch/test_attempt_heartbeats.py`, the Absurd part | `Petrus.Motus.Dispatch.Absurd.HeartbeatSpec` | 3 functions, 9 cases | all 9 cases ported |
-| `tests/project/test_package_boundaries.py`, the 4 Absurd rows | `Petrus.Motus.Dispatch.Absurd.BoundarySpec` | 4 functions | ported over Cabal metadata and module sources |
+| `tests/petrus/motus/dispatch/test_attempt_heartbeats.py`, the Absurd part | `Petrus.Motus.Dispatch.Absurd.HeartbeatSpec` | 2 of 8 functions, 8 of 20 cases | all 8 cases ported |
+| `tests/project/test_package_boundaries.py`, the 4 Absurd rows | `Petrus.Motus.Dispatch.Absurd.BoundarySpec` | 4 of 20 functions | ported over Cabal metadata and module sources |
 | `tests/petrus/motus/worker/test_worker_topology.py` | `packages/petrus-engine-absurd` (`AbsurdSpec`, `Absurd.WorkerTopologySpec`) | 36 functions, 40 cases | see [petrus-engine-absurd's PARITY](../petrus-engine-absurd/PARITY.md) |
 
-The other five tests of `test_attempt_heartbeats.py` (declarations, the inline context, detail
-normalization) are ported in `petrus-activity` and `petrus-motus`
+The other six tests of `test_attempt_heartbeats.py` (the test-local attempt state model,
+declarations, the inline context, detail normalization) are ported once each, in `petrus-activity`
+and `petrus-motus`
 ([petrus-motus PARITY](../petrus-motus/PARITY.md)).
 
 ### `test_absurd_adapter.py`, by class
@@ -69,7 +70,6 @@ upstream case, named after the parameter.
 
 | upstream test | Haskell example | status |
 | --- | --- | --- |
-| `test_attempt_state_model_covers_renewal_expiry_reassignment_terminal_and_stale_refusal` | `the attempt state model` / covers renewal, expiry, reassignment, terminal and stale refusal | ported |
 | `test_reconnectable_heartbeat_replaces_closed_transport_once_and_never_retries_replacement` (2 cases) | `the reconnectable heartbeat` / replaces a closed transport once on `OperationalError` / `InterfaceError` … | ported. The rule is `reconnectOnce`, driven with the reference's fakes |
 | `test_reconnectable_heartbeat_does_not_replace_or_retry_semantic_errors` (6 cases) | `the reconnectable heartbeat` / does not replace or retry … (one per error class) | ported. The psycopg classes map to SQLSTATE classes (`errorClassForState`); `RuntimeError` is `AbsurdError` |
 
@@ -84,7 +84,7 @@ upstream case, named after the parameter.
 
 ## Interop with the reference
 
-`Petrus.Motus.Dispatch.Absurd.InteropSpec` (11 examples) drives
+`Petrus.Motus.Dispatch.Absurd.InteropSpec` drives
 [`test/interop/absurd_dispatch_interop.py`](test/interop/absurd_dispatch_interop.py) under the
 pinned reference's interpreter, against the same scratch database. Every direction is
 exercised:

@@ -358,7 +358,7 @@ spec = do
 
 gatewaySpec :: Spec
 gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
-  it "binds before and after oids atomically in the GraphQL ref update" $ do
+  it "graphql ref update atomically binds before and after oids" $ do
     let refTransport fake stale = transportWith fake $ \method path body -> Just $ do
           unless (method == "POST" && path == "/graphql") (throwIO (ErrorCall "not graphql"))
           count <- length <$> readIORef fake.calls
@@ -384,7 +384,7 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
     (Transport.githubGraphQL (refTransport stale True)).compareAndSwapRef "owner/repo" "refs/heads/topic" headSha baseSha
       `shouldThrow` boundaryMatching "exact ref compare-and-swap"
 
-  it "resolves the current base ref instead of the stale PR base sha" $ do
+  it "pull snapshot resolves current base ref instead of stale pr base sha" $ do
     fake <- newFake
     let current = T.replicate 40 "c"
     respond fake "GET" "/repos/owner/repo/pulls/7" 200 pullJson
@@ -392,13 +392,13 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
     value <- G.pullRequest (authority (transportOf fake))
     value.base `shouldBe` current
 
-  it "selects the exact-head run, ignoring a closed historical run for a reused head" $ do
+  it "exact head workflow selection ignores closed historical run for reused head" $ do
     fake <- newFake
     respond fake "GET" runsPath 200 (runsBody 2 [wireRun 2 3 "[]" "completed" "success", wireRun 1 1 "[{'number':7}]" "completed" "success"])
     selected <- G.selectRun (authority (transportOf fake)) "ci.yml" headSha
     selected `shouldBe` Just (snapshot 1 headSha 1 "completed" (Just "success"))
 
-  it "requires complete, consistent object-collection pagination" $ do
+  it "object collection requires complete consistent pagination" $ do
     fake <- newFake
     let second = runsPath <> "&page=2"
         run = wireRun 1 1 "[{'number':7}]" "completed" "success"
@@ -409,7 +409,7 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
     respond fake "GET" second 200 (runsBody 2 [run])
     G.selectRun (authority (transportOf fake)) "ci.yml" headSha `shouldThrow` boundaryMatching "malformed"
 
-  it "takes the branch's effective rules as the policy authority" $ do
+  it "branch effective rules are policy authority" $ do
     fake <- newFake
     respond fake "GET" "/repos/owner/repo/rules/branches/main" 200 $
       j
@@ -420,7 +420,7 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
       `shouldBe` ("effective_rules", True, ["unit"], 2, True)
     T.length value.digest `shouldBe` 64
 
-  it "keeps each reviewer's latest meaningful state and makes the thread capability explicit" $ do
+  it "review latest meaningful state and explicit thread capability" $ do
     fake <- newFake
     respond fake "GET" "/repos/owner/repo/pulls/7/requested_reviewers" 200 (j "{'users':[{'login':'bob'}]}")
     setPages
@@ -435,7 +435,7 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
     review.unresolvedThreads `shouldBe` Nothing
     review.threadsCapability `shouldBe` "threads_unavailable"
 
-  it "falls back to branch protection only on the effective endpoint's 404 and rejects malformed evidence" $ do
+  it "policy falls back only on effective endpoint 404 and rejects malformed evidence" $ do
     fake <- newFake
     respond fake "GET" "/repos/owner/repo/rules/branches/topic%2Fbase" 404 (Object [])
     respond fake "GET" "/repos/owner/repo/branches/topic%2Fbase/protection" 200 $
@@ -448,13 +448,13 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
     G.policy (authority (transportOf fake)) "main" `shouldThrow` boundaryMatching "status policy"
 
   forM_ [("event", "push"), ("path", ".github/workflows/other.yml")] $ \(name, value) ->
-    it ("rejects run evidence with the wrong " <> T.unpack name) $ do
+    it ("run evidence rejects wrong event or workflow (" <> T.unpack name <> ")") $ do
       fake <- newFake
       let run = Object [(k, if k == name then String value else v) | (k, v) <- members (wireRun 1 1 "[{'number':7}]" "completed" "success")]
       respond fake "GET" runsPath 200 (runsBody 1 [run])
       G.selectRun (authority (transportOf fake)) "ci.yml" headSha `shouldThrow` boundaryMatching "outside the requested PR workflow"
 
-  it "makes a missing required job an explicit failure" $ do
+  it "missing required job is explicit failure" $ do
     fake <- newFake
     respond fake "GET" "/repos/owner/repo/actions/runs/5/attempts/2/jobs?per_page=100" 200 $
       j "{'total_count':1,'jobs':[{'id':8,'name':'lint','status':'completed','conclusion':'success'}]}"
@@ -462,7 +462,7 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
     (G.runResult observed).conclusion `shouldBe` "failure"
     [job.name | job <- observed.jobs, job.required] `shouldBe` ["lint", "unit"]
 
-  it "does not treat not-yet-created required jobs of an in-progress run as failures" $ do
+  it "in progress run does not treat not yet created required jobs as failures" $ do
     fake <- newFake
     respond fake "GET" "/repos/owner/repo/actions/runs/5/attempts/2/jobs?per_page=100" 200 $
       j "{'total_count':1,'jobs':[{'id':8,'name':'lint','status':'in_progress','conclusion':null}]}"
@@ -470,7 +470,7 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
     (G.runResult observed).conclusion `shouldBe` "pending"
 
   forM_ [("queued", Queued), ("in_progress", InProgress)] $ \(status, conclusion) ->
-    it ("normalizes the pending provider state " <> T.unpack status <> " in actions evidence") $ do
+    it ("actions evidence normalizes pending provider state (" <> T.unpack status <> ")") $ do
       fake <- newFake
       respond fake "GET" "/repos/owner/repo/actions/runs/5/attempts/2/jobs?per_page=100" 200 $
         Object [("total_count", Int 1), ("jobs", Array [Object [("id", Int 8), ("name", String "lint"), ("status", String status), ("conclusion", Null)]])]
@@ -479,14 +479,14 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
       evidence.conclusion `shouldBe` conclusion
       evidence.failedRequiredJobs `shouldBe` [("lint", Nothing)]
 
-  it "rejects an unsupported terminal conclusion in actions evidence" $ do
+  it "actions evidence rejects an unsupported terminal conclusion" $ do
     fake <- newFake
     respond fake "GET" "/repos/owner/repo/actions/runs/5/attempts/2/jobs?per_page=100" 200 $
       j "{'total_count':1,'jobs':[{'id':8,'name':'lint','status':'completed','conclusion':'success'}]}"
     G.actionsEvidence (authority (transportOf fake)) (snapshot 5 headSha 2 "completed" (Just "neutral")) ["lint"]
       `shouldThrow` boundaryMatching "conclusion is unsupported"
 
-  it "counts only human unresolved threads" $ do
+  it "unresolved thread count excludes the apps own threads" $ do
     fake <- newFake
     resolved <- newIORef []
     let transport =
@@ -504,7 +504,7 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
     review <- G.humanReview subject
     (review.unresolvedThreads, review.threadsCapability) `shouldBe` (Just 2, "available")
 
-  it "resolves only superseded app finding threads" $ do
+  it "stale finding thread resolution targets only superseded app threads" $ do
     fake <- newFake
     resolved <- newIORef []
     let old = T.replicate 40 "c"
@@ -522,13 +522,13 @@ gatewaySpec = describe "GitHub gateway (test_github.py)" $ do
     G.resolveStaleFindingThreads subject headSha `shouldReturn` 1
     readIORef resolved `shouldReturn` ["dan-stale"]
 
-  it "is inert resolving stale threads without GraphQL" $ do
+  it "stale finding thread resolution without graphql is inert" $ do
     fake <- newFake
     G.resolveStaleFindingThreads (authority (transportOf fake)) headSha `shouldReturn` 0
 
 publisherSpec :: Spec
 publisherSpec = describe "comment publisher (test_github.py)" $ do
-  it "fences immediately before the dashboard create and does not append on a PATCH denial" $ do
+  it "dashboard fences immediately before create and does not append on patch denial" $ do
     fake <- newFake
     events <- newIORef (0 :: Int)
     setPages fake issuePages []
@@ -545,7 +545,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     kinds <- callKinds fake
     drop (length kinds - 2) kinds `shouldSatisfy` notElem "POST"
 
-  it "recovers an uncertain successful comment write by looking it up first" $ do
+  it "lookup first retry recovers an uncertain successful comment write" $ do
     fake <- newFake
     fences <- newIORef 0
     setPages fake issuePages []
@@ -562,7 +562,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     posts fake `shouldReturn` 1
     readIORef fences `shouldReturn` 1
 
-  it "retries an immutable comment once after a proven pre-call failure" $ do
+  it "immutable comment retries once after proven pre call failure" $ do
     fake <- newFake
     fences <- newIORef 0
     attempts <- newIORef (0 :: Int)
@@ -583,7 +583,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     callKinds fake `shouldReturn` ["PAGES", "POST", "PAGES", "POST"]
     readIORef fences `shouldReturn` 2
 
-  it "recovers an after-call fault by lookup without a second mutation" $ do
+  it "after call fault recovers by lookup without a second mutation" $ do
     fake <- newFake
     spent <- newIORef False
     setPages fake issuePages []
@@ -600,7 +600,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     result.status `shouldBe` PublicationExisting
     posts fake `shouldReturn` 1
 
-  it "looks up but does not retry a definitive comment rejection" $ do
+  it "definitive comment rejection is looked up but not retried" $ do
     fake <- newFake
     fences <- newIORef 0
     setPages fake issuePages []
@@ -611,7 +611,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     readIORef fences `shouldReturn` 1
 
   forM_ [(kind, status) | kind <- ["dashboard", "readiness"], status <- [422, 400]] $ \(kind, status) ->
-    it ("makes a definite " <> show status <> " payload rejection of a " <> kind <> " non-retryable") $ do
+    it ("definite publication payload rejection is nonretryable (" <> kind <> ", " <> show status <> ")") $ do
       fake <- newFake
       setPages fake issuePages []
       respond fake "POST" issueComments status (j "{'message':'must not escape'}")
@@ -623,7 +623,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
       posts fake `shouldReturn` 1
 
   forM_ [(kind, status) | kind <- ["dashboard", "readiness"], status <- [429, 500, 503]] $ \(kind, status) ->
-    it ("makes a transient " <> show status <> " for a " <> kind <> " a boundary failure") $ do
+    it ("transient publication status is boundary failure (" <> kind <> ", " <> show status <> ")") $ do
       fake <- newFake
       setPages fake issuePages []
       respond fake "POST" issueComments status (Object [])
@@ -639,7 +639,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     , publication' <- ["immutable", "dashboard_create", "dashboard_update"]
     ]
     $ \(publication', body) ->
-      it ("treats an expected status with the unusable reference " <> T.unpack body <> " as ambiguous (" <> publication' <> ")") $ do
+      it ("expected comment status with unusable reference is ambiguous (" <> publication' <> ", " <> T.unpack body <> ")") $ do
         fake <- newFake
         let updating = publication' == "dashboard_update"
             method = if updating then "PATCH" else "POST"
@@ -653,14 +653,14 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
         publish `shouldThrow` boundaryMatching "did not prove"
         (length . filter (== method) <$> callKinds fake) `shouldReturn` 1
 
-  it "rejects a stable-operation payload collision on the initial lookup" $ do
+  it "initial immutable lookup rejects a stable operation payload collision" $ do
     fake <- newFake
     setPages fake issuePages [comment 11 ("Different\n\n" <> markerOf "finding" "stable-operation" headSha) "hamsterdan[bot]"]
     E.immutable (publisherWith (transportOf fake) noFence Nothing) "finding" "stable-operation" 1 headSha "Finding" Nothing []
       `shouldThrow` (== PublicationCollision)
     posts fake `shouldReturn` 0
 
-  it "reports absence, landing and collision from find without mutating" $ do
+  it "find reports absence landing and collision without mutating" $ do
     fake <- newFake
     let publisher = publisherWith (transportOf fake) noFence Nothing
     setPages fake issuePages []
@@ -674,7 +674,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     E.findPublication publisher "finding" "stable-operation" headSha "Different" [] `shouldThrow` (== PublicationCollision)
     posts fake `shouldReturn` 0
 
-  it "reconciles an operation-scoped publication across a head move without reposting" $ do
+  it "operation scoped reconciliation recovers across a head move without reposting" $ do
     fake <- newFake
     setPages fake issuePages [comment 12 ("the answer\n\n" <> markerOf "conversation" "reply:c1" headSha) "hamsterdan[bot]"]
     let publisher = publisherWith (transportOf fake) noFence Nothing
@@ -685,7 +685,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     E.immutableOperation publisher "conversation" "reply:c1" "a different answer" noContext [] `shouldThrow` (== PublicationCollision)
     posts fake `shouldReturn` 0
 
-  it "posts an operation-scoped publication under the current head when never held" $ do
+  it "operation scoped publication posts under the current head when never held" $ do
     fake <- newFake
     fences <- newIORef 0
     setPages fake issuePages []
@@ -695,7 +695,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     lastBody fake >>= (`shouldSatisfy` T.isSuffixOf (markerOf "conversation" "reply:c1" headSha))
     readIORef fences `shouldReturn` 1
 
-  it "reconciles an operation-scoped reminder by presence only across a head move" $ do
+  it "operation scoped reminder reconciles presence only across a head move" $ do
     fake <- newFake
     setPages fake issuePages [comment 14 ("an OLD nudge body\n\n" <> markerOf "reminder" "reminder:t1" headSha) "hamsterdan[bot]"]
     recovered <- E.reminderOperation (publisherWith (transportOf fake) noFence Nothing) "reminder:t1" (throwIO (ErrorCall "context read"))
@@ -703,7 +703,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     fmap (.id) recovered.reference `shouldBe` Just 14
     callKinds fake `shouldReturn` ["PAGES"]
 
-  it "posts an operation-scoped reminder under the current head when never held" $ do
+  it "operation scoped reminder posts under the current head when never held" $ do
     fake <- newFake
     setPages fake issuePages []
     respond fake "POST" issueComments 201 (j "{'id':15,'html_url':'url'}")
@@ -713,7 +713,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     body `shouldSatisfy` T.isInfixOf "@the-reviewer"
     body `shouldSatisfy` T.isSuffixOf (markerOf "reminder" "reminder:t1" headSha)
 
-  it "stops after two fenced mutations with unproven outcomes" $ do
+  it "two unproven comment outcomes stop after two fenced mutations" $ do
     fake <- newFake
     fences <- newIORef 0
     setPages fake issuePages []
@@ -723,7 +723,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     posts fake `shouldReturn` 2
     readIORef fences `shouldReturn` 2
 
-  it "lets a stale recovery fence prevent a second comment mutation" $ do
+  it "stale recovery fence prevents a second comment mutation" $ do
     fake <- newFake
     fences <- newIORef (0 :: Int)
     setPages fake issuePages []
@@ -736,7 +736,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
       `shouldThrow` (== ContractRefused "stale authority")
     posts fake `shouldReturn` 1
 
-  it "requires the normalized exact bot login and the hamsterdan marker" $ do
+  it "lookup requires normalized exact bot login and hamsterdan marker" $ do
     fake <- newFake
     let wanted = markerOf "finding" "operation" headSha
     setPages
@@ -752,7 +752,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     fmap (.id) existing'.reference `shouldBe` Just 3
     posts fake `shouldReturn` 0
 
-  it "does not take a legacy marker as a hamsterdan publication" $ do
+  it "legacy marker is not compatible with hamsterdan publication" $ do
     fake <- newFake
     setPages fake issuePages [Object [("id", Int 1), ("body", String "<!-- impetus:dashboard -->"), ("user", j "{'login':'hamsterdan[bot]'}")]]
     respond fake "POST" issueComments 201 (j "{'id':2,'html_url':'url'}")
@@ -760,7 +760,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     result.status `shouldBe` PublicationCreated
     lastBody fake >>= (`shouldSatisfy` T.isInfixOf "<!-- hamsterdan:dashboard -->")
 
-  it "mentions the configured reviewer in a reminder and never assigns" $ do
+  it "reminder mentions configured reviewer and never assigns" $ do
     fake <- newFake
     setPages
       fake
@@ -781,7 +781,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     body `shouldSatisfy` T.isInfixOf "[See current readiness state.](https://github.invalid/pr/7#dashboard)"
     E.reviewerAssignmentAvailable publisher `shouldBe` False
 
-  it "asks the author to assign a reviewer without inventing one" $ do
+  it "reminder asks author to assign without inventing a reviewer" $ do
     fake <- newFake
     setPages fake issuePages []
     respond fake "POST" issueComments 201 (j "{'id':1,'html_url':'url'}")
@@ -790,7 +790,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     body `shouldSatisfy` T.isInfixOf "@author, this PR and I have gotten to know each other quite well"
     body `shouldSatisfy` T.isInfixOf "Please assign a reviewer"
 
-  it "uses distinct publication and authority operations for a finding" $ do
+  it "finding uses distinct publication and authority operations" $ do
     fake <- newFake
     fences <- newIORef []
     setPages fake issuePages []
@@ -800,7 +800,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     readIORef fences `shouldReturn` [("owner/repo", 7, 3, headSha, "finding-activity")]
     lastBody fake >>= (`shouldSatisfy` T.isInfixOf "operation=finding-activity:finding-id")
 
-  it "publishes a native inline suggestion with related locations" $ do
+  it "finding publishes native inline suggestion with related locations" $ do
     fake <- newFake
     fences <- newIORef []
     let reviews = "/repos/owner/repo/pulls/7/comments"
@@ -829,7 +829,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
       [] -> expectationFailure "no inline review request"
     readIORef fences `shouldReturn` [("owner/repo", 7, 3, headSha, "finding-activity")]
 
-  it "publishes anchored findings as one native review batch" $ do
+  it "anchored findings publish as one native review batch" $ do
     fake <- newFake
     fences <- newIORef []
     noComments fake
@@ -858,7 +858,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
       other -> expectationFailure ("expected one review request, got " <> show (length other))
     readIORef fences `shouldReturn` [("owner/repo", 7, 3, headSha, "finding-activity")]
 
-  it "reconciles every finding of an ambiguous accepted review batch without reposting" $ do
+  it "ambiguous accepted review batch reconciles every finding without reposting" $ do
     fake <- newFake
     noComments fake
     let transport = transportWith fake $ \method path body -> case (method, body) of
@@ -879,7 +879,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     results `shouldSatisfy` all (\result -> result.status == PublicationExisting && result.inline)
     postsTo fake reviewsRoot `shouldReturn` 1
 
-  it "falls back to one immutable issue comment after a definitive inline denial" $ do
+  it "definitive inline denial falls back to one immutable issue comment" $ do
     fake <- newFake
     fences <- newIORef []
     noComments fake
@@ -899,7 +899,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     , (422, "{'message':'Validation Failed','errors':[{'field':'line','code':'invalid'}]}")
     ]
     $ \(status, body) ->
-      it ("does not fall back after an inline authorization or payload failure (" <> show status <> " " <> T.unpack body <> ")") $ do
+      it ("inline authorization or payload failure does not fall back (" <> show status <> " " <> T.unpack body <> ")") $ do
         fake <- newFake
         noComments fake
         respond fake "POST" inlineRoot status (j body)
@@ -914,7 +914,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
         postsTo fake issueComments `shouldReturn` 0
         postsTo fake inlineRoot `shouldReturn` 1
 
-  it "keeps provider-controlled atoms out of the inline failure diagnostic" $ do
+  it "inline failure diagnostic rejects provider controlled atoms" $ do
     fake <- newFake
     noComments fake
     respond fake "POST" inlineRoot 422 (j "{'message':'credential-bearing message','errors':[{'field':'github_pat_secret','code':'secret'}]}")
@@ -923,7 +923,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
       Left (failure :: GitHubBoundaryError) -> failure.providerDetail `shouldBe` "unknown_field:unknown_code"
       Right value -> expectationFailure ("expected a boundary failure, got " <> show value)
 
-  it "recovers an ambiguous accepted inline finding without a second mutation" $ do
+  it "ambiguous accepted inline finding recovers without a second mutation" $ do
     fake <- newFake
     spent <- newIORef False
     noComments fake
@@ -937,7 +937,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     (result.status, result.inline) `shouldBe` (PublicationExisting, True)
     postsTo fake inlineRoot `shouldReturn` 1
 
-  it "retries an inline finding after a before-call fault only behind a fresh fence" $ do
+  it "inline before call fault retries only after a fresh fence" $ do
     fake <- newFake
     fences <- newIORef []
     delays <- newIORef []
@@ -957,7 +957,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     , (500, "{'message':'Server Error'}")
     ]
     $ \(status, body) ->
-      it ("retries a transient inline rejection after a lookup and a fresh fence (" <> show status <> ")") $ do
+      it ("inline transient http rejection retries after lookup and a fresh fence (" <> show status <> ")") $ do
         fake <- newFake
         attempts <- newIORef (0 :: Int)
         fences <- newIORef (0 :: Int)
@@ -978,7 +978,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
         readIORef fences `shouldReturn` 2
         readIORef delays `shouldReturn` [60]
 
-  it "exhausts transient inline rejections with bounded exponential backoff" $ do
+  it "inline transient exhaustion uses bounded exponential backoff" $ do
     fake <- newFake
     fences <- newIORef (0 :: Int)
     delays <- newIORef []
@@ -992,7 +992,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     readIORef fences `shouldReturn` 3
     readIORef delays `shouldReturn` [60, 120]
 
-  it "stops the inline retry when the fresh second fence rejects authority" $ do
+  it "inline retry stops when the fresh second fence rejects authority" $ do
     fake <- newFake
     fences <- newIORef (0 :: Int)
     spent <- newIORef False
@@ -1005,7 +1005,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     readIORef fences `shouldReturn` 2
     postsTo fake inlineRoot `shouldReturn` 0
 
-  it "recovers legacy issue finding and reminder payloads exactly" $ do
+  it "legacy issue finding and reminder payloads recover exactly" $ do
     fake <- newFake
     setPages fake (inlineRoot <> "?per_page=100") []
     setPages
@@ -1031,7 +1031,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
     reminded.status `shouldBe` PublicationExisting
     posts fake `shouldReturn` 0
 
-  it "requires the unique final marker line for a lookup" $ do
+  it "marker lookup requires the unique final marker line" $ do
     fake <- newFake
     let wanted = markerOf "finding" "finding-operation" headSha
     setPages
@@ -1048,7 +1048,7 @@ publisherSpec = describe "comment publisher (test_github.py)" $ do
 
 brokerSpec :: Spec
 brokerSpec = describe "rerun broker (test_github.py)" $ do
-  it "looks up first and fences immediately before the rerun marker" $ do
+  it "rerun request is lookup first and fenced immediately before marker" $ do
     fake <- newFake
     events <- newIORef 0
     respond fake "GET" "/repos/owner/repo/pulls/7" 200 pullJson
@@ -1068,7 +1068,7 @@ brokerSpec = describe "rerun broker (test_github.py)" $ do
     again.status `shouldBe` PublicationExisting
     readIORef events `shouldReturn` 1
 
-  it "carries no currency requirement in the held lookup" $ do
+  it "rerun held lookup carries no currency requirement" $ do
     fake <- newFake
     setPages fake issuePages []
     let transport = transportOf fake
@@ -1084,7 +1084,7 @@ brokerSpec = describe "rerun broker (test_github.py)" $ do
     degraded <- E.held broker 5 headSha "retry-1"
     fmap (\r -> (r.status, isNothing r.reference)) degraded `shouldBe` Just (PublicationExisting, True)
 
-  it "owns the final run read and the evidence cut" $ do
+  it "rerun issue owns the final run read and the evidence cut" $ do
     fake <- newFake
     broker <- rerunWorld fake [wireRun 5 9 "[{'number':7}]" "completed" "failure", wireRun 7 1 "[{'number':7}]" "completed" "failure"]
     respond fake "POST" issueComments 201 (j "{'id':9,'html_url':'url'}")
@@ -1092,7 +1092,7 @@ brokerSpec = describe "rerun broker (test_github.py)" $ do
     issued.result.status `shouldBe` PublicationRequested
     (issued.cutRunId, issued.cutAttempt) `shouldBe` (7, 1)
 
-  it "refuses before any effect when the head or the run moved" $ do
+  it "rerun issue refusal is a proven pre effect movement" $ do
     fake <- newFake
     broker <- rerunWorld fake [wireRun 7 1 "[{'number':7}]" "completed" "failure"]
     let stale = snapshot 5 (T.replicate 40 "c") 1 "completed" (Just "failure")
@@ -1101,7 +1101,7 @@ brokerSpec = describe "rerun broker (test_github.py)" $ do
     posts fake `shouldReturn` 0
     E.requestRerun broker stale 3 "r-1" `shouldThrow` boundaryMatching "does not belong"
 
-  it "degrades a malformed 201 reference to none" $ do
+  it "rerun issue degrades a malformed 201 reference to none" $ do
     fake <- newFake
     broker <- rerunWorld fake [wireRun 5 1 "[{'number':7}]" "completed" "failure"]
     respond fake "POST" issueComments 201 (j "{'html_url':'url'}")
@@ -1110,7 +1110,7 @@ brokerSpec = describe "rerun broker (test_github.py)" $ do
 
 clientSpec :: Spec
 clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
-  it "authenticates the App with a JWT, installations with a scoped token, and reports safe metadata" $ withConfig $ \config -> do
+  it "app and installation auth use jwt then scoped token and safe metadata" $ withConfig $ \config -> do
     seen <- newIORef []
     metadata <- newIORef []
     let handler request = do
@@ -1135,7 +1135,7 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
     (last <$> readIORef metadata) `shouldReturn` RequestMetadata "GET" "/installation/repositories" (Just "request") (Just 9) (Just 10) 200
     (show <$> readIORef metadata) >>= (`shouldNotSatisfy` isInfixOf "installation-secret")
 
-  it "validates the provider contract before returning the registration portfolio" $ withConfig $ \config -> do
+  it "registration inventory validates provider contract before returning portfolio" $ withConfig $ \config -> do
     paths <- newIORef []
     let handler request = do
           modifyIORef' paths (<> [pathOf request])
@@ -1150,7 +1150,7 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
     installations `shouldBe` [InstallationInventory 44 23 [(31, "owner/one"), (32, "owner/two")]]
     readIORef paths `shouldReturn` ["/app", "/app/installations", "/app/installations/44/access_tokens", "/installation/repositories"]
 
-  it "validates multiple accounts before returning one snapshot" $ withSystemTempDirectory "github" $ \directory -> do
+  it "registration inventory validates multiple accounts before returning one snapshot" $ withSystemTempDirectory "github" $ \directory -> do
     key <- readFile "test/corpus/app-test-key.pem"
     values <- environment directory key
     multiple <- installationConfig (directory </> "multiple-installations.toml") True
@@ -1189,7 +1189,7 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
     , ([], [Object [(k, if k == "permissions" then permissionsJson [("metadata", "read"), ("pull_requests", "read")] else v) | (k, v) <- members (installationJson 44 23 "Owner")]], "installation permissions")
     ]
     $ \(changes, installations, message) ->
-      it ("rejects an invalid App or installation before any token mint (" <> T.unpack message <> ", " <> show (map fst changes) <> ")") $ withConfig $ \config -> do
+      it ("registration rejects invalid app and installation before token mint (" <> T.unpack message <> ", " <> show (map fst changes) <> ")") $ withConfig $ \config -> do
         minted <- newIORef (0 :: Int)
         let handler request = case pathOf request of
               path | "/access_tokens" `T.isSuffixOf` path -> modifyIORef' minted (+ 1) >> tokenReply "installation-secret" "2099-01-01T00:00:00Z"
@@ -1201,11 +1201,11 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
         readIORef minted `shouldReturn` 0
 
   forM_
-    [ ([(Int 31, "owner/one"), (String "32", "owner/two")], "repository inventory is malformed")
-    , ([(Int 31, "owner/one"), (Int 31, "owner/renamed")], "repository inventory is inconsistent")
+    [ ([(Int 31, "owner/one"), (String "32", "owner/two")], "repository inventory is malformed", "registration rejects one malformed repository instead of returning a partial portfolio")
+    , ([(Int 31, "owner/one"), (Int 31, "owner/renamed")], "repository inventory is inconsistent", "registration rejects conflicting duplicate repository identity")
     ]
-    $ \(repositories, message) ->
-      it ("rejects the whole portfolio: " <> T.unpack message) $ withConfig $ \config -> do
+    $ \(repositories, message, upstream) ->
+      it upstream $ withConfig $ \config -> do
         let handler request = case pathOf request of
               path | "/access_tokens" `T.isSuffixOf` path -> tokenReply "installation-secret" "2099-01-01T00:00:00Z"
               "/app" -> jsonReply 200 (appJson [])
@@ -1214,7 +1214,7 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
         clients <- githubAppClients config (optionsFor handler)
         registrationInventory clients config `shouldThrow` (\(ContractRefused text) -> message `T.isInfixOf` text)
 
-  it "follows the provider's next link even after a short page" $ withConfig $ \config -> do
+  it "registration follows provider next link even after a short page" $ withConfig $ \config -> do
     queries <- newIORef []
     let handler request = case pathOf request of
           path | "/access_tokens" `T.isSuffixOf` path -> tokenReply "installation-secret" "2099-01-01T00:00:00Z"
@@ -1232,7 +1232,7 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
     map (.repositories) installations `shouldBe` [[(31, "owner/one"), (32, "owner/two")]]
     readIORef queries `shouldReturn` ["per_page=100", "per_page=100&page=2"]
 
-  it "keeps the token out of a registration token-parse failure" $ withConfig $ \config -> do
+  it "registration token parse failure is secret safe" $ withConfig $ \config -> do
     let token = "installation-token-must-not-escape"
         handler request = case pathOf request of
           path | "/access_tokens" `T.isSuffixOf` path -> tokenReply token "not-a-timestamp"
@@ -1245,7 +1245,7 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
         show failure `shouldNotSatisfy` isInfixOf "installation-secret"
       Right value -> expectationFailure (show value)
 
-  it "rejects a non-success even with valid-shaped App evidence" $ withConfig $ \config -> do
+  it "registration rejects non success even with valid shaped app evidence" $ withConfig $ \config -> do
     clients <- githubAppClients config (optionsFor (\_ -> jsonReply 503 (appJson [])))
     registrationInventory clients config `shouldThrow` boundaryMatching "registration evidence is unavailable"
 
@@ -1255,14 +1255,14 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
     , "<https://api.github.com/items?page=2>; rel=\"next\", <https://api.github.com/items?page=3>; rel=\"next\""
     ]
     $ \link ->
-      it ("rejects the malformed, escaped or ambiguous next link " <> BS8.unpack link) $ withConfig $ \config -> do
+      it ("github transport rejects malformed escaped or ambiguous next link (" <> BS8.unpack link <> ")") $ withConfig $ \config -> do
         let handler _ = do
               (status, headers, body) <- jsonReply 200 (Object [])
               pure (status, headers <> [("link", link)], body)
         clients <- githubAppClients config (optionsFor handler)
         Transport.request (appClient clients) "GET" "/items" Nothing `shouldThrow` (\(_ :: GitHubBoundaryError) -> True)
 
-  it "remints in a new client lifecycle (no host token cache)" $ withConfig $ \config -> do
+  it "new client lifecycle remints without a host token cache" $ withConfig $ \config -> do
     minted <- newIORef (0 :: Int)
     let handler request
           | "/access_tokens" `T.isSuffixOf` pathOf request = do
@@ -1276,7 +1276,7 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
       pure ()
     readIORef minted `shouldReturn` 2
 
-  it "remints an expired installation token" $ withConfig $ \config -> do
+  it "expired installation token is reminted by the sdk" $ withConfig $ \config -> do
     minted <- newIORef (0 :: Int)
     used <- newIORef []
     let handler request
@@ -1293,7 +1293,7 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
     readIORef minted `shouldReturn` 2
     readIORef used `shouldReturn` [Just "token token-1", Just "token token-2"]
 
-  it "drives the bounded gateway through an installation client" $ withConfig $ \config -> do
+  it "installation client drives bounded gateway without exposing token" $ withConfig $ \config -> do
     let handler request
           | "/access_tokens" `T.isSuffixOf` pathOf request = tokenReply "installation-secret" "2099-01-01T00:00:00Z"
           | "/logs" `T.isSuffixOf` pathOf request = pure (200, [], "bounded log")
@@ -1306,7 +1306,7 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
     (response.status, response.body) `shouldBe` (404, j "{'message':'missing'}")
     Transport.download client "/repos/owner/one/actions/runs/1/logs" maxLogBytes `shouldReturn` "bounded log"
 
-  it "normalizes network failures without exposing the provider error" $ withConfig $ \config -> do
+  it "transport normalizes httpx network failures" $ withConfig $ \config -> do
     let handler request
           | "/access_tokens" `T.isSuffixOf` pathOf request = tokenReply "installation-secret" "2099-01-01T00:00:00Z"
           | otherwise = throwIO (transportFailure "ReadError" "credential-bearing-provider-error")
@@ -1322,7 +1322,7 @@ clientSpec = describe "GitHub App client stack (test_app_foundation.py)" $ do
         requestFailure.providerDetail `shouldBe` "http_transport"
       _ -> expectationFailure "expected boundary failures from both the request and the download"
 
-  it "reads a streamed body before the exchange releases it" $ withConfig $ \config -> do
+  it "streamed gateway reads body before context local client closes" $ withConfig $ \config -> do
     closed <- newIORef False
     let exchange' = Exchange $ \request continue -> do
           writeIORef closed False

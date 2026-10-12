@@ -208,7 +208,7 @@ def run(packages: List[str], jobs: str) -> int:
 def viewer() -> int:
     if not (ROOT / "upstream" / "petrus-viewer" / "node_modules").is_dir():
         print("--viewer needs `pnpm install` in upstream/petrus-viewer (and `pnpm build` plus "
-              "`npx playwright install chromium` for the browser suites)", file=sys.stderr)
+              "`npx playwright install --with-deps chromium` for the browser suites)", file=sys.stderr)
         return 1
     print("\n==> upstream petrus-viewer suites against the Haskell backend", flush=True)
     return subprocess.call(["node", str(ROOT / "packages" / "petrus-viewer-server" / "upstream-tests" / "run.mjs")], cwd=ROOT, env=ENV)

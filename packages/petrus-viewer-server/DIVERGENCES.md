@@ -143,7 +143,9 @@ byte (`JSON.parse` error messages, `JSON.stringify`, `Number#toString`,
 `new URL(ref, base)`, `decodeURIComponent`). Differential tests run them
 against Node on recorded corpora and on thousands of generated inputs
 (`upstream-tests/differential.test.mjs`, `test/JsonSpec.hs`,
-`test/UrlSpec.hs`). Known, documented gaps:
+`test/UrlSpec.hs`). Two known gaps remain. They are behavior divergences,
+kept on purpose for the reasons given, not open defects; neither touches a
+wire format the UI or an agent relies on:
 
 - **Lone surrogates in `JSON.parse` error messages — resolved where the
   message reaches the wire.** V8 quotes the offending token and its context
@@ -164,7 +166,11 @@ against Node on recorded corpora and on thousands of generated inputs
   JavaScript strings through every history error path instead of `Text`.
 - **IDNA.** Hosts are lowercased and punycoded but not NFKC-normalized or
   fully UTS #46 mapped: `ß` and `ﬀ` stay as code points and are punycoded
-  (Node maps `ﬀ` to `ff`). Only exotic hosts in `$ref`s are affected.
+  (Node keeps `ß`, as nontransitional UTS #46 does, but maps `ﬀ` to `ff`), so
+  a `$ref` whose host holds a compatibility character resolves to, caches
+  under and fetches from a different host than Node. Only such exotic
+  hosts in `$ref`s are affected; plain ASCII and already-normalized
+  Unicode hosts resolve exactly as Node.
   Why it stays: matching Node means porting ada's IDNA (the UTS #46
   mapping table, NFC, and its label checks for joiners and the bidi rule)
   with Node 22's Unicode tables, for hosts that only appear when a net

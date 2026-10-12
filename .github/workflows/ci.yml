@@ -1,10 +1,14 @@
 name: CI
+# A per-commit run (below) names the commit it tests; other runs keep
+# GitHub's default name.
+run-name: ${{ inputs.sha && format('CI for {0}', inputs.sha) || '' }}
 
 # The same checks as scripts/check-all (plus the petrus-viewer suites of
 # `scripts/check-all --viewer`), spread over several Blacksmith runners:
 #
 #   lint       scripts/check-pins, scripts/lint-skips,
-#              scripts/lint-hamsterdan-architecture, scripts/bench --check,
+#              scripts/lint-hamsterdan-architecture, scripts/check-pending
+#              --self-test, scripts/bench --check,
 #              scripts/check-parity, the runtime test ledgers
 #              (packages/petrus-engine/scripts/parity_check.py); none needs a
 #              build
@@ -50,11 +54,15 @@ on:
         description: Rerun every test suite (reuse no earlier result)
         type: boolean
         default: false
+      sha:
+        description: Test this commit (of the chosen branch) instead of its tip
+        type: string
+        default: ""
 
 # A newer push to a branch or pull request cancels its older run. Every
-# commit pushed to main gets a complete run of its own: a group per run, so
-# that neither cancelling nor GitHub's replacing of a pending run in the
-# same group skips one.
+# push to main gets a complete run of its tip, and each run on main has a
+# group of its own, so that neither cancelling nor GitHub's replacing of a
+# pending run in the same group skips one.
 concurrency:
   group: ${{ github.ref == 'refs/heads/main' && format('ci-main-{0}', github.run_id) || format('ci-{0}', github.ref) }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -77,7 +85,7 @@ env:
   # The dist-newstyle the build job saves and the later jobs restore; a full
   # run has a key of its own, so that its later jobs never restore an
   # incremental build saved earlier for the same commit.
-  DIST_KEY: dist-v1-Linux-ghc-9.10.3-${{ (github.event_name == 'schedule' || inputs.full) && format('full-{0}-', github.run_id) || '' }}${{ github.sha }}
+  DIST_KEY: dist-v1-Linux-ghc-9.10.3-${{ (github.event_name == 'schedule' || inputs.full) && format('full-{0}-', github.run_id) || '' }}${{ inputs.sha || github.sha }}
 
 jobs:
   lint:
@@ -85,6 +93,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - name: CI runs every scripts/check-all step
         run: scripts/ci-tests check-steps
@@ -94,6 +103,8 @@ jobs:
         run: scripts/lint-skips
       - name: Hamsterdan import boundaries (upstream tests/test_architecture.py)
         run: scripts/lint-hamsterdan-architecture
+      - name: The pending check reads hspec logs (coloured or plain fixtures)
+        run: scripts/check-pending --self-test
       - name: Benchmark bookkeeping (rerun blocks, measured sources, bench-results/summary.md)
         run: scripts/bench --check
       - name: Parity table
@@ -109,6 +120,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
         id: toolchain
@@ -169,6 +181,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
@@ -213,6 +226,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
@@ -245,6 +259,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
@@ -334,6 +349,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
@@ -397,6 +413,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           submodules: recursive
       - uses: ./.github/actions/toolchain
       - name: The build job's dist-newstyle
@@ -430,6 +447,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
       - name: Lint the launcher, the interpreter-path shim and the smoke scripts
         run: |
           shellcheck scripts/with-runtime-secrets scripts/container-smoke scripts/container-smoke.d/fake-op scripts/container-smoke.d/node-wrapper
@@ -472,6 +491,8 @@ jobs:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
       - uses: actions/download-artifact@v4
         if: needs.build.result == 'success'
         with:
@@ -484,6 +505,8 @@ jobs:
       - name: This run's test ledger
         id: ledger
         if: needs.build.result == 'success'
+        env:
+          CI_SHA: ${{ inputs.sha || github.sha }}
         run: scripts/ci-tests ledger --plan plan.json --results results --out ledger.json
         continue-on-error: true
       - uses: actions/upload-artifact@v4

@@ -10,13 +10,13 @@ tests also carry the pytest parameter id.
 
 | Layer | Upstream | Fragment | Upstream tests | Status |
 | --- | --- | --- | --- | --- |
-| Catalog and runtime profiles | `catalog/descriptor.py`, `catalog/resolution.py`, `runtime/profiles.py` | [parity/catalog.md](parity/catalog.md) | `test_descriptor.py` (5 functions), `test_resolution.py` (13), `test_profiles.py` (6); `test_boundaries.py` is mapped in `petrus-agenticus` | at parity |
-| Effect | `effect/` | [parity/effect.md](parity/effect.md) | `test_contract.py` (15), `test_provider_neutrality.py` (2) | at parity |
-| Hands contract, gateway, grants and conformance | `hands/contract.py`, `hands/gateway.py`, `hands/grants.py`, `hands/conformance.py` | [parity/hands.md](parity/hands.md) | `test_contract_and_gateway.py` (20), `test_conformance.py` (4); `test_workspace.py` is ported in `petrus-agenticus` | at parity |
+| Catalog and runtime profiles | `catalog/descriptor.py`, `catalog/resolution.py`, `runtime/profiles.py` | [parity/catalog.md](parity/catalog.md) | `test_descriptor.py` (5 functions), `test_resolution.py` (13 tests), `test_profiles.py` (6 tests); `test_boundaries.py` is mapped in `petrus-agenticus` | at parity |
+| Effect | `effect/` | [parity/effect.md](parity/effect.md) | `test_contract.py` (15 tests), `test_provider_neutrality.py` (2 tests) | at parity |
+| Hands contract, gateway, grants and conformance | `hands/contract.py`, `hands/gateway.py`, `hands/grants.py`, `hands/conformance.py` | [parity/hands.md](parity/hands.md) | `test_contract_and_gateway.py` (20 tests), `test_conformance.py` (4 tests); `test_workspace.py` is ported in `petrus-agenticus` | at parity |
 | Thread lifecycle, program descriptors, runtime values | `thread/`, `program/descriptor.py`, `program/seam.py`, `runtime/{installation,result,operation}.py` | [parity/thread.md](parity/thread.md) | thread, program and `test_foundation.py` tests (see the fragment) | at parity |
 | Connection custody, materialization, storage and key | `connection/` | [parity/custody.md](parity/custody.md) | `test_custody.py` (21 functions, 24 cases) | at parity |
 
-The full suite has 666 examples and 0 failures. It includes the
+The full suite includes the
 differential corpora and the Python and Haskell custody interop sessions.
 
 ## Property-based tests (Hypothesis → QuickCheck)
@@ -26,13 +26,16 @@ QuickCheck properties that use the same strategies and settings. Neither
 upstream test has an `@example` or a stateful machine, so the ports have none.
 
 Seed: upstream's `pyproject.toml` sets `addopts = "--randomly-seed=1729"`,
-and pytest-randomly seeds Hypothesis from it, so the reference draws the same
-examples on every run. `hypothesisSettings n` (test `Petrus.Agenticus.Support`)
-fixes QuickCheck's generator at `mkQCGen 1729` through hspec's `modifyArgs`,
-so the generator ignores hspec's `--seed` (that seed still orders the
-examples). It also sets `maxSuccess = n`. The ports draw from QuickCheck's
-generator, not from Hypothesis's, so the examples are not the same ones the
-reference draws.
+but pytest-randomly reseeds only `random`, factory_boy, Faker, NumPy and its
+entry points, never Hypothesis. Neither test sets `derandomize=True`, so
+Hypothesis seeds each run from OS entropy and the reference draws fresh
+examples on every run. The ports do the same: `hypothesisSettings n` (test
+`Petrus.Agenticus.Support`) sets only `maxSuccess = n`, and hspec's per-run
+seed drives QuickCheck's generator (a failure prints it, for `--seed`
+replay). The ports draw from QuickCheck's generator, not from Hypothesis's,
+so the examples are not the ones the reference draws. Only the upstream
+tests that set `derandomize=True` have ports with a fixed seed: petrus-impetus
+`InstanceReplayPropertiesSpec` and the hamsterdan readiness campaigns.
 
 | Upstream test | Hypothesis | Haskell (QuickCheck) |
 | --- | --- | --- |

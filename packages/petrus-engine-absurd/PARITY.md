@@ -30,8 +30,8 @@ PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@localhost:5432/postgres \
   cabal test petrus-engine-absurd --test-options='+RTS -M2G -RTS'
 ```
 
-`cabal test petrus-engine-absurd` runs 58 examples. With `PETRUS_TEST_POSTGRES` set (CI sets it),
-all 58 pass. Without it, every example is pending and says why, the way upstream's `postgres`
+`cabal test petrus-engine-absurd` runs the suite. With `PETRUS_TEST_POSTGRES` set (CI sets it),
+every example passes. Without it, every example is pending and says why, the way upstream's `postgres`
 marker skips.
 
 The suite provisions one scratch database with both schemas and the fixture tables of
@@ -87,7 +87,7 @@ keeps an example that says so).
 ### Examples named in prose
 
 `packages/petrus-engine/scripts/parity_check.py` reads this ledger. It matches an example to an
-upstream test by its words, so these 14 examples, whose names read as sentences, are listed by
+upstream test by its words, so these examples, whose names read as sentences, are listed by
 upstream name:
 
 | upstream test | Haskell example |
@@ -131,7 +131,7 @@ upstream name:
 
 ## Interop with the reference
 
-`Petrus.Engine.Absurd.InteropSpec` (7 examples) drives
+`Petrus.Engine.Absurd.InteropSpec` drives
 [`test/interop/absurd_engine_interop.py`](test/interop/absurd_engine_interop.py) under the pinned
 reference's interpreter. Engines of the two languages take turns on one Instance in one
 database:

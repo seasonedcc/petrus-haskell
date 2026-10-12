@@ -14,10 +14,14 @@ History records or replay; all of their cases are already ported in
 `ArcFiltersSpec`, and `FiringSpec`.
 
 The durable-backend fixture: `test_history_backends.py` runs over a `reopen`
-fixture for JSONL/SQLite/Postgres. Here every case runs over `newReopen`
+fixture for JSONL/SQLite/Postgres. Its cases are defined once, in
+`test/Petrus/Impetus/HistoryStoreContract.hs` (`historyStoreContract`, over
+any `reopen` fixture). This package runs them over `newReopen`
 (`test/Petrus/Impetus/HistorySupport.hs`): a storage of schema-5 JSON lines and a
 fresh `mirroredHistoryStore` loaded from it on each call. That keeps the
-kill-and-reload move and the real JSON round trip.
+kill-and-reload move and the real JSON round trip. petrus-history-store and
+petrus-history-postgres compile the same module in and run it over their
+JSONL, SQLite and Postgres stores (`backend contract (jsonl)` and so on).
 
 | upstream test | Haskell spec (describe / it) | status | note |
 | --- | --- | --- | --- |
@@ -43,7 +47,7 @@ kill-and-reload move and the real JSON round trip.
 | TestReplayMarking.test_tokens_read_is_a_movement_category_record_yet_replay_inert | History / replayMarking / TokensRead is a movement-category record, yet replay-inert | ported | |
 | TestReplayMarking.test_a_diverging_consume_record_fails_loud | History / replayMarking / a diverging consume record fails loud | ported | exact message |
 | **history_store/test_history_backends.py** | | | |
-| `reopen` fixture params jsonl / sqlite / postgres | — | ported in petrus-history-store (jsonl) | The jsonl parameter: `packages/petrus-history-store/test/Petrus/HistoryStore/BackendContractSpec.hs` runs `test_history_backends.py` over the real JSONL store. The sqlite and postgres parameters wait for those backends, which are out of scope as `test_sqlite_history.py` and `test_postgres_history.py` are. |
+| `reopen` fixture params jsonl / sqlite / postgres | — | ported in petrus-history-store (jsonl, sqlite) and petrus-history-postgres (postgres) | `packages/petrus-history-store/test/Petrus/HistoryStore/BackendContractSpec.hs` (`backendContract`) runs the shared `historyStoreContract` over the real JSONL and SQLite stores, and `packages/petrus-history-postgres/test/Petrus/HistoryStore/PostgresSpec.hs` over the Postgres store. |
 | TestRoundTrip.test_a_store_contains_history_without_being_history | HistoryStore contract / round trip / a store contains history | ported | The `isinstance` half is enforced by types: a store is one record of operations. |
 | TestRoundTrip.test_every_record_category_round_trips_value_equal | HistoryStore contract / round trip / every record category round-trips value-equal | ported | |
 | TestRoundTrip.test_append_and_extend_accumulate_and_a_reload_continues | HistoryStore contract / round trip / append and extend accumulate, and a reload continues | ported | |

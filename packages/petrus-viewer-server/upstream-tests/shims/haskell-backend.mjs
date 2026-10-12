@@ -25,7 +25,8 @@ if (!BIN) throw new Error("PETRUS_HS_BIN_DIR is not set (run through upstream-te
 export const PETRUS = path.join(BIN, "petrus");
 export const PETRUS_MCP = path.join(BIN, "petrus-mcp");
 export const PETRUS_COLLAB = path.join(BIN, "petrus-collab");
-export const ORACLE = path.join(BIN, "petrus-viewer-oracle");
+// the test executable answers oracle calls with --oracle (test/Oracle.hs)
+export const ORACLE = path.join(BIN, "petrus-viewer-server-test");
 export const UI_DIR = process.env.PETRUS_HS_UI_DIR;
 
 class HaskellViewerServer {
