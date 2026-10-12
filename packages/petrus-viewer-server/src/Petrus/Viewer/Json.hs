@@ -144,6 +144,10 @@ jsStringUtf8 = JsString . escapeUtf8
 -- A 'Text' holds no lone surrogates, so only ASCII needs escaping. One pass
 -- sizes the output, one pass writes it (@cbits/json_escape.c@: the hot
 -- path of every string sent to a browser, such as a whole net file).
+-- Measured (bench/RESULTS.md, "Low-level code, measured"): with
+-- petrus-json's string encoder instead, resolve-ref served 0.93x the
+-- requests per second (1 client) and 0.88x (16 clients), and @petrus-mcp@
+-- 0.82x the calls with 16 in flight.
 escapeUtf8 :: ByteString -> ByteString
 escapeUtf8 b = unsafeDupablePerformIO $ BU.unsafeUseAsCStringLen b $ \(src, len) -> do
   extra <- fromIntegral <$> c_escapeExtra (castPtr src) (fromIntegral len)

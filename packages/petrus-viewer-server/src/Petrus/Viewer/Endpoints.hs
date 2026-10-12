@@ -12,15 +12,7 @@ module Petrus.Viewer.Endpoints
   , newOpenFileState
   , pendingOpenFile
   , endpointsMiddleware
-  , Reply (..)
-  , openFilePath
-  , resolveRefPath
-  , openFileReply
-  , resolveRefOptions
   , ResolveResult (..)
-  , ResolveStep (..)
-  , resolveRefStep
-  , resolveReply
   , resolveRef
   , readFileNode
   ) where
@@ -52,18 +44,6 @@ newOpenFileState f u = OpenFileState <$> newIORef (f, u)
 pendingOpenFile :: OpenFileState -> IO (Maybe FilePath, Maybe Text)
 pendingOpenFile (OpenFileState ref) = readIORef ref
 
--- | A response as the handlers make it: the status, the headers the Node
--- handler sets (in its order), and the body. The server adds the framing
--- headers (@Date@, @Connection@, @Content-Length@).
-data Reply = Reply
-  { replyStatus :: H.Status
-  , replyHeaders :: H.ResponseHeaders
-  , replyBody :: B.ByteString
-  }
-
-replyResponse :: Reply -> W.Response
-replyResponse (Reply st hs body) = lbsResponse st hs (BL.fromStrict body)
-
 corsHeaders :: B.ByteString -> H.ResponseHeaders
 corsHeaders methods =
   [ ("Access-Control-Allow-Origin", "*")
@@ -71,60 +51,54 @@ corsHeaders methods =
   , ("Access-Control-Allow-Headers", "Content-Type")
   ]
 
-jsonReply :: H.Status -> H.ResponseHeaders -> JsValue -> Reply
-jsonReply st hs v = Reply st (hs ++ [("Content-Type", "application/json")]) (encodeJs v)
+jsonResponse :: H.Status -> H.ResponseHeaders -> JsValue -> W.Response
+jsonResponse st hs v = lbsResponse st (hs ++ [("Content-Type", "application/json")]) (encodeJsLazy v)
 
 errorBody :: Text -> JsValue
 errorBody msg = obj [("error", str msg)]
 
 endpointsMiddleware :: OpenFileState -> HC.Manager -> W.Middleware
 endpointsMiddleware st mgr app req respond
-  | url == openFilePath = openFileReply st method (readBody req) >>= respond . replyResponse
-  | url == resolveRefPath && method == "OPTIONS" = respond (replyResponse resolveRefOptions)
-  | url == resolveRefPath && method == "POST" = do
+  | url == "/__petrus/open-file" = openFile st req respond
+  | url == "/__petrus/resolve-ref" && method == "OPTIONS" =
+      respond (lbsResponse H.status204 (corsHeaders "POST, OPTIONS") "")
+  | url == "/__petrus/resolve-ref" && method == "POST" = do
       body <- readBody req
       result <- resolveRefBody mgr body
-      respond (replyResponse (resolveReply result))
+      respond (resolveResponse result)
   | otherwise = app req respond
   where
     -- Node compares req.url, i.e. path plus query string, exactly
     url = W.rawPathInfo req <> W.rawQueryString req
     method = W.requestMethod req
 
--- | The request targets the endpoints answer (Node compares @req.url@).
-openFilePath, resolveRefPath :: B.ByteString
-openFilePath = "/__petrus/open-file"
-resolveRefPath = "/__petrus/resolve-ref"
-
 readBody :: W.Request -> IO B.ByteString
 readBody req = decodeLenient . BL.toStrict <$> W.strictRequestBody req
 
--- | Every method on @/__petrus/open-file@, given the method and the request
--- body (decoded leniently; read only by @POST@).
-openFileReply :: OpenFileState -> H.Method -> IO B.ByteString -> IO Reply
-openFileReply (OpenFileState ref) method getBody = case method of
-  "OPTIONS" -> pure (Reply H.status204 cors "")
+openFile :: OpenFileState -> W.Application
+openFile (OpenFileState ref) req respond = case W.requestMethod req of
+  "OPTIONS" -> respond (lbsResponse H.status204 cors "")
   "GET" -> do
     -- consume the pending file at once (another connection's GET must
     -- not read it too), and put it back if it cannot be read, as Node
     -- leaves it pending when readFileSync throws
     pending <- atomicModifyIORef' ref (\p -> ((Nothing, Nothing), p))
     case pending of
-      (Nothing, _) -> pure (Reply H.status204 cors "")
+      (Nothing, _) -> respond (lbsResponse H.status204 cors "")
       (Just path, src) -> do
         r <- readFileNode path
         case r of
           Left err -> do
             atomicModifyIORef' ref (\case (Nothing, Nothing) -> (pending, ()); now -> (now, ()))
-            pure (jsonReply H.status500 cors (errorBody err))
+            respond (jsonResponse H.status500 cors (errorBody err))
           Right content ->
-            pure . jsonReply H.status200 cors $
+            respond . jsonResponse H.status200 cors $
               obj [("path", str (T.pack path)), ("content", str content), ("sourceUrl", maybe JsNull str src)]
   "POST" -> do
-    body <- getBody
+    body <- readBody req
     case parseJs body of
-      Left _ -> pure (jsonReply H.status400 cors (errorBody "Invalid request body"))
-      Right JsNull -> pure (jsonReply H.status400 cors (errorBody "Invalid request body"))
+      Left _ -> respond (jsonResponse H.status400 cors (errorBody "Invalid request body"))
+      Right JsNull -> respond (jsonResponse H.status400 cors (errorBody "Invalid request body"))
       Right v -> do
         let filePath = case v of
               JsObj o -> lookupKey "path" o
@@ -135,14 +109,11 @@ openFileReply (OpenFileState ref) method getBody = case method of
         case filePath of
           Just (JsStr s) | exists -> do
             atomicModifyIORef' ref (\(_, u) -> ((Just (T.unpack (jsStringText s)), u), ()))
-            pure (jsonReply H.status200 cors (obj [("ok", JsBool True), ("path", JsStr s)]))
-          _ -> pure (jsonReply H.status400 cors (errorBody "File not found"))
-  _ -> pure (Reply H.status405 cors "")
+            respond (jsonResponse H.status200 cors (obj [("ok", JsBool True), ("path", JsStr s)]))
+          _ -> respond (jsonResponse H.status400 cors (errorBody "File not found"))
+  _ -> respond (lbsResponse H.status405 cors "")
   where
     cors = corsHeaders "GET, POST, OPTIONS"
-
-resolveRefOptions :: Reply
-resolveRefOptions = Reply H.status204 (corsHeaders "POST, OPTIONS") ""
 
 -- | @fs.readFileSync(path, "utf-8")@ with Node's error messages.
 readFileNode :: FilePath -> IO (Either Text Text)
@@ -163,32 +134,16 @@ data ResolveResult
   | -- | @JSON.parse@'s message, which may hold a lone surrogate.
     ResolveParseError JsString
 
-resolveReply :: ResolveResult -> Reply
-resolveReply = \case
-  Resolved v -> jsonReply H.status200 (corsHeaders "POST, OPTIONS") v
-  ResolveError msg -> jsonReply H.status400 (corsHeaders "POST, OPTIONS") (errorBody msg)
-  ResolveParseError msg -> jsonReply H.status400 (corsHeaders "POST, OPTIONS") (obj [("error", JsStr msg)])
-
--- | Where a resolve-ref request stands before any network access: answered,
--- or waiting for a remote fetch of this URL.
-data ResolveStep
-  = ResolveDone ResolveResult
-  | ResolveFetch Text
-
--- | Finish a step, fetching when it needs to.
-runResolveStep :: HC.Manager -> ResolveStep -> IO ResolveResult
-runResolveStep mgr = \case
-  ResolveDone r -> pure r
-  ResolveFetch url -> fetchRef mgr url
+resolveResponse :: ResolveResult -> W.Response
+resolveResponse = \case
+  Resolved v -> jsonResponse H.status200 (corsHeaders "POST, OPTIONS") v
+  ResolveError msg -> jsonResponse H.status400 (corsHeaders "POST, OPTIONS") (errorBody msg)
+  ResolveParseError msg -> jsonResponse H.status400 (corsHeaders "POST, OPTIONS") (obj [("error", JsStr msg)])
 
 resolveRefBody :: HC.Manager -> B.ByteString -> IO ResolveResult
-resolveRefBody mgr body = resolveRefStep body >>= runResolveStep mgr
-
--- | The POST handler up to the point where it would fetch.
-resolveRefStep :: B.ByteString -> IO ResolveStep
-resolveRefStep body = case parseJs body of
-  Left e -> done (ResolveParseError e)
-  Right JsNull -> done (ResolveError "Cannot destructure property 'ref' of 'JSON.parse(...)' as it is null.")
+resolveRefBody mgr body = case parseJs body of
+  Left e -> pure (ResolveParseError e)
+  Right JsNull -> pure (ResolveError "Cannot destructure property 'ref' of 'JSON.parse(...)' as it is null.")
   Right v -> do
     let field k = case v of
           JsObj o -> lookupKey k o
@@ -196,56 +151,44 @@ resolveRefStep body = case parseJs body of
         ref = field "ref"
         basePath = field "basePath"
     if not (maybe False truthy ref) || not (maybe False truthy basePath)
-      then done (ResolveError "Missing ref or basePath")
+      then pure (ResolveError "Missing ref or basePath")
       else case (ref, basePath) of
-        (Just (JsStr r), Just b) -> resolveRefLocal (jsStringText r) (jsToString b)
-        _ -> done (ResolveError "ref.endsWith is not a function")
-  where
-    done = pure . ResolveDone
+        (Just (JsStr r), Just b) -> resolveRef mgr (jsStringText r) (jsToString b)
+        _ -> pure (ResolveError "ref.endsWith is not a function")
 
 -- | Resolve a ref against a base path (the body of the POST handler).
 resolveRef :: HC.Manager -> Text -> Text -> IO ResolveResult
-resolveRef mgr ref basePath = resolveRefLocal ref basePath >>= runResolveStep mgr
-
--- | 'resolveRef' up to the point where it would fetch.
-resolveRefLocal :: Text -> Text -> IO ResolveStep
-resolveRefLocal ref basePath = do
+resolveRef mgr ref basePath = do
   let normalizedRef = if ".json" `T.isSuffixOf` ref then ref else ref <> ".json"
   case resolveUrl normalizedRef basePath of
-    Nothing -> done (ResolveError "Invalid URL")
+    Nothing -> pure (ResolveError "Invalid URL")
     Just u -> do
       let resolvedUrl = serializeUrl u
       case urlScheme u of
         "file" -> case decodeURIComponent (urlPathname u) of
-          Left e -> done (ResolveError e)
+          Left e -> pure (ResolveError e)
           Right filePath -> do
             exists <- pathExists (T.unpack filePath)
             if not exists
-              then done (ResolveError ("File not found: " <> filePath))
+              then pure (ResolveError ("File not found: " <> filePath))
               else do
                 r <- readFileNode (T.unpack filePath)
-                done $ case r of
+                pure $ case r of
                   Left e -> ResolveError e
                   Right content -> Resolved (obj [("content", str content), ("resolvedPath", str ("file://" <> filePath))])
         s
-          | s == "https" || s == "http" -> pure (ResolveFetch resolvedUrl)
-        _ -> done (ResolveError ("Unsupported protocol: " <> urlProtocol u))
-  where
-    done = pure . ResolveDone
-
--- | The remote branch: fetch, cache, answer.
-fetchRef :: HC.Manager -> Text -> IO ResolveResult
-fetchRef mgr resolvedUrl = do
-  fr <- fetchText mgr resolvedUrl
-  case fr of
-    FetchHttpError code -> pure (ResolveError ("HTTP " <> T.pack (show code) <> ": " <> resolvedUrl))
-    FetchFailed e -> pure (ResolveError ("Fetch failed: " <> e))
-    FetchOk content -> do
-      cached <- case slugifyUrl resolvedUrl of
-        Right (Just slug) -> case cacheRelativePath resolvedUrl of
-          Right rel -> either (const Nothing) Just <$> try @IOException (cacheFile slug rel content)
-          Left _ -> pure Nothing
-        _ -> pure Nothing
-      pure . Resolved . obj $
-        [("content", str content), ("resolvedPath", str resolvedUrl)]
-          ++ maybe [] (\p -> [("cachedPath", str (T.pack p))]) cached
+          | s == "https" || s == "http" -> do
+              fr <- fetchText mgr resolvedUrl
+              case fr of
+                FetchHttpError code -> pure (ResolveError ("HTTP " <> T.pack (show code) <> ": " <> resolvedUrl))
+                FetchFailed e -> pure (ResolveError ("Fetch failed: " <> e))
+                FetchOk content -> do
+                  cached <- case slugifyUrl resolvedUrl of
+                    Right (Just slug) -> case cacheRelativePath resolvedUrl of
+                      Right rel -> either (const Nothing) Just <$> try @IOException (cacheFile slug rel content)
+                      Left _ -> pure Nothing
+                    _ -> pure Nothing
+                  pure . Resolved . obj $
+                    [("content", str content), ("resolvedPath", str resolvedUrl)]
+                      ++ maybe [] (\p -> [("cachedPath", str (T.pack p))]) cached
+        _ -> pure (ResolveError ("Unsupported protocol: " <> urlProtocol u))

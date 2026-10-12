@@ -12,6 +12,11 @@
 -- for everything that is ready, without blocking when something already
 -- is. Writes still go straight from the thread that writes (they rarely
 -- wait).
+--
+-- Measured (bench/RESULTS.md, "Low-level code, measured"): without it, and
+-- with standard output a plain handle, @petrus-mcp@ answered 0.63x the
+-- calls per second with 16 calls in flight (0.87x Node's, against 1.29x
+-- with it) and 0.93x one call at a time.
 module Petrus.Viewer.Mcp.Reactor
   ( Reactor
   , withReactor

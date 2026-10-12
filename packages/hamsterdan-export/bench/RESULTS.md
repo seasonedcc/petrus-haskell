@@ -79,6 +79,29 @@ the export itself. The small state directories spend most of that time
 creating directories and copying files, which costs the same on both sides,
 so their ratios are close to 1.
 
+## The parallel export, measured
+
+`Hamsterdan.Export.Parallel` decodes History lines and writes files on up
+to four cores. Against the same binaries run sequentially (`GHCRTS=-N1`,
+under which `parallelMap` is `map` and `writeFiles` writes one file after
+another), on 2026-10-12, 12:45–13:00 local (UTC-3), load average 3.7–5.2,
+eight runs of the benchmark above (21 runs each), alternating the two
+builds' order every round:
+
+<!-- bench: superseded -->
+
+| State directory | Shape | Python / Haskell, parallel (4 runs) | Python / Haskell, sequential (4 runs) | Haskell median, sequential / parallel |
+| --- | --- | ---: | ---: | ---: |
+| fixture | in process | 1.20–1.25× | 1.23–1.30× | 1.0× |
+| host-driven | in process | 1.01–1.05× | 1.04–1.12× | 1.0× |
+| large | CLI (fresh process) | 4.40–5.10× | 3.51–3.71× | 1.32× |
+| large | in process | 1.24–1.47× | 0.97–1.00× | 1.23× |
+
+On the small state directories the two builds tie: those exports take a
+few milliseconds, mostly in file-system calls. On the large one, sequential export is 23% slower in process, level with Python
+(Haskell won 5 to 10 of 21 runs per round, against 18 to 21 in parallel),
+and 32% slower from the command line: the parallel export stays.
+
 ## Rerun
 
 From the repository root (`scripts/bench hamsterdan-export` runs exactly

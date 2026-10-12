@@ -116,7 +116,8 @@ helpText =
     , "  --port <n>               First port to try (default 5173; the next free one is used;"
     , "                           0 picks any free port)"
     , "  --strict-port            Fail instead of moving to the next free port"
-    , "  --host <host>            Address to bind (default localhost: 127.0.0.1 and ::1)"
+    , "  --host <host>            Address to bind (default localhost: 127.0.0.1 and ::1); like"
+    , "                           vite --host, also serves the collaboration relay at /collab-ws"
     , "  --ui-dir <dir>           Built viewer UI (pnpm build output); env PETRUS_UI_DIR"
     , "                           (default: ./dist, else a build next to this executable)"
     , "  --temporal-target <url>  Temporal HTTP API behind /temporal (default http://localhost:7243)"
@@ -169,6 +170,8 @@ runCli argv = case parseCliArgs argv of
             , serverOpenFile = pendingFile
             , serverSourceUrl = sourceUrl
             , serverRelayPerf = relayPerfEnv /= Just "0"
+            , -- Vite serves /collab-ws only when it runs with --host
+              serverCollab = isJust (argHost args)
             }
     hSetBuffering stdout LineBuffering
     runServer cfg $ \port -> do

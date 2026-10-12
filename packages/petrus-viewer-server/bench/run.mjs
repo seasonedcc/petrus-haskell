@@ -11,7 +11,7 @@
  *   node-bare   bench/node-baseline.mjs: upstream endpoint + relay on bare
  *               node:http, no perf log (Node's best case)
  * Collaboration fan-out:
- *   haskell     petrus /collab-ws, and petrus-collab P
+ *   haskell     petrus --host localhost /collab-ws, and petrus-collab P
  *   node        node server/collab.mjs P
  * Static UI (the `pnpm build` output) and the /temporal proxy:
  *   haskell     petrus --ui-dir upstream/petrus-viewer/dist
@@ -31,11 +31,19 @@
  * All servers run for the whole benchmark and the runs are interleaved
  * (scenario by scenario, rep by rep, rotating which target goes first), so
  * load from other processes on the machine hits every target alike. The
- * reported run is the median by ops/s.
+ * reported run is the median by ops/s; the per-round table also counts the
+ * rounds in which Haskell is ahead of Node (scripts/bench-gate reads that
+ * "won k of n" cell).
+ *
+ * --variant NAME=DIR (repeatable) adds every Haskell target again, named
+ * "variant NAME (...)", with DIR's executables: an A/B of two builds in the
+ * same interleaved rounds. The Haskell / Node columns use the main build;
+ * the per-round table has a row per variant as well.
  *
  * Usage:
  *   node packages/petrus-viewer-server/bench/run.mjs [--bin-dir DIR] [--reps 5] [--quick]
  *        [--only "SUBSTRING|SUBSTRING"] [--rts "RTS OPTIONS"] [--json out.json]
+ *        [--variant NAME=DIR ...]
  *
  * Without --bin-dir the executables are built with cabal (benchmarks enabled).
  * Requires `pnpm install` in upstream/petrus-viewer, and `pnpm build` there
@@ -66,6 +74,10 @@ const binDir = opt("--bin-dir", null);
 // extra RTS options for the Haskell servers, e.g. --rts "-N4"
 const rts = opt("--rts", null);
 const rtsArgs = rts ? ["+RTS", ...rts.split(/\s+/).filter(Boolean), "-RTS"] : [];
+const variants = args.flatMap((a, i) => (a === "--variant" ? [args[i + 1]] : [])).map((v) => {
+  const at = v.indexOf("=");
+  return { label: `variant ${v.slice(0, at)}`, dir: path.resolve(v.slice(at + 1)) };
+});
 
 function bin(name) {
   if (binDir) return path.resolve(binDir, name);
@@ -197,19 +209,25 @@ if (SCENARIOS.some((s) => s.group === "static" || s.group === "startup") && !bun
 const runsOn = (t, s) => t.groups.includes(s.group) && (!t.match || s.name.includes(t.match)) && !(t.servesSource && s.built);
 // kind: "server" (started here, measured over HTTP/WebSocket), "process"
 // (the load client spawns the command; `start` gives the helper it talks to)
-const TARGETS = [
-  { name: "haskell (petrus)", groups: ["viewer", "collab", "static", "temporal"], wsPath: "/collab-ws", start: () => start(PETRUS, (p) => ["--no-open", "--strict-port", "--port", String(p), "--ui-dir", DIST, ...rtsArgs], scratch) },
+// the Haskell targets of one build: `exe` names its executables
+const haskellTargets = (label, exe) => [
+  // --host serves /collab-ws, as `vite --host` does
+  { name: `${label} (petrus)`, groups: ["viewer", "collab", "static", "temporal"], wsPath: "/collab-ws", start: () => start(exe("petrus"), (p) => ["--no-open", "--strict-port", "--port", String(p), "--host", "localhost", "--ui-dir", DIST, ...rtsArgs], scratch) },
   // like for like with the bare Node baseline, which prints no relay lines
-  { name: "haskell (petrus, relay log off)", groups: ["viewer"], match: "relay", start: () => start(PETRUS, (p) => ["--no-open", "--strict-port", "--port", String(p), ...rtsArgs], scratch, { PETRUS_RELAY_PERF: "0" }) },
+  { name: `${label} (petrus, relay log off)`, groups: ["viewer"], match: "relay", start: () => start(exe("petrus"), (p) => ["--no-open", "--strict-port", "--port", String(p), ...rtsArgs], scratch, { PETRUS_RELAY_PERF: "0" }) },
+  { name: `${label} (petrus-collab)`, groups: ["collab"], wsPath: "/", start: () => start(exe("petrus-collab"), (p) => [String(p), ...rtsArgs], scratch) },
+  { name: `${label} (petrus-mcp)`, groups: ["mcp"], kind: "process", cmd: [exe("petrus-mcp"), ...rtsArgs], start: agentRelay },
+  { name: `${label} (petrus FILE)`, groups: ["startup"], kind: "process", cmd: [exe("petrus"), "--no-open", "--ui-dir", DIST, ...rtsArgs, netFile], start: async () => ({}) },
+];
+const TARGETS = [
+  ...haskellTargets("haskell", bin),
+  ...variants.flatMap((v) => haskellTargets(v.label, (name) => path.join(v.dir, name))),
   // serves the UI from source: no built bundle
   { name: "node (vite dev server)", groups: ["viewer", "static", "temporal"], servesSource: true, start: () => start(process.execPath, (p) => [path.join(VIEWER, "node_modules/vite/bin/vite.js"), "--port", String(p), "--strictPort"], VIEWER) },
   { name: "node (vite preview)", groups: ["static", "temporal"], start: () => start(process.execPath, (p) => [path.join(VIEWER, "node_modules/vite/bin/vite.js"), "preview", "--port", String(p), "--strictPort"], VIEWER) },
   { name: "node (bare baseline)", groups: ["viewer"], start: () => start(process.execPath, (p) => [path.join(HERE, "node-baseline.mjs"), VIEWER, String(p)], scratch) },
-  { name: "haskell (petrus-collab)", groups: ["collab"], wsPath: "/", start: () => start(PETRUS_COLLAB, (p) => [String(p), ...rtsArgs], scratch) },
   { name: "node (server/collab.mjs)", groups: ["collab"], wsPath: "/", start: () => start(process.execPath, (p) => [path.join(VIEWER, "server/collab.mjs"), String(p)], VIEWER) },
-  { name: "haskell (petrus-mcp)", groups: ["mcp"], kind: "process", cmd: [PETRUS_MCP, ...rtsArgs], start: agentRelay },
   { name: "node (server/mcp.mjs)", groups: ["mcp"], kind: "process", cmd: [process.execPath, path.join(VIEWER, "server/mcp.mjs")], start: agentRelay },
-  { name: "haskell (petrus FILE)", groups: ["startup"], kind: "process", cmd: [PETRUS, "--no-open", "--ui-dir", DIST, ...rtsArgs, netFile], start: async () => ({}) },
   { name: "node (bin/petrus.mjs FILE)", groups: ["startup"], kind: "process", cmd: [process.execPath, path.join(VIEWER, "bin/petrus.mjs"), "--no-open", netFile], start: async () => ({}) },
 ].filter((t) => SCENARIOS.some((s) => runsOn(t, s)));
 
@@ -281,14 +299,18 @@ for (const group of [...new Set(SCENARIOS.map((s) => s.group))]) {
   }
   // every round runs each target once, back to back; the ratio within a
   // round is the least exposed to the machine's drift between rounds
-  md += `\n| scenario | Haskell / Node in each round (best of each side) | min |\n|---|---|---:|\n`;
+  md += `\n| scenario | Haskell / Node in each round (best of each side) | median | min | Haskell ahead |\n|---|---|---:|---:|---:|\n`;
   for (const s of scenarios) {
     const side = (prefix) => names.filter((t) => t.startsWith(prefix) && find(t, s.name)).map((t) => find(t, s.name).allOpsPerSec);
-    const hs = side("haskell");
     const ns = side("node");
-    if (!hs.length || !ns.length) continue;
-    const ratios = Array.from({ length: reps }, (_, i) => Math.max(...hs.map((r) => r[i])) / Math.max(...ns.map((r) => r[i])));
-    md += `| ${s.name} | ${ratios.map((r) => r.toFixed(2)).join(" ")} | ${Math.min(...ratios).toFixed(2)}x |\n`;
+    for (const [prefix, label] of [["haskell", ""], ...variants.map((v) => [v.label, ` [${v.label}]`])]) {
+      const hs = side(prefix);
+      if (!hs.length || !ns.length) continue;
+      const ratios = Array.from({ length: reps }, (_, i) => Math.max(...hs.map((r) => r[i])) / Math.max(...ns.map((r) => r[i])));
+      const median = [...ratios].sort((a, b) => a - b)[Math.floor(reps / 2)];
+      const ahead = ratios.filter((r) => r > 1).length;
+      md += `| ${s.name}${label} | ${ratios.map((r) => r.toFixed(2)).join(" ")} | ${median.toFixed(2)}x | ${Math.min(...ratios).toFixed(2)}x | ${ahead} of ${reps} |\n`;
+    }
   }
   md += "\n";
 }

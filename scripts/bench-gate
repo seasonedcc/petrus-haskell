@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Remeasure a headline row of every package against its Python twin, and fail
-when Haskell is slower.
+"""Remeasure a headline row of every package against its Python twin (the
+viewer's against the upstream Node backend), and fail when Haskell does not
+win most of the interleaved repetitions.
 
     scripts/bench-gate                      # every entry below
-    scripts/bench-gate --shard 2/4          # every fourth entry, from the second (CI's matrix)
+    scripts/bench-gate --shard 2/4          # every fourth entry, from the second (CI's matrix;
+                                            # the viewer's entry runs in CI's viewer job instead)
     scripts/bench-gate PKG [PKG ...]        # only these packages' entries
     scripts/bench-gate --list               # the entries and their rows
     options: --reps N (default 5), --no-build, --json FILE
 
-CI runs it nightly and on a dispatch with ``full`` (the ``bench-gate`` job),
-never on an ordinary push: the figures need minutes of machine time and a
+CI runs it nightly and on a dispatch with ``full`` (the ``bench-gate`` job,
+and the ``viewer`` job for petrus-viewer-server), never on an ordinary push: the figures need minutes of machine time and a
 quiet runner. The committed results files (``packages/*/bench/*.md``) are
 measured by hand, on a quiet machine, with more repetitions; this gate is the
 check that their headline rows still hold for the code at HEAD.
@@ -21,17 +23,23 @@ headline row. A *pair* entry runs the package's benchmark executable
 (selected to its rows with tasty's ``-p``; tasty-bench mean in wall-clock
 time, ``--stdev 5``, ``+RTS -M2G``) and the Python twin's command (the one
 in the package's rerun block, restricted to the rows when the twin can be),
-back to back, REPS times, alternating which side goes first. A row's ratio
-is the median of the Python figures over the median of the Haskell figures.
-A *table* entry runs a harness that interleaves both sides itself (21 runs or
-5 rounds) and prints a Markdown table; its ratio is read from the row's
-ratio cell.
+back to back, REPS times, alternating which side goes first. Each
+repetition gives a ratio, Python over Haskell, from the two figures measured
+next to each other; the row's ratio is the median of those. A *table* entry
+runs a harness that interleaves both sides itself (21 runs or 5 rounds) and
+prints a Markdown table; the row's ratio and its "k of n" count of the runs
+or rounds Haskell won are read from the row's cells.
 
-**When it fails.** A row whose ratio is below 1.0 is measured again, from
-scratch (its whole entry, REPS more repetitions or one more harness run). The
-gate fails only when the rerun is below 1.0 too, or when a row could not be
-measured or read. Every row's figures are printed as a Markdown table, which
-also goes to ``$GITHUB_STEP_SUMMARY`` in CI.
+**When it fails.** A row passes when Haskell won more than half of its
+repetitions (runs, rounds): "won k of n" with 2k > n, in one measurement,
+with no second attempt. Before, the median of the repetitions decided, and a
+row below 1.0 was measured again; a row whose two sides do the same server or
+kernel work came out on either side of 1.0 from one run to the next, and the
+rerun only gave the noise a second draw. Counting wins asks what the gate is
+for (is Haskell faster, run for run, on the same machine at the same moment),
+and a load spike costs one repetition, not the verdict. The gate also fails
+when a row could not be measured or read. Every row's figures are printed as
+a Markdown table, which also goes to ``$GITHUB_STEP_SUMMARY`` in CI.
 
 **Reading the figures.** Haskell figures are tasty-bench means (or the
 ``twin NAME NANOSECONDS`` lines of rows timed with the twin's protocol, or a
@@ -61,9 +69,13 @@ runs (1.14x on the Apple M4), with 64 KiB or 128 KiB writes alike;
 ``archive/medium/extract`` is gated in its place. Their local figures are in
 the packages' results files.
 
-Left out: petrus-viewer-server, whose twin is the upstream Node server (its
-benchmark, ``bench/run.mjs``, needs the built viewer; the nightly ``viewer``
-job runs its suites), and the second harness of packages that have two
+petrus-viewer-server's twin is the upstream Node backend: ``bench/run.mjs``
+runs both (and needs ``pnpm install`` and ``pnpm build`` in
+upstream/petrus-viewer), so CI runs that entry in its ``viewer`` job, which
+has them, and ``--shard`` leaves it out. Its rows are read from run.mjs's
+per-round table (Haskell's best target over Node's best, round by round).
+
+Left out: the second harness of packages that have two
 (petrus-agenticus-core's custody mode, petrus-engine-file's process rows,
 the load modes of petrus-observation-http and petrus-simulation), whose other
 rows are gated. Entries whose benchmarks read ``PETRUS_TEST_POSTGRES`` run
@@ -79,6 +91,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import statistics
 import subprocess
@@ -114,10 +127,23 @@ def pair(package: str, rows: List[Tuple[str, str]], python: str, only: Optional[
             "haskell": haskell or [], "tmpdir": tmpdir}
 
 
-def table(package: str, rows: List[str], command: str) -> dict:
-    """ROWS: regular expressions, each matching one line of the table COMMAND prints."""
-    return {"kind": "table", "package": package, "rows": rows, "command": command}
+def table(package: str, rows: List[str], command: str, sharded: bool = True) -> dict:
+    """ROWS: regular expressions, each matching one line of the table COMMAND
+    prints, with a ratio cell and a "k of n" cell (the runs Haskell won).
+    SHARDED False: --shard leaves the entry out (CI runs it elsewhere)."""
+    return {"kind": "table", "package": package, "rows": rows, "command": command, "sharded": sharded}
 
+
+# The viewer scenarios gated (bench/run.mjs's names): the thinnest margin of
+# each kind of work.
+VIEWER_SCENARIOS = [
+    "relay round trip, 1 pair",
+    "open-file POST+GET, 1 client",
+    "resolve-ref, 1 client",
+    "collab fan-out, 50 peers x 1000 msgs",
+    "GET / (index.html), 1 client",
+    "MCP petrus_status, 1 call at a time",
+]
 
 ENTRIES = [
     pair("hamsterdan-agents",
@@ -228,9 +254,13 @@ ENTRIES = [
     pair("petrus-telemetry-instrumentation",
          [("All.chain.engine-advance.facts-null-route", "chain/engine-advance/facts-null-handler")],
          petrus("petrus-telemetry-instrumentation")),
+    table("petrus-viewer-server", [rf"^\| {re.escape(s)} \|.* of \d+ \|$" for s in VIEWER_SCENARIOS],
+          "node packages/petrus-viewer-server/bench/run.mjs --reps 5 --only "
+          + shlex.quote("|".join(VIEWER_SCENARIOS)), sharded=False),
 ]
 
 RATIO = re.compile(r"^\**\s*(\d+(?:\.\d+)?)\s*[×x]\s*\**$")
+WON = re.compile(r"^(\d+) of (\d+)$")
 
 
 def load(name: str, path: Path):
@@ -318,8 +348,10 @@ def run_pair(entry: dict, reps: int, binary, log) -> Dict[str, dict]:
             result[h] = {"error": f"measured {len(ours[h])} Haskell and {len(theirs[h])} Python figures of {reps}"
                                   f" (Haskell row `{h}`, Python row `{p}`)"}
             continue
-        hm, pm = statistics.median(ours[h]), statistics.median(theirs[h])
-        result[h] = {"haskell": hm, "python": pm, "ratio": pm / hm, "haskell_runs": ours[h], "python_runs": theirs[h]}
+        ratios = [theirs_i / ours_i for ours_i, theirs_i in zip(ours[h], theirs[h])]
+        result[h] = {"haskell": statistics.median(ours[h]), "python": statistics.median(theirs[h]),
+                     "ratio": statistics.median(ratios), "won": sum(r > 1 for r in ratios), "of": reps,
+                     "ratios": ratios, "haskell_runs": ours[h], "python_runs": theirs[h]}
     return result
 
 
@@ -336,11 +368,13 @@ def run_table(entry: dict, log) -> Dict[str, dict]:
         line = next((l for l in output.splitlines() if re.search(pattern, l)), None)
         cells = [c.strip() for c in line.strip().strip("|").split("|")] if line else []
         ratio = next((float(RATIO.match(c).group(1)) for c in cells[1:] if RATIO.match(c)), None)
+        won = next((WON.match(c) for c in cells[1:] if WON.match(c)), None)
         name = cells[0] if cells else pattern
-        if ratio is None:
-            result[name] = {"error": f"no row matching `{pattern}` with a ratio in the harness's table"}
+        if ratio is None or won is None:
+            result[name] = {"error": f"no row matching `{pattern}` with a ratio and a \"k of n\" cell"
+                                     " in the harness's table"}
         else:
-            result[name] = {"ratio": ratio, "line": line.strip()}
+            result[name] = {"ratio": ratio, "won": int(won.group(1)), "of": int(won.group(2)), "line": line.strip()}
     return result
 
 
@@ -377,7 +411,8 @@ def main(argv: List[str]) -> int:
         return 2
     if options.shard:
         index, count = (int(x) for x in options.shard.split("/"))
-        entries = [e for i, e in enumerate(entries) if i % count == index - 1]
+        sharded = [e for e in entries if e.get("sharded", True)]
+        entries = [e for i, e in enumerate(sharded) if i % count == index - 1]
     if options.list:
         for e in entries:
             rows = [h for h, _ in e["rows"]] if e["kind"] == "pair" else e["rows"]
@@ -393,40 +428,33 @@ def main(argv: List[str]) -> int:
         for entry in entries:
             print(f"==> {entry['package']}", file=sys.stderr, flush=True)
             load_before = os.getloadavg()[0]
-            first = measure(entry, options.reps, not options.no_build, log)
-            again = {}
-            if any("error" not in r and r["ratio"] < 1.0 for r in first.values()):
-                print(f"    a row is below 1.0×; measuring {entry['package']} again", file=sys.stderr, flush=True)
-                again = measure(entry, options.reps, False, log)
+            measured = measure(entry, options.reps, not options.no_build, log)
             load_after = os.getloadavg()[0]
-            for name, result in first.items():
-                second = again.get(name)
+            for name, result in measured.items():
                 if "error" in result:
                     verdict = "error"
-                elif result["ratio"] >= 1.0:
-                    verdict = "ok"
-                elif second and "error" not in second and second["ratio"] >= 1.0:
-                    verdict = "ok on the rerun"
                 else:
-                    verdict = "FAIL"
-                rows.append({"package": entry["package"], "row": name, "first": result, "rerun": second,
-                             "verdict": verdict, "load": [load_before, load_after]})
-                shown = f"{result['ratio']:.2f}×" if "ratio" in result else result["error"]
-                print(f"    {name}: {shown}" + (f", rerun {second['ratio']:.2f}×" if second and "ratio" in second else "")
-                      + f" — {verdict}", file=sys.stderr, flush=True)
+                    verdict = "ok" if 2 * result["won"] > result["of"] else "FAIL"
+                rows.append({"package": entry["package"], "row": name, "result": result, "verdict": verdict,
+                             "load": [load_before, load_after]})
+                shown = (f"{result['ratio']:.2f}×, won {result['won']} of {result['of']}" if "error" not in result
+                         else result["error"])
+                print(f"    {name}: {shown} — {verdict}", file=sys.stderr, flush=True)
     lines = [
         f"### Benchmark gate ({options.reps} interleaved repetitions per pair; harness tables as printed)",
         "",
-        "| Package | Row | Haskell | Python | Python / Haskell | Rerun | Load (1 min) | Verdict |",
+        "A row passes when Haskell won more than half of its repetitions.",
+        "",
+        "| Package | Row | Haskell | Python | Python / Haskell (median) | Haskell won | Load (1 min) | Verdict |",
         "| --- | --- | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for r in rows:
-        first, second = r["first"], r["rerun"]
-        ratio = f"{first['ratio']:.2f}×" if "ratio" in first else "—"
-        rerun = f"{second['ratio']:.2f}×" if second and "ratio" in second else "—"
-        detail = first.get("error", "")
-        lines.append(f"| `{r['package']}` | {r['row']} | {human(first.get('haskell'))} | {human(first.get('python'))} | "
-                     f"{ratio} | {rerun} | {r['load'][0]:.1f}–{r['load'][1]:.1f} | {r['verdict']}"
+        result = r["result"]
+        ratio = f"{result['ratio']:.2f}×" if "ratio" in result else "—"
+        won = f"{result['won']} of {result['of']}" if "won" in result else "—"
+        detail = result.get("error", "")
+        lines.append(f"| `{r['package']}` | {r['row']} | {human(result.get('haskell'))} | {human(result.get('python'))} | "
+                     f"{ratio} | {won} | {r['load'][0]:.1f}–{r['load'][1]:.1f} | {r['verdict']}"
                      + (f": {detail}" if detail else "") + " |")
     failed = [r for r in rows if r["verdict"] in ("FAIL", "error")]
     lines += ["", f"{len(rows)} rows, {len(failed)} failed. Log: `{log_path.relative_to(ROOT)}`.", ""]

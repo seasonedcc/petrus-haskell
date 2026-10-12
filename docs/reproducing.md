@@ -290,7 +290,9 @@ package directory with the environment `cabal bench` sets, passing the
 options through; `--no-build` skips the build.
 
 Rows whose cost grows with every iteration (each one adds rows to a
-database, as petrus-sqlite's `tx` rows do) are timed with the twins' own
+database, as petrus-sqlite's and petrus-postgres's `tx` rows do), and
+server-bound rows whose tasty-bench mean swung with the machine
+(petrus-postgres's `fence` and `notify` rows), are timed with the twins' own
 protocol instead of tasty-bench's, so that both sides run the same number of
 iterations: `twin` from `Petrus.TestSupport.BenchTwin` runs one warm-up call,
 then 10 batches (`PETRUS_BENCH_BATCHES`) of a fixed number of calls, and
@@ -376,16 +378,22 @@ results files in its run summary.
 They also run `scripts/bench-gate` (the `bench-gate` jobs, four shards),
 which measures. Its `ENTRIES` name, for every package with a Python twin,
 the rows with the thinnest margin (and, where every margin is wide, the
-headline row): 41 entries over 38 packages. Each pair of Haskell and Python
-runs is repeated 5 times, alternating which side goes first, and a row's
-ratio is the median of the Python figures over the median of the Haskell
-ones; the harnesses that interleave both sides themselves
-(hamsterdan-export, hamsterdan-operator, petrus-execution's `compare.py`)
-run once and their table's ratio is read. A row below 1.0× is measured
-again from scratch, and the job fails when the rerun is below 1.0× too, or
-when a row cannot be measured. The table goes to the run summary, the
-figures and the log to the `bench-gate-N` artifacts. Left out:
-petrus-viewer-server (its twin is the upstream Node server), the second
+headline row): 42 entries over 39 packages. Each pair of Haskell and Python
+runs is repeated 5 times, alternating which side goes first; each
+repetition gives a ratio of the two figures measured next to each other,
+and the row's ratio is their median. The harnesses that interleave both
+sides themselves (hamsterdan-export, hamsterdan-operator,
+petrus-execution's `compare.py`, petrus-viewer-server's `bench/run.mjs`)
+run once, and their table gives the row's ratio and how many of its runs
+or rounds Haskell won. A row passes when Haskell won more than half of
+them ("won k of n", 2k > n), in that one measurement: a row whose two sides
+do the same server or kernel work came out on either side of 1.0× from run
+to run, and a median with a rerun below 1.0× only gave the noise a second
+draw. The job fails on a row that does not pass or cannot be measured. The
+table goes to the run summary, the figures and the log to the
+`bench-gate-N` artifacts. petrus-viewer-server's entry, whose twin is the
+upstream Node backend (`bench/run.mjs` needs `pnpm build`), runs in the
+`viewer` job instead of a shard. Left out: the second
 harness of packages that have two, and four thin rows that are the same
 kernel or server work on both sides (one `fsync`, `CREATE DATABASE` and
 `DROP DATABASE`, or 256 MiB of `write(2)`), which the runner measured below
@@ -580,9 +588,9 @@ job, spread over Blacksmith runners so that they run side by side:
 | `build` | 16 vCPU | `cabal build all` (`-Werror`); then plans the test shards |
 | `checks` | 4 vCPU | `scripts/interop --check` (with the PostgreSQL and Docker variables set, so that the selection counts those examples too); `scripts/check-corpora`, with PostgreSQL 17 |
 | `test (1)` … `test (N)` | 8 vCPU | the upstream Python environments, then `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest); then `scripts/check-pending` on their output (a suite with a pending example outside the declared opt-ins does not count as passed) |
-| `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium; then the MCP golden transcript re-recorded through the upstream Node MCP server |
+| `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium; then the MCP golden transcript re-recorded through the upstream Node MCP server; nightly and `full` also `scripts/bench-gate petrus-viewer-server` |
 | `bench-smoke` | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench --smoke` (every benchmark builds and runs once; not a measurement) and the list of stale results files ([Which code the figures measured](#which-code-the-figures-measured)) |
-| `bench-gate` (4 shards) | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench-gate --shard N/4`, the gated rows against the pinned Python, 5 interleaved repetitions, failing on a row below 1.0× twice ([Which code the figures measured](#which-code-the-figures-measured)) |
+| `bench-gate` (4 shards) | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench-gate --shard N/4`, the gated rows against the pinned Python, 5 interleaved repetitions, failing on a row Haskell did not win most repetitions of ([Which code the figures measured](#which-code-the-figures-measured)) |
 | `container` | 16 vCPU | none (Docker): the image and `scripts/container-smoke` ([The container image](#the-container-image)) |
 | `every-commit` | 2 vCPU | pushes to `main` only: dispatches a run for each commit of the push but its tip |
 | `ci` | 2 vCPU | the verdict: green only when every job above is |

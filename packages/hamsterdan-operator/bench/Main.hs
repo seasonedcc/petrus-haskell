@@ -462,8 +462,8 @@ compareAll runs = do
     let tmp = workspace.tmp
     inherited <- getEnvironment
     BS.writeFile (tmp </> "workloads.json") (either (error . show) id (dumps compact workspace.workloads))
-    putStrLn "| Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell |"
-    putStrLn "| --- | --- | ---: | ---: | ---: |"
+    putStrLn "| Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell | Haskell ahead |"
+    putStrLn "| --- | --- | ---: | ---: | ---: | ---: |"
     forM_ cliWorkloads \(label, argv, answers) -> do
       (hs, py) <- cli tmp self python port runs argv answers
       row label "CLI (fresh process)" hs py
@@ -567,7 +567,7 @@ cli tmp self python port runs argv answers = do
 row :: String -> String -> [Double] -> [Double] -> IO ()
 row label shape hs py =
   printf
-    "| %s | %s | %s (%s) | %s (%s) | %.2f× |\n"
+    "| %s | %s | %s (%s) | %s (%s) | %.2f× | %d of %d |\n"
     label
     shape
     (duration (median hs))
@@ -575,6 +575,9 @@ row label shape hs py =
     (duration (median py))
     (duration (minimum py))
     (median py / median hs)
+    -- the runs are paired (interleaved run by run): Haskell's wins
+    (length (filter id (zipWith (<) hs py)))
+    (length hs)
 
 median :: [Double] -> Double
 median xs = let sorted = sort xs in sorted !! (length sorted `div` 2)

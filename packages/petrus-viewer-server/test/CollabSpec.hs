@@ -1,15 +1,16 @@
 -- | The collaboration relay (server/collab.mjs semantics), served in process
--- at @/collab-ws@: port of tests/collab-server.test.mjs.
+-- at @/collab-ws@ when collaboration is on (@petrus --host@, as Vite with
+-- @--host@): port of tests/collab-server.test.mjs.
 module CollabSpec (spec) where
 
 import Data.Maybe (isJust)
 import Petrus.Viewer.Json
-import Petrus.Viewer.Server (ServerHandle (..))
+import Petrus.Viewer.Server (ServerConfig (..), ServerHandle (..))
 import Test.Hspec
 import TestSupport
 
 collab :: (Int -> IO a) -> IO a
-collab act = withViewer id (act . handlePort)
+collab act = withViewer (\c -> c {serverCollab = True}) (act . handlePort)
 
 peer :: Int -> (WsClient -> JsValue -> IO a) -> IO a
 peer port act = withWs port "/collab-ws" $ \c -> recvJson c >>= act c

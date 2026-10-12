@@ -1,6 +1,6 @@
 /*
  * Socket readiness and non-blocking I/O for the event loops
- * (Petrus.Viewer.EventLoop: the relays, the HTTP front, petrus-mcp):
+ * (Petrus.Viewer.EventLoop: the relays, petrus-mcp):
  * kqueue on macOS and the BSDs, epoll on Linux.
  *
  * Every relay socket stays registered for reading for as long as it is
