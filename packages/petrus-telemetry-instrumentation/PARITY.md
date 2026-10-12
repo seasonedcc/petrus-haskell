@@ -10,7 +10,7 @@ The full map from every upstream telemetry test to its Haskell example is in
 [`petrus-telemetry/PARITY.md`](../petrus-telemetry/PARITY.md). Divergences
 are in [`petrus-telemetry/DIVERGENCES.md`](../petrus-telemetry/DIVERGENCES.md).
 
-`cabal test petrus-telemetry-instrumentation` runs 56 examples, 0 failures.
+`cabal test petrus-telemetry-instrumentation` runs the suite with no failure and no pending example.
 
 ## The port: `test/Petrus/Telemetry/InstrumentationSpec.hs`
 

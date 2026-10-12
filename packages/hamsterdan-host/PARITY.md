@@ -51,20 +51,20 @@ A2 runtime, and the Pi runner after an exact READY probe.
   named after the test, with one example per parameter, so the two counts
   line up.
 
-| Upstream file | Functions | Cases | Haskell spec | Examples |
-| --- | ---: | ---: | --- | ---: |
-| `tests/unit/host/test_host_architecture.py` | 1 | 1 | `ArchitectureSpec` | 1 |
-| `tests/unit/host/test_binding.py` | 5 | 8 | `BindingSpec` | 8 |
-| `tests/unit/host/test_runnable.py` | 7 | 11 | `RunnableSpec` | 11 |
-| `tests/unit/host/test_v5_gates.py` | 50 | 55 | `GatesSpec` | 55 |
-| `tests/unit/host/test_v5_ingress.py` | 63 | 82 | `IngressSpec` (store and normalizer, 29), `IngressApplicationSpec` (application, 53) | 82 |
-| `tests/unit/host/test_v5_mutation.py` | 15 | 41 | `MutationSpec` | 41 (+3 `reference_bytes`) |
-| `tests/unit/host/test_v5_rerun.py` | 13 | 17 | `RerunSpec` | 17 |
-| `tests/unit/host/test_v5_review.py` | 14 | 22 | `ReviewSpec` | 22 |
-| `tests/unit/host/test_v5_timers.py` | 18 | 21 | `TimersSpec` | 21 (+1 fresh-store bytes) |
-| `tests/integration/host/test_git_publish.py` | 18 | 30 | `GitPublishSpec` | 30 |
-| `tests/integration/host/test_service.py` | 64 | 70 | `ServiceSpec` (59), `ApiSpec` (FastAPI, 6), `CliSpec` (4) | 69 |
-| **Total ported** | **268** | **358** | | **357** (+4) |
+| Upstream file | Functions | Cases | Haskell spec |
+| --- | ---: | ---: | --- |
+| `tests/unit/host/test_host_architecture.py` | 1 | 1 | `ArchitectureSpec` |
+| `tests/unit/host/test_binding.py` | 5 | 8 | `BindingSpec` |
+| `tests/unit/host/test_runnable.py` | 7 | 11 | `RunnableSpec` |
+| `tests/unit/host/test_v5_gates.py` | 50 | 55 | `GatesSpec` |
+| `tests/unit/host/test_v5_ingress.py` | 63 | 82 | `IngressSpec` (store and normalizer, 29), `IngressApplicationSpec` (application, 53) |
+| `tests/unit/host/test_v5_mutation.py` | 15 | 41 | `MutationSpec` |
+| `tests/unit/host/test_v5_rerun.py` | 13 | 17 | `RerunSpec` |
+| `tests/unit/host/test_v5_review.py` | 14 | 22 | `ReviewSpec` |
+| `tests/unit/host/test_v5_timers.py` | 18 | 21 | `TimersSpec` |
+| `tests/integration/host/test_git_publish.py` | 18 | 30 | `GitPublishSpec` |
+| `tests/integration/host/test_service.py` | 64 | 70 | `ServiceSpec` (59), `ApiSpec` (FastAPI, 6), `CliSpec` (4) |
+| **Total ported** | **268** | **358** | |
 
 `PiActivitySpec` runs the nine coding-activity cases of
 `tests/unit/agents/test_pi.py`, because they drive the V5 mutation gate.
@@ -79,28 +79,28 @@ argument, so that call does not compile.
 
 ### Differential and interop suites (no upstream counterpart)
 
-| Spec | Examples | What it checks |
-| --- | ---: | --- |
-| `InteropSpec`: "resumes each other's state" | 1 | Phase one is a webhook to quiescence. Phase two is a new head, a second synchronize, a `workflow_run`, then startup and periodic sweeps, each to quiescence. The test runs phase one on one host and phase two on the other, in all three pairings: Haskell/Haskell, Python/Haskell and Haskell/Python. Each pairing must match the Python-only run file by file. That covers every file under the state root (`differential/state_reference.py` dumps them): `webhooks.sqlite3` (the inbox and the V5 ingress tables), `routes.sqlite3`, `runnable.sqlite3` and `activity-dispatch.sqlite3`; and, for each Instance, `binding.json`, `history.jsonl`, `review-requests.sqlite3` and `timers.sqlite3`. For each SQLite file it compares the schema text and every row. It also compares the command outputs (`inspect-instance`, status, counts) and the provider calls. Run identifiers, instants and epochs are normalized. |
-| `InteropSpec`: "makes the same GitHub requests as the reference" | 1 | The same two phases, with both hosts' real client stacks (JWT, installation token, REST, GraphQL) pointed at one recording fake GitHub. The tests compare the request line, the headers in order, and the body bytes of every request, plus the outputs, the state dump and the resulting PR comments. |
-| `InteropSpec`: "resumes each other's agent state" | 1 | A journey through `serve`'s composed agent on both hosts, over Petrus's scripted Pi runtime and a repository with fixed commits. Phase one reviews the first head (epoch 1); phase two moves the head and reviews again (epoch 2). The test runs phase one on one host and phase two on the other, in all four pairings, and each must match the Python-only run file by file. That includes `agent-routes.sqlite3`, `pi-a2/installation`, and the runtime host's `operations.sqlite3` and `bodies.sqlite3`. It also compares the provider calls, the reviews and the dashboard. |
-| `ApiSpec`: "the HTTP surface against the reference (uvicorn)" | 1 | 47 requests, sent over a raw socket to the reference under uvicorn and to the port under warp. They cover health, the FastAPI pages, routing fallbacks (405 with `allow`, 307, 404, the 307's scheme from a trusted `X-Forwarded-Proto`), percent-encoding, HTTP/1.0, pipelining, and webhook accept, duplicate and refusals. The status line (h11's `HTTP/1.1`, also for HTTP/1.0), every header in order (only the `date` value is blanked), and the body bytes must match. |
-| `CliSpec`: "serve (uvicorn.run)" | 2 | `serve` on a free port, with the composed agent: an HTTP/1.0 health check gets `HTTP/1.1 200 OK` and `Connection: close`, and `agent-routes.sqlite3` and `pi-a2/installation` exist. Stopped by `SIGTERM`, the command raises it again after the graceful shutdown (uvicorn's `capture_signals`; the reference process ends by SIGTERM, status -15, without its `finally`). As PID 1 of a container, which the kernel exempts from a signal's default action, the process survives that SIGTERM: `uvicorn.run` returns, the `finally` runs, and both end with status 0 ([scripts/container-smoke](../../scripts/container-smoke) checks it under `docker stop`). Stopped by `SIGINT`, it ends with status 0 (the re-raised SIGINT meets `asyncio.run`'s handler). Found by the tier C host rehearsal (`packages/hamsterdan-e2e`, `rehearse_hosts.py`), which checks both statuses against the reference process. |
-| `CliSpec`: "serve against the reference (uvicorn's log lines)" | 4 | `python -m hamsterdan.host serve` (`differential/serve_reference.py`, the real uvicorn) and the port's `serve`, each with stdout and stderr to files and the same `FORWARDED_ALLOW_IPS`. Fourteen requests (methods, HTTP/1.0, redirects, a refused webhook, quoting of the logged path, trusted `X-Forwarded-For` / `X-Forwarded-Proto`) then SIGTERM; an occupied port; a route that raises (the inbox table renamed away under `/healthz`); a GitHub that knows no App, so the lifespan's startup fails. Both logs must match line for line, with the pid and ports blanked and each traceback cut to its header and last line, and so must the exit status. |
-| `UvicornSpec` | 1 | One live run of the pinned uvicorn and CPython: `ipaddress` parsing of 600 generated and curated strings, `_parse_host_port`, `_TrustedHosts` membership, `get_trusted_client_address`, `HTTPStatus` phrases 0–999, the default and access formatters with and without color, the server messages, and `get_path_with_query_string`. |
-| `CliSpec`: "the command line against the reference" | 1 | 114 cases through `python -m hamsterdan.host`'s `main()` and through the port. They cover argparse parsing, usage and help at nine `COLUMNS` widths and under `FORCE_COLOR` / `NO_COLOR` / `TERM=dumb`, configuration failures, `inspect-instance` over hostile histories, startup refusals, `inbox`/`requeue` against a parked delivery, the Pi configuration refusals of the agent composition, and `validate` against a recording fake GitHub. Both sides compose the real agent over an installed-package fixture. Each case must give the same stdout, stderr, exit status, state effects and GitHub requests. |
-| `InlineRecoverySpec` | 5 | The five restart-convergence cases of `tests/unit/readiness/net_v5/test_inline_recovery.py`, against the real host gates. This closes the gap that hamsterdan-readiness's PARITY.md recorded. |
-| `MutationSpec`: `reference_bytes` | 3 | The mutation ref and payload digest match Python for `change`, `repair` and `update_base`. |
+| Spec | What it checks |
+| --- | --- |
+| `InteropSpec`: "resumes each other's state" | Phase one is a webhook to quiescence. Phase two is a new head, a second synchronize, a `workflow_run`, then startup and periodic sweeps, each to quiescence. The test runs phase one on one host and phase two on the other, in all three pairings: Haskell/Haskell, Python/Haskell and Haskell/Python. Each pairing must match the Python-only run file by file. That covers every file under the state root (`differential/state_reference.py` dumps them): `webhooks.sqlite3` (the inbox and the V5 ingress tables), `routes.sqlite3`, `runnable.sqlite3` and `activity-dispatch.sqlite3`; and, for each Instance, `binding.json`, `history.jsonl`, `review-requests.sqlite3` and `timers.sqlite3`. For each SQLite file it compares the schema text and every row. It also compares the command outputs (`inspect-instance`, status, counts) and the provider calls. Run identifiers, instants and epochs are normalized. |
+| `InteropSpec`: "makes the same GitHub requests as the reference" | The same two phases, with both hosts' real client stacks (JWT, installation token, REST, GraphQL) pointed at one recording fake GitHub. The tests compare the request line, the headers in order, and the body bytes of every request, plus the outputs, the state dump and the resulting PR comments. |
+| `InteropSpec`: "resumes each other's agent state" | A journey through `serve`'s composed agent on both hosts, over Petrus's scripted Pi runtime and a repository with fixed commits. Phase one reviews the first head (epoch 1); phase two moves the head and reviews again (epoch 2). The test runs phase one on one host and phase two on the other, in all four pairings, and each must match the Python-only run file by file. That includes `agent-routes.sqlite3`, `pi-a2/installation`, and the runtime host's `operations.sqlite3` and `bodies.sqlite3`. It also compares the provider calls, the reviews and the dashboard. |
+| `ApiSpec`: "the HTTP surface against the reference (uvicorn)" | 47 requests, sent over a raw socket to the reference under uvicorn and to the port under warp. They cover health, the FastAPI pages, routing fallbacks (405 with `allow`, 307, 404, the 307's scheme from a trusted `X-Forwarded-Proto`), percent-encoding, HTTP/1.0, pipelining, and webhook accept, duplicate and refusals. The status line (h11's `HTTP/1.1`, also for HTTP/1.0), every header in order (only the `date` value is blanked), and the body bytes must match. |
+| `CliSpec`: "serve (uvicorn.run)" | `serve` on a free port, with the composed agent: an HTTP/1.0 health check gets `HTTP/1.1 200 OK` and `Connection: close`, and `agent-routes.sqlite3` and `pi-a2/installation` exist. Stopped by `SIGTERM`, the command raises it again after the graceful shutdown (uvicorn's `capture_signals`; the reference process ends by SIGTERM, status -15, without its `finally`). As PID 1 of a container, which the kernel exempts from a signal's default action, the process survives that SIGTERM: `uvicorn.run` returns, the `finally` runs, and both end with status 0 ([scripts/container-smoke](../../scripts/container-smoke) checks it under `docker stop`). Stopped by `SIGINT`, it ends with status 0 (the re-raised SIGINT meets `asyncio.run`'s handler). Found by the tier C host rehearsal (`packages/hamsterdan-e2e`, `rehearse_hosts.py`), which checks both statuses against the reference process. |
+| `CliSpec`: "serve against the reference (uvicorn's log lines)" | `python -m hamsterdan.host serve` (`differential/serve_reference.py`, the real uvicorn) and the port's `serve`, each with stdout and stderr to files and the same `FORWARDED_ALLOW_IPS`. Fourteen requests (methods, HTTP/1.0, redirects, a refused webhook, quoting of the logged path, trusted `X-Forwarded-For` / `X-Forwarded-Proto`) then SIGTERM; an occupied port; a route that raises (the inbox table renamed away under `/healthz`); a GitHub that knows no App, so the lifespan's startup fails. Both logs must match line for line, with the pid and ports blanked and each traceback cut to its header and last line, and so must the exit status. |
+| `UvicornSpec` | One live run of the pinned uvicorn and CPython: `ipaddress` parsing of 600 generated and curated strings, `_parse_host_port`, `_TrustedHosts` membership, `get_trusted_client_address`, `HTTPStatus` phrases 0–999, the default and access formatters with and without color, the server messages, and `get_path_with_query_string`. |
+| `CliSpec`: "the command line against the reference" | 114 cases through `python -m hamsterdan.host`'s `main()` and through the port. They cover argparse parsing, usage and help at nine `COLUMNS` widths and under `FORCE_COLOR` / `NO_COLOR` / `TERM=dumb`, configuration failures, `inspect-instance` over hostile histories, startup refusals, `inbox`/`requeue` against a parked delivery, the Pi configuration refusals of the agent composition, and `validate` against a recording fake GitHub. Both sides compose the real agent over an installed-package fixture. Each case must give the same stdout, stderr, exit status, state effects and GitHub requests. |
+| `InlineRecoverySpec` | The five restart-convergence cases of `tests/unit/readiness/net_v5/test_inline_recovery.py`, against the real host gates. This closes the gap that hamsterdan-readiness's PARITY.md recorded. |
+| `MutationSpec`: `reference_bytes` | The mutation ref and payload digest match Python for `change`, `repair` and `update_base`. |
 
-The full suite has 392 examples:
+Besides the ports of the upstream cases of this package's scope, the suite
+holds:
 
-- 357 port upstream cases of this package's scope;
-- 9 port the coding-activity cases of `test_pi.py` (`PiActivitySpec`);
-- 3 are `reference_bytes`;
-- 5 are inline recovery;
-- 10 are differential and interop tests (the table above);
-- 1 is the architecture test, 2 run `serve` end to end, 3 check
-  `exceptionClass` against the reference's classes, and 2 check lone
+- the ports of the coding-activity cases of `test_pi.py` (`PiActivitySpec`);
+- the `reference_bytes` checks;
+- inline recovery;
+- the differential and interop tests (the table above);
+- the architecture test, two runs of `serve` end to end, checks of
+  `exceptionClass` against the reference's classes, and checks of lone
   surrogate escapes in a webhook payload.
 
 ## Not ported here

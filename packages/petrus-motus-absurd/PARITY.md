@@ -25,8 +25,8 @@ PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@localhost:5432/postgres \
   cabal test petrus-motus-absurd --test-options='+RTS -M2G -RTS'
 ```
 
-`cabal test petrus-motus-absurd` runs 127 examples. With `PETRUS_TEST_POSTGRES` set (CI sets
-it), all 127 pass. Without it, the 98 examples that need a server are pending and say why, the
+`cabal test petrus-motus-absurd` runs the suite. With `PETRUS_TEST_POSTGRES` set (CI sets
+it), every example passes. Without it, the examples that need a server are pending and say why, the
 way upstream's `postgres` marker skips. The suite provisions one scratch database with the
 pinned schema and drops it afterwards. The interop examples run the pinned reference's
 environment (`upstream/petrus/.venv` on CPython 3.14.6), which `scripts/upstream-python`
@@ -84,7 +84,7 @@ upstream case, named after the parameter.
 
 ## Interop with the reference
 
-`Petrus.Motus.Dispatch.Absurd.InteropSpec` (11 examples) drives
+`Petrus.Motus.Dispatch.Absurd.InteropSpec` drives
 [`test/interop/absurd_dispatch_interop.py`](test/interop/absurd_dispatch_interop.py) under the
 pinned reference's interpreter, against the same scratch database. Every direction is
 exercised:

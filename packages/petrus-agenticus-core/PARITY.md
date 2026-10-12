@@ -16,7 +16,7 @@ tests also carry the pytest parameter id.
 | Thread lifecycle, program descriptors, runtime values | `thread/`, `program/descriptor.py`, `program/seam.py`, `runtime/{installation,result,operation}.py` | [parity/thread.md](parity/thread.md) | thread, program and `test_foundation.py` tests (see the fragment) | at parity |
 | Connection custody, materialization, storage and key | `connection/` | [parity/custody.md](parity/custody.md) | `test_custody.py` (21 functions, 24 cases) | at parity |
 
-The full suite has 666 examples and 0 failures. It includes the
+The full suite includes the
 differential corpora and the Python and Haskell custody interop sessions.
 
 ## Property-based tests (Hypothesis → QuickCheck)

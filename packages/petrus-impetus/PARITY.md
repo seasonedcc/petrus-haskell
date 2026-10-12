@@ -212,15 +212,15 @@ with no argument or one string (`differential/failure_text_corpus.json`,
   `FiringOccurrenceId` are newtypes with validating constructors
   (`Petrus.Impetus.Instance.Identity`; DIVERGENCES item 15).
   `canonical_net_path` is `canonicalNetPath`. Upstream exercises these only
-  through `AcceptedDelivery` and Instance construction. Five examples check
+  through `AcceptedDelivery` and Instance construction. Examples check
   them directly, with the reference's messages:
-  - `InstanceIdentitySpec`, "identity values": 4 examples;
-  - `SchemaSpec`, "canonicalizes an exact protocol spelling": 1 example.
+  - `InstanceIdentitySpec`, "identity values";
+  - `SchemaSpec`, "canonicalizes an exact protocol spelling".
 - **Total path combinators.** `childPath`, `stripPathPrefix` and
   `pathPrefixes` join, strip and enumerate `NetPath`s segment-wise without
   re-validating text, so the DSL builds its scopes with no partial
   constructor. `SchemaSpec`, "joins, strips and enumerates prefixes
-  segment-wise": 1 example.
+  segment-wise".
 - **Byte identity.**
   - Every `spec/` fixture is loaded. The valid ones re-serialize
     byte-identically, and the invalid ones are refused with the reference's
@@ -232,8 +232,7 @@ with no argument or one string (`differential/failure_text_corpus.json`,
   - `net_definition_corpus.json` has 1763 cases. It covers parse, serialize,
     compile, and project of the Net definition and document, with exact
     bytes or their SHA-256, and exact error text.
-  - `hand_built_corpus.json` has 1996 cases (`HandBuiltCorpusSpec`, 2443
-    examples): validating constructors, compile and serialize of hand-built
+  - `hand_built_corpus.json` has 1996 cases (`HandBuiltCorpusSpec`): validating constructors, compile and serialize of hand-built
     definitions, serialize of hand-built documents (including token data and
     metadata nested around both depth limits, mixed with other errors),
     project with hand-built positions and lineage, and parse-then-serialize
@@ -244,8 +243,8 @@ with no argument or one string (`differential/failure_text_corpus.json`,
     every action it records the candidate bindings, the firing outcome or
     refusal (class and message), the marking, status, watermark, and next
     maturation, and the complete encoded History (`KernelDifferentialSpec`).
-- **Live round trips through the pinned reference** (`LiveSpec`, 4
-  examples, selected by `scripts/interop`). What Haskell writes today goes
+- **Live round trips through the pinned reference** (`LiveSpec`,
+  selected by `scripts/interop`). What Haskell writes today goes
   to the reference's own `parse_net_definition`, `parse_net_document` and
   `decode_record`, and must come back byte for byte from
   `serialize_net_definition`, `serialize_net_document` and
@@ -267,7 +266,7 @@ with no argument or one string (`differential/failure_text_corpus.json`,
     seed.
   - The history slice's 6 properties.
   - The 4 Net-definition properties.
-  - The port of `test_instance_replay_properties.py`, with 300 examples
+  - The port of `test_instance_replay_properties.py`, 300 generated cases
     (see "Hypothesis mapping" below).
 
 ## Hypothesis mapping

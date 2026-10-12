@@ -192,7 +192,7 @@ can be controlled exactly.
 cabal test -j2 hamsterdan-github --test-options='+RTS -M2G -RTS'
 ```
 
-The suite has 200 examples:
+The suite runs:
 
 - the ported upstream tests: `test_github.py` and `test_app_foundation.py`;
 - 9016 corpus rows: configuration, webhooks/inbox/routing, reads/effects/

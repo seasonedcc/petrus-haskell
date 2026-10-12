@@ -17,21 +17,21 @@ API differences are listed in [DIVERGENCES.md](DIVERGENCES.md).
 
 ## Running
 
-`cabal test petrus-fabric` runs 241 examples. With `PETRUS_TEST_POSTGRES` set
-(CI sets it), all 241 pass. Without it, the examples that need a server are
+`cabal test petrus-fabric` runs the suite. With `PETRUS_TEST_POSTGRES` set
+(CI sets it), every example passes. Without it, the examples that need a server are
 pending and say why. Each group gets its own scratch database
 (`Petrus.TestSupport.postgresSpec`), which is dropped afterwards. The Python
 side runs from the pinned upstream virtual environment
 (`upstream/petrus/.venv`).
 
-| Spec module | Examples | What it checks |
-| --- | ---: | --- |
-| [ConformanceSpec](test/Petrus/Fabric/ConformanceSpec.hs) | 196 | The 98 unit and db checks, each run against both implementations: the Haskell port in process, and the reference through [conformance_driver.py](test/interop/conformance_driver.py). |
-| [InteropSpec](test/Petrus/Fabric/InteropSpec.hs) | 12 | The 7 interop checks, each run in both directions on one database. |
-| [DemoSpec](test/Petrus/Fabric/DemoSpec.hs) | 8 | The Engine checks against both implementations, the demo across implementations, and F-107: split roles in all four combinations. |
-| [TypedSpec](test/Petrus/Fabric/TypedSpec.hs) | 6 | The type-enforced refusals F-005, F-007, F-008, F-076, F-080 and F-091, each against the real signature under deferred type errors. |
-| [ReferenceSpec](test/Petrus/Fabric/ReferenceSpec.hs) | 13 | The upstream tests, one for one (see the ledger). |
-| [CanonicalSpec](test/Petrus/Fabric/CanonicalSpec.hs) | 3 | The canonical bytes against CPython: float spellings, refusals, and doubles and escaped strings byte for byte. |
+| Spec module | What it checks |
+| --- | --- |
+| [ConformanceSpec](test/Petrus/Fabric/ConformanceSpec.hs) | The 98 unit and db checks, each run against both implementations: the Haskell port in process, and the reference through [conformance_driver.py](test/interop/conformance_driver.py). |
+| [InteropSpec](test/Petrus/Fabric/InteropSpec.hs) | The 7 interop checks, each run in both directions on one database. |
+| [DemoSpec](test/Petrus/Fabric/DemoSpec.hs) | The Engine checks against both implementations, the demo across implementations, and F-107: split roles in all four combinations. |
+| [TypedSpec](test/Petrus/Fabric/TypedSpec.hs) | The type-enforced refusals F-005, F-007, F-008, F-076, F-080 and F-091, each against the real signature under deferred type errors. |
+| [ReferenceSpec](test/Petrus/Fabric/ReferenceSpec.hs) | The upstream tests, one for one (see the ledger). |
+| [CanonicalSpec](test/Petrus/Fabric/CanonicalSpec.hs) | The canonical bytes against CPython: float spellings, refusals, and doubles and escaped strings byte for byte. |
 
 ## Conformance
 

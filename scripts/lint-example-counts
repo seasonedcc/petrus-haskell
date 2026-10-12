@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Fail when a document states how many Haskell test examples a suite has.
+
+    scripts/lint-example-counts
+
+The parity documents say which upstream tests are ported and how; they do
+not say how many hspec examples a suite runs. Such a number goes stale with
+the next test anyone adds, and nothing would notice. The numbers live where
+they are measured instead:
+
+- `cabal test <package>` prints its suite's count ("N examples, 0 failures");
+- CI's `ci` job (`scripts/ci-tests ledger`) prints every suite's count, and
+  the run's `test-ledger` artifact records it with the commit it tested.
+
+Upstream counts (the tests and cases pytest collects) are a different
+matter: they are stated, and scripts/upstream-test-counts checks them
+against docs/upstream-test-counts.json.
+
+This script reads every tracked Markdown file outside `upstream/` and
+`docs/audit/` (the audits are dated records) and rejects:
+
+- a number of examples, as in "12 examples", "12 interop examples",
+  "1 example" (headings, Hypothesis's `max_examples=N`, and words such as
+  "§3" are not counts);
+- a Markdown table with an "Examples" or "Haskell examples" column.
+
+A line that must keep such a number (a measurement quoted with its date,
+say) ends with `<!-- lint-example-counts: allow <reason> -->`.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import List
+
+ROOT = Path(__file__).resolve().parent.parent
+COUNT = re.compile(
+    r"(?<![\w§.\-=])\d[\d,]*(?:[ \t]*\([^)\n]*\))?(?:\s+[\w`'\-]+){0,3}?\s+examples\b"
+    r"|(?<![\w§.\-=])1\s+example\b",
+    re.I,
+)
+ALLOW = "<!-- lint-example-counts: allow"
+COUNT_COLUMNS = {"examples", "haskell examples"}
+SEPARATOR = re.compile(r"^\|\s*:?-{3}")
+
+
+def documents() -> List[Path]:
+    listed = subprocess.run(["git", "ls-files", "-z", "--", "*.md"], cwd=ROOT, check=True,
+                            capture_output=True).stdout.decode().split("\0")
+    return [ROOT / p for p in listed if p and not p.startswith(("upstream/", "docs/audit/"))]
+
+
+def problems_in(path: Path) -> List[str]:
+    text = path.read_text()
+    lines = text.split("\n")
+    found: List[str] = []
+    for match in COUNT.finditer(text):
+        start = text.rfind("\n", 0, match.start()) + 1
+        end = text.find("\n", match.end())
+        line = text[start:end if end >= 0 else len(text)]
+        if line.lstrip().startswith("#") or ALLOW in line:
+            continue
+        number = text.count("\n", 0, match.start()) + 1
+        found.append(f"{number}: \"{' '.join(match.group(0).split())}\"")
+    for index, line in enumerate(lines[:-1]):
+        if line.startswith("|") and SEPARATOR.match(lines[index + 1]):
+            cells = [cell.strip().lower() for cell in line.strip().strip("|").split("|")]
+            if COUNT_COLUMNS & set(cells):
+                found.append(f"{index + 1}: a table with an example-count column")
+    return [f"{path.relative_to(ROOT)}:{problem}" for problem in found]
+
+
+def main() -> int:
+    problems = [problem for path in documents() for problem in problems_in(path)]
+    if problems:
+        print("lint-example-counts: documents state Haskell example counts, which go stale:", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        print("Say what the examples check instead; `cabal test` and CI's `ci` job report the counts "
+              "(see scripts/lint-example-counts).", file=sys.stderr)
+        return 1
+    print("lint-example-counts: no document states a Haskell example count")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

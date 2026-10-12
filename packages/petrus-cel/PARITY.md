@@ -11,17 +11,17 @@ To run the tests:
 
     cabal test petrus-cel
 
-This prints 170 examples and 0 failures:
+It ends with no failure and no pending example. The groups:
 
-| group | examples | what it checks |
-| --- | ---: | --- |
-| differential corpus (`test/Corpus.hs`) | 100 | every case of the three corpora below |
-| `binding/test_cel.py` (`test/Impetus.hs`) | 20 | the 19 upstream tests, one example each, and `MACROS` read back from the pinned source |
-| PARITY.md CEL tests on Instances (`test/Impetus.hs`) | 5 | the CEL tests of the Instance suite, on real Instances |
-| end-to-end Instances (`test/Impetus.hs`) | 6 | `cel-instance.json`, five case groups and a coverage check |
-| kernel CEL seam on real CEL (`test/KernelSeam.hs`) | 26 | the kernel tests `petrus-impetus` ports on a CEL stub, rerun on `celCompilers` |
-| live reference (`test/Live.hs`) | 2 | the reference rereads what Haskell writes, and reads time zones as Haskell does |
-| properties (`test/Properties.hs`) | 11 | QuickCheck properties and the lone-surrogate encoding errors |
+| group | what it checks |
+| --- | --- |
+| differential corpus (`test/Corpus.hs`) | every case of the three corpora below |
+| `binding/test_cel.py` (`test/Impetus.hs`) | the 19 upstream tests, one example each, and `MACROS` read back from the pinned source |
+| PARITY.md CEL tests on Instances (`test/Impetus.hs`) | the CEL tests of the Instance suite, on real Instances |
+| end-to-end Instances (`test/Impetus.hs`) | `cel-instance.json`, five case groups and a coverage check |
+| kernel CEL seam on real CEL (`test/KernelSeam.hs`) | the kernel tests `petrus-impetus` ports on a CEL stub, rerun on `celCompilers` |
+| live reference (`test/Live.hs`) | the reference rereads what Haskell writes, and reads time zones as Haskell does |
+| properties (`test/Properties.hs`) | QuickCheck properties and the lone-surrogate encoding errors |
 
 ## The differential corpora
 

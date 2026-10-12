@@ -19,9 +19,9 @@ It also reads the ledgers of petrus-engine-absurd (all of
 current pin it reports 460 in-scope upstream tests (439 distinct: some tests
 are ported both over Local and over Absurd custody), all accounted for.
 
-`cabal test petrus-engine` runs 226 examples, with 0 failures and 0 pending.
-That count includes 3 Engine interop examples against the reference process,
-and 3 Worker topology pairings with reference Engines and Workers, and 5
+`cabal test petrus-engine` runs the suite with no failure and no pending example.
+It includes the Engine interop examples against the reference process,
+the Worker topology pairings with reference Engines and Workers, and the
 checks of spec obligations no upstream test covers (below).
 They provision the reference through `scripts/upstream-python` and fail,
 never go pending, when it cannot be provisioned.
@@ -30,13 +30,13 @@ never go pending, when it cannot be provisioned.
 
 | upstream file | Haskell spec(s) | ported | partial or analog | enforced by types |
 | --- | --- | ---: | ---: | ---: |
-| engine/test_engine.py (28) | EngineSpec (35 examples) | 23 | 5 | 0 |
-| engine/test_coordinator.py, 35 of 42 | CoordinatorSpec (39 examples) | 35 | 0 | 0 |
-| engine/test_execution.py (134) | ExecutionSpec, DeliveryPhasesA/B/CSpec (127 examples) | 98 | 10 | 26 |
-| motus/dispatch/test_local_dispatch.py, the 3 Engine-level tests | LocalDispatchSpec (4 examples) | 3 | 0 | 0 |
-| motus/worker/test_worker_runtime.py, the Engine-level test (byte-identical inline and Local History) | WorkerTopologySpec (1 example, over the order net) | 0 | 1 | 0 |
-| motus/worker/test_worker_topology.py, 4 Worker cases of 36 | WorkerTopologySpec (4 examples, over Local Dispatch; the rest are ledgered in `petrus-motus/PARITY.md`) | 0 | 4 | 0 |
-| project/test_package_boundaries.py, the 2 Engine rows and the 3 project-wide rows | BoundarySpec (5 examples; see below) | 0 | 5 | 0 |
+| engine/test_engine.py (28) | EngineSpec | 23 | 5 | 0 |
+| engine/test_coordinator.py, 35 of 42 | CoordinatorSpec | 35 | 0 | 0 |
+| engine/test_execution.py (134) | ExecutionSpec, DeliveryPhasesA/B/CSpec | 98 | 10 | 26 |
+| motus/dispatch/test_local_dispatch.py, the 3 Engine-level tests | LocalDispatchSpec | 3 | 0 | 0 |
+| motus/worker/test_worker_runtime.py, the Engine-level test (byte-identical inline and Local History) | WorkerTopologySpec (over the order net) | 0 | 1 | 0 |
+| motus/worker/test_worker_topology.py, 4 Worker cases of 36 | WorkerTopologySpec (over Local Dispatch; the rest are ledgered in `petrus-motus/PARITY.md`) | 0 | 4 | 0 |
+| project/test_package_boundaries.py, the 2 Engine rows and the 3 project-wide rows | BoundarySpec (see below) | 0 | 5 | 0 |
 
 `TestInMemoryDispatch` (5) and `TestInlineDispatch` (2) from
 test_coordinator.py are ported in `petrus-motus`.
@@ -198,12 +198,12 @@ module graph, not a Python import.
 
 ## Beyond upstream
 
-- **CEL under the default options** (EngineSpec, 1 example). The reference
+- **CEL under the default options** (EngineSpec). The reference
   imports its CEL compilers unconditionally. An Engine created with
   `defaultEngineOptions` routes payments by inline CEL guards (one reads
   `getHours('America/Sao_Paulo')`) through a CEL arc filter, and completes
   on a CEL completion condition.
-- **`wait` is `time.sleep`** (EngineSpec, 1 example). Without a provider
+- **`wait` is `time.sleep`** (EngineSpec). Without a provider
   wake hint, `wait(timeout)` sleeps as `time.sleep(timeout)` does, and
   refuses what it refuses with its classes and texts: NaN and a negative
   timeout (`ValueError`), and a timeout whose nanoseconds, rounded away
@@ -214,13 +214,12 @@ module graph, not a Python import.
   lifecycle-scope and Activity sections of `spec/event-history.md`, and the
   activity/projection split of `spec/handler-contract.md` is mapped to the
   examples that check it. Five statements had no check through an Engine,
-  and `SpecObligationsSpec` (5 examples) adds them: the immature wall-clock
+  and `SpecObligationsSpec` adds them: the immature wall-clock
   re-choice, a retry that stays in Dispatch, an opted-in failure projection
   that reloads without another Attempt, scope provenance that leaves
   correlation alone, and no quarantine reprocessing operation.
 
-- **The DST worlds' Local Dispatch consumer shape** (LocalDispatchSpec, 1
-  example). This is the shape `tests/dst/retry_world.py` and
+- **The DST worlds' Local Dispatch consumer shape** (LocalDispatchSpec). This is the shape `tests/dst/retry_world.py` and
   `generated_runtime_world.py` drive:
   - a world provider clock;
   - a wrapped dispatch door whose one-shot refusal poisons the Engine;
@@ -231,14 +230,14 @@ module graph, not a Python import.
   The outcome matches the reference running the same script. The other 33
   tests of `test_local_dispatch.py` are `petrus-motus`'s (see its
   PARITY.md).
-- **Engine and Worker interop** (WorkerTopologySpec, 3 examples,
+- **Engine and Worker interop** (WorkerTopologySpec,
   `test/interop/worker_topology_interop.py`). The order scenario's charge
   goes through a durable Local Dispatch to a Worker. The Engine and the
   Worker take turns, so the History is deterministic. The pairings
   Haskell/Python, Python/Haskell and Python/Python (Engine/Worker) each
   write the same JSONL bytes as Haskell/Haskell, and the reference loads
   that History to the settled marking.
-- **Engine interop with the reference process** (InteropSpec, 3 examples).
+- **Engine interop with the reference process** (InteropSpec).
   They use the order scenario (`test/interop/engine_interop.py`):
   identified deliveries, a pure handler, an Activity charge, and a `Delay 5`
   settlement.
@@ -253,7 +252,7 @@ module graph, not a Python import.
   with a test transactional History (`TestSupport.TransactionalHistory`)
   that counts commits and rollbacks and can refuse a numbered commit.
   `openEngine` also refuses a joined-transaction History store whose
-  provider supplies no commit point (EngineSpec, 1 example, "a
+  provider supplies no commit point (EngineSpec, "a
   joined-transaction store without a commit point is refused"): the
   reference would append without ever committing.
 - **Benchmarks** against the reference, in `bench/RESULTS.md`.

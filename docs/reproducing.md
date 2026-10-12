@@ -168,8 +168,12 @@ It runs, in order, and stops at the first failing step:
     upstream test count it cites ("all 11 `test_sqlite_history.py` tests (14
     cases)") equal to what pytest collects at the pinned upstream commits, as
     recorded in `docs/upstream-test-counts.json` (`scripts/upstream-test-counts
-    --write` recollects it after a submodule moves). It warns (`STALE
-    evidence`) about components whose cited results are stale.
+    --write` recollects it after a submodule moves). No document states how
+    many Haskell examples a suite has (`scripts/lint-example-counts`): such a
+    number goes stale with the next test. `cabal test` prints each suite's
+    count, and CI's `ci` job prints every suite's and records it in the
+    run's `test-ledger` artifact. It warns (`STALE evidence`) about
+    components whose cited results are stale.
 15. `packages/petrus-engine/scripts/parity_check.py`: the runtime test
     ledgers account for every in-scope upstream test.
 

@@ -23,7 +23,7 @@ tables, the method and the commands.
 ## How to check
 
 ```bash
-cabal test petrus-viewer-server                               # 114 examples
+cabal test petrus-viewer-server                               # the hspec suite
 node packages/petrus-viewer-server/upstream-tests/run.mjs     # upstream suites
 node packages/petrus-viewer-server/bench/run.mjs --reps 15    # benchmarks
 ```
@@ -101,7 +101,7 @@ Each ratio compares the best Haskell server with the best Node server.
 
 **Evidence:**
 
-- `test/CliSpec.hs` (10 examples).
+- `test/CliSpec.hs`.
 - Upstream `cli` (5/5).
 - Upstream `playwright` (4/4): the upstream browser suite against
   `petrus`.
@@ -161,8 +161,7 @@ Per call, `petrus-mcp` uses about a third of Node's CPU time.
 
 **Evidence:**
 
-- `test/RelaySpec.hs` and `test/ProtocolSpec.hs` (31 examples;
-  `ProtocolSpec` ports 18 of the 19 upstream protocol cases, all but
+- `test/RelaySpec.hs` and `test/ProtocolSpec.hs` (`ProtocolSpec` ports 18 of the 19 upstream protocol cases, all but
   `selectedEdgeToRef`, a browser-side helper).
 - Upstream `relay` (5/5), `protocol` (19/19: the upstream protocol tests,
   verbatim, against the Haskell parser) and `differential` (4/4).
@@ -192,7 +191,7 @@ log on, `petrus` is 1.35x the Vite relay that `bin/petrus.mjs` runs
 
 **Evidence:**
 
-- `test/CollabSpec.hs` (6 examples).
+- `test/CollabSpec.hs`.
 - Upstream `collab` (6/6).
 - `wire` (`ws-wire.test.mjs`, 2/2): every byte against `server/collab.mjs`.
 

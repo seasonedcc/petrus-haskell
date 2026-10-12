@@ -31,39 +31,37 @@ the converter half of `tests/unit/readiness/test_payloads.py`.
 
 - **Upstream counts:** a "function" is a `test_*` definition. A "case" is a
   collected test after `pytest.mark.parametrize`.
-- **Haskell examples:** these are the hspec examples in the named spec file.
+- **Haskell spec:** the hspec module that ports the upstream file.
 - **Harness:** the upstream test harness, `harness.py`, is ported as
   `test/Harness.hs`. Its fake world, gate activities, spawn, drive and pump
   helpers are all there.
 
-| Upstream file | Functions | Cases | Haskell spec | Examples | Parametrization |
-| --- | ---: | ---: | --- | ---: | --- |
-| `test_startup.py` | 5 | 7 | `StartupSpec` | 7 | Two functions run with retryable and with unknown failures. |
-| `test_lifecycle_loop.py` | 16 | 16 | `LifecycleSpec` | 16 | none |
-| `test_ci_loop.py` | 21 | 21 | `CiSpec` | 21 | none |
-| `test_escalation_loop.py` | 23 | 23 | `EscalationSpec` | 23 | none |
-| `test_review_loop.py` | 33 | 36 | `ReviewSpec` | 36 | The seed-subject refusal runs over 4 subjects. |
-| `test_mutation_loop.py` | 32 | 32 | `MutationSpec` | 32 | none |
-| `test_conversation_loop.py` | 21 | 21 | `ConversationSpec` | 21 | none |
-| `test_dashboard_loop.py` | 16 | 17 | `DashboardSpec` | 17 | Dormant recovery runs as retryable/blocked and as unknown/faulted. |
-| `test_reminders_loop.py` | 20 | 20 | `RemindersSpec` | 20 | The mail-ordering tests loop over both delivery orders inside one case, as upstream does. |
-| `test_readiness_loop.py` | 38 | 38 | `ReadinessSpec` | 38 | none |
-| `test_board.py` | 22 | 22 | `BoardSpec` | 22 | none |
-| `test_gating.py` | 3 | 5 | `GatingSpec` | 5 | The expired-claim scenario runs over the 3 publication gates. It uses the JSONL history store and the SQLite Local dispatch, as upstream does. |
-| `test_inline_recovery.py` | 9 | 35 | `InlineRecoverySpec` | 35 | Five convergence cases, plus 6 + 20 + 3 identity-contract cases. See the note below. |
-| `test_payloads.py` (converter tests) | 8 of 10 | 9 of 12 | `PayloadsSpec` | 10 | Coercion runs over 2 inputs. One more example covers a refusal the reference raises but never tests. Two tests need no converter: the field partition and the concern projection. They are ported only in hamsterdan-contracts' `CodecSpec`. |
-| **Total** | **267** | **302** | | **303** | |
+| Upstream file | Functions | Cases | Haskell spec | Parametrization |
+| --- | ---: | ---: | --- | --- |
+| `test_startup.py` | 5 | 7 | `StartupSpec` | Two functions run with retryable and with unknown failures. |
+| `test_lifecycle_loop.py` | 16 | 16 | `LifecycleSpec` | none |
+| `test_ci_loop.py` | 21 | 21 | `CiSpec` | none |
+| `test_escalation_loop.py` | 23 | 23 | `EscalationSpec` | none |
+| `test_review_loop.py` | 33 | 36 | `ReviewSpec` | The seed-subject refusal runs over 4 subjects. |
+| `test_mutation_loop.py` | 32 | 32 | `MutationSpec` | none |
+| `test_conversation_loop.py` | 21 | 21 | `ConversationSpec` | none |
+| `test_dashboard_loop.py` | 16 | 17 | `DashboardSpec` | Dormant recovery runs as retryable/blocked and as unknown/faulted. |
+| `test_reminders_loop.py` | 20 | 20 | `RemindersSpec` | The mail-ordering tests loop over both delivery orders inside one case, as upstream does. |
+| `test_readiness_loop.py` | 38 | 38 | `ReadinessSpec` | none |
+| `test_board.py` | 22 | 22 | `BoardSpec` | none |
+| `test_gating.py` | 3 | 5 | `GatingSpec` | The expired-claim scenario runs over the 3 publication gates. It uses the JSONL history store and the SQLite Local dispatch, as upstream does. |
+| `test_inline_recovery.py` | 9 | 35 | `InlineRecoverySpec` | Five convergence cases, plus 6 + 20 + 3 identity-contract cases. See the note below. |
+| `test_payloads.py` (converter tests) | 8 of 10 | 9 of 12 | `PayloadsSpec` | Coercion runs over 2 inputs. One more example covers a refusal the reference raises but never tests. Two tests need no converter: the field partition and the concern projection. They are ported only in hamsterdan-contracts' `CodecSpec`. |
+| **Total** | **267** | **302** | | |
 
 ### Corpus and gate suites (no upstream counterpart)
 
-| Spec | Examples | What it checks |
-| --- | ---: | --- |
-| `TopologySpec` | 11 | The fingerprint gate: bytes, sha256, size, gate list and handler binding. It also checks the seed-marking corpus, the subject refusals and the 900-byte subject bound. |
-| `FoldCorpusSpec` | 18 | Every row of `folds.jsonl`, grouped by loop and by call kind (folds, gate handlers). |
-| `BoardCorpusSpec` | 3 | Every row of `board.jsonl`, for both `render_board` and `gate_facts`, and that refusals are covered. |
-| `IncarnationSpec` | 4 | Incarnation fencing of the readiness snapshot, as properties: a fact from a stale incarnation never changes the snapshot, and a current or global one applies. |
-
-**Suite total:** 339 examples, 0 failures.
+| Spec | What it checks |
+| --- | --- |
+| `TopologySpec` | The fingerprint gate: bytes, sha256, size, gate list and handler binding. It also checks the seed-marking corpus, the subject refusals and the 900-byte subject bound. |
+| `FoldCorpusSpec` | Every row of `folds.jsonl`, grouped by loop and by call kind (folds, gate handlers). |
+| `BoardCorpusSpec` | Every row of `board.jsonl`, for both `render_board` and `gate_facts`, and that refusals are covered. |
+| `IncarnationSpec` | Incarnation fencing of the readiness snapshot, as properties: a fact from a stale incarnation never changes the snapshot, and a current or global one applies. |
 
 ### Inline recovery and the host gates
 
@@ -83,8 +81,7 @@ assert the net-side contract:
 
 `hamsterdan-host` reruns the five cases against the real gates, with the
 reference's provider-ledger doubles, in
-[`../hamsterdan-host/test/InlineRecoverySpec.hs`](../hamsterdan-host/test/InlineRecoverySpec.hs)
-(5 examples, 0 failures).
+[`../hamsterdan-host/test/InlineRecoverySpec.hs`](../hamsterdan-host/test/InlineRecoverySpec.hs).
 
 ## Benchmarks
 

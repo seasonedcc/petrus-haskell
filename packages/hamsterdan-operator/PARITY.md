@@ -41,14 +41,14 @@ inspection, and `Hamsterdan.GitHub.Config` for the launcher's child).
 - **Examples:** hspec examples. A parametrized test is one `describe`
   named after the test, with one example per parameter.
 
-| Upstream file | Functions | Cases | Haskell spec | Examples |
-| --- | ---: | ---: | --- | ---: |
-| `tests/unit/test_operator.py` | 32 | 57 | `OperatorSpec` | 57 |
-| `tests/unit/host/test_publication_qualification.py` | 26 | 52 | `PublicationQualificationSpec` (46), `TypeGuaranteeSpec` (6 cases, 9 examples) | 55 |
-| `tests/unit/host/test_secret_launch.py` | 5 | 10 | `SecretLaunchSpec` | 10 |
-| `tests/integration/host/test_qualification_setup_local.py` | 7 | 7 | `QualificationSetupLocalSpec` | 7 |
-| `deployment/tests/test_container_contract.py` | 4 | 4 | `ContainerSpec` | 4 |
-| **Total ported** | **74** | **130** | | **133** |
+| Upstream file | Functions | Cases | Haskell spec |
+| --- | ---: | ---: | --- |
+| `tests/unit/test_operator.py` | 32 | 57 | `OperatorSpec` |
+| `tests/unit/host/test_publication_qualification.py` | 26 | 52 | `PublicationQualificationSpec` (46 cases), `TypeGuaranteeSpec` (6 cases) |
+| `tests/unit/host/test_secret_launch.py` | 5 | 10 | `SecretLaunchSpec` |
+| `tests/integration/host/test_qualification_setup_local.py` | 7 | 7 | `QualificationSetupLocalSpec` |
+| `deployment/tests/test_container_contract.py` | 4 | 4 | `ContainerSpec` |
+| **Total ported** | **74** | **130** | |
 
 Each test keeps its upstream name. The fixtures are ported in
 `test/Support.hs` (the reference's `FakeRunner`, `completed()` and Python
@@ -108,7 +108,7 @@ binary).
 
 ## Suites with no upstream counterpart
 
-Besides the 133 ported examples, the suite has `DifferentialSpec` (below) and
+Besides the ported examples, the suite has `DifferentialSpec` (below) and
 `ContainerSpec`'s shim and Containerfile checks. The six-tree `shutil.rmtree`
 comparison moved to petrus-posix's suite with the walk itself.
 

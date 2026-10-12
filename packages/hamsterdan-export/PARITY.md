@@ -29,9 +29,9 @@ The package reuses:
 
 ## Upstream tests
 
-| Upstream file | Functions | Cases | Haskell spec | Examples |
-| --- | ---: | ---: | --- | ---: |
-| `tests/unit/host/test_export.py` | 38 | 41 | `ExportSpec` | 41 |
+| Upstream file | Functions | Cases | Haskell spec |
+| --- | ---: | ---: | --- |
+| `tests/unit/host/test_export.py` | 38 | 41 | `ExportSpec` |
 
 Each upstream class is an hspec `describe` and each test keeps its name.
 The parametrized `test_an_absent_store_is_named_in_the_readme` keeps its
