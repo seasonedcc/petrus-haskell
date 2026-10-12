@@ -7,7 +7,7 @@
 module Main (main) where
 
 import Control.Concurrent (threadDelay)
-import Control.Exception (bracket)
+import Control.Exception (bracket, finally)
 import Control.Monad (forM, forM_, void, when)
 import Data.IORef
 import Data.List (sort)
@@ -40,6 +40,7 @@ import Petrus.Motus.Worker
 import System.Directory (createDirectory, doesFileExist, getTemporaryDirectory, removeDirectoryRecursive, removeFile)
 import System.FilePath ((</>))
 import System.IO (hClose, openTempFile)
+import Petrus.TestSupport.BenchTwin (twin)
 import Test.Tasty (localOption)
 import Test.Tasty.Bench
 import Text.Printf (printf)
@@ -233,15 +234,25 @@ main = do
   putStrLn ("sizes: worker " <> show workerSizes)
   -- Sleep-bound rows: tasty-bench's doubling estimator does not settle on
   -- timer-driven work, so these are medians of 10 runs after a warm-up,
-  -- exactly as python_bench.py measures.
-  forM_ [1, 8, 64] $ \c -> medianTimed ("async-worker/sleep-1ms-200-c" <> show c) 10 (asyncMemory c 1000 200)
+  -- exactly as python_bench.py measures. They run after the tasty rows, as
+  -- the twin runs them after its Local rows: seconds of 1 ms sleeps leave
+  -- the machine idle-clocked, and a short row timed right after them (the
+  -- twin-protocol open-fresh, 21 calls) measured that, at 2.5 times its
+  -- figure, instead of the code.
+  let sleepRows = forM_ [1, 8, 64] $ \c -> medianTimed ("async-worker/sleep-1ms-200-c" <> show c) 10 (asyncMemory c 1000 200)
   -- Wall-clock time for every benchmark, as the Python twins measure it
   -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
   -- time spent waiting on the kernel, servers and child processes.
-  defaultMain . map (localOption WallTime) $
+  flip finally (sleepRows >> removeDirectoryRecursive dir) . defaultMain . map (localOption WallTime) $
     [ bgroup
         "local"
-        [ bench "open-fresh" $ whnfIO $ openFresh path
+        [ -- Schema initialization is fsync-bound (eight syncs per open on
+          -- both sides, strace-counted), and tasty-bench's mean takes in
+          -- every slow file-system period that the twin's median of 20
+          -- leaves out. So this row is timed as python_bench.py times it
+          -- (Petrus.TestSupport.BenchTwin): one warm-up call, then the
+          -- median of 20 single calls.
+          twin "local.open-fresh" (Just 20) 1 (openFresh path)
         , bench "roundtrip-1" $ whnfIO $ roundTrip False 1 path
         , bench "roundtrip-50-db-clock" $ whnfIO $ roundTrip False roundTrips path
         , bench "roundtrip-50-provider-clock" $ whnfIO $ roundTrip True roundTrips path
@@ -258,4 +269,3 @@ main = do
         [ bench ("memory-1000-c" <> show c) (whnfIO (asyncMemory c 0 1000)) | c <- [1, 8, 64]
         ]
     ]
-  removeDirectoryRecursive dir

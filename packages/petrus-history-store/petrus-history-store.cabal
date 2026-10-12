@@ -99,6 +99,7 @@ benchmark petrus-history-store-bench
                   , petrus-history-store
                   , petrus-impetus
                   , petrus-json
+                  , petrus-test-support
                   , tasty-bench >=0.3.2
                   , tasty
                   , text

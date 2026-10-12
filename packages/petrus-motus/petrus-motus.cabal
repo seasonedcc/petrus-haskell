@@ -103,6 +103,7 @@ benchmark petrus-motus-bench
                   , petrus-json
                   , containers
                   , petrus-motus
+                  , petrus-test-support
                   , tasty-bench >=0.3.2
                   , tasty
                   , text

@@ -29,6 +29,7 @@ import Petrus.Json (Json (..))
 import System.Directory (createDirectory, doesFileExist, getTemporaryDirectory, removeDirectoryRecursive, removeFile)
 import System.FilePath ((</>))
 import System.IO (hClose, openTempFile)
+import Petrus.TestSupport.BenchTwin (twin)
 import Test.Tasty (localOption)
 import Test.Tasty.Bench
 
@@ -135,7 +136,13 @@ main = do
     , bgroup
         "sqlite"
         [ bench "append-one-batch" $ whnfIO $ sqliteAppend [history]
-        , bench "append-per-record" $ whnfIO $ sqliteAppend (map pure firstRecords)
+        , -- 2 000 commits, each an fsync: on both sides the same system
+          -- calls (strace-counted), with the Haskell side spending less CPU
+          -- around them. tasty-bench's mean takes in every slow file-system
+          -- period that the twin's median of 3 leaves out, so this row is
+          -- timed as python_bench.py times it (Petrus.TestSupport.BenchTwin):
+          -- one warm-up run, then the median of 3 runs.
+          twin "sqlite.append-per-record" (Just 3) 1 (sqliteAppend (map pure firstRecords))
         , bench "append-batches-of-8" $ whnfIO $ sqliteAppend (batchesOf 8 firstRecords)
         , bench "load" $ whnfIO $ withSqliteHistoryStore existingSqlite "bench" (\s -> s.history.count)
         , bench "resume" $ whnfIO $ withSqliteHistoryStore existingSqlite "bench" $ \s -> do
