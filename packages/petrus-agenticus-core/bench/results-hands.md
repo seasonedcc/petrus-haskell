@@ -97,6 +97,29 @@ This M4 has 4 performance and 6 efficiency cores, so `-N8` schedules onto
 efficiency cores.  Eight callers each with a *private* gateway took 65 ms,
 which is the floor for this harness at `-N8`.
 
+### The compare-and-swap, removed (2026-10-12)
+
+Change 2 above was undone: the ledger and the grant state are updated with
+`atomicModifyIORef'` again, since the rows stay well ahead of the reference
+without the hand-written `casMutVar#` loop. Four interleaved repetitions of
+each binary on the Apple M4, at a load average of 4–12 (other agents'
+builds), medians of the tasty-bench means:
+
+| Row | `-N1`, CAS | `-N1`, `atomicModifyIORef'` | `-N8`, CAS | `-N8`, `atomicModifyIORef'` | Python |
+|---|---:|---:|---:|---:|---:|
+| `gateway-read-10k-1-caller` | 38.1 ms | 35.7 ms | 28.1 ms | 28.3 ms | 100 ms |
+| `gateway-read-10k-8-callers` | 41.2 ms | 40.5 ms | 15.4 ms | 75.6 ms | 102 ms |
+| `gateway-write-10k-1-caller` | 77.6 ms | 73.8 ms | 66.8 ms | 68.0 ms | 130 ms |
+| `gateway-write-10k-8-callers` | 83.6 ms | 78.5 ms | 23.8 ms | 59.0 ms | 131 ms |
+
+(Python: the "Current figures" table.) With the default RTS, which the
+benchmarks and `scripts/bench-gate` use, the two are level. At `-N8`, with
+eight callers contending for one ledger, the compare-and-swap is 2.5–5×
+faster, but `atomicModifyIORef'` still leads the reference by 1.35× (read)
+and 2.2× (write), so by this repository's rule the plain update stays.
+Should a deployment run the gateway at `-N8` and need that margin back, the
+compare-and-swap is the change to make, with this table as its figure.
+
 ## Environment
 
 - Apple M4 (4 performance + 6 efficiency cores, 10 total), macOS 26.3 (Darwin 25.3.0)

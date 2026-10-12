@@ -106,7 +106,10 @@ inMemoryHistoryStore = do
 -- it is published: read, compute, compare-and-swap, retried if another
 -- thread swapped in between. Unlike 'atomicModifyIORef'_' it allocates no
 -- thunk and no result pair, which is most of the cost of a one-record
--- append.
+-- append: petrus-history-store's @store.in-memory-append@ row took 295 µs
+-- this way and 520 µs with 'atomicModifyIORef'', behind the reference's
+-- 422 µs (Apple M4, 2026-10-12, five interleaved repetitions; see that
+-- package's bench/RESULTS.md).
 modifyStrict :: IORef a -> (a -> a) -> IO ()
 modifyStrict (IORef (STRef var)) f = IO loop
   where

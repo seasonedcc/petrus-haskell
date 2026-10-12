@@ -45,7 +45,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract (ToolMethod (..), maxArgvPartChars, maxArgvParts, maxPathChars)
-import Petrus.Agenticus.Internal.Atomic (modifyStrict)
 import Petrus.Agenticus.Internal.Validate
 
 -- | One immutable, finite, deadline-bounded authority for one attachment
@@ -208,7 +207,7 @@ currentGrant ledger = (.current) <$> readIORef ledger.state
 -- | Issue the next grant epoch, replacing any current grant.  An invalid
 -- spec leaves the ledger unchanged.
 tryOpenGrant :: GrantLedger -> GrantSpec -> IO (Either AgenticusError CapabilityGrant)
-tryOpenGrant ledger spec = modifyStrict ledger.state $ \s ->
+tryOpenGrant ledger spec = atomicModifyIORef' ledger.state $ \s ->
   case build (s.lastEpoch + 1) of
     Left e -> (s, Left e)
     Right grant -> (LedgerState grant.grantEpoch (Just grant) 0, Right grant)
@@ -231,14 +230,14 @@ openGrant ledger spec = tryOpenGrant ledger spec >>= either throwIO pure
 
 -- | Retire the current grant without opening a successor.
 closeGrant :: GrantLedger -> IO ()
-closeGrant ledger = modifyStrict ledger.state $ \s -> (s {current = Nothing, consumed = 0}, ())
+closeGrant ledger = atomicModifyIORef' ledger.state $ \s -> (s {current = Nothing, consumed = 0}, ())
 
 -- | Spend one call of the exact current grant or refuse fail-closed
 -- (@GrantLedgerError@ for a stale epoch, @GrantBudgetExhausted@ for a spent
 -- budget).  The gateway consumes only when a call is admitted past its
 -- prechecks, so rejected requests never spend grant budget.
 tryConsumeGrant :: GrantLedger -> Integer -> IO (Either AgenticusError CapabilityGrant)
-tryConsumeGrant ledger epoch = modifyStrict ledger.state $ \s -> case s.current of
+tryConsumeGrant ledger epoch = atomicModifyIORef' ledger.state $ \s -> case s.current of
   Just grant
     | grant.grantEpoch == epoch ->
         if s.consumed >= grant.maxCalls

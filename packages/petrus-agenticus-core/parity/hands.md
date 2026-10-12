@@ -7,7 +7,7 @@ and their tests under `tests/petrus/agenticus/hands/`.
 |---|---|
 | `hands/contract.py` | `Petrus.Agenticus.Hands.Contract` |
 | `hands/grants.py` | `Petrus.Agenticus.Hands.Grants` |
-| `hands/gateway.py` | `Petrus.Agenticus.Hands.Gateway` (+ `Petrus.Agenticus.Internal.Atomic`) |
+| `hands/gateway.py` | `Petrus.Agenticus.Hands.Gateway` |
 | `hands/conformance.py` | `Petrus.Agenticus.Hands.Conformance` |
 | `hands/workspace.py` | ported in `petrus-agenticus` as `Petrus.Agenticus.Hands.Workspace` (it spawns processes and Docker, so it is not core) |
 

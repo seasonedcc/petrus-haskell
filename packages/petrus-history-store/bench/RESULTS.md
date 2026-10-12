@@ -134,6 +134,27 @@ Three changes since the previous figures (at `81bbdc5`):
 | `store.in-memory-iterate` | 22.9 µs | 210 µs | 9.16× | 9.05× | 23 µs, 22.9 µs, 22.9 µs, 23 µs, 22.9 µs | 212 µs, 208 µs, 210 µs, 210 µs, 207 µs |
 | `store.in-memory-records-list` | 35.2 µs | — | — | — | 36.2 µs, 35.6 µs, 35 µs, 35.2 µs, 34.4 µs |  |
 
+### Since these figures (2026-10-12, afternoon)
+
+Two low-level changes were measured again against the plain code, each
+binary run five times, interleaved and alternating which goes first
+(`-p append --stdev 5 +RTS -M2G`), on the Apple M4 at a load average of
+4.4–8.2 (other agents' builds). Medians of the tasty-bench means:
+
+- **The direct text bind.** With direct-sqlite's `bind` instead,
+  `sqlite.append-one-batch` read 77.4 ms against 76.6 ms (per repetition
+  67.3, 72.8, 81.3, 77.4, 83.7 ms against 71.1, 87.8, 79.0, 76.6, 73.7 ms)
+  and `sqlite.append-batches-of-8` 31.9 ms against 31.5 ms: within this
+  machine's noise (the JSONL append rows, which neither change touches,
+  moved by 6–10% between the two binaries in the same runs). The bind
+  stays for petrus-sqlite's gated `tx.immediate-insert-100` row (see that
+  package's bench/RESULTS.md).
+- **The compare-and-swap append stays.** With `atomicModifyIORef'` in
+  place of `Petrus.Impetus.HistoryStore`'s `casMutVar#` loop,
+  `store.in-memory-append` took 520 µs (519.7, 518.0, 539.0, 545.7,
+  478.7 µs) against 295 µs (266.1, 295.0, 332.7, 314.3, 284.4 µs), behind
+  the reference's 422 µs, so the loop is kept, with this figure beside it.
+
 ## Results
 
 <!-- parity: rows below 1.0× belong to "History stores: memory", "History stores: SQLite, and the SQLite writer fence" -->

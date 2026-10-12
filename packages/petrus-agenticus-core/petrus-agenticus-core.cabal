@@ -44,7 +44,6 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Agenticus.Error
                     Petrus.Agenticus.Internal.Validate
-                    Petrus.Agenticus.Internal.Atomic
                     Petrus.Agenticus.Internal.Exception
                     Petrus.Agenticus.Catalog.Descriptor
                     Petrus.Agenticus.Catalog.Result
