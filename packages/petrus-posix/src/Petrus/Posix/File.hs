@@ -22,6 +22,7 @@ module Petrus.Posix.File
     fsyncFd
   , fsyncPath
   , writeAll
+  , writeAllBuffer
 
     -- * Atomic replace
   , AtomicWrite (..)
@@ -42,18 +43,17 @@ import Control.Exception (bracket, onException, throwIO, try)
 import Control.Monad (unless, when)
 import Data.Bits (clearBit, setBit)
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
-import Data.ByteString.Unsafe (unsafeDrop)
+import Data.ByteString.Unsafe (unsafeUseAsCStringLen)
 import Data.Word (Word8)
 import Foreign.C.Types (CInt (..))
 import Foreign.C.Error (throwErrnoIfMinus1Retry_)
+import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import Numeric (showHex)
 import Petrus.Posix.At (Follow (..), isDirectory, statAt)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 import System.IO.Error (catchIOError, isAlreadyExistsError, isDoesNotExistError)
 import System.Posix.Directory (createDirectory)
-import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, openFd)
-import System.Posix.IO.ByteString (fdWrite)
+import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, fdWriteBuf, openFd)
 import System.Posix.Types (Fd (..), FileMode)
 import System.Posix.Files qualified
 import System.Random (randomRIO)
@@ -74,11 +74,14 @@ fsyncPath path =
 
 -- | Write the whole buffer, looping over short writes (@EINTR@ is retried).
 writeAll :: Fd -> ByteString -> IO ()
-writeAll fd = go
-  where
-    go bytes = unless (BS.null bytes) $ do
-      written <- fdWrite fd bytes
-      go (unsafeDrop (fromIntegral written) bytes)
+writeAll fd bytes = unsafeUseAsCStringLen bytes $ \(pointer, size) -> writeAllBuffer fd (castPtr pointer) size
+
+-- | 'writeAll' from memory the caller holds, such as an erasable buffer
+-- whose secret must not be copied into a 'ByteString'.
+writeAllBuffer :: Fd -> Ptr Word8 -> Int -> IO ()
+writeAllBuffer fd pointer remaining = when (remaining > 0) $ do
+  written <- fromIntegral <$> fdWriteBuf fd pointer (fromIntegral remaining)
+  writeAllBuffer fd (pointer `plusPtr` written) (remaining - written)
 
 -- | How the temporary file is named, given the destination's file name.
 newtype TempNaming = TempNaming (FilePath -> IO FilePath)

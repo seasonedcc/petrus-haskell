@@ -102,9 +102,10 @@ requests no conforming peer can produce.
    wire.
 9. **The libzmq binding is this package's own.** The reference uses pyzmq.
    Here a thin `capi` binding (`Petrus.Motus.Transport.ZeroMQ.Native`) keeps
-   every C call non-blocking and waits through the GHC IO manager; README.md
-   explains why. The socket options, the high-water marks, `IMMEDIATE`,
-   linger 0 and the send timeout are the reference's. So are the
+   every C call non-blocking and waits with an interruptible `zmq_poll` of
+   at most 50 ms at a time, as pyzmq's blocking calls wait inside libzmq;
+   README.md explains why. The socket options, the high-water marks,
+   `IMMEDIATE`, linger 0 and the send timeout are the reference's. So are the
    per-request DEALER sockets and the ROUTER's `ROUTER_MANDATORY`.
 
    The ZAP handler that enforces the CURVE allowlist is this package's

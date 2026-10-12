@@ -15,5 +15,8 @@ long petrus_page_size(void);
 void *petrus_fdopendir(int fd);
 const char *petrus_readdir(void *dir);
 int petrus_closedir(void *dir);
+int petrus_wait_readable(int fd, int timeout_ms);
+const int *petrus_gai_codes(void);
+int petrus_rmtree(const char *path);
 
 #endif

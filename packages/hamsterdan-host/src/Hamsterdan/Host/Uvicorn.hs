@@ -53,7 +53,6 @@ module Hamsterdan.Host.Uvicorn
   ) where
 
 import Control.Exception (IOException, bracketOnError, try)
-import Control.Monad (forM)
 import Data.ByteString qualified as BS
 import Data.List (find)
 import Data.Maybe (fromMaybe)
@@ -64,8 +63,6 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Vault.Lazy qualified as Vault
 import Foreign.C.Error (Errno (..), eADDRNOTAVAIL)
-import Foreign.C.String (CString, peekCString)
-import Foreign.C.Types (CInt (..))
 import GHC.IO.Exception (IOException (..))
 import Hamsterdan.Host.Uvicorn.IpAddress (inNetwork, ipAddress, ipNetwork)
 import Hamsterdan.Host.Uvicorn.IpAddress qualified as Ip
@@ -74,6 +71,7 @@ import Network.Socket
 import Network.Wai (Middleware, Request, httpVersion, rawPathInfo, rawQueryString, remoteHost, requestHeaders, requestMethod, responseStatus, vault)
 import Hamsterdan.Python.Url qualified as Url
 import Petrus.Json.Python (decodeUtf8Replace, pythonInt, pythonStrRepr, pythonStrip)
+import Petrus.Posix.Netdb (gaiErrorCode)
 import System.IO (Handle, hFlush)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -446,19 +444,14 @@ bindServer host port = do
                 "[Errno " <> tshow code <> "] error while attempting to bind on address " <> address <> ": " <> message
 
 -- | @socket.gaierror@'s @str()@: @[Errno code] message@, the code being
--- the one whose @gai_strerror@ is the failure's message.
+-- the @EAI_*@ one whose @gai_strerror@ is the failure's message.
 gaiFailure :: IOException -> IO BindFailure
 gaiFailure e = do
   let message = ioe_description e
-  codes <- forM ([1 .. 20] <> [-1, -2 .. -20] <> [-100, -101 .. -106]) $ \code -> do
-    text <- gaiStrerror code >>= peekCString
-    pure (code, text)
-  pure $ case find ((== message) . snd) codes of
-    Just (code, text) -> BindFailure ("[Errno " <> tshow code <> "] " <> T.pack text)
-    Nothing -> BindFailure (T.pack message)
-
-foreign import ccall unsafe "netdb.h gai_strerror"
-  gaiStrerror :: CInt -> IO CString
+  code <- gaiErrorCode message
+  pure . BindFailure $ case code of
+    Just number -> "[Errno " <> tshow number <> "] " <> T.pack message
+    Nothing -> T.pack message
 
 -- | The @repr@ of a socket address as Python gives it: @('host', port)@,
 -- or @('host', port, flowinfo, scope_id)@ for IPv6.

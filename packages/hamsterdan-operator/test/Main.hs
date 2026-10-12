@@ -10,7 +10,6 @@ import Fakes qualified
 import OperatorSpec qualified
 import PublicationQualificationSpec qualified
 import QualificationSetupLocalSpec qualified
-import RmtreeSpec qualified
 import SecretLaunchSpec qualified
 import System.Environment (getArgs)
 import Test.Hspec
@@ -26,6 +25,5 @@ main = do
     TypeGuaranteeSpec.spec
     SecretLaunchSpec.spec
     QualificationSetupLocalSpec.spec
-    RmtreeSpec.spec
     DifferentialSpec.spec
     ContainerSpec.spec

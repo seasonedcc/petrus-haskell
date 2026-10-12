@@ -35,7 +35,9 @@ library
                     Petrus.Posix.At
                     Petrus.Posix.File
                     Petrus.Posix.Flock
+                    Petrus.Posix.Netdb
                     Petrus.Posix.Path
+                    Petrus.Posix.Poll
                     Petrus.Posix.Resource
   other-modules:    Petrus.Posix.Internal
   c-sources:        cbits/petrus_posix.c

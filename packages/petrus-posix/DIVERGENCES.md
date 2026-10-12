@@ -3,7 +3,8 @@
 Intentional differences from the CPython 3.14 calls this package mirrors
 (`fcntl.flock`, `os.open`/`os.*` with `dir_fd`, `pathlib.Path.resolve` and
 `expanduser`, `os.path.realpath`, `tempfile`/`uuid` naming, `os.fsync`,
-`resource.getrusage`, `os.sysconf`). Everything not listed here is meant to be
+`resource.getrusage`, `os.sysconf`, `os.confstr("CS_PATH")`, and
+`shutil.rmtree` without `onexc`). Everything not listed here is meant to be
 identical; the test suite checks the observable behavior against Python
 (including cross-process `flock` exclusion in both directions).
 

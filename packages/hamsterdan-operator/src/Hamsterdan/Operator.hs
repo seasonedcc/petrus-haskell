@@ -119,11 +119,13 @@ import Hamsterdan.Python.Object qualified as PyV
 import Hamsterdan.Python.Hashlib (sha256HexText)
 import Hamsterdan.Python.Text (splitlines, utf8Encode)
 import Hamsterdan.Host.PublicationQualification
-import Hamsterdan.Operator.Posix (Stat (..), effectiveUid, isDirectory, isRegular, normpath, pathParent, permissionBits)
+import Hamsterdan.Operator.Posix (effectiveUid, normpath, pathParent)
 import Hamsterdan.Operator.Posix qualified as Posix
 import Hamsterdan.Operator.Python
 import Petrus.Json.Python (fsEncode, pythonStrListRepr, utf8BackslashReplace)
 import Petrus.Json.Wtf8 (fromCodePoints)
+import Petrus.Posix.At (FileStat (..), Follow (..), isDirectory, isRegularFile, permissionBits)
+import Petrus.Posix.At qualified as At
 import Hamsterdan.Python.Exception (ioException, pythonError)
 import System.Directory (canonicalizePath, doesFileExist, getTemporaryDirectory)
 import System.Environment (getEnvironment)
@@ -456,21 +458,21 @@ consumePrivateFile :: FilePath -> IO ByteString
 consumePrivateFile path = do
   outcome <- try do
     bracket (openFd path ReadOnly defaultFileFlags {nofollow = True, cloexec = True}) closeFd \fd -> do
-      metadata <- Posix.fdStat fd
-      entry <- Posix.lstat path
+      metadata <- At.fdStat fd
+      entry <- At.statAt Nothing path NoFollowLinks
       euid <- effectiveUid
       when
-        ( not (isRegular metadata)
+        ( not (isRegularFile metadata)
             || permissionBits metadata /= 0o600
-            || metadata.uid /= euid
-            || metadata.nlink /= 1
-            || (metadata.dev, metadata.ino) /= (entry.dev, entry.ino)
-            || metadata.size < 1
-            || metadata.size > fromIntegral privateInputLimit
+            || metadata.statUid /= euid
+            || metadata.statLinkCount /= 1
+            || (metadata.statDevice, metadata.statInode) /= (entry.statDevice, entry.statInode)
+            || metadata.statSize < 1
+            || metadata.statSize > fromIntegral privateInputLimit
         )
         unavailable
       value <- fdRead fd (fromIntegral (privateInputLimit + 1))
-      when (fromIntegral (BS.length value) /= metadata.size) unavailable
+      when (fromIntegral (BS.length value) /= metadata.statSize) unavailable
       PosixFiles.removeLink path
       stillThere <- PosixFiles.fileExist path
       when stillThere unavailable
@@ -543,7 +545,7 @@ qualificationSetup runner credentialFile targetFile spentPath = do
         attempt 2
         absentAfter path
       absentAfter path =
-        try (Posix.lstat path) >>= \case
+        try (At.statAt Nothing path NoFollowLinks) >>= \case
           Left (e :: IOException) -> pure (isDoesNotExistError e)
           Right _ -> pure False
       cleanup = do
@@ -557,7 +559,7 @@ qualificationSetup runner credentialFile targetFile spentPath = do
           Just directory -> do
             let attempt (0 :: Int) = pure ()
                 attempt n =
-                  try (Posix.rmtree directory) >>= \case
+                  try (At.rmtree directory) >>= \case
                     Right () -> attempt (n - 1)
                     Left (e :: IOException)
                       | isDoesNotExistError e -> pure ()
@@ -605,13 +607,13 @@ qualificationSetup runner credentialFile targetFile spentPath = do
                       gitExecutable <- T.pack <$> canonicalizePath gitPath
                       ghExecutable <- T.pack <$> canonicalizePath ghPath
                       let markerParent = pathParent marker
-                      parent <- Posix.lstat markerParent
+                      parent <- At.statAt Nothing markerParent NoFollowLinks
                       resolved <- canonicalizePath markerParent
                       euid <- effectiveUid
                       if resolved /= markerParent
                         || not (isDirectory parent)
                         || permissionBits parent /= 0o700
-                        || parent.uid /= euid
+                        || parent.statUid /= euid
                         then preparationFailure
                         else do
                           credential <- consumePrivateFile credentialPath
@@ -1831,4 +1833,5 @@ printOut :: OperatorEnvironment -> Text -> IO Bool
 printOut env text = case utf8Encode text of
   Right bytes -> True <$ BS.hPut env.output bytes
   Left failure -> False <$ emit env.errors (errorLine failure <> "\n")
+
 

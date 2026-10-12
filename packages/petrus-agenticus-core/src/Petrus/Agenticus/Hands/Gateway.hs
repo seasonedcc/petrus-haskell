@@ -65,7 +65,6 @@ import GHC.Clock (getMonotonicTime)
 import Petrus.Agenticus.Error
 import Petrus.Agenticus.Hands.Contract
 import Petrus.Agenticus.Hands.Grants
-import Petrus.Agenticus.Internal.Atomic (modifyStrict)
 import Petrus.Agenticus.Internal.Exception
 import Petrus.Agenticus.Internal.Validate
 import Petrus.Json (Json (..))
@@ -370,7 +369,7 @@ evidence :: HandsGateway -> IO [CallEvidence]
 evidence gw = toList . (.recent) <$> readIORef gw.stats
 
 count :: HandsGateway -> (GatewayCounters -> GatewayCounters) -> IO ()
-count gw f = modifyStrict gw.stats $ \s -> (s {counted = f s.counted}, ())
+count gw f = atomicModifyIORef' gw.stats $ \s -> (s {counted = f s.counted}, ())
 
 -- | Wait until no call is between its claim and its finalized result.
 -- 'True' when drained; 'False' when the timeout (seconds, measured on the
@@ -443,7 +442,7 @@ submit gw data' = do
 claim :: HandsGateway -> ToolRequest -> IO Claim
 claim gw request = do
   signal <- newEmptyMVar
-  decision <- mask_ $ modifyStrict gw.calls $ \current ->
+  decision <- mask_ $ atomicModifyIORef' gw.calls $ \current ->
     case Map.lookup request.callId current.ledger of
       Nothing
         | Map.size current.ledger >= gw.config.maxGatewayCalls -> (current, Settled LedgerFull)
@@ -463,7 +462,7 @@ claim gw request = do
 -- waiters, and wake 'drain' when nothing is left in flight.
 settle :: HandsGateway -> ToolRequest -> MVar () -> (Map Text Entry -> Map Text Entry) -> IO ()
 settle gw request signal update = do
-  left <- modifyStrict gw.calls $ \c -> case Map.lookup request.callId c.ledger of
+  left <- atomicModifyIORef' gw.calls $ \c -> case Map.lookup request.callId c.ledger of
     Just found
       | Pending own <- found.state
       , own == signal ->
@@ -668,7 +667,7 @@ finalizeData gw request fields =
       pure result
 
 record :: HandsGateway -> Text -> Text -> Maybe ToolMethod -> Bool -> Maybe RejectionCategory -> IO ()
-record gw call episode method' ok' category' = modifyStrict gw.stats $ \s ->
+record gw call episode method' ok' category' = atomicModifyIORef' gw.stats $ \s ->
   let next = s.lastSequence + 1
       entry = CallEvidence next call episode method' ok' category' (gatewayAttachmentEpoch gw)
       appended = s.recent |> entry

@@ -72,15 +72,16 @@ import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Word (Word64)
+import Data.Int (Int64)
 import Hamsterdan.Agents.Protocol (AgentCleanupCategory, AgentResultCategory)
 import Hamsterdan.Contracts.Codec (Contract (..), encode)
 import Hamsterdan.Contracts.Readiness (ChangeResult (..), RepairResult (..))
 import Hamsterdan.Python.Object (PV (..))
 import Hamsterdan.Host.GitPublish (GitPublishError (..), PublicationCategory, categoryName)
-import Hamsterdan.Operator.Posix (Stat (..), effectiveUid, isDirectory, isRegular, isSymlink, pathName, pathParent, permissionBits)
-import Hamsterdan.Operator.Posix qualified as Posix
+import Hamsterdan.Operator.Posix (effectiveUid, pathName, pathParent)
 import Petrus.Json (Json (..))
+import Petrus.Posix.At (FileStat (..), Follow (..), isDirectory, isRegularFile, isSymbolicLink, permissionBits)
+import Petrus.Posix.At qualified as At
 import System.IO.Error (isAlreadyExistsError)
 import System.Posix.Files (setFdMode)
 import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, openFd, openFdAt)
@@ -348,17 +349,17 @@ data OpenRequest
 data SetupFs = SetupFs
   { open :: Maybe Fd -> FilePath -> OpenRequest -> IO Fd
   -- ^ @os.open(path, flags, mode, dir_fd=...)@.
-  , fstat :: Fd -> IO Stat
-  , statAt :: Fd -> FilePath -> IO Stat
+  , fstat :: Fd -> IO FileStat
+  , statAt :: Fd -> FilePath -> IO FileStat
   -- ^ @os.stat(name, dir_fd=..., follow_symlinks=False)@.
-  , lstat :: FilePath -> IO Stat
+  , lstat :: FilePath -> IO FileStat
   , fchmod :: Fd -> IO ()
   -- ^ @os.fchmod(fd, 0o600)@.
   , write :: Fd -> ByteString -> IO Int
   , read :: Fd -> Int -> IO ByteString
   , fsync :: Fd -> IO ()
   , close :: Fd -> IO ()
-  , geteuid :: IO Word64
+  , geteuid :: IO Int64
   }
 
 -- | The real calls.
@@ -372,9 +373,9 @@ systemFs =
         OpenRead -> case dir of
           Nothing -> openFd path ReadOnly defaultFileFlags {nofollow = True, cloexec = True}
           Just _ -> openFdAt dir path ReadOnly defaultFileFlags {nofollow = True, cloexec = True}
-    , fstat = Posix.fdStat
-    , statAt = Posix.statAt
-    , lstat = Posix.lstat
+    , fstat = At.fdStat
+    , statAt = \fd name -> At.statAt (Just fd) name NoFollowLinks
+    , lstat = \path -> At.statAt Nothing path NoFollowLinks
     , fchmod = \fd -> setFdMode fd 0o600
     , write = \fd bytes -> fromIntegral <$> fdWrite fd bytes
     , read = \fd count -> fdRead fd (fromIntegral count)
@@ -425,7 +426,7 @@ spend subject
         (`finally` fs.close parentFd) do
           metadata <- fs.fstat parentFd
           euid <- fs.geteuid
-          if isSymlink metadata || not (isDirectory metadata) || permissionBits metadata /= 0o700 || metadata.uid /= euid
+          if isSymbolicLink metadata || not (isDirectory metadata) || permissionBits metadata /= 0o700 || metadata.statUid /= euid
             then pure (Just FenceUnavailable)
             else
               try (fs.open (Just parentFd) name CreateExclusive) >>= \case
@@ -438,7 +439,7 @@ spend subject
                   written <- (`finally` fs.close fd) do
                     fs.fchmod fd
                     marker <- fs.fstat fd
-                    if not (isRegular marker) || permissionBits marker /= 0o600 || marker.uid /= euid
+                    if not (isRegularFile marker) || permissionBits marker /= 0o600 || marker.statUid /= euid
                       then pure (Left FenceUnavailable)
                       else do
                         count <- fs.write fd setupMarker
@@ -448,10 +449,10 @@ spend subject
                             fs.fsync fd
                             entry <- fs.statAt parentFd name
                             pure
-                              if (entry.dev, entry.ino) /= (marker.dev, marker.ino)
-                                || not (isRegular entry)
+                              if (entry.statDevice, entry.statInode) /= (marker.statDevice, marker.statInode)
+                                || not (isRegularFile entry)
                                 || permissionBits entry /= 0o600
-                                || entry.uid /= euid
+                                || entry.statUid /= euid
                                 then Left FenceUnavailable
                                 else Right marker
                   case written of
@@ -461,10 +462,10 @@ spend subject
                       currentParent <- fs.lstat parent
                       currentMarker <- fs.lstat subject.spentPath
                       pure
-                        if (currentParent.dev, currentParent.ino) /= (metadata.dev, metadata.ino)
-                          || isSymlink currentParent
-                          || (currentMarker.dev, currentMarker.ino) /= (marker.dev, marker.ino)
-                          || isSymlink currentMarker
+                        if (currentParent.statDevice, currentParent.statInode) /= (metadata.statDevice, metadata.statInode)
+                          || isSymbolicLink currentParent
+                          || (currentMarker.statDevice, currentMarker.statInode) /= (marker.statDevice, marker.statInode)
+                          || isSymbolicLink currentMarker
                           then Just FenceUnavailable
                           else Nothing
   where
@@ -478,11 +479,11 @@ validSetupMarker fs parentFd name =
   either (\(_ :: IOError) -> False) id <$> try do
     euid <- fs.geteuid
     metadata <- fs.statAt parentFd name
-    if isSymlink metadata
-      || not (isRegular metadata)
+    if isSymbolicLink metadata
+      || not (isRegularFile metadata)
       || permissionBits metadata /= 0o600
-      || metadata.uid /= euid
-      || metadata.size /= fromIntegral (BS.length setupMarker)
+      || metadata.statUid /= euid
+      || metadata.statSize /= fromIntegral (BS.length setupMarker)
       then pure False
       else do
         fd <- fs.open (Just parentFd) name OpenRead
@@ -491,9 +492,9 @@ validSetupMarker fs parentFd name =
           value <- fs.read fd (BS.length setupMarker + 1)
           pure (current, value)
         pure
-          ( (current.dev, current.ino) == (metadata.dev, metadata.ino)
+          ( (current.statDevice, current.statInode) == (metadata.statDevice, metadata.statInode)
               && permissionBits current == 0o600
-              && current.uid == euid
+              && current.statUid == euid
               && value == setupMarker
           )
 

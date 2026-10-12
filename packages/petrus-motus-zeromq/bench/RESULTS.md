@@ -97,20 +97,56 @@ native asynchronous access by 1.60× and 2.01×, and the Local-backed rows by
 | `zeromq/memory/async-claim-empty-100-c1` | 19.6 ms | 31.3 ms | 1.60× | 1.59× | 19.7 ms, 19.4 ms, 19.6 ms | 31.3 ms, 31.4 ms, 31.3 ms |
 | `zeromq/memory/async-claim-empty-100-c8` | 10.9 ms | 22 ms | 2.01× | 1.99× | 11 ms, 10.8 ms, 10.9 ms | 21.9 ms, 22.1 ms, 22 ms |
 
-**The socket waits now poll in libzmq.** The threaded runtime (which the
-server and the bench use) waits for a socket with an interruptible
-`zmq_poll` on the calling OS thread, as pyzmq's blocking receive does,
-instead of through the GHC IO manager on the socket's `ZMQ_FD`. Each wake
-through the IO manager costs an event-manager hand-off, and each
-`System.Timeout.timeout` a timer-manager registration; on the Linux CI
-runners that was enough to put a request round trip behind pyzmq's. The
-poll still composes with `timeout` and asynchronous exceptions, which
-interrupt the foreign call. The non-threaded runtime keeps the
-`threadWaitRead` wait. A run of the same rows earlier the same night with
-the IO-manager wait (load 3.22–3.46) read, in the order above, 1.60×,
+**The socket waits now poll in libzmq.** The binding waits for a socket
+with an interruptible `zmq_poll` on the calling OS thread, as pyzmq's
+blocking receive waits inside libzmq, instead of through the GHC IO
+manager on the socket's `ZMQ_FD`. Each wake through the IO manager costs
+an event-manager hand-off, and each `System.Timeout.timeout` a
+timer-manager registration; on the Linux CI runners that was enough to put
+a request round trip behind pyzmq's: bench-gate run 38202655016 (job
+114660170314, `81bbdc5`) failed `memory/claim-empty-100` at 0.90× (rerun
+0.95×) and `memory/custody-20` at 0.98× (rerun 0.98×) with the IO-manager
+wait. With `zmq_poll` (Python ÷ Haskell, Blacksmith 8-vCPU Ubuntu 24.04
+runners):
+
+| Run | Wait | `memory/claim-empty-100` | `memory/custody-20` |
+|---|---|---:|---:|
+| 38206418285, job 114671152637 | `zmq_poll` | 1.19× | 1.36× |
+| 38206418285, job 114671152691 | `zmq_poll` | 1.18× | 1.27× |
+| 38255030541, job 114832832210 (`d869f62`) | `zmq_poll` | 1.11× | 1.28× |
+
+On macOS the IO-manager wait already cleared every row, so the poll is
+kept for Linux. A run of the rows above earlier the same night with the
+IO-manager wait (load 3.22–3.46) read, in the table's order, 1.60×,
 1.61×, 1.60×, 1.66×, 1.14×, 1.21×, 1.71× and 1.71×: on macOS the change
 moves the rows by a few per cent either way, and the eight-way
 asynchronous row gains most (12.9 ms to 10.9 ms).
+
+**Each poll is bounded at 50 ms.** An asynchronous exception interrupts
+the foreign call with a signal, but `zmq_poll` handles libzmq commands
+(peers' pipes ending, say) in user space between its `poll()` calls, and a
+signal that lands there is lost. An unbounded poll then held the exception
+until a message arrived: stopping a CURVE server while its clients were
+connected could hang in the ZAP handler's cancel, and the confirmation
+audit's reproduction lost 44 of 47 such cancels. The wait now polls at most
+50 ms at a time and loops until its deadline, so a lost interrupt only
+delays the exception (0 of 200 lost); the transport tests stop a CURVE
+server with clients connected and cancel a receive while peers come and
+go. The bound costs nothing measurable: four interleaved runs of the memory
+rows on the M4 (load 1.9–2.5), unbounded against bounded, medians of the
+bench's own medians:
+
+| Benchmark | Unbounded poll | Bounded at 50 ms |
+|---|---:|---:|
+| `zeromq/memory/claim-empty-100` | 19.1 ms | 19.4 ms |
+| `zeromq/memory/custody-20` | 12.0 ms | 12.1 ms |
+| `zeromq/memory/async-claim-empty-100-c1` | 18.9 ms | 19.6 ms |
+| `zeromq/memory/async-claim-empty-100-c8` | 11.5 ms | 11.2 ms |
+
+The differences are within the spread between repetitions (for example
+async-claim-empty-100-c1: 18.3–19.3 ms unbounded, 19.3–19.9 ms bounded;
+async-claim-empty-100-c8 moves the other way), as expected: the two waits
+differ only when a single wait lasts more than 50 ms.
 
 ## Results
 

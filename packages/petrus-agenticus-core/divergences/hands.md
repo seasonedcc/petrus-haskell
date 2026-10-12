@@ -82,7 +82,7 @@ plus one behaviour fix in a path upstream never exercises.
   acquisition spins briefly (`tryTakeMVar` + `yield`, 64 attempts) before
   parking: see `bench/results-hands.md`.
 - **Call ledger.**  Upstream uses one `Condition` around a dict.  Here it is
-  an `IORef` updated by compare-and-swap (`Internal.Atomic.modifyStrict`),
+  an `IORef` updated with `atomicModifyIORef'`,
   with a per-claim `MVar ()` for exact in-flight duplicates and a `TVar`
   generation that `drain` waits on.  Ordering guarantees are the same:
   - single flight per call id;

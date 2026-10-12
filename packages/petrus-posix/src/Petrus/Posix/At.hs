@@ -25,6 +25,7 @@ module Petrus.Posix.At
   , removeDirectoryAt
   , renameAt
   , listDirectoryFd
+  , rmtree
 
     -- * Metadata
   , Follow (..)
@@ -48,12 +49,14 @@ import Control.Exception (bracket)
 import Control.Monad (unless, void)
 import Data.Bits ((.&.))
 import Data.Int (Int64)
-import Foreign.C.Error (eINTR, eOK, getErrno, throwErrno, throwErrnoIfMinus1Retry_, throwErrnoPath)
+import Foreign.C.Error (Errno (..), eINTR, eOK, errnoToIOError, getErrno, throwErrno, throwErrnoIfMinus1Retry_, throwErrnoPath)
 import Foreign.C.String (CString)
 import Foreign.C.Types (CInt (..))
 import Foreign.Marshal.Array (allocaArray)
 import Foreign.Ptr (Ptr, nullPtr)
 import Foreign.Storable (peekElemOff)
+import GHC.IO.Exception (IOErrorType (InappropriateType))
+import System.IO.Error (mkIOError)
 import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, openFdAt)
 import Petrus.Posix.Internal (withPath)
 import System.Posix.Internals (peekFilePath)
@@ -81,6 +84,8 @@ foreign import ccall unsafe "petrus_posix.h petrus_fdopendir" c_fdopendir :: CIn
 foreign import ccall unsafe "petrus_posix.h petrus_readdir" c_readdir :: Ptr () -> IO CString
 
 foreign import ccall unsafe "petrus_posix.h petrus_closedir" c_closedir :: Ptr () -> IO CInt
+
+foreign import ccall safe "petrus_posix.h petrus_rmtree" c_rmtree :: CString -> IO CInt
 
 -- Run a call returning -1 on failure, retrying on EINTR and throwing an
 -- IOError naming the path otherwise.
@@ -168,6 +173,23 @@ listDirectoryFd (Fd fd) =
             else do
               name <- peekFilePath entry
               go (if name == "." || name == ".." then acc else name : acc)
+
+-- | @shutil.rmtree(path)@ as CPython 3.14 runs it on POSIX
+-- (@_rmtree_safe_fd@): every call below the top is relative to an open
+-- directory, so no path is resolved twice and no symbolic link is followed
+-- (the walk is in @cbits/petrus_posix.c@, which says why it is C).
+--
+-- The first error is raised, carrying its @errno@; a missing top is a
+-- does-not-exist error, and a top that is a symbolic link raises
+-- @OSError("Cannot call rmtree on a symbolic link")@. As in CPython, an entry
+-- that vanishes while the tree is walked is skipped.
+rmtree :: FilePath -> IO ()
+rmtree path = do
+  result <- withPath path c_rmtree
+  case result of
+    0 -> pure ()
+    -1 -> ioError (mkIOError InappropriateType "Cannot call rmtree on a symbolic link" Nothing (Just path))
+    code -> ioError (errnoToIOError "rmtree" (Errno code) Nothing (Just path))
 
 -- | Whether the final component of a path is followed when it is a symlink
 -- (@follow_symlinks=@ / @AT_SYMLINK_NOFOLLOW@).

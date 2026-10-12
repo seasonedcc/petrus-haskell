@@ -64,16 +64,15 @@ import Data.Text qualified as T
 import Petrus.Agenticus.Error (AgenticusError)
 import Petrus.Agenticus.Internal.Validate (encodeRefusal, pyIsSpace, utf8Length)
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
-import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), spawnHelper, closeOnce, closeInput, stopReader, killGroup, awaitDrain, spawnPiped, waitExit, splitLines, micros)
+import Petrus.Motus.Execution.Spawn (spawnPiped)
+import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), spawnHelper, closeOnce, closeInput, stopReader, killGroup, awaitDrain, waitExit, splitLines, micros)
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import Petrus.Json.Python (PythonException)
 import Petrus.Json.Python qualified as Python
 import System.Exit (ExitCode (..))
 import System.IO.Unsafe (unsafePerformIO)
-import Foreign.ForeignPtr (mallocForeignPtrBytes, withForeignPtr)
-import Foreign.Ptr (castPtr)
-import System.IO (BufferMode (..), Handle, hClose, hFlush, hGetBufSome, hSetBinaryMode, hSetBuffering)
+import System.IO (BufferMode (..), Handle, hClose, hFlush, hSetBinaryMode, hSetBuffering)
 import System.Posix.Signals (sigKILL, signalProcessGroup)
 import System.Posix.Unistd (SystemID (..), getSystemID)
 import System.Process
@@ -388,25 +387,19 @@ spawnShared command = do
       pid <- fmap fromIntegral <$> getPid p
       s <- SharedSidecar p pid i <$> newMVar () <*> newTVarIO Map.empty <*> newTVarIO True <*> newTVarIO False <*> newTVarIO 0
       _ <- forkIO (drain e)
-      buffer <- mallocForeignPtrBytes readSize
-      _ <- forkIO (readFrames s o buffer B.empty `finally` finish s p [i, o, e])
+      _ <- forkIO (readFrames s o B.empty `finally` finish s p [i, o, e])
       pure (Just s)
     Nothing -> pure Nothing
   where
     drain h = do
       chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
       unless (B.null chunk) (drain h)
-    -- One reusable read buffer: only the bytes read are copied out, where
-    -- 'B.hGetSome' would allocate (and pin) the whole read size each time.
-    readSize = 65536
-    readFrames s h buffer pending = do
-      chunk <-
-        withForeignPtr buffer (\ptr -> hGetBufSome h ptr readSize >>= \n -> B.packCStringLen (castPtr ptr, n))
-          `catch` \(_ :: IOException) -> pure B.empty
+    readFrames s h pending = do
+      chunk <- B.hGetSome h 65536 `catch` \(_ :: IOException) -> pure B.empty
       unless (B.null chunk) $ do
         let (complete, rest) = splitLines (if B.null pending then chunk else pending <> chunk)
         mapM_ (dispatch s) complete
-        readFrames s h buffer rest
+        readFrames s h rest
     dispatch s line = case J.parseJson J.surrogateRefusingLoads line of
       Right (Array [Int n, value]) -> atomically $ do
         known <- readTVar s.slots

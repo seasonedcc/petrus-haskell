@@ -62,7 +62,6 @@ PATTERNS: Dict[str, List[str]] = {
     "hamsterdan-operator": [
         "differential against python -m hamsterdan.operator",
         "the interpreter-path shim answers as the reference interpreter",
-        "shutil.rmtree, as the setup cleanup runs it, against CPython's",
     ],
     "hamsterdan-readiness": ["fold corpus", "board corpus"],
     "hamsterdan-testing": ["oracle corpus", "journeys against the reference", "World interop against the reference"],

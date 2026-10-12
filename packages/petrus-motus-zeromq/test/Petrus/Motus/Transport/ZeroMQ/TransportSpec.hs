@@ -9,7 +9,7 @@ module Petrus.Motus.Transport.ZeroMQ.TransportSpec (spec) where
 
 import Control.Concurrent
 import Control.Exception
-import Control.Monad (forM_, void, when)
+import Control.Monad (forM_, replicateM, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.IORef
@@ -410,6 +410,68 @@ spec = do
               )
               `finally` Z.closeAccess access
             Local.collect dispatch `shouldReturn` [(1, Succeeded (String "accepted")), (2, Succeeded (String "native accepted"))]
+
+  -- Beyond the reference suite: stopping a CURVE server closes its ROUTER
+  -- and then cancels the ZAP handler's wait, while clients are connected
+  -- and still connecting, so that the ending CURVE sessions keep the ZAP
+  -- socket busy with pipe commands. libzmq's poll handles those in user
+  -- space, where the cancel's signal can be lost; the wait must still end
+  -- (closeRunning allows 5 s).
+  it "a curve server stops while its clients are still connected" $ withScratch $ \tmp -> do
+    certificates <- curveCertificates tmp
+    let path = tmp </> "dispatch.sqlite3"
+        keyed o = o {clientSecretCertificate = Just certificates.clientSecret, serverPublicCertificate = Just certificates.serverPublic, requestTimeout = 1}
+    _ <- localDispatch path "instance" []
+    forM_ [1 .. 20 :: Int] $ \trial -> do
+      running <- localServer "tcp://127.0.0.1:*" path ["default"] (Just certificates.serverSecret) (Just certificates.allowed) >>= startRunning
+      withClient running.endpoint keyed $ \client -> do
+        Z.claim client `shouldReturn` Nothing
+        bracket (replicateM 10 (Z.openClientSocket client)) (mapM_ (\socket -> socket.close)) $ \_ -> do
+          connecting <- newIORef True
+          let churn = do
+                socket <- Z.openClientSocket client
+                threadDelay 1000
+                socket.close
+                readIORef connecting >>= flip when churn
+          churned <- newEmptyMVar
+          _ <- forkIO (churn `finally` putMVar churned ())
+          threadDelay (20000 + (trial * 3700) `mod` 15000)
+          closeRunning running `finally` (writeIORef connecting False >> takeMVar churned)
+
+  -- The same, reduced to one socket and made reliable: a receive with no
+  -- deadline, cancelled while peers keep connecting and leaving (the
+  -- audit's reproduction; an unbounded poll lost most of these cancels).
+  it "a receive with no deadline is cancelled while peers come and go" $ do
+    context <- N.newContext
+    forM_ [1 .. 20 :: Int] $ \trial -> do
+      socket <- N.newSocket context N.Rep
+      N.setIntOption socket N.Linger 0
+      let endpoint = "inproc://cancelled-" <> T.pack (show trial)
+      N.bind socket endpoint
+      churning <- newIORef True
+      -- Closed sockets are reaped asynchronously: the pause keeps the
+      -- context under libzmq's socket limit.
+      let churn = do
+            bracket (N.newSocket context N.Dealer) N.closeSocket $ \peer -> do
+              N.setIntOption peer N.Linger 0
+              N.connect peer endpoint
+            threadDelay 50
+            readIORef churning >>= flip when churn
+      churned <- newEmptyMVar
+      _ <- forkIO (churn `finally` putMVar churned ())
+      finished <- newEmptyMVar
+      waiter <- forkIO (void (N.receiveFrames socket Nothing) `finally` putMVar finished ())
+      threadDelay (200 + (trial * 37) `mod` 1500)
+      killed <- newEmptyMVar
+      _ <- forkIO (killThread waiter >> putMVar killed ())
+      delivered <- timeout 2000000 (takeMVar killed)
+      writeIORef churning False
+      takeMVar churned
+      -- On failure the waiter keeps its socket and the context stays open.
+      case delivered of
+        Nothing -> expectationFailure ("trial " <> show trial <> ": the cancel was not delivered within 2 s")
+        Just () -> takeMVar finished >> N.closeSocket socket
+    N.terminateContext context
 
   it "public-only server certificate fails before starting authenticator" $ withScratch $ \tmp -> do
     certificates <- curveCertificates tmp

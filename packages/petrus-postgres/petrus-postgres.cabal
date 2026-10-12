@@ -42,12 +42,12 @@ library
                     Petrus.Postgres.Param
                     Petrus.Postgres.Value
   other-modules:    Petrus.Postgres.Internal
-  c-sources:        cbits/petrus_postgres.c
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
                   , cryptohash-sha256 >=0.11
                   , petrus-json
+                  , petrus-posix
                   , postgresql-libpq >=0.10
                   , text >=2.0
                   , time >=1.12

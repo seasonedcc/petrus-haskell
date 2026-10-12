@@ -45,7 +45,7 @@ import Petrus.Agenticus.Hands.Gateway (CallEvidence (..), GatewayCounters (..), 
 import Petrus.Agenticus.Hands.Grants (closeGrant, grantSpec, openGrant)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ProgramOwnership (..))
 import Petrus.Agenticus.Runtime.Custody (HostMaterialization (..))
-import Petrus.Agenticus.Runtime.Internal.Process (spawnPiped)
+import Petrus.Motus.Execution.Spawn (spawnPiped)
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperation (..), RuntimeOperationCleanup (..), cleanupVerified)
 import Petrus.Agenticus.Runtime.Pi.Internal
 import Petrus.Agenticus.Runtime.PiRecovery

@@ -1,4 +1,3 @@
-{-# LANGUAGE InterruptibleFFI #-}
 {-# LANGUAGE MultiWayIf #-}
 
 -- | The connection core shared by the public modules: the connection
@@ -37,7 +36,7 @@ module Petrus.Postgres.Internal
   , decodeLenient
   ) where
 
-import Control.Concurrent (rtsSupportsBoundThreads, threadWaitRead)
+import Control.Concurrent (threadWaitRead)
 import Control.Concurrent.MVar (MVar, withMVar)
 import Control.Exception (Exception (..), finally, mask, onException, throwIO, uninterruptibleMask_)
 import Control.Monad (unless, void, when, (>=>))
@@ -48,21 +47,18 @@ import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Word (Word32, Word64)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error qualified as TE
 import Database.PostgreSQL.LibPQ qualified as PQ
 import Database.PostgreSQL.LibPQ.Internal (PGconn, withConn)
-import Foreign.C.Error (Errno (..), eINTR, errnoToIOError)
 import Foreign.C.String (CString)
 import Foreign.C.Types (CInt (..))
 import Foreign.Ptr (Ptr, nullPtr)
 import Petrus.Postgres.Param (Param (..), ParamFormat (..), Sql, sqlConverted, sqlRaw)
-import GHC.Clock (getMonotonicTime)
-import System.Posix.Types (Fd (..))
-import System.Timeout (timeout)
+import Petrus.Posix.Poll qualified as Poll
 import Text.Read (readMaybe)
 
 -- | One PostgreSQL connection (psycopg's @Connection@). Operations on it
@@ -358,37 +354,13 @@ waitReadable :: PQ.Connection -> IO ()
 waitReadable raw = void (waitReadableFor raw Nothing)
 
 -- | Wait until the connection's socket is readable ('True') or the given
--- number of seconds elapses ('False'). With the threaded runtime the wait
--- is an interruptible @poll(2)@ on the calling OS thread, which wakes as
--- fast as psycopg's own @poll@ wait (the IO manager's event round trip
--- costs several microseconds per wake-up); asynchronous exceptions still
--- interrupt it. The non-threaded runtime uses the IO manager.
+-- number of seconds elapses ('False'), as psycopg's wait blocks in @poll@
+-- ("Petrus.Posix.Poll"); asynchronous exceptions interrupt it.
 waitReadableFor :: PQ.Connection -> Maybe Double -> IO Bool
 waitReadableFor raw limit =
   PQ.socket raw >>= \case
     Nothing -> connectionFailure raw "the connection is lost: " >>= throwIO
-    Just fd@(Fd descriptor)
-      | rtsSupportsBoundThreads -> do
-          deadline <- traverse (\seconds -> (+ seconds) <$> getMonotonicTime) limit
-          let loop = do
-                milliseconds <- case deadline of
-                  Nothing -> pure (-1)
-                  Just end -> do
-                    now <- getMonotonicTime
-                    pure (max 0 (ceiling ((end - now) * 1000)))
-                rc <- c_waitReadable descriptor milliseconds
-                if
-                  | rc > 0 -> pure True
-                  | rc == 0 -> pure False
-                  | Errno (negate rc) == eINTR -> loop
-                  | otherwise -> throwIO (errnoToIOError "poll" (Errno (negate rc)) Nothing Nothing)
-          loop
-      | otherwise -> case limit of
-          Nothing -> True <$ threadWaitRead fd
-          Just seconds -> isJust <$> timeout (max 1 (ceiling (seconds * 1e6))) (threadWaitRead fd)
-
-foreign import ccall interruptible "petrus_pg_wait_readable"
-  c_waitReadable :: CInt -> CInt -> IO CInt
+    Just fd -> Poll.waitReadable fd limit
 
 -- | Send with the given action and collect every result. An asynchronous
 -- exception while waiting cancels the running statement on the server and
@@ -419,7 +391,9 @@ clearResults = mapM_ c_PQclear
 -- Result access goes through direct unsafe calls: these libpq functions only
 -- read the result (or the already-received input) and never block, and the
 -- per-value safe calls of postgresql-libpq's accessors cost microseconds
--- each on large results.
+-- each on large results: @query.select-1000-decoded@ took 14.09 ms with
+-- them against 672 µs this way and the reference's 1.34 ms (Apple M4,
+-- 2026-10-12; bench/RESULTS.md).
 data PGresult
 
 foreign import ccall unsafe "PQisBusy" c_PQisBusy :: Ptr PGconn -> IO CInt

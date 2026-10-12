@@ -58,10 +58,15 @@ It does not use `zeromq4-haskell`, for four reasons:
    within the request timeout fails as `zmq.Again`, so the outcome is
    "not acknowledged". `zeromq4-haskell`'s `send` always uses `DontWait`
    followed by `threadWaitWrite`, ignores `SNDTIMEO`, and waits forever. The
-   binding here keeps every C call non-blocking. It waits on `ZMQ_FD` through
-   the GHC IO manager, bounded by the socket's own send timeout. So a wait
-   never blocks an OS thread, and it composes with asynchronous exceptions,
-   which is how cancellation reaches an in-flight request.
+   binding here keeps every C call non-blocking. It waits with an
+   interruptible `zmq_poll`, bounded by the socket's own send timeout, and
+   no single poll lasts more than 50 ms. So a wait composes with
+   asynchronous exceptions, which is how cancellation reaches an in-flight
+   request: an interrupt that libzmq swallows delays the exception by
+   50 ms at most. Each waiting socket holds an OS thread, so the package
+   needs the threaded runtime. The header of
+   `Petrus.Motus.Transport.ZeroMQ.Native` gives the Linux measurement that
+   chose `zmq_poll` over a wait through the GHC IO manager.
 2. **Fewer dependencies.** `zeromq4-haskell` brings `async`,
    `monad-control`, `transformers-base`, `exceptions` and `semigroups`.
    None of them is needed for two dozen C calls.

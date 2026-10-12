@@ -96,18 +96,21 @@ Below are the differences that remain, with their rationale.
   moved the path out of this package is in `bench/RESULTS.md`, "The JSON
   fast path".
 - **Plain system calls.** `shutil.which` is ported directly
-  (`Hamsterdan.Operator.Posix.which`: the same `PATH` walk, `CS_PATH` when
-  `PATH` is unset, one `stat`, one `access(X_OK)` and the directory check).
+  (`Hamsterdan.Operator.Posix.which`: the same `PATH` walk, petrus-posix's
+  `os.confstr("CS_PATH")` when `PATH` is unset, one `stat`, one
+  `access(X_OK)` and the directory check).
   `Path.write_text` is one `open`/`write`/`close`. Neither goes through
   GHC's `Handle` layer or the `directory` package's permission probes.
   The cleanup's `shutil.rmtree` is CPython's descriptor-relative walk
-  (`cbits/rmtree.c`: `lstat`, `open`, `fstat` to refuse a symbolic link,
-  a listing through a duplicate descriptor, `unlinkat` relative to the open
-  directory) rather than the `directory` package's path-based
-  `removeDirectoryRecursive`. Below the top it resolves no path twice and
-  follows no link, as the reference does. `RmtreeSpec` builds six trees
-  (links inside, a linked top, a missing top, a file top, an entry that
-  cannot be unlinked) and checks both sides' outcome and what is left.
+  (petrus-posix's `Petrus.Posix.At.rmtree`: `lstat`, `open`, `fstat` to
+  refuse a symbolic link, a listing through a duplicate descriptor,
+  `unlinkat` relative to the open directory) rather than the `directory`
+  package's path-based `removeDirectoryRecursive`. Below the top it
+  resolves no path twice and follows no link, as the reference does.
+  petrus-posix's suite builds six trees (links inside, a linked top, a
+  missing top, a file top, an entry that cannot be unlinked) and checks
+  both sides' outcome and what is left. The `os.fstat`/`os.lstat`/`os.stat`
+  calls are petrus-posix's too.
 - **The HBNetwork fixture is configuration.** The reference hard-codes
   the fixture repository, organization and repository ids, App slug, hero
   reviewer and delegated broker digests as module constants

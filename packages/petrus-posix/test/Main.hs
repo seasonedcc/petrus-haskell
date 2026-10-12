@@ -1,9 +1,9 @@
 module Main (main) where
 
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO, killThread, threadDelay)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar, tryReadMVar)
 import Control.Exception (bracket, finally, try)
-import Control.Monad (forM_, replicateM, void, when)
+import Control.Monad (forM, forM_, replicateM, void, when)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Char (isDigit, isHexDigit, isLower)
@@ -14,19 +14,27 @@ import Petrus.Posix
 import Petrus.TestSupport
 import System.Directory
   ( createDirectory
+  , createDirectoryIfMissing
   , createDirectoryLink
   , createFileLink
+  , doesDirectoryExist
   , doesPathExist
   , getCurrentDirectory
+  , getPermissions
   , listDirectory
+  , pathIsSymbolicLink
   , removeFile
+  , setOwnerWritable
+  , setPermissions
   , withCurrentDirectory
   )
 import System.FilePath ((</>))
 import System.IO.Error (ioeGetErrorType, isAlreadyExistsError, isDoesNotExistError)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Info (os)
+import GHC.Clock (getMonotonicTime)
 import System.Posix.Env qualified as Env
+import System.Posix.IO qualified as PosixIO
 import System.Posix.Types (Fd)
 import System.Timeout (timeout)
 import Test.Hspec
@@ -36,8 +44,11 @@ main = hspec $ do
   flockSpec
   pathSpec
   atSpec
+  rmtreeSpec
   fileSpec
   resourceSpec
+  pollSpec
+  netdbSpec
 
 withTemp :: (FilePath -> IO a) -> IO a
 withTemp action = withSystemTempDirectory "petrus-posix" $ \dir -> realpath dir >>= action
@@ -219,6 +230,10 @@ haskellStrings f = mapM $ \input -> do
 
 pathSpec :: Spec
 pathSpec = describe "Path" $ do
+  it "reads os.confstr(\"CS_PATH\") as Python does" $ do
+    expected <- pythonJson "import json, os\nprint(json.dumps(os.confstr('CS_PATH')))" []
+    confstrPath `shouldReturn` (case expected of String value -> Just (T.unpack value); _ -> Nothing)
+
   it "normalizes like PurePosixPath" $ do
     let inputs = ["", ".", "./", "a", "a/", "a//b", "a/./b/.", "/", "//", "///", "////a", "//a//b", "/../a", "a/../b", "...", "./.a", "~", "é/./ü//"]
     expected <- pythonStrings "str(PurePosixPath(p))" "/" inputs
@@ -361,6 +376,91 @@ atSpec = describe "At" $ do
     closeFd fd
     permissionBits <$> statAt Nothing (dir </> "f") FollowLinks `shouldReturn` 0o640
 
+-- | A tree under one side's directory: @root@ is what gets removed,
+-- @outside@ a sibling the tree may link to.
+data RmtreeScenario = RmtreeScenario {scenarioName :: String, build :: FilePath -> IO (), makeWritable :: FilePath -> IO ()}
+
+rmtreeScenarios :: [RmtreeScenario]
+rmtreeScenarios =
+  [ plain "nested directories, files and empty directories" $ \side -> do
+      createDirectoryIfMissing True (side </> "root" </> "a" </> "b" </> "c")
+      createDirectoryIfMissing True (side </> "root" </> "empty")
+      forM_ ["f", "a/g", "a/b/h", "a/b/c/i"] $ \file -> writeFile (side </> "root" </> file) file
+  , plain "a symbolic link inside is removed, never followed" $ \side -> do
+      outside side
+      createDirectory (side </> "root")
+      createDirectoryLink (side </> "outside") (side </> "root" </> "link")
+      createFileLink "missing" (side </> "root" </> "dangling")
+  , plain "a top that is a symbolic link is refused" $ \side -> do
+      outside side
+      createDirectoryLink (side </> "outside") (side </> "root")
+  , plain "a missing top raises FileNotFoundError" $ \_ -> pure ()
+  , plain "a top that is a regular file raises" $ \side -> writeFile (side </> "root") "file"
+  , RmtreeScenario
+      { scenarioName = "an entry that cannot be unlinked stops the walk"
+      , build = \side -> do
+          createDirectoryIfMissing True (side </> "root" </> "locked")
+          writeFile (side </> "root" </> "locked" </> "f") "f"
+          writeFile (side </> "root" </> "top") "top"
+          readOnly (side </> "root" </> "locked")
+      , makeWritable = \side -> do
+          exists <- doesDirectoryExist (side </> "root" </> "locked")
+          when exists $ getPermissions (side </> "root" </> "locked") >>= setPermissions (side </> "root" </> "locked") . setOwnerWritable True
+      }
+  ]
+  where
+    plain label construct = RmtreeScenario {scenarioName = label, build = construct, makeWritable = \_ -> pure ()}
+    outside side = do
+      createDirectory (side </> "outside")
+      writeFile (side </> "outside" </> "keep") "keep"
+    readOnly path = getPermissions path >>= setPermissions path . setOwnerWritable False
+
+-- | What is left under a side's directory, without following links.
+treeContents :: FilePath -> IO [String]
+treeContents side = sort . concat <$> walk ""
+  where
+    walk relative = do
+      names <- listDirectory (side </> relative)
+      forM names $ \entry -> do
+        let path = if null relative then entry else relative </> entry
+        link <- pathIsSymbolicLink (side </> path)
+        directory <- if link then pure False else doesDirectoryExist (side </> path)
+        if directory then ((path <> "/") :) . concat <$> walk path else pure [if link then path <> "@" else path]
+
+-- | Each tree is built twice and removed once by each side; the outcome
+-- (removed, @FileNotFoundError@, another @OSError@) and what is left on disk
+-- must agree.
+rmtreeSpec :: Spec
+rmtreeSpec = describe "rmtree, against CPython's shutil.rmtree" $
+  forM_ rmtreeScenarios $ \scenario -> it (scenarioName scenario) $ withTemp $ \tmp -> do
+    let hs = tmp </> "hs"
+        py = tmp </> "py"
+    forM_ [hs, py] $ \side -> createDirectory side >> build scenario side
+    mine <-
+      try (rmtree (hs </> "root")) >>= \case
+        Right () -> pure "removed"
+        Left e
+          | isDoesNotExistError e -> pure "FileNotFoundError"
+          | otherwise -> pure "OSError"
+    theirs <-
+      pythonJson
+        ( T.unlines
+            [ "import json, shutil, sys"
+            , "try:"
+            , "    shutil.rmtree(sys.argv[1])"
+            , "    print(json.dumps('removed'))"
+            , "except FileNotFoundError:"
+            , "    print(json.dumps('FileNotFoundError'))"
+            , "except OSError:"
+            , "    print(json.dumps('OSError'))"
+            ]
+        )
+        [py </> "root"]
+    forM_ [hs, py] (makeWritable scenario)
+    left <- treeContents hs
+    expected <- treeContents py
+    (String mine, left) `shouldBe` (theirs, expected)
+
 fileSpec :: Spec
 fileSpec = describe "File" $ do
   it "atomically writes with mode 0600 and leaves no temporary behind" $ withTemp $ \dir -> do
@@ -415,6 +515,60 @@ fileSpec = describe "File" $ do
     makeDirectories (dir </> "file" </> "sub") 0o700 `shouldThrow` anyIOException
     fsyncPath (dir </> "a")
 
+pollSpec :: Spec
+pollSpec = describe "Poll" $ do
+  let withPipe = bracket PosixIO.createPipe (\(r, w) -> PosixIO.closeFd r >> PosixIO.closeFd w)
+  it "times out on an empty pipe after the deadline, across several polls" $ withPipe $ \(r, _) -> do
+    start <- getMonotonicTime
+    waitReadable r (Just 0.12) `shouldReturn` False
+    end <- getMonotonicTime
+    (end - start) `shouldSatisfy` (>= 0.12)
+  it "answers at once when data is waiting" $ withPipe $ \(r, w) -> do
+    _ <- PosixIO.fdWrite w "x"
+    waitReadable r (Just 5) `shouldReturn` True
+  it "a wait without limit sees data written later" $ withPipe $ \(r, w) -> do
+    _ <- forkIO (threadDelay 120000 >> void (PosixIO.fdWrite w "x"))
+    timeout 5000000 (waitReadable r Nothing) `shouldReturn` Just True
+  it "a hang-up counts as readable" $ do
+    (r, w) <- PosixIO.createPipe
+    PosixIO.closeFd w
+    (waitReadable r (Just 5) `finally` PosixIO.closeFd r) `shouldReturn` True
+  it "a wait without limit is cancelled by an asynchronous exception" $ withPipe $ \(r, _) -> do
+    done <- newEmptyMVar
+    waiter <- forkIO (void (waitReadable r Nothing) `finally` putMVar done ())
+    threadDelay 20000
+    killThread waiter
+    timeout 2000000 (takeMVar done) `shouldReturn` Just ()
+
+netdbSpec :: Spec
+netdbSpec = describe "Netdb" $ do
+  it "recovers each EAI_* code from its gai_strerror message, as Python's ctypes reads them" $ do
+    table <-
+      pythonJson
+        ( T.unlines
+            [ "import ctypes, json, socket"
+            , "libc = ctypes.CDLL(None)"
+            , "libc.gai_strerror.restype = ctypes.c_char_p"
+            , "codes = sorted({v for k, v in vars(socket).items() if k.startswith('EAI_') and k != 'EAI_MAX'})"
+            , "print(json.dumps([[c, libc.gai_strerror(c).decode()] for c in codes]))"
+            ]
+        )
+        []
+    let described = [(fromInteger code, T.unpack message) | Array [Int code, String message] <- arrayItems table]
+    described `shouldSatisfy` (not . null)
+    forM_ described $ \(code, message) -> do
+      -- The code found is one Python knows, with this message (two codes
+      -- may share one).
+      found <- gaiErrorCode message
+      (found, found >>= (`lookup` described)) `shouldBe` (found, Just message)
+      when (length (filter ((== message) . snd) described) == 1) $ found `shouldBe` Just code
+  it "answers Nothing for another message" $
+    gaiErrorCode "not a getaddrinfo message" `shouldReturn` Nothing
+  where
+    arrayItems = \case
+      Array items -> items
+      _ -> []
+
 resourceSpec :: Spec
 resourceSpec = describe "Resource" $ do
   it "reports the peak resident set in MB with the platform divisor" $ do
@@ -439,7 +593,7 @@ resourceSpec = describe "Resource" $ do
     if os == "darwin" then current `shouldBe` Nothing else current `shouldSatisfy` maybe False (> 0)
 
   it "computes current_rss_mb from statm exactly like Python" $ do
-    let samples = ["1000 2560 3 4 0 5 0\n", "0 1 0", "9 123456789 1", "1", "", "x y", "1 -5 2", "1 +7 2"]
+    let samples = ["1000 2560 3 4 0 5 0\n", "0 1 0", "9 123456789 1", "1", "", "x y", "1 -5 2", "1 +7 2", "1 ++7 2", "1 +-7 2", "1 7x 2"]
     forM_ [4096, 16384] $ \size -> do
       value <-
         pythonJson
@@ -456,6 +610,12 @@ resourceSpec = describe "Resource" $ do
           )
           (show size : map BC.unpack samples)
       Array (map (maybe Null Float . currentRssMbFrom size) samples) `shouldBe` value
+
+  it "refuses statm contents that do not decode as UTF-8, as open() in text mode does" $
+    currentRssMbFrom 4096 "\xff\xfe 1" `shouldBe` Nothing
+
+  it "is absent when the statm file cannot be read" $
+    currentRssMbAt "/nonexistent/petrus-posix/statm" `shouldReturn` Nothing
 
   it "rounds exactly like Python's round(x, n)" $ do
     let values =
