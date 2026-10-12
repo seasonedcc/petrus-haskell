@@ -1,6 +1,6 @@
 # hamsterdan-export benchmarks
 
-<!-- scripts/bench: measured sources 769e555db8036354 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources f1f78b15a9486d3c at a62b03af08b4 -->
 
 One export of pull request 7, from three state directories:
 
@@ -33,21 +33,21 @@ removed between runs, outside the timed region. Each cell is the median of
 
 ## Current figures
 
-Measured on 2026-10-12, 03:57–03:58 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.77–3.00, by
+Measured on 2026-10-12, 19:08–19:09 local (UTC-3), at commit `a99bed8`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.10–3.20, by
 
     scripts/bench-run hamsterdan-export --runs 21 +RTS -M2G -RTS
 
-Each cell is the median of 21 runs, interleaved as described above, with the minimum in parentheses. The tables in the sections below are earlier measurements.
+Each cell is the median of 21 runs, interleaved as described above, with the minimum in parentheses; the last column counts the runs in which Haskell was faster than the Python run paired with it. The closest row is the host-driven state directory in process, 1.16× (Haskell ahead in 19 of 21; 1.08× at `81bbdc5`). The tables in the sections below are earlier measurements.
 
-| State directory | Shape | Haskell median (min) | Python median (min) | Python / Haskell |
-| --- | --- | ---: | ---: | ---: |
-| fixture | CLI (fresh process) | 18.8 ms (14.5 ms) | 699.9 ms (690.9 ms) | 37.31× |
-| fixture | in process | 3.0 ms (2.7 ms) | 3.7 ms (3.5 ms) | 1.26× |
-| host-driven | CLI (fresh process) | 19.5 ms (14.5 ms) | 710.2 ms (698.9 ms) | 36.48× |
-| host-driven | in process | 6.7 ms (6.3 ms) | 7.2 ms (6.8 ms) | 1.08× |
-| large | CLI (fresh process) | 174.7 ms (159.4 ms) | 952.5 ms (931.9 ms) | 5.45× |
-| large | in process | 151.4 ms (142.3 ms) | 246.6 ms (232.9 ms) | 1.63× |
+| State directory | Shape | Haskell median (min) | Python median (min) | Python / Haskell | Haskell ahead |
+| --- | --- | ---: | ---: | ---: | ---: |
+| fixture | CLI (fresh process) | 19.0 ms (14.7 ms) | 705.3 ms (698.7 ms) | 37.13× | 21 of 21 |
+| fixture | in process | 3.3 ms (2.8 ms) | 4.0 ms (3.7 ms) | 1.23× | 19 of 21 |
+| host-driven | CLI (fresh process) | 19.5 ms (17.2 ms) | 714.1 ms (703.3 ms) | 36.55× | 21 of 21 |
+| host-driven | in process | 6.3 ms (5.8 ms) | 7.3 ms (6.8 ms) | 1.16× | 19 of 21 |
+| large | CLI (fresh process) | 189.2 ms (158.5 ms) | 972.5 ms (945.2 ms) | 5.14× | 21 of 21 |
+| large | in process | 166.9 ms (143.6 ms) | 262.2 ms (236.8 ms) | 1.57× | 21 of 21 |
 
 ## Results
 

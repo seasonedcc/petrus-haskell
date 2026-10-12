@@ -17,7 +17,7 @@ lists the files whose package sources have changed since.
 | --- | --- | --- | ---: | ---: | ---: | --- |
 | `hamsterdan-agents` | [RESULTS.md](../packages/hamsterdan-agents/bench/RESULTS.md) | `5a73d7a` | 6 | 1.02× | 5.34× |  |
 | `hamsterdan-contracts` | [RESULTS.md](../packages/hamsterdan-contracts/bench/RESULTS.md) | `5a73d7a` | 7 | 1.41× | 5.37× |  |
-| `hamsterdan-export` | [RESULTS.md](../packages/hamsterdan-export/bench/RESULTS.md) | `5a73d7a` | 6 | 1.08× | 37.3× |  |
+| `hamsterdan-export` | [RESULTS.md](../packages/hamsterdan-export/bench/RESULTS.md) | `a62b03a` | 6 | 1.16× | 37.1× |  |
 | `hamsterdan-github` | [RESULTS.md](../packages/hamsterdan-github/bench/RESULTS.md) | `5a73d7a` | 8 | 1.11× | 91.9× |  |
 | `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | `0fccc8a` | 18 | 1.15× | 106× |  |
 | `hamsterdan-operator` | [RESULTS.md](../packages/hamsterdan-operator/bench/RESULTS.md) | `5a73d7a` | 7 | 1.02× | 33.3× |  |
