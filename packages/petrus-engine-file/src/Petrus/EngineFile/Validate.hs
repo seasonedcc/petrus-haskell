@@ -31,6 +31,7 @@ import Petrus.EngineFile.Duration
 import Petrus.EngineFile.Number (IntParse (..), strAsFloat, strAsInt)
 import Petrus.EngineFile.Types
 import Petrus.EngineFile.Value
+import Petrus.Json.Wtf8 (hasLoneSurrogate, lossyUtf8)
 
 -- | Which pydantic entry point is validating.
 data Mode = JsonMode | PythonMode
@@ -55,6 +56,7 @@ data ErrorKind
   | ListType
   | TupleType
   | StringType
+  | StringUnicode
   | IntType
   | IntParsing
   | IntFromFloat
@@ -121,7 +123,16 @@ vStr = \case
   VStr s -> Ok s
   v -> failWith StringType v
 
+-- | pydantic-core reads a @str@ it must parse (as a number, an enum or
+-- literal member, or a duration) as UTF-8 first, which a string holding a
+-- lone surrogate is not.
+unparsable :: Value -> Maybe (V a)
+unparsable = \case
+  v@(VStr s) | hasLoneSurrogate s -> Just (failWith StringUnicode v)
+  _ -> Nothing
+
 vInt :: Value -> V Integer
+vInt v | Just refused <- unparsable v = refused
 vInt v = case v of
   VInt i _ -> Ok i
   VBool b -> Ok (if b then 1 else 0)
@@ -145,6 +156,7 @@ intToDouble i
   | otherwise = fromRational (toRational i)
 
 vFloat :: Mode -> Value -> V Double
+vFloat _ v | Just refused <- unparsable v = refused
 vFloat mode v = case v of
   VFloat d -> Ok d
   VInt i _ -> case mode of
@@ -157,6 +169,7 @@ vFloat mode v = case v of
   _ -> failWith FloatType v
 
 vTimedelta :: Mode -> Value -> V Timedelta
+vTimedelta _ v | Just refused <- unparsable v = refused
 vTimedelta mode v = case v of
   VStr s -> duration (parseDuration (TE.encodeUtf8 s))
   VInt i big -> case mode of
@@ -180,19 +193,21 @@ vTimedelta mode v = case v of
       Left e -> failWith (TimeDeltaParsing (durationErrorDoc e)) v
 
 vArcKind :: Value -> V ArcKind
-vArcKind = \case
+vArcKind v | Just refused <- unparsable v = refused
+vArcKind v = case v of
   VStr "normal" -> Ok Normal
   VStr "inhibitor" -> Ok Inhibitor
   VStr "read" -> Ok Read
-  v -> failWith EnumError v
+  _ -> failWith EnumError v
 
 vInterface :: Value -> V Interface
-vInterface = \case
+vInterface v | Just refused <- unparsable v = refused
+vInterface v = case v of
   VStr "input" -> Ok InputInterface
   VStr "output" -> Ok OutputInterface
   VStr "awaiting" -> Ok AwaitingInterface
   VStr "control" -> Ok ControlInterface
-  v -> failWith LiteralError v
+  _ -> failWith LiteralError v
 
 nullable :: (Value -> V a) -> Value -> V (Maybe a)
 nullable f = \case
@@ -411,9 +426,11 @@ renderLineErrors title mode es =
     locLine [] = ""
     locLine items = T.intercalate "." (map locText items) <> "\n"
     locText = \case
-      LocKey k
+      LocKey key
         | T.isInfixOf "." k -> "`" <> k <> "`"
         | otherwise -> k
+        where
+          k = lossyUtf8 key
       LocIndex i -> T.pack (show i)
 
 -- | pydantic's @write_truncated_to_limited_bytes(repr, 50)@.
@@ -438,6 +455,7 @@ typeOf = \case
   ListType -> "list_type"
   TupleType -> "tuple_type"
   StringType -> "string_type"
+  StringUnicode -> "string_unicode"
   IntType -> "int_type"
   IntParsing -> "int_parsing"
   IntFromFloat -> "int_from_float"
@@ -461,6 +479,7 @@ messageOf mode = \case
   ListType -> json "Input should be a valid array" "Input should be a valid list"
   TupleType -> json "Input should be a valid array" "Input should be a valid tuple"
   StringType -> "Input should be a valid string"
+  StringUnicode -> "Input should be a valid string, unable to parse raw data as a unicode string"
   IntType -> "Input should be a valid integer"
   IntParsing -> "Input should be a valid integer, unable to parse string as an integer"
   IntFromFloat -> "Input should be a valid integer, got a number with a fractional part"

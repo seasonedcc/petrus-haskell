@@ -39,9 +39,6 @@ data Case = Case
   , ops :: [Op]
   , expect :: [Text]
   -- ^ The reference's results: each one's compact @json.dumps@.
-  , loneSurrogateOps :: [Int]
-  -- ^ Operations whose @json.loads@ strings hold lone surrogates, which this
-  -- package refuses (DIVERGENCES.md).
   }
 
 -- | One operation (see @differential/reference.py@).
@@ -68,8 +65,7 @@ readCorpusBytes bytes = do
       dirs <- maybe (Right []) (\d -> array d >>= traverse string) (J.lookupMember "dirs" c)
       ops <- field "ops" c >>= array >>= traverse decodeOp
       expect <- maybe (Right []) (\e -> array e >>= traverse string) (J.lookupMember "expect" c)
-      lone <- maybe (Right []) (\d -> array d >>= traverse int) (J.lookupMember "lone_surrogate_ops" c)
-      Right Case {name, files, dirs, ops, expect, loneSurrogateOps = lone}
+      Right Case {name, files, dirs, ops, expect}
     decodeFile (path, content) = case (J.lookupMember "text" content, J.lookupMember "base64" content) of
       (Just t, _) -> (path,) . TE.encodeUtf8 <$> string t
       (_, Just b) -> string b >>= \s -> (path,) <$> Base64.decode (TE.encodeUtf8 s)

@@ -11609,10 +11609,6 @@
     "{\"ok\":[true,\"{\\\"fileVersion\\\": \\\"2\\\", \\\"net\\\": \\\"a\\\\ud800\\\"}\\n\"]}",
     "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 37 [type=json_invalid, input_value='{\\\"fileVersion\\\": \\\"2\\\", \\\"net\\\": \\\"a\\\\\\\\ud800\\\"}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
     "{\"ok\":{\"net\":{\"net\":\"a\\ud800\",\"arcs\":[],\"places\":[],\"transitions\":[],\"view_states\":[],\"ref_origins\":[]},\"schema\":{\"ok\":{\"name\":\"a\\ud800\",\"places\":[],\"transitions\":[],\"arcs\":[],\"ref_to_subnets\":[]}}}}"
-   ],
-   "lone_surrogate_ops": [
-    2,
-    4
    ]
   },
   {
@@ -11658,10 +11654,6 @@
     "{\"ok\":[true,\"{\\\"fileVersion\\\": \\\"2\\\", \\\"net\\\": \\\"a\\\\udc00b\\\"}\\n\"]}",
     "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: lone leading surrogate in hex escape at line 1 column 36 [type=json_invalid, input_value='{\\\"fileVersion\\\": \\\"2\\\", \\\"net\\\": \\\"a\\\\\\\\udc00b\\\"}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
     "{\"ok\":{\"net\":{\"net\":\"a\\udc00b\",\"arcs\":[],\"places\":[],\"transitions\":[],\"view_states\":[],\"ref_origins\":[]},\"schema\":{\"ok\":{\"name\":\"a\\udc00b\",\"places\":[],\"transitions\":[],\"arcs\":[],\"ref_to_subnets\":[]}}}}"
-   ],
-   "lone_surrogate_ops": [
-    2,
-    4
    ]
   },
   {
@@ -11707,10 +11699,546 @@
     "{\"ok\":[true,\"{\\\"fileVersion\\\": \\\"2\\\", \\\"net\\\": \\\"a\\\\ud800A\\\"}\\n\"]}",
     "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: lone leading surrogate in hex escape at line 1 column 22 [type=json_invalid, input_value='{\\\"net\\\": \\\"a\\\\\\\\ud800\\\\\\\\u0041\\\"}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
     "{\"ok\":{\"net\":{\"net\":\"a\\ud800A\",\"arcs\":[],\"places\":[],\"transitions\":[],\"view_states\":[],\"ref_origins\":[]},\"schema\":{\"ok\":{\"name\":\"a\\ud800A\",\"places\":[],\"transitions\":[],\"arcs\":[],\"ref_to_subnets\":[]}}}}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-names",
+   "files": {
+    "net.json": {
+     "text": "{\"net\": \"m\\udc00\", \"places\": {\"p\\udc00\": {\"initial\": 1, \"label\": \"\\ud800\", \"metadata\": {\"k\\ud83d\": \"\\udfff x\", \"\\ud800\": [\"\\udbff\"]}}}, \"transitions\": {\"t\\ud800\": {\"handler\": \"\\ud800\", \"guard\": \"\\udc00\", \"metadata\": {\"\\ud801\": null}}}, \"arcs\": [{\"source\": \"p\\udc00\", \"target\": \"t\\ud800\"}], \"refs\": {\"r\\ud800\": {\"ref\": \"x\\udc00.json\"}}, \"viewState\": {\"layout\": {\"p\\udc00\": [1, 2]}, \"selected\": [\"t\\ud800\"]}}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
    ],
-   "lone_surrogate_ops": [
-    2,
-    4
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: lone leading surrogate in hex escape at line 1 column 16 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\\\\\\udc00\\\", \\\"pla...lected\\\": [\\\"t\\\\\\\\ud800\\\"]}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: lone leading surrogate in hex escape at line 1 column 16 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\\\\\\udc00\\\", \\\"pla...lected\\\": [\\\"t\\\\\\\\ud800\\\"]}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"ok\":[true,\"{\\n  \\\"fileVersion\\\": \\\"2\\\",\\n  \\\"net\\\": \\\"m\\\\udc00\\\",\\n  \\\"arcs\\\": [\\n    {\\\"source\\\": \\\"p\\\\udc00\\\", \\\"target\\\": \\\"t\\\\ud800\\\"}\\n  ],\\n  \\\"places\\\": {\\n    \\\"p\\\\udc00\\\": {\\n      \\\"initial\\\": 1,\\n      \\\"label\\\": \\\"\\\\ud800\\\",\\n      \\\"metadata\\\": {\\n        \\\"k\\\\ud83d\\\": \\\"\\\\udfff x\\\",\\n        \\\"\\\\ud800\\\": [\\\"\\\\udbff\\\"]\\n      }\\n    }\\n  },\\n  \\\"transitions\\\": {\\n    \\\"t\\\\ud800\\\": {\\n      \\\"guard\\\": \\\"\\\\udc00\\\",\\n      \\\"handler\\\": \\\"\\\\ud800\\\",\\n      \\\"metadata\\\": {\\\"\\\\ud801\\\": null}\\n    }\\n  },\\n  \\\"refs\\\": {\\n    \\\"r\\\\ud800\\\": {\\\"ref\\\": \\\"x\\\\udc00.json\\\"}\\n  },\\n  \\\"viewState\\\": {\\n    \\\"layout\\\": {\\n      \\\"p\\\\udc00\\\": [1, 2]\\n    },\\n    \\\"selected\\\": [\\\"t\\\\ud800\\\"]\\n  }\\n}\\n\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: lone leading surrogate in hex escape at line 1 column 16 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\\\\\\udc00\\\", \\\"pla...lected\\\": [\\\"t\\\\\\\\ud800\\\"]}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValueError\",\"Unknown ref: 'x\\\\udc00.json'\"]}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-int",
+   "files": {
+    "net.json": {
+     "text": "{\"net\": \"m\", \"places\": {\"p\": {\"initial\": \"1\\ud800\"}}}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
+   ],
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 50 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"places\\\": {...initial\\\": \\\"1\\\\\\\\ud800\\\"}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 50 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"places\\\": {...initial\\\": \\\"1\\\\\\\\ud800\\\"}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\nplaces.p.initial\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='1\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 50 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"places\\\": {...initial\\\": \\\"1\\\\\\\\ud800\\\"}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\nplaces.p.initial\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='1\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-weight",
+   "files": {
+    "net.json": {
+     "text": "{\"net\": \"m\", \"arcs\": [{\"source\": \"a\", \"target\": \"b\", \"weight\": \"\\ud800\"}]}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
+   ],
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 71 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"arcs\\\": [{\\\"... \\\"weight\\\": \\\"\\\\\\\\ud800\\\"}]}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 71 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"arcs\\\": [{\\\"... \\\"weight\\\": \\\"\\\\\\\\ud800\\\"}]}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\narcs.0.weight\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 71 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"arcs\\\": [{\\\"... \\\"weight\\\": \\\"\\\\\\\\ud800\\\"}]}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\narcs.0.weight\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-kind",
+   "files": {
+    "net.json": {
+     "text": "{\"net\": \"m\", \"arcs\": [{\"source\": \"a\", \"target\": \"b\", \"kind\": \"read\\udc00\"}]}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
+   ],
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: lone leading surrogate in hex escape at line 1 column 72 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"arcs\\\": [{\\\"...kind\\\": \\\"read\\\\\\\\udc00\\\"}]}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: lone leading surrogate in hex escape at line 1 column 72 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"arcs\\\": [{\\\"...kind\\\": \\\"read\\\\\\\\udc00\\\"}]}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\narcs.0.kind\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='read\\\\udc00', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: lone leading surrogate in hex escape at line 1 column 72 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"arcs\\\": [{\\\"...kind\\\": \\\"read\\\\\\\\udc00\\\"}]}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\narcs.0.kind\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='read\\\\udc00', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-interface",
+   "files": {
+    "net.json": {
+     "text": "{\"net\": \"m\", \"places\": {\"p\": {\"interface\": \"\\ud800\"}}}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
+   ],
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 51 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"places\\\": {...nterface\\\": \\\"\\\\\\\\ud800\\\"}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 51 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"places\\\": {...nterface\\\": \\\"\\\\\\\\ud800\\\"}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\nplaces.p.interface\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 51 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"places\\\": {...nterface\\\": \\\"\\\\\\\\ud800\\\"}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\nplaces.p.interface\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-delay",
+   "files": {
+    "net.json": {
+     "text": "{\"net\": \"m\", \"transitions\": {\"t\": {\"delay\": \"1s\\ud800\"}}}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
+   ],
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 54 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"transition...\\\"delay\\\": \\\"1s\\\\\\\\ud800\\\"}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 54 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"transition...\\\"delay\\\": \\\"1s\\\\\\\\ud800\\\"}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\ntransitions.t.delay\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='1s\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 54 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"transition...\\\"delay\\\": \\\"1s\\\\\\\\ud800\\\"}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\ntransitions.t.delay\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='1s\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-zoom",
+   "files": {
+    "net.json": {
+     "text": "{\"net\": \"m\", \"viewState\": {\"zoom\": \"\\ud800\"}}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
+   ],
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 43 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"viewState\\\": {\\\"zoom\\\": \\\"\\\\\\\\ud800\\\"}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 43 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"viewState\\\": {\\\"zoom\\\": \\\"\\\\\\\\ud800\\\"}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\nviewState.zoom\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 43 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"viewState\\\": {\\\"zoom\\\": \\\"\\\\\\\\ud800\\\"}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\nviewState.zoom\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-pan",
+   "files": {
+    "net.json": {
+     "text": "{\"net\": \"m\", \"viewState\": {\"pan\": [\"\\ud800\", 1]}}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
+   ],
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 43 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"viewState\\\"...\\\"pan\\\": [\\\"\\\\\\\\ud800\\\", 1]}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 43 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"viewState\\\"...\\\"pan\\\": [\\\"\\\\\\\\ud800\\\", 1]}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\nviewState.pan.0\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 43 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"viewState\\\"...\\\"pan\\\": [\\\"\\\\\\\\ud800\\\", 1]}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\nviewState.pan.0\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-loc-key",
+   "files": {
+    "net.json": {
+     "text": "{\"net\": \"m\", \"places\": {\"p\\ud800q\": {\"initial\": \"x\"}}, \"viewState\": {\"arcWaypoints\": {\"a\\udfff\": [[\"\\ud800\", 1]]}}}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
+   ],
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 33 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"places\\\": {...f\\\": [[\\\"\\\\\\\\ud800\\\", 1]]}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 33 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"places\\\": {...f\\\": [[\\\"\\\\\\\\ud800\\\", 1]]}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"2 validation errors for FlatNetFile\\nplaces.p\\ufffd\\ufffd\\ufffdq.initial\\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='x', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing\\nviewState.arcWaypoints.a\\ufffd\\ufffd\\ufffd.0.0\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 33 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"places\\\": {...f\\\": [[\\\"\\\\\\\\ud800\\\", 1]]}}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"2 validation errors for FlatNetFile\\nplaces.p\\ufffd\\ufffd\\ufffdq.initial\\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='x', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing\\nviewState.arcWaypoints.a\\ufffd\\ufffd\\ufffd.0.0\\n  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='\\\\ud800', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode\"]}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-extra-keys",
+   "files": {
+    "net.json": {
+     "text": "{\"net\": \"m\", \"\\ud800\": 1, \"places\": {\"p\": {\"\\udc00\": 2}}, \"arcs\": [{\"source\": \"a\", \"target\": \"b\", \"\\ud800\": 3}], \"viewState\": {\"\\ud800\": 4}}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
+   ],
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 21 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"\\\\\\\\ud800\\\": ...State\\\": {\\\"\\\\\\\\ud800\\\": 4}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 21 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"\\\\\\\\ud800\\\": ...State\\\": {\\\"\\\\\\\\ud800\\\": 4}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"ok\":[true,\"{\\n  \\\"fileVersion\\\": \\\"2\\\",\\n  \\\"net\\\": \\\"m\\\",\\n  \\\"arcs\\\": [\\n    {\\\"source\\\": \\\"a\\\", \\\"target\\\": \\\"b\\\"}\\n  ],\\n  \\\"places\\\": {\\n    \\\"p\\\": {}\\n  },\\n  \\\"viewState\\\": {}\\n}\\n\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 21 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"\\\\\\\\ud800\\\": ...State\\\": {\\\"\\\\\\\\ud800\\\": 4}}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"ok\":{\"net\":{\"net\":\"m\",\"arcs\":[[[\"a\"],[\"b\"],\"normal\",1,null]],\"places\":[[[\"p\"],0,null,null,null]],\"transitions\":[],\"view_states\":[[\"m\",[null,[],1.0,[0.0,0.0],[]]]],\"ref_origins\":[]},\"schema\":{\"ok\":{\"name\":\"m\",\"places\":[[[\"m\",\"p\"],0,null,null,null]],\"transitions\":[],\"arcs\":[[[\"m\",\"a\"],[\"m\",\"b\"],\"normal\",1,null]],\"ref_to_subnets\":[]}}}}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-file-version",
+   "files": {
+    "net.json": {
+     "text": "{\"fileVersion\": \"\\ud800\", \"net\": \"m\"}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
+   ],
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 24 [type=json_invalid, input_value='{\\\"fileVersion\\\": \\\"\\\\\\\\ud800\\\", \\\"net\\\": \\\"m\\\"}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 24 [type=json_invalid, input_value='{\\\"fileVersion\\\": \\\"\\\\\\\\ud800\\\", \\\"net\\\": \\\"m\\\"}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"ok\":[true,\"{\\\"fileVersion\\\": \\\"\\\\ud800\\\", \\\"net\\\": \\\"m\\\"}\\n\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 24 [type=json_invalid, input_value='{\\\"fileVersion\\\": \\\"\\\\\\\\ud800\\\", \\\"net\\\": \\\"m\\\"}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"ok\":{\"net\":{\"net\":\"m\",\"arcs\":[],\"places\":[],\"transitions\":[],\"view_states\":[],\"ref_origins\":[]},\"schema\":{\"ok\":{\"name\":\"m\",\"places\":[],\"transitions\":[],\"arcs\":[],\"ref_to_subnets\":[]}}}}"
+   ]
+  },
+  {
+   "name": "edge/json/surrogate-dotted-segment",
+   "files": {
+    "net.json": {
+     "text": "{\"net\": \"m\", \"arcs\": [{\"source\": [\"a\", \"\\ud800.b\"], \"target\": \"b\"}]}"
+    }
+   },
+   "dirs": [],
+   "ops": [
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 100
+    },
+    {
+     "op": "file",
+     "path": "net.json",
+     "indent": 4,
+     "max_inline": 60
+    },
+    {
+     "op": "format",
+     "path": "net.json",
+     "indent": 2,
+     "max_inline": 120
+    },
+    {
+     "op": "load",
+     "path": "net.json"
+    },
+    {
+     "op": "dict",
+     "root": "net.json",
+     "deps": {}
+    }
+   ],
+   "expect": [
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 47 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"arcs\\\": [{\\\"...0.b\\\"], \\\"target\\\": \\\"b\\\"}]}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 47 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"arcs\\\": [{\\\"...0.b\\\"], \\\"target\\\": \\\"b\\\"}]}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\narcs.0.source\\n  Value error, NetPath segment '\\\\ud800.b' must not contain the separator '.'; pass a single dot-separated string to split on it. [type=value_error, input_value=['a', '\\\\ud800.b'], input_type=list]\\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: unexpected end of hex escape at line 1 column 47 [type=json_invalid, input_value='{\\\"net\\\": \\\"m\\\", \\\"arcs\\\": [{\\\"...0.b\\\"], \\\"target\\\": \\\"b\\\"}]}', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
+    "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\narcs.0.source\\n  Value error, NetPath segment '\\\\ud800.b' must not contain the separator '.'; pass a single dot-separated string to split on it. [type=value_error, input_value=['a', '\\\\ud800.b'], input_type=list]\\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error\"]}"
    ]
   },
   {
@@ -27758,10 +28286,6 @@
     "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: lone leading surrogate in hex escape at line 3 column 23 [type=json_invalid, input_value='{\\\\n  \\\"fileVersion\\\": \\\"2\\\",...n  \\\"viewState\\\": {}\\\\n}\\\\n', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}",
     "{\"ok\":{\"net\":{\"net\":\"\\ud083d\\ude00\",\"arcs\":[[[\"91\"],[\"91\"],\"normal\",1,null]],\"places\":[[[\"91\"],0,null,null,null]],\"transitions\":[],\"view_states\":[[\"\\ud083d\\ude00\",[null,[],1.0,[0.0,0.0],[]]]],\"ref_origins\":[]},\"schema\":{\"ok\":{\"name\":\"\\ud083d\\ude00\",\"places\":[[[\"\\ud083d\\ude00\",\"91\"],0,null,null,null]],\"transitions\":[],\"arcs\":[[[\"\\ud083d\\ude00\",\"91\"],[\"\\ud083d\\ude00\",\"91\"],\"normal\",1,null]],\"ref_to_subnets\":[]}}}}",
     "{\"error\":[\"ValidationError\",\"1 validation error for FlatNetFile\\n  Invalid JSON: lone leading surrogate in hex escape at line 3 column 23 [type=json_invalid, input_value='{\\\\n  \\\"fileVersion\\\": \\\"2\\\",...n  \\\"viewState\\\": {}\\\\n}\\\\n', input_type=str]\\n    For further information visit https://errors.pydantic.dev/2.13/v/json_invalid\"]}"
-   ],
-   "lone_surrogate_ops": [
-    2,
-    4
    ]
   },
   {

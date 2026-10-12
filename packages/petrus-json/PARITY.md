@@ -60,7 +60,7 @@ profiles of `loadsProfiles`:
 
 ## Tests
 
-`cabal test petrus-json`: 102 examples.
+`cabal test petrus-json`: 121 examples.
 
 - **Differential against CPython**
   ([`CPythonDifferentialSpec`](test/Petrus/Json/CPythonDifferentialSpec.hs),

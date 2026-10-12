@@ -126,6 +126,9 @@ main = hspec $ do
         fromWtf8 "\xC0\x80" `shouldBe` Nothing
         fromWtf8 "\xED\xA0" `shouldBe` Nothing
         map hasLoneSurrogate [fromCodePoints "x\xDBFF", "\xD7FF\xE000\x1F600"] `shouldBe` [True, False]
+      it "lossyUtf8 spells each surrogate as Rust's from_utf8_lossy does" $ do
+        lossyUtf8 (fromCodePoints "a\xD800.\xDFFF\x1F600") `shouldBe` "a\xFFFD\xFFFD\xFFFD.\xFFFD\xFFFD\xFFFD\x1F600"
+        lossyUtf8 "plain \xE000" `shouldBe` "plain \xE000"
       it "dumpsText answers the str CPython's json.dumps returns" $ do
         dumpsText compact (Array [String (fromCodePoints "a\xD800")]) `shouldBe` Right (fromCodePoints "[\"a\xD800\"]")
         dumpsText defaultDumps (String (fromCodePoints "a\xD800")) `shouldBe` Right "\"a\\ud800\""
