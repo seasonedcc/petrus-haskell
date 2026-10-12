@@ -22,6 +22,7 @@ import Hamsterdan.Host.Api (hostServerApplication, hostSettings, withHostServer,
 import Hamsterdan.Host.Python (RuntimeError (..))
 import Hamsterdan.Host.Service
 import Hamsterdan.Host.Service qualified as Host
+import Hamsterdan.Host.Uvicorn (trustedHosts)
 import IngressSpec (newDelivery)
 import Petrus.Json (Json (..), parseJson, pythonJsonLoads, surrogateRefusingLoads)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
@@ -37,11 +38,13 @@ import TestSupport (runtimeError, withTempRoot)
 
 -- | @TestClient(create_app(host, reconcile_startup=...))@ entered: the
 -- lifespan around a live warp server on an ephemeral port, serving what
--- 'serve' serves, the way it serves it ('withHostServer').
+-- 'serve' serves, the way it serves it ('withHostServer'), behind
+-- uvicorn's default proxy headers trust (@127.0.0.1@, the address the
+-- requests come from).
 withClient :: HostService -> Bool -> (Int -> IO a) -> IO a
 withClient host reconcileStartup action =
   withLifespan host reconcileStartup $
-    withHostServer hostSettings (hostServerApplication host) action
+    withHostServer hostSettings (hostServerApplication (trustedHosts "127.0.0.1") host) action
 
 post :: Int -> ByteString -> [(Text, Text)] -> IO RawResponse
 post port payload headers =
@@ -200,6 +203,10 @@ surface =
   , ("POST /healthz", rawRequest "POST" "/healthz" [] "")
   , ("GET /healthz/", plain "GET" "/healthz/")
   , ("GET /healthz/?a=b%20c", plain "GET" "/healthz/?a=b%20c")
+  , ("GET /healthz/ forwarded as https", rawRequest "GET" "/healthz/" [("x-forwarded-proto", " https ")] "")
+  , ("GET /healthz/ forwarded as wss, then ws", rawRequest "GET" "/healthz/" [("x-forwarded-proto", "wss"), ("X-Forwarded-Proto", "ws")] "")
+  , ("GET /healthz/ forwarded as ftp (ignored)", rawRequest "GET" "/healthz/" [("x-forwarded-proto", "ftp")] "")
+  , ("GET /healthz/ forwarded as HTTPS (ignored)", rawRequest "GET" "/healthz/?q" [("x-forwarded-proto", "HTTPS"), ("x-forwarded-for", "10.0.0.1")] "")
   , ("GET /health%7A", plain "GET" "/health%7A")
   , ("GET /", plain "GET" "/")
   , ("GET /nope", plain "GET" "/nope")

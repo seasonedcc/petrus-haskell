@@ -24,7 +24,7 @@ module Hamsterdan.Host.Cli
   , handledMessage
   ) where
 
-import Control.Exception (Exception (..), IOException, SomeException, finally, fromException, throwIO, try)
+import Control.Exception (Exception (..), IOException, SomeException (..), finally, fromException, throwIO, try)
 import Control.Monad (forM, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -55,17 +55,19 @@ import Hamsterdan.Cli.Argparse
   )
 import Hamsterdan.Host.Agenticus (AgentCompositionError (..))
 import Hamsterdan.Host.Agents (OwnedAgent, closeOwnedAgent, composeHostAgent, newOwnedAgent, productionAgentSeams)
-import Petrus.Agenticus.Error (AgenticusError (..), errorClassName, isSubclassOf)
+import Petrus.Agenticus.Error (AgenticusError (..), isSubclassOf)
 import Petrus.Agenticus.Error qualified as AE
 import Hamsterdan.GitHub.Client (AppCredentials (..), ClientOptions, defaultClientOptions, newAppClients)
 import Hamsterdan.GitHub.Config (ConfigurationError (..), HostConfig (..), fromEnvironment, revealSecret)
 import Hamsterdan.GitHub.Http (ClientError (..), ClientErrorKind (..))
 import Hamsterdan.GitHub.Models (ContractRefused (..), GitHubBoundaryError (..), InvalidRequest (..))
 import Hamsterdan.Python (intText, isAscii, isPrintable, pythonExceptionStr, splitlines, strRepr, utf8Encode)
-import Hamsterdan.Python.Object (errorLine)
+import Hamsterdan.Python.Object (errorLine, tracebackName)
+import Hamsterdan.Host.ExceptionClass (exceptionClass)
 import Hamsterdan.GitHub.Webhooks (Failure (..))
 import Hamsterdan.GitHub.Webhooks qualified as Custody
-import Hamsterdan.Host.Api (ServeOptions (..), serve)
+import Hamsterdan.Host.Api (ServeOptions (..), Served (..), serve)
+import Hamsterdan.Host.Uvicorn (UvicornLog (..))
 import Hamsterdan.Host.Binding (InstanceBinding (..), parseInstanceBinding, preflightV5State, topologyText)
 import Hamsterdan.Host.Service
   ( AgentCustody
@@ -86,7 +88,7 @@ import Petrus.Motus.Worker (RuntimeError (..), ValueError (..))
 import System.Environment (unsetEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
-import System.IO (Handle, hFlush, stderr, stdout)
+import System.IO (Handle, hFlush, hIsTerminalDevice, stderr, stdout)
 import System.IO.Error (catchIOError, isEOFError)
 import System.Posix.Files qualified as Posix
 import System.Posix.IO qualified as PosixIO
@@ -404,7 +406,7 @@ data CliEnvironment = CliEnvironment
   , output :: Handle
   , errors :: Handle
   , onServing :: Int -> IO ()
-  -- ^ Called once @serve@ listens, with the port.
+  -- ^ Called once @serve@ listens, with the bound port.
   , reraise :: Signal -> IO ()
   -- ^ After SIGTERM stopped @serve@ gracefully: uvicorn's
   -- @signal.raise_signal@ with the previous (default) handler restored. In
@@ -525,24 +527,28 @@ runCli env argv = do
                       pure (if requeued then ExitSuccess else ExitFailure 1)
                     Serve host port -> do
                       opened <- open config
+                      colors <- hIsTerminalDevice env.output
                       served <-
-                        try @IOException $
-                          serve
-                            opened
-                            ServeOptions
-                              { host = T.unpack host
-                              , port = fromInteger port
-                              , onStarted = env.onServing (fromInteger port)
-                              }
+                        serve
+                          opened
+                          ServeOptions
+                            { host = T.unpack host
+                            , port = fromInteger port
+                            , log = UvicornLog {errors = env.errors, access = env.output, colors}
+                            , forwardedAllowIps = maybe "127.0.0.1" T.pack (Map.lookup "FORWARDED_ALLOW_IPS" env.environment)
+                            , failureLine = tracebackLine
+                            , onStarted = env.onServing
+                            }
                       case served of
-                        Left _ -> pure (ExitFailure 3)
+                        -- @sys.exit(STARTUP_FAILURE)@.
+                        StartupFailed -> pure (ExitFailure 3)
                         -- SIGTERM, raised again: the default action, at once
                         -- (the @finally@ never runs; the lifespan has already
                         -- closed the service). When the process survives it
                         -- (PID 1 of a container, where the kernel ignores a
                         -- signal's default action), @uvicorn.run@ returns,
                         -- the @finally@ runs, status 0, as for SIGINT.
-                        Right (Just signal)
+                        ShutDown (Just signal)
                           | signal == sigTERM -> do
                               env.reraise signal
                               pure ExitSuccess
@@ -550,7 +556,7 @@ runCli env argv = do
                         -- handler, which only cancels uvicorn's main task, by
                         -- then finished: @uvicorn.run@ returns, the @finally@
                         -- runs, status 0.
-                        Right _ -> pure ExitSuccess
+                        ShutDown _ -> pure ExitSuccess
                 -- Everything after @inspect-instance@'s early return: the
                 -- topology check, the agent composition and @HostService@.
                 open config = do
@@ -608,10 +614,42 @@ runCli env argv = do
 -- | What an uncaught exception prints (the reference prints a traceback
 -- ending in this line).
 uncaughtText :: SomeException -> Text
-uncaughtText e = case fromException e of
-  Just failure -> errorLine failure <> "\n"
-  _ -> case fromException e of
-    Just (RuntimeError m) -> "RuntimeError: " <> m <> "\n"
-    _ -> case fromException e of
-      Just (failure :: AgenticusError) -> errorClassName failure.errorClass <> ": " <> failure.errorMessage <> "\n"
-      _ -> T.pack (displayException e) <> "\n"
+uncaughtText e = tracebackLine e <> "\n"
+
+-- | The last line of the traceback the reference prints for an exception
+-- (@traceback.format_exception_only@): its class ('exceptionClass'),
+-- qualified by its module unless it is a builtin, then @": "@ and
+-- @str(error)@ when that is not empty.
+tracebackLine :: SomeException -> Text
+tracebackLine e@(SomeException inner)
+  | Just failure <- fromException e = errorLine failure
+  | otherwise = qualified (exceptionClass e) <> (if T.null message then "" else ": " <> message)
+  where
+    message
+      | Just (failure :: AgenticusError) <- fromException e = failure.errorMessage
+      | Just (failure :: ClientError) <- fromException e = failure.detail
+      | otherwise = T.pack (displayException inner)
+    qualified name = case lookup name modules of
+      Just owner -> owner <> "." <> name
+      Nothing
+        | Just (failure :: ClientError) <- fromException e
+        , failure.kind `elem` [TransportKind, HttpKind] ->
+            "httpx." <> name
+        | Just (failure :: ClientError) <- fromException e
+        , failure.kind == GitHubKind ->
+            "githubkit.exception." <> name
+        | otherwise -> tracebackName name
+    modules =
+      [ ("GitHubBoundaryError", "hamsterdan.github_app.models")
+      , ("RerunRefusedError", "hamsterdan.github_app.models")
+      , ("GitHubObjectWriteError", "hamsterdan.github_app.gateway")
+      , ("ConfigurationError", "hamsterdan.github_app.config")
+      , ("WebhookRejected", "hamsterdan.github_app.webhooks")
+      , ("UnstagedCustodyError", "hamsterdan.host.v5.gates")
+      , ("AgentCompositionError", "hamsterdan.host.agenticus")
+      , ("GitPublishError", "hamsterdan.host.git_publish")
+      , ("AgentProtocolError", "hamsterdan.agents.protocol")
+      , ("PiWorkspaceError", "hamsterdan.agents.pi")
+      , ("PiWorkspaceCleanupError", "hamsterdan.agents.pi")
+      , ("ActivityError", "petrus.motus.activity")
+      ]

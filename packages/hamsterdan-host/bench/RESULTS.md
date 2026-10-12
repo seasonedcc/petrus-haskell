@@ -361,14 +361,21 @@ Each cell is the median of the eleven runs, with the fastest in brackets.
 | `inbox` (20 Instances) | CLI (fresh process) | 122 ms (109 ms) | 690 ms (660 ms) | 5.64× |
 | `requeue` of a parked delivery (20 Instances) | CLI (fresh process) | 130 ms (118 ms) | 697 ms (667 ms) | 5.36× |
 | `inspect-instance` (a 2,001-record History) | CLI (fresh process) | 37.3 ms (32.7 ms) | 484 ms (465 ms) | 13.0× |
-| `serve` start to the first `200` on `/healthz` (20 Instances) | process | 187 ms (163 ms) | 870 ms (829 ms) | 4.65× |
-| 100 signed deliveries POSTed to `serve` (inactive route) | socket | 16.8 ms (13.1 ms) | 38.8 ms (36.0 ms) | 2.31× |
+| `serve` start to the first `200` on `/healthz` (20 Instances) | process | 346 ms (262 ms) | 1.08 s (890 ms) | 3.12× |
+| 100 signed deliveries POSTed to `serve` (inactive route) | socket | 24.4 ms (17.1 ms) | 72.9 ms (41.9 ms) | 2.99× |
 | `sweep("periodic")` over 20 loaded Instances | in process; 20 reconciled, 180 provider calls | 15.0 ms (13.9 ms) | 1.54 s (1.49 s) | 103× |
 | `sweep("periodic")` over 20 unloaded Instances (fresh host) | in process; 20 reconciled, 180 provider calls | 275 ms (251 ms) | 3.53 s (3.46 s) | 12.8× |
 | immutable comment publication (100 bot comments) | in process; created | 12.7 µs (12.2 µs) | 25.6 µs (25.4 µs) | 2.01× |
 | native review batch of 8 findings (100 issue + 100 review comments) | in process; 8 created | 197 µs (191 µs) | 400 µs (393 µs) | 2.03× |
 | GraphQL ref compare-and-swap | in process; ok | 2.6 µs (2.5 µs) | 4.0 µs (3.9 µs) | 1.54× |
 | Git publication through the local authority | in process; not recovered | 311 ms (306 ms) | 354 ms (348 ms) | 1.14× |
+
+The two `serve` rows were run again once the port wrote uvicorn's log
+lines (startup and shutdown lines on stderr, an access line per response
+on stdout, to files on both sides). Eleven runs on 2026-10-11, 21:55–22:02
+local, load average 6.47–7.24, so every row of that round was slower than
+the one above on both sides; the CLI rows of that round read 3.72–7.06×.
+The two rows above are from that round.
 
 The Git publication row is the closest to level because almost all of it
 is Git itself: both sides run the same sequence of Git commands with the

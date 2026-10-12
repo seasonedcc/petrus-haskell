@@ -44,6 +44,8 @@ library
                     Hamsterdan.Host.Service
                     Hamsterdan.Host.Api
                     Hamsterdan.Host.Api.Documents
+                    Hamsterdan.Host.Uvicorn
+                    Hamsterdan.Host.Uvicorn.IpAddress
                     Hamsterdan.Host.V5.Application
                     Hamsterdan.Host.V5.Runtime
                     Hamsterdan.Host.V5.Mutation
@@ -91,6 +93,7 @@ library
                   , typed-process >=0.2
                   , time >=1.12
                   , unix >=2.8
+                  , vault >=0.3
                   , wai >=3.2
                   , warp >=3.3
   ghc-options:      -O2
@@ -134,6 +137,7 @@ test-suite hamsterdan-host-test
                     GatesSpec
                     IngressSpec
                     PiActivitySpec
+                    UvicornSpec
   build-depends:    base
                   , base64-bytestring
                   , bytestring

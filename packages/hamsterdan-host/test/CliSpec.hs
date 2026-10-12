@@ -6,10 +6,10 @@
 -- calls against a recording fake GitHub.
 module CliSpec (spec) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Control.Exception (bracket, throwIO)
-import Data.Char (toLower)
+import Control.Exception (bracket, finally, throwIO)
+import Data.Char (isDigit, toLower)
 import Control.Monad (forM, forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -42,8 +42,9 @@ import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
 import ServiceSupport (envelope, hostClientsOf, hostConfig, newFakeClients, receiveSigned, sqlExec)
 import System.Directory (createDirectory, createDirectoryIfMissing, createDirectoryLink, doesFileExist, removeFile)
-import System.Posix.Signals (raiseSignal, sigINT, sigTERM)
-import Network.Socket (close)
+import System.Posix.Signals (raiseSignal, sigINT, sigTERM, signalProcess)
+import System.Timeout (timeout)
+import Network.Socket (Family (AF_INET), SockAddr (SockAddrInet), Socket, SocketType (Stream), bind, close, defaultProtocol, listen, socket, socketPort, tupleToHostAddress)
 import Network.Wai.Handler.Warp qualified as Warp
 import RawHttp (RawResponse (..), parseResponse)
 import RawHttp qualified
@@ -189,13 +190,83 @@ spec = do
         runCli cli ["serve"] `shouldReturn` ExitSuccess
         readIORef reraised `shouldReturn` again
         hClose silent
-        BS.readFile (tmp </> "discarded.txt") `shouldReturn` ""
+        -- uvicorn's lines, stdout and stderr alike written to the one
+        -- handle (the differential case below compares them with the
+        -- reference's).
+        logged <- TE.decodeUtf8 <$> BS.readFile (tmp </> "discarded.txt")
+        T.lines (normalizeLog [port] logged)
+          `shouldBe` [ "INFO:     Started server process [PID]"
+                     , "INFO:     Waiting for application startup."
+                     , "INFO:     Application startup complete."
+                     , "INFO:     Uvicorn running on http://127.0.0.1:PORT (Press CTRL+C to quit)"
+                     , "INFO:     127.0.0.1:CLIENT - \"GET /healthz HTTP/1.0\" 200 OK"
+                     , "INFO:     Shutting down"
+                     , "INFO:     Waiting for application shutdown."
+                     , "INFO:     Application shutdown complete."
+                     , "INFO:     Finished server process [PID]"
+                     ]
         response <- takeMVar probed
         response.statusLine `shouldBe` "HTTP/1.1 200 OK"
         lookup "connection" [(BC.map toLower name, value) | (name, value) <- response.headers] `shouldBe` Just "close"
         -- The owned runtime and the route store exist and were released.
         doesFileExist (lookupState side </> "agent-routes.sqlite3") `shouldReturn` True
         doesFileExist (lookupState side </> "pi-a2" </> "installation") `shouldReturn` True
+
+  describe "serve against the reference (uvicorn's log lines)" $ do
+    let forwardedEnvironment side port =
+          Map.insert "FORWARDED_ALLOW_IPS" "10.0.0.0/8, 127.0.0.1,::1 , unix:/tmp/x" (Map.insert "HAMSTERDAN_PORT" (show port) side.configured)
+        withSides tmp action = do
+          repo <- repoRoot
+          privateKey <- BS.readFile (repo </> "packages" </> "hamsterdan-github" </> "test" </> "corpus" </> "app-test-key.pem")
+          withFakeGitHub registrationRoutes $ \githubPort _ -> do
+            referenceSide <- prepareSide (tmp </> "reference") privateKey
+            portSide <- prepareSide (tmp </> "port") privateKey
+            action githubPort referenceSide portSide
+    it "logs startup, an access line per response and shutdown as the reference does" . withTempRoot $ \tmp ->
+      withSides tmp $ \githubPort referenceSide portSide -> do
+        referencePort <- freePort
+        reference <- serveReference tmp githubPort (forwardedEnvironment referenceSide referencePort) serveRequests
+        ourPort <- freePort
+        ours <- servePort tmp githubPort (forwardedEnvironment portSide ourPort) serveRequests
+        -- The reference ends by SIGTERM, raised again after the shutdown.
+        reference.code `shouldBe` (-15)
+        length (T.lines reference.out) `shouldBe` length serveRequestBytes
+        normalizedOutcome [ourPort] ours `shouldBe` normalizedOutcome [referencePort] reference
+    it "logs a bind failure, shuts the lifespan down and exits 3 as the reference does" . withTempRoot $ \tmp ->
+      withSides tmp $ \githubPort referenceSide portSide ->
+        bracket occupiedPort (close . snd) $ \(busy, _) -> do
+          reference <- serveReference tmp githubPort (forwardedEnvironment referenceSide busy) (\_ -> pure ())
+          ours <- servePort tmp githubPort (forwardedEnvironment portSide busy) (\_ -> pure ())
+          reference.code `shouldBe` 3
+          normalizedOutcome [busy] ours `shouldBe` normalizedOutcome [busy] reference
+    it "answers a failing route 500 and logs its exception as the reference does" . withTempRoot $ \tmp ->
+      withSides tmp $ \githubPort referenceSide portSide -> do
+        -- With the inbox table renamed away under the running server,
+        -- @/healthz@'s inbox count raises sqlite3's OperationalError.
+        let failing side port = do
+              sqlExec (lookupState side </> "webhooks.sqlite3") "ALTER TABLE inbox RENAME TO inbox_gone" []
+              void (RawHttp.exchange port (RawHttp.rawRequest "GET" "/healthz" [] ""))
+        referencePort <- freePort
+        reference <- serveReference tmp githubPort (forwardedEnvironment referenceSide referencePort) (failing referenceSide)
+        ourPort <- freePort
+        ours <- servePort tmp githubPort (forwardedEnvironment portSide ourPort) (failing portSide)
+        reference.code `shouldBe` (-15)
+        reference.out `shouldSatisfy` T.isInfixOf "\"GET /healthz HTTP/1.1\" 500 Internal Server Error"
+        reference.err `shouldSatisfy` T.isInfixOf "ERROR:    Exception in ASGI application\n"
+        normalizedOutcome [ourPort] ours `shouldBe` normalizedOutcome [referencePort] reference
+    it "logs a lifespan startup failure and exits 3 as the reference does" . withTempRoot $ \tmp -> do
+      repo <- repoRoot
+      privateKey <- BS.readFile (repo </> "packages" </> "hamsterdan-github" </> "test" </> "corpus" </> "app-test-key.pem")
+      -- A GitHub that knows no App: the startup registration check fails.
+      withFakeGitHub (\_ _ -> Nothing) $ \githubPort _ -> do
+        referenceSide <- prepareSide (tmp </> "reference") privateKey
+        portSide <- prepareSide (tmp </> "port") privateKey
+        referencePort <- freePort
+        reference <- serveReference tmp githubPort (forwardedEnvironment referenceSide referencePort) (\_ -> pure ())
+        ourPort <- freePort
+        ours <- servePort tmp githubPort (forwardedEnvironment portSide ourPort) (\_ -> pure ())
+        reference.code `shouldBe` 3
+        normalizedOutcome [ourPort] ours `shouldBe` normalizedOutcome [referencePort] reference
 
   describe "the command line against the reference (python -m hamsterdan.host)" $
     it "prints, exits, changes state and calls GitHub exactly as the reference" . withTempRoot $ \tmp -> do
@@ -531,6 +602,157 @@ testEnvironment environment handle =
     , onServing = \_ -> pure ()
     , reraise = \_ -> pure ()
     }
+
+-- ---------------------------------------------------------------------------
+-- Serving against the reference
+
+-- | The requests both servers answer in the serve comparison, one
+-- connection each: methods, versions, redirects, a refused webhook,
+-- quoting of the logged path, and @X-Forwarded-For@ / @X-Forwarded-Proto@
+-- from a trusted peer.
+serveRequestBytes :: [ByteString]
+serveRequestBytes =
+  [ RawHttp.rawRequest "GET" "/healthz" [] ""
+  , "GET /healthz HTTP/1.0\r\nhost: testserver\r\n\r\n"
+  , RawHttp.rawRequest "HEAD" "/healthz" [] ""
+  , RawHttp.rawRequest "POST" "/healthz" [] ""
+  , RawHttp.rawRequest "GET" "/healthz/?a=b%20c" [] ""
+  , RawHttp.rawRequest "GET" "/healthz?x=1" [] ""
+  , RawHttp.rawRequest "GET" "/caf%C3%A9/x%2Fy%zz%FF?q=%20" [] ""
+  , RawHttp.rawRequest "POST" "/github/webhooks" [] "{}"
+  , RawHttp.rawRequest "GET" "/nope" [("x-forwarded-for", "203.0.113.9, 10.1.2.3")] ""
+  , RawHttp.rawRequest "GET" "/nope" [("x-forwarded-for", "[2001:db8::1]:4711")] ""
+  , RawHttp.rawRequest "GET" "/nope" [("x-forwarded-for", "198.51.100.7:+8_0")] ""
+  , RawHttp.rawRequest "GET" "/nope" [("x-forwarded-for", "unix:/tmp/x"), ("X-Forwarded-For", "")] ""
+  , RawHttp.rawRequest "GET" "/nope" [("x-forwarded-for", "unix:/tmp/x, 10.9.9.9")] ""
+  , RawHttp.rawRequest "GET" "/healthz/" [("x-forwarded-proto", " https ")] ""
+  ]
+
+serveRequests :: Int -> IO ()
+serveRequests port = mapM_ (void . RawHttp.exchange port) serveRequestBytes
+
+freePort :: IO Int
+freePort = bracket Warp.openFreePort (close . snd) (pure . fst)
+
+-- | A port another socket listens on.
+occupiedPort :: IO (Int, Socket)
+occupiedPort = do
+  listener <- socket AF_INET Stream defaultProtocol
+  bind listener (SockAddrInet 0 (tupleToHostAddress (127, 0, 0, 1)))
+  listen listener 1
+  port <- socketPort listener
+  pure (fromIntegral port, listener)
+
+-- | @python -m hamsterdan.host serve@ (@differential/serve_reference.py@)
+-- with the given environment, its stdout and stderr to files: once it says
+-- it is running, the requests, then SIGTERM to its exact process.
+serveReference :: FilePath -> Int -> Map String String -> (Int -> IO ()) -> IO Outcome
+serveReference tmp githubPort environment requests = do
+  executable <- upstreamPythonExecutable "hamsterdan"
+  repo <- repoRoot
+  let script = repo </> "packages" </> "hamsterdan-host" </> "differential" </> "serve_reference.py"
+      outPath = tmp </> "reference-serve-stdout.txt"
+      errPath = tmp </> "reference-serve-stderr.txt"
+      port = maybe 8000 read (Map.lookup "HAMSTERDAN_PORT" environment)
+      payload =
+        either (error . show) id $
+          dumps
+            compact
+            ( Object
+                [ ("env", Object [(T.pack k, String (T.pack v)) | (k, v) <- Map.toList environment])
+                , ("github_port", Int (toInteger githubPort))
+                ]
+            )
+  -- The driver points its own stdout and stderr at the files, so the test
+  -- holds no handle on them (GHC locks a file open for writing) and reads
+  -- them while it runs.
+  BS.writeFile outPath ""
+  BS.writeFile errPath ""
+  let config =
+        setStdin (byteStringInput (BL.fromStrict payload))
+          . setStdout nullStream
+          . setStderr nullStream
+          $ proc executable ["-I", "-B", script, outPath, errPath]
+  status <- withProcessTerm config $ \server -> do
+    let waitRunning = do
+          logged <- BS.readFile errPath
+          exited <- getExitCode server
+          if "Uvicorn running on" `BS.isInfixOf` logged
+            then pure True
+            else case exited of
+              Just _ -> pure False
+              Nothing -> threadDelay 50000 >> waitRunning
+    running <- timeout 120000000 waitRunning
+    case running of
+      Just True -> do
+        requests port
+        getPid server >>= mapM_ (signalProcess sigTERM)
+      Just False -> pure ()
+      Nothing -> expectationFailure "the reference server did not start"
+    waitExitCode server
+  outcomeFiles status outPath errPath
+
+-- | The port's @serve@ with the given environment, its stdout and stderr
+-- to files: once it listens, the requests, then SIGTERM. A SIGTERM it
+-- raises again is reported as the reference's death by that signal.
+servePort :: FilePath -> Int -> Map String String -> (Int -> IO ()) -> IO Outcome
+servePort tmp githubPort environment requests = do
+  let outPath = tmp </> "port-serve-stdout.txt"
+      errPath = tmp </> "port-serve-stderr.txt"
+  reraised <- newIORef []
+  status <-
+    withFile outPath WriteMode $ \outHandle ->
+      withFile errPath WriteMode $ \errHandle ->
+        runCli
+          (testEnvironment environment outHandle)
+            { errors = errHandle
+            , clientOptions = do
+                exchange' <- newPlainExchangeAt "127.0.0.1" githubPort
+                pure ClientOptions {exchange = exchange', clock = realToFrac <$> getPOSIXTime, metadataHook = Nothing}
+            , onServing = \port -> void (forkIO (requests port `finally` raiseSignal sigTERM))
+            , reraise = \raised -> modifyIORef reraised (<> [raised])
+            }
+          ["serve"]
+  raised <- readIORef reraised
+  outcomeFiles (if raised == [sigTERM] then ExitFailure (-15) else status) outPath errPath
+
+outcomeFiles :: ExitCode -> FilePath -> FilePath -> IO Outcome
+outcomeFiles status outPath errPath = do
+  outText <- TE.decodeUtf8 <$> BS.readFile outPath
+  errText <- TE.decodeUtf8 <$> BS.readFile errPath
+  pure Outcome {code = case status of ExitSuccess -> 0; ExitFailure n -> n, out = outText, err = errText}
+
+normalizedOutcome :: [Int] -> Outcome -> Outcome
+normalizedOutcome ports outcome = outcome {out = normalizeLog ports outcome.out, err = normalizeLog ports outcome.err}
+
+-- | uvicorn's log text with what varies from run to run replaced: the
+-- process id, the server's port, and the client's port; and each logged
+-- traceback reduced to its header and last line, with the blank lines after
+-- it (the port logs only those, host DIVERGENCES item 2).
+normalizeLog :: [Int] -> Text -> Text
+normalizeLog ports = T.intercalate "\n" . map line . tracebacks . T.splitOn "\n"
+  where
+    tracebacks = \case
+      header : rest
+        | "Traceback (most recent call last):" `T.isSuffixOf` header ->
+            let (block, others) = break record rest
+                (blank, frames) = span T.null (reverse block)
+                lastLine = take 1 frames
+             in header : lastLine <> blank <> tracebacks others
+      l : rest -> l : tracebacks rest
+      [] -> []
+    record l = any (`T.isPrefixOf` l) ["INFO:", "ERROR:", "WARNING:"]
+    line = client . flip (foldr server) ports . pid
+    pid l = case T.breakOn "server process [" l of
+      (prefix, rest)
+        | not (T.null rest) -> prefix <> "server process [PID" <> T.dropWhile (/= ']') rest
+        | otherwise -> l
+    server port =
+      T.replace ("127.0.0.1:" <> T.pack (show port) <> " ") "127.0.0.1:PORT "
+        . T.replace ("'127.0.0.1', " <> T.pack (show port) <> ")") "'127.0.0.1', PORT)"
+    client l = case T.stripPrefix "INFO:     127.0.0.1:" l of
+      Just rest -> "INFO:     127.0.0.1:CLIENT" <> T.dropWhile isDigit rest
+      Nothing -> l
 
 discard :: FilePath -> IO Handle
 discard tmp = do

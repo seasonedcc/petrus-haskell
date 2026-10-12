@@ -18,6 +18,7 @@ import CliSpec qualified
 import ExceptionClassSpec qualified
 import ArchitectureSpec qualified
 import InteropSpec qualified
+import UvicornSpec qualified
 import Test.Hspec
 
 main :: IO ()
@@ -40,3 +41,4 @@ main = hspec $ do
   ExceptionClassSpec.spec
   ArchitectureSpec.spec
   InteropSpec.spec
+  UvicornSpec.spec
