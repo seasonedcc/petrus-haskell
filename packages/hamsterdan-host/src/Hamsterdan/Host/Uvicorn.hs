@@ -53,9 +53,8 @@ module Hamsterdan.Host.Uvicorn
   ) where
 
 import Control.Exception (IOException, bracketOnError, try)
-import Control.Monad (forM, unless)
+import Control.Monad (forM)
 import Data.ByteString qualified as BS
-import Data.Char (isAlphaNum, isAscii)
 import Data.List (find)
 import Data.Maybe (fromMaybe)
 import Data.Set (Set)
@@ -73,10 +72,10 @@ import Hamsterdan.Host.Uvicorn.IpAddress qualified as Ip
 import Network.HTTP.Types (Status (..), urlDecode)
 import Network.Socket
 import Network.Wai (Middleware, Request, httpVersion, rawPathInfo, rawQueryString, remoteHost, requestHeaders, requestMethod, responseStatus, vault)
-import Petrus.Json.Python (decodeUtf8Replace, parsePythonInt, pythonStrRepr, pythonStrip)
+import Hamsterdan.Python.Url qualified as Url
+import Petrus.Json.Python (decodeUtf8Replace, pythonInt, pythonStrRepr, pythonStrip)
 import System.IO (Handle, hFlush)
 import System.IO.Unsafe (unsafePerformIO)
-import Text.Printf (printf)
 
 -- ---------------------------------------------------------------------------
 -- Logging
@@ -235,15 +234,10 @@ accessLine colors client method path version status =
 -- @quote(unquote(raw_path))@, then the query string after a @?@ when there
 -- is one.
 logPath :: Request -> Text
-logPath request = quote (decodeUtf8Replace (urlDecode False (rawPathInfo request))) <> query
+logPath request = Url.quote "/" (decodeUtf8Replace (urlDecode False (rawPathInfo request))) <> query
   where
     queryString = BS.drop 1 (rawQueryString request)
     query = if BS.null queryString then "" else "?" <> TE.decodeLatin1 queryString
-    -- @urllib.parse.quote(text, safe="/")@.
-    quote = T.concatMap $ \c ->
-      if isAscii c && (isAlphaNum c || c `elem` ("_.-~/" :: String))
-        then T.singleton c
-        else T.concat [T.pack (printf "%%%02X" b) | b <- BS.unpack (TE.encodeUtf8 (T.singleton c))]
 
 -- | Log one access line per response, as the response starts (h11's
 -- @RequestResponseCycle.send@), for the client of the request's 'Scope'.
@@ -354,12 +348,6 @@ parseHostPort value
   , (host, port) <- T.breakOnEnd ":" value =
       maybe (value, 0) (\n -> (T.dropEnd 1 host, n)) (pythonInt port)
   | otherwise = (value, 0)
-  where
-    -- @int(text)@, with its 4300-digit conversion limit.
-    pythonInt text = do
-      n <- parsePythonInt 10 text
-      unless (T.length (T.filter (`notElem` ("_+-" :: String)) (pythonStrip text)) <= 4300) Nothing
-      Just n
 
 -- | @ProxyHeadersMiddleware@: for a trusted peer, the last
 -- @X-Forwarded-Proto@ (stripped) when it is @http@, @https@, @ws@ or @wss@

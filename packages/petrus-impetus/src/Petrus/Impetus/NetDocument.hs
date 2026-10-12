@@ -249,7 +249,7 @@ mkNodePosition :: Text -> Number -> Number -> Either Text NodePosition
 mkNodePosition n px py =
   construct "NodePosition" $
     NodePosition
-      <$> field "node" (checked canonicalPathError strictStr) (PStr n)
+      <$> field "node" (checked canonicalPathError strictStr) (PyStr n)
       <*> field "x" coordinate (numberPV px)
       <*> field "y" coordinate (numberPV py)
 
@@ -257,7 +257,7 @@ mkNodePosition n px py =
 mkPortableViewV1 :: [NodePosition] -> Either Text PortableViewV1
 mkPortableViewV1 ns =
   first (renderValidationError "PortableViewV1") $
-    afterModel canonicalNodes (PDict [("version", PInt 1), ("nodes", PTuple (map nodeInstance ns))]) (Right (PortableViewV1 ns))
+    afterModel canonicalNodes (PyDict [("version", PyInt 1), ("nodes", PyTuple (map nodeInstance ns))]) (Right (PortableViewV1 ns))
 
 -- | @MarkingToken(color=..., data=...)@: the token data must already be
 -- strict JSON (finite numbers, integral numbers in the safe range).
@@ -265,12 +265,12 @@ mkMarkingToken :: Maybe Text -> Json -> Either Text MarkingToken
 mkMarkingToken c value =
   construct "MarkingToken" $
     MarkingToken
-      <$> field "color" (optional strictStr) (maybe PNone PStr c)
+      <$> field "color" (optional strictStr) (maybe PyNone PyStr c)
       <*> field "data" (strictData topLevelFrames) (fromJson value)
 
 -- | @PlaceMarking(place=..., tokens=(...))@.
 mkPlaceMarking :: Text -> [MarkingToken] -> Either Text PlaceMarking
-mkPlaceMarking p ts = construct "PlaceMarking" ((`PlaceMarking` ts) <$> field "place" (checked canonicalPathError strictStr) (PStr p))
+mkPlaceMarking p ts = construct "PlaceMarking" ((`PlaceMarking` ts) <$> field "place" (checked canonicalPathError strictStr) (PyStr p))
 
 -- | @LineageEntry(id=..., parent=..., provenance=..., marking=(...),
 -- metadata=...)@.
@@ -278,13 +278,13 @@ mkLineageEntry :: Integer -> Maybe Integer -> Provenance -> [PlaceMarking] -> [(
 mkLineageEntry i p prov m meta =
   construct "LineageEntry" $
     (\i' p' meta' -> LineageEntry i' p' prov m meta')
-      <$> field "id" (intRange 0 safeIntegerMax) (PInt i)
-      <*> field "parent" (optional (intRange 0 safeIntegerMax)) (maybe PNone PInt p)
-      <*> field "metadata" (validateMetadata topLevelFrames) (PDict [(k, fromJson v) | (k, v) <- meta])
+      <$> field "id" (intRange 0 safeIntegerMax) (PyInt i)
+      <*> field "parent" (optional (intRange 0 safeIntegerMax)) (maybe PyNone PyInt p)
+      <*> field "metadata" (validateMetadata topLevelFrames) (PyDict [(k, fromJson v) | (k, v) <- meta])
 
 -- | @ExecutionLineage(head=..., entries=(...))@.
 mkExecutionLineage :: Integer -> [LineageEntry] -> Either Text ExecutionLineage
-mkExecutionLineage h es = construct "ExecutionLineage" ((`ExecutionLineage` es) <$> field "head" (intRange 0 safeIntegerMax) (PInt h))
+mkExecutionLineage h es = construct "ExecutionLineage" ((`ExecutionLineage` es) <$> field "head" (intRange 0 safeIntegerMax) (PyInt h))
 
 -- | @PlaceMarking.model_validate(value, strict=True)@: one place's marking
 -- from its JSON shape (@{"place": ..., "tokens": [{"color", "data"}]}@),
@@ -296,7 +296,7 @@ placeMarkingFromJson value =
 
 nodeInstance :: NodePosition -> PV
 nodeInstance n =
-  PInstance "NodePosition" ("NodePosition(node=" <> pyStrRepr n.node <> ", x=" <> reprNumber n.x <> ", y=" <> reprNumber n.y <> ")")
+  PyInstance "petrus.impetus.net_document" "NodePosition" ("NodePosition(node=" <> pyStrRepr n.node <> ", x=" <> reprNumber n.x <> ", y=" <> reprNumber n.y <> ")")
 
 -- ---------------------------------------------------------------------------
 -- Parsing
@@ -381,16 +381,15 @@ rawNode = \case
 
 pvNode :: PV -> Node
 pvNode = \case
-  PNone -> NNull
-  PBool _ -> NBool
-  PInt i -> NInt i
-  PFloat d -> NFloat d
+  PyNone -> NNull
+  PyBool _ -> NBool
+  PyInt i -> NInt i
+  PyFloat d -> NFloat d
   -- A 'Text' holds a lone surrogate only as WTF-8 ("Petrus.Json.Wtf8").
-  PStr s -> NStr (hasLoneSurrogate s)
-  PList items -> NList (map pvNode items)
-  PTuple _ -> NOther "tuple"
-  PDict members -> NDict [(hasLoneSurrogate k, pvNode v) | (k, v) <- members]
-  PInstance name _ -> NOther name
+  PyStr s -> NStr (hasLoneSurrogate s)
+  PyList items -> NList (map pvNode items)
+  PyDict members -> NDict [(hasLoneSurrogate k, pvNode v) | (k, v) <- members]
+  other -> NOther (pyTypeName other)
 
 -- | How the @_strict_json@ walk failed: a @ValueError@ (its message), or a
 -- @RecursionError@.
@@ -483,7 +482,7 @@ validateDocumentModel frames =
 -- | @_version_one@: exactly the integer @1@ (never @True@ or @1.0@).
 versionOne :: PV -> Validated Integer
 versionOne = \case
-  PInt 1 -> Right 1
+  PyInt 1 -> Right 1
   other -> Left [valueError "version must be the integer 1" other]
 
 validateView :: PV -> Validated PortableViewV1
@@ -520,10 +519,10 @@ validateNode =
 -- is not finite).
 coordinate :: PV -> Validated Number
 coordinate = \case
-  value@(PInt i)
+  value@(PyInt i)
     | finite (fromRational (toRational i)) -> Right (IntNumber i)
     | otherwise -> notFinite value
-  value@(PFloat d)
+  value@(PyFloat d)
     | finite d -> Right (FloatNumber d)
     | otherwise -> notFinite value
   other -> Left [valueError "coordinate must be a JSON number" other]
@@ -558,7 +557,7 @@ validateEntry frames =
 -- above the validating call, and @_strict_json@ one above that).
 validateMetadata :: Int -> PV -> Validated [(Text, Json)]
 validateMetadata frames = \case
-  value@(PDict members) -> do
+  value@(PyDict members) -> do
     strictField (Just (frames + 2)) value
     Right [(k, pvJson v) | (k, v) <- members]
   other -> Left [valueError "metadata must be an object" other]
@@ -664,53 +663,41 @@ tshow = T.pack . show
 -- components are @None@ here, as in the reference's dump.
 dumpDocument :: Bool -> NetDocumentV1 -> PV
 dumpDocument tuples document =
-  PDict
-    [ ("format", PStr "petrus-net-document")
-    , ("version", PInt 1)
+  PyDict
+    [ ("format", PyStr "petrus-net-document")
+    , ("version", PyInt 1)
     , ("definition", dumpDefinition tuples document.definition)
-    , ("view", maybe PNone viewPV document.view)
-    , ("lineage", maybe PNone (dumpLineage tuples) document.lineage)
+    , ("view", maybe PyNone viewPV document.view)
+    , ("lineage", maybe PyNone (dumpLineage tuples) document.lineage)
     ]
   where
     viewPV v =
-      PDict
-        [ ("version", PInt 1)
-        , ("nodes", (if tuples then PTuple else PList) [PDict [("node", PStr n.node), ("x", numberPV n.x), ("y", numberPV n.y)] | n <- v.nodes])
+      PyDict
+        [ ("version", PyInt 1)
+        , ("nodes", (if tuples then PyTuple else PyList) [PyDict [("node", PyStr n.node), ("x", numberPV n.x), ("y", numberPV n.y)] | n <- v.nodes])
         ]
 
 dumpLineage :: Bool -> ExecutionLineage -> PV
 dumpLineage tuples l =
-  PDict [("head", PInt l.head), ("entries", (if tuples then PTuple else PList) (map (dumpEntry tuples) l.entries))]
+  PyDict [("head", PyInt l.head), ("entries", (if tuples then PyTuple else PyList) (map (dumpEntry tuples) l.entries))]
 
 dumpEntry :: Bool -> LineageEntry -> PV
 dumpEntry tuples entry =
-  PDict
-    [ ("id", PInt entry.id)
-    , ("parent", maybe PNone PInt entry.parent)
-    , ("provenance", PStr (provenanceText entry.provenance))
-    , ("marking", seqOf [PDict [("place", PStr m.place), ("tokens", seqOf (map tokenPV m.tokens))] | m <- entry.marking])
-    , ("metadata", PDict [(k, fromJson v) | (k, v) <- entry.metadata])
+  PyDict
+    [ ("id", PyInt entry.id)
+    , ("parent", maybe PyNone PyInt entry.parent)
+    , ("provenance", PyStr (provenanceText entry.provenance))
+    , ("marking", seqOf [PyDict [("place", PyStr m.place), ("tokens", seqOf (map tokenPV m.tokens))] | m <- entry.marking])
+    , ("metadata", PyDict [(k, fromJson v) | (k, v) <- entry.metadata])
     ]
   where
-    seqOf = if tuples then PTuple else PList
-    tokenPV t = PDict [("color", maybe PNone PStr t.color), ("data", fromJson t.payload)]
+    seqOf = if tuples then PyTuple else PyList
+    tokenPV t = PyDict [("color", maybe PyNone PyStr t.color), ("data", fromJson t.payload)]
 
 numberPV :: Number -> PV
 numberPV = \case
-  IntNumber i -> PInt i
-  FloatNumber d -> PFloat d
-
-pvJson :: PV -> Json
-pvJson = \case
-  PNone -> Null
-  PBool b -> Bool b
-  PInt i -> Int i
-  PFloat d -> Float d
-  PStr s -> String s
-  PList items -> Array (map pvJson items)
-  PTuple items -> Array (map pvJson items)
-  PDict members -> Object [(k, pvJson v) | (k, v) <- members]
-  PInstance _ text -> String text
+  IntNumber i -> PyInt i
+  FloatNumber d -> PyFloat d
 
 -- | The document's JSON value exactly as the writer serializes it: absent
 -- components are omitted rather than @null@.
@@ -719,7 +706,7 @@ netDocumentToJson = pvJson . writerValue
 
 writerValue :: NetDocumentV1 -> PV
 writerValue document = case dumpDocument False document of
-  PDict members -> PDict [(k, v) | (k, v) <- members, not (absent k)]
+  PyDict members -> PyDict [(k, v) | (k, v) <- members, not (absent k)]
   other -> other
   where
     absent k = (k == "view" && not (isJust document.view)) || (k == "lineage" && not (isJust document.lineage))

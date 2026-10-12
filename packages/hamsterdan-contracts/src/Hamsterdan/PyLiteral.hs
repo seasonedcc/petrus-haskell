@@ -50,6 +50,7 @@ import Data.Text.Internal qualified as TI
 import Hamsterdan.Contracts.Codec (pythonDict)
 import Petrus.Json (Json)
 import Petrus.Json qualified as Json
+import Petrus.Json.Limits (maxIntStrDigits)
 import Petrus.Json.Python (pythonDoubleRepr, pythonExceptionStr, pythonStrRepr, unicodeEncodeError, utf8EncodeFailure)
 import Petrus.Json.Wtf8 (fromCodePoints)
 
@@ -905,16 +906,12 @@ number = do
           when (T.length wholeDigits > 1 && T.head wholeDigits == '0' && T.any (/= '0') wholeDigits) $
             syntax "leading zeros in decimal integer literals are not permitted"
           -- CPython counts the digits of the value, not leading zeros.
-          when (T.length (T.dropWhile (== '0') wholeDigits) > intMaxStrDigits) $
+          when (T.length (T.dropWhile (== '0') wholeDigits) > maxIntStrDigits) $
             syntax "Exceeds the limit (4300 digits) for integer string conversion"
           pure (EConst (PyInt (read (T.unpack wholeDigits))))
     endOfNumber after = case T.uncons after of
       Just (c, _) | isAlphaNum c || c == '_' -> syntax "invalid decimal literal"
       _ -> pure ()
-
--- | @sys.get_int_max_str_digits()@ default.
-intMaxStrDigits :: Int
-intMaxStrDigits = 4300
 
 -- Digits with single underscores between them; returns the digits alone.
 -- A radix literal may put an underscore right after its @0x@/@0o@/@0b@.

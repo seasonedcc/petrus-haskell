@@ -1,26 +1,17 @@
 {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
--- | The text of a pydantic 2.13 (pydantic-core 2.46) @ValidationError@, and
--- the Python objects its lines quote.
+-- | The text of a pydantic 2.13 (pydantic-core 2.46) @ValidationError@.
 --
 -- The reference's refusals embed @str(ValidationError)@ verbatim: the error
 -- count and model title, then for each error its dotted location, message,
 -- error type, a truncated @repr@ of the offending input and that input's
--- Python type, and the documentation URL. This is the one rendering of that
+-- Python type ("Petrus.Json.Python.Object"), and the documentation URL. This is the one rendering of that
 -- text in the port; each package validates its own models and hands the
 -- errors here ('renderValidationError'), so a pydantic upgrade changes one
 -- module.
 module Petrus.Json.Python.Pydantic
-  ( -- * Python objects
-    PyObject (..)
-  , fromJson
-  , fromRaw
-  , pyRepr
-  , pyStrValue
-  , pyTypeName
-    -- * Validation errors
-  , Loc (..)
+  ( Loc (..)
   , LineError (..)
   , stringUnicode
   , renderValidationError
@@ -33,86 +24,8 @@ import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Json.Python.Scanner (Raw (..), rawText)
-import Petrus.Json.PythonText (pythonStrRepr)
-import Petrus.Json.Repr (pythonDoubleRepr, pythonIntRepr, pythonListRepr, pythonTupleRepr)
-import Petrus.Json.Value (Json (..))
+import Petrus.Json.Python.Object (PyObject, pyRepr, pyTypeName)
 import Petrus.Json.Wtf8 (lossyUtf8)
-
--- ---------------------------------------------------------------------------
--- Python objects
-
--- | A Python object as a validator sees it: JSON-shaped, plus the tuples a
--- @model_dump(mode="python")@ produces and opaque model instances (which
--- appear in errors only through their @repr@). A dict's members are its
--- items in order, each key once.
-data PyObject
-  = PNone
-  | PBool Bool
-  | PInt Integer
-  | PFloat Double
-  | PStr Text
-  | PList [PyObject]
-  | PTuple [PyObject]
-  | PDict [(Text, PyObject)]
-  | -- | A model instance: its class name and its @repr@.
-    PInstance Text Text
-
--- | The object @json.loads@ builds for a parsed value (whose objects hold
--- each key once).
-fromJson :: Json -> PyObject
-fromJson = \case
-  Null -> PNone
-  Bool b -> PBool b
-  Int i -> PInt i
-  Float d -> PFloat d
-  String s -> PStr s
-  Array items -> PList (map fromJson items)
-  Object members -> PDict [(k, fromJson v) | (k, v) <- members]
-
--- | A scanned value whose strings are already admitted as scalar values.
-fromRaw :: Raw -> PyObject
-fromRaw = \case
-  RNull -> PNone
-  RBool b -> PBool b
-  RInt i -> PInt i
-  RFloat d -> PFloat d
-  RStr s -> PStr (rawText s)
-  RList items -> PList (map fromRaw items)
-  RDict members -> PDict [(rawText k, fromRaw v) | (k, v) <- members]
-
--- | CPython's @repr@.
-pyRepr :: PyObject -> Text
-pyRepr = \case
-  PNone -> "None"
-  PBool True -> "True"
-  PBool False -> "False"
-  PInt i -> pythonIntRepr i
-  PFloat d -> pythonDoubleRepr d
-  PStr s -> pythonStrRepr s
-  PList items -> pythonListRepr (map pyRepr items)
-  PTuple items -> pythonTupleRepr (map pyRepr items)
-  PDict members -> "{" <> T.intercalate ", " [pythonStrRepr k <> ": " <> pyRepr v | (k, v) <- members] <> "}"
-  PInstance _ text -> text
-
--- | CPython's @str()@ (which differs from @repr@ only for strings).
-pyStrValue :: PyObject -> Text
-pyStrValue = \case
-  PStr s -> s
-  other -> pyRepr other
-
--- | @type(x).__qualname__@, which pydantic reports as @input_type@.
-pyTypeName :: PyObject -> Text
-pyTypeName = \case
-  PNone -> "NoneType"
-  PBool _ -> "bool"
-  PInt _ -> "int"
-  PFloat _ -> "float"
-  PStr _ -> "str"
-  PList _ -> "list"
-  PTuple _ -> "tuple"
-  PDict _ -> "dict"
-  PInstance name _ -> name
 
 -- ---------------------------------------------------------------------------
 -- Validation errors

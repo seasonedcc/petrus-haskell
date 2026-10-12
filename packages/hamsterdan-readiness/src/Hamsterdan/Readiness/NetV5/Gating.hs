@@ -85,7 +85,7 @@ import Petrus.Activity
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), HandlerResult, derivedActivityHandler, handlerTokens)
 import Petrus.Impetus.Dsl (BuiltNet (..))
 import Petrus.Impetus.Instance (ImplementationRef (..))
-import Petrus.Impetus.Instance.FailureText (PythonArg (..), pythonFailureText)
+import Petrus.Impetus.Instance.FailureText (PyObject (..), pythonFailureText)
 import Petrus.Impetus.Petrinet (Arc (..), Binding (..), NetPath, Token (..), netPathText)
 import Petrus.Impetus.Petrinet.Schema (Net, handlerUri, inputs, netPath, outputs)
 import Petrus.Json (Json (..))

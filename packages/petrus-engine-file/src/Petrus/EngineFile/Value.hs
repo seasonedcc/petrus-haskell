@@ -28,8 +28,8 @@ import GHC.Generics (Generic)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
-import Petrus.Json.Python.Pydantic (PyObject (..))
-import Petrus.Json.Python.Pydantic qualified as Pydantic
+import Petrus.Json.Python.Object (PyObject (..))
+import Petrus.Json.Python.Object qualified as Object
 
 -- | A parsed JSON value.
 data Value
@@ -72,28 +72,21 @@ toPython = \case
 -- | The Python object for a value, as petrus-json models it.
 toPyObject :: Value -> PyObject
 toPyObject = \case
-  VNull -> PNone
-  VBool b -> PBool b
-  VInt i _ -> PInt i
-  VFloat d -> PFloat d
-  VStr s -> PStr s
-  VList items -> PList (map toPyObject items)
-  VDict members -> PDict [(k, toPyObject v) | (k, v) <- pyDict members]
+  VNull -> PyNone
+  VBool b -> PyBool b
+  VInt i _ -> PyInt i
+  VFloat d -> PyFloat d
+  VStr s -> PyStr s
+  VList items -> PyList (map toPyObject items)
+  VDict members -> PyDict [(k, toPyObject v) | (k, v) <- pyDict members]
 
 -- | @repr()@ of the Python object.
 pyRepr :: Value -> Text
-pyRepr = Pydantic.pyRepr . toPyObject
+pyRepr = Object.pyRepr . toPyObject
 
 -- | @type(x).__qualname__@ of the Python object.
 pyTypeName :: Value -> Text
-pyTypeName = \case
-  VNull -> Pydantic.pyTypeName PNone
-  VBool b -> Pydantic.pyTypeName (PBool b)
-  VInt i _ -> Pydantic.pyTypeName (PInt i)
-  VFloat d -> Pydantic.pyTypeName (PFloat d)
-  VStr s -> Pydantic.pyTypeName (PStr s)
-  VList _ -> Pydantic.pyTypeName (PList [])
-  VDict _ -> Pydantic.pyTypeName (PDict [])
+pyTypeName = Object.pyTypeName . toPyObject
 
 -- | Whether an integer fits a signed 64-bit integer.
 fitsI64 :: Integer -> Bool

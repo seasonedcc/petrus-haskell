@@ -79,7 +79,7 @@ import Hamsterdan.Host.Service
   , serviceOptions
   )
 import Hamsterdan.Host.Service qualified as Service
-import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
+import Petrus.Impetus.Instance.FailureText (PyObject (..), PythonException (..))
 import Petrus.Json (Json (..), defaultDumps, dumpsText, parseJson, pythonJsonLoads)
 import Petrus.Json qualified as Json
 import Petrus.Json.Python (parsePythonFloat)

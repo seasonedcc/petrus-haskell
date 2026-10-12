@@ -35,13 +35,13 @@ import Data.ByteString.Char8 qualified as BC
 import Petrus.Json.Python (fsDecode, pythonStringRepr)
 import Petrus.Json.Python.Exception
   ( IsPythonException (..)
-  , PythonArg (..)
+  , PyObject (..)
   , PythonException (..)
   , pythonExceptionFromException
   , pythonExceptionToException
   , raised
   )
-import Petrus.Telemetry.ErrorType (oserrorSubclass)
+import Petrus.Json.Python.OsError (errnoClass)
 
 -- | The Python exception class an upstream failure surfaces as.
 data ErrorKind
@@ -88,7 +88,7 @@ instance IsPythonException ExecutionError where
     OtherError cls -> raised cls message
     where
       osException (errno, strerror, filename) =
-        PythonException (oserrorSubclass (Errno errno)) ([PyInt (toInteger errno), PyStr strerror] <> map PyStr filename)
+        PythonException (errnoClass (Errno errno)) ([PyInt (toInteger errno), PyStr strerror] <> map PyStr filename)
       keyArg text = either (const (PyStr text)) (\(n, rest) -> if T.null rest then PyInt n else PyStr text) (TR.signed TR.decimal text)
 
 -- | @[Errno N] strerror@ with an optional @: repr(filename)@, as

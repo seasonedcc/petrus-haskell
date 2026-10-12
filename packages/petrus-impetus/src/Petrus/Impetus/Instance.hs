@@ -44,7 +44,7 @@ module Petrus.Impetus.Instance
   , exceptionFailureText
   , pythonFailureText
   , PythonException (..)
-  , PythonArg (..)
+  , PyObject (..)
     -- * Delivery and terminal values
   , AcceptedDelivery (instanceId, source, identity, occurrence)
   , acceptedDelivery
@@ -140,7 +140,7 @@ import Petrus.Impetus.Instance.Resume
 import Petrus.Impetus.Internal.OMap (OMap)
 import Petrus.Impetus.Internal.OMap qualified as OMap
 import Petrus.Json.Python (pythonIntRepr, pythonListRepr, pythonStrRepr)
-import Petrus.Impetus.Internal.Uuid (uuid7Hex)
+import Petrus.Json.Python.Uuid (uuid7Hex)
 import Petrus.Impetus.Petrinet.Enabledness (Binding (..), Diagnostic, Filter, Guard, ImplementationKey (..), Implementations (..))
 import Petrus.Impetus.Petrinet.Enabledness qualified as E
 import Petrus.Impetus.Petrinet.Firing (BeginEffect (..), ProducedTokens (..), beginFiring, completeFiring)

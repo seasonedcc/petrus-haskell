@@ -31,13 +31,12 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Python.Exception (PythonArg (..), PythonException (..), dumpsError, keyError, pythonError)
+import Hamsterdan.Python.Exception (PyObject (..), PythonException (..), dumpsError, keyError, pythonError)
 import Hamsterdan.Python.Object (PV (..), hashCheck, loadsValue, pyEq, toJson, typeName)
 import Hamsterdan.Python.Text qualified as Py
 import Hamsterdan.Python.Url qualified as Url
 import Hamsterdan.Operator.FastJson (fastLoads)
 import Petrus.EngineFile.PyText (decodeText)
-import Petrus.EngineFile.Validate (PyException (..))
 import Petrus.Json (defaultDumps, dumps)
 
 -- | @value.get(key, default)@ on what must be a dict.
@@ -103,9 +102,7 @@ shlexQuote s
 -- | What @subprocess.run(..., text=True)@ makes of captured bytes: strict
 -- UTF-8 and universal newlines, or its @UnicodeDecodeError@.
 decodeOutput :: ByteString -> Either PythonException Text
-decodeOutput bytes = case decodeText bytes of
-  Left (PyException name text) -> Left (pythonError name text)
-  Right decoded -> Right (TE.decodeUtf8 decoded)
+decodeOutput bytes = TE.decodeUtf8 <$> decodeText bytes
 
 pyStrip :: Text -> Text
 pyStrip = Py.strip

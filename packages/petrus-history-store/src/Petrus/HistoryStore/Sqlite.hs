@@ -69,6 +69,7 @@ import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, withMVar)
 import Control.Exception (Exception (..), bracket, mask, onException, throwIO, try)
 import Control.Monad (foldM, unless, when)
 import Data.ByteString (ByteString)
+import Data.Functor.Identity (Identity (..))
 import Data.Int (Int64)
 import Data.List (intercalate)
 import Data.Map.Strict (Map)
@@ -171,9 +172,7 @@ payloadOptions = compact {ensureAscii = True}
 
 -- | Encode one record's row, or the reference's refusal text.
 encodeRow :: Record -> Either Text EncodedRow
-encodeRow r = encodeRows [r] >>= \case
-  [row] -> Right row
-  _ -> Left "cannot durably encode: no row"
+encodeRow = fmap runIdentity . encodeRows . Identity
 
 -- | Encode a batch's rows before any IO (@_commit@'s @batch = [...]@): the
 -- first refused record's text, in batch order, or every row.
@@ -184,7 +183,7 @@ encodeRow r = encodeRows [r] >>= \case
 -- M4, 2026-10-12), this took the row from 69.0 to 59.3 ms against a 'dumps'
 -- per record, which allocates a 2 000-byte buffer and an exact-size copy
 -- for each.
-encodeRows :: [Record] -> Either Text [EncodedRow]
+encodeRows :: (Traversable t) => t Record -> Either Text (t EncodedRow)
 encodeRows batch = case dumpsMany payloadOptions encodeRecord batch of
   Left (r, problem) ->
     Left
@@ -194,7 +193,7 @@ encodeRows batch = case dumpsMany payloadOptions encodeRecord batch of
           <> T.pack (encodeErrorMessage problem)
           <> " — durable instants, token data, and activity input/result must be JSON-faithful values"
       )
-  Right encoded -> Right [row r bytes | (r, bytes) <- encoded]
+  Right encoded -> Right (uncurry row <$> encoded)
   where
     -- @encoded.get("occurrence")@ is the record's occurrence: every record
     -- that carries one encodes it under that key, as an integer or null.

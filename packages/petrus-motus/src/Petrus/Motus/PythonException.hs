@@ -24,7 +24,7 @@ module Petrus.Motus.PythonException
   , CancelledError (..)
     -- * Naming
   , PythonException (..)
-  , PythonArg (..)
+  , PyObject (..)
   , IsPythonException (..)
   , pythonException
   , knownPythonException
@@ -41,7 +41,7 @@ import Data.Text qualified as T
 import Database.SQLite3 (SQLError (..))
 import Petrus.Json.Python.Exception
   ( IsPythonException (..)
-  , PythonArg (..)
+  , PyObject (..)
   , PythonException (..)
   , asPythonException
   , pythonExceptionFromException

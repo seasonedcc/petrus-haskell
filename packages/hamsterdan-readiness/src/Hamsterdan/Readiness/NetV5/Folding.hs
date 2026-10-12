@@ -48,7 +48,7 @@ import Data.Typeable (Typeable, cast)
 import Hamsterdan.Contracts.Codec (Contract (..), Codec (..), dump, validate)
 import Hamsterdan.Contracts.ReadinessV5
 import Petrus.Impetus.Binding (HandlerResult, handlerTokens)
-import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
+import Petrus.Impetus.Instance.FailureText (PyObject (..), PythonException (..))
 import Petrus.Impetus.Petrinet (Arc (..), Binding (..), Token (..), netPathText)
 import Petrus.Json (Json (..))
 
@@ -161,7 +161,7 @@ route outs mapping =
     ]
 
 -- | A Python exception: its class and @args@.
-pyError :: Text -> [PythonArg] -> PythonException
+pyError :: Text -> [PyObject] -> PythonException
 pyError = PythonException
 
 -- | A pydantic @ValidationError@ (whose @args@ are empty).

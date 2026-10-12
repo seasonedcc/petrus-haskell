@@ -27,6 +27,7 @@ module Petrus.Json.PythonText
   , isPythonNumberSpace
     -- * @int()@ and @float()@
   , parsePythonInt
+  , pythonInt
   , parsePythonFloat
     -- * @str@ methods
   , pythonStrip
@@ -42,11 +43,13 @@ module Petrus.Json.PythonText
 
 import Data.Char (ord)
 import Data.IntMap.Strict qualified as IntMap
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Array qualified as TA
 import Data.Text.Internal qualified as TI
 import Numeric (showHex)
+import Petrus.Json.Limits (maxIntStrDigits)
 import Petrus.Json.PythonText.Tables (decimalRuns, lineBreakRanges, printableRanges, spaceRanges)
 
 rangeMap :: [(Int, Int)] -> IntMap.IntMap Int
@@ -151,6 +154,14 @@ parsePythonInt base input = do
       | c >= 'a' && c <= 'z' = Just (ord c - ord 'a' + 10)
       | c >= 'A' && c <= 'Z' = Just (ord c - ord 'A' + 10)
       | otherwise = pythonDecimal c
+
+-- | CPython's @int(text)@ for a @str@ (base 10), with its 4300-digit
+-- conversion limit (leading zeros count): 'Nothing' where it raises
+-- @ValueError@.
+pythonInt :: Text -> Maybe Integer
+pythonInt text = do
+  value <- parsePythonInt 10 text
+  if T.length (T.filter (isJust . pythonDecimal) text) > maxIntStrDigits then Nothing else Just value
 
 -- | CPython's @float(text)@ for a @str@: 'Nothing' where it raises
 -- @ValueError@ (@could not convert string to float@).

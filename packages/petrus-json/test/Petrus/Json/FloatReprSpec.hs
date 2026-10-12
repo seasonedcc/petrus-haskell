@@ -23,7 +23,8 @@ import Data.ByteString.Lazy qualified as BL
 import Data.Word (Word64)
 import GHC.Float (castDoubleToWord64, castWord64ToDouble)
 import Petrus.Json
-import Petrus.Json.Float (floatReprBuilder, pythonFloatReprBytes)
+import Petrus.Json.Float (pythonFloatReprBytes)
+import Petrus.Json.ReferenceEncode (floatReprBuilder, referenceDumpsBytes)
 import Petrus.Json.Reference (upstreamPython)
 import Petrus.Json.Repr (pythonReprFloat)
 import System.Exit (ExitCode (..))
@@ -105,7 +106,7 @@ spec = describe "pythonFloatRepr (CPython's float.__repr__)" $ do
           pythonFloatReprBytes d `shouldBe` expected
           BL.toStrict (B.toLazyByteString (floatReprBuilder d)) `shouldBe` expected
           dumps defaultDumps (Float d) `shouldBe` Right expected
-          fmap (BL.toStrict . B.toLazyByteString) (dumpsBuilder compact (Float d)) `shouldBe` Right expected
+          referenceDumpsBytes compact (Float d) `shouldBe` Right expected
           pythonReprFloat d `shouldBe` pythonFloatRepr d
     mapM_ check (edgeDoubles <> map negate edgeDoubles)
   it "matches CPython's json.dumps and repr byte for byte on over 100 000 doubles" $ do
@@ -114,6 +115,5 @@ spec = describe "pythonFloatRepr (CPython's float.__repr__)" $ do
     (encoded, reprs) <- cpython doubles
     length reprs `shouldBe` length doubles
     dumps compact (Array (map Float doubles)) `shouldBe` Right encoded
-    fmap (BL.toStrict . B.toLazyByteString) (dumpsBuilder compact (Array (map Float doubles))) `shouldBe` Right encoded
     let mismatches = [(d, mine, theirs) | (d, theirs) <- zip doubles reprs, let mine = pythonFloatReprBytes d, mine /= theirs]
     take 5 mismatches `shouldBe` []

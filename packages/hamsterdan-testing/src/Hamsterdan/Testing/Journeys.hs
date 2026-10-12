@@ -111,7 +111,7 @@ import Hamsterdan.Host.Service
 import Hamsterdan.Host.Service qualified as Host
 import Hamsterdan.Host.V5.Application (ApplicationOptions (..))
 import Hamsterdan.Host.V5.Mutation (MutationPublisher (..))
-import Petrus.Impetus.Instance.FailureText (PythonArg (..), PythonException (..))
+import Petrus.Impetus.Instance.FailureText (PyObject (..), PythonException (..))
 import Petrus.Json (Json (..), defaultDumps, dumpsText)
 import Petrus.Json.Encode (EncodeOptions (..))
 import System.Directory (createDirectoryIfMissing, doesFileExist, makeAbsolute, removeFile)

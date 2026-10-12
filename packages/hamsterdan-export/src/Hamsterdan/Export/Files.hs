@@ -63,7 +63,6 @@ import Hamsterdan.Python.Exception qualified as Exc
 import Hamsterdan.Python.Object (PV (..), PythonException (..), pythonError, raise, raiseEither)
 import Hamsterdan.Python.Text (strRepr, utf8Encode)
 import Petrus.EngineFile.PyText (decodeText)
-import Petrus.EngineFile.Validate (PyException (..))
 import Petrus.EngineFile.Value (pyDict)
 import Petrus.Json.Python (fsDecode, fsEncode)
 import System.Directory (removePathForcibly)
@@ -124,18 +123,12 @@ decodeMessage = TE.decodeUtf8With lenientDecode
 -- ---------------------------------------------------------------------------
 -- Exceptions
 
--- | The @OSError@ subclass and text CPython raises for an errno on a path.
-osError :: Text -> Errno -> IO PythonException
-osError path errno = Exc.osError errno path
-
 -- | Run a system call, raising the @OSError@ CPython raises for its errno.
 onPath :: Text -> IO a -> IO a
 onPath path action =
   try action >>= \case
     Right value -> pure value
-    Left (e :: IOException) -> case ioe_errno e of
-      Just n -> osError path (Errno n) >>= raise
-      Nothing -> raise (pythonError "OSError" (T.pack (show e)))
+    Left (e :: IOException) -> Exc.ioException path e >>= raise
 
 -- ---------------------------------------------------------------------------
 -- Queries
@@ -254,9 +247,7 @@ mkdirParents path = do
     existing e = do
       directory <- isDir path
       unless directory (failWith e)
-    failWith e = case ioe_errno e of
-      Just n -> osError path (Errno n) >>= raise
-      Nothing -> raise (pythonError "OSError" (T.pack (show e)))
+    failWith e = Exc.ioException path e >>= raise
 
 -- | @tempfile.TemporaryDirectory(prefix=prefix)@ in @tempfile.gettempdir()@.
 withScratch :: Text -> (Text -> IO a) -> IO a
@@ -283,7 +274,7 @@ readBytes path = do
   fd <- onPath path (PIO.openFd raw PIO.ReadOnly PIO.defaultFileFlags)
   flip finally (PIO.closeFd fd) $ do
     status <- onPath path (Files.getFdStatus fd)
-    when (Files.isDirectory status) $ osError path eISDIR >>= raise
+    when (Files.isDirectory status) $ Exc.osError eISDIR path >>= raise
     onPath path (readAll fd)
   where
     readAll fd = do
@@ -295,9 +286,7 @@ readBytes path = do
 readText :: Text -> IO ByteString
 readText path = do
   bytes <- readBytes path
-  case decodeText bytes of
-    Left (PyException name text) -> raise (pythonError name text)
-    Right text -> pure text
+  either raise pure (decodeText bytes)
 
 -- | @open(path, "wb").write(bytes)@.
 writeBytes :: Text -> ByteString -> IO ()

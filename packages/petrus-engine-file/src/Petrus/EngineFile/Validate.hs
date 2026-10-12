@@ -11,7 +11,6 @@
 -- and in message wording.
 module Petrus.EngineFile.Validate
   ( Mode (..)
-  , PyException (..)
   , LocItem (..)
   , ErrorKind (..)
   , LineError (..)
@@ -30,18 +29,12 @@ import Petrus.EngineFile.Duration
 import Petrus.EngineFile.Number (IntParse (..), strAsFloat, strAsInt)
 import Petrus.EngineFile.Types
 import Petrus.EngineFile.Value
+import Petrus.Json.Python.Exception (PythonException (..), pythonError)
 import Petrus.Json.Python.Pydantic qualified as Pydantic
 import Petrus.Json.Wtf8 (hasLoneSurrogate)
 
 -- | Which pydantic entry point is validating.
 data Mode = JsonMode | PythonMode
-  deriving stock (Eq, Show)
-
--- | An exception the reference raises: its class name and @str()@.
-data PyException = PyException
-  { exceptionClass :: Text
-  , message :: Text
-  }
   deriving stock (Eq, Show)
 
 -- | A location item: a field or dict key, or a list index.
@@ -84,7 +77,7 @@ data LineError = LineError
 
 -- Validation results ------------------------------------------------------------
 
-data V a = Ok a | Errs [LineError] | Exc PyException
+data V a = Ok a | Errs [LineError] | Exc PythonException
 
 instance Functor V where
   fmap f = \case
@@ -189,7 +182,7 @@ vTimedelta mode v = case v of
     duration = \case
       Right t -> Ok t
       Left (TimedeltaOverflow d) ->
-        Exc (PyException "OverflowError" ("days=" <> T.pack (show d) <> "; must have magnitude <= 999999999"))
+        Exc (pythonError "OverflowError" ("days=" <> T.pack (show d) <> "; must have magnitude <= 999999999"))
       Left e -> failWith (TimeDeltaParsing (durationErrorDoc e)) v
 
 -- | A member's spelling is never unparsable, so only a refused value is
@@ -217,17 +210,17 @@ nullable f = \case
 -- | @NetPath.coerce@, the plain validator every path field uses: a
 -- @TypeError@ escapes (an outer 'Left'); a @ValueError@ becomes a
 -- validation error (an inner 'Left' with its message).
-coerceNetPath :: Value -> Either PyException (Either Text NetPath)
+coerceNetPath :: Value -> Either PythonException (Either Text NetPath)
 coerceNetPath value = case value of
   VStr s -> Right (Right (netPathFromText s))
   VList items -> checkedSegments (map toPython items)
   VDict members -> checkedSegments [VStr k | (k, _) <- pyDict members]
-  other -> Left (PyException "TypeError" ("'" <> pyTypeName other <> "' object is not iterable"))
+  other -> Left (pythonError "TypeError" ("'" <> pyTypeName other <> "' object is not iterable"))
 
 -- | The segment check of @NetPath.__new__@ on a tuple of segments: a
 -- @TypeError@ escapes (an outer 'Left'); a @ValueError@ is an inner 'Left'
 -- with its message.
-checkedSegments :: [Value] -> Either PyException (Either Text NetPath)
+checkedSegments :: [Value] -> Either PythonException (Either Text NetPath)
 checkedSegments items = go items
   where
     go [] = Right (Right (NetPath (map segment items)))
@@ -246,7 +239,7 @@ checkedSegments items = go items
       VStr s -> Right (T.isInfixOf "." s)
       VList xs -> Right (any (pyEq (VStr ".")) xs)
       VDict ms -> Right (any ((== ".") . fst) ms)
-      other -> Left (PyException "TypeError" ("argument of type '" <> pyTypeName other <> "' is not a container or iterable"))
+      other -> Left (pythonError "TypeError" ("argument of type '" <> pyTypeName other <> "' is not a container or iterable"))
     segment = \case
       VStr s -> SegText s
       other -> SegOther other
@@ -254,7 +247,7 @@ checkedSegments items = go items
 -- | @NetPath(*segments)@, which @append@ and @prepend@ call: one segment is
 -- coerced on its own (a string split, a list or dict iterated), several are
 -- checked as they are. A @ValueError@ escapes like any exception.
-newNetPath :: [Segment] -> Either PyException NetPath
+newNetPath :: [Segment] -> Either PythonException NetPath
 newNetPath segments = case segments of
   [] -> Right rootPath
   [one] -> raising (coerceNetPath (segmentValue one))
@@ -262,7 +255,7 @@ newNetPath segments = case segments of
   where
     raising = \case
       Left e -> Left e
-      Right (Left msg) -> Left (PyException "ValueError" msg)
+      Right (Left msg) -> Left (pythonError "ValueError" msg)
       Right (Right path) -> Right path
     segmentValue = \case
       SegText t -> VStr t
@@ -388,7 +381,7 @@ vFlatNetFile mode = vModel "FlatNetFile" $ \whole field ->
 -- | Validate a parsed document. A 'Left' is the exception the reference
 -- raises: a @ValidationError@ (with its rendered text) or an exception that
 -- escaped validation.
-validateFile :: Mode -> Value -> Either PyException FlatNetFile
+validateFile :: Mode -> Value -> Either PythonException FlatNetFile
 validateFile mode v = case vFlatNetFile mode v of
   Ok file -> Right file
   Errs es -> Left (validationError mode es)
@@ -397,8 +390,8 @@ validateFile mode v = case vFlatNetFile mode v of
 -- Rendering -------------------------------------------------------------------------
 
 -- | The @ValidationError@ for @FlatNetFile@ with these lines.
-validationError :: Mode -> [LineError] -> PyException
-validationError mode es = PyException "ValidationError" (renderLineErrors "FlatNetFile" mode es)
+validationError :: Mode -> [LineError] -> PythonException
+validationError mode es = pythonError "ValidationError" (renderLineErrors "FlatNetFile" mode es)
 
 -- | @str(ValidationError)@ ("Petrus.Json.Python.Pydantic"), the input
 -- quoted as the Python object it is.

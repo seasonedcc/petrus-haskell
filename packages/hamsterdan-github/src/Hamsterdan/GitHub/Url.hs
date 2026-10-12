@@ -36,11 +36,11 @@ module Hamsterdan.GitHub.Url
   ) where
 
 import Data.ByteString qualified as BS
-import Data.Char (isAsciiLower, isAsciiUpper, isDigit, isHexDigit, ord)
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit, isHexDigit)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Python.Text (pyIntBase)
+import Hamsterdan.Python.Text (pyIntBase, strRepr)
 import Hamsterdan.Python.Url (SplitResult (..), hostname, ipv4, ipv6, password, percent, port, quote, unquote, urlsplit, username)
 
 -- | The API origin.
@@ -96,14 +96,7 @@ checkUrl value
          in Left ("Invalid non-printable ASCII character in URL, " <> asciiRepr c <> " at position " <> T.pack (show index) <> ".")
       Nothing -> Right ()
   where
-    asciiRepr c = case c of
-      '\t' -> "'\\t'"
-      '\n' -> "'\\n'"
-      '\r' -> "'\\r'"
-      _ -> T.pack ("'\\x" <> pad (showHexByte (ord c)) <> "'")
-    pad s = replicate (2 - length s) '0' <> s
-    showHexByte n = map (\d -> "0123456789abcdef" !! d) (digits n)
-    digits n = if n < 16 then [n] else digits (n `div` 16) <> [n `mod` 16]
+    asciiRepr = strRepr . T.singleton
 
 -- | httpx's @normalize_path@ (dot-segment removal).
 normalizePath :: Text -> Text

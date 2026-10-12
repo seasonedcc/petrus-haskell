@@ -1,9 +1,11 @@
+{-# LANGUAGE OverloadedRecordDot #-}
+
 module Main (main) where
 
+import Control.Monad (replicateM)
+import Foreign.C.Error (eACCES, eEXIST, eNOENT, eNOMEM, ePIPE)
 import Data.ByteString qualified as BS
-import Data.ByteString.Builder qualified as B
 import Data.ByteString.Char8 qualified as BC
-import Data.ByteString.Lazy qualified as BL
 import Data.Either (isLeft)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -11,10 +13,15 @@ import Petrus.Json
 import Petrus.Json.CPythonDifferentialSpec qualified as CPythonDifferentialSpec
 import Petrus.Json.FloatReprSpec qualified as FloatReprSpec
 import Petrus.Json.Generators
+import Petrus.Json.Python (PythonException (..), pythonExceptionRepr, pythonExceptionStr, pythonInt)
+import Petrus.Json.Python.Object
+import Petrus.Json.Python.OsError (errnoClass, osError)
 import Petrus.Json.Python.Pydantic qualified as Pydantic
+import Petrus.Json.Python.Uuid (uuid7Hex)
 import Petrus.Json.PythonText (pythonStrRepr)
 import Petrus.Json.PythonCompatSpec qualified as PythonCompatSpec
 import Petrus.Json.PythonTextSpec qualified as PythonTextSpec
+import Petrus.Json.ReferenceEncode (referenceDumpsBytes)
 import Petrus.Json.ReferenceParse (referenceParseJson)
 import Test.Hspec
 import Test.QuickCheck
@@ -31,8 +38,8 @@ main = hspec $ do
     it "renders a ValidationError: dotted and surrogate keys, truncated input" $
       Pydantic.renderValidationError
         "M"
-        [ Pydantic.LineError [Pydantic.Key "a.b", Pydantic.Index 0, Pydantic.Key (fromCodePoints "k\xD800")] "Field required" "missing" (Pydantic.PDict [])
-        , Pydantic.LineError [] "Input should be a valid string" "string_type" (Pydantic.PStr (T.replicate 30 "\xE9"))
+        [ Pydantic.LineError [Pydantic.Key "a.b", Pydantic.Index 0, Pydantic.Key (fromCodePoints "k\xD800")] "Field required" "missing" (PyDict [])
+        , Pydantic.LineError [] "Input should be a valid string" "string_type" (PyStr (T.replicate 30 "\xE9"))
         ]
         `shouldBe` T.intercalate
           "\n"
@@ -43,10 +50,28 @@ main = hspec $ do
           , "  Input should be a valid string [type=string_type, input_value='" <> T.replicate 12 "\xE9" <> "..." <> T.replicate 11 "\xE9" <> "', input_type=str]"
           , "    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
           ]
+  describe "Petrus.Json.Python.Object" $ do
     it "spells Python reprs and type names" $ do
-      map Pydantic.pyRepr [Pydantic.PTuple [Pydantic.PInt 1], Pydantic.PFloat (0 / 0), Pydantic.PDict [("a", Pydantic.PNone)]]
-        `shouldBe` ["(1,)", "nan", "{'a': None}"]
-      map Pydantic.pyTypeName [Pydantic.PNone, Pydantic.PInstance "Net" "Net()"] `shouldBe` ["NoneType", "Net"]
+      map pyRepr [PyTuple [PyInt 1], PyFloat (0 / 0), PyDict [("a", PyNone)], PySlice Nothing (Just 20) Nothing, PyBytes "a'"]
+        `shouldBe` ["(1,)", "nan", "{'a': None}", "slice(None, 20, None)", "b\"a'\""]
+      map pyTypeName [PyNone, PyInstance "petrus.impetus.net" "Net" "Net()"] `shouldBe` ["NoneType", "Net"]
+    it "spells failure-text arguments as _failure_argument_text does" $
+      map failureArgumentText [PyStr "a", PyInt (10 ^ (4300 :: Int)), PyList [PyInt 1], PySlice Nothing Nothing Nothing, PyInstance "builtins" "object" "<object object>"]
+        `shouldBe` ["'a'", "<builtins.int>", "<builtins.list>", "<builtins.slice>", "<builtins.object>"]
+  describe "Petrus.Json.Python.OsError" $ do
+    it "names the PEP 3151 subclass of an errno" $
+      map errnoClass [eNOENT, eACCES, ePIPE, eEXIST, eNOMEM] `shouldBe` ["FileNotFoundError", "PermissionError", "BrokenPipeError", "FileExistsError", "OSError"]
+    it "raises Subclass(errno, strerror, path), spelled as CPython spells it" $ do
+      e <- osError eNOENT "a'b"
+      e.name `shouldBe` "FileNotFoundError"
+      pythonExceptionStr e `shouldBe` "[Errno 2] No such file or directory: \"a'b\""
+      pythonExceptionRepr e `shouldBe` "FileNotFoundError(2, 'No such file or directory')"
+
+  describe "pythonInt" $
+    it "reads int(text) with the 4300-digit limit, leading zeros counted" $
+      map pythonInt [" 1_000 ", "\x0661\x0662", T.replicate 4300 "0", T.replicate 4301 "0", "1__0"]
+        `shouldBe` [Just 1000, Just 12, Just 0, Nothing, Nothing]
+
   describe "pythonFloatRepr" $ do
     let cases =
           [ (1e16, "1e+16")
@@ -85,10 +110,9 @@ main = hspec $ do
       dumps indented (Float (1 / 0)) `shouldSatisfy` isLeft
     it "escapes control characters" $
       render indented (String "\x01\x7f") `shouldBe` "\"\\u0001\x7f\""
-    it "writes the same bytes directly as through the builder, for every option" $
+    it "writes the same bytes as the reference builder encoder, for every option" $
       property $ \(AnyJson value) ->
-        let viaBuilder options = BL.toStrict . B.toLazyByteString <$> dumpsBuilder options value
-            agree options = counterexample (show options) (show (dumps options value) === show (viaBuilder options))
+        let agree options = counterexample (show options) (show (dumps options value) === show (referenceDumpsBytes options value))
          in conjoin
               ( map
                   agree
@@ -149,6 +173,9 @@ main = hspec $ do
         fromWtf8 "\xC0\x80" `shouldBe` Nothing
         fromWtf8 "\xED\xA0" `shouldBe` Nothing
         map hasLoneSurrogate [fromCodePoints "x\xDBFF", "\xD7FF\xE000\x1F600"] `shouldBe` [True, False]
+        -- A slice sees only its own bytes.
+        map hasLoneSurrogate [T.drop 1 (fromCodePoints "\xD800x"), T.take 1 (fromCodePoints "x\xD800"), T.drop 1 (fromCodePoints "x\xD800")]
+          `shouldBe` [False, False, True]
       it "lossyUtf8 spells each surrogate as Rust's from_utf8_lossy does" $ do
         lossyUtf8 (fromCodePoints "a\xD800.\xDFFF\x1F600") `shouldBe` "a\xFFFD\xFFFD\xFFFD.\xFFFD\xFFFD\xFFFD\x1F600"
         lossyUtf8 "plain \xE000" `shouldBe` "plain \xE000"
@@ -319,7 +346,7 @@ main = hspec $ do
       len (nested (defaultNestingLimit + 2)) `shouldBe` Left (NestingTooDeep defaultNestingLimit)
 
   describe "one-pass dumps" $
-    it "refuses exactly what dumpsBuilder refuses, at the same first value (property)" $
+    it "refuses exactly what the reference builder encoder refuses, at the same first value (property)" $
       property $ \(Refusable value) sorted nanAllowed depth ->
         let options =
               compact
@@ -328,7 +355,7 @@ main = hspec $ do
                 , reprDigitLimit = Just 30
                 , nestingLimit = Just (getSmall (getNonNegative depth))
                 }
-            built = BL.toStrict . B.toLazyByteString <$> dumpsBuilder options value
+            built = referenceDumpsBytes options value
             -- Compare refusals by message: NonFiniteNumber NaN /= itself.
             message = either (Left . encodeErrorMessage) Right
          in message (dumps options value) === message built
@@ -338,6 +365,13 @@ main = hspec $ do
       property $ \(Refusables values) sorted nanAllowed ascii ->
         let options = compact {sortKeys = sorted, allowNan = nanAllowed, ensureAscii = ascii, reprDigitLimit = Just 30}
          in dumpsManyOutcome options values === traverseOutcome options values
+
+  describe "uuid7Hex" $
+    it "mints version-7, RFC 4122-variant ids that strictly increase within the process" $ do
+      ids <- replicateM 2000 uuid7Hex
+      all (\i -> T.length i == 32 && T.all (`elem` ("0123456789abcdef" :: String)) i) ids `shouldBe` True
+      all (\i -> T.index i 12 == '7' && T.index i 16 `elem` ("89ab" :: String)) ids `shouldBe` True
+      and (zipWith (<) ids (drop 1 ids)) `shouldBe` True
 
   describe "encodeErrorMessage" $
     it "matches CPython's allow_nan=False text" $

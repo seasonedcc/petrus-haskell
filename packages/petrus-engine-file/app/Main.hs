@@ -20,7 +20,8 @@ import Data.List (isPrefixOf)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.EngineFile (PyException (..), formatMaxInline, reformatContent)
+import Petrus.EngineFile (PythonException (..), formatMaxInline, reformatContent)
+import Petrus.Json.Python.Exception (pythonExceptionStr)
 import Petrus.EngineFile.PyText (decodeText, pathText, purePath, readBytes, readText, writeBytes)
 import Petrus.Json.PythonText (pythonStrRepr)
 import System.Environment (getArgs)
@@ -75,10 +76,10 @@ usageError message = do
   exitWith (ExitFailure 2)
 
 -- | An exception escaping @cli()@: its last traceback line, exit status 1.
-raise :: PyException -> IO a
+raise :: PythonException -> IO a
 raise e = do
   hFlush stdout
-  BS.hPut stderr (TE.encodeUtf8 (qualified e.exceptionClass <> ": " <> e.message <> "\n"))
+  BS.hPut stderr (TE.encodeUtf8 (qualified e.name <> ": " <> pythonExceptionStr e <> "\n"))
   exitWith (ExitFailure 1)
   where
     qualified = \case
@@ -146,14 +147,14 @@ parseArgs = go Options {paths = [], infile = Std, outfile = Std, indent = 2, max
       | otherwise = do
           result <- readBytes (T.pack value)
           case result of
-            Left e -> usageError ("argument --infile: can't open '" <> value <> "': " <> T.unpack e.message)
+            Left e -> usageError ("argument --infile: can't open '" <> value <> "': " <> T.unpack (pythonExceptionStr e))
             Right _ -> pure (Named (T.pack value))
     openWrite value
       | value == "-" = pure Std
       | otherwise = do
           result <- writeBytes (T.pack value) BS.empty
           case result of
-            Left e -> usageError ("argument --outfile: can't open '" <> value <> "': " <> T.unpack e.message)
+            Left e -> usageError ("argument --outfile: can't open '" <> value <> "': " <> T.unpack (pythonExceptionStr e))
             Right () -> pure (Named (T.pack value))
     show' = T.unpack . pythonStrRepr . T.pack
 

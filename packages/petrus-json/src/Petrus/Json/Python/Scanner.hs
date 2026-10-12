@@ -38,7 +38,6 @@ module Petrus.Json.Python.Scanner
   , defaultInt
   , defaultFloat
   , isSurrogate
-  , rawText
   , rawJson
   ) where
 
@@ -71,11 +70,6 @@ data Raw
   | -- | Members in document order.
     RDict [(String, Raw)]
   deriving stock (Show)
-
--- | A string's text. Only call this on strings already admitted as Unicode
--- scalar values ('Data.Text.Text' cannot hold a surrogate).
-rawText :: String -> Text
-rawText = T.pack
 
 -- | The value @json.loads@ builds from a scanned one: a repeated member
 -- keeps its first position and takes its last value (a @dict@), and a

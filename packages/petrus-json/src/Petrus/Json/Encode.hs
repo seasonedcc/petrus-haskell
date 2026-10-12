@@ -19,7 +19,6 @@ module Petrus.Json.Encode
   , compact
   , canonicalText
   , dumps
-  , dumpsBuilder
   , dumpsMany
   , dumpsText
   , pythonFloatRepr
@@ -27,12 +26,11 @@ module Petrus.Json.Encode
   , encodeErrorMessage
   ) where
 
-import Control.Exception (Exception, throw, throwIO, try)
+import Control.Exception (Exception, throwIO, try)
 import Control.Monad (when)
 import Control.Monad.ST (stToIO)
 import Data.Bits (shiftR, (.&.))
 import Data.ByteString qualified as BS
-import Data.ByteString.Builder qualified as B
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Internal qualified as BI
 import Data.ByteString.Unsafe qualified as BU
@@ -41,11 +39,11 @@ import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.List (sortBy)
 import Data.Ord (comparing)
 import Data.Text (Text)
-import Data.Text qualified as T
 import Data.Text.Array qualified as TA
 import Data.Text.Encoding qualified as TE
 import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe qualified as TU
+import Data.Traversable (mapAccumM)
 import Data.Word (Word8)
 import Foreign.ForeignPtr (ForeignPtr)
 import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
@@ -55,8 +53,7 @@ import Foreign.Storable (pokeByteOff)
 import GHC.Exts (Int (I#))
 import GHC.ForeignPtr (plusForeignPtr, unsafeWithForeignPtr)
 import GHC.Num (Integer (IS))
-import Numeric (showHex)
-import Petrus.Json.Float (floatReprBuilder, maxFloatReprLength, pythonFloatRepr, writeFloatRepr)
+import Petrus.Json.Float (maxFloatReprLength, pythonFloatRepr, writeFloatRepr)
 import Petrus.Json.Limits (defaultNestingLimit, intReprDigitsError, maxIntStrDigits)
 import Petrus.Json.Value
 import Petrus.Json.Wtf8 (unsafeTextFromBytes)
@@ -138,16 +135,30 @@ encodeErrorMessage = \case
 -- | Serialize to UTF-8 bytes.
 --
 -- One pass writes the document into a growing buffer ('written'), so every
--- value is visited once and every string is scanned once; 'dumpsBuilder' is
--- the streaming equivalent and spells the same bytes. The writer refuses as
--- it goes, at the first value the options refuse in writer order (a
--- container before its items, keys sorted under 'sortKeys'), which is the
--- refusal 'dumpsBuilder' reports too. unsafeDupablePerformIO: the writer
--- touches only buffers this call allocates, so 'dumps' is pure.
+-- value is visited once and every string is scanned once. The writer refuses
+-- as it goes, at the first value the options refuse in writer order (a
+-- container before its items, keys sorted under 'sortKeys').
+-- unsafeDupablePerformIO: the writer touches only buffers this call
+-- allocates, so 'dumps' is pure.
+--
+-- The writer pokes bytes into a buffer because a @Data.ByteString.Builder@
+-- spelling of the same encoder (kept as the test suite's oracle,
+-- @test/Petrus/Json/ReferenceEncode.hs@) cannot keep up with CPython's C
+-- encoder: 3.72 ms, 785 µs and 1.10 ms against this writer's 976 µs, 156 µs
+-- and 356 µs on the @history.dumps@, @net-document.dumps@ and
+-- @thread.dumps@ rows, where CPython takes 2.9 ms, 402 µs and 645 µs
+-- (bench/RESULTS.md, "The direct writer").
 dumps :: EncodeOptions -> Json -> Either EncodeError BS.ByteString
-dumps options value =
-  unsafeDupablePerformIO $
-    either (\(Refused problem) -> Left problem) Right <$> try (direct (layoutOf options) value)
+dumps options value = unsafeDupablePerformIO $ do
+  ref <- newBuffer
+  try (written (layoutOf options) ref 0 0 value) >>= \case
+    Left (Refused problem) -> pure (Left problem)
+    Right end -> do
+      Buffer final capacity <- readIORef ref
+      -- Keep the growth slack out of long-lived values.
+      if 4 * (capacity - end) > capacity
+        then Right <$> BI.create end (\target -> unsafeWithForeignPtr final (\source -> copyBytes target source end))
+        else pure (Right (BI.BS final end))
 
 -- | 'dumps' of each item's value in turn, for a batch written together:
 -- every item with its spelling, or the first item refused with its
@@ -160,30 +171,25 @@ dumps options value =
 -- spellings that are used together and dropped together, such as the
 -- payloads of one database write batch (the History store's batch commit),
 -- not for spellings kept apart.
-dumpsMany :: EncodeOptions -> (a -> Json) -> [a] -> Either (a, EncodeError) [(a, BS.ByteString)]
+dumpsMany :: Traversable t => EncodeOptions -> (a -> Json) -> t a -> Either (a, EncodeError) (t (a, BS.ByteString))
 dumpsMany options valueOf items = unsafeDupablePerformIO $ do
-  first <- BI.mallocByteString initialCapacity
-  ref <- newIORef (Buffer first initialCapacity)
+  ref <- newBuffer
   let layout = layoutOf options
-      go !offset ends = \case
-        [] -> do
-          Buffer final _ <- readIORef ref
-          pure (Right (zip items (slices final ends)))
-        item : rest ->
-          try (written layout ref 0 offset (valueOf item)) >>= \case
-            Left (Refused problem) -> pure (Left (item, problem))
-            Right end -> go end (end : ends) rest
-  go 0 [] items
-  where
-    -- The end offsets come newest first; each value starts where the one
-    -- before it ends.
-    slices final = build []
-      where
-        build acc = \case
-          [] -> acc
-          [end] -> slice 0 end : acc
-          end : rest@(start : _) -> let !piece = slice start end in build (piece : acc) rest
-        slice start end = BI.BS (plusForeignPtr final start) (end - start)
+      -- Each value starts where the one before it ends; after a refusal the
+      -- rest are not written.
+      step (Right offset) item =
+        try (written layout ref 0 offset (valueOf item)) >>= \case
+          Left (Refused problem) -> pure (Left (item, problem), (item, offset, offset))
+          Right end -> pure (Right end, (item, offset, end))
+      step refused item = pure (refused, (item, 0, 0))
+  (outcome, placed) <- mapAccumM step (Right 0) items
+  case outcome of
+    Left refusal -> pure (Left refusal)
+    Right _ -> do
+      -- Slice only once every value is written: a value that grows the
+      -- buffer moves the ones before it.
+      Buffer final _ <- readIORef ref
+      pure (Right (fmap (\(item, start, end) -> (item, BI.BS (plusForeignPtr final start) (end - start))) placed))
 
 -- | Serialize to text: CPython's @json.dumps@ @str@. The bytes 'dumps'
 -- writes are UTF-8 by construction, or WTF-8 where a string holds a lone
@@ -197,121 +203,6 @@ newtype Refused = Refused EncodeError
   deriving stock (Show)
 
 instance Exception Refused
-
--- | Serialize to a builder.
---
--- A lazy builder cannot take back what it has written, so refusals are
--- decided up front here: a cheap scan in document order settles the common
--- case, and only a refused value pays for the search in writer order (which
--- sorts keys under 'sortKeys').
-dumpsBuilder :: EncodeOptions -> Json -> Either EncodeError B.Builder
-dumpsBuilder options value
-  | checked options, not (clean 0 value), Just problem <- firstProblem options 0 value = Left problem
-  | otherwise = Right (writer options value)
-  where
-    clean :: Int -> Json -> Bool
-    clean level = \case
-      Float d -> allowNan options || not (isNaN d || isInfinite d)
-      Int i -> maybe True (\limit -> not (tooManyDigits limit i)) (reprDigitLimit options)
-      Array items@(_ : _) -> shallow level && all (clean (level + 1)) items
-      Object members@(_ : _) -> shallow level && all (clean (level + 1) . snd) members
-      _ -> True
-    shallow level = maybe True (level <) (nestingLimit options)
-
--- | The first value the options refuse, in writer order: a container before
--- its items, keys sorted under 'sortKeys'.
-firstProblem :: EncodeOptions -> Int -> Json -> Maybe EncodeError
-firstProblem options = search
-  where
-    search level = \case
-      Float d | not (allowNan options), isNaN d || isInfinite d -> Just (NonFiniteNumber d)
-      Int i | Just limit <- reprDigitLimit options, tooManyDigits limit i -> Just (IntegerTooLarge limit)
-      Array items@(_ : _) -> deeper level (firstJust (map (search (level + 1)) items))
-      Object members@(_ : _) -> deeper level (firstJust (map (search (level + 1) . snd) (ordered options members)))
-      _ -> Nothing
-    deeper level rest = case nestingLimit options of
-      Just limit | level >= limit -> Just (NestingTooDeep limit)
-      _ -> rest
-    firstJust = \case
-      [] -> Nothing
-      Just problem : _ -> Just problem
-      Nothing : rest -> firstJust rest
-
--- | Whether the options refuse anything at all.
-checked :: EncodeOptions -> Bool
-checked options = not (allowNan options) || hasLimit (reprDigitLimit options) || hasLimit (nestingLimit options)
-  where
-    hasLimit = maybe False (const True)
-
--- | Whether an integer has more decimal digits than the limit.
-tooManyDigits :: Int -> Integer -> Bool
-tooManyDigits limit i
-  | IS _ <- i, limit >= 19 = False
-  | limit == maxIntStrDigits = abs i >= intDigitBound
-  | otherwise = abs i >= 10 ^ max 0 limit
-
-ordered :: EncodeOptions -> [(Text, Json)] -> [(Text, Json)]
-ordered options members = if sortKeys options then sortBy (comparing fst) members else members
-
--- | The writer: a plain 'B.Builder' fold with no 'Either' threaded through
--- it. It throws 'Refused' (caught by 'dumps') at the first value the
--- options refuse, in writer order: a container before its items, keys
--- sorted under 'sortKeys'.
-writer :: EncodeOptions -> Json -> B.Builder
-writer options = go 0
-  where
-    refuse = throw . Refused
-    digitLimit = reprDigitLimit options
-    depthLimit = nestingLimit options
-    enter level = case depthLimit of
-      Just limit | level >= limit -> refuse (NestingTooDeep limit)
-      _ -> ()
-    itemSep = case (itemSeparator options, indent options) of
-      (Just separator, _) -> separator
-      (Nothing, Just _) -> ","
-      (Nothing, Nothing) -> ", "
-    keySep = TE.encodeUtf8Builder (keySeparator options)
-    itemSepB = TE.encodeUtf8Builder itemSep
-    newline level = case indent options of
-      Nothing -> mempty
-      Just width -> B.char7 '\n' <> B.string7 (replicate (width * level) ' ')
-    string = stringB (ensureAscii options)
-
-    go :: Int -> Json -> B.Builder
-    go level = \case
-      Null -> B.string7 "null"
-      Bool True -> B.string7 "true"
-      Bool False -> B.string7 "false"
-      Int i
-        | Just limit <- digitLimit, tooManyDigits limit i -> refuse (IntegerTooLarge limit)
-        | otherwise -> B.integerDec i
-      Float d
-        | not (allowNan options), isNaN d || isInfinite d -> refuse (NonFiniteNumber d)
-        | otherwise -> floatB d
-      String s -> string s
-      Array [] -> B.string7 "[]"
-      Array items -> enter level `seq` container '[' ']' level (go (level + 1)) items
-      Object [] -> B.string7 "{}"
-      Object members ->
-        let member (key, v) = string key <> keySep <> go (level + 1) v
-         in enter level `seq` container '{' '}' level member (ordered options members)
-
-    container :: Char -> Char -> Int -> (a -> B.Builder) -> [a] -> B.Builder
-    container open close level item items =
-      let inner = newline (level + 1)
-          separator = itemSepB <> inner
-          body = case items of
-            [] -> mempty
-            first : rest -> item first <> foldr (\next more -> separator <> item next <> more) mempty rest
-       in B.char7 open <> inner <> body <> newline level <> B.char7 close
-
-    -- Non-finite values reach here only when 'allowNan' admits them.
-    floatB d
-      | isNaN d = B.string7 "NaN"
-      | isInfinite d = B.string7 (if d > 0 then "Infinity" else "-Infinity")
-      | otherwise = floatReprBuilder d
-
--- * Direct writer --------------------------------------------------------------
 
 data Layout = Layout
   { layoutAscii :: Bool
@@ -345,17 +236,11 @@ layoutOf options =
 -- into.
 data Buffer = Buffer {-# UNPACK #-} !(ForeignPtr Word8) {-# UNPACK #-} !Int
 
--- | Write a whole document; answer exactly its bytes.
-direct :: Layout -> Json -> IO BS.ByteString
-direct layout value = do
+-- | An empty buffer of 'initialCapacity' bytes.
+newBuffer :: IO (IORef Buffer)
+newBuffer = do
   first <- BI.mallocByteString initialCapacity
-  ref <- newIORef (Buffer first initialCapacity)
-  end <- written layout ref 0 0 value
-  Buffer final capacity <- readIORef ref
-  -- Keep the growth slack out of long-lived values.
-  if 4 * (capacity - end) > capacity
-    then BI.create end (\target -> unsafeWithForeignPtr final (\source -> copyBytes target source end))
-    else pure (BI.BS final end)
+  newIORef (Buffer first initialCapacity)
 
 initialCapacity :: Int
 initialCapacity = 2000
@@ -588,41 +473,13 @@ writeString asciiOnly ref offset (TI.Text array from size)
       pokeByteOff base (out + 5) (digit 0)
       pure (out + 6)
 
--- | CPython's JSON string encoding (@py_encode_basestring@ /
--- @py_encode_basestring_ascii@).
-stringB :: Bool -> Text -> B.Builder
-stringB asciiOnly text = B.char7 '"' <> chunks text <> B.char7 '"'
-  where
-    -- Runs of characters that need no escape are copied as one UTF-8 slice;
-    -- only the characters between runs go through 'escape'. The output is
-    -- the same as escaping character by character, several times faster.
-    plain c = c >= ' ' && c /= '"' && c /= '\\' && (not asciiOnly || c <= '~')
-    chunks t
-      | T.null t = mempty
-      | otherwise =
-          let (run, rest) = T.span plain t
-           in TE.encodeUtf8Builder run <> case T.uncons rest of
-                Nothing -> mempty
-                Just (c, rest') -> escape c <> chunks rest'
-    escape c = case c of
-      '"' -> B.string7 "\\\""
-      '\\' -> B.string7 "\\\\"
-      '\n' -> B.string7 "\\n"
-      '\r' -> B.string7 "\\r"
-      '\t' -> B.string7 "\\t"
-      '\b' -> B.string7 "\\b"
-      '\f' -> B.string7 "\\f"
-      _
-        | ord c < 0x20 -> unicodeEscape (ord c)
-        | asciiOnly && ord c > 0x7e -> asciiEscape (ord c)
-        | otherwise -> B.charUtf8 c
-    asciiEscape n
-      | n > 0xFFFF =
-          let v = n - 0x10000
-           in unicodeEscape (0xD800 + (v `div` 0x400)) <> unicodeEscape (0xDC00 + (v `mod` 0x400))
-      | otherwise = unicodeEscape n
-    unicodeEscape n = B.string7 "\\u" <> B.string7 (pad4 (showHex n ""))
-    pad4 digits = replicate (4 - length digits) '0' ++ digits
+-- | Whether an integer has more decimal digits (sign excluded) than the
+-- limit.
+tooManyDigits :: Int -> Integer -> Bool
+tooManyDigits limit i
+  | IS _ <- i, limit >= 19 = False
+  | limit == maxIntStrDigits = abs i >= intDigitBound
+  | otherwise = abs i >= 10 ^ max 0 limit
 
 -- | The smallest integer with more than 'maxIntStrDigits' digits.
 intDigitBound :: Integer

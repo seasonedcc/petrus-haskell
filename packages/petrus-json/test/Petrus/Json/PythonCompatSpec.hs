@@ -312,7 +312,7 @@ exceptionOf = do
       vectorOf count argument
   pure (PythonException className arguments)
   where
-    codec :: PythonArg -> Int -> Gen [PythonArg]
+    codec :: PyObject -> Int -> Gen [PyObject]
     codec object size = do
       start <- chooseInt (0, size + 1)
       end <- frequency [(3, pure (start + 1)), (1, chooseInt (start, size + 2))]
@@ -329,7 +329,7 @@ exceptionOf = do
         , PyBytes <$> utf8ish
         ]
 
-exceptionArgument :: PythonArg -> Json
+exceptionArgument :: PyObject -> Json
 exceptionArgument = \case
   PyNone -> Array [String "none", Null]
   PyBool b -> Array [String "bool", Bool b]
@@ -337,8 +337,7 @@ exceptionArgument = \case
   PyFloat d -> Array [String "float", String (T.pack (pad16 (showHex (castDoubleToWord64 d) "")))]
   PyStr s -> Array [String "str", codePoints (T.unpack s)]
   PyBytes b -> Array [String "bytes", String (hexOf b)]
-  PyObject _ _ -> error "not generated"
-  PySlice {} -> error "not generated"
+  _ -> error "not generated"
 
 pad16 :: String -> String
 pad16 s = replicate (16 - length s) '0' ++ s
