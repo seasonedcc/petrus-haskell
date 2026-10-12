@@ -554,8 +554,8 @@ processMain arguments = do
               }
       load <- uptime
       printf "%d runs per row; History lengths %d to %d records; %s\n\n" runs (minimum histories) (maximum histories) load
-      putStrLn "| Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell |"
-      putStrLn "| --- | --- | ---: | ---: | ---: |"
+      putStrLn "| Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell | Haskell ahead |"
+      putStrLn "| --- | --- | ---: | ---: | ---: | ---: |"
       forM_ cliWorkloads $ \(label, argv) -> do
         progress label
         (hs, py) <- cliCompare workspace runs argv
@@ -858,10 +858,13 @@ askRun server name = do
     Right (Object [("check", String check), ("seconds", Int seconds)]) -> pure (fromInteger seconds, check)
     _ -> fail ("process_bench.py answered " <> answer)
 
+-- | A table row from the paired runs (the same index is one interleaved
+-- pair): the medians, the fastest runs, the ratio of the medians, and the
+-- pairs in which Haskell was faster.
 row :: String -> String -> [Double] -> [Double] -> IO ()
 row label shape hs py =
   printf
-    "| %s | %s | %s (%s) | %s (%s) | %.2f× |\n"
+    "| %s | %s | %s (%s) | %s (%s) | %.2f× | %d of %d |\n"
     label
     shape
     (duration (median hs))
@@ -869,6 +872,8 @@ row label shape hs py =
     (duration (median py))
     (duration (minimum py))
     (median py / median hs)
+    (length (filter id (zipWith (<) hs py)))
+    (length (zip hs py))
 
 median :: [Double] -> Double
 median xs = let sorted = sort xs in sorted !! (length sorted `div` 2)
