@@ -110,16 +110,18 @@ rather than a fraction of one.
 
 ## Results
 
-Run G covers the static UI, the `/temporal` proxy, the MCP server and
+Run H (2026-10-12) reran every scenario on the current code and is the
+current measurement: every scenario is above 1.0× in every round (the
+lowest round is 1.10x). Before it, run G covered the static UI, the `/temporal` proxy, the MCP server and
 cold start: every one of its scenarios is above 1.0× in every round (the
-lowest round is 1.07x). Run F is the final code for the other scenarios:
+lowest round is 1.07x). Run F covered the other scenarios:
 every scenario is above 1.0× by median and by
 best run. Single rounds below 1.0× remain in the 1-client endpoint
 scenarios (lowest 0.78x) and once at 16 clients (0.97x); "Reading the
 results" explains them. Run E measured the endpoints of the same code,
 with the previous server in the same rounds (its column is the "before"
 one). Runs A to D measured earlier code; they are kept for the record and
-marked superseded, so `scripts/check-parity` reads runs E and F.
+marked superseded, as are runs E to G now that run H replaces them.
 
 Machine: Apple M4 (10 cores), 24 GB, macOS 26 (Darwin 25.3.0), node
 v22.22.0, GHC 9.10.3. **The machine was shared with other agents building
@@ -136,6 +138,151 @@ machine's drift between rounds.
 
 Everything here is wall-clock time: ops/s is completed operations over the
 load client's elapsed time, and latencies are per-operation wall times.
+
+### Run H (every scenario, current code; 5 reps; load average 2.95 → 4.35)
+
+Measured on 2026-10-12, 04:15–04:25 local (UTC-3), at commit `81bbdc5`, by the
+rerun block above (`node packages/petrus-viewer-server/bench/run.mjs`, five
+interleaved repetitions). Every scenario is above 1.0× by median, by best
+run and in every round; the lowest single round is `GET /sample-net.json`,
+16 clients, at 1.10× (two rounds where the Vite dev server answered at
+about twice its usual rate). Runs A to G below are earlier measurements.
+
+#### Relay and endpoints
+
+| scenario | haskell (petrus) | haskell (petrus, relay log off) | node (vite dev server) | node (bare baseline) | Haskell / Node |
+|---|---:|---:|---:|---:|---:|
+| relay round trip, 1 pair | 13659 (72 / 94) | 15830 (62 / 87) | 9885 (101 / 135) | 11346 (88 / 124) | 1.40x |
+| relay round trip, 16 pairs | 63361 (242 / 417) | 78065 (190 / 334) | 32161 (491 / 636) | 42872 (366 / 507) | 1.82x |
+| open-file POST+GET, 1 client | 13755 (72 / 116) |  | 11309 (88 / 115) | 11585 (85 / 125) | 1.19x |
+| open-file POST+GET, 16 clients in lockstep | 59010 (108 / 318) |  | 38874 (192 / 396) | 40900 (181 / 386) | 1.44x |
+| resolve-ref, 1 client | 20152 (49 / 59) |  | 16892 (59 / 81) | 16673 (59 / 80) | 1.19x |
+| resolve-ref, 16 clients | 38091 (390 / 800) |  | 28410 (521 / 1066) | 27473 (541 / 1108) | 1.34x |
+| server RSS after run (MiB) | 81 | 44 | 134 | 63 | |
+
+Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+| scenario (best of 5) | haskell (petrus) | haskell (petrus, relay log off) | node (vite dev server) | node (bare baseline) | Haskell / Node |
+|---|---:|---:|---:|---:|---:|
+| relay round trip, 1 pair | 14380 | 15839 | 10287 | 11428 | 1.39x |
+| relay round trip, 16 pairs | 64851 | 78960 | 32340 | 43458 | 1.82x |
+| open-file POST+GET, 1 client | 13889 |  | 11366 | 12148 | 1.14x |
+| open-file POST+GET, 16 clients in lockstep | 59148 |  | 39037 | 41025 | 1.44x |
+| resolve-ref, 1 client | 20219 |  | 17711 | 16779 | 1.14x |
+| resolve-ref, 16 clients | 38166 |  | 29648 | 28638 | 1.29x |
+
+| scenario | Haskell / Node in each round (best of each side) | min |
+|---|---|---:|
+| relay round trip, 1 pair | 1.44 1.38 1.42 1.37 1.39 | 1.37x |
+| relay round trip, 16 pairs | 1.86 1.84 1.81 1.91 1.68 | 1.68x |
+| open-file POST+GET, 1 client | 1.17 1.14 1.19 1.20 1.19 | 1.14x |
+| open-file POST+GET, 16 clients in lockstep | 1.46 1.44 1.44 1.43 1.45 | 1.43x |
+| resolve-ref, 1 client | 1.19 1.14 1.20 1.18 1.16 | 1.14x |
+| resolve-ref, 16 clients | 1.31 1.28 1.31 1.34 1.33 | 1.28x |
+
+#### Collab
+
+| scenario | haskell (petrus) | haskell (petrus-collab) | node (server/collab.mjs) | Haskell / Node |
+|---|---:|---:|---:|---:|
+| collab fan-out, 50 peers x 1000 msgs | 2077102 (14950 / 21876) | 2261932 (14122 / 20181) | 542711 (45233 / 86081) | 4.17x |
+| collab fan-out, 200 peers x 200 msgs | 1948938 (16446 / 20182) | 2132196 (13688 / 18430) | 540030 (36830 / 72718) | 3.95x |
+| server RSS after run (MiB) | 81 | 72 | 73 | |
+
+Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+| scenario (best of 5) | haskell (petrus) | haskell (petrus-collab) | node (server/collab.mjs) | Haskell / Node |
+|---|---:|---:|---:|---:|
+| collab fan-out, 50 peers x 1000 msgs | 2348851 | 2298111 | 549378 | 4.28x |
+| collab fan-out, 200 peers x 200 msgs | 2163332 | 2262571 | 542947 | 4.17x |
+
+| scenario | Haskell / Node in each round (best of each side) | min |
+|---|---|---:|
+| collab fan-out, 50 peers x 1000 msgs | 4.36 3.83 4.17 3.81 4.36 | 3.81x |
+| collab fan-out, 200 peers x 200 msgs | 4.02 3.63 4.17 3.71 3.99 | 3.63x |
+
+#### Static UI (`dist/`)
+
+| scenario | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
+|---|---:|---:|---:|---:|
+| GET / (index.html), 1 client | 22810 (43 / 55) | 9000 (110 / 128) | 11724 (85 / 129) | 1.95x |
+| GET / (index.html), 16 clients | 39360 (405 / 477) | 17191 (912 / 1143) | 28009 (555 / 793) | 1.41x |
+| GET the JS bundle (592 KiB), 16 clients | 20798 (761 / 1263) |  | 4967 (2969 / 5201) | 4.19x |
+| GET /sample-net.json, 16 clients | 38242 (415 / 501) | 21553 (576 / 2667) | 17086 (794 / 2280) | 1.77x |
+| server RSS after run (MiB) | 81 | 134 | 132 | |
+
+Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+| scenario (best of 5) | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
+|---|---:|---:|---:|---:|
+| GET / (index.html), 1 client | 22901 | 9029 | 11743 | 1.95x |
+| GET / (index.html), 16 clients | 39400 | 17519 | 28955 | 1.36x |
+| GET the JS bundle (592 KiB), 16 clients | 21066 |  | 5065 | 4.16x |
+| GET /sample-net.json, 16 clients | 38457 | 34527 | 17122 | 1.11x |
+
+| scenario | Haskell / Node in each round (best of each side) | min |
+|---|---|---:|
+| GET / (index.html), 1 client | 1.94 1.95 1.94 1.97 1.94 | 1.94x |
+| GET / (index.html), 16 clients | 1.39 1.33 1.41 1.40 1.41 | 1.33x |
+| GET the JS bundle (592 KiB), 16 clients | 3.83 4.16 4.19 4.15 4.19 | 3.83x |
+| GET /sample-net.json, 16 clients | 1.10 1.11 1.80 1.78 1.79 | 1.10x |
+
+#### The `/temporal` proxy
+
+| scenario | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
+|---|---:|---:|---:|---:|
+| GET /temporal/... (proxied), 1 client | 13596 (73 / 102) | 3472 (273 / 546) | 3489 (274 / 394) | 3.90x |
+| GET /temporal/... (proxied), 16 clients | 26387 (589 / 891) | 9329 (1550 / 2827) | 9774 (1576 / 2854) | 2.70x |
+| server RSS after run (MiB) | 81 | 134 | 132 | |
+
+Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+| scenario (best of 5) | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
+|---|---:|---:|---:|---:|
+| GET /temporal/... (proxied), 1 client | 13659 | 3549 | 3543 | 3.85x |
+| GET /temporal/... (proxied), 16 clients | 26802 | 9842 | 9986 | 2.68x |
+
+| scenario | Haskell / Node in each round (best of each side) | min |
+|---|---|---:|
+| GET /temporal/... (proxied), 1 client | 3.83 3.91 3.87 3.92 4.03 | 3.83x |
+| GET /temporal/... (proxied), 16 clients | 2.66 2.71 2.88 2.05 2.64 | 2.05x |
+
+#### MCP `tools/call` round trip
+
+| scenario | haskell (petrus-mcp) | node (server/mcp.mjs) | Haskell / Node |
+|---|---:|---:|---:|
+| MCP petrus_inspect_document, 1 call at a time | 6224 (157 / 224) | 5247 (181 / 425) | 1.19x |
+| MCP petrus_inspect_document, 16 calls in flight | 18568 (867 / 1478) | 15877 (912 / 2168) | 1.17x |
+| MCP petrus_status, 1 call at a time | 8462 (117 / 165) | 6950 (137 / 297) | 1.22x |
+
+Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+| scenario (best of 5) | haskell (petrus-mcp) | node (server/mcp.mjs) | Haskell / Node |
+|---|---:|---:|---:|
+| MCP petrus_inspect_document, 1 call at a time | 6263 | 5300 | 1.18x |
+| MCP petrus_inspect_document, 16 calls in flight | 19155 | 16193 | 1.18x |
+| MCP petrus_status, 1 call at a time | 8482 | 6969 | 1.22x |
+
+| scenario | Haskell / Node in each round (best of each side) | min |
+|---|---|---:|
+| MCP petrus_inspect_document, 1 call at a time | 1.19 1.20 1.19 1.18 1.18 | 1.18x |
+| MCP petrus_inspect_document, 16 calls in flight | 1.16 1.15 1.15 1.21 1.19 | 1.15x |
+| MCP petrus_status, 1 call at a time | 1.22 1.21 1.22 1.21 1.22 | 1.21x |
+
+#### Cold start
+
+| scenario | haskell (petrus FILE) | node (bin/petrus.mjs FILE) | Haskell / Node |
+|---|---:|---:|---:|
+| cold start until the file and UI are served | 104 (9555 / 9988) | 2.73 (369875 / 389475) | 38.10x |
+
+Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+| scenario (best of 5) | haskell (petrus FILE) | node (bin/petrus.mjs FILE) | Haskell / Node |
+|---|---:|---:|---:|
+| cold start until the file and UI are served | 109 | 2.8 | 38.93x |
+
+| scenario | Haskell / Node in each round (best of each side) | min |
+|---|---|---:|
+| cold start until the file and UI are served | 38.10 39.21 38.57 37.50 38.38 | 37.50x |
 
 ### Before and after
 
@@ -183,6 +330,8 @@ development page and does not serve the built bundle.
 
 #### Static UI (`dist/`)
 
+<!-- bench: superseded -->
+
 | scenario | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
 |---|---:|---:|---:|---:|
 | GET / (index.html), 1 client | 22003 (43 / 87) | 9478 (95 / 257) | 13658 (68 / 149) | 1.61x |
@@ -192,6 +341,8 @@ development page and does not serve the built bundle.
 | server RSS after run (MiB) | 53 | 135 | 83 | |
 
 Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+<!-- bench: superseded -->
 
 | scenario (best of 5) | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
 |---|---:|---:|---:|---:|
@@ -209,6 +360,8 @@ Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
 
 #### The `/temporal` proxy
 
+<!-- bench: superseded -->
+
 | scenario | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
 |---|---:|---:|---:|---:|
 | GET /temporal/... (proxied), 1 client | 7103 (136 / 229) | 2128 (435 / 1062) | 2042 (437 / 1241) | 3.34x |
@@ -216,6 +369,8 @@ Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
 | server RSS after run (MiB) | 53 | 135 | 83 | |
 
 Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+<!-- bench: superseded -->
 
 | scenario (best of 5) | haskell (petrus) | node (vite dev server) | node (vite preview) | Haskell / Node |
 |---|---:|---:|---:|---:|
@@ -229,6 +384,8 @@ Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
 
 #### MCP `tools/call` round trip
 
+<!-- bench: superseded -->
+
 | scenario | haskell (petrus-mcp) | node (server/mcp.mjs) | Haskell / Node |
 |---|---:|---:|---:|
 | MCP petrus_inspect_document, 1 call at a time | 4589 (202 / 439) | 3827 (238 / 664) | 1.20x |
@@ -236,6 +393,8 @@ Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
 | MCP petrus_status, 1 call at a time | 6180 (154 / 298) | 4735 (183 / 521) | 1.31x |
 
 Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+<!-- bench: superseded -->
 
 | scenario (best of 5) | haskell (petrus-mcp) | node (server/mcp.mjs) | Haskell / Node |
 |---|---:|---:|---:|
@@ -251,11 +410,15 @@ Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
 
 #### Cold start
 
+<!-- bench: superseded -->
+
 | scenario | haskell (petrus FILE) | node (bin/petrus.mjs FILE) | Haskell / Node |
 |---|---:|---:|---:|
 | cold start until the file and UI are served | 85.83 (11575 / 12862) | 2.66 (377930 / 387062) | 32.27x |
 
 Cells: median ops/s over 5 interleaved runs (p50 / p99 latency in us).
+
+<!-- bench: superseded -->
 
 | scenario (best of 5) | haskell (petrus FILE) | node (bin/petrus.mjs FILE) | Haskell / Node |
 |---|---:|---:|---:|
@@ -281,6 +444,8 @@ is part of Vite's latencies.
 
 ### Run F (the HTTP front, final code; 15 reps; load average 5.1 → 9.0)
 
+<!-- bench: superseded -->
+
 | scenario | haskell (petrus) | haskell (petrus, relay log off) | node (vite dev server) | node (bare baseline) | haskell (petrus-collab) | node (server/collab.mjs) | Haskell / Node |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | relay round trip, 1 pair | 14249 (66 / 141) | 15806 (59 / 136) | 10585 (89 / 198) | 11965 (78 / 169) |  |  | 1.32x |
@@ -294,6 +459,8 @@ is part of Vite's latencies.
 | server RSS after run (MiB) | 55 | 18 | 46 | 39 | 49 | 88 | |
 
 Cells: median ops/s over 15 interleaved runs (p50 / p99 latency in us).
+
+<!-- bench: superseded -->
 
 | scenario (best of 15) | haskell (petrus) | haskell (petrus, relay log off) | node (vite dev server) | node (bare baseline) | haskell (petrus-collab) | node (server/collab.mjs) | Haskell / Node |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -323,6 +490,8 @@ The endpoint scenarios only, with one more target: `haskell before` is
 `petrus` at commit 700c623 (Warp serves every request), started and run
 in the same rotation as the others. The ratio column compares the new
 `petrus` with the best Node server.
+
+<!-- bench: superseded -->
 
 | scenario | haskell (petrus) | haskell before (700c623, Warp) | node (vite dev server) | node (bare baseline) | Haskell / Node |
 |---|---:|---:|---:|---:|---:|

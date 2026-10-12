@@ -115,20 +115,21 @@ identical requests. The client therefore costs the same on both sides.
 - **Repetitions.** Each repetition runs every scenario on both servers,
   alternating which server goes first, after a warm-up.
 - **Figures.** The tables give the median over 5 repetitions of throughput
-  and of the per-request p50 and p99 latencies. The 1-minute load average
-  was 2.47 to 4.30.
-
-<!-- bench: superseded -->
+  and of the per-request p50 and p99 latencies. Measured on 2026-10-12,
+  04:03–04:10 local (UTC-3), at commit `81bbdc5`, with the 1-minute load
+  average at 2.26 to 2.80. An earlier run (load average 2.47 to 4.30) had
+  Haskell ahead 1.61–3.48×; the Haskell server now serves about 1.8× as
+  many document requests and 2.5× as many history requests per second.
 
 | Scenario | Clients | Haskell req/s | Haskell p50 / p99 | Python req/s | Python p50 / p99 | Haskell / Python |
 |---|---:|---:|---:|---:|---:|---:|
-| snapshot | 1 | 11878 | 79 µs / 190 µs | 4912 | 197 µs / 268 µs | 2.42× |
-| snapshot | 4 | 18633 | 213 µs / 395 µs | 5349 | 719 µs / 1.37 ms | 3.48× |
-| document (201 records) | 1 | 128 | 7.94 ms / 10.38 ms | 42 | 23.24 ms / 30.31 ms | 3.04× |
-| document (201 records) | 4 | 129 | 30.59 ms / 46.22 ms | 42 | 95.12 ms / 134.46 ms | 3.06× |
-| history after=0 limit=100 | 1 | 2750 | 357 µs / 450 µs | 1712 | 576 µs / 811 µs | 1.61× |
-| history after=0 limit=100 | 4 | 3701 | 1.04 ms / 2.34 ms | 1958 | 1.96 ms / 4.06 ms | 1.89× |
-| refused POST (405) | 1 | 15431 | 59 µs / 127 µs | 8957 | 109 µs / 165 µs | 1.72× |
+| snapshot | 1 | 14551 | 63 µs / 85 µs | 5116 | 195 µs / 219 µs | 2.84× |
+| snapshot | 4 | 20759 | 190 µs / 245 µs | 5571 | 699 µs / 1.08 ms | 3.73× |
+| document (201 records) | 1 | 235 | 4.02 ms / 5.40 ms | 45 | 22.11 ms / 27.93 ms | 5.28× |
+| document (201 records) | 4 | 239 | 16.85 ms / 24.43 ms | 44 | 88.84 ms / 132.20 ms | 5.38× |
+| history after=0 limit=100 | 1 | 7417 | 132 µs / 167 µs | 1932 | 504 µs / 550 µs | 3.84× |
+| history after=0 limit=100 | 4 | 9103 | 437 µs / 560 µs | 2084 | 1.88 ms / 2.88 ms | 4.37× |
+| refused POST (405) | 1 | 17137 | 56 µs / 87 µs | 9196 | 108 µs / 126 µs | 1.86× |
 
 ## Notes
 

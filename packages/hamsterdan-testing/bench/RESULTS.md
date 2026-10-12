@@ -19,6 +19,47 @@ work. The versions were:
 
 Every ratio is Python ÷ Haskell.
 
+## Current figures
+
+Measured on 2026-10-12, 03:44–03:53 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.27–3.02:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare hamsterdan-testing 3 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-testing/bench/bench.py'
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `oracle.evaluate every admitted corpus document (1658)` | 826 µs | 9.67 ms | 11.71× | 11.60× | 827 µs, 820 µs, 826 µs | 9.6 ms, 9.67 ms, 9.7 ms |
+| `oracle.load and evaluate every admitted corpus document (1658)` | 17.6 ms | 29.2 ms | 1.66× | 1.65× | 17.6 ms, 17.5 ms, 17.6 ms | 29.2 ms, 29.4 ms, 29.1 ms |
+| `oracle.evaluate_liveness x12 over every expectation (1658)` | 117 µs | 2.8 ms | 23.96× | 23.50× | 115 µs, 117 µs, 119 µs | 2.92 ms, 2.76 ms, 2.8 ms |
+| `journeys.clean_green` | 35.1 ms | 258 ms | 7.35× | 7.26× | 35.1 ms, 35.5 ms, 34.8 ms | 257 ms, 258 ms, 258 ms |
+| `journeys.first_attempt_flake` | 45 ms | 367 ms | 8.17× | 8.11× | 43.8 ms, 45 ms, 45.1 ms | 367 ms, 364 ms, 367 ms |
+| `journeys.persistent_ci_regression` | 49 ms | 420 ms | 8.57× | 8.52× | 49.6 ms, 48.6 ms, 49 ms | 422 ms, 417 ms, 420 ms |
+| `journeys.seeded_review_finding` | 31 ms | 216 ms | 6.96× | 6.72× | 31 ms, 32 ms, 30.5 ms | 216 ms, 215 ms, 217 ms |
+| `journeys.conversational_change` | 75.9 ms | 855 ms | 11.27× | 11.03× | 75.9 ms, 76.8 ms, 74.5 ms | 856 ms, 847 ms, 855 ms |
+| `journeys.agent_repair` | 671 ms | 1.61 s | 2.39× | 2.38× | 676 ms, 668 ms, 671 ms | 1.61 s, 1.6 s, 1.61 s |
+| `journeys.hero_review` | 31.6 ms | 226 ms | 7.15× | 6.98× | 31.6 ms, 30.8 ms, 32.3 ms | 226 ms, 222 ms, 226 ms |
+| `journeys.draft_ready` | 52.6 ms | 488 ms | 9.27× | 8.84× | 55.3 ms, 51.3 ms, 52.6 ms | 489 ms, 483 ms, 488 ms |
+| `journeys.stale_base_update` | 754 ms | 1.84 s | 2.44× | 2.33× | 750 ms, 788 ms, 754 ms | 1.84 s, 1.84 s, 1.84 s |
+| `journeys.true_conflict_resolution` | 763 ms | 1.85 s | 2.42× | 2.38× | 760 ms, 772 ms, 763 ms | 1.87 s, 1.84 s, 1.85 s |
+| `journeys.collaboration_approval` | 53.8 ms | 511 ms | 9.49× | 9.06× | 53.8 ms, 53.1 ms, 56.4 ms | 513 ms, 509 ms, 511 ms |
+| `world.author coverage-duplicate-delivery` | 181 ms | 477 ms | 2.63× | 2.62× | 184 ms, 179 ms, 181 ms | 483 ms, 475 ms, 477 ms |
+| `world.author authority-draft_resume` | 729 ms | 1.88 s | 2.58× | 2.55× | 728 ms, 729 ms, 738 ms | 1.89 s, 1.88 s, 1.88 s |
+| `world.author timer-draft_resume` | 826 ms | 2.13 s | 2.58× | 2.54× | 826 ms, 833 ms, 826 ms | 2.14 s, 2.12 s, 2.13 s |
+| `world.author git-after_acceptance` | 1.3 s | 3.17 s | 2.45× | 2.45× | 1.3 s, 1.27 s, 1.3 s | 3.21 s, 3.15 s, 3.17 s |
+| `world.replay coverage-duplicate-delivery` | 177 ms | 473 ms | 2.67× | 2.65× | 177 ms, 177 ms, 178 ms | 473 ms, 470 ms, 473 ms |
+| `world.replay authority-draft_resume` | 718 ms | 1.86 s | 2.59× | 2.55× | 713 ms, 728 ms, 718 ms | 1.88 s, 1.86 s, 1.86 s |
+| `world.replay timer-draft_resume` | 820 ms | 2.11 s | 2.57× | 2.47× | 819 ms, 849 ms, 820 ms | 2.12 s, 2.1 s, 2.11 s |
+| `world.replay git-after_acceptance` | 1.28 s | 3.14 s | 2.46× | 2.46× | 1.28 s, 1.26 s, 1.28 s | 3.16 s, 3.13 s, 3.14 s |
+
 ## Oracle
 
 The inputs are the 1658 documents of `test/corpus/oracle.jsonl` that the
@@ -38,6 +79,8 @@ each run).
   second of passes.
 - **Interleaving:** two rounds, run as Haskell, Python, then Python, Haskell.
   The table shows each side's better round.
+
+<!-- bench: superseded -->
 
 | Operation (one pass, 1658 documents) | Haskell | Python | Python / Haskell |
 | --- | ---: | ---: | ---: |
@@ -97,6 +140,8 @@ How each side was measured:
 - **Load:** the load average was 3.9–6.0 throughout, with other agents'
   builds running.
 
+<!-- bench: superseded -->
+
 | Journey (one run) | Haskell | Python | Python / Haskell |
 | --- | ---: | ---: | ---: |
 | `clean_green` | 86.9 ms | 296 ms | 3.4× |
@@ -154,6 +199,8 @@ How each side was measured:
   Haskell. The table shows each side's better round.
 - **Load:** the load average was 4.0–5.0 throughout, with other agents'
   builds running.
+
+<!-- bench: superseded -->
 
 | World scenario (one run) | Haskell | Python | Python / Haskell |
 | --- | ---: | ---: | ---: |

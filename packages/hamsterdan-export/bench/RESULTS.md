@@ -31,6 +31,24 @@ run, so both meet the same file-system state. Output directories are
 removed between runs, outside the timed region. Each cell is the median of
 21 runs, with the minimum in parentheses.
 
+## Current figures
+
+Measured on 2026-10-12, 03:57–03:58 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.77–3.00, by
+
+    scripts/bench-run hamsterdan-export --runs 21 +RTS -M2G -RTS
+
+Each cell is the median of 21 runs, interleaved as described above, with the minimum in parentheses. The tables in the sections below are earlier measurements.
+
+| State directory | Shape | Haskell median (min) | Python median (min) | Python / Haskell |
+| --- | --- | ---: | ---: | ---: |
+| fixture | CLI (fresh process) | 18.8 ms (14.5 ms) | 699.9 ms (690.9 ms) | 37.31× |
+| fixture | in process | 3.0 ms (2.7 ms) | 3.7 ms (3.5 ms) | 1.26× |
+| host-driven | CLI (fresh process) | 19.5 ms (14.5 ms) | 710.2 ms (698.9 ms) | 36.48× |
+| host-driven | in process | 6.7 ms (6.3 ms) | 7.2 ms (6.8 ms) | 1.08× |
+| large | CLI (fresh process) | 174.7 ms (159.4 ms) | 952.5 ms (931.9 ms) | 5.45× |
+| large | in process | 151.4 ms (142.3 ms) | 246.6 ms (232.9 ms) | 1.63× |
+
 ## Results
 
 The machine was an Apple M4 (10 cores) running macOS 26.3.1, shared with
@@ -43,6 +61,8 @@ other work. The load average was 4.8–5.4 during the run (2026-10-11,
   cores (DIVERGENCES.md, internal).
 - **Python:** CPython 3.14.6, the pinned reference in
   `upstream/hamsterdan/.venv`.
+
+<!-- bench: superseded -->
 
 | State directory | Shape | Haskell median (min) | Python median (min) | Python / Haskell |
 | --- | --- | ---: | ---: | ---: |

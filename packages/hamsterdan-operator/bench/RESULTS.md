@@ -48,6 +48,25 @@ run, so both meet the same machine and file-system state. Each cell is the
 median, with the minimum in parentheses: 21 runs per CLI row, 210 runs per
 in-process row.
 
+## Current figures
+
+Measured on 2026-10-12, 03:58–04:00 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.63–3.00, by
+
+    scripts/bench-run hamsterdan-operator --runs 21 +RTS -M2G -RTS
+
+One run of the harness: each cell is the median of 21 runs, the two sides interleaved, with the minimum in parentheses. `qualification-setup` stays close to 1.0×, as in the seven-run table below and for the reason given under it. The tables in the sections below are earlier measurements.
+
+| Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell |
+| --- | --- | ---: | ---: | ---: |
+| `--help` | CLI (fresh process) | 20.77 ms (17.74 ms) | 692.06 ms (683.13 ms) | 33.32× |
+| `preflight` | CLI (fresh process) | 129.51 ms (117.51 ms) | 812.42 ms (803.66 ms) | 6.27× |
+| `inspect --pr 7 --expect-hero-review` (25 fake `gh` calls) | CLI (fresh process) | 592.46 ms (568.26 ms) | 1.30 s (1.29 s) | 2.20× |
+| inspect, hero review (200 comments, 20 runs of 30 jobs) | in process | 649.0 µs (593.0 µs) | 971.5 µs (918.7 µs) | 1.50× |
+| inspect-authority (40 rules, 99 reviews, 100 threads) | in process | 76.0 µs (66.0 µs) | 147.6 µs (133.3 µs) | 1.94× |
+| Git ref projection parse (2000 refs) | in process | 939.0 µs (883.0 µs) | 1.83 ms (1.71 ms) | 1.95× |
+| qualification-setup success path (scripted Git and gh) | in process | 934.0 µs (860.0 µs) | 954.6 µs (872.2 µs) | 1.02× |
+
 ## Results
 
 Seven full runs on 2026-10-11, 06:40–06:52 local (UTC-3), at commit
@@ -62,6 +81,8 @@ run's ratio and the runs Haskell won.
   `-O2 -threaded "-with-rtsopts=-A16m"`, and run with `+RTS -M2G`.
 - **Python:** CPython 3.14.6, the pinned reference in
   `upstream/hamsterdan/.venv`.
+
+<!-- bench: superseded -->
 
 | Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell | Lowest run | Runs Haskell faster |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |

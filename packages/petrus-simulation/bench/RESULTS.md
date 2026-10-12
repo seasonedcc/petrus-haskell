@@ -147,19 +147,18 @@ both sides.
   alternating which goes first, after a warm-up.
 
 The table gives the median over 5 repetitions of throughput and of the
-per-request p50 and p99 latencies. The 1-minute load average was 2.95 to
-3.12.
-
-<!-- bench: superseded -->
+per-request p50 and p99 latencies, measured on 2026-10-12, 04:10–04:11
+local (UTC-3), at commit `81bbdc5`, with the 1-minute load average at 2.61
+to 2.85. An earlier run (load average 2.95 to 3.12) gave 1.64–8.13×.
 
 | Scenario | Clients | Haskell req/s | Haskell p50 / p99 | Python req/s | Python p50 / p99 | Haskell / Python |
 |---|---:|---:|---:|---:|---:|---:|
-| GET profile | 1 | 14191 | 63 µs / 140 µs | 8654 | 109 µs / 183 µs | 1.64× |
-| GET profile | 4 | 18874 | 203 µs / 350 µs | 9663 | 385 µs / 738 µs | 1.95× |
-| OPTIONS preflight | 1 | 15194 | 62 µs / 116 µs | 8570 | 108 µs / 209 µs | 1.77× |
-| POST invalid body (400) | 1 | 13514 | 70 µs / 115 µs | 7328 | 129 µs / 206 µs | 1.84× |
-| POST invalid body (400) | 4 | 17296 | 223 µs / 333 µs | 7908 | 461 µs / 877 µs | 2.19× |
-| POST fixture, 32 actions | 1 | 2410 | 344 µs / 537 µs | 296 | 3.19 ms / 4.70 ms | 8.13× |
+| GET profile | 1 | 14981 | 62 µs / 100 µs | 8930 | 111 µs / 145 µs | 1.68× |
+| GET profile | 4 | 20239 | 194 µs / 256 µs | 10462 | 350 µs / 698 µs | 1.93× |
+| OPTIONS preflight | 1 | 15447 | 63 µs / 91 µs | 8862 | 111 µs / 129 µs | 1.74× |
+| POST invalid body (400) | 1 | 14679 | 66 µs / 92 µs | 7711 | 129 µs / 148 µs | 1.90× |
+| POST invalid body (400) | 4 | 17727 | 217 µs / 282 µs | 9008 | 423 µs / 831 µs | 1.97× |
+| POST fixture, 32 actions | 1 | 3601 | 266 µs / 318 µs | 327 | 2.98 ms / 3.63 ms | 11.02× |
 
 ## Notes
 

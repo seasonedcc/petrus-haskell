@@ -15,7 +15,7 @@ All runs: Apple M4, macOS (Darwin 25.3), GHC 9.10.3 `-O2`, CPython 3.14.6.
 | Effect | [results-effect.md](results-effect.md) | digests 3.3× to 4.4×; gateway execute and replay 12.6× and 12.5× (2026-10-12) |
 | Hands | [results-hands.md](results-hands.md) | parse 3.6×; gateway reads 2.8× to 3.1×; gateway writes 1.8× (2026-10-12, default RTS) |
 | Thread | [results-thread.md](results-thread.md) | build about 1,400× (the reference is quadratic); `to-json` 2.6×, `dumps` alone 1.8×, `from_data` 3.7× (medians of three interleaved repetitions, 2026-10-12) |
-| Connection custody | [results-custody.md](results-custody.md) | 2.7× to 4.7× on whole sessions (FULL and OFF sync, N = 100 to 5000) |
+| Connection custody | [results-custody.md](results-custody.md) | 5.15× and 7.07× on whole FULL-sync sessions at N = 100 and 1000 (medians of three alternating rounds, 2026-10-12); 2.7× at N = 5000 earlier |
 
 ## Known slow path
 

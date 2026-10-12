@@ -350,12 +350,41 @@ the fake), the same `/healthz` response, the same sweep count and provider
 calls, and the same publication outcome. The Shape column shows the agreed
 outcome.
 
+### Current process figures
+
+Eleven runs per row on 2026-10-12, 04:11–04:15 local (UTC-3), at commit
+`81bbdc5`, load average 2.66–2.95 (`uptime` before and after), by
+
+    scripts/bench-run --no-build hamsterdan-host --process --runs 11 +RTS -M2G -RTS
+
+Each cell is the median of the eleven runs, with the fastest in parentheses.
+The Python CLI rows are slower than in the table below (1.04 s against
+792 ms for `validate`), and the Haskell `serve` start faster (155 ms
+against 346 ms, which was measured at a load average of 6.5–7.2).
+
+| Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell |
+| --- | --- | ---: | ---: | ---: |
+| `validate` (20 Instances) | CLI (fresh process) | 124.45 ms (118.76 ms) | 1.04 s (1.03 s) | 8.32× |
+| `inbox` (20 Instances) | CLI (fresh process) | 124.82 ms (118.31 ms) | 932.02 ms (924.68 ms) | 7.47× |
+| `requeue` of a parked delivery (20 Instances) | CLI (fresh process) | 124.85 ms (115.72 ms) | 931.80 ms (924.85 ms) | 7.46× |
+| `inspect-instance` (a 2001-record History) | CLI (fresh process) | 23.14 ms (21.80 ms) | 715.34 ms (703.85 ms) | 30.91× |
+| `serve` start to the first `200` on `/healthz` (20 Instances) | process | 155.25 ms (144.46 ms) | 1.11 s (1.08 s) | 7.15× |
+| 100 signed deliveries POSTed to `serve` (inactive route) | socket | 15.93 ms (12.79 ms) | 36.78 ms (33.19 ms) | 2.31× |
+| `sweep("periodic")` over 20 loaded Instances | in process; 20 reconciled, 180 provider calls | 13.99 ms (13.86 ms) | 1.51 s (1.50 s) | 107.70× |
+| `sweep("periodic")` over 20 unloaded Instances (fresh host) | in process; 20 reconciled, 180 provider calls | 245.59 ms (229.22 ms) | 3.22 s (3.21 s) | 13.12× |
+| immutable comment publication (100 bot comments) | in process; created | 12.4 µs (12.2 µs) | 25.0 µs (24.8 µs) | 2.02× |
+| native review batch of 8 findings (100 issue + 100 review comments) | in process; created,created,created,created,created,created,created,created | 197.1 µs (194.9 µs) | 393.1 µs (388.9 µs) | 1.99× |
+| GraphQL ref compare-and-swap | in process; ok | 2.4 µs (2.2 µs) | 3.9 µs (3.8 µs) | 1.64× |
+| Git publication through the local authority | in process; recovered=False | 293.06 ms (289.06 ms) | 340.54 ms (337.23 ms) | 1.16× |
+
 ### Results of the process rows
 
 Eleven runs per row on 2026-10-11, 14:19–14:23 local (UTC-3), load average
 3.39–4.19 (`uptime` before and after), on the machine described above
 (Apple M4, 10 cores, macOS 26.3.1, shared with other work); CPython 3.14.6.
 Each cell is the median of the eleven runs, with the fastest in brackets.
+
+<!-- bench: superseded -->
 
 | Workload | Shape | Haskell median (fastest) | Python median (fastest) | Python / Haskell |
 | --- | --- | ---: | ---: | ---: |

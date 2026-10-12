@@ -16,6 +16,38 @@ publication:
 Both sides run the same calls on the same inputs. Each side parses the
 inputs before timing starts.
 
+## Current figures
+
+Measured on 2026-10-12, 03:42–03:44 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.21–2.58:
+three interleaved repetitions, alternating which side goes first, of
+
+    scripts/bench-compare hamsterdan-readiness 3 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-readiness/bench/bench.py'
+
+Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
+`+RTS -M2G`), the benchmark executable run directly in the package
+directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+figure is the median over the repetitions, and the ratio is Python ÷
+Haskell (above 1 means Haskell is faster). The
+tables in the sections below are earlier measurements, kept with the
+analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `folding.every corpus fold (3292 calls)` | 9.59 ms | 72.5 ms | 7.56× | 7.50× | 9.59 ms, 9.66 ms, 9.57 ms | 72.9 ms, 72.4 ms, 72.5 ms |
+| `folding.ci folds (177 calls)` | 335 µs | 2.85 ms | 8.51× | 8.51× | 337 µs, 333 µs, 335 µs | 2.88 ms, 2.85 ms, 2.85 ms |
+| `folding.conv folds (250 calls)` | 399 µs | 5.63 ms | 14.12× | 14.12× | 399 µs, 398 µs, 399 µs | 5.66 ms, 5.63 ms, 5.63 ms |
+| `folding.dash folds (441 calls)` | 563 µs | 5.74 ms | 10.18× | 10.17× | 563 µs, 564 µs, 555 µs | 5.78 ms, 5.73 ms, 5.74 ms |
+| `folding.esc folds (232 calls)` | 532 µs | 4.28 ms | 8.04× | 8.02× | 533 µs, 532 µs, 529 µs | 4.28 ms, 4.27 ms, 4.3 ms |
+| `folding.life folds (341 calls)` | 869 µs | 7.04 ms | 8.10× | 8.08× | 873 µs, 869 µs, 865 µs | 7.05 ms, 7.04 ms, 7.03 ms |
+| `folding.mut folds (246 calls)` | 543 µs | 4.58 ms | 8.43× | 8.42× | 543 µs, 543 µs, 535 µs | 4.58 ms, 4.57 ms, 4.58 ms |
+| `folding.ready folds (813 calls)` | 3.27 ms | 18.2 ms | 5.56× | 5.48× | 3.27 ms, 3.31 ms, 3.21 ms | 18.2 ms, 18.1 ms, 18.2 ms |
+| `folding.rem folds (298 calls)` | 1.14 ms | 10.7 ms | 9.41× | 9.18× | 1.16 ms, 1.14 ms, 1.13 ms | 10.7 ms, 10.8 ms, 10.7 ms |
+| `folding.review folds (391 calls)` | 1.47 ms | 11.7 ms | 8.00× | 7.96× | 1.48 ms, 1.47 ms, 1.46 ms | 11.8 ms, 11.7 ms, 11.6 ms |
+| `folding.startup folds (103 calls)` | 719 ns | 3 µs | 4.17× | 4.16× | 720 ns, 719 ns, 712 ns | 3 µs, 3 µs, 3 µs |
+| `board.render_board over every corpus log (1569 logs)` | 16.4 ms | 60.5 ms | 3.69× | 3.68× | 16.4 ms, 16.3 ms, 16.4 ms | 60.5 ms, 60.5 ms, 60.3 ms |
+| `board.gate_facts over every corpus log (1569 logs)` | 12.6 ms | 57.2 ms | 4.55× | 4.55× | 12.6 ms, 12.6 ms, 12.4 ms | 57.2 ms, 57.3 ms, 57.1 ms |
+
 ## Results
 
 The machine was an Apple M4 (10 cores), macOS 26.3.1, shared with other
@@ -28,6 +60,8 @@ after each run).
   `timeit` repeats, each about half a second of passes.
 - **Interleaving:** two rounds, run as Haskell, Python, then Python, Haskell.
   The table shows each side's better round.
+
+<!-- bench: superseded -->
 
 | Operation (one pass) | Haskell | Python | Python / Haskell |
 | --- | ---: | ---: | ---: |

@@ -36,13 +36,40 @@ fixed cost.
 
 ## Method
 
-`compare.py` alternates the two harnesses, Python first and then Haskell, for N rounds, so both
+`compare.py` alternates the two harnesses for N rounds (odd rounds Python first, even rounds Haskell first; until 2026-10-12 Python always went first), so both
 see the same machine state. Each harness reports one median per benchmark per round. The table
 shows the median of those per-round medians. A ratio above 1 means Haskell is faster.
+
+## Current figures
+
+Measured on 2026-10-12, 04:00–04:03 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.63–2.68, by
+
+    "$(scripts/upstream-python)" -B packages/petrus-execution/bench/compare.py WORKDIR 5
+
+Five rounds, alternating which harness goes first; each figure is the median of the per-round medians, "lowest per round" is the worst round's ratio, and the last column counts the rounds Haskell won. `archive/one-large/extract` (one 256 MiB file) and `sidecar/handshake-round-trip` are the thin rows: on the M4 the first lost one round of five and the second two. On the GitHub-hosted Linux runner `archive/one-large/extract` comes out a few percent behind Python (58.7 ms against 56.6 ms, 0.96×, with 64 KiB or 128 KiB writes alike). The time there is the kernel's: a bare 256 MiB `write(2)` loop on that runner takes 58–67 ms, so `scripts/bench-gate` checks `archive/medium/extract` instead. The tables in the sections below are earlier measurements.
+
+| benchmark | Python (ms) | Haskell (ms) | Python / Haskell | lowest per round | Haskell ahead |
+|---|---:|---:|---:|---:|---:|
+| archive/many-small/pack+sha256 | 479.182 | 181.124 | 2.65x | 2.54x | 5 of 5 |
+| archive/many-small/validate | 89.914 | 29.433 | 3.05x | 3.01x | 5 of 5 |
+| archive/many-small/extract | 1190.466 | 924.546 | 1.29x | 1.26x | 5 of 5 |
+| archive/medium/pack+sha256 | 76.978 | 41.138 | 1.87x | 1.83x | 5 of 5 |
+| archive/medium/validate | 8.930 | 2.884 | 3.10x | 3.07x | 5 of 5 |
+| archive/medium/extract | 144.429 | 117.166 | 1.23x | 1.16x | 5 of 5 |
+| archive/one-large/pack+sha256 | 179.061 | 102.191 | 1.75x | 1.63x | 5 of 5 |
+| archive/one-large/validate | 0.075 | 0.007 | 10.66x | 9.26x | 5 of 5 |
+| archive/one-large/extract | 95.046 | 88.176 | 1.08x | 0.89x | 4 of 5 |
+| process/run-captured | 1.395 | 0.763 | 1.83x | 1.75x | 5 of 5 |
+| local/execute | 3.918 | 3.055 | 1.28x | 1.25x | 5 of 5 |
+| sidecar/handshake-round-trip | 0.031 | 0.031 | 1.01x | 0.90x | 3 of 5 |
+| sidecar/execute-round-trip | 4.836 | 4.659 | 1.04x | 1.02x | 5 of 5 |
 
 ## Results
 
 `compare.py`, 5 interleaved rounds (archive rows):
+
+<!-- bench: superseded -->
 
 | benchmark | Python (ms) | Haskell (ms) | Python / Haskell |
 |---|---:|---:|---:|
@@ -72,6 +99,8 @@ file: the containment checks on the territory and its working directory, the spa
 `/bin/sh -c "/bin/cat input"` in it, and collecting its output and exit status. It was run for
 11 rounds that alternate which harness goes first (`PETRUS_BENCH_ONLY=none`, with the fake
 Gondolin SDK), with the 1-minute load average at 3.9–4.2:
+
+<!-- bench: superseded -->
 
 | benchmark | Python (ms) | Haskell (ms) | Python / Haskell | Lowest round | rounds Haskell won |
 |---|---:|---:|---:|---:|---:|
@@ -104,6 +133,8 @@ with the 1-minute load average at 2.18–2.33. Each harness reports its
 median per round (50 executes, 1000 handshakes, 100 spawns); the table
 gives the median of the rounds, the lowest round's ratio, and the rounds
 Haskell won:
+
+<!-- bench: superseded -->
 
 | benchmark | Python (ms) | Haskell (ms) | Python / Haskell | Lowest round | rounds Haskell won |
 |---|---:|---:|---:|---:|---:|

@@ -29,6 +29,24 @@ cycles, plus the total wall time of the N cycles. Each implementation runs
 with its reference pragmas (`synchronous = FULL`). A second set of rows uses
 `synchronous = OFF`, which separates the CPU cost from the fsync cost.
 
+## Current figures
+
+Measured on 2026-10-12, 03:53–03:57 local (UTC-3), at commit `81bbdc5`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.40–2.77: three
+rounds, alternating which side goes first, of
+
+    scripts/bench-run petrus-agenticus-core custody FULL 100 1000 +RTS -M2G -RTS
+    (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_custody.py FULL 100 1000)
+
+Each figure is the median over the three rounds, in the environment listed
+under Results below. The `OFF` and N = 5000 rows were not rerun; the table
+there keeps them.
+
+| sync | N | materialize p50 (Haskell / Python) | release p50 (Haskell / Python) | total (Haskell / Python) | Python / Haskell (total) | per round |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| FULL | 100 | 0.753 ms / 4.62 ms | 0.726 ms / 3.11 ms | 0.151 s / 0.778 s | 5.15× | 4.77×, 5.11×, 5.44× |
+| FULL | 1000 | 4.54 ms / 39.1 ms | 4.45 ms / 25.4 ms | 9.05 s / 64.0 s | 7.07× | 7.05×, 7.08×, 7.16× |
+
 ## Results
 
 Environment:
@@ -38,6 +56,8 @@ Environment:
 - CPython 3.14.6 with SQLite 3.53.4. The Haskell side uses direct-sqlite's
   bundled SQLite 3.45.0.
 - Other agents were sharing the machine, so expect roughly ±10% noise.
+
+<!-- bench: superseded -->
 
 | sync | N | materialize p50 (Haskell / Python) | release p50 (Haskell / Python) | total (Haskell / Python) | Python / Haskell (total) |
 | --- | ---: | ---: | ---: | ---: | ---: |

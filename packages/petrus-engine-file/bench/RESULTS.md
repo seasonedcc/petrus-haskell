@@ -149,24 +149,28 @@ are compared byte for byte after every run. Times are medians, the
 speed-up is Python's median over Haskell's, and "lowest round" is the
 smallest ratio within a single round.
 
-Run on 2026-10-11 on the same machine (Apple M4, 10 cores, 24 GB, macOS 26),
-with CPython 3.14.6 and petrus-engine at the pin. The run had 11 rounds,
-with a load average of 5.8 at the start and 5.6 at the end; the machine was
-shared with other builds.
+Run on 2026-10-12, 04:10–04:11 local (UTC-3), at commit `81bbdc5`, on the
+same machine (Apple M4, 10 cores, 24 GB, macOS 26), with CPython 3.14.6 and
+petrus-engine at the pin, by
 
-<!-- bench: superseded -->
+    "$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/process_bench.py "$(cabal list-bin -v0 petrus-engine-file:exe:petrus-format-json)" 11
+
+The run had 11 rounds, with a load average of 2.78 at the start and 2.66 at
+the end. An earlier run (2026-10-11, load average 5.6–5.8) gave 2.29–5.05×:
+Python's start-up was about 10 ms slower under that load, and Haskell's
+about 2 ms faster (17.0 ms against 19.4 ms for chain-10).
 
 | scenario | Python | Haskell | speed-up | lowest round |
 | --- | ---: | ---: | ---: | ---: |
-| --infile/--outfile chain-10 | 85.8 ms | 17.0 ms | 5.05× | 4.75× |
-| --infile/--outfile chain-1000 | 121.4 ms | 29.5 ms | 4.12× | 3.83× |
-| --infile/--outfile chain-10000 | 486.5 ms | 212.1 ms | 2.29× | 2.17× |
-| in place, 100 x chain-10 | 130.0 ms | 28.3 ms | 4.59× | 4.27× |
+| --infile/--outfile chain-10 | 76.3 ms | 19.4 ms | 3.94× | 3.77× |
+| --infile/--outfile chain-1000 | 108.1 ms | 31.8 ms | 3.40× | 3.19× |
+| --infile/--outfile chain-10000 | 454.0 ms | 193.7 ms | 2.34× | 2.26× |
+| in place, 100 x chain-10 | 119.7 ms | 30.2 ms | 3.96× | 3.58× |
 
-Python spends about 85 ms starting the interpreter and importing pydantic
+Python spends 70–85 ms starting the interpreter and importing pydantic
 and petrus-engine before it formats anything. That start-up cost decides
 the small inputs. On chain-10000 the formatting itself dominates, and the
-ratio approaches the library rows' `format` ratio (3.0×), less the time
+ratio approaches the library rows' `format` ratio (2.1× in the current figures), less the time
 both commands spend reading and writing 2 MB.
 
 ## Notes
