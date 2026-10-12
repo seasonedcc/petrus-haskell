@@ -59,6 +59,7 @@ test-suite petrus-history-postgres-test
   main-is:          Main.hs
   other-modules:    Petrus.Impetus.TestSupport
                     Petrus.Impetus.HistorySupport
+                    Petrus.Impetus.HistoryStoreContract
                     Petrus.HistoryStore.Support
                     Petrus.HistoryStore.BackendContractSpec
                     Petrus.HistoryStore.Postgres.Support

@@ -9,9 +9,9 @@ This document specifies the two process-lifecycle protocols that sit above
   provisioned as an authorized Fabric address.
 
 The two are distinct protocols, not one API. A spawn followed by a call is
-explicit composition. The goal of this document is that a Python Instance and
-a Haskell Instance can call and spawn each other, and share one lineage
-registry in one PostgreSQL database.
+explicit composition. The goal of this document is that Instances of any two
+conforming implementations (the Python reference among them) can call and
+spawn each other, and share one lineage registry in one PostgreSQL database.
 
 Upstream has no language-neutral specification for these protocols. This
 document is derived from the pinned Python reference (`upstream/petrus` at
@@ -23,8 +23,9 @@ document is derived from the pinned Python reference (`upstream/petrus` at
 - `src/petrus/processes/postgres.py`: the lineage registry;
 - `tests/petrus/processes/test_processes.py` and
   `scripts/cv5-lifecycle-demo.py`: executable evidence;
-- decision record
-  `2026-07-21T0030Z-call-and-spawn-are-distinct-process-lifecycle-protocols`.
+- the decision record
+  [DR 2026-07-21 call-and-spawn-are-distinct-process-lifecycle-protocols]
+  (citations follow [README.md §1b](README.md#1b-sources-and-citation-convention)).
 
 The conformance checklist for this document is
 [processes-conformance.md](processes-conformance.md).
@@ -62,9 +63,10 @@ refused (**CONTRACT**).
 
 ### 1.1 Revisions
 
-These are changes made after the Haskell port ran every check against the
-pinned reference. Each change makes this document say what the pinned
-reference does.
+These are changes made after the first complete run of
+[processes-conformance.md](processes-conformance.md) against the pinned
+reference. Each change makes this document say what the pinned reference
+does.
 
 - §7, the row "Reply arrives while no registration is armed": the refusal
   also poisons the refusing Engine, and the host continues through a fresh

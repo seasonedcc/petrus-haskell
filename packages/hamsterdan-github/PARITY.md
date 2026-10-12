@@ -60,20 +60,21 @@ request and step. Use it when debugging a mismatch.
 
 ## Upstream tests
 
-The suite has 200 examples:
-
-- 162 examples port upstream tests, one per test or per parameter;
-- 38 examples replay the corpora.
+The suite's examples either port an upstream test (one per test or per
+parameter) or replay the corpora.
 
 | Upstream module | Tests | Haskell | Status |
 | --- | ---: | --- | --- |
-| `tests/unit/github_app/test_github.py` | 56 | `test/GitHubSpec.hs` (gateway, comment publisher, rerun broker): 81 examples with parameters | 55 ported. `test_transport_repr_does_not_claim_or_expose_credentials` does not apply (DIVERGENCES 3). |
-| `tests/unit/github_app/test_app_foundation.py` | 34 | `test/AppFoundationSpec.hs` (admission, configuration, routing, webhooks): 54 examples; `test/GitHubSpec.hs` "GitHub App client stack": 27 examples | all ported |
+| `tests/unit/github_app/test_github.py` | 56 | `test/GitHubSpec.hs` (gateway, comment publisher, rerun broker), one example per test or parameter | 55 ported. `test_transport_repr_does_not_claim_or_expose_credentials` does not apply (DIVERGENCES 3). |
+| `tests/unit/github_app/test_app_foundation.py` | 34 | `test/AppFoundationSpec.hs` (admission, configuration, routing, webhooks); `test/GitHubSpec.hs` "GitHub App client stack" | all ported |
 
-Each ported example's description paraphrases its upstream test name. For
-example, `test_inline_transient_exhaustion_uses_bounded_exponential_backoff`
-is "exhausts transient inline rejections with bounded exponential backoff".
-They drive the same fakes:
+Each ported example is named after its upstream test, underscores read as
+spaces and without the `test_` prefix; a parametrized test adds its
+parameter in parentheses. For example,
+`test_inline_transient_exhaustion_uses_bounded_exponential_backoff` is
+"inline transient exhaustion uses bounded exponential backoff". The one
+port-only example (an observation nested past the encoder's limit) says so
+in its comment. They drive the same fakes:
 
 - `FakeTransport` and its subclasses are a `Fake` record with an override
   function;

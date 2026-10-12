@@ -31,7 +31,7 @@ cannot be provisioned. By file:
 | --- | --- | --- |
 | test_persistence.py `TestDurableAppend` (2) | JsonlSpec / `TestDurableAppend` | ported |
 | test_persistence.py `TestJsonlHistoryStore` (10) | JsonlSpec / `TestJsonlHistoryStore` | ported |
-| test_history_backends.py (14), with `reopen` = jsonl | BackendContractSpec / `backend contract (jsonl)` | 13 ported, 1 enforced by types |
+| test_history_backends.py (14), with `reopen` = jsonl | BackendContractSpec / `backend contract (jsonl)`: the shared suite (`historyStoreContract`, compiled in from `petrus-impetus/test/Petrus/Impetus/HistoryStoreContract.hs`) | 13 ported, 1 enforced by types |
 | test_history_backends.py (14), with `reopen` = sqlite | BackendContractSpec / `backend contract (sqlite)` | 13 ported, 1 enforced by types |
 | test_sqlite_history.py (11 tests, 14 cases) | SqliteSpec / `test_sqlite_history.py` | 11/11 ported |
 

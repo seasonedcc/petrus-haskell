@@ -108,6 +108,7 @@ test-suite petrus-impetus-test
                     Petrus.Impetus.HistoryCodecSpec
                     Petrus.Impetus.ReferenceCodec
                     Petrus.Impetus.HistoryStoreSpec
+                    Petrus.Impetus.HistoryStoreContract
                     Petrus.Impetus.FiringHistorySpec
                     Petrus.Impetus.InstanceSupport
                     Petrus.Impetus.CelStub

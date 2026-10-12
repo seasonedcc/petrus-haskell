@@ -37,12 +37,13 @@ provisions on first use; they fail, never skip, when it cannot be provisioned.
 | upstream file | Haskell spec | upstream count | status |
 | --- | --- | --- | --- |
 | `tests/petrus/motus/dispatch/test_absurd_adapter.py` | `Petrus.Motus.Dispatch.AbsurdSpec` | 78 functions, 103 cases | all 103 cases ported |
-| `tests/petrus/motus/dispatch/test_attempt_heartbeats.py`, the Absurd part | `Petrus.Motus.Dispatch.Absurd.HeartbeatSpec` | 3 functions, 9 cases | all 9 cases ported |
+| `tests/petrus/motus/dispatch/test_attempt_heartbeats.py`, the Absurd part | `Petrus.Motus.Dispatch.Absurd.HeartbeatSpec` | 2 functions, 8 cases | all 8 cases ported |
 | `tests/project/test_package_boundaries.py`, the 4 Absurd rows | `Petrus.Motus.Dispatch.Absurd.BoundarySpec` | 4 functions | ported over Cabal metadata and module sources |
 | `tests/petrus/motus/worker/test_worker_topology.py` | `packages/petrus-engine-absurd` (`AbsurdSpec`, `Absurd.WorkerTopologySpec`) | 36 functions, 40 cases | see [petrus-engine-absurd's PARITY](../petrus-engine-absurd/PARITY.md) |
 
-The other five tests of `test_attempt_heartbeats.py` (declarations, the inline context, detail
-normalization) are ported in `petrus-activity` and `petrus-motus`
+The other six tests of `test_attempt_heartbeats.py` (the test-local attempt state model,
+declarations, the inline context, detail normalization) are ported once each, in `petrus-activity`
+and `petrus-motus`
 ([petrus-motus PARITY](../petrus-motus/PARITY.md)).
 
 ### `test_absurd_adapter.py`, by class
@@ -69,7 +70,6 @@ upstream case, named after the parameter.
 
 | upstream test | Haskell example | status |
 | --- | --- | --- |
-| `test_attempt_state_model_covers_renewal_expiry_reassignment_terminal_and_stale_refusal` | `the attempt state model` / covers renewal, expiry, reassignment, terminal and stale refusal | ported |
 | `test_reconnectable_heartbeat_replaces_closed_transport_once_and_never_retries_replacement` (2 cases) | `the reconnectable heartbeat` / replaces a closed transport once on `OperationalError` / `InterfaceError` … | ported. The rule is `reconnectOnce`, driven with the reference's fakes |
 | `test_reconnectable_heartbeat_does_not_replace_or_retry_semantic_errors` (6 cases) | `the reconnectable heartbeat` / does not replace or retry … (one per error class) | ported. The psycopg classes map to SQLSTATE classes (`errorClassForState`); `RuntimeError` is `AbsurdError` |
 

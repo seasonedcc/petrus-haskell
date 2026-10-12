@@ -126,7 +126,7 @@ utf8 = TE.encodeUtf8
 spec :: Spec
 spec = describe "app foundation (test_app_foundation.py)" $ do
   describe "conversation admission" $ do
-    it "returns only stripped neutral values" $
+    it "conversation admission returns only stripped neutral values" $
       admit (conversation [])
         `shouldBe` Just
           ( Object
@@ -138,7 +138,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
               , ("text", String "explain the blockers")
               ]
           )
-    it "accepts a bare mention as empty text" $
+    it "conversation admission accepts bare mention as empty text" $
       (admit (conversation [("comment_body", String "@hamster-dan")]) >>= member "text")
         `shouldBe` Just (String "")
     forM_
@@ -155,11 +155,11 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       , ("comment_body", String "hello @hamster-dan")
       ]
       $ \change ->
-        it ("rejects provider policy failure " <> show change) $
+        it ("conversation admission rejects provider policy failures (" <> show change <> ")") $
           admit (conversation [change]) `shouldBe` Nothing
 
   describe "configuration" $ do
-    it "preserves multiline credentials and redacts them" $ withTemp $ \directory -> do
+    it "config preserves multiline credentials and redacts them" $ withTemp $ \directory -> do
       env <- environment directory testKey
       config <- fromEnvironment env
       config.appId `shouldBe` 17
@@ -172,7 +172,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       again <- fromEnvironment (Map.insert "GITHUB_APP_ID" "999" env)
       again.appId `shouldBe` 17
 
-    it "accepts multiple installation accounts as one snapshot" $ withTemp $ \directory -> do
+    it "config accepts multiple installation accounts as one snapshot" $ withTemp $ \directory -> do
       env <- environment directory testKey
       multiple <- installationConfig (directory </> "multiple-installations.toml") True
       config <- fromEnvironment (Map.insert "HAMSTERDAN_GITHUB_INSTALLATIONS_FILE" multiple env)
@@ -187,7 +187,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       , "[[accounts]]\nid = 23\nlogin = \"Owner\"\nrepositories = [\"31:Owner/one\"]\n[[accounts]]\nid = 23\nlogin = \"Other\"\nrepositories = [\"32:Other/two\"]\n"
       ]
       $ \content ->
-        it ("rejects malformed installation snapshot " <> show content <> " without disclosure") $ withTemp $ \directory -> do
+        it ("config rejects malformed installation snapshots without disclosure (" <> show content <> ")") $ withTemp $ \directory -> do
           env <- environment directory testKey
           let path = directory </> "invalid-installations.toml"
           writeFile path (content <> "\n# configuration-leak-canary")
@@ -196,7 +196,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
           T.unpack message `shouldNotSatisfy` ("configuration-leak-canary" `isInfixOf`)
 
     forM_ ["symlink", "writable" :: String] $ \failure ->
-      it ("rejects unsafe installation file custody: " <> failure) $ withTemp $ \directory -> do
+      it ("config rejects unsafe installation file custody (" <> failure <> ")") $ withTemp $ \directory -> do
         env <- environment directory testKey
         let path = env Map.! "HAMSTERDAN_GITHUB_INSTALLATIONS_FILE"
         if failure == "symlink"
@@ -209,19 +209,19 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
         T.unpack message `shouldSatisfy` ("GitHub installations file" `isInfixOf`)
 
     forM_ [Nothing, Just "", Just " \n", Just (replicate 65537 'x'), Just "do-not-disclose\x00", Just "do-not-disclose\xdcff"] $ \value ->
-      it ("rejects invalid webhook secret " <> take 24 (show value) <> " without disclosure") $ withTemp $ \directory -> do
+      it ("config rejects invalid credentials without disclosure (" <> take 24 (show value) <> ")") $ withTemp $ \directory -> do
         env <- environment directory testKey
         let changed = maybe (Map.delete "HAMSTERDAN_GITHUB_WEBHOOK_SECRET") (Map.insert "HAMSTERDAN_GITHUB_WEBHOOK_SECRET") value env
         message <- configurationFailure changed
         T.unpack message `shouldNotSatisfy` ("do-not-disclose" `isInfixOf`)
 
     forM_ ["HAMSTERDAN_GITHUB_PRIVATE_KEY_FILE", "HAMSTERDAN_GITHUB_WEBHOOK_SECRET_FILE"] $ \name ->
-      it ("refuses competing credential file " <> name) $ withTemp $ \directory -> do
+      it ("config refuses competing credential files (" <> name <> ")") $ withTemp $ \directory -> do
         env <- environment directory testKey
         message <- configurationFailure (Map.insert name "/stale/credential" env)
         T.unpack message `shouldSatisfy` ("retired GitHub credential-file" `isInfixOf`)
 
-    it "watches every author by default and narrows casefolded" $ withTemp $ \directory -> do
+    it "config watches every author by default and narrows casefolded" $ withTemp $ \directory -> do
       env <- environment directory testKey
       config <- fromEnvironment env
       config.watchedAuthors `shouldBe` Set.empty
@@ -229,13 +229,13 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       narrowed.watchedAuthors `shouldBe` Set.fromList ["alice", "bob-dev"]
 
     forM_ ["alice,", "not a login", "@alice", ","] $ \value ->
-      it ("rejects malformed watched authors " <> show value) $ withTemp $ \directory -> do
+      it ("config rejects malformed watched authors (" <> show value <> ")") $ withTemp $ \directory -> do
         env <- environment directory testKey
         message <- configurationFailure (Map.insert "HAMSTERDAN_WATCH_AUTHORS" value env)
         T.unpack message `shouldSatisfy` ("watched authors" `isInfixOf`)
 
   describe "routing" $ do
-    it "covers the lifecycle and keeps malformed or unknown events inert" $ withTemp $ \directory -> do
+    it "routing lifecycle multiple repositories and malformed or unknown are inert" $ withTemp $ \directory -> do
       routes <- Routing.openRegistry (directory </> "routing.db") [AccountConfig 23 "Owner" [(31, "owner/one"), (32, "owner/two")]]
       let installation action i a = Routing.installation routes (String action) (Int i) (Int a)
           repositories action i a items = Routing.repositories routes (String action) (Int i) (Int a) [(Int r, String n) | (r, n) <- items]
@@ -258,7 +258,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       route 44 32 >>= (`shouldSatisfy` isNothing)
       Routing.closeRegistry routes
 
-    it "reconciles multiple installations atomically and fences removed routes" $ withTemp $ \directory -> do
+    it "routing reconciles multiple installations atomically and fences removed routes" $ withTemp $ \directory -> do
       let path = directory </> "multiple-routing.db"
           firstInventory = InstallationInventory 44 23 [(31, "owner/one")]
           inventory = [firstInventory, InstallationInventory 45 24 [(33, "other-owner/three")]]
@@ -283,7 +283,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       Routing.closeRegistry reduced
 
   describe "webhooks" $ do
-    it "verifies before parse or persistence and records no rejection" $ withTemp $ \directory -> do
+    it "webhook verifies before parse or persistence and records rejection" $ withTemp $ \directory -> do
       custody <- custodyAt (directory </> "webhooks.db")
       let body = "not json"
           forged = [if name == "x-hub-signature-256" then (name, "sha256=" <> T.replicate 64 "0") else (name, value) | (name, value) <- signedHeaders body "ping" (deliveries !! 0)]
@@ -294,7 +294,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       closeCustody custody
 
     forM_ ["content-type", "length", "sha1", "duplicate", "oversized" :: String] $ \mutation ->
-      it ("enforces the exact transport envelope: " <> mutation) $ withTemp $ \directory -> do
+      it ("webhook enforces exact transport envelope (" <> mutation <> ")") $ withTemp $ \directory -> do
         custody <- openCustody (directory </> "w.db") "hook-secret" (defaultCustodyOptions (pure 100)) {maximumBodyBytes = 20}
         let body = if mutation == "oversized" then "{" <> BS.replicate 20 32 <> "}" else "{}"
             headers = signedHeaders "{}" "ping" (deliveries !! 0)
@@ -308,7 +308,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
         _ <- rejection (receive custody mutated body)
         closeCustody custody
 
-    it "dedupes, observes issue_comment and never stores the payload" $ withTemp $ \directory -> do
+    it "webhook dedupes observes issue comment and never stores payload" $ withTemp $ \directory -> do
       custody <- custodyAt (directory </> "w.db")
       let body =
             utf8
@@ -339,7 +339,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
         Left refusal -> case dumpsError refusal of PythonException cls _ -> cls `shouldBe` "RecursionError"
         Right _ -> expectationFailure "expected the encoder to refuse"
 
-    it "delays retries and eventually parks the delivery" $ withTemp $ \directory -> do
+    it "webhook retry is delayed and eventually parked" $ withTemp $ \directory -> do
       now <- newIORef (100 :: Double)
       custody <- openCustody (directory </> "w.db") "hook-secret" (defaultCustodyOptions (readIORef now))
       let delivery = deliveries !! 3
@@ -362,7 +362,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       map (.attempts) <$> pending custody 100 Nothing `shouldReturn` [0]
       closeCustody custody
 
-    it "migrates an existing inbox for the retry schedule" $ withTemp $ \directory -> do
+    it "webhook custody migrates existing inbox for retry schedule" $ withTemp $ \directory -> do
       let path = directory </> "legacy.db"
       legacy <- Db.open (T.pack path)
       Db.script
@@ -377,7 +377,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       Db.close migrated
       [name | (_ : Db.SQLText name : _) <- columns] `shouldContain` ["next_attempt_at"]
 
-    it "admits an installation's initial repositories into the routing portfolio" $ withTemp $ \directory -> do
+    it "installation webhook admits initial repositories and reconciliation portfolio" $ withTemp $ \directory -> do
       routes <- Routing.openRegistry (directory </> "routing.db") [AccountConfig 23 "Owner" [(31, "owner/one"), (32, "owner/two")]]
       custody <- openCustody (directory </> "w.db") "hook-secret" (defaultCustodyOptions (pure 100)) {registry = Just routes}
       let body =
@@ -402,7 +402,7 @@ spec = describe "app foundation (test_app_foundation.py)" $ do
       , ("check_suite", "check_suite")
       ]
       $ \(event, container) ->
-        it ("extracts the exact pull number from " <> T.unpack event) $ withTemp $ \directory -> do
+        it ("reconciliation events extract exact pull number (" <> T.unpack event <> ")") $ withTemp $ \directory -> do
           custody <- custodyAt (directory </> T.unpack event <> ".db")
           let inner = if container == "pull_request" then "{\"number\": 7}" else "{\"pull_requests\": [{\"number\": 7}]}"
               body =

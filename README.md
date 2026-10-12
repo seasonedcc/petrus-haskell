@@ -31,7 +31,7 @@ with the measurement that justifies it recorded beside it.
 | --- | --- |
 | `packages/` | Haskell packages (one cabal package each). |
 | `docs/` | How to reproduce the checks ([docs/reproducing.md](docs/reproducing.md)), the historical port plans, such as [docs/runtime.md](docs/runtime.md) for everything outside the kernel (current status: [PARITY.md](PARITY.md)), and, in `docs/audit/`, the parity audits. |
-| `spec/` | Language-neutral contracts this repo adds (Fabric, processes). The upstream specs live in `upstream/petrus/spec/`. |
+| `spec/` | Language-neutral contracts this repo adds (Fabric, processes) and the conformance checklists, indexed in [spec/README.md](spec/README.md). The upstream specs live in `upstream/petrus/spec/`. |
 | `upstream/` | Git submodules of the pinned upstream projects (the Python reference). |
 | `scripts/` | `check-all`, `interop`, `check-corpora`, `bench`, `check-parity` and their helpers. |
 | `bench-results/` | [summary.md](bench-results/summary.md): every package's benchmarks against Python at a glance. |
