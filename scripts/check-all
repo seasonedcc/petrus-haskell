@@ -36,11 +36,13 @@ export PATH="$HOME/.ghcup/bin:$HOME/.local/bin:$PATH"
 run_bench=0
 run_viewer=0
 cabal_flags=()
+interop_flags=()
 for arg in "$@"; do
   case "$arg" in
     --bench) run_bench=1 ;;
     --viewer) run_viewer=1 ;;
-    -j*|--ghc-options=*) cabal_flags+=("$arg") ;;
+    -j*) cabal_flags+=("$arg"); interop_flags+=("$arg") ;;
+    --ghc-options=*) cabal_flags+=("$arg") ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -131,7 +133,7 @@ step "Build (all packages, -Werror)"
 cabal build all ${cabal_flags[@]+"${cabal_flags[@]}"}
 
 step "Interop selection (scripts/interop patterns still select their groups)"
-scripts/interop --check ${cabal_flags[@]+"${cabal_flags[@]}"}
+scripts/interop --check ${interop_flags[@]+"${interop_flags[@]}"}
 
 step "Tests (unit, conformance, interop)"
 # Each suite's output also goes to its own log, for the pending check below.
@@ -149,7 +151,7 @@ scripts/check-corpora
 
 if [[ "$run_viewer" == 1 ]]; then
   step "The upstream petrus-viewer suites against the Haskell backend"
-  scripts/interop --viewer petrus-viewer-server ${cabal_flags[@]+"${cabal_flags[@]}"}
+  scripts/interop --viewer petrus-viewer-server ${interop_flags[@]+"${interop_flags[@]}"}
   step "The MCP golden transcript (re-recorded through the upstream Node MCP server)"
   node packages/petrus-viewer-server/test/record-mcp-transcript.mjs --check
 fi
