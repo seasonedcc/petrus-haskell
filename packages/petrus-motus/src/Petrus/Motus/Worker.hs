@@ -228,6 +228,7 @@ data Worker = Worker
 -- an empty registry needs a resolver.
 newWorker :: WorkerDispatch -> Map Text Activity -> WorkerOptions -> IO Worker
 newWorker provider activities options = do
+  Telemetry.validateTelemetryEnvironment
   registry <- validateRegistry activities options.resolver "Worker requires default Activities or a scoped resolver"
   label <- maybe (defaultLabel "worker-") pure options.workerId
   Worker provider registry options.resolver label options.output <$> newIORef False <*> newMVar () <*> newIORef False
@@ -398,6 +399,7 @@ data AsyncWorker = AsyncWorker
 -- one dedicated thread per slot, each building its own provider.
 newAsyncWorker :: IO WorkerDispatch -> Map Text Activity -> Int -> WorkerOptions -> IO AsyncWorker
 newAsyncWorker factory activities concurrency options = do
+  Telemetry.validateTelemetryEnvironment
   when (concurrency <= 0) $ throwIO (ValueError "AsyncWorker concurrency must be a positive integer")
   asyncWorkerFromAccess (syncBridgeAccess forkLane factory concurrency) activities concurrency options
 
@@ -405,6 +407,7 @@ newAsyncWorker factory activities concurrency options = do
 -- acquired when the Worker runs.
 asyncWorkerFromAccess :: IO WorkerAccess -> Map Text Activity -> Int -> WorkerOptions -> IO AsyncWorker
 asyncWorkerFromAccess acquire activities concurrency options = do
+  Telemetry.validateTelemetryEnvironment
   when (concurrency <= 0) $ throwIO (ValueError "AsyncWorker concurrency must be a positive integer")
   registry <- validateRegistry activities options.resolver "AsyncWorker requires default Activities or a scoped resolver"
   label <- maybe (defaultLabel "async-worker-") pure options.workerId

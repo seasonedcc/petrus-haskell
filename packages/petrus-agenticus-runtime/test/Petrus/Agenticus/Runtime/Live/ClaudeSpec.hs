@@ -5,7 +5,7 @@
 -- @claude-agent-sdk@ and its bundled Claude Code through the Claude sidecar.
 -- Where the reference skips inside the opted-in cell (no handoff locator or
 -- handoff file), the port fails with the same message.
-module Petrus.Agenticus.Runtime.Live.ClaudeSpec (spec) where
+module Petrus.Agenticus.Runtime.Live.ClaudeSpec (spec, qualifyClaude) where
 
 import Data.ByteString qualified as B
 import Data.Map.Strict qualified as Map
@@ -80,14 +80,13 @@ model :: IO Text
 model = maybe "claude-sonnet-4-5" T.pack <$> lookupEnv "PETRUS_CV16_CLAUDE_MODEL"
 
 -- | @_adapter@: a project binding and a private runtime root under @root@.
-adapterFor :: FilePath -> Stores -> HostConnectionCustody -> Text -> IO ClaudeRuntimeAdapter
-adapterFor root stores custody model' = do
+adapterFor :: FilePath -> Stores -> HostConnectionCustody -> Text -> ClaudeAdapterOptions -> IO ClaudeRuntimeAdapter
+adapterFor root stores custody model' options = do
   let working = root </> "project-binding"
       runtime = root </> "runtime"
   createDirectoryIfMissing False working
   createDirectoryIfMissing False runtime
   setFileMode runtime 0o700
-  options <- claudeAdapterOptions
   newClaudeRuntimeAdapter
     (claudeRuntimeConfig model' working runtime)
       { hostId = "claude-live-host"
@@ -141,22 +140,28 @@ handoffMessages =
     , consume = "the approved Claude handoff could not be consumed safely"
     }
 
+-- | @test_exact_claude_a2_sdk_and_bundled_client@'s body, over the given
+-- adapter options: production's (the @python3@ on @PATH@), or the pinned SDK
+-- environment's interpreter ("Petrus.Agenticus.Runtime.PinnedSdkSpec").
+qualifyClaude :: ClaudeAdapterOptions -> IO ()
+qualifyClaude options = withSystemTempDirectory "claude-qualify" $ \tmp -> do
+  stores <- newStores
+  model' <- model
+  adapter <- adapterFor tmp stores noCustody model' options
+  probe <- probeClaude adapter Nothing
+  probe.disposition `shouldBe` ProbeReady
+  (Map.fromList . map (\c -> (c.name, c.version)) . (.components) <$> probe.installation)
+    `shouldBe` Just (Map.fromList [("claude-agent-sdk", claudeSdkVersion), ("claude-code", claudeCodeVersion)])
+  storedCount stores.continuations `shouldReturn` 0
+  storedCount stores.turns `shouldReturn` 0
+
 spec :: Spec
 spec = describe "test_claude_real" $ do
   live
     "test_exact_claude_a2_sdk_and_bundled_client"
     "PETRUS_CV16_CLAUDE_QUALIFY"
     "the exact credential-free Claude A2 probe"
-    $ withSystemTempDirectory "claude-qualify"
-    $ \tmp -> do
-      stores <- newStores
-      adapter <- adapterFor tmp stores noCustody =<< model
-      probe <- probeClaude adapter Nothing
-      probe.disposition `shouldBe` ProbeReady
-      (Map.fromList . map (\c -> (c.name, c.version)) . (.components) <$> probe.installation)
-        `shouldBe` Just (Map.fromList [("claude-agent-sdk", claudeSdkVersion), ("claude-code", claudeCodeVersion)])
-      storedCount stores.continuations `shouldReturn` 0
-      storedCount stores.turns `shouldReturn` 0
+    (qualifyClaude =<< claudeAdapterOptions)
 
   live
     "test_exact_claude_a2_fresh_then_native_resume"
@@ -185,7 +190,7 @@ spec = describe "test_claude_real" $ do
       flip withCleanup settleConnection $ do
         stores <- newStores
         operations <- hostConnectionCustody c.custody
-        adapter <- adapterFor tmp stores operations model'
+        adapter <- adapterFor tmp stores operations model' =<< claudeAdapterOptions
         probe <- probeClaude adapter Nothing
         probe.disposition `shouldBe` ProbeReady
         consumeHandoff handoffMessages handoff handoffIdentity

@@ -30,6 +30,8 @@ module Petrus.Agenticus.Connection.Storage
     -- * Validation and the payload format
   , validateSnapshot
   , validateSnapshotIO
+  , ValidatedSnapshot
+  , validatedSnapshot
   , encodeSnapshot
   , decodeSnapshot
   , snapshotToJson
@@ -40,15 +42,13 @@ module Petrus.Agenticus.Connection.Storage
 
 import Prelude hiding (sequence)
 import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, withMVar)
-import Control.Exception (SomeException, catch, evaluate, mask, onException, throwIO, try)
+import Control.Exception (SomeException, catch, mask, onException, throwIO, try)
 import Control.Monad (forM_, unless, when)
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteArray.Encoding (Base (Base64), convertToBase)
 import Data.Char (ord)
-import System.IO.Unsafe (unsafePerformIO)
-import System.Mem.StableName (StableName, makeStableName)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.List (sort, sortOn)
 import Data.Map.Strict qualified as Map
@@ -164,7 +164,20 @@ data ConnectionStorage = ConnectionStorage
   -- ^ Publish the replacement only if the expected revision remains current.
   , close :: IO ()
   -- ^ Release host storage resources without changing custody state.
+  , trustedLoad :: Maybe (IO ValidatedSnapshot)
+  -- ^ 'load' for a storage that answers only snapshots it has already
+  -- validated ('openSqliteConnectionStorage': each one was decoded, or
+  -- validated by its own 'compareAndSwap'), so custody does not check it
+  -- again. 'Nothing' for any other storage: custody validates every load,
+  -- as the reference does.
   }
+
+-- | A snapshot that has passed 'validateSnapshot'. Only this module builds
+-- one.
+newtype ValidatedSnapshot = ValidatedSnapshot StorageSnapshot
+
+validatedSnapshot :: ValidatedSnapshot -> StorageSnapshot
+validatedSnapshot (ValidatedSnapshot snapshot) = snapshot
 
 storageError, storageSecurityError :: Text -> AgenticusError
 storageError = AgenticusError StorageError
@@ -236,8 +249,12 @@ openSqliteConnectionStorageWith tuning path = do
       { load = sqliteLoad lock
       , compareAndSwap = sqliteCompareAndSwap lock
       , close = sqliteClose lock
+      , trustedLoad = Just (ValidatedSnapshot <$> sqliteLoad lock)
       }
 
+-- | The row's snapshot. Every answer has passed 'validateSnapshot': a fresh
+-- payload through 'decodeSnapshot', a cached one when it was decoded or
+-- when 'sqliteCompareAndSwap' validated and published it.
 sqliteLoad :: MVar (Maybe Handle) -> IO StorageSnapshot
 sqliteLoad lock = do
   (row, decoded) <- withMVar lock $ \current -> do
@@ -394,25 +411,9 @@ validateSnapshot snapshot = do
   validateAudit snapshot.audit
   pure snapshot
 
--- | 'validateSnapshot' in 'IO', throwing the refusal, and skipping the work
--- when given the very heap object it last accepted.  Validation is pure, so
--- the same object always gets the same verdict; this only spares the commit
--- loop from re-validating the snapshot the store just published (upstream
--- validates it in @compare_and_swap@ and again in the next @_load@).
+-- | 'validateSnapshot' in 'IO', throwing the refusal.
 validateSnapshotIO :: StorageSnapshot -> IO StorageSnapshot
-validateSnapshotIO snapshot = do
-  name <- makeStableName =<< evaluate snapshot
-  known <- readIORef lastValidated
-  if known == Just name
-    then pure snapshot
-    else do
-      validated <- either throwIO pure (validateSnapshot snapshot)
-      writeIORef lastValidated (Just name)
-      pure validated
-
-{-# NOINLINE lastValidated #-}
-lastValidated :: IORef (Maybe (StableName StorageSnapshot))
-lastValidated = unsafePerformIO (newIORef Nothing)
+validateSnapshotIO = either throwIO pure . validateSnapshot
 
 validateHosts :: [StoredHost] -> Either AgenticusError ()
 validateHosts hosts = do

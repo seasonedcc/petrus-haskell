@@ -64,9 +64,42 @@ nine tests show as pending there. They are declared opt-ins in
 `real_provider_acceptance`, `real_gondolin_acceptance` and
 `qualification_installation` tests.
 
+## The pinned Claude and Amp SDKs, without a credential
+
+`scripts/upstream-python petrus-sdks` provisions the exact SDKs the
+reference pins: upstream/petrus synced from its frozen `uv.lock` with the
+`agenticus-claude` and `agenticus-amp` extras, in
+`dist-newstyle/upstream-python/petrus-sdks/.venv`. The default suite's
+`PinnedSdkSpec` (group "the pinned provider SDKs (credential-free)") uses
+it with no gate, so it runs locally and in CI, which provisions it next to
+the other reference environments. It covers three things:
+
+- the body of `test_exact_claude_a2_sdk_and_bundled_client`;
+- a Claude SDK client and the Hands MCP server, built from production's
+  option keys and tools, and released without connecting;
+- `amp-sdk`'s version and its `AmpOptions`/`execute` protocol.
+
+To run the gated Claude probe itself over that environment:
+
+```sh
+sdk=$(scripts/upstream-python petrus-sdks)
+PATH=$(dirname "$sdk"):$PATH PETRUS_CV16_CLAUDE_QUALIFY=1 \
+  cabal test petrus-agenticus-runtime:test:petrus-agenticus-runtime-test \
+  --test-options='--match test_exact_claude_a2_sdk_and_bundled_client'
+```
+
+The Pi and Agent-as-a-Net probes remain opt-ins. Their npm packages are
+pinned by no upstream lock and come from the network, and Agent-as-a-Net
+needs a `node` of exactly v22.19.0.
+
 ## Recorded runs
 
-TODO: no live run has been recorded yet. It needs the accounts, the
-installations and the Gondolin image listed above. When one is made, record
-here the date, the commit, the installed versions, which cells ran, and
-their outcome, and update the "live-provider tests" note in `PARITY.md`.
+| Date | Commit | Installed | Cells | Outcome |
+| --- | --- | --- | --- | --- |
+| 2026-10-11 | `f72a800` plus the change that added `petrus-sdks` | `claude-agent-sdk` 0.2.128, bundled Claude Code 2.1.220, `amp-sdk` 0.1.20260729121202, CPython 3.14.6 (macOS arm64) | `test_exact_claude_a2_sdk_and_bundled_client` (`PETRUS_CV16_CLAUDE_QUALIFY=1`), and `PinnedSdkSpec` | passed |
+
+TODO: no paid live run has been recorded yet. The paid cells need the
+accounts, the credentials and the Gondolin image listed above. When one is
+made, record here the date, the commit, the installed versions, which cells
+ran and their outcome, and update the "live-provider tests" note in
+`PARITY.md`.

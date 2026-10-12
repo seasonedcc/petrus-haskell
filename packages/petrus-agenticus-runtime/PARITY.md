@@ -129,10 +129,31 @@ the stores.
 [docs/live-provider-acceptance.md](../../docs/live-provider-acceptance.md)
 lists each test's prerequisites and how to run them.
 
-**TODO: no live run has been recorded.** Every run so far had the gates
-unset, so the nine tests are pending in CI and locally. The fakes still
-exercise everything they reach on the host side: the argv, the helpers, the
-sidecars, admission, custody and publication. Those fakes are the
-reference's own fake `codex` CLI and fake Gondolin SDK, and fake Claude and
-Amp SDK packages with the pinned public surfaces. The record of a live run
-belongs in that document.
+The default suite sets none of the gates, so the nine tests are pending in
+CI and locally. The fakes still exercise everything they reach on the host
+side: the argv, the helpers, the sidecars, admission, custody and
+publication. Those fakes are the reference's own fake `codex` CLI and fake
+Gondolin SDK, and fake Claude and Amp SDK packages with the pinned public
+surfaces.
+
+The real Claude and Amp SDKs run too, without a credential.
+`scripts/upstream-python petrus-sdks` syncs upstream/petrus from its frozen
+`uv.lock` with the `agenticus-claude` and `agenticus-amp` extras
+(`claude-agent-sdk` 0.2.128 with its bundled Claude Code 2.1.220, `amp-sdk`
+0.1.20260729121202). `PinnedSdkSpec` runs over that interpreter in the
+default suite, so in CI as well. It runs the body of
+`test_exact_claude_a2_sdk_and_bundled_client` (ungated, the same code as
+`Live.ClaudeSpec`). It also builds a Claude SDK client with production's
+option keys and the Hands MCP server with production's tools, and releases
+it unconnected, and it reads `amp-sdk`'s version and `AmpOptions`/`execute`
+protocol. The gated Claude probe itself also passes with that environment's
+`bin` first on `PATH` (recorded in
+[docs/live-provider-acceptance.md](../../docs/live-provider-acceptance.md)).
+
+The Pi and Agent-as-a-Net probes stay declared opt-ins
+(`scripts/check-pending`). They need npm packages that no upstream lock
+pins (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core` 0.83.0),
+installed from the network, and Agent-as-a-Net needs a `node` of exactly
+v22.19.0. **TODO: no paid live run has been recorded.** The paid cells need
+the accounts, the credentials and the Gondolin image. Their record belongs
+in that document.

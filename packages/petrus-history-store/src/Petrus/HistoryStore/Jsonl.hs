@@ -248,6 +248,7 @@ openJsonlHistoryStore = openJsonlHistoryStoreWith defaultJsonlOptions
 -- | 'openJsonlHistoryStore' with options.
 openJsonlHistoryStoreWith :: JsonlOptions -> FilePath -> IO HistoryStore
 openJsonlHistoryStoreWith options path = do
+  Telemetry.validateTelemetryEnvironment
   loaded <- loadJsonlHistory path
   let policy = durableAppend options.durability path
       logger = getLogger "impetus" options.telemetry

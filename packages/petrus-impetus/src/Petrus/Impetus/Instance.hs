@@ -147,7 +147,7 @@ import Petrus.Impetus.Petrinet.Marking (Marking, Token (..), emptyMarking, empty
 import Petrus.Impetus.Petrinet.Schema
 import Petrus.Impetus.Scope
 import Petrus.Json (Json (..), compact, dumps, encodeErrorMessage)
-import Petrus.Telemetry (EventSink, Payload, TelemetryLogger, bind, emit, getLogger)
+import Petrus.Telemetry (EventSink, Payload, TelemetryLogger, bind, emit, getLogger, validateTelemetryEnvironment)
 
 -- ---------------------------------------------------------------------------
 -- Errors
@@ -624,6 +624,7 @@ instanceLogger net ident sink =
 -- | @Instance(net, ...)@: record the construction batch to a fresh History.
 newInstance :: Net -> InstanceConfig -> IO (Either InstanceError Instance)
 newInstance net cfg = runExceptT $ do
+  liftIO validateTelemetryEnvironment
   ident <- instanceIdentityText <$> (orRefuse . mkInstanceIdentity =<< maybe (liftIO uuid7Hex) pure cfg.suppliedIdentity)
   let logger = instanceLogger net ident cfg.telemetrySink
       at = cfg.constructionInstant
@@ -685,6 +686,7 @@ newInstance net cfg = runExceptT $ do
 -- appending to the same store.
 resume :: Net -> HistoryStore -> InstanceConfig -> IO (Either InstanceError Instance)
 resume net store cfg = runExceptT $ do
+  liftIO validateTelemetryEnvironment
   history <- liftIO (Store.records store)
   when (null history) $
     refuse "cannot resume from an empty history: nothing is recorded — construct an Instance instead"

@@ -49,9 +49,6 @@ module Petrus.Testing.Dst.Campaign
   , runCampaign
   ) where
 
-import Control.Concurrent (forkIO)
-import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Control.Exception (evaluate)
 import Control.Monad (forM, forM_, unless, when)
 import Crypto.Hash (Digest, SHA256, hash)
 import Data.Bits (shiftL, (.|.))
@@ -65,26 +62,17 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Data.Time.Clock (diffUTCTime, getCurrentTime)
 import Petrus.Json (EncodeOptions (..), Json (..), compact, dumps, lookupMember, parseJson, pythonLoads)
 import Petrus.Testing.Dst (AnyArtifact, encodeArtifact, toJson)
 import Petrus.Testing.Dst.Campaign.Support
+import Petrus.Testing.Dst.Process (Finish (..), captureWithin, killNow)
 import System.Directory (createDirectoryIfMissing, doesFileExist, getFileSize)
 import System.Environment (getEnvironment, lookupEnv)
-import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hPutStrLn, stderr)
 import System.IO.Temp (withSystemTempDirectory)
-import System.Process
-  ( CreateProcess (..)
-  , StdStream (..)
-  , createProcess
-  , proc
-  , terminateProcess
-  , waitForProcess
-  )
-import System.Timeout (timeout)
+import System.Process (CreateProcess (..), proc)
 import Text.Read (readMaybe)
 
 -- ---------------------------------------------------------------------------
@@ -321,8 +309,9 @@ data CampaignRunner = CampaignRunner
   }
 
 -- | Run each profile as @EXECUTABLE campaign-profile NAME@ in the
--- repository root with the campaign environment, terminating it at its
--- timeout.
+-- repository root with the campaign environment. At its timeout the child
+-- is killed (SIGKILL) and its output collected, as @subprocess.run(...,
+-- timeout=)@ does.
 processRunner :: FilePath -> IO CampaignRunner
 processRunner executable = do
   root <- repositoryRoot
@@ -336,37 +325,17 @@ processRunner executable = do
                 , (seedEnv, show run.seed)
                 ]
               merged = overrides <> [(k, v) | (k, v) <- environment, k `notElem` map fst overrides]
-          (_, out, err, handle) <-
-            createProcess
-              (proc executable ["campaign-profile", T.unpack run.profile.name])
-                { cwd = Just root
-                , env = Just merged
-                , std_in = NoStream
-                , std_out = CreatePipe
-                , std_err = CreatePipe
-                }
-          outVar <- drain out
-          errVar <- drain err
-          finished <- timeout (run.timeoutSeconds * 1000000) (waitForProcess handle)
-          case finished of
-            Just code -> Completed (exitInt code) <$> takeMVar outVar <*> takeMVar errVar
-            Nothing -> do
-              terminateProcess handle
-              _ <- waitForProcess handle
-              TimedOut <$> takeMVar outVar <*> takeMVar errVar
+          (finish, out, err) <-
+            captureWithin
+              (proc executable ["campaign-profile", T.unpack run.profile.name]) {cwd = Just root, env = Just merged}
+              (run.timeoutSeconds * 1000000)
+              killNow
+          pure $ case finish of
+            Exited code -> Completed code out err
+            Escalated _ -> TimedOut out err
       , repository = repositoryIdentity root
       , summaryBytes = caseSummaryBytes
       }
-  where
-    exitInt = \case
-      ExitSuccess -> 0
-      ExitFailure n -> n
-    drain handle = do
-      var <- newEmptyMVar
-      _ <- forkIO $ case handle of
-        Just h -> BS.hGetContents h >>= evaluate >>= putMVar var . TE.decodeUtf8Lenient
-        Nothing -> putMVar var ""
-      pure var
 
 -- | @repository_identity()@.
 repositoryIdentity :: FilePath -> IO Json

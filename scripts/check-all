@@ -57,7 +57,7 @@ fi
 # Provision every reference once, before the suites run in parallel and
 # each would (scripts/upstream-python also serializes a lazy sync with a
 # lock, so a suite that provisions on first use is safe too).
-for project in petrus petrus-engine hamsterdan; do
+for project in petrus petrus-engine hamsterdan petrus-sdks; do
   python=$(scripts/upstream-python "$project")
   echo "upstream/$project: $("$python" -I -c 'import sys; print(sys.version)')"
 done

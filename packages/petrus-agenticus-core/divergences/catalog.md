@@ -38,6 +38,16 @@ The differential corpus pins both.
    value has passed its constructor's validation, which is what the
    reference's frozen dataclasses with `__post_init__` provide.
 
+   `RuntimeTerritoryProfile` goes further. Its archetype and descriptor
+   live in a `Qualification` sum (`BindingCell archetype descriptor`,
+   `UnqualifiedCell`, `UnsupportedCell`), so upstream's two descriptor
+   refusals ("a binding runtime profile needs an archetype and descriptor",
+   "an unqualified or unsupported cell must not expose a runtime
+   descriptor") describe values that cannot be built. `expectation`,
+   `archetype` and `descriptor` still read with record dot syntax, derived
+   from the qualification. `mkRuntimeTerritoryProfile` refuses an empty
+   reason with the reference's `ValueError` message, the one refusal left.
+
 5. **Capability sets are `Set Text`.** The reference uses `frozenset` and
    sorts it on output. `Set` iterates in code-point order, which matches
    Python's `sorted()` for `str`.

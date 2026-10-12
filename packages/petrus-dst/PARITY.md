@@ -26,7 +26,7 @@ including the joined worlds, where PostgreSQL does most of the work and the marg
 
 ## Evidence
 
-`cabal build petrus-dst && cabal test petrus-dst` runs 278 hspec examples with
+`cabal build petrus-dst && cabal test petrus-dst` runs 285 hspec examples with
 `PETRUS_TEST_POSTGRES` set. Without it, 67 are pending: the 66 joined examples, and the real
 production-boundary route, whose PostgreSQL owners are pending too. Each one compares
 against vectors produced by the pinned Python. The ten generator scripts are committed under
@@ -182,7 +182,7 @@ Every test in `upstream/petrus/tests/dst/`.
 | `test_version_four_accounts_for_profile_resources_and_replays_exactly` | `Spec.Stories` resource-v4 |
 | `test_version_four_retains_the_accepted_operation_which_exceeds_a_profile_resource` | `Spec.Stories` resource-exhaustion-v4 |
 | `test_version_four_requires_an_exact_stable_resource_key_set` | `Spec.Stories` resource-keyset |
-| `test_predicate_poll_budget_ends_explicitly` | `Spec.Stories` "ends the predicate-poll budget explicitly". The upstream test drives an Engine profile; the toy authors the same budget path, and the Engine budget-failure worlds author through the real profile in `Spec.EngineWorlds` |
+| `test_predicate_poll_budget_ends_explicitly` | `Spec.EngineWorlds` "ends the predicate-poll budget explicitly": the real Engine profile over `bounded-history.jsonl` with the reference's budget; `BudgetExhausted` names `predicate_polls`, and the disposition is `budget_exhausted`. `Spec.Stories` also authors the same path over the toy, against the Python-authored vector |
 | `test_constructor_closes_an_installed_generation_when_initial_checker_refuses` | `Spec.Stories` constructor-checker-refusal |
 | `test_every_authored_finish_refuses_scheduled_work` | `Spec.Stories` finish-pending |
 | `test_fair_phase_drains_profile_work_without_new_authored_interference` | `Spec.Stories` fair-phase |
@@ -210,7 +210,7 @@ Every test in `upstream/petrus/tests/dst/`.
 | `test_crash_revokes_before_drop_and_close_remains_distinct` | `Spec.EngineWorlds` Engine stories (crash, drop, fresh load; the stories assert the drop counts); `Spec.Stories` stale-timeline toy; drop and close calls in `Spec.Transcript` |
 | `test_checker_runs_after_create_actions_crash_and_fresh_load` | the checker triggers are in every journal digest, which `Spec.EngineWorlds` authoring compares byte for byte |
 | `test_run_until_external_wait_has_checkpoint_diagnostics` | `Spec.Stories` "reports run_until's external wait…" |
-| `test_supported_surface_has_no_root_reexports_or_private_runtime_handles` | the export lists of `Petrus.Testing.Dst`; the structural `Scenario` context (DIVERGENCES.md) |
+| `test_supported_surface_has_no_root_reexports_or_private_runtime_handles` | `Spec.Surface`: no package but `petrus-dst` exposes a DST module; the main library depends on and imports no Petrus runtime, and exports no Engine or Coordinator; the scenario context exports no `schedule`, `submit` or `choices` and has exactly its three fields; `apply` takes a generation, a command and the context. The context is structural (DIVERGENCES.md) |
 | `test_unknown_mismatched_or_non_strict_artifacts_refuse` | `Spec.Codec` |
 | `test_duplicate_and_nonfinite_artifact_data_refuses` | `Spec.Codec` |
 | `test_version_two_failure_artifact_requires_one_exact_terminal_failure` | `Spec.Codec` |
@@ -387,8 +387,8 @@ broad.
     profile)`. When recording, the seed is the campaign seed.
   - The invariant runs after every step. It also runs before the first step, but only in delivery
     broad, the machine with no `@initialize` rule; Hypothesis does the same.
-  - `teardown` runs at the end of every example. When a step fails, the World still closes,
-    before the next example starts (DIVERGENCES.md).
+  - `teardown` runs at the end of every example. When a step fails, the World still closes
+    at the end of that example, in a `bracket` (DIVERGENCES.md).
 
 The rule strategies:
 

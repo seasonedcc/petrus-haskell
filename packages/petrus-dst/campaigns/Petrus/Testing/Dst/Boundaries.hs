@@ -29,23 +29,20 @@ module Petrus.Testing.Dst.Boundaries
   , runBoundaryQualificationWith
   ) where
 
-import Control.Concurrent (forkIO)
-import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import Control.Exception (bracket, evaluate)
+import Control.Exception (bracket)
 import Control.Monad (forM, unless, when)
 import Data.ByteString qualified as BS
 import Data.List (nub, sortOn)
 import Data.Ord (Down (..))
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Data.Time.Clock (UTCTime, diffUTCTime, getCurrentTime)
 import Petrus.Json (Json (..))
 import Petrus.Posix.Flock (LockKind (..), openLockFileWith, tryLock)
 import Petrus.Testing.Dst.Campaign (repositoryIdentity)
 import Petrus.Testing.Dst.Campaign.Support
+import Petrus.Testing.Dst.Process (Finish (..), captureWithin, exitInt)
 import System.Directory
-import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hPutStrLn, stderr)
 import System.Posix.IO (closeFd)
@@ -356,53 +353,30 @@ executeProfiles root profiles = do
 runOwner :: FilePath -> FilePath -> [Text] -> Double -> IO (Either (Int, Text) Int)
 runOwner binary directory matches remaining = do
   let arguments = concat [["--match", T.unpack m] | m <- matches] <> ["--fail-on=empty,pending", "+RTS", "-M2G", "-RTS"]
-  bracket
-    ( createProcess
-        (proc binary arguments)
-          { cwd = Just directory
-          , std_in = NoStream
-          , std_out = CreatePipe
-          , std_err = CreatePipe
-          , create_group = True
-          }
-    )
-    (\(_, _, _, handle) -> terminateProcess handle)
-    $ \(_, out, err, handle) -> do
-      outVar <- drain out
-      errVar <- drain err
-      finished <- timeout (round (remaining * 1000000)) (waitForProcess handle)
-      case finished of
-        Just code -> do
-          let n = exitInt code
-          stdoutText <- takeMVar outVar
-          stderrText <- takeMVar errVar
-          when (n /= 0) $ showFailure stdoutText stderrText
-          pure (Right n)
-        Nothing -> do
-          group <- getPid handle
-          forM_' group (signalProcessGroup sigTERM)
-          graceful <- timeout (terminationGraceSeconds * 1000000) (waitForProcess handle)
-          (code, termination) <- case graceful of
-            Just c -> pure (exitInt c, "terminated")
-            Nothing -> do
-              forM_' group (signalProcessGroup sigKILL)
-              c <- waitForProcess handle
-              pure (exitInt c, "killed")
-          stdoutText <- takeMVar outVar
-          stderrText <- takeMVar errVar
-          showFailure stdoutText stderrText
-          pure (Left (code, termination))
+  (finish, stdoutText, stderrText) <-
+    captureWithin
+      (proc binary arguments) {cwd = Just directory, create_group = True}
+      (round (remaining * 1000000))
+      escalate
+  case finish of
+    Exited n -> do
+      when (n /= 0) $ showFailure stdoutText stderrText
+      pure (Right n)
+    Escalated ended -> do
+      showFailure stdoutText stderrText
+      pure (Left ended)
   where
-    forM_' = flip mapM_
-    exitInt = \case
-      ExitSuccess -> 0
-      ExitFailure n -> n
-    drain handle = do
-      var <- newEmptyMVar
-      _ <- forkIO $ case handle of
-        Just h -> BS.hGetContents h >>= evaluate >>= putMVar var . TE.decodeUtf8Lenient
-        Nothing -> putMVar var ""
-      pure var
+    -- @os.killpg(pid, SIGTERM)@, a grace, then @os.killpg(pid, SIGKILL)@.
+    escalate child = do
+      group <- getPid child
+      mapM_ (signalProcessGroup sigTERM) group
+      graceful <- timeout (terminationGraceSeconds * 1000000) (waitForProcess child)
+      case graceful of
+        Just c -> pure (exitInt c, "terminated")
+        Nothing -> do
+          mapM_ (signalProcessGroup sigKILL) group
+          c <- waitForProcess child
+          pure (exitInt c, "killed")
 
 -- | @_show_failure(stdout, stderr)@.
 showFailure :: Text -> Text -> IO ()

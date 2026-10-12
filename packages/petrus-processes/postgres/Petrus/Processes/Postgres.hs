@@ -109,6 +109,7 @@ data PostgresSpawnRegistry = PostgresSpawnRegistry
 
 postgresSpawnRegistry :: Connection -> Text -> Text -> IO PostgresSpawnRegistry
 postgresSpawnRegistry connection parent' credential = do
+  Telemetry.validateTelemetryEnvironment
   mode <- autocommit connection
   unless mode $ throwIO (InvalidValue "PostgresSpawnRegistry requires an autocommit connection")
   parent <- orThrow (fabricText "parent" parent')
