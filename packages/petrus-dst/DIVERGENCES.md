@@ -204,7 +204,7 @@ in four ways.
   reference constructs a fresh instance.
 - **Exceptions map to Python class names.** A door's exception becomes the reference's
   `(type(error).__name__, str(error))`, which the profiles compare for expected faults:
-  - profile adapters raise `PyException "OSError" message`;
+  - profile adapters raise petrus-json's `PythonException` (`raised "OSError" message`);
   - Engine refusals map from `EngineError`;
   - LocalDispatch refusals map from `DispatchError`, as `ValueError`.
 

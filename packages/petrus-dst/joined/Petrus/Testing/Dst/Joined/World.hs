@@ -89,6 +89,7 @@ import Petrus.Testing.Dst.Engine.Common
 import Petrus.Testing.Dst.Joined.Identities qualified as Id
 import Petrus.Testing.Dst.Joined.Support
 import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python.Exception (raised)
 
 -- ---------------------------------------------------------------------------
 -- Constants and nets
@@ -307,7 +308,7 @@ tryScenario body = catchError (Right <$> body) (pure . Left)
 -- | 'ioScenario' where an Absurd Worker's own error reads as the
 -- reference's @RuntimeError@.
 io :: IO a -> Scenario IO a
-io body = ioScenario (body `catchAbsurd` \message -> throwIO (PyException "RuntimeError" message))
+io body = ioScenario (body `catchAbsurd` \message -> throwIO (raised "RuntimeError" message))
 
 catchAbsurd :: IO a -> (Text -> IO a) -> IO a
 catchAbsurd body handler =

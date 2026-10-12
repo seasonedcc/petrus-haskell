@@ -92,6 +92,7 @@ import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.Bridge (Bridged (..), withBridge)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python.Exception (raised)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 import System.Directory (doesFileExist, getFileSize)
@@ -295,7 +296,7 @@ refusingProjectionHistory historyPath attempts = do
               Just message -> do
                 writeIORef refusal Nothing
                 modifyIORef' attempts (<> [Object [("accepted", Bool False), attempt]])
-                throwIO (PyException "OSError" message)
+                throwIO (raised "OSError" message)
               Nothing -> do
                 delegate.extend records
                 modifyIORef' attempts (<> [Object [("accepted", Bool True), attempt]])
@@ -314,7 +315,7 @@ refusingDispatch custody attempts = do
           Just message -> do
             writeIORef refusal Nothing
             modifyIORef' attempts (<> [Object (("accepted", Bool False) : attempt)])
-            throwIO (PyException "OSError" message)
+            throwIO (raised "OSError" message)
           Nothing -> do
             delegate.dispatch occurrence inv
             modifyIORef' attempts (<> [Object (("accepted", Bool True) : attempt)])
@@ -364,14 +365,14 @@ attemptOccurrence attempt = case parseJson surrogateRefusingLoads (TE.encodeUtf8
 -- and token count.
 markingGauges :: Json -> IO (Integer, Integer)
 markingGauges view = do
-  bytes <- either (throwIO . PyException "ValueError") pure (canonicalBytes view)
+  bytes <- either (throwIO . raised "ValueError") pure (canonicalBytes view)
   let tokens = case view of
         Array entries -> sum [case member "tokens" e of Array ts -> length ts; _ -> 0 | e <- entries]
         _ -> 0
   pure (toInteger (BS.length bytes), toInteger tokens)
 
 markingView :: Marking -> IO Json
-markingView m = either (throwIO . PyException "ValueError" . T.pack . show) pure (Observation.marking m)
+markingView m = either (throwIO . raised "ValueError" . T.pack . show) pure (Observation.marking m)
 
 numberJson :: Number -> Json
 numberJson = \case
@@ -644,9 +645,9 @@ generatedRuntimeProfileWith variant historyPath dispatchPath = do
           Just _ -> do
             scopes <- Engine.activeScopes g.engine
             pure (Object [(name, Int (scopeGeneration s)) | (name, s) <- Map.toAscList scopes])
-        (replayedScopes, _) <- either (throwIO . PyException "ValueError") pure (replayScopes records)
-        replayedMarking <- either (throwIO . PyException "ValueError") pure (replayMarking records) >>= markingView
-        watermark <- either (throwIO . PyException "ValueError") pure (replayWatermark records)
+        (replayedScopes, _) <- either (throwIO . raised "ValueError") pure (replayScopes records)
+        replayedMarking <- either (throwIO . raised "ValueError") pure (replayMarking records) >>= markingView
+        watermark <- either (throwIO . raised "ValueError") pure (replayWatermark records)
         generation <- readIORef scopeGenerationRef
         opens <- readIORef scopeOpens
         resets <- readIORef scopeResets
@@ -761,7 +762,7 @@ generatedRuntimeProfileWith variant historyPath dispatchPath = do
         view <-
           if null records
             then markingView emptyMarking
-            else either (throwIO . PyException "ValueError") pure (replayMarking records) >>= markingView
+            else either (throwIO . raised "ValueError") pure (replayMarking records) >>= markingView
         (markingBytes, markingTokens) <- markingGauges view
         let begun = nub [r.occurrence | RFiringBegun r <- records]
             ended = nub ([r.occurrence | RFiringCompleted r <- records] <> [r.occurrence | RFiringFailed r <- records])

@@ -9,12 +9,11 @@
 --   reference captures the @ScenarioContext@; here every door copies the
 --   context's instant into a cell the clock reads ('syncTime'), which is
 --   the same value because the World never moves time inside a door.
--- * 'PyException': an exception the profiles' own adapters raise with a
---   Python class name and @str()@ (@OSError(message)@ from a refusing
---   History or Dispatch).
 -- * 'pythonError': how an exception escaping an Engine door reads in the
 --   reference — its class and @str()@ — so the profiles compare expected
 --   faults exactly as @isinstance(error, kind) and str(error) == message@.
+--   The profiles' own adapters raise petrus-json's 'PythonException'
+--   (@OSError(message)@ from a refusing History or Dispatch).
 -- * Engine reads: 'engineSnapshot' (the reference's @Engine.snapshot()@,
 --   built on the observation seam) and History helpers.
 module Petrus.Testing.Dst.Engine.Common
@@ -25,7 +24,6 @@ module Petrus.Testing.Dst.Engine.Common
   , worldClock
   , worldProviderMs
     -- * Exceptions
-  , PyException (..)
   , pythonError
   , runtimeErrorText
   , ioDoor
@@ -78,6 +76,7 @@ import Petrus.Motus.Dispatch (ActivityAttempt, DispatchError (..))
 import Petrus.Observation qualified as Observation
 import Petrus.Testing.Dst
 import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python.Exception (PythonException (..), pythonExceptionStr)
 import Petrus.Testing.Dst.World qualified as World
 
 -- ---------------------------------------------------------------------------
@@ -115,21 +114,13 @@ worldProviderMs (WorldTime ref) = (* 1000) <$> readIORef ref
 -- ---------------------------------------------------------------------------
 -- Exceptions
 
--- | A Python exception raised by a profile-owned adapter: class and
--- @str()@.
-data PyException = PyException Text Text
-  deriving stock (Eq, Show)
-
-instance Exception PyException where
-  displayException (PyException cls message) = T.unpack (cls <> ": " <> message)
-
 -- | The reference's @(type(error).__name__, str(error))@ for an exception
 -- escaping an Engine door. A handler failure carries the recorded
 -- @FiringFailed.error@ (@Class('message')@); the reference re-raises the
 -- handler's own exception, whose class and @str()@ that text spells.
 pythonError :: SomeException -> (Text, Text)
 pythonError e
-  | Just (PyException cls message) <- fromException e = (cls, message)
+  | Just raised <- fromException e = (raised.name, pythonExceptionStr raised)
   | Just engineError <- fromException e = case engineError of
       EngineValueError m -> ("ValueError", m)
       EngineTypeError m -> ("TypeError", m)

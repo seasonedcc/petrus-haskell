@@ -62,6 +62,7 @@ import Petrus.Testing.Dst hiding (dispositionText)
 import Petrus.Testing.Dst.Engine.Bridge (Bridged (..), withBridge)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python.Exception (raised)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 
@@ -307,9 +308,9 @@ refusingCancellationDispatch attempts pool = do
           Just message -> do
             writeIORef refusal Nothing
             modifyIORef' attempts (<> [Object (("accepted", Bool False) : ("disposition", Null) : attempt)])
-            throwIO (PyException "OSError" message)
+            throwIO (raised "OSError" message)
           Nothing -> case delegate.cancel of
-            Nothing -> throwIO (PyException "TypeError" "the in-memory Dispatch has no cancellation contract")
+            Nothing -> throwIO (raised "TypeError" "the in-memory Dispatch has no cancellation contract")
             Just inner -> do
               disposition <- inner instruction
               modifyIORef' attempts (<> [Object (("accepted", Bool True) : ("disposition", String (dispositionText disposition)) : attempt)])

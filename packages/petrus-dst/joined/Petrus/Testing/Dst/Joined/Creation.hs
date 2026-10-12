@@ -46,11 +46,12 @@ import Petrus.Impetus.Petrinet
 import Petrus.Json (Json (..))
 import Petrus.Postgres qualified as Pg
 import Petrus.Testing.Dst
-import Petrus.Testing.Dst.Engine.Common (PyException (..), engineCurrent, ensure, exactKeys, ioDoor, ioScenario, member, memberOf, path)
+import Petrus.Testing.Dst.Engine.Common (engineCurrent, ensure, exactKeys, ioDoor, ioScenario, member, memberOf, path)
 import Petrus.Testing.Dst.Joined.Checkers qualified as C
 import Petrus.Testing.Dst.Joined.Identities qualified as Id
 import Petrus.Testing.Dst.Joined.Support (payloadAbsent, probeRecords, pyEq, strs, withProbe)
 import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python.Exception (raised)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
 
@@ -186,7 +187,7 @@ newFaultConnection attempts = do
 arm :: IORef (Maybe Text) -> Text -> Text -> IO ()
 arm ref already message =
   readIORef ref >>= \case
-    Just _ -> throwIO (PyException "RuntimeError" already)
+    Just _ -> throwIO (raised "RuntimeError" already)
     Nothing -> writeIORef ref (Just message)
 
 -- | @_attempt(accepted)@.
@@ -204,13 +205,13 @@ wrap fc session =
         case refused of
           Just message -> do
             attemptOf fc False >>= append fc.attempts
-            throwIO (PyException "OSError" message)
+            throwIO (raised "OSError" message)
           Nothing -> pure ()
         session.commit
         when creation $ attemptOf fc True >>= append fc.attempts
         writeIORef fc.recordTypes []
         lost <- if creation then takeRef fc.ackLoss else pure Nothing
-        mapM_ (throwIO . PyException "OSError") lost
+        mapM_ (throwIO . raised "OSError") lost
     , Absurd.rollback = session.rollback `finally` writeIORef fc.recordTypes []
     , observeHistory = \store ->
         let inner = session.observeHistory store

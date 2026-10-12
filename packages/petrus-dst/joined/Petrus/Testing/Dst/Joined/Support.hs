@@ -66,10 +66,11 @@ import Petrus.HistoryStore.Postgres (loadPostgresHistory)
 import Petrus.Impetus.History.Records (Record, recordName)
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
 import Petrus.Json (Json (..))
+import Petrus.Json.Python.Exception (raised)
 import Petrus.Motus.Dispatch.Absurd (Session (..))
 import Petrus.Postgres (Connection, quoteIdentifier, sql, sqlSource, textParam)
 import Petrus.Postgres qualified as Pg
-import Petrus.Testing.Dst.Engine.Common (PyException (..), strs)
+import Petrus.Testing.Dst.Engine.Common (strs)
 
 -- ---------------------------------------------------------------------------
 -- Faults
@@ -183,7 +184,7 @@ newFaultConnection trackScopeOpen attempts lifecycleAttempts bump = do
 armFault :: FaultConnection -> Arm -> Text -> IO ()
 armFault fc arm message = do
   current <- readIORef fc.armed
-  when (Map.member arm current) $ throwIO (PyException "RuntimeError" (armedMessage arm))
+  when (Map.member arm current) $ throwIO (raised "RuntimeError" (armedMessage arm))
   writeIORef fc.armed (Map.insert arm message current)
 
 -- | Disarm and return one boundary's message.
@@ -246,7 +247,7 @@ faultRun fc delegate statement params = do
       Just message -> do
         transactionAttempt fc False >>= appendTo fc.attempts
         fc.bump (armCounter DispatchRefusal)
-        throwIO (PyException "OSError" message)
+        throwIO (raised "OSError" message)
   when ("SELECT absurd.cancel_task" `T.isPrefixOf` source) $
     writeIORef fc.cancellationAttempted True
   delegate statement params
@@ -326,7 +327,7 @@ faultCommit fc delegate = do
         TransactionReport -> transactionAttempt fc False >>= appendTo fc.attempts
         LifecycleReport phase -> lifecycleAttempt fc False phase >>= appendTo fc.lifecycleAttempts
       fc.bump (armCounter arm)
-      throwIO (PyException "OSError" message)
+      throwIO (raised "OSError" message)
     Nothing -> pure ()
   delegate
   when tracked $ transactionAttempt fc True >>= appendTo fc.attempts
@@ -337,7 +338,7 @@ faultCommit fc delegate = do
     Just (_, arm) -> do
       message <- maybe (pure "") pure =<< takeArm fc arm
       fc.bump (armCounter arm)
-      throwIO (PyException "OSError" message)
+      throwIO (raised "OSError" message)
     Nothing -> pure ()
 
 -- ---------------------------------------------------------------------------

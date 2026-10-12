@@ -104,6 +104,7 @@ import Petrus.Motus.Dispatch (Dispatch (..))
 import Petrus.Motus.Dispatch.InMemory (InMemoryDispatch, completeOccurrence, inMemoryDispatch, newInMemoryDispatch, pending)
 import Petrus.Testing.Dst
 import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python.Exception (raised)
 import Petrus.Testing.Dst.Engine.Bridge (Bridged (..), withBridge)
 import Petrus.Testing.Dst.Engine.Common
 import Petrus.Testing.Dst.Timeline qualified as Timeline
@@ -716,7 +717,7 @@ resourceGauges b generation = do
             _ -> 0
       pure (member "marking" current, inFlightCount, length waiting)
   records <- historyLength history
-  markingBytes <- either (throwIO . PyException "ValueError") (pure . BS.length) (canonicalBytes markingValue)
+  markingBytes <- either (throwIO . raised "ValueError") (pure . BS.length) (canonicalBytes markingValue)
   let markingTokens = case markingValue of
         Array entries -> sum [case member "tokens" e of Array ts -> length ts; _ -> 0 | e <- entries]
         _ -> 0
@@ -750,7 +751,7 @@ faultingHistory afterAcceptance historyPath onFault = do
               writeIORef armed Nothing
               when afterAcceptance (delegate.extend [record])
               onFault
-              throwIO (PyException "OSError" message)
+              throwIO (raised "OSError" message)
         batch -> delegate.extend batch
   pure (delegate {extend = extend'}, Just (writeIORef armed . Just))
 
@@ -874,7 +875,7 @@ refusingDispatch attempts = do
           Just message -> do
             writeIORef refusal Nothing
             modifyIORef' attempts (<> [Object (("accepted", Bool False) : attempt)])
-            throwIO (PyException "OSError" message)
+            throwIO (raised "OSError" message)
           Nothing -> do
             delegate.dispatch occurrence inv
             modifyIORef' attempts (<> [Object (("accepted", Bool True) : attempt)])
