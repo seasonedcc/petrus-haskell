@@ -1,22 +1,23 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
--- | A recorded system under test.
+-- | A recorded system under test: test scaffolding, not part of the kit.
 --
 -- A 'Transcript' is what one replay asked of its profiles and checkers,
 -- and what they answered: every door call in order (the door, its exact
 -- arguments, every 'Petrus.Testing.Dst.Profile.ScenarioContext' service
 -- it used with that service's result, and its value or raised error), and
 -- every checker verdict by observation. 'transcriptRegistry' turns one
--- into a registry whose profiles serve the recorded answers, so an
--- interpreter can replay an artifact against a system it cannot run — the
--- Python reference's Engine, before the Haskell Engine exists — and must
--- make exactly the recorded calls with exactly the recorded arguments.
+-- into a registry whose profiles serve the recorded answers, so the
+-- interpreter replays an artifact against the Python reference's Engine as
+-- recorded and must make exactly the recorded calls with exactly the
+-- recorded arguments: a cross-check of every door call, independent of the
+-- Haskell Engine profiles.
 --
 -- Generations are the transcript's integer tokens. A call that differs
 -- from the next recorded one fails with a @TranscriptDivergence@ profile
 -- error and is reported by 'transcriptDivergences'.
-module Petrus.Testing.Dst.Transcript
+module Transcript
   ( -- * Transcripts
     Transcript (..)
   , RecordedProfile (..)

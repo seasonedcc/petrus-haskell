@@ -45,7 +45,6 @@ library
                     Petrus.Testing.Dst.Replay
                     Petrus.Testing.Dst.Runner
                     Petrus.Testing.Dst.Timeline
-                    Petrus.Testing.Dst.Transcript
                     Petrus.Testing.Dst.Types
                     Petrus.Testing.Dst.World
   build-depends:    base >=4.18 && <5
@@ -213,6 +212,7 @@ test-suite petrus-dst-test
                     Spec.ToolingInterop
                     Spec.Transcript
                     Toy
+                    Transcript
   build-tool-depends: petrus-dst:petrus-dst-world
   build-depends:    base
                   , base16-bytestring

@@ -2,14 +2,15 @@
 
 The 51 world fixtures replay through Engine-backed profiles (and, for the
 33 ``joined-*`` fixtures, through PostgreSQL with the Impetus and Absurd
-schemas). The Haskell port has no Engine yet, so this script records, for
-each replay, every call the Python World makes across the profile seam:
+schemas). This script records, for each replay, every call the Python
+World makes across the profile seam:
 the door, its arguments, every ScenarioContext service the door used (with
 its result), and the door's outcome (value or raised exception), plus every
-checker verdict. The Haskell ``Petrus.Testing.Dst.Transcript`` replays the
+checker verdict. The Haskell test suite's ``Transcript`` module replays the
 same artifact through a profile that serves these recorded outcomes, and
 must end with the same replay result bytes or the same error, after making
-exactly the same door calls with exactly the same arguments.
+exactly the same door calls with exactly the same arguments: a cross-check
+of every door call, independent of the Haskell Engine profiles.
 
 Run from upstream/petrus, with a PostgreSQL server whose DSN may create
 databases (the ``absurd_dsn`` shape of the reference's ``conftest.py``):

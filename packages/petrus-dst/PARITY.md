@@ -96,7 +96,7 @@ The DST interpreter never sees the Engine. It sees two records:
 - `Checker`, the pure invariants.
 
 The Engine-backed profiles (`tests/dst/engine_world.py`, the joined worlds) are Python classes
-over the production Engine. Their Haskell twins are below; `Petrus.Testing.Dst.Transcript`
+over the production Engine. Their Haskell twins are below; the test suite's `Transcript` module
 also checks the interpreter on its own, without any Engine. `transcript_vectors.py` wraps every profile and checker the reference
 registers while it replays a fixture, and records:
 

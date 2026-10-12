@@ -14,7 +14,7 @@ import Control.Monad (forM_)
 import Data.Text qualified as T
 import Petrus.Json (Json (..))
 import Petrus.Testing.Dst
-import Petrus.Testing.Dst.Transcript
+import Transcript
 import Spec.Support
 import Test.Hspec
 

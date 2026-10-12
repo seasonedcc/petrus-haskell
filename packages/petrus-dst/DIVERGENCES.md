@@ -172,15 +172,6 @@ winning), and a typed `dict[str, int]` key holding one raises `UnicodeEncodeErro
 means reproducing pydantic-core's serializer field by field; a clean refusal is the smaller and
 safer difference.
 
-## Additions
-
-None of these change behavior.
-
-- `Petrus.Testing.Dst.Transcript` replays an artifact against a recorded system under test. It
-  was the stand-in for the Engine before the Haskell Engine existed. It now cross-checks every
-  door call, including for the joined Postgres worlds, independently of the real profiles (see
-  the Engine seam in [PARITY.md](PARITY.md)).
-
 ## Engine worlds (`petrus-dst:engine-worlds`)
 
 The ported `tests/dst/*_world.py` modules are test code, not library API. Their artifacts,
