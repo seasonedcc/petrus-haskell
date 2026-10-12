@@ -851,7 +851,7 @@ hand-written event loop that served `/__petrus/open-file` and
 | resolve-ref, 1 client | 0.98x (1 of 7) | 1.17x | 6 of 7 | 1.20x |
 | resolve-ref, 16 clients | 0.86x (1 of 7) | 1.11x | 7 of 7 | 1.30x |
 
-The front was 14–22% faster at 16 clients, but Warp is ahead of Node by
+The front was 16–28% faster at 16 clients, but Warp is ahead of Node by
 median in every scenario, so the front went: Warp serves every route
 again. The relays never went through the front (it handed their upgrades
 to Warp), and their rows moved by noise only. The framing differences
@@ -975,7 +975,7 @@ header points here.
   1-pair throughput.
 - **HTTP is Warp's.** Runs E to H served the two endpoints from a
   hand-written event loop with Node's framing (the "HTTP front"); it was
-  14–22% faster at 16 clients, but Warp keeps the server ahead of Node,
+  16–28% faster at 16 clients, but Warp keeps the server ahead of Node,
   so it went (see "Low-level code, measured").
 - **The MCP server.** Before this work, with 16 calls in flight,
   `petrus-mcp` was slower than Node (about 9k against 12–15k calls/s) and
