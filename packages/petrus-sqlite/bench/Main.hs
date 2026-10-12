@@ -5,7 +5,7 @@
 module Main (main) where
 
 import Control.Exception (finally)
-import Control.Monad (forM_, void, when)
+import Control.Monad (forM_, void)
 import Data.IORef (atomicModifyIORef', newIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -16,7 +16,7 @@ import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (createTempDirectory)
 import Petrus.TestSupport.BenchTwin (twin)
-import Test.Tasty (TestTree, localOption, testGroup, withResource)
+import Test.Tasty (TestTree, localOption, testGroup)
 import Test.Tasty.Bench
 
 eventsDdl :: Text
@@ -95,47 +95,34 @@ main = do
   -- reads it too, so both sides use the same medium). The @tx@ rows are
   -- bound by the device's fsync, the same calls on both sides; on memory the
   -- syncs cost next to nothing, so these rows time the statement and
-  -- transaction work, which is the port's (bench/RESULTS.md). They run
-  -- first, and their database is closed before the other rows, on both
-  -- sides: in CPython's SQLite (3.53.4), a connection left open after the
-  -- tx rows' work slows another connection's transactions by 20-70%
-  -- (closing it removes that; direct-sqlite's 3.45.0 shows no such effect).
+  -- transaction work, which is the port's (bench/RESULTS.md).
   memory <- lookupEnv "PETRUS_BENCH_TMPFS" >>= traverse seeded
   txMemory <- traverse (\(_, _, c) -> txRows "tx-tmpfs" c) memory
-  closeMemory <- atMostOnce (forM_ memory $ \(d, _, c) -> close c >> removeDirectoryRecursive d)
   let cleanup = do
         close connection >> removeDirectoryRecursive dir
-        closeMemory
+        forM_ memory $ \(d, _, c) -> close c >> removeDirectoryRecursive d
   flip finally cleanup $
     -- Wall-clock time for every benchmark, as the Python twins measure it
     -- (time.perf_counter_ns); tasty-bench's default CPU time would leave out
     -- time spent waiting on the kernel, servers and child processes.
     defaultMain . map (localOption WallTime) $
-      [withResource (pure ()) (const closeMemory) (const rows) | Just rows <- [txMemory]]
-        <> [ bgroup
-               "connect"
-               [ bench "local-dispatch-profile" (whnfIO (open localDispatchProfile database >>= close))
-               ]
-           , tx
-           , bgroup
-               "query"
-               [ bench "select-by-key" (nfIO (length <$> query connection "SELECT payload FROM impetus_history_events WHERE instance = ? AND position = ?" [SQLText "seed", SQLInteger 500]))
-               , bench "select-1000" (nfIO (length <$> query connection "SELECT position, event_id, record_type, occurrence, payload FROM impetus_history_events WHERE instance = ? ORDER BY position" [SQLText "seed"]))
-               ]
-           , bgroup
-               "schema"
-               [ bench "normalize-ddl" (nf normalizeDdl eventsDdl)
-               ]
-           , bgroup
-               "fence"
-               [ bench "acquire-release" (whnfIO (acquireWriterFence database "bench" >>= releaseWriterFence))
-               ]
-           ]
-
--- | An action that runs @action@ the first time and does nothing after.
-atMostOnce :: IO () -> IO (IO ())
-atMostOnce action = do
-  done <- newIORef False
-  pure $ do
-    first <- atomicModifyIORef' done (\d -> (True, not d))
-    when first action
+      [ bgroup
+          "connect"
+          [ bench "local-dispatch-profile" (whnfIO (open localDispatchProfile database >>= close))
+          ]
+      , tx
+      , bgroup
+          "query"
+          [ bench "select-by-key" (nfIO (length <$> query connection "SELECT payload FROM impetus_history_events WHERE instance = ? AND position = ?" [SQLText "seed", SQLInteger 500]))
+          , bench "select-1000" (nfIO (length <$> query connection "SELECT position, event_id, record_type, occurrence, payload FROM impetus_history_events WHERE instance = ? ORDER BY position" [SQLText "seed"]))
+          ]
+      , bgroup
+          "schema"
+          [ bench "normalize-ddl" (nf normalizeDdl eventsDdl)
+          ]
+      , bgroup
+          "fence"
+          [ bench "acquire-release" (whnfIO (acquireWriterFence database "bench" >>= releaseWriterFence))
+          ]
+      ]
+        <> maybe [] pure txMemory
