@@ -1,6 +1,6 @@
 # hamsterdan-host benchmarks
 
-<!-- scripts/bench: measured sources 3f92deb7a5573ed5 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources c4ad8ccead5b08dc at 0fccc8a86140 -->
 
 These are the host's hot paths:
 
@@ -46,11 +46,11 @@ that the state interop tests use (`differential/state_reference.py`, and
 
 ## Current figures
 
-Measured on 2026-10-12, 04:37–04:40 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.54–3.46:
-three interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-12, 18:08–18:12 local (UTC-3), at commit `33f3581`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.20–3.24:
+five interleaved repetitions, alternating which side goes first, of
 
-    TMPDIR="$PWD/bench-results/tmp" scripts/bench-compare hamsterdan-host 3 --upstream hamsterdan --haskell-arg=-j1
+    TMPDIR="$PWD/bench-results/tmp/htmp" scripts/bench-compare hamsterdan-host 5 --upstream hamsterdan --haskell-arg=-j1
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
@@ -60,14 +60,14 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `webhook ingest.100 deliveries through POST /github/webhooks` | 4.2 ms | 10.3 ms | 2.46× | 2.34× | 4.2 ms, 4.43 ms, 4.13 ms | 10.3 ms, 10.4 ms, 10.3 ms |
-| `reconciliation.one webhook to quiescence on a fresh Instance` | 25.9 ms | 173 ms | 6.67× | 6.60× | 26.7 ms, 25.9 ms, 25.9 ms | 176 ms, 173 ms, 172 ms |
-| `agent turn.one webhook to quiescence through the scripted Pi agent` | 141 ms | 309 ms | 2.20× | 2.17× | 140 ms, 142 ms, 141 ms | 307 ms, 309 ms, 316 ms |
-| `gates.24 classifications (reply, reminder, dash x 8 outcomes)` | 2.46 µs | 55 µs | 22.35× | 21.74× | 2.53 µs, 2.46 µs, 2.45 µs | 55 µs, 54.4 µs, 55.6 µs |
-| `timers.rebuild from a 333-fact History` | 3.52 ms | 7.13 ms | 2.02× | 2.00× | 3.52 ms, 3.42 ms, 3.57 ms | 7.06 ms, 7.13 ms, 7.13 ms |
-| `timers.open a fresh store with no History` | 911 µs | 1.32 ms | 1.45× | 1.41× | 926 µs, 911 µs, 910 µs | 1.32 ms, 1.29 ms, 1.32 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `webhook ingest.100 deliveries through POST /github/webhooks` | 4.24 ms | 10.3 ms | 2.44× | 2.38× | 5 of 5 | 4.29 ms, 4.24 ms, 4.3 ms, 4.14 ms, 4.11 ms | 10.2 ms, 10.6 ms, 10.3 ms, 10.2 ms, 10.4 ms |
+| `reconciliation.one webhook to quiescence on a fresh Instance` | 27.1 ms | 176 ms | 6.49× | 6.05× | 5 of 5 | 29 ms, 27.8 ms, 26.2 ms, 27 ms, 27.1 ms | 175 ms, 179 ms, 176 ms, 175 ms, 176 ms |
+| `agent turn.one webhook to quiescence through the scripted Pi agent` | 157 ms | 325 ms | 2.07× | 1.93× | 5 of 5 | 160 ms, 168 ms, 157 ms, 153 ms, 155 ms | 327 ms, 325 ms, 322 ms, 328 ms, 319 ms |
+| `gates.24 classifications (reply, reminder, dash x 8 outcomes)` | 2.46 µs | 55.1 µs | 22.38× | 22.05× | 5 of 5 | 2.46 µs, 2.49 µs, 2.45 µs, 2.46 µs, 2.46 µs | 54.2 µs, 55.6 µs, 55.2 µs, 55.1 µs, 54.4 µs |
+| `timers.rebuild from a 333-fact History` | 3.59 ms | 7.5 ms | 2.09× | 2.02× | 5 of 5 | 3.63 ms, 3.46 ms, 3.59 ms, 3.62 ms, 3.52 ms | 7.51 ms, 7.8 ms, 7.5 ms, 7.3 ms, 7.37 ms |
+| `timers.open a fresh store with no History` | 924 µs | 1.39 ms | 1.51× | 1.47× | 5 of 5 | 924 µs, 912 µs, 927 µs, 933 µs, 924 µs | 1.39 ms, 1.39 ms, 1.36 ms, 1.41 ms, 1.48 ms |
 
 ## Results
 
@@ -379,30 +379,34 @@ outcome.
 
 ### Current process figures
 
-Eleven runs per row on 2026-10-12, 04:11–04:15 local (UTC-3), at commit
-`81bbdc5`, load average 2.66–2.95 (`uptime` before and after), by
+Eleven runs per row on 2026-10-12, 18:34–18:38 local (UTC-3), at commit
+`428dfa0`, load average 2.81–3.30 (`uptime` before and after), by
 
     scripts/bench-run --no-build hamsterdan-host --process --runs 11 +RTS -M2G -RTS
 
-Each cell is the median of the eleven runs, with the fastest in parentheses.
-The Python CLI rows are slower than in the table below (1.04 s against
-792 ms for `validate`), and the Haskell `serve` start faster (155 ms
-against 346 ms, which was measured at a load average of 6.5–7.2).
+Each cell is the median of the eleven runs, with the fastest in
+parentheses; each run is a pair, alternating which side goes first, and
+the last column counts the pairs Haskell won (a column added since the
+earlier rounds). The Haskell CLI rows read about 10% slower than in the
+round at `81bbdc5` (140 ms against 124 ms for `validate`; a round at
+18:12, at `1eac63d`, read 138 ms), and are 6.8–7.4× ahead; the cause was
+not looked into. The Git publication row is the closest (1.15×, Haskell
+ahead in 10 of 11 pairs): almost all of it is Git itself (below).
 
-| Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell |
-| --- | --- | ---: | ---: | ---: |
-| `validate` (20 Instances) | CLI (fresh process) | 124.45 ms (118.76 ms) | 1.04 s (1.03 s) | 8.32× |
-| `inbox` (20 Instances) | CLI (fresh process) | 124.82 ms (118.31 ms) | 932.02 ms (924.68 ms) | 7.47× |
-| `requeue` of a parked delivery (20 Instances) | CLI (fresh process) | 124.85 ms (115.72 ms) | 931.80 ms (924.85 ms) | 7.46× |
-| `inspect-instance` (a 2001-record History) | CLI (fresh process) | 23.14 ms (21.80 ms) | 715.34 ms (703.85 ms) | 30.91× |
-| `serve` start to the first `200` on `/healthz` (20 Instances) | process | 155.25 ms (144.46 ms) | 1.11 s (1.08 s) | 7.15× |
-| 100 signed deliveries POSTed to `serve` (inactive route) | socket | 15.93 ms (12.79 ms) | 36.78 ms (33.19 ms) | 2.31× |
-| `sweep("periodic")` over 20 loaded Instances | in process; 20 reconciled, 180 provider calls | 13.99 ms (13.86 ms) | 1.51 s (1.50 s) | 107.70× |
-| `sweep("periodic")` over 20 unloaded Instances (fresh host) | in process; 20 reconciled, 180 provider calls | 245.59 ms (229.22 ms) | 3.22 s (3.21 s) | 13.12× |
-| immutable comment publication (100 bot comments) | in process; created | 12.4 µs (12.2 µs) | 25.0 µs (24.8 µs) | 2.02× |
-| native review batch of 8 findings (100 issue + 100 review comments) | in process; created,created,created,created,created,created,created,created | 197.1 µs (194.9 µs) | 393.1 µs (388.9 µs) | 1.99× |
-| GraphQL ref compare-and-swap | in process; ok | 2.4 µs (2.2 µs) | 3.9 µs (3.8 µs) | 1.64× |
-| Git publication through the local authority | in process; recovered=False | 293.06 ms (289.06 ms) | 340.54 ms (337.23 ms) | 1.16× |
+| Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell | Haskell ahead |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `validate` (20 Instances) | CLI (fresh process) | 140.47 ms (135.26 ms) | 1.04 s (1.03 s) | 7.38× | 11 of 11 |
+| `inbox` (20 Instances) | CLI (fresh process) | 137.42 ms (128.73 ms) | 939.15 ms (927.10 ms) | 6.83× | 11 of 11 |
+| `requeue` of a parked delivery (20 Instances) | CLI (fresh process) | 135.92 ms (129.82 ms) | 933.92 ms (929.84 ms) | 6.87× | 11 of 11 |
+| `inspect-instance` (a 2001-record History) | CLI (fresh process) | 23.50 ms (19.66 ms) | 714.51 ms (708.90 ms) | 30.40× | 11 of 11 |
+| `serve` start to the first `200` on `/healthz` (20 Instances) | process | 170.85 ms (160.58 ms) | 1.10 s (1.08 s) | 6.42× | 11 of 11 |
+| 100 signed deliveries POSTed to `serve` (inactive route) | socket | 18.63 ms (13.30 ms) | 40.49 ms (35.60 ms) | 2.17× | 11 of 11 |
+| `sweep("periodic")` over 20 loaded Instances | in process; 20 reconciled, 180 provider calls | 14.20 ms (13.81 ms) | 1.51 s (1.50 s) | 106.01× | 11 of 11 |
+| `sweep("periodic")` over 20 unloaded Instances (fresh host) | in process; 20 reconciled, 180 provider calls | 258.62 ms (246.33 ms) | 3.21 s (3.19 s) | 12.39× | 11 of 11 |
+| immutable comment publication (100 bot comments) | in process; created | 12.5 µs (12.4 µs) | 24.9 µs (24.5 µs) | 1.99× | 11 of 11 |
+| native review batch of 8 findings (100 issue + 100 review comments) | in process; created,created,created,created,created,created,created,created | 198.9 µs (198.0 µs) | 391.1 µs (389.4 µs) | 1.97× | 11 of 11 |
+| GraphQL ref compare-and-swap | in process; ok | 2.5 µs (2.3 µs) | 3.7 µs (3.7 µs) | 1.48× | 11 of 11 |
+| Git publication through the local authority | in process; recovered=False | 319.57 ms (306.73 ms) | 366.10 ms (334.64 ms) | 1.15× | 10 of 11 |
 
 ### Results of the process rows
 
