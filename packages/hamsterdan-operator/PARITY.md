@@ -95,10 +95,10 @@ binary).
   program that calls `HostConfig.from_environment` and
   `PiA2InstallationConfig.from_environment`. The port's child is a mode of
   the test binary. It reads the host configuration with hamsterdan-github's
-  `Hamsterdan.GitHub.Config.fromEnvironment`, and checks the variables
-  `PiA2InstallationConfig.from_environment` reads directly, because the Pi
-  installation config belongs to hamsterdan-agents, which is not ported
-  yet.
+  `Hamsterdan.GitHub.Config.fromEnvironment` and the Pi installation config
+  with hamsterdan-agents' `Hamsterdan.Host.PiA2.installationFromEnvironment`
+  (`PiA2InstallationConfig.from_environment`), and asserts the same values
+  upstream's child does.
 - **`test_public_petrus_revision_is_exact_and_locked`** checks the
   reference's `pyproject.toml` pin and `uv.lock`. This repository has
   neither. The port checks the equivalent: the Haskell dependency plan is

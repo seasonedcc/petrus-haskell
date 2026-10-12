@@ -30,6 +30,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.GitHub.Config (HostConfig (..), fromEnvironment, revealSecret)
+import Hamsterdan.Host.PiA2 (PiA2InstallationConfig (..), installationFromEnvironment)
 import Petrus.Json (Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Wtf8 (fromCodePoints)
 import System.Directory
@@ -43,7 +44,7 @@ import System.Directory
   )
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..), exitWith)
-import System.FilePath (isAbsolute, (</>))
+import System.FilePath ((</>))
 import System.IO (hClose, hPutStr, hPutStrLn, stderr, stdout)
 import System.Posix.Files (setFileMode)
 import System.Posix.IO (OpenFileFlags (..), OpenMode (WriteOnly), defaultFileFlags, fdToHandle, openFd)
@@ -239,11 +240,10 @@ launchChild = do
     Left (e :: SomeException) -> hPutStrLn stderr (show e) >> exitWith (ExitFailure 1)
     Right config -> pure config
   assert "GitHub credentials" ((revealSecret config.privateKey, revealSecret config.webhookSecret) == (pem, "current-webhook-secret"))
-  -- PiA2InstallationConfig.from_environment's environment contract.
-  let value name = fromMaybe "" (Map.lookup name environment)
-      names = ["HAMSTERDAN_PI_PROVIDER", "HAMSTERDAN_PI_MODEL", "HAMSTERDAN_PI_API_KEY", "HAMSTERDAN_PI_CLI_PATH", "HAMSTERDAN_PI_NODE_PATH", "HAMSTERDAN_PI_PACKAGE_ROOT"]
-  assert "no retired Pi credential file" (Map.notMember "HAMSTERDAN_PI_API_KEY_FILE" environment)
-  assert "explicit direct key and Pi runtime paths" (all (not . null . value) names)
-  assert "absolute installation paths" (all (isAbsolute . value) (drop 3 names))
-  assert "direct key" (value "HAMSTERDAN_PI_API_KEY" == "current-api-key-canary")
+  -- @PiA2InstallationConfig.from_environment(os.environ)@.
+  installed <- try (installationFromEnvironment [(T.pack name, T.pack value) | (name, value) <- Map.toList environment] Nothing)
+  installation <- case installed of
+    Left (e :: SomeException) -> hPutStrLn stderr (show e) >> exitWith (ExitFailure 1)
+    Right installation -> pure installation
+  assert "direct key" (installation.directKey == "current-api-key-canary")
   putStrLn "current credentials accepted"

@@ -96,6 +96,7 @@ test-suite hamsterdan-operator-test
                   , containers
                   , directory
                   , filepath
+                  , hamsterdan-agents
                   , hamsterdan-cli
                   , hamsterdan-contracts
                   , hamsterdan-github
@@ -123,6 +124,7 @@ benchmark hamsterdan-operator-bench
                   , containers
                   , directory
                   , filepath
+                  , hamsterdan-agents
                   , hamsterdan-contracts
                   , hamsterdan-github
                   , hamsterdan-operator
