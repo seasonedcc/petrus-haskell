@@ -32,7 +32,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.IORef (atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), defaultExecutionPolicy)
+import Petrus.Activity (ActivityInvocation, ActivityInvocationFields (..), activityInvocation, defaultExecutionPolicy)
 import Petrus.Fabric (DeliveryDoor (..), DoorAnswer (..), Envelope, FabricError, FabricInbox (..), ReplyRoute, drain, envelopeFromData, replyRoute)
 import Petrus.Fabric.Postgres (ensureFabricSchema, exposeSource, grant, inboxClient, issueCredential, postgresFabric, registerProcess, send)
 import Petrus.Impetus.Instance.Firing (FiringOutcome (..))
@@ -73,7 +73,8 @@ answer = orError (callResult "call-1" (Object [("answer", Int 42)]))
 
 invocation :: SpawnSpec -> ActivityInvocation
 invocation item =
-  ActivityInvocation spawnActivityName (spawnSpecToData item) defaultExecutionPolicy Nothing (Just (orError (spawnIdempotency item.parent item.spawnId)))
+  either (error . T.unpack) id . activityInvocation $
+    ActivityInvocationFields spawnActivityName (spawnSpecToData item) defaultExecutionPolicy Nothing (Just (orError (spawnIdempotency item.parent item.spawnId)))
 
 memoryRegistry :: SpawnRegistry
 memoryRegistry =

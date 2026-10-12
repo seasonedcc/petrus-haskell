@@ -54,14 +54,14 @@ import Petrus.Impetus.Instance
   ( DeliveryScope (..)
   , FiringOutcome
   , InstanceError (..)
-  , PythonException
   , exceptionFailureText
   )
 import Petrus.Impetus.Petrinet (Binding (..), Instant, NetPath, Selection, Token (..))
 import Petrus.Impetus.Selection (SelectionPolicy, defaultPipeline)
 import Petrus.Json (exactEq)
 import Petrus.Motus.Dispatch (ActivityOutcome)
-import Petrus.Motus.PythonException (knownPythonException, pythonExceptionRepr)
+import Petrus.Motus.PythonException (knownPythonException)
+import Petrus.Json.Python.Exception (pythonFailureText)
 
 -- ---------------------------------------------------------------------------
 -- Errors
@@ -100,23 +100,23 @@ failureText e = case fromException e of
     EngineTypeError m -> "TypeError(" <> pythonStrRepr m <> ")"
     EngineRuntimeError m -> "RuntimeError(" <> pythonStrRepr m <> ")"
     EngineHandlerFailed m -> if T.null m then "Exception" else m
-  -- A Dispatch's or Worker's own exception is spelled by its Python class
-  -- (a 'DispatchError' is the reference's @ValueError@); any other is user
-  -- code's, spelled by the kernel.
-  Nothing -> maybe (exceptionFailureText e) (T.take 4096 . pythonExceptionRepr) (knownPythonException [] e)
+  -- An exception that declares its Python class (a 'DispatchError' is the
+  -- reference's @ValueError@, a Fabric refusal its category's class) is
+  -- spelled by it; any other is user code's, spelled by the kernel.
+  Nothing -> maybe (exceptionFailureText e) pythonFailureText (knownPythonException e)
 
 -- | The Python class the reference reports (@type(error).__name__@, a
 -- span's @error_type@) for a failure the Engine raises in the reference's
 -- vocabulary: an 'EngineError' (a handler failure is named after its
 -- recorded text, @RuntimeError('handler broke')@ being a @RuntimeError@),
--- a Dispatch's or Worker's own exception ('knownPythonException': a
--- 'DispatchError' is a @ValueError@), or a 'PythonException'. 'Nothing'
--- for anything else, which "Petrus.Telemetry" names.
+-- or an exception that declares the Python exception it stands for
+-- ('knownPythonException': a 'DispatchError' is a @ValueError@, a Fabric
+-- refusal its category's class, a 'PythonException' itself). 'Nothing' for
+-- anything else, which "Petrus.Telemetry" names.
 engineErrorType :: SomeException -> Maybe Text
-engineErrorType e = case (fromException e, knownPythonException [] e, fromException e) of
-  (Just (_ :: EngineError), _, _) -> Just (failureClass (failureText e))
-  (_, Just known, _) -> Just (failureClass (pythonExceptionRepr known))
-  (_, _, Just (python :: PythonException)) -> Just (failureClass (exceptionFailureText (toException python)))
+engineErrorType e = case (fromException e, knownPythonException e) of
+  (Just (_ :: EngineError), _) -> Just (failureClass (failureText e))
+  (_, Just known) -> Just (failureClass (pythonFailureText known))
   _ -> Nothing
 
 -- | The class a recorded failure text names: @Name@ of @Name(...)@, a bare

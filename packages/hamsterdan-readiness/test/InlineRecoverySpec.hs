@@ -280,8 +280,8 @@ request root definitions w = do
   [requested'] <- (\rs -> [r | RActivityRequested r <- rs, r.activity == w.activity]) <$> Engine.records engine
   [(occurrence, inv)] <- readIORef cut.invocations
   occurrence `shouldBe` requested'.occurrence
-  inv
-    `shouldBe` ActivityInvocation
+  invocationFields inv
+    `shouldBe` ActivityInvocationFields
       { activity = w.activity
       , input = obj [("work", workDump w)]
       , policy = attemptsOnce

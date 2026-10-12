@@ -42,12 +42,12 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityFailureFields (..), ActivityInvocation (activity), activityFailure, invocation)
+import Petrus.Activity (ActivityFailureFields (..), ActivityInvocation, activityFailure, defaultInvocationFields)
 import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.Engine.Absurd (AbsurdEngineOptions (..), absurdSession, defaultAbsurdEngineOptions, openAbsurdEngine)
 import Petrus.Engine.Provider (OpenMode (..))
-import Petrus.Impetus.Binding (HandlerResult (..), handlerTokens)
+import Petrus.Impetus.Binding (HandlerResult (..), handlerTokens, prepareInvocation)
 import Petrus.Impetus.History.Records
   ( DeliveryRegistration (..)
   , DeliveryRegistrationClosed (..)
@@ -369,7 +369,7 @@ joinedProfile family dsn = do
       bridge =
         Bridged
           { prepare = \b -> case bindingTokens b of
-              t : _ -> Right (invocation "calculate" t.payload)
+              t : _ -> prepareInvocation (defaultInvocationFields "calculate" t.payload)
               [] -> Left "IndexError('tuple index out of range')"
           , project = \_ result ->
               let base = handlerTokens [(donePlace, [Token (Just "Done") result])]

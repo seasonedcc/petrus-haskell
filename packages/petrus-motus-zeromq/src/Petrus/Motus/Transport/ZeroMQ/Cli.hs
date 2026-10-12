@@ -8,7 +8,7 @@ module Petrus.Motus.Transport.ZeroMQ.Cli
   , zeromqPlugins
   ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent.Async (withAsync)
 import Control.Exception (SomeAsyncException, SomeException, catch, fromException, throwIO, try)
 import Control.Monad (void)
 import Data.ByteString qualified as BS
@@ -18,8 +18,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json (Json (..), defaultDumps, dumps)
 import Petrus.Argparse (ArgumentParser (..), appended, defaulted, float, help, option, required, runArgumentParser, str)
-import Petrus.Motus.PythonException (PythonException (..))
-import Petrus.Motus.Transport.ZeroMQ.Errors (zeromqPythonException)
+import Petrus.Motus.PythonException (pythonException, pythonExceptionStr)
+import Petrus.Motus.PythonException qualified as Python (PythonException (..))
 import Petrus.Motus.Transport.ZeroMQ.Client
 import Petrus.Motus.Transport.ZeroMQ.Server
 import Petrus.Motus.Worker.Cli (ProviderPlugins (..), WorkerArguments (..), noPlugins)
@@ -71,8 +71,9 @@ uncaught e
   | Just (_ :: ExitCode) <- fromException e = throwIO e
   | Just (_ :: SomeAsyncException) <- fromException e = throwIO e
   | otherwise = do
-      let PythonException {className, message} = zeromqPythonException e
-      hPutStrLn stderr (T.unpack (className <> if T.null message then "" else ": " <> message))
+      let python = pythonException e
+          message = pythonExceptionStr python
+      hPutStrLn stderr (T.unpack (python.name <> if T.null message then "" else ": " <> message))
       exitWith (ExitFailure 1)
 
 serve :: Text -> [String] -> IO ()
@@ -89,8 +90,7 @@ serve prog argv = do
       (T.unpack <$> arguments.serverSecretCertificate)
       (T.unpack <$> arguments.allowedClientKeys)
   _ <- installHandler sigTERM (Catch (void (try @SomeException (requestDrain server arguments.drainTimeout)))) Nothing
-  _ <- forkIO (announce server)
-  serveForever server
+  withAsync (announce server) (\_ -> serveForever server)
 
 announce :: ZeroMQDispatchServer -> IO ()
 announce server =

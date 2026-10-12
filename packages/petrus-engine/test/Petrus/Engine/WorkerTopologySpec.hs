@@ -39,7 +39,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Clock (getMonotonicTime)
-import Petrus.Activity (ActivityFailureFields (..), failureFields, ActivityInvocation (..), ExecutionPolicyFields (..), executionPolicy, invocation, policyFields)
+import Petrus.Activity (ActivityFailureFields (..), failureFields, ActivityInvocation, ActivityInvocationFields (..), ExecutionPolicyFields (..), activityInvocation, defaultExecutionPolicy, executionPolicy, invocation, policyFields)
 import Petrus.Engine qualified as Engine
 import Petrus.Engine.Scenario
 import Petrus.Engine.TestSupport (advanceUntilRest, inlineOf)
@@ -63,6 +63,7 @@ import System.Posix.Signals (sigKILL, sigTERM, signalProcess)
 import System.Process
 import System.Timeout (timeout)
 import Test.Hspec
+import Petrus.TestSupport (valid)
 
 -- ---------------------------------------------------------------------------
 -- Worker processes
@@ -205,13 +206,13 @@ completed records = [r | RActivityCompleted r <- records]
 -- | Attempts 2 and a one-second lease, as the reference's kill test.
 leased :: ActivityInvocation -> ActivityInvocation
 leased inv =
-  ActivityInvocation
-    { activity = inv.activity
-    , input = inv.input
-    , policy = either (error . T.unpack) id (executionPolicy (policyFields inv.policy) {attempts = 2, heartbeatTimeout = 1})
-    , correlation = inv.correlation
-    , idempotency = inv.idempotency
-    }
+  valid . activityInvocation $
+    ActivityInvocationFields
+      inv.activity
+      inv.input
+      (either (error . T.unpack) id (executionPolicy (policyFields inv.policy) {attempts = 2, heartbeatTimeout = 1}))
+      inv.correlation
+      inv.idempotency
 
 lineCount :: FilePath -> IO Int
 lineCount path = do
@@ -299,7 +300,7 @@ spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
     records <- Engine.records engine
     map (.activity) (requested records) `shouldBe` replicate 3 "charge_card"
     map (\r -> (r.occurrence, r.result)) (completed records)
-      `shouldBe` [ (r.occurrence, chargeReceipt (invocation "charge_card" r.input)) | r <- requested records]
+      `shouldBe` [ (r.occurrence, chargeReceipt (valid (invocation "charge_card" r.input))) | r <- requested records]
     forM_ ["o-1", "o-2", "o-3"] $ \orderId -> doesFileExist (dir </> ("effect-" <> orderId)) `shouldReturn` True
     lineCount (dir </> "executions") `shouldReturn` 3
     -- The History is Engine-authored only: a fresh load reads the same
@@ -334,7 +335,7 @@ spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
     lineCount (dir </> "executions") `shouldReturn` 2 -- redelivered once
     doesFileExist (dir </> "effect-o-1") `shouldReturn` True -- and never doubled
     final <- Engine.records engine
-    map (\r -> r.result) (completed final) `shouldBe` [chargeReceipt (invocation "charge_card" (Object [("id", String "o-1"), ("cents", Int 100)]))]
+    map (\r -> r.result) (completed final) `shouldBe` [chargeReceipt (valid (invocation "charge_card" (Object [("id", String "o-1"), ("cents", Int 100)])))]
     Engine.close engine
 
   it "sigterm drains gracefully: the in-flight activity completes" $ withScratch $ \dir -> closingScratch dir $ withWorkers $ \started -> do
@@ -357,8 +358,7 @@ spec = describe "test_worker_topology.py (Local Dispatch topology)" $ do
     let db = dir </> "dispatch.db"
     worker <- spawnWorker started db dir "tests.worker_topology:misrouted" "mixed"
     dispatch <- openScratchDispatch db "misrouted" defaultLocalDispatchOptions
-    let misrouted = invocation "not_registered" (Object [("id", String "mix")])
-    Local.dispatch dispatch 1 ActivityInvocation {activity = misrouted.activity, input = misrouted.input, policy = misrouted.policy, correlation = Nothing, idempotency = Just "effect-mix"}
+    Local.dispatch dispatch 1 (valid (activityInvocation (ActivityInvocationFields "not_registered" (Object [("id", String "mix")]) defaultExecutionPolicy Nothing (Just "effect-mix"))))
     void (awaitEvent worker (\event -> lookupMember "outcome" event == Just (String "failed")))
     Local.collect dispatch >>= \case
       [(1, Failed f)] -> (failureFields f).failureError `shouldSatisfy` T.isInfixOf "no activity implementation"

@@ -52,6 +52,7 @@ import Hamsterdan.Host.Python (LookupError, RuntimeError, ValueError)
 import Petrus.Activity (ActivityError)
 import Petrus.Agenticus.Error (AgenticusError (..), errorClassName)
 import Petrus.Json.Python (PythonException (..))
+import Petrus.Json.Python.Exception (asPythonException)
 import Petrus.Sqlite.Connection (SQLError (..), pythonSqliteClass)
 
 -- | @type(error).__name__@ of a caught exception.
@@ -70,7 +71,9 @@ named name = listed @e (const name)
 
 classes :: [Listed]
 classes =
-  [ listed @PythonException (.name)
+  [ -- Every member of the Python exception hierarchy (a Petrus port's
+    -- refusal too), by the class it stands for.
+    Listed (typeRep (Proxy @PythonException)) (fmap (.name) . asPythonException)
   , -- A driver failure that did not pass through "Hamsterdan.Sqlite".
     listed @SQLError (pythonSqliteClass . (.sqlError))
   , listed @GitHubBoundaryError $ \failure -> case failure.kind of

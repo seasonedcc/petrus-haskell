@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedRecordDot #-}
+
 -- | The Python class name the reference reports for a failure
 -- (@type(error).__name__@), for the Haskell exceptions that have a Python
 -- counterpart.
@@ -13,13 +15,21 @@
 -- * 'DivideByZero' is @ZeroDivisionError@, 'Overflow' is @OverflowError@;
 -- * an 'ExitCode' is @SystemExit@.
 --
--- Callers that raise their own exceptions in the reference's vocabulary
--- (the Engine's @ValueError@/@TypeError@/@RuntimeError@, a handler's
--- recorded failure) name them through 'withSpanClassifying'
--- ("Petrus.Telemetry"). Any other Haskell exception has no Python class and
--- is named by its 'Typeable' type constructor (@ErrorCall@).
+-- An exception that stands for a Python exception (a member of petrus-json's
+-- 'SomePythonException' hierarchy: a package's own refusals, a
+-- 'PythonException' value) is named by its declared class first. Callers
+-- that raise other exceptions in the reference's vocabulary (the Engine's
+-- @ValueError@/@TypeError@/@RuntimeError@, a handler's recorded failure)
+-- name them through 'withSpanClassifying' ("Petrus.Telemetry"). Any other
+-- Haskell exception has no Python class and is named by its 'Typeable' type
+-- constructor (@ErrorCall@).
+--
+-- 'pythonExceptionOf' is the one total mapping: the class and the @args@ the
+-- reference's exception carries, which every seam that records an
+-- exception renders (@repr@, @str@) as the reference does.
 module Petrus.Telemetry.ErrorType
-  ( pythonErrorType
+  ( pythonExceptionOf
+  , pythonErrorType
   , oserrorSubclass
   , haskellTypeName
   ) where
@@ -27,9 +37,9 @@ module Petrus.Telemetry.ErrorType
 import Control.Exception
   ( ArithException (..)
   , AsyncException (..)
+  , Exception (..)
   , SomeAsyncException (..)
   , SomeException (..)
-  , fromException
   )
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -58,7 +68,8 @@ import Foreign.C.Error
   )
 import Foreign.C.Types (CInt (..))
 import GHC.IO.Exception (IOException (..))
-import System.Exit (ExitCode)
+import Petrus.Json.Python.Exception (PythonArg (..), PythonException (..), asPythonException)
+import System.Exit (ExitCode (..))
 import System.IO.Unsafe (unsafePerformIO)
 
 foreign import ccall unsafe "petrus_telemetry_enotcapable" c_enotcapable :: IO CInt
@@ -70,10 +81,44 @@ eNOTCAPABLE = case unsafePerformIO c_enotcapable of
   n -> Just (Errno n)
 {-# NOINLINE eNOTCAPABLE #-}
 
+-- | The Python exception an exception stands for, as the reference would
+-- raise it: a member of the 'SomePythonException' hierarchy by its own
+-- declaration; a Haskell exception with a Python counterpart by that class
+-- with the arguments the reference's exception carries (an @errno@-carrying
+-- 'IOException' is @FileNotFoundError(2, 'No such file or directory')@,
+-- 'UserInterrupt' is @KeyboardInterrupt()@); any other by its 'Typeable'
+-- name with its message (without a GHC call stack) as the one string
+-- argument, none when the message is empty.
+pythonExceptionOf :: SomeException -> PythonException
+pythonExceptionOf some = case asPythonException some of
+  Just python -> python
+  Nothing -> PythonException {name = builtinName some, args = builtinArgs}
+  where
+    message = case some of SomeException e -> fst (T.breakOn "\nCallStack (from" (T.pack (displayException e)))
+    stringArg text = [PyStr text | not (T.null text)]
+    builtinArgs
+      | Just (io :: IOException) <- fromException some = case ioe_errno io of
+          Just errno -> [PyInt (toInteger errno), PyStr (T.pack (ioe_description io))]
+          Nothing -> stringArg (T.pack (ioe_description io))
+      | Just UserInterrupt <- fromException some = []
+      | Just DivideByZero <- fromException some = [PyStr "division by zero"]
+      | Just code <- fromException some = [PyInt (exitStatus code)]
+      | Just (SomeAsyncException _) <- fromException some, builtinName some == "CancelledError" = []
+      | otherwise = stringArg message
+    exitStatus = \case
+      ExitSuccess -> 0
+      ExitFailure n -> toInteger n
+
 -- | The Python class name of an exception, as the reference would report
--- it: see the module header.
+-- it: the class 'pythonExceptionOf' names.
 pythonErrorType :: SomeException -> Text
-pythonErrorType some
+pythonErrorType some = case asPythonException some of
+  Just python -> python.name
+  Nothing -> builtinName some
+
+-- | The class of an exception outside the hierarchy: see the module header.
+builtinName :: SomeException -> Text
+builtinName some
   | Just (io :: IOException) <- fromException some = maybe "OSError" (oserrorSubclass . Errno) (ioe_errno io)
   | Just UserInterrupt <- fromException some = "KeyboardInterrupt"
   | Just DivideByZero <- fromException some = "ZeroDivisionError"

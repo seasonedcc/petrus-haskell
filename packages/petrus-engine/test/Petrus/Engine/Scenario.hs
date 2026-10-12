@@ -24,7 +24,7 @@ import Control.Monad (forM_)
 import Data.IORef
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), invocation)
+import Petrus.Activity (ActivityInvocation, invocation)
 import Petrus.Engine qualified as Engine
 import Petrus.Engine.TestSupport (counting, inlineOf, symbols)
 import Petrus.Impetus.Binding
@@ -94,7 +94,7 @@ chargeHandler adjust prepared =
         valid <- firstData b
         orderId <- member "id" valid
         cents <- member "amount" valid
-        Right (adjust (invocation "charge_card" (Object [("id", orderId), ("cents", cents)])))
+        adjust <$> invocation "charge_card" (Object [("id", orderId), ("cents", cents)])
     , project = \_ result -> Right (handlerTokens [(charged, [tokD "Receipt" result])])
     , projectFailure = Nothing
     }

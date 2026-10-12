@@ -135,7 +135,7 @@ chargeTo :: Text -> ActivityHandler
 chargeTo target =
   ActivityHandler
     { prepare = \b -> case bindingTokens b of
-        t : _ -> Right (invocation "charge_card" (Object [("token", t.payload)]))
+        t : _ -> invocation "charge_card" (Object [("token", t.payload)])
         [] -> Left "IndexError('tuple index out of range')"
     , project = \_ result -> Right (handlerTokens [(p target, [tokD "Receipt" result])])
     , projectFailure = Nothing

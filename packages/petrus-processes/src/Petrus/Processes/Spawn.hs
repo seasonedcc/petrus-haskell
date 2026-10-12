@@ -12,9 +12,10 @@ module Petrus.Processes.Spawn
 import Control.Exception (throwIO)
 import Control.Monad (unless)
 import Data.Text (Text)
-import Petrus.Activity (ActivityInvocation (..), defaultExecutionPolicy)
+import Petrus.Activity (ActivityInvocation, ActivityInvocationFields (..), defaultExecutionPolicy)
 import Petrus.Fabric.Error
 import Petrus.Fabric.Model
+import Petrus.Impetus.Binding (prepareInvocation)
 import Petrus.Json (Json)
 import Petrus.Processes.Model
 
@@ -40,21 +41,24 @@ spawnIdempotency :: Text -> Text -> Either FabricError Text
 spawnIdempotency parent spawnId = ("process.spawn:" <>) <$> childIdentity parent spawnId
 
 -- | The invocation a spawning handler's @prepare@ returns (the reference
--- demo's @SpawnHandler@): the spec JSON, correlated by @spawn_id@.
-spawnInvocation :: SpawnSpec -> ActivityInvocation
+-- demo's @SpawnHandler@): the spec JSON, correlated by @spawn_id@ (a 'Left'
+-- is @prepare@ raising the constructor's @ValueError@, which a valid
+-- 'SpawnSpec' never meets).
+spawnInvocation :: SpawnSpec -> Either Text ActivityInvocation
 spawnInvocation spec =
-  ActivityInvocation
-    { activity = spawnActivityName
-    , input = spawnSpecToData spec
-    , policy = defaultExecutionPolicy
-    , correlation = Just spec.spawnId
-    , idempotency = Just ("process.spawn:" <> spec.child)
-    }
+  prepareInvocation
+    ActivityInvocationFields
+      { activity = spawnActivityName
+      , input = spawnSpecToData spec
+      , policy = defaultExecutionPolicy
+      , correlation = Just spec.spawnId
+      , idempotency = Just ("process.spawn:" <> spec.child)
+      }
 
 -- | @SpawnActivity(registry, provisioner)(invocation)@ (§11.2): claim
 -- durably, then ensure, then answer the SpawnOutcome JSON. Refusals are
--- 'FabricError's; wrap the executor in 'Petrus.Fabric.Send.asPythonFailure'
--- to record them as the reference's dispatchers do.
+-- 'FabricError's, which every dispatcher records under the Python class
+-- the reference raises ("Petrus.Fabric.Error").
 spawnActivity :: SpawnRegistry -> ProcessProvisioner -> ActivityInvocation -> IO Json
 spawnActivity registry provisioner inv = do
   unless (inv.activity == spawnActivityName) $

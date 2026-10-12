@@ -92,7 +92,7 @@ import Hamsterdan.Readiness.NetV5.Topology (buildNetV5, derived, gates, seedMark
 import Petrus.Activity
   ( ActivityDefinition (..)
   , ActivityExecutionContext (..)
-  , ActivityInvocation (..)
+  , ActivityInvocation
   , activityDeclaration
   , callActivity
   )

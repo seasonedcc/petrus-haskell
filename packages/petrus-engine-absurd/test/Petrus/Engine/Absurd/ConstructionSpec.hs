@@ -11,7 +11,7 @@ import Data.Foldable (toList)
 import Data.IORef
 import Data.Maybe (isNothing)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), ExecutionPolicyFields (..), policyFields)
+import Petrus.Activity (ExecutionPolicyFields (..), policyFields)
 import Petrus.Engine qualified as Engine
 import Petrus.Engine.Absurd
 import Petrus.Engine.Absurd.Helpers

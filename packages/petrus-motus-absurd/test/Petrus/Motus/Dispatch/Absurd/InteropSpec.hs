@@ -31,6 +31,7 @@ import Petrus.Postgres (Connection, textParam)
 import Petrus.Postgres qualified as Pg
 import Petrus.TestSupport (PostgresTarget (..), withScratchDatabase)
 import Test.Hspec hiding (after, before, pending)
+import Petrus.TestSupport (valid)
 
 script :: FilePath
 script = "test/interop/absurd_dispatch_interop.py"
@@ -110,7 +111,7 @@ spec = describe "interop with the pinned reference" $ do
       case ours of
         Right found -> member "instance" reference `shouldBe` maybe Null String found
         Left refusal -> member "error" reference `shouldBe` String refusal
-    let good = encodeInvocation (invocation "check_issue" (String "goose"))
+    let good = encodeInvocation (valid (invocation "check_issue" (String "goose")))
         replaced key value = case good of
           Object ms -> Object [(k, if k == key then value else v) | (k, v) <- ms]
           other -> other
@@ -234,7 +235,7 @@ spec = describe "interop with the pinned reference" $ do
         let failure = classified "invalid" "InvalidRequest" (Object [("field", String "name")]) False (Just (IntNumber 9))
             policy = policyWith 4 30
         pyAuthority <- freshName "py-fail-"
-        let inv = (invocation "probe_activity" Null) {policy}
+        let inv = valid (activityInvocation (defaultInvocationFields "probe_activity" Null) {policy})
         void (py ["dispatch", dsnArg target, T.unpack pyAuthority, T.unpack queue, "1", wireOf inv])
         withWorker target queue $ \w -> do
           attempt <- claimWithin w 10
@@ -282,7 +283,7 @@ spec = describe "interop with the pinned reference" $ do
       withAuthority target $ \authority -> do
         queue <- freshQueue
         instanceId <- freshName "retry-"
-        let inv = (invocation "probe_activity" (String "twice")) {policy = policyWith 2 30}
+        let inv = valid (activityInvocation (defaultInvocationFields "probe_activity" (String "twice")) {policy = policyWith 2 30})
         adapter <- absurdDispatch authority instanceId defaultAbsurdDispatchOptions {defaultQueue = queue}
         publish adapter authority 1 inv
         withWorker target queue $ \w -> do
@@ -382,7 +383,7 @@ spec = describe "interop with the pinned reference" $ do
     it "a worker killed mid-lease is recovered by the other language with its latest details" $ \target ->
       withAuthority target $ \authority -> do
         queue <- freshQueue
-        let inv = (invocation "probe_activity" (String "crash")) {policy = policyWith 3 1}
+        let inv = valid (activityInvocation (defaultInvocationFields "probe_activity" (String "crash")) {policy = policyWith 3 1})
         -- A reference worker is SIGKILLed after a heartbeat; a Haskell worker
         -- reclaims once the lease lapses.
         killed <- freshName "kill-py-"

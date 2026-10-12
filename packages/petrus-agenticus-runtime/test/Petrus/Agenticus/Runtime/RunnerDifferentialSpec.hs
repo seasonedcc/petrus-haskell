@@ -17,7 +17,7 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Activity (ActivityError (..), ActivityExecutionContext (..), ActivityFailureFields (..), ActivityInvocation (..), activityFailure)
+import Petrus.Activity (ActivityError (..), ActivityExecutionContext (..), ActivityFailureFields (..), ActivityInvocation, activityFailure)
 import Petrus.Agenticus.Attachment.Episode
 import Petrus.Agenticus.Catalog.Descriptor (capabilityDescriptor)
 import Petrus.Agenticus.Catalog.Resolution (mkResolutionSnapshot)

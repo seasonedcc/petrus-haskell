@@ -10,7 +10,6 @@ import Data.Text qualified as T
 import Harness
 import Hamsterdan.Readiness.NetV5.Review (liveFindings)
 import Hamsterdan.Readiness.NetV5.Topology (seedMarking)
-import Petrus.Activity (ActivityInvocation (..))
 import Petrus.Json (Json (..))
 import Test.Hspec
 import Hamsterdan.Python (pythonFailureText)

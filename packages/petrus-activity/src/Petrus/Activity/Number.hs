@@ -29,20 +29,18 @@ instance NFData Number where
     IntNumber i -> rnf i
     FloatNumber d -> rnf d
 
--- | Python's numeric equality: exact across int and float, NaN unequal to
--- everything.
+-- | Python's numeric equality, exact across int and float (@1 == 1.0@),
+-- and the 'Ord' instance's equivalence, so 'Data.Map' and 'Data.Set' keys
+-- behave. The one difference from Python is NaN, equal to itself here
+-- (Python's @nan != nan@). The policy and failure constructors check that
+-- a number is finite before they compare it.
 instance Eq Number where
-  IntNumber a == IntNumber b = a == b
-  FloatNumber a == FloatNumber b = a == b
-  IntNumber a == FloatNumber b = intFloatEq a b
-  FloatNumber a == IntNumber b = intFloatEq b a
-
-intFloatEq :: Integer -> Double -> Bool
-intFloatEq i d = not (isNaN d || isInfinite d) && toRational d == fromInteger i
+  a == b = compare a b == EQ
 
 -- | Python's numeric order: exact across int and float (never by rounding
 -- the integer). Infinities order beyond every integer; NaN compares as
--- greater than everything so that sorting stays total.
+-- greater than everything and equal to itself, so that sorting stays
+-- total.
 instance Ord Number where
   compare (IntNumber a) (IntNumber b) = compare a b
   compare (FloatNumber a) (FloatNumber b) = compareDouble a b

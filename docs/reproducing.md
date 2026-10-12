@@ -20,6 +20,7 @@ several runners ([Continuous integration](#continuous-integration)).
 | python3 | 3.9 or later | the repository's scripts (`scripts/bench`, `scripts/interop`, ...) |
 | git | with submodule support | the pinned upstream projects are submodules |
 | libzmq, libpq, SQLite | system packages | the ZeroMQ, PostgreSQL and SQLite bindings |
+| libbz2, liblzma (with `pkg-config`) | system packages (macOS ships libbz2) | petrus-execution's bzip2 and xz workspace-archive decoding |
 | PostgreSQL 17 (`initdb`, `pg_ctl`) **or** Docker | 17.x | the PostgreSQL suites and benchmarks |
 | Node.js | 22 (CI pins 22.19.0) | the Gondolin sidecar and Pi helper suites; the petrus-viewer suites and the viewer benchmark (with pnpm) |
 | pnpm | 11.5.1 exactly | the petrus-viewer suites (`--viewer`) and the viewer benchmark. It is the upstream viewer's `packageManager` pin, so `corepack enable` provides exactly it; CI installs `pnpm@11.5.1` |
@@ -31,7 +32,7 @@ A suite whose tool is missing fails and names the tool; it does not skip.
 On macOS with Homebrew:
 
 ```sh
-brew install ghcup uv zeromq libpq sqlite node pnpm graphviz bash postgresql@17
+brew install ghcup uv zeromq libpq sqlite xz pkgconf node pnpm graphviz bash postgresql@17
 ghcup install ghc 9.10.3 && ghcup set ghc 9.10.3
 ghcup install cabal 3.16.1.0 && ghcup set cabal 3.16.1.0
 ```
@@ -39,7 +40,7 @@ ghcup install cabal 3.16.1.0 && ghcup set cabal 3.16.1.0
 On Ubuntu 24.04 (what CI uses):
 
 ```sh
-sudo apt-get install -y build-essential libzmq3-dev libpq-dev libsqlite3-dev graphviz
+sudo apt-get install -y build-essential libzmq3-dev libpq-dev libsqlite3-dev libbz2-dev liblzma-dev pkg-config graphviz
 curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```

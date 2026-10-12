@@ -12,7 +12,6 @@ module Bench.AgentNet (benchmarks, checkWorkload) where
 import Control.Exception (throwIO)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..))
 import Petrus.Agenticus.Program.AgentNet
 import Petrus.Engine qualified as Engine
 import Petrus.Impetus.HistoryStore (inMemoryHistoryStore)

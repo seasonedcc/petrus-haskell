@@ -424,10 +424,9 @@ rebuiltOccurrence :: Int -> NetPath -> [Token] -> [Record] -> Either Text Firing
 rebuiltOccurrence o t delivered records = do
   let consumed = [(r.place, r.tokens) | RTokensConsumed r <- records]
       readSel = [(r.place, r.tokens) | RTokensRead r <- records]
-      request = case [r | RActivityRequested r <- records] of
-        r : _ ->
-          Just (ActivityInvocation r.activity r.input r.policy (Just r.correlation) (Just r.idempotency))
-        [] -> Nothing
+  request <- case [r | RActivityRequested r <- records] of
+    r : _ -> Just <$> activityInvocation (ActivityInvocationFields r.activity r.input r.policy (Just r.correlation) (Just r.idempotency))
+    [] -> Right Nothing
   begun <- case [r | RFiringBegun r <- records] of
     b : _ -> Right b
     [] -> divergence ("firing occurrence " <> occ o <> " has no FiringBegun record")

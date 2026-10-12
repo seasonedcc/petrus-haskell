@@ -50,13 +50,14 @@ roundTrips = 50
 -- | The Python bench's @work(value)@.
 work :: Int -> ActivityInvocation
 work value =
-  ActivityInvocation
-    { activity = "work"
-    , input = Object [("value", Int (toInteger value))]
-    , policy = either (error . T.unpack) id (executionPolicy (policyFields defaultExecutionPolicy) {attempts = 2, heartbeatTimeout = 30})
-    , correlation = Just "correlation"
-    , idempotency = Just "idempotency"
-    }
+  either (error . T.unpack) id . activityInvocation $
+    ActivityInvocationFields
+      { activity = "work"
+      , input = Object [("value", Int (toInteger value))]
+      , policy = either (error . T.unpack) id (executionPolicy (policyFields defaultExecutionPolicy) {attempts = 2, heartbeatTimeout = 30})
+      , correlation = Just "correlation"
+      , idempotency = Just "idempotency"
+      }
 
 -- | Remove the database and its WAL side files.
 discard :: FilePath -> IO ()

@@ -19,6 +19,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity hiding (invocation)
 import Petrus.Activity qualified as A
+import Petrus.TestSupport (valid)
 import Petrus.Json (Json (..), defaultDumps, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityAttempt (..), ActivityOutcome (..), AttemptFailure (..), CancellationDisposition (..), cancellationInstruction)
 import Petrus.Motus.Dispatch qualified as D
@@ -151,13 +152,14 @@ spec = do
               , scheduleToClose = Just 90
               }
         call =
-          ActivityInvocation
-            { activity = "work"
-            , input = obj [("operation", String "stable")]
-            , policy
-            , correlation = Just "correlation"
-            , idempotency = Just "idempotency"
-            }
+          valid . activityInvocation $
+            ActivityInvocationFields
+              { activity = "work"
+              , input = obj [("operation", String "stable")]
+              , policy
+              , correlation = Just "correlation"
+              , idempotency = Just "idempotency"
+              }
         failure = failureOf (ActivityFailureFields "invalid" "InvalidRequest" (obj [("field", String "name")]) False (Just 7))
     dispatch <- localDispatch path "v2" []
     Local.dispatch dispatch 1 call
@@ -329,7 +331,7 @@ spec = do
     let path = tmp </> "dispatch.sqlite3"
     dispatch <- localDispatch path "async-zmq" [("work", "io")]
     forM_ [0 .. 2 :: Integer] $ \number ->
-      Local.dispatch dispatch (fromInteger number + 1) (A.invocation "work" (obj [("number", Int number)]))
+      Local.dispatch dispatch (fromInteger number + 1) (valid (A.invocation "work" (obj [("number", Int number)])))
     withRunning (localServer (ipcEndpoint tmp "dispatch.sock") path ["io"] Nothing Nothing) $ \running -> do
       entered <- newIORef (0 :: Int)
       peak <- newIORef (0 :: Int)
@@ -647,7 +649,7 @@ spec = do
                   attempt.epoch
                   attempt.claimant
                   attempt.queue
-                  attempt.invocation {policy = policyOf longer}
+                  (valid (activityInvocation (invocationFields attempt.invocation) {policy = policyOf longer}))
                   attempt.latestDetails
                   attempt.instance'
               )

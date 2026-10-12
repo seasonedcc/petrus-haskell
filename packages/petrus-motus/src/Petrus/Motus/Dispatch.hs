@@ -67,6 +67,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity
 import Petrus.Json (Json)
+import Petrus.Json.Python.Exception (IsPythonException (..), pythonExceptionFromException, pythonExceptionToException, raised)
 
 -- ---------------------------------------------------------------------------
 -- The port
@@ -189,7 +190,12 @@ newtype DispatchError = DispatchError Text
   deriving stock (Eq, Show)
 
 instance Exception DispatchError where
+  toException = pythonExceptionToException
+  fromException = pythonExceptionFromException
   displayException (DispatchError message) = T.unpack message
+
+instance IsPythonException DispatchError where
+  toPythonException (DispatchError message) = raised "ValueError" message
 
 -- | Throw a 'DispatchError'.
 dispatchError :: Text -> IO a

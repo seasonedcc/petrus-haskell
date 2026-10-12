@@ -18,7 +18,7 @@ import Hamsterdan.Readiness.NetV5.Gating (wireGates)
 import Hamsterdan.Readiness.NetV5.Topology (buildNetV5, derived, gates)
 import Petrus.Activity
   ( ActivityFailureFields (..)
-  , ActivityInvocation (..)
+  , ActivityInvocation
   , ExecutionPolicyFields (..)
   , activityFailure
   , numberFromJson

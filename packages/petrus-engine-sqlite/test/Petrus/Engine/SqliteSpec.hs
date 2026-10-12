@@ -10,7 +10,6 @@ import Data.ByteString.Char8 qualified as BC
 import Data.IORef
 import Data.List (isInfixOf)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..))
 import Petrus.Engine qualified as Engine
 import Petrus.Engine.Scenario
 import Petrus.Engine.Sqlite

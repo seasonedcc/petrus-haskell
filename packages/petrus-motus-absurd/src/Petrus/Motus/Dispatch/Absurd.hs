@@ -116,9 +116,7 @@ module Petrus.Motus.Dispatch.Absurd
 import Control.Exception (catch, onException, throwIO, try)
 import Control.Monad (forM, forM_, unless, void, when)
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isDigit)
-import Data.Fixed (Pico)
 import Data.IORef
 import Data.Int (Int64)
 import Data.List (nub, sortOn)
@@ -130,8 +128,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Data.Time.Format (defaultTimeLocale, formatTime)
 import Petrus.Activity hiding (ActivityExecutionContext (..))
 import Petrus.Json
 import Petrus.Motus.Dispatch
@@ -149,7 +147,8 @@ import Petrus.Motus.Dispatch
 import Petrus.Motus.Dispatch qualified as Port
 import Petrus.Motus.Dispatch.Absurd.Schema
 import Petrus.Json.Python (pythonRepr, pythonStrRepr, uuid4)
-import Petrus.Motus.PythonException (Namer (..), PythonException (..), pythonExceptionWith)
+import Petrus.Motus.PythonException (pythonException, pythonExceptionStr)
+import Petrus.Motus.PythonException qualified as Python (PythonException (..))
 import Petrus.Postgres
   ( Connection
   , ErrorClass (..)
@@ -169,7 +168,7 @@ import Petrus.Postgres
   , sql
   , textArrayParam
   , textParam
-  , typedParam
+  , timestamptzParam
   , waitForNotification
   )
 import Petrus.Postgres qualified as Pg
@@ -428,11 +427,12 @@ guardedClaim g queue timeout = do
         task <- case columns of
           Just run' : Just task' : Just attempt' : Just name : Just params' : _ -> do
             parsedParams <- refuse (jsonColumn params')
+            attemptNumber <- intColumn attempt'
             pure
               ClaimedTask
                 { runId = utf8 run'
                 , taskId = utf8 task'
-                , attempt = intColumn attempt'
+                , attempt = fromIntegral attemptNumber
                 , taskName = utf8 name
                 , params = parsedParams
                 , petrusInstance = Nothing
@@ -500,8 +500,8 @@ guardedTerminal g queue taskId' runId' report = do
     ReportFailure (FailureClassified classified) -> pure (Just classified)
     ReportFailure (FailureMessage message) -> Just <$> refuse (retryableFailure message "RuntimeError")
     ReportFailure (FailureException err) ->
-      let python = pythonExceptionWith [Namer (\(AbsurdError m) -> PythonException "RuntimeError" m)] err
-       in Just <$> refuse (retryableFailure python.message python.className)
+      let python = pythonException err
+       in Just <$> refuse (retryableFailure (pythonExceptionStr python) python.name)
   let reason = failureReason <$> failure
       s = g.session
       tq = "absurd.t_" <> queue
@@ -522,7 +522,7 @@ guardedTerminal g queue taskId' runId' report = do
                 (sql ("SELECT attempt, (extract(epoch FROM absurd.current_time()) * 1000000)::int8 FROM " <> rq <> " WHERE run_id=%s"))
                 [textParam runId']
             (attempt', nowMicros) <- case runRow of
-              Just [Just a, Just micros] -> pure (intColumn a, int64Column micros)
+              Just [Just a, Just micros] -> (,) <$> (fromIntegral <$> intColumn a) <*> intColumn micros
               _ -> throwIO (AbsurdError "stale Activity Attempt: run disappeared while guarded")
             paramsRow <-
               first
@@ -538,7 +538,7 @@ guardedTerminal g queue taskId' runId' report = do
                 floor' = fromMaybe (IntNumber 0) f.failureRetryAfter
                 delay = if floor' > backoff then floor' else backoff
                 retryAt
-                  | f.failureRetryable = typedParam 1184 (TE.encodeUtf8 (timestampText (nowMicros + delayMicros delay)))
+                  | f.failureRetryable = timestamptzParam (microsTime (nowMicros + delayMicros delay))
                   | otherwise = nullParam
             unless f.failureRetryable $
               run_
@@ -1301,7 +1301,8 @@ collect d = do
           _ -> do
             reason <- refuse (optionalJsonColumn failure)
             Failed <$> refuse (decodeFailure reason)
-        pure (int64Column <$> terminalAt, occurrence, outcome)
+        at' <- traverse intColumn terminalAt
+        pure (at', occurrence, outcome)
       other -> throwIO (AbsurdError ("unexpected Absurd collect row " <> showT other))
   let ordered = sortOn (\(at', occurrence, _) -> (at', occurrence)) arrived
   modifyIORef' d.collected (Set.union (Set.fromList [occurrence | (_, occurrence, _) <- ordered]))
@@ -1390,16 +1391,21 @@ optionalJson = \case
   value : _ -> optionalJsonColumn value
   [] -> Right Null
 
-intColumn :: ByteString -> Int
-intColumn raw = maybe 0 fst (readInt raw)
-
-int64Column :: ByteString -> Int64
-int64Column raw = maybe 0 (fromIntegral . fst) (readInt raw)
-
-readInt :: ByteString -> Maybe (Int, ByteString)
-readInt raw = case reads (T.unpack (utf8 raw)) of
-  [(n, "")] -> Just (n, BS.empty)
-  _ -> Nothing
+-- | An integer column, decoded as psycopg loads it. A value that is not
+-- an integer raises a 'DataError' instead of being read as 0.
+intColumn :: ByteString -> IO Int64
+intColumn raw = either (throwIO . undecodable) pure (Pg.decodeInt raw)
+  where
+    undecodable problem =
+      PostgresError
+        { errorClass = DataError
+        , errorSqlState = Nothing
+        , errorMessage = T.pack problem
+        , errorSeverity = Nothing
+        , errorPrimary = Nothing
+        , errorDetail = Nothing
+        , errorHint = Nothing
+        }
 
 -- | @timedelta(seconds=delay)@ in microseconds: an int exactly; a float as
 -- its whole seconds plus the fraction's microseconds rounded half to even.
@@ -1411,11 +1417,9 @@ delayMicros = \case
         fraction = seconds - fromInteger whole
      in fromInteger (whole * 1000000 + round (fraction * 1e6))
 
--- | A UTC timestamptz literal for microseconds since the epoch.
-timestampText :: Int64 -> Text
-timestampText micros =
-  let seconds = fromRational (toRational micros / 1000000) :: Pico
-   in T.pack (formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S%Q+00:00" (posixSecondsToUTCTime (realToFrac seconds)))
+-- | Microseconds since the epoch as a UTC time.
+microsTime :: Int64 -> UTCTime
+microsTime micros = posixSecondsToUTCTime (fromRational (toRational micros / 1000000))
 
 showT :: (Show a) => a -> Text
 showT = T.pack . show

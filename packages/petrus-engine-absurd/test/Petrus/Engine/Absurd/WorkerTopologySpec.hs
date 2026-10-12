@@ -21,7 +21,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
-import Petrus.Activity (ActivityInvocation (..), defaultExecutionPolicy)
+import Petrus.Activity (ActivityInvocation, ActivityInvocationFields (..), activityInvocation, defaultExecutionPolicy)
+import Petrus.TestSupport (valid)
 import Petrus.Engine.Absurd.Helpers
 import Petrus.Engine.Absurd.Support
 import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
@@ -79,13 +80,14 @@ spawnRaw fixture queue inv options =
 
 invocationOf :: Text -> Text -> Text -> ActivityInvocation
 invocationOf activity identifier idempotency =
-  ActivityInvocation
-    { activity
-    , input = Object [("id", String identifier)]
-    , policy = defaultExecutionPolicy
-    , correlation = Nothing
-    , idempotency = Just idempotency
-    }
+  valid . activityInvocation $
+    ActivityInvocationFields
+      { activity
+      , input = Object [("id", String identifier)]
+      , policy = defaultExecutionPolicy
+      , correlation = Nothing
+      , idempotency = Just idempotency
+      }
 
 -- | The fake provider of @test_main_defaults_queue...@ observes the
 -- subscription and stops the entry point (the reference fakes the Worker

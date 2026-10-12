@@ -121,7 +121,8 @@ import Data.Text qualified as T
 import Petrus.Activity
   ( ActivityFailure
   , ActivityFailureFields (..)
-  , ActivityInvocation (..)
+  , ActivityInvocation
+  , ActivityInvocationFields (..)
   , activityInvocation
   , failureFields
   , numberJson
@@ -1056,8 +1057,7 @@ preparedInvocation inst b = case boundHandler inst b.transition of
   PureHandler _ -> pure Nothing
   ActivityBound h -> do
     let prefix = "cannot begin firing " <> netPathText b.transition
-    raw <- observedCall inst (Preparing b) (forcePrepared (h.prepare b))
-    inv <- orRefuse (activityInvocation raw)
+    inv <- observedCall inst (Preparing b) (forcePrepared (h.prepare b))
     forM_ [("correlation" :: Text, inv.correlation), ("idempotency", inv.idempotency)] $ \(name, value) ->
       forM_ value $ \v -> when ("occurrence-" `T.isPrefixOf` v) $
         refuse
@@ -1065,7 +1065,7 @@ preparedInvocation inst b = case boundHandler inst b.transition of
               <> " uses the writer-reserved 'occurrence-' prefix — the derived self-identity namespace; supply an identity outside it, or None for the writer to derive"
           )
     input <- orRefuse (canonicalPayload inv.input (prefix <> ": invalid activity input"))
-    pure (Just (ActivityInvocation inv.activity input inv.policy inv.correlation inv.idempotency))
+    Just <$> orRefuse (activityInvocation (ActivityInvocationFields inv.activity input inv.policy inv.correlation inv.idempotency))
 
 -- | Resolve a value binding to exact live queue occurrences.
 bindingEntries :: Queues -> Binding -> Either Text ([[(Maybe Int, Maybe LifecycleScope)]], [LifecycleScope])
@@ -1126,18 +1126,21 @@ beginOccurrence inst b at initiation prepared supplied = do
       ConsumedTokens p ts -> RTokensConsumed (TokensConsumed p ts o recorded scope instant)
       ReadTokens p ts -> RTokensRead (TokensRead p ts o recorded scope instant)
   let selfIdentity = "occurrence-" <> pythonIntRepr o
-      invocation' =
-        fmap
-          ( \inv ->
-              ActivityInvocation
-                inv.activity
-                inv.input
-                inv.policy
-                (Just (fromMaybe selfIdentity inv.correlation))
-                (Just (fromMaybe selfIdentity inv.idempotency))
-          )
-          prepared
-      requested =
+  invocation' <-
+    orRefuse $
+      traverse
+        ( \inv ->
+            activityInvocation
+              ( ActivityInvocationFields
+                  inv.activity
+                  inv.input
+                  inv.policy
+                  (Just (fromMaybe selfIdentity inv.correlation))
+                  (Just (fromMaybe selfIdentity inv.idempotency))
+              )
+        )
+        prepared
+  let requested =
         [ RActivityRequested
             ( ActivityRequested
                 t

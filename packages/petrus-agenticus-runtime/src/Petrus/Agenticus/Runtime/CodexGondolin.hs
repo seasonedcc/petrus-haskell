@@ -55,7 +55,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Network.Socket qualified as Socket
 import Network.Socket.ByteString qualified as SocketBytes
-import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..), ExecutionPolicyFields (..), policyFields)
+import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation, ExecutionPolicyFields (..), policyFields)
 import Petrus.Agenticus.Attachment.Binding (AttachmentCoordinates (..))
 import Petrus.Agenticus.Attachment.Episode (EpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode

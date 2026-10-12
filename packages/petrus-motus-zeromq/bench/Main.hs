@@ -61,13 +61,14 @@ serverMode = "PETRUS_ZEROMQ_BENCH_SERVER"
 -- | The Python bench's @work(value)@.
 work :: Int -> ActivityInvocation
 work value =
-  ActivityInvocation
-    { activity = "work"
-    , input = Object [("value", Int (toInteger value))]
-    , policy = either (error . T.unpack) id (executionPolicy (policyFields defaultExecutionPolicy) {attempts = 2, heartbeatTimeout = 30})
-    , correlation = Just "correlation"
-    , idempotency = Just "idempotency"
-    }
+  either (error . T.unpack) id . activityInvocation $
+    ActivityInvocationFields
+      { activity = "work"
+      , input = Object [("value", Int (toInteger value))]
+      , policy = either (error . T.unpack) id (executionPolicy (policyFields defaultExecutionPolicy) {attempts = 2, heartbeatTimeout = 30})
+      , correlation = Just "correlation"
+      , idempotency = Just "idempotency"
+      }
 
 -- | Print the median wall time of the runs after one warm-up, and append
 -- it to the CSV sink (@scripts/bench@'s @--csv@ file) when there is one.

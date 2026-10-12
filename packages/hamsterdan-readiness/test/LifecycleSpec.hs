@@ -8,7 +8,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Harness
 import Hamsterdan.Readiness.NetV5.Topology (buildNetV5)
-import Petrus.Activity (ActivityInvocation (..))
 import Petrus.Impetus.Dsl (BuiltNet (..))
 import Petrus.Impetus.Petrinet.Schema (Arc (..), arcModeText, netArcs, netPathText, netPlaceOrder, netTransitionOrder)
 import Petrus.Json (Json (..))

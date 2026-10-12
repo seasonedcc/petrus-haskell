@@ -5,7 +5,6 @@ module EscalationSpec (spec) where
 import Control.Monad (forM_)
 import Data.Text (Text)
 import Harness
-import Petrus.Activity (ActivityInvocation (..))
 import Petrus.Json (Json (..))
 import Test.Hspec
 

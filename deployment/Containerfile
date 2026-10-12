@@ -29,8 +29,8 @@ ARG GHC_VERSION=9.10.3
 ARG CABAL_VERSION=3.16.1.0
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
-       build-essential ca-certificates curl git libffi-dev libgmp-dev libncurses-dev libpq-dev \
-       libsqlite3-dev libzmq3-dev pkg-config xz-utils zlib1g-dev \
+       build-essential ca-certificates curl git libbz2-dev libffi-dev libgmp-dev liblzma-dev libncurses-dev \
+       libpq-dev libsqlite3-dev libzmq3-dev pkg-config xz-utils zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 ENV GHCUP_INSTALL_BASE_PREFIX=/opt/toolchain \
     PATH="/opt/toolchain/.ghcup/bin:${PATH}"
@@ -84,7 +84,7 @@ LABEL org.opencontainers.image.created="${SOURCE_CREATED}" \
       org.opencontainers.image.title="Hamsterdan" \
       org.opencontainers.image.version="${SOURCE_VERSION}"
 RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends ca-certificates git libffi8 libgmp10 zlib1g \
+    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends ca-certificates git libbz2-1.0 libffi8 libgmp10 liblzma5 zlib1g \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 hamsterdan \
     && useradd --uid 10001 --gid hamsterdan --home-dir /nonexistent --shell /usr/sbin/nologin hamsterdan \

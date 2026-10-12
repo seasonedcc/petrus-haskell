@@ -38,7 +38,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Clock (getMonotonicTime)
-import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..), invocation)
+import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocationFields (..), activityInvocation, defaultInvocationFields)
 import Petrus.Agenticus.Attachment.Binding (bindingExecution, motusBinding, openMotusBinding)
 import Petrus.Agenticus.Attachment.Episode (episodeOptions, newEpisodeAttachment)
 import Petrus.Agenticus.Attachment.Episode qualified as Episode
@@ -392,7 +392,7 @@ piModelPhaseTurn node root = do
   next <- counter
   pure $ do
     n <- next
-    raw <- modelPhaseAdapterActivity adapter (invocation modelPhaseActivity (loopStateToData state)) {idempotency = Just ("operation-" <> n)} context
+    raw <- modelPhaseAdapterActivity adapter (either (error . T.unpack) id (activityInvocation (defaultInvocationFields modelPhaseActivity (loopStateToData state)) {idempotency = Just ("operation-" <> n)})) context
     settlement <- either throwIO pure (modelSettlementFromData raw)
     if settlement.stop == Stop then pure () else fail "model phase did not stop"
 

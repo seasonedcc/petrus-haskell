@@ -32,7 +32,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.IORef
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), defaultExecutionPolicy)
+import Petrus.Activity (ActivityInvocation, ActivityInvocationFields (..), activityInvocation, defaultExecutionPolicy)
 import Petrus.Json (Json (..))
 import Petrus.Motus.Dispatch (ActivityAttempt (..))
 import Petrus.Motus.Dispatch.Absurd
@@ -50,7 +50,7 @@ import Petrus.Motus.Dispatch.Absurd
 import Petrus.Motus.Dispatch.Absurd qualified as Absurd
 import Petrus.Postgres (Connection)
 import Petrus.Postgres qualified as Pg
-import Petrus.TestSupport (PostgresTarget (..), withScratchDatabase)
+import Petrus.TestSupport (PostgresTarget (..), valid, withScratchDatabase)
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
@@ -62,13 +62,14 @@ rotation = 256
 
 invocationFor :: Int -> ActivityInvocation
 invocationFor n =
-  ActivityInvocation
-    { activity = "bench_work"
-    , input = Object [("n", Int (toInteger n)), ("label", String "a benchmark payload")]
-    , policy = defaultExecutionPolicy
-    , correlation = Nothing
-    , idempotency = Just ("effect-" <> T.pack (show n))
-    }
+  valid . activityInvocation $
+    ActivityInvocationFields
+      { activity = "bench_work"
+      , input = Object [("n", Int (toInteger n)), ("label", String "a benchmark payload")]
+      , policy = defaultExecutionPolicy
+      , correlation = Nothing
+      , idempotency = Just ("effect-" <> T.pack (show n))
+      }
 
 main :: IO ()
 main =

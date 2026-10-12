@@ -14,7 +14,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Activity (ActivityInvocation (..), defaultExecutionPolicy)
+import Petrus.Activity (ActivityInvocation, ActivityInvocationFields (..), activityInvocation, defaultExecutionPolicy)
 import Petrus.Fabric
 import Petrus.Fabric.Conformance.Setup (neutralLibrary, publicEngineDoorsOnly, refusal)
 import Petrus.Fabric.Postgres (ensureFabricSchema, exposeSource, grant, issueCredential, postgresFabric, registerProcess, submit)
@@ -24,7 +24,7 @@ import Petrus.Processes
 import Petrus.Processes.DemoSpec (lifecycleLines)
 import Petrus.Processes.Postgres
 import Petrus.Processes.TypedSpec (liveProvisioner)
-import Petrus.TestSupport (PostgresTarget (..), postgresSpec)
+import Petrus.TestSupport (PostgresTarget (..), postgresSpec, valid)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (..))
 import System.Process (proc, readCreateProcessWithExitCode)
@@ -119,7 +119,7 @@ retryInvocation item = do
   pure (plainInvocation spawnActivityName (spawnSpecToData item) (Just idempotency))
 
 plainInvocation :: Text -> Json -> Maybe Text -> ActivityInvocation
-plainInvocation name input = ActivityInvocation name input defaultExecutionPolicy Nothing
+plainInvocation name input idempotency = valid (activityInvocation (ActivityInvocationFields name input defaultExecutionPolicy Nothing idempotency))
 
 -- | A registry whose lineage queries the tests never reach.
 registryWith :: (SpawnSpec -> IO SpawnClaim) -> SpawnRegistry

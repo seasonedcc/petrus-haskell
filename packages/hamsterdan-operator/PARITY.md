@@ -189,7 +189,9 @@ checks the image's definition against the reference's:
       them (DIVERGENCES.md, "The Pi helpers");
     - the `RUN` runs the same commands, and its package list is a superset
       that adds exactly `libffi8`, `libgmp10` and `zlib1g`, the shared
-      libraries GHC's binaries link.
+      libraries GHC's binaries link, and `libbz2-1.0` and `liblzma5`, which
+      read bzip2 and xz workspace archives as the reference's `tarfile`
+      does.
   - This keeps the labels, the user and group 10001, `/var/lib/hamsterdan`
     at `0700`, the environment, `USER`, `EXPOSE 8000`, `ENTRYPOINT` and
     `CMD`.

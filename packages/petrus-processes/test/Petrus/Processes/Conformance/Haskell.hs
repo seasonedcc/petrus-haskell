@@ -17,7 +17,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Activity (ActivityInvocation (..))
+import Petrus.Activity (ActivityInvocation)
 import Petrus.Fabric
 import Petrus.Fabric.Conformance.Haskell (envelopeOut, invocationIn, routeIn)
 import Petrus.Fabric.Conformance.Impl

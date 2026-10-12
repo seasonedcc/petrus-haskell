@@ -3,9 +3,12 @@
 --
 -- The reference raises Python built-in exceptions and the spec makes only
 -- their /category/ normative. Each constructor here names the category and
--- remembers which Python class the reference raises at that site, so an
--- Activity executor can classify a failure exactly as the reference's
--- dispatchers do ('pythonExceptionName'). Messages reproduce the
+-- remembers which Python class the reference raises at that site
+-- ('pythonExceptionName'). 'FabricError' stands for that Python exception
+-- ('IsPythonException'), so a refusal raised inside an Activity is recorded
+-- by every dispatcher, span and firing failure exactly as the reference
+-- records its own (@PermissionError('...')@ under a custody worker,
+-- @PermissionError@ with the bare message inline). Messages reproduce the
 -- reference's text; they are informative (fabric.md §14).
 module Petrus.Fabric.Error
   ( FabricError (..)
@@ -20,6 +23,7 @@ module Petrus.Fabric.Error
 import Control.Exception (Exception (..), throwIO)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Petrus.Json.Python.Exception (IsPythonException (..), pythonExceptionFromException, pythonExceptionToException, raised)
 
 -- | A refusal. Storage failures are not represented: the driver's
 -- 'Petrus.Postgres.PostgresError' propagates unchanged, as psycopg's errors
@@ -40,7 +44,12 @@ data FabricError
   deriving stock (Eq, Show)
 
 instance Exception FabricError where
+  toException = pythonExceptionToException
+  fromException = pythonExceptionFromException
   displayException = T.unpack . errorMessage
+
+instance IsPythonException FabricError where
+  toPythonException err = raised (pythonExceptionName err) (errorMessage err)
 
 -- | fabric.md §12's categories.
 data Category = Invalid | ConflictCategory | DeniedCategory | NotFoundCategory | SchemaRefusedCategory | Storage

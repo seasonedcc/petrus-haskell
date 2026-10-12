@@ -23,6 +23,7 @@ import Petrus.Motus.Dispatch.LocalSupport
 import Petrus.Telemetry (capture, recorded)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
+import Petrus.TestSupport (valid)
 import Test.Hspec
 import Data.Text.Encoding qualified as TE
 
@@ -289,7 +290,7 @@ spec = do
     originalDeadline <- rawScalar d.path "SELECT deadline FROM impetus_local_dispatch_tasks"
     let tamperedPolicy =
           either (error . T.unpack) id (executionPolicy (policyFields defaultExecutionPolicy) {attempts = 2, heartbeatTimeout = 3600})
-    forM_ [withQueue "other" attempt, withInvocation attempt.invocation {policy = tamperedPolicy} attempt] $ \tampered ->
+    forM_ [withQueue "other" attempt, withInvocation (valid (activityInvocation (invocationFields attempt.invocation) {policy = tamperedPolicy})) attempt] $ \tampered ->
       Local.heartbeat custody tampered Nothing `shouldThrow` refusal "stale Activity attempt [\"one\",1]"
     rawScalar d.path "SELECT deadline FROM impetus_local_dispatch_tasks" `shouldReturn` originalDeadline
 

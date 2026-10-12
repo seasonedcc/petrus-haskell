@@ -38,6 +38,7 @@ import Petrus.Postgres (Connection, PostgresError, intParam, query, textParam)
 import Petrus.Postgres qualified as Pg
 import Petrus.TestSupport (PostgresTarget (..), upstreamPath, withScratchDatabase)
 import Test.Hspec hiding (after, before, pending)
+import Petrus.TestSupport (valid)
 
 spec :: Spec
 spec = do
@@ -141,21 +142,22 @@ invocationWireSpec = do
   it "the invocation crosses the queue whole and round-trips value-equal" $ do
     let policy = either (error . T.unpack) id (executionPolicy (policyFields defaultExecutionPolicy) {attempts = 4})
         original =
-          ActivityInvocation
-            { activity = "implement_issue"
-            , input = Object [("id", String "goose"), ("n", Int 3)]
-            , policy
-            , correlation = Just "corr-1"
-            , idempotency = Just "effect-goose"
-            }
+          valid . activityInvocation $
+            ActivityInvocationFields
+              { activity = "implement_issue"
+              , input = Object [("id", String "goose"), ("n", Int 3)]
+              , policy
+              , correlation = Just "corr-1"
+              , idempotency = Just "effect-goose"
+              }
     decodeInvocation (encodeInvocation original) `shouldBe` Right original
   it "the derived None identities survive the wire" $ do
-    let original = invocation "check_issue" (String "goose")
+    let original = valid (invocation "check_issue" (String "goose"))
     decodeInvocation (encodeInvocation original) `shouldBe` Right original
   it "a foreign payload is refused loud" $
     decodeInvocation (Object [("task", String "nope")]) `shouldSatisfy` refusedAsInvocation
   it "the decode is strict field by field" $ do
-    let wire = case encodeInvocation (invocation "check_issue" (String "goose")) of
+    let wire = case encodeInvocation (valid (invocation "check_issue" (String "goose"))) of
           Object members -> members
           _ -> []
         with' key value = Object [(k, if k == key then value else v) | (k, v) <- wire]
@@ -324,7 +326,7 @@ dispatchSpec = do
       adapter <- adapterOver authority queue
       original <- invocationFor 1 (Object [("version", Int 1)])
       publish adapter authority 7 original
-      dispatch adapter 7 (invocation "different_activity" (Object [("version", Int 2)]))
+      dispatch adapter 7 (valid (invocation "different_activity" (Object [("version", Int 2)])))
         `shouldThrow` valueMatching ["publication conflict"]
 
   it "a redispatch normalizes a legacy two-field policy before comparison" $ \target ->
@@ -349,7 +351,7 @@ dispatchSpec = do
               | field == "start_to_close" = base {startToClose = Just (IntNumber 10)}
               | otherwise = base {scheduleToClose = Just (IntNumber 10)}
             policy = either (error . T.unpack) id (executionPolicy fields)
-        dispatch adapter 1 (invocation "probe_activity" Null) {policy}
+        dispatch adapter 1 (valid (activityInvocation (defaultInvocationFields "probe_activity" Null) {policy}))
           `shouldThrow` valueMatching ["does not support start_to_close or schedule_to_close"]
 
   it "the doorbell and the spawn ride the open transaction" $ \target ->
@@ -955,7 +957,7 @@ spawnFor :: Connection -> Text -> Integer -> IO ()
 spawnFor authority queue heartbeatTimeout = do
   adapter <- adapterOver authority queue
   let policy = either (error . T.unpack) id (executionPolicy (policyFields defaultExecutionPolicy) {attempts = 2, heartbeatTimeout = heartbeatTimeout})
-  publish adapter authority 1 (invocation "probe_activity" (Object [])) {policy}
+  publish adapter authority 1 (valid (activityInvocation (defaultInvocationFields "probe_activity" (Object [])) {policy}))
 
 guarded :: Connection -> Text -> IO GuardedDispatch
 guarded connection name = guardedDispatch (sessionOf connection) (Just name)
@@ -1007,7 +1009,7 @@ guardedSpec = do
       queue <- freshQueue
       adapter <- adapterOver authority queue
       let policy = either (error . T.unpack) id (executionPolicy (policyFields defaultExecutionPolicy) {attempts = 4})
-      publish adapter authority 1 (invocation "probe_activity" Null) {policy}
+      publish adapter authority 1 (valid (activityInvocation (defaultInvocationFields "probe_activity" Null) {policy}))
       g <- guarded authority "worker"
       (task, _) <- claimNow g queue 30
       let failure = failure' "invalid" "InvalidRequest" (Object [("field", String "name")]) False (Just (IntNumber 9))
@@ -1069,7 +1071,7 @@ guardedSpec = do
       let policy =
             either (error . T.unpack) id $
               executionPolicy (policyFields defaultExecutionPolicy) {attempts = 2, initialInterval = IntNumber 1, maxInterval = IntNumber 60}
-      publish adapter authority 1 (invocation "probe_activity" Null) {policy}
+      publish adapter authority 1 (valid (activityInvocation (defaultInvocationFields "probe_activity" Null) {policy}))
       g <- guarded authority "worker"
       (task, _) <- claimNow g queue 30
       Just before <- scalar observer "SELECT extract(epoch FROM absurd.current_time())" []

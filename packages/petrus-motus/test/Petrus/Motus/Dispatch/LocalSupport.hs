@@ -54,6 +54,7 @@ import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), Loca
 import Petrus.Motus.Dispatch.Local qualified as Local
 import Data.ByteString qualified as BS
 import Petrus.Json (parseJson, surrogateRefusingLoads)
+import Petrus.TestSupport (valid)
 import Petrus.TestSupport.Python (pythonExecutable)
 import Petrus.TestSupport.Repo (upstreamPetrus)
 import System.Directory (createDirectory, getTemporaryDirectory, makeAbsolute, removeDirectoryRecursive, removeFile)
@@ -68,17 +69,18 @@ import Test.Hspec
 -- value=1, **policy)@, the policy tweaks applied to the resolved fields.
 callWith :: Text -> Integer -> Integer -> Json -> (ExecutionPolicyFields -> ExecutionPolicyFields) -> ActivityInvocation
 callWith activity attempts' timeout value tweak =
-  ActivityInvocation
-    { activity = activity
-    , input = Object [("value", value)]
-    , policy =
-        either
-          (error . T.unpack)
-          id
-          (executionPolicy (tweak (policyFields defaultExecutionPolicy) {attempts = attempts', heartbeatTimeout = timeout}))
-    , correlation = Just "correlation"
-    , idempotency = Just "idempotency"
-    }
+  valid . activityInvocation $
+    ActivityInvocationFields
+      { activity = activity
+      , input = Object [("value", value)]
+      , policy =
+          either
+            (error . T.unpack)
+            id
+            (executionPolicy (tweak (policyFields defaultExecutionPolicy) {attempts = attempts', heartbeatTimeout = timeout}))
+      , correlation = Just "correlation"
+      , idempotency = Just "idempotency"
+      }
 
 -- | @invocation()@.
 call :: ActivityInvocation

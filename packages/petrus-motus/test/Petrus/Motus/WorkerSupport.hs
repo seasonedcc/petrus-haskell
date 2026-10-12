@@ -42,6 +42,7 @@ import System.IO (Handle, hGetLine, hSetBinaryMode)
 import System.Process
 import System.Timeout (timeout)
 import Test.Hspec hiding (context)
+import Petrus.TestSupport (valid)
 
 -- | The reference's @StrictWorkerDispatch@: scripted attempts and recorded
 -- custody calls.
@@ -74,7 +75,7 @@ strictDispatch p =
 providerAttempt :: Text -> Json -> Maybe Text -> ActivityAttempt
 providerAttempt activity details inst =
   either (error . T.unpack) id $
-    activityAttempt "provider-attempt" "provider-epoch" "provider-claimant" "cpu" (invocation activity Null) details inst
+    activityAttempt "provider-attempt" "provider-epoch" "provider-claimant" "cpu" (valid (invocation activity Null)) details inst
 
 -- | The async tests' @_attempt(number)@.
 asyncAttempt :: Int -> ActivityAttempt
@@ -85,7 +86,7 @@ asyncAttempt number =
       ("epoch-" <> tshow number)
       "claimant"
       "io"
-      (invocation "io" (Object [("item", Object [("value", Int (toInteger number))])]))
+      (valid (invocation "io" (Object [("item", Object [("value", Int (toInteger number))])])))
       Null
       (Just ("instance-" <> tshow number))
 

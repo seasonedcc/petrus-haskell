@@ -16,7 +16,8 @@
 -- what the reference records for a Python exception of that class raised
 -- with no argument or with that one string. A handler that
 -- needs any other Python spelling throws a 'PythonException', whose text is
--- the reference's for every argument shape. 'PythonException' and
+-- the reference's for every argument shape, or an exception of its own type
+-- with an 'IsPythonException' instance. 'PythonException' and
 -- 'pythonFailureText' are petrus-json's ("Petrus.Json.Python.Exception"),
 -- the representation every port shares.
 module Petrus.Impetus.Instance.FailureText
@@ -26,16 +27,15 @@ module Petrus.Impetus.Instance.FailureText
   , exceptionFailureText
   ) where
 
-import Control.Exception (ArithException (..), AsyncException (..), Exception (..), SomeAsyncException (..), SomeException (..))
+import Control.Exception (SomeException)
 import Data.Text (Text)
-import Data.Text qualified as T
-import GHC.IO.Exception (IOException (..))
 import Petrus.Json.Python.Exception (PythonArg (..), PythonException (..), pythonFailureText)
-import Petrus.Telemetry.ErrorType (pythonErrorType)
-import System.Exit (ExitCode (..))
+import Petrus.Telemetry.ErrorType (pythonExceptionOf)
 
--- | The recorded text of any exception user code threw: the reference's
--- spelling for a 'PythonException'; for a Haskell exception with a Python
+-- | The recorded text of any exception user code threw
+-- ('pythonExceptionOf'): the reference's spelling for an exception that
+-- stands for a Python exception (a 'PythonException', a package's own
+-- refusal); for a Haskell exception with a Python
 -- counterpart ("Petrus.Telemetry.ErrorType") the Python class with the
 -- arguments the reference's exception carries (an @errno@-carrying
 -- 'IOException' is @FileNotFoundError(2, 'No such file or directory')@,
@@ -43,21 +43,4 @@ import System.Exit (ExitCode (..))
 -- its 'Typeable' name with its message as the one string argument (none when
 -- the message is empty).
 exceptionFailureText :: SomeException -> Text
-exceptionFailureText some = case fromException some of
-  Just python -> pythonFailureText python
-  Nothing -> pythonFailureText PythonException {name = pythonErrorType some, args = pythonArgs}
-  where
-    message = case some of SomeException e -> fst (T.breakOn "\nCallStack (from" (T.pack (displayException e)))
-    stringArg text = [PyStr text | not (T.null text)]
-    pythonArgs
-      | Just (io :: IOException) <- fromException some = case ioe_errno io of
-          Just errno -> [PyInt (toInteger errno), PyStr (T.pack (ioe_description io))]
-          Nothing -> stringArg (T.pack (ioe_description io))
-      | Just UserInterrupt <- fromException some = []
-      | Just DivideByZero <- fromException some = [PyStr "division by zero"]
-      | Just code <- fromException some = [PyInt (exitStatus code)]
-      | Just (SomeAsyncException _) <- fromException some, pythonErrorType some == "CancelledError" = []
-      | otherwise = stringArg message
-    exitStatus = \case
-      ExitSuccess -> 0
-      ExitFailure n -> toInteger n
+exceptionFailureText = pythonFailureText . pythonExceptionOf

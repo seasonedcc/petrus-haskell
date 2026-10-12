@@ -56,6 +56,7 @@ import Petrus.Postgres (Connection, Param, intParam, jsonbParam, query, textPara
 import Petrus.Postgres qualified as Pg
 import Petrus.TestSupport (PostgresTarget (..), postgresSpec)
 import Test.Hspec
+import Petrus.TestSupport (valid)
 
 -- | The reference's @absurd_dsn@ session fixture: one scratch database
 -- with the Absurd schema ensured (the Impetus schema the reference also
@@ -95,8 +96,8 @@ invocationFor :: Int -> Json -> IO ActivityInvocation
 invocationFor attempts payload = do
   effect <- freshName "effect-"
   let policy = either (error . T.unpack) id (executionPolicy (policyFields defaultExecutionPolicy) {attempts = toInteger attempts})
-  pure
-    ActivityInvocation
+  pure . valid . activityInvocation $
+    ActivityInvocationFields
       { activity = "probe_activity"
       , input = Object [("payload", payload)]
       , policy
@@ -106,7 +107,7 @@ invocationFor attempts payload = do
 
 -- | @ActivityInvocation("probe_activity")@.
 probe :: ActivityInvocation
-probe = invocation "probe_activity" Null
+probe = valid (invocation "probe_activity" Null)
 
 -- | @adapter_over(connection, default_queue=queue)@ with a fresh instance.
 adapterOver :: Connection -> Text -> IO AbsurdDispatch

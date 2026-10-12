@@ -13,7 +13,8 @@ import Data.Text qualified as T
 import Petrus.Activity
   ( ActivityFailure
   , ActivityFailureFields (..)
-  , ActivityInvocation (..)
+  , ActivityInvocationFields (..)
+  , activityInvocation
   , ExecutionPolicyFields (..)
   , activityError
   , defaultExecutionPolicy
@@ -54,8 +55,8 @@ charge :: ExecutionPolicyFields -> Maybe (Binding -> ActivityFailure -> Either T
 charge fields failureProjection =
   ActivityHandler
     { prepare = \_ ->
-        Right
-          ActivityInvocation
+        activityInvocation
+          ActivityInvocationFields
             { activity = "charge"
             , input = Object [("n", Int 1)]
             , policy = either (error . T.unpack) id (executionPolicy fields)

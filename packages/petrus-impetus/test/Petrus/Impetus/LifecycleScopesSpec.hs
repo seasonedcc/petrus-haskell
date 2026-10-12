@@ -45,7 +45,7 @@ workHandler :: ActivityHandler
 workHandler =
   ActivityHandler
     { prepare = \b -> case bindingTokens b of
-        t : _ -> Right (invocation "work" (obj [("value", t.payload)]))
+        t : _ -> invocation "work" (obj [("value", t.payload)])
         [] -> Left "IndexError('tuple index out of range')"
     , project = \_ result -> Right (handlerTokens [(out, [tokD "Value" result])])
     , projectFailure = Nothing

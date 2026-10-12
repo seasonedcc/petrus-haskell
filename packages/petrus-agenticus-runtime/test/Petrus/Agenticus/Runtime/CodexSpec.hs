@@ -33,7 +33,8 @@ import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
 import Network.Socket qualified as Socket
 import Network.Socket.ByteString qualified as SocketBytes
-import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..), ExecutionPolicyFields (..), defaultExecutionPolicy, executionPolicy, policyFields)
+import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation, ExecutionPolicyFields (..), defaultExecutionPolicy, executionPolicy, policyFields)
+import Petrus.Activity qualified as Activity
 import Petrus.Agenticus.Attachment.Binding
   ( AttachmentBinding (..)
   , AttachmentCoordinates (..)
@@ -734,7 +735,7 @@ retryPolicy attempts heartbeatTimeout = (policyFields defaultExecutionPolicy) {a
 
 activityInvocation :: Text -> Json -> Maybe Text -> ExecutionPolicyFields -> ActivityInvocation
 activityInvocation activity input idempotency fields =
-  ActivityInvocation {activity, input, policy = ok (executionPolicy fields), correlation = Nothing, idempotency}
+  ok (Activity.activityInvocation (Activity.ActivityInvocationFields activity input (ok (executionPolicy fields)) Nothing idempotency))
 
 -- ---------------------------------------------------------------------------
 -- Worker mode

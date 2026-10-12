@@ -39,11 +39,11 @@ import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (invocation)
+import Petrus.Activity (defaultInvocationFields)
 import Petrus.Engine (DriveOutcome (..), Engine)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
-import Petrus.Impetus.Binding (handlerTokens)
+import Petrus.Impetus.Binding (handlerTokens, prepareInvocation)
 import Petrus.Impetus.History.Records
   ( ActivityTerminalQuarantined (..)
   , Record (..)
@@ -218,7 +218,7 @@ bridged :: Bridge -> Bridged
 bridged bridge =
   Bridged
     { prepare = \b -> case bindingTokens b of
-        t : _ -> Right (invocation "calculate" t.payload)
+        t : _ -> prepareInvocation (defaultInvocationFields "calculate" t.payload)
         [] -> Left "IndexError('tuple index out of range')"
     , project = \_ result -> Right (handlerTokens [(done, [Token (Just "Done") result])])
     , onPrepare = Right () <$ modifyIORef' bridge.prepared (+ 1)

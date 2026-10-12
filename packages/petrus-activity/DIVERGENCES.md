@@ -80,3 +80,27 @@ input, is meant to be identical. The live differential
    Haskell exceptions that carry the same messages. *Why:* this is the
    repository's convention for value doors (`Either Text`). The messages
    are what reach History and the wires, and they match.
+
+8. **An `ActivityInvocation` is built through its refusals.** The
+   reference's `__post_init__` refuses an empty activity name or an empty
+   supplied identity whenever an invocation is constructed. Here
+   `ActivityInvocation` is opaque: `activityInvocation` (and `invocation`
+   for the keyword defaults) is the only way to build one, so no Dispatch,
+   Worker or wire ever sees an invocation the reference could not have
+   built. Its fields are read as `inv.activity`, `inv.policy` and so on;
+   a changed copy is `activityInvocation (invocationFields inv) {...}`.
+   Handlers that build one in `prepare` go through
+   `Petrus.Impetus.Binding.prepareInvocation`, which records a refusal as
+   the `ValueError` the reference's constructor raises there. *Why:* the
+   same refusals, at the same point, without a second representation of
+   the value; every construction site states how it handles them.
+
+9. **NaN `Number`s compare totally.** In Python `<`, `<=`, `==`, `>=`
+   and `>` with a NaN are all `False`, `nan == nan` included. `Number`'s `Ord` puts NaN after
+   everything and equal to itself, and its `Eq` is that order's
+   equivalence. Comparisons without a NaN are Python's, exact across int
+   and float. *Why:* `Eq` and `Ord` have to agree for
+   `Map` and `Set` to work. The policy and failure constructors check
+   that a number is finite before they compare it, so a NaN never reaches
+   their comparisons. `Show` stays Python's `repr` (`reprNumber`), the
+   spelling the refusal messages quote.

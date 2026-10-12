@@ -23,7 +23,7 @@ import Data.ByteString qualified as B
 import Data.IORef
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..))
+import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation)
 import Petrus.Agenticus.Attachment.Binding
 import Petrus.Agenticus.Attachment.Episode
 import Petrus.Agenticus.Catalog.Descriptor (capabilityDescriptor)

@@ -37,6 +37,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Motus.Dispatch.Absurd.Embed (embedFile)
 import Petrus.Json.Python (pythonStrRepr)
+import Petrus.Json.Python.Exception (IsPythonException (..), pythonExceptionFromException, pythonExceptionToException, raised)
 import Petrus.Postgres (Connection, PostgresError (..), execute_, queryFirst, sql)
 
 -- | The pinned Absurd release tag.
@@ -58,7 +59,12 @@ newtype AbsurdError = AbsurdError Text
   deriving stock (Eq, Show)
 
 instance Exception AbsurdError where
+  toException = pythonExceptionToException
+  fromException = pythonExceptionFromException
   displayException (AbsurdError message) = T.unpack message
+
+instance IsPythonException AbsurdError where
+  toPythonException (AbsurdError message) = raised "RuntimeError" message
 
 -- | The vendored release script's raw bytes, as compiled in.
 vendoredSchema :: ByteString

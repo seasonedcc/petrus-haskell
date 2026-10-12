@@ -5,6 +5,7 @@ module Petrus.Motus.Transport.ZeroMQ.WirePropertiesSpec (spec) where
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Petrus.Activity
+import Petrus.TestSupport (valid)
 import Petrus.Json (Json (..))
 import Petrus.Motus.Transport.ZeroMQ.Wire (decodeFailure, decodeInvocation, decodeMessage, encodeFailure, encodeInvocation, encodeMessage)
 import Test.Hspec
@@ -24,13 +25,14 @@ spec = describe "ZeroMQ wire codecs (properties)" $ do
                   , startToClose = fmap (\(Positive s) -> IntNumber (min s 1000)) start
                   }
           value =
-            ActivityInvocation
-              { activity = "a" <> nonNul name'
-              , input = Int payload
-              , policy = policy'
-              , correlation = fmap (("c" <>) . nonNul) correlation'
-              , idempotency = fmap (("i" <>) . nonNul) idempotency'
-              }
+            valid . activityInvocation $
+              ActivityInvocationFields
+                { activity = "a" <> nonNul name'
+                , input = Int payload
+                , policy = policy'
+                , correlation = fmap (("c" <>) . nonNul) correlation'
+                , idempotency = fmap (("i" <>) . nonNul) idempotency'
+                }
        in decodeInvocation (encodeInvocation value) === Right value
 
   it "decodeFailure . encodeFailure is Right" $

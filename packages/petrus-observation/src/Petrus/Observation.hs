@@ -59,7 +59,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Activity (ActivityInvocation (..), failureJson)
+import Petrus.Activity (failureJson)
 import Petrus.Activity.Number (Number (..), reprNumber)
 import Petrus.Impetus.History (Record, replayMarkings)
 import Petrus.Impetus.History.Codec (encodeRecord)

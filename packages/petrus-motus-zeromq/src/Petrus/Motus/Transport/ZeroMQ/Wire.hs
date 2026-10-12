@@ -62,7 +62,8 @@ import Petrus.Json
 import Petrus.Motus.Dispatch (ActivityAttempt (..), AttemptFailure (..), activityAttempt)
 import Petrus.Json.Python (decodeUtf8Python, pythonStrListRepr)
 import Petrus.Json.Python.Scanner qualified as Scanner
-import Petrus.Motus.PythonException (PythonException (..), pythonExceptionRepr)
+import Petrus.Motus.PythonException (pythonException, pythonExceptionRepr)
+import Petrus.Motus.PythonException qualified as Python (PythonException (..))
 import Petrus.Motus.Transport.ZeroMQ.Errors
 
 -- ---------------------------------------------------------------------------
@@ -238,7 +239,7 @@ decodeInvocation raw = do
   policy' <- either value Right (policyFromMembers policyMembers)
   either value Right $
     activityInvocation
-      ActivityInvocation
+      ActivityInvocationFields
         { activity = activity'
         , input = member "input" members
         , policy = policy'
@@ -291,8 +292,8 @@ classifiedFailure = \case
   FailureClassified failure -> Right failure
   FailureMessage message -> either value Right (activityFailure (ActivityFailureFields message "ActivityError" Null True Nothing))
   FailureException err ->
-    let python = zeromqPythonException err
-     in either value Right (activityFailure (ActivityFailureFields (pythonExceptionRepr python) python.className Null True Nothing))
+    let python = pythonException err
+     in either value Right (activityFailure (ActivityFailureFields (pythonExceptionRepr python) python.name Null True Nothing))
 
 -- | @_faithful(value, noun)@: the value as it round-trips through
 -- @json.dumps(allow_nan=False, ensure_ascii=False)@ and @json.loads@.

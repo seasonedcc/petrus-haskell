@@ -21,7 +21,9 @@ import Hamsterdan.Contracts.ReadinessV5
 import Hamsterdan.Host.Binding
 import Hamsterdan.Host.V5.Application (inactiveActivityResult)
 import Hamsterdan.Readiness.NetV5.Gating (GateDefinition (..), annotation, variantPayloadConverter)
-import Petrus.Activity (ActivityDefinition (..), ActivityInvocation (..), activityDeclaration, declarationName, defaultExecutionPolicy)
+import Petrus.Activity (ActivityDefinition (..), activityDeclaration, declarationName)
+import Petrus.Activity qualified as Activity
+import Petrus.TestSupport (valid)
 import Petrus.Impetus.Instance.FailureText (PythonException (..))
 import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import System.Directory (createDirectory, createDirectoryIfMissing, createDirectoryLink, createFileLink)
@@ -89,14 +91,7 @@ spec = describe "test_binding" $ do
   forM_ inactiveCases $ \(label, definition, work, expected) ->
     it ("test_inactive_adapter_returns_exact_typed_blocked_terminal_without_provider_call[" <> show label <> "]") $ do
       let name = declarationName definition.activity.declaration
-          invocation =
-            ActivityInvocation
-              { activity = name
-              , input = Object [("work", work)]
-              , policy = defaultExecutionPolicy
-              , correlation = Nothing
-              , idempotency = Nothing
-              }
+          invocation = valid (Activity.invocation name (Object [("work", work)]))
       inactiveActivityResult name invocation (Just definition) `shouldReturn` expected
 
   it "test_new_bindings_are_always_explicit_v5_and_identity_mismatches_fail_closed" . withTempRoot $ \tmp -> do

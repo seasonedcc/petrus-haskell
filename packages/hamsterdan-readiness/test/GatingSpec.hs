@@ -19,7 +19,7 @@ import Harness
 import Hamsterdan.Contracts.Codec (Contract, dump, renderDecodeError, validate)
 import Hamsterdan.Contracts.ReadinessV5 qualified as C
 import Hamsterdan.Readiness.NetV5.Topology (seedMarking)
-import Petrus.Activity (ActivityFailureFields (..), ActivityInvocation (..), ExecutionPolicyFields (..), activityFailure, policyFields)
+import Petrus.Activity (ActivityFailureFields (..), ExecutionPolicyFields (..), activityFailure, policyFields)
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (loadJsonlHistory, openJsonlHistoryStore)
 import Petrus.Impetus.History.Records (ActivityFailed (..), ActivityRequested (..), FiringCompleted (..), FiringFailed (..), Record (..))

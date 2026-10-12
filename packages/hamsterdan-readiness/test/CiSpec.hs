@@ -4,7 +4,6 @@ module CiSpec (spec) where
 
 import Data.Text (Text)
 import Harness
-import Petrus.Activity (ActivityInvocation (..))
 import Petrus.Json (Json (..))
 import Test.Hspec
 

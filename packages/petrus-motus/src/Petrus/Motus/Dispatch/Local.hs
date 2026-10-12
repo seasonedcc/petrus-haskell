@@ -134,7 +134,8 @@ import Petrus.Motus.Dispatch
   )
 import Petrus.Motus.Dispatch qualified as Port
 import Petrus.Json.Python (pythonRepr, pythonStrRepr, uuid4)
-import Petrus.Motus.PythonException (PythonException (..), pythonException, pythonExceptionRepr)
+import Petrus.Motus.PythonException (pythonException, pythonExceptionRepr)
+import Petrus.Motus.PythonException qualified as Python (PythonException (..))
 import Petrus.Sqlite.Connection (Connection)
 import Petrus.Sqlite.Connection qualified as C
 import Petrus.Sqlite.Pool (Pool, closePool, newPool, poolPath, withPooledConnection)
@@ -696,7 +697,7 @@ fail w attempt report = do
     FailureMessage message -> orRefuse (activityFailure (ActivityFailureFields message "ActivityError" Null False Nothing))
     FailureException err ->
       let python = pythonException err
-       in orRefuse (activityFailure (ActivityFailureFields (pythonExceptionRepr python) python.className Null True Nothing))
+       in orRefuse (activityFailure (ActivityFailureFields (pythonExceptionRepr python) python.name Null True Nothing))
   let outcome = failedOutcome failure
   disposition <- withTransaction w.connections $ \db -> do
     acknowledged <- acknowledgeTerminalRetry db attempt outcome

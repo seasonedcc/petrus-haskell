@@ -269,7 +269,7 @@ spec = do
           mineBefore `shouldBe` theirsBefore
           drop 1 mineRest `shouldBe` drop 1 theirsRest
           (aptPackages (head' theirsRest) `Set.isSubsetOf` aptPackages (head' mineRest)) `shouldBe` True
-          Set.toList (aptPackages (head' mineRest) Set.\\ aptPackages (head' theirsRest)) `shouldBe` ["libffi8", "libgmp10", "zlib1g"]
+          Set.toList (aptPackages (head' mineRest) Set.\\ aptPackages (head' theirsRest)) `shouldBe` ["libbz2-1.0", "libffi8", "libgmp10", "liblzma5", "zlib1g"]
         other -> expectationFailure ("expected one RUN in each runtime stage: " <> show other)
 
     describe "the interpreter-path shim answers as the reference interpreter" do

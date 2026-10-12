@@ -80,7 +80,8 @@ import Hamsterdan.Host.Service
 import Hamsterdan.Host.V5.Application (ApplicationOptions (..))
 import Hamsterdan.Readiness.NetV5.Gating (GateDefinition)
 import IngressApplicationSpec (reviewClear)
-import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..), defaultExecutionPolicy)
+import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation, invocation)
+import Petrus.TestSupport (valid)
 import Petrus.Impetus.Instance.FailureText (PythonException (..))
 import Petrus.Json (Json (..))
 import System.Directory (createDirectoryIfMissing)
@@ -555,7 +556,7 @@ dummyContext =
     }
 
 invocationOf :: Text -> Json -> ActivityInvocation
-invocationOf name input = ActivityInvocation name input defaultExecutionPolicy Nothing Nothing
+invocationOf name input = valid (invocation name input)
 
 assertionError :: IO a
 assertionError = throwIO (PythonException "AssertionError" [])

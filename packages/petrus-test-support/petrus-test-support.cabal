@@ -39,6 +39,7 @@ library
                     Petrus.TestSupport.Python
                     Petrus.TestSupport.Reference
                     Petrus.TestSupport.Repo
+                    Petrus.TestSupport.Valid
   build-depends:    base >=4.18 && <5
                   , base64-bytestring >=1.2
                   , bytestring >=0.11

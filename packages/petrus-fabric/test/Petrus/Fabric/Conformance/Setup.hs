@@ -52,9 +52,8 @@ import Data.Text.Encoding qualified as TE
 import Data.Time (NominalDiffTime, UTCTime, addUTCTime)
 import Petrus.Fabric.Conformance.Impl
 import Petrus.Fabric (Category, FabricError, errorCategory, errorMessage)
-import Petrus.Fabric.Postgres (parseTimestamptz)
+import Petrus.Postgres (Param, Sql, decodeTimestamptz)
 import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
-import Petrus.Postgres (Param, Sql)
 import Petrus.Postgres qualified as Pg
 import Petrus.TestSupport (PostgresTarget (..), lookupPostgresUrl, repoRoot, skipMessage, withScratchDatabase)
 import System.FilePath ((</>))
@@ -237,7 +236,7 @@ exec = Pg.execute_
 dbNow :: Pg.Connection -> IO UTCTime
 dbNow c =
   scalar c "SELECT clock_timestamp()" [] >>= \case
-    Just raw -> either error pure (parseTimestamptz raw)
+    Just raw -> either error pure (decodeTimestamptz raw)
     Nothing -> error "no clock"
 
 -- | An offset-carrying ISO time some seconds after the given one.

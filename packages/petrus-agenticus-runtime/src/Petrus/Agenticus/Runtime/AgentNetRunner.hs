@@ -126,7 +126,7 @@ import Petrus.Agenticus.Thread.Lifecycle
   , threadFromData
   , threadToData
   )
-import Petrus.Activity (ActivityExecutionContext (..), ActivityInvocation (..))
+import Petrus.Activity (ActivityExecutionContext (..))
 import Petrus.Engine qualified as Engine
 import Petrus.HistoryStore.Jsonl (openJsonlHistoryStore)
 import Petrus.Impetus.History.Records (ActivityCompleted (..), ActivityFailed (..), ActivityRequested (..), Record (..))

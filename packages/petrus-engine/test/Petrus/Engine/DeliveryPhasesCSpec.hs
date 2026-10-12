@@ -404,7 +404,7 @@ spec = describe "TestIdentifiedDeliveryPhases" $ do
           ActivityBound
             ActivityHandler
               { prepare = \binding -> case bindingTokens binding of
-                  first : _ -> Right (invocation "work" (Object [("value", first.payload)]))
+                  first : _ -> invocation "work" (Object [("value", first.payload)])
                   [] -> Left "IndexError('tuple index out of range')"
               , project = \_ result -> Right (handlerTokens [(b, [tokD "Worked" result])])
               , projectFailure = Nothing

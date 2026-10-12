@@ -109,7 +109,7 @@ newBridgeWith activity out failureProjector = do
   preparedRef <- newIORef 0
   projectedRef <- newIORef 0
   let prepare' b = case bindingTokens b of
-        first : _ -> Right (invocation activity first.payload)
+        first : _ -> invocation activity first.payload
         [] -> Left "IndexError('tuple index out of range')"
       project' (_b, result) = Right (handlerTokens [(out, [Token (Just "Done") result])])
   pure

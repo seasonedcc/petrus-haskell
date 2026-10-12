@@ -47,6 +47,7 @@ library
                   , containers >=0.6
                   , petrus-activity
                   , petrus-fabric
+                  , petrus-impetus
                   , petrus-json
                   , text >=2.0
   ghc-options:      -O2
@@ -122,6 +123,7 @@ test-suite petrus-processes-test
                     Petrus.Processes.DemoSpec
                     Petrus.Processes.TypedSpec
                     Petrus.Processes.ReferenceSpec
+                    Petrus.Processes.WorkerRefusalSpec
   build-depends:    base
                   , async >=2.2
                   , base16-bytestring >=1.0
@@ -137,12 +139,14 @@ test-suite petrus-processes-test
                   , petrus-fabric:postgres
                   , petrus-impetus
                   , petrus-json
+                  , petrus-motus
                   , petrus-postgres
                   , petrus-processes
                   , petrus-processes:demo
                   , petrus-processes:postgres
                   , petrus-test-support
                   , process >=1.6
+                  , temporary
                   , text
                   , time
   build-tool-depends: petrus-processes:cv5-lifecycle-demo
