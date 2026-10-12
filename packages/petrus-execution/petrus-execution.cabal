@@ -34,6 +34,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Petrus.Motus.Execution
                     Petrus.Motus.Execution.Archive
+                    Petrus.Motus.Execution.Archive.Stream
                     Petrus.Motus.Execution.Archive.Tar
                     Petrus.Motus.Execution.Artifacts
                     Petrus.Motus.Execution.Error
@@ -53,6 +54,8 @@ library
   include-dirs:     cbits
   c-sources:        cbits/petrus_wait.c
                     cbits/petrus_spawn.c
+                    cbits/petrus_bzip2.c
+  extra-libraries:  bz2
   build-depends:    base >=4.18 && <5
                   , base64-bytestring >=1.2
                   , bytestring >=0.11
@@ -63,6 +66,7 @@ library
                   , http-client >=0.7.14
                   , http-client-tls >=0.3.6
                   , http-types >=0.12
+                  , lzma >=0.0.1.1
                   , network >=3.1
                   , petrus-json
                   , petrus-posix
@@ -75,6 +79,7 @@ library
                   , time >=1.12
                   , unix >=2.8
                   , zlib >=0.7
+                  , zstd >=0.1.4
   ghc-options:      -O2
 
 test-suite petrus-execution-test

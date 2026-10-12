@@ -21,11 +21,11 @@ import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Ord (Down (..))
 import Data.Set qualified as Set
-import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Json
 import Petrus.Motus.Execution.Archive
+import Petrus.Motus.Execution.Archive.Stream (bzip2Refuses, bzip2Source, chunkedSource, lzmaRefuses, xzSource, zstdRefuses, zstdSource)
 import Petrus.Motus.Execution.Archive.Tar
 import Petrus.Motus.Execution.Error
 import Petrus.Motus.Execution.Internal.PosixPath (RealpathMode (..), fromRawPath, realpath, toRawPath)
@@ -71,63 +71,10 @@ spec = do
         memberHeader (WriteMember name (fromInteger (intField "mode" fixture)) kind)
           `shouldBe` bytesZB64 "header_zb64" fixture
 
-  describe "tarfile.open(r:*) + getmembers (differential)" $
-    forM_ (listField "readers" fixtures) $ \fixture -> do
-      let name = textField "name" fixture
-          bytes = bytesZB64 "archive_zb64" fixture
-      it (T.unpack name) $
-        case (openArchive bytes, fieldMaybe "members_error" fixture) of
-          (Left err, Just expected) -> checkError name err expected
-          (Right (_, members), Nothing) -> do
-            let expected = listField "members" fixture
-            length members `shouldBe` length expected
-            forM_ (zip members expected) (uncurry checkMember)
-          (Left err, Nothing) -> expectationFailure ("unexpected failure: " <> show err)
-          (Right (_, members), Just expected) ->
-            expectationFailure ("expected " <> show expected <> " but parsed " <> show members)
-
-  describe "validate_workspace_archive (differential)" $
-    forM_ (listField "readers" fixtures) $ \fixture -> do
-      let name = textField "name" fixture
-          bytes = bytesZB64 "archive_zb64" fixture
-          outcomes = field "validate" fixture
-      it (T.unpack name) $
-        forM_
-          [ ("default", True, [])
-          , ("no_links", False, [])
-          , ("forbidden_secret", True, ["secret"])
-          ]
-          $ \(label, allowLinks, roots) -> do
-            result <- try (validateWorkspaceArchive allowLinks roots bytes)
-            case (result, fieldMaybe label outcomes) of
-              (Right (), Nothing) -> pure ()
-              (Left err, Just expected) -> checkError name err expected
-              (Right (), Just expected) -> expectationFailure (T.unpack label <> ": expected " <> show expected)
-              (Left err, Nothing) -> expectationFailure (T.unpack label <> ": unexpected " <> show err)
-
-  describe "extract_workspace_archive (differential, extracted trees)" $
-    forM_ (listField "readers" fixtures) $ \fixture -> do
-      let name = textField "name" fixture
-          bytes = bytesZB64 "archive_zb64" fixture
-          expected = field "extract" fixture
-      it (T.unpack name) $ withTempDir $ \tmp -> do
-        let destination = tmp </> "out"
-        destRaw <- toRawPath destination
-        result <- try (extractWorkspaceArchive bytes destination)
-        resolved <- either (const destRaw) id <$> realpath NonStrict destRaw
-        case (result, fieldMaybe "error" expected) of
-          (Right (), Nothing) -> pure ()
-          (Left err, Just expectedError) ->
-            checkError name (normalizeDest [resolved, destRaw] err) expectedError
-          (Right (), Just expectedError) -> expectationFailure ("expected " <> show expectedError)
-          (Left err, Nothing) -> expectationFailure ("unexpected " <> show err)
-        exists <- PFB.fileExist destRaw
-        case fieldMaybe "tree" expected of
-          Nothing -> exists `shouldBe` False
-          Just (Array items) -> do
-            listing <- treeOf destRaw
-            listing `shouldBe` Map.fromList [(bytesB64 "path_b64" item, normalizeItem item) | item <- items]
-          Just other -> expectationFailure ("bad tree fixture " <> show other)
+  readerSpecs "" (listField "readers" fixtures)
+  refusalSpec "" (listField "readers" fixtures)
+  compressedSpec
+  chunkedSpec (listField "readers" fixtures)
 
   describe "upstream archive tests" $ do
     it "test_tar_rejects_escape_links_and_special_files" $ withTempDir $ \tmp -> do
@@ -214,6 +161,120 @@ spec = do
        in B.take 148 withoutSum <> rendered <> B.drop 155 withoutSum
     showOctal n = if n < 8 then show n else showOctal (n `div` 8) ++ show (n `mod` 8)
 
+-- | The reader fixtures' checks: CPython's members, validation outcomes
+-- and extracted trees for each archive.
+readerSpecs :: String -> [Json] -> Spec
+readerSpecs source readers = do
+  describe ("tarfile.open(r:*) + getmembers (differential" <> source <> ")") $
+    forM_ readers $ \fixture -> do
+      let name = textField "name" fixture
+          bytes = bytesZB64 "archive_zb64" fixture
+      it (T.unpack name) $
+        case (openArchive bytes, fieldMaybe "members_error" fixture) of
+          (Left err, Just expected) -> checkError err expected
+          (Right (_, members), Nothing) -> do
+            let expected = listField "members" fixture
+            length members `shouldBe` length expected
+            forM_ (zip members expected) (uncurry checkMember)
+          (Left err, Nothing) -> expectationFailure ("unexpected failure: " <> show err)
+          (Right (_, members), Just expected) ->
+            expectationFailure ("expected " <> show expected <> " but parsed " <> show members)
+
+  describe ("validate_workspace_archive (differential" <> source <> ")") $
+    forM_ readers $ \fixture -> do
+      let name = textField "name" fixture
+          bytes = bytesZB64 "archive_zb64" fixture
+          outcomes = field "validate" fixture
+      it (T.unpack name) $
+        forM_
+          [ ("default", True, [])
+          , ("no_links", False, [])
+          , ("forbidden_secret", True, ["secret"])
+          ]
+          $ \(label, allowLinks, roots) -> do
+            result <- try (validateWorkspaceArchive allowLinks roots bytes)
+            case (result, fieldMaybe label outcomes) of
+              (Right (), Nothing) -> pure ()
+              (Left err, Just expected) -> checkError err expected
+              (Right (), Just expected) -> expectationFailure (T.unpack label <> ": expected " <> show expected)
+              (Left err, Nothing) -> expectationFailure (T.unpack label <> ": unexpected " <> show err)
+
+  describe ("extract_workspace_archive (differential, extracted trees" <> source <> ")") $
+    forM_ readers $ \fixture -> do
+      let name = textField "name" fixture
+          bytes = bytesZB64 "archive_zb64" fixture
+          expected = field "extract" fixture
+      it (T.unpack name) $ withTempDir $ \tmp -> do
+        let destination = tmp </> "out"
+        destRaw <- toRawPath destination
+        result <- try (extractWorkspaceArchive bytes destination)
+        resolved <- either (const destRaw) id <$> realpath NonStrict destRaw
+        case (result, fieldMaybe "error" expected) of
+          (Right (), Nothing) -> pure ()
+          (Left err, Just expectedError) ->
+            checkError (normalizeDest [resolved, destRaw] err) expectedError
+          (Right (), Just expectedError) -> expectationFailure ("expected " <> show expectedError)
+          (Left err, Nothing) -> expectationFailure ("unexpected " <> show err)
+        exists <- PFB.fileExist destRaw
+        case fieldMaybe "tree" expected of
+          Nothing -> exists `shouldBe` False
+          Just (Array items) -> do
+            listing <- treeOf destRaw
+            listing `shouldBe` Map.fromList [(bytesB64 "path_b64" item, normalizeItem item) | item <- items]
+          Just other -> expectationFailure ("bad tree fixture " <> show other)
+
+-- | Archives compressed by every codec @tarfile.open(mode="r:*")@ reads
+-- (whole, as several streams, with trailing data, truncated, corrupted),
+-- checked against the pinned interpreter live
+-- (@test/interop/compressed_archives.py@ prints their reader fixtures).
+compressedSpec :: Spec
+compressedSpec = do
+  readers <- runIO $ do
+    python <- pythonExecutable
+    script <- makeAbsolute ("test" </> "interop" </> "compressed_archives.py")
+    root <- upstreamPetrus
+    (code, printed, err) <- readCreateProcessWithExitCode (proc python ["-I", script]) {cwd = Just root} ""
+    when (code /= ExitSuccess) $ fail ("reference exited with " <> show code <> ":\n" <> err)
+    either (fail . show) pure (loadsBytes (BC.pack printed)) >>= \case
+      Array items -> pure items
+      other -> fail ("unexpected reference output " <> show other)
+  readerSpecs ", live CPython, compressed" readers
+  refusalSpec ", live CPython, compressed" readers
+
+-- | Bytes the opening refuses for a codec by their first bytes are bytes
+-- that codec's decoder refuses before producing anything.
+refusalSpec :: String -> [Json] -> Spec
+refusalSpec source readers =
+  describe ("codecs refuse at once what their decoders refuse" <> source) $
+    forM_ readers $ \fixture -> do
+      let bytes = bytesZB64 "archive_zb64" fixture
+      it (T.unpack (textField "name" fixture)) $
+        forM_
+          [ ("bz2" :: String, bzip2Refuses, bzip2Source)
+          , ("xz", lzmaRefuses, xzSource)
+          , ("zst", zstdRefuses, zstdSource)
+          ]
+          $ \(codec, refuses, decoder) ->
+            when (refuses bytes) $
+              (codec, readTarFrom (decoder bytes)) `shouldSatisfy` (notOurs . snd)
+  where
+    notOurs = \case
+      Left (True, DecodeFailure) -> True
+      Left (True, PythonFailure "EOFError" _) -> True
+      _ -> False
+
+-- | Reading an archive in chunks of any size (as a decompressed stream
+-- arrives) finds what reading it whole finds.
+chunkedSpec :: [Json] -> Spec
+chunkedSpec readers =
+  describe "reading a stream in chunks" $
+    forM_ readers $ \fixture -> do
+      let bytes = bytesZB64 "archive_zb64" fixture
+      it (T.unpack (textField "name" fixture)) $
+        forM_ [1, 7, 512, 513, 4096] $ \size ->
+          readTarFrom (chunkedSource size bytes) `shouldBe` readTar bytes
+
+
 buildWorkspace :: FilePath -> [Json] -> IO ()
 buildWorkspace root entries = do
   forM_ entries $ \entry -> do
@@ -234,17 +295,12 @@ content seed size =
   let blockBytes = BA.convert (hash (BC.pack (show seed)) :: Digest SHA256) :: ByteString
    in B.take size (B.concat (replicate (size `div` 32 + 1) blockBytes))
 
-checkError :: Text -> ExecutionError -> Json -> Expectation
-checkError name err expected = do
+checkError :: ExecutionError -> Json -> Expectation
+checkError err expected = do
   let kind = pythonClassKind (textField "class" expected)
       message = textField "message" expected
   errorKind err `shouldBe` kind
-  when (name `notElem` knownMessageDivergences) $
-    errorMessage err `shouldBe` message
-
--- | Fixtures whose error message intentionally differs (DIVERGENCES.md).
-knownMessageDivergences :: [Text]
-knownMessageDivergences = ["bz2-magic"]
+  errorMessage err `shouldBe` message
 
 normalizeDest :: [ByteString] -> ExecutionError -> ExecutionError
 normalizeDest prefixes err =

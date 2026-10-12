@@ -22,6 +22,7 @@ module Petrus.Motus.Execution.Archive
   , extractWorkspaceArchive
   , archiveDigest
     -- * Lower level
+  , Payload (..)
   , openArchive
   , validatedMembers
   ) where
@@ -29,15 +30,14 @@ module Petrus.Motus.Execution.Archive
 import Control.Exception (IOException, catch, throwIO, try)
 import Control.Monad (foldM, forM, forM_, unless, when)
 import Crypto.Hash (Digest, SHA256, hash)
-import Data.Bits (complement, shiftR, (.&.), (.|.))
+import Data.Bits (complement, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Internal qualified as BI
-import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Unsafe qualified as BU
 import Data.IORef
-import Data.List (sortOn)
+import Data.List (intercalate, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Ord (Down (..))
 import Data.Set (Set)
@@ -46,14 +46,14 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (POSIXTime)
-import Data.Word (Word32, Word64, Word8)
-import Codec.Compression.Zlib.Internal qualified as Z
+import Data.Word (Word8)
 import Foreign.C.Error (Errno (..), eEXIST, eNOENT, errnoToIOError, getErrno, throwErrnoIfMinus1Retry)
 import Foreign.C.String (CString)
 import Foreign.C.Types (CInt (..), CSize (..))
 import Foreign.Marshal.Utils (copyBytes, fillBytes)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import GHC.IO.Exception (IOException (..))
+import Petrus.Motus.Execution.Archive.Stream
 import Petrus.Motus.Execution.Archive.Tar
 import Petrus.Motus.Execution.Error
 import Petrus.Motus.Execution.Internal.PosixPath
@@ -273,124 +273,67 @@ pathlibString raw =
 -- ---------------------------------------------------------------------------
 -- Opening (tarfile.open(mode="r:*"))
 
+-- | What the members' data offsets refer to: the archive's bytes, or the
+-- stream its compression decodes to.
+data Payload = PlainPayload ByteString | StreamPayload Source
+
 -- | Open archive bytes as @tarfile.open(fileobj=..., mode="r:*")@ and load
--- every member.  Returns the (possibly decompressed) payload the members'
--- data offsets refer to.
-openArchive :: ByteString -> Either ExecutionError (ByteString, [Member])
-openArchive bytes = do
-  gz <- attemptGzip
-  case gz of
-    Right result -> Right result
-    Left gzMessage ->
-      case readTar bytes of
-        Right members -> Right (bytes, members)
-        Left (True, ReadFailure _)
-          | isOtherCompression bytes ->
-              Left (ExecutionError (TarError "ReadError") "bzip2, xz, and zstd workspace archives are not supported")
-        Left (True, ReadFailure message) ->
-          Left
-            ( ExecutionError (TarError "ReadError") . T.pack $
-                "file could not be opened successfully:\n- method gz: "
-                  <> gzMessage
-                  <> "\n- method bz2: ReadError('not a bzip2 file')\n- method xz: "
-                  <> (if lzmaReadsEmpty bytes then readErrorRepr "empty file" else readErrorRepr "not an lzma file")
-                  <> "\n- method zst: ReadError('not a zstd file')\n- method tar: "
-                  <> readErrorRepr message
-            )
-        Left (_, failure) -> Left (fromFailure failure)
+-- every member: try gzip, bzip2, lzma (xz or .lzma) and Zstandard, then
+-- uncompressed, and take the first that reads a first member.
+openArchive :: ByteString -> Either ExecutionError (Payload, [Member])
+openArchive bytes = attempt [] methods
   where
-    attemptGzip
+    methods =
+      [ ("gz", gzipMethod)
+      , ("bz2", compressedMethod bzip2Refuses bzip2Source "not a bzip2 file")
+      , ("xz", compressedMethod lzmaRefuses xzSource "not an lzma file")
+      , ("zst", compressedMethod zstdRefuses zstdSource "not a zstd file")
+      , ("tar", opened (PlainPayload bytes) (readTar bytes) "not a tar file")
+      ]
+    attempt failures = \case
+      [] ->
+        Left
+          ( ExecutionError (TarError "ReadError") . T.pack $
+              "file could not be opened successfully:\n"
+                <> intercalate "\n" ["- method " <> name <> ": " <> message | (name, message) <- reverse failures]
+          )
+      (name, method) : rest -> do
+        outcome <- method
+        case outcome of
+          Right result -> Right result
+          Left message -> attempt ((name, message) : failures) rest
+    -- GzipFile reads the magic first: anything else is "not a gzip file"
+    -- before a byte is decompressed, and no bytes at all read as empty.
+    gzipMethod
       | B.null bytes = Right (Left (readErrorRepr "empty file"))
-      | "\x1f\x8b" `B.isPrefixOf` bytes = do
-          let payload = gunzipPrefix bytes
-          case readTar payload of
-            Right members -> Right (Right (payload, members))
-            Left (True, ReadFailure message) -> Right (Left (readErrorRepr message))
-            Left (_, failure) -> Left (fromFailure failure)
+      | "\x1f\x8b" `B.isPrefixOf` bytes =
+          let source = gzipSource bytes in opened (StreamPayload source) (readTarFrom source) "not a gzip file"
       | otherwise = Right (Left (readErrorRepr "not a gzip file"))
+    -- BZ2File, LZMAFile and ZstdFile report a stream that ends early
+    -- while the first member is read as not theirs; GzipFile lets the
+    -- EOFError escape.
+    compressedMethod refuses decoder notOurs
+      | refuses bytes = Right (Left (readErrorRepr notOurs))
+      | otherwise =
+          let source = decoder bytes
+           in case readTarFrom source of
+                Left (True, PythonFailure "EOFError" _) -> Right (Left (readErrorRepr notOurs))
+                reading -> opened (StreamPayload source) reading notOurs
+    -- A method that could not read a first member records its ReadError
+    -- and the next one is tried; a later failure ends the opening.
+    opened payload reading notOurs = case reading of
+      Right members -> Right (Right (payload, members))
+      Left (True, DecodeFailure) -> Right (Left (readErrorRepr notOurs))
+      Left (True, ReadFailure message) -> Right (Left (readErrorRepr message))
+      Left (_, failure) -> Left (fromFailure failure)
     readErrorRepr message = "ReadError(" <> T.unpack (pythonStringRepr message) <> ")"
     fromFailure = \case
       ReadFailure message -> ExecutionError (TarError "ReadError") (T.pack message)
       PythonFailure cls message -> ExecutionError (pythonKind cls) (T.pack message)
+      DecodeFailure -> ExecutionError (TarError "ReadError") "unexpected end of data"
     pythonKind = \case
       "ValueError" -> ValueError
       other -> OtherError (T.pack other)
-
--- | Whether CPython's @LZMAFile@ (format auto-detection) reads these bytes
--- as zero or more empty @.lzma@ ("alone") streams and then either reaches
--- the end or hits trailing data it ignores.  Tar headers often look like
--- such streams (a small first byte followed by NULs), and the resulting
--- @'empty file'@ shows up in @tarfile.open@'s aggregated error message.
-lzmaReadsEmpty :: ByteString -> Bool
-lzmaReadsEmpty = first
-  where
-    first bytes = case lzmaStream bytes of
-      EmptyStream rest -> trailing rest
-      _ -> False
-    trailing rest
-      | B.null rest = True
-      | otherwise = case lzmaStream rest of
-          EmptyStream more -> trailing more
-          FormatError -> True
-          _ -> False
-
-data LzmaStream = EmptyStream ByteString | FormatError | NeedsInput | ProducesData
-
--- | One @.lzma@ stream as liblzma's picky alone decoder sees it.
-lzmaStream :: ByteString -> LzmaStream
-lzmaStream bytes
-  | B.null bytes = NeedsInput
-  | props > 224 || lc + lp > 4 = FormatError
-  | B.length bytes < 5 = NeedsInput
-  | not dictionaryOk = FormatError
-  | B.length bytes < 13 = NeedsInput
-  | size /= maxBound && size >= 2 ^ (38 :: Int) = FormatError
-  | size /= 0 = ProducesData
-  | B.length bytes < 18 = NeedsInput
-  | B.any (/= 0) (B.take 5 (B.drop 13 bytes)) = FormatError
-  | otherwise = EmptyStream (B.drop 18 bytes)
-  where
-    props = fromIntegral (B.index bytes 0) :: Int
-    lc = props `mod` 9
-    lp = (props `div` 9) `mod` 5
-    littleEndian from count =
-      foldr (\i acc -> acc * 256 + fromIntegral (B.index bytes (from + i))) 0 [0 .. count - 1] :: Integer
-    dictionary = fromIntegral (littleEndian 1 4) :: Word32
-    dictionaryOk =
-      dictionary == maxBound
-        || let d0 = dictionary - 1
-               d1 = d0 .|. (d0 `shiftR` 2)
-               d2 = d1 .|. (d1 `shiftR` 3)
-               d3 = d2 .|. (d2 `shiftR` 4)
-               d4 = d3 .|. (d3 `shiftR` 8)
-               d5 = d4 .|. (d4 `shiftR` 16)
-            in d5 + 1 == dictionary
-    size = fromIntegral (littleEndian 5 8) :: Word64
-
-isOtherCompression :: ByteString -> Bool
-isOtherCompression bytes =
-  "BZh" `B.isPrefixOf` bytes
-    || "\xfd\&7zXZ\NUL" `B.isPrefixOf` bytes
-    || "\x28\xb5\x2f\xfd" `B.isPrefixOf` bytes
-
--- | Decompress a gzip stream, keeping the bytes produced before any error
--- (CPython's reader only fails when it reads past that point) and capping
--- the result at 3 GiB.
-gunzipPrefix :: ByteString -> ByteString
-gunzipPrefix compressed = BL.toStrict (BL.fromChunks (capped 0 chunks))
-  where
-    chunks =
-      Z.foldDecompressStreamWithInput
-        (:)
-        (const [])
-        (const [])
-        (Z.decompressST Z.gzipFormat Z.defaultDecompressParams)
-        (BL.fromStrict compressed)
-    limit = 3 * 1024 * 1024 * 1024 :: Int
-    capped _ [] = []
-    capped seen (c : cs)
-      | seen >= limit = []
-      | otherwise = B.take (limit - seen) c : capped (seen + B.length c) cs
 
 -- ---------------------------------------------------------------------------
 -- Validation
@@ -470,7 +413,8 @@ extractWorkspaceArchive bytes destination = do
   pathlibMkdirParents destRaw
   (payload, members) <- either throwIO pure (openArchive bytes)
   validated <- either throwIO pure (validatedMembers True Set.empty members)
-  extractAll payload validated destRaw
+  copyData <- dataReader payload
+  extractAll copyData validated destRaw
 
 -- | @Path.mkdir(parents=True, exist_ok=True)@.
 pathlibMkdirParents :: RawFilePath -> IO ()
@@ -573,13 +517,51 @@ dataFilter member dest = do
 -- @_handle_fatal_error@ with @errorlevel=1@; @ExtractError@s are dropped.
 data ExtractOutcome = Extracted | ExtractErrorIgnored
 
-extractAll :: ByteString -> [Member] -> ByteString -> IO ()
-extractAll payload members dest = do
+-- | Copies @size@ bytes of member data from a payload position to a file.
+type CopyData = Fd -> Integer -> Integer -> IO ()
+
+-- | @copyfileobj(source, target, size, ReadError)@ after
+-- @source.seek(position)@: 16 KiB blocks, each written once it is read
+-- whole; a short block raises @ReadError("unexpected end of data")@, or
+-- @EOFError@ when the stream was truncated.
+dataReader :: Payload -> IO CopyData
+dataReader = \case
+  PlainPayload payload -> pure $ \fd position size ->
+    when (size > 0) $ do
+      let available = max 0 (fromIntegral (B.length payload) - position)
+          whole = min size (copyBlock * (available `div` copyBlock))
+      if available >= size
+        then writeAll fd (slice payload position size)
+        else do
+          when (whole > 0) $ writeAll fd (slice payload position whole)
+          throwExecution (TarError "ReadError") "unexpected end of data"
+  StreamPayload source -> do
+    cursor <- newIORef (restart source, 0)
+    pure $ \fd position size ->
+      let copyBlocks at remaining = when (remaining > 0) $ do
+            (chunks, start) <- readIORef cursor
+            let (here, hereAt) = seekChunks source chunks start at
+                wanted = min copyBlock remaining
+                (pieces, ending) = collect here (at - hereAt) wanted
+            writeIORef cursor (here, hereAt)
+            case ending of
+              Just Truncated -> throwExecution (OtherError "EOFError") (T.pack compressedFileEnded)
+              Just _ -> throwExecution (TarError "ReadError") "unexpected end of data"
+              Nothing -> pure ()
+            mapM_ (writeAll fd) pieces
+            copyBlocks (at + wanted) (remaining - wanted)
+       in copyBlocks position size
+  where
+    copyBlock = 16 * 1024 :: Integer
+    slice payload position size = B.take (fromIntegral size) (B.drop (fromIntegral position) payload)
+
+extractAll :: CopyData -> [Member] -> ByteString -> IO ()
+extractAll copyData members dest = do
   directoriesRef <- newIORef []
   forM_ members $ \member -> do
     filtered <- dataFilter member dest `catch` (throwIO . osErrorFromRawIO)
     when (isDirectory member) $ modifyIORef' directoriesRef (member :)
-    _ <- extractMember payload members dest filtered (joinPath dest (filteredName filtered)) (not (isDirectory member))
+    _ <- extractMember copyData members dest filtered (joinPath dest (filteredName filtered)) (not (isDirectory member))
     pure ()
   directories <- readIORef directoriesRef
   forM_ (sortOn (Down . codePointSortKey . memberName) (reverse directories)) $ \member -> do
@@ -600,8 +582,8 @@ extractAll payload members dest = do
                 pure ()
 
 -- | @TarFile._extract_member@ (with @_extract_one@'s error policy).
-extractMember :: ByteString -> [Member] -> ByteString -> Filtered -> ByteString -> Bool -> IO ExtractOutcome
-extractMember payload members dest filtered targetpath0 setAttrs = do
+extractMember :: CopyData -> [Member] -> ByteString -> Filtered -> ByteString -> Bool -> IO ExtractOutcome
+extractMember copyData members dest filtered targetpath0 setAttrs = do
   let targetpath = BC.dropWhileEnd (== '/') targetpath0
       upperdirs = dirname targetpath
       member = filteredMember filtered
@@ -610,11 +592,11 @@ extractMember payload members dest filtered targetpath0 setAttrs = do
     when (not (B.null upperdirs) && not exists) $ makedirs upperdirs
   outcome <-
     if isRegular member
-      then wrapOs (makeFile payload member targetpath) >> pure Extracted
+      then wrapOs (makeFile copyData member targetpath) >> pure Extracted
       else
         if isDirectory member
           then wrapOs (makeDirectory targetpath) >> pure Extracted
-          else makeLink payload members dest filtered targetpath
+          else makeLink copyData members dest filtered targetpath
   case outcome of
     ExtractErrorIgnored -> pure ExtractErrorIgnored
     Extracted
@@ -667,13 +649,13 @@ makeDirectory targetpath = do
       | otherwise -> throwIO e
 
 -- | @TarFile.makefile@: data (or sparse map) copied from the payload.
-makeFile :: ByteString -> Member -> ByteString -> IO ()
-makeFile payload member targetpath = do
+makeFile :: CopyData -> Member -> ByteString -> IO ()
+makeFile copyData member targetpath = do
   let flags = defaultFileFlags {creat = Just 0o666, trunc = True, cloexec = True}
   bracket (openFd targetpath WriteOnly flags) closeFd $ \fd -> do
     let source = memberOffsetData member
     case memberSparse member of
-      Nothing -> copyFrom fd source (memberSize member)
+      Nothing -> copyData fd source (memberSize member)
       Just regions -> do
         _ <-
           foldM
@@ -681,7 +663,7 @@ makeFile payload member targetpath = do
                 when (offset < 0) $
                   throwExecution ValueError (T.pack ("negative seek position " <> show offset))
                 _ <- fdSeek fd AbsoluteSeek (fromIntegral offset :: FileOffset)
-                copyFrom fd position size
+                copyData fd position size
                 pure (position + size)
             )
             source
@@ -689,14 +671,6 @@ makeFile payload member targetpath = do
         when (memberSize member < 0) $
           throwExecution ValueError (T.pack ("negative seek position " <> show (memberSize member)))
         F.setFdSize fd (fromIntegral (memberSize member))
-  where
-    copyFrom fd position size
-      | size <= 0 = pure ()
-      | otherwise = do
-          let available = fromIntegral (B.length payload) - position
-          when (position < 0 || available < size) $
-            throwExecution (TarError "ReadError") "unexpected end of data"
-          writeAll fd (B.take (fromIntegral size) (B.drop (fromIntegral position) payload))
 
 -- | Write all bytes in 64 KiB @write(2)@ calls (the size that measured
 -- fastest for large extractions).  The call is @unsafe@: a 64 KiB write to
@@ -729,8 +703,8 @@ hardLink source target =
       ioError (errnoToIOError "link" errno Nothing (Just (BC.unpack target)))
 
 -- | @TarFile.makelink_with_filter@.
-makeLink :: ByteString -> [Member] -> ByteString -> Filtered -> ByteString -> IO ExtractOutcome
-makeLink payload members dest filtered targetpath = do
+makeLink :: CopyData -> [Member] -> ByteString -> Filtered -> ByteString -> IO ExtractOutcome
+makeLink copyData members dest filtered targetpath = do
   let member = filteredMember filtered
       linkTarget = joinPath dest (filteredLinkname filtered)
   attempt <- try $
@@ -778,7 +752,7 @@ makeLink payload members dest filtered targetpath = do
                 ( "link " <> memberRepr member <> " would be extracted as a copy of "
                     <> memberRepr unfiltered <> ", which was rejected"
                 )
-            Right copy -> extractMember payload members dest copy targetpath True
+            Right copy -> extractMember copyData members dest copy targetpath True
 
 -- | @TarFile.utime@: failures are non-fatal @ExtractError@s.
 setTimes :: ByteString -> MTime -> IO Bool

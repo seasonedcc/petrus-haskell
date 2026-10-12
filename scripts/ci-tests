@@ -188,7 +188,7 @@ def environment_fingerprint() -> List[str]:
         f"git {version(['git', '--version'])}",
         f"psql-image {os.environ.get('PETRUS_POSTGRES_IMAGE', '?')}",
     ]
-    packages = ["libzmq3-dev", "libpq-dev", "libpq5", "libsqlite3-dev", "libsqlite3-0", "graphviz", "libc6", "zlib1g", "libgmp10", "openssl"]
+    packages = ["libzmq3-dev", "libpq-dev", "libpq5", "libsqlite3-dev", "libsqlite3-0", "libbz2-dev", "liblzma-dev", "graphviz", "libc6", "zlib1g", "libgmp10", "openssl"]
     dpkg = version(["dpkg-query", "-W", "-f", "${Package}=${Version};"] + packages)
     lines.append(f"dpkg {dpkg}")
     return lines

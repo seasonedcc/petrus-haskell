@@ -540,9 +540,9 @@ def tree(root: Path) -> list[dict]:
     return sorted(listing, key=lambda item: item["path_b64"])
 
 
-def reader_fixtures() -> list[dict]:
+def reader_fixtures(cases: list[tuple[str, bytes]] | None = None) -> list[dict]:
     fixtures = []
-    for name, data in reader_cases():
+    for name, data in reader_cases() if cases is None else cases:
         fixture: dict = {"name": name, "archive_zb64": zb64(data)}
         try:
             with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as archive:

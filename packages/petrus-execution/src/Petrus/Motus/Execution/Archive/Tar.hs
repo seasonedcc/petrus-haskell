@@ -22,6 +22,7 @@ module Petrus.Motus.Execution.Archive.Tar
   , Member (..)
   , ReadFailure (..)
   , readTar
+  , readTarFrom
   , isRegular
   , isDirectory
   , isSymlink
@@ -46,6 +47,7 @@ import Data.Int (Int8)
 import Data.Word (Word8)
 import Numeric (showOct)
 import Petrus.Json.Python (fsDecode, isPythonSpace, parsePythonInt)
+import Petrus.Motus.Execution.Archive.Stream (Chunks (..), Ending (..), Source (..), collect, compressedFileEnded, plainSource, restart, seekChunks)
 import Petrus.Motus.Execution.Internal.PyText
 
 -- ---------------------------------------------------------------------------
@@ -245,6 +247,9 @@ data ReadFailure
   | -- | A non-tar Python exception (class name, message) that CPython lets
     -- escape for some malformed sparse metadata.
     PythonFailure String String
+  | -- | The decompressing file object failed while the first member was
+    -- read (@tarfile.open@ reports it as "not a ... file").
+    DecodeFailure
   deriving stock (Eq, Show)
 
 data HeaderError
@@ -266,12 +271,20 @@ data Failure
   = HeaderFailure HeaderError
   | ReadErr String
   | PyErr String String
+  | DecodeErr
 
 data RState = RState
-  { rsData :: ByteString
+  { rsSource :: Source
+  , rsChunks :: Chunks
+  -- ^ The stream from 'rsChunksAt' on (the chunk holding 'rsPos', or one
+  -- before it).
+  , rsChunksAt :: Integer
   , rsPos :: Integer
   , rsOffset :: Integer
   , rsGlobal :: [(ByteString, ByteString)]
+  , rsOpening :: Bool
+  -- ^ Whether the first member is being read (@tarfile.open@), when a
+  -- failing decompressor is reported instead of read as the end.
   }
 
 newtype R a = R {runR :: RState -> (Either Failure a, RState)}
@@ -311,17 +324,41 @@ catchHeader (R g) handler = R $ \s -> case g s of
   (Left (HeaderFailure e), s') -> runR (handler e) s'
   other -> other
 
--- | @BytesIO.read(n)@.
+-- | @fileobj.read(n)@ at the current position. A short read is the end of
+-- the data, except that a read past the end of a truncated stream raises
+-- @EOFError@, and while the first member is read, a read past where the
+-- decompressor refused the data fails the opening (as CPython's file
+-- objects raise; after the first member that refusal reads as the end,
+-- DIVERGENCES.md).
 readBytes :: Integer -> R ByteString
-readBytes n = R $ \s ->
-  let total = fromIntegral (B.length (rsData s)) :: Integer
-      pos = rsPos s
-      available = max 0 (min n (total - pos))
-      chunk =
-        if available <= 0
-          then B.empty
-          else B.take (fromIntegral available) (B.drop (fromIntegral pos) (rsData s))
-   in (Right chunk, s {rsPos = pos + fromIntegral (B.length chunk)})
+readBytes n = R $ \s -> case rsChunks s of
+  -- The current chunk holds the whole read (always, for an uncompressed
+  -- archive).
+  Chunk current _
+    | offset >= 0 && n >= 0 && offset + n <= toInteger (B.length current) ->
+        let piece = B.take (fromIntegral n) (B.drop (fromIntegral offset) current)
+         in (Right (if sliced (rsSource s) then piece else B.copy piece), s {rsPos = rsPos s + n})
+    where
+      offset = rsPos s - rsChunksAt s
+  _ -> readAcross n s
+
+-- | 'readBytes' across chunks or past the end of the stream.
+readAcross :: Integer -> RState -> (Either Failure ByteString, RState)
+readAcross n s =
+  let pos = rsPos s
+      (chunks, at) = seekChunks (rsSource s) (rsChunks s) (rsChunksAt s) pos
+      (pieces, ending) = collect chunks (pos - at) n
+      bytes = case pieces of
+        [] -> B.empty
+        [one]
+          | sliced (rsSource s) -> one
+          | otherwise -> B.copy one
+        _ -> B.concat pieces
+      moved = s {rsChunks = chunks, rsChunksAt = at, rsPos = pos + fromIntegral (B.length bytes)}
+   in case ending of
+        Just Truncated -> (Left (PyErr "EOFError" compressedFileEnded), moved)
+        Just failed | rsOpening s && failed /= Clean -> (Left DecodeErr, moved)
+        _ -> (Right bytes, moved)
 
 -- | @nts@: cut at the first NUL.
 nts :: ByteString -> ByteString
@@ -494,14 +531,14 @@ procGnuLong member = do
 procSparse :: Member -> Maybe SparseStructs -> R Member
 procSparse member sparse = do
   let (structs0, extended0, origsize) = maybe ([], False, 0) id sparse
-  structs <- collect structs0 extended0
+  structs <- extendedStructs structs0 extended0
   offsetData <- getsR rsPos
   len <- block (memberSize member)
   modifyR (\s -> s {rsOffset = offsetData + len})
   pure member {memberSparse = Just structs, memberOffsetData = offsetData, memberSize = origsize}
   where
-    collect acc False = pure acc
-    collect acc True = do
+    extendedStructs acc False = pure acc
+    extendedStructs acc True = do
       buf <- readBytes (fromIntegral blockSize)
       found <- forM [0 .. 20 :: Int] $ \i -> do
         let pos = i * 24
@@ -512,7 +549,7 @@ procSparse member sparse = do
         if B.length buf > 504
           then pure (BU.unsafeIndex buf 504 /= 0)
           else failWith (PyErr "IndexError" "index out of range")
-      collect (acc ++ concat found) extended
+      extendedStructs (acc ++ concat found) extended
 
 -- | Ordered-dict assignment.
 dictSet :: ByteString -> ByteString -> [(ByteString, ByteString)] -> [(ByteString, ByteString)]
@@ -678,16 +715,31 @@ nextMember = do
           SubsequentHeader m -> (Left (ReadErr m), s')
         (Left other, s') -> (Left other, s')
 
--- | Open an uncompressed archive (@taropen@ + @getmembers@).  The first
--- member is read while "opening"; a failure there is reported separately
--- so the caller can reproduce @tarfile.open@'s aggregated message.
+-- | Open an uncompressed archive (@taropen@ + @getmembers@).
 readTar :: ByteString -> Either (Bool, ReadFailure) [Member]
-readTar bytes = case runR nextMember initial of
-  (Left failure, _) -> Left (True, toFailure failure)
-  (Right Nothing, _) -> Right []
-  (Right (Just first), state) -> go [first] state
+readTar = readTarFrom . plainSource
+
+-- | @taropen@ + @getmembers@ over a stream.  The first member is read
+-- while "opening"; a failure there is reported separately so the caller
+-- can reproduce @tarfile.open@'s aggregated message.
+--
+-- Opening reads through a 128 KiB buffer, whose first fill makes the
+-- decompressor reach any bad data in the first 128 KiB it produces; that
+-- fails the opening even when the first member lies before it.
+readTarFrom :: Source -> Either (Bool, ReadFailure) [Member]
+readTarFrom source
+  | corruptWithin firstFill stream = Left (True, DecodeFailure)
+  | otherwise = case runR nextMember initial of
+      (Left failure, _) -> Left (True, toFailure failure)
+      (Right Nothing, _) -> Right []
+      (Right (Just first), state) -> go [first] state {rsOpening = False}
   where
-    initial = RState bytes 0 0 []
+    stream = restart source
+    initial = RState source stream 0 0 0 [] True
+    firstFill = 131072
+    corruptWithin budget = \case
+      Chunk bytes rest -> budget > 0 && corruptWithin (budget - B.length bytes) rest
+      Done ending -> ending == Corrupt && budget > 0
     go acc state = case runR nextMember state of
       (Left failure, _) -> Left (False, toFailure failure)
       (Right Nothing, _) -> Right (reverse acc)
@@ -696,4 +748,5 @@ readTar bytes = case runR nextMember initial of
       HeaderFailure e -> ReadFailure (headerMessage e)
       ReadErr m -> ReadFailure m
       PyErr cls m -> PythonFailure cls m
+      DecodeErr -> DecodeFailure
 

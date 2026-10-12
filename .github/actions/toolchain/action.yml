@@ -54,7 +54,7 @@ runs:
         "$HOME/.ghcup/bin/cabal" --version
     - name: Install system libraries
       shell: bash
-      run: sudo apt-get update -qq && sudo apt-get install -y -qq libzmq3-dev libpq-dev libsqlite3-dev graphviz
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq libzmq3-dev libpq-dev libsqlite3-dev libbz2-dev liblzma-dev pkg-config graphviz
     - uses: astral-sh/setup-uv@v6
     # Node, for the suites that drive upstream JavaScript and for the viewer
     # job's pnpm. Every job sets it up here, in the same place, because cabal
