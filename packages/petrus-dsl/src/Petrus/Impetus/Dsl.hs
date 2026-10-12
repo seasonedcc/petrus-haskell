@@ -161,11 +161,14 @@ import Petrus.Impetus.Petrinet.Schema
   , Number (..)
   , Timer (..)
   , cel
+  , childPath
   , guardUris
   , handlerUri
   , mkNet
   , netPath
   , netPathText
+  , pathPrefixes
+  , stripPathPrefix
   , unsafeCel
   )
 import Petrus.Impetus.Petrinet.Schema qualified as Schema
@@ -557,16 +560,16 @@ runNetSpec header program = do
           refuse ("net specification name must be a non-empty string or None, got " <> pythonStrRepr name)
     _ -> Right ()
   let Author run = program
-  (result, finished) <- run [] emptyBody
+  (result, finished) <- run Nothing emptyBody
   Right (NetSpec header finished, result)
 
 -- ---------------------------------------------------------------------------
 -- The authoring monad
 
 -- | An authoring program over the specification branded @s@: a state
--- transformer of the specification under the current scope prefix, which
--- refuses atomically.
-newtype Author (s :: Type) a = Author ([Text] -> Body -> Either DslError (a, Body))
+-- transformer of the specification under the current scope prefix
+-- ('Nothing' at the root), which refuses atomically.
+newtype Author (s :: Type) a = Author (Maybe NetPath -> Body -> Either DslError (a, Body))
 
 instance Functor (Author s) where
   fmap = liftM
@@ -600,7 +603,7 @@ getBody = Author (\_ b -> Right (b, b))
 putBody :: Body -> Author s ()
 putBody b = Author (\_ _ -> Right ((), b))
 
-getPrefix :: Author s [Text]
+getPrefix :: Author s (Maybe NetPath)
 getPrefix = Author (\prefix b -> Right (prefix, b))
 
 -- | Address a place relative to the current scope (@net.p.name@). The name
@@ -623,15 +626,15 @@ t name = do
 resolve :: Text -> Author s NetPath
 resolve name = do
   prefix <- getPrefix
-  liftEither (fromKernel (netPath (T.intercalate "." (prefix ++ [name]))))
+  liftEither (fromKernel (netPath (maybe name (\q -> netPathText q <> "." <> name) prefix)))
 
 -- | Author inside one more scope segment (@net.s.name@ / @net.s[name]@). The
 -- segment must be one non-empty path segment.
 scope :: Text -> Author s a -> Author s a
-scope segment (Author inner)
-  | T.null segment || T.any (== '.') segment =
-      authorFail (DslError ("scope segment must be one non-empty path segment, got " <> pythonStrRepr segment))
-  | otherwise = Author (\prefix b -> inner (prefix ++ [segment]) b)
+scope segment (Author inner) = case netPath segment of
+  Right step
+    | not (T.any (== '.') segment) -> Author (\prefix b -> inner (Just (prefixed prefix step)) b)
+  _ -> authorFail (DslError ("scope segment must be one non-empty path segment, got " <> pythonStrRepr segment))
 
 -- | Stamp a reusable specification at the current scope
 -- (@scope.stamp(source)@). Stamping the same scope again replaces the
@@ -907,10 +910,8 @@ connect sources targets inscribed = do
 label :: NetSpec -> Text
 label spec = fromMaybe "<anonymous>" spec.header.headerName
 
-scopeLabel :: [Text] -> Text
-scopeLabel = \case
-  [] -> "<root>"
-  segments -> T.intercalate "." segments
+scopeLabel :: Maybe NetPath -> Text
+scopeLabel = maybe "<root>" netPathText
 
 -- | Whether a path lies within (or is) a prefix path, segment-wise.
 within :: NetPath -> NetPath -> Bool
@@ -921,31 +922,17 @@ within at prefix =
 
 -- | The path below a prefix ('Nothing' when it is the prefix itself).
 relative :: NetPath -> NetPath -> Maybe NetPath
-relative at prefix
-  | at == prefix = Nothing
-  | otherwise = Just (unsafePath (T.drop (T.length (netPathText prefix) + 1) (netPathText at)))
+relative at prefix = stripPathPrefix prefix at
 
-prefixed :: [Text] -> NetPath -> NetPath
-prefixed [] at = at
-prefixed prefix at = unsafePath (T.intercalate "." prefix <> "." <> netPathText at)
-
--- | 'error' on refusal: every caller joins or slices valid paths and
--- 'scope'-checked segments (non-empty, dot-free), which 'netPath' admits.
-unsafePath :: Text -> NetPath
-unsafePath = either (error . T.unpack) id . netPath
-
--- | Every prefix of a path, longest first (the path itself included).
-prefixesOf :: NetPath -> [NetPath]
-prefixesOf at =
-  let text = netPathText at
-      cuts = [i | (i, c) <- zip [0 :: Int ..] (T.unpack text), c == '.']
-   in at : [unsafePath (T.take i text) | i <- reverse cuts]
+-- | A path under the scope prefix.
+prefixed :: Maybe NetPath -> NetPath -> NetPath
+prefixed prefix at = maybe at (`childPath` at) prefix
 
 -- | The innermost stamp enclosing a path (@_stamp_for@).
 stampFor :: Body -> NetPath -> Maybe (NetPath, NetSpec)
 stampFor b at
   | Map.null b.stamps = Nothing
-  | otherwise = case [(q, s) | q <- prefixesOf at, Just s <- [Map.lookup q b.stamps]] of
+  | otherwise = case [(q, s) | q <- pathPrefixes at, Just s <- [Map.lookup q b.stamps]] of
       found : _ -> Just found
       [] -> Nothing
 
@@ -1010,11 +997,9 @@ sourceTransition b (Just at) = case stampFor b at of
 join' :: Maybe (Maybe a) -> Maybe a
 join' = fromMaybe Nothing
 
-stampBody :: [Text] -> NetSpec -> Body -> Either DslError Body
-stampBody segments source b = do
-  when (null segments) $
-    refuse ("cannot stamp " <> label source <> " at <root>: reusable definitions require a non-root scope")
-  let at = unsafePath (T.intercalate "." segments)
+stampBody :: Maybe NetPath -> NetSpec -> Body -> Either DslError Body
+stampBody prefix source b = do
+  at <- maybe (refuse ("cannot stamp " <> label source <> " at <root>: reusable definitions require a non-root scope")) Right prefix
   forM_ (stampFor b at) $ \(enclosing, owner) ->
     when (enclosing /= at) $
       refuse
@@ -1079,11 +1064,11 @@ build spec = do
 -- | The composed specification as one flat specification with no stamps
 -- (@NetSpec.copy()@).
 flatten :: NetSpec -> Either DslError NetSpec
-flatten root = NetSpec root.header <$> compose root [] emptyBody
+flatten root = NetSpec root.header <$> compose root Nothing emptyBody
 
-compose :: NetSpec -> [Text] -> Body -> Either DslError Body
+compose :: NetSpec -> Maybe NetPath -> Body -> Either DslError Body
 compose source prefix effective0 = do
-  when (not (null prefix) && isJust source.header.headerCompletion) $
+  when (isJust prefix && isJust source.header.headerCompletion) $
     refuse
       ( "stamped net specification " <> label source <> " at " <> scopeLabel prefix
           <> " cannot declare root completion"
@@ -1118,7 +1103,7 @@ compose source prefix effective0 = do
             , events = touched.events Seq.|> ConnectionEvent added
             }
       StampEvent at -> case Map.lookup at b.stamps of
-        Just child -> compose child (prefix ++ Schema.netPathSegments at) effective
+        Just child -> compose child (Just (prefixed prefix at)) effective
         Nothing -> Right effective
     placeOverride effective at = do
       (_, _, value) <- lookupPlace b at
