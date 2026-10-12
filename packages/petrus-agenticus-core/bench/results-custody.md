@@ -1,5 +1,7 @@
 # agenticus-custody benchmark results
 
+<!-- scripts/bench: measured sources b5dffc98cbfa603a at 209e8d8c2a6b -->
+
 These are twin workloads: `bench/Bench/Custody.hs` and
 `bench/python_custody.py`, which runs the pinned reference
 (`upstream/petrus` @ 3f85fc2).

@@ -1,5 +1,7 @@
 # petrus-sqlite benchmarks
 
+<!-- scripts/bench: measured sources 496c20e16f30c01a at ee7e4a51da8c -->
+
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
 names and values. Both are wall-clock time. Ratios above 1 mean Haskell is

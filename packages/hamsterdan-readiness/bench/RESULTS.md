@@ -1,5 +1,7 @@
 # hamsterdan-readiness benchmarks
 
+<!-- scripts/bench: measured sources 608791b225a01979 at 9b33242c3393 -->
+
 These are the paths the V5 net runs on every firing and every dashboard
 publication:
 

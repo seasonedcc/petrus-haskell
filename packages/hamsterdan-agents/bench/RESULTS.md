@@ -1,5 +1,7 @@
 # hamsterdan-agents benchmarks
 
+<!-- scripts/bench: measured sources be5492ab6c81e8c6 at 5b060ba21cb6 -->
+
 These are the agent adapter's hot paths:
 
 - **Prompt:** `encode_prompt("review", url, request)`, the exact envelope of

@@ -1,5 +1,7 @@
 # petrus-engine-absurd benchmarks
 
+<!-- scripts/bench: measured sources a8d9e387815be5f8 at 570780d31e8a -->
+
 The Haskell side is [`bench/Main.hs`](Main.hs). The Python twin is
 [`bench/python_bench.py`](python_bench.py), which runs the reference's
 `petrus.engine.absurd.create_engine` on the same net (the topology net of
