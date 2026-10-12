@@ -109,4 +109,7 @@ benchmark petrus-engine-postgres-bench
                   , tasty >=1.4
                   , tasty-bench >=0.3.2
                   , text
-  ghc-options:      -threaded -O2 -rtsopts "-with-rtsopts=-A32m"
+  -- The RTS defaults (a 4 MB allocation area), as the executables that
+  -- run this code use; -A32m was slower on most rows (docs/reproducing.md,
+  -- "The benchmarks' runtime options").
+  ghc-options:      -threaded -O2 -rtsopts

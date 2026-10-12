@@ -123,9 +123,6 @@ Below are the differences that remain, with their rationale.
   `hamsterdan-e2e-operator FIXTURE.json`, which sets another fixture; its
   reference twin `e2e_operator.py` rebinds the same constants as a
   runtime overlay, and the e2e suite runs both against a scripted `gh`.
-- **Runtime options.** The binary runs with a 16 MB allocation area
-  (`-with-rtsopts=-A16m`), which removes most minor collections from a
-  command's run.
 
 ## Container runtime contract
 

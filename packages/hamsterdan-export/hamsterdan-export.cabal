@@ -61,6 +61,9 @@ executable hamsterdan-export
   build-depends:    base
                   , hamsterdan-export
                   , petrus-argparse
+  -- Up to four capabilities for the parallel parse and render
+  -- (DIVERGENCES.md, internal); otherwise the RTS defaults (a 4 MB
+  -- allocation area).
   ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-maxN4"
 
 test-suite hamsterdan-export-test
@@ -114,4 +117,5 @@ benchmark hamsterdan-export-bench
                   , text
                   , typed-process
                   , unix
+  -- The binary's RTS options.
   ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-maxN4"

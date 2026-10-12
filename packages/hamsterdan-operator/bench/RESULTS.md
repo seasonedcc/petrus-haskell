@@ -202,6 +202,34 @@ harness:
   values;
 - `FastJson`, which built the operator's values directly, took 175 µs.
 
+## The allocation area
+
+The binary and the benchmark used to run with a 16 MB allocation area
+(`-with-rtsopts=-A16m`); both now run with the RTS defaults (4 MB). Six
+full runs of the harness (`--runs 21`) alternated the two settings on
+2026-10-12, 16:33–16:50 local, at a one-minute load average of 2.9–3.9:
+the binary was built once each way (`HAMSTERDAN_OPERATOR` names it), and
+the in-process rows ran with `+RTS -A16m` or `-A4m`. Each figure is the
+median over the six runs of each setting's Haskell median; the ratio is
+the median of the six paired ratios, `-A16m` time over `-A4m` time (below
+1 means `-A16m` was faster):
+
+| Workload | `-A16m` | `-A4m` | `-A16m` / `-A4m` | runs `-A4m` was faster |
+| --- | ---: | ---: | ---: | ---: |
+| `--help` (fresh process) | 19.93 ms | 20.09 ms | 0.99 | 2 of 6 |
+| `preflight` (fresh process) | 133.4 ms | 130.9 ms | 1.01 | 6 of 6 |
+| `inspect --pr 7 --expect-hero-review` (fresh process) | 583.3 ms | 575.0 ms | 1.00 | 2 of 6 |
+| inspect, hero review (in process) | 765 µs | 882 µs | 0.90 | 1 of 6 |
+| inspect-authority (in process) | 104 µs | 97 µs | 1.08 | 4 of 6 |
+| Git ref projection parse (in process) | 1.03 ms | 993 µs | 1.04 | 5 of 6 |
+| qualification-setup (in process) | 945 µs | 959 µs | 0.99 | 2 of 6 |
+
+A command's run, which is what ships, did not get faster with `-A16m`.
+Of the in-process rows, only the hero-review `inspect` did: it parses 25
+provider answers (112 KB) per run, and a larger nursery collects less
+often. Two others were faster with the default. So the binary keeps the
+default, and the benchmark keeps the binary's settings.
+
 ## Rerun
 
 From the repository root (`scripts/bench hamsterdan-operator` runs exactly

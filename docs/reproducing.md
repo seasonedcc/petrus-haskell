@@ -338,6 +338,49 @@ slower. It is generated from the results files:
 scripts/bench --summary         # rewrite bench-results/summary.md
 ```
 
+### The benchmarks' runtime options
+
+Every benchmark runs with the GHC runtime's defaults (a 4 MB allocation
+area), as the executables that run the measured code do: `hamsterdan-host`,
+`hamsterdan-operator`, `hamsterdan-export` and the others set no `-A` (the
+viewer's binaries state `-A4m`, its measured choice). Nineteen benchmarks
+used to set `-with-rtsopts=-A32m`. On 2026-10-12 each of them ran twice
+with `+RTS -A32m` and twice with `-A4m`, alternating (Apple M4, load
+1.8–3.5); the geometric mean over a package's rows of the time with
+`-A32m` over the time with `-A4m`, and the rows the default was faster on:
+
+| Package | `-A32m` / `-A4m` | default faster |
+| --- | ---: | ---: |
+| petrus-cel | 1.23 | 21 of 21 |
+| petrus-engine | 1.16 | 5 of 5 |
+| petrus-telemetry-instrumentation | 1.15 | 16 of 16 |
+| petrus-engine-postgres | 1.15 | 5 of 5 |
+| petrus-fabric | 1.13 | 7 of 8 |
+| petrus-processes | 1.12 | 11 of 12 |
+| petrus-motus | 1.12 | 11 of 11 |
+| petrus-agenticus-runtime | 1.10 | 22 of 26 |
+| petrus-agenticus | 1.10 | 4 of 5 |
+| petrus-agenticus-core | 1.10 | 18 of 20 |
+| petrus-engine-file | 1.08 | 10 of 15 |
+| petrus-engine-sqlite | 1.05 | 3 of 4 |
+| petrus-dsl | 1.03 | 7 of 10 |
+| petrus-engine-absurd | 1.01 | 2 of 2 |
+| petrus-motus-zeromq | 1.01 | 5 of 8 |
+| petrus-history-postgres | 1.00 | 2 of 7 |
+| petrus-motus-absurd | 0.99 | 2 of 4 |
+| petrus-impetus | 0.93 | 9 of 20 |
+| petrus-observation | 0.87 | 5 of 21 |
+
+A larger allocation area helps a row that builds a large structure, since
+fewer minor collections copy less of it while it is young (petrus-impetus's
+History parse, petrus-observation's paging), and costs a row with a small
+working set, whose new objects then land on memory that has left the cache
+(the viewer measured the same, packages/petrus-viewer-server/bench/RESULTS.md).
+The benchmarks measure what ships, so they now run with the defaults.
+petrus-history-store had already switched (its bench/RESULTS.md), and
+hamsterdan-operator's binary dropped its `-A16m` after the same kind of
+measurement (its bench/RESULTS.md, "The allocation area").
+
 ### Which code the figures measured
 
 Every results file records the code its figures measured, in a marker:

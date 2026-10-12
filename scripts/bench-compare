@@ -42,7 +42,8 @@ a throwaway server from scripts/with-postgres when it is unset.
 It prints a Markdown table: the median over repetitions of each row
 (tasty-bench means for Haskell, or the ``twin NAME NANOSECONDS`` figure of a
 row timed with the twins' own protocol; bench_timing medians for Python), their
-ratio, the lowest per-repetition ratio, and every repetition's figures. The
+ratio, the lowest per-repetition ratio, the repetitions Haskell was ahead in
+(``k of n``), and every repetition's figures. The
 same table is written to ``bench-results/tmp/<package>.compare.md``, and the
 raw CSV files to ``bench-results/tmp/`` (ignored by git). It never writes a
 package's RESULTS.md: those are curated by hand from runs like this one.
@@ -344,8 +345,8 @@ def main() -> int:
     lines = [
         f"{package}: {repetitions} interleaved repetitions; load average (1 min) {min(loads):.2f} to {max(loads):.2f}.",
         "",
-        "| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |",
-        "|---|---:|---:|---:|---:|---|---|",
+        "| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |",
+        "|---|---:|---:|---:|---:|---:|---|---|",
     ]
     names = list(runs[0][0])
     if not options.pattern:
@@ -358,8 +359,9 @@ def main() -> int:
         ratio = f"{p / h:.2f}×" if h and p else "—"
         paired = [run[1][name] / run[0][name] for run in runs if name in run[0] and name in run[1]]
         lowest = f"{min(paired):.2f}×" if paired else "—"
+        ahead = f"{sum(1 for x in paired if x > 1)} of {len(paired)}" if paired else "—"
         lines.append(
-            f"| `{name}` | {human(h)} | {human(p)} | {ratio} | {lowest} | "
+            f"| `{name}` | {human(h)} | {human(p)} | {ratio} | {lowest} | {ahead} | "
             f"{', '.join(human(x) for x in ours)} | {', '.join(human(x) for x in theirs)} |"
         )
     text = "\n".join(lines) + "\n"

@@ -66,7 +66,9 @@ executable hamsterdan-operator
   build-depends:    base
                   , hamsterdan-operator
                   , petrus-argparse
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A16m"
+  -- The RTS defaults (a 4 MB allocation area): -A16m was no faster for a
+  -- command's run (bench/RESULTS.md, "The allocation area").
+  ghc-options:      -O2 -threaded -rtsopts
 
 test-suite hamsterdan-operator-test
   import:           warnings
@@ -130,4 +132,6 @@ benchmark hamsterdan-operator-bench
                   , text
                   , typed-process
                   , unix
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A16m"
+  -- The binary's RTS options, so that the in-process rows run as the
+  -- operations do inside a command.
+  ghc-options:      -O2 -threaded -rtsopts

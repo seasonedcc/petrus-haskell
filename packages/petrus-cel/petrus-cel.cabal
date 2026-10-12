@@ -103,4 +103,7 @@ benchmark petrus-cel-bench
   -- -threaded: built without it, the benchmark intermittently stopped for
   -- good in the non-threaded RTS's deadlock path (awaitUserSignals, 0% CPU)
   -- partway through scripts/bench-compare runs on macOS (2026-10-12).
-  ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A32m"
+  -- The RTS defaults (a 4 MB allocation area), as the executables that
+  -- run this code use; -A32m was slower on most rows (docs/reproducing.md,
+  -- "The benchmarks' runtime options").
+  ghc-options:      -O2 -threaded -rtsopts

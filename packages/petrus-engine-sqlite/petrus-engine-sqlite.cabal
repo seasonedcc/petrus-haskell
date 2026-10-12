@@ -100,4 +100,7 @@ benchmark petrus-engine-sqlite-bench
                   , tasty-bench >=0.3.2
                   , tasty
                   , text
-  ghc-options:      -O2 -rtsopts "-with-rtsopts=-A32m"
+  -- The RTS defaults (a 4 MB allocation area), as the executables that
+  -- run this code use; -A32m was slower on most rows (docs/reproducing.md,
+  -- "The benchmarks' runtime options").
+  ghc-options:      -O2 -rtsopts
