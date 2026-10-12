@@ -119,7 +119,9 @@ the servers together ("Reading the results"). Run H measured the same
 scenarios with the HTTP front, which served the two endpoints until it
 was removed (see "Low-level code, measured"): every scenario was above
 1.0x in every round. Runs A to H measured earlier code; they are kept for
-the record and marked superseded.
+the record and marked superseded. Run I predates the two changes that
+lifted the 1-client endpoint rows on Linux ("Where a request spends its
+time on Linux"): an unsafe `F_OK` and a 4 MB allocation area.
 
 Machine: Apple M4 (10 cores), 24 GB, macOS 26 (Darwin 25.3.0), node
 v22.22.0, GHC 9.10.3. **The machine was shared with other agents building
@@ -867,9 +869,10 @@ sit at parity for both designs, and the front does not lift them:
 | resolve-ref, 1 client | 0.95x (2 of 5) | 1.01x (3 of 5) | 1.19x (3 of 5) |
 
 Single rounds there range over ±20% (the front's open-file rounds: 0.93,
-0.79, 1.24, 0.99, 1.15), so these two gate rows can fail a nightly run
+0.79, 1.24, 0.99, 1.15), so these two gate rows could fail a nightly run
 with either design; the relay, collab, MCP and static rows passed by
-wide margins in every run.
+wide margins in every run. Two later changes lift both rows on Linux;
+see "Where a request spends its time on Linux".
 
 **The rest, one removal at a time** (12:20–12:35 local, load average
 3.9 → 8.4; `--only "open-file|resolve-ref|MCP"`). Four builds, each
@@ -904,6 +907,112 @@ call, and the encoder goes through a `Text` and a `Builder` where the C
 routine sizes the output and writes it in two passes. Each module's
 header points here.
 
+## Where a request spends its time on Linux
+
+On GitHub's Linux runner the two 1-client endpoint rows sat at parity
+with Node (the table in "Low-level code, measured"). They were profiled
+and A/B'd there: scratch CI runs on the viewer job's runner
+(`blacksmith-8vcpu-ubuntu-2404`, 8 vCPUs, AMD EPYC except one Intel Xeon
+run, Linux 6.6), 2026-10-12, with `bench/run.mjs --variant` (7 or 9
+interleaved rounds per run, six runs on six runners), per-thread CPU and
+context switches from `/proc`, `perf stat`, `perf record` and a uprobe
+on the RTS's `suspendThread` (where every safe foreign call starts). Two
+changes came out of it; everything else measured stayed as it was.
+
+With both changes, against Node on the two final runners (per-round
+Haskell / Node, best of each side, 9 rounds each; the gate runs 5):
+
+| scenario | runner 1 | min | ahead | runner 2 | min | ahead |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| open-file POST+GET, 1 client | 1.24x | 0.98x | 8 of 9 | 1.36x | 0.76x | 8 of 9 |
+| resolve-ref, 1 client | 1.10x | 0.92x | 6 of 9 | 1.23x | 0.73x | 6 of 9 |
+| open-file POST+GET, 16 clients in lockstep | 1.29x | 1.13x | 9 of 9 | 1.34x | 1.06x | 9 of 9 |
+| resolve-ref, 16 clients | 1.42x | 0.82x | 6 of 9 | 1.47x | 1.20x | 9 of 9 |
+
+Before them (the gate runs in "Low-level code, measured"), the 1-client
+rows were 0.99x and 1.09x (open-file) and 0.95x and 1.01x (resolve-ref).
+Single 1-client rounds on these runners still range over about ±25%.
+
+### The two changes, measured
+
+<!-- bench: superseded -->
+
+Ratios of two builds of `petrus` in the same rounds, not Haskell / Node:
+per round, the ops/s of the build with the change over the build
+without it; each cell is the median, the geometric mean, and the rounds
+the change was ahead in.
+
+**A safe foreign call per `resolve-ref` and per `open-file` `POST`.**
+`Petrus.Viewer.FileIO` imported `F_OK` as `foreign import capi
+"unistd.h value F_OK"`. A value import is a call made wherever the value
+is used, and without `unsafe` it is a safe one: every `pathExists`
+released the capability, the run queue had the I/O manager on it, so the
+RTS woke a second OS thread to run it, and took the capability back
+afterwards. The uprobe counted one such call per request from
+`pathExists`; per request, a second worker thread ran about 1 us and
+switched once, and the server made 50.0k context switches in a 1.5 s
+`resolve-ref` window. With `unsafe` (the other calls in the module were
+already unsafe), one OS thread serves the request, as in Node: 27.4k
+switches in the same window, and the only safe call left per request is
+the I/O manager's blocking `epoll_wait` (Node's `epoll_pwait`). The fix
+against the build without it:
+
+| scenario | Linux, `-A4m` (2 runs, 18 rounds) | Linux, `-A16m` (2 runs) | Mac, `-A16m` (7 rounds) |
+| --- | ---: | ---: | ---: |
+| open-file POST+GET, 1 client | 1.21x, 1.11x (14 of 18) | 1.01x, 1.03x (9 of 16) | 0.99x, 0.99x (3 of 7) |
+| resolve-ref, 1 client | 1.14x, 1.11x (11 of 18) | 0.97x, 1.01x (7 of 16) | 1.18x, 1.16x (5 of 7) |
+| open-file POST+GET, 16 clients in lockstep | 1.10x, 1.07x (13 of 18) | 1.04x, 1.01x (4 of 7) | |
+| resolve-ref, 16 clients | 1.17x, 1.10x (14 of 18) | 1.17x, 1.16x (7 of 7) | |
+
+**The allocation area.** A `resolve-ref` allocates about 32 KB; with
+`-A16m` the nursery is collected every 500 requests or so and walked
+through end to end in between, so new objects most likely land on
+memory that has left the cache. In one profile per setting on the same runner,
+`-A4m` served `resolve-ref` with 11.9 us of server CPU per request
+against 22.6 us (1.62 instructions per cycle against 1.09), and
+`open-file` with 10.4 us against 13.9 us. `-A4m` against `-A16m` (Linux:
+four runs with `-A4m` as the variant, then the two final runs with
+`-A16m` as the variant; Mac: two runs):
+
+| scenario | Linux, four runs | Linux, the two final runs | Mac, two runs |
+| --- | ---: | ---: | ---: |
+| open-file POST+GET, 1 client | 1.03x, 1.05x (18 of 34) | 1.09x, 1.05x (11 of 18) | 1.02x, 1.06x (9 of 14) |
+| resolve-ref, 1 client | 1.12x, 1.08x (25 of 34) | 1.22x, 1.16x (13 of 18) | 1.06x, 1.03x (11 of 14) |
+| open-file POST+GET, 16 clients in lockstep | 1.17x, 1.15x (7 of 7) | 1.08x, 1.04x (11 of 18) | 1.14x, 1.16x (4 of 7) |
+| resolve-ref, 16 clients | 1.07x, 1.10x (7 of 7) | 1.33x, 1.29x (17 of 18) | 1.05x, 1.05x (4 of 7) |
+
+The rows that do not touch these endpoints moved both ways within the
+noise of an identical build (the relay, collaboration, MCP and static
+rows; with 7–9 rounds, two builds that differ only in the `F_OK` import
+came out 0.95–1.15x apart on them, by geometric mean). `-A1m` was as
+fast on Linux (1.09x and 1.11x by geometric mean over 34 rounds) but not
+on the Mac (`resolve-ref` 0.90x and 1.07x by median in two runs);
+`-A2m` was measured in one run only. 4 MB is GHC's own
+default, so the executables now leave the allocation area at what the
+runtime would pick, stated as `-A4m` (see "What the Haskell side does").
+`petrus` also holds less memory after the final runs: 30–33 MiB against
+49–75 MiB with `-A16m`.
+
+### Measured and left as they are
+
+- Warp's per-connection timeout (`time-manager`). The timer manager
+  thread is not woken per request (the date cache's one-second entry is
+  the earliest timeout), and a build with Warp's timeout set to 0
+  was even with the shipped one at 1 client (1.00x over 16 rounds).
+  Turning it off would also drop the idle timeout Node has (see [DIVERGENCES.md](../DIVERGENCES.md)).
+- `-qa` (OS thread affinity): 1.04x on open-file and 0.92x on
+  resolve-ref (9 rounds).
+- The benchmark protocol: one load client, the same warm-up (the whole
+  workload once) and keep-alive connections for every server. In the
+  endpoint rows Haskell has one server and Node two, and each round
+  compares the faster of each side. On these rows the Vite dev server
+  and the bare Node server are about equally fast on Linux (the faster
+  one changes from round to round), so taking the faster of the two
+  lowers Haskell / Node by up to 0.1 against comparing with the bare
+  server only (final runs, median of the rounds: open-file 1.24x against
+  1.34x, then 1.36x either way; resolve-ref 1.10x and 1.23x either way).
+  That errs against Haskell, so the comparison stays.
+
 ## Reading the results
 
 - **Static UI: 1.4–3.2x `vite preview`** by median (run G), and at
@@ -934,7 +1043,10 @@ header points here.
   (see "Low-level code, measured"). With Warp they are 1.05x and 1.08x
   (open-file, 1 and 16 clients) and 1.07x and 1.08x (resolve-ref) by
   median of run I's rounds, and 1.11–1.17x in the A/B's rounds. Run H's
-  front had 1.14–1.46x.
+  front had 1.14–1.46x. On GitHub's Linux runner they sat at parity at 1
+  client until the two changes in "Where a request spends its time on
+  Linux"; since then they are 1.10–1.36x (1 client) and 1.29–1.47x (16
+  clients) by median of the rounds on two runners.
 - **The lowest rounds.** 16-client rounds stay at or above 0.94x, and
   every resolve-ref round of run F is at or above 1.01x. The 1-client
   scenarios are the most exposed: a run is one request in flight at a
@@ -1020,17 +1132,21 @@ header points here.
   small C routine (`cbits/json_escape.c`). The clean versions of both
   were measured; without them resolve-ref falls behind Node (see
   "Low-level code, measured").
-- **RTS defaults** for `petrus`, `petrus-collab` and `petrus-mcp`: `-N1 -qg -A16m`. That
+- **RTS defaults** for `petrus`, `petrus-collab` and `petrus-mcp`: `-N1 -qg -A4m`. That
   is one capability, like Node's one event loop. Request handling is short
   and I/O bound, and every extra capability adds cross-thread wake-ups to
   each request: `resolve-ref` at 16 clients ran 22.9–25.9k ops/s with
   `-N2` and 27.9k with `-N1` (bare Node: 26.1k), and `-N4` was slower
-  still. A 16 MB allocation area makes collections rare. With the HTTP
-  front (since removed), a 2 MB area (`-A2m`, which fits an efficiency core's cache) was
-  measured against it in the same interleaved rounds (11 reps). The
-  medians moved by −13% (open-file, 1 client), +2% (open-file, 16
-  clients), −2% (resolve-ref, 1 client) and +9% (resolve-ref, 16
-  clients). That is no consistent gain, so the defaults stay. `petrus-mcp`
+  still. The allocation area is 4 MB, GHC's own default, stated because
+  it was measured: it served the endpoints faster than the 16 MB area
+  the servers had before, on Linux (up to 1.16x by geometric mean on
+  1-client `resolve-ref`) and on the Mac, and held less memory; the other
+  rows did not move beyond noise (see "Where a request spends its time
+  on Linux"). Earlier, with the HTTP front (since removed) and `-A16m`
+  as the default, a 2 MB area was measured against 16 MB on the Mac in
+  the same interleaved rounds (11 reps): the medians moved by −13%
+  (open-file, 1 client), +2% (open-file, 16 clients), −2% (resolve-ref,
+  1 client) and +9% (resolve-ref, 16 clients). `petrus-mcp`
   ran `-N2` before run G; with 16 calls in flight, `-N1 -qg -A16m` served
   as many calls per second (17.3–20.3k against 16.5–20.5k over three
   interleaved rounds) for less CPU (37 + 8 us per call against 45 + 20 us).
