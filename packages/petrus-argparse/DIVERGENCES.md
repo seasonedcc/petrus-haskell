@@ -7,11 +7,16 @@ test suite builds the same parsers in the pinned interpreter and compares
 them case by case. The Hamsterdan and Petrus command-line suites compare
 the real entry points as well.
 
-None that is observable for the subset.
+Within the subset, one difference: `argparse.FileType("r")` and `("w")`
+open the file while parsing, in the same order and with the same errors,
+but the namespace keeps its name rather than the open handle (the port
+closes it again). A command line that uses the file reopens it by name, so
+it sees the file as it is then.
 
-Outside it, these `argparse` features are not ported, because no reference
-command line declares them: `nargs` other than the default, `store_const`,
-`count`, `version`, mutually exclusive and argument groups, `epilog`,
+Outside the subset, these `argparse` features are not ported, because no
+reference command line declares them: `nargs` other than the default, `"*"`
+and a subparser's, `FileType` modes other than `"r"` and `"w"`, `count`,
+`version`, mutually exclusive and argument groups, `epilog`,
 `usage=`, `prefix_chars`, `fromfile_prefix_chars`, `allow_abbrev=False`,
 `exit_on_error=False`, `suggest_on_error`, `parse_intermixed_args`, and
 `%(default)s`-style help expansion.

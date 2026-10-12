@@ -62,6 +62,7 @@ executable petrus-format-json
   main-is:          Main.hs
   build-depends:    base
                   , bytestring
+                  , petrus-argparse
                   , petrus-engine-file
                   , petrus-json
                   , text

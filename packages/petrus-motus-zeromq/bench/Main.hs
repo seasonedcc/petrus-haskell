@@ -45,7 +45,7 @@ import Petrus.Motus.Transport.ZeroMQ
   , waitReady
   )
 import Petrus.Motus.Transport.ZeroMQ qualified as Z
-import Petrus.Motus.Transport.ZeroMQ.Cli (serverMainWith)
+import Petrus.Motus.Transport.ZeroMQ.Cli (serverMain)
 import Petrus.Motus.Worker (WorkerAccess (..))
 import System.Directory (createDirectory, getTemporaryDirectory, removeDirectoryRecursive, removeFile)
 import System.Environment (getArgs, getEnvironment, getExecutablePath, lookupEnv)
@@ -174,7 +174,7 @@ main :: IO ()
 main =
   lookupEnv serverMode >>= \case
     Just "memory" -> getArgs >>= memoryServer
-    Just _ -> getArgs >>= serverMainWith "petrus-zeromq-dispatch"
+    Just _ -> serverMain "petrus-zeromq-dispatch"
     Nothing -> getArgs >>= csvSink >>= benchmarks
 
 -- | Start this executable as a server in the mode, run the action with its

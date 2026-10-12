@@ -16,6 +16,7 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempDirectory)
+import System.Info (os)
 import System.Process
 import Test.Hspec
 
@@ -77,6 +78,14 @@ scenarios =
   , Scenario "usage: unknown option" [] ["--frobnicate"] ""
   , Scenario "usage: missing value" [] ["--indent"] ""
   , Scenario "usage: -- ends options" [("-x.json", messy)] ["--", "-x.json"] ""
+  , Scenario "usage: a path that looks like a negative number" [] ["-1x"] ""
+  , Scenario "usage: an --indent value that looks like a negative number" [] ["--indent", "-1a"] ""
+  , Scenario "usage: --indent in other Unicode digits" [("a.json", messy)] ["--indent", "\x0661", "a.json"] ""
+  , Scenario "usage: --outfile is truncated before a later usage error" [("out.json", "old")] ["--outfile", "out.json", "--indent", "x"] ""
+  , Scenario "usage: --infile that cannot open stops before a later usage error" [] ["--infile", "nope.json", "--indent", "x"] ""
+  , Scenario "file names: not UTF-8, opened in place" [] ["\xdcff.json"] ""
+  , Scenario "file names: not UTF-8, opened by --infile" [] ["--infile", "\xdcff.json"] ""
+  , Scenario "file names: not UTF-8, created by --outfile" [] ["--outfile", "\xdcfe.json"] messy
   , Scenario "lone surrogate: in the net name, from stdin" [] [] "{\"fileVersion\": \"2\", \"net\": \"n\\ud800\",  \"places\": {}}"
   , Scenario "lone surrogate: in names, keys and metadata, in place" [("a.json", surrogates)] ["a.json"] ""
   , Scenario "lone surrogate: through --infile and --outfile" [("in.json", surrogates)] ["--infile", "in.json", "--outfile", "out.json"] ""
@@ -95,6 +104,11 @@ scenarios =
   , Scenario "recursion: objects nested 991 deep" [("a.json", deepObjects 986)] ["a.json"] ""
   , Scenario "recursion: arc metadata nested 991 deep" [] [] ("{\"net\": \"m\", \"arcs\": [{\"source\": \"a\", \"target\": \"b\", \"metadata\": {\"x\": " <> BC.replicate 987 '[' <> BC.replicate 987 ']' <> "}}]}")
   ]
+    -- A file system that stores any bytes as a name (macOS refuses a name
+    -- that is not UTF-8 with EILSEQ, which the scenarios above meet).
+    <> [ Scenario "file names: not UTF-8, in place (print refuses the name)" [("\xdcff.json", messy)] ["\xdcff.json"] ""
+       | os /= "darwin"
+       ]
 
 -- | Lone surrogates (escaped, as JSON text can only spell them) in place
 -- and transition names, metadata keys and values, and the view state.

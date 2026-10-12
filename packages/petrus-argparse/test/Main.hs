@@ -2,12 +2,13 @@
 -- parsers built on both sides (@test/argparse_reference.py@), and every
 -- case's exit status, stdout, stderr and namespace compared. The cases
 -- cover parsing, the error messages, help and usage at several widths, and
--- the colors @_colorize@ chooses from the environment and the terminal.
--- The typed declarations ("Petrus.Argparse") are checked to read back
--- what the namespace holds.
+-- the colors @_colorize@ chooses from the environment and the terminal,
+-- and the @FileType@ files each side opens (in a scratch directory). The
+-- typed declarations ("Petrus.Argparse") are checked to read back what the
+-- namespace holds.
 module Main (main) where
 
-import Control.Monad (forM_, unless)
+import Control.Monad (forM, forM_, unless)
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.List (sortOn)
@@ -17,12 +18,14 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Argparse
-import Petrus.Argparse.Parser (Action (..), Behavior (..), Namespace, Parser (..), Value (..), ValueType (..), parseArgs, plainTheme)
+import Petrus.Argparse.Parser (Action (..), Behavior (..), Namespace, Parser (..), Value (..), ValueType (..), parseArgsIO, plainTheme)
 import Petrus.Json (Json (..), compact, dumps, parseJson, surrogateRefusingLoads)
 import Petrus.Json.Python (pythonDoubleRepr, pythonStrRepr)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
 import Petrus.TestSupport.Repo (repoRoot)
+import System.Directory (createDirectory)
 import System.Exit (ExitCode (..))
+import System.IO.Temp (withSystemTempDirectory)
 import System.Process.Typed (byteStringInput, proc, readProcess, setStdin)
 import Test.Hspec
 
@@ -121,6 +124,29 @@ operator =
       , ("qualification-setup", (,) "qualification-setup" <$> (Setup <$> required path ["--credential-file"] [] <*> required path ["--target-file"] []))
       ]
 
+data Format = Format
+  { paths :: [Text]
+  , infile :: Stream
+  , outfile :: Stream
+  , indent :: Integer
+  , maxInline :: Integer
+  , failOnChange :: Integer
+  }
+  deriving stock (Eq, Show)
+
+-- | Positionals of any number, @FileType@ files and a constant, as
+-- @python -m petrus.cli.format_json@ declares them.
+formatter :: ArgumentParser Format
+formatter =
+  ArgumentParser "python -m petrus.cli.format_json" (Just "Format Petrus net JSON files.") $
+    Format
+      <$> positionals path "paths" [help "JSON file paths to format in-place"]
+      <*> defaulted (file ForReading) ["--infile"] StandardStream [help "Single-file input stream (default: stdin; ignored when paths are provided)"]
+      <*> defaulted (file ForWriting) ["--outfile"] StandardStream [help "Single-file output stream (default: stdout; ignored when paths are provided)"]
+      <*> defaulted int ["--indent"] 2 [help "Indent size (default: 2)"]
+      <*> defaulted int ["--max-inline"] 120 [help "Max chars for one-line objects/lists (default: 120)"]
+      <*> constant int ["--fail-on-change"] 1 0 [help "Exit with code 1 when any input is reformatted"]
+
 -- ---------------------------------------------------------------------------
 -- The cases
 
@@ -137,17 +163,19 @@ columns width = Map.fromList [("COLUMNS", width)]
 with :: [(String, String)] -> Map String String
 with = Map.union (columns "80") . Map.fromList
 
-cases :: [Case]
-cases =
+-- | The cases, with @dir@ a scratch directory holding @in.json@ and the
+-- directory @sub@.
+cases :: Text -> [Case]
+cases dir =
   -- Help and usage errors at several widths, plain.
   [ Case index argv' (columns width) False
-  | index <- [0, 1, 2]
+  | index <- [0, 1, 2, 3]
   , width <- ["20", "40", "60", "80", "120", "200"]
   , argv' <- [["-h"], ["--bogus"]]
   ]
     -- Colors: the environment's say, then the terminal's.
     <> [ Case index argv' (with environment) terminal
-       | index <- [0, 1, 2]
+       | index <- [0, 1, 2, 3]
        , argv' <- [["-h"], [], ["--bogus"]]
        , (environment, terminal) <-
            [ ([("FORCE_COLOR", "1")], False)
@@ -165,7 +193,7 @@ cases =
            , ([("TERM", "xterm")], True)
            ]
        ]
-    <> [Case index argv' (Map.insert "FORCE_COLOR" "1" (columns width)) False | index <- [0, 1, 2], width <- ["20", "50"], argv' <- [["-h"], ["--bogus"]]]
+    <> [Case index argv' (Map.insert "FORCE_COLOR" "1" (columns width)) False | index <- [0, 1, 2, 3], width <- ["20", "50"], argv' <- [["-h"], ["--bogus"]]]
     <> [Case 2 [sub, "-h"] (with environment) False | sub <- ["inspect", "create", "prepare-broker"], environment <- [[], [("FORCE_COLOR", "1")]]]
     -- Parsing the worker's options.
     <> [ Case 0 argv' (columns "80") False
@@ -230,12 +258,48 @@ cases =
            , ["--bogus", "preflight"]
            ]
        ]
+    -- Parsing the formatter's positionals, constant and files.
+    <> [ Case 3 argv' (columns "80") False
+       | argv' <-
+           [ []
+           , ["a.json"]
+           , ["./a.json", "sub//b.json", "c"]
+           , ["-1x"]
+           , ["--indent", "-1a"]
+           , ["--indent", "-1", "a"]
+           , ["--indent", "\x0661", "a"]
+           , ["a", "--indent", "2", "b"]
+           , ["--fail-on-change", "a"]
+           , ["--fail"]
+           , ["--fail-on-change=1"]
+           , ["--", "-x", "--indent"]
+           , ["a", "--", "b", "--"]
+           , ["--max", "3", "a"]
+           , ["--in", "x"]
+           , ["-x"]
+           , ["a", "-x"]
+           , ["--indent"]
+           , ["--infile", "-", "--outfile", "-"]
+           , ["--infile", dir <> "/in.json", "a"]
+           , ["--infile", dir <> "/missing.json"]
+           , ["--infile=" <> dir <> "/missing.json"]
+           , ["--infile", dir <> "/sub"]
+           , ["--outfile", dir <> "/out.json"]
+           , ["--outfile", dir <> "/no/out.json"]
+           , ["--outfile", dir <> "/sub"]
+           , ["--outfile", dir <> "/later.json", "--indent", "x"]
+           , ["--infile", dir <> "/missing.json", "--indent", "x"]
+           , ["--indent", "x", "--infile", dir <> "/missing.json"]
+           , ["--infile", dir <> "/in.json", "--infile", dir <> "/missing.json"]
+           , ["--outfile", dir <> "/out.json", "-h"]
+           ]
+       ]
 
 -- ---------------------------------------------------------------------------
 -- The comparison
 
 parsers :: [Parser]
-parsers = [parser worker, parser hostParser, parser operator]
+parsers = [parser worker, parser hostParser, parser operator, parser formatter]
 
 -- | The case's formatting as a process computes it ('formattingFor')
 -- from its environment and terminal.
@@ -254,6 +318,7 @@ actionJson action = case action.behavior of
         , String $ case behavior of
             Append -> "append"
             StoreTrue -> "store_true"
+            StoreConst _ -> "store_const"
             _ -> "store"
         )
       , ( "type"
@@ -262,6 +327,8 @@ actionJson action = case action.behavior of
             AsInt -> "int"
             AsFloat -> "float"
             AsPath -> "path"
+            AsFile ForReading -> "file-r"
+            AsFile ForWriting -> "file-w"
         )
       , ("choices", maybe Null (Array . map String) action.choices)
       , ("help", maybe Null String action.help)
@@ -269,6 +336,8 @@ actionJson action = case action.behavior of
       , ("required", Bool action.required)
       ]
         <> [("default", valueJson value) | Just value <- [action.defaultValue], value /= None]
+        <> [("const", valueJson value) | StoreConst value <- [behavior]]
+        <> [("nargs", String "*") | StoreAll <- [behavior]]
 
 valueJson :: Value -> Json
 valueJson = \case
@@ -278,6 +347,8 @@ valueJson = \case
   FloatValue value -> Float value
   BoolValue value -> Bool value
   List values -> Array (map valueJson values)
+  -- The standard stream (the only file a default names).
+  File _ name -> maybe (String "-") String name
 
 valueRepr :: Value -> Text
 valueRepr = \case
@@ -287,26 +358,33 @@ valueRepr = \case
   FloatValue value -> pythonDoubleRepr value
   BoolValue value -> if value then "True" else "False"
   List values -> "[" <> T.intercalate ", " (map valueRepr values) <> "]"
+  File ForReading Nothing -> "<stdin>"
+  File ForWriting Nothing -> "<stdout>"
+  File _ (Just name) -> "<file " <> pythonStrRepr name <> ">"
 
 namespaceJson :: Namespace -> Json
 namespaceJson namespace = Array [Array [String key, String (valueRepr value)] | (key, value) <- sortOn fst (Map.toList namespace)]
 
-portOutcome :: Parser -> Case -> Json
-portOutcome declared theCase = case parseArgs (formatting theCase) declared theCase.argv of
-  Parsed namespace -> Object [("code", Int 0), ("stdout", String ""), ("stderr", String ""), ("namespace", namespaceJson namespace)]
-  Exited status printed problems -> Object [("code", Int (toInteger status)), ("stdout", String printed), ("stderr", String problems), ("namespace", Null)]
+portOutcome :: Parser -> Case -> IO Json
+portOutcome declared theCase =
+  parseArgsIO (formatting theCase) declared theCase.argv >>= \case
+    Parsed namespace -> pure (Object [("code", Int 0), ("stdout", String ""), ("stderr", String ""), ("namespace", namespaceJson namespace)])
+    Exited status printed problems -> pure (Object [("code", Int (toInteger status)), ("stdout", String printed), ("stderr", String problems), ("namespace", Null)])
 
 main :: IO ()
 main = hspec $ do
   describe "argparse against the pinned CPython (argparse_reference.py)" $
-    it "parses, refuses, formats and colors every case as CPython 3.14 does" $ do
+    it "parses, refuses, formats and colors every case as CPython 3.14 does" $ withSystemTempDirectory "petrus-argparse" $ \scratch -> do
       executable <- upstreamPythonExecutable "petrus"
       root <- repoRoot
+      writeFile (scratch <> "/in.json") "{}"
+      createDirectory (scratch <> "/sub")
       let script = root <> "/packages/petrus-argparse/test/argparse_reference.py"
+          cases' = cases (T.pack scratch)
           query =
             Object
               [ ("parsers", Array [Object [("prog", String p.prog), ("description", maybe Null String p.description), ("actions", Array (map actionJson (drop 1 p.actions)))] | p <- parsers])
-              , ("cases", Array [Object [("parser", Int (toInteger c.parserIndex)), ("argv", Array (map String c.argv)), ("env", Object [(T.pack k, String (T.pack v)) | (k, v) <- Map.toList c.env]), ("tty", Bool c.tty)] | c <- cases])
+              , ("cases", Array [Object [("parser", Int (toInteger c.parserIndex)), ("argv", Array (map String c.argv)), ("env", Object [(T.pack k, String (T.pack v)) | (k, v) <- Map.toList c.env]), ("tty", Bool c.tty)] | c <- cases'])
               ]
           payload = either (error . show) id (dumps compact query)
       (exit, output, problems) <- readProcess (setStdin (byteStringInput (BL.fromStrict payload)) (proc executable ["-B", "-P", script]))
@@ -314,7 +392,7 @@ main = hspec $ do
       results <- case parseJson surrogateRefusingLoads (BL.toStrict output) of
         Right (Array items) -> pure items
         other -> expectationFailure ("unreadable oracle output: " <> show other) >> pure []
-      length results `shouldBe` length cases
+      length results `shouldBe` length cases'
       -- Not vacuous: some cases parse, some print colored help or usage.
       let member key = \case
             Object members -> lookup key members
@@ -323,8 +401,8 @@ main = hspec $ do
       length [() | r <- results, Just (Array _) <- [member "namespace" r]] `shouldSatisfy` (> 15)
       colored "stdout" `shouldSatisfy` (> 20)
       colored "stderr" `shouldSatisfy` (> 20)
-      forM_ (zip cases results) $ \(theCase, reference) -> do
-        let ours = maybe Null (`portOutcome` theCase) (lookup theCase.parserIndex (zip [0 ..] parsers))
+      ports <- forM cases' $ \theCase -> maybe (pure Null) (`portOutcome` theCase) (lookup theCase.parserIndex (zip [0 ..] parsers))
+      forM_ (zip3 cases' results ports) $ \(theCase, reference, ours) ->
         unless (ours == reference) $
           expectationFailure
             ( "parser " <> show theCase.parserIndex <> " " <> show theCase.argv <> " " <> show (Map.toList theCase.env) <> " tty=" <> show theCase.tty
@@ -358,6 +436,10 @@ main = hspec $ do
       decoded operator ["inspect", "--pr", "59", "--expect-readiness", "absent"] `shouldBe` Parsed ("inspect", Check 59 "hamsterdan[bot]" False False)
       decoded operator ["prepare-broker"] `shouldBe` Parsed ("prepare-broker", PrepareBroker)
       decoded operator ["qualification-setup", "--credential-file", "c", "--target-file", "./t/"] `shouldBe` Parsed ("qualification-setup", Setup "c" "t")
+    it "read back positionals, files and constants" $ do
+      decoded formatter [] `shouldBe` Parsed (Format [] StandardStream StandardStream 2 120 0)
+      decoded formatter ["--fail-on-change", "x//y", "z", "--infile", "in", "--outfile", "-"]
+        `shouldBe` Parsed (Format ["x/y", "z"] (NamedFile "in") StandardStream 2 120 1)
     it "exit as the parser does on help and on errors" $ do
       case decoded worker ["-h"] of
         Exited 0 printed "" -> printed `shouldSatisfy` T.isPrefixOf "usage: python -m petrus.motus.worker"

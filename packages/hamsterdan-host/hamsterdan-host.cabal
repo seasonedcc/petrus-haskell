@@ -105,7 +105,7 @@ executable hamsterdan-host
   build-depends:    base
                   , containers
                   , hamsterdan-host
-                  , text
+                  , petrus-argparse
   ghc-options:      -threaded -rtsopts
 
 test-suite hamsterdan-host-test

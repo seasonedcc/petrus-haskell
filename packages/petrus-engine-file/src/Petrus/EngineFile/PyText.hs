@@ -24,13 +24,12 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import Foreign.C.Error (eISDIR)
 import Petrus.Json.Python.Exception (PythonException (..), pythonError)
+import Petrus.Json.Python.Fs (fsEncode)
 import Petrus.Json.Python.Decode (utf8DecodeError)
 import Petrus.Json.Python.OsError (ioException, osError)
-import System.Posix.ByteString (RawFilePath)
 import System.Posix.Files.ByteString (FileStatus, getFdStatus, isDirectory)
 import System.Posix.IO.ByteString (OpenFileFlags (..), OpenMode (ReadOnly, WriteOnly), closeFd, defaultFileFlags, openFd)
 import System.Posix.Types (Fd)
@@ -78,11 +77,13 @@ readText path = do
   pure (bytes >>= decodeText)
 
 -- | Open and read a whole file as @open(path, "rb")@ does, with its
--- exceptions.
+-- exceptions (the name encoded as @os.fsencode@ does).
 readBytes :: Text -> IO (Either PythonException ByteString)
-readBytes path
-  | T.any (== '\0') path = pure (Left (pythonError "ValueError" "embedded null byte"))
-  | otherwise = do
+readBytes path = case fsEncode path of
+  Left e -> pure (Left e)
+  Right raw
+    | BS.elem 0 raw -> pure (Left (pythonError "ValueError" "embedded null byte"))
+    | otherwise -> do
       opened <- try (openFd raw ReadOnly defaultFileFlags) :: IO (Either IOException Fd)
       case opened of
         Left e -> failure e
@@ -97,18 +98,18 @@ readBytes path
                     try (bracket (PIO.fdToHandle fd) hClose BS.hGetContents) :: IO (Either IOException ByteString)
                   either failure (pure . Right) result
   where
-    raw :: RawFilePath
-    raw = TE.encodeUtf8 path
     failure = ioFailure path
 
 -- | Create or truncate a file and write bytes, as @open(path, "w")@ and
 -- @write@ do, with their exceptions.
 writeBytes :: Text -> ByteString -> IO (Either PythonException ())
-writeBytes path bytes
-  | T.any (== '\0') path = pure (Left (pythonError "ValueError" "embedded null byte"))
-  | otherwise = do
+writeBytes path bytes = case fsEncode path of
+  Left e -> pure (Left e)
+  Right raw
+    | BS.elem 0 raw -> pure (Left (pythonError "ValueError" "embedded null byte"))
+    | otherwise -> do
       opened <-
-        try (openFd (TE.encodeUtf8 path) WriteOnly defaultFileFlags {trunc = True, creat = Just 0o666})
+        try (openFd raw WriteOnly defaultFileFlags {trunc = True, creat = Just 0o666})
           :: IO (Either IOException Fd)
       case opened of
         Left e -> ioFailure path e

@@ -60,11 +60,11 @@ differs in these ways:
 - On an exception it prints only that final line
   (`pydantic_core._pydantic_core.ValidationError: ...`), not the traceback
   frames before it.
-- Its usage and help text name the program `petrus-format-json`, and are
-  not wrapped to the terminal width as argparse wraps them.
-- `--indent` and `--max-inline` accept the integers Python's `int()` does
-  (surrounding whitespace, a sign, single underscores), but in ASCII digits
-  only; Python also accepts other Unicode decimal digits.
+- Its usage and help text name the program `petrus-format-json`.
+- `--infile` and `--outfile` are opened while parsing, as
+  `argparse.FileType` opens them, and opened again by name to be read or
+  written (petrus-argparse's `FileType` keeps the name, not the handle). A
+  file replaced in between is read or written as it is then.
 - Stdin is decoded as strict UTF-8, which is what Python does under a UTF-8
   locale. Under the C/POSIX locale Python would use `surrogateescape`
   instead.

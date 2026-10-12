@@ -5,11 +5,13 @@ synopsis:           CPython 3.14's argparse for the Petrus and Hamsterdan comman
 description:
   The parsing, help, usage and error behavior of CPython 3.14's
   @argparse.ArgumentParser@ for the command lines of the Petrus process
-  entry points (@python -m petrus.motus.worker@, the ZeroMQ server) and of
-  Hamsterdan (@python -m hamsterdan.host@, its export, the operator):
-  store, append and flag options typed as @str@, @int@, @float@ or
-  @pathlib.Path@, choices, defaults, required options, positionals, the
-  automatic @-h/--help@ and subcommands, with @HelpFormatter@ and
+  entry points (@python -m petrus.motus.worker@, the ZeroMQ server), of
+  @python -m petrus.cli.format_json@ and of Hamsterdan
+  (@python -m hamsterdan.host@, its export, the operator): store, append,
+  constant and flag options typed as @str@, @int@, @float@,
+  @pathlib.Path@ or @argparse.FileType@, choices, defaults, required
+  options, positionals of one value or any number, the automatic
+  @-h/--help@ and subcommands, with @HelpFormatter@ and
   @textwrap@ wrapping to the same width and @_colorize@'s colors.
   "Petrus.Argparse" declares and decodes a command line as one typed,
   applicative value.
@@ -42,9 +44,12 @@ library
                     Petrus.Argparse.Parser
   build-depends:    base >=4.18 && <5
                   , array >=0.5
+                  , bytestring
                   , containers >=0.6
                   , petrus-json
                   , text >=2.0
+                  , transformers
+                  , unix
   ghc-options:      -O2
 
 test-suite petrus-argparse-test
@@ -55,10 +60,12 @@ test-suite petrus-argparse-test
   build-depends:    base >=4.18 && <5
                   , bytestring
                   , containers
+                  , directory
                   , hspec >=2.10
                   , petrus-argparse
                   , petrus-json
                   , petrus-test-support
+                  , temporary
                   , text
                   , typed-process
   ghc-options:      -threaded -rtsopts

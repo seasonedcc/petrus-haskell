@@ -11,8 +11,11 @@ environment is replaced by ``env``, standard output is a terminal when
 ``tty`` is set (a pseudo-terminal's descriptor), and ``parse_args`` runs
 with stdout and stderr captured. The result is ``{"code", "stdout",
 "stderr", "namespace"}``, where the namespace is ``[[dest, repr(value)],
-...]`` sorted by ``dest`` (a ``Path`` as its ``str``), or null when the
-parser exited.
+...]`` sorted by ``dest`` (a ``Path`` as its ``str``, a ``FileType`` file as
+``<stdin>``, ``<stdout>`` or ``<file 'NAME'>``), or null when the parser
+exited. An action of type ``file-r`` or ``file-w`` is
+``argparse.FileType("r")`` or ``("w")``, whose default ``"-"`` is the
+standard stream object itself.
 
 The interpreter runs without ``-I`` or ``-E``, as ``python -m`` does, so
 ``PYTHON_COLORS`` counts.
@@ -29,6 +32,7 @@ import pathlib
 import sys
 
 TYPES = {"str": None, "int": int, "float": float, "path": pathlib.Path}
+FILE_MODES = {"file-r": "r", "file-w": "w"}
 
 
 def add_actions(parser: argparse.ArgumentParser, actions: list[dict]) -> None:
@@ -41,13 +45,21 @@ def add_actions(parser: argparse.ArgumentParser, actions: list[dict]) -> None:
         keywords: dict[str, object] = {}
         if action["action"] != "store":
             keywords["action"] = action["action"]
-        if TYPES.get(action["type"]) is not None:
+        mode = FILE_MODES.get(action["type"])
+        if mode is not None:
+            keywords["type"] = argparse.FileType(mode)
+        elif TYPES.get(action["type"]) is not None:
             keywords["type"] = TYPES[action["type"]]
-        for key in ("choices", "help", "metavar"):
-            if action[key] is not None:
+        for key in ("choices", "help", "metavar", "const", "nargs"):
+            if action.get(key) is not None:
                 keywords[key] = action[key]
         if "default" in action:
-            keywords["default"] = action["default"]
+            # A file's default "-" is the standard stream itself, as
+            # format_json declares it.
+            if mode is not None and action["default"] == "-":
+                keywords["default"] = sys.stdin if mode == "r" else sys.stdout
+            else:
+                keywords["default"] = action["default"]
         if action["strings"]:
             if action["required"]:
                 keywords["required"] = True
@@ -75,6 +87,13 @@ class Terminal(io.StringIO):
 def value_repr(value: object) -> str:
     if isinstance(value, pathlib.PurePath):
         return repr(str(value))
+    if value is sys.stdin:
+        return "<stdin>"
+    if value is sys.stdout:
+        return "<stdout>"
+    if isinstance(value, io.TextIOWrapper):
+        value.close()
+        return f"<file {value.name!r}>"
     if isinstance(value, list):
         return "[" + ", ".join(value_repr(item) for item in value) + "]"
     return repr(value)

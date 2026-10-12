@@ -13,7 +13,7 @@ import Petrus.Json (Json (..), defaultDumps, dumps)
 import Petrus.Motus.Dispatch (WorkerDispatch (..))
 import Petrus.Motus.Transport.ZeroMQ (fromFactory, maxMessageBytes, serveForever, waitReady)
 import Petrus.Motus.Transport.ZeroMQ.BoundarySpec qualified as BoundarySpec
-import Petrus.Motus.Transport.ZeroMQ.Cli (serverMainWith)
+import Petrus.Motus.Transport.ZeroMQ.Cli (serverMain)
 import Petrus.Motus.Transport.ZeroMQ.InteropSpec qualified as InteropSpec
 import Petrus.Motus.Transport.ZeroMQ.Support (localWorker, serverModeVariable)
 import Petrus.Motus.Transport.ZeroMQ.TransportSpec qualified as TransportSpec
@@ -25,7 +25,7 @@ import Test.Hspec
 main :: IO ()
 main =
   lookupEnv serverModeVariable >>= \case
-    Just "server" -> getArgs >>= serverMainWith "python -m petrus.motus.transport.zeromq"
+    Just "server" -> serverMain "python -m petrus.motus.transport.zeromq"
     Just "delayed" -> getArgs >>= delayedCompletionServer
     _ -> hspec $ do
       describe "test_zeromq_dispatch_transport.py" TransportSpec.spec

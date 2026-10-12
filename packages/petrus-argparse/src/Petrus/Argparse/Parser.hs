@@ -5,22 +5,29 @@
 -- is the parser underneath it.
 --
 -- A 'Parser' is declared the way the reference declares its
--- @ArgumentParser@: options that store, append or set a flag, typed as
--- @str@, @int@, @float@ or @pathlib.Path@, with choices, defaults and
--- required markers, the automatic @-h/--help@, and one required group of
--- subcommands. 'parseArgs' then classifies and consumes the argument
--- strings exactly as @ArgumentParser.parse_args@ does (prefix
--- abbreviations, @--opt=value@, single-dash chaining, negative-number-like
--- values, @--@, subparsers and their unrecognized arguments), and returns
--- the same namespace or the same help, usage and error text, wrapped by
--- the same @HelpFormatter@ and @textwrap@ rules to the same width and
--- colored by the same @_colorize@ theme.
+-- @ArgumentParser@: options that store, append, store a constant or set a
+-- flag, positionals of one value or of any number (@nargs="*"@), typed as
+-- @str@, @int@, @float@, @pathlib.Path@ or @argparse.FileType@, with
+-- choices, defaults and required markers, the automatic @-h/--help@, and
+-- one required group of subcommands. 'parseArgs' then classifies and
+-- consumes the argument strings exactly as @ArgumentParser.parse_args@
+-- does (prefix abbreviations, @--opt=value@, single-dash chaining,
+-- negative-number-like values, @--@, subparsers and their unrecognized
+-- arguments), and returns the same namespace or the same help, usage and
+-- error text, wrapped by the same @HelpFormatter@ and @textwrap@ rules to
+-- the same width and colored by the same @_colorize@ theme.
+--
+-- Opening a @FileType@ argument is the parse's one effect: 'parseArgs'
+-- is the parse in which every such file opens, and 'parseArgsIO' opens
+-- them, in the order @parse_args@ does, and ends the parse at the first
+-- that fails.
 module Petrus.Argparse.Parser
   ( -- * Declaring a parser
     Parser (..)
   , Action (..)
   , Behavior (..)
   , ValueType (..)
+  , FileMode (..)
   , Value (..)
   , newParser
   , option
@@ -32,6 +39,7 @@ module Petrus.Argparse.Parser
   , Outcome (..)
   , Formatting (..)
   , parseArgs
+  , parseArgsIO
   , errorText
   , lookupText
   , lookupInteger
@@ -58,6 +66,10 @@ module Petrus.Argparse.Parser
   , pathText
   ) where
 
+import Control.Exception (IOException, try)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE, withExceptT)
+import Control.Monad.Trans.State.Strict (State, modify, runState)
 import Data.Array (Array, bounds, listArray, (!))
 import Data.Char (GeneralCategory (..), generalCategory, isAlphaNum)
 import Data.List (find)
@@ -68,11 +80,18 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word16)
+import Foreign.C.Error (eISDIR)
 import Foreign.C.Types (CInt (..), CULong (..))
 import Foreign.Marshal.Alloc (allocaBytes)
 import Foreign.Ptr (Ptr)
 import Foreign.Storable (peekElemOff)
 import Petrus.Json.Python (isPythonSpace, parsePythonFloat, pythonInt, pythonStrRepr)
+import Petrus.Json.Python.Exception (pythonExceptionStr)
+import Petrus.Json.Python.Fs (fsEncode)
+import Petrus.Json.Python.OsError (ioException, osError)
+import System.Posix.Files.ByteString (FileStatus, getFdStatus, isDirectory)
+import System.Posix.IO.ByteString (OpenFileFlags (..), OpenMode (ReadOnly, WriteOnly), closeFd, defaultFileFlags, openFd)
+import System.Posix.Types (Fd)
 
 -- ---------------------------------------------------------------------------
 -- Declarations
@@ -87,6 +106,17 @@ data ValueType
     AsFloat
   | -- | @pathlib.Path@: never fails; the namespace holds @str(Path(value))@.
     AsPath
+  | -- | @argparse.FileType(mode)@: @-@ is the standard stream; any other
+    -- value is a file opened while parsing ('parseArgsIO').
+    AsFile FileMode
+  deriving stock (Eq, Show)
+
+-- | The mode of an @argparse.FileType@.
+data FileMode
+  = -- | @"r"@.
+    ForReading
+  | -- | @"w"@: created or truncated.
+    ForWriting
   deriving stock (Eq, Show)
 
 -- | A namespace value.
@@ -97,14 +127,21 @@ data Value
   | FloatValue Double
   | BoolValue Bool
   | List [Value]
+  | -- | An @argparse.FileType@ file: its mode and its name, or 'Nothing'
+    -- for the standard stream @-@ names.
+    File FileMode (Maybe Text)
   deriving stock (Eq, Show)
 
 -- | What an action does with its arguments.
 data Behavior
   = -- | @action="store"@.
     Store
+  | -- | @action="store", nargs="*"@: every value given, as a list.
+    StoreAll
   | -- | @action="append"@.
     Append
+  | -- | @action="store_const", const=value@.
+    StoreConst Value
   | -- | @action="store_true"@.
     StoreTrue
   | -- | @action="help"@.
@@ -200,13 +237,15 @@ subcommands parentProg destination entries =
     , defaultValue = Just None
     }
 
-data Nargs = NargsOne | NargsZero | NargsParser
+data Nargs = NargsOne | NargsZero | NargsZeroOrMore | NargsParser
   deriving stock (Eq)
 
 nargs :: Action -> Nargs
 nargs action = case action.behavior of
   Store -> NargsOne
+  StoreAll -> NargsZeroOrMore
   Append -> NargsOne
+  StoreConst _ -> NargsZero
   StoreTrue -> NargsZero
   ShowHelp -> NargsZero
   Subcommands _ -> NargsParser
@@ -260,10 +299,25 @@ data Stop
   | -- | @parser.exit(...)@ from a nested parser or the help action.
     Exit Int Text Text
 
-type P = Either Stop
+-- | A file @FileType(mode)(path)@ opens during the parse.
+data FileOpen = FileOpen
+  { mode :: FileMode
+  , path :: Text
+  , refusal :: Text
+  -- ^ What the parser writes to stderr, before the reason, when the file
+  -- does not open: its usage and @prog: error: argument NAME: @.
+  }
+
+-- | The parse so far: the files it has opened, latest first, and how it
+-- stops.
+type P = ExceptT Stop (State [FileOpen])
 
 argumentError :: Action -> Text -> P a
-argumentError action message = Left (ArgumentError (maybe message (\name -> "argument " <> name <> ": " <> message) (actionName action)))
+argumentError action message = throwE (ArgumentError (argumentText action message))
+
+-- | @str(ArgumentError(action, message))@.
+argumentText :: Action -> Text -> Text
+argumentText action message = maybe message (\name -> "argument " <> name <> ": " <> message) (actionName action)
 
 -- | @_get_action_name@.
 actionName :: Action -> Maybe Text
@@ -272,14 +326,59 @@ actionName action
   | Just name <- action.metavar = Just name
   | otherwise = Just action.dest
 
--- | @parser.parse_args(argv)@.
+-- | @parser.parse_args(argv)@ when every @FileType@ argument opens.
 parseArgs :: Formatting -> Parser -> [Text] -> Outcome Namespace
-parseArgs formatting parser argv = case parseKnownArgs formatting parser argv of
-  Left (Exit status out err) -> Exited status out err
-  Left (ArgumentError message) -> Exited 2 "" (errorText formatting parser message)
-  Right (namespace, extras)
-    | null extras -> Parsed namespace
-    | otherwise -> Exited 2 "" (errorText formatting parser ("unrecognized arguments: " <> T.unwords extras))
+parseArgs formatting parser = snd . parseOpening formatting parser
+
+-- | @parser.parse_args(argv)@ in the process: each @FileType@ file is
+-- opened (and, for writing, created or truncated) in turn, and the first
+-- that fails ends the parse with argparse's error, as it would have ended
+-- it there.
+parseArgsIO :: Formatting -> Parser -> [Text] -> IO (Outcome Namespace)
+parseArgsIO formatting parser argv = go opened
+  where
+    (opened, outcome) = parseOpening formatting parser argv
+    go = \case
+      [] -> pure outcome
+      file : rest -> openFile file >>= maybe (go rest) (\reason -> pure (Exited 2 "" (file.refusal <> reason <> "\n")))
+
+-- | The files the parse opens, in order, and how it ends once they have.
+parseOpening :: Formatting -> Parser -> [Text] -> ([FileOpen], Outcome Namespace)
+parseOpening formatting parser argv = (reverse opened, outcome)
+  where
+    (result, opened) = runState (runExceptT (parseKnownArgs formatting parser argv)) []
+    outcome = case result of
+      Left (Exit status out err) -> Exited status out err
+      Left (ArgumentError message) -> Exited 2 "" (errorText formatting parser message)
+      Right (namespace, extras)
+        | null extras -> Parsed namespace
+        | otherwise -> Exited 2 "" (errorText formatting parser ("unrecognized arguments: " <> T.unwords extras))
+
+-- | @open(path, mode)@ as @FileType.__call__@ makes it: 'Nothing' when it
+-- opens, else the error argparse reports, @can't open 'PATH': ...@ for an
+-- @OSError@ and @invalid FileType('r') value: ...@ for a path @open@
+-- refuses with @ValueError@.
+openFile :: FileOpen -> IO (Maybe Text)
+openFile file
+  | T.any (== '\0') file.path = pure (Just invalid)
+  | otherwise = case fsEncode file.path of
+      Left _ -> pure (Just invalid)
+      Right raw -> do
+        opened <- try (openFd raw access defaultFileFlags {trunc = writing, creat = if writing then Just 0o666 else Nothing}) :: IO (Either IOException Fd)
+        case opened of
+          Left e -> Just . cantOpen <$> ioException file.path e
+          Right fd -> do
+            status <- (try (getFdStatus fd) :: IO (Either IOException FileStatus)) <* closeFd fd
+            case status of
+              Left e -> Just . cantOpen <$> ioException file.path e
+              Right st
+                | not writing && isDirectory st -> Just . cantOpen <$> osError eISDIR file.path
+                | otherwise -> pure Nothing
+  where
+    writing = file.mode == ForWriting
+    access = if writing then WriteOnly else ReadOnly
+    invalid = "invalid FileType(" <> (if writing then "'w'" else "'r'") <> ") value: " <> pythonStrRepr file.path
+    cantOpen e = "can't open '" <> file.path <> "': " <> pythonExceptionStr e
 
 -- | What @parser.error(message)@ writes to stderr (it then exits 2): the
 -- usage and @prog: error: message@.
@@ -288,13 +387,12 @@ errorText formatting parser message = formatUsage formatting parser <> parser.pr
 
 -- | @parse_known_args@: errors at this level already rendered with this
 -- parser's usage.
-parseKnownArgs :: Formatting -> Parser -> [Text] -> Either Stop (Namespace, [Text])
-parseKnownArgs formatting parser argv =
-  case parseKnownInner formatting parser argv defaults of
-    Left (ArgumentError message) -> Left (Exit 2 "" (errorText formatting parser message))
-    Left stop -> Left stop
-    Right result -> Right result
+parseKnownArgs :: Formatting -> Parser -> [Text] -> P (Namespace, [Text])
+parseKnownArgs formatting parser argv = withExceptT rendered (parseKnownInner formatting parser argv defaults)
   where
+    rendered = \case
+      ArgumentError message -> Exit 2 "" (errorText formatting parser message)
+      stop -> stop
     defaults = Map.fromList [(action.dest, value) | action <- reverse parser.actions, Just value <- [action.defaultValue]]
 
 -- | One interpretation of an option string: the action (if any), the
@@ -314,7 +412,7 @@ parseKnownInner formatting parser argStrings initial = do
   st <- mainLoop 0 St {namespace = initial, seen = Set.empty, extras = [], positionals = positionalIndices, unrecognized = []}
   let missing = [name | (index, action) <- indexed, not (Set.member index st.seen), action.required, Just name <- [actionName action]]
   if not (null missing)
-    then Left (ArgumentError ("the following arguments are required: " <> T.intercalate ", " missing))
+    then throwE (ArgumentError ("the following arguments are required: " <> T.intercalate ", " missing))
     else do
       converted <- convertDefaults st
       pure (converted, st.extras <> st.unrecognized)
@@ -415,7 +513,7 @@ parseKnownInner formatting parser argStrings initial = do
       let tuples = Map.findWithDefault [] start optionIndices
       case tuples of
         _ : _ : _ ->
-          Left (ArgumentError ("ambiguous option: " <> argAt start <> " could match " <> T.intercalate ", " [s | (_, s, _, _) <- tuples]))
+          throwE (ArgumentError ("ambiguous option: " <> argAt start <> " could match " <> T.intercalate ", " [s | (_, s, _, _) <- tuples]))
         [] -> pure (st, start + 1)
         [(Nothing, _, _, _)] -> pure (st {extras = st.extras <> [argAt start]}, start + 1)
         [(Just index, string, sep, explicit)] -> do
@@ -456,6 +554,7 @@ parseKnownInner formatting parser argStrings initial = do
     matchArgument :: Action -> String -> P Int
     matchArgument action selected = case nargs action of
       NargsZero -> pure 0
+      NargsZeroOrMore -> pure (length (takeWhile (== 'A') selected))
       NargsOne -> case selected of
         'A' : _ -> pure 1
         _ -> argumentError action "expected one argument"
@@ -489,11 +588,21 @@ parseKnownInner formatting parser argStrings initial = do
       let action = actionAt index
           st' = st {seen = Set.insert index st.seen}
       case action.behavior of
-        ShowHelp -> Left (Exit 0 (formatHelp formatting parser) "")
+        ShowHelp -> throwE (Exit 0 (formatHelp formatting parser) "")
         StoreTrue -> pure st' {namespace = Map.insert action.dest (BoolValue True) st'.namespace}
+        StoreConst value -> pure st' {namespace = Map.insert action.dest value st'.namespace}
         Store -> do
           value <- singleValue action args
           pure st' {namespace = Map.insert action.dest value st'.namespace}
+        StoreAll -> case args of
+          -- A positional given nothing takes its default, @[]@ for @None@.
+          [] | null action.optionStrings -> pure $ case action.defaultValue of
+            Nothing -> st'
+            Just None -> st' {namespace = Map.insert action.dest (List []) st'.namespace}
+            Just value -> st' {namespace = Map.insert action.dest value st'.namespace}
+          _ -> do
+            values <- traverse (checkedValue action) args
+            pure st' {namespace = Map.insert action.dest (List values) st'.namespace}
         Append -> do
           value <- singleValue action args
           let previous = case Map.lookup action.dest st'.namespace of
@@ -512,14 +621,17 @@ parseKnownInner formatting parser argStrings initial = do
                 pure st' {namespace = Map.union subNamespace namespace, unrecognized = st'.unrecognized <> subExtras}
 
     singleValue action = \case
-      [arg] -> do
-        value <- convert action arg
-        case value of
-          Str text -> checkChoice action text
-          IntValue i -> checkChoice action (T.pack (show i))
-          _ -> pure ()
-        pure value
+      [arg] -> checkedValue action arg
       _ -> pure (List [])
+
+    -- @_get_value@ and @_check_value@.
+    checkedValue action arg = do
+      value <- convert action arg
+      case value of
+        Str text -> checkChoice action text
+        IntValue i -> checkChoice action (T.pack (show i))
+        _ -> pure ()
+      pure value
 
     checkChoice action text = case action.choices of
       Just names
@@ -543,16 +655,22 @@ parseKnownInner formatting parser argStrings initial = do
         st.namespace
         indexed
 
-convert :: Action -> Text -> P Value
-convert action text = case action.valueType of
-  AsStr -> pure (Str text)
-  AsPath -> pure (Str (pathText text))
-  AsInt -> case pythonInt text of
-    Just value -> pure (IntValue value)
-    Nothing -> argumentError action ("invalid int value: " <> pythonStrRepr text)
-  AsFloat -> case pythonFloat text of
-    Just value -> pure (FloatValue value)
-    Nothing -> argumentError action ("invalid float value: " <> pythonStrRepr text)
+    -- @_get_value@'s conversion by @type=@.
+    convert :: Action -> Text -> P Value
+    convert action text = case action.valueType of
+      AsStr -> pure (Str text)
+      AsPath -> pure (Str (pathText text))
+      AsInt -> case pythonInt text of
+        Just value -> pure (IntValue value)
+        Nothing -> argumentError action ("invalid int value: " <> pythonStrRepr text)
+      AsFloat -> case pythonFloat text of
+        Just value -> pure (FloatValue value)
+        Nothing -> argumentError action ("invalid float value: " <> pythonStrRepr text)
+      AsFile mode
+        | text == "-" -> pure (File mode Nothing)
+        | otherwise -> do
+            lift (modify (FileOpen {mode, path = text, refusal = T.dropEnd 1 (errorText formatting parser (argumentText action ""))} :))
+            pure (File mode (Just text))
 
 -- | @_match_arguments_partial@ for the positional patterns.
 matchPartial :: [Action] -> String -> [Int]
@@ -564,13 +682,16 @@ matchPartial actions selected = go (length actions)
         | end < length selected && selected !! end == 'O' -> reverse (dropWhile (== 0) (reverse lengths))
         | otherwise -> lengths
       Nothing -> go (n - 1)
-    candidates action rest =
-      let dashes = length (takeWhile (== '-') rest)
-       in case drop dashes rest of
-            'A' : after -> case nargs action of
-              NargsParser -> [dashes + 1 + k | k <- [length after, length after - 1 .. 0]]
-              _ -> let trailing = length (takeWhile (== '-') after) in [dashes + 1 + k | k <- [trailing, trailing - 1 .. 0]]
-            _ -> []
+    candidates action rest = case nargs action of
+      -- @(-*[A-]*)@: any run of arguments and @--@, longest first.
+      NargsZeroOrMore -> let run = length (takeWhile (`elem` ("A-" :: String)) rest) in [run, run - 1 .. 0]
+      _ ->
+        let dashes = length (takeWhile (== '-') rest)
+         in case drop dashes rest of
+              'A' : after -> case nargs action of
+                NargsParser -> [dashes + 1 + k | k <- [length after, length after - 1 .. 0]]
+                _ -> let trailing = length (takeWhile (== '-') after) in [dashes + 1 + k | k <- [trailing, trailing - 1 .. 0]]
+              _ -> []
 
 -- | The first way (in the regular expression's backtracking order) to match
 -- the patterns in sequence, with the total length matched.
@@ -674,6 +795,7 @@ formatUsage formatting parser = t.usage <> "usage: " <> t.reset <> usageBody for
 formatArgs :: Action -> Text -> Text
 formatArgs action fallback = case nargs action of
   NargsParser -> metavarFor action fallback <> " ..."
+  NargsZeroOrMore -> "[" <> metavarFor action fallback <> " ...]"
   _ -> metavarFor action fallback
 
 metavarFor :: Action -> Text -> Text

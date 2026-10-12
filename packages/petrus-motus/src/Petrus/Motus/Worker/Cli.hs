@@ -45,6 +45,7 @@ import Petrus.Argparse
   , defaulted
   , exitWithMessage
   , float
+  , getArguments
   , help
   , int
   , option
@@ -54,7 +55,7 @@ import Petrus.Argparse
   )
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Motus.Worker
-import System.Environment (getArgs, lookupEnv)
+import System.Environment (lookupEnv)
 import System.Posix.Signals (Handler (..), installHandler, sigTERM)
 
 data Provider = LocalProvider | AbsurdProvider | ZeroMQProvider
@@ -161,12 +162,12 @@ noPlugins = ProviderPlugins {absurd = Nothing, zeromq = Nothing, zeromqNative = 
 -- | @main()@ over the process's arguments and @$IMPETUS_DSN@.
 workerMain :: Text -> Registries -> ProviderPlugins -> IO ()
 workerMain prog registries plugins = do
-  arguments <- getArgs
+  arguments <- getArguments
   environmentDsn <- fmap T.pack <$> lookupEnv "IMPETUS_DSN"
   workerMainWith prog registries plugins arguments environmentDsn
 
 -- | @main(argv)@ with an explicit @$IMPETUS_DSN@.
-workerMainWith :: Text -> Registries -> ProviderPlugins -> [String] -> Maybe Text -> IO ()
+workerMainWith :: Text -> Registries -> ProviderPlugins -> [Text] -> Maybe Text -> IO ()
 workerMainWith prog registries plugins argv environmentDsn = do
   arguments <- runArgumentParser (workerParser prog environmentDsn) argv
   let queues = subscribedQueues arguments

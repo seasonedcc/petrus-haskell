@@ -65,8 +65,7 @@ executable hamsterdan-operator
   main-is:          Main.hs
   build-depends:    base
                   , hamsterdan-operator
-                  , petrus-json
-                  , unix
+                  , petrus-argparse
   ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-A16m"
 
 test-suite hamsterdan-operator-test

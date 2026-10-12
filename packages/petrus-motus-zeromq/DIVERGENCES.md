@@ -69,7 +69,7 @@ requests no conforming peer can produce.
 6. **The server CLI's program name and its errors.**
    - `petrus-zeromq-dispatch` prints its own name in help and usage text,
      where the reference prints `python -m petrus.motus.transport.zeromq`.
-     `serverMainWith` takes the name, and the tests pass the reference's.
+     `serverMain` takes the name, and the tests pass the reference's.
    - A startup failure (a refused configuration, an IPC endpoint another
      server owns) exits with status 1. The reference also exits with status
      1, but prints a Python traceback first. Here only the traceback's last

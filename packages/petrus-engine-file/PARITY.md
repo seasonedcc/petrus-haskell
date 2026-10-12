@@ -72,10 +72,12 @@ disagreement.
 
 ## 3. The format CLI
 
-`CliSpec` runs 52 scenarios through both `petrus-format-json` and
+`CliSpec` runs 60 scenarios (61 on a file system that stores a name that
+is not UTF-8, which macOS does not) through both `petrus-format-json` and
 `python -m petrus.cli.format_json`. Each scenario fixes the arguments, stdin
 and files; both sides must produce the same exit status, stdout, files
-afterwards and error line. The scenarios cover:
+afterwards and error line. The command line is the reference's `argparse`
+declaration, parsed by petrus-argparse. The scenarios cover:
 
 - in-place and stream modes;
 - `--fail-on-change`;
@@ -84,7 +86,12 @@ afterwards and error line. The scenarios cover:
 - invalid JSON, invalid models, unreadable files, invalid UTF-8;
 - delay overflow and serialization errors;
 - argparse's usage errors: abbreviations, ambiguity, bad integers, missing
-  values, `--`;
+  values, `--`, negative-number-like arguments (`-1x` is a path, `--indent
+  -1a` an invalid int), integers in other Unicode digits, and `--infile` and
+  `--outfile` opened in order against a later error;
+- file names that are not UTF-8: argv decoded with `surrogateescape`, the
+  name quoted as `\udcff` on stderr, and `print` refusing it on stdout with
+  `UnicodeEncodeError`;
 - lone surrogates (`"\ud800"` escapes): carried through names, keys,
   metadata and the view state, written back as escapes, refused with
   pydantic's `string_unicode` where a number, enum, literal or duration is
@@ -170,7 +177,7 @@ The run prints 1004 examples and 0 failures:
 | `KernelSpec` | 12 |
 | `SchemaSpec` | 5 |
 | `LiveSpec` | 5 |
-| `CliSpec` | 52 |
+| `CliSpec` | 60 |
 
 The live and CLI examples provision the reference venv on first use and fail
 if they cannot.

@@ -4,7 +4,6 @@
 module Petrus.Motus.Transport.ZeroMQ.Cli
   ( serverParser
   , serverMain
-  , serverMainWith
   , zeromqPlugins
   ) where
 
@@ -17,13 +16,12 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json (Json (..), defaultDumps, dumps)
-import Petrus.Argparse (ArgumentParser (..), appended, defaulted, float, help, option, required, runArgumentParser, str)
+import Petrus.Argparse (ArgumentParser (..), appended, defaulted, float, getArguments, help, option, required, runArgumentParser, str)
 import Petrus.Motus.PythonException (pythonException, pythonExceptionStr)
 import Petrus.Motus.PythonException qualified as Python (PythonException (..))
 import Petrus.Motus.Transport.ZeroMQ.Client
 import Petrus.Motus.Transport.ZeroMQ.Server
 import Petrus.Motus.Worker.Cli (ProviderPlugins (..), WorkerArguments (..), noPlugins)
-import System.Environment (getArgs)
 import System.Exit (ExitCode (ExitFailure), exitWith)
 import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import System.Posix.Process (getProcessID)
@@ -55,16 +53,13 @@ serverParser prog =
           <*> defaulted float ["--drain-timeout"] 30.0 []
     }
 
--- | @main()@ with the process arguments.
+-- | @main()@ over the process's arguments: serve a Local SQLite Dispatch
+-- until SIGTERM's drain ends (exit 0). The readiness line is printed once
+-- bound. A failure (a refused configuration, an owned endpoint) ends the
+-- process with status 1 after the last line of the reference's traceback,
+-- @Type: message@.
 serverMain :: Text -> IO ()
-serverMain prog = getArgs >>= serverMainWith prog
-
--- | @main(argv)@: serve a Local SQLite Dispatch until SIGTERM's drain
--- ends (exit 0). The readiness line is printed once bound. A failure (a
--- refused configuration, an owned endpoint) ends the process with status 1
--- after the last line of the reference's traceback, @Type: message@.
-serverMainWith :: Text -> [String] -> IO ()
-serverMainWith prog argv = serve prog argv `catch` uncaught
+serverMain prog = (getArguments >>= serve prog) `catch` uncaught
 
 uncaught :: SomeException -> IO ()
 uncaught e
@@ -76,7 +71,7 @@ uncaught e
       hPutStrLn stderr (T.unpack (python.name <> if T.null message then "" else ": " <> message))
       exitWith (ExitFailure 1)
 
-serve :: Text -> [String] -> IO ()
+serve :: Text -> [Text] -> IO ()
 serve prog argv = do
   arguments <- runArgumentParser (serverParser prog) argv
   let queues = case nub arguments.queue of

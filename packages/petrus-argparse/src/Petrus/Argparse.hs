@@ -2,7 +2,8 @@
 --
 -- An @'Arg' a@ is a list of @add_argument@ calls together with how their
 -- namespace decodes to an @a@. Each primitive ('option', 'required',
--- 'defaulted', 'flag', 'appended', 'positional', 'subcommands') declares
+-- 'defaulted', 'flag', 'constant', 'appended', 'positional', 'positionals',
+-- 'subcommands') declares
 -- one action and reads back the destination it declared, through the
 -- 'Type' that also converts its strings. So a destination cannot be
 -- misspelled between the declaration and the read, and a value cannot be
@@ -21,7 +22,8 @@
 --
 -- 'parse' then does what @parse_args@ does ("Petrus.Argparse.Parser"):
 -- the decoded value, or the help, usage and error text with the exit
--- status.
+-- status. 'runArgumentParser' does it in the process, over the arguments
+-- 'getArguments' decodes as CPython decodes @sys.argv@.
 module Petrus.Argparse
   ( -- * Declaring a command line
     ArgumentParser (..)
@@ -31,6 +33,9 @@ module Petrus.Argparse
   , int
   , float
   , path
+  , FileMode (..)
+  , Stream (..)
+  , file
   , choice
   , oneOf
   , Modifier
@@ -41,8 +46,10 @@ module Petrus.Argparse
   , required
   , defaulted
   , flag
+  , constant
   , appended
   , positional
+  , positionals
   , subcommands
 
     -- * Parsing
@@ -53,6 +60,7 @@ module Petrus.Argparse
   , errorText
   , formattingOf
   , formattingFor
+  , getArguments
   , runArgumentParser
   , exitWithMessage
 
@@ -67,15 +75,16 @@ module Petrus.Argparse
   , pathText
   ) where
 
+import Data.ByteString qualified as BS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
-import Data.Text qualified as T
-import Data.Text.IO qualified as TIO
+import Data.Text.Encoding qualified as TE
 import Data.Tuple (swap)
 import Petrus.Argparse.Parser
   ( Action (..)
   , Behavior (..)
+  , FileMode (..)
   , Formatting (..)
   , Namespace
   , Outcome (..)
@@ -87,6 +96,7 @@ import Petrus.Argparse.Parser
   , environmentColumns
   , newParser
   , parseArgs
+  , parseArgsIO
   , pathText
   , plainTheme
   , pythonFloat
@@ -94,9 +104,11 @@ import Petrus.Argparse.Parser
   , terminalColumns
   )
 import Petrus.Argparse.Parser qualified as Parser
+import Petrus.Json.Python.Fs (fsDecode, utf8BackslashReplace)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..), exitWith)
 import System.IO (Handle, hFlush, hIsTerminalDevice, stderr, stdout)
+import System.Posix.Env.ByteString qualified as Posix
 
 -- | @argparse.ArgumentParser(prog=..., description=...)@ with its
 -- arguments.
@@ -150,6 +162,21 @@ float = Type {conversion = AsFloat, names = Nothing, fromValue = \case FloatValu
 -- | @type=pathlib.Path@, read back as @str(path)@ ('pathText').
 path :: Type Text
 path = str {conversion = AsPath}
+
+-- | An @argparse.FileType@ file: the standard stream (@-@) or a named
+-- file, which the parse opened ('runArgumentParser').
+data Stream = StandardStream | NamedFile Text
+  deriving stock (Eq, Show)
+
+-- | @type=argparse.FileType(mode)@, read back by name.
+file :: FileMode -> Type Stream
+file mode =
+  Type
+    { conversion = AsFile mode
+    , names = Nothing
+    , fromValue = \case File _ name -> Just (maybe StandardStream NamedFile name); _ -> Nothing
+    , toValue = File mode . \case StandardStream -> Nothing; NamedFile name -> Just name
+    }
 
 -- | @choices=@ over strings, each read back as its value.
 choice :: (Eq a) => [(Text, a)] -> Type a
@@ -212,6 +239,12 @@ flag strings modifiers =
     Just (BoolValue value) -> Just value
     _ -> Nothing
 
+-- | @add_argument(*strings, action="store_const", const=value,
+-- default=fallback)@, read back at the type of both.
+constant :: Type a -> [Text] -> a -> a -> [Modifier] -> Arg a
+constant ty strings value fallback modifiers =
+  declared (Parser.option strings) {behavior = StoreConst (ty.toValue value), defaultValue = Just (ty.toValue fallback)} modifiers (>>= ty.fromValue)
+
 -- | @add_argument(*strings, type=..., action="append", default=[])@: every
 -- value given, in order.
 appended :: Type a -> [Text] -> [Modifier] -> Arg [a]
@@ -223,6 +256,14 @@ appended ty strings modifiers =
 -- | @add_argument(name, type=...)@: a required positional.
 positional :: Type a -> Text -> [Modifier] -> Arg a
 positional ty name modifiers = declared (Parser.positional name) {valueType = ty.conversion, choices = ty.names} modifiers (>>= ty.fromValue)
+
+-- | @add_argument(name, type=..., nargs="*")@: every value given, in
+-- order, none required.
+positionals :: Type a -> Text -> [Modifier] -> Arg [a]
+positionals ty name modifiers =
+  declared (Parser.positional name) {behavior = StoreAll, required = False, valueType = ty.conversion, choices = ty.names} modifiers $ \case
+    Just (List values) -> traverse ty.fromValue values
+    _ -> Nothing
 
 -- | @add_subparsers(dest=name, required=True)@ with one @add_parser@ per
 -- entry, in order; the namespace decodes by the chosen entry's arguments.
@@ -239,16 +280,18 @@ subcommands name entries =
 parser :: ArgumentParser a -> Parser
 parser declaration = newParser declaration.prog declaration.description (declaration.arguments.declare declaration.prog)
 
--- | @parser.parse_args(argv)@, decoded.
+-- | @parser.parse_args(argv)@, decoded, when every @FileType@ argument
+-- opens.
 parse :: Formatting -> ArgumentParser a -> [Text] -> Outcome a
-parse formatting declaration argv = case parseArgs formatting declared' argv of
+parse formatting declaration = decoded formatting declaration . parseArgs formatting (parser declaration)
+
+decoded :: Formatting -> ArgumentParser a -> Outcome Namespace -> Outcome a
+decoded formatting declaration = \case
   Exited status out err -> Exited status out err
   Parsed namespace -> case declaration.arguments.decode namespace of
     Just value -> Parsed value
     -- Unreachable: the namespace comes from these declarations.
     Nothing -> Exited 2 "" (errorText formatting declaration "the parsed arguments do not decode")
-  where
-    declared' = parser declaration
 
 -- | What @parser.error(message)@ writes to stderr before it exits 2.
 errorText :: Formatting -> ArgumentParser a -> Text -> Text
@@ -265,21 +308,29 @@ formattingOf environment columns terminal =
 formattingFor :: Map String String -> Handle -> IO Formatting
 formattingFor environment output = formattingOf environment <$> terminalColumns environment <*> hIsTerminalDevice output
 
--- | @parser.parse_args()@ in the process: the decoded value, or the help
--- (stdout, exit 0) or the usage error (stderr, exit 2) as the reference
--- prints them.
-runArgumentParser :: ArgumentParser a -> [String] -> IO a
+-- | The process's arguments as CPython decodes @sys.argv@: UTF-8 with
+-- @surrogateescape@, so an undecodable byte is kept as a lone surrogate
+-- and names the same file again.
+getArguments :: IO [Text]
+getArguments = map fsDecode <$> Posix.getArgs
+
+-- | @parser.parse_args(argv)@ in the process, opening its @FileType@
+-- files: the decoded value, or the help (stdout, exit 0) or the usage
+-- error (stderr, exit 2) as the reference prints them. Standard error is
+-- written as CPython writes it, a lone surrogate as @\\udcXX@.
+runArgumentParser :: ArgumentParser a -> [Text] -> IO a
 runArgumentParser declaration argv = do
   environment <- Map.fromList <$> getEnvironment
   formatting <- formattingFor environment stdout
-  case parse formatting declaration (map T.pack argv) of
+  outcome <- decoded formatting declaration <$> parseArgsIO formatting (parser declaration) argv
+  case outcome of
     Parsed value -> pure value
     Exited status out err -> do
-      TIO.putStr out
+      BS.hPut stdout (TE.encodeUtf8 out)
       hFlush stdout
-      TIO.hPutStr stderr err
+      BS.hPut stderr (utf8BackslashReplace err)
       exitWith (if status == 0 then ExitSuccess else ExitFailure status)
 
 -- | @raise SystemExit(message)@: the message on stderr, exit status 1.
 exitWithMessage :: Text -> IO a
-exitWithMessage message = TIO.hPutStrLn stderr message >> exitWith (ExitFailure 1)
+exitWithMessage message = BS.hPut stderr (utf8BackslashReplace (message <> "\n")) >> exitWith (ExitFailure 1)
