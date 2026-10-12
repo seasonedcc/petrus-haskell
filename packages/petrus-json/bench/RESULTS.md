@@ -163,4 +163,45 @@ against the parser that had them all (A), then removed together (C):
 The B and C columns are relative to A in the same run (above 1 is slower).
 The plain parser still clears CPython on every row, so the tricks are gone.
 `thread.loads` is now the thinnest margin, and `scripts/bench-gate` checks it
-beside `thread.dumps`.
+beside `thread.dumps`. B2 came back later, on a downstream measurement (next
+section).
+
+### The duplicate-member pre-check
+
+<!-- bench: superseded -->
+
+Without B2, hamsterdan-contracts' `contract decode Snapshot (validate_json)`
+fell behind pydantic: 0.92× of CPython (1.77 µs against 1.62 µs, behind in
+5 of 5 repetitions, 2026-10-12 19:24–19:26 at `4d5049e`), where it had read
+1.41× with the parser A above. The row parses a 546-byte, 21-member object,
+and checking 21 names through a `Data.Set` costs more than the rest of the
+parse's savings. Measured with the bench's own rows plus two temporary ones
+(parse alone, validate alone), three interleaved repetitions on 2026-10-12
+around 19:45, load about 2.1:
+
+| variant | parse | validate | decode (parse + validate) |
+| --- | ---: | ---: | ---: |
+| A (all three tricks) | 0.91 µs | 0.21 µs | 1.14 µs |
+| C (none) | 1.51 µs | 0.21 µs | 1.77 µs |
+| A without B2 (SWAR scan kept) | 1.35 µs | 0.21 µs | 1.57 µs |
+| A without B1 (pre-check kept) | 1.15 µs | 0.21 µs | 1.38 µs |
+| C plus an `IntSet` of FNV-1a hashes over the characters | 1.40 µs | 0.21 µs | 1.61 µs |
+| C plus an `IntSet` of (length, first, last character) | 1.35 µs | 0.21 µs | 1.58 µs |
+
+So the duplicate pre-check is the part that matters here, and an `IntSet`
+of hashes is not cheap enough; the SWAR scan stays out. The parser now has
+B2 again (`namesMayRepeat` in `Petrus.Json.Parse`, with `readArray` and
+`writeArray` rather than the unchecked accessors it had before). Five
+interleaved repetitions, 2026-10-12 19:48–19:50, load 2.1–2.5:
+
+| row | C | C plus the pre-check |
+| --- | ---: | ---: |
+| `contract decode Snapshot (validate_json)` | 1.82 µs | 1.36 µs |
+| `contract decode GateFact (validate_json)` (7 members) | 588 ns | 591 ns |
+| `history.loads` | 1.13 ms | 1.13 ms |
+| `net-document.loads` | 241 µs | 246 µs |
+| `net-document.loads-strict` | 241 µs | 245 µs |
+| `thread.loads` | 335 µs | 314 µs |
+
+Objects of eight members or fewer still take the pairwise check, so the
+rows without large objects do not change beyond noise.

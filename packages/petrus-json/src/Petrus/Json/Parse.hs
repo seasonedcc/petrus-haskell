@@ -35,7 +35,9 @@ module Petrus.Json.Parse
   ) where
 
 import Control.Monad (when)
-import Data.Bits (shiftL, (.|.))
+import Control.Monad.ST (ST, runST)
+import Data.Array.ST (STUArray, newArray, readArray, writeArray)
+import Data.Bits (shiftL, xor, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Unsafe qualified as BU
@@ -44,7 +46,9 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Array qualified as TA
 import Data.Text.Encoding qualified as TE
+import Data.Text.Internal qualified as TI
 import Data.Word (Word8)
 import Petrus.Json.Limits (defaultNestingLimit, intStrDigitsError, maxIntStrDigits)
 import Petrus.Json.Value
@@ -259,7 +263,10 @@ objectAt options input depth start = case at input first of
     duplicateFailure found = failed ("duplicate JSON member " ++ show (T.unpack (firstDuplicate Set.empty found)))
     hasDuplicates count found
       | count <= 8 = quadratic found
-      | otherwise = Set.size (Set.fromList (map fst found)) /= count
+      -- Distinct hashes prove distinct names; only a collision needs the
+      -- exact (comparison-based) check. Measured necessary: see
+      -- 'namesMayRepeat'.
+      | otherwise = namesMayRepeat count found && Set.size (Set.fromList (map fst found)) /= count
     quadratic [] = False
     quadratic ((key, _) : rest) = any ((== key) . fst) rest || quadratic rest
     -- The first member whose name an earlier member already used.
@@ -276,6 +283,51 @@ objectAt options input depth start = case at input first of
             | Set.member key seen = go seen rest
             | otherwise = (key, final Map.! key) : go (Set.insert key seen) rest
        in go Set.empty found
+
+-- | Whether two member names may be equal: some two share a 'nameHash',
+-- found through a small open-addressing table. Equal names always share a
+-- hash, so 'False' proves the names distinct.
+--
+-- A plain @Data.Set@ of the names costs pydantic's own @validate_json@
+-- its lead on a 21-member contract (hamsterdan-contracts' @contract decode
+-- Snapshot@ read 0.92x of CPython without this check, about 1.2x with it; an
+-- @IntSet@ of hashes was not enough either). The figures are in
+-- @bench/RESULTS.md@ ("The duplicate-member pre-check").
+namesMayRepeat :: Int -> [(Text, a)] -> Bool
+namesMayRepeat count found = runST $ do
+  let size = until (>= 2 * count) (* 2) 16
+      mask = size - 1
+  table <- newArray (0, size - 1) 0 :: ST s (STUArray s Int Int)
+  let insert [] = pure False
+      insert ((name, _) : rest) = do
+        -- 0 marks an empty slot.
+        let hash = case nameHash name of 0 -> 1; h -> h
+            probe slot = do
+              occupant <- readArray table slot
+              if occupant == 0
+                then writeArray table slot hash >> insert rest
+                else
+                  if occupant == hash
+                    then pure True
+                    else probe ((slot + 1) .&. mask)
+        probe (hash .&. mask)
+  insert found
+
+-- | A cheap name hash for 'namesMayRepeat': the UTF-8 length and up to the
+-- first and last eight UTF-8 bytes. Equal names always hash equally; a
+-- collision only costs the exact check. It reads the bytes inside the
+-- text's own slice of its array.
+nameHash :: Text -> Int
+nameHash (TI.Text array offset size) =
+  let byte i = fromIntegral (TA.unsafeIndex array i) :: Int
+      window from count = go from (from + count) 0
+        where
+          go i end acc
+            | i >= end = acc
+            | otherwise = go (i + 1) end (acc * 257 + byte i)
+      front = window offset (min 8 size)
+      back = if size > 8 then window (offset + max 8 (size - 8)) (min 8 (size - 8)) else 0
+   in ((size * 1099511628211) `xor` front) * 1099511628211 `xor` (back * 6364136223846793005)
 
 arrayAt :: ParseOptions -> ByteString -> Int -> Int -> Step
 arrayAt options input depth start = case at input first of
