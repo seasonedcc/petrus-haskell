@@ -28,9 +28,19 @@ content, not timestamps):
   transitively, through any component (libraries, executables, tests,
   benchmarks, build-tool-depends), as cabal's plan (dist-newstyle/cache/
   plan.json) records them;
-* every file of any other local package whose name appears anywhere in those
-  packages' files (tests read other packages' fixtures, drivers and keys by
-  path), with that package's own closure, until nothing new appears;
+* every file of any other local package that those packages' files name
+  (tests read other packages' fixtures, drivers and keys by path) or lead
+  into by a relative path (``hs-source-dirs: ../petrus-engine/test``,
+  ``../../petrus-json/test/...``, resolved against the package's directory
+  and the file's), with that package's own closure, until nothing new
+  appears. This is a scan of every committed file but prose and benchmark
+  sources, after dropping whole-line comments. What it cannot see is a
+  path built at run time from pieces that neither spell a package's name
+  nor climb out of the package with ``../`` (an environment variable, a
+  path computed from another package's name). Such a dependency must be
+  spelled out, outside a comment, as a relative path or the other package's
+  name in a committed file of the package that reads it. The nightly full
+  run reuses nothing, so a miss surfaces within a day;
 * every file outside packages/ (cabal.project and its freeze, scripts/, the
   upstream submodule pins, spec/, deployment/, .github/, UPSTREAM.md, ...),
   except the prose and benchmark records no test reads: README.md,
@@ -174,8 +184,35 @@ def without_line_comments(path: str, text: str) -> str:
     return "\n".join(line for line in text.split("\n") if not line.lstrip().startswith(marker))
 
 
+RELATIVE = re.compile(r"(?:\.\./)+[A-Za-z0-9_.-]+")
+
+
+def relative_targets(package: str, path: str, text: str, names: Set[str]) -> Set[str]:
+    """The local packages a relative path in the file leads into
+    (``hs-source-dirs: ../petrus-engine/test``, a fixture read as
+    ``../../petrus-json/test/...``), resolved against the package's
+    directory (where cabal runs its tests and benchmarks) and against the
+    file's own directory, whether or not the package's name is spelled out."""
+    found = set()
+    bases = [Path("packages") / package, Path(path).parent]
+    for match in RELATIVE.findall(text):
+        for base in bases:
+            parts = (base / match).parts
+            stack: List[str] = []
+            for part in parts:
+                if part == "..":
+                    if stack:
+                        stack.pop()
+                else:
+                    stack.append(part)
+            if len(stack) >= 2 and stack[0] == "packages" and stack[1] in names:
+                found.add(stack[1])
+    return found
+
+
 def mentions(packages: Iterable[str], files: Dict[str, List[Tuple[str, str]]]) -> Dict[str, Set[str]]:
-    """Package -> the other local packages whose name appears in its files."""
+    """Package -> the other local packages its files name (`MENTION`) or lead
+    into by a relative path (`relative_targets`)."""
     names = sorted(files)
     pattern = MENTION(names)
     result = {}
@@ -190,6 +227,7 @@ def mentions(packages: Iterable[str], files: Dict[str, List[Tuple[str, str]]]) -
                 continue
             text = without_line_comments(path, text)
             seen.update(pattern.findall(text))
+            seen.update(relative_targets(package, path, text, set(names)))
         seen.discard(package)
         result[package] = seen
     return result

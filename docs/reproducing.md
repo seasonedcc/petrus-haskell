@@ -146,8 +146,17 @@ It runs, in order, and stops at the first failing step:
 11. With `--bench` only: `scripts/bench`, every benchmark against Python.
 12. `scripts/bench --check`: every package's benchmark results document how
     to rerun them and which sources they measured, and
-    `bench-results/summary.md` matches them.
-13. `scripts/check-parity`: the parity table's claims hold.
+    `bench-results/summary.md` matches them. It also lists, as `STALE` (a
+    warning), every results file measured on code that has changed since:
+    the package's own sources, any local package it builds on, the cabal
+    project and freeze file, the upstream pins or the twins' timing harness.
+13. `scripts/check-parity`: the parity table's claims hold: evidence for
+    every component at parity, no cited benchmark row below 1.0×, and every
+    upstream test count it cites ("all 11 `test_sqlite_history.py` tests (14
+    cases)") equal to what pytest collects at the pinned upstream commits, as
+    recorded in `docs/upstream-test-counts.json` (`scripts/upstream-test-counts
+    --write` recollects it after a submodule moves). It warns (`STALE
+    evidence`) about components whose cited results are stale.
 14. `packages/petrus-engine/scripts/parity_check.py`: the runtime test
     ledgers account for every in-scope upstream test.
 
@@ -557,15 +566,22 @@ passed. `build` reads the ledgers of the latest runs on the same branch and
 on `main`, and a suite is not run again when its input hash equals one in
 those ledgers. The hash covers, as committed: every file of the suite's
 package, of every local package it depends on (any component, transitively,
-from cabal's plan) and of every local package its files name; every file
+from cabal's plan) and of every local package its files name or lead into
+by a relative path (`hs-source-dirs: ../petrus-engine/test`, a fixture read
+as `../../petrus-json/test/...`); every file
 outside `packages/` (the cabal project and freeze file, `scripts/`, the
 submodule pins, `spec/`, `deployment/`, `.github/`, ...) except README.md,
 PARITY.md, SCOPE.md, `docs/` and `bench-results/`; and the toolchain and
 runner image (GHC, cabal, uv, Node, Python and Docker versions, the system
 libraries). `scripts/ci-tests inputs` prints each suite's hash and the
 packages it covers. The `build` log and the run summary list every reused
-suite with the run it comes from. The nightly run and a dispatch with `full`
-reuse nothing and run every suite:
+suite with the run it comes from. The scan for other packages is a
+heuristic: a path built at run time that neither names the package nor
+climbs out with `../` (an environment variable, say) escapes it, so such a
+dependency must be spelled out as a path or a package name in a committed
+file of the package that reads it. The nightly run and a dispatch with
+`full` reuse nothing and run every suite, so a missed edge surfaces within a
+day:
 
 ```sh
 gh workflow run CI --ref main -f full=true

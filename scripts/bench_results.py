@@ -37,11 +37,18 @@ other components may name them in a marker comment::
 Then its below-1.0 rows count against those components instead, and the check
 only requires each named component to exist in PARITY.md, not to be ``at
 parity``, and not to be the component being checked.
+
+check-parity also names, as ``STALE evidence``, every component at parity
+that cites a results file measured on code that has changed since (see
+``stale_results``). That is a warning, not a failure: whether the ratios
+still hold is what the nightly ``scripts/bench-gate`` measures.
 """
 
 from __future__ import annotations
 
+import functools
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -150,22 +157,103 @@ def counted(package: str, relative: str) -> bool:
                 or relative.startswith(("test/", "differential/", "upstream-tests/")))
 
 
-def sources_fingerprint(package: str, treeish: str = "HEAD") -> str:
-    """A hash of the package's measured sources (`counted`) as committed at
-    TREEISH: their paths and git blob ids, so content, not timestamps."""
+# Outside the packages, what every benchmark's figures depend on: the
+# dependency versions, the pinned references the twins run, and the twins'
+# timing harness.
+SHARED_SOURCES = ["cabal.project", "cabal.project.freeze", "upstream/", "scripts/bench_timing.py"]
+STANZA = re.compile(r"^(library|benchmark|executable|test-suite|common|foreign-library)\b", re.IGNORECASE)
+
+
+@functools.lru_cache(maxsize=None)
+def tree(treeish: str) -> Dict[str, List[Tuple[str, str]]]:
+    """Every package's files at TREEISH: package -> [(path within it, blob id)]."""
     listing = subprocess.run(
-        ["git", "ls-tree", "-r", "-z", treeish, "--", f"packages/{package}/"],
+        ["git", "ls-tree", "-r", "-z", treeish, "--", "packages/"],
         cwd=ROOT, check=True, stdout=subprocess.PIPE, text=True,
     ).stdout
-    entries = []
-    prefix = f"packages/{package}/"
+    files: Dict[str, List[Tuple[str, str]]] = {}
     for record in listing.split("\0"):
         if not record:
             continue
         meta, path = record.split("\t", 1)
-        if path.startswith(prefix) and counted(package, path[len(prefix):]):
+        parts = path.split("/", 2)
+        if len(parts) == 3:
+            files.setdefault(parts[1], []).append((parts[2], meta.split()[2]))
+    return files
+
+
+@functools.lru_cache(maxsize=None)
+def show(treeish: str, path: str) -> str:
+    return subprocess.run(["git", "show", f"{treeish}:{path}"], cwd=ROOT, check=True,
+                          stdout=subprocess.PIPE, text=True).stdout
+
+
+def local_dependencies(package: str, treeish: str, packages: List[str]) -> List[str]:
+    """The local packages the package's measured code builds on, transitively:
+    every local package named in a stanza of its .cabal file other than a
+    test suite (build-depends, build-tool-depends, and also a relative
+    hs-source-dirs into a sibling), and theirs."""
+    pattern = re.compile(r"(?<![\w-])(" + "|".join(re.escape(n) for n in sorted(packages, key=len, reverse=True))
+                         + r")(?![\w-])")
+    cabal_of = {}
+    files = tree(treeish)
+    for name in packages:
+        cabal_of[name] = next((f"packages/{name}/{path}" for path, _ in files.get(name, [])
+                               if "/" not in path and path.endswith(".cabal")), None)
+    seen = {package}
+    queue = [package]
+    while queue:
+        current = queue.pop()
+        if cabal_of.get(current) is None:
+            continue
+        stanza = ""
+        for line in show(treeish, cabal_of[current]).splitlines():
+            if line and not line[0].isspace():
+                match = STANZA.match(line)
+                stanza = match.group(1).lower() if match else ""
+                continue
+            if stanza and stanza != "test-suite" and not line.strip().startswith("--"):
+                for found in pattern.findall(line):
+                    if found not in seen:
+                        seen.add(found)
+                        queue.append(found)
+    return sorted(seen - {package})
+
+
+def sources_fingerprint(package: str, treeish: str = "HEAD") -> str:
+    """A hash of what the package's figures measured, as committed at TREEISH
+    (paths and git blob ids, so content, not timestamps): the package's
+    measured sources (`counted`), those of every local package it builds on
+    (`local_dependencies`, their benchmarks aside), and SHARED_SOURCES."""
+    files = tree(treeish)
+    entries = [f"packages/{package}/{path}\0{blob}\n" for path, blob in files.get(package, [])
+               if counted(package, path)]
+    for dependency in local_dependencies(package, treeish, sorted(files)):
+        entries += [f"packages/{dependency}/{path}\0{blob}\n" for path, blob in files.get(dependency, [])
+                    if counted(dependency, path) and not path.startswith("bench/")]
+    shared = subprocess.run(["git", "ls-tree", "-r", "-z", treeish, "--", *SHARED_SOURCES], cwd=ROOT, check=True,
+                            stdout=subprocess.PIPE, text=True).stdout
+    for record in shared.split("\0"):
+        if record:
+            meta, path = record.split("\t", 1)
             entries.append(f"{path}\0{meta.split()[2]}\n")
     return hashlib.sha256("".join(sorted(entries)).encode()).hexdigest()[:16]
+
+
+def stale_results() -> Dict[Path, str]:
+    """The results files whose fingerprint (`sources_fingerprint`) differs
+    from the one their figures measured (their `measured` marker), with the
+    commit they were measured at."""
+    found: Dict[Path, str] = {}
+    fingerprints: Dict[str, str] = {}
+    for path in results_files():
+        marker = measured(path)
+        package = path.parent.parent.name
+        if package not in fingerprints:
+            fingerprints[package] = sources_fingerprint(package)
+        if marker and marker[0] != fingerprints[package]:
+            found[path] = marker[1]
+    return found
 
 
 def results_files() -> List[Path]:
@@ -279,6 +367,22 @@ def check_parity() -> int:
         for problem in problems:
             print("  " + problem, file=sys.stderr)
         return 1
+    stale = stale_results()
+    on_stale = []
+    for component, status, evidence in rows:
+        if not status.startswith("at parity"):
+            continue
+        cited = sorted(set(re.findall(r"packages/[\w.-]+/bench/[\w.-]+\.md", evidence)))
+        old = [f"{c} (measured at {stale[ROOT / c][:7]})" for c in cited if ROOT / c in stale]
+        if old:
+            on_stale.append(f"{component}: {', '.join(old)}")
+    if on_stale:
+        print(f"STALE evidence: {len(on_stale)} components at parity cite benchmark results measured on code that has"
+              " changed since (`scripts/bench --stale`); their ratios are not current:", file=sys.stderr)
+        for line in on_stale:
+            print("  " + line, file=sys.stderr)
+            if os.environ.get("GITHUB_ACTIONS"):
+                print(f"::warning file=PARITY.md::stale benchmark evidence: {line}")
     return 0
 
 

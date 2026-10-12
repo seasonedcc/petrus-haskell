@@ -4,7 +4,12 @@
 #   - while a benchmark results file its evidence cites has a row where
 #     Haskell is slower than Python (a ratio below 1.0×); see
 #     scripts/bench_results.py for how ratios are read and how a shared
-#     results file attributes its slower rows to other components.
+#     results file attributes its slower rows to other components;
+#   - or if an upstream test count it cites ("all 11 `test_x.py` tests (14
+#     cases)") differs from docs/upstream-test-counts.json, the counts pytest
+#     collected at the pinned upstream commits (scripts/upstream-test-counts).
+# It warns (STALE evidence) about components whose cited results measured
+# code that has changed since.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 bad=$(awk -F'|' '/^\|/ && $5 ~ /at parity/ && $6 ~ /^ *$/ {print $2}' PARITY.md)
@@ -25,6 +30,7 @@ if [[ -n "$missing" ]]; then
   exit 1
 fi
 python3 -B scripts/bench_results.py check-parity
+python3 -B scripts/upstream-test-counts --check
 total=$(awk -F'|' '/^\|/ && $5 ~ /^ *(not started|in progress|at parity)/ {n++} END {print n+0}' PARITY.md)
 done_=$(awk -F'|' '/^\|/ && $5 ~ /^ *at parity/ {n++} END {print n+0}' PARITY.md)
 echo "$done_ of $total components at parity"

@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""Check the upstream test counts PARITY.md cites against a recorded count.
+
+    scripts/upstream-test-counts --check   # (check-parity runs this) no Python needed
+    scripts/upstream-test-counts --write   # recollect with pytest and rewrite the record
+
+PARITY.md cites how many tests upstream files have, in a few fixed phrasings:
+
+    all 11 `test_sqlite_history.py` tests (14 cases)
+    26 `test_async_worker.py` tests
+    all 13 `test_postgres_engine.py` cases
+    `test_v5_ingress.py` ported (82 cases)
+    `test_v5_review.py` and `test_v5_mutation.py` ported (135 cases)   # the sum
+    `test_service.py` (69 of 70 cases
+
+A *test* is a test function (or method), a *case* (or *item*) is what pytest
+collects, one per parametrization. ``--write`` collects every cited file with
+``pytest --collect-only`` under the pinned upstream environment
+(scripts/upstream-python) and records the counts, with the upstream commits
+they were collected at, in docs/upstream-test-counts.json. ``--check`` fails
+when a cited count differs from the record, when a cited file is not
+recorded, or when an upstream submodule has moved since the record was made
+(the counts may have changed with it: rerun ``--write``). It reads only git
+and the record, so it needs neither the submodules nor Python's environments.
+
+Only these phrasings and only the upstream side are checked: what a port's
+own suite runs is checked by the suites themselves and, for the runtime, by
+the ledgers of packages/petrus-engine/scripts/parity_check.py. A file is
+looked up in upstream/hamsterdan for a ``hamsterdan-*`` package's row, else
+in upstream/petrus, then upstream/petrus-engine.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+ROOT = Path(__file__).resolve().parent.parent
+RECORD = ROOT / "docs" / "upstream-test-counts.json"
+PROJECTS = ["petrus", "petrus-engine", "hamsterdan"]
+NUMBER = "(\\d+(?:[   ]\\d{3})*)"
+FILE = r"`test_\w+\.py`"
+FILES = "(" + FILE + "(?:(?:, | and | and the )" + FILE + ")*)"
+COUNTED = re.compile(NUMBER + " (" + FILE + r") (tests|cases)(?: \(" + NUMBER + r" (?:cases|items)\))?")
+PORTED = re.compile(FILES + r" ported \(" + NUMBER + r" cases\)")
+OF = re.compile("(" + FILE + r") \(\d+ of " + NUMBER + r" cases")
+Claim = Tuple[int, str, Tuple[str, ...], str, int]
+
+
+def number(text: str) -> int:
+    return int(re.sub(r"\D", "", text))
+
+
+def names(text: str) -> Tuple[str, ...]:
+    return tuple(re.findall(r"`(test_\w+\.py)`", text))
+
+
+def cells(line: str) -> List[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def claims() -> List[Claim]:
+    """(PARITY.md line, package cell, file names, "tests" or "cases", count):
+    the count is of the files together."""
+    found: List[Claim] = []
+    for index, line in enumerate((ROOT / "PARITY.md").read_text(encoding="utf-8").splitlines(), 1):
+        if not line.startswith("|"):
+            continue
+        parts = cells(line)
+        if len(parts) < 5:
+            continue
+        package, evidence = parts[2], parts[4]
+        for match in COUNTED.finditer(evidence):
+            found.append((index, package, names(match.group(2)), match.group(3), number(match.group(1))))
+            if match.group(4):
+                found.append((index, package, names(match.group(2)), "cases", number(match.group(4))))
+        for match in PORTED.finditer(evidence):
+            found.append((index, package, names(match.group(1)), "cases", number(match.group(2))))
+        for match in OF.finditer(evidence):
+            found.append((index, package, names(match.group(1)), "cases", number(match.group(2))))
+    return found
+
+
+def gitlinks() -> Dict[str, str]:
+    listing = subprocess.run(["git", "ls-tree", "HEAD", "upstream/"], cwd=ROOT, check=True,
+                             stdout=subprocess.PIPE, text=True).stdout
+    return {line.split("\t")[1].split("/", 1)[1]: line.split()[2] for line in listing.splitlines()}
+
+
+def projects_for(package: str) -> List[str]:
+    return ["hamsterdan"] if package.strip("`").startswith("hamsterdan") else ["petrus", "petrus-engine"]
+
+
+def locate(package: str, name: str) -> Optional[str]:
+    """The cited file as "project:path", searched in the checkout."""
+    for project in projects_for(package):
+        hits = sorted(p for p in (ROOT / "upstream" / project).rglob(name)
+                      if ".venv" not in p.parts and "node_modules" not in p.parts)
+        if len(hits) == 1:
+            return f"{project}:{hits[0].relative_to(ROOT / 'upstream' / project).as_posix()}"
+        if len(hits) > 1:
+            return None
+    return None
+
+
+def recorded(record: dict, package: str, name: str) -> Optional[str]:
+    """The cited file's key in the record, looked up as `locate` would."""
+    for project in projects_for(package):
+        keys = [k for k in record["files"] if k.split(":")[0] == project and k.rsplit("/", 1)[-1] == name]
+        if keys:
+            return keys[0] if len(keys) == 1 else None
+    return None
+
+
+def collect(key: str) -> Tuple[int, int]:
+    project, path = key.split(":", 1)
+    python = subprocess.run([str(ROOT / "scripts" / "upstream-python"), project], cwd=ROOT, check=True,
+                            stdout=subprocess.PIPE, text=True).stdout.strip()
+    result = subprocess.run([python, "-B", "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", path],
+                            cwd=ROOT / "upstream" / project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    ids = [line for line in result.stdout.splitlines() if "::" in line and not line.startswith(" ")]
+    if result.returncode != 0 or not ids:
+        raise SystemExit(f"upstream-test-counts: collecting {key} failed:\n{result.stdout}")
+    return len({re.sub(r"\[.*\]$", "", i) for i in ids}), len(ids)
+
+
+def write() -> int:
+    record: dict = {"upstream": {p: c for p, c in sorted(gitlinks().items()) if p in PROJECTS}, "files": {}}
+    for package, name in sorted({(package, name) for _, package, files, _, _ in claims() for name in files}):
+        key = locate(package, name)
+        if key is None:
+            print(f"upstream-test-counts: cannot locate {name} for {package} unambiguously", file=sys.stderr)
+            return 1
+        if key not in record["files"]:
+            tests, cases = collect(key)
+            record["files"][key] = {"tests": tests, "cases": cases}
+    record["files"] = dict(sorted(record["files"].items()))
+    RECORD.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(f"recorded {len(record['files'])} upstream test files in {RECORD.relative_to(ROOT)}")
+    return check()
+
+
+def check() -> int:
+    if not RECORD.exists():
+        print(f"upstream-test-counts: {RECORD.relative_to(ROOT)} is missing (run scripts/upstream-test-counts --write)",
+              file=sys.stderr)
+        return 1
+    record = json.loads(RECORD.read_text(encoding="utf-8"))
+    problems = []
+    current = gitlinks()
+    for project, commit in record["upstream"].items():
+        if current.get(project) != commit:
+            problems.append(f"upstream/{project} moved from {commit[:12]} to {current.get(project, '?')[:12]} since the"
+                            " counts were recorded")
+    found = claims()
+    for line, package, files, what, count in found:
+        keys = [recorded(record, package, name) for name in files]
+        missing = [name for name, key in zip(files, keys) if key is None]
+        if missing:
+            problems.append(f"PARITY.md line {line}: {', '.join(missing)} ({package}) not recorded")
+            continue
+        actual = sum(record["files"][key][what] for key in keys)
+        if actual != count:
+            problems.append(f"PARITY.md line {line}: cites {count} {what} for {' + '.join(files)}; upstream has {actual}")
+    if problems:
+        print("PARITY.md's upstream test counts do not match docs/upstream-test-counts.json"
+              " (fix the count, or rerun scripts/upstream-test-counts --write after moving a submodule):",
+              file=sys.stderr)
+        for problem in problems:
+            print("  " + problem, file=sys.stderr)
+        return 1
+    print(f"{len(found)} upstream test counts PARITY.md cites match the recorded collection")
+    return 0
+
+
+def main(argv: List[str]) -> int:
+    if argv == ["--write"]:
+        return write()
+    if argv in ([], ["--check"]):
+        return check()
+    print(__doc__, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

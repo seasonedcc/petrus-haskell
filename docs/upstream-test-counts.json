@@ -1,0 +1,101 @@
+{
+  "upstream": {
+    "hamsterdan": "5d382467eaa4ff837cbd6b93012c99081e0153f9",
+    "petrus": "3f85fc2094e50ece48bcf6bf9ace19cb0a22a544",
+    "petrus-engine": "fc1dd507ec4341f15aa9d0b17d4e14def95cf5c7"
+  },
+  "files": {
+    "hamsterdan:deployment/tests/test_container_contract.py": {
+      "tests": 4,
+      "cases": 4
+    },
+    "hamsterdan:tests/integration/host/test_git_publish.py": {
+      "tests": 18,
+      "cases": 30
+    },
+    "hamsterdan:tests/integration/host/test_service.py": {
+      "tests": 64,
+      "cases": 70
+    },
+    "hamsterdan:tests/unit/host/test_export.py": {
+      "tests": 38,
+      "cases": 41
+    },
+    "hamsterdan:tests/unit/host/test_v5_gates.py": {
+      "tests": 50,
+      "cases": 55
+    },
+    "hamsterdan:tests/unit/host/test_v5_ingress.py": {
+      "tests": 63,
+      "cases": 82
+    },
+    "hamsterdan:tests/unit/host/test_v5_mutation.py": {
+      "tests": 15,
+      "cases": 41
+    },
+    "hamsterdan:tests/unit/host/test_v5_rerun.py": {
+      "tests": 13,
+      "cases": 17
+    },
+    "hamsterdan:tests/unit/host/test_v5_review.py": {
+      "tests": 14,
+      "cases": 22
+    },
+    "hamsterdan:tests/unit/host/test_v5_timers.py": {
+      "tests": 18,
+      "cases": 21
+    },
+    "petrus:tests/petrus/engine/test_observation.py": {
+      "tests": 19,
+      "cases": 29
+    },
+    "petrus:tests/petrus/engine/test_observation_http.py": {
+      "tests": 7,
+      "cases": 19
+    },
+    "petrus:tests/petrus/engine/test_postgres_engine.py": {
+      "tests": 12,
+      "cases": 13
+    },
+    "petrus:tests/petrus/engine/test_sqlite_engine.py": {
+      "tests": 5,
+      "cases": 5
+    },
+    "petrus:tests/petrus/fabric/test_fabric.py": {
+      "tests": 12,
+      "cases": 12
+    },
+    "petrus:tests/petrus/impetus/binding/test_cel.py": {
+      "tests": 19,
+      "cases": 19
+    },
+    "petrus:tests/petrus/impetus/history_store/test_postgres_history.py": {
+      "tests": 21,
+      "cases": 21
+    },
+    "petrus:tests/petrus/impetus/history_store/test_sqlite_history.py": {
+      "tests": 11,
+      "cases": 14
+    },
+    "petrus:tests/petrus/motus/dispatch/test_absurd_adapter.py": {
+      "tests": 78,
+      "cases": 103
+    },
+    "petrus:tests/petrus/motus/transport/test_zeromq_dispatch_transport.py": {
+      "tests": 26,
+      "cases": 30
+    },
+    "petrus:tests/petrus/motus/worker/test_async_worker.py": {
+      "tests": 26,
+      "cases": 29
+    },
+    "petrus:tests/petrus/motus/worker/test_worker_topology.py": {
+      "tests": 36,
+      "cases": 40
+    },
+    "petrus:tests/petrus/processes/test_processes.py": {
+      "tests": 19,
+      "cases": 19
+    }
+  }
+}

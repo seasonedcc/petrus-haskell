@@ -35,14 +35,21 @@ Each results file also records which code its figures measured, in a marker
 
     <!-- scripts/bench: measured sources FINGERPRINT at COMMIT -->
 
-FINGERPRINT hashes the package's files as committed (git blob ids), all but
-its prose (``*.md``) and its test suite (``test/``); COMMIT is where they
-were. ``--check`` fails on a results file without the marker and notes how
-many are stale; ``--stale`` lists every results file whose package's
-fingerprint has changed since (changes in its dependencies are not tracked).
-After rerunning a package and updating its figures, ``--stamp PKG`` (or
-``--stamp PKG results-x.md`` for one of several files) records HEAD's
-fingerprint and regenerates the summary.
+FINGERPRINT hashes, as committed (git blob ids), the package's files but its
+prose (``*.md``) and its tests (``test/``), the same files of every local
+package it builds on (its .cabal file's stanzas other than test suites name
+them, transitively; their benchmarks aside), ``cabal.project``, the freeze
+file, the pinned ``upstream/`` commits and ``scripts/bench_timing.py``
+(scripts/bench_results.py, ``sources_fingerprint``). COMMIT is where they
+were. ``--check`` fails on a results file without the marker and lists, as
+``STALE``, every results file whose fingerprint has changed since: its
+figures measured other code and may no longer hold (a warning, so that a
+code change does not have to wait for a quiet machine; the nightly
+``scripts/bench-gate`` remeasures the headline rows, and
+``scripts/check-parity`` names the components whose evidence is stale).
+``--stale`` lists the same files. After rerunning a package and updating its
+figures, ``--stamp PKG`` (or ``--stamp PKG results-x.md`` for one of several
+files) records HEAD's fingerprint and regenerates the summary.
 
 ``--smoke`` is not a measurement: it builds every benchmark and runs it once
 (tasty-bench's ``--stdev Infinity``, or the sh block after a
@@ -159,18 +166,10 @@ def run(package: str) -> int:
 
 
 def stale() -> List[str]:
-    """The results files whose package's measured sources differ from the
-    ones their figures measured (their `measured` marker)."""
-    found = []
-    fingerprints: Dict[str, str] = {}
-    for path in bench_results.results_files():
-        marker = bench_results.measured(path)
-        package = path.parent.parent.name
-        if package not in fingerprints:
-            fingerprints[package] = bench_results.sources_fingerprint(package)
-        if marker and marker[0] != fingerprints[package]:
-            found.append(f"{path.relative_to(ROOT)} (measured at {marker[1]})")
-    return found
+    """The results files whose measured sources differ from the ones their
+    figures measured (their `measured` marker)."""
+    return [f"{path.relative_to(ROOT)} (measured at {commit})"
+            for path, commit in bench_results.stale_results().items()]
 
 
 def check() -> int:
@@ -189,10 +188,16 @@ def check() -> int:
     if status == 0:
         print(f"{len(benchmark_packages())} benchmark packages document their rerun and the sources they measured;"
               " bench-results/summary.md is current")
-        changed = stale()
-        if changed:
-            print(f"note: {len(changed)} results files measured sources that have changed since"
-                  " (`scripts/bench --stale` lists them; their figures may no longer hold)")
+    changed = stale()
+    for entry in changed:
+        print(f"STALE {entry}: its package's sources or dependencies changed since it was measured", file=sys.stderr)
+        if os.environ.get("GITHUB_ACTIONS"):
+            print(f"::warning file={entry.split(' ')[0]}::benchmark results measured other code (stale since"
+                  f" {entry.split('measured at ')[-1].rstrip(')')}); rerun them and `scripts/bench --stamp`")
+    if changed:
+        print(f"warning: {len(changed)} of {len(bench_results.results_files())} results files are stale: their"
+              " figures measured code that has changed since (rerun each and `scripts/bench --stamp PKG`)",
+              file=sys.stderr)
     return status
 
 
