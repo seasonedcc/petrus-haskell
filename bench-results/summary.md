@@ -43,7 +43,7 @@ lists the files whose package sources have changed since.
 | `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | `5a73d7a` | 5 | 1.08× | 7.50× |  |
 | `petrus-engine-sqlite` | [RESULTS.md](../packages/petrus-engine-sqlite/bench/RESULTS.md) | `56217b2` | 4 | 1.38× | 8.31× |  |
 | `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | `5a73d7a` | 13 | 1.01× | 10.7× |  |
-| `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | `d880d2f` | 12 | 1.40× | 10.2× |  |
+| `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | `e4a18a4` | 12 | 1.38× | 10.1× |  |
 | `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | `5a73d7a` | 7 | 1.20× | 2.01× |  |
 | `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | `25c66fa` | 14 | 1.13× | 12 748× |  |
 | `petrus-http-core` | [RESULTS.md](../packages/petrus-http-core/bench/RESULTS.md) | `5a73d7a` | 6 | 1.69× | 18.8× |  |
