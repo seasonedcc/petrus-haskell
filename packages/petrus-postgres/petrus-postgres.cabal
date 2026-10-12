@@ -76,6 +76,7 @@ benchmark petrus-postgres-bench
   build-depends:    base
                   , bytestring
                   , petrus-postgres
+                  , petrus-test-support
                   , tasty >=1.4
                   , tasty-bench >=0.3.2
                   , text
