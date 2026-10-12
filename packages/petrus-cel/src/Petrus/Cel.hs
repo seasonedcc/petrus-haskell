@@ -84,6 +84,7 @@ module Petrus.Cel
   , Exc (..)
   , CelError (..)
   , excRepr
+  , excReprStrict
   , excStr
   , ExcClass (..)
   , excClassName

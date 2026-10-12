@@ -693,6 +693,8 @@ data OperationKey = OperationKey
 data CodexOperation = CodexOperation
   { owner :: CodexRuntimeAdapter
   , inv :: CodexRuntimeInvocation
+  , binding :: MotusAttachmentBinding
+  -- ^ The Motus binding 'validateAttachment' accepted at start.
   , key :: OperationKey
   , prior :: Maybe CodexContinuationPayloadV1
   , executable :: FilePath
@@ -719,15 +721,10 @@ settle :: CodexRuntimeInvocation -> TurnOutcome -> Integer -> Text -> Maybe Text
 settle inv outcome appends code output continuation =
   throwLeft (mkRuntimeTurnSettlement inv.episodeId inv.turnId outcome appends code output continuation)
 
-operationBinding :: CodexRuntimeInvocation -> MotusAttachmentBinding
-operationBinding inv = case (Episode.episodeBinding inv.attachment).motus of
-  Just motus -> motus
-  Nothing -> error "Codex operations exist only over a Motus binding"
-
 -- | @_run@: borrow the whole territory operation for @_execute@.
 runOperation :: CodexOperation -> IO ()
 runOperation o = do
-  outcome <- trySync (withBindingOperation (operationBinding o.inv) (execute o))
+  outcome <- trySync (withBindingOperation o.binding (execute o))
   settled <- case outcome of
     Right value -> pure value
     Left e
@@ -1049,7 +1046,7 @@ startDirect a inv0 = do
   case (ready.installation, ready.readyExecutable, ready.readyPath) of
     (Just _, Just _, Just _) -> pure ()
     _ -> protocol "runtime-not-ready"
-  _ <- validateAttachment a inv.attachment
+  motus <- validateAttachment a inv.attachment
   forM_ inv.continuation $ \c ->
     when (c.state /= ContinuationInUse) $ protocol "continuation-not-claimed"
   prior <- traverse (codexCodecLoad a.codec) inv.continuation
@@ -1082,7 +1079,7 @@ startDirect a inv0 = do
           | old.key /= key -> protocol "operation-conflict"
           | otherwise -> pure (known, Left old)
         Nothing -> do
-          operation <- newOperation inv key prior executable executionPath
+          operation <- newOperation inv motus key prior executable executionPath
           pure (Map.insert inv.operationId operation known, Right operation)
     case registered of
       Left old -> pure old
@@ -1090,12 +1087,13 @@ startDirect a inv0 = do
         Lifecycle.startWorker operation.lifecycle (runOperation operation)
         pure operation
   where
-    newOperation inv key prior executable executionPath = do
+    newOperation inv motus key prior executable executionPath = do
       lifecycle <- newLifecycle (LifecycleTexts "Codex operation wait timeout must be positive and finite" "Codex runtime operation has not settled") inv.operationId
       pure
         CodexOperation
           { owner = a
           , inv
+          , binding = motus
           , key
           , prior
           , executable
@@ -1130,7 +1128,7 @@ execute o = do
       config = a.config
       inv = o.inv
       prior = o.prior
-      motus = operationBinding inv
+      motus = o.binding
       deadline = Episode.episodeDeadline inv.attachment
       ids name = inv.operationId <> "." <> name
       current = operationCurrent o

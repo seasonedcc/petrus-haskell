@@ -38,6 +38,7 @@ library
                     Petrus.Json.Python.Exception
                     Petrus.Json.Python.Fs
                     Petrus.Json.Python.Loads
+                    Petrus.Json.Python.Pydantic
                     Petrus.Json.Python.Scanner
                     Petrus.Json.Python.Uuid
                     Petrus.Json.PythonCase

@@ -77,9 +77,10 @@ Three changes cut this by about 4×. None of them is observable;
 2. **Decoded-snapshot cache.** Each SQLite connection keeps the last payload
    text it read or wrote, together with its snapshot. A load whose row text
    is byte-identical reuses the snapshot. The row is still read every time,
-   so a concurrent writer's change is decoded normally. The custody's
-   re-validation of an object already accepted is skipped through a
-   `StableName` memo.
+   so a concurrent writer's change is decoded normally. Custody does not
+   re-validate what this storage loads: every snapshot it answers was
+   already validated, which its `trustedLoad` states in the type
+   (`ValidatedSnapshot`).
 3. **Pre-sorted payload members.** The payload is emitted in `sort_keys`
    order, so the encoder skips its per-object sort.
 

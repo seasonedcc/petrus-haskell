@@ -408,12 +408,17 @@ cleanupStages gw = do
   count gw $ \c -> c {stageDiscards = c.stageDiscards + removed}
   pure removed
 
+-- | What 'claim' settles on. Waiting for an in-flight duplicate is
+-- 'Lookup''s extra case, internal to 'claim''s retry loop.
 data Claim
   = Claimed (MVar ())
   | Prior ToolResult
   | Conflict
   | LedgerFull
-  | Waiting (MVar ())
+
+-- | One look at the ledger: a settled claim, or the signal of an exact
+-- in-flight duplicate to wait for.
+data Lookup = Settled Claim | Waiting (MVar ())
 
 -- | Run one request through the complete common path and return its exact
 -- result.  Throws @ToolCallConflict@ when the call identity names a
@@ -429,7 +434,6 @@ submit gw data' = do
         Prior result -> pure result
         Conflict -> throwIO toolCallConflict
         LedgerFull -> restore (finalizeError gw request (toolError CategoryBudget "call ledger budget is exhausted"))
-        Waiting _ -> error "claim never returns Waiting"
         Claimed signal -> restore (runClaimed gw request signal) `onException` abandon gw request signal
 
 -- | Claim the call identity, or wait for an exact in-flight duplicate to
@@ -442,18 +446,18 @@ claim gw request = do
   decision <- mask_ $ modifyStrict gw.calls $ \current ->
     case Map.lookup request.callId current.ledger of
       Nothing
-        | Map.size current.ledger >= gw.config.maxGatewayCalls -> (current, LedgerFull)
+        | Map.size current.ledger >= gw.config.maxGatewayCalls -> (current, Settled LedgerFull)
         | otherwise ->
             ( current {ledger = Map.insert request.callId (Entry request (Pending signal)) current.ledger, inFlight = current.inFlight + 1}
-            , Claimed signal
+            , Settled (Claimed signal)
             )
       Just found
-        | found.request /= request -> (current, Conflict)
-        | Done result <- found.state -> (current, Prior result)
+        | found.request /= request -> (current, Settled Conflict)
+        | Done result <- found.state -> (current, Settled (Prior result))
         | Pending other <- found.state -> (current, Waiting other)
   case decision of
     Waiting other -> readMVar other >> claim gw request
-    _ -> pure decision
+    Settled settled -> pure settled
 
 -- | Leave the in-flight set: replace or remove the claim, wake its exact
 -- waiters, and wake 'drain' when nothing is left in flight.

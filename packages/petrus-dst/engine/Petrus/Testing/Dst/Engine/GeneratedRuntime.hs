@@ -518,7 +518,7 @@ generatedRuntimeProfileWith variant historyPath dispatchPath = do
           scope <- activeScope g
           outcome <- ioScenario (Engine.deliver g.engine source [Token (Just "Input") value] identity (Just (ScopeGeneration scope)))
           let disposition = case outcome of
-                Engine.DeliveredPrior _ -> Idempotent
+                Engine.DeliveryPrior _ -> Idempotent
                 _ -> Applied
               attempt = Object [("disposition", String (actionDispositionText disposition)), ("identity", String identity), ("value", value)]
           liftIO (modifyIORef' deliveryAttempts (<> [attempt]))

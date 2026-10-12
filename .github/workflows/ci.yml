@@ -217,8 +217,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: test-plan
-      - name: Upstream Python environment (petrus, petrus-engine, hamsterdan)
-        run: for p in petrus petrus-engine hamsterdan; do scripts/upstream-python "$p" >/dev/null; done
+      - name: Upstream Python environment (petrus, petrus-engine, hamsterdan, petrus-sdks)
+        run: for p in petrus petrus-engine hamsterdan petrus-sdks; do scripts/upstream-python "$p" >/dev/null; done
       - name: "Tests (unit, conformance, interop): ${{ matrix.suites }}"
         # A suite counts as passed only with no pending example but the
         # declared opt-ins (run-shard runs scripts/check-pending on each).

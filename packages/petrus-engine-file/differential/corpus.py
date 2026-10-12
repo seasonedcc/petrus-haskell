@@ -787,6 +787,27 @@ def edge_cases():
         ("lone-high-surrogate-file", '{"fileVersion": "2", "net": "a\\ud800"}'),
         ("lone-low-surrogate-file", '{"fileVersion": "2", "net": "a\\udc00b"}'),
         ("surrogate-then-bad", '{"net": "a\\ud800\\u0041"}'),
+        # Lone surrogates json.loads keeps: plain strings carry them, and a
+        # string pydantic must parse (int, float, enum, literal, timedelta)
+        # is a string_unicode error; a dict key in a loc is spelled lossily.
+        ("surrogate-names", '{"net": "m\\udc00", "places": {"p\\udc00": {"initial": 1, "label": "\\ud800",'
+         ' "metadata": {"k\\ud83d": "\\udfff x", "\\ud800": ["\\udbff"]}}}, "transitions": {"t\\ud800":'
+         ' {"handler": "\\ud800", "guard": "\\udc00", "metadata": {"\\ud801": null}}}, "arcs":'
+         ' [{"source": "p\\udc00", "target": "t\\ud800"}], "refs": {"r\\ud800": {"ref": "x\\udc00.json"}},'
+         ' "viewState": {"layout": {"p\\udc00": [1, 2]}, "selected": ["t\\ud800"]}}'),
+        ("surrogate-int", '{"net": "m", "places": {"p": {"initial": "1\\ud800"}}}'),
+        ("surrogate-weight", '{"net": "m", "arcs": [{"source": "a", "target": "b", "weight": "\\ud800"}]}'),
+        ("surrogate-kind", '{"net": "m", "arcs": [{"source": "a", "target": "b", "kind": "read\\udc00"}]}'),
+        ("surrogate-interface", '{"net": "m", "places": {"p": {"interface": "\\ud800"}}}'),
+        ("surrogate-delay", '{"net": "m", "transitions": {"t": {"delay": "1s\\ud800"}}}'),
+        ("surrogate-zoom", '{"net": "m", "viewState": {"zoom": "\\ud800"}}'),
+        ("surrogate-pan", '{"net": "m", "viewState": {"pan": ["\\ud800", 1]}}'),
+        ("surrogate-loc-key", '{"net": "m", "places": {"p\\ud800q": {"initial": "x"}},'
+         ' "viewState": {"arcWaypoints": {"a\\udfff": [["\\ud800", 1]]}}}'),
+        ("surrogate-extra-keys", '{"net": "m", "\\ud800": 1, "places": {"p": {"\\udc00": 2}},'
+         ' "arcs": [{"source": "a", "target": "b", "\\ud800": 3}], "viewState": {"\\ud800": 4}}'),
+        ("surrogate-file-version", '{"fileVersion": "\\ud800", "net": "m"}'),
+        ("surrogate-dotted-segment", '{"net": "m", "arcs": [{"source": ["a", "\\ud800.b"], "target": "b"}]}'),
         ("deep-199", '{"net": "m", "places": {"p": {"metadata": {"x": ' + "[" * 196 + "]" * 196 + "}}}}"),
         ("deep-200", '{"net": "m", "places": {"p": {"metadata": {"x": ' + "[" * 197 + "]" * 197 + "}}}}"),
         ("deep-201", '{"net": "m", "places": {"p": {"metadata": {"x": ' + "[" * 198 + "]" * 198 + "}}}}"),
@@ -1312,44 +1333,9 @@ def fuzz_cases(seed, count):
         single(f"fuzz/{index:03d}", text, extra=extra)
 
 
-def lone_surrogates(value):
-    if isinstance(value, str):
-        return any(0xD800 <= ord(c) <= 0xDFFF for c in value)
-    if isinstance(value, list):
-        return any(lone_surrogates(v) for v in value)
-    if isinstance(value, dict):
-        return any(lone_surrogates(k) or lone_surrogates(v) for k, v in value.items())
-    return False
-
-
-def python_mode_surrogates(c, op):
-    """Whether json.loads gives this op a string with a lone surrogate."""
-    if op["op"] == "format":
-        names = [op["path"]]
-    elif op["op"] == "dict":
-        names = [op["root"], *[n for n in op["deps"].values() if n is not None]]
-    else:
-        return False
-    for n in names:
-        text = c["files"].get(n, {}).get("text")
-        if text is None:
-            continue
-        try:
-            if lone_surrogates(json.loads(text)):
-                return True
-        except Exception:  # noqa: BLE001
-            continue
-    return False
-
-
 def record(cases, out):
     for c in cases:
         c["expect"] = expectation(c)
-        # Python-mode strings with lone surrogates are refused here (see
-        # DIVERGENCES.md); the test checks those ops refuse instead.
-        divergent = [i for i, op in enumerate(c["ops"]) if python_mode_surrogates(c, op)]
-        if divergent:
-            c["lone_surrogate_ops"] = divergent
     names = [c["name"] for c in cases]
     assert len(names) == len(set(names)), "duplicate case names"
     out.write_text(json.dumps({"cases": cases}, indent=1, ensure_ascii=True) + "\n")

@@ -60,9 +60,9 @@ demoOps handles =
           e <- orThrow (envelopeFromData (arg args "envelope"))
           path <- either (fail . show) pure (netPath e.source)
           Engine.deliver live.engine path [envelopeToken e] e.ingressIdentity Nothing >>= \case
-            Engine.Delivered outcome -> pure (Object [("kind", "fired"), ("occurrence", Int (toInteger outcome.occurrence))])
-            Engine.DeliveredPrior prior -> pure (Object [("kind", "prior"), ("occurrence", Int (toInteger prior.occurrence))])
-            Engine.DeliveredScoped _ -> pure (Object [("kind", "scoped")])
+            Engine.DeliveryAccepted outcome -> pure (Object [("kind", "fired"), ("occurrence", Int (toInteger outcome.occurrence))])
+            Engine.DeliveryPrior prior -> pure (Object [("kind", "prior"), ("occurrence", Int (toInteger prior.occurrence))])
+            Engine.DeliveryScoped _ -> pure (Object [("kind", "scoped")])
       )
     , ( "demo_records"
       , \args -> do

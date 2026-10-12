@@ -292,8 +292,9 @@ the languages (`Spec.ToolingInterop`). The pytest and Python runtime around it d
   there is nothing to remove.
 - **Hedgehog runs the generated schedules.** The state machines, strategies and settings map
   rule for rule (PARITY.md, "Generation method"). A Hedgehog example ends at its first failing
-  step, before the teardown that the reference runs in a `finally`. So the World of a failed
-  example closes when the next example starts, or when the run ends.
+  step, before its own teardown steps; everything after the example's `forAll` runs inside a
+  `bracket` (`bracketExample`), so its World still closes when that example ends, as the
+  reference's `finally` closes it.
 - **Case counts differ.** With the same settings, Hedgehog runs exactly `max_examples`
   examples. Hypothesis runs some examples that it does not count towards `max_examples`, so it
   may run more. For example, the ordinary `runtime-focused` campaign records 10 cases here and

@@ -10,7 +10,7 @@ module Petrus.Agenticus.Runtime.PiApplicationSpec (spec) where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar
-import Control.Exception (finally, throwIO)
+import Control.Exception (finally, throwIO, try)
 import Control.Monad (forM_, unless, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -48,7 +48,7 @@ import Petrus.Agenticus.Hands.Grants (CapabilityGrant (..), GrantSpec (..), clos
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor (..), ProgramOwnership (..))
 import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)
-import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..), runtimeProtocolError)
+import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup (..), runtimeProtocolError, runtimeProtocolErrorCode)
 import Petrus.Agenticus.Runtime.Pi (piApiKeyCatalog, piSdkSourceCommit)
 import Petrus.Agenticus.Runtime.Pi.Internal qualified as Pi
 import Petrus.Agenticus.Runtime.PiApplication.Internal
@@ -75,7 +75,8 @@ import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import Petrus.Motus.Execution (EnvironmentProvider (..), defaultSpec)
 import Petrus.Motus.Execution.Archive (workspaceArchive)
-import System.Directory (createDirectory, createDirectoryIfMissing, findExecutable)
+import System.Directory (createDirectory, createDirectoryIfMissing, findExecutable, makeAbsolute)
+import Petrus.TestSupport.Python (pythonJson)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Posix.Files (setFileMode)
@@ -443,6 +444,7 @@ spec = describe "test_pi_application" $ do
   framedSpecs
   boundarySpecs
   surrogateSpecs
+  settlementSpecs
   publicationSpecs
   packageSpecs
 
@@ -799,6 +801,66 @@ surrogateSpecs = describe "lone surrogate escapes in helper frames (not in the r
         raises run RuntimeProtocolError code
         calls rig `shouldReturn` []
         finish client rig
+
+-- | The settlement edges where the reference raises something other than
+-- @RuntimeProtocolError@ (a helper outliving the grace, a list or dict in a
+-- set-membership test), against the pinned reference running the same
+-- forged helper (@test/fixtures/pi/application-settlement-reference.py@).
+-- Each scenario is @[exception class, settlement code, TypeError message]@,
+-- the code being what @_execute@ assigns while the operation is current.
+settlementSpecs :: Spec
+settlementSpecs =
+  it "settles helper-exit timeouts and unhashable frame members as the reference does" $ withTemp $ \tmp -> do
+    node <- requireNode
+    source <- makeAbsolute ("test" </> "fixtures" </> "pi" </> "application_settlement.mjs")
+    script <- makeAbsolute ("test" </> "fixtures" </> "pi" </> "application-settlement-reference.py")
+    let referenceRoot = tmp </> "reference"
+    createDirectory referenceRoot
+    reference <-
+      pythonJson
+        "import runpy, sys\nsys.argv = sys.argv[1:]\nrunpy.run_path(sys.argv[0], run_name='__main__')"
+        [script, source, node, referenceRoot]
+    scenarios <- case reference of
+      Object members -> pure members
+      other -> fail ("unexpected reference output: " <> show other)
+    length scenarios `shouldBe` 12
+    template <- fixture "application_settlement.mjs"
+    forM_ scenarios $ \(scenario, expected) -> do
+      let name = "settlement-" <> T.unpack scenario
+          helper = tmp </> (name <> ".mjs")
+      B.writeFile helper (TE.encodeUtf8 (T.replace "__SCENARIO__" scenario template))
+      rig <- newRig' (tmp </> name) "gondolin" [plan]
+      inv <- invocationFor rig (T.pack name) [WorkspaceRead]
+      privateRoot <- newPrivateRoot tmp name
+      client <-
+        applicationSubprocessClient
+          <$> newApplicationSubprocessClient
+            helper
+            ApplicationClientArgs
+              { node
+              , codingEntrypoint = "/unused/coding"
+              , coreEntrypoint = "/unused/core"
+              , aiEntrypoint = "/unused/ai"
+              , privateRoot
+              , config = applicationAdapterConfig rig.adapter
+              , invocation = inv
+              , prior = Nothing
+              , apiKey = "credential-canary"
+              }
+      deadline <- (+ 2) <$> getMonotonicTime
+      outcome <- try (client.run rig.gateway inv (pure True) deadline)
+      let observed = case outcome of
+            Right _ -> ["completed", "turn-completed", ""]
+            Left e -> case runtimeProtocolErrorCode e of
+              Just code -> ["RuntimeProtocolError", code, ""]
+              Nothing ->
+                [ errorClassName e.errorClass
+                , "runtime-failed"
+                , if e.errorClass == TypeError then e.errorMessage else ""
+                ]
+      (scenario, Array (map String observed)) `shouldBe` (scenario, expected)
+      void client.close
+      void (Episode.settle rig.attachment 30)
 
 boundarySpecs :: Spec
 boundarySpecs = do

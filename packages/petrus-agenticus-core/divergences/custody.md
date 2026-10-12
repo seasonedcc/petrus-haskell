@@ -103,9 +103,12 @@ corpus and the cross-implementation interop spec pin that (see
       is (written text, replacement), which is sound because decoding the
       encoding of a valid snapshot yields that snapshot. The corpus and
       interop specs exercise this round trip on every step.
-    - `validateSnapshotIO` skips validating the exact heap object it
-      accepted last (checked with a `StableName`). Validation is pure, so
-      the same object always gets the same verdict.
+    - The SQLite storage vouches for its loads: every snapshot it answers
+      was validated when it was decoded or by its own `compareAndSwap`, so
+      it offers `trustedLoad`, which yields a `ValidatedSnapshot` (a newtype
+      only the storage module builds) that custody accepts without checking
+      again. A host-supplied `ConnectionStorage` sets `trustedLoad =
+      Nothing`, and custody validates each of its loads, as upstream does.
 
     All three are transparent. The SQLite row is still read on every load,
     so a concurrent writer is always seen.

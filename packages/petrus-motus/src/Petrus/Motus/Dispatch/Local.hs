@@ -260,6 +260,7 @@ defaultLocalDispatchOptions = LocalDispatchOptions {defaultQueue = "default", ac
 -- create the parent directory, and create, migrate, or validate the schema.
 openLocalDispatch :: FilePath -> Text -> LocalDispatchOptions -> IO LocalDispatch
 openLocalDispatch given inst options = do
+  Telemetry.validateTelemetryEnvironment
   let file = T.unpack (pathText given)
   inst' <- name inst "instance"
   queue <- name options.defaultQueue "queue"
@@ -510,6 +511,7 @@ defaultLocalWorkerOptions =
 -- | @LocalWorkerDispatch(path, ...)@.
 openLocalWorkerDispatch :: FilePath -> LocalWorkerOptions -> IO LocalWorkerDispatch
 openLocalWorkerDispatch file options = do
+  Telemetry.validateTelemetryEnvironment
   reader <- traverse newClockReader options.workerClock
   openWorker Owned file options reader
 
@@ -531,6 +533,7 @@ closeLocalConnections (LocalConnections pool) = closePool pool
 -- | @LocalWorkerDispatch(path, ...)@ over shared connections to @path@.
 openLocalWorkerDispatchOn :: LocalConnections -> LocalWorkerOptions -> IO LocalWorkerDispatch
 openLocalWorkerDispatchOn (LocalConnections pool) options = do
+  Telemetry.validateTelemetryEnvironment
   reader <- traverse newClockReader options.workerClock
   openWorker (Borrowed pool) (poolPath pool) options reader
 

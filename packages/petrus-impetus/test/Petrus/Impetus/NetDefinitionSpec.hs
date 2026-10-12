@@ -6,6 +6,7 @@ module Petrus.Impetus.NetDefinitionSpec (spec) where
 
 import Data.ByteString qualified as BS
 import Data.Text (Text)
+import Data.Text qualified as T
 import Petrus.Impetus.NetDefinition
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.TestSupport
@@ -246,3 +247,33 @@ spec = describe "Petrus.Impetus.NetDefinition" $ do
       projectNetDefinition
         (netOf [place p] [transition t] [Arc {source = p, target = t, mode = Consume, weight = fromInteger (jsonSafeIntegerMax + 1), color = Nothing, filter = Nothing}])
         `shouldFailWith` "v3 arc weight 9007199254740992 is outside the inclusive interoperable range [-9007199254740991, 9007199254740991]"
+
+  -- Not an upstream test: NetDefinitionV3.model_validate(value, strict=True)
+  -- on dicts holding lone surrogates, probed on the pinned reference.
+  -- pydantic-core reads a literal and an unknown member's name as UTF-8,
+  -- and the second ends the model's validation.
+  describe "model validation of lone surrogates (pydantic-core string_unicode)" $ do
+    let unicode loc input =
+          loc
+            <> "  Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value="
+            <> input
+            <> ", input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_unicode"
+        header n = n <> " for NetDefinitionV3\n"
+    it "ends a model's validation at an unknown member named with one" $ do
+      netDefinitionFromJson (Object [("format", String "petrus-net-definition"), ("version", Int 3), (fromCodePoints "\xD800", Int 1), (fromCodePoints "x\xDC00", Int 2)])
+        `shouldFailWith` (header "1 validation error" <> unicode "" "'\\ud800'")
+      netDefinitionFromJson (Object [("format", String "petrus-net-definition"), ("version", Int 3), ("definition", Object [(fromCodePoints "\xDFFF", Int 1), ("name", Int 5)])])
+        `shouldFailWith` (header "1 validation error" <> unicode "definition\n" "'\\udfff'")
+    it "refuses one in a literal, beside the other errors" $
+      netDefinitionFromJson
+        (Object [("format", String (fromCodePoints "petrus-net-definition\xD800")), ("version", String "3"), ("definition", Object [("name", Int 5), ("time_domain", String (fromCodePoints "integer\xD800"))])])
+        `shouldFailWith` T.intercalate
+          "\n"
+          ( (header "8 validation errors" <> unicode "format\n" "'petrus-net-definition\\ud800'")
+              : "version\n  Input should be 3 [type=literal_error, input_value='3', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/literal_error"
+              : "definition.name\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+              : unicode "definition.time_domain\n" "'integer\\ud800'"
+              : [ "definition." <> name <> "\n  Field required [type=missing, input_value={'name': 5, 'time_domain': 'integer\\ud800'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+                | name <- ["places", "transitions", "arcs", "completion"]
+                ]
+          )

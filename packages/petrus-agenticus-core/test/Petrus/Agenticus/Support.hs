@@ -24,9 +24,7 @@ import Petrus.Agenticus.Error
 import Petrus.Json (Json (..), parseJson, surrogateRefusingLoads)
 import System.Directory (doesFileExist)
 import Test.Hspec
-import Test.Hspec.QuickCheck (modifyArgs)
-import Test.QuickCheck (Args (..))
-import Test.QuickCheck.Random (mkQCGen)
+import Test.Hspec.QuickCheck (modifyMaxSuccess)
 
 -- | A file of this package, whether the suite runs from the package or the
 -- repository root.
@@ -108,11 +106,12 @@ setMember key value = \case
   other -> other
 
 -- | A Hypothesis @\@settings(max_examples=n)@ property, run as the
--- reference runs it: upstream's pytest addopts pin @--randomly-seed=1729@,
--- which pytest-randomly also feeds to Hypothesis, so every run draws the
--- same examples. Here the QuickCheck generator is fixed at seed 1729
--- whatever hspec's own @--seed@ (which still orders the examples), and
--- @max_examples@ becomes the number of tests.
+-- reference runs it: @max_examples@ becomes the number of tests, and the
+-- inputs are random on every run. Upstream's pytest addopts pin
+-- @--randomly-seed=1729@, but pytest-randomly reseeds only the @random@
+-- module (and factory-boy, Faker, NumPy), not Hypothesis, whose
+-- non-derandomized tests seed themselves from a fresh @Random()@; neither
+-- property sets @derandomize=True@. So hspec's per-run seed drives the
+-- QuickCheck generator here, and a failure prints it for @--seed@ replay.
 hypothesisSettings :: Int -> SpecWith a -> SpecWith a
-hypothesisSettings maxExamples =
-  modifyArgs (\args -> args {maxSuccess = maxExamples, replay = Just (mkQCGen 1729, 0)})
+hypothesisSettings maxExamples = modifyMaxSuccess (const maxExamples)

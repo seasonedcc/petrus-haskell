@@ -838,8 +838,12 @@ sealBuffer custody connectionId authorityEpoch stateVersion state =
   )
     `finally` eraseBuffer state
 
+-- | @_load@: the storage's snapshot, validated unless the storage vouches
+-- for it ('trustedLoad').
 loadValidated :: AgentConnectionCustody -> IO StorageSnapshot
-loadValidated custody = custody.storage.load >>= validateSnapshotIO
+loadValidated custody = case custody.storage.trustedLoad of
+  Just trusted -> validatedSnapshot <$> trusted
+  Nothing -> custody.storage.load >>= validateSnapshotIO
 
 currentTime :: AgentConnectionCustody -> IO Double
 currentTime custody = custody.clock >>= throwLeft . (`finiteTime` "custody clock")

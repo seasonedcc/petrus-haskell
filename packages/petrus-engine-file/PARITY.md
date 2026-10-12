@@ -8,7 +8,7 @@
 
 ## 1. The differential corpus
 
-`differential/corpus.py` builds 911 cases. It runs each one through the
+`differential/corpus.py` builds 923 cases. It runs each one through the
 pinned petrus-engine (`differential/reference.py`) and records the results
 in `differential/corpus.json`. A case is a directory of files plus a list of
 operations:
@@ -28,10 +28,10 @@ class plus `str(exception)`. The outcomes are:
   of the `FlatNet`, and every key of the `FlatSchema`.
 
 `CorpusSpec` requires the Haskell result of every operation to match. Over
-4618 operations, that means:
+4678 operations, that means:
 
-- 2973 outcomes, re-serialized byte for byte;
-- 1645 refusals, with the same class and the same text.
+- 2978 outcomes, re-serialized byte for byte;
+- 1700 refusals, with the same class and the same text.
 
 The cases come from four places:
 
@@ -39,7 +39,7 @@ The cases come from four places:
 | --- | ---: | --- |
 | `upstream/` | 29 | Every net the upstream loader, file-ref, resolution, formatter and timed-transition tests build, written as their `persist_net` fixture writes them. |
 | `viewer/` | 159 | The viewer's `examples/sample-net.json`, a file with the viewer-only `viewState.annotations`, and 157 corpus nets opened and saved again by the viewer's own TypeScript (`differential/viewer_resave.mjs`, run on node). |
-| `edge/` | 323 | Every field, default and coercion, and every pydantic error kind and its text. Also JSON syntax (jiter for files, `json.loads` for `format` and dicts), invalid UTF-8, BOMs and newlines, duplicate keys, NaN and infinities, big integers, durations, layout thresholds, arc sorting with non-text segments, multi-file refs (cycles, duplicates, missing files, directories, relative paths) and `from_dict` deps. |
+| `edge/` | 335 | Every field, default and coercion, and every pydantic error kind and its text. Also JSON syntax (jiter for files, `json.loads` for `format` and dicts, lone surrogates included), invalid UTF-8, BOMs and newlines, duplicate keys, NaN and infinities, big integers, durations, layout thresholds, arc sorting with non-text segments, multi-file refs (cycles, duplicates, missing files, directories, relative paths) and `from_dict` deps. |
 | `fuzz/` | 400 | Seeded random nets (seed 20261010), some mutated: wrong types, missing fields, corrupted bytes, multi-file refs. |
 
 The viewer saves `examples/sample-net.json` back to the same bytes, and the
@@ -72,7 +72,7 @@ disagreement.
 
 ## 3. The format CLI
 
-`CliSpec` runs 40 scenarios through both `petrus-format-json` and
+`CliSpec` runs 52 scenarios through both `petrus-format-json` and
 `python -m petrus.cli.format_json`. Each scenario fixes the arguments, stdin
 and files; both sides must produce the same exit status, stdout, files
 afterwards and error line. The scenarios cover:
@@ -85,6 +85,10 @@ afterwards and error line. The scenarios cover:
 - delay overflow and serialization errors;
 - argparse's usage errors: abbreviations, ambiguity, bad integers, missing
   values, `--`;
+- lone surrogates (`"\ud800"` escapes): carried through names, keys,
+  metadata and the view state, written back as escapes, refused with
+  pydantic's `string_unicode` where a number, enum, literal or duration is
+  parsed, and spelled as U+FFFD in an error's location;
 - `RecursionError` at the CLI's nesting limit (990 levels formatted, 991
   refused) for lists, objects, and place and arc metadata.
 
@@ -157,16 +161,16 @@ DIVERGENCES.md lists what the kernel refuses that petrus-engine runs.
 
     cabal test petrus-engine-file
 
-The run prints 977 examples and 0 failures:
+The run prints 1004 examples and 0 failures:
 
 | Group | Examples |
 | --- | ---: |
 | `UpstreamSpec` | 3 |
-| `CorpusSpec` (911 cases plus a coverage check) | 912 |
+| `CorpusSpec` (923 cases, a coverage check and three `json.loads` examples) | 927 |
 | `KernelSpec` | 12 |
 | `SchemaSpec` | 5 |
 | `LiveSpec` | 5 |
-| `CliSpec` | 40 |
+| `CliSpec` | 52 |
 
 The live and CLI examples provision the reference venv on first use and fail
 if they cannot.

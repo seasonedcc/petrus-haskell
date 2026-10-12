@@ -267,6 +267,7 @@ openPostgresHistoryStore = openPostgresHistoryStoreWith defaultPostgresHistoryOp
 -- | 'openPostgresHistoryStore' with options.
 openPostgresHistoryStoreWith :: PostgresHistoryOptions -> Connection -> Text -> IO HistoryStore
 openPostgresHistoryStoreWith options connection instanceId = do
+  Telemetry.validateTelemetryEnvironment
   when (T.null instanceId) $
     throwIO
       ( HistoryStoreError

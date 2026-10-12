@@ -7,12 +7,10 @@
 -- position (in code points), or the @ValueError@ of an integer past
 -- @int()@'s 4300-digit limit. The objects built are CPython's: a repeated
 -- key keeps its first position and takes its last value, integers are
--- unbounded, and @NaN@, @Infinity@ and @-Infinity@ are floats.
---
--- One divergence (see DIVERGENCES.md): CPython builds a @str@ holding a
--- lone surrogate from an unpaired @\\uD800@-style escape, which this
--- package's values do not carry; a document whose objects hold one is
--- refused with 'LoneSurrogate' once it has otherwise parsed.
+-- unbounded, and @NaN@, @Infinity@ and @-Infinity@ are floats. An unpaired
+-- @\\uD800@-style escape gives a string holding the lone surrogate, as
+-- CPython's @str@ does: a WTF-8 'Text' ("Petrus.Json.Wtf8"), which the
+-- encoder writes back as the same escape.
 module Petrus.EngineFile.PyJson
   ( PyJsonError (..)
   , pyLoads
@@ -27,7 +25,6 @@ import Data.Text.Encoding qualified as TE
 import Petrus.EngineFile.Value (Value (..))
 import Petrus.Json (Json (..), ParseOptions (..), parseJson, pythonJsonLoads)
 import Petrus.Json.Python.Scanner qualified as Scanner
-import Petrus.Json.Wtf8 (holdsLoneSurrogate)
 
 -- | Why @json.loads@ refused a document.
 data PyJsonError
@@ -37,8 +34,6 @@ data PyJsonError
   | -- | @ValueError@ from @int()@ on an integer of too many digits, with
     -- CPython's text.
     IntegerTooLong Text
-  | -- | A lone surrogate in a string (a divergence; see the module notes).
-    LoneSurrogate
   deriving stock (Eq, Show)
 
 -- | The exception class the reference raises.
@@ -46,22 +41,18 @@ pyJsonErrorClass :: PyJsonError -> Text
 pyJsonErrorClass = \case
   DecodeError _ -> "JSONDecodeError"
   IntegerTooLong _ -> "ValueError"
-  LoneSurrogate -> "UnsupportedLoneSurrogate"
 
 -- | @str(exception)@.
 renderPyJsonError :: PyJsonError -> Text
 renderPyJsonError = \case
   DecodeError text -> text
   IntegerTooLong text -> text
-  LoneSurrogate -> "a string holds a lone surrogate, which this implementation cannot represent"
 
 -- | @json.loads(text)@ for UTF-8 encoded text. The nesting is unbounded,
--- as the reference's is short of the C stack (DIVERGENCES.md, 2).
+-- as the reference's is short of the C stack (DIVERGENCES.md, 1).
 pyLoads :: ByteString -> Either PyJsonError Value
 pyLoads input = case parseJson options input of
-  Right json
-    | holdsLoneSurrogate json -> Left LoneSurrogate
-    | otherwise -> Right (fromJson json)
+  Right json -> Right (fromJson json)
   Left problem -> Left $ case Scanner.loads Scanner.defaultHooks text of
     Left (Scanner.DecodeError message position) -> DecodeError (Scanner.decodeErrorText text message position)
     Left (Scanner.HookError message) -> IntegerTooLong message

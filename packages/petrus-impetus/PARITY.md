@@ -216,6 +216,11 @@ with no argument or one string (`differential/failure_text_corpus.json`,
   them directly, with the reference's messages:
   - `InstanceIdentitySpec`, "identity values": 4 examples;
   - `SchemaSpec`, "canonicalizes an exact protocol spelling": 1 example.
+- **Total path combinators.** `childPath`, `stripPathPrefix` and
+  `pathPrefixes` join, strip and enumerate `NetPath`s segment-wise without
+  re-validating text, so the DSL builds its scopes with no partial
+  constructor. `SchemaSpec`, "joins, strips and enumerates prefixes
+  segment-wise": 1 example.
 - **Byte identity.**
   - Every `spec/` fixture is loaded. The valid ones re-serialize
     byte-identically, and the invalid ones are refused with the reference's

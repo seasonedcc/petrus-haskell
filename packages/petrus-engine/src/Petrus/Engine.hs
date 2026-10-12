@@ -30,9 +30,10 @@ module Petrus.Engine
     -- * Driving
   , advance
   , wait
+  , OverflowError (..)
   , DriveOutcome (..)
     -- * Writing doors
-  , Delivered (..)
+  , Delivered
   , deliver
   , acceptDelivery
   , DeliveryAnswer (..)

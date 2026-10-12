@@ -408,6 +408,20 @@ spec = do
             r.capabilities `shouldBe` Set.empty
             Just (territoryIdentity cell.territory).name `shouldBe` r.name
 
+    -- Not an upstream test: upstream's __post_init__ refusals. The two
+    -- descriptor refusals are unrepresentable ('Qualification'); the
+    -- reason one is the smart constructor's.
+    it "a runtime territory profile refuses an empty reason and derives the reference's fields" $ do
+      shouldRaiseMatching
+        (mkRuntimeTerritoryProfile Codex Local (BindingCell A2 codexA2Local) "")
+        ValueError
+        "runtime profile reason must be non-empty"
+      bound <- expectRightIO (mkRuntimeTerritoryProfile Codex Local (BindingCell A2 codexA2Local) "DS9 binding Codex A2 cell")
+      bound `shouldBe` runtimeTerritoryProfile Codex Local
+      (bound.expectation, bound.archetype, bound.descriptor) `shouldBe` (BindingTarget, Just A2, Just codexA2Local)
+      unsupported <- expectRightIO (mkRuntimeTerritoryProfile Amp Docker UnsupportedCell "excluded")
+      (unsupported.expectation, unsupported.archetype, unsupported.descriptor) `shouldBe` (Unsupported, Nothing, Nothing)
+
     it "test_profile_and_catalog_inspection_import_without_optional_provider_sdks" $ do
       -- The package has no provider SDK dependency (enforced by its cabal
       -- file); registering every profile is the observable part.

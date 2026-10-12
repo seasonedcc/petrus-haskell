@@ -19,7 +19,7 @@ It also reads the ledgers of petrus-engine-absurd (all of
 current pin it reports 460 in-scope upstream tests (439 distinct: some tests
 are ported both over Local and over Absurd custody), all accounted for.
 
-`cabal test petrus-engine` runs 220 examples, with 0 failures and 0 pending.
+`cabal test petrus-engine` runs 226 examples, with 0 failures and 0 pending.
 That count includes 3 Engine interop examples against the reference process,
 and 3 Worker topology pairings with reference Engines and Workers, and 5
 checks of spec obligations no upstream test covers (below).
@@ -30,8 +30,8 @@ never go pending, when it cannot be provisioned.
 
 | upstream file | Haskell spec(s) | ported | partial or analog | enforced by types |
 | --- | --- | ---: | ---: | ---: |
-| engine/test_engine.py (28) | EngineSpec (30 examples) | 23 | 5 | 0 |
-| engine/test_coordinator.py, 35 of 42 | CoordinatorSpec (37 examples) | 35 | 0 | 0 |
+| engine/test_engine.py (28) | EngineSpec (35 examples) | 23 | 5 | 0 |
+| engine/test_coordinator.py, 35 of 42 | CoordinatorSpec (39 examples) | 35 | 0 | 0 |
 | engine/test_execution.py (134) | ExecutionSpec, DeliveryPhasesA/B/CSpec (127 examples) | 98 | 10 | 26 |
 | motus/dispatch/test_local_dispatch.py, the 3 Engine-level tests | LocalDispatchSpec (4 examples) | 3 | 0 | 0 |
 | motus/worker/test_worker_runtime.py, the Engine-level test (byte-identical inline and Local History) | WorkerTopologySpec (1 example, over the order net) | 0 | 1 | 0 |
@@ -198,6 +198,17 @@ module graph, not a Python import.
 
 ## Beyond upstream
 
+- **CEL under the default options** (EngineSpec, 1 example). The reference
+  imports its CEL compilers unconditionally. An Engine created with
+  `defaultEngineOptions` routes payments by inline CEL guards (one reads
+  `getHours('America/Sao_Paulo')`) through a CEL arc filter, and completes
+  on a CEL completion condition.
+- **`wait` is `time.sleep`** (EngineSpec, 1 example). Without a provider
+  wake hint, `wait(timeout)` sleeps as `time.sleep(timeout)` does, and
+  refuses what it refuses with its classes and texts: NaN and a negative
+  timeout (`ValueError`), and a timeout whose nanoseconds, rounded away
+  from zero, leave the signed 64-bit range (`OverflowError`, thrown as the
+  Engine's `OverflowError` exception).
 - **The specification's Engine obligations** ([SPEC.md](SPEC.md)). Every
   normative statement of `spec/firing-semantics.md` §Scheduling, the
   lifecycle-scope and Activity sections of `spec/event-history.md`, and the

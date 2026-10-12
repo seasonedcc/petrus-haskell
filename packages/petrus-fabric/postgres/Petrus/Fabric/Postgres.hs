@@ -226,6 +226,7 @@ data PostgresFabric = PostgresFabric
 -- | Validate the instance and the credential (no database access, §8.2).
 postgresFabric :: Connection -> Text -> Text -> IO PostgresFabric
 postgresFabric connection instance' credential = do
+  Telemetry.validateTelemetryEnvironment
   name <- orThrow (fabricText "instance" instance')
   digest <- credentialDigest <$> orThrow (validateCredential credential)
   pure (PostgresFabric connection name digest)
