@@ -1,6 +1,6 @@
 # Local Dispatch benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources aa2fb3b82c43c6d6 at da947286fe9c -->
+<!-- scripts/bench: measured sources 64d365b663f3ec22 at 4d6410bf7ef4 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` drive the same
 custody round trips through the public Local Dispatch surface:
@@ -47,8 +47,8 @@ The workloads:
 
 ## Current figures
 
-Measured on 2026-10-12, 09:43–09:48 local (UTC-3), at commit `da94728`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 1.95–2.39:
+Measured on 2026-10-12, 19:09–19:15 local (UTC-3), at commit `a62b03a`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.33–3.20:
 five interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-motus 5
@@ -70,33 +70,45 @@ the same way. This corrects the measurement; it is not a speed-up. Schema
 initialization is fsync-bound: strace counts the same eight syncs per open
 on both sides, and tasty-bench's mean took in every slow file-system period
 that the twin's median of 20 leaves out. Timed alike, the row is level, as
-it was before: 1.01× in this run (0.98× in the closest repetition), each
-side's figure swinging by up to 10% between repetitions. The connection
+it was before: 1.04× in this run (Haskell ahead in 4 of 5, 0.98× in the
+closest repetition; 1.01× at `da94728`), each side's figure swinging by up
+to 10% between repetitions. The connection
 pool cannot help this row (see the notes), and there is no adapter work
 left in it to take out. The sleep-bound `async-worker/sleep-*` rows are
 medians of 10 runs after a warm-up on both sides, and now run after the
 tasty rows, as the twin runs them after its Local rows.
+`async-worker/sleep-1ms-200-c8` is the other close row: 1.02× here, Haskell
+ahead in all five repetitions (1.11× at `da94728`); both sides spend most of
+it waiting on 1 ms sleeps, eight at a time.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `async-worker/sleep-1ms-200-c1` | 239 ms | 332 ms | 1.39× | 1.34× | 238 ms, 231 ms, 239 ms, 239 ms, 240 ms | 324 ms, 332 ms, 356 ms, 319 ms, 348 ms |
-| `async-worker/sleep-1ms-200-c8` | 31.9 ms | 35.4 ms | 1.11× | 1.11× | 31.5 ms, 31.9 ms, 31.9 ms, 31.8 ms, 32 ms | 35.4 ms, 35.4 ms, 35.3 ms, 35.3 ms, 35.4 ms |
-| `async-worker/sleep-1ms-200-c64` | 8.45 ms | 28.9 ms | 3.42× | 3.36× | 8.45 ms, 8.54 ms, 8.41 ms, 8.54 ms, 8.2 ms | 29.4 ms, 28.7 ms, 28.9 ms, 28.7 ms, 29.1 ms |
-| `local.open-fresh` | 635 µs | 644 µs | 1.01× | 0.98× | 639 µs, 633 µs, 628 µs, 635 µs, 636 µs | 664 µs, 644 µs, 616 µs, 623 µs, 682 µs |
-| `local.roundtrip-1` | 1.45 ms | 2.31 ms | 1.59× | 1.54× | 1.44 ms, 1.46 ms, 1.41 ms, 1.48 ms, 1.45 ms | 2.33 ms, 2.25 ms, 2.26 ms, 2.31 ms, 2.32 ms |
-| `local.roundtrip-50-db-clock` | 14.5 ms | 49 ms | 3.38× | 3.26× | 15 ms, 14.6 ms, 14.5 ms, 14.1 ms, 14 ms | 49 ms, 50.5 ms, 48.6 ms, 48.7 ms, 49.7 ms |
-| `local.roundtrip-50-provider-clock` | 14.3 ms | 48.3 ms | 3.37× | 3.22× | 14.3 ms, 14.7 ms, 14.3 ms, 13.7 ms, 14.4 ms | 50.7 ms, 47.1 ms, 48.3 ms, 46.5 ms, 49.6 ms |
-| `local.roundtrip-50-held-open` | 14.6 ms | 32.6 ms | 2.24× | 2.18× | 14.8 ms, 14.6 ms, 15 ms, 14.6 ms, 14 ms | 33.3 ms, 32.8 ms, 32.6 ms, 32.6 ms, 32.4 ms |
-| `worker.local-50` | 14.5 ms | 49.4 ms | 3.41× | 3.28× | 14.6 ms, 14.5 ms, 14.5 ms, 14.5 ms, 14.3 ms | 50.2 ms, 49.4 ms, 48.6 ms, 47.4 ms, 51.1 ms |
-| `worker.local-50-held-open` | 14.6 ms | 33.8 ms | 2.32× | 2.24× | 14.9 ms, 14.4 ms, 14.6 ms, 14.6 ms, 14.5 ms | 34.8 ms, 33.8 ms, 33.4 ms, 32.8 ms, 36 ms |
-| `worker.memory-1000` | 1.38 ms | 13.8 ms | 10.01× | 9.85× | 1.38 ms, 1.37 ms, 1.38 ms, 1.4 ms, 1.4 ms | 13.9 ms, 13.7 ms, 14 ms, 13.8 ms, 13.8 ms |
-| `async-worker.memory-1000-c1` | 2.65 ms | 206 ms | 77.59× | 76.60× | 2.65 ms, 2.64 ms, 2.66 ms, 2.65 ms, 2.69 ms | 206 ms, 207 ms, 205 ms, 203 ms, 206 ms |
-| `async-worker.memory-1000-c8` | 2.51 ms | 105 ms | 41.82× | 41.07× | 2.51 ms, 2.47 ms, 2.5 ms, 2.51 ms, 2.51 ms | 105 ms, 105 ms, 104 ms, 103 ms, 106 ms |
-| `async-worker.memory-1000-c64` | 2.57 ms | 111 ms | 43.06× | 42.21× | 2.59 ms, 2.53 ms, 2.56 ms, 2.59 ms, 2.57 ms | 120 ms, 112 ms, 110 ms, 109 ms, 111 ms |
-| `local/open-fresh-closing` | — | 644 µs | — | — |  | 656 µs, 635 µs, 644 µs, 613 µs, 649 µs |
-| `local/roundtrip-1-closing` | — | 3.57 ms | — | — |  | 3.61 ms, 3.58 ms, 3.57 ms, 3.52 ms, 3.53 ms |
-| `local/roundtrip-50-db-clock-closing` | — | 78.7 ms | — | — |  | 79.2 ms, 75.4 ms, 80.5 ms, 76.2 ms, 78.7 ms |
-| `local/roundtrip-50-provider-clock-closing` | — | 76 ms | — | — |  | 77 ms, 76 ms, 73.8 ms, 72 ms, 79 ms |
+Since `da94728` the bench runs with the RTS defaults (a 4 MB allocation
+area) instead of `-A32m`, as the executables that run this code do
+([docs/reproducing.md](../../../docs/reproducing.md), "The benchmarks'
+runtime options"). `worker.memory-1000` and the `async-worker.memory-*`
+rows got faster (1.38 ms to 1.06 ms, 2.65 ms to 2.06 ms); the SQLite round
+trips read 10–15% slower on the Haskell side than then (14.5 ms to
+16.5 ms for 50), and the Python side 5–8% slower, at a similar load.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `async-worker/sleep-1ms-200-c1` | 266 ms | 359 ms | 1.35× | 1.21× | 5 of 5 | 260 ms, 271 ms, 266 ms, 270 ms, 265 ms | 383 ms, 329 ms, 371 ms, 357 ms, 359 ms |
+| `async-worker/sleep-1ms-200-c8` | 35.9 ms | 36.5 ms | 1.02× | 1.01× | 5 of 5 | 34.1 ms, 36 ms, 33.9 ms, 36 ms, 35.9 ms | 36.6 ms, 36.5 ms, 36.6 ms, 36.5 ms, 36.4 ms |
+| `async-worker/sleep-1ms-200-c64` | 8.62 ms | 29.6 ms | 3.43× | 3.11× | 5 of 5 | 7.97 ms, 9.53 ms, 8.13 ms, 8.62 ms, 8.87 ms | 29.2 ms, 29.6 ms, 29.6 ms, 29.3 ms, 30.2 ms |
+| `local.open-fresh` | 633 µs | 656 µs | 1.04× | 0.98× | 4 of 5 | 655 µs, 633 µs, 647 µs, 619 µs, 632 µs | 640 µs, 647 µs, 660 µs, 657 µs, 656 µs |
+| `local.roundtrip-1` | 1.6 ms | 2.28 ms | 1.43× | 1.40× | 5 of 5 | 1.63 ms, 1.6 ms, 1.59 ms, 1.55 ms, 1.6 ms | 2.28 ms, 2.27 ms, 2.24 ms, 2.33 ms, 2.31 ms |
+| `local.roundtrip-50-db-clock` | 16.5 ms | 52.7 ms | 3.19× | 2.90× | 5 of 5 | 17.1 ms, 16.1 ms, 17.1 ms, 16.5 ms, 16 ms | 53.6 ms, 51.4 ms, 49.5 ms, 54.8 ms, 52.7 ms |
+| `local.roundtrip-50-provider-clock` | 16.2 ms | 52.9 ms | 3.26× | 3.12× | 5 of 5 | 16.7 ms, 16 ms, 16.4 ms, 15.9 ms, 16.2 ms | 52.8 ms, 54.9 ms, 51.3 ms, 56.4 ms, 52.9 ms |
+| `local.roundtrip-50-held-open` | 16.9 ms | 35.9 ms | 2.12× | 2.00× | 5 of 5 | 17 ms, 15.9 ms, 17.3 ms, 16.8 ms, 16.9 ms | 34 ms, 41 ms, 35.9 ms, 38.2 ms, 34.9 ms |
+| `worker.local-50` | 16.8 ms | 55.6 ms | 3.30× | 3.21× | 5 of 5 | 17.6 ms, 16.9 ms, 16.7 ms, 16.8 ms, 16.4 ms | 59.1 ms, 55.6 ms, 53.8 ms, 53.9 ms, 60.6 ms |
+| `worker.local-50-held-open` | 17 ms | 36.3 ms | 2.13× | 2.08× | 5 of 5 | 16.5 ms, 17.2 ms, 17 ms, 17.5 ms, 15.8 ms | 34.4 ms, 39.2 ms, 38.6 ms, 36.3 ms, 34.9 ms |
+| `worker.memory-1000` | 1.06 ms | 13.9 ms | 13.15× | 13.05× | 5 of 5 | 1.05 ms, 1.06 ms, 1.04 ms, 1.06 ms, 1.06 ms | 13.9 ms, 13.9 ms, 13.9 ms, 14 ms, 13.8 ms |
+| `async-worker.memory-1000-c1` | 2.06 ms | 211 ms | 102.38× | 98.99× | 5 of 5 | 2.11 ms, 2.05 ms, 2.04 ms, 2.06 ms, 2.08 ms | 209 ms, 213 ms, 212 ms, 211 ms, 211 ms |
+| `async-worker.memory-1000-c8` | 2 ms | 108 ms | 54.03× | 52.31× | 5 of 5 | 2.02 ms, 2 ms, 1.99 ms, 2 ms, 2.03 ms | 108 ms, 108 ms, 107 ms, 108 ms, 106 ms |
+| `async-worker.memory-1000-c64` | 2.11 ms | 113 ms | 53.67× | 52.38× | 5 of 5 | 2.14 ms, 2.08 ms, 2.11 ms, 2.11 ms, 2.14 ms | 114 ms, 113 ms, 113 ms, 114 ms, 112 ms |
+| `local/open-fresh-closing` | — | 640 µs | — | — | — |  | 738 µs, 640 µs, 882 µs, 638 µs, 631 µs |
+| `local/roundtrip-1-closing` | — | 3.89 ms | — | — | — |  | 3.89 ms, 3.7 ms, 3.67 ms, 3.89 ms, 3.97 ms |
+| `local/roundtrip-50-db-clock-closing` | — | 86.5 ms | — | — | — |  | 87.2 ms, 86.1 ms, 86.5 ms, 82 ms, 88.3 ms |
+| `local/roundtrip-50-provider-clock-closing` | — | 85.1 ms | — | — | — |  | 86.5 ms, 89.3 ms, 84.5 ms, 85.1 ms, 84.8 ms |
 
 ## How to rerun
 
