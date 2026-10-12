@@ -292,6 +292,26 @@ guardsSpec = describe "test_cel_guards.py" $ do
       map renderDiagnostic diagnostics
         `shouldBe` [ "guard Cel(expression='p[0].data.amount >= 100') at NetUri('transition:/guarded#guard:$0') on transition guarded raised CELEvalError(*(\"None with type: '<class 'NoneType'>' does not support field selection\", <class 'TypeError'>, None), tree='p[0].data.amount') over peeked tokens (Token.black(),); binding skipped"
                    ]
+    -- Beyond upstream (DIVERGENCES.md §8): celpy's repr() of this error
+    -- raises IndexError (its tree_dump pops an empty stack on the `[]`
+    -- operand), so the reference's {error!r} warning crashes the call. The
+    -- port does what spec/firing-semantics.md rules for a runtime
+    -- evaluation error: the binding is skipped, enablement continues, and
+    -- the error is surfaced as a diagnostic (rendered without its tree).
+    it "skips the binding when the reference's rendering of the error raises (spec over reference)" $ do
+      inst <-
+        celInstance
+          ( netOf
+              [place p, place q, place out]
+              [celGuarded guardedT [celGuard "p[0].data.tags == []"], transition plain]
+              [arc p guardedT, arc q plain, arc guardedT out, arc plain out]
+          )
+          (marked (markingFromList [(p, [tokD "X" (Object [("tags", String "x")])]), (q, [black])]))
+      (enabled, diagnostics) <- candidatesWithDiagnostics inst
+      map (.transition) enabled `shouldBe` [plain]
+      map renderDiagnostic diagnostics
+        `shouldBe` [ "guard Cel(expression='p[0].data.tags == []') at NetUri('transition:/guarded#guard:$0') on transition guarded raised CELEvalError(*(\"found no matching overload for Token('RULE', 'relation_eq') applied to '(<class 'celpy.celtypes.StringType'>, <class 'celpy.celtypes.ListType'>)'\", <class 'TypeError'>, (\"no such overload: ListType == <class 'celpy.celtypes.StringType'>\",))) over peeked tokens (Token('X', {'tags': 'x'}),); binding skipped"
+                   ]
 
 -- ---------------------------------------------------------------------------
 -- tests/petrus/impetus/instance/test_registrations.py
