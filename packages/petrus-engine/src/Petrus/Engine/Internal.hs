@@ -19,6 +19,8 @@ module Petrus.Engine.Internal
     -- * Driving
   , advance
   , wait
+  , OverflowError (..)
+  , sleepNanoseconds
     -- * Writing doors
   , Delivered
   , deliver
@@ -44,7 +46,7 @@ module Petrus.Engine.Internal
 
 import Control.Concurrent (ThreadId, myThreadId, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, putMVar, takeMVar)
-import Control.Exception (SomeException, bracket_, finally, onException, throwIO, try)
+import Control.Exception (Exception (..), SomeException, bracket_, finally, onException, throwIO, try)
 import Control.Monad (unless, when)
 import Data.Foldable (toList)
 import Data.IORef
@@ -54,6 +56,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
+import Data.Text qualified as T
 import Petrus.Activity
   ( ActivityDeclaration
   , ActivityInvocation (..)
@@ -376,15 +379,43 @@ advance :: Engine -> IO DriveOutcome
 advance e = guarded e (drive e.coordinator)
 
 -- | Wait for a provider wake hint, or sleep the bounded neutral polling
--- interval (seconds) and answer 'False'.
+-- interval (seconds) and answer 'False'. The sleep is @time.sleep@'s: a
+-- timeout it refuses ('sleepNanoseconds') is refused with its class and
+-- text.
 wait :: Engine -> Double -> IO Bool
 wait e timeout = do
   waiter <- readDoor True e (pure e.resources.wait)
   case waiter of
     Just hint -> hint timeout
     Nothing -> do
-      when (timeout > 0) $ threadDelay (round (timeout * 1000000))
+      nanoseconds <- either throwIO pure (sleepNanoseconds timeout)
+      -- threadDelay counts microseconds; round up, never sleeping short.
+      when (nanoseconds > 0) $ threadDelay (fromInteger ((nanoseconds + 999) `div` 1000))
       pure False
+
+-- | The reference's @OverflowError@: a value past what the platform's
+-- clock arithmetic holds.
+newtype OverflowError = OverflowError Text
+  deriving stock (Eq, Show)
+
+instance Exception OverflowError where
+  displayException (OverflowError message) = T.unpack message
+
+-- | CPython's @time.sleep(seconds)@ argument check: NaN is a @ValueError@;
+-- the nanoseconds, rounded away from zero, must fit a signed 64-bit
+-- integer (else @OverflowError@); and they must not be negative (else
+-- @ValueError@). The answer is the nanoseconds to sleep.
+sleepNanoseconds :: Double -> Either SomeException Integer
+sleepNanoseconds seconds
+  | isNaN seconds = Left (toException (EngineValueError "Invalid value NaN (not a number)"))
+  | isInfinite scaled || rounded < -limit || rounded >= limit =
+      Left (toException (OverflowError "timestamp out of range for platform time_t"))
+  | rounded < 0 = Left (toException (EngineValueError "sleep length must be non-negative"))
+  | otherwise = Right rounded
+  where
+    scaled = seconds * 1e9
+    rounded = if scaled >= 0 then ceiling scaled else floor scaled
+    limit = 2 ^ (63 :: Int)
 
 -- ---------------------------------------------------------------------------
 -- Writing doors

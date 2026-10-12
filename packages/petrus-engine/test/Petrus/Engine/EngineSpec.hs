@@ -2,7 +2,7 @@
 -- one-Instance Engine composition.
 module Petrus.Engine.EngineSpec (spec) where
 
-import Control.Exception (IOException, throwIO)
+import Control.Exception (IOException, fromException, throwIO)
 import Control.Monad (forM_, void)
 import Data.Foldable (toList)
 import Data.IORef
@@ -14,7 +14,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Activity (ActivityInvocation (..), ExecutionPolicyFields (..), activityDeclaration, invocation, policyFields)
 import Petrus.Engine qualified as Engine
-import Petrus.Engine.Internal (selectionState)
+import Petrus.Engine.Internal (selectionState, sleepNanoseconds)
 import Petrus.Engine.Provider (EngineResources (..), OpenMode (..), openEngine)
 import Petrus.Engine.TestSupport
 import Petrus.Impetus.Binding (ActivityHandler (..), BoundHandler (..), handlerTokens)
@@ -695,6 +695,27 @@ neutralSurfaceContinued = describe "TestNeutralEngineSurfaceContinued" $ do
     completeOccurrence pool occurrence (Object [("value", Int 3)])
     waiting (advanceUntilRest engine) `shouldReturn` False
     Engine.status engine `shouldReturn` Terminated
+    Engine.close engine
+
+  -- Not an upstream test: the neutral wait is time.sleep(timeout), whose
+  -- refusals (probed on CPython 3.14) it keeps.
+  it "wait refuses the timeouts time.sleep refuses, with its classes and texts" $ do
+    history <- inMemoryHistoryStore
+    pool <- newInMemoryDispatch
+    engine <- createWith activityNet "sleepless" history (inMemoryDispatch pool) input3
+    let exactValueError text = \case Engine.EngineValueError m -> m == text; _ -> False
+        overflow (Engine.OverflowError m) = m == "timestamp out of range for platform time_t"
+    Engine.wait engine (-1) `shouldThrow` exactValueError "sleep length must be non-negative"
+    Engine.wait engine (-1e-300) `shouldThrow` exactValueError "sleep length must be non-negative"
+    Engine.wait engine (0 / 0) `shouldThrow` exactValueError "Invalid value NaN (not a number)"
+    forM_ [1 / 0, -1 / 0, 1e300, -1e300, 1e10, -9223372037] $ \timeout ->
+      Engine.wait engine timeout `shouldThrow` overflow
+    Engine.wait engine (-0.0) `shouldReturn` False
+    -- The bounds: the nanoseconds, rounded away from zero, fit an Int64.
+    let verdict :: Double -> Either Text Integer
+        verdict t = either (\err -> Left (maybe "OverflowError" (const "ValueError") (fromException err :: Maybe Engine.EngineError))) Right (sleepNanoseconds t)
+    map verdict [-9223372036.854776, 9223372036.854776, 9223372036.854775, 1e-10, 0.25]
+      `shouldBe` [Left "ValueError", Left "OverflowError", Right 9223372036854774784, Right 1, Right 250000000]
     Engine.close engine
 
   it "deliver seal and close are isolated between two neutral engines" $ do
