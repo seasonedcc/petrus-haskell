@@ -1,6 +1,6 @@
 # ZeroMQ Dispatch transport benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 817e565ff26b9b4b at bd4a0085b979 -->
+<!-- scripts/bench: measured sources 5a8bc7c24f29bda6 at 5a73d7a7f019 -->
 
 `bench/Main.hs` and `bench/python_bench.py` time the same workloads. On each
 side the client runs in the bench process and the server is a separate

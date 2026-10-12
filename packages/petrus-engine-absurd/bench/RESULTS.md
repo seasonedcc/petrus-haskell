@@ -1,6 +1,6 @@
 # petrus-engine-absurd benchmarks
 
-<!-- scripts/bench: measured sources a8d9e387815be5f8 at 570780d31e8a -->
+<!-- scripts/bench: measured sources 5f71b9db9262af24 at 5a73d7a7f019 -->
 
 The Haskell side is [`bench/Main.hs`](Main.hs). The Python twin is
 [`bench/python_bench.py`](python_bench.py), which runs the reference's

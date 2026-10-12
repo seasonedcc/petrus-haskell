@@ -1,6 +1,6 @@
 # petrus-execution benchmark results
 
-<!-- scripts/bench: measured sources 8a25aedff830bc24 at 22f5fe81f32a -->
+<!-- scripts/bench: measured sources 81d08c345ee431fe at 5a73d7a7f019 -->
 
 The Haskell port compared with upstream Python Petrus (`petrus.motus.execution` /
 `_execution` at the pin in [UPSTREAM.md](../../../UPSTREAM.md)). Both harnesses run the same

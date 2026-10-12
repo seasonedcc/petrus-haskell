@@ -1,6 +1,6 @@
 # agenticus-custody benchmark results
 
-<!-- scripts/bench: measured sources b5dffc98cbfa603a at 209e8d8c2a6b -->
+<!-- scripts/bench: measured sources 6dfbc2563f96dee2 at 5a73d7a7f019 -->
 
 These are twin workloads: `bench/Bench/Custody.hs` and
 `bench/python_custody.py`, which runs the pinned reference

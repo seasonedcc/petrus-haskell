@@ -1,6 +1,6 @@
 # hamsterdan-contracts benchmarks
 
-<!-- scripts/bench: measured sources 9029525bba640796 at 709012360d57 -->
+<!-- scripts/bench: measured sources 98bc8a2aa76a463b at 5a73d7a7f019 -->
 
 These are the hot paths Hamsterdan runs on every token:
 

@@ -1,6 +1,6 @@
 # SQLite Engine benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 5199ac4f9a06f3ff at 7fc4ecb1d671 -->
+<!-- scripts/bench: measured sources 0b669301849584c7 at 5a73d7a7f019 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` drive the same
 workloads through the public SQLite Engine composition: the reference's

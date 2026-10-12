@@ -1,6 +1,6 @@
 # petrus-dst benchmark results
 
-<!-- scripts/bench: measured sources 9a0d3c4cbe7324ca at fc77e8dbc2a3 -->
+<!-- scripts/bench: measured sources 446ad304837fb049 at 5a73d7a7f019 -->
 
 The same workloads, measured on the same inputs, in Haskell (`bench/Bench.hs`, tasty-bench)
 and in the pinned Python reference (`scripts/bench.py`, `timeit`).

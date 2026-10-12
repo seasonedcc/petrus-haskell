@@ -1,6 +1,6 @@
 # petrus-http-core benchmarks
 
-<!-- scripts/bench: measured sources b9f810f5692a1b68 at 7fc4ecb1d671 -->
+<!-- scripts/bench: measured sources 83735608154a3639 at 5a73d7a7f019 -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same

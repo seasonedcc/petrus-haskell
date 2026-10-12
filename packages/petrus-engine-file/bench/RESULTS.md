@@ -1,6 +1,6 @@
 # fileVersion 2 benchmarks: Haskell vs petrus-engine
 
-<!-- scripts/bench: measured sources b13b5e034dbd1ad1 at db35a07b61f1 -->
+<!-- scripts/bench: measured sources 9403c1e47485dfc2 at 5a73d7a7f019 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same steps
 on the same input texts. `bench/process_bench.py` times the format command

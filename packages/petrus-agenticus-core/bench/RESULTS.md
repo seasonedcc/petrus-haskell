@@ -1,6 +1,6 @@
 # petrus-agenticus-core benchmark results
 
-<!-- scripts/bench: measured sources 479d741849778ff1 at 9126e1be67f7 -->
+<!-- scripts/bench: measured sources 6dfbc2563f96dee2 at 5a73d7a7f019 -->
 
 Each layer has a twin workload: a tasty-bench group in `bench/Bench/*.hs` and
 a Python script `bench/python_*.py`, which runs the pinned reference

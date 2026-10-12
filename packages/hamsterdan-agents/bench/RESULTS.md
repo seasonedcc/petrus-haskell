@@ -1,6 +1,6 @@
 # hamsterdan-agents benchmarks
 
-<!-- scripts/bench: measured sources be5492ab6c81e8c6 at 5b060ba21cb6 -->
+<!-- scripts/bench: measured sources 2c63f845047036e6 at 5a73d7a7f019 -->
 
 These are the agent adapter's hot paths:
 

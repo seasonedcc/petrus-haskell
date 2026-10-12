@@ -1,6 +1,6 @@
 # hamsterdan-host benchmarks
 
-<!-- scripts/bench: measured sources ebfe964448b62b0a at 671c1cfa4738 -->
+<!-- scripts/bench: measured sources 3f92deb7a5573ed5 at 5a73d7a7f019 -->
 
 These are the host's hot paths:
 

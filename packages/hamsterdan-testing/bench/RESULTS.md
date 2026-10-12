@@ -1,6 +1,6 @@
 # hamsterdan-testing benchmarks
 
-<!-- scripts/bench: measured sources 0aa75ac95f5bccb3 at 4b4fcde3cc48 -->
+<!-- scripts/bench: measured sources ae62661a3a3403f8 at 5a73d7a7f019 -->
 
 Three groups of workloads, all timed in wall-clock time on both sides:
 

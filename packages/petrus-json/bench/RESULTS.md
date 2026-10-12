@@ -1,6 +1,6 @@
 # petrus-json benchmarks: Haskell vs CPython's C-accelerated `json`
 
-<!-- scripts/bench: measured sources 057e29b20061fe51 at 77bb0a55f8cd -->
+<!-- scripts/bench: measured sources 18b1bd14408f5bc6 at 5a73d7a7f019 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` parse and write the
 same realistic Petrus documents with the options of the upstream call site

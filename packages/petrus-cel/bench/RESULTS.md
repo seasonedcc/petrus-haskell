@@ -1,6 +1,6 @@
 # petrus-cel benchmark results
 
-<!-- scripts/bench: measured sources fe4b9b3e21f59bfc at 9410710252ee -->
+<!-- scripts/bench: measured sources fdcbc90965f6d05c at 5a73d7a7f019 -->
 
 Typical Petrus CEL expressions, compiled and evaluated through the Impetus
 kernel seam: `Petrus.Cel.Impetus.celCompilers` in Haskell and

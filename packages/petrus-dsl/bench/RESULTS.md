@@ -1,6 +1,6 @@
 # DSL benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 605204f83453caa4 at 335f5f150bae -->
+<!-- scripts/bench: measured sources 396f8fb6b7cb0f30 at 5a73d7a7f019 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same two
 workloads. Both are the `chain` and `stamped` builders of

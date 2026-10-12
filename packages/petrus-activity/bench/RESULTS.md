@@ -1,6 +1,6 @@
 # petrus-activity benchmarks: Haskell vs the pinned `petrus.motus.activity`
 
-<!-- scripts/bench: measured sources 6daa0cba5c7038c1 at c04dccc09e2c -->
+<!-- scripts/bench: measured sources 66cba3afd2b0b0c3 at 5a73d7a7f019 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` run the Activity
 value doors on the same inputs. Every row runs one door over 100 distinct

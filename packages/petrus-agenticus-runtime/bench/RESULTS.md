@@ -1,6 +1,6 @@
 # petrus-agenticus-runtime benchmark results
 
-<!-- scripts/bench: measured sources a188d6e584673ddc at 0eaa52516f65 -->
+<!-- scripts/bench: measured sources 683fad2344b142ea at 5a73d7a7f019 -->
 
 The Pi benchmarks (frame codec, session validation, fingerprints, the
 operation ledger and a scripted A2 turn) are in [results-pi.md](results-pi.md).

@@ -1,6 +1,6 @@
 # Telemetry overhead: Haskell vs the pinned reference
 
-<!-- scripts/bench: measured sources 2b552b9fc9fa63d0 at a772fc9389d5 -->
+<!-- scripts/bench: measured sources 497772315c2f8ba0 at 5a73d7a7f019 -->
 
 Two twin programs measure the same workloads:
 

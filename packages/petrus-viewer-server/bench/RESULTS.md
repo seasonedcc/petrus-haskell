@@ -1,6 +1,6 @@
 # Benchmark results
 
-<!-- scripts/bench: measured sources 5a6cc9cc23fd0b07 at db35a07b61f1 -->
+<!-- scripts/bench: measured sources 2e2786ee5d3f152c at 5a73d7a7f019 -->
 
 The Haskell backend against the upstream Node backend at the pin in
 [UPSTREAM.md](../../../UPSTREAM.md), driven by one load client

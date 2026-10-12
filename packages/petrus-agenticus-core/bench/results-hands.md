@@ -1,6 +1,6 @@
 # Hands benchmark results (`agenticus-hands`)
 
-<!-- scripts/bench: measured sources 423c40905afb4a2b at 25bebb9d777d -->
+<!-- scripts/bench: measured sources 6dfbc2563f96dee2 at 5a73d7a7f019 -->
 
 Twins: `bench/Bench/Hands.hs` (Haskell, tasty-bench) and
 `bench/python_hands.py` (upstream reference).

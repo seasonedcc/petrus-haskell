@@ -1,6 +1,6 @@
 # petrus-sqlite benchmarks
 
-<!-- scripts/bench: measured sources 496c20e16f30c01a at ee7e4a51da8c -->
+<!-- scripts/bench: measured sources 2135704b89b51e36 at 5a73d7a7f019 -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same

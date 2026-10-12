@@ -1,6 +1,6 @@
 # petrus-posix benchmarks
 
-<!-- scripts/bench: measured sources 658d7e51201ca478 at b7c4c1e8a2c4 -->
+<!-- scripts/bench: measured sources 956a5562bc09bd47 at 5a73d7a7f019 -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same

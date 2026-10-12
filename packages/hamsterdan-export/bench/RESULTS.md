@@ -1,6 +1,6 @@
 # hamsterdan-export benchmarks
 
-<!-- scripts/bench: measured sources 3065c49862aff3a1 at 96eda46a7fc2 -->
+<!-- scripts/bench: measured sources 769e555db8036354 at 5a73d7a7f019 -->
 
 One export of pull request 7, from three state directories:
 

@@ -1,6 +1,6 @@
 # hamsterdan-operator benchmarks
 
-<!-- scripts/bench: measured sources 0b35786f91a35631 at ccc5c9b8230d -->
+<!-- scripts/bench: measured sources adbbe4679becb0b0 at 5a73d7a7f019 -->
 
 Seven workloads, in two shapes, all timed by wall clock (monotonic) on
 both sides.

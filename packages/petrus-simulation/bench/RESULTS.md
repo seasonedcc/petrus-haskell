@@ -1,6 +1,6 @@
 # petrus-simulation benchmarks
 
-<!-- scripts/bench: measured sources a42102a12ca8df07 at 7fc4ecb1d671 -->
+<!-- scripts/bench: measured sources 50381bf76913dc3b at 5a73d7a7f019 -->
 
 This compares the Haskell runner and service with upstream
 `petrus.simulation` and `petrus.simulation_http` at the pin in

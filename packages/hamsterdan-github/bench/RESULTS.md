@@ -1,6 +1,6 @@
 # hamsterdan-github benchmarks
 
-<!-- scripts/bench: measured sources f6b2c274bd1a4108 at 7fc4ecb1d671 -->
+<!-- scripts/bench: measured sources 81584a21437f8ed6 at 5a73d7a7f019 -->
 
 These are the paths the GitHub boundary runs on every delivery and every
 provider call:
