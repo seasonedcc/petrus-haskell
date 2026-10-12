@@ -1,6 +1,6 @@
 # petrus-json benchmarks: Haskell vs CPython's C-accelerated `json`
 
-<!-- scripts/bench: measured sources b50365a7e6663385 at 2ee3287c635f -->
+<!-- scripts/bench: measured sources 5a71271078f89149 at c550dcb1ddee -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` parse and write the
 same realistic Petrus documents with the options of the upstream call site
@@ -43,9 +43,10 @@ the Haskell side forces every node of a parsed value.
 
 ## Current figures
 
-Measured on 2026-10-12, 19:18–19:22 local (UTC-3), at commit `2eb0f2a`, on
-the Apple M4 (Darwin arm64), with a 1-minute load average of 2.80–3.25.
-Five interleaved repetitions of
+Measured on 2026-10-12, 19:54–19:58 local (UTC-3), at commit `f3b300b`
+(the duplicate-member pre-check back, below), on the Apple M4 (Darwin
+arm64), with a 1-minute load average of 2.11–4.01. Five interleaved
+repetitions of
 
     scripts/bench-compare petrus-json 5
 
@@ -54,21 +55,22 @@ wall-clock time (`--stdev 5`, `+RTS -M2G`), with the benchmark executable
 run directly in the package directory. Python figures are the twin's own
 timing (CPython 3.14.6). Each figure is the median over the repetitions.
 The ratio is Python ÷ Haskell, so above 1 means Haskell is faster; Haskell
-was ahead in every repetition of every row, by 1.40× (`thread.loads`) to
-2.97×. The previous table (`d354c96`, three repetitions at load 5.6–11.4)
-read 1.56–2.87×. The tables in the sections below are earlier
-measurements, kept with the analysis that came with them.
+was ahead in every repetition of every row, by 1.53× (`thread.loads`) to
+2.97×. The run before the pre-check came back (19:18–19:22 at `2eb0f2a`,
+load 2.80–3.25, five repetitions) read the same within 3% on every row but
+`thread.loads`, which was 1.40× (336 µs). The tables in the sections below
+are earlier measurements, kept with the analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `history.loads` | 1.13 ms | 2.58 ms | 2.27× | 2.26× | 5 of 5 | 1.11 ms, 1.13 ms, 1.14 ms, 1.11 ms, 1.15 ms | 2.57 ms, 2.58 ms, 2.57 ms, 2.58 ms, 2.59 ms |
-| `history.dumps` | 978 µs | 2.9 ms | 2.97× | 2.92× | 5 of 5 | 986 µs, 981 µs, 969 µs, 978 µs, 972 µs | 2.92 ms, 2.93 ms, 2.9 ms, 2.85 ms, 2.9 ms |
-| `history.dumps-canonical` | 1.41 ms | 3.82 ms | 2.70× | 2.67× | 5 of 5 | 1.43 ms, 1.4 ms, 1.41 ms, 1.41 ms, 1.45 ms | 3.88 ms, 3.82 ms, 3.8 ms, 3.78 ms, 3.89 ms |
-| `net-document.loads` | 244 µs | 466 µs | 1.91× | 1.89× | 5 of 5 | 244 µs, 243 µs, 243 µs, 245 µs, 244 µs | 468 µs, 472 µs, 464 µs, 464 µs, 466 µs |
-| `net-document.loads-strict` | 244 µs | 588 µs | 2.41× | 2.39× | 5 of 5 | 243 µs, 246 µs, 242 µs, 244 µs, 244 µs | 589 µs, 589 µs, 588 µs, 584 µs, 583 µs |
-| `net-document.dumps` | 155 µs | 417 µs | 2.69× | 2.65× | 5 of 5 | 157 µs, 155 µs, 156 µs, 155 µs, 155 µs | 417 µs, 419 µs, 415 µs, 417 µs, 415 µs |
-| `thread.loads` | 336 µs | 471 µs | 1.40× | 1.38× | 5 of 5 | 332 µs, 336 µs, 326 µs, 344 µs, 337 µs | 471 µs, 471 µs, 479 µs, 475 µs, 466 µs |
-| `thread.dumps` | 353 µs | 663 µs | 1.88× | 1.83× | 5 of 5 | 361 µs, 353 µs, 352 µs, 352 µs, 359 µs | 663 µs, 660 µs, 663 µs, 664 µs, 659 µs |
+| `history.loads` | 1.13 ms | 2.55 ms | 2.26× | 2.21× | 5 of 5 | 1.1 ms, 1.13 ms, 1.1 ms, 1.15 ms, 1.15 ms | 2.55 ms, 2.83 ms, 2.55 ms, 2.54 ms, 2.56 ms |
+| `history.dumps` | 969 µs | 2.88 ms | 2.97× | 2.97× | 5 of 5 | 962 µs, 959 µs, 975 µs, 969 µs, 969 µs | 2.88 ms, 2.87 ms, 2.9 ms, 2.88 ms, 2.97 ms |
+| `history.dumps-canonical` | 1.39 ms | 3.82 ms | 2.75× | 2.68× | 5 of 5 | 1.39 ms, 1.39 ms, 1.39 ms, 1.38 ms, 1.42 ms | 3.81 ms, 3.84 ms, 3.83 ms, 3.82 ms, 3.8 ms |
+| `net-document.loads` | 247 µs | 465 µs | 1.88× | 1.85× | 5 of 5 | 246 µs, 246 µs, 247 µs, 248 µs, 251 µs | 457 µs, 479 µs, 467 µs, 465 µs, 463 µs |
+| `net-document.loads-strict` | 249 µs | 588 µs | 2.37× | 2.35× | 5 of 5 | 249 µs, 246 µs, 246 µs, 249 µs, 251 µs | 588 µs, 594 µs, 585 µs, 584 µs, 592 µs |
+| `net-document.dumps` | 154 µs | 414 µs | 2.69× | 2.66× | 5 of 5 | 154 µs, 154 µs, 153 µs, 154 µs, 156 µs | 415 µs, 416 µs, 413 µs, 413 µs, 414 µs |
+| `thread.loads` | 307 µs | 469 µs | 1.53× | 1.49× | 5 of 5 | 307 µs, 315 µs, 301 µs, 315 µs, 299 µs | 469 µs, 508 µs, 462 µs, 469 µs, 466 µs |
+| `thread.dumps` | 351 µs | 667 µs | 1.90× | 1.88× | 5 of 5 | 351 µs, 350 µs, 350 µs, 351 µs, 352 µs | 667 µs, 668 µs, 663 µs, 668 µs, 662 µs |
 
 ## How to rerun
 
