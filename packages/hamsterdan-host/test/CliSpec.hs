@@ -242,10 +242,14 @@ spec = do
     it "answers a failing route 500 and logs its exception as the reference does" . withTempRoot $ \tmp ->
       withSides tmp $ \githubPort referenceSide portSide -> do
         -- With the inbox table renamed away under the running server,
-        -- @/healthz@'s inbox count raises sqlite3's OperationalError.
+        -- @/healthz@'s inbox count raises sqlite3's OperationalError. The
+        -- worker's next pump (every 0.25 s) raises it too, and the
+        -- lifespan's shutdown re-raises it on both sides; waiting a second
+        -- before the SIGTERM makes that pump certain rather than a race.
         let failing side port = do
               sqlExec (lookupState side </> "webhooks.sqlite3") "ALTER TABLE inbox RENAME TO inbox_gone" []
               void (RawHttp.exchange port (RawHttp.rawRequest "GET" "/healthz" [] ""))
+              threadDelay 1000000
         referencePort <- freePort
         reference <- serveReference tmp githubPort (forwardedEnvironment referenceSide referencePort) (failing referenceSide)
         ourPort <- freePort
@@ -253,6 +257,7 @@ spec = do
         reference.code `shouldBe` (-15)
         reference.out `shouldSatisfy` T.isInfixOf "\"GET /healthz HTTP/1.1\" 500 Internal Server Error"
         reference.err `shouldSatisfy` T.isInfixOf "ERROR:    Exception in ASGI application\n"
+        reference.err `shouldSatisfy` T.isInfixOf "ERROR:    Application shutdown failed. Exiting.\n"
         normalizedOutcome [ourPort] ours `shouldBe` normalizedOutcome [referencePort] reference
     it "logs a lifespan startup failure and exits 3 as the reference does" . withTempRoot $ \tmp -> do
       repo <- repoRoot
