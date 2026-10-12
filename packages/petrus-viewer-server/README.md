@@ -16,7 +16,12 @@ and why.
 | `petrus` | `bin/petrus.mjs` + the Vite dev server's backend plugins | Serves the built UI and every backend route (below), opens the browser, accepts a file or URL argument. |
 | `petrus-mcp` | `server/mcp.mjs` | MCP stdio server: the 16 `petrus_*` tools with the upstream schemas and results, bridge URL resolution (`PETRUS_AGENT_URL`, else the upstream default URLs), auto-start of `petrus` when no bridge answers. |
 | `petrus-collab` | `server/collab.mjs` | Standalone collaboration relay (`petrus-collab [port]`, default 4567). |
-| `petrus-viewer-oracle` | none | Test helper: the upstream Node tests and differential fuzzing call the Haskell JSON/URL ports through it. |
+
+The upstream Node tests in `upstream-tests/` also call two test helpers, both
+modes of the test suite's binary so that `cabal install` never installs them:
+`petrus-viewer-server-test --oracle` answers calls to the Haskell JSON, URL,
+relay and protocol ports, and `--chain-producer` serves a Haskell observation
+chain.
 
 Routes served by `petrus`:
 
@@ -25,7 +30,7 @@ Routes served by `petrus`:
 | `GET/POST/OPTIONS /__petrus/open-file` | `server/openFileEndpoint.mjs` | Pending file, consumed once by the UI. |
 | `POST/OPTIONS /__petrus/resolve-ref` | `server/openFileEndpoint.mjs` | `$ref` resolution: local files, and http(s) refs fetched and cached with the GitHub URL normalization (`raw.githubusercontent.com`, `blob/` URLs) of `server/urlCache.mjs`. |
 | `/ws/agent` (WebSocket) | `agentRelay` Vite plugin | Browser ↔ agents relay, `[petrus-relay-perf]` timing log. |
-| `/collab-ws` (WebSocket) | `server/collab.mjs` behind Vite's proxy | Collaboration relay, in process. |
+| `/collab-ws` (WebSocket) | `server/collab.mjs` behind Vite's proxy (only with `vite --host`) | Collaboration relay, in process, only with `--host`. |
 | `/temporal/*` | Vite proxy to `localhost:7243` | Reverse proxy to the Temporal HTTP API; optionally answered from Petrus observation producers (below). |
 | everything else | Vite static serving | The built UI (`--ui-dir`), with SPA fallback to `index.html`. |
 
@@ -46,7 +51,8 @@ cabal run petrus -- --ui-dir upstream/petrus-viewer/dist upstream/petrus-viewer/
 `petrus --help` lists the options. The upstream ones (`--no-open`, `-h`,
 file and URL arguments, `PETRUS_OPEN_FILE`, `PETRUS_SOURCE_URL`) behave as
 upstream. Server options: `--port` (default 5173, next free port like Vite),
-`--strict-port`, `--host` (default `localhost`), `--ui-dir` /
+`--strict-port`, `--host` (default `localhost`; like `vite --host`, it also
+serves `/collab-ws`), `--ui-dir` /
 `PETRUS_UI_DIR` (default: `./dist` when it holds a build, else a build next
 to the executable: `<prefix>/share/petrus-viewer/ui` for executables in
 `<prefix>/bin`, or `upstream/petrus-viewer/dist` in the checkout they were
@@ -149,11 +155,10 @@ client (`petrus-viewer-bench`); results and commands are in
 | `Petrus.Viewer.Cli` | `bin/petrus.mjs` (argument handling, URL detection, browser opening) |
 | `Petrus.Viewer.Server`, `Static`, `Proxy`, `Http` | Vite dev server: listeners, static UI, `/temporal` proxy |
 | `Petrus.Viewer.Relay`, `Relay.Frame`, `Relay.Handshake` | `agentRelay` plugin and `server/collab.mjs` on `ws` 8 (handshake, RFC 6455 framing, close codes) |
-| `Petrus.Viewer.HttpFront` | Node's `http` server for the two endpoints below (one event loop, Node's response framing); everything else goes to Warp |
 | `Petrus.Viewer.Endpoints`, `FileIO` | `server/openFileEndpoint.mjs` |
 | `Petrus.Viewer.UrlCache` | `server/urlCache.mjs` |
 | `Petrus.Viewer.Mcp.Server`, `Schema`, `Bridge`, `History` | `server/mcp.mjs` |
-| `Petrus.Viewer.EventLoop`, `Mcp.Reactor` | Node's event loop: one thread on kqueue/epoll (`cbits/relay_io.c`) for the relays, the HTTP front, and `petrus-mcp`'s stdin and bridge socket |
+| `Petrus.Viewer.EventLoop`, `Mcp.Reactor` | Node's event loop: one thread on kqueue/epoll (`cbits/relay_io.c`) for the relays, and for `petrus-mcp`'s stdin and bridge socket |
 | `Petrus.Viewer.Agent.Protocol` | `src/agent/protocol.ts` (the typed petrus-agent envelope) |
 | `Petrus.Viewer.History.Observation` | none: Temporal history API from observation producers |
 | `Petrus.Viewer.Json`, `Json.Number` | V8 `JSON.parse` / `JSON.stringify` / `Number#toString` |

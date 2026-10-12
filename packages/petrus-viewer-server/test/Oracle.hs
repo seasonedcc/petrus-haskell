@@ -1,4 +1,4 @@
--- | Test oracle: evaluates the Haskell ports of the viewer's server-side
+-- | Test oracle (@petrus-viewer-server-test --oracle@): evaluates the Haskell ports of the viewer's server-side
 -- library functions so the upstream Node test files (and differential
 -- fuzzing against Node) can call them.
 --
@@ -12,7 +12,7 @@
 -- from client @"7"@, or null when it is dropped), @parseAgentMessage text@
 -- (the normalized message; the upstream protocol tests call it through
 -- @upstream-tests/shims/haskell-protocol.mjs@).
-module Main (main) where
+module Oracle (runOracle) where
 
 import Data.ByteString qualified as B
 import Data.Text (Text)
@@ -25,8 +25,8 @@ import Petrus.Viewer.Url
 import Petrus.Viewer.UrlCache
 import Data.ByteString.Lazy qualified as BL
 
-main :: IO ()
-main = do
+runOracle :: IO ()
+runOracle = do
   input <- B.getContents
   case parseJs (decodeLenient input) of
     Right (JsArr calls) -> do

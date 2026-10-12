@@ -16,7 +16,7 @@ license:            Apache-2.0
 license-file:       LICENSE
 copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
-maintainer:         danielweinmann@avatarnaturalfoods.com
+maintainer:         daniel@seasoned.cc
 category:           Database
 build-type:         Simple
 extra-doc-files:    NOTICE
@@ -76,6 +76,7 @@ benchmark petrus-postgres-bench
   build-depends:    base
                   , bytestring
                   , petrus-postgres
+                  , petrus-test-support
                   , tasty >=1.4
                   , tasty-bench >=0.3.2
                   , text

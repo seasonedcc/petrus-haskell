@@ -45,7 +45,7 @@ import Petrus.Agenticus.Hands.Gateway qualified as Gateway
 import Petrus.Agenticus.Hands.Grants (GrantSpec (..), closeGrant, grantSpec, openGrant)
 import Petrus.Agenticus.Hands.Workspace (defaultCommandTimeout, newMotusWorkspaceAdapter, workspaceHandsAdapter)
 import Petrus.Agenticus.Program.Descriptor (ProgramOwnership (..))
-import Petrus.Agenticus.Runtime.Installation (mkInstalledComponent, mkRuntimeInstallation)
+import Petrus.Agenticus.Runtime.Installation (ProbeDisposition (..), mkInstalledComponent, mkRuntimeInstallation)
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperationCleanup, runtimeProtocolError, runtimeProtocolErrorCode)
 import Petrus.Agenticus.Runtime.Pi (piApiKeyCatalog, piSdkSourceCommit)
 import Petrus.Agenticus.Runtime.Pi.Internal qualified as Pi
@@ -73,12 +73,13 @@ import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import Petrus.Motus.Execution (EnvironmentProvider (..), defaultSpec)
 import Petrus.Motus.Execution.Archive (workspaceArchive)
-import System.Directory (createDirectory, createDirectoryIfMissing, findExecutable, makeAbsolute)
+import System.Directory (createDirectory, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, findExecutable, makeAbsolute)
 import Petrus.TestSupport.Python (pythonJson)
 import System.Exit (ExitCode (..))
-import System.FilePath ((</>))
+import System.Environment (lookupEnv)
+import System.FilePath (takeDirectory, (</>))
 import System.Posix.Files (setFileMode)
-import System.Process (readProcessWithExitCode)
+import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
 import System.Timeout (timeout)
 import Test.Hspec
 
@@ -1069,11 +1070,66 @@ packageSpecs = do
     body <- TE.decodeUtf8 <$> B.readFile helper
     ("maxLength:1024" `T.isInfixOf` body) `shouldBe` True
 
-  it "test_exact_helper_core_loop_fake_stream_is_one_turn_delta_only_and_authority_free" $
-    pendingWith "requires the exact Pi qualification packages under /tmp/petrus-pi-a2-probe (the reference skips too)"
+  -- The reference's @qualification_installation@ tests: they run against
+  -- the exact packages installed under 'qualificationPrefix', and pend with
+  -- the reference's skip reasons otherwise.
+  it "test_exact_helper_core_loop_fake_stream_is_one_turn_delta_only_and_authority_free" $ withTemp $ \tmp -> do
+    let root = qualificationPrefix </> "node_modules/@earendil-works/pi-coding-agent"
+        node = qualificationPrefix </> "node_modules/node/bin/node"
+    installed <- (&&) <$> doesFileExist node <*> doesDirectoryExist root
+    if not installed
+      then pendingWith "exact Pi qualification packages required"
+      else do
+        helper <- piApplicationHelperPath
+        let core = root </> "node_modules/@earendil-works/pi-agent-core/dist/index.js"
+            ai = root </> "node_modules/@earendil-works/pi-ai/dist/index.js"
+            coding = root </> "dist/index.js"
+            environment = [("HOME", tmp), ("PATH", takeDirectory node), ("LANG", "C.UTF-8"), ("LC_ALL", "C.UTF-8")]
+        (code, out, err) <- readCreateProcessWithExitCode ((proc node [helper, coding, core, ai, "--test-probe"]) {env = Just environment}) ""
+        unless (code == ExitSuccess) (expectationFailure err)
+        J.parseJson J.surrogateRefusingLoads (TE.encodeUtf8 (T.pack out))
+          `shouldBe` Right
+            ( Object
+                [ ("type", String "test-probe")
+                , ("ok", Bool True)
+                , ("stream_calls", Int 1)
+                , ("context_ok", Bool True)
+                , ("prior_immutable", Bool True)
+                , ("delta_only", Bool True)
+                , ("network", Bool False)
+                ]
+            )
 
-  it "test_exact_installed_application_package_probe" $
-    pendingWith "requires PETRUS_CV16_PI_APPLICATION_QUALIFY=1 and the exact installed packages (the reference skips too)"
+  it "test_exact_installed_application_package_probe" $ withTemp $ \tmp -> do
+    opted <- lookupEnv "PETRUS_CV16_PI_APPLICATION_QUALIFY"
+    if opted /= Just "1"
+      then pendingWith "set PETRUS_CV16_PI_APPLICATION_QUALIFY=1 for exact installed-package probe"
+      else do
+        let root = qualificationPrefix </> "node_modules/@earendil-works/pi-coding-agent"
+            cli = qualificationPrefix </> "node_modules/.bin/pi"
+            node = qualificationPrefix </> "node_modules/node/bin/node"
+            working = tmp </> "working"
+            runtime = tmp </> "runtime"
+        createDirectory working
+        createDirectory runtime
+        setFileMode runtime 0o700
+        custody <- newFakeCustody "api-key" "anthropic"
+        continuations <- newContinuations
+        turns <- newTurns
+        adapter <-
+          newPiApplicationRuntimeAdapter
+            (piApplicationRuntimeConfig "anthropic" "claude-sonnet-4-5" "gondolin" working runtime)
+            (piApplicationContinuationCodec (continuationOperations continuations))
+            (turnOperations turns)
+            (applicationCustody (custodyOperations custody))
+            getMonotonicTime
+            Nothing
+        result <- probeApplication adapter ApplicationProbePaths {cliPath = Just cli, nodePath = Just node, packageRoot = Just root}
+        unless (result.disposition == ProbeReady) (expectationFailure (show result.issues))
+
+-- | Where the reference's qualification tests find the exact Pi packages.
+qualificationPrefix :: FilePath
+qualificationPrefix = "/tmp/petrus-pi-a2-probe"
 
 -- | @base64.b64decode(value, validate=True)@ and @b64encode@ over text.
 pyB64Decode :: Text -> Either AgenticusError ByteString

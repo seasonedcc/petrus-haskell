@@ -18,20 +18,18 @@ The claim is byte identity:
 
 See [DIVERGENCES.md](DIVERGENCES.md) for the exceptions.
 
-`cabal test petrus-simulation` runs 108 examples, with 0 failures:
+`cabal test petrus-simulation` runs the suite with no failure and no pending example. Its groups:
 
-| Group | Examples |
-| --- | ---: |
-| `test_simulation.py` | 27 |
-| `test_simulation_http.py` | 71 |
-| `spec/simulation-http-v1.md` conformance | 5 |
-| Wire identity | 2 |
-| Differential corpus | 2 |
-| Python clients | 1 |
+- `test_simulation.py`;
+- `test_simulation_http.py`;
+- `spec/simulation-http-v1.md` conformance;
+- Wire identity;
+- Differential corpus;
+- Python clients.
 
 Each upstream test is one example named after it. Parametrized tests have
-one example per parameter, so the two modules' 43 functions are 98
-examples, as `pytest --collect-only` counts them.
+one example per parameter, so the two modules' 43 functions are the 98
+cases `pytest --collect-only` counts.
 
 ## Upstream tests: `tests/petrus/engine/test_simulation.py` (`test/RunnerSpec.hs`)
 

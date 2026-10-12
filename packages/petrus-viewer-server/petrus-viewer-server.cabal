@@ -14,7 +14,7 @@ license:            Apache-2.0
 license-file:       LICENSE
 copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
 author:             Seasoned
-maintainer:         danielweinmann@avatarnaturalfoods.com
+maintainer:         daniel@seasoned.cc
 category:           Network
 build-type:         Simple
 extra-doc-files:    NOTICE
@@ -51,7 +51,6 @@ library
                     Petrus.Viewer.Relay.Frame
                     Petrus.Viewer.Relay.Handshake
                     Petrus.Viewer.Endpoints
-                    Petrus.Viewer.HttpFront
                     Petrus.Viewer.Static
                     Petrus.Viewer.UiDir
                     Petrus.Viewer.Proxy
@@ -92,7 +91,6 @@ library
   c-sources:        cbits/json_escape.c
                     cbits/file_io.c
                     cbits/relay_io.c
-                    cbits/http_front.c
   cc-options:       -O3 -Wall
 
 executable petrus
@@ -121,15 +119,6 @@ executable petrus-collab
   ghc-options:      -O2 -threaded -rtsopts "-with-rtsopts=-N1 -qg -A16m"
 
 
--- Test oracle used by upstream-tests/ (upstream Node tests and
--- differential fuzzing call the Haskell ports through it).
-executable petrus-viewer-oracle
-  import:           warnings
-  hs-source-dirs:   app/petrus-viewer-oracle
-  main-is:          Main.hs
-  build-depends:    base, bytestring, text, petrus-viewer-server
-  ghc-options:      -O2
-
 test-suite petrus-viewer-server-test
   import:           warnings
   type:             exitcode-stdio-1.0
@@ -137,6 +126,10 @@ test-suite petrus-viewer-server-test
   -- The end-to-end test of the viewer against that package lives here
   -- (HistorySpec), not in petrus-observation-http's suite, so that package
   -- never needs this one and the dependency stays one way.
+  -- The binary doubles as two helpers the upstream Node tests in
+  -- upstream-tests/ call: --chain-producer (ChainProducer) and --oracle
+  -- (Oracle). They live here, not in executables, so `cabal install` never
+  -- puts a test helper on a user's PATH.
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    JsonSpec
@@ -151,6 +144,7 @@ test-suite petrus-viewer-server-test
                     ProxySpec
                     HistorySpec
                     ChainProducer
+                    Oracle
                     ServerSpec
                     TestSupport
   build-depends:    base

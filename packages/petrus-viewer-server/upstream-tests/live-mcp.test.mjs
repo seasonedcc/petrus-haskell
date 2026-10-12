@@ -302,3 +302,70 @@ describe("Haskell backend, live browser, MCP tools", { timeout: 120000 }, () => 
     assert.ok(JSON.stringify(scenarios).includes("obs-initial"));
   });
 });
+
+/**
+ * Collaboration is off unless petrus runs with --host, as upstream: Vite
+ * proxies /collab-ws only when it runs with --host (vite.config.ts), and
+ * bin/petrus.mjs never passes it. A plain `petrus FILE` refuses the upgrade,
+ * and the UI loads its file. (At the pin the built UI never connects to
+ * /collab-ws: vite.config.ts defines VITE_COLLAB_ENABLED as the boolean
+ * true, which App.tsx compares with the string "true".)
+ */
+describe("Haskell backend, plain `petrus FILE`: no collaboration relay", { timeout: 60000 }, () => {
+  let plain;
+  let plainBrowser;
+
+  before(async () => {
+    plain = await new Promise((resolve, reject) => {
+      const env = { ...process.env, PETRUS_RELAY_PERF: "0" };
+      delete env.PETRUS_OPEN_FILE;
+      delete env.PETRUS_SOURCE_URL;
+      const proc = spawn(PETRUS, ["--no-open", "--strict-port", "--port", "0", "--ui-dir", UI_DIR, SAMPLE_NET], {
+        env,
+        stdio: ["ignore", "pipe", "inherit"],
+      });
+      let output = "";
+      const timer = setTimeout(() => reject(new Error(`petrus start timeout: ${output}`)), 15000);
+      proc.stdout.on("data", (chunk) => {
+        output += chunk.toString();
+        const match = output.match(/Local:\s+http:\/\/localhost:(\d+)/);
+        if (match) {
+          clearTimeout(timer);
+          proc.stdout.resume();
+          resolve({ proc, port: Number(match[1]) });
+        }
+      });
+      proc.on("exit", (code) => reject(new Error(`petrus exited ${code}: ${output}`)));
+    });
+    plainBrowser = await chromium.launch({ headless: true });
+  });
+
+  after(async () => {
+    await plainBrowser?.close().catch(() => {});
+    if (plain?.proc && plain.proc.exitCode === null) {
+      const exited = new Promise((resolve) => plain.proc.once("exit", resolve));
+      plain.proc.kill("SIGTERM");
+      await exited;
+    }
+  });
+
+  it("refuses /collab-ws, and the UI loads the file it was started with", async () => {
+    const page = await plainBrowser.newPage();
+    const openFile = page.waitForResponse((r) => r.url().endsWith("/__petrus/open-file"), { timeout: 15000 });
+    await page.goto(`http://localhost:${plain.port}`);
+    const response = await openFile;
+    assert.equal(response.status(), 200);
+    assert.equal((await response.json()).path, SAMPLE_NET);
+    await page.waitForSelector(".react-flow__node", { timeout: 10000 });
+    const collab = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const ws = new WebSocket(`ws://${location.host}/collab-ws`);
+          ws.onopen = () => (ws.close(), resolve("open"));
+          ws.onerror = () => resolve("refused");
+        }),
+    );
+    assert.equal(collab, "refused");
+    await page.close();
+  });
+});

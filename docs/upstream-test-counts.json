@@ -5,21 +5,137 @@
     "petrus-engine": "fc1dd507ec4341f15aa9d0b17d4e14def95cf5c7"
   },
   "files": {
+    "hamsterdan:deployment/tests/test_ci_contract.py": {
+      "tests": 1,
+      "cases": 1
+    },
     "hamsterdan:deployment/tests/test_container_contract.py": {
       "tests": 4,
       "cases": 4
+    },
+    "hamsterdan:deployment/tests/test_deploy.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "hamsterdan:deployment/tests/test_exe_access.py": {
+      "tests": 6,
+      "cases": 6
+    },
+    "hamsterdan:deployment/tests/test_exe_vm.py": {
+      "tests": 5,
+      "cases": 8
+    },
+    "hamsterdan:deployment/tests/test_observation.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "hamsterdan:deployment/tests/test_release.py": {
+      "tests": 5,
+      "cases": 5
+    },
+    "hamsterdan:deployment/tests/test_runtime.py": {
+      "tests": 9,
+      "cases": 12
     },
     "hamsterdan:tests/integration/host/test_git_publish.py": {
       "tests": 18,
       "cases": 30
     },
+    "hamsterdan:tests/integration/host/test_pi_a2_factory.py": {
+      "tests": 8,
+      "cases": 8
+    },
+    "hamsterdan:tests/integration/host/test_pi_workspace.py": {
+      "tests": 12,
+      "cases": 20
+    },
+    "hamsterdan:tests/integration/host/test_qualification_setup_local.py": {
+      "tests": 7,
+      "cases": 7
+    },
+    "hamsterdan:tests/integration/host/test_readiness_scenarios.py": {
+      "tests": 11,
+      "cases": 11
+    },
     "hamsterdan:tests/integration/host/test_service.py": {
       "tests": 64,
       "cases": 70
     },
+    "hamsterdan:tests/integration/testing/test_readiness_campaign.py": {
+      "tests": 6,
+      "cases": 6
+    },
+    "hamsterdan:tests/integration/testing/test_readiness_coverage.py": {
+      "tests": 5,
+      "cases": 5
+    },
+    "hamsterdan:tests/integration/testing/test_readiness_world.py": {
+      "tests": 19,
+      "cases": 19
+    },
+    "hamsterdan:tests/test_architecture.py": {
+      "tests": 10,
+      "cases": 10
+    },
+    "hamsterdan:tests/test_check_command.py": {
+      "tests": 7,
+      "cases": 7
+    },
+    "hamsterdan:tests/test_distribution.py": {
+      "tests": 1,
+      "cases": 1
+    },
+    "hamsterdan:tests/test_pytest_policy.py": {
+      "tests": 1,
+      "cases": 2
+    },
+    "hamsterdan:tests/unit/agents/test_pi.py": {
+      "tests": 28,
+      "cases": 46
+    },
+    "hamsterdan:tests/unit/agents/test_protocol.py": {
+      "tests": 10,
+      "cases": 20
+    },
+    "hamsterdan:tests/unit/github_app/test_app_foundation.py": {
+      "tests": 34,
+      "cases": 80
+    },
+    "hamsterdan:tests/unit/github_app/test_github.py": {
+      "tests": 56,
+      "cases": 83
+    },
+    "hamsterdan:tests/unit/host/test_agenticus.py": {
+      "tests": 26,
+      "cases": 33
+    },
+    "hamsterdan:tests/unit/host/test_binding.py": {
+      "tests": 5,
+      "cases": 8
+    },
     "hamsterdan:tests/unit/host/test_export.py": {
       "tests": 38,
       "cases": 41
+    },
+    "hamsterdan:tests/unit/host/test_host_architecture.py": {
+      "tests": 1,
+      "cases": 1
+    },
+    "hamsterdan:tests/unit/host/test_pi_a2.py": {
+      "tests": 15,
+      "cases": 24
+    },
+    "hamsterdan:tests/unit/host/test_publication_qualification.py": {
+      "tests": 26,
+      "cases": 52
+    },
+    "hamsterdan:tests/unit/host/test_runnable.py": {
+      "tests": 7,
+      "cases": 11
+    },
+    "hamsterdan:tests/unit/host/test_secret_launch.py": {
+      "tests": 5,
+      "cases": 10
     },
     "hamsterdan:tests/unit/host/test_v5_gates.py": {
       "tests": 50,
@@ -45,6 +161,370 @@
       "tests": 18,
       "cases": 21
     },
+    "hamsterdan:tests/unit/readiness/net_v5/test_board.py": {
+      "tests": 22,
+      "cases": 22
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_ci_loop.py": {
+      "tests": 21,
+      "cases": 21
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_conversation_loop.py": {
+      "tests": 21,
+      "cases": 21
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_dashboard_loop.py": {
+      "tests": 16,
+      "cases": 17
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_escalation_loop.py": {
+      "tests": 23,
+      "cases": 23
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_gating.py": {
+      "tests": 3,
+      "cases": 5
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_inline_recovery.py": {
+      "tests": 9,
+      "cases": 35
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_lifecycle_loop.py": {
+      "tests": 16,
+      "cases": 16
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_mutation_loop.py": {
+      "tests": 32,
+      "cases": 32
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_readiness_loop.py": {
+      "tests": 38,
+      "cases": 38
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_reminders_loop.py": {
+      "tests": 20,
+      "cases": 20
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_review_loop.py": {
+      "tests": 33,
+      "cases": 36
+    },
+    "hamsterdan:tests/unit/readiness/net_v5/test_startup.py": {
+      "tests": 5,
+      "cases": 7
+    },
+    "hamsterdan:tests/unit/readiness/test_payloads.py": {
+      "tests": 10,
+      "cases": 12
+    },
+    "hamsterdan:tests/unit/test_operator.py": {
+      "tests": 32,
+      "cases": 57
+    },
+    "hamsterdan:tests/unit/test_orb_setup.py": {
+      "tests": 9,
+      "cases": 10
+    },
+    "hamsterdan:tests/unit/test_secret_tools.py": {
+      "tests": 4,
+      "cases": 6
+    },
+    "hamsterdan:tests/unit/testing/test_readiness_model.py": {
+      "tests": 29,
+      "cases": 34
+    },
+    "petrus-engine:tests/test_dsl_builder.py": {
+      "tests": 47,
+      "cases": 47
+    },
+    "petrus-engine:tests/test_dsl_subnets.py": {
+      "tests": 30,
+      "cases": 30
+    },
+    "petrus-engine:tests/test_flatnet_file_refs.py": {
+      "tests": 4,
+      "cases": 4
+    },
+    "petrus-engine:tests/test_flatnet_loader.py": {
+      "tests": 12,
+      "cases": 12
+    },
+    "petrus-engine:tests/test_flatnet_nav.py": {
+      "tests": 4,
+      "cases": 4
+    },
+    "petrus-engine:tests/test_flatnet_resolution.py": {
+      "tests": 11,
+      "cases": 11
+    },
+    "petrus-engine:tests/test_json_formatter.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus-engine:tests/test_net_path.py": {
+      "tests": 27,
+      "cases": 27
+    },
+    "petrus-engine:tests/test_runtime_execution.py": {
+      "tests": 48,
+      "cases": 48
+    },
+    "petrus-engine:tests/test_state_and_time_travel.py": {
+      "tests": 20,
+      "cases": 20
+    },
+    "petrus-engine:tests/test_stubgen.py": {
+      "tests": 3,
+      "cases": 4
+    },
+    "petrus-engine:tests/test_subnet_execution.py": {
+      "tests": 9,
+      "cases": 9
+    },
+    "petrus-engine:tests/test_timed_transitions.py": {
+      "tests": 8,
+      "cases": 8
+    },
+    "petrus-engine:tests/test_timer_manager.py": {
+      "tests": 6,
+      "cases": 6
+    },
+    "petrus-engine:tests/test_tokens.py": {
+      "tests": 49,
+      "cases": 49
+    },
+    "petrus:tests/dst/test_campaign.py": {
+      "tests": 6,
+      "cases": 6
+    },
+    "petrus:tests/dst/test_delayed_world.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/dst/test_delivery_world.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/dst/test_dispatch_refusal_world.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/dst/test_dst_boundaries.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/dst/test_failure.py": {
+      "tests": 5,
+      "cases": 6
+    },
+    "petrus:tests/dst/test_generated_delivery_world.py": {
+      "tests": 2,
+      "cases": 2
+    },
+    "petrus:tests/dst/test_generated_runtime_qualification.py": {
+      "tests": 5,
+      "cases": 5
+    },
+    "petrus:tests/dst/test_generated_runtime_world.py": {
+      "tests": 4,
+      "cases": 4
+    },
+    "petrus:tests/dst/test_history_ack_loss_world.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/dst/test_joined_creation_world.py": {
+      "tests": 10,
+      "cases": 10
+    },
+    "petrus:tests/dst/test_joined_registration_world.py": {
+      "tests": 5,
+      "cases": 5
+    },
+    "petrus:tests/dst/test_joined_seal_world.py": {
+      "tests": 5,
+      "cases": 5
+    },
+    "petrus:tests/dst/test_joined_world.py": {
+      "tests": 67,
+      "cases": 67
+    },
+    "petrus:tests/dst/test_lifecycle_cancellation_world.py": {
+      "tests": 4,
+      "cases": 4
+    },
+    "petrus:tests/dst/test_lifecycle_world.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/dst/test_local_terminal_world.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/dst/test_process_runner.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/dst/test_replay.py": {
+      "tests": 5,
+      "cases": 17
+    },
+    "petrus:tests/dst/test_resource_world.py": {
+      "tests": 3,
+      "cases": 4
+    },
+    "petrus:tests/dst/test_retry_world.py": {
+      "tests": 6,
+      "cases": 6
+    },
+    "petrus:tests/dst/test_timer_world.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/dst/test_world.py": {
+      "tests": 39,
+      "cases": 50
+    },
+    "petrus:tests/integration/test_activity_seam.py": {
+      "tests": 100,
+      "cases": 111
+    },
+    "petrus:tests/petrus/agenticus/attachment/test_binding.py": {
+      "tests": 5,
+      "cases": 6
+    },
+    "petrus:tests/petrus/agenticus/attachment/test_episode.py": {
+      "tests": 9,
+      "cases": 11
+    },
+    "petrus:tests/petrus/agenticus/attachment/test_retention.py": {
+      "tests": 15,
+      "cases": 18
+    },
+    "petrus:tests/petrus/agenticus/catalog/test_descriptor.py": {
+      "tests": 5,
+      "cases": 8
+    },
+    "petrus:tests/petrus/agenticus/catalog/test_resolution.py": {
+      "tests": 13,
+      "cases": 35
+    },
+    "petrus:tests/petrus/agenticus/connection/test_custody.py": {
+      "tests": 21,
+      "cases": 24
+    },
+    "petrus:tests/petrus/agenticus/effect/test_contract.py": {
+      "tests": 15,
+      "cases": 31
+    },
+    "petrus:tests/petrus/agenticus/effect/test_provider_neutrality.py": {
+      "tests": 2,
+      "cases": 3
+    },
+    "petrus:tests/petrus/agenticus/hands/test_conformance.py": {
+      "tests": 4,
+      "cases": 5
+    },
+    "petrus:tests/petrus/agenticus/hands/test_contract_and_gateway.py": {
+      "tests": 20,
+      "cases": 29
+    },
+    "petrus:tests/petrus/agenticus/hands/test_workspace.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/petrus/agenticus/program/test_agent_net.py": {
+      "tests": 21,
+      "cases": 34
+    },
+    "petrus:tests/petrus/agenticus/program/test_program_descriptor.py": {
+      "tests": 3,
+      "cases": 5
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_agent_net_real.py": {
+      "tests": 2,
+      "cases": 2
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_agent_net_runner.py": {
+      "tests": 10,
+      "cases": 10
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_amp.py": {
+      "tests": 15,
+      "cases": 19
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_amp_real.py": {
+      "tests": 1,
+      "cases": 1
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_claude.py": {
+      "tests": 32,
+      "cases": 46
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_claude_real.py": {
+      "tests": 2,
+      "cases": 2
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_codex.py": {
+      "tests": 41,
+      "cases": 54
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_codex_real.py": {
+      "tests": 2,
+      "cases": 2
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_foundation.py": {
+      "tests": 6,
+      "cases": 6
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_pi.py": {
+      "tests": 61,
+      "cases": 105
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_pi_a2_host.py": {
+      "tests": 24,
+      "cases": 27
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_pi_application.py": {
+      "tests": 25,
+      "cases": 41
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_pi_model_phase.py": {
+      "tests": 25,
+      "cases": 45
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_pi_real.py": {
+      "tests": 2,
+      "cases": 2
+    },
+    "petrus:tests/petrus/agenticus/runtime/test_profiles.py": {
+      "tests": 6,
+      "cases": 44
+    },
+    "petrus:tests/petrus/agenticus/test_boundaries.py": {
+      "tests": 5,
+      "cases": 5
+    },
+    "petrus:tests/petrus/agenticus/thread/test_continuation.py": {
+      "tests": 5,
+      "cases": 5
+    },
+    "petrus:tests/petrus/agenticus/thread/test_identity_and_lifecycle.py": {
+      "tests": 8,
+      "cases": 8
+    },
+    "petrus:tests/petrus/engine/test_coordinator.py": {
+      "tests": 42,
+      "cases": 44
+    },
+    "petrus:tests/petrus/engine/test_engine.py": {
+      "tests": 28,
+      "cases": 30
+    },
+    "petrus:tests/petrus/engine/test_execution.py": {
+      "tests": 134,
+      "cases": 153
+    },
     "petrus:tests/petrus/engine/test_observation.py": {
       "tests": 19,
       "cases": 29
@@ -56,6 +536,14 @@
     "petrus:tests/petrus/engine/test_postgres_engine.py": {
       "tests": 12,
       "cases": 13
+    },
+    "petrus:tests/petrus/engine/test_simulation.py": {
+      "tests": 19,
+      "cases": 27
+    },
+    "petrus:tests/petrus/engine/test_simulation_http.py": {
+      "tests": 24,
+      "cases": 71
     },
     "petrus:tests/petrus/engine/test_sqlite_engine.py": {
       "tests": 5,
@@ -69,6 +557,26 @@
       "tests": 19,
       "cases": 19
     },
+    "petrus:tests/petrus/impetus/binding/test_typed_bindings.py": {
+      "tests": 11,
+      "cases": 12
+    },
+    "petrus:tests/petrus/impetus/dsl/test_petrinet_dsl.py": {
+      "tests": 42,
+      "cases": 47
+    },
+    "petrus:tests/petrus/impetus/history/test_history.py": {
+      "tests": 7,
+      "cases": 7
+    },
+    "petrus:tests/petrus/impetus/history_store/test_history_backends.py": {
+      "tests": 14,
+      "cases": 42
+    },
+    "petrus:tests/petrus/impetus/history_store/test_persistence.py": {
+      "tests": 33,
+      "cases": 36
+    },
     "petrus:tests/petrus/impetus/history_store/test_postgres_history.py": {
       "tests": 21,
       "cases": 21
@@ -77,9 +585,161 @@
       "tests": 11,
       "cases": 14
     },
+    "petrus:tests/petrus/impetus/instance/test_awaiting_termination.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/petrus/impetus/instance/test_cel_guards.py": {
+      "tests": 15,
+      "cases": 15
+    },
+    "petrus:tests/petrus/impetus/instance/test_completion.py": {
+      "tests": 17,
+      "cases": 17
+    },
+    "petrus:tests/petrus/impetus/instance/test_environment_signal.py": {
+      "tests": 4,
+      "cases": 4
+    },
+    "petrus:tests/petrus/impetus/instance/test_fifo_queue.py": {
+      "tests": 2,
+      "cases": 2
+    },
+    "petrus:tests/petrus/impetus/instance/test_firing.py": {
+      "tests": 24,
+      "cases": 24
+    },
+    "petrus:tests/petrus/impetus/instance/test_firing_occurrences.py": {
+      "tests": 25,
+      "cases": 25
+    },
+    "petrus:tests/petrus/impetus/instance/test_guard_branch.py": {
+      "tests": 13,
+      "cases": 13
+    },
+    "petrus:tests/petrus/impetus/instance/test_handlers.py": {
+      "tests": 17,
+      "cases": 17
+    },
+    "petrus:tests/petrus/impetus/instance/test_ingress.py": {
+      "tests": 24,
+      "cases": 24
+    },
+    "petrus:tests/petrus/impetus/instance/test_instance_identity.py": {
+      "tests": 12,
+      "cases": 12
+    },
+    "petrus:tests/petrus/impetus/instance/test_instance_replay_properties.py": {
+      "tests": 1,
+      "cases": 1
+    },
+    "petrus:tests/petrus/impetus/instance/test_lifecycle_scopes.py": {
+      "tests": 18,
+      "cases": 18
+    },
+    "petrus:tests/petrus/impetus/instance/test_passthrough_chain.py": {
+      "tests": 1,
+      "cases": 1
+    },
+    "petrus:tests/petrus/impetus/instance/test_registrations.py": {
+      "tests": 35,
+      "cases": 35
+    },
+    "petrus:tests/petrus/impetus/instance/test_resume.py": {
+      "tests": 40,
+      "cases": 40
+    },
+    "petrus:tests/petrus/impetus/instance/test_runtime.py": {
+      "tests": 5,
+      "cases": 5
+    },
+    "petrus:tests/petrus/impetus/instance/test_timers.py": {
+      "tests": 40,
+      "cases": 40
+    },
+    "petrus:tests/petrus/impetus/petrinet/test_arc_filters.py": {
+      "tests": 29,
+      "cases": 29
+    },
+    "petrus:tests/petrus/impetus/petrinet/test_arc_weights.py": {
+      "tests": 4,
+      "cases": 4
+    },
+    "petrus:tests/petrus/impetus/petrinet/test_enabledness.py": {
+      "tests": 23,
+      "cases": 23
+    },
+    "petrus:tests/petrus/impetus/petrinet/test_golden_replay.py": {
+      "tests": 3,
+      "cases": 10
+    },
+    "petrus:tests/petrus/impetus/petrinet/test_inhibitor_arc.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/petrus/impetus/petrinet/test_marking.py": {
+      "tests": 15,
+      "cases": 15
+    },
+    "petrus:tests/petrus/impetus/petrinet/test_petrinet_dot.py": {
+      "tests": 16,
+      "cases": 24
+    },
+    "petrus:tests/petrus/impetus/petrinet/test_read_arc.py": {
+      "tests": 8,
+      "cases": 8
+    },
+    "petrus:tests/petrus/impetus/petrinet/test_schema.py": {
+      "tests": 45,
+      "cases": 67
+    },
+    "petrus:tests/petrus/impetus/petrinet/test_token_queue.py": {
+      "tests": 19,
+      "cases": 19
+    },
+    "petrus:tests/petrus/impetus/selection/test_selection.py": {
+      "tests": 11,
+      "cases": 16
+    },
+    "petrus:tests/petrus/impetus/test_net_definition.py": {
+      "tests": 14,
+      "cases": 35
+    },
+    "petrus:tests/petrus/impetus/test_net_document.py": {
+      "tests": 8,
+      "cases": 26
+    },
+    "petrus:tests/petrus/impetus/test_net_document_lineage.py": {
+      "tests": 9,
+      "cases": 23
+    },
     "petrus:tests/petrus/motus/dispatch/test_absurd_adapter.py": {
       "tests": 78,
       "cases": 103
+    },
+    "petrus:tests/petrus/motus/dispatch/test_attempt_heartbeats.py": {
+      "tests": 8,
+      "cases": 20
+    },
+    "petrus:tests/petrus/motus/dispatch/test_local_dispatch.py": {
+      "tests": 36,
+      "cases": 41
+    },
+    "petrus:tests/petrus/motus/test_execution_contract.py": {
+      "tests": 10,
+      "cases": 10
+    },
+    "petrus:tests/petrus/motus/test_gondolin_environment.py": {
+      "tests": 32,
+      "cases": 33
+    },
+    "petrus:tests/petrus/motus/test_private_execution_substrate.py": {
+      "tests": 23,
+      "cases": 25
+    },
+    "petrus:tests/petrus/motus/test_private_file_transfer.py": {
+      "tests": 6,
+      "cases": 6
     },
     "petrus:tests/petrus/motus/transport/test_zeromq_dispatch_transport.py": {
       "tests": 26,
@@ -89,6 +749,10 @@
       "tests": 26,
       "cases": 29
     },
+    "petrus:tests/petrus/motus/worker/test_worker_runtime.py": {
+      "tests": 12,
+      "cases": 12
+    },
     "petrus:tests/petrus/motus/worker/test_worker_topology.py": {
       "tests": 36,
       "cases": 40
@@ -96,6 +760,38 @@
     "petrus:tests/petrus/processes/test_processes.py": {
       "tests": 19,
       "cases": 19
+    },
+    "petrus:tests/petrus/telemetry/test_telemetry.py": {
+      "tests": 29,
+      "cases": 29
+    },
+    "petrus:tests/petrus/telemetry/test_telemetry_instrumentation.py": {
+      "tests": 22,
+      "cases": 22
+    },
+    "petrus:tests/project/test_check_command.py": {
+      "tests": 3,
+      "cases": 3
+    },
+    "petrus:tests/project/test_conventions.py": {
+      "tests": 4,
+      "cases": 4
+    },
+    "petrus:tests/project/test_distribution.py": {
+      "tests": 1,
+      "cases": 1
+    },
+    "petrus:tests/project/test_exploration_identity.py": {
+      "tests": 1,
+      "cases": 1
+    },
+    "petrus:tests/project/test_package_boundaries.py": {
+      "tests": 20,
+      "cases": 20
+    },
+    "petrus:tests/project/test_release_command.py": {
+      "tests": 1,
+      "cases": 14
     }
   }
 }

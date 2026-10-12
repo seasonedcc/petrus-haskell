@@ -1,33 +1,54 @@
 #!/usr/bin/env python3
-"""Check the upstream test counts PARITY.md cites against a recorded count.
+"""Check every upstream test count the parity ledgers cite against a record.
 
-    scripts/upstream-test-counts --check   # (check-parity runs this) no Python needed
+    scripts/upstream-test-counts --check   # (check-parity runs this) no Python environment needed
     scripts/upstream-test-counts --write   # recollect with pytest and rewrite the record
 
-PARITY.md cites how many tests upstream files have, in a few fixed phrasings:
+The ledgers (PARITY.md, packages/*/PARITY.md, packages/*/parity/*.md and
+packages/*/parity-*.md) say how many tests upstream files have. A *test* (or
+*function*) is a test function or method; a *case* (or *item*) is what pytest
+collects, one per parametrization. ``--write`` runs ``pytest --collect-only``
+over each pinned upstream project (upstream/petrus, upstream/petrus-engine,
+upstream/hamsterdan) in its pinned environment (scripts/upstream-python) and
+records every test file's two counts, with the commits they were collected
+at, in docs/upstream-test-counts.json. ``--check`` reads only git and that
+record, so it needs neither the submodules' environments nor Python packages.
+It fails:
 
-    all 11 `test_sqlite_history.py` tests (14 cases)
-    26 `test_async_worker.py` tests
-    all 13 `test_postgres_engine.py` cases
-    `test_v5_ingress.py` ported (82 cases)
-    `test_v5_review.py` and `test_v5_mutation.py` ported (135 cases)   # the sum
-    `test_service.py` (69 of 70 cases
+- when an upstream submodule has moved since the record was made (rerun
+  ``--write``);
+- when a cited count differs from the record, or a cited file is not in it
+  or is ambiguous (cite more of its path);
+- when a ledger states a count it cannot read, so that no count goes
+  unchecked: write it in one of the forms below.
 
-A *test* is a test function (or method), a *case* (or *item*) is what pytest
-collects, one per parametrization. ``--write`` collects every cited file with
-``pytest --collect-only`` under the pinned upstream environment
-(scripts/upstream-python) and records the counts, with the upstream commits
-they were collected at, in docs/upstream-test-counts.json. ``--check`` fails
-when a cited count differs from the record, when a cited file is not
-recorded, or when an upstream submodule has moved since the record was made
-(the counts may have changed with it: rerun ``--write``). It reads only git
-and the record, so it needs neither the submodules nor Python's environments.
+A count is read from these forms, where F is a test file named by its path
+or by enough of the path's end to be unique (`tests/unit/test_pi.py`,
+`test_pi.py`), with or without backticks:
 
-Only these phrasings and only the upstream side are checked: what a port's
-own suite runs is checked by the suites themselves and, for the runtime, by
-the ledgers of packages/petrus-engine/scripts/parity_check.py. A file is
-looked up in upstream/hamsterdan for a ``hamsterdan-*`` package's row, else
-in upstream/petrus, then upstream/petrus-engine.
+    F (5 functions, 8 cases)        F (11 tests, 14 cases)     F (3 functions)
+    F (69 of 70 cases               F ported (82 cases)        F's 14 cases
+    F: 20 functions / 29 cases      F: 12 functions, 13 cases  F: 3 functions
+    F, 26 tests                     F, 36 tests (40 cases)     F, 11 of 12 tests
+    F, 23 of 26 tests (29 collected)                           F: all 19 tests
+    F has 36 test functions and 40 cases
+    all 11 F tests (14 cases)       26 F tests                 all 13 F cases
+    All 22 tests of F               F and G ported (135 cases)    (the sum)
+
+and from tables whose header names the unit of a column: "Functions",
+"Tests" or "Test functions"; "Cases", "Items" or "Collected"; or "Upstream
+count" ("78 functions, 103 cases"). A cell may read "8 of 10": the total is
+the second number, and "N of M" in the forms above checks M, the file's
+total. A count of a subset says so ("the 3 Engine-level tests", "4 Worker
+cases of 36") and is not checked. Any other count of tests, cases, functions
+or items in the clause after a file name, and any "N upstream tests" (or
+cases, functions, items), is refused: write it in a form above, or as a
+subset.
+
+The file is looked up in upstream/hamsterdan for a ``hamsterdan-*`` package's
+ledger or the root ledger's hamsterdan section, else in upstream/petrus, then
+upstream/petrus-engine. What a port's own suite runs is not stated in the
+ledgers (scripts/lint-example-counts); `cabal test` and CI report it.
 """
 
 from __future__ import annotations
@@ -37,52 +58,231 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent
 RECORD = ROOT / "docs" / "upstream-test-counts.json"
 PROJECTS = ["petrus", "petrus-engine", "hamsterdan"]
-NUMBER = "(\\d+(?:[   ]\\d{3})*)"
-FILE = r"`test_\w+\.py`"
-FILES = "(" + FILE + "(?:(?:, | and | and the )" + FILE + ")*)"
-COUNTED = re.compile(NUMBER + " (" + FILE + r") (tests|cases)(?: \(" + NUMBER + r" (?:cases|items)\))?")
-PORTED = re.compile(FILES + r" ported \(" + NUMBER + r" cases\)")
-OF = re.compile("(" + FILE + r") \(\d+ of " + NUMBER + r" cases")
-Claim = Tuple[int, str, Tuple[str, ...], str, int]
+
+N = r"(\d+)"
+FILE = r"`?((?:[\w.\-]+/)*test_\w+\.py)`?(?!::|\w)"
+FILES = r"((?:`?(?:[\w.\-]+/)*test_\w+\.py`?(?:, | and | and the | \+ ))*`?(?:[\w.\-]+/)*test_\w+\.py`?)"
+TESTS = r"(?:test )?(?:functions?|tests?)"
+CASES = r"(?:cases|items)"
+UNIT = r"(?:upstream )?(?:test functions?|tests?|functions?|cases?|items?|collected)\b"
+
+# A pattern matched right after a file name: (regex, groups that are totals as (group, unit)).
+AFTER = [
+    (re.compile(r"\s*\((?:\d+ of )?" + N + " " + TESTS + r"(?:, (?:\d+ of )?" + N + " " + CASES + r")?"),
+     [(1, "tests"), (2, "cases")]),
+    (re.compile(r"\s*(?:ported )?\((?:\d+ of )?" + N + " " + CASES + r"\b"), [(1, "cases")]),
+    (re.compile(r":? " + N + " functions(?: /|,) " + N + " cases"), [(1, "tests"), (2, "cases")]),
+    (re.compile(r",? (?:\d+ of )?" + N + " " + TESTS + r"(?: \(" + N + r" (?:cases|collected)\))?"),
+     [(1, "tests"), (2, "cases")]),
+    (re.compile(r" has " + N + " test functions and " + N + " cases"), [(1, "tests"), (2, "cases")]),
+    (re.compile(r"(?:'s|’s) " + N + r" tests\b"), [(1, "tests")]),
+    (re.compile(r"(?:'s|’s) " + N + r" cases\b"), [(1, "cases")]),
+    (re.compile(r":? (?:all )?" + N + " " + TESTS + r"\b"), [(1, "tests")]),
+]
+BARE = re.compile(r"\s*(?:\(\d+[,)]|, \d+ of \d+(?! \w))")
+# Patterns that name the file inside them.
+AROUND = [
+    (re.compile(r"(?:all )?" + N + " " + FILE + " (tests|cases)(?: \\(" + N + " " + CASES + r"\))?"), None),
+    (re.compile(r"All " + N + " tests of " + FILE), None),
+    (re.compile(FILES + r" ported \(" + N + r" cases\b"), None),
+]
+UNIT_COUNT = re.compile(r"(?<![\w.§])" + N + r" " + UNIT)
+SEPARATOR = re.compile(r"^\|\s*:?-{3}")
+COLUMNS = {"functions": "tests", "tests": "tests", "test functions": "tests",
+           "cases": "cases", "items": "cases", "collected": "cases", "upstream count": "count"}
 
 
-def number(text: str) -> int:
-    return int(re.sub(r"\D", "", text))
+class Claim(NamedTuple):
+    doc: str
+    line: int
+    projects: Tuple[str, ...]
+    files: Tuple[str, ...]
+    unit: str
+    count: int
 
 
-def names(text: str) -> Tuple[str, ...]:
-    return tuple(re.findall(r"`(test_\w+\.py)`", text))
+class Segment(NamedTuple):
+    text: str
+    lines: List[int]  # the line of each character
 
 
-def cells(line: str) -> List[str]:
-    return [c.strip() for c in line.strip().strip("|").split("|")]
+def ledgers() -> List[str]:
+    listed = subprocess.run(["git", "ls-files", "--", "PARITY.md", "packages/*/PARITY.md", "packages/*/parity/*.md",
+                             "packages/*/parity-*.md"], cwd=ROOT, check=True, stdout=subprocess.PIPE,
+                            text=True).stdout.split()
+    return sorted(set(listed))
 
 
-def claims() -> List[Claim]:
-    """(PARITY.md line, package cell, file names, "tests" or "cases", count):
-    the count is of the files together."""
-    found: List[Claim] = []
-    for index, line in enumerate((ROOT / "PARITY.md").read_text(encoding="utf-8").splitlines(), 1):
-        if not line.startswith("|"):
+def cells(row: str) -> List[Tuple[int, str]]:
+    """A table row's cells with their offsets; pipes inside backticks or escaped do not split."""
+    found, start, tick, i = [], 1, False, 1
+    body = row.rstrip()
+    while i < len(body):
+        c = body[i]
+        if c == "\\":
+            i += 2
             continue
-        parts = cells(line)
-        if len(parts) < 5:
-            continue
-        package, evidence = parts[2], parts[4]
-        for match in COUNTED.finditer(evidence):
-            found.append((index, package, names(match.group(2)), match.group(3), number(match.group(1))))
-            if match.group(4):
-                found.append((index, package, names(match.group(2)), "cases", number(match.group(4))))
-        for match in PORTED.finditer(evidence):
-            found.append((index, package, names(match.group(1)), "cases", number(match.group(2))))
-        for match in OF.finditer(evidence):
-            found.append((index, package, names(match.group(1)), "cases", number(match.group(2))))
+        if c == "`":
+            tick = not tick
+        elif c == "|" and not tick:
+            found.append((start, body[start:i]))
+            start = i + 1
+        i += 1
     return found
+
+
+def projects_for(doc: str, heading: str) -> Tuple[str, ...]:
+    if doc.startswith("packages/hamsterdan-") or (doc == "PARITY.md" and heading == "hamsterdan"):
+        return ("hamsterdan",)
+    if doc == "PARITY.md" and heading == "petrus-viewer":
+        return ()
+    if doc == "PARITY.md" and heading == "petrus-engine":
+        return ("petrus-engine", "petrus")
+    return ("petrus", "petrus-engine")
+
+
+def segments(lines: List[str]) -> Iterator[Tuple[str, Segment, Optional[List[str]], Optional[int]]]:
+    """(heading, segment, table header, column) for each paragraph, heading and table cell."""
+    heading = ""
+    paragraph: List[Tuple[int, str]] = []
+    header: Optional[List[str]] = None
+
+    def flush() -> Iterator[Tuple[str, Segment, Optional[List[str]], Optional[int]]]:
+        if paragraph:
+            text, owners = "", []
+            for number, line in paragraph:
+                piece = line.strip() + " "
+                text += piece
+                owners += [number] * len(piece)
+            yield heading, Segment(text, owners), None, None
+            paragraph.clear()
+
+    for index, line in enumerate(lines):
+        number = index + 1
+        if line.startswith("|"):
+            yield from flush()
+            if index + 1 < len(lines) and SEPARATOR.match(lines[index + 1]):
+                header = [text.strip().lower() for _, text in cells(line)]
+                continue
+            if SEPARATOR.match(line):
+                continue
+            for column, (_, text) in enumerate(cells(line)):
+                yield heading, Segment(text, [number] * len(text)), header, column
+            continue
+        header = None
+        if line.startswith("#"):
+            yield from flush()
+            if line.startswith("## "):
+                heading = line[3:].strip().lower()
+            yield heading, Segment(line, [number] * len(line)), None, None
+        elif not line.strip():
+            yield from flush()
+        else:
+            paragraph.append((number, line))
+    yield from flush()
+
+
+def scan(doc: str) -> Tuple[List[Claim], List[str]]:
+    lines = (ROOT / doc).read_text(encoding="utf-8").split("\n")
+    claims: List[Claim] = []
+    problems: List[str] = []
+    rows: Dict[int, List[Tuple[Optional[List[str]], int, str]]] = {}
+    for heading, segment, header, column in segments(lines):
+        projects = projects_for(doc, heading)
+        if not projects:
+            continue
+        text = segment.text
+        used: Set[int] = set()
+
+        def claim(position: int, files: Tuple[str, ...], unit: str, count: str) -> None:
+            claims.append(Claim(doc, segment.lines[position], projects, files, unit, int(count)))
+
+        for pattern, _ in AROUND:
+            for match in pattern.finditer(text):
+                used.update(range(match.start(), match.end()))
+                groups = match.groups()
+                if pattern is AROUND[0][0]:
+                    claim(match.start(), (groups[1],), "tests" if groups[2] == "tests" else "cases", groups[0])
+                    if groups[3]:
+                        claim(match.start(), (groups[1],), "cases", groups[3])
+                elif pattern is AROUND[1][0]:
+                    claim(match.start(), (groups[1],), "tests", groups[0])
+                else:
+                    claim(match.start(), tuple(re.findall(r"(?:[\w.\-]+/)*test_\w+\.py", groups[0])), "cases",
+                          groups[1])
+        for match in re.finditer(FILE, text):
+            if match.start() in used:
+                continue
+            rest = text[match.end():]
+            for pattern, totals in AFTER:
+                after = pattern.match(rest)
+                if after:
+                    used.update(range(match.end(), match.end() + after.end()))
+                    for group, unit in totals:
+                        if after.group(group):
+                            claim(match.start(), (match.group(1),), unit, after.group(group))
+                    break
+            else:
+                if BARE.match(rest):
+                    problems.append(f"{doc}:{segment.lines[match.start()]}: a count after {match.group(1)} names no "
+                                    "unit (say tests or cases)")
+        if header is not None and column is not None:
+            rows.setdefault(segment.lines[0], []).append((header, column, text))
+        for match in UNIT_COUNT.finditer(text):
+            if match.start() in used:
+                continue
+            before = text[max(0, match.start() - 4):match.start()]
+            after = text[match.end():match.end() + 3]
+            subset = before.endswith(("the ", "of ")) or after.startswith(" of") or text[match.end():].startswith(")")
+            if subset:
+                continue
+            window = text[max(0, match.start() - 60):match.start()]
+            near = list(re.finditer(FILE, window))
+            about_a_file = bool(near) and not re.search(r"[;.] ", window[near[-1].end():])
+            if about_a_file or "upstream" in match.group(0):
+                problems.append(f"{doc}:{segment.lines[match.start()]}: \"{match.group(0)}\" is not a count this "
+                                "script can read; use a form from scripts/upstream-test-counts, or say it is a "
+                                "subset (\"the N ...\")")
+    for number, row in rows.items():
+        header = row[0][0] or []
+        files = [re.findall(FILE, text) for _, _, text in row]
+        file_cells = [found for found in files if found]
+        if not file_cells:
+            continue
+        for _, column, text in row:
+            unit = COLUMNS.get(header[column] if column < len(header) else "")
+            value = text.strip()
+            if unit is None or not value:
+                continue
+            target = tuple(file_cells[0])
+            if len(target) != 1:
+                problems.append(f"{doc}:{number}: a count column for {len(target)} files; name one file per row")
+                continue
+            heading = ""
+            for line in lines[:number]:
+                if line.startswith("## "):
+                    heading = line[3:].strip().lower()
+            projects = projects_for(doc, heading)
+            if unit == "count":
+                found = re.fullmatch(r"(?:\d+ of )?" + N + r" functions?(?:, (?:\d+ of )?" + N + " cases)?", value)
+                if not found:
+                    problems.append(f"{doc}:{number}: cannot read the upstream count \"{value}\"")
+                    continue
+                claims.append(Claim(doc, number, projects, target, "tests", int(found.group(1))))
+                if found.group(2):
+                    claims.append(Claim(doc, number, projects, target, "cases", int(found.group(2))))
+                continue
+            found = re.fullmatch(r"\**(?:\d+ of )?" + N + r"\**", value)
+            if not found:
+                problems.append(f"{doc}:{number}: cannot read the count \"{value}\" in the {header[column]} column")
+                continue
+            claims.append(Claim(doc, number, projects, target, unit, int(found.group(1))))
+    return claims, problems
 
 
 def gitlinks() -> Dict[str, str]:
@@ -91,53 +291,37 @@ def gitlinks() -> Dict[str, str]:
     return {line.split("\t")[1].split("/", 1)[1]: line.split()[2] for line in listing.splitlines()}
 
 
-def projects_for(package: str) -> List[str]:
-    return ["hamsterdan"] if package.strip("`").startswith("hamsterdan") else ["petrus", "petrus-engine"]
-
-
-def locate(package: str, name: str) -> Optional[str]:
-    """The cited file as "project:path", searched in the checkout."""
-    for project in projects_for(package):
-        hits = sorted(p for p in (ROOT / "upstream" / project).rglob(name)
-                      if ".venv" not in p.parts and "node_modules" not in p.parts)
-        if len(hits) == 1:
-            return f"{project}:{hits[0].relative_to(ROOT / 'upstream' / project).as_posix()}"
-        if len(hits) > 1:
-            return None
-    return None
-
-
-def recorded(record: dict, package: str, name: str) -> Optional[str]:
-    """The cited file's key in the record, looked up as `locate` would."""
-    for project in projects_for(package):
-        keys = [k for k in record["files"] if k.split(":")[0] == project and k.rsplit("/", 1)[-1] == name]
+def lookup(files: Dict[str, dict], projects: Tuple[str, ...], name: str) -> Tuple[Optional[str], str]:
+    """The recorded key of a cited file, or why there is none."""
+    for project in projects:
+        keys = [k for k in files if k.split(":")[0] == project
+                and (k.split(":", 1)[1] == name or k.split(":", 1)[1].endswith("/" + name))]
+        if len(keys) == 1:
+            return keys[0], ""
         if keys:
-            return keys[0] if len(keys) == 1 else None
-    return None
+            return None, f"{name} is ambiguous in upstream/{project} ({', '.join(k.split(':', 1)[1] for k in keys)})"
+    return None, f"{name} is not a test file of {' or '.join('upstream/' + p for p in projects)}"
 
 
-def collect(key: str) -> Tuple[int, int]:
-    project, path = key.split(":", 1)
+def collect(project: str) -> Dict[str, dict]:
     python = subprocess.run([str(ROOT / "scripts" / "upstream-python"), project], cwd=ROOT, check=True,
                             stdout=subprocess.PIPE, text=True).stdout.strip()
-    result = subprocess.run([python, "-B", "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", path],
+    result = subprocess.run([python, "-B", "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider"],
                             cwd=ROOT / "upstream" / project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     ids = [line for line in result.stdout.splitlines() if "::" in line and not line.startswith(" ")]
     if result.returncode != 0 or not ids:
-        raise SystemExit(f"upstream-test-counts: collecting {key} failed:\n{result.stdout}")
-    return len({re.sub(r"\[.*\]$", "", i) for i in ids}), len(ids)
+        raise SystemExit(f"upstream-test-counts: collecting upstream/{project} failed:\n{result.stdout}")
+    files: Dict[str, List[str]] = {}
+    for item in ids:
+        files.setdefault(item.split("::", 1)[0], []).append(item)
+    return {f"{project}:{path}": {"tests": len({re.sub(r'\[.*\]$', '', i) for i in items}), "cases": len(items)}
+            for path, items in files.items()}
 
 
 def write() -> int:
     record: dict = {"upstream": {p: c for p, c in sorted(gitlinks().items()) if p in PROJECTS}, "files": {}}
-    for package, name in sorted({(package, name) for _, package, files, _, _ in claims() for name in files}):
-        key = locate(package, name)
-        if key is None:
-            print(f"upstream-test-counts: cannot locate {name} for {package} unambiguously", file=sys.stderr)
-            return 1
-        if key not in record["files"]:
-            tests, cases = collect(key)
-            record["files"][key] = {"tests": tests, "cases": cases}
+    for project in PROJECTS:
+        record["files"].update(collect(project))
     record["files"] = dict(sorted(record["files"].items()))
     RECORD.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     print(f"recorded {len(record['files'])} upstream test files in {RECORD.relative_to(ROOT)}")
@@ -150,30 +334,37 @@ def check() -> int:
               file=sys.stderr)
         return 1
     record = json.loads(RECORD.read_text(encoding="utf-8"))
-    problems = []
+    problems: List[str] = []
     current = gitlinks()
     for project, commit in record["upstream"].items():
         if current.get(project) != commit:
             problems.append(f"upstream/{project} moved from {commit[:12]} to {current.get(project, '?')[:12]} since the"
-                            " counts were recorded")
-    found = claims()
-    for line, package, files, what, count in found:
-        keys = [recorded(record, package, name) for name in files]
-        missing = [name for name, key in zip(files, keys) if key is None]
-        if missing:
-            problems.append(f"PARITY.md line {line}: {', '.join(missing)} ({package}) not recorded")
+                            " counts were recorded (rerun scripts/upstream-test-counts --write)")
+    found: List[Claim] = []
+    for doc in ledgers():
+        claims, unread = scan(doc)
+        found += claims
+        problems += unread
+    for claim in found:
+        keys = []
+        for name in claim.files:
+            key, why = lookup(record["files"], claim.projects, name)
+            if key is None:
+                problems.append(f"{claim.doc}:{claim.line}: {why}")
+            keys.append(key)
+        if None in keys:
             continue
-        actual = sum(record["files"][key][what] for key in keys)
-        if actual != count:
-            problems.append(f"PARITY.md line {line}: cites {count} {what} for {' + '.join(files)}; upstream has {actual}")
+        actual = sum(record["files"][key][claim.unit] for key in keys)
+        if actual != claim.count:
+            problems.append(f"{claim.doc}:{claim.line}: cites {claim.count} {claim.unit} for "
+                            f"{' + '.join(claim.files)}; upstream has {actual}")
     if problems:
-        print("PARITY.md's upstream test counts do not match docs/upstream-test-counts.json"
-              " (fix the count, or rerun scripts/upstream-test-counts --write after moving a submodule):",
+        print("upstream-test-counts: the ledgers' upstream test counts do not match docs/upstream-test-counts.json:",
               file=sys.stderr)
-        for problem in problems:
+        for problem in dict.fromkeys(problems):
             print("  " + problem, file=sys.stderr)
         return 1
-    print(f"{len(found)} upstream test counts PARITY.md cites match the recorded collection")
+    print(f"{len(found)} upstream test counts in {len(ledgers())} ledgers match the recorded collection")
     return 0
 
 

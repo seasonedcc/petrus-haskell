@@ -1,0 +1,7 @@
+test_pi_model_phase
+  test_helper_syntax_and_exact_hands_bounds [✔]
+  test_exact_installed_model_phase_probe [‐]
+    # PENDING: exact Pi qualification packages required
+
+Finished in 0.0012 seconds
+2 examples, 0 failures, 1 pending

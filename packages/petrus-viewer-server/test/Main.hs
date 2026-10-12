@@ -8,6 +8,7 @@ import HistorySpec qualified
 import JsonSpec qualified
 import McpSpec qualified
 import ObservationSpec qualified
+import Oracle (runOracle)
 import ProxySpec qualified
 import ProtocolSpec qualified
 import RelaySpec qualified
@@ -21,6 +22,7 @@ main :: IO ()
 main =
   getArgs >>= \case
     ["--chain-producer", instanceId] -> serveChain (T.pack instanceId)
+    ["--oracle"] -> runOracle
     _ -> specs
 
 specs :: IO ()

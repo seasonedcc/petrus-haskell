@@ -28,6 +28,14 @@ PAYLOAD = (
     '{"type": "FiringStarted", "occurrence": 7, "transition": "t", '
     '"instant": "2026-01-01T00:00:00+00:00", "tokens": [1, 2, 3]}'
 )
+# Calls per batch of the rows bench/Main.hs times with the twin's protocol
+# (txCommits, txOwned, fenceCalls, notifyCalls): both sides make exactly the
+# same calls and take the same statistic (bench_timing.py's median of
+# batches).
+TX_COMMITS = 3000
+TX_OWNED = 600
+FENCE_CALLS = 4000
+NOTIFY_CALLS = 7000
 CREATE = (
     "CREATE TEMPORARY TABLE bench_events (sequence bigserial PRIMARY KEY, event_id text UNIQUE NOT NULL, "
     "net_instance_id text NOT NULL, record_type text NOT NULL, occurrence bigint, payload jsonb NOT NULL)"
@@ -79,10 +87,14 @@ def main() -> None:
             "query.select-1000-decoded",
             lambda: len(auto.execute("SELECT n, label, payload FROM bench_rows ORDER BY n").fetchall()),
         )
-        report("tx.join-insert-commit", join_insert_commit)
-        report("tx.owned-insert-10", owned_insert_10)
-        report("fence.acquire-release", lambda: PostgresAuthorityFence(auto, "petrus-bench-fence").close())
-        report("notify.roundtrip", notify_roundtrip)
+        report("tx.join-insert-commit", join_insert_commit, number=TX_COMMITS)
+        report("tx.owned-insert-10", owned_insert_10, number=TX_OWNED)
+        report(
+            "fence.acquire-release",
+            lambda: PostgresAuthorityFence(auto, "petrus-bench-fence").close(),
+            number=FENCE_CALLS,
+        )
+        report("notify.roundtrip", notify_roundtrip, number=NOTIFY_CALLS)
         report("params.convert-placeholders", lambda: _query2pg_nocache(INSERT.encode(), "utf-8"))
     finally:
         for connection in (auto, joined, listener, sender):

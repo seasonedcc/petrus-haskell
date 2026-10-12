@@ -111,7 +111,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
 - **I-005** `instance` §Places. A typed place's initial marking holds only
   its declared color. A token of another color, or a black token, is refused
   before any History record. *(`Instance runtime › typed-place initial
-  marking`, 2 examples, beyond upstream; `petrus-engine` `DeliveryPhasesASpec`:
+  marking`, beyond upstream; `petrus-engine` `DeliveryPhasesASpec`:
   "load refuses initial token color the live constructor rejects")*
 - **I-006** `instance` §Places. A place with no outgoing arcs is a legal
   accumulator. *(`Instance FIFO drain › the sink accumulates in arrival
@@ -136,7 +136,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
     nothing;
   - reusing an identity for other content is a conflict.
 
-  *(`Ingress › delivery identity enforcement`, 7 examples)*
+  *(`Ingress › delivery identity enforcement`)*
 - **I-011** `engine` §Source transitions. A Sensor that learned an answer
   re-offers it under the same delivery identity. *(`petrus-engine`
   `ExecutionSpec`: "sensor can redeliver the identity returned by a prior
@@ -155,7 +155,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   inhibit filter gates on the absence of a matching token. *(`Petrinet.Enabledness
   › selection › narrows color admission by the filter`; `never reaches the
   filter on a color mismatch`; `Petrinet arc filters › read and inhibit
-  filters`, 3 examples)*
+  filters`)*
 - **I-016** `kernel` §Inscriptions. Weight applies to every input mode: a
   consume arc needs that many admitted tokens, and an inhibitor is satisfied
   below its weight. A weight below one is refused. *(`Petrinet.Enabledness ›
@@ -168,7 +168,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
 - **I-018** `instance` §Inscriptions. The handler supplies output tokens keyed
   by destination. Only tokens whose color and destination match an output arc
   are deposited, so one firing can send different payloads down different
-  arcs. *(`Instance handlers › per-arc output contracts`, 4 examples)*
+  arcs. *(`Instance handlers › per-arc output contracts`)*
 - **I-019** `kernel` §Arc identity. Parallel arcs between one endpoint pair
   keep their order. A unique arc's URI has no fragment; repeated pairs use
   `#$N`; filters use `#filter` or `#filter:$N`. *(`Petrinet.Schema › Net ›
@@ -181,23 +181,22 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   the condition already holds`)*
 - **I-021** `instance` §Completion condition. The condition's place references
   must resolve, and a named symbol must have an implementation, at
-  construction. *(`Instance completion › completion validation`, 2 examples;
+  construction. *(`Instance completion › completion validation`;
   `named completion › fails at construction on a missing implementation`)*
 - **I-022** `kernel` §Colored tokens and markings. A place's tokens form a
   FIFO queue that admits duplicates. A consume removes the front-most equal
   occurrence, and entry instants mirror the queue. *(`Petrinet.Marking ›
-  TokenQueue › remove`, 7 examples; `Timers › entry instants`, 2 examples;
+  TokenQueue › remove`; `Timers › entry instants`;
   `Instance FIFO drain › each firing consumes the front token`)*
 - **I-023** `kernel` §Addressing. A NetPath is validated strictly (no empty
   path or segment) and round-trips its spelling. *(`Petrinet.Schema ›
-  NetPath`, 9 examples)*
+  NetPath`)*
 - **I-024** `kernel` §Addressing. NetUri is canonical ASCII:
   - typed schemes;
   - `->` between arc endpoints;
   - uppercase percent escapes.
 
-  Noncanonical spellings are refused. *(`Petrinet.Schema › NetUri`, 9
-  examples)*
+  Noncanonical spellings are refused. *(`Petrinet.Schema › NetUri`)*
 - **I-025** `kernel` §Addressing. A handler is `#handler`, a named guard
   `#guard:name`, an anonymous guard `#guard:$N`. A leading `$` is reserved,
   and duplicate named guards are refused. *(`Petrinet.Schema › Net › indexes
@@ -236,29 +235,28 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   selection › is disabled without a matching token`; `counts admitted tokens
   only toward the weight`)*
 - **I-031** `kernel` §Enabledness. A read arc needs matching tokens; they join
-  the binding and are not consumed. *(`Petrinet.Enabledness › read arcs`, 2
-  examples; `Petrinet.Firing › read arcs › peeks the read token instead of
+  the binding and are not consumed. *(`Petrinet.Enabledness › read arcs`; `Petrinet.Firing › read arcs › peeks the read token instead of
   consuming it`)*
 - **I-032** `kernel` §Enabledness. An inhibit arc needs no matching token.
-  *(`Petrinet.Enabledness › inhibitor gating`, 2 examples; `Petrinet.Firing ›
-  inhibitor gating`, 2 examples)*
+  *(`Petrinet.Enabledness › inhibitor gating`; `Petrinet.Firing ›
+  inhibitor gating`)*
 - **I-033** `instance` §Enabledness. Guards see the selected tokens, consumed
   then read, without consuming them, and must all hold. *(`Instance guards ›
-  guards see the full binding`, 2 examples; `guard composition › requires all
+  guards see the full binding`; `guard composition › requires all
   guards to hold`)*
 - **I-034** `kernel` §Enabledness. Candidates enumerate per-arc selections
   first (filters prune each arc's tokens) and then guards filter the
   assembled bindings. Every admissible binding is a candidate, in a
   deterministic order (input arc major, FIFO minor), and a guard-failed head
   does not mask a deeper binding. *(`Petrinet.Enabledness › multi-binding
-  enumeration`, 4 examples; `candidates › orders candidates stably by path`;
-  `Instance guards › guard branch`, 3 examples; `Instance CEL guards › CEL
-  guard routing`, 2 examples)*
+  enumeration`; `candidates › orders candidates stably by path`;
+  `Instance guards › guard branch`; `Instance CEL guards › CEL
+  guard routing`)*
 - **I-035** `instance` §Enabledness (evaluation errors). A declared mismatch
   is refused at construction and never evaluates. Examples are a CEL guard
   naming a place that does not feed the transition, and invalid CEL. Read
   places are in the guard scope; inhibit-only places are not. *(`Instance CEL
-  guards › CEL guard validation`, 5 examples; on real CEL in `petrus-cel`
+  guards › CEL guard validation`; on real CEL in `petrus-cel`
   `test/KernelSeam.hs`)*
 - **I-036** `instance` §Enabledness (evaluation errors). A runtime evaluation
   error on a concrete token is handled this way:
@@ -269,8 +267,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
 
   *(`Petrinet.Enabledness › selection › treats a raising filter as not
   admitted, with a diagnostic`; `Petrinet arc filters › filter evaluation
-  errors`, 4 examples; `Instance guards › guard evaluation errors`, 3
-  examples; `Instance CEL guards › CEL guard evaluation errors`, 2 examples)*
+  errors`; `Instance guards › guard evaluation errors`; `Instance CEL guards › CEL guard evaluation errors`)*
 - **I-037** `instance` §Firing pipeline, §Begin/end firing lifecycle.
   `CandidateSelected` precedes the firing lifecycle. Begin firing accounts for
   the inputs, and end firing produces the outputs. *(`Instance runtime › the
@@ -280,13 +277,12 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
 - **I-038** `instance` §Begin/end firing lifecycle. Inputs are accounted at
   begin, so a consumed token cannot be selected again. A stale selection
   appends nothing, and an in-flight occurrence keeps the Instance running.
-  *(`Instance firing occurrences › begin`, 9 examples; `Petrinet.Firing › read
+  *(`Instance firing occurrences › begin`; `Petrinet.Firing › read
   arcs › refuses to begin a binding that consumes its own read token`)*
 - **I-039** `instance` §Begin/end firing lifecycle. An impure transition's
   activity request is frozen in the begin batch. The result freezes in its
   own append before a deterministic projection. A failing prepare appends
-  nothing. *(`Activity invocation seam › begin freezes the request`, 5
-  examples; `record_activity_completion › the result freezes as its own append
+  nothing. *(`Activity invocation seam › begin freezes the request`; `record_activity_completion › the result freezes as its own append
   before projection`; `append boundaries`)*
 - **I-040** `instance` §Begin/end firing lifecycle. Several occurrences may be
   in flight at once, and each is completed, failed or resumed on its own.
@@ -301,7 +297,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
 
   After a crash between the two, reload resumes projection only and never
   makes another Attempt. *(`Activity invocation seam › fail: exhausted
-  execution`, 4 examples; `terminal failure projection`, 6 examples)*
+  execution`; `terminal failure projection`)*
 - **I-042** `engine` §Begin/end firing lifecycle. The following are
   Dispatch's:
   - operational retries reuse the frozen identities;
@@ -309,8 +305,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   - a delayed retry never blocks Inline execution.
 
   *(`petrus-activity`, `petrus-motus` and `petrus-engine` ledgers;
-  `Activity invocation seam › the seam's value objects › ExecutionPolicy`, 6
-  examples)*
+  `Activity invocation seam › the seam's value objects › ExecutionPolicy`)*
 - **I-043** `instance` §Token production. Output is per arc: handler tokens
   are deposited only where their color and destination match, never merged.
   *(`Instance handlers › per-arc output contracts`; `Petrinet.Firing ›
@@ -323,15 +318,14 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   - uses Petrinet candidate order as the final tie-breaker;
   - returns no choice when every candidate is filtered out.
 
-  *(`Selection`, the 8 policy and pipeline examples)*
+  *(`Selection`)*
 - **I-045** `kernel` §Scheduling. Policy state advances only through
   committed `CandidateSelected` + `FiringBegun` pairs. Replay folds those
   pairs only. An orphan selection spends its id but does not advance the
   policy, and a duplicate or mismatched pair is refused. *(`Selection › replay
   folds only exact committed selection pairs and spends orphans`; `replay
   threads accumulated policy state through committed pairs`;
-  `test_replay_refuses_duplicate_or_mismatched_selection_lifecycle`, 3
-  examples; `properties`, 2 examples)*
+  `test_replay_refuses_duplicate_or_mismatched_selection_lifecycle`; `properties`)*
 - **I-046** `engine` §Scheduling. These belong to the Engine:
   - one Engine turn applies at most one normal Action;
   - `DriveOutcome` reports ready, waiting or the next maturation;
@@ -346,32 +340,31 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   - a transition with no output arcs is a sink;
   - read and inhibit arcs contribute nothing.
 
-  *(`Instance firing › passthrough`, 4 examples; `Instance handlers › typed
-  passthrough routing`, 2 examples; `Petrinet.Firing › read arcs › contributes
+  *(`Instance firing › passthrough`; `Instance handlers › typed
+  passthrough routing`; `Petrinet.Firing › read arcs › contributes
   nothing to output`)*
 - **I-048** `kernel` §Timers. Timers belong to transitions:
   - a source transition cannot carry one;
   - a delay over inhibitor-only inputs is refused;
   - an `until` over inhibitor-only inputs is admitted.
 
-  *(`Timers › timer declarations`, 3 examples)*
+  *(`Timers › timer declarations`)*
 - **I-049** `kernel` §Timers. Maturation is per binding. A delay matures at
   the youngest consume- or read-bound entry instant plus Δ, an `until` at its
   instant, and a conjunction when its last timer does. *(`Timers ›
-  maturation`, 5 examples; `timed enabledness › matures the binding a delay
+  maturation`; `timed enabledness › matures the binding a delay
   after its token entered`; `anchors the binding on a read-bound token like a
   consumed one`; `ratified scenarios › matures concurrent bindings in anchor
   order`)*
 - **I-050** `instance` §Timers. Timer state is derived, never stored. The next
   maturation is derived from the marking and History, and a binding that
-  fails its guard never waits on time. *(`Timers › timed enabledness`, 10
-  examples)*
+  fails its guard never waits on time. *(`Timers › timed enabledness`)*
 - **I-051** `instance` §Timers. "Now" is the clock watermark: monotone, and it
   advances only at appends. An earlier instant clamps to it, and a wakeup
   appends `TimerMatured`. An early wakeup is suppressed, and a stale one is
   harmless. Replay re-derives every maturation without reading a clock.
-  *(`Timers › record instants`, 6 examples; `wakeup`, 5 examples; `watermark
-  advance`, 3 examples; `Resume › resume › restores a pending delay and wakes
+  *(`Timers › record instants`; `wakeup`; `watermark
+  advance`; `Resume › resume › restores a pending delay and wakes
   it`)*
 - **I-052** `instance` §Timers. There is no urgency: maturation enables but
   never fires. *(`Timers › wakeup › enables on maturation but never fires`)*
@@ -405,7 +398,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
 
   *(`Instance firing occurrences › begin › keeps the instance running while an
   occurrence is in flight`; `fail › no longer blocks quiescence once failed`;
-  `Timers › timed status`, 2 examples)*
+  `Timers › timed status`)*
 - **I-057** `instance` §Termination. The status is RUNNING if not quiescent.
   Otherwise it is:
   - COMPLETED if the condition holds;
@@ -413,9 +406,9 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   - STUCK if a condition is declared;
   - TERMINATED otherwise.
 
-  *(`Instance completion › status resolution`, 6 examples; `Delivery
-  registrations › awaiting status`, 7 examples; `Instance awaiting
-  termination`, 3 examples)*
+  *(`Instance completion › status resolution`; `Delivery
+  registrations › awaiting status`; `Instance awaiting
+  termination`)*
 - **I-058** `instance` §Termination. The status is re-evaluated on every
   append, including a registration close with no net activity. *(`Delivery
   registrations › awaiting status › flips status on seal with zero net
@@ -431,7 +424,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   the canonical lifecycle`)*
 - **I-060** `instance` §The canonical log is uncompacted. History is append
   only, and the marking is a projection rebuilt from it. *(`History ›
-  replayMarking`, 6 examples; `HistoryStore contract › round trip › append and
+  replayMarking`; `HistoryStore contract › round trip › append and
   extend accumulate, and a reload continues`)*
 - **I-061** `instance` §The minimal record model. Token movements are explicit
   records, and the marking derives from them. `TokensRead` is replay-inert,
@@ -441,7 +434,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
 - **I-062** `instance` §The minimal record model. A begin batch is
   `CandidateSelected`, `FiringBegun`, consumes, reads, then
   `ActivityRequested`. Any other order is replay divergence. *(`Activity
-  invocation seam › begin batch order parity`, 2 examples; `begin freezes the
+  invocation seam › begin batch order parity`; `begin freezes the
   request › the begin batch carries the activity request after the reads`;
   `Petrinet.Firing through the Instance › read arcs › begin records the read
   selection in the begin batch`)*
@@ -453,11 +446,10 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
     interpretation;
   - unknown records and field drift are refused.
 
-  *(`History codec › record codec`, 20 examples; `durable line spelling`, 2
-  examples)*
+  *(`History codec › record codec`; `durable line spelling`)*
 - **I-064** `instance` §The minimal record model. Opening and closing a
   delivery registration are recorded facts, inert for the marking on replay.
-  *(`Delivery registrations › registration lifecycle`, 6 examples;
+  *(`Delivery registrations › registration lifecycle`;
   `handler-driven lifecycle › commits the effects after the movements as their
   own records`; `keeps registration records inert during replay`)*
 - **I-065** `instance` §The minimal record model. An external event is
@@ -525,9 +517,9 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   requested input and the terminal result are in the canonical log. An
   identical terminal redelivery is acknowledged, before or after the firing
   ends and across a resume; a conflicting one is refused. *(`Activity
-  invocation seam › record_activity_completion`, 6 examples; `ended-occurrence
-  acknowledgement`, 6 examples; `K6 across resume`, 3 examples; `terminal
-  activity replay divergence`, 3 examples)*
+  invocation seam › record_activity_completion`; `ended-occurrence
+  acknowledgement`; `K6 across resume`; `terminal
+  activity replay divergence`)*
 - **I-076** `instance` §Deterministic records vs activity records. A durable
   prefix that ends at `ActivityFailed` reloads into projection only.
   *(`Activity invocation seam › activity replay guards › an activity failure
@@ -536,8 +528,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
 - **I-077** `codec` §Activities, not worker mechanics. `ActivityRequested`
   carries no Worker capability or queue routing, and an extra field is
   refused. *(`History codec › record codec › field drift fails as the record
-  type's own rejection`; `test_schema_5_activity_request_refuses_noncanonical_policy_shapes`,
-  4 examples)*
+  type's own rejection`; `test_schema_5_activity_request_refuses_noncanonical_policy_shapes`)*
 - **I-078** `instance` §Activities, not worker mechanics. A pure handler
   writes no activity records, but its firing is recorded. *(`Instance firing
   occurrences › complete › records no activity records for a passthrough
@@ -573,15 +564,15 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   - an anonymous declaration needs its exact URI;
   - an inline CEL filter refuses an exact override.
 
-  *(`Instance handlers › handler declaration bindings`, 4 examples; `Instance
-  guards › guard declaration bindings`, 4 examples; `Petrinet arc filters ›
-  named filter selection`, 3 examples; `Petrinet.Firing through the Instance ›
+  *(`Instance handlers › handler declaration bindings`; `Instance
+  guards › guard declaration bindings`; `Petrinet arc filters ›
+  named filter selection`; `Petrinet.Firing through the Instance ›
   named filter selection › an exact and a bare filter binding is ambiguous`;
   `CEL filter selection › an exact override of an inline CEL filter is
   refused`)*
 - **I-082** `instance` §Symbols and implementation mappings. Several guards
   compose as a conjunction. *(`Instance guards › guard composition`; `Instance
-  CEL guards › mixed guards`, 3 examples)*
+  CEL guards › mixed guards`)*
 - **I-083** `instance` §The handler contract. A handler sees the full binding,
   consumed and read tokens, and supplies the output tokens. *(`Instance
   handlers › a handler sees the full binding › correlates consumed and read
@@ -596,8 +587,8 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   - unmatched inputs;
   - output mismatches.
 
-  *(`typed bindings`, 8 examples; `Activity invocation seam ›
-  DerivedActivityHandler`, 12 examples)*
+  *(`typed bindings`; `Activity invocation seam ›
+  DerivedActivityHandler`)*
 - **I-085** `kernel` §The handler contract. Color matching is nominal. *(`Petrinet.Schema
   › Net › spells a color as a plain nominal name`; `Petrinet.Enabledness ›
   selection › never reaches the filter on a color mismatch`)*
@@ -606,8 +597,8 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   begin batch, then execution, then `ActivityCompleted`, then projection. A
   plain callable is a pure projection with no activity records, and a source
   transition cannot bind an `ActivityHandler`. *(`Activity invocation seam ›
-  append boundaries`; `purity is the binding's classification`, 2 examples;
-  `an inline driver drives the whole seam (Engine emulated)`, 4 examples)*
+  append boundaries`; `purity is the binding's classification`;
+  `an inline driver drives the whole seam (Engine emulated)`)*
 - **I-087** `instance` §Petrinet, activity, binding, and execution boundaries.
   The default execution policy is one Attempt. Durations above 1 000 000 000
   seconds fail before dispatch. *(`Activity invocation seam › the seam's value
@@ -636,8 +627,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   ```
 
   *(`Petrus.Impetus.NetDefinition › projects, compiles, and round-trips JSON
-  as fixed points`; `Net definition and document round-trip properties`, 4
-  examples; `Petrus.Impetus.NetDefinition differential corpus`, 1763 cases;
+  as fixed points`; `Net definition and document round-trip properties`; `Petrus.Impetus.NetDefinition differential corpus`, 1763 cases;
   `hand-built Net definitions and documents (differential corpus)`; `live
   round trip through the pinned reference`)*
 - **I-091** `interop` §Canonical laws. The writer's bytes equal the
@@ -651,8 +641,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   - lone surrogates.
 
   *(`Petrus.Impetus.NetDefinition ›
-  test_strict_json_refuses_duplicate_nonfinite_utf8_and_surrogate`, 4
-  examples; `refuses lone surrogates when projecting a net or serializing a
+  test_strict_json_refuses_duplicate_nonfinite_utf8_and_surrogate`; `refuses lone surrogates when projecting a net or serializing a
   model`)*
 - **I-093** `codec` §Canonical laws, §Flat definition. Parsing also refuses:
   - unknown fields;
@@ -662,21 +651,18 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   - every runtime `Net` violation.
 
   *(`Petrus.Impetus.NetDefinition ›
-  test_noncanonical_or_invalid_documents_are_refused`, 10 examples; the
+  test_noncanonical_or_invalid_documents_are_refused`; the
   differential corpus's mutation and fuzz cases)*
 - **I-094** `codec` §Interoperable integers. Every number must use integer
   spelling within ±(2^53 − 1), checked before shape. Every schema integer and
   runtime projection keeps that bound. *(`Petrus.Impetus.NetDefinition ›
-  test_every_json_number_token_is_interoperably_admitted_before_shape`, 4
-  examples;
-  `test_every_schema_owned_integer_refuses_values_outside_interoperable_range`,
-  5 examples;
-  `test_runtime_projection_refuses_integers_outside_interoperable_range`, 2
-  examples)*
+  test_every_json_number_token_is_interoperably_admitted_before_shape`;
+  `test_every_schema_owned_integer_refuses_values_outside_interoperable_range`;
+  `test_runtime_projection_refuses_integers_outside_interoperable_range`)*
 - **I-095** `codec` §Canonical path ordering. Paths sort by Unicode scalar
   value, not UTF-16 code unit. *(`Petrus.Impetus.NetDefinition › keeps the
   cross-language integer and scalar-order fixture an exact fixed point`;
-  `test_cross_language_negative_fixtures_are_refused`, 2 examples)*
+  `test_cross_language_negative_fixtures_are_refused`)*
 - **I-096** `interop` §Canonical path ordering. The generated JSON Schema
   matches `NetDefinitionV3.model_json_schema()`. *(`Petrus.Impetus.NetDefinition
   › publishes a strict, versioned JSON Schema`; `Petrus.Impetus JSON Schema
@@ -694,7 +680,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
 - **I-099** `codec` §1a Envelope. `format`, `version` and `definition` are
   required. An absent `view` is omitted, never `null`, and a definition-only
   document is valid. *(`Petrus.Impetus.NetDocument ›
-  test_malformed_or_confused_documents_are_refused`, 11 examples; `omits the
+  test_malformed_or_confused_documents_are_refused`; `omits the
   view of a definition-only document, and a view never changes identity`)*
 - **I-100** `codec` §1b Net identity. The identity is the SHA-256 of the
   canonical definition bytes; Layout and Timeline do not change it.
@@ -706,8 +692,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   and `y` are finite numbers, and nodes are unique and sorted. A partial
   Layout is valid. *(`Petrus.Impetus.NetDocument › admits a partial,
   fractional view and publishes a strict JSON Schema`;
-  `test_view_coordinates_must_be_finite_interoperable_json_numbers`, 6
-  examples; `revalidates foreign nodes and non-finite coordinates on direct
+  `test_view_coordinates_must_be_finite_interoperable_json_numbers`; `revalidates foreign nodes and non-finite coordinates on direct
   serialization and projection`)*
 - **I-102** `codec` §1d Timeline. The Timeline is strict:
   - ids are dense and equal their index;
@@ -717,8 +702,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   - entries are nonempty;
   - metadata is an object.
 
-  *(`Petrus.Impetus.NetDocument lineage › test_lineage_shape_is_strict`, 8
-  examples)*
+  *(`Petrus.Impetus.NetDocument lineage › test_lineage_shape_is_strict`)*
 - **I-103** `codec` §1d Timeline. Observed, manual and simulated entries share
   one shape. *(`Petrus.Impetus.NetDocument lineage › gives observed, manual,
   and simulated entries the same core shape`; `reads the fixture as one
@@ -729,8 +713,8 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   - strict JSON data within the safe-integer range.
 
   *(`Petrus.Impetus.NetDocument lineage ›
-  test_every_entry_contains_one_complete_valid_sparse_marking`, 5 examples;
-  `test_direct_token_data_must_already_be_strict_json`, 3 examples)*
+  test_every_entry_contains_one_complete_valid_sparse_marking`;
+  `test_direct_token_data_must_already_be_strict_json`)*
 - **I-105** `codec` §1d Timeline. Metadata is strict JSON and never decides a
   marking or an ancestry. *(`Petrus.Impetus.NetDocument lineage › keeps
   metadata non-authoritative strict JSON`; `round-trips the fixture exactly
@@ -759,8 +743,7 @@ are statements marked DEFERRED or OPEN, nor behavior the pin does not ship
   - lone surrogates.
 
   *(`Petrus.Impetus.NetDocument ›
-  test_strict_json_refuses_duplicate_nonfinite_utf8_and_surrogate`, 4
-  examples; `refuses the negative interoperability fixture`)*
+  test_strict_json_refuses_duplicate_nonfinite_utf8_and_surrogate`; `refuses the negative interoperability fixture`)*
 - **I-109** `interop` §1f Canonical laws. The generated JSON Schema matches
   `NetDocumentV1.model_json_schema()`. *(`Petrus.Impetus JSON Schema
   differential corpus`)*

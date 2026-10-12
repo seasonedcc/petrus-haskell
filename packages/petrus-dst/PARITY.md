@@ -26,8 +26,8 @@ including the joined worlds, where PostgreSQL does most of the work and the marg
 
 ## Evidence
 
-`cabal build petrus-dst && cabal test petrus-dst` runs 285 hspec examples with
-`PETRUS_TEST_POSTGRES` set. Without it, 67 are pending: the 66 joined examples, and the real
+`cabal build petrus-dst && cabal test petrus-dst` runs every hspec example with
+`PETRUS_TEST_POSTGRES` set. Without it, the joined examples are pending, and so is the real
 production-boundary route, whose PostgreSQL owners are pending too. Each one compares
 against vectors produced by the pinned Python. The ten generator scripts are committed under
 `scripts/`, and their output under `test/data/` (and, for the generated identities module,

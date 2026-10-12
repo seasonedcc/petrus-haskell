@@ -2,9 +2,12 @@
  * HTTP wire differential for /__petrus/open-file and /__petrus/resolve-ref:
  * raw requests against `petrus` and against the upstream endpoint on bare
  * `node:http` (bench/node-baseline.mjs runs server/openFileEndpoint.mjs
- * unchanged), comparing every byte each connection receives: status line,
- * headers in order, body, and whether the server closes the connection.
- * Only the value of the Date header is masked.
+ * unchanged), comparing what each connection receives: every response's
+ * status code and reason, the headers the handler sets (in order, byte for
+ * byte), the body, and whether the server closes the connection. The
+ * framing is Warp's, not Node's (DIVERGENCES.md, "Response framing"): the
+ * HTTP version of the status line and the Date, Connection, Keep-Alive and
+ * Content-Length headers are left out of the comparison.
  *
  * Both servers see the same connections in the same order, so the pending
  * file each one holds agrees at every step. Each scenario is a list of
@@ -77,7 +80,7 @@ function exchange(port, chunks, { pause = 60, quiet = 250, readDelay = 0 } = {})
     const finish = (closed) => {
       clearTimeout(timer);
       sock.destroy();
-      resolve({ text: raw.toString("latin1").replace(/\r\nDate: [^\r]*\r\n/g, "\r\nDate: <masked>\r\n"), closed });
+      resolve({ responses: responses(raw.toString("latin1")), closed });
     };
     const arm = (wait = quiet) => { clearTimeout(timer); timer = setTimeout(() => finish(false), wait); };
     sock.on("data", (d) => { raw = Buffer.concat([raw, d]); arm(); });
@@ -91,6 +94,41 @@ function exchange(port, chunks, { pause = 60, quiet = 250, readDelay = 0 } = {})
       arm(readDelay + quiet);
     });
   });
+}
+
+// Headers that frame the message rather than carry the handler's answer.
+const FRAMING = new Set(["date", "connection", "keep-alive", "content-length", "transfer-encoding"]);
+
+/** The responses on one connection, without their framing: status code and
+ * reason, the other headers in order, and the body (by Content-Length; to
+ * the next status line or the end without one). */
+function responses(text) {
+  const out = [];
+  let rest = text;
+  while (rest.length) {
+    const head = rest.indexOf("\r\n\r\n");
+    if (head < 0) {
+      out.push({ partial: rest });
+      break;
+    }
+    const [statusLine, ...lines] = rest.slice(0, head).split("\r\n");
+    const status = statusLine.replace(/^HTTP\/1\.[01] /, "");
+    const fields = lines.map((l) => [l.slice(0, l.indexOf(":")), l.slice(l.indexOf(":") + 1).trim()]);
+    const length = fields.find(([k]) => k.toLowerCase() === "content-length");
+    rest = rest.slice(head + 4);
+    let body;
+    if (length) {
+      body = rest.slice(0, Number(length[1]));
+    } else if (/^(1\d\d|204|304) /.test(status)) {
+      body = "";
+    } else {
+      const next = rest.search(/HTTP\/1\.[01] \d{3} /);
+      body = next < 0 ? rest : rest.slice(0, next);
+    }
+    rest = rest.slice(body.length);
+    out.push({ status, headers: fields.filter(([k]) => !FRAMING.has(k.toLowerCase())), body });
+  }
+  return out;
 }
 
 const post = (url, body, extra = "") =>
@@ -138,7 +176,6 @@ test("open-file and resolve-ref answer with Node's bytes", async (t) => {
     "Connection: close": [get(OPEN, "Connection: close\r\n")],
     "lower-case field names and values": [`GET ${OPEN} HTTP/1.1\r\nhost: x\r\nconnection: CLOSE\r\n\r\n`],
     "HTTP/1.0 (Connection: close, no Content-Length)": [`POST ${OPEN} HTTP/1.0\r\nContent-Length: 10\r\n\r\n{"path":1}`],
-    "HTTP/1.0 asking for keep-alive": [`GET ${OPEN} HTTP/1.0\r\nConnection: keep-alive\r\n\r\n`, `GET ${OPEN} HTTP/1.0\r\n\r\n`],
     "a request split across packets": [`POST ${OPEN} HTTP/1.1\r\nHost: x\r\nContent-Le`, `ngth: 10\r\n\r\n{"pa`, `th":1}`],
     "Expect: 100-continue, body after the interim response": [`POST ${OPEN} HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\nContent-Length: 10\r\n\r\n`, `{"path":1}`],
     "Expect: 100-continue, body at once": [`POST ${OPEN} HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\nContent-Length: 10\r\n\r\n{"path":1}`],
@@ -159,27 +196,39 @@ test("open-file and resolve-ref answer with Node's bytes", async (t) => {
         const { chunks, readDelay = 0 } = Array.isArray(scenario) ? { chunks: scenario } : scenario;
         const n = await exchange(node.port, chunks, { readDelay });
         const h = await exchange(hs.port, chunks, { readDelay });
-        assert.ok(n.text.length > 0, "node answered");
-        assert.equal(h.text, n.text);
+        assert.ok(n.responses.length > 0, "node answered");
+        assert.deepEqual(h.responses, n.responses);
         assert.equal(h.closed, n.closed, "closes the connection like Node");
       });
     }
+    await t.test("HTTP/1.0 asking for keep-alive: the same answer; Warp keeps the connection", async () => {
+      // Node frames a 1.0 response by closing the connection, whatever the
+      // client asked; Warp sends Content-Length and keeps a 1.0 connection
+      // that asks for keep-alive (DIVERGENCES.md, "Response framing")
+      const chunks = [`GET ${OPEN} HTTP/1.0\r\nConnection: keep-alive\r\n\r\n`, `GET ${OPEN} HTTP/1.0\r\n\r\n`];
+      const n = await exchange(node.port, chunks);
+      const h = await exchange(hs.port, chunks);
+      assert.equal(n.responses.length, 1);
+      assert.ok(n.closed);
+      assert.deepEqual(h.responses, [n.responses[0], n.responses[0]]);
+      assert.ok(h.closed, "closed after the second request, which did not ask for keep-alive");
+    });
     await t.test("a pending file that cannot be read (500, and it stays pending)", async () => {
       // the file exists when it is posted, then disappears before the GETs
       fs.writeFileSync(gone, "{}");
       const n0 = await exchange(node.port, [post(OPEN, pathBody(gone))]);
       const h0 = await exchange(hs.port, [post(OPEN, pathBody(gone))]);
-      assert.equal(h0.text, n0.text);
+      assert.deepEqual(h0.responses, n0.responses);
       fs.rmSync(gone);
       const n = await exchange(node.port, [get(OPEN), get(OPEN)]);
       const h = await exchange(hs.port, [get(OPEN), get(OPEN)]);
-      assert.match(n.text, /500 Internal Server Error[^]*500 Internal Server Error/);
-      assert.equal(h.text, n.text);
+      assert.deepEqual(n.responses.map((r) => r.status), ["500 Internal Server Error", "500 Internal Server Error"]);
+      assert.deepEqual(h.responses, n.responses);
       // once the file is back, the next GET reads it
       fs.writeFileSync(gone, "{}");
       const n2 = await exchange(node.port, [get(OPEN), get(OPEN)]);
       const h2 = await exchange(hs.port, [get(OPEN), get(OPEN)]);
-      assert.equal(h2.text, n2.text);
+      assert.deepEqual(h2.responses, n2.responses);
     });
   } finally {
     await node.stop();

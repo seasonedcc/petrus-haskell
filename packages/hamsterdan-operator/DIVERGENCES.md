@@ -153,8 +153,10 @@ Below are the differences that remain, with their rationale.
   binaries, so the runtime stage copies `data/` to
   `/opt/hamsterdan/share/petrus-agenticus-runtime/data` and sets
   `petrus_agenticus_runtime_datadir` (Cabal's data-directory override) to
-  that directory. These are the only runtime-stage instructions besides
-  the binaries' and the shim's `COPY` that the reference does not have.
+  that directory. These, the runtime libraries the binaries link
+  (`libbz2-1.0 libffi8 libgmp10 liblzma5 zlib1g`, added to the runtime
+  stage's `apt-get install` line), and the binaries' and the shim's `COPY`
+  are the only runtime-stage instructions the reference does not have.
   Without them the host's Pi READY probe cannot find its helper, and the
   host silently runs with no agent runner, as the reference would with a
   broken Pi installation; `scripts/container-smoke` caught exactly that in
@@ -163,8 +165,8 @@ Below are the differences that remain, with their rationale.
   digest. GHC (9.10.3) and cabal (3.16.1.0) are pinned by version, and the
   Haskell dependency plan by `cabal.project.freeze` (an
   `index-state` plus every package version). The `ghcup` binary that
-  installs them is fetched unpinned from downloads.haskell.org. Pinning it
-  by digest means picking a release to trust; it is not done yet.
+  installs them is pinned too: version 0.2.6.2 (CI's), checked against the
+  SHA-256 of each architecture's binary before it runs.
 - **The build stage** installs the `-dev` packages of every local package
   (`libpq`, `libzmq`, SQLite, `libffi`, `gmp`, `zlib`), because cabal plans
   the whole project, though only the three executables are built. It

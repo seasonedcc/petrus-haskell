@@ -5,9 +5,13 @@
 #     Haskell is slower than Python (a ratio below 1.0×); see
 #     scripts/bench_results.py for how ratios are read and how a shared
 #     results file attributes its slower rows to other components;
-#   - or if an upstream test count it cites ("all 11 `test_x.py` tests (14
-#     cases)") differs from docs/upstream-test-counts.json, the counts pytest
-#     collected at the pinned upstream commits (scripts/upstream-test-counts).
+#   - or if an upstream test count a parity ledger cites ("all 11 `test_x.py`
+#     tests (14 cases)", a Functions or Cases column) differs from
+#     docs/upstream-test-counts.json, the counts pytest collected at the
+#     pinned upstream commits, or is in a form it cannot read
+#     (scripts/upstream-test-counts);
+#   - or if a document states a Haskell example count, which would go stale
+#     (scripts/lint-example-counts: `cabal test` and CI report those).
 # It warns (STALE evidence) about components whose cited results measured
 # code that has changed since.
 set -euo pipefail
@@ -31,6 +35,7 @@ if [[ -n "$missing" ]]; then
 fi
 python3 -B scripts/bench_results.py check-parity
 python3 -B scripts/upstream-test-counts --check
+python3 -B scripts/lint-example-counts
 total=$(awk -F'|' '/^\|/ && $5 ~ /^ *(not started|in progress|at parity)/ {n++} END {print n+0}' PARITY.md)
 done_=$(awk -F'|' '/^\|/ && $5 ~ /^ *at parity/ {n++} END {print n+0}' PARITY.md)
 echo "$done_ of $total components at parity"

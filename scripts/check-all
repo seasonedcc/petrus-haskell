@@ -110,6 +110,9 @@ scripts/lint-skips
 step "Hamsterdan import boundaries (upstream tests/test_architecture.py)"
 scripts/lint-hamsterdan-architecture
 
+step "The pending check reads hspec logs (coloured or plain fixtures)"
+scripts/check-pending --self-test
+
 step "Upstream Python environment"
 # Provision every reference once, before the suites run in parallel and
 # each would (scripts/upstream-python also serializes a lazy sync with a

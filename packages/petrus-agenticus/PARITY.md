@@ -8,7 +8,7 @@ workspace adapter.
 Each `it` label in the Haskell specs is the upstream test name. Parametrized
 tests also carry the pytest parameter id.
 
-## `tests/petrus/agenticus/program/test_agent_net.py` (21 functions, 35 cases)
+## `tests/petrus/agenticus/program/test_agent_net.py` (21 functions, 34 cases)
 
 Module: `Petrus.Agenticus.Program.AgentNet`. Spec: `test/Petrus/Agenticus/AgentNetSpec.hs`.
 
@@ -94,7 +94,7 @@ over the Haskell sources and cabal files of all three agenticus packages.
 | `test_agenticus_does_not_import_private_motus_or_its_own_root_facade` | same label | |
 | `test_forbidden_universal_concepts_are_not_defined` | same label | No type, class or top-level function may be named `Agent` or `Session`. |
 
-## `tests/project/test_package_boundaries.py` (1 function, runtime-service half)
+## `tests/project/test_package_boundaries.py` (1 of 20 functions, its runtime-service half)
 
 Spec: `test/Petrus/Agenticus/BoundariesSpec.hs`, under the describe
 `tests/project/test_package_boundaries.py`.

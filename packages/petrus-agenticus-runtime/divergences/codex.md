@@ -90,8 +90,8 @@ pin those on both sides. The corpus's single tolerated difference is item 5.
 8. **Sockets, locks and ledgers use POSIX calls directly.** The runtime
    service listens on an `AF_UNIX` stream socket (the `network` package)
    with mode 0600. It holds `.service.lock` with `flock(LOCK_EX |
-   LOCK_NB)` through the FFI, opened `O_NOFOLLOW` with mode 0600, in a
-   mode-0700 state directory. Its ledger is SQLite through the core
+   LOCK_NB)` through petrus-posix (`Petrus.Posix.Flock`), opened
+   `O_NOFOLLOW` with mode 0600, in a mode-0700 state directory. Its ledger is SQLite through the core
    package's binding. Paths, modes, lock semantics, frame bounds, the
    accept timeout and the close quiescence bound are the reference's.
 

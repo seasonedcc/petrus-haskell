@@ -1,8 +1,8 @@
 {-# LANGUAGE MultiWayIf #-}
 
--- | The event-loop substrate shared by the relays ("Petrus.Viewer.Relay"),
--- the HTTP front ("Petrus.Viewer.HttpFront") and @petrus-mcp@'s stdin and
--- bridge socket ("Petrus.Viewer.Mcp.Reactor"): one thread that owns a
+-- | The event-loop substrate shared by the relays ("Petrus.Viewer.Relay")
+-- and @petrus-mcp@'s stdin and bridge socket ("Petrus.Viewer.Mcp.Reactor"):
+-- one thread that owns a
 -- kqueue or epoll set (@cbits/relay_io.c@), the way Node's event loop
 -- owns its sockets.
 --
@@ -26,7 +26,6 @@ module Petrus.Viewer.EventLoop
     -- * Readiness
   , Event (..)
   , pollWait
-  , pollerFd
   , watch
   , unwatch
   , watchWrite
@@ -35,7 +34,6 @@ module Petrus.Viewer.EventLoop
   , readNonBlocking
   , setNonBlocking
   , writeChunks
-  , closeFd
   ) where
 
 import Control.Concurrent (forkOn)
@@ -212,9 +210,6 @@ readNonBlocking fd p len = fromIntegral <$> c_read fd p (fromIntegral len)
 -- | Put a descriptor in non-blocking mode; negative on failure.
 setNonBlocking :: CInt -> IO CInt
 setNonBlocking = c_setNonBlocking
-
-closeFd :: CInt -> IO ()
-closeFd fd = () <$ c_close fd
 
 -- | @writev@ until done or the socket is full: the unwritten rest, and
 -- whether the socket failed.

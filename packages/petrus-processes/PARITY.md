@@ -18,19 +18,19 @@ API differences are listed in [DIVERGENCES.md](DIVERGENCES.md).
 
 ## Running
 
-`cabal test petrus-processes` runs 223 examples. With `PETRUS_TEST_POSTGRES`
-set (CI sets it), all 223 pass. Without it, the examples that need a server
+`cabal test petrus-processes` runs the suite. With `PETRUS_TEST_POSTGRES`
+set (CI sets it), every example passes. Without it, the examples that need a server
 are pending and say why. The suite compiles in petrus-fabric's conformance
 harness (`../petrus-fabric/test`) and drives the reference through the same
 [conformance_driver.py](../petrus-fabric/test/interop/conformance_driver.py).
 
-| Spec module | Examples | What it checks |
-| --- | ---: | --- |
-| [ConformanceSpec](test/Petrus/Processes/ConformanceSpec.hs) | 134 | The 67 unit and db checks, each run against both implementations. |
-| [InteropSpec](test/Petrus/Processes/InteropSpec.hs) | 6 | P-038, P-079 and P-080, each run in both directions on one database. |
-| [DemoSpec](test/Petrus/Processes/DemoSpec.hs) | 62 | P-037 against both implementations. The lifecycle demo in six configurations, with one example per check its output evidences (P-032–P-036, P-038, P-075–P-079). |
-| [TypedSpec](test/Petrus/Processes/TypedSpec.hs) | 1 | The type-enforced refusal P-055, against the real signature under deferred type errors. |
-| [ReferenceSpec](test/Petrus/Processes/ReferenceSpec.hs) | 20 | The upstream tests, one for one (see the ledger). |
+| Spec module | What it checks |
+| --- | --- |
+| [ConformanceSpec](test/Petrus/Processes/ConformanceSpec.hs) | The 67 unit and db checks, each run against both implementations. |
+| [InteropSpec](test/Petrus/Processes/InteropSpec.hs) | P-038, P-079 and P-080, each run in both directions on one database. |
+| [DemoSpec](test/Petrus/Processes/DemoSpec.hs) | P-037 against both implementations. The lifecycle demo in six configurations, with one example per check its output evidences (P-032–P-036, P-038, P-075–P-079). |
+| [TypedSpec](test/Petrus/Processes/TypedSpec.hs) | The type-enforced refusal P-055, against the real signature under deferred type errors. |
+| [ReferenceSpec](test/Petrus/Processes/ReferenceSpec.hs) | The upstream tests, one for one (see the ledger). |
 
 The six demo configurations are:
 

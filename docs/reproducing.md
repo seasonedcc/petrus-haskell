@@ -43,11 +43,17 @@ On Ubuntu 24.04 (what CI uses):
 sudo apt-get install -y build-essential libzmq3-dev libpq-dev libsqlite3-dev libbz2-dev liblzma-dev pkg-config graphviz
 curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
 curl -LsSf https://astral.sh/uv/install.sh | sh
+sudo apt-get install -y docker.io && sudo usermod -aG docker "$USER"   # or PostgreSQL 17, below
 ```
 
-plus Node.js 22 (for example from NodeSource) and either Docker or
-PostgreSQL 17 from the [PGDG apt repository](https://www.postgresql.org/download/linux/ubuntu/)
-(Ubuntu 24.04's own `postgresql` package is 16).
+plus Node.js 22 (for example from NodeSource) with pnpm 11.5.1
+(`corepack enable` inside `upstream/petrus-viewer`, or
+`npm install -g pnpm@11.5.1` as CI does), and, instead of Docker, PostgreSQL
+17 from the [PGDG apt repository](https://www.postgresql.org/download/linux/ubuntu/)
+also works (Ubuntu 24.04's own `postgresql` package is 16). Log in again after
+`usermod` so the `docker` group applies. The `--viewer` suites' Chromium also
+needs its system libraries: `npx playwright install --with-deps chromium`
+(below) installs them through apt.
 
 Haskell dependency versions are pinned in `cabal.project.freeze` (every
 Hackage package's exact version, plus the Hackage `index-state`), so a clean
@@ -121,43 +127,57 @@ It runs, in order, and stops at the first failing step:
    reference is missing (see [No silent skips](#no-silent-skips)).
 3. `scripts/lint-hamsterdan-architecture`: the Hamsterdan packages keep the
    import boundaries of upstream `tests/test_architecture.py`.
-4. Provisioning of the Python references (`scripts/upstream-python petrus`,
-   `petrus-engine` and `hamsterdan`): CPython 3.14.6 and each project's
-   frozen `uv.lock`, in `upstream/<project>/.venv`.
-5. `cabal build all` (every package is `-Werror`).
-6. `scripts/interop --check`: every pattern `scripts/interop` uses still
+4. `scripts/check-pending --self-test`: the pending check of step 9 still
+   reads hspec's output, coloured or plain, from the fixture logs in
+   `scripts/check-pending.d/`.
+5. Provisioning of the Python references (`scripts/upstream-python petrus`,
+   `petrus-engine`, `hamsterdan` and `petrus-sdks`): CPython 3.14.6 and each
+   project's frozen `uv.lock`, in `upstream/<project>/.venv`. `petrus-sdks`
+   is `upstream/petrus` with the real Claude and Amp SDKs at the reference's
+   pins, kept apart in `dist-newstyle/upstream-python/petrus-sdks/.venv`.
+6. `cabal build all` (every package is `-Werror`).
+7. `scripts/interop --check`: every pattern `scripts/interop` uses still
    selects tests.
-7. `cabal test all` under `scripts/with-postgres`, every test binary with
+8. `cabal test all` under `scripts/with-postgres`, every test binary with
    `+RTS -M2G -RTS`. This includes the conformance and interop groups.
-8. `scripts/check-pending`: no example went pending in step 7. A pending
+9. `scripts/check-pending`: no example went pending in step 8. A pending
    example is a test that did not run, so a missing tool (Graphviz `dot`,
    `node`) or server fails the run. The only examples that may stay pending
    are listed in the script: the Docker tests, which wait for
    `PETRUS_TEST_DOCKER=1` (CI sets it, and check-all refuses to run in CI
    without it), and the reference's own opt-in acceptance tests. Those
    acceptance tests need provider credentials or exactly installed external
-   toolchains, and the reference skips them too.
-9. `scripts/check-corpora`: every committed corpus is regenerated against the
-   pinned references (and Node 22, for the viewer's V8 and WHATWG URL
-   corpora) and must come out unchanged.
-10. With `--viewer` only: the upstream petrus-viewer suites against the
+   toolchains, and the reference skips them too. A suite log without hspec's
+   summary line fails too, so a crashed suite or an unreadable log cannot
+   pass as "nothing pending".
+10. `scripts/check-corpora`: every committed corpus is regenerated against
+    the pinned references (and Node 22, for the viewer's V8 and WHATWG URL
+    corpora) and must come out unchanged.
+11. With `--viewer` only: the upstream petrus-viewer suites against the
     Haskell backend, then `record-mcp-transcript.mjs --check`, which
     re-records the MCP golden transcript through the upstream Node MCP server.
-11. With `--bench` only: `scripts/bench`, every benchmark against Python.
-12. `scripts/bench --check`: every package's benchmark results document how
+12. With `--bench` only: `scripts/bench`, every benchmark against Python.
+13. `scripts/bench --check`: every package's benchmark results document how
     to rerun them and which sources they measured, and
     `bench-results/summary.md` matches them. It also lists, as `STALE` (a
     warning), every results file measured on code that has changed since:
     the package's own sources, any local package it builds on, the cabal
     project and freeze file, the upstream pins or the twins' timing harness.
-13. `scripts/check-parity`: the parity table's claims hold: evidence for
+14. `scripts/check-parity`: the parity table's claims hold: evidence for
     every component at parity, no cited benchmark row below 1.0×, and every
-    upstream test count it cites ("all 11 `test_sqlite_history.py` tests (14
-    cases)") equal to what pytest collects at the pinned upstream commits, as
+    upstream test count the parity ledgers cite (in `PARITY.md` and every
+    package's `PARITY.md` and `parity` files: "all 11 `test_sqlite_history.py`
+    tests (14 cases)", the Functions and Cases columns, the not-ported
+    tables) equal to what pytest collects at the pinned upstream commits, as
     recorded in `docs/upstream-test-counts.json` (`scripts/upstream-test-counts
-    --write` recollects it after a submodule moves). It warns (`STALE
-    evidence`) about components whose cited results are stale.
-14. `packages/petrus-engine/scripts/parity_check.py`: the runtime test
+    --write` recollects all three projects after a submodule moves). A count
+    the script cannot read fails too, so none goes unchecked. No document states how
+    many Haskell examples a suite has (`scripts/lint-example-counts`): such a
+    number goes stale with the next test. `cabal test` prints each suite's
+    count, and CI's `ci` job prints every suite's and records it in the
+    run's `test-ledger` artifact. It warns (`STALE evidence`) about
+    components whose cited results are stale.
+15. `packages/petrus-engine/scripts/parity_check.py`: the runtime test
     ledgers account for every in-scope upstream test.
 
 `-j2` limits cabal's parallelism; leave it out to use every core.
@@ -172,9 +192,9 @@ scripts/check-all -j2 --ghc-options='+RTS -M3G -RTS'
 takes, measured on an Apple M4 with 24 GB of memory at `-j2`, with the
 Hackage dependencies already in the cabal store (October 2026):
 
-- **Time**: about 25 minutes of wall-clock time for steps 0 to 7 (the build
+- **Time**: about 25 minutes of wall-clock time for steps 0 to 8 (the build
   about 11 minutes, the test suites most of the rest), and 2 to 3 minutes
-  for steps 8 to 14. A cold cabal store adds the Hackage dependencies' build,
+  for steps 9 to 15. A cold cabal store adds the Hackage dependencies' build,
   roughly another 20 minutes.
 - **Disk**: about 6.5 GB for `dist-newstyle`, about 1 GB for the cabal
   store's Hackage dependencies, about 1 GB for the four upstream Python
@@ -187,7 +207,8 @@ Hackage dependencies already in the cabal store (October 2026):
 `--viewer` adds, after the tests, the upstream petrus-viewer suites against
 the Haskell backend (`scripts/interop --viewer petrus-viewer-server`, below);
 they need Node 22, pnpm, `pnpm install --frozen-lockfile && pnpm build` in
-`upstream/petrus-viewer`, and `npx playwright install chromium`.
+`upstream/petrus-viewer`, and `npx playwright install --with-deps chromium`
+(`--with-deps` also installs Chromium's system libraries on Linux; CI runs it).
 
 One package's suite, or one group in it:
 
@@ -217,7 +238,7 @@ It is the quick check after moving a pin or touching a wire format. Each run
 passes hspec's `--fail-on=empty,pending`, so a renamed group or a test that
 goes pending fails it. `--viewer` needs `pnpm install` in
 `upstream/petrus-viewer` (and `pnpm build` plus
-`npx playwright install chromium` for its browser suites).
+`npx playwright install --with-deps chromium` for its browser suites).
 
 The committed differential corpora, fixture databases and generated modules
 are themselves reference output. `scripts/check-corpora` (also part of
@@ -269,7 +290,9 @@ package directory with the environment `cabal bench` sets, passing the
 options through; `--no-build` skips the build.
 
 Rows whose cost grows with every iteration (each one adds rows to a
-database, as petrus-sqlite's `tx` rows do) are timed with the twins' own
+database, as petrus-sqlite's and petrus-postgres's `tx` rows do), and
+server-bound rows whose tasty-bench mean swung with the machine
+(petrus-postgres's `fence` and `notify` rows), are timed with the twins' own
 protocol instead of tasty-bench's, so that both sides run the same number of
 iterations: `twin` from `Petrus.TestSupport.BenchTwin` runs one warm-up call,
 then 10 batches (`PETRUS_BENCH_BATCHES`) of a fixed number of calls, and
@@ -355,16 +378,22 @@ results files in its run summary.
 They also run `scripts/bench-gate` (the `bench-gate` jobs, four shards),
 which measures. Its `ENTRIES` name, for every package with a Python twin,
 the rows with the thinnest margin (and, where every margin is wide, the
-headline row): 41 entries over 38 packages. Each pair of Haskell and Python
-runs is repeated 5 times, alternating which side goes first, and a row's
-ratio is the median of the Python figures over the median of the Haskell
-ones; the harnesses that interleave both sides themselves
-(hamsterdan-export, hamsterdan-operator, petrus-execution's `compare.py`)
-run once and their table's ratio is read. A row below 1.0× is measured
-again from scratch, and the job fails when the rerun is below 1.0× too, or
-when a row cannot be measured. The table goes to the run summary, the
-figures and the log to the `bench-gate-N` artifacts. Left out:
-petrus-viewer-server (its twin is the upstream Node server), the second
+headline row): 42 entries over 39 packages. Each pair of Haskell and Python
+runs is repeated 5 times, alternating which side goes first; each
+repetition gives a ratio of the two figures measured next to each other,
+and the row's ratio is their median. The harnesses that interleave both
+sides themselves (hamsterdan-export, hamsterdan-operator,
+petrus-execution's `compare.py`, petrus-viewer-server's `bench/run.mjs`)
+run once, and their table gives the row's ratio and how many of its runs
+or rounds Haskell won. A row passes when Haskell won more than half of
+them ("won k of n", 2k > n), in that one measurement: a row whose two sides
+do the same server or kernel work came out on either side of 1.0× from run
+to run, and a median with a rerun below 1.0× only gave the noise a second
+draw. The job fails on a row that does not pass or cannot be measured. The
+table goes to the run summary, the figures and the log to the
+`bench-gate-N` artifacts. petrus-viewer-server's entry, whose twin is the
+upstream Node backend (`bench/run.mjs` needs `pnpm build`), runs in the
+`viewer` job instead of a shard. Left out: the second
 harness of packages that have two, and four thin rows that are the same
 kernel or server work on both sides (one `fsync`, `CREATE DATABASE` and
 `DROP DATABASE`, or 256 MiB of `write(2)`), which the runner measured below
@@ -549,24 +578,27 @@ legitimately needs one says so with `-- lint-skips: allow <reason>`.
 
 `.github/workflows/ci.yml` runs on every push to `main`, every pull request,
 nightly (04:17 UTC) and on demand (`workflow_dispatch`, with a `full`
-input). It runs the steps of `scripts/check-all --viewer`, plus the container
+input, and a `sha` input that tests that commit instead of the branch's
+tip). It runs the steps of `scripts/check-all --viewer`, plus the container
 job, spread over Blacksmith runners so that they run side by side:
 
 | CI job | Runner | `scripts/check-all` step |
 | --- | --- | --- |
-| `lint` | 2 vCPU | `check-pins`, `lint-skips`, `lint-hamsterdan-architecture`, `bench --check`, `check-parity`, the runtime test ledgers (`parity_check.py`) |
+| `lint` | 2 vCPU | `check-pins`, `lint-skips`, `lint-hamsterdan-architecture`, `check-pending --self-test`, `bench --check`, `check-parity`, the runtime test ledgers (`parity_check.py`) |
 | `build` | 16 vCPU | `cabal build all` (`-Werror`); then plans the test shards |
 | `checks` | 4 vCPU | `scripts/interop --check` (with the PostgreSQL and Docker variables set, so that the selection counts those examples too); `scripts/check-corpora`, with PostgreSQL 17 |
 | `test (1)` … `test (N)` | 8 vCPU | the upstream Python environments, then `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest); then `scripts/check-pending` on their output (a suite with a pending example outside the declared opt-ins does not count as passed) |
-| `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium; then the MCP golden transcript re-recorded through the upstream Node MCP server |
+| `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium; then the MCP golden transcript re-recorded through the upstream Node MCP server; nightly and `full` also `scripts/bench-gate petrus-viewer-server` |
 | `bench-smoke` | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench --smoke` (every benchmark builds and runs once; not a measurement) and the list of stale results files ([Which code the figures measured](#which-code-the-figures-measured)) |
-| `bench-gate` (4 shards) | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench-gate --shard N/4`, the gated rows against the pinned Python, 5 interleaved repetitions, failing on a row below 1.0× twice ([Which code the figures measured](#which-code-the-figures-measured)) |
+| `bench-gate` (4 shards) | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench-gate --shard N/4`, the gated rows against the pinned Python, 5 interleaved repetitions, failing on a row Haskell did not win most repetitions of ([Which code the figures measured](#which-code-the-figures-measured)) |
 | `container` | 16 vCPU | none (Docker): the image and `scripts/container-smoke` ([The container image](#the-container-image)) |
 | `ci` | 2 vCPU | the verdict: green only when every job above is |
 
-Every commit pushed to `main` gets a complete run of its own: on `main`,
-each run has its own concurrency group, so a newer push neither cancels it
-nor replaces it while it waits. On a branch or pull request a newer push
+Every push to `main` gets a complete run of its tip, which holds every
+change the push brought. An earlier commit of the same push can be
+checked on its own with `gh workflow run ci.yml -f sha=<commit>` (the
+`sha` input checks out, builds, tests and records that commit). On `main`, each run has its own concurrency group, so a
+newer push neither cancels it nor replaces it while it waits. On a branch or pull request a newer push
 cancels the older run. `main` has no branch protection rule: commits land on
 it without waiting for CI, and the run of each commit, red or green, is what
 verifies it. The `ci` job is the single verdict to require if a protection

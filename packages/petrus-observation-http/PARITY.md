@@ -6,7 +6,7 @@ observation protocol 1 HTTP binding) at the pin in
 and Engine state, the response is the reference's, except for the `Server`
 and `Date` header values (see [DIVERGENCES.md](DIVERGENCES.md)).
 
-`cabal test petrus-observation-http` runs 28 examples, with 0 failures, in
+`cabal test petrus-observation-http` runs the suite with no failure and no pending example, in
 four groups (the viewer end-to-end test is in petrus-viewer-server).
 
 ## Upstream tests: `tests/petrus/engine/test_observation_http.py`
@@ -14,7 +14,7 @@ four groups (the viewer end-to-end test is in petrus-viewer-server).
 All 7 functions are ported in `test/UpstreamSpec.hs`, each example named
 after its upstream test, over the same Engine (`Support.makeEngine` is
 `make_engine()`). Parametrized tests are one example per parameter, so the 7
-functions are 19 examples.
+functions are the 19 cases pytest collects.
 
 | upstream test | items | status | notes |
 | --- | ---: | --- | --- |

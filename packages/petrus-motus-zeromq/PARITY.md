@@ -4,8 +4,7 @@ This package ports `petrus/motus/transport/zeromq.py` and its server CLI.
 The upstream tests are in
 `tests/petrus/motus/transport/test_zeromq_dispatch_transport.py`.
 
-`cabal test petrus-motus-zeromq` runs 51 examples, with 0 failures and 0
-pending:
+`cabal test petrus-motus-zeromq` runs the suite with no failure and no pending example:
 - 35 in `test_zeromq_dispatch_transport.py`
   (`test/Petrus/Motus/Transport/ZeroMQ/TransportSpec.hs`): the 32 of the
   ledger below and 3 beyond the reference suite (the CPython wording of
@@ -17,9 +16,9 @@ pending:
 - 3 properties of the wire codecs
   (`test/Petrus/Motus/Transport/ZeroMQ/WirePropertiesSpec.hs`).
 
-The reference's processes are needed by the 12 interop examples and by the 2
-"the reference's server" cases. When `upstream/petrus/.venv` is not synced,
-these are marked pending.
+The reference's processes are needed by the interop examples and by the two
+"the reference's server" cases. They provision the pinned reference through
+`scripts/upstream-python` and fail, never go pending, when they cannot.
 
 To check that every upstream test is accounted for:
 
@@ -27,10 +26,10 @@ To check that every upstream test is accounted for:
 
 ## Ledger
 
-| upstream | collected | Haskell examples | status |
-| --- | ---: | ---: | --- |
-| test_zeromq_dispatch_transport.py, 26 tests | 30 | 32 | 25 ported by name; 1 ported in part (below) |
-| test_package_boundaries.py `test_zeromq_transport_base_import_is_optional_and_deep_import_has_guidance` | 1 | 1 | ported over Cabal metadata (below) |
+| upstream | collected | status |
+| --- | ---: | --- |
+| test_zeromq_dispatch_transport.py, 26 tests | 30 | 25 ported by name; 1 ported in part (below) |
+| test_package_boundaries.py `test_zeromq_transport_base_import_is_optional_and_deep_import_has_guidance` | 1 of 20 | ported over Cabal metadata (below) |
 
 ### The boundary row
 

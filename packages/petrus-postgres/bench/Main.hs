@@ -11,10 +11,11 @@ import Data.ByteString.Char8 qualified as BC
 import Data.IORef (atomicModifyIORef', newIORef)
 import Data.Text qualified as T
 import Petrus.Postgres
+import Petrus.TestSupport.BenchTwin (twin)
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
-import Test.Tasty (localOption)
+import Test.Tasty (localOption, testGroup)
 import Test.Tasty.Bench
 
 insertEvent :: Sql
@@ -27,6 +28,14 @@ payload = "{\"type\": \"FiringStarted\", \"occurrence\": 7, \"transition\": \"t\
 createEvents :: Sql
 createEvents =
   "CREATE TEMPORARY TABLE bench_events (sequence bigserial PRIMARY KEY, event_id text UNIQUE NOT NULL, net_instance_id text NOT NULL, record_type text NOT NULL, occurrence bigint, payload jsonb NOT NULL)"
+
+-- | Calls per batch of the rows timed with the twin's protocol, as
+-- python_bench.py's: about 0.2 s of Python per batch.
+txCommits, txOwned, fenceCalls, notifyCalls :: Int
+txCommits = 3000
+txOwned = 600
+fenceCalls = 4000
+notifyCalls = 7000
 
 main :: IO ()
 main =
@@ -78,23 +87,26 @@ run url = do
             "query"
             [ bench "select-1000-decoded" (nfIO (either error length . traverse decodeRow <$> query auto "SELECT n, label, payload FROM bench_rows ORDER BY n" []))
             ]
-      , localOption (RelStDev 0.2) $
-          bgroup
-            "tx"
-            [ bench "join-insert-commit" (whnfIO (event joined "j" >> commit joined))
-            , bench "owned-insert-10" (whnfIO (withTransaction auto (forM_ [1 .. 10 :: Int] (\_ -> event auto "o"))))
-            ]
-      , localOption (RelStDev 0.2) $
-          bgroup
-            "fence"
-            [ bench "acquire-release" (whnfIO (acquireAuthorityFence auto "petrus-bench-fence" >>= releaseAuthorityFence))
-            ]
-      , -- A notification crosses two server processes: wider still.
-        localOption (RelStDev 0.25) $
-          bgroup
-            "notify"
-            [ bench "roundtrip" (nfIO (notify sender "petrus_bench" "q" >> fmap notificationPayload <$> waitForNotification listener 5))
-            ]
+      , -- Commits wait for the WAL flush, the event table grows with every
+        -- call, and a fence or a notification is mostly server time. A
+        -- tasty-bench mean ran as many calls as the noise demanded and
+        -- swung with the machine (tx.join-insert-commit 0.83x in one CI run,
+        -- 1.28x in another). These rows use the twin's own protocol
+        -- (Petrus.TestSupport.BenchTwin): one warm-up call, then batches of
+        -- exactly as many calls as python_bench.py's, median per call.
+        testGroup
+          "tx"
+          [ twin "tx.join-insert-commit" Nothing txCommits (event joined "j" >> commit joined)
+          , twin "tx.owned-insert-10" Nothing txOwned (withTransaction auto (forM_ [1 .. 10 :: Int] (\_ -> event auto "o")))
+          ]
+      , testGroup
+          "fence"
+          [ twin "fence.acquire-release" Nothing fenceCalls (acquireAuthorityFence auto "petrus-bench-fence" >>= releaseAuthorityFence)
+          ]
+      , testGroup
+          "notify"
+          [ twin "notify.roundtrip" Nothing notifyCalls (notify sender "petrus_bench" "q" >> fmap notificationPayload <$> waitForNotification listener 5)
+          ]
       , bgroup
           "params"
           [ bench "convert-placeholders" (nf (fmap fst . convertPlaceholders) (sqlSource insertEvent))

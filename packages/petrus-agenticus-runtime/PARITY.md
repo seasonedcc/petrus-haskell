@@ -93,9 +93,9 @@ projection decode and encode round trip is 1.4 times faster.
 
 | Upstream file | Functions | Cases | Haskell spec |
 | --- | ---: | ---: | --- |
-| `test_codex.py` | 41 | 54 | `CodexSpec`, plus 5 verbatim and interop examples |
-| `test_claude.py` | 32 | 46 | `ClaudeSpec`, plus 4 sidecar examples and 3 shared-sidecar examples (concurrency, crash and respawn, stuck release; `divergences/claude-a2.md` item 1) |
-| `test_amp.py` | 15 | 19 | `AmpSpec`, plus 4 sidecar examples and 3 shared-sidecar examples (concurrency, crash and respawn, stuck release; `divergences/amp.md` item 1) |
+| `test_codex.py` | 41 | 54 | `CodexSpec`, plus verbatim and interop examples |
+| `test_claude.py` | 32 | 46 | `ClaudeSpec`, plus sidecar and shared-sidecar examples (concurrency, crash and respawn, stuck release; `divergences/claude-a2.md` item 1) |
+| `test_amp.py` | 15 | 19 | `AmpSpec`, plus sidecar and shared-sidecar examples (concurrency, crash and respawn, stuck release; `divergences/amp.md` item 1) |
 
 `HostsDifferentialSpec` replays the 5,844-case hosts corpus in 22 sections.
 

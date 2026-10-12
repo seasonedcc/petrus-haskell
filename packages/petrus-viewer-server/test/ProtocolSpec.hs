@@ -6,7 +6,7 @@
 --
 -- The upstream files themselves also run, verbatim, against this parser:
 -- the @protocol@ suite of @upstream-tests/run.mjs@ answers their
--- @parseAgentMessage@ calls through @petrus-viewer-oracle@.
+-- @parseAgentMessage@ calls through the test executable's @--oracle@ mode.
 module ProtocolSpec (spec) where
 
 import Data.ByteString qualified as B
