@@ -195,10 +195,17 @@ Interop checks this both ways. What differs is the host-language surface:
     reference gives each slot a dedicated `threading.Thread` that owns the
     provider its factory built. Here each slot gets a forked lane thread
     (`forkLane`), with the same ownership: every custody call for a slot
-    runs on that slot's thread.
+    runs on that slot's thread, through the lane's one-call mailbox.
+
+    The lanes are kept although no Haskell provider needs thread affinity.
+    A synchronous provider is written for one thread: it builds, uses and
+    closes its connection there, and the reference tests check that one
+    thread (the factory's, every call's and `close`'s) per slot. The port
+    runs those tests.
 
     A `LaneSpawner` argument replaces the reference's monkeypatched
-    `Thread.start` as the seam for thread-start failures. The native-access
+    `Thread.start` as the seam for thread-start failures (the partial
+    start failure test makes lane 1's start fail). The native-access
     door, `AsyncWorker._from_async_access`, is the public
     `asyncWorkerFromAccess`.
 21. **Keyword arguments become `WorkerOptions`.** `resolver=`, `worker_id=`

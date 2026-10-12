@@ -598,15 +598,17 @@ type LaneSpawner = Int -> IO () -> IO ()
 forkLane :: LaneSpawner
 forkLane _ body = void (forkIO body)
 
+-- | One slot's lane. A slot's calls are sequential, so its mailbox holds
+-- one call at a time ('Nothing' ends the lane).
 data Lane = Lane
   { number :: Int
-  , calls :: Chan (Maybe (WorkerDispatch -> IO ()))
+  , mailbox :: MVar (Maybe (WorkerDispatch -> IO ()))
   , readiness :: MVar (Either SomeException ())
   , finished :: MVar ()
   }
 
 newLane :: Int -> IO Lane
-newLane number = Lane number <$> newChan <*> newEmptyMVar <*> newEmptyMVar
+newLane number = Lane number <$> newEmptyMVar <*> newEmptyMVar <*> newEmptyMVar
 
 -- | The lane's body: build the provider on this thread, then serve calls
 -- until the end sentinel.
@@ -618,7 +620,7 @@ ownLane factory lane = flip finally (putMVar lane.finished ()) $ do
     Right provider -> do
       putMVar lane.readiness (Right ())
       let serve =
-            readChan lane.calls >>= \case
+            takeMVar lane.mailbox >>= \case
               Nothing -> pure ()
               Just call -> call provider >> serve
       serve
@@ -626,13 +628,13 @@ ownLane factory lane = flip finally (putMVar lane.finished ()) $ do
 laneCall :: Lane -> (WorkerDispatch -> IO a) -> IO a
 laneCall lane operation = do
   result <- newEmptyMVar
-  writeChan lane.calls (Just (\provider -> try (operation provider) >>= putMVar result))
+  putMVar lane.mailbox (Just (\provider -> try (operation provider) >>= putMVar result))
   takeMVar result >>= either (\(err :: SomeException) -> throwIO err) pure
 
 laneClose :: Lane -> IO ()
 laneClose lane = do
   alive <- isEmptyMVar lane.finished
-  when alive $ laneCall lane (.close) `finally` (writeChan lane.calls Nothing >> readMVar lane.finished)
+  when alive $ laneCall lane (.close) `finally` (putMVar lane.mailbox Nothing >> readMVar lane.finished)
 
 -- | Run actions concurrently and collect each outcome, in order.
 concurrently' :: [IO ()] -> IO [Either SomeException ()]
@@ -653,8 +655,12 @@ syncBridgeAccess :: LaneSpawner -> IO WorkerDispatch -> Int -> IO WorkerAccess
 syncBridgeAccess spawn factory concurrency = do
   lanes <- mapM newLane [0 .. concurrency - 1]
   initialized <- newIORef []
-  -- (!!): the worker hands out slots from [0 .. concurrency - 1] only.
-  let lane slot = lanes !! slot
+  let bySlot = Map.fromList [(l.number, l) | l <- lanes]
+      -- The worker hands out slots from [0 .. concurrency - 1] only.
+      call :: Int -> (WorkerDispatch -> IO a) -> IO a
+      call slot operation = case Map.lookup slot bySlot of
+        Just l -> laneCall l operation
+        Nothing -> throwIO (RuntimeError ("no sync bridge lane for slot " <> T.pack (show slot)))
       start = do
         let launch [] = pure ([], Nothing)
             launch (next : rest) =
@@ -677,11 +683,11 @@ syncBridgeAccess spawn factory concurrency = do
   pure
     WorkerAccess
       { ready = start
-      , claim = \slot -> laneCall (lane slot) (.claim)
-      , heartbeat = \slot attempt details -> laneCall (lane slot) (\p -> p.heartbeat attempt details)
-      , complete = \slot attempt result -> laneCall (lane slot) (\p -> p.complete attempt result)
-      , fail = \slot attempt failure -> laneCall (lane slot) (\p -> p.fail attempt failure)
-      , wait = \slot timeout -> laneCall (lane slot) (\p -> p.wait timeout)
+      , claim = \slot -> call slot (.claim)
+      , heartbeat = \slot attempt details -> call slot (\p -> p.heartbeat attempt details)
+      , complete = \slot attempt result -> call slot (\p -> p.complete attempt result)
+      , fail = \slot attempt failure -> call slot (\p -> p.fail attempt failure)
+      , wait = \slot timeout -> call slot (\p -> p.wait timeout)
       , close = do
           ls <- readIORef initialized
           results <- concurrently' (map laneClose ls)
