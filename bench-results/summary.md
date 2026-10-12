@@ -52,7 +52,7 @@ lists the files whose package sources have changed since.
 | `petrus-motus` | [RESULTS.md](../packages/petrus-motus/bench/RESULTS.md) | `4d6410b` | 14 | 1.02× | 102× |  |
 | `petrus-motus-absurd` | [RESULTS.md](../packages/petrus-motus-absurd/bench/RESULTS.md) | `5a73d7a` | 4 | 1.16× | 3.48× |  |
 | `petrus-motus-zeromq` | [RESULTS.md](../packages/petrus-motus-zeromq/bench/RESULTS.md) | `c7ad649` | 11 | 1.08× | 1.98× |  |
-| `petrus-observation` | [RESULTS.md](../packages/petrus-observation/bench/RESULTS.md) | `b1b7c1e` | 21 | 4.62× | 19.6× |  |
+| `petrus-observation` | [RESULTS.md](../packages/petrus-observation/bench/RESULTS.md) | `ca1eca7` | 21 | 4.62× | 19.3× |  |
 | `petrus-observation-http` | [RESULTS.md](../packages/petrus-observation-http/bench/RESULTS.md) | `a99bed8` | 11 | 1.95× | 5.91× |  |
 | `petrus-posix` | [RESULTS.md](../packages/petrus-posix/bench/RESULTS.md) | `2eb0f2a` | 7 | 1.01× | 2.29× |  |
 | `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | `b10764e` | 8 | 1.21× | 14.6× |  |
