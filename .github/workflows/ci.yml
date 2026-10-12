@@ -17,13 +17,15 @@ name: CI
 #   test (N)   cabal test for the suites of shard N, with PostgreSQL 17, then
 #              scripts/check-pending on their output
 #   viewer     scripts/interop --viewer petrus-viewer-server (the upstream
-#              petrus-viewer suites against the Haskell backend)
+#              petrus-viewer suites against the Haskell backend); nightly and
+#              `full` also the viewer's bench-gate rows against the upstream
+#              Node backend
 #   bench-smoke  nightly and `full` only: every benchmark builds and runs once
 #              (scripts/bench --smoke); stale benchmark results are listed
 #   bench-gate (N)  nightly and `full` only: the thin-margin and headline rows
 #              of every package against its Python twin, 5 interleaved
-#              repetitions, rerun once when below 1.0x; fails when a row is
-#              below 1.0x twice (scripts/bench-gate)
+#              repetitions; fails when Haskell did not win most of a row's
+#              repetitions (scripts/bench-gate)
 #   container  the image and its runtime contract (scripts/container-smoke)
 #   ci         the verdict: green only when every job above is; it also
 #              records this run's test ledger
@@ -284,11 +286,24 @@ jobs:
         run: scripts/ci-tests run-viewer plan.json
       - name: The MCP golden transcript (re-recorded through the upstream Node MCP server)
         run: node packages/petrus-viewer-server/test/record-mcp-transcript.mjs --check
+      # scripts/bench-gate's viewer rows, here because this job has the
+      # built UI (bench/run.mjs runs the upstream Node backend beside petrus)
+      - name: The viewer backend against the upstream Node backend (scripts/bench-gate)
+        if: github.event_name == 'schedule' || inputs.full
+        run: scripts/bench-gate petrus-viewer-server --json bench-gate-viewer.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results-viewer-${{ github.run_attempt }}
           path: results-*.json
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always() && (github.event_name == 'schedule' || inputs.full)
+        with:
+          name: bench-gate-viewer
+          path: |
+            bench-gate-viewer.json
+            bench-results/tmp/gate/bench-gate.log
           retention-days: 30
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -344,10 +359,10 @@ jobs:
   # Performance against the pinned Python, on the code at HEAD: the rows of
   # scripts/bench-gate (every package with a Python twin, its thinnest
   # margins first), 5 interleaved repetitions each, spread over four
-  # runners. A row below 1.0x is measured again; the job fails when the
-  # rerun is below 1.0x too. Not on ordinary pushes: it takes runner time
-  # and the committed results files are what a push is checked against
-  # (scripts/bench --check, scripts/check-parity).
+  # runners (the viewer's rows run in the viewer job). The job fails when
+  # Haskell did not win most of a row's repetitions. Not on ordinary
+  # pushes: it takes runner time and the committed results files are what
+  # a push is checked against (scripts/bench --check, scripts/check-parity).
   #
   # The server is set up as scripts/with-postgres sets up the one the
   # results files were measured against: trust authentication over

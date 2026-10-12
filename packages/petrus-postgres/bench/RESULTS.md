@@ -1,31 +1,70 @@
 # petrus-postgres benchmarks
 
-<!-- scripts/bench: measured sources cfab50d278e88f10 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 86fcaeac67519f3e at 16e39fa0735a -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
-Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
-names and values. Both are wall-clock time. Ratios above 1 mean Haskell is
-faster. Haskell is faster on every row, by 1.22× (`tx.join-insert-commit`, an
-insert and a commit that are almost all server time) to 2.0× on the
-client-side work, and 14× on placeholder conversion, which never leaves the
-process. Statements now run prepared from their sixth execution, as psycopg's
-do (see below).
+Haskell figures come from `bench/Main.hs`, which uses the same names and
+values. Both are wall-clock time. Ratios above 1 mean Haskell is faster.
+Haskell is faster on every row, by 1.20× (`tx.join-insert-commit`, an insert
+and a commit that are almost all server time) to 2.0× on the client-side
+work, and 13× on placeholder conversion, which never leaves the process.
+Statements run prepared from their sixth execution, as psycopg's do (see
+below).
+
+The `tx`, `fence` and `notify` rows are timed with the twin's own protocol
+on both sides (`Petrus.TestSupport.BenchTwin` against
+`scripts/bench_timing.py`'s `report(..., number=N)`): one warm-up call, then
+10 batches of exactly the same number of calls (3000 commits, 600 owned
+transactions, 4000 fences, 7000 notifications), the median batch's time per
+call. Commits grow the event table with every call and the other two are
+mostly server time; as tasty-bench means, which run as many calls as the
+noise demands, they swung with the machine (`tx.join-insert-commit` read
+0.83× in one CI run and 1.28× in another). The other rows are tasty-bench
+means.
 
 ## Current figures
 
-Measured on 2026-10-12, 02:40–02:41 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.66–2.79:
-three interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-12, 12:39–12:42 local (UTC-3), on the commit that times
+the `tx`, `fence` and `notify` rows with the twin's protocol, on the Apple
+M4 (Darwin arm64) with a 1-minute load average of 3.66–8.37 (other agents
+were building): five interleaved repetitions, alternating which side goes
+first, of
 
-    scripts/bench-compare petrus-postgres 3
+    scripts/bench-compare petrus-postgres 5
 
-Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
-`+RTS -M2G`), the benchmark executable run directly in the package
-directory; Python figures are the twin's own timing (CPython 3.14.6). Each
+Haskell figures are the twin-protocol medians above for `tx`, `fence` and
+`notify`, and tasty-bench means in wall-clock time (`--stdev 5`) for the
+others, the benchmark executable run directly in the package directory with
+`+RTS -M2G`; Python figures are the twin's own timing (CPython 3.14.6). Each
 figure is the median over the repetitions, and the ratio is Python ÷
-Haskell (above 1 means Haskell is faster). The server was `scripts/with-postgres`'s throwaway PostgreSQL 17.7 on 127.0.0.1 over TCP (`initdb` defaults, `fsync` on). The
-tables in the sections below are earlier measurements, kept with the
-analysis that came with them.
+Haskell (above 1 means Haskell is faster). The server was
+`scripts/with-postgres`'s throwaway PostgreSQL 17.7 on 127.0.0.1 over TCP
+(`initdb` defaults, `fsync` on). Haskell won every repetition of the `tx`
+rows and 4 of 5 of `fence` and `notify`; the two it lost were both in the
+first repetition, which Haskell ran first against the freshly started
+server, and in which its `fence` and `notify` rows took 1.6–2× their time
+in the other four. The tables
+in the sections below are earlier measurements, kept with the analysis that
+came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---|---|
+| `tx.join-insert-commit` | 54.3 µs | 65 µs | 1.20× | 1.13× | 57.4 µs, 54.3 µs, 55.9 µs, 51.1 µs, 53.2 µs | 65 µs, 71.5 µs, 68.7 µs, 64.9 µs, 64.9 µs |
+| `tx.owned-insert-10` | 256 µs | 333 µs | 1.30× | 1.12× | 256 µs, 265 µs, 238 µs, 245 µs, 280 µs | 368 µs, 333 µs, 356 µs, 307 µs, 315 µs |
+| `fence.acquire-release` | 34.9 µs | 50.9 µs | 1.46× | 0.91× | 55.7 µs, 38.5 µs, 34.9 µs, 34.1 µs, 34.3 µs | 50.9 µs, 61.1 µs, 53.9 µs, 48.2 µs, 48.3 µs |
+| `notify.roundtrip` | 26.6 µs | 34.9 µs | 1.31× | 0.61× | 50.8 µs, 26.9 µs, 19.9 µs, 24.3 µs, 26.6 µs | 31.2 µs, 39.6 µs, 28.3 µs, 35.7 µs, 34.9 µs |
+| `roundtrip.select-1` | 18.5 µs | 24.5 µs | 1.33× | 1.24× | 17.6 µs, 18.5 µs, 18.7 µs, 17.5 µs, 19 µs | 24.5 µs, 22.9 µs, 23.4 µs, 25.7 µs, 30.6 µs |
+| `roundtrip.select-param` | 17.8 µs | 25.1 µs | 1.41× | 0.97× | 17.5 µs, 19.3 µs, 22.2 µs, 17.8 µs, 17.7 µs | 25.1 µs, 24.7 µs, 21.6 µs, 26.9 µs, 29 µs |
+| `query.select-1000-decoded` | 679 µs | 1.38 ms | 2.03× | 1.38× | 664 µs, 704 µs, 1 ms, 679 µs, 651 µs | 1.37 ms, 1.38 ms, 1.38 ms, 1.39 ms, 1.43 ms |
+| `params.convert-placeholders` | 303 ns | 4.05 µs | 13.36× | 12.71× | 296 ns, 303 ns, 289 ns, 315 ns, 333 ns | 4.02 µs, 4.05 µs, 3.99 µs, 4.09 µs, 4.23 µs |
+
+## Earlier figures
+
+Measured on 2026-10-12, 02:40–02:41 local (UTC-3), at commit `81bbdc5`,
+load average 2.66–2.79, by `scripts/bench-compare petrus-postgres 3`, with
+every Haskell row a tasty-bench mean:
+
+<!-- bench: superseded -->
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---|---|
@@ -38,7 +77,7 @@ analysis that came with them.
 | `notify.roundtrip` | 19.6 µs | 28.6 µs | 1.46× | 1.40× | 20.5 µs, 19.6 µs, 19.5 µs | 28.8 µs, 28.6 µs, 28.2 µs |
 | `params.convert-placeholders` | 271 ns | 3.89 µs | 14.36× | 14.24× | 270 ns, 271 ns, 273 ns | 3.89 µs, 3.89 µs, 3.89 µs |
 
-## Earlier figures
+Before that:
 
 - Date: 2026-10-11 01:02–01:05 local (UTC-3), on the commit that adds the
   prepared-statement cache
@@ -143,7 +182,7 @@ Session-local temporary tables only:
 ## Rerun
 
 From the repository root (`scripts/bench petrus-postgres` runs exactly this block, once;
-`scripts/bench-compare petrus-postgres 6` interleaves the two sides over six repetitions and prints the table above).
+`scripts/bench-compare petrus-postgres 5` interleaves the two sides over five repetitions and prints the table above).
 It needs a server where the role may create databases in `PETRUS_TEST_POSTGRES`; when that
 is unset, both scripts start a throwaway one with `scripts/with-postgres`.
 

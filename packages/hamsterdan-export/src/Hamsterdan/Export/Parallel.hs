@@ -11,6 +11,11 @@
 --   back the way the sequential writes would leave it (every write before
 --   the first failing one done, none after) and that failure is raised.
 --   Its threads are owned: an exception to the caller cancels them.
+--
+-- Measured (bench/RESULTS.md, "The parallel export, measured"): exporting
+-- the large state directory sequentially (@+RTS -N1@) took 1.23x as long
+-- in process, level with the Python reference (0.97-1.00x, against
+-- 1.24-1.47x in parallel), and 1.32x as long from the command line.
 module Hamsterdan.Export.Parallel
   ( parallelMap
   , writeFiles

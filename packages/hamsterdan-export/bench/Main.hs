@@ -82,8 +82,8 @@ compareAll runs = do
           , Subject "host-driven" driven "owner/one"
           , Subject "large" large repository
           ]
-    putStrLn "| State directory | Shape | Haskell median (min) | Python median (min) | Python / Haskell |"
-    putStrLn "| --- | --- | ---: | ---: | ---: |"
+    putStrLn "| State directory | Shape | Haskell median (min) | Python median (min) | Python / Haskell | Haskell ahead |"
+    putStrLn "| --- | --- | ---: | ---: | ---: | ---: |"
     forM_ subjects $ \subject -> do
       (hsCli, pyCli) <- cli tmp python binary runs subject
       row subject.label "CLI (fresh process)" hsCli pyCli
@@ -93,7 +93,7 @@ compareAll runs = do
 row :: String -> String -> [Double] -> [Double] -> IO ()
 row subject shape hs py =
   printf
-    "| %s | %s | %s (%s) | %s (%s) | %.2f× |\n"
+    "| %s | %s | %s (%s) | %s (%s) | %.2f× | %d of %d |\n"
     subject
     shape
     (duration (median hs))
@@ -101,6 +101,9 @@ row subject shape hs py =
     (duration (median py))
     (duration (minimum py))
     (median py / median hs)
+    -- the runs are paired (interleaved run by run): Haskell's wins
+    (length (filter id (zipWith (<) hs py)))
+    (length hs)
 
 median :: [Double] -> Double
 median xs = let sorted = sort xs in sorted !! (length sorted `div` 2)
