@@ -1,13 +1,13 @@
 # petrus-history-postgres benchmarks
 
-<!-- scripts/bench: measured sources b7278746e368e187 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources e7e75fa1416ed4c2 at 46473c2b7ca0 -->
 
 The Haskell side is `bench/Main.hs`. The Python twin is `bench/python_bench.py`, which runs the reference's `PostgresHistoryStore` with the same names, records, and statements. Both create a scratch database and drop it afterwards. Ratios above 1 mean Haskell is faster. Haskell is faster on every row: 1.20–1.44× on the round-trip rows, whose statements now run prepared from their sixth execution as psycopg's do (petrus-postgres's prepared-statement cache), and 1.9–2.0× on the loads (2.5–2.6× in the earlier figures: the Haskell load got slower since, see the note under the current figures).
 
 ## Current figures
 
-Measured on 2026-10-12, 02:01–02:03 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.57–2.73:
+Measured on 2026-10-12, 23:07–23:09 local (UTC-3), at commit `f5aa65d`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 4.02–5.36:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-history-postgres 3
@@ -20,15 +20,15 @@ Haskell (above 1 means Haskell is faster). The server was `scripts/with-postgres
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `append.autocommit-1` | 67 µs | 83 µs | 1.24× | 1.23× | 67.6 µs, 67 µs, 66.8 µs | 83 µs, 87.4 µs, 82.4 µs |
-| `append.autocommit-8` | 362 µs | 482 µs | 1.33× | 1.31× | 368 µs, 362 µs, 361 µs | 482 µs, 530 µs, 478 µs |
-| `append.joined-1-commit` | 67.3 µs | 81.1 µs | 1.20× | 1.19× | 67.9 µs, 67.3 µs, 67 µs | 81.1 µs, 84 µs, 80.4 µs |
-| `append.joined-8-commit` | 362 µs | 477 µs | 1.32× | 1.31× | 362 µs, 362 µs, 360 µs | 477 µs, 521 µs, 473 µs |
-| `load.1k` | 2.86 ms | 5.74 ms | 2.01× | 2.00× | 2.86 ms, 2.84 ms, 2.87 ms | 5.8 ms, 5.74 ms, 5.74 ms |
-| `load.10k` | 32.4 ms | 60.8 ms | 1.88× | 1.87× | 32.4 ms, 32.4 ms, 32.5 ms | 63.4 ms, 60.8 ms, 60.8 ms |
-| `verify.conflict-acknowledge` | 61.4 µs | 88.6 µs | 1.44× | 1.44× | 61.4 µs, 61.5 µs, 60.8 µs | 88.4 µs, 88.6 µs, 89.1 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `append.autocommit-1` | 72.3 µs | 89.1 µs | 1.23× | 1.09× | 3 of 3 | 81.9 µs, 72.3 µs, 71.7 µs | 89.1 µs, 89.4 µs, 88.5 µs |
+| `append.autocommit-8` | 431 µs | 531 µs | 1.23× | 1.23× | 3 of 3 | 375 µs, 433 µs, 431 µs | 502 µs, 531 µs, 532 µs |
+| `append.joined-1-commit` | 72.1 µs | 84.8 µs | 1.18× | 1.07× | 3 of 3 | 77.4 µs, 71.3 µs, 72.1 µs | 83.2 µs, 85.2 µs, 84.8 µs |
+| `append.joined-8-commit` | 429 µs | 545 µs | 1.27× | 1.20× | 3 of 3 | 429 µs, 407 µs, 447 µs | 514 µs, 552 µs, 545 µs |
+| `load.1k` | 2.99 ms | 5.88 ms | 1.97× | 1.97× | 3 of 3 | 3.01 ms, 2.93 ms, 2.99 ms | 5.96 ms, 5.78 ms, 5.88 ms |
+| `load.10k` | 32.2 ms | 64.7 ms | 2.01× | 2.00× | 3 of 3 | 32.3 ms, 30.7 ms, 32.2 ms | 64.8 ms, 61.5 ms, 64.7 ms |
+| `verify.conflict-acknowledge` | 63.3 µs | 91.3 µs | 1.44× | 1.37× | 3 of 3 | 66.5 µs, 63.3 µs, 63.2 µs | 91.3 µs, 89 µs, 91.7 µs |
 
 A note on the loads. The Haskell `load.*` rows got slower between the
 earlier figures below and these: `load.1k` 2.29 → 2.86 ms, `load.10k`
