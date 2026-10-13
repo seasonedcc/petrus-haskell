@@ -1,6 +1,6 @@
 # petrus-agenticus-runtime benchmark results
 
-<!-- scripts/bench: measured sources 8d94b106ee083ab2 at 9c6cdb8df7ff -->
+<!-- scripts/bench: measured sources 9a7d8d723c5eb474 at c0cb6cb59655 -->
 
 The Pi benchmarks (frame codec, session validation, fingerprints, the
 operation ledger and a scripted A2 turn) are in [results-pi.md](results-pi.md).
@@ -24,8 +24,8 @@ These are twin workloads: `bench/Main.hs` (tasty-bench) and
 
 ## Current figures
 
-Measured on 2026-10-12, 22:26–22:32 local (UTC-3), at commit `13f7a84`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.03–3.60:
+Measured on 2026-10-13, 01:06–01:12 local (UTC-3), at commit `c0cb6cb`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.05–3.65:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-agenticus-runtime 3 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
@@ -37,6 +37,19 @@ figure is the median over the repetitions, and the ratio is Python ÷
 Haskell (above 1 means Haskell is faster). The same three repetitions measured the rows of [results-pi.md](results-pi.md) and [results-hosts.md](results-hosts.md), whose current figures are there. The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `runner-3-phases-3-reads` | 5.15 ms | 10.3 ms | 2.00× | 1.98× | 3 of 3 | 5.15 ms, 5.1 ms, 5.19 ms | 10.3 ms, 10.2 ms, 10.3 ms |
+| `projection-roundtrip` | 35.2 µs | 107 µs | 3.04× | 3.04× | 3 of 3 | 35 µs, 35.4 µs, 35.2 µs | 107 µs, 109 µs, 107 µs |
+
+### 2026-10-12, at `13f7a84` (superseded)
+
+<!-- bench: superseded -->
+
+Measured on 2026-10-12, 22:26–22:32 local (UTC-3), with a 1-minute load
+average of 2.03–3.60: three interleaved repetitions of the command above.
+Superseded by the run at `c0cb6cb` above.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
