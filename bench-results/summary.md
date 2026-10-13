@@ -40,7 +40,7 @@ lists the files whose package sources have changed since.
 | `petrus-engine` | [RESULTS.md](../packages/petrus-engine/bench/RESULTS.md) | `0bf2235` | 5 | 6.10× | 13.9× |  |
 | `petrus-engine-absurd` | [RESULTS.md](../packages/petrus-engine-absurd/bench/RESULTS.md) | `f5aa65d` | 2 | 1.08× | 1.28× |  |
 | `petrus-engine-file` | [RESULTS.md](../packages/petrus-engine-file/bench/RESULTS.md) | `6be7b9a` | 19 | 1.29× | 8.90× |  |
-| `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | `5a73d7a` | 5 | 1.07× | 13.2× |  |
+| `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | `f87908d` | 5 | 1.10× | 13.2× |  |
 | `petrus-engine-sqlite` | [RESULTS.md](../packages/petrus-engine-sqlite/bench/RESULTS.md) | `56217b2` | 4 | 1.38× | 8.31× |  |
 | `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | `5a73d7a` | 13 | 1.01× | 10.7× |  |
 | `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | `e4a18a4` | 12 | 1.38× | 10.1× |  |

@@ -1,13 +1,13 @@
 # petrus-engine-postgres benchmarks
 
-<!-- scripts/bench: measured sources 28754479913b6aff at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 4afcec0f20b517f8 at f87908d8bbf6 -->
 
 The Haskell side is `bench/Main.hs`. The Python twin is `bench/python_bench.py`, which runs the reference's `petrus.engine.postgres` doors with the same names, net, and workloads. Both create a scratch database and drop it afterwards. Ratios above 1 mean Haskell is faster, and Haskell is faster on every row in every repetition. Statements now run prepared from their sixth execution, as psycopg's do (petrus-postgres's prepared-statement cache).
 
 ## Current figures
 
-Measured on 2026-10-12, 01:58–01:59 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.75–2.99:
+Measured on 2026-10-12, 23:06–23:07 local (UTC-3), at commit `6be7b9a`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 3.46–5.33:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-engine-postgres 3
@@ -20,13 +20,22 @@ Haskell (above 1 means Haskell is faster). The server was `scripts/with-postgres
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `engine.deliver` | 206 µs | 395 µs | 1.91× | 1.85× | 206 µs, 200 µs, 215 µs | 394 µs, 395 µs, 398 µs |
-| `engine.redeliver-prior` | 1.18 µs | 8.85 µs | 7.50× | 7.35× | 1.2 µs, 1.18 µs, 1.18 µs | 8.81 µs, 8.91 µs, 8.85 µs |
-| `engine.create-close` | 1.73 ms | 1.87 ms | 1.08× | 1.07× | 1.75 ms, 1.68 ms, 1.73 ms | 1.87 ms, 1.85 ms, 1.88 ms |
-| `engine.advance-chain` | 1.03 ms | 2.28 ms | 2.23× | 2.08× | 1.02 ms, 1.03 ms, 1.1 ms | 2.15 ms, 2.29 ms, 2.28 ms |
-| `engine.load` | 12 ms | 40.2 ms | 3.36× | 3.32× | 12 ms, 12 ms, 11.9 ms | 39.8 ms, 40.2 ms, 40.4 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `engine.deliver` | 214 µs | 420 µs | 1.96× | 1.48× | 3 of 3 | 213 µs, 282 µs, 214 µs | 420 µs, 416 µs, 425 µs |
+| `engine.redeliver-prior` | 693 ns | 9.16 µs | 13.23× | 12.13× | 3 of 3 | 693 ns, 676 ns, 756 ns | 8.96 µs, 9.18 µs, 9.16 µs |
+| `engine.create-close` | 2 ms | 2.21 ms | 1.10× | 0.91× | 4 of 5 | 2 ms, 2.01 ms, 2.44 ms, 1.87 ms, 1.93 ms | 2.07 ms, 2.15 ms, 2.21 ms, 3.21 ms, 3.09 ms |
+| `engine.advance-chain` | 1.12 ms | 2.39 ms | 2.14× | 1.95× | 3 of 3 | 1.05 ms, 1.12 ms, 1.22 ms | 2.24 ms, 2.6 ms, 2.39 ms |
+| `engine.load` | 13.2 ms | 41.8 ms | 3.17× | 2.93× | 3 of 3 | 13.2 ms, 12.5 ms, 14.1 ms | 43.1 ms, 41.8 ms, 41.4 ms |
+
+`engine.create-close` read 1.07× after the three repetitions (Haskell
+behind in the third, 2.44 ms against 2.21 ms), under 1.15×, so it got two
+more of its own (23:07, load average 4.86–5.03, by `scripts/bench-compare
+petrus-engine-postgres 2 --pattern create-close --python-only
+create-close`); its line pools all five. Python's two extra repetitions
+(3.21 ms and 3.09 ms) are slower than its first three at the same load, so
+the pooled 1.10× leans on them; over the first three alone the row is
+1.07×. Like the other connection-bound rows, it is close to level.
 
 ## Earlier figures
 
