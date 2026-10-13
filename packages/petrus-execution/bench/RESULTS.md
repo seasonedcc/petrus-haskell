@@ -42,6 +42,63 @@ shows the median of those per-round medians. A ratio above 1 means Haskell is fa
 
 ## Current figures
 
+### The sidecar rows, 2026-10-13: the clock and the connect timer
+
+Eleven alternating rounds of the rows without archive workloads on
+2026-10-12 (load average 2.5–3.3), by
+
+    PETRUS_BENCH_ONLY=none "$(scripts/upstream-python)" -B packages/petrus-execution/bench/compare.py WORKDIR 11
+
+read the handshake at 0.031 ms against Python's 0.032 ms, 0.98×, Haskell ahead
+in 2 of 11 rounds, where eleven rounds at `fc77e8d` on 2026-10-11 had read
+1.02× (6 of 11); the execute round trip was level at 1.02× (6 of 11). Three
+things were found:
+
+- **The wait did not change.** At `fc77e8d` `exchange` already waited for the
+  answer in an `interruptible` `poll` on the calling thread; the POSIX
+  consolidation moved that wait into `Petrus.Posix.Poll` (adding its 50 ms
+  slices, which a 30 µs answer never reaches). Waiting on GHC's IO manager
+  instead (`timeout` around `threadWaitRead`) is slower here too: 31.02 µs
+  against 30.46 µs, the poll faster in 6 of 7 interleaved rounds.
+- **The Haskell harness timed in whole microseconds.** `bench/Main.hs` read
+  `GHC.Clock.getMonotonicTime`, which on macOS is CLOCK_MONOTONIC at 1 µs
+  resolution, while the twin's `time.perf_counter` is `mach_absolute_time`
+  (41.7 ns ticks). Each 30 µs sample was rounded to a whole microsecond, so
+  the Haskell median could only read 31 or 32 µs: 1.02× or 0.98× against the
+  same Python figure, a 3% step that decided the "Haskell ahead" count. The
+  harness now reads CLOCK_UPTIME_RAW (`clock_gettime_nsec_np`, the clock
+  behind `perf_counter`) on macOS; on Linux both read CLOCK_MONOTONIC in
+  nanoseconds, as before. With that clock and the library unchanged, two
+  runs of eleven interleaved rounds read 31.04 µs against Python's 32.44 µs
+  and 31.10 µs against 31.27 µs: level.
+- **A timer Python does not pay.** `exchange` wrapped both the connect and
+  the send in `System.Timeout.timeout`, and each one registers and cancels a
+  timer with the IO manager's timer thread: about 0.55–0.68 µs per call in a
+  tight loop. The connect's never fired: a Unix-socket connect never waits
+  (the kernel connects or refuses at once, and network's `connect` waits
+  only on `EINPROGRESS`), as under CPython's `settimeout`. It is gone; the
+  send keeps its timer, since a large request can wait for the sidecar to
+  read. Interleaved with the previous build over eleven rounds each:
+  31.10 → 30.46 µs (faster in 8 of 11) and 31.65 → 31.04 µs (faster in 7 of
+  11), with Python at 31.27 and 31.42 µs in the same rounds.
+
+With both changes, eleven alternating rounds at 00:05–00:06 on 2026-10-13
+(load average 2.4–2.8), by the command above:
+
+| benchmark | Python (ms) | Haskell (ms) | Python / Haskell | lowest per round | Haskell ahead |
+|---|---:|---:|---:|---:|---:|
+| process/run-captured | 1.331 | 0.751 | 1.77x | 1.38x | 11 of 11 |
+| local/execute | 3.716 | 3.016 | 1.23x | 1.03x | 11 of 11 |
+| sidecar/handshake-round-trip | 0.031 | 0.031 | 1.00x | 0.95x | 5 of 11 |
+| sidecar/execute-round-trip | 4.837 | 4.404 | 1.10x | 0.95x | 8 of 11 |
+
+The handshake is level with Python: about 31 µs on both sides, most of it
+the shared Node sidecar, with round-to-round swings of ±1.5 µs on either side
+that exceed the remaining difference. It was not investigated further. The
+archive rows below were not remeasured.
+
+### 2026-10-12, at `d85b420`
+
 Measured on 2026-10-12, 23:31–23:33 local (UTC-3), at commit `d85b420`, on
 the Apple M4 (Darwin arm64) with a 1-minute load average of 3.10–5.00, by
 

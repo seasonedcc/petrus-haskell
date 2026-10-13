@@ -512,11 +512,15 @@ removeRuntime record = do
 -- | Connect, send one request line and read one response line (at most
 -- 8 MiB).  Every socket operation waits at most @tick@ seconds; when a
 -- receive times out, @onTick@ either keeps waiting ('Nothing') or ends the
--- exchange with its value.
+-- exchange with its value. The connect needs no timer: a Unix-socket
+-- connect never waits (the kernel connects or refuses at once, and
+-- @connect@ waits only on @EINPROGRESS@), as under CPython's
+-- @settimeout@. A timer costs about 0.6 µs of a 30 µs handshake
+-- (bench/RESULTS.md).
 exchange :: FilePath -> Double -> ByteString -> IO (Maybe a) -> IO (Either a Json)
 exchange path tick payload onTick =
   bracket (socket AF_UNIX Stream defaultProtocol) close $ \client -> do
-    within (connect client (SockAddrUnix path))
+    connect client (SockAddrUnix path)
     within (sendAll client payload)
     receive client [] 0
   where

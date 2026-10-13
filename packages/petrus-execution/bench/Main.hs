@@ -1,3 +1,6 @@
+{-# LANGUAGE CApiFFI #-}
+{-# LANGUAGE CPP #-}
+
 -- | Haskell side of the petrus-execution benchmarks; mirrors
 -- @bench/python_bench.py@ workload for workload (see @bench/RESULTS.md@).
 --
@@ -13,7 +16,6 @@ import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import GHC.Clock (getMonotonicTime)
 import Petrus.Json (Json (..), canonicalText)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (archiveDigest, extractWorkspaceArchive, validateWorkspaceArchive, workspaceArchive)
@@ -26,6 +28,12 @@ import System.FilePath ((</>))
 import System.IO (BufferMode (..), hSetBuffering, stdout)
 import System.IO.Temp (withSystemTempDirectory)
 import System.IO.Temp (createTempDirectory)
+#if defined(darwin_HOST_OS)
+import Data.Word (Word64)
+import Foreign.C.Types (CInt (..))
+#else
+import GHC.Clock (getMonotonicTime)
+#endif
 
 workloads :: [(String, Int)]
 workloads = [("many-small", 7), ("medium", 7), ("one-large", 7)]
@@ -67,9 +75,25 @@ localBenchmarks = do
 
 timed :: IO a -> IO Double
 timed action = do
-  started <- getMonotonicTime
+  started <- perfCounter
   void action
-  subtract started <$> getMonotonicTime
+  subtract started <$> perfCounter
+
+-- | Seconds on the clock behind the twin's @time.perf_counter@. On macOS
+-- that is @mach_absolute_time@ (CLOCK_UPTIME_RAW, 41.7 ns ticks), while
+-- GHC's monotonic clock reads CLOCK_MONOTONIC there, in whole microseconds:
+-- a median of single round trips of about 30 µs then moves in steps of
+-- about 3%. Elsewhere both read CLOCK_MONOTONIC in nanoseconds.
+perfCounter :: IO Double
+#if defined(darwin_HOST_OS)
+perfCounter = (/ 1e9) . fromIntegral <$> clockGettimeNsecNp clockUptimeRaw
+
+foreign import capi unsafe "time.h clock_gettime_nsec_np" clockGettimeNsecNp :: CInt -> IO Word64
+
+foreign import capi unsafe "time.h value CLOCK_UPTIME_RAW" clockUptimeRaw :: CInt
+#else
+perfCounter = getMonotonicTime
+#endif
 
 median :: [Double] -> Double
 median samples =
