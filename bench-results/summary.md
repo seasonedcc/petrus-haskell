@@ -15,7 +15,7 @@ lists the files whose package sources have changed since.
 
 | Package | Results | Measured at | Rows | Worst | Best | |
 | --- | --- | --- | ---: | ---: | ---: | --- |
-| `hamsterdan-agents` | [RESULTS.md](../packages/hamsterdan-agents/bench/RESULTS.md) | `4d5049e` | 6 | 1.02× | 5.23× |  |
+| `hamsterdan-agents` | [RESULTS.md](../packages/hamsterdan-agents/bench/RESULTS.md) | `fcc7701` | 6 | 1.04× | 5.32× |  |
 | `hamsterdan-contracts` | [RESULTS.md](../packages/hamsterdan-contracts/bench/RESULTS.md) | `f3b300b` | 7 | 1.11× | 5.49× |  |
 | `hamsterdan-export` | [RESULTS.md](../packages/hamsterdan-export/bench/RESULTS.md) | `75e8a1a` | 6 | 1.11× | 36.4× |  |
 | `hamsterdan-github` | [RESULTS.md](../packages/hamsterdan-github/bench/RESULTS.md) | `5a73d7a` | 8 | 1.11× | 91.9× |  |
