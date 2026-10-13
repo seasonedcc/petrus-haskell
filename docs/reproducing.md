@@ -158,6 +158,8 @@ It runs, in order, and stops at the first failing step:
     warning), every results file measured on code that has changed since:
     the package's own sources, any local package it builds on, the cabal
     project and freeze file, the upstream pins or the twins' timing harness.
+    A file carried forward to the current sources counts as current
+    ([Which code the figures measured](#which-code-the-figures-measured)).
 14. `scripts/check-parity`: the parity table's claims hold: evidence for
     every component at parity, no cited benchmark row below 1.0×, and every
     upstream test count the parity ledgers cite (in `PARITY.md` and every
@@ -403,6 +405,28 @@ is the commit those sources were at. `summary.md` shows each file's commit.
   hand, then `scripts/bench --stamp PKG` (for one of several results files,
   `scripts/bench --stamp PKG results-x.md`). That records HEAD's fingerprint
   and regenerates `summary.md`. Commit the result.
+- Carrying figures forward: the fingerprint changes with any source in the
+  package's dependency closure, including a change that cannot affect what
+  the benchmark measures (a bounds check on a path no row runs, a doc
+  comment, a provider the benchmark never uses). For such a change,
+  `scripts/bench --carry PKG [results-x.md] --reason "TEXT"` keeps the
+  measured marker as it is and adds, after it, a line
+
+  ```
+  <!-- scripts/bench: carried to FINGERPRINT at COMMIT: REASON -->
+  ```
+
+  with HEAD's fingerprint and commit. A carry claims exactly this: the
+  change since the measurement does not touch the code paths the figures
+  measured, for the reason given (required), so the figures measured at the
+  older commit still stand for HEAD's sources. It is a claim for a reviewer
+  to check, not a measurement. `--check` and `--stale` count the file as
+  current while its latest carry matches; `summary.md` shows the measured
+  commit and the commit it was carried to; `scripts/check-parity` names, as
+  `CARRIED evidence`, the components citing it, with the reason. A later
+  carry adds another line, so the history stays visible. A carry never
+  refreshes a figure: rerunning and `--stamp` does, and removes every carry
+  line.
 
 A push reruns no benchmark. A `full` dispatch runs
 `scripts/bench --smoke` (the `bench-smoke` job), which builds every
