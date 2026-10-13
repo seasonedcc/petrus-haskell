@@ -24,7 +24,7 @@ lists the files whose package sources have changed since.
 | `hamsterdan-readiness` | [RESULTS.md](../packages/hamsterdan-readiness/bench/RESULTS.md) | `848eeba` | 13 | 3.73× | 14.3× |  |
 | `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | `9da9efa` | 22 | 1.62× | 24.0× |  |
 | `petrus-activity` | [RESULTS.md](../packages/petrus-activity/bench/RESULTS.md) | `561723e` | 7 | 2.42× | 83.1× |  |
-| `petrus-agenticus` | [RESULTS.md](../packages/petrus-agenticus/bench/RESULTS.md) | `5a73d7a` | 5 | 1.87× | 4.07× |  |
+| `petrus-agenticus` | [RESULTS.md](../packages/petrus-agenticus/bench/RESULTS.md) | `424aa4e` | 5 | 1.97× | 4.29× |  |
 | `petrus-agenticus-core` | [RESULTS.md](../packages/petrus-agenticus-core/bench/RESULTS.md) | `5a73d7a` | 1 | 2.70× | 7.07× |  |
 | `petrus-agenticus-core` | [results-catalog.md](../packages/petrus-agenticus-core/bench/results-catalog.md) | `5a73d7a` | 4 | 1.91× | 6.12× |  |
 | `petrus-agenticus-core` | [results-custody.md](../packages/petrus-agenticus-core/bench/results-custody.md) | `5a73d7a` | 2 | 4.77× | 7.16× |  |

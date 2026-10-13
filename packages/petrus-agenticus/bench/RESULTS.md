@@ -1,6 +1,6 @@
 # petrus-agenticus benchmark results
 
-<!-- scripts/bench: measured sources f21f0285c01a357d at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources c17db1b2dc475d17 at 424aa4e653ee -->
 
 These are twin workloads: `bench/Bench/AgentNet.hs` (tasty-bench) and
 `bench/python_agent_net.py`, which runs the pinned reference
@@ -29,8 +29,8 @@ archive:
 
 ## Current figures
 
-Measured on 2026-10-12, 03:06–03:07 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.31–2.73:
+Measured on 2026-10-12, 22:16–22:18 local (UTC-3), at commit `561723e`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.87–2.01:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-agenticus 3 --python python_agent_net.py --python python_retention.py
@@ -43,13 +43,13 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `agent-net.run-4-phases-6-tools` | 1.88 ms | 7.65 ms | 4.07× | 4.02× | 1.86 ms, 1.9 ms, 1.88 ms | 7.68 ms, 7.65 ms, 7.63 ms |
-| `agent-net.loop-state-roundtrip-16` | 41.7 µs | 128 µs | 3.08× | 3.04× | 41.8 µs, 41.6 µs, 41.7 µs | 127 µs, 128 µs, 129 µs |
-| `retention.decode-row-x1000` | 5.08 ms | 14.7 ms | 2.90× | 2.85× | 5.08 ms, 5.17 ms, 5.08 ms | 14.6 ms, 14.7 ms, 14.9 ms |
-| `retention.ledger-lookup-x200` | 2.42 ms | 4.53 ms | 1.87× | 1.87× | 2.42 ms, 2.41 ms, 2.42 ms | 4.52 ms, 4.59 ms, 4.53 ms |
-| `retention.ledger-recover-100` | 741 µs | 1.65 ms | 2.23× | 2.21× | 739 µs, 742 µs, 741 µs | 1.63 ms, 1.67 ms, 1.65 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `agent-net.run-4-phases-6-tools` | 1.75 ms | 7.52 ms | 4.29× | 4.23× | 3 of 3 | 1.78 ms, 1.75 ms, 1.74 ms | 7.51 ms, 7.55 ms, 7.52 ms |
+| `agent-net.loop-state-roundtrip-16` | 32.2 µs | 126 µs | 3.92× | 3.87× | 3 of 3 | 32.6 µs, 31.9 µs, 32.2 µs | 126 µs, 126 µs, 126 µs |
+| `retention.decode-row-x1000` | 4.29 ms | 14.8 ms | 3.45× | 3.38× | 3 of 3 | 4.28 ms, 4.29 ms, 4.37 ms | 14.8 ms, 14.8 ms, 14.7 ms |
+| `retention.ledger-lookup-x200` | 2.34 ms | 4.63 ms | 1.97× | 1.93× | 3 of 3 | 2.39 ms, 2.34 ms, 2.34 ms | 4.63 ms, 4.69 ms, 4.6 ms |
+| `retention.ledger-recover-100` | 659 µs | 1.69 ms | 2.56× | 2.53× | 3 of 3 | 665 µs, 651 µs, 659 µs | 1.69 ms, 1.7 ms, 1.67 ms |
 
 ## Results
 
