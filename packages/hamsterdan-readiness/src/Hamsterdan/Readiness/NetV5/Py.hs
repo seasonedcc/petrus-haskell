@@ -48,7 +48,7 @@ import Hamsterdan.Contracts.Codec (Contract, Enumeration (..), dump, validate)
 import Hamsterdan.PyLiteral qualified as Lit
 import Hamsterdan.Readiness.NetV5.Folding (PythonException, pyError, typeError, validationError)
 import Petrus.Json.Python.Object (PyObject (..), fromJson)
-import Petrus.Json (Json (..))
+import Petrus.Json (Json (..), jsonNumber, pyNumberCompare)
 import Hamsterdan.Python.Value (truthy, typeName)
 import Hamsterdan.Python.Value qualified as Value
 
@@ -146,19 +146,11 @@ opText = \case
   Gt -> ">"
   Ge -> ">="
 
-data Num' = Exact Integer | Inexact Double
-
-numeric :: Json -> Maybe Num'
-numeric = \case
-  Bool b -> Just (Exact (if b then 1 else 0))
-  Int i -> Just (Exact i)
-  Float d -> Just (Inexact d)
-  _ -> Nothing
-
 -- | Python @<@-family comparison of two values.
 compareValues :: CompareOp -> Json -> Json -> Py Bool
-compareValues op left right = case (numeric left, numeric right) of
-  (Just a, Just b) -> Right (numericCompare op a b)
+compareValues op left right = case (jsonNumber left, jsonNumber right) of
+  -- unordered (a NaN): every operator is false
+  (Just a, Just b) -> Right (maybe False (ordered op) (pyNumberCompare a b))
   _ -> case (left, right) of
     (String a, String b) -> Right (ordered op (compare a b))
     (Array a, Array b) -> sequenceCompare op a b
@@ -177,28 +169,6 @@ ordered op o = case op of
   Le -> o /= GT
   Gt -> o == GT
   Ge -> o /= LT
-
-numericCompare :: CompareOp -> Num' -> Num' -> Bool
-numericCompare op a b = case (a, b) of
-  (Exact x, Exact y) -> ordered op (compare x y)
-  (Inexact x, Inexact y) -> floatOp x y
-  (Exact x, Inexact y) -> mixed x y False
-  (Inexact x, Exact y) -> mixed y x True
-  where
-    floatOp x y
-      | isNaN x || isNaN y = False
-      | otherwise = ordered op (compare x y)
-    -- an int against a float compares exactly, as CPython does
-    mixed i d flipped
-      | isNaN d = False
-      | isInfinite d = ordered op (if flipped then (if d > 0 then GT else LT) else (if d > 0 then LT else GT))
-      | otherwise =
-          let o = compare (fromInteger i :: Rational) (toRational d)
-           in ordered op (if flipped then invert o else o)
-    invert = \case
-      LT -> GT
-      GT -> LT
-      EQ -> EQ
 
 -- | Lexicographic comparison of two sequences: the first unequal pair
 -- decides with the operator; otherwise the lengths do.

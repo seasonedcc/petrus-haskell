@@ -16,13 +16,16 @@
 -- is defined by that equality, so replay and interop depend on it. Use
 -- 'exactEq' where the reference compares canonical spellings instead, and
 -- 'typeExactEq' where it compares Python types node by node but ignores
--- member order.
+-- member order. Python's numeric ordering (@<@ and friends, NaN unordered)
+-- is 'pyNumberCompare'.
 module Petrus.Json.Value
   ( Json (..)
   , pythonEq
   , pythonTruthy
   , PyNumber (..)
+  , jsonNumber
   , pyNumberEq
+  , pyNumberCompare
   , exactEq
   , typeExactEq
   , lookupMember
@@ -98,11 +101,12 @@ pythonTruthy = \case
   Array items -> not (null items)
   Object members -> not (null members)
 
--- | A number as Python's @==@ compares it: an @int@ (or @bool@) exactly, a
--- @float@ by its value.
+-- | A number as Python's @==@ and @<@ compare it: an @int@ (or @bool@)
+-- exactly, a @float@ by its value.
 data PyNumber = PyExact Integer | PyInexact Double
 
--- | The number a value is (a @bool@, @int@ or @float@).
+-- | The number a value is (a @bool@, @int@ or @float@), as 'pythonEq' and
+-- 'pyNumberCompare' see it.
 jsonNumber :: Json -> Maybe PyNumber
 jsonNumber = \case
   Bool b -> Just (PyExact (if b then 1 else 0))
@@ -128,6 +132,39 @@ pyNumberEq (PyInexact a) (PyExact b) = exactFloatEq b a
 exactFloatEq :: Integer -> Double -> Bool
 exactFloatEq integral floating =
   not (isNaN floating || isInfinite floating) && toRational floating == fromInteger integral
+
+-- | CPython's numeric ordering, the core of its @<@, @<=@, @>@ and @>=@
+-- between @bool@, @int@ and @float@: 'Nothing' when the two are unordered
+-- (a NaN on either side, so every one of those operators is false), else
+-- how @left@ compares with @right@. An @int@ and a @float@ compare exactly
+-- (@2**53 + 1 > float(2**53)@), and an infinity lies beyond every @int@.
+-- Where it says 'EQ', 'pyNumberEq' says equal. Every Python @<@ between
+-- numbers in the port goes through it: Hamsterdan readiness's folds, the
+-- engine-file loader's arc sort and the DST joined checkers. (petrus-activity's
+-- @Number@ is a total order on purpose, NaN last, for the finite instants
+-- and delays it keys maps by.)
+pyNumberCompare :: PyNumber -> PyNumber -> Maybe Ordering
+-- Inlined where it is called, so a caller that builds both numbers from its
+-- own values and turns the 'Maybe' into a 'Bool' allocates neither.
+{-# INLINE pyNumberCompare #-}
+pyNumberCompare (PyExact a) (PyExact b) = Just (compare a b)
+pyNumberCompare (PyInexact a) (PyInexact b)
+  | isNaN a || isNaN b = Nothing
+  | otherwise = Just (compare a b)
+pyNumberCompare (PyExact a) (PyInexact b) = exactFloatCompare a b
+pyNumberCompare (PyInexact a) (PyExact b) = fmap flipOrdering (exactFloatCompare b a)
+  where
+    flipOrdering = \case
+      LT -> GT
+      EQ -> EQ
+      GT -> LT
+
+-- | How an @int@ compares with a @float@, exactly.
+exactFloatCompare :: Integer -> Double -> Maybe Ordering
+exactFloatCompare integral floating
+  | isNaN floating = Nothing
+  | isInfinite floating = Just (if floating > 0 then LT else GT)
+  | otherwise = Just (compare (fromInteger integral) (toRational floating))
 
 -- | Structural equality that also distinguishes integer from float spellings
 -- and object member order: two values are 'exactEq' exactly when CPython

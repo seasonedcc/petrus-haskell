@@ -6,10 +6,13 @@
 --
 -- Each check is a pure function of the observation, with the reference's
 -- Python value semantics: dictionary equality ignores key order, @True ==
--- 1@, and @x is True@ admits only the boolean. Detail values echo the
--- observation's raw members where the reference does. Malformed evidence
--- (a missing or non-numeric counter) fails the comparison it appears in
--- instead of raising @KeyError@/@TypeError@ (see DIVERGENCES.md).
+-- 1@, @x is True@ admits only the boolean, and counters compare and add as
+-- Python numbers (an @int@ and a @float@ exactly, a NaN equal to and
+-- ordered with nothing; "Petrus.Testing.Dst.Joined.Support"). Detail
+-- values echo the observation's raw members where the reference does.
+-- Malformed evidence (a missing or non-numeric counter) fails the
+-- comparison it appears in instead of raising @KeyError@/@TypeError@ (see
+-- DIVERGENCES.md).
 module Petrus.Testing.Dst.Joined.Checkers
   ( -- * joined_world.py
     commitAuthorityChecker
@@ -47,33 +50,31 @@ module Petrus.Testing.Dst.Joined.Checkers
 
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json (..), pythonEq, pythonTruthy)
+import Petrus.Json (Json (..), PyNumber (..), pythonEq, pythonTruthy)
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.Common (member)
 import Petrus.Testing.Dst.Joined.Identities qualified as Id
-import Petrus.Testing.Dst.Joined.Support (listOf, pyCount, pyIn, pyNum, strs)
+import Petrus.Testing.Dst.Joined.Support (listOf, pyCount, pyIn, pyNum, pyNumAdd, pyNumEq, pyNumLe, strs)
 
 -- ---------------------------------------------------------------------------
 -- Python value helpers
 
 -- | A Python number, or 'Nothing' for malformed evidence.
-type N = Maybe Rational
+type N = Maybe PyNumber
 
 num :: Text -> Json -> N
 num key value = pyNum (member key value)
 
 n :: Integral a => a -> N
-n = Just . fromIntegral
+n = Just . PyExact . toInteger
 
 -- | @a == b@ over numbers.
 (.==) :: N -> N -> Bool
-Just a .== Just b = a == b
-_ .== _ = False
+(.==) = pyNumEq
 
 -- | @a <= b@ over numbers.
 (.<=) :: N -> N -> Bool
-Just a .<= Just b = a <= b
-_ .<= _ = False
+(.<=) = pyNumLe
 
 infix 4 .==, .<=
 
@@ -84,7 +85,15 @@ les :: [N] -> Bool
 les xs = and (zipWith (.<=) xs (drop 1 xs))
 
 plus :: N -> N -> N
-plus a b = (+) <$> a <*> b
+plus = pyNumAdd
+
+-- | @bool(n)@ of a counter: nonzero (a NaN included); malformed evidence
+-- is false.
+truthyN :: N -> Bool
+truthyN = \case
+  Just (PyExact i) -> i /= 0
+  Just (PyInexact d) -> d /= 0
+  Nothing -> False
 
 -- | A computed count as a detail value.
 int :: Integer -> Json
@@ -807,8 +816,8 @@ resetRefusalCheck value =
       workerCompletions = num "worker_completions" value
       expectedTasks =
         custody
-          [ (maybe False (/= 0) workerCompletions, "completed")
-          , (maybe False (/= 0) workerClaims, "running")
+          [ (truthyN workerCompletions, "completed")
+          , (truthyN workerClaims, "running")
           , (acceptedBegins /= 0, "pending")
           ]
       passed =
@@ -867,7 +876,7 @@ acceptedResetCheck value =
       expectedTasks =
         custody
           [ (acceptedCancellations /= 0, "cancelled")
-          , (maybe False (/= 0) workerClaims, "running")
+          , (truthyN workerClaims, "running")
           , (acceptedBegins /= 0, "pending")
           ]
       ackLosses = num "reset_ack_losses" value
@@ -1026,7 +1035,7 @@ checkCancellation acknowledgementLoss value =
       expectedTasks =
         custody
           [ (acceptedCancellations /= 0, "cancelled")
-          , (maybe False (/= 0) workerClaims, "running")
+          , (truthyN workerClaims, "running")
           , (acceptedBegins /= 0, "pending")
           ]
       staleRefusals = num "stale_worker_refusals" value

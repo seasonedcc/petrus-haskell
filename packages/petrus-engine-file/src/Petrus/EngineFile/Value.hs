@@ -21,6 +21,7 @@ module Petrus.EngineFile.Value
   , fitsI64
   , pyEq
   , pyEqWith
+  , valueNumber
   ) where
 
 import Control.DeepSeq (NFData)
@@ -97,13 +98,18 @@ pyEqWith nanIdentity a b = case (a, b) of
         my = Map.fromList ys
      in Map.size mx == Map.size my
           && and [maybe False (pyEq' v) (Map.lookup k my) | (k, v) <- Map.toList mx]
-  _ -> case (numeric a, numeric b) of
+  _ -> case (valueNumber a, valueNumber b) of
     (Just x, Just y) -> pyNumberEq x y
     _ -> False
   where
     pyEq' = pyEqWith nanIdentity
-    numeric = \case
-      VBool t -> Just (PyExact (if t then 1 else 0))
-      VInt i _ -> Just (PyExact i)
-      VFloat d -> Just (PyInexact d)
-      _ -> Nothing
+
+-- | The number a value is (a @bool@, @int@ or @float@), as Python's @==@
+-- ('pyNumberEq') and @<@ ('Petrus.Json.Python.Object.pyNumberCompare')
+-- compare it.
+valueNumber :: Value -> Maybe PyNumber
+valueNumber = \case
+  VBool t -> Just (PyExact (if t then 1 else 0))
+  VInt i _ -> Just (PyExact i)
+  VFloat d -> Just (PyInexact d)
+  _ -> Nothing

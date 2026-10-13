@@ -33,6 +33,7 @@ import Petrus.EngineFile.Validate
 import Petrus.EngineFile.Value
 import Petrus.Json (pythonDict)
 import Petrus.Json.Python.Exception (PythonException, pythonError)
+import Petrus.Json.Python.Object (pyNumberCompare)
 import Petrus.Json.PythonText (pythonStrRepr)
 
 -- | Where the root net and its refs come from.
@@ -229,24 +230,14 @@ valueLt nanShared a b = case (a, b) of
   (VList xs, VList ys) -> case [(x, y) | (x, y) <- zip xs ys, not (pyEqWith nanShared x y)] of
     [] -> Right (length xs < length ys)
     (x, y) : _ -> valueLt nanShared x y
-  _ -> case (numeric a, numeric b) of
-    (Just x, Just y) -> Right (numLt x y)
+  _ -> case (valueNumber a, valueNumber b) of
+    (Just x, Just y) -> Right (pyNumberCompare x y == Just LT)
     _ ->
       Left
         ( pythonError
             "TypeError"
             ("'<' not supported between instances of '" <> pyTypeName a <> "' and '" <> pyTypeName b <> "'")
         )
-  where
-    numeric = \case
-      VBool t -> Just (Left (if t then 1 else 0))
-      VInt i _ -> Just (Left i)
-      VFloat d -> Just (Right d)
-      _ -> Nothing
-    numLt (Left x) (Left y) = x < y
-    numLt (Right x) (Right y) = x < y
-    numLt (Left x) (Right y) = not (isNaN y) && (isInfinite y && y > 0 || not (isInfinite y) && fromInteger x < toRational y)
-    numLt (Right x) (Left y) = not (isNaN x) && (isInfinite x && x < 0 || not (isInfinite x) && toRational x < fromInteger y)
 
 -- | CPython's @list.sort@ for fewer than 64 items: @count_run@, then
 -- @binarysort@ extending the run to the whole list.

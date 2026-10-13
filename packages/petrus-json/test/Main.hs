@@ -393,6 +393,30 @@ main = hspec $ do
                    , "Out of range float values are not JSON compliant: -inf"
                    ]
 
+  describe "pyNumberCompare" $ do
+    let nan = 0 / 0 :: Double
+        inf = 1 / 0 :: Double
+        big = 2 ^ (1024 :: Int) :: Integer
+    it "leaves a NaN unordered with everything, itself included" $ do
+      pyNumberCompare (PyInexact nan) (PyInexact nan) `shouldBe` Nothing
+      pyNumberCompare (PyInexact nan) (PyExact 0) `shouldBe` Nothing
+      pyNumberCompare (PyExact 0) (PyInexact nan) `shouldBe` Nothing
+      pyNumberCompare (PyInexact inf) (PyInexact nan) `shouldBe` Nothing
+    it "puts the infinities beyond every int" $ do
+      pyNumberCompare (PyExact big) (PyInexact inf) `shouldBe` Just LT
+      pyNumberCompare (PyInexact inf) (PyExact big) `shouldBe` Just GT
+      pyNumberCompare (PyInexact (negate inf)) (PyExact (negate big)) `shouldBe` Just LT
+      pyNumberCompare (PyExact (negate big)) (PyInexact (negate inf)) `shouldBe` Just GT
+    it "compares an int with a float exactly" $ do
+      pyNumberCompare (PyExact (2 ^ (53 :: Int) + 1)) (PyInexact (2 ^ (53 :: Int))) `shouldBe` Just GT
+      pyNumberCompare (PyInexact (2 ^ (53 :: Int))) (PyExact (2 ^ (53 :: Int) + 1)) `shouldBe` Just LT
+      pyNumberCompare (PyExact 0) (PyInexact (-0.0)) `shouldBe` Just EQ
+      pyNumberCompare (PyExact 1) (PyInexact 1.5) `shouldBe` Just LT
+    it "says EQ exactly where pyNumberEq says equal, and reverses with its arguments" $
+      property $ \(PyNumbers a b) ->
+        (pyNumberCompare a b == Just EQ) === pyNumberEq a b
+          .&&. pyNumberCompare b a === fmap reverseOrdering (pyNumberCompare a b)
+
   describe "typeExactEq" $ do
     it "ignores member order" $
       Object [("a", Int 1), ("b", Array [Null])] `typeExactEq` Object [("b", Array [Null]), ("a", Int 1)] `shouldBe` True
@@ -423,6 +447,33 @@ main = hspec $ do
 
 -- | Strings rich in what the scanner must stop at: quotes, backslashes,
 -- control characters, and non-ASCII (including astral) characters.
+-- | Two numbers dense in ties and near-ties across int and float, and in
+-- the non-finite floats.
+data PyNumbers = PyNumbers PyNumber PyNumber
+
+instance Show PyNumbers where
+  show (PyNumbers a b) = unwords [spell a, spell b]
+    where
+      spell = \case
+        PyExact i -> "(PyExact " <> show i <> ")"
+        PyInexact d -> "(PyInexact " <> show d <> ")"
+
+instance Arbitrary PyNumbers where
+  arbitrary = do
+    base <- frequency [(3, choose (-4, 4)), (1, arbitrary), (1, pure (2 ^ (53 :: Int)))]
+    let near = do
+          offset <- choose (-1, 1)
+          elements [PyExact (base + offset), PyInexact (fromInteger (base + offset)), PyInexact (fromInteger base + 0.5)]
+        special = elements [PyInexact (0 / 0), PyInexact (1 / 0), PyInexact (-1 / 0), PyInexact (-0.0)]
+        number = frequency [(6, near), (1, special)]
+    PyNumbers <$> number <*> number
+
+reverseOrdering :: Ordering -> Ordering
+reverseOrdering = \case
+  LT -> GT
+  EQ -> EQ
+  GT -> LT
+
 newtype StringChars = StringChars String
   deriving stock (Show)
 

@@ -110,12 +110,15 @@ directFd fd = do
 -- back on every call. Short writes loop, @EINTR@ is retried, and a failure
 -- raises the errno's 'IOError', as 'writeAll' does.
 --
--- While the call runs, no other Haskell thread of the capability runs, as
--- Node's event loop waits for its synchronous @console.log@ to a file or a
--- terminal. That is why only a 'DirectFd' takes it: a regular file or a
--- character device does not wait for a reader (a terminal can still apply
--- flow control, which stalls Node's loop the same way), while a pipe or a
--- socket could block the capability indefinitely.
+-- While the call runs, no other Haskell thread of the capability runs, and
+-- neither does the next garbage collection, which waits for every
+-- capability to stop, so the threads of the other capabilities stop there
+-- too: a write that blocks pauses the whole program, as Node's single event
+-- loop waits for its synchronous @console.log@ to a file or a terminal.
+-- That is why only a 'DirectFd' takes it: a regular file or a character
+-- device does not wait for a reader (a terminal under flow control still
+-- can, and then pauses the program as it stalls Node's loop), while a pipe
+-- or a socket could block it indefinitely.
 --
 -- Measured where it is used, the viewer's @petrus-mcp@ logging every
 -- bridge request to @/dev/null@ with 16 calls in flight: 'writeAll' served

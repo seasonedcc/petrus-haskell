@@ -11,7 +11,8 @@
 -- (jiter's duplicate keys and NaN identity) and Hamsterdan's @PyLiteral@
 -- (what @ast.literal_eval@ returns, non-@str@ keys and sets included). All
 -- of them, and 'Json''s own '==', compare numbers with one core,
--- 'pyNumberEq' (defined in "Petrus.Json.Value", re-exported here).
+-- 'pyNumberEq' (defined in "Petrus.Json.Value" and re-exported here, beside
+-- Python's numeric ordering, 'pyNumberCompare').
 module Petrus.Json.Python.Object
   ( PyObject (..)
   , fromJson
@@ -24,6 +25,7 @@ module Petrus.Json.Python.Object
   , PyNumber (..)
   , pyNumber
   , pyNumberEq
+  , pyNumberCompare
   , pythonRepr
   , pythonStr
   , failureArgumentText
@@ -39,7 +41,7 @@ import Petrus.Json.Python.JsonRepr (jsonRepr)
 import Petrus.Json.Python.Scanner (Raw (..))
 import Petrus.Json.PythonText (pythonStrRepr)
 import Petrus.Json.Repr (pythonBytesRepr, pythonDoubleRepr, pythonIntRepr, pythonListRepr, pythonTupleRepr)
-import Petrus.Json.Value (Json (..), PyNumber (..), pyNumberEq)
+import Petrus.Json.Value (Json (..), PyNumber (..), pyNumberCompare, pyNumberEq)
 import Petrus.Json.Wtf8 (fromCodePoints)
 
 -- | A Python object: what @json.loads@ builds, plus @bytes@, the tuples a

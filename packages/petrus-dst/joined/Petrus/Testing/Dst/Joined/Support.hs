@@ -19,7 +19,11 @@
 -- * Python value semantics for the checkers ('pyIn', 'pyCount' and
 --   friends): the reference compares decoded JSON with Python's @==@
 --   (petrus-json's 'pythonEq'), where dict member order is irrelevant,
---   @True == 1@ and a NaN equals nothing.
+--   @True == 1@ and a NaN equals nothing, and orders and adds its counters
+--   as Python numbers ('pyNumEq', 'pyNumLe', 'pyNumAdd', over petrus-json's
+--   'pyNumberEq' and 'pyNumberCompare'), where an @int@ and a @float@
+--   compare exactly, an infinity equals no @int@ and lies beyond every one,
+--   and a NaN is neither equal to, below nor above anything.
 module Petrus.Testing.Dst.Joined.Support
   ( -- * Faults
     Arm (..)
@@ -38,6 +42,10 @@ module Petrus.Testing.Dst.Joined.Support
   , pyIn
   , pyCount
   , pyNum
+  , pyNumEq
+  , pyNumLe
+  , pyNumLt
+  , pyNumAdd
   , pyLe
   , pyLt
   , listOf
@@ -65,7 +73,7 @@ import Petrus.Engine.Absurd (AbsurdSession (..))
 import Petrus.HistoryStore.Postgres (loadPostgresHistory)
 import Petrus.Impetus.History.Records (Record, recordName)
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
-import Petrus.Json (Json (..), pythonEq)
+import Petrus.Json (Json (..), PyNumber (..), jsonNumber, pyNumberCompare, pyNumberEq, pythonEq)
 import Petrus.Json.Python.Exception (raised)
 import Petrus.Motus.Dispatch.Absurd (Session (..))
 import Petrus.Postgres (Connection, quoteIdentifier, sql, sqlSource, textParam)
@@ -387,26 +395,56 @@ pyIn x = any (pythonEq x)
 pyCount :: Json -> [Json] -> Integer
 pyCount x = toInteger . length . filter (pythonEq x)
 
--- | A Python number (@bool@ counts as @int@).
-pyNum :: Json -> Maybe Rational
-pyNum = \case
-  Bool True -> Just 1
-  Bool False -> Just 0
-  Int n -> Just (fromInteger n)
-  Float d -> Just (toRational d)
+-- | A Python number (@bool@ counts as @int@), or 'Nothing' for malformed
+-- evidence: a missing or non-numeric counter. The comparisons below are
+-- false when either side is 'Nothing' (the reference would raise
+-- @TypeError@ on such evidence; see DIVERGENCES.md).
+pyNum :: Json -> Maybe PyNumber
+pyNum = jsonNumber
+
+-- | @a == b@ over numbers.
+pyNumEq :: Maybe PyNumber -> Maybe PyNumber -> Bool
+pyNumEq (Just a) (Just b) = pyNumberEq a b
+pyNumEq _ _ = False
+
+-- | @a <= b@ over numbers (false when a NaN makes them unordered).
+pyNumLe :: Maybe PyNumber -> Maybe PyNumber -> Bool
+pyNumLe a b = case (a, b) of
+  (Just x, Just y) -> maybe False (/= GT) (pyNumberCompare x y)
+  _ -> False
+
+-- | @a < b@ over numbers.
+pyNumLt :: Maybe PyNumber -> Maybe PyNumber -> Bool
+pyNumLt a b = case (a, b) of
+  (Just x, Just y) -> pyNumberCompare x y == Just LT
+  _ -> False
+
+-- | @a + b@ over numbers: an @int@ for two @int@s, else a @float@, the
+-- @int@ side rounded to the nearest @float@ first as @float(int)@ does;
+-- 'Nothing' where that raises @OverflowError@ (an @int@ beyond the
+-- @float@ range).
+pyNumAdd :: Maybe PyNumber -> Maybe PyNumber -> Maybe PyNumber
+pyNumAdd a b = case (a, b) of
+  (Just (PyExact x), Just (PyExact y)) -> Just (PyExact (x + y))
+  (Just x, Just y) -> (\p q -> PyInexact (p + q)) <$> asFloat x <*> asFloat y
   _ -> Nothing
+  where
+    asFloat = \case
+      PyInexact d -> Just d
+      PyExact i ->
+        -- 'fromRational' rounds correctly (to nearest, ties to even), as
+        -- CPython's int-to-float conversion does; it overflows to an
+        -- infinity exactly where CPython raises.
+        let d = fromRational (fromInteger i) :: Double
+         in if isInfinite d then Nothing else Just d
 
--- | @a <= b@ over numbers; a non-number never satisfies the comparison
--- (the reference would raise @TypeError@ on such malformed evidence).
+-- | @a <= b@ over decoded values that should be numbers.
 pyLe :: Json -> Json -> Bool
-pyLe a b = case (pyNum a, pyNum b) of
-  (Just x, Just y) -> x <= y
-  _ -> False
+pyLe a b = pyNumLe (pyNum a) (pyNum b)
 
+-- | @a < b@ over decoded values that should be numbers.
 pyLt :: Json -> Json -> Bool
-pyLt a b = case (pyNum a, pyNum b) of
-  (Just x, Just y) -> x < y
-  _ -> False
+pyLt a b = pyNumLt (pyNum a) (pyNum b)
 
 -- | The items of a JSON list (@[]@ for anything else).
 listOf :: Json -> [Json]

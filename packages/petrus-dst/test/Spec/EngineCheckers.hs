@@ -10,13 +10,16 @@
 -- recorded by @scripts/joined_checker_vectors.py@ in
 -- @test/data/joined-checkers.json@. The joined checkers' Python @==@ over
 -- decoded JSON (petrus-json's 'pythonEq', also through 'Support.pyIn' and
--- 'Support.pyCount') is compared with the pinned CPython's, live.
+-- 'Support.pyCount'), and their @==@, @<=@, @<@ and @+@ over counters
+-- ('Support.pyNumEq', 'Support.pyLe', 'Support.pyLt', 'Support.pyNumAdd'),
+-- are compared with the pinned CPython's, live.
 module Spec.EngineCheckers (spec, engineCheckers) where
 
 import Control.Monad (forM_)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json (..), lookupMember, pythonEq)
+import Petrus.Json (Json (..), PyNumber (..), lookupMember, pythonEq)
+import Petrus.Json.Python (pythonDoubleRepr, pythonIntRepr)
 import Petrus.TestSupport.Python (pythonJson)
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.Delayed qualified as Delayed
@@ -106,6 +109,72 @@ spec = do
         , ("count", Array [Int (Support.pyCount a values) | a <- values])
         ]
         `shouldBeJson` expected
+  describe "Joined checkers' Python ==, <=, < and + over counters" $
+    it "agree with CPython's on bools, ints, floats, NaN, infinities, signed zeros and ints beyond a float" $ do
+      expected <-
+        pythonJson
+          ( T.unlines
+              [ "import json, sys"
+              , "values = [eval(v) for v in sys.argv[1:]]"
+              , "def add(a, b):"
+              , "    try:"
+              , "        return repr(a + b)"
+              , "    except OverflowError:"
+              , "        return None"
+              , "print(json.dumps({"
+              , "    'eq': [[a == b for b in values] for a in values],"
+              , "    'le': [[a <= b for b in values] for a in values],"
+              , "    'lt': [[a < b for b in values] for a in values],"
+              , "    'add': [[add(a, b) for b in values] for a in values],"
+              , "}))"
+              ]
+          )
+          (map fst pythonNumbers)
+      let values = map snd pythonNumbers
+          numbers = map Support.pyNum values
+          sumRepr = \case
+            Just (PyExact i) -> String (pythonIntRepr i)
+            Just (PyInexact d) -> String (pythonDoubleRepr d)
+            Nothing -> Null
+      Object
+        [ ("eq", Array [Array [Bool (Support.pyNumEq a b) | b <- numbers] | a <- numbers])
+        , ("le", Array [Array [Bool (Support.pyLe a b) | b <- values] | a <- values])
+        , ("lt", Array [Array [Bool (Support.pyLt a b) | b <- values] | a <- values])
+        , ("add", Array [Array [sumRepr (Support.pyNumAdd a b) | b <- numbers] | a <- numbers])
+        ]
+        `shouldBeJson` expected
+
+-- | Python numbers, each with the decoded JSON it stands for: around the
+-- edges of exact int-against-float comparison, of the float range
+-- (@2**1024 - 2**971@ is the largest float; @2**1024 - 2**970@ rounds to
+-- an infinity, so @float()@ of it overflows) and of the NaN's
+-- unorderedness.
+pythonNumbers :: [(String, Json)]
+pythonNumbers =
+  [ ("True", Bool True)
+  , ("False", Bool False)
+  , ("0", Int 0)
+  , ("1", Int 1)
+  , ("-1", Int (-1))
+  , ("0.0", Float 0)
+  , ("-0.0", Float (-0.0))
+  , ("1.0", Float 1)
+  , ("1.5", Float 1.5)
+  , ("float('nan')", Float nan)
+  , ("float('inf')", Float inf)
+  , ("float('-inf')", Float (negate inf))
+  , ("2**53", Int (2 ^ (53 :: Int)))
+  , ("2**53 + 1", Int (2 ^ (53 :: Int) + 1))
+  , ("float(2**53)", Float (2 ^ (53 :: Int)))
+  , ("2**1024 - 2**971", Int (2 ^ (1024 :: Int) - 2 ^ (971 :: Int)))
+  , ("2**1024 - 2**970", Int (2 ^ (1024 :: Int) - 2 ^ (970 :: Int)))
+  , ("2**1024", Int (2 ^ (1024 :: Int)))
+  , ("-2**1024", Int (negate (2 ^ (1024 :: Int))))
+  , ("1.7976931348623157e308", Float 1.7976931348623157e308)
+  ]
+  where
+    nan = 0 / 0
+    inf = 1 / 0
 
 -- | Python expressions, each with the decoded JSON it stands for.
 pythonValues :: [(String, Json)]
