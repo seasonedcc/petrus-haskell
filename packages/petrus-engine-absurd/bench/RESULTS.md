@@ -1,6 +1,6 @@
 # petrus-engine-absurd benchmarks
 
-<!-- scripts/bench: measured sources 5f71b9db9262af24 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources ce04efa3aa3e4dd8 at f5aa65d0429a -->
 
 The Haskell side is [`bench/Main.hs`](Main.hs). The Python twin is
 [`bench/python_bench.py`](python_bench.py), which runs the reference's
@@ -15,8 +15,8 @@ Both sides do the following:
 
 ## Current figures
 
-Measured on 2026-10-12, 01:57–01:58 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.85–3.17:
+Measured on 2026-10-12, 23:00–23:02 local (UTC-3), at commit `0bf2235`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 3.86–4.62:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-engine-absurd 3
@@ -29,10 +29,17 @@ Haskell (above 1 means Haskell is faster). The server was `scripts/with-postgres
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `engine.create-close` | 2.73 ms | 3.13 ms | 1.15× | 1.13× | 2.78 ms, 2.73 ms, 2.73 ms | 3.13 ms, 3.09 ms, 3.18 ms |
-| `roundtrip.issue-to-completion` | 8.72 ms | 11.2 ms | 1.29× | 1.26× | 8.64 ms, 8.89 ms, 8.72 ms | 11.3 ms, 11.2 ms, 11.2 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `engine.create-close` | 3.44 ms | 3.71 ms | 1.08× | 1.06× | 5 of 5 | 3.5 ms, 3.33 ms, 3.32 ms, 3.44 ms, 3.55 ms | 3.7 ms, 3.71 ms, 3.69 ms, 3.85 ms, 3.92 ms |
+| `roundtrip.issue-to-completion` | 9.94 ms | 12.7 ms | 1.28× | 1.24× | 3 of 3 | 9.9 ms, 9.94 ms, 10.2 ms | 12.8 ms, 12.7 ms, 12.6 ms |
+
+`engine.create-close` read 1.11× after the three repetitions, under 1.15×,
+so it got two more of its own (23:07, load average 4.86–5.67, by
+`scripts/bench-compare petrus-engine-absurd 2 --pattern create-close
+--python-only create-close`); its line pools all five. Both sides' times
+are higher than at `81bbdc5` (2.73 ms against 3.13 ms then), at a load
+average about two higher.
 
 ## Earlier figures
 
