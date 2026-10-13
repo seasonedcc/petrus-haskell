@@ -1,6 +1,7 @@
 # petrus-dst benchmark results
 
 <!-- scripts/bench: measured sources 95f5c2257dded8e5 at f87d05b6f42b -->
+<!-- scripts/bench: carried to e62017343213192e at 60f3c54dbf18: the fingerprint now also counts the package's test/, which the benchmark stanza compiles (hs-source-dirs: bench test); nothing in it has changed since the measurement at f87d05b (git diff f87d05b -- test/ is empty), so no measured source changed -->
 
 The same workloads, measured on the same inputs, in Haskell (`bench/Bench.hs`, tasty-bench)
 and in the pinned Python reference (`scripts/bench.py`, `timeit`).

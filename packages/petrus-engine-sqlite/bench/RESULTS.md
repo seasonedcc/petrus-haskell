@@ -2,6 +2,7 @@
 
 <!-- scripts/bench: measured sources 6ba098dbc7d510c0 at df073f3106e5 -->
 <!-- scripts/bench: carried to 26062d9d4eabf41e at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-history-store's floatEqualsInteger calls pyNumberEq, the same exact test, reached only for a REAL position or a float occurrence, which the store never writes; petrus-impetus's literalInt float branch and petrus-motus's local-dispatch sqlite3 int-against-float == call pyNumberEq, the same exact test they spelled out; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
+<!-- scripts/bench: carried to 5a91e18920bec21f at 60f3c54dbf18: the fingerprint now also counts the test directories the benchmark stanza compiles (its test/, ../petrus-impetus/test and ../petrus-engine/test); none has changed since the measurement at df073f3 (git diff df073f3 of the three is empty), so no measured source changed -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` drive the same
 workloads through the public SQLite Engine composition: the reference's
