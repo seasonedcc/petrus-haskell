@@ -87,5 +87,5 @@ A fourth run uses read doors that fail the way the reference's can fail:
 - an interleaved load comparison, in which one client drives both servers
   with identical requests.
 
-Haskell is faster on every row in wall-clock time, from 1.6× (`/v1/history`
-with 1 client) to 5.1× (`roundtrip.document`).
+Haskell is faster on every row in wall-clock time, by the thinnest margin
+on `/v1/history` with 1 client.

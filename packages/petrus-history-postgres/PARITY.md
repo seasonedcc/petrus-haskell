@@ -83,6 +83,5 @@ connection, which is the upstream `reopen` fixture's postgres parameter.
 ## Benchmarks
 
 See [bench/RESULTS.md](bench/RESULTS.md). Every row is faster than the pinned
-Python in wall-clock time over six interleaved repetitions: 1.24× to 2.6× against a
-native PostgreSQL 17, with statements prepared from their sixth execution as
+Python in wall-clock time, against a native PostgreSQL 17, with statements prepared from their sixth execution as
 psycopg prepares them (petrus-postgres's prepared-statement cache).

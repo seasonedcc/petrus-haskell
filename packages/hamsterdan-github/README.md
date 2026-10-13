@@ -202,14 +202,8 @@ The suite runs:
 
 ## Benchmarks
 
-Haskell is faster than the pinned Python on every benchmarked hot path:
-
-| Operation | Haskell | Python | Python / Haskell |
-| --- | ---: | ---: | ---: |
-| webhook verification | 4.12 µs | 4.49 µs | 1.09× |
-| a full `receive` | 49.6 µs | 82.1 µs | 1.7× |
-| an installation `GET` through the client stack | 28.0 µs | 200.6 µs | 7.2× |
-| App JWT mint | 512 µs | 47.2 ms | 92× |
-
-[bench/RESULTS.md](bench/RESULTS.md) has the full table and the commands to
-rerun it.
+Haskell is faster than the pinned Python on every benchmarked hot path,
+among them webhook verification (the thinnest margin: mostly the same HMAC
+on both sides), a full `receive`, an installation `GET` through the client
+stack, and App JWT minting. [bench/RESULTS.md](bench/RESULTS.md) has the
+figures and the commands to rerun them.

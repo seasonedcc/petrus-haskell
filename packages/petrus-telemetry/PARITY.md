@@ -19,7 +19,7 @@ Divergences are listed in [DIVERGENCES.md](DIVERGENCES.md).
 | `test_telemetry_instrumentation.py`, 22 tests | `petrus-telemetry-instrumentation/test/Petrus/Telemetry/InstrumentationSpec.hs` | all 22 ported as is |
 | Instrumentation differential: 25 scenarios, 290 events, compared raw | [`differential/`](../petrus-telemetry-instrumentation/differential), `DifferentialSpec.hs` | every event name, field, field order and value is exact, and every routed line is byte-identical with `ts` pinned |
 | Routed-line bytes | `pinned` in the differential fixture | 4 fixed payloads, including non-ASCII, non-finite floats, a payload `ts`, and the benchmark payload |
-| Overhead benchmark | [`bench/RESULTS.md`](../petrus-telemetry-instrumentation/bench/RESULTS.md) | a routed emit costs 2.5 µs vs Python's 4.5 µs; the default (no route) costs 0.056 µs vs 2.5 µs; `profile`-level gauges on a 1 000-firing Engine chain cost ~23 µs per firing routed vs ~50 µs |
+| Overhead benchmark | [`bench/RESULTS.md`](../petrus-telemetry-instrumentation/bench/RESULTS.md) | cheaper than Python on every row: a routed emit, the default (no route), and `profile`-level gauges per firing on a 1 000-firing Engine chain |
 
 The instrumentation suite runs:
 

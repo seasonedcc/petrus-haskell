@@ -171,8 +171,12 @@ It runs, in order, and stops at the first failing step:
     the script cannot read fails too, so none goes unchecked. No document states how
     many Haskell examples a suite has (`scripts/lint-example-counts`): such a
     number goes stale with the next test. `cabal test` prints each suite's
-    count, and CI's `test` jobs print every suite's. It warns
-    (`STALE evidence`) about components whose cited results are stale.
+    count, and CI's `test` jobs print every suite's. Nor does a parity or
+    divergence document restate a benchmark ratio (`scripts/lint-bench-figures`):
+    it would go stale with the next rerun, so they point at the results
+    files and name rows without their figures. It warns
+    (`STALE evidence`) about components whose cited results are stale, and
+    names (`CARRIED evidence`) those whose cited results were carried forward.
 15. `packages/petrus-engine/scripts/parity_check.py`: the runtime test
     ledgers account for every in-scope upstream test.
 

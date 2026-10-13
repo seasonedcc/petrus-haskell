@@ -172,5 +172,4 @@ runs it under the `petrus-json` group.
 
 [bench/RESULTS.md](bench/RESULTS.md): eight rows against CPython's
 C-accelerated `json` on History records, a Net document and Thread documents.
-petrus-json is 1.8× to 2.7× faster on every row (the slowest single
-repetition was 1.49×).
+petrus-json is faster on every row, in every repetition.

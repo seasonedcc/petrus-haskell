@@ -104,11 +104,10 @@ the reference accepts or refuses is matched byte for byte.
 
 ## Benchmarks
 
-See `bench/results-hosts.md`: `claude-transcript-encode` 2.0×,
-`claude-transcript-decode` 2.4×, `claude-canonical-input` 2.4× and
-`claude-sanitize` 2.2× the reference's speed. A whole Turn through the
-official client and the shared sidecar (`claude-turn`) is 1.20× (lowest
-of nine interleaved rounds 1.18×).
+See `bench/results-hosts.md`: `claude-transcript-encode`,
+`claude-transcript-decode`, `claude-canonical-input` and `claude-sanitize`
+are faster than the reference, and so is a whole Turn through the official
+client and the shared sidecar (`claude-turn`), over interleaved rounds.
 
 ## `tests/petrus/agenticus/runtime/test_claude_real.py` (2 functions)
 

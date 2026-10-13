@@ -173,12 +173,11 @@ World interop.
 See [bench/RESULTS.md](bench/RESULTS.md). The Haskell and Python runs were
 interleaved, and the load average is noted. Haskell is faster on every row:
 
-- **Oracle:** `evaluate` 11.6×; `load` + `evaluate` 1.7×;
-  `evaluate_liveness` 22.8×.
-- **Journeys, end to end:** 3.3× to 7.0× for the eight journeys without Git
-  publication. For the three with real `git` processes: `agent_repair`
-  1.7×, `stale_base_update` 2.0×, `true_conflict_resolution` 1.9×.
-- **World, four scenarios:** authoring 2.2× to 3.0×; replay 1.7× to 2.4×.
+- **Oracle:** `evaluate`, `load` + `evaluate`, and `evaluate_liveness`.
+- **Journeys, end to end:** the eight journeys without Git publication, and
+  by a thinner margin the three with real `git` processes (`agent_repair`,
+  `stale_base_update`, `true_conflict_resolution`).
+- **World, four scenarios:** authoring and replay.
 
 ## Gaps
 

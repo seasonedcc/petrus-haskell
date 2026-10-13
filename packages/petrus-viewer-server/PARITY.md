@@ -82,19 +82,14 @@ answers that code as Node does.
 
 ## Capabilities
 
-The ratios below come from [bench/RESULTS.md](bench/RESULTS.md), on a
-machine shared with other agents:
-
-- run I (2026-10-12): every scenario on the current code, 5 interleaved
-  rounds, with a load average of 4.1–6.7;
-- "Low-level code, measured": each low-level piece of the server against
-  the clean version, in the same rounds as Node (7 each).
-
-- "Median" is the median of the Haskell / Node ratios of the rounds.
-- "Per round" is the lowest Haskell / Node ratio within a single round,
-  and "ahead" the rounds Haskell won.
-
-Each ratio compares the best Haskell server with the best Node server.
+The figures are in [bench/RESULTS.md](bench/RESULTS.md), measured on a
+machine shared with other agents: its latest run covers every scenario on
+the current code in interleaved rounds, and "Low-level code, measured"
+measures each low-level piece of the server against the clean version, in
+the same rounds as Node. Each ratio there compares the best Haskell server
+with the best Node server, by the median of the rounds' ratios; this file
+names the scenarios and does not restate their figures, which change with
+every run.
 
 ### `petrus` CLI (`bin/petrus.mjs`)
 
@@ -106,22 +101,12 @@ Each ratio compares the best Haskell server with the best Node server.
   `petrus`.
 - Upstream `live` (13/13).
 
-**Performance** (run I), against `node bin/petrus.mjs`, the Vite dev
-server and `vite preview`:
-
-| Scenario | Median | Per round | Ahead |
-| --- | ---: | ---: | ---: |
-| cold start until the file and the UI are served | 25.41x | ≥ 18.10x | 5 of 5 |
-| GET / (index.html), 1 client | 1.63x | ≥ 1.43x | 5 of 5 |
-| GET / (index.html), 16 clients | 1.49x | ≥ 1.38x | 5 of 5 |
-| GET the JS bundle (592 KiB), 16 clients | 4.03x | ≥ 3.22x | 5 of 5 |
-| GET /sample-net.json, 16 clients | 1.93x | ≥ 1.47x | 5 of 5 |
-| GET /temporal/... (proxied), 1 client | 3.61x | ≥ 3.58x | 5 of 5 |
-| GET /temporal/... (proxied), 16 clients | 1.98x | ≥ 1.69x | 5 of 5 |
-
-`petrus FILE` serves the file and the UI 17 ms after it is spawned
-(median); `bin/petrus.mjs` takes 417 ms. The endpoints and relays the
-CLI's server also answers are in the rows below.
+**Performance**, against `node bin/petrus.mjs`, the Vite dev server and
+`vite preview`: ahead of Node by median on every scenario, the cold start
+until the file and the UI are served, `GET /` (index.html) with 1 and 16
+clients, the JS bundle and `/sample-net.json` with 16 clients, and
+`/temporal/...` (proxied) with 1 and 16 clients. The endpoints and relays
+the CLI's server also answers are in the rows below.
 
 **Status:** at parity. `petrus` serves the built UI instead of running
 Vite (see [DIVERGENCES.md](DIVERGENCES.md)).
@@ -143,20 +128,14 @@ Vite (see [DIVERGENCES.md](DIVERGENCES.md)).
 - `live` (13/13): every tool, through `petrus-mcp` (Haskell), the `petrus`
   relay (Haskell) and the built UI in headless Chromium.
 
-**Performance** (run I), `petrus-mcp` against `node server/mcp.mjs`, both
+**Performance**, `petrus-mcp` against `node server/mcp.mjs`, both
 bridged to the same relay; one op is a `tools/call` line on stdin
-answered on stdout:
-
-| Scenario | Median | Per round | Ahead |
-| --- | ---: | ---: | ---: |
-| petrus_inspect_document (bridged), 1 call at a time | 1.36x | ≥ 1.23x | 5 of 5 |
-| petrus_inspect_document (bridged), 16 calls in flight | 1.24x | ≥ 1.05x | 5 of 5 |
-| petrus_status, 1 call at a time | 1.30x | ≥ 1.06x | 5 of 5 |
-
-Per call, `petrus-mcp` uses about a third of Node's CPU time (run G).
-Its event loop (`Mcp.Reactor`) and the C string escaper are what keep it
-ahead with 16 calls in flight: without them it served 0.63x and 0.82x
-as many calls ("Low-level code, measured").
+answered on stdout. `petrus-mcp` is ahead by median on every scenario:
+`petrus_inspect_document` (bridged) with 1 call at a time and with 16 in
+flight, and `petrus_status` with 1 call at a time, and uses less CPU time
+per call than Node (run G). Its event loop (`Mcp.Reactor`) and the C string
+escaper are what keep it ahead with 16 calls in flight: without them it
+fell behind Node ("Low-level code, measured").
 
 **Status:** at parity.
 
@@ -176,17 +155,11 @@ as many calls ("Low-level code, measured").
     byte.
 - `live` (13/13).
 
-**Performance** (run I), against the Node relay on bare `ws` (Node's
-fastest case), both without the timing log:
-
-| Round trip | Median | Per round | Ahead |
-| --- | ---: | ---: | ---: |
-| 1 pair | 1.32x | ≥ 1.17x | 5 of 5 |
-| 16 pairs | 1.39x | ≥ 0.94x | 4 of 5 |
-
-Before this work the 16-pair round trip was 0.81–0.98x. With the timing
-log on, `petrus` serves 1.06x and 1.18x as many round trips as the Vite
-relay that `bin/petrus.mjs` runs (1 and 16 pairs, median ops/s).
+**Performance**, against the Node relay on bare `ws` (Node's fastest
+case), both without the timing log: the round trip is ahead by median with
+1 pair and with 16 pairs. Before this work the 16-pair round trip was
+behind. With the timing log on, `petrus` also serves more round trips than
+the Vite relay that `bin/petrus.mjs` runs (1 and 16 pairs, median ops/s).
 
 **Status:** at parity.
 
@@ -201,8 +174,8 @@ relay that `bin/petrus.mjs` runs (1 and 16 pairs, median ops/s).
   `--host` does, and the UI loads its file; `test/ServerSpec.hs` checks
   the same at the socket.
 
-**Performance** (run I): fan-out to 50 or 200 peers is 4.05x and 3.59x
-Node by median, and at least 3.14x in every round.
+**Performance:** fan-out to 50 or 200 peers is ahead of Node in every
+round.
 
 **Status:** at parity. Unlike upstream, the Haskell relay keeps running
 after a WebSocket protocol error (see [DIVERGENCES.md](DIVERGENCES.md)).
@@ -226,33 +199,22 @@ after a WebSocket protocol error (see [DIVERGENCES.md](DIVERGENCES.md)).
   the one difference in when a connection closes (an HTTP/1.0 request
   that asks for keep-alive), as [DIVERGENCES.md](DIVERGENCES.md) records.
 
-**Performance** (run I):
-
-| Clients | Median | Per round | Ahead |
-| --- | ---: | ---: | ---: |
-| 1 | 1.07x | ≥ 0.78x | 3 of 5 |
-| 16 | 1.08x | ≥ 1.03x | 5 of 5 |
-
-Warp serves the endpoints. The hand-written HTTP front that served them
-in runs E to H was 2–16% faster here, but Warp stays ahead of Node, so
-it went ("Low-level code, measured": 1.17x and 1.11x by median there).
-The file reads (`FileIO`, `cbits/file_io.c`) and the string escaper
+**Performance:** ahead of Node by median with 1 and with 16 clients.
+Warp serves the endpoints. The hand-written HTTP front that
+served them in earlier runs was a little faster here, but Warp stays ahead
+of Node, so it went ("Low-level code, measured"). The file reads
+(`FileIO`, `cbits/file_io.c`) and the string escaper
 (`cbits/json_escape.c`) stay: with the clean versions, resolve-ref fell
-behind Node (0.94x and 0.78x, then 0.87x and 0.69x). The two 1-client
-rounds below 1.0x are rounds in which every server slowed down (in the
-0.78x one, all three ran at about half speed). On GitHub's Linux runner
-the 1-client row came out at 0.95x (2 of 5 rounds) and 1.01x (3 of 5) in
-two nightly-gate runs, the HTTP front at 1.19x (3 of 5). Profiled there,
-every request made a safe foreign call (`F_OK`, imported without
-`unsafe`), which handed the capability to a second OS thread and back,
-and the 16 MB allocation area cost cache misses. With `F_OK` unsafe and
-GHC's default 4 MB area, the row is 1.10x (6 of 9 rounds) and 1.23x
-(6 of 9) on two Linux runners, and 16 clients 1.42x and 1.47x
-(bench/RESULTS.md, "Where a request spends its time on Linux"; the Mac
-figures above predate both changes).
+behind Node. Single 1-client rounds behind Node are rounds in which every
+server slowed down together. On GitHub's Linux runner the 1-client row
+came out even with Node. Profiled there, every request made a safe
+foreign call (`F_OK`, imported without `unsafe`), which handed the
+capability to a second OS thread and back, and the 16 MB allocation area
+cost cache misses. With `F_OK` unsafe and GHC's default 4 MB area, the
+row is ahead on Linux too, with 1 and with 16 clients (bench/RESULTS.md,
+"Where a request spends its time on Linux").
 
-**Status:** at parity: ahead in every median, by a thin margin on the
-Mac (run I, before the two changes) and by at least 1.10x on Linux.
+**Status:** at parity: ahead in every median, on the Mac and on Linux.
 
 ### `open-file` endpoint (`server/openFileEndpoint.mjs`)
 
@@ -267,23 +229,14 @@ Mac (run I, before the two changes) and by at least 1.10x on Linux.
   for resolve-ref above.
 - `live`: the UI loads `PETRUS_OPEN_FILE` through the endpoint.
 
-**Performance** (run I):
-
-| Clients | Median | Per round | Ahead |
-| --- | ---: | ---: | ---: |
-| 1 | 1.05x | ≥ 0.93x | 4 of 5 |
-| 16, in lockstep | 1.08x | ≥ 0.52x | 4 of 5 |
-
-Warp serves the endpoint, as for resolve-ref above; in the A/B against
-the HTTP front of runs E to H it was 1.11x (1 client) and 1.13x (16
-clients) Node by median, the front 1.16x and 1.28x. On GitHub's Linux
-runner the 1-client row came out at 0.99x (2 of 5 rounds) and 1.09x
-(5 of 5) in two nightly-gate runs, and the front at 0.99x (2 of 5): the
-front does not lift it there. The two changes that lifted resolve-ref
-there (an unsafe `F_OK` for the `POST`'s existence check, and a 4 MB
-allocation area) lift this row too: 1.24x (8 of 9 rounds) and 1.36x
-(8 of 9) on two Linux runners, and 16 clients 1.29x and 1.34x
-(bench/RESULTS.md, "Where a request spends its time on Linux").
+**Performance:** ahead of Node by median with 1 client and with 16
+clients in lockstep. Warp serves the endpoint, as for
+resolve-ref above; in the A/B against the earlier HTTP front, both were
+ahead of Node, the front a little more. On GitHub's Linux runner the
+1-client row came out even with Node, with the front too. The two changes
+that lifted resolve-ref there (an unsafe `F_OK` for the `POST`'s existence
+check, and a 4 MB allocation area) lift this row too, with 1 and with 16
+clients (bench/RESULTS.md, "Where a request spends its time on Linux").
 
 What changed:
 
@@ -302,16 +255,13 @@ What changed:
   it was slower than the servers at 16 clients and set the pace for all
   of them.
 
-The rounds below 1.0x are rounds in which the shared machine slowed
-servers together. The machine has 4 performance and 6 efficiency cores,
-and other agents kept the load at 4–7. In run I's 0.52x round, `petrus`
-and the bare Node server both fell to about half their speed (11.4k and
-12.3k ops/s, against 21–29k in the other rounds), while the Vite dev
-server, the faster Node server in that round, did not. The
-details are in [bench/RESULTS.md](bench/RESULTS.md).
+Single rounds behind Node are rounds in which the shared machine slowed
+servers together: it has 4 performance and 6 efficiency cores, and other
+agents kept its load high. In such a round, `petrus` and the bare Node
+server both fell to about half their speed, while the Vite dev server did
+not. The details are in [bench/RESULTS.md](bench/RESULTS.md).
 
-**Status:** at parity: ahead in every median, by a thin margin on the
-Mac (run I, before the two changes) and by at least 1.10x on Linux.
+**Status:** at parity: ahead in every median, on the Mac and on Linux.
 
 ### Simulation (browser UI)
 
@@ -368,6 +318,6 @@ maintained editor and inspector that upstream's README names; upstream's
 
 **Performance:** the observation source has no Node counterpart: upstream
 proxies `/temporal` to Temporal. The proxy itself is benchmarked under the
-`petrus` CLI above (2.0–3.6x Vite's, run I).
+`petrus` CLI above, ahead of Vite's.
 
 **Status:** at parity.

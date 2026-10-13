@@ -18,7 +18,7 @@ The composition reuses `Petrus.Engine.Postgres.Joined` from `petrus-engine-postg
 - The Engine side of `test_worker_topology.py` runs against both the reference's Worker process
   and a Haskell Worker process.
 - Interop runs Engines and Workers of both languages on one Instance.
-- Haskell is faster than Python on every benchmark row ([bench/RESULTS.md](bench/RESULTS.md)): over seven interleaved repetitions on a quiet machine (2026-10-11, load 1.5–2.5), 1.16× on create-and-close and 1.21× on the round trip with `fsync` on, 1.15× and 1.25× with it off, Haskell ahead in every repetition. An earlier `fsync=on` run under heavy disk contention came out at 1.00× and 0.72×, with both sides sending identical statements; RESULTS records it and why.
+- Haskell is faster than Python on every benchmark row ([bench/RESULTS.md](bench/RESULTS.md)), create-and-close and the round trip, over interleaved repetitions with `fsync` on (and, in an earlier run, with it off). An earlier `fsync=on` run under heavy disk contention came out level and behind, with both sides sending identical statements; RESULTS records it and why.
 
 API differences are in [DIVERGENCES.md](DIVERGENCES.md). History rows, Absurd rows, doorbells
 and behavior do not diverge.

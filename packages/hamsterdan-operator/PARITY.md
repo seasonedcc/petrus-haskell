@@ -298,10 +298,9 @@ suites and `SecretLaunchSpec`.
 ## Benchmarks
 
 [bench/RESULTS.md](bench/RESULTS.md) times both sides by wall clock:
-three fresh-process CLI rows and four in-process rows. Over seven runs on
-2026-10-11 (load 1.8–3.4), the Haskell side was faster on every row in
-every run. The `qualification-setup` row is the closest, at 1.04× (1.01–1.05×
-run by run): almost all of its time is in the kernel (directory, file and
-`fsync` system calls that both sides make one for one), so its ratio moves
-with the machine's load. RESULTS.md gives the spread over repeated runs and
-the system-call counts behind it.
+three fresh-process CLI rows and four in-process rows. The Haskell side
+is faster on every row. The `qualification-setup` row is the closest to
+level: almost all of its time is in the kernel (directory, file and `fsync`
+system calls that both sides make one for one), so its ratio moves with the
+machine's load. RESULTS.md gives the figures, the spread over repeated runs
+and the system-call counts behind it.

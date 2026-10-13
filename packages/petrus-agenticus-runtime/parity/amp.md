@@ -87,10 +87,9 @@ by `HostsDifferentialSpec`:
 
 ## Benchmarks
 
-See `bench/results-hosts.md`: `amp-stream-admit` 3.5× and
-`amp-final-text` 1.8× the reference's speed. A whole Turn through the
-official `execute` and the shared sidecar (`amp-turn`) is 1.15× (lowest
-of nine interleaved rounds 1.09×).
+See `bench/results-hosts.md`: `amp-stream-admit` and `amp-final-text`
+are faster than the reference, and so is a whole Turn through the official
+`execute` and the shared sidecar (`amp-turn`), over interleaved rounds.
 
 ## `tests/petrus/agenticus/runtime/test_amp_real.py` (1 function)
 
