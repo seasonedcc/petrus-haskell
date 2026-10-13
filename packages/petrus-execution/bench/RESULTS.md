@@ -1,6 +1,6 @@
 # petrus-execution benchmark results
 
-<!-- scripts/bench: measured sources 8270c85ccc5c738a at 39455cb7d122 -->
+<!-- scripts/bench: measured sources 3872db2894c56299 at 0d0154457f61 -->
 
 The Haskell port compared with upstream Python Petrus (`petrus.motus.execution` /
 `_execution` at the pin in [UPSTREAM.md](../../../UPSTREAM.md)). Both harnesses run the same
@@ -97,7 +97,7 @@ the shared Node sidecar, with round-to-round swings of ±1.5 µs on either side
 that exceed the remaining difference. It was not investigated further. The
 archive rows below were not remeasured.
 
-### 2026-10-12, at `d85b420`
+### 2026-10-12, at `d85b420`: the archive rows
 
 Measured on 2026-10-12, 23:31–23:33 local (UTC-3), at commit `d85b420`, on
 the Apple M4 (Darwin arm64) with a 1-minute load average of 3.10–5.00, by
@@ -117,6 +117,19 @@ Three rounds, alternating which harness goes first; each figure is the median of
 | archive/one-large/pack+sha256 | 198.565 | 105.138 | 1.89x | 1.79x | 3 of 3 |
 | archive/one-large/validate | 0.079 | 0.009 | 8.76x | 2.63x | 3 of 3 |
 | archive/one-large/extract | 202.839 | 169.896 | 1.19x | 0.93x | 2 of 3 |
+
+`archive/one-large/extract` (one 256 MiB file) read 1.19× here, Haskell
+ahead in 2 of 3 rounds.
+
+### 2026-10-12, at `d85b420`: the other rows (superseded)
+
+<!-- bench: superseded -->
+
+The same three rounds' other rows, superseded by the 2026-10-13 run above;
+the Haskell side here still timed in whole microseconds:
+
+| benchmark | Python (ms) | Haskell (ms) | Python / Haskell | lowest per round | Haskell ahead |
+|---|---:|---:|---:|---:|---:|
 | process/run-captured | 1.450 | 0.784 | 1.85x | 1.73x | 3 of 3 |
 | local/execute | 4.748 | 3.258 | 1.46x | 1.25x | 3 of 3 |
 | sidecar/handshake-round-trip | 0.028 | 0.031 | 0.91x | 0.83x | 1 of 3 |
@@ -147,8 +160,6 @@ handshake reads 0.91× and 1.05× in the two runs, the execute round trip
 rounds are not pooled into one figure. These rows are level, as the
 earlier runs below found (1.01× and 1.04× at `81bbdc5`, 1.02× and 1.00×
 on a quiet machine on 2026-10-11); they were not investigated further.
-`archive/one-large/extract` (one 256 MiB file) read 1.19× here, Haskell
-ahead in 2 of 3 rounds.
 
 ## Results
 
