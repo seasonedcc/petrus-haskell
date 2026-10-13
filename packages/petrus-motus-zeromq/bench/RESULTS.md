@@ -51,7 +51,7 @@ scripts/bench-run petrus-motus-zeromq +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-motus-zeromq/bench/python_bench.py)
 ```
 
-CI's nightly smoke run (`scripts/bench --smoke`, not a measurement): the
+CI's smoke run on a `full` dispatch (`scripts/bench --smoke`, not a measurement): the
 Haskell harness once.
 
 <!-- scripts/bench: smoke -->

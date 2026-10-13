@@ -212,7 +212,7 @@ cabal build -j2 petrus-execution:bench:petrus-execution-bench
 rm -rf "${BENCH_TMP:-bench-results/tmp/petrus-execution}/workloads"
 ```
 
-CI's nightly smoke run (`scripts/bench --smoke`, not a measurement): the
+CI's smoke run on a `full` dispatch (`scripts/bench --smoke`, not a measurement): the
 Haskell harness on the `medium` workload only (the only one it creates),
 plus its process and local rows.
 

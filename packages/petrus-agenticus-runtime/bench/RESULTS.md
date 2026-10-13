@@ -98,7 +98,7 @@ scripts/bench-run petrus-agenticus-runtime --time-mode wall +RTS -M2G -RTS
 (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-runtime/bench/python_bench.py)
 ```
 
-CI's nightly smoke run (`scripts/bench --smoke`, not a measurement, on
+CI's smoke run on a `full` dispatch (`scripts/bench --smoke`, not a measurement, on
 Linux): every row once.
 
 <!-- scripts/bench: smoke -->

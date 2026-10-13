@@ -17,7 +17,7 @@ test -f upstream/petrus-viewer/dist/index.html || (cd upstream/petrus-viewer && 
 node packages/petrus-viewer-server/bench/run.mjs
 ```
 
-CI's nightly smoke run (`scripts/bench --smoke`, not a measurement): the
+CI's smoke run on a `full` dispatch (`scripts/bench --smoke`, not a measurement): the
 in-process `micro` rows, a few iterations each (the scenario runner needs the
 upstream viewer's `pnpm install`, which CI's `viewer` job covers). `micro`
 reads the `--file` it is given and a `B.json` next to it (the file a
@@ -869,7 +869,7 @@ sit at parity for both designs, and the front does not lift them:
 | resolve-ref, 1 client | 0.95x (2 of 5) | 1.01x (3 of 5) | 1.19x (3 of 5) |
 
 Single rounds there range over ±20% (the front's open-file rounds: 0.93,
-0.79, 1.24, 0.99, 1.15), so these two gate rows could fail a nightly run
+0.79, 1.24, 0.99, 1.15), so these two gate rows could fail a gate run
 with either design; the relay, collab, MCP and static rows passed by
 wide margins in every run. Two later changes lift both rows on Linux;
 see "Where a request spends its time on Linux".

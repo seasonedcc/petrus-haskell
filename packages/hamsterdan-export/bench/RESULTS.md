@@ -116,7 +116,7 @@ above.
 scripts/bench-run hamsterdan-export --runs 21 +RTS -M2G -RTS
 ```
 
-CI's nightly smoke run (`scripts/bench --smoke`, not a measurement):
+CI's smoke run on a `full` dispatch (`scripts/bench --smoke`, not a measurement):
 
 <!-- scripts/bench: smoke -->
 ```sh
