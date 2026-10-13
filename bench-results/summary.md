@@ -34,7 +34,7 @@ lists the files whose package sources have changed since.
 | `petrus-agenticus-runtime` | [RESULTS.md](../packages/petrus-agenticus-runtime/bench/RESULTS.md) | `9c6cdb8` | 2 | 1.86× | 3.11× |  |
 | `petrus-agenticus-runtime` | [results-hosts.md](../packages/petrus-agenticus-runtime/bench/results-hosts.md) | `9c6cdb8` | 14 | 1.12× | 6.48× |  |
 | `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | `9c6cdb8` | 11 | 1.05× | 5.97× |  |
-| `petrus-cel` | [RESULTS.md](../packages/petrus-cel/bench/RESULTS.md) | `5a73d7a` | 21 | 7.94× | 289× |  |
+| `petrus-cel` | [RESULTS.md](../packages/petrus-cel/bench/RESULTS.md) | `4b2f7e6` | 21 | 9.95× | 337× |  |
 | `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | `5a73d7a` | 10 | 2.27× | 9.55× |  |
 | `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | `5a73d7a` | 11 | 1.00× | 4.03× |  |
 | `petrus-engine` | [RESULTS.md](../packages/petrus-engine/bench/RESULTS.md) | `5a73d7a` | 5 | 5.58× | 12.7× |  |

@@ -1,6 +1,6 @@
 # petrus-cel benchmark results
 
-<!-- scripts/bench: measured sources fdcbc90965f6d05c at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources d96ae160a5a8769d at 4b2f7e6ecdef -->
 
 Typical Petrus CEL expressions, compiled and evaluated through the Impetus
 kernel seam: `Petrus.Cel.Impetus.celCompilers` in Haskell and
@@ -42,9 +42,9 @@ Haskell figures are tasty-bench means; their ± values are 2σ. Python figures a
 
 ## Current figures
 
-Measured on 2026-10-12, 05:17–05:21 local (UTC-3), at commit `fc3e42b` with
+Measured on 2026-10-12, 22:38–22:42 local (UTC-3), at commit `9c6cdb8` with
 the benchmark built `-threaded` (below), on the Apple M4 (Darwin arm64) with
-a 1-minute load average of 2.22–2.80: three interleaved repetitions,
+a 1-minute load average of 2.04–2.72: three interleaved repetitions,
 alternating which side goes first, of
 
     scripts/bench-compare petrus-cel 3 --twin '"$(scripts/upstream-python)" -B packages/petrus-cel/bench/time_cel.py'
@@ -54,32 +54,32 @@ Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 directory; Python figures are the twin's own timing (CPython 3.14.6, best
 of 5 runs). Each figure is the median over the repetitions, and the ratio is
 Python ÷ Haskell (above 1 means Haskell is faster). Haskell is faster in
-every measurement: 7.9–22× on parsing, 19–289× on evaluation and 14–67× on
+every measurement: 9.9–24× on parsing, 23–337× on evaluation and 18–70× on
 compile+evaluate. The table under "Numbers" is the earlier measurement.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `filter/field.parse` | 1.62 µs | 36.3 µs | 22.39× | 22.16× | 1.64 µs, 1.62 µs, 1.62 µs | 36.4 µs, 36.2 µs, 36.3 µs |
-| `filter/field.evaluate` | 316 ns | 67.9 µs | 214.76× | 211.49× | 317 ns, 316 ns, 314 ns | 67 µs, 68.4 µs, 67.9 µs |
-| `filter/field.compile+evaluate` | 1.96 µs | 131 µs | 66.68× | 64.86× | 1.96 µs, 2.02 µs, 1.96 µs | 131 µs, 131 µs, 130 µs |
-| `filter/conjunction.parse` | 16.8 µs | 172 µs | 10.21× | 10.18× | 16.9 µs, 16.8 µs, 16.7 µs | 172 µs, 172 µs, 171 µs |
-| `filter/conjunction.evaluate` | 629 ns | 182 µs | 288.78× | 286.56× | 634 ns, 629 ns, 629 ns | 182 µs, 183 µs, 181 µs |
-| `filter/conjunction.compile+evaluate` | 17.9 µs | 406 µs | 22.66× | 22.66× | 17.9 µs, 17.9 µs, 17.9 µs | 406 µs, 411 µs, 406 µs |
-| `filter/regex.parse` | 6.05 µs | 48 µs | 7.94× | 7.89× | 5.98 µs, 6.05 µs, 6.05 µs | 47.2 µs, 48.8 µs, 48 µs |
-| `filter/regex.evaluate` | 3.55 µs | 68.3 µs | 19.24× | 19.24× | 3.51 µs, 3.56 µs, 3.55 µs | 67.7 µs, 68.6 µs, 68.3 µs |
-| `filter/regex.compile+evaluate` | 9.76 µs | 142 µs | 14.50× | 14.28× | 9.89 µs, 9.71 µs, 9.76 µs | 141 µs, 144 µs, 142 µs |
-| `guard/correlate.parse` | 10.3 µs | 107 µs | 10.37× | 9.91× | 10.6 µs, 10.3 µs, 10.3 µs | 105 µs, 107 µs, 107 µs |
-| `guard/correlate.evaluate` | 789 ns | 138 µs | 174.17× | 172.40× | 789 ns, 791 ns, 789 ns | 136 µs, 138 µs, 138 µs |
-| `guard/correlate.compile+evaluate` | 16.3 µs | 320 µs | 19.68× | 19.58× | 16.3 µs, 16.3 µs, 16.2 µs | 320 µs, 319 µs, 322 µs |
-| `guard/macros.parse` | 24.4 µs | 233 µs | 9.56× | 9.40× | 24.4 µs, 24.4 µs, 24.1 µs | 230 µs, 233 µs, 234 µs |
-| `guard/macros.evaluate` | 7 µs | 1.46 ms | 208.67× | 207.25× | 7 µs, 7.04 µs, 6.98 µs | 1.45 ms, 1.46 ms, 1.46 ms |
-| `guard/macros.compile+evaluate` | 46.7 µs | 1.82 ms | 38.95× | 38.93× | 46.8 µs, 46.7 µs, 46.5 µs | 1.82 ms, 1.82 ms, 1.83 ms |
-| `completion/all.parse` | 15.6 µs | 154 µs | 9.87× | 9.73× | 15.7 µs, 15.6 µs, 15.5 µs | 153 µs, 154 µs, 155 µs |
-| `completion/all.evaluate` | 8.09 µs | 1.46 ms | 180.51× | 177.64× | 8.09 µs, 8.22 µs, 8.03 µs | 1.45 ms, 1.46 ms, 1.46 ms |
-| `completion/all.compile+evaluate` | 32.5 µs | 1.71 ms | 52.61× | 50.24× | 32.5 µs, 32.5 µs, 34 µs | 1.71 ms, 1.71 ms, 1.71 ms |
-| `completion/exists.parse` | 20.9 µs | 194 µs | 9.29× | 8.99× | 21.4 µs, 20.9 µs, 20.4 µs | 193 µs, 195 µs, 194 µs |
-| `completion/exists.evaluate` | 2.05 µs | 447 µs | 217.65× | 214.71× | 2.05 µs, 2.05 µs, 2.08 µs | 441 µs, 447 µs, 447 µs |
-| `completion/exists.compile+evaluate` | 33.2 µs | 752 µs | 22.63× | 22.33× | 33.5 µs, 33.1 µs, 33.2 µs | 748 µs, 752 µs, 755 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `filter/field.parse` | 1.54 µs | 36.3 µs | 23.54× | 23.26× | 3 of 3 | 1.53 µs, 1.54 µs, 1.56 µs | 36.5 µs, 36 µs, 36.3 µs |
+| `filter/field.evaluate` | 310 ns | 68.1 µs | 219.51× | 216.51× | 3 of 3 | 310 ns, 309 ns, 315 ns | 67.3 µs, 68.6 µs, 68.1 µs |
+| `filter/field.compile+evaluate` | 1.86 µs | 130 µs | 69.93× | 69.93× | 3 of 3 | 1.84 µs, 1.86 µs, 1.86 µs | 130 µs, 130 µs, 131 µs |
+| `filter/conjunction.parse` | 12.9 µs | 171 µs | 13.30× | 13.28× | 3 of 3 | 12.9 µs, 12.8 µs, 12.9 µs | 171 µs, 170 µs, 172 µs |
+| `filter/conjunction.evaluate` | 541 ns | 182 µs | 336.54× | 333.10× | 3 of 3 | 547 ns, 541 ns, 541 ns | 182 µs, 181 µs, 183 µs |
+| `filter/conjunction.compile+evaluate` | 13.3 µs | 410 µs | 30.73× | 30.29× | 3 of 3 | 13.3 µs, 13.3 µs, 13.5 µs | 410 µs, 405 µs, 410 µs |
+| `filter/regex.parse` | 4.81 µs | 47.8 µs | 9.95× | 9.87× | 3 of 3 | 4.81 µs, 4.76 µs, 4.84 µs | 48.8 µs, 47.8 µs, 47.8 µs |
+| `filter/regex.evaluate` | 2.9 µs | 67.9 µs | 23.44× | 23.05× | 3 of 3 | 2.89 µs, 2.9 µs, 2.94 µs | 67.9 µs, 67.9 µs, 67.8 µs |
+| `filter/regex.compile+evaluate` | 7.81 µs | 143 µs | 18.30× | 18.18× | 3 of 3 | 7.82 µs, 7.74 µs, 7.81 µs | 142 µs, 143 µs, 143 µs |
+| `guard/correlate.parse` | 7.93 µs | 108 µs | 13.57× | 13.39× | 3 of 3 | 7.93 µs, 7.92 µs, 7.98 µs | 108 µs, 108 µs, 107 µs |
+| `guard/correlate.evaluate` | 625 ns | 138 µs | 220.57× | 217.94× | 3 of 3 | 625 ns, 621 ns, 629 ns | 138 µs, 138 µs, 137 µs |
+| `guard/correlate.compile+evaluate` | 12.2 µs | 318 µs | 26.06× | 25.16× | 3 of 3 | 12.2 µs, 12.1 µs, 12.6 µs | 319 µs, 318 µs, 317 µs |
+| `guard/macros.parse` | 18.6 µs | 233 µs | 12.56× | 12.38× | 3 of 3 | 18.6 µs, 18.6 µs, 19.1 µs | 233 µs, 230 µs, 237 µs |
+| `guard/macros.evaluate` | 5.65 µs | 1.45 ms | 256.54× | 253.41× | 3 of 3 | 5.64 µs, 5.65 µs, 5.68 µs | 1.43 ms, 1.47 ms, 1.45 ms |
+| `guard/macros.compile+evaluate` | 35.8 µs | 1.83 ms | 51.14× | 49.91× | 3 of 3 | 35.8 µs, 35.7 µs, 36.5 µs | 1.83 ms, 1.83 ms, 1.82 ms |
+| `completion/all.parse` | 11.8 µs | 154 µs | 13.09× | 12.97× | 3 of 3 | 11.8 µs, 11.7 µs, 11.9 µs | 154 µs, 152 µs, 155 µs |
+| `completion/all.evaluate` | 6.46 µs | 1.46 ms | 226.16× | 223.06× | 3 of 3 | 6.46 µs, 6.43 µs, 6.47 µs | 1.44 ms, 1.46 ms, 1.47 ms |
+| `completion/all.compile+evaluate` | 25 µs | 1.72 ms | 68.81× | 67.65× | 3 of 3 | 25 µs, 24.9 µs, 25.4 µs | 1.72 ms, 1.71 ms, 1.72 ms |
+| `completion/exists.parse` | 15.2 µs | 196 µs | 12.91× | 12.78× | 3 of 3 | 15.3 µs, 15 µs, 15.2 µs | 196 µs, 194 µs, 196 µs |
+| `completion/exists.evaluate` | 1.71 µs | 448 µs | 262.94× | 258.83× | 3 of 3 | 1.71 µs, 1.69 µs, 1.71 µs | 441 µs, 448 µs, 450 µs |
+| `completion/exists.compile+evaluate` | 24.6 µs | 759 µs | 30.88× | 30.06× | 3 of 3 | 24.6 µs, 24.5 µs, 25.3 µs | 764 µs, 758 µs, 759 µs |
 
 The benchmark is now built with `-threaded`. Built without it, it stopped
 for good partway through a `scripts/bench-compare` run on 2026-10-12, at 0%
