@@ -4,8 +4,9 @@
 -- @sqlite3@ module as Hamsterdan uses it: a five-second busy timeout,
 -- scripts, parameterized statements, and @with connection:@ transactions
 -- that commit on success and roll back on any exception. Binding a text
--- CPython cannot encode as UTF-8 raises its @UnicodeEncodeError@ before the
--- statement runs, as CPython's @sqlite3@ does, and every SQLite failure
+-- CPython cannot encode as UTF-8 raises its @UnicodeEncodeError@, and a text
+-- or blob past @INT_MAX@ bytes its @OverflowError@, before the statement
+-- runs, as CPython's @sqlite3@ does, and every SQLite failure
 -- raises the 'PythonException' of the @sqlite3@ class CPython raises for
 -- its result code (petrus-sqlite's 'pythonSqliteClass'), with SQLite's
 -- message, so a stored or printed class name is the reference's.
@@ -25,15 +26,17 @@ module Hamsterdan.Sqlite
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Exception (SomeException, catch, finally, fromException, mask, onException, throwIO, try)
 import Control.Monad (void)
+import Data.ByteString qualified as BS
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Data.Text.Foreign (lengthWord8)
 import Database.SQLite3 (Database, SQLData (..), Statement, StepResult (..))
 import Database.SQLite3 qualified as S
 import Hamsterdan.Python.Text (utf8Encode)
 import Petrus.Json.Python (PythonException (..), pythonError)
-import Petrus.Sqlite.Connection (SQLError (..), pythonSqliteClass)
+import Petrus.Sqlite.Connection (SQLError (..), bindLength, pythonSqliteClass)
 
 -- | A connection guarded by a lock (CPython's @threading.RLock@ around the
 -- shared connection).
@@ -94,12 +97,20 @@ execute connection sql parameters = translated . withStatement connection sql $ 
   void (S.step statement)
   S.changes connection.database
 
--- | Bind the parameters, refusing a text CPython cannot encode as UTF-8 (a
--- surrogate a JSON reader kept from an escape), as CPython's @sqlite3@ does.
+-- | Bind the parameters, refusing first, parameter by parameter, as
+-- CPython's @sqlite3@ does: a text it cannot encode as UTF-8 (a surrogate a
+-- JSON reader kept from an escape), and a text or a blob longer than
+-- @INT_MAX@ bytes (petrus-sqlite's 'bindLength', the @OverflowError@ CPython
+-- raises where SQLite's @int@ length would wrap).
 bindChecked :: Statement -> [SQLData] -> IO ()
 bindChecked statement parameters = do
-  mapM_ throwIO [failure | SQLText value <- parameters, Left failure <- [utf8Encode value]]
+  mapM_ (either throwIO pure . refusal) parameters
   S.bind statement parameters
+  where
+    refusal = \case
+      SQLText value -> utf8Encode value >> void (bindLength "string" (lengthWord8 value))
+      SQLBlob bytes -> void (bindLength "BLOB" (BS.length bytes))
+      _ -> Right ()
 
 -- | Run with a cached prepared statement for this SQL (preparing it on
 -- first use). The statement is checked out of the cache while in use, so
