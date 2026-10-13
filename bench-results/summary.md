@@ -60,6 +60,6 @@ lists the files whose package sources have changed since.
 | `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | `e506718` | 17 | 1.71× | 40.6× |  |
 | `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | `7d1b80c` | 7 | 1.03× | 1.86× |  |
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | `d85b420` | 4 | 2.50× | 9.00× |  |
-| `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | `37bf668` | 58 | 1.03× | 31.3× |  |
+| `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | `f01bd7b` | 58 | 1.10× | 53.7× |  |
 
 46 results files; 1 with a row below 1.0×.
